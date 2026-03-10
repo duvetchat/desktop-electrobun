@@ -266,7 +266,10 @@ async function connectWebRTC() {
 	}
 
 	const offer = await peerConnection.createOffer();
+	if (isDestroyed) return;
+
 	await peerConnection.setLocalDescription(offer);
+	if (isDestroyed) return;
 
 	sendEventMessage("VOICE_JOIN", {
 		room_id: channelId,
