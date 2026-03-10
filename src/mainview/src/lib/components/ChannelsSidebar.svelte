@@ -458,13 +458,14 @@ onMount(() => {
 									class="flex items-center gap-2 text-sm text-zinc-400 group"
 								>
 									<div class="relative">
-										<img
+										<UserAvatar
 											src={user.avatar_url}
-											alt={user.username}
-											class="w-6 h-6 rounded-full box-border transition-colors duration-200 {$speakingUsers.has(
+											name={user.username}
+											size={24}
+											class="box-border transition-colors duration-200 {$speakingUsers.has(
 												user.id,
 											) && !user.muted
-								? 'border-2 border-stone-400'
+												? 'border-2 border-green-500'
 												: 'border-2 border-transparent'}"
 										/>
 										{#if user.deafened}
