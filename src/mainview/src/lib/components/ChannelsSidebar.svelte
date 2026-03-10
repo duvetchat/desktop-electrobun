@@ -39,6 +39,7 @@ import {
 } from "$lib/stores.svelte";
 import { sendEventMessage } from "$lib/api/ws/connection";
 import { fly } from "svelte/transition";
+import { getHostURL } from '$lib/common/common';
 
 const dispatch = createEventDispatcher<{ select: string }>();
 
@@ -130,7 +131,7 @@ let pingIntervalId: ReturnType<typeof setInterval> | null = null;
 async function measurePing() {
 	try {
 		const start = performance.now();
-		await fetch("http://localhost:8080/health", {
+		await fetch(`${getHostURL()}/health`, {
 			method: "GET",
 			cache: "no-store",
 		});

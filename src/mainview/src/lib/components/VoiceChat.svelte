@@ -21,6 +21,7 @@ export let channelName: string;
 let peerConnection: RTCPeerConnection | null = null;
 let localAudioStream: MediaStream | null = null;
 let localVideoStream: MediaStream | null = null;
+let pendingIceCandidates: RTCIceCandidate[] = [];
 
 let isScreenSharing = false;
 
@@ -63,24 +64,50 @@ onMount(async () => {
 		if (data.room_id !== channelId) return;
 
 		if (type === "VOICE_JOINED") {
-			peerConnection?.setRemoteDescription(
-				new RTCSessionDescription(data.answer),
-			);
+			const pc = peerConnection;
+			if (!pc) return;
+			pc.setRemoteDescription(new RTCSessionDescription(data.answer)).then(() => {
+				// Only flush if this is still the active connection
+				if (pc !== peerConnection) return;
+				const toFlush = pendingIceCandidates;
+				pendingIceCandidates = [];
+				for (const candidate of toFlush) {
+					pc.addIceCandidate(candidate).catch(console.warn);
+				}
+			}).catch(console.warn);
 		} else if (type === "WEBRTC_ICE_CANDIDATE") {
-			peerConnection?.addIceCandidate(
-				new RTCIceCandidate(JSON.parse(data.candidate)),
-			);
+			const pc = peerConnection;
+			if (!pc) return;
+			const parsed = typeof data.candidate === "string"
+				? JSON.parse(data.candidate)
+				: data.candidate;
+			const candidate = new RTCIceCandidate(parsed);
+			if (pc.remoteDescription) {
+				pc.addIceCandidate(candidate).catch(console.warn);
+			} else {
+				pendingIceCandidates.push(candidate);
+			}
 		} else if (type === "WEBRTC_RENEGOTIATE") {
-			peerConnection
-				?.setRemoteDescription(new RTCSessionDescription(data.offer))
-				.then(() => peerConnection?.createAnswer())
+			const pc = peerConnection;
+			if (!pc) return;
+			pc.setRemoteDescription(new RTCSessionDescription(data.offer))
+				.then(() => {
+					if (pc !== peerConnection) return;
+					const toFlush = pendingIceCandidates;
+					pendingIceCandidates = [];
+					for (const candidate of toFlush) {
+						pc.addIceCandidate(candidate).catch(console.warn);
+					}
+					return pc.createAnswer();
+				})
 				.then((answer) => {
-					peerConnection?.setLocalDescription(answer);
+					if (!answer || pc !== peerConnection) return;
+					pc.setLocalDescription(answer);
 					sendEventMessage("WEBRTC_ANSWER", {
 						room_id: channelId,
 						answer: answer,
 					});
-				});
+				}).catch(console.warn);
 		} else if (type === "VOICE_STATE_UPDATE") {
 			remoteUserMuted[data.user_id] = data.muted;
 			remoteUserMuted = { ...remoteUserMuted };
@@ -121,6 +148,7 @@ async function connectWebRTC() {
 	}
 	remoteAudioElements = {};
 	remoteVideoElements = {};
+	pendingIceCandidates = [];
 
 	peerConnection = new RTCPeerConnection({
 		iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
@@ -266,10 +294,8 @@ async function connectWebRTC() {
 	}
 
 	const offer = await peerConnection.createOffer();
-	if (isDestroyed) return;
 
 	await peerConnection.setLocalDescription(offer);
-	if (isDestroyed) return;
 
 	sendEventMessage("VOICE_JOIN", {
 		room_id: channelId,
