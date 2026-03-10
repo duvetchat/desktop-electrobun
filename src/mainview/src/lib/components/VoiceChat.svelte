@@ -1,19 +1,19 @@
 <script lang="ts">
-import { onMount, onDestroy } from "svelte";
-import { sendEventMessage, onWebRTCEvent } from "$lib/api/ws/connection";
 import { LoaderCircle, MicOff, MonitorUp, PhoneOff } from "lucide-svelte";
-import {
-	speakingUsers,
-	currentUser,
-	activeVoiceRoomId,
-	selectedMicId,
-	gatewaySpaces,
-	isMuted,
-	isDeafened,
-} from "$lib/stores.svelte";
+import { onDestroy, onMount } from "svelte";
 import { SvelteSet } from "svelte/reactivity";
-import { hasPermission, Permission } from "$lib/permissions";
+import { onWebRTCEvent, sendEventMessage } from "$lib/api/ws/connection";
 import UserAvatar from "$lib/components/UserAvatar.svelte";
+import { hasPermission, Permission } from "$lib/permissions";
+import {
+	activeVoiceRoomId,
+	currentUser,
+	gatewaySpaces,
+	isDeafened,
+	isMuted,
+	selectedMicId,
+	speakingUsers,
+} from "$lib/stores.svelte";
 
 export let channelId: string;
 export let channelName: string;
@@ -87,11 +87,11 @@ onMount(async () => {
 		}
 	});
 
-	let space = $gatewaySpaces.find((s) =>
+	const space = $gatewaySpaces.find((s) =>
 		s.rooms.some((r) => r.id === channelId),
 	);
-	let room = space?.rooms.find((r) => r.id === channelId);
-	let canSpeak =
+	const room = space?.rooms.find((r) => r.id === channelId);
+	const canSpeak =
 		space && room ? hasPermission(space, room, Permission.SpeakInVoice) : false;
 
 	if (!canSpeak) {
@@ -112,7 +112,6 @@ onMount(async () => {
 });
 
 onDestroy(() => {
-	isDestroyed = true;
 	leaveVoice();
 });
 
@@ -521,7 +520,12 @@ $: voiceUsers = (() => {
 
 	<div class="hidden">
 		{#each Object.entries(remoteAudioElements) as [id, stream] (id)}
-			<audio use:srcObject={stream} autoplay muted={$isDeafened} aria-label={`Audio stream ${id}`}></audio>
+			<audio
+				use:srcObject={stream}
+				autoplay
+				muted={$isDeafened}
+				aria-label={`Audio stream ${id}`}
+			></audio>
 		{/each}
 	</div>
 
