@@ -5,8 +5,32 @@ import type { GatewaySpace, GatewayUser, Message } from "$lib/types";
 
 const SESSION_KEY = "duvet_session_token";
 
+type SafeStorage = Pick<Storage, "getItem" | "setItem" | "removeItem">;
+
+function getSafeStorage(): SafeStorage | null {
+	const candidate =
+		typeof globalThis !== "undefined"
+			? ((globalThis as { localStorage?: unknown }).localStorage ?? null)
+			: null;
+
+	if (!candidate || typeof candidate !== "object") {
+		return null;
+	}
+
+	const maybeStorage = candidate as Partial<Storage>;
+	if (
+		typeof maybeStorage.getItem !== "function" ||
+		typeof maybeStorage.setItem !== "function" ||
+		typeof maybeStorage.removeItem !== "function"
+	) {
+		return null;
+	}
+
+	return maybeStorage as SafeStorage;
+}
+
 function createUserSession() {
-	const storage = typeof localStorage !== "undefined" ? localStorage : null;
+	const storage = getSafeStorage();
 	let token = $state<string | null>(storage?.getItem(SESSION_KEY) ?? null);
 
 	return {
@@ -40,15 +64,16 @@ export const isDeafened = writable<boolean>(false);
 export const activeVoiceRoomId = writable<string | null>(null);
 
 let initialMicId = "";
-if (typeof localStorage !== "undefined") {
-	initialMicId = localStorage.getItem("duvet_mic_id") || "";
+const safeStorage = getSafeStorage();
+if (safeStorage) {
+	initialMicId = safeStorage.getItem("duvet_mic_id") || "";
 }
 export const selectedMicId = writable<string>(initialMicId);
 
-if (typeof localStorage !== "undefined") {
+if (safeStorage) {
 	selectedMicId.subscribe((value) => {
 		if (value) {
-			localStorage.setItem("duvet_mic_id", value);
+			safeStorage.setItem("duvet_mic_id", value);
 		}
 	});
 }
