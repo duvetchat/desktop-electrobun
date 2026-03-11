@@ -8,6 +8,7 @@ import {
 import { Dialog } from "bits-ui";
 import { createRoomInvite } from "$lib/api/rooms";
 import type { Channel } from "$lib/types";
+import { route } from "$lib/common/common";
 
 let {
 	open = $bindable(false),
@@ -42,7 +43,7 @@ async function generate() {
 	isLoading = true;
 	try {
 		const code = await createRoomInvite(spaceId, channel.id);
-		inviteLink = `${window.location.origin}/invite.html?code=${encodeURIComponent(code)}`;
+		inviteLink = `${window.location.origin}${route(`/invite.html?code=${encodeURIComponent(code)}`)}`;
 	} catch (err) {
 		genError = err instanceof Error ? err.message : "Failed to generate link.";
 	} finally {

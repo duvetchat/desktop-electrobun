@@ -3,13 +3,14 @@
   import { getInvite, joinInvite } from "$lib/api/invites";
   import type { InviteInfo } from "$lib/api/invites";
   import { userSession } from "$lib/stores.svelte";
+  import { route } from "$lib/common/common";
 
   function inviteUrl(code: string) {
-    return `/invite.html?code=${encodeURIComponent(code)}`;
+    return route(`/invite.html?code=${encodeURIComponent(code)}`);
   }
 
   function loginUrlForInvite(code: string) {
-    return `/index.html?redirect=${encodeURIComponent(inviteUrl(code))}`;
+    return route(`/index.html?redirect=${encodeURIComponent(inviteUrl(code))}`);
   }
 
   function readCodeFromHash(hash: string) {
@@ -63,7 +64,7 @@
     error = "";
     try {
       await joinInvite(code);
-      window.location.href = "/app.html";
+      window.location.href = route("/app.html");
     } catch (err) {
       error =
         err instanceof Error ? err.message : "We couldn't join this server. Please try again.";
@@ -107,7 +108,7 @@
         <p class="text-zinc-300 text-sm">{error}</p>
         <button
           class="mt-6 px-6 py-2.5 rounded-lg bg-zinc-800 text-white text-sm font-medium hover:bg-zinc-700 transition"
-          onclick={() => (window.location.href = "/index.html")}
+          onclick={() => (window.location.href = route("/index.html"))}
         >
           Back to sign in
         </button>
@@ -170,7 +171,7 @@
 
         <button
           class="mt-3 w-full py-2.5 rounded-xl bg-transparent text-zinc-300 text-sm font-medium hover:text-white transition"
-          onclick={() => (window.location.href = "/index.html")}
+          onclick={() => (window.location.href = route("/index.html"))}
         >
           Not now
         </button>

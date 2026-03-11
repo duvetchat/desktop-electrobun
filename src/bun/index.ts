@@ -1,4 +1,25 @@
-import { BrowserView, BrowserWindow } from "electrobun/bun";
+import { BrowserView, BrowserWindow, Updater } from "electrobun/bun";
+
+const DEV_SERVER_PORT = 5173;
+const DEV_SERVER_URL = `http://localhost:${DEV_SERVER_PORT}`;
+
+async function getMainViewUrl(): Promise<string> {
+  const channel = await Updater.localInfo.channel();
+  if (channel === "dev") {
+    try {
+      await fetch(DEV_SERVER_URL, { method: "HEAD" });
+      console.log(`HMR enabled: Using Vite dev server at ${DEV_SERVER_URL}`);
+     
+			return DEV_SERVER_URL;
+    } catch {
+      console.log("Vite dev server not running. Run 'bun run dev:hmr' for HMR support.");
+    }
+  }
+
+  return "views://mainview/index.html";
+}
+
+const url = await getMainViewUrl();
 
 type AppRPCSchema = {
 	bun: {
@@ -23,7 +44,6 @@ type AppRPCSchema = {
 	};
 }
 
-const appUrl = "views://mainview/index.html";
 const rpc = BrowserView.defineRPC<AppRPCSchema>({
 	handlers: {
 		messages: {
@@ -52,6 +72,6 @@ const win = new BrowserWindow({
 		y: 0,
 	},
 	title: "Duvet",
-	url: appUrl,
+	url,
 	rpc
 });

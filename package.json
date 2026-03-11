@@ -3,16 +3,19 @@
 	"version": "1.0.0",
 	"scripts": {
 		"start": "bash ./scripts/build-svelte.sh && electrobun dev",
-		"build:canary": "electrobun build --env=canary",
+		"dev": "electrobun dev --watch",
+		"dev:hmr": "concurrently \"bun run hmr\" \"bun run dev\"",
+		"hmr": "bash ./scripts/run-dev.sh",
+		"build:canary": "bash ./scripts/build-svelte.sh && electrobun build --env=canary",
 		"format": "bunx @biomejs/biome format --write .",
 		"format:check": "bunx @biomejs/biome format ."
 	},
 	"dependencies": {
+		"concurrently": "^9.2.1",
 		"electrobun": "1.15.1"
 	},
 	"devDependencies": {
 		"@types/bun": "^1.3.10",
-		"png-to-ico": "^3.0.1",
 		"typescript": "^5.9.3"
 	}
 }

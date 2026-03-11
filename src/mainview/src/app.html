@@ -8,14 +8,28 @@
 	<script>
 		(() => {
 			const path = window.location.pathname;
+			const isDev = window.location.port === '5173';
 
-			if (path === '/index.html') {
+			const r = (p) => {
+				if (!isDev) return p;
+				const map = {
+					'/index.html': '/',
+					'/app.html': '/app',
+					'/sign-in.html': '/sign-in',
+					'/sign-up.html': '/sign-up',
+					'/forgot-password.html': '/forgot-password',
+					'/invite.html': '/invite',
+				};
+				return map[p] || p;
+			};
+
+			if (path === '/index.html' || (isDev && path === '/')) {
 				const secret = localStorage.getItem('duvet_session_token');
 
 				if (!secret) {
-					window.location.replace('/sign-in.html');
+					window.location.replace(r('/sign-in.html'));
 				} else {
-					window.location.replace('/app.html');
+					window.location.replace(r('/app.html'));
 				}
 			}
 		})();

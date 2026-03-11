@@ -3,15 +3,16 @@ import { onMount } from "svelte";
 import { getInvite, joinInvite } from "$lib/api/invites";
 import type { InviteInfo } from "$lib/api/invites";
 import { userSession } from "$lib/stores.svelte";
+import { route } from "$lib/common/common";
 
 let { code }: { code: string } = $props();
 
 function inviteUrl(codeValue: string) {
-	return `/invite.html?code=${encodeURIComponent(codeValue)}`;
+	return route(`/invite.html?code=${encodeURIComponent(codeValue)}`);
 }
 
 function loginUrlForInvite(codeValue: string) {
-	return `/index.html?redirect=${encodeURIComponent(inviteUrl(codeValue))}`;
+	return route(`/index.html?redirect=${encodeURIComponent(inviteUrl(codeValue))}`);
 }
 
 let invite = $state<InviteInfo | null>(null);

@@ -2,6 +2,7 @@
 import { signIn, logIn } from "$lib/api/auth";
 import { Button, Checkbox, Dialog, Label } from "bits-ui";
 import { userSession } from "$lib/stores.svelte";
+import { route } from "$lib/common/common";
 
 let showPassword = $state(false);
 let username = $state("");
@@ -37,7 +38,7 @@ async function handleSubmit() {
 		const result = await logIn({ email, password });
 		userSession.token = result.token;
 		const redirect = new URLSearchParams(window.location.search).get("redirect");
-		window.location.href = redirect || "/app.html";
+		window.location.href = redirect || route("/app.html");
 	} catch (err) {
 		errorMessage =
 			err instanceof Error
