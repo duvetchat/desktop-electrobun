@@ -7,6 +7,9 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
+	--app-height: 100vh;
+	--app-width: 100vw;
+
 	/* Colors */
 	--background: hsl(0 0% 100%);
 	--background-alt: hsl(0 0% 100%);
@@ -278,12 +281,14 @@
 		font-feature-settings:
 			"rlig" 1,
 			"calt" 1;
-		height: 100%;
+		height: var(--app-height);
+		width: var(--app-width);
 		overflow: hidden;
 	}
 
 	#svelte {
-		height: 100%;
+		height: var(--app-height);
+		width: var(--app-width);
 	}
 
 	::selection {

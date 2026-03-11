@@ -3,25 +3,26 @@ import { signIn, logIn } from "$lib/api/auth";
 import { Button, Checkbox, Dialog, Label } from "bits-ui";
 import { userSession } from "$lib/stores.svelte";
 
-let showPassword = false;
-let username = "";
-let alias = "";
-let email = "";
-let password = "";
-let confirmPassword = "";
-let acceptTerms = false;
-let doingRequest = false;
-let showTermsModal = false;
-let errorMessage = "";
+let showPassword = $state(false);
+let username = $state("");
+let alias = $state("");
+let email = $state("");
+let password = $state("");
+let confirmPassword = $state("");
+let acceptTerms = $state(false);
+let doingRequest = $state(false);
+let showTermsModal = $state(false);
+let errorMessage = $state("");
 
-$: passwordsMatch = password === confirmPassword;
-$: canSubmit =
+const passwordsMatch = $derived(password === confirmPassword);
+const canSubmit = $derived(
 	username.trim() &&
 	email.trim() &&
 	password &&
 	confirmPassword &&
 	passwordsMatch &&
-	acceptTerms;
+	acceptTerms,
+);
 
 async function handleSubmit() {
 	doingRequest = true;
@@ -62,7 +63,10 @@ async function handleSubmit() {
 				<p class="mt-1 text-sm text-zinc-300 sm:text-base">Join Duvet and start chatting in seconds.</p>
 			</header>
 
-			<form class="space-y-4" on:submit|preventDefault={handleSubmit} novalidate>
+			<form class="space-y-4" onsubmit={(e) => {
+				e.preventDefault();
+				handleSubmit();
+			}} novalidate>
 				<fieldset disabled={doingRequest} class="m-0 space-y-4 border-0 p-0">
 					<div class="grid gap-4 sm:grid-cols-2">
 						<div>
@@ -87,7 +91,7 @@ async function handleSubmit() {
 						</div>
 						<div class="relative">
 							<input id="password" name="password" type={showPassword ? "text" : "password"} autocomplete="new-password" minlength={8} maxlength={128} required bind:value={password} class="w-full rounded-lg border border-stone-700 bg-stone-900/70 px-4 py-3 pr-11 text-zinc-100 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-stone-500/70" placeholder="Create a password" />
-							<button type="button" class="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-zinc-400 hover:text-zinc-100" aria-pressed={showPassword} aria-label={showPassword ? "Hide password" : "Show password"} on:click={() => (showPassword = !showPassword)}>
+							<button type="button" class="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-zinc-400 hover:text-zinc-100" aria-pressed={showPassword} aria-label={showPassword ? "Hide password" : "Show password"} onclick={() => (showPassword = !showPassword)}>
 								<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
 									<path stroke-linecap="round" stroke-linejoin="round" d="M2.5 12s3.5-7 9.5-7 9.5 7 9.5 7-3.5 7-9.5 7S2.5 12 2.5 12z" />
 									<circle cx="12" cy="12" r="3" />
@@ -114,7 +118,7 @@ async function handleSubmit() {
 								<span class="text-[10px] text-white">✓</span>
 							{/if}
 						</Checkbox.Root>
-						<span>I agree to the <button type="button" class="ml-1 text-stone-300 hover:text-stone-200 hover:underline" on:click={() => (showTermsModal = true)}>Terms of use</button></span>
+						<span>I agree to the <button type="button" class="ml-1 text-stone-300 hover:text-stone-200 hover:underline" onclick={() => (showTermsModal = true)}>Terms of use</button></span>
 					</label>
 
 					<Button.Root type="submit" class="flex w-full items-center justify-center rounded-lg bg-linear-to-br from-stone-500 to-stone-700 py-3 font-semibold text-white shadow-lg shadow-stone-900/40 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50" disabled={!canSubmit || doingRequest} aria-busy={doingRequest}>

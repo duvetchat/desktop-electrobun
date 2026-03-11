@@ -18,10 +18,10 @@
   }
 
   let code = "";
-  let invite: InviteInfo | null = null;
-  let loading = true;
-  let joining = false;
-  let error = "";
+  let invite = $state<InviteInfo | null>(null);
+  let loading = $state(true);
+  let joining = $state(false);
+  let error = $state("");
   const numberFormatter = new Intl.NumberFormat(
     typeof navigator !== "undefined" ? navigator.language : "en-US",
   );
@@ -107,7 +107,7 @@
         <p class="text-zinc-300 text-sm">{error}</p>
         <button
           class="mt-6 px-6 py-2.5 rounded-lg bg-zinc-800 text-white text-sm font-medium hover:bg-zinc-700 transition"
-          on:click={() => (window.location.href = "/index.html")}
+          onclick={() => (window.location.href = "/index.html")}
         >
           Back to sign in
         </button>
@@ -151,7 +151,7 @@
         {#if userSession.token}
           <button
             class="w-full py-3 rounded-xl bg-red-600 text-white font-semibold text-base hover:bg-red-700 transition disabled:opacity-60 disabled:cursor-not-allowed"
-            on:click={handleJoin}
+            onclick={handleJoin}
             disabled={joining}
           >
             {joining ? "Joining…" : "Join server"}
@@ -162,7 +162,7 @@
           </p>
           <button
             class="w-full py-3 rounded-xl bg-red-600 text-white font-semibold text-base hover:bg-red-700 transition"
-            on:click={() => (window.location.href = loginUrlForInvite(code))}
+            onclick={() => (window.location.href = loginUrlForInvite(code))}
           >
             Sign in to join
           </button>
@@ -170,7 +170,7 @@
 
         <button
           class="mt-3 w-full py-2.5 rounded-xl bg-transparent text-zinc-300 text-sm font-medium hover:text-white transition"
-          on:click={() => (window.location.href = "/index.html")}
+          onclick={() => (window.location.href = "/index.html")}
         >
           Not now
         </button>

@@ -3,11 +3,11 @@ import { Button, Label } from "bits-ui";
 import { logIn } from "$lib/api/auth";
 import { userSession } from "$lib/stores.svelte";
 
-let showPassword = false;
-let email = "";
-let password = "";
-let doingRequest = false;
-let errorMessage = "";
+let showPassword = $state(false);
+let email = $state("");
+let password = $state("");
+let doingRequest = $state(false);
+let errorMessage = $state("");
 
 async function handleSubmit() {
 	doingRequest = true;
@@ -43,7 +43,10 @@ async function handleSubmit() {
 				<p class="mt-1 text-sm text-zinc-300 sm:text-base">Sign in to continue to Duvet.</p>
 			</header>
 
-			<form class="space-y-5" on:submit|preventDefault={handleSubmit} novalidate aria-busy={doingRequest}>
+			<form class="space-y-5" onsubmit={(e) => {
+				e.preventDefault();
+				handleSubmit();
+			}} novalidate aria-busy={doingRequest}>
 				<div>
 					<Label.Root for="email" class="mb-2 block text-sm font-medium text-zinc-300">Email</Label.Root>
 					<input
@@ -87,7 +90,7 @@ async function handleSubmit() {
 							class="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-zinc-400 hover:text-zinc-100"
 							aria-pressed={showPassword}
 							aria-label={showPassword ? "Hide password" : "Show password"}
-							on:click={() => (showPassword = !showPassword)}
+							onclick={() => (showPassword = !showPassword)}
 							disabled={doingRequest}
 						>
 							<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">

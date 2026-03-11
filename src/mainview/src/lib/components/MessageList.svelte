@@ -13,15 +13,31 @@ import UrlEmbed from "$lib/components/UrlEmbed.svelte";
 import InviteEmbed from "$lib/components/InviteEmbed.svelte";
 import UserAvatar from "$lib/components/UserAvatar.svelte";
 
-export let messages: Message[];
-export let members: MemberOnSidebar[] = [];
-export let channelId: string;
-export let space: GatewaySpace | null = null;
-export let isInitialLoading = false;
-export let isLoadingMore = false;
-export let hasMoreMessages = true;
-export let onLoadMore: () => Promise<void> | void = () => {};
-export let failedNonces = new Set<string>();
+let {
+	messages,
+	members = [],
+	channelId,
+	space = null,
+	isInitialLoading = false,
+	isLoadingMore = false,
+	hasMoreMessages = true,
+	onLoadMore = () => {},
+	failedNonces = new Set<string>(),
+	editingMessageId = $bindable<string | null>(null),
+	editContent = $bindable(""),
+}: {
+	messages: Message[];
+	members?: MemberOnSidebar[];
+	channelId: string;
+	space?: GatewaySpace | null;
+	isInitialLoading?: boolean;
+	isLoadingMore?: boolean;
+	hasMoreMessages?: boolean;
+	onLoadMore?: () => Promise<void> | void;
+	failedNonces?: Set<string>;
+	editingMessageId?: string | null;
+	editContent?: string;
+} = $props();
 
 const dispatch = createEventDispatcher<{
 	retry: Message;
@@ -30,10 +46,8 @@ const dispatch = createEventDispatcher<{
 
 // ── State ──────────────────────────────────────────────────────────────────
 let scrollEl: HTMLElement;
-export let editingMessageId: string | null = null;
-export let editContent = "";
-let deletingMessageId: string | null = null;
-let now = Date.now();
+let deletingMessageId = $state<string | null>(null);
+let now = $state(Date.now());
 let intervalId: number;
 const locale =
 	typeof navigator !== "undefined" ? navigator.language : "en-US";
@@ -74,7 +88,7 @@ function topObserverAction(_node: HTMLElement) {
 onMount(() => {
 	intervalId = window.setInterval(() => {
 		now = Date.now();
-	}, 1_000);
+	}, 30_000);
 });
 
 onDestroy(() => {
@@ -85,7 +99,8 @@ onDestroy(() => {
 });
 
 // ── Sorting ────────────────────────────────────────────────────────────────
-$: sortedMessages = messages
+const sortedMessages = $derived(
+	messages
 	.map((m, i) => ({ m, i }))
 	.sort((a, b) => {
 		const aPending = a.m.id === a.m.nonce;
@@ -100,9 +115,10 @@ $: sortedMessages = messages
 			new Date(b.m.created_at).getTime() - new Date(a.m.created_at).getTime()
 		);
 	})
-	.map(({ m }) => m);
+	.map(({ m }) => m),
+);
 
-$: authorColors = buildAuthorColorMap(members);
+const authorColors = $derived(buildAuthorColorMap(members));
 
 // ── Svelte actions ────────────────────────────────────────────────────────
 function focusAction(node: HTMLElement) {
@@ -144,7 +160,7 @@ function formatTimestamp(dateStr: string, _now: number) {
 	if (Number.isNaN(then)) {
 		return "just now";
 	}
-	const seconds = Math.round((then - Date.now()) / 1000);
+	const seconds = Math.round((then - _now) / 1000);
 	if (Math.abs(seconds) < 45) {
 		return "just now";
 	}
@@ -374,7 +390,7 @@ function currentUserCanManageMessages(): boolean {
             No messages yet. Send the first message.
         </div>
     {:else}
-        {#each sortedMessages as message, i}
+		{#each sortedMessages as message, i (message.id)}
             {@const chronoPrev = sortedMessages.at(i + 1)}
             {@const isConsecutive =
                 chronoPrev &&

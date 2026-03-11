@@ -2,10 +2,8 @@ import { BrowserWindow } from "electrobun/bun";
 
 const appUrl = "views://mainview/index.html";
 
-new BrowserWindow({
-	// titleBarStyle: "default",
-	// titleBarStyle: "hiddenInset",
-	titleBarStyle: "hidden",
+const mainWindow = new BrowserWindow({
+	titleBarStyle: "default",
 	renderer: "native",
 	sandbox: false,
 	frame: {

@@ -15,19 +15,19 @@ import { SvelteSet } from "svelte/reactivity";
 import { hasPermission, Permission } from "$lib/permissions";
 import UserAvatar from "$lib/components/UserAvatar.svelte";
 
-export let channelId: string;
-export let channelName: string;
+let { channelId, channelName }: { channelId: string; channelName: string } =
+	$props();
 
 let peerConnection: RTCPeerConnection | null = null;
 let localAudioStream: MediaStream | null = null;
-let localVideoStream: MediaStream | null = null;
+let localVideoStream = $state<MediaStream | null>(null);
 
-let isScreenSharing = false;
+let isScreenSharing = $state(false);
 
-let remoteAudioElements: { [id: string]: MediaStream } = {};
-let remoteVideoElements: { [id: string]: MediaStream } = {};
-let remoteUserMuted: { [id: string]: boolean } = {};
-let videoPlayingStates: Record<string, boolean> = {};
+let remoteAudioElements = $state<{ [id: string]: MediaStream }>({});
+let remoteVideoElements = $state<{ [id: string]: MediaStream }>({});
+let remoteUserMuted = $state<{ [id: string]: boolean }>({});
+let videoPlayingStates = $state<Record<string, boolean>>({});
 
 let unsubscribeWs: () => void;
 let audioContext: AudioContext | null = null;
@@ -53,10 +53,10 @@ function leaveVoice() {
 
 let currentMicId = $selectedMicId;
 
-let myUserId: string | null = null;
+let myUserId = $state<string | null>(null);
 currentUser.subscribe((u) => (myUserId = u?.id || null));
 
-let focusedUserId: string | null = null;
+let focusedUserId = $state<string | null>(null);
 
 onMount(async () => {
 	unsubscribeWs = onWebRTCEvent((type, data: any) => {
@@ -281,20 +281,23 @@ async function connectWebRTC() {
 	});
 }
 
-$: {
+
+$effect(() => {
 	if (localAudioStream) {
 		localAudioStream
 			.getAudioTracks()
 			.forEach((t) => (t.enabled = !$isMuted && !$isDeafened));
 	}
-}
+});
 
-$: if (peerConnection && currentMicId !== $selectedMicId) {
-	currentMicId = $selectedMicId;
-	switchMicrophone($selectedMicId).catch((err) =>
-		console.error("Failed to switch mic", err),
-	);
-}
+$effect(() => {
+	if (peerConnection && currentMicId !== $selectedMicId) {
+		currentMicId = $selectedMicId;
+		switchMicrophone($selectedMicId).catch((err) =>
+			console.error("Failed to switch mic", err),
+		);
+	}
+});
 
 async function switchMicrophone(deviceId: string) {
 	const constraints = deviceId
@@ -369,7 +372,7 @@ function srcObject(
 	};
 }
 
-$: voiceUsers = (() => {
+const voiceUsers = $derived((() => {
 	const fromGateway = $gatewaySpaces.flatMap((space) => {
 		const room = space.rooms.find((r) => r.id === channelId);
 		if (!room) return [];
@@ -401,7 +404,7 @@ $: voiceUsers = (() => {
 	}
 
 	return fromGateway;
-})();
+})());
 </script>
 
 <div

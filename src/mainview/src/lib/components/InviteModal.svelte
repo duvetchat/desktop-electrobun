@@ -9,20 +9,30 @@ import { Dialog } from "bits-ui";
 import { createRoomInvite } from "$lib/api/rooms";
 import type { Channel } from "$lib/types";
 
-export let open = false;
-export let channel: Channel | null = null;
-export let spaceId: string = "";
+let {
+	open = $bindable(false),
+	channel = null,
+	spaceId = "",
+}: {
+	open?: boolean;
+	channel?: Channel | null;
+	spaceId?: string;
+} = $props();
 
-let inviteLink = "";
-let isLoading = false;
-let copied = false;
-let genError = "";
-let linkInput: HTMLInputElement;
+let inviteLink = $state("");
+let isLoading = $state(false);
+let copied = $state(false);
+let genError = $state("");
+let linkInput = $state<HTMLInputElement | undefined>(undefined);
 
 // Re-generate whenever the modal opens or the channel changes
-$: if (open && channel) {
-	generate();
-}
+
+$effect(() => {
+	if (!open || !channel) {
+		return;
+	}
+ 	generate();
+});
 
 async function generate() {
 	if (!channel || !spaceId) return;

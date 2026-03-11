@@ -4,7 +4,7 @@ import { getInvite, joinInvite } from "$lib/api/invites";
 import type { InviteInfo } from "$lib/api/invites";
 import { userSession } from "$lib/stores.svelte";
 
-export let code: string;
+let { code }: { code: string } = $props();
 
 function inviteUrl(codeValue: string) {
 	return `/invite.html?code=${encodeURIComponent(codeValue)}`;
@@ -14,12 +14,12 @@ function loginUrlForInvite(codeValue: string) {
 	return `/index.html?redirect=${encodeURIComponent(inviteUrl(codeValue))}`;
 }
 
-let invite: InviteInfo | null = null;
-let loading = true;
-let error = false;
-let joining = false;
-let joined = false;
-let joinError = "";
+let invite = $state<InviteInfo | null>(null);
+let loading = $state(true);
+let error = $state(false);
+let joining = $state(false);
+let joined = $state(false);
+let joinError = $state("");
 const numberFormatter = new Intl.NumberFormat(
 	typeof navigator !== "undefined" ? navigator.language : "en-US",
 );
@@ -113,9 +113,9 @@ async function handleJoin() {
                 You're in.
             </div>
         {:else}
-            <button
+			<button
                 class="w-full py-2 rounded-md bg-stone-600 hover:bg-stone-500 text-white text-sm font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                on:click={handleJoin}
+				onclick={handleJoin}
                 disabled={joining}
             >
                 {joining ? "Joining…" : "Join server"}

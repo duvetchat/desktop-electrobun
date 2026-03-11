@@ -54,125 +54,151 @@ function voicePortalAction(node: HTMLElement) {
 }
 
 // ── Props ──────────────────────────────────────────────────────────────────
-export let node: PaneNode;
-export let onUpdate: (n: PaneNode) => void;
-export let onClose: (() => void) | null = null; // null = root pane, cannot close
-
-// Shared context (passed through tree)
-export let guild: Guild | null;
-export let spaceId: string | null;
-export let space: GatewaySpace | null;
-export let members: MemberOnSidebar[];
-export let focusedPaneId: string | null;
-export let onFocus: (id: string) => void;
-export let showChannelsSidebar: boolean = true;
-export let onToggleChannels: (() => void) | null = null;
-export let showMembersSidebar: boolean = true;
-export let onToggleMembers: (() => void) | null = null;
+let {
+	node,
+	onUpdate,
+	onMoveTab = null,
+	onClose = null,
+	guild,
+	spaceId,
+	space,
+	members,
+	focusedPaneId,
+	onFocus,
+	showChannelsSidebar = true,
+	onToggleChannels = null,
+	showMembersSidebar = true,
+	onToggleMembers = null,
+}: {
+	node: PaneNode;
+	onUpdate: (n: PaneNode) => void;
+	onMoveTab?: ((
+		tab: Tab,
+		sourceLeafId: string,
+		targetLeafId: string,
+		zone: "bottom" | "right" | "left" | "top" | null,
+	) => void) | null;
+	onClose?: (() => void) | null;
+	guild: Guild | null;
+	spaceId: string | null;
+	space: GatewaySpace | null;
+	members: MemberOnSidebar[];
+	focusedPaneId: string | null;
+	onFocus: (id: string) => void;
+	showChannelsSidebar?: boolean;
+	onToggleChannels?: (() => void) | null;
+	showMembersSidebar?: boolean;
+	onToggleMembers?: (() => void) | null;
+} = $props();
 
 // ── Leaf: message loading ─────────────────────────────────────────────────
 const loadedChannels = new Set<string>();
-let isLoadingMore = false;
-let channelHasMore: Partial<Record<string, boolean>> = {};
-let channelInitialLoading: Partial<Record<string, boolean>> = {};
-$: isInitialLoading = !!(
+let isLoadingMore = $state(false);
+let channelHasMore = $state<Partial<Record<string, boolean>>>({});
+let channelInitialLoading = $state<Partial<Record<string, boolean>>>({});
+const isInitialLoading = $derived(!!(
 	node.kind === "leaf" &&
 	node.activeChannelId &&
 	channelInitialLoading[node.activeChannelId]
-);
+));
 // Returns true when the channel still has older messages to load.
 // Must use !== false because undefined means "not yet determined" (has more).
 function channelStillHasMore(channelId: string): boolean {
 	return channelHasMore[channelId] !== false;
 }
 
-$: activeMessages =
+const activeMessages = $derived(
 	node.kind === "leaf" && node.activeChannelId
 		? ($channelMessages[node.activeChannelId] ?? [])
-		: [];
+		: [],
+);
 
 // Derive channel/space/members from the active tab's own spaceId,
 // so tabs from different servers always show the correct data.
-$: activeTab =
+const activeTab = $derived(
 	node.kind === "leaf" && node.activeChannelId
 		? (node.tabs.find((t) => t.channelId === node.activeChannelId) ?? null)
-		: null;
-$: activeTabSpace = activeTab?.spaceId
+		: null,
+);
+const activeTabSpace = $derived(activeTab?.spaceId
 	? ($gatewaySpaces.find((s) => s.id === activeTab.spaceId) ?? null)
-	: null;
-$: activeTabMembers = activeTabSpace
+	: null);
+const activeTabMembers = $derived(activeTabSpace
 	? gatewaySpaceToMembers(activeTabSpace)
-	: members;
+	: members);
 // Channel info comes directly from the tab — no cross-guild lookup needed.
-$: activeChannel = activeTab
+const activeChannel = $derived(activeTab
 	? {
 			id: activeTab.channelId,
 			name: activeTab.channelName,
 			type: activeTab.channelType,
 		}
-	: null;
+	: null);
 
 // Fetch initial messages only for text channels
-$: if (
-	node.kind === "leaf" &&
-	node.activeChannelId &&
-	activeChannel?.type === "text"
-) {
+$effect(() => {
+	if (
+		node.kind !== "leaf" ||
+		!node.activeChannelId ||
+		activeChannel?.type !== "text"
+	) {
+		return;
+	}
 	const channelId = node.activeChannelId;
-	if (!loadedChannels.has(channelId)) {
-		loadedChannels.add(channelId);
-		channelInitialLoading = {
-			...channelInitialLoading,
-			[channelId]: true,
-		};
-		getMessages(channelId)
-			.then((raw) => {
-				const msgs = raw.map((m) => gatewayMessageToMessage(m, $gatewaySpaces));
-				channelMessages.update((all) => {
-					const existing = all[channelId] ?? [];
-					if (existing.length > 0) {
-						return all;
-					}
-					return { ...all, [channelId]: msgs };
-				});
-				channelInitialLoading = {
-					...channelInitialLoading,
-					[channelId]: false,
-				};
-				// If fewer than the page size came back, there's no more history
-				if (raw.length < 100) {
-					console.log(
-						"[loadmore] initial fetch: only",
-						raw.length,
-						"msgs → marking hasMore=false for",
-						channelId,
-					);
-					channelHasMore = {
-						...channelHasMore,
-						[channelId]: false,
-					};
-				} else {
-					console.log(
-						"[loadmore] initial fetch: got",
-						raw.length,
-						"msgs → hasMore=true for",
-						channelId,
-					);
+	if (loadedChannels.has(channelId)) {
+		return;
+	}
+	loadedChannels.add(channelId);
+	channelInitialLoading = {
+		...channelInitialLoading,
+		[channelId]: true,
+	};
+	getMessages(channelId)
+		.then((raw) => {
+			const msgs = raw.map((m) => gatewayMessageToMessage(m, $gatewaySpaces));
+			channelMessages.update((all) => {
+				const existing = all[channelId] ?? [];
+				if (existing.length > 0) {
+					return all;
 				}
-			})
-			.catch((err) => {
-				console.error("Failed to fetch history:", err);
+				return { ...all, [channelId]: msgs };
+			});
+			channelInitialLoading = {
+				...channelInitialLoading,
+				[channelId]: false,
+			};
+			if (raw.length < 100) {
+				console.log(
+					"[loadmore] initial fetch: only",
+					raw.length,
+					"msgs → marking hasMore=false for",
+					channelId,
+				);
 				channelHasMore = {
 					...channelHasMore,
 					[channelId]: false,
 				};
-				channelInitialLoading = {
-					...channelInitialLoading,
-					[channelId]: false,
-				};
-			});
-	}
-}
+			} else {
+				console.log(
+					"[loadmore] initial fetch: got",
+					raw.length,
+					"msgs → hasMore=true for",
+					channelId,
+				);
+			}
+		})
+		.catch((err) => {
+			console.error("Failed to fetch history:", err);
+			channelHasMore = {
+				...channelHasMore,
+				[channelId]: false,
+			};
+			channelInitialLoading = {
+				...channelInitialLoading,
+				[channelId]: false,
+			};
+		});
+});
 
 async function loadMoreMessages() {
 	console.log("[loadmore] loadMoreMessages called", {
@@ -296,6 +322,10 @@ function handleTabClose(channelId: string) {
 	}
 	const idx = node.tabs.findIndex((t) => t.channelId === channelId);
 	const tabs = node.tabs.filter((t) => t.channelId !== channelId);
+	if (tabs.length === 0 && onClose) {
+		onClose();
+		return;
+	}
 	let activeChannelId = node.activeChannelId;
 	if (activeChannelId === channelId) {
 		activeChannelId = (tabs[idx] ?? tabs[idx - 1])?.channelId ?? null;
@@ -334,13 +364,15 @@ function splitV() {
 }
 
 // ── Split: resize handle ──────────────────────────────────────────────────
-let containerEl: HTMLElement;
-let localRatio = 0.5;
-let isDragging = false;
+let containerEl = $state<HTMLElement | undefined>(undefined);
+let localRatio = $state(0.5);
+let isDragging = $state(false);
 
-$: if (node.kind === "split" && !isDragging) {
-	localRatio = node.ratio;
-}
+$effect(() => {
+	if (node.kind === "split" && !isDragging) {
+		localRatio = node.ratio;
+	}
+});
 
 function startResize(e: MouseEvent) {
 	e.preventDefault();
@@ -379,7 +411,7 @@ onDestroy(() => {
 	window.removeEventListener("mouseup", onMouseUp);
 });
 
-$: isFocused = node.kind === "leaf" && focusedPaneId === node.id;
+const isFocused = $derived(node.kind === "leaf" && focusedPaneId === node.id);
 
 function handleCtrlW(e: KeyboardEvent) {
 	if (!e.ctrlKey || e.key !== "w") return;
@@ -396,8 +428,8 @@ onDestroy(() => {
 });
 
 // ── Leaf: drag-to-split ───────────────────────────────────────────────────
-let contentDragOver = false;
-let splitZone: "bottom" | "right" | "left" | "top" | null = null;
+let contentDragOver = $state(false);
+let splitZone = $state<"bottom" | "right" | "left" | "top" | null>(null);
 
 function handleContentDragOver(e: DragEvent) {
 	e.preventDefault();
@@ -454,13 +486,19 @@ function handleContentDrop(e: DragEvent) {
 	}
 	const raw = e.dataTransfer?.getData("text/plain") ?? "";
 	let tab: null | Tab = null;
+	let dragType: "channel" | "tab" | null = null;
+	let sourceLeafId: string | null = null;
 	try {
 		const data = JSON.parse(raw) as {
+			type?: string;
+			sourceLeafId?: string;
 			channelId?: string;
 			channelName?: string;
 			channelType?: string;
 			spaceId?: string;
 		};
+		dragType = data.type === "tab" ? "tab" : "channel";
+		sourceLeafId = data.sourceLeafId ?? null;
 		if (data.channelId) {
 			tab = {
 				channelId: data.channelId,
@@ -475,6 +513,45 @@ function handleContentDrop(e: DragEvent) {
 	if (!tab) {
 		return;
 	}
+
+	if (dragType === "tab" && sourceLeafId === node.id) {
+		const fromIndex = node.tabs.findIndex((t) => t.channelId === tab.channelId);
+		if (fromIndex === -1) {
+			return;
+		}
+		if (zone === null) {
+			handleTabSelect(tab.channelId);
+			return;
+		}
+		const remainingTabs = node.tabs.filter((t) => t.channelId !== tab.channelId);
+		const remainingActive =
+			node.activeChannelId === tab.channelId
+				? (remainingTabs[fromIndex] ?? remainingTabs[fromIndex - 1])?.channelId ??
+				null
+				: node.activeChannelId;
+		const currentLeaf = {
+			...node,
+			tabs: remainingTabs,
+			activeChannelId: remainingActive,
+		};
+		const newLeaf = makeLeaf([tab], tab.channelId);
+		if (zone === "left") {
+			onUpdate(makeSplit(newLeaf, currentLeaf, "h"));
+		} else if (zone === "right") {
+			onUpdate(makeSplit(currentLeaf, newLeaf, "h"));
+		} else if (zone === "top") {
+			onUpdate(makeSplit(newLeaf, currentLeaf, "v"));
+		} else {
+			onUpdate(makeSplit(currentLeaf, newLeaf, "v"));
+		}
+		return;
+	}
+
+	if (dragType === "tab" && sourceLeafId && sourceLeafId !== node.id && onMoveTab) {
+		onMoveTab(tab, sourceLeafId, node.id, zone);
+		return;
+	}
+
 	const newLeaf = makeLeaf([tab], tab.channelId);
 	if (zone === "left") {
 		onUpdate(makeSplit(newLeaf, node, "h"));
@@ -491,18 +568,19 @@ function handleContentDrop(e: DragEvent) {
 }
 
 // shared props forwarded to children
-$: childProps = {
+const childProps = $derived({
 	guild,
 	spaceId,
 	space,
 	members,
 	focusedPaneId,
 	onFocus,
+	onMoveTab,
 	showChannelsSidebar,
 	onToggleChannels,
 	showMembersSidebar,
 	onToggleMembers,
-};
+});
 </script>
 
 {#if node.kind === "split"}
@@ -572,6 +650,7 @@ $: childProps = {
                 <TabBar
                     tabs={node.tabs}
                     activeTabId={node.activeChannelId}
+                    leafId={node.id}
                     onSelect={handleTabSelect}
                     onClose={handleTabClose}
                     onReorder={handleTabReorder}
@@ -626,7 +705,7 @@ $: childProps = {
                     type="button"
 					class="p-1 rounded text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 transition-colors"
                     title="Dividir horizontalmente"
-                    on:click={splitH}
+						on:click={splitH}
                 >
                     <svg
                         xmlns="http://www.w3.org/2000/svg"
@@ -652,7 +731,7 @@ $: childProps = {
                     type="button"
 					class="p-1 rounded text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 transition-colors"
                     title="Dividir verticalmente"
-                    on:click={splitV}
+						on:click={splitV}
                 >
                     <svg
                         xmlns="http://www.w3.org/2000/svg"
@@ -679,7 +758,7 @@ $: childProps = {
                         type="button"
 						class="p-1 rounded text-zinc-400 hover:text-red-400 hover:bg-zinc-800 transition-colors"
                         title="Cerrar panel"
-                        on:click={onClose}
+							on:click={onClose}
                     >
                         <svg
                             xmlns="http://www.w3.org/2000/svg"

@@ -14,24 +14,40 @@ import type { Message, MemberOnSidebar, GatewaySpace } from "$lib/types";
 import { sendMessage } from "$lib/api/messages";
 import { currentUser, channelMessages } from "$lib/stores.svelte";
 
-export let messages: Message[];
-export let members: MemberOnSidebar[] = [];
-export let channelName: string;
-export let channelId: string;
-export let space: GatewaySpace | null = null;
-export let isInitialLoading: boolean = false;
-export let isLoadingMore: boolean = false;
-export let hasMoreMessages: boolean = true;
-export let onLoadMore: () => Promise<void> | void = () => {};
+let {
+	messages,
+	members = [],
+	channelName,
+	channelId,
+	space = null,
+	isInitialLoading = false,
+	isLoadingMore = false,
+	hasMoreMessages = true,
+	onLoadMore = () => {},
+}: {
+	messages: Message[];
+	members?: MemberOnSidebar[];
+	channelName: string;
+	channelId: string;
+	space?: GatewaySpace | null;
+	isInitialLoading?: boolean;
+	isLoadingMore?: boolean;
+	hasMoreMessages?: boolean;
+	onLoadMore?: () => Promise<void> | void;
+} = $props();
 
-let inputValue = "";
-let showGifPicker = false;
-let failedNonces = new Set<string>();
-let editingMessageId: string | null = null;
-let editContent = "";
-let editMessageIndex: number | null = null;
+let inputValue = $state("");
+let showGifPicker = $state(false);
+let failedNonces = $state(new Set<string>());
+let editingMessageId = $state<string | null>(null);
+let editContent = $state("");
+let editMessageIndex = $state<number | null>(null);
 
-$: if (editingMessageId === null) editMessageIndex = null;
+$effect(() => {
+	if (editingMessageId === null) {
+		editMessageIndex = null;
+	}
+});
 
 function getOwnMessages() {
 	const user = $currentUser;
@@ -209,19 +225,22 @@ function handleGifSelect(url: string) {
 
 	const isoNow = new Date().toISOString();
 
-	messages = [
-		...messages,
-		{
-			id: nonce,
-			content: url,
-			author_id: user.id,
-			author_name: user.alias ?? user.username,
-			author_avatar_url: user.avatar ?? null,
-			created_at: isoNow,
-			updated_at: isoNow,
-			nonce,
-		} as any,
-	];
+	channelMessages.update((all) => ({
+		...all,
+		[channelId]: [
+			...(all[channelId] ?? []),
+			{
+				id: nonce,
+				content: url,
+				author_id: user.id,
+				author_name: user.alias ?? user.username,
+				author_avatar_url: user.avatar ?? null,
+				created_at: isoNow,
+				updated_at: isoNow,
+				nonce,
+			} as any,
+		],
+	}));
 
 	sendMessage(channelId, url, nonce).catch(console.error);
 }

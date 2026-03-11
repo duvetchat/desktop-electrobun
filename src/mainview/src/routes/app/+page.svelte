@@ -6,7 +6,7 @@ import VoiceChat from "$lib/components/VoiceChat.svelte";
 import PaneView from "$lib/components/PaneView.svelte";
 import GuildMemberSidebar from "$lib/components/GuildMemberSidebar.svelte";
 import { createWebSocketConnection } from "$lib/api/ws/connection";
-import { makeLeaf, updateLeaf } from "$lib/pane";
+import { makeLeaf, makeSplit, removeLeaf, updateLeaf } from "$lib/pane";
 import { gatewaySpaceToGuild, gatewaySpaceToMembers } from "$lib/types";
 import type { PaneNode, Tab } from "$lib/types";
 import { gatewaySpaces, activeVoiceRoomId } from "$lib/stores.svelte";
@@ -38,7 +38,7 @@ onMount(() => {
 	onDestroy(() => conn.destroy());
 });
 
-$: guilds = $gatewaySpaces.map((space) => {
+const guilds = $derived($gatewaySpaces.map((space) => {
 	const visibleRooms = space.rooms.filter((room) => canViewRoom(space, room));
 	const visibleIds = new Set(visibleRooms.map((r) => r.id));
 	const filteredRooms = visibleRooms.filter(
@@ -47,39 +47,48 @@ $: guilds = $gatewaySpaces.map((space) => {
 			space.rooms.some((c) => c.parent_id === r.id && visibleIds.has(c.id)),
 	);
 	return gatewaySpaceToGuild({ ...space, rooms: filteredRooms });
-});
+}));
 
-let activeSpaceId: string | null = null;
-let showMembersSidebar = true;
-let showChannelsSidebar = true;
-let layoutPrefsHydrated = false;
-$: {
+let activeSpaceId = $state<string | null>(null);
+let showMembersSidebar = $state(true);
+let showChannelsSidebar = $state(true);
+let layoutPrefsHydrated = $state(false);
+$effect(() => {
 	if (typeof window !== "undefined" && layoutPrefsHydrated) {
 		localStorage.setItem(
 			layoutPrefsKey,
 			JSON.stringify({ showMembersSidebar, showChannelsSidebar }),
 		);
 	}
-}
-$: {
+});
+$effect(() => {
 	if (!activeSpaceId && guilds.length > 0) {
 		activeSpaceId = guilds.at(0)?.id ?? null;
 	}
-}
-$: if (activeSpaceId) {
+});
+$effect(() => {
+	if (!activeSpaceId) {
+		return;
+	}
 	void 0; // sidebar handles member loading
-}
-$: activeGuild =
-	guilds.find((g) => g.id === activeSpaceId) ?? guilds.at(0) ?? null;
-$: activeSpace = $gatewaySpaces.find((s) => s.id === activeSpaceId) ?? null;
-$: activeMembers = activeSpace ? gatewaySpaceToMembers(activeSpace) : [];
+});
+const activeGuild = $derived(
+	guilds.find((g) => g.id === activeSpaceId) ?? guilds.at(0) ?? null,
+);
+const activeSpace = $derived(
+	$gatewaySpaces.find((s) => s.id === activeSpaceId) ?? null,
+);
+const activeMembers = $derived(
+	activeSpace ? gatewaySpaceToMembers(activeSpace) : [],
+);
 
 // ── Pane tree ─────────────────────────────────────────────────────────────
-let rootPane: PaneNode = makeLeaf();
-let focusedPaneId: string = rootPane.id;
+const initialRootPane = makeLeaf();
+let rootPane = $state<PaneNode>(initialRootPane);
+let focusedPaneId = $state<string>(initialRootPane.id);
 
 // Auto-open first channel on initial load (when there are no tabs yet)
-$: {
+$effect(() => {
 	if (activeGuild && rootPane.kind === "leaf" && rootPane.tabs.length === 0) {
 		const first = activeGuild.channels.find((c) => c.type !== "category");
 		if (first && activeSpaceId) {
@@ -98,7 +107,7 @@ $: {
 			focusedPaneId = rootPane.id;
 		}
 	}
-}
+});
 
 // Sidebar selection → open in focused pane
 function onSidebarSelect(channelId: string) {
@@ -133,23 +142,29 @@ function firstLeaf(node: PaneNode): import("$lib/types").PaneLeaf {
 	return firstLeaf(node.a);
 }
 
-$: focusedLeaf = findLeaf(rootPane, focusedPaneId);
-$: sidebarActiveChannelId = focusedLeaf?.activeChannelId ?? null;
+const focusedLeaf = $derived(findLeaf(rootPane, focusedPaneId));
+const sidebarActiveChannelId = $derived(focusedLeaf?.activeChannelId ?? null);
 
 // ── Sidebar space tracking (imperative to avoid reactive cycles) ─────────
-let sidebarSpaceId: string | null = null;
+let sidebarSpaceId = $state<string | null>(null);
 // Initialise once guilds arrive
-$: if (!sidebarSpaceId && guilds.length > 0) {
-	sidebarSpaceId = guilds.at(0)?.id ?? null;
-}
 
-$: sidebarGuild = guilds.find((g) => g.id === sidebarSpaceId) ?? activeGuild;
-$: memberSidebarSpaceId = sidebarSpaceId;
-$: memberSidebarSpace =
-	$gatewaySpaces.find((s) => s.id === memberSidebarSpaceId) ?? null;
-$: memberSidebarMembers = memberSidebarSpace
-	? gatewaySpaceToMembers(memberSidebarSpace)
-	: [];
+$effect(() => {
+	if (!sidebarSpaceId && guilds.length > 0) {
+		sidebarSpaceId = guilds.at(0)?.id ?? null;
+	}
+});
+
+const sidebarGuild = $derived(
+	guilds.find((g) => g.id === sidebarSpaceId) ?? activeGuild,
+);
+const memberSidebarSpaceId = $derived(sidebarSpaceId);
+const memberSidebarSpace = $derived(
+	$gatewaySpaces.find((s) => s.id === memberSidebarSpaceId) ?? null,
+);
+const memberSidebarMembers = $derived(
+	memberSidebarSpace ? gatewaySpaceToMembers(memberSidebarSpace) : [],
+);
 
 function syncSidebarToLeaf(node: PaneNode, leafId: string) {
 	const leaf = findLeaf(node, leafId);
@@ -197,8 +212,80 @@ function mapAllLeaves(
 	};
 }
 
+function replaceLeaf(
+	node: PaneNode,
+	leafId: string,
+	replacer: (leaf: import("$lib/types").PaneLeaf) => PaneNode,
+): PaneNode {
+	if (node.kind === "leaf") {
+		return node.id === leafId ? replacer(node) : node;
+	}
+	return {
+		...node,
+		a: replaceLeaf(node.a, leafId, replacer),
+		b: replaceLeaf(node.b, leafId, replacer),
+	};
+}
+
+function moveTabBetweenLeaves(
+	tab: Tab,
+	sourceLeafId: string,
+	targetLeafId: string,
+	zone: "bottom" | "right" | "left" | "top" | null,
+) {
+	if (sourceLeafId === targetLeafId && zone === null) {
+		return;
+	}
+
+	let next = updateLeaf(rootPane, sourceLeafId, (leaf) => {
+		const idx = leaf.tabs.findIndex((t) => t.channelId === tab.channelId);
+		if (idx === -1) {
+			return leaf;
+		}
+		const tabs = leaf.tabs.filter((t) => t.channelId !== tab.channelId);
+		const activeChannelId =
+			leaf.activeChannelId === tab.channelId
+				? (tabs[idx] ?? tabs[idx - 1])?.channelId ?? null
+				: leaf.activeChannelId;
+		return { ...leaf, tabs, activeChannelId };
+	});
+
+	const sourceLeaf = findLeaf(next, sourceLeafId);
+	if (sourceLeaf && sourceLeaf.tabs.length === 0 && next.kind === "split") {
+		next = removeLeaf(next, sourceLeafId) ?? makeLeaf();
+	}
+
+	if (zone === null) {
+		next = updateLeaf(next, targetLeafId, (leaf) => {
+			if (leaf.tabs.some((t) => t.channelId === tab.channelId)) {
+				return { ...leaf, activeChannelId: tab.channelId };
+			}
+			return { ...leaf, tabs: [...leaf.tabs, tab], activeChannelId: tab.channelId };
+		});
+		rootPane = next;
+		focusedPaneId = targetLeafId;
+		syncSidebarToLeaf(next, targetLeafId);
+		return;
+	}
+
+	let newLeafId = "";
+	next = replaceLeaf(next, targetLeafId, (targetLeaf) => {
+		const newLeaf = makeLeaf([tab], tab.channelId);
+		newLeafId = newLeaf.id;
+		if (zone === "left") return makeSplit(newLeaf, targetLeaf, "h");
+		if (zone === "right") return makeSplit(targetLeaf, newLeaf, "h");
+		if (zone === "top") return makeSplit(newLeaf, targetLeaf, "v");
+		return makeSplit(targetLeaf, newLeaf, "v");
+	});
+
+	rootPane = next;
+	focusedPaneId = newLeafId || targetLeafId;
+	syncSidebarToLeaf(next, focusedPaneId);
+}
+
 let prevVoiceRoomId: string | null = null;
-$: {
+
+$effect(() => {
 	const cur = $activeVoiceRoomId;
 	if (prevVoiceRoomId && !cur) {
 		const leftRoom = prevVoiceRoomId;
@@ -212,22 +299,22 @@ $: {
 		});
 	}
 	prevVoiceRoomId = cur;
-}
+});
 
 // ── VoiceChat portal ──────────────────────────────────────────────────────
 // VoiceChat is mounted once here (stable location) so splits/tabs never
 // cause it to unmount. PaneView moves its DOM node via the portal action.
 let voiceHolder: HTMLElement;
-let voiceChatEl: HTMLElement | null = null;
+let voiceChatEl = $state<HTMLElement | null>(null);
 
-$: voiceChannelName = (() => {
+const voiceChannelName = $derived((() => {
 	if (!$activeVoiceRoomId) return "";
 	for (const s of $gatewaySpaces) {
 		const r = s.rooms.find((r) => r.id === $activeVoiceRoomId);
 		if (r) return r.name;
 	}
 	return "Voice Channel";
-})();
+})());
 
 setContext("voicePortal", {
 	getEl: () => voiceChatEl,
@@ -269,6 +356,7 @@ setContext("voicePortal", {
     <PaneView
       node={rootPane}
       onUpdate={handlePaneUpdate}
+      onMoveTab={moveTabBetweenLeaves}
       onClose={null}
       guild={activeGuild}
       spaceId={activeSpaceId}

@@ -43,41 +43,53 @@ import { fly } from "svelte/transition";
 const dispatch = createEventDispatcher<{ select: string }>();
 
 // props
-export let guild: Guild;
-export let channels: Channel[];
-export let activeChannelId: string | null =
-	channels.find((c) => c.type !== "category")?.id ?? null;
+let {
+	guild,
+	channels,
+	activeChannelId = null,
+}: {
+	guild: Guild;
+	channels: Channel[];
+	activeChannelId?: string | null;
+} = $props();
 
-let buttons: (HTMLElement | null)[] = [];
-let expanded: { [key: string]: boolean } = {};
+let buttons = $state<(HTMLElement | null)[]>([]);
+let expanded = $state<{ [key: string]: boolean }>({});
 
-$: space = $gatewaySpaces.find((s) => s.id === guild.id);
-$: activeVoiceSpace = $activeVoiceRoomId
+const space = $derived($gatewaySpaces.find((s) => s.id === guild.id));
+const activeVoiceSpace = $derived(
+	$activeVoiceRoomId
 	? $gatewaySpaces.find((s) => s.rooms.some((r) => r.id === $activeVoiceRoomId))
-	: null;
-$: activeVoiceRoom = activeVoiceSpace?.rooms.find(
-	(r) => r.id === $activeVoiceRoomId,
+	: null,
 );
-$: canSpeak =
+const activeVoiceRoom = $derived(activeVoiceSpace?.rooms.find(
+	(r) => r.id === $activeVoiceRoomId,
+));
+const canSpeak = $derived(
 	activeVoiceSpace && activeVoiceRoom
 		? hasPermission(activeVoiceSpace, activeVoiceRoom, Permission.SpeakInVoice)
-		: true;
-$: if (!canSpeak) $isMuted = true;
+		: true,
+);
+$effect(() => {
+	if (!canSpeak) {
+		$isMuted = true;
+	}
+});
 
-let showCreateModal = false;
-let newChannelName = "";
-let newChannelType: RoomType = 1;
-let newChannelCategory: string | null = null;
-let isCreating = false;
+let showCreateModal = $state(false);
+let newChannelName = $state("");
+let newChannelType = $state<RoomType>(1);
+let newChannelCategory = $state<string | null>(null);
+let isCreating = $state(false);
 
-let contextMenuX = 0;
-let contextMenuY = 0;
-let contextMenuChannel: Channel | null = null;
-let confirmDeleteChannel: Channel | null = null;
-let isDeletingChannel = false;
+let contextMenuX = $state(0);
+let contextMenuY = $state(0);
+let contextMenuChannel = $state<Channel | null>(null);
+let confirmDeleteChannel = $state<Channel | null>(null);
+let isDeletingChannel = $state(false);
 
-let showInviteModal = false;
-let inviteModalChannel: Channel | null = null;
+let showInviteModal = $state(false);
+let inviteModalChannel = $state<Channel | null>(null);
 
 function openInviteModal(channel: Channel) {
 	contextMenuChannel = null;
@@ -85,7 +97,7 @@ function openInviteModal(channel: Channel) {
 	showInviteModal = true;
 }
 
-let showServerSettings = false;
+let showServerSettings = $state(false);
 
 function openServerSettings() {
 	showServerSettings = true;
@@ -119,13 +131,13 @@ function toggleDeafen() {
 	}
 }
 
-let showMicMenu = false;
-let micMenuX = 0;
-let micMenuY = 0;
-let availableMics: MediaDeviceInfo[] = [];
+let showMicMenu = $state(false);
+let micMenuX = $state(0);
+let micMenuY = $state(0);
+let availableMics = $state<MediaDeviceInfo[]>([]);
 
-let ping: number | null = null;
-let pingIntervalId: ReturnType<typeof setInterval> | null = null;
+let ping = $state<number | null>(null);
+let pingIntervalId = $state<ReturnType<typeof setInterval> | null>(null);
 
 async function measurePing() {
 	try {
@@ -140,7 +152,8 @@ async function measurePing() {
 	}
 }
 
-$: if ($activeVoiceRoomId) {
+$effect(() => {
+	if ($activeVoiceRoomId) {
 	if (!pingIntervalId) {
 		measurePing();
 		pingIntervalId = setInterval(measurePing, 3000);
@@ -152,6 +165,7 @@ $: if ($activeVoiceRoomId) {
 		ping = null;
 	}
 }
+});
 
 function pingColor(ms: number): string {
 	if (ms < 100) return "text-stone-300";
@@ -235,27 +249,29 @@ async function handleDeleteChannel() {
 }
 
 // Filter clickable channels (exclude categories for keyboard nav)
-$: clickableChannels = channels.filter((c) => c.type !== "category");
-$: buttons = new Array(clickableChannels.length).fill(null);
+const clickableChannels = $derived(channels.filter((c) => c.type !== "category"));
+$effect(() => {
+	buttons = new Array(clickableChannels.length).fill(null);
+});
 
 // Group channels: top-level (no categoryId) and by category
-$: topLevelChannels = channels
+const topLevelChannels = $derived(channels
 	.filter((c) => c.type !== "category" && !c.categoryId)
-	.sort((a, b) => (a.position ?? 0) - (b.position ?? 0));
-$: categories = channels
+	.sort((a, b) => (a.position ?? 0) - (b.position ?? 0)));
+const categories = $derived(channels
 	.filter((c) => c.type === "category")
-	.sort((a, b) => (a.position ?? 0) - (b.position ?? 0));
-$: {
+	.sort((a, b) => (a.position ?? 0) - (b.position ?? 0)));
+$effect(() => {
 	categories.forEach((cat) => {
 		if (expanded[cat.id] === undefined) expanded[cat.id] = true;
 	});
-}
+});
 
 type SidebarItem =
 	| { kind: "channel"; channel: Channel; indent: boolean }
 	| { kind: "category"; channel: Channel };
 
-$: sidebarItems = [
+const sidebarItems = $derived([
 	...topLevelChannels.map(
 		(ch): SidebarItem => ({
 			kind: "channel",
@@ -275,7 +291,7 @@ $: sidebarItems = [
 				)
 			: []),
 	]),
-] as SidebarItem[];
+] as SidebarItem[]);
 
 function getSubChannels(categoryId: string) {
 	return channels

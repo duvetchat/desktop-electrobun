@@ -2,17 +2,28 @@
 import { Hash as HashIcon, Volume2 as SpeakerSimpleHighIcon } from "lucide-svelte";
 import type { Tab } from "$lib/types";
 
-export let tabs: Tab[];
-export let activeTabId: string | null;
-export let onSelect: (channelId: string) => void;
-export let onClose: (channelId: string) => void;
-export let onReorder: (newOrder: Tab[]) => void;
-export let onChannelDrop: (tab: Tab) => void;
+let {
+	tabs,
+	activeTabId,
+	leafId,
+	onSelect,
+	onClose,
+	onReorder,
+	onChannelDrop,
+}: {
+	tabs: Tab[];
+	activeTabId: string | null;
+	leafId: string;
+	onSelect: (channelId: string) => void;
+	onClose: (channelId: string) => void;
+	onReorder: (newOrder: Tab[]) => void;
+	onChannelDrop: (tab: Tab) => void;
+} = $props();
 
-let tabEls: (HTMLElement | null)[] = [];
-let dragSrcIndex: number | null = null;
-let dropIndex: number | null = null;
-let sidebarDragOver = false;
+let tabEls = $state<(HTMLElement | null)[]>([]);
+let dragSrcIndex = $state<number | null>(null);
+let dropIndex = $state<number | null>(null);
+let sidebarDragOver = $state(false);
 
 function computeDropIndex(clientX: number): number {
 	for (let i = 0; i < tabEls.length; i++) {
@@ -26,13 +37,14 @@ function computeDropIndex(clientX: number): number {
 
 function handleTabDragStart(e: DragEvent, origIndex: number) {
 	dragSrcIndex = origIndex;
-	e.dataTransfer!.effectAllowed = "copy";
+	e.dataTransfer!.effectAllowed = "move";
 	const tab = tabs[origIndex];
 	e.dataTransfer!.setData(
 		"text/plain",
 		JSON.stringify({
 			type: "tab",
 			index: origIndex,
+			sourceLeafId: leafId,
 			channelId: tab.channelId,
 			channelName: tab.channelName,
 			channelType: tab.channelType,
@@ -44,7 +56,7 @@ function handleTabDragStart(e: DragEvent, origIndex: number) {
 function handleBarDragOver(e: DragEvent) {
 	e.preventDefault();
 	if (dragSrcIndex !== null) {
-		e.dataTransfer!.dropEffect = "copy";
+		e.dataTransfer!.dropEffect = "move";
 	} else {
 		e.dataTransfer!.dropEffect = "copy";
 		sidebarDragOver = true;
@@ -110,7 +122,7 @@ function handleDragEnd() {
 	sidebarDragOver = false;
 }
 
-$: previewTabs = (() => {
+const previewTabs = $derived((() => {
 	const all = tabs.map((t, i) => ({ ...t, origIndex: i }));
 	if (dragSrcIndex === null || dropIndex === null) return all;
 	const arr = [...all];
@@ -119,7 +131,7 @@ $: previewTabs = (() => {
 	insertAt = Math.max(0, Math.min(insertAt, arr.length));
 	arr.splice(insertAt, 0, moved);
 	return arr;
-})();
+})());
 </script>
 
 <div
@@ -170,7 +182,9 @@ $: previewTabs = (() => {
             <button
                 type="button"
                 class="flex items-center justify-center opacity-0 group-hover:opacity-60 hover:opacity-100 ml-0.5 rounded p-0.5 hover:bg-zinc-700 transition-opacity text-zinc-300"
-                on:click|stopPropagation={() => onClose(tab.channelId)}
+                on:click|stopPropagation={() => {
+					onClose(tab.channelId);
+				}}
                 aria-label="Close tab"
             >
                 <svg

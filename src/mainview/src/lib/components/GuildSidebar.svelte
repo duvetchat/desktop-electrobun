@@ -4,15 +4,20 @@ import {
 	ChevronDown as CaretDownIcon,
 	FolderPlus as FolderPlusIcon,
 } from "lucide-svelte";
-import { Dialog, Tabs } from "bits-ui";
+import { ContextMenu, Dialog, Tabs } from "bits-ui";
 import { createEventDispatcher, onMount } from "svelte";
 import type { Guild } from "$lib/types";
 import { createSpace } from "$lib/api/spaces";
 import { leaveSpace } from "$lib/api/spaces";
 import JoinInviteModal from "$lib/components/JoinInviteModal.svelte";
 
-export let guilds: Guild[];
-export let activeGuildId: string | null = guilds.at(0)?.id ?? null;
+let {
+	guilds,
+	activeGuildId = null,
+}: {
+	guilds: Guild[];
+	activeGuildId?: string | null;
+} = $props();
 
 const dispatch = createEventDispatcher<{ select: string }>();
 const selectGuild = (guild: Guild) => dispatch("select", guild.id);
@@ -25,7 +30,7 @@ type FolderGroup = {
 };
 
 const FOLDERS_KEY = "duvet.guildFolders.v1";
-let folders: FolderGroup[] = [];
+let folders = $state<FolderGroup[]>([]);
 
 onMount(() => {
 	try {
@@ -78,25 +83,38 @@ function moveGuildToFolder(guildId: string, folderId: string | null) {
 		);
 	}
 	persistFolders();
-	closeContextMenu();
 }
 
-$: folders = folders.map((f) => ({
-	...f,
-	guildIds: f.guildIds.filter((id) => guilds.some((g) => g.id === id)),
-}));
+$effect(() => {
+	const validGuildIds = new Set(guilds.map((g) => g.id));
+	let changed = false;
+	const next = folders.map((f) => {
+		const filtered = f.guildIds.filter((id) => validGuildIds.has(id));
+		if (filtered.length !== f.guildIds.length) {
+			changed = true;
+			return { ...f, guildIds: filtered };
+		}
+		return f;
+	});
+	if (changed) {
+		folders = next;
+		persistFolders();
+	}
+});
 
-$: groupedGuilds = folders
+const groupedGuilds = $derived(folders
 	.map((folder) => ({
 		...folder,
 		guilds: folder.guildIds
 			.map((id) => guilds.find((g) => g.id === id))
 			.filter(Boolean) as Guild[],
 	}))
-	.filter((folder) => folder.guilds.length > 0);
+	.filter((folder) => folder.guilds.length > 0));
 
-$: groupedIds = new Set(groupedGuilds.flatMap((group) => group.guilds.map((g) => g.id)));
-$: ungroupedGuilds = guilds.filter((g) => !groupedIds.has(g.id));
+const groupedIds = $derived(
+	new Set(groupedGuilds.flatMap((group) => group.guilds.map((g) => g.id))),
+);
+const ungroupedGuilds = $derived(guilds.filter((g) => !groupedIds.has(g.id)));
 
 function initials(name?: string | null) {
 	if (!name) return "?";
@@ -109,17 +127,17 @@ function initials(name?: string | null) {
 }
 
 // ── Create server modal ────────────────────────────────────────────────────
-let showModal = false;
-let modalTab: "create" | "join" = "create";
-let serverName = "";
-let serverDescription = "";
-let creating = false;
-let createError = "";
+let showModal = $state(false);
+let modalTab = $state<"create" | "join">("create");
+let serverName = $state("");
+let serverDescription = $state("");
+let creating = $state(false);
+let createError = $state("");
 
 // ── Join server modal ──────────────────────────────────────────────────────
-let joinInputValue = "";
-let showJoinPreview = false;
-let joinCode: string | null = null;
+let joinInputValue = $state("");
+let showJoinPreview = $state(false);
+let joinCode = $state<string | null>(null);
 
 function extractCode(input: string): string {
 	const value = input.trim();
@@ -168,28 +186,14 @@ async function handleCreate() {
 	}
 }
 
-// ── Context menu ──────────────────────────────────────────────────────────
-let contextMenu: { x: number; y: number; guild: Guild } | null = null;
-let leavingGuildId: string | null = null;
-let leaveError = "";
+let leavingGuildId = $state<string | null>(null);
+let leaveError = $state("");
 
-function openContextMenu(e: MouseEvent, guild: Guild) {
-	e.preventDefault();
-	contextMenu = { x: e.clientX, y: e.clientY, guild };
-}
-
-function closeContextMenu() {
-	contextMenu = null;
-}
-
-async function handleLeave() {
-	if (!contextMenu) return;
-	const guild = contextMenu.guild;
-	leavingGuildId = guild.id;
+async function handleLeave(guildId: string) {
+	leavingGuildId = guildId;
 	leaveError = "";
-	closeContextMenu();
 	try {
-		await leaveSpace(guild.id);
+		await leaveSpace(guildId);
 	} catch (e) {
 		leaveError = e instanceof Error ? e.message : "Failed to leave server";
 	} finally {
@@ -231,19 +235,41 @@ async function handleLeave() {
 			{#if !group.collapsed}
 				<div role="group" class="flex flex-col items-center gap-1 px-2 py-1">
 					{#each group.guilds as guild}
-						<button
-							title={guild.name}
-							aria-pressed={guild.id === activeGuildId}
-							on:click={() => selectGuild(guild)}
-							on:contextmenu={(e) => openContextMenu(e, guild)}
-							class="group/btn relative size-10 rounded-lg transition-all duration-150 select-none"
-						>
-							{#if guild.icon_url}
-								<img src={guild.icon_url} alt={guild.name} class="size-10 rounded-lg object-cover transition-transform duration-150 group-hover/btn:scale-105" />
-							{:else}
-								<div class="flex size-10 items-center justify-center rounded-lg text-sm font-bold {guild.id === activeGuildId ? 'bg-stone-700 text-stone-100 ring-1 ring-stone-500/50' : 'bg-stone-900/65 text-stone-200 group-hover/btn:bg-stone-800/80 group-hover/btn:text-stone-100'} transition-all duration-150">{initials(guild.name)}</div>
-							{/if}
-						</button>
+						<ContextMenu.Root>
+							<ContextMenu.Trigger>
+								<button
+									title={guild.name}
+									aria-pressed={guild.id === activeGuildId}
+									on:click={() => selectGuild(guild)}
+									class="group/btn relative size-10 rounded-lg transition-all duration-150 select-none"
+								>
+									{#if guild.icon_url}
+										<img src={guild.icon_url} alt={guild.name} class="size-10 rounded-lg object-cover transition-transform duration-150 group-hover/btn:scale-105" />
+									{:else}
+										<div class="flex size-10 items-center justify-center rounded-lg text-sm font-bold {guild.id === activeGuildId ? 'bg-stone-700 text-stone-100 ring-1 ring-stone-500/50' : 'bg-stone-900/65 text-stone-200 group-hover/btn:bg-stone-800/80 group-hover/btn:text-stone-100'} transition-all duration-150">{initials(guild.name)}</div>
+									{/if}
+								</button>
+							</ContextMenu.Trigger>
+							<ContextMenu.Portal>
+								<ContextMenu.Content class="z-50 min-w-44 rounded-lg border border-zinc-700 bg-zinc-900 py-1 shadow-2xl">
+									{#if folders.length > 0}
+										<div class="px-3 py-1.5 text-[10px] font-semibold tracking-wide text-zinc-500 uppercase">Move to folder</div>
+										<ContextMenu.Item class="w-full px-3 py-2 text-left text-sm text-zinc-200 hover:bg-zinc-800 transition-colors" onSelect={() => moveGuildToFolder(guild.id, null)}>
+											Ungrouped
+										</ContextMenu.Item>
+										{#each folders as folder}
+											<ContextMenu.Item class="w-full px-3 py-2 text-left text-sm text-zinc-200 hover:bg-zinc-800 transition-colors" onSelect={() => moveGuildToFolder(guild.id, folder.id)}>
+												{folder.name}
+											</ContextMenu.Item>
+										{/each}
+										<div class="my-1 border-t border-zinc-800"></div>
+									{/if}
+									<ContextMenu.Item class="w-full px-3 py-2 text-left text-sm text-red-400 hover:bg-red-500/10 transition-colors" disabled={leavingGuildId === guild.id} onSelect={() => handleLeave(guild.id)}>
+										{leavingGuildId === guild.id ? "Leaving…" : "Leave Server"}
+									</ContextMenu.Item>
+								</ContextMenu.Content>
+							</ContextMenu.Portal>
+						</ContextMenu.Root>
 					{/each}
 				</div>
 			{/if}
@@ -253,19 +279,41 @@ async function handleLeave() {
 			<div class="my-1.5 h-px w-8 bg-stone-800/80"></div>
 			<div role="group" class="flex flex-col items-center gap-1 px-2 py-1">
 				{#each ungroupedGuilds as guild}
-					<button
-						title={guild.name}
-						aria-pressed={guild.id === activeGuildId}
-						on:click={() => selectGuild(guild)}
-						on:contextmenu={(e) => openContextMenu(e, guild)}
-						class="group/btn relative size-10 rounded-lg transition-all duration-150 select-none"
-					>
-						{#if guild.icon_url}
-							<img src={guild.icon_url} alt={guild.name} class="size-10 rounded-lg object-cover transition-transform duration-150 group-hover/btn:scale-105" />
-						{:else}
-							<div class="flex size-10 items-center justify-center rounded-lg text-sm font-bold {guild.id === activeGuildId ? 'bg-stone-700 text-stone-100 ring-1 ring-stone-500/50' : 'bg-stone-900/65 text-stone-200 group-hover/btn:bg-stone-800/80 group-hover/btn:text-stone-100'} transition-all duration-150">{initials(guild.name)}</div>
-						{/if}
-					</button>
+					<ContextMenu.Root>
+						<ContextMenu.Trigger>
+							<button
+								title={guild.name}
+								aria-pressed={guild.id === activeGuildId}
+								on:click={() => selectGuild(guild)}
+								class="group/btn relative size-10 rounded-lg transition-all duration-150 select-none"
+							>
+								{#if guild.icon_url}
+									<img src={guild.icon_url} alt={guild.name} class="size-10 rounded-lg object-cover transition-transform duration-150 group-hover/btn:scale-105" />
+								{:else}
+									<div class="flex size-10 items-center justify-center rounded-lg text-sm font-bold {guild.id === activeGuildId ? 'bg-stone-700 text-stone-100 ring-1 ring-stone-500/50' : 'bg-stone-900/65 text-stone-200 group-hover/btn:bg-stone-800/80 group-hover/btn:text-stone-100'} transition-all duration-150">{initials(guild.name)}</div>
+								{/if}
+							</button>
+						</ContextMenu.Trigger>
+						<ContextMenu.Portal>
+							<ContextMenu.Content class="z-50 min-w-44 rounded-lg border border-zinc-700 bg-zinc-900 py-1 shadow-2xl">
+								{#if folders.length > 0}
+									<div class="px-3 py-1.5 text-[10px] font-semibold tracking-wide text-zinc-500 uppercase">Move to folder</div>
+									<ContextMenu.Item class="w-full px-3 py-2 text-left text-sm text-zinc-200 hover:bg-zinc-800 transition-colors" onSelect={() => moveGuildToFolder(guild.id, null)}>
+										Ungrouped
+									</ContextMenu.Item>
+									{#each folders as folder}
+										<ContextMenu.Item class="w-full px-3 py-2 text-left text-sm text-zinc-200 hover:bg-zinc-800 transition-colors" onSelect={() => moveGuildToFolder(guild.id, folder.id)}>
+											{folder.name}
+										</ContextMenu.Item>
+									{/each}
+									<div class="my-1 border-t border-zinc-800"></div>
+								{/if}
+								<ContextMenu.Item class="w-full px-3 py-2 text-left text-sm text-red-400 hover:bg-red-500/10 transition-colors" disabled={leavingGuildId === guild.id} onSelect={() => handleLeave(guild.id)}>
+									{leavingGuildId === guild.id ? "Leaving…" : "Leave Server"}
+								</ContextMenu.Item>
+							</ContextMenu.Content>
+						</ContextMenu.Portal>
+					</ContextMenu.Root>
 				{/each}
 			</div>
 		{/if}
@@ -327,45 +375,6 @@ async function handleLeave() {
 </Dialog.Root>
 
 <JoinInviteModal bind:open={showJoinPreview} code={joinCode} />
-
-{#if contextMenu}
-	<button
-		type="button"
-		class="fixed inset-0 z-40"
-		on:click={closeContextMenu}
-		on:contextmenu|preventDefault={closeContextMenu}
-		aria-label="Close server context menu"
-	></button>
-	<div
-		class="fixed z-50 min-w-40 bg-zinc-900 border border-zinc-700 rounded-lg shadow-2xl py-1"
-		style="left: {contextMenu.x}px; top: {contextMenu.y}px;"
-	>
-		{#if folders.length > 0}
-			<div class="px-3 py-1.5 text-[10px] font-semibold tracking-wide text-zinc-500 uppercase">Move to folder</div>
-			<button
-				on:click={() => moveGuildToFolder(contextMenu!.guild.id, null)}
-				class="w-full text-left px-3 py-2 text-sm text-zinc-200 hover:bg-zinc-800 transition-colors"
-			>
-				Ungrouped
-			</button>
-			{#each folders as folder}
-				<button
-					on:click={() => moveGuildToFolder(contextMenu!.guild.id, folder.id)}
-					class="w-full text-left px-3 py-2 text-sm text-zinc-200 hover:bg-zinc-800 transition-colors"
-				>
-					{folder.name}
-				</button>
-			{/each}
-			<div class="my-1 border-t border-zinc-800"></div>
-		{/if}
-		<button
-			on:click={handleLeave}
-			class="w-full text-left px-3 py-2 text-sm text-red-400 hover:bg-red-500/10 transition-colors"
-		>
-			Leave Server
-		</button>
-	</div>
-{/if}
 
 {#if leaveError}
 	<div

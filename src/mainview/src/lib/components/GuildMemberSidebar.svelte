@@ -16,13 +16,18 @@ import {
 	type SpaceMemberWithUser,
 } from "$lib/api/spaces";
 
-export let spaceId: string | null = null;
-export let space: GatewaySpace | null = null;
+let {
+	spaceId = null,
+	space = null,
+}: {
+	spaceId?: string | null;
+	space?: GatewaySpace | null;
+} = $props();
 
 // ── Pagination ─────────────────────────────────────────────────────────────
 let cursor: { id: string; pos: number | null } | null = null;
-let hasMore = true;
-let loading = false;
+let hasMore = $state(true);
+let loading = $state(false);
 let listEl: HTMLElement;
 let abortController: AbortController | null = null;
 let prevSpaceId: string | null = null;
@@ -200,41 +205,45 @@ function groupMembers(members: MemberOnSidebar[]) {
 
 // ── Profile popup ──────────────────────────────────────────────────────────
 let selectedMemberId: string | null = null;
-let profilePosition = { x: 0, y: 0 };
-let showMemberPermissions = false;
-let togglingRoles: Record<string, boolean> = {};
+let profilePosition = $state({ x: 0, y: 0 });
+let showMemberPermissions = $state(false);
+let togglingRoles = $state<Record<string, boolean>>({});
 
-$: pagedMembers = space
+const pagedMembers = $derived(space
 	? space.members
 			.map((m) => convertMember(m, space!))
 			.filter((m): m is MemberOnSidebar => m !== null)
-	: [];
+	: []);
 
-$: selectedMember = selectedMemberId
+const selectedMember = $derived(selectedMemberId
 	? (pagedMembers.find((m) => m.id === selectedMemberId) ?? null)
-	: null;
+	: null);
 
-$: visibleRoles = selectedMember
+const visibleRoles = $derived(selectedMember
 	? selectedMember.roles.filter((role) => role.id !== spaceId)
-	: [];
+	: []);
 
-$: assignableRoles = space
+const assignableRoles = $derived(space
 	? [...space.roles]
 			.filter((r) => r.id !== spaceId)
 			.sort((a, b) => b.position - a.position)
-	: [];
+	: []);
 
-$: groupedMembers = groupMembers(pagedMembers);
+const groupedMembers = $derived(groupMembers(pagedMembers));
 
 // Reset and reload when the active space changes
-$: if (spaceId !== prevSpaceId) {
+
+$effect(() => {
+	if (spaceId === prevSpaceId) {
+		return;
+	}
 	prevSpaceId = spaceId;
 	abortController?.abort();
 	cursor = null;
 	hasMore = true;
 	loading = false;
 	if (spaceId) void loadMore();
-}
+});
 
 function openUserProfile(member: MemberOnSidebar, event: MouseEvent) {
 	selectedMemberId = member.id;

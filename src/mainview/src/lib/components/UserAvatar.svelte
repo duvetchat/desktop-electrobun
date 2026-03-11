@@ -1,12 +1,17 @@
 <script lang="ts">
 import { Avatar, AvatarImage, AvatarFallback } from "facehash-sv";
 
-export let src: string | null | undefined = undefined;
-export let name: string;
-export let size: string | number = 40;
-/** Extra CSS classes applied to the Avatar wrapper */
-let className = "";
-export { className as class };
+let {
+	src = undefined,
+	name,
+	size = 40,
+	class: className = "",
+}: {
+	src?: string | null | undefined;
+	name: string;
+	size?: string | number;
+	class?: string;
+} = $props();
 </script>
 
 <Avatar

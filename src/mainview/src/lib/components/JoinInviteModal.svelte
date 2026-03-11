@@ -4,24 +4,36 @@ import { Dialog } from "bits-ui";
 import { getInvite, joinInvite } from "$lib/api/invites";
 import type { InviteInfo } from "$lib/api/invites";
 
-export let open = false;
-export let code: string | null = null;
+let {
+	open = $bindable(false),
+	code = null,
+}: {
+	open?: boolean;
+	code?: string | null;
+} = $props();
 
-let invite: InviteInfo | null = null;
-let loading = false;
-let joining = false;
-let loadError = "";
-let joinError = "";
+let invite = $state<InviteInfo | null>(null);
+let loading = $state(false);
+let joining = $state(false);
+let loadError = $state("");
+let joinError = $state("");
 
-$: if (open && code) {
+
+$effect(() => {
+	if (!open || !code) {
+		return;
+	}
 	loadPreview(code);
-}
+});
 
-$: if (!open) {
+$effect(() => {
+	if (open) {
+		return;
+	}
 	invite = null;
 	loadError = "";
 	joinError = "";
-}
+});
 
 async function loadPreview(c: string) {
 	invite = null;

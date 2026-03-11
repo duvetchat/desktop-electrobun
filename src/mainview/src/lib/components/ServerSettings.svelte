@@ -13,12 +13,18 @@ import { Permission } from "$lib/permissions";
 
 import type { GatewaySpace } from "$lib/types";
 
-export let space: GatewaySpace | null = null;
-export let spaceId: string | null = null;
-export let open = false;
+let {
+	space = null,
+	spaceId = null,
+	open = $bindable(false),
+}: {
+	space?: GatewaySpace | null;
+	spaceId?: string | null;
+	open?: boolean;
+} = $props();
 
 type Section = "overview" | "members" | "roles";
-let activeSection: Section = "roles";
+let activeSection = $state<Section>("roles");
 
 const PERMISSIONS = [
 	{ flag: Permission.ViewChannels, name: "View Channels" },
@@ -62,27 +68,27 @@ function roleGradientStyle(role: {
 }
 
 // ── create state ─────────────────────────────────────────────
-let newRoleName = "";
-let newRolePermissions: number[] = [];
-let newRoleHoisted = false;
-let newRoleColorFrom = "#6366f1";
-let newRoleColorVia = "";
-let newRoleColorTo = "";
-let newRoleUseGradient = false;
+let newRoleName = $state("");
+let newRolePermissions = $state<number[]>([]);
+let newRoleHoisted = $state(false);
+let newRoleColorFrom = $state("#6366f1");
+let newRoleColorVia = $state("");
+let newRoleColorTo = $state("");
+let newRoleUseGradient = $state(false);
 
 // ── edit state ───────────────────────────────────────────────
-let editingRoleId: string | null = null;
-let editingRoleName = "";
-let editingRolePermissions = 0;
-let editingRoleHoisted = false;
-let editingRoleColorFrom = "#6366f1";
-let editingRoleColorVia = "";
-let editingRoleColorTo = "";
-let editingRoleUseGradient = false;
-let editingRoleClearColors = false;
+let editingRoleId = $state<string | null>(null);
+let editingRoleName = $state("");
+let editingRolePermissions = $state(0);
+let editingRoleHoisted = $state(false);
+let editingRoleColorFrom = $state("#6366f1");
+let editingRoleColorVia = $state("");
+let editingRoleColorTo = $state("");
+let editingRoleUseGradient = $state(false);
+let editingRoleClearColors = $state(false);
 
-let isCreating = false;
-let isDeleting: Record<string, boolean> = {};
+let isCreating = $state(false);
+let isDeleting = $state<Record<string, boolean>>({});
 const numberFormatter = new Intl.NumberFormat(
 	typeof navigator !== "undefined" ? navigator.language : "en-US",
 );
@@ -92,14 +98,16 @@ function formatCount(value: number) {
 }
 
 // ── drag-and-drop ────────────────────────────────────────────
-let sortedRoles: any[] = [];
-let isDragging = false;
-let dragIndex = -1;
+let sortedRoles = $state<any[]>([]);
+let isDragging = $state(false);
+let dragIndex = $state(-1);
 let draggedRole: any = null;
 
-$: if (space && !isDragging) {
-	sortedRoles = [...space.roles].sort((a, b) => b.position - a.position);
-}
+$effect(() => {
+	if (space && !isDragging) {
+		sortedRoles = [...space.roles].sort((a, b) => b.position - a.position);
+	}
+});
 
 function onDragStart(i: number) {
 	draggedRole = sortedRoles[i];
@@ -136,7 +144,7 @@ async function onDragEnd() {
 	}
 }
 
-$: canManageRoles = checkCanManageRoles();
+const canManageRoles = $derived(checkCanManageRoles());
 
 function checkCanManageRoles(): boolean {
 	if (!$currentUser || !space) {

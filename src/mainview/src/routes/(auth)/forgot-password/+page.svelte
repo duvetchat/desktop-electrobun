@@ -1,10 +1,10 @@
 <script lang="ts">
 import { Button, Label } from "bits-ui";
 
-let email = "";
-let doingRequest = false;
-let errorMessage = "";
-let successMessage = "";
+let email = $state("");
+let doingRequest = $state(false);
+let errorMessage = $state("");
+let successMessage = $state("");
 
 async function handleSubmit() {
 	doingRequest = true;
@@ -37,7 +37,10 @@ async function handleSubmit() {
 				<p class="mt-1 text-sm text-zinc-300 sm:text-base">Enter your email and we will send reset instructions.</p>
 			</header>
 
-			<form class="space-y-5" on:submit|preventDefault={handleSubmit} novalidate aria-busy={doingRequest}>
+			<form class="space-y-5" onsubmit={(e) => {
+				e.preventDefault();
+				handleSubmit();
+			}} novalidate aria-busy={doingRequest}>
 				<div>
 					<Label.Root for="email" class="mb-2 block text-sm font-medium text-zinc-300">Email</Label.Root>
 					<input
