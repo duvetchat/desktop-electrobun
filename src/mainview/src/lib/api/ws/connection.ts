@@ -326,6 +326,8 @@ function handleEvent(event: GatewayEvent) {
 		case "VOICE_JOINED":
 		case "WEBRTC_ICE_CANDIDATE":
 		case "WEBRTC_RENEGOTIATE":
+		case "WEBRTC_RENEGOTIATE_ANSWER":
+		case "VOICE_STATE_UPDATE":
 			webrtcListeners.forEach((cb) => {
 				cb(type, data);
 			});

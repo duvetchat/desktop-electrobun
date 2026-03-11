@@ -22,6 +22,7 @@ let peerConnection: RTCPeerConnection | null = null;
 let localAudioStream: MediaStream | null = null;
 let localVideoStream = $state<MediaStream | null>(null);
 let pendingIceCandidates: RTCIceCandidate[] = [];
+let negotiationReady = false;
 
 let isScreenSharing = $state(false);
 
@@ -75,6 +76,8 @@ onMount(async () => {
 				for (const candidate of toFlush) {
 					pc.addIceCandidate(candidate).catch(console.warn);
 				}
+				// Now it's safe to renegotiate (e.g. when screen share is added)
+				negotiationReady = true;
 			}).catch(console.warn);
 		} else if (type === "WEBRTC_ICE_CANDIDATE") {
 			const pc = peerConnection;
@@ -109,6 +112,10 @@ onMount(async () => {
 						answer: answer,
 					});
 				}).catch(console.warn);
+		} else if (type === "WEBRTC_RENEGOTIATE_ANSWER") {
+			const pc = peerConnection;
+			if (!pc) return;
+			pc.setRemoteDescription(new RTCSessionDescription(data.answer)).catch(console.warn);
 		} else if (type === "VOICE_STATE_UPDATE") {
 			remoteUserMuted[data.user_id] = data.muted;
 			remoteUserMuted = { ...remoteUserMuted };
@@ -150,10 +157,28 @@ async function connectWebRTC() {
 	remoteAudioElements = {};
 	remoteVideoElements = {};
 	pendingIceCandidates = [];
+	negotiationReady = false;
 
 	peerConnection = new RTCPeerConnection({
 		iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
 	});
+
+	peerConnection.onnegotiationneeded = async () => {
+		if (!negotiationReady) return;
+		const pc = peerConnection;
+		if (!pc) return;
+		try {
+			const offer = await pc.createOffer();
+			if (pc !== peerConnection) return;
+			await pc.setLocalDescription(offer);
+			sendEventMessage("WEBRTC_RENEGOTIATE_OFFER", {
+				room_id: channelId,
+				offer: offer,
+			});
+		} catch (err) {
+			console.error("[WebRTC] negotiationneeded error:", err);
+		}
+	};
 
 	peerConnection.onicecandidate = (event) => {
 		if (event.candidate) {
