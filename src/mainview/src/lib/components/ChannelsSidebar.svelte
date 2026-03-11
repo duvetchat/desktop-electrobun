@@ -39,6 +39,7 @@ import {
 } from "$lib/stores.svelte";
 import { sendEventMessage } from "$lib/api/ws/connection";
 import { fly } from "svelte/transition";
+import { getHostURL } from '$lib/common/common';
 
 const dispatch = createEventDispatcher<{ select: string }>();
 
@@ -142,7 +143,7 @@ let pingIntervalId = $state<ReturnType<typeof setInterval> | null>(null);
 async function measurePing() {
 	try {
 		const start = performance.now();
-		await fetch("http://localhost:8080/health", {
+		await fetch(`${getHostURL()}/health`, {
 			method: "GET",
 			cache: "no-store",
 		});
@@ -474,13 +475,14 @@ onMount(() => {
 									class="flex items-center gap-2 text-sm text-zinc-400 group"
 								>
 									<div class="relative">
-										<img
+										<UserAvatar
 											src={user.avatar_url}
-											alt={user.username}
-											class="w-6 h-6 rounded-full box-border transition-colors duration-200 {$speakingUsers.has(
+											name={user.username}
+											size={24}
+											class="box-border transition-colors duration-200 {$speakingUsers.has(
 												user.id,
 											) && !user.muted
-								? 'border-2 border-stone-400'
+												? 'border-2 border-green-500'
 												: 'border-2 border-transparent'}"
 										/>
 										{#if user.deafened}

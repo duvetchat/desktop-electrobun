@@ -121,14 +121,14 @@ function handleEvent(event: GatewayEvent) {
 			const selfMember: import("$lib/types").GatewayMember | undefined =
 				currentUserData
 					? {
-							id: currentUserData.id,
-							space_id: payload.space.id,
-							user_id: currentUserData.id,
-							alias: null,
-							created_at: payload.space.created_at,
-							updated_at: payload.space.updated_at,
-							deleted_at: null,
-						}
+						id: currentUserData.id,
+						space_id: payload.space.id,
+						user_id: currentUserData.id,
+						alias: null,
+						created_at: payload.space.created_at,
+						updated_at: payload.space.updated_at,
+						deleted_at: null,
+					}
 					: undefined;
 			const space: GatewaySpace = {
 				...payload.space,
@@ -556,10 +556,28 @@ export interface GatewayConnection {
 	destroy(): void;
 }
 
+const HEARTBEAT_INTERVAL_MS = 45_000;
+
 export function createWebSocketConnection(): GatewayConnection {
 	let destroyed = false;
 	let currentSocket: WebSocket | null = null;
 	let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+	let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+
+	function startHeartbeat(socket: WebSocket) {
+		heartbeatTimer = setInterval(() => {
+			if (socket.readyState === WebSocket.OPEN) {
+				socket.send(JSON.stringify({ type: "heartbeat", data: {} }));
+			}
+		}, HEARTBEAT_INTERVAL_MS);
+	}
+
+	function stopHeartbeat() {
+		if (heartbeatTimer !== null) {
+			clearInterval(heartbeatTimer);
+			heartbeatTimer = null;
+		}
+	}
 
 	function connect() {
 		if (destroyed) {
@@ -579,11 +597,16 @@ export function createWebSocketConnection(): GatewayConnection {
 				identifyData.last_seq = lastSeq;
 			}
 			socket.send(JSON.stringify({ type: "identify", data: identifyData }));
+			startHeartbeat(socket);
 		};
 
 		socket.onmessage = (rawEvent) => {
 			try {
 				const msg = JSON.parse(rawEvent.data as string);
+				if (msg.event === "heartbeat_ack") {
+					// Heartbeat acknowledged by server
+					return;
+				}
 				if (msg.event === "payload") {
 					console.log("[WS] Payload:", msg);
 					handleEvent(msg as GatewayEvent);
@@ -599,6 +622,7 @@ export function createWebSocketConnection(): GatewayConnection {
 
 		socket.onclose = () => {
 			console.log("[WS] Disconnected");
+			stopHeartbeat();
 			currentSocket = null;
 			activeSocket = null;
 			if (!destroyed) {
@@ -612,6 +636,7 @@ export function createWebSocketConnection(): GatewayConnection {
 	return {
 		destroy() {
 			destroyed = true;
+			stopHeartbeat();
 			if (reconnectTimer !== null) {
 				clearTimeout(reconnectTimer);
 				reconnectTimer = null;

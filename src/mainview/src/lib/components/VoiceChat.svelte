@@ -1,19 +1,19 @@
 <script lang="ts">
-import { onMount, onDestroy } from "svelte";
-import { sendEventMessage, onWebRTCEvent } from "$lib/api/ws/connection";
 import { LoaderCircle, MicOff, MonitorUp, PhoneOff } from "lucide-svelte";
-import {
-	speakingUsers,
-	currentUser,
-	activeVoiceRoomId,
-	selectedMicId,
-	gatewaySpaces,
-	isMuted,
-	isDeafened,
-} from "$lib/stores.svelte";
+import { onDestroy, onMount } from "svelte";
 import { SvelteSet } from "svelte/reactivity";
-import { hasPermission, Permission } from "$lib/permissions";
+import { onWebRTCEvent, sendEventMessage } from "$lib/api/ws/connection";
 import UserAvatar from "$lib/components/UserAvatar.svelte";
+import { hasPermission, Permission } from "$lib/permissions";
+import {
+	activeVoiceRoomId,
+	currentUser,
+	gatewaySpaces,
+	isDeafened,
+	isMuted,
+	selectedMicId,
+	speakingUsers,
+} from "$lib/stores.svelte";
 
 let { channelId, channelName }: { channelId: string; channelName: string } =
 	$props();
@@ -21,6 +21,7 @@ let { channelId, channelName }: { channelId: string; channelName: string } =
 let peerConnection: RTCPeerConnection | null = null;
 let localAudioStream: MediaStream | null = null;
 let localVideoStream = $state<MediaStream | null>(null);
+let pendingIceCandidates: RTCIceCandidate[] = [];
 
 let isScreenSharing = $state(false);
 
@@ -63,35 +64,61 @@ onMount(async () => {
 		if (data.room_id !== channelId) return;
 
 		if (type === "VOICE_JOINED") {
-			peerConnection?.setRemoteDescription(
-				new RTCSessionDescription(data.answer),
-			);
+			const pc = peerConnection;
+			if (!pc) return;
+			pc.setRemoteDescription(new RTCSessionDescription(data.answer)).then(() => {
+				// Only flush if this is still the active connection
+				if (pc !== peerConnection) return;
+				const toFlush = pendingIceCandidates;
+				pendingIceCandidates = [];
+				for (const candidate of toFlush) {
+					pc.addIceCandidate(candidate).catch(console.warn);
+				}
+			}).catch(console.warn);
 		} else if (type === "WEBRTC_ICE_CANDIDATE") {
-			peerConnection?.addIceCandidate(
-				new RTCIceCandidate(JSON.parse(data.candidate)),
-			);
+			const pc = peerConnection;
+			if (!pc) return;
+			const parsed = typeof data.candidate === "string"
+				? JSON.parse(data.candidate)
+				: data.candidate;
+			const candidate = new RTCIceCandidate(parsed);
+			if (pc.remoteDescription) {
+				pc.addIceCandidate(candidate).catch(console.warn);
+			} else {
+				pendingIceCandidates.push(candidate);
+			}
 		} else if (type === "WEBRTC_RENEGOTIATE") {
-			peerConnection
-				?.setRemoteDescription(new RTCSessionDescription(data.offer))
-				.then(() => peerConnection?.createAnswer())
+			const pc = peerConnection;
+			if (!pc) return;
+			pc.setRemoteDescription(new RTCSessionDescription(data.offer))
+				.then(() => {
+					if (pc !== peerConnection) return;
+					const toFlush = pendingIceCandidates;
+					pendingIceCandidates = [];
+					for (const candidate of toFlush) {
+						pc.addIceCandidate(candidate).catch(console.warn);
+					}
+					return pc.createAnswer();
+				})
 				.then((answer) => {
-					peerConnection?.setLocalDescription(answer);
+					if (!answer || pc !== peerConnection) return;
+					pc.setLocalDescription(answer);
 					sendEventMessage("WEBRTC_ANSWER", {
 						room_id: channelId,
 						answer: answer,
 					});
-				});
+				}).catch(console.warn);
 		} else if (type === "VOICE_STATE_UPDATE") {
 			remoteUserMuted[data.user_id] = data.muted;
 			remoteUserMuted = { ...remoteUserMuted };
 		}
 	});
 
-	let space = $gatewaySpaces.find((s) =>
+	const space = $gatewaySpaces.find((s) =>
 		s.rooms.some((r) => r.id === channelId),
 	);
-	let room = space?.rooms.find((r) => r.id === channelId);
-	let canSpeak =
+	const room = space?.rooms.find((r) => r.id === channelId);
+	const canSpeak =
 		space && room ? hasPermission(space, room, Permission.SpeakInVoice) : false;
 
 	if (!canSpeak) {
@@ -112,7 +139,6 @@ onMount(async () => {
 });
 
 onDestroy(() => {
-	isDestroyed = true;
 	leaveVoice();
 });
 
@@ -122,6 +148,7 @@ async function connectWebRTC() {
 	}
 	remoteAudioElements = {};
 	remoteVideoElements = {};
+	pendingIceCandidates = [];
 
 	peerConnection = new RTCPeerConnection({
 		iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
@@ -267,6 +294,7 @@ async function connectWebRTC() {
 	}
 
 	const offer = await peerConnection.createOffer();
+
 	await peerConnection.setLocalDescription(offer);
 
 	sendEventMessage("VOICE_JOIN", {
@@ -332,12 +360,16 @@ async function switchMicrophone(deviceId: string) {
 
 async function toggleScreenShare() {
 	if (isScreenSharing) {
-		if (localVideoStream) {
-			localVideoStream.getTracks().forEach((t) => t.stop());
-			localVideoStream = null;
+		// Remove the video sender from the existing connection — no reconnect needed
+		const sender = peerConnection
+			?.getSenders()
+			.find((s) => s.track?.kind === "video");
+		if (sender) {
+			peerConnection?.removeTrack(sender);
 		}
+		localVideoStream?.getTracks().forEach((t) => t.stop());
+		localVideoStream = null;
 		isScreenSharing = false;
-		connectWebRTC(); // Reconnect without video track
 	} else {
 		try {
 			localVideoStream = await navigator.mediaDevices.getDisplayMedia({
@@ -346,12 +378,15 @@ async function toggleScreenShare() {
 			isScreenSharing = true;
 
 			const videoTrack = localVideoStream.getVideoTracks().at(0);
-			if (videoTrack)
-				videoTrack.onended = () => {
-					if (isScreenSharing) toggleScreenShare(); // turn off when user clicks browser's stop sharing
-				};
+			if (!videoTrack) return;
 
-			connectWebRTC(); // Reconnect with video track
+			videoTrack.onended = () => {
+				if (isScreenSharing) toggleScreenShare(); // turn off when user clicks browser's stop sharing
+			};
+
+			// Add directly to the live peerConnection — the server's OnTrack will
+			// fire and renegotiatePeer will push the track to all other peers.
+			peerConnection?.addTrack(videoTrack, localVideoStream);
 		} catch (err) {
 			console.error("Screen share failed", err);
 		}
@@ -524,7 +559,12 @@ const voiceUsers = $derived((() => {
 
 	<div class="hidden">
 		{#each Object.entries(remoteAudioElements) as [id, stream] (id)}
-			<audio use:srcObject={stream} autoplay muted={$isDeafened} aria-label={`Audio stream ${id}`}></audio>
+			<audio
+				use:srcObject={stream}
+				autoplay
+				muted={$isDeafened}
+				aria-label={`Audio stream ${id}`}
+			></audio>
 		{/each}
 	</div>
 
