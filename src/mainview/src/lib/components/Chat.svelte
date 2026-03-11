@@ -251,9 +251,9 @@ onMount(() => {
 </script>
 
 <div class="flex flex-1 flex-col overflow-hidden bg-[linear-gradient(180deg,oklch(0.22_0.01_80),oklch(0.19_0.008_80))]">
-  <div
+	<div
 	class="flex h-10 shrink-0 items-center justify-between border-b border-stone-800 bg-stone-950/45 px-3 font-semibold text-stone-100"
-  >
+	>
     <div class="flex flex-row gap-2 items-center">
       <HashIcon class="size-5 text-zinc-400" />
       {channelName}
@@ -262,13 +262,13 @@ onMount(() => {
 		<BookmarkSimpleIcon
 			class="size-4 text-zinc-400 duration-100 hover:scale-[1.05] active:scale-[0.95] hover:text-zinc-200"
 		/>
-      <div class="relative flex items-center">
+	  <div class="relative flex h-8 w-48 items-center rounded-lg border border-stone-800/90 bg-stone-900/40 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)] transition-colors focus-within:border-stone-600/80 focus-within:bg-stone-900/65">
 		<MagnifyingGlassIcon
-            class="absolute left-2 size-4 text-stone-500"
+	            class="absolute left-2.5 size-3.5 text-stone-500"
 			/>
         <input
           placeholder="Search messages"
-		  class="h-9 w-44 rounded-md border border-stone-700 bg-stone-900/70 pl-7 pr-2 text-xs text-stone-100 placeholder:text-stone-500 focus:outline-none focus:ring-1 focus:ring-stone-500 focus-visible:outline-none focus-visible:ring-1"
+		  class="h-full w-full border-none bg-transparent pl-8 pr-2.5 text-xs font-medium text-stone-100 placeholder:text-stone-500/90 focus:outline-none focus:ring-0"
         />
       </div>
     </div>
@@ -301,7 +301,7 @@ onMount(() => {
     <div class="pointer-events-auto flex-1 rounded-xl border border-stone-700 bg-stone-900/80 px-3 py-2.5 shadow-inner">
       <textarea
         placeholder={`Message #${channelName}`}
-			class="block w-full min-h-5 max-h-36 resize-none overflow-y-auto border-none bg-transparent text-sm leading-5 text-zinc-100 placeholder:text-zinc-500 appearance-none focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0"
+			class="focus-override block w-full min-h-5 max-h-36 resize-none overflow-y-auto border-none bg-transparent text-sm leading-5 text-zinc-100 placeholder:text-zinc-500 appearance-none focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0"
         maxlength={4000}
         rows={1}
         bind:this={chatTextarea}

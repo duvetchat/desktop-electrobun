@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- Pillow body: puffy, wider in middle -->
+  <path d="
+    M 100 240
+    Q 82 250 78 290
+    Q 72 340 82 390
+    Q 90 430 120 440
+    Q 180 455 256 455
+    Q 332 455 392 440
+    Q 422 430 430 390
+    Q 440 340 434 290
+    Q 430 250 412 240
+    Q 370 222 256 222
+    Q 142 222 100 240
+    Z
+  " fill="#3A3D52"/>
+
+  <!-- Left ear: thick fox/wolf triangle, wide base on pillow -->
+  <path d="M 105 240 L 60 90 L 220 224 Z" fill="#3A3D52"/>
+  <path d="M 125 234 L 80 115 L 200 224 Z" fill="#A8DFF0" opacity="0.35"/>
+  <path d="M 60 90 Q 75 82 95 105 L 72 112 Z" fill="#4E5270"/>
+
+  <!-- Right ear: thick fox/wolf triangle, wide base on pillow -->
+  <path d="M 407 240 L 452 90 L 292 224 Z" fill="#3A3D52"/>
+  <path d="M 387 234 L 432 115 L 312 224 Z" fill="#A8DFF0" opacity="0.35"/>
+  <path d="M 452 90 Q 437 82 417 105 L 440 112 Z" fill="#4E5270"/>
+
+  <!-- Eyes (white) -->
+  <circle cx="200" cy="330" r="25" fill="white"/>
+  <circle cx="312" cy="330" r="25" fill="white"/>
+
+  <!-- Feminine lashes -->
+  <line x1="178" y1="312" x2="172" y2="304" stroke="white" stroke-width="2.5" stroke-linecap="round"/>
+  <line x1="184" y1="308" x2="180" y2="299" stroke="white" stroke-width="2" stroke-linecap="round"/>
+  <line x1="334" y1="312" x2="340" y2="304" stroke="white" stroke-width="2.5" stroke-linecap="round"/>
+  <line x1="328" y1="308" x2="332" y2="299" stroke="white" stroke-width="2" stroke-linecap="round"/>
+
+  <!-- Smile -->
+  <path d="M 230 390 Q 256 406 282 390" fill="none" stroke="white" stroke-width="3.5" stroke-linecap="round" opacity="0.55"/>
+</svg>

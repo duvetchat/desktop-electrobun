@@ -483,7 +483,6 @@ onMount(() => {
 							{/if}
 						</span>
 						<span class="min-w-0 flex-1 truncate">{channel.name}</span>
-						<DotsThreeVerticalIcon class="size-3.5 shrink-0 text-zinc-500 opacity-0 transition-opacity group-hover/channel:opacity-100" />
 							</button>
 						</ContextMenu.Trigger>
 						<ContextMenu.Portal>

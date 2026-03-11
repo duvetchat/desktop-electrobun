@@ -15,6 +15,7 @@ import {
 	MEMBERS_PAGE_SIZE,
 	type SpaceMemberWithUser,
 } from "$lib/api/spaces";
+import { Popover } from "bits-ui";
 
 let {
 	spaceId = null,
@@ -204,8 +205,7 @@ function groupMembers(members: MemberOnSidebar[]) {
 }
 
 // ── Profile popup ──────────────────────────────────────────────────────────
-let selectedMemberId: string | null = null;
-let profilePosition = $state({ x: 0, y: 0 });
+let activePopoverMemberId = $state<string | null>(null);
 let showMemberPermissions = $state(false);
 let togglingRoles = $state<Record<string, boolean>>({});
 
@@ -213,14 +213,6 @@ const pagedMembers = $derived(space
 	? space.members
 			.map((m) => convertMember(m, space!))
 			.filter((m): m is MemberOnSidebar => m !== null)
-	: []);
-
-const selectedMember = $derived(selectedMemberId
-	? (pagedMembers.find((m) => m.id === selectedMemberId) ?? null)
-	: null);
-
-const visibleRoles = $derived(selectedMember
-	? selectedMember.roles.filter((role) => role.id !== spaceId)
 	: []);
 
 const assignableRoles = $derived(space
@@ -244,32 +236,6 @@ $effect(() => {
 	loading = false;
 	if (spaceId) void loadMore();
 });
-
-function openUserProfile(member: MemberOnSidebar, event: MouseEvent) {
-	selectedMemberId = member.id;
-	showMemberPermissions = false;
-	if (typeof window === "undefined") return;
-
-	const cardWidth = 320;
-	const viewportPadding = 12;
-	const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
-	let x = rect.left - cardWidth - 12;
-	if (x < viewportPadding) {
-		x = Math.min(
-			rect.right + 12,
-			window.innerWidth - cardWidth - viewportPadding,
-		);
-	}
-	let y = rect.top;
-	if (y + 320 > window.innerHeight) y = window.innerHeight - 332;
-	if (y < viewportPadding) y = viewportPadding;
-	profilePosition = { x, y };
-}
-
-function closeUserProfile() {
-	selectedMemberId = null;
-	showMemberPermissions = false;
-}
 
 function getMemberPermissions(member: MemberOnSidebar): string[] {
 	const permissionsMap: Array<[number, string]> = [
@@ -306,16 +272,16 @@ function currentUserCanManageRoles(): boolean {
 	return (combined & Permission.ManageRoles) === Permission.ManageRoles;
 }
 
-async function toggleMemberRole(roleId: string) {
-	if (!selectedMember || !spaceId) return;
-	const key = `${selectedMember.id}-${roleId}`;
-	const memberHasRole = selectedMember.roles.some((r) => r.id === roleId);
+async function toggleMemberRole(member: MemberOnSidebar, roleId: string) {
+	if (!spaceId) return;
+	const key = `${member.id}-${roleId}`;
+	const memberHasRole = member.roles.some((r) => r.id === roleId);
 	togglingRoles[key] = true;
 	try {
 		if (memberHasRole) {
-			await removeRoleFromMember(spaceId, roleId, selectedMember.member_id);
+			await removeRoleFromMember(spaceId, roleId, member.member_id);
 		} else {
-			await assignRoleToMember(spaceId, roleId, selectedMember.member_id);
+			await assignRoleToMember(spaceId, roleId, member.member_id);
 		}
 	} catch (err) {
 		console.error("Failed to toggle role:", err);
@@ -346,56 +312,167 @@ async function toggleMemberRole(roleId: string) {
                 </div>
 
                 {#each group.members as member}
-					<button
-						type="button"
-						class="group mb-0.5 flex h-10 w-full items-center px-3 text-zinc-200 hover:bg-zinc-800 hover:text-white {member.status ===
-						'offline'
-							? 'opacity-60'
-							: ''}"
-						onclick={(e) => {
-							e.stopPropagation();
-							openUserProfile(member, e);
-						}}
-					>
-                        <div class="flex min-w-0 items-center gap-2.5">
-                            <div class="relative shrink-0">
-                                <UserAvatar
-                                    src={member.avatar_url}
-                                    name={member.username}
-                                    size={30}
-                                />
-                                <span
-                                    class="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-zinc-900
-                                    {member.status === 'online'
-                                        ? 'bg-stone-300'
-                                        : member.status === 'idle'
-                                          ? 'bg-amber-500'
-                                          : member.status === 'dnd'
-                                            ? 'bg-red-500'
-                                            : 'bg-zinc-500'}"
-                                ></span>
-                            </div>
+                    <Popover.Root
+                        open={activePopoverMemberId === member.id}
+                        onOpenChange={(open) => {
+                            activePopoverMemberId = open ? member.id : null;
+                            if (!open) showMemberPermissions = false;
+                        }}
+                    >
+                        <Popover.Trigger
+                            class="group mb-0.5 flex h-10 w-full items-center px-3 text-zinc-200 hover:bg-zinc-800 hover:text-white {member.status ===
+                            'offline'
+                                ? 'opacity-60'
+                                : ''}"
+                        >
+                            <div class="flex min-w-0 items-center gap-2.5">
+                                <div class="relative shrink-0">
+                                    <UserAvatar
+                                        src={member.avatar_url}
+                                        name={member.username}
+                                        size={30}
+                                    />
+                                    <span
+                                        class="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-zinc-900
+                                        {member.status === 'online'
+                                            ? 'bg-stone-300'
+                                            : member.status === 'idle'
+                                              ? 'bg-amber-500'
+                                              : member.status === 'dnd'
+                                                ? 'bg-red-500'
+                                                : 'bg-zinc-500'}"
+                                    ></span>
+                                </div>
 
-                            <div class="min-w-0">
-                                <span
-                                    class="inline-flex items-center gap-1 truncate font-medium"
-                                    style={getMemberColorStyle(member)}
-                                >
-                                    <span class="truncate">{member.username}</span>
-                                    {#if member.is_bot}
-                                        <span class="text-[10px] text-zinc-400"
-                                            >BOT</span
-                                        >
-                                    {/if}
-                                    {#if member.is_owner}
-                                        <CrownSimpleIcon
-                                            class="size-3 text-amber-500"
-                                        />
-                                    {/if}
-                                </span>
+                                <div class="min-w-0">
+                                    <span
+                                        class="inline-flex items-center gap-1 truncate font-medium"
+                                        style={getMemberColorStyle(member)}
+                                    >
+                                        <span class="truncate">{member.username}</span>
+                                        {#if member.is_bot}
+                                            <span class="text-[10px] text-zinc-400"
+                                                >BOT</span
+                                            >
+                                        {/if}
+                                        {#if member.is_owner}
+                                            <CrownSimpleIcon
+                                                class="size-3 text-amber-500"
+                                            />
+                                        {/if}
+                                    </span>
+                                </div>
                             </div>
-                        </div>
-                    </button>
+                        </Popover.Trigger>
+                        <Popover.Portal>
+                            <Popover.Content
+                                side="left"
+                                align="start"
+                                sideOffset={10}
+                                class="z-[301] w-80 overflow-hidden rounded-xl border border-zinc-700 bg-zinc-900 shadow-2xl"
+                            >
+                                {@const visibleRoles = member.roles.filter((role) => role.id !== spaceId)}
+                                <div class="h-24 w-full" style={getMemberBannerStyle(member)}></div>
+
+                                <div class="relative px-4 pb-4">
+                                    <div class="absolute -top-12 left-4 rounded-full border-[6px] border-zinc-800 bg-zinc-950">
+                                        <UserAvatar src={member.avatar_url} name={member.username} size={80} />
+                                        <div
+                                            class="absolute bottom-0 right-0 h-6 w-6 rounded-full border-4 border-zinc-800
+                                            {member.status === 'online'
+                                                ? 'bg-stone-400'
+                                                : member.status === 'idle'
+                                                  ? 'bg-amber-500'
+                                                  : member.status === 'dnd'
+                                                    ? 'bg-red-500'
+                                                    : 'bg-zinc-500'}"
+                                        ></div>
+                                    </div>
+
+                                    <div class="mt-2 flex h-10 w-full items-center justify-end gap-2">
+                                        <button
+                                            class="rounded-lg bg-white/10 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-white/20"
+                                            onclick={() =>
+                                                (showMemberPermissions = !showMemberPermissions)}
+                                        >
+                                            {showMemberPermissions ? "Hide" : "View"} Permissions
+                                        </button>
+                                    </div>
+
+                                    <div class="mt-4 rounded-lg bg-zinc-950 p-3">
+                                        <h2 class="text-lg leading-tight font-bold text-zinc-100">
+                                            {member.username}
+                                        </h2>
+                                        <p class="text-sm font-medium text-zinc-400">
+                                            @{member.username}
+                                        </p>
+
+                                        {#if visibleRoles.length > 0}
+                                            <h3 class="mb-2 text-left text-[11px] font-bold tracking-wide text-zinc-400 uppercase">
+                                                Roles
+                                            </h3>
+                                            <div class="flex flex-wrap gap-1">
+                                                {#each visibleRoles as role}
+                                                    <div class="flex w-min items-center gap-1.5 rounded border border-zinc-800 bg-zinc-900 px-2 py-1 shadow-sm">
+                                                        <div class="h-3 w-3 rounded-full" style={roleBadgeStyle(role)}></div>
+                                                        <span class="text-xs font-medium text-zinc-300">{role.name}</span>
+                                                    </div>
+                                                {/each}
+                                            </div>
+                                        {/if}
+
+                                        {#if showMemberPermissions}
+                                            <div class="my-3 h-px w-full bg-zinc-800"></div>
+                                            <h3 class="mb-2 text-left text-[11px] font-bold tracking-wide text-zinc-400 uppercase">
+                                                Permissions
+                                            </h3>
+                                            {@const memberPermissions = getMemberPermissions(member)}
+                                            {#if memberPermissions.length > 0}
+                                                <div class="flex flex-col gap-1.5">
+                                                    {#each memberPermissions as permission}
+                                                        <div class="flex items-center text-xs text-zinc-300">
+                                                            <span class="mr-2 h-1.5 w-1.5 rounded-full bg-stone-400"></span>
+                                                            {permission}
+                                                        </div>
+                                                    {/each}
+                                                </div>
+                                            {:else}
+                                                <span class="text-xs text-zinc-400 italic">No permissions</span>
+                                            {/if}
+                                        {/if}
+
+                                        {#if currentUserCanManageRoles() && space && assignableRoles.length > 0}
+                                            <div class="my-3 h-px w-full bg-zinc-800"></div>
+                                            <h3 class="mb-2 text-left text-[11px] font-bold tracking-wide text-zinc-400 uppercase">
+                                                Assign Roles
+                                            </h3>
+                                            <div class="max-h-32 space-y-1.5 overflow-y-auto">
+                                                {#each assignableRoles as role}
+                                                    {@const memberHasRole = member.roles.some((mr) => mr.id === role.id)}
+                                                    {@const toggleKey = `${member.id}-${role.id}`}
+                                                    <button
+                                                        class="w-fit rounded-full px-2 py-0.5 text-xs transition-colors disabled:opacity-50 {memberHasRole
+                                                            ? 'bg-stone-600 text-white hover:bg-stone-500'
+                                                            : 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700'}"
+                                                        onclick={() => toggleMemberRole(member, role.id)}
+                                                        disabled={togglingRoles[toggleKey]}
+                                                    >
+                                                        <div class="flex items-center gap-1">
+                                                            <div class="h-2.5 w-2.5 rounded-full" style={roleBadgeStyle(role as any)}></div>
+                                                            <span class="flex-1 text-left">{role.name}</span>
+                                                            {#if memberHasRole}
+                                                                <span class="text-[10px]">✓</span>
+                                                            {/if}
+                                                        </div>
+                                                    </button>
+                                                {/each}
+                                            </div>
+                                        {/if}
+                                    </div>
+                                </div>
+                            </Popover.Content>
+                        </Popover.Portal>
+                    </Popover.Root>
                 {/each}
             </div>
         {/each}
@@ -409,147 +486,3 @@ async function toggleMemberRole(roleId: string) {
         {/if}
     </div>
 </div>
-
-{#if selectedMember}
-	<button type="button" class="fixed inset-0 z-[300]" onclick={closeUserProfile} aria-label="Close member profile"></button>
-    <div
-		class="fixed z-[301] w-80 bg-zinc-900 rounded-xl shadow-2xl flex flex-col overflow-hidden border border-zinc-700 animate-in fade-in zoom-in-95 duration-100"
-		style="left: {profilePosition.x}px; top: {profilePosition.y}px;"
-    >
-        <!-- Banner -->
-        <div
-            class="h-24 w-full"
-            style={getMemberBannerStyle(selectedMember)}
-        ></div>
-
-        <!-- Profile Info -->
-        <div class="px-4 pb-4 relative">
-            <!-- Avatar -->
-            <div
-                class="absolute -top-12 left-4 rounded-full border-[6px] border-zinc-800 bg-zinc-950"
-            >
-                <UserAvatar
-                    src={selectedMember.avatar_url}
-                    name={selectedMember.username}
-                    size={80}
-                />
-                <div
-                    class="absolute bottom-0 right-0 w-6 h-6 rounded-full border-4 border-zinc-800
-                    {selectedMember.status === 'online'
-                        ? 'bg-stone-400'
-                        : selectedMember.status === 'idle'
-                          ? 'bg-amber-500'
-                          : selectedMember.status === 'dnd'
-                            ? 'bg-red-500'
-                            : 'bg-zinc-500'}"
-                ></div>
-            </div>
-
-            <div class="h-10 w-full flex justify-end items-center mt-2 gap-2">
-                <button
-                    class="px-3 py-1.5 bg-white/10 hover:bg-white/20 text-xs font-medium text-white rounded-lg transition-colors"
-                    onclick={() =>
-                        (showMemberPermissions = !showMemberPermissions)}
-                >
-                    {showMemberPermissions ? "Hide" : "View"} Permissions
-                </button>
-            </div>
-
-            <!-- Info Card -->
-            <div class="bg-zinc-950 p-3 rounded-lg mt-4">
-                <h2 class="text-lg font-bold text-zinc-100 leading-tight">
-                    {selectedMember.username}
-                </h2>
-                <p class="text-sm text-zinc-400 font-medium">
-                    @{selectedMember.username}
-                </p>
-
-                {#if visibleRoles.length > 0}
-                    <h3
-                        class="text-[11px] font-bold text-zinc-400 uppercase tracking-wide mb-2 text-left"
-                    >
-                        Roles
-                    </h3>
-                    <div class="flex gap-1 flex-wrap">
-                        {#each visibleRoles as role}
-                            <div
-                                class="flex w-min items-center gap-1.5 rounded border border-zinc-800 bg-zinc-900 px-2 py-1 shadow-sm"
-                            >
-                                <div
-                                    class="w-3 h-3 rounded-full"
-                                    style={roleBadgeStyle(role)}
-                                ></div>
-                                <span class="text-xs font-medium text-zinc-300"
-                                    >{role.name}</span
-                                >
-                            </div>
-                        {/each}
-                    </div>
-                {/if}
-
-                {#if showMemberPermissions}
-                    <div class="w-full h-px bg-zinc-800 my-3"></div>
-                    <h3
-                        class="text-[11px] font-bold text-zinc-400 uppercase tracking-wide mb-2 text-left"
-                    >
-                        Permissions
-                    </h3>
-                    {@const memberPermissions =
-                        getMemberPermissions(selectedMember)}
-                    {#if memberPermissions.length > 0}
-                        <div class="flex flex-col gap-1.5">
-                            {#each memberPermissions as permission}
-                                <div
-                                    class="flex items-center text-xs text-zinc-300"
-                                >
-                                    <span
-                                        class="mr-2 h-1.5 w-1.5 rounded-full bg-stone-400"
-                                    ></span>
-                                    {permission}
-                                </div>
-                            {/each}
-                        </div>
-                    {:else}
-                        <span class="text-xs text-zinc-400 italic"
-                            >No permissions</span
-                        >
-                    {/if}
-                {/if}
-
-                {#if currentUserCanManageRoles() && space && assignableRoles.length > 0}
-                    <div class="w-full h-px bg-zinc-800 my-3"></div>
-                    <h3
-                        class="text-[11px] font-bold text-zinc-400 uppercase tracking-wide mb-2 text-left"
-                    >
-                        Assign Roles
-                    </h3>
-                    <div class="space-y-1.5 max-h-32 overflow-y-auto">
-                        {#each assignableRoles as role}
-                            {@const memberHasRole = selectedMember.roles.some(
-                                (mr) => mr.id === role.id,
-                            )}
-                            {@const toggleKey = `${selectedMember.id}-${role.id}`}
-                            <button
-                                class="w-fit flex items-center gap-1 px-2 py-0.5 rounded-full text-xs transition-colors disabled:opacity-50 {memberHasRole
-                                    ? 'bg-stone-600 hover:bg-stone-500 text-white'
-                                    : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-300'}"
-                                onclick={() => toggleMemberRole(role.id)}
-                                disabled={togglingRoles[toggleKey]}
-                            >
-                                <div
-                                    class="w-2.5 h-2.5 rounded-full"
-                                    style={roleBadgeStyle(role as any)}
-                                ></div>
-                                <span class="flex-1 text-left">{role.name}</span
-                                >
-                                {#if memberHasRole}
-                                    <span class="text-[10px]">✓</span>
-                                {/if}
-                            </button>
-                        {/each}
-                    </div>
-                {/if}
-            </div>
-        </div>
-    </div>
-{/if}

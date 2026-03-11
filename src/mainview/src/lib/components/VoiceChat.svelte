@@ -536,11 +536,23 @@ const voiceUsers = $derived((() => {
 						</div>
 					{/if}
 				{:else}
-					<UserAvatar
-						src={user.avatar_url}
-						name={user.username}
-						size={96}
-					/>
+					<div class="relative flex items-center justify-center">
+						{#if isSpeaking && !isForceMuted}
+							<span class="voice-pulse absolute size-[154px] rounded-full border border-emerald-300/30"></span>
+							<span class="voice-pulse-delayed absolute size-[136px] rounded-full border border-emerald-300/45"></span>
+							<span class="voice-glow absolute size-[118px] rounded-full bg-emerald-300/12"></span>
+						{/if}
+						<div class="relative">
+							<UserAvatar
+								src={user.avatar_url}
+								name={user.username}
+								size={96}
+								class={isSpeaking && !isForceMuted
+									? "voice-avatar-speaking"
+									: ""}
+							/>
+						</div>
+					</div>
 				{/if}
 
 				<div
@@ -593,5 +605,57 @@ const voiceUsers = $derived((() => {
 <style>
 	.grid-cols-auto-fit {
 		grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+	}
+
+	:global(.voice-avatar-speaking) {
+		box-shadow:
+			0 0 0 2px oklch(0.8 0.12 160 / 0.35),
+			0 0 30px oklch(0.8 0.12 160 / 0.2);
+		animation: voice-avatar-breath 0.9s ease-in-out infinite;
+	}
+
+	.voice-pulse {
+		animation: voice-pulse 1.1s ease-out infinite;
+	}
+
+	.voice-pulse-delayed {
+		animation: voice-pulse 1.1s ease-out 0.35s infinite;
+	}
+
+	.voice-glow {
+		animation: voice-glow 0.9s ease-in-out infinite;
+	}
+
+	@keyframes voice-pulse {
+		0% {
+			transform: scale(0.9);
+			opacity: 0.35;
+		}
+		100% {
+			transform: scale(1.08);
+			opacity: 0;
+		}
+	}
+
+	@keyframes voice-glow {
+		0%,
+		100% {
+			opacity: 0.35;
+			transform: scale(1);
+		}
+		50% {
+			opacity: 0.6;
+			transform: scale(1.06);
+		}
+	}
+
+	@keyframes voice-avatar-breath {
+		0%,
+		100% {
+			transform: scale(1);
+		}
+		50% {
+			transform: scale(1.03);
+		}
 	}
 </style>

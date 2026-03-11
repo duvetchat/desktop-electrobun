@@ -13,6 +13,12 @@ export default {
 		bun: {
 			entrypoint: "src/bun/index.ts",
 		},
+		mac: {
+			icon: "icon.iconset",
+		},
+		win: {
+			icon: "assets/icon.ico",
+		},
 		copy: {
 			"src/mainview/build/_app": "views/mainview/_app",
 
@@ -21,9 +27,7 @@ export default {
 
 			"src/mainview/build/sign-in.html": "views/mainview/sign-in.html",
 			"src/mainview/build/sign-up.html": "views/mainview/sign-up.html",
-			"src/mainview/build/forgot-password.html": "views/mainview/forgot-password.html",
-
-			"src/mainview/build/assets": "views/mainview/assets",
+			"src/mainview/build/forgot-password.html": "views/mainview/forgot-password.html"
 		},
 		watchIgnore: ["dist/**"],
 	},

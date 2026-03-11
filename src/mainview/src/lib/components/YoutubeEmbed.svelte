@@ -1,6 +1,6 @@
 <script lang="ts">
 import { onMount } from "svelte";
-import { Play as PlayIcon } from "@lucide/svelte";
+import { Play as PlayIcon, Youtube as YoutubeIcon } from "@lucide/svelte";
 
 const { videoId } = $props<{ videoId: string }>();
 
@@ -33,7 +33,7 @@ let expanded = $state(false);
 	>
 		<div class="p-3">
 			<div class="mb-4 flex items-center gap-1">
-				<img src="/assets/yt-logo.png" class="w-7" alt="youtube logo" />
+				<YoutubeIcon class="size-6 text-red-500" aria-hidden="true" />
 				<h4 class="text-xs text-zinc-400 font-semibold">YouTube</h4>
 			</div>
 			{#if metadata.author_name}
