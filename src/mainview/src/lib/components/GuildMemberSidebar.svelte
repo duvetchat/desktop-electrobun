@@ -1,5 +1,5 @@
 <script lang="ts">
-import { Crown as CrownSimpleIcon } from "lucide-svelte";
+import { Crown as CrownSimpleIcon } from "@lucide/svelte";
 import type {
 	MemberOnSidebar,
 	Role,
@@ -250,10 +250,19 @@ function openUserProfile(member: MemberOnSidebar, event: MouseEvent) {
 	showMemberPermissions = false;
 	if (typeof window === "undefined") return;
 
+	const cardWidth = 320;
+	const viewportPadding = 12;
 	const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
-	let x = rect.left - 336;
+	let x = rect.left - cardWidth - 12;
+	if (x < viewportPadding) {
+		x = Math.min(
+			rect.right + 12,
+			window.innerWidth - cardWidth - viewportPadding,
+		);
+	}
 	let y = rect.top;
-	if (y + 300 > window.innerHeight) y = window.innerHeight - 320;
+	if (y + 320 > window.innerHeight) y = window.innerHeight - 332;
+	if (y < viewportPadding) y = viewportPadding;
 	profilePosition = { x, y };
 }
 
@@ -337,14 +346,17 @@ async function toggleMemberRole(roleId: string) {
                 </div>
 
                 {#each group.members as member}
-                    <button
-                        type="button"
-                        class="group mb-0.5 flex h-10 w-full items-center px-3 text-zinc-200 hover:bg-zinc-800 hover:text-white {member.status ===
-                        'offline'
-                            ? 'opacity-60'
-                            : ''}"
-                        onclick={(e) => openUserProfile(member, e)}
-                    >
+					<button
+						type="button"
+						class="group mb-0.5 flex h-10 w-full items-center px-3 text-zinc-200 hover:bg-zinc-800 hover:text-white {member.status ===
+						'offline'
+							? 'opacity-60'
+							: ''}"
+						onclick={(e) => {
+							e.stopPropagation();
+							openUserProfile(member, e);
+						}}
+					>
                         <div class="flex min-w-0 items-center gap-2.5">
                             <div class="relative shrink-0">
                                 <UserAvatar
@@ -399,10 +411,10 @@ async function toggleMemberRole(roleId: string) {
 </div>
 
 {#if selectedMember}
-	<button type="button" class="fixed inset-0 z-100" onclick={closeUserProfile} aria-label="Close member profile"></button>
+	<button type="button" class="fixed inset-0 z-[300]" onclick={closeUserProfile} aria-label="Close member profile"></button>
     <div
-        class="fixed z-101 w-80 bg-zinc-900 rounded-xl shadow-2xl flex flex-col overflow-hidden border border-zinc-700 animate-in fade-in zoom-in-95 duration-100"
-        style="left: {profilePosition.x}px; top: {profilePosition.y}px;"
+		class="fixed z-[301] w-80 bg-zinc-900 rounded-xl shadow-2xl flex flex-col overflow-hidden border border-zinc-700 animate-in fade-in zoom-in-95 duration-100"
+		style="left: {profilePosition.x}px; top: {profilePosition.y}px;"
     >
         <!-- Banner -->
         <div

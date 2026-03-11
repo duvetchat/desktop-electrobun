@@ -1,5 +1,5 @@
 <script lang="ts">
-import { LoaderCircle, MicOff, MonitorUp, PhoneOff } from "lucide-svelte";
+import { LoaderCircle, MicOff, MonitorUp, PhoneOff } from "@lucide/svelte";
 import { onDestroy, onMount } from "svelte";
 import { SvelteSet } from "svelte/reactivity";
 import { onWebRTCEvent, sendEventMessage } from "$lib/api/ws/connection";
@@ -485,12 +485,12 @@ const voiceUsers = $derived((() => {
 							: 'h-64'} {isSpeaking && !user.muted
 					? 'border-transparent ring-2 ring-inset ring-stone-400'
 					: 'border-zinc-700 hover:border-zinc-500'}"
-				on:click={() =>
+				onclick={() =>
 					(focusedUserId =
 						focusedUserId === user.id ? null : user.id)}
 				role="button"
 				tabindex="0"
-				on:keydown={(e) => {
+				onkeydown={(e) => {
 					if (e.key === "Enter" || e.key === " ") {
 						e.preventDefault();
 						focusedUserId = focusedUserId === user.id ? null : user.id;
@@ -509,12 +509,12 @@ const voiceUsers = $derived((() => {
 						]
 							? 'opacity-100'
 							: 'opacity-0'}"
-						on:playing={() =>
+						onplaying={() =>
 							(videoPlayingStates = {
 								...videoPlayingStates,
 								[user.id]: true,
 							})}
-						on:waiting={() =>
+						onwaiting={() =>
 							(videoPlayingStates = {
 								...videoPlayingStates,
 								[user.id]: false,
@@ -575,14 +575,14 @@ const voiceUsers = $derived((() => {
 			class="rounded-full p-4 hover:bg-zinc-700 {isScreenSharing
 				? 'text-stone-200 bg-stone-400/20 hover:bg-stone-400/30'
 				: 'text-zinc-200'} transition-all"
-			on:click={toggleScreenShare}
+			onclick={toggleScreenShare}
 			aria-label="Share Screen"
 		>
 			<MonitorUp class="size-5" />
 		</button>
 		<button
 			class="p-4 rounded-full bg-red-500/20 hover:bg-red-500/40 text-red-400 transition-all"
-			on:click={leaveVoice}
+			onclick={leaveVoice}
 			aria-label="Leave Voice"
 		>
 			<PhoneOff class="size-5" />

@@ -3,7 +3,7 @@ import { onMount } from "svelte";
 import {
 	LoaderCircle as CircleNotchIcon,
 	Search as MagnifyingGlassIcon,
-} from "lucide-svelte";
+} from "@lucide/svelte";
 
 const { onSelect } = $props<{ onSelect: (url: string) => void }>();
 

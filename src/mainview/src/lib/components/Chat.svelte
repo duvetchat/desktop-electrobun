@@ -4,7 +4,7 @@ import {
 	Search as MagnifyingGlassIcon,
 	Bookmark as BookmarkSimpleIcon,
 	Hash as HashIcon,
-} from "lucide-svelte";
+} from "@lucide/svelte";
 import { Popover } from "bits-ui";
 
 import { onMount, onDestroy } from "svelte";
@@ -286,8 +286,8 @@ onMount(() => {
     {failedNonces}
     bind:editingMessageId
     bind:editContent
-    on:retry={(e) => retryMessage(e.detail)}
-    on:dismiss={(e) => dismissFailedMessage(e.detail)}
+    onRetry={retryMessage}
+    onDismiss={dismissFailedMessage}
   />
 
 	<div class="relative w-full">
@@ -306,8 +306,8 @@ onMount(() => {
         rows={1}
         bind:this={chatTextarea}
         bind:value={inputValue}
-        on:keydown={handleKeyDown}
-        on:input={(e) => {
+        onkeydown={handleKeyDown}
+        oninput={(e) => {
           const el = e.currentTarget as HTMLTextAreaElement;
           el.style.height = "auto";
           el.style.height = el.scrollHeight + "px";

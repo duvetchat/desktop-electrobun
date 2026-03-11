@@ -6,19 +6,6 @@ const config = {
 	compilerOptions: {
 		runes: true,
 	},
-	vitePlugin: {
-		dynamicCompileOptions({ filename, compileOptions }) {
-			const isLucide =
-				filename.includes("node_modules/lucide-svelte") ||
-				filename.includes("node_modules\\lucide-svelte");
-			if (isLucide) {
-				return {
-					...compileOptions,
-					runes: false,
-				};
-			}
-		},
-	},
 	// preprocess: vitePreprocess(),
 	kit: {
 		adapter: adapter({

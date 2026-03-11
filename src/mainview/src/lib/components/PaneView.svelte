@@ -25,7 +25,7 @@ import {
 	PanelRightOpen,
 	PanelLeftClose,
 	PanelLeftOpen,
-} from "lucide-svelte";
+} from "@lucide/svelte";
 
 // ── Voice portal: VoiceChat lives in +page.svelte; we teleport its
 // DOM node here so it survives splits without ever unmounting. ──────────
@@ -617,7 +617,7 @@ const childProps = $derived({
 				: 'h-1 cursor-row-resize'} bg-zinc-800 hover:bg-blue-500 active:bg-blue-400 transition-colors {isDragging
 				? 'bg-blue-500'
 				: ''}"
-			on:mousedown={startResize}
+			onmousedown={startResize}
 			aria-label="Resize split"
 		></button>
 
@@ -664,7 +664,7 @@ const childProps = $derived({
 					<button
 						type="button"
 						class="p-1.5 rounded-md text-zinc-400 hover:text-white hover:bg-zinc-800"
-						on:click={onToggleChannels}
+						onclick={onToggleChannels}
 						aria-label={showChannelsSidebar
 							? "Collapse channels panel"
 							: "Expand channels panel"}
@@ -682,7 +682,7 @@ const childProps = $derived({
 					<button
 						type="button"
 						class="p-1.5 rounded-md text-zinc-400 hover:text-white hover:bg-zinc-800"
-						on:click={onToggleMembers}
+						onclick={onToggleMembers}
 						aria-label={showMembersSidebar
 							? "Collapse members panel"
 							: "Expand members panel"}
@@ -705,7 +705,7 @@ const childProps = $derived({
                     type="button"
 					class="p-1 rounded text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 transition-colors"
                     title="Dividir horizontalmente"
-						on:click={splitH}
+						onclick={splitH}
                 >
                     <svg
                         xmlns="http://www.w3.org/2000/svg"
@@ -731,7 +731,7 @@ const childProps = $derived({
                     type="button"
 					class="p-1 rounded text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 transition-colors"
                     title="Dividir verticalmente"
-						on:click={splitV}
+						onclick={splitV}
                 >
                     <svg
                         xmlns="http://www.w3.org/2000/svg"
@@ -758,7 +758,7 @@ const childProps = $derived({
                         type="button"
 						class="p-1 rounded text-zinc-400 hover:text-red-400 hover:bg-zinc-800 transition-colors"
                         title="Cerrar panel"
-							on:click={onClose}
+							onclick={onClose}
                     >
                         <svg
                             xmlns="http://www.w3.org/2000/svg"
@@ -781,9 +781,9 @@ const childProps = $derived({
 		<!-- Content -->
 		<div
 			class="flex-1 flex relative min-h-0 min-w-0 overflow-hidden"
-			on:dragover={handleContentDragOver}
-			on:dragleave={handleContentDragLeave}
-			on:drop={handleContentDrop}
+			ondragover={handleContentDragOver}
+			ondragleave={handleContentDragLeave}
+			ondrop={handleContentDrop}
 			role="group"
 			aria-label="Pane content area"
 		>

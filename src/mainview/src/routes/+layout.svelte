@@ -1,12 +1,26 @@
 <script lang="ts">
-import "../app.css";
-import favicon from "$lib/assets/favicon.svg";
+  import "../app.css";
+  
+  import favicon from "$lib/assets/favicon.svg";
+  import Header from "$lib/components/Header.svelte";
 
-let { children } = $props();
+  import { setupWindowControls } from "$lib/window-controls";
+  import { onMount } from "svelte";
+
+  let { children } = $props();
+
+  onMount(() => {
+    setupWindowControls();
+  });
 </script>
 
 <svelte:head>
   <link rel="icon" href={favicon} />
 </svelte:head>
 
-{@render children()}
+<div class="flex h-[var(--app-height)] w-[var(--app-width)] flex-col overflow-hidden bg-stone-950 text-stone-100">
+	<Header />
+	<div class="min-h-0 flex-1 overflow-hidden">
+		{@render children()}
+	</div>
+</div>

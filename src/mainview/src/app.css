@@ -274,13 +274,16 @@
 		font-variation-settings: normal;
 		scrollbar-color: var(--bg-muted);
 		height: 100%;
+		background: #13110f;
 	}
 
 	body {
 		@apply bg-background text-foreground;
+		background: #13110f;
 		font-feature-settings:
 			"rlig" 1,
 			"calt" 1;
+		margin: 0;
 		height: var(--app-height);
 		width: var(--app-width);
 		overflow: hidden;
@@ -289,6 +292,7 @@
 	#svelte {
 		height: var(--app-height);
 		width: var(--app-width);
+		background: #13110f;
 	}
 
 	::selection {

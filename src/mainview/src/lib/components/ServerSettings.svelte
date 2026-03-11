@@ -5,11 +5,12 @@ import {
 	Users as UsersThreeIcon,
 	Settings as GearSixIcon,
 	X as XIcon,
-} from "lucide-svelte";
+} from "@lucide/svelte";
 import { Checkbox, Dialog } from "bits-ui";
 import { createRole, updateRole, deleteRole } from "$lib/api/roles";
 import { currentUser } from "$lib/stores.svelte";
 import { Permission } from "$lib/permissions";
+import UserAvatar from "$lib/components/UserAvatar.svelte";
 
 import type { GatewaySpace } from "$lib/types";
 
@@ -89,6 +90,7 @@ let editingRoleClearColors = $state(false);
 
 let isCreating = $state(false);
 let isDeleting = $state<Record<string, boolean>>({});
+let selectedMemberUserId = $state<string | null>(null);
 const numberFormatter = new Intl.NumberFormat(
 	typeof navigator !== "undefined" ? navigator.language : "en-US",
 );
@@ -307,13 +309,40 @@ function cancelEdit() {
 function close() {
 	open = false;
 	cancelEdit();
+	selectedMemberUserId = null;
 }
+
+$effect(() => {
+	if (activeSection !== "members") {
+		selectedMemberUserId = null;
+	}
+});
+
+const selectedSettingsMember = $derived(
+	space && selectedMemberUserId
+		? (space.members ?? []).find((m) => m.user_id === selectedMemberUserId) ?? null
+		: null,
+);
+
+const selectedSettingsUser = $derived(
+	space && selectedMemberUserId
+		? space.users.find((u) => u.id === selectedMemberUserId) ?? null
+		: null,
+);
+
+const selectedSettingsRoles = $derived(
+	space && selectedMemberUserId
+		? (space.member_roles[selectedMemberUserId] ?? [])
+				.map((rid) => space.roles.find((r) => r.id === rid))
+				.filter((role): role is NonNullable<typeof role> => Boolean(role))
+		: [],
+);
 </script>
 
 <Dialog.Root bind:open>
     <Dialog.Portal>
-        <Dialog.Overlay class="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm" />
-        <Dialog.Content class="fixed z-51 inset-0 flex items-center justify-center p-4">
+        <Dialog.Overlay class="fixed inset-0 z-[500] bg-black/70 backdrop-blur-sm" />
+        <Dialog.Content class="fixed inset-0 z-[501] flex items-center justify-center p-4">
             <div class="w-full max-w-4xl max-h-[85vh] h-[85vh] bg-zinc-900 rounded-xl shadow-2xl flex overflow-hidden border border-zinc-700 text-zinc-100">
             <!-- Left sidebar -->
             <aside
@@ -828,79 +857,76 @@ function close() {
                                 You don't have permission to manage roles.
                             </p>
                         {/if}
-                    {:else if activeSection === "members"}
-                        {#if space}
-                            <div class="space-y-2">
-                                <h3 class="text-sm font-semibold text-white">
-                                    Members ({formatCount(space.members?.length ?? 0)})
-                                </h3>
-                                {#each space.members ?? [] as member}
-                                    {@const user = space.users.find(
-                                        (u) => u.id === member.user_id,
-                                    )}
-                                    <div
-                                        class="flex items-center gap-3 bg-zinc-800 rounded-lg px-3 py-2.5 border border-zinc-700"
-                                    >
-                                        {#if user?.avatar}
-                                            <img
-                                                src={user.avatar}
-                                                alt={user.username}
-                                                class="w-8 h-8 rounded-full"
-                                            />
-                                        {:else}
-                                            <div
-                                                class="w-8 h-8 rounded-full bg-zinc-700 flex items-center justify-center text-xs font-bold text-zinc-300"
-                                            >
-                                                {user?.username
-                                                    ?.at(0)
-                                                    ?.toUpperCase() ?? "?"}
-                                            </div>
-                                        {/if}
-                                        <div class="flex-1 min-w-0">
-                                            <p
-														class="text-sm text-zinc-200 font-medium truncate"
-                                            >
-                                                {member.alias ??
-                                                    user?.username ??
-													"Unknown member"}
-                                            </p>
-                                            <p
-                                                class="text-xs text-zinc-400 truncate"
-                                            >
-                                                {(
-                                                    space.member_roles[
-                                                        member.user_id
-                                                    ] ?? []
-                                                )
-                                                    .map(
-                                                        (rid) =>
-                                                            space.roles.find(
-                                                                (r) =>
-                                                                    r.id ===
-                                                                    rid,
-                                                            )?.name,
-                                                    )
-                                                    .filter(Boolean)
+					{:else if activeSection === "members"}
+						{#if space}
+							<div class="space-y-3">
+								<h3 class="text-sm font-semibold text-white">
+									Members ({formatCount(space.members?.length ?? 0)})
+								</h3>
+								{#each space.members ?? [] as member}
+									{@const user = space.users.find(
+										(u) => u.id === member.user_id,
+									)}
+									<button
+										type="button"
+										class="flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition-colors {selectedMemberUserId === member.user_id ? 'border-stone-500/50 bg-zinc-700/60' : 'border-zinc-700 bg-zinc-800 hover:bg-zinc-750'}"
+										onclick={() => (selectedMemberUserId = member.user_id)}
+									>
+										<UserAvatar src={user?.avatar ?? null} name={user?.username ?? "Unknown"} size={32} />
+										<div class="flex-1 min-w-0">
+											<p class="truncate text-sm font-medium text-zinc-200">
+												{member.alias ?? user?.username ?? "Unknown member"}
+											</p>
+											<p class="truncate text-xs text-zinc-400">
+												{(
+													space.member_roles[member.user_id] ?? []
+												)
+													.map((rid) => space.roles.find((r) => r.id === rid)?.name)
+													.filter(Boolean)
 													.join(", ") || "No roles assigned"}
-                                            </p>
-                                        </div>
-                                    </div>
-                                {/each}
-                            </div>
-                        {/if}
-                    {/if}
+											</p>
+										</div>
+									</button>
+								{/each}
+
+								{#if selectedSettingsMember && selectedSettingsUser}
+									<div class="rounded-xl border border-zinc-700 bg-zinc-850 p-4">
+										<div class="mb-3 flex items-center justify-between">
+											<h4 class="text-xs font-semibold tracking-wide text-zinc-400 uppercase">Member Details</h4>
+											<button type="button" class="rounded px-2 py-1 text-xs text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-200" onclick={() => (selectedMemberUserId = null)}>Close</button>
+										</div>
+										<div class="flex items-center gap-3">
+											<UserAvatar src={selectedSettingsUser.avatar ?? null} name={selectedSettingsUser.username} size={40} />
+											<div class="min-w-0">
+												<p class="truncate text-sm font-semibold text-zinc-100">{selectedSettingsMember.alias ?? selectedSettingsUser.username}</p>
+												<p class="truncate text-xs text-zinc-400">@{selectedSettingsUser.username}</p>
+												<p class="truncate text-[11px] text-zinc-500">User ID: {selectedSettingsUser.id}</p>
+											</div>
+										</div>
+										<div class="mt-3">
+											<p class="mb-2 text-[11px] font-semibold tracking-wide text-zinc-400 uppercase">Roles</p>
+											{#if selectedSettingsRoles.length > 0}
+												<div class="flex flex-wrap gap-1.5">
+													{#each selectedSettingsRoles as role}
+														<span class="rounded-md border border-zinc-700 bg-zinc-800 px-2 py-1 text-xs text-zinc-200">{role.name}</span>
+													{/each}
+												</div>
+											{:else}
+												<p class="text-xs text-zinc-500">No roles assigned</p>
+											{/if}
+										</div>
+									</div>
+								{/if}
+							</div>
+						{/if}
+					{/if}
                 </div>
             </div>
         </div>
         </Dialog.Content>
     </Dialog.Portal>
 </Dialog.Root>
-
 <style>
-    :global(.z-51) {
-        z-index: 51;
-    }
-
     .color-swatch {
         width: 28px;
         height: 28px;

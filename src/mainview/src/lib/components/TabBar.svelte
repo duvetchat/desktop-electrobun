@@ -1,5 +1,5 @@
 <script lang="ts">
-import { Hash as HashIcon, Volume2 as SpeakerSimpleHighIcon } from "lucide-svelte";
+import { Hash as HashIcon, Volume2 as SpeakerSimpleHighIcon } from "@lucide/svelte";
 import type { Tab } from "$lib/types";
 
 let {
@@ -140,9 +140,9 @@ const previewTabs = $derived((() => {
         : ''}"
     role="tablist"
     tabindex="-1"
-    on:dragover={handleBarDragOver}
-    on:dragleave={handleBarDragLeave}
-    on:drop={handleBarDrop}
+    ondragover={handleBarDragOver}
+    ondragleave={handleBarDragLeave}
+    ondrop={handleBarDrop}
 >
     {#each previewTabs as tab, i (tab.channelId)}
         <div
@@ -155,10 +155,10 @@ const previewTabs = $derived((() => {
             tabindex="0"
             aria-selected={tab.channelId === activeTabId}
             draggable="true"
-            on:dragstart={(e) => handleTabDragStart(e, tab.origIndex)}
-            on:dragend={handleDragEnd}
-            on:click={() => onSelect(tab.channelId)}
-            on:keydown={(e) =>
+            ondragstart={(e) => handleTabDragStart(e, tab.origIndex)}
+            ondragend={handleDragEnd}
+            onclick={() => onSelect(tab.channelId)}
+            onkeydown={(e) =>
                 (e.key === "Enter" || e.key === " ") && onSelect(tab.channelId)}
             bind:this={tabEls[i]}
         >
@@ -182,7 +182,8 @@ const previewTabs = $derived((() => {
             <button
                 type="button"
                 class="flex items-center justify-center opacity-0 group-hover:opacity-60 hover:opacity-100 ml-0.5 rounded p-0.5 hover:bg-zinc-700 transition-opacity text-zinc-300"
-                on:click|stopPropagation={() => {
+                onclick={(e) => {
+					e.stopPropagation();
 					onClose(tab.channelId);
 				}}
                 aria-label="Close tab"

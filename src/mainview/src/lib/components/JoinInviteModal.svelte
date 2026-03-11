@@ -1,5 +1,5 @@
 <script lang="ts">
-import { X as XIcon } from "lucide-svelte";
+import { X as XIcon } from "@lucide/svelte";
 import { Dialog } from "bits-ui";
 import { getInvite, joinInvite } from "$lib/api/invites";
 import type { InviteInfo } from "$lib/api/invites";
@@ -79,7 +79,7 @@ async function handleJoin() {
                 </h2>
                 <button
                     class="text-zinc-400 hover:text-white hover:bg-zinc-800 p-1.5 rounded-lg transition-colors"
-                    on:click={() => (open = false)}
+                    onclick={() => (open = false)}
                     aria-label="Close"
                 >
                     <XIcon class="size-5" />
@@ -138,13 +138,13 @@ async function handleJoin() {
                     <div class="flex gap-2 justify-end">
                         <button
                             class="px-4 py-2 text-sm rounded-md text-zinc-300 hover:text-white hover:bg-zinc-800 transition-colors"
-                            on:click={() => (open = false)}
+                            onclick={() => (open = false)}
                         >
                             Cancel
                         </button>
                         <button
                             class="px-4 py-2 text-sm rounded-md bg-stone-600 hover:bg-stone-500 text-white font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                            on:click={handleJoin}
+                            onclick={handleJoin}
                             disabled={joining}
                         >
                             {joining ? "Joining…" : "Accept Invite"}

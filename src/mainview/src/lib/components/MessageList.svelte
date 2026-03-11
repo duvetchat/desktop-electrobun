@@ -1,6 +1,6 @@
 <script lang="ts">
 import { computeRoomPermissions, Permission } from "$lib/permissions";
-import { createEventDispatcher, onDestroy, onMount } from "svelte";
+import { onDestroy, onMount } from "svelte";
 import { updateMessage, deleteMessage } from "$lib/api/messages";
 import { currentUser } from "$lib/stores.svelte";
 
@@ -22,6 +22,8 @@ let {
 	isLoadingMore = false,
 	hasMoreMessages = true,
 	onLoadMore = () => {},
+	onRetry = () => {},
+	onDismiss = () => {},
 	failedNonces = new Set<string>(),
 	editingMessageId = $bindable<string | null>(null),
 	editContent = $bindable(""),
@@ -34,15 +36,12 @@ let {
 	isLoadingMore?: boolean;
 	hasMoreMessages?: boolean;
 	onLoadMore?: () => Promise<void> | void;
+	onRetry?: (message: Message) => void;
+	onDismiss?: (nonce: string) => void;
 	failedNonces?: Set<string>;
 	editingMessageId?: string | null;
 	editContent?: string;
 } = $props();
-
-const dispatch = createEventDispatcher<{
-	retry: Message;
-	dismiss: string;
-}>();
 
 // ── State ──────────────────────────────────────────────────────────────────
 let scrollEl: HTMLElement;
@@ -606,13 +605,13 @@ function currentUserCanManageMessages(): boolean {
                     >
                         <button
                             class="px-2 py-1.5 text-xs text-stone-300 hover:bg-zinc-600 transition-colors"
-                            onclick={() => dispatch("retry", message)}
+							onclick={() => onRetry(message)}
                             >Retry</button
                         >
                         <div class="w-px bg-zinc-800"></div>
                         <button
                             class="px-2 py-1.5 text-xs text-zinc-400 hover:text-white hover:bg-zinc-600 transition-colors"
-                            onclick={() => dispatch("dismiss", message.nonce!)}
+							onclick={() => onDismiss(message.nonce!)}
                             >Dismiss</button
                         >
                     </div>

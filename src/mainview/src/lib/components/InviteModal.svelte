@@ -4,7 +4,7 @@ import {
 	Link2 as LinkSimpleIcon,
 	Copy as CopySimpleIcon,
 	Check as CheckIcon,
-} from "lucide-svelte";
+} from "@lucide/svelte";
 import { Dialog } from "bits-ui";
 import { createRoomInvite } from "$lib/api/rooms";
 import type { Channel } from "$lib/types";
@@ -82,7 +82,7 @@ function copyLink() {
                 </div>
                 <button
                     class="text-zinc-400 hover:text-white hover:bg-zinc-800 p-1.5 rounded-lg transition-colors"
-                    on:click={() => (open = false)}
+                    onclick={() => (open = false)}
                     aria-label="Close"
                 >
                     <XIcon class="size-5" />
@@ -108,7 +108,7 @@ function copyLink() {
                     </p>
                     <button
                         class="w-full py-2 rounded-lg bg-zinc-800 text-sm text-zinc-200 hover:bg-zinc-700 transition-colors"
-                        on:click={generate}
+                        onclick={generate}
                     >
                         Try again
                     </button>
@@ -120,14 +120,14 @@ function copyLink() {
                             readonly
                             value={inviteLink}
                             class="flex-1 min-w-0 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:ring-1 focus:ring-stone-500 font-mono"
-                            on:click={() => linkInput?.select()}
+                            onclick={() => linkInput?.select()}
                         />
                         <button
                             class="shrink-0 flex items-center gap-1.5 px-3 py-2.5 rounded-lg text-sm font-medium text-white transition-colors
                             {copied
                                 ? 'bg-stone-600 hover:bg-stone-500'
                                 : 'bg-stone-600 hover:bg-stone-500'}"
-                            on:click={copyLink}
+                            onclick={copyLink}
                             aria-label="Copy link"
                         >
                             {#if copied}

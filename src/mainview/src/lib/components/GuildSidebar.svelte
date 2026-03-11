@@ -3,9 +3,9 @@ import {
 	Plus as PlusIcon,
 	ChevronDown as CaretDownIcon,
 	FolderPlus as FolderPlusIcon,
-} from "lucide-svelte";
+} from "@lucide/svelte";
 import { ContextMenu, Dialog, Tabs } from "bits-ui";
-import { createEventDispatcher, onMount } from "svelte";
+import { onMount } from "svelte";
 import type { Guild } from "$lib/types";
 import { createSpace } from "$lib/api/spaces";
 import { leaveSpace } from "$lib/api/spaces";
@@ -14,13 +14,14 @@ import JoinInviteModal from "$lib/components/JoinInviteModal.svelte";
 let {
 	guilds,
 	activeGuildId = null,
+	onSelect = () => {},
 }: {
 	guilds: Guild[];
 	activeGuildId?: string | null;
+	onSelect?: (guildId: string) => void;
 } = $props();
 
-const dispatch = createEventDispatcher<{ select: string }>();
-const selectGuild = (guild: Guild) => dispatch("select", guild.id);
+const selectGuild = (guild: Guild) => onSelect(guild.id);
 
 type FolderGroup = {
 	id: string;
@@ -208,14 +209,14 @@ async function handleLeave(guildId: string) {
 	<div class="flex flex-col items-center justify-center gap-1.5 py-2">
 		<button
 			title="Add server"
-			on:click={openModal}
+			onclick={openModal}
 			class="flex size-9 items-center justify-center rounded-lg bg-stone-700 text-stone-100 hover:bg-stone-600"
 		>
 			<PlusIcon class="size-4" />
 		</button>
 		<button
 			title="Create folder"
-			on:click={createFolder}
+			onclick={createFolder}
 			class="flex size-9 items-center justify-center rounded-lg border border-stone-700 bg-stone-900 text-stone-200 hover:bg-stone-800"
 		>
 			<FolderPlusIcon class="size-4" />
@@ -227,7 +228,7 @@ async function handleLeave(guildId: string) {
 			<button
 				title={group.name}
 				class="mx-auto mt-1 flex size-9 items-center justify-center rounded-md border border-stone-700 bg-stone-900 text-[11px] font-bold text-stone-200 hover:bg-stone-800"
-				on:click={() => toggleFolder(group.id)}
+				onclick={() => toggleFolder(group.id)}
 				aria-expanded={!group.collapsed}
 			>
 				{group.name.slice(0, 1).toUpperCase()}
@@ -240,7 +241,7 @@ async function handleLeave(guildId: string) {
 								<button
 									title={guild.name}
 									aria-pressed={guild.id === activeGuildId}
-									on:click={() => selectGuild(guild)}
+									onclick={() => selectGuild(guild)}
 									class="group/btn relative size-10 rounded-lg transition-all duration-150 select-none"
 								>
 									{#if guild.icon_url}
@@ -284,7 +285,7 @@ async function handleLeave(guildId: string) {
 							<button
 								title={guild.name}
 								aria-pressed={guild.id === activeGuildId}
-								on:click={() => selectGuild(guild)}
+								onclick={() => selectGuild(guild)}
 								class="group/btn relative size-10 rounded-lg transition-all duration-150 select-none"
 							>
 								{#if guild.icon_url}
@@ -351,7 +352,7 @@ async function handleLeave(guildId: string) {
 							<p class="text-red-400 text-xs">{createError}</p>
 						{/if}
 						<div class="flex justify-end">
-							<button on:click={handleCreate} disabled={creating || !serverName.trim()} class="px-4 py-2 text-sm rounded-md bg-stone-600 hover:bg-stone-500 text-white font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed">{creating ? "Creating…" : "Create"}</button>
+							<button onclick={handleCreate} disabled={creating || !serverName.trim()} class="px-4 py-2 text-sm rounded-md bg-stone-600 hover:bg-stone-500 text-white font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed">{creating ? "Creating…" : "Create"}</button>
 						</div>
 					</Tabs.Content>
 
@@ -361,7 +362,7 @@ async function handleLeave(guildId: string) {
 							<input id="join-code" type="text" bind:value={joinInputValue} placeholder="abc123 or invite.html?code=abc123" class="bg-zinc-800 text-white rounded-md px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-stone-500 placeholder:text-zinc-500 font-mono" />
 						</div>
 						<div class="flex justify-end">
-							<button on:click={handleJoinSubmit} disabled={!joinInputValue.trim()} class="px-4 py-2 text-sm rounded-md bg-stone-600 hover:bg-stone-500 text-white font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed">Preview</button>
+							<button onclick={handleJoinSubmit} disabled={!joinInputValue.trim()} class="px-4 py-2 text-sm rounded-md bg-stone-600 hover:bg-stone-500 text-white font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed">Preview</button>
 						</div>
 					</Tabs.Content>
 				</Tabs.Root>
@@ -382,7 +383,7 @@ async function handleLeave(guildId: string) {
 	>
 		{leaveError}
 		<button
-			on:click={() => (leaveError = "")}
+			onclick={() => (leaveError = "")}
 			class="ml-3 text-red-400 hover:text-white">✕</button
 		>
 	</div>

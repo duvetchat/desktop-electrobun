@@ -1,6 +1,6 @@
 <script lang="ts">
 import { onMount } from "svelte";
-import { Play as PlayIcon } from "lucide-svelte";
+import { Play as PlayIcon } from "@lucide/svelte";
 
 const { videoId } = $props<{ videoId: string }>();
 

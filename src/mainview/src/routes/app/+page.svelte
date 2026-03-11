@@ -341,14 +341,14 @@ setContext("voicePortal", {
   <GuildSideBar
     {guilds}
     activeGuildId={sidebarSpaceId}
-    on:select={(e) => handleGuildSelect(e.detail)}
+    onSelect={handleGuildSelect}
   />
   {#if sidebarGuild && showChannelsSidebar}
     <ChannelsSidebar
       guild={sidebarGuild}
       channels={sidebarGuild.channels}
       activeChannelId={sidebarActiveChannelId}
-      on:select={(e) => onSidebarSelect(e.detail)}
+      onSelect={onSidebarSelect}
     />
   {/if}
 

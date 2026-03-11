@@ -1,6 +1,6 @@
 <script lang="ts">
 import { onMount } from "svelte";
-import { ExternalLink as ArrowSquareOutIcon } from "lucide-svelte";
+import { ExternalLink as ArrowSquareOutIcon } from "@lucide/svelte";
 
 const { url } = $props<{ url: string }>();
 

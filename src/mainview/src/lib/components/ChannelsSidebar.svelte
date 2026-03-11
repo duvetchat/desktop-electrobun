@@ -18,10 +18,9 @@ import {
 	Link2 as LinkSimpleIcon,
 	ChevronDown as ChevronDownIcon,
 	ChevronRight as ChevronRightIcon,
-} from "lucide-svelte";
-import { Dialog, DropdownMenu } from "bits-ui";
+} from "@lucide/svelte";
+import { ContextMenu, Dialog, DropdownMenu } from "bits-ui";
 import { onMount } from "svelte";
-import { createEventDispatcher } from "svelte";
 import type { Guild, Channel, RoomType } from "$lib/types";
 import { hasPermission, Permission } from "$lib/permissions";
 import ServerSettings from "$lib/components/ServerSettings.svelte";
@@ -41,17 +40,17 @@ import { sendEventMessage } from "$lib/api/ws/connection";
 import { fly } from "svelte/transition";
 import { getHostURL } from '$lib/common/common';
 
-const dispatch = createEventDispatcher<{ select: string }>();
-
 // props
 let {
 	guild,
 	channels,
 	activeChannelId = null,
+	onSelect = () => {},
 }: {
 	guild: Guild;
 	channels: Channel[];
 	activeChannelId?: string | null;
+	onSelect?: (channelId: string) => void;
 } = $props();
 
 let buttons = $state<(HTMLElement | null)[]>([]);
@@ -83,9 +82,6 @@ let newChannelType = $state<RoomType>(1);
 let newChannelCategory = $state<string | null>(null);
 let isCreating = $state(false);
 
-let contextMenuX = $state(0);
-let contextMenuY = $state(0);
-let contextMenuChannel = $state<Channel | null>(null);
 let confirmDeleteChannel = $state<Channel | null>(null);
 let isDeletingChannel = $state(false);
 
@@ -93,7 +89,6 @@ let showInviteModal = $state(false);
 let inviteModalChannel = $state<Channel | null>(null);
 
 function openInviteModal(channel: Channel) {
-	contextMenuChannel = null;
 	inviteModalChannel = channel;
 	showInviteModal = true;
 }
@@ -132,9 +127,7 @@ function toggleDeafen() {
 	}
 }
 
-let showMicMenu = $state(false);
-let micMenuX = $state(0);
-let micMenuY = $state(0);
+let micContextOpen = $state(false);
 let availableMics = $state<MediaDeviceInfo[]>([]);
 
 let ping = $state<number | null>(null);
@@ -184,17 +177,10 @@ function pingBgColor(ms: number | null): string {
 	if (ms < 250) return "bg-orange-950";
 	return "bg-red-950";
 }
-async function openMicMenu(e: MouseEvent) {
-	e.preventDefault();
+async function loadAvailableMics() {
 	try {
 		const devices = await navigator.mediaDevices.enumerateDevices();
 		availableMics = devices.filter((d) => d.kind === "audioinput");
-
-		// Calculate position relative to the viewport
-		micMenuX = e.clientX;
-		micMenuY = e.clientY - availableMics.length * 40 - 20; // Position above the cursor since it's at the bottom
-
-		showMicMenu = true;
 	} catch (err) {
 		console.error("Failed to fetch media devices:", err);
 	}
@@ -202,8 +188,14 @@ async function openMicMenu(e: MouseEvent) {
 
 function selectMic(deviceId: string) {
 	$selectedMicId = deviceId;
-	showMicMenu = false;
+	micContextOpen = false;
 }
+
+$effect(() => {
+	if (micContextOpen) {
+		void loadAvailableMics();
+	}
+});
 
 async function handleCreateChannel() {
 	if (!newChannelName.trim() || isCreating) return;
@@ -226,13 +218,6 @@ async function handleCreateChannel() {
 	} finally {
 		isCreating = false;
 	}
-}
-
-function openContextMenu(e: MouseEvent, channel: Channel) {
-	e.preventDefault();
-	contextMenuX = e.clientX;
-	contextMenuY = e.clientY;
-	contextMenuChannel = channel;
 }
 
 async function handleDeleteChannel() {
@@ -302,7 +287,7 @@ function getSubChannels(categoryId: string) {
 
 function selectChannel(channel: Channel) {
 	if (channel.type !== "category") {
-		dispatch("select", channel.id);
+		onSelect(channel.id);
 	}
 }
 
@@ -390,63 +375,95 @@ onMount(() => {
 		</div>
 		{#each sidebarItems as item}
 			{#if item.kind === "category"}
-				<button
-					type="button"
-					class="flex h-10 w-full items-center gap-1.5 rounded-md border-0 bg-transparent px-3 text-left text-[11px] font-semibold tracking-wide text-zinc-400 uppercase hover:bg-stone-800/40 hover:text-zinc-200"
-					on:click={() => toggleCategory(item.channel.id)}
-					on:contextmenu={(e) => openContextMenu(e, item.channel)}
-					aria-expanded={expanded[item.channel.id]}
-				>
-					{#if expanded[item.channel.id]}
-						<ChevronDownIcon class="size-3.5 shrink-0" aria-hidden="true" />
-					{:else}
-						<ChevronRightIcon class="size-3.5 shrink-0" aria-hidden="true" />
-					{/if}
-					<span>{item.channel.name}</span>
-				</button>
+				{@const categoryRoom = space?.rooms.find((r) => r.id === item.channel.id)}
+				{@const canManageCategory =
+					space && categoryRoom
+						? hasPermission(space, categoryRoom, Permission.ManageChannels)
+						: false}
+				<ContextMenu.Root>
+					<ContextMenu.Trigger>
+						<button
+							type="button"
+							class="flex h-10 w-full items-center gap-1.5 rounded-md border-0 bg-transparent px-3 text-left text-[11px] font-semibold tracking-wide text-zinc-400 uppercase hover:bg-stone-800/40 hover:text-zinc-200"
+							onclick={() => toggleCategory(item.channel.id)}
+							aria-expanded={expanded[item.channel.id]}
+						>
+							{#if expanded[item.channel.id]}
+								<ChevronDownIcon class="size-3.5 shrink-0" aria-hidden="true" />
+							{:else}
+								<ChevronRightIcon class="size-3.5 shrink-0" aria-hidden="true" />
+							{/if}
+							<span>{item.channel.name}</span>
+						</button>
+					</ContextMenu.Trigger>
+					<ContextMenu.Portal>
+						<ContextMenu.Content class="z-200 min-w-44 rounded-lg border border-zinc-700 bg-zinc-800 py-1 shadow-2xl">
+							<ContextMenu.Item class="w-full px-3 py-2 text-left text-sm text-zinc-100 hover:bg-zinc-700 transition-colors" onSelect={() => navigator.clipboard.writeText(item.channel.id)}>
+								<div class="flex items-center gap-2">
+									<CopySimpleIcon class="size-4 text-zinc-400" />
+									Copy Channel ID
+								</div>
+							</ContextMenu.Item>
+							{#if canManageCategory}
+								<div class="my-1 border-t border-zinc-700"></div>
+								<ContextMenu.Item class="w-full px-3 py-2 text-left text-sm text-red-400 hover:bg-zinc-700 transition-colors" onSelect={() => (confirmDeleteChannel = item.channel)}>
+									<div class="flex items-center gap-2">
+										<TrashSimpleIcon class="size-4" />
+										Delete Channel
+									</div>
+								</ContextMenu.Item>
+							{/if}
+						</ContextMenu.Content>
+					</ContextMenu.Portal>
+				</ContextMenu.Root>
 			{:else}
 				{@const channel = item.channel}
 				{@const buttonIndex = clickableChannels.findIndex(
 					(c) => c.id === channel.id,
 				)}
 				{@const room = space?.rooms.find((r) => r.id === channel.id)}
+				{@const canManage =
+					space && room
+						? hasPermission(space, room, Permission.ManageChannels)
+						: false}
 				{@const canJoin =
 					channel.type !== "voice" ||
 					(space &&
 						room &&
 						hasPermission(space, room, Permission.JoinVoice))}
 				<div role="listitem" class="group/channel">
-					<button
-					class="flex h-10 w-full items-center gap-1.5 rounded-lg px-3.5 text-left
+					<ContextMenu.Root>
+						<ContextMenu.Trigger>
+							<button
+							class="flex h-10 w-full items-center gap-1.5 rounded-lg px-3.5 text-left
 						{channel.id === activeChannelId
 							? 'bg-stone-700 text-stone-100 ring-1 ring-stone-500/40'
 							: 'hover:bg-stone-800 hover:text-stone-100 text-stone-300'}
 						{!canJoin ? 'opacity-50 cursor-not-allowed text-zinc-500' : ''}"
-						aria-pressed={channel.id === activeChannelId}
-						title={channel.name}
-						draggable="true"
-						on:dragstart={(e) => {
-							e.dataTransfer!.effectAllowed = "copy";
-							e.dataTransfer!.setData(
-								"text/plain",
-								JSON.stringify({
-									type: "channel",
-									channelId: channel.id,
-									channelName: channel.name,
-									channelType: channel.type,
-									spaceId: guild.id,
-								}),
-							);
-						}}
-						on:click={() => canJoin && selectChannel(channel)}
-						on:contextmenu={(e) => openContextMenu(e, channel)}
-						on:dblclick={() =>
-							canJoin &&
-							channel.type === "voice" &&
-							joinVoiceChannel(channel)}
-						on:keydown={(e) => canJoin && onKeyDown(e, buttonIndex)}
-						use:register={buttonIndex}
-					>
+								aria-pressed={channel.id === activeChannelId}
+								title={channel.name}
+								draggable="true"
+								ondragstart={(e) => {
+									e.dataTransfer!.effectAllowed = "copy";
+									e.dataTransfer!.setData(
+										"text/plain",
+										JSON.stringify({
+											type: "channel",
+											channelId: channel.id,
+											channelName: channel.name,
+											channelType: channel.type,
+											spaceId: guild.id,
+										}),
+									);
+								}}
+								onclick={() => canJoin && selectChannel(channel)}
+								ondblclick={() =>
+									canJoin &&
+									channel.type === "voice" &&
+									joinVoiceChannel(channel)}
+								onkeydown={(e) => canJoin && onKeyDown(e, buttonIndex)}
+								use:register={buttonIndex}
+							>
 						<span
 							class="relative shrink-0 {channel.id === activeChannelId
 								? 'text-white'
@@ -467,7 +484,36 @@ onMount(() => {
 						</span>
 						<span class="min-w-0 flex-1 truncate">{channel.name}</span>
 						<DotsThreeVerticalIcon class="size-3.5 shrink-0 text-zinc-500 opacity-0 transition-opacity group-hover/channel:opacity-100" />
-					</button>
+							</button>
+						</ContextMenu.Trigger>
+						<ContextMenu.Portal>
+							<ContextMenu.Content class="z-200 min-w-44 rounded-lg border border-zinc-700 bg-zinc-800 py-1 shadow-2xl">
+								<ContextMenu.Item class="w-full px-3 py-2 text-left text-sm text-zinc-100 hover:bg-zinc-700 transition-colors" onSelect={() => navigator.clipboard.writeText(channel.id)}>
+									<div class="flex items-center gap-2">
+										<CopySimpleIcon class="size-4 text-zinc-400" />
+										Copy Channel ID
+									</div>
+								</ContextMenu.Item>
+								{#if channel.type !== "category"}
+									<ContextMenu.Item class="w-full px-3 py-2 text-left text-sm text-zinc-100 hover:bg-zinc-700 transition-colors" onSelect={() => openInviteModal(channel)}>
+										<div class="flex items-center gap-2">
+											<LinkSimpleIcon class="size-4 text-zinc-400" />
+											Invite People
+										</div>
+									</ContextMenu.Item>
+								{/if}
+								{#if canManage}
+									<div class="my-1 border-t border-zinc-700"></div>
+									<ContextMenu.Item class="w-full px-3 py-2 text-left text-sm text-red-400 hover:bg-zinc-700 transition-colors" onSelect={() => (confirmDeleteChannel = channel)}>
+										<div class="flex items-center gap-2">
+											<TrashSimpleIcon class="size-4" />
+											Delete Channel
+										</div>
+									</ContextMenu.Item>
+								{/if}
+							</ContextMenu.Content>
+						</ContextMenu.Portal>
+					</ContextMenu.Root>
 					{#if channel.type === "voice" && channel.voiceUsers && channel.voiceUsers.length > 0}
 						<div class="pl-8 py-1 space-y-1">
 							{#each channel.voiceUsers as user (user.id)}
@@ -563,7 +609,7 @@ onMount(() => {
 					<button
 					class="p-2 rounded-full hover:bg-zinc-700 hover:text-zinc-200 transition-colors text-zinc-400"
 						aria-label="Disconnect"
-						on:click={() => ($activeVoiceRoomId = null)}
+						onclick={() => ($activeVoiceRoomId = null)}
 					>
 						<PhoneDisconnectIcon class="size-4" />
 					</button>
@@ -600,27 +646,49 @@ onMount(() => {
 			</div>
 
 			<div class="flex items-center text-zinc-400 shrink-0 relative">
-				<button
-					class="h-10 w-10 flex items-center justify-center rounded-lg hover:bg-zinc-800 transition-colors"
-					class:text-red-400={$isMuted}
-					class:hover:bg-zinc-700={canSpeak}
-					class:opacity-50={!canSpeak}
-					class:cursor-not-allowed={!canSpeak}
-					aria-label="Toggle Mute"
-					on:click={() => canSpeak && toggleMute()}
-					on:contextmenu={(e) => canSpeak && openMicMenu(e)}
-				>
-					{#if $isMuted}
-						<MicrophoneSlashIcon class="size-5" />
-					{:else}
-						<MicrophoneIcon class="size-5" />
-					{/if}
-				</button>
+				<ContextMenu.Root bind:open={micContextOpen}>
+					<ContextMenu.Trigger>
+						<button
+							class="h-10 w-10 flex items-center justify-center rounded-lg hover:bg-zinc-800 transition-colors"
+							class:text-red-400={$isMuted}
+							class:hover:bg-zinc-700={canSpeak}
+							class:opacity-50={!canSpeak}
+							class:cursor-not-allowed={!canSpeak}
+							aria-label="Toggle Mute"
+							onclick={() => canSpeak && toggleMute()}
+						>
+							{#if $isMuted}
+								<MicrophoneSlashIcon class="size-5" />
+							{:else}
+								<MicrophoneIcon class="size-5" />
+							{/if}
+						</button>
+					</ContextMenu.Trigger>
+					<ContextMenu.Portal>
+						<ContextMenu.Content class="z-200 min-w-56 rounded-lg border border-zinc-700 bg-zinc-800 py-1 shadow-2xl">
+							<div class="px-3 py-1.5 text-xs font-semibold text-zinc-400 uppercase tracking-wider border-b border-zinc-700 mb-1">Input Device</div>
+							{#if availableMics.length === 0}
+								<div class="px-3 py-2 text-sm text-zinc-400">No microphones found</div>
+							{:else}
+								{#each availableMics as mic, micIndex}
+									<ContextMenu.Item class="w-full px-3 py-2 text-left text-sm text-zinc-100 hover:bg-zinc-700 transition-colors" onSelect={() => selectMic(mic.deviceId)}>
+										<div class="flex items-center justify-between gap-2">
+											<span class="truncate pr-2">{mic.label || `Microphone ${micIndex + 1}`}</span>
+											{#if $selectedMicId === mic.deviceId || ($selectedMicId === "" && mic.deviceId === "default")}
+												<span class="h-1.5 w-1.5 shrink-0 rounded-full bg-stone-400"></span>
+											{/if}
+										</div>
+									</ContextMenu.Item>
+								{/each}
+							{/if}
+						</ContextMenu.Content>
+					</ContextMenu.Portal>
+				</ContextMenu.Root>
 				<button
 					class="h-10 w-10 flex items-center justify-center rounded-lg hover:bg-zinc-800 transition-colors"
 					class:text-red-400={$isDeafened}
 					aria-label="Deafen"
-					on:click={toggleDeafen}
+					onclick={toggleDeafen}
 				>
 					{#if $isDeafened}
 						<HeadphonesIcon class="size-5" />
@@ -639,57 +707,11 @@ onMount(() => {
 	{/if}
 </div>
 
-<svelte:window
-	on:click={() => {
-		showMicMenu = false;
-		contextMenuChannel = null;
-	}}
-/>
-
 <ServerSettings
 	bind:open={showServerSettings}
 	space={space ?? null}
 	spaceId={guild.id}
 />
-
-{#if showMicMenu}
-	<div
-		class="fixed z-200 bg-zinc-800 border border-zinc-700 rounded-md shadow-lg py-1 min-w-50"
-		style="left: {micMenuX}px; top: {micMenuY}px;"
-		on:mousedown|stopPropagation
-		role="menu"
-		tabindex="-1"
-	>
-		<div
-		class="px-3 py-1.5 text-xs font-semibold text-zinc-400 uppercase tracking-wider border-b border-zinc-700 mb-1"
-		>
-			Input Device
-		</div>
-		{#if availableMics.length === 0}
-			<div class="px-3 py-2 text-sm text-zinc-400">
-				No microphones found
-			</div>
-		{:else}
-			{#each availableMics as mic}
-				<button
-				class="w-full text-left px-3 py-2 text-sm text-zinc-100 hover:bg-zinc-700 flex items-center justify-between"
-					on:click={() => selectMic(mic.deviceId)}
-				>
-					<span class="truncate pr-2"
-						>{mic.label ||
-							"Microphone " +
-								(availableMics.indexOf(mic) + 1)}</span
-					>
-					{#if $selectedMicId === mic.deviceId || ($selectedMicId === "" && mic.deviceId === "default")}
-						<span
-							class="w-1.5 h-1.5 rounded-full bg-stone-400 shrink-0"
-						></span>
-					{/if}
-				</button>
-			{/each}
-		{/if}
-	</div>
-{/if}
 
 <Dialog.Root bind:open={showCreateModal}>
 	<Dialog.Portal>
@@ -755,7 +777,7 @@ onMount(() => {
 						bind:value={newChannelName}
 						class="h-10 w-full rounded-md border border-zinc-700 bg-zinc-800 pl-8 pr-3 text-sm text-white placeholder-zinc-500 outline-none focus:ring-1 focus:ring-stone-500"
 						placeholder="new-channel"
-						on:keydown={(e) =>
+						onkeydown={(e) =>
 							e.key === "Enter" && handleCreateChannel()}
 						use:focusOnMount
 					/>
@@ -766,7 +788,7 @@ onMount(() => {
 				<Dialog.Close class="rounded-md px-3 py-2 text-sm text-zinc-300 hover:bg-zinc-800 hover:text-white">Cancel</Dialog.Close>
 				<button
 					class="rounded-md bg-stone-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-stone-500 disabled:opacity-50"
-					on:click={handleCreateChannel}
+					onclick={handleCreateChannel}
 					disabled={!newChannelName.trim() || isCreating}
 				>
 					Create Channel
@@ -776,55 +798,6 @@ onMount(() => {
 		</Dialog.Content>
 	</Dialog.Portal>
 </Dialog.Root>
-{#if contextMenuChannel}
-	{@const ctxRoom = space?.rooms.find((r) => r.id === contextMenuChannel?.id)}
-	{@const canManage =
-		space && ctxRoom
-			? hasPermission(space, ctxRoom, Permission.ManageChannels)
-			: false}
-	<div
-		class="fixed z-200 bg-zinc-800 border border-zinc-700 rounded-lg shadow-2xl py-1 min-w-44"
-		style="left: {contextMenuX}px; top: {contextMenuY}px;"
-		on:mousedown|stopPropagation
-		role="menu"
-		tabindex="-1"
-	>
-		<button
-			class="w-full text-left px-3 py-2 text-sm text-zinc-100 hover:bg-zinc-700 flex items-center gap-2 transition-colors"
-			on:click={() => {
-				if (contextMenuChannel)
-					navigator.clipboard.writeText(contextMenuChannel.id);
-				contextMenuChannel = null;
-			}}
-		>
-			<CopySimpleIcon class="size-4 text-zinc-400" />
-			Copy Channel ID
-		</button>
-		{#if contextMenuChannel.type !== "category"}
-			<button
-				class="w-full text-left px-3 py-2 text-sm text-zinc-100 hover:bg-zinc-700 flex items-center gap-2 transition-colors"
-				on:click={() =>
-					contextMenuChannel && openInviteModal(contextMenuChannel)}
-			>
-				<LinkSimpleIcon class="size-4 text-zinc-400" />
-				Invite People
-			</button>
-		{/if}
-		{#if canManage}
-			<div class="border-t border-zinc-700 my-1"></div>
-			<button
-				class="w-full text-left px-3 py-2 text-sm text-red-400 hover:bg-zinc-700 flex items-center gap-2 transition-colors"
-				on:click={() => {
-					confirmDeleteChannel = contextMenuChannel;
-					contextMenuChannel = null;
-				}}
-			>
-				<TrashSimpleIcon class="size-4" />
-				Delete Channel
-			</button>
-		{/if}
-	</div>
-{/if}
 
 <Dialog.Root open={!!confirmDeleteChannel} onOpenChange={(v) => !v && (confirmDeleteChannel = null)}>
 	<Dialog.Portal>
@@ -842,7 +815,7 @@ onMount(() => {
 				<Dialog.Close class="px-4 py-2 hover:underline text-zinc-300">Cancel</Dialog.Close>
 				<button
 					class="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded transition-colors disabled:opacity-50"
-					on:click={handleDeleteChannel}
+					onclick={handleDeleteChannel}
 					disabled={isDeletingChannel}
 				>
 					Delete Channel
