@@ -357,12 +357,16 @@ async function switchMicrophone(deviceId: string) {
 
 async function toggleScreenShare() {
 	if (isScreenSharing) {
-		if (localVideoStream) {
-			localVideoStream.getTracks().forEach((t) => t.stop());
-			localVideoStream = null;
+		// Remove the video sender from the existing connection — no reconnect needed
+		const sender = peerConnection
+			?.getSenders()
+			.find((s) => s.track?.kind === "video");
+		if (sender) {
+			peerConnection?.removeTrack(sender);
 		}
+		localVideoStream?.getTracks().forEach((t) => t.stop());
+		localVideoStream = null;
 		isScreenSharing = false;
-		connectWebRTC(); // Reconnect without video track
 	} else {
 		try {
 			localVideoStream = await navigator.mediaDevices.getDisplayMedia({
@@ -371,12 +375,15 @@ async function toggleScreenShare() {
 			isScreenSharing = true;
 
 			const videoTrack = localVideoStream.getVideoTracks().at(0);
-			if (videoTrack)
-				videoTrack.onended = () => {
-					if (isScreenSharing) toggleScreenShare(); // turn off when user clicks browser's stop sharing
-				};
+			if (!videoTrack) return;
 
-			connectWebRTC(); // Reconnect with video track
+			videoTrack.onended = () => {
+				if (isScreenSharing) toggleScreenShare(); // turn off when user clicks browser's stop sharing
+			};
+
+			// Add directly to the live peerConnection — the server's OnTrack will
+			// fire and renegotiatePeer will push the track to all other peers.
+			peerConnection?.addTrack(videoTrack, localVideoStream);
 		} catch (err) {
 			console.error("Screen share failed", err);
 		}
