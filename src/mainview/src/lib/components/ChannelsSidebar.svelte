@@ -370,7 +370,7 @@ onMount(() => {
 		</DropdownMenu.Root>
 	</div>
 	<div class="flex h-full flex-col gap-1 overflow-y-auto p-2" role="list">
-		<div class="sticky top-0 z-10 flex h-10 items-center bg-zinc-900 px-3 select-none text-[11px] font-semibold tracking-wide text-zinc-500 uppercase">
+		<div class="sticky top-0 z-10 flex h-10 items-center border-b border-stone-800/70 bg-[linear-gradient(180deg,oklch(0.215_0.01_80),oklch(0.2_0.008_80))] px-3 select-none text-[11px] font-semibold tracking-wide text-zinc-500 uppercase">
 			Channels
 		</div>
 		{#each sidebarItems as item}
