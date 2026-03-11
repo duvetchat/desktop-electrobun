@@ -17,7 +17,10 @@ export default {
 			icon: "icon.iconset",
 		},
 		win: {
-			icon: "assets/icon.ico",
+			icon: "icon.iconset/icon_256x256.png",
+		},
+		linux: {
+			icon: "icon.iconset/icon_256x256.png",
 		},
 		copy: {
 			"src/mainview/build/_app": "views/mainview/_app",
