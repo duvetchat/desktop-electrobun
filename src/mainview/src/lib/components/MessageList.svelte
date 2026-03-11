@@ -1,366 +1,372 @@
 <script lang="ts">
-import { computeRoomPermissions, Permission } from "$lib/permissions";
-import { onDestroy, onMount } from "svelte";
-import { updateMessage, deleteMessage } from "$lib/api/messages";
-import { currentUser } from "$lib/stores.svelte";
+    import { computeRoomPermissions, Permission } from "$lib/permissions";
+    import { onDestroy, onMount } from "svelte";
+    import { updateMessage, deleteMessage } from "$lib/api/messages";
+    import { currentUser } from "$lib/stores.svelte";
+    import { renderEmoji, isOnlyEmojis, countEmojis } from "$lib/emoji";
 
-import type { MemberOnSidebar, GatewaySpace, Message } from "$lib/types";
+    import type { MemberOnSidebar, GatewaySpace, Message } from "$lib/types";
 
-import InstagramEmbed from "$lib/components/InstagramEmbed.svelte";
-import YoutubeEmbed from "$lib/components/YoutubeEmbed.svelte";
-import TwitterEmbed from "$lib/components/TwitterEmbed.svelte";
-import UrlEmbed from "$lib/components/UrlEmbed.svelte";
-import InviteEmbed from "$lib/components/InviteEmbed.svelte";
-import UserAvatar from "$lib/components/UserAvatar.svelte";
+    import InstagramEmbed from "$lib/components/InstagramEmbed.svelte";
+    import YoutubeEmbed from "$lib/components/YoutubeEmbed.svelte";
+    import TwitterEmbed from "$lib/components/TwitterEmbed.svelte";
+    import UrlEmbed from "$lib/components/UrlEmbed.svelte";
+    import InviteEmbed from "$lib/components/InviteEmbed.svelte";
+    import UserAvatar from "$lib/components/UserAvatar.svelte";
 
-let {
-	messages,
-	members = [],
-	channelId,
-	space = null,
-	isInitialLoading = false,
-	isLoadingMore = false,
-	hasMoreMessages = true,
-	onLoadMore = () => {},
-	onRetry = () => {},
-	onDismiss = () => {},
-	failedNonces = new Set<string>(),
-	editingMessageId = $bindable<string | null>(null),
-	editContent = $bindable(""),
-}: {
-	messages: Message[];
-	members?: MemberOnSidebar[];
-	channelId: string;
-	space?: GatewaySpace | null;
-	isInitialLoading?: boolean;
-	isLoadingMore?: boolean;
-	hasMoreMessages?: boolean;
-	onLoadMore?: () => Promise<void> | void;
-	onRetry?: (message: Message) => void;
-	onDismiss?: (nonce: string) => void;
-	failedNonces?: Set<string>;
-	editingMessageId?: string | null;
-	editContent?: string;
-} = $props();
+    let {
+        messages,
+        members = [],
+        channelId,
+        space = null,
+        isInitialLoading = false,
+        isLoadingMore = false,
+        hasMoreMessages = true,
+        onLoadMore = () => {},
+        onRetry = () => {},
+        onDismiss = () => {},
+        failedNonces = new Set<string>(),
+        editingMessageId = $bindable<string | null>(null),
+        editContent = $bindable(""),
+    }: {
+        messages: Message[];
+        members?: MemberOnSidebar[];
+        channelId: string;
+        space?: GatewaySpace | null;
+        isInitialLoading?: boolean;
+        isLoadingMore?: boolean;
+        hasMoreMessages?: boolean;
+        onLoadMore?: () => Promise<void> | void;
+        onRetry?: (message: Message) => void;
+        onDismiss?: (nonce: string) => void;
+        failedNonces?: Set<string>;
+        editingMessageId?: string | null;
+        editContent?: string;
+    } = $props();
 
-// ── State ──────────────────────────────────────────────────────────────────
-let scrollEl: HTMLElement;
-let deletingMessageId = $state<string | null>(null);
-let now = $state(Date.now());
-let intervalId: number;
-const locale =
-	typeof navigator !== "undefined" ? navigator.language : "en-US";
-const dateFormatter = new Intl.DateTimeFormat(locale, {
-	month: "long",
-	day: "numeric",
-	year: "numeric",
-});
-const relativeFormatter = new Intl.RelativeTimeFormat(locale, {
-	numeric: "auto",
-});
+    // ── State ──────────────────────────────────────────────────────────────────
+    let scrollEl: HTMLElement;
+    let deletingMessageId = $state<string | null>(null);
+    let now = $state(Date.now());
+    let intervalId: number;
+    const locale =
+        typeof navigator !== "undefined" ? navigator.language : "en-US";
+    const dateFormatter = new Intl.DateTimeFormat(locale, {
+        month: "long",
+        day: "numeric",
+        year: "numeric",
+    });
+    const relativeFormatter = new Intl.RelativeTimeFormat(locale, {
+        numeric: "auto",
+    });
 
-// ── Load-more on scroll ───────────────────────────────────────────────────
-// Uses getBoundingClientRect() — works with flex-col-reverse + negative
-// scrollTop (WebView2 confirmed). Completely direction-agnostic.
-function handleScroll() {
-	if (!scrollEl || isLoadingMore || !hasMoreMessages) {
-		return;
-	}
-	const sentinel = scrollEl.querySelector("[data-sentinel]");
-	if (!sentinel) {
-		return;
-	}
-	const scrollRect = scrollEl.getBoundingClientRect();
-	const sentinelRect = sentinel.getBoundingClientRect();
-	const visible =
-		sentinelRect.top < scrollRect.bottom &&
-		sentinelRect.bottom > scrollRect.top;
-	if (visible) {
-		void onLoadMore();
-	}
-}
+    // ── Load-more on scroll ───────────────────────────────────────────────────
+    // Uses getBoundingClientRect() — works with flex-col-reverse + negative
+    // scrollTop (WebView2 confirmed). Completely direction-agnostic.
+    function handleScroll() {
+        if (!scrollEl || isLoadingMore || !hasMoreMessages) {
+            return;
+        }
+        const sentinel = scrollEl.querySelector("[data-sentinel]");
+        if (!sentinel) {
+            return;
+        }
+        const scrollRect = scrollEl.getBoundingClientRect();
+        const sentinelRect = sentinel.getBoundingClientRect();
+        const visible =
+            sentinelRect.top < scrollRect.bottom &&
+            sentinelRect.bottom > scrollRect.top;
+        if (visible) {
+            void onLoadMore();
+        }
+    }
 
-function topObserverAction(_node: HTMLElement) {
-	return { destroy() {} };
-}
+    function topObserverAction(_node: HTMLElement) {
+        return { destroy() {} };
+    }
 
-onMount(() => {
-	intervalId = window.setInterval(() => {
-		now = Date.now();
-	}, 30_000);
-});
+    onMount(() => {
+        intervalId = window.setInterval(() => {
+            now = Date.now();
+        }, 30_000);
+    });
 
-onDestroy(() => {
-	if (typeof window === "undefined") return;
-	if (intervalId) {
-		window.clearInterval(intervalId);
-	}
-});
+    onDestroy(() => {
+        if (typeof window === "undefined") return;
+        if (intervalId) {
+            window.clearInterval(intervalId);
+        }
+    });
 
-// ── Sorting ────────────────────────────────────────────────────────────────
-const sortedMessages = $derived(
-	messages
-	.map((m, i) => ({ m, i }))
-	.sort((a, b) => {
-		const aPending = a.m.id === a.m.nonce;
-		const bPending = b.m.id === b.m.nonce;
-		if (aPending !== bPending) {
-			return aPending ? -1 : 1;
-		}
-		if (aPending && bPending) {
-			return b.i - a.i;
-		}
-		return (
-			new Date(b.m.created_at).getTime() - new Date(a.m.created_at).getTime()
-		);
-	})
-	.map(({ m }) => m),
-);
+    // ── Sorting ────────────────────────────────────────────────────────────────
+    const sortedMessages = $derived(
+        messages
+            .map((m, i) => ({ m, i }))
+            .sort((a, b) => {
+                const aPending = a.m.id === a.m.nonce;
+                const bPending = b.m.id === b.m.nonce;
+                if (aPending !== bPending) {
+                    return aPending ? -1 : 1;
+                }
+                if (aPending && bPending) {
+                    return b.i - a.i;
+                }
+                return (
+                    new Date(b.m.created_at).getTime() -
+                    new Date(a.m.created_at).getTime()
+                );
+            })
+            .map(({ m }) => m),
+    );
 
-const authorColors = $derived(buildAuthorColorMap(members));
+    const authorColors = $derived(buildAuthorColorMap(members));
 
-// ── Svelte actions ────────────────────────────────────────────────────────
-function focusAction(node: HTMLElement) {
-	node.focus();
-}
+    // ── Svelte actions ────────────────────────────────────────────────────────
+    function focusAction(node: HTMLElement) {
+        node.focus();
+    }
 
-function autoResize(node: HTMLTextAreaElement) {
-	node.style.height = "auto";
-	node.style.height = node.scrollHeight + "px";
-}
+    function autoResize(node: HTMLTextAreaElement) {
+        node.style.height = "auto";
+        node.style.height = node.scrollHeight + "px";
+    }
 
-// ── Formatting ─────────────────────────────────────────────────────────────
-function isSameCalendarDay(a: string, b: string): boolean {
-	const da = new Date(a);
-	const db = new Date(b);
-	return (
-		da.getFullYear() === db.getFullYear() &&
-		da.getMonth() === db.getMonth() &&
-		da.getDate() === db.getDate()
-	);
-}
+    // ── Formatting ─────────────────────────────────────────────────────────────
+    function isSameCalendarDay(a: string, b: string): boolean {
+        const da = new Date(a);
+        const db = new Date(b);
+        return (
+            da.getFullYear() === db.getFullYear() &&
+            da.getMonth() === db.getMonth() &&
+            da.getDate() === db.getDate()
+        );
+    }
 
-function formatDateSeparator(dateStr: string): string {
-	const date = new Date(dateStr);
-	const today = new Date();
-	const yesterday = new Date(today);
-	yesterday.setDate(today.getDate() - 1);
-	if (isSameCalendarDay(dateStr, today.toISOString())) {
-		return "Today";
-	}
-	if (isSameCalendarDay(dateStr, yesterday.toISOString())) {
-		return "Yesterday";
-	}
-	return dateFormatter.format(date);
-}
+    function formatDateSeparator(dateStr: string): string {
+        const date = new Date(dateStr);
+        const today = new Date();
+        const yesterday = new Date(today);
+        yesterday.setDate(today.getDate() - 1);
+        if (isSameCalendarDay(dateStr, today.toISOString())) {
+            return "Today";
+        }
+        if (isSameCalendarDay(dateStr, yesterday.toISOString())) {
+            return "Yesterday";
+        }
+        return dateFormatter.format(date);
+    }
 
-function formatTimestamp(dateStr: string, _now: number) {
-	const then = new Date(dateStr).getTime();
-	if (Number.isNaN(then)) {
-		return "just now";
-	}
-	const seconds = Math.round((then - _now) / 1000);
-	if (Math.abs(seconds) < 45) {
-		return "just now";
-	}
-	const minutes = Math.round(seconds / 60);
-	if (Math.abs(minutes) < 60) {
-		return relativeFormatter.format(minutes, "minute");
-	}
-	const hours = Math.round(minutes / 60);
-	if (Math.abs(hours) < 24) {
-		return relativeFormatter.format(hours, "hour");
-	}
-	const days = Math.round(hours / 24);
-	if (Math.abs(days) < 7) {
-		return relativeFormatter.format(days, "day");
-	}
-	return relativeFormatter.format(Math.round(days / 7), "week");
-}
+    function formatTimestamp(dateStr: string, _now: number) {
+        const then = new Date(dateStr).getTime();
+        if (Number.isNaN(then)) {
+            return "just now";
+        }
+        const seconds = Math.round((then - _now) / 1000);
+        if (Math.abs(seconds) < 45) {
+            return "just now";
+        }
+        const minutes = Math.round(seconds / 60);
+        if (Math.abs(minutes) < 60) {
+            return relativeFormatter.format(minutes, "minute");
+        }
+        const hours = Math.round(minutes / 60);
+        if (Math.abs(hours) < 24) {
+            return relativeFormatter.format(hours, "hour");
+        }
+        const days = Math.round(hours / 24);
+        if (Math.abs(days) < 7) {
+            return relativeFormatter.format(days, "day");
+        }
+        return relativeFormatter.format(Math.round(days / 7), "week");
+    }
 
-function intToHex(n: undefined | number | null): string {
-	if (n == null) {
-		return "";
-	}
-	return `#${(n >>> 0).toString(16).padStart(6, "0")}`;
-}
+    function intToHex(n: undefined | number | null): string {
+        if (n == null) {
+            return "";
+        }
+        return `#${(n >>> 0).toString(16).padStart(6, "0")}`;
+    }
 
-function getMemberColorStyle(member: MemberOnSidebar): string {
-	const highest = [...member.roles]
-		.filter((r) => r.color_from != null)
-		.sort((a, b) => b.position - a.position)
-		.at(0);
-	if (!highest) {
-		return "color: var(--color-zinc-100)";
-	}
-	const from = intToHex(highest.color_from);
-	if (highest.color_to == null) {
-		return `color: ${from}`;
-	}
-	const to = intToHex(highest.color_to);
-	const via =
-		highest.color_via != null ? `, ${intToHex(highest.color_via)}` : "";
-	return `background: linear-gradient(90deg, ${from}${via}, ${to}); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;`;
-}
+    function getMemberColorStyle(member: MemberOnSidebar): string {
+        const highest = [...member.roles]
+            .filter((r) => r.color_from != null)
+            .sort((a, b) => b.position - a.position)
+            .at(0);
+        if (!highest) {
+            return "color: var(--color-zinc-100)";
+        }
+        const from = intToHex(highest.color_from);
+        if (highest.color_to == null) {
+            return `color: ${from}`;
+        }
+        const to = intToHex(highest.color_to);
+        const via =
+            highest.color_via != null ? `, ${intToHex(highest.color_via)}` : "";
+        return `background: linear-gradient(90deg, ${from}${via}, ${to}); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;`;
+    }
 
-function buildAuthorColorMap(members: MemberOnSidebar[]) {
-	return members.reduce<Record<string, string>>((map, member) => {
-		map[member.username] = getMemberColorStyle(member);
-		return map;
-	}, {});
-}
+    function buildAuthorColorMap(members: MemberOnSidebar[]) {
+        return members.reduce<Record<string, string>>((map, member) => {
+            map[member.username] = getMemberColorStyle(member);
+            return map;
+        }, {});
+    }
 
-// ── URL processing ─────────────────────────────────────────────────────────
-const urlRegex = /(https?:\/\/[^\s]+)/g;
+    // ── URL processing ─────────────────────────────────────────────────────────
+    const urlRegex = /(https?:\/\/[^\s]+)/g;
 
-function processMessageContent(content: string) {
-	const urls = content.match(urlRegex) || [];
-	const images: string[] = [];
-	const otherLinks: string[] = [];
-	const youtubeVideos: string[] = [];
-	const twitterLinks: string[] = [];
-	const instagramLinks: string[] = [];
-	const inviteCodes: string[] = [];
+    function processMessageContent(content: string) {
+        const urls = content.match(urlRegex) || [];
+        const images: string[] = [];
+        const otherLinks: string[] = [];
+        const youtubeVideos: string[] = [];
+        const twitterLinks: string[] = [];
+        const instagramLinks: string[] = [];
+        const inviteCodes: string[] = [];
 
-	urls.forEach((url) => {
-		try {
-			const parsed = new URL(url);
-			const inviteMatch = /^\/invite\/([^/]+)$/.exec(parsed.pathname);
-			if (inviteMatch) {
-				inviteCodes.push(inviteMatch[1]);
-				return;
-			}
-			let youtubeId = null;
-			if (
-				parsed.hostname.includes("youtube.com") &&
-				parsed.pathname === "/watch"
-			) {
-				youtubeId = parsed.searchParams.get("v");
-			} else if (parsed.hostname === "youtu.be") {
-				youtubeId = parsed.pathname.slice(1);
-			}
+        urls.forEach((url) => {
+            try {
+                const parsed = new URL(url);
+                const inviteMatch = /^\/invite\/([^/]+)$/.exec(parsed.pathname);
+                if (inviteMatch) {
+                    inviteCodes.push(inviteMatch[1]);
+                    return;
+                }
+                let youtubeId = null;
+                if (
+                    parsed.hostname.includes("youtube.com") &&
+                    parsed.pathname === "/watch"
+                ) {
+                    youtubeId = parsed.searchParams.get("v");
+                } else if (parsed.hostname === "youtu.be") {
+                    youtubeId = parsed.pathname.slice(1);
+                }
 
-			if (youtubeId) {
-				youtubeVideos.push(youtubeId);
-			} else if (
-				/^(www\.)?(twitter\.com|x\.com|fixupx\.com|fxtwitter\.com|vxtwitter\.com)$/i.exec(
-					parsed.hostname,
-				) &&
-				parsed.pathname.includes("/status/")
-			) {
-				twitterLinks.push(url);
-			} else if (
-				/^(www\.)?(instagram|kkinstagram|vxinstagram)\.com$/i.exec(
-					parsed.hostname,
-				) &&
-				(parsed.pathname.includes("/p/") || parsed.pathname.includes("/reel/"))
-			) {
-				instagramLinks.push(url);
-			} else if (
-				/\.(jpeg|jpg|gif|png|webp)$/i.exec(parsed.pathname) ||
-				parsed.hostname.includes("tenor.com") ||
-				parsed.hostname.includes("giphy.com")
-			) {
-				images.push(url);
-			} else {
-				otherLinks.push(url);
-			}
-		} catch {
-			// Invalid URL, ignore
-		}
-	});
+                if (youtubeId) {
+                    youtubeVideos.push(youtubeId);
+                } else if (
+                    /^(www\.)?(twitter\.com|x\.com|fixupx\.com|fxtwitter\.com|vxtwitter\.com)$/i.exec(
+                        parsed.hostname,
+                    ) &&
+                    parsed.pathname.includes("/status/")
+                ) {
+                    twitterLinks.push(url);
+                } else if (
+                    /^(www\.)?(instagram|kkinstagram|vxinstagram)\.com$/i.exec(
+                        parsed.hostname,
+                    ) &&
+                    (parsed.pathname.includes("/p/") ||
+                        parsed.pathname.includes("/reel/"))
+                ) {
+                    instagramLinks.push(url);
+                } else if (
+                    /\.(jpeg|jpg|gif|png|webp)$/i.exec(parsed.pathname) ||
+                    parsed.hostname.includes("tenor.com") ||
+                    parsed.hostname.includes("giphy.com")
+                ) {
+                    images.push(url);
+                } else {
+                    otherLinks.push(url);
+                }
+            } catch {
+                // Invalid URL, ignore
+            }
+        });
 
-	return {
-		text: content,
-		images,
-		otherLinks,
-		youtubeVideos,
-		twitterLinks,
-		instagramLinks,
-		inviteCodes,
-	};
-}
+        return {
+            text: content,
+            images,
+            otherLinks,
+            youtubeVideos,
+            twitterLinks,
+            instagramLinks,
+            inviteCodes,
+        };
+    }
 
-function parseTextSegments(text: string) {
-	const segments: { type: "text" | "link"; content: string }[] = [];
-	let lastIndex = 0;
-	urlRegex.lastIndex = 0;
-	let match;
-	while ((match = urlRegex.exec(text)) !== null) {
-		if (match.index > lastIndex) {
-			segments.push({
-				type: "text",
-				content: text.slice(lastIndex, match.index),
-			});
-		}
-		segments.push({ type: "link", content: match.at(0) ?? "" });
-		lastIndex = urlRegex.lastIndex;
-	}
-	if (lastIndex < text.length) {
-		segments.push({ type: "text", content: text.slice(lastIndex) });
-	}
-	return segments;
-}
+    function parseTextSegments(text: string) {
+        const segments: { type: "text" | "link"; content: string }[] = [];
+        let lastIndex = 0;
+        urlRegex.lastIndex = 0;
+        let match;
+        while ((match = urlRegex.exec(text)) !== null) {
+            if (match.index > lastIndex) {
+                segments.push({
+                    type: "text",
+                    content: text.slice(lastIndex, match.index),
+                });
+            }
+            segments.push({ type: "link", content: match.at(0) ?? "" });
+            lastIndex = urlRegex.lastIndex;
+        }
+        if (lastIndex < text.length) {
+            segments.push({ type: "text", content: text.slice(lastIndex) });
+        }
+        return segments;
+    }
 
-// ── Message actions ────────────────────────────────────────────────────────
-function startEdit(message: Message) {
-	editingMessageId = message.id;
-	editContent = message.content;
-}
+    // ── Message actions ────────────────────────────────────────────────────────
+    function startEdit(message: Message) {
+        editingMessageId = message.id;
+        editContent = message.content;
+    }
 
-function cancelEdit() {
-	editingMessageId = null;
-	editContent = "";
-}
+    function cancelEdit() {
+        editingMessageId = null;
+        editContent = "";
+    }
 
-function saveEdit(messageId: string) {
-	const original = messages.find((m) => m.id === messageId)?.content;
-	const trimmed = editContent.trim();
-	if (trimmed && trimmed !== original) {
-		updateMessage(messageId, trimmed, channelId).catch(console.error);
-	}
-	cancelEdit();
-}
+    function saveEdit(messageId: string) {
+        const original = messages.find((m) => m.id === messageId)?.content;
+        const trimmed = editContent.trim();
+        if (trimmed && trimmed !== original) {
+            updateMessage(messageId, trimmed, channelId).catch(console.error);
+        }
+        cancelEdit();
+    }
 
-function handleEditKeyDown(event: KeyboardEvent, messageId: string) {
-	if (event.key === "Escape") {
-		cancelEdit();
-	}
-	if (event.key === "Enter" && !event.shiftKey) {
-		event.preventDefault();
-		saveEdit(messageId);
-	}
-}
+    function handleEditKeyDown(event: KeyboardEvent, messageId: string) {
+        if (event.key === "Escape") {
+            cancelEdit();
+        }
+        if (event.key === "Enter" && !event.shiftKey) {
+            event.preventDefault();
+            saveEdit(messageId);
+        }
+    }
 
-async function handleDelete(messageId: string) {
-	deletingMessageId = messageId;
-	try {
-		await deleteMessage(messageId, channelId);
-	} catch (e) {
-		console.error(e);
-	} finally {
-		deletingMessageId = null;
-	}
-}
+    async function handleDelete(messageId: string) {
+        deletingMessageId = messageId;
+        try {
+            await deleteMessage(messageId, channelId);
+        } catch (e) {
+            console.error(e);
+        } finally {
+            deletingMessageId = null;
+        }
+    }
 
-function currentUserCanManageMessages(): boolean {
-	if (!$currentUser || !space) {
-		return false;
-	}
-	if ($currentUser.id === space.owner_id) {
-		return true;
-	}
-	const room = space.rooms.find((r) => r.id === channelId);
-	if (!room) {
-		return false;
-	}
-	try {
-		const perms = computeRoomPermissions(space, room);
-		return (perms & Permission.ManageMessages) === Permission.ManageMessages;
-	} catch {
-		return false;
-	}
-}
+    function currentUserCanManageMessages(): boolean {
+        if (!$currentUser || !space) {
+            return false;
+        }
+        if ($currentUser.id === space.owner_id) {
+            return true;
+        }
+        const room = space.rooms.find((r) => r.id === channelId);
+        if (!room) {
+            return false;
+        }
+        try {
+            const perms = computeRoomPermissions(space, room);
+            return (
+                (perms & Permission.ManageMessages) ===
+                Permission.ManageMessages
+            );
+        } catch {
+            return false;
+        }
+    }
 </script>
 
 <div
@@ -373,12 +379,22 @@ function currentUserCanManageMessages(): boolean {
             {#each { length: 6 } as _, i}
                 {@const wide = i % 3 === 0}
                 <div class="flex items-start gap-3 px-4 -mx-4 mt-4">
-                    <div class="size-10 shrink-0 rounded-full bg-zinc-700 animate-pulse"></div>
+                    <div
+                        class="size-10 shrink-0 rounded-full bg-zinc-700 animate-pulse"
+                    ></div>
                     <div class="flex flex-col gap-2 flex-1">
-                        <div class="h-3 w-24 rounded bg-zinc-700 animate-pulse"></div>
-                        <div class="h-3 {wide ? 'w-4/5' : 'w-2/5'} rounded bg-zinc-700 animate-pulse"></div>
+                        <div
+                            class="h-3 w-24 rounded bg-zinc-700 animate-pulse"
+                        ></div>
+                        <div
+                            class="h-3 {wide
+                                ? 'w-4/5'
+                                : 'w-2/5'} rounded bg-zinc-700 animate-pulse"
+                        ></div>
                         {#if wide}
-                            <div class="h-3 w-3/5 rounded bg-zinc-700 animate-pulse"></div>
+                            <div
+                                class="h-3 w-3/5 rounded bg-zinc-700 animate-pulse"
+                            ></div>
                         {/if}
                     </div>
                 </div>
@@ -389,7 +405,7 @@ function currentUserCanManageMessages(): boolean {
             No messages yet. Send the first message.
         </div>
     {:else}
-		{#each sortedMessages as message, i (message.id)}
+        {#each sortedMessages as message, i (message.id)}
             {@const chronoPrev = sortedMessages.at(i + 1)}
             {@const isConsecutive =
                 chronoPrev &&
@@ -405,11 +421,17 @@ function currentUserCanManageMessages(): boolean {
             {@const isPending = message.id === message.nonce}
             {@const isFailed =
                 isPending && failedNonces.has(message.nonce ?? "")}
+            {@const emojiOnly =
+                isOnlyEmojis(message.content) &&
+                countEmojis(message.content) <= 5 &&
+                processMessageContent(message.content).images.length === 0 &&
+                processMessageContent(message.content).youtubeVideos.length ===
+                    0}
 
             <div
-                class="group relative flex items-start rounded-md px-3 {isLast ? 'mb-3' : 'mb-1'} {showHeader
-                    ? 'mt-4'
-                    : 'mt-0'} {isFailed
+                class="group relative flex items-start rounded-md px-3 {isLast
+                    ? 'mb-3'
+                    : 'mb-1'} {showHeader ? 'mt-4' : 'mt-0'} {isFailed
                     ? 'bg-red-500/10 hover:bg-red-500/15'
                     : 'hover:bg-zinc-800/55'} -mx-3"
                 style={isFailed
@@ -428,7 +450,7 @@ function currentUserCanManageMessages(): boolean {
                 {:else}
                     <div class="w-10 mr-3 text-right shrink-0">
                         <span
-                            class="text-[10px] text-zinc-500 opacity-0 group-hover:opacity-100 select-none whitespace-nowrap leading-5"
+                            class="text-xxs text-zinc-500 opacity-0 group-hover:opacity-100 select-none whitespace-nowrap leading-5"
                         >
                             {new Date(message.created_at).toLocaleTimeString(
                                 locale,
@@ -442,10 +464,10 @@ function currentUserCanManageMessages(): boolean {
                     {#if showHeader}
                         <div class="flex items-center mb-0.5">
                             <span
-							class="font-semibold mr-2 hover:underline cursor-pointer"
-							style={authorColors[message.author_name] ||
-									"color: var(--color-zinc-100)"}
-						>
+                                class="font-semibold mr-2 hover:underline cursor-pointer"
+                                style={authorColors[message.author_name] ||
+                                    "color: var(--color-zinc-100)"}
+                            >
                                 {message.author_name}
                             </span>
                             <span class="text-xs text-zinc-400 font-medium"
@@ -475,7 +497,7 @@ function currentUserCanManageMessages(): boolean {
                                 use:focusAction
                                 use:autoResize
                             ></textarea>
-                            <div class="text-[10px] text-zinc-400 mt-1">
+                            <div class="text-xxs text-zinc-400 mt-1">
                                 escape to <button
                                     type="button"
                                     class="text-stone-300 cursor-pointer hover:underline"
@@ -536,11 +558,14 @@ function currentUserCanManageMessages(): boolean {
                                         }}>{segment.content}</a
                                     >
                                 {:else}
-                                    {segment.content}
+                                    {@html renderEmoji(
+                                        segment.content,
+                                        emojiOnly,
+                                    )}
                                 {/if}
                             {/each}
                             {#if message.updated_at !== message.created_at}
-                                <span class="text-[10px] text-zinc-500 ml-1"
+                                <span class="text-xxs text-zinc-500 ml-1"
                                     >(edited {formatTimestamp(
                                         message.updated_at,
                                         now,
@@ -605,18 +630,19 @@ function currentUserCanManageMessages(): boolean {
                     >
                         <button
                             class="px-2 py-1.5 text-xs text-stone-300 hover:bg-zinc-600 transition-colors"
-							onclick={() => onRetry(message)}
-                            >Retry</button
+                            onclick={() => onRetry(message)}>Retry</button
                         >
                         <div class="w-px bg-zinc-800"></div>
                         <button
                             class="px-2 py-1.5 text-xs text-zinc-400 hover:text-white hover:bg-zinc-600 transition-colors"
-							onclick={() => onDismiss(message.nonce!)}
+                            onclick={() => onDismiss(message.nonce!)}
                             >Dismiss</button
                         >
                     </div>
                 {:else if $currentUser && message.author_id === $currentUser.id && editingMessageId !== message.id}
-                    <div class="absolute right-2 -top-3 z-10 hidden overflow-hidden rounded border border-zinc-800 bg-zinc-700 shadow-sm transition-opacity group-hover:flex">
+                    <div
+                        class="absolute right-2 -top-3 z-10 hidden overflow-hidden rounded border border-zinc-800 bg-zinc-700 shadow-sm transition-opacity group-hover:flex"
+                    >
                         <button
                             class="p-1.5 text-zinc-400 hover:text-white hover:bg-zinc-600 transition-colors"
                             onclick={() => {
@@ -695,7 +721,9 @@ function currentUserCanManageMessages(): boolean {
                         </button>
                     </div>
                 {:else if $currentUser && message.author_id !== $currentUser.id && currentUserCanManageMessages() && editingMessageId !== message.id}
-                    <div class="absolute right-2 -top-3 z-10 hidden overflow-hidden rounded border border-zinc-800 bg-zinc-700 shadow-sm transition-opacity group-hover:flex">
+                    <div
+                        class="absolute right-2 -top-3 z-10 hidden overflow-hidden rounded border border-zinc-800 bg-zinc-700 shadow-sm transition-opacity group-hover:flex"
+                    >
                         <button
                             class="p-1.5 text-zinc-400 hover:text-red-400 hover:bg-zinc-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                             onclick={() => handleDelete(message.id)}

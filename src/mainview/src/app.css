@@ -343,4 +343,25 @@
 	.link {
 		@apply hover:text-foreground/80 focus-visible:ring-foreground focus-visible:ring-offset-background rounded-xs focus-visible:outline-hidden inline-flex items-center gap-1 font-medium underline underline-offset-4 focus-visible:ring-2 focus-visible:ring-offset-2;
 	}
+
+	/* ── Twemoji emoji images ───────────────────────── */
+	/* Inline emojis: same height as surrounding text */
+	.emoji-img {
+		display: inline-block;
+		width: 1.375em;
+		height: 1.375em;
+		vertical-align: -0.25em;
+		margin: 0 0.02em;
+		object-fit: contain;
+		pointer-events: none;
+		user-select: none;
+	}
+
+	/* Large mode: message is emoji-only (≤5 emojis), Discord style ~3rem */
+	.emoji-large {
+		width: 3rem;
+		height: 3rem;
+		vertical-align: -0.6em;
+		margin: 0 0.06em;
+	}
 }

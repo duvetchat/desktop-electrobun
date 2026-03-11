@@ -1,242 +1,313 @@
 <script lang="ts">
-import { LoaderCircle, MicOff, MonitorUp, PhoneOff } from "@lucide/svelte";
-import { onDestroy, onMount } from "svelte";
-import { SvelteSet } from "svelte/reactivity";
-import { onWebRTCEvent, sendEventMessage } from "$lib/api/ws/connection";
-import UserAvatar from "$lib/components/UserAvatar.svelte";
-import { hasPermission, Permission } from "$lib/permissions";
-import {
-	activeVoiceRoomId,
-	currentUser,
-	gatewaySpaces,
-	isDeafened,
-	isMuted,
-	selectedMicId,
-	speakingUsers,
-} from "$lib/stores.svelte";
+	import { LoaderCircle, MicOff, MonitorUp, PhoneOff } from "@lucide/svelte";
+	import { onDestroy, onMount } from "svelte";
+	import { SvelteSet } from "svelte/reactivity";
+	import { onWebRTCEvent, sendEventMessage } from "$lib/api/ws/connection";
+	import UserAvatar from "$lib/components/UserAvatar.svelte";
+	import { hasPermission, Permission } from "$lib/permissions";
+	import {
+		activeVoiceRoomId,
+		currentUser,
+		gatewaySpaces,
+		isDeafened,
+		isMuted,
+		selectedMicId,
+		speakingUsers,
+	} from "$lib/stores.svelte";
 
-let { channelId, channelName }: { channelId: string; channelName: string } =
-	$props();
+	let { channelId, channelName }: { channelId: string; channelName: string } =
+		$props();
 
-let peerConnection: RTCPeerConnection | null = null;
-let localAudioStream: MediaStream | null = null;
-let localVideoStream = $state<MediaStream | null>(null);
-let pendingIceCandidates: RTCIceCandidate[] = [];
-let negotiationReady = false;
+	let peerConnection: RTCPeerConnection | null = null;
+	let localAudioStream: MediaStream | null = null;
+	let localVideoStream = $state<MediaStream | null>(null);
+	let pendingIceCandidates: RTCIceCandidate[] = [];
+	let negotiationReady = false;
 
-let isScreenSharing = $state(false);
+	let isScreenSharing = $state(false);
 
-let remoteAudioElements = $state<{ [id: string]: MediaStream }>({});
-let remoteVideoElements = $state<{ [id: string]: MediaStream }>({});
-let remoteUserMuted = $state<{ [id: string]: boolean }>({});
-let videoPlayingStates = $state<Record<string, boolean>>({});
-let userAmplitudes = $state<Record<string, number>>({});
+	let remoteAudioElements = $state<{ [id: string]: MediaStream }>({});
+	let remoteVideoElements = $state<{ [id: string]: MediaStream }>({});
+	let remoteUserMuted = $state<{ [id: string]: boolean }>({});
+	let videoPlayingStates = $state<Record<string, boolean>>({});
+	let userAmplitudes = $state<Record<string, number>>({});
 
-let unsubscribeWs: () => void;
-let audioContext: AudioContext | null = null;
-let localAnalyser: AnalyserNode | null = null;
-let localAudioSource: MediaStreamAudioSourceNode | null = null;
-let isDestroyed = false;
+	let unsubscribeWs: () => void;
+	let audioContext: AudioContext | null = null;
+	let localAnalyser: AnalyserNode | null = null;
+	let localAudioSource: MediaStreamAudioSourceNode | null = null;
+	let isDestroyed = false;
 
-function leaveVoice() {
-	if (isDestroyed) return;
-	isDestroyed = true;
-	sendEventMessage("VOICE_LEAVE", { room_id: channelId });
-	if (peerConnection) {
-		peerConnection.close();
-		peerConnection = null;
+	function leaveVoice() {
+		if (isDestroyed) return;
+		isDestroyed = true;
+		sendEventMessage("VOICE_LEAVE", { room_id: channelId });
+		if (peerConnection) {
+			peerConnection.close();
+			peerConnection = null;
+		}
+		if (localAudioStream)
+			localAudioStream.getTracks().forEach((t) => t.stop());
+		if (localVideoStream)
+			localVideoStream.getTracks().forEach((t) => t.stop());
+		if (audioContext) audioContext.close();
+		if (unsubscribeWs) unsubscribeWs();
+		speakingUsers.set(new SvelteSet());
+		if ($activeVoiceRoomId === channelId) activeVoiceRoomId.set(null);
 	}
-	if (localAudioStream) localAudioStream.getTracks().forEach((t) => t.stop());
-	if (localVideoStream) localVideoStream.getTracks().forEach((t) => t.stop());
-	if (audioContext) audioContext.close();
-	if (unsubscribeWs) unsubscribeWs();
-	speakingUsers.set(new SvelteSet());
-	if ($activeVoiceRoomId === channelId) activeVoiceRoomId.set(null);
-}
 
-let currentMicId = $state($selectedMicId);
+	let currentMicId = $state($selectedMicId);
 
-let myUserId = $state<string | null>(null);
-currentUser.subscribe((u) => (myUserId = u?.id || null));
+	let myUserId = $state<string | null>(null);
+	currentUser.subscribe((u) => (myUserId = u?.id || null));
 
-let focusedUserId = $state<string | null>(null);
+	let focusedUserId = $state<string | null>(null);
 
-onMount(async () => {
-	unsubscribeWs = onWebRTCEvent((type, data: any) => {
-		if (data.room_id !== channelId) return;
+	onMount(async () => {
+		unsubscribeWs = onWebRTCEvent((type, data: any) => {
+			if (data.room_id !== channelId) return;
 
-		if (type === "VOICE_JOINED") {
-			const pc = peerConnection;
-			if (!pc) return;
-			pc.setRemoteDescription(new RTCSessionDescription(data.answer)).then(() => {
-				// Only flush if this is still the active connection
-				if (pc !== peerConnection) return;
-				const toFlush = pendingIceCandidates;
-				pendingIceCandidates = [];
-				for (const candidate of toFlush) {
+			if (type === "VOICE_JOINED") {
+				const pc = peerConnection;
+				if (!pc) return;
+				pc.setRemoteDescription(new RTCSessionDescription(data.answer))
+					.then(() => {
+						// Only flush if this is still the active connection
+						if (pc !== peerConnection) return;
+						const toFlush = pendingIceCandidates;
+						pendingIceCandidates = [];
+						for (const candidate of toFlush) {
+							pc.addIceCandidate(candidate).catch(console.warn);
+						}
+						// Now it's safe to renegotiate (e.g. when screen share is added)
+						negotiationReady = true;
+					})
+					.catch(console.warn);
+			} else if (type === "WEBRTC_ICE_CANDIDATE") {
+				const pc = peerConnection;
+				if (!pc) return;
+				const parsed =
+					typeof data.candidate === "string"
+						? JSON.parse(data.candidate)
+						: data.candidate;
+				const candidate = new RTCIceCandidate(parsed);
+				if (pc.remoteDescription) {
 					pc.addIceCandidate(candidate).catch(console.warn);
+				} else {
+					pendingIceCandidates.push(candidate);
 				}
-				// Now it's safe to renegotiate (e.g. when screen share is added)
-				negotiationReady = true;
-			}).catch(console.warn);
-		} else if (type === "WEBRTC_ICE_CANDIDATE") {
-			const pc = peerConnection;
-			if (!pc) return;
-			const parsed = typeof data.candidate === "string"
-				? JSON.parse(data.candidate)
-				: data.candidate;
-			const candidate = new RTCIceCandidate(parsed);
-			if (pc.remoteDescription) {
-				pc.addIceCandidate(candidate).catch(console.warn);
-			} else {
-				pendingIceCandidates.push(candidate);
+			} else if (type === "WEBRTC_RENEGOTIATE") {
+				const pc = peerConnection;
+				if (!pc) return;
+				pc.setRemoteDescription(new RTCSessionDescription(data.offer))
+					.then(() => {
+						if (pc !== peerConnection) return;
+						const toFlush = pendingIceCandidates;
+						pendingIceCandidates = [];
+						for (const candidate of toFlush) {
+							pc.addIceCandidate(candidate).catch(console.warn);
+						}
+						return pc.createAnswer();
+					})
+					.then((answer) => {
+						if (!answer || pc !== peerConnection) return;
+						pc.setLocalDescription(answer);
+						sendEventMessage("WEBRTC_ANSWER", {
+							room_id: channelId,
+							answer: answer,
+						});
+					})
+					.catch(console.warn);
+			} else if (type === "WEBRTC_RENEGOTIATE_ANSWER") {
+				const pc = peerConnection;
+				if (!pc) return;
+				pc.setRemoteDescription(
+					new RTCSessionDescription(data.answer),
+				).catch(console.warn);
+			} else if (type === "VOICE_STATE_UPDATE") {
+				remoteUserMuted[data.user_id] = data.muted;
+				remoteUserMuted = { ...remoteUserMuted };
 			}
-		} else if (type === "WEBRTC_RENEGOTIATE") {
+		});
+
+		const space = $gatewaySpaces.find((s) =>
+			s.rooms.some((r) => r.id === channelId),
+		);
+		const room = space?.rooms.find((r) => r.id === channelId);
+		const canSpeak =
+			space && room
+				? hasPermission(space, room, Permission.SpeakInVoice)
+				: false;
+
+		if (!canSpeak) {
+			isMuted.set(true);
+		} else {
+			try {
+				const constraints = $selectedMicId
+					? { audio: { deviceId: { exact: $selectedMicId } } }
+					: { audio: true };
+				localAudioStream =
+					await navigator.mediaDevices.getUserMedia(constraints);
+			} catch (e) {
+				console.error("Failed to get local audio", e);
+			}
+		}
+
+		activeVoiceRoomId.set(channelId);
+		connectWebRTC();
+	});
+
+	onDestroy(() => {
+		leaveVoice();
+	});
+
+	async function connectWebRTC() {
+		if (peerConnection) {
+			peerConnection.close();
+		}
+		remoteAudioElements = {};
+		remoteVideoElements = {};
+		pendingIceCandidates = [];
+		negotiationReady = false;
+
+		peerConnection = new RTCPeerConnection({
+			iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+		});
+
+		peerConnection.onnegotiationneeded = async () => {
+			if (!negotiationReady) return;
 			const pc = peerConnection;
 			if (!pc) return;
-			pc.setRemoteDescription(new RTCSessionDescription(data.offer))
-				.then(() => {
-					if (pc !== peerConnection) return;
-					const toFlush = pendingIceCandidates;
-					pendingIceCandidates = [];
-					for (const candidate of toFlush) {
-						pc.addIceCandidate(candidate).catch(console.warn);
+			try {
+				const offer = await pc.createOffer();
+				if (pc !== peerConnection) return;
+				await pc.setLocalDescription(offer);
+				sendEventMessage("WEBRTC_RENEGOTIATE_OFFER", {
+					room_id: channelId,
+					offer: offer,
+				});
+			} catch (err) {
+				console.error("[WebRTC] negotiationneeded error:", err);
+			}
+		};
+
+		peerConnection.onicecandidate = (event) => {
+			if (event.candidate) {
+				sendEventMessage("WEBRTC_ICE_CANDIDATE", {
+					room_id: channelId,
+					candidate: event.candidate.toJSON(),
+				});
+			}
+		};
+
+		peerConnection.ontrack = (event) => {
+			const stream = event.streams.at(0);
+			if (!stream) return;
+
+			const userId = stream.id;
+
+			stream.onremovetrack = (e) => {
+				if (e.track.kind === "video") {
+					delete remoteVideoElements[stream.id];
+					remoteVideoElements = { ...remoteVideoElements };
+				} else {
+					delete remoteAudioElements[stream.id];
+					remoteAudioElements = { ...remoteAudioElements };
+				}
+			};
+
+			event.track.onended = () => {
+				if (event.track.kind === "video") {
+					delete remoteVideoElements[stream.id];
+					remoteVideoElements = { ...remoteVideoElements };
+				} else {
+					delete remoteAudioElements[stream.id];
+					remoteAudioElements = { ...remoteAudioElements };
+				}
+			};
+
+			if (event.track.kind === "audio") {
+				remoteAudioElements[stream.id] = stream;
+				remoteAudioElements = { ...remoteAudioElements };
+
+				if (!audioContext) {
+					audioContext = new (window.AudioContext ||
+						(window as any).webkitAudioContext)();
+				}
+
+				const analyser = audioContext.createAnalyser();
+				analyser.fftSize = 256;
+				const source = audioContext.createMediaStreamSource(
+					new MediaStream([event.track]),
+				);
+				source.connect(analyser);
+				const dataArray = new Uint8Array(analyser.frequencyBinCount);
+
+				const checkAudioLevel = () => {
+					if (
+						isDestroyed ||
+						!audioContext ||
+						event.track.readyState === "ended"
+					)
+						return;
+					analyser.getByteFrequencyData(dataArray);
+					let sum = 0;
+					for (let i = 0; i < dataArray.length; i++) {
+						sum += dataArray[i];
 					}
-					return pc.createAnswer();
-				})
-				.then((answer) => {
-					if (!answer || pc !== peerConnection) return;
-					pc.setLocalDescription(answer);
-					sendEventMessage("WEBRTC_ANSWER", {
-						room_id: channelId,
-						answer: answer,
+					const average = sum / dataArray.length;
+					// Normalize to 0-1 (values above ~50 are loud speech)
+					const amplitude = Math.min(1, average / 50);
+
+					speakingUsers.update((set) => {
+						const newSet = new SvelteSet(set);
+						if (average > 10) newSet.add(userId);
+						else newSet.delete(userId);
+						return newSet;
 					});
-				}).catch(console.warn);
-		} else if (type === "WEBRTC_RENEGOTIATE_ANSWER") {
-			const pc = peerConnection;
-			if (!pc) return;
-			pc.setRemoteDescription(new RTCSessionDescription(data.answer)).catch(console.warn);
-		} else if (type === "VOICE_STATE_UPDATE") {
-			remoteUserMuted[data.user_id] = data.muted;
-			remoteUserMuted = { ...remoteUserMuted };
-		}
-	});
+					userAmplitudes[userId] = average > 10 ? amplitude : 0;
 
-	const space = $gatewaySpaces.find((s) =>
-		s.rooms.some((r) => r.id === channelId),
-	);
-	const room = space?.rooms.find((r) => r.id === channelId);
-	const canSpeak =
-		space && room ? hasPermission(space, room, Permission.SpeakInVoice) : false;
-
-	if (!canSpeak) {
-		isMuted.set(true);
-	} else {
-		try {
-			const constraints = $selectedMicId
-				? { audio: { deviceId: { exact: $selectedMicId } } }
-				: { audio: true };
-			localAudioStream = await navigator.mediaDevices.getUserMedia(constraints);
-		} catch (e) {
-			console.error("Failed to get local audio", e);
-		}
-	}
-
-	activeVoiceRoomId.set(channelId);
-	connectWebRTC();
-});
-
-onDestroy(() => {
-	leaveVoice();
-});
-
-async function connectWebRTC() {
-	if (peerConnection) {
-		peerConnection.close();
-	}
-	remoteAudioElements = {};
-	remoteVideoElements = {};
-	pendingIceCandidates = [];
-	negotiationReady = false;
-
-	peerConnection = new RTCPeerConnection({
-		iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
-	});
-
-	peerConnection.onnegotiationneeded = async () => {
-		if (!negotiationReady) return;
-		const pc = peerConnection;
-		if (!pc) return;
-		try {
-			const offer = await pc.createOffer();
-			if (pc !== peerConnection) return;
-			await pc.setLocalDescription(offer);
-			sendEventMessage("WEBRTC_RENEGOTIATE_OFFER", {
-				room_id: channelId,
-				offer: offer,
-			});
-		} catch (err) {
-			console.error("[WebRTC] negotiationneeded error:", err);
-		}
-	};
-
-	peerConnection.onicecandidate = (event) => {
-		if (event.candidate) {
-			sendEventMessage("WEBRTC_ICE_CANDIDATE", {
-				room_id: channelId,
-				candidate: event.candidate.toJSON(),
-			});
-		}
-	};
-
-	peerConnection.ontrack = (event) => {
-		const stream = event.streams.at(0);
-		if (!stream) return;
-
-		const userId = stream.id;
-
-		stream.onremovetrack = (e) => {
-			if (e.track.kind === "video") {
-				delete remoteVideoElements[stream.id];
+					requestAnimationFrame(checkAudioLevel);
+				};
+				checkAudioLevel();
+			} else if (event.track.kind === "video") {
+				remoteVideoElements[stream.id] = stream;
 				remoteVideoElements = { ...remoteVideoElements };
-			} else {
-				delete remoteAudioElements[stream.id];
-				remoteAudioElements = { ...remoteAudioElements };
 			}
 		};
 
-		event.track.onended = () => {
-			if (event.track.kind === "video") {
-				delete remoteVideoElements[stream.id];
-				remoteVideoElements = { ...remoteVideoElements };
-			} else {
-				delete remoteAudioElements[stream.id];
-				remoteAudioElements = { ...remoteAudioElements };
-			}
-		};
-
-		if (event.track.kind === "audio") {
-			remoteAudioElements[stream.id] = stream;
-			remoteAudioElements = { ...remoteAudioElements };
+		if (localAudioStream) {
+			localAudioStream.getTracks().forEach((track) => {
+				peerConnection?.addTrack(track, localAudioStream!);
+			});
 
 			if (!audioContext) {
-				audioContext = new (
-					window.AudioContext || (window as any).webkitAudioContext
-				)();
+				audioContext = new (window.AudioContext ||
+					(window as any).webkitAudioContext)();
+			}
+			if (!localAnalyser) {
+				localAnalyser = audioContext.createAnalyser();
+				localAnalyser.fftSize = 256;
+			}
+			if (
+				!localAudioSource ||
+				localAudioSource.mediaStream !== localAudioStream
+			) {
+				if (localAudioSource) localAudioSource.disconnect();
+				try {
+					localAudioSource =
+						audioContext.createMediaStreamSource(localAudioStream);
+					localAudioSource.connect(localAnalyser);
+				} catch (err) {
+					console.error("AudioSource error", err);
+				}
 			}
 
-			const analyser = audioContext.createAnalyser();
-			analyser.fftSize = 256;
-			const source = audioContext.createMediaStreamSource(
-				new MediaStream([event.track]),
-			);
-			source.connect(analyser);
-			const dataArray = new Uint8Array(analyser.frequencyBinCount);
+			const dataArray = new Uint8Array(localAnalyser.frequencyBinCount);
 
-			const checkAudioLevel = () => {
-				if (isDestroyed || !audioContext || event.track.readyState === "ended")
-					return;
-				analyser.getByteFrequencyData(dataArray);
+			const checkLocalLevel = () => {
+				if (isDestroyed || !audioContext || !localAnalyser) return;
+				localAnalyser.getByteFrequencyData(dataArray);
 				let sum = 0;
 				for (let i = 0; i < dataArray.length; i++) {
 					sum += dataArray[i];
@@ -247,233 +318,184 @@ async function connectWebRTC() {
 
 				speakingUsers.update((set) => {
 					const newSet = new SvelteSet(set);
-					if (average > 10) newSet.add(userId);
-					else newSet.delete(userId);
+					if (average > 10 && !$isMuted && myUserId)
+						newSet.add(myUserId);
+					else if (myUserId) newSet.delete(myUserId);
 					return newSet;
 				});
-				userAmplitudes[userId] = average > 10 ? amplitude : 0;
+				if (myUserId) {
+					userAmplitudes[myUserId] =
+						average > 10 && !$isMuted ? amplitude : 0;
+				}
 
-				requestAnimationFrame(checkAudioLevel);
+				requestAnimationFrame(checkLocalLevel);
 			};
-			checkAudioLevel();
-		} else if (event.track.kind === "video") {
-			remoteVideoElements[stream.id] = stream;
-			remoteVideoElements = { ...remoteVideoElements };
+			checkLocalLevel();
+		} else {
+			peerConnection?.addTransceiver("audio", { direction: "recvonly" });
 		}
-	};
-
-	if (localAudioStream) {
-		localAudioStream.getTracks().forEach((track) => {
-			peerConnection?.addTrack(track, localAudioStream!);
-		});
-
-		if (!audioContext) {
-			audioContext = new (
-				window.AudioContext || (window as any).webkitAudioContext
-			)();
-		}
-		if (!localAnalyser) {
-			localAnalyser = audioContext.createAnalyser();
-			localAnalyser.fftSize = 256;
-		}
-		if (
-			!localAudioSource ||
-			localAudioSource.mediaStream !== localAudioStream
-		) {
-			if (localAudioSource) localAudioSource.disconnect();
-			try {
-				localAudioSource =
-					audioContext.createMediaStreamSource(localAudioStream);
-				localAudioSource.connect(localAnalyser);
-			} catch (err) {
-				console.error("AudioSource error", err);
-			}
-		}
-
-		const dataArray = new Uint8Array(localAnalyser.frequencyBinCount);
-
-		const checkLocalLevel = () => {
-			if (isDestroyed || !audioContext || !localAnalyser) return;
-			localAnalyser.getByteFrequencyData(dataArray);
-			let sum = 0;
-			for (let i = 0; i < dataArray.length; i++) {
-				sum += dataArray[i];
-			}
-			const average = sum / dataArray.length;
-			// Normalize to 0-1 (values above ~50 are loud speech)
-			const amplitude = Math.min(1, average / 50);
-
-			speakingUsers.update((set) => {
-				const newSet = new SvelteSet(set);
-				if (average > 10 && !$isMuted && myUserId) newSet.add(myUserId);
-				else if (myUserId) newSet.delete(myUserId);
-				return newSet;
+		if (localVideoStream) {
+			localVideoStream.getTracks().forEach((track) => {
+				peerConnection?.addTrack(track, localVideoStream!);
 			});
-			if (myUserId) {
-				userAmplitudes[myUserId] = average > 10 && !$isMuted ? amplitude : 0;
-			}
+		} else {
+			peerConnection?.addTransceiver("video", { direction: "recvonly" });
+		}
 
-			requestAnimationFrame(checkLocalLevel);
-		};
-		checkLocalLevel();
-	} else {
-		peerConnection?.addTransceiver("audio", { direction: "recvonly" });
-	}
-	if (localVideoStream) {
-		localVideoStream.getTracks().forEach((track) => {
-			peerConnection?.addTrack(track, localVideoStream!);
+		const offer = await peerConnection.createOffer();
+
+		await peerConnection.setLocalDescription(offer);
+
+		sendEventMessage("VOICE_JOIN", {
+			room_id: channelId,
+			offer: offer,
 		});
-	} else {
-		peerConnection?.addTransceiver("video", { direction: "recvonly" });
-	}
 
-	const offer = await peerConnection.createOffer();
-
-	await peerConnection.setLocalDescription(offer);
-
-	sendEventMessage("VOICE_JOIN", {
-		room_id: channelId,
-		offer: offer,
-	});
-
-	sendEventMessage("VOICE_SYNC", {
-		room_id: channelId,
-		muted: $isMuted,
-		deafened: $isDeafened,
-	});
-}
-
-
-$effect(() => {
-	if (localAudioStream) {
-		localAudioStream
-			.getAudioTracks()
-			.forEach((t) => (t.enabled = !$isMuted && !$isDeafened));
-	}
-});
-
-$effect(() => {
-	if (peerConnection && currentMicId !== $selectedMicId) {
-		currentMicId = $selectedMicId;
-		switchMicrophone($selectedMicId).catch((err) =>
-			console.error("Failed to switch mic", err),
-		);
-	}
-});
-
-async function switchMicrophone(deviceId: string) {
-	const constraints = deviceId
-		? { audio: { deviceId: { exact: deviceId } } }
-		: { audio: true };
-	const newStream = await navigator.mediaDevices.getUserMedia(constraints);
-
-	const newTrack = newStream.getAudioTracks().at(0);
-	if (newTrack) {
-		newTrack.enabled = !$isMuted && !$isDeafened;
-		const sender = peerConnection
-			?.getSenders()
-			.find((s) => s.track?.kind === "audio");
-		if (sender) {
-			await sender.replaceTrack(newTrack);
-		}
-	}
-
-	if (localAudioStream) {
-		localAudioStream.getTracks().forEach((t) => t.stop());
-	}
-	localAudioStream = newStream;
-
-	if (audioContext && localAnalyser) {
-		if (localAudioSource) {
-			localAudioSource.disconnect();
-		}
-		localAudioSource = audioContext.createMediaStreamSource(localAudioStream);
-		localAudioSource.connect(localAnalyser);
-	}
-}
-
-async function toggleScreenShare() {
-	if (isScreenSharing) {
-		// Remove the video sender from the existing connection — no reconnect needed
-		const sender = peerConnection
-			?.getSenders()
-			.find((s) => s.track?.kind === "video");
-		if (sender) {
-			peerConnection?.removeTrack(sender);
-		}
-		localVideoStream?.getTracks().forEach((t) => t.stop());
-		localVideoStream = null;
-		isScreenSharing = false;
-	} else {
-		try {
-			localVideoStream = await navigator.mediaDevices.getDisplayMedia({
-				video: true,
-			});
-			isScreenSharing = true;
-
-			const videoTrack = localVideoStream.getVideoTracks().at(0);
-			if (!videoTrack) return;
-
-			videoTrack.onended = () => {
-				if (isScreenSharing) toggleScreenShare(); // turn off when user clicks browser's stop sharing
-			};
-
-			// Add directly to the live peerConnection — the server's OnTrack will
-			// fire and renegotiatePeer will push the track to all other peers.
-			peerConnection?.addTrack(videoTrack, localVideoStream);
-		} catch (err) {
-			console.error("Screen share failed", err);
-		}
-	}
-}
-
-function srcObject(
-	node: HTMLAudioElement | HTMLVideoElement,
-	stream: MediaStream,
-) {
-	node.srcObject = stream;
-	return {
-		update(newStream: MediaStream) {
-			if (node.srcObject !== newStream) {
-				node.srcObject = newStream;
-			}
-		},
-	};
-}
-
-const voiceUsers = $derived((() => {
-	const fromGateway = $gatewaySpaces.flatMap((space) => {
-		const room = space.rooms.find((r) => r.id === channelId);
-		if (!room) return [];
-		const voiceStates =
-			space.voice_states?.filter((vs) => vs.room_id === channelId) ?? [];
-		return voiceStates.map((vs) => {
-			const user = space.users.find((u) => u.id === vs.user_id);
-			return {
-				id: vs.user_id,
-				username: user?.alias ?? user?.username ?? "Unknown",
-				avatar_url: user?.avatar ?? null,
-				muted: vs.muted ?? false,
-				deafened: vs.deafened ?? false,
-			};
-		});
-	});
-
-	// Fallback: always show local user while connected, even if gateway
-	// hasn't sent our voice_state yet.
-	const me = $currentUser;
-	if (me && !fromGateway.some((u) => u.id === me.id)) {
-		fromGateway.push({
-			id: me.id,
-			username: me.alias ?? me.username ?? "Me",
-			avatar_url: me.avatar ?? null,
+		sendEventMessage("VOICE_SYNC", {
+			room_id: channelId,
 			muted: $isMuted,
 			deafened: $isDeafened,
 		});
 	}
 
-	return fromGateway;
-})());
+	$effect(() => {
+		if (localAudioStream) {
+			localAudioStream
+				.getAudioTracks()
+				.forEach((t) => (t.enabled = !$isMuted && !$isDeafened));
+		}
+	});
+
+	$effect(() => {
+		if (peerConnection && currentMicId !== $selectedMicId) {
+			currentMicId = $selectedMicId;
+			switchMicrophone($selectedMicId).catch((err) =>
+				console.error("Failed to switch mic", err),
+			);
+		}
+	});
+
+	async function switchMicrophone(deviceId: string) {
+		const constraints = deviceId
+			? { audio: { deviceId: { exact: deviceId } } }
+			: { audio: true };
+		const newStream =
+			await navigator.mediaDevices.getUserMedia(constraints);
+
+		const newTrack = newStream.getAudioTracks().at(0);
+		if (newTrack) {
+			newTrack.enabled = !$isMuted && !$isDeafened;
+			const sender = peerConnection
+				?.getSenders()
+				.find((s) => s.track?.kind === "audio");
+			if (sender) {
+				await sender.replaceTrack(newTrack);
+			}
+		}
+
+		if (localAudioStream) {
+			localAudioStream.getTracks().forEach((t) => t.stop());
+		}
+		localAudioStream = newStream;
+
+		if (audioContext && localAnalyser) {
+			if (localAudioSource) {
+				localAudioSource.disconnect();
+			}
+			localAudioSource =
+				audioContext.createMediaStreamSource(localAudioStream);
+			localAudioSource.connect(localAnalyser);
+		}
+	}
+
+	async function toggleScreenShare() {
+		if (isScreenSharing) {
+			// Remove the video sender from the existing connection — no reconnect needed
+			const sender = peerConnection
+				?.getSenders()
+				.find((s) => s.track?.kind === "video");
+			if (sender) {
+				peerConnection?.removeTrack(sender);
+			}
+			localVideoStream?.getTracks().forEach((t) => t.stop());
+			localVideoStream = null;
+			isScreenSharing = false;
+		} else {
+			try {
+				localVideoStream = await navigator.mediaDevices.getDisplayMedia(
+					{
+						video: true,
+					},
+				);
+				isScreenSharing = true;
+
+				const videoTrack = localVideoStream.getVideoTracks().at(0);
+				if (!videoTrack) return;
+
+				videoTrack.onended = () => {
+					if (isScreenSharing) toggleScreenShare(); // turn off when user clicks browser's stop sharing
+				};
+
+				// Add directly to the live peerConnection — the server's OnTrack will
+				// fire and renegotiatePeer will push the track to all other peers.
+				peerConnection?.addTrack(videoTrack, localVideoStream);
+			} catch (err) {
+				console.error("Screen share failed", err);
+			}
+		}
+	}
+
+	function srcObject(
+		node: HTMLAudioElement | HTMLVideoElement,
+		stream: MediaStream,
+	) {
+		node.srcObject = stream;
+		return {
+			update(newStream: MediaStream) {
+				if (node.srcObject !== newStream) {
+					node.srcObject = newStream;
+				}
+			},
+		};
+	}
+
+	const voiceUsers = $derived(
+		(() => {
+			const fromGateway = $gatewaySpaces.flatMap((space) => {
+				const room = space.rooms.find((r) => r.id === channelId);
+				if (!room) return [];
+				const voiceStates =
+					space.voice_states?.filter(
+						(vs) => vs.room_id === channelId,
+					) ?? [];
+				return voiceStates.map((vs) => {
+					const user = space.users.find((u) => u.id === vs.user_id);
+					return {
+						id: vs.user_id,
+						username: user?.alias ?? user?.username ?? "Unknown",
+						avatar_url: user?.avatar ?? null,
+						muted: vs.muted ?? false,
+						deafened: vs.deafened ?? false,
+					};
+				});
+			});
+
+			// Fallback: always show local user while connected, even if gateway
+			// hasn't sent our voice_state yet.
+			const me = $currentUser;
+			if (me && !fromGateway.some((u) => u.id === me.id)) {
+				fromGateway.push({
+					id: me.id,
+					username: me.alias ?? me.username ?? "Me",
+					avatar_url: me.avatar ?? null,
+					muted: $isMuted,
+					deafened: $isDeafened,
+				});
+			}
+
+			return fromGateway;
+		})(),
+	);
 </script>
 
 <div
@@ -527,7 +549,8 @@ const voiceUsers = $derived((() => {
 				onkeydown={(e) => {
 					if (e.key === "Enter" || e.key === " ") {
 						e.preventDefault();
-						focusedUserId = focusedUserId === user.id ? null : user.id;
+						focusedUserId =
+							focusedUserId === user.id ? null : user.id;
 					}
 				}}
 				aria-label={`Focus participant ${user.username}`}
@@ -572,9 +595,15 @@ const voiceUsers = $derived((() => {
 				{:else}
 					<div class="relative flex items-center justify-center">
 						{#if isSpeaking && !isForceMuted}
-							<span class="voice-pulse absolute size-[154px] rounded-full border border-emerald-300/30"></span>
-							<span class="voice-pulse-delayed absolute size-[136px] rounded-full border border-emerald-300/45"></span>
-							<span class="voice-glow absolute size-[118px] rounded-full bg-emerald-300/12"></span>
+							<span
+								class="voice-pulse absolute size-38.5 rounded-full border border-emerald-300/30"
+							></span>
+							<span
+								class="voice-pulse-delayed absolute size-34 rounded-full border border-emerald-300/45"
+							></span>
+							<span
+								class="voice-glow absolute size-29.5 rounded-full bg-emerald-300/12"
+							></span>
 						{/if}
 						<div class="relative">
 							<UserAvatar
