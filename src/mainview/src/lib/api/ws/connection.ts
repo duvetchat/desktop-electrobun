@@ -19,7 +19,6 @@ import type {
 	GatewayRoom,
 	GatewayRole,
 	GatewayMember,
-	GatewayUser,
 	UserStatus,
 } from "$lib/types";
 
@@ -321,13 +320,16 @@ function handleEvent(event: GatewayEvent) {
 					};
 				}),
 			);
+			webrtcListeners.forEach((cb) => {
+				cb(type, data);
+			});
+
 			break;
 		}
 		case "VOICE_JOINED":
 		case "WEBRTC_ICE_CANDIDATE":
 		case "WEBRTC_RENEGOTIATE":
 		case "WEBRTC_RENEGOTIATE_ANSWER":
-		case "VOICE_STATE_UPDATE":
 			webrtcListeners.forEach((cb) => {
 				cb(type, data);
 			});
