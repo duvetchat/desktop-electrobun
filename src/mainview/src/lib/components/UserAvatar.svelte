@@ -5,11 +5,13 @@ let {
 	src = undefined,
 	name,
 	size = 40,
+	mouthOpen = 0,
 	class: className = "",
 }: {
 	src?: string | null | undefined;
 	name: string;
 	size?: string | number;
+	mouthOpen?: number;
 	class?: string;
 } = $props();
 </script>
@@ -25,6 +27,6 @@ let {
     <AvatarImage {src} alt={name} />
     <AvatarFallback
         {name}
-        facehashProps={{ size: typeof size === "number" ? size : 40 }}
+        facehashProps={{ size: typeof size === "number" ? size : 40, mouthOpen }}
     />
 </Avatar>

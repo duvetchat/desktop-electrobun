@@ -29,6 +29,7 @@ let remoteAudioElements = $state<{ [id: string]: MediaStream }>({});
 let remoteVideoElements = $state<{ [id: string]: MediaStream }>({});
 let remoteUserMuted = $state<{ [id: string]: boolean }>({});
 let videoPlayingStates = $state<Record<string, boolean>>({});
+let userAmplitudes = $state<Record<string, number>>({});
 
 let unsubscribeWs: () => void;
 let audioContext: AudioContext | null = null;
@@ -52,7 +53,7 @@ function leaveVoice() {
 	if ($activeVoiceRoomId === channelId) activeVoiceRoomId.set(null);
 }
 
-let currentMicId = $selectedMicId;
+let currentMicId = $state($selectedMicId);
 
 let myUserId = $state<string | null>(null);
 currentUser.subscribe((u) => (myUserId = u?.id || null));
@@ -216,6 +217,8 @@ async function connectWebRTC() {
 					sum += dataArray[i];
 				}
 				const average = sum / dataArray.length;
+				// Normalize to 0-1 (values above ~50 are loud speech)
+				const amplitude = Math.min(1, average / 50);
 
 				speakingUsers.update((set) => {
 					const newSet = new SvelteSet(set);
@@ -223,6 +226,7 @@ async function connectWebRTC() {
 					else newSet.delete(userId);
 					return newSet;
 				});
+				userAmplitudes[userId] = average > 10 ? amplitude : 0;
 
 				requestAnimationFrame(checkAudioLevel);
 			};
@@ -271,6 +275,8 @@ async function connectWebRTC() {
 				sum += dataArray[i];
 			}
 			const average = sum / dataArray.length;
+			// Normalize to 0-1 (values above ~50 are loud speech)
+			const amplitude = Math.min(1, average / 50);
 
 			speakingUsers.update((set) => {
 				const newSet = new SvelteSet(set);
@@ -278,6 +284,9 @@ async function connectWebRTC() {
 				else if (myUserId) newSet.delete(myUserId);
 				return newSet;
 			});
+			if (myUserId) {
+				userAmplitudes[myUserId] = average > 10 && !$isMuted ? amplitude : 0;
+			}
 
 			requestAnimationFrame(checkLocalLevel);
 		};
@@ -547,6 +556,7 @@ const voiceUsers = $derived((() => {
 								src={user.avatar_url}
 								name={user.username}
 								size={96}
+								mouthOpen={userAmplitudes[user.id] ?? 0}
 								class={isSpeaking && !isForceMuted
 									? "voice-avatar-speaking"
 									: ""}

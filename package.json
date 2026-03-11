@@ -11,6 +11,7 @@
 		"format:check": "bunx @biomejs/biome format ."
 	},
 	"dependencies": {
+		"@lucide/svelte": "^0.577.0",
 		"concurrently": "^9.2.1",
 		"electrobun": "1.15.1"
 	},
