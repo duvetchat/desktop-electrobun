@@ -4,3 +4,4 @@ src/mainview/build
 .direnv
 build
 .claude
+artifacts

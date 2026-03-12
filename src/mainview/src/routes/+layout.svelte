@@ -18,7 +18,7 @@
   <link rel="icon" href={favicon} />
 </svelte:head>
 
-<div class="flex h-[var(--app-height)] w-[var(--app-width)] flex-col overflow-hidden bg-stone-950 text-stone-100">
+<div class="flex h-(--app-height) w-(--app-width) flex-col overflow-hidden bg-stone-950 text-stone-100">
 	<Header />
 	<div class="min-h-0 flex-1 overflow-hidden">
 		{@render children()}
