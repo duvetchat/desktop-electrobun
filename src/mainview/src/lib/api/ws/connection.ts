@@ -134,7 +134,9 @@ function handleEvent(event: GatewayEvent) {
 				rooms: Object.values(payload.rooms),
 				roles: Object.values(payload.roles_permissions),
 				member_roles: payload.member_roles,
-				room_overwrites: [],
+				room_overwrites: payload.overwrites
+					? Object.values(payload.overwrites).flat()
+					: [],
 				member: selfMember,
 				members: selfMember ? [selfMember] : [],
 				users: currentUserData ? [currentUserData] : [],
@@ -486,6 +488,53 @@ function handleEvent(event: GatewayEvent) {
 					return {
 						...s,
 						rooms: s.rooms.filter((r) => r.id !== raw.id),
+					};
+				}),
+			);
+			break;
+		}
+		case "ROOM_UPDATE": {
+			const room = data as GatewayRoom;
+			gatewaySpaces.update((spaces) =>
+				spaces.map((s) => {
+					if (s.id !== room.space_id) return s;
+					return {
+						...s,
+						rooms: s.rooms.map((r) => (r.id === room.id ? room : r)),
+					};
+				}),
+			);
+			break;
+		}
+		case "ROOM_OVERWRITE_UPDATE": {
+			const ow = data as import("$lib/types").GatewayRoomOverwrite;
+			gatewaySpaces.update((spaces) =>
+				spaces.map((s) => {
+					const hasRoom = s.rooms.some((r) => r.id === ow.room_id);
+					if (!hasRoom) return s;
+					const existing = s.room_overwrites.findIndex(
+						(o) => o.room_id === ow.room_id && o.target_id === ow.target_id,
+					);
+					const updated =
+						existing >= 0
+							? s.room_overwrites.map((o, i) => (i === existing ? ow : o))
+							: [...s.room_overwrites, ow];
+					return { ...s, room_overwrites: updated };
+				}),
+			);
+			break;
+		}
+		case "ROOM_OVERWRITE_DELETE": {
+			const raw = data as { room_id: string; target_id: string };
+			gatewaySpaces.update((spaces) =>
+				spaces.map((s) => {
+					const hasRoom = s.rooms.some((r) => r.id === raw.room_id);
+					if (!hasRoom) return s;
+					return {
+						...s,
+						room_overwrites: s.room_overwrites.filter(
+							(o) => !(o.room_id === raw.room_id && o.target_id === raw.target_id),
+						),
 					};
 				}),
 			);

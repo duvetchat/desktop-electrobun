@@ -24,6 +24,7 @@ import { onMount } from "svelte";
 import type { Guild, Channel, RoomType } from "$lib/types";
 import { hasPermission, Permission } from "$lib/permissions";
 import ServerSettings from "$lib/components/ServerSettings.svelte";
+import ChannelSettings from "$lib/components/ChannelSettings.svelte";
 import { createRoom, deleteRoom } from "$lib/api/rooms";
 import InviteModal from "$lib/components/InviteModal.svelte";
 import UserAvatar from "$lib/components/UserAvatar.svelte";
@@ -87,6 +88,14 @@ let isDeletingChannel = $state(false);
 
 let showInviteModal = $state(false);
 let inviteModalChannel = $state<Channel | null>(null);
+
+let showChannelSettings = $state(false);
+let channelSettingsTarget = $state<Channel | null>(null);
+
+function openChannelSettings(channel: Channel) {
+	channelSettingsTarget = channel;
+	showChannelSettings = true;
+}
 
 function openInviteModal(channel: Channel) {
 	inviteModalChannel = channel;
@@ -503,6 +512,12 @@ onMount(() => {
 								{/if}
 								{#if canManage}
 									<div class="my-1 border-t border-zinc-700"></div>
+									<ContextMenu.Item class="w-full px-3 py-2 text-left text-sm text-zinc-100 hover:bg-zinc-700 transition-colors" onSelect={() => openChannelSettings(channel)}>
+										<div class="flex items-center gap-2">
+											<GearSixIcon class="size-4 text-zinc-400" />
+											Settings
+										</div>
+									</ContextMenu.Item>
 									<ContextMenu.Item class="w-full px-3 py-2 text-left text-sm text-red-400 hover:bg-zinc-700 transition-colors" onSelect={() => (confirmDeleteChannel = channel)}>
 										<div class="flex items-center gap-2">
 											<TrashSimpleIcon class="size-4" />
@@ -599,7 +614,7 @@ onMount(() => {
 						<span class="text-xs font-semibold text-stone-300 truncate">
 							Voice Connected
 						</span>
-						<span class="text-[10px] text-zinc-400 truncate">
+						<span class="text-xxs text-zinc-400 truncate">
 							{activeVoiceSpace?.name || ""} / {activeVoiceRoom.name}
 						</span>
 					</div>
@@ -830,3 +845,18 @@ onMount(() => {
 	channel={inviteModalChannel}
 	spaceId={guild.id}
 />
+
+{#if channelSettingsTarget && space}
+	{@const settingsRoom = space.rooms.find((r) => r.id === channelSettingsTarget?.id)}
+	{#if settingsRoom}
+		<ChannelSettings
+			bind:open={showChannelSettings}
+			{space}
+			room={settingsRoom}
+			onDelete={() => {
+				confirmDeleteChannel = channelSettingsTarget;
+				showChannelSettings = false;
+			}}
+		/>
+	{/if}
+{/if}

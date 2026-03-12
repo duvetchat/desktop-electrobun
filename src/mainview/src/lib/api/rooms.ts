@@ -72,6 +72,89 @@ export async function deleteRoom(
 	}
 }
 
+export async function updateRoom(
+	spaceId: string,
+	roomId: string,
+	payload: { name?: string; description?: string | null; clear_description?: boolean },
+): Promise<GatewayRoom> {
+	if (!userSession.token) {
+		throw new Error("No user session token found");
+	}
+
+	const response = await fetch(`${HOST}/api/spaces/${spaceId}/rooms/${roomId}`, {
+		method: "PATCH",
+		headers: {
+			"Content-Type": "application/json",
+			Authorization: userSession.token,
+		},
+		body: JSON.stringify(payload),
+	});
+
+	if (!response.ok) {
+		const errorData = (await response.json().catch(() => ({}))) as { error?: string };
+		throw new Error(errorData.error || "Failed to update room");
+	}
+
+	return (await response.json()) as GatewayRoom;
+}
+
+export async function upsertRoomOverwrite(
+	spaceId: string,
+	roomId: string,
+	targetId: string,
+	targetType: number,
+	allowFlags: number,
+	denyFlags: number,
+): Promise<import("$lib/types").GatewayRoomOverwrite> {
+	if (!userSession.token) {
+		throw new Error("No user session token found");
+	}
+
+	const response = await fetch(`${HOST}/api/spaces/${spaceId}/rooms/${roomId}/overwrites`, {
+		method: "PUT",
+		headers: {
+			"Content-Type": "application/json",
+			Authorization: userSession.token,
+		},
+		body: JSON.stringify({
+			target_id: targetId,
+			target_type: targetType,
+			allow_flags: allowFlags,
+			deny_flags: denyFlags,
+		}),
+	});
+
+	if (!response.ok) {
+		const errorData = (await response.json().catch(() => ({}))) as { error?: string };
+		throw new Error(errorData.error || "Failed to update overwrite");
+	}
+
+	return (await response.json()) as import("$lib/types").GatewayRoomOverwrite;
+}
+
+export async function deleteRoomOverwrite(
+	spaceId: string,
+	roomId: string,
+	targetId: string,
+): Promise<void> {
+	if (!userSession.token) {
+		throw new Error("No user session token found");
+	}
+
+	const response = await fetch(
+		`${HOST}/api/spaces/${spaceId}/rooms/${roomId}/overwrites/${targetId}`,
+		{
+			method: "DELETE",
+			headers: { Authorization: userSession.token },
+		},
+	);
+
+	if (!response.ok) {
+		const errorData = (await response.json().catch(() => ({}))) as { error?: string };
+		throw new Error(errorData.error || "Failed to delete overwrite");
+	}
+}
+
 export async function createRoomInvite(
 	spaceId: string,
 	roomId: string,

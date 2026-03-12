@@ -150,6 +150,7 @@ export interface GatewaySpaceCreatePayload {
 	rooms: Record<string, GatewayRoom>;
 	roles_permissions: Record<string, GatewayRole>;
 	member_roles: Partial<Record<string, string[]>>;
+	overwrites?: Record<string, GatewayRoomOverwrite[]>;
 	owner_id: string;
 }
 

@@ -351,7 +351,7 @@ async function toggleMemberRole(member: MemberOnSidebar, roleId: string) {
                                     >
                                         <span class="truncate">{member.username}</span>
                                         {#if member.is_bot}
-                                            <span class="text-[10px] text-zinc-400"
+                                            <span class="text-xxs text-zinc-400"
                                                 >BOT</span
                                             >
                                         {/if}
@@ -369,7 +369,7 @@ async function toggleMemberRole(member: MemberOnSidebar, roleId: string) {
                                 side="left"
                                 align="start"
                                 sideOffset={10}
-                                class="z-[301] w-80 overflow-hidden rounded-xl border border-zinc-700 bg-zinc-900 shadow-2xl"
+                                class="z-301 w-80 overflow-hidden rounded-xl border border-zinc-700 bg-zinc-900 shadow-2xl"
                             >
                                 {@const visibleRoles = member.roles.filter((role) => role.id !== spaceId)}
                                 <div class="h-24 w-full" style={getMemberBannerStyle(member)}></div>
@@ -461,7 +461,7 @@ async function toggleMemberRole(member: MemberOnSidebar, roleId: string) {
                                                             <div class="h-2.5 w-2.5 rounded-full" style={roleBadgeStyle(role as any)}></div>
                                                             <span class="flex-1 text-left">{role.name}</span>
                                                             {#if memberHasRole}
-                                                                <span class="text-[10px]">✓</span>
+                                                                <span class="text-xxs">✓</span>
                                                             {/if}
                                                         </div>
                                                     </button>
