@@ -370,10 +370,10 @@ setContext("voicePortal", {
       onFocus={handleFocusChange}
     />
   </div>
-  {#if showMembersSidebar}
+  <div class="contents" style={showMembersSidebar ? '' : 'display: none'}>
     <GuildMemberSidebar
       spaceId={memberSidebarSpaceId}
       space={memberSidebarSpace}
     />
-  {/if}
+  </div>
 </div>

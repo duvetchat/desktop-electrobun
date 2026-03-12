@@ -314,6 +314,7 @@ function handleTabSelect(channelId: string) {
 		return;
 	}
 	onUpdate({ ...node, activeChannelId: channelId });
+	onFocus(node.id);
 }
 
 function handleTabClose(channelId: string) {
@@ -643,6 +644,7 @@ const childProps = $derived({
 			: ''}"
 		role="region"
 		aria-label="Chat pane"
+		onclick={() => onFocus(node.id)}
 	>
         <!-- Tab bar + pane actions -->
 		<div class="flex items-stretch shrink-0 border-b border-zinc-800 min-w-0">

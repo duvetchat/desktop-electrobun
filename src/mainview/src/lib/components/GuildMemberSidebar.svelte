@@ -296,7 +296,7 @@ async function toggleMemberRole(member: MemberOnSidebar, roleId: string) {
 >
     <div class="h-10 px-3 border-b border-zinc-800 flex items-center justify-between shrink-0">
         <p class="text-xs font-bold tracking-wide text-zinc-200 uppercase">Members</p>
-        <span class="text-[11px] text-zinc-500">{pagedMembers.length} connected</span>
+        <span class="text-[11px] text-zinc-500">{pagedMembers.filter(x => x.status !== "offline").length} connected</span>
     </div>
     <div
         class="flex-1 overflow-y-auto"
