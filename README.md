@@ -27,9 +27,6 @@ Duvet is a monorepo with three services:
 desktop/
 ├── electrobun.config.ts          # Electrobun app config (icons, build, copy rules)
 ├── icon.iconset/                 # macOS iconset + Windows .ico
-├── scripts/
-│   ├── build-svelte.sh           # Builds SvelteKit for production (static adapter)
-│   └── run-dev.sh                # Starts Vite dev server for HMR
 ├── src/
 │   ├── bun/
 │   │   └── index.ts              # Electrobun main process — window creation, RPC, HMR detection
@@ -151,6 +148,6 @@ Real-time WebSocket server + WebRTC SFU for voice.
 
 ## Notes
 
-- On Windows with Git Bash/MSYS, if `electrobun build` fails downloading the CLI, run from PowerShell or CMD instead.
+- Scripts are now fully Bun-native (`bun --cwd ...`) and no longer depend on `.sh` wrappers.
 - The `icon.iconset/` folder contains all macOS icon sizes + a `.ico` for Windows/Linux. Icons are generated from `src/mainview/src/lib/assets/icon.svg` using Sharp.
 - The app uses `@sveltejs/adapter-static` to pre-render pages as static HTML that Electrobun loads via `views://` protocol. In HMR mode, it loads directly from the Vite dev server instead.

@@ -2,11 +2,11 @@
 	"name": "@duvet/desktop",
 	"version": "1.0.0",
 	"scripts": {
-		"start": "bash ./scripts/build-svelte.sh && electrobun dev",
+		"start": "bun run --cwd ./src/mainview build && electrobun dev",
 		"dev": "electrobun dev --watch",
 		"dev:hmr": "concurrently \"bun run hmr\" \"bun run dev\"",
-		"hmr": "bash ./scripts/run-dev.sh",
-		"build:canary": "bash ./scripts/build-svelte.sh && electrobun build --env=canary",
+		"hmr": "bun run --cwd ./src/mainview dev",
+		"build:canary": "bun run --cwd ./src/mainview build && electrobun build --env=canary",
 		"format": "bunx @biomejs/biome format --write .",
 		"format:check": "bunx @biomejs/biome format ."
 	},
