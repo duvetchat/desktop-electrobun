@@ -299,6 +299,10 @@
 		background: oklch(0.85 0.14 95);
 		color: oklch(0.2 0.02 85);
 	}
+
+	img::selection {
+		background: oklch(0.85 0.14 95);
+	}
 }
 
 @layer components {
@@ -344,24 +348,42 @@
 		@apply hover:text-foreground/80 focus-visible:ring-foreground focus-visible:ring-offset-background rounded-xs focus-visible:outline-hidden inline-flex items-center gap-1 font-medium underline underline-offset-4 focus-visible:ring-2 focus-visible:ring-offset-2;
 	}
 
-	/* ── Twemoji emoji images ───────────────────────── */
+	/* ── Twemoji emoji spans ────────────────────────── */
 	/* Inline emojis: same height as surrounding text */
 	.emoji-img {
 		display: inline-block;
+		position: relative;
 		width: 1.375em;
 		height: 1.375em;
-		vertical-align: -0.25em;
+		line-height: 1.375em;
+		vertical-align: middle;
 		margin: 0 0.02em;
-		object-fit: contain;
+		padding: 0;
+		color: transparent;
 		pointer-events: none;
-		user-select: none;
+	}
+
+	.emoji-img::after {
+		content: '';
+		position: absolute;
+		inset: 0;
+		background-image: var(--tw);
+		background-size: contain;
+		background-repeat: no-repeat;
+		background-position: center;
+		pointer-events: none;
 	}
 
 	/* Large mode: message is emoji-only (≤5 emojis), Discord style ~3rem */
 	.emoji-large {
 		width: 3rem;
 		height: 3rem;
-		vertical-align: -0.6em;
+		vertical-align: top;
 		margin: 0 0.06em;
+		padding: 0;
+	}
+
+	.emoji-large::after {
+		inset: 0;
 	}
 }

@@ -2,12 +2,10 @@
 import { Popover } from "bits-ui";
 import { Smile as SmileIcon } from "@lucide/svelte";
 import EmojiPicker from "$lib/components/EmojiPicker.svelte";
-import { searchEmojis, type EmojiEntry } from "$lib/emoji";
+import { searchEmojis, toTwemojiUrl, type EmojiEntry } from "$lib/emoji";
 
-const TWEMOJI_BASE =
-	"https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/svg";
 const EMOJI_RE =
-	/\p{Regional_Indicator}{2}|(?:\p{Emoji_Presentation}|\p{Emoji}\uFE0F)(?:\u200D(?:\p{Emoji_Presentation}|\p{Emoji}\uFE0F?)|\uD83C[\uDFFB-\uDFFF])*|[\d#*]\uFE0F?\u20E3/gu;
+	/\p{Regional_Indicator}{2}|(?:\p{Emoji_Presentation}|\p{Emoji}\uFE0F)(?:\u200D(?:\p{Emoji_Presentation}|\p{Emoji})\uFE0F?|\uD83C[\uDFFB-\uDFFF])*|[\d#*]\uFE0F?\u20E3/gu;
 
 let {
 	placeholder = "",
@@ -28,14 +26,6 @@ let suggestions = $state<EmojiEntry[]>([]);
 let selectedIdx = $state(0);
 let emojiQueryStart = $state(-1); // char offset (UTF-16) of ':' in raw text
 
-// ── Twemoji helpers ─────────────────────────────────────────────────────────
-function twUrl(emoji: string): string {
-	const raw = [...emoji].map((c) => c.codePointAt(0)!.toString(16));
-	const hasZwj = raw.includes("200d");
-	const codepoints = hasZwj ? raw : raw.filter((cp) => cp !== "fe0f");
-	return `${TWEMOJI_BASE}/${codepoints.join("-")}.svg`;
-}
-
 function buildHtml(text: string): string {
 	if (!text) return "";
 	EMOJI_RE.lastIndex = 0;
@@ -46,7 +36,7 @@ function buildHtml(text: string): string {
 		.replace(
 			EMOJI_RE,
 			(e) =>
-				`<img class="emoji-img" src="${twUrl(e)}" alt="${e}" draggable="false" loading="lazy">`,
+				`<span class="emoji-img" style="--tw:url('${toTwemojiUrl(e)}')" aria-label="${e}">${e}</span>`,
 		);
 }
 
@@ -275,7 +265,7 @@ function handleEmojiPick(emoji: string) {
 					onmouseenter={() => (selectedIdx = i)}
 				>
 					<img
-						src={twUrl(entry.emoji)}
+						src={toTwemojiUrl(entry.emoji)}
 						alt={entry.emoji}
 						class="emoji-ac-img"
 						loading="lazy"

@@ -4,10 +4,10 @@
 // for an <img> tag pointing to the Twemoji CDN.
 
 const TWEMOJI_BASE =
-	"https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/svg";
+	"https://cdn.jsdelivr.net/gh/jdecked/twemoji@16.0.1/assets/svg";
 
 /** Convert a Unicode emoji to its Twemoji CDN URL. */
-function toTwemojiUrl(emoji: string): string {
+export function toTwemojiUrl(emoji: string): string {
 	// Twemoji SVG filenames = lowercase hex codepoints joined by "-".
 	// FE0F (variation selector-16) rules:
 	//  • ZWJ sequences (contain 200d): keep FE0F — e.g. ❤️‍🔥 = 2764-fe0f-200d-1f525
@@ -23,7 +23,7 @@ function toTwemojiUrl(emoji: string): string {
 // Key: both \p{Emoji_Presentation} AND \p{Emoji}\uFE0F are valid emoji starts
 // (the latter covers text-default emojis like ❤ U+2764 and 🗣 U+1F5E3).
 const EMOJI_REGEX =
-	/\p{Regional_Indicator}{2}|(?:\p{Emoji_Presentation}|\p{Emoji}\uFE0F)(?:\u200D(?:\p{Emoji_Presentation}|\p{Emoji}\uFE0F?)|\uD83C[\uDFFB-\uDFFF])*|[\d#*]\uFE0F?\u20E3/gu;
+	/\p{Regional_Indicator}{2}|(?:\p{Emoji_Presentation}|\p{Emoji}\uFE0F)(?:\u200D(?:\p{Emoji_Presentation}|\p{Emoji})\uFE0F?|\uD83C[\uDFFB-\uDFFF])*|[\d#*]\uFE0F?\u20E3/gu;
 
 /** Replace Unicode emoji in a plain string with Twemoji <img> tags. */
 export function renderEmoji(text: string, large = false): string {
@@ -36,7 +36,7 @@ export function renderEmoji(text: string, large = false): string {
 
 	return escaped.replace(EMOJI_REGEX, (emoji) => {
 		const url = toTwemojiUrl(emoji);
-		return `<img class="${cls}" src="${url}" alt="${emoji}" draggable="false" aria-label="${emoji}" loading="lazy">`;
+		return `<img class="${cls}" src="${url}" alt="${emoji}" draggable="false" loading="lazy">`;
 	});
 }
 

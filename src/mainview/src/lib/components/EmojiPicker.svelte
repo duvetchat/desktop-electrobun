@@ -1,5 +1,5 @@
 <script lang="ts">
-import { emojiCategories, searchEmojis, type EmojiEntry } from "$lib/emoji";
+import { emojiCategories, searchEmojis, toTwemojiUrl, type EmojiEntry } from "$lib/emoji";
 
 let { onSelect }: { onSelect: (emoji: string) => void } = $props();
 
@@ -7,16 +7,6 @@ let searchQuery = $state("");
 let activeCategory = $state(0);
 let searchResults = $derived(searchEmojis(searchQuery));
 let isSearching = $derived(searchQuery.trim().length > 0);
-
-const TWEMOJI_BASE =
-	"https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/svg";
-
-function toTwemojiUrl(emoji: string): string {
-	const codepoints = [...emoji]
-		.map((c) => c.codePointAt(0)!.toString(16))
-		.filter((cp) => cp !== "fe0f");
-	return `${TWEMOJI_BASE}/${codepoints.join("-")}.svg`;
-}
 
 function pick(emoji: string) {
 	onSelect(emoji);

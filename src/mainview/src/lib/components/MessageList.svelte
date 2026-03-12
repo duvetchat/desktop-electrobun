@@ -335,6 +335,20 @@
         }
     }
 
+    function handleCopy(e: ClipboardEvent) {
+        const selection = window.getSelection();
+        if (!selection || selection.rangeCount === 0) return;
+        const fragment = selection.getRangeAt(0).cloneContents();
+        function extractText(node: Node): string {
+            if (node.nodeType === Node.TEXT_NODE) return node.textContent ?? "";
+            if (node.nodeName === "IMG") return (node as HTMLImageElement).alt ?? "";
+            return Array.from(node.childNodes).map(extractText).join("");
+        }
+        const text = extractText(fragment);
+        e.clipboardData?.setData("text/plain", text);
+        e.preventDefault();
+    }
+
     async function handleDelete(messageId: string) {
         deletingMessageId = messageId;
         try {
@@ -373,6 +387,7 @@
     bind:this={scrollEl}
     class="flex flex-1 flex-col-reverse overflow-x-clip overflow-y-auto px-4 py-2"
     onscroll={handleScroll}
+    oncopy={handleCopy}
 >
     {#if isInitialLoading}
         <div class="flex flex-col-reverse gap-4 pb-2">
@@ -517,16 +532,18 @@
                         {@const processed = processMessageContent(
                             message.content,
                         )}
-                        <button
-                            type="button"
+                        <div
+                            role="textbox"
+                            aria-readonly="true"
+                            tabindex="-1"
                             class="{isFailed
                                 ? 'text-red-400'
-                                : 'text-zinc-200'} {showHeader
+                                : 'text-zinc-200'} {emojiOnly
                                 ? ''
-                                : 'leading-5'} whitespace-pre-wrap wrap-break-word pr-12 {$currentUser &&
-                            message.author_id === $currentUser.id
-                                ? 'cursor-text select-text'
-                                : 'cursor-default'} text-left bg-transparent border-none p-0"
+                                : showHeader
+                                  ? ''
+                                  : 'leading-5'} whitespace-pre-wrap wrap-break-word pr-12 select-text cursor-text text-left"
+                            style={emojiOnly ? 'line-height: 3rem' : ''}
                             onclick={(e) => {
                                 if (
                                     e.detail === 3 &&
@@ -572,7 +589,7 @@
                                     )})</span
                                 >
                             {/if}
-                        </button>
+                        </div>
                         {#if processed.images.length > 0}
                             <div class="mt-1 flex flex-col gap-1">
                                 {#each processed.images as imgUrl}
