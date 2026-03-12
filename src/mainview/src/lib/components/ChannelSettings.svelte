@@ -10,6 +10,9 @@ import {
 	Check as CheckIcon,
 	Minus as MinusIcon,
 } from "@lucide/svelte";
+import { fly } from "svelte/transition";
+import { cubicOut } from "svelte/easing";
+import { untrack } from "svelte";
 import { Dialog } from "bits-ui";
 import { Permission } from "$lib/permissions";
 import { updateRoom, upsertRoomOverwrite, deleteRoomOverwrite } from "$lib/api/rooms";
@@ -92,21 +95,46 @@ const PERMISSION_GROUPS = [
 	},
 ];
 
-// current overwrites for this room
+type PendingOW = { target_id: string; target_type: number; allow_flags: number; deny_flags: number };
+
+// server-side overwrites for this room
 let roomOverwrites = $derived(
 	space.room_overwrites.filter((o) => o.room_id === room.id),
 );
 
+// local pending state (unsaved edits)
+let pendingOverwrites = $state<PendingOW[]>([]);
+
+// initialize pending state only when room changes (not on every WS update)
+$effect(() => {
+	const id = room.id;
+	untrack(() => {
+		pendingOverwrites = space.room_overwrites
+			.filter((o) => o.room_id === id)
+			.map((ow) => ({
+				target_id: ow.target_id,
+				target_type: ow.target_type,
+				allow_flags: ow.allow_flags,
+				deny_flags: ow.deny_flags,
+			}));
+		selectedTargetId = null;
+	});
+});
+
 // selected overwrite target (role or member id)
 let selectedTargetId = $state<string | null>(null);
-let selectedOverwrite = $derived(
-	selectedTargetId ? roomOverwrites.find((o) => o.target_id === selectedTargetId) ?? null : null,
+let selectedPending = $derived(
+	selectedTargetId ? pendingOverwrites.find((o) => o.target_id === selectedTargetId) ?? null : null,
 );
 
 $effect(() => {
 	// auto-select first overwrite if none selected
-	if (!selectedTargetId && roomOverwrites.length > 0) {
-		selectedTargetId = roomOverwrites[0].target_id;
+	if (!selectedTargetId && pendingOverwrites.length > 0) {
+		selectedTargetId = pendingOverwrites[0].target_id;
+	}
+	// deselect if the selected target was removed
+	if (selectedTargetId && !pendingOverwrites.find((o) => o.target_id === selectedTargetId)) {
+		selectedTargetId = pendingOverwrites.length > 0 ? pendingOverwrites[0].target_id : null;
 	}
 });
 
@@ -114,7 +142,6 @@ $effect(() => {
 function getRoleName(targetId: string): string {
 	const role = space.roles.find((r) => r.id === targetId);
 	if (role) return role.name;
-	// Check if it's the @everyone role (spaceId == roleId pattern)
 	if (targetId === space.id) return "@everyone";
 	return targetId.slice(0, 8) + "…";
 }
@@ -127,81 +154,115 @@ function getMemberName(targetId: string): string {
 	return targetId.slice(0, 8) + "…";
 }
 
-function getTargetLabel(ow: GatewayRoomOverwrite): string {
+function getTargetLabel(ow: PendingOW): string {
 	if (ow.target_type === 0) return getRoleName(ow.target_id);
 	return getMemberName(ow.target_id);
 }
 
-// permission state: 1 = allow, 0 = inherit, -1 = deny
+// permission state: 1 = allow, 0 = inherit, -1 = deny (reads from pending)
 function getPermState(flag: number): 1 | 0 | -1 {
-	if (!selectedOverwrite) return 0;
-	if ((selectedOverwrite.allow_flags & flag) !== 0) return 1;
-	if ((selectedOverwrite.deny_flags & flag) !== 0) return -1;
+	if (!selectedPending) return 0;
+	if ((selectedPending.allow_flags & flag) !== 0) return 1;
+	if ((selectedPending.deny_flags & flag) !== 0) return -1;
 	return 0;
 }
 
-let savingPerm = $state(false);
-
-async function setPermState(flag: number, state: 1 | 0 | -1) {
-	if (!selectedTargetId || !selectedOverwrite) return;
-	savingPerm = true;
-	try {
-		let allow = selectedOverwrite.allow_flags;
-		let deny = selectedOverwrite.deny_flags;
-
-		// Clear this flag from both
-		allow &= ~flag;
-		deny &= ~flag;
-
-		if (state === 1) allow |= flag;
-		else if (state === -1) deny |= flag;
-
-		await upsertRoomOverwrite(
-			space.id,
-			room.id,
-			selectedTargetId,
-			selectedOverwrite.target_type,
-			allow,
-			deny,
-		);
-	} catch (e) {
-		console.error("Failed to save permission:", e);
-	} finally {
-		savingPerm = false;
-	}
-}
-
-// add a new overwrite
-let showAddMenu = $state(false);
-let addSaving = $state(false);
-
-async function addRoleOverwrite(roleId: string) {
-	showAddMenu = false;
-	addSaving = true;
-	try {
-		await upsertRoomOverwrite(space.id, room.id, roleId, 0, 0, 0);
-		selectedTargetId = roleId;
-	} catch (e) {
-		console.error("Failed to add overwrite:", e);
-	} finally {
-		addSaving = false;
-	}
-}
-
-async function removeOverwrite() {
+// update local pending state only — no API call
+function setPermState(flag: number, state: 1 | 0 | -1) {
 	if (!selectedTargetId) return;
+	const idx = pendingOverwrites.findIndex((o) => o.target_id === selectedTargetId);
+	if (idx === -1) return;
+
+	let allow = pendingOverwrites[idx].allow_flags;
+	let deny = pendingOverwrites[idx].deny_flags;
+
+	allow &= ~flag;
+	deny &= ~flag;
+
+	if (state === 1) allow |= flag;
+	else if (state === -1) deny |= flag;
+
+	pendingOverwrites[idx].allow_flags = allow;
+	pendingOverwrites[idx].deny_flags = deny;
+}
+
+// add a new overwrite to pending (no API call)
+let showAddMenu = $state(false);
+
+function addRoleOverwrite(roleId: string) {
+	showAddMenu = false;
+	pendingOverwrites = [
+		...pendingOverwrites,
+		{ target_id: roleId, target_type: 0, allow_flags: 0, deny_flags: 0 },
+	];
+	selectedTargetId = roleId;
+}
+
+// remove overwrite from pending (no API call)
+function removeOverwrite() {
+	if (!selectedTargetId) return;
+	pendingOverwrites = pendingOverwrites.filter((o) => o.target_id !== selectedTargetId);
+	selectedTargetId = null;
+}
+
+// roles not yet in pending
+let availableRoles = $derived(
+	space.roles.filter((r) => !pendingOverwrites.some((o) => o.target_id === r.id && o.target_type === 0)),
+);
+
+// detect unsaved changes by comparing pending vs server
+let hasChanges = $derived((() => {
+	if (pendingOverwrites.length !== roomOverwrites.length) return true;
+	for (const po of pendingOverwrites) {
+		const server = roomOverwrites.find((o) => o.target_id === po.target_id);
+		if (!server) return true;
+		if (server.allow_flags !== po.allow_flags || server.deny_flags !== po.deny_flags) return true;
+	}
+	return false;
+})());
+
+// bulk save: diff and apply all changes at once
+let isSaving = $state(false);
+let saveError = $state("");
+
+async function saveAll() {
+	isSaving = true;
+	saveError = "";
 	try {
-		await deleteRoomOverwrite(space.id, room.id, selectedTargetId);
-		selectedTargetId = null;
+		const toDelete = roomOverwrites.filter(
+			(so) => !pendingOverwrites.find((p) => p.target_id === so.target_id),
+		);
+		const toUpsert = pendingOverwrites.filter((po) => {
+			const server = roomOverwrites.find((s) => s.target_id === po.target_id);
+			if (!server) return true;
+			return server.allow_flags !== po.allow_flags || server.deny_flags !== po.deny_flags;
+		});
+
+		await Promise.all([
+			...toDelete.map((ow) => deleteRoomOverwrite(space.id, room.id, ow.target_id)),
+			...toUpsert.map((po) =>
+				upsertRoomOverwrite(space.id, room.id, po.target_id, po.target_type, po.allow_flags, po.deny_flags),
+			),
+		]);
 	} catch (e) {
-		console.error("Failed to remove overwrite:", e);
+		saveError = e instanceof Error ? e.message : "Failed to save";
+		console.error("Failed to save overwrites:", e);
+	} finally {
+		isSaving = false;
 	}
 }
 
-// roles/members not yet having an overwrite
-let availableRoles = $derived(
-	space.roles.filter((r) => !roomOverwrites.some((o) => o.target_id === r.id && o.target_type === 0)),
-);
+function resetPending() {
+	pendingOverwrites = roomOverwrites.map((ow) => ({
+		target_id: ow.target_id,
+		target_type: ow.target_type,
+		allow_flags: ow.allow_flags,
+		deny_flags: ow.deny_flags,
+	}));
+	if (selectedTargetId && !pendingOverwrites.find((o) => o.target_id === selectedTargetId)) {
+		selectedTargetId = pendingOverwrites.length > 0 ? pendingOverwrites[0].target_id : null;
+	}
+}
 
 // delete channel
 let confirmDelete = $state(false);
@@ -285,7 +346,7 @@ function handleClose() {
 				</aside>
 
 				<!-- Content area -->
-				<div class="flex-1 flex flex-col min-w-0">
+				<div class="flex-1 flex flex-col min-w-0 relative">
 					<!-- Header -->
 					<div class="flex items-center justify-between px-6 py-4 border-b border-zinc-800 shrink-0">
 						<h2 class="text-base font-semibold text-white capitalize">
@@ -301,7 +362,10 @@ function handleClose() {
 					</div>
 
 					<!-- Scrollable body -->
-					<div class="flex-1 overflow-y-auto">
+					<div
+						class="flex-1 overflow-y-auto"
+						class:pb-14={activeSection === "permissions" && hasChanges}
+					>
 
 						{#if activeSection === "overview"}
 							<div class="px-6 py-6 max-w-xl space-y-5">
@@ -367,7 +431,6 @@ function handleClose() {
 												class="text-zinc-400 hover:text-white hover:bg-zinc-800 p-1 rounded transition-colors"
 												onclick={() => (showAddMenu = !showAddMenu)}
 												title="Add overwrite"
-												disabled={addSaving}
 											>
 												<PlusIcon class="size-3.5" />
 											</button>
@@ -391,7 +454,7 @@ function handleClose() {
 									</div>
 
 									<div class="flex-1 overflow-y-auto">
-										{#each roomOverwrites as ow (ow.target_id)}
+										{#each pendingOverwrites as ow (ow.target_id)}
 											<button
 												class="w-full text-left px-3 py-2 text-sm transition-colors
 													{selectedTargetId === ow.target_id
@@ -403,7 +466,7 @@ function handleClose() {
 											</button>
 										{/each}
 
-										{#if roomOverwrites.length === 0}
+										{#if pendingOverwrites.length === 0}
 											<p class="px-3 py-3 text-xs text-zinc-500">
 												No overwrites yet. Add a role with the + button.
 											</p>
@@ -413,14 +476,14 @@ function handleClose() {
 
 								<!-- Permission toggles -->
 								<div class="flex-1 overflow-y-auto py-4 px-6">
-									{#if !selectedTargetId || !selectedOverwrite}
+									{#if !selectedTargetId || !selectedPending}
 										<p class="text-sm text-zinc-500 mt-8 text-center">
 											Select a role or member to edit permissions.
 										</p>
 									{:else}
 										<div class="flex items-center justify-between mb-5">
 											<h3 class="text-sm font-semibold text-zinc-200">
-												{getTargetLabel(selectedOverwrite)}
+												{getTargetLabel(selectedPending)}
 											</h3>
 											<button
 												class="text-xs text-red-400 hover:text-red-300 hover:bg-zinc-800 px-2 py-1 rounded transition-colors"
@@ -451,7 +514,6 @@ function handleClose() {
 																			? 'bg-red-600 text-white'
 																			: 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200'}"
 																	onclick={() => setPermState(perm.flag, state === -1 ? 0 : -1)}
-																	disabled={savingPerm}
 																	title="Deny"
 																>
 																	<XIcon class="size-3.5" />
@@ -463,7 +525,6 @@ function handleClose() {
 																			? 'bg-zinc-600 text-white'
 																			: 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200'}"
 																	onclick={() => setPermState(perm.flag, 0)}
-																	disabled={savingPerm}
 																	title="Inherit"
 																>
 																	<MinusIcon class="size-3.5" />
@@ -475,7 +536,6 @@ function handleClose() {
 																			? 'bg-green-600 text-white'
 																			: 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200'}"
 																	onclick={() => setPermState(perm.flag, state === 1 ? 0 : 1)}
-																	disabled={savingPerm}
 																	title="Allow"
 																>
 																	<CheckIcon class="size-3.5" />
@@ -491,6 +551,34 @@ function handleClose() {
 							</div>
 						{/if}
 					</div>
+
+					<!-- Bulk save bar — slides in from bottom when there are unsaved changes -->
+					{#if activeSection === "permissions" && hasChanges}
+						<div
+							transition:fly={{ y: 60, duration: 250, easing: cubicOut }}
+							class="absolute bottom-0 left-0 right-0 bg-zinc-800/95 backdrop-blur-sm border-t border-zinc-700 px-6 py-3 flex items-center justify-between"
+						>
+							<span class="text-sm {saveError ? 'text-red-400' : 'text-zinc-400'}">
+								{saveError || "You have unsaved changes"}
+							</span>
+							<div class="flex items-center gap-2">
+								<button
+									class="text-sm text-zinc-400 hover:text-zinc-200 px-3 py-1.5 rounded transition-colors hover:bg-zinc-700 disabled:opacity-50"
+									onclick={resetPending}
+									disabled={isSaving}
+								>
+									Reset
+								</button>
+								<button
+									class="bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white px-4 py-1.5 rounded-lg text-sm font-medium transition-colors"
+									onclick={saveAll}
+									disabled={isSaving}
+								>
+									{isSaving ? "Saving…" : "Save Changes"}
+								</button>
+							</div>
+						</div>
+					{/if}
 				</div>
 
 			</div>
