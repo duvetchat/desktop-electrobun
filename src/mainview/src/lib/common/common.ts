@@ -32,7 +32,7 @@ export function getWSHostURL(): string {
 	let base = 'duvet-ws.andremor.eu.org';
 	let protocol = 'wss://'
 	if (isLocalEnv) {
-		base = import.meta.env.HOST_URL || 'localhost:8081';
+		base = import.meta.env.HOST_WS_URL || 'localhost:8081';
 		protocol = import.meta.env.HOST_WS_PROTOCOL || 'ws://';
 	}
 
