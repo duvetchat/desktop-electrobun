@@ -23,7 +23,7 @@
 				return map[p] || p;
 			};
 
-			if (path === '/index.html' || (isDev && path === '/')) {
+			if (path === '/index.html' || path === '/') {
 				const secret = localStorage.getItem('duvet_session_token');
 
 				if (!secret) {
