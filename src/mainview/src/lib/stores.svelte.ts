@@ -3,6 +3,7 @@ import { writable } from "svelte/store";
 
 import type { GatewaySpace, GatewayUser, Message } from "$lib/types";
 import type { FriendRequest, Friend } from "$lib/api/friends";
+import type { Conversation, DirectMessage } from "$lib/api/conversations";
 
 const SESSION_KEY = "duvet_session_token";
 
@@ -62,6 +63,9 @@ export const speakingUsers = writable<SvelteSet<string>>(new SvelteSet());
 
 export const pendingFriendRequests = writable<FriendRequest[]>([]);
 export const friends = writable<Friend[]>([]);
+
+export const conversations = writable<Conversation[]>([]);
+export const dmMessages = writable<Record<string, DirectMessage[]>>({});
 
 export const isMuted = writable<boolean>(false);
 export const isDeafened = writable<boolean>(false);

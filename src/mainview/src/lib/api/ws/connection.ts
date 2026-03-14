@@ -5,8 +5,11 @@ import {
 	currentUser,
 	pendingFriendRequests,
 	friends,
+	conversations,
+	dmMessages,
 } from "$lib/stores.svelte";
 import type { FriendRequest, Friend } from "$lib/api/friends";
+import type { Conversation, DirectMessage } from "$lib/api/conversations";
 import { getWSHostURL } from "$lib/common/common";
 import { get } from "svelte/store";
 import { getSpaceMembers, type SpaceMemberWithUser } from "$lib/api/spaces";
@@ -625,6 +628,118 @@ function handleEvent(event: GatewayEvent) {
 					(f) => f.sender_id !== raw.user_id && f.recipient_id !== raw.user_id,
 				),
 			);
+			break;
+		}
+		case "CONVERSATION_CREATE": {
+			const conv = data as Conversation;
+			conversations.update((list) => {
+				if (list.some((c) => c.id === conv.id)) return list;
+				return [conv, ...list];
+			});
+			break;
+		}
+		case "CONVERSATION_UPDATE": {
+			const raw = data as { id: string; name: string | null };
+			conversations.update((list) =>
+				list.map((c) => (c.id === raw.id ? { ...c, name: raw.name } : c)),
+			);
+			break;
+		}
+		case "CONVERSATION_DELETE": {
+			const raw = data as { id: string };
+			conversations.update((list) => list.filter((c) => c.id !== raw.id));
+			break;
+		}
+		case "CONVERSATION_MEMBER_ADD": {
+			const raw = data as { conversation_id: string; user_id: string; member_id: string };
+			conversations.update((list) =>
+				list.map((c) => {
+					if (c.id !== raw.conversation_id) return c;
+					const alreadyHas = c.members.some((m) => m.id === raw.member_id);
+					if (alreadyHas) return c;
+					return {
+						...c,
+						members: [
+							...c.members,
+							{
+								id: raw.member_id,
+								conversation_id: raw.conversation_id,
+								user_id: raw.user_id,
+								created_at: new Date().toISOString(),
+								updated_at: new Date().toISOString(),
+								deleted_at: null,
+								users: { id: raw.user_id, username: "", alias: null, avatar: null, status_id: 0 },
+							},
+						],
+					};
+				}),
+			);
+			break;
+		}
+		case "CONVERSATION_MEMBER_REMOVE": {
+			const raw = data as { conversation_id: string; user_id: string };
+			conversations.update((list) =>
+				list.map((c) => {
+					if (c.id !== raw.conversation_id) return c;
+					return {
+						...c,
+						members: c.members.filter((m) => m.user_id !== raw.user_id),
+					};
+				}),
+			);
+			break;
+		}
+		case "DM_MESSAGE_CREATE": {
+			const msg = data as DirectMessage;
+			if (!msg.conversation_id) {
+				return;
+			}
+			const conversationId = msg.conversation_id;
+			dmMessages.update((all) => {
+				const existing = all[conversationId] ?? [];
+				if (msg.nonce) {
+					const pendingIdx = existing.findIndex((m) => m.nonce === msg.nonce);
+					if (pendingIdx !== -1) {
+						const updated = [...existing];
+						updated[pendingIdx] = msg;
+						return { ...all, [conversationId]: updated };
+					}
+				}
+				if (existing.some((m) => m.id === msg.id)) return all;
+				return { ...all, [conversationId]: [...existing, msg] };
+			});
+			// Move conversation to top
+			conversations.update((list) =>
+				list
+					.map((c) => ({ ...c, updated_at: msg.created_at }))
+					.sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()),
+			);
+			break;
+		}
+		case "DM_MESSAGE_UPDATE": {
+			const msg = data as DirectMessage;
+			if (!msg.conversation_id) {
+				return;
+			}
+			const conversationId = msg.conversation_id;
+			dmMessages.update((all) => {
+				const existing = all[conversationId] ?? [];
+				return {
+					...all,
+					[conversationId]: existing.map((m) => (m.id === msg.id ? msg : m)),
+				};
+			});
+			break;
+		}
+		case "DM_MESSAGE_DELETE": {
+			const raw = data as { id: string; conversation_id: string };
+			dmMessages.update((all) => {
+				const existing = all[raw.conversation_id] ?? [];
+				return {
+					...all,
+					[raw.conversation_id]: existing.filter((m) => m.id !== raw.id),
+				};
+			});
 			break;
 		}
 		default:

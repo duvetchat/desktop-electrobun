@@ -1,14 +1,11 @@
 <script lang="ts">
 import {
-	Image as GifIcon,
 	Search as MagnifyingGlassIcon,
 	Bookmark as BookmarkSimpleIcon,
 	Hash as HashIcon,
 } from "@lucide/svelte";
-import { Popover } from "bits-ui";
 
 import { onMount, onDestroy } from "svelte";
-import GifPicker from "$lib/components/GifPicker.svelte";
 import ChatInput from "$lib/components/ChatInput.svelte";
 import MessageList from "$lib/components/MessageList.svelte";
 import type { Message, MemberOnSidebar, GatewaySpace } from "$lib/types";
@@ -37,7 +34,6 @@ let {
 	onLoadMore?: () => Promise<void> | void;
 } = $props();
 
-let showGifPicker = $state(false);
 let failedNonces = $state(new Set<string>());
 let editingMessageId = $state<string | null>(null);
 let editContent = $state("");
@@ -166,34 +162,6 @@ function dismissFailedMessage(nonce: string) {
 	}));
 }
 
-function handleGifSelect(url: string) {
-	showGifPicker = false;
-	const nonce = crypto.randomUUID();
-	const user = $currentUser;
-	if (!user) return;
-	const isoNow = new Date().toISOString();
-	channelMessages.update((all) => ({
-		...all,
-		[channelId]: [
-			...(all[channelId] ?? []),
-			{
-				id: nonce,
-				content: url,
-				author_id: user.id,
-				author_name: user.alias ?? user.username,
-				author_avatar_url: user.avatar ?? null,
-				created_at: isoNow,
-				updated_at: isoNow,
-				nonce,
-			} as any,
-		],
-	}));
-	sendMessage(channelId, url, nonce).catch(console.error);
-}
-
-onMount(() => {
-	// ChatInput handles its own focus
-});
 </script>
 
 <div class="flex flex-1 flex-col overflow-hidden bg-[linear-gradient(180deg,oklch(0.22_0.01_80),oklch(0.19_0.008_80))]">
@@ -245,32 +213,10 @@ onMount(() => {
   <div
 		class="relative flex min-h-16 max-h-48 flex-row items-end gap-2 border-t border-stone-800 bg-stone-950/45 px-3 py-2"
 	>
-    <!-- ChatInput: contenteditable with emoji rendering + autocomplete + emoji picker -->
     <ChatInput
       placeholder={`Message #${channelName}`}
       onSubmit={handleSendMessage}
       onArrowUpWhenEmpty={tryEditLastMessage}
     />
-
-    <!-- GIF picker button -->
-		<Popover.Root bind:open={showGifPicker}>
-			<Popover.Trigger
-				class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-stone-700 bg-stone-900/70 text-stone-300 transition-colors hover:bg-stone-800 hover:text-stone-100 outline-none"
-				title="Open GIF picker"
-				aria-label="Open GIF picker"
-			>
-				<GifIcon class="size-5" />
-			</Popover.Trigger>
-			<Popover.Portal>
-				<Popover.Content
-					side="top"
-					align="end"
-					sideOffset={10}
-					class="z-80"
-				>
-					<GifPicker onSelect={handleGifSelect} />
-				</Popover.Content>
-			</Popover.Portal>
-		</Popover.Root>
   </div>
 </div>

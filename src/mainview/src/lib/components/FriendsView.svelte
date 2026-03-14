@@ -1,7 +1,7 @@
 <script lang="ts">
 import { onMount } from "svelte";
 import { get } from "svelte/store";
-import { currentUser, pendingFriendRequests, friends } from "$lib/stores.svelte";
+import { currentUser, pendingFriendRequests, friends, conversations } from "$lib/stores.svelte";
 import {
 	sendFriendRequest,
 	getPendingRequests,
@@ -15,46 +15,82 @@ import {
 	type Friend,
 	type UserPublic,
 } from "$lib/api/friends";
-import { UserPlus, UserCheck, UserX, Users, Clock, Send } from "@lucide/svelte";
+import {
+	getConversations,
+	createDM,
+	createGroup,
+	type Conversation,
+} from "$lib/api/conversations";
+import { UserPlus, UserCheck, UserX, Users, Clock, Send, MessageSquare, UsersRound } from "@lucide/svelte";
 import UserAvatar from "$lib/components/UserAvatar.svelte";
+import ConversationView from "$lib/components/ConversationView.svelte";
 
-type Tab = "friends" | "pending" | "sent" | "add";
-let activeTab = $state<Tab>("friends");
+type Tab = "dms" | "friends" | "pending" | "sent" | "add";
+let activeTab = $state<Tab>("dms");
+let activeConversation = $state<Conversation | null>(null);
 
 let sentRequests = $state<FriendRequest[]>([]);
 let sentRequestUsers = $state<Map<string, UserPublic>>(new Map());
+let friendUsers = $state<Map<string, UserPublic>>(new Map());
+let pendingUsers = $state<Map<string, UserPublic>>(new Map());
 let addUserId = $state("");
 let addError = $state("");
 let addSuccess = $state("");
 let loading = $state(false);
 
-async function loadSentUsers(sent: FriendRequest[]) {
+// Group creation state
+let showGroupModal = $state(false);
+let groupName = $state("");
+let groupMemberIds = $state("");
+let groupError = $state("");
+
+async function loadUsers<K extends string>(ids: K[], existing?: Map<string, UserPublic>): Promise<Map<string, UserPublic>> {
+	const map = new Map<string, UserPublic>(existing);
 	const entries = await Promise.allSettled(
-		sent.map(async (r) => {
-			const user = await getUser(r.recipient_id);
-			return [r.recipient_id, user] as const;
+		ids.filter((id) => !map.has(id)).map(async (id) => {
+			const user = await getUser(id);
+			return [id, user] as const;
 		}),
 	);
-	const map = new Map<string, UserPublic>();
 	for (const result of entries) {
 		if (result.status === "fulfilled") {
 			map.set(result.value[0], result.value[1]);
 		}
 	}
-	sentRequestUsers = map;
+	return map;
+}
+
+async function loadSentUsers(sent: FriendRequest[]) {
+	sentRequestUsers = await loadUsers(sent.map((r) => r.recipient_id));
+}
+
+async function loadFriendUsers(friendList: Friend[]) {
+	const me = get(currentUser);
+	const ids = friendList.map((f) => (f.sender_id === me?.id ? f.recipient_id : f.sender_id));
+	friendUsers = await loadUsers(ids);
+}
+
+async function loadPendingUsers(pending: FriendRequest[]) {
+	pendingUsers = await loadUsers(pending.map((r) => r.sender_id));
 }
 
 onMount(async () => {
 	try {
-		const [pending, sent, friendList] = await Promise.all([
+		const [pending, sent, friendList, convList] = await Promise.all([
 			getPendingRequests(),
 			getSentRequests(),
 			getFriends(),
+			getConversations(),
 		]);
 		pendingFriendRequests.set(pending);
 		sentRequests = sent;
 		friends.set(friendList);
-		await loadSentUsers(sent);
+		conversations.set(convList);
+		await Promise.all([
+			loadSentUsers(sent),
+			loadFriendUsers(friendList),
+			loadPendingUsers(pending),
+		]);
 	} catch (err) {
 		console.error("[Friends] Failed to load:", err);
 	}
@@ -130,19 +166,114 @@ function getFriendUserId(friend: Friend): string {
 	if (!me) return "";
 	return friend.sender_id === me.id ? friend.recipient_id : friend.sender_id;
 }
+
+async function handleOpenDM(friend: Friend) {
+	const me = get(currentUser);
+	if (!me) return;
+	const otherUserId = getFriendUserId(friend);
+	try {
+		const conv = await createDM(otherUserId);
+		conversations.update((list) => {
+			if (list.some((c) => c.id === conv.id)) return list;
+			return [conv, ...list];
+		});
+		activeConversation = conv;
+		activeTab = "dms";
+	} catch (err) {
+		console.error("[DM] Failed to open DM:", err);
+	}
+}
+
+async function handleCreateGroup() {
+	groupError = "";
+	if (!groupName.trim()) {
+		groupError = "Introduce un nombre para el grupo";
+		return;
+	}
+	const ids = groupMemberIds.split(",").map((s) => s.trim()).filter(Boolean);
+	if (ids.length === 0) {
+		groupError = "Agrega al menos un amigo al grupo";
+		return;
+	}
+	try {
+		const conv = await createGroup(groupName.trim(), ids);
+		conversations.update((list) => {
+			if (list.some((c) => c.id === conv.id)) return list;
+			return [conv, ...list];
+		});
+		showGroupModal = false;
+		groupName = "";
+		groupMemberIds = "";
+		activeConversation = conv;
+		activeTab = "dms";
+	} catch (err) {
+		groupError = err instanceof Error ? err.message : "Error al crear el grupo";
+	}
+}
+
+function convTitle(conv: Conversation): string {
+	const me = get(currentUser);
+	if (conv.type === 2) return conv.name ?? "Grupo";
+	const other = conv.members.find((m) => m.user_id !== me?.id);
+	return other?.users?.alias ?? other?.users?.username ?? "DM";
+}
+
+function convSubtitle(conv: Conversation): string {
+	if (conv.type === 2) return `${conv.members.length} miembros`;
+	return "Mensaje directo";
+}
+
+function convAvatarSrc(conv: Conversation): string | null | undefined {
+	if (conv.type === 2) return null;
+	const me = get(currentUser);
+	const other = conv.members.find((m) => m.user_id !== me?.id);
+	return other?.users?.avatar;
+}
 </script>
 
 <div class="friends-view">
+	{#if activeConversation && activeTab === "dms"}
+		<div class="flex flex-col h-full">
+			<div class="flex items-center gap-2 px-3 py-2 border-b border-[#3f4147] bg-[#1e1f22]">
+				<button
+					class="text-xs text-[#949ba4] hover:text-[#dbdee1] flex items-center gap-1"
+					onclick={() => { activeConversation = null; }}
+				>
+					← Volver
+				</button>
+			</div>
+			<ConversationView conversation={activeConversation} />
+		</div>
+	{:else}
 	<div class="friends-header">
-		<h2>Amigos</h2>
+		<div class="flex items-center justify-between mb-3">
+			<h2>Mensajes</h2>
+			{#if activeTab === "dms"}
+				<button class="create-group-btn" onclick={() => (showGroupModal = true)}>
+					<UsersRound size={13} />
+					Nuevo grupo
+				</button>
+			{/if}
+		</div>
 		<div class="tabs">
+			<button
+				class="tab"
+				class:active={activeTab === "dms"}
+				onclick={() => { activeTab = "dms"; activeConversation = null; }}
+			>
+				<MessageSquare size={14} />
+				DMs
+				{#if $conversations.length > 0}
+					<span class="badge">{$conversations.length}</span>
+				{/if}
+			</button>
 			<button
 				class="tab"
 				class:active={activeTab === "friends"}
 				onclick={() => (activeTab = "friends")}
 			>
 				<Users size={14} />
-				Todos
+				Amigos
 				{#if $friends.length > 0}
 					<span class="badge">{$friends.length}</span>
 				{/if}
@@ -178,7 +309,36 @@ function getFriendUserId(friend: Friend): string {
 	</div>
 
 	<div class="friends-content">
-		{#if activeTab === "friends"}
+		{#if activeTab === "dms"}
+			{#if $conversations.length === 0}
+				<div class="empty-state">
+					<MessageSquare size={40} />
+					<p>No tienes conversaciones</p>
+					<p class="text-xs" style="color: var(--text-secondary, #949ba4)">Abre un DM con un amigo o crea un grupo</p>
+				</div>
+			{:else}
+				<ul class="list">
+					{#each $conversations as conv (conv.id)}
+						<li class="list-item" role="button" tabindex="0"
+							onclick={() => { activeConversation = conv; }}
+							onkeydown={(e) => e.key === 'Enter' && (activeConversation = conv)}
+							style="cursor:pointer"
+						>
+							<UserAvatar
+								src={convAvatarSrc(conv)}
+								name={convTitle(conv)}
+								size={36}
+							/>
+							<div class="info">
+								<span class="label">{convTitle(conv)}</span>
+								<span class="sublabel">{convSubtitle(conv)}</span>
+							</div>
+						</li>
+					{/each}
+				</ul>
+			{/if}
+
+		{:else if activeTab === "friends"}
 			{#if $friends.length === 0}
 				<div class="empty-state">
 					<Users size={40} />
@@ -187,14 +347,26 @@ function getFriendUserId(friend: Friend): string {
 			{:else}
 				<ul class="list">
 					{#each $friends as friend (friend.id)}
+						{@const friendId = getFriendUserId(friend)}
+						{@const user = friendUsers.get(friendId)}
 						<li class="list-item">
-							<div class="avatar-placeholder">
-								{getFriendUserId(friend).slice(0, 2).toUpperCase()}
-							</div>
+							<UserAvatar
+								src={user?.avatar}
+								name={user?.alias ?? user?.username ?? friendId}
+								size={36}
+							/>
 							<div class="info">
-								<span class="label">ID: {getFriendUserId(friend)}</span>
+								<span class="label">{user?.alias ?? user?.username ?? friendId}</span>
+								<span class="sublabel">@{user?.username ?? friendId}</span>
 							</div>
 							<div class="actions">
+								<button
+									class="action-btn"
+									title="Mensaje directo"
+									onclick={() => handleOpenDM(friend)}
+								>
+									<MessageSquare size={14} />
+								</button>
 								<button
 									class="action-btn danger"
 									title="Eliminar amigo"
@@ -217,13 +389,16 @@ function getFriendUserId(friend: Friend): string {
 			{:else}
 				<ul class="list">
 					{#each $pendingFriendRequests as req (req.id)}
+						{@const user = pendingUsers.get(req.sender_id)}
 						<li class="list-item">
-							<div class="avatar-placeholder">
-								{req.sender_id.slice(0, 2).toUpperCase()}
-							</div>
+							<UserAvatar
+								src={user?.avatar}
+								name={user?.alias ?? user?.username ?? req.sender_id}
+								size={36}
+							/>
 							<div class="info">
-								<span class="label">De: {req.sender_id}</span>
-								<span class="sublabel">{new Date(req.created_at).toLocaleDateString()}</span>
+								<span class="label">{user?.alias ?? user?.username ?? req.sender_id}</span>
+								<span class="sublabel">@{user?.username ?? req.sender_id} · {new Date(req.created_at).toLocaleDateString()}</span>
 							</div>
 							<div class="actions">
 								<button
@@ -309,7 +484,32 @@ function getFriendUserId(friend: Friend): string {
 			</div>
 		{/if}
 	</div>
+	{/if}
 </div>
+
+{#if showGroupModal}
+<div class="modal-overlay" onclick={() => (showGroupModal = false)} role="button" tabindex="-1" onkeydown={() => {}}>
+	<div class="modal" onclick={(e) => e.stopPropagation()} role="dialog" onkeydown={() => {}}>
+		<h3>Crear grupo privado</h3>
+		<p class="add-desc">Solo puedes agregar amigos al grupo.</p>
+		<div class="modal-field">
+			<label for="group-name">Nombre del grupo</label>
+			<input id="group-name" class="add-input" type="text" placeholder="Ej: Los mejores" bind:value={groupName} />
+		</div>
+		<div class="modal-field">
+			<label for="group-members">IDs de amigos (separados por coma)</label>
+			<input id="group-members" class="add-input" type="text" placeholder="uuid1, uuid2, ..." bind:value={groupMemberIds} />
+		</div>
+		{#if groupError}
+			<p class="feedback error">{groupError}</p>
+		{/if}
+		<div class="modal-actions">
+			<button class="send-btn" onclick={handleCreateGroup}>Crear grupo</button>
+			<button class="cancel-btn" onclick={() => (showGroupModal = false)}>Cancelar</button>
+		</div>
+	</div>
+</div>
+{/if}
 
 <style>
 .friends-view {
@@ -555,5 +755,85 @@ function getFriendUserId(friend: Friend): string {
 .feedback.success {
 	background: rgba(35, 165, 90, 0.15);
 	color: #23a55a;
+}
+
+.create-group-btn {
+	display: flex;
+	align-items: center;
+	gap: 5px;
+	padding: 4px 10px;
+	background: #23a55a;
+	color: #fff;
+	border: none;
+	border-radius: 4px;
+	cursor: pointer;
+	font-size: 12px;
+	font-weight: 500;
+}
+
+.create-group-btn:hover {
+	background: #1a8a4a;
+}
+
+.modal-overlay {
+	position: fixed;
+	inset: 0;
+	background: rgba(0, 0, 0, 0.6);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	z-index: 100;
+}
+
+.modal {
+	background: var(--bg-primary, #1e1f22);
+	border: 1px solid var(--border, #3f4147);
+	border-radius: 8px;
+	padding: 24px;
+	width: 400px;
+	max-width: 90vw;
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+}
+
+.modal h3 {
+	margin: 0;
+	font-size: 16px;
+	font-weight: 600;
+}
+
+.modal-field {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+}
+
+.modal-field label {
+	font-size: 12px;
+	color: var(--text-secondary, #949ba4);
+	font-weight: 500;
+	text-transform: uppercase;
+	letter-spacing: 0.05em;
+}
+
+.modal-actions {
+	display: flex;
+	gap: 8px;
+	justify-content: flex-end;
+}
+
+.cancel-btn {
+	padding: 8px 16px;
+	background: var(--bg-tertiary, #35373c);
+	color: var(--text-primary, #dbdee1);
+	border: none;
+	border-radius: 4px;
+	cursor: pointer;
+	font-size: 13px;
+}
+
+.cancel-btn:hover {
+	background: #454850;
 }
 </style>

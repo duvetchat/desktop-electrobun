@@ -13,11 +13,12 @@
     import UrlEmbed from "$lib/components/UrlEmbed.svelte";
     import InviteEmbed from "$lib/components/InviteEmbed.svelte";
     import UserAvatar from "$lib/components/UserAvatar.svelte";
+    import ChatInput from "$lib/components/ChatInput.svelte";
 
     let {
         messages,
         members = [],
-        channelId,
+        channelId = "",
         space = null,
         isInitialLoading = false,
         isLoadingMore = false,
@@ -25,13 +26,15 @@
         onLoadMore = () => {},
         onRetry = () => {},
         onDismiss = () => {},
+        onSaveEdit = undefined,
+        onDeleteMsg = undefined,
         failedNonces = new Set<string>(),
         editingMessageId = $bindable<string | null>(null),
         editContent = $bindable(""),
     }: {
         messages: Message[];
         members?: MemberOnSidebar[];
-        channelId: string;
+        channelId?: string;
         space?: GatewaySpace | null;
         isInitialLoading?: boolean;
         isLoadingMore?: boolean;
@@ -39,6 +42,8 @@
         onLoadMore?: () => Promise<void> | void;
         onRetry?: (message: Message) => void;
         onDismiss?: (nonce: string) => void;
+        onSaveEdit?: (messageId: string, content: string) => Promise<void> | void;
+        onDeleteMsg?: (messageId: string) => Promise<void> | void;
         failedNonces?: Set<string>;
         editingMessageId?: string | null;
         editContent?: string;
@@ -120,16 +125,6 @@
     );
 
     const authorColors = $derived(buildAuthorColorMap(members));
-
-    // ── Svelte actions ────────────────────────────────────────────────────────
-    function focusAction(node: HTMLElement) {
-        node.focus();
-    }
-
-    function autoResize(node: HTMLTextAreaElement) {
-        node.style.height = "auto";
-        node.style.height = node.scrollHeight + "px";
-    }
 
     // ── Formatting ─────────────────────────────────────────────────────────────
     function isSameCalendarDay(a: string, b: string): boolean {
@@ -316,23 +311,17 @@
         editContent = "";
     }
 
-    function saveEdit(messageId: string) {
+    function saveEdit(messageId: string, content: string) {
         const original = messages.find((m) => m.id === messageId)?.content;
-        const trimmed = editContent.trim();
+        const trimmed = content.trim();
         if (trimmed && trimmed !== original) {
-            updateMessage(messageId, trimmed, channelId).catch(console.error);
+            if (onSaveEdit) {
+                Promise.resolve(onSaveEdit(messageId, trimmed)).catch(console.error);
+            } else {
+                updateMessage(messageId, trimmed, channelId).catch(console.error);
+            }
         }
         cancelEdit();
-    }
-
-    function handleEditKeyDown(event: KeyboardEvent, messageId: string) {
-        if (event.key === "Escape") {
-            cancelEdit();
-        }
-        if (event.key === "Enter" && !event.shiftKey) {
-            event.preventDefault();
-            saveEdit(messageId);
-        }
     }
 
     function handleCopy(e: ClipboardEvent) {
@@ -352,7 +341,11 @@
     async function handleDelete(messageId: string) {
         deletingMessageId = messageId;
         try {
-            await deleteMessage(messageId, channelId);
+            if (onDeleteMsg) {
+                await onDeleteMsg(messageId);
+            } else {
+                await deleteMessage(messageId, channelId);
+            }
         } catch (e) {
             console.error(e);
         } finally {
@@ -495,24 +488,16 @@
                     {/if}
 
                     {#if editingMessageId === message.id}
-                        <div class="w-full">
-                            <textarea
-                                class="w-full bg-zinc-800 text-zinc-200 outline-none p-2 rounded-md focus:ring-1 focus:ring-stone-500 resize-none overflow-hidden leading-5"
-                                rows={1}
-                                bind:value={editContent}
-                                onkeydown={(e) => {
-                                    handleEditKeyDown(e, message.id);
-                                }}
-                                oninput={(e) => {
-                                    const el =
-                                        e.currentTarget as HTMLTextAreaElement;
-                                    el.style.height = "auto";
-                                    el.style.height = el.scrollHeight + "px";
-                                }}
-                                use:focusAction
-                                use:autoResize
-                            ></textarea>
-                            <div class="text-xxs text-zinc-400 mt-1">
+                        <div class="w-full relative flex flex-col gap-1">
+                            <ChatInput
+                                initialValue={editContent}
+                                onValueChange={(text) => { editContent = text; }}
+                                onSubmit={(text) => saveEdit(message.id, text)}
+                                onCancel={cancelEdit}
+                                showActions={false}
+                                autofocus
+                            />
+                            <div class="text-xxs text-zinc-400">
                                 escape to <button
                                     type="button"
                                     class="text-stone-300 cursor-pointer hover:underline"
@@ -522,9 +507,7 @@
                                 <button
                                     type="button"
                                     class="text-stone-300 cursor-pointer hover:underline"
-                                    onclick={() => {
-                                        saveEdit(message.id);
-                                    }}>save</button
+                                    onclick={() => saveEdit(message.id, editContent)}>save</button
                                 >
                             </div>
                         </div>

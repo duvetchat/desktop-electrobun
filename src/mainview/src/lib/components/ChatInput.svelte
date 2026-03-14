@@ -1,7 +1,9 @@
 <script lang="ts">
+import { onMount } from "svelte";
 import { Popover } from "bits-ui";
-import { Smile as SmileIcon } from "@lucide/svelte";
+import { Smile as SmileIcon, Image as GifIcon } from "@lucide/svelte";
 import EmojiPicker from "$lib/components/EmojiPicker.svelte";
+import GifPicker from "$lib/components/GifPicker.svelte";
 import { searchEmojis, toTwemojiUrl, type EmojiEntry } from "$lib/emoji";
 
 const EMOJI_RE =
@@ -9,17 +11,41 @@ const EMOJI_RE =
 
 let {
 	placeholder = "",
+	initialValue = "",
 	onSubmit,
+	onCancel,
+	onValueChange,
 	onArrowUpWhenEmpty,
+	showActions = true,
+	autofocus = false,
 }: {
 	placeholder?: string;
+	initialValue?: string;
 	onSubmit: (text: string) => void;
+	onCancel?: () => void;
+	onValueChange?: (text: string) => void;
 	onArrowUpWhenEmpty?: () => void;
+	showActions?: boolean;
+	autofocus?: boolean;
 } = $props();
 
 let inputEl = $state<HTMLDivElement>(null!);
 let showEmojiPicker = $state(false);
-let isEmpty = $state(true);
+let showGifPicker = $state(false);
+let isEmpty = $state(!initialValue.trim());
+
+onMount(() => {
+	if (initialValue) {
+		rerender(initialValue, initialValue.length);
+		isEmpty = !initialValue.trim();
+	}
+	if (autofocus) {
+		requestAnimationFrame(() => {
+			inputEl?.focus();
+			if (initialValue) setOffset(initialValue.length);
+		});
+	}
+});
 
 // ── Autocomplete ────────────────────────────────────────────────────────────
 let suggestions = $state<EmojiEntry[]>([]);
@@ -158,6 +184,7 @@ function insertSuggestion(entry: EmojiEntry) {
 
 	rerender(newRaw, newPos);
 	isEmpty = !newRaw.trim();
+	onValueChange?.(newRaw);
 	suggestions = [];
 	emojiQueryStart = -1;
 	selectedIdx = 0;
@@ -171,6 +198,7 @@ function handleInput() {
 	isEmpty = !raw.trim();
 	rerender(raw, offset);
 	checkAutocomplete(raw, offset);
+	onValueChange?.(raw);
 }
 
 function handleKeyDown(e: KeyboardEvent) {
@@ -196,6 +224,11 @@ function handleKeyDown(e: KeyboardEvent) {
 			emojiQueryStart = -1;
 			return;
 		}
+	}
+
+	if (e.key === "Escape") {
+		onCancel?.();
+		return;
 	}
 
 	// Send on Enter
@@ -226,6 +259,12 @@ function handlePaste(e: ClipboardEvent) {
 	rerender(newRaw, newPos);
 	isEmpty = !newRaw.trim();
 	checkAutocomplete(newRaw, newPos);
+	onValueChange?.(newRaw);
+}
+
+function handleGifPick(url: string) {
+	showGifPicker = false;
+	onSubmit(url);
 }
 
 // Called externally by the emoji picker popover (in this component)
@@ -238,6 +277,7 @@ function handleEmojiPick(emoji: string) {
 	const newPos = offset + emoji.length;
 	rerender(newRaw, newPos);
 	isEmpty = !newRaw.trim();
+	onValueChange?.(newRaw);
 
 	requestAnimationFrame(() => {
 		inputEl.focus();
@@ -297,21 +337,39 @@ function handleEmojiPick(emoji: string) {
 			></div>
 		</div>
 
-		<!-- Emoji picker button -->
-		<Popover.Root bind:open={showEmojiPicker}>
-			<Popover.Trigger
-				class="ce-action-btn"
-				title="Open emoji picker"
-				aria-label="Open emoji picker"
-			>
-				<SmileIcon class="size-5" />
-			</Popover.Trigger>
-			<Popover.Portal>
-				<Popover.Content side="top" align="end" sideOffset={10} class="z-80">
-					<EmojiPicker onSelect={handleEmojiPick} />
-				</Popover.Content>
-			</Popover.Portal>
-		</Popover.Root>
+		{#if showActions}
+			<!-- Emoji picker button -->
+			<Popover.Root bind:open={showEmojiPicker}>
+				<Popover.Trigger
+					class="ce-action-btn"
+					title="Open emoji picker"
+					aria-label="Open emoji picker"
+				>
+					<SmileIcon class="size-5" />
+				</Popover.Trigger>
+				<Popover.Portal>
+					<Popover.Content side="top" align="end" sideOffset={10} class="z-80">
+						<EmojiPicker onSelect={handleEmojiPick} />
+					</Popover.Content>
+				</Popover.Portal>
+			</Popover.Root>
+
+			<!-- GIF picker button -->
+			<Popover.Root bind:open={showGifPicker}>
+				<Popover.Trigger
+					class="ce-action-btn"
+					title="Open GIF picker"
+					aria-label="Open GIF picker"
+				>
+					<GifIcon class="size-5" />
+				</Popover.Trigger>
+				<Popover.Portal>
+					<Popover.Content side="top" align="end" sideOffset={10} class="z-80">
+						<GifPicker onSelect={handleGifPick} />
+					</Popover.Content>
+				</Popover.Portal>
+			</Popover.Root>
+		{/if}
 	</div>
 </div>
 
