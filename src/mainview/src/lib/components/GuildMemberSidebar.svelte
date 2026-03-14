@@ -1,13 +1,14 @@
 <script lang="ts">
-import { Crown as CrownSimpleIcon } from "@lucide/svelte";
+import { Crown as CrownSimpleIcon, UserPlus, UserCheck } from "@lucide/svelte";
 import type {
 	MemberOnSidebar,
 	Role,
 	GatewaySpace,
 	GatewayMember,
 } from "$lib/types";
-import { currentUser, gatewaySpaces } from "$lib/stores.svelte";
+import { currentUser, gatewaySpaces, friends, pendingFriendRequests } from "$lib/stores.svelte";
 import { assignRoleToMember, removeRoleFromMember } from "$lib/api/roles";
+import { sendFriendRequest } from "$lib/api/friends";
 import { Permission } from "$lib/permissions";
 import UserAvatar from "$lib/components/UserAvatar.svelte";
 import {
@@ -272,6 +273,37 @@ function currentUserCanManageRoles(): boolean {
 	return (combined & Permission.ManageRoles) === Permission.ManageRoles;
 }
 
+// ── Friend request ─────────────────────────────────────────────────────────
+let friendRequestState = $state<Record<string, "idle" | "loading" | "sent" | "error">>({});
+
+function isFriend(userId: string): boolean {
+	const me = $currentUser;
+	if (!me) return false;
+	return $friends.some(
+		(f) =>
+			(f.sender_id === me.id && f.recipient_id === userId) ||
+			(f.sender_id === userId && f.recipient_id === me.id),
+	);
+}
+
+function hasPendingRequest(userId: string): boolean {
+	const me = $currentUser;
+	if (!me) return false;
+	return $pendingFriendRequests.some(
+		(r) => r.sender_id === userId && r.recipient_id === me.id,
+	);
+}
+
+async function handleSendFriendRequest(userId: string) {
+	friendRequestState[userId] = "loading";
+	try {
+		await sendFriendRequest(userId);
+		friendRequestState[userId] = "sent";
+	} catch {
+		friendRequestState[userId] = "error";
+	}
+}
+
 async function toggleMemberRole(member: MemberOnSidebar, roleId: string) {
 	if (!spaceId) return;
 	const key = `${member.id}-${roleId}`;
@@ -389,7 +421,51 @@ async function toggleMemberRole(member: MemberOnSidebar, roleId: string) {
                                         ></div>
                                     </div>
 
-                                    <div class="mt-2 flex h-10 w-full items-center justify-end gap-2">
+                                    <div class="relative z-10 mt-2 flex h-10 w-full items-center justify-end gap-2">
+                                        {#if $currentUser && member.id !== $currentUser.id}
+                                            {@const reqState = friendRequestState[member.id] ?? "idle"}
+                                            {#if isFriend(member.id)}
+                                                <button
+                                                    class="flex items-center gap-1.5 rounded-lg bg-green-600/20 px-3 py-1.5 text-xs font-medium text-green-400 cursor-default"
+                                                    disabled
+                                                >
+                                                    <UserCheck class="size-3" />
+                                                    Amigos
+                                                </button>
+                                            {:else if hasPendingRequest(member.id)}
+                                                <button
+                                                    class="flex items-center gap-1.5 rounded-lg bg-white/10 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-white/20"
+                                                    onclick={() => handleSendFriendRequest(member.id)}
+                                                    disabled={reqState === "loading" || reqState === "sent"}
+                                                >
+                                                    <UserPlus class="size-3" />
+                                                    Aceptar solicitud
+                                                </button>
+                                            {:else if reqState === "sent"}
+                                                <button
+                                                    class="flex items-center gap-1.5 rounded-lg bg-green-600/20 px-3 py-1.5 text-xs font-medium text-green-400 cursor-default"
+                                                    disabled
+                                                >
+                                                    <UserCheck class="size-3" />
+                                                    Solicitud enviada
+                                                </button>
+                                            {:else}
+                                                <button
+                                                    class="flex items-center justify-center rounded-lg bg-white/10 px-2.5 py-1.5 transition-colors hover:bg-white/20 disabled:opacity-50"
+                                                    title={reqState === "loading" ? "Enviando…" : reqState === "error" ? "Reintentar" : "Agregar amigo"}
+                                                    onclick={() => handleSendFriendRequest(member.id)}
+                                                    disabled={reqState === "loading"}
+                                                >
+                                                    {#if reqState === "loading"}
+                                                        <span class="text-xs">⏳</span>
+                                                    {:else if reqState === "error"}
+                                                        <span class="text-xs">🔄</span>
+                                                    {:else}
+                                                        <UserPlus class="size-4" />
+                                                    {/if}
+                                                </button>
+                                            {/if}
+                                        {/if}
                                         <button
                                             class="rounded-lg bg-white/10 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-white/20"
                                             onclick={() =>

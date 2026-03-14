@@ -3,7 +3,10 @@ import {
 	wsSessionToken,
 	gatewaySpaces,
 	currentUser,
+	pendingFriendRequests,
+	friends,
 } from "$lib/stores.svelte";
+import type { FriendRequest, Friend } from "$lib/api/friends";
 import { getWSHostURL } from "$lib/common/common";
 import { get } from "svelte/store";
 import { getSpaceMembers, type SpaceMemberWithUser } from "$lib/api/spaces";
@@ -596,6 +599,31 @@ function handleEvent(event: GatewayEvent) {
 						),
 					};
 				}),
+			);
+			break;
+		}
+		case "FRIEND_REQUEST_CREATE": {
+			const req = data as FriendRequest;
+			pendingFriendRequests.update((reqs) => {
+				if (reqs.some((r) => r.id === req.id)) return reqs;
+				return [...reqs, req];
+			});
+			break;
+		}
+		case "FRIEND_REQUEST_ACCEPT": {
+			const raw = data as Friend;
+			friends.update((list) => {
+				if (list.some((f) => f.id === raw.id)) return list;
+				return [...list, raw];
+			});
+			break;
+		}
+		case "FRIEND_REMOVE": {
+			const raw = data as { user_id: string };
+			friends.update((list) =>
+				list.filter(
+					(f) => f.sender_id !== raw.user_id && f.recipient_id !== raw.user_id,
+				),
 			);
 			break;
 		}

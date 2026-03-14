@@ -3,6 +3,7 @@ import {
 	Plus as PlusIcon,
 	ChevronDown as CaretDownIcon,
 	FolderPlus as FolderPlusIcon,
+	Users as UsersIcon,
 } from "@lucide/svelte";
 import { ContextMenu, Dialog, Tabs } from "bits-ui";
 import { onMount } from "svelte";
@@ -10,15 +11,20 @@ import type { Guild } from "$lib/types";
 import { createSpace } from "$lib/api/spaces";
 import { leaveSpace } from "$lib/api/spaces";
 import JoinInviteModal from "$lib/components/JoinInviteModal.svelte";
+import { pendingFriendRequests } from "$lib/stores.svelte";
 
 let {
 	guilds,
 	activeGuildId = null,
 	onSelect = () => {},
+	isFriendsActive = false,
+	onFriendsSelect = () => {},
 }: {
 	guilds: Guild[];
 	activeGuildId?: string | null;
 	onSelect?: (guildId: string) => void;
+	isFriendsActive?: boolean;
+	onFriendsSelect?: () => void;
 } = $props();
 
 const selectGuild = (guild: Guild) => onSelect(guild.id);
@@ -207,6 +213,18 @@ async function handleLeave(guildId: string) {
 	class="h-full w-full max-w-16 border-r border-stone-800 bg-[linear-gradient(180deg,oklch(0.2_0.01_80),oklch(0.17_0.008_80))] flex flex-col justify-start"
 >
 	<div class="flex flex-col items-center justify-center gap-1.5 py-2">
+		<button
+			title="Amigos"
+			onclick={onFriendsSelect}
+			class="relative flex size-9 items-center justify-center rounded-lg transition-all duration-150 {isFriendsActive ? 'bg-indigo-600 text-white' : 'bg-stone-900/65 text-stone-200 hover:bg-stone-800/80 hover:text-stone-100'}"
+		>
+			<UsersIcon class="size-4" />
+			{#if $pendingFriendRequests.length > 0}
+				<span class="absolute -right-0.5 -top-0.5 flex size-4 items-center justify-center rounded-full bg-red-500 text-[9px] font-bold text-white">
+					{$pendingFriendRequests.length > 9 ? "9+" : $pendingFriendRequests.length}
+				</span>
+			{/if}
+		</button>
 		<button
 			title="Add server"
 			onclick={openModal}

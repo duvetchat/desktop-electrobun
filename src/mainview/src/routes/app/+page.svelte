@@ -5,6 +5,7 @@ import ChannelsSidebar from "$lib/components/ChannelsSidebar.svelte";
 import VoiceChat from "$lib/components/VoiceChat.svelte";
 import PaneView from "$lib/components/PaneView.svelte";
 import GuildMemberSidebar from "$lib/components/GuildMemberSidebar.svelte";
+import FriendsView from "$lib/components/FriendsView.svelte";
 import { createWebSocketConnection } from "$lib/api/ws/connection";
 import { makeLeaf, makeSplit, removeLeaf, updateLeaf } from "$lib/pane";
 import { gatewaySpaceToGuild, gatewaySpaceToMembers } from "$lib/types";
@@ -50,6 +51,7 @@ const guilds = $derived($gatewaySpaces.map((space) => {
 }));
 
 let activeSpaceId = $state<string | null>(null);
+let showFriendsView = $state(false);
 let showMembersSidebar = $state(true);
 let showChannelsSidebar = $state(true);
 let layoutPrefsHydrated = $state(false);
@@ -196,6 +198,12 @@ function handleFocusChange(id: string) {
 function handleGuildSelect(id: string) {
 	activeSpaceId = id;
 	sidebarSpaceId = id;
+	showFriendsView = false;
+}
+
+function handleFriendsSelect() {
+	showFriendsView = true;
+	activeSpaceId = null;
 }
 
 // When leaving voice, switch active tab away from the voice channel
@@ -340,10 +348,12 @@ setContext("voicePortal", {
   </div>
   <GuildSideBar
     {guilds}
-    activeGuildId={sidebarSpaceId}
+    activeGuildId={showFriendsView ? null : sidebarSpaceId}
     onSelect={handleGuildSelect}
+    isFriendsActive={showFriendsView}
+    onFriendsSelect={handleFriendsSelect}
   />
-  {#if sidebarGuild && showChannelsSidebar}
+  {#if !showFriendsView && sidebarGuild && showChannelsSidebar}
     <ChannelsSidebar
       guild={sidebarGuild}
       channels={sidebarGuild.channels}
@@ -353,27 +363,33 @@ setContext("voicePortal", {
   {/if}
 
   <div class="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-[linear-gradient(180deg,oklch(0.205_0.01_80),oklch(0.18_0.008_80))]">
-    <PaneView
-      node={rootPane}
-      onUpdate={handlePaneUpdate}
-      onMoveTab={moveTabBetweenLeaves}
-      onClose={null}
-      guild={activeGuild}
-      spaceId={activeSpaceId}
-      space={activeSpace}
-      members={activeMembers}
-      showChannelsSidebar={showChannelsSidebar}
-      onToggleChannels={() => (showChannelsSidebar = !showChannelsSidebar)}
-      showMembersSidebar={showMembersSidebar}
-      onToggleMembers={() => (showMembersSidebar = !showMembersSidebar)}
-      {focusedPaneId}
-      onFocus={handleFocusChange}
-    />
+    {#if showFriendsView}
+      <FriendsView />
+    {:else}
+      <PaneView
+        node={rootPane}
+        onUpdate={handlePaneUpdate}
+        onMoveTab={moveTabBetweenLeaves}
+        onClose={null}
+        guild={activeGuild}
+        spaceId={activeSpaceId}
+        space={activeSpace}
+        members={activeMembers}
+        showChannelsSidebar={showChannelsSidebar}
+        onToggleChannels={() => (showChannelsSidebar = !showChannelsSidebar)}
+        showMembersSidebar={showMembersSidebar}
+        onToggleMembers={() => (showMembersSidebar = !showMembersSidebar)}
+        {focusedPaneId}
+        onFocus={handleFocusChange}
+      />
+    {/if}
   </div>
-  <div class="contents" style={showMembersSidebar ? '' : 'display: none'}>
-    <GuildMemberSidebar
-      spaceId={memberSidebarSpaceId}
-      space={memberSidebarSpace}
-    />
-  </div>
+  {#if !showFriendsView}
+    <div class="contents" style={showMembersSidebar ? '' : 'display: none'}>
+      <GuildMemberSidebar
+        spaceId={memberSidebarSpaceId}
+        space={memberSidebarSpace}
+      />
+    </div>
+  {/if}
 </div>
