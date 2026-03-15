@@ -42,23 +42,38 @@ function voicePortalAction(node: HTMLElement) {
 	const el = voicePortalCtx?.getEl();
 	if (el) {
 		node.appendChild(el);
+		resumeAudio(el);
 	}
 	return {
 		destroy() {
 			// Move el back to the stable holder so audio elements stay in the
-			// document. Chromium-based browsers (e.g. Opera GX) stop <audio>
-			// playback when the element is detached from the DOM; Firefox does
-			// not, which is why this only manifested in Chromium.
-			// • If $activeVoiceRoomId is already null, el.isConnected is false
-			//   (page.svelte's {#if} already detached it) — skip.
-			// • If a new pane's voicePortalAction fires next, it will
-			//   appendChild(el) from voiceHolder to the new pane — still works.
+			// document. Chromium-based browsers stop <audio> playback when the
+			// element is detached from the DOM.
+			//
+			// We do NOT check el.isConnected because Svelte may detach the
+			// portal div from the document BEFORE calling this destroy(), making
+			// el.isConnected = false even though the user is still in voice.
+			// Instead we check whether el is still the "current" voice element
+			// (getEl() returns the same reference). If getEl() returns a
+			// different value or null, Svelte already removed the element
+			// because the user left voice — skip in that case.
 			const holder = voicePortalCtx?.getHolder();
-			if (el && holder && el.isConnected) {
-				holder.appendChild(el);
-			}
+			if (!el || !holder || voicePortalCtx?.getEl() !== el) return;
+			holder.appendChild(el);
+			// Chromium pauses <audio> elements when they are detached even
+			// briefly. Resume any that were silenced during the portal move.
+			resumeAudio(el);
 		},
 	};
+}
+
+function resumeAudio(container: HTMLElement) {
+	container.querySelectorAll("audio").forEach((audio) => {
+		const a = audio as HTMLAudioElement;
+		if (a.paused && !a.ended && a.srcObject) {
+			a.play().catch(() => {});
+		}
+	});
 }
 
 // ── Props ──────────────────────────────────────────────────────────────────
