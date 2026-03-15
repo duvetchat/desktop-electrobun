@@ -63,6 +63,17 @@
 
 	let focusedUserId = $state<string | null>(null);
 
+	let connectionState = $state<RTCPeerConnectionState>("new");
+
+	const connectionLabel: Record<RTCPeerConnectionState, string> = {
+		new: "Connecting...",
+		connecting: "Connecting...",
+		connected: "Voice Connected",
+		disconnected: "Reconnecting...",
+		failed: "Connection Failed",
+		closed: "Disconnected",
+	};
+
 	onMount(async () => {
 		unsubscribeWs = onWebRTCEvent((type, data: any) => {
 			if (data.room_id !== channelId) return;
@@ -169,6 +180,7 @@
 		remoteVideoElements = {};
 		pendingIceCandidates = [];
 		negotiationReady = false;
+		connectionState = "new";
 
 		peerConnection = new RTCPeerConnection({
 			iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
@@ -188,6 +200,14 @@
 				});
 			} catch (err) {
 				console.error("[WebRTC] negotiationneeded error:", err);
+			}
+		};
+
+		peerConnection.onconnectionstatechange = () => {
+			const state = peerConnection?.connectionState;
+			if (state) connectionState = state;
+			if (state === "failed" && !isDestroyed) {
+				leaveVoice();
 			}
 		};
 
@@ -506,7 +526,15 @@
 			<span class="text-zinc-400 opacity-60">🔊</span>
 			{channelName}
 		</h1>
-		<p class="text-sm text-zinc-400">Voice Connected</p>
+		<p class="text-sm {connectionState === 'connected'
+				? 'text-zinc-400'
+				: connectionState === 'disconnected'
+					? 'text-yellow-400'
+					: connectionState === 'failed' || connectionState === 'closed'
+						? 'text-red-400'
+						: 'text-zinc-500'}">
+			{connectionLabel[connectionState]}
+		</p>
 	</div>
 
 	<div
