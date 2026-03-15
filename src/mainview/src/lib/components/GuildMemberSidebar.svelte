@@ -47,6 +47,7 @@ function convertMember(
 		id: u.id,
 		member_id: member.id,
 		username: member.alias ?? u.alias ?? u.username,
+		raw_username: u.username,
 		avatar_url: u.avatar ?? null,
 		banner_url: u.banner ?? null,
 		status,
@@ -481,7 +482,7 @@ async function toggleMemberRole(member: MemberOnSidebar, roleId: string) {
                                             {member.username}
                                         </h2>
                                         <p class="text-sm font-medium text-zinc-400">
-                                            @{member.username}
+                                            @{member.raw_username}
                                         </p>
 
                                         {#if visibleRoles.length > 0}

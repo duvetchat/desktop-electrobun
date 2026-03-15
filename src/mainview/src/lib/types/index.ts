@@ -294,6 +294,7 @@ export interface MemberOnSidebar {
 	id: string;
 	member_id: string;
 	username: string;
+	raw_username: string;
 	avatar_url: string | null;
 	banner_url: string | null;
 	status: "offline" | "online" | "idle" | "dnd";
@@ -323,6 +324,7 @@ export function gatewaySpaceToMembers(space: GatewaySpace): MemberOnSidebar[] {
 				id: u.id,
 				member_id: member?.id ?? "",
 				username: u.alias ?? u.username,
+				raw_username: u.username,
 				avatar_url: u.avatar ?? null,
 				banner_url: u.banner ?? null,
 				status: userStatusToString(u.status_id),

@@ -21,6 +21,7 @@
 
 	let peerConnection: RTCPeerConnection | null = null;
 	let localAudioStream: MediaStream | null = null;
+	let audioSender: RTCRtpSender | null = null;
 	let localVideoStream = $state<MediaStream | null>(null);
 	let pendingIceCandidates: RTCIceCandidate[] = [];
 	let negotiationReady = false;
@@ -29,7 +30,6 @@
 
 	let remoteAudioElements = $state<{ [id: string]: MediaStream }>({});
 	let remoteVideoElements = $state<{ [id: string]: MediaStream }>({});
-	let remoteUserMuted = $state<{ [id: string]: boolean }>({});
 	let videoPlayingStates = $state<Record<string, boolean>>({});
 	let userAmplitudes = $state<Record<string, number>>({});
 
@@ -136,9 +136,6 @@
 				pc.setRemoteDescription(
 					new RTCSessionDescription(data.answer),
 				).catch(console.warn);
-			} else if (type === "VOICE_STATE_UPDATE") {
-				remoteUserMuted[data.user_id] = data.muted;
-				remoteUserMuted = { ...remoteUserMuted };
 			}
 		});
 
@@ -181,6 +178,7 @@
 		remoteVideoElements = {};
 		pendingIceCandidates = [];
 		negotiationReady = false;
+		audioSender = null;
 		connectionState.set("new");
 
 		peerConnection = new RTCPeerConnection({
@@ -298,7 +296,14 @@
 		};
 
 		if (localAudioStream) {
-			localAudioStream.getTracks().forEach((track) => {
+			const audioTrack = localAudioStream.getAudioTracks().at(0);
+			if (audioTrack && peerConnection) {
+				audioSender = peerConnection.addTrack(audioTrack, localAudioStream);
+				if ($isMuted || $isDeafened) {
+					audioSender.replaceTrack(null).catch(console.warn);
+				}
+			}
+			localAudioStream.getTracks().filter((t) => t.kind !== "audio").forEach((track) => {
 				peerConnection?.addTrack(track, localAudioStream!);
 			});
 
@@ -380,10 +385,12 @@
 	}
 
 	$effect(() => {
-		if (localAudioStream) {
-			localAudioStream
-				.getAudioTracks()
-				.forEach((t) => (t.enabled = !$isMuted && !$isDeafened));
+		const shouldSend = !$isMuted && !$isDeafened;
+		if (audioSender) {
+			const audioTrack = localAudioStream?.getAudioTracks().at(0) ?? null;
+			audioSender
+				.replaceTrack(shouldSend ? audioTrack : null)
+				.catch(console.warn);
 		}
 	});
 
@@ -404,14 +411,9 @@
 			await navigator.mediaDevices.getUserMedia(constraints);
 
 		const newTrack = newStream.getAudioTracks().at(0);
-		if (newTrack) {
-			newTrack.enabled = !$isMuted && !$isDeafened;
-			const sender = peerConnection
-				?.getSenders()
-				.find((s) => s.track?.kind === "audio");
-			if (sender) {
-				await sender.replaceTrack(newTrack);
-			}
+		if (newTrack && audioSender) {
+			const shouldSend = !$isMuted && !$isDeafened;
+			await audioSender.replaceTrack(shouldSend ? newTrack : null);
 		}
 
 		if (localAudioStream) {
@@ -556,7 +558,6 @@
 				(!isLocal &&
 					audioStream &&
 					audioStream.getAudioTracks().every((t) => !t.enabled)) ||
-				remoteUserMuted[user.id] ||
 				user.muted}
 
 			<div
@@ -667,7 +668,7 @@
 			<audio
 				use:srcObject={stream}
 				autoplay
-				muted={$isDeafened || remoteUserMuted[id]}
+				muted={$isDeafened || (voiceUsers.find((u) => u.id === id)?.muted ?? false)}
 				aria-label={`Audio stream ${id}`}
 			></audio>
 		{/each}
