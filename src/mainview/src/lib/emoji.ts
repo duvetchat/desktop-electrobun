@@ -23,7 +23,7 @@ export function toTwemojiUrl(emoji: string): string {
 // Key: both \p{Emoji_Presentation} AND \p{Emoji}\uFE0F are valid emoji starts
 // (the latter covers text-default emojis like ❤ U+2764 and 🗣 U+1F5E3).
 const EMOJI_REGEX =
-	/\p{Regional_Indicator}{2}|(?:\p{Emoji_Presentation}|\p{Emoji}\uFE0F)(?:\u200D(?:\p{Emoji_Presentation}|\p{Emoji})\uFE0F?|\uD83C[\uDFFB-\uDFFF])*|[\d#*]\uFE0F?\u20E3/gu;
+	/\p{Regional_Indicator}{2}|(?:\p{Emoji_Presentation}|\p{Emoji}\uFE0F)\uFE0F?(?:\u200D(?:\p{Emoji_Presentation}|\p{Emoji})\uFE0F?|\uD83C[\uDFFB-\uDFFF])*|[\d#*]\uFE0F?\u20E3/gu;
 
 /** Replace Unicode emoji in a plain string with Twemoji <img> tags. */
 export function renderEmoji(text: string, large = false): string {
