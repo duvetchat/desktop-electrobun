@@ -47,6 +47,7 @@ const guilds = $derived($gatewaySpaces.map((space) => {
 	const filteredRooms = visibleRooms.filter(
 		(r) =>
 			r.type !== 3 ||
+			!space.rooms.some((c) => c.parent_id === r.id) ||
 			space.rooms.some((c) => c.parent_id === r.id && visibleIds.has(c.id)),
 	);
 	return gatewaySpaceToGuild({ ...space, rooms: filteredRooms });
