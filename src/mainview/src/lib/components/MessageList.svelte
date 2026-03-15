@@ -449,12 +449,14 @@
                       : ""}
             >
                 {#if showHeader}
-                    <UserAvatar
-                        src={message.author_avatar_url}
-                        name={message.author_name}
-                        size={40}
-                        class="mr-3 mt-0.5 shrink-0"
-                    />
+                    {#key message.author_avatar_url}
+                        <UserAvatar
+                            src={message.author_avatar_url}
+                            name={message.author_name}
+                            size={40}
+                            class="mr-3 mt-0.5 shrink-0"
+                        />
+                    {/key}
                 {:else}
                     <div class="w-10 mr-3 text-right shrink-0">
                         <span
