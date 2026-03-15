@@ -10,7 +10,9 @@ import {
 	dmMessages,
 } from "$lib/stores.svelte";
 import type { FriendRequest, Friend } from "$lib/api/friends";
+import { getFriends, getPendingRequests, getSentRequests } from "$lib/api/friends";
 import type { Conversation, DirectMessage } from "$lib/api/conversations";
+import { getConversations } from "$lib/api/conversations";
 import { getWSHostURL } from "$lib/common/common";
 import { get } from "svelte/store";
 import { getSpaceMembers, type SpaceMemberWithUser } from "$lib/api/spaces";
@@ -119,6 +121,21 @@ function handleEvent(event: GatewayEvent) {
 			currentUser.set(onlineUser);
 			wsSessionToken.set(sessionToken);
 			userStatusCache.set(user.id, 1);
+			// Fetch friends, pending/sent requests, and conversations eagerly
+			// so they are available before FriendsView mounts.
+			Promise.all([
+				getPendingRequests(),
+				getSentRequests(),
+				getFriends(),
+				getConversations(),
+			])
+				.then(([pending, sent, friendList, convList]) => {
+					pendingFriendRequests.set(pending);
+					sentFriendRequests.set(sent);
+					friends.set(friendList);
+					conversations.set(convList);
+				})
+				.catch((err) => console.error("[WS] Failed to load friends/conversations on READY:", err));
 			// Reset spaces so SPACE_CREATE events that follow repopulate them
 			// with fresh data (including current voice_states). Without this,
 			// if the server rejects a resume and starts a new session, the

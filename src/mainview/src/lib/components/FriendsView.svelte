@@ -75,16 +75,26 @@ async function loadPendingUsers(pending: FriendRequest[]) {
 
 onMount(async () => {
 	try {
-		const [pending, sent, friendList, convList] = await Promise.all([
-			getPendingRequests(),
-			getSentRequests(),
-			getFriends(),
-			getConversations(),
-		]);
-		pendingFriendRequests.set(pending);
-		sentFriendRequests.set(sent);
-		friends.set(friendList);
-		conversations.set(convList);
+		let pending = get(pendingFriendRequests);
+		let sent = get(sentFriendRequests);
+		let friendList = get(friends);
+		let convList = get(conversations);
+
+		// Only fetch if the WS READY handler hasn't populated the stores yet
+		const needsFetch = pending.length === 0 && sent.length === 0 && friendList.length === 0 && convList.length === 0;
+		if (needsFetch) {
+			[pending, sent, friendList, convList] = await Promise.all([
+				getPendingRequests(),
+				getSentRequests(),
+				getFriends(),
+				getConversations(),
+			]);
+			pendingFriendRequests.set(pending);
+			sentFriendRequests.set(sent);
+			friends.set(friendList);
+			conversations.set(convList);
+		}
+
 		await Promise.all([
 			loadSentUsers(sent),
 			loadFriendUsers(friendList),
