@@ -62,6 +62,7 @@
 	});
 
 	let videoPlayingStates = $state<Record<string, boolean>>({});
+	let focusedUserId = $state<string | null>(null);
 
 	function srcObject(node: HTMLVideoElement, stream: MediaStream) {
 		node.srcObject = stream;
@@ -127,16 +128,18 @@
 				{/if}
 			</div>
 		{:else}
-			<div class="grid gap-4 content-start h-full" style="grid-template-columns: repeat(auto-fit, minmax(240px, 1fr))">
+			<div class="{voiceUsers.length === 1 ? 'flex flex-col h-full' : focusedUserId ? 'flex flex-row flex-wrap content-start gap-4' : 'grid gap-4 content-start'}" style="{!focusedUserId && voiceUsers.length !== 1 ? 'grid-template-columns: repeat(auto-fit, minmax(240px, 1fr))' : ''}">
 				{#each voiceUsers as user (user.id)}
 					{@const isLocal = user.id === $currentUser?.id}
 					{@const videoStream = isLocal ? $voiceLocalVideoStream : $voiceRemoteVideoStreams[user.id]}
 					{@const isSpeaking = $speakingUsers.has(user.id) && !user.muted}
 
 					<div
-						class="relative flex items-center justify-center overflow-hidden rounded-lg border bg-zinc-800/70 shadow-lg h-48 transition-all {isSpeaking
-							? 'border-transparent ring-2 ring-inset ring-stone-400'
-							: 'border-zinc-700'}"
+						class="relative flex items-center justify-center overflow-hidden rounded-lg border bg-zinc-800/70 shadow-lg cursor-pointer transition-all {voiceUsers.length === 1 ? 'flex-1 min-h-0 w-full' : focusedUserId === user.id ? 'w-full h-[60vh] order-first' : focusedUserId ? 'w-64 h-48 shrink-0' : 'h-48'} {isSpeaking ? 'border-transparent ring-2 ring-inset ring-stone-400' : 'border-zinc-700 hover:border-zinc-500'}"
+						role="button"
+						tabindex="0"
+						onclick={() => (focusedUserId = focusedUserId === user.id ? null : user.id)}
+						onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); focusedUserId = focusedUserId === user.id ? null : user.id; } }}
 					>
 						{#if videoStream}
 							<video
