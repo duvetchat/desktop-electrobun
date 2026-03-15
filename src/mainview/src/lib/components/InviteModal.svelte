@@ -43,7 +43,7 @@ async function generate() {
 	isLoading = true;
 	try {
 		const code = await createRoomInvite(spaceId, channel.id);
-		inviteLink = `${window.location.origin}${route(`/invite.html?code=${encodeURIComponent(code)}`)}`;
+		inviteLink = `${window.location.origin}${route(`/invite?code=${encodeURIComponent(code)}`)}`;
 	} catch (err) {
 		genError = err instanceof Error ? err.message : "Failed to generate link.";
 	} finally {

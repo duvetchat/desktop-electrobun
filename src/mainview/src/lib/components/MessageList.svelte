@@ -222,10 +222,12 @@
         urls.forEach((url) => {
             try {
                 const parsed = new URL(url);
-                const inviteMatch = /^\/invite\/([^/]+)$/.exec(parsed.pathname);
-                if (inviteMatch) {
-                    inviteCodes.push(inviteMatch[1]);
-                    return;
+                if (parsed.pathname === "/invite") {
+                    const code = parsed.searchParams.get("code");
+                    if (code) {
+                        inviteCodes.push(code);
+                        return;
+                    }
                 }
                 let youtubeId = null;
                 if (
