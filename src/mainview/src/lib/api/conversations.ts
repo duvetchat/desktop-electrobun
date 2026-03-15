@@ -17,6 +17,7 @@ export interface ConversationMember {
 		username: string;
 		alias: string | null;
 		avatar: string | null;
+		banner: string | null;
 		status_id: number;
 	};
 }
@@ -47,6 +48,7 @@ export interface DirectMessage {
 		username: string;
 		alias: string | null;
 		avatar: string | null;
+		banner: string | null;
 	};
 }
 

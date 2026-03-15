@@ -276,11 +276,12 @@ function handleEvent(event: GatewayEvent) {
 				})),
 			);
 			const newName = raw.alias ?? raw.username;
+			const newAvatar = raw.avatar ?? null;
 			channelMessages.update((rooms) => {
 				const result: typeof rooms = {};
 				for (const [roomId, msgs] of Object.entries(rooms)) {
 					result[roomId] = msgs.map((m) =>
-						m.author_id === raw.id ? { ...m, author_name: newName } : m,
+						m.author_id === raw.id ? { ...m, author_name: newName, author_avatar_url: newAvatar } : m,
 					);
 				}
 				return result;
@@ -292,7 +293,7 @@ function handleEvent(event: GatewayEvent) {
 						if (m.author_id !== raw.id || !m.users) return m;
 						return {
 							...m,
-							users: { ...m.users, username: raw.username, alias: raw.alias, avatar: raw.avatar },
+							users: { ...m.users, username: raw.username, alias: raw.alias, avatar: raw.avatar, banner: raw.banner },
 						};
 					});
 				}
@@ -303,7 +304,7 @@ function handleEvent(event: GatewayEvent) {
 					...c,
 					members: c.members.map((m) =>
 						m.user_id === raw.id
-							? { ...m, users: { ...m.users, username: raw.username, alias: raw.alias, avatar: raw.avatar } }
+							? { ...m, users: { ...m.users, username: raw.username, alias: raw.alias, avatar: raw.avatar, banner: raw.banner } }
 							: m,
 					),
 				})),
@@ -727,7 +728,7 @@ function handleEvent(event: GatewayEvent) {
 								created_at: new Date().toISOString(),
 								updated_at: new Date().toISOString(),
 								deleted_at: null,
-								users: { id: raw.user_id, username: "", alias: null, avatar: null, status_id: 0 },
+								users: { id: raw.user_id, username: "", alias: null, avatar: null, banner: null, status_id: 0 },
 							},
 						],
 					};

@@ -5,10 +5,9 @@ import {
 	Check as CheckIcon,
 } from "@lucide/svelte";
 import { Dialog } from "bits-ui";
-import { currentUser } from "$lib/stores.svelte";
+import { currentUser, channelMessages, gatewaySpaces, dmMessages, conversations } from "$lib/stores.svelte";
 import UserAvatar from "$lib/components/UserAvatar.svelte";
 import { updateUser } from "$lib/api/user";
-import type { GatewayUser } from "$lib/types";
 
 let {
 	open = $bindable(false),
@@ -49,10 +48,6 @@ const hasChanges = $derived(
 	)
 );
 
-const displayName = $derived(
-	$currentUser ? ($currentUser.alias || $currentUser.username) : ""
-);
-
 async function handleSave() {
 	if (!$currentUser || saving) return;
 	saving = true;
@@ -79,6 +74,60 @@ async function handleSave() {
 				: u,
 		);
 
+		const newName = updated.alias ?? updated.username;
+		const newAvatar = updated.avatar ?? null;
+		const userId = $currentUser?.id;
+
+		if (userId) {
+			gatewaySpaces.update((spaces) =>
+				spaces.map((s) => ({
+					...s,
+					users: s.users.map((u) =>
+						u.id === userId
+							? { ...u, username: updated.username, alias: updated.alias ?? null, avatar: newAvatar, banner: updated.banner ?? null }
+							: u,
+					),
+				})),
+			);
+
+			channelMessages.update((rooms) => {
+				const result: typeof rooms = {};
+				for (const [roomId, msgs] of Object.entries(rooms)) {
+					result[roomId] = msgs.map((m) =>
+						m.author_id === userId
+							? { ...m, author_name: newName, author_avatar_url: newAvatar }
+							: m,
+					);
+				}
+				return result;
+			});
+
+			dmMessages.update((convs) => {
+				const result: typeof convs = {};
+				for (const [convId, msgs] of Object.entries(convs)) {
+					result[convId] = msgs.map((m) => {
+						if (m.author_id !== userId || !m.users) return m;
+						return {
+							...m,
+							users: { ...m.users, username: updated.username, alias: updated.alias ?? null, avatar: newAvatar, banner: updated.banner ?? null },
+						};
+					});
+				}
+				return result;
+			});
+
+			conversations.update((list) =>
+				list.map((c) => ({
+					...c,
+					members: c.members.map((m) =>
+						m.user_id === userId
+							? { ...m, users: { ...m.users, username: updated.username, alias: updated.alias ?? null, avatar: newAvatar, banner: updated.banner ?? null } }
+							: m,
+					),
+				})),
+			);
+		}
+
 		saveSuccess = true;
 		setTimeout(() => (saveSuccess = false), 2000);
 	} catch (err) {
@@ -100,9 +149,9 @@ function handleReset() {
 
 <Dialog.Root bind:open>
 	<Dialog.Portal>
-		<Dialog.Overlay class="fixed inset-0 z-[500] bg-black/70 backdrop-blur-sm" />
+		<Dialog.Overlay class="fixed inset-0 z-500 bg-black/70 backdrop-blur-sm" />
 		<Dialog.Content
-			class="fixed inset-0 z-[501] flex items-center justify-center p-4"
+			class="fixed inset-0 z-501 flex items-center justify-center p-4"
 		>
 			<div
 				class="flex h-[85vh] w-full max-w-3xl overflow-hidden rounded-xl border border-zinc-700 bg-zinc-900 shadow-2xl text-zinc-100"
@@ -110,7 +159,7 @@ function handleReset() {
 				<!-- Left sidebar -->
 				<aside class="w-52 shrink-0 bg-zinc-950 flex flex-col py-6 border-r border-zinc-800">
 					<div class="px-4 mb-3">
-						<p class="text-[10px] font-bold tracking-widest uppercase text-zinc-400 px-2 mb-1">
+						<p class="text-xxs font-bold tracking-widest uppercase text-zinc-400 px-2 mb-1">
 							User Settings
 						</p>
 					</div>
@@ -149,7 +198,7 @@ function handleReset() {
 							<div class="rounded-xl overflow-hidden border border-zinc-800">
 								<!-- Banner -->
 								<div
-									class="h-20 bg-gradient-to-r from-stone-700 to-stone-600 relative"
+									class="h-20 bg-linear-to-r from-stone-700 to-stone-600 relative"
 									style={banner.trim() ? `background-image: url('${banner.trim()}'); background-size: cover; background-position: center;` : ""}
 								></div>
 								<!-- Avatar + name row -->
