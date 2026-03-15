@@ -25,6 +25,7 @@
 	let localVideoStream = $state<MediaStream | null>(null);
 	let pendingIceCandidates: RTCIceCandidate[] = [];
 	let negotiationReady = false;
+	let negotiationChain: Promise<void> = Promise.resolve();
 
 	let isScreenSharing = $state(false);
 
@@ -82,9 +83,10 @@
 			if (type === "VOICE_JOINED") {
 				const pc = peerConnection;
 				if (!pc) return;
-				pc.setRemoteDescription(new RTCSessionDescription(data.answer))
-					.then(() => {
-						// Only flush if this is still the active connection
+				negotiationChain = negotiationChain
+					.then(async () => {
+						if (pc !== peerConnection) return;
+						await pc.setRemoteDescription(new RTCSessionDescription(data.answer));
 						if (pc !== peerConnection) return;
 						const toFlush = pendingIceCandidates;
 						pendingIceCandidates = [];
@@ -111,19 +113,19 @@
 			} else if (type === "WEBRTC_RENEGOTIATE") {
 				const pc = peerConnection;
 				if (!pc) return;
-				pc.setRemoteDescription(new RTCSessionDescription(data.offer))
-					.then(() => {
+				negotiationChain = negotiationChain
+					.then(async () => {
+						if (pc !== peerConnection) return;
+						await pc.setRemoteDescription(new RTCSessionDescription(data.offer));
 						if (pc !== peerConnection) return;
 						const toFlush = pendingIceCandidates;
 						pendingIceCandidates = [];
 						for (const candidate of toFlush) {
 							pc.addIceCandidate(candidate).catch(console.warn);
 						}
-						return pc.createAnswer();
-					})
-					.then((answer) => {
-						if (!answer || pc !== peerConnection) return;
-						pc.setLocalDescription(answer);
+						const answer = await pc.createAnswer();
+						if (pc !== peerConnection) return;
+						await pc.setLocalDescription(answer);
 						sendEventMessage("WEBRTC_ANSWER", {
 							room_id: channelId,
 							answer: answer,
@@ -178,6 +180,7 @@
 		remoteVideoElements = {};
 		pendingIceCandidates = [];
 		negotiationReady = false;
+		negotiationChain = Promise.resolve();
 		audioSender = null;
 		connectionState.set("new");
 
