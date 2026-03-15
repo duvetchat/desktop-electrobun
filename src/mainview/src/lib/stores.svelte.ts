@@ -79,6 +79,9 @@ export const isMuted = writable<boolean>(false);
 export const isDeafened = writable<boolean>(false);
 export const activeVoiceRoomId = writable<string | null>(null);
 export const voiceConnectionState = writable<RTCPeerConnectionState>("new");
+export const screenShareRequested = writable<boolean>(false);
+export const voiceRemoteVideoStreams = writable<Record<string, MediaStream>>({});
+export const voiceLocalVideoStream = writable<MediaStream | null>(null);
 
 let initialMicId = "";
 const safeStorage = getSafeStorage();

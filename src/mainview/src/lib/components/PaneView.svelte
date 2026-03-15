@@ -21,6 +21,7 @@ import { gatewayMessageToMessage, gatewaySpaceToMembers, roomTypeToChannelType }
 import PaneView from "$lib/components/PaneView.svelte";
 import TabBar from "$lib/components/TabBar.svelte";
 import Chat from "$lib/components/Chat.svelte";
+import VoiceChannelView from "$lib/components/VoiceChannelView.svelte";
 import {
 	PanelRightClose,
 	PanelRightOpen,
@@ -987,14 +988,11 @@ const childProps = $derived({
                     onLoadMoreBelow={loadMoreMessagesBelow}
                 />
             {:else if activeChannel?.type === "voice"}
-                <div class="flex-1 flex flex-col items-center justify-center bg-zinc-900 text-zinc-400 gap-2">
-                    <h2 class="text-xl font-semibold text-white">{activeChannel.name}</h2>
-                    {#if $activeVoiceRoomId === node.activeChannelId}
-                        <p class="text-sm">Estás en este canal de voz.</p>
-                    {:else}
-                        <p class="text-sm">Únete haciendo doble clic desde el sidebar.</p>
-                    {/if}
-                </div>
+                <VoiceChannelView
+                    channelId={node.activeChannelId ?? ""}
+                    channelName={activeChannel.name}
+                    spaceId={activeTab?.spaceId ?? ""}
+                />
             {:else}
                 <div
 				class="flex-1 flex flex-col items-center justify-center text-zinc-500 gap-2"

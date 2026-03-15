@@ -41,16 +41,7 @@ import {
 } from "$lib/stores.svelte";
 import { sendEventMessage } from "$lib/api/ws/connection";
 import { fly } from "svelte/transition";
-import { getHostURL } from '$lib/common/common';
-
-const connectionLabel: Record<RTCPeerConnectionState, string> = {
-	new: "Connecting...",
-	connecting: "Connecting...",
-	connected: "Voice Connected",
-	disconnected: "Reconnecting...",
-	failed: "Connection Failed",
-	closed: "Disconnected",
-};
+import { getHostURL } from "$lib/common/common";
 
 // props
 let {
@@ -58,11 +49,13 @@ let {
 	channels,
 	activeChannelId = null,
 	onSelect = () => {},
+	showChannels = true,
 }: {
 	guild: Guild;
 	channels: Channel[];
 	activeChannelId?: string | null;
 	onSelect?: (channelId: string) => void;
+	showChannels?: boolean;
 } = $props();
 
 let buttons = $state<(HTMLElement | null)[]>([]);
@@ -148,6 +141,15 @@ function toggleDeafen() {
 	}
 }
 
+const connectionLabel: Record<RTCPeerConnectionState, string> = {
+	new: "Connecting...",
+	connecting: "Connecting...",
+	connected: "Voice Connected",
+	disconnected: "Reconnecting...",
+	failed: "Connection Failed",
+	closed: "Disconnected",
+};
+
 let micContextOpen = $state(false);
 let availableMics = $state<MediaDeviceInfo[]>([]);
 
@@ -157,10 +159,7 @@ let pingIntervalId = $state<ReturnType<typeof setInterval> | null>(null);
 async function measurePing() {
 	try {
 		const start = performance.now();
-		await fetch(`${getHostURL()}/health`, {
-			method: "GET",
-			cache: "no-store",
-		});
+		await fetch(`${getHostURL()}/health`, { method: "GET", cache: "no-store" });
 		ping = Math.round(performance.now() - start);
 	} catch {
 		ping = null;
@@ -169,24 +168,19 @@ async function measurePing() {
 
 $effect(() => {
 	if ($activeVoiceRoomId) {
-	if (!pingIntervalId) {
-		measurePing();
-		pingIntervalId = setInterval(measurePing, 3000);
+		if (!pingIntervalId) {
+			measurePing();
+			pingIntervalId = setInterval(measurePing, 3000);
+		}
+	} else {
+		if (pingIntervalId) {
+			clearInterval(pingIntervalId);
+			pingIntervalId = null;
+			ping = null;
+		}
 	}
-} else {
-	if (pingIntervalId) {
-		clearInterval(pingIntervalId);
-		pingIntervalId = null;
-		ping = null;
-	}
-}
 });
 
-function pingColor(ms: number): string {
-	if (ms < 100) return "text-stone-300";
-	if (ms < 250) return "text-orange-400";
-	return "text-red-400";
-}
 function pingIconColor(ms: number | null): string {
 	if (ms === null || ms < 100) return "text-stone-500";
 	if (ms < 250) return "text-orange-400";
@@ -198,6 +192,7 @@ function pingBgColor(ms: number | null): string {
 	if (ms < 250) return "bg-orange-950";
 	return "bg-red-950";
 }
+
 async function loadAvailableMics() {
 	try {
 		const devices = await navigator.mediaDevices.enumerateDevices();
@@ -368,8 +363,10 @@ onMount(() => {
 <div
 	class="flex h-full w-60 flex-col overflow-hidden border-r border-stone-800 bg-[linear-gradient(180deg,oklch(0.215_0.01_80),oklch(0.185_0.008_80))] text-stone-100/90"
 >
+	<!-- Scrollable content area — flex-1 so user bar is always pinned to bottom -->
+	<div class="flex-1 min-h-0 flex flex-col overflow-hidden">
 	<div
-		class="relative flex h-10 shrink-0 items-center justify-between border-b border-stone-800 bg-stone-950/50 px-3 font-semibold text-stone-100"
+		class="relative flex h-10 shrink-0 items-center justify-between border-b border-stone-800 bg-stone-950/50 px-3 font-semibold text-stone-100 {!showChannels ? 'hidden' : ''}"
 	>
 		<span class="truncate">{guild.name}</span>
 		<DropdownMenu.Root>
@@ -390,7 +387,7 @@ onMount(() => {
 			</DropdownMenu.Portal>
 		</DropdownMenu.Root>
 	</div>
-	<div class="flex h-full flex-col gap-1 overflow-y-auto p-2" role="list">
+	<div class="flex flex-1 min-h-0 flex-col gap-1 overflow-y-auto p-2 {!showChannels ? 'hidden' : ''}" role="list">
 		<div class="sticky top-0 z-10 flex h-10 items-center border-b border-stone-800/70 bg-[linear-gradient(180deg,oklch(0.215_0.01_80),oklch(0.2_0.008_80))] px-3 select-none text-[11px] font-semibold tracking-wide text-zinc-500 uppercase">
 			Channels
 		</div>
@@ -589,57 +586,39 @@ onMount(() => {
 			{/if}
 		{/each}
 	</div>
-	<!-- Voice Connected Banner -->
+	</div><!-- end scrollable content area -->
+
+	<!-- Voice status pill — pinned above user bar -->
 	{#if $activeVoiceRoomId && activeVoiceRoom}
 		<div
-			class="p-2"
-			out:fly={{ y: 100, duration: 200, opacity: 1 }}
-			in:fly={{ y: 100, duration: 200, opacity: 1 }}
+			class="border-t border-zinc-800 shrink-0"
+			in:fly={{ y: 20, duration: 200, opacity: 1 }}
+			out:fly={{ y: 20, duration: 200, opacity: 1 }}
 		>
-			<div
-				class="bg-zinc-900 border border-zinc-800 rounded-full px-2 py-2 flex items-center justify-between shrink-0"
-			>
-				<div class="flex items-center gap-2 max-w-37.5">
-					<div
-						class="relative flex items-center justify-center p-2 {pingBgColor(
-							ping,
-						)} rounded-full shrink-0 cursor-default"
-						title={ping !== null
-							? `Ping: ${ping}ms`
-							: "Measuring ping..."}
-					>
-						{#if ping !== null && ping >= 250}
-							<CellSignalLowIcon
-								class="size-4 {pingIconColor(ping)}"
-							/>
-						{:else if ping !== null && ping >= 100}
-							<CellSignalMediumIcon
-								class="size-4 {pingIconColor(ping)}"
-							/>
-						{:else}
-							<CellSignalFullIcon
-								class="size-4 {pingIconColor(ping)}"
-							/>
-						{/if}
-					</div>
-					<div class="flex flex-col truncate gap-0">
-						<span class="text-xs font-semibold text-stone-300 truncate">
-							{connectionLabel[$voiceConnectionState]}
-						</span>
-						<span class="text-xxs text-zinc-400 truncate">
-							{activeVoiceSpace?.name || ""} / {activeVoiceRoom.name}
-						</span>
-					</div>
+			<div class="px-2 py-1.5 flex items-center gap-2 select-none">
+				<div
+					class="relative flex items-center justify-center p-1.5 {pingBgColor(ping)} rounded-full shrink-0"
+					title={ping !== null ? `Ping: ${ping}ms` : "Measuring ping..."}
+				>
+					{#if ping !== null && ping >= 250}
+						<CellSignalLowIcon class="size-3.5 {pingIconColor(ping)}" />
+					{:else if ping !== null && ping >= 100}
+						<CellSignalMediumIcon class="size-3.5 {pingIconColor(ping)}" />
+					{:else}
+						<CellSignalFullIcon class="size-3.5 {pingIconColor(ping)}" />
+					{/if}
 				</div>
-				<div class="flex items-center gap-1 shrink-0">
-					<button
-					class="p-2 rounded-full hover:bg-zinc-700 hover:text-zinc-200 transition-colors text-zinc-400"
-						aria-label="Disconnect"
-						onclick={() => ($activeVoiceRoomId = null)}
-					>
-						<PhoneDisconnectIcon class="size-4" />
-					</button>
+				<div class="flex flex-col truncate flex-1 min-w-0">
+					<span class="text-xs font-semibold text-stone-300 truncate">{connectionLabel[$voiceConnectionState]}</span>
+					<span class="text-[10px] text-zinc-400 truncate">{activeVoiceSpace?.name || ""} / {activeVoiceRoom.name}</span>
 				</div>
+				<button
+					class="p-1.5 rounded-full hover:bg-zinc-700 hover:text-zinc-200 transition-colors text-zinc-400 shrink-0"
+					aria-label="Disconnect"
+					onclick={() => { $activeVoiceRoomId = null; }}
+				>
+					<PhoneDisconnectIcon class="size-3.5" />
+				</button>
 			</div>
 		</div>
 	{/if}

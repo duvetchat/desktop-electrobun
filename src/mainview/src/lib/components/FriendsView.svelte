@@ -1,5 +1,5 @@
 <script lang="ts">
-import { onMount } from "svelte";
+import { onMount, untrack } from "svelte";
 import { get } from "svelte/store";
 import { currentUser, pendingFriendRequests, sentFriendRequests, friends, conversations } from "$lib/stores.svelte";
 import {
@@ -80,8 +80,15 @@ async function loadSentUsers(sent: FriendRequest[]) {
 async function loadFriendUsers(friendList: Friend[]) {
 	const me = get(currentUser);
 	const ids = friendList.map((f) => (f.sender_id === me?.id ? f.recipient_id : f.sender_id));
-	friendUsers = await loadUsers(ids);
+	const existing = untrack(() => friendUsers);
+	const missing = ids.filter((id) => !existing.has(id));
+	if (missing.length === 0) return;
+	friendUsers = await loadUsers(ids, existing);
 }
+
+$effect(() => {
+	void loadFriendUsers($friends);
+});
 
 async function loadPendingUsers(pending: FriendRequest[]) {
 	pendingUsers = await loadUsers(pending.map((r) => r.sender_id));
@@ -111,7 +118,6 @@ onMount(async () => {
 
 		await Promise.all([
 			loadSentUsers(sent),
-			loadFriendUsers(friendList),
 			loadPendingUsers(pending),
 		]);
 	} catch (err) {

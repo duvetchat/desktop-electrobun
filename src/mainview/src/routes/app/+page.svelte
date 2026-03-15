@@ -2,10 +2,10 @@
 import { onMount, onDestroy } from "svelte";
 import GuildSideBar from "$lib/components/GuildSidebar.svelte";
 import ChannelsSidebar from "$lib/components/ChannelsSidebar.svelte";
-import VoiceChat from "$lib/components/VoiceChat.svelte";
 import PaneView from "$lib/components/PaneView.svelte";
 import GuildMemberSidebar from "$lib/components/GuildMemberSidebar.svelte";
 import FriendsView from "$lib/components/FriendsView.svelte";
+import VoiceChat from "$lib/components/VoiceChat.svelte";
 import { createWebSocketConnection } from "$lib/api/ws/connection";
 import { makeLeaf, makeSplit, removeLeaf, updateLeaf } from "$lib/pane";
 import { gatewaySpaceToGuild, gatewaySpaceToMembers } from "$lib/types";
@@ -35,15 +35,9 @@ onMount(() => {
 	}
 	layoutPrefsHydrated = true;
 
-	// Position the floating voice window at the bottom-right corner
-	floatX = window.innerWidth - floatW - 20;
-	floatY = window.innerHeight - floatH - 20;
-
 	const conn = createWebSocketConnection();
 	onDestroy(() => {
 		conn.destroy();
-		window.removeEventListener("mousemove", onFloatDragMove);
-		window.removeEventListener("mouseup", stopFloatDrag);
 	});
 });
 
@@ -299,6 +293,17 @@ function moveTabBetweenLeaves(
 	syncSidebarToLeaf(next, focusedPaneId);
 }
 
+let friendsViewEverShown = $state(false);
+$effect(() => {
+	if (showFriendsView) friendsViewEverShown = true;
+});
+
+const globalVoiceRoom = $derived(
+	$activeVoiceRoomId
+		? $gatewaySpaces.flatMap((s) => s.rooms).find((r) => r.id === $activeVoiceRoomId) ?? null
+		: null,
+);
+
 let prevVoiceRoomId: string | null = null;
 
 $effect(() => {
@@ -317,65 +322,9 @@ $effect(() => {
 	prevVoiceRoomId = cur;
 });
 
-const voiceChannelName = $derived((() => {
-	if (!$activeVoiceRoomId) return "";
-	for (const s of $gatewaySpaces) {
-		const r = s.rooms.find((r) => r.id === $activeVoiceRoomId);
-		if (r) return r.name;
-	}
-	return "Voice Channel";
-})());
-
-// ── Floating voice window ──────────────────────────────────────────────────
-const floatW = 400;
-const floatH = 360;
-let floatX = $state(20);
-let floatY = $state(20);
-let isDraggingFloat = false;
-let dragOffsetX = 0;
-let dragOffsetY = 0;
-
-function startFloatDrag(e: MouseEvent) {
-	isDraggingFloat = true;
-	dragOffsetX = e.clientX - floatX;
-	dragOffsetY = e.clientY - floatY;
-	window.addEventListener("mousemove", onFloatDragMove);
-	window.addEventListener("mouseup", stopFloatDrag);
-}
-
-function onFloatDragMove(e: MouseEvent) {
-	if (!isDraggingFloat) return;
-	floatX = Math.max(0, Math.min(window.innerWidth - floatW, e.clientX - dragOffsetX));
-	floatY = Math.max(0, Math.min(window.innerHeight - floatH, e.clientY - dragOffsetY));
-}
-
-function stopFloatDrag() {
-	isDraggingFloat = false;
-	window.removeEventListener("mousemove", onFloatDragMove);
-	window.removeEventListener("mouseup", stopFloatDrag);
-}
 </script>
 
 <div class="flex h-full overflow-hidden bg-[radial-gradient(120%_70%_at_85%_0%,oklch(0.28_0.012_80/.3),transparent_60%),linear-gradient(180deg,oklch(0.18_0.008_80),oklch(0.15_0.006_80))]">
-  <!-- Floating voice window — fixed position, never part of layout flow -->
-  {#if $activeVoiceRoomId}
-    <div
-      class="fixed z-50 flex flex-col overflow-hidden rounded-xl border border-zinc-700 bg-zinc-900 shadow-2xl"
-      style="left:{floatX}px;top:{floatY}px;width:{floatW}px;height:{floatH}px"
-    >
-      <div
-        class="flex h-7 shrink-0 cursor-grab items-center border-b border-zinc-700/50 bg-zinc-800/80 px-3 select-none active:cursor-grabbing"
-        role="toolbar"
-        aria-label="Voice window — drag to move"
-        onmousedown={startFloatDrag}
-      >
-        <span class="text-xs font-medium text-zinc-400 truncate">🔊 {voiceChannelName}</span>
-      </div>
-      <div class="flex-1 min-h-0 overflow-hidden">
-        <VoiceChat channelId={$activeVoiceRoomId} channelName={voiceChannelName} />
-      </div>
-    </div>
-  {/if}
   <GuildSideBar
     {guilds}
     activeGuildId={showFriendsView ? null : sidebarSpaceId}
@@ -383,19 +332,23 @@ function stopFloatDrag() {
     isFriendsActive={showFriendsView}
     onFriendsSelect={handleFriendsSelect}
   />
-  {#if !showFriendsView && sidebarGuild && showChannelsSidebar}
+  {#if sidebarGuild}
     <ChannelsSidebar
       guild={sidebarGuild}
       channels={sidebarGuild.channels}
       activeChannelId={sidebarActiveChannelId}
       onSelect={onSidebarSelect}
+      showChannels={!showFriendsView && showChannelsSidebar}
     />
   {/if}
 
   <div class="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-[linear-gradient(180deg,oklch(0.205_0.01_80),oklch(0.18_0.008_80))]">
-    {#if showFriendsView}
-      <FriendsView />
-    {:else}
+    {#if friendsViewEverShown}
+      <div class="flex flex-col flex-1 min-h-0 {showFriendsView ? '' : 'hidden'}">
+        <FriendsView />
+      </div>
+    {/if}
+    <div class="flex flex-col flex-1 min-h-0 {showFriendsView ? 'hidden' : ''}">
       <PaneView
         node={rootPane}
         onUpdate={handlePaneUpdate}
@@ -412,14 +365,21 @@ function stopFloatDrag() {
         {focusedPaneId}
         onFocus={handleFocusChange}
       />
-    {/if}
-  </div>
-  {#if !showFriendsView}
-    <div class="contents" style={showMembersSidebar ? '' : 'display: none'}>
-      <GuildMemberSidebar
-        spaceId={memberSidebarSpaceId}
-        space={memberSidebarSpace}
-      />
     </div>
-  {/if}
+  </div>
+  <div class="contents" style={!showFriendsView && showMembersSidebar ? '' : 'display: none'}>
+    <GuildMemberSidebar
+      spaceId={memberSidebarSpaceId}
+      space={memberSidebarSpace}
+    />
+  </div>
 </div>
+
+<!-- Global VoiceChat: mounted outside all navigation so audio never cuts -->
+{#if $activeVoiceRoomId && globalVoiceRoom}
+  {#key $activeVoiceRoomId}
+    <div class="hidden" aria-hidden="true">
+      <VoiceChat channelId={$activeVoiceRoomId} channelName={globalVoiceRoom.name} />
+    </div>
+  {/key}
+{/if}

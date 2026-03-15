@@ -11,12 +11,15 @@
 		gatewaySpaces,
 		isDeafened,
 		isMuted,
+		screenShareRequested,
 		selectedMicId,
 		speakingUsers,
 		voiceConnectionState,
+		voiceRemoteVideoStreams,
+		voiceLocalVideoStream,
 	} from "$lib/stores.svelte";
 
-	let { channelId, channelName }: { channelId: string; channelName: string } =
+	let { channelId, channelName, compact = false }: { channelId: string; channelName: string; compact?: boolean } =
 		$props();
 
 	let peerConnection: RTCPeerConnection | null = null;
@@ -32,6 +35,21 @@
 	let voiceJoinedPromise: Promise<void> = Promise.resolve();
 
 	let isScreenSharing = $state(false);
+
+	$effect(() => {
+		voiceRemoteVideoStreams.set(remoteVideoElements);
+	});
+
+	$effect(() => {
+		voiceLocalVideoStream.set(localVideoStream);
+	});
+
+	$effect(() => {
+		if ($screenShareRequested) {
+			screenShareRequested.set(false);
+			void toggleScreenShare();
+		}
+	});
 
 	let remoteAudioElements = $state<{ [id: string]: MediaStream }>({});
 	let remoteVideoElements = $state<{ [id: string]: MediaStream }>({});
@@ -59,6 +77,8 @@
 		if (audioContext) audioContext.close();
 		if (unsubscribeWs) unsubscribeWs();
 		speakingUsers.set(new SvelteSet());
+		voiceRemoteVideoStreams.set({});
+		voiceLocalVideoStream.set(null);
 		if ($activeVoiceRoomId === channelId) activeVoiceRoomId.set(null);
 	}
 
@@ -537,8 +557,9 @@
 </script>
 
 <div
-	class="relative flex flex-1 flex-col border-l border-zinc-800 bg-zinc-900 p-6 text-white"
+	class="relative flex flex-1 flex-col text-white {compact ? 'bg-transparent' : 'border-l border-zinc-800 bg-zinc-900 p-6'}"
 >
+	{#if !compact}
 	<div class="mb-4">
 		<h1 class="text-2xl font-bold flex items-center gap-2">
 			<span class="text-zinc-400 opacity-60">🔊</span>
@@ -554,9 +575,10 @@
 			{connectionLabel[$connectionState]}
 		</p>
 	</div>
+	{/if}
 
 	<div
-		class="flex-1 overflow-y-auto pb-24 {voiceUsers.length === 1
+		class="flex-1 overflow-y-auto {compact ? 'pb-14' : 'pb-24'} {voiceUsers.length === 1
 			? 'flex flex-col p-4'
 			: focusedUserId
 				? 'flex flex-row flex-wrap content-start p-4 gap-4'
@@ -583,7 +605,7 @@
 						? 'w-full h-[60vh] order-first'
 						: focusedUserId
 							? 'w-64 h-48 shrink-0'
-							: 'h-64'} {isSpeaking && !user.muted
+							: compact ? 'h-32' : 'h-64'} {isSpeaking && !user.muted
 					? 'border-transparent ring-2 ring-inset ring-stone-400'
 					: 'border-zinc-700 hover:border-zinc-500'}"
 				onclick={() =>
@@ -690,7 +712,7 @@
 	</div>
 
 	<div
-		class="absolute bottom-8 left-1/2 flex -translate-x-1/2 items-center gap-4 rounded-full border border-zinc-700 bg-zinc-800/80 px-6 py-3 shadow-xl backdrop-blur-md"
+		class="absolute {compact ? 'bottom-2 px-3 py-2 gap-2' : 'bottom-8 px-6 py-3 gap-4'} left-1/2 flex -translate-x-1/2 items-center rounded-full border border-zinc-700 bg-zinc-800/80 shadow-xl backdrop-blur-md"
 	>
 		<button
 			class="rounded-full p-4 hover:bg-zinc-700 {isScreenSharing
