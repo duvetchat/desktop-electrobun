@@ -1,7 +1,7 @@
 <script lang="ts">
 import { onMount } from "svelte";
 import { get } from "svelte/store";
-import { currentUser, pendingFriendRequests, friends, conversations } from "$lib/stores.svelte";
+import { currentUser, pendingFriendRequests, sentFriendRequests, friends, conversations } from "$lib/stores.svelte";
 import {
 	sendFriendRequest,
 	getPendingRequests,
@@ -29,7 +29,6 @@ type Tab = "dms" | "friends" | "pending" | "sent" | "add";
 let activeTab = $state<Tab>("dms");
 let activeConversation = $state<Conversation | null>(null);
 
-let sentRequests = $state<FriendRequest[]>([]);
 let sentRequestUsers = $state<Map<string, UserPublic>>(new Map());
 let friendUsers = $state<Map<string, UserPublic>>(new Map());
 let pendingUsers = $state<Map<string, UserPublic>>(new Map());
@@ -83,7 +82,7 @@ onMount(async () => {
 			getConversations(),
 		]);
 		pendingFriendRequests.set(pending);
-		sentRequests = sent;
+		sentFriendRequests.set(sent);
 		friends.set(friendList);
 		conversations.set(convList);
 		await Promise.all([
@@ -109,7 +108,7 @@ async function handleSendRequest() {
 		addSuccess = "Friend request sent!";
 		addUserId = "";
 		const sent = await getSentRequests();
-		sentRequests = sent;
+		sentFriendRequests.set(sent);
 		await loadSentUsers(sent);
 	} catch (err) {
 		addError = err instanceof Error ? err.message : "Failed to send request";
@@ -126,6 +125,7 @@ async function handleAccept(request: FriendRequest) {
 			if (list.some((f) => f.id === friend.id)) return list;
 			return [...list, friend];
 		});
+		friendUsers = await loadUsers([request.sender_id], friendUsers);
 	} catch (err) {
 		console.error("[Friends] Accept failed:", err);
 	}
@@ -143,7 +143,7 @@ async function handleReject(request: FriendRequest) {
 async function handleCancelSent(request: FriendRequest) {
 	try {
 		await rejectFriendRequest(request.id);
-		sentRequests = sentRequests.filter((r) => r.id !== request.id);
+		sentFriendRequests.update((reqs) => reqs.filter((r) => r.id !== request.id));
 	} catch (err) {
 		console.error("[Friends] Cancel failed:", err);
 	}
@@ -422,14 +422,14 @@ function convAvatarSrc(conv: Conversation): string | null | undefined {
 			{/if}
 
 		{:else if activeTab === "sent"}
-			{#if sentRequests.length === 0}
+			{#if $sentFriendRequests.length === 0}
 				<div class="empty-state">
 					<Send size={40} />
 					<p>No has enviado solicitudes</p>
 				</div>
 			{:else}
 				<ul class="list">
-					{#each sentRequests as req (req.id)}
+					{#each $sentFriendRequests as req (req.id)}
 						{@const user = sentRequestUsers.get(req.recipient_id)}
 						<li class="list-item">
 							<UserAvatar

@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { page } from "$app/state";
   import { getInvite, joinInvite } from "$lib/api/invites";
   import type { InviteInfo } from "$lib/api/invites";
   import { userSession } from "$lib/stores.svelte";
@@ -32,9 +33,10 @@
   }
 
   onMount(async () => {
-    const searchParams = new URLSearchParams(window.location.search);
     code =
-      searchParams.get("code") ?? readCodeFromHash(window.location.hash) ?? "";
+      page.url.searchParams.get("code") ??
+      readCodeFromHash(window.location.hash) ??
+      "";
 
     if (!code) {
       error = "Invite code is required.";

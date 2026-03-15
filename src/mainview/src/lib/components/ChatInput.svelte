@@ -328,7 +328,7 @@ function handleEmojiPick(emoji: string) {
 				tabindex="0"
 				aria-multiline="false"
 				aria-label={placeholder}
-				class="ce-input"
+				class="ce-input focus-override"
 				class:ce-empty={isEmpty}
 				data-placeholder={placeholder}
 				onkeydown={handleKeyDown}
@@ -437,7 +437,7 @@ function handleEmojiPick(emoji: string) {
 		pointer-events: auto;
 		flex: 1;
 		border-radius: 0.75rem;
-		border: 1px solid oklch(0.40 0.01 80 / 0.7);
+		border: none;
 		background: oklch(0.22 0.01 80 / 0.8);
 		padding: 0.625rem 0.75rem;
 		box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);

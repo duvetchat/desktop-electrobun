@@ -24,6 +24,7 @@ import { onMount } from "svelte";
 import type { Guild, Channel, RoomType } from "$lib/types";
 import { hasPermission, Permission } from "$lib/permissions";
 import ServerSettings from "$lib/components/ServerSettings.svelte";
+import UserSettings from "$lib/components/UserSettings.svelte";
 import ChannelSettings from "$lib/components/ChannelSettings.svelte";
 import { createRoom, deleteRoom } from "$lib/api/rooms";
 import InviteModal from "$lib/components/InviteModal.svelte";
@@ -103,6 +104,7 @@ function openInviteModal(channel: Channel) {
 }
 
 let showServerSettings = $state(false);
+let showUserSettings = $state(false);
 
 function openServerSettings() {
 	showServerSettings = true;
@@ -713,6 +715,7 @@ onMount(() => {
 				<button
 					class="h-10 w-10 flex items-center justify-center rounded-lg hover:bg-zinc-800 transition-colors"
 					aria-label="User Settings"
+					onclick={() => (showUserSettings = true)}
 				>
 					<GearSixIcon class="size-5" />
 				</button>
@@ -726,6 +729,8 @@ onMount(() => {
 	space={space ?? null}
 	spaceId={guild.id}
 />
+
+<UserSettings bind:open={showUserSettings} />
 
 <Dialog.Root bind:open={showCreateModal}>
 	<Dialog.Portal>

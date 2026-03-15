@@ -4,6 +4,7 @@ import {
 	gatewaySpaces,
 	currentUser,
 	pendingFriendRequests,
+	sentFriendRequests,
 	friends,
 	conversations,
 	dmMessages,
@@ -146,7 +147,7 @@ function handleEvent(event: GatewayEvent) {
 				member: selfMember,
 				members: selfMember ? [selfMember] : [],
 				users: currentUserData ? [currentUserData] : [],
-				voice_states: [],
+				voice_states: payload.voice_states ?? [],
 			};
 			gatewaySpaces.update((spaces) => {
 				const exists = spaces.some((s) => s.id === space.id);
@@ -619,6 +620,12 @@ function handleEvent(event: GatewayEvent) {
 				if (list.some((f) => f.id === raw.id)) return list;
 				return [...list, raw];
 			});
+			sentFriendRequests.update((reqs) => reqs.filter((r) => r.id !== raw.request_id));
+			break;
+		}
+		case "FRIEND_REQUEST_REJECT": {
+			const raw = data as { request_id: string };
+			sentFriendRequests.update((reqs) => reqs.filter((r) => r.id !== raw.request_id));
 			break;
 		}
 		case "FRIEND_REMOVE": {

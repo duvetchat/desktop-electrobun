@@ -269,6 +269,13 @@
 	* {
 		@apply border-border;
 	}
+
+	input,
+	textarea,
+	select {
+		outline: none;
+		border-color: transparent;
+	}
 	html {
 		-webkit-text-size-adjust: 100%;
 		font-variation-settings: normal;

@@ -20,6 +20,34 @@ interface UserMeResult {
 	updated_at: string;
 }
 
+export interface UpdateUserPayload {
+	username?: string;
+	alias?: string | null;
+	avatar?: string | null;
+	banner?: string | null;
+}
+
+export async function updateUser(data: UpdateUserPayload): Promise<UserMeResult> {
+	if (!userSession.token) {
+		throw new Error("No user session token found");
+	}
+
+	const response = await fetch(`${HOST}/api/users/me`, {
+		method: "PATCH",
+		headers: {
+			Authorization: userSession.token,
+			"Content-Type": "application/json",
+		},
+		body: JSON.stringify(data),
+	});
+
+	if (!response.ok) {
+		throw new Error(`Failed to update profile: ${await response.text()}`);
+	}
+
+	return response.json() as Promise<UserMeResult>;
+}
+
 export async function me(): Promise<UserMeResult> {
 	if (!userSession.token) {
 		throw new Error("No user session token found");

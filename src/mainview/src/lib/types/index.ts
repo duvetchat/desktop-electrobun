@@ -152,6 +152,7 @@ export interface GatewaySpaceCreatePayload {
 	member_roles: Partial<Record<string, string[]>>;
 	overwrites?: Record<string, GatewayRoomOverwrite[]>;
 	owner_id: string;
+	voice_states?: GatewayVoiceState[];
 }
 
 export interface GatewayEventPayload<T = unknown> {
