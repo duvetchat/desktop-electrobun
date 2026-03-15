@@ -38,6 +38,64 @@ export async function getMessages(
 	return response.json() as Promise<GatewayMessage[]>;
 }
 
+export async function getMessagesAfter(
+	roomId: string,
+	after: Date,
+	signal?: AbortSignal,
+): Promise<GatewayMessage[]> {
+	if (!userSession.token) {
+		throw new Error("No user session token found");
+	}
+
+	const query = new URLSearchParams({
+		count: "100",
+		after: after.toISOString(),
+		order: "asc",
+	});
+
+	const response = await fetch(
+		`${HOST}/api/rooms/${roomId}/messages?${query}`,
+		{
+			headers: {
+				Authorization: userSession.token,
+			},
+			signal,
+		},
+	);
+
+	if (!response.ok) {
+		throw new Error(`Failed to fetch messages: ${await response.text()}`);
+	}
+
+	return response.json() as Promise<GatewayMessage[]>;
+}
+
+export async function getMessageById(
+	roomId: string,
+	messageId: string,
+	signal?: AbortSignal,
+): Promise<GatewayMessage> {
+	if (!userSession.token) {
+		throw new Error("No user session token found");
+	}
+
+	const response = await fetch(
+		`${HOST}/api/rooms/${roomId}/messages/${messageId}`,
+		{
+			headers: {
+				Authorization: userSession.token,
+			},
+			signal,
+		},
+	);
+
+	if (!response.ok) {
+		throw new Error(`Failed to fetch message: ${await response.text()}`);
+	}
+
+	return response.json() as Promise<GatewayMessage>;
+}
+
 export async function sendMessage(
 	roomId: string,
 	content: string,

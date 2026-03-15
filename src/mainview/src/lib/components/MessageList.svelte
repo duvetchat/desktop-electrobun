@@ -1,8 +1,8 @@
 <script lang="ts">
     import { computeRoomPermissions, Permission } from "$lib/permissions";
-    import { onDestroy, onMount } from "svelte";
+    import { onDestroy, onMount, tick } from "svelte";
     import { updateMessage, deleteMessage } from "$lib/api/messages";
-    import { currentUser } from "$lib/stores.svelte";
+    import { currentUser, jumpToMessageRequest, gatewaySpaces } from "$lib/stores.svelte";
     import { renderEmoji, isOnlyEmojis, countEmojis } from "$lib/emoji";
 
     import type { MemberOnSidebar, GatewaySpace, Message } from "$lib/types";
@@ -12,6 +12,7 @@
     import TwitterEmbed from "$lib/components/TwitterEmbed.svelte";
     import UrlEmbed from "$lib/components/UrlEmbed.svelte";
     import InviteEmbed from "$lib/components/InviteEmbed.svelte";
+    import MessageLinkEmbed from "$lib/components/MessageLinkEmbed.svelte";
     import UserAvatar from "$lib/components/UserAvatar.svelte";
     import ChatInput from "$lib/components/ChatInput.svelte";
 
@@ -19,11 +20,16 @@
         messages,
         members = [],
         channelId = "",
+        spaceId = "",
         space = null,
         isInitialLoading = false,
         isLoadingMore = false,
+        isLoadingMoreBelow = false,
         hasMoreMessages = true,
+        hasMoreMessagesBelow = false,
+        highlightedMessageId = null,
         onLoadMore = () => {},
+        onLoadMoreBelow = () => {},
         onRetry = () => {},
         onDismiss = () => {},
         onSaveEdit = undefined,
@@ -35,11 +41,16 @@
         messages: Message[];
         members?: MemberOnSidebar[];
         channelId?: string;
+        spaceId?: string;
         space?: GatewaySpace | null;
         isInitialLoading?: boolean;
         isLoadingMore?: boolean;
+        isLoadingMoreBelow?: boolean;
         hasMoreMessages?: boolean;
+        hasMoreMessagesBelow?: boolean;
+        highlightedMessageId?: string | null;
         onLoadMore?: () => Promise<void> | void;
+        onLoadMoreBelow?: () => Promise<void> | void;
         onRetry?: (message: Message) => void;
         onDismiss?: (nonce: string) => void;
         onSaveEdit?: (messageId: string, content: string) => Promise<void> | void;
@@ -69,26 +80,53 @@
     // Uses getBoundingClientRect() — works with flex-col-reverse + negative
     // scrollTop (WebView2 confirmed). Completely direction-agnostic.
     function handleScroll() {
-        if (!scrollEl || isLoadingMore || !hasMoreMessages) {
-            return;
-        }
-        const sentinel = scrollEl.querySelector("[data-sentinel]");
-        if (!sentinel) {
-            return;
-        }
+        if (!scrollEl) return;
+
         const scrollRect = scrollEl.getBoundingClientRect();
-        const sentinelRect = sentinel.getBoundingClientRect();
-        const visible =
-            sentinelRect.top < scrollRect.bottom &&
-            sentinelRect.bottom > scrollRect.top;
-        if (visible) {
-            void onLoadMore();
+
+        if (!isLoadingMore && hasMoreMessages) {
+            const sentinelTop = scrollEl.querySelector("[data-sentinel-top]");
+            if (sentinelTop) {
+                const r = sentinelTop.getBoundingClientRect();
+                if (r.top < scrollRect.bottom && r.bottom > scrollRect.top) {
+                    void onLoadMore();
+                }
+            }
+        }
+
+        if (!isLoadingMoreBelow && hasMoreMessagesBelow) {
+            const sentinelBottom = scrollEl.querySelector("[data-sentinel-bottom]");
+            if (sentinelBottom) {
+                const r = sentinelBottom.getBoundingClientRect();
+                if (r.top < scrollRect.bottom && r.bottom > scrollRect.top) {
+                    void onLoadMoreBelow();
+                }
+            }
         }
     }
 
     function topObserverAction(_node: HTMLElement) {
         return { destroy() {} };
     }
+
+    // ── Scroll to highlighted message ─────────────────────────────────────────
+    // tick() espera el parche del DOM de Svelte, pero el browser necesita
+    // terminar el layout (especialmente con flex-col-reverse + muchos mensajes).
+    // Dos requestAnimationFrame aseguran que el layout esté completo antes de scrollear.
+    $effect(() => {
+        const id = highlightedMessageId;
+        if (!id) return;
+        void tick().then(() => {
+            requestAnimationFrame(() => {
+                requestAnimationFrame(() => {
+                    const el = scrollEl?.querySelector(`[data-message-id="${id}"]`);
+                    if (el) {
+                        el.scrollIntoView({ behavior: "instant", block: "center" });
+                    }
+                });
+            });
+        });
+    });
 
     onMount(() => {
         intervalId = window.setInterval(() => {
@@ -207,8 +245,40 @@
         }, {});
     }
 
+    // ── Message link navigation ────────────────────────────────────────────────
+    // Link format: duvet://channels/{spaceId}/{roomId}/{messageId}
+    const messageLinkRegex = /^duvet:\/\/channels\/([^/]+)\/([^/]+)\/([^/]+)$/;
+
+    function tryNavigateMessageLink(url: string): boolean {
+        const match = messageLinkRegex.exec(url);
+        if (!match) return false;
+        const [, linkSpaceId, linkRoomId, linkMessageId] = match;
+        jumpToMessageRequest.set({
+            id: crypto.randomUUID(),
+            spaceId: linkSpaceId,
+            roomId: linkRoomId,
+            messageId: linkMessageId,
+        });
+        return true;
+    }
+
+    function resolveMessageLink(url: string): { spaceName: string; roomName: string; spaceId: string; roomId: string; messageId: string } | null {
+        const match = messageLinkRegex.exec(url);
+        if (!match) return null;
+        const [, linkSpaceId, linkRoomId, linkMessageId] = match;
+        const sp = $gatewaySpaces.find((s) => s.id === linkSpaceId);
+        const rm = sp?.rooms.find((r) => r.id === linkRoomId);
+        return {
+            spaceId: linkSpaceId,
+            roomId: linkRoomId,
+            messageId: linkMessageId,
+            spaceName: sp?.name ?? "Unknown server",
+            roomName: rm?.name ?? "unknown",
+        };
+    }
+
     // ── URL processing ─────────────────────────────────────────────────────────
-    const urlRegex = /(https?:\/\/[^\s]+)/g;
+    const urlRegex = /((?:https?|duvet):\/\/[^\s]+)/g;
 
     function processMessageContent(content: string) {
         const urls = content.match(urlRegex) || [];
@@ -218,9 +288,18 @@
         const twitterLinks: string[] = [];
         const instagramLinks: string[] = [];
         const inviteCodes: string[] = [];
+        const messageLinks: { spaceId: string; roomId: string; messageId: string }[] = [];
 
         urls.forEach((url) => {
             try {
+                // Handle internal duvet:// message links
+                const msgLinkMatch = messageLinkRegex.exec(url);
+                if (msgLinkMatch) {
+                    const [, lSpaceId, lRoomId, lMessageId] = msgLinkMatch;
+                    messageLinks.push({ spaceId: lSpaceId, roomId: lRoomId, messageId: lMessageId });
+                    return;
+                }
+
                 const parsed = new URL(url);
                 if (parsed.pathname === "/invite") {
                     const code = parsed.searchParams.get("code");
@@ -278,6 +357,7 @@
             twitterLinks,
             instagramLinks,
             inviteCodes,
+            messageLinks,
         };
     }
 
@@ -415,6 +495,29 @@
             No messages yet. Send the first message.
         </div>
     {:else}
+        <!-- Bottom sentinel: first in DOM → appears at visual bottom in flex-col-reverse.
+             Visible when user scrolls to the bottom (newest messages area). -->
+        {#if hasMoreMessagesBelow}
+            <div
+                data-sentinel-bottom
+                class="w-full flex flex-col items-center gap-1 py-3"
+            >
+                {#if isLoadingMoreBelow}
+                    <svg
+                        class="animate-spin h-5 w-5 text-zinc-400"
+                        xmlns="http://www.w3.org/2000/svg"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                    >
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                {:else}
+                    <span class="text-xs text-zinc-500">Newer messages below</span>
+                {/if}
+            </div>
+        {/if}
+
         {#each sortedMessages as message, i (message.id)}
             {@const chronoPrev = sortedMessages.at(i + 1)}
             {@const isConsecutive =
@@ -438,12 +541,16 @@
                 processMessageContent(message.content).youtubeVideos.length ===
                     0}
 
+            {@const isHighlighted = highlightedMessageId === message.id}
             <div
+                data-message-id={message.id}
                 class="group relative flex items-start rounded-md px-3 {isLast
                     ? 'mb-3'
                     : 'mb-1'} {showHeader ? 'mt-4' : 'mt-0'} {isFailed
                     ? 'bg-red-500/10 hover:bg-red-500/15'
-                    : 'hover:bg-zinc-800/55'} -mx-3"
+                    : isHighlighted
+                      ? 'bg-yellow-500/15 hover:bg-yellow-500/20'
+                      : 'hover:bg-zinc-800/55'} -mx-3"
                 style={isFailed
                     ? ""
                     : isPending
@@ -552,15 +659,43 @@
                         >
                             {#each parseTextSegments(processed.text) as segment}
                                 {#if segment.type === "link"}
-                                    <a
-                                        href={segment.content}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        class="text-stone-300 hover:underline"
-                                        onclick={(e) => {
-                                            e.stopPropagation();
-                                        }}>{segment.content}</a
-                                    >
+                                    {#if messageLinkRegex.test(segment.content)}
+                                        {@const resolved = resolveMessageLink(segment.content)}
+                                        {#if resolved}
+                                            <button
+                                                type="button"
+                                                class="inline-flex items-center gap-1 align-middle mx-0.5 px-1.5 py-0.5 rounded bg-zinc-700/70 hover:bg-zinc-600/80 border border-zinc-600/50 transition-colors cursor-pointer text-zinc-300 hover:text-white"
+                                                onclick={(e) => {
+                                                    e.stopPropagation();
+                                                    tryNavigateMessageLink(segment.content);
+                                                }}
+                                                title="{resolved.spaceName} › #{resolved.roomName}"
+                                            >
+                                                <span class="text-zinc-400 text-xs">#</span>
+                                                <span class="text-xs font-medium">{resolved.roomName}</span>
+                                                <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="text-zinc-400 shrink-0"><path d="m9 18 6-6-6-6"/></svg>
+                                            </button>
+                                        {:else}
+                                            <button
+                                                type="button"
+                                                class="text-zinc-500 hover:text-zinc-300 text-xs transition-colors cursor-pointer"
+                                                onclick={(e) => {
+                                                    e.stopPropagation();
+                                                    tryNavigateMessageLink(segment.content);
+                                                }}>{segment.content}</button
+                                            >
+                                        {/if}
+                                    {:else}
+                                        <a
+                                            href={segment.content}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            class="text-stone-300 hover:underline"
+                                            onclick={(e) => {
+                                                e.stopPropagation();
+                                            }}>{segment.content}</a
+                                        >
+                                    {/if}
                                 {:else}
                                     {@html renderEmoji(
                                         segment.content,
@@ -617,6 +752,17 @@
                                 {/each}
                             </div>
                         {/if}
+                        {#if processed.messageLinks.length > 0}
+                            <div class="flex flex-col gap-1">
+                                {#each processed.messageLinks as ml}
+                                    <MessageLinkEmbed
+                                        spaceId={ml.spaceId}
+                                        roomId={ml.roomId}
+                                        messageId={ml.messageId}
+                                    />
+                                {/each}
+                            </div>
+                        {/if}
                         {#if processed.otherLinks.length > 0}
                             <div class="flex flex-col gap-2 mt-2">
                                 {#each processed.otherLinks.slice(0, 3) as link}
@@ -643,10 +789,23 @@
                             >Dismiss</button
                         >
                     </div>
-                {:else if $currentUser && message.author_id === $currentUser.id && editingMessageId !== message.id}
+                {:else if !isPending && $currentUser && message.author_id === $currentUser.id && editingMessageId !== message.id}
                     <div
                         class="absolute right-2 -top-3 z-10 hidden overflow-hidden rounded border border-zinc-800 bg-zinc-700 shadow-sm transition-opacity group-hover:flex"
                     >
+                        <button
+                            class="p-1.5 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-600 transition-colors"
+                            onclick={() => {
+                                navigator.clipboard.writeText(
+                                    `duvet://channels/${spaceId}/${channelId}/${message.id}`
+                                ).catch(console.error);
+                            }}
+                            title="Copy message link"
+                            aria-label="Copy message link"
+                        >
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+                        </button>
+                        <div class="w-px bg-zinc-800"></div>
                         <button
                             class="p-1.5 text-zinc-400 hover:text-white hover:bg-zinc-600 transition-colors"
                             onclick={() => {
@@ -724,10 +883,24 @@
                             {/if}
                         </button>
                     </div>
-                {:else if $currentUser && message.author_id !== $currentUser.id && currentUserCanManageMessages() && editingMessageId !== message.id}
+                {:else if !isPending && $currentUser && message.author_id !== $currentUser.id && editingMessageId !== message.id}
                     <div
                         class="absolute right-2 -top-3 z-10 hidden overflow-hidden rounded border border-zinc-800 bg-zinc-700 shadow-sm transition-opacity group-hover:flex"
                     >
+                        <button
+                            class="p-1.5 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-600 transition-colors"
+                            onclick={() => {
+                                navigator.clipboard.writeText(
+                                    `duvet://channels/${spaceId}/${channelId}/${message.id}`
+                                ).catch(console.error);
+                            }}
+                            title="Copy message link"
+                            aria-label="Copy message link"
+                        >
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+                        </button>
+                        {#if currentUserCanManageMessages()}
+                        <div class="w-px bg-zinc-800"></div>
                         <button
                             class="p-1.5 text-zinc-400 hover:text-red-400 hover:bg-zinc-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                             onclick={() => handleDelete(message.id)}
@@ -780,6 +953,7 @@
                                 >
                             {/if}
                         </button>
+                        {/if}
                     </div>
                 {/if}
             </div>
@@ -799,7 +973,7 @@
 
         {#if hasMoreMessages}
             <div
-                data-sentinel
+                data-sentinel-top
                 use:topObserverAction
                 class="w-full flex justify-center py-4"
             >
@@ -827,5 +1001,6 @@
                 {/if}
             </div>
         {/if}
+
     {/if}
 </div>

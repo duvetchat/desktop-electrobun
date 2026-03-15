@@ -3,9 +3,10 @@ import {
 	activeVoiceRoomId,
 	channelMessages,
 	gatewaySpaces,
+	jumpToMessageRequest,
 } from "$lib/stores.svelte";
 import { makeSplit, makeLeaf } from "$lib/pane";
-import { getMessages } from "$lib/api/messages";
+import { getMessages, getMessagesAfter, getMessageById } from "$lib/api/messages";
 import { getContext, onMount, onDestroy } from "svelte";
 
 import type {
@@ -16,7 +17,7 @@ import type {
 	Tab,
 } from "$lib/types";
 
-import { gatewayMessageToMessage, gatewaySpaceToMembers } from "$lib/types";
+import { gatewayMessageToMessage, gatewaySpaceToMembers, roomTypeToChannelType } from "$lib/types";
 import PaneView from "$lib/components/PaneView.svelte";
 import TabBar from "$lib/components/TabBar.svelte";
 import Chat from "$lib/components/Chat.svelte";
@@ -94,8 +95,14 @@ let {
 // ── Leaf: message loading ─────────────────────────────────────────────────
 const loadedChannels = new Set<string>();
 let isLoadingMore = $state(false);
+let isLoadingMoreBelow = $state(false);
 let channelHasMore = $state<Partial<Record<string, boolean>>>({});
+let channelHasMoreBelow = $state<Partial<Record<string, boolean>>>({});
 let channelInitialLoading = $state<Partial<Record<string, boolean>>>({});
+let channelHighlightedMessage = $state<Partial<Record<string, string | null>>>({});
+// track handled jump request ids to avoid double-processing
+let lastHandledJumpId = $state<string | null>(null);
+
 const isInitialLoading = $derived(!!(
 	node.kind === "leaf" &&
 	node.activeChannelId &&
@@ -297,6 +304,152 @@ async function loadMoreMessages() {
 		isLoadingMore = false;
 	}
 }
+
+async function loadMoreMessagesBelow() {
+	if (
+		node.kind !== "leaf" ||
+		!node.activeChannelId ||
+		isLoadingMoreBelow ||
+		activeChannel?.type !== "text"
+	) {
+		return;
+	}
+	const channelId = node.activeChannelId;
+	if (channelHasMoreBelow[channelId] !== true) {
+		return;
+	}
+
+	const current = $channelMessages[channelId];
+	if (!current || current.length === 0) {
+		return;
+	}
+
+	let newest = new Date(current.at(0)!.created_at);
+	for (const m of current) {
+		const d = new Date(m.created_at);
+		if (d > newest) newest = d;
+	}
+
+	isLoadingMoreBelow = true;
+
+	const controller = new AbortController();
+	const timeoutId = setTimeout(() => controller.abort(), 10_000);
+
+	try {
+		const raw = await getMessagesAfter(channelId, newest, controller.signal);
+		clearTimeout(timeoutId);
+		if (raw.length === 0) {
+			channelHasMoreBelow = { ...channelHasMoreBelow, [channelId]: false };
+		} else {
+			const msgs = raw.map((m) => gatewayMessageToMessage(m, $gatewaySpaces));
+			channelMessages.update((all) => {
+				const existing = all[channelId] || [];
+				const existingIds = new Set(existing.map((m) => m.id));
+				return {
+					...all,
+					[channelId]: [
+						...existing,
+						...msgs.filter((m) => !existingIds.has(m.id)),
+					],
+				};
+			});
+			if (raw.length < 100) {
+				channelHasMoreBelow = { ...channelHasMoreBelow, [channelId]: false };
+			}
+		}
+	} catch (err) {
+		clearTimeout(timeoutId);
+		console.error("Failed to load more below:", err);
+		channelHasMoreBelow = { ...channelHasMoreBelow, [channelId]: false };
+	} finally {
+		isLoadingMoreBelow = false;
+	}
+}
+
+async function jumpToMessage(channelId: string, messageId: string) {
+	if (node.kind !== "leaf") return;
+
+	const controller = new AbortController();
+	const timeoutId = setTimeout(() => controller.abort(), 10_000);
+
+	try {
+		// Fetch the anchor message to get its timestamp
+		const anchor = await getMessageById(channelId, messageId, controller.signal);
+		const anchorTime = new Date(anchor.created_at);
+
+		// Fetch messages before and after the anchor in parallel
+		const [rawAbove, rawBelow] = await Promise.all([
+			getMessages(channelId, anchorTime, controller.signal),
+			getMessagesAfter(channelId, anchorTime, controller.signal),
+		]);
+		clearTimeout(timeoutId);
+
+		const anchorMsg = gatewayMessageToMessage(anchor, $gatewaySpaces);
+		const above = rawAbove.map((m) => gatewayMessageToMessage(m, $gatewaySpaces));
+		const below = rawBelow.map((m) => gatewayMessageToMessage(m, $gatewaySpaces));
+
+		const allIds = new Set<string>();
+		const combined: typeof above = [];
+		for (const m of [...above, anchorMsg, ...below]) {
+			if (!allIds.has(m.id)) {
+				allIds.add(m.id);
+				combined.push(m);
+			}
+		}
+
+		// Replace channel messages with context around anchor
+		loadedChannels.add(channelId);
+		channelMessages.update((all) => ({ ...all, [channelId]: combined }));
+		channelHasMore = { ...channelHasMore, [channelId]: rawAbove.length >= 100 };
+		channelHasMoreBelow = { ...channelHasMoreBelow, [channelId]: rawBelow.length >= 100 };
+		channelHighlightedMessage = { ...channelHighlightedMessage, [channelId]: messageId };
+		channelInitialLoading = { ...channelInitialLoading, [channelId]: false };
+
+		// Clear highlight after 3 seconds
+		setTimeout(() => {
+			channelHighlightedMessage = { ...channelHighlightedMessage, [channelId]: null };
+		}, 3000);
+	} catch (err) {
+		clearTimeout(timeoutId);
+		console.error("Failed to jump to message:", err);
+	}
+}
+
+// ── Handle jump-to-message requests ──────────────────────────────────────
+$effect(() => {
+	const req = $jumpToMessageRequest;
+	if (!req || req.id === lastHandledJumpId) return;
+	if (node.kind !== "leaf") return;
+
+	const hasRoom = node.tabs.some((t) => t.channelId === req.roomId);
+	const thisPaneIsFocused = focusedPaneId === node.id;
+	if (!hasRoom && !thisPaneIsFocused) return;
+
+	// Claim this request
+	lastHandledJumpId = req.id;
+	jumpToMessageRequest.set(null);
+
+	if (!hasRoom) {
+		// Open the tab first (find tab info from gateway spaces)
+		const space = $gatewaySpaces.find((s) => s.id === req.spaceId);
+		const room = space?.rooms.find((r) => r.id === req.roomId);
+		if (room) {
+			openTab({
+				channelId: room.id,
+				channelName: room.name,
+				channelType: roomTypeToChannelType(room.type),
+				spaceId: req.spaceId,
+			});
+		}
+	} else {
+		// Switch to existing tab
+		if (node.activeChannelId !== req.roomId) {
+			handleTabSelect(req.roomId);
+		}
+	}
+
+	void jumpToMessage(req.roomId, req.messageId);
+});
 
 // ── Leaf: tab management ──────────────────────────────────────────────────
 function openTab(tab: Tab) {
@@ -851,15 +1004,24 @@ const childProps = $derived({
                 <Chat
                     messages={activeMessages}
                     channelId={node.activeChannelId ?? ""}
+                    spaceId={activeTab?.spaceId ?? ""}
                     space={activeTabSpace}
                     channelName={activeChannel.name}
                     members={activeTabMembers}
                     {isInitialLoading}
                     {isLoadingMore}
+                    {isLoadingMoreBelow}
                     hasMoreMessages={node.activeChannelId
                         ? channelStillHasMore(node.activeChannelId)
                         : true}
+                    hasMoreMessagesBelow={node.activeChannelId
+                        ? channelHasMoreBelow[node.activeChannelId] === true
+                        : false}
+                    highlightedMessageId={node.activeChannelId
+                        ? (channelHighlightedMessage[node.activeChannelId] ?? null)
+                        : null}
                     onLoadMore={loadMoreMessages}
+                    onLoadMoreBelow={loadMoreMessagesBelow}
                 />
             {:else if activeChannel?.type === "voice"}
                 {#if $activeVoiceRoomId !== node.activeChannelId}

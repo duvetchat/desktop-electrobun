@@ -68,6 +68,13 @@ export const friends = writable<Friend[]>([]);
 export const conversations = writable<Conversation[]>([]);
 export const dmMessages = writable<Record<string, DirectMessage[]>>({});
 
+export const jumpToMessageRequest = writable<{
+	id: string; // unique request id to prevent duplicate handling
+	spaceId: string;
+	roomId: string;
+	messageId: string;
+} | null>(null);
+
 export const isMuted = writable<boolean>(false);
 export const isDeafened = writable<boolean>(false);
 export const activeVoiceRoomId = writable<string | null>(null);

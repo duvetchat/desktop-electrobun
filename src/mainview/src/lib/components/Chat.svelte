@@ -17,21 +17,31 @@ let {
 	members = [],
 	channelName,
 	channelId,
+	spaceId = "",
 	space = null,
 	isInitialLoading = false,
 	isLoadingMore = false,
+	isLoadingMoreBelow = false,
 	hasMoreMessages = true,
+	hasMoreMessagesBelow = false,
+	highlightedMessageId = null,
 	onLoadMore = () => {},
+	onLoadMoreBelow = () => {},
 }: {
 	messages: Message[];
 	members?: MemberOnSidebar[];
 	channelName: string;
 	channelId: string;
+	spaceId?: string;
 	space?: GatewaySpace | null;
 	isInitialLoading?: boolean;
 	isLoadingMore?: boolean;
+	isLoadingMoreBelow?: boolean;
 	hasMoreMessages?: boolean;
+	hasMoreMessagesBelow?: boolean;
+	highlightedMessageId?: string | null;
 	onLoadMore?: () => Promise<void> | void;
+	onLoadMoreBelow?: () => Promise<void> | void;
 } = $props();
 
 let failedNonces = $state(new Set<string>());
@@ -192,11 +202,16 @@ function dismissFailedMessage(nonce: string) {
     {messages}
     {members}
     {channelId}
+    {spaceId}
     {space}
     {isInitialLoading}
     {isLoadingMore}
+    {isLoadingMoreBelow}
     {hasMoreMessages}
+    {hasMoreMessagesBelow}
+    {highlightedMessageId}
     {onLoadMore}
+    {onLoadMoreBelow}
     {failedNonces}
     bind:editingMessageId
     bind:editContent
