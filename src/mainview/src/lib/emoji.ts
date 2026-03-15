@@ -6,8 +6,19 @@
 const TWEMOJI_BASE =
 	"https://cdn.jsdelivr.net/gh/jdecked/twemoji@16.0.1/assets/svg";
 
+// Some non-standard ZWJ sequences (not in the Unicode RGI list) are stored
+// by Twemoji using their non-qualified form (FE0F stripped entirely).
+// 👁️‍🗨️ is the known case: jdecked/twemoji uses 1f441-200d-1f5e8.svg,
+// NOT 1f441-fe0f-200d-1f5e8-fe0f.svg.
+const TWEMOJI_OVERRIDES: Record<string, string> = {
+	"\u{1F441}\uFE0F\u200D\u{1F5E8}\uFE0F": "1f441-200d-1f5e8", // 👁️‍🗨️
+};
+
 /** Convert a Unicode emoji to its Twemoji CDN URL. */
 export function toTwemojiUrl(emoji: string): string {
+	if (TWEMOJI_OVERRIDES[emoji]) {
+		return `${TWEMOJI_BASE}/${TWEMOJI_OVERRIDES[emoji]}.svg`;
+	}
 	// Twemoji SVG filenames = lowercase hex codepoints joined by "-".
 	// FE0F (variation selector-16) rules:
 	//  • ZWJ sequences (contain 200d): keep FE0F — e.g. ❤️‍🔥 = 2764-fe0f-200d-1f525
