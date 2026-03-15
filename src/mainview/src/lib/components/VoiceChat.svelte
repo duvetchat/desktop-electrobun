@@ -26,6 +26,10 @@
 	let pendingIceCandidates: RTCIceCandidate[] = [];
 	let negotiationReady = false;
 	let negotiationChain: Promise<void> = Promise.resolve();
+	// Resolves once VOICE_JOINED has been processed. Every WEBRTC_RENEGOTIATE
+	// awaits this gate so it never runs before the initial answer is applied.
+	let voiceJoinedResolve: (() => void) | null = null;
+	let voiceJoinedPromise: Promise<void> = Promise.resolve();
 
 	let isScreenSharing = $state(false);
 
@@ -83,10 +87,10 @@
 			if (type === "VOICE_JOINED") {
 				const pc = peerConnection;
 				if (!pc) return;
-				negotiationChain = negotiationChain
-					.then(async () => {
-						if (pc !== peerConnection) return;
-						await pc.setRemoteDescription(new RTCSessionDescription(data.answer));
+				// Process the initial answer immediately — not through the chain —
+				// so it can never be blocked by a queued WEBRTC_RENEGOTIATE.
+				pc.setRemoteDescription(new RTCSessionDescription(data.answer))
+					.then(() => {
 						if (pc !== peerConnection) return;
 						const toFlush = pendingIceCandidates;
 						pendingIceCandidates = [];
@@ -96,7 +100,9 @@
 						// Now it's safe to renegotiate (e.g. when screen share is added)
 						negotiationReady = true;
 					})
-					.catch(console.warn);
+					.catch(console.warn)
+					// Always open the gate so queued renegotiations can proceed.
+					.finally(() => voiceJoinedResolve?.());
 			} else if (type === "WEBRTC_ICE_CANDIDATE") {
 				const pc = peerConnection;
 				if (!pc) return;
@@ -113,8 +119,13 @@
 			} else if (type === "WEBRTC_RENEGOTIATE") {
 				const pc = peerConnection;
 				if (!pc) return;
+				// Capture the gate at enqueue-time. If VOICE_JOINED hasn't arrived
+				// yet this renegotiation will wait for it before running, regardless
+				// of its position in negotiationChain.
+				const readyGate = voiceJoinedPromise;
 				negotiationChain = negotiationChain
 					.then(async () => {
+						await readyGate; // never run before the initial answer is applied
 						if (pc !== peerConnection) return;
 						await pc.setRemoteDescription(new RTCSessionDescription(data.offer));
 						if (pc !== peerConnection) return;
@@ -181,6 +192,7 @@
 		pendingIceCandidates = [];
 		negotiationReady = false;
 		negotiationChain = Promise.resolve();
+		voiceJoinedPromise = new Promise<void>((resolve) => { voiceJoinedResolve = resolve; });
 		audioSender = null;
 		connectionState.set("new");
 
