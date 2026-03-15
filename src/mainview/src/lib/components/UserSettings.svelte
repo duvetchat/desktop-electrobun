@@ -167,7 +167,7 @@ function handleReset() {
 										{alias.trim() || username || ""}
 									</p>
 									<p class="text-xs text-zinc-400 mt-0.5">
-										{username || $currentUser?.username ?? ""}
+										{username || $currentUser?.username || ""}
 									</p>
 								</div>
 							</div>
