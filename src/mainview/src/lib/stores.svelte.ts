@@ -71,6 +71,7 @@ export const dmMessages = writable<Record<string, DirectMessage[]>>({});
 export const isMuted = writable<boolean>(false);
 export const isDeafened = writable<boolean>(false);
 export const activeVoiceRoomId = writable<string | null>(null);
+export const voiceConnectionState = writable<RTCPeerConnectionState>("new");
 
 let initialMicId = "";
 const safeStorage = getSafeStorage();

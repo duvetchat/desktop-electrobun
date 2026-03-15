@@ -119,6 +119,12 @@ function handleEvent(event: GatewayEvent) {
 			currentUser.set(onlineUser);
 			wsSessionToken.set(sessionToken);
 			userStatusCache.set(user.id, 1);
+			// Reset spaces so SPACE_CREATE events that follow repopulate them
+			// with fresh data (including current voice_states). Without this,
+			// if the server rejects a resume and starts a new session, the
+			// exists-guard in SPACE_CREATE would skip updates and voice states
+			// from before the reconnect would never be shown.
+			gatewaySpaces.set([]);
 			break;
 		}
 		case "SPACE_CREATE": {

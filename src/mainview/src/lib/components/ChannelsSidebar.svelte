@@ -37,10 +37,20 @@ import {
 	activeVoiceRoomId,
 	selectedMicId,
 	gatewaySpaces,
+	voiceConnectionState,
 } from "$lib/stores.svelte";
 import { sendEventMessage } from "$lib/api/ws/connection";
 import { fly } from "svelte/transition";
 import { getHostURL } from '$lib/common/common';
+
+const connectionLabel: Record<RTCPeerConnectionState, string> = {
+	new: "Connecting...",
+	connecting: "Connecting...",
+	connected: "Voice Connected",
+	disconnected: "Reconnecting...",
+	failed: "Connection Failed",
+	closed: "Disconnected",
+};
 
 // props
 let {
@@ -614,7 +624,7 @@ onMount(() => {
 					</div>
 					<div class="flex flex-col truncate gap-0">
 						<span class="text-xs font-semibold text-stone-300 truncate">
-							Voice Connected
+							{connectionLabel[$voiceConnectionState]}
 						</span>
 						<span class="text-xxs text-zinc-400 truncate">
 							{activeVoiceSpace?.name || ""} / {activeVoiceRoom.name}

@@ -13,6 +13,7 @@
 		isMuted,
 		selectedMicId,
 		speakingUsers,
+		voiceConnectionState,
 	} from "$lib/stores.svelte";
 
 	let { channelId, channelName }: { channelId: string; channelName: string } =
@@ -63,7 +64,7 @@
 
 	let focusedUserId = $state<string | null>(null);
 
-	let connectionState = $state<RTCPeerConnectionState>("new");
+	const connectionState = voiceConnectionState;
 
 	const connectionLabel: Record<RTCPeerConnectionState, string> = {
 		new: "Connecting...",
@@ -180,7 +181,7 @@
 		remoteVideoElements = {};
 		pendingIceCandidates = [];
 		negotiationReady = false;
-		connectionState = "new";
+		connectionState.set("new");
 
 		peerConnection = new RTCPeerConnection({
 			iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
@@ -205,7 +206,7 @@
 
 		peerConnection.onconnectionstatechange = () => {
 			const state = peerConnection?.connectionState;
-			if (state) connectionState = state;
+			if (state) connectionState.set(state);
 			if (state === "failed" && !isDestroyed) {
 				leaveVoice();
 			}
@@ -526,14 +527,14 @@
 			<span class="text-zinc-400 opacity-60">🔊</span>
 			{channelName}
 		</h1>
-		<p class="text-sm {connectionState === 'connected'
+		<p class="text-sm {$connectionState === 'connected'
 				? 'text-zinc-400'
-				: connectionState === 'disconnected'
+				: $connectionState === 'disconnected'
 					? 'text-yellow-400'
-					: connectionState === 'failed' || connectionState === 'closed'
+					: $connectionState === 'failed' || $connectionState === 'closed'
 						? 'text-red-400'
 						: 'text-zinc-500'}">
-			{connectionLabel[connectionState]}
+			{connectionLabel[$connectionState]}
 		</p>
 	</div>
 
@@ -666,7 +667,7 @@
 			<audio
 				use:srcObject={stream}
 				autoplay
-				muted={$isDeafened}
+				muted={$isDeafened || remoteUserMuted[id]}
 				aria-label={`Audio stream ${id}`}
 			></audio>
 		{/each}
