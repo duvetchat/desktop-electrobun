@@ -21,7 +21,7 @@ import {
 	createGroup,
 	type Conversation,
 } from "$lib/api/conversations";
-import { UserPlus, UserCheck, UserX, Users, Clock, Send, MessageSquare, UsersRound } from "@lucide/svelte";
+import { UserPlus, UserCheck, UserX, Users, Clock, Send, MessageSquare, UsersRound, Check } from "@lucide/svelte";
 import UserAvatar from "$lib/components/UserAvatar.svelte";
 import ConversationView from "$lib/components/ConversationView.svelte";
 
@@ -40,8 +40,22 @@ let loading = $state(false);
 // Group creation state
 let showGroupModal = $state(false);
 let groupName = $state("");
-let groupMemberIds = $state("");
+let selectedFriendIds = $state(new Set<string>());
 let groupError = $state("");
+
+function toggleFriend(uid: string) {
+	const next = new Set(selectedFriendIds);
+	if (next.has(uid)) next.delete(uid);
+	else next.add(uid);
+	selectedFriendIds = next;
+}
+
+function closeGroupModal() {
+	showGroupModal = false;
+	groupName = "";
+	selectedFriendIds = new Set();
+	groupError = "";
+}
 
 async function loadUsers<K extends string>(ids: K[], existing?: Map<string, UserPublic>): Promise<Map<string, UserPublic>> {
 	const map = new Map<string, UserPublic>(existing);
@@ -200,20 +214,17 @@ async function handleCreateGroup() {
 		groupError = "Introduce un nombre para el grupo";
 		return;
 	}
-	const ids = groupMemberIds.split(",").map((s) => s.trim()).filter(Boolean);
-	if (ids.length === 0) {
+	if (selectedFriendIds.size === 0) {
 		groupError = "Agrega al menos un amigo al grupo";
 		return;
 	}
 	try {
-		const conv = await createGroup(groupName.trim(), ids);
+		const conv = await createGroup(groupName.trim(), [...selectedFriendIds]);
 		conversations.update((list) => {
 			if (list.some((c) => c.id === conv.id)) return list;
 			return [conv, ...list];
 		});
-		showGroupModal = false;
-		groupName = "";
-		groupMemberIds = "";
+		closeGroupModal();
 		activeConversation = conv;
 		activeTab = "dms";
 	} catch (err) {
@@ -329,6 +340,7 @@ function convAvatarSrc(conv: Conversation): string | null | undefined {
 			{:else}
 				<ul class="list">
 					{#each $conversations as conv (conv.id)}
+						<!-- svelte-ignore a11y_no_noninteractive_element_to_interactive_role -->
 						<li class="list-item" role="button" tabindex="0"
 							onclick={() => { activeConversation = conv; }}
 							onkeydown={(e) => e.key === 'Enter' && (activeConversation = conv)}
@@ -498,24 +510,51 @@ function convAvatarSrc(conv: Conversation): string | null | undefined {
 </div>
 
 {#if showGroupModal}
-<div class="modal-overlay" onclick={() => (showGroupModal = false)} role="button" tabindex="-1" onkeydown={() => {}}>
+<div class="modal-overlay" onclick={closeGroupModal} role="button" tabindex="-1" onkeydown={() => {}}>
+	<!-- svelte-ignore a11y_interactive_supports_focus -->
 	<div class="modal" onclick={(e) => e.stopPropagation()} role="dialog" onkeydown={() => {}}>
 		<h3>Crear grupo privado</h3>
-		<p class="add-desc">Solo puedes agregar amigos al grupo.</p>
 		<div class="modal-field">
 			<label for="group-name">Nombre del grupo</label>
 			<input id="group-name" class="add-input" type="text" placeholder="Ej: Los mejores" bind:value={groupName} />
 		</div>
 		<div class="modal-field">
-			<label for="group-members">IDs de amigos (separados por coma)</label>
-			<input id="group-members" class="add-input" type="text" placeholder="uuid1, uuid2, ..." bind:value={groupMemberIds} />
+			<!-- svelte-ignore a11y_label_has_associated_control -->
+			<label>
+				Agregar amigos
+				{#if selectedFriendIds.size > 0}
+					<span class="picker-count">{selectedFriendIds.size} seleccionado{selectedFriendIds.size > 1 ? "s" : ""}</span>
+				{/if}
+			</label>
+			<div class="friend-picker">
+				{#if $friends.length === 0}
+					<p class="picker-empty">No tienes amigos agregados</p>
+				{:else}
+					{#each $friends as f}
+						{@const uid = getFriendUserId(f)}
+						{@const user = friendUsers.get(uid)}
+						{@const selected = selectedFriendIds.has(uid)}
+						<button
+							type="button"
+							class="picker-item {selected ? 'selected' : ''}"
+							onclick={() => toggleFriend(uid)}
+						>
+							<UserAvatar src={user?.avatar ?? null} name={user?.alias ?? user?.username ?? "?"} size={32} />
+							<span class="picker-name">{user?.alias ?? user?.username ?? uid}</span>
+							{#if selected}
+								<Check size={16} class="picker-check" />
+							{/if}
+						</button>
+					{/each}
+				{/if}
+			</div>
 		</div>
 		{#if groupError}
 			<p class="feedback error">{groupError}</p>
 		{/if}
 		<div class="modal-actions">
 			<button class="send-btn" onclick={handleCreateGroup}>Crear grupo</button>
-			<button class="cancel-btn" onclick={() => (showGroupModal = false)}>Cancelar</button>
+			<button class="cancel-btn" onclick={closeGroupModal}>Cancelar</button>
 		</div>
 	</div>
 </div>
@@ -845,5 +884,65 @@ function convAvatarSrc(conv: Conversation): string | null | undefined {
 
 .cancel-btn:hover {
 	background: #454850;
+}
+
+.picker-count {
+	margin-left: 6px;
+	color: var(--accent, #5865f2);
+	font-weight: 600;
+	text-transform: none;
+	letter-spacing: 0;
+}
+
+.friend-picker {
+	max-height: 200px;
+	overflow-y: auto;
+	border: 1px solid var(--border, #3f4147);
+	border-radius: 4px;
+	background: var(--bg-tertiary, #1e1f22);
+}
+
+.picker-item {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	width: 100%;
+	padding: 8px 12px;
+	background: transparent;
+	border: none;
+	color: var(--text-primary, #dbdee1);
+	cursor: pointer;
+	text-align: left;
+	transition: background 0.1s;
+}
+
+.picker-item:hover {
+	background: var(--bg-hover, #35373c);
+}
+
+.picker-item.selected {
+	background: rgba(88, 101, 242, 0.12);
+}
+
+.picker-name {
+	flex: 1;
+	font-size: 13px;
+	font-weight: 500;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+:global(.picker-check) {
+	color: var(--accent, #5865f2);
+	flex-shrink: 0;
+}
+
+.picker-empty {
+	padding: 16px;
+	text-align: center;
+	font-size: 13px;
+	color: var(--text-secondary, #949ba4);
+	margin: 0;
 }
 </style>

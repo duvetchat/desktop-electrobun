@@ -15,6 +15,7 @@
     import MessageLinkEmbed from "$lib/components/MessageLinkEmbed.svelte";
     import UserAvatar from "$lib/components/UserAvatar.svelte";
     import ChatInput from "$lib/components/ChatInput.svelte";
+    import MemberProfilePopover from "$lib/components/MemberProfilePopover.svelte";
 
     let {
         messages,
@@ -63,6 +64,7 @@
     // ── State ──────────────────────────────────────────────────────────────────
     let scrollEl: HTMLElement;
     let deletingMessageId = $state<string | null>(null);
+    let activePopoverMsgId = $state<string | null>(null);
     let now = $state(Date.now());
     let intervalId: number;
     const locale =
@@ -542,6 +544,7 @@
                     0}
 
             {@const isHighlighted = highlightedMessageId === message.id}
+            {@const msgMember = members.find((m) => m.id === message.author_id)}
             <div
                 data-message-id={message.id}
                 class="group relative flex items-start rounded-md px-3 {isLast
@@ -559,12 +562,17 @@
             >
                 {#if showHeader}
                     {#key message.author_avatar_url}
-                        <UserAvatar
-                            src={message.author_avatar_url}
-                            name={message.author_name}
-                            size={40}
-                            class="mr-3 mt-0.5 shrink-0"
-                        />
+                        <button
+                            type="button"
+                            class="mr-3 mt-0.5 shrink-0 rounded-full {msgMember ? 'cursor-pointer' : 'cursor-default'}"
+                            onclick={() => { if (msgMember) activePopoverMsgId = message.id; }}
+                        >
+                            <UserAvatar
+                                src={message.author_avatar_url}
+                                name={message.author_name}
+                                size={40}
+                            />
+                        </button>
                     {/key}
                 {:else}
                     <div class="w-10 mr-3 text-right shrink-0">
@@ -582,13 +590,29 @@
                 <div class="flex flex-col flex-1 min-w-0">
                     {#if showHeader}
                         <div class="flex items-center mb-0.5">
-                            <span
-                                class="font-semibold mr-2 hover:underline cursor-pointer"
-                                style={authorColors[message.author_name] ||
-                                    "color: var(--color-zinc-100)"}
-                            >
-                                {message.author_name}
-                            </span>
+                            {#if msgMember}
+                                <MemberProfilePopover
+                                    member={msgMember}
+                                    {spaceId}
+                                    {space}
+                                    side="right"
+                                    open={activePopoverMsgId === message.id}
+                                    onOpenChange={(o) => { activePopoverMsgId = o ? message.id : null; }}
+                                    triggerClass="font-semibold mr-2 hover:underline cursor-pointer"
+                                    triggerStyle={authorColors[message.author_name] || "color: var(--color-zinc-100)"}
+                                >
+                                    {#snippet children()}
+                                        {message.author_name}
+                                    {/snippet}
+                                </MemberProfilePopover>
+                            {:else}
+                                <span
+                                    class="font-semibold mr-2 cursor-default"
+                                    style={authorColors[message.author_name] || "color: var(--color-zinc-100)"}
+                                >
+                                    {message.author_name}
+                                </span>
+                            {/if}
                             <span class="text-xs text-zinc-400 font-medium"
                                 >{formatTimestamp(
                                     message.created_at,
