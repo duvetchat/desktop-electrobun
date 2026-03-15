@@ -1,5 +1,5 @@
 <script lang="ts">
-import { onMount, onDestroy, setContext } from "svelte";
+import { onMount, onDestroy } from "svelte";
 import GuildSideBar from "$lib/components/GuildSidebar.svelte";
 import ChannelsSidebar from "$lib/components/ChannelsSidebar.svelte";
 import VoiceChat from "$lib/components/VoiceChat.svelte";
@@ -35,8 +35,16 @@ onMount(() => {
 	}
 	layoutPrefsHydrated = true;
 
+	// Position the floating voice window at the bottom-right corner
+	floatX = window.innerWidth - floatW - 20;
+	floatY = window.innerHeight - floatH - 20;
+
 	const conn = createWebSocketConnection();
-	onDestroy(() => conn.destroy());
+	onDestroy(() => {
+		conn.destroy();
+		window.removeEventListener("mousemove", onFloatDragMove);
+		window.removeEventListener("mouseup", stopFloatDrag);
+	});
 });
 
 const guilds = $derived($gatewaySpaces.map((space) => {
@@ -309,12 +317,6 @@ $effect(() => {
 	prevVoiceRoomId = cur;
 });
 
-// ── VoiceChat portal ──────────────────────────────────────────────────────
-// VoiceChat is mounted once here (stable location) so splits/tabs never
-// cause it to unmount. PaneView moves its DOM node via the portal action.
-let voiceHolder: HTMLElement;
-let voiceChatEl = $state<HTMLElement | null>(null);
-
 const voiceChannelName = $derived((() => {
 	if (!$activeVoiceRoomId) return "";
 	for (const s of $gatewaySpaces) {
@@ -324,28 +326,56 @@ const voiceChannelName = $derived((() => {
 	return "Voice Channel";
 })());
 
-setContext("voicePortal", {
-	getEl: () => voiceChatEl,
-	getHolder: () => voiceHolder,
-});
+// ── Floating voice window ──────────────────────────────────────────────────
+const floatW = 400;
+const floatH = 360;
+let floatX = $state(20);
+let floatY = $state(20);
+let isDraggingFloat = false;
+let dragOffsetX = 0;
+let dragOffsetY = 0;
+
+function startFloatDrag(e: MouseEvent) {
+	isDraggingFloat = true;
+	dragOffsetX = e.clientX - floatX;
+	dragOffsetY = e.clientY - floatY;
+	window.addEventListener("mousemove", onFloatDragMove);
+	window.addEventListener("mouseup", stopFloatDrag);
+}
+
+function onFloatDragMove(e: MouseEvent) {
+	if (!isDraggingFloat) return;
+	floatX = Math.max(0, Math.min(window.innerWidth - floatW, e.clientX - dragOffsetX));
+	floatY = Math.max(0, Math.min(window.innerHeight - floatH, e.clientY - dragOffsetY));
+}
+
+function stopFloatDrag() {
+	isDraggingFloat = false;
+	window.removeEventListener("mousemove", onFloatDragMove);
+	window.removeEventListener("mouseup", stopFloatDrag);
+}
 </script>
 
 <div class="flex h-full overflow-hidden bg-[radial-gradient(120%_70%_at_85%_0%,oklch(0.28_0.012_80/.3),transparent_60%),linear-gradient(180deg,oklch(0.18_0.008_80),oklch(0.15_0.006_80))]">
-  <!-- Stable VoiceChat holder — keeps WebRTC alive across pane splits -->
-  <div bind:this={voiceHolder} class="contents">
-    {#if $activeVoiceRoomId}
+  <!-- Floating voice window — fixed position, never part of layout flow -->
+  {#if $activeVoiceRoomId}
+    <div
+      class="fixed z-50 flex flex-col overflow-hidden rounded-xl border border-zinc-700 bg-zinc-900 shadow-2xl"
+      style="left:{floatX}px;top:{floatY}px;width:{floatW}px;height:{floatH}px"
+    >
       <div
-        bind:this={voiceChatEl}
-        class="flex flex-col"
-        style="width:100%;height:100%;overflow:auto"
+        class="flex h-7 shrink-0 cursor-grab items-center border-b border-zinc-700/50 bg-zinc-800/80 px-3 select-none active:cursor-grabbing"
+        role="toolbar"
+        aria-label="Voice window — drag to move"
+        onmousedown={startFloatDrag}
       >
-        <VoiceChat
-          channelId={$activeVoiceRoomId}
-          channelName={voiceChannelName}
-        />
+        <span class="text-xs font-medium text-zinc-400 truncate">🔊 {voiceChannelName}</span>
       </div>
-    {/if}
-  </div>
+      <div class="flex-1 min-h-0 overflow-hidden">
+        <VoiceChat channelId={$activeVoiceRoomId} channelName={voiceChannelName} />
+      </div>
+    </div>
+  {/if}
   <GuildSideBar
     {guilds}
     activeGuildId={showFriendsView ? null : sidebarSpaceId}

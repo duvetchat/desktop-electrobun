@@ -7,7 +7,7 @@ import {
 } from "$lib/stores.svelte";
 import { makeSplit, makeLeaf } from "$lib/pane";
 import { getMessages, getMessagesAfter, getMessageById } from "$lib/api/messages";
-import { getContext, onMount, onDestroy } from "svelte";
+import { onMount, onDestroy } from "svelte";
 
 import type {
 	MemberOnSidebar,
@@ -27,54 +27,6 @@ import {
 	PanelLeftClose,
 	PanelLeftOpen,
 } from "@lucide/svelte";
-
-// ── Voice portal: VoiceChat lives in +page.svelte; we teleport its
-// DOM node here so it survives splits without ever unmounting. ──────────
-const voicePortalCtx = getContext<
-	| {
-			getEl: () => HTMLElement | null;
-			getHolder: () => HTMLElement;
-	  }
-	| undefined
->("voicePortal");
-
-function voicePortalAction(node: HTMLElement) {
-	const el = voicePortalCtx?.getEl();
-	if (el) {
-		node.appendChild(el);
-		resumeAudio(el);
-	}
-	return {
-		destroy() {
-			// Move el back to the stable holder so audio elements stay in the
-			// document. Chromium-based browsers stop <audio> playback when the
-			// element is detached from the DOM.
-			//
-			// We do NOT check el.isConnected because Svelte may detach the
-			// portal div from the document BEFORE calling this destroy(), making
-			// el.isConnected = false even though the user is still in voice.
-			// Instead we check whether el is still the "current" voice element
-			// (getEl() returns the same reference). If getEl() returns a
-			// different value or null, Svelte already removed the element
-			// because the user left voice — skip in that case.
-			const holder = voicePortalCtx?.getHolder();
-			if (!el || !holder || voicePortalCtx?.getEl() !== el) return;
-			holder.appendChild(el);
-			// Chromium pauses <audio> elements when they are detached even
-			// briefly. Resume any that were silenced during the portal move.
-			resumeAudio(el);
-		},
-	};
-}
-
-function resumeAudio(container: HTMLElement) {
-	container.querySelectorAll("audio").forEach((audio) => {
-		const a = audio as HTMLAudioElement;
-		if (a.paused && !a.ended && a.srcObject) {
-			a.play().catch(() => {});
-		}
-	});
-}
 
 // ── Props ──────────────────────────────────────────────────────────────────
 let {
@@ -1011,17 +963,6 @@ const childProps = $derived({
                 </div>
             {/if}
 
-            <!-- VoiceChat portal: shown when this pane's voice tab is active -->
-            {#if $activeVoiceRoomId && node.kind === "leaf" && node.tabs.some((t) => t.channelId === $activeVoiceRoomId)}
-                <div
-                    class="flex-1 min-h-0 {activeChannel?.type === 'voice' &&
-                    $activeVoiceRoomId === node.activeChannelId
-                        ? 'flex flex-col'
-                        : 'hidden'}"
-                    use:voicePortalAction
-                ></div>
-            {/if}
-
             {#if activeChannel?.type === "text"}
                 <Chat
                     messages={activeMessages}
@@ -1046,16 +987,14 @@ const childProps = $derived({
                     onLoadMoreBelow={loadMoreMessagesBelow}
                 />
             {:else if activeChannel?.type === "voice"}
-                {#if $activeVoiceRoomId !== node.activeChannelId}
-					<div
-						class="flex-1 flex flex-col items-center justify-center bg-zinc-900 text-zinc-400"
-					>
-                        <h2 class="text-xl font-semibold text-white mb-2">
-                            Voice Channel
-                        </h2>
-                        <p>Únete desde el sidebar.</p>
-                    </div>
-                {/if}
+                <div class="flex-1 flex flex-col items-center justify-center bg-zinc-900 text-zinc-400 gap-2">
+                    <h2 class="text-xl font-semibold text-white">{activeChannel.name}</h2>
+                    {#if $activeVoiceRoomId === node.activeChannelId}
+                        <p class="text-sm">Estás en este canal de voz.</p>
+                    {:else}
+                        <p class="text-sm">Únete haciendo doble clic desde el sidebar.</p>
+                    {/if}
+                </div>
             {:else}
                 <div
 				class="flex-1 flex flex-col items-center justify-center text-zinc-500 gap-2"
