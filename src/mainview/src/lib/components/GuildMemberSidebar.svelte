@@ -48,6 +48,7 @@ function convertMember(
 		member_id: member.id,
 		username: member.alias ?? u.alias ?? u.username,
 		avatar_url: u.avatar ?? null,
+		banner_url: u.banner ?? null,
 		status,
 		is_bot: false,
 		is_owner: u.id === sp.owner_id,
@@ -404,7 +405,7 @@ async function toggleMemberRole(member: MemberOnSidebar, roleId: string) {
                                 class="z-301 w-80 overflow-hidden rounded-xl border border-zinc-700 bg-zinc-900 shadow-2xl"
                             >
                                 {@const visibleRoles = member.roles.filter((role) => role.id !== spaceId)}
-                                <div class="h-24 w-full" style={getMemberBannerStyle(member)}></div>
+                                <div class="h-24 w-full" style={member.banner_url ? `background-image: url('${member.banner_url}'); background-size: cover; background-position: center;` : getMemberBannerStyle(member)}></div>
 
                                 <div class="relative px-4 pb-4">
                                     <div class="absolute -top-12 left-4 rounded-full border-[6px] border-zinc-800 bg-zinc-950">

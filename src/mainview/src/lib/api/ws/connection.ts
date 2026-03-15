@@ -258,6 +258,58 @@ function handleEvent(event: GatewayEvent) {
 			});
 			break;
 		}
+		case "USER_UPDATE": {
+			const raw = data as { id: string; username: string; alias: string | null; avatar: string | null; banner: string | null };
+			currentUser.update((u) =>
+				u?.id === raw.id
+					? { ...u, username: raw.username, alias: raw.alias, avatar: raw.avatar, banner: raw.banner }
+					: u,
+			);
+			gatewaySpaces.update((spaces) =>
+				spaces.map((s) => ({
+					...s,
+					users: s.users.map((u) =>
+						u.id === raw.id
+							? { ...u, username: raw.username, alias: raw.alias, avatar: raw.avatar, banner: raw.banner }
+							: u,
+					),
+				})),
+			);
+			const newName = raw.alias ?? raw.username;
+			channelMessages.update((rooms) => {
+				const result: typeof rooms = {};
+				for (const [roomId, msgs] of Object.entries(rooms)) {
+					result[roomId] = msgs.map((m) =>
+						m.author_id === raw.id ? { ...m, author_name: newName } : m,
+					);
+				}
+				return result;
+			});
+			dmMessages.update((convs) => {
+				const result: typeof convs = {};
+				for (const [convId, msgs] of Object.entries(convs)) {
+					result[convId] = msgs.map((m) => {
+						if (m.author_id !== raw.id || !m.users) return m;
+						return {
+							...m,
+							users: { ...m.users, username: raw.username, alias: raw.alias, avatar: raw.avatar },
+						};
+					});
+				}
+				return result;
+			});
+			conversations.update((list) =>
+				list.map((c) => ({
+					...c,
+					members: c.members.map((m) =>
+						m.user_id === raw.id
+							? { ...m, users: { ...m.users, username: raw.username, alias: raw.alias, avatar: raw.avatar } }
+							: m,
+					),
+				})),
+			);
+			break;
+		}
 		case "USER_STATUS_UPDATE": {
 			console.log("[SSE] Received status update:", data);
 			const raw = data as GatewayUserStatusUpdate;
