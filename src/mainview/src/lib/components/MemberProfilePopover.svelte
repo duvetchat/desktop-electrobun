@@ -1,6 +1,6 @@
 <script lang="ts">
     import type { Snippet } from "svelte";
-    import { UserPlus, UserCheck } from "@lucide/svelte";
+    import { UserPlus, UserCheck, Loader2, RotateCcw } from "@lucide/svelte";
     import { Popover } from "bits-ui";
     import type { MemberOnSidebar, GatewaySpace, Role } from "$lib/types";
     import { currentUser, friends, pendingFriendRequests } from "$lib/stores.svelte";
@@ -195,40 +195,40 @@
                         {@const reqState = friendRequestState[member.id] ?? "idle"}
                         {#if isFriend(member.id)}
                             <button
-                                class="flex items-center gap-1.5 rounded-lg bg-green-600/20 px-3 py-1.5 text-xs font-medium text-green-400 cursor-default"
+                                class="flex items-center justify-center rounded-lg bg-green-600/20 px-2.5 py-1.5 text-green-400 cursor-default"
+                                title="Amigos"
                                 disabled
                             >
-                                <UserCheck class="size-3" />
-                                Amigos
+                                <UserCheck class="size-4" />
                             </button>
                         {:else if hasPendingRequest(member.id)}
                             <button
-                                class="flex items-center gap-1.5 rounded-lg bg-white/10 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-white/20"
+                                class="flex items-center justify-center rounded-lg bg-white/10 px-2.5 py-1.5 transition-colors hover:bg-white/20 disabled:opacity-50"
+                                title="Aceptar solicitud"
                                 onclick={() => handleSendFriendRequest(member.id)}
                                 disabled={reqState === "loading" || reqState === "sent"}
                             >
-                                <UserPlus class="size-3" />
-                                Aceptar solicitud
+                                <UserPlus class="size-4" />
                             </button>
                         {:else if reqState === "sent"}
                             <button
-                                class="flex items-center gap-1.5 rounded-lg bg-green-600/20 px-3 py-1.5 text-xs font-medium text-green-400 cursor-default"
+                                class="flex items-center justify-center rounded-lg bg-green-600/20 px-2.5 py-1.5 text-green-400 cursor-default"
+                                title="Solicitud enviada"
                                 disabled
                             >
-                                <UserCheck class="size-3" />
-                                Solicitud enviada
+                                <UserCheck class="size-4" />
                             </button>
                         {:else}
                             <button
                                 class="flex items-center justify-center rounded-lg bg-white/10 px-2.5 py-1.5 transition-colors hover:bg-white/20 disabled:opacity-50"
-                                title={reqState === "loading" ? "Enviando…" : reqState === "error" ? "Reintentar" : "Agregar amigo"}
+                                title={reqState === "error" ? "Reintentar" : "Agregar amigo"}
                                 onclick={() => handleSendFriendRequest(member.id)}
                                 disabled={reqState === "loading"}
                             >
                                 {#if reqState === "loading"}
-                                    <span class="text-xs">⏳</span>
+                                    <Loader2 class="size-4 animate-spin" />
                                 {:else if reqState === "error"}
-                                    <span class="text-xs">🔄</span>
+                                    <RotateCcw class="size-4" />
                                 {:else}
                                     <UserPlus class="size-4" />
                                 {/if}

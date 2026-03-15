@@ -45,11 +45,18 @@ function voicePortalAction(node: HTMLElement) {
 	}
 	return {
 		destroy() {
-			// Do NOT move el back to the holder here.
-			// • If $activeVoiceRoomId became null, page.svelte's {#if} already
-			//   unmounts voiceChatEl — moving it first would cause a visual flash.
-			// • If the pane split, the new pane's voicePortalAction will
-			//   appendChild(el) from wherever it currently is, moving it there.
+			// Move el back to the stable holder so audio elements stay in the
+			// document. Chromium-based browsers (e.g. Opera GX) stop <audio>
+			// playback when the element is detached from the DOM; Firefox does
+			// not, which is why this only manifested in Chromium.
+			// • If $activeVoiceRoomId is already null, el.isConnected is false
+			//   (page.svelte's {#if} already detached it) — skip.
+			// • If a new pane's voicePortalAction fires next, it will
+			//   appendChild(el) from voiceHolder to the new pane — still works.
+			const holder = voicePortalCtx?.getHolder();
+			if (el && holder && el.isConnected) {
+				holder.appendChild(el);
+			}
 		},
 	};
 }
