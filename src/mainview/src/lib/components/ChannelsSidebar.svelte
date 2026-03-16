@@ -13,6 +13,7 @@ import {
 	ChevronRight as ChevronRightIcon,
 	MicOff as MicrophoneSlashIcon,
 	Headphones as HeadphonesIcon,
+	MonitorUp as MonitorUpIcon,
 } from "@lucide/svelte";
 import { ContextMenu, Dialog, DropdownMenu } from "bits-ui";
 import { onMount } from "svelte";
@@ -411,6 +412,7 @@ onMount(() => {
 					{#if channel.type === "voice" && channel.voiceUsers && channel.voiceUsers.length > 0}
 						<div class="pl-8 py-1 space-y-1">
 							{#each channel.voiceUsers as user (user.id)}
+								{@const isSharing = user.screen_sharing ?? false}
 								<div
 									class="flex items-center gap-2 text-sm text-zinc-400 group"
 								>
@@ -449,6 +451,9 @@ onMount(() => {
 										? "text-zinc-200"
 										: ""}>{user.username}</span
 									>
+									{#if isSharing}
+										<MonitorUpIcon class="size-3 text-blue-400 shrink-0" />
+									{/if}
 								</div>
 							{/each}
 						</div>

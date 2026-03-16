@@ -17,6 +17,7 @@
 		voiceConnectionState,
 		voiceRemoteVideoStreams,
 		voiceLocalVideoStream,
+		isScreenSharing,
 	} from "$lib/stores.svelte";
 
 	let { channelId, channelName, compact = false }: { channelId: string; channelName: string; compact?: boolean } =
@@ -34,7 +35,7 @@
 	let voiceJoinedResolve: (() => void) | null = null;
 	let voiceJoinedPromise: Promise<void> = Promise.resolve();
 
-	let isScreenSharing = $state(false);
+	// isScreenSharing is shared via store so VoiceChannelView can read it
 
 	$effect(() => {
 		voiceRemoteVideoStreams.set(remoteVideoElements);
@@ -81,6 +82,7 @@
 		speakingUsers.set(new SvelteSet());
 		voiceRemoteVideoStreams.set({});
 		voiceLocalVideoStream.set(null);
+		isScreenSharing.set(false);
 		if ($activeVoiceRoomId === channelId) activeVoiceRoomId.set(null);
 	}
 
@@ -107,6 +109,7 @@
 			if (data.room_id !== channelId) return;
 
 			if (type === "VOICE_JOINED") {
+				new Audio("/sounds/join_vc.ogg").play().catch(() => {});
 				const pc = peerConnection;
 				if (!pc) return;
 				// Process the initial answer immediately — not through the chain —
@@ -429,6 +432,7 @@
 			room_id: channelId,
 			muted: $isMuted,
 			deafened: $isDeafened,
+			screen_sharing: $isScreenSharing,
 		});
 	}
 
@@ -480,7 +484,7 @@
 	}
 
 	async function toggleScreenShare() {
-		if (isScreenSharing) {
+		if ($isScreenSharing) {
 			// Remove the video sender from the existing connection — no reconnect needed
 			const sender = peerConnection
 				?.getSenders()
@@ -490,7 +494,8 @@
 			}
 			localVideoStream?.getTracks().forEach((t) => t.stop());
 			localVideoStream = null;
-			isScreenSharing = false;
+			isScreenSharing.set(false);
+			sendEventMessage("VOICE_SYNC", { room_id: channelId, muted: $isMuted, deafened: $isDeafened, screen_sharing: false });
 		} else {
 			try {
 				localVideoStream = await navigator.mediaDevices.getDisplayMedia(
@@ -498,13 +503,14 @@
 						video: true,
 					},
 				);
-				isScreenSharing = true;
+				isScreenSharing.set(true);
+				sendEventMessage("VOICE_SYNC", { room_id: channelId, muted: $isMuted, deafened: $isDeafened, screen_sharing: true });
 
 				const videoTrack = localVideoStream.getVideoTracks().at(0);
 				if (!videoTrack) return;
 
 				videoTrack.onended = () => {
-					if (isScreenSharing) toggleScreenShare(); // turn off when user clicks browser's stop sharing
+					if ($isScreenSharing) toggleScreenShare(); // turn off when user clicks browser's stop sharing
 				};
 
 				// Add directly to the live peerConnection — the server's OnTrack will
@@ -759,7 +765,7 @@
 		class="absolute {compact ? 'bottom-2 px-3 py-2 gap-2' : 'bottom-8 px-6 py-3 gap-4'} left-1/2 flex -translate-x-1/2 items-center rounded-full border border-zinc-700 bg-zinc-800/80 shadow-xl backdrop-blur-md"
 	>
 		<button
-			class="rounded-full p-4 hover:bg-zinc-700 {isScreenSharing
+			class="rounded-full p-4 hover:bg-zinc-700 {$isScreenSharing
 				? 'text-stone-200 bg-stone-400/20 hover:bg-stone-400/30'
 				: 'text-zinc-200'} transition-all"
 			onclick={toggleScreenShare}

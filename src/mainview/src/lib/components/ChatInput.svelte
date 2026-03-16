@@ -243,7 +243,7 @@ function handleKeyDown(e: KeyboardEvent) {
 	}
 
 	// Edit last message on ArrowUp when input is empty
-	if (e.key === "ArrowUp" && isEmpty) {
+	if (e.key === "ArrowUp" && isEmpty && !e.ctrlKey) {
 		onArrowUpWhenEmpty?.();
 	}
 }
@@ -283,6 +283,10 @@ function handleEmojiPick(emoji: string) {
 		inputEl.focus();
 		setOffset(newPos);
 	});
+}
+
+export function focus() {
+	requestAnimationFrame(() => inputEl?.focus());
 }
 </script>
 

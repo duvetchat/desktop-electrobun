@@ -141,6 +141,7 @@ export interface GatewayVoiceState {
 	user_id: string;
 	muted?: boolean;
 	deafened?: boolean;
+	screen_sharing?: boolean;
 }
 
 export interface GatewaySpace {
@@ -272,6 +273,7 @@ export function gatewaySpaceToGuild(space: GatewaySpace): Guild {
 						avatar_url: user?.avatar ?? null,
 						muted: vs.muted,
 						deafened: vs.deafened,
+						screen_sharing: vs.screen_sharing,
 					};
 				});
 			}
@@ -287,6 +289,7 @@ export interface VoiceUser {
 	avatar_url: string | null;
 	muted?: boolean;
 	deafened?: boolean;
+	screen_sharing?: boolean;
 }
 
 export interface Channel {

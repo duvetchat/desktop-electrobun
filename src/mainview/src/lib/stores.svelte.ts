@@ -93,6 +93,7 @@ export const voiceConnectionState = writable<RTCPeerConnectionState>("new");
 export const screenShareRequested = writable<boolean>(false);
 export const voiceRemoteVideoStreams = writable<Record<string, MediaStream>>({});
 export const voiceLocalVideoStream = writable<MediaStream | null>(null);
+export const isScreenSharing = writable<boolean>(false);
 
 let initialMicId = "";
 const safeStorage = getSafeStorage();

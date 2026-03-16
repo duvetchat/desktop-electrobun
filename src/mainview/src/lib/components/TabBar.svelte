@@ -100,6 +100,14 @@ function handleBarDrop(e: DragEvent) {
 			channelType: data.channelType!,
 			spaceId: data.spaceId!,
 		});
+	} else if (data.type === "tab" && dragSrcIndex === null && data.channelId) {
+		// Tab dragged from a different pane's tab bar — open it here
+		onChannelDrop({
+			channelId: data.channelId,
+			channelName: data.channelName ?? data.channelId,
+			channelType: data.channelType ?? "text",
+			spaceId: data.spaceId ?? "",
+		});
 	} else if (
 		data.type === "tab" &&
 		dragSrcIndex !== null &&

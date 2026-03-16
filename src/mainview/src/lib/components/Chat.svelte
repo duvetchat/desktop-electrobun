@@ -64,14 +64,22 @@ let {
 	sendTyping?: () => void;
 } = $props();
 let replyTo = $state<Message | null>(null);
+let chatInputRef = $state<{ focus: () => void } | null>(null);
 let lastTypingSent = 0;
 let editingMessageId = $state<string | null>(null);
 let editContent = $state("");
 let editMessageIndex = $state<number | null>(null);
+let replyMessageIndex = $state<number | null>(null);
 
 $effect(() => {
 	if (editingMessageId === null) {
 		editMessageIndex = null;
+	}
+});
+
+$effect(() => {
+	if (replyTo === null) {
+		replyMessageIndex = null;
 	}
 });
 
@@ -97,6 +105,20 @@ function tryEditAtIndex(index: number) {
 
 function tryEditLastMessage() {
 	tryEditAtIndex(0);
+}
+
+function getAllMessages() {
+	return [...messages].sort(
+		(a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+	);
+}
+
+function tryReplyAtIndex(index: number) {
+	const msgs = getAllMessages();
+	if (index < 0 || index >= msgs.length) return false;
+	replyMessageIndex = index;
+	replyTo = msgs[index];
+	return true;
 }
 
 function isOtherInputActive() {
@@ -132,6 +154,27 @@ function handleGlobalKeyDown(event: KeyboardEvent) {
 			editMessageIndex = null;
 		} else {
 			tryEditAtIndex(editMessageIndex - 1);
+		}
+		return;
+	}
+
+	const isCtrlUp = event.ctrlKey && !event.shiftKey && event.key === "ArrowUp";
+	const isCtrlDown = event.ctrlKey && !event.shiftKey && event.key === "ArrowDown";
+
+	if (isCtrlUp) {
+		event.preventDefault();
+		const nextIndex = replyMessageIndex === null ? 0 : replyMessageIndex + 1;
+		tryReplyAtIndex(nextIndex);
+		return;
+	}
+
+	if (isCtrlDown) {
+		event.preventDefault();
+		if (replyMessageIndex === null) return;
+		if (replyMessageIndex === 0) {
+			replyTo = null;
+		} else {
+			tryReplyAtIndex(replyMessageIndex - 1);
 		}
 		return;
 	}
@@ -198,6 +241,7 @@ async function handleSendMessage(content: string) {
 
 function handleReply(message: Message) {
 	replyTo = message;
+	chatInputRef?.focus();
 }
 
 function retryMessage(message: Message) {
@@ -277,7 +321,7 @@ function dismissFailedMessage(nonce: string) {
     {isLoadingMoreBelow}
     {hasMoreMessages}
     {hasMoreMessagesBelow}
-    {highlightedMessageId}
+    highlightedMessageId={replyTo?.id ?? highlightedMessageId}
     {onLoadMore}
     {onLoadMoreBelow}
     {failedNonces}
@@ -314,6 +358,7 @@ function dismissFailedMessage(nonce: string) {
         </div>
     {/if}
     <ChatInput
+      bind:this={chatInputRef}
       placeholder={placeholder ?? `Message #${channelName}`}
       onSubmit={handleSendMessage}
       onArrowUpWhenEmpty={tryEditLastMessage}

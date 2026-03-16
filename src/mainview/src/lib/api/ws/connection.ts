@@ -9,6 +9,7 @@ import {
 	conversations,
 	dmMessages,
 	typingUsers,
+	activeVoiceRoomId,
 } from "$lib/stores.svelte";
 import type { FriendRequest, Friend } from "$lib/api/friends";
 import { getFriends, getPendingRequests, getSentRequests } from "$lib/api/friends";
@@ -227,6 +228,11 @@ function handleEvent(event: GatewayEvent) {
 			const raw = data as GatewayMessageCreate;
 			const spaces = get(gatewaySpaces);
 			const message = gatewayMessageToMessage(raw, spaces);
+			typingUsers.update((all) => {
+				const key = raw.room_id;
+				if (!all[key]) return all;
+				return { ...all, [key]: all[key].filter((u) => u.user_id !== raw.author_id) };
+			});
 			channelMessages.update((all) => {
 				const existing = all[raw.room_id] ?? [];
 
@@ -264,7 +270,10 @@ function handleEvent(event: GatewayEvent) {
 				const result: typeof all = {};
 				for (const [roomId, msgs] of Object.entries(all)) {
 					result[roomId] = msgs.map((m) => {
-						if (m.id === updatedMessage.id) return updatedMessage;
+						if (m.id === updatedMessage.id) return {
+							...updatedMessage,
+							referenced_message: updatedMessage.referenced_message ?? m.referenced_message,
+						};
 						if (m.referenced_message?.message_id === updatedMessage.id) {
 							return { ...m, referenced_message: { ...m.referenced_message, content: updatedMessage.content } };
 						}
@@ -379,6 +388,7 @@ function handleEvent(event: GatewayEvent) {
 				joined: boolean;
 				muted?: boolean;
 				deafened?: boolean;
+				screen_sharing?: boolean;
 			};
 			gatewaySpaces.update((spaces) =>
 				spaces.map((s) => {
@@ -395,17 +405,22 @@ function handleEvent(event: GatewayEvent) {
 							(vs) => vs.user_id === raw.user_id && vs.room_id === raw.room_id,
 						);
 						if (existingIdx === -1) {
+							if (raw.room_id === get(activeVoiceRoomId)) {
+								new Audio("/sounds/join_vc.ogg").play().catch(() => {});
+							}
 							nextStates.push({
 								room_id: raw.room_id,
 								user_id: raw.user_id,
 								muted: raw.muted,
 								deafened: raw.deafened,
+								screen_sharing: raw.screen_sharing,
 							});
 						} else {
 							nextStates[existingIdx] = {
 								...nextStates[existingIdx],
 								muted: raw.muted,
 								deafened: raw.deafened,
+								screen_sharing: raw.screen_sharing,
 							};
 						}
 					} else {
@@ -794,6 +809,10 @@ function handleEvent(event: GatewayEvent) {
 				return;
 			}
 			const conversationId = msg.conversation_id;
+			typingUsers.update((all) => {
+				if (!all[conversationId]) return all;
+				return { ...all, [conversationId]: all[conversationId].filter((u) => u.user_id !== msg.author_id) };
+			});
 			dmMessages.update((all) => {
 				const existing = all[conversationId] ?? [];
 				if (msg.nonce) {

@@ -564,7 +564,11 @@ function handleContentDragOver(e: DragEvent) {
 	e.preventDefault();
 	contentDragOver = true;
 	if (e.dataTransfer) {
-		e.dataTransfer.dropEffect = "copy";
+		const allowed = e.dataTransfer.effectAllowed;
+		e.dataTransfer.dropEffect =
+			allowed === "move" || allowed === "copyMove" || allowed === "linkMove"
+				? "move"
+				: "copy";
 	}
 	const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
 	const x = (e.clientX - rect.left) / rect.width;

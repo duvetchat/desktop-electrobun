@@ -9,6 +9,7 @@
 		voiceRemoteVideoStreams,
 		voiceLocalVideoStream,
 		currentUser,
+		isScreenSharing,
 	} from "$lib/stores.svelte";
 	import { sendEventMessage } from "$lib/api/ws/connection";
 	import {
@@ -47,6 +48,7 @@
 				avatar_url: user?.avatar ?? null,
 				muted: vs.muted ?? false,
 				deafened: vs.deafened ?? false,
+				screen_sharing: vs.screen_sharing ?? false,
 			};
 		});
 		if (me && isConnected && !list.some((u) => u.id === me.id)) {
@@ -56,6 +58,7 @@
 				avatar_url: me.avatar ?? null,
 				muted: $isMuted,
 				deafened: $isDeafened,
+				screen_sharing: $isScreenSharing,
 			});
 		}
 		return list;
@@ -88,6 +91,7 @@
 				room_id: $activeVoiceRoomId,
 				muted: $isMuted,
 				deafened: $isDeafened,
+				screen_sharing: $isScreenSharing,
 			});
 		}
 	}
@@ -100,6 +104,7 @@
 				room_id: $activeVoiceRoomId,
 				muted: $isMuted,
 				deafened: $isDeafened,
+				screen_sharing: $isScreenSharing,
 			});
 		}
 	}
@@ -171,6 +176,9 @@
 							{:else if user.muted}
 								<MicOff class="size-3.5 text-red-400" />
 							{/if}
+							{#if videoStream || user.screen_sharing}
+								<MonitorUp class="size-3.5 text-blue-400" />
+							{/if}
 							<span class="text-xs font-medium">{user.username}</span>
 						</div>
 					</div>
@@ -188,7 +196,7 @@
 				title="Transmitir pantalla"
 			>
 				<MonitorUp class="size-5" />
-				<span class="text-[10px] text-zinc-400">Transmitir</span>
+				<span class="text-xxs text-zinc-400">Transmitir</span>
 			</button>
 			<button
 				class="flex flex-col items-center gap-1 rounded-xl px-4 py-2.5 transition-colors {$isMuted ? 'text-red-400 bg-red-500/10 hover:bg-red-500/20' : 'text-zinc-300 hover:bg-zinc-800'}"
@@ -200,7 +208,7 @@
 				{:else}
 					<Mic class="size-5" />
 				{/if}
-				<span class="text-[10px] {$isMuted ? 'text-red-400' : 'text-zinc-400'}">{$isMuted ? "Silenciado" : "Micro"}</span>
+				<span class="text-xxs {$isMuted ? 'text-red-400' : 'text-zinc-400'}">{$isMuted ? "Silenciado" : "Micro"}</span>
 			</button>
 			<button
 				class="flex flex-col items-center gap-1 rounded-xl px-4 py-2.5 transition-colors {$isDeafened ? 'text-red-400 bg-red-500/10 hover:bg-red-500/20' : 'text-zinc-300 hover:bg-zinc-800'}"
@@ -208,7 +216,7 @@
 				title={$isDeafened ? "Dejar de ensordecer" : "Ensordecer"}
 			>
 				<Headphones class="size-5" />
-				<span class="text-[10px] {$isDeafened ? 'text-red-400' : 'text-zinc-400'}">{$isDeafened ? "Deafened" : "Audio"}</span>
+				<span class="text-xxs {$isDeafened ? 'text-red-400' : 'text-zinc-400'}">{$isDeafened ? "Deafened" : "Audio"}</span>
 			</button>
 			<button
 				class="flex flex-col items-center gap-1 rounded-xl px-4 py-2.5 text-red-400 bg-red-500/10 hover:bg-red-500/20 transition-colors"
@@ -216,7 +224,7 @@
 				title="Leave voice channel"
 			>
 				<PhoneOff class="size-5" />
-				<span class="text-[10px] text-red-400">Leave</span>
+				<span class="text-xxs text-red-400">Leave</span>
 			</button>
 		{:else}
 			<button

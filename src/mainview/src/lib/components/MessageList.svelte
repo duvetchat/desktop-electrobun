@@ -4,6 +4,7 @@
     import { updateMessage, deleteMessage } from "$lib/api/messages";
     import { currentUser, jumpToMessageRequest, gatewaySpaces } from "$lib/stores.svelte";
     import { renderEmoji, isOnlyEmojis, countEmojis } from "$lib/emoji";
+    import { renderMarkdown } from "$lib/markdown";
 
     import type { MemberOnSidebar, GatewaySpace, Message } from "$lib/types";
 
@@ -530,7 +531,7 @@
                 new Date(message.created_at).getTime() -
                     new Date(chronoPrev.created_at).getTime() <=
                     5 * 60 * 1_000}
-            {@const showHeader = !isConsecutive}
+            {@const showHeader = !isConsecutive || !!message.referenced_message}
             {@const isLast = i === 0}
             {@const isDifferentDay =
                 !chronoPrev ||
@@ -549,9 +550,9 @@
             {@const msgMember = members.find((m) => m.id === message.author_id)}
             <div
                 data-message-id={message.id}
-                class="group relative flex items-start rounded-md px-3 {isLast
+                class="group relative flex flex-col rounded-md px-3 {isLast
                     ? 'mb-3'
-                    : 'mb-1'} {showHeader ? 'mt-4' : 'mt-0'} {isFailed
+                    : 'mb-1'} {message.referenced_message ? 'mt-2 pt-2' : showHeader ? 'mt-4' : 'mt-0'} {isFailed
                     ? 'bg-red-500/10 hover:bg-red-500/15'
                     : isHighlighted
                       ? 'bg-yellow-500/15 hover:bg-yellow-500/20'
@@ -562,6 +563,32 @@
                       ? "opacity: 0.5; pointer-events: none;"
                       : ""}
             >
+                {#if message.referenced_message}
+                    <div class="flex items-start min-w-0 mb-0.5">
+                        <!-- L-connector aligned to avatar column -->
+                        <div class="w-10 mr-3 shrink-0 flex justify-end items-center">
+                            <div class="w-5.25 h-3.5 rounded-tl-5px border-t-2 border-l-2 border-zinc-500/60"></div>
+                        </div>
+                        <!-- Reply preview -->
+                        <button
+                            type="button"
+                            class="-translate-y-1.25 flex items-start gap-1.5 min-w-0 text-xs text-zinc-400 hover:text-zinc-100 cursor-pointer transition-colors"
+                            onclick={() => jumpToMessageRequest.set({ id: crypto.randomUUID(), spaceId: message.referenced_message!.space_id ?? spaceId, roomId: message.referenced_message!.room_id ?? channelId, messageId: message.referenced_message!.message_id! })}
+                        >
+                            <UserAvatar
+                                src={message.referenced_message.author_avatar ?? null}
+                                name={message.referenced_message.author_name ?? '?'}
+                                size={16}
+                            />
+                            <span class="font-medium text-zinc-300 shrink-0">{message.referenced_message.author_name}</span>
+                            <span class="truncate opacity-80">{message.referenced_message.content ?? ''}</span>
+                            {#if message.referenced_message.created_at}
+                                <span class="shrink-0 opacity-50">{new Date(message.referenced_message.created_at).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' })}</span>
+                            {/if}
+                        </button>
+                    </div>
+                {/if}
+                <div class="flex items-start">
                 {#if showHeader}
                     {#key message.author_avatar_url}
                         <button
@@ -624,19 +651,6 @@
                         </div>
                     {/if}
 
-                    {#if message.referenced_message}
-                        <div
-                            class="flex items-start gap-1.5 mb-1 pl-2 border-l-2 border-stone-500 opacity-70 text-xs text-zinc-400 cursor-pointer hover:opacity-100"
-                            role="button"
-                            tabindex="0"
-                            onclick={() => jumpToMessageRequest.set({ id: crypto.randomUUID(), spaceId: message.referenced_message!.space_id ?? spaceId, roomId: message.referenced_message!.room_id ?? channelId, messageId: message.referenced_message!.message_id! })}
-                            onkeydown={() => {}}
-                        >
-                            <span class="font-semibold text-zinc-300 shrink-0">{message.referenced_message.author_name}</span>
-                            <span class="truncate">{message.referenced_message.content}</span>
-                        </div>
-                    {/if}
-
                     {#if editingMessageId === message.id}
                         <div class="w-full relative flex flex-col gap-1">
                             <ChatInput
@@ -675,7 +689,7 @@
                                 ? ''
                                 : showHeader
                                   ? ''
-                                  : 'leading-5'} whitespace-pre-wrap wrap-break-word pr-12 select-text cursor-text text-left"
+                                  : 'leading-5'} wrap-break-word pr-12 select-text cursor-text text-left"
                             style={emojiOnly ? 'line-height: 3rem' : ''}
                             onclick={(e) => {
                                 if (
@@ -736,7 +750,7 @@
                                         >
                                     {/if}
                                 {:else}
-                                    {@html renderEmoji(
+                                    {@html renderMarkdown(
                                         segment.content,
                                         emojiOnly,
                                     )}
@@ -811,6 +825,7 @@
                         {/if}
                     {/if}
                 </div>
+                </div><!-- end inner row -->
 
                 <!-- Action toolbar -->
                 {#if isFailed}
