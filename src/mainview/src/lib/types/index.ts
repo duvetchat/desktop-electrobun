@@ -13,12 +13,15 @@ export interface MessageReference {
 }
 
 export interface ReferencedMessage {
-	id: string;
-	content: string;
-	author_id: string;
-	author_name: string;
-	author_avatar: string | null;
-	created_at: string;
+	type: number | null;
+	message_id: string | null;
+	room_id: string | null;
+	space_id: string | null;
+	content?: string;
+	author_id?: string;
+	author_name?: string;
+	author_avatar?: string | null;
+	created_at?: string;
 }
 
 export interface GatewayMessage {
@@ -32,10 +35,6 @@ export interface GatewayMessage {
 	nonce?: string;
 	users?: GatewayUser;
 	member_alias?: string | null;
-	ref_type?: number | null;
-	ref_message_id?: string | null;
-	ref_room_id?: string | null;
-	ref_space_id?: string | null;
 	referenced_message?: ReferencedMessage | null;
 }
 
@@ -48,7 +47,6 @@ export interface Message {
 	created_at: string;
 	updated_at: string;
 	nonce?: string;
-	ref_type?: number | null;
 	referenced_message?: ReferencedMessage | null;
 }
 
@@ -244,7 +242,6 @@ export function gatewayMessageToMessage(
 		created_at: msg.created_at,
 		updated_at: msg.updated_at,
 		nonce: msg.nonce,
-		ref_type: msg.ref_type ?? null,
 		referenced_message: msg.referenced_message ?? null,
 	};
 }
