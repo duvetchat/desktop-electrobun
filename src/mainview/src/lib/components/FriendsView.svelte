@@ -29,6 +29,7 @@ type Tab = "dms" | "friends" | "pending" | "sent" | "add";
 let activeTab = $state<Tab>("dms");
 let activeConversation = $state<Conversation | null>(null);
 
+
 let sentRequestUsers = $state<Map<string, UserPublic>>(new Map());
 let friendUsers = $state<Map<string, UserPublic>>(new Map());
 let pendingUsers = $state<Map<string, UserPublic>>(new Map());
@@ -217,11 +218,11 @@ async function handleOpenDM(friend: Friend) {
 async function handleCreateGroup() {
 	groupError = "";
 	if (!groupName.trim()) {
-		groupError = "Introduce un nombre para el grupo";
+		groupError = "Enter a group name";
 		return;
 	}
 	if (selectedFriendIds.size === 0) {
-		groupError = "Agrega al menos un amigo al grupo";
+		groupError = "Add at least one friend to the group";
 		return;
 	}
 	try {
@@ -234,20 +235,20 @@ async function handleCreateGroup() {
 		activeConversation = conv;
 		activeTab = "dms";
 	} catch (err) {
-		groupError = err instanceof Error ? err.message : "Error al crear el grupo";
+		groupError = err instanceof Error ? err.message : "Failed to create group";
 	}
 }
 
 function convTitle(conv: Conversation): string {
 	const me = get(currentUser);
-	if (conv.type === 2) return conv.name ?? "Grupo";
+	if (conv.type === 2) return conv.name ?? "Group";
 	const other = conv.members.find((m) => m.user_id !== me?.id);
 	return other?.users?.alias ?? other?.users?.username ?? "DM";
 }
 
 function convSubtitle(conv: Conversation): string {
-	if (conv.type === 2) return `${conv.members.length} miembros`;
-	return "Mensaje directo";
+	if (conv.type === 2) return `${conv.members.length} members`;
+	return "Direct message";
 }
 
 function convAvatarSrc(conv: Conversation): string | null | undefined {
@@ -266,7 +267,7 @@ function convAvatarSrc(conv: Conversation): string | null | undefined {
 					class="text-xs text-[#949ba4] hover:text-[#dbdee1] flex items-center gap-1"
 					onclick={() => { activeConversation = null; }}
 				>
-					← Volver
+					← Back
 				</button>
 			</div>
 			<ConversationView
@@ -282,11 +283,11 @@ function convAvatarSrc(conv: Conversation): string | null | undefined {
 	{:else}
 	<div class="friends-header">
 		<div class="flex items-center justify-between mb-3">
-			<h2>Mensajes</h2>
+			<h2>Messages</h2>
 			{#if activeTab === "dms"}
 				<button class="create-group-btn" onclick={() => (showGroupModal = true)}>
 					<UsersRound size={13} />
-					Nuevo grupo
+					New group
 				</button>
 			{/if}
 		</div>
@@ -308,7 +309,7 @@ function convAvatarSrc(conv: Conversation): string | null | undefined {
 				onclick={() => (activeTab = "friends")}
 			>
 				<Users size={14} />
-				Amigos
+				Friends
 				{#if $friends.length > 0}
 					<span class="badge">{$friends.length}</span>
 				{/if}
@@ -319,7 +320,7 @@ function convAvatarSrc(conv: Conversation): string | null | undefined {
 				onclick={() => (activeTab = "pending")}
 			>
 				<Clock size={14} />
-				Pendientes
+				Pending
 				{#if $pendingFriendRequests.length > 0}
 					<span class="badge pending">{$pendingFriendRequests.length}</span>
 				{/if}
@@ -330,7 +331,7 @@ function convAvatarSrc(conv: Conversation): string | null | undefined {
 				onclick={() => (activeTab = "sent")}
 			>
 				<Send size={14} />
-				Enviadas
+				Sent
 			</button>
 			<button
 				class="tab add-tab"
@@ -338,7 +339,7 @@ function convAvatarSrc(conv: Conversation): string | null | undefined {
 				onclick={() => (activeTab = "add")}
 			>
 				<UserPlus size={14} />
-				Agregar
+				Add
 			</button>
 		</div>
 	</div>
@@ -348,8 +349,8 @@ function convAvatarSrc(conv: Conversation): string | null | undefined {
 			{#if $conversations.length === 0}
 				<div class="empty-state">
 					<MessageSquare size={40} />
-					<p>No tienes conversaciones</p>
-					<p class="text-xs" style="color: var(--text-secondary, #949ba4)">Abre un DM con un amigo o crea un grupo</p>
+					<p>No conversations yet</p>
+					<p class="text-xs" style="color: var(--text-secondary, #949ba4)">Open a DM with a friend or create a group</p>
 				</div>
 			{:else}
 				<ul class="list">
@@ -378,7 +379,7 @@ function convAvatarSrc(conv: Conversation): string | null | undefined {
 			{#if $friends.length === 0}
 				<div class="empty-state">
 					<Users size={40} />
-					<p>No tienes amigos todavía</p>
+					<p>No friends yet</p>
 				</div>
 			{:else}
 				<ul class="list">
@@ -398,14 +399,14 @@ function convAvatarSrc(conv: Conversation): string | null | undefined {
 							<div class="actions">
 								<button
 									class="action-btn"
-									title="Mensaje directo"
+									title="Direct message"
 									onclick={() => handleOpenDM(friend)}
 								>
 									<MessageSquare size={14} />
 								</button>
 								<button
 									class="action-btn danger"
-									title="Eliminar amigo"
+									title="Remove friend"
 									onclick={() => handleUnfriend(friend)}
 								>
 									<UserX size={14} />
@@ -420,7 +421,7 @@ function convAvatarSrc(conv: Conversation): string | null | undefined {
 			{#if $pendingFriendRequests.length === 0}
 				<div class="empty-state">
 					<Clock size={40} />
-					<p>No hay solicitudes pendientes</p>
+					<p>No pending requests</p>
 				</div>
 			{:else}
 				<ul class="list">
@@ -439,14 +440,14 @@ function convAvatarSrc(conv: Conversation): string | null | undefined {
 							<div class="actions">
 								<button
 									class="action-btn success"
-									title="Aceptar"
+									title="Accept"
 									onclick={() => handleAccept(req)}
 								>
 									<UserCheck size={14} />
 								</button>
 								<button
 									class="action-btn danger"
-									title="Rechazar"
+									title="Decline"
 									onclick={() => handleReject(req)}
 								>
 									<UserX size={14} />
@@ -461,7 +462,7 @@ function convAvatarSrc(conv: Conversation): string | null | undefined {
 			{#if $sentFriendRequests.length === 0}
 				<div class="empty-state">
 					<Send size={40} />
-					<p>No has enviado solicitudes</p>
+					<p>No sent requests</p>
 				</div>
 			{:else}
 				<ul class="list">
@@ -480,7 +481,7 @@ function convAvatarSrc(conv: Conversation): string | null | undefined {
 							<div class="actions">
 								<button
 									class="action-btn danger"
-									title="Cancelar solicitud"
+									title="Cancel request"
 									onclick={() => handleCancelSent(req)}
 								>
 									<UserX size={14} />
@@ -493,21 +494,21 @@ function convAvatarSrc(conv: Conversation): string | null | undefined {
 
 		{:else if activeTab === "add"}
 			<div class="add-friend">
-				<p class="add-desc">Envía una solicitud de amistad usando el ID de usuario.</p>
+				<p class="add-desc">Send a friend request using a user ID.</p>
 				<div class="add-form">
 					<input
 						class="add-input"
 						type="text"
-						placeholder="ID de usuario"
+						placeholder="User ID"
 						bind:value={addUserId}
 						onkeydown={(e) => e.key === "Enter" && handleSendRequest()}
 					/>
 					<button class="send-btn" onclick={handleSendRequest} disabled={loading}>
 						{#if loading}
-							Enviando…
+							Sending…
 						{:else}
 							<UserPlus size={14} />
-							Enviar solicitud
+							Send request
 						{/if}
 					</button>
 				</div>
@@ -527,22 +528,22 @@ function convAvatarSrc(conv: Conversation): string | null | undefined {
 <div class="modal-overlay" onclick={closeGroupModal} role="button" tabindex="-1" onkeydown={() => {}}>
 	<!-- svelte-ignore a11y_interactive_supports_focus -->
 	<div class="modal" onclick={(e) => e.stopPropagation()} role="dialog" onkeydown={() => {}}>
-		<h3>Crear grupo privado</h3>
+		<h3>Create private group</h3>
 		<div class="modal-field">
-			<label for="group-name">Nombre del grupo</label>
-			<input id="group-name" class="add-input" type="text" placeholder="Ej: Los mejores" bind:value={groupName} />
+			<label for="group-name">Group name</label>
+			<input id="group-name" class="add-input" type="text" placeholder="e.g. Best friends" bind:value={groupName} />
 		</div>
 		<div class="modal-field">
 			<!-- svelte-ignore a11y_label_has_associated_control -->
 			<label>
-				Agregar amigos
+				Add friends
 				{#if selectedFriendIds.size > 0}
-					<span class="picker-count">{selectedFriendIds.size} seleccionado{selectedFriendIds.size > 1 ? "s" : ""}</span>
+					<span class="picker-count">{selectedFriendIds.size} selected</span>
 				{/if}
 			</label>
 			<div class="friend-picker">
 				{#if $friends.length === 0}
-					<p class="picker-empty">No tienes amigos agregados</p>
+					<p class="picker-empty">No friends added yet</p>
 				{:else}
 					{#each $friends as f}
 						{@const uid = getFriendUserId(f)}
@@ -567,8 +568,8 @@ function convAvatarSrc(conv: Conversation): string | null | undefined {
 			<p class="feedback error">{groupError}</p>
 		{/if}
 		<div class="modal-actions">
-			<button class="send-btn" onclick={handleCreateGroup}>Crear grupo</button>
-			<button class="cancel-btn" onclick={closeGroupModal}>Cancelar</button>
+			<button class="send-btn" onclick={handleCreateGroup}>Create group</button>
+			<button class="cancel-btn" onclick={closeGroupModal}>Cancel</button>
 		</div>
 	</div>
 </div>

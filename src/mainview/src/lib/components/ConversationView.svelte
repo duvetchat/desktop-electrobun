@@ -74,7 +74,7 @@ async function handleAddMember(userId: string) {
 		onMemberAdded?.(newMember);
 		showAddMemberModal = false;
 	} catch (err) {
-		addMemberError = err instanceof Error ? err.message : "Error al añadir miembro";
+		addMemberError = err instanceof Error ? err.message : "Failed to add member";
 	} finally {
 		addMemberLoading = false;
 	}
@@ -103,7 +103,7 @@ const messages = $derived(
 );
 
 function conversationTitle(): string {
-	if (conversation.type === 2) return conversation.name ?? "Grupo";
+	if (conversation.type === 2) return conversation.name ?? "Group";
 	const other = conversation.members.find((m) => m.user_id !== me?.id);
 	return other?.users?.alias ?? other?.users?.username ?? "DM";
 }
@@ -231,24 +231,24 @@ onMount(async () => {
 		<MessageSquare class="size-4 text-zinc-400" />
 		<span>{conversationTitle()}</span>
 		{#if conversation.type === 2}
-			<span class="ml-1 text-xs text-zinc-500">{conversation.members.length} miembros</span>
+			<span class="ml-1 text-xs text-zinc-500">{conversation.members.length} members</span>
 		{/if}
 		<div class="ml-auto flex items-center gap-1">
 			{#if conversation.type === 2 && isOwner}
 				<button
 					class="flex items-center gap-1 rounded px-2 py-1 text-xs font-normal text-zinc-400 hover:bg-stone-800 hover:text-zinc-200"
 					onclick={openAddMemberModal}
-					title="Añadir miembro"
+					title="Add member"
 				>
 					<UserPlus class="size-3.5" />
-					Añadir
+					Add
 				</button>
 			{/if}
 			{#if conversation.type === 2}
 				<button
 					class="flex items-center gap-1 rounded px-2 py-1 text-xs font-normal {showMemberList ? 'bg-stone-800 text-zinc-200' : 'text-zinc-400 hover:bg-stone-800 hover:text-zinc-200'}"
 					onclick={() => { showMemberList = !showMemberList; }}
-					title="Miembros"
+					title="Members"
 				>
 					<Users class="size-3.5" />
 				</button>
@@ -276,7 +276,7 @@ onMount(async () => {
 			/>
 			<div class="relative flex min-h-16 max-h-48 flex-row items-end gap-2 border-t border-stone-800 bg-stone-950/45 px-3 py-2">
 				<ChatInput
-					placeholder={`Mensaje a ${conversationTitle()}`}
+					placeholder={`Message ${conversationTitle()}`}
 					onSubmit={handleSend}
 					onArrowUpWhenEmpty={handleArrowUpWhenEmpty}
 				/>
@@ -287,7 +287,7 @@ onMount(async () => {
 		{#if conversation.type === 2 && showMemberList}
 			<div class="flex w-48 shrink-0 flex-col border-l border-stone-800 bg-stone-950/30 overflow-y-auto py-3">
 				<p class="px-3 pb-2 text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
-					Miembros — {conversation.members.length}
+					Members — {conversation.members.length}
 				</p>
 				{#each conversation.members as member (member.id)}
 					<div class="flex items-center gap-2 px-3 py-1.5 hover:bg-stone-800/50 rounded mx-1">
@@ -301,7 +301,7 @@ onMount(async () => {
 								{member.users?.alias ?? member.users?.username ?? member.user_id.slice(0, 8)}
 							</span>
 							{#if member.user_id === conversation.owner_id}
-								<span class="text-[10px] text-amber-500">Propietario</span>
+								<span class="text-xxs text-amber-500">Owner</span>
 							{/if}
 						</div>
 					</div>
@@ -326,9 +326,9 @@ onMount(async () => {
 		onclick={(e) => e.stopPropagation()}
 		onkeydown={() => {}}
 	>
-		<h3 class="text-sm font-semibold text-stone-100">Añadir miembro</h3>
+		<h3 class="text-sm font-semibold text-stone-100">Add member</h3>
 		{#if eligibleFriends.length === 0}
-			<p class="py-4 text-center text-xs text-zinc-500">No hay amigos disponibles para añadir</p>
+			<p class="py-4 text-center text-xs text-zinc-500">No friends available to add</p>
 		{:else}
 			<div class="flex max-h-48 flex-col gap-0.5 overflow-y-auto">
 				{#each eligibleFriends as friend (friend.id)}
@@ -359,7 +359,7 @@ onMount(async () => {
 			class="self-end text-xs text-zinc-500 hover:text-zinc-300"
 			onclick={() => { showAddMemberModal = false; }}
 		>
-			Cancelar
+			Cancel
 		</button>
 	</div>
 </div>

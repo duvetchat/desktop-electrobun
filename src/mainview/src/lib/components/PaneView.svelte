@@ -691,7 +691,7 @@ function handleContentDrop(e: DragEvent) {
 	} else if (zone === "bottom") {
 		onUpdate(makeSplit(node, newLeaf, "v"));
 	} else {
-		// Centro: abrir en este pane sin dividir
+		// Center: open in this pane without splitting
 		openTab(tab);
 	}
 }
@@ -1013,7 +1013,7 @@ const childProps = $derived({
                             d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"
                         />
                     </svg>
-                    <p class="text-sm opacity-50">Arrastra un canal aquí</p>
+                    <p class="text-sm opacity-50">Drag a channel here</p>
                 </div>
             {/if}
         </div>

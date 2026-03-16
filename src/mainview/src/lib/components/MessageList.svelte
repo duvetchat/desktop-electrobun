@@ -33,6 +33,7 @@
         onLoadMoreBelow = () => {},
         onRetry = () => {},
         onDismiss = () => {},
+        onReply = undefined,
         onSaveEdit = undefined,
         onDeleteMsg = undefined,
         failedNonces = new Set<string>(),
@@ -54,6 +55,7 @@
         onLoadMoreBelow?: () => Promise<void> | void;
         onRetry?: (message: Message) => void;
         onDismiss?: (nonce: string) => void;
+        onReply?: (message: Message) => void;
         onSaveEdit?: (messageId: string, content: string) => Promise<void> | void;
         onDeleteMsg?: (messageId: string) => Promise<void> | void;
         failedNonces?: Set<string>;
@@ -622,6 +624,19 @@
                         </div>
                     {/if}
 
+                    {#if message.referenced_message}
+                        <div
+                            class="flex items-start gap-1.5 mb-1 pl-2 border-l-2 border-stone-500 opacity-70 text-xs text-zinc-400 cursor-pointer hover:opacity-100"
+                            role="button"
+                            tabindex="0"
+                            onclick={() => jumpToMessageRequest.set({ id: crypto.randomUUID(), spaceId, roomId: channelId, messageId: message.referenced_message!.id })}
+                            onkeydown={() => {}}
+                        >
+                            <span class="font-semibold text-zinc-300 shrink-0">{message.referenced_message.author_name}</span>
+                            <span class="truncate">{message.referenced_message.content}</span>
+                        </div>
+                    {/if}
+
                     {#if editingMessageId === message.id}
                         <div class="w-full relative flex flex-col gap-1">
                             <ChatInput
@@ -819,6 +834,15 @@
                     >
                         <button
                             class="p-1.5 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-600 transition-colors"
+                            onclick={() => onReply?.(message)}
+                            title="Reply"
+                            aria-label="Reply"
+                        >
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/></svg>
+                        </button>
+                        <div class="w-px bg-zinc-800"></div>
+                        <button
+                            class="p-1.5 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-600 transition-colors"
                             onclick={() => {
                                 navigator.clipboard.writeText(
                                     `duvet://channels/${spaceId}/${channelId}/${message.id}`
@@ -911,6 +935,15 @@
                     <div
                         class="absolute right-2 -top-3 z-10 hidden overflow-hidden rounded border border-zinc-800 bg-zinc-700 shadow-sm transition-opacity group-hover:flex"
                     >
+                        <button
+                            class="p-1.5 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-600 transition-colors"
+                            onclick={() => onReply?.(message)}
+                            title="Reply"
+                            aria-label="Reply"
+                        >
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/></svg>
+                        </button>
+                        <div class="w-px bg-zinc-800"></div>
                         <button
                             class="p-1.5 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-600 transition-colors"
                             onclick={() => {

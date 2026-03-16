@@ -1,7 +1,7 @@
 import { userSession } from "$lib/stores.svelte";
 import { getHostURL } from "$lib/common/common";
 
-import type { GatewayMessage } from "$lib/types";
+import type { GatewayMessage, MessageReference } from "$lib/types";
 
 const HOST = getHostURL();
 
@@ -100,6 +100,7 @@ export async function sendMessage(
 	roomId: string,
 	content: string,
 	nonce?: string,
+	messageReference?: MessageReference,
 ): Promise<GatewayMessage> {
 	if (!userSession.token) {
 		throw new Error("No user session token found");
@@ -114,6 +115,7 @@ export async function sendMessage(
 		body: JSON.stringify({
 			content,
 			nonce,
+			...(messageReference ? { message_reference: messageReference } : {}),
 		}),
 	});
 

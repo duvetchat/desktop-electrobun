@@ -238,7 +238,7 @@ const previewTabs = $derived((() => {
                     stroke-linejoin="round"
                     ><path d="M12 5v14" /><path d="m19 12-7 7-7-7" /></svg
                 >
-                Abrir canal
+                Open channel
             </div>
         {/if}
     </div>

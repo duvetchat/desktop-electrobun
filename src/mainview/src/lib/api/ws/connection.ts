@@ -260,13 +260,17 @@ function handleEvent(event: GatewayEvent) {
 			const spaces = get(gatewaySpaces);
 			const updatedMessage = gatewayMessageToMessage(raw, spaces);
 			channelMessages.update((all) => {
-				const existing = all[raw.room_id] ?? [];
-				return {
-					...all,
-					[raw.room_id]: existing.map((m) =>
-						m.id === updatedMessage.id ? updatedMessage : m,
-					),
-				};
+				const result: typeof all = {};
+				for (const [roomId, msgs] of Object.entries(all)) {
+					result[roomId] = msgs.map((m) => {
+						if (m.id === updatedMessage.id) return updatedMessage;
+						if (m.referenced_message?.id === updatedMessage.id) {
+							return { ...m, referenced_message: { ...m.referenced_message, content: updatedMessage.content } };
+						}
+						return m;
+					});
+				}
+				return result;
 			});
 			break;
 		}

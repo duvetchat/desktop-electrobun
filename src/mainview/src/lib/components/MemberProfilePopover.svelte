@@ -196,7 +196,7 @@
                         {#if isFriend(member.id)}
                             <button
                                 class="flex items-center justify-center rounded-lg bg-green-600/20 px-2.5 py-1.5 text-green-400 cursor-default"
-                                title="Amigos"
+                                title="Friends"
                                 disabled
                             >
                                 <UserCheck class="size-4" />
@@ -204,7 +204,7 @@
                         {:else if hasPendingRequest(member.id)}
                             <button
                                 class="flex items-center justify-center rounded-lg bg-white/10 px-2.5 py-1.5 transition-colors hover:bg-white/20 disabled:opacity-50"
-                                title="Aceptar solicitud"
+                                title="Accept request"
                                 onclick={() => handleSendFriendRequest(member.id)}
                                 disabled={reqState === "loading" || reqState === "sent"}
                             >
@@ -213,7 +213,7 @@
                         {:else if reqState === "sent"}
                             <button
                                 class="flex items-center justify-center rounded-lg bg-green-600/20 px-2.5 py-1.5 text-green-400 cursor-default"
-                                title="Solicitud enviada"
+                                title="Request sent"
                                 disabled
                             >
                                 <UserCheck class="size-4" />
@@ -221,7 +221,7 @@
                         {:else}
                             <button
                                 class="flex items-center justify-center rounded-lg bg-white/10 px-2.5 py-1.5 transition-colors hover:bg-white/20 disabled:opacity-50"
-                                title={reqState === "error" ? "Reintentar" : "Agregar amigo"}
+                                title={reqState === "error" ? "Retry" : "Add friend"}
                                 onclick={() => handleSendFriendRequest(member.id)}
                                 disabled={reqState === "loading"}
                             >

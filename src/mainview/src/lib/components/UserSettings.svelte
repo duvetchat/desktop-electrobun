@@ -58,8 +58,8 @@ async function handleSave() {
 		const updated = await updateUser({
 			username: username.trim() || $currentUser!.username,
 			alias: alias.trim() || null,
-			avatar: avatar.trim() || null,
-			banner: banner.trim() || null,
+			avatar: avatar.trim() || $currentUser!.avatar || null,
+			banner: banner.trim() || $currentUser!.banner || null,
 		});
 
 		currentUser.update((u) =>
@@ -272,7 +272,7 @@ function handleReset() {
 									</label>
 									<input
 										id="avatar"
-										type="url"
+										type="text"
 										bind:value={avatar}
 										placeholder="https://example.com/avatar.png"
 										class="h-10 w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 text-sm text-white placeholder-zinc-500 outline-none focus:border-stone-500 focus:ring-1 focus:ring-stone-500 transition-colors focus-override"
@@ -289,7 +289,7 @@ function handleReset() {
 									</label>
 									<input
 										id="banner"
-										type="url"
+										type="text"
 										bind:value={banner}
 										placeholder="https://example.com/banner.png"
 										class="h-10 w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 text-sm text-white placeholder-zinc-500 outline-none focus:border-stone-500 focus:ring-1 focus:ring-stone-500 transition-colors focus-override"

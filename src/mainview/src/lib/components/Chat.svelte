@@ -8,7 +8,8 @@ import {
 import { onMount, onDestroy } from "svelte";
 import ChatInput from "$lib/components/ChatInput.svelte";
 import MessageList from "$lib/components/MessageList.svelte";
-import type { Message, MemberOnSidebar, GatewaySpace } from "$lib/types";
+import type { Message, MemberOnSidebar, GatewaySpace, MessageReference } from "$lib/types";
+import { MessageReferenceType } from "$lib/types";
 import { sendMessage } from "$lib/api/messages";
 import { currentUser, channelMessages } from "$lib/stores.svelte";
 
@@ -45,6 +46,7 @@ let {
 } = $props();
 
 let failedNonces = $state(new Set<string>());
+let replyTo = $state<Message | null>(null);
 let editingMessageId = $state<string | null>(null);
 let editContent = $state("");
 let editMessageIndex = $state<number | null>(null);
@@ -140,6 +142,16 @@ function handleSendMessage(content: string) {
 		created_at: isoNow,
 		updated_at: isoNow,
 		nonce,
+		...(replyTo ? {
+			referenced_message: {
+				id: replyTo.id,
+				content: replyTo.content,
+				author_id: replyTo.author_id,
+				author_name: replyTo.author_name,
+				author_avatar: replyTo.author_avatar_url,
+				created_at: replyTo.created_at,
+			}
+		} : {}),
 	} as any;
 
 	channelMessages.update((all) => ({
@@ -147,9 +159,21 @@ function handleSendMessage(content: string) {
 		[channelId]: [...(all[channelId] ?? []), pendingMessage],
 	}));
 
-	sendMessage(channelId, content, nonce).catch(() => {
+	const ref = replyTo ? {
+		type: MessageReferenceType.Reply,
+		message_id: replyTo.id,
+		room_id: channelId,
+	} as MessageReference : undefined;
+
+	replyTo = null;
+
+	sendMessage(channelId, content, nonce, ref).catch(() => {
 		failedNonces = new Set(failedNonces).add(nonce);
 	});
+}
+
+function handleReply(message: Message) {
+	replyTo = message;
 }
 
 function retryMessage(message: Message) {
@@ -217,6 +241,7 @@ function dismissFailedMessage(nonce: string) {
     bind:editContent
     onRetry={retryMessage}
     onDismiss={dismissFailedMessage}
+    onReply={handleReply}
   />
 
 	<div class="relative w-full">
@@ -228,6 +253,18 @@ function dismissFailedMessage(nonce: string) {
   <div
 		class="relative flex min-h-16 max-h-48 flex-row items-end gap-2 border-t border-stone-800 bg-stone-950/45 px-3 py-2"
 	>
+    {#if replyTo}
+        <div class="absolute bottom-full left-0 right-0 flex items-center justify-between bg-stone-900/90 border-t border-stone-800 px-3 py-1.5 text-xs text-zinc-400">
+            <span>Replying to <span class="font-semibold text-zinc-200">{replyTo.author_name}</span></span>
+            <button
+                class="text-zinc-500 hover:text-zinc-300 transition-colors"
+                onclick={() => { replyTo = null; }}
+                aria-label="Cancel reply"
+            >
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+            </button>
+        </div>
+    {/if}
     <ChatInput
       placeholder={`Message #${channelName}`}
       onSubmit={handleSendMessage}

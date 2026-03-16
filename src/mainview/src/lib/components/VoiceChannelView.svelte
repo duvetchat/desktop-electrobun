@@ -208,15 +208,15 @@
 				title={$isDeafened ? "Dejar de ensordecer" : "Ensordecer"}
 			>
 				<Headphones class="size-5" />
-				<span class="text-[10px] {$isDeafened ? 'text-red-400' : 'text-zinc-400'}">{$isDeafened ? "Ensordecido" : "Audio"}</span>
+				<span class="text-[10px] {$isDeafened ? 'text-red-400' : 'text-zinc-400'}">{$isDeafened ? "Deafened" : "Audio"}</span>
 			</button>
 			<button
 				class="flex flex-col items-center gap-1 rounded-xl px-4 py-2.5 text-red-400 bg-red-500/10 hover:bg-red-500/20 transition-colors"
 				onclick={leave}
-				title="Salir del canal de voz"
+				title="Leave voice channel"
 			>
 				<PhoneOff class="size-5" />
-				<span class="text-[10px] text-red-400">Salir</span>
+				<span class="text-[10px] text-red-400">Leave</span>
 			</button>
 		{:else}
 			<button
@@ -224,7 +224,7 @@
 				onclick={join}
 			>
 				<Volume2 class="size-5" />
-				Unirse al canal
+				Join channel
 			</button>
 		{/if}
 	</div>
