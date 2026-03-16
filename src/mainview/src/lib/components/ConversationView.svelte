@@ -5,6 +5,7 @@ import { currentUser, dmMessages, friends } from "$lib/stores.svelte";
 import {
 	getDirectMessages,
 	sendDirectMessage,
+	sendConversationTyping,
 	updateDirectMessage,
 	deleteDirectMessage,
 	addConversationMember,
@@ -18,6 +19,7 @@ import { MessageSquare, UserPlus, Users } from "@lucide/svelte";
 import MessageList from "$lib/components/MessageList.svelte";
 import ChatInput from "$lib/components/ChatInput.svelte";
 import UserAvatar from "$lib/components/UserAvatar.svelte";
+import TypingIndicator from "$lib/components/TypingIndicator.svelte";
 
 let { conversation, onMemberAdded = undefined }: {
 	conversation: Conversation;
@@ -31,6 +33,7 @@ let failedNonces = $state(new Set<string>());
 let editingMessageId = $state<string | null>(null);
 let editContent = $state("");
 
+let lastTypingSent = 0;
 let showMemberList = $state(true);
 let showAddMemberModal = $state(false);
 let addMemberLoading = $state(false);
@@ -206,6 +209,14 @@ function dmDismiss(nonce: string) {
 	}));
 }
 
+function handleTyping(text: string) {
+	if (!text) return;
+	const now = Date.now();
+	if (now - lastTypingSent < 3000) return;
+	lastTypingSent = now;
+	sendConversationTyping(conversation.id).catch(() => {});
+}
+
 function handleArrowUpWhenEmpty() {
 	const user = get(currentUser);
 	if (!user) return;
@@ -274,11 +285,13 @@ onMount(async () => {
 				bind:editingMessageId
 				bind:editContent
 			/>
+			<TypingIndicator channelId={conversation.id} />
 			<div class="relative flex min-h-16 max-h-48 flex-row items-end gap-2 border-t border-stone-800 bg-stone-950/45 px-3 py-2">
 				<ChatInput
 					placeholder={`Message ${conversationTitle()}`}
 					onSubmit={handleSend}
 					onArrowUpWhenEmpty={handleArrowUpWhenEmpty}
+					onValueChange={handleTyping}
 				/>
 			</div>
 		</div>

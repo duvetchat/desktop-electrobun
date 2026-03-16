@@ -8,6 +8,7 @@ import {
 	friends,
 	conversations,
 	dmMessages,
+	typingUsers,
 } from "$lib/stores.svelte";
 import type { FriendRequest, Friend } from "$lib/api/friends";
 import { getFriends, getPendingRequests, getSentRequests } from "$lib/api/friends";
@@ -264,7 +265,7 @@ function handleEvent(event: GatewayEvent) {
 				for (const [roomId, msgs] of Object.entries(all)) {
 					result[roomId] = msgs.map((m) => {
 						if (m.id === updatedMessage.id) return updatedMessage;
-						if (m.referenced_message?.id === updatedMessage.id) {
+						if (m.referenced_message?.message_id === updatedMessage.id) {
 							return { ...m, referenced_message: { ...m.referenced_message, content: updatedMessage.content } };
 						}
 						return m;
@@ -826,6 +827,28 @@ function handleEvent(event: GatewayEvent) {
 					...all,
 					[raw.conversation_id]: existing.filter((m) => m.id !== raw.id),
 				};
+			});
+			break;
+		}
+		case "TYPING": {
+			const raw = data as { user_id: string; username: string; alias: string | null; avatar: string | null; room_id: string };
+			const me = get(currentUser);
+			if (raw.user_id === me?.id) break;
+			typingUsers.update((all) => {
+				const key = raw.room_id;
+				const filtered = (all[key] ?? []).filter((u) => u.user_id !== raw.user_id);
+				return { ...all, [key]: [...filtered, { ...raw, timestamp: Date.now() }] };
+			});
+			break;
+		}
+		case "DM_TYPING": {
+			const raw = data as { user_id: string; username: string; alias: string | null; avatar: string | null; conversation_id: string };
+			const me = get(currentUser);
+			if (raw.user_id === me?.id) break;
+			typingUsers.update((all) => {
+				const key = raw.conversation_id;
+				const filtered = (all[key] ?? []).filter((u) => u.user_id !== raw.user_id);
+				return { ...all, [key]: [...filtered, { ...raw, timestamp: Date.now() }] };
 			});
 			break;
 		}

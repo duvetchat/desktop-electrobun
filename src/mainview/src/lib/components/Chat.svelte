@@ -10,8 +10,9 @@ import ChatInput from "$lib/components/ChatInput.svelte";
 import MessageList from "$lib/components/MessageList.svelte";
 import type { Message, MemberOnSidebar, GatewaySpace, MessageReference } from "$lib/types";
 import { MessageReferenceType } from "$lib/types";
-import { sendMessage } from "$lib/api/messages";
+import { sendMessage, sendTypingIndicator } from "$lib/api/messages";
 import { currentUser, channelMessages } from "$lib/stores.svelte";
+import TypingIndicator from "$lib/components/TypingIndicator.svelte";
 
 let {
 	messages,
@@ -47,6 +48,7 @@ let {
 
 let failedNonces = $state(new Set<string>());
 let replyTo = $state<Message | null>(null);
+let lastTypingSent = 0;
 let editingMessageId = $state<string | null>(null);
 let editContent = $state("");
 let editMessageIndex = $state<number | null>(null);
@@ -186,6 +188,14 @@ function retryMessage(message: Message) {
 	});
 }
 
+function handleTyping(text: string) {
+	if (!text) return;
+	const now = Date.now();
+	if (now - lastTypingSent < 3000) return;
+	lastTypingSent = now;
+	sendTypingIndicator(channelId);
+}
+
 function dismissFailedMessage(nonce: string) {
 	const newSet = new Set(failedNonces);
 	newSet.delete(nonce);
@@ -249,6 +259,8 @@ function dismissFailedMessage(nonce: string) {
 			class="absolute bottom-0 z-10 h-5 w-full bg-linear-to-t from-stone-950/45 to-transparent pointer-events-none"
 		></div>
   </div>
+  <!-- Typing indicator -->
+  <TypingIndicator channelId={channelId} />
   <!-- Bottom input bar -->
   <div
 		class="relative flex min-h-16 max-h-48 flex-row items-end gap-2 border-t border-stone-800 bg-stone-950/45 px-3 py-2"
@@ -269,6 +281,7 @@ function dismissFailedMessage(nonce: string) {
       placeholder={`Message #${channelName}`}
       onSubmit={handleSendMessage}
       onArrowUpWhenEmpty={tryEditLastMessage}
+      onValueChange={handleTyping}
     />
   </div>
 </div>

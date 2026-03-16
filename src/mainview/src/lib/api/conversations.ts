@@ -161,6 +161,14 @@ export async function updateDirectMessage(
 	return handleResponse<DirectMessage>(res);
 }
 
+export async function sendConversationTyping(conversationId: string): Promise<void> {
+	const res = await fetch(`${HOST}/api/users/@me/conversations/${conversationId}/typing`, {
+		method: "POST",
+		headers: authHeaders(),
+	});
+	return handleResponse<void>(res);
+}
+
 export async function deleteDirectMessage(
 	conversationId: string,
 	messageId: string,

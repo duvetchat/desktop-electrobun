@@ -154,6 +154,14 @@ export async function updateMessage(
 	return response.json() as Promise<GatewayMessage>;
 }
 
+export async function sendTypingIndicator(roomId: string): Promise<void> {
+	if (!userSession.token) return;
+	await fetch(`${HOST}/api/rooms/${roomId}/typing`, {
+		method: "POST",
+		headers: { Authorization: userSession.token },
+	}).catch(() => {});
+}
+
 export async function deleteMessage(
 	messageId: string,
 	roomId: string,

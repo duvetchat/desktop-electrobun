@@ -68,6 +68,17 @@ export const friends = writable<Friend[]>([]);
 export const conversations = writable<Conversation[]>([]);
 export const dmMessages = writable<Record<string, DirectMessage[]>>({});
 
+export interface TypingUser {
+	user_id: string;
+	username: string;
+	alias: string | null;
+	avatar: string | null;
+	timestamp: number;
+}
+
+// key = roomId or conversationId
+export const typingUsers = writable<Record<string, TypingUser[]>>({});
+
 export const jumpToMessageRequest = writable<{
 	id: string; // unique request id to prevent duplicate handling
 	spaceId: string;
