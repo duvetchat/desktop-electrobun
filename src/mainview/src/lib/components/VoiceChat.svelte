@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { LoaderCircle, MicOff, MonitorUp, PhoneOff } from "@lucide/svelte";
+	import { LoaderCircle, MicOff, MonitorUp, PhoneOff, Play } from "@lucide/svelte";
 	import { onDestroy, onMount } from "svelte";
 	import { SvelteSet } from "svelte/reactivity";
 	import { onWebRTCEvent, sendEventMessage } from "$lib/api/ws/connection";
@@ -54,6 +54,8 @@
 	let remoteAudioElements = $state<{ [id: string]: MediaStream }>({});
 	let remoteVideoElements = $state<{ [id: string]: MediaStream }>({});
 	let videoPlayingStates = $state<Record<string, boolean>>({});
+	let videoClickedStates = $state<Record<string, boolean>>({});
+	let videoEls: Record<string, HTMLVideoElement> = {};
 	let userAmplitudes = $state<Record<string, number>>({});
 
 	let unsubscribeWs: () => void;
@@ -264,6 +266,7 @@
 				if (e.track.kind === "video") {
 					delete remoteVideoElements[stream.id];
 					remoteVideoElements = { ...remoteVideoElements };
+					videoClickedStates = { ...videoClickedStates, [userId]: false };
 				} else {
 					delete remoteAudioElements[stream.id];
 					remoteAudioElements = { ...remoteAudioElements };
@@ -274,6 +277,7 @@
 				if (event.track.kind === "video") {
 					delete remoteVideoElements[stream.id];
 					remoteVideoElements = { ...remoteVideoElements };
+					videoClickedStates = { ...videoClickedStates, [userId]: false };
 				} else {
 					delete remoteAudioElements[stream.id];
 					remoteAudioElements = { ...remoteAudioElements };
@@ -327,12 +331,14 @@
 			} else if (event.track.kind === "video") {
 				remoteVideoElements[stream.id] = stream;
 				remoteVideoElements = { ...remoteVideoElements };
+				// Each new stream requires a fresh click to play.
+				videoClickedStates = { ...videoClickedStates, [userId]: false };
 
 				// When the sharer stops, the track becomes muted before the server
-				// cleanup renegotiation arrives. Show the spinner immediately instead
-				// of leaving a frozen last frame.
+				// cleanup renegotiation arrives. Reset both states immediately.
 				event.track.onmute = () => {
 					videoPlayingStates = { ...videoPlayingStates, [userId]: false };
+					videoClickedStates = { ...videoClickedStates, [userId]: false };
 				};
 			}
 		};
@@ -524,6 +530,28 @@
 		};
 	}
 
+	function registerVideoEl(node: HTMLVideoElement, userId: string) {
+		videoEls[userId] = node;
+		return { destroy() { delete videoEls[userId]; } };
+	}
+
+	function startVideo(userId: string) {
+		videoClickedStates = { ...videoClickedStates, [userId]: true };
+		videoEls[userId]?.play().catch(console.warn);
+	}
+
+	// Use an action to imperatively set the muted property on <audio> elements.
+	// Svelte's muted={expr} binding may only set the HTML attribute (initial state)
+	// and not the runtime DOM property on already-playing elements.
+	function applyMuted(node: HTMLAudioElement, muted: boolean) {
+		node.muted = muted;
+		return {
+			update(newMuted: boolean) {
+				node.muted = newMuted;
+			},
+		};
+	}
+
 	const voiceUsers = $derived(
 		(() => {
 			const fromGateway = $gatewaySpaces.flatMap((space) => {
@@ -632,7 +660,7 @@
 				{#if videoStream}
 					<video
 						use:srcObject={videoStream}
-						autoplay
+						use:registerVideoEl={user.id}
 						playsinline
 						muted
 						class="w-full h-full object-contain backdrop-blur-md transition-opacity duration-300 {videoPlayingStates[
@@ -654,7 +682,16 @@
 						<track kind="captions" srclang="en" label="captions" />
 					</video>
 
-					{#if !videoPlayingStates[user.id]}
+					{#if !isLocal && !videoClickedStates[user.id]}
+						<button
+							class="absolute inset-0 flex flex-col items-center justify-center bg-black/70 backdrop-blur-sm z-10 rounded-lg cursor-pointer"
+							onclick={(e) => { e.stopPropagation(); startVideo(user.id); }}
+							aria-label="Ver stream"
+						>
+							<Play class="mb-3 size-10 text-zinc-300" />
+							<span class="text-sm font-medium text-zinc-300">Clic para ver</span>
+						</button>
+					{:else if !videoPlayingStates[user.id]}
 						<div
 							class="absolute inset-0 flex flex-col items-center justify-center bg-black/60 backdrop-blur-sm z-10 rounded-lg"
 						>
@@ -711,8 +748,8 @@
 		{#each Object.entries(remoteAudioElements) as [id, stream] (id)}
 			<audio
 				use:srcObject={stream}
+				use:applyMuted={$isDeafened || (voiceUsers.find((u) => u.id === id)?.muted ?? false)}
 				autoplay
-				muted={$isDeafened || (voiceUsers.find((u) => u.id === id)?.muted ?? false)}
 				aria-label={`Audio stream ${id}`}
 			></audio>
 		{/each}
