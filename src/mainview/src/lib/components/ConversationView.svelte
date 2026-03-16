@@ -31,7 +31,7 @@ let failedNonces = $state(new Set<string>());
 let editingMessageId = $state<string | null>(null);
 let editContent = $state("");
 
-let showMemberList = $state(false);
+let showMemberList = $state(true);
 let showAddMemberModal = $state(false);
 let addMemberLoading = $state(false);
 let addMemberError = $state("");
