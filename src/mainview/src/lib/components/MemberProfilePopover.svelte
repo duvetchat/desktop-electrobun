@@ -18,6 +18,7 @@
         onOpenChange = () => {},
         triggerClass = "",
         triggerStyle = "",
+        onRemoveMember = undefined,
         children,
     }: {
         member: MemberOnSidebar;
@@ -28,6 +29,7 @@
         onOpenChange?: (open: boolean) => void;
         triggerClass?: string;
         triggerStyle?: string;
+        onRemoveMember?: (userId: string) => void;
         children: Snippet;
     } = $props();
 
@@ -313,6 +315,17 @@
                         </div>
                     {/if}
                 </div>
+
+                {#if onRemoveMember && $currentUser && member.id !== $currentUser.id}
+                    <div class="mt-3 border-t border-zinc-800 pt-3">
+                        <button
+                            class="w-full rounded-lg px-3 py-1.5 text-left text-xs font-medium text-red-400 transition-colors hover:bg-red-500/10"
+                            onclick={() => { onRemoveMember!(member.id); onOpenChange(false); }}
+                        >
+                            Remove from group
+                        </button>
+                    </div>
+                {/if}
             </div>
         </Popover.Content>
     </Popover.Portal>

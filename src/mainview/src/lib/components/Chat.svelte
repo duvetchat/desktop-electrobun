@@ -11,7 +11,7 @@ import MessageList from "$lib/components/MessageList.svelte";
 import type { Message, MemberOnSidebar, GatewaySpace, MessageReference } from "$lib/types";
 import { MessageReferenceType } from "$lib/types";
 import { sendMessage, sendTypingIndicator } from "$lib/api/messages";
-import { currentUser, channelMessages } from "$lib/stores.svelte";
+import { currentUser, channelMessages, typingUsers } from "$lib/stores.svelte";
 import TypingIndicator from "$lib/components/TypingIndicator.svelte";
 
 let {
@@ -29,6 +29,15 @@ let {
 	highlightedMessageId = null,
 	onLoadMore = () => {},
 	onLoadMoreBelow = () => {},
+	showHeader = true,
+	placeholder = undefined,
+	failedNonces = $bindable(new Set<string>()),
+	onSend = undefined,
+	onSaveEdit = undefined,
+	onDeleteMsg = undefined,
+	onRetry = undefined,
+	onDismiss = undefined,
+	sendTyping = undefined,
 }: {
 	messages: Message[];
 	members?: MemberOnSidebar[];
@@ -44,9 +53,16 @@ let {
 	highlightedMessageId?: string | null;
 	onLoadMore?: () => Promise<void> | void;
 	onLoadMoreBelow?: () => Promise<void> | void;
+	showHeader?: boolean;
+	placeholder?: string;
+	failedNonces?: Set<string>;
+	onSend?: (content: string, nonce: string, ref: MessageReference | undefined) => Promise<void>;
+	onSaveEdit?: (msgId: string, content: string) => void | Promise<void>;
+	onDeleteMsg?: (msgId: string) => Promise<void>;
+	onRetry?: (message: Message) => void;
+	onDismiss?: (nonce: string) => void;
+	sendTyping?: () => void;
 } = $props();
-
-let failedNonces = $state(new Set<string>());
 let replyTo = $state<Message | null>(null);
 let lastTypingSent = 0;
 let editingMessageId = $state<string | null>(null);
@@ -62,7 +78,7 @@ $effect(() => {
 function getOwnMessages() {
 	const user = $currentUser;
 	if (!user) return [];
-	return [...($channelMessages[channelId] ?? [])]
+	return [...messages]
 		.filter((m) => m.author_id === user.id && !failedNonces.has(m.nonce ?? ""))
 		.sort(
 			(a, b) =>
@@ -129,10 +145,24 @@ onDestroy(() => {
 	window.removeEventListener("keydown", handleGlobalKeyDown);
 });
 
-function handleSendMessage(content: string) {
+async function handleSendMessage(content: string) {
 	const nonce = crypto.randomUUID();
 	const user = $currentUser;
 	if (!user) return;
+
+	const ref = replyTo ? {
+		type: MessageReferenceType.Reply,
+		message_id: replyTo.id,
+		room_id: channelId,
+	} as MessageReference : undefined;
+
+	replyTo = null;
+
+	if (onSend) {
+		try { await onSend(content, nonce, ref); }
+		catch { failedNonces = new Set(failedNonces).add(nonce); }
+		return;
+	}
 
 	const isoNow = new Date().toISOString();
 	const pendingMessage = {
@@ -144,14 +174,14 @@ function handleSendMessage(content: string) {
 		created_at: isoNow,
 		updated_at: isoNow,
 		nonce,
-		...(replyTo ? {
+		...(ref ? {
 			referenced_message: {
-				id: replyTo.id,
-				content: replyTo.content,
-				author_id: replyTo.author_id,
-				author_name: replyTo.author_name,
-				author_avatar: replyTo.author_avatar_url,
-				created_at: replyTo.created_at,
+				id: ref.message_id,
+				content: messages.find(m => m.id === ref.message_id)?.content ?? "",
+				author_id: messages.find(m => m.id === ref.message_id)?.author_id ?? "",
+				author_name: messages.find(m => m.id === ref.message_id)?.author_name ?? "",
+				author_avatar: messages.find(m => m.id === ref.message_id)?.author_avatar_url ?? null,
+				created_at: messages.find(m => m.id === ref.message_id)?.created_at ?? isoNow,
 			}
 		} : {}),
 	} as any;
@@ -160,14 +190,6 @@ function handleSendMessage(content: string) {
 		...all,
 		[channelId]: [...(all[channelId] ?? []), pendingMessage],
 	}));
-
-	const ref = replyTo ? {
-		type: MessageReferenceType.Reply,
-		message_id: replyTo.id,
-		room_id: channelId,
-	} as MessageReference : undefined;
-
-	replyTo = null;
 
 	sendMessage(channelId, content, nonce, ref).catch(() => {
 		failedNonces = new Set(failedNonces).add(nonce);
@@ -179,6 +201,7 @@ function handleReply(message: Message) {
 }
 
 function retryMessage(message: Message) {
+	if (onRetry) { onRetry(message); return; }
 	const nonce = message.nonce!;
 	const newSet = new Set(failedNonces);
 	newSet.delete(nonce);
@@ -191,12 +214,21 @@ function retryMessage(message: Message) {
 function handleTyping(text: string) {
 	if (!text) return;
 	const now = Date.now();
+	const user = $currentUser;
+	if (user) {
+		typingUsers.update((all) => {
+			const filtered = (all[channelId] ?? []).filter((u) => u.user_id !== user.id);
+			return { ...all, [channelId]: [...filtered, { user_id: user.id, username: user.username, alias: user.alias ?? null, avatar: user.avatar ?? null, timestamp: now }] };
+		});
+	}
 	if (now - lastTypingSent < 3000) return;
 	lastTypingSent = now;
+	if (sendTyping) { sendTyping(); return; }
 	sendTypingIndicator(channelId);
 }
 
 function dismissFailedMessage(nonce: string) {
+	if (onDismiss) { onDismiss(nonce); return; }
 	const newSet = new Set(failedNonces);
 	newSet.delete(nonce);
 	failedNonces = newSet;
@@ -209,6 +241,7 @@ function dismissFailedMessage(nonce: string) {
 </script>
 
 <div class="flex flex-1 flex-col overflow-hidden bg-[linear-gradient(180deg,oklch(0.22_0.01_80),oklch(0.19_0.008_80))]">
+  {#if showHeader}
 	<div
 	class="flex h-10 shrink-0 items-center justify-between border-b border-stone-800 bg-stone-950/45 px-3 font-semibold text-stone-100"
 	>
@@ -231,6 +264,7 @@ function dismissFailedMessage(nonce: string) {
       </div>
     </div>
   </div>
+  {/if}
 
   <MessageList
     {messages}
@@ -247,6 +281,8 @@ function dismissFailedMessage(nonce: string) {
     {onLoadMore}
     {onLoadMoreBelow}
     {failedNonces}
+    {onSaveEdit}
+    {onDeleteMsg}
     bind:editingMessageId
     bind:editContent
     onRetry={retryMessage}
@@ -278,7 +314,7 @@ function dismissFailedMessage(nonce: string) {
         </div>
     {/if}
     <ChatInput
-      placeholder={`Message #${channelName}`}
+      placeholder={placeholder ?? `Message #${channelName}`}
       onSubmit={handleSendMessage}
       onArrowUpWhenEmpty={tryEditLastMessage}
       onValueChange={handleTyping}

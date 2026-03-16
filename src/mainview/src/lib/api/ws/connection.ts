@@ -359,6 +359,17 @@ function handleEvent(event: GatewayEvent) {
 					}),
 				})),
 			);
+			conversations.update((convs) =>
+				convs.map((c) => ({
+					...c,
+					members: c.members.map((m) => {
+						if (m.user_id === raw.user_id) {
+							return { ...m, users: { ...m.users, status_id: raw.status_id } };
+						}
+						return m;
+					}),
+				})),
+			);
 			break;
 		}
 		case "VOICE_STATE_UPDATE": {
@@ -739,11 +750,11 @@ function handleEvent(event: GatewayEvent) {
 			break;
 		}
 		case "CONVERSATION_MEMBER_ADD": {
-			const raw = data as { conversation_id: string; user_id: string; member_id: string };
+			const raw = data as { conversation_id: string; user_id: string; member_id: string; username?: string; alias?: string | null; avatar?: string | null; banner?: string | null; status_id?: number };
 			conversations.update((list) =>
 				list.map((c) => {
 					if (c.id !== raw.conversation_id) return c;
-					const alreadyHas = c.members.some((m) => m.id === raw.member_id);
+					const alreadyHas = c.members.some((m) => m.id === raw.member_id || m.user_id === raw.user_id);
 					if (alreadyHas) return c;
 					return {
 						...c,
@@ -756,7 +767,7 @@ function handleEvent(event: GatewayEvent) {
 								created_at: new Date().toISOString(),
 								updated_at: new Date().toISOString(),
 								deleted_at: null,
-								users: { id: raw.user_id, username: "", alias: null, avatar: null, banner: null, status_id: 0 },
+								users: { id: raw.user_id, username: raw.username ?? "", alias: raw.alias ?? null, avatar: raw.avatar ?? null, banner: raw.banner ?? null, status_id: raw.status_id ?? 0 },
 							},
 						],
 					};

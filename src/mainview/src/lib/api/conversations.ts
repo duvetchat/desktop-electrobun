@@ -109,6 +109,14 @@ export async function addConversationMember(conversationId: string, userId: stri
 	return handleResponse<ConversationMember>(res);
 }
 
+export async function removeConversationMember(conversationId: string, userId: string): Promise<void> {
+	const res = await fetch(`${HOST}/api/users/@me/conversations/${conversationId}/members/${userId}`, {
+		method: "DELETE",
+		headers: authHeaders(),
+	});
+	return handleResponse<void>(res);
+}
+
 export async function leaveConversation(conversationId: string): Promise<void> {
 	const res = await fetch(`${HOST}/api/users/@me/conversations/${conversationId}/members/@me`, {
 		method: "DELETE",

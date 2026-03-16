@@ -9,17 +9,18 @@ import {
 	updateDirectMessage,
 	deleteDirectMessage,
 	addConversationMember,
+	removeConversationMember,
 	type Conversation,
 	type ConversationMember,
 	type DirectMessage,
 } from "$lib/api/conversations";
 import { getUser, type Friend, type UserPublic } from "$lib/api/friends";
-import type { Message } from "$lib/types";
+import type { Message, MessageReference } from "$lib/types";
 import { MessageSquare, UserPlus, Users } from "@lucide/svelte";
-import MessageList from "$lib/components/MessageList.svelte";
-import ChatInput from "$lib/components/ChatInput.svelte";
 import UserAvatar from "$lib/components/UserAvatar.svelte";
-import TypingIndicator from "$lib/components/TypingIndicator.svelte";
+import Chat from "$lib/components/Chat.svelte";
+import GuildMemberSidebar from "$lib/components/GuildMemberSidebar.svelte";
+import type { MemberOnSidebar } from "$lib/types";
 
 let { conversation, onMemberAdded = undefined }: {
 	conversation: Conversation;
@@ -30,10 +31,6 @@ let isLoading = $state(true);
 let isLoadingMore = $state(false);
 let hasMore = $state(true);
 let failedNonces = $state(new Set<string>());
-let editingMessageId = $state<string | null>(null);
-let editContent = $state("");
-
-let lastTypingSent = 0;
 let showMemberList = $state(true);
 let showAddMemberModal = $state(false);
 let addMemberLoading = $state(false);
@@ -43,6 +40,21 @@ let friendUserMap = $state(new Map<string, UserPublic>());
 
 const me = $derived(get(currentUser));
 const isOwner = $derived(me?.id === conversation.owner_id);
+
+const convMembers = $derived<MemberOnSidebar[]>(
+	conversation.members.map((m) => ({
+		id: m.user_id,
+		member_id: m.id,
+		username: m.users?.alias ?? m.users?.username ?? m.user_id.slice(0, 8),
+		raw_username: m.users?.username ?? m.user_id.slice(0, 8),
+		avatar_url: m.users?.avatar ?? null,
+		banner_url: m.users?.banner ?? null,
+		status: m.users?.status_id === 1 ? "online" : m.users?.status_id === 2 ? "dnd" : "offline",
+		is_bot: false,
+		is_owner: m.user_id === conversation.owner_id,
+		roles: [],
+	})),
+);
 
 function getFriendOtherId(friend: Friend): string {
 	const user = get(currentUser);
@@ -135,42 +147,21 @@ async function handleLoadMore() {
 	isLoadingMore = false;
 }
 
-function handleSend(content: string) {
+async function dmHandleSend(content: string, nonce: string, _ref: MessageReference | undefined) {
 	const user = get(currentUser);
 	if (!user) return;
-
-	const nonce = crypto.randomUUID();
 	const isoNow = new Date().toISOString();
 	const pending: DirectMessage = {
-		id: nonce,
-		room_id: null,
-		conversation_id: conversation.id,
-		author_id: user.id,
-		content,
-		created_at: isoNow,
-		updated_at: isoNow,
-		deleted_at: null,
-		nonce,
+		id: nonce, room_id: null, conversation_id: conversation.id,
+		author_id: user.id, content,
+		created_at: isoNow, updated_at: isoNow, deleted_at: null, nonce,
 	};
-
-	dmMessages.update((all) => ({
-		...all,
-		[conversation.id]: [...(all[conversation.id] ?? []), pending],
-	}));
-
-	sendDirectMessage(conversation.id, content, nonce).then((real) => {
-		dmMessages.update((all) => {
-			const existing = all[conversation.id] ?? [];
-			if (!existing.some((m) => m.id === nonce)) return all;
-			return {
-				...all,
-				[conversation.id]: existing
-					.filter((m) => m.id !== real.id)
-					.map((m) => (m.id === nonce ? real : m)),
-			};
-		});
-	}).catch(() => {
-		failedNonces = new Set(failedNonces).add(nonce);
+	dmMessages.update((all) => ({ ...all, [conversation.id]: [...(all[conversation.id] ?? []), pending] }));
+	const real = await sendDirectMessage(conversation.id, content, nonce);
+	dmMessages.update((all) => {
+		const existing = all[conversation.id] ?? [];
+		if (!existing.some((m) => m.id === nonce)) return all;
+		return { ...all, [conversation.id]: existing.filter((m) => m.id !== real.id).map((m) => m.id === nonce ? real : m) };
 	});
 }
 
@@ -178,10 +169,7 @@ async function dmSaveEdit(messageId: string, content: string) {
 	const updated = await updateDirectMessage(conversation.id, messageId, content);
 	dmMessages.update((all) => {
 		const existing = all[conversation.id] ?? [];
-		return {
-			...all,
-			[conversation.id]: existing.map((m) => m.id === messageId ? { ...m, ...updated } : m),
-		};
+		return { ...all, [conversation.id]: existing.map((m) => m.id === messageId ? { ...m, ...updated } : m) };
 	});
 }
 
@@ -209,25 +197,8 @@ function dmDismiss(nonce: string) {
 	}));
 }
 
-function handleTyping(text: string) {
-	if (!text) return;
-	const now = Date.now();
-	if (now - lastTypingSent < 3000) return;
-	lastTypingSent = now;
-	sendConversationTyping(conversation.id).catch(() => {});
-}
-
-function handleArrowUpWhenEmpty() {
-	const user = get(currentUser);
-	if (!user) return;
-	const msgs = get(dmMessages)[conversation.id] ?? [];
-	const lastOwn = [...msgs]
-		.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-		.find((m) => m.author_id === user.id && m.id !== m.nonce);
-	if (lastOwn) {
-		editingMessageId = lastOwn.id;
-		editContent = lastOwn.content;
-	}
+async function handleRemoveMember(userId: string) {
+	await removeConversationMember(conversation.id, userId);
 }
 
 onMount(async () => {
@@ -269,57 +240,32 @@ onMount(async () => {
 
 	<!-- Body: messages + optional member sidebar -->
 	<div class="flex flex-1 overflow-hidden">
-		<!-- Messages + input column -->
-		<div class="flex flex-1 flex-col overflow-hidden">
-			<MessageList
-				{messages}
-				isInitialLoading={isLoading}
-				{isLoadingMore}
-				hasMoreMessages={hasMore}
-				onLoadMore={handleLoadMore}
-				{failedNonces}
-				onRetry={dmRetry}
-				onDismiss={dmDismiss}
-				onSaveEdit={dmSaveEdit}
-				onDeleteMsg={dmDelete}
-				bind:editingMessageId
-				bind:editContent
-			/>
-			<TypingIndicator channelId={conversation.id} />
-			<div class="relative flex min-h-16 max-h-48 flex-row items-end gap-2 border-t border-stone-800 bg-stone-950/45 px-3 py-2">
-				<ChatInput
-					placeholder={`Message ${conversationTitle()}`}
-					onSubmit={handleSend}
-					onArrowUpWhenEmpty={handleArrowUpWhenEmpty}
-					onValueChange={handleTyping}
-				/>
-			</div>
-		</div>
+		<Chat
+			showHeader={false}
+			{messages}
+			channelId={conversation.id}
+			channelName={conversationTitle()}
+			placeholder={`Message ${conversationTitle()}`}
+			isInitialLoading={isLoading}
+			{isLoadingMore}
+			hasMoreMessages={hasMore}
+			onLoadMore={handleLoadMore}
+			bind:failedNonces
+			onSend={dmHandleSend}
+			onSaveEdit={dmSaveEdit}
+			onDeleteMsg={dmDelete}
+			onRetry={dmRetry}
+			onDismiss={dmDismiss}
+			sendTyping={() => sendConversationTyping(conversation.id).catch(() => {})}
+		/>
 
 		<!-- Member list sidebar -->
 		{#if conversation.type === 2 && showMemberList}
-			<div class="flex w-48 shrink-0 flex-col border-l border-stone-800 bg-stone-950/30 overflow-y-auto py-3">
-				<p class="px-3 pb-2 text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
-					Members — {conversation.members.length}
-				</p>
-				{#each conversation.members as member (member.id)}
-					<div class="flex items-center gap-2 px-3 py-1.5 hover:bg-stone-800/50 rounded mx-1">
-						<UserAvatar
-							src={member.users?.avatar ?? null}
-							name={member.users?.alias ?? member.users?.username ?? member.user_id}
-							size={28}
-						/>
-						<div class="flex min-w-0 flex-col">
-							<span class="truncate text-xs font-medium text-stone-200">
-								{member.users?.alias ?? member.users?.username ?? member.user_id.slice(0, 8)}
-							</span>
-							{#if member.user_id === conversation.owner_id}
-								<span class="text-xxs text-amber-500">Owner</span>
-							{/if}
-						</div>
-					</div>
-				{/each}
-			</div>
+			<GuildMemberSidebar
+				overrideMembers={convMembers}
+				channelId={conversation.id}
+				onRemoveMember={isOwner ? handleRemoveMember : undefined}
+			/>
 		{/if}
 	</div>
 </div>

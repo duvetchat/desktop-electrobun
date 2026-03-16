@@ -6,7 +6,7 @@ import type {
 	GatewaySpace,
 	GatewayMember,
 } from "$lib/types";
-import { currentUser, gatewaySpaces } from "$lib/stores.svelte";
+import { currentUser, gatewaySpaces, typingUsers } from "$lib/stores.svelte";
 import UserAvatar from "$lib/components/UserAvatar.svelte";
 import {
 	getSpaceMembers,
@@ -18,10 +18,29 @@ import MemberProfilePopover from "$lib/components/MemberProfilePopover.svelte";
 let {
 	spaceId = null,
 	space = null,
+	channelId = null,
+	overrideMembers = undefined,
+	onRemoveMember = undefined,
 }: {
 	spaceId?: string | null;
 	space?: GatewaySpace | null;
+	channelId?: string | null;
+	overrideMembers?: MemberOnSidebar[];
+	onRemoveMember?: (userId: string) => void;
 } = $props();
+
+const TYPING_TIMEOUT = 5000;
+let now = $state(Date.now());
+$effect(() => {
+	const t = setInterval(() => { now = Date.now(); }, 1000);
+	return () => clearInterval(t);
+});
+
+function isTyping(userId: string): boolean {
+	if (!channelId) return false;
+	const entry = ($typingUsers[channelId] ?? []).find((u) => u.user_id === userId);
+	return !!entry && now - entry.timestamp < TYPING_TIMEOUT;
+}
 
 // ── Pagination ─────────────────────────────────────────────────────────────
 let cursor: { id: string; pos: number | null } | null = null;
@@ -185,20 +204,23 @@ function groupMembers(members: MemberOnSidebar[]) {
 // ── Profile popup ──────────────────────────────────────────────────────────
 let activePopoverMemberId = $state<string | null>(null);
 
-const pagedMembers = $derived(space
-	? space.members
-			.map((m) => convertMember(m, space!))
-			.filter((m): m is MemberOnSidebar => m !== null)
-	: []);
+const pagedMembers = $derived(
+	overrideMembers !== undefined
+		? overrideMembers
+		: space
+			? space.members
+					.map((m) => convertMember(m, space!))
+					.filter((m): m is MemberOnSidebar => m !== null)
+			: [],
+);
 
 const groupedMembers = $derived(groupMembers(pagedMembers));
 
 // Reset and reload when the active space changes
 
 $effect(() => {
-	if (spaceId === prevSpaceId) {
-		return;
-	}
+	if (overrideMembers !== undefined) return;
+	if (spaceId === prevSpaceId) return;
 	prevSpaceId = spaceId;
 	abortController?.abort();
 	cursor = null;
@@ -238,6 +260,7 @@ $effect(() => {
                         open={activePopoverMemberId === member.id}
                         onOpenChange={(o) => { activePopoverMemberId = o ? member.id : null; }}
                         triggerClass="group mb-0.5 flex h-10 w-full items-center px-3 text-zinc-200 hover:bg-zinc-800 hover:text-white {member.status === 'offline' ? 'opacity-60' : ''}"
+                        {onRemoveMember}
                     >
                         {#snippet children()}
                             <div class="flex min-w-0 items-center gap-2.5">
@@ -247,16 +270,24 @@ $effect(() => {
                                         name={member.username}
                                         size={30}
                                     />
-                                    <span
-                                        class="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-zinc-900
-                                        {member.status === 'online'
-                                            ? 'bg-stone-300'
-                                            : member.status === 'idle'
-                                              ? 'bg-amber-500'
-                                              : member.status === 'dnd'
-                                                ? 'bg-red-500'
-                                                : 'bg-zinc-500'}"
-                                    ></span>
+                                    {#if isTyping(member.id)}
+                                        <span class="absolute -bottom-0.5 -right-0.5 flex items-center justify-center gap-[2px] h-3 w-4 rounded-full border-2 border-zinc-900 bg-zinc-700">
+                                            <span class="member-typing-dot"></span>
+                                            <span class="member-typing-dot" style="animation-delay:0.2s"></span>
+                                            <span class="member-typing-dot" style="animation-delay:0.4s"></span>
+                                        </span>
+                                    {:else}
+                                        <span
+                                            class="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-zinc-900
+                                            {member.status === 'online'
+                                                ? 'bg-stone-300'
+                                                : member.status === 'idle'
+                                                  ? 'bg-amber-500'
+                                                  : member.status === 'dnd'
+                                                    ? 'bg-red-500'
+                                                    : 'bg-zinc-500'}"
+                                        ></span>
+                                    {/if}
                                 </div>
 
                                 <div class="min-w-0">
@@ -289,3 +320,19 @@ $effect(() => {
         {/if}
     </div>
 </div>
+
+<style>
+    :global(.member-typing-dot) {
+        display: block;
+        width: 2px;
+        height: 2px;
+        border-radius: 50%;
+        background: oklch(0.75 0.01 80);
+        animation: member-typing-bounce 1.2s ease-in-out infinite;
+    }
+
+    @keyframes member-typing-bounce {
+        0%, 60%, 100% { transform: translateY(0); opacity: 0.5; }
+        30% { transform: translateY(-2px); opacity: 1; }
+    }
+</style>

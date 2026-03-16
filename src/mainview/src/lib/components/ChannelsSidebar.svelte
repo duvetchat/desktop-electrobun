@@ -5,43 +5,30 @@ import {
 	Volume2 as SpeakerSimpleHighIcon,
 	Lock as LockSimpleIcon,
 	Plus as PlusIcon,
-	Mic as MicrophoneIcon,
-	MicOff as MicrophoneSlashIcon,
-	Headphones as HeadphonesIcon,
-	SignalHigh as CellSignalFullIcon,
-	SignalMedium as CellSignalMediumIcon,
-	SignalLow as CellSignalLowIcon,
-	PhoneOff as PhoneDisconnectIcon,
 	Settings as GearSixIcon,
 	Trash2 as TrashSimpleIcon,
 	Copy as CopySimpleIcon,
 	Link2 as LinkSimpleIcon,
 	ChevronDown as ChevronDownIcon,
 	ChevronRight as ChevronRightIcon,
+	MicOff as MicrophoneSlashIcon,
+	Headphones as HeadphonesIcon,
 } from "@lucide/svelte";
 import { ContextMenu, Dialog, DropdownMenu } from "bits-ui";
 import { onMount } from "svelte";
 import type { Guild, Channel, RoomType } from "$lib/types";
 import { hasPermission, Permission } from "$lib/permissions";
 import ServerSettings from "$lib/components/ServerSettings.svelte";
-import UserSettings from "$lib/components/UserSettings.svelte";
 import ChannelSettings from "$lib/components/ChannelSettings.svelte";
 import { createRoom, deleteRoom } from "$lib/api/rooms";
 import InviteModal from "$lib/components/InviteModal.svelte";
 import UserAvatar from "$lib/components/UserAvatar.svelte";
+import UserStatusBar from "$lib/components/UserStatusBar.svelte";
 import {
 	speakingUsers,
-	currentUser,
-	isMuted,
-	isDeafened,
 	activeVoiceRoomId,
-	selectedMicId,
 	gatewaySpaces,
-	voiceConnectionState,
 } from "$lib/stores.svelte";
-import { sendEventMessage } from "$lib/api/ws/connection";
-import { fly } from "svelte/transition";
-import { getHostURL } from "$lib/common/common";
 
 // props
 let {
@@ -62,25 +49,6 @@ let buttons = $state<(HTMLElement | null)[]>([]);
 let expanded = $state<{ [key: string]: boolean }>({});
 
 const space = $derived($gatewaySpaces.find((s) => s.id === guild.id));
-const activeVoiceSpace = $derived(
-	$activeVoiceRoomId
-	? $gatewaySpaces.find((s) => s.rooms.some((r) => r.id === $activeVoiceRoomId))
-	: null,
-);
-const activeVoiceRoom = $derived(activeVoiceSpace?.rooms.find(
-	(r) => r.id === $activeVoiceRoomId,
-));
-const canSpeak = $derived(
-	activeVoiceSpace && activeVoiceRoom
-		? hasPermission(activeVoiceSpace, activeVoiceRoom, Permission.SpeakInVoice)
-		: true,
-);
-$effect(() => {
-	if (!canSpeak) {
-		$isMuted = true;
-	}
-});
-
 let showCreateModal = $state(false);
 let newChannelName = $state("");
 let newChannelType = $state<RoomType>(1);
@@ -107,7 +75,6 @@ function openInviteModal(channel: Channel) {
 }
 
 let showServerSettings = $state(false);
-let showUserSettings = $state(false);
 
 function openServerSettings() {
 	showServerSettings = true;
@@ -116,102 +83,6 @@ function openServerSettings() {
 function openCreateChannel() {
 	showCreateModal = true;
 }
-
-function toggleMute() {
-	if (!canSpeak) return;
-	isMuted.update((m) => !m);
-	if ($activeVoiceRoomId) {
-		sendEventMessage("VOICE_SYNC", {
-			room_id: $activeVoiceRoomId,
-			muted: $isMuted,
-			deafened: $isDeafened,
-		});
-	}
-}
-
-function toggleDeafen() {
-	isDeafened.update((d) => !d);
-	if ($isDeafened) isMuted.set(true);
-	if ($activeVoiceRoomId) {
-		sendEventMessage("VOICE_SYNC", {
-			room_id: $activeVoiceRoomId,
-			muted: $isMuted,
-			deafened: $isDeafened,
-		});
-	}
-}
-
-const connectionLabel: Record<RTCPeerConnectionState, string> = {
-	new: "Connecting...",
-	connecting: "Connecting...",
-	connected: "Voice Connected",
-	disconnected: "Reconnecting...",
-	failed: "Connection Failed",
-	closed: "Disconnected",
-};
-
-let micContextOpen = $state(false);
-let availableMics = $state<MediaDeviceInfo[]>([]);
-
-let ping = $state<number | null>(null);
-let pingIntervalId = $state<ReturnType<typeof setInterval> | null>(null);
-
-async function measurePing() {
-	try {
-		const start = performance.now();
-		await fetch(`${getHostURL()}/health`, { method: "GET", cache: "no-store" });
-		ping = Math.round(performance.now() - start);
-	} catch {
-		ping = null;
-	}
-}
-
-$effect(() => {
-	if ($activeVoiceRoomId) {
-		if (!pingIntervalId) {
-			measurePing();
-			pingIntervalId = setInterval(measurePing, 3000);
-		}
-	} else {
-		if (pingIntervalId) {
-			clearInterval(pingIntervalId);
-			pingIntervalId = null;
-			ping = null;
-		}
-	}
-});
-
-function pingIconColor(ms: number | null): string {
-	if (ms === null || ms < 100) return "text-stone-500";
-	if (ms < 250) return "text-orange-400";
-	return "text-red-400";
-}
-
-function pingBgColor(ms: number | null): string {
-	if (ms === null || ms < 100) return "bg-stone-900";
-	if (ms < 250) return "bg-orange-950";
-	return "bg-red-950";
-}
-
-async function loadAvailableMics() {
-	try {
-		const devices = await navigator.mediaDevices.enumerateDevices();
-		availableMics = devices.filter((d) => d.kind === "audioinput");
-	} catch (err) {
-		console.error("Failed to fetch media devices:", err);
-	}
-}
-
-function selectMic(deviceId: string) {
-	$selectedMicId = deviceId;
-	micContextOpen = false;
-}
-
-$effect(() => {
-	if (micContextOpen) {
-		void loadAvailableMics();
-	}
-});
 
 async function handleCreateChannel() {
 	if (!newChannelName.trim() || isCreating) return;
@@ -588,129 +459,7 @@ onMount(() => {
 	</div>
 	</div><!-- end scrollable content area -->
 
-	<!-- Voice status pill — pinned above user bar -->
-	{#if $activeVoiceRoomId && activeVoiceRoom}
-		<div
-			class="border-t border-zinc-800 shrink-0"
-			in:fly={{ y: 20, duration: 200, opacity: 1 }}
-			out:fly={{ y: 20, duration: 200, opacity: 1 }}
-		>
-			<div class="px-2 py-1.5 flex items-center gap-2 select-none">
-				<div
-					class="relative flex items-center justify-center p-1.5 {pingBgColor(ping)} rounded-full shrink-0"
-					title={ping !== null ? `Ping: ${ping}ms` : "Measuring ping..."}
-				>
-					{#if ping !== null && ping >= 250}
-						<CellSignalLowIcon class="size-3.5 {pingIconColor(ping)}" />
-					{:else if ping !== null && ping >= 100}
-						<CellSignalMediumIcon class="size-3.5 {pingIconColor(ping)}" />
-					{:else}
-						<CellSignalFullIcon class="size-3.5 {pingIconColor(ping)}" />
-					{/if}
-				</div>
-				<div class="flex flex-col truncate flex-1 min-w-0">
-					<span class="text-xs font-semibold text-stone-300 truncate">{connectionLabel[$voiceConnectionState]}</span>
-					<span class="text-[10px] text-zinc-400 truncate">{activeVoiceSpace?.name || ""} / {activeVoiceRoom.name}</span>
-				</div>
-				<button
-					class="p-1.5 rounded-full hover:bg-zinc-700 hover:text-zinc-200 transition-colors text-zinc-400 shrink-0"
-					aria-label="Disconnect"
-					onclick={() => { $activeVoiceRoomId = null; }}
-				>
-					<PhoneDisconnectIcon class="size-3.5" />
-				</button>
-			</div>
-		</div>
-	{/if}
-
-	<!-- Current User Profile Bottom Panel -->
-	{#if $currentUser}
-		<div
-			class="bg-zinc-900 z-100 px-2 h-16 border-t border-t-zinc-800 flex items-center justify-between shrink-0"
-		>
-			<div
-				class="flex items-center gap-2 hover:bg-zinc-800 p-1 w-full rounded-full cursor-pointer transition-colors max-w-30 group"
-			>
-				<div class="relative shrink-0">
-					<UserAvatar
-						src={$currentUser.avatar}
-						name={$currentUser.alias || $currentUser.username}
-						size={28}
-						class="box-border transition-all duration-200 {$speakingUsers.has(
-							$currentUser.id,
-						)
-							? 'ring-4 ring-stone-500'
-							: ''}"
-					/>
-				</div>
-				<div class="flex flex-col truncate">
-					<span class="text-sm font-semibold truncate text-zinc-200"
-						>{$currentUser.alias || $currentUser.username}</span
-					>
-				</div>
-			</div>
-
-			<div class="flex items-center text-zinc-400 shrink-0 relative">
-				<ContextMenu.Root bind:open={micContextOpen}>
-					<ContextMenu.Trigger>
-						<button
-							class="h-10 w-10 flex items-center justify-center rounded-lg hover:bg-zinc-800 transition-colors"
-							class:text-red-400={$isMuted}
-							class:hover:bg-zinc-700={canSpeak}
-							class:opacity-50={!canSpeak}
-							class:cursor-not-allowed={!canSpeak}
-							aria-label="Toggle Mute"
-							onclick={() => canSpeak && toggleMute()}
-						>
-							{#if $isMuted}
-								<MicrophoneSlashIcon class="size-5" />
-							{:else}
-								<MicrophoneIcon class="size-5" />
-							{/if}
-						</button>
-					</ContextMenu.Trigger>
-					<ContextMenu.Portal>
-						<ContextMenu.Content class="z-200 min-w-56 rounded-lg border border-zinc-700 bg-zinc-800 py-1 shadow-2xl">
-							<div class="px-3 py-1.5 text-xs font-semibold text-zinc-400 uppercase tracking-wider border-b border-zinc-700 mb-1">Input Device</div>
-							{#if availableMics.length === 0}
-								<div class="px-3 py-2 text-sm text-zinc-400">No microphones found</div>
-							{:else}
-								{#each availableMics as mic, micIndex}
-									<ContextMenu.Item class="w-full px-3 py-2 text-left text-sm text-zinc-100 hover:bg-zinc-700 transition-colors" onSelect={() => selectMic(mic.deviceId)}>
-										<div class="flex items-center justify-between gap-2">
-											<span class="truncate pr-2">{mic.label || `Microphone ${micIndex + 1}`}</span>
-											{#if $selectedMicId === mic.deviceId || ($selectedMicId === "" && mic.deviceId === "default")}
-												<span class="h-1.5 w-1.5 shrink-0 rounded-full bg-stone-400"></span>
-											{/if}
-										</div>
-									</ContextMenu.Item>
-								{/each}
-							{/if}
-						</ContextMenu.Content>
-					</ContextMenu.Portal>
-				</ContextMenu.Root>
-				<button
-					class="h-10 w-10 flex items-center justify-center rounded-lg hover:bg-zinc-800 transition-colors"
-					class:text-red-400={$isDeafened}
-					aria-label="Deafen"
-					onclick={toggleDeafen}
-				>
-					{#if $isDeafened}
-						<HeadphonesIcon class="size-5" />
-					{:else}
-						<HeadphonesIcon class="size-5" />
-					{/if}
-				</button>
-				<button
-					class="h-10 w-10 flex items-center justify-center rounded-lg hover:bg-zinc-800 transition-colors"
-					aria-label="User Settings"
-					onclick={() => (showUserSettings = true)}
-				>
-					<GearSixIcon class="size-5" />
-				</button>
-			</div>
-		</div>
-	{/if}
+	<UserStatusBar />
 </div>
 
 <ServerSettings
@@ -718,8 +467,6 @@ onMount(() => {
 	space={space ?? null}
 	spaceId={guild.id}
 />
-
-<UserSettings bind:open={showUserSettings} />
 
 <Dialog.Root bind:open={showCreateModal}>
 	<Dialog.Portal>

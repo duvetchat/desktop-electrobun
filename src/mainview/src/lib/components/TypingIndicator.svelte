@@ -1,5 +1,5 @@
 <script lang="ts">
-import { typingUsers } from "$lib/stores.svelte";
+import { typingUsers, currentUser } from "$lib/stores.svelte";
 import UserAvatar from "$lib/components/UserAvatar.svelte";
 
 let { channelId }: { channelId: string } = $props();
@@ -16,7 +16,9 @@ $effect(() => {
 });
 
 const activeTypers = $derived(
-	($typingUsers[channelId] ?? []).filter((u) => now - u.timestamp < TYPING_TIMEOUT),
+	($typingUsers[channelId] ?? [])
+		.filter((u) => now - u.timestamp < TYPING_TIMEOUT)
+		.filter((u) => u.user_id !== $currentUser?.id),
 );
 
 function displayName(u: { alias: string | null; username: string }): string {

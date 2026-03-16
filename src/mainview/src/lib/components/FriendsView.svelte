@@ -21,13 +21,21 @@ import {
 	createGroup,
 	type Conversation,
 } from "$lib/api/conversations";
-import { UserPlus, UserCheck, UserX, Users, Clock, Send, MessageSquare, UsersRound, Check } from "@lucide/svelte";
+import { UserPlus, UserCheck, UserX, Users, Clock, Send, MessageSquare, Check, ChevronLeft } from "@lucide/svelte";
 import UserAvatar from "$lib/components/UserAvatar.svelte";
 import ConversationView from "$lib/components/ConversationView.svelte";
 
-type Tab = "dms" | "friends" | "pending" | "sent" | "add";
-let activeTab = $state<Tab>("dms");
-let activeConversation = $state<Conversation | null>(null);
+let {
+	activeConversationId = $bindable<string | null>(null),
+	showGroupModal = $bindable(false),
+}: {
+	activeConversationId?: string | null;
+	showGroupModal?: boolean;
+} = $props();
+
+type Tab = "friends" | "pending" | "sent" | "add";
+let activeTab = $state<Tab>("friends");
+const activeConversation = $derived($conversations.find((c) => c.id === activeConversationId) ?? null);
 
 
 let sentRequestUsers = $state<Map<string, UserPublic>>(new Map());
@@ -39,7 +47,6 @@ let addSuccess = $state("");
 let loading = $state(false);
 
 // Group creation state
-let showGroupModal = $state(false);
 let groupName = $state("");
 let selectedFriendIds = $state(new Set<string>());
 let groupError = $state("");
@@ -208,8 +215,7 @@ async function handleOpenDM(friend: Friend) {
 			if (list.some((c) => c.id === conv.id)) return list;
 			return [conv, ...list];
 		});
-		activeConversation = conv;
-		activeTab = "dms";
+		activeConversationId = conv.id;
 	} catch (err) {
 		console.error("[DM] Failed to open DM:", err);
 	}
@@ -232,8 +238,7 @@ async function handleCreateGroup() {
 			return [conv, ...list];
 		});
 		closeGroupModal();
-		activeConversation = conv;
-		activeTab = "dms";
+		activeConversationId = conv.id;
 	} catch (err) {
 		groupError = err instanceof Error ? err.message : "Failed to create group";
 	}
@@ -260,49 +265,39 @@ function convAvatarSrc(conv: Conversation): string | null | undefined {
 </script>
 
 <div class="friends-view">
-	{#if activeConversation && activeTab === "dms"}
-		<div class="flex flex-col h-full">
-			<div class="flex items-center gap-2 px-3 py-2 border-b border-[#3f4147] bg-[#1e1f22]">
+	{#if activeConversation}
+		<div class="flex flex-col h-full overflow-hidden">
+			<div class="flex h-8 shrink-0 items-center border-b border-stone-800 bg-stone-950/45 px-2">
 				<button
-					class="text-xs text-[#949ba4] hover:text-[#dbdee1] flex items-center gap-1"
-					onclick={() => { activeConversation = null; }}
+					class="flex items-center gap-1 rounded px-2 py-1 text-xs text-zinc-500 transition-colors hover:bg-stone-800 hover:text-zinc-200"
+					onclick={() => { activeConversationId = null; }}
 				>
-					← Back
+					<ChevronLeft class="size-3.5" />
+					Friends
 				</button>
 			</div>
-			<ConversationView
-			conversation={activeConversation}
-			onMemberAdded={(m) => {
-				if (!activeConversation) return;
-				const updated = { ...activeConversation, members: [...activeConversation.members, m] };
-				activeConversation = updated;
-				conversations.update((list) => list.map((c) => (c.id === updated.id ? updated : c)));
-			}}
-		/>
+			{#key activeConversationId}
+				<ConversationView
+					conversation={activeConversation}
+					onMemberAdded={(m) => {
+						if (!activeConversationId) return;
+						conversations.update((list) =>
+							list.map((c) => {
+								if (c.id !== activeConversationId) return c;
+								if (c.members.some((x) => x.id === m.id || x.user_id === m.user_id)) return c;
+								return { ...c, members: [...c.members, m] };
+							})
+						);
+					}}
+				/>
+			{/key}
 		</div>
 	{:else}
 	<div class="friends-header">
 		<div class="flex items-center justify-between mb-3">
-			<h2>Messages</h2>
-			{#if activeTab === "dms"}
-				<button class="create-group-btn" onclick={() => (showGroupModal = true)}>
-					<UsersRound size={13} />
-					New group
-				</button>
-			{/if}
+			<h2>Friends</h2>
 		</div>
 		<div class="tabs">
-			<button
-				class="tab"
-				class:active={activeTab === "dms"}
-				onclick={() => { activeTab = "dms"; activeConversation = null; }}
-			>
-				<MessageSquare size={14} />
-				DMs
-				{#if $conversations.length > 0}
-					<span class="badge">{$conversations.length}</span>
-				{/if}
-			</button>
 			<button
 				class="tab"
 				class:active={activeTab === "friends"}
@@ -345,37 +340,7 @@ function convAvatarSrc(conv: Conversation): string | null | undefined {
 	</div>
 
 	<div class="friends-content">
-		{#if activeTab === "dms"}
-			{#if $conversations.length === 0}
-				<div class="empty-state">
-					<MessageSquare size={40} />
-					<p>No conversations yet</p>
-					<p class="text-xs" style="color: var(--text-secondary, #949ba4)">Open a DM with a friend or create a group</p>
-				</div>
-			{:else}
-				<ul class="list">
-					{#each $conversations as conv (conv.id)}
-						<!-- svelte-ignore a11y_no_noninteractive_element_to_interactive_role -->
-						<li class="list-item" role="button" tabindex="0"
-							onclick={() => { activeConversation = conv; }}
-							onkeydown={(e) => e.key === 'Enter' && (activeConversation = conv)}
-							style="cursor:pointer"
-						>
-							<UserAvatar
-								src={convAvatarSrc(conv)}
-								name={convTitle(conv)}
-								size={36}
-							/>
-							<div class="info">
-								<span class="label">{convTitle(conv)}</span>
-								<span class="sublabel">{convSubtitle(conv)}</span>
-							</div>
-						</li>
-					{/each}
-				</ul>
-			{/if}
-
-		{:else if activeTab === "friends"}
+		{#if activeTab === "friends"}
 			{#if $friends.length === 0}
 				<div class="empty-state">
 					<Users size={40} />

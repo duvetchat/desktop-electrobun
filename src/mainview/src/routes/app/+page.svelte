@@ -2,6 +2,7 @@
 import { onMount, onDestroy } from "svelte";
 import GuildSideBar from "$lib/components/GuildSidebar.svelte";
 import ChannelsSidebar from "$lib/components/ChannelsSidebar.svelte";
+import DMSidebar from "$lib/components/DMSidebar.svelte";
 import PaneView from "$lib/components/PaneView.svelte";
 import GuildMemberSidebar from "$lib/components/GuildMemberSidebar.svelte";
 import FriendsView from "$lib/components/FriendsView.svelte";
@@ -55,6 +56,8 @@ const guilds = $derived($gatewaySpaces.map((space) => {
 
 let activeSpaceId = $state<string | null>(null);
 let showFriendsView = $state(false);
+let activeDMId = $state<string | null>(null);
+let showGroupModal = $state(false);
 let showMembersSidebar = $state(true);
 let showChannelsSidebar = $state(true);
 let layoutPrefsHydrated = $state(false);
@@ -333,20 +336,26 @@ $effect(() => {
     isFriendsActive={showFriendsView}
     onFriendsSelect={handleFriendsSelect}
   />
-  {#if sidebarGuild}
+  {#if showFriendsView}
+    <DMSidebar
+      activeConversationId={activeDMId}
+      onSelect={(id) => { activeDMId = id; }}
+      onNewGroup={() => { showGroupModal = true; }}
+    />
+  {:else if sidebarGuild}
     <ChannelsSidebar
       guild={sidebarGuild}
       channels={sidebarGuild.channels}
       activeChannelId={sidebarActiveChannelId}
       onSelect={onSidebarSelect}
-      showChannels={!showFriendsView && showChannelsSidebar}
+      showChannels={showChannelsSidebar}
     />
   {/if}
 
   <div class="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-[linear-gradient(180deg,oklch(0.205_0.01_80),oklch(0.18_0.008_80))]">
     {#if friendsViewEverShown}
       <div class="flex flex-col flex-1 min-h-0 {showFriendsView ? '' : 'hidden'}">
-        <FriendsView />
+        <FriendsView bind:activeConversationId={activeDMId} bind:showGroupModal />
       </div>
     {/if}
     <div class="flex flex-col flex-1 min-h-0 {showFriendsView ? 'hidden' : ''}">
@@ -372,6 +381,7 @@ $effect(() => {
     <GuildMemberSidebar
       spaceId={memberSidebarSpaceId}
       space={memberSidebarSpace}
+      channelId={sidebarActiveChannelId}
     />
   </div>
 </div>
