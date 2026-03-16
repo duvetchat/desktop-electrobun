@@ -14,9 +14,10 @@ import {
 } from "$lib/api/conversations";
 import { getUser, type Friend, type UserPublic } from "$lib/api/friends";
 import type { Message } from "$lib/types";
-import { MessageSquare, UserPlus } from "@lucide/svelte";
+import { MessageSquare, UserPlus, Users } from "@lucide/svelte";
 import MessageList from "$lib/components/MessageList.svelte";
 import ChatInput from "$lib/components/ChatInput.svelte";
+import UserAvatar from "$lib/components/UserAvatar.svelte";
 
 let { conversation, onMemberAdded = undefined }: {
 	conversation: Conversation;
@@ -30,6 +31,7 @@ let failedNonces = $state(new Set<string>());
 let editingMessageId = $state<string | null>(null);
 let editContent = $state("");
 
+let showMemberList = $state(false);
 let showAddMemberModal = $state(false);
 let addMemberLoading = $state(false);
 let addMemberError = $state("");
@@ -231,41 +233,81 @@ onMount(async () => {
 		{#if conversation.type === 2}
 			<span class="ml-1 text-xs text-zinc-500">{conversation.members.length} miembros</span>
 		{/if}
-		{#if conversation.type === 2 && isOwner}
-			<button
-				class="ml-auto flex items-center gap-1 rounded px-2 py-1 text-xs font-normal text-zinc-400 hover:bg-stone-800 hover:text-zinc-200"
-				onclick={openAddMemberModal}
-				title="Añadir miembro"
-			>
-				<UserPlus class="size-3.5" />
-				Añadir
-			</button>
-		{/if}
+		<div class="ml-auto flex items-center gap-1">
+			{#if conversation.type === 2 && isOwner}
+				<button
+					class="flex items-center gap-1 rounded px-2 py-1 text-xs font-normal text-zinc-400 hover:bg-stone-800 hover:text-zinc-200"
+					onclick={openAddMemberModal}
+					title="Añadir miembro"
+				>
+					<UserPlus class="size-3.5" />
+					Añadir
+				</button>
+			{/if}
+			{#if conversation.type === 2}
+				<button
+					class="flex items-center gap-1 rounded px-2 py-1 text-xs font-normal {showMemberList ? 'bg-stone-800 text-zinc-200' : 'text-zinc-400 hover:bg-stone-800 hover:text-zinc-200'}"
+					onclick={() => { showMemberList = !showMemberList; }}
+					title="Miembros"
+				>
+					<Users class="size-3.5" />
+				</button>
+			{/if}
+		</div>
 	</div>
 
-	<!-- Messages -->
-	<MessageList
-		{messages}
-		isInitialLoading={isLoading}
-		{isLoadingMore}
-		hasMoreMessages={hasMore}
-		onLoadMore={handleLoadMore}
-		{failedNonces}
-		onRetry={dmRetry}
-		onDismiss={dmDismiss}
-		onSaveEdit={dmSaveEdit}
-		onDeleteMsg={dmDelete}
-		bind:editingMessageId
-		bind:editContent
-	/>
+	<!-- Body: messages + optional member sidebar -->
+	<div class="flex flex-1 overflow-hidden">
+		<!-- Messages + input column -->
+		<div class="flex flex-1 flex-col overflow-hidden">
+			<MessageList
+				{messages}
+				isInitialLoading={isLoading}
+				{isLoadingMore}
+				hasMoreMessages={hasMore}
+				onLoadMore={handleLoadMore}
+				{failedNonces}
+				onRetry={dmRetry}
+				onDismiss={dmDismiss}
+				onSaveEdit={dmSaveEdit}
+				onDeleteMsg={dmDelete}
+				bind:editingMessageId
+				bind:editContent
+			/>
+			<div class="relative flex min-h-16 max-h-48 flex-row items-end gap-2 border-t border-stone-800 bg-stone-950/45 px-3 py-2">
+				<ChatInput
+					placeholder={`Mensaje a ${conversationTitle()}`}
+					onSubmit={handleSend}
+					onArrowUpWhenEmpty={handleArrowUpWhenEmpty}
+				/>
+			</div>
+		</div>
 
-	<!-- Input -->
-	<div class="relative flex min-h-16 max-h-48 flex-row items-end gap-2 border-t border-stone-800 bg-stone-950/45 px-3 py-2">
-		<ChatInput
-			placeholder={`Mensaje a ${conversationTitle()}`}
-			onSubmit={handleSend}
-			onArrowUpWhenEmpty={handleArrowUpWhenEmpty}
-		/>
+		<!-- Member list sidebar -->
+		{#if conversation.type === 2 && showMemberList}
+			<div class="flex w-48 shrink-0 flex-col border-l border-stone-800 bg-stone-950/30 overflow-y-auto py-3">
+				<p class="px-3 pb-2 text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
+					Miembros — {conversation.members.length}
+				</p>
+				{#each conversation.members as member (member.id)}
+					<div class="flex items-center gap-2 px-3 py-1.5 hover:bg-stone-800/50 rounded mx-1">
+						<UserAvatar
+							src={member.users?.avatar ?? null}
+							name={member.users?.alias ?? member.users?.username ?? member.user_id}
+							size={28}
+						/>
+						<div class="flex min-w-0 flex-col">
+							<span class="truncate text-xs font-medium text-stone-200">
+								{member.users?.alias ?? member.users?.username ?? member.user_id.slice(0, 8)}
+							</span>
+							{#if member.user_id === conversation.owner_id}
+								<span class="text-[10px] text-amber-500">Propietario</span>
+							{/if}
+						</div>
+					</div>
+				{/each}
+			</div>
+		{/if}
 	</div>
 </div>
 
@@ -297,8 +339,15 @@ onMount(async () => {
 						onclick={() => handleAddMember(uid)}
 						disabled={addMemberLoading}
 					>
-						<span class="text-sm text-stone-200">{user?.alias ?? user?.username ?? uid}</span>
-						<span class="text-xs text-zinc-500">@{user?.username ?? uid}</span>
+						<UserAvatar
+							src={user?.avatar ?? null}
+							name={user?.alias ?? user?.username ?? "?"}
+							size={32}
+						/>
+						<div class="flex flex-col min-w-0">
+							<span class="text-sm text-stone-200">{user?.alias ?? user?.username ?? uid}</span>
+							<span class="text-xs text-zinc-500">@{user?.username ?? uid}</span>
+						</div>
 					</button>
 				{/each}
 			</div>
