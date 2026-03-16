@@ -629,7 +629,7 @@
                             class="flex items-start gap-1.5 mb-1 pl-2 border-l-2 border-stone-500 opacity-70 text-xs text-zinc-400 cursor-pointer hover:opacity-100"
                             role="button"
                             tabindex="0"
-                            onclick={() => jumpToMessageRequest.set({ id: crypto.randomUUID(), spaceId, roomId: channelId, messageId: message.referenced_message!.id })}
+                            onclick={() => jumpToMessageRequest.set({ id: crypto.randomUUID(), spaceId: message.referenced_message!.space_id ?? spaceId, roomId: message.referenced_message!.room_id ?? channelId, messageId: message.referenced_message!.message_id! })}
                             onkeydown={() => {}}
                         >
                             <span class="font-semibold text-zinc-300 shrink-0">{message.referenced_message.author_name}</span>
