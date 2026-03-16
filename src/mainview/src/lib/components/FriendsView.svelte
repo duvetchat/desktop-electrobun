@@ -269,7 +269,15 @@ function convAvatarSrc(conv: Conversation): string | null | undefined {
 					← Volver
 				</button>
 			</div>
-			<ConversationView conversation={activeConversation} />
+			<ConversationView
+			conversation={activeConversation}
+			onMemberAdded={(m) => {
+				if (!activeConversation) return;
+				const updated = { ...activeConversation, members: [...activeConversation.members, m] };
+				activeConversation = updated;
+				conversations.update((list) => list.map((c) => (c.id === updated.id ? updated : c)));
+			}}
+		/>
 		</div>
 	{:else}
 	<div class="friends-header">

@@ -327,6 +327,13 @@
 			} else if (event.track.kind === "video") {
 				remoteVideoElements[stream.id] = stream;
 				remoteVideoElements = { ...remoteVideoElements };
+
+				// When the sharer stops, the track becomes muted before the server
+				// cleanup renegotiation arrives. Show the spinner immediately instead
+				// of leaving a frozen last frame.
+				event.track.onmute = () => {
+					videoPlayingStates = { ...videoPlayingStates, [userId]: false };
+				};
 			}
 		};
 
@@ -627,7 +634,7 @@
 						use:srcObject={videoStream}
 						autoplay
 						playsinline
-						muted={isLocal}
+						muted
 						class="w-full h-full object-contain backdrop-blur-md transition-opacity duration-300 {videoPlayingStates[
 							user.id
 						]

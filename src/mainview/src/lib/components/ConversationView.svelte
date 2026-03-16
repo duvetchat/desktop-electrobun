@@ -1,21 +1,27 @@
 <script lang="ts">
 import { onMount } from "svelte";
 import { get } from "svelte/store";
-import { currentUser, dmMessages } from "$lib/stores.svelte";
+import { currentUser, dmMessages, friends } from "$lib/stores.svelte";
 import {
 	getDirectMessages,
 	sendDirectMessage,
 	updateDirectMessage,
 	deleteDirectMessage,
+	addConversationMember,
 	type Conversation,
+	type ConversationMember,
 	type DirectMessage,
 } from "$lib/api/conversations";
+import { getUser, type Friend, type UserPublic } from "$lib/api/friends";
 import type { Message } from "$lib/types";
-import { MessageSquare } from "@lucide/svelte";
+import { MessageSquare, UserPlus } from "@lucide/svelte";
 import MessageList from "$lib/components/MessageList.svelte";
 import ChatInput from "$lib/components/ChatInput.svelte";
 
-let { conversation }: { conversation: Conversation } = $props();
+let { conversation, onMemberAdded = undefined }: {
+	conversation: Conversation;
+	onMemberAdded?: (member: ConversationMember) => void;
+} = $props();
 
 let isLoading = $state(true);
 let isLoadingMore = $state(false);
@@ -24,7 +30,53 @@ let failedNonces = $state(new Set<string>());
 let editingMessageId = $state<string | null>(null);
 let editContent = $state("");
 
+let showAddMemberModal = $state(false);
+let addMemberLoading = $state(false);
+let addMemberError = $state("");
+let eligibleFriends = $state<Friend[]>([]);
+let friendUserMap = $state(new Map<string, UserPublic>());
+
 const me = $derived(get(currentUser));
+const isOwner = $derived(me?.id === conversation.owner_id);
+
+function getFriendOtherId(friend: Friend): string {
+	const user = get(currentUser);
+	return friend.sender_id === user?.id ? friend.recipient_id : friend.sender_id;
+}
+
+async function openAddMemberModal() {
+	const memberIds = new Set(conversation.members.map((m) => m.user_id));
+	eligibleFriends = get(friends).filter((f) => !memberIds.has(getFriendOtherId(f)));
+	showAddMemberModal = true;
+	addMemberError = "";
+
+	const ids = eligibleFriends.map(getFriendOtherId).filter((id) => !friendUserMap.has(id));
+	const results = await Promise.allSettled(
+		ids.map(async (id) => {
+			const user = await getUser(id);
+			return [id, user] as const;
+		}),
+	);
+	const newMap = new Map(friendUserMap);
+	for (const r of results) {
+		if (r.status === "fulfilled") newMap.set(r.value[0], r.value[1]);
+	}
+	friendUserMap = newMap;
+}
+
+async function handleAddMember(userId: string) {
+	addMemberLoading = true;
+	addMemberError = "";
+	try {
+		const newMember = await addConversationMember(conversation.id, userId);
+		onMemberAdded?.(newMember);
+		showAddMemberModal = false;
+	} catch (err) {
+		addMemberError = err instanceof Error ? err.message : "Error al añadir miembro";
+	} finally {
+		addMemberLoading = false;
+	}
+}
 
 // Map DirectMessage → Message for MessageList
 function toMessage(msg: DirectMessage): Message {
@@ -179,6 +231,16 @@ onMount(async () => {
 		{#if conversation.type === 2}
 			<span class="ml-1 text-xs text-zinc-500">{conversation.members.length} miembros</span>
 		{/if}
+		{#if conversation.type === 2 && isOwner}
+			<button
+				class="ml-auto flex items-center gap-1 rounded px-2 py-1 text-xs font-normal text-zinc-400 hover:bg-stone-800 hover:text-zinc-200"
+				onclick={openAddMemberModal}
+				title="Añadir miembro"
+			>
+				<UserPlus class="size-3.5" />
+				Añadir
+			</button>
+		{/if}
 	</div>
 
 	<!-- Messages -->
@@ -206,3 +268,50 @@ onMount(async () => {
 		/>
 	</div>
 </div>
+
+{#if showAddMemberModal}
+<div
+	class="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
+	role="button"
+	tabindex="-1"
+	onclick={() => { showAddMemberModal = false; }}
+	onkeydown={() => {}}
+>
+	<!-- svelte-ignore a11y_interactive_supports_focus -->
+	<div
+		class="flex w-80 flex-col gap-3 rounded-lg border border-stone-700 bg-stone-900 p-6"
+		role="dialog"
+		onclick={(e) => e.stopPropagation()}
+		onkeydown={() => {}}
+	>
+		<h3 class="text-sm font-semibold text-stone-100">Añadir miembro</h3>
+		{#if eligibleFriends.length === 0}
+			<p class="py-4 text-center text-xs text-zinc-500">No hay amigos disponibles para añadir</p>
+		{:else}
+			<div class="flex max-h-48 flex-col gap-0.5 overflow-y-auto">
+				{#each eligibleFriends as friend (friend.id)}
+					{@const uid = getFriendOtherId(friend)}
+					{@const user = friendUserMap.get(uid)}
+					<button
+						class="flex items-center gap-2 rounded px-3 py-2 text-left hover:bg-stone-800 disabled:opacity-50"
+						onclick={() => handleAddMember(uid)}
+						disabled={addMemberLoading}
+					>
+						<span class="text-sm text-stone-200">{user?.alias ?? user?.username ?? uid}</span>
+						<span class="text-xs text-zinc-500">@{user?.username ?? uid}</span>
+					</button>
+				{/each}
+			</div>
+		{/if}
+		{#if addMemberError}
+			<p class="rounded bg-red-900/20 px-3 py-2 text-xs text-red-400">{addMemberError}</p>
+		{/if}
+		<button
+			class="self-end text-xs text-zinc-500 hover:text-zinc-300"
+			onclick={() => { showAddMemberModal = false; }}
+		>
+			Cancelar
+		</button>
+	</div>
+</div>
+{/if}
