@@ -106,10 +106,10 @@ function handleEvent(event: GatewayEvent) {
 		lastSeq = event.s;
 	}
 	if (!event.d) {
-		console.warn("[SSE] Received event with no data:", event);
+		console.warn("[WS] Received event with no data:", event);
 		return;
 	}
-	console.log("[SSE] Received event:", event);
+	console.log("[WS] Received event:", event);
 	const { type, data } = event.d;
 	switch (type) {
 		case "READY": {
@@ -335,7 +335,7 @@ function handleEvent(event: GatewayEvent) {
 			break;
 		}
 		case "USER_STATUS_UPDATE": {
-			console.log("[SSE] Received status update:", data);
+			console.log("[WS] Received status update:", data);
 			const raw = data as GatewayUserStatusUpdate;
 			// Always persist the latest live status so it can be applied
 			// to users who are added to the store later.
@@ -826,7 +826,7 @@ function handleEvent(event: GatewayEvent) {
 			break;
 		}
 		default:
-			console.log("[SSE] Unhandled event:", event);
+			console.log("[WS] Unhandled event:", event);
 	}
 }
 
