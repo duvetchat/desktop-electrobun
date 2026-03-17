@@ -94,15 +94,15 @@ function mergeIntoStore(rows: SpaceMemberWithUser[]) {
 		spaces.map((s) => {
 			if (s.id !== spaceId) return s;
 			const existingUserIds = new Set(s.users.map((u) => u.id));
-			const incomingUserIds = new Set(rows.map((r) => r.users.id));
+			const incomingUserIds = new Set(rows.map((r) => r.user.id));
 			// Replace any placeholder members for the same users with real data
 			const filteredMembers = s.members.filter(
 				(m) => !incomingUserIds.has(m.user_id),
 			);
 			const newUsers = rows
-				.map((r) => r.users)
+				.map((r) => r.user)
 				.filter((u) => !existingUserIds.has(u.id));
-			const newMembers = rows.map(({ users: _u, max_pos: _p, ...m }) => m);
+			const newMembers = rows.map(({ user: _u, max_pos: _p, ...m }) => m);
 			return {
 				...s,
 				users: [...s.users, ...newUsers],

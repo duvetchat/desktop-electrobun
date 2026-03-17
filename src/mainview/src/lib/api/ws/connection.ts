@@ -76,7 +76,7 @@ function addMembersToSpace(spaceId: string, rows: SpaceMemberWithUser[]) {
 		spaces.map((s) => {
 			if (s.id !== spaceId) return s;
 			const existingUserIds = new Set(s.users.map((u) => u.id));
-			const incomingUserIds = new Set(rows.map((r) => r.users.id));
+			const incomingUserIds = new Set(rows.map((r) => r.user.id));
 			// Replace any placeholder members for the same users with real data
 			const filteredMembers = s.members.filter(
 				(m) => !incomingUserIds.has(m.user_id),
@@ -85,14 +85,14 @@ function addMembersToSpace(spaceId: string, rows: SpaceMemberWithUser[]) {
 				.map((r) => {
 					// Apply cached live status so users don't appear offline
 					// when the REST snapshot still has status_id=0.
-					const liveStatus = userStatusCache.get(r.users.id);
+					const liveStatus = userStatusCache.get(r.user.id);
 					return liveStatus !== undefined
-						? { ...r.users, status_id: liveStatus as UserStatus }
-						: r.users;
+						? { ...r.user, status_id: liveStatus as UserStatus }
+						: r.user;
 				})
 				.filter((u) => !existingUserIds.has(u.id));
 			const newMembers = rows.map(
-				({ users: _u, max_pos: _p, ...m }) => m as GatewayMember,
+				({ user: _u, max_pos: _p, ...m }) => m as GatewayMember,
 			);
 			return {
 				...s,
@@ -562,7 +562,7 @@ function handleEvent(event: GatewayEvent) {
 				.then((rows) => {
 					const patched = rows.map((r) =>
 						r.id === raw.member_id
-							? { ...r, users: { ...r.users, status_id: 1 as UserStatus } }
+							? { ...r, users: { ...r.user, status_id: 1 as UserStatus } }
 							: r,
 					);
 					addMembersToSpace(raw.space_id, patched);

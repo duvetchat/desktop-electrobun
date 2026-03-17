@@ -51,6 +51,7 @@ export interface MessageReference {
 }
 
 export interface ReferencedMessage {
+	id: string;
 	type: number | null;
 	message_id: string | null;
 	room_id: string | null;
@@ -71,7 +72,7 @@ export interface GatewayMessage {
 	updated_at: string;
 	deleted_at: string | null;
 	nonce?: string;
-	users?: GatewayUser;
+	user?: GatewayUser;
 	member_alias?: string | null;
 	referenced_message?: ReferencedMessage | null;
 	embeds?: Embed[] | null;
@@ -258,10 +259,10 @@ export function gatewayMessageToMessage(
 	let author_name = "Unknown";
 	let author_avatar_url: string | null = null;
 
-	if (msg.users) {
+	if (msg.user) {
 		const memberAlias = msg.member_alias ?? null;
-		author_name = memberAlias ?? msg.users.alias ?? msg.users.username;
-		author_avatar_url = msg.users.avatar ?? null;
+		author_name = memberAlias ?? msg.user.alias ?? msg.user.username;
+		author_avatar_url = msg.user.avatar ?? null;
 	} else {
 		for (const space of spaces) {
 			const user = space.users.find((u) => u.id === msg.author_id);

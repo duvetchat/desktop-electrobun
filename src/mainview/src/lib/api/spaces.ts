@@ -7,7 +7,7 @@ const HOST = getHostURL();
 export const MEMBERS_PAGE_SIZE = 50;
 
 export interface SpaceMemberWithUser extends GatewayMember {
-	users: GatewayUser;
+	user: GatewayUser;
 	max_pos: number;
 }
 
