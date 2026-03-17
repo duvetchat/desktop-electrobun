@@ -29,6 +29,7 @@ import {
 	speakingUsers,
 	activeVoiceRoomId,
 	gatewaySpaces,
+	unreadChannels,
 } from "$lib/stores.svelte";
 
 // props
@@ -373,6 +374,9 @@ onMount(() => {
 							{/if}
 						</span>
 						<span class="min-w-0 flex-1 truncate">{channel.name}</span>
+						{#if channel.type === "text" && $unreadChannels.has(channel.id)}
+							<span class="ml-1 size-2 shrink-0 rounded-full bg-white"></span>
+						{/if}
 							</button>
 						</ContextMenu.Trigger>
 						<ContextMenu.Portal>

@@ -27,11 +27,13 @@ let {
 	hasMoreMessages = true,
 	hasMoreMessagesBelow = false,
 	highlightedMessageId = null,
+	unreadAfterMessageId = null,
 	onLoadMore = () => {},
 	onLoadMoreBelow = () => {},
 	showHeader = true,
 	placeholder = undefined,
 	failedNonces = $bindable(new Set<string>()),
+	isAtBottom = $bindable(true),
 	onSend = undefined,
 	onSaveEdit = undefined,
 	onDeleteMsg = undefined,
@@ -51,11 +53,13 @@ let {
 	hasMoreMessages?: boolean;
 	hasMoreMessagesBelow?: boolean;
 	highlightedMessageId?: string | null;
+	unreadAfterMessageId?: string | null;
 	onLoadMore?: () => Promise<void> | void;
 	onLoadMoreBelow?: () => Promise<void> | void;
 	showHeader?: boolean;
 	placeholder?: string;
 	failedNonces?: Set<string>;
+	isAtBottom?: boolean;
 	onSend?: (content: string, nonce: string, ref: MessageReference | undefined) => Promise<void>;
 	onSaveEdit?: (msgId: string, content: string) => void | Promise<void>;
 	onDeleteMsg?: (msgId: string) => Promise<void>;
@@ -322,9 +326,11 @@ function dismissFailedMessage(nonce: string) {
     {hasMoreMessages}
     {hasMoreMessagesBelow}
     highlightedMessageId={replyTo?.id ?? highlightedMessageId}
+    {unreadAfterMessageId}
     {onLoadMore}
     {onLoadMoreBelow}
     {failedNonces}
+    bind:isAtBottom
     {onSaveEdit}
     {onDeleteMsg}
     bind:editingMessageId

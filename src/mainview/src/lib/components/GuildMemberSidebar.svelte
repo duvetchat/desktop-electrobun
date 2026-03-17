@@ -271,7 +271,7 @@ $effect(() => {
                                         size={30}
                                     />
                                     {#if isTyping(member.id)}
-                                        <span class="absolute -bottom-0.5 -right-0.5 flex items-center justify-center gap-[2px] h-3 w-4 rounded-full border-2 border-zinc-900 bg-zinc-700">
+                                        <span class="absolute -bottom-0.5 -right-0.5 flex items-center justify-center gap-0.5 h-3 w-4 rounded-full border-2 border-zinc-900 bg-zinc-700">
                                             <span class="member-typing-dot"></span>
                                             <span class="member-typing-dot" style="animation-delay:0.2s"></span>
                                             <span class="member-typing-dot" style="animation-delay:0.4s"></span>

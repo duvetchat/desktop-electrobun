@@ -106,10 +106,10 @@ async function handleSave() {
 				const result: typeof convs = {};
 				for (const [convId, msgs] of Object.entries(convs)) {
 					result[convId] = msgs.map((m) => {
-						if (m.author_id !== userId || !m.users) return m;
+						if (m.author_id !== userId || !m.user) return m;
 						return {
 							...m,
-							users: { ...m.users, username: updated.username, alias: updated.alias ?? null, avatar: newAvatar, banner: updated.banner ?? null },
+							user: { ...m.user, username: updated.username, alias: updated.alias ?? null, avatar: newAvatar, banner: updated.banner ?? null },
 						};
 					});
 				}
@@ -121,7 +121,7 @@ async function handleSave() {
 					...c,
 					members: c.members.map((m) =>
 						m.user_id === userId
-							? { ...m, users: { ...m.users, username: updated.username, alias: updated.alias ?? null, avatar: newAvatar, banner: updated.banner ?? null } }
+							? { ...m, user: { ...m.user, username: updated.username, alias: updated.alias ?? null, avatar: newAvatar, banner: updated.banner ?? null } }
 							: m,
 					),
 				})),

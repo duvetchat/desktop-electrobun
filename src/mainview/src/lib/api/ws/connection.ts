@@ -10,6 +10,12 @@ import {
 	dmMessages,
 	typingUsers,
 	activeVoiceRoomId,
+	unreadChannels,
+	activeTextRoomId,
+	lastReadRooms,
+	lastMsgRooms,
+	unreadConversations,
+	activeDMConvId,
 } from "$lib/stores.svelte";
 import type { FriendRequest, Friend } from "$lib/api/friends";
 import { getFriends, getPendingRequests, getSentRequests } from "$lib/api/friends";
@@ -37,6 +43,16 @@ import { gatewayMessageToMessage } from "$lib/types";
 
 export function getStreamURL(): string {
 	return `${getWSHostURL()}/gateway?token=${localStorage.getItem("duvet_session_token") || "none"}`;
+}
+
+// Notification sound — single Audio instance reused across calls
+let notificationAudio: HTMLAudioElement | null = null;
+function playNotificationSound() {
+	if (!notificationAudio) {
+		notificationAudio = new Audio("/sounds/message_notification.ogg");
+	}
+	notificationAudio.currentTime = 0;
+	notificationAudio.play().catch(() => {});
 }
 
 // Active socket — module-level so sendMessage can access it
@@ -115,7 +131,7 @@ function handleEvent(event: GatewayEvent) {
 	const { type, data } = event.d;
 	switch (type) {
 		case "READY": {
-			const { user, sessionToken } = data as GatewayReadyData;
+			const { user, sessionToken, unread_rooms } = data as GatewayReadyData;
 			// The connected user is always online by definition.
 			// Override whatever the DB stored so every downstream consumer
 			// (SPACE_CREATE's currentUserData, the sidebar, etc.) sees status=1.
@@ -123,6 +139,11 @@ function handleEvent(event: GatewayEvent) {
 			currentUser.set(onlineUser);
 			wsSessionToken.set(sessionToken);
 			userStatusCache.set(user.id, 1);
+			unreadChannels.set(new Set(unread_rooms ?? []));
+			lastReadRooms.set((data as GatewayReadyData).last_read_rooms ?? {});
+			lastMsgRooms.set((data as GatewayReadyData).last_msg_rooms ?? {});
+			const { unread_convs } = data as GatewayReadyData;
+			unreadConversations.set(new Set(unread_convs ?? []));
 			// Fetch friends, pending/sent requests, and conversations eagerly
 			// so they are available before FriendsView mounts.
 			Promise.all([
@@ -228,6 +249,12 @@ function handleEvent(event: GatewayEvent) {
 			const raw = data as GatewayMessageCreate;
 			const spaces = get(gatewaySpaces);
 			const message = gatewayMessageToMessage(raw, spaces);
+			if (raw.room_id && raw.room_id !== get(activeTextRoomId) && raw.author_id !== get(currentUser)?.id) {
+				playNotificationSound();
+			}
+			if (raw.room_id && raw.room_id !== get(activeTextRoomId)) {
+				unreadChannels.update((s) => { s.add(raw.room_id); return s; });
+			}
 			typingUsers.update((all) => {
 				const key = raw.room_id;
 				if (!all[key]) return all;
@@ -327,10 +354,10 @@ function handleEvent(event: GatewayEvent) {
 				const result: typeof convs = {};
 				for (const [convId, msgs] of Object.entries(convs)) {
 					result[convId] = msgs.map((m) => {
-						if (m.author_id !== raw.id || !m.users) return m;
+						if (m.author_id !== raw.id || !m.user) return m;
 						return {
 							...m,
-							users: { ...m.users, username: raw.username, alias: raw.alias, avatar: raw.avatar, banner: raw.banner },
+							user: { ...m.user, username: raw.username, alias: raw.alias, avatar: raw.avatar, banner: raw.banner },
 						};
 					});
 				}
@@ -341,7 +368,7 @@ function handleEvent(event: GatewayEvent) {
 					...c,
 					members: c.members.map((m) =>
 						m.user_id === raw.id
-							? { ...m, users: { ...m.users, username: raw.username, alias: raw.alias, avatar: raw.avatar, banner: raw.banner } }
+							? { ...m, user: { ...m.user, username: raw.username, alias: raw.alias, avatar: raw.avatar, banner: raw.banner } }
 							: m,
 					),
 				})),
@@ -373,7 +400,7 @@ function handleEvent(event: GatewayEvent) {
 					...c,
 					members: c.members.map((m) => {
 						if (m.user_id === raw.user_id) {
-							return { ...m, users: { ...m.users, status_id: raw.status_id } };
+							return { ...m, user: { ...m.user, status_id: raw.status_id } };
 						}
 						return m;
 					}),
@@ -406,7 +433,7 @@ function handleEvent(event: GatewayEvent) {
 						);
 						if (existingIdx === -1) {
 							if (raw.room_id === get(activeVoiceRoomId)) {
-								new Audio("/sounds/join_vc.ogg").play().catch(() => {});
+								new Audio("/sounds/join_vc.ogg").play().catch(() => { });
 							}
 							nextStates.push({
 								room_id: raw.room_id,
@@ -782,7 +809,7 @@ function handleEvent(event: GatewayEvent) {
 								created_at: new Date().toISOString(),
 								updated_at: new Date().toISOString(),
 								deleted_at: null,
-								users: { id: raw.user_id, username: raw.username ?? "", alias: raw.alias ?? null, avatar: raw.avatar ?? null, banner: raw.banner ?? null, status_id: raw.status_id ?? 0 },
+								user: { id: raw.user_id, username: raw.username ?? "", alias: raw.alias ?? null, avatar: raw.avatar ?? null, banner: raw.banner ?? null, status_id: raw.status_id ?? 0 },
 							},
 						],
 					};
@@ -809,6 +836,12 @@ function handleEvent(event: GatewayEvent) {
 				return;
 			}
 			const conversationId = msg.conversation_id;
+			if (conversationId !== get(activeDMConvId)) {
+				unreadConversations.update((s) => { s.add(conversationId); return s; });
+				if (msg.author_id !== get(currentUser)?.id) {
+					playNotificationSound();
+				}
+			}
 			typingUsers.update((all) => {
 				if (!all[conversationId]) return all;
 				return { ...all, [conversationId]: all[conversationId].filter((u) => u.user_id !== msg.author_id) };

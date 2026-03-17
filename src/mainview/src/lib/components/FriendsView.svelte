@@ -248,7 +248,7 @@ function convTitle(conv: Conversation): string {
 	const me = get(currentUser);
 	if (conv.type === 2) return conv.name ?? "Group";
 	const other = conv.members.find((m) => m.user_id !== me?.id);
-	return other?.users?.alias ?? other?.users?.username ?? "DM";
+	return other?.user?.alias ?? other?.user?.username ?? "DM";
 }
 
 function convSubtitle(conv: Conversation): string {
@@ -260,7 +260,7 @@ function convAvatarSrc(conv: Conversation): string | null | undefined {
 	if (conv.type === 2) return null;
 	const me = get(currentUser);
 	const other = conv.members.find((m) => m.user_id !== me?.id);
-	return other?.users?.avatar;
+	return other?.user?.avatar;
 }
 </script>
 

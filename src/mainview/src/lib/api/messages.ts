@@ -184,3 +184,18 @@ export async function deleteMessage(
 		throw new Error(`Failed to delete message: ${await response.text()}`);
 	}
 }
+
+export async function ackRoom(roomId: string, messageId: string): Promise<void> {
+	if (!userSession.token) return;
+	const res = await fetch(`${HOST}/api/rooms/${roomId}/ack`, {
+		method: "POST",
+		headers: {
+			Authorization: userSession.token,
+			"Content-Type": "application/json",
+		},
+		body: JSON.stringify({ message_id: messageId }),
+	});
+	if (!res.ok) {
+		console.error(`[ack] failed ${res.status} for room=${roomId} msg=${messageId}`);
+	}
+}

@@ -341,8 +341,8 @@ const selectedSettingsRoles = $derived(
 
 <Dialog.Root bind:open>
     <Dialog.Portal>
-        <Dialog.Overlay class="fixed inset-0 z-[500] bg-black/70 backdrop-blur-sm" />
-        <Dialog.Content class="fixed inset-0 z-[501] flex items-center justify-center p-4">
+        <Dialog.Overlay class="fixed inset-0 z-500 bg-black/70 backdrop-blur-sm" />
+        <Dialog.Content class="fixed inset-0 z-501 flex items-center justify-center p-4">
             <div class="w-full max-w-4xl max-h-[85vh] h-[85vh] bg-zinc-900 rounded-xl shadow-2xl flex overflow-hidden border border-zinc-700 text-zinc-100">
             <!-- Left sidebar -->
             <aside
@@ -350,7 +350,7 @@ const selectedSettingsRoles = $derived(
             >
                 <div class="px-4 mb-4">
                     <p
-                        class="text-[10px] font-bold tracking-widest uppercase text-zinc-400 px-2 mb-1"
+                        class="text-xxs font-bold tracking-widest uppercase text-zinc-400 px-2 mb-1"
                     >
                         {space?.name ?? "Server"} Settings
                     </p>
@@ -485,7 +485,7 @@ const selectedSettingsRoles = $derived(
                                                 title="Color from"
                                             />
                                             <span
-												class="text-[10px] text-zinc-500"
+												class="text-xxs text-zinc-500"
                                                 >From</span
                                             >
                                         </div>
@@ -500,7 +500,7 @@ const selectedSettingsRoles = $derived(
                                                     title="Color via (middle)"
                                                 />
                                                 <span
-													class="text-[10px] text-zinc-500"
+													class="text-xxs text-zinc-500"
                                                     >Via</span
                                                 >
                                             </div>
@@ -514,7 +514,7 @@ const selectedSettingsRoles = $derived(
                                                     title="Color to"
                                                 />
                                                 <span
-													class="text-[10px] text-zinc-500"
+													class="text-xxs text-zinc-500"
                                                     >To</span
                                                 >
                                             </div>
@@ -546,7 +546,7 @@ const selectedSettingsRoles = $derived(
 
                                 <!-- Hoisted -->
                                 <label class="flex items-center gap-2 rounded-md border border-zinc-800 bg-zinc-800/40 px-2.5 py-2 cursor-pointer text-xs text-zinc-200 hover:text-white">
-                                    <Checkbox.Root bind:checked={newRoleHoisted} class="size-4 rounded border border-zinc-600 bg-zinc-900 data-[state=checked]:bg-stone-600 data-[state=checked]:border-stone-600 flex items-center justify-center text-white text-[10px]">✓</Checkbox.Root>
+                                    <Checkbox.Root bind:checked={newRoleHoisted} class="size-4 rounded border border-zinc-600 bg-zinc-900 data-[state=checked]:bg-stone-600 data-[state=checked]:border-stone-600 flex items-center justify-center text-white text-xxs">✓</Checkbox.Root>
                                     Display role members separately in sidebar
                                 </label>
 
@@ -562,7 +562,7 @@ const selectedSettingsRoles = $derived(
 											<label class="flex h-9 items-center gap-2 rounded-md border border-zinc-800 bg-zinc-800/70 px-2.5 cursor-pointer text-xs text-zinc-200 hover:text-white">
                                                 <Checkbox.Root checked={newRolePermissions.includes(perm.flag)} onCheckedChange={() => {
                                                     togglePermission(perm.flag, false);
-                                                }} class="size-4 rounded border border-zinc-600 bg-zinc-900 data-[state=checked]:bg-stone-600 data-[state=checked]:border-stone-600 flex items-center justify-center text-white text-[10px]">✓</Checkbox.Root>
+                                                }} class="size-4 rounded border border-zinc-600 bg-zinc-900 data-[state=checked]:bg-stone-600 data-[state=checked]:border-stone-600 flex items-center justify-center text-white text-xxs">✓</Checkbox.Root>
                                                 {perm.name}
                                             </label>
                                         {/each}
@@ -640,7 +640,7 @@ const selectedSettingsRoles = $derived(
                                                                         editingRoleClearColors =
                                                                             !editingRoleClearColors;
                                                                     }}
-                                                                    class="text-[10px] px-1.5 py-0.5 rounded transition-colors {editingRoleClearColors
+                                                                    class="text-xxs px-1.5 py-0.5 rounded transition-colors {editingRoleClearColors
                                                                         ? 'bg-red-500 text-white'
 									: 'bg-zinc-700 text-zinc-300 hover:text-zinc-100'}"
 															>Clear color</button
@@ -677,7 +677,7 @@ const selectedSettingsRoles = $derived(
                                                                         title="Color from"
                                                                     />
                                                                     <span
-																class="text-[10px] text-zinc-500"
+																class="text-xxs text-zinc-500"
                                                                         >From</span
                                                                     >
                                                                 </div>
@@ -694,7 +694,7 @@ const selectedSettingsRoles = $derived(
                                                                             title="Via"
                                                                         />
                                                                         <span
-																	class="text-[10px] text-zinc-500"
+																	class="text-xxs text-zinc-500"
                                                                             >Via</span
                                                                         >
                                                                     </div>
@@ -710,7 +710,7 @@ const selectedSettingsRoles = $derived(
                                                                             title="To"
                                                                         />
                                                                         <span
-																	class="text-[10px] text-zinc-500"
+																	class="text-xxs text-zinc-500"
                                                                             >To</span
                                                                         >
                                                                     </div>
@@ -746,7 +746,7 @@ const selectedSettingsRoles = $derived(
 
                                                     <!-- Hoisted -->
                                                     <label class="flex items-center gap-2 cursor-pointer text-xs text-zinc-200 hover:text-white">
-                                                        <Checkbox.Root bind:checked={editingRoleHoisted} class="size-4 rounded border border-zinc-600 bg-zinc-900 data-[state=checked]:bg-stone-600 data-[state=checked]:border-stone-600 flex items-center justify-center text-white text-[10px]">✓</Checkbox.Root>
+                                                        <Checkbox.Root bind:checked={editingRoleHoisted} class="size-4 rounded border border-zinc-600 bg-zinc-900 data-[state=checked]:bg-stone-600 data-[state=checked]:border-stone-600 flex items-center justify-center text-white text-xxs">✓</Checkbox.Root>
                                                         Display role members separately
                                                         in sidebar
                                                     </label>
@@ -765,7 +765,7 @@ const selectedSettingsRoles = $derived(
                                                                 <label class="flex items-center gap-2 cursor-pointer text-xs text-zinc-200 hover:text-white">
                                                                     <Checkbox.Root checked={(editingRolePermissions & perm.flag) === perm.flag} onCheckedChange={() => {
                                                                         togglePermission(perm.flag, true);
-                                                                    }} class="size-4 rounded border border-zinc-600 bg-zinc-900 data-[state=checked]:bg-stone-600 data-[state=checked]:border-stone-600 flex items-center justify-center text-white text-[10px]">✓</Checkbox.Root>
+                                                                    }} class="size-4 rounded border border-zinc-600 bg-zinc-900 data-[state=checked]:bg-stone-600 data-[state=checked]:border-stone-600 flex items-center justify-center text-white text-xxs">✓</Checkbox.Root>
                                                                     {perm.name}
                                                                 </label>
                                                             {/each}
@@ -803,7 +803,7 @@ const selectedSettingsRoles = $derived(
                                                             >
                                                             {#if role.hoisted}
                                                                 <span
-                                                                    class="text-[10px] bg-zinc-700 text-zinc-300 px-1.5 py-0.5 rounded"
+                                                                    class="text-xxs bg-zinc-700 text-zinc-300 px-1.5 py-0.5 rounded"
                                                                     >hoisted</span
                                                                 >
                                                             {/if}

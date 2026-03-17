@@ -4,9 +4,14 @@ import {
 	channelMessages,
 	gatewaySpaces,
 	jumpToMessageRequest,
+	unreadChannels,
+	activeTextRoomId,
+	lastReadRooms,
+	lastMsgRooms,
 } from "$lib/stores.svelte";
+import { get } from "svelte/store";
 import { makeSplit, makeLeaf } from "$lib/pane";
-import { getMessages, getMessagesAfter, getMessageById } from "$lib/api/messages";
+import { getMessages, getMessagesAfter, getMessageById, ackRoom } from "$lib/api/messages";
 import { onMount, onDestroy } from "svelte";
 
 import type {
@@ -45,6 +50,7 @@ let {
 	onToggleChannels = null,
 	showMembersSidebar = true,
 	onToggleMembers = null,
+	isActive = true,
 }: {
 	node: PaneNode;
 	onUpdate: (n: PaneNode) => void;
@@ -65,16 +71,27 @@ let {
 	onToggleChannels?: (() => void) | null;
 	showMembersSidebar?: boolean;
 	onToggleMembers?: (() => void) | null;
+	isActive?: boolean;
 } = $props();
 
 // ── Leaf: message loading ─────────────────────────────────────────────────
 const loadedChannels = new Set<string>();
+const fetchingChannels = new Set<string>();
 let isLoadingMore = $state(false);
 let isLoadingMoreBelow = $state(false);
 let channelHasMore = $state<Partial<Record<string, boolean>>>({});
 let channelHasMoreBelow = $state<Partial<Record<string, boolean>>>({});
 let channelInitialLoading = $state<Partial<Record<string, boolean>>>({});
 let channelHighlightedMessage = $state<Partial<Record<string, string | null>>>({});
+// last-read message ID per channel, used to render the unread divider
+let channelUnreadAfter = $state<Partial<Record<string, string | null>>>({});
+// last message ID that was ACK'd per channel (used to set the divider on re-entry)
+let channelLastAcked = $state<Partial<Record<string, string>>>({});
+let paneIsAtBottom = $state(false);
+// Plain let (not $state) to avoid self-reactive mutation in $effect
+let lastAckChannelId: string | null = null;
+// Non-reactive dedup map — prevents sending the same ACK twice
+const ackedMsgIds = new Map<string, string>();
 // track handled jump request ids to avoid double-processing
 let lastHandledJumpId = $state<string | null>(null);
 
@@ -117,6 +134,63 @@ const activeChannel = $derived(activeTab
 		}
 	: null);
 
+// Track the active text room globally so MESSAGE_CREATE can skip adding it to unread.
+// Also detects re-entry into an already-loaded channel that received new messages while away.
+$effect(() => {
+	if (isActive && node.kind === "leaf" && node.activeChannelId && activeChannel?.type === "text") {
+		const channelId = node.activeChannelId;
+		// Reset immediately so the ACK effect (which runs after this one in
+		// the same batch) cannot use a stale true from the previous channel.
+		// The sync effect in MessageList will set the correct value later.
+		paneIsAtBottom = false;
+		activeTextRoomId.set(channelId);
+		// Check for unread BEFORE clearing the badge (get() is a non-reactive snapshot)
+		const hadUnread = get(unreadChannels).has(channelId);
+		unreadChannels.update((s) => { s.delete(channelId); return s; });
+		// Set the unread divider position (re-entry only — first entry is
+		// handled in the load effect's .then() where we have real messages).
+		if (hadUnread && loadedChannels.has(channelId) && channelLastAcked[channelId]) {
+			channelUnreadAfter[channelId] = channelLastAcked[channelId];
+		}
+	} else {
+		activeTextRoomId.set(null);
+	}
+});
+
+// ACK + clear divider when the user is genuinely at the bottom.
+// paneIsAtBottom starts false and is only set true by the scroll-position
+// sync effect in MessageList (which runs AFTER scroll-to-unread), so this
+// cannot fire prematurely on initial render.
+$effect(() => {
+	const msgs = activeMessages; // reactive dep — fires on every new message
+	if (node.kind !== "leaf" || !node.activeChannelId || activeChannel?.type !== "text") return;
+	const channelId = node.activeChannelId;
+	// Read BOTH before any early return so they are always tracked as deps.
+	// This ensures the effect re-runs when loading finishes or scroll changes.
+	const loading = !!channelInitialLoading[channelId];
+	const atBottom = paneIsAtBottom;
+	if (!isActive || loading || !atBottom || fetchingChannels.has(channelId)) return;
+	console.log("[ack-effect] paneIsAtBottom=true, channelId:", channelId);
+	if (channelHasMoreBelow[channelId] === true) return;
+	if (msgs.length === 0) return;
+	// Clear the unread divider
+	if (channelUnreadAfter[channelId] != null) {
+		channelUnreadAfter[channelId] = null;
+	}
+	// Find newest confirmed (non-pending) message via UUID v7 lex order
+	let newestId: string | null = null;
+	for (const m of msgs) {
+		if (m.id === m.nonce) continue; // pending, not yet confirmed
+		if (!newestId || m.id > newestId) newestId = m.id;
+	}
+	if (newestId && newestId !== ackedMsgIds.get(channelId)) {
+		ackedMsgIds.set(channelId, newestId);
+		unreadChannels.update((s) => { s.delete(channelId); return s; });
+		channelLastAcked[channelId] = newestId;
+		ackRoom(channelId, newestId).catch((err) => console.error("[ack] network error:", err));
+	}
+});
+
 // Fetch initial messages only for text channels
 $effect(() => {
 	if (
@@ -127,28 +201,53 @@ $effect(() => {
 		return;
 	}
 	const channelId = node.activeChannelId;
+	if (fetchingChannels.has(channelId)) return; // fetch already in-flight
 	if (loadedChannels.has(channelId)) {
-		return;
+		// Self-heal: if marked loaded but store is empty and server knows
+		// the channel has messages, the original fetch silently failed — retry.
+		const hasServerMsgs = !!get(lastMsgRooms)[channelId];
+		const hasClientMsgs = (get(channelMessages)[channelId]?.length ?? 0) > 0;
+		if (hasClientMsgs || !hasServerMsgs) return;
 	}
 	loadedChannels.add(channelId);
-	channelInitialLoading = {
-		...channelInitialLoading,
-		[channelId]: true,
-	};
+	fetchingChannels.add(channelId);
+	// Mutate instead of spread-replace — spreading reads the $state object
+	// which makes it a reactive dependency of this $effect, causing spurious
+	// re-runs when *other* channels finish loading and corrupting the
+	// dependency set so the effect misses the activeChannelId change.
+	channelInitialLoading[channelId] = true;
+
 	getMessages(channelId)
 		.then((raw) => {
 			const msgs = raw.map((m) => gatewayMessageToMessage(m, $gatewaySpaces));
 			channelMessages.update((all) => {
 				const existing = all[channelId] ?? [];
-				if (existing.length > 0) {
-					return all;
-				}
-				return { ...all, [channelId]: msgs };
+				if (existing.length === 0) return { ...all, [channelId]: msgs };
+				// Merge: keep pending/real-time messages, add history that isn't already present
+				const existingIds = new Set(existing.map((m) => m.id));
+				const newMsgs = msgs.filter((m) => !existingIds.has(m.id));
+				if (newMsgs.length === 0) return all;
+				return { ...all, [channelId]: [...existing, ...newMsgs] };
 			});
-			channelInitialLoading = {
-				...channelInitialLoading,
-				[channelId]: false,
-			};
+			// Determine unread divider position now that we have REAL messages.
+			// Compare the newest fetched message against every known read-position.
+			if (raw.length > 0) {
+				const readPos = get(lastReadRooms)[channelId]
+					?? ackedMsgIds.get(channelId)
+					?? get(lastMsgRooms)[channelId]
+					?? null;
+				if (readPos) {
+					let newest = "";
+					for (const m of raw) { if (m.id > newest) newest = m.id; }
+					if (newest > readPos) {
+						channelUnreadAfter[channelId] = readPos;
+					}
+				} else if (get(unreadChannels).has(channelId) || channelUnreadAfter[channelId] === "0") {
+					// Never ACK'd but known unread — all messages are new
+					channelUnreadAfter[channelId] = "0";
+				}
+			}
+			channelInitialLoading[channelId] = false;
 			if (raw.length < 100) {
 				console.log(
 					"[loadmore] initial fetch: only",
@@ -156,10 +255,7 @@ $effect(() => {
 					"msgs → marking hasMore=false for",
 					channelId,
 				);
-				channelHasMore = {
-					...channelHasMore,
-					[channelId]: false,
-				};
+				channelHasMore[channelId] = false;
 			} else {
 				console.log(
 					"[loadmore] initial fetch: got",
@@ -171,15 +267,10 @@ $effect(() => {
 		})
 		.catch((err) => {
 			console.error("Failed to fetch history:", err);
-			channelHasMore = {
-				...channelHasMore,
-				[channelId]: false,
-			};
-			channelInitialLoading = {
-				...channelInitialLoading,
-				[channelId]: false,
-			};
-		});
+			loadedChannels.delete(channelId);
+			channelInitialLoading[channelId] = false;
+		})
+		.finally(() => fetchingChannels.delete(channelId));
 });
 
 async function loadMoreMessages() {
@@ -215,7 +306,7 @@ async function loadMoreMessages() {
 	// Loaded but empty channel → no history to fetch
 	if (current.length === 0) {
 		console.log("[loadmore] skipped — empty channel", channelId);
-		channelHasMore = { ...channelHasMore, [channelId]: false };
+		channelHasMore[channelId] = false;
 		return;
 	}
 	console.log(
@@ -251,7 +342,7 @@ async function loadMoreMessages() {
 		);
 		if (raw.length === 0) {
 			console.log("[loadmore] no older msgs → marking hasMore=false");
-			channelHasMore = { ...channelHasMore, [channelId]: false };
+			channelHasMore[channelId] = false;
 		} else {
 			const msgs = raw.map((m) => gatewayMessageToMessage(m, $gatewaySpaces));
 			channelMessages.update((all) => {
@@ -267,14 +358,14 @@ async function loadMoreMessages() {
 			});
 			// Fewer than a full page means we've reached the beginning
 			if (raw.length < 100) {
-				channelHasMore = { ...channelHasMore, [channelId]: false };
+				channelHasMore[channelId] = false;
 			}
 		}
 	} catch (err) {
 		clearTimeout(timeoutId);
 		console.error("Failed to load more:", err);
 		// On any error (including timeout), stop trying so the spinner clears
-		channelHasMore = { ...channelHasMore, [channelId]: false };
+		channelHasMore[channelId] = false;
 	} finally {
 		isLoadingMore = false;
 	}
@@ -314,7 +405,7 @@ async function loadMoreMessagesBelow() {
 		const raw = await getMessagesAfter(channelId, newest, controller.signal);
 		clearTimeout(timeoutId);
 		if (raw.length === 0) {
-			channelHasMoreBelow = { ...channelHasMoreBelow, [channelId]: false };
+			channelHasMoreBelow[channelId] = false;
 		} else {
 			const msgs = raw.map((m) => gatewayMessageToMessage(m, $gatewaySpaces));
 			channelMessages.update((all) => {
@@ -329,13 +420,13 @@ async function loadMoreMessagesBelow() {
 				};
 			});
 			if (raw.length < 100) {
-				channelHasMoreBelow = { ...channelHasMoreBelow, [channelId]: false };
+				channelHasMoreBelow[channelId] = false;
 			}
 		}
 	} catch (err) {
 		clearTimeout(timeoutId);
 		console.error("Failed to load more below:", err);
-		channelHasMoreBelow = { ...channelHasMoreBelow, [channelId]: false };
+		channelHasMoreBelow[channelId] = false;
 	} finally {
 		isLoadingMoreBelow = false;
 	}
@@ -375,14 +466,14 @@ async function jumpToMessage(channelId: string, messageId: string) {
 		// Replace channel messages with context around anchor
 		loadedChannels.add(channelId);
 		channelMessages.update((all) => ({ ...all, [channelId]: combined }));
-		channelHasMore = { ...channelHasMore, [channelId]: rawAbove.length >= 100 };
-		channelHasMoreBelow = { ...channelHasMoreBelow, [channelId]: rawBelow.length >= 100 };
-		channelHighlightedMessage = { ...channelHighlightedMessage, [channelId]: messageId };
-		channelInitialLoading = { ...channelInitialLoading, [channelId]: false };
+		channelHasMore[channelId] = rawAbove.length >= 100;
+		channelHasMoreBelow[channelId] = rawBelow.length >= 100;
+		channelHighlightedMessage[channelId] = messageId;
+		channelInitialLoading[channelId] = false;
 
 		// Clear highlight after 3 seconds
 		setTimeout(() => {
-			channelHighlightedMessage = { ...channelHighlightedMessage, [channelId]: null };
+			channelHighlightedMessage[channelId] = null;
 		}, 3000);
 	} catch (err) {
 		clearTimeout(timeoutId);
@@ -976,6 +1067,7 @@ const childProps = $derived({
                     space={activeTabSpace}
                     channelName={activeChannel.name}
                     members={activeTabMembers}
+                    bind:isAtBottom={paneIsAtBottom}
                     {isInitialLoading}
                     {isLoadingMore}
                     {isLoadingMoreBelow}
@@ -987,6 +1079,9 @@ const childProps = $derived({
                         : false}
                     highlightedMessageId={node.activeChannelId
                         ? (channelHighlightedMessage[node.activeChannelId] ?? null)
+                        : null}
+                    unreadAfterMessageId={node.activeChannelId
+                        ? (channelUnreadAfter[node.activeChannelId] ?? null)
                         : null}
                     onLoadMore={loadMoreMessages}
                     onLoadMoreBelow={loadMoreMessagesBelow}

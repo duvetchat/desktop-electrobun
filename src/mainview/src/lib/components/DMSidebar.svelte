@@ -1,5 +1,5 @@
 <script lang="ts">
-import { conversations, currentUser } from "$lib/stores.svelte";
+import { conversations, currentUser, unreadConversations } from "$lib/stores.svelte";
 import { get } from "svelte/store";
 import { UsersRound } from "@lucide/svelte";
 import UserAvatar from "$lib/components/UserAvatar.svelte";
@@ -20,7 +20,7 @@ function convTitle(conv: Conversation): string {
 	const me = get(currentUser);
 	if (conv.type === 2) return conv.name ?? "Group";
 	const other = conv.members.find((m) => m.user_id !== me?.id);
-	return other?.users?.alias ?? other?.users?.username ?? "DM";
+	return other?.user?.alias ?? other?.user?.username ?? "DM";
 }
 
 function convSubtitle(conv: Conversation): string {
@@ -32,7 +32,7 @@ function convAvatarSrc(conv: Conversation): string | null | undefined {
 	if (conv.type === 2) return null;
 	const me = get(currentUser);
 	const other = conv.members.find((m) => m.user_id !== me?.id);
-	return other?.users?.avatar;
+	return other?.user?.avatar;
 }
 </script>
 
@@ -62,10 +62,13 @@ function convAvatarSrc(conv: Conversation): string | null | undefined {
 				<div class="shrink-0">
 					<UserAvatar src={convAvatarSrc(conv)} name={convTitle(conv)} size={32} />
 				</div>
-				<div class="flex min-w-0 flex-col">
+				<div class="flex min-w-0 flex-1 flex-col">
 					<span class="truncate text-sm font-medium leading-tight">{convTitle(conv)}</span>
 					<span class="truncate text-xs opacity-50">{convSubtitle(conv)}</span>
 				</div>
+				{#if $unreadConversations.has(conv.id)}
+					<span class="ml-1 size-2 shrink-0 rounded-full bg-white"></span>
+				{/if}
 			</button>
 		{/each}
 	</div>

@@ -239,6 +239,10 @@ export interface GatewayEvent {
 export interface GatewayReadyData {
 	user: GatewayUser;
 	sessionToken: string;
+	unread_rooms?: string[];
+	last_read_rooms?: Record<string, string>;
+	last_msg_rooms?: Record<string, string>;
+	unread_convs?: string[];
 }
 
 export function roomTypeToChannelType(type: RoomType): Channel["type"] {

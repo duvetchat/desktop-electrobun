@@ -1,7 +1,7 @@
 <script lang="ts">
 import { onMount } from "svelte";
 import { get } from "svelte/store";
-import { currentUser, dmMessages, friends } from "$lib/stores.svelte";
+import { currentUser, dmMessages, friends, unreadConversations, activeDMConvId } from "$lib/stores.svelte";
 import {
 	getDirectMessages,
 	sendDirectMessage,
@@ -10,6 +10,7 @@ import {
 	deleteDirectMessage,
 	addConversationMember,
 	removeConversationMember,
+	ackConversation,
 	type Conversation,
 	type ConversationMember,
 	type DirectMessage,
@@ -31,6 +32,8 @@ let isLoading = $state(true);
 let isLoadingMore = $state(false);
 let hasMore = $state(true);
 let failedNonces = $state(new Set<string>());
+let isAtBottom = $state(false);
+const ackedConvMsgId = new Map<string, string>();
 let showMemberList = $state(true);
 let showAddMemberModal = $state(false);
 let addMemberLoading = $state(false);
@@ -45,11 +48,11 @@ const convMembers = $derived<MemberOnSidebar[]>(
 	conversation.members.map((m) => ({
 		id: m.user_id,
 		member_id: m.id,
-		username: m.users?.alias ?? m.users?.username ?? m.user_id.slice(0, 8),
-		raw_username: m.users?.username ?? m.user_id.slice(0, 8),
-		avatar_url: m.users?.avatar ?? null,
-		banner_url: m.users?.banner ?? null,
-		status: m.users?.status_id === 1 ? "online" : m.users?.status_id === 2 ? "dnd" : "offline",
+		username: m.user?.alias ?? m.user?.username ?? m.user_id.slice(0, 8),
+		raw_username: m.user?.username ?? m.user_id.slice(0, 8),
+		avatar_url: m.user?.avatar ?? null,
+		banner_url: m.user?.banner ?? null,
+		status: m.user?.status_id === 1 ? "online" : m.user?.status_id === 2 ? "dnd" : "offline",
 		is_bot: false,
 		is_owner: m.user_id === conversation.owner_id,
 		roles: [],
@@ -103,10 +106,10 @@ function toMessage(msg: DirectMessage): Message {
 		content: msg.content,
 		author_id: msg.author_id,
 		author_name:
-			msg.users?.alias ?? msg.users?.username ??
-			member?.users?.alias ?? member?.users?.username ??
+			msg.user?.alias ?? msg.user?.username ??
+			member?.user?.alias ?? member?.user?.username ??
 			msg.author_id.slice(0, 8),
-		author_avatar_url: msg.users?.avatar ?? member?.users?.avatar ?? null,
+		author_avatar_url: msg.user?.avatar ?? member?.user?.avatar ?? null,
 		created_at: msg.created_at,
 		updated_at: msg.updated_at,
 		nonce: msg.nonce,
@@ -120,7 +123,7 @@ const messages = $derived(
 function conversationTitle(): string {
 	if (conversation.type === 2) return conversation.name ?? "Group";
 	const other = conversation.members.find((m) => m.user_id !== me?.id);
-	return other?.users?.alias ?? other?.users?.username ?? "DM";
+	return other?.user?.alias ?? other?.user?.username ?? "DM";
 }
 
 async function loadMessages(before?: Date) {
@@ -201,9 +204,31 @@ async function handleRemoveMember(userId: string) {
 	await removeConversationMember(conversation.id, userId);
 }
 
-onMount(async () => {
-	await loadMessages();
-	isLoading = false;
+// ACK new messages when viewing the bottom of the conversation.
+$effect(() => {
+	const msgs = $dmMessages[conversation.id] ?? [];
+	if (!isAtBottom || isLoading || msgs.length === 0) return;
+	let newestId = "";
+	for (const m of msgs) {
+		if (m.id === m.nonce) continue;
+		if (m.id > newestId) newestId = m.id;
+	}
+	if (newestId && newestId !== ackedConvMsgId.get(conversation.id)) {
+		ackedConvMsgId.set(conversation.id, newestId);
+		unreadConversations.update((s) => { s.delete(conversation.id); return s; });
+		ackConversation(conversation.id, newestId).catch(() => {});
+	}
+});
+
+onMount(() => {
+	activeDMConvId.set(conversation.id);
+	unreadConversations.update((s) => { s.delete(conversation.id); return s; });
+	loadMessages().then(() => {
+		isLoading = false;
+	});
+	return () => {
+		activeDMConvId.update((cur) => (cur === conversation.id ? null : cur));
+	};
 });
 </script>
 
@@ -251,6 +276,7 @@ onMount(async () => {
 			hasMoreMessages={hasMore}
 			onLoadMore={handleLoadMore}
 			bind:failedNonces
+			bind:isAtBottom
 			onSend={dmHandleSend}
 			onSaveEdit={dmSaveEdit}
 			onDeleteMsg={dmDelete}

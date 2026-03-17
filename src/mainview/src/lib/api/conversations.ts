@@ -12,7 +12,7 @@ export interface ConversationMember {
 	created_at: string;
 	updated_at: string;
 	deleted_at: string | null;
-	users: {
+	user: {
 		id: string;
 		username: string;
 		alias: string | null;
@@ -43,7 +43,7 @@ export interface DirectMessage {
 	updated_at: string;
 	deleted_at: string | null;
 	nonce?: string;
-	users?: {
+	user?: {
 		id: string;
 		username: string;
 		alias: string | null;
@@ -189,4 +189,13 @@ export async function deleteDirectMessage(
 		},
 	);
 	return handleResponse<void>(res);
+}
+
+export async function ackConversation(conversationId: string, messageId: string): Promise<void> {
+	if (!userSession.token) return;
+	await fetch(`${HOST}/api/users/@me/conversations/${conversationId}/ack`, {
+		method: "POST",
+		headers: { ...authHeaders(), "Content-Type": "application/json" },
+		body: JSON.stringify({ message_id: messageId }),
+	});
 }

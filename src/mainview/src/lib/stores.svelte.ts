@@ -79,6 +79,14 @@ export interface TypingUser {
 // key = roomId or conversationId
 export const typingUsers = writable<Record<string, TypingUser[]>>({});
 
+export const unreadChannels = writable<Set<string>>(new Set());
+export const activeTextRoomId = writable<string | null>(null);
+export const lastReadRooms = writable<Record<string, string>>({});
+export const lastMsgRooms = writable<Record<string, string>>({});
+
+export const unreadConversations = writable<Set<string>>(new Set());
+export const activeDMConvId = writable<string | null>(null);
+
 export const jumpToMessageRequest = writable<{
 	id: string; // unique request id to prevent duplicate handling
 	spaceId: string;

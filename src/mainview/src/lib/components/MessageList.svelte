@@ -27,6 +27,7 @@
         hasMoreMessages = true,
         hasMoreMessagesBelow = false,
         highlightedMessageId = null,
+        unreadAfterMessageId = null,
         onLoadMore = () => {},
         onLoadMoreBelow = () => {},
         onRetry = () => {},
@@ -37,6 +38,7 @@
         failedNonces = new Set<string>(),
         editingMessageId = $bindable<string | null>(null),
         editContent = $bindable(""),
+        isAtBottom = $bindable(true),
     }: {
         messages: Message[];
         members?: MemberOnSidebar[];
@@ -49,6 +51,7 @@
         hasMoreMessages?: boolean;
         hasMoreMessagesBelow?: boolean;
         highlightedMessageId?: string | null;
+        unreadAfterMessageId?: string | null;
         onLoadMore?: () => Promise<void> | void;
         onLoadMoreBelow?: () => Promise<void> | void;
         onRetry?: (message: Message) => void;
@@ -59,6 +62,7 @@
         failedNonces?: Set<string>;
         editingMessageId?: string | null;
         editContent?: string;
+        isAtBottom?: boolean;
     } = $props();
 
     // ── State ──────────────────────────────────────────────────────────────────
@@ -79,10 +83,20 @@
     });
 
     // ── Load-more on scroll ───────────────────────────────────────────────────
-    // Uses getBoundingClientRect() — works with flex-col-reverse + negative
-    // scrollTop (WebView2 confirmed). Completely direction-agnostic.
+    // Blocked until the scroll-position sync effect runs after initial render.
+    // Without this, the skeleton→messages DOM swap fires a synchronous scroll
+    // event that sets isAtBottom=true before scroll-to-unread can run.
+    let scrollUnlocked = false;
+
     function handleScroll() {
         if (!scrollEl) return;
+
+        // In flex-col-reverse, scrollTop=0 means the user is at the visual bottom (newest messages).
+        if (scrollUnlocked) {
+            const val = scrollEl.scrollTop >= -50;
+            if (val !== isAtBottom) console.log("[scroll] isAtBottom:", val, "scrollTop:", scrollEl.scrollTop);
+            isAtBottom = val;
+        }
 
         const scrollRect = scrollEl.getBoundingClientRect();
 
@@ -165,6 +179,87 @@
     );
 
     const authorColors = $derived(buildAuthorColorMap(members));
+
+    // ── Unread divider ─────────────────────────────────────────────────────────
+    // UUID v7 is lexicographically sortable, so string comparison gives chronological order.
+    // unreadDividerIdx = first index in sortedMessages where the message id <= unreadAfterMessageId
+    // (i.e. that message is read). All messages before that index are unread.
+    const unreadDividerIdx = $derived.by(() => {
+        if (!unreadAfterMessageId) return null;
+        for (let i = 0; i < sortedMessages.length; i++) {
+            if (sortedMessages[i].id <= unreadAfterMessageId) {
+                console.log("[divider]", { unreadAfterMessageId, idx: i, count: i, msgId: sortedMessages[i].id, total: sortedMessages.length });
+                return i;
+            }
+        }
+        console.log("[divider] all unread", { unreadAfterMessageId, total: sortedMessages.length });
+        return sortedMessages.length; // all loaded messages are unread
+    });
+    const unreadCount = $derived(unreadDividerIdx ?? 0);
+
+    // Track which unread-after IDs we've already scrolled to (survives channel switches)
+    const scrolledUnreadIds = new Set<string>();
+
+    // Scroll to the unread divider on first render of unread messages.
+    // Reading isInitialLoading ensures re-run when skeleton → messages.
+    $effect(() => {
+        const id = unreadAfterMessageId;
+        const idx = unreadDividerIdx;
+        const loading = isInitialLoading;
+        const chId = channelId;
+        if (loading || !id || !idx || scrolledUnreadIds.has(id)) return;
+        void tick().then(() => {
+            requestAnimationFrame(() => {
+                requestAnimationFrame(() => {
+                    if (channelId !== chId) return; // stale rAF
+                    const target =
+                        scrollEl?.querySelector(`[data-message-id="${id}"]`) ??
+                        scrollEl?.querySelector('[data-unread-divider]');
+                    if (target) {
+                        target.scrollIntoView({ behavior: 'instant', block: 'start' });
+                        scrolledUnreadIds.add(id);
+                    }
+                });
+            });
+        });
+    });
+
+    // Sync isAtBottom with the real scroll position once per channel, AFTER
+    // the scroll-to-unread effect above has had a chance to run (same
+    // tick→rAF→rAF timing, but defined later so its rAF executes second).
+    // This is the ONLY mechanism that sets isAtBottom=true from false (the
+    // initial value), which unblocks the ACK effect in PaneView.
+    let syncedForChannel = "";
+    $effect(() => {
+        const chId = channelId;
+        const len = sortedMessages.length;
+        const loading = isInitialLoading;
+        // On ANY channel change (even mid-loading), immediately lock scroll
+        // updates and reset isAtBottom. This prevents handleScroll from
+        // setting isAtBottom=true with a stale scrollTop during skeleton.
+        if (chId !== syncedForChannel) {
+            scrollUnlocked = false;
+            isAtBottom = false;
+        }
+        if (loading || len === 0 || chId === syncedForChannel) return;
+        syncedForChannel = chId;
+        // Wait 3 rAFs: scroll-to-unread uses tick→rAF→rAF (2 frames),
+        // so we need one more to read the position AFTER the scroll settled.
+        void tick().then(() => {
+            requestAnimationFrame(() => {
+                requestAnimationFrame(() => {
+                    requestAnimationFrame(() => {
+                        if (channelId !== chId) return;
+                        if (scrollEl) {
+                            isAtBottom = scrollEl.scrollTop >= -50;
+                            console.log("[sync] isAtBottom:", isAtBottom, "scrollTop:", scrollEl.scrollTop);
+                        }
+                        scrollUnlocked = true;
+                    });
+                });
+            });
+        });
+    });
 
     // ── Formatting ─────────────────────────────────────────────────────────────
     function isSameCalendarDay(a: string, b: string): boolean {
@@ -967,6 +1062,16 @@
                         {formatDateSeparator(message.created_at)}
                     </span>
                     <div class="flex-1 h-px bg-zinc-700"></div>
+                </div>
+            {/if}
+
+            {#if unreadDividerIdx !== null && unreadCount > 0 && i === unreadDividerIdx - 1}
+                <div data-unread-divider class="flex items-center gap-3 px-2 my-2 select-none">
+                    <div class="flex-1 h-px bg-red-500/50"></div>
+                    <span class="text-xs text-red-400 font-semibold whitespace-nowrap shrink-0">
+                        {unreadCount === 1 ? '1 mensaje nuevo' : `${unreadCount} mensajes nuevos`}
+                    </span>
+                    <div class="flex-1 h-px bg-red-500/50"></div>
                 </div>
             {/if}
         {/each}

@@ -11,7 +11,7 @@ import type { Guild } from "$lib/types";
 import { createSpace } from "$lib/api/spaces";
 import { leaveSpace } from "$lib/api/spaces";
 import JoinInviteModal from "$lib/components/JoinInviteModal.svelte";
-import { pendingFriendRequests } from "$lib/stores.svelte";
+import { pendingFriendRequests, unreadChannels, unreadConversations, gatewaySpaces } from "$lib/stores.svelte";
 
 let {
 	guilds,
@@ -193,6 +193,15 @@ async function handleCreate() {
 	}
 }
 
+const friendsBadgeCount = $derived($pendingFriendRequests.length + $unreadConversations.size);
+const spacesWithUnread = $derived(
+	new Set(
+		$gatewaySpaces
+			.filter((s) => s.rooms.some((r) => $unreadChannels.has(r.id)))
+			.map((s) => s.id),
+	),
+);
+
 let leavingGuildId = $state<string | null>(null);
 let leaveError = $state("");
 
@@ -219,9 +228,9 @@ async function handleLeave(guildId: string) {
 			class="relative flex size-9 items-center justify-center rounded-lg transition-all duration-150 {isFriendsActive ? 'bg-indigo-600 text-white' : 'bg-stone-900/65 text-stone-200 hover:bg-stone-800/80 hover:text-stone-100'}"
 		>
 			<UsersIcon class="size-4" />
-			{#if $pendingFriendRequests.length > 0}
+			{#if friendsBadgeCount > 0}
 				<span class="absolute -right-0.5 -top-0.5 flex size-4 items-center justify-center rounded-full bg-red-500 text-[9px] font-bold text-white">
-					{$pendingFriendRequests.length > 9 ? "9+" : $pendingFriendRequests.length}
+					{friendsBadgeCount > 9 ? "9+" : friendsBadgeCount}
 				</span>
 			{/if}
 		</button>
@@ -267,6 +276,9 @@ async function handleLeave(guildId: string) {
 									{:else}
 										<div class="flex size-10 items-center justify-center rounded-lg text-sm font-bold {guild.id === activeGuildId ? 'bg-stone-700 text-stone-100 ring-1 ring-stone-500/50' : 'bg-stone-900/65 text-stone-200 group-hover/btn:bg-stone-800/80 group-hover/btn:text-stone-100'} transition-all duration-150">{initials(guild.name)}</div>
 									{/if}
+									{#if spacesWithUnread.has(guild.id) && guild.id !== activeGuildId}
+										<span class="absolute -bottom-0.5 -right-0.5 size-2.5 rounded-full bg-white border-2 border-stone-900"></span>
+									{/if}
 								</button>
 							</ContextMenu.Trigger>
 							<ContextMenu.Portal>
@@ -310,6 +322,9 @@ async function handleLeave(guildId: string) {
 									<img src={guild.icon_url} alt={guild.name} class="size-10 rounded-lg object-cover transition-transform duration-150 group-hover/btn:scale-105" />
 								{:else}
 									<div class="flex size-10 items-center justify-center rounded-lg text-sm font-bold {guild.id === activeGuildId ? 'bg-stone-700 text-stone-100 ring-1 ring-stone-500/50' : 'bg-stone-900/65 text-stone-200 group-hover/btn:bg-stone-800/80 group-hover/btn:text-stone-100'} transition-all duration-150">{initials(guild.name)}</div>
+								{/if}
+								{#if spacesWithUnread.has(guild.id) && guild.id !== activeGuildId}
+									<span class="absolute -bottom-0.5 -right-0.5 size-2.5 rounded-full bg-white border-2 border-stone-900"></span>
 								{/if}
 							</button>
 						</ContextMenu.Trigger>

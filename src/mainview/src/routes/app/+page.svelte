@@ -205,6 +205,7 @@ function handleGuildSelect(id: string) {
 	activeSpaceId = id;
 	sidebarSpaceId = id;
 	showFriendsView = false;
+	activeDMId = null;
 }
 
 function handleFriendsSelect() {
@@ -374,6 +375,7 @@ $effect(() => {
         onToggleMembers={() => (showMembersSidebar = !showMembersSidebar)}
         {focusedPaneId}
         onFocus={handleFocusChange}
+        isActive={!showFriendsView}
       />
     </div>
   </div>
