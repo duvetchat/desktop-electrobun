@@ -8,12 +8,9 @@
 
     import type { MemberOnSidebar, GatewaySpace, Message } from "$lib/types";
 
-    import InstagramEmbed from "$lib/components/InstagramEmbed.svelte";
-    import YoutubeEmbed from "$lib/components/YoutubeEmbed.svelte";
-    import TwitterEmbed from "$lib/components/TwitterEmbed.svelte";
-    import UrlEmbed from "$lib/components/UrlEmbed.svelte";
     import InviteEmbed from "$lib/components/InviteEmbed.svelte";
     import MessageLinkEmbed from "$lib/components/MessageLinkEmbed.svelte";
+    import EmbedCard from "$lib/components/EmbedCard.svelte";
     import UserAvatar from "$lib/components/UserAvatar.svelte";
     import ChatInput from "$lib/components/ChatInput.svelte";
     import MemberProfilePopover from "$lib/components/MemberProfilePopover.svelte";
@@ -288,16 +285,11 @@
     function processMessageContent(content: string) {
         const urls = content.match(urlRegex) || [];
         const images: string[] = [];
-        const otherLinks: string[] = [];
-        const youtubeVideos: string[] = [];
-        const twitterLinks: string[] = [];
-        const instagramLinks: string[] = [];
         const inviteCodes: string[] = [];
         const messageLinks: { spaceId: string; roomId: string; messageId: string }[] = [];
 
         urls.forEach((url) => {
             try {
-                // Handle internal duvet:// message links
                 const msgLinkMatch = messageLinkRegex.exec(url);
                 if (msgLinkMatch) {
                     const [, lSpaceId, lRoomId, lMessageId] = msgLinkMatch;
@@ -313,57 +305,16 @@
                         return;
                     }
                 }
-                let youtubeId = null;
-                if (
-                    parsed.hostname.includes("youtube.com") &&
-                    parsed.pathname === "/watch"
-                ) {
-                    youtubeId = parsed.searchParams.get("v");
-                } else if (parsed.hostname === "youtu.be") {
-                    youtubeId = parsed.pathname.slice(1);
-                }
 
-                if (youtubeId) {
-                    youtubeVideos.push(youtubeId);
-                } else if (
-                    /^(www\.)?(twitter\.com|x\.com|fixupx\.com|fxtwitter\.com|vxtwitter\.com)$/i.exec(
-                        parsed.hostname,
-                    ) &&
-                    parsed.pathname.includes("/status/")
-                ) {
-                    twitterLinks.push(url);
-                } else if (
-                    /^(www\.)?(instagram|kkinstagram|vxinstagram)\.com$/i.exec(
-                        parsed.hostname,
-                    ) &&
-                    (parsed.pathname.includes("/p/") ||
-                        parsed.pathname.includes("/reel/"))
-                ) {
-                    instagramLinks.push(url);
-                } else if (
-                    /\.(jpeg|jpg|gif|png|webp)$/i.exec(parsed.pathname) ||
-                    parsed.hostname.includes("tenor.com") ||
-                    parsed.hostname.includes("giphy.com")
-                ) {
+                if (/\.(jpeg|jpg|gif|png|webp)$/i.exec(parsed.pathname)) {
                     images.push(url);
-                } else {
-                    otherLinks.push(url);
                 }
             } catch {
                 // Invalid URL, ignore
             }
         });
 
-        return {
-            text: content,
-            images,
-            otherLinks,
-            youtubeVideos,
-            twitterLinks,
-            instagramLinks,
-            inviteCodes,
-            messageLinks,
-        };
+        return { text: content, images, inviteCodes, messageLinks };
     }
 
     function parseTextSegments(text: string) {
@@ -542,9 +493,7 @@
             {@const emojiOnly =
                 isOnlyEmojis(message.content) &&
                 countEmojis(message.content) <= 5 &&
-                processMessageContent(message.content).images.length === 0 &&
-                processMessageContent(message.content).youtubeVideos.length ===
-                    0}
+                processMessageContent(message.content).images.length === 0}
 
             {@const isHighlighted = highlightedMessageId === message.id}
             {@const msgMember = members.find((m) => m.id === message.author_id)}
@@ -777,27 +726,6 @@
                                 {/each}
                             </div>
                         {/if}
-                        {#if processed.youtubeVideos.length > 0}
-                            <div class="flex flex-col gap-2">
-                                {#each processed.youtubeVideos.slice(0, 2) as videoId}
-                                    <YoutubeEmbed {videoId} />
-                                {/each}
-                            </div>
-                        {/if}
-                        {#if processed.twitterLinks.length > 0}
-                            <div class="flex flex-col gap-2 mt-2">
-                                {#each processed.twitterLinks.slice(0, 2) as link}
-                                    <TwitterEmbed url={link} />
-                                {/each}
-                            </div>
-                        {/if}
-                        {#if processed.instagramLinks.length > 0}
-                            <div class="flex flex-col gap-2 mt-2">
-                                {#each processed.instagramLinks as link}
-                                    <InstagramEmbed url={link} />
-                                {/each}
-                            </div>
-                        {/if}
                         {#if processed.inviteCodes.length > 0}
                             <div class="flex flex-col gap-2">
                                 {#each processed.inviteCodes as code}
@@ -816,10 +744,10 @@
                                 {/each}
                             </div>
                         {/if}
-                        {#if processed.otherLinks.length > 0}
-                            <div class="flex flex-col gap-2 mt-2">
-                                {#each processed.otherLinks.slice(0, 3) as link}
-                                    <UrlEmbed url={link} />
+                        {#if message.embeds && message.embeds.length > 0}
+                            <div class="flex flex-col gap-1">
+                                {#each message.embeds as embed}
+                                    <EmbedCard {embed} />
                                 {/each}
                             </div>
                         {/if}

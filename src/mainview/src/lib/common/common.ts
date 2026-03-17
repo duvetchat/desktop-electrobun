@@ -1,5 +1,5 @@
-const isDevServer = import.meta.env.DEV;
-const isLocalEnv = import.meta.env.LOCAL_ENV;
+const isDevServer = true;
+const isLocalEnv = true;
 
 const routes: Record<string, string> = {
 	'/index.html': '/',

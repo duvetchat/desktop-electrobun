@@ -1,3 +1,41 @@
+export interface EmbedMedia {
+	url: string;
+	width?: number | null;
+	height?: number | null;
+}
+
+export interface EmbedFooter {
+	text: string;
+	icon_url?: string | null;
+}
+
+export interface EmbedAuthor {
+	name: string;
+	url?: string | null;
+	icon_url?: string | null;
+}
+
+export interface EmbedField {
+	name: string;
+	value: string;
+	inline: boolean;
+}
+
+export interface Embed {
+	type?: string | null;
+	title?: string | null;
+	description?: string | null;
+	url?: string | null;
+	timestamp?: string | null;
+	color?: number | null;
+	footer?: EmbedFooter | null;
+	image?: EmbedMedia | null;
+	thumbnail?: EmbedMedia | null;
+	video?: EmbedMedia | null;
+	author?: EmbedAuthor | null;
+	fields?: EmbedField[];
+}
+
 export const MessageReferenceType = {
 	Reply: 0,
 } as const;
@@ -36,6 +74,7 @@ export interface GatewayMessage {
 	users?: GatewayUser;
 	member_alias?: string | null;
 	referenced_message?: ReferencedMessage | null;
+	embeds?: Embed[] | null;
 }
 
 export interface Message {
@@ -48,6 +87,7 @@ export interface Message {
 	updated_at: string;
 	nonce?: string;
 	referenced_message?: ReferencedMessage | null;
+	embeds?: Embed[] | null;
 }
 
 export interface GatewayMessageDelete {
@@ -244,6 +284,7 @@ export function gatewayMessageToMessage(
 		updated_at: msg.updated_at,
 		nonce: msg.nonce,
 		referenced_message: msg.referenced_message ?? null,
+		embeds: msg.embeds ?? null,
 	};
 }
 
