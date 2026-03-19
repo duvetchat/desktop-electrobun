@@ -21,7 +21,7 @@ export function getHostURL(): string {
 	let protocol: string = 'https://';
 	switch (__DOMAIN_TARGET_ENV__) {
 		case 'n128':
-			base = 'api.duvet.n128.xyz';
+			base = 'duvet-api.n128.xyz';
 			break;
 
 		case 'local':
@@ -42,7 +42,7 @@ export function getWSHostURL(): string {
 	let protocol: string = 'wss://';
 	switch (__DOMAIN_TARGET_ENV__) {
 		case 'n128':
-			base = 'gateway.duvet.n128.xyz';
+			base = 'duvet-gateway.n128.xyz';
 			break;
 
 		case 'local':
