@@ -19,7 +19,7 @@ export function route(path: string): string {
 export function getHostURL(): string {
 	let base: string;
 	let protocol: string = 'https://';
-	switch (__DOMAIN_TARGET_ENV__) {
+	switch (VITE_DOMAIN_TARGET_ENV) {
 		case 'n128':
 			base = 'duvet-api.n128.xyz';
 			break;
@@ -40,7 +40,7 @@ export function getHostURL(): string {
 export function getWSHostURL(): string {
 	let base: string;
 	let protocol: string = 'wss://';
-	switch (__DOMAIN_TARGET_ENV__) {
+	switch (VITE_DOMAIN_TARGET_ENV) {
 		case 'n128':
 			base = 'duvet-gateway.n128.xyz';
 			break;

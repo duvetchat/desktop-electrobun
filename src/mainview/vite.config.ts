@@ -7,8 +7,8 @@ export default defineConfig(({ command, mode }) => {
 	return {
 		plugins: [tailwindcss(), sveltekit()],
 		define: {
-			__APP_ENV__: JSON.stringify(mode),
-			__DOMAIN_TARGET_ENV__: JSON.stringify(env.DOMAIN_TARGET_ENV || 'andremor'),
+			VITE_APP_ENV: JSON.stringify(mode),
+			VITE_DOMAIN_TARGET_ENV: JSON.stringify(env.VITE_DOMAIN_TARGET_ENV || 'andremor'),
 		},
 		build: {
 			rollupOptions: {
