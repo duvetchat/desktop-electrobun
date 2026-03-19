@@ -1,5 +1,4 @@
 const isDevServer = import.meta.env.DEV;
-const isLocalEnv = import.meta.env.LOCAL_ENV;
 
 const routes: Record<string, string> = {
 	'/index.html': '/',
@@ -18,22 +17,42 @@ export function route(path: string): string {
 }
 
 export function getHostURL(): string {
-	let base = 'duvet-api.andremor.eu.org';
-	let protocol = 'https://';
-	if (isLocalEnv) {
-		base = import.meta.env.HOST_URL || 'localhost:8080';
-		protocol = import.meta.env.HOST_PROTOCOL || 'http://';
+	let base: string;
+	let protocol: string = 'https://';
+	switch (__DOMAIN_TARGET_ENV__) {
+		case 'n128':
+			base = 'api.duvet.n128.xyz';
+			break;
+
+		case 'local':
+			base = 'localhost:8080';
+			protocol = 'http://';
+			break;
+
+		case 'andremor':
+		default:
+			base = 'duvet-api.andremor.eu.org';
 	}
 
 	return protocol + base;
 }
 
 export function getWSHostURL(): string {
-	let base = 'duvet-ws.andremor.eu.org';
-	let protocol = 'wss://'
-	if (isLocalEnv) {
-		base = import.meta.env.HOST_WS_URL || 'localhost:8081';
-		protocol = import.meta.env.HOST_WS_PROTOCOL || 'ws://';
+	let base: string;
+	let protocol: string = 'wss://';
+	switch (__DOMAIN_TARGET_ENV__) {
+		case 'n128':
+			base = 'gateway.duvet.n128.xyz';
+			break;
+
+		case 'local':
+			base = 'localhost:8081';
+			protocol = 'ws://';
+			break;
+
+		case 'andremor':
+		default:
+			base = 'duvet-ws.andremor.eu.org';
 	}
 
 	return protocol + base;
