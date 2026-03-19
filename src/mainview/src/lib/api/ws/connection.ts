@@ -987,6 +987,26 @@ export function createWebSocketConnection(): GatewayConnection {
 
 		socket.onerror = (err) => {
 			console.error("[WS] Error:", err);
+			const sessionToken = localStorage.getItem("duvet_session_token");
+			if (!sessionToken) {
+				console.warn("[WS] No session token, will not attempt to reconnect");
+				destroyed = true;
+				socket.close();
+			}
+
+			switch (socket.readyState) {
+				case WebSocket.CONNECTING:
+					console.warn("[WS] Connection failed during handshake");
+					break;
+				case WebSocket.OPEN:
+					console.warn("[WS] Connection error after established");
+					break;
+				case WebSocket.CLOSING:
+				case WebSocket.CLOSED:
+					console.warn("[WS] Connection closed due to error");
+					localStorage.removeItem("duvet_session_token");
+					break;
+			}
 		};
 
 		socket.onclose = () => {
