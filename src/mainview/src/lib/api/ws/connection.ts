@@ -21,7 +21,7 @@ import type { FriendRequest, Friend } from "$lib/api/friends";
 import { getFriends, getPendingRequests, getSentRequests } from "$lib/api/friends";
 import type { Conversation, DirectMessage } from "$lib/api/conversations";
 import { getConversations } from "$lib/api/conversations";
-import { getWSHostURL } from "$lib/common/common";
+import { getWSHostURL, route } from "$lib/common/common";
 import { get } from "svelte/store";
 import { getSpaceMembers, type SpaceMemberWithUser } from "$lib/api/spaces";
 
@@ -926,12 +926,15 @@ export interface GatewayConnection {
 }
 
 const HEARTBEAT_INTERVAL_MS = 45_000;
+const MAX_RECONNECT_ATTEMPTS = 3;
+const MAX_RECONNECT_DELAY_MS = 2500;
 
 export function createWebSocketConnection(): GatewayConnection {
 	let destroyed = false;
 	let currentSocket: WebSocket | null = null;
 	let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 	let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+	let reconnectAttemps = 0;
 
 	function startHeartbeat(socket: WebSocket) {
 		heartbeatTimer = setInterval(() => {
@@ -953,7 +956,23 @@ export function createWebSocketConnection(): GatewayConnection {
 			return;
 		}
 
-		const socket = new WebSocket(getStreamURL());
+		let socket: WebSocket;
+		try {
+			socket =  new WebSocket(getStreamURL());
+		} catch (error) {
+			console.error("[WS] Failed to create WebSocket:", error);
+
+			const sessionToken = localStorage.getItem("duvet_session_token");
+			if (!sessionToken) {
+				console.warn("[WS] No session token, will not attempt to reconnect");
+			} else {
+				localStorage.removeItem("duvet_session_token");
+			}
+
+			window.location.replace(route("/sign-in.html"));
+			return;
+		}
+
 		currentSocket = socket;
 		activeSocket = socket;
 
@@ -992,6 +1011,8 @@ export function createWebSocketConnection(): GatewayConnection {
 				console.warn("[WS] No session token, will not attempt to reconnect");
 				destroyed = true;
 				socket.close();
+				window.location.replace(route("/sign-in.html"));
+				return;
 			}
 
 			switch (socket.readyState) {
@@ -1004,8 +1025,15 @@ export function createWebSocketConnection(): GatewayConnection {
 				case WebSocket.CLOSING:
 				case WebSocket.CLOSED:
 					console.warn("[WS] Connection closed due to error");
-					localStorage.removeItem("duvet_session_token");
 					break;
+			}
+
+			if (reconnectAttemps >= MAX_RECONNECT_ATTEMPTS) {
+				console.error("[WS] Maximum reconnect attempts reached. Please refresh the page.");
+				destroyed = true;
+				socket.close();
+				localStorage.removeItem("duvet_session_token");
+				window.location.replace(route("/sign-in.html"));
 			}
 		};
 
@@ -1015,7 +1043,8 @@ export function createWebSocketConnection(): GatewayConnection {
 			currentSocket = null;
 			activeSocket = null;
 			if (!destroyed) {
-				reconnectTimer = setTimeout(connect, 3000);
+				reconnectAttemps++;
+				reconnectTimer = setTimeout(connect, MAX_RECONNECT_DELAY_MS);
 			}
 		};
 	}
@@ -1033,6 +1062,7 @@ export function createWebSocketConnection(): GatewayConnection {
 			currentSocket?.close();
 			currentSocket = null;
 			activeSocket = null;
+			localStorage.removeItem("duvet_session_token");
 		},
 	};
 }
