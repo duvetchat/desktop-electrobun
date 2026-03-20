@@ -6,6 +6,7 @@ import {
 	pendingFriendRequests,
 	sentFriendRequests,
 	friends,
+	friendsReady,
 	conversations,
 	dmMessages,
 	typingUsers,
@@ -157,14 +158,19 @@ function handleEvent(event: GatewayEvent) {
 					sentFriendRequests.set(sent);
 					friends.set(friendList);
 					conversations.set(convList);
+					friendsReady.set(true);
 				})
-				.catch((err) => console.error("[WS] Failed to load friends/conversations on READY:", err));
+				.catch((err) => {
+					console.error("[WS] Failed to load friends/conversations on READY:", err);
+					friendsReady.set(true); // show the app even on error
+				});
 			// Reset spaces so SPACE_CREATE events that follow repopulate them
 			// with fresh data (including current voice_states). Without this,
 			// if the server rejects a resume and starts a new session, the
 			// exists-guard in SPACE_CREATE would skip updates and voice states
 			// from before the reconnect would never be shown.
 			gatewaySpaces.set([]);
+			friendsReady.set(false);
 			break;
 		}
 		case "SPACE_CREATE": {

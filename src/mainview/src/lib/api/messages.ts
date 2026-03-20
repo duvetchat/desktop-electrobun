@@ -96,6 +96,32 @@ export async function getMessageById(
 	return response.json() as Promise<GatewayMessage>;
 }
 
+export async function getMessageThread(
+	roomId: string,
+	messageId: string,
+	signal?: AbortSignal,
+): Promise<GatewayMessage[]> {
+	if (!userSession.token) {
+		throw new Error("No user session token found");
+	}
+
+	const response = await fetch(
+		`${HOST}/api/rooms/${roomId}/messages/${messageId}/thread`,
+		{
+			headers: {
+				Authorization: userSession.token,
+			},
+			signal,
+		},
+	);
+
+	if (!response.ok) {
+		throw new Error(`Failed to fetch thread: ${await response.text()}`);
+	}
+
+	return response.json() as Promise<GatewayMessage[]>;
+}
+
 export async function sendMessage(
 	roomId: string,
 	content: string,

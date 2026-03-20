@@ -75,6 +75,7 @@ export interface GatewayMessage {
 	user?: GatewayUser;
 	member_alias?: string | null;
 	referenced_message?: ReferencedMessage | null;
+	ref_message_id?: string | null;
 	embeds?: Embed[] | null;
 }
 
@@ -88,6 +89,7 @@ export interface Message {
 	updated_at: string;
 	nonce?: string;
 	referenced_message?: ReferencedMessage | null;
+	ref_message_id?: string | null;
 	embeds?: Embed[] | null;
 }
 
@@ -289,6 +291,7 @@ export function gatewayMessageToMessage(
 		updated_at: msg.updated_at,
 		nonce: msg.nonce,
 		referenced_message: msg.referenced_message ?? null,
+		ref_message_id: msg.ref_message_id ?? null,
 		embeds: msg.embeds ?? null,
 	};
 }

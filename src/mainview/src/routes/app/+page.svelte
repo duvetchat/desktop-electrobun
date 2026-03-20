@@ -1,18 +1,23 @@
 <script lang="ts">
-import { onMount, onDestroy } from "svelte";
-import GuildSideBar from "$lib/components/GuildSidebar.svelte";
+import { onDestroy, onMount } from "svelte";
+import { createWebSocketConnection } from "$lib/api/ws/connection";
 import ChannelsSidebar from "$lib/components/ChannelsSidebar.svelte";
 import DMSidebar from "$lib/components/DMSidebar.svelte";
-import PaneView from "$lib/components/PaneView.svelte";
-import GuildMemberSidebar from "$lib/components/GuildMemberSidebar.svelte";
 import FriendsView from "$lib/components/FriendsView.svelte";
+import GuildMemberSidebar from "$lib/components/GuildMemberSidebar.svelte";
+import GuildSideBar from "$lib/components/GuildSidebar.svelte";
+import PaneView from "$lib/components/PaneView.svelte";
 import VoiceChat from "$lib/components/VoiceChat.svelte";
-import { createWebSocketConnection } from "$lib/api/ws/connection";
 import { makeLeaf, makeSplit, removeLeaf, updateLeaf } from "$lib/pane";
-import { gatewaySpaceToGuild, gatewaySpaceToMembers } from "$lib/types";
-import type { PaneNode, Tab } from "$lib/types";
-import { gatewaySpaces, activeVoiceRoomId } from "$lib/stores.svelte";
 import { canViewRoom } from "$lib/permissions";
+import {
+	activeVoiceRoomId,
+	currentUser,
+	friendsReady,
+	gatewaySpaces,
+} from "$lib/stores.svelte";
+import type { PaneNode, Tab } from "$lib/types";
+import { gatewaySpaceToGuild, gatewaySpaceToMembers } from "$lib/types";
 
 const layoutPrefsKey = "duvet.layout.panels.v1";
 
@@ -42,20 +47,22 @@ onMount(() => {
 	});
 });
 
-const guilds = $derived($gatewaySpaces.map((space) => {
-	const visibleRooms = space.rooms.filter((room) => canViewRoom(space, room));
-	const visibleIds = new Set(visibleRooms.map((r) => r.id));
-	const filteredRooms = visibleRooms.filter(
-		(r) =>
-			r.type !== 3 ||
-			!space.rooms.some((c) => c.parent_id === r.id) ||
-			space.rooms.some((c) => c.parent_id === r.id && visibleIds.has(c.id)),
-	);
-	return gatewaySpaceToGuild({ ...space, rooms: filteredRooms });
-}));
+const guilds = $derived(
+	$gatewaySpaces.map((space) => {
+		const visibleRooms = space.rooms.filter((room) => canViewRoom(space, room));
+		const visibleIds = new Set(visibleRooms.map((r) => r.id));
+		const filteredRooms = visibleRooms.filter(
+			(r) =>
+				r.type !== 3 ||
+				!space.rooms.some((c) => c.parent_id === r.id) ||
+				space.rooms.some((c) => c.parent_id === r.id && visibleIds.has(c.id)),
+		);
+		return gatewaySpaceToGuild({ ...space, rooms: filteredRooms });
+	}),
+);
 
 let activeSpaceId = $state<string | null>(null);
-let showFriendsView = $state(false);
+let showFriendsView = $state(true);
 let activeDMId = $state<string | null>(null);
 let showGroupModal = $state(false);
 let showMembersSidebar = $state(true);
@@ -260,7 +267,7 @@ function moveTabBetweenLeaves(
 		const tabs = leaf.tabs.filter((t) => t.channelId !== tab.channelId);
 		const activeChannelId =
 			leaf.activeChannelId === tab.channelId
-				? (tabs[idx] ?? tabs[idx - 1])?.channelId ?? null
+				? ((tabs[idx] ?? tabs[idx - 1])?.channelId ?? null)
 				: leaf.activeChannelId;
 		return { ...leaf, tabs, activeChannelId };
 	});
@@ -275,7 +282,11 @@ function moveTabBetweenLeaves(
 			if (leaf.tabs.some((t) => t.channelId === tab.channelId)) {
 				return { ...leaf, activeChannelId: tab.channelId };
 			}
-			return { ...leaf, tabs: [...leaf.tabs, tab], activeChannelId: tab.channelId };
+			return {
+				...leaf,
+				tabs: [...leaf.tabs, tab],
+				activeChannelId: tab.channelId,
+			};
 		});
 		rootPane = next;
 		focusedPaneId = targetLeafId;
@@ -298,14 +309,16 @@ function moveTabBetweenLeaves(
 	syncSidebarToLeaf(next, focusedPaneId);
 }
 
-let friendsViewEverShown = $state(false);
+let friendsViewEverShown = $state(true);
 $effect(() => {
 	if (showFriendsView) friendsViewEverShown = true;
 });
 
 const globalVoiceRoom = $derived(
 	$activeVoiceRoomId
-		? $gatewaySpaces.flatMap((s) => s.rooms).find((r) => r.id === $activeVoiceRoomId) ?? null
+		? ($gatewaySpaces
+				.flatMap((s) => s.rooms)
+				.find((r) => r.id === $activeVoiceRoomId) ?? null)
 		: null,
 );
 
@@ -326,9 +339,19 @@ $effect(() => {
 	}
 	prevVoiceRoomId = cur;
 });
-
 </script>
 
+{#if !$currentUser || !$friendsReady}
+  <div class="flex h-full items-center justify-center bg-[linear-gradient(180deg,oklch(0.18_0.008_80),oklch(0.15_0.006_80))]">
+    <div class="flex flex-col items-center gap-4">
+      <svg class="animate-spin size-8 text-zinc-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+      </svg>
+      <span class="text-sm text-zinc-500 font-medium">Connecting…</span>
+    </div>
+  </div>
+{:else}
 <div class="flex h-full overflow-hidden bg-[radial-gradient(120%_70%_at_85%_0%,oklch(0.28_0.012_80/.3),transparent_60%),linear-gradient(180deg,oklch(0.18_0.008_80),oklch(0.15_0.006_80))]">
   <GuildSideBar
     {guilds}
@@ -387,6 +410,8 @@ $effect(() => {
     />
   </div>
 </div>
+
+{/if}
 
 <!-- Global VoiceChat: mounted outside all navigation so audio never cuts -->
 {#if $activeVoiceRoomId && globalVoiceRoom}

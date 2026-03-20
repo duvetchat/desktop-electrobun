@@ -1,11 +1,13 @@
 <script lang="ts">
     import { computeRoomPermissions, Permission } from "$lib/permissions";
     import { onDestroy, onMount, tick } from "svelte";
-    import { updateMessage, deleteMessage } from "$lib/api/messages";
+    import { updateMessage, deleteMessage, getMessageThread } from "$lib/api/messages";
+    import { Dialog } from "bits-ui";
     import { currentUser, jumpToMessageRequest, gatewaySpaces } from "$lib/stores.svelte";
     import { renderEmoji, isOnlyEmojis, countEmojis } from "$lib/emoji";
     import { renderMarkdown } from "$lib/markdown";
 
+    import { gatewayMessageToMessage } from "$lib/types";
     import type { MemberOnSidebar, GatewaySpace, Message } from "$lib/types";
 
     import InviteEmbed from "$lib/components/InviteEmbed.svelte";
@@ -69,6 +71,11 @@
     let scrollEl: HTMLElement;
     let deletingMessageId = $state<string | null>(null);
     let activePopoverMsgId = $state<string | null>(null);
+    let threadModalOpen = $state(false);
+    let threadLoading = $state(false);
+    let threadError = $state("");
+    let threadMessages = $state<Message[]>([]);
+    let threadRootMessage = $state<Message | null>(null);
     let now = $state(Date.now());
     let intervalId: number;
     const locale =
@@ -486,6 +493,23 @@
         }
     }
 
+    async function openThreadModal(message: Message) {
+        threadModalOpen = true;
+        threadLoading = true;
+        threadError = "";
+        threadMessages = [];
+        threadRootMessage = message;
+
+        try {
+            const thread = await getMessageThread(channelId, message.id);
+            threadMessages = thread.map((m) => gatewayMessageToMessage(m, $gatewaySpaces));
+        } catch (e) {
+            threadError = e instanceof Error ? e.message : "Failed to load message thread.";
+        } finally {
+            threadLoading = false;
+        }
+    }
+
     function currentUserCanManageMessages(): boolean {
         if (!$currentUser || !space) {
             return false;
@@ -893,6 +917,15 @@
                         </button>
                         <div class="w-px bg-zinc-800"></div>
                         <button
+                            class="p-1.5 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-600 transition-colors"
+                            onclick={() => openThreadModal(message)}
+                            title="View thread"
+                            aria-label="View thread"
+                        >
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                        </button>
+                        <div class="w-px bg-zinc-800"></div>
+                        <button
                             class="p-1.5 text-zinc-400 hover:text-white hover:bg-zinc-600 transition-colors"
                             onclick={() => {
                                 startEdit(message);
@@ -993,6 +1026,15 @@
                             aria-label="Copy message link"
                         >
                             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+                        </button>
+                        <div class="w-px bg-zinc-800"></div>
+                        <button
+                            class="p-1.5 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-600 transition-colors"
+                            onclick={() => openThreadModal(message)}
+                            title="View thread"
+                            aria-label="View thread"
+                        >
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
                         </button>
                         {#if currentUserCanManageMessages()}
                         <div class="w-px bg-zinc-800"></div>
@@ -1109,3 +1151,73 @@
 
     {/if}
 </div>
+
+<Dialog.Root bind:open={threadModalOpen}>
+    <Dialog.Portal>
+        <Dialog.Overlay class="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm" />
+        <Dialog.Content class="fixed inset-0 z-51 flex items-center justify-center p-4">
+            <div class="w-full max-w-2xl max-h-[75vh] bg-zinc-900 rounded-xl shadow-2xl border border-zinc-700 overflow-hidden text-zinc-100">
+                <div class="flex items-center justify-between px-5 py-4 border-b border-zinc-700">
+                    <div>
+                        <h2 class="text-base font-semibold text-white">Message thread</h2>
+                        {#if threadRootMessage}
+                            <p class="text-xs text-zinc-400">From {threadRootMessage.author_name}</p>
+                        {/if}
+                    </div>
+                    <button
+                        class="text-zinc-400 hover:text-white hover:bg-zinc-800 p-1.5 rounded-lg transition-colors"
+                        onclick={() => (threadModalOpen = false)}
+                        aria-label="Close"
+                    >
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                    </button>
+                </div>
+                <div class="px-5 py-4 overflow-y-auto max-h-[calc(75vh-4.5rem)]">
+                    {#if threadLoading}
+                        <div class="flex items-center justify-center py-8">
+                            <div class="w-6 h-6 border-2 border-stone-400 border-t-transparent rounded-full animate-spin"></div>
+                        </div>
+                    {:else if threadError}
+                        <p class="text-sm text-red-400">{threadError}</p>
+                    {:else if threadMessages.length === 0}
+                        <p class="text-sm text-zinc-400">No thread messages found.</p>
+                    {:else}
+                        {@const threadMsgMap = new Map(threadMessages.map((m) => [m.id, m]))}
+                        <div class="flex flex-col gap-2">
+                            {#each threadMessages as threadMsg}
+                                {@const parentMsg = threadMsg.ref_message_id ? threadMsgMap.get(threadMsg.ref_message_id) : null}
+                                <div class="rounded-md border border-zinc-800 bg-zinc-800/30 px-3 py-2">
+                                    {#if parentMsg}
+                                        <div class="flex items-center gap-1.5 mb-2 pl-1 border-l-2 border-zinc-600">
+                                            <UserAvatar
+                                                src={parentMsg.author_avatar_url}
+                                                name={parentMsg.author_name}
+                                                size={14}
+                                            />
+                                            <span class="text-xs font-medium text-zinc-400 truncate max-w-24">{parentMsg.author_name}</span>
+                                            <span class="text-xs text-zinc-500 truncate">{parentMsg.content.slice(0, 60)}{parentMsg.content.length > 60 ? "…" : ""}</span>
+                                        </div>
+                                    {/if}
+                                    <div class="flex items-start gap-2">
+                                        <UserAvatar
+                                            src={threadMsg.author_avatar_url}
+                                            name={threadMsg.author_name}
+                                            size={24}
+                                        />
+                                        <div class="min-w-0 flex-1">
+                                            <div class="flex items-center gap-2">
+                                                <span class="text-sm font-semibold text-zinc-100">{threadMsg.author_name}</span>
+                                                <span class="text-xs text-zinc-500">{new Date(threadMsg.created_at).toLocaleString(locale)}</span>
+                                            </div>
+                                            <p class="text-sm text-zinc-200 whitespace-pre-wrap wrap-break-word">{threadMsg.content}</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            {/each}
+                        </div>
+                    {/if}
+                </div>
+            </div>
+        </Dialog.Content>
+    </Dialog.Portal>
+</Dialog.Root>

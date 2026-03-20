@@ -64,6 +64,7 @@ export const speakingUsers = writable<SvelteSet<string>>(new SvelteSet());
 export const pendingFriendRequests = writable<FriendRequest[]>([]);
 export const sentFriendRequests = writable<FriendRequest[]>([]);
 export const friends = writable<Friend[]>([]);
+export const friendsReady = writable<boolean>(false);
 
 export const conversations = writable<Conversation[]>([]);
 export const dmMessages = writable<Record<string, DirectMessage[]>>({});
