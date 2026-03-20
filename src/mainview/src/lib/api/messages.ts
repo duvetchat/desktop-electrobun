@@ -7,7 +7,7 @@ const HOST = getHostURL();
 
 export async function getMessages(
 	roomId: string,
-	before?: Date,
+	before?: string,
 	signal?: AbortSignal,
 ): Promise<GatewayMessage[]> {
 	if (!userSession.token) {
@@ -18,7 +18,7 @@ export async function getMessages(
 		count: "100",
 	});
 	if (before) {
-		query.set("before", before.toISOString());
+		query.set("before", before);
 	}
 
 	const response = await fetch(
@@ -40,7 +40,7 @@ export async function getMessages(
 
 export async function getMessagesAfter(
 	roomId: string,
-	after: Date,
+	after: string,
 	signal?: AbortSignal,
 ): Promise<GatewayMessage[]> {
 	if (!userSession.token) {
@@ -49,7 +49,7 @@ export async function getMessagesAfter(
 
 	const query = new URLSearchParams({
 		count: "100",
-		after: after.toISOString(),
+		after,
 		order: "asc",
 	});
 

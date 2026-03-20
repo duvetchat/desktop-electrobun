@@ -126,7 +126,7 @@ function conversationTitle(): string {
 	return other?.user?.alias ?? other?.user?.username ?? "DM";
 }
 
-async function loadMessages(before?: Date) {
+async function loadMessages(before?: string) {
 	try {
 		const fetched = await getDirectMessages(conversation.id, before);
 		hasMore = fetched.length === 100;
@@ -145,7 +145,13 @@ async function handleLoadMore() {
 	if (isLoadingMore || !hasMore) return;
 	isLoadingMore = true;
 	const all = get(dmMessages)[conversation.id] ?? [];
-	const oldest = all.length > 0 ? new Date(all[0].created_at) : undefined;
+	let oldest: string | undefined = undefined;
+	if (all.length > 0) {
+		oldest = all[0].id;
+		for (const m of all) {
+			if (m.id < oldest) oldest = m.id;
+		}
+	}
 	await loadMessages(oldest);
 	isLoadingMore = false;
 }

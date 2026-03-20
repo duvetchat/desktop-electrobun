@@ -127,11 +127,11 @@ export async function leaveConversation(conversationId: string): Promise<void> {
 
 export async function getDirectMessages(
 	conversationId: string,
-	before?: Date,
+	before?: string,
 	signal?: AbortSignal,
 ): Promise<DirectMessage[]> {
 	const query = new URLSearchParams({ count: "100" });
-	if (before) query.set("before", before.toISOString());
+	if (before) query.set("before", before);
 
 	const res = await fetch(`${HOST}/api/users/@me/conversations/${conversationId}/messages?${query}`, {
 		headers: authHeaders(),

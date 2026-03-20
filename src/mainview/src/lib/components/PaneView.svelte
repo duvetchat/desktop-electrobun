@@ -315,11 +315,10 @@ async function loadMoreMessages() {
 		"msgs",
 	);
 
-	let oldest = new Date(current.at(0)!.created_at);
+	let oldest = current.at(0)!.id;
 	for (const m of current) {
-		const d = new Date(m.created_at);
-		if (d < oldest) {
-			oldest = d;
+		if (m.id < oldest) {
+			oldest = m.id;
 		}
 	}
 
@@ -390,10 +389,9 @@ async function loadMoreMessagesBelow() {
 		return;
 	}
 
-	let newest = new Date(current.at(0)!.created_at);
+	let newest = current.at(0)!.id;
 	for (const m of current) {
-		const d = new Date(m.created_at);
-		if (d > newest) newest = d;
+		if (m.id > newest) newest = m.id;
 	}
 
 	isLoadingMoreBelow = true;
@@ -439,14 +437,14 @@ async function jumpToMessage(channelId: string, messageId: string) {
 	const timeoutId = setTimeout(() => controller.abort(), 10_000);
 
 	try {
-		// Fetch the anchor message to get its timestamp
+		// Fetch the anchor message to get its UUID cursor
 		const anchor = await getMessageById(channelId, messageId, controller.signal);
-		const anchorTime = new Date(anchor.created_at);
+		const anchorId = anchor.id;
 
 		// Fetch messages before and after the anchor in parallel
 		const [rawAbove, rawBelow] = await Promise.all([
-			getMessages(channelId, anchorTime, controller.signal),
-			getMessagesAfter(channelId, anchorTime, controller.signal),
+			getMessages(channelId, anchorId, controller.signal),
+			getMessagesAfter(channelId, anchorId, controller.signal),
 		]);
 		clearTimeout(timeoutId);
 
