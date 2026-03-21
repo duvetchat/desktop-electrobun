@@ -1068,7 +1068,6 @@ export function createWebSocketConnection(): GatewayConnection {
 			currentSocket?.close();
 			currentSocket = null;
 			activeSocket = null;
-			localStorage.removeItem("duvet_session_token");
 		},
 	};
 }
