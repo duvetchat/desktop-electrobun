@@ -225,3 +225,12 @@ export async function ackRoom(roomId: string, messageId: string): Promise<void> 
 		console.error(`[ack] failed ${res.status} for room=${roomId} msg=${messageId}`);
 	}
 }
+
+export async function getMentionCounts(): Promise<Record<string, number>> {
+	if (!userSession.token) return {};
+	const res = await fetch(`${HOST}/api/users/me/mentions/counts`, {
+		headers: { Authorization: userSession.token },
+	});
+	if (!res.ok) return {};
+	return res.json();
+}

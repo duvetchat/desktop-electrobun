@@ -554,4 +554,18 @@
 		background: oklch(0.42 0.01 80);
 		color: oklch(0.92 0.01 80);
 	}
+
+	.msg-mention {
+		background: oklch(0.30 0.08 270 / 0.5);
+		color: oklch(0.78 0.12 270);
+		border-radius: 3px;
+		padding: 0 2px;
+		font-weight: 500;
+		cursor: pointer;
+	}
+
+	.msg-mention:hover {
+		background: oklch(0.36 0.10 270 / 0.6);
+		color: oklch(0.85 0.14 270);
+	}
 }

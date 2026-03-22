@@ -82,8 +82,22 @@ export const typingUsers = writable<Record<string, TypingUser[]>>({});
 
 export const unreadChannels = writable<Set<string>>(new Set());
 export const activeTextRoomId = writable<string | null>(null);
+
+// Page visibility — true when the tab is visible AND the window is focused.
+export const pageVisible = writable<boolean>(
+	typeof document !== "undefined" ? document.visibilityState === "visible" && document.hasFocus() : true,
+);
+if (typeof document !== "undefined") {
+	function updatePageVisible() {
+		pageVisible.set(document.visibilityState === "visible" && document.hasFocus());
+	}
+	document.addEventListener("visibilitychange", updatePageVisible);
+	window.addEventListener("focus", updatePageVisible);
+	window.addEventListener("blur", updatePageVisible);
+}
 export const lastReadRooms = writable<Record<string, string>>({});
 export const lastMsgRooms = writable<Record<string, string>>({});
+export const mentionCounts = writable<Record<string, number>>({});
 
 export const unreadConversations = writable<Set<string>>(new Set());
 export const activeDMConvId = writable<string | null>(null);

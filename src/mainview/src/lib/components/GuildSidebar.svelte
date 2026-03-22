@@ -11,7 +11,7 @@ import type { Guild } from "$lib/types";
 import { createSpace } from "$lib/api/spaces";
 import { leaveSpace } from "$lib/api/spaces";
 import JoinInviteModal from "$lib/components/JoinInviteModal.svelte";
-import { pendingFriendRequests, unreadChannels, unreadConversations, gatewaySpaces } from "$lib/stores.svelte";
+import { pendingFriendRequests, unreadChannels, unreadConversations, gatewaySpaces, mentionCounts } from "$lib/stores.svelte";
 
 let {
 	guilds,
@@ -202,6 +202,20 @@ const spacesWithUnread = $derived(
 	),
 );
 
+// Total mention count per space — sum mention counts for all rooms in each space.
+const mentionCountBySpace = $derived.by(() => {
+	const counts: Record<string, number> = {};
+	const mc = $mentionCounts;
+	for (const space of $gatewaySpaces) {
+		let total = 0;
+		for (const room of space.rooms) {
+			total += mc[room.id] ?? 0;
+		}
+		if (total > 0) counts[space.id] = total;
+	}
+	return counts;
+});
+
 let leavingGuildId = $state<string | null>(null);
 let leaveError = $state("");
 
@@ -276,7 +290,9 @@ async function handleLeave(guildId: string) {
 									{:else}
 										<div class="flex size-10 items-center justify-center rounded-lg text-sm font-bold {guild.id === activeGuildId ? 'bg-stone-700 text-stone-100 ring-1 ring-stone-500/50' : 'bg-stone-900/65 text-stone-200 group-hover/btn:bg-stone-800/80 group-hover/btn:text-stone-100'} transition-all duration-150">{initials(guild.name)}</div>
 									{/if}
-									{#if spacesWithUnread.has(guild.id) && guild.id !== activeGuildId}
+									{#if mentionCountBySpace[guild.id] && guild.id !== activeGuildId}
+										<span class="absolute -bottom-1 -right-1 flex size-4 items-center justify-center rounded-full bg-red-600 text-[9px] font-bold text-white ring-2 ring-stone-900">{mentionCountBySpace[guild.id]}</span>
+									{:else if spacesWithUnread.has(guild.id) && guild.id !== activeGuildId}
 										<span class="absolute -bottom-0.5 -right-0.5 size-2.5 rounded-full bg-white border-2 border-stone-900"></span>
 									{/if}
 								</button>
@@ -323,7 +339,9 @@ async function handleLeave(guildId: string) {
 								{:else}
 									<div class="flex size-10 items-center justify-center rounded-lg text-sm font-bold {guild.id === activeGuildId ? 'bg-stone-700 text-stone-100 ring-1 ring-stone-500/50' : 'bg-stone-900/65 text-stone-200 group-hover/btn:bg-stone-800/80 group-hover/btn:text-stone-100'} transition-all duration-150">{initials(guild.name)}</div>
 								{/if}
-								{#if spacesWithUnread.has(guild.id) && guild.id !== activeGuildId}
+								{#if mentionCountBySpace[guild.id] && guild.id !== activeGuildId}
+									<span class="absolute -bottom-1 -right-1 flex size-4 items-center justify-center rounded-full bg-red-600 text-[9px] font-bold text-white ring-2 ring-stone-900">{mentionCountBySpace[guild.id]}</span>
+								{:else if spacesWithUnread.has(guild.id) && guild.id !== activeGuildId}
 									<span class="absolute -bottom-0.5 -right-0.5 size-2.5 rounded-full bg-white border-2 border-stone-900"></span>
 								{/if}
 							</button>

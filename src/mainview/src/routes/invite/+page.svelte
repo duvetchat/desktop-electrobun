@@ -47,8 +47,12 @@
     try {
       invite = await getInvite(code);
     } catch (err) {
-      error =
-        err instanceof Error ? err.message : "This invite is invalid or has expired.";
+      const msg = err instanceof Error ? err.message : "This invite is invalid or has expired.";
+      if (msg === "Session invalid or expired") {
+        window.location.href = loginUrlForInvite(code);
+        return;
+      }
+      error = msg;
     } finally {
       loading = false;
     }
@@ -68,8 +72,12 @@
       await joinInvite(code);
       window.location.href = route("/app.html");
     } catch (err) {
-      error =
-        err instanceof Error ? err.message : "We couldn't join this server. Please try again.";
+      const msg = err instanceof Error ? err.message : "We couldn't join this server. Please try again.";
+      if (msg === "Session invalid or expired") {
+        window.location.href = loginUrlForInvite(code);
+        return;
+      }
+      error = msg;
     } finally {
       joining = false;
     }

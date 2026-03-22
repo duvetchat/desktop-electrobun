@@ -30,6 +30,7 @@ import {
 	activeVoiceRoomId,
 	gatewaySpaces,
 	unreadChannels,
+	mentionCounts,
 } from "$lib/stores.svelte";
 
 // props
@@ -374,7 +375,9 @@ onMount(() => {
 							{/if}
 						</span>
 						<span class="min-w-0 flex-1 truncate">{channel.name}</span>
-						{#if channel.type === "text" && $unreadChannels.has(channel.id)}
+						{#if channel.type === "text" && $mentionCounts[channel.id]}
+							<span class="ml-1 flex size-4 shrink-0 items-center justify-center rounded-full bg-red-600 text-[10px] font-bold text-white">{$mentionCounts[channel.id]}</span>
+						{:else if channel.type === "text" && $unreadChannels.has(channel.id)}
 							<span class="ml-1 size-2 shrink-0 rounded-full bg-white"></span>
 						{/if}
 							</button>

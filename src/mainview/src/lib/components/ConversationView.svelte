@@ -1,7 +1,7 @@
 <script lang="ts">
 import { onMount } from "svelte";
 import { get } from "svelte/store";
-import { currentUser, dmMessages, friends, unreadConversations, activeDMConvId } from "$lib/stores.svelte";
+import { currentUser, dmMessages, friends, unreadConversations, activeDMConvId, pageVisible, mentionCounts } from "$lib/stores.svelte";
 import {
 	getDirectMessages,
 	sendDirectMessage,
@@ -33,6 +33,7 @@ let isLoadingMore = $state(false);
 let hasMore = $state(true);
 let failedNonces = $state(new Set<string>());
 let isAtBottom = $state(false);
+let convUnreadAfter = $state<string | null>(null);
 const ackedConvMsgId = new Map<string, string>();
 let showMemberList = $state(true);
 let showAddMemberModal = $state(false);
@@ -210,10 +211,12 @@ async function handleRemoveMember(userId: string) {
 	await removeConversationMember(conversation.id, userId);
 }
 
-// ACK new messages when viewing the bottom of the conversation.
-$effect(() => {
-	const msgs = $dmMessages[conversation.id] ?? [];
-	if (!isAtBottom || isLoading || msgs.length === 0) return;
+// ACK helper — sends an ack for the newest confirmed DM if at bottom.
+function tryAckConversation() {
+	const msgs = get(dmMessages)[conversation.id] ?? [];
+	if (!isAtBottom || isLoading || !get(pageVisible) || msgs.length === 0) return;
+	// Clear the unread divider
+	if (convUnreadAfter != null) convUnreadAfter = null;
 	let newestId = "";
 	for (const m of msgs) {
 		if (m.id === m.nonce) continue;
@@ -222,8 +225,57 @@ $effect(() => {
 	if (newestId && newestId !== ackedConvMsgId.get(conversation.id)) {
 		ackedConvMsgId.set(conversation.id, newestId);
 		unreadConversations.update((s) => { s.delete(conversation.id); return s; });
+		mentionCounts.update((all) => { const copy = { ...all }; delete copy[conversation.id]; return copy; });
 		ackConversation(conversation.id, newestId).catch(() => {});
 	}
+}
+
+// ACK reactively when at bottom, page visible, and messages change.
+$effect(() => {
+	const msgs = $dmMessages[conversation.id] ?? [];
+	const atBottom = isAtBottom;
+	const visible = $pageVisible;
+	if (!atBottom || !visible || isLoading || msgs.length === 0) return;
+	if (convUnreadAfter != null) convUnreadAfter = null;
+	let newestId = "";
+	for (const m of msgs) {
+		if (m.id === m.nonce) continue;
+		if (m.id > newestId) newestId = m.id;
+	}
+	if (newestId && newestId !== ackedConvMsgId.get(conversation.id)) {
+		ackedConvMsgId.set(conversation.id, newestId);
+		unreadConversations.update((s) => { s.delete(conversation.id); return s; });
+		mentionCounts.update((all) => { const copy = { ...all }; delete copy[conversation.id]; return copy; });
+		ackConversation(conversation.id, newestId).catch(() => {});
+	}
+});
+
+// ACK on a 5-second interval as a safety net.
+let ackInterval: ReturnType<typeof setInterval> | null = null;
+$effect(() => {
+	const _convId = conversation.id;
+	if (ackInterval) { clearInterval(ackInterval); ackInterval = null; }
+	ackInterval = setInterval(tryAckConversation, 5000);
+	return () => { if (ackInterval) { clearInterval(ackInterval); ackInterval = null; } };
+});
+
+// ACK when leaving the conversation — only if at bottom.
+$effect(() => {
+	const convId = conversation.id;
+	return () => {
+		if (!isAtBottom) return;
+		const msgs = get(dmMessages)[convId] ?? [];
+		if (msgs.length === 0) return;
+		let newestId = "";
+		for (const m of msgs) {
+			if (m.id === m.nonce) continue;
+			if (m.id > newestId) newestId = m.id;
+		}
+		if (newestId && newestId !== ackedConvMsgId.get(convId)) {
+			ackedConvMsgId.set(convId, newestId);
+			ackConversation(convId, newestId).catch(() => {});
+		}
+	};
 });
 
 onMount(() => {
@@ -289,6 +341,11 @@ onMount(() => {
 			onRetry={dmRetry}
 			onDismiss={dmDismiss}
 			sendTyping={() => sendConversationTyping(conversation.id).catch(() => {})}
+			members={convMembers}
+			unreadAfterMessageId={convUnreadAfter}
+			onUnreadMark={(msgId) => {
+				if (convUnreadAfter == null) convUnreadAfter = msgId;
+			}}
 		/>
 
 		<!-- Member list sidebar -->

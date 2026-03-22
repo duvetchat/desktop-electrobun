@@ -3,7 +3,7 @@
     import { onDestroy, onMount, tick } from "svelte";
     import { updateMessage, deleteMessage, getMessageThread } from "$lib/api/messages";
     import { Dialog } from "bits-ui";
-    import { currentUser, jumpToMessageRequest, gatewaySpaces } from "$lib/stores.svelte";
+    import { currentUser, jumpToMessageRequest, gatewaySpaces, pageVisible } from "$lib/stores.svelte";
     import { renderEmoji, isOnlyEmojis, countEmojis } from "$lib/emoji";
     import { renderMarkdown } from "$lib/markdown";
 
@@ -41,6 +41,7 @@
         editingMessageId = $bindable<string | null>(null),
         editContent = $bindable(""),
         isAtBottom = $bindable(true),
+        onUnreadMark = undefined,
     }: {
         messages: Message[];
         members?: MemberOnSidebar[];
@@ -65,10 +66,18 @@
         editingMessageId?: string | null;
         editContent?: string;
         isAtBottom?: boolean;
+        onUnreadMark?: (messageId: string) => void;
     } = $props();
 
     // ── State ──────────────────────────────────────────────────────────────────
     let scrollEl: HTMLElement;
+    let prevMessageCount = 0;
+    // Non-reactive snapshot — updated by handleScroll, read by the new-message
+    // effect BEFORE the DOM mutation triggers a synchronous scroll event that
+    // would flip isAtBottom to false in flex-col-reverse.
+    let wasAtBottom = true;
+    // Newest confirmed message ID the user has seen (updated only while at bottom & visible).
+    let lastSeenMsgId = "";
     let deletingMessageId = $state<string | null>(null);
     let activePopoverMsgId = $state<string | null>(null);
     let threadModalOpen = $state(false);
@@ -103,6 +112,7 @@
             const val = scrollEl.scrollTop >= -50;
             if (val !== isAtBottom) console.log("[scroll] isAtBottom:", val, "scrollTop:", scrollEl.scrollTop);
             isAtBottom = val;
+            wasAtBottom = val;
         }
 
         const scrollRect = scrollEl.getBoundingClientRect();
@@ -259,6 +269,7 @@
                         if (channelId !== chId) return;
                         if (scrollEl) {
                             isAtBottom = scrollEl.scrollTop >= -50;
+                            wasAtBottom = isAtBottom;
                             console.log("[sync] isAtBottom:", isAtBottom, "scrollTop:", scrollEl.scrollTop);
                         }
                         scrollUnlocked = true;
@@ -266,6 +277,59 @@
                 });
             });
         });
+    });
+
+    // ── Auto-scroll / unread divider when new messages arrive ──────────────────
+    $effect(() => {
+        const count = messages.length;
+        const visible = $pageVisible;
+
+        // When page becomes visible again, sync scroll state with actual position
+        // (it may be stale if messages arrived while the tab was hidden).
+        if (visible && scrollEl) {
+            const val = scrollEl.scrollTop >= -50;
+            wasAtBottom = val;
+            isAtBottom = val;
+        }
+
+        if (count > prevMessageCount && prevMessageCount > 0) {
+            const newest = messages[messages.length - 1];
+            const me = $currentUser;
+            const isOwnSend = newest && me && newest.author_id === me.id;
+
+            if (isOwnSend) {
+                // Always scroll to bottom on own send.
+                tick().then(() => { if (scrollEl) scrollEl.scrollTop = 0; });
+            } else if (wasAtBottom && visible) {
+                // At bottom and page visible — auto-scroll to stay pinned.
+                tick().then(() => { if (scrollEl) scrollEl.scrollTop = 0; });
+            } else if (lastSeenMsgId) {
+                // Scrolled up or page hidden — place the unread divider.
+                onUnreadMark?.(lastSeenMsgId);
+            }
+        }
+
+        // Keep lastSeenMsgId in sync while the user is actively viewing.
+        // Update when at bottom AND (page visible OR first initialisation).
+        // Without the init path, lastSeenMsgId stays "" and onUnreadMark
+        // never fires when the page is hidden before any scroll event.
+        if (wasAtBottom && (visible || !lastSeenMsgId)) {
+            let newest = "";
+            for (const m of messages) {
+                if (m.id === m.nonce) continue;
+                if (m.id > newest) newest = m.id;
+            }
+            if (newest) lastSeenMsgId = newest;
+        }
+
+        prevMessageCount = count;
+    });
+
+    // Reset on channel switch.
+    $effect(() => {
+        const _chId = channelId;
+        prevMessageCount = 0;
+        lastSeenMsgId = "";
     });
 
     // ── Formatting ─────────────────────────────────────────────────────────────
@@ -615,6 +679,7 @@
                 processMessageContent(message.content).images.length === 0}
 
             {@const isHighlighted = highlightedMessageId === message.id}
+            {@const isMention = !!$currentUser && message.author_id !== $currentUser.id && new RegExp(`@${$currentUser.username}\\b`, 'i').test(message.content)}
             {@const msgMember = members.find((m) => m.id === message.author_id)}
             <div
                 data-message-id={message.id}
@@ -624,7 +689,9 @@
                     ? 'bg-red-500/10 hover:bg-red-500/15'
                     : isHighlighted
                       ? 'bg-yellow-500/15 hover:bg-yellow-500/20'
-                      : 'hover:bg-zinc-800/55'} -mx-3"
+                      : isMention
+                        ? 'bg-yellow-500/10 hover:bg-yellow-500/15 border-l-2 border-yellow-500/60'
+                        : 'hover:bg-zinc-800/55'} -mx-3"
                 style={isFailed
                     ? ""
                     : isPending

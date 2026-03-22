@@ -8,6 +8,8 @@ import {
 	activeTextRoomId,
 	lastReadRooms,
 	lastMsgRooms,
+	pageVisible,
+	mentionCounts,
 } from "$lib/stores.svelte";
 import { get } from "svelte/store";
 import { makeSplit, makeLeaf } from "$lib/pane";
@@ -157,21 +159,14 @@ $effect(() => {
 	}
 });
 
-// ACK + clear divider when the user is genuinely at the bottom.
-// paneIsAtBottom starts false and is only set true by the scroll-position
-// sync effect in MessageList (which runs AFTER scroll-to-unread), so this
-// cannot fire prematurely on initial render.
-$effect(() => {
-	const msgs = activeMessages; // reactive dep — fires on every new message
+// ACK helper — sends an ack for the newest confirmed message if at bottom.
+function tryAckChannel() {
 	if (node.kind !== "leaf" || !node.activeChannelId || activeChannel?.type !== "text") return;
 	const channelId = node.activeChannelId;
-	// Read BOTH before any early return so they are always tracked as deps.
-	// This ensures the effect re-runs when loading finishes or scroll changes.
-	const loading = !!channelInitialLoading[channelId];
-	const atBottom = paneIsAtBottom;
-	if (!isActive || loading || !atBottom || fetchingChannels.has(channelId)) return;
-	console.log("[ack-effect] paneIsAtBottom=true, channelId:", channelId);
+	if (!isActive || !!channelInitialLoading[channelId] || !paneIsAtBottom || !get(pageVisible)) return;
+	if (fetchingChannels.has(channelId)) return;
 	if (channelHasMoreBelow[channelId] === true) return;
+	const msgs = $channelMessages[channelId] ?? [];
 	if (msgs.length === 0) return;
 	// Clear the unread divider
 	if (channelUnreadAfter[channelId] != null) {
@@ -180,15 +175,77 @@ $effect(() => {
 	// Find newest confirmed (non-pending) message via UUID v7 lex order
 	let newestId: string | null = null;
 	for (const m of msgs) {
-		if (m.id === m.nonce) continue; // pending, not yet confirmed
+		if (m.id === m.nonce) continue;
 		if (!newestId || m.id > newestId) newestId = m.id;
 	}
 	if (newestId && newestId !== ackedMsgIds.get(channelId)) {
 		ackedMsgIds.set(channelId, newestId);
 		unreadChannels.update((s) => { s.delete(channelId); return s; });
+		mentionCounts.update((all) => { const copy = { ...all }; delete copy[channelId]; return copy; });
 		channelLastAcked[channelId] = newestId;
 		ackRoom(channelId, newestId).catch((err) => console.error("[ack] network error:", err));
 	}
+}
+
+// ACK reactively when at bottom and messages change.
+// All reactive deps must be read inline (not inside tryAckChannel) so Svelte
+// tracks them properly — function calls don't create reactive subscriptions.
+$effect(() => {
+	const msgs = activeMessages;
+	const atBottom = paneIsAtBottom;
+	const visible = $pageVisible;
+	if (node.kind !== "leaf" || !node.activeChannelId || activeChannel?.type !== "text") return;
+	const channelId = node.activeChannelId;
+	const loading = !!channelInitialLoading[channelId];
+	if (!isActive || loading || !atBottom || !visible) return;
+	if (fetchingChannels.has(channelId)) return;
+	if (channelHasMoreBelow[channelId] === true) return;
+	if (msgs.length === 0) return;
+	if (channelUnreadAfter[channelId] != null) {
+		channelUnreadAfter[channelId] = null;
+	}
+	let newestId: string | null = null;
+	for (const m of msgs) {
+		if (m.id === m.nonce) continue;
+		if (!newestId || m.id > newestId) newestId = m.id;
+	}
+	if (newestId && newestId !== ackedMsgIds.get(channelId)) {
+		ackedMsgIds.set(channelId, newestId);
+		unreadChannels.update((s) => { s.delete(channelId); return s; });
+		mentionCounts.update((all) => { const copy = { ...all }; delete copy[channelId]; return copy; });
+		channelLastAcked[channelId] = newestId;
+		ackRoom(channelId, newestId).catch((err) => console.error("[ack] network error:", err));
+	}
+});
+
+// ACK on a 5-second interval as a safety net.
+let ackInterval: ReturnType<typeof setInterval> | null = null;
+$effect(() => {
+	// Track channel id so we restart the interval on channel switch.
+	const _channelId = node.kind === "leaf" ? node.activeChannelId : null;
+	if (ackInterval) { clearInterval(ackInterval); ackInterval = null; }
+	ackInterval = setInterval(tryAckChannel, 5000);
+	return () => { if (ackInterval) { clearInterval(ackInterval); ackInterval = null; } };
+});
+
+// ACK when leaving the channel (channel switch / unmount) — only if at bottom.
+$effect(() => {
+	const channelId = node.kind === "leaf" ? node.activeChannelId : null;
+	return () => {
+		if (!channelId || !paneIsAtBottom) return;
+		const msgs = get(channelMessages)[channelId] ?? [];
+		if (msgs.length === 0) return;
+		let newestId: string | null = null;
+		for (const m of msgs) {
+			if (m.id === m.nonce) continue;
+			if (!newestId || m.id > newestId) newestId = m.id;
+		}
+		if (newestId && newestId !== ackedMsgIds.get(channelId)) {
+			ackedMsgIds.set(channelId, newestId);
+			channelLastAcked[channelId] = newestId;
+			ackRoom(channelId, newestId).catch((err) => console.error("[ack] cleanup error:", err));
+		}
+	};
 });
 
 // Fetch initial messages only for text channels
@@ -1083,6 +1140,12 @@ const childProps = $derived({
                         : null}
                     onLoadMore={loadMoreMessages}
                     onLoadMoreBelow={loadMoreMessagesBelow}
+                    onUnreadMark={(msgId) => {
+                        const chId = node.kind === "leaf" ? node.activeChannelId : null;
+                        if (chId && channelUnreadAfter[chId] == null) {
+                            channelUnreadAfter[chId] = msgId;
+                        }
+                    }}
                 />
             {:else if activeChannel?.type === "voice"}
                 <VoiceChannelView

@@ -17,11 +17,14 @@ import {
 	lastMsgRooms,
 	unreadConversations,
 	activeDMConvId,
+	pageVisible,
+	mentionCounts,
 } from "$lib/stores.svelte";
 import type { FriendRequest, Friend } from "$lib/api/friends";
 import { getFriends, getPendingRequests, getSentRequests } from "$lib/api/friends";
 import type { Conversation, DirectMessage } from "$lib/api/conversations";
 import { getConversations } from "$lib/api/conversations";
+import { getMentionCounts } from "$lib/api/messages";
 import { getWSHostURL, route } from "$lib/common/common";
 import { get } from "svelte/store";
 import { getSpaceMembers, type SpaceMemberWithUser } from "$lib/api/spaces";
@@ -164,6 +167,9 @@ function handleEvent(event: GatewayEvent) {
 					console.error("[WS] Failed to load friends/conversations on READY:", err);
 					friendsReady.set(true); // show the app even on error
 				});
+			getMentionCounts()
+				.then((counts) => mentionCounts.set(counts))
+				.catch(() => {});
 			// Reset spaces so SPACE_CREATE events that follow repopulate them
 			// with fresh data (including current voice_states). Without this,
 			// if the server rejects a resume and starts a new session, the
@@ -255,8 +261,12 @@ function handleEvent(event: GatewayEvent) {
 			const raw = data as GatewayMessageCreate;
 			const spaces = get(gatewaySpaces);
 			const message = gatewayMessageToMessage(raw, spaces);
-			if (raw.room_id && raw.room_id !== get(activeTextRoomId) && raw.author_id !== get(currentUser)?.id) {
-				playNotificationSound();
+			if (raw.room_id && raw.author_id !== get(currentUser)?.id) {
+				const isActiveRoom = raw.room_id === get(activeTextRoomId);
+				// Play sound if not in the active room, OR if the page is not visible.
+				if (!isActiveRoom || !get(pageVisible)) {
+					playNotificationSound();
+				}
 			}
 			if (raw.room_id && raw.room_id !== get(activeTextRoomId)) {
 				unreadChannels.update((s) => { s.add(raw.room_id); return s; });
@@ -326,6 +336,14 @@ function handleEvent(event: GatewayEvent) {
 					[raw.room_id]: existing.filter((m) => m.id !== raw.id),
 				};
 			});
+			break;
+		}
+		case "MENTION_CREATE": {
+			const { room_id, conversation_id } = data as { room_id?: string; conversation_id?: string; message_id: string; author_id: string };
+			const key = room_id ?? conversation_id;
+			if (key) {
+				mentionCounts.update((all) => ({ ...all, [key]: (all[key] ?? 0) + 1 }));
+			}
 			break;
 		}
 		case "USER_UPDATE": {
@@ -842,11 +860,13 @@ function handleEvent(event: GatewayEvent) {
 				return;
 			}
 			const conversationId = msg.conversation_id;
-			if (conversationId !== get(activeDMConvId)) {
+			const isActiveConv = conversationId === get(activeDMConvId);
+			if (!isActiveConv) {
 				unreadConversations.update((s) => { s.add(conversationId); return s; });
-				if (msg.author_id !== get(currentUser)?.id) {
-					playNotificationSound();
-				}
+			}
+			// Play sound if not in the active conversation, OR if the page is not visible.
+			if (msg.author_id !== get(currentUser)?.id && (!isActiveConv || !get(pageVisible))) {
+				playNotificationSound();
 			}
 			typingUsers.update((all) => {
 				if (!all[conversationId]) return all;

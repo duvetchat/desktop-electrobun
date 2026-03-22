@@ -40,6 +40,7 @@ let {
 	onRetry = undefined,
 	onDismiss = undefined,
 	sendTyping = undefined,
+	onUnreadMark = undefined,
 }: {
 	messages: Message[];
 	members?: MemberOnSidebar[];
@@ -66,6 +67,7 @@ let {
 	onRetry?: (message: Message) => void;
 	onDismiss?: (nonce: string) => void;
 	sendTyping?: () => void;
+	onUnreadMark?: (messageId: string) => void;
 } = $props();
 let replyTo = $state<Message | null>(null);
 let chatInputRef = $state<{ focus: () => void } | null>(null);
@@ -338,6 +340,7 @@ function dismissFailedMessage(nonce: string) {
     onRetry={retryMessage}
     onDismiss={dismissFailedMessage}
     onReply={handleReply}
+    {onUnreadMark}
   />
 
 	<div class="relative w-full">
@@ -369,6 +372,7 @@ function dismissFailedMessage(nonce: string) {
       onSubmit={handleSendMessage}
       onArrowUpWhenEmpty={tryEditLastMessage}
       onValueChange={handleTyping}
+      {members}
     />
   </div>
 </div>

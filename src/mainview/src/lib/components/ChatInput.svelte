@@ -5,6 +5,8 @@ import { Smile as SmileIcon, Image as GifIcon } from "@lucide/svelte";
 import EmojiPicker from "$lib/components/EmojiPicker.svelte";
 import GifPicker from "$lib/components/GifPicker.svelte";
 import { searchEmojis, toTwemojiUrl, type EmojiEntry } from "$lib/emoji";
+import UserAvatar from "$lib/components/UserAvatar.svelte";
+import type { MemberOnSidebar } from "$lib/types";
 
 const EMOJI_RE =
 	/\p{Regional_Indicator}{2}|(?:\p{Emoji_Presentation}|\p{Emoji}\uFE0F)(?:\u200D(?:\p{Emoji_Presentation}|\p{Emoji})\uFE0F?|\uD83C[\uDFFB-\uDFFF])*|[\d#*]\uFE0F?\u20E3/gu;
@@ -18,6 +20,7 @@ let {
 	onArrowUpWhenEmpty,
 	showActions = true,
 	autofocus = false,
+	members = [],
 }: {
 	placeholder?: string;
 	initialValue?: string;
@@ -27,6 +30,7 @@ let {
 	onArrowUpWhenEmpty?: () => void;
 	showActions?: boolean;
 	autofocus?: boolean;
+	members?: MemberOnSidebar[];
 } = $props();
 
 let inputEl = $state<HTMLDivElement>(null!);
@@ -51,6 +55,11 @@ onMount(() => {
 let suggestions = $state<EmojiEntry[]>([]);
 let selectedIdx = $state(0);
 let emojiQueryStart = $state(-1); // char offset (UTF-16) of ':' in raw text
+
+// ── Mention autocomplete ────────────────────────────────────────────────────
+let mentionSuggestions = $state<MemberOnSidebar[]>([]);
+let mentionSelectedIdx = $state(0);
+let mentionQueryStart = $state(-1); // char offset of '@' in raw text
 
 function buildHtml(text: string): string {
 	if (!text) return "";
@@ -163,6 +172,25 @@ function rerender(raw: string, cursorOffset: number) {
 // ── Autocomplete ────────────────────────────────────────────────────────────
 function checkAutocomplete(raw: string, cursor: number) {
 	const before = raw.slice(0, cursor);
+
+	// Check @mention autocomplete first
+	const mentionMatch = /@(\w*)$/.exec(before);
+	if (mentionMatch && members.length > 0) {
+		mentionQueryStart = before.length - mentionMatch[0].length;
+		const query = mentionMatch[1].toLowerCase();
+		mentionSuggestions = members
+			.filter((m) => m.raw_username.toLowerCase().startsWith(query) || m.username.toLowerCase().startsWith(query))
+			.slice(0, 10);
+		mentionSelectedIdx = 0;
+		// Clear emoji suggestions when mention is active
+		suggestions = [];
+		emojiQueryStart = -1;
+		return;
+	}
+	mentionSuggestions = [];
+	mentionQueryStart = -1;
+
+	// Check :emoji autocomplete
 	const m = /:([\w\d]{1,})$/.exec(before);
 	if (m) {
 		emojiQueryStart = before.length - m[0].length;
@@ -172,6 +200,24 @@ function checkAutocomplete(raw: string, cursor: number) {
 		suggestions = [];
 		emojiQueryStart = -1;
 	}
+}
+
+function insertMentionSuggestion(member: MemberOnSidebar) {
+	const raw = getRaw(inputEl);
+	const cursor = getOffset();
+	const before = raw.slice(0, mentionQueryStart);
+	const after = raw.slice(cursor);
+	const mention = `@${member.raw_username} `;
+	const newRaw = before + mention + after;
+	const newPos = mentionQueryStart + mention.length;
+
+	rerender(newRaw, newPos);
+	isEmpty = !newRaw.trim();
+	onValueChange?.(newRaw);
+	mentionSuggestions = [];
+	mentionQueryStart = -1;
+	mentionSelectedIdx = 0;
+	inputEl.focus();
 }
 
 function insertSuggestion(entry: EmojiEntry) {
@@ -202,7 +248,31 @@ function handleInput() {
 }
 
 function handleKeyDown(e: KeyboardEvent) {
-	// Navigate autocomplete with arrows
+	// Navigate mention autocomplete
+	if (mentionSuggestions.length > 0) {
+		if (e.key === "ArrowUp") {
+			e.preventDefault();
+			mentionSelectedIdx = (mentionSelectedIdx - 1 + mentionSuggestions.length) % mentionSuggestions.length;
+			return;
+		}
+		if (e.key === "ArrowDown") {
+			e.preventDefault();
+			mentionSelectedIdx = (mentionSelectedIdx + 1) % mentionSuggestions.length;
+			return;
+		}
+		if (e.key === "Enter" || e.key === "Tab") {
+			e.preventDefault();
+			insertMentionSuggestion(mentionSuggestions[mentionSelectedIdx]);
+			return;
+		}
+		if (e.key === "Escape") {
+			mentionSuggestions = [];
+			mentionQueryStart = -1;
+			return;
+		}
+	}
+
+	// Navigate emoji autocomplete
 	if (suggestions.length > 0) {
 		if (e.key === "ArrowUp") {
 			e.preventDefault();
@@ -292,15 +362,41 @@ export function focus() {
 
 <!-- Wrapper so the autocomplete dropdown can be absolutely positioned -->
 <div class="chat-input-wrapper">
-	<!-- Autocomplete dropdown -->
+	<!-- Mention autocomplete dropdown -->
+	{#if mentionSuggestions.length > 0}
+		<div class="ac-dropdown" role="listbox" aria-label="Mention suggestions">
+			<div class="ac-label">Members matching <strong>@{getRaw(inputEl).slice(0, getOffset()).match(/@(\w*)$/)?.[1]}</strong></div>
+			{#each mentionSuggestions as member, i}
+				<button
+					role="option"
+					aria-selected={i === mentionSelectedIdx}
+					class="ac-item"
+					class:selected={i === mentionSelectedIdx}
+					onmousedown={(e) => {
+						e.preventDefault();
+						insertMentionSuggestion(member);
+					}}
+					onmouseenter={() => (mentionSelectedIdx = i)}
+				>
+					<UserAvatar src={member.avatar_url} name={member.username} size={22} />
+					<span class="ac-primary">{member.username}</span>
+					{#if member.raw_username !== member.username}
+						<span class="ac-secondary">@{member.raw_username}</span>
+					{/if}
+				</button>
+			{/each}
+		</div>
+	{/if}
+
+	<!-- Emoji autocomplete dropdown -->
 	{#if suggestions.length > 0}
-		<div class="emoji-ac-dropdown" role="listbox" aria-label="Emoji suggestions">
-			<div class="emoji-ac-label">Emoji matching <strong>:{getRaw(inputEl).slice(0, getOffset()).match(/:([\w\d]*)$/)?.[1]}</strong></div>
+		<div class="ac-dropdown" role="listbox" aria-label="Emoji suggestions">
+			<div class="ac-label">Emoji matching <strong>:{getRaw(inputEl).slice(0, getOffset()).match(/:([\w\d]*)$/)?.[1]}</strong></div>
 			{#each suggestions as entry, i}
 				<button
 					role="option"
 					aria-selected={i === selectedIdx}
-					class="emoji-ac-item"
+					class="ac-item"
 					class:selected={i === selectedIdx}
 					onmousedown={(e) => {
 						e.preventDefault();
@@ -311,10 +407,10 @@ export function focus() {
 					<img
 						src={toTwemojiUrl(entry.emoji)}
 						alt={entry.emoji}
-						class="emoji-ac-img"
+						class="ac-img"
 						loading="lazy"
 					/>
-					<span class="emoji-ac-name">:{entry.name.replace(/ /g, "_")}:</span>
+					<span class="ac-primary">:{entry.name.replace(/ /g, "_")}:</span>
 				</button>
 			{/each}
 		</div>
@@ -384,7 +480,7 @@ export function focus() {
 	}
 
 	/* ── Autocomplete dropdown ─────────────────────── */
-	.emoji-ac-dropdown {
+	.ac-dropdown {
 		position: absolute;
 		bottom: calc(100% + 6px);
 		left: 0;
@@ -396,8 +492,10 @@ export function focus() {
 		overflow: hidden;
 		z-index: 90;
 		padding: 4px 0;
+		max-height: 300px;
+		overflow-y: auto;
 	}
-	.emoji-ac-label {
+	.ac-label {
 		font-size: 10px;
 		font-weight: 700;
 		letter-spacing: 0.05em;
@@ -405,7 +503,7 @@ export function focus() {
 		color: oklch(0.52 0.01 80);
 		padding: 6px 12px 4px;
 	}
-	.emoji-ac-item {
+	.ac-item {
 		display: flex;
 		align-items: center;
 		gap: 10px;
@@ -417,18 +515,22 @@ export function focus() {
 		text-align: left;
 		transition: background 0.1s;
 	}
-	.emoji-ac-item.selected,
-	.emoji-ac-item:hover {
+	.ac-item.selected,
+	.ac-item:hover {
 		background: oklch(0.28 0.01 80);
 	}
-	.emoji-ac-img {
+	.ac-img {
 		width: 22px;
 		height: 22px;
 		flex-shrink: 0;
 	}
-	.emoji-ac-name {
+	.ac-primary {
 		font-size: 13px;
 		color: oklch(0.85 0.008 80);
+	}
+	.ac-secondary {
+		font-size: 11px;
+		color: oklch(0.52 0.01 80);
 	}
 
 	/* ── Input row ────────────────────────────────── */
