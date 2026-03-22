@@ -76,7 +76,7 @@ function applyInline(s: string): string {
 	s = s.replace(/(?<!\w)_([^\s_](?:[^_]*[^\s_])?)_(?!\w)/gs, (_, t) => `<em>${t}</em>`);
 	s = s.replace(/~~(.+?)~~/gs, (_, t) => `<del>${t}</del>`);
 	s = s.replace(/\|\|(.+?)\|\|/gs, (_, t) => `<span class="msg-spoiler">${t}</span>`);
-	s = s.replace(/@(\w+)/g, (_, name) => `<span class="msg-mention">@${escapeHtml(name)}</span>`);
+	s = s.replace(/(?<![\/\w"=])@(\w+)/g, (_, name) => `<span class="msg-mention">@${escapeHtml(name)}</span>`);
 	return s;
 }
 
