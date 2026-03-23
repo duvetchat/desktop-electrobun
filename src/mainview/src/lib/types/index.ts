@@ -21,13 +21,19 @@ export interface EmbedField {
 	inline: boolean;
 }
 
+export interface EmbedColor {
+	color_from?: number | null;
+	color_via?: number | null;
+	color_to?: number | null;
+}
+
 export interface Embed {
 	type?: string | null;
 	title?: string | null;
 	description?: string | null;
 	url?: string | null;
 	timestamp?: string | null;
-	color?: number | null;
+	color?: EmbedColor | null;
 	footer?: EmbedFooter | null;
 	image?: EmbedMedia | null;
 	thumbnail?: EmbedMedia | null;

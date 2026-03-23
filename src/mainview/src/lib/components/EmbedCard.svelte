@@ -15,8 +15,21 @@
         return url;
     }
 
-    function colorToHex(color: number): string {
-        return "#" + color.toString(16).padStart(6, "0");
+    function intToHex(n: number): string {
+        return "#" + (n >>> 0).toString(16).padStart(6, "0");
+    }
+
+    function embedBorderStyle(embed: Embed): string {
+        const c = embed.color;
+        if (!c || c.color_from == null) return "border-color: rgb(63 63 70)";
+        const from = intToHex(c.color_from);
+        if (c.color_to == null) return `border-color: ${from}`;
+        const to = intToHex(c.color_to);
+        if (c.color_via != null) {
+            const via = intToHex(c.color_via);
+            return `border-image: linear-gradient(180deg, ${from}, ${via}, ${to}) 1`;
+        }
+        return `border-image: linear-gradient(180deg, ${from}, ${to}) 1`;
     }
 
     function isDirectVideo(url: string): boolean {
@@ -45,7 +58,7 @@
 {:else if embed.title || embed.description || embed.video || embed.image}
     <div
         class="mt-1 flex flex-col max-w-sm rounded-md border-l-4 bg-zinc-800/60 overflow-hidden"
-        style="border-color: {embed.color != null ? colorToHex(embed.color) : 'rgb(63 63 70)'}"
+        style="{embedBorderStyle(embed)}"
     >
         {#if embed.author || embed.title || embed.description || embed.fields?.length || embed.footer || embed.thumbnail}
             <div class="px-3 py-2.5 flex gap-3">
