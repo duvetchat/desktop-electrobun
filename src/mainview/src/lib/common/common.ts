@@ -25,7 +25,7 @@ export function getHostURL(): string {
 			break;
 
 		case 'local':
-			base = 'localhost:8080';
+			base = 'localhost:9876';
 			protocol = 'http://';
 			break;
 
@@ -46,7 +46,7 @@ export function getWSHostURL(): string {
 			break;
 
 		case 'local':
-			base = 'localhost:8081';
+			base = 'localhost:8765';
 			protocol = 'ws://';
 			break;
 
