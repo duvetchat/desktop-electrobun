@@ -37,11 +37,13 @@ async function loadAndAnalyze(url: string) {
     try {
         const res = await fetch(url);
         const buf = await res.arrayBuffer();
+        const contentType = res.headers.get("content-type") || "audio/webm";
 
-        // Create blob URL so audio element has the full file buffered
-        blobUrl = URL.createObjectURL(new Blob([buf], { type: res.headers.get("content-type") || "audio/webm" }));
+        // Copy buffer for blob BEFORE decodeAudioData which detaches the original
+        const blobCopy = buf.slice(0);
+        blobUrl = URL.createObjectURL(new Blob([blobCopy], { type: contentType }));
 
-        // Analyze waveform
+        // Analyze waveform with another copy
         const ctx = new AudioContext();
         const decoded = await ctx.decodeAudioData(buf.slice(0));
         duration = decoded.duration;
