@@ -5,6 +5,7 @@
     import { gatewaySpaces, jumpToMessageRequest } from "$lib/stores.svelte";
     import UserAvatar from "$lib/components/UserAvatar.svelte";
     import type { Message } from "$lib/types";
+    import { renderMarkdown } from "$lib/markdown";
 
     let {
         spaceId,
@@ -72,12 +73,12 @@
                 <div class="w-4 h-4 shrink-0 rounded-sm bg-zinc-600 flex items-center justify-center text-[9px] font-bold text-zinc-200 select-none leading-none">
                     {space.name.charAt(0).toUpperCase()}
                 </div>
-                <span class="text-xs text-zinc-400 font-medium truncate max-w-[100px]">{space.name}</span>
+                <span class="text-xs text-zinc-400 font-medium truncate max-w-25">{space.name}</span>
                 <span class="text-zinc-600 text-xs shrink-0">›</span>
             {/if}
             {#if room}
                 <span class="text-zinc-500 text-xs shrink-0">#</span>
-                <span class="text-xs text-zinc-400 font-medium truncate max-w-[90px]">{room.name}</span>
+                <span class="text-xs text-zinc-400 font-medium truncate max-w-22.5">{room.name}</span>
             {:else}
                 <span class="text-xs text-zinc-500 italic">unknown-channel</span>
             {/if}
@@ -97,7 +98,7 @@
                     <span class="text-sm font-semibold text-zinc-100 truncate">{message.author_name}</span>
                     <span class="text-xxs text-zinc-500 shrink-0">{formatTime(message.created_at)}</span>
                 </div>
-                <p class="text-sm text-zinc-300 line-clamp-3 wrap-break-word whitespace-pre-wrap">{message.content}</p>
+                <p class="text-sm text-zinc-300 line-clamp-3 wrap-break-word whitespace-pre-wrap">{@html renderMarkdown(message.content)}</p>
             </div>
         </div>
     </button>

@@ -867,7 +867,7 @@
                         {@const processed = processMessageContent(
                             message.content,
                         )}
-                        {@const isOnlyLink = /^\s*https?:\/\/\S+\s*$/.test(message.content) && message.embeds && message.embeds.length > 0}
+                        {@const isOnlyLink = /^\s*https?:\/\/\S+\s*$/.test(message.content) && processed.images.length > 0}
                         {#if !isOnlyLink}
                         <div
                             role="textbox"
@@ -1042,6 +1042,7 @@
                                             <div class="absolute inset-0 bg-zinc-700/40 animate-pulse flex items-center justify-center video-skeleton">
                                                 <span class="text-xs text-zinc-500">Loading video...</span>
                                             </div>
+                                            <!-- svelte-ignore a11y_media_has_caption -->
                                             <video
                                                 src="{attachmentHost}/attachments/{att.id}"
                                                 controls
