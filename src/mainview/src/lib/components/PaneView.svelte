@@ -243,6 +243,8 @@ $effect(() => {
 		if (newestId && newestId !== ackedMsgIds.get(channelId)) {
 			ackedMsgIds.set(channelId, newestId);
 			channelLastAcked[channelId] = newestId;
+			unreadChannels.update((s) => { s.delete(channelId); return s; });
+			mentionCounts.update((all) => { const copy = { ...all }; delete copy[channelId]; return copy; });
 			ackRoom(channelId, newestId).catch((err) => console.error("[ack] cleanup error:", err));
 		}
 	};

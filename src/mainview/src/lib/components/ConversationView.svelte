@@ -305,6 +305,8 @@ $effect(() => {
 		}
 		if (newestId && newestId !== ackedConvMsgId.get(convId)) {
 			ackedConvMsgId.set(convId, newestId);
+			unreadConversations.update((s) => { s.delete(convId); return s; });
+			mentionCounts.update((all) => { const copy = { ...all }; delete copy[convId]; return copy; });
 			ackConversation(convId, newestId).catch(() => {});
 		}
 	};
