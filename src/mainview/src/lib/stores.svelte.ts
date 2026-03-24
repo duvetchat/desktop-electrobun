@@ -109,6 +109,28 @@ export const jumpToMessageRequest = writable<{
 	messageId: string;
 } | null>(null);
 
+export type CallState = "idle" | "calling" | "ringing" | "connected";
+
+export interface ActiveCallInfo {
+	conversationId: string;
+	initiatorId: string;
+	initiatorName: string;
+	initiatorAvatar: string | null;
+	state: CallState;
+	memberIds: string[];
+}
+
+export const activeCall = writable<ActiveCallInfo | null>(null);
+
+export interface CallVoiceState {
+	room_id: string;
+	user_id: string;
+	muted?: boolean;
+	deafened?: boolean;
+	screen_sharing?: boolean;
+}
+export const callVoiceStates = writable<CallVoiceState[]>([]);
+
 export const isMuted = writable<boolean>(false);
 export const isDeafened = writable<boolean>(false);
 export const activeVoiceRoomId = writable<string | null>(null);

@@ -3,9 +3,9 @@
     import { UserPlus, UserCheck, Loader2, RotateCcw } from "@lucide/svelte";
     import { Popover } from "bits-ui";
     import type { MemberOnSidebar, GatewaySpace, Role } from "$lib/types";
-    import { currentUser, friends, pendingFriendRequests } from "$lib/stores.svelte";
+    import { currentUser, friends, pendingFriendRequests, sentFriendRequests } from "$lib/stores.svelte";
     import { assignRoleToMember, removeRoleFromMember } from "$lib/api/roles";
-    import { sendFriendRequest } from "$lib/api/friends";
+    import { sendFriendRequest, getSentRequests } from "$lib/api/friends";
     import { Permission } from "$lib/permissions";
     import UserAvatar from "$lib/components/UserAvatar.svelte";
 
@@ -128,6 +128,8 @@
         try {
             await sendFriendRequest(userId);
             friendRequestState[userId] = "sent";
+            const sent = await getSentRequests();
+            sentFriendRequests.set(sent);
         } catch {
             friendRequestState[userId] = "error";
         }

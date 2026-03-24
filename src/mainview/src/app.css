@@ -136,6 +136,9 @@
 	--animate-enter-from-right: enter-from-right 0.2s ease;
 	--animate-exit-to-left: exit-to-left 0.2s ease;
 	--animate-exit-to-right: exit-to-right 0.2s ease;
+	--animate-slide-in: slide-in 0.2s ease-out;
+	--animate-typing-bounce: typing-bounce 1.2s ease-in-out infinite;
+	--animate-call-pulse: call-pulse 1.5s ease-out infinite;
 
 	--font-sans: "Manrope", "sans-serif";
 	--font-mono: "Source Code Pro", "monospace";
@@ -264,6 +267,42 @@
 		}
 
 		to {
+			opacity: 0;
+		}
+	}
+
+	@keyframes slide-in {
+		from {
+			opacity: 0;
+			transform: translateX(20px);
+		}
+
+		to {
+			opacity: 1;
+			transform: translateX(0);
+		}
+	}
+
+	@keyframes typing-bounce {
+		0%, 60%, 100% {
+			transform: translateY(0);
+			opacity: 0.5;
+		}
+
+		30% {
+			transform: translateY(-4px);
+			opacity: 1;
+		}
+	}
+
+	@keyframes call-pulse {
+		0% {
+			transform: scale(0.95);
+			opacity: 0.5;
+		}
+
+		100% {
+			transform: scale(1.15);
 			opacity: 0;
 		}
 	}

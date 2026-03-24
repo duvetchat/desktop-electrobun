@@ -34,10 +34,10 @@ function typingText(): string {
 </script>
 
 {#if activeTypers.length > 0}
-	<div class="typing-bar">
-		<div class="typing-avatars">
-			{#each activeTypers.slice(0, 3) as user (user.user_id)}
-				<div class="typing-avatar">
+	<div class="flex items-center gap-[6px] px-3 pt-[2px] pb-1 min-h-[20px] text-xs text-[oklch(0.65_0.01_80)]">
+		<div class="flex items-center">
+			{#each activeTypers.slice(0, 3) as user, i (user.user_id)}
+				<div class="rounded-full border-[1.5px] border-[oklch(0.19_0.008_80)] {i === 0 ? '' : '-ml-1'}">
 					<UserAvatar
 						src={user.avatar}
 						name={displayName(user)}
@@ -46,83 +46,11 @@ function typingText(): string {
 				</div>
 			{/each}
 		</div>
-		<span class="typing-text">{typingText()}</span>
-		<div class="typing-dots" aria-hidden="true">
-			<span></span>
-			<span></span>
-			<span></span>
+		<span class="text-xs text-[oklch(0.65_0.01_80)] [&_strong]:text-[oklch(0.85_0.008_80)] [&_strong]:font-semibold">{typingText()}</span>
+		<div class="flex items-center gap-[3px] ml-[2px]" aria-hidden="true">
+			<span class="block size-1 rounded-full bg-[oklch(0.55_0.01_80)] animate-typing-bounce"></span>
+			<span class="block size-1 rounded-full bg-[oklch(0.55_0.01_80)] animate-typing-bounce [animation-delay:0.2s]"></span>
+			<span class="block size-1 rounded-full bg-[oklch(0.55_0.01_80)] animate-typing-bounce [animation-delay:0.4s]"></span>
 		</div>
 	</div>
 {/if}
-
-<style>
-	.typing-bar {
-		display: flex;
-		align-items: center;
-		gap: 6px;
-		padding: 2px 12px 4px;
-		min-height: 20px;
-		font-size: 12px;
-		color: oklch(0.65 0.01 80);
-	}
-
-	.typing-avatars {
-		display: flex;
-		align-items: center;
-	}
-
-	.typing-avatar {
-		border-radius: 50%;
-		border: 1.5px solid oklch(0.19 0.008 80);
-		margin-left: -4px;
-	}
-
-	.typing-avatar:first-child {
-		margin-left: 0;
-	}
-
-	.typing-text {
-		font-size: 12px;
-		color: oklch(0.65 0.01 80);
-	}
-
-	.typing-text strong {
-		color: oklch(0.85 0.008 80);
-		font-weight: 600;
-	}
-
-	.typing-dots {
-		display: flex;
-		align-items: center;
-		gap: 3px;
-		margin-left: 2px;
-	}
-
-	.typing-dots span {
-		display: block;
-		width: 4px;
-		height: 4px;
-		border-radius: 50%;
-		background: oklch(0.55 0.01 80);
-		animation: typing-bounce 1.2s ease-in-out infinite;
-	}
-
-	.typing-dots span:nth-child(2) {
-		animation-delay: 0.2s;
-	}
-
-	.typing-dots span:nth-child(3) {
-		animation-delay: 0.4s;
-	}
-
-	@keyframes typing-bounce {
-		0%, 60%, 100% {
-			transform: translateY(0);
-			opacity: 0.5;
-		}
-		30% {
-			transform: translateY(-4px);
-			opacity: 1;
-		}
-	}
-</style>

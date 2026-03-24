@@ -1,7 +1,8 @@
 <script lang="ts">
 import { onMount } from "svelte";
 import { get } from "svelte/store";
-import { currentUser, dmMessages, friends, unreadConversations, activeDMConvId, pageVisible, mentionCounts } from "$lib/stores.svelte";
+import { currentUser, dmMessages, friends, unreadConversations, activeDMConvId, pageVisible, mentionCounts, activeCall, activeVoiceRoomId, callVoiceStates } from "$lib/stores.svelte";
+import { sendEventMessage } from "$lib/api/ws/connection";
 import {
 	getDirectMessages,
 	sendDirectMessage,
@@ -19,10 +20,11 @@ import {
 import type { Friend } from "$lib/api/friends";
 import { MessageType, type Message, type MessageReference } from "$lib/types";
 import { toast } from "$lib/stores/toast.svelte";
-import { MessageSquare, UserPlus, Users } from "@lucide/svelte";
+import { MessageSquare, Phone, UserPlus, Users } from "@lucide/svelte";
 import UserAvatar from "$lib/components/UserAvatar.svelte";
 import Chat from "$lib/components/Chat.svelte";
 import GuildMemberSidebar from "$lib/components/GuildMemberSidebar.svelte";
+import VoiceChannelView from "$lib/components/VoiceChannelView.svelte";
 import type { MemberOnSidebar } from "$lib/types";
 
 let { conversation, onMemberAdded = undefined }: {
@@ -45,6 +47,24 @@ let eligibleFriends = $state<Friend[]>([]);
 
 const me = $derived(get(currentUser));
 const isOwner = $derived(me?.id === conversation.owner_id);
+const isInCall = $derived($activeCall?.state === "connected" && $activeCall?.conversationId === conversation.id);
+
+const callVoiceMembers = $derived(
+	conversation.members.map((m) => ({
+		id: m.user_id,
+		username: m.user?.alias ?? m.user?.username ?? m.user_id.slice(0, 8),
+		avatar_url: m.user?.avatar ?? null,
+	})),
+);
+
+function hangUpCall() {
+	const call = get(activeCall);
+	if (!call) return;
+	sendEventMessage("CALL_LEAVE", { conversation_id: call.conversationId });
+	activeVoiceRoomId.set(null);
+	activeCall.set(null);
+	callVoiceStates.set([]);
+}
 
 const convMembers = $derived<MemberOnSidebar[]>(
 	conversation.members.map((m) => ({
@@ -109,9 +129,29 @@ function toMessage(msg: DirectMessage): Message {
 	};
 }
 
-const messages = $derived(
-	($dmMessages[conversation.id] ?? []).map(toMessage),
-);
+// Cache mapped messages to avoid re-creating objects on every store update
+const messageCache = new Map<string, Message>();
+const messages = $derived.by(() => {
+	const raw = $dmMessages[conversation.id] ?? [];
+	const seen = new Set<string>();
+	const result: Message[] = [];
+	for (const msg of raw) {
+		seen.add(msg.id);
+		const cached = messageCache.get(msg.id);
+		if (cached && cached.content === msg.content && cached.updated_at === msg.updated_at && cached.attachments === msg.attachments) {
+			result.push(cached);
+		} else {
+			const mapped = toMessage(msg);
+			messageCache.set(msg.id, mapped);
+			result.push(mapped);
+		}
+	}
+	// Clean stale entries
+	for (const key of messageCache.keys()) {
+		if (!seen.has(key)) messageCache.delete(key);
+	}
+	return result;
+});
 
 function conversationTitle(): string {
 	if (conversation.type === 2) return conversation.name ?? "Group";
@@ -243,6 +283,24 @@ async function handleRemoveMember(userId: string) {
 	await removeConversationMember(conversation.id, userId);
 }
 
+function startCall() {
+	const user = get(currentUser);
+	if (!user || get(activeCall)) return;
+	const memberIds = conversation.members.map((m) => m.user_id);
+	sendEventMessage("CALL_INITIATE", {
+		conversation_id: conversation.id,
+		member_ids: memberIds,
+	});
+	activeCall.set({
+		conversationId: conversation.id,
+		initiatorId: user.id,
+		initiatorName: user.alias ?? user.username ?? "You",
+		initiatorAvatar: user.avatar ?? null,
+		state: "calling",
+		memberIds,
+	});
+}
+
 // ACK helper — sends an ack for the newest confirmed DM if at bottom.
 function tryAckConversation() {
 	const msgs = get(dmMessages)[conversation.id] ?? [];
@@ -333,6 +391,14 @@ onMount(() => {
 			<span class="ml-1 text-xs text-zinc-500">{conversation.members.length} members</span>
 		{/if}
 		<div class="ml-auto flex items-center gap-1">
+			<button
+				class="flex items-center gap-1 rounded px-2 py-1 text-xs font-normal text-zinc-400 hover:bg-stone-800 hover:text-zinc-200 disabled:opacity-40 disabled:cursor-not-allowed"
+				onclick={startCall}
+				disabled={!!$activeCall}
+				title="Start call"
+			>
+				<Phone class="size-3.5" />
+			</button>
 			{#if conversation.type === 2 && isOwner}
 				<button
 					class="flex items-center gap-1 rounded px-2 py-1 text-xs font-normal text-zinc-400 hover:bg-stone-800 hover:text-zinc-200"
@@ -354,6 +420,19 @@ onMount(() => {
 			{/if}
 		</div>
 	</div>
+
+	<!-- Active call view -->
+	{#if isInCall}
+		<div class="shrink-0 max-h-[50%] overflow-hidden border-b border-zinc-800">
+			<VoiceChannelView
+				channelId={conversation.id}
+				channelName={conversationTitle()}
+				callMode
+				callMembers={callVoiceMembers}
+				onHangUp={hangUpCall}
+			/>
+		</div>
+	{/if}
 
 	<!-- Body: messages + optional member sidebar -->
 	<div class="flex flex-1 overflow-hidden">

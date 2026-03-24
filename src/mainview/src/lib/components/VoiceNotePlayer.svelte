@@ -162,7 +162,7 @@ onDestroy(() => {
 const progress = $derived(duration > 0 ? currentTime / duration : 0);
 </script>
 
-<div class="vn-player" class:vn-compact={compact}>
+<div class="flex items-center gap-[10px] {compact ? 'px-[10px] py-[6px] rounded-[12px] max-w-none min-w-0' : 'pl-[10px] pr-[14px] py-[8px] rounded-[18px] max-w-[320px] min-w-[240px]'} bg-[oklch(0.22_0.01_80/0.8)] border border-[oklch(0.30_0.01_80/0.6)]">
     {#if blobUrl}
         <audio
             bind:this={audioEl}
@@ -177,7 +177,7 @@ const progress = $derived(duration > 0 ? currentTime / duration : 0);
         ></audio>
     {/if}
 
-    <button class="vn-play" onclick={togglePlay}>
+    <button class="flex items-center justify-center {compact ? 'size-[28px]' : 'size-[36px]'} rounded-full border-none bg-[oklch(0.55_0.15_250)] text-white cursor-pointer shrink-0 transition-[background] duration-150 hover:bg-[oklch(0.62_0.15_250)]" onclick={togglePlay}>
         {#if playing}
             <Pause class={compact ? "size-3.5" : "size-5"} fill="currentColor" stroke="none" />
         {:else}
@@ -185,107 +185,19 @@ const progress = $derived(duration > 0 ? currentTime / duration : 0);
         {/if}
     </button>
 
-    <div class="vn-body">
+    <div class="flex-1 min-w-0 flex flex-col gap-[4px]">
         <!-- svelte-ignore a11y_click_events_have_key_events -->
         <!-- svelte-ignore a11y_no_static_element_interactions -->
-        <div class="vn-waveform" onclick={handleSeek}>
+        <div class="relative flex items-center gap-[1.5px] {compact ? 'h-[20px]' : 'h-[28px]'} cursor-pointer" onclick={handleSeek}>
             {#each bars as height, i}
                 {@const barProgress = i / bars.length}
                 <div
-                    class="vn-bar"
+                    class="flex-1 rounded-[2px] min-h-[3px] transition-[background] duration-100"
                     style="height: {height * 100}%; {barProgress <= progress ? 'background: oklch(0.65 0.15 250);' : 'background: oklch(0.40 0.01 80);'}"
                 ></div>
             {/each}
-            <div class="vn-dot" style="left: {progress * 100}%;"></div>
+            <div class="absolute top-1/2 {compact ? 'size-[8px]' : 'size-[10px]'} rounded-full bg-[oklch(0.65_0.15_250)] -translate-x-1/2 -translate-y-1/2 pointer-events-none shadow-[0_0_4px_oklch(0.5_0.15_250/0.5)]" style="left: {progress * 100}%;"></div>
         </div>
-        <span class="vn-time">{formatTime(playing || currentTime > 0 ? currentTime : duration)}</span>
+        <span class="text-[oklch(0.52_0.01_80)] tabular-nums {compact ? 'text-[10px]' : 'text-[11px]'}">{formatTime(playing || currentTime > 0 ? currentTime : duration)}</span>
     </div>
 </div>
-
-<style>
-.vn-player {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 8px 14px 8px 10px;
-    border-radius: 18px;
-    background: oklch(0.22 0.01 80 / 0.8);
-    border: 1px solid oklch(0.30 0.01 80 / 0.6);
-    max-width: 320px;
-    min-width: 240px;
-}
-.vn-compact {
-    padding: 6px 10px 6px 8px;
-    border-radius: 12px;
-    max-width: none;
-    min-width: 0;
-}
-
-.vn-play {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 36px;
-    height: 36px;
-    border-radius: 50%;
-    border: none;
-    background: oklch(0.55 0.15 250);
-    color: white;
-    cursor: pointer;
-    flex-shrink: 0;
-    transition: background 0.15s;
-}
-.vn-play:hover { background: oklch(0.62 0.15 250); }
-.vn-compact .vn-play {
-    width: 28px;
-    height: 28px;
-}
-
-.vn-body {
-    flex: 1;
-    min-width: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-}
-
-.vn-waveform {
-    position: relative;
-    display: flex;
-    align-items: center;
-    gap: 1.5px;
-    height: 28px;
-    cursor: pointer;
-}
-.vn-compact .vn-waveform { height: 20px; }
-
-.vn-bar {
-    flex: 1;
-    border-radius: 2px;
-    min-height: 3px;
-    transition: background 0.1s;
-}
-
-.vn-dot {
-    position: absolute;
-    top: 50%;
-    width: 10px;
-    height: 10px;
-    border-radius: 50%;
-    background: oklch(0.65 0.15 250);
-    transform: translate(-50%, -50%);
-    pointer-events: none;
-    box-shadow: 0 0 4px oklch(0.5 0.15 250 / 0.5);
-}
-.vn-compact .vn-dot {
-    width: 8px;
-    height: 8px;
-}
-
-.vn-time {
-    font-size: 11px;
-    color: oklch(0.52 0.01 80);
-    font-variant-numeric: tabular-nums;
-}
-.vn-compact .vn-time { font-size: 10px; }
-</style>

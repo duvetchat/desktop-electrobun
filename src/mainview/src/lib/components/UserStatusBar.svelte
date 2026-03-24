@@ -27,6 +27,12 @@ import { hasPermission, Permission } from "$lib/permissions";
 import UserAvatar from "$lib/components/UserAvatar.svelte";
 import UserSettings from "$lib/components/UserSettings.svelte";
 
+let {
+	collapsed = false,
+}: {
+	collapsed?: boolean;
+} = $props();
+
 const activeVoiceSpace = $derived(
 	$activeVoiceRoomId
 		? $gatewaySpaces.find((s) => s.rooms.some((r) => r.id === $activeVoiceRoomId))
@@ -143,7 +149,7 @@ function pingBgColor(ms: number | null): string {
 </script>
 
 <!-- Voice status pill -->
-{#if $activeVoiceRoomId && activeVoiceRoom}
+{#if !collapsed && $activeVoiceRoomId && activeVoiceRoom}
 	<div
 		class="shrink-0 border-t border-zinc-800"
 		in:fly={{ y: 20, duration: 200, opacity: 1 }}
@@ -177,10 +183,63 @@ function pingBgColor(ms: number | null): string {
 	</div>
 {/if}
 
+{#if collapsed && $currentUser}
+	<div class="flex shrink-0 flex-col items-center gap-1 border-t border-zinc-800 bg-zinc-900 py-2 px-1">
+		{#if $activeVoiceRoomId}
+			<div class="size-8 rounded-lg bg-green-600/20 flex items-center justify-center mb-0.5" title="In voice channel">
+				<CellSignalFullIcon class="size-4 text-green-400" />
+			</div>
+			<button
+				class="flex size-8 items-center justify-center rounded-lg transition-colors hover:bg-zinc-800 text-zinc-400 hover:text-red-400"
+				aria-label="Disconnect"
+				onclick={() => { $activeVoiceRoomId = null; }}
+			>
+				<PhoneDisconnectIcon class="size-4" />
+			</button>
+			<div class="w-6 border-t border-zinc-700 my-0.5"></div>
+		{/if}
+		<div class="relative">
+			<UserAvatar
+				src={$currentUser.avatar}
+				name={$currentUser.alias || $currentUser.username}
+				size={28}
+				class="box-border transition-all duration-200 {$speakingUsers.has($currentUser.id) ? 'ring-[3px] ring-stone-500' : ''}"
+			/>
+		</div>
+		<button
+			class="flex size-8 items-center justify-center rounded-lg transition-colors hover:bg-zinc-800 text-zinc-400"
+			class:text-red-400={$isMuted}
+			aria-label="Toggle Mute"
+			onclick={() => canSpeak && toggleMute()}
+		>
+			{#if $isMuted}
+				<MicrophoneSlashIcon class="size-4" />
+			{:else}
+				<MicrophoneIcon class="size-4" />
+			{/if}
+		</button>
+		<button
+			class="flex size-8 items-center justify-center rounded-lg transition-colors hover:bg-zinc-800 text-zinc-400"
+			class:text-red-400={$isDeafened}
+			aria-label="Deafen"
+			onclick={toggleDeafen}
+		>
+			<HeadphonesIcon class="size-4" />
+		</button>
+		<button
+			class="flex size-8 items-center justify-center rounded-lg transition-colors hover:bg-zinc-800 text-zinc-400"
+			aria-label="User Settings"
+			onclick={() => (showUserSettings = true)}
+		>
+			<GearSixIcon class="size-4" />
+		</button>
+	</div>
+{/if}
+
 <!-- Current user profile bar -->
-{#if $currentUser}
-	<div class="z-100 flex h-16 shrink-0 items-center justify-between border-t border-zinc-800 bg-zinc-900 px-2">
-		<div class="group flex w-full max-w-30 cursor-pointer items-center gap-2 rounded-full p-1 transition-colors hover:bg-zinc-800">
+{#if !collapsed && $currentUser}
+	<div class="z-100 flex h-16 shrink-0 items-center border-t border-zinc-800 bg-zinc-900 px-2 gap-1">
+		<div class="group flex flex-1 min-w-0 cursor-pointer items-center gap-2 rounded-full p-1 transition-colors hover:bg-zinc-800">
 			<div class="relative shrink-0">
 				<UserAvatar
 					src={$currentUser.avatar}

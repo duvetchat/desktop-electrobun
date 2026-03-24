@@ -181,10 +181,11 @@
 			s.rooms.some((r) => r.id === channelId),
 		);
 		const room = space?.rooms.find((r) => r.id === channelId);
+		// For conversation calls (no space/room), always allow speaking
 		const canSpeak =
 			space && room
 				? hasPermission(space, room, Permission.SpeakInVoice)
-				: false;
+				: true;
 
 		if (!canSpeak) {
 			isMuted.set(true);
@@ -623,7 +624,7 @@
 			? 'flex flex-col p-4'
 			: focusedUserId
 				? 'flex flex-row flex-wrap content-start p-4 gap-4'
-				: 'grid grid-cols-auto-fit gap-4 content-start p-4'}"
+				: 'grid grid-cols-[repeat(auto-fit,minmax(320px,1fr))] gap-4 content-start p-4'}"
 	>
 		{#each voiceUsers as user (user.id)}
 			{@const isLocal = user.id === myUserId}
@@ -713,13 +714,13 @@
 					<div class="relative flex items-center justify-center">
 						{#if isSpeaking && !isForceMuted}
 							<span
-								class="voice-pulse absolute size-38.5 rounded-full border border-emerald-300/30"
+								class="absolute size-38.5 rounded-full border border-emerald-300/30 animate-[voice-pulse_1.1s_ease-out_infinite]"
 							></span>
 							<span
-								class="voice-pulse-delayed absolute size-34 rounded-full border border-emerald-300/45"
+								class="absolute size-34 rounded-full border border-emerald-300/45 animate-[voice-pulse_1.1s_ease-out_0.35s_infinite]"
 							></span>
 							<span
-								class="voice-glow absolute size-29.5 rounded-full bg-emerald-300/12"
+								class="absolute size-29.5 rounded-full bg-emerald-300/12 animate-[voice-glow_0.9s_ease-in-out_infinite]"
 							></span>
 						{/if}
 						<div class="relative">
@@ -784,27 +785,11 @@
 </div>
 
 <style>
-	.grid-cols-auto-fit {
-		grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-	}
-
 	:global(.voice-avatar-speaking) {
 		box-shadow:
 			0 0 0 2px oklch(0.8 0.12 160 / 0.35),
 			0 0 30px oklch(0.8 0.12 160 / 0.2);
 		animation: voice-avatar-breath 0.9s ease-in-out infinite;
-	}
-
-	.voice-pulse {
-		animation: voice-pulse 1.1s ease-out infinite;
-	}
-
-	.voice-pulse-delayed {
-		animation: voice-pulse 1.1s ease-out 0.35s infinite;
-	}
-
-	.voice-glow {
-		animation: voice-glow 0.9s ease-in-out infinite;
 	}
 
 	@keyframes voice-pulse {

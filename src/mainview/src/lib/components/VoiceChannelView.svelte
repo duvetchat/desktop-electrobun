@@ -10,6 +10,7 @@
 		voiceLocalVideoStream,
 		currentUser,
 		isScreenSharing,
+		callVoiceStates,
 	} from "$lib/stores.svelte";
 	import { sendEventMessage } from "$lib/api/ws/connection";
 	import {
@@ -17,6 +18,7 @@
 		Mic,
 		MicOff,
 		Headphones,
+		Phone,
 		PhoneOff,
 		MonitorUp,
 		Volume2,
@@ -26,19 +28,52 @@
 	let {
 		channelId,
 		channelName,
-		spaceId,
+		spaceId = "",
+		callMode = false,
+		callMembers = [],
+		onHangUp = undefined,
 	}: {
 		channelId: string;
 		channelName: string;
-		spaceId: string;
+		spaceId?: string;
+		callMode?: boolean;
+		callMembers?: { id: string; username: string; avatar_url: string | null }[];
+		onHangUp?: () => void;
 	} = $props();
 
-	const isConnected = $derived($activeVoiceRoomId === channelId);
+	const isConnected = $derived(callMode || $activeVoiceRoomId === channelId);
 
 	const voiceUsers = $derived.by(() => {
+		if (callMode) {
+			// In call mode, only show users who have actually joined the voice (have a voice state)
+			const states = $callVoiceStates.filter((vs) => vs.room_id === channelId);
+			const me = $currentUser;
+			const list = states.map((vs) => {
+				const member = callMembers.find((m) => m.id === vs.user_id);
+				return {
+					id: vs.user_id,
+					username: member?.username ?? vs.user_id.slice(0, 8),
+					avatar_url: member?.avatar_url ?? null,
+					muted: vs.muted ?? false,
+					deafened: vs.deafened ?? false,
+					screen_sharing: vs.screen_sharing ?? false,
+				};
+			});
+			if (me && isConnected && !list.some((u) => u.id === me.id)) {
+				list.push({
+					id: me.id,
+					username: me.alias ?? me.username ?? "Me",
+					avatar_url: me.avatar ?? null,
+					muted: $isMuted,
+					deafened: $isDeafened,
+					screen_sharing: $isScreenSharing,
+				});
+			}
+			return list;
+		}
+
 		const space = $gatewaySpaces.find((s) => s.id === spaceId);
 		const voiceStates = space?.voice_states?.filter((vs) => vs.room_id === channelId) ?? [];
-		// always show self while connected even before gateway update
 		const me = $currentUser;
 		const list = voiceStates.map((vs) => {
 			const user = space?.users.find((u) => u.id === vs.user_id);
@@ -65,6 +100,7 @@
 	});
 
 	let videoPlayingStates = $state<Record<string, boolean>>({});
+	let videoAccepted = $state<Record<string, boolean>>({});
 	let focusedUserId = $state<string | null>(null);
 
 	function srcObject(node: HTMLVideoElement, stream: MediaStream) {
@@ -81,7 +117,11 @@
 	}
 
 	function leave() {
-		$activeVoiceRoomId = null;
+		if (callMode && onHangUp) {
+			onHangUp();
+		} else {
+			$activeVoiceRoomId = null;
+		}
 	}
 
 	function toggleMute() {
@@ -113,11 +153,15 @@
 <div class="flex flex-col flex-1 min-h-0 bg-[linear-gradient(180deg,oklch(0.205_0.01_80),oklch(0.18_0.008_80))]">
 	<!-- Header -->
 	<div class="shrink-0 flex items-center gap-2 px-4 py-3 border-b border-zinc-800">
-		<Volume2 class="size-4 text-zinc-400 shrink-0" />
+		{#if callMode}
+			<Phone class="size-4 text-emerald-400 shrink-0" />
+		{:else}
+			<Volume2 class="size-4 text-zinc-400 shrink-0" />
+		{/if}
 		<h2 class="font-semibold text-zinc-100 truncate">{channelName}</h2>
 		{#if isConnected}
 			<span class="ml-auto shrink-0 text-xs text-stone-400 font-medium bg-stone-500/10 px-2 py-0.5 rounded-full">
-				Conectado
+				Connected
 			</span>
 		{/if}
 	</div>
@@ -140,13 +184,13 @@
 					{@const isSpeaking = $speakingUsers.has(user.id) && !user.muted}
 
 					<div
-						class="relative flex items-center justify-center overflow-hidden rounded-lg border bg-zinc-800/70 shadow-lg cursor-pointer transition-all {voiceUsers.length === 1 ? 'flex-1 min-h-0 w-full' : focusedUserId === user.id ? 'w-full h-[60vh] order-first' : focusedUserId ? 'w-64 h-48 shrink-0' : 'h-48'} {isSpeaking ? 'border-transparent ring-2 ring-inset ring-stone-400' : 'border-zinc-700 hover:border-zinc-500'}"
+						class="group relative flex items-center justify-center overflow-hidden rounded-lg border bg-zinc-800/70 shadow-lg cursor-pointer transition-all {voiceUsers.length === 1 ? 'flex-1 min-h-0 w-full' : focusedUserId === user.id ? 'w-full h-[60vh] order-first' : focusedUserId ? 'w-64 h-48 shrink-0' : 'h-48'} {isSpeaking ? 'border-transparent ring-2 ring-inset ring-stone-400' : 'border-zinc-700 hover:border-zinc-500'}"
 						role="button"
 						tabindex="0"
 						onclick={() => (focusedUserId = focusedUserId === user.id ? null : user.id)}
 						onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); focusedUserId = focusedUserId === user.id ? null : user.id; } }}
 					>
-						{#if videoStream}
+						{#if videoStream && (isLocal || videoAccepted[user.id])}
 							<video
 								use:srcObject={videoStream}
 								autoplay
@@ -163,6 +207,27 @@
 									<LoaderCircle class="size-8 animate-spin text-zinc-300" />
 								</div>
 							{/if}
+							{#if !isLocal}
+								<button
+									class="absolute top-2 right-2 z-20 flex items-center gap-1.5 rounded-md bg-black/70 px-2.5 py-1.5 text-xs text-zinc-300 opacity-0 hover:bg-red-600/80 hover:text-white transition-all group-hover:opacity-100 backdrop-blur-sm"
+									onclick={(e) => { e.stopPropagation(); videoAccepted = { ...videoAccepted, [user.id]: false }; videoPlayingStates = { ...videoPlayingStates, [user.id]: false }; }}
+								>
+									<PhoneOff class="size-3" />
+									Stop watching
+								</button>
+							{/if}
+						{:else if videoStream && !isLocal}
+							<!-- Remote user is sharing but viewer hasn't accepted -->
+							<div class="flex flex-col items-center justify-center gap-3">
+								<UserAvatar src={user.avatar_url} name={user.username} size={64} />
+								<button
+									class="flex items-center gap-2 rounded-lg bg-stone-600 hover:bg-stone-500 px-4 py-2 text-sm font-medium text-white transition-colors"
+									onclick={(e) => { e.stopPropagation(); videoAccepted = { ...videoAccepted, [user.id]: true }; }}
+								>
+									<MonitorUp class="size-4" />
+									Watch stream
+								</button>
+							</div>
 						{:else}
 							<div class="flex items-center justify-center">
 								<UserAvatar src={user.avatar_url} name={user.username} size={80} />

@@ -21,12 +21,14 @@ let {
 	channelId = null,
 	overrideMembers = undefined,
 	onRemoveMember = undefined,
+	collapsed = false,
 }: {
 	spaceId?: string | null;
 	space?: GatewaySpace | null;
 	channelId?: string | null;
 	overrideMembers?: MemberOnSidebar[];
 	onRemoveMember?: (userId: string) => void;
+	collapsed?: boolean;
 } = $props();
 
 const TYPING_TIMEOUT = 5000;
@@ -232,7 +234,7 @@ $effect(() => {
 </script>
 
 <div
-    class="w-64 bg-zinc-900 flex flex-col border-l border-zinc-800 overflow-hidden shrink-0"
+    class="bg-zinc-900 flex flex-col border-l border-zinc-800 overflow-hidden shrink-0 transition-[width] duration-200 {collapsed ? 'w-0 border-l-0' : 'w-64'}"
 >
     <div class="h-10 px-3 border-b border-zinc-800 flex items-center justify-between shrink-0">
         <p class="text-xs font-bold tracking-wide text-zinc-200 uppercase">Members</p>
@@ -272,9 +274,9 @@ $effect(() => {
                                     />
                                     {#if isTyping(member.id)}
                                         <span class="absolute -bottom-0.5 -right-0.5 flex items-center justify-center gap-0.5 h-3 w-4 rounded-full border-2 border-zinc-900 bg-zinc-700">
-                                            <span class="member-typing-dot"></span>
-                                            <span class="member-typing-dot" style="animation-delay:0.2s"></span>
-                                            <span class="member-typing-dot" style="animation-delay:0.4s"></span>
+                                            <span class="block size-0.5 rounded-full bg-[oklch(0.75_0.01_80)] animate-[member-typing-bounce_1.2s_ease-in-out_infinite]"></span>
+                                            <span class="block size-0.5 rounded-full bg-[oklch(0.75_0.01_80)] animate-[member-typing-bounce_1.2s_ease-in-out_infinite]" style="animation-delay:0.2s"></span>
+                                            <span class="block size-0.5 rounded-full bg-[oklch(0.75_0.01_80)] animate-[member-typing-bounce_1.2s_ease-in-out_infinite]" style="animation-delay:0.4s"></span>
                                         </span>
                                     {:else}
                                         <span
@@ -322,15 +324,6 @@ $effect(() => {
 </div>
 
 <style>
-    :global(.member-typing-dot) {
-        display: block;
-        width: 2px;
-        height: 2px;
-        border-radius: 50%;
-        background: oklch(0.75 0.01 80);
-        animation: member-typing-bounce 1.2s ease-in-out infinite;
-    }
-
     @keyframes member-typing-bounce {
         0%, 60%, 100% { transform: translateY(0); opacity: 0.5; }
         30% { transform: translateY(-2px); opacity: 1; }

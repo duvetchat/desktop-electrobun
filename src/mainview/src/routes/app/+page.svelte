@@ -11,11 +11,13 @@ import VoiceChat from "$lib/components/VoiceChat.svelte";
 import { makeLeaf, makeSplit, removeLeaf, updateLeaf } from "$lib/pane";
 import { canViewRoom } from "$lib/permissions";
 import {
+	activeCall,
 	activeVoiceRoomId,
 	currentUser,
 	friendsReady,
 	gatewaySpaces,
 } from "$lib/stores.svelte";
+import CallModal from "$lib/components/CallModal.svelte";
 import type { PaneNode, Tab } from "$lib/types";
 import { gatewaySpaceToGuild, gatewaySpaceToMembers } from "$lib/types";
 
@@ -299,6 +301,7 @@ const globalVoiceRoom = $derived(
 				.find((r) => r.id === $activeVoiceRoomId) ?? null)
 		: null,
 );
+const isCallVoice = $derived($activeCall?.state === "connected" && $activeVoiceRoomId === $activeCall?.conversationId);
 
 let prevVoiceRoomId: string | null = null;
 
@@ -380,22 +383,28 @@ $effect(() => {
       />
     </div>
   </div>
-  <div class="contents" style={!showFriendsView && showMembersSidebar ? '' : 'display: none'}>
+  {#if !showFriendsView}
     <GuildMemberSidebar
       spaceId={memberSidebarSpaceId}
       space={memberSidebarSpace}
       channelId={sidebarActiveChannelId}
+      collapsed={!showMembersSidebar}
     />
-  </div>
+  {/if}
 </div>
 
 {/if}
 
 <!-- Global VoiceChat: mounted outside all navigation so audio never cuts -->
-{#if $activeVoiceRoomId && globalVoiceRoom}
+{#if $activeVoiceRoomId && (globalVoiceRoom || isCallVoice)}
   {#key $activeVoiceRoomId}
     <div class="hidden" aria-hidden="true">
-      <VoiceChat channelId={$activeVoiceRoomId} channelName={globalVoiceRoom.name} />
+      <VoiceChat channelId={$activeVoiceRoomId} channelName={globalVoiceRoom?.name ?? "Call"} />
     </div>
   {/key}
+{/if}
+
+<!-- Global call UI: ringing/calling overlay -->
+{#if $activeCall}
+  <CallModal />
 {/if}

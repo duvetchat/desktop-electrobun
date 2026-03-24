@@ -472,7 +472,7 @@ const selectedSettingsRoles = $derived(
                                             <input
                                                 type="color"
                                                 bind:value={newRoleColorFrom}
-                                                class="color-swatch cursor-pointer"
+                                                class="color-swatch size-7 rounded-md border-2 border-zinc-600 p-0 bg-none cursor-pointer"
                                                 title="Color from"
                                             />
                                             <span
@@ -487,7 +487,7 @@ const selectedSettingsRoles = $derived(
                                                 <input
                                                     type="color"
                                                     bind:value={newRoleColorVia}
-                                                    class="color-swatch cursor-pointer"
+                                                    class="color-swatch size-7 rounded-md border-2 border-zinc-600 p-0 bg-none cursor-pointer"
                                                     title="Color via (middle)"
                                                 />
                                                 <span
@@ -501,7 +501,7 @@ const selectedSettingsRoles = $derived(
                                                 <input
                                                     type="color"
                                                     bind:value={newRoleColorTo}
-                                                    class="color-swatch cursor-pointer"
+                                                    class="color-swatch size-7 rounded-md border-2 border-zinc-600 p-0 bg-none cursor-pointer"
                                                     title="Color to"
                                                 />
                                                 <span
@@ -537,7 +537,7 @@ const selectedSettingsRoles = $derived(
 
                                 <!-- Hoisted -->
                                 <label class="flex items-center gap-2 rounded-md border border-zinc-800 bg-zinc-800/40 px-2.5 py-2 cursor-pointer text-xs text-zinc-200 hover:text-white">
-                                    <Checkbox.Root bind:checked={newRoleHoisted} class="size-4 rounded border border-zinc-600 bg-zinc-900 data-[state=checked]:bg-stone-600 data-[state=checked]:border-stone-600 flex items-center justify-center text-white text-xxs">✓</Checkbox.Root>
+                                    <Checkbox.Root bind:checked={newRoleHoisted} class="size-4 rounded border border-zinc-600 bg-zinc-900 data-[state=checked]:bg-stone-600 data-[state=checked]:border-stone-600 flex items-center justify-center text-transparent data-[state=checked]:text-white text-xxs">✓</Checkbox.Root>
                                     Display role members separately in sidebar
                                 </label>
 
@@ -553,7 +553,7 @@ const selectedSettingsRoles = $derived(
 											<label class="flex h-9 items-center gap-2 rounded-md border border-zinc-800 bg-zinc-800/70 px-2.5 cursor-pointer text-xs text-zinc-200 hover:text-white">
                                                 <Checkbox.Root checked={newRolePermissions.includes(perm.flag)} onCheckedChange={() => {
                                                     togglePermission(perm.flag, false);
-                                                }} class="size-4 rounded border border-zinc-600 bg-zinc-900 data-[state=checked]:bg-stone-600 data-[state=checked]:border-stone-600 flex items-center justify-center text-white text-xxs">✓</Checkbox.Root>
+                                                }} class="size-4 rounded border border-zinc-600 bg-zinc-900 data-[state=checked]:bg-stone-600 data-[state=checked]:border-stone-600 flex items-center justify-center text-transparent data-[state=checked]:text-white text-xxs">✓</Checkbox.Root>
                                                 {perm.name}
                                             </label>
                                         {/each}
@@ -664,7 +664,7 @@ const selectedSettingsRoles = $derived(
                                                                         bind:value={
                                                                             editingRoleColorFrom
                                                                         }
-                                                                        class="color-swatch cursor-pointer"
+                                                                        class="color-swatch size-7 rounded-md border-2 border-zinc-600 p-0 bg-none cursor-pointer"
                                                                         title="Color from"
                                                                     />
                                                                     <span
@@ -681,7 +681,7 @@ const selectedSettingsRoles = $derived(
                                                                             bind:value={
                                                                                 editingRoleColorVia
                                                                             }
-                                                                            class="color-swatch cursor-pointer"
+                                                                            class="color-swatch size-7 rounded-md border-2 border-zinc-600 p-0 bg-none cursor-pointer"
                                                                             title="Via"
                                                                         />
                                                                         <span
@@ -697,7 +697,7 @@ const selectedSettingsRoles = $derived(
                                                                             bind:value={
                                                                                 editingRoleColorTo
                                                                             }
-                                                                            class="color-swatch cursor-pointer"
+                                                                            class="color-swatch size-7 rounded-md border-2 border-zinc-600 p-0 bg-none cursor-pointer"
                                                                             title="To"
                                                                         />
                                                                         <span
@@ -737,7 +737,7 @@ const selectedSettingsRoles = $derived(
 
                                                     <!-- Hoisted -->
                                                     <label class="flex items-center gap-2 cursor-pointer text-xs text-zinc-200 hover:text-white">
-                                                        <Checkbox.Root bind:checked={editingRoleHoisted} class="size-4 rounded border border-zinc-600 bg-zinc-900 data-[state=checked]:bg-stone-600 data-[state=checked]:border-stone-600 flex items-center justify-center text-white text-xxs">✓</Checkbox.Root>
+                                                        <Checkbox.Root bind:checked={editingRoleHoisted} class="size-4 rounded border border-zinc-600 bg-zinc-900 data-[state=checked]:bg-stone-600 data-[state=checked]:border-stone-600 flex items-center justify-center text-transparent data-[state=checked]:text-white text-xxs">✓</Checkbox.Root>
                                                         Display role members separately
                                                         in sidebar
                                                     </label>
@@ -756,7 +756,7 @@ const selectedSettingsRoles = $derived(
                                                                 <label class="flex items-center gap-2 cursor-pointer text-xs text-zinc-200 hover:text-white">
                                                                     <Checkbox.Root checked={(editingRolePermissions & perm.flag) === perm.flag} onCheckedChange={() => {
                                                                         togglePermission(perm.flag, true);
-                                                                    }} class="size-4 rounded border border-zinc-600 bg-zinc-900 data-[state=checked]:bg-stone-600 data-[state=checked]:border-stone-600 flex items-center justify-center text-white text-xxs">✓</Checkbox.Root>
+                                                                    }} class="size-4 rounded border border-zinc-600 bg-zinc-900 data-[state=checked]:bg-stone-600 data-[state=checked]:border-stone-600 flex items-center justify-center text-transparent data-[state=checked]:text-white text-xxs">✓</Checkbox.Root>
                                                                     {perm.name}
                                                                 </label>
                                                             {/each}
@@ -911,14 +911,6 @@ const selectedSettingsRoles = $derived(
     </Dialog.Portal>
 </Dialog.Root>
 <style>
-    .color-swatch {
-        width: 28px;
-        height: 28px;
-        border-radius: 6px;
-        border: 2px solid var(--color-zinc-600);
-        padding: 0;
-        background: none;
-    }
     .color-swatch::-webkit-color-swatch-wrapper {
         padding: 0;
     }

@@ -531,18 +531,17 @@ export function focus() {
 }
 </script>
 
-<!-- Wrapper so the autocomplete dropdown can be absolutely positioned -->
-<div class="chat-input-wrapper">
+<!-- Wrapper with display:contents so children participate in parent flex -->
+<div class="contents">
 	<!-- Mention autocomplete dropdown -->
 	{#if mentionSuggestions.length > 0}
-		<div class="ac-dropdown" role="listbox" aria-label="Mention suggestions">
-			<div class="ac-label">Members matching <strong>@{getRaw(inputEl).slice(0, getOffset()).match(/@(\w*)$/)?.[1]}</strong></div>
+		<div class="absolute bottom-[calc(100%+6px)] left-0 right-0 bg-[oklch(0.19_0.008_80)] border border-[oklch(0.30_0.01_80)] rounded-lg shadow-[0_8px_24px_rgba(0,0,0,0.5)] overflow-hidden z-[90] py-1 max-h-[300px] overflow-y-auto" role="listbox" aria-label="Mention suggestions">
+			<div class="text-[10px] font-bold tracking-wider uppercase text-[oklch(0.52_0.01_80)] px-3 pt-1.5 pb-1">Members matching <strong>@{getRaw(inputEl).slice(0, getOffset()).match(/@(\w*)$/)?.[1]}</strong></div>
 			{#each mentionSuggestions as member, i}
 				<button
 					role="option"
 					aria-selected={i === mentionSelectedIdx}
-					class="ac-item"
-					class:selected={i === mentionSelectedIdx}
+					class="flex items-center gap-2.5 w-full px-3 py-1.5 bg-none border-none cursor-pointer text-left transition-[background] duration-100 {i === mentionSelectedIdx ? 'bg-[oklch(0.28_0.01_80)]' : 'hover:bg-[oklch(0.28_0.01_80)]'}"
 					onmousedown={(e) => {
 						e.preventDefault();
 						insertMentionSuggestion(member);
@@ -550,9 +549,9 @@ export function focus() {
 					onmouseenter={() => (mentionSelectedIdx = i)}
 				>
 					<UserAvatar src={member.avatar_url} name={member.username} size={22} />
-					<span class="ac-primary">{member.username}</span>
+					<span class="text-[13px] text-[oklch(0.85_0.008_80)]">{member.username}</span>
 					{#if member.raw_username !== member.username}
-						<span class="ac-secondary">@{member.raw_username}</span>
+						<span class="text-[11px] text-[oklch(0.52_0.01_80)]">@{member.raw_username}</span>
 					{/if}
 				</button>
 			{/each}
@@ -561,14 +560,13 @@ export function focus() {
 
 	<!-- Emoji autocomplete dropdown -->
 	{#if suggestions.length > 0}
-		<div class="ac-dropdown" role="listbox" aria-label="Emoji suggestions">
-			<div class="ac-label">Emoji matching <strong>:{getRaw(inputEl).slice(0, getOffset()).match(/:([\w\d]*)$/)?.[1]}</strong></div>
+		<div class="absolute bottom-[calc(100%+6px)] left-0 right-0 bg-[oklch(0.19_0.008_80)] border border-[oklch(0.30_0.01_80)] rounded-lg shadow-[0_8px_24px_rgba(0,0,0,0.5)] overflow-hidden z-[90] py-1 max-h-[300px] overflow-y-auto" role="listbox" aria-label="Emoji suggestions">
+			<div class="text-[10px] font-bold tracking-wider uppercase text-[oklch(0.52_0.01_80)] px-3 pt-1.5 pb-1">Emoji matching <strong>:{getRaw(inputEl).slice(0, getOffset()).match(/:([\w\d]*)$/)?.[1]}</strong></div>
 			{#each suggestions as entry, i}
 				<button
 					role="option"
 					aria-selected={i === selectedIdx}
-					class="ac-item"
-					class:selected={i === selectedIdx}
+					class="flex items-center gap-2.5 w-full px-3 py-1.5 bg-none border-none cursor-pointer text-left transition-[background] duration-100 {i === selectedIdx ? 'bg-[oklch(0.28_0.01_80)]' : 'hover:bg-[oklch(0.28_0.01_80)]'}"
 					onmousedown={(e) => {
 						e.preventDefault();
 						insertSuggestion(entry);
@@ -578,10 +576,10 @@ export function focus() {
 					<img
 						src={toTwemojiUrl(entry.emoji)}
 						alt={entry.emoji}
-						class="ac-img"
+						class="size-[22px] shrink-0"
 						loading="lazy"
 					/>
-					<span class="ac-primary">:{entry.name.replace(/ /g, "_")}:</span>
+					<span class="text-[13px] text-[oklch(0.85_0.008_80)]">:{entry.name.replace(/ /g, "_")}:</span>
 				</button>
 			{/each}
 		</div>
@@ -597,23 +595,23 @@ export function focus() {
 	/>
 
 	<!-- The contenteditable chat input -->
-	<div class="ce-input-row">
+	<div class="contents">
 		{#if recording}
-			<div class="ce-input-area ce-recording">
+			<div class="pointer-events-auto flex-1 rounded-xl border border-[oklch(0.4_0.15_25/0.4)] bg-[oklch(0.20_0.02_25/0.5)] px-3 py-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
 				<div class="flex items-center gap-3 h-5">
 					<div class="size-2.5 rounded-full bg-red-500 animate-pulse"></div>
 					<span class="text-sm text-zinc-300 font-medium tabular-nums">{formatDuration(recordingDuration)}</span>
 					<span class="text-xs text-zinc-500">Recording...</span>
 				</div>
 			</div>
-			<button type="button" class="ce-action-btn" title="Cancel recording" onclick={cancelRecording}>
+			<button type="button" class="ce-action-btn flex size-10 shrink-0 items-center justify-center rounded-xl border border-[oklch(0.40_0.01_80/0.7)] bg-[oklch(0.22_0.01_80/0.7)] text-[oklch(0.70_0.01_80)] transition-colors duration-150 cursor-pointer outline-none hover:bg-[oklch(0.28_0.01_80)] hover:text-[oklch(0.96_0.005_80)]" title="Cancel recording" onclick={cancelRecording}>
 				<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
 			</button>
-			<button type="button" class="ce-action-btn ce-send-voice" title="Send voice note" onclick={stopRecording}>
+			<button type="button" class="ce-action-btn flex size-10 shrink-0 items-center justify-center rounded-xl border border-[oklch(0.40_0.01_80/0.7)] bg-[oklch(0.22_0.01_80/0.7)] text-[oklch(0.7_0.15_25)] transition-colors duration-150 cursor-pointer outline-none hover:text-[oklch(0.85_0.15_25)] hover:bg-[oklch(0.28_0.02_25)]" title="Send voice note" onclick={stopRecording}>
 				<Square class="size-4" fill="currentColor" />
 			</button>
 		{:else}
-			<div class="ce-input-area">
+			<div class="pointer-events-auto flex-1 rounded-xl border-none bg-[oklch(0.22_0.01_80/0.8)] px-3 py-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
 				<div
 					bind:this={inputEl}
 					contenteditable="true"
@@ -621,8 +619,7 @@ export function focus() {
 					tabindex="0"
 					aria-multiline="false"
 					aria-label={placeholder}
-					class="ce-input focus-override"
-					class:ce-empty={isEmpty}
+					class="ce-input block w-full min-h-5 max-h-36 overflow-y-auto text-sm leading-5 text-[oklch(0.96_0.005_80)] outline-none whitespace-pre-wrap break-words caret-[oklch(0.96_0.005_80)] [scrollbar-width:thin] focus-override {isEmpty ? 'ce-empty' : ''}"
 					data-placeholder={placeholder}
 					onkeydown={handleKeyDown}
 					oninput={handleInput}
@@ -634,7 +631,7 @@ export function focus() {
 				<!-- File picker button -->
 				<button
 					type="button"
-					class="ce-action-btn"
+					class="ce-action-btn flex size-10 shrink-0 items-center justify-center rounded-xl border border-[oklch(0.40_0.01_80/0.7)] bg-[oklch(0.22_0.01_80/0.7)] text-[oklch(0.70_0.01_80)] transition-colors duration-150 cursor-pointer outline-none hover:bg-[oklch(0.28_0.01_80)] hover:text-[oklch(0.96_0.005_80)]"
 					title="Attach files"
 					aria-label="Attach files"
 					onclick={() => fileInputEl?.click()}
@@ -646,7 +643,7 @@ export function focus() {
 				{#if onVoiceNote}
 					<button
 						type="button"
-						class="ce-action-btn"
+						class="ce-action-btn flex size-10 shrink-0 items-center justify-center rounded-xl border border-[oklch(0.40_0.01_80/0.7)] bg-[oklch(0.22_0.01_80/0.7)] text-[oklch(0.70_0.01_80)] transition-colors duration-150 cursor-pointer outline-none hover:bg-[oklch(0.28_0.01_80)] hover:text-[oklch(0.96_0.005_80)]"
 						title="Record voice note"
 						aria-label="Record voice note"
 						onclick={startRecording}
@@ -658,7 +655,7 @@ export function focus() {
 				<!-- Emoji picker button -->
 				<Popover.Root bind:open={showEmojiPicker}>
 					<Popover.Trigger
-						class="ce-action-btn"
+						class="ce-action-btn flex size-10 shrink-0 items-center justify-center rounded-xl border border-[oklch(0.40_0.01_80/0.7)] bg-[oklch(0.22_0.01_80/0.7)] text-[oklch(0.70_0.01_80)] transition-colors duration-150 cursor-pointer outline-none hover:bg-[oklch(0.28_0.01_80)] hover:text-[oklch(0.96_0.005_80)]"
 						title="Open emoji picker"
 						aria-label="Open emoji picker"
 					>
@@ -674,7 +671,7 @@ export function focus() {
 				<!-- GIF picker button -->
 				<Popover.Root bind:open={showGifPicker}>
 					<Popover.Trigger
-						class="ce-action-btn"
+						class="ce-action-btn flex size-10 shrink-0 items-center justify-center rounded-xl border border-[oklch(0.40_0.01_80/0.7)] bg-[oklch(0.22_0.01_80/0.7)] text-[oklch(0.70_0.01_80)] transition-colors duration-150 cursor-pointer outline-none hover:bg-[oklch(0.28_0.01_80)] hover:text-[oklch(0.96_0.005_80)]"
 						title="Open GIF picker"
 						aria-label="Open GIF picker"
 					>
@@ -692,66 +689,15 @@ export function focus() {
 </div>
 
 <style>
-	.chat-input-wrapper {
-		position: relative;
-		display: contents;
-	}
-
-	/* ── Autocomplete dropdown ─────────────────────── */
-	.ac-dropdown {
+	/* Placeholder via CSS ::before — can't be done with Tailwind */
+	.ce-input.ce-empty::before {
+		content: attr(data-placeholder);
+		color: oklch(0.52 0.01 80);
+		pointer-events: none;
 		position: absolute;
-		bottom: calc(100% + 6px);
-		left: 0;
-		right: 0;
-		background: oklch(0.19 0.008 80);
-		border: 1px solid oklch(0.30 0.01 80);
-		border-radius: 8px;
-		box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
-		overflow: hidden;
-		z-index: 90;
-		padding: 4px 0;
-		max-height: 300px;
-		overflow-y: auto;
-	}
-	.ac-label {
-		font-size: 10px;
-		font-weight: 700;
-		letter-spacing: 0.05em;
-		text-transform: uppercase;
-		color: oklch(0.52 0.01 80);
-		padding: 6px 12px 4px;
-	}
-	.ac-item {
-		display: flex;
-		align-items: center;
-		gap: 10px;
-		width: 100%;
-		padding: 6px 12px;
-		background: none;
-		border: none;
-		cursor: pointer;
-		text-align: left;
-		transition: background 0.1s;
-	}
-	.ac-item.selected,
-	.ac-item:hover {
-		background: oklch(0.28 0.01 80);
-	}
-	.ac-img {
-		width: 22px;
-		height: 22px;
-		flex-shrink: 0;
-	}
-	.ac-primary {
-		font-size: 13px;
-		color: oklch(0.85 0.008 80);
-	}
-	.ac-secondary {
-		font-size: 11px;
-		color: oklch(0.52 0.01 80);
 	}
 
-	/* ── Mention chip ────────────────────────────── */
+	/* Mention chip — :global because injected via innerHTML */
 	:global(.mention-chip) {
 		display: inline;
 		padding: 1px 4px;
@@ -761,75 +707,5 @@ export function focus() {
 		font-weight: 500;
 		cursor: default;
 		user-select: all;
-	}
-
-	/* ── Input row ────────────────────────────────── */
-	.ce-input-row {
-		display: contents;
-	}
-
-	/* ── Contenteditable div ──────────────────────── */
-	.ce-input-area {
-		pointer-events: auto;
-		flex: 1;
-		border-radius: 0.75rem;
-		border: none;
-		background: oklch(0.22 0.01 80 / 0.8);
-		padding: 0.625rem 0.75rem;
-		box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
-	}
-	.ce-recording {
-		border: 1px solid oklch(0.4 0.15 25 / 0.4);
-		background: oklch(0.20 0.02 25 / 0.5);
-	}
-	:global(.ce-send-voice) {
-		color: oklch(0.7 0.15 25) !important;
-	}
-	:global(.ce-send-voice:hover) {
-		color: oklch(0.85 0.15 25) !important;
-		background: oklch(0.28 0.02 25) !important;
-	}
-	.ce-input {
-		display: block;
-		width: 100%;
-		min-height: 1.25rem;
-		max-height: 9rem;
-		overflow-y: auto;
-		font-size: 0.875rem;
-		line-height: 1.25rem;
-		color: oklch(0.96 0.005 80);
-		outline: none;
-		white-space: pre-wrap;
-		word-break: break-word;
-		caret-color: oklch(0.96 0.005 80);
-		scrollbar-width: thin;
-	}
-	/* Placeholder via CSS ::before */
-	.ce-input.ce-empty::before {
-		content: attr(data-placeholder);
-		color: oklch(0.52 0.01 80);
-		pointer-events: none;
-		position: absolute;
-	}
-
-	/* Emoji picker button — :global because Popover.Trigger renders the DOM element */
-	:global(.ce-action-btn) {
-		display: flex;
-		height: 2.5rem;
-		width: 2.5rem;
-		flex-shrink: 0;
-		align-items: center;
-		justify-content: center;
-		border-radius: 0.75rem;
-		border: 1px solid oklch(0.40 0.01 80 / 0.7);
-		background: oklch(0.22 0.01 80 / 0.7);
-		color: oklch(0.70 0.01 80);
-		transition: background 0.15s, color 0.15s;
-		cursor: pointer;
-		outline: none;
-	}
-	:global(.ce-action-btn:hover) {
-		background: oklch(0.28 0.01 80);
-		color: oklch(0.96 0.005 80);
 	}
 </style>

@@ -215,7 +215,7 @@ function convAvatarSrc(conv: Conversation): string | null | undefined {
 }
 </script>
 
-<div class="friends-view">
+<div class="flex flex-col h-full bg-[var(--bg-primary,#1e1f22)] text-[var(--text-primary,#dbdee1)]">
 	{#if activeConversation}
 		<div class="flex flex-col h-full overflow-hidden">
 			<div class="flex h-8 shrink-0 items-center border-b border-stone-800 bg-stone-950/45 px-2">
@@ -244,44 +244,40 @@ function convAvatarSrc(conv: Conversation): string | null | undefined {
 			{/key}
 		</div>
 	{:else}
-	<div class="friends-header">
+	<div class="px-5 pt-4 border-b border-[var(--border,#3f4147)]">
 		<div class="flex items-center justify-between mb-3">
-			<h2>Friends</h2>
+			<h2 class="text-base font-semibold m-0 mb-3">Friends</h2>
 		</div>
-		<div class="tabs">
+		<div class="flex gap-1">
 			<button
-				class="tab"
-				class:active={activeTab === "friends"}
+				class="flex items-center gap-1.5 px-3 py-1.5 rounded-t border-none bg-none cursor-pointer text-[13px] transition-colors duration-150 {activeTab === 'friends' ? 'bg-[var(--bg-secondary,#2b2d31)] text-[var(--text-primary,#dbdee1)] border-b-2 border-b-[var(--accent,#5865f2)]' : 'text-[var(--text-secondary,#949ba4)] hover:bg-[var(--bg-hover,#35373c)] hover:text-[var(--text-primary,#dbdee1)]'}"
 				onclick={() => (activeTab = "friends")}
 			>
 				<Users size={14} />
 				Friends
 				{#if $friends.length > 0}
-					<span class="badge">{$friends.length}</span>
+					<span class="bg-[var(--bg-tertiary,#35373c)] rounded-[10px] px-1.5 py-px text-[11px] font-semibold">{$friends.length}</span>
 				{/if}
 			</button>
 			<button
-				class="tab"
-				class:active={activeTab === "pending"}
+				class="flex items-center gap-1.5 px-3 py-1.5 rounded-t border-none bg-none cursor-pointer text-[13px] transition-colors duration-150 {activeTab === 'pending' ? 'bg-[var(--bg-secondary,#2b2d31)] text-[var(--text-primary,#dbdee1)] border-b-2 border-b-[var(--accent,#5865f2)]' : 'text-[var(--text-secondary,#949ba4)] hover:bg-[var(--bg-hover,#35373c)] hover:text-[var(--text-primary,#dbdee1)]'}"
 				onclick={() => (activeTab = "pending")}
 			>
 				<Clock size={14} />
 				Pending
 				{#if $pendingFriendRequests.length > 0}
-					<span class="badge pending">{$pendingFriendRequests.length}</span>
+					<span class="bg-[#da3633] text-white rounded-[10px] px-1.5 py-px text-[11px] font-semibold">{$pendingFriendRequests.length}</span>
 				{/if}
 			</button>
 			<button
-				class="tab"
-				class:active={activeTab === "sent"}
+				class="flex items-center gap-1.5 px-3 py-1.5 rounded-t border-none bg-none cursor-pointer text-[13px] transition-colors duration-150 {activeTab === 'sent' ? 'bg-[var(--bg-secondary,#2b2d31)] text-[var(--text-primary,#dbdee1)] border-b-2 border-b-[var(--accent,#5865f2)]' : 'text-[var(--text-secondary,#949ba4)] hover:bg-[var(--bg-hover,#35373c)] hover:text-[var(--text-primary,#dbdee1)]'}"
 				onclick={() => (activeTab = "sent")}
 			>
 				<Send size={14} />
 				Sent
 			</button>
 			<button
-				class="tab add-tab"
-				class:active={activeTab === "add"}
+				class="flex items-center gap-1.5 px-3 py-1.5 rounded-t border-none bg-none cursor-pointer text-[13px] transition-colors duration-150 {activeTab === 'add' ? 'bg-[var(--bg-secondary,#2b2d31)] text-[#23a55a] border-b-2 border-b-[#23a55a]' : 'text-[var(--text-secondary,#949ba4)] hover:bg-[var(--bg-hover,#35373c)] hover:text-[var(--text-primary,#dbdee1)]'}"
 				onclick={() => (activeTab = "add")}
 			>
 				<UserPlus size={14} />
@@ -290,37 +286,37 @@ function convAvatarSrc(conv: Conversation): string | null | undefined {
 		</div>
 	</div>
 
-	<div class="friends-content">
+	<div class="flex-1 overflow-y-auto py-3">
 		{#if activeTab === "friends"}
 			{#if $friends.length === 0}
-				<div class="empty-state">
+				<div class="flex flex-col items-center justify-center gap-3 px-5 py-[60px] text-[var(--text-secondary,#949ba4)]">
 					<Users size={40} />
 					<p>No friends yet</p>
 				</div>
 			{:else}
-				<ul class="list">
+				<ul class="list-none m-0 px-2">
 					{#each $friends as friend (friend.id)}
 						{@const friendId = getFriendUserId(friend)}
-						<li class="list-item">
+						<li class="flex items-center gap-3 px-3 py-2 rounded-md transition-[background] duration-100 hover:bg-[var(--bg-hover,#35373c)]">
 							<UserAvatar
 								src={friend.user_avatar}
 								name={friend.user_alias ?? friend.user_username}
 								size={36}
 							/>
-							<div class="info">
-								<span class="label">{friend.user_alias ?? friend.user_username}</span>
-								<span class="sublabel">@{friend.user_username}</span>
+							<div class="flex-1 flex flex-col gap-0.5 min-w-0">
+								<span class="text-[13px] font-medium overflow-hidden text-ellipsis whitespace-nowrap">{friend.user_alias ?? friend.user_username}</span>
+								<span class="text-[11px] text-[var(--text-secondary,#949ba4)]">@{friend.user_username}</span>
 							</div>
-							<div class="actions">
+							<div class="flex gap-1.5">
 								<button
-									class="action-btn"
+									class="size-7 rounded-full border-none bg-[var(--bg-tertiary,#35373c)] text-[var(--text-secondary,#949ba4)] cursor-pointer flex items-center justify-center transition-colors duration-100 hover:bg-[var(--bg-tertiary,#35373c)] hover:text-[var(--text-primary,#dbdee1)]"
 									title="Direct message"
 									onclick={() => handleOpenDM(friend)}
 								>
 									<MessageSquare size={14} />
 								</button>
 								<button
-									class="action-btn danger"
+									class="size-7 rounded-full border-none bg-[var(--bg-tertiary,#35373c)] text-[#da3633] cursor-pointer flex items-center justify-center transition-colors duration-100 hover:bg-[#da3633] hover:text-white"
 									title="Remove friend"
 									onclick={() => handleUnfriend(friend)}
 								>
@@ -334,33 +330,33 @@ function convAvatarSrc(conv: Conversation): string | null | undefined {
 
 		{:else if activeTab === "pending"}
 			{#if $pendingFriendRequests.length === 0}
-				<div class="empty-state">
+				<div class="flex flex-col items-center justify-center gap-3 px-5 py-[60px] text-[var(--text-secondary,#949ba4)]">
 					<Clock size={40} />
 					<p>No pending requests</p>
 				</div>
 			{:else}
-				<ul class="list">
+				<ul class="list-none m-0 px-2">
 					{#each $pendingFriendRequests as req (req.id)}
-						<li class="list-item">
+						<li class="flex items-center gap-3 px-3 py-2 rounded-md transition-[background] duration-100 hover:bg-[var(--bg-hover,#35373c)]">
 							<UserAvatar
 								src={req.user_avatar}
 								name={req.user_alias ?? req.user_username}
 								size={36}
 							/>
-							<div class="info">
-								<span class="label">{req.user_alias ?? req.user_username}</span>
-								<span class="sublabel">@{req.user_username} · {new Date(req.created_at).toLocaleDateString()}</span>
+							<div class="flex-1 flex flex-col gap-0.5 min-w-0">
+								<span class="text-[13px] font-medium overflow-hidden text-ellipsis whitespace-nowrap">{req.user_alias ?? req.user_username}</span>
+								<span class="text-[11px] text-[var(--text-secondary,#949ba4)]">@{req.user_username} · {new Date(req.created_at).toLocaleDateString()}</span>
 							</div>
-							<div class="actions">
+							<div class="flex gap-1.5">
 								<button
-									class="action-btn success"
+									class="size-7 rounded-full border-none bg-[var(--bg-tertiary,#35373c)] text-[#23a55a] cursor-pointer flex items-center justify-center transition-colors duration-100 hover:bg-[#23a55a] hover:text-white"
 									title="Accept"
 									onclick={() => handleAccept(req)}
 								>
 									<UserCheck size={14} />
 								</button>
 								<button
-									class="action-btn danger"
+									class="size-7 rounded-full border-none bg-[var(--bg-tertiary,#35373c)] text-[#da3633] cursor-pointer flex items-center justify-center transition-colors duration-100 hover:bg-[#da3633] hover:text-white"
 									title="Decline"
 									onclick={() => handleReject(req)}
 								>
@@ -374,26 +370,26 @@ function convAvatarSrc(conv: Conversation): string | null | undefined {
 
 		{:else if activeTab === "sent"}
 			{#if $sentFriendRequests.length === 0}
-				<div class="empty-state">
+				<div class="flex flex-col items-center justify-center gap-3 px-5 py-[60px] text-[var(--text-secondary,#949ba4)]">
 					<Send size={40} />
 					<p>No sent requests</p>
 				</div>
 			{:else}
-				<ul class="list">
+				<ul class="list-none m-0 px-2">
 					{#each $sentFriendRequests as req (req.id)}
-						<li class="list-item">
+						<li class="flex items-center gap-3 px-3 py-2 rounded-md transition-[background] duration-100 hover:bg-[var(--bg-hover,#35373c)]">
 							<UserAvatar
 								src={req.user_avatar}
 								name={req.user_alias ?? req.user_username}
 								size={36}
 							/>
-							<div class="info">
-								<span class="label">{req.user_alias ?? req.user_username}</span>
-								<span class="sublabel">@{req.user_username} · {new Date(req.created_at).toLocaleDateString()}</span>
+							<div class="flex-1 flex flex-col gap-0.5 min-w-0">
+								<span class="text-[13px] font-medium overflow-hidden text-ellipsis whitespace-nowrap">{req.user_alias ?? req.user_username}</span>
+								<span class="text-[11px] text-[var(--text-secondary,#949ba4)]">@{req.user_username} · {new Date(req.created_at).toLocaleDateString()}</span>
 							</div>
-							<div class="actions">
+							<div class="flex gap-1.5">
 								<button
-									class="action-btn danger"
+									class="size-7 rounded-full border-none bg-[var(--bg-tertiary,#35373c)] text-[#da3633] cursor-pointer flex items-center justify-center transition-colors duration-100 hover:bg-[#da3633] hover:text-white"
 									title="Cancel request"
 									onclick={() => handleCancelSent(req)}
 								>
@@ -406,17 +402,17 @@ function convAvatarSrc(conv: Conversation): string | null | undefined {
 			{/if}
 
 		{:else if activeTab === "add"}
-			<div class="add-friend">
-				<p class="add-desc">Send a friend request using a user ID.</p>
-				<div class="add-form">
+			<div class="p-5">
+				<p class="text-[13px] text-[var(--text-secondary,#949ba4)] m-0 mb-4">Send a friend request using a user ID.</p>
+				<div class="flex gap-2">
 					<input
-						class="add-input"
+						class="flex-1 px-3 py-2 bg-[var(--bg-tertiary,#1e1f22)] border border-[var(--border,#3f4147)] rounded text-[var(--text-primary,#dbdee1)] text-sm outline-none focus:border-[var(--accent,#5865f2)]"
 						type="text"
 						placeholder="User ID"
 						bind:value={addUserId}
 						onkeydown={(e) => e.key === "Enter" && handleSendRequest()}
 					/>
-					<button class="send-btn" onclick={handleSendRequest} disabled={loading}>
+					<button class="flex items-center gap-1.5 px-4 py-2 bg-[var(--accent,#5865f2)] text-white border-none rounded cursor-pointer text-[13px] font-medium whitespace-nowrap hover:bg-[#4752c4] disabled:opacity-60 disabled:cursor-not-allowed" onclick={handleSendRequest} disabled={loading}>
 						{#if loading}
 							Sending…
 						{:else}
@@ -426,10 +422,10 @@ function convAvatarSrc(conv: Conversation): string | null | undefined {
 					</button>
 				</div>
 				{#if addError}
-					<p class="feedback error">{addError}</p>
+					<p class="mt-2.5 text-[13px] px-3 py-2 rounded bg-[rgba(218,54,51,0.15)] text-[#da3633]">{addError}</p>
 				{/if}
 				{#if addSuccess}
-					<p class="feedback success">{addSuccess}</p>
+					<p class="mt-2.5 text-[13px] px-3 py-2 rounded bg-[rgba(35,165,90,0.15)] text-[#23a55a]">{addSuccess}</p>
 				{/if}
 			</div>
 		{/if}
@@ -438,38 +434,38 @@ function convAvatarSrc(conv: Conversation): string | null | undefined {
 </div>
 
 {#if showGroupModal}
-<div class="modal-overlay" onclick={closeGroupModal} role="button" tabindex="-1" onkeydown={() => {}}>
+<div class="fixed inset-0 bg-black/60 flex items-center justify-center z-[100]" onclick={closeGroupModal} role="button" tabindex="-1" onkeydown={() => {}}>
 	<!-- svelte-ignore a11y_interactive_supports_focus -->
-	<div class="modal" onclick={(e) => e.stopPropagation()} role="dialog" onkeydown={() => {}}>
-		<h3>Create private group</h3>
-		<div class="modal-field">
-			<label for="group-name">Group name</label>
-			<input id="group-name" class="add-input" type="text" placeholder="e.g. Best friends" bind:value={groupName} />
+	<div class="bg-[var(--bg-primary,#1e1f22)] border border-[var(--border,#3f4147)] rounded-lg p-6 w-[400px] max-w-[90vw] flex flex-col gap-3" onclick={(e) => e.stopPropagation()} role="dialog" onkeydown={() => {}}>
+		<h3 class="m-0 text-base font-semibold">Create private group</h3>
+		<div class="flex flex-col gap-1.5">
+			<label for="group-name" class="text-xs text-[var(--text-secondary,#949ba4)] font-medium uppercase tracking-wider">Group name</label>
+			<input id="group-name" class="flex-1 px-3 py-2 bg-[var(--bg-tertiary,#1e1f22)] border border-[var(--border,#3f4147)] rounded text-[var(--text-primary,#dbdee1)] text-sm outline-none focus:border-[var(--accent,#5865f2)]" type="text" placeholder="e.g. Best friends" bind:value={groupName} />
 		</div>
-		<div class="modal-field">
+		<div class="flex flex-col gap-1.5">
 			<!-- svelte-ignore a11y_label_has_associated_control -->
-			<label>
+			<label class="text-xs text-[var(--text-secondary,#949ba4)] font-medium uppercase tracking-wider">
 				Add friends
 				{#if selectedFriendIds.size > 0}
-					<span class="picker-count">{selectedFriendIds.size} selected</span>
+					<span class="ml-1.5 text-[var(--accent,#5865f2)] font-semibold normal-case tracking-normal">{selectedFriendIds.size} selected</span>
 				{/if}
 			</label>
-			<div class="friend-picker">
+			<div class="max-h-[200px] overflow-y-auto border border-[var(--border,#3f4147)] rounded bg-[var(--bg-tertiary,#1e1f22)]">
 				{#if $friends.length === 0}
-					<p class="picker-empty">No friends added yet</p>
+					<p class="p-4 text-center text-[13px] text-[var(--text-secondary,#949ba4)] m-0">No friends added yet</p>
 				{:else}
 					{#each $friends as f}
 						{@const uid = getFriendUserId(f)}
 						{@const selected = selectedFriendIds.has(uid)}
 						<button
 							type="button"
-							class="picker-item {selected ? 'selected' : ''}"
+							class="flex items-center gap-2.5 w-full px-3 py-2 bg-transparent border-none text-[var(--text-primary,#dbdee1)] cursor-pointer text-left transition-[background] duration-100 hover:bg-[var(--bg-hover,#35373c)] {selected ? 'bg-[rgba(88,101,242,0.12)]' : ''}"
 							onclick={() => toggleFriend(uid)}
 						>
 							<UserAvatar src={f.user_avatar ?? null} name={f.user_alias ?? f.user_username} size={32} />
-							<span class="picker-name">{f.user_alias ?? f.user_username}</span>
+							<span class="flex-1 text-[13px] font-medium overflow-hidden text-ellipsis whitespace-nowrap">{f.user_alias ?? f.user_username}</span>
 							{#if selected}
-								<Check size={16} class="picker-check" />
+								<Check size={16} class="text-[var(--accent,#5865f2)] shrink-0" />
 							{/if}
 						</button>
 					{/each}
@@ -477,399 +473,13 @@ function convAvatarSrc(conv: Conversation): string | null | undefined {
 			</div>
 		</div>
 		{#if groupError}
-			<p class="feedback error">{groupError}</p>
+			<p class="mt-2.5 text-[13px] px-3 py-2 rounded bg-[rgba(218,54,51,0.15)] text-[#da3633]">{groupError}</p>
 		{/if}
-		<div class="modal-actions">
-			<button class="send-btn" onclick={handleCreateGroup}>Create group</button>
-			<button class="cancel-btn" onclick={closeGroupModal}>Cancel</button>
+		<div class="flex gap-2 justify-end">
+			<button class="flex items-center gap-1.5 px-4 py-2 bg-[var(--accent,#5865f2)] text-white border-none rounded cursor-pointer text-[13px] font-medium whitespace-nowrap hover:bg-[#4752c4]" onclick={handleCreateGroup}>Create group</button>
+			<button class="px-4 py-2 bg-[var(--bg-tertiary,#35373c)] text-[var(--text-primary,#dbdee1)] border-none rounded cursor-pointer text-[13px] hover:bg-[#454850]" onclick={closeGroupModal}>Cancel</button>
 		</div>
 	</div>
 </div>
 {/if}
 
-<style>
-.friends-view {
-	display: flex;
-	flex-direction: column;
-	height: 100%;
-	background: var(--bg-primary, #1e1f22);
-	color: var(--text-primary, #dbdee1);
-}
-
-.friends-header {
-	padding: 16px 20px 0;
-	border-bottom: 1px solid var(--border, #3f4147);
-}
-
-.friends-header h2 {
-	font-size: 16px;
-	font-weight: 600;
-	margin: 0 0 12px;
-}
-
-.tabs {
-	display: flex;
-	gap: 4px;
-}
-
-.tab {
-	display: flex;
-	align-items: center;
-	gap: 6px;
-	padding: 6px 12px;
-	border-radius: 4px 4px 0 0;
-	background: none;
-	border: none;
-	color: var(--text-secondary, #949ba4);
-	cursor: pointer;
-	font-size: 13px;
-	transition: background 0.15s, color 0.15s;
-}
-
-.tab:hover {
-	background: var(--bg-hover, #35373c);
-	color: var(--text-primary, #dbdee1);
-}
-
-.tab.active {
-	background: var(--bg-secondary, #2b2d31);
-	color: var(--text-primary, #dbdee1);
-	border-bottom: 2px solid var(--accent, #5865f2);
-}
-
-.add-tab.active {
-	border-bottom-color: #23a55a;
-	color: #23a55a;
-}
-
-.badge {
-	background: var(--bg-tertiary, #35373c);
-	border-radius: 10px;
-	padding: 1px 6px;
-	font-size: 11px;
-	font-weight: 600;
-}
-
-.badge.pending {
-	background: #da3633;
-	color: #fff;
-}
-
-.friends-content {
-	flex: 1;
-	overflow-y: auto;
-	padding: 12px 0;
-}
-
-.empty-state {
-	display: flex;
-	flex-direction: column;
-	align-items: center;
-	justify-content: center;
-	gap: 12px;
-	padding: 60px 20px;
-	color: var(--text-secondary, #949ba4);
-}
-
-.list {
-	list-style: none;
-	margin: 0;
-	padding: 0 8px;
-}
-
-.list-item {
-	display: flex;
-	align-items: center;
-	gap: 12px;
-	padding: 8px 12px;
-	border-radius: 6px;
-	transition: background 0.1s;
-}
-
-.list-item:hover {
-	background: var(--bg-hover, #35373c);
-}
-
-.avatar-placeholder {
-	width: 36px;
-	height: 36px;
-	border-radius: 50%;
-	background: var(--accent, #5865f2);
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	font-size: 12px;
-	font-weight: 700;
-	color: #fff;
-	flex-shrink: 0;
-}
-
-.info {
-	flex: 1;
-	display: flex;
-	flex-direction: column;
-	gap: 2px;
-	min-width: 0;
-}
-
-.label {
-	font-size: 13px;
-	font-weight: 500;
-	overflow: hidden;
-	text-overflow: ellipsis;
-	white-space: nowrap;
-}
-
-.sublabel {
-	font-size: 11px;
-	color: var(--text-secondary, #949ba4);
-}
-
-.actions {
-	display: flex;
-	gap: 6px;
-}
-
-.action-btn {
-	width: 28px;
-	height: 28px;
-	border-radius: 50%;
-	border: none;
-	background: var(--bg-tertiary, #35373c);
-	color: var(--text-secondary, #949ba4);
-	cursor: pointer;
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	transition: background 0.1s, color 0.1s;
-}
-
-.action-btn:hover.success {
-	background: #23a55a;
-	color: #fff;
-}
-
-.action-btn:hover.danger {
-	background: #da3633;
-	color: #fff;
-}
-
-.action-btn.success {
-	color: #23a55a;
-}
-
-.action-btn.danger {
-	color: #da3633;
-}
-
-.add-friend {
-	padding: 20px;
-}
-
-.add-desc {
-	font-size: 13px;
-	color: var(--text-secondary, #949ba4);
-	margin: 0 0 16px;
-}
-
-.add-form {
-	display: flex;
-	gap: 8px;
-}
-
-.add-input {
-	flex: 1;
-	padding: 8px 12px;
-	background: var(--bg-tertiary, #1e1f22);
-	border: 1px solid var(--border, #3f4147);
-	border-radius: 4px;
-	color: var(--text-primary, #dbdee1);
-	font-size: 14px;
-	outline: none;
-}
-
-.add-input:focus {
-	border-color: var(--accent, #5865f2);
-}
-
-.send-btn {
-	display: flex;
-	align-items: center;
-	gap: 6px;
-	padding: 8px 16px;
-	background: var(--accent, #5865f2);
-	color: #fff;
-	border: none;
-	border-radius: 4px;
-	cursor: pointer;
-	font-size: 13px;
-	font-weight: 500;
-	white-space: nowrap;
-}
-
-.send-btn:hover:not(:disabled) {
-	background: #4752c4;
-}
-
-.send-btn:disabled {
-	opacity: 0.6;
-	cursor: not-allowed;
-}
-
-.feedback {
-	margin-top: 10px;
-	font-size: 13px;
-	padding: 8px 12px;
-	border-radius: 4px;
-}
-
-.feedback.error {
-	background: rgba(218, 54, 51, 0.15);
-	color: #da3633;
-}
-
-.feedback.success {
-	background: rgba(35, 165, 90, 0.15);
-	color: #23a55a;
-}
-
-.create-group-btn {
-	display: flex;
-	align-items: center;
-	gap: 5px;
-	padding: 4px 10px;
-	background: #23a55a;
-	color: #fff;
-	border: none;
-	border-radius: 4px;
-	cursor: pointer;
-	font-size: 12px;
-	font-weight: 500;
-}
-
-.create-group-btn:hover {
-	background: #1a8a4a;
-}
-
-.modal-overlay {
-	position: fixed;
-	inset: 0;
-	background: rgba(0, 0, 0, 0.6);
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	z-index: 100;
-}
-
-.modal {
-	background: var(--bg-primary, #1e1f22);
-	border: 1px solid var(--border, #3f4147);
-	border-radius: 8px;
-	padding: 24px;
-	width: 400px;
-	max-width: 90vw;
-	display: flex;
-	flex-direction: column;
-	gap: 12px;
-}
-
-.modal h3 {
-	margin: 0;
-	font-size: 16px;
-	font-weight: 600;
-}
-
-.modal-field {
-	display: flex;
-	flex-direction: column;
-	gap: 6px;
-}
-
-.modal-field label {
-	font-size: 12px;
-	color: var(--text-secondary, #949ba4);
-	font-weight: 500;
-	text-transform: uppercase;
-	letter-spacing: 0.05em;
-}
-
-.modal-actions {
-	display: flex;
-	gap: 8px;
-	justify-content: flex-end;
-}
-
-.cancel-btn {
-	padding: 8px 16px;
-	background: var(--bg-tertiary, #35373c);
-	color: var(--text-primary, #dbdee1);
-	border: none;
-	border-radius: 4px;
-	cursor: pointer;
-	font-size: 13px;
-}
-
-.cancel-btn:hover {
-	background: #454850;
-}
-
-.picker-count {
-	margin-left: 6px;
-	color: var(--accent, #5865f2);
-	font-weight: 600;
-	text-transform: none;
-	letter-spacing: 0;
-}
-
-.friend-picker {
-	max-height: 200px;
-	overflow-y: auto;
-	border: 1px solid var(--border, #3f4147);
-	border-radius: 4px;
-	background: var(--bg-tertiary, #1e1f22);
-}
-
-.picker-item {
-	display: flex;
-	align-items: center;
-	gap: 10px;
-	width: 100%;
-	padding: 8px 12px;
-	background: transparent;
-	border: none;
-	color: var(--text-primary, #dbdee1);
-	cursor: pointer;
-	text-align: left;
-	transition: background 0.1s;
-}
-
-.picker-item:hover {
-	background: var(--bg-hover, #35373c);
-}
-
-.picker-item.selected {
-	background: rgba(88, 101, 242, 0.12);
-}
-
-.picker-name {
-	flex: 1;
-	font-size: 13px;
-	font-weight: 500;
-	overflow: hidden;
-	text-overflow: ellipsis;
-	white-space: nowrap;
-}
-
-:global(.picker-check) {
-	color: var(--accent, #5865f2);
-	flex-shrink: 0;
-}
-
-.picker-empty {
-	padding: 16px;
-	text-align: center;
-	font-size: 13px;
-	color: var(--text-secondary, #949ba4);
-	margin: 0;
-}
-</style>

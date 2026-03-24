@@ -19,6 +19,8 @@ import {
 	activeDMConvId,
 	pageVisible,
 	mentionCounts,
+	activeCall,
+	callVoiceStates,
 } from "$lib/stores.svelte";
 import type { FriendRequest, Friend } from "$lib/api/friends";
 import { getFriends, getPendingRequests, getSentRequests } from "$lib/api/friends";
@@ -435,6 +437,24 @@ function handleEvent(event: GatewayEvent) {
 				deafened?: boolean;
 				screen_sharing?: boolean;
 			};
+
+			// Update call voice states for conversation calls
+			const currentCall = get(activeCall);
+			if (currentCall && raw.room_id === currentCall.conversationId) {
+				callVoiceStates.update((states) => {
+					if (raw.joined) {
+						const idx = states.findIndex((s) => s.user_id === raw.user_id && s.room_id === raw.room_id);
+						if (idx === -1) {
+							return [...states, { room_id: raw.room_id, user_id: raw.user_id, muted: raw.muted, deafened: raw.deafened, screen_sharing: raw.screen_sharing }];
+						}
+						const copy = [...states];
+						copy[idx] = { ...copy[idx], muted: raw.muted, deafened: raw.deafened, screen_sharing: raw.screen_sharing };
+						return copy;
+					}
+					return states.filter((s) => !(s.user_id === raw.user_id && s.room_id === raw.room_id));
+				});
+			}
+
 			gatewaySpaces.update((spaces) =>
 				spaces.map((s) => {
 					const isRoomInSpace = s.rooms.some((r) => r.id === raw.room_id);
@@ -933,6 +953,46 @@ function handleEvent(event: GatewayEvent) {
 				const filtered = (all[key] ?? []).filter((u) => u.user_id !== raw.user_id);
 				return { ...all, [key]: [...filtered, { ...raw, timestamp: Date.now() }] };
 			});
+			break;
+		}
+		case "CALL_INCOMING": {
+			const d = data as { conversation_id: string; initiator_id: string; initiator_name: string; initiator_avatar: string | null; member_ids: string[] };
+			// Don't show if already in a call
+			if (get(activeCall)) break;
+			activeCall.set({
+				conversationId: d.conversation_id,
+				initiatorId: d.initiator_id,
+				initiatorName: d.initiator_name,
+				initiatorAvatar: d.initiator_avatar,
+				state: "ringing",
+				memberIds: d.member_ids,
+			});
+			break;
+		}
+		case "CALL_ACCEPTED": {
+			const d = data as { conversation_id: string; user_id: string };
+			activeCall.update(c => {
+				if (c && c.conversationId === d.conversation_id && c.state === "calling") {
+					return { ...c, state: "connected" };
+				}
+				return c;
+			});
+			// Start VoiceChat with conversation_id as room
+			activeVoiceRoomId.set(d.conversation_id);
+			break;
+		}
+		case "CALL_DECLINED": {
+			// If all declined, end call (gateway sends CALL_ENDED)
+			break;
+		}
+		case "CALL_ENDED": {
+			const d = data as { conversation_id: string };
+			const current = get(activeCall);
+			if (current && current.conversationId === d.conversation_id) {
+				activeVoiceRoomId.set(null);
+				activeCall.set(null);
+				callVoiceStates.set([]);
+			}
 			break;
 		}
 		default:

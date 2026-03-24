@@ -236,12 +236,21 @@ onMount(() => {
 </script>
 
 <div
-	class="flex h-full w-60 flex-col overflow-hidden border-r border-stone-800 bg-[linear-gradient(180deg,oklch(0.215_0.01_80),oklch(0.185_0.008_80))] text-stone-100/90"
+	class="flex h-full flex-col overflow-hidden border-r border-stone-800 bg-[linear-gradient(180deg,oklch(0.215_0.01_80),oklch(0.185_0.008_80))] text-stone-100/90 transition-[width] duration-200 {showChannels ? 'w-60' : 'w-14'}"
 >
+	{#if !showChannels}
+		<!-- Collapsed: guild avatar + vertical user controls -->
+		<div class="flex flex-1 flex-col items-center pt-3 gap-2">
+			<div class="size-10 rounded-xl bg-stone-800 flex items-center justify-center text-sm font-bold text-zinc-300 shrink-0">
+				{guild.name.slice(0, 2).toUpperCase()}
+			</div>
+		</div>
+		<UserStatusBar collapsed />
+	{:else}
 	<!-- Scrollable content area — flex-1 so user bar is always pinned to bottom -->
 	<div class="flex-1 min-h-0 flex flex-col overflow-hidden">
 	<div
-		class="relative flex h-10 shrink-0 items-center justify-between border-b border-stone-800 bg-stone-950/50 px-3 font-semibold text-stone-100 {!showChannels ? 'hidden' : ''}"
+		class="relative flex h-10 shrink-0 items-center justify-between border-b border-stone-800 bg-stone-950/50 px-3 font-semibold text-stone-100"
 	>
 		<span class="truncate">{guild.name}</span>
 		<DropdownMenu.Root>
@@ -262,7 +271,7 @@ onMount(() => {
 			</DropdownMenu.Portal>
 		</DropdownMenu.Root>
 	</div>
-	<div class="flex flex-1 min-h-0 flex-col gap-1 overflow-y-auto p-2 {!showChannels ? 'hidden' : ''}" role="list">
+	<div class="flex flex-1 min-h-0 flex-col gap-1 overflow-y-auto p-2" role="list">
 		<div class="sticky top-0 z-10 flex h-10 items-center border-b border-stone-800/70 bg-[linear-gradient(180deg,oklch(0.215_0.01_80),oklch(0.2_0.008_80))] px-3 select-none text-[11px] font-semibold tracking-wide text-zinc-500 uppercase">
 			Channels
 		</div>
@@ -473,6 +482,7 @@ onMount(() => {
 	</div><!-- end scrollable content area -->
 
 	<UserStatusBar />
+	{/if}
 </div>
 
 <ServerSettings
