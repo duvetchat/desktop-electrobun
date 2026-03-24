@@ -15,6 +15,7 @@ let playing = $state(false);
 let currentTime = $state(0);
 let duration = $state(0);
 let bars = $state<number[]>([]);
+let blobUrl = $state<string | null>(null);
 let animFrame = 0;
 
 const BAR_COUNT = 50;
@@ -32,17 +33,23 @@ function fallbackBars(s: string): number[] {
     return result;
 }
 
-async function analyzeAudio(url: string): Promise<number[]> {
+async function loadAndAnalyze(url: string) {
     try {
         const res = await fetch(url);
         const buf = await res.arrayBuffer();
+
+        // Create blob URL so audio element has the full file buffered
+        blobUrl = URL.createObjectURL(new Blob([buf], { type: res.headers.get("content-type") || "audio/webm" }));
+
+        // Analyze waveform
         const ctx = new AudioContext();
-        const decoded = await ctx.decodeAudioData(buf);
+        const decoded = await ctx.decodeAudioData(buf.slice(0));
+        duration = decoded.duration;
         const raw = decoded.getChannelData(0);
         ctx.close();
 
         const blockSize = Math.floor(raw.length / BAR_COUNT);
-        if (blockSize === 0) return fallbackBars(url);
+        if (blockSize === 0) return;
 
         const result: number[] = [];
         for (let i = 0; i < BAR_COUNT; i++) {
@@ -55,9 +62,10 @@ async function analyzeAudio(url: string): Promise<number[]> {
         }
 
         const max = Math.max(...result, 0.001);
-        return result.map((v) => 0.08 + (v / max) * 0.92);
+        bars = result.map((v) => 0.08 + (v / max) * 0.92);
     } catch {
-        return fallbackBars(url);
+        // Fallback: use URL directly
+        if (!blobUrl) blobUrl = url;
     }
 }
 
@@ -70,11 +78,7 @@ function formatTime(secs: number): string {
 
 function togglePlay() {
     if (!audioEl) return;
-    if (playing) {
-        audioEl.pause();
-    } else {
-        audioEl.play().catch(() => {});
-    }
+    if (playing) { audioEl.pause(); } else { audioEl.play().catch(() => {}); }
 }
 
 function handleSeek(e: MouseEvent) {
@@ -108,26 +112,31 @@ function stopTick() {
 
 onMount(() => {
     bars = fallbackBars(src);
-    analyzeAudio(src).then((b) => { bars = b; });
+    loadAndAnalyze(src);
 });
 
-onDestroy(() => { stopTick(); });
+onDestroy(() => {
+    stopTick();
+    if (blobUrl && blobUrl !== src) URL.revokeObjectURL(blobUrl);
+});
 
 const progress = $derived(duration > 0 ? currentTime / duration : 0);
 </script>
 
 <div class="vn-player" class:vn-compact={compact}>
-    <audio
-        bind:this={audioEl}
-        {src}
-        preload="auto"
-        onloadedmetadata={() => { if (audioEl && isFinite(audioEl.duration)) duration = audioEl.duration; }}
-        ondurationchange={() => { if (audioEl && isFinite(audioEl.duration)) duration = audioEl.duration; }}
-        ontimeupdate={syncFromElement}
-        onplay={() => { playing = true; startTick(); }}
-        onpause={() => { playing = false; stopTick(); }}
-        onended={() => { playing = false; currentTime = 0; stopTick(); }}
-    ></audio>
+    {#if blobUrl}
+        <audio
+            bind:this={audioEl}
+            src={blobUrl}
+            preload="auto"
+            onloadedmetadata={() => { if (audioEl && isFinite(audioEl.duration)) duration = audioEl.duration; }}
+            ondurationchange={() => { if (audioEl && isFinite(audioEl.duration)) duration = audioEl.duration; }}
+            ontimeupdate={syncFromElement}
+            onplay={() => { playing = true; startTick(); }}
+            onpause={() => { playing = false; stopTick(); }}
+            onended={() => { playing = false; currentTime = 0; stopTick(); }}
+        ></audio>
+    {/if}
 
     <button class="vn-play" onclick={togglePlay}>
         {#if playing}
