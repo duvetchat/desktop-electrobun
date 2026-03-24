@@ -10,44 +10,14 @@ let {
     compact?: boolean;
 } = $props();
 
-let audio = $state<HTMLAudioElement | null>(null);
+let audioEl = $state<HTMLAudioElement | null>(null);
 let playing = $state(false);
 let currentTime = $state(0);
 let duration = $state(0);
 let bars = $state<number[]>([]);
-let loading = $state(true);
 let animFrame = 0;
 
 const BAR_COUNT = 50;
-
-async function analyzeAudio(url: string): Promise<number[]> {
-    try {
-        const res = await fetch(url);
-        const arrayBuffer = await res.arrayBuffer();
-        const audioCtx = new AudioContext();
-        const decoded = await audioCtx.decodeAudioData(arrayBuffer);
-        const raw = decoded.getChannelData(0);
-        audioCtx.close();
-
-        const blockSize = Math.floor(raw.length / BAR_COUNT);
-        const result: number[] = [];
-        for (let i = 0; i < BAR_COUNT; i++) {
-            let sum = 0;
-            const start = i * blockSize;
-            for (let j = start; j < start + blockSize && j < raw.length; j++) {
-                sum += Math.abs(raw[j]);
-            }
-            result.push(sum / blockSize);
-        }
-
-        // Normalize to 0..1
-        const max = Math.max(...result, 0.01);
-        return result.map((v) => 0.08 + (v / max) * 0.92);
-    } catch {
-        // Fallback: generate from hash
-        return fallbackBars(url);
-    }
-}
 
 function fallbackBars(s: string): number[] {
     let hash = 0;
@@ -62,6 +32,35 @@ function fallbackBars(s: string): number[] {
     return result;
 }
 
+async function analyzeAudio(url: string): Promise<number[]> {
+    try {
+        const res = await fetch(url);
+        const buf = await res.arrayBuffer();
+        const ctx = new AudioContext();
+        const decoded = await ctx.decodeAudioData(buf);
+        const raw = decoded.getChannelData(0);
+        ctx.close();
+
+        const blockSize = Math.floor(raw.length / BAR_COUNT);
+        if (blockSize === 0) return fallbackBars(url);
+
+        const result: number[] = [];
+        for (let i = 0; i < BAR_COUNT; i++) {
+            let sum = 0;
+            const start = i * blockSize;
+            for (let j = start; j < start + blockSize && j < raw.length; j++) {
+                sum += Math.abs(raw[j]);
+            }
+            result.push(sum / blockSize);
+        }
+
+        const max = Math.max(...result, 0.001);
+        return result.map((v) => 0.08 + (v / max) * 0.92);
+    } catch {
+        return fallbackBars(url);
+    }
+}
+
 function formatTime(secs: number): string {
     if (!isFinite(secs) || secs < 0) return "0:00";
     const m = Math.floor(secs / 60);
@@ -70,44 +69,56 @@ function formatTime(secs: number): string {
 }
 
 function togglePlay() {
-    if (!audio) return;
-    if (playing) { audio.pause(); } else { audio.play(); }
+    if (!audioEl) return;
+    if (playing) {
+        audioEl.pause();
+    } else {
+        audioEl.play().catch(() => {});
+    }
 }
 
 function handleSeek(e: MouseEvent) {
-    if (!audio || !duration) return;
+    if (!audioEl || !duration) return;
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
     const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-    audio.currentTime = ratio * duration;
-    currentTime = audio.currentTime;
+    audioEl.currentTime = ratio * duration;
+    currentTime = audioEl.currentTime;
 }
 
-function tick() {
-    if (audio) currentTime = audio.currentTime;
-    if (playing) animFrame = requestAnimationFrame(tick);
+function startTick() {
+    stopTick();
+    function tick() {
+        if (audioEl) currentTime = audioEl.currentTime;
+        if (playing) animFrame = requestAnimationFrame(tick);
+    }
+    animFrame = requestAnimationFrame(tick);
 }
 
-onMount(async () => {
+function stopTick() {
+    if (animFrame) { cancelAnimationFrame(animFrame); animFrame = 0; }
+}
+
+onMount(() => {
     bars = fallbackBars(src);
-    loading = true;
-    bars = await analyzeAudio(src);
-    loading = false;
+    analyzeAudio(src).then((b) => { bars = b; });
 });
 
-onDestroy(() => { if (animFrame) cancelAnimationFrame(animFrame); });
+onDestroy(() => { stopTick(); });
 
 const progress = $derived(duration > 0 ? currentTime / duration : 0);
 </script>
 
 <div class="vn-player" class:vn-compact={compact}>
     <audio
-        bind:this={audio}
+        bind:this={audioEl}
         {src}
-        preload="metadata"
-        onloadedmetadata={() => { if (audio) duration = audio.duration; }}
-        onplay={() => { playing = true; tick(); }}
-        onpause={() => { playing = false; }}
-        onended={() => { playing = false; currentTime = 0; }}
+        preload="auto"
+        onloadedmetadata={() => { if (audioEl && isFinite(audioEl.duration)) duration = audioEl.duration; }}
+        ondurationchange={() => { if (audioEl && isFinite(audioEl.duration)) duration = audioEl.duration; }}
+        ontimeupdate={() => { if (audioEl) currentTime = audioEl.currentTime; }}
+        onplay={() => { playing = true; startTick(); }}
+        onpause={() => { playing = false; stopTick(); }}
+        onended={() => { playing = false; currentTime = 0; stopTick(); }}
     ></audio>
 
     <button class="vn-play" onclick={togglePlay}>
