@@ -85,10 +85,18 @@ function handleSeek(e: MouseEvent) {
     currentTime = audioEl.currentTime;
 }
 
+function syncFromElement() {
+    if (!audioEl) return;
+    currentTime = audioEl.currentTime;
+    if (audioEl.duration && isFinite(audioEl.duration) && audioEl.duration > 0) {
+        duration = audioEl.duration;
+    }
+}
+
 function startTick() {
     stopTick();
     function tick() {
-        if (audioEl) currentTime = audioEl.currentTime;
+        syncFromElement();
         if (playing) animFrame = requestAnimationFrame(tick);
     }
     animFrame = requestAnimationFrame(tick);
@@ -115,7 +123,7 @@ const progress = $derived(duration > 0 ? currentTime / duration : 0);
         preload="auto"
         onloadedmetadata={() => { if (audioEl && isFinite(audioEl.duration)) duration = audioEl.duration; }}
         ondurationchange={() => { if (audioEl && isFinite(audioEl.duration)) duration = audioEl.duration; }}
-        ontimeupdate={() => { if (audioEl) currentTime = audioEl.currentTime; }}
+        ontimeupdate={syncFromElement}
         onplay={() => { playing = true; startTick(); }}
         onpause={() => { playing = false; stopTick(); }}
         onended={() => { playing = false; currentTime = 0; stopTick(); }}
