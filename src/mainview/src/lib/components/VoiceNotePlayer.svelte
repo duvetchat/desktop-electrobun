@@ -33,24 +33,61 @@ function fallbackBars(s: string): number[] {
     return result;
 }
 
+function audioBufferToWav(buffer: AudioBuffer): ArrayBuffer {
+    const numChannels = buffer.numberOfChannels;
+    const sampleRate = buffer.sampleRate;
+    const format = 1; // PCM
+    const bitsPerSample = 16;
+    const channels: Float32Array[] = [];
+    for (let i = 0; i < numChannels; i++) channels.push(buffer.getChannelData(i));
+    const numSamples = buffer.length;
+    const dataSize = numSamples * numChannels * (bitsPerSample / 8);
+    const headerSize = 44;
+    const wav = new ArrayBuffer(headerSize + dataSize);
+    const view = new DataView(wav);
+
+    function writeStr(offset: number, s: string) { for (let i = 0; i < s.length; i++) view.setUint8(offset + i, s.charCodeAt(i)); }
+    writeStr(0, "RIFF");
+    view.setUint32(4, 36 + dataSize, true);
+    writeStr(8, "WAVE");
+    writeStr(12, "fmt ");
+    view.setUint32(16, 16, true);
+    view.setUint16(20, format, true);
+    view.setUint16(22, numChannels, true);
+    view.setUint32(24, sampleRate, true);
+    view.setUint32(28, sampleRate * numChannels * (bitsPerSample / 8), true);
+    view.setUint16(32, numChannels * (bitsPerSample / 8), true);
+    view.setUint16(34, bitsPerSample, true);
+    writeStr(36, "data");
+    view.setUint32(40, dataSize, true);
+
+    let offset = 44;
+    for (let i = 0; i < numSamples; i++) {
+        for (let ch = 0; ch < numChannels; ch++) {
+            const s = Math.max(-1, Math.min(1, channels[ch][i]));
+            view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
+            offset += 2;
+        }
+    }
+    return wav;
+}
+
 async function loadAndAnalyze(url: string) {
     try {
         const res = await fetch(url);
         const buf = await res.arrayBuffer();
-        const contentType = res.headers.get("content-type") || "audio/webm";
-
-        // Make all copies upfront before any operation can detach buffers
-        const forBlob = new Uint8Array(buf).slice();
-        const forDecode = new Uint8Array(buf).slice();
-
-        blobUrl = URL.createObjectURL(new Blob([forBlob], { type: contentType }));
 
         const ctx = new AudioContext();
-        const decoded = await ctx.decodeAudioData(forDecode.buffer);
+        const decoded = await ctx.decodeAudioData(buf);
         duration = decoded.duration;
         const raw = decoded.getChannelData(0);
         ctx.close();
 
+        // Convert to WAV for perfect cross-browser seeking
+        const wavBuf = audioBufferToWav(decoded);
+        blobUrl = URL.createObjectURL(new Blob([wavBuf], { type: "audio/wav" }));
+
+        // Analyze waveform
         const blockSize = Math.floor(raw.length / BAR_COUNT);
         if (blockSize === 0) return;
 
@@ -67,7 +104,6 @@ async function loadAndAnalyze(url: string) {
         const max = Math.max(...result, 0.001);
         bars = result.map((v) => 0.08 + (v / max) * 0.92);
     } catch {
-        // Fallback: use URL directly
         if (!blobUrl) blobUrl = url;
     }
 }
