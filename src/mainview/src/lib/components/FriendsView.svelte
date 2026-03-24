@@ -1,5 +1,5 @@
 <script lang="ts">
-import { onMount, untrack } from "svelte";
+import { onMount } from "svelte";
 import { get } from "svelte/store";
 import { currentUser, pendingFriendRequests, sentFriendRequests, friends, conversations } from "$lib/stores.svelte";
 import {
@@ -10,10 +10,8 @@ import {
 	rejectFriendRequest,
 	getFriends,
 	unfriend,
-	getUser,
 	type FriendRequest,
 	type Friend,
-	type UserPublic,
 } from "$lib/api/friends";
 import {
 	getConversations,
@@ -38,9 +36,6 @@ let activeTab = $state<Tab>("friends");
 const activeConversation = $derived($conversations.find((c) => c.id === activeConversationId) ?? null);
 
 
-let sentRequestUsers = $state<Map<string, UserPublic>>(new Map());
-let friendUsers = $state<Map<string, UserPublic>>(new Map());
-let pendingUsers = $state<Map<string, UserPublic>>(new Map());
 let addUserId = $state("");
 let addError = $state("");
 let addSuccess = $state("");
@@ -65,43 +60,6 @@ function closeGroupModal() {
 	groupError = "";
 }
 
-async function loadUsers<K extends string>(ids: K[], existing?: Map<string, UserPublic>): Promise<Map<string, UserPublic>> {
-	const map = new Map<string, UserPublic>(existing);
-	const entries = await Promise.allSettled(
-		ids.filter((id) => !map.has(id)).map(async (id) => {
-			const user = await getUser(id);
-			return [id, user] as const;
-		}),
-	);
-	for (const result of entries) {
-		if (result.status === "fulfilled") {
-			map.set(result.value[0], result.value[1]);
-		}
-	}
-	return map;
-}
-
-async function loadSentUsers(sent: FriendRequest[]) {
-	sentRequestUsers = await loadUsers(sent.map((r) => r.recipient_id));
-}
-
-async function loadFriendUsers(friendList: Friend[]) {
-	const me = get(currentUser);
-	const ids = friendList.map((f) => (f.sender_id === me?.id ? f.recipient_id : f.sender_id));
-	const existing = untrack(() => friendUsers);
-	const missing = ids.filter((id) => !existing.has(id));
-	if (missing.length === 0) return;
-	friendUsers = await loadUsers(ids, existing);
-}
-
-$effect(() => {
-	void loadFriendUsers($friends);
-});
-
-async function loadPendingUsers(pending: FriendRequest[]) {
-	pendingUsers = await loadUsers(pending.map((r) => r.sender_id));
-}
-
 onMount(async () => {
 	try {
 		let pending = get(pendingFriendRequests);
@@ -123,11 +81,6 @@ onMount(async () => {
 			friends.set(friendList);
 			conversations.set(convList);
 		}
-
-		await Promise.all([
-			loadSentUsers(sent),
-			loadPendingUsers(pending),
-		]);
 	} catch (err) {
 		console.error("[Friends] Failed to load:", err);
 	}
@@ -147,7 +100,6 @@ async function handleSendRequest() {
 		addUserId = "";
 		const sent = await getSentRequests();
 		sentFriendRequests.set(sent);
-		await loadSentUsers(sent);
 	} catch (err) {
 		addError = err instanceof Error ? err.message : "Failed to send request";
 	} finally {
@@ -163,7 +115,6 @@ async function handleAccept(request: FriendRequest) {
 			if (list.some((f) => f.id === friend.id)) return list;
 			return [...list, friend];
 		});
-		friendUsers = await loadUsers([request.sender_id], friendUsers);
 	} catch (err) {
 		console.error("[Friends] Accept failed:", err);
 	}
@@ -350,16 +301,15 @@ function convAvatarSrc(conv: Conversation): string | null | undefined {
 				<ul class="list">
 					{#each $friends as friend (friend.id)}
 						{@const friendId = getFriendUserId(friend)}
-						{@const user = friendUsers.get(friendId)}
 						<li class="list-item">
 							<UserAvatar
-								src={user?.avatar}
-								name={user?.alias ?? user?.username ?? friendId}
+								src={friend.user_avatar}
+								name={friend.user_alias ?? friend.user_username}
 								size={36}
 							/>
 							<div class="info">
-								<span class="label">{user?.alias ?? user?.username ?? friendId}</span>
-								<span class="sublabel">@{user?.username ?? friendId}</span>
+								<span class="label">{friend.user_alias ?? friend.user_username}</span>
+								<span class="sublabel">@{friend.user_username}</span>
 							</div>
 							<div class="actions">
 								<button
@@ -391,16 +341,15 @@ function convAvatarSrc(conv: Conversation): string | null | undefined {
 			{:else}
 				<ul class="list">
 					{#each $pendingFriendRequests as req (req.id)}
-						{@const user = pendingUsers.get(req.sender_id)}
 						<li class="list-item">
 							<UserAvatar
-								src={user?.avatar}
-								name={user?.alias ?? user?.username ?? req.sender_id}
+								src={req.user_avatar}
+								name={req.user_alias ?? req.user_username}
 								size={36}
 							/>
 							<div class="info">
-								<span class="label">{user?.alias ?? user?.username ?? req.sender_id}</span>
-								<span class="sublabel">@{user?.username ?? req.sender_id} · {new Date(req.created_at).toLocaleDateString()}</span>
+								<span class="label">{req.user_alias ?? req.user_username}</span>
+								<span class="sublabel">@{req.user_username} · {new Date(req.created_at).toLocaleDateString()}</span>
 							</div>
 							<div class="actions">
 								<button
@@ -432,16 +381,15 @@ function convAvatarSrc(conv: Conversation): string | null | undefined {
 			{:else}
 				<ul class="list">
 					{#each $sentFriendRequests as req (req.id)}
-						{@const user = sentRequestUsers.get(req.recipient_id)}
 						<li class="list-item">
 							<UserAvatar
-								src={user?.avatar}
-								name={user?.alias ?? user?.username ?? req.recipient_id}
+								src={req.user_avatar}
+								name={req.user_alias ?? req.user_username}
 								size={36}
 							/>
 							<div class="info">
-								<span class="label">{user?.alias ?? user?.username ?? req.recipient_id}</span>
-								<span class="sublabel">@{user?.username ?? req.recipient_id} · {new Date(req.created_at).toLocaleDateString()}</span>
+								<span class="label">{req.user_alias ?? req.user_username}</span>
+								<span class="sublabel">@{req.user_username} · {new Date(req.created_at).toLocaleDateString()}</span>
 							</div>
 							<div class="actions">
 								<button
@@ -512,15 +460,14 @@ function convAvatarSrc(conv: Conversation): string | null | undefined {
 				{:else}
 					{#each $friends as f}
 						{@const uid = getFriendUserId(f)}
-						{@const user = friendUsers.get(uid)}
 						{@const selected = selectedFriendIds.has(uid)}
 						<button
 							type="button"
 							class="picker-item {selected ? 'selected' : ''}"
 							onclick={() => toggleFriend(uid)}
 						>
-							<UserAvatar src={user?.avatar ?? null} name={user?.alias ?? user?.username ?? "?"} size={32} />
-							<span class="picker-name">{user?.alias ?? user?.username ?? uid}</span>
+							<UserAvatar src={f.user_avatar ?? null} name={f.user_alias ?? f.user_username} size={32} />
+							<span class="picker-name">{f.user_alias ?? f.user_username}</span>
 							{#if selected}
 								<Check size={16} class="picker-check" />
 							{/if}

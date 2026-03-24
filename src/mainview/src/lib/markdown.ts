@@ -1,64 +1,40 @@
 import { renderEmoji } from "./emoji";
-import hljs from "highlight.js/lib/core";
+import { createHighlighter, type Highlighter } from "shiki";
 
-// Register only the most common languages to keep bundle size small
-import javascript from "highlight.js/lib/languages/javascript";
-import typescript from "highlight.js/lib/languages/typescript";
-import python from "highlight.js/lib/languages/python";
-import go from "highlight.js/lib/languages/go";
-import rust from "highlight.js/lib/languages/rust";
-import cpp from "highlight.js/lib/languages/cpp";
-import c from "highlight.js/lib/languages/c";
-import csharp from "highlight.js/lib/languages/csharp";
-import java from "highlight.js/lib/languages/java";
-import json from "highlight.js/lib/languages/json";
-import xml from "highlight.js/lib/languages/xml";
-import css from "highlight.js/lib/languages/css";
-import bash from "highlight.js/lib/languages/bash";
-import sql from "highlight.js/lib/languages/sql";
-import markdown from "highlight.js/lib/languages/markdown";
-import yaml from "highlight.js/lib/languages/yaml";
-import toml from "highlight.js/lib/languages/ini"; // TOML uses ini highlighter
-import kotlin from "highlight.js/lib/languages/kotlin";
-import swift from "highlight.js/lib/languages/swift";
-import ruby from "highlight.js/lib/languages/ruby";
-import php from "highlight.js/lib/languages/php";
+let highlighterPromise: Promise<Highlighter> | null = null;
+let highlighter: Highlighter | null = null;
 
-hljs.registerLanguage("javascript", javascript);
-hljs.registerLanguage("js", javascript);
-hljs.registerLanguage("typescript", typescript);
-hljs.registerLanguage("ts", typescript);
-hljs.registerLanguage("python", python);
-hljs.registerLanguage("py", python);
-hljs.registerLanguage("go", go);
-hljs.registerLanguage("rust", rust);
-hljs.registerLanguage("rs", rust);
-hljs.registerLanguage("cpp", cpp);
-hljs.registerLanguage("c++", cpp);
-hljs.registerLanguage("c", c);
-hljs.registerLanguage("csharp", csharp);
-hljs.registerLanguage("cs", csharp);
-hljs.registerLanguage("c#", csharp);
-hljs.registerLanguage("java", java);
-hljs.registerLanguage("json", json);
-hljs.registerLanguage("xml", xml);
-hljs.registerLanguage("html", xml);
-hljs.registerLanguage("css", css);
-hljs.registerLanguage("bash", bash);
-hljs.registerLanguage("sh", bash);
-hljs.registerLanguage("shell", bash);
-hljs.registerLanguage("sql", sql);
-hljs.registerLanguage("markdown", markdown);
-hljs.registerLanguage("md", markdown);
-hljs.registerLanguage("yaml", yaml);
-hljs.registerLanguage("yml", yaml);
-hljs.registerLanguage("toml", toml);
-hljs.registerLanguage("kotlin", kotlin);
-hljs.registerLanguage("kt", kotlin);
-hljs.registerLanguage("swift", swift);
-hljs.registerLanguage("ruby", ruby);
-hljs.registerLanguage("rb", ruby);
-hljs.registerLanguage("php", php);
+const LANGS = [
+	"javascript", "typescript", "python", "go", "rust", "cpp", "c",
+	"csharp", "java", "json", "xml", "html", "css", "bash", "sql",
+	"markdown", "yaml", "toml", "kotlin", "swift", "ruby", "php",
+	"svelte", "jsx", "tsx", "lua", "zig", "dockerfile", "graphql",
+] as const;
+
+const THEME = "github-dark-default";
+
+function getHighlighter(): Promise<Highlighter> {
+	if (!highlighterPromise) {
+		highlighterPromise = createHighlighter({
+			themes: [THEME],
+			langs: [...LANGS],
+		}).then((h) => {
+			highlighter = h;
+			return h;
+		});
+	}
+	return highlighterPromise;
+}
+
+// Eagerly init on module load
+getHighlighter();
+
+const LANG_ALIASES: Record<string, string> = {
+	js: "javascript", ts: "typescript", py: "python", rs: "rust",
+	"c++": "cpp", cs: "csharp", "c#": "csharp", sh: "bash",
+	shell: "bash", yml: "yaml", md: "markdown", kt: "kotlin",
+	rb: "ruby",
+};
 
 function escapeHtml(s: string): string {
 	return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -68,7 +44,7 @@ function isBlockHtml(s: string): boolean {
 	return /^<(h[123]|blockquote|pre)[\s>]/.test(s);
 }
 
-function applyInline(s: string): string {
+function applyInline(s: string, mentionMap?: Record<string, string>): string {
 	s = s.replace(/\*\*\*(.+?)\*\*\*/gs, (_, t) => `<strong><em>${t}</em></strong>`);
 	s = s.replace(/\*\*(.+?)\*\*/gs, (_, t) => `<strong>${t}</strong>`);
 	s = s.replace(/\*([^\s*](?:[^*]*[^\s*])?)\*/gs, (_, t) => `<em>${t}</em>`);
@@ -76,36 +52,45 @@ function applyInline(s: string): string {
 	s = s.replace(/(?<!\w)_([^\s_](?:[^_]*[^\s_])?)_(?!\w)/gs, (_, t) => `<em>${t}</em>`);
 	s = s.replace(/~~(.+?)~~/gs, (_, t) => `<del>${t}</del>`);
 	s = s.replace(/\|\|(.+?)\|\|/gs, (_, t) => `<span class="msg-spoiler">${t}</span>`);
-	s = s.replace(/(?<![\/\w"=])@(\w+)/g, (_, name) => `<span class="msg-mention">@${escapeHtml(name)}</span>`);
+	// Resolve <@id> mentions to @username
+	s = s.replace(/&lt;@([a-f0-9-]+)&gt;/g, (_, id) => {
+		const name = mentionMap?.[id] ?? id.slice(0, 8);
+		return `<span class="msg-mention">@${escapeHtml(name)}</span>`;
+	});
 	return s;
 }
 
 function highlightCode(code: string, lang: string): string {
-	if (!lang) {
+	const resolved = LANG_ALIASES[lang] ?? lang;
+	if (!highlighter) {
 		return escapeHtml(code);
 	}
-	// Normalize common aliases
-	const alias = lang.toLowerCase();
 	try {
-		if (hljs.getLanguage(alias)) {
-			return hljs.highlight(code, { language: alias, ignoreIllegals: true }).value;
+		const loaded = highlighter.getLoadedLanguages();
+		if (!loaded.includes(resolved as any)) {
+			return escapeHtml(code);
 		}
+		const html = highlighter.codeToHtml(code, {
+			lang: resolved,
+			theme: THEME,
+		});
+		// shiki returns <pre class="shiki ..."><code>...</code></pre>
+		// Extract just the inner content of <code>
+		const match = html.match(/<code[^>]*>([\s\S]*)<\/code>/);
+		return match ? match[1] : escapeHtml(code);
 	} catch {
-		// fall through to plain escaping
+		return escapeHtml(code);
 	}
-	return escapeHtml(code);
 }
 
-export function renderMarkdown(input: string, large = false): string {
+export function renderMarkdown(input: string, large = false, mentionMap?: Record<string, string>): string {
 	// ── 1. Extract fenced code blocks ─────────────────────────────────────────
 	const codeBlocks: string[] = [];
 	let s = input.replace(/```([\w+#-]*)\n?([\s\S]*?)```/g, (_, lang, code) => {
 		const trimmed = code.replace(/\n$/, "");
-		const lines = trimmed.split("\n");
 		const highlighted = highlightCode(trimmed, lang);
-		// Split highlighted HTML by newlines to add line numbers
-		const highlightedLines = highlighted.split("\n");
-		const linesHtml = highlightedLines
+		const lines = highlighted.split("\n");
+		const linesHtml = lines
 			.map(
 				(line, i) =>
 					`<span class="msg-ln">${i + 1}</span><span class="msg-lc">${line || "\u200b"}</span>`,
@@ -115,8 +100,10 @@ export function renderMarkdown(input: string, large = false): string {
 		const langBadge = langLabel
 			? `<span class="msg-code-lang">${escapeHtml(langLabel)}</span>`
 			: "";
+		const escaped = escapeHtml(trimmed).replace(/"/g, "&quot;");
+		const copyBtn = `<button class="msg-code-copy" data-code="${escaped}" title="Copy code" aria-label="Copy code"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg></button>`;
 		codeBlocks.push(
-			`<pre class="msg-code-block">${langBadge}<code>${linesHtml}</code></pre>`,
+			`<pre class="msg-code-block">${langBadge}${copyBtn}<code>${linesHtml}</code></pre>`,
 		);
 		return `\x00B${codeBlocks.length - 1}\x00`;
 	});
@@ -135,18 +122,18 @@ export function renderMarkdown(input: string, large = false): string {
 	const out: string[] = lines.map((line) => {
 		let m: RegExpExecArray | null;
 		if ((m = /^### (.*)/.exec(line)))
-			return `<h3 class="msg-h3">${applyInline(renderEmoji(m[1]))}</h3>`;
+			return `<h3 class="msg-h3">${applyInline(renderEmoji(m[1]), mentionMap)}</h3>`;
 		if ((m = /^## (.*)/.exec(line)))
-			return `<h2 class="msg-h2">${applyInline(renderEmoji(m[1]))}</h2>`;
+			return `<h2 class="msg-h2">${applyInline(renderEmoji(m[1]), mentionMap)}</h2>`;
 		if ((m = /^# (.*)/.exec(line)))
-			return `<h1 class="msg-h1">${applyInline(renderEmoji(m[1]))}</h1>`;
+			return `<h1 class="msg-h1">${applyInline(renderEmoji(m[1]), mentionMap)}</h1>`;
 		if ((m = /^-# (.*)/.exec(line)))
-			return `<span class="msg-subtext">${applyInline(renderEmoji(m[1]))}</span>`;
+			return `<span class="msg-subtext">${applyInline(renderEmoji(m[1]), mentionMap)}</span>`;
 		if ((m = /^>>> (.*)/.exec(line)))
-			return `<blockquote class="msg-blockquote">${applyInline(renderEmoji(m[1]))}</blockquote>`;
+			return `<blockquote class="msg-blockquote">${applyInline(renderEmoji(m[1]), mentionMap)}</blockquote>`;
 		if ((m = /^> (.*)/.exec(line)))
-			return `<blockquote class="msg-blockquote">${applyInline(renderEmoji(m[1]))}</blockquote>`;
-		return applyInline(renderEmoji(line, large));
+			return `<blockquote class="msg-blockquote">${applyInline(renderEmoji(m[1]), mentionMap)}</blockquote>`;
+		return applyInline(renderEmoji(line, large), mentionMap);
 	});
 
 	// ── 4. Join with <br> except around block elements ─────────────────────────

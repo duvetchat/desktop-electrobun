@@ -214,12 +214,6 @@ function handleEvent(event: GatewayEvent) {
 				}
 				return [...spaces, space];
 			});
-			// Fetch the real member list so the sidebar shows the creator immediately
-			getSpaceMembers(payload.space.id)
-				.then((rows) => addMembersToSpace(payload.space.id, rows))
-				.catch((err) =>
-					console.error("[WS] Failed to load members for new space:", err),
-				);
 			break;
 		}
 		case "SPACE_DELETE": {

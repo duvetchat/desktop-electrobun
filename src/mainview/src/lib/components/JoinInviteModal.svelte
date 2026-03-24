@@ -102,7 +102,7 @@ async function handleJoin() {
                     <!-- Server preview -->
                     <div class="flex items-center gap-4 mb-5">
                         <div
-                            class="w-14 h-14 rounded-xl bg-gradient-to-br from-stone-500 to-stone-700 flex items-center justify-center text-white text-xl font-bold shrink-0 select-none"
+                            class="w-14 h-14 rounded-xl bg-linear-to-br from-stone-500 to-stone-700 flex items-center justify-center text-white text-xl font-bold shrink-0 select-none"
                         >
                             {invite.space_name.charAt(0).toUpperCase()}
                         </div>

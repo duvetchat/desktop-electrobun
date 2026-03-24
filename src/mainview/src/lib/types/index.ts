@@ -42,6 +42,19 @@ export interface Embed {
 	fields?: EmbedField[];
 }
 
+export interface Attachment {
+	id: string;
+	message_id: string;
+	filename: string;
+	content_type: string;
+	size_bytes: number;
+	width?: number | null;
+	height?: number | null;
+	created_at: string;
+	deleted?: boolean;
+	pending?: boolean;
+}
+
 export const MessageReferenceType = {
 	Reply: 0,
 } as const;
@@ -69,11 +82,19 @@ export interface ReferencedMessage {
 	created_at?: string;
 }
 
+export const MessageType = {
+	Text: 0,
+	Voice: 1,
+} as const;
+
+export type MessageType = (typeof MessageType)[keyof typeof MessageType];
+
 export interface GatewayMessage {
 	id: string;
 	room_id: string;
 	author_id: string;
-	content: string;
+	content: string | null;
+	type: MessageType;
 	created_at: string;
 	updated_at: string;
 	deleted_at: string | null;
@@ -83,11 +104,13 @@ export interface GatewayMessage {
 	referenced_message?: ReferencedMessage | null;
 	ref_message_id?: string | null;
 	embeds?: Embed[] | null;
+	attachments?: Attachment[] | null;
 }
 
 export interface Message {
 	id: string;
 	content: string;
+	type: MessageType;
 	author_id: string;
 	author_name: string;
 	author_avatar_url: string | null;
@@ -97,6 +120,7 @@ export interface Message {
 	referenced_message?: ReferencedMessage | null;
 	ref_message_id?: string | null;
 	embeds?: Embed[] | null;
+	attachments?: Attachment[] | null;
 }
 
 export interface GatewayMessageDelete {
@@ -289,7 +313,8 @@ export function gatewayMessageToMessage(
 
 	return {
 		id: msg.id,
-		content: msg.content,
+		content: msg.content ?? "",
+		type: msg.type ?? 0,
 		author_id: msg.author_id,
 		author_name,
 		author_avatar_url,
@@ -299,6 +324,7 @@ export function gatewayMessageToMessage(
 		referenced_message: msg.referenced_message ?? null,
 		ref_message_id: msg.ref_message_id ?? null,
 		embeds: msg.embeds ?? null,
+		attachments: msg.attachments ?? null,
 	};
 }
 

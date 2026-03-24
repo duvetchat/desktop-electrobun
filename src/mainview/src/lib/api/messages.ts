@@ -127,26 +127,67 @@ export async function sendMessage(
 	content: string,
 	nonce?: string,
 	messageReference?: MessageReference,
+	files?: File[],
 ): Promise<GatewayMessage> {
 	if (!userSession.token) {
 		throw new Error("No user session token found");
 	}
 
-	const response = await fetch(`${HOST}/api/rooms/${roomId}/messages`, {
-		method: "POST",
-		headers: {
-			Authorization: userSession.token,
-			"Content-Type": "application/json",
-		},
-		body: JSON.stringify({
+	let body: BodyInit;
+	let headers: HeadersInit = { Authorization: userSession.token };
+
+	if (files && files.length > 0) {
+		const form = new FormData();
+		form.append("content", content);
+		if (nonce) form.append("nonce", nonce);
+		if (messageReference) form.append("message_reference", JSON.stringify(messageReference));
+		for (const f of files) form.append("files", f);
+		body = form;
+		// Don't set Content-Type - browser sets it with boundary
+	} else {
+		headers["Content-Type"] = "application/json";
+		body = JSON.stringify({
 			content,
 			nonce,
 			...(messageReference ? { message_reference: messageReference } : {}),
-		}),
+		});
+	}
+
+	const response = await fetch(`${HOST}/api/rooms/${roomId}/messages`, {
+		method: "POST",
+		headers,
+		body,
 	});
 
 	if (!response.ok) {
-		throw new Error(`Failed to send message: ${await response.text()}`);
+		const body = await response.json().catch(() => null);
+		throw new Error(body?.error ?? `Failed to send message (${response.status})`);
+	}
+
+	return response.json() as Promise<GatewayMessage>;
+}
+
+export async function sendVoiceNote(
+	roomId: string,
+	audioBlob: Blob,
+	nonce?: string,
+): Promise<GatewayMessage> {
+	if (!userSession.token) throw new Error("No user session token found");
+
+	const form = new FormData();
+	form.append("type", "1");
+	if (nonce) form.append("nonce", nonce);
+	form.append("files", audioBlob, "voice-note.webm");
+
+	const response = await fetch(`${HOST}/api/rooms/${roomId}/messages`, {
+		method: "POST",
+		headers: { Authorization: userSession.token },
+		body: form,
+	});
+
+	if (!response.ok) {
+		const body = await response.json().catch(() => null);
+		throw new Error(body?.error ?? `Failed to send voice note (${response.status})`);
 	}
 
 	return response.json() as Promise<GatewayMessage>;

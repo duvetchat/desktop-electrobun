@@ -102,28 +102,6 @@ const initialRootPane = makeLeaf();
 let rootPane = $state<PaneNode>(initialRootPane);
 let focusedPaneId = $state<string>(initialRootPane.id);
 
-// Auto-open first channel on initial load (when there are no tabs yet)
-$effect(() => {
-	if (activeGuild && rootPane.kind === "leaf" && rootPane.tabs.length === 0) {
-		const first = activeGuild.channels.find((c) => c.type !== "category");
-		if (first && activeSpaceId) {
-			rootPane = {
-				...rootPane,
-				tabs: [
-					{
-						channelId: first.id,
-						channelName: first.name,
-						channelType: first.type,
-						spaceId: activeSpaceId,
-					},
-				],
-				activeChannelId: first.id,
-			};
-			focusedPaneId = rootPane.id;
-		}
-	}
-});
-
 // Sidebar selection → open in focused pane
 function onSidebarSelect(channelId: string) {
 	const ch = sidebarGuild?.channels.find((c) => c.id === channelId);

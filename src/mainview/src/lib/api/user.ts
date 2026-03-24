@@ -48,6 +48,60 @@ export async function updateUser(data: UpdateUserPayload): Promise<UserMeResult>
 	return response.json() as Promise<UserMeResult>;
 }
 
+export interface UserAttachment {
+	id: string;
+	message_id: string;
+	filename: string;
+	content_type: string;
+	size_bytes: number;
+	width?: number | null;
+	height?: number | null;
+	created_at: string;
+}
+
+export interface StorageStatus {
+	used_bytes: number;
+	max_bytes: number;
+	upload_limit_bytes: number;
+	percentage_used: number;
+}
+
+export async function getMyStorageStatus(): Promise<StorageStatus> {
+	if (!userSession.token) throw new Error("No user session token found");
+	const res = await fetch(`${HOST}/api/users/me/storage`, {
+		headers: { Authorization: userSession.token },
+	});
+	if (!res.ok) throw new Error(`Failed to fetch storage status: ${await res.text()}`);
+	return res.json() as Promise<StorageStatus>;
+}
+
+export async function getMyAttachments(): Promise<UserAttachment[]> {
+	if (!userSession.token) throw new Error("No user session token found");
+	const res = await fetch(`${HOST}/api/users/me/attachments`, {
+		headers: { Authorization: userSession.token },
+	});
+	if (!res.ok) throw new Error(`Failed to fetch attachments: ${await res.text()}`);
+	return res.json() as Promise<UserAttachment[]>;
+}
+
+export async function deleteMyAttachment(id: string): Promise<void> {
+	if (!userSession.token) throw new Error("No user session token found");
+	const res = await fetch(`${HOST}/api/users/me/attachments/${id}`, {
+		method: "DELETE",
+		headers: { Authorization: userSession.token },
+	});
+	if (!res.ok) throw new Error(`Failed to delete attachment: ${await res.text()}`);
+}
+
+export async function deleteAllMyAttachments(): Promise<void> {
+	if (!userSession.token) throw new Error("No user session token found");
+	const res = await fetch(`${HOST}/api/users/me/attachments`, {
+		method: "DELETE",
+		headers: { Authorization: userSession.token },
+	});
+	if (!res.ok) throw new Error(`Failed to delete attachments: ${await res.text()}`);
+}
+
 export async function me(): Promise<UserMeResult> {
 	if (!userSession.token) {
 		throw new Error("No user session token found");

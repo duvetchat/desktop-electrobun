@@ -5,6 +5,7 @@ import { currentUser, dmMessages, friends, unreadConversations, activeDMConvId, 
 import {
 	getDirectMessages,
 	sendDirectMessage,
+	sendDMVoiceNote,
 	sendConversationTyping,
 	updateDirectMessage,
 	deleteDirectMessage,
@@ -15,8 +16,9 @@ import {
 	type ConversationMember,
 	type DirectMessage,
 } from "$lib/api/conversations";
-import { getUser, type Friend, type UserPublic } from "$lib/api/friends";
-import type { Message, MessageReference } from "$lib/types";
+import type { Friend } from "$lib/api/friends";
+import { MessageType, type Message, type MessageReference } from "$lib/types";
+import { toast } from "$lib/stores/toast.svelte";
 import { MessageSquare, UserPlus, Users } from "@lucide/svelte";
 import UserAvatar from "$lib/components/UserAvatar.svelte";
 import Chat from "$lib/components/Chat.svelte";
@@ -40,7 +42,6 @@ let showAddMemberModal = $state(false);
 let addMemberLoading = $state(false);
 let addMemberError = $state("");
 let eligibleFriends = $state<Friend[]>([]);
-let friendUserMap = $state(new Map<string, UserPublic>());
 
 const me = $derived(get(currentUser));
 const isOwner = $derived(me?.id === conversation.owner_id);
@@ -65,24 +66,11 @@ function getFriendOtherId(friend: Friend): string {
 	return friend.sender_id === user?.id ? friend.recipient_id : friend.sender_id;
 }
 
-async function openAddMemberModal() {
+function openAddMemberModal() {
 	const memberIds = new Set(conversation.members.map((m) => m.user_id));
 	eligibleFriends = get(friends).filter((f) => !memberIds.has(getFriendOtherId(f)));
 	showAddMemberModal = true;
 	addMemberError = "";
-
-	const ids = eligibleFriends.map(getFriendOtherId).filter((id) => !friendUserMap.has(id));
-	const results = await Promise.allSettled(
-		ids.map(async (id) => {
-			const user = await getUser(id);
-			return [id, user] as const;
-		}),
-	);
-	const newMap = new Map(friendUserMap);
-	for (const r of results) {
-		if (r.status === "fulfilled") newMap.set(r.value[0], r.value[1]);
-	}
-	friendUserMap = newMap;
 }
 
 async function handleAddMember(userId: string) {
@@ -105,6 +93,7 @@ function toMessage(msg: DirectMessage): Message {
 	return {
 		id: msg.id,
 		content: msg.content,
+		type: msg.type ?? 0,
 		author_id: msg.author_id,
 		author_name:
 			msg.user?.alias ?? msg.user?.username ??
@@ -114,6 +103,9 @@ function toMessage(msg: DirectMessage): Message {
 		created_at: msg.created_at,
 		updated_at: msg.updated_at,
 		nonce: msg.nonce,
+		ref_message_id: msg.ref_message_id ?? null,
+		referenced_message: msg.referenced_message ?? null,
+		attachments: msg.attachments ?? null,
 	};
 }
 
@@ -157,17 +149,33 @@ async function handleLoadMore() {
 	isLoadingMore = false;
 }
 
-async function dmHandleSend(content: string, nonce: string, _ref: MessageReference | undefined) {
+async function dmHandleSend(content: string, nonce: string, ref: MessageReference | undefined, files?: File[]) {
 	const user = get(currentUser);
 	if (!user) return;
 	const isoNow = new Date().toISOString();
+	const allMsgs = get(dmMessages)[conversation.id] ?? [];
+	const refMsg = ref?.message_id ? allMsgs.find((m) => m.id === ref.message_id) : null;
 	const pending: DirectMessage = {
 		id: nonce, room_id: null, conversation_id: conversation.id,
-		author_id: user.id, content,
+		author_id: user.id, content, type: 0,
 		created_at: isoNow, updated_at: isoNow, deleted_at: null, nonce,
+		ref_message_id: ref?.message_id ?? null,
+		referenced_message: refMsg ? {
+			id: refMsg.id, type: 0, message_id: refMsg.id, room_id: null, space_id: null,
+			content: refMsg.content,
+			author_id: refMsg.author_id,
+			author_name: refMsg.user?.alias ?? refMsg.user?.username ?? refMsg.author_id.slice(0, 8),
+			author_avatar: refMsg.user?.avatar ?? null,
+			created_at: refMsg.created_at,
+		} : null,
+		attachments: files?.map((f) => ({
+			id: "", message_id: "", filename: f.name,
+			content_type: f.type || "application/octet-stream",
+			size_bytes: f.size, created_at: isoNow, pending: true,
+		})) ?? null,
 	};
 	dmMessages.update((all) => ({ ...all, [conversation.id]: [...(all[conversation.id] ?? []), pending] }));
-	const real = await sendDirectMessage(conversation.id, content, nonce);
+	const real = await sendDirectMessage(conversation.id, content, nonce, ref, files);
 	dmMessages.update((all) => {
 		const existing = all[conversation.id] ?? [];
 		if (!existing.some((m) => m.id === nonce)) return all;
@@ -205,6 +213,30 @@ function dmDismiss(nonce: string) {
 		...all,
 		[conversation.id]: (all[conversation.id] ?? []).filter((m) => m.nonce !== nonce),
 	}));
+}
+
+async function dmVoiceNote(blob: Blob) {
+	const nonce = crypto.randomUUID();
+	const user = get(currentUser);
+	if (!user) return;
+
+	const isoNow = new Date().toISOString();
+	const pending: DirectMessage = {
+		id: nonce, room_id: null, conversation_id: conversation.id,
+		author_id: user.id, content: "", type: MessageType.Voice,
+		created_at: isoNow, updated_at: isoNow, deleted_at: null, nonce,
+		attachments: [{
+			id: "", message_id: "", filename: "voice-note.webm",
+			content_type: "audio/webm;codecs=opus", size_bytes: blob.size,
+			created_at: isoNow, pending: true,
+		}],
+	};
+	dmMessages.update((all) => ({ ...all, [conversation.id]: [...(all[conversation.id] ?? []), pending] }));
+
+	sendDMVoiceNote(conversation.id, blob, nonce).catch((err) => {
+		failedNonces = new Set(failedNonces).add(nonce);
+		toast(err instanceof Error ? err.message : "Failed to send voice note", "error");
+	});
 }
 
 async function handleRemoveMember(userId: string) {
@@ -255,7 +287,7 @@ let ackInterval: ReturnType<typeof setInterval> | null = null;
 $effect(() => {
 	const _convId = conversation.id;
 	if (ackInterval) { clearInterval(ackInterval); ackInterval = null; }
-	ackInterval = setInterval(tryAckConversation, 5000);
+	ackInterval = setInterval(tryAckConversation, 1e3);
 	return () => { if (ackInterval) { clearInterval(ackInterval); ackInterval = null; } };
 });
 
@@ -341,6 +373,7 @@ onMount(() => {
 			onRetry={dmRetry}
 			onDismiss={dmDismiss}
 			sendTyping={() => sendConversationTyping(conversation.id).catch(() => {})}
+			onVoiceNoteOverride={dmVoiceNote}
 			members={convMembers}
 			unreadAfterMessageId={convUnreadAfter}
 			onUnreadMark={(msgId) => {
@@ -381,20 +414,19 @@ onMount(() => {
 			<div class="flex max-h-48 flex-col gap-0.5 overflow-y-auto">
 				{#each eligibleFriends as friend (friend.id)}
 					{@const uid = getFriendOtherId(friend)}
-					{@const user = friendUserMap.get(uid)}
 					<button
 						class="flex items-center gap-2 rounded px-3 py-2 text-left hover:bg-stone-800 disabled:opacity-50"
 						onclick={() => handleAddMember(uid)}
 						disabled={addMemberLoading}
 					>
 						<UserAvatar
-							src={user?.avatar ?? null}
-							name={user?.alias ?? user?.username ?? "?"}
+							src={friend.user_avatar ?? null}
+							name={friend.user_alias ?? friend.user_username}
 							size={32}
 						/>
 						<div class="flex flex-col min-w-0">
-							<span class="text-sm text-stone-200">{user?.alias ?? user?.username ?? uid}</span>
-							<span class="text-xs text-zinc-500">@{user?.username ?? uid}</span>
+							<span class="text-sm text-stone-200">{friend.user_alias ?? friend.user_username}</span>
+							<span class="text-xs text-zinc-500">@{friend.user_username}</span>
 						</div>
 					</button>
 				{/each}

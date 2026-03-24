@@ -1,8 +1,11 @@
 <script lang="ts">
   import "../app.css";
-  
+
   import favicon from "$lib/assets/favicon.svg";
   import Header from "$lib/components/Header.svelte";
+  import Toast from "$lib/components/Toast.svelte";
+  import ConfirmDialog from "$lib/components/ConfirmDialog.svelte";
+  import PromptDialog from "$lib/components/PromptDialog.svelte";
 
   import { setupWindowControls } from "$lib/window-controls";
   import { onMount } from "svelte";
@@ -24,3 +27,6 @@
 		{@render children()}
 	</div>
 </div>
+<Toast />
+<ConfirmDialog />
+<PromptDialog />

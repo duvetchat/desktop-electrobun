@@ -1,4 +1,5 @@
 <script lang="ts">
+import { toast } from "$lib/stores/toast.svelte";
 import {
 	EllipsisVertical as DotsThreeVerticalIcon,
 	Hash as HashIcon,
@@ -104,7 +105,7 @@ async function handleCreateChannel() {
 		newChannelCategory = null;
 	} catch (e) {
 		console.error(e);
-		alert("Failed to create channel");
+		toast("Failed to create channel", "error");
 	} finally {
 		isCreating = false;
 	}
@@ -118,7 +119,7 @@ async function handleDeleteChannel() {
 		confirmDeleteChannel = null;
 	} catch (err) {
 		console.error("Failed to delete channel:", err);
-		alert("Failed to delete channel");
+		toast("Failed to delete channel", "error");
 	} finally {
 		isDeletingChannel = false;
 	}

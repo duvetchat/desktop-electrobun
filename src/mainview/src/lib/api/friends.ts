@@ -3,13 +3,6 @@ import { getHostURL } from "$lib/common/common";
 
 const HOST = getHostURL();
 
-export interface UserPublic {
-	id: string;
-	username: string;
-	alias: string | null;
-	avatar: string | null;
-}
-
 export interface FriendRequest {
 	id: string;
 	sender_id: string;
@@ -17,6 +10,9 @@ export interface FriendRequest {
 	created_at: string;
 	updated_at: string;
 	deleted_at: string | null;
+	user_username: string;
+	user_alias: string | null;
+	user_avatar: string | null;
 }
 
 export interface Friend {
@@ -24,6 +20,9 @@ export interface Friend {
 	request_id: string;
 	sender_id: string;
 	recipient_id: string;
+	user_username: string;
+	user_alias: string | null;
+	user_avatar: string | null;
 }
 
 function authHeaders(): HeadersInit {
@@ -84,13 +83,6 @@ export async function getFriends(): Promise<Friend[]> {
 		headers: authHeaders(),
 	});
 	return handleResponse<Friend[]>(res);
-}
-
-export async function getUser(userId: string): Promise<UserPublic> {
-	const res = await fetch(`${HOST}/api/users/${userId}`, {
-		headers: authHeaders(),
-	});
-	return handleResponse<UserPublic>(res);
 }
 
 export async function unfriend(userId: string): Promise<void> {

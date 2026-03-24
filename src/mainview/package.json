@@ -30,7 +30,7 @@
 		"bits-ui": "^2.16.3",
 		"emoji-datasource": "^16.0.0",
 		"facehash-sv": "^0.0.5",
-		"highlight.js": "^11.11.1"
+		"shiki": "^4.0.2"
 	},
 	"patchedDependencies": {
 		"facehash-sv@0.0.5": "patches/facehash-sv@0.0.5.patch"

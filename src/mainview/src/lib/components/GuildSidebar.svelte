@@ -1,4 +1,5 @@
 <script lang="ts">
+import { promptDialog } from "$lib/stores/prompt.svelte";
 import {
 	Plus as PlusIcon,
 	ChevronDown as CaretDownIcon,
@@ -57,8 +58,8 @@ function persistFolders() {
 	localStorage.setItem(FOLDERS_KEY, JSON.stringify(folders));
 }
 
-function createFolder() {
-	const name = window.prompt("Folder name");
+async function createFolder() {
+	const name = await promptDialog("Folder name", "My folder");
 	if (!name?.trim()) return;
 	folders = [
 		...folders,

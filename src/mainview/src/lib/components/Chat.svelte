@@ -10,8 +10,10 @@ import ChatInput from "$lib/components/ChatInput.svelte";
 import MessageList from "$lib/components/MessageList.svelte";
 import type { Message, MemberOnSidebar, GatewaySpace, MessageReference } from "$lib/types";
 import { MessageReferenceType } from "$lib/types";
-import { sendMessage, sendTypingIndicator } from "$lib/api/messages";
+import { sendMessage, sendVoiceNote, sendTypingIndicator } from "$lib/api/messages";
+import { MessageType } from "$lib/types";
 import { currentUser, channelMessages, typingUsers } from "$lib/stores.svelte";
+import { toast } from "$lib/stores/toast.svelte";
 import TypingIndicator from "$lib/components/TypingIndicator.svelte";
 
 let {
@@ -41,6 +43,7 @@ let {
 	onDismiss = undefined,
 	sendTyping = undefined,
 	onUnreadMark = undefined,
+	onVoiceNoteOverride = undefined,
 }: {
 	messages: Message[];
 	members?: MemberOnSidebar[];
@@ -61,17 +64,35 @@ let {
 	placeholder?: string;
 	failedNonces?: Set<string>;
 	isAtBottom?: boolean;
-	onSend?: (content: string, nonce: string, ref: MessageReference | undefined) => Promise<void>;
+	onSend?: (content: string, nonce: string, ref: MessageReference | undefined, files?: File[]) => Promise<void>;
 	onSaveEdit?: (msgId: string, content: string) => void | Promise<void>;
 	onDeleteMsg?: (msgId: string) => Promise<void>;
 	onRetry?: (message: Message) => void;
 	onDismiss?: (nonce: string) => void;
 	sendTyping?: () => void;
 	onUnreadMark?: (messageId: string) => void;
+	onVoiceNoteOverride?: (blob: Blob) => void;
 } = $props();
 let replyTo = $state<Message | null>(null);
 let chatInputRef = $state<{ focus: () => void } | null>(null);
+let pendingFiles = $state<File[]>([]);
 let lastTypingSent = 0;
+
+// Focus input when switching channels
+$effect(() => {
+	channelId;
+	requestAnimationFrame(() => chatInputRef?.focus());
+});
+
+function formatFileSize(bytes: number): string {
+	if (bytes < 1024) return `${bytes} B`;
+	if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+	return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function removePendingFile(index: number) {
+	pendingFiles = pendingFiles.filter((_, i) => i !== index);
+}
 let editingMessageId = $state<string | null>(null);
 let editContent = $state("");
 let editMessageIndex = $state<number | null>(null);
@@ -194,7 +215,7 @@ onDestroy(() => {
 	window.removeEventListener("keydown", handleGlobalKeyDown);
 });
 
-async function handleSendMessage(content: string) {
+async function handleSendMessage(content: string, files?: File[]) {
 	const nonce = crypto.randomUUID();
 	const user = $currentUser;
 	if (!user) return;
@@ -208,12 +229,21 @@ async function handleSendMessage(content: string) {
 	replyTo = null;
 
 	if (onSend) {
-		try { await onSend(content, nonce, ref); }
+		try { await onSend(content, nonce, ref, files); }
 		catch { failedNonces = new Set(failedNonces).add(nonce); }
 		return;
 	}
 
 	const isoNow = new Date().toISOString();
+	const pendingAttachments = files?.map((f) => ({
+		id: "",
+		message_id: "",
+		filename: f.name,
+		content_type: f.type || "application/octet-stream",
+		size_bytes: f.size,
+		created_at: isoNow,
+		pending: true,
+	})) ?? [];
 	const pendingMessage = {
 		id: nonce,
 		content,
@@ -223,6 +253,7 @@ async function handleSendMessage(content: string) {
 		created_at: isoNow,
 		updated_at: isoNow,
 		nonce,
+		attachments: pendingAttachments.length > 0 ? pendingAttachments : null,
 		...(ref ? {
 			referenced_message: {
 				id: ref.message_id,
@@ -240,8 +271,9 @@ async function handleSendMessage(content: string) {
 		[channelId]: [...(all[channelId] ?? []), pendingMessage],
 	}));
 
-	sendMessage(channelId, content, nonce, ref).catch(() => {
+	sendMessage(channelId, content, nonce, ref, files).catch((err) => {
 		failedNonces = new Set(failedNonces).add(nonce);
+		toast(err instanceof Error ? err.message : "Failed to send message", "error");
 	});
 }
 
@@ -256,8 +288,9 @@ function retryMessage(message: Message) {
 	const newSet = new Set(failedNonces);
 	newSet.delete(nonce);
 	failedNonces = newSet;
-	sendMessage(channelId, message.content, nonce).catch(() => {
+	sendMessage(channelId, message.content, nonce).catch((err) => {
 		failedNonces = new Set(failedNonces).add(nonce);
+		toast(err instanceof Error ? err.message : "Failed to send message", "error");
 	});
 }
 
@@ -286,6 +319,49 @@ function dismissFailedMessage(nonce: string) {
 		...all,
 		[channelId]: (all[channelId] ?? []).filter((m) => m.nonce !== nonce),
 	}));
+}
+
+async function handleVoiceNote(blob: Blob) {
+	if (onVoiceNoteOverride) {
+		onVoiceNoteOverride(blob);
+		return;
+	}
+
+	const nonce = crypto.randomUUID();
+	const user = $currentUser;
+	if (!user) return;
+
+	const isoNow = new Date().toISOString();
+	const pendingMessage = {
+		id: nonce,
+		content: "",
+		type: MessageType.Voice,
+		author_id: user.id,
+		author_name: user.alias ?? user.username,
+		author_avatar_url: user.avatar ?? null,
+		created_at: isoNow,
+		updated_at: isoNow,
+		nonce,
+		attachments: [{
+			id: "",
+			message_id: "",
+			filename: "voice-note.webm",
+			content_type: "audio/webm;codecs=opus",
+			size_bytes: blob.size,
+			created_at: isoNow,
+			pending: true,
+		}],
+	} as any;
+
+	channelMessages.update((all) => ({
+		...all,
+		[channelId]: [...(all[channelId] ?? []), pendingMessage],
+	}));
+
+	sendVoiceNote(channelId, blob, nonce).catch((err) => {
+		failedNonces = new Set(failedNonces).add(nonce);
+		toast(err instanceof Error ? err.message : "Failed to send voice note", "error");
+	});
 }
 
 </script>
@@ -354,25 +430,49 @@ function dismissFailedMessage(nonce: string) {
   <div
 		class="relative flex min-h-16 max-h-48 flex-row items-end gap-2 border-t border-stone-800 bg-stone-950/45 px-3 py-2"
 	>
-    {#if replyTo}
-        <div class="absolute bottom-full left-0 right-0 flex items-center justify-between bg-stone-900/90 border-t border-stone-800 px-3 py-1.5 text-xs text-zinc-400">
-            <span>Replying to <span class="font-semibold text-zinc-200">{replyTo.author_name}</span></span>
-            <button
-                class="text-zinc-500 hover:text-zinc-300 transition-colors"
-                onclick={() => { replyTo = null; }}
-                aria-label="Cancel reply"
-            >
-                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
-            </button>
+    {#if replyTo || pendingFiles.length > 0}
+        <div class="absolute bottom-full left-0 right-0 flex flex-col">
+            {#if replyTo}
+                <div class="flex items-center justify-between bg-stone-900/90 border-t border-stone-800 px-3 py-1.5 text-xs text-zinc-400">
+                    <span>Replying to <span class="font-semibold text-zinc-200">{replyTo.author_name}</span></span>
+                    <button
+                        class="text-zinc-500 hover:text-zinc-300 transition-colors"
+                        onclick={() => { replyTo = null; }}
+                        aria-label="Cancel reply"
+                    >
+                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                    </button>
+                </div>
+            {/if}
+            {#if pendingFiles.length > 0}
+                <div class="flex flex-wrap gap-1.5 bg-stone-900/90 border-t border-stone-800 px-3 py-1.5">
+                    {#each pendingFiles as file, i}
+                        <div class="flex items-center gap-1.5 px-2 py-1 rounded bg-stone-800 border border-stone-700 max-w-56">
+                            <span class="text-xs text-zinc-300 truncate">{file.name}</span>
+                            <span class="text-xxs text-zinc-500 shrink-0">{formatFileSize(file.size)}</span>
+                            <button
+                                class="text-zinc-500 hover:text-zinc-300 transition-colors shrink-0"
+                                onclick={() => removePendingFile(i)}
+                                aria-label="Remove {file.name}"
+                            >
+                                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                            </button>
+                        </div>
+                    {/each}
+                </div>
+            {/if}
         </div>
     {/if}
     <ChatInput
       bind:this={chatInputRef}
+      bind:pendingFiles
       placeholder={placeholder ?? `Message #${channelName}`}
       onSubmit={handleSendMessage}
+      onVoiceNote={handleVoiceNote}
       onArrowUpWhenEmpty={tryEditLastMessage}
       onValueChange={handleTyping}
       {members}
+      autofocus
     />
   </div>
 </div>

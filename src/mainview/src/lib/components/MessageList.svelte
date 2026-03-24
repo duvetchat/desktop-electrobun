@@ -8,11 +8,13 @@
     import { renderMarkdown } from "$lib/markdown";
 
     import { gatewayMessageToMessage } from "$lib/types";
-    import type { MemberOnSidebar, GatewaySpace, Message } from "$lib/types";
+    import { MessageType, type MemberOnSidebar, type GatewaySpace, type Message } from "$lib/types";
+    import { getHostURL } from "$lib/common/common";
 
     import InviteEmbed from "$lib/components/InviteEmbed.svelte";
     import MessageLinkEmbed from "$lib/components/MessageLinkEmbed.svelte";
     import EmbedCard from "$lib/components/EmbedCard.svelte";
+    import VoiceNotePlayer from "$lib/components/VoiceNotePlayer.svelte";
     import UserAvatar from "$lib/components/UserAvatar.svelte";
     import ChatInput from "$lib/components/ChatInput.svelte";
     import MemberProfilePopover from "$lib/components/MemberProfilePopover.svelte";
@@ -87,6 +89,14 @@
     let threadRootMessage = $state<Message | null>(null);
     let now = $state(Date.now());
     let intervalId: number;
+    const attachmentHost = getHostURL();
+
+    function formatFileSize(bytes: number): string {
+        if (bytes < 1024) return `${bytes} B`;
+        if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+        return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+    }
+
     const locale =
         typeof navigator !== "undefined" ? navigator.language : "en-US";
     const dateFormatter = new Intl.DateTimeFormat(locale, {
@@ -161,10 +171,26 @@
         });
     });
 
+    function handleCodeCopy(e: MouseEvent) {
+        const btn = (e.target as HTMLElement).closest(".msg-code-copy") as HTMLButtonElement | null;
+        if (!btn) return;
+        const code = btn.dataset.code;
+        if (!code) return;
+        navigator.clipboard.writeText(code).then(() => {
+            btn.classList.add("copied");
+            btn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>`;
+            setTimeout(() => {
+                btn.classList.remove("copied");
+                btn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>`;
+            }, 1500);
+        });
+    }
+
     onMount(() => {
         intervalId = window.setInterval(() => {
             now = Date.now();
         }, 30_000);
+        document.addEventListener("click", handleCodeCopy);
     });
 
     onDestroy(() => {
@@ -172,6 +198,7 @@
         if (intervalId) {
             window.clearInterval(intervalId);
         }
+        document.removeEventListener("click", handleCodeCopy);
     });
 
     // ── Sorting ────────────────────────────────────────────────────────────────
@@ -196,6 +223,12 @@
     );
 
     const authorColors = $derived(buildAuthorColorMap(members));
+    const mentionMap = $derived(
+        members.reduce<Record<string, string>>((map, m) => {
+            map[m.id] = m.username || m.raw_username;
+            return map;
+        }, {}),
+    );
 
     // ── Unread divider ─────────────────────────────────────────────────────────
     // UUID v7 is lexicographically sortable, so string comparison gives chronological order.
@@ -716,7 +749,7 @@
                                 size={16}
                             />
                             <span class="font-medium text-zinc-300 shrink-0">{message.referenced_message.author_name}</span>
-                            <span class="truncate opacity-80">{message.referenced_message.content ?? ''}</span>
+                            <span class="truncate opacity-80 msg-content">{@html renderMarkdown(message.referenced_message.content ?? '', false, mentionMap)}</span>
                             {#if message.referenced_message.created_at}
                                 <span class="shrink-0 opacity-50">{new Date(message.referenced_message.created_at).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' })}</span>
                             {/if}
@@ -811,9 +844,31 @@
                             </div>
                         </div>
                     {:else}
+                        {#if message.type === MessageType.Voice}
+                            <!-- Voice note -->
+                            {@const voiceAtt = message.attachments?.find((a) => a.content_type.startsWith("audio/"))}
+                            {#if voiceAtt?.pending}
+                                <div class="flex items-center gap-2.5 py-1 px-3.5 rounded-2xl max-w-64 min-w-48" style="background: oklch(0.22 0.01 80 / 0.8); border: 1px solid oklch(0.30 0.01 80 / 0.6);">
+                                    <div class="size-9 rounded-full bg-zinc-700 animate-pulse shrink-0"></div>
+                                    <div class="flex-1 flex flex-col gap-1.5">
+                                        <div class="h-7 rounded bg-zinc-700/40 animate-pulse"></div>
+                                        <span class="text-[11px] text-zinc-500">Sending...</span>
+                                    </div>
+                                </div>
+                            {:else if voiceAtt && !voiceAtt.deleted}
+                                <VoiceNotePlayer src="{attachmentHost}/attachments/{voiceAtt.id}" />
+                            {:else}
+                                <div class="flex items-center gap-2 h-12 px-4 rounded-2xl border border-dashed border-zinc-700/50" style="background: oklch(0.20 0.008 80 / 0.5);">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="text-zinc-600"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
+                                    <span class="text-xs text-zinc-500 italic">Voice note deleted</span>
+                                </div>
+                            {/if}
+                        {:else}
                         {@const processed = processMessageContent(
                             message.content,
                         )}
+                        {@const isOnlyLink = /^\s*https?:\/\/\S+\s*$/.test(message.content) && message.embeds && message.embeds.length > 0}
+                        {#if !isOnlyLink}
                         <div
                             role="textbox"
                             aria-readonly="true"
@@ -888,6 +943,7 @@
                                     {@html renderMarkdown(
                                         segment.content,
                                         emojiOnly,
+                                        mentionMap,
                                     )}
                                 {/if}
                             {/each}
@@ -900,12 +956,13 @@
                                 >
                             {/if}
                         </div>
+                        {/if}
                         {#if processed.images.length > 0}
                             <div class="mt-1 flex flex-col gap-1">
                                 {#each processed.images as imgUrl}
                                     <img
                                         src={imgUrl}
-                                        alt="attachment"
+                                        alt=""
                                         class="max-w-100 max-h-100 w-auto h-auto rounded-md object-contain"
                                         loading="lazy"
                                     />
@@ -936,6 +993,76 @@
                                     <EmbedCard {embed} />
                                 {/each}
                             </div>
+                        {/if}
+                        {#if message.attachments && message.attachments.length > 0}
+                            <div class="mt-1 flex flex-col gap-1">
+                                {#each message.attachments as att}
+                                    {#if att.pending}
+                                        {#if att.content_type.startsWith("image/")}
+                                            <div class="w-64 h-40 rounded-md bg-zinc-700/40 animate-pulse flex items-center justify-center">
+                                                <span class="text-xs text-zinc-500">Uploading {att.filename}...</span>
+                                            </div>
+                                        {:else if att.content_type.startsWith("video/")}
+                                            <div class="w-80 h-44 rounded-md bg-zinc-700/40 animate-pulse flex items-center justify-center">
+                                                <span class="text-xs text-zinc-500">Uploading {att.filename}...</span>
+                                            </div>
+                                        {:else}
+                                            <div class="inline-flex items-center gap-2 px-3 py-2 rounded-md bg-zinc-800/60 max-w-xs animate-pulse">
+                                                <span class="text-xs text-zinc-500">Uploading {att.filename}...</span>
+                                                <span class="text-xs text-zinc-600 shrink-0">{formatFileSize(att.size_bytes)}</span>
+                                            </div>
+                                        {/if}
+                                    {:else if att.deleted}
+                                        {@const dw = Math.min(att.width ?? 200, 400)}
+                                        {@const dh = Math.min(att.height ?? 48, 400)}
+                                        <div
+                                            class="rounded-md border border-dashed border-zinc-700 bg-zinc-800/30 flex flex-col items-center justify-center gap-1"
+                                            style="width: {dw}px; height: {dh}px; max-width: 100%;"
+                                        >
+                                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="text-zinc-600"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></svg>
+                                            <span class="text-xs text-zinc-500">Attachment deleted</span>
+                                        </div>
+                                    {:else if att.content_type.startsWith("image/")}
+                                        {@const iw = Math.min(att.width ?? 400, 400)}
+                                        {@const ih = Math.min(att.height ?? 400, 400)}
+                                        <div class="relative rounded-md overflow-hidden" style="width: {iw}px; height: {ih}px; max-width: 100%;">
+                                            <div class="absolute inset-0 bg-zinc-700/40 animate-pulse img-skeleton"></div>
+                                            <img
+                                                src="{attachmentHost}/attachments/{att.id}"
+                                                alt={att.filename}
+                                                class="relative rounded-md object-contain w-full h-full"
+                                                loading="lazy"
+                                                onload={(e) => { (e.currentTarget as HTMLElement).parentElement?.querySelector('.img-skeleton')?.remove(); }}
+                                            />
+                                        </div>
+                                    {:else if att.content_type.startsWith("video/")}
+                                        {@const vw = Math.min(att.width ?? 400, 400)}
+                                        {@const vh = Math.min(att.height ?? 300, 300)}
+                                        <div class="relative rounded-md overflow-hidden" style="width: {vw}px; height: {vh}px; max-width: 100%;">
+                                            <div class="absolute inset-0 bg-zinc-700/40 animate-pulse flex items-center justify-center video-skeleton">
+                                                <span class="text-xs text-zinc-500">Loading video...</span>
+                                            </div>
+                                            <video
+                                                src="{attachmentHost}/attachments/{att.id}"
+                                                controls
+                                                class="relative w-full h-full rounded-md"
+                                                onloadeddata={(e) => { const el = e.currentTarget as HTMLVideoElement; el.parentElement?.querySelector('.video-skeleton')?.remove(); }}
+                                            ></video>
+                                        </div>
+                                    {:else}
+                                        <a
+                                            href="{attachmentHost}/attachments/{att.id}"
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            class="inline-flex items-center gap-2 mt-1 px-3 py-2 rounded-md bg-zinc-800/60 text-sm text-zinc-300 hover:bg-zinc-700/60 max-w-xs"
+                                        >
+                                            <span class="truncate">{att.filename}</span>
+                                            <span class="text-xs text-zinc-500 shrink-0">{formatFileSize(att.size_bytes)}</span>
+                                        </a>
+                                    {/if}
+                                {/each}
+                            </div>
+                        {/if}
                         {/if}
                     {/if}
                 </div>
@@ -1262,7 +1389,7 @@
                                                 size={14}
                                             />
                                             <span class="text-xs font-medium text-zinc-400 truncate max-w-24">{parentMsg.author_name}</span>
-                                            <span class="text-xs text-zinc-500 truncate">{parentMsg.content.slice(0, 60)}{parentMsg.content.length > 60 ? "…" : ""}</span>
+                                            <span class="text-xs text-zinc-500 truncate">{@html renderMarkdown(parentMsg.content.slice(0, 60), false, mentionMap)}{parentMsg.content.length > 60 ? "…" : ""}</span>
                                         </div>
                                     {/if}
                                     <div class="flex items-start gap-2">
@@ -1276,7 +1403,7 @@
                                                 <span class="text-sm font-semibold text-zinc-100">{threadMsg.author_name}</span>
                                                 <span class="text-xs text-zinc-500">{new Date(threadMsg.created_at).toLocaleString(locale)}</span>
                                             </div>
-                                            <p class="text-sm text-zinc-200 whitespace-pre-wrap wrap-break-word">{threadMsg.content}</p>
+                                            <p class="text-sm text-zinc-200 whitespace-pre-wrap wrap-break-word msg-content">{@html renderMarkdown(threadMsg.content, false, mentionMap)}</p>
                                         </div>
                                     </div>
                                 </div>

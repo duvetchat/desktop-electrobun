@@ -1,4 +1,6 @@
 <script lang="ts">
+import { toast } from "$lib/stores/toast.svelte";
+import { confirmAction } from "$lib/stores/confirm.svelte";
 import {
 	GripVertical as DotsSixVerticalIcon,
 	Shield as ShieldStarIcon,
@@ -219,7 +221,7 @@ async function handleCreateRole() {
 		newRoleUseGradient = false;
 	} catch (err) {
 		console.error("Failed to create role:", err);
-		alert(`Error: ${err}`);
+		toast(`${err}`, "error");
 	} finally {
 		isCreating = false;
 	}
@@ -253,33 +255,22 @@ async function handleUpdateRole() {
 		editingRoleId = null;
 	} catch (err) {
 		console.error("Failed to update role:", err);
-		alert(`Error: ${err}`);
+		toast(`${err}`, "error");
 	} finally {
 		isCreating = false;
 	}
 }
 
 async function handleDeleteRole(roleId: string) {
-	const roleName =
-		sortedRoles.find((role) => role.id === roleId)?.name ?? "this role";
-	if (
-		!spaceId ||
-		!confirm(`Delete \"${roleName}\"? This can't be undone.`)
-	) {
-		return;
-	}
-	isDeleting = { ...isDeleting, [roleId]: true };
-	try {
-		await deleteRole(spaceId, roleId);
+	const roleName = sortedRoles.find((r) => r.id === roleId)?.name ?? "this role";
+	if (!spaceId) return;
+	const sid = spaceId;
+	await confirmAction(`Delete "${roleName}"? This can't be undone.`, "Deleting", async () => {
+		await deleteRole(sid, roleId);
 		if (editingRoleId === roleId) {
 			editingRoleId = null;
 		}
-	} catch (err) {
-		console.error("Failed to delete role:", err);
-		alert(`Error: ${err}`);
-	} finally {
-		isDeleting = { ...isDeleting, [roleId]: false };
-	}
+	});
 }
 
 function startEdit(role: any) {
@@ -829,14 +820,7 @@ const selectedSettingsRoles = $derived(
                                                                 handleDeleteRole(
                                                                     role.id,
                                                                 )}
-                                                            disabled={isDeleting[
-                                                                role.id
-                                                            ]}
-                                                            >{isDeleting[
-                                                                role.id
-                                                            ]
-                                                                ? "…"
-                                                                : "Delete"}</button
+                                                            >Delete</button
                                                         >
                                                     </div>
                                                 </div>

@@ -1,5 +1,6 @@
 import { userSession } from "$lib/stores.svelte";
 import { getHostURL } from "$lib/common/common";
+import type { MessageType } from '$lib/types';
 
 const HOST = getHostURL();
 
@@ -39,10 +40,13 @@ export interface DirectMessage {
 	conversation_id: string | null;
 	author_id: string;
 	content: string;
+	type: MessageType;
 	created_at: string;
 	updated_at: string;
 	deleted_at: string | null;
 	nonce?: string;
+	ref_message_id?: string | null;
+	referenced_message?: import("$lib/types").ReferencedMessage | null;
 	user?: {
 		id: string;
 		username: string;
@@ -50,6 +54,7 @@ export interface DirectMessage {
 		avatar: string | null;
 		banner: string | null;
 	};
+	attachments?: import("$lib/types").Attachment[] | null;
 }
 
 function authHeaders(): HeadersInit {
@@ -144,11 +149,51 @@ export async function sendDirectMessage(
 	conversationId: string,
 	content: string,
 	nonce?: string,
+	messageReference?: import("$lib/types").MessageReference,
+	files?: File[],
 ): Promise<DirectMessage> {
+	let body: BodyInit;
+	let headers: HeadersInit = authHeaders();
+
+	if (files && files.length > 0) {
+		const form = new FormData();
+		form.append("content", content);
+		if (nonce) form.append("nonce", nonce);
+		if (messageReference) form.append("message_reference", JSON.stringify(messageReference));
+		for (const f of files) form.append("files", f);
+		body = form;
+		// Override Content-Type — let browser set boundary
+		headers = { Authorization: userSession.token! };
+	} else {
+		body = JSON.stringify({
+			content,
+			nonce,
+			...(messageReference ? { message_reference: messageReference } : {}),
+		});
+	}
+
 	const res = await fetch(`${HOST}/api/users/@me/conversations/${conversationId}/messages`, {
 		method: "POST",
-		headers: authHeaders(),
-		body: JSON.stringify({ content, nonce }),
+		headers,
+		body,
+	});
+	return handleResponse<DirectMessage>(res);
+}
+
+export async function sendDMVoiceNote(
+	conversationId: string,
+	audioBlob: Blob,
+	nonce?: string,
+): Promise<DirectMessage> {
+	const form = new FormData();
+	form.append("type", "1");
+	if (nonce) form.append("nonce", nonce);
+	form.append("files", audioBlob, "voice-note.webm");
+
+	const res = await fetch(`${HOST}/api/users/@me/conversations/${conversationId}/messages`, {
+		method: "POST",
+		headers: { Authorization: userSession.token! },
+		body: form,
 	});
 	return handleResponse<DirectMessage>(res);
 }
