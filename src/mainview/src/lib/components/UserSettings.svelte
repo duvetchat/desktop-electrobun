@@ -2,16 +2,20 @@
 import {
 	User as UserIcon,
 	Paperclip as PaperclipIcon,
+	Database as DatabaseIcon,
 	X as XIcon,
 	Check as CheckIcon,
 	Trash2 as TrashIcon,
+	Plus as PlusIcon,
+	Pencil as PencilIcon,
 } from "@lucide/svelte";
 import { Dialog } from "bits-ui";
 import { currentUser, channelMessages, gatewaySpaces, dmMessages, conversations } from "$lib/stores.svelte";
 import UserAvatar from "$lib/components/UserAvatar.svelte";
-import { updateUser, getMyAttachments, getMyStorageStatus, deleteMyAttachment, deleteAllMyAttachments, type UserAttachment, type StorageStatus } from "$lib/api/user";
+import { updateUser, getMyAttachments, getMyStorageStatus, deleteMyAttachment, deleteAllMyAttachments, getMyBuckets, createMyBucket, updateMyBucket, deleteMyBucket, activateMyBucket, deactivateMyBucket, type UserAttachment, type StorageStatus, type StorageBucket, type CreateBucketPayload } from "$lib/api/user";
 import { getHostURL } from "$lib/common/common";
 import { confirmAction } from "$lib/stores/confirm.svelte";
+import { toast } from "$lib/stores/toast.svelte";
 import VoiceNotePlayer from "$lib/components/VoiceNotePlayer.svelte";
 
 let {
@@ -20,7 +24,7 @@ let {
 	open?: boolean;
 } = $props();
 
-type Section = "account" | "attachments";
+type Section = "account" | "attachments" | "buckets";
 let activeSection = $state<Section>("account");
 
 // Attachments state
@@ -38,13 +42,16 @@ function formatFileSize(bytes: number): string {
 
 const totalSize = $derived(attachments.reduce((sum, a) => sum + a.size_bytes, 0));
 
+const hasActiveBucket = $derived(buckets.some((b) => b.is_active));
+
 async function loadAttachments() {
 	attachmentsLoading = true;
 	attachmentsError = null;
 	try {
-		[attachments, storageStatus] = await Promise.all([
+		[attachments, storageStatus, buckets] = await Promise.all([
 			getMyAttachments(),
 			getMyStorageStatus(),
+			getMyBuckets(),
 		]);
 	} catch (err) {
 		attachmentsError = err instanceof Error ? err.message : "Failed to load";
@@ -75,6 +82,76 @@ async function handleDeleteAll() {
 	});
 }
 
+// Buckets state
+let buckets = $state<StorageBucket[]>([]);
+let bucketsLoading = $state(false);
+let bucketsError = $state<string | null>(null);
+let showBucketForm = $state(false);
+let editingBucket = $state<StorageBucket | null>(null);
+let bucketSaving = $state(false);
+let bName = $state(""); let bEndpoint = $state(""); let bRegion = $state("auto");
+let bBucketName = $state(""); let bAccessKey = $state(""); let bSecretKey = $state("");
+
+async function loadBuckets() {
+	bucketsLoading = true; bucketsError = null;
+	try { buckets = await getMyBuckets(); } catch (e) { bucketsError = e instanceof Error ? e.message : "Failed to load"; }
+	finally { bucketsLoading = false; }
+}
+
+function resetBucketForm() {
+	bName = ""; bEndpoint = ""; bRegion = "auto"; bBucketName = ""; bAccessKey = ""; bSecretKey = "";
+	editingBucket = null; showBucketForm = false;
+}
+
+function startEditBucket(b: StorageBucket) {
+	editingBucket = b; showBucketForm = true;
+	bName = b.name; bEndpoint = b.endpoint; bRegion = b.region;
+	bBucketName = b.bucket_name; bAccessKey = b.access_key_id; bSecretKey = "";
+}
+
+async function handleSaveBucket() {
+	if (!bName.trim() || !bEndpoint.trim() || !bBucketName.trim() || !bAccessKey.trim()) return;
+	bucketSaving = true; bucketsError = null;
+	try {
+		const payload: CreateBucketPayload = {
+			name: bName.trim(), endpoint: bEndpoint.trim(), region: bRegion.trim() || "auto",
+			bucket_name: bBucketName.trim(), access_key_id: bAccessKey.trim(),
+			secret_access_key: bSecretKey.trim(),
+		};
+		if (editingBucket) {
+			await updateMyBucket(editingBucket.id, payload);
+		} else {
+			await createMyBucket(payload);
+		}
+		resetBucketForm();
+		await loadBuckets();
+	} catch (e) { bucketsError = e instanceof Error ? e.message : "Failed to save"; }
+	finally { bucketSaving = false; }
+}
+
+async function handleDeleteBucket(id: string) {
+	const b = buckets.find((x) => x.id === id);
+	await confirmAction(`Delete bucket "${b?.name}"?`, "Deleting", async () => {
+		await deleteMyBucket(id);
+		await loadBuckets();
+	});
+}
+
+let togglingBucketId = $state<string | null>(null);
+
+async function handleToggleActive(b: StorageBucket) {
+	togglingBucketId = b.id;
+	try {
+		if (b.is_active) { await deactivateMyBucket(b.id); }
+		else { await activateMyBucket(b.id); }
+		await loadBuckets();
+	} catch (e) {
+		toast(e instanceof Error ? e.message : "Failed to toggle bucket", "error");
+	} finally {
+		togglingBucketId = null;
+	}
+}
+
 // Form state
 let username = $state("");
 let alias = $state("");
@@ -100,6 +177,12 @@ $effect(() => {
 $effect(() => {
 	if (open && activeSection === "attachments") {
 		void loadAttachments();
+	}
+});
+
+$effect(() => {
+	if (open && activeSection === "buckets") {
+		void loadBuckets();
 	}
 });
 
@@ -248,6 +331,16 @@ function handleReset() {
 							<PaperclipIcon class="size-4 shrink-0" />
 							Attachments
 						</button>
+						<button
+							class="flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm font-medium transition-colors text-left
+								{activeSection === 'buckets'
+								? 'bg-zinc-800 text-white'
+								: 'text-zinc-400 hover:bg-zinc-800/60 hover:text-zinc-200'}"
+							onclick={() => (activeSection = "buckets")}
+						>
+							<DatabaseIcon class="size-4 shrink-0" />
+							R2 Buckets
+						</button>
 					</nav>
 				</aside>
 
@@ -256,7 +349,7 @@ function handleReset() {
 					<!-- Header -->
 					<div class="flex items-center justify-between border-b border-zinc-800 px-6 py-4 shrink-0">
 						<h2 class="text-base font-semibold text-white">
-							{#if activeSection === "account"}My Account{:else if activeSection === "attachments"}Attachments{/if}
+							{#if activeSection === "account"}My Account{:else if activeSection === "attachments"}Attachments{:else if activeSection === "buckets"}R2 Buckets{/if}
 						</h2>
 						<Dialog.Close
 							class="flex h-8 w-8 items-center justify-center rounded-lg text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200 transition-colors"
@@ -371,11 +464,21 @@ function handleReset() {
 								</div>
 							</div>
 						{:else if activeSection === "attachments"}
-							<!-- Storage quota -->
-							{#if storageStatus}
+							<!-- Storage info -->
+							{#if hasActiveBucket}
+								{@const activeBucket = buckets.find((b) => b.is_active)}
+								<div class="rounded-lg border border-emerald-800/50 bg-emerald-900/20 px-4 py-3 flex items-center gap-3">
+									<DatabaseIcon class="size-5 text-emerald-400 shrink-0" />
+									<div class="flex-1 min-w-0">
+										<p class="text-sm font-medium text-emerald-300">Using your own storage</p>
+										<p class="text-xs text-emerald-400/60 truncate">{activeBucket?.name} · {activeBucket?.bucket_name}</p>
+									</div>
+									<span class="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-emerald-600/20 text-emerald-400 shrink-0">NO QUOTA</span>
+								</div>
+							{:else if storageStatus}
 								<div class="rounded-lg border border-zinc-800 bg-zinc-800/40 px-4 py-4 space-y-3">
 									<div class="flex items-center justify-between">
-										<p class="text-sm font-semibold text-white">Storage</p>
+										<p class="text-sm font-semibold text-white">Default Storage</p>
 										<p class="text-xs text-zinc-400">
 											{formatFileSize(storageStatus.used_bytes)} / {formatFileSize(storageStatus.max_bytes)}
 										</p>
@@ -480,6 +583,117 @@ function handleReset() {
 													<VoiceNotePlayer src="{attachmentHost}/attachments/{att.id}" compact />
 												</div>
 											{/if}
+										</div>
+									{/each}
+								</div>
+							{/if}
+						{:else if activeSection === "buckets"}
+							<p class="text-xs text-zinc-500 mb-4">Connect your own R2/S3 bucket for unlimited storage. When a bucket is active, uploads go to your bucket instead of the default and quota limits don't apply.</p>
+
+							{#if bucketsError}
+								<p class="text-sm text-red-400 bg-red-400/10 rounded-md px-3 py-2 mb-4">{bucketsError}</p>
+							{/if}
+
+							<!-- Create / Edit form -->
+							{#if showBucketForm}
+								<div class="rounded-lg border border-zinc-800 bg-zinc-800/40 p-4 mb-4 space-y-3">
+									<h3 class="text-sm font-semibold text-white">{editingBucket ? "Edit Bucket" : "New Bucket"}</h3>
+									<div class="grid grid-cols-2 gap-3">
+										<div>
+											<label class="mb-1 block text-xs font-semibold text-zinc-400 uppercase">Name</label>
+											<input type="text" bind:value={bName} placeholder="My R2" class="h-9 w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 text-sm text-white placeholder-zinc-500 outline-none focus:border-stone-500" />
+										</div>
+										<div>
+											<label class="mb-1 block text-xs font-semibold text-zinc-400 uppercase">Region</label>
+											<input type="text" bind:value={bRegion} placeholder="auto" class="h-9 w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 text-sm text-white placeholder-zinc-500 outline-none focus:border-stone-500" />
+										</div>
+									</div>
+									<div>
+										<label class="mb-1 block text-xs font-semibold text-zinc-400 uppercase">Endpoint</label>
+										<input type="text" bind:value={bEndpoint} placeholder="https://account-id.r2.cloudflarestorage.com" class="h-9 w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 text-sm text-white placeholder-zinc-500 outline-none focus:border-stone-500" />
+									</div>
+									<div>
+										<label class="mb-1 block text-xs font-semibold text-zinc-400 uppercase">Bucket Name</label>
+										<input type="text" bind:value={bBucketName} placeholder="my-bucket" class="h-9 w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 text-sm text-white placeholder-zinc-500 outline-none focus:border-stone-500" />
+									</div>
+									<div class="grid grid-cols-2 gap-3">
+										<div>
+											<label class="mb-1 block text-xs font-semibold text-zinc-400 uppercase">Access Key ID</label>
+											<input type="text" bind:value={bAccessKey} placeholder="access key" class="h-9 w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 text-sm text-white placeholder-zinc-500 outline-none focus:border-stone-500" />
+										</div>
+										<div>
+											<label class="mb-1 block text-xs font-semibold text-zinc-400 uppercase">Secret Access Key</label>
+											<input type="password" bind:value={bSecretKey} placeholder={editingBucket ? "leave empty to keep current" : "secret key"} class="h-9 w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 text-sm text-white placeholder-zinc-500 outline-none focus:border-stone-500" />
+										</div>
+									</div>
+									<div class="flex justify-end gap-2 pt-1">
+										<button class="rounded-md px-3 py-1.5 text-sm text-zinc-300 hover:bg-zinc-800 transition-colors" onclick={resetBucketForm}>Cancel</button>
+										<button class="rounded-md bg-stone-600 px-4 py-1.5 text-sm font-semibold text-white hover:bg-stone-500 transition-colors disabled:opacity-50" disabled={bucketSaving} onclick={handleSaveBucket}>
+											{bucketSaving ? "Saving..." : editingBucket ? "Update" : "Create"}
+										</button>
+									</div>
+								</div>
+							{:else}
+								<button class="flex items-center gap-2 rounded-md bg-stone-600/20 px-3 py-2 text-sm font-medium text-stone-300 hover:bg-stone-600/30 transition-colors mb-4" onclick={() => { resetBucketForm(); showBucketForm = true; }}>
+									<PlusIcon class="size-4" /> Add Bucket
+								</button>
+							{/if}
+
+							<!-- Bucket list -->
+							{#if bucketsLoading}
+								<div class="space-y-2">
+									{#each Array(3) as _}
+										<div class="h-16 rounded-lg bg-zinc-800/40 animate-pulse"></div>
+									{/each}
+								</div>
+							{:else if buckets.length === 0}
+								<div class="flex flex-col items-center justify-center py-12 text-zinc-500">
+									<DatabaseIcon class="size-10 mb-3" />
+									<p class="text-sm">No buckets configured</p>
+								</div>
+							{:else}
+								<div class="space-y-2">
+									{#each buckets as bucket (bucket.id)}
+										<div class="flex items-center gap-3 rounded-lg border border-zinc-800 bg-zinc-800/30 px-4 py-3 group hover:bg-zinc-800/50 transition-colors">
+											<div class="flex-1 min-w-0">
+												<div class="flex items-center gap-2">
+													<span class="text-sm font-medium text-zinc-200">{bucket.name}</span>
+													{#if bucket.is_active}
+														<span class="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-emerald-600/20 text-emerald-400">ACTIVE</span>
+													{/if}
+												</div>
+												<p class="text-xs text-zinc-500 truncate mt-0.5">{bucket.bucket_name} · {bucket.endpoint}</p>
+											</div>
+											<div class="flex items-center gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+												<button
+													class="flex h-8 w-8 items-center justify-center rounded-md text-zinc-500 hover:bg-zinc-700 hover:text-zinc-200 transition-all disabled:opacity-50"
+													title={bucket.is_active ? "Deactivate" : "Activate"}
+													onclick={() => handleToggleActive(bucket)}
+													disabled={togglingBucketId === bucket.id}
+												>
+													{#if togglingBucketId === bucket.id}
+														<div class="size-4 rounded-full border-2 border-zinc-500 border-t-transparent animate-spin"></div>
+													{:else if bucket.is_active}
+														<XIcon class="size-4" />
+													{:else}
+														<CheckIcon class="size-4" />
+													{/if}
+												</button>
+												<button
+													class="flex h-8 w-8 items-center justify-center rounded-md text-zinc-500 hover:bg-zinc-700 hover:text-zinc-200 transition-all"
+													title="Edit"
+													onclick={() => startEditBucket(bucket)}
+												>
+													<PencilIcon class="size-4" />
+												</button>
+												<button
+													class="flex h-8 w-8 items-center justify-center rounded-md text-zinc-500 hover:bg-red-600/20 hover:text-red-400 transition-all"
+													title="Delete"
+													onclick={() => handleDeleteBucket(bucket.id)}
+												>
+													<TrashIcon class="size-4" />
+												</button>
+											</div>
 										</div>
 									{/each}
 								</div>

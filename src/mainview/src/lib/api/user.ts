@@ -102,6 +102,92 @@ export async function deleteAllMyAttachments(): Promise<void> {
 	if (!res.ok) throw new Error(`Failed to delete attachments: ${await res.text()}`);
 }
 
+// ── Storage Buckets ──────────────────────────────────────────────────────────
+
+export interface StorageBucket {
+	id: string;
+	owner_id: string;
+	name: string;
+	endpoint: string;
+	region: string;
+	bucket_name: string;
+	access_key_id: string;
+	secret_access_key: string;
+	is_active: boolean;
+	is_default: boolean;
+	created_at: string;
+	updated_at: string;
+}
+
+export interface CreateBucketPayload {
+	name: string;
+	endpoint: string;
+	region?: string;
+	bucket_name: string;
+	access_key_id: string;
+	secret_access_key: string;
+}
+
+export interface UpdateBucketPayload {
+	name: string;
+	endpoint: string;
+	region?: string;
+	bucket_name: string;
+	access_key_id: string;
+	secret_access_key: string;
+}
+
+export async function getMyBuckets(): Promise<StorageBucket[]> {
+	if (!userSession.token) throw new Error("No user session token found");
+	const res = await fetch(`${HOST}/api/users/me/buckets`, { headers: { Authorization: userSession.token } });
+	if (!res.ok) throw new Error(`Failed to fetch buckets: ${await res.text()}`);
+	return res.json();
+}
+
+export async function createMyBucket(data: CreateBucketPayload): Promise<StorageBucket> {
+	if (!userSession.token) throw new Error("No user session token found");
+	const res = await fetch(`${HOST}/api/users/me/buckets`, {
+		method: "POST", headers: { Authorization: userSession.token, "Content-Type": "application/json" },
+		body: JSON.stringify(data),
+	});
+	if (!res.ok) { const b = await res.json().catch(() => null); throw new Error(b?.error ?? "Failed to create bucket"); }
+	return res.json();
+}
+
+export async function updateMyBucket(id: string, data: UpdateBucketPayload): Promise<StorageBucket> {
+	if (!userSession.token) throw new Error("No user session token found");
+	const res = await fetch(`${HOST}/api/users/me/buckets/${id}`, {
+		method: "PATCH", headers: { Authorization: userSession.token, "Content-Type": "application/json" },
+		body: JSON.stringify(data),
+	});
+	if (!res.ok) { const b = await res.json().catch(() => null); throw new Error(b?.error ?? "Failed to update bucket"); }
+	return res.json();
+}
+
+export async function deleteMyBucket(id: string): Promise<void> {
+	if (!userSession.token) throw new Error("No user session token found");
+	const res = await fetch(`${HOST}/api/users/me/buckets/${id}`, {
+		method: "DELETE", headers: { Authorization: userSession.token },
+	});
+	if (!res.ok) throw new Error("Failed to delete bucket");
+}
+
+export async function activateMyBucket(id: string): Promise<void> {
+	if (!userSession.token) throw new Error("No user session token found");
+	const res = await fetch(`${HOST}/api/users/me/buckets/${id}/activate`, {
+		method: "POST", headers: { Authorization: userSession.token },
+	});
+	if (!res.ok) throw new Error("Failed to activate bucket");
+}
+
+export async function deactivateMyBucket(id: string): Promise<void> {
+	if (!userSession.token) throw new Error("No user session token found");
+	const res = await fetch(`${HOST}/api/users/me/buckets/${id}/deactivate`, {
+		method: "POST", headers: { Authorization: userSession.token },
+	});
+	if (!res.ok) throw new Error("Failed to deactivate bucket");
+}
+
 export async function me(): Promise<UserMeResult> {
 	if (!userSession.token) {
 		throw new Error("No user session token found");
