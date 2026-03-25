@@ -27,6 +27,7 @@
 	},
 	"dependencies": {
 		"@lucide/svelte": "^0.577.0",
+		"@shiguredo/rnnoise-wasm": "^2025.1.5",
 		"bits-ui": "^2.16.3",
 		"emoji-datasource": "^16.0.0",
 		"facehash-sv": "^0.0.5",

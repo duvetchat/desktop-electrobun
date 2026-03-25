@@ -1,5 +1,5 @@
 <script lang="ts">
-    import type { Embed } from "$lib/types";
+    import { EmbedType, type Embed } from "$lib/types";
     import { getHostURL } from "$lib/common/common";
 
     let { embed }: { embed: Embed } = $props();
@@ -47,7 +47,7 @@
     }
 </script>
 
-{#if embed.type === "gifv" || embed.type === "image" || (!embed.title && !embed.description && !embed.author && !embed.footer && !embed.fields?.length && (embed.image || embed.video))}
+{#if embed.type === EmbedType.Gifv || embed.type === EmbedType.Image || (!embed.title && !embed.description && !embed.author && !embed.footer && !embed.fields?.length && (embed.image || embed.video))}
     {#if embed.video}
         <video src={proxyVideoUrl(embed.video.url)} loop muted playsinline controls
                class="mt-1 max-w-xs rounded self-start"></video>

@@ -483,7 +483,6 @@
 
     function processMessageContent(content: string) {
         const urls = content.match(urlRegex) || [];
-        const images: string[] = [];
         const inviteCodes: string[] = [];
         const messageLinks: { spaceId: string; roomId: string; messageId: string }[] = [];
 
@@ -504,16 +503,12 @@
                         return;
                     }
                 }
-
-                if (/\.(jpeg|jpg|gif|png|webp)$/i.exec(parsed.pathname)) {
-                    images.push(url);
-                }
             } catch {
                 // Invalid URL, ignore
             }
         });
 
-        return { text: content, images, inviteCodes, messageLinks };
+        return { text: content, inviteCodes, messageLinks };
     }
 
     function parseTextSegments(text: string) {
@@ -708,11 +703,10 @@
                 isPending && failedNonces.has(message.nonce ?? "")}
             {@const emojiOnly =
                 isOnlyEmojis(message.content) &&
-                countEmojis(message.content) <= 5 &&
-                processMessageContent(message.content).images.length === 0}
+                countEmojis(message.content) <= 5}
 
             {@const isHighlighted = highlightedMessageId === message.id}
-            {@const isMention = !!$currentUser && message.author_id !== $currentUser.id && new RegExp(`@${$currentUser.username}\\b`, 'i').test(message.content)}
+            {@const isMention = !!$currentUser && message.author_id !== $currentUser.id && message.content?.includes(`<@${$currentUser.id}>`)}
             {@const msgMember = members.find((m) => m.id === message.author_id)}
             <div
                 data-message-id={message.id}
@@ -828,6 +822,7 @@
                                 onCancel={cancelEdit}
                                 showActions={false}
                                 autofocus
+                                {members}
                             />
                             <div class="text-xxs text-zinc-400">
                                 escape to <button
@@ -867,7 +862,7 @@
                         {@const processed = processMessageContent(
                             message.content,
                         )}
-                        {@const isOnlyLink = /^\s*https?:\/\/\S+\s*$/.test(message.content) && processed.images.length > 0}
+                        {@const isOnlyLink = /^\s*https?:\/\/\S+\s*$/.test(message.content) && message.embeds && message.embeds.length > 0}
                         {#if !isOnlyLink}
                         <div
                             role="textbox"
@@ -957,18 +952,6 @@
                             {/if}
                         </div>
                         {/if}
-                        {#if processed.images.length > 0}
-                            <div class="mt-1 flex flex-col gap-1">
-                                {#each processed.images as imgUrl}
-                                    <img
-                                        src={imgUrl}
-                                        alt=""
-                                        class="max-w-100 max-h-100 w-auto h-auto rounded-md object-contain"
-                                        loading="lazy"
-                                    />
-                                {/each}
-                            </div>
-                        {/if}
                         {#if processed.inviteCodes.length > 0}
                             <div class="flex flex-col gap-2">
                                 {#each processed.inviteCodes as code}
@@ -1030,9 +1013,22 @@
                                             <img
                                                 src="{attachmentHost}/attachments/{att.id}"
                                                 alt={att.filename}
-                                                class="relative rounded-md object-contain w-full h-full"
+                                                class="relative rounded-md object-contain w-full h-full text-transparent"
                                                 loading="lazy"
                                                 onload={(e) => { (e.currentTarget as HTMLElement).parentElement?.querySelector('.img-skeleton')?.remove(); }}
+                                                onerror={(e) => {
+                                                    const img = e.currentTarget as HTMLImageElement;
+                                                    const retries = parseInt(img.dataset.retries ?? "0");
+                                                    if (retries < 10) {
+                                                        img.dataset.retries = String(retries + 1);
+                                                        setTimeout(() => { img.src = img.src.split("?")[0] + "?r=" + Date.now(); }, 1000);
+                                                    } else {
+                                                        const parent = img.parentElement!;
+                                                        parent.querySelector('.img-skeleton')?.remove();
+                                                        img.remove();
+                                                        parent.innerHTML = `<div class="flex flex-col items-center justify-center w-full h-full bg-zinc-800/60 rounded-md gap-1"><span class="text-2xl">💩</span><span class="text-xs text-zinc-500">Failed to load</span></div>`;
+                                                    }
+                                                }}
                                             />
                                         </div>
                                     {:else if att.content_type.startsWith("video/")}
@@ -1048,6 +1044,19 @@
                                                 controls
                                                 class="relative w-full h-full rounded-md"
                                                 onloadeddata={(e) => { const el = e.currentTarget as HTMLVideoElement; el.parentElement?.querySelector('.video-skeleton')?.remove(); }}
+                                                onerror={(e) => {
+                                                    const vid = e.currentTarget as HTMLVideoElement;
+                                                    const retries = parseInt(vid.dataset.retries ?? "0");
+                                                    if (retries < 10) {
+                                                        vid.dataset.retries = String(retries + 1);
+                                                        setTimeout(() => { vid.src = vid.src.split("?")[0] + "?r=" + Date.now(); }, 1000);
+                                                    } else {
+                                                        const parent = vid.parentElement!;
+                                                        parent.querySelector('.video-skeleton')?.remove();
+                                                        vid.remove();
+                                                        parent.innerHTML = `<div class="flex flex-col items-center justify-center w-full h-full bg-zinc-800/60 rounded-md gap-1"><span class="text-2xl">💩</span><span class="text-xs text-zinc-500">Failed to load</span></div>`;
+                                                    }
+                                                }}
                                             ></video>
                                         </div>
                                     {:else}

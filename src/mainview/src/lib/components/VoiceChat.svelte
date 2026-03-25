@@ -5,6 +5,7 @@
 	import { onWebRTCEvent, sendEventMessage } from "$lib/api/ws/connection";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
 	import { hasPermission, Permission } from "$lib/permissions";
+	import { createDenoisedStream } from "$lib/audio/noise-suppression";
 	import {
 		activeVoiceRoomId,
 		currentUser,
@@ -63,6 +64,8 @@
 	let audioContext: AudioContext | null = null;
 	let localAnalyser: AnalyserNode | null = null;
 	let localAudioSource: MediaStreamAudioSourceNode | null = null;
+	let denoiseCleanup: (() => void) | null = null;
+	let rawMicStream: MediaStream | null = null;
 	let isDestroyed = false;
 
 	function leaveVoice() {
@@ -74,10 +77,10 @@
 			peerConnection.close();
 			peerConnection = null;
 		}
-		if (localAudioStream)
-			localAudioStream.getTracks().forEach((t) => t.stop());
-		if (localVideoStream)
-			localVideoStream.getTracks().forEach((t) => t.stop());
+		if (denoiseCleanup) { denoiseCleanup(); denoiseCleanup = null; }
+		if (rawMicStream) { rawMicStream.getTracks().forEach((t) => t.stop()); rawMicStream = null; }
+		if (localAudioStream) localAudioStream.getTracks().forEach((t) => t.stop());
+		if (localVideoStream) localVideoStream.getTracks().forEach((t) => t.stop());
 		if (audioContext) audioContext.close();
 		if (unsubscribeWs) unsubscribeWs();
 		// Only clear global stores if we're still the active voice session
@@ -198,10 +201,21 @@
 				const constraints = $selectedMicId
 					? { audio: { deviceId: { exact: $selectedMicId } } }
 					: { audio: true };
-				localAudioStream =
+				rawMicStream =
 					await navigator.mediaDevices.getUserMedia(constraints);
+
+				if (!audioContext) {
+					audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+				}
+				const denoised = await createDenoisedStream(rawMicStream, audioContext);
+				localAudioStream = denoised.stream;
+				denoiseCleanup = denoised.cleanup;
 			} catch (e) {
 				console.error("Failed to get local audio", e);
+				// Fallback to raw stream if denoise fails
+				if (rawMicStream && !localAudioStream) {
+					localAudioStream = rawMicStream;
+				}
 			}
 		}
 
@@ -464,19 +478,31 @@
 		const constraints = deviceId
 			? { audio: { deviceId: { exact: deviceId } } }
 			: { audio: true };
-		const newStream =
+		const newRawStream =
 			await navigator.mediaDevices.getUserMedia(constraints);
 
-		const newTrack = newStream.getAudioTracks().at(0);
+		// Cleanup old denoise
+		if (denoiseCleanup) { denoiseCleanup(); denoiseCleanup = null; }
+		if (rawMicStream) { rawMicStream.getTracks().forEach((t) => t.stop()); }
+		rawMicStream = newRawStream;
+
+		// Apply denoise to new stream
+		if (!audioContext) {
+			audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+		}
+		try {
+			const denoised = await createDenoisedStream(newRawStream, audioContext);
+			localAudioStream = denoised.stream;
+			denoiseCleanup = denoised.cleanup;
+		} catch {
+			localAudioStream = newRawStream;
+		}
+
+		const newTrack = localAudioStream.getAudioTracks().at(0);
 		if (newTrack && audioSender) {
 			const shouldSend = !$isMuted && !$isDeafened;
 			await audioSender.replaceTrack(shouldSend ? newTrack : null);
 		}
-
-		if (localAudioStream) {
-			localAudioStream.getTracks().forEach((t) => t.stop());
-		}
-		localAudioStream = newStream;
 
 		if (audioContext && localAnalyser) {
 			if (localAudioSource) {

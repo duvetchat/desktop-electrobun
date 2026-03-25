@@ -42,8 +42,6 @@ function formatFileSize(bytes: number): string {
 
 const totalSize = $derived(attachments.reduce((sum, a) => sum + a.size_bytes, 0));
 
-const hasActiveBucket = $derived(buckets.some((b) => b.is_active));
-
 async function loadAttachments() {
 	attachmentsLoading = true;
 	attachmentsError = null;
@@ -84,6 +82,7 @@ async function handleDeleteAll() {
 
 // Buckets state
 let buckets = $state<StorageBucket[]>([]);
+const hasActiveBucket = $derived(buckets.some((b) => b.is_active));
 let bucketsLoading = $state(false);
 let bucketsError = $state<string | null>(null);
 let showBucketForm = $state(false);
@@ -91,6 +90,7 @@ let editingBucket = $state<StorageBucket | null>(null);
 let bucketSaving = $state(false);
 let bName = $state(""); let bEndpoint = $state(""); let bRegion = $state("auto");
 let bBucketName = $state(""); let bAccessKey = $state(""); let bSecretKey = $state("");
+let bUsePathStyle = $state(false);
 
 async function loadBuckets() {
 	bucketsLoading = true; bucketsError = null;
@@ -99,14 +99,15 @@ async function loadBuckets() {
 }
 
 function resetBucketForm() {
-	bName = ""; bEndpoint = ""; bRegion = "auto"; bBucketName = ""; bAccessKey = ""; bSecretKey = "";
+	bName = ""; bEndpoint = ""; bRegion = "auto"; bBucketName = ""; bAccessKey = ""; bSecretKey = ""; bUsePathStyle = false;
 	editingBucket = null; showBucketForm = false;
 }
 
 function startEditBucket(b: StorageBucket) {
 	editingBucket = b; showBucketForm = true;
 	bName = b.name; bEndpoint = b.endpoint; bRegion = b.region;
-	bBucketName = b.bucket_name; bAccessKey = b.access_key_id; bSecretKey = "";
+	bBucketName = b.bucket_name; bAccessKey = b.access_key_id; bSecretKey = b.secret_access_key;
+	bUsePathStyle = b.use_path_style;
 }
 
 async function handleSaveBucket() {
@@ -116,7 +117,7 @@ async function handleSaveBucket() {
 		const payload: CreateBucketPayload = {
 			name: bName.trim(), endpoint: bEndpoint.trim(), region: bRegion.trim() || "auto",
 			bucket_name: bBucketName.trim(), access_key_id: bAccessKey.trim(),
-			secret_access_key: bSecretKey.trim(),
+			secret_access_key: bSecretKey.trim(), use_path_style: bUsePathStyle,
 		};
 		if (editingBucket) {
 			await updateMyBucket(editingBucket.id, payload);
@@ -464,7 +465,7 @@ function handleReset() {
 								</div>
 							</div>
 						{:else if activeSection === "attachments"}
-							<!-- Storage info -->
+							<!-- Active custom bucket banner -->
 							{#if hasActiveBucket}
 								{@const activeBucket = buckets.find((b) => b.is_active)}
 								<div class="rounded-lg border border-emerald-800/50 bg-emerald-900/20 px-4 py-3 flex items-center gap-3">
@@ -473,9 +474,11 @@ function handleReset() {
 										<p class="text-sm font-medium text-emerald-300">Using your own storage</p>
 										<p class="text-xs text-emerald-400/60 truncate">{activeBucket?.name} · {activeBucket?.bucket_name}</p>
 									</div>
-									<span class="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-emerald-600/20 text-emerald-400 shrink-0">NO QUOTA</span>
+									<span class="text-xxs font-semibold px-1.5 py-0.5 rounded bg-emerald-600/20 text-emerald-400 shrink-0">NO QUOTA</span>
 								</div>
-							{:else if storageStatus}
+							{/if}
+							<!-- Default storage quota (always shown) -->
+							{#if storageStatus}
 								<div class="rounded-lg border border-zinc-800 bg-zinc-800/40 px-4 py-4 space-y-3">
 									<div class="flex items-center justify-between">
 										<p class="text-sm font-semibold text-white">Default Storage</p>
@@ -600,32 +603,36 @@ function handleReset() {
 									<h3 class="text-sm font-semibold text-white">{editingBucket ? "Edit Bucket" : "New Bucket"}</h3>
 									<div class="grid grid-cols-2 gap-3">
 										<div>
-											<label class="mb-1 block text-xs font-semibold text-zinc-400 uppercase">Name</label>
-											<input type="text" bind:value={bName} placeholder="My R2" class="h-9 w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 text-sm text-white placeholder-zinc-500 outline-none focus:border-stone-500" />
+											<label for="bucket-name" class="mb-1 block text-xs font-semibold text-zinc-400 uppercase">Name</label>
+											<input id="bucket-name" type="text" bind:value={bName} placeholder="My R2" class="h-9 w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 text-sm text-white placeholder-zinc-500 outline-none focus:border-stone-500" />
 										</div>
 										<div>
-											<label class="mb-1 block text-xs font-semibold text-zinc-400 uppercase">Region</label>
-											<input type="text" bind:value={bRegion} placeholder="auto" class="h-9 w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 text-sm text-white placeholder-zinc-500 outline-none focus:border-stone-500" />
+											<label for="bucket-region" class="mb-1 block text-xs font-semibold text-zinc-400 uppercase">Region</label>
+											<input id="bucket-region" type="text" bind:value={bRegion} placeholder="auto" class="h-9 w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 text-sm text-white placeholder-zinc-500 outline-none focus:border-stone-500" />
 										</div>
 									</div>
 									<div>
-										<label class="mb-1 block text-xs font-semibold text-zinc-400 uppercase">Endpoint</label>
-										<input type="text" bind:value={bEndpoint} placeholder="https://account-id.r2.cloudflarestorage.com" class="h-9 w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 text-sm text-white placeholder-zinc-500 outline-none focus:border-stone-500" />
+										<label for="bucket-endpoint" class="mb-1 block text-xs font-semibold text-zinc-400 uppercase">Endpoint</label>
+										<input id="bucket-endpoint" type="text" bind:value={bEndpoint} placeholder="https://account-id.r2.cloudflarestorage.com" class="h-9 w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 text-sm text-white placeholder-zinc-500 outline-none focus:border-stone-500" />
 									</div>
 									<div>
-										<label class="mb-1 block text-xs font-semibold text-zinc-400 uppercase">Bucket Name</label>
-										<input type="text" bind:value={bBucketName} placeholder="my-bucket" class="h-9 w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 text-sm text-white placeholder-zinc-500 outline-none focus:border-stone-500" />
+										<label for="bucket-bucket-name" class="mb-1 block text-xs font-semibold text-zinc-400 uppercase">Bucket Name</label>
+										<input id="bucket-bucket-name" type="text" bind:value={bBucketName} placeholder="my-bucket" class="h-9 w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 text-sm text-white placeholder-zinc-500 outline-none focus:border-stone-500" />
 									</div>
 									<div class="grid grid-cols-2 gap-3">
 										<div>
-											<label class="mb-1 block text-xs font-semibold text-zinc-400 uppercase">Access Key ID</label>
-											<input type="text" bind:value={bAccessKey} placeholder="access key" class="h-9 w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 text-sm text-white placeholder-zinc-500 outline-none focus:border-stone-500" />
+											<label for="bucket-access-key" class="mb-1 block text-xs font-semibold text-zinc-400 uppercase">Access Key ID</label>
+											<input id="bucket-access-key" type="text" bind:value={bAccessKey} placeholder="access key" class="h-9 w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 text-sm text-white placeholder-zinc-500 outline-none focus:border-stone-500" />
 										</div>
 										<div>
-											<label class="mb-1 block text-xs font-semibold text-zinc-400 uppercase">Secret Access Key</label>
-											<input type="password" bind:value={bSecretKey} placeholder={editingBucket ? "leave empty to keep current" : "secret key"} class="h-9 w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 text-sm text-white placeholder-zinc-500 outline-none focus:border-stone-500" />
+											<label for="bucket-secret-key" class="mb-1 block text-xs font-semibold text-zinc-400 uppercase">Secret Access Key</label>
+											<input id="bucket-secret-key" type="password" bind:value={bSecretKey} placeholder={editingBucket ? "leave empty to keep current" : "secret key"} class="h-9 w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 text-sm text-white placeholder-zinc-500 outline-none focus:border-stone-500" />
 										</div>
 									</div>
+									<label class="flex items-center gap-2 cursor-pointer">
+										<input type="checkbox" bind:checked={bUsePathStyle} class="size-4 rounded border-zinc-600 bg-zinc-800 accent-stone-500" />
+										<span class="text-xs text-zinc-400">Use path-style addressing <span class="text-zinc-600">(required for MinIO, RustFS, etc.)</span></span>
+									</label>
 									<div class="flex justify-end gap-2 pt-1">
 										<button class="rounded-md px-3 py-1.5 text-sm text-zinc-300 hover:bg-zinc-800 transition-colors" onclick={resetBucketForm}>Cancel</button>
 										<button class="rounded-md bg-stone-600 px-4 py-1.5 text-sm font-semibold text-white hover:bg-stone-500 transition-colors disabled:opacity-50" disabled={bucketSaving} onclick={handleSaveBucket}>
@@ -659,7 +666,7 @@ function handleReset() {
 												<div class="flex items-center gap-2">
 													<span class="text-sm font-medium text-zinc-200">{bucket.name}</span>
 													{#if bucket.is_active}
-														<span class="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-emerald-600/20 text-emerald-400">ACTIVE</span>
+														<span class="text-xxs font-semibold px-1.5 py-0.5 rounded bg-emerald-600/20 text-emerald-400">ACTIVE</span>
 													{/if}
 												</div>
 												<p class="text-xs text-zinc-500 truncate mt-0.5">{bucket.bucket_name} · {bucket.endpoint}</p>

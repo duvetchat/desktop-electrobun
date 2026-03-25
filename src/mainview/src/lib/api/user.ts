@@ -115,6 +115,7 @@ export interface StorageBucket {
 	secret_access_key: string;
 	is_active: boolean;
 	is_default: boolean;
+	use_path_style: boolean;
 	created_at: string;
 	updated_at: string;
 }
@@ -126,6 +127,7 @@ export interface CreateBucketPayload {
 	bucket_name: string;
 	access_key_id: string;
 	secret_access_key: string;
+	use_path_style?: boolean;
 }
 
 export interface UpdateBucketPayload {
@@ -135,6 +137,7 @@ export interface UpdateBucketPayload {
 	bucket_name: string;
 	access_key_id: string;
 	secret_access_key: string;
+	use_path_style?: boolean;
 }
 
 export async function getMyBuckets(): Promise<StorageBucket[]> {

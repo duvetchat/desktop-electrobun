@@ -27,6 +27,14 @@ export interface EmbedColor {
 	color_to?: number | null;
 }
 
+export const EmbedType = {
+	Rich: "rich",
+	Video: "video",
+	Gifv: "gifv",
+	Image: "image",
+	Audio: "audio",
+} as const;
+
 export interface Embed {
 	type?: string | null;
 	title?: string | null;
