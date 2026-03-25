@@ -339,7 +339,7 @@ function handleReset() {
 							onclick={() => (activeSection = "buckets")}
 						>
 							<DatabaseIcon class="size-4 shrink-0" />
-							R2 Buckets
+							S3 Buckets
 						</button>
 					</nav>
 				</aside>
@@ -588,7 +588,7 @@ function handleReset() {
 								</div>
 							{/if}
 						{:else if activeSection === "buckets"}
-							<p class="text-xs text-zinc-500 mb-4">Connect your own R2/S3 bucket for unlimited storage. When a bucket is active, uploads go to your bucket instead of the default and quota limits don't apply.</p>
+							<p class="text-xs text-zinc-500 mb-4">Connect your own S3/R2 buckets for unlimited storage. When a bucket is active, uploads go to your bucket instead of the default and quota limits don't apply.</p>
 
 							{#if bucketsError}
 								<p class="text-sm text-red-400 bg-red-400/10 rounded-md px-3 py-2 mb-4">{bucketsError}</p>
