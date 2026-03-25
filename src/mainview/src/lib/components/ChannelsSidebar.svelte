@@ -430,47 +430,26 @@ onMount(() => {
 						<div class="pl-8 py-1 space-y-1">
 							{#each channel.voiceUsers as user (user.id)}
 								{@const isSharing = user.screen_sharing ?? false}
-								<div
-									class="flex items-center gap-2 text-sm text-zinc-400 group"
-								>
-									<div class="relative">
-										<UserAvatar
-											src={user.avatar_url}
-											name={user.username}
-											size={24}
-											class="box-border transition-colors duration-200 {$speakingUsers.has(
-												user.id,
-											) && !user.muted
-												? 'border-2 border-green-500'
-												: 'border-2 border-transparent'}"
-										/>
+								{@const isSpeaking = $speakingUsers.has(user.id) && !user.muted}
+								<div class="flex items-center gap-2 text-sm text-zinc-400">
+									<UserAvatar
+										src={user.avatar_url}
+										name={user.username}
+										size={24}
+										class="box-border shrink-0 transition-colors duration-200 {isSpeaking ? 'border-2 border-green-500' : 'border-2 border-transparent'}"
+									/>
+									<span class="flex-1 truncate {isSpeaking ? 'text-zinc-200' : ''}">{user.username}</span>
+									<div class="flex items-center gap-0.5 shrink-0">
+										{#if isSharing}
+											<MonitorUpIcon class="size-3.5 text-blue-400" />
+										{/if}
+										{#if user.muted}
+											<MicrophoneSlashIcon class="size-3.5 text-zinc-500" />
+										{/if}
 										{#if user.deafened}
-											<div
-										class="absolute -bottom-1 -right-1 bg-zinc-900 rounded-full p-0.5 border border-zinc-800 text-red-500 flex items-center justify-center z-10"
-											>
-												<HeadphonesIcon
-													class="size-2.5"
-												/>
-											</div>
-										{:else if user.muted}
-											<div
-										class="absolute -bottom-1 -right-1 bg-zinc-900 rounded-full p-0.5 border border-zinc-800 text-red-500 flex items-center justify-center z-10"
-											>
-												<MicrophoneSlashIcon
-													class="size-2.5"
-												/>
-											</div>
+											<HeadphonesIcon class="size-3.5 text-zinc-500" />
 										{/if}
 									</div>
-									<span
-										class={$speakingUsers.has(user.id) &&
-										!user.muted
-										? "text-zinc-200"
-										: ""}>{user.username}</span
-									>
-									{#if isSharing}
-										<MonitorUpIcon class="size-3 text-blue-400 shrink-0" />
-									{/if}
 								</div>
 							{/each}
 						</div>

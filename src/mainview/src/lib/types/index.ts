@@ -268,6 +268,12 @@ export interface GatewayEvent {
 	s: number;
 }
 
+export interface GatewayReadyActiveCall {
+	conversation_id: string;
+	initiator_id: string;
+	voice_states?: { user_id: string; muted?: boolean; deafened?: boolean; screen_sharing?: boolean }[];
+}
+
 export interface GatewayReadyData {
 	user: GatewayUser;
 	sessionToken: string;
@@ -275,6 +281,7 @@ export interface GatewayReadyData {
 	last_read_rooms?: Record<string, string>;
 	last_msg_rooms?: Record<string, string>;
 	unread_convs?: string[];
+	active_calls?: GatewayReadyActiveCall[];
 }
 
 export function roomTypeToChannelType(type: RoomType): Channel["type"] {

@@ -1,7 +1,7 @@
 <script lang="ts">
 import { onMount } from "svelte";
 import { get } from "svelte/store";
-import { currentUser, dmMessages, friends, unreadConversations, activeDMConvId, pageVisible, mentionCounts, activeCall, activeVoiceRoomId, callVoiceStates } from "$lib/stores.svelte";
+import { currentUser, dmMessages, friends, unreadConversations, activeDMConvId, pageVisible, mentionCounts, activeCall, activeVoiceRoomId, callVoiceStates, conversationsWithCalls } from "$lib/stores.svelte";
 import { sendEventMessage } from "$lib/api/ws/connection";
 import {
 	getDirectMessages,
@@ -48,6 +48,8 @@ let eligibleFriends = $state<Friend[]>([]);
 const me = $derived(get(currentUser));
 const isOwner = $derived(me?.id === conversation.owner_id);
 const isInCall = $derived($activeCall?.state === "connected" && $activeCall?.conversationId === conversation.id);
+const hasOngoingCall = $derived($conversationsWithCalls.has(conversation.id));
+const canJoinCall = $derived(hasOngoingCall && !isInCall);
 
 const callVoiceMembers = $derived(
 	conversation.members.map((m) => ({
@@ -56,6 +58,28 @@ const callVoiceMembers = $derived(
 		avatar_url: m.user?.avatar ?? null,
 	})),
 );
+
+function joinCall() {
+	const user = get(currentUser);
+	if (!user) return;
+	const memberIds = conversation.members.map((m) => m.user_id);
+	// Ensure call exists on gateway (idempotent if already exists)
+	sendEventMessage("CALL_INITIATE", {
+		conversation_id: conversation.id,
+		member_ids: memberIds,
+	});
+	sendEventMessage("CALL_ACCEPT", { conversation_id: conversation.id });
+	activeCall.set({
+		conversationId: conversation.id,
+		initiatorId: user.id,
+		initiatorName: user.alias ?? user.username ?? "You",
+		initiatorAvatar: user.avatar ?? null,
+		state: "connected",
+		memberIds,
+	});
+	// Delay slightly so gateway processes CALL_INITIATE before VoiceChat sends VOICE_JOIN
+	setTimeout(() => activeVoiceRoomId.set(conversation.id), 50);
+}
 
 function hangUpCall() {
 	const call = get(activeCall);
@@ -299,6 +323,7 @@ function startCall() {
 		state: "calling",
 		memberIds,
 	});
+	conversationsWithCalls.update((s) => { s.add(conversation.id); return new Set(s); });
 }
 
 // ACK helper — sends an ack for the newest confirmed DM if at bottom.
@@ -420,6 +445,17 @@ onMount(() => {
 			{/if}
 		</div>
 	</div>
+
+	<!-- Call in progress banner (visible when not in the call) -->
+	{#if canJoinCall}
+		<button
+			class="flex shrink-0 items-center justify-center gap-2 border-b border-emerald-800/50 bg-emerald-900/30 px-4 py-2 text-sm text-emerald-300 transition-colors hover:bg-emerald-900/50"
+			onclick={joinCall}
+		>
+			<Phone class="size-4" />
+			<span class="font-medium">Call in progress — Join</span>
+		</button>
+	{/if}
 
 	<!-- Active call view -->
 	{#if isInCall}

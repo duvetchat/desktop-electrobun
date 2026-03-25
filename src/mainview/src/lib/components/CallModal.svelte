@@ -30,10 +30,11 @@
 
 	function accept() {
 		if (!call) return;
-		sendEventMessage("CALL_ACCEPT", { conversation_id: call.conversationId });
+		const convId = call.conversationId;
+		sendEventMessage("CALL_ACCEPT", { conversation_id: convId });
 		activeCall.update(c => c ? { ...c, state: "connected" } : null);
-		// Use the conversation_id as voice room so VoiceChat mounts
-		activeVoiceRoomId.set(call.conversationId);
+		// Delay slightly so gateway processes CALL_ACCEPT before VoiceChat sends VOICE_JOIN
+		setTimeout(() => activeVoiceRoomId.set(convId), 50);
 	}
 
 	function decline() {

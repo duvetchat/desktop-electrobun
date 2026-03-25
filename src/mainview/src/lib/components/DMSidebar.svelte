@@ -34,6 +34,7 @@ function convAvatarSrc(conv: Conversation): string | null | undefined {
 	const other = conv.members.find((m) => m.user_id !== me?.id);
 	return other?.user?.avatar;
 }
+
 </script>
 
 <div class="flex h-full w-60 shrink-0 flex-col overflow-hidden border-r border-stone-800 bg-[linear-gradient(180deg,oklch(0.215_0.01_80),oklch(0.185_0.008_80))] text-stone-100/90">

@@ -21,6 +21,7 @@ import {
 	mentionCounts,
 	activeCall,
 	callVoiceStates,
+	conversationsWithCalls,
 } from "$lib/stores.svelte";
 import type { FriendRequest, Friend } from "$lib/api/friends";
 import { getFriends, getPendingRequests, getSentRequests } from "$lib/api/friends";
@@ -172,6 +173,36 @@ function handleEvent(event: GatewayEvent) {
 			getMentionCounts()
 				.then((counts) => mentionCounts.set(counts))
 				.catch(() => {});
+			// Restore active calls
+			const readyData = data as GatewayReadyData;
+			const activeCalls = readyData.active_calls ?? [];
+			if (activeCalls.length > 0) {
+				const callSet = new Set<string>();
+				for (const call of activeCalls) {
+					callSet.add(call.conversation_id);
+					// Populate voice states for this call
+					if (call.voice_states) {
+						callVoiceStates.update((states) => {
+							const filtered = states.filter((s) => s.room_id !== call.conversation_id);
+							for (const vs of call.voice_states!) {
+								filtered.push({
+									room_id: call.conversation_id,
+									user_id: vs.user_id,
+									muted: vs.muted,
+									deafened: vs.deafened,
+									screen_sharing: vs.screen_sharing,
+								});
+							}
+							return filtered;
+						});
+					}
+				}
+				conversationsWithCalls.set(callSet);
+			} else {
+				conversationsWithCalls.set(new Set());
+				callVoiceStates.set([]);
+			}
+
 			// Reset spaces so SPACE_CREATE events that follow repopulate them
 			// with fresh data (including current voice_states). Without this,
 			// if the server rejects a resume and starts a new session, the
@@ -445,11 +476,19 @@ function handleEvent(event: GatewayEvent) {
 					if (raw.joined) {
 						const idx = states.findIndex((s) => s.user_id === raw.user_id && s.room_id === raw.room_id);
 						if (idx === -1) {
+							// New user joined the call
+							if (raw.user_id !== get(currentUser)?.id) {
+								new Audio("/sounds/join_vc.ogg").play().catch(() => {});
+							}
 							return [...states, { room_id: raw.room_id, user_id: raw.user_id, muted: raw.muted, deafened: raw.deafened, screen_sharing: raw.screen_sharing }];
 						}
 						const copy = [...states];
 						copy[idx] = { ...copy[idx], muted: raw.muted, deafened: raw.deafened, screen_sharing: raw.screen_sharing };
 						return copy;
+					}
+					// User left the call
+					if (raw.user_id !== get(currentUser)?.id) {
+						new Audio("/sounds/leave_vc.ogg").play().catch(() => {});
 					}
 					return states.filter((s) => !(s.user_id === raw.user_id && s.room_id === raw.room_id));
 				});
@@ -489,6 +528,9 @@ function handleEvent(event: GatewayEvent) {
 							};
 						}
 					} else {
+						if (raw.room_id === get(activeVoiceRoomId)) {
+							new Audio("/sounds/leave_vc.ogg").play().catch(() => { });
+						}
 						nextStates = nextStates.filter(
 							(vs) =>
 								!(vs.user_id === raw.user_id && vs.room_id === raw.room_id),
@@ -957,16 +999,19 @@ function handleEvent(event: GatewayEvent) {
 		}
 		case "CALL_INCOMING": {
 			const d = data as { conversation_id: string; initiator_id: string; initiator_name: string; initiator_avatar: string | null; member_ids: string[] };
-			// Don't show if already in a call
-			if (get(activeCall)) break;
-			activeCall.set({
-				conversationId: d.conversation_id,
-				initiatorId: d.initiator_id,
-				initiatorName: d.initiator_name,
-				initiatorAvatar: d.initiator_avatar,
-				state: "ringing",
-				memberIds: d.member_ids,
-			});
+			// Track that this conversation has an active call
+			conversationsWithCalls.update((s) => { s.add(d.conversation_id); return new Set(s); });
+			// Show ringing modal if not already in a call
+			if (!get(activeCall)) {
+				activeCall.set({
+					conversationId: d.conversation_id,
+					initiatorId: d.initiator_id,
+					initiatorName: d.initiator_name,
+					initiatorAvatar: d.initiator_avatar,
+					state: "ringing",
+					memberIds: d.member_ids,
+				});
+			}
 			break;
 		}
 		case "CALL_ACCEPTED": {
@@ -987,9 +1032,13 @@ function handleEvent(event: GatewayEvent) {
 		}
 		case "CALL_ENDED": {
 			const d = data as { conversation_id: string };
+			conversationsWithCalls.update((s) => { s.delete(d.conversation_id); return new Set(s); });
 			const current = get(activeCall);
 			if (current && current.conversationId === d.conversation_id) {
-				activeVoiceRoomId.set(null);
+				// Only disconnect voice if still in this conversation's call, not a different voice channel
+				if (get(activeVoiceRoomId) === d.conversation_id) {
+					activeVoiceRoomId.set(null);
+				}
 				activeCall.set(null);
 				callVoiceStates.set([]);
 			}

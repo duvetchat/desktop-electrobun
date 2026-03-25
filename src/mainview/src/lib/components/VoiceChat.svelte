@@ -68,6 +68,7 @@
 	function leaveVoice() {
 		if (isDestroyed) return;
 		isDestroyed = true;
+		new Audio("/sounds/leave_vc.ogg").play().catch(() => {});
 		sendEventMessage("VOICE_LEAVE", { room_id: channelId });
 		if (peerConnection) {
 			peerConnection.close();
@@ -79,10 +80,13 @@
 			localVideoStream.getTracks().forEach((t) => t.stop());
 		if (audioContext) audioContext.close();
 		if (unsubscribeWs) unsubscribeWs();
-		speakingUsers.set(new SvelteSet());
-		voiceRemoteVideoStreams.set({});
-		voiceLocalVideoStream.set(null);
-		isScreenSharing.set(false);
+		// Only clear global stores if we're still the active voice session
+		if ($activeVoiceRoomId === channelId || $activeVoiceRoomId === null) {
+			speakingUsers.set(new SvelteSet());
+			voiceRemoteVideoStreams.set({});
+			voiceLocalVideoStream.set(null);
+			isScreenSharing.set(false);
+		}
 		if ($activeVoiceRoomId === channelId) activeVoiceRoomId.set(null);
 	}
 

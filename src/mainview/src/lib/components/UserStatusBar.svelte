@@ -19,7 +19,11 @@ import {
 	selectedMicId,
 	gatewaySpaces,
 	voiceConnectionState,
+	activeCall,
+	callVoiceStates,
+	conversations,
 } from "$lib/stores.svelte";
+import { get } from "svelte/store";
 import { sendEventMessage } from "$lib/api/ws/connection";
 import { fly } from "svelte/transition";
 import { getHostURL } from "$lib/common/common";
@@ -41,6 +45,19 @@ const activeVoiceSpace = $derived(
 const activeVoiceRoom = $derived(
 	activeVoiceSpace?.rooms.find((r) => r.id === $activeVoiceRoomId),
 );
+const isInConversationCall = $derived(
+	$activeCall?.state === "connected" && $activeVoiceRoomId === $activeCall?.conversationId,
+);
+const callConversationName = $derived.by(() => {
+	if (!isInConversationCall || !$activeCall) return "";
+	const conv = $conversations.find((c) => c.id === $activeCall!.conversationId);
+	if (!conv) return "Call";
+	const me = $currentUser;
+	if (conv.type === 2) return conv.name ?? "Group call";
+	const other = conv.members.find((m) => m.user_id !== me?.id);
+	return other?.user?.alias ?? other?.user?.username ?? "Call";
+});
+
 const canSpeak = $derived(
 	activeVoiceSpace && activeVoiceRoom
 		? hasPermission(activeVoiceSpace, activeVoiceRoom, Permission.SpeakInVoice)
@@ -149,7 +166,7 @@ function pingBgColor(ms: number | null): string {
 </script>
 
 <!-- Voice status pill -->
-{#if !collapsed && $activeVoiceRoomId && activeVoiceRoom}
+{#if !collapsed && $activeVoiceRoomId && (activeVoiceRoom || isInConversationCall)}
 	<div
 		class="shrink-0 border-t border-zinc-800"
 		in:fly={{ y: 20, duration: 200, opacity: 1 }}
@@ -157,10 +174,12 @@ function pingBgColor(ms: number | null): string {
 	>
 		<div class="flex select-none items-center gap-2 px-2 py-1.5">
 			<div
-				class="relative flex shrink-0 items-center justify-center rounded-full p-1.5 {pingBgColor(ping)}"
-				title={ping !== null ? `Ping: ${ping}ms` : "Measuring ping..."}
+				class="relative flex shrink-0 items-center justify-center rounded-full p-1.5 {isInConversationCall ? 'bg-emerald-500/10' : pingBgColor(ping)}"
+				title={isInConversationCall ? "In call" : (ping !== null ? `Ping: ${ping}ms` : "Measuring ping...")}
 			>
-				{#if ping !== null && ping >= 250}
+				{#if isInConversationCall}
+					<PhoneDisconnectIcon class="size-3.5 text-emerald-400" />
+				{:else if ping !== null && ping >= 250}
 					<CellSignalLowIcon class="size-3.5 {pingIconColor(ping)}" />
 				{:else if ping !== null && ping >= 100}
 					<CellSignalMediumIcon class="size-3.5 {pingIconColor(ping)}" />
@@ -169,13 +188,24 @@ function pingBgColor(ms: number | null): string {
 				{/if}
 			</div>
 			<div class="flex min-w-0 flex-1 flex-col truncate">
-				<span class="truncate text-xs font-semibold text-stone-300">{connectionLabel[$voiceConnectionState]}</span>
-				<span class="truncate text-xxs text-zinc-400">{activeVoiceSpace?.name || ""} / {activeVoiceRoom.name}</span>
+				<span class="truncate text-xs font-semibold {isInConversationCall ? 'text-emerald-300' : 'text-stone-300'}">
+					{isInConversationCall ? 'In Call' : connectionLabel[$voiceConnectionState]}
+				</span>
+				<span class="truncate text-xxs text-zinc-400">
+					{isInConversationCall ? callConversationName : `${activeVoiceSpace?.name || ""} / ${activeVoiceRoom?.name || ""}`}
+				</span>
 			</div>
 			<button
 				class="shrink-0 rounded-full p-1.5 text-zinc-400 transition-colors hover:bg-zinc-700 hover:text-zinc-200"
 				aria-label="Disconnect"
-				onclick={() => { $activeVoiceRoomId = null; }}
+				onclick={() => {
+					if (isInConversationCall && $activeCall) {
+						sendEventMessage("CALL_LEAVE", { conversation_id: $activeCall.conversationId });
+						activeCall.set(null);
+						callVoiceStates.set([]);
+					}
+					$activeVoiceRoomId = null;
+				}}
 			>
 				<PhoneDisconnectIcon class="size-3.5" />
 			</button>
@@ -186,13 +216,28 @@ function pingBgColor(ms: number | null): string {
 {#if collapsed && $currentUser}
 	<div class="flex shrink-0 flex-col items-center gap-1 border-t border-zinc-800 bg-zinc-900 py-2 px-1">
 		{#if $activeVoiceRoomId}
-			<div class="size-8 rounded-lg bg-green-600/20 flex items-center justify-center mb-0.5" title="In voice channel">
-				<CellSignalFullIcon class="size-4 text-green-400" />
+			<div class="size-8 rounded-lg {isInConversationCall ? 'bg-emerald-600/20' : pingBgColor(ping)} flex items-center justify-center mb-0.5" title={isInConversationCall ? "In call" : (ping !== null ? `Ping: ${ping}ms` : "Measuring ping...")}>
+				{#if isInConversationCall}
+					<PhoneDisconnectIcon class="size-4 text-emerald-400" />
+				{:else if ping !== null && ping >= 250}
+					<CellSignalLowIcon class="size-4 {pingIconColor(ping)}" />
+				{:else if ping !== null && ping >= 100}
+					<CellSignalMediumIcon class="size-4 {pingIconColor(ping)}" />
+				{:else}
+					<CellSignalFullIcon class="size-4 {pingIconColor(ping)}" />
+				{/if}
 			</div>
 			<button
 				class="flex size-8 items-center justify-center rounded-lg transition-colors hover:bg-zinc-800 text-zinc-400 hover:text-red-400"
 				aria-label="Disconnect"
-				onclick={() => { $activeVoiceRoomId = null; }}
+				onclick={() => {
+					if (isInConversationCall && $activeCall) {
+						sendEventMessage("CALL_LEAVE", { conversation_id: $activeCall.conversationId });
+						activeCall.set(null);
+						callVoiceStates.set([]);
+					}
+					$activeVoiceRoomId = null;
+				}}
 			>
 				<PhoneDisconnectIcon class="size-4" />
 			</button>
@@ -207,8 +252,7 @@ function pingBgColor(ms: number | null): string {
 			/>
 		</div>
 		<button
-			class="flex size-8 items-center justify-center rounded-lg transition-colors hover:bg-zinc-800 text-zinc-400"
-			class:text-red-400={$isMuted}
+			class="flex size-8 items-center justify-center rounded-lg transition-colors hover:bg-zinc-800 {$isMuted ? 'text-red-400' : 'text-zinc-400'}"
 			aria-label="Toggle Mute"
 			onclick={() => canSpeak && toggleMute()}
 		>
@@ -219,8 +263,7 @@ function pingBgColor(ms: number | null): string {
 			{/if}
 		</button>
 		<button
-			class="flex size-8 items-center justify-center rounded-lg transition-colors hover:bg-zinc-800 text-zinc-400"
-			class:text-red-400={$isDeafened}
+			class="flex size-8 items-center justify-center rounded-lg transition-colors hover:bg-zinc-800 {$isDeafened ? 'text-red-400' : 'text-zinc-400'}"
 			aria-label="Deafen"
 			onclick={toggleDeafen}
 		>

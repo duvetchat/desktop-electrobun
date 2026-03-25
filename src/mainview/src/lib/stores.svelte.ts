@@ -121,6 +121,8 @@ export interface ActiveCallInfo {
 }
 
 export const activeCall = writable<ActiveCallInfo | null>(null);
+// Set of conversation IDs that have an active call (even if I'm not in it)
+export const conversationsWithCalls = writable<Set<string>>(new Set());
 
 export interface CallVoiceState {
 	room_id: string;

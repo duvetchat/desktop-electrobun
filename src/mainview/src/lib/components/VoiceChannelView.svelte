@@ -45,18 +45,18 @@
 
 	const voiceUsers = $derived.by(() => {
 		if (callMode) {
-			// In call mode, only show users who have actually joined the voice (have a voice state)
 			const states = $callVoiceStates.filter((vs) => vs.room_id === channelId);
 			const me = $currentUser;
 			const list = states.map((vs) => {
 				const member = callMembers.find((m) => m.id === vs.user_id);
+				const isMe = me && vs.user_id === me.id;
 				return {
 					id: vs.user_id,
 					username: member?.username ?? vs.user_id.slice(0, 8),
 					avatar_url: member?.avatar_url ?? null,
-					muted: vs.muted ?? false,
-					deafened: vs.deafened ?? false,
-					screen_sharing: vs.screen_sharing ?? false,
+					muted: isMe ? $isMuted : (vs.muted ?? false),
+					deafened: isMe ? $isDeafened : (vs.deafened ?? false),
+					screen_sharing: isMe ? $isScreenSharing : (vs.screen_sharing ?? false),
 				};
 			});
 			if (me && isConnected && !list.some((u) => u.id === me.id)) {
@@ -171,9 +171,9 @@
 		{#if voiceUsers.length === 0}
 			<div class="flex flex-col items-center justify-center h-full gap-3 text-zinc-500 select-none">
 				<Volume2 class="size-12 opacity-20" />
-				<p class="text-sm">Nadie conectado</p>
+				<p class="text-sm">No one connected</p>
 				{#if !isConnected}
-					<p class="text-xs opacity-60">Únete para empezar</p>
+					<p class="text-xs opacity-60">Join to start</p>
 				{/if}
 			</div>
 		{:else}
@@ -258,27 +258,27 @@
 			<button
 				class="flex flex-col items-center gap-1 rounded-xl px-4 py-2.5 text-zinc-300 hover:bg-zinc-800 transition-colors"
 				onclick={() => screenShareRequested.set(true)}
-				title="Transmitir pantalla"
+				title="Share screen"
 			>
 				<MonitorUp class="size-5" />
-				<span class="text-xxs text-zinc-400">Transmitir</span>
+				<span class="text-xxs text-zinc-400">Stream</span>
 			</button>
 			<button
 				class="flex flex-col items-center gap-1 rounded-xl px-4 py-2.5 transition-colors {$isMuted ? 'text-red-400 bg-red-500/10 hover:bg-red-500/20' : 'text-zinc-300 hover:bg-zinc-800'}"
 				onclick={toggleMute}
-				title={$isMuted ? "Activar micrófono" : "Silenciar"}
+				title={$isMuted ? "Unmute" : "Mute"}
 			>
 				{#if $isMuted}
 					<MicOff class="size-5" />
 				{:else}
 					<Mic class="size-5" />
 				{/if}
-				<span class="text-xxs {$isMuted ? 'text-red-400' : 'text-zinc-400'}">{$isMuted ? "Silenciado" : "Micro"}</span>
+				<span class="text-xxs {$isMuted ? 'text-red-400' : 'text-zinc-400'}">{$isMuted ? "Muted" : "Mic"}</span>
 			</button>
 			<button
 				class="flex flex-col items-center gap-1 rounded-xl px-4 py-2.5 transition-colors {$isDeafened ? 'text-red-400 bg-red-500/10 hover:bg-red-500/20' : 'text-zinc-300 hover:bg-zinc-800'}"
 				onclick={toggleDeafen}
-				title={$isDeafened ? "Dejar de ensordecer" : "Ensordecer"}
+				title={$isDeafened ? "Undeafen" : "Deafen"}
 			>
 				<Headphones class="size-5" />
 				<span class="text-xxs {$isDeafened ? 'text-red-400' : 'text-zinc-400'}">{$isDeafened ? "Deafened" : "Audio"}</span>
