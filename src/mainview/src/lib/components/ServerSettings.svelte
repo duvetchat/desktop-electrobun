@@ -175,27 +175,22 @@ async function onDragEnd() {
 	}
 }
 
-const canManageRoles = $derived(checkCanManageRoles());
-
-function checkCanManageRoles(): boolean {
-	if (!$currentUser || !space) {
-		return false;
-	}
-	if ($currentUser.id === space.owner_id) {
-		return true;
-	}
+function hasSpacePermission(flag: number): boolean {
+	if (!$currentUser || !space) return false;
+	if ($currentUser.id === space.owner_id) return true;
 	const member = space.member;
 	const userRoleIds = space.member_roles[member?.user_id ?? ""] ?? [];
-	let combinedPermissions = 0;
+	let perms = 0;
 	for (const role of space.roles) {
 		if (userRoleIds.includes(role.id)) {
-			combinedPermissions |= role.permissions;
+			perms |= role.permissions;
 		}
 	}
-	return (
-		(combinedPermissions & Permission.ManageRoles) === Permission.ManageRoles
-	);
+	if (perms & Permission.Administrator) return true;
+	return (perms & flag) === flag;
 }
+
+const canManageRoles = $derived(hasSpacePermission(Permission.ManageRoles));
 
 function permissionsToFlags(permissions: number[]): number {
 	return permissions.reduce((acc, perm) => acc | perm, 0);
@@ -415,37 +410,8 @@ async function handleDeleteEmoji(emojiId: string) {
 	});
 }
 
-const canManageEmojis = $derived(checkCanManageEmojis());
-
-function checkCanManageEmojis(): boolean {
-	if (!$currentUser || !space) return false;
-	if ($currentUser.id === space.owner_id) return true;
-	const member = space.member;
-	const userRoleIds = space.member_roles[member?.user_id ?? ""] ?? [];
-	let combinedPermissions = 0;
-	for (const role of space.roles) {
-		if (userRoleIds.includes(role.id)) {
-			combinedPermissions |= role.permissions;
-		}
-	}
-	return (combinedPermissions & Permission.ManageSpaceEmojis) === Permission.ManageSpaceEmojis;
-}
-
-const canManageBuckets = $derived(checkCanManageBuckets());
-
-function checkCanManageBuckets(): boolean {
-	if (!$currentUser || !space) return false;
-	if ($currentUser.id === space.owner_id) return true;
-	const member = space.member;
-	const userRoleIds = space.member_roles[member?.user_id ?? ""] ?? [];
-	let combinedPermissions = 0;
-	for (const role of space.roles) {
-		if (userRoleIds.includes(role.id)) {
-			combinedPermissions |= role.permissions;
-		}
-	}
-	return (combinedPermissions & Permission.ManageSpaceBuckets) === Permission.ManageSpaceBuckets;
-}
+const canManageEmojis = $derived(hasSpacePermission(Permission.ManageSpaceEmojis));
+const canManageBuckets = $derived(hasSpacePermission(Permission.ManageSpaceBuckets));
 
 // ── space bucket handlers ───────────────────────────────────
 async function loadSpaceBuckets() {
