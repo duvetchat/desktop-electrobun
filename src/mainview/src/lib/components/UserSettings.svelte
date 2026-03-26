@@ -350,7 +350,7 @@ function handleReset() {
 					<!-- Header -->
 					<div class="flex items-center justify-between border-b border-zinc-800 px-6 py-4 shrink-0">
 						<h2 class="text-base font-semibold text-white">
-							{#if activeSection === "account"}My Account{:else if activeSection === "attachments"}Attachments{:else if activeSection === "buckets"}R2 Buckets{/if}
+							{#if activeSection === "account"}My Account{:else if activeSection === "attachments"}Attachments{:else if activeSection === "buckets"}S3 Buckets{/if}
 						</h2>
 						<Dialog.Close
 							class="flex h-8 w-8 items-center justify-center rounded-lg text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200 transition-colors"

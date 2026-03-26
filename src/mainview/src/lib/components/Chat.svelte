@@ -12,9 +12,10 @@ import type { Message, MemberOnSidebar, GatewaySpace, MessageReference } from "$
 import { MessageReferenceType } from "$lib/types";
 import { sendMessage, sendVoiceNote, sendTypingIndicator } from "$lib/api/messages";
 import { MessageType } from "$lib/types";
-import { currentUser, channelMessages, typingUsers } from "$lib/stores.svelte";
+import { currentUser, channelMessages, typingUsers, spaceEmojis } from "$lib/stores.svelte";
 import { toast } from "$lib/stores/toast.svelte";
 import TypingIndicator from "$lib/components/TypingIndicator.svelte";
+import { listEmojis } from "$lib/api/emojis";
 
 let {
 	messages,
@@ -74,9 +75,20 @@ let {
 	onVoiceNoteOverride?: (blob: Blob) => void;
 } = $props();
 let replyTo = $state<Message | null>(null);
-let chatInputRef = $state<{ focus: () => void } | null>(null);
+let chatInputRef = $state<{ focus: () => void; focusAndInsert: (char: string) => void } | null>(null);
 let pendingFiles = $state<File[]>([]);
 let lastTypingSent = 0;
+
+// Load emojis into the global store on space change
+$effect(() => {
+	if (spaceId) {
+		listEmojis(spaceId).then((e) => {
+			spaceEmojis.update((m) => ({ ...m, [spaceId]: e }));
+		}).catch(() => {});
+	}
+});
+
+const customEmojis = $derived(spaceId ? ($spaceEmojis[spaceId] ?? []) : []);
 
 // Focus input when switching channels
 $effect(() => {
@@ -207,6 +219,15 @@ function handleGlobalKeyDown(event: KeyboardEvent) {
 	}
 
 	if (isOtherInputActive()) return;
+
+	// Focus chat input when typing a printable character
+	if (
+		!event.ctrlKey && !event.metaKey && !event.altKey &&
+		event.key.length === 1
+	) {
+		event.preventDefault();
+		chatInputRef?.focusAndInsert(event.key);
+	}
 }
 
 onMount(() => window.addEventListener("keydown", handleGlobalKeyDown));
@@ -364,9 +385,48 @@ async function handleVoiceNote(blob: Blob) {
 	});
 }
 
+let fileDragOver = $state(false);
+
+function handleFileDragOver(e: DragEvent) {
+	if (!e.dataTransfer?.types.includes("Files")) return;
+	e.preventDefault();
+	e.dataTransfer.dropEffect = "copy";
+	fileDragOver = true;
+}
+
+function handleFileDragLeave(e: DragEvent) {
+	const el = e.currentTarget as HTMLElement;
+	if (!el.contains(e.relatedTarget as Node)) {
+		fileDragOver = false;
+	}
+}
+
+function handleFileDrop(e: DragEvent) {
+	fileDragOver = false;
+	if (!e.dataTransfer?.files.length) return;
+	e.preventDefault();
+	pendingFiles = [...pendingFiles, ...Array.from(e.dataTransfer.files)];
+	chatInputRef?.focus();
+}
+
 </script>
 
-<div class="flex flex-1 flex-col overflow-hidden bg-[linear-gradient(180deg,oklch(0.22_0.01_80),oklch(0.19_0.008_80))]">
+<div
+  class="flex flex-1 flex-col overflow-hidden bg-[linear-gradient(180deg,oklch(0.22_0.01_80),oklch(0.19_0.008_80))] relative"
+  ondragover={handleFileDragOver}
+  ondragleave={handleFileDragLeave}
+  ondrop={handleFileDrop}
+  role="region"
+  aria-label="Chat"
+>
+  {#if fileDragOver}
+    <div class="absolute inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm pointer-events-none">
+      <div class="flex flex-col items-center gap-2 rounded-xl border-2 border-dashed border-indigo-400 bg-zinc-900/80 px-10 py-8">
+        <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="text-indigo-400"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg>
+        <span class="text-sm font-medium text-indigo-300">Drop files to upload</span>
+      </div>
+    </div>
+  {/if}
   {#if showHeader}
 	<div
 	class="flex h-10 shrink-0 items-center justify-between border-b border-stone-800 bg-stone-950/45 px-3 font-semibold text-stone-100"
@@ -417,6 +477,7 @@ async function handleVoiceNote(blob: Blob) {
     onDismiss={dismissFailedMessage}
     onReply={handleReply}
     {onUnreadMark}
+    {customEmojis}
   />
 
 	<div class="relative w-full">
@@ -472,6 +533,7 @@ async function handleVoiceNote(blob: Blob) {
       onArrowUpWhenEmpty={tryEditLastMessage}
       onValueChange={handleTyping}
       {members}
+      {customEmojis}
       autofocus
     />
   </div>

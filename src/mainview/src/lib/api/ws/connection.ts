@@ -22,6 +22,7 @@ import {
 	activeCall,
 	callVoiceStates,
 	conversationsWithCalls,
+	spaceEmojis,
 } from "$lib/stores.svelte";
 import type { FriendRequest, Friend } from "$lib/api/friends";
 import { getFriends, getPendingRequests, getSentRequests } from "$lib/api/friends";
@@ -31,6 +32,7 @@ import { getMentionCounts } from "$lib/api/messages";
 import { getWSHostURL, route } from "$lib/common/common";
 import { get } from "svelte/store";
 import { getSpaceMembers, type SpaceMemberWithUser } from "$lib/api/spaces";
+import type { MessageReaction } from "$lib/types";
 
 import type {
 	GatewayMessage as GatewayMessageCreate,
@@ -761,6 +763,86 @@ function handleEvent(event: GatewayEvent) {
 			);
 			break;
 		}
+		case "SPACE_EMOJI_CREATE": {
+			const raw = data as import("$lib/types").SpaceEmoji;
+			spaceEmojis.update((m) => {
+				const list = m[raw.space_id] ?? [];
+				return { ...m, [raw.space_id]: [...list, raw] };
+			});
+			break;
+		}
+		case "SPACE_EMOJI_UPDATE": {
+			const raw = data as import("$lib/types").SpaceEmoji;
+			spaceEmojis.update((m) => {
+				const list = (m[raw.space_id] ?? []).map((e) => (e.id === raw.id ? raw : e));
+				return { ...m, [raw.space_id]: list };
+			});
+			break;
+		}
+		case "SPACE_EMOJI_DELETE": {
+			const raw = data as { id: string; space_id: string };
+			spaceEmojis.update((m) => {
+				const list = (m[raw.space_id] ?? []).filter((e) => e.id !== raw.id);
+				return { ...m, [raw.space_id]: list };
+			});
+			break;
+		}
+		case "REACTION_ADD": {
+			const raw = data as { message_id: string; user_id: string; emoji_name: string; emoji_id?: string | null };
+			channelMessages.update((all) => {
+				const updated = { ...all };
+				for (const [chId, msgs] of Object.entries(updated)) {
+					const idx = msgs.findIndex((m) => m.id === raw.message_id);
+					if (idx < 0) continue;
+					const msg = { ...msgs[idx] };
+					const reactions = [...(msg.reactions ?? [])];
+					const existing = reactions.findIndex((r) => r.emoji_name === raw.emoji_name);
+					if (existing >= 0) {
+						const r = { ...reactions[existing] };
+						if (!r.users.includes(raw.user_id)) {
+							r.users = [...r.users, raw.user_id];
+							r.count = r.users.length;
+						}
+						reactions[existing] = r;
+					} else {
+						reactions.push({ emoji_name: raw.emoji_name, emoji_id: raw.emoji_id ?? null, count: 1, users: [raw.user_id] });
+					}
+					msg.reactions = reactions;
+					updated[chId] = [...msgs.slice(0, idx), msg, ...msgs.slice(idx + 1)];
+					break;
+				}
+				return updated;
+			});
+			break;
+		}
+		case "REACTION_REMOVE": {
+			const raw = data as { message_id: string; user_id: string; emoji_name: string };
+			channelMessages.update((all) => {
+				const updated = { ...all };
+				for (const [chId, msgs] of Object.entries(updated)) {
+					const idx = msgs.findIndex((m) => m.id === raw.message_id);
+					if (idx < 0) continue;
+					const msg = { ...msgs[idx] };
+					let reactions = [...(msg.reactions ?? [])];
+					const existing = reactions.findIndex((r) => r.emoji_name === raw.emoji_name);
+					if (existing >= 0) {
+						const r = { ...reactions[existing] };
+						r.users = r.users.filter((u) => u !== raw.user_id);
+						r.count = r.users.length;
+						if (r.count === 0) {
+							reactions = reactions.filter((_, i) => i !== existing);
+						} else {
+							reactions[existing] = r;
+						}
+					}
+					msg.reactions = reactions;
+					updated[chId] = [...msgs.slice(0, idx), msg, ...msgs.slice(idx + 1)];
+					break;
+				}
+				return updated;
+			});
+			break;
+		}
 		case "GUILD_MEMBER_ADD": {
 			const raw = data as {
 				space_id: string;
@@ -972,6 +1054,62 @@ function handleEvent(event: GatewayEvent) {
 					...all,
 					[raw.conversation_id]: existing.filter((m) => m.id !== raw.id),
 				};
+			});
+			break;
+		}
+		case "DM_REACTION_ADD": {
+			const raw = data as { message_id: string; user_id: string; emoji_name: string; emoji_id?: string | null };
+			dmMessages.update((all) => {
+				const updated = { ...all };
+				for (const [convId, msgs] of Object.entries(updated)) {
+					const idx = msgs.findIndex((m) => m.id === raw.message_id);
+					if (idx < 0) continue;
+					const msg = { ...msgs[idx] };
+					const reactions = [...(msg.reactions ?? [])];
+					const existing = reactions.findIndex((r) => r.emoji_name === raw.emoji_name);
+					if (existing >= 0) {
+						const r = { ...reactions[existing] };
+						if (!r.users.includes(raw.user_id)) {
+							r.users = [...r.users, raw.user_id];
+							r.count = r.users.length;
+						}
+						reactions[existing] = r;
+					} else {
+						reactions.push({ emoji_name: raw.emoji_name, emoji_id: raw.emoji_id ?? null, count: 1, users: [raw.user_id] });
+					}
+					msg.reactions = reactions;
+					updated[convId] = [...msgs.slice(0, idx), msg, ...msgs.slice(idx + 1)];
+					break;
+				}
+				return updated;
+			});
+			break;
+		}
+		case "DM_REACTION_REMOVE": {
+			const raw = data as { message_id: string; user_id: string; emoji_name: string };
+			dmMessages.update((all) => {
+				const updated = { ...all };
+				for (const [convId, msgs] of Object.entries(updated)) {
+					const idx = msgs.findIndex((m) => m.id === raw.message_id);
+					if (idx < 0) continue;
+					const msg = { ...msgs[idx] };
+					let reactions = [...(msg.reactions ?? [])];
+					const existing = reactions.findIndex((r) => r.emoji_name === raw.emoji_name);
+					if (existing >= 0) {
+						const r = { ...reactions[existing] };
+						r.users = r.users.filter((uid: string) => uid !== raw.user_id);
+						r.count = r.users.length;
+						if (r.count === 0) {
+							reactions = reactions.filter((_: unknown, i: number) => i !== existing);
+						} else {
+							reactions[existing] = r;
+						}
+					}
+					msg.reactions = reactions;
+					updated[convId] = [...msgs.slice(0, idx), msg, ...msgs.slice(idx + 1)];
+					break;
+				}
+				return updated;
 			});
 			break;
 		}

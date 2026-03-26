@@ -1,10 +1,12 @@
 <script lang="ts">
 import { onMount } from "svelte";
 import { get } from "svelte/store";
-import { currentUser, dmMessages, friends, unreadConversations, activeDMConvId, pageVisible, mentionCounts, activeCall, activeVoiceRoomId, callVoiceStates, conversationsWithCalls } from "$lib/stores.svelte";
+import { currentUser, dmMessages, friends, unreadConversations, activeDMConvId, pageVisible, mentionCounts, activeCall, activeVoiceRoomId, callVoiceStates, conversationsWithCalls, jumpToMessageRequest } from "$lib/stores.svelte";
 import { sendEventMessage } from "$lib/api/ws/connection";
 import {
 	getDirectMessages,
+	getDirectMessageById,
+	getDirectMessagesAfter,
 	sendDirectMessage,
 	sendDMVoiceNote,
 	sendConversationTyping,
@@ -150,6 +152,8 @@ function toMessage(msg: DirectMessage): Message {
 		ref_message_id: msg.ref_message_id ?? null,
 		referenced_message: msg.referenced_message ?? null,
 		attachments: msg.attachments ?? null,
+		reactions: msg.reactions ?? null,
+		embeds: msg.embeds ?? null,
 	};
 }
 
@@ -162,7 +166,7 @@ const messages = $derived.by(() => {
 	for (const msg of raw) {
 		seen.add(msg.id);
 		const cached = messageCache.get(msg.id);
-		if (cached && cached.content === msg.content && cached.updated_at === msg.updated_at && cached.attachments === msg.attachments) {
+		if (cached && cached.content === msg.content && cached.updated_at === msg.updated_at && cached.attachments === msg.attachments && cached.reactions === msg.reactions && cached.embeds === msg.embeds) {
 			result.push(cached);
 		} else {
 			const mapped = toMessage(msg);
@@ -211,6 +215,47 @@ async function handleLoadMore() {
 	}
 	await loadMessages(oldest);
 	isLoadingMore = false;
+}
+
+// ── Jump to message ──────────────────────────────────────────────────────
+let lastHandledJumpId = "";
+let highlightedMessageId = $state<string | null>(null);
+let hasMoreBelow = $state(false);
+
+$effect(() => {
+	const req = $jumpToMessageRequest;
+	if (!req || req.id === lastHandledJumpId) return;
+	if (req.conversationId !== conversation.id) return;
+	lastHandledJumpId = req.id;
+	jumpToMessageRequest.set(null);
+	void jumpToMessage(req.messageId);
+});
+
+async function jumpToMessage(messageId: string) {
+	try {
+		const anchor = await getDirectMessageById(conversation.id, messageId);
+		const [rawAbove, rawBelow] = await Promise.all([
+			getDirectMessages(conversation.id, anchor.id),
+			getDirectMessagesAfter(conversation.id, anchor.id),
+		]);
+
+		const allIds = new Set<string>();
+		const combined: DirectMessage[] = [];
+		for (const m of [...rawAbove, anchor, ...rawBelow]) {
+			if (!allIds.has(m.id)) {
+				allIds.add(m.id);
+				combined.push(m);
+			}
+		}
+
+		hasMore = rawAbove.length >= 100;
+		hasMoreBelow = rawBelow.length >= 100;
+		dmMessages.update((all) => ({ ...all, [conversation.id]: combined }));
+		highlightedMessageId = messageId;
+		setTimeout(() => { highlightedMessageId = null; }, 3000);
+	} catch (err) {
+		console.error("[DM] Failed to jump to message:", err);
+	}
 }
 
 async function dmHandleSend(content: string, nonce: string, ref: MessageReference | undefined, files?: File[]) {
@@ -481,6 +526,8 @@ onMount(() => {
 			isInitialLoading={isLoading}
 			{isLoadingMore}
 			hasMoreMessages={hasMore}
+			hasMoreMessagesBelow={hasMoreBelow}
+			{highlightedMessageId}
 			onLoadMore={handleLoadMore}
 			bind:failedNonces
 			bind:isAtBottom

@@ -6,15 +6,28 @@ import {
 	Shield as ShieldStarIcon,
 	Users as UsersThreeIcon,
 	Settings as GearSixIcon,
+	Smile as SmileIcon,
+	Database as DatabaseIcon,
 	X as XIcon,
+	Pencil as PencilIcon,
+	Trash2 as TrashIcon,
+	Upload as UploadIcon,
+	Check as CheckIcon,
+	Plus as PlusIcon,
 } from "@lucide/svelte";
 import { Checkbox, Dialog } from "bits-ui";
 import { createRole, updateRole, deleteRole } from "$lib/api/roles";
+import { listEmojis, createEmoji, updateEmoji, deleteEmoji } from "$lib/api/emojis";
+import { getSpaceBuckets, createSpaceBucket, updateSpaceBucket, deleteSpaceBucket, activateSpaceBucket, deactivateSpaceBucket } from "$lib/api/space-buckets";
 import { currentUser } from "$lib/stores.svelte";
-import { Permission } from "$lib/permissions";
+import { Permission, ALL_PERMISSIONS } from "$lib/permissions";
 import UserAvatar from "$lib/components/UserAvatar.svelte";
 
-import type { GatewaySpace } from "$lib/types";
+import type { GatewaySpace, SpaceEmoji } from "$lib/types";
+import type { StorageBucket, CreateBucketPayload } from "$lib/api/user";
+import { getHostURL } from "$lib/common/common";
+
+const attachmentHost = getHostURL();
 
 let {
 	space = null,
@@ -26,19 +39,10 @@ let {
 	open?: boolean;
 } = $props();
 
-type Section = "overview" | "members" | "roles";
+type Section = "overview" | "members" | "roles" | "emojis" | "storage";
 let activeSection = $state<Section>("roles");
 
-const PERMISSIONS = [
-	{ flag: Permission.ViewChannels, name: "View Channels" },
-	{ flag: Permission.SendMessages, name: "Send Messages" },
-	{ flag: Permission.ManageMessages, name: "Manage Messages" },
-	{ flag: Permission.ManageChannels, name: "Manage Channels" },
-	{ flag: Permission.ChangeNickname, name: "Change Nickname" },
-	{ flag: Permission.JoinVoice, name: "Join Voice" },
-	{ flag: Permission.SpeakInVoice, name: "Speak in Voice" },
-	{ flag: Permission.ManageRoles, name: "Manage Roles" },
-];
+const PERMISSIONS = ALL_PERMISSIONS;
 
 // ── color helpers ────────────────────────────────────────────
 function intToHex(n: undefined | number | null): string {
@@ -93,6 +97,29 @@ let editingRoleClearColors = $state(false);
 let isCreating = $state(false);
 let isDeleting = $state<Record<string, boolean>>({});
 let selectedMemberUserId = $state<string | null>(null);
+
+// ── emoji state ─────────────────────────────────────────────
+let spaceEmojis = $state<SpaceEmoji[]>([]);
+let emojisLoading = $state(false);
+let newEmojiName = $state("");
+let newEmojiFile = $state<File | null>(null);
+let isUploadingEmoji = $state(false);
+let editingEmojiId = $state<string | null>(null);
+let editingEmojiName = $state("");
+let isDeletingEmoji = $state<Record<string, boolean>>({});
+
+// ── space bucket state ──────────────────────────────────────
+let spaceBuckets = $state<StorageBucket[]>([]);
+let spaceBucketsLoading = $state(false);
+let spaceBucketsError = $state<string | null>(null);
+let showSpaceBucketForm = $state(false);
+let editingSpaceBucket = $state<StorageBucket | null>(null);
+let spaceBucketSaving = $state(false);
+let sbName = $state(""); let sbEndpoint = $state(""); let sbRegion = $state("auto");
+let sbBucketName = $state(""); let sbAccessKey = $state(""); let sbSecretKey = $state("");
+let sbUsePathStyle = $state(false);
+let togglingSpaceBucketId = $state<string | null>(null);
+
 const numberFormatter = new Intl.NumberFormat(
 	typeof navigator !== "undefined" ? navigator.language : "en-US",
 );
@@ -309,6 +336,188 @@ $effect(() => {
 	}
 });
 
+// ── emoji handlers ──────────────────────────────────────────
+async function loadEmojis() {
+	if (!spaceId) return;
+	emojisLoading = true;
+	try {
+		spaceEmojis = await listEmojis(spaceId);
+	} catch (err) {
+		console.error("Failed to load emojis:", err);
+		toast(`${err}`, "error");
+	} finally {
+		emojisLoading = false;
+	}
+}
+
+$effect(() => {
+	if (activeSection === "emojis" && spaceId) {
+		loadEmojis();
+	}
+});
+
+function handleEmojiFileChange(e: Event) {
+	const input = e.target as HTMLInputElement;
+	newEmojiFile = input.files?.[0] ?? null;
+}
+
+async function handleUploadEmoji() {
+	if (!newEmojiName.trim() || !newEmojiFile || !spaceId) return;
+	isUploadingEmoji = true;
+	try {
+		await createEmoji(spaceId, newEmojiName.trim(), newEmojiFile);
+		newEmojiName = "";
+		newEmojiFile = null;
+		await loadEmojis();
+	} catch (err) {
+		console.error("Failed to upload emoji:", err);
+		toast(`${err}`, "error");
+	} finally {
+		isUploadingEmoji = false;
+	}
+}
+
+function startEmojiEdit(emoji: SpaceEmoji) {
+	editingEmojiId = emoji.id;
+	editingEmojiName = emoji.name;
+}
+
+function cancelEmojiEdit() {
+	editingEmojiId = null;
+	editingEmojiName = "";
+}
+
+async function handleUpdateEmoji() {
+	if (!editingEmojiId || !editingEmojiName.trim() || !spaceId) return;
+	try {
+		await updateEmoji(spaceId, editingEmojiId, editingEmojiName.trim());
+		editingEmojiId = null;
+		editingEmojiName = "";
+		await loadEmojis();
+	} catch (err) {
+		console.error("Failed to update emoji:", err);
+		toast(`${err}`, "error");
+	}
+}
+
+async function handleDeleteEmoji(emojiId: string) {
+	if (!spaceId) return;
+	const sid = spaceId;
+	const emojiName = spaceEmojis.find((e) => e.id === emojiId)?.name ?? "this emoji";
+	await confirmAction(`Delete ":${emojiName}:"? This can't be undone.`, "Deleting", async () => {
+		isDeletingEmoji = { ...isDeletingEmoji, [emojiId]: true };
+		try {
+			await deleteEmoji(sid, emojiId);
+			await loadEmojis();
+		} finally {
+			isDeletingEmoji = { ...isDeletingEmoji, [emojiId]: false };
+		}
+	});
+}
+
+const canManageEmojis = $derived(checkCanManageEmojis());
+
+function checkCanManageEmojis(): boolean {
+	if (!$currentUser || !space) return false;
+	if ($currentUser.id === space.owner_id) return true;
+	const member = space.member;
+	const userRoleIds = space.member_roles[member?.user_id ?? ""] ?? [];
+	let combinedPermissions = 0;
+	for (const role of space.roles) {
+		if (userRoleIds.includes(role.id)) {
+			combinedPermissions |= role.permissions;
+		}
+	}
+	return (combinedPermissions & Permission.ManageSpaceEmojis) === Permission.ManageSpaceEmojis;
+}
+
+const canManageBuckets = $derived(checkCanManageBuckets());
+
+function checkCanManageBuckets(): boolean {
+	if (!$currentUser || !space) return false;
+	if ($currentUser.id === space.owner_id) return true;
+	const member = space.member;
+	const userRoleIds = space.member_roles[member?.user_id ?? ""] ?? [];
+	let combinedPermissions = 0;
+	for (const role of space.roles) {
+		if (userRoleIds.includes(role.id)) {
+			combinedPermissions |= role.permissions;
+		}
+	}
+	return (combinedPermissions & Permission.ManageSpaceBuckets) === Permission.ManageSpaceBuckets;
+}
+
+// ── space bucket handlers ───────────────────────────────────
+async function loadSpaceBuckets() {
+	if (!spaceId) return;
+	spaceBucketsLoading = true; spaceBucketsError = null;
+	try { spaceBuckets = await getSpaceBuckets(spaceId); }
+	catch (e) { spaceBucketsError = e instanceof Error ? e.message : "Failed to load"; }
+	finally { spaceBucketsLoading = false; }
+}
+
+$effect(() => {
+	if (activeSection === "storage" && spaceId) {
+		loadSpaceBuckets();
+	}
+});
+
+function resetSpaceBucketForm() {
+	sbName = ""; sbEndpoint = ""; sbRegion = "auto"; sbBucketName = ""; sbAccessKey = ""; sbSecretKey = ""; sbUsePathStyle = false;
+	editingSpaceBucket = null; showSpaceBucketForm = false;
+}
+
+function startEditSpaceBucket(b: StorageBucket) {
+	editingSpaceBucket = b; showSpaceBucketForm = true;
+	sbName = b.name; sbEndpoint = b.endpoint; sbRegion = b.region;
+	sbBucketName = b.bucket_name; sbAccessKey = b.access_key_id; sbSecretKey = b.secret_access_key;
+	sbUsePathStyle = b.use_path_style;
+}
+
+async function handleSaveSpaceBucket() {
+	if (!sbName.trim() || !sbEndpoint.trim() || !sbBucketName.trim() || !sbAccessKey.trim() || !spaceId) return;
+	spaceBucketSaving = true; spaceBucketsError = null;
+	try {
+		const payload: CreateBucketPayload = {
+			name: sbName.trim(), endpoint: sbEndpoint.trim(), region: sbRegion.trim() || "auto",
+			bucket_name: sbBucketName.trim(), access_key_id: sbAccessKey.trim(),
+			secret_access_key: sbSecretKey.trim(), use_path_style: sbUsePathStyle,
+		};
+		if (editingSpaceBucket) {
+			await updateSpaceBucket(spaceId, editingSpaceBucket.id, payload);
+		} else {
+			await createSpaceBucket(spaceId, payload);
+		}
+		resetSpaceBucketForm();
+		await loadSpaceBuckets();
+	} catch (e) { spaceBucketsError = e instanceof Error ? e.message : "Failed to save"; }
+	finally { spaceBucketSaving = false; }
+}
+
+async function handleDeleteSpaceBucket(id: string) {
+	if (!spaceId) return;
+	const sid = spaceId;
+	const b = spaceBuckets.find((x) => x.id === id);
+	await confirmAction(`Delete bucket "${b?.name}"?`, "Deleting", async () => {
+		await deleteSpaceBucket(sid, id);
+		await loadSpaceBuckets();
+	});
+}
+
+async function handleToggleSpaceBucket(b: StorageBucket) {
+	if (!spaceId) return;
+	togglingSpaceBucketId = b.id;
+	try {
+		if (b.is_active) { await deactivateSpaceBucket(spaceId, b.id); }
+		else { await activateSpaceBucket(spaceId, b.id); }
+		await loadSpaceBuckets();
+	} catch (e) {
+		toast(e instanceof Error ? e.message : "Failed to toggle bucket", "error");
+	} finally {
+		togglingSpaceBucketId = null;
+	}
+}
+
 const selectedSettingsMember = $derived(
 	space && selectedMemberUserId
 		? (space.members ?? []).find((m) => m.user_id === selectedMemberUserId) ?? null
@@ -386,6 +595,34 @@ const selectedSettingsRoles = $derived(
                         />
                         Members
                     </button>
+
+                    <button
+                        class="flex items-center gap-2.5 px-3 py-2 rounded-md text-sm font-medium transition-colors duration-100
+                            {activeSection === 'emojis'
+                            ? 'bg-zinc-800 text-white'
+                            : 'text-zinc-400 hover:bg-zinc-800/60 hover:text-zinc-200'}"
+                        onclick={() => (activeSection = "emojis")}
+                    >
+                        <SmileIcon
+                            class="size-4"
+                        />
+                        Emojis
+                    </button>
+
+                    {#if canManageBuckets}
+                    <button
+                        class="flex items-center gap-2.5 px-3 py-2 rounded-md text-sm font-medium transition-colors duration-100
+                            {activeSection === 'storage'
+                            ? 'bg-zinc-800 text-white'
+                            : 'text-zinc-400 hover:bg-zinc-800/60 hover:text-zinc-200'}"
+                        onclick={() => (activeSection = "storage")}
+                    >
+                        <DatabaseIcon
+                            class="size-4"
+                        />
+                        Storage
+                    </button>
+                    {/if}
                 </nav>
             </aside>
 
@@ -400,7 +637,11 @@ const selectedSettingsRoles = $derived(
                             ? "Overview"
                             : activeSection === "roles"
                               ? "Roles"
-                              : "Members"}
+                              : activeSection === "emojis"
+                                ? "Emojis"
+                                : activeSection === "storage"
+                                  ? "Storage"
+                                  : "Members"}
                     </h2>
                     <Dialog.Close
                         class="text-zinc-400 hover:text-white hover:bg-zinc-800 p-1.5 rounded-lg transition-colors duration-150"
@@ -902,6 +1143,241 @@ const selectedSettingsRoles = $derived(
 									</div>
 								{/if}
 							</div>
+						{/if}
+					{:else if activeSection === "emojis"}
+						{#if emojisLoading}
+							<p class="text-sm text-zinc-400">Loading emojis...</p>
+						{:else}
+							{#if canManageEmojis}
+								<!-- Upload new emoji -->
+								<div class="space-y-4 rounded-xl border border-zinc-700 bg-zinc-900 p-5">
+									<div class="space-y-1">
+										<h3 class="text-sm font-semibold tracking-wide text-white">Upload Emoji</h3>
+										<p class="text-xs text-zinc-400">
+											Custom emojis require a storage bucket configured for this server.
+										</p>
+									</div>
+
+									<div class="flex items-end gap-3">
+										<label class="space-y-1.5 block flex-1">
+											<span class="text-[11px] font-semibold tracking-wide text-zinc-400 uppercase">Name</span>
+											<input
+												type="text"
+												class="w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 placeholder-zinc-500 outline-none focus:border-zinc-500"
+												placeholder="emoji_name"
+												bind:value={newEmojiName}
+											/>
+										</label>
+
+										<label class="space-y-1.5 block">
+											<span class="text-[11px] font-semibold tracking-wide text-zinc-400 uppercase">Image</span>
+											<input
+												type="file"
+												accept="image/*"
+												class="block w-full text-sm text-zinc-400 file:mr-3 file:rounded-lg file:border-0 file:bg-zinc-700 file:px-3 file:py-2 file:text-sm file:font-medium file:text-zinc-200 hover:file:bg-zinc-600 file:cursor-pointer file:transition-colors"
+												onchange={handleEmojiFileChange}
+											/>
+										</label>
+
+										<button
+											class="flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed"
+											onclick={handleUploadEmoji}
+											disabled={isUploadingEmoji || !newEmojiName.trim() || !newEmojiFile}
+										>
+											<UploadIcon class="size-4" />
+											{isUploadingEmoji ? "Uploading..." : "Upload"}
+										</button>
+									</div>
+								</div>
+							{/if}
+
+							<!-- Emoji list -->
+							{#if spaceEmojis.length === 0}
+								<div class="flex flex-col items-center justify-center py-12 text-center">
+									<SmileIcon class="size-10 text-zinc-600 mb-3" />
+									<p class="text-sm text-zinc-400">No custom emojis yet.</p>
+									{#if canManageEmojis}
+										<p class="text-xs text-zinc-500 mt-1">Upload one above to get started.</p>
+									{/if}
+								</div>
+							{:else}
+								<div class="space-y-1">
+									{#each spaceEmojis as emoji (emoji.id)}
+										<div class="flex items-center gap-3 rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2.5 group">
+											<img
+												src="{attachmentHost}/attachments/{emoji.attachment_id}"
+												alt=":{emoji.name}:"
+												class="size-8 rounded object-contain"
+											/>
+
+											{#if editingEmojiId === emoji.id}
+												<input
+													type="text"
+													class="flex-1 rounded-md border border-zinc-600 bg-zinc-700 px-2 py-1 text-sm text-zinc-100 outline-none focus:border-zinc-500"
+													bind:value={editingEmojiName}
+													onkeydown={(e) => { if (e.key === "Enter") handleUpdateEmoji(); if (e.key === "Escape") cancelEmojiEdit(); }}
+												/>
+												<button
+													class="rounded p-1.5 text-green-400 hover:bg-zinc-700 transition-colors"
+													onclick={handleUpdateEmoji}
+													title="Save"
+												>
+													<CheckIcon class="size-4" />
+												</button>
+												<button
+													class="rounded p-1.5 text-zinc-400 hover:bg-zinc-700 transition-colors"
+													onclick={cancelEmojiEdit}
+													title="Cancel"
+												>
+													<XIcon class="size-4" />
+												</button>
+											{:else}
+												<div class="flex-1 min-w-0">
+													<p class="text-sm font-medium text-zinc-200 truncate">:{emoji.name}:</p>
+												</div>
+
+												{#if canManageEmojis}
+													<button
+														class="rounded p-1.5 text-zinc-400 opacity-0 group-hover:opacity-100 hover:bg-zinc-700 hover:text-zinc-200 transition-all"
+														onclick={() => startEmojiEdit(emoji)}
+														title="Rename"
+													>
+														<PencilIcon class="size-4" />
+													</button>
+													<button
+														class="rounded p-1.5 text-zinc-400 opacity-0 group-hover:opacity-100 hover:bg-zinc-700 hover:text-red-400 transition-all"
+														onclick={() => handleDeleteEmoji(emoji.id)}
+														disabled={isDeletingEmoji[emoji.id]}
+														title="Delete"
+													>
+														<TrashIcon class="size-4" />
+													</button>
+												{/if}
+											{/if}
+										</div>
+									{/each}
+								</div>
+							{/if}
+						{/if}
+					{:else if activeSection === "storage"}
+						{#if canManageBuckets}
+							<p class="text-xs text-zinc-500 mb-4">Connect an S3-compatible bucket for this server's storage. When a bucket is active, uploads go to your bucket.</p>
+
+							{#if spaceBucketsError}
+								<p class="text-sm text-red-400 bg-red-400/10 rounded-md px-3 py-2 mb-4">{spaceBucketsError}</p>
+							{/if}
+
+							<!-- Create / Edit form -->
+							{#if showSpaceBucketForm}
+								<div class="rounded-lg border border-zinc-800 bg-zinc-800/40 p-4 mb-4 space-y-3">
+									<h3 class="text-sm font-semibold text-white">{editingSpaceBucket ? "Edit Bucket" : "New Bucket"}</h3>
+									<div class="grid grid-cols-2 gap-3">
+										<div>
+											<label for="sb-name" class="mb-1 block text-xs font-semibold text-zinc-400 uppercase">Name</label>
+											<input id="sb-name" type="text" bind:value={sbName} placeholder="My R2" class="h-9 w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 text-sm text-white placeholder-zinc-500 outline-none focus:border-stone-500" />
+										</div>
+										<div>
+											<label for="sb-region" class="mb-1 block text-xs font-semibold text-zinc-400 uppercase">Region</label>
+											<input id="sb-region" type="text" bind:value={sbRegion} placeholder="auto" class="h-9 w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 text-sm text-white placeholder-zinc-500 outline-none focus:border-stone-500" />
+										</div>
+									</div>
+									<div>
+										<label for="sb-endpoint" class="mb-1 block text-xs font-semibold text-zinc-400 uppercase">Endpoint</label>
+										<input id="sb-endpoint" type="text" bind:value={sbEndpoint} placeholder="https://account-id.r2.cloudflarestorage.com" class="h-9 w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 text-sm text-white placeholder-zinc-500 outline-none focus:border-stone-500" />
+									</div>
+									<div>
+										<label for="sb-bucket-name" class="mb-1 block text-xs font-semibold text-zinc-400 uppercase">Bucket Name</label>
+										<input id="sb-bucket-name" type="text" bind:value={sbBucketName} placeholder="my-bucket" class="h-9 w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 text-sm text-white placeholder-zinc-500 outline-none focus:border-stone-500" />
+									</div>
+									<div class="grid grid-cols-2 gap-3">
+										<div>
+											<label for="sb-access-key" class="mb-1 block text-xs font-semibold text-zinc-400 uppercase">Access Key ID</label>
+											<input id="sb-access-key" type="text" bind:value={sbAccessKey} placeholder="access key" class="h-9 w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 text-sm text-white placeholder-zinc-500 outline-none focus:border-stone-500" />
+										</div>
+										<div>
+											<label for="sb-secret-key" class="mb-1 block text-xs font-semibold text-zinc-400 uppercase">Secret Access Key</label>
+											<input id="sb-secret-key" type="password" bind:value={sbSecretKey} placeholder={editingSpaceBucket ? "leave empty to keep current" : "secret key"} class="h-9 w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 text-sm text-white placeholder-zinc-500 outline-none focus:border-stone-500" />
+										</div>
+									</div>
+									<label class="flex items-center gap-2 cursor-pointer">
+										<input type="checkbox" bind:checked={sbUsePathStyle} class="size-4 rounded border-zinc-600 bg-zinc-800 accent-stone-500" />
+										<span class="text-xs text-zinc-400">Use path-style addressing <span class="text-zinc-600">(required for MinIO, RustFS, etc.)</span></span>
+									</label>
+									<div class="flex justify-end gap-2 pt-1">
+										<button class="rounded-md px-3 py-1.5 text-sm text-zinc-300 hover:bg-zinc-800 transition-colors" onclick={resetSpaceBucketForm}>Cancel</button>
+										<button class="rounded-md bg-stone-600 px-4 py-1.5 text-sm font-semibold text-white hover:bg-stone-500 transition-colors disabled:opacity-50" disabled={spaceBucketSaving} onclick={handleSaveSpaceBucket}>
+											{spaceBucketSaving ? "Saving..." : editingSpaceBucket ? "Update" : "Create"}
+										</button>
+									</div>
+								</div>
+							{:else}
+								<button class="flex items-center gap-2 rounded-md bg-stone-600/20 px-3 py-2 text-sm font-medium text-stone-300 hover:bg-stone-600/30 transition-colors mb-4" onclick={() => { resetSpaceBucketForm(); showSpaceBucketForm = true; }}>
+									<PlusIcon class="size-4" /> Add Bucket
+								</button>
+							{/if}
+
+							<!-- Bucket list -->
+							{#if spaceBucketsLoading}
+								<div class="space-y-2">
+									{#each Array(3) as _}
+										<div class="h-16 rounded-lg bg-zinc-800/40 animate-pulse"></div>
+									{/each}
+								</div>
+							{:else if spaceBuckets.length === 0}
+								<div class="flex flex-col items-center justify-center py-12 text-zinc-500">
+									<DatabaseIcon class="size-10 mb-3" />
+									<p class="text-sm">No buckets configured</p>
+									<p class="text-xs text-zinc-600 mt-1">Add a bucket to enable custom emoji uploads.</p>
+								</div>
+							{:else}
+								<div class="space-y-2">
+									{#each spaceBuckets as bucket (bucket.id)}
+										<div class="flex items-center gap-3 rounded-lg border border-zinc-800 bg-zinc-800/30 px-4 py-3 group hover:bg-zinc-800/50 transition-colors">
+											<div class="flex-1 min-w-0">
+												<div class="flex items-center gap-2">
+													<span class="text-sm font-medium text-zinc-200">{bucket.name}</span>
+													{#if bucket.is_active}
+														<span class="text-xxs font-semibold px-1.5 py-0.5 rounded bg-emerald-600/20 text-emerald-400">ACTIVE</span>
+													{/if}
+												</div>
+												<p class="text-xs text-zinc-500 truncate mt-0.5">{bucket.bucket_name} · {bucket.endpoint}</p>
+											</div>
+											<div class="flex items-center gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+												<button
+													class="flex h-8 w-8 items-center justify-center rounded-md text-zinc-500 hover:bg-zinc-700 hover:text-zinc-200 transition-all disabled:opacity-50"
+													title={bucket.is_active ? "Deactivate" : "Activate"}
+													onclick={() => handleToggleSpaceBucket(bucket)}
+													disabled={togglingSpaceBucketId === bucket.id}
+												>
+													{#if togglingSpaceBucketId === bucket.id}
+														<div class="size-4 rounded-full border-2 border-zinc-500 border-t-transparent animate-spin"></div>
+													{:else if bucket.is_active}
+														<XIcon class="size-4" />
+													{:else}
+														<CheckIcon class="size-4" />
+													{/if}
+												</button>
+												<button
+													class="flex h-8 w-8 items-center justify-center rounded-md text-zinc-500 hover:bg-zinc-700 hover:text-zinc-200 transition-all"
+													title="Edit"
+													onclick={() => startEditSpaceBucket(bucket)}
+												>
+													<PencilIcon class="size-4" />
+												</button>
+												<button
+													class="flex h-8 w-8 items-center justify-center rounded-md text-zinc-500 hover:bg-red-600/20 hover:text-red-400 transition-all"
+													title="Delete"
+													onclick={() => handleDeleteSpaceBucket(bucket.id)}
+												>
+													<TrashIcon class="size-4" />
+												</button>
+											</div>
+										</div>
+									{/each}
+								</div>
+							{/if}
+						{:else}
+							<p class="text-sm text-zinc-400">You don't have permission to manage storage for this server.</p>
 						{/if}
 					{/if}
                 </div>

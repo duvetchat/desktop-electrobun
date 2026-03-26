@@ -429,6 +429,11 @@
 		pointer-events: none;
 	}
 
+	img.emoji-img {
+		object-fit: contain;
+		color: inherit;
+	}
+
 	.emoji-img::after {
 		content: '';
 		position: absolute;

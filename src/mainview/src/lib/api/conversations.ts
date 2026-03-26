@@ -55,6 +55,8 @@ export interface DirectMessage {
 		banner: string | null;
 	};
 	attachments?: import("$lib/types").Attachment[] | null;
+	reactions?: import("$lib/types").MessageReaction[] | null;
+	embeds?: import("$lib/types").Embed[] | null;
 }
 
 function authHeaders(): HeadersInit {
@@ -139,6 +141,31 @@ export async function getDirectMessages(
 	if (before) query.set("before", before);
 
 	const res = await fetch(`${HOST}/api/users/@me/conversations/${conversationId}/messages?${query}`, {
+		headers: authHeaders(),
+		signal,
+	});
+	return handleResponse<DirectMessage[]>(res);
+}
+
+export async function getDirectMessageById(
+	conversationId: string,
+	messageId: string,
+	signal?: AbortSignal,
+): Promise<DirectMessage> {
+	const res = await fetch(`${HOST}/api/users/@me/conversations/${conversationId}/messages/${messageId}`, {
+		headers: authHeaders(),
+		signal,
+	});
+	return handleResponse<DirectMessage>(res);
+}
+
+export async function getDirectMessagesAfter(
+	conversationId: string,
+	after: string,
+	signal?: AbortSignal,
+): Promise<DirectMessage[]> {
+	const query = new URLSearchParams({ count: "100", after });
+	const res = await fetch(`${HOST}/api/users/@me/conversations/${conversationId}/messages/after?${query}`, {
 		headers: authHeaders(),
 		signal,
 	});

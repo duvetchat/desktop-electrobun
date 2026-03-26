@@ -6,7 +6,7 @@
     import { currentUser, friends, pendingFriendRequests, sentFriendRequests } from "$lib/stores.svelte";
     import { assignRoleToMember, removeRoleFromMember } from "$lib/api/roles";
     import { sendFriendRequest, getSentRequests } from "$lib/api/friends";
-    import { Permission } from "$lib/permissions";
+    import { Permission, ALL_PERMISSIONS } from "$lib/permissions";
     import UserAvatar from "$lib/components/UserAvatar.svelte";
 
     let {
@@ -73,22 +73,11 @@
     }
 
     function getMemberPermissions(m: MemberOnSidebar): string[] {
-        const permissionsMap: Array<[number, string]> = [
-            [Permission.Administrator, "Administrator"],
-            [Permission.ViewChannels, "View Channels"],
-            [Permission.SendMessages, "Send Messages"],
-            [Permission.ManageMessages, "Manage Messages"],
-            [Permission.ManageChannels, "Manage Channels"],
-            [Permission.ChangeNickname, "Change Nickname"],
-            [Permission.JoinVoice, "Join Voice"],
-            [Permission.SpeakInVoice, "Speak in Voice"],
-            [Permission.ManageRoles, "Manage Roles"],
-        ];
         const set = new Set<string>();
         if (m.is_owner) set.add("Administrator");
         let combined = 0;
         for (const role of m.roles) combined |= role.permissions;
-        for (const [flag, name] of permissionsMap) {
+        for (const { flag, name } of ALL_PERMISSIONS) {
             if ((combined & flag) === flag) set.add(name);
         }
         return Array.from(set).sort();

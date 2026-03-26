@@ -51,17 +51,22 @@ export function renderEmoji(text: string, large = false): string {
 	});
 }
 
+const CUSTOM_EMOJI_REGEX = /<:[a-f0-9-]+:>/g;
+
 /** Returns true if the string contains ONLY emoji (+ optional whitespace). */
 export function isOnlyEmojis(text: string): boolean {
 	const trimmed = text.trim();
 	if (!trimmed) return false;
-	const stripped = trimmed.replace(EMOJI_REGEX, "").replace(/\s/g, "");
+	const stripped = trimmed
+		.replace(EMOJI_REGEX, "")
+		.replace(CUSTOM_EMOJI_REGEX, "")
+		.replace(/\s/g, "");
 	return stripped.length === 0;
 }
 
 /** Count the number of emoji in a string. */
 export function countEmojis(text: string): number {
-	return [...text.matchAll(EMOJI_REGEX)].length;
+	return [...text.matchAll(EMOJI_REGEX)].length + [...text.matchAll(CUSTOM_EMOJI_REGEX)].length;
 }
 
 // ── Emoji data ────────────────────────────────────────────────────────────

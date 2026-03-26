@@ -6,7 +6,13 @@ import EmojiPicker from "$lib/components/EmojiPicker.svelte";
 import GifPicker from "$lib/components/GifPicker.svelte";
 import { searchEmojis, toTwemojiUrl, type EmojiEntry } from "$lib/emoji";
 import UserAvatar from "$lib/components/UserAvatar.svelte";
-import type { MemberOnSidebar } from "$lib/types";
+import type { MemberOnSidebar, SpaceEmoji } from "$lib/types";
+import { getHostURL } from "$lib/common/common";
+
+const ceHost = getHostURL();
+
+// Module-level clipboard fallback shared across all ChatInput instances
+let internalClipboard: string | null = null;
 
 const EMOJI_RE =
 	/\p{Regional_Indicator}{2}|(?:\p{Emoji_Presentation}|\p{Emoji}\uFE0F)(?:\u200D(?:\p{Emoji_Presentation}|\p{Emoji})\uFE0F?|\uD83C[\uDFFB-\uDFFF])*|[\d#*]\uFE0F?\u20E3/gu;
@@ -22,6 +28,7 @@ let {
 	showActions = true,
 	autofocus = false,
 	members = [],
+	customEmojis = [],
 	pendingFiles = $bindable<File[]>([]),
 }: {
 	placeholder?: string;
@@ -34,6 +41,7 @@ let {
 	showActions?: boolean;
 	autofocus?: boolean;
 	members?: MemberOnSidebar[];
+	customEmojis?: SpaceEmoji[];
 	pendingFiles?: File[];
 } = $props();
 
@@ -122,6 +130,20 @@ onMount(() => {
 	}
 });
 
+// Re-render when customEmojis arrives (edit input may mount before emojis load)
+let hadCustomEmojis = $state(false);
+$effect(() => {
+	const count = customEmojis.length;
+	if (count > 0 && !hadCustomEmojis && inputEl) {
+		hadCustomEmojis = true;
+		const raw = getRaw(inputEl);
+		if (raw.includes("<:")) {
+			const pos = getOffset();
+			rerender(raw, pos);
+		}
+	}
+});
+
 // ── Autocomplete ────────────────────────────────────────────────────────────
 let suggestions = $state<EmojiEntry[]>([]);
 let selectedIdx = $state(0);
@@ -137,6 +159,16 @@ function resolveMentionName(id: string): string {
 	return m ? (m.username || m.raw_username) : id.slice(0, 8);
 }
 
+function resolveCustomEmojiName(id: string): string {
+	const ce = customEmojis.find((e) => e.id === id);
+	return ce ? ce.name : id.slice(0, 8);
+}
+
+function resolveCustomEmojiUrl(id: string): string {
+	const ce = customEmojis.find((e) => e.id === id);
+	return ce ? `${ceHost}/attachments/${ce.attachment_id}` : "";
+}
+
 function buildHtml(text: string): string {
 	if (!text) return "";
 	EMOJI_RE.lastIndex = 0;
@@ -146,6 +178,11 @@ function buildHtml(text: string): string {
 		.replace(/>/g, "&gt;")
 		.replace(/&lt;@([a-f0-9-]+)&gt;/g, (_, id) =>
 			`<span class="mention-chip" contenteditable="false" data-mention="${id}">@${resolveMentionName(id)}</span>`)
+		.replace(/&lt;:([a-f0-9-]+):&gt;/g, (_, id) => {
+			const url = resolveCustomEmojiUrl(id);
+			if (!url) return `&lt;:${id}:&gt;`;
+			return `<img class="emoji-img custom-emoji-chip" src="${url}" alt=":${resolveCustomEmojiName(id)}:" data-cemoji="${id}" draggable="false" contenteditable="false">`;
+		})
 		.replace(
 			EMOJI_RE,
 			(e) =>
@@ -155,23 +192,7 @@ function buildHtml(text: string): string {
 
 // ── DOM helpers ─────────────────────────────────────────────────────────────
 function getRaw(el: HTMLElement): string {
-	let s = "";
-	for (const n of Array.from(el.childNodes)) {
-		if (n.nodeType === Node.TEXT_NODE) {
-			s += n.textContent ?? "";
-		} else {
-			const elem = n as HTMLElement;
-			const tag = elem.tagName;
-			if (elem.dataset?.mention) {
-				s += `<@${elem.dataset.mention}>`;
-			} else if (tag === "IMG") s += (n as HTMLImageElement).alt ?? "";
-			else if (tag === "BR") s += "";
-			else if (tag === "DIV" || tag === "P")
-				s += "\n" + getRaw(elem);
-			else s += getRaw(elem);
-		}
-	}
-	return s;
+	return getRawFromChildren(el);
 }
 
 // Cursor position as UTF-16 offset in raw text
@@ -181,6 +202,15 @@ function getOffset(): number {
 	const range = sel.getRangeAt(0);
 	let off = 0;
 
+	function rawLen(n: Node): number {
+		const mention = (n as Element).getAttribute?.("data-mention");
+		if (mention) return `<@${mention}>`.length;
+		const cemoji = (n as Element).getAttribute?.("data-cemoji");
+		if (cemoji) return `<:${cemoji}:>`.length;
+		if ((n as Element).tagName === "IMG") return ((n as HTMLImageElement).alt ?? "").length;
+		return -1; // not an atomic node
+	}
+
 	function walk(n: Node): boolean {
 		if (n === range.startContainer) {
 			off += range.startOffset;
@@ -188,12 +218,10 @@ function getOffset(): number {
 		}
 		if (n.nodeType === Node.TEXT_NODE) {
 			off += (n.textContent ?? "").length;
-		} else if ((n as HTMLElement).dataset?.mention) {
-			off += `<@${(n as HTMLElement).dataset.mention}>`.length;
-		} else if ((n as Element).tagName === "IMG") {
-			off += ((n as HTMLImageElement).alt ?? "").length;
 		} else {
-			for (const c of Array.from(n.childNodes)) if (walk(c)) return true;
+			const len = rawLen(n);
+			if (len >= 0) { off += len; }
+			else { for (const c of Array.from(n.childNodes)) if (walk(c)) return true; }
 		}
 		return false;
 	}
@@ -208,6 +236,15 @@ function setOffset(target: number): void {
 	const range = document.createRange();
 	let placed = false;
 
+	function atomicLen(n: Node): number {
+		const mention = (n as Element).getAttribute?.("data-mention");
+		if (mention) return `<@${mention}>`.length;
+		const cemoji = (n as Element).getAttribute?.("data-cemoji");
+		if (cemoji) return `<:${cemoji}:>`.length;
+		if ((n as Element).tagName === "IMG") return ((n as HTMLImageElement).alt ?? "").length;
+		return -1;
+	}
+
 	function walk(n: Node): boolean {
 		if (n.nodeType === Node.TEXT_NODE) {
 			const len = (n.textContent ?? "").length;
@@ -217,24 +254,18 @@ function setOffset(target: number): void {
 				return true;
 			}
 			rem -= len;
-		} else if ((n as HTMLElement).dataset?.mention) {
-			const len = `<@${(n as HTMLElement).dataset.mention}>`.length;
-			if (rem <= len) {
-				range.setStartAfter(n);
-				range.collapse(true);
-				return true;
-			}
-			rem -= len;
-		} else if ((n as Element).tagName === "IMG") {
-			const len = ((n as HTMLImageElement).alt ?? "").length;
-			if (rem <= 0) {
-				range.setStartBefore(n);
-				range.collapse(true);
-				return true;
-			}
-			rem -= len;
 		} else {
-			for (const c of Array.from(n.childNodes)) if (walk(c)) return true;
+			const len = atomicLen(n);
+			if (len >= 0) {
+				if (rem <= len) {
+					range.setStartAfter(n);
+					range.collapse(true);
+					return true;
+				}
+				rem -= len;
+			} else {
+				for (const c of Array.from(n.childNodes)) if (walk(c)) return true;
+			}
 		}
 		return false;
 	}
@@ -318,11 +349,16 @@ function checkAutocomplete(raw: string, cursor: number) {
 	mentionSuggestions = [];
 	mentionQueryStart = -1;
 
-	// Check :emoji autocomplete
-	const m = /:([\w\d]{1,})$/.exec(before);
+	// Check :emoji autocomplete (custom + default)
+	const m = /:([\w\d_]{1,})$/.exec(before);
 	if (m) {
 		emojiQueryStart = before.length - m[0].length;
-		suggestions = searchEmojis(m[1]).slice(0, 10);
+		const query = m[1].toLowerCase();
+		const customMatches: EmojiEntry[] = customEmojis
+			.filter((ce) => ce.name.toLowerCase().includes(query))
+			.map((ce) => ({ emoji: `<:${ce.id}:>`, name: ce.name, customEmojiId: ce.id, customAttachmentId: ce.attachment_id } as EmojiEntry & { customEmojiId: string; customAttachmentId: string }));
+		const defaultMatches = searchEmojis(m[1]);
+		suggestions = [...customMatches, ...defaultMatches].slice(0, 10);
 		selectedIdx = 0;
 	} else {
 		suggestions = [];
@@ -485,17 +521,132 @@ function getSelectionRange(): { start: number; end: number } {
 	return { start: Math.min(startOff, endOff), end: Math.max(startOff, endOff) };
 }
 
+function getRawFromNode(n: Node): string {
+	if (n.nodeType === Node.TEXT_NODE) return n.textContent ?? "";
+	const elem = n as HTMLElement;
+	const tag = elem.tagName;
+	const mention = elem.getAttribute("data-mention");
+	if (mention) return `<@${mention}>`;
+	const cemoji = elem.getAttribute("data-cemoji");
+	if (cemoji) return `<:${cemoji}:>`;
+	if (tag === "IMG") return (n as HTMLImageElement).alt ?? "";
+	if (tag === "BR") return "";
+	if (tag === "DIV" || tag === "P") return "\n" + getRawFromChildren(n);
+	return getRawFromChildren(n);
+}
+
+function getRawFromChildren(parent: Node): string {
+	let s = "";
+	for (const c of Array.from(parent.childNodes)) s += getRawFromNode(c);
+	return s;
+}
+
+function measureRawOffset(container: Node, offset: number): number {
+	let count = 0;
+
+	function nodeLen(n: Node): number {
+		if (n.nodeType === Node.TEXT_NODE) return (n.textContent ?? "").length;
+		const el = n as Element;
+		const mention = el.getAttribute?.("data-mention");
+		if (mention) return `<@${mention}>`.length;
+		const cemoji = el.getAttribute?.("data-cemoji");
+		if (cemoji) return `<:${cemoji}:>`.length;
+		if (el.tagName === "IMG") return ((n as HTMLImageElement).alt ?? "").length;
+		return -1; // has children
+	}
+
+	function walk(n: Node): boolean {
+		if (n === container) {
+			if (n.nodeType === Node.TEXT_NODE) {
+				count += offset;
+			} else {
+				// offset is child index
+				const children = Array.from(n.childNodes);
+				for (let i = 0; i < offset && i < children.length; i++) {
+					const len = nodeLen(children[i]);
+					if (len >= 0) { count += len; }
+					else { walkAll(children[i]); }
+				}
+			}
+			return true;
+		}
+		const len = nodeLen(n);
+		if (len >= 0) { count += len; return false; }
+		for (const c of Array.from(n.childNodes)) {
+			if (walk(c)) return true;
+		}
+		return false;
+	}
+
+	function walkAll(n: Node) {
+		const len = nodeLen(n);
+		if (len >= 0) { count += len; return; }
+		for (const c of Array.from(n.childNodes)) walkAll(c);
+	}
+
+	walk(inputEl);
+	return count;
+}
+
+function getSelectedRaw(): string | null {
+	const sel = window.getSelection();
+	if (!sel || sel.isCollapsed || sel.rangeCount === 0) return null;
+	const range = sel.getRangeAt(0);
+	const raw = getRaw(inputEl);
+	const s = measureRawOffset(range.startContainer, range.startOffset);
+	const e = measureRawOffset(range.endContainer, range.endOffset);
+	const start = Math.min(s, e);
+	const end = Math.max(s, e);
+	if (start === end) return null;
+	return raw.slice(start, end);
+}
+
+function handleCopy(e: ClipboardEvent) {
+	const text = getSelectedRaw();
+	if (text == null) return;
+	e.preventDefault();
+	internalClipboard = text;
+	if (e.clipboardData) {
+		e.clipboardData.setData("text/plain", text);
+	}
+	navigator.clipboard.writeText(text).catch(() => {});
+}
+
+function handleCut(e: ClipboardEvent) {
+	const text = getSelectedRaw();
+	if (text == null) return;
+	e.preventDefault();
+	internalClipboard = text;
+	if (e.clipboardData) {
+		e.clipboardData.setData("text/plain", text);
+	}
+	navigator.clipboard.writeText(text).catch(() => {});
+	window.getSelection()?.deleteFromDocument();
+	const raw = getRaw(inputEl);
+	const pos = getOffset();
+	rerender(raw, pos);
+	pushUndo(raw, pos);
+	isEmpty = !raw.trim();
+	onValueChange?.(raw);
+}
+
 function handlePaste(e: ClipboardEvent) {
 	e.preventDefault();
 	if (e.clipboardData?.files && e.clipboardData.files.length > 0) {
 		pendingFiles = [...pendingFiles, ...Array.from(e.clipboardData.files)];
 	}
-	const text = e.clipboardData?.getData("text/plain") ?? "";
+	const osText = e.clipboardData?.getData("text/plain") ?? "";
+	// Prefer internal clipboard if it matches what OS clipboard would give us (same copy session)
+	const text = internalClipboard ?? osText;
 	if (!text) return;
+	const sel = window.getSelection();
+	if (sel && !sel.isCollapsed) {
+		sel.deleteFromDocument();
+	}
 	const raw = getRaw(inputEl);
-	const { start, end } = getSelectionRange();
-	const newRaw = raw.slice(0, start) + text + raw.slice(end);
-	const newPos = start + text.length;
+	const pos = getOffset();
+	const newRaw = raw.slice(0, pos) + text + raw.slice(pos);
+	const newPos = pos + text.length;
 	rerender(newRaw, newPos);
 	pushUndo(newRaw, newPos);
 	isEmpty = !newRaw.trim();
@@ -528,6 +679,18 @@ function handleEmojiPick(emoji: string) {
 
 export function focus() {
 	requestAnimationFrame(() => inputEl?.focus());
+}
+
+export function focusAndInsert(char: string) {
+	if (!inputEl) return;
+	inputEl.focus();
+	const raw = getRaw(inputEl);
+	const pos = raw.length;
+	const newRaw = raw + char;
+	rerender(newRaw, pos + char.length);
+	pushUndo(newRaw, pos + char.length);
+	isEmpty = false;
+	onValueChange?.(newRaw);
 }
 </script>
 
@@ -573,12 +736,21 @@ export function focus() {
 					}}
 					onmouseenter={() => (selectedIdx = i)}
 				>
-					<img
-						src={toTwemojiUrl(entry.emoji)}
-						alt={entry.emoji}
-						class="size-[22px] shrink-0"
-						loading="lazy"
-					/>
+					{#if 'customAttachmentId' in entry}
+						<img
+							src="{ceHost}/attachments/{entry.customAttachmentId}"
+							alt=":{entry.name}:"
+							class="size-[22px] shrink-0 object-contain"
+							loading="lazy"
+						/>
+					{:else}
+						<img
+							src={toTwemojiUrl(entry.emoji)}
+							alt={entry.emoji}
+							class="size-[22px] shrink-0"
+							loading="lazy"
+						/>
+					{/if}
 					<span class="text-[13px] text-[oklch(0.85_0.008_80)]">:{entry.name.replace(/ /g, "_")}:</span>
 				</button>
 			{/each}
@@ -624,6 +796,8 @@ export function focus() {
 					onkeydown={handleKeyDown}
 					oninput={handleInput}
 					onpaste={handlePaste}
+				oncopy={handleCopy}
+				oncut={handleCut}
 				></div>
 			</div>
 
@@ -663,7 +837,7 @@ export function focus() {
 					</Popover.Trigger>
 					<Popover.Portal>
 						<Popover.Content side="top" align="end" sideOffset={10} class="z-80">
-							<EmojiPicker onSelect={handleEmojiPick} />
+							<EmojiPicker onSelect={handleEmojiPick} {customEmojis} />
 						</Popover.Content>
 					</Popover.Portal>
 				</Popover.Root>

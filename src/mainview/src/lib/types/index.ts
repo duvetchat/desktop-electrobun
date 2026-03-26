@@ -97,6 +97,13 @@ export const MessageType = {
 
 export type MessageType = (typeof MessageType)[keyof typeof MessageType];
 
+export interface MessageReaction {
+	emoji_name: string;
+	emoji_id?: string | null;
+	count: number;
+	users: string[];
+}
+
 export interface GatewayMessage {
 	id: string;
 	room_id: string;
@@ -113,6 +120,7 @@ export interface GatewayMessage {
 	ref_message_id?: string | null;
 	embeds?: Embed[] | null;
 	attachments?: Attachment[] | null;
+	reactions?: MessageReaction[] | null;
 }
 
 export interface Message {
@@ -129,6 +137,7 @@ export interface Message {
 	ref_message_id?: string | null;
 	embeds?: Embed[] | null;
 	attachments?: Attachment[] | null;
+	reactions?: MessageReaction[] | null;
 }
 
 export interface GatewayMessageDelete {
@@ -245,6 +254,16 @@ export interface GatewaySpace {
 	deleted_at: string | null;
 }
 
+export interface SpaceEmoji {
+	id: string;
+	name: string;
+	space_id: string;
+	attachment_id: string;
+	created_at: string;
+	updated_at: string;
+	deleted_at: string | null;
+}
+
 export interface GatewaySpaceCreatePayload {
 	space: {
 		id: string;
@@ -340,6 +359,7 @@ export function gatewayMessageToMessage(
 		ref_message_id: msg.ref_message_id ?? null,
 		embeds: msg.embeds ?? null,
 		attachments: msg.attachments ?? null,
+		reactions: msg.reactions ?? null,
 	};
 }
 

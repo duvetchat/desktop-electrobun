@@ -2,7 +2,7 @@
     import { EmbedType, type Embed } from "$lib/types";
     import { getHostURL } from "$lib/common/common";
 
-    let { embed }: { embed: Embed } = $props();
+    let { embed, onImageClick }: { embed: Embed; onImageClick?: (src: string) => void } = $props();
 
     const PROXY_HOSTS = new Set(["video.twimg.com"]);
 
@@ -52,8 +52,10 @@
         <video src={proxyVideoUrl(embed.video.url)} loop muted playsinline controls
                class="mt-1 max-w-xs rounded self-start"></video>
     {:else if embed.image}
-        <img src={embed.image.url} alt=""
-             class="mt-1 max-w-xs rounded self-start" loading="lazy" />
+        <button type="button" class="mt-1 max-w-xs rounded self-start cursor-zoom-in block" onclick={() => onImageClick?.(embed.image!.url)}>
+            <img src={embed.image.url} alt=""
+                 class="max-w-xs rounded" loading="lazy" />
+        </button>
     {/if}
 {:else if embed.title || embed.description || embed.video || embed.image}
     <div
@@ -137,15 +139,10 @@
                 </div>
             {/if}
         {:else if embed.image}
-            {#if embed.url}
-                <a href={embed.url} target="_blank" rel="noopener noreferrer" class="block">
-                    <img src={embed.image.url} alt=""
-                         class="max-w-full max-h-64 object-cover w-full" loading="lazy" />
-                </a>
-            {:else}
+            <button type="button" class="block w-full cursor-zoom-in" onclick={() => onImageClick?.(embed.image!.url)}>
                 <img src={embed.image.url} alt=""
                      class="max-w-full max-h-64 object-cover w-full" loading="lazy" />
-            {/if}
+            </button>
         {/if}
     </div>
 {/if}

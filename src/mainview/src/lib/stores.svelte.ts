@@ -1,7 +1,7 @@
 import { SvelteSet } from "svelte/reactivity";
 import { writable } from "svelte/store";
 
-import type { GatewaySpace, GatewayUser, Message } from "$lib/types";
+import type { GatewaySpace, GatewayUser, Message, SpaceEmoji } from "$lib/types";
 import type { FriendRequest, Friend } from "$lib/api/friends";
 import type { Conversation, DirectMessage } from "$lib/api/conversations";
 
@@ -60,6 +60,7 @@ export const currentUser = writable<GatewayUser | null>(null);
 export const wsSessionToken = writable<string | null>(null);
 export const channelMessages = writable<Record<string, Message[]>>({});
 export const speakingUsers = writable<SvelteSet<string>>(new SvelteSet());
+export const spaceEmojis = writable<Record<string, SpaceEmoji[]>>({});
 
 export const pendingFriendRequests = writable<FriendRequest[]>([]);
 export const sentFriendRequests = writable<FriendRequest[]>([]);
@@ -107,6 +108,7 @@ export const jumpToMessageRequest = writable<{
 	spaceId: string;
 	roomId: string;
 	messageId: string;
+	conversationId?: string;
 } | null>(null);
 
 export type CallState = "idle" | "calling" | "ringing" | "connected";

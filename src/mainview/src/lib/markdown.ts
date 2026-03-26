@@ -1,5 +1,12 @@
 import { renderEmoji } from "./emoji";
 import { createHighlighter, type Highlighter } from "shiki";
+import { getHostURL } from "$lib/common/common";
+
+export interface CustomEmojiMap {
+	[id: string]: { name: string; attachment_id: string };
+}
+
+const emojiHost = getHostURL();
 
 let highlighterPromise: Promise<Highlighter> | null = null;
 let highlighter: Highlighter | null = null;
@@ -44,7 +51,7 @@ function isBlockHtml(s: string): boolean {
 	return /^<(h[123]|blockquote|pre)[\s>]/.test(s);
 }
 
-function applyInline(s: string, mentionMap?: Record<string, string>): string {
+function applyInline(s: string, large: boolean, mentionMap?: Record<string, string>, customEmojiMap?: CustomEmojiMap): string {
 	s = s.replace(/\*\*\*(.+?)\*\*\*/gs, (_, t) => `<strong><em>${t}</em></strong>`);
 	s = s.replace(/\*\*(.+?)\*\*/gs, (_, t) => `<strong>${t}</strong>`);
 	s = s.replace(/\*([^\s*](?:[^*]*[^\s*])?)\*/gs, (_, t) => `<em>${t}</em>`);
@@ -56,6 +63,13 @@ function applyInline(s: string, mentionMap?: Record<string, string>): string {
 	s = s.replace(/&lt;@([a-f0-9-]+)&gt;/g, (_, id) => {
 		const name = mentionMap?.[id] ?? id.slice(0, 8);
 		return `<span class="msg-mention">@${escapeHtml(name)}</span>`;
+	});
+	// Resolve <:id:> custom emojis to inline images
+	const ceCls = large ? "emoji-img emoji-large custom-emoji" : "emoji-img custom-emoji";
+	s = s.replace(/&lt;:([a-f0-9-]+):&gt;/g, (full, id) => {
+		const ce = customEmojiMap?.[id];
+		if (!ce) return full;
+		return `<img class="${ceCls}" src="${emojiHost}/attachments/${ce.attachment_id}" alt="<:${id}:>" title=":${escapeHtml(ce.name)}:" draggable="false" loading="lazy">`;
 	});
 	return s;
 }
@@ -83,7 +97,7 @@ function highlightCode(code: string, lang: string): string {
 	}
 }
 
-export function renderMarkdown(input: string, large = false, mentionMap?: Record<string, string>): string {
+export function renderMarkdown(input: string, large = false, mentionMap?: Record<string, string>, customEmojiMap?: CustomEmojiMap): string {
 	// ── 1. Extract fenced code blocks ─────────────────────────────────────────
 	const codeBlocks: string[] = [];
 	let s = input.replace(/```([\w+#-]*)\n?([\s\S]*?)```/g, (_, lang, code) => {
@@ -122,18 +136,18 @@ export function renderMarkdown(input: string, large = false, mentionMap?: Record
 	const out: string[] = lines.map((line) => {
 		let m: RegExpExecArray | null;
 		if ((m = /^### (.*)/.exec(line)))
-			return `<h3 class="msg-h3">${applyInline(renderEmoji(m[1]), mentionMap)}</h3>`;
+			return `<h3 class="msg-h3">${applyInline(renderEmoji(m[1]), false, mentionMap, customEmojiMap)}</h3>`;
 		if ((m = /^## (.*)/.exec(line)))
-			return `<h2 class="msg-h2">${applyInline(renderEmoji(m[1]), mentionMap)}</h2>`;
+			return `<h2 class="msg-h2">${applyInline(renderEmoji(m[1]), false, mentionMap, customEmojiMap)}</h2>`;
 		if ((m = /^# (.*)/.exec(line)))
-			return `<h1 class="msg-h1">${applyInline(renderEmoji(m[1]), mentionMap)}</h1>`;
+			return `<h1 class="msg-h1">${applyInline(renderEmoji(m[1]), false, mentionMap, customEmojiMap)}</h1>`;
 		if ((m = /^-# (.*)/.exec(line)))
-			return `<span class="msg-subtext">${applyInline(renderEmoji(m[1]), mentionMap)}</span>`;
+			return `<span class="msg-subtext">${applyInline(renderEmoji(m[1]), false, mentionMap, customEmojiMap)}</span>`;
 		if ((m = /^>>> (.*)/.exec(line)))
-			return `<blockquote class="msg-blockquote">${applyInline(renderEmoji(m[1]), mentionMap)}</blockquote>`;
+			return `<blockquote class="msg-blockquote">${applyInline(renderEmoji(m[1]), false, mentionMap, customEmojiMap)}</blockquote>`;
 		if ((m = /^> (.*)/.exec(line)))
-			return `<blockquote class="msg-blockquote">${applyInline(renderEmoji(m[1]), mentionMap)}</blockquote>`;
-		return applyInline(renderEmoji(line, large), mentionMap);
+			return `<blockquote class="msg-blockquote">${applyInline(renderEmoji(m[1]), false, mentionMap, customEmojiMap)}</blockquote>`;
+		return applyInline(renderEmoji(line, large), large, mentionMap, customEmojiMap);
 	});
 
 	// ── 4. Join with <br> except around block elements ─────────────────────────

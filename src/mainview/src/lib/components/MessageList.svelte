@@ -2,13 +2,14 @@
     import { computeRoomPermissions, Permission } from "$lib/permissions";
     import { onDestroy, onMount, tick } from "svelte";
     import { updateMessage, deleteMessage, getMessageThread } from "$lib/api/messages";
-    import { Dialog } from "bits-ui";
+    import { Dialog, Popover } from "bits-ui";
     import { currentUser, jumpToMessageRequest, gatewaySpaces, pageVisible } from "$lib/stores.svelte";
+    import { addRoomReaction, removeRoomReaction, addConversationReaction, removeConversationReaction } from "$lib/api/reactions";
     import { renderEmoji, isOnlyEmojis, countEmojis } from "$lib/emoji";
-    import { renderMarkdown } from "$lib/markdown";
+    import { renderMarkdown, type CustomEmojiMap } from "$lib/markdown";
 
     import { gatewayMessageToMessage } from "$lib/types";
-    import { MessageType, type MemberOnSidebar, type GatewaySpace, type Message } from "$lib/types";
+    import { MessageType, type MemberOnSidebar, type GatewaySpace, type Message, type SpaceEmoji } from "$lib/types";
     import { getHostURL } from "$lib/common/common";
 
     import InviteEmbed from "$lib/components/InviteEmbed.svelte";
@@ -17,7 +18,10 @@
     import VoiceNotePlayer from "$lib/components/VoiceNotePlayer.svelte";
     import UserAvatar from "$lib/components/UserAvatar.svelte";
     import ChatInput from "$lib/components/ChatInput.svelte";
+    import EmojiPicker from "$lib/components/EmojiPicker.svelte";
+    import ImagePreview from "$lib/components/ImagePreview.svelte";
     import MemberProfilePopover from "$lib/components/MemberProfilePopover.svelte";
+    import type { MessageReaction } from "$lib/types";
 
     let {
         messages,
@@ -44,6 +48,7 @@
         editContent = $bindable(""),
         isAtBottom = $bindable(true),
         onUnreadMark = undefined,
+        customEmojis = [],
     }: {
         messages: Message[];
         members?: MemberOnSidebar[];
@@ -69,6 +74,7 @@
         editContent?: string;
         isAtBottom?: boolean;
         onUnreadMark?: (messageId: string) => void;
+        customEmojis?: SpaceEmoji[];
     } = $props();
 
     // ── State ──────────────────────────────────────────────────────────────────
@@ -229,6 +235,67 @@
             return map;
         }, {}),
     );
+
+    const customEmojiMap: CustomEmojiMap = $derived(
+        customEmojis.reduce<CustomEmojiMap>((map, ce) => {
+            map[ce.id] = { name: ce.name, attachment_id: ce.attachment_id };
+            return map;
+        }, {}),
+    );
+
+    // ── Image preview ─────────────────────────────────────────────────────────
+    let previewSrc = $state("");
+    let previewAlt = $state("");
+    let previewOpen = $state(false);
+
+    function openPreview(src: string, alt = "") {
+        previewSrc = src;
+        previewAlt = alt;
+        previewOpen = true;
+    }
+
+    // ── Reaction helpers ──────────────────────────────────────────────────────
+    let reactingMessageId = $state<string | null>(null);
+
+    const isConversation = $derived(!spaceId);
+
+    async function handleReactionToggle(message: Message, emojiName: string, emojiId?: string | null) {
+        if (!$currentUser || !channelId) return;
+        const existing = (message.reactions ?? []).find((r) => r.emoji_name === emojiName);
+        const alreadyReacted = existing?.users.includes($currentUser.id) ?? false;
+        try {
+            if (isConversation) {
+                if (alreadyReacted) {
+                    await removeConversationReaction(channelId, message.id, emojiName);
+                } else {
+                    await addConversationReaction(channelId, message.id, emojiName, emojiId);
+                }
+            } else {
+                if (alreadyReacted) {
+                    await removeRoomReaction(channelId, message.id, emojiName);
+                } else {
+                    await addRoomReaction(channelId, message.id, emojiName, emojiId);
+                }
+            }
+        } catch (e) {
+            console.error("Failed to toggle reaction:", e);
+        }
+    }
+
+    function handleReactionPick(messageId: string, emoji: string) {
+        reactingMessageId = null;
+        const message = messages.find((m) => m.id === messageId);
+        if (!message) return;
+        // Custom emoji: <:id:>
+        if (emoji.startsWith("<:") && emoji.endsWith(":>")) {
+            const id = emoji.slice(2, -2);
+            const ce = customEmojis.find((e) => e.id === id);
+            handleReactionToggle(message, ce?.name ?? id, id);
+        } else {
+            // Unicode emoji
+            handleReactionToggle(message, emoji);
+        }
+    }
 
     // ── Unread divider ─────────────────────────────────────────────────────────
     // UUID v7 is lexicographically sortable, so string comparison gives chronological order.
@@ -447,35 +514,65 @@
     }
 
     // ── Message link navigation ────────────────────────────────────────────────
-    // Link format: duvet://channels/{spaceId}/{roomId}/{messageId}
-    const messageLinkRegex = /^duvet:\/\/channels\/([^/]+)\/([^/]+)\/([^/]+)$/;
+    // Room link: duvet://channels/{spaceId}/{roomId}/{messageId}
+    // Conv link: duvet://conversations/{conversationId}/{messageId}
+    const roomLinkRegex = /^duvet:\/\/channels\/([^/]+)\/([^/]+)\/([^/]+)$/;
+    const convLinkRegex = /^duvet:\/\/conversations\/([^/]+)\/([^/]+)$/;
 
     function tryNavigateMessageLink(url: string): boolean {
-        const match = messageLinkRegex.exec(url);
-        if (!match) return false;
-        const [, linkSpaceId, linkRoomId, linkMessageId] = match;
-        jumpToMessageRequest.set({
-            id: crypto.randomUUID(),
-            spaceId: linkSpaceId,
-            roomId: linkRoomId,
-            messageId: linkMessageId,
-        });
-        return true;
+        const roomMatch = roomLinkRegex.exec(url);
+        if (roomMatch) {
+            const [, linkSpaceId, linkRoomId, linkMessageId] = roomMatch;
+            jumpToMessageRequest.set({
+                id: crypto.randomUUID(),
+                spaceId: linkSpaceId,
+                roomId: linkRoomId,
+                messageId: linkMessageId,
+            });
+            return true;
+        }
+        const convMatch = convLinkRegex.exec(url);
+        if (convMatch) {
+            const [, linkConvId, linkMessageId] = convMatch;
+            jumpToMessageRequest.set({
+                id: crypto.randomUUID(),
+                spaceId: "",
+                roomId: "",
+                messageId: linkMessageId,
+                conversationId: linkConvId,
+            });
+            return true;
+        }
+        return false;
     }
 
-    function resolveMessageLink(url: string): { spaceName: string; roomName: string; spaceId: string; roomId: string; messageId: string } | null {
-        const match = messageLinkRegex.exec(url);
-        if (!match) return null;
-        const [, linkSpaceId, linkRoomId, linkMessageId] = match;
-        const sp = $gatewaySpaces.find((s) => s.id === linkSpaceId);
-        const rm = sp?.rooms.find((r) => r.id === linkRoomId);
-        return {
-            spaceId: linkSpaceId,
-            roomId: linkRoomId,
-            messageId: linkMessageId,
-            spaceName: sp?.name ?? "Unknown server",
-            roomName: rm?.name ?? "unknown",
-        };
+    function resolveMessageLink(url: string): { spaceName: string; roomName: string; spaceId: string; roomId: string; messageId: string; conversationId?: string } | null {
+        const roomMatch = roomLinkRegex.exec(url);
+        if (roomMatch) {
+            const [, linkSpaceId, linkRoomId, linkMessageId] = roomMatch;
+            const sp = $gatewaySpaces.find((s) => s.id === linkSpaceId);
+            const rm = sp?.rooms.find((r) => r.id === linkRoomId);
+            return {
+                spaceId: linkSpaceId,
+                roomId: linkRoomId,
+                messageId: linkMessageId,
+                spaceName: sp?.name ?? "Unknown server",
+                roomName: rm?.name ?? "unknown",
+            };
+        }
+        const convMatch = convLinkRegex.exec(url);
+        if (convMatch) {
+            const [, linkConvId, linkMessageId] = convMatch;
+            return {
+                spaceId: "",
+                roomId: "",
+                messageId: linkMessageId,
+                conversationId: linkConvId,
+                spaceName: "",
+                roomName: "Direct Message",
+            };
+        }
+        return null;
     }
 
     // ── URL processing ─────────────────────────────────────────────────────────
@@ -484,14 +581,20 @@
     function processMessageContent(content: string) {
         const urls = content.match(urlRegex) || [];
         const inviteCodes: string[] = [];
-        const messageLinks: { spaceId: string; roomId: string; messageId: string }[] = [];
+        const messageLinks: { spaceId: string; roomId: string; messageId: string; conversationId?: string }[] = [];
 
         urls.forEach((url) => {
             try {
-                const msgLinkMatch = messageLinkRegex.exec(url);
-                if (msgLinkMatch) {
-                    const [, lSpaceId, lRoomId, lMessageId] = msgLinkMatch;
+                const roomMatch = roomLinkRegex.exec(url);
+                if (roomMatch) {
+                    const [, lSpaceId, lRoomId, lMessageId] = roomMatch;
                     messageLinks.push({ spaceId: lSpaceId, roomId: lRoomId, messageId: lMessageId });
+                    return;
+                }
+                const convMatch = convLinkRegex.exec(url);
+                if (convMatch) {
+                    const [, lConvId, lMessageId] = convMatch;
+                    messageLinks.push({ spaceId: "", roomId: "", messageId: lMessageId, conversationId: lConvId });
                     return;
                 }
 
@@ -743,7 +846,7 @@
                                 size={16}
                             />
                             <span class="font-medium text-zinc-300 shrink-0">{message.referenced_message.author_name}</span>
-                            <span class="truncate opacity-80 msg-content">{@html renderMarkdown(message.referenced_message.content ?? '', false, mentionMap)}</span>
+                            <span class="truncate opacity-80 msg-content">{@html renderMarkdown(message.referenced_message.content ?? '', false, mentionMap, customEmojiMap)}</span>
                             {#if message.referenced_message.created_at}
                                 <span class="shrink-0 opacity-50">{new Date(message.referenced_message.created_at).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' })}</span>
                             {/if}
@@ -823,6 +926,7 @@
                                 showActions={false}
                                 autofocus
                                 {members}
+                                {customEmojis}
                             />
                             <div class="text-xxs text-zinc-400">
                                 escape to <button
@@ -897,7 +1001,7 @@
                         >
                             {#each parseTextSegments(processed.text) as segment}
                                 {#if segment.type === "link"}
-                                    {#if messageLinkRegex.test(segment.content)}
+                                    {#if roomLinkRegex.test(segment.content) || convLinkRegex.test(segment.content)}
                                         {@const resolved = resolveMessageLink(segment.content)}
                                         {#if resolved}
                                             <button
@@ -939,6 +1043,7 @@
                                         segment.content,
                                         emojiOnly,
                                         mentionMap,
+                                        customEmojiMap,
                                     )}
                                 {/if}
                             {/each}
@@ -966,6 +1071,7 @@
                                         spaceId={ml.spaceId}
                                         roomId={ml.roomId}
                                         messageId={ml.messageId}
+                                        conversationId={ml.conversationId}
                                     />
                                 {/each}
                             </div>
@@ -973,7 +1079,7 @@
                         {#if message.embeds && message.embeds.length > 0}
                             <div class="flex flex-col gap-1">
                                 {#each message.embeds as embed}
-                                    <EmbedCard {embed} />
+                                    <EmbedCard {embed} onImageClick={(src) => openPreview(src)} />
                                 {/each}
                             </div>
                         {/if}
@@ -1008,7 +1114,12 @@
                                     {:else if att.content_type.startsWith("image/")}
                                         {@const iw = Math.min(att.width ?? 400, 400)}
                                         {@const ih = Math.min(att.height ?? 400, 400)}
-                                        <div class="relative rounded-md overflow-hidden" style="width: {iw}px; height: {ih}px; max-width: 100%;">
+                                        <button
+                                            type="button"
+                                            class="relative rounded-md overflow-hidden cursor-zoom-in block"
+                                            style="width: {iw}px; height: {ih}px; max-width: 100%;"
+                                            onclick={() => openPreview(`${attachmentHost}/attachments/${att.id}`, att.filename)}
+                                        >
                                             <div class="absolute inset-0 bg-zinc-700/40 animate-pulse img-skeleton"></div>
                                             <img
                                                 src="{attachmentHost}/attachments/{att.id}"
@@ -1030,7 +1141,7 @@
                                                     }
                                                 }}
                                             />
-                                        </div>
+                                        </button>
                                     {:else if att.content_type.startsWith("video/")}
                                         {@const vw = Math.min(att.width ?? 400, 400)}
                                         {@const vh = Math.min(att.height ?? 300, 300)}
@@ -1075,6 +1186,28 @@
                         {/if}
                         {/if}
                     {/if}
+
+                    <!-- Reactions display -->
+                    {#if message.reactions && message.reactions.length > 0}
+                        <div class="flex flex-wrap gap-1 mt-1">
+                            {#each message.reactions as reaction}
+                                {@const isMeReacted = $currentUser ? reaction.users.includes($currentUser.id) : false}
+                                {@const ce = reaction.emoji_id ? customEmojis.find((e) => e.id === reaction.emoji_id) : null}
+                                <button
+                                    class="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg text-sm transition-colors border {isMeReacted ? 'bg-indigo-500/20 border-indigo-500/40 text-indigo-300' : 'bg-zinc-800/60 border-zinc-700 text-zinc-400 hover:bg-zinc-700/60'}"
+                                    onclick={() => handleReactionToggle(message, reaction.emoji_name, reaction.emoji_id)}
+                                    title={reaction.emoji_name}
+                                >
+                                    {#if ce}
+                                        <img src="{attachmentHost}/attachments/{ce.attachment_id}" alt=":{ce.name}:" class="size-5 object-contain" />
+                                    {:else}
+                                        {@html renderEmoji(reaction.emoji_name)}
+                                    {/if}
+                                    <span class="font-medium">{reaction.count}</span>
+                                </button>
+                            {/each}
+                        </div>
+                    {/if}
                 </div>
                 </div><!-- end inner row -->
 
@@ -1096,8 +1229,23 @@
                     </div>
                 {:else if !isPending && $currentUser && message.author_id === $currentUser.id && editingMessageId !== message.id}
                     <div
-                        class="absolute right-2 -top-3 z-10 hidden overflow-hidden rounded border border-zinc-800 bg-zinc-700 shadow-sm transition-opacity group-hover:flex"
+                        class="absolute right-2 -top-3 z-10 overflow-hidden rounded border border-zinc-800 bg-zinc-700 shadow-sm transition-opacity {reactingMessageId === message.id ? 'flex' : 'hidden group-hover:flex'}"
                     >
+                        <Popover.Root bind:open={() => reactingMessageId === message.id, (v) => reactingMessageId = v ? message.id : null}>
+                            <Popover.Trigger
+                                class="p-1.5 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-600 transition-colors"
+                                title="Add reaction"
+                                aria-label="Add reaction"
+                            >
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" x2="9.01" y1="9" y2="9"/><line x1="15" x2="15.01" y1="9" y2="9"/></svg>
+                            </Popover.Trigger>
+                            <Popover.Portal>
+                                <Popover.Content side="top" align="end" sideOffset={8} class="z-[100]">
+                                    <EmojiPicker onSelect={(emoji) => handleReactionPick(message.id, emoji)} {customEmojis} />
+                                </Popover.Content>
+                            </Popover.Portal>
+                        </Popover.Root>
+                        <div class="w-px bg-zinc-800"></div>
                         <button
                             class="p-1.5 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-600 transition-colors"
                             onclick={() => onReply?.(message)}
@@ -1111,7 +1259,7 @@
                             class="p-1.5 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-600 transition-colors"
                             onclick={() => {
                                 navigator.clipboard.writeText(
-                                    `duvet://channels/${spaceId}/${channelId}/${message.id}`
+                                    `${isConversation ? `duvet://conversations/${channelId}/${message.id}` : `duvet://channels/${spaceId}/${channelId}/${message.id}`}`
                                 ).catch(console.error);
                             }}
                             title="Copy message link"
@@ -1208,8 +1356,23 @@
                     </div>
                 {:else if !isPending && $currentUser && message.author_id !== $currentUser.id && editingMessageId !== message.id}
                     <div
-                        class="absolute right-2 -top-3 z-10 hidden overflow-hidden rounded border border-zinc-800 bg-zinc-700 shadow-sm transition-opacity group-hover:flex"
+                        class="absolute right-2 -top-3 z-10 overflow-hidden rounded border border-zinc-800 bg-zinc-700 shadow-sm transition-opacity {reactingMessageId === message.id ? 'flex' : 'hidden group-hover:flex'}"
                     >
+                        <Popover.Root bind:open={() => reactingMessageId === message.id, (v) => reactingMessageId = v ? message.id : null}>
+                            <Popover.Trigger
+                                class="p-1.5 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-600 transition-colors"
+                                title="Add reaction"
+                                aria-label="Add reaction"
+                            >
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" x2="9.01" y1="9" y2="9"/><line x1="15" x2="15.01" y1="9" y2="9"/></svg>
+                            </Popover.Trigger>
+                            <Popover.Portal>
+                                <Popover.Content side="top" align="end" sideOffset={8} class="z-[100]">
+                                    <EmojiPicker onSelect={(emoji) => handleReactionPick(message.id, emoji)} {customEmojis} />
+                                </Popover.Content>
+                            </Popover.Portal>
+                        </Popover.Root>
+                        <div class="w-px bg-zinc-800"></div>
                         <button
                             class="p-1.5 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-600 transition-colors"
                             onclick={() => onReply?.(message)}
@@ -1223,7 +1386,7 @@
                             class="p-1.5 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-600 transition-colors"
                             onclick={() => {
                                 navigator.clipboard.writeText(
-                                    `duvet://channels/${spaceId}/${channelId}/${message.id}`
+                                    `${isConversation ? `duvet://conversations/${channelId}/${message.id}` : `duvet://channels/${spaceId}/${channelId}/${message.id}`}`
                                 ).catch(console.error);
                             }}
                             title="Copy message link"
@@ -1399,7 +1562,7 @@
                                                 size={14}
                                             />
                                             <span class="text-xs font-medium text-zinc-400 truncate max-w-24">{parentMsg.author_name}</span>
-                                            <span class="text-xs text-zinc-500 truncate">{@html renderMarkdown(parentMsg.content.slice(0, 60), false, mentionMap)}{parentMsg.content.length > 60 ? "…" : ""}</span>
+                                            <span class="text-xs text-zinc-500 truncate">{@html renderMarkdown(parentMsg.content.slice(0, 60), false, mentionMap, customEmojiMap)}{parentMsg.content.length > 60 ? "…" : ""}</span>
                                         </div>
                                     {/if}
                                     <div class="flex items-start gap-2">
@@ -1413,7 +1576,7 @@
                                                 <span class="text-sm font-semibold text-zinc-100">{threadMsg.author_name}</span>
                                                 <span class="text-xs text-zinc-500">{new Date(threadMsg.created_at).toLocaleString(locale)}</span>
                                             </div>
-                                            <p class="text-sm text-zinc-200 whitespace-pre-wrap wrap-break-word msg-content">{@html renderMarkdown(threadMsg.content, false, mentionMap)}</p>
+                                            <p class="text-sm text-zinc-200 whitespace-pre-wrap wrap-break-word msg-content">{@html renderMarkdown(threadMsg.content, false, mentionMap, customEmojiMap)}</p>
                                         </div>
                                     </div>
                                 </div>
@@ -1425,3 +1588,5 @@
         </Dialog.Content>
     </Dialog.Portal>
 </Dialog.Root>
+
+<ImagePreview src={previewSrc} alt={previewAlt} bind:open={previewOpen} />

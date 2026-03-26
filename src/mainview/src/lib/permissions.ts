@@ -11,9 +11,30 @@ export const Permission = {
 	JoinVoice: 1 << 6, // 64
 	SpeakInVoice: 1 << 7, // 128
 	ManageRoles: 1 << 8, // 256
+	ManageInvites: 1 << 9, // 512
+	CreateInvites: 1 << 10, // 1024
+	ManageSpaceEmojis: 1 << 11, // 2048
+	ManageSpaceBuckets: 1 << 12, // 4096
 } as const;
 
 export type PermissionFlag = (typeof Permission)[keyof typeof Permission];
+
+export const ALL_PERMISSIONS: ReadonlyArray<{ flag: PermissionFlag; name: string }> = [
+	{ flag: Permission.Administrator, name: "Administrator" },
+	{ flag: Permission.ViewChannels, name: "View Channels" },
+	{ flag: Permission.SendMessages, name: "Send Messages" },
+	{ flag: Permission.ManageMessages, name: "Manage Messages" },
+	{ flag: Permission.ManageChannels, name: "Manage Channels" },
+	{ flag: Permission.ChangeNickname, name: "Change Nickname" },
+	{ flag: Permission.JoinVoice, name: "Join Voice" },
+	{ flag: Permission.SpeakInVoice, name: "Speak in Voice" },
+	{ flag: Permission.ManageRoles, name: "Manage Roles" },
+	{ flag: Permission.ManageInvites, name: "Manage Invites" },
+	{ flag: Permission.CreateInvites, name: "Create Invites" },
+	{ flag: Permission.ManageSpaceEmojis, name: "Manage Emojis" },
+	{ flag: Permission.ManageSpaceBuckets, name: "Manage Buckets" },
+];
+
 
 // target_type values for RoomOverwrite
 const OVERWRITE_ROLE = 0;

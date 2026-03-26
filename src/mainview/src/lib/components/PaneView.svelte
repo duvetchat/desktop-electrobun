@@ -708,7 +708,17 @@ onDestroy(() => {
 let contentDragOver = $state(false);
 let splitZone = $state<"bottom" | "right" | "left" | "top" | null>(null);
 
+function isTabOrChannelDrag(e: DragEvent): boolean {
+	if (!e.dataTransfer) return false;
+	// File drags have items with kind "file"
+	for (const item of Array.from(e.dataTransfer.items)) {
+		if (item.kind === "file") return false;
+	}
+	return e.dataTransfer.types.includes("text/plain");
+}
+
 function handleContentDragOver(e: DragEvent) {
+	if (!isTabOrChannelDrag(e)) return;
 	e.preventDefault();
 	contentDragOver = true;
 	if (e.dataTransfer) {
