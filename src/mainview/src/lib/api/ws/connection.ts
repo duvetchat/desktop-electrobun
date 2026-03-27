@@ -32,7 +32,7 @@ import { getMentionCounts } from "$lib/api/messages";
 import { getWSHostURL, route } from "$lib/common/common";
 import { get } from "svelte/store";
 import { getSpaceMembers, type SpaceMemberWithUser } from "$lib/api/spaces";
-import type { MessageReaction } from "$lib/types";
+import { accessToken } from "$lib/stores/auth";
 
 import type {
 	GatewayMessage as GatewayMessageCreate,
@@ -51,7 +51,7 @@ import type {
 import { gatewayMessageToMessage } from "$lib/types";
 
 export function getStreamURL(): string {
-	return `${getWSHostURL()}/gateway?token=${localStorage.getItem("duvet_session_token") || "none"}`;
+	return `${getWSHostURL()}/gateway?token=${localStorage.getItem("duvet_session_token")}`;
 }
 
 // Notification sound — single Audio instance reused across calls
@@ -1246,7 +1246,7 @@ export function createWebSocketConnection(): GatewayConnection {
 		socket.onopen = () => {
 			console.log("[WS] Connected");
 			const identifyData: Record<string, unknown> = {
-				token: localStorage.getItem("duvet_session_token") || "",
+				token: localStorage.getItem("duvet_session_token"),
 			};
 			if (lastSeq > 0) {
 				identifyData.last_seq = lastSeq;
