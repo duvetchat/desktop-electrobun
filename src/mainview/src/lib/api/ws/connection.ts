@@ -23,6 +23,7 @@ import {
 	callVoiceStates,
 	conversationsWithCalls,
 	spaceEmojis,
+	spaceStickers,
 } from "$lib/stores.svelte";
 import type { FriendRequest, Friend } from "$lib/api/friends";
 import { getFriends, getPendingRequests, getSentRequests } from "$lib/api/friends";
@@ -783,6 +784,30 @@ function handleEvent(event: GatewayEvent) {
 			const raw = data as { id: string; space_id: string };
 			spaceEmojis.update((m) => {
 				const list = (m[raw.space_id] ?? []).filter((e) => e.id !== raw.id);
+				return { ...m, [raw.space_id]: list };
+			});
+			break;
+		}
+		case "SPACE_STICKER_CREATE": {
+			const raw = data as import("$lib/types").SpaceSticker;
+			spaceStickers.update((m) => {
+				const list = m[raw.space_id] ?? [];
+				return { ...m, [raw.space_id]: [...list, raw] };
+			});
+			break;
+		}
+		case "SPACE_STICKER_UPDATE": {
+			const raw = data as import("$lib/types").SpaceSticker;
+			spaceStickers.update((m) => {
+				const list = (m[raw.space_id] ?? []).map((s) => (s.id === raw.id ? raw : s));
+				return { ...m, [raw.space_id]: list };
+			});
+			break;
+		}
+		case "SPACE_STICKER_DELETE": {
+			const raw = data as { id: string; space_id: string };
+			spaceStickers.update((m) => {
+				const list = (m[raw.space_id] ?? []).filter((s) => s.id !== raw.id);
 				return { ...m, [raw.space_id]: list };
 			});
 			break;

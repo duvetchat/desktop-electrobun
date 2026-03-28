@@ -66,10 +66,11 @@ function applyInline(s: string, large: boolean, mentionMap?: Record<string, stri
 	});
 	// Resolve <:id:> custom emojis to inline images
 	const ceCls = large ? "emoji-img emoji-large custom-emoji" : "emoji-img custom-emoji";
+	const ceDelCls = large ? "emoji-deleted emoji-deleted-large" : "emoji-deleted";
 	s = s.replace(/&lt;:([a-f0-9-]+):&gt;/g, (full, id) => {
 		const ce = customEmojiMap?.[id];
-		if (!ce) return full;
-		return `<img class="${ceCls}" src="${emojiHost}/attachments/${ce.attachment_id}" alt="<:${id}:>" title=":${escapeHtml(ce.name)}:" draggable="false" loading="lazy">`;
+		if (!ce) return `<span class="${ceDelCls}" title="Emoji deleted">💩</span>`;
+		return `<img class="${ceCls}" src="${emojiHost}/attachments/${ce.attachment_id}" alt="<:${id}:>" title=":${escapeHtml(ce.name)}:" draggable="false" loading="lazy" onerror="var r=+(this.dataset.r||0);if(r<10){this.dataset.r=r+1;this.src=this.src.split('?')[0]+'?r='+Date.now()}else{this.replaceWith(Object.assign(document.createElement('span'),{className:'${ceDelCls}',title:'Emoji deleted',textContent:'💩'}))}">`;
 	});
 	return s;
 }

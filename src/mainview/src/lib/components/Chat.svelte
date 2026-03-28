@@ -12,12 +12,11 @@ import type { Message, MemberOnSidebar, GatewaySpace, MessageReference, Embed } 
 import { MessageReferenceType } from "$lib/types";
 import { sendMessage, sendVoiceNote, sendTypingIndicator } from "$lib/api/messages";
 import { MessageType } from "$lib/types";
-import { currentUser, channelMessages, typingUsers, spaceEmojis } from "$lib/stores.svelte";
+import { currentUser, channelMessages, typingUsers, spaceEmojis, spaceStickers } from "$lib/stores.svelte";
 import { toast } from "$lib/stores/toast.svelte";
 import TypingIndicator from "$lib/components/TypingIndicator.svelte";
 import { listEmojis } from "$lib/api/emojis";
 import { listStickers } from "$lib/api/stickers";
-import type { SpaceSticker } from "$lib/types";
 
 let {
 	messages,
@@ -81,21 +80,20 @@ let chatInputRef = $state<{ focus: () => void; focusAndInsert: (char: string) =>
 let pendingFiles = $state<File[]>([]);
 let lastTypingSent = 0;
 
-// Load emojis and stickers on space change
-let spaceStickers = $state<SpaceSticker[]>([]);
-
+// Load emojis and stickers into global stores on space change
 $effect(() => {
 	if (spaceId) {
 		listEmojis(spaceId).then((e) => {
 			spaceEmojis.update((m) => ({ ...m, [spaceId]: e }));
 		}).catch(() => {});
-		listStickers(spaceId).then((s) => { spaceStickers = s; }).catch(() => { spaceStickers = []; });
-	} else {
-		spaceStickers = [];
+		listStickers(spaceId).then((s) => {
+			spaceStickers.update((m) => ({ ...m, [spaceId]: s }));
+		}).catch(() => {});
 	}
 });
 
 const customEmojis = $derived(spaceId ? ($spaceEmojis[spaceId] ?? []) : []);
+const spaceStickersArr = $derived(spaceId ? ($spaceStickers[spaceId] ?? []) : []);
 
 // Focus input when switching channels
 $effect(() => {
@@ -542,7 +540,7 @@ function handleFileDrop(e: DragEvent) {
       onValueChange={handleTyping}
       {members}
       {customEmojis}
-      {spaceStickers}
+      spaceStickers={spaceStickersArr}
       autofocus
     />
   </div>

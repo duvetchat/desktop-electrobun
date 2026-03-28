@@ -713,8 +713,8 @@ export function focusAndInsert(char: string) {
 <div class="contents">
 	<!-- Mention autocomplete dropdown -->
 	{#if mentionSuggestions.length > 0}
-		<div class="absolute bottom-[calc(100%+6px)] left-0 right-0 bg-[oklch(0.19_0.008_80)] border border-[oklch(0.30_0.01_80)] rounded-lg shadow-[0_8px_24px_rgba(0,0,0,0.5)] overflow-hidden z-[90] py-1 max-h-[300px] overflow-y-auto" role="listbox" aria-label="Mention suggestions">
-			<div class="text-[10px] font-bold tracking-wider uppercase text-[oklch(0.52_0.01_80)] px-3 pt-1.5 pb-1">Members matching <strong>@{getRaw(inputEl).slice(0, getOffset()).match(/@(\w*)$/)?.[1]}</strong></div>
+		<div class="absolute bottom-[calc(100%+6px)] left-0 right-0 bg-[oklch(0.19_0.008_80)] border border-[oklch(0.30_0.01_80)] rounded-lg shadow-[0_8px_24px_rgba(0,0,0,0.5)] overflow-hidden z-90 py-1 max-h-75 overflow-y-auto" role="listbox" aria-label="Mention suggestions">
+			<div class="text-xxs font-bold tracking-wider uppercase text-[oklch(0.52_0.01_80)] px-3 pt-1.5 pb-1">Members matching <strong>@{getRaw(inputEl).slice(0, getOffset()).match(/@(\w*)$/)?.[1]}</strong></div>
 			{#each mentionSuggestions as member, i}
 				<button
 					role="option"
@@ -738,8 +738,8 @@ export function focusAndInsert(char: string) {
 
 	<!-- Emoji autocomplete dropdown -->
 	{#if suggestions.length > 0}
-		<div class="absolute bottom-[calc(100%+6px)] left-0 right-0 bg-[oklch(0.19_0.008_80)] border border-[oklch(0.30_0.01_80)] rounded-lg shadow-[0_8px_24px_rgba(0,0,0,0.5)] overflow-hidden z-[90] py-1 max-h-[300px] overflow-y-auto" role="listbox" aria-label="Emoji suggestions">
-			<div class="text-[10px] font-bold tracking-wider uppercase text-[oklch(0.52_0.01_80)] px-3 pt-1.5 pb-1">Emoji matching <strong>:{getRaw(inputEl).slice(0, getOffset()).match(/:([\w\d]*)$/)?.[1]}</strong></div>
+		<div class="absolute bottom-[calc(100%+6px)] left-0 right-0 bg-[oklch(0.19_0.008_80)] border border-[oklch(0.30_0.01_80)] rounded-lg shadow-[0_8px_24px_rgba(0,0,0,0.5)] overflow-hidden z-90 py-1 max-h-75 overflow-y-auto" role="listbox" aria-label="Emoji suggestions">
+			<div class="text-xxs font-bold tracking-wider uppercase text-[oklch(0.52_0.01_80)] px-3 pt-1.5 pb-1">Emoji matching <strong>:{getRaw(inputEl).slice(0, getOffset()).match(/:([\w\d]*)$/)?.[1]}</strong></div>
 			{#each suggestions as entry, i}
 				<button
 					role="option"
@@ -755,14 +755,14 @@ export function focusAndInsert(char: string) {
 						<img
 							src="{ceHost}/attachments/{entry.customAttachmentId}"
 							alt=":{entry.name}:"
-							class="size-[22px] shrink-0 object-contain"
+							class="size-5.5 shrink-0 object-contain"
 							loading="lazy"
 						/>
 					{:else}
 						<img
 							src={toTwemojiUrl(entry.emoji)}
 							alt={entry.emoji}
-							class="size-[22px] shrink-0"
+							class="size-5.5 shrink-0"
 							loading="lazy"
 						/>
 					{/if}
@@ -806,7 +806,7 @@ export function focusAndInsert(char: string) {
 					tabindex="0"
 					aria-multiline="false"
 					aria-label={placeholder}
-					class="ce-input block w-full min-h-5 max-h-36 overflow-y-auto text-sm leading-5 text-[oklch(0.96_0.005_80)] outline-none whitespace-pre-wrap break-words caret-[oklch(0.96_0.005_80)] [scrollbar-width:thin] focus-override {isEmpty ? 'ce-empty' : ''}"
+					class="ce-input block w-full min-h-5 max-h-36 overflow-y-auto text-sm leading-5 text-[oklch(0.96_0.005_80)] outline-none whitespace-pre-wrap wrap-break-word caret-[oklch(0.96_0.005_80)] [scrollbar-width:thin] focus-override {isEmpty ? 'ce-empty' : ''}"
 					data-placeholder={placeholder}
 					onkeydown={handleKeyDown}
 					oninput={handleInput}

@@ -1,7 +1,7 @@
 import { SvelteSet } from "svelte/reactivity";
 import { writable } from "svelte/store";
 
-import type { GatewaySpace, GatewayUser, Message, SpaceEmoji } from "$lib/types";
+import type { GatewaySpace, GatewayUser, Message, SpaceEmoji, SpaceSticker } from "$lib/types";
 import type { FriendRequest, Friend } from "$lib/api/friends";
 import type { Conversation, DirectMessage } from "$lib/api/conversations";
 
@@ -61,6 +61,7 @@ export const wsSessionToken = writable<string | null>(null);
 export const channelMessages = writable<Record<string, Message[]>>({});
 export const speakingUsers = writable<SvelteSet<string>>(new SvelteSet());
 export const spaceEmojis = writable<Record<string, SpaceEmoji[]>>({});
+export const spaceStickers = writable<Record<string, SpaceSticker[]>>({});
 
 export const pendingFriendRequests = writable<FriendRequest[]>([]);
 export const sentFriendRequests = writable<FriendRequest[]>([]);
