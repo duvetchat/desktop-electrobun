@@ -25,29 +25,14 @@ import {
 	spaceEmojis,
 	spaceStickers,
 } from "$lib/stores.svelte";
-import type { FriendRequest, Friend } from "$lib/api/friends";
 import { getFriends, getPendingRequests, getSentRequests } from "$lib/api/friends";
-import type { Conversation, DirectMessage } from "$lib/api/conversations";
 import { getConversations } from "$lib/api/conversations";
 import { getMentionCounts } from "$lib/api/messages";
 import { getWSHostURL, route } from "$lib/common/common";
 import { get } from "svelte/store";
 import { getSpaceMembers, type SpaceMemberWithUser } from "$lib/api/spaces";
-import { accessToken } from "$lib/stores/auth";
 
-import type {
-	GatewayMessage as GatewayMessageCreate,
-	GatewayUserStatusUpdate,
-	GatewayMessageDelete,
-	GatewayReadyData,
-	GatewayEvent,
-	GatewaySpace,
-	GatewaySpaceCreatePayload,
-	GatewayRoom,
-	GatewayRole,
-	GatewayMember,
-	UserStatus,
-} from "$lib/types";
+import type { GatewayEvent, GatewaySpace, GatewayMember, UserStatus } from "$lib/types";
 
 import { gatewayMessageToMessage } from "$lib/types";
 
@@ -74,7 +59,7 @@ let lastSeq = 0;
 // Cache of live user statuses received via USER_STATUS_UPDATE.
 // Keyed by user ID so we can apply the correct status when a user is
 // added to a space AFTER their status event already fired.
-const userStatusCache = new Map<string, number>();
+const userStatusCache = new Map<string, UserStatus>();
 
 type WebRTCEventListener = (type: string, data: unknown) => void;
 const webrtcListeners: WebRTCEventListener[] = [];
@@ -104,22 +89,16 @@ function addMembersToSpace(spaceId: string, rows: SpaceMemberWithUser[]) {
 			const existingUserIds = new Set(s.users.map((u) => u.id));
 			const incomingUserIds = new Set(rows.map((r) => r.user.id));
 			// Replace any placeholder members for the same users with real data
-			const filteredMembers = s.members.filter(
-				(m) => !incomingUserIds.has(m.user_id),
-			);
+			const filteredMembers = s.members.filter((m) => !incomingUserIds.has(m.user_id));
 			const newUsers = rows
 				.map((r) => {
 					// Apply cached live status so users don't appear offline
 					// when the REST snapshot still has status_id=0.
 					const liveStatus = userStatusCache.get(r.user.id);
-					return liveStatus !== undefined
-						? { ...r.user, status_id: liveStatus as UserStatus }
-						: r.user;
+					return liveStatus !== undefined ? { ...r.user, status_id: liveStatus } : r.user;
 				})
 				.filter((u) => !existingUserIds.has(u.id));
-			const newMembers = rows.map(
-				({ user: _u, max_pos: _p, ...m }) => m as GatewayMember,
-			);
+			const newMembers = rows.map(({ user: _u, max_pos: _p, ...m }) => m as GatewayMember);
 			return {
 				...s,
 				users: [...s.users, ...newUsers],
@@ -138,10 +117,10 @@ function handleEvent(event: GatewayEvent) {
 		return;
 	}
 	console.log("[WS] Received event:", event);
-	const { type, data } = event.d;
-	switch (type) {
+	const payload = event.d;
+	switch (payload.type) {
 		case "READY": {
-			const { user, sessionToken, unread_rooms } = data as GatewayReadyData;
+			const { user, sessionToken, unread_rooms } = payload.data;
 			// The connected user is always online by definition.
 			// Override whatever the DB stored so every downstream consumer
 			// (SPACE_CREATE's currentUserData, the sidebar, etc.) sees status=1.
@@ -150,18 +129,13 @@ function handleEvent(event: GatewayEvent) {
 			wsSessionToken.set(sessionToken);
 			userStatusCache.set(user.id, 1);
 			unreadChannels.set(new Set(unread_rooms ?? []));
-			lastReadRooms.set((data as GatewayReadyData).last_read_rooms ?? {});
-			lastMsgRooms.set((data as GatewayReadyData).last_msg_rooms ?? {});
-			const { unread_convs } = data as GatewayReadyData;
+			lastReadRooms.set(payload.data.last_read_rooms ?? {});
+			lastMsgRooms.set(payload.data.last_msg_rooms ?? {});
+			const { unread_convs } = payload.data;
 			unreadConversations.set(new Set(unread_convs ?? []));
 			// Fetch friends, pending/sent requests, and conversations eagerly
 			// so they are available before FriendsView mounts.
-			Promise.all([
-				getPendingRequests(),
-				getSentRequests(),
-				getFriends(),
-				getConversations(),
-			])
+			Promise.all([getPendingRequests(), getSentRequests(), getFriends(), getConversations()])
 				.then(([pending, sent, friendList, convList]) => {
 					pendingFriendRequests.set(pending);
 					sentFriendRequests.set(sent);
@@ -177,7 +151,7 @@ function handleEvent(event: GatewayEvent) {
 				.then((counts) => mentionCounts.set(counts))
 				.catch(() => {});
 			// Restore active calls
-			const readyData = data as GatewayReadyData;
+			const readyData = payload.data;
 			const activeCalls = readyData.active_calls ?? [];
 			if (activeCalls.length > 0) {
 				const callSet = new Set<string>();
@@ -216,32 +190,29 @@ function handleEvent(event: GatewayEvent) {
 			break;
 		}
 		case "SPACE_CREATE": {
-			const payload = data as GatewaySpaceCreatePayload;
+			const spaceCreateData = payload.data;
 			const currentUserData = get(currentUser);
-			const selfMember: import("$lib/types").GatewayMember | undefined =
-				currentUserData
-					? {
+			const selfMember: import("$lib/types").GatewayMember | undefined = currentUserData
+				? {
 						id: currentUserData.id,
-						space_id: payload.space.id,
+						space_id: spaceCreateData.space.id,
 						user_id: currentUserData.id,
 						alias: null,
-						created_at: payload.space.created_at,
-						updated_at: payload.space.updated_at,
+						created_at: spaceCreateData.space.created_at,
+						updated_at: spaceCreateData.space.updated_at,
 						deleted_at: null,
 					}
-					: undefined;
+				: undefined;
 			const space: GatewaySpace = {
-				...payload.space,
-				rooms: Object.values(payload.rooms),
-				roles: Object.values(payload.roles_permissions),
-				member_roles: payload.member_roles,
-				room_overwrites: payload.overwrites
-					? Object.values(payload.overwrites).flat()
-					: [],
+				...spaceCreateData.space,
+				rooms: Object.values(spaceCreateData.rooms),
+				roles: Object.values(spaceCreateData.roles_permissions),
+				member_roles: spaceCreateData.member_roles,
+				room_overwrites: spaceCreateData.overwrites ? Object.values(spaceCreateData.overwrites).flat() : [],
 				member: selfMember,
 				members: selfMember ? [selfMember] : [],
 				users: currentUserData ? [currentUserData] : [],
-				voice_states: payload.voice_states ?? [],
+				voice_states: spaceCreateData.voice_states ?? [],
 			};
 			gatewaySpaces.update((spaces) => {
 				const exists = spaces.some((s) => s.id === space.id);
@@ -253,12 +224,12 @@ function handleEvent(event: GatewayEvent) {
 			break;
 		}
 		case "SPACE_DELETE": {
-			const { id } = data as { id: string };
+			const { id } = payload.data;
 			gatewaySpaces.update((spaces) => spaces.filter((s) => s.id !== id));
 			break;
 		}
 		case "SPACE_UPDATE": {
-			const updated = data as GatewaySpace;
+			const updated = payload.data;
 			gatewaySpaces.update((spaces) =>
 				spaces.map((s) => {
 					if (s.id !== updated.id) {
@@ -270,7 +241,7 @@ function handleEvent(event: GatewayEvent) {
 			break;
 		}
 		case "ROOM_CREATE": {
-			const room = data as GatewayRoom;
+			const room = payload.data;
 			gatewaySpaces.update((spaces) =>
 				spaces.map((s) => {
 					if (s.id === room.space_id) {
@@ -288,7 +259,7 @@ function handleEvent(event: GatewayEvent) {
 			break;
 		}
 		case "MESSAGE_CREATE": {
-			const raw = data as GatewayMessageCreate;
+			const raw = payload.data;
 			const spaces = get(gatewaySpaces);
 			const message = gatewayMessageToMessage(raw, spaces);
 			if (raw.room_id && raw.author_id !== get(currentUser)?.id) {
@@ -299,7 +270,10 @@ function handleEvent(event: GatewayEvent) {
 				}
 			}
 			if (raw.room_id && raw.room_id !== get(activeTextRoomId)) {
-				unreadChannels.update((s) => { s.add(raw.room_id); return s; });
+				unreadChannels.update((s) => {
+					s.add(raw.room_id);
+					return s;
+				});
 			}
 			typingUsers.update((all) => {
 				const key = raw.room_id;
@@ -311,9 +285,7 @@ function handleEvent(event: GatewayEvent) {
 
 				// If it matches a pending message by nonce, replace it
 				if (message.nonce) {
-					const pendingIndex = existing.findIndex(
-						(m) => m.nonce === message.nonce,
-					);
+					const pendingIndex = existing.findIndex((m) => m.nonce === message.nonce);
 					if (pendingIndex !== -1) {
 						const newMessages = [...existing];
 						newMessages[pendingIndex] = message;
@@ -336,19 +308,23 @@ function handleEvent(event: GatewayEvent) {
 			break;
 		}
 		case "MESSAGE_UPDATE": {
-			const raw = data as GatewayMessageCreate;
+			const raw = payload.data;
 			const spaces = get(gatewaySpaces);
 			const updatedMessage = gatewayMessageToMessage(raw, spaces);
 			channelMessages.update((all) => {
 				const result: typeof all = {};
 				for (const [roomId, msgs] of Object.entries(all)) {
 					result[roomId] = msgs.map((m) => {
-						if (m.id === updatedMessage.id) return {
-							...updatedMessage,
-							referenced_message: updatedMessage.referenced_message ?? m.referenced_message,
-						};
+						if (m.id === updatedMessage.id)
+							return {
+								...updatedMessage,
+								referenced_message: updatedMessage.referenced_message ?? m.referenced_message,
+							};
 						if (m.referenced_message?.message_id === updatedMessage.id) {
-							return { ...m, referenced_message: { ...m.referenced_message, content: updatedMessage.content } };
+							return {
+								...m,
+								referenced_message: { ...m.referenced_message, content: updatedMessage.content },
+							};
 						}
 						return m;
 					});
@@ -358,7 +334,7 @@ function handleEvent(event: GatewayEvent) {
 			break;
 		}
 		case "MESSAGE_DELETE": {
-			const raw = data as GatewayMessageDelete;
+			const raw = payload.data;
 			channelMessages.update((all) => {
 				const existing = all[raw.room_id] ?? [];
 				return {
@@ -369,7 +345,7 @@ function handleEvent(event: GatewayEvent) {
 			break;
 		}
 		case "MENTION_CREATE": {
-			const { room_id, conversation_id } = data as { room_id?: string; conversation_id?: string; message_id: string; author_id: string };
+			const { room_id, conversation_id } = payload.data;
 			const key = room_id ?? conversation_id;
 			if (key) {
 				mentionCounts.update((all) => ({ ...all, [key]: (all[key] ?? 0) + 1 }));
@@ -377,10 +353,16 @@ function handleEvent(event: GatewayEvent) {
 			break;
 		}
 		case "USER_UPDATE": {
-			const raw = data as { id: string; username: string; alias: string | null; avatar: string | null; banner: string | null };
+			const raw = payload.data;
 			currentUser.update((u) =>
 				u?.id === raw.id
-					? { ...u, username: raw.username, alias: raw.alias, avatar: raw.avatar, banner: raw.banner }
+					? {
+							...u,
+							username: raw.username,
+							alias: raw.alias,
+							avatar: raw.avatar,
+							banner: raw.banner,
+						}
 					: u,
 			);
 			gatewaySpaces.update((spaces) =>
@@ -388,7 +370,13 @@ function handleEvent(event: GatewayEvent) {
 					...s,
 					users: s.users.map((u) =>
 						u.id === raw.id
-							? { ...u, username: raw.username, alias: raw.alias, avatar: raw.avatar, banner: raw.banner }
+							? {
+									...u,
+									username: raw.username,
+									alias: raw.alias,
+									avatar: raw.avatar,
+									banner: raw.banner,
+								}
 							: u,
 					),
 				})),
@@ -411,7 +399,13 @@ function handleEvent(event: GatewayEvent) {
 						if (m.author_id !== raw.id || !m.user) return m;
 						return {
 							...m,
-							user: { ...m.user, username: raw.username, alias: raw.alias, avatar: raw.avatar, banner: raw.banner },
+							user: {
+								...m.user,
+								username: raw.username,
+								alias: raw.alias,
+								avatar: raw.avatar,
+								banner: raw.banner,
+							},
 						};
 					});
 				}
@@ -422,7 +416,16 @@ function handleEvent(event: GatewayEvent) {
 					...c,
 					members: c.members.map((m) =>
 						m.user_id === raw.id
-							? { ...m, user: { ...m.user, username: raw.username, alias: raw.alias, avatar: raw.avatar, banner: raw.banner } }
+							? {
+									...m,
+									user: {
+										...m.user,
+										username: raw.username,
+										alias: raw.alias,
+										avatar: raw.avatar,
+										banner: raw.banner,
+									},
+								}
 							: m,
 					),
 				})),
@@ -430,8 +433,8 @@ function handleEvent(event: GatewayEvent) {
 			break;
 		}
 		case "USER_STATUS_UPDATE": {
-			console.log("[WS] Received status update:", data);
-			const raw = data as GatewayUserStatusUpdate;
+			console.log("[WS] Received status update:", payload.data);
+			const raw = payload.data;
 			// Always persist the latest live status so it can be applied
 			// to users who are added to the store later.
 			userStatusCache.set(raw.user_id, raw.status_id);
@@ -463,14 +466,7 @@ function handleEvent(event: GatewayEvent) {
 			break;
 		}
 		case "VOICE_STATE_UPDATE": {
-			const raw = data as {
-				room_id: string;
-				user_id: string;
-				joined: boolean;
-				muted?: boolean;
-				deafened?: boolean;
-				screen_sharing?: boolean;
-			};
+			const raw = payload.data;
 
 			// Update call voice states for conversation calls
 			const currentCall = get(activeCall);
@@ -483,10 +479,24 @@ function handleEvent(event: GatewayEvent) {
 							if (raw.user_id !== get(currentUser)?.id) {
 								new Audio("/sounds/join_vc.ogg").play().catch(() => {});
 							}
-							return [...states, { room_id: raw.room_id, user_id: raw.user_id, muted: raw.muted, deafened: raw.deafened, screen_sharing: raw.screen_sharing }];
+							return [
+								...states,
+								{
+									room_id: raw.room_id,
+									user_id: raw.user_id,
+									muted: raw.muted,
+									deafened: raw.deafened,
+									screen_sharing: raw.screen_sharing,
+								},
+							];
 						}
 						const copy = [...states];
-						copy[idx] = { ...copy[idx], muted: raw.muted, deafened: raw.deafened, screen_sharing: raw.screen_sharing };
+						copy[idx] = {
+							...copy[idx],
+							muted: raw.muted,
+							deafened: raw.deafened,
+							screen_sharing: raw.screen_sharing,
+						};
 						return copy;
 					}
 					// User left the call
@@ -508,12 +518,10 @@ function handleEvent(event: GatewayEvent) {
 					let nextStates = [...currentStates];
 
 					if (raw.joined) {
-						const existingIdx = nextStates.findIndex(
-							(vs) => vs.user_id === raw.user_id && vs.room_id === raw.room_id,
-						);
+						const existingIdx = nextStates.findIndex((vs) => vs.user_id === raw.user_id && vs.room_id === raw.room_id);
 						if (existingIdx === -1) {
 							if (raw.room_id === get(activeVoiceRoomId)) {
-								new Audio("/sounds/join_vc.ogg").play().catch(() => { });
+								new Audio("/sounds/join_vc.ogg").play().catch(() => {});
 							}
 							nextStates.push({
 								room_id: raw.room_id,
@@ -532,12 +540,9 @@ function handleEvent(event: GatewayEvent) {
 						}
 					} else {
 						if (raw.room_id === get(activeVoiceRoomId)) {
-							new Audio("/sounds/leave_vc.ogg").play().catch(() => { });
+							new Audio("/sounds/leave_vc.ogg").play().catch(() => {});
 						}
-						nextStates = nextStates.filter(
-							(vs) =>
-								!(vs.user_id === raw.user_id && vs.room_id === raw.room_id),
-						);
+						nextStates = nextStates.filter((vs) => !(vs.user_id === raw.user_id && vs.room_id === raw.room_id));
 					}
 
 					return {
@@ -547,7 +552,7 @@ function handleEvent(event: GatewayEvent) {
 				}),
 			);
 			webrtcListeners.forEach((cb) => {
-				cb(type, data);
+				cb(payload.type, payload.data);
 			});
 
 			break;
@@ -557,11 +562,11 @@ function handleEvent(event: GatewayEvent) {
 		case "WEBRTC_RENEGOTIATE":
 		case "WEBRTC_RENEGOTIATE_ANSWER":
 			webrtcListeners.forEach((cb) => {
-				cb(type, data);
+				cb(payload.type, payload.data);
 			});
 			break;
 		case "ROLE_CREATE": {
-			const role = data as GatewayRole;
+			const role = payload.data;
 			gatewaySpaces.update((spaces) =>
 				spaces.map((s) => {
 					if (s.id !== role.space_id) {
@@ -580,7 +585,7 @@ function handleEvent(event: GatewayEvent) {
 			break;
 		}
 		case "ROLE_UPDATE": {
-			const role = data as GatewayRole;
+			const role = payload.data;
 			gatewaySpaces.update((spaces) =>
 				spaces.map((s) => {
 					if (s.id !== role.space_id) {
@@ -595,10 +600,7 @@ function handleEvent(event: GatewayEvent) {
 			break;
 		}
 		case "ROLE_DELETE": {
-			const role = data as {
-				id: string;
-				space_id: string;
-			};
+			const role = payload.data;
 			gatewaySpaces.update((spaces) =>
 				spaces.map((s) => {
 					if (s.id !== role.space_id) {
@@ -613,10 +615,7 @@ function handleEvent(event: GatewayEvent) {
 			break;
 		}
 		case "MEMBER_ROLE_ADD": {
-			const raw = data as {
-				member_id: string;
-				role_id: string;
-			};
+			const raw = payload.data;
 			gatewaySpaces.update((spaces) =>
 				spaces.map((s) => {
 					const member = s.members.find((m) => m.id === raw.member_id);
@@ -640,10 +639,7 @@ function handleEvent(event: GatewayEvent) {
 			break;
 		}
 		case "MEMBER_ROLE_REMOVE": {
-			const raw = data as {
-				member_id: string;
-				role_id: string;
-			};
+			const raw = payload.data;
 			gatewaySpaces.update((spaces) =>
 				spaces.map((s) => {
 					const member = s.members.find((m) => m.id === raw.member_id);
@@ -664,26 +660,22 @@ function handleEvent(event: GatewayEvent) {
 			break;
 		}
 		case "SPACE_MEMBER_ADD": {
-			const raw = data as { member_id: string; space_id: string };
+			const raw = payload.data;
 			// Refresh the member list so the newly joined user appears.
 			// The new member is definitely online (they just connected and joined),
 			// so force status=1 on their row to avoid the DB snapshot returning 0.
 			getSpaceMembers(raw.space_id)
 				.then((rows) => {
 					const patched = rows.map((r) =>
-						r.id === raw.member_id
-							? { ...r, users: { ...r.user, status_id: 1 as UserStatus } }
-							: r,
+						r.id === raw.member_id ? { ...r, users: { ...r.user, status_id: 1 as UserStatus } } : r,
 					);
 					addMembersToSpace(raw.space_id, patched);
 				})
-				.catch((err) =>
-					console.error("[WS] Failed to refresh members after join:", err),
-				);
+				.catch((err) => console.error("[WS] Failed to refresh members after join:", err));
 			break;
 		}
 		case "SPACE_MEMBER_REMOVE": {
-			const raw = data as { member_id: string; space_id: string };
+			const raw = payload.data;
 			gatewaySpaces.update((spaces) =>
 				spaces.map((s) => {
 					if (s.id !== raw.space_id) return s;
@@ -691,19 +683,14 @@ function handleEvent(event: GatewayEvent) {
 					return {
 						...s,
 						members: s.members.filter((m) => m.id !== raw.member_id),
-						users: removedMember
-							? s.users.filter((u) => u.id !== removedMember.user_id)
-							: s.users,
+						users: removedMember ? s.users.filter((u) => u.id !== removedMember.user_id) : s.users,
 					};
 				}),
 			);
 			break;
 		}
 		case "ROOM_DELETE": {
-			const raw = data as {
-				id: string;
-				space_id: string;
-			};
+			const raw = payload.data;
 			gatewaySpaces.update((spaces) =>
 				spaces?.map((s) => {
 					if (s.id !== raw.space_id) {
@@ -718,7 +705,7 @@ function handleEvent(event: GatewayEvent) {
 			break;
 		}
 		case "ROOM_UPDATE": {
-			const room = data as GatewayRoom;
+			const room = payload.data;
 			gatewaySpaces.update((spaces) =>
 				spaces.map((s) => {
 					if (s.id !== room.space_id) return s;
@@ -731,25 +718,21 @@ function handleEvent(event: GatewayEvent) {
 			break;
 		}
 		case "ROOM_OVERWRITE_UPDATE": {
-			const ow = data as import("$lib/types").GatewayRoomOverwrite;
+			const ow = payload.data;
 			gatewaySpaces.update((spaces) =>
 				spaces.map((s) => {
 					const hasRoom = s.rooms.some((r) => r.id === ow.room_id);
 					if (!hasRoom) return s;
-					const existing = s.room_overwrites.findIndex(
-						(o) => o.room_id === ow.room_id && o.target_id === ow.target_id,
-					);
+					const existing = s.room_overwrites.findIndex((o) => o.room_id === ow.room_id && o.target_id === ow.target_id);
 					const updated =
-						existing >= 0
-							? s.room_overwrites.map((o, i) => (i === existing ? ow : o))
-							: [...s.room_overwrites, ow];
+						existing >= 0 ? s.room_overwrites.map((o, i) => (i === existing ? ow : o)) : [...s.room_overwrites, ow];
 					return { ...s, room_overwrites: updated };
 				}),
 			);
 			break;
 		}
 		case "ROOM_OVERWRITE_DELETE": {
-			const raw = data as { room_id: string; target_id: string };
+			const raw = payload.data;
 			gatewaySpaces.update((spaces) =>
 				spaces.map((s) => {
 					const hasRoom = s.rooms.some((r) => r.id === raw.room_id);
@@ -765,7 +748,7 @@ function handleEvent(event: GatewayEvent) {
 			break;
 		}
 		case "SPACE_EMOJI_CREATE": {
-			const raw = data as import("$lib/types").SpaceEmoji;
+			const raw = payload.data;
 			spaceEmojis.update((m) => {
 				const list = m[raw.space_id] ?? [];
 				return { ...m, [raw.space_id]: [...list, raw] };
@@ -773,7 +756,7 @@ function handleEvent(event: GatewayEvent) {
 			break;
 		}
 		case "SPACE_EMOJI_UPDATE": {
-			const raw = data as import("$lib/types").SpaceEmoji;
+			const raw = payload.data;
 			spaceEmojis.update((m) => {
 				const list = (m[raw.space_id] ?? []).map((e) => (e.id === raw.id ? raw : e));
 				return { ...m, [raw.space_id]: list };
@@ -781,7 +764,7 @@ function handleEvent(event: GatewayEvent) {
 			break;
 		}
 		case "SPACE_EMOJI_DELETE": {
-			const raw = data as { id: string; space_id: string };
+			const raw = payload.data;
 			spaceEmojis.update((m) => {
 				const list = (m[raw.space_id] ?? []).filter((e) => e.id !== raw.id);
 				return { ...m, [raw.space_id]: list };
@@ -789,7 +772,7 @@ function handleEvent(event: GatewayEvent) {
 			break;
 		}
 		case "SPACE_STICKER_CREATE": {
-			const raw = data as import("$lib/types").SpaceSticker;
+			const raw = payload.data;
 			spaceStickers.update((m) => {
 				const list = m[raw.space_id] ?? [];
 				return { ...m, [raw.space_id]: [...list, raw] };
@@ -797,7 +780,7 @@ function handleEvent(event: GatewayEvent) {
 			break;
 		}
 		case "SPACE_STICKER_UPDATE": {
-			const raw = data as import("$lib/types").SpaceSticker;
+			const raw = payload.data;
 			spaceStickers.update((m) => {
 				const list = (m[raw.space_id] ?? []).map((s) => (s.id === raw.id ? raw : s));
 				return { ...m, [raw.space_id]: list };
@@ -805,7 +788,7 @@ function handleEvent(event: GatewayEvent) {
 			break;
 		}
 		case "SPACE_STICKER_DELETE": {
-			const raw = data as { id: string; space_id: string };
+			const raw = payload.data;
 			spaceStickers.update((m) => {
 				const list = (m[raw.space_id] ?? []).filter((s) => s.id !== raw.id);
 				return { ...m, [raw.space_id]: list };
@@ -813,7 +796,7 @@ function handleEvent(event: GatewayEvent) {
 			break;
 		}
 		case "REACTION_ADD": {
-			const raw = data as { message_id: string; user_id: string; emoji_name: string; emoji_id?: string | null };
+			const raw = payload.data;
 			channelMessages.update((all) => {
 				const updated = { ...all };
 				for (const [chId, msgs] of Object.entries(updated)) {
@@ -830,7 +813,12 @@ function handleEvent(event: GatewayEvent) {
 						}
 						reactions[existing] = r;
 					} else {
-						reactions.push({ emoji_name: raw.emoji_name, emoji_id: raw.emoji_id ?? null, count: 1, users: [raw.user_id] });
+						reactions.push({
+							emoji_name: raw.emoji_name,
+							emoji_id: raw.emoji_id ?? null,
+							count: 1,
+							users: [raw.user_id],
+						});
 					}
 					msg.reactions = reactions;
 					updated[chId] = [...msgs.slice(0, idx), msg, ...msgs.slice(idx + 1)];
@@ -841,7 +829,7 @@ function handleEvent(event: GatewayEvent) {
 			break;
 		}
 		case "REACTION_REMOVE": {
-			const raw = data as { message_id: string; user_id: string; emoji_name: string };
+			const raw = payload.data;
 			channelMessages.update((all) => {
 				const updated = { ...all };
 				for (const [chId, msgs] of Object.entries(updated)) {
@@ -869,20 +857,13 @@ function handleEvent(event: GatewayEvent) {
 			break;
 		}
 		case "GUILD_MEMBER_ADD": {
-			const raw = data as {
-				space_id: string;
-				user_id: string;
-				member_id: string;
-				user?: import("$lib/types").GatewayUser;
-			};
+			const raw = payload.data;
 			// The joining user already receives SPACE_CREATE; this event
 			// updates the members list for everyone else already in the space.
 			gatewaySpaces.update((spaces) =>
 				spaces.map((s) => {
 					if (s.id !== raw.space_id) return s;
-					const alreadyHasMember = s.members.some(
-						(m) => m.id === raw.member_id,
-					);
+					const alreadyHasMember = s.members.some((m) => m.id === raw.member_id);
 					if (alreadyHasMember) return s;
 					const newMember: import("$lib/types").GatewayMember = {
 						id: raw.member_id,
@@ -897,19 +878,14 @@ function handleEvent(event: GatewayEvent) {
 					return {
 						...s,
 						members: [...s.members, newMember],
-						users:
-							raw.user && !alreadyHasUser ? [...s.users, raw.user] : s.users,
+						users: raw.user && !alreadyHasUser ? [...s.users, raw.user] : s.users,
 					};
 				}),
 			);
 			break;
 		}
 		case "GUILD_MEMBER_REMOVE": {
-			const raw = data as {
-				space_id: string;
-				user_id: string;
-				member_id: string;
-			};
+			const raw = payload.data;
 			gatewaySpaces.update((spaces) =>
 				spaces.map((s) => {
 					if (s.id !== raw.space_id) return s;
@@ -917,18 +893,14 @@ function handleEvent(event: GatewayEvent) {
 						...s,
 						members: s.members.filter((m) => m.id !== raw.member_id),
 						users: s.users.filter((u) => u.id !== raw.user_id),
-						member_roles: Object.fromEntries(
-							Object.entries(s.member_roles).filter(
-								([uid]) => uid !== raw.user_id,
-							),
-						),
+						member_roles: Object.fromEntries(Object.entries(s.member_roles).filter(([uid]) => uid !== raw.user_id)),
 					};
 				}),
 			);
 			break;
 		}
 		case "FRIEND_REQUEST_CREATE": {
-			const req = data as FriendRequest;
+			const req = payload.data;
 			pendingFriendRequests.update((reqs) => {
 				if (reqs.some((r) => r.id === req.id)) return reqs;
 				return [...reqs, req];
@@ -936,7 +908,7 @@ function handleEvent(event: GatewayEvent) {
 			break;
 		}
 		case "FRIEND_REQUEST_ACCEPT": {
-			const raw = data as Friend;
+			const raw = payload.data;
 			friends.update((list) => {
 				if (list.some((f) => f.id === raw.id)) return list;
 				return [...list, raw];
@@ -945,21 +917,17 @@ function handleEvent(event: GatewayEvent) {
 			break;
 		}
 		case "FRIEND_REQUEST_REJECT": {
-			const raw = data as { request_id: string };
+			const raw = payload.data;
 			sentFriendRequests.update((reqs) => reqs.filter((r) => r.id !== raw.request_id));
 			break;
 		}
 		case "FRIEND_REMOVE": {
-			const raw = data as { user_id: string };
-			friends.update((list) =>
-				list.filter(
-					(f) => f.sender_id !== raw.user_id && f.recipient_id !== raw.user_id,
-				),
-			);
+			const raw = payload.data;
+			friends.update((list) => list.filter((f) => f.sender_id !== raw.user_id && f.recipient_id !== raw.user_id));
 			break;
 		}
 		case "CONVERSATION_CREATE": {
-			const conv = data as Conversation;
+			const conv = payload.data;
 			conversations.update((list) => {
 				if (list.some((c) => c.id === conv.id)) return list;
 				return [conv, ...list];
@@ -967,19 +935,17 @@ function handleEvent(event: GatewayEvent) {
 			break;
 		}
 		case "CONVERSATION_UPDATE": {
-			const raw = data as { id: string; name: string | null };
-			conversations.update((list) =>
-				list.map((c) => (c.id === raw.id ? { ...c, name: raw.name } : c)),
-			);
+			const raw = payload.data;
+			conversations.update((list) => list.map((c) => (c.id === raw.id ? { ...c, name: raw.name } : c)));
 			break;
 		}
 		case "CONVERSATION_DELETE": {
-			const raw = data as { id: string };
+			const raw = payload.data;
 			conversations.update((list) => list.filter((c) => c.id !== raw.id));
 			break;
 		}
 		case "CONVERSATION_MEMBER_ADD": {
-			const raw = data as { conversation_id: string; user_id: string; member_id: string; username?: string; alias?: string | null; avatar?: string | null; banner?: string | null; status_id?: number };
+			const raw = payload.data;
 			conversations.update((list) =>
 				list.map((c) => {
 					if (c.id !== raw.conversation_id) return c;
@@ -996,7 +962,14 @@ function handleEvent(event: GatewayEvent) {
 								created_at: new Date().toISOString(),
 								updated_at: new Date().toISOString(),
 								deleted_at: null,
-								user: { id: raw.user_id, username: raw.username ?? "", alias: raw.alias ?? null, avatar: raw.avatar ?? null, banner: raw.banner ?? null, status_id: raw.status_id ?? 0 },
+								user: {
+									id: raw.user_id,
+									username: raw.username ?? "",
+									alias: raw.alias ?? null,
+									avatar: raw.avatar ?? null,
+									banner: raw.banner ?? null,
+									status_id: raw.status_id ?? 0,
+								},
 							},
 						],
 					};
@@ -1005,7 +978,7 @@ function handleEvent(event: GatewayEvent) {
 			break;
 		}
 		case "CONVERSATION_MEMBER_REMOVE": {
-			const raw = data as { conversation_id: string; user_id: string };
+			const raw = payload.data;
 			conversations.update((list) =>
 				list.map((c) => {
 					if (c.id !== raw.conversation_id) return c;
@@ -1018,14 +991,17 @@ function handleEvent(event: GatewayEvent) {
 			break;
 		}
 		case "DM_MESSAGE_CREATE": {
-			const msg = data as DirectMessage;
+			const msg = payload.data;
 			if (!msg.conversation_id) {
 				return;
 			}
 			const conversationId = msg.conversation_id;
 			const isActiveConv = conversationId === get(activeDMConvId);
 			if (!isActiveConv) {
-				unreadConversations.update((s) => { s.add(conversationId); return s; });
+				unreadConversations.update((s) => {
+					s.add(conversationId);
+					return s;
+				});
 			}
 			// Play sound if not in the active conversation, OR if the page is not visible.
 			if (msg.author_id !== get(currentUser)?.id && (!isActiveConv || !get(pageVisible))) {
@@ -1033,7 +1009,10 @@ function handleEvent(event: GatewayEvent) {
 			}
 			typingUsers.update((all) => {
 				if (!all[conversationId]) return all;
-				return { ...all, [conversationId]: all[conversationId].filter((u) => u.user_id !== msg.author_id) };
+				return {
+					...all,
+					[conversationId]: all[conversationId].filter((u) => u.user_id !== msg.author_id),
+				};
 			});
 			dmMessages.update((all) => {
 				const existing = all[conversationId] ?? [];
@@ -1057,7 +1036,7 @@ function handleEvent(event: GatewayEvent) {
 			break;
 		}
 		case "DM_MESSAGE_UPDATE": {
-			const msg = data as DirectMessage;
+			const msg = payload.data;
 			if (!msg.conversation_id) {
 				return;
 			}
@@ -1072,7 +1051,7 @@ function handleEvent(event: GatewayEvent) {
 			break;
 		}
 		case "DM_MESSAGE_DELETE": {
-			const raw = data as { id: string; conversation_id: string };
+			const raw = payload.data;
 			dmMessages.update((all) => {
 				const existing = all[raw.conversation_id] ?? [];
 				return {
@@ -1083,7 +1062,7 @@ function handleEvent(event: GatewayEvent) {
 			break;
 		}
 		case "DM_REACTION_ADD": {
-			const raw = data as { message_id: string; user_id: string; emoji_name: string; emoji_id?: string | null };
+			const raw = payload.data;
 			dmMessages.update((all) => {
 				const updated = { ...all };
 				for (const [convId, msgs] of Object.entries(updated)) {
@@ -1100,7 +1079,12 @@ function handleEvent(event: GatewayEvent) {
 						}
 						reactions[existing] = r;
 					} else {
-						reactions.push({ emoji_name: raw.emoji_name, emoji_id: raw.emoji_id ?? null, count: 1, users: [raw.user_id] });
+						reactions.push({
+							emoji_name: raw.emoji_name,
+							emoji_id: raw.emoji_id ?? null,
+							count: 1,
+							users: [raw.user_id],
+						});
 					}
 					msg.reactions = reactions;
 					updated[convId] = [...msgs.slice(0, idx), msg, ...msgs.slice(idx + 1)];
@@ -1111,7 +1095,7 @@ function handleEvent(event: GatewayEvent) {
 			break;
 		}
 		case "DM_REACTION_REMOVE": {
-			const raw = data as { message_id: string; user_id: string; emoji_name: string };
+			const raw = payload.data;
 			dmMessages.update((all) => {
 				const updated = { ...all };
 				for (const [convId, msgs] of Object.entries(updated)) {
@@ -1139,7 +1123,7 @@ function handleEvent(event: GatewayEvent) {
 			break;
 		}
 		case "TYPING": {
-			const raw = data as { user_id: string; username: string; alias: string | null; avatar: string | null; room_id: string };
+			const raw = payload.data;
 			const me = get(currentUser);
 			if (raw.user_id === me?.id) break;
 			typingUsers.update((all) => {
@@ -1150,7 +1134,7 @@ function handleEvent(event: GatewayEvent) {
 			break;
 		}
 		case "DM_TYPING": {
-			const raw = data as { user_id: string; username: string; alias: string | null; avatar: string | null; conversation_id: string };
+			const raw = payload.data;
 			const me = get(currentUser);
 			if (raw.user_id === me?.id) break;
 			typingUsers.update((all) => {
@@ -1161,9 +1145,12 @@ function handleEvent(event: GatewayEvent) {
 			break;
 		}
 		case "CALL_INCOMING": {
-			const d = data as { conversation_id: string; initiator_id: string; initiator_name: string; initiator_avatar: string | null; member_ids: string[] };
+			const d = payload.data;
 			// Track that this conversation has an active call
-			conversationsWithCalls.update((s) => { s.add(d.conversation_id); return new Set(s); });
+			conversationsWithCalls.update((s) => {
+				s.add(d.conversation_id);
+				return new Set(s);
+			});
 			// Show ringing modal if not already in a call
 			if (!get(activeCall)) {
 				activeCall.set({
@@ -1178,8 +1165,8 @@ function handleEvent(event: GatewayEvent) {
 			break;
 		}
 		case "CALL_ACCEPTED": {
-			const d = data as { conversation_id: string; user_id: string };
-			activeCall.update(c => {
+			const d = payload.data;
+			activeCall.update((c) => {
 				if (c && c.conversationId === d.conversation_id && c.state === "calling") {
 					return { ...c, state: "connected" };
 				}
@@ -1194,8 +1181,11 @@ function handleEvent(event: GatewayEvent) {
 			break;
 		}
 		case "CALL_ENDED": {
-			const d = data as { conversation_id: string };
-			conversationsWithCalls.update((s) => { s.delete(d.conversation_id); return new Set(s); });
+			const d = payload.data;
+			conversationsWithCalls.update((s) => {
+				s.delete(d.conversation_id);
+				return new Set(s);
+			});
 			const current = get(activeCall);
 			if (current && current.conversationId === d.conversation_id) {
 				// Only disconnect voice if still in this conversation's call, not a different voice channel
@@ -1250,7 +1240,7 @@ export function createWebSocketConnection(): GatewayConnection {
 
 		let socket: WebSocket;
 		try {
-			socket =  new WebSocket(getStreamURL());
+			socket = new WebSocket(getStreamURL());
 		} catch (error) {
 			console.error("[WS] Failed to create WebSocket:", error);
 
@@ -1282,14 +1272,14 @@ export function createWebSocketConnection(): GatewayConnection {
 
 		socket.onmessage = (rawEvent) => {
 			try {
-				const msg = JSON.parse(rawEvent.data as string);
+				const msg: GatewayEvent = JSON.parse(rawEvent.data);
 				if (msg.event === "heartbeat_ack") {
 					// Heartbeat acknowledged by server
 					return;
 				}
 				if (msg.event === "payload") {
 					console.log("[WS] Payload:", msg);
-					handleEvent(msg as GatewayEvent);
+					handleEvent(msg);
 				}
 			} catch (err) {
 				console.error("[WS] Failed to parse message:", err);

@@ -1,45 +1,46 @@
 <!doctype html>
 <html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, maximum-scale=5, viewport-fit=cover"
+    />
 
-<head>
-	<meta charset="utf-8" />
-	<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5, viewport-fit=cover" />
+    <script>
+      (() => {
+        const path = window.location.pathname;
+        const isDev = window.location.port === "5173";
 
-	<script>
-		(() => {
-			const path = window.location.pathname;
-			const isDev = window.location.port === '5173';
+        const r = (p) => {
+          if (!isDev) return p;
+          const map = {
+            "/index.html": "/",
+            "/app.html": "/app",
+            "/sign-in.html": "/sign-in",
+            "/sign-up.html": "/sign-up",
+            "/forgot-password.html": "/forgot-password",
+            "/invite.html": "/invite",
+          };
+          return map[p] || p;
+        };
 
-			const r = (p) => {
-				if (!isDev) return p;
-				const map = {
-					'/index.html': '/',
-					'/app.html': '/app',
-					'/sign-in.html': '/sign-in',
-					'/sign-up.html': '/sign-up',
-					'/forgot-password.html': '/forgot-password',
-					'/invite.html': '/invite',
-				};
-				return map[p] || p;
-			};
+        if (path === "/index.html" || path === "/") {
+          const secret = localStorage.getItem("duvet_session_token");
 
-			if (path === '/index.html' || path === '/') {
-				const secret = localStorage.getItem('duvet_session_token');
+          if (!secret) {
+            window.location.replace(r("/sign-in.html"));
+          } else {
+            window.location.replace(r("/app.html"));
+          }
+        }
+      })();
+    </script>
 
-				if (!secret) {
-					window.location.replace(r('/sign-in.html'));
-				} else {
-					window.location.replace(r('/app.html'));
-				}
-			}
-		})();
-	</script>
+    %sveltekit.head%
+  </head>
 
-	%sveltekit.head%
-</head>
-
-<body data-sveltekit-preload-data="hover">
-	<div style="display: contents">%sveltekit.body%</div>
-</body>
-
+  <body data-sveltekit-preload-data="hover">
+    <div style="display: contents">%sveltekit.body%</div>
+  </body>
 </html>

@@ -3,8 +3,7 @@
 // cross-platform rendering. We mirror that by swapping every Unicode emoji
 // for an <img> tag pointing to the Twemoji CDN.
 
-const TWEMOJI_BASE =
-	"https://cdn.jsdelivr.net/gh/jdecked/twemoji@16.0.1/assets/svg";
+const TWEMOJI_BASE = "https://cdn.jsdelivr.net/gh/jdecked/twemoji@16.0.1/assets/svg";
 
 // Some non-standard ZWJ sequences (not in the Unicode RGI list) are stored
 // by Twemoji using their non-qualified form (FE0F stripped entirely).
@@ -40,10 +39,7 @@ const EMOJI_REGEX =
 export function renderEmoji(text: string, large = false): string {
 	const cls = large ? "emoji-img emoji-large" : "emoji-img";
 	// Escape HTML first to avoid XSS, then replace emoji
-	const escaped = text
-		.replace(/&/g, "&amp;")
-		.replace(/</g, "&lt;")
-		.replace(/>/g, "&gt;");
+	const escaped = text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
 	return escaped.replace(EMOJI_REGEX, (emoji) => {
 		const url = toTwemojiUrl(emoji);
@@ -57,10 +53,7 @@ const CUSTOM_EMOJI_REGEX = /<:[a-f0-9-]+:>/g;
 export function isOnlyEmojis(text: string): boolean {
 	const trimmed = text.trim();
 	if (!trimmed) return false;
-	const stripped = trimmed
-		.replace(EMOJI_REGEX, "")
-		.replace(CUSTOM_EMOJI_REGEX, "")
-		.replace(/\s/g, "");
+	const stripped = trimmed.replace(EMOJI_REGEX, "").replace(CUSTOM_EMOJI_REGEX, "").replace(/\s/g, "");
 	return stripped.length === 0;
 }
 
@@ -115,10 +108,10 @@ const CATEGORY_MAP: Record<string, { label: string; icon: string }> = {
 	"Animals & Nature": { label: "Animals & Nature", icon: "🐶" },
 	"Food & Drink": { label: "Food & Drink", icon: "🍕" },
 	"Travel & Places": { label: "Travel & Places", icon: "✈️" },
-	"Activities": { label: "Activities", icon: "⚽" },
-	"Objects": { label: "Objects", icon: "💡" },
-	"Symbols": { label: "Symbols", icon: "❤️" },
-	"Flags": { label: "Flags", icon: "🏳️" },
+	Activities: { label: "Activities", icon: "⚽" },
+	Objects: { label: "Objects", icon: "💡" },
+	Symbols: { label: "Symbols", icon: "❤️" },
+	Flags: { label: "Flags", icon: "🏳️" },
 };
 
 // Build the categorized emoji dataset, sorted by sort_order
@@ -128,9 +121,7 @@ for (const cat of Object.keys(CATEGORY_MAP)) {
 	categoryMap.set(cat, []);
 }
 
-for (const raw of (rawData as RawEmoji[]).sort(
-	(a, b) => a.sort_order - b.sort_order,
-)) {
+for (const raw of (rawData as RawEmoji[]).sort((a, b) => a.sort_order - b.sort_order)) {
 	// Skip emojis not in Twemoji, and skip base skin-tone modifier entries
 	if (!raw.has_img_twitter) continue;
 
@@ -161,8 +152,5 @@ export const allEmojis: EmojiEntry[] = emojiCategories.flatMap((c) => c.emojis);
 export function searchEmojis(query: string): EmojiEntry[] {
 	const q = query.toLowerCase().trim();
 	if (!q) return [];
-	return allEmojis.filter(
-		(e) =>
-			e.name.includes(q) || e.keywords.some((k) => k.includes(q)),
-	);
+	return allEmojis.filter((e) => e.name.includes(q) || e.keywords.some((k) => k.includes(q)));
 }

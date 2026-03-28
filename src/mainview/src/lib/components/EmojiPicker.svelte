@@ -1,74 +1,126 @@
 <script lang="ts">
-import { emojiCategories, searchEmojis, toTwemojiUrl, type EmojiEntry } from "$lib/emoji";
-import type { SpaceEmoji } from "$lib/types";
-import { getHostURL } from "$lib/common/common";
+	import { emojiCategories, searchEmojis, toTwemojiUrl, type EmojiEntry } from "$lib/emoji";
+	import type { SpaceEmoji } from "$lib/types";
+	import { getHostURL } from "$lib/common/common";
 
-const ceHost = getHostURL();
+	const ceHost = getHostURL();
 
-let { onSelect, customEmojis = [] }: { onSelect: (emoji: string) => void; customEmojis?: SpaceEmoji[] } = $props();
+	let { onSelect, customEmojis = [] }: { onSelect: (emoji: string) => void; customEmojis?: SpaceEmoji[] } = $props();
 
-const hasCustom = $derived(customEmojis.length > 0);
-// Category 0 is custom emojis when available, otherwise shift
-const categoryOffset = $derived(hasCustom ? 1 : 0);
+	const hasCustom = $derived(customEmojis.length > 0);
+	// Category 0 is custom emojis when available, otherwise shift
+	const categoryOffset = $derived(hasCustom ? 1 : 0);
 
-let searchQuery = $state("");
-let activeCategory = $state(0);
-let searchResults = $derived.by(() => {
-	const query = searchQuery.trim().toLowerCase();
-	if (!query) return [];
-	const customMatches = customEmojis
-		.filter((ce) => ce.name.toLowerCase().includes(query))
-		.map((ce) => ({ emoji: `<:${ce.id}:>`, name: ce.name, customAttachmentId: ce.attachment_id }) as EmojiEntry & { customAttachmentId: string });
-	return [...customMatches, ...searchEmojis(searchQuery)];
-});
-let isSearching = $derived(searchQuery.trim().length > 0);
+	let searchQuery = $state("");
+	let activeCategory = $state(0);
+	let searchResults = $derived.by(() => {
+		const query = searchQuery.trim().toLowerCase();
+		if (!query) return [];
+		const customMatches = customEmojis
+			.filter((ce) => ce.name.toLowerCase().includes(query))
+			.map(
+				(ce) =>
+					({ emoji: `<:${ce.id}:>`, name: ce.name, customAttachmentId: ce.attachment_id }) as EmojiEntry & {
+						customAttachmentId: string;
+					},
+			);
+		return [...customMatches, ...searchEmojis(searchQuery)];
+	});
+	let isSearching = $derived(searchQuery.trim().length > 0);
 
-function pick(emoji: string) {
-	onSelect(emoji);
-}
+	function pick(emoji: string) {
+		onSelect(emoji);
+	}
 
-let searchEl: HTMLInputElement;
+	let searchEl: HTMLInputElement;
 </script>
 
 <div
-	class="flex flex-col w-[360px] h-[420px] bg-[oklch(0.19_0.008_80)] border border-[oklch(0.30_0.01_80)] rounded-[10px] shadow-[0_8px_32px_rgba(0,0,0,0.55)] overflow-hidden font-[inherit]"
+	class="flex h-[420px] w-[360px] flex-col overflow-hidden rounded-[10px] border border-[oklch(0.30_0.01_80)] bg-[oklch(0.19_0.008_80)] font-[inherit] shadow-[0_8px_32px_rgba(0,0,0,0.55)]"
 	role="dialog"
 	aria-label="Emoji picker"
 >
 	<!-- Search bar -->
-	<div class="flex items-center gap-2 px-3 pt-[10px] pb-2 border-b border-[oklch(0.25_0.01_80)] shrink-0">
-		<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-[oklch(0.55_0.01_80)] shrink-0" aria-hidden="true">
-			<circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+	<div class="flex shrink-0 items-center gap-2 border-b border-[oklch(0.25_0.01_80)] px-3 pt-[10px] pb-2">
+		<svg
+			width="14"
+			height="14"
+			viewBox="0 0 24 24"
+			fill="none"
+			stroke="currentColor"
+			stroke-width="2"
+			stroke-linecap="round"
+			stroke-linejoin="round"
+			class="shrink-0 text-[oklch(0.55_0.01_80)]"
+			aria-hidden="true"
+		>
+			<circle cx="11" cy="11" r="8" /><path d="m21 21-4.35-4.35" />
 		</svg>
 		<input
 			bind:this={searchEl}
 			bind:value={searchQuery}
 			type="text"
 			placeholder="Search emoji..."
-			class="flex-1 bg-transparent border-none outline-none text-[oklch(0.92_0.01_80)] text-[13px] min-w-0 placeholder:text-[oklch(0.5_0.01_80)]"
+			class="min-w-0 flex-1 border-none bg-transparent text-[13px] text-[oklch(0.92_0.01_80)] outline-none placeholder:text-[oklch(0.5_0.01_80)]"
 			aria-label="Search emoji"
 			autocomplete="off"
 		/>
 		{#if searchQuery}
-			<button class="bg-none border-none cursor-pointer text-[oklch(0.55_0.01_80)] flex items-center p-[2px] rounded-[3px] shrink-0 hover:text-[oklch(0.8_0.01_80)]" onclick={() => (searchQuery = "")} aria-label="Clear search">
-				<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+			<button
+				class="flex shrink-0 cursor-pointer items-center rounded-[3px] border-none bg-none p-[2px] text-[oklch(0.55_0.01_80)] hover:text-[oklch(0.8_0.01_80)]"
+				onclick={() => (searchQuery = "")}
+				aria-label="Clear search"
+			>
+				<svg
+					width="12"
+					height="12"
+					viewBox="0 0 24 24"
+					fill="none"
+					stroke="currentColor"
+					stroke-width="2.5"
+					stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg
+				>
 			</button>
 		{/if}
 	</div>
 
 	{#if !isSearching}
 		<!-- Category tabs -->
-		<div class="flex items-center gap-[2px] px-[10px] pt-[6px] pb-1 border-b border-[oklch(0.25_0.01_80)] shrink-0 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" role="tablist" aria-label="Emoji categories">
+		<div
+			class="flex shrink-0 items-center gap-[2px] overflow-x-auto border-b border-[oklch(0.25_0.01_80)] px-[10px] pt-[6px] pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+			role="tablist"
+			aria-label="Emoji categories"
+		>
 			{#if hasCustom}
 				<button
 					role="tab"
 					aria-selected={activeCategory === 0}
 					aria-label="Server Emojis"
-					class="bg-none border-none cursor-pointer rounded-[6px] px-[5px] py-1 flex items-center justify-center shrink-0 transition-[opacity,background] duration-[120ms] {activeCategory === 0 ? 'opacity-100 bg-[oklch(0.30_0.015_80)]' : 'opacity-55 hover:opacity-85 hover:bg-[oklch(0.28_0.01_80)]'}"
+					class="flex shrink-0 cursor-pointer items-center justify-center rounded-[6px] border-none bg-none px-[5px] py-1 transition-[opacity,background] duration-[120ms] {activeCategory ===
+					0
+						? 'bg-[oklch(0.30_0.015_80)] opacity-100'
+						: 'opacity-55 hover:bg-[oklch(0.28_0.01_80)] hover:opacity-85'}"
 					onclick={() => (activeCategory = 0)}
 					title="Server Emojis"
 				>
-					<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-[oklch(0.75_0.01_80)]"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" x2="9.01" y1="9" y2="9"/><line x1="15" x2="15.01" y1="9" y2="9"/></svg>
+					<svg
+						xmlns="http://www.w3.org/2000/svg"
+						width="20"
+						height="20"
+						viewBox="0 0 24 24"
+						fill="none"
+						stroke="currentColor"
+						stroke-width="2"
+						stroke-linecap="round"
+						stroke-linejoin="round"
+						class="text-[oklch(0.75_0.01_80)]"
+						><circle cx="12" cy="12" r="10" /><path d="M8 14s1.5 2 4 2 4-2 4-2" /><line
+							x1="9"
+							x2="9.01"
+							y1="9"
+							y2="9"
+						/><line x1="15" x2="15.01" y1="9" y2="9" /></svg
+					>
 				</button>
 			{/if}
 			{#each emojiCategories as cat, i}
@@ -76,48 +128,53 @@ let searchEl: HTMLInputElement;
 					role="tab"
 					aria-selected={activeCategory === i + categoryOffset}
 					aria-label={cat.label}
-					class="bg-none border-none cursor-pointer rounded-[6px] px-[5px] py-1 flex items-center justify-center shrink-0 transition-[opacity,background] duration-[120ms] {activeCategory === i + categoryOffset ? 'opacity-100 bg-[oklch(0.30_0.015_80)]' : 'opacity-55 hover:opacity-85 hover:bg-[oklch(0.28_0.01_80)]'}"
+					class="flex shrink-0 cursor-pointer items-center justify-center rounded-[6px] border-none bg-none px-[5px] py-1 transition-[opacity,background] duration-[120ms] {activeCategory ===
+					i + categoryOffset
+						? 'bg-[oklch(0.30_0.015_80)] opacity-100'
+						: 'opacity-55 hover:bg-[oklch(0.28_0.01_80)] hover:opacity-85'}"
 					onclick={() => (activeCategory = i + categoryOffset)}
 					title={cat.label}
 				>
-					<img
-						src={toTwemojiUrl(cat.icon)}
-						alt={cat.label}
-						class="size-5 block"
-						loading="lazy"
-					/>
+					<img src={toTwemojiUrl(cat.icon)} alt={cat.label} class="block size-5" loading="lazy" />
 				</button>
 			{/each}
 		</div>
 	{/if}
 
 	<!-- Emoji grid -->
-	<div class="flex-1 overflow-y-auto px-[10px] pt-[6px] pb-[10px] [scrollbar-width:thin] [scrollbar-color:oklch(0.35_0.01_80)_transparent] [&::-webkit-scrollbar]:w-[5px] [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-[oklch(0.35_0.01_80)] [&::-webkit-scrollbar-thumb]:rounded-full" role="tabpanel">
+	<div
+		class="flex-1 overflow-y-auto px-[10px] pt-[6px] pb-[10px] [scrollbar-color:oklch(0.35_0.01_80)_transparent] [scrollbar-width:thin] [&::-webkit-scrollbar]:w-[5px] [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-[oklch(0.35_0.01_80)] [&::-webkit-scrollbar-track]:bg-transparent"
+		role="tabpanel"
+	>
 		{#if isSearching}
 			{#if searchResults.length === 0}
-				<div class="text-center text-[oklch(0.52_0.01_80)] text-[13px] py-[30px]">No results for "{searchQuery}"</div>
+				<div class="py-[30px] text-center text-[13px] text-[oklch(0.52_0.01_80)]">No results for "{searchQuery}"</div>
 			{:else}
-				<div class="text-[10px] font-bold tracking-[0.06em] uppercase text-[oklch(0.52_0.01_80)] px-[2px] pt-[6px] pb-2">Search results</div>
+				<div
+					class="px-[2px] pt-[6px] pb-2 text-[10px] font-bold tracking-[0.06em] text-[oklch(0.52_0.01_80)] uppercase"
+				>
+					Search results
+				</div>
 				<div class="grid grid-cols-8 gap-[2px]">
 					{#each searchResults as entry (entry.emoji + entry.name)}
 						<button
-							class="bg-none border-none cursor-pointer p-[5px] rounded-[6px] flex items-center justify-center transition-[background,transform] duration-100 hover:bg-[oklch(0.30_0.01_80)] hover:scale-[1.18] active:scale-100"
+							class="flex cursor-pointer items-center justify-center rounded-[6px] border-none bg-none p-[5px] transition-[background,transform] duration-100 hover:scale-[1.18] hover:bg-[oklch(0.30_0.01_80)] active:scale-100"
 							onclick={() => pick(entry.emoji)}
 							title={entry.name}
 							aria-label={entry.name}
 						>
-							{#if 'customAttachmentId' in entry}
+							{#if "customAttachmentId" in entry}
 								<img
 									src="{ceHost}/attachments/{entry.customAttachmentId}"
 									alt=":{entry.name}:"
-									class="size-6 block pointer-events-none select-none object-contain"
+									class="pointer-events-none block size-6 object-contain select-none"
 									loading="lazy"
 								/>
 							{:else}
 								<img
 									src={toTwemojiUrl(entry.emoji)}
 									alt={entry.emoji}
-									class="size-6 block pointer-events-none select-none"
+									class="pointer-events-none block size-6 select-none"
 									loading="lazy"
 								/>
 							{/if}
@@ -126,11 +183,13 @@ let searchEl: HTMLInputElement;
 				</div>
 			{/if}
 		{:else if hasCustom && activeCategory === 0}
-			<div class="text-[10px] font-bold tracking-[0.06em] uppercase text-[oklch(0.52_0.01_80)] px-[2px] pt-[6px] pb-2">Server Emojis</div>
+			<div class="px-[2px] pt-[6px] pb-2 text-[10px] font-bold tracking-[0.06em] text-[oklch(0.52_0.01_80)] uppercase">
+				Server Emojis
+			</div>
 			<div class="grid grid-cols-8 gap-[2px]">
 				{#each customEmojis as ce (ce.id)}
 					<button
-						class="bg-none border-none cursor-pointer p-[5px] rounded-[6px] flex items-center justify-center transition-[background,transform] duration-100 hover:bg-[oklch(0.30_0.01_80)] hover:scale-[1.18] active:scale-100"
+						class="flex cursor-pointer items-center justify-center rounded-[6px] border-none bg-none p-[5px] transition-[background,transform] duration-100 hover:scale-[1.18] hover:bg-[oklch(0.30_0.01_80)] active:scale-100"
 						onclick={() => pick(`<:${ce.id}:>`)}
 						title=":{ce.name}:"
 						aria-label=":{ce.name}:"
@@ -138,7 +197,7 @@ let searchEl: HTMLInputElement;
 						<img
 							src="{ceHost}/attachments/{ce.attachment_id}"
 							alt=":{ce.name}:"
-							class="size-6 block pointer-events-none select-none object-contain"
+							class="pointer-events-none block size-6 object-contain select-none"
 							loading="lazy"
 						/>
 					</button>
@@ -146,11 +205,13 @@ let searchEl: HTMLInputElement;
 			</div>
 		{:else}
 			{@const cat = emojiCategories[activeCategory - categoryOffset]}
-			<div class="text-[10px] font-bold tracking-[0.06em] uppercase text-[oklch(0.52_0.01_80)] px-[2px] pt-[6px] pb-2">{cat.label}</div>
+			<div class="px-[2px] pt-[6px] pb-2 text-[10px] font-bold tracking-[0.06em] text-[oklch(0.52_0.01_80)] uppercase">
+				{cat.label}
+			</div>
 			<div class="grid grid-cols-8 gap-[2px]">
 				{#each cat.emojis as entry (entry.emoji)}
 					<button
-						class="bg-none border-none cursor-pointer p-[5px] rounded-[6px] flex items-center justify-center transition-[background,transform] duration-100 hover:bg-[oklch(0.30_0.01_80)] hover:scale-[1.18] active:scale-100"
+						class="flex cursor-pointer items-center justify-center rounded-[6px] border-none bg-none p-[5px] transition-[background,transform] duration-100 hover:scale-[1.18] hover:bg-[oklch(0.30_0.01_80)] active:scale-100"
 						onclick={() => pick(entry.emoji)}
 						title={entry.name}
 						aria-label={entry.name}
@@ -158,7 +219,7 @@ let searchEl: HTMLInputElement;
 						<img
 							src={toTwemojiUrl(entry.emoji)}
 							alt={entry.emoji}
-							class="size-6 block pointer-events-none select-none"
+							class="pointer-events-none block size-6 select-none"
 							loading="lazy"
 						/>
 					</button>

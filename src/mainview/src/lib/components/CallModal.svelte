@@ -32,7 +32,7 @@
 		if (!call) return;
 		const convId = call.conversationId;
 		sendEventMessage("CALL_ACCEPT", { conversation_id: convId });
-		activeCall.update(c => c ? { ...c, state: "connected" } : null);
+		activeCall.update((c) => (c ? { ...c, state: "connected" } : null));
 		// Delay slightly so gateway processes CALL_ACCEPT before VoiceChat sends VOICE_JOIN
 		setTimeout(() => activeVoiceRoomId.set(convId), 50);
 	}
@@ -58,23 +58,23 @@
 	}
 
 	function toggleMute() {
-		isMuted.update(m => !m);
+		isMuted.update((m) => !m);
 	}
 </script>
 
 {#if call && (call.state === "ringing" || call.state === "calling")}
 	<!-- Ringing / Calling overlay -->
-	<div class="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm">
-		<div class="flex w-80 flex-col items-center gap-6 rounded-2xl border border-stone-700 bg-stone-900/95 p-8 shadow-2xl backdrop-blur-md">
+	<div class="fixed inset-0 z-100 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+		<div
+			class="flex w-80 flex-col items-center gap-6 rounded-2xl border border-stone-700 bg-stone-900/95 p-8 shadow-2xl backdrop-blur-md"
+		>
 			<!-- Pulsing avatar -->
 			<div class="relative">
-				<span class="absolute -inset-3 rounded-full border border-emerald-400/30 animate-call-pulse"></span>
-				<span class="absolute -inset-5 rounded-full border border-emerald-400/20 animate-call-pulse [animation-delay:0.4s]"></span>
-				<UserAvatar
-					src={call.initiatorAvatar}
-					name={call.initiatorName}
-					size={80}
-				/>
+				<span class="animate-call-pulse absolute -inset-3 rounded-full border border-emerald-400/30"></span>
+				<span
+					class="animate-call-pulse absolute -inset-5 rounded-full border border-emerald-400/20 [animation-delay:0.4s]"
+				></span>
+				<UserAvatar src={call.initiatorAvatar} name={call.initiatorName} size={80} />
 			</div>
 
 			<!-- Name and status -->

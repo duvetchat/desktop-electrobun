@@ -166,7 +166,6 @@
 	}
 
 	@keyframes caret-blink {
-
 		0%,
 		70%,
 		100% {
@@ -284,7 +283,9 @@
 	}
 
 	@keyframes typing-bounce {
-		0%, 60%, 100% {
+		0%,
+		60%,
+		100% {
 			transform: translateY(0);
 			opacity: 0.5;
 		}
@@ -309,7 +310,6 @@
 }
 
 @layer base {
-
 	*,
 	::after,
 	::before,
@@ -371,7 +371,6 @@
 }
 
 @layer components {
-
 	button,
 	[role="button"],
 	a[href],
@@ -406,12 +405,12 @@
 
 	*:not(body):not(.focus-override) {
 		&:focus-visible {
-			@apply focus-visible:ring-foreground focus-visible:ring-offset-background focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-offset-1;
+			@apply focus-visible:ring-foreground focus-visible:ring-offset-background focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:outline-hidden;
 		}
 	}
 
 	.link {
-		@apply hover:text-foreground/80 focus-visible:ring-foreground focus-visible:ring-offset-background rounded-xs focus-visible:outline-hidden inline-flex items-center gap-1 font-medium underline underline-offset-4 focus-visible:ring-2 focus-visible:ring-offset-2;
+		@apply hover:text-foreground/80 focus-visible:ring-foreground focus-visible:ring-offset-background inline-flex items-center gap-1 rounded-xs font-medium underline underline-offset-4 focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-hidden;
 	}
 
 	/* ── Twemoji emoji spans ────────────────────────── */
@@ -435,7 +434,7 @@
 	}
 
 	.emoji-img::after {
-		content: '';
+		content: "";
 		position: absolute;
 		inset: 0;
 		background-image: var(--tw);
@@ -505,16 +504,21 @@
 		height: 28px;
 		border-radius: 5px;
 		border: 1px solid oklch(0.32 0.01 80);
-		background: oklch(0.20 0.008 80);
+		background: oklch(0.2 0.008 80);
 		color: oklch(0.55 0.01 80);
 		cursor: pointer;
 		opacity: 0;
-		transition: opacity 0.15s, color 0.15s, background 0.15s;
+		transition:
+			opacity 0.15s,
+			color 0.15s,
+			background 0.15s;
 		z-index: 1;
 	}
-	.msg-code-block:hover .msg-code-copy { opacity: 1; }
+	.msg-code-block:hover .msg-code-copy {
+		opacity: 1;
+	}
 	.msg-code-copy:hover {
-		color: oklch(0.90 0.01 80);
+		color: oklch(0.9 0.01 80);
 		background: oklch(0.26 0.01 80);
 	}
 	.msg-code-copy.copied {
@@ -600,7 +604,9 @@
 		border-radius: 3px;
 		padding: 0 3px;
 		cursor: pointer;
-		transition: color 0.1s, background 0.1s;
+		transition:
+			color 0.1s,
+			background 0.1s;
 	}
 
 	.msg-spoiler:hover {
@@ -609,7 +615,7 @@
 	}
 
 	.msg-mention {
-		background: oklch(0.30 0.08 270 / 0.5);
+		background: oklch(0.3 0.08 270 / 0.5);
 		color: oklch(0.78 0.12 270);
 		border-radius: 3px;
 		padding: 0 2px;
@@ -618,7 +624,7 @@
 	}
 
 	.msg-mention:hover {
-		background: oklch(0.36 0.10 270 / 0.6);
+		background: oklch(0.36 0.1 270 / 0.6);
 		color: oklch(0.85 0.14 270);
 	}
 }

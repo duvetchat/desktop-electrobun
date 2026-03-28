@@ -37,7 +37,6 @@ export const ALL_PERMISSIONS: ReadonlyArray<{ flag: PermissionFlag; name: string
 	{ flag: Permission.ManageSpaceStickers, name: "Manage Stickers" },
 ];
 
-
 // target_type values for RoomOverwrite
 const OVERWRITE_ROLE = 0;
 const OVERWRITE_MEMBER = 1;
@@ -51,18 +50,8 @@ const OVERWRITE_MEMBER = 1;
  *   4. Member's role overwrites  (deny → allow)
  *   5. Member-specific overwrite (deny → allow)
  */
-export function computeRoomPermissions(
-	space: GatewaySpace,
-	room: GatewayRoom,
-): number {
-	const {
-		member,
-		member_roles,
-		roles,
-		room_overwrites,
-		id: spaceId,
-		owner_id,
-	} = space;
+export function computeRoomPermissions(space: GatewaySpace, room: GatewayRoom): number {
+	const { member, member_roles, roles, room_overwrites, id: spaceId, owner_id } = space;
 
 	// No member loaded yet — fall back to @everyone role permissions only
 	if (!member) {
@@ -98,26 +87,18 @@ export function computeRoomPermissions(
 	};
 
 	// 3. @everyone overwrite — the everyone role shares the space ID
-	const everyoneOw = overwrites.find(
-		(o) => o.target_type === OVERWRITE_ROLE && o.target_id === spaceId,
-	);
+	const everyoneOw = overwrites.find((o) => o.target_type === OVERWRITE_ROLE && o.target_id === spaceId);
 	apply(everyoneOw?.deny_flags ?? 0, everyoneOw?.allow_flags ?? 0);
 
 	// 4. Role-specific overwrites for the member's roles (skip @everyone)
 	for (const ow of overwrites) {
-		if (
-			ow.target_type === OVERWRITE_ROLE &&
-			ow.target_id !== spaceId &&
-			myRoles.includes(ow.target_id)
-		) {
+		if (ow.target_type === OVERWRITE_ROLE && ow.target_id !== spaceId && myRoles.includes(ow.target_id)) {
 			apply(ow.deny_flags, ow.allow_flags);
 		}
 	}
 
 	// 5. Member-specific overwrite
-	const memberOw = overwrites.find(
-		(o) => o.target_type === OVERWRITE_MEMBER && o.target_id === member.user_id,
-	);
+	const memberOw = overwrites.find((o) => o.target_type === OVERWRITE_MEMBER && o.target_id === member.user_id);
 	apply(memberOw?.deny_flags ?? 0, memberOw?.allow_flags ?? 0);
 
 	return perms;
@@ -130,11 +111,7 @@ export function canViewRoom(space: GatewaySpace, room: GatewayRoom): boolean {
 }
 
 /** Returns true if the current member has ALL of the given permission flags in a room. */
-export function hasPermission(
-	space: GatewaySpace,
-	room: GatewayRoom,
-	permission: number,
-): boolean {
+export function hasPermission(space: GatewaySpace, room: GatewayRoom, permission: number): boolean {
 	const perms = computeRoomPermissions(space, room);
 	return (perms & permission) === permission;
 }

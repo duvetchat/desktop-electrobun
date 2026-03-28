@@ -15,10 +15,10 @@ Duvet is a monorepo with three services:
 └─────────────────────────────────────────────────────────┘
 ```
 
-| Service | Stack | Purpose |
-|---------|-------|---------|
-| **api/** | Go, Gin, PostgreSQL, sqlc, Redis | REST API — auth, users, spaces, rooms, roles, invites, messages |
-| **gateway/** | Go, Gin, gorilla/websocket, Pion WebRTC, Redis | Real-time WebSocket events, WebRTC SFU voice chat |
+| Service      | Stack                                                   | Purpose                                                         |
+| ------------ | ------------------------------------------------------- | --------------------------------------------------------------- |
+| **api/**     | Go, Gin, PostgreSQL, sqlc, Redis                        | REST API — auth, users, spaces, rooms, roles, invites, messages |
+| **gateway/** | Go, Gin, gorilla/websocket, Pion WebRTC, Redis          | Real-time WebSocket events, WebRTC SFU voice chat               |
 | **desktop/** | Electrobun, SvelteKit 2, Svelte 5, Tailwind CSS 4, Vite | Native desktop client with custom titlebar and split-pane views |
 
 ## Desktop — Project Structure
@@ -127,11 +127,11 @@ Go REST API using Gin, PostgreSQL (pgx + sqlc), and Redis for session/cache.
 
 **Key endpoints:**
 
-| Method | Path | Description |
-|--------|------|-------------|
-| POST | `/api/auth/signin` | Register new user |
-| POST | `/api/auth/login` | Login (returns session token) |
-| GET | `/api/users/me` | Get current authenticated user |
+| Method | Path               | Description                    |
+| ------ | ------------------ | ------------------------------ |
+| POST   | `/api/auth/signin` | Register new user              |
+| POST   | `/api/auth/login`  | Login (returns session token)  |
+| GET    | `/api/users/me`    | Get current authenticated user |
 
 **Database** — 12 tables managed via SQL migrations: users, sessions, spaces, rooms, roles, members, room overwrites, invite links, friends, etc.
 

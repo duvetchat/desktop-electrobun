@@ -12,10 +12,35 @@ let highlighterPromise: Promise<Highlighter> | null = null;
 let highlighter: Highlighter | null = null;
 
 const LANGS = [
-	"javascript", "typescript", "python", "go", "rust", "cpp", "c",
-	"csharp", "java", "json", "xml", "html", "css", "bash", "sql",
-	"markdown", "yaml", "toml", "kotlin", "swift", "ruby", "php",
-	"svelte", "jsx", "tsx", "lua", "zig", "dockerfile", "graphql",
+	"javascript",
+	"typescript",
+	"python",
+	"go",
+	"rust",
+	"cpp",
+	"c",
+	"csharp",
+	"java",
+	"json",
+	"xml",
+	"html",
+	"css",
+	"bash",
+	"sql",
+	"markdown",
+	"yaml",
+	"toml",
+	"kotlin",
+	"swift",
+	"ruby",
+	"php",
+	"svelte",
+	"jsx",
+	"tsx",
+	"lua",
+	"zig",
+	"dockerfile",
+	"graphql",
 ] as const;
 
 const THEME = "github-dark-default";
@@ -37,9 +62,18 @@ function getHighlighter(): Promise<Highlighter> {
 getHighlighter();
 
 const LANG_ALIASES: Record<string, string> = {
-	js: "javascript", ts: "typescript", py: "python", rs: "rust",
-	"c++": "cpp", cs: "csharp", "c#": "csharp", sh: "bash",
-	shell: "bash", yml: "yaml", md: "markdown", kt: "kotlin",
+	js: "javascript",
+	ts: "typescript",
+	py: "python",
+	rs: "rust",
+	"c++": "cpp",
+	cs: "csharp",
+	"c#": "csharp",
+	sh: "bash",
+	shell: "bash",
+	yml: "yaml",
+	md: "markdown",
+	kt: "kotlin",
 	rb: "ruby",
 };
 
@@ -51,7 +85,12 @@ function isBlockHtml(s: string): boolean {
 	return /^<(h[123]|blockquote|pre)[\s>]/.test(s);
 }
 
-function applyInline(s: string, large: boolean, mentionMap?: Record<string, string>, customEmojiMap?: CustomEmojiMap): string {
+function applyInline(
+	s: string,
+	large: boolean,
+	mentionMap?: Record<string, string>,
+	customEmojiMap?: CustomEmojiMap,
+): string {
 	s = s.replace(/\*\*\*(.+?)\*\*\*/gs, (_, t) => `<strong><em>${t}</em></strong>`);
 	s = s.replace(/\*\*(.+?)\*\*/gs, (_, t) => `<strong>${t}</strong>`);
 	s = s.replace(/\*([^\s*](?:[^*]*[^\s*])?)\*/gs, (_, t) => `<em>${t}</em>`);
@@ -98,7 +137,12 @@ function highlightCode(code: string, lang: string): string {
 	}
 }
 
-export function renderMarkdown(input: string, large = false, mentionMap?: Record<string, string>, customEmojiMap?: CustomEmojiMap): string {
+export function renderMarkdown(
+	input: string,
+	large = false,
+	mentionMap?: Record<string, string>,
+	customEmojiMap?: CustomEmojiMap,
+): string {
 	// ── 1. Extract fenced code blocks ─────────────────────────────────────────
 	const codeBlocks: string[] = [];
 	let s = input.replace(/```([\w+#-]*)\n?([\s\S]*?)```/g, (_, lang, code) => {
@@ -106,29 +150,20 @@ export function renderMarkdown(input: string, large = false, mentionMap?: Record
 		const highlighted = highlightCode(trimmed, lang);
 		const lines = highlighted.split("\n");
 		const linesHtml = lines
-			.map(
-				(line, i) =>
-					`<span class="msg-ln">${i + 1}</span><span class="msg-lc">${line || "\u200b"}</span>`,
-			)
+			.map((line, i) => `<span class="msg-ln">${i + 1}</span><span class="msg-lc">${line || "\u200b"}</span>`)
 			.join("\n");
 		const langLabel = lang ? lang.toLowerCase() : "";
-		const langBadge = langLabel
-			? `<span class="msg-code-lang">${escapeHtml(langLabel)}</span>`
-			: "";
+		const langBadge = langLabel ? `<span class="msg-code-lang">${escapeHtml(langLabel)}</span>` : "";
 		const escaped = escapeHtml(trimmed).replace(/"/g, "&quot;");
 		const copyBtn = `<button class="msg-code-copy" data-code="${escaped}" title="Copy code" aria-label="Copy code"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg></button>`;
-		codeBlocks.push(
-			`<pre class="msg-code-block">${langBadge}${copyBtn}<code>${linesHtml}</code></pre>`,
-		);
+		codeBlocks.push(`<pre class="msg-code-block">${langBadge}${copyBtn}<code>${linesHtml}</code></pre>`);
 		return `\x00B${codeBlocks.length - 1}\x00`;
 	});
 
 	// ── 2. Extract inline code ─────────────────────────────────────────────────
 	const inlineCodes: string[] = [];
 	s = s.replace(/`([^`\n]+)`/g, (_, code) => {
-		inlineCodes.push(
-			`<code class="msg-inline-code">${escapeHtml(code)}</code>`,
-		);
+		inlineCodes.push(`<code class="msg-inline-code">${escapeHtml(code)}</code>`);
 		return `\x00I${inlineCodes.length - 1}\x00`;
 	});
 
@@ -156,10 +191,8 @@ export function renderMarkdown(input: string, large = false, mentionMap?: Record
 	for (let i = 0; i < out.length; i++) {
 		result += out[i];
 		if (i < out.length - 1) {
-			const currIsBlock =
-				isBlockHtml(out[i]) || /^\x00B\d+\x00$/.test(out[i].trim());
-			const nextIsBlock =
-				isBlockHtml(out[i + 1]) || /^\x00B\d+\x00$/.test(out[i + 1].trim());
+			const currIsBlock = isBlockHtml(out[i]) || /^\x00B\d+\x00$/.test(out[i].trim());
+			const nextIsBlock = isBlockHtml(out[i + 1]) || /^\x00B\d+\x00$/.test(out[i + 1].trim());
 			if (!currIsBlock && !nextIsBlock) {
 				result += "<br>";
 			}

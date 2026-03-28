@@ -1,0 +1,43 @@
+{
+  "plugins": ["typescript", "import"],
+  "categories": {
+    "correctness": "error",
+    "suspicious": "warn",
+    "pedantic": "off",
+    "style": "off",
+    "nursery": "off"
+  },
+  "rules": {
+    "no-unused-vars": "warn",
+    "no-console": "off",
+    "eqeqeq": "warn",
+    "no-debugger": "error",
+    "no-control-regex": "off",
+    "no-unassigned-vars": "off",
+    "no-constant-binary-expression": "off",
+    "no-async-promise-executor": "off",
+    "typescript/no-explicit-any": "off",
+    "typescript/no-misused-spread": "off",
+    "typescript/no-floating-promises": "off",
+    "typescript/restrict-template-expressions": "off",
+    "no-unused-expressions": "off"
+  },
+  "env": {
+    "builtin": true,
+    "browser": true
+  },
+  "globals": {},
+  "ignorePatterns": [
+    "node_modules",
+    ".svelte-kit",
+    "build",
+    "dist",
+    "**/node_modules/**",
+    "**/.svelte-kit/**",
+    "**/build/**",
+    "**/dist/**"
+  ],
+  "options": {
+    "typeAware": true
+  }
+}

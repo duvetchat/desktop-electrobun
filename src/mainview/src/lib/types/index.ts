@@ -297,21 +297,248 @@ export interface GatewaySpaceCreatePayload {
 	voice_states?: GatewayVoiceState[];
 }
 
-export interface GatewayEventPayload<T = unknown> {
-	data: T;
-	type: string;
+export interface ReactionEvent {
+	message_id: string;
+	user_id: string;
+	emoji_name: string;
+	emoji_id?: string | null;
 }
+
+export interface ReactionRemoveEvent {
+	message_id: string;
+	user_id: string;
+	emoji_name: string;
+}
+
+export interface TypingEvent {
+	user_id: string;
+	username: string;
+	alias: string | null;
+	avatar: string | null;
+	room_id: string;
+}
+
+export interface DMTypingEvent {
+	conversation_id: string;
+	user_id: string;
+	username: string;
+	alias: string | null;
+	avatar: string | null;
+}
+
+export interface CallIncomingEvent {
+	conversation_id: string;
+	initiator_id: string;
+	initiator_name: string;
+	initiator_avatar: string | null;
+	member_ids: string[];
+}
+
+export interface CallEndedEvent {
+	conversation_id: string;
+}
+
+export interface VoiceStateEvent {
+	room_id: string;
+	user_id: string;
+	joined: boolean;
+	muted?: boolean;
+	deafened?: boolean;
+	screen_sharing?: boolean;
+}
+
+export interface WebRTCEvent {
+	candidate?: string;
+	sdpMLineIndex?: number;
+	sdpMid?: string;
+	sdp?: string;
+}
+
+export interface SpaceDeleteEvent {
+	id: string;
+}
+
+export interface RoomDeleteEvent {
+	id: string;
+	space_id: string;
+}
+
+export interface OverwriteDeleteEvent {
+	room_id: string;
+	target_id: string;
+}
+
+export interface MentionCreateEvent {
+	room_id: string;
+	conversation_id?: string;
+}
+
+export interface UserUpdateEvent {
+	id: string;
+	username: string;
+	alias: string | null;
+	avatar: string | null;
+	banner: string | null;
+}
+
+export interface VoiceJoinedEvent {
+	user_id: string;
+	sdp: string;
+}
+
+export interface RoleDeleteEvent {
+	id: string;
+	space_id: string;
+}
+
+export interface MemberRoleEvent {
+	member_id: string;
+	role_id: string;
+	space_id: string;
+}
+
+export interface SpaceMemberEvent {
+	member_id: string;
+	space_id: string;
+}
+
+export interface GuildMemberAddEvent {
+	space_id: string;
+	user_id: string;
+	member_id: string;
+	user?: GatewayUser;
+}
+
+export interface GuildMemberRemoveEvent {
+	space_id: string;
+	user_id: string;
+	member_id: string;
+}
+
+export interface SpaceAssetDeleteEvent {
+	id: string;
+	space_id: string;
+}
+
+export interface FriendRequestRejectEvent {
+	request_id: string;
+}
+
+export interface FriendRemoveEvent {
+	user_id: string;
+}
+
+export interface ConversationUpdateEvent {
+	id: string;
+	name: string | null;
+}
+
+export interface ConversationDeleteEvent {
+	id: string;
+}
+
+export interface ConversationMemberAddEvent {
+	conversation_id: string;
+	user_id: string;
+	member_id: string;
+	username?: string;
+	alias?: string | null;
+	avatar?: string | null;
+	banner?: string | null;
+	status_id?: number;
+	user?: GatewayUser;
+}
+
+export interface ConversationMemberRemoveEvent {
+	conversation_id: string;
+	user_id: string;
+}
+
+export interface DMMessageDeleteEvent {
+	id: string;
+	conversation_id: string;
+}
+
+export interface CallResponseEvent {
+	conversation_id: string;
+	user_id: string;
+}
+
+export type GatewayEventPayload =
+	| { type: "READY"; data: GatewayReadyData }
+	| { type: "SPACE_CREATE"; data: GatewaySpaceCreatePayload }
+	| { type: "SPACE_DELETE"; data: SpaceDeleteEvent }
+	| { type: "SPACE_UPDATE"; data: GatewaySpace }
+	| { type: "ROOM_CREATE"; data: GatewayRoom }
+	| { type: "ROOM_UPDATE"; data: GatewayRoom }
+	| { type: "ROOM_DELETE"; data: RoomDeleteEvent }
+	| { type: "ROOM_OVERWRITE_UPDATE"; data: GatewayRoomOverwrite }
+	| { type: "ROOM_OVERWRITE_DELETE"; data: OverwriteDeleteEvent }
+	| { type: "MESSAGE_CREATE"; data: GatewayMessage }
+	| { type: "MESSAGE_UPDATE"; data: GatewayMessage }
+	| { type: "MESSAGE_DELETE"; data: GatewayMessageDelete }
+	| { type: "MENTION_CREATE"; data: MentionCreateEvent }
+	| { type: "USER_UPDATE"; data: UserUpdateEvent }
+	| { type: "USER_STATUS_UPDATE"; data: GatewayUserStatusUpdate }
+	| { type: "VOICE_STATE_UPDATE"; data: VoiceStateEvent }
+	| { type: "VOICE_JOINED"; data: VoiceJoinedEvent }
+	| { type: "WEBRTC_ICE_CANDIDATE"; data: WebRTCEvent }
+	| { type: "WEBRTC_RENEGOTIATE"; data: WebRTCEvent }
+	| { type: "WEBRTC_RENEGOTIATE_ANSWER"; data: WebRTCEvent }
+	| { type: "ROLE_CREATE"; data: GatewayRole }
+	| { type: "ROLE_UPDATE"; data: GatewayRole }
+	| { type: "ROLE_DELETE"; data: RoleDeleteEvent }
+	| { type: "MEMBER_ROLE_ADD"; data: MemberRoleEvent }
+	| { type: "MEMBER_ROLE_REMOVE"; data: MemberRoleEvent }
+	| { type: "SPACE_MEMBER_ADD"; data: SpaceMemberEvent }
+	| { type: "SPACE_MEMBER_REMOVE"; data: SpaceMemberEvent }
+	| { type: "GUILD_MEMBER_ADD"; data: GuildMemberAddEvent }
+	| { type: "GUILD_MEMBER_REMOVE"; data: GuildMemberRemoveEvent }
+	| { type: "SPACE_EMOJI_CREATE"; data: SpaceEmoji }
+	| { type: "SPACE_EMOJI_UPDATE"; data: SpaceEmoji }
+	| { type: "SPACE_EMOJI_DELETE"; data: SpaceAssetDeleteEvent }
+	| { type: "SPACE_STICKER_CREATE"; data: SpaceSticker }
+	| { type: "SPACE_STICKER_UPDATE"; data: SpaceSticker }
+	| { type: "SPACE_STICKER_DELETE"; data: SpaceAssetDeleteEvent }
+	| { type: "REACTION_ADD"; data: ReactionEvent }
+	| { type: "REACTION_REMOVE"; data: ReactionRemoveEvent }
+	| { type: "FRIEND_REQUEST_CREATE"; data: import("$lib/api/friends").FriendRequest }
+	| { type: "FRIEND_REQUEST_ACCEPT"; data: import("$lib/api/friends").Friend }
+	| { type: "FRIEND_REQUEST_REJECT"; data: FriendRequestRejectEvent }
+	| { type: "FRIEND_REMOVE"; data: FriendRemoveEvent }
+	| { type: "CONVERSATION_CREATE"; data: import("$lib/api/conversations").Conversation }
+	| { type: "CONVERSATION_UPDATE"; data: ConversationUpdateEvent }
+	| { type: "CONVERSATION_DELETE"; data: ConversationDeleteEvent }
+	| { type: "CONVERSATION_MEMBER_ADD"; data: ConversationMemberAddEvent }
+	| { type: "CONVERSATION_MEMBER_REMOVE"; data: ConversationMemberRemoveEvent }
+	| { type: "DM_MESSAGE_CREATE"; data: import("$lib/api/conversations").DirectMessage }
+	| { type: "DM_MESSAGE_UPDATE"; data: import("$lib/api/conversations").DirectMessage }
+	| { type: "DM_MESSAGE_DELETE"; data: DMMessageDeleteEvent }
+	| { type: "DM_REACTION_ADD"; data: ReactionEvent }
+	| { type: "DM_REACTION_REMOVE"; data: ReactionRemoveEvent }
+	| { type: "TYPING"; data: TypingEvent }
+	| { type: "DM_TYPING"; data: DMTypingEvent }
+	| { type: "CALL_INCOMING"; data: CallIncomingEvent }
+	| { type: "CALL_ACCEPTED"; data: CallResponseEvent }
+	| { type: "CALL_DECLINED"; data: CallResponseEvent }
+	| { type: "CALL_ENDED"; data: CallEndedEvent };
 
 export interface GatewayEvent {
 	op: number;
 	d?: GatewayEventPayload;
 	s: number;
+	event: string;
 }
 
 export interface GatewayReadyActiveCall {
 	conversation_id: string;
 	initiator_id: string;
-	voice_states?: { user_id: string; muted?: boolean; deafened?: boolean; screen_sharing?: boolean }[];
+	voice_states?: {
+		user_id: string;
+		muted?: boolean;
+		deafened?: boolean;
+		screen_sharing?: boolean;
+	}[];
 }
 
 export interface GatewayReadyData {
@@ -335,10 +562,7 @@ export function roomTypeToChannelType(type: RoomType): Channel["type"] {
 	}
 }
 
-export function gatewayMessageToMessage(
-	msg: GatewayMessage,
-	spaces: GatewaySpace[],
-): Message {
+export function gatewayMessageToMessage(msg: GatewayMessage, spaces: GatewaySpace[]): Message {
 	let author_name = "Unknown";
 	let author_avatar_url: string | null = null;
 
@@ -393,8 +617,7 @@ export function gatewaySpaceToGuild(space: GatewaySpace): Guild {
 			};
 
 			if (channelType === "voice") {
-				const voiceStates =
-					space.voice_states?.filter((vs) => vs.room_id === room.id) ?? [];
+				const voiceStates = space.voice_states?.filter((vs) => vs.room_id === room.id) ?? [];
 				channel.voiceUsers = voiceStates.map((vs) => {
 					const user = space.users.find((u) => u.id === vs.user_id);
 					return {

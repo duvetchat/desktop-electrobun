@@ -21,8 +21,11 @@
 		isScreenSharing,
 	} from "$lib/stores.svelte";
 
-	let { channelId, channelName, compact = false }: { channelId: string; channelName: string; compact?: boolean } =
-		$props();
+	let {
+		channelId,
+		channelName,
+		compact = false,
+	}: { channelId: string; channelName: string; compact?: boolean } = $props();
 
 	let peerConnection: RTCPeerConnection | null = null;
 	let localAudioStream: MediaStream | null = null;
@@ -77,8 +80,14 @@
 			peerConnection.close();
 			peerConnection = null;
 		}
-		if (denoiseCleanup) { denoiseCleanup(); denoiseCleanup = null; }
-		if (rawMicStream) { rawMicStream.getTracks().forEach((t) => t.stop()); rawMicStream = null; }
+		if (denoiseCleanup) {
+			denoiseCleanup();
+			denoiseCleanup = null;
+		}
+		if (rawMicStream) {
+			rawMicStream.getTracks().forEach((t) => t.stop());
+			rawMicStream = null;
+		}
 		if (localAudioStream) localAudioStream.getTracks().forEach((t) => t.stop());
 		if (localVideoStream) localVideoStream.getTracks().forEach((t) => t.stop());
 		if (audioContext) audioContext.close();
@@ -138,10 +147,7 @@
 			} else if (type === "WEBRTC_ICE_CANDIDATE") {
 				const pc = peerConnection;
 				if (!pc) return;
-				const parsed =
-					typeof data.candidate === "string"
-						? JSON.parse(data.candidate)
-						: data.candidate;
+				const parsed = typeof data.candidate === "string" ? JSON.parse(data.candidate) : data.candidate;
 				const candidate = new RTCIceCandidate(parsed);
 				if (pc.remoteDescription) {
 					pc.addIceCandidate(candidate).catch(console.warn);
@@ -178,31 +184,21 @@
 			} else if (type === "WEBRTC_RENEGOTIATE_ANSWER") {
 				const pc = peerConnection;
 				if (!pc) return;
-				pc.setRemoteDescription(
-					new RTCSessionDescription(data.answer),
-				).catch(console.warn);
+				pc.setRemoteDescription(new RTCSessionDescription(data.answer)).catch(console.warn);
 			}
 		});
 
-		const space = $gatewaySpaces.find((s) =>
-			s.rooms.some((r) => r.id === channelId),
-		);
+		const space = $gatewaySpaces.find((s) => s.rooms.some((r) => r.id === channelId));
 		const room = space?.rooms.find((r) => r.id === channelId);
 		// For conversation calls (no space/room), always allow speaking
-		const canSpeak =
-			space && room
-				? hasPermission(space, room, Permission.SpeakInVoice)
-				: true;
+		const canSpeak = space && room ? hasPermission(space, room, Permission.SpeakInVoice) : true;
 
 		if (!canSpeak) {
 			isMuted.set(true);
 		} else {
 			try {
-				const constraints = $selectedMicId
-					? { audio: { deviceId: { exact: $selectedMicId } } }
-					: { audio: true };
-				rawMicStream =
-					await navigator.mediaDevices.getUserMedia(constraints);
+				const constraints = $selectedMicId ? { audio: { deviceId: { exact: $selectedMicId } } } : { audio: true };
+				rawMicStream = await navigator.mediaDevices.getUserMedia(constraints);
 
 				if (!audioContext) {
 					audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
@@ -236,7 +232,9 @@
 		pendingIceCandidates = [];
 		negotiationReady = false;
 		negotiationChain = Promise.resolve();
-		voiceJoinedPromise = new Promise<void>((resolve) => { voiceJoinedResolve = resolve; });
+		voiceJoinedPromise = new Promise<void>((resolve) => {
+			voiceJoinedResolve = resolve;
+		});
 		audioSender = null;
 		connectionState.set("new");
 
@@ -311,25 +309,17 @@
 				remoteAudioElements = { ...remoteAudioElements };
 
 				if (!audioContext) {
-					audioContext = new (window.AudioContext ||
-						(window as any).webkitAudioContext)();
+					audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
 				}
 
 				const analyser = audioContext.createAnalyser();
 				analyser.fftSize = 256;
-				const source = audioContext.createMediaStreamSource(
-					new MediaStream([event.track]),
-				);
+				const source = audioContext.createMediaStreamSource(new MediaStream([event.track]));
 				source.connect(analyser);
 				const dataArray = new Uint8Array(analyser.frequencyBinCount);
 
 				const checkAudioLevel = () => {
-					if (
-						isDestroyed ||
-						!audioContext ||
-						event.track.readyState === "ended"
-					)
-						return;
+					if (isDestroyed || !audioContext || event.track.readyState === "ended") return;
 					analyser.getByteFrequencyData(dataArray);
 					let sum = 0;
 					for (let i = 0; i < dataArray.length; i++) {
@@ -373,26 +363,24 @@
 					audioSender.replaceTrack(null).catch(console.warn);
 				}
 			}
-			localAudioStream.getTracks().filter((t) => t.kind !== "audio").forEach((track) => {
-				peerConnection?.addTrack(track, localAudioStream!);
-			});
+			localAudioStream
+				.getTracks()
+				.filter((t) => t.kind !== "audio")
+				.forEach((track) => {
+					peerConnection?.addTrack(track, localAudioStream!);
+				});
 
 			if (!audioContext) {
-				audioContext = new (window.AudioContext ||
-					(window as any).webkitAudioContext)();
+				audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
 			}
 			if (!localAnalyser) {
 				localAnalyser = audioContext.createAnalyser();
 				localAnalyser.fftSize = 256;
 			}
-			if (
-				!localAudioSource ||
-				localAudioSource.mediaStream !== localAudioStream
-			) {
+			if (!localAudioSource || localAudioSource.mediaStream !== localAudioStream) {
 				if (localAudioSource) localAudioSource.disconnect();
 				try {
-					localAudioSource =
-						audioContext.createMediaStreamSource(localAudioStream);
+					localAudioSource = audioContext.createMediaStreamSource(localAudioStream);
 					localAudioSource.connect(localAnalyser);
 				} catch (err) {
 					console.error("AudioSource error", err);
@@ -414,14 +402,12 @@
 
 				speakingUsers.update((set) => {
 					const newSet = new SvelteSet(set);
-					if (average > 10 && !$isMuted && myUserId)
-						newSet.add(myUserId);
+					if (average > 10 && !$isMuted && myUserId) newSet.add(myUserId);
 					else if (myUserId) newSet.delete(myUserId);
 					return newSet;
 				});
 				if (myUserId) {
-					userAmplitudes[myUserId] =
-						average > 10 && !$isMuted ? amplitude : 0;
+					userAmplitudes[myUserId] = average > 10 && !$isMuted ? amplitude : 0;
 				}
 
 				requestAnimationFrame(checkLocalLevel);
@@ -459,31 +445,29 @@
 		const shouldSend = !$isMuted && !$isDeafened;
 		if (audioSender) {
 			const audioTrack = localAudioStream?.getAudioTracks().at(0) ?? null;
-			audioSender
-				.replaceTrack(shouldSend ? audioTrack : null)
-				.catch(console.warn);
+			audioSender.replaceTrack(shouldSend ? audioTrack : null).catch(console.warn);
 		}
 	});
 
 	$effect(() => {
 		if (peerConnection && currentMicId !== $selectedMicId) {
 			currentMicId = $selectedMicId;
-			switchMicrophone($selectedMicId).catch((err) =>
-				console.error("Failed to switch mic", err),
-			);
+			switchMicrophone($selectedMicId).catch((err) => console.error("Failed to switch mic", err));
 		}
 	});
 
 	async function switchMicrophone(deviceId: string) {
-		const constraints = deviceId
-			? { audio: { deviceId: { exact: deviceId } } }
-			: { audio: true };
-		const newRawStream =
-			await navigator.mediaDevices.getUserMedia(constraints);
+		const constraints = deviceId ? { audio: { deviceId: { exact: deviceId } } } : { audio: true };
+		const newRawStream = await navigator.mediaDevices.getUserMedia(constraints);
 
 		// Cleanup old denoise
-		if (denoiseCleanup) { denoiseCleanup(); denoiseCleanup = null; }
-		if (rawMicStream) { rawMicStream.getTracks().forEach((t) => t.stop()); }
+		if (denoiseCleanup) {
+			denoiseCleanup();
+			denoiseCleanup = null;
+		}
+		if (rawMicStream) {
+			rawMicStream.getTracks().forEach((t) => t.stop());
+		}
 		rawMicStream = newRawStream;
 
 		// Apply denoise to new stream
@@ -508,8 +492,7 @@
 			if (localAudioSource) {
 				localAudioSource.disconnect();
 			}
-			localAudioSource =
-				audioContext.createMediaStreamSource(localAudioStream);
+			localAudioSource = audioContext.createMediaStreamSource(localAudioStream);
 			localAudioSource.connect(localAnalyser);
 		}
 	}
@@ -517,25 +500,31 @@
 	async function toggleScreenShare() {
 		if ($isScreenSharing) {
 			// Remove the video sender from the existing connection — no reconnect needed
-			const sender = peerConnection
-				?.getSenders()
-				.find((s) => s.track?.kind === "video");
+			const sender = peerConnection?.getSenders().find((s) => s.track?.kind === "video");
 			if (sender) {
 				peerConnection?.removeTrack(sender);
 			}
 			localVideoStream?.getTracks().forEach((t) => t.stop());
 			localVideoStream = null;
 			isScreenSharing.set(false);
-			sendEventMessage("VOICE_SYNC", { room_id: channelId, muted: $isMuted, deafened: $isDeafened, screen_sharing: false });
+			sendEventMessage("VOICE_SYNC", {
+				room_id: channelId,
+				muted: $isMuted,
+				deafened: $isDeafened,
+				screen_sharing: false,
+			});
 		} else {
 			try {
-				localVideoStream = await navigator.mediaDevices.getDisplayMedia(
-					{
-						video: true,
-					},
-				);
+				localVideoStream = await navigator.mediaDevices.getDisplayMedia({
+					video: true,
+				});
 				isScreenSharing.set(true);
-				sendEventMessage("VOICE_SYNC", { room_id: channelId, muted: $isMuted, deafened: $isDeafened, screen_sharing: true });
+				sendEventMessage("VOICE_SYNC", {
+					room_id: channelId,
+					muted: $isMuted,
+					deafened: $isDeafened,
+					screen_sharing: true,
+				});
 
 				const videoTrack = localVideoStream.getVideoTracks().at(0);
 				if (!videoTrack) return;
@@ -553,10 +542,7 @@
 		}
 	}
 
-	function srcObject(
-		node: HTMLAudioElement | HTMLVideoElement,
-		stream: MediaStream,
-	) {
+	function srcObject(node: HTMLAudioElement | HTMLVideoElement, stream: MediaStream) {
 		node.srcObject = stream;
 		return {
 			update(newStream: MediaStream) {
@@ -569,7 +555,11 @@
 
 	function registerVideoEl(node: HTMLVideoElement, userId: string) {
 		videoEls[userId] = node;
-		return { destroy() { delete videoEls[userId]; } };
+		return {
+			destroy() {
+				delete videoEls[userId];
+			},
+		};
 	}
 
 	function startVideo(userId: string) {
@@ -594,10 +584,7 @@
 			const fromGateway = $gatewaySpaces.flatMap((space) => {
 				const room = space.rooms.find((r) => r.id === channelId);
 				if (!room) return [];
-				const voiceStates =
-					space.voice_states?.filter(
-						(vs) => vs.room_id === channelId,
-					) ?? [];
+				const voiceStates = space.voice_states?.filter((vs) => vs.room_id === channelId) ?? [];
 				return voiceStates.map((vs) => {
 					const user = space.users.find((u) => u.id === vs.user_id);
 					return {
@@ -629,67 +616,65 @@
 </script>
 
 <div
-	class="relative flex flex-1 flex-col text-white {compact ? 'bg-transparent' : 'border-l border-zinc-800 bg-zinc-900 p-6'}"
+	class="relative flex flex-1 flex-col text-white {compact
+		? 'bg-transparent'
+		: 'border-l border-zinc-800 bg-zinc-900 p-6'}"
 >
 	{#if !compact}
-	<div class="mb-4">
-		<h1 class="text-2xl font-bold flex items-center gap-2">
-			<span class="text-zinc-400 opacity-60">🔊</span>
-			{channelName}
-		</h1>
-		<p class="text-sm {$connectionState === 'connected'
-				? 'text-zinc-400'
-				: $connectionState === 'disconnected'
-					? 'text-yellow-400'
-					: $connectionState === 'failed' || $connectionState === 'closed'
-						? 'text-red-400'
-						: 'text-zinc-500'}">
-			{connectionLabel[$connectionState]}
-		</p>
-	</div>
+		<div class="mb-4">
+			<h1 class="flex items-center gap-2 text-2xl font-bold">
+				<span class="text-zinc-400 opacity-60">🔊</span>
+				{channelName}
+			</h1>
+			<p
+				class="text-sm {$connectionState === 'connected'
+					? 'text-zinc-400'
+					: $connectionState === 'disconnected'
+						? 'text-yellow-400'
+						: $connectionState === 'failed' || $connectionState === 'closed'
+							? 'text-red-400'
+							: 'text-zinc-500'}"
+			>
+				{connectionLabel[$connectionState]}
+			</p>
+		</div>
 	{/if}
 
 	<div
 		class="flex-1 overflow-y-auto {compact ? 'pb-14' : 'pb-24'} {voiceUsers.length === 1
 			? 'flex flex-col p-4'
 			: focusedUserId
-				? 'flex flex-row flex-wrap content-start p-4 gap-4'
-				: 'grid grid-cols-[repeat(auto-fit,minmax(320px,1fr))] gap-4 content-start p-4'}"
+				? 'flex flex-row flex-wrap content-start gap-4 p-4'
+				: 'grid grid-cols-[repeat(auto-fit,minmax(320px,1fr))] content-start gap-4 p-4'}"
 	>
 		{#each voiceUsers as user (user.id)}
 			{@const isLocal = user.id === myUserId}
-			{@const videoStream = isLocal
-				? localVideoStream
-				: remoteVideoElements[user.id]}
+			{@const videoStream = isLocal ? localVideoStream : remoteVideoElements[user.id]}
 			{@const audioStream = isLocal ? null : remoteAudioElements[user.id]}
 			{@const isSpeaking = $speakingUsers.has(user.id)}
 			{@const isForceMuted =
-				(!isLocal &&
-					audioStream &&
-					audioStream.getAudioTracks().every((t) => !t.enabled)) ||
-				user.muted}
+				(!isLocal && audioStream && audioStream.getAudioTracks().every((t) => !t.enabled)) || user.muted}
 
 			<div
 				class="relative flex cursor-pointer items-center justify-center overflow-hidden rounded-lg border bg-zinc-800/70 shadow-lg transition-all {voiceUsers.length ===
 				1
-					? 'flex-1 min-h-0 w-full'
+					? 'min-h-0 w-full flex-1'
 					: focusedUserId === user.id
-						? 'w-full h-[60vh] order-first'
+						? 'order-first h-[60vh] w-full'
 						: focusedUserId
-							? 'w-64 h-48 shrink-0'
-							: compact ? 'h-32' : 'h-64'} {isSpeaking && !user.muted
-					? 'border-transparent ring-2 ring-inset ring-stone-400'
+							? 'h-48 w-64 shrink-0'
+							: compact
+								? 'h-32'
+								: 'h-64'} {isSpeaking && !user.muted
+					? 'border-transparent ring-2 ring-stone-400 ring-inset'
 					: 'border-zinc-700 hover:border-zinc-500'}"
-				onclick={() =>
-					(focusedUserId =
-						focusedUserId === user.id ? null : user.id)}
+				onclick={() => (focusedUserId = focusedUserId === user.id ? null : user.id)}
 				role="button"
 				tabindex="0"
 				onkeydown={(e) => {
 					if (e.key === "Enter" || e.key === " ") {
 						e.preventDefault();
-						focusedUserId =
-							focusedUserId === user.id ? null : user.id;
+						focusedUserId = focusedUserId === user.id ? null : user.id;
 					}
 				}}
 				aria-label={`Focus participant ${user.username}`}
@@ -700,7 +685,7 @@
 						use:registerVideoEl={user.id}
 						playsinline
 						muted
-						class="w-full h-full object-contain backdrop-blur-md transition-opacity duration-300 {videoPlayingStates[
+						class="h-full w-full object-contain backdrop-blur-md transition-opacity duration-300 {videoPlayingStates[
 							user.id
 						]
 							? 'opacity-100'
@@ -721,8 +706,11 @@
 
 					{#if !isLocal && !videoClickedStates[user.id]}
 						<button
-							class="absolute inset-0 flex flex-col items-center justify-center bg-black/70 backdrop-blur-sm z-10 rounded-lg cursor-pointer"
-							onclick={(e) => { e.stopPropagation(); startVideo(user.id); }}
+							class="absolute inset-0 z-10 flex cursor-pointer flex-col items-center justify-center rounded-lg bg-black/70 backdrop-blur-sm"
+							onclick={(e) => {
+								e.stopPropagation();
+								startVideo(user.id);
+							}}
 							aria-label="Ver stream"
 						>
 							<Play class="mb-3 size-10 text-zinc-300" />
@@ -730,27 +718,23 @@
 						</button>
 					{:else if !videoPlayingStates[user.id]}
 						<div
-							class="absolute inset-0 flex flex-col items-center justify-center bg-black/60 backdrop-blur-sm z-10 rounded-lg"
+							class="absolute inset-0 z-10 flex flex-col items-center justify-center rounded-lg bg-black/60 backdrop-blur-sm"
 						>
-							<LoaderCircle
-								class="mb-3 size-10 animate-spin text-zinc-300"
-							/>
-							<span class="text-sm font-medium text-zinc-300"
-								>Connecting video...</span
-							>
+							<LoaderCircle class="mb-3 size-10 animate-spin text-zinc-300" />
+							<span class="text-sm font-medium text-zinc-300">Connecting video...</span>
 						</div>
 					{/if}
 				{:else}
 					<div class="relative flex items-center justify-center">
 						{#if isSpeaking && !isForceMuted}
 							<span
-								class="absolute size-38.5 rounded-full border border-emerald-300/30 animate-[voice-pulse_1.1s_ease-out_infinite]"
+								class="absolute size-38.5 animate-[voice-pulse_1.1s_ease-out_infinite] rounded-full border border-emerald-300/30"
 							></span>
 							<span
-								class="absolute size-34 rounded-full border border-emerald-300/45 animate-[voice-pulse_1.1s_ease-out_0.35s_infinite]"
+								class="absolute size-34 animate-[voice-pulse_1.1s_ease-out_0.35s_infinite] rounded-full border border-emerald-300/45"
 							></span>
 							<span
-								class="absolute size-29.5 rounded-full bg-emerald-300/12 animate-[voice-glow_0.9s_ease-in-out_infinite]"
+								class="absolute size-29.5 animate-[voice-glow_0.9s_ease-in-out_infinite] rounded-full bg-emerald-300/12"
 							></span>
 						{/if}
 						<div class="relative">
@@ -759,16 +743,14 @@
 								name={user.username}
 								size={96}
 								mouthOpen={userAmplitudes[user.id] ?? 0}
-								class={isSpeaking && !isForceMuted
-									? "voice-avatar-speaking"
-									: ""}
+								class={isSpeaking && !isForceMuted ? "voice-avatar-speaking" : ""}
 							/>
 						</div>
 					</div>
 				{/if}
 
 				<div
-					class="absolute bottom-4 left-4 bg-black/60 px-3 py-1.5 rounded-md flex items-center gap-2 text-white backdrop-blur-md"
+					class="absolute bottom-4 left-4 flex items-center gap-2 rounded-md bg-black/60 px-3 py-1.5 text-white backdrop-blur-md"
 				>
 					{#if user.deafened}
 						<PhoneOff class="size-4 text-red-400" />
@@ -793,11 +775,13 @@
 	</div>
 
 	<div
-		class="absolute {compact ? 'bottom-2 px-3 py-2 gap-2' : 'bottom-8 px-6 py-3 gap-4'} left-1/2 flex -translate-x-1/2 items-center rounded-full border border-zinc-700 bg-zinc-800/80 shadow-xl backdrop-blur-md"
+		class="absolute {compact
+			? 'bottom-2 gap-2 px-3 py-2'
+			: 'bottom-8 gap-4 px-6 py-3'} left-1/2 flex -translate-x-1/2 items-center rounded-full border border-zinc-700 bg-zinc-800/80 shadow-xl backdrop-blur-md"
 	>
 		<button
 			class="rounded-full p-4 hover:bg-zinc-700 {$isScreenSharing
-				? 'text-stone-200 bg-stone-400/20 hover:bg-stone-400/30'
+				? 'bg-stone-400/20 text-stone-200 hover:bg-stone-400/30'
 				: 'text-zinc-200'} transition-all"
 			onclick={toggleScreenShare}
 			aria-label="Share Screen"
@@ -805,7 +789,7 @@
 			<MonitorUp class="size-5" />
 		</button>
 		<button
-			class="p-4 rounded-full bg-red-500/20 hover:bg-red-500/40 text-red-400 transition-all"
+			class="rounded-full bg-red-500/20 p-4 text-red-400 transition-all hover:bg-red-500/40"
 			onclick={leaveVoice}
 			aria-label="Leave Voice"
 		>

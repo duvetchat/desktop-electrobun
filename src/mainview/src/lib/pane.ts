@@ -4,10 +4,7 @@ function uid(): string {
 	return Math.random().toString(36).slice(2, 10);
 }
 
-export function makeLeaf(
-	tabs: Tab[] = [],
-	activeChannelId: string | null = null,
-): PaneLeaf {
+export function makeLeaf(tabs: Tab[] = [], activeChannelId: string | null = null): PaneLeaf {
 	return {
 		kind: "leaf",
 		id: uid(),
@@ -16,12 +13,7 @@ export function makeLeaf(
 	};
 }
 
-export function makeSplit(
-	a: PaneNode,
-	b: PaneNode,
-	direction: "h" | "v",
-	ratio = 0.5,
-): PaneNode {
+export function makeSplit(a: PaneNode, b: PaneNode, direction: "h" | "v", ratio = 0.5): PaneNode {
 	return {
 		kind: "split",
 		id: uid(),
@@ -32,11 +24,7 @@ export function makeSplit(
 	};
 }
 
-export function updateLeaf(
-	root: PaneNode,
-	id: string,
-	updater: (leaf: PaneLeaf) => PaneNode,
-): PaneNode {
+export function updateLeaf(root: PaneNode, id: string, updater: (leaf: PaneLeaf) => PaneNode): PaneNode {
 	if (root.kind === "leaf") {
 		return root.id === id ? updater(root) : root;
 	}

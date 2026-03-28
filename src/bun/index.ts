@@ -42,7 +42,7 @@ type AppRPCSchema = {
 		requests: {};
 		messages: {};
 	};
-}
+};
 
 const rpc = BrowserView.defineRPC<AppRPCSchema>({
 	handlers: {
@@ -73,5 +73,5 @@ const win = new BrowserWindow({
 	},
 	title: "Duvet",
 	url,
-	rpc
+	rpc,
 });

@@ -32,10 +32,19 @@
 			peerConnection.close();
 			peerConnection = null;
 		}
-		if (denoiseCleanup) { denoiseCleanup(); denoiseCleanup = null; }
-		if (rawMicStream) { rawMicStream.getTracks().forEach((t) => t.stop()); rawMicStream = null; }
+		if (denoiseCleanup) {
+			denoiseCleanup();
+			denoiseCleanup = null;
+		}
+		if (rawMicStream) {
+			rawMicStream.getTracks().forEach((t) => t.stop());
+			rawMicStream = null;
+		}
 		if (localAudioStream) localAudioStream.getTracks().forEach((t) => t.stop());
-		if (audioContext) { audioContext.close(); audioContext = null; }
+		if (audioContext) {
+			audioContext.close();
+			audioContext = null;
+		}
 		if (unsubscribeWs) unsubscribeWs();
 	}
 
@@ -61,10 +70,7 @@
 			} else if (type === "WEBRTC_ICE_CANDIDATE") {
 				const pc = peerConnection;
 				if (!pc) return;
-				const parsed =
-					typeof data.candidate === "string"
-						? JSON.parse(data.candidate)
-						: data.candidate;
+				const parsed = typeof data.candidate === "string" ? JSON.parse(data.candidate) : data.candidate;
 				const candidate = new RTCIceCandidate(parsed);
 				if (pc.remoteDescription) {
 					pc.addIceCandidate(candidate).catch(console.warn);
@@ -98,17 +104,13 @@
 			} else if (type === "WEBRTC_RENEGOTIATE_ANSWER") {
 				const pc = peerConnection;
 				if (!pc) return;
-				pc.setRemoteDescription(
-					new RTCSessionDescription(data.answer),
-				).catch(console.warn);
+				pc.setRemoteDescription(new RTCSessionDescription(data.answer)).catch(console.warn);
 			}
 		});
 
 		// Get microphone with noise suppression
 		try {
-			const constraints = $selectedMicId
-				? { audio: { deviceId: { exact: $selectedMicId } } }
-				: { audio: true };
+			const constraints = $selectedMicId ? { audio: { deviceId: { exact: $selectedMicId } } } : { audio: true };
 			rawMicStream = await navigator.mediaDevices.getUserMedia(constraints);
 			if (!audioContext) {
 				audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
@@ -136,7 +138,9 @@
 		pendingIceCandidates = [];
 		negotiationReady = false;
 		negotiationChain = Promise.resolve();
-		voiceJoinedPromise = new Promise<void>((resolve) => { voiceJoinedResolve = resolve; });
+		voiceJoinedPromise = new Promise<void>((resolve) => {
+			voiceJoinedResolve = resolve;
+		});
 		audioSender = null;
 
 		peerConnection = new RTCPeerConnection({
@@ -233,9 +237,7 @@
 		const shouldSend = !$isMuted && !$isDeafened;
 		if (audioSender) {
 			const audioTrack = localAudioStream?.getAudioTracks().at(0) ?? null;
-			audioSender
-				.replaceTrack(shouldSend ? audioTrack : null)
-				.catch(console.warn);
+			audioSender.replaceTrack(shouldSend ? audioTrack : null).catch(console.warn);
 		}
 	});
 
@@ -243,20 +245,21 @@
 	$effect(() => {
 		if (peerConnection && currentMicId !== $selectedMicId) {
 			currentMicId = $selectedMicId;
-			switchMicrophone($selectedMicId).catch((err) =>
-				console.error("[CallAudio] Failed to switch mic", err),
-			);
+			switchMicrophone($selectedMicId).catch((err) => console.error("[CallAudio] Failed to switch mic", err));
 		}
 	});
 
 	async function switchMicrophone(deviceId: string) {
-		const constraints = deviceId
-			? { audio: { deviceId: { exact: deviceId } } }
-			: { audio: true };
+		const constraints = deviceId ? { audio: { deviceId: { exact: deviceId } } } : { audio: true };
 		const newRawStream = await navigator.mediaDevices.getUserMedia(constraints);
 
-		if (denoiseCleanup) { denoiseCleanup(); denoiseCleanup = null; }
-		if (rawMicStream) { rawMicStream.getTracks().forEach((t) => t.stop()); }
+		if (denoiseCleanup) {
+			denoiseCleanup();
+			denoiseCleanup = null;
+		}
+		if (rawMicStream) {
+			rawMicStream.getTracks().forEach((t) => t.stop());
+		}
 		rawMicStream = newRawStream;
 
 		if (!audioContext) {
@@ -301,11 +304,6 @@
 <!-- Hidden audio elements for remote streams -->
 <div class="hidden">
 	{#each Object.entries(remoteAudioElements) as [id, stream] (id)}
-		<audio
-			use:srcObject={stream}
-			use:applyMuted={$isDeafened}
-			autoplay
-			aria-label={`Call audio stream ${id}`}
-		></audio>
+		<audio use:srcObject={stream} use:applyMuted={$isDeafened} autoplay aria-label={`Call audio stream ${id}`}></audio>
 	{/each}
 </div>

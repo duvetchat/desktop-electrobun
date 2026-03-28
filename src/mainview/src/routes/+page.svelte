@@ -1,5 +1,5 @@
 <script>
-	import { onMount } from 'svelte';
+	import { onMount } from "svelte";
 
 	onMount(() => {
 		console.log("@duvet/desktop is loaded!");

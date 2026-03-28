@@ -11,9 +11,7 @@ type SafeStorage = Pick<Storage, "getItem" | "setItem" | "removeItem">;
 
 function getSafeStorage(): SafeStorage | null {
 	const candidate =
-		typeof globalThis !== "undefined"
-			? ((globalThis as { localStorage?: unknown }).localStorage ?? null)
-			: null;
+		typeof globalThis !== "undefined" ? ((globalThis as { localStorage?: unknown }).localStorage ?? null) : null;
 
 	if (!candidate || typeof candidate !== "object") {
 		return null;

@@ -1,547 +1,616 @@
 <script lang="ts">
-import {
-	Search as MagnifyingGlassIcon,
-	Bookmark as BookmarkSimpleIcon,
-	Hash as HashIcon,
-} from "@lucide/svelte";
+	import { Search as MagnifyingGlassIcon, Bookmark as BookmarkSimpleIcon, Hash as HashIcon } from "@lucide/svelte";
 
-import { onMount, onDestroy } from "svelte";
-import ChatInput from "$lib/components/ChatInput.svelte";
-import MessageList from "$lib/components/MessageList.svelte";
-import type { Message, MemberOnSidebar, GatewaySpace, MessageReference, Embed } from "$lib/types";
-import { MessageReferenceType } from "$lib/types";
-import { sendMessage, sendVoiceNote, sendTypingIndicator } from "$lib/api/messages";
-import { MessageType } from "$lib/types";
-import { currentUser, channelMessages, typingUsers, spaceEmojis, spaceStickers } from "$lib/stores.svelte";
-import { toast } from "$lib/stores/toast.svelte";
-import TypingIndicator from "$lib/components/TypingIndicator.svelte";
-import { listEmojis } from "$lib/api/emojis";
-import { listStickers } from "$lib/api/stickers";
+	import { onMount, onDestroy } from "svelte";
+	import ChatInput from "$lib/components/ChatInput.svelte";
+	import MessageList from "$lib/components/MessageList.svelte";
+	import type { Message, MemberOnSidebar, GatewaySpace, MessageReference, Embed } from "$lib/types";
+	import { MessageReferenceType } from "$lib/types";
+	import { sendMessage, sendVoiceNote, sendTypingIndicator } from "$lib/api/messages";
+	import { MessageType } from "$lib/types";
+	import { currentUser, channelMessages, typingUsers, spaceEmojis, spaceStickers } from "$lib/stores.svelte";
+	import { toast } from "$lib/stores/toast.svelte";
+	import TypingIndicator from "$lib/components/TypingIndicator.svelte";
+	import { listEmojis } from "$lib/api/emojis";
+	import { listStickers } from "$lib/api/stickers";
 
-let {
-	messages,
-	members = [],
-	channelName,
-	channelId,
-	spaceId = "",
-	space = null,
-	isInitialLoading = false,
-	isLoadingMore = false,
-	isLoadingMoreBelow = false,
-	hasMoreMessages = true,
-	hasMoreMessagesBelow = false,
-	highlightedMessageId = null,
-	unreadAfterMessageId = null,
-	onLoadMore = () => {},
-	onLoadMoreBelow = () => {},
-	showHeader = true,
-	placeholder = undefined,
-	failedNonces = $bindable(new Set<string>()),
-	isAtBottom = $bindable(true),
-	onSend = undefined,
-	onSaveEdit = undefined,
-	onDeleteMsg = undefined,
-	onRetry = undefined,
-	onDismiss = undefined,
-	sendTyping = undefined,
-	onUnreadMark = undefined,
-	onVoiceNoteOverride = undefined,
-}: {
-	messages: Message[];
-	members?: MemberOnSidebar[];
-	channelName: string;
-	channelId: string;
-	spaceId?: string;
-	space?: GatewaySpace | null;
-	isInitialLoading?: boolean;
-	isLoadingMore?: boolean;
-	isLoadingMoreBelow?: boolean;
-	hasMoreMessages?: boolean;
-	hasMoreMessagesBelow?: boolean;
-	highlightedMessageId?: string | null;
-	unreadAfterMessageId?: string | null;
-	onLoadMore?: () => Promise<void> | void;
-	onLoadMoreBelow?: () => Promise<void> | void;
-	showHeader?: boolean;
-	placeholder?: string;
-	failedNonces?: Set<string>;
-	isAtBottom?: boolean;
-	onSend?: (content: string, nonce: string, ref: MessageReference | undefined, files?: File[], stickerAttachmentId?: string) => Promise<void>;
-	onSaveEdit?: (msgId: string, content: string) => void | Promise<void>;
-	onDeleteMsg?: (msgId: string) => Promise<void>;
-	onRetry?: (message: Message) => void;
-	onDismiss?: (nonce: string) => void;
-	sendTyping?: () => void;
-	onUnreadMark?: (messageId: string) => void;
-	onVoiceNoteOverride?: (blob: Blob) => void;
-} = $props();
-let replyTo = $state<Message | null>(null);
-let chatInputRef = $state<{ focus: () => void; focusAndInsert: (char: string) => void } | null>(null);
-let pendingFiles = $state<File[]>([]);
-let lastTypingSent = 0;
+	let {
+		messages,
+		members = [],
+		channelName,
+		channelId,
+		spaceId = "",
+		space = null,
+		isInitialLoading = false,
+		isLoadingMore = false,
+		isLoadingMoreBelow = false,
+		hasMoreMessages = true,
+		hasMoreMessagesBelow = false,
+		highlightedMessageId = null,
+		unreadAfterMessageId = null,
+		onLoadMore = () => {},
+		onLoadMoreBelow = () => {},
+		showHeader = true,
+		placeholder = undefined,
+		failedNonces = $bindable(new Set<string>()),
+		isAtBottom = $bindable(true),
+		onSend = undefined,
+		onSaveEdit = undefined,
+		onDeleteMsg = undefined,
+		onRetry = undefined,
+		onDismiss = undefined,
+		sendTyping = undefined,
+		onUnreadMark = undefined,
+		onVoiceNoteOverride = undefined,
+	}: {
+		messages: Message[];
+		members?: MemberOnSidebar[];
+		channelName: string;
+		channelId: string;
+		spaceId?: string;
+		space?: GatewaySpace | null;
+		isInitialLoading?: boolean;
+		isLoadingMore?: boolean;
+		isLoadingMoreBelow?: boolean;
+		hasMoreMessages?: boolean;
+		hasMoreMessagesBelow?: boolean;
+		highlightedMessageId?: string | null;
+		unreadAfterMessageId?: string | null;
+		onLoadMore?: () => Promise<void> | void;
+		onLoadMoreBelow?: () => Promise<void> | void;
+		showHeader?: boolean;
+		placeholder?: string;
+		failedNonces?: Set<string>;
+		isAtBottom?: boolean;
+		onSend?: (
+			content: string,
+			nonce: string,
+			ref: MessageReference | undefined,
+			files?: File[],
+			stickerAttachmentId?: string,
+		) => Promise<void>;
+		onSaveEdit?: (msgId: string, content: string) => void | Promise<void>;
+		onDeleteMsg?: (msgId: string) => Promise<void>;
+		onRetry?: (message: Message) => void;
+		onDismiss?: (nonce: string) => void;
+		sendTyping?: () => void;
+		onUnreadMark?: (messageId: string) => void;
+		onVoiceNoteOverride?: (blob: Blob) => void;
+	} = $props();
+	let replyTo = $state<Message | null>(null);
+	let chatInputRef = $state<{ focus: () => void; focusAndInsert: (char: string) => void } | null>(null);
+	let pendingFiles = $state<File[]>([]);
+	let lastTypingSent = 0;
 
-// Load emojis and stickers into global stores on space change
-$effect(() => {
-	if (spaceId) {
-		listEmojis(spaceId).then((e) => {
-			spaceEmojis.update((m) => ({ ...m, [spaceId]: e }));
-		}).catch(() => {});
-		listStickers(spaceId).then((s) => {
-			spaceStickers.update((m) => ({ ...m, [spaceId]: s }));
-		}).catch(() => {});
-	}
-});
+	// Load emojis and stickers into global stores on space change
+	$effect(() => {
+		if (spaceId) {
+			listEmojis(spaceId)
+				.then((e) => {
+					spaceEmojis.update((m) => ({ ...m, [spaceId]: e }));
+				})
+				.catch(() => {});
+			listStickers(spaceId)
+				.then((s) => {
+					spaceStickers.update((m) => ({ ...m, [spaceId]: s }));
+				})
+				.catch(() => {});
+		}
+	});
 
-const customEmojis = $derived(spaceId ? ($spaceEmojis[spaceId] ?? []) : []);
-const spaceStickersArr = $derived(spaceId ? ($spaceStickers[spaceId] ?? []) : []);
+	const customEmojis = $derived(spaceId ? ($spaceEmojis[spaceId] ?? []) : []);
+	const spaceStickersArr = $derived(spaceId ? ($spaceStickers[spaceId] ?? []) : []);
 
-// Focus input when switching channels
-$effect(() => {
-	channelId;
-	requestAnimationFrame(() => chatInputRef?.focus());
-});
+	// Focus input when switching channels
+	$effect(() => {
+		channelId;
+		requestAnimationFrame(() => chatInputRef?.focus());
+	});
 
-function formatFileSize(bytes: number): string {
-	if (bytes < 1024) return `${bytes} B`;
-	if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-	return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
-function removePendingFile(index: number) {
-	pendingFiles = pendingFiles.filter((_, i) => i !== index);
-}
-let editingMessageId = $state<string | null>(null);
-let editContent = $state("");
-let editMessageIndex = $state<number | null>(null);
-let replyMessageIndex = $state<number | null>(null);
-
-$effect(() => {
-	if (editingMessageId === null) {
-		editMessageIndex = null;
-	}
-});
-
-$effect(() => {
-	if (replyTo === null) {
-		replyMessageIndex = null;
-	}
-});
-
-function getOwnMessages() {
-	const user = $currentUser;
-	if (!user) return [];
-	return [...messages]
-		.filter((m) => m.author_id === user.id && !failedNonces.has(m.nonce ?? ""))
-		.sort(
-			(a, b) =>
-				new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
-		);
-}
-
-function tryEditAtIndex(index: number) {
-	const msgs = getOwnMessages();
-	if (index < 0 || index >= msgs.length) return false;
-	editMessageIndex = index;
-	editingMessageId = msgs[index].id;
-	editContent = msgs[index].content;
-	return true;
-}
-
-function tryEditLastMessage() {
-	tryEditAtIndex(0);
-}
-
-function getAllMessages() {
-	return [...messages].sort(
-		(a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
-	);
-}
-
-function tryReplyAtIndex(index: number) {
-	const msgs = getAllMessages();
-	if (index < 0 || index >= msgs.length) return false;
-	replyMessageIndex = index;
-	replyTo = msgs[index];
-	return true;
-}
-
-function isOtherInputActive() {
-	const active = document.activeElement;
-	return (
-		active &&
-		(active as HTMLElement).dataset?.chatinput !== "true" &&
-		(active.tagName === "INPUT" ||
-			active.tagName === "TEXTAREA" ||
-			(active as HTMLElement).isContentEditable)
-	);
-}
-
-function handleGlobalKeyDown(event: KeyboardEvent) {
-	const isCtrlShiftUp =
-		event.ctrlKey && event.shiftKey && event.key === "ArrowUp";
-	const isCtrlShiftDown =
-		event.ctrlKey && event.shiftKey && event.key === "ArrowDown";
-
-	if (isCtrlShiftUp) {
-		event.preventDefault();
-		const nextIndex = editMessageIndex === null ? 0 : editMessageIndex + 1;
-		tryEditAtIndex(nextIndex);
-		return;
+	function formatFileSize(bytes: number): string {
+		if (bytes < 1024) return `${bytes} B`;
+		if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+		return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 	}
 
-	if (isCtrlShiftDown) {
-		event.preventDefault();
-		if (editMessageIndex === null) return;
-		if (editMessageIndex === 0) {
-			editingMessageId = null;
-			editContent = "";
+	function removePendingFile(index: number) {
+		pendingFiles = pendingFiles.filter((_, i) => i !== index);
+	}
+	let editingMessageId = $state<string | null>(null);
+	let editContent = $state("");
+	let editMessageIndex = $state<number | null>(null);
+	let replyMessageIndex = $state<number | null>(null);
+
+	$effect(() => {
+		if (editingMessageId === null) {
 			editMessageIndex = null;
-		} else {
-			tryEditAtIndex(editMessageIndex - 1);
 		}
-		return;
-	}
+	});
 
-	const isCtrlUp = event.ctrlKey && !event.shiftKey && event.key === "ArrowUp";
-	const isCtrlDown = event.ctrlKey && !event.shiftKey && event.key === "ArrowDown";
-
-	if (isCtrlUp) {
-		event.preventDefault();
-		const nextIndex = replyMessageIndex === null ? 0 : replyMessageIndex + 1;
-		tryReplyAtIndex(nextIndex);
-		return;
-	}
-
-	if (isCtrlDown) {
-		event.preventDefault();
-		if (replyMessageIndex === null) return;
-		if (replyMessageIndex === 0) {
-			replyTo = null;
-		} else {
-			tryReplyAtIndex(replyMessageIndex - 1);
+	$effect(() => {
+		if (replyTo === null) {
+			replyMessageIndex = null;
 		}
-		return;
+	});
+
+	function getOwnMessages() {
+		const user = $currentUser;
+		if (!user) return [];
+		return [...messages]
+			.filter((m) => m.author_id === user.id && !failedNonces.has(m.nonce ?? ""))
+			.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 	}
 
-	if (isOtherInputActive()) return;
-
-	// Focus chat input when typing a printable character
-	if (
-		!event.ctrlKey && !event.metaKey && !event.altKey &&
-		event.key.length === 1
-	) {
-		event.preventDefault();
-		chatInputRef?.focusAndInsert(event.key);
-	}
-}
-
-onMount(() => window.addEventListener("keydown", handleGlobalKeyDown));
-onDestroy(() => {
-	if (typeof window === "undefined") return;
-	window.removeEventListener("keydown", handleGlobalKeyDown);
-});
-
-async function handleSendMessage(content: string, files?: File[], stickerAttachmentId?: string) {
-	const nonce = crypto.randomUUID();
-	const user = $currentUser;
-	if (!user) return;
-
-	const ref = replyTo ? {
-		type: MessageReferenceType.Reply,
-		message_id: replyTo.id,
-		room_id: channelId,
-	} as MessageReference : undefined;
-
-	replyTo = null;
-
-	if (onSend) {
-		try { await onSend(content, nonce, ref, files, stickerAttachmentId); }
-		catch { failedNonces = new Set(failedNonces).add(nonce); }
-		return;
+	function tryEditAtIndex(index: number) {
+		const msgs = getOwnMessages();
+		if (index < 0 || index >= msgs.length) return false;
+		editMessageIndex = index;
+		editingMessageId = msgs[index].id;
+		editContent = msgs[index].content;
+		return true;
 	}
 
-	const isoNow = new Date().toISOString();
-	const pendingAttachments = files?.map((f) => ({
-		id: "",
-		message_id: "",
-		filename: f.name,
-		content_type: f.type || "application/octet-stream",
-		size_bytes: f.size,
-		created_at: isoNow,
-		pending: true,
-	})) ?? [];
-	const pendingMessage = {
-		id: nonce,
-		content,
-		author_id: user.id,
-		author_name: user.alias ?? user.username,
-		author_avatar_url: user.avatar ?? null,
-		created_at: isoNow,
-		updated_at: isoNow,
-		nonce,
-		attachments: pendingAttachments.length > 0 ? pendingAttachments : null,
-		sticker_attachment_id: stickerAttachmentId ?? null,
-		...(ref ? {
-			referenced_message: {
-				id: ref.message_id,
-				content: messages.find(m => m.id === ref.message_id)?.content ?? "",
-				author_id: messages.find(m => m.id === ref.message_id)?.author_id ?? "",
-				author_name: messages.find(m => m.id === ref.message_id)?.author_name ?? "",
-				author_avatar: messages.find(m => m.id === ref.message_id)?.author_avatar_url ?? null,
-				created_at: messages.find(m => m.id === ref.message_id)?.created_at ?? isoNow,
+	function tryEditLastMessage() {
+		tryEditAtIndex(0);
+	}
+
+	function getAllMessages() {
+		return [...messages].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+	}
+
+	function tryReplyAtIndex(index: number) {
+		const msgs = getAllMessages();
+		if (index < 0 || index >= msgs.length) return false;
+		replyMessageIndex = index;
+		replyTo = msgs[index];
+		return true;
+	}
+
+	function isOtherInputActive() {
+		const active = document.activeElement;
+		return (
+			active &&
+			(active as HTMLElement).dataset?.chatinput !== "true" &&
+			(active.tagName === "INPUT" || active.tagName === "TEXTAREA" || (active as HTMLElement).isContentEditable)
+		);
+	}
+
+	function handleGlobalKeyDown(event: KeyboardEvent) {
+		const isCtrlShiftUp = event.ctrlKey && event.shiftKey && event.key === "ArrowUp";
+		const isCtrlShiftDown = event.ctrlKey && event.shiftKey && event.key === "ArrowDown";
+
+		if (isCtrlShiftUp) {
+			event.preventDefault();
+			const nextIndex = editMessageIndex === null ? 0 : editMessageIndex + 1;
+			tryEditAtIndex(nextIndex);
+			return;
+		}
+
+		if (isCtrlShiftDown) {
+			event.preventDefault();
+			if (editMessageIndex === null) return;
+			if (editMessageIndex === 0) {
+				editingMessageId = null;
+				editContent = "";
+				editMessageIndex = null;
+			} else {
+				tryEditAtIndex(editMessageIndex - 1);
 			}
-		} : {}),
-	} as any;
+			return;
+		}
 
-	channelMessages.update((all) => ({
-		...all,
-		[channelId]: [...(all[channelId] ?? []), pendingMessage],
-	}));
+		const isCtrlUp = event.ctrlKey && !event.shiftKey && event.key === "ArrowUp";
+		const isCtrlDown = event.ctrlKey && !event.shiftKey && event.key === "ArrowDown";
 
-	sendMessage(channelId, content, nonce, ref, files, undefined, stickerAttachmentId).catch((err) => {
-		failedNonces = new Set(failedNonces).add(nonce);
-		toast(err instanceof Error ? err.message : "Failed to send message", "error");
+		if (isCtrlUp) {
+			event.preventDefault();
+			const nextIndex = replyMessageIndex === null ? 0 : replyMessageIndex + 1;
+			tryReplyAtIndex(nextIndex);
+			return;
+		}
+
+		if (isCtrlDown) {
+			event.preventDefault();
+			if (replyMessageIndex === null) return;
+			if (replyMessageIndex === 0) {
+				replyTo = null;
+			} else {
+				tryReplyAtIndex(replyMessageIndex - 1);
+			}
+			return;
+		}
+
+		if (isOtherInputActive()) return;
+
+		// Focus chat input when typing a printable character
+		if (!event.ctrlKey && !event.metaKey && !event.altKey && event.key.length === 1) {
+			event.preventDefault();
+			chatInputRef?.focusAndInsert(event.key);
+		}
+	}
+
+	onMount(() => window.addEventListener("keydown", handleGlobalKeyDown));
+	onDestroy(() => {
+		if (typeof window === "undefined") return;
+		window.removeEventListener("keydown", handleGlobalKeyDown);
 	});
-}
 
-function handleReply(message: Message) {
-	replyTo = message;
-	chatInputRef?.focus();
-}
+	async function handleSendMessage(content: string, files?: File[], stickerAttachmentId?: string) {
+		const nonce = crypto.randomUUID();
+		const user = $currentUser;
+		if (!user) return;
 
-function retryMessage(message: Message) {
-	if (onRetry) { onRetry(message); return; }
-	const nonce = message.nonce!;
-	const newSet = new Set(failedNonces);
-	newSet.delete(nonce);
-	failedNonces = newSet;
-	sendMessage(channelId, message.content, nonce).catch((err) => {
-		failedNonces = new Set(failedNonces).add(nonce);
-		toast(err instanceof Error ? err.message : "Failed to send message", "error");
-	});
-}
+		const ref = replyTo
+			? ({
+					type: MessageReferenceType.Reply,
+					message_id: replyTo.id,
+					room_id: channelId,
+				} as MessageReference)
+			: undefined;
 
-function handleTyping(text: string) {
-	if (!text) return;
-	const now = Date.now();
-	const user = $currentUser;
-	if (user) {
-		typingUsers.update((all) => {
-			const filtered = (all[channelId] ?? []).filter((u) => u.user_id !== user.id);
-			return { ...all, [channelId]: [...filtered, { user_id: user.id, username: user.username, alias: user.alias ?? null, avatar: user.avatar ?? null, timestamp: now }] };
+		replyTo = null;
+
+		if (onSend) {
+			try {
+				await onSend(content, nonce, ref, files, stickerAttachmentId);
+			} catch {
+				failedNonces = new Set(failedNonces).add(nonce);
+			}
+			return;
+		}
+
+		const isoNow = new Date().toISOString();
+		const pendingAttachments =
+			files?.map((f) => ({
+				id: "",
+				message_id: "",
+				filename: f.name,
+				content_type: f.type || "application/octet-stream",
+				size_bytes: f.size,
+				created_at: isoNow,
+				pending: true,
+			})) ?? [];
+		const pendingMessage = {
+			id: nonce,
+			content,
+			author_id: user.id,
+			author_name: user.alias ?? user.username,
+			author_avatar_url: user.avatar ?? null,
+			created_at: isoNow,
+			updated_at: isoNow,
+			nonce,
+			attachments: pendingAttachments.length > 0 ? pendingAttachments : null,
+			sticker_attachment_id: stickerAttachmentId ?? null,
+			...(ref
+				? {
+						referenced_message: {
+							id: ref.message_id,
+							content: messages.find((m) => m.id === ref.message_id)?.content ?? "",
+							author_id: messages.find((m) => m.id === ref.message_id)?.author_id ?? "",
+							author_name: messages.find((m) => m.id === ref.message_id)?.author_name ?? "",
+							author_avatar: messages.find((m) => m.id === ref.message_id)?.author_avatar_url ?? null,
+							created_at: messages.find((m) => m.id === ref.message_id)?.created_at ?? isoNow,
+						},
+					}
+				: {}),
+		} as any;
+
+		channelMessages.update((all) => ({
+			...all,
+			[channelId]: [...(all[channelId] ?? []), pendingMessage],
+		}));
+
+		sendMessage(channelId, content, nonce, ref, files, undefined, stickerAttachmentId).catch((err) => {
+			failedNonces = new Set(failedNonces).add(nonce);
+			toast(err instanceof Error ? err.message : "Failed to send message", "error");
 		});
 	}
-	if (now - lastTypingSent < 3000) return;
-	lastTypingSent = now;
-	if (sendTyping) { sendTyping(); return; }
-	sendTypingIndicator(channelId);
-}
 
-function dismissFailedMessage(nonce: string) {
-	if (onDismiss) { onDismiss(nonce); return; }
-	const newSet = new Set(failedNonces);
-	newSet.delete(nonce);
-	failedNonces = newSet;
-	channelMessages.update((all) => ({
-		...all,
-		[channelId]: (all[channelId] ?? []).filter((m) => m.nonce !== nonce),
-	}));
-}
-
-async function handleVoiceNote(blob: Blob) {
-	if (onVoiceNoteOverride) {
-		onVoiceNoteOverride(blob);
-		return;
+	function handleReply(message: Message) {
+		replyTo = message;
+		chatInputRef?.focus();
 	}
 
-	const nonce = crypto.randomUUID();
-	const user = $currentUser;
-	if (!user) return;
+	function retryMessage(message: Message) {
+		if (onRetry) {
+			onRetry(message);
+			return;
+		}
+		const nonce = message.nonce!;
+		const newSet = new Set(failedNonces);
+		newSet.delete(nonce);
+		failedNonces = newSet;
+		sendMessage(channelId, message.content, nonce).catch((err) => {
+			failedNonces = new Set(failedNonces).add(nonce);
+			toast(err instanceof Error ? err.message : "Failed to send message", "error");
+		});
+	}
 
-	const isoNow = new Date().toISOString();
-	const pendingMessage = {
-		id: nonce,
-		content: "",
-		type: MessageType.Voice,
-		author_id: user.id,
-		author_name: user.alias ?? user.username,
-		author_avatar_url: user.avatar ?? null,
-		created_at: isoNow,
-		updated_at: isoNow,
-		nonce,
-		attachments: [{
-			id: "",
-			message_id: "",
-			filename: "voice-note.webm",
-			content_type: "audio/webm;codecs=opus",
-			size_bytes: blob.size,
+	function handleTyping(text: string) {
+		if (!text) return;
+		const now = Date.now();
+		const user = $currentUser;
+		if (user) {
+			typingUsers.update((all) => {
+				const filtered = (all[channelId] ?? []).filter((u) => u.user_id !== user.id);
+				return {
+					...all,
+					[channelId]: [
+						...filtered,
+						{
+							user_id: user.id,
+							username: user.username,
+							alias: user.alias ?? null,
+							avatar: user.avatar ?? null,
+							timestamp: now,
+						},
+					],
+				};
+			});
+		}
+		if (now - lastTypingSent < 3000) return;
+		lastTypingSent = now;
+		if (sendTyping) {
+			sendTyping();
+			return;
+		}
+		sendTypingIndicator(channelId);
+	}
+
+	function dismissFailedMessage(nonce: string) {
+		if (onDismiss) {
+			onDismiss(nonce);
+			return;
+		}
+		const newSet = new Set(failedNonces);
+		newSet.delete(nonce);
+		failedNonces = newSet;
+		channelMessages.update((all) => ({
+			...all,
+			[channelId]: (all[channelId] ?? []).filter((m) => m.nonce !== nonce),
+		}));
+	}
+
+	async function handleVoiceNote(blob: Blob) {
+		if (onVoiceNoteOverride) {
+			onVoiceNoteOverride(blob);
+			return;
+		}
+
+		const nonce = crypto.randomUUID();
+		const user = $currentUser;
+		if (!user) return;
+
+		const isoNow = new Date().toISOString();
+		const pendingMessage = {
+			id: nonce,
+			content: "",
+			type: MessageType.Voice,
+			author_id: user.id,
+			author_name: user.alias ?? user.username,
+			author_avatar_url: user.avatar ?? null,
 			created_at: isoNow,
-			pending: true,
-		}],
-	} as any;
+			updated_at: isoNow,
+			nonce,
+			attachments: [
+				{
+					id: "",
+					message_id: "",
+					filename: "voice-note.webm",
+					content_type: "audio/webm;codecs=opus",
+					size_bytes: blob.size,
+					created_at: isoNow,
+					pending: true,
+				},
+			],
+		} as any;
 
-	channelMessages.update((all) => ({
-		...all,
-		[channelId]: [...(all[channelId] ?? []), pendingMessage],
-	}));
+		channelMessages.update((all) => ({
+			...all,
+			[channelId]: [...(all[channelId] ?? []), pendingMessage],
+		}));
 
-	sendVoiceNote(channelId, blob, nonce).catch((err) => {
-		failedNonces = new Set(failedNonces).add(nonce);
-		toast(err instanceof Error ? err.message : "Failed to send voice note", "error");
-	});
-}
-
-let fileDragOver = $state(false);
-
-function handleFileDragOver(e: DragEvent) {
-	if (!e.dataTransfer?.types.includes("Files")) return;
-	e.preventDefault();
-	e.dataTransfer.dropEffect = "copy";
-	fileDragOver = true;
-}
-
-function handleFileDragLeave(e: DragEvent) {
-	const el = e.currentTarget as HTMLElement;
-	if (!el.contains(e.relatedTarget as Node)) {
-		fileDragOver = false;
+		sendVoiceNote(channelId, blob, nonce).catch((err) => {
+			failedNonces = new Set(failedNonces).add(nonce);
+			toast(err instanceof Error ? err.message : "Failed to send voice note", "error");
+		});
 	}
-}
 
-function handleFileDrop(e: DragEvent) {
-	fileDragOver = false;
-	if (!e.dataTransfer?.files.length) return;
-	e.preventDefault();
-	pendingFiles = [...pendingFiles, ...Array.from(e.dataTransfer.files)];
-	chatInputRef?.focus();
-}
+	let fileDragOver = $state(false);
 
+	function handleFileDragOver(e: DragEvent) {
+		if (!e.dataTransfer?.types.includes("Files")) return;
+		e.preventDefault();
+		e.dataTransfer.dropEffect = "copy";
+		fileDragOver = true;
+	}
+
+	function handleFileDragLeave(e: DragEvent) {
+		const el = e.currentTarget as HTMLElement;
+		if (!el.contains(e.relatedTarget as Node)) {
+			fileDragOver = false;
+		}
+	}
+
+	function handleFileDrop(e: DragEvent) {
+		fileDragOver = false;
+		if (!e.dataTransfer?.files.length) return;
+		e.preventDefault();
+		pendingFiles = [...pendingFiles, ...Array.from(e.dataTransfer.files)];
+		chatInputRef?.focus();
+	}
 </script>
 
 <div
-  class="flex flex-1 flex-col overflow-hidden bg-[linear-gradient(180deg,oklch(0.22_0.01_80),oklch(0.19_0.008_80))] relative"
-  ondragover={handleFileDragOver}
-  ondragleave={handleFileDragLeave}
-  ondrop={handleFileDrop}
-  role="region"
-  aria-label="Chat"
+	class="relative flex flex-1 flex-col overflow-hidden bg-[linear-gradient(180deg,oklch(0.22_0.01_80),oklch(0.19_0.008_80))]"
+	ondragover={handleFileDragOver}
+	ondragleave={handleFileDragLeave}
+	ondrop={handleFileDrop}
+	role="region"
+	aria-label="Chat"
 >
-  {#if fileDragOver}
-    <div class="absolute inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm pointer-events-none">
-      <div class="flex flex-col items-center gap-2 rounded-xl border-2 border-dashed border-indigo-400 bg-zinc-900/80 px-10 py-8">
-        <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="text-indigo-400"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg>
-        <span class="text-sm font-medium text-indigo-300">Drop files to upload</span>
-      </div>
-    </div>
-  {/if}
-  {#if showHeader}
-	<div
-	class="flex h-10 shrink-0 items-center justify-between border-b border-stone-800 bg-stone-950/45 px-3 font-semibold text-stone-100"
-	>
-    <div class="flex flex-row gap-2 items-center">
-      <HashIcon class="size-5 text-zinc-400" />
-      {channelName}
-    </div>
-    <div class="flex flex-row gap-3 items-center">
-		<BookmarkSimpleIcon
-			class="size-4 text-zinc-400 duration-100 hover:scale-[1.05] active:scale-[0.95] hover:text-zinc-200"
-		/>
-	  <div class="relative flex h-8 w-48 items-center rounded-lg border border-stone-800/90 bg-stone-900/40 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)] transition-colors focus-within:border-stone-600/80 focus-within:bg-stone-900/65">
-		<MagnifyingGlassIcon
-	            class="absolute left-2.5 size-3.5 text-stone-500"
-			/>
-        <input
-          placeholder="Search messages"
-		  class="h-full w-full border-none bg-transparent pl-8 pr-2.5 text-xs font-medium text-stone-100 placeholder:text-stone-500/90 focus:outline-none focus:ring-0"
-        />
-      </div>
-    </div>
-  </div>
-  {/if}
+	{#if fileDragOver}
+		<div
+			class="pointer-events-none absolute inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
+		>
+			<div
+				class="flex flex-col items-center gap-2 rounded-xl border-2 border-dashed border-indigo-400 bg-zinc-900/80 px-10 py-8"
+			>
+				<svg
+					xmlns="http://www.w3.org/2000/svg"
+					width="40"
+					height="40"
+					viewBox="0 0 24 24"
+					fill="none"
+					stroke="currentColor"
+					stroke-width="1.5"
+					stroke-linecap="round"
+					stroke-linejoin="round"
+					class="text-indigo-400"
+					><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line
+						x1="12"
+						x2="12"
+						y1="3"
+						y2="15"
+					/></svg
+				>
+				<span class="text-sm font-medium text-indigo-300">Drop files to upload</span>
+			</div>
+		</div>
+	{/if}
+	{#if showHeader}
+		<div
+			class="flex h-10 shrink-0 items-center justify-between border-b border-stone-800 bg-stone-950/45 px-3 font-semibold text-stone-100"
+		>
+			<div class="flex flex-row items-center gap-2">
+				<HashIcon class="size-5 text-zinc-400" />
+				{channelName}
+			</div>
+			<div class="flex flex-row items-center gap-3">
+				<BookmarkSimpleIcon
+					class="size-4 text-zinc-400 duration-100 hover:scale-[1.05] hover:text-zinc-200 active:scale-[0.95]"
+				/>
+				<div
+					class="relative flex h-8 w-48 items-center rounded-lg border border-stone-800/90 bg-stone-900/40 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)] transition-colors focus-within:border-stone-600/80 focus-within:bg-stone-900/65"
+				>
+					<MagnifyingGlassIcon class="absolute left-2.5 size-3.5 text-stone-500" />
+					<input
+						placeholder="Search messages"
+						class="h-full w-full border-none bg-transparent pr-2.5 pl-8 text-xs font-medium text-stone-100 placeholder:text-stone-500/90 focus:ring-0 focus:outline-none"
+					/>
+				</div>
+			</div>
+		</div>
+	{/if}
 
-  <MessageList
-    {messages}
-    {members}
-    {channelId}
-    {spaceId}
-    {space}
-    {isInitialLoading}
-    {isLoadingMore}
-    {isLoadingMoreBelow}
-    {hasMoreMessages}
-    {hasMoreMessagesBelow}
-    highlightedMessageId={replyTo?.id ?? highlightedMessageId}
-    {unreadAfterMessageId}
-    {onLoadMore}
-    {onLoadMoreBelow}
-    {failedNonces}
-    bind:isAtBottom
-    {onSaveEdit}
-    {onDeleteMsg}
-    bind:editingMessageId
-    bind:editContent
-    onRetry={retryMessage}
-    onDismiss={dismissFailedMessage}
-    onReply={handleReply}
-    {onUnreadMark}
-    {customEmojis}
-  />
+	<MessageList
+		{messages}
+		{members}
+		{channelId}
+		{spaceId}
+		{space}
+		{isInitialLoading}
+		{isLoadingMore}
+		{isLoadingMoreBelow}
+		{hasMoreMessages}
+		{hasMoreMessagesBelow}
+		highlightedMessageId={replyTo?.id ?? highlightedMessageId}
+		{unreadAfterMessageId}
+		{onLoadMore}
+		{onLoadMoreBelow}
+		{failedNonces}
+		bind:isAtBottom
+		{onSaveEdit}
+		{onDeleteMsg}
+		bind:editingMessageId
+		bind:editContent
+		onRetry={retryMessage}
+		onDismiss={dismissFailedMessage}
+		onReply={handleReply}
+		{onUnreadMark}
+		{customEmojis}
+	/>
 
 	<div class="relative w-full">
 		<div
-			class="absolute bottom-0 z-10 h-5 w-full bg-linear-to-t from-stone-950/45 to-transparent pointer-events-none"
+			class="pointer-events-none absolute bottom-0 z-10 h-5 w-full bg-linear-to-t from-stone-950/45 to-transparent"
 		></div>
-  </div>
-  <!-- Typing indicator -->
-  <TypingIndicator channelId={channelId} />
-  <!-- Bottom input bar -->
-  <div
-		class="relative flex min-h-16 max-h-48 flex-row items-end gap-2 border-t border-stone-800 bg-stone-950/45 px-3 py-2"
+	</div>
+	<!-- Typing indicator -->
+	<TypingIndicator {channelId} />
+	<!-- Bottom input bar -->
+	<div
+		class="relative flex max-h-48 min-h-16 flex-row items-end gap-2 border-t border-stone-800 bg-stone-950/45 px-3 py-2"
 	>
-    {#if replyTo || pendingFiles.length > 0}
-        <div class="absolute bottom-full left-0 right-0 flex flex-col">
-            {#if replyTo}
-                <div class="flex items-center justify-between bg-stone-900/90 border-t border-stone-800 px-3 py-1.5 text-xs text-zinc-400">
-                    <span>Replying to <span class="font-semibold text-zinc-200">{replyTo.author_name}</span></span>
-                    <button
-                        class="text-zinc-500 hover:text-zinc-300 transition-colors"
-                        onclick={() => { replyTo = null; }}
-                        aria-label="Cancel reply"
-                    >
-                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
-                    </button>
-                </div>
-            {/if}
-            {#if pendingFiles.length > 0}
-                <div class="flex flex-wrap gap-1.5 bg-stone-900/90 border-t border-stone-800 px-3 py-1.5">
-                    {#each pendingFiles as file, i}
-                        <div class="flex items-center gap-1.5 px-2 py-1 rounded bg-stone-800 border border-stone-700 max-w-56">
-                            <span class="text-xs text-zinc-300 truncate">{file.name}</span>
-                            <span class="text-xxs text-zinc-500 shrink-0">{formatFileSize(file.size)}</span>
-                            <button
-                                class="text-zinc-500 hover:text-zinc-300 transition-colors shrink-0"
-                                onclick={() => removePendingFile(i)}
-                                aria-label="Remove {file.name}"
-                            >
-                                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
-                            </button>
-                        </div>
-                    {/each}
-                </div>
-            {/if}
-        </div>
-    {/if}
-    <ChatInput
-      bind:this={chatInputRef}
-      bind:pendingFiles
-      placeholder={placeholder ?? `Message #${channelName}`}
-      onSubmit={handleSendMessage}
-      onVoiceNote={handleVoiceNote}
-      onArrowUpWhenEmpty={tryEditLastMessage}
-      onValueChange={handleTyping}
-      {members}
-      {customEmojis}
-      spaceStickers={spaceStickersArr}
-      autofocus
-    />
-  </div>
+		{#if replyTo || pendingFiles.length > 0}
+			<div class="absolute right-0 bottom-full left-0 flex flex-col">
+				{#if replyTo}
+					<div
+						class="flex items-center justify-between border-t border-stone-800 bg-stone-900/90 px-3 py-1.5 text-xs text-zinc-400"
+					>
+						<span>Replying to <span class="font-semibold text-zinc-200">{replyTo.author_name}</span></span>
+						<button
+							class="text-zinc-500 transition-colors hover:text-zinc-300"
+							onclick={() => {
+								replyTo = null;
+							}}
+							aria-label="Cancel reply"
+						>
+							<svg
+								xmlns="http://www.w3.org/2000/svg"
+								width="14"
+								height="14"
+								viewBox="0 0 24 24"
+								fill="none"
+								stroke="currentColor"
+								stroke-width="2.5"
+								stroke-linecap="round"
+								stroke-linejoin="round"><path d="M18 6 6 18" /><path d="m6 6 12 12" /></svg
+							>
+						</button>
+					</div>
+				{/if}
+				{#if pendingFiles.length > 0}
+					<div class="flex flex-wrap gap-1.5 border-t border-stone-800 bg-stone-900/90 px-3 py-1.5">
+						{#each pendingFiles as file, i}
+							<div class="flex max-w-56 items-center gap-1.5 rounded border border-stone-700 bg-stone-800 px-2 py-1">
+								<span class="truncate text-xs text-zinc-300">{file.name}</span>
+								<span class="text-xxs shrink-0 text-zinc-500">{formatFileSize(file.size)}</span>
+								<button
+									class="shrink-0 text-zinc-500 transition-colors hover:text-zinc-300"
+									onclick={() => removePendingFile(i)}
+									aria-label="Remove {file.name}"
+								>
+									<svg
+										xmlns="http://www.w3.org/2000/svg"
+										width="12"
+										height="12"
+										viewBox="0 0 24 24"
+										fill="none"
+										stroke="currentColor"
+										stroke-width="2.5"
+										stroke-linecap="round"
+										stroke-linejoin="round"><path d="M18 6 6 18" /><path d="m6 6 12 12" /></svg
+									>
+								</button>
+							</div>
+						{/each}
+					</div>
+				{/if}
+			</div>
+		{/if}
+		<ChatInput
+			bind:this={chatInputRef}
+			bind:pendingFiles
+			placeholder={placeholder ?? `Message #${channelName}`}
+			onSubmit={handleSendMessage}
+			onVoiceNote={handleVoiceNote}
+			onArrowUpWhenEmpty={tryEditLastMessage}
+			onValueChange={handleTyping}
+			{members}
+			{customEmojis}
+			spaceStickers={spaceStickersArr}
+			autofocus
+		/>
+	</div>
 </div>

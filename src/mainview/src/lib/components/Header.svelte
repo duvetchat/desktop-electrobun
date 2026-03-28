@@ -1,6 +1,6 @@
 <script lang="ts">
-import { Button } from "bits-ui";
-import { Minus as MinusIcon, Square as SquareIcon, X as XIcon } from "@lucide/svelte";
+	import { Button } from "bits-ui";
+	import { Minus as MinusIcon, Square as SquareIcon, X as XIcon } from "@lucide/svelte";
 </script>
 
 <header
