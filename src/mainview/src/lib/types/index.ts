@@ -33,6 +33,7 @@ export const EmbedType = {
 	Gifv: "gifv",
 	Image: "image",
 	Audio: "audio",
+	Sticker: "sticker",
 } as const;
 
 export interface Embed {
@@ -121,6 +122,7 @@ export interface GatewayMessage {
 	embeds?: Embed[] | null;
 	attachments?: Attachment[] | null;
 	reactions?: MessageReaction[] | null;
+	sticker_attachment_id?: string | null;
 }
 
 export interface Message {
@@ -138,6 +140,7 @@ export interface Message {
 	embeds?: Embed[] | null;
 	attachments?: Attachment[] | null;
 	reactions?: MessageReaction[] | null;
+	sticker_attachment_id?: string | null;
 }
 
 export interface GatewayMessageDelete {
@@ -264,6 +267,16 @@ export interface SpaceEmoji {
 	deleted_at: string | null;
 }
 
+export interface SpaceSticker {
+	id: string;
+	name: string;
+	space_id: string;
+	attachment_id: string;
+	created_at: string;
+	updated_at: string;
+	deleted_at: string | null;
+}
+
 export interface GatewaySpaceCreatePayload {
 	space: {
 		id: string;
@@ -360,6 +373,7 @@ export function gatewayMessageToMessage(
 		embeds: msg.embeds ?? null,
 		attachments: msg.attachments ?? null,
 		reactions: msg.reactions ?? null,
+		sticker_attachment_id: msg.sticker_attachment_id ?? null,
 	};
 }
 

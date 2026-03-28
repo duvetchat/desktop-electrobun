@@ -8,7 +8,7 @@ import {
 import { onMount, onDestroy } from "svelte";
 import ChatInput from "$lib/components/ChatInput.svelte";
 import MessageList from "$lib/components/MessageList.svelte";
-import type { Message, MemberOnSidebar, GatewaySpace, MessageReference } from "$lib/types";
+import type { Message, MemberOnSidebar, GatewaySpace, MessageReference, Embed } from "$lib/types";
 import { MessageReferenceType } from "$lib/types";
 import { sendMessage, sendVoiceNote, sendTypingIndicator } from "$lib/api/messages";
 import { MessageType } from "$lib/types";
@@ -16,6 +16,8 @@ import { currentUser, channelMessages, typingUsers, spaceEmojis } from "$lib/sto
 import { toast } from "$lib/stores/toast.svelte";
 import TypingIndicator from "$lib/components/TypingIndicator.svelte";
 import { listEmojis } from "$lib/api/emojis";
+import { listStickers } from "$lib/api/stickers";
+import type { SpaceSticker } from "$lib/types";
 
 let {
 	messages,
@@ -65,7 +67,7 @@ let {
 	placeholder?: string;
 	failedNonces?: Set<string>;
 	isAtBottom?: boolean;
-	onSend?: (content: string, nonce: string, ref: MessageReference | undefined, files?: File[]) => Promise<void>;
+	onSend?: (content: string, nonce: string, ref: MessageReference | undefined, files?: File[], stickerAttachmentId?: string) => Promise<void>;
 	onSaveEdit?: (msgId: string, content: string) => void | Promise<void>;
 	onDeleteMsg?: (msgId: string) => Promise<void>;
 	onRetry?: (message: Message) => void;
@@ -79,12 +81,17 @@ let chatInputRef = $state<{ focus: () => void; focusAndInsert: (char: string) =>
 let pendingFiles = $state<File[]>([]);
 let lastTypingSent = 0;
 
-// Load emojis into the global store on space change
+// Load emojis and stickers on space change
+let spaceStickers = $state<SpaceSticker[]>([]);
+
 $effect(() => {
 	if (spaceId) {
 		listEmojis(spaceId).then((e) => {
 			spaceEmojis.update((m) => ({ ...m, [spaceId]: e }));
 		}).catch(() => {});
+		listStickers(spaceId).then((s) => { spaceStickers = s; }).catch(() => { spaceStickers = []; });
+	} else {
+		spaceStickers = [];
 	}
 });
 
@@ -236,7 +243,7 @@ onDestroy(() => {
 	window.removeEventListener("keydown", handleGlobalKeyDown);
 });
 
-async function handleSendMessage(content: string, files?: File[]) {
+async function handleSendMessage(content: string, files?: File[], stickerAttachmentId?: string) {
 	const nonce = crypto.randomUUID();
 	const user = $currentUser;
 	if (!user) return;
@@ -250,7 +257,7 @@ async function handleSendMessage(content: string, files?: File[]) {
 	replyTo = null;
 
 	if (onSend) {
-		try { await onSend(content, nonce, ref, files); }
+		try { await onSend(content, nonce, ref, files, stickerAttachmentId); }
 		catch { failedNonces = new Set(failedNonces).add(nonce); }
 		return;
 	}
@@ -275,6 +282,7 @@ async function handleSendMessage(content: string, files?: File[]) {
 		updated_at: isoNow,
 		nonce,
 		attachments: pendingAttachments.length > 0 ? pendingAttachments : null,
+		sticker_attachment_id: stickerAttachmentId ?? null,
 		...(ref ? {
 			referenced_message: {
 				id: ref.message_id,
@@ -292,7 +300,7 @@ async function handleSendMessage(content: string, files?: File[]) {
 		[channelId]: [...(all[channelId] ?? []), pendingMessage],
 	}));
 
-	sendMessage(channelId, content, nonce, ref, files).catch((err) => {
+	sendMessage(channelId, content, nonce, ref, files, undefined, stickerAttachmentId).catch((err) => {
 		failedNonces = new Set(failedNonces).add(nonce);
 		toast(err instanceof Error ? err.message : "Failed to send message", "error");
 	});
@@ -534,6 +542,7 @@ function handleFileDrop(e: DragEvent) {
       onValueChange={handleTyping}
       {members}
       {customEmojis}
+      {spaceStickers}
       autofocus
     />
   </div>

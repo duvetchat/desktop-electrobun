@@ -47,7 +47,12 @@
     }
 </script>
 
-{#if embed.type === EmbedType.Gifv || embed.type === EmbedType.Image || (!embed.title && !embed.description && !embed.author && !embed.footer && !embed.fields?.length && (embed.image || embed.video))}
+{#if embed.type === EmbedType.Sticker && embed.image}
+    <button type="button" class="mt-1 cursor-zoom-in block" onclick={() => onImageClick?.(embed.image!.url)}>
+        <img src={embed.image.url} alt={embed.title ?? "Sticker"}
+             class="w-[160px] h-[160px] object-contain" loading="lazy" title={embed.title ?? ""} />
+    </button>
+{:else if embed.type === EmbedType.Gifv || embed.type === EmbedType.Image || (!embed.title && !embed.description && !embed.author && !embed.footer && !embed.fields?.length && (embed.image || embed.video))}
     {#if embed.video}
         <video src={proxyVideoUrl(embed.video.url)} loop muted playsinline controls
                class="mt-1 max-w-xs rounded self-start"></video>

@@ -15,6 +15,7 @@ export const Permission = {
 	CreateInvites: 1 << 10, // 1024
 	ManageSpaceEmojis: 1 << 11, // 2048
 	ManageSpaceBuckets: 1 << 12, // 4096
+	ManageSpaceStickers: 1 << 13, // 8192
 } as const;
 
 export type PermissionFlag = (typeof Permission)[keyof typeof Permission];
@@ -33,6 +34,7 @@ export const ALL_PERMISSIONS: ReadonlyArray<{ flag: PermissionFlag; name: string
 	{ flag: Permission.CreateInvites, name: "Create Invites" },
 	{ flag: Permission.ManageSpaceEmojis, name: "Manage Emojis" },
 	{ flag: Permission.ManageSpaceBuckets, name: "Manage Buckets" },
+	{ flag: Permission.ManageSpaceStickers, name: "Manage Stickers" },
 ];
 
 

@@ -154,6 +154,7 @@ function toMessage(msg: DirectMessage): Message {
 		attachments: msg.attachments ?? null,
 		reactions: msg.reactions ?? null,
 		embeds: msg.embeds ?? null,
+		sticker_attachment_id: msg.sticker_attachment_id ?? null,
 	};
 }
 
@@ -258,7 +259,7 @@ async function jumpToMessage(messageId: string) {
 	}
 }
 
-async function dmHandleSend(content: string, nonce: string, ref: MessageReference | undefined, files?: File[]) {
+async function dmHandleSend(content: string, nonce: string, ref: MessageReference | undefined, files?: File[], stickerAttachmentId?: string) {
 	const user = get(currentUser);
 	if (!user) return;
 	const isoNow = new Date().toISOString();
@@ -282,9 +283,10 @@ async function dmHandleSend(content: string, nonce: string, ref: MessageReferenc
 			content_type: f.type || "application/octet-stream",
 			size_bytes: f.size, created_at: isoNow, pending: true,
 		})) ?? null,
+		sticker_attachment_id: stickerAttachmentId ?? null,
 	};
 	dmMessages.update((all) => ({ ...all, [conversation.id]: [...(all[conversation.id] ?? []), pending] }));
-	const real = await sendDirectMessage(conversation.id, content, nonce, ref, files);
+	const real = await sendDirectMessage(conversation.id, content, nonce, ref, files, undefined, stickerAttachmentId);
 	dmMessages.update((all) => {
 		const existing = all[conversation.id] ?? [];
 		if (!existing.some((m) => m.id === nonce)) return all;

@@ -49,6 +49,8 @@ export async function sendMessage(
     nonce?: string,
     messageReference?: MessageReference,
     files?: File[],
+    msgEmbeds?: import("$lib/types").Embed[],
+    stickerAttachmentId?: string,
 ): Promise<GatewayMessage> {
     if (files && files.length > 0) {
         const form = new FormData();
@@ -56,7 +58,7 @@ export async function sendMessage(
         if (nonce) form.append("nonce", nonce);
         if (messageReference) form.append("message_reference", JSON.stringify(messageReference));
         for (const f of files) form.append("files", f);
-        
+
         const res = await api.post(`/api/rooms/${roomId}/messages`, form);
         return res.data;
     }
@@ -65,6 +67,8 @@ export async function sendMessage(
         content,
         nonce,
         ...(messageReference ? { message_reference: messageReference } : {}),
+        ...(msgEmbeds && msgEmbeds.length > 0 ? { embeds: msgEmbeds } : {}),
+        ...(stickerAttachmentId ? { sticker_attachment_id: stickerAttachmentId } : {}),
     });
     return res.data;
 }

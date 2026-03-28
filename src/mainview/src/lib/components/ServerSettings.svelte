@@ -7,6 +7,7 @@ import {
 	Users as UsersThreeIcon,
 	Settings as GearSixIcon,
 	Smile as SmileIcon,
+	Sticker as StickerIcon,
 	Database as DatabaseIcon,
 	X as XIcon,
 	Pencil as PencilIcon,
@@ -18,12 +19,13 @@ import {
 import { Checkbox, Dialog } from "bits-ui";
 import { createRole, updateRole, deleteRole } from "$lib/api/roles";
 import { listEmojis, createEmoji, updateEmoji, deleteEmoji } from "$lib/api/emojis";
+import { listStickers, createSticker, updateSticker, deleteSticker } from "$lib/api/stickers";
 import { getSpaceBuckets, createSpaceBucket, updateSpaceBucket, deleteSpaceBucket, activateSpaceBucket, deactivateSpaceBucket } from "$lib/api/space-buckets";
 import { currentUser } from "$lib/stores.svelte";
 import { Permission, ALL_PERMISSIONS } from "$lib/permissions";
 import UserAvatar from "$lib/components/UserAvatar.svelte";
 
-import type { GatewaySpace, SpaceEmoji } from "$lib/types";
+import type { GatewaySpace, SpaceEmoji, SpaceSticker } from "$lib/types";
 import type { StorageBucket, CreateBucketPayload } from "$lib/api/user";
 import { getHostURL } from "$lib/common/common";
 
@@ -39,7 +41,7 @@ let {
 	open?: boolean;
 } = $props();
 
-type Section = "overview" | "members" | "roles" | "emojis" | "storage";
+type Section = "overview" | "members" | "roles" | "emojis" | "stickers" | "storage";
 let activeSection = $state<Section>("roles");
 
 const PERMISSIONS = ALL_PERMISSIONS;
@@ -107,6 +109,16 @@ let isUploadingEmoji = $state(false);
 let editingEmojiId = $state<string | null>(null);
 let editingEmojiName = $state("");
 let isDeletingEmoji = $state<Record<string, boolean>>({});
+
+// ── sticker state ───────────────────────────────────────────
+let spaceStickers = $state<SpaceSticker[]>([]);
+let stickersLoading = $state(false);
+let newStickerName = $state("");
+let newStickerFile = $state<File | null>(null);
+let isUploadingSticker = $state(false);
+let editingStickerReact = $state<string | null>(null);
+let editingStickerName = $state("");
+let isDeletingSticker = $state<Record<string, boolean>>({});
 
 // ── space bucket state ──────────────────────────────────────
 let spaceBuckets = $state<StorageBucket[]>([]);
@@ -411,7 +423,87 @@ async function handleDeleteEmoji(emojiId: string) {
 }
 
 const canManageEmojis = $derived(hasSpacePermission(Permission.ManageSpaceEmojis));
+const canManageStickers = $derived(hasSpacePermission(Permission.ManageSpaceStickers));
 const canManageBuckets = $derived(hasSpacePermission(Permission.ManageSpaceBuckets));
+
+// ── sticker handlers ────────────────────────────────────────
+async function loadStickers() {
+	if (!spaceId) return;
+	stickersLoading = true;
+	try {
+		spaceStickers = await listStickers(spaceId);
+	} catch (err) {
+		console.error("Failed to load stickers:", err);
+		toast(`${err}`, "error");
+	} finally {
+		stickersLoading = false;
+	}
+}
+
+$effect(() => {
+	if (activeSection === "stickers" && spaceId) {
+		loadStickers();
+	}
+});
+
+function handleStickerFileChange(e: Event) {
+	const input = e.target as HTMLInputElement;
+	newStickerFile = input.files?.[0] ?? null;
+}
+
+async function handleUploadSticker() {
+	if (!newStickerName.trim() || !newStickerFile || !spaceId) return;
+	isUploadingSticker = true;
+	try {
+		await createSticker(spaceId, newStickerName.trim(), newStickerFile);
+		newStickerName = "";
+		newStickerFile = null;
+		await loadStickers();
+	} catch (err) {
+		console.error("Failed to upload sticker:", err);
+		toast(`${err}`, "error");
+	} finally {
+		isUploadingSticker = false;
+	}
+}
+
+function startStickerEdit(s: SpaceSticker) {
+	editingStickerReact = s.id;
+	editingStickerName = s.name;
+}
+
+function cancelStickerEdit() {
+	editingStickerReact = null;
+	editingStickerName = "";
+}
+
+async function handleUpdateSticker() {
+	if (!editingStickerReact || !editingStickerName.trim() || !spaceId) return;
+	try {
+		await updateSticker(spaceId, editingStickerReact, editingStickerName.trim());
+		editingStickerReact = null;
+		editingStickerName = "";
+		await loadStickers();
+	} catch (err) {
+		console.error("Failed to update sticker:", err);
+		toast(`${err}`, "error");
+	}
+}
+
+async function handleDeleteSticker(stickerId: string) {
+	if (!spaceId) return;
+	const sid = spaceId;
+	const stickerName = spaceStickers.find((s) => s.id === stickerId)?.name ?? "this sticker";
+	await confirmAction(`Delete "${stickerName}"? This can't be undone.`, "Deleting", async () => {
+		isDeletingSticker = { ...isDeletingSticker, [stickerId]: true };
+		try {
+			await deleteSticker(sid, stickerId);
+			await loadStickers();
+		} finally {
+			isDeletingSticker = { ...isDeletingSticker, [stickerId]: false };
+		}
+	});
+}
 
 // ── space bucket handlers ───────────────────────────────────
 async function loadSpaceBuckets() {
@@ -575,6 +667,19 @@ const selectedSettingsRoles = $derived(
                         Emojis
                     </button>
 
+                    <button
+                        class="flex items-center gap-2.5 px-3 py-2 rounded-md text-sm font-medium transition-colors duration-100
+                            {activeSection === 'stickers'
+                            ? 'bg-zinc-800 text-white'
+                            : 'text-zinc-400 hover:bg-zinc-800/60 hover:text-zinc-200'}"
+                        onclick={() => (activeSection = "stickers")}
+                    >
+                        <StickerIcon
+                            class="size-4"
+                        />
+                        Stickers
+                    </button>
+
                     {#if canManageBuckets}
                     <button
                         class="flex items-center gap-2.5 px-3 py-2 rounded-md text-sm font-medium transition-colors duration-100
@@ -605,9 +710,11 @@ const selectedSettingsRoles = $derived(
                               ? "Roles"
                               : activeSection === "emojis"
                                 ? "Emojis"
-                                : activeSection === "storage"
-                                  ? "Storage"
-                                  : "Members"}
+                                : activeSection === "stickers"
+                                  ? "Stickers"
+                                  : activeSection === "storage"
+                                    ? "Storage"
+                                    : "Members"}
                     </h2>
                     <Dialog.Close
                         class="text-zinc-400 hover:text-white hover:bg-zinc-800 p-1.5 rounded-lg transition-colors duration-150"
@@ -1214,6 +1321,121 @@ const selectedSettingsRoles = $derived(
 														class="rounded p-1.5 text-zinc-400 opacity-0 group-hover:opacity-100 hover:bg-zinc-700 hover:text-red-400 transition-all"
 														onclick={() => handleDeleteEmoji(emoji.id)}
 														disabled={isDeletingEmoji[emoji.id]}
+														title="Delete"
+													>
+														<TrashIcon class="size-4" />
+													</button>
+												{/if}
+											{/if}
+										</div>
+									{/each}
+								</div>
+							{/if}
+						{/if}
+					{:else if activeSection === "stickers"}
+						{#if stickersLoading}
+							<p class="text-sm text-zinc-400">Loading stickers...</p>
+						{:else}
+							{#if canManageStickers}
+								<!-- Upload new sticker -->
+								<div class="space-y-4 rounded-xl border border-zinc-700 bg-zinc-900 p-5">
+									<div class="space-y-1">
+										<h3 class="text-sm font-semibold tracking-wide text-white">Upload Sticker</h3>
+										<p class="text-xs text-zinc-400">
+											Custom stickers require a storage bucket configured for this server.
+										</p>
+									</div>
+
+									<div class="flex items-end gap-3">
+										<label class="space-y-1.5 block flex-1">
+											<span class="text-[11px] font-semibold tracking-wide text-zinc-400 uppercase">Name</span>
+											<input
+												type="text"
+												class="w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 placeholder-zinc-500 outline-none focus:border-zinc-500"
+												placeholder="sticker_name"
+												bind:value={newStickerName}
+											/>
+										</label>
+
+										<label class="space-y-1.5 block">
+											<span class="text-[11px] font-semibold tracking-wide text-zinc-400 uppercase">Image</span>
+											<input
+												type="file"
+												accept="image/*"
+												class="block w-full text-sm text-zinc-400 file:mr-3 file:rounded-lg file:border-0 file:bg-zinc-700 file:px-3 file:py-2 file:text-sm file:font-medium file:text-zinc-200 hover:file:bg-zinc-600 file:cursor-pointer file:transition-colors"
+												onchange={handleStickerFileChange}
+											/>
+										</label>
+
+										<button
+											class="flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed"
+											onclick={handleUploadSticker}
+											disabled={isUploadingSticker || !newStickerName.trim() || !newStickerFile}
+										>
+											<UploadIcon class="size-4" />
+											{isUploadingSticker ? "Uploading..." : "Upload"}
+										</button>
+									</div>
+								</div>
+							{/if}
+
+							<!-- Sticker list -->
+							{#if spaceStickers.length === 0}
+								<div class="flex flex-col items-center justify-center py-12 text-center">
+									<StickerIcon class="size-10 text-zinc-600 mb-3" />
+									<p class="text-sm text-zinc-400">No custom stickers yet.</p>
+									{#if canManageStickers}
+										<p class="text-xs text-zinc-500 mt-1">Upload one above to get started.</p>
+									{/if}
+								</div>
+							{:else}
+								<div class="space-y-1">
+									{#each spaceStickers as sticker (sticker.id)}
+										<div class="flex items-center gap-3 rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2.5 group">
+											<img
+												src="{attachmentHost}/attachments/{sticker.attachment_id}"
+												alt={sticker.name}
+												class="size-12 rounded object-contain"
+											/>
+
+											{#if editingStickerReact === sticker.id}
+												<input
+													type="text"
+													class="flex-1 rounded-md border border-zinc-600 bg-zinc-700 px-2 py-1 text-sm text-zinc-100 outline-none focus:border-zinc-500"
+													bind:value={editingStickerName}
+													onkeydown={(e) => { if (e.key === "Enter") handleUpdateSticker(); if (e.key === "Escape") cancelStickerEdit(); }}
+												/>
+												<button
+													class="rounded p-1.5 text-green-400 hover:bg-zinc-700 transition-colors"
+													onclick={handleUpdateSticker}
+													title="Save"
+												>
+													<CheckIcon class="size-4" />
+												</button>
+												<button
+													class="rounded p-1.5 text-zinc-400 hover:bg-zinc-700 transition-colors"
+													onclick={cancelStickerEdit}
+													title="Cancel"
+												>
+													<XIcon class="size-4" />
+												</button>
+											{:else}
+												<div class="flex-1 min-w-0">
+													<p class="text-sm font-medium text-zinc-200 truncate">{sticker.name}</p>
+												</div>
+
+												{#if canManageStickers}
+													<button
+														class="rounded p-1.5 text-zinc-400 opacity-0 group-hover:opacity-100 hover:bg-zinc-700 hover:text-zinc-200 transition-all"
+														onclick={() => startStickerEdit(sticker)}
+														title="Rename"
+													>
+														<PencilIcon class="size-4" />
+													</button>
+													<button
+														class="rounded p-1.5 text-zinc-400 opacity-0 group-hover:opacity-100 hover:bg-zinc-700 hover:text-red-400 transition-all"
+														onclick={() => handleDeleteSticker(sticker.id)}
+														disabled={isDeletingSticker[sticker.id]}
 														title="Delete"
 													>
 														<TrashIcon class="size-4" />

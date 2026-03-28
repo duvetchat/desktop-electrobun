@@ -24,15 +24,16 @@ export async function logIn(options: {
 
         if (res.data && res.data.token) {
             const token = res.data.token;
-            
+
             accessToken.set(token);
             localStorage.setItem("duvet_session_token", token);
-            
+
             return res.data;
         } else {
             throw new Error("El servidor no devolvió un token válido");
         }
     } catch (err: any) {
+        console.log(err)
         const message = err.response?.data?.error || "Error al iniciar sesión";
         throw new Error(message);
     }

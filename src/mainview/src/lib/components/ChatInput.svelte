@@ -1,18 +1,24 @@
 <script lang="ts">
 import { onMount } from "svelte";
 import { Popover } from "bits-ui";
-import { Smile as SmileIcon, Image as GifIcon, Paperclip, Mic, Square } from "@lucide/svelte";
+import { Smile as SmileIcon, Sticker as StickerIcon, Image as GifIcon, Paperclip, Mic, Square } from "@lucide/svelte";
 import EmojiPicker from "$lib/components/EmojiPicker.svelte";
+import StickerPicker from "$lib/components/StickerPicker.svelte";
 import GifPicker from "$lib/components/GifPicker.svelte";
 import { searchEmojis, toTwemojiUrl, type EmojiEntry } from "$lib/emoji";
 import UserAvatar from "$lib/components/UserAvatar.svelte";
-import type { MemberOnSidebar, SpaceEmoji } from "$lib/types";
+import type { MemberOnSidebar, SpaceEmoji, SpaceSticker } from "$lib/types";
 import { getHostURL } from "$lib/common/common";
 
 const ceHost = getHostURL();
 
 // Module-level clipboard fallback shared across all ChatInput instances
 let internalClipboard: string | null = null;
+
+// Clear internal clipboard when window regains focus (user may have copied externally)
+if (typeof window !== "undefined") {
+	window.addEventListener("focus", () => { internalClipboard = null; });
+}
 
 const EMOJI_RE =
 	/\p{Regional_Indicator}{2}|(?:\p{Emoji_Presentation}|\p{Emoji}\uFE0F)(?:\u200D(?:\p{Emoji_Presentation}|\p{Emoji})\uFE0F?|\uD83C[\uDFFB-\uDFFF])*|[\d#*]\uFE0F?\u20E3/gu;
@@ -29,11 +35,12 @@ let {
 	autofocus = false,
 	members = [],
 	customEmojis = [],
+	spaceStickers = [],
 	pendingFiles = $bindable<File[]>([]),
 }: {
 	placeholder?: string;
 	initialValue?: string;
-	onSubmit: (text: string, files?: File[]) => void;
+	onSubmit: (text: string, files?: File[], stickerAttachmentId?: string) => void;
 	onVoiceNote?: (blob: Blob) => void;
 	onCancel?: () => void;
 	onValueChange?: (text: string) => void;
@@ -42,12 +49,14 @@ let {
 	autofocus?: boolean;
 	members?: MemberOnSidebar[];
 	customEmojis?: SpaceEmoji[];
+	spaceStickers?: SpaceSticker[];
 	pendingFiles?: File[];
 } = $props();
 
 let inputEl = $state<HTMLDivElement>(null!);
 let fileInputEl = $state<HTMLInputElement>(null!);
 let showEmojiPicker = $state(false);
+let showStickerPicker = $state(false);
 let showGifPicker = $state(false);
 let isEmpty = $state(true);
 
@@ -187,7 +196,8 @@ function buildHtml(text: string): string {
 			EMOJI_RE,
 			(e) =>
 				`<span class="emoji-img" style="--tw:url('${toTwemojiUrl(e)}')" aria-label="${e}">${e}</span>`,
-		);
+		)
+		.replace(/\n/g, "<br>");
 }
 
 // ── DOM helpers ─────────────────────────────────────────────────────────────
@@ -530,7 +540,7 @@ function getRawFromNode(n: Node): string {
 	const cemoji = elem.getAttribute("data-cemoji");
 	if (cemoji) return `<:${cemoji}:>`;
 	if (tag === "IMG") return (n as HTMLImageElement).alt ?? "";
-	if (tag === "BR") return "";
+	if (tag === "BR") return "\n";
 	if (tag === "DIV" || tag === "P") return "\n" + getRawFromChildren(n);
 	return getRawFromChildren(n);
 }
@@ -652,6 +662,11 @@ function handlePaste(e: ClipboardEvent) {
 	isEmpty = !newRaw.trim();
 	checkAutocomplete(newRaw, newPos);
 	onValueChange?.(newRaw);
+}
+
+function handleStickerPick(sticker: SpaceSticker) {
+	showStickerPicker = false;
+	onSubmit("", undefined, sticker.attachment_id);
 }
 
 function handleGifPick(url: string) {
@@ -841,6 +856,24 @@ export function focusAndInsert(char: string) {
 						</Popover.Content>
 					</Popover.Portal>
 				</Popover.Root>
+
+				<!-- Sticker picker button -->
+				{#if spaceStickers.length > 0}
+				<Popover.Root bind:open={showStickerPicker}>
+					<Popover.Trigger
+						class="ce-action-btn flex size-10 shrink-0 items-center justify-center rounded-xl border border-[oklch(0.40_0.01_80/0.7)] bg-[oklch(0.22_0.01_80/0.7)] text-[oklch(0.70_0.01_80)] transition-colors duration-150 cursor-pointer outline-none hover:bg-[oklch(0.28_0.01_80)] hover:text-[oklch(0.96_0.005_80)]"
+						title="Open sticker picker"
+						aria-label="Open sticker picker"
+					>
+						<StickerIcon class="size-5" />
+					</Popover.Trigger>
+					<Popover.Portal>
+						<Popover.Content side="top" align="end" sideOffset={10} class="z-80">
+							<StickerPicker stickers={spaceStickers} onSelect={handleStickerPick} />
+						</Popover.Content>
+					</Popover.Portal>
+				</Popover.Root>
+				{/if}
 
 				<!-- GIF picker button -->
 				<Popover.Root bind:open={showGifPicker}>

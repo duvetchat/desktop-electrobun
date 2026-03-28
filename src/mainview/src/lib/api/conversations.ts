@@ -54,6 +54,7 @@ export interface DirectMessage {
     attachments?: import("$lib/types").Attachment[] | null;
     reactions?: import("$lib/types").MessageReaction[] | null;
     embeds?: import("$lib/types").Embed[] | null;
+    sticker_attachment_id?: string | null;
 }
 
 export async function getConversations(): Promise<Conversation[]> {
@@ -128,6 +129,8 @@ export async function sendDirectMessage(
     nonce?: string,
     messageReference?: import("$lib/types").MessageReference,
     files?: File[],
+    msgEmbeds?: import("$lib/types").Embed[],
+    stickerAttachmentId?: string,
 ): Promise<DirectMessage> {
     if (files && files.length > 0) {
         const form = new FormData();
@@ -135,7 +138,7 @@ export async function sendDirectMessage(
         if (nonce) form.append("nonce", nonce);
         if (messageReference) form.append("message_reference", JSON.stringify(messageReference));
         for (const f of files) form.append("files", f);
-        
+
         const res = await api.post(`/api/users/@me/conversations/${conversationId}/messages`, form);
         return res.data;
     }
@@ -144,6 +147,8 @@ export async function sendDirectMessage(
         content,
         nonce,
         ...(messageReference ? { message_reference: messageReference } : {}),
+        ...(msgEmbeds && msgEmbeds.length > 0 ? { embeds: msgEmbeds } : {}),
+        ...(stickerAttachmentId ? { sticker_attachment_id: stickerAttachmentId } : {}),
     });
     return res.data;
 }

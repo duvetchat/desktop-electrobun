@@ -962,6 +962,15 @@
                                     <span class="text-xs text-zinc-500 italic">Voice note deleted</span>
                                 </div>
                             {/if}
+                        {:else if message.sticker_attachment_id}
+                            <button type="button" class="mt-1 cursor-zoom-in block" onclick={() => openPreview(`${attachmentHost}/attachments/${message.sticker_attachment_id}`)}>
+                                <img
+                                    src="{attachmentHost}/attachments/{message.sticker_attachment_id}"
+                                    alt="Sticker"
+                                    class="w-[160px] h-[160px] object-contain"
+                                    loading="lazy"
+                                />
+                            </button>
                         {:else}
                         {@const processed = processMessageContent(
                             message.content,
