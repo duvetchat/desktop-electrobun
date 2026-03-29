@@ -91,6 +91,6 @@ export async function ackRoom(roomId: string, messageId: string): Promise<void> 
 }
 
 export async function getMentionCounts(): Promise<Record<string, number>> {
-	const res = await api.get("/api/users/me/mentions/counts").catch(() => ({ data: {} }));
+	const res = await api.get("/api/users/@me/mentions/counts").catch(() => ({ data: {} }));
 	return res.data;
 }

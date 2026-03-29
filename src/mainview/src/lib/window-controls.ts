@@ -32,19 +32,26 @@ export async function setupWindowControls() {
 		const rpc = await getElectrobunRpc();
 
 		if (rpc) {
+			const sendMaximize = () => {
+				const s = window.screen as any;
+				rpc.send.maximizeWindow({
+					availX: s.availLeft ?? 0,
+					availY: s.availTop ?? 0,
+					availWidth: s.availWidth,
+					availHeight: s.availHeight,
+				});
+				toggleMaximizedUi();
+			};
+
 			bindControl("window-close", () => rpc.send.closeWindow());
 			bindControl("window-minimize", () => rpc.send.minimizeWindow());
-			bindControl("window-maximize", () => {
-				rpc.send.maximizeWindow();
-				toggleMaximizedUi();
-			});
+			bindControl("window-maximize", sendMaximize);
 
 			const titlebar = document.getElementById("window-titlebar");
 			titlebar?.addEventListener("dblclick", (event) => {
 				const target = event.target as HTMLElement;
 				if (target.closest(".titlebar-actions")) return;
-				rpc.send.maximizeWindow();
-				toggleMaximizedUi();
+				sendMaximize();
 			});
 			return;
 		}

@@ -1,12 +1,13 @@
 const isDevServer = import.meta.env.DEV;
 
 const routes: Record<string, string> = {
-	'/index.html': '/',
-	'/app.html': '/app',
-	'/sign-in.html': '/sign-in',
-	'/sign-up.html': '/sign-up',
-	'/forgot-password.html': '/forgot-password',
-	'/invite.html': '/invite',
+	"/index.html": "/",
+	"/app.html": "/app",
+	"/sign-in.html": "/sign-in",
+	"/sign-up.html": "/sign-up",
+	"/forgot-password.html": "/forgot-password",
+	"/invite.html": "/invite",
+	"/verify.html": "/verify",
 };
 
 export function route(path: string): string {
@@ -57,4 +58,3 @@ export function getWSHostURL(): string {
 
 	return protocol + base;
 }
-

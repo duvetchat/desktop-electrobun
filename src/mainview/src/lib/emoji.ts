@@ -148,9 +148,38 @@ export const emojiCategories: EmojiCategory[] = Object.entries(CATEGORY_MAP)
 /** Flat list of all emoji for quick lookup. */
 export const allEmojis: EmojiEntry[] = emojiCategories.flatMap((c) => c.emojis);
 
-/** Search emoji by name/keyword, case-insensitive. */
+/** Search emoji by name/keyword, case-insensitive, ranked by relevance. */
 export function searchEmojis(query: string): EmojiEntry[] {
 	const q = query.toLowerCase().trim();
 	if (!q) return [];
-	return allEmojis.filter((e) => e.name.includes(q) || e.keywords.some((k) => k.includes(q)));
+
+	const scored: { entry: EmojiEntry; score: number }[] = [];
+
+	for (const e of allEmojis) {
+		let score = 0;
+
+		if (e.name === q) {
+			score = 100;
+		} else if (e.name.startsWith(q)) {
+			score = 80;
+		} else if (e.name.includes(q)) {
+			score = 50;
+		} else {
+			for (const k of e.keywords) {
+				if (k === q) {
+					score = 70;
+					break;
+				} else if (k.startsWith(q)) {
+					score = Math.max(score, 40);
+				} else if (k.includes(q)) {
+					score = Math.max(score, 20);
+				}
+			}
+		}
+
+		if (score > 0) scored.push({ entry: e, score });
+	}
+
+	scored.sort((a, b) => b.score - a.score || a.entry.name.length - b.entry.name.length);
+	return scored.map((s) => s.entry);
 }

@@ -27,7 +27,7 @@ type AppRPCSchema = {
 		messages: {
 			closeWindow: void;
 			minimizeWindow: void;
-			maximizeWindow: void;
+			maximizeWindow: { availX: number; availY: number; availWidth: number; availHeight: number };
 			setWindowFrame: {
 				x: number;
 				y: number;
@@ -44,18 +44,25 @@ type AppRPCSchema = {
 	};
 };
 
+let savedFrame: { x: number; y: number; width: number; height: number } | null = null;
+let isManuallyMaximized = false;
+
 const rpc = BrowserView.defineRPC<AppRPCSchema>({
 	handlers: {
 		messages: {
 			closeWindow: () => win.close(),
 			minimizeWindow: () => win.minimize(),
-			maximizeWindow: () => {
-				if (win.isMaximized()) {
-					win.unmaximize();
+			maximizeWindow: ({ availX, availY, availWidth, availHeight }) => {
+				if (isManuallyMaximized && savedFrame) {
+					win.setFrame(savedFrame.x, savedFrame.y, savedFrame.width, savedFrame.height);
+					isManuallyMaximized = false;
+					savedFrame = null;
 					return;
 				}
 
-				win.maximize();
+				savedFrame = win.getFrame();
+				win.setFrame(availX, availY, availWidth, availHeight);
+				isManuallyMaximized = true;
 			},
 		},
 	},

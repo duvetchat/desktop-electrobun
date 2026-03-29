@@ -10,6 +10,22 @@ export async function signIn(options: { username: string; alias: string | null; 
 	}
 }
 
+export async function verifyEmail(token: string) {
+	try {
+		await api.post("/api/auth/verify", { token });
+	} catch (err: any) {
+		throw new Error(err.response?.data?.error || "Verification failed", { cause: err });
+	}
+}
+
+export async function sendVerificationEmail() {
+	try {
+		await api.post("/api/auth/verify/send");
+	} catch (err: any) {
+		throw new Error(err.response?.data?.error || "Failed to send verification email", { cause: err });
+	}
+}
+
 export async function logIn(options: { password: string; email: string }) {
 	try {
 		const res = await api.post("/api/auth/login", options);

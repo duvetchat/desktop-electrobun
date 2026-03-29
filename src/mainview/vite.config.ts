@@ -2,7 +2,7 @@ import { sveltekit } from "@sveltejs/kit/vite";
 import tailwindcss from "@tailwindcss/vite";
 import { defineConfig, loadEnv } from "vite";
 
-export default defineConfig(({ command, mode }) => {
+export default defineConfig(({ mode }) => {
 	const env = loadEnv(mode, process.cwd(), "");
 	return {
 		plugins: [tailwindcss(), sveltekit()],
@@ -24,18 +24,6 @@ export default defineConfig(({ command, mode }) => {
 						) {
 							return "svelte-runtime";
 						}
-					},
-				},
-			},
-		},
-		server: {
-			proxy: {
-				"/tw-video": {
-					target: "https://video.twimg.com",
-					changeOrigin: true,
-					rewrite: (path) => path.replace(/^\/tw-video/, ""),
-					headers: {
-						Referer: "https://twitter.com/",
 					},
 				},
 			},

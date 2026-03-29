@@ -1,10 +1,17 @@
+export interface MaximizeParams {
+	availX: number;
+	availY: number;
+	availWidth: number;
+	availHeight: number;
+}
+
 export type AppRPCSchema = {
 	bun: {
 		requests: {};
 		messages: {
 			closeWindow: void;
 			minimizeWindow: void;
-			maximizeWindow: void;
+			maximizeWindow: MaximizeParams;
 		};
 	};
 	webview: {
@@ -17,13 +24,13 @@ export type AppRPCClient = {
 	send: {
 		closeWindow: () => void;
 		minimizeWindow: () => void;
-		maximizeWindow: () => void;
+		maximizeWindow: (params: MaximizeParams) => void;
 	};
 };
 
 let rpcPromise: Promise<AppRPCClient | null> | null = null;
 
-function isElectrobunWindow() {
+export function isElectrobunWindow() {
 	return typeof window !== "undefined" && "__electrobunWindowId" in window;
 }
 

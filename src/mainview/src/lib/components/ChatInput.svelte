@@ -381,19 +381,28 @@
 		if (m) {
 			emojiQueryStart = before.length - m[0].length;
 			const query = m[1].toLowerCase();
-			const customMatches: EmojiEntry[] = customEmojis
-				.filter((ce) => ce.name.toLowerCase().includes(query))
+			const customScored = customEmojis
+				.map((ce) => {
+					const n = ce.name.toLowerCase();
+					let score = 0;
+					if (n === query) score = 100;
+					else if (n.startsWith(query)) score = 80;
+					else if (n.includes(query)) score = 50;
+					return { ce, score };
+				})
+				.filter((s) => s.score > 0)
+				.sort((a, b) => b.score - a.score || a.ce.name.length - b.ce.name.length)
 				.map(
-					(ce) =>
+					(s) =>
 						({
-							emoji: `<:${ce.id}:>`,
-							name: ce.name,
-							customEmojiId: ce.id,
-							customAttachmentId: ce.attachment_id,
+							emoji: `<:${s.ce.id}:>`,
+							name: s.ce.name,
+							customEmojiId: s.ce.id,
+							customAttachmentId: s.ce.attachment_id,
 						}) as EmojiEntry & { customEmojiId: string; customAttachmentId: string },
 				);
 			const defaultMatches = searchEmojis(m[1]);
-			suggestions = [...customMatches, ...defaultMatches].slice(0, 10);
+			suggestions = [...customScored, ...defaultMatches].slice(0, 10);
 			selectedIdx = 0;
 		} else {
 			suggestions = [];

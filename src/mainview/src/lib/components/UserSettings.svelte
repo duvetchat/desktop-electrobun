@@ -32,6 +32,7 @@
 	import { getHostURL } from "$lib/common/common";
 	import { confirmAction } from "$lib/stores/confirm.svelte";
 	import { toast } from "$lib/stores/toast.svelte";
+	import { sendVerificationEmail } from "$lib/api/auth";
 	import VoiceNotePlayer from "$lib/components/VoiceNotePlayer.svelte";
 
 	let {
@@ -222,6 +223,21 @@
 			toast(e instanceof Error ? e.message : "Failed to toggle bucket", "error");
 		} finally {
 			togglingBucketId = null;
+		}
+	}
+
+	// Verification state
+	let sendingVerification = $state(false);
+
+	async function handleSendVerification() {
+		sendingVerification = true;
+		try {
+			await sendVerificationEmail();
+			toast("Verification email sent! Check your inbox.", "success");
+		} catch (err) {
+			toast(err instanceof Error ? err.message : "Failed to send verification email", "error");
+		} finally {
+			sendingVerification = false;
 		}
 	}
 
@@ -449,6 +465,58 @@
 					<!-- Scrollable content -->
 					<div class="flex-1 space-y-6 overflow-y-auto px-6 py-6">
 						{#if activeSection === "account"}
+							{#if $currentUser && !$currentUser.email_verified}
+								<div class="flex items-center gap-3 rounded-lg border border-amber-600/30 bg-amber-950/20 px-4 py-3">
+									<svg
+										xmlns="http://www.w3.org/2000/svg"
+										width="20"
+										height="20"
+										viewBox="0 0 24 24"
+										fill="none"
+										stroke="currentColor"
+										stroke-width="2"
+										stroke-linecap="round"
+										stroke-linejoin="round"
+										class="shrink-0 text-amber-500"
+									>
+										<rect width="20" height="16" x="2" y="4" rx="2" />
+										<path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" />
+									</svg>
+									<div class="min-w-0 flex-1">
+										<p class="text-sm font-medium text-amber-300">Email not verified</p>
+										<p class="text-xs text-amber-400/60">Verify your email to secure your account.</p>
+									</div>
+									<button
+										onclick={handleSendVerification}
+										disabled={sendingVerification}
+										class="shrink-0 rounded-md bg-amber-600/20 px-3 py-1.5 text-xs font-semibold text-amber-300 transition-colors hover:bg-amber-600/30 disabled:opacity-50"
+									>
+										{sendingVerification ? "Sending..." : "Send verification"}
+									</button>
+								</div>
+							{:else if $currentUser?.email_verified}
+								<div
+									class="flex items-center gap-3 rounded-lg border border-emerald-800/50 bg-emerald-900/20 px-4 py-3"
+								>
+									<svg
+										xmlns="http://www.w3.org/2000/svg"
+										width="20"
+										height="20"
+										viewBox="0 0 24 24"
+										fill="none"
+										stroke="currentColor"
+										stroke-width="2"
+										stroke-linecap="round"
+										stroke-linejoin="round"
+										class="shrink-0 text-emerald-400"
+									>
+										<rect width="20" height="16" x="2" y="4" rx="2" />
+										<path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" />
+									</svg>
+									<p class="text-sm font-medium text-emerald-300">Email verified</p>
+								</div>
+							{/if}
+
 							<!-- Profile preview card -->
 							<div class="overflow-hidden rounded-xl border border-zinc-800">
 								<!-- Banner -->
@@ -952,15 +1020,38 @@
 												<p class="mt-0.5 truncate text-xs text-zinc-500">
 													{bucket.bucket_name} · {bucket.endpoint}
 												</p>
-												{#if bucket.max_bytes || bucket.upload_limit_bytes}
-													<p class="text-xxs mt-0.5 text-zinc-600">
-														{#if bucket.max_bytes}Total: {(bucket.max_bytes / 1024 / 1024).toFixed(0)} MB{/if}
-														{#if bucket.max_bytes && bucket.upload_limit_bytes}
-															·
+												{#if bucket.max_bytes}
+													{@const pct = Math.min(Math.round((bucket.used_bytes / bucket.max_bytes) * 100), 100)}
+													<div class="mt-1.5 space-y-1">
+														<div class="text-xxs flex items-center justify-between text-zinc-500">
+															<span
+																>{(bucket.used_bytes / 1024 / 1024).toFixed(1)} MB / {(
+																	bucket.max_bytes /
+																	1024 /
+																	1024
+																).toFixed(0)} MB</span
+															>
+															<span>{pct}%</span>
+														</div>
+														<div class="h-1.5 w-full overflow-hidden rounded-full bg-zinc-700">
+															<div
+																class="h-full rounded-full transition-all duration-300 {pct > 90
+																	? 'bg-red-500'
+																	: pct > 70
+																		? 'bg-yellow-500'
+																		: 'bg-stone-500'}"
+																style="width: {pct}%"
+															></div>
+														</div>
+														{#if bucket.upload_limit_bytes}
+															<p class="text-xxs text-zinc-600">
+																Per-file: {(bucket.upload_limit_bytes / 1024 / 1024).toFixed(0)} MB
+															</p>
 														{/if}
-														{#if bucket.upload_limit_bytes}Per-file: {(bucket.upload_limit_bytes / 1024 / 1024).toFixed(
-																0,
-															)} MB{/if}
+													</div>
+												{:else if bucket.upload_limit_bytes}
+													<p class="text-xxs mt-0.5 text-zinc-600">
+														Per-file: {(bucket.upload_limit_bytes / 1024 / 1024).toFixed(0)} MB
 													</p>
 												{/if}
 											</div>

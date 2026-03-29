@@ -25,7 +25,7 @@ export interface UpdateUserPayload {
 }
 
 export async function updateUser(data: UpdateUserPayload): Promise<UserMeResult> {
-	const response = await api.patch("/api/users/me", data);
+	const response = await api.patch("/api/users/@me", data);
 	return response.data;
 }
 
@@ -48,21 +48,21 @@ export interface StorageStatus {
 }
 
 export async function getMyStorageStatus(): Promise<StorageStatus> {
-	const res = await api.get("/api/users/me/storage");
+	const res = await api.get("/api/users/@me/storage");
 	return res.data;
 }
 
 export async function getMyAttachments(): Promise<UserAttachment[]> {
-	const res = await api.get("/api/users/me/attachments");
+	const res = await api.get("/api/users/@me/attachments");
 	return res.data;
 }
 
 export async function deleteMyAttachment(id: string): Promise<void> {
-	await api.delete(`/api/users/me/attachments/${id}`);
+	await api.delete(`/api/users/@me/attachments/${id}`);
 }
 
 export async function deleteAllMyAttachments(): Promise<void> {
-	await api.delete("/api/users/me/attachments");
+	await api.delete("/api/users/@me/attachments");
 }
 
 // ── Storage Buckets ──────────────────────────────────────────────────────────
@@ -80,6 +80,7 @@ export interface StorageBucket {
 	use_path_style: boolean;
 	max_bytes?: number | null;
 	upload_limit_bytes?: number | null;
+	used_bytes: number;
 	created_at: string;
 	updated_at: string;
 }
@@ -109,33 +110,33 @@ export interface UpdateBucketPayload {
 }
 
 export async function getMyBuckets(): Promise<StorageBucket[]> {
-	const res = await api.get("/api/users/me/buckets");
+	const res = await api.get("/api/users/@me/buckets");
 	return res.data;
 }
 
 export async function createMyBucket(data: CreateBucketPayload): Promise<StorageBucket> {
-	const res = await api.post("/api/users/me/buckets", data);
+	const res = await api.post("/api/users/@me/buckets", data);
 	return res.data;
 }
 
 export async function updateMyBucket(id: string, data: UpdateBucketPayload): Promise<StorageBucket> {
-	const res = await api.patch(`/api/users/me/buckets/${id}`, data);
+	const res = await api.patch(`/api/users/@me/buckets/${id}`, data);
 	return res.data;
 }
 
 export async function deleteMyBucket(id: string): Promise<void> {
-	await api.delete(`/api/users/me/buckets/${id}`);
+	await api.delete(`/api/users/@me/buckets/${id}`);
 }
 
 export async function activateMyBucket(id: string): Promise<void> {
-	await api.post(`/api/users/me/buckets/${id}/activate`);
+	await api.post(`/api/users/@me/buckets/${id}/activate`);
 }
 
 export async function deactivateMyBucket(id: string): Promise<void> {
-	await api.post(`/api/users/me/buckets/${id}/deactivate`);
+	await api.post(`/api/users/@me/buckets/${id}/deactivate`);
 }
 
 export async function me(): Promise<UserMeResult> {
-	const response = await api.get("/api/users/me");
+	const response = await api.get("/api/users/@me");
 	return response.data;
 }

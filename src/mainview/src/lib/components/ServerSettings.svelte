@@ -1637,18 +1637,29 @@
 														{/if}
 													</div>
 													<p class="mt-0.5 truncate text-xs text-zinc-500">{bucket.bucket_name} · {bucket.endpoint}</p>
-													{#if bucket.max_bytes || bucket.upload_limit_bytes}
-														<p class="text-xxs mt-0.5 text-zinc-600">
-															{#if bucket.max_bytes}Total: {(bucket.max_bytes / 1024 / 1024).toFixed(0)} MB{/if}
-															{#if bucket.max_bytes && bucket.upload_limit_bytes}
-																·
+													{#if bucket.max_bytes}
+														{@const pct = Math.min(Math.round((bucket.used_bytes / bucket.max_bytes) * 100), 100)}
+														<div class="mt-1.5 space-y-1">
+															<div class="flex items-center justify-between text-xxs text-zinc-500">
+																<span>{(bucket.used_bytes / 1024 / 1024).toFixed(1)} MB / {(bucket.max_bytes / 1024 / 1024).toFixed(0)} MB</span>
+																<span>{pct}%</span>
+															</div>
+															<div class="h-1.5 w-full overflow-hidden rounded-full bg-zinc-700">
+																<div
+																	class="h-full rounded-full transition-all duration-300 {pct > 90
+																		? 'bg-red-500'
+																		: pct > 70
+																			? 'bg-yellow-500'
+																			: 'bg-stone-500'}"
+																	style="width: {pct}%"
+																></div>
+															</div>
+															{#if bucket.upload_limit_bytes}
+																<p class="text-xxs text-zinc-600">Per-file: {(bucket.upload_limit_bytes / 1024 / 1024).toFixed(0)} MB</p>
 															{/if}
-															{#if bucket.upload_limit_bytes}Per-file: {(
-																	bucket.upload_limit_bytes /
-																	1024 /
-																	1024
-																).toFixed(0)} MB{/if}
-														</p>
+														</div>
+													{:else if bucket.upload_limit_bytes}
+														<p class="text-xxs mt-0.5 text-zinc-600">Per-file: {(bucket.upload_limit_bytes / 1024 / 1024).toFixed(0)} MB</p>
 													{/if}
 												</div>
 												<div
