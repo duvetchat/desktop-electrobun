@@ -1162,8 +1162,11 @@
 												<span class="text-xs text-zinc-500">Attachment deleted</span>
 											</div>
 										{:else if att.content_type.startsWith("image/")}
-											{@const iw = Math.min(att.width ?? 400, 400)}
-											{@const ih = Math.min(att.height ?? 400, 400)}
+											{@const rawW = att.width ?? 400}
+											{@const rawH = att.height ?? 400}
+											{@const imgScale = Math.min(400 / rawW, 400 / rawH, 1)}
+											{@const iw = Math.round(rawW * imgScale)}
+											{@const ih = Math.round(rawH * imgScale)}
 											<button
 												type="button"
 												class="relative block cursor-zoom-in overflow-hidden rounded-md"
@@ -1197,8 +1200,11 @@
 												/>
 											</button>
 										{:else if att.content_type.startsWith("video/")}
-											{@const vw = Math.min(att.width ?? 400, 400)}
-											{@const vh = Math.min(att.height ?? 300, 300)}
+											{@const rawVW = att.width ?? 400}
+											{@const rawVH = att.height ?? 300}
+											{@const vidScale = Math.min(400 / rawVW, 300 / rawVH, 1)}
+											{@const vw = Math.round(rawVW * vidScale)}
+											{@const vh = Math.round(rawVH * vidScale)}
 											<div
 												class="relative overflow-hidden rounded-md"
 												style="width: {vw}px; height: {vh}px; max-width: 100%;"
