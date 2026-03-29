@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { Button, Label } from "bits-ui";
+	import { forgotPassword } from "$lib/api/auth";
 
 	let email = $state("");
 	let doingRequest = $state(false);
@@ -11,7 +12,7 @@
 		errorMessage = "";
 		successMessage = "";
 		try {
-			await new Promise((resolve) => setTimeout(resolve, 700));
+			await forgotPassword(email);
 			successMessage = "If an account exists for this email, you will receive reset instructions shortly.";
 		} catch {
 			errorMessage = "We couldn't process your request right now. Please try again.";
@@ -83,7 +84,7 @@
 
 				<Button.Root
 					type="submit"
-					disabled={doingRequest}
+					disabled={doingRequest || !email.trim()}
 					class={`flex w-full items-center justify-center rounded-lg bg-linear-to-br from-stone-500 to-stone-700 py-3 text-base font-semibold text-white shadow-lg shadow-stone-900/40 transition hover:brightness-110 ${doingRequest ? "cursor-not-allowed opacity-60" : ""}`}
 				>
 					{doingRequest ? "Sending reset email..." : "Send reset email"}

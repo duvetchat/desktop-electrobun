@@ -8,6 +8,8 @@
 		Trash2 as TrashIcon,
 		Plus as PlusIcon,
 		Pencil as PencilIcon,
+		Shield as ShieldIcon,
+		LogOut as LogOutIcon,
 	} from "@lucide/svelte";
 	import { Dialog } from "bits-ui";
 	import { currentUser, channelMessages, gatewaySpaces, dmMessages, conversations } from "$lib/stores.svelte";
@@ -32,7 +34,7 @@
 	import { getHostURL } from "$lib/common/common";
 	import { confirmAction } from "$lib/stores/confirm.svelte";
 	import { toast } from "$lib/stores/toast.svelte";
-	import { sendVerificationEmail } from "$lib/api/auth";
+	import { sendVerificationEmail, sendResetPasswordEmail, logout } from "$lib/api/auth";
 	import VoiceNotePlayer from "$lib/components/VoiceNotePlayer.svelte";
 
 	let {
@@ -41,7 +43,7 @@
 		open?: boolean;
 	} = $props();
 
-	type Section = "account" | "attachments" | "buckets";
+	type Section = "account" | "security" | "attachments" | "buckets";
 	let activeSection = $state<Section>("account");
 
 	// Attachments state
@@ -238,6 +240,21 @@
 			toast(err instanceof Error ? err.message : "Failed to send verification email", "error");
 		} finally {
 			sendingVerification = false;
+		}
+	}
+
+	// Reset password state
+	let sendingReset = $state(false);
+
+	async function handleSendResetPassword() {
+		sendingReset = true;
+		try {
+			await sendResetPasswordEmail();
+			toast("Reset password email sent! Check your inbox.", "success");
+		} catch (err) {
+			toast(err instanceof Error ? err.message : "Failed to send reset password email", "error");
+		} finally {
+			sendingReset = false;
 		}
 	}
 
@@ -438,6 +455,14 @@
 						</button>
 						<button
 							class="flex items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-sm font-medium transition-colors
+								{activeSection === 'security' ? 'bg-zinc-800 text-white' : 'text-zinc-400 hover:bg-zinc-800/60 hover:text-zinc-200'}"
+							onclick={() => (activeSection = "security")}
+						>
+							<ShieldIcon class="size-4 shrink-0" />
+							Security
+						</button>
+						<button
+							class="flex items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-sm font-medium transition-colors
 								{activeSection === 'buckets' ? 'bg-zinc-800 text-white' : 'text-zinc-400 hover:bg-zinc-800/60 hover:text-zinc-200'}"
 							onclick={() => (activeSection = "buckets")}
 						>
@@ -445,6 +470,15 @@
 							S3 Buckets
 						</button>
 					</nav>
+					<div class="mt-auto px-2 pb-4">
+						<button
+							class="flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-sm font-medium text-red-400 transition-colors hover:bg-red-600/10 hover:text-red-300"
+							onclick={logout}
+						>
+							<LogOutIcon class="size-4 shrink-0" />
+							Log Out
+						</button>
+					</div>
 				</aside>
 
 				<!-- Main content -->
@@ -452,7 +486,7 @@
 					<!-- Header -->
 					<div class="flex shrink-0 items-center justify-between border-b border-zinc-800 px-6 py-4">
 						<h2 class="text-base font-semibold text-white">
-							{#if activeSection === "account"}My Account{:else if activeSection === "attachments"}Attachments{:else if activeSection === "buckets"}S3
+							{#if activeSection === "account"}My Account{:else if activeSection === "security"}Security{:else if activeSection === "attachments"}Attachments{:else if activeSection === "buckets"}S3
 								Buckets{/if}
 						</h2>
 						<Dialog.Close
@@ -465,58 +499,6 @@
 					<!-- Scrollable content -->
 					<div class="flex-1 space-y-6 overflow-y-auto px-6 py-6">
 						{#if activeSection === "account"}
-							{#if $currentUser && !$currentUser.email_verified}
-								<div class="flex items-center gap-3 rounded-lg border border-amber-600/30 bg-amber-950/20 px-4 py-3">
-									<svg
-										xmlns="http://www.w3.org/2000/svg"
-										width="20"
-										height="20"
-										viewBox="0 0 24 24"
-										fill="none"
-										stroke="currentColor"
-										stroke-width="2"
-										stroke-linecap="round"
-										stroke-linejoin="round"
-										class="shrink-0 text-amber-500"
-									>
-										<rect width="20" height="16" x="2" y="4" rx="2" />
-										<path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" />
-									</svg>
-									<div class="min-w-0 flex-1">
-										<p class="text-sm font-medium text-amber-300">Email not verified</p>
-										<p class="text-xs text-amber-400/60">Verify your email to secure your account.</p>
-									</div>
-									<button
-										onclick={handleSendVerification}
-										disabled={sendingVerification}
-										class="shrink-0 rounded-md bg-amber-600/20 px-3 py-1.5 text-xs font-semibold text-amber-300 transition-colors hover:bg-amber-600/30 disabled:opacity-50"
-									>
-										{sendingVerification ? "Sending..." : "Send verification"}
-									</button>
-								</div>
-							{:else if $currentUser?.email_verified}
-								<div
-									class="flex items-center gap-3 rounded-lg border border-emerald-800/50 bg-emerald-900/20 px-4 py-3"
-								>
-									<svg
-										xmlns="http://www.w3.org/2000/svg"
-										width="20"
-										height="20"
-										viewBox="0 0 24 24"
-										fill="none"
-										stroke="currentColor"
-										stroke-width="2"
-										stroke-linecap="round"
-										stroke-linejoin="round"
-										class="shrink-0 text-emerald-400"
-									>
-										<rect width="20" height="16" x="2" y="4" rx="2" />
-										<path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" />
-									</svg>
-									<p class="text-sm font-medium text-emerald-300">Email verified</p>
-								</div>
-							{/if}
-
 							<!-- Profile preview card -->
 							<div class="overflow-hidden rounded-xl border border-zinc-800">
 								<!-- Banner -->
@@ -610,6 +592,75 @@
 										placeholder="https://example.com/banner.png"
 										class="focus-override h-10 w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 text-sm text-white placeholder-zinc-500 transition-colors outline-none focus:border-stone-500 focus:ring-1 focus:ring-stone-500"
 									/>
+								</div>
+
+							</div>
+						{:else if activeSection === "security"}
+							<!-- Email verification -->
+							{#if $currentUser && !$currentUser.email_verified}
+								<div class="flex items-center gap-3 rounded-lg border border-amber-600/30 bg-amber-950/20 px-4 py-3">
+									<svg
+										xmlns="http://www.w3.org/2000/svg"
+										width="20"
+										height="20"
+										viewBox="0 0 24 24"
+										fill="none"
+										stroke="currentColor"
+										stroke-width="2"
+										stroke-linecap="round"
+										stroke-linejoin="round"
+										class="shrink-0 text-amber-500"
+									>
+										<rect width="20" height="16" x="2" y="4" rx="2" />
+										<path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" />
+									</svg>
+									<div class="min-w-0 flex-1">
+										<p class="text-sm font-medium text-amber-300">Email not verified</p>
+										<p class="text-xs text-amber-400/60">Verify your email to secure your account.</p>
+									</div>
+									<button
+										onclick={handleSendVerification}
+										disabled={sendingVerification}
+										class="shrink-0 rounded-md bg-amber-600/20 px-3 py-1.5 text-xs font-semibold text-amber-300 transition-colors hover:bg-amber-600/30 disabled:opacity-50"
+									>
+										{sendingVerification ? "Sending..." : "Send verification"}
+									</button>
+								</div>
+							{:else if $currentUser?.email_verified}
+								<div class="flex items-center gap-3 rounded-lg border border-emerald-800/50 bg-emerald-900/20 px-4 py-3">
+									<svg
+										xmlns="http://www.w3.org/2000/svg"
+										width="20"
+										height="20"
+										viewBox="0 0 24 24"
+										fill="none"
+										stroke="currentColor"
+										stroke-width="2"
+										stroke-linecap="round"
+										stroke-linejoin="round"
+										class="shrink-0 text-emerald-400"
+									>
+										<rect width="20" height="16" x="2" y="4" rx="2" />
+										<path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" />
+									</svg>
+									<p class="text-sm font-medium text-emerald-300">Email verified</p>
+								</div>
+							{/if}
+
+							<!-- Password -->
+							<div class="rounded-lg border border-zinc-800 bg-zinc-800/40 px-4 py-4">
+								<div class="flex items-center justify-between">
+									<div>
+										<p class="text-xs font-semibold tracking-wide text-zinc-400 uppercase">Password</p>
+										<p class="mt-1 text-xs text-zinc-500">Send a reset link to your email to change your password.</p>
+									</div>
+									<button
+										onclick={handleSendResetPassword}
+										disabled={sendingReset}
+										class="shrink-0 rounded-md bg-zinc-700 px-3 py-1.5 text-xs font-semibold text-zinc-200 transition-colors hover:bg-zinc-600 disabled:opacity-50"
+									>
+										{sendingReset ? "Sending..." : "Reset password"}
+									</button>
 								</div>
 							</div>
 						{:else if activeSection === "attachments"}
