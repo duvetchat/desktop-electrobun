@@ -1193,7 +1193,8 @@ export interface GatewayConnection {
 }
 
 const HEARTBEAT_INTERVAL_MS = 45_000;
-const MAX_RECONNECT_ATTEMPTS = 3;
+const HEARTBEAT_TIMEOUT_MS = 15_000;
+const MAX_RECONNECT_ATTEMPTS = 5;
 const MAX_RECONNECT_DELAY_MS = 2500;
 
 export function createWebSocketConnection(): GatewayConnection {
@@ -1201,14 +1202,36 @@ export function createWebSocketConnection(): GatewayConnection {
 	let currentSocket: WebSocket | null = null;
 	let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 	let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
-	let reconnectAttemps = 0;
+	let heartbeatAckTimeout: ReturnType<typeof setTimeout> | null = null;
+	let reconnectAttempts = 0;
+	let awaitingHeartbeatAck = false;
 
 	function startHeartbeat(socket: WebSocket) {
 		heartbeatTimer = setInterval(() => {
 			if (socket.readyState === WebSocket.OPEN) {
+				if (awaitingHeartbeatAck) {
+					console.warn("[WS] No heartbeat ACK received, reconnecting...");
+					socket.close();
+					return;
+				}
+				awaitingHeartbeatAck = true;
 				socket.send(JSON.stringify({ type: "heartbeat", data: {} }));
+				heartbeatAckTimeout = setTimeout(() => {
+					if (awaitingHeartbeatAck) {
+						console.warn("[WS] Heartbeat ACK timed out, closing connection");
+						socket.close();
+					}
+				}, HEARTBEAT_TIMEOUT_MS);
 			}
 		}, HEARTBEAT_INTERVAL_MS);
+	}
+
+	function onHeartbeatAck() {
+		awaitingHeartbeatAck = false;
+		if (heartbeatAckTimeout !== null) {
+			clearTimeout(heartbeatAckTimeout);
+			heartbeatAckTimeout = null;
+		}
 	}
 
 	function stopHeartbeat() {
@@ -1216,6 +1239,11 @@ export function createWebSocketConnection(): GatewayConnection {
 			clearInterval(heartbeatTimer);
 			heartbeatTimer = null;
 		}
+		if (heartbeatAckTimeout !== null) {
+			clearTimeout(heartbeatAckTimeout);
+			heartbeatAckTimeout = null;
+		}
+		awaitingHeartbeatAck = false;
 	}
 
 	function connect() {
@@ -1245,6 +1273,7 @@ export function createWebSocketConnection(): GatewayConnection {
 
 		socket.onopen = () => {
 			console.log("[WS] Connected");
+			reconnectAttempts = 0;
 			const identifyData: Record<string, unknown> = {
 				token: localStorage.getItem("duvet_session_token"),
 			};
@@ -1259,7 +1288,7 @@ export function createWebSocketConnection(): GatewayConnection {
 			try {
 				const msg: GatewayEvent = JSON.parse(rawEvent.data);
 				if (msg.event === "heartbeat_ack") {
-					// Heartbeat acknowledged by server
+					onHeartbeatAck();
 					return;
 				}
 				if (msg.event === "payload") {
@@ -1295,7 +1324,7 @@ export function createWebSocketConnection(): GatewayConnection {
 					break;
 			}
 
-			if (reconnectAttemps >= MAX_RECONNECT_ATTEMPTS) {
+			if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
 				console.error("[WS] Maximum reconnect attempts reached. Please refresh the page.");
 				destroyed = true;
 				socket.close();
@@ -1310,7 +1339,7 @@ export function createWebSocketConnection(): GatewayConnection {
 			currentSocket = null;
 			activeSocket = null;
 			if (!destroyed) {
-				reconnectAttemps++;
+				reconnectAttempts++;
 				reconnectTimer = setTimeout(connect, MAX_RECONNECT_DELAY_MS);
 			}
 		};
