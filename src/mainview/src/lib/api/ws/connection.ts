@@ -40,15 +40,7 @@ export function getStreamURL(): string {
 	return `${getWSHostURL()}/gateway?token=${localStorage.getItem("duvet_session_token")}`;
 }
 
-// Notification sound — single Audio instance reused across calls
-let notificationAudio: HTMLAudioElement | null = null;
-function playNotificationSound() {
-	if (!notificationAudio) {
-		notificationAudio = new Audio("/sounds/message_notification.ogg");
-	}
-	notificationAudio.currentTime = 0;
-	notificationAudio.play().catch(() => {});
-}
+import { audioStore } from "$lib/stores/audio.svelte";
 
 // Active socket — module-level so sendMessage can access it
 let activeSocket: WebSocket | null = null;
@@ -344,7 +336,7 @@ function handleEvent(event: GatewayEvent) {
 				mentionCounts.update((all) => ({ ...all, [key]: (all[key] ?? 0) + 1 }));
 				const isActive = key === get(activeTextRoomId) || key === get(activeDMConvId);
 				if (!isActive || !get(pageVisible)) {
-					playNotificationSound();
+					audioStore.play("notification");
 				}
 			}
 			break;
@@ -474,7 +466,7 @@ function handleEvent(event: GatewayEvent) {
 						if (idx === -1) {
 							// New user joined the call
 							if (raw.user_id !== get(currentUser)?.id) {
-								new Audio("/sounds/join_vc.ogg").play().catch(() => {});
+								audioStore.play("join_vc");
 							}
 							return [
 								...states,
@@ -498,7 +490,7 @@ function handleEvent(event: GatewayEvent) {
 					}
 					// User left the call
 					if (raw.user_id !== get(currentUser)?.id) {
-						new Audio("/sounds/leave_vc.ogg").play().catch(() => {});
+						audioStore.play("leave_vc");
 					}
 					return states.filter((s) => !(s.user_id === raw.user_id && s.room_id === raw.room_id));
 				});
@@ -518,7 +510,7 @@ function handleEvent(event: GatewayEvent) {
 						const existingIdx = nextStates.findIndex((vs) => vs.user_id === raw.user_id && vs.room_id === raw.room_id);
 						if (existingIdx === -1) {
 							if (raw.room_id === get(activeVoiceRoomId)) {
-								new Audio("/sounds/join_vc.ogg").play().catch(() => {});
+								audioStore.play("join_vc");
 							}
 							nextStates.push({
 								room_id: raw.room_id,
@@ -537,7 +529,7 @@ function handleEvent(event: GatewayEvent) {
 						}
 					} else {
 						if (raw.room_id === get(activeVoiceRoomId)) {
-							new Audio("/sounds/leave_vc.ogg").play().catch(() => {});
+							audioStore.play("leave_vc");
 						}
 						nextStates = nextStates.filter((vs) => !(vs.user_id === raw.user_id && vs.room_id === raw.room_id));
 					}

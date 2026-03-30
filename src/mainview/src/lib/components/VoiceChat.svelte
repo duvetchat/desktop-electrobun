@@ -3,6 +3,7 @@
 	import { onDestroy, onMount } from "svelte";
 	import { SvelteSet } from "svelte/reactivity";
 	import { onWebRTCEvent, sendEventMessage } from "$lib/api/ws/connection";
+	import { audioStore } from "$lib/stores/audio.svelte";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
 	import { hasPermission, Permission } from "$lib/permissions";
 	import { createDenoisedStream } from "$lib/audio/noise-suppression";
@@ -74,7 +75,7 @@
 	function leaveVoice() {
 		if (isDestroyed) return;
 		isDestroyed = true;
-		new Audio("/sounds/leave_vc.ogg").play().catch(() => {});
+		audioStore.play("leave_vc");
 		sendEventMessage("VOICE_LEAVE", { room_id: channelId });
 		if (peerConnection) {
 			peerConnection.close();
@@ -125,7 +126,7 @@
 			if (data.room_id !== channelId) return;
 
 			if (type === "VOICE_JOINED") {
-				new Audio("/sounds/join_vc.ogg").play().catch(() => {});
+				audioStore.play("join_vc");
 				const pc = peerConnection;
 				if (!pc) return;
 				// Process the initial answer immediately — not through the chain —
@@ -507,6 +508,7 @@
 			localVideoStream?.getTracks().forEach((t) => t.stop());
 			localVideoStream = null;
 			isScreenSharing.set(false);
+			audioStore.play("screen_sharing_off");
 			sendEventMessage("VOICE_SYNC", {
 				room_id: channelId,
 				muted: $isMuted,
@@ -519,6 +521,7 @@
 					video: true,
 				});
 				isScreenSharing.set(true);
+				audioStore.play("screen_sharing_on");
 				sendEventMessage("VOICE_SYNC", {
 					room_id: channelId,
 					muted: $isMuted,

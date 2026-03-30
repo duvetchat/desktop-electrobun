@@ -988,7 +988,7 @@
 						{:else if message.sticker_attachment_id}
 							<button
 								type="button"
-								class="mt-1 block cursor-zoom-in"
+								class="mt-1 h-40 w-40 cursor-zoom-in"
 								onclick={() => openPreview(`${attachmentHost}/attachments/${message.sticker_attachment_id}`)}
 							>
 								<img

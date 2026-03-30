@@ -4,23 +4,21 @@
 	import { sendEventMessage } from "$lib/api/ws/connection";
 	import { Phone, PhoneOff, PhoneIncoming, Mic, MicOff, X } from "@lucide/svelte";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
+	import { audioStore } from "$lib/stores/audio.svelte";
 	import { onDestroy } from "svelte";
 
 	const call = $derived($activeCall);
 	let ringAudio: HTMLAudioElement | null = null;
 
-	// Play ringing sound
 	$effect(() => {
 		if (call && (call.state === "ringing" || call.state === "calling")) {
 			if (!ringAudio) {
-				ringAudio = new Audio("/sounds/voice_calling.ogg");
-				ringAudio.loop = true;
+				ringAudio = audioStore.playLoop("voice_calling");
 			}
-			ringAudio.currentTime = 0;
-			ringAudio.play().catch(() => {});
 		} else {
 			ringAudio?.pause();
 			if (ringAudio) ringAudio.currentTime = 0;
+			ringAudio = null;
 		}
 	});
 

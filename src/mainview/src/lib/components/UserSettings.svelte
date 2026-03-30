@@ -10,6 +10,8 @@
 		Pencil as PencilIcon,
 		Shield as ShieldIcon,
 		LogOut as LogOutIcon,
+		Volume2 as VolumeIcon,
+		Square as StopIcon,
 	} from "@lucide/svelte";
 	import { Dialog } from "bits-ui";
 	import { currentUser, channelMessages, gatewaySpaces, dmMessages, conversations } from "$lib/stores.svelte";
@@ -35,6 +37,7 @@
 	import { confirmAction } from "$lib/stores/confirm.svelte";
 	import { toast } from "$lib/stores/toast.svelte";
 	import { sendVerificationEmail, sendResetPasswordEmail, sendChangeEmail, logout } from "$lib/api/auth";
+	import { audioStore, type SoundEvent } from "$lib/stores/audio.svelte";
 	import VoiceNotePlayer from "$lib/components/VoiceNotePlayer.svelte";
 
 	let {
@@ -43,7 +46,7 @@
 		open?: boolean;
 	} = $props();
 
-	type Section = "account" | "security" | "attachments" | "buckets";
+	type Section = "account" | "security" | "audio" | "attachments" | "buckets";
 	let activeSection = $state<Section>("account");
 
 	// Attachments state
@@ -255,6 +258,33 @@
 			toast(err instanceof Error ? err.message : "Failed to send reset password email", "error");
 		} finally {
 			sendingReset = false;
+		}
+	}
+
+	// Audio preview state
+	let previewingSound = $state<SoundEvent | null>(null);
+	let previewAudio = $state<HTMLAudioElement | null>(null);
+
+	function togglePreview(event: SoundEvent) {
+		if (previewingSound === event) {
+			previewAudio?.pause();
+			previewAudio = null;
+			previewingSound = null;
+			return;
+		}
+		previewAudio?.pause();
+		previewingSound = event;
+		const audio = audioStore.play(event);
+		if (audio) {
+			previewAudio = audio;
+			audio.onended = () => {
+				if (previewingSound === event) {
+					previewAudio = null;
+					previewingSound = null;
+				}
+			};
+		} else {
+			previewingSound = null;
 		}
 	}
 
@@ -481,6 +511,14 @@
 						</button>
 						<button
 							class="flex items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-sm font-medium transition-colors
+								{activeSection === 'audio' ? 'bg-zinc-800 text-white' : 'text-zinc-400 hover:bg-zinc-800/60 hover:text-zinc-200'}"
+							onclick={() => (activeSection = "audio")}
+						>
+							<VolumeIcon class="size-4 shrink-0" />
+							Audio
+						</button>
+						<button
+							class="flex items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-sm font-medium transition-colors
 								{activeSection === 'buckets' ? 'bg-zinc-800 text-white' : 'text-zinc-400 hover:bg-zinc-800/60 hover:text-zinc-200'}"
 							onclick={() => (activeSection = "buckets")}
 						>
@@ -504,7 +542,7 @@
 					<!-- Header -->
 					<div class="flex shrink-0 items-center justify-between border-b border-zinc-800 px-6 py-4">
 						<h2 class="text-base font-semibold text-white">
-							{#if activeSection === "account"}My Account{:else if activeSection === "security"}Security{:else if activeSection === "attachments"}Attachments{:else if activeSection === "buckets"}S3
+							{#if activeSection === "account"}My Account{:else if activeSection === "security"}Security{:else if activeSection === "audio"}Audio{:else if activeSection === "attachments"}Attachments{:else if activeSection === "buckets"}S3
 								Buckets{/if}
 						</h2>
 						<Dialog.Close
@@ -704,6 +742,58 @@
 									</button>
 								</div>
 								<p class="mt-2 text-xs text-zinc-600">A verification link will be sent to the new address.</p>
+							</div>
+						{:else if activeSection === "audio"}
+							{@const sliders: { key: SoundEvent | "master"; label: string }[] = [
+								{ key: "master", label: "Master Volume" },
+								{ key: "notification", label: "Mentions" },
+								{ key: "join_vc", label: "Join Voice" },
+								{ key: "leave_vc", label: "Leave Voice" },
+								{ key: "voice_calling", label: "Incoming Call" },
+								{ key: "screen_sharing_on", label: "Screen Share On" },
+								{ key: "screen_sharing_off", label: "Screen Share Off" },
+							]}
+							<div class="space-y-4">
+								{#each sliders as { key, label } (key)}
+									{@const value = key === "master" ? audioStore.settings.master : audioStore.settings[key]}
+									<div class="rounded-lg border border-zinc-800 bg-zinc-800/40 px-4 py-3">
+										<div class="mb-2 flex items-center justify-between">
+											<span class="text-sm font-medium text-zinc-200">{label}</span>
+											<span class="text-xs tabular-nums text-zinc-500">{value}%</span>
+										</div>
+										<div class="flex items-center gap-3">
+											<input
+												type="range"
+												min="0"
+												max="200"
+												step="1"
+												value={value}
+												oninput={(e) => {
+													const v = parseInt((e.target as HTMLInputElement).value);
+													if (key === "master") {
+														audioStore.setMaster(v);
+													} else {
+														audioStore.set(key, v);
+													}
+												}}
+												class="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-zinc-700 accent-stone-500 [&::-webkit-slider-thumb]:h-3.5 [&::-webkit-slider-thumb]:w-3.5 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-stone-400"
+											/>
+											{#if key !== "master"}
+												<button
+													class="shrink-0 rounded p-1 transition-colors hover:bg-zinc-700 {previewingSound === key ? 'text-stone-400' : 'text-zinc-500 hover:text-zinc-200'}"
+													title={previewingSound === key ? "Stop" : "Preview"}
+													onclick={() => togglePreview(key)}
+												>
+													{#if previewingSound === key}
+														<StopIcon class="size-3.5" />
+													{:else}
+														<VolumeIcon class="size-3.5" />
+													{/if}
+												</button>
+											{/if}
+										</div>
+									</div>
+								{/each}
 							</div>
 						{:else if activeSection === "attachments"}
 							<!-- Active custom bucket banner -->

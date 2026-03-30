@@ -68,9 +68,13 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 	},
 });
 
+const currentOS = process.platform;
+
+const rendererType = currentOS === "linux" ? "cef" : "native";
+
 const win = new BrowserWindow({
 	titleBarStyle: "hidden",
-	renderer: "native",
+	renderer: rendererType,
 	sandbox: false,
 	frame: {
 		height: 900,
