@@ -58,6 +58,7 @@ export const currentUser = writable<GatewayUser | null>(null);
 export const wsSessionToken = writable<string | null>(null);
 export const channelMessages = writable<Record<string, Message[]>>({});
 export const speakingUsers = writable<SvelteSet<string>>(new SvelteSet());
+export const userAmplitudes = writable<Record<string, number>>({});
 export const spaceEmojis = writable<Record<string, SpaceEmoji[]>>({});
 export const spaceStickers = writable<Record<string, SpaceSticker[]>>({});
 

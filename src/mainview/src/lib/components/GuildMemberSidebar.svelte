@@ -5,6 +5,7 @@
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
 	import { getSpaceMembers, MEMBERS_PAGE_SIZE, type SpaceMemberWithUser } from "$lib/api/spaces";
 	import MemberProfilePopover from "$lib/components/MemberProfilePopover.svelte";
+	import { getAvatarURL } from "$lib/common/common";
 
 	let {
 		spaceId = null,
@@ -55,8 +56,8 @@
 			member_id: member.id,
 			username: member.alias ?? u.alias ?? u.username,
 			raw_username: u.username,
-			avatar_url: u.avatar ?? null,
-			banner_url: u.banner ?? null,
+			avatar_url: getAvatarURL(u.id, u.avatar),
+			banner_url: getAvatarURL(u.id, u.banner),
 			status,
 			is_bot: false,
 			is_owner: u.id === sp.owner_id,
@@ -237,14 +238,20 @@
 						onOpenChange={(o) => {
 							activePopoverMemberId = o ? member.id : null;
 						}}
-						triggerClass="group mb-0.5 flex h-10 w-full items-center px-3 text-zinc-200 hover:bg-zinc-800 hover:text-white {member.status ===
+						triggerClass="group relative mb-0.5 flex h-10 w-full items-center overflow-hidden rounded-md px-3 text-zinc-200 hover:bg-zinc-800 hover:text-white {member.status ===
 						'offline'
 							? 'opacity-60'
 							: ''}"
 						{onRemoveMember}
 					>
 						{#snippet children()}
-							<div class="flex min-w-0 items-center gap-2.5">
+							{#if member.banner_url}
+								<div
+									class="pointer-events-none absolute inset-0 bg-cover bg-right opacity-15"
+									style="background-image: url('{member.banner_url}');"
+								></div>
+							{/if}
+							<div class="relative flex min-w-0 items-center gap-2.5">
 								<div class="relative shrink-0">
 									<UserAvatar src={member.avatar_url} name={member.username} size={30} />
 									{#if isTyping(member.id)}

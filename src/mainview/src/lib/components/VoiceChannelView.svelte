@@ -11,6 +11,7 @@
 		currentUser,
 		isScreenSharing,
 		callVoiceStates,
+		userAmplitudes,
 	} from "$lib/stores.svelte";
 	import { sendEventMessage } from "$lib/api/ws/connection";
 	import { LoaderCircle, Mic, MicOff, Headphones, Phone, PhoneOff, MonitorUp, Volume2 } from "@lucide/svelte";
@@ -241,7 +242,7 @@
 						{:else if videoStream && !isLocal}
 							<!-- Remote user is sharing but viewer hasn't accepted -->
 							<div class="flex flex-col items-center justify-center gap-3">
-								<UserAvatar src={user.avatar_url} name={user.username} size={64} />
+								<UserAvatar src={user.avatar_url} name={user.username} size={64} mouthOpen={$userAmplitudes[user.id] ?? 0} />
 								<button
 									class="flex items-center gap-2 rounded-lg bg-stone-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-stone-500"
 									onclick={(e) => {
@@ -255,7 +256,7 @@
 							</div>
 						{:else}
 							<div class="flex items-center justify-center">
-								<UserAvatar src={user.avatar_url} name={user.username} size={80} />
+								<UserAvatar src={user.avatar_url} name={user.username} size={80} mouthOpen={$userAmplitudes[user.id] ?? 0} />
 							</div>
 						{/if}
 

@@ -40,6 +40,12 @@ export function getHostURL(): string {
 	return protocol + base;
 }
 
+export function getAvatarURL(_userId: string, avatar: string | null | undefined): string | null {
+	if (!avatar) return null;
+	if (avatar.startsWith("http://") || avatar.startsWith("https://")) return avatar;
+	return `${getHostURL()}/attachments/${avatar}`;
+}
+
 export function getWSHostURL(): string {
 	let base: string;
 	let protocol: string = "wss://";

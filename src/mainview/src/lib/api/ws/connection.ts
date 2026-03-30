@@ -28,7 +28,7 @@ import {
 import { getFriends, getPendingRequests, getSentRequests } from "$lib/api/friends";
 import { getConversations } from "$lib/api/conversations";
 import { getMentionCounts } from "$lib/api/messages";
-import { getWSHostURL, route } from "$lib/common/common";
+import { getWSHostURL, getAvatarURL, route } from "$lib/common/common";
 import { get } from "svelte/store";
 import { getSpaceMembers, type SpaceMemberWithUser } from "$lib/api/spaces";
 
@@ -371,7 +371,7 @@ function handleEvent(event: GatewayEvent) {
 				})),
 			);
 			const newName = raw.alias ?? raw.username;
-			const newAvatar = raw.avatar ?? null;
+			const newAvatar = getAvatarURL(raw.id, raw.avatar);
 			channelMessages.update((rooms) => {
 				const result: typeof rooms = {};
 				for (const [roomId, msgs] of Object.entries(rooms)) {

@@ -7,6 +7,7 @@
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
 	import type { Message } from "$lib/types";
 	import { renderMarkdown } from "$lib/markdown";
+	import { getAvatarURL } from "$lib/common/common";
 
 	let {
 		spaceId = "",
@@ -50,7 +51,7 @@
 					type: raw.type ?? 0,
 					author_id: raw.author_id,
 					author_name: raw.user?.alias ?? raw.user?.username ?? raw.author_id.slice(0, 8),
-					author_avatar_url: raw.user?.avatar ?? null,
+					author_avatar_url: getAvatarURL(raw.author_id, raw.user?.avatar),
 					created_at: raw.created_at,
 					updated_at: raw.updated_at,
 					embeds: raw.embeds ?? null,

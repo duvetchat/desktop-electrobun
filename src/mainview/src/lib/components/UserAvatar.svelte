@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { Avatar, AvatarImage, AvatarFallback } from "facehash-sv";
+	import { Avatar, AvatarFallback, Facehash } from "facehash-sv";
 
 	let {
 		src = undefined,
@@ -14,14 +14,51 @@
 		mouthOpen?: number;
 		class?: string;
 	} = $props();
+
+	let imgLoaded = $state(false);
+	let imgError = $state(false);
+	let prevSrc = $state(src);
+
+	// Reset state only when src actually changes
+	$effect(() => {
+		if (src !== prevSrc) {
+			prevSrc = src;
+			if (src) {
+				imgLoaded = false;
+				imgError = false;
+			} else {
+				imgLoaded = false;
+				imgError = true;
+			}
+		}
+	});
+
+	const showImg = $derived(!!src && !imgError);
 </script>
 
-<Avatar
+<div
 	style="width: {typeof size === 'number' ? size + 'px' : size}; height: {typeof size === 'number'
 		? size + 'px'
-		: size}; border-radius: 50%; overflow: hidden;"
+		: size}; border-radius: 50%; overflow: hidden; position: relative;"
 	class={className}
 >
-	<AvatarImage {src} alt={name} />
-	<AvatarFallback {name} facehashProps={{ size: typeof size === "number" ? size : 40, mouthOpen }} />
-</Avatar>
+	{#if showImg}
+		<img
+			src={src}
+			alt={name}
+			style="width: 100%; height: 100%; object-fit: cover; opacity: {imgLoaded ? 1 : 0}; position: absolute; inset: 0;"
+			onload={() => (imgLoaded = true)}
+			onerror={() => (imgError = true)}
+			draggable="false"
+		/>
+	{/if}
+	{#if !showImg || !imgLoaded}
+		<Avatar
+			style="width: 100%; height: 100%;"
+		>
+			<AvatarFallback {name} facehash={false}>
+				<Facehash {name} size="100%" {mouthOpen} />
+			</AvatarFallback>
+		</Avatar>
+	{/if}
+</div>

@@ -14,8 +14,12 @@
 		Square as StopIcon,
 	} from "@lucide/svelte";
 	import { Dialog } from "bits-ui";
+	import { slide } from "svelte/transition";
 	import { currentUser, channelMessages, gatewaySpaces, dmMessages, conversations } from "$lib/stores.svelte";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
+	import MemberProfileCard from "$lib/components/MemberProfileCard.svelte";
+	import ImageCropModal from "$lib/components/ImageCropModal.svelte";
+	import api from "$lib/api/api";
 	import {
 		updateUser,
 		getMyAttachments,
@@ -33,7 +37,7 @@
 		type StorageBucket,
 		type CreateBucketPayload,
 	} from "$lib/api/user";
-	import { getHostURL } from "$lib/common/common";
+	import { getHostURL, getAvatarURL } from "$lib/common/common";
 	import { confirmAction } from "$lib/stores/confirm.svelte";
 	import { toast } from "$lib/stores/toast.svelte";
 	import { sendVerificationEmail, sendResetPasswordEmail, sendChangeEmail, logout } from "$lib/api/auth";
@@ -306,11 +310,57 @@
 		}
 	}
 
+	// Image upload (avatar & banner) — staged locally, uploaded on save
+	let showAvatarCrop = $state(false);
+	let showBannerCrop = $state(false);
+
+	// Pending changes: File for upload, "remove" to clear, null for no change
+	let pendingAvatar = $state<File | "remove" | null>(null);
+	let pendingBanner = $state<File | "remove" | null>(null);
+
+	// Blob URLs for local preview
+	let pendingAvatarPreview = $state<string | null>(null);
+	let pendingBannerPreview = $state<string | null>(null);
+
+	function handleImageCropStage(kind: "avatar" | "banner", file: File) {
+		const url = URL.createObjectURL(file);
+		if (kind === "avatar") {
+			if (pendingAvatarPreview) URL.revokeObjectURL(pendingAvatarPreview);
+			pendingAvatar = file;
+			pendingAvatarPreview = url;
+		} else {
+			if (pendingBannerPreview) URL.revokeObjectURL(pendingBannerPreview);
+			pendingBanner = file;
+			pendingBannerPreview = url;
+		}
+	}
+
+	function handleRemoveImageStage(kind: "avatar" | "banner") {
+		if (kind === "avatar") {
+			if (pendingAvatarPreview) URL.revokeObjectURL(pendingAvatarPreview);
+			pendingAvatar = "remove";
+			pendingAvatarPreview = null;
+		} else {
+			if (pendingBannerPreview) URL.revokeObjectURL(pendingBannerPreview);
+			pendingBanner = "remove";
+			pendingBannerPreview = null;
+		}
+	}
+
+	function resetImageStages() {
+		if (pendingAvatarPreview) URL.revokeObjectURL(pendingAvatarPreview);
+		if (pendingBannerPreview) URL.revokeObjectURL(pendingBannerPreview);
+		pendingAvatar = null;
+		pendingBanner = null;
+		pendingAvatarPreview = null;
+		pendingBannerPreview = null;
+	}
+
+	const hasImageChanges = $derived(pendingAvatar !== null || pendingBanner !== null);
+
 	// Form state
 	let username = $state("");
 	let alias = $state("");
-	let avatar = $state("");
-	let banner = $state("");
 	let saving = $state(false);
 	let saveError = $state<string | null>(null);
 	let saveSuccess = $state(false);
@@ -320,8 +370,6 @@
 		if (open && $currentUser) {
 			username = $currentUser.username ?? "";
 			alias = $currentUser.alias ?? "";
-			avatar = $currentUser.avatar ?? "";
-			banner = $currentUser.banner ?? "";
 			saveError = null;
 			saveSuccess = false;
 		}
@@ -340,12 +388,28 @@
 		}
 	});
 
+	const previewMember = $derived({
+		id: $currentUser?.id ?? "",
+		member_id: "",
+		username: alias.trim() || username || $currentUser?.username || "",
+		raw_username: username || $currentUser?.username || "",
+		avatar_url: pendingAvatar === "remove"
+			? null
+			: pendingAvatarPreview ?? ($currentUser ? getAvatarURL($currentUser.id, $currentUser.avatar) : null),
+		banner_url: pendingBanner === "remove"
+			? null
+			: pendingBannerPreview ?? ($currentUser ? getAvatarURL($currentUser.id, $currentUser.banner) : null),
+		status: "online" as const,
+		is_bot: false,
+		is_owner: false,
+		roles: [] as import("$lib/types").Role[],
+	});
+
 	const hasChanges = $derived(
 		$currentUser !== null &&
 			(username !== ($currentUser.username ?? "") ||
 				alias !== ($currentUser.alias ?? "") ||
-				avatar !== ($currentUser.avatar ?? "") ||
-				banner !== ($currentUser.banner ?? "")),
+				hasImageChanges),
 	);
 
 	async function handleSave() {
@@ -355,12 +419,35 @@
 		saveSuccess = false;
 
 		try {
-			const updated = await updateUser({
-				username: username.trim() || $currentUser!.username,
-				alias: alias.trim() || null,
-				avatar: avatar.trim() || $currentUser!.avatar || null,
-				banner: banner.trim() || $currentUser!.banner || null,
-			});
+			let updated: any;
+
+			if (hasImageChanges) {
+				const form = new FormData();
+				form.append("username", username.trim() || $currentUser!.username);
+				form.append("alias", alias.trim() || "");
+
+				if (pendingAvatar instanceof File) {
+					form.append("avatar", pendingAvatar);
+				} else if (pendingAvatar === "remove") {
+					form.append("remove_avatar", "true");
+				}
+
+				if (pendingBanner instanceof File) {
+					form.append("banner", pendingBanner);
+				} else if (pendingBanner === "remove") {
+					form.append("remove_banner", "true");
+				}
+
+				const res = await api.patch("/api/users/@me", form);
+				updated = res.data;
+			} else {
+				updated = await updateUser({
+					username: username.trim() || $currentUser!.username,
+					alias: alias.trim() || null,
+				});
+			}
+
+			resetImageStages();
 
 			currentUser.update((u) =>
 				u
@@ -375,7 +462,7 @@
 			);
 
 			const newName = updated.alias ?? updated.username;
-			const newAvatar = updated.avatar ?? null;
+			const newAvatar = getAvatarURL(updated.id, updated.avatar);
 			const userId = $currentUser?.id;
 
 			if (userId) {
@@ -466,8 +553,7 @@
 		if (!$currentUser) return;
 		username = $currentUser.username ?? "";
 		alias = $currentUser.alias ?? "";
-		avatar = $currentUser.avatar ?? "";
-		banner = $currentUser.banner ?? "";
+		resetImageStages();
 		saveError = null;
 	}
 </script>
@@ -556,33 +642,14 @@
 					<div class="flex-1 space-y-6 overflow-y-auto px-6 py-6">
 						{#if activeSection === "account"}
 							<!-- Profile preview card -->
-							<div class="overflow-hidden rounded-xl border border-zinc-800">
-								<!-- Banner -->
-								<div
-									class="relative h-20 bg-linear-to-r from-stone-700 to-stone-600"
-									style={banner.trim()
-										? `background-image: url('${banner.trim()}'); background-size: cover; background-position: center;`
-										: ""}
-								></div>
-								<!-- Avatar + name row -->
-								<div class="bg-zinc-800/60 px-4 pb-4">
-									<div class="-mt-6 mb-3 flex items-end gap-3">
-										<div class="rounded-full ring-4 ring-zinc-800">
-											<UserAvatar
-												src={avatar.trim() || $currentUser?.avatar}
-												name={alias.trim() || $currentUser?.username || ""}
-												size={48}
-											/>
-										</div>
-									</div>
-									<p class="text-sm font-semibold text-white">
-										{alias.trim() || username || ""}
-									</p>
-									<p class="mt-0.5 text-xs text-zinc-400">
-										{username || $currentUser?.username || ""}
-									</p>
-								</div>
-							</div>
+							<MemberProfileCard
+								member={previewMember}
+								editable
+								onAvatarClick={() => (showAvatarCrop = true)}
+								onAvatarRemove={() => handleRemoveImageStage("avatar")}
+								onBannerClick={() => (showBannerCrop = true)}
+								onBannerRemove={() => handleRemoveImageStage("banner")}
+							/>
 
 							<!-- Form fields -->
 							<div class="space-y-5">
@@ -622,33 +689,6 @@
 									/>
 								</div>
 
-								<!-- Avatar URL -->
-								<div>
-									<label for="avatar" class="mb-1.5 block text-xs font-semibold tracking-wide text-zinc-400 uppercase">
-										Avatar URL
-									</label>
-									<input
-										id="avatar"
-										type="text"
-										bind:value={avatar}
-										placeholder="https://example.com/avatar.png"
-										class="focus-override h-10 w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 text-sm text-white placeholder-zinc-500 transition-colors outline-none focus:border-stone-500 focus:ring-1 focus:ring-stone-500"
-									/>
-								</div>
-
-								<!-- Banner URL -->
-								<div>
-									<label for="banner" class="mb-1.5 block text-xs font-semibold tracking-wide text-zinc-400 uppercase">
-										Banner URL
-									</label>
-									<input
-										id="banner"
-										type="text"
-										bind:value={banner}
-										placeholder="https://example.com/banner.png"
-										class="focus-override h-10 w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 text-sm text-white placeholder-zinc-500 transition-colors outline-none focus:border-stone-500 focus:ring-1 focus:ring-stone-500"
-									/>
-								</div>
 
 							</div>
 						{:else if activeSection === "security"}
@@ -1282,6 +1322,7 @@
 					<!-- Save bar (appears when there are unsaved changes) -->
 					{#if hasChanges || saveError}
 						<div
+							transition:slide={{ duration: 200 }}
 							class="flex shrink-0 items-center justify-between gap-4 border-t border-zinc-800 bg-zinc-900/80 px-6 py-3"
 						>
 							<div class="flex min-w-0 items-center gap-2">
@@ -1323,3 +1364,6 @@
 		</Dialog.Content>
 	</Dialog.Portal>
 </Dialog.Root>
+
+<ImageCropModal bind:open={showAvatarCrop} title="Change Avatar" aspect={1} round targetWidth={256} targetHeight={256} onConfirm={(f) => handleImageCropStage("avatar", f)} />
+<ImageCropModal bind:open={showBannerCrop} title="Change Banner" aspect={5 / 2} targetWidth={600} targetHeight={240} onConfirm={(f) => handleImageCropStage("banner", f)} />

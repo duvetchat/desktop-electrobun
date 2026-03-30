@@ -26,7 +26,7 @@
 	import { get } from "svelte/store";
 	import { sendEventMessage } from "$lib/api/ws/connection";
 	import { fly } from "svelte/transition";
-	import { getHostURL } from "$lib/common/common";
+	import { getHostURL, getAvatarURL } from "$lib/common/common";
 	import { hasPermission, Permission } from "$lib/permissions";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
 	import UserSettings from "$lib/components/UserSettings.svelte";
@@ -250,7 +250,7 @@
 		{/if}
 		<div class="relative">
 			<UserAvatar
-				src={$currentUser.avatar}
+				src={getAvatarURL($currentUser.id, $currentUser.avatar)}
 				name={$currentUser.alias || $currentUser.username}
 				size={28}
 				class="box-border transition-all duration-200 {$speakingUsers.has($currentUser.id)
@@ -298,7 +298,7 @@
 		>
 			<div class="relative shrink-0">
 				<UserAvatar
-					src={$currentUser.avatar}
+					src={getAvatarURL($currentUser.id, $currentUser.avatar)}
 					name={$currentUser.alias || $currentUser.username}
 					size={28}
 					class="box-border transition-all duration-200 {$speakingUsers.has($currentUser.id)

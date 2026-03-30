@@ -12,6 +12,7 @@
 	import { toast } from "$lib/stores/toast.svelte";
 	import TypingIndicator from "$lib/components/TypingIndicator.svelte";
 	import { listEmojis } from "$lib/api/emojis";
+	import { getAvatarURL } from "$lib/common/common";
 	import { listStickers } from "$lib/api/stickers";
 
 	let {
@@ -275,7 +276,7 @@
 			content,
 			author_id: user.id,
 			author_name: user.alias ?? user.username,
-			author_avatar_url: user.avatar ?? null,
+			author_avatar_url: getAvatarURL(user.id, user.avatar),
 			created_at: isoNow,
 			updated_at: isoNow,
 			nonce,
@@ -388,7 +389,7 @@
 			type: MessageType.Voice,
 			author_id: user.id,
 			author_name: user.alias ?? user.username,
-			author_avatar_url: user.avatar ?? null,
+			author_avatar_url: getAvatarURL(user.id, user.avatar),
 			created_at: isoNow,
 			updated_at: isoNow,
 			nonce,

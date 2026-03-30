@@ -41,6 +41,7 @@
 	import GuildMemberSidebar from "$lib/components/GuildMemberSidebar.svelte";
 	import VoiceChannelView from "$lib/components/VoiceChannelView.svelte";
 	import type { MemberOnSidebar } from "$lib/types";
+	import { getAvatarURL } from "$lib/common/common";
 
 	let {
 		conversation,
@@ -73,7 +74,7 @@
 		conversation.members.map((m) => ({
 			id: m.user_id,
 			username: m.user?.alias ?? m.user?.username ?? m.user_id.slice(0, 8),
-			avatar_url: m.user?.avatar ?? null,
+			avatar_url: getAvatarURL(m.user_id, m.user?.avatar),
 		})),
 	);
 
@@ -114,8 +115,8 @@
 			member_id: m.id,
 			username: m.user?.alias ?? m.user?.username ?? m.user_id.slice(0, 8),
 			raw_username: m.user?.username ?? m.user_id.slice(0, 8),
-			avatar_url: m.user?.avatar ?? null,
-			banner_url: m.user?.banner ?? null,
+			avatar_url: getAvatarURL(m.user_id, m.user?.avatar),
+			banner_url: getAvatarURL(m.user_id, m.user?.banner),
 			status: m.user?.status_id === 1 ? "online" : m.user?.status_id === 2 ? "dnd" : "offline",
 			is_bot: false,
 			is_owner: m.user_id === conversation.owner_id,
@@ -163,7 +164,7 @@
 				member?.user?.alias ??
 				member?.user?.username ??
 				msg.author_id.slice(0, 8),
-			author_avatar_url: msg.user?.avatar ?? member?.user?.avatar ?? null,
+			author_avatar_url: getAvatarURL(msg.author_id, msg.user?.avatar ?? member?.user?.avatar),
 			created_at: msg.created_at,
 			updated_at: msg.updated_at,
 			nonce: msg.nonce,

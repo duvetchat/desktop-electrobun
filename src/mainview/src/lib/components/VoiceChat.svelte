@@ -16,11 +16,13 @@
 		screenShareRequested,
 		selectedMicId,
 		speakingUsers,
+		userAmplitudes,
 		voiceConnectionState,
 		voiceRemoteVideoStreams,
 		voiceLocalVideoStream,
 		isScreenSharing,
 	} from "$lib/stores.svelte";
+	import { getAvatarURL } from "$lib/common/common";
 
 	let {
 		channelId,
@@ -62,7 +64,6 @@
 	let videoPlayingStates = $state<Record<string, boolean>>({});
 	let videoClickedStates = $state<Record<string, boolean>>({});
 	let videoEls: Record<string, HTMLVideoElement> = {};
-	let userAmplitudes = $state<Record<string, number>>({});
 
 	let unsubscribeWs: () => void;
 	let audioContext: AudioContext | null = null;
@@ -336,7 +337,7 @@
 						else newSet.delete(userId);
 						return newSet;
 					});
-					userAmplitudes[userId] = average > 10 ? amplitude : 0;
+					userAmplitudes.update((a) => ({ ...a, [userId]: average > 10 ? amplitude : 0 }));
 
 					requestAnimationFrame(checkAudioLevel);
 				};
@@ -408,7 +409,8 @@
 					return newSet;
 				});
 				if (myUserId) {
-					userAmplitudes[myUserId] = average > 10 && !$isMuted ? amplitude : 0;
+					const id = myUserId;
+					userAmplitudes.update((a) => ({ ...a, [id]: average > 10 && !$isMuted ? amplitude : 0 }));
 				}
 
 				requestAnimationFrame(checkLocalLevel);
@@ -593,7 +595,7 @@
 					return {
 						id: vs.user_id,
 						username: user?.alias ?? user?.username ?? "Unknown",
-						avatar_url: user?.avatar ?? null,
+						avatar_url: getAvatarURL(vs.user_id, user?.avatar),
 						muted: vs.muted ?? false,
 						deafened: vs.deafened ?? false,
 					};
@@ -607,7 +609,7 @@
 				fromGateway.push({
 					id: me.id,
 					username: me.alias ?? me.username ?? "Me",
-					avatar_url: me.avatar ?? null,
+					avatar_url: getAvatarURL(me.id, me.avatar),
 					muted: $isMuted,
 					deafened: $isDeafened,
 				});
@@ -745,7 +747,7 @@
 								src={user.avatar_url}
 								name={user.username}
 								size={96}
-								mouthOpen={userAmplitudes[user.id] ?? 0}
+								mouthOpen={$userAmplitudes[user.id] ?? 0}
 								class={isSpeaking && !isForceMuted ? "voice-avatar-speaking" : ""}
 							/>
 						</div>

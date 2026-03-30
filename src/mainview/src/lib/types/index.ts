@@ -1,3 +1,5 @@
+import { getAvatarURL } from "$lib/common/common";
+
 export interface EmbedMedia {
 	url: string;
 	width?: number | null;
@@ -569,14 +571,14 @@ export function gatewayMessageToMessage(msg: GatewayMessage, spaces: GatewaySpac
 	if (msg.user) {
 		const memberAlias = msg.member_alias ?? null;
 		author_name = memberAlias ?? msg.user.alias ?? msg.user.username;
-		author_avatar_url = msg.user.avatar ?? null;
+		author_avatar_url = getAvatarURL(msg.user.id, msg.user.avatar);
 	} else {
 		for (const space of spaces) {
 			const user = space.users.find((u) => u.id === msg.author_id);
 			if (user) {
 				const member = space.members.find((m) => m.user_id === msg.author_id);
 				author_name = member?.alias ?? user.alias ?? user.username;
-				author_avatar_url = user.avatar ?? null;
+				author_avatar_url = getAvatarURL(user.id, user.avatar);
 				break;
 			}
 		}
@@ -623,7 +625,7 @@ export function gatewaySpaceToGuild(space: GatewaySpace): Guild {
 					return {
 						id: vs.user_id,
 						username: user?.alias ?? user?.username ?? "Unknown",
-						avatar_url: user?.avatar ?? null,
+						avatar_url: user ? getAvatarURL(user.id, user.avatar) : null,
 						muted: vs.muted,
 						deafened: vs.deafened,
 						screen_sharing: vs.screen_sharing,
@@ -710,8 +712,8 @@ export function gatewaySpaceToMembers(space: GatewaySpace): MemberOnSidebar[] {
 				member_id: member?.id ?? "",
 				username: u.alias ?? u.username,
 				raw_username: u.username,
-				avatar_url: u.avatar ?? null,
-				banner_url: u.banner ?? null,
+				avatar_url: getAvatarURL(u.id, u.avatar),
+				banner_url: getAvatarURL(u.id, u.banner),
 				status: userStatusToString(u.status_id),
 				is_bot: false,
 				is_owner: u.id === space.owner_id,

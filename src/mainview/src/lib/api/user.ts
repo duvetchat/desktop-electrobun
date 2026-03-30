@@ -136,6 +136,21 @@ export async function deactivateMyBucket(id: string): Promise<void> {
 	await api.post(`/api/users/@me/buckets/${id}/deactivate`);
 }
 
+export async function uploadProfileImage(
+	kind: "avatar" | "banner",
+	file: Blob,
+	crop: { x: number; y: number; w: number; h: number },
+): Promise<UserMeResult> {
+	const form = new FormData();
+	form.append(kind, file);
+	form.append(`${kind}_crop_x`, String(Math.round(crop.x)));
+	form.append(`${kind}_crop_y`, String(Math.round(crop.y)));
+	form.append(`${kind}_crop_w`, String(Math.round(crop.w)));
+	form.append(`${kind}_crop_h`, String(Math.round(crop.h)));
+	const res = await api.patch("/api/users/@me", form);
+	return res.data;
+}
+
 export async function me(): Promise<UserMeResult> {
 	const response = await api.get("/api/users/@me");
 	return response.data;

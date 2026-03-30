@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { typingUsers, currentUser } from "$lib/stores.svelte";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
+	import { getAvatarURL } from "$lib/common/common";
 
 	let { channelId }: { channelId: string } = $props();
 
@@ -38,7 +39,7 @@
 		<div class="flex items-center">
 			{#each activeTypers.slice(0, 3) as user, i (user.user_id)}
 				<div class="rounded-full border-[1.5px] border-[oklch(0.19_0.008_80)] {i === 0 ? '' : '-ml-1'}">
-					<UserAvatar src={user.avatar} name={displayName(user)} size={18} />
+					<UserAvatar src={getAvatarURL(user.user_id, user.avatar)} name={displayName(user)} size={18} />
 				</div>
 			{/each}
 		</div>
