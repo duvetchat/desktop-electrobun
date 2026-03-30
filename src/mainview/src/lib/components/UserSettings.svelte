@@ -34,7 +34,7 @@
 	import { getHostURL } from "$lib/common/common";
 	import { confirmAction } from "$lib/stores/confirm.svelte";
 	import { toast } from "$lib/stores/toast.svelte";
-	import { sendVerificationEmail, sendResetPasswordEmail, logout } from "$lib/api/auth";
+	import { sendVerificationEmail, sendResetPasswordEmail, sendChangeEmail, logout } from "$lib/api/auth";
 	import VoiceNotePlayer from "$lib/components/VoiceNotePlayer.svelte";
 
 	let {
@@ -255,6 +255,24 @@
 			toast(err instanceof Error ? err.message : "Failed to send reset password email", "error");
 		} finally {
 			sendingReset = false;
+		}
+	}
+
+	// Change email state
+	let newEmail = $state("");
+	let sendingEmailChange = $state(false);
+
+	async function handleSendChangeEmail() {
+		if (!newEmail.trim()) return;
+		sendingEmailChange = true;
+		try {
+			await sendChangeEmail(newEmail.trim());
+			toast("Verification email sent to your new address. Check your inbox.", "success");
+			newEmail = "";
+		} catch (err) {
+			toast(err instanceof Error ? err.message : "Failed to send email change request", "error");
+		} finally {
+			sendingEmailChange = false;
 		}
 	}
 
@@ -662,6 +680,30 @@
 										{sendingReset ? "Sending..." : "Reset password"}
 									</button>
 								</div>
+							</div>
+
+							<!-- Change email -->
+							<div class="rounded-lg border border-zinc-800 bg-zinc-800/40 px-4 py-4">
+								<p class="text-xs font-semibold tracking-wide text-zinc-400 uppercase">Email</p>
+								<p class="mt-1 text-xs text-zinc-500">
+									Current: <span class="text-zinc-300">{$currentUser?.email ?? "—"}</span>
+								</p>
+								<div class="mt-3 flex items-center gap-2">
+									<input
+										type="email"
+										bind:value={newEmail}
+										placeholder="New email address"
+										class="h-9 flex-1 rounded-md border border-zinc-700 bg-zinc-800 px-3 text-sm text-white placeholder-zinc-500 outline-none focus:border-stone-500 focus:ring-1 focus:ring-stone-500"
+									/>
+									<button
+										onclick={handleSendChangeEmail}
+										disabled={sendingEmailChange || !newEmail.trim()}
+										class="shrink-0 rounded-md bg-zinc-700 px-3 py-1.5 text-xs font-semibold text-zinc-200 transition-colors hover:bg-zinc-600 disabled:opacity-50"
+									>
+										{sendingEmailChange ? "Sending..." : "Send verification"}
+									</button>
+								</div>
+								<p class="mt-2 text-xs text-zinc-600">A verification link will be sent to the new address.</p>
 							</div>
 						{:else if activeSection === "attachments"}
 							<!-- Active custom bucket banner -->

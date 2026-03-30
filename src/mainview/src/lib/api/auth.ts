@@ -50,6 +50,22 @@ export async function sendResetPasswordEmail() {
 	}
 }
 
+export async function changeEmail(token: string, email: string) {
+	try {
+		await api.post("/api/auth/change-email", { token, email });
+	} catch (err: any) {
+		throw new Error(err.response?.data?.error || "Email change failed", { cause: err });
+	}
+}
+
+export async function sendChangeEmail(email: string) {
+	try {
+		await api.post("/api/auth/change-email/send", { email });
+	} catch (err: any) {
+		throw new Error(err.response?.data?.error || "Failed to send email change request", { cause: err });
+	}
+}
+
 export async function logout() {
 	try {
 		await api.post("/api/auth/logout");

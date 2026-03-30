@@ -8,6 +8,8 @@ const routes: Record<string, string> = {
 	"/forgot-password.html": "/forgot-password",
 	"/invite.html": "/invite",
 	"/verify.html": "/verify",
+	"/reset-password.html": "/reset-password",
+	"/change-email.html": "/change-email",
 };
 
 export function route(path: string): string {

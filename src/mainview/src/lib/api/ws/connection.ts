@@ -262,13 +262,6 @@ function handleEvent(event: GatewayEvent) {
 			const raw = payload.data;
 			const spaces = get(gatewaySpaces);
 			const message = gatewayMessageToMessage(raw, spaces);
-			if (raw.room_id && raw.author_id !== get(currentUser)?.id) {
-				const isActiveRoom = raw.room_id === get(activeTextRoomId);
-				// Play sound if not in the active room, OR if the page is not visible.
-				if (!isActiveRoom || !get(pageVisible)) {
-					playNotificationSound();
-				}
-			}
 			if (raw.room_id && raw.room_id !== get(activeTextRoomId)) {
 				unreadChannels.update((s) => {
 					s.add(raw.room_id);
@@ -349,6 +342,10 @@ function handleEvent(event: GatewayEvent) {
 			const key = room_id ?? conversation_id;
 			if (key) {
 				mentionCounts.update((all) => ({ ...all, [key]: (all[key] ?? 0) + 1 }));
+				const isActive = key === get(activeTextRoomId) || key === get(activeDMConvId);
+				if (!isActive || !get(pageVisible)) {
+					playNotificationSound();
+				}
 			}
 			break;
 		}
@@ -1002,10 +999,6 @@ function handleEvent(event: GatewayEvent) {
 					s.add(conversationId);
 					return s;
 				});
-			}
-			// Play sound if not in the active conversation, OR if the page is not visible.
-			if (msg.author_id !== get(currentUser)?.id && (!isActiveConv || !get(pageVisible))) {
-				playNotificationSound();
 			}
 			typingUsers.update((all) => {
 				if (!all[conversationId]) return all;

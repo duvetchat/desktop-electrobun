@@ -513,7 +513,7 @@
 
 	function buildAuthorColorMap(members: MemberOnSidebar[]) {
 		return members.reduce<Record<string, string>>((map, member) => {
-			map[member.username] = getMemberColorStyle(member);
+			map[member.id] = getMemberColorStyle(member);
 			return map;
 		}, {});
 	}
@@ -792,7 +792,7 @@
 			{@const chronoPrev = sortedMessages.at(i + 1)}
 			{@const isConsecutive =
 				chronoPrev &&
-				chronoPrev.author_name === message.author_name &&
+				chronoPrev.author_id === message.author_id &&
 				new Date(message.created_at).getTime() - new Date(chronoPrev.created_at).getTime() <= 5 * 60 * 1_000}
 			{@const showHeader = !isConsecutive || !!message.referenced_message}
 			{@const isLast = i === 0}
@@ -900,7 +900,7 @@
 											activePopoverMsgId = o ? message.id : null;
 										}}
 										triggerClass="font-semibold mr-2 hover:underline cursor-pointer"
-										triggerStyle={authorColors[message.author_name] || "color: var(--color-zinc-100)"}
+										triggerStyle={authorColors[message.author_id] || "color: var(--color-zinc-100)"}
 									>
 										{#snippet children()}
 											{message.author_name}
@@ -909,7 +909,7 @@
 								{:else}
 									<span
 										class="mr-2 cursor-default font-semibold"
-										style={authorColors[message.author_name] || "color: var(--color-zinc-100)"}
+										style={authorColors[message.author_id] || "color: var(--color-zinc-100)"}
 									>
 										{message.author_name}
 									</span>
