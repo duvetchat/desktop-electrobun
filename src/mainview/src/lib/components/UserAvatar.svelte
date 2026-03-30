@@ -17,19 +17,13 @@
 
 	let imgLoaded = $state(false);
 	let imgError = $state(false);
-	let prevSrc = $state(src);
 
-	// Reset state only when src actually changes
+	let lastSrc: string | null | undefined;
 	$effect(() => {
-		if (src !== prevSrc) {
-			prevSrc = src;
-			if (src) {
-				imgLoaded = false;
-				imgError = false;
-			} else {
-				imgLoaded = false;
-				imgError = true;
-			}
+		if (src !== lastSrc) {
+			lastSrc = src;
+			imgLoaded = false;
+			imgError = !src;
 		}
 	});
 
@@ -53,9 +47,7 @@
 		/>
 	{/if}
 	{#if !showImg || !imgLoaded}
-		<Avatar
-			style="width: 100%; height: 100%;"
-		>
+		<Avatar style="width: 100%; height: 100%;">
 			<AvatarFallback {name} facehash={false}>
 				<Facehash {name} size="100%" {mouthOpen} />
 			</AvatarFallback>
