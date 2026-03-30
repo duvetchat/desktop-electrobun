@@ -74,6 +74,7 @@ export async function logout() {
 	} finally {
 		accessToken.set(null);
 		localStorage.removeItem("duvet_session_token");
+		localStorage.removeItem("duvet_refresh_token");
 		window.location.href = "/";
 	}
 }
@@ -87,6 +88,9 @@ export async function logIn(options: { password: string; email: string }) {
 
 			accessToken.set(token);
 			localStorage.setItem("duvet_session_token", token);
+			if (res.data.session_token) {
+				localStorage.setItem("duvet_refresh_token", res.data.session_token);
+			}
 
 			return res.data;
 		} else {

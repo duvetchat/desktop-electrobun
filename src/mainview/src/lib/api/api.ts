@@ -23,9 +23,13 @@ const processQueue = (error: any, token: string | null = null) => {
 };
 
 api.interceptors.request.use((config) => {
-	const token = get(accessToken);
+	const token = get(accessToken) || localStorage.getItem("duvet_session_token");
 	if (token) {
 		config.headers.Authorization = `Bearer ${token}`;
+	}
+	const sessionToken = localStorage.getItem("duvet_refresh_token");
+	if (sessionToken) {
+		config.headers["X-Session-Token"] = sessionToken;
 	}
 	return config;
 });
@@ -58,11 +62,18 @@ api.interceptors.response.use(
 				try {
 					console.log("[API] Critical Refresh - Single Instance Only");
 
+					const refreshHeaders: Record<string, string> = {};
+					const currentSessionToken = localStorage.getItem("duvet_refresh_token");
+					if (currentSessionToken) {
+						refreshHeaders["X-Session-Token"] = currentSessionToken;
+					}
+
 					const res = await axios.post(
 						`${getHostURL()}/api/auth/refresh`,
 						{},
 						{
 							withCredentials: true,
+							headers: refreshHeaders,
 						},
 					);
 
@@ -70,6 +81,9 @@ api.interceptors.response.use(
 
 					accessToken.set(newToken);
 					localStorage.setItem("duvet_session_token", newToken);
+					if (res.data.session_token) {
+						localStorage.setItem("duvet_refresh_token", res.data.session_token);
+					}
 
 					originalRequest.headers.Authorization = `Bearer ${newToken}`;
 					processQueue(null, newToken);
