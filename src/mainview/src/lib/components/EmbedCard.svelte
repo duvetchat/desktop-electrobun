@@ -59,7 +59,7 @@
 	</button>
 {:else if embed.type === EmbedType.Gifv || embed.type === EmbedType.Image || (!embed.title && !embed.description && !embed.author && !embed.footer && !embed.fields?.length && (embed.image || embed.video))}
 	{#if embed.video}
-		<video src={proxyVideoUrl(embed.video.url)} loop muted playsinline controls class="mt-1 max-w-xs self-start rounded"
+		<video src={proxyVideoUrl(embed.video.url)} muted playsinline controls class="mt-1 max-w-xs self-start rounded"
 		></video>
 	{:else if embed.image}
 		<button
@@ -146,7 +146,6 @@
 					src={proxyVideoUrl(embed.video.url)}
 					poster={embed.image?.url ?? embed.thumbnail?.url ?? ""}
 					autoplay
-					loop
 					muted
 					playsinline
 					controls

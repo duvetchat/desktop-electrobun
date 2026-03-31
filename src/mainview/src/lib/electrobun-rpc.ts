@@ -5,6 +5,19 @@ export interface MaximizeParams {
 	availHeight: number;
 }
 
+export interface ActivityPayload {
+	name: string;
+	details?: string;
+	state?: string;
+	timestamps?: { start?: number; end?: number };
+	assets?: {
+		large_image?: string;
+		large_text?: string;
+		small_image?: string;
+		small_text?: string;
+	};
+}
+
 export type AppRPCSchema = {
 	bun: {
 		requests: {};
@@ -16,7 +29,9 @@ export type AppRPCSchema = {
 	};
 	webview: {
 		requests: {};
-		messages: {};
+		messages: {
+			activityUpdate: ActivityPayload[] | null;
+		};
 	};
 };
 
@@ -26,6 +41,9 @@ export type AppRPCClient = {
 		minimizeWindow: () => void;
 		maximizeWindow: (params: MaximizeParams) => void;
 	};
+	on: {
+		activityUpdate: (handler: (data: ActivityPayload[] | null) => void) => void;
+	};
 };
 
 let rpcPromise: Promise<AppRPCClient | null> | null = null;
@@ -34,6 +52,8 @@ export function isElectrobunWindow() {
 	return typeof window !== "undefined" && "__electrobunWindowId" in window;
 }
 
+const activityListeners: ((data: ActivityPayload[] | null) => void)[] = [];
+
 async function createRpcClient(): Promise<AppRPCClient | null> {
 	if (!isElectrobunWindow()) return null;
 
@@ -41,12 +61,27 @@ async function createRpcClient(): Promise<AppRPCClient | null> {
 	const rpc = Electroview.defineRPC<AppRPCSchema>({
 		handlers: {
 			requests: {},
-			messages: {},
+			messages: {
+				activityUpdate: (data: ActivityPayload[] | null) => {
+					for (const listener of activityListeners) {
+						listener(data);
+					}
+				},
+			},
 		},
 	});
 
 	new Electroview({ rpc });
-	return rpc as unknown as AppRPCClient;
+
+	const client: AppRPCClient = {
+		send: rpc.send,
+		on: {
+			activityUpdate: (handler) => {
+				activityListeners.push(handler);
+			},
+		},
+	};
+	return client;
 }
 
 export async function getElectrobunRpc() {

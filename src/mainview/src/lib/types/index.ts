@@ -297,6 +297,7 @@ export interface GatewaySpaceCreatePayload {
 	overwrites?: Record<string, GatewayRoomOverwrite[]>;
 	owner_id: string;
 	voice_states?: GatewayVoiceState[];
+	activities?: Record<string, import("$lib/stores.svelte").UserActivity>;
 }
 
 export interface ReactionEvent {
@@ -482,6 +483,7 @@ export type GatewayEventPayload =
 	| { type: "MENTION_CREATE"; data: MentionCreateEvent }
 	| { type: "USER_UPDATE"; data: UserUpdateEvent }
 	| { type: "USER_STATUS_UPDATE"; data: GatewayUserStatusUpdate }
+	| { type: "USER_ACTIVITY_UPDATE"; data: { user_id: string; activities: import("$lib/stores.svelte").UserActivity[] | null } }
 	| { type: "VOICE_STATE_UPDATE"; data: VoiceStateEvent }
 	| { type: "VOICE_JOINED"; data: VoiceJoinedEvent }
 	| { type: "WEBRTC_ICE_CANDIDATE"; data: WebRTCEvent }

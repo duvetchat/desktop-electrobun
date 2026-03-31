@@ -24,6 +24,7 @@ import {
 	conversationsWithCalls,
 	spaceEmojis,
 	spaceStickers,
+	userActivities,
 } from "$lib/stores.svelte";
 import { getFriends, getPendingRequests, getSentRequests } from "$lib/api/friends";
 import { getConversations } from "$lib/api/conversations";
@@ -41,6 +42,15 @@ export function getStreamURL(): string {
 }
 
 import { audioStore } from "$lib/stores/audio.svelte";
+import { getElectrobunRpc } from "$lib/electrobun-rpc";
+
+// Listen for activity updates from Electrobun IPC (VS Code, etc.)
+getElectrobunRpc().then((rpc) => {
+	if (!rpc) return;
+	rpc.on.activityUpdate((activities) => {
+		sendEventMessage("ACTIVITY_UPDATE", { activities });
+	});
+}).catch(() => {});
 
 // Active socket — module-level so sendMessage can access it
 let activeSocket: WebSocket | null = null;
@@ -206,6 +216,13 @@ function handleEvent(event: GatewayEvent) {
 				users: currentUserData ? [currentUserData] : [],
 				voice_states: spaceCreateData.voice_states ?? [],
 			};
+
+			// Load initial activities for this space
+			const spaceActivities = spaceCreateData.activities as Record<string, any> | undefined;
+			if (spaceActivities) {
+				userActivities.update((all) => ({ ...all, ...spaceActivities }));
+			}
+
 			gatewaySpaces.update((spaces) => {
 				const exists = spaces.some((s) => s.id === space.id);
 				if (exists) {
@@ -452,6 +469,11 @@ function handleEvent(event: GatewayEvent) {
 					}),
 				})),
 			);
+			break;
+		}
+		case "USER_ACTIVITY_UPDATE": {
+			const { user_id, activities } = payload.data;
+			userActivities.update((all) => ({ ...all, [user_id]: activities ?? [] }));
 			break;
 		}
 		case "VOICE_STATE_UPDATE": {

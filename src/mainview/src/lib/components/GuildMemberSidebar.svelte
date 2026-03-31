@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { Crown as CrownSimpleIcon } from "@lucide/svelte";
 	import type { MemberOnSidebar, Role, GatewaySpace, GatewayMember } from "$lib/types";
-	import { currentUser, gatewaySpaces, typingUsers } from "$lib/stores.svelte";
+	import { currentUser, gatewaySpaces, typingUsers, userActivities } from "$lib/stores.svelte";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
 	import { getSpaceMembers, MEMBERS_PAGE_SIZE, type SpaceMemberWithUser } from "$lib/api/spaces";
 	import MemberProfilePopover from "$lib/components/MemberProfilePopover.svelte";
@@ -238,7 +238,7 @@
 						onOpenChange={(o) => {
 							activePopoverMemberId = o ? member.id : null;
 						}}
-						triggerClass="group relative mb-0.5 flex h-10 w-full items-center overflow-hidden rounded-md px-3 text-zinc-200 hover:bg-zinc-800 hover:text-white {member.status ===
+						triggerClass="group relative mb-0.5 flex h-10 w-full items-center overflow-hidden px-3 text-zinc-200 hover:bg-zinc-800 hover:text-white {member.status ===
 						'offline'
 							? 'opacity-60'
 							: ''}"
@@ -284,8 +284,8 @@
 									{/if}
 								</div>
 
-								<div class="min-w-0">
-									<span class="inline-flex items-center gap-1 truncate font-medium" style={getMemberColorStyle(member)}>
+								<div class="min-w-0 text-left">
+									<span class="flex items-center gap-1 truncate font-medium" style={getMemberColorStyle(member)}>
 										<span class="truncate">{member.username}</span>
 										{#if member.is_bot}
 											<span class="text-xxs text-zinc-400">BOT</span>
@@ -294,6 +294,9 @@
 											<CrownSimpleIcon class="size-3 text-amber-500" />
 										{/if}
 									</span>
+									{#if $userActivities[member.id]?.length}
+										<p class="truncate text-xs text-zinc-500">{$userActivities[member.id][0].name}{$userActivities[member.id][0].state ? ` — ${$userActivities[member.id][0].state}` : ""}</p>
+									{/if}
 								</div>
 							</div>
 						{/snippet}

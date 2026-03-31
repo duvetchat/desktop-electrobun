@@ -59,6 +59,19 @@ export const wsSessionToken = writable<string | null>(null);
 export const channelMessages = writable<Record<string, Message[]>>({});
 export const speakingUsers = writable<SvelteSet<string>>(new SvelteSet());
 export const userAmplitudes = writable<Record<string, number>>({});
+export interface UserActivity {
+	name: string;
+	details?: string;
+	state?: string;
+	timestamps?: { start?: number; end?: number };
+	assets?: {
+		large_image?: string;
+		large_text?: string;
+		small_image?: string;
+		small_text?: string;
+	};
+}
+export const userActivities = writable<Record<string, UserActivity[]>>({});
 export const spaceEmojis = writable<Record<string, SpaceEmoji[]>>({});
 export const spaceStickers = writable<Record<string, SpaceSticker[]>>({});
 

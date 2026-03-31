@@ -2,6 +2,9 @@
 	import type { MemberOnSidebar, Role } from "$lib/types";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
 	import { Camera as CameraIcon, Trash2 as TrashIcon } from "@lucide/svelte";
+	import { userActivities } from "$lib/stores.svelte";
+	import { resolveActivityIcon } from "$lib/activity-icons";
+	import ElapsedTime from "$lib/components/ElapsedTime.svelte";
 
 	let {
 		member,
@@ -145,6 +148,37 @@
 			<p class="break-all text-sm font-medium text-zinc-400">
 				@{member.raw_username}
 			</p>
+
+			{#if $userActivities[member.id]?.length}
+				<div class="my-3 h-px w-full bg-zinc-800"></div>
+				<h3 class="mb-1.5 text-left text-[11px] font-bold tracking-wide text-zinc-400 uppercase">
+					{$userActivities[member.id].length === 1 ? "Activity" : "Activities"}
+				</h3>
+				<div class="flex flex-col gap-2">
+					{#each $userActivities[member.id] as activity}
+						<div class="flex items-center gap-2">
+							<div class="relative shrink-0">
+								<img src={resolveActivityIcon(activity.assets?.large_image)} alt="" title={activity.assets?.large_text ?? ""} class="h-10 w-10 rounded" />
+								{#if activity.assets?.small_image}
+									<img src={resolveActivityIcon(activity.assets.small_image)} alt="" title={activity.assets?.small_text ?? ""} class="absolute -right-1 -bottom-1 h-5 w-5 rounded border border-zinc-900 bg-zinc-800 p-0.5" />
+								{/if}
+							</div>
+							<div class="flex min-w-0 flex-col">
+								<span class="truncate text-sm font-medium text-zinc-200">{activity.name}</span>
+								{#if activity.details}
+									<span class="truncate text-xs text-zinc-400">{activity.details}</span>
+								{/if}
+								{#if activity.state}
+									<span class="truncate text-xs text-zinc-500">{activity.state}</span>
+								{/if}
+								{#if activity.timestamps?.start}
+									<ElapsedTime start={activity.timestamps.start} />
+								{/if}
+							</div>
+						</div>
+					{/each}
+				</div>
+			{/if}
 
 			{#if visibleRoles.length > 0}
 				<div class="my-3 h-px w-full bg-zinc-800"></div>
