@@ -47,7 +47,7 @@
 	let prevSpaceId: string | null = null;
 
 	function convertMember(member: GatewayMember, sp: GatewaySpace): MemberOnSidebar | null {
-		const u = sp.users.find((u) => u.id === member.user_id);
+		const u = sp.users.find((usr) => usr.id === member.user_id);
 		if (!u) return null;
 		const sid = u.status_id as number;
 		const status: MemberOnSidebar["status"] = sid === 1 ? "online" : sid === 2 ? "dnd" : "offline";
@@ -135,20 +135,20 @@
 
 	// ── Helpers ────────────────────────────────────────────────────────────────
 	function intToHex(n: number | null | undefined): string {
-		if (n == null) return "";
+		if (n === null || n === undefined) return "";
 		return "#" + (n >>> 0).toString(16).padStart(6, "0");
 	}
 
 	function getMemberColorStyle(member: MemberOnSidebar): string {
 		const highest = [...member.roles]
-			.filter((r) => r.color_from != null)
+			.filter((r) => r.color_from !== null && r.color_from !== undefined)
 			.sort((a, b) => b.position - a.position)
 			.at(0);
 		if (!highest) return "color: var(--color-zinc-100)";
 		const from = intToHex(highest.color_from);
-		if (highest.color_to == null) return `color: ${from}`;
+		if (highest.color_to === null || highest.color_to === undefined) return `color: ${from}`;
 		const to = intToHex(highest.color_to);
-		const via = highest.color_via != null ? `, ${intToHex(highest.color_via)}` : "";
+		const via = highest.color_via !== null && highest.color_via !== undefined ? `, ${intToHex(highest.color_via)}` : "";
 		return `background: linear-gradient(90deg, ${from}${via}, ${to}); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;`;
 	}
 
@@ -186,11 +186,12 @@
 	// ── Profile popup ──────────────────────────────────────────────────────────
 	let activePopoverMemberId = $state<string | null>(null);
 
+	const liveSpace = $derived($gatewaySpaces.find((s) => s.id === spaceId) ?? null);
 	const pagedMembers = $derived(
 		overrideMembers !== undefined
 			? overrideMembers
-			: space
-				? space.members.map((m) => convertMember(m, space!)).filter((m): m is MemberOnSidebar => m !== null)
+			: liveSpace
+				? liveSpace.members.map((m) => convertMember(m, liveSpace)).filter((m): m is MemberOnSidebar => m !== null)
 				: [],
 	);
 
