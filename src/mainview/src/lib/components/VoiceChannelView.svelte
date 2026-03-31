@@ -14,6 +14,7 @@
 		userAmplitudes,
 	} from "$lib/stores.svelte";
 	import { sendEventMessage } from "$lib/api/ws/connection";
+	import { getAvatarURL } from "$lib/common/common";
 	import { LoaderCircle, Mic, MicOff, Headphones, Phone, PhoneOff, MonitorUp, Volume2 } from "@lucide/svelte";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
 
@@ -55,7 +56,7 @@
 				list.push({
 					id: me.id,
 					username: me.alias ?? me.username ?? "Me",
-					avatar_url: me.avatar ?? null,
+					avatar_url: getAvatarURL(me.id, me.avatar),
 					muted: $isMuted,
 					deafened: $isDeafened,
 					screen_sharing: $isScreenSharing,
@@ -72,7 +73,7 @@
 			return {
 				id: vs.user_id,
 				username: user?.alias ?? user?.username ?? "Unknown",
-				avatar_url: user?.avatar ?? null,
+				avatar_url: user ? getAvatarURL(user.id, user.avatar) : null,
 				muted: vs.muted ?? false,
 				deafened: vs.deafened ?? false,
 				screen_sharing: vs.screen_sharing ?? false,
@@ -82,7 +83,7 @@
 			list.push({
 				id: me.id,
 				username: me.alias ?? me.username ?? "Me",
-				avatar_url: me.avatar ?? null,
+				avatar_url: getAvatarURL(me.id, me.avatar),
 				muted: $isMuted,
 				deafened: $isDeafened,
 				screen_sharing: $isScreenSharing,
