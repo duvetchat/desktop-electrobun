@@ -80,14 +80,22 @@
 
 	async function startRecording() {
 		try {
-			const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+			const rawStream = await navigator.mediaDevices.getUserMedia({
+				audio: {
+					noiseSuppression: true,
+					echoCancellation: true,
+					autoGainControl: true,
+				},
+			});
+			const recordStream = rawStream;
+
 			const chunks: Blob[] = [];
-			mediaRecorder = new MediaRecorder(stream, { mimeType: "audio/webm;codecs=opus" });
+			mediaRecorder = new MediaRecorder(recordStream, { mimeType: "audio/webm;codecs=opus" });
 			mediaRecorder.ondataavailable = (e) => {
 				if (e.data.size > 0) chunks.push(e.data);
 			};
 			mediaRecorder.onstop = () => {
-				stream.getTracks().forEach((t) => t.stop());
+				rawStream.getTracks().forEach((t) => t.stop());
 				if (chunks.length > 0) {
 					const blob = new Blob(chunks, { type: "audio/webm;codecs=opus" });
 					onVoiceNote?.(blob);
