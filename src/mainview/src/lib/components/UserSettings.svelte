@@ -12,11 +12,18 @@
 		LogOut as LogOutIcon,
 		Volume2 as VolumeIcon,
 		Square as StopIcon,
+		Code as CodeIcon,
+		Copy as CopyIcon,
+		Bot as BotIcon,
+		UserPlus as UserPlusIcon,
+		RotateCw as RotateIcon,
+		ChevronLeft as ChevronLeftIcon,
+		Eye as EyeIcon,
+		EyeOff as EyeOffIcon,
 	} from "@lucide/svelte";
 	import { Dialog } from "bits-ui";
 	import { slide } from "svelte/transition";
 	import { currentUser, channelMessages, gatewaySpaces, dmMessages, conversations } from "$lib/stores.svelte";
-	import UserAvatar from "$lib/components/UserAvatar.svelte";
 	import MemberProfileCard from "$lib/components/MemberProfileCard.svelte";
 	import ImageCropModal from "$lib/components/ImageCropModal.svelte";
 	import api from "$lib/api/api";
@@ -37,12 +44,38 @@
 		type StorageBucket,
 		type CreateBucketPayload,
 	} from "$lib/api/user";
-	import { getHostURL, getAvatarURL } from "$lib/common/common";
+	import { getHostURL, getAvatarURL, route } from "$lib/common/common";
 	import { confirmAction } from "$lib/stores/confirm.svelte";
 	import { toast } from "$lib/stores/toast.svelte";
 	import { sendVerificationEmail, sendResetPasswordEmail, sendChangeEmail, logout } from "$lib/api/auth";
 	import { audioStore, type SoundEvent } from "$lib/stores/audio.svelte";
 	import VoiceNotePlayer from "$lib/components/VoiceNotePlayer.svelte";
+	import {
+		listTeams,
+		createTeam,
+		updateTeam,
+		deleteTeam,
+		listTeamMembers,
+		inviteToTeam,
+		removeTeamMember,
+		listApplications,
+		createApplication,
+		updateApplication,
+		deleteApplication,
+		createBot,
+		resetBotToken,
+		deleteBot,
+		updateBot,
+		getBotUser,
+		type BotUser,
+		acceptTeamInvite,
+		declineTeamInvite,
+		TeamRole,
+		type Team,
+		type TeamMember,
+		type Application,
+	} from "$lib/api/developer";
+	import { pendingTeamInvites, myBuckets } from "$lib/stores.svelte";
 
 	let {
 		open = $bindable(false),
@@ -50,7 +83,7 @@
 		open?: boolean;
 	} = $props();
 
-	type Section = "account" | "security" | "audio" | "attachments" | "buckets";
+	type Section = "account" | "security" | "audio" | "attachments" | "buckets" | "developer";
 	let activeSection = $state<Section>("account");
 
 	// Attachments state
@@ -108,7 +141,7 @@
 
 	// Buckets state
 	let buckets = $state<StorageBucket[]>([]);
-	const hasActiveBucket = $derived(buckets.some((b) => b.is_active));
+	const hasActiveBucket = $derived($myBuckets.some((b) => b.is_active));
 	let bucketsLoading = $state(false);
 	let bucketsError = $state<string | null>(null);
 	let showBucketForm = $state(false);
@@ -129,6 +162,7 @@
 		bucketsError = null;
 		try {
 			buckets = await getMyBuckets();
+			myBuckets.set(buckets);
 		} catch (e) {
 			bucketsError = e instanceof Error ? e.message : "Failed to load";
 		} finally {
@@ -388,28 +422,338 @@
 		}
 	});
 
+	// Developer state
+	let devTeams = $state<Team[]>([]);
+	let devLoading = $state(false);
+	let devSelectedTeam = $state<Team | null>(null);
+	let devApps = $state<Application[]>([]);
+	let devMembers = $state<TeamMember[]>([]);
+	let devAppsLoading = $state(false);
+	let devNewTeamName = $state("");
+	let devCreatingTeam = $state(false);
+	let devNewAppName = $state("");
+	let devNewAppDesc = $state("");
+	let devCreatingApp = $state(false);
+	let devInviteEmail = $state("");
+	let devInviting = $state(false);
+	let devBotToken = $state<string | null>(null);
+	let devShowToken = $state(false);
+	let devEditingTeam = $state<Team | null>(null);
+	let devEditTeamName = $state("");
+	let devEditingApp = $state<Application | null>(null);
+	let devEditAppName = $state("");
+	let devEditAppDesc = $state("");
+	let showBotAvatarCrop = $state(false);
+	let showBotBannerCrop = $state(false);
+	let botCropTargetApp = $state<Application | null>(null);
+	let botAvatarPreview = $state<string | null>(null);
+	let botBannerPreview = $state<string | null>(null);
+	let pendingBotAvatar = $state<File | "remove" | null>(null);
+	let pendingBotBanner = $state<File | "remove" | null>(null);
+	let savingBotProfile = $state(false);
+	let botUsers = $state<Record<string, BotUser>>({});
+
+	const hasBotProfileChanges = $derived(pendingBotAvatar !== null || pendingBotBanner !== null);
+
+	function onBotAvatarCrop(file: File) {
+		pendingBotAvatar = file;
+		if (botAvatarPreview) URL.revokeObjectURL(botAvatarPreview);
+		botAvatarPreview = URL.createObjectURL(file);
+	}
+
+	function onBotBannerCrop(file: File) {
+		pendingBotBanner = file;
+		if (botBannerPreview) URL.revokeObjectURL(botBannerPreview);
+		botBannerPreview = URL.createObjectURL(file);
+	}
+
+	function clearBotAvatar() {
+		if (botAvatarPreview) URL.revokeObjectURL(botAvatarPreview);
+		pendingBotAvatar = null;
+		botAvatarPreview = null;
+	}
+
+	function clearBotBanner() {
+		if (botBannerPreview) URL.revokeObjectURL(botBannerPreview);
+		pendingBotBanner = null;
+		botBannerPreview = null;
+	}
+
+	function removeBotAvatar() {
+		if (botAvatarPreview) URL.revokeObjectURL(botAvatarPreview);
+		botAvatarPreview = null;
+		pendingBotAvatar = "remove";
+	}
+
+	function removeBotBanner() {
+		if (botBannerPreview) URL.revokeObjectURL(botBannerPreview);
+		botBannerPreview = null;
+		pendingBotBanner = "remove";
+	}
+
+	async function handleSaveBotProfile(app: Application) {
+		if (!devSelectedTeam || !app.bot_user_id) return;
+		savingBotProfile = true;
+		try {
+			await updateBot(devSelectedTeam.id, app.id, {
+				avatar: pendingBotAvatar instanceof File ? pendingBotAvatar : undefined,
+				banner: pendingBotBanner instanceof File ? pendingBotBanner : undefined,
+				remove_avatar: pendingBotAvatar === "remove",
+				remove_banner: pendingBotBanner === "remove",
+			});
+			clearBotAvatar();
+			clearBotBanner();
+			pendingBotAvatar = null;
+			pendingBotBanner = null;
+			toast("Bot profile updated!", "success");
+			// Refresh bot user data
+			if (app.bot_user_id) {
+				const fresh = await getBotUser(app.bot_user_id).catch(() => null);
+				if (fresh) botUsers = { ...botUsers, [app.bot_user_id]: fresh };
+			}
+		} catch (e) {
+			toast(e instanceof Error ? e.message : "Failed to update bot", "error");
+		} finally {
+			savingBotProfile = false;
+		}
+	}
+
+	async function loadDevTeams() {
+		devLoading = true;
+		try {
+			devTeams = await listTeams();
+		} catch (e) {
+			toast(e instanceof Error ? e.message : "Failed to load teams", "error");
+		} finally {
+			devLoading = false;
+		}
+	}
+
+	async function selectTeam(team: Team) {
+		devSelectedTeam = team;
+		devAppsLoading = true;
+		devBotToken = null;
+		botUsers = {};
+		try {
+			[devApps, devMembers] = await Promise.all([listApplications(team.id), listTeamMembers(team.id)]);
+			// Fetch bot user data for apps with bots
+			const botApps = devApps.filter((a) => a.bot_user_id);
+			const fetched = await Promise.all(botApps.map((a) => getBotUser(a.bot_user_id!).catch(() => null)));
+			const map: Record<string, BotUser> = {};
+			botApps.forEach((a, i) => {
+				if (fetched[i]) map[a.bot_user_id!] = fetched[i]!;
+			});
+			botUsers = map;
+		} catch (e) {
+			toast(e instanceof Error ? e.message : "Failed to load team details", "error");
+		} finally {
+			devAppsLoading = false;
+		}
+	}
+
+	async function handleCreateTeam() {
+		if (!devNewTeamName.trim()) return;
+		devCreatingTeam = true;
+		try {
+			const team = await createTeam(devNewTeamName.trim());
+			devTeams = [...devTeams, team];
+			devNewTeamName = "";
+			await selectTeam(team);
+		} catch (e) {
+			toast(e instanceof Error ? e.message : "Failed to create team", "error");
+		} finally {
+			devCreatingTeam = false;
+		}
+	}
+
+	async function handleDeleteTeam(team: Team) {
+		await confirmAction(`Delete team "${team.name}"? All applications will be deleted.`, "Deleting", async () => {
+			await deleteTeam(team.id);
+			devTeams = devTeams.filter((t) => t.id !== team.id);
+			if (devSelectedTeam?.id === team.id) {
+				devSelectedTeam = null;
+				devApps = [];
+				devMembers = [];
+			}
+		});
+	}
+
+	async function handleSaveTeamEdit() {
+		if (!devEditingTeam || !devEditTeamName.trim()) return;
+		try {
+			const updated = await updateTeam(devEditingTeam.id, devEditTeamName.trim());
+			devTeams = devTeams.map((t) => (t.id === updated.id ? updated : t));
+			if (devSelectedTeam?.id === updated.id) devSelectedTeam = updated;
+			devEditingTeam = null;
+		} catch (e) {
+			toast(e instanceof Error ? e.message : "Failed to update team", "error");
+		}
+	}
+
+	async function handleInviteMember() {
+		if (!devSelectedTeam || !devInviteEmail.trim()) return;
+		devInviting = true;
+		try {
+			await inviteToTeam(devSelectedTeam.id, devInviteEmail.trim());
+			toast("Invite sent!", "success");
+			devInviteEmail = "";
+		} catch (e) {
+			toast(e instanceof Error ? e.message : "Failed to invite", "error");
+		} finally {
+			devInviting = false;
+		}
+	}
+
+	async function handleRemoveMember(userId: string, username: string) {
+		if (!devSelectedTeam) return;
+		const teamId = devSelectedTeam.id;
+		await confirmAction(`Remove "${username}" from team?`, "Removing", async () => {
+			await removeTeamMember(teamId, userId);
+			devMembers = devMembers.filter((m) => m.user_id !== userId);
+		});
+	}
+
+	async function handleCreateApp() {
+		if (!devSelectedTeam || !devNewAppName.trim()) return;
+		devCreatingApp = true;
+		try {
+			const app = await createApplication(devSelectedTeam.id, devNewAppName.trim(), devNewAppDesc.trim() || undefined);
+			devApps = [...devApps, app];
+			devNewAppName = "";
+			devNewAppDesc = "";
+		} catch (e) {
+			toast(e instanceof Error ? e.message : "Failed to create application", "error");
+		} finally {
+			devCreatingApp = false;
+		}
+	}
+
+	async function handleSaveAppEdit() {
+		if (!devSelectedTeam || !devEditingApp || !devEditAppName.trim()) return;
+		try {
+			const updated = await updateApplication(devSelectedTeam.id, devEditingApp.id, {
+				name: devEditAppName.trim(),
+				description: devEditAppDesc.trim() || undefined,
+			});
+			devApps = devApps.map((a) => (a.id === updated.id ? updated : a));
+			devEditingApp = null;
+		} catch (e) {
+			toast(e instanceof Error ? e.message : "Failed to update application", "error");
+		}
+	}
+
+	async function handleDeleteApp(app: Application) {
+		if (!devSelectedTeam) return;
+		const teamId = devSelectedTeam.id;
+		await confirmAction(`Delete application "${app.name}"?`, "Deleting", async () => {
+			await deleteApplication(teamId, app.id);
+			devApps = devApps.filter((a) => a.id !== app.id);
+		});
+	}
+
+	async function handleCreateBot(app: Application) {
+		if (!devSelectedTeam) return;
+		try {
+			const res = await createBot(devSelectedTeam.id, app.id);
+			devBotToken = res.token;
+			devShowToken = true;
+			devApps = devApps.map((a) => (a.id === app.id ? { ...a, bot_user_id: "created" } : a));
+			toast("Bot created! Copy the token — it won't be shown again.", "success");
+		} catch (e) {
+			toast(e instanceof Error ? e.message : "Failed to create bot", "error");
+		}
+	}
+
+	async function handleResetBotToken(app: Application) {
+		if (!devSelectedTeam) return;
+		const teamId = devSelectedTeam.id;
+		await confirmAction("Reset bot token? The old token will stop working immediately.", "Reset", async () => {
+			const res = await resetBotToken(teamId, app.id);
+			devBotToken = res.token;
+			devShowToken = true;
+			toast("Token reset! Copy the new token — it won't be shown again.", "success");
+		});
+	}
+
+	async function handleDeleteBot(app: Application) {
+		if (!devSelectedTeam) return;
+		const teamId = devSelectedTeam.id;
+		await confirmAction("Delete this bot? It will be removed from all spaces.", "Deleting", async () => {
+			await deleteBot(teamId, app.id);
+			devApps = devApps.map((a) => (a.id === app.id ? { ...a, bot_user_id: null, bot_token_hash: null } : a));
+			devBotToken = null;
+		});
+	}
+
+	function copyToken() {
+		if (devBotToken) {
+			navigator.clipboard.writeText(devBotToken);
+			toast("Token copied to clipboard", "success");
+		}
+	}
+
+	function getBotInviteLink(botUserId: string): string {
+		return `${window.location.origin}${route("/app.html")}#bot:${botUserId}`;
+	}
+
+	function copyBotInviteLink(botUserId: string) {
+		navigator.clipboard.writeText(getBotInviteLink(botUserId));
+		toast("Link copied!", "success");
+	}
+
+	async function handleAcceptTeamInvite(inviteId: string) {
+		try {
+			await acceptTeamInvite(inviteId);
+			pendingTeamInvites.update((list) => list.filter((i) => i.id !== inviteId));
+			toast("Invite accepted!", "success");
+			void loadDevTeams();
+		} catch (e) {
+			toast(e instanceof Error ? e.message : "Failed to accept invite", "error");
+		}
+	}
+
+	async function handleDeclineTeamInvite(inviteId: string) {
+		try {
+			await declineTeamInvite(inviteId);
+			pendingTeamInvites.update((list) => list.filter((i) => i.id !== inviteId));
+			toast("Invite declined", "success");
+		} catch (e) {
+			toast(e instanceof Error ? e.message : "Failed to decline invite", "error");
+		}
+	}
+
+	$effect(() => {
+		if (open && activeSection === "developer") {
+			void loadDevTeams();
+			devSelectedTeam = null;
+			devApps = [];
+			devMembers = [];
+			devBotToken = null;
+		}
+	});
+
 	const previewMember = $derived({
 		id: $currentUser?.id ?? "",
 		member_id: "",
 		username: alias.trim() || username || $currentUser?.username || "",
 		raw_username: username || $currentUser?.username || "",
-		avatar_url: pendingAvatar === "remove"
-			? null
-			: pendingAvatarPreview ?? ($currentUser ? getAvatarURL($currentUser.id, $currentUser.avatar) : null),
-		banner_url: pendingBanner === "remove"
-			? null
-			: pendingBannerPreview ?? ($currentUser ? getAvatarURL($currentUser.id, $currentUser.banner) : null),
+		avatar_url:
+			pendingAvatar === "remove"
+				? null
+				: (pendingAvatarPreview ?? ($currentUser ? getAvatarURL($currentUser.id, $currentUser.avatar) : null)),
+		banner_url:
+			pendingBanner === "remove"
+				? null
+				: (pendingBannerPreview ?? ($currentUser ? getAvatarURL($currentUser.id, $currentUser.banner) : null)),
 		status: "online" as const,
-		is_bot: false,
+		is_bot: $currentUser?.is_bot ?? false,
 		is_owner: false,
 		roles: [] as import("$lib/types").Role[],
 	});
 
 	const hasChanges = $derived(
 		$currentUser !== null &&
-			(username !== ($currentUser.username ?? "") ||
-				alias !== ($currentUser.alias ?? "") ||
-				hasImageChanges),
+			(username !== ($currentUser.username ?? "") || alias !== ($currentUser.alias ?? "") || hasImageChanges),
 	);
 
 	async function handleSave() {
@@ -611,6 +955,20 @@
 							<DatabaseIcon class="size-4 shrink-0" />
 							S3 Buckets
 						</button>
+						<div class="my-2 border-t border-zinc-800"></div>
+						<button
+							class="flex items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-sm font-medium transition-colors
+								{activeSection === 'developer' ? 'bg-zinc-800 text-white' : 'text-zinc-400 hover:bg-zinc-800/60 hover:text-zinc-200'}"
+							onclick={() => (activeSection = "developer")}
+						>
+							<CodeIcon class="size-4 shrink-0" />
+							Developer
+							{#if $pendingTeamInvites.length > 0}
+								<span class="text-xxs ml-auto rounded-full bg-stone-600 px-1.5 py-0.5 font-bold text-white"
+									>{$pendingTeamInvites.length}</span
+								>
+							{/if}
+						</button>
 					</nav>
 					<div class="mt-auto px-2 pb-4">
 						<button
@@ -629,7 +987,7 @@
 					<div class="flex shrink-0 items-center justify-between border-b border-zinc-800 px-6 py-4">
 						<h2 class="text-base font-semibold text-white">
 							{#if activeSection === "account"}My Account{:else if activeSection === "security"}Security{:else if activeSection === "audio"}Audio{:else if activeSection === "attachments"}Attachments{:else if activeSection === "buckets"}S3
-								Buckets{/if}
+								Buckets{:else if activeSection === "developer"}Developer{/if}
 						</h2>
 						<Dialog.Close
 							class="flex h-8 w-8 items-center justify-center rounded-lg text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-200"
@@ -688,8 +1046,6 @@
 										class="focus-override h-10 w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 text-sm text-white placeholder-zinc-500 transition-colors outline-none focus:border-stone-500 focus:ring-1 focus:ring-stone-500"
 									/>
 								</div>
-
-
 							</div>
 						{:else if activeSection === "security"}
 							<!-- Email verification -->
@@ -723,7 +1079,9 @@
 									</button>
 								</div>
 							{:else if $currentUser?.email_verified}
-								<div class="flex items-center gap-3 rounded-lg border border-emerald-800/50 bg-emerald-900/20 px-4 py-3">
+								<div
+									class="flex items-center gap-3 rounded-lg border border-emerald-800/50 bg-emerald-900/20 px-4 py-3"
+								>
 									<svg
 										xmlns="http://www.w3.org/2000/svg"
 										width="20"
@@ -799,7 +1157,7 @@
 									<div class="rounded-lg border border-zinc-800 bg-zinc-800/40 px-4 py-3">
 										<div class="mb-2 flex items-center justify-between">
 											<span class="text-sm font-medium text-zinc-200">{label}</span>
-											<span class="text-xs tabular-nums text-zinc-500">{value}%</span>
+											<span class="text-xs text-zinc-500 tabular-nums">{value}%</span>
 										</div>
 										<div class="flex items-center gap-3">
 											<input
@@ -807,7 +1165,7 @@
 												min="0"
 												max="200"
 												step="1"
-												value={value}
+												{value}
 												oninput={(e) => {
 													const v = parseInt((e.target as HTMLInputElement).value);
 													if (key === "master") {
@@ -820,7 +1178,9 @@
 											/>
 											{#if key !== "master"}
 												<button
-													class="shrink-0 rounded p-1 transition-colors hover:bg-zinc-700 {previewingSound === key ? 'text-stone-400' : 'text-zinc-500 hover:text-zinc-200'}"
+													class="shrink-0 rounded p-1 transition-colors hover:bg-zinc-700 {previewingSound === key
+														? 'text-stone-400'
+														: 'text-zinc-500 hover:text-zinc-200'}"
 													title={previewingSound === key ? "Stop" : "Preview"}
 													onclick={() => togglePreview(key)}
 												>
@@ -1316,6 +1676,503 @@
 									{/each}
 								</div>
 							{/if}
+						{:else if activeSection === "developer"}
+							{#if $pendingTeamInvites.length > 0}
+								<div class="mb-6">
+									<h4 class="mb-2 text-xs font-bold tracking-widest text-zinc-400 uppercase">Pending Team Invites</h4>
+									<div class="space-y-2">
+										{#each $pendingTeamInvites as invite (invite.id)}
+											<div
+												class="flex items-center justify-between rounded-md border border-stone-700/50 bg-stone-900/30 px-4 py-3"
+											>
+												<div>
+													<p class="text-sm font-medium text-white">{invite.team_name}</p>
+													<p class="text-xxs text-zinc-500">Invited by {invite.invited_by_username}</p>
+												</div>
+												<div class="flex items-center gap-2">
+													<button
+														class="rounded-md bg-stone-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-stone-500"
+														onclick={() => handleAcceptTeamInvite(invite.id)}
+													>
+														Accept
+													</button>
+													<button
+														class="rounded-md px-3 py-1.5 text-xs font-medium text-zinc-400 transition-colors hover:bg-zinc-700 hover:text-white"
+														onclick={() => handleDeclineTeamInvite(invite.id)}
+													>
+														Decline
+													</button>
+												</div>
+											</div>
+										{/each}
+									</div>
+								</div>
+							{/if}
+
+							{#if !devSelectedTeam}
+								<p class="mb-4 text-xs text-zinc-500">
+									Create a team to manage applications and bots. Team members can collaborate on your apps.
+								</p>
+
+								<div class="mb-4 flex gap-2">
+									<input
+										type="text"
+										bind:value={devNewTeamName}
+										placeholder="Team name"
+										class="flex-1 rounded-md border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-white placeholder-zinc-500 outline-none focus:border-zinc-500"
+										onkeydown={(e) => e.key === "Enter" && handleCreateTeam()}
+									/>
+									<button
+										class="flex items-center gap-1.5 rounded-md bg-stone-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-stone-500 disabled:opacity-50"
+										onclick={handleCreateTeam}
+										disabled={devCreatingTeam || !devNewTeamName.trim()}
+									>
+										<PlusIcon class="size-4" />
+										Create
+									</button>
+								</div>
+
+								{#if devLoading}
+									<p class="text-sm text-zinc-500">Loading...</p>
+								{:else if devTeams.length === 0}
+									<p class="text-sm text-zinc-500">No teams yet. Create one to get started.</p>
+								{:else}
+									<div class="space-y-2">
+										{#each devTeams as team (team.id)}
+											<button
+												class="group flex w-full items-center justify-between rounded-md border border-zinc-700 bg-zinc-800/50 px-4 py-3 text-left transition-colors hover:border-zinc-600 hover:bg-zinc-800"
+												onclick={() => selectTeam(team)}
+											>
+												<div>
+													<p class="text-sm font-medium text-white">{team.name}</p>
+													<p class="text-xxs text-zinc-500">ID: {team.id}</p>
+												</div>
+												<ChevronLeftIcon class="size-4 rotate-180 text-zinc-500 group-hover:text-zinc-300" />
+											</button>
+										{/each}
+									</div>
+								{/if}
+							{:else}
+								<button
+									class="mb-4 flex items-center gap-1 text-sm text-zinc-400 transition-colors hover:text-white"
+									onclick={() => {
+										devSelectedTeam = null;
+										devApps = [];
+										devMembers = [];
+										devBotToken = null;
+									}}
+								>
+									<ChevronLeftIcon class="size-4" />
+									Back to teams
+								</button>
+
+								<div class="mb-6 flex items-center justify-between">
+									{#if devEditingTeam?.id === devSelectedTeam.id}
+										<div class="flex flex-1 items-center gap-2">
+											<input
+												type="text"
+												bind:value={devEditTeamName}
+												class="flex-1 rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-white outline-none focus:border-zinc-500"
+												onkeydown={(e) => e.key === "Enter" && handleSaveTeamEdit()}
+											/>
+											<button
+												class="rounded-md bg-stone-600 px-2 py-1.5 text-xs text-white hover:bg-stone-500"
+												onclick={handleSaveTeamEdit}>Save</button
+											>
+											<button
+												class="rounded-md px-2 py-1.5 text-xs text-zinc-400 hover:text-white"
+												onclick={() => (devEditingTeam = null)}>Cancel</button
+											>
+										</div>
+									{:else}
+										<h3 class="text-lg font-semibold text-white">{devSelectedTeam.name}</h3>
+										<div class="flex items-center gap-1">
+											{#if devSelectedTeam.owner_id === $currentUser?.id}
+												<button
+													class="rounded-md p-1.5 text-zinc-500 hover:bg-zinc-700 hover:text-zinc-200"
+													title="Edit"
+													onclick={() => {
+														devEditingTeam = devSelectedTeam;
+														devEditTeamName = devSelectedTeam?.name ?? "";
+													}}
+												>
+													<PencilIcon class="size-4" />
+												</button>
+												<button
+													class="rounded-md p-1.5 text-zinc-500 hover:bg-red-600/20 hover:text-red-400"
+													title="Delete"
+													onclick={() => devSelectedTeam && handleDeleteTeam(devSelectedTeam)}
+												>
+													<TrashIcon class="size-4" />
+												</button>
+											{/if}
+										</div>
+									{/if}
+								</div>
+
+								<!-- Members -->
+								<div class="mb-6">
+									<h4 class="mb-2 text-xs font-bold tracking-widest text-zinc-400 uppercase">Members</h4>
+									<div class="space-y-1">
+										{#each devMembers as member (member.user_id)}
+											<div class="flex items-center justify-between rounded-md bg-zinc-800/50 px-3 py-2">
+												<div class="flex items-center gap-2">
+													<span class="text-sm text-white">{member.username}</span>
+													{#if member.role === TeamRole.Admin}
+														<span class="text-xxs rounded bg-stone-700 px-1.5 py-0.5 font-medium text-stone-300"
+															>Admin</span
+														>
+													{/if}
+												</div>
+												{#if devSelectedTeam.owner_id === $currentUser?.id && member.user_id !== $currentUser?.id}
+													<button
+														class="text-zinc-500 hover:text-red-400"
+														title="Remove"
+														onclick={() => handleRemoveMember(member.user_id, member.username)}
+													>
+														<XIcon class="size-4" />
+													</button>
+												{/if}
+											</div>
+										{/each}
+									</div>
+									{#if devSelectedTeam.owner_id === $currentUser?.id}
+										<div class="mt-2 flex gap-2">
+											<input
+												type="text"
+												bind:value={devInviteEmail}
+												placeholder="Email to invite"
+												class="flex-1 rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-xs text-white placeholder-zinc-500 outline-none focus:border-zinc-500"
+												onkeydown={(e) => e.key === "Enter" && handleInviteMember()}
+											/>
+											<button
+												class="flex items-center gap-1 rounded-md bg-stone-600 px-2 py-1.5 text-xs text-white hover:bg-stone-500 disabled:opacity-50"
+												onclick={handleInviteMember}
+												disabled={devInviting || !devInviteEmail.trim()}
+											>
+												<UserPlusIcon class="size-3.5" />
+												Invite
+											</button>
+										</div>
+									{/if}
+								</div>
+
+								<!-- Applications -->
+								<div>
+									<h4 class="mb-2 text-xs font-bold tracking-widest text-zinc-400 uppercase">Applications</h4>
+									{#if devAppsLoading}
+										<p class="text-sm text-zinc-500">Loading...</p>
+									{:else}
+										<div class="mb-3 flex gap-2">
+											<input
+												type="text"
+												bind:value={devNewAppName}
+												placeholder="App name"
+												class="flex-1 rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-xs text-white placeholder-zinc-500 outline-none focus:border-zinc-500"
+												onkeydown={(e) => e.key === "Enter" && handleCreateApp()}
+											/>
+											<button
+												class="flex items-center gap-1 rounded-md bg-stone-600 px-2 py-1.5 text-xs text-white hover:bg-stone-500 disabled:opacity-50"
+												onclick={handleCreateApp}
+												disabled={devCreatingApp || !devNewAppName.trim()}
+											>
+												<PlusIcon class="size-3.5" />
+												Create
+											</button>
+										</div>
+
+										{#if devApps.length === 0}
+											<p class="text-sm text-zinc-500">No applications yet.</p>
+										{:else}
+											<div class="space-y-3">
+												{#each devApps as app (app.id)}
+													<div class="rounded-md border border-zinc-700 bg-zinc-800/50 p-4">
+														{#if devEditingApp?.id === app.id}
+															<div class="space-y-2">
+																<input
+																	type="text"
+																	bind:value={devEditAppName}
+																	placeholder="App name"
+																	class="w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-white outline-none focus:border-zinc-500"
+																/>
+																<input
+																	type="text"
+																	bind:value={devEditAppDesc}
+																	placeholder="Description (optional)"
+																	class="w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-white outline-none focus:border-zinc-500"
+																/>
+																<div class="flex gap-2">
+																	<button
+																		class="rounded-md bg-stone-600 px-3 py-1.5 text-xs text-white hover:bg-stone-500"
+																		onclick={handleSaveAppEdit}>Save</button
+																	>
+																	<button
+																		class="rounded-md px-3 py-1.5 text-xs text-zinc-400 hover:text-white"
+																		onclick={() => (devEditingApp = null)}>Cancel</button
+																	>
+																</div>
+															</div>
+														{:else}
+															<div class="mb-2 flex items-start justify-between">
+																<div>
+																	<p class="text-sm font-medium text-white">{app.name}</p>
+																	{#if app.description}
+																		<p class="text-xs text-zinc-500">{app.description}</p>
+																	{/if}
+																	<p class="text-xxs mt-1 text-zinc-600">ID: {app.id}</p>
+																</div>
+																<div class="flex items-center gap-1">
+																	<button
+																		class="rounded-md p-1.5 text-zinc-500 hover:bg-zinc-700 hover:text-zinc-200"
+																		title="Edit"
+																		onclick={() => {
+																			devEditingApp = app;
+																			devEditAppName = app.name;
+																			devEditAppDesc = app.description ?? "";
+																		}}
+																	>
+																		<PencilIcon class="size-4" />
+																	</button>
+																	<button
+																		class="rounded-md p-1.5 text-zinc-500 hover:bg-red-600/20 hover:text-red-400"
+																		title="Delete"
+																		onclick={() => handleDeleteApp(app)}
+																	>
+																		<TrashIcon class="size-4" />
+																	</button>
+																</div>
+															</div>
+															<div class="mt-3 border-t border-zinc-700 pt-3">
+																{#if app.bot_user_id}
+																	<div class="flex items-center justify-between">
+																		<div class="flex items-center gap-2">
+																			<BotIcon class="size-4 text-stone-400" />
+																			<span class="text-xs text-zinc-300">Bot active</span>
+																		</div>
+																		<div class="flex items-center gap-1">
+																			<button
+																				class="flex items-center gap-1 rounded-md px-2 py-1 text-xs text-zinc-400 hover:bg-zinc-700 hover:text-white"
+																				onclick={() => handleResetBotToken(app)}
+																			>
+																				<RotateIcon class="size-3.5" />
+																				Reset Token
+																			</button>
+																			<button
+																				class="flex items-center gap-1 rounded-md px-2 py-1 text-xs text-red-400 hover:bg-red-600/20"
+																				onclick={() => handleDeleteBot(app)}
+																			>
+																				<TrashIcon class="size-3.5" />
+																				Delete Bot
+																			</button>
+																		</div>
+																	</div>
+																	<div class="mt-2 flex items-center gap-2">
+																		<span class="text-xxs text-zinc-500">Invite link:</span>
+																		<code class="text-xxs flex-1 truncate rounded bg-zinc-900 px-2 py-1 text-zinc-400"
+																			>{getBotInviteLink(app.bot_user_id ?? "")}</code
+																		>
+																		<button
+																			class="shrink-0 rounded p-1 text-zinc-500 hover:bg-zinc-700 hover:text-white"
+																			title="Copy"
+																			onclick={() => copyBotInviteLink(app.bot_user_id ?? "")}
+																		>
+																			<CopyIcon class="size-3.5" />
+																		</button>
+																	</div>
+																	{#if hasActiveBucket}
+																		{@const botU = app.bot_user_id ? botUsers[app.bot_user_id] : null}
+																		<div class="mt-3 border-t border-zinc-700 pt-3">
+																			<p class="text-xxs mb-2 text-zinc-500">Bot appearance</p>
+																			<div class="flex items-center gap-3">
+																				<!-- Avatar -->
+																				<div class="group relative">
+																					{#if botAvatarPreview}
+																						<img
+																							src={botAvatarPreview}
+																							alt="avatar"
+																							class="h-12 w-12 rounded-full object-cover"
+																						/>
+																						<button
+																							class="absolute inset-0 flex items-center justify-center rounded-full bg-black/60 opacity-0 transition-opacity group-hover:opacity-100"
+																							onclick={clearBotAvatar}
+																							title="Undo"
+																						>
+																							<XIcon class="size-4 text-white" />
+																						</button>
+																					{:else if pendingBotAvatar === "remove"}
+																						<div
+																							class="flex h-12 w-12 items-center justify-center rounded-full bg-zinc-800 text-zinc-600"
+																						>
+																							<XIcon class="size-4" />
+																						</div>
+																						<button
+																							class="absolute inset-0 flex items-center justify-center rounded-full bg-black/60 opacity-0 transition-opacity group-hover:opacity-100"
+																							onclick={() => {
+																								pendingBotAvatar = null;
+																							}}
+																							title="Undo"
+																						>
+																							<RotateIcon class="size-4 text-white" />
+																						</button>
+																					{:else if botU?.avatar}
+																						<img
+																							src={getAvatarURL(botU.id, botU.avatar)}
+																							alt="avatar"
+																							class="h-12 w-12 rounded-full object-cover"
+																						/>
+																						<div
+																							class="absolute inset-0 flex items-center justify-center gap-1 rounded-full bg-black/60 opacity-0 transition-opacity group-hover:opacity-100"
+																						>
+																							<button
+																								class="rounded p-0.5 text-white hover:bg-white/20"
+																								onclick={() => {
+																									botCropTargetApp = app;
+																									showBotAvatarCrop = true;
+																								}}
+																								title="Change"><PencilIcon class="size-3.5" /></button
+																							>
+																							<button
+																								class="rounded p-0.5 text-red-400 hover:bg-white/20"
+																								onclick={removeBotAvatar}
+																								title="Remove"><TrashIcon class="size-3.5" /></button
+																							>
+																						</div>
+																					{:else}
+																						<button
+																							class="flex h-12 w-12 items-center justify-center rounded-full bg-zinc-800 text-zinc-500 transition-colors hover:bg-zinc-700 hover:text-zinc-300"
+																							onclick={() => {
+																								botCropTargetApp = app;
+																								showBotAvatarCrop = true;
+																							}}
+																							title="Set avatar"
+																						>
+																							<PlusIcon class="size-4" />
+																						</button>
+																					{/if}
+																				</div>
+																				<!-- Banner -->
+																				<div class="group relative">
+																					{#if botBannerPreview}
+																						<img
+																							src={botBannerPreview}
+																							alt="banner"
+																							class="h-12 w-28 rounded object-cover"
+																						/>
+																						<button
+																							class="absolute inset-0 flex items-center justify-center rounded bg-black/60 opacity-0 transition-opacity group-hover:opacity-100"
+																							onclick={clearBotBanner}
+																							title="Undo"
+																						>
+																							<XIcon class="size-4 text-white" />
+																						</button>
+																					{:else if pendingBotBanner === "remove"}
+																						<div
+																							class="flex h-12 w-28 items-center justify-center rounded bg-zinc-800 text-zinc-600"
+																						>
+																							<XIcon class="size-4" />
+																						</div>
+																						<button
+																							class="absolute inset-0 flex items-center justify-center rounded bg-black/60 opacity-0 transition-opacity group-hover:opacity-100"
+																							onclick={() => {
+																								pendingBotBanner = null;
+																							}}
+																							title="Undo"
+																						>
+																							<RotateIcon class="size-4 text-white" />
+																						</button>
+																					{:else if botU?.banner}
+																						<img
+																							src={getAvatarURL(botU.id, botU.banner)}
+																							alt="banner"
+																							class="h-12 w-28 rounded object-cover"
+																						/>
+																						<div
+																							class="absolute inset-0 flex items-center justify-center gap-1 rounded bg-black/60 opacity-0 transition-opacity group-hover:opacity-100"
+																						>
+																							<button
+																								class="rounded p-0.5 text-white hover:bg-white/20"
+																								onclick={() => {
+																									botCropTargetApp = app;
+																									showBotBannerCrop = true;
+																								}}
+																								title="Change"><PencilIcon class="size-3.5" /></button
+																							>
+																							<button
+																								class="rounded p-0.5 text-red-400 hover:bg-white/20"
+																								onclick={removeBotBanner}
+																								title="Remove"><TrashIcon class="size-3.5" /></button
+																							>
+																						</div>
+																					{:else}
+																						<button
+																							class="flex h-12 w-28 items-center justify-center rounded bg-zinc-800 text-zinc-500 transition-colors hover:bg-zinc-700 hover:text-zinc-300"
+																							onclick={() => {
+																								botCropTargetApp = app;
+																								showBotBannerCrop = true;
+																							}}
+																							title="Set banner"
+																						>
+																							<PlusIcon class="size-4" />
+																						</button>
+																					{/if}
+																				</div>
+																			</div>
+																			{#if hasBotProfileChanges}
+																				<button
+																					class="mt-2 rounded-md bg-stone-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-stone-500 disabled:opacity-50"
+																					onclick={() => handleSaveBotProfile(app)}
+																					disabled={savingBotProfile}
+																				>
+																					{savingBotProfile ? "Saving..." : "Save Changes"}
+																				</button>
+																			{/if}
+																		</div>
+																	{/if}
+																{:else}
+																	<button
+																		class="flex items-center gap-1.5 rounded-md bg-stone-700 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-stone-600"
+																		onclick={() => handleCreateBot(app)}
+																	>
+																		<BotIcon class="size-3.5" />
+																		Create Bot
+																	</button>
+																{/if}
+															</div>
+														{/if}
+													</div>
+												{/each}
+											</div>
+										{/if}
+
+										{#if devBotToken}
+											<div class="mt-4 rounded-md border border-yellow-700/50 bg-yellow-900/20 p-4">
+												<p class="mb-2 text-xs font-medium text-yellow-300">
+													Bot Token — copy it now, it won't be shown again!
+												</p>
+												<div class="flex items-center gap-2">
+													<code class="flex-1 rounded bg-zinc-900 px-3 py-2 font-mono text-xs break-all text-zinc-300"
+														>{devShowToken ? devBotToken : "\u2022".repeat(40)}</code
+													>
+													<button
+														class="rounded-md p-1.5 text-zinc-400 hover:text-white"
+														title={devShowToken ? "Hide" : "Show"}
+														onclick={() => (devShowToken = !devShowToken)}
+													>
+														{#if devShowToken}<EyeOffIcon class="size-4" />{:else}<EyeIcon class="size-4" />{/if}
+													</button>
+													<button
+														class="rounded-md p-1.5 text-zinc-400 hover:text-white"
+														title="Copy"
+														onclick={copyToken}
+													>
+														<CopyIcon class="size-4" />
+													</button>
+												</div>
+											</div>
+										{/if}
+									{/if}
+								</div>
+							{/if}
 						{/if}
 					</div>
 
@@ -1365,5 +2222,37 @@
 	</Dialog.Portal>
 </Dialog.Root>
 
-<ImageCropModal bind:open={showAvatarCrop} title="Change Avatar" aspect={1} round targetWidth={256} targetHeight={256} onConfirm={(f) => handleImageCropStage("avatar", f)} />
-<ImageCropModal bind:open={showBannerCrop} title="Change Banner" aspect={5 / 2} targetWidth={600} targetHeight={240} onConfirm={(f) => handleImageCropStage("banner", f)} />
+<ImageCropModal
+	bind:open={showAvatarCrop}
+	title="Change Avatar"
+	aspect={1}
+	round
+	targetWidth={256}
+	targetHeight={256}
+	onConfirm={(f) => handleImageCropStage("avatar", f)}
+/>
+<ImageCropModal
+	bind:open={showBannerCrop}
+	title="Change Banner"
+	aspect={5 / 2}
+	targetWidth={600}
+	targetHeight={240}
+	onConfirm={(f) => handleImageCropStage("banner", f)}
+/>
+<ImageCropModal
+	bind:open={showBotAvatarCrop}
+	title="Change Bot Avatar"
+	aspect={1}
+	round
+	targetWidth={256}
+	targetHeight={256}
+	onConfirm={(f) => onBotAvatarCrop(f)}
+/>
+<ImageCropModal
+	bind:open={showBotBannerCrop}
+	title="Change Bot Banner"
+	aspect={5 / 2}
+	targetWidth={600}
+	targetHeight={240}
+	onConfirm={(f) => onBotBannerCrop(f)}
+/>

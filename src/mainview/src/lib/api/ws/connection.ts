@@ -25,9 +25,13 @@ import {
 	spaceEmojis,
 	spaceStickers,
 	userActivities,
+	pendingTeamInvites,
+	myBuckets,
 } from "$lib/stores.svelte";
 import { getFriends, getPendingRequests, getSentRequests } from "$lib/api/friends";
 import { getConversations } from "$lib/api/conversations";
+import { listMyTeamInvites } from "$lib/api/developer";
+import { getMyBuckets } from "$lib/api/user";
 import { getMentionCounts } from "$lib/api/messages";
 import { getWSHostURL, getAvatarURL, route } from "$lib/common/common";
 import { get } from "svelte/store";
@@ -61,7 +65,7 @@ let lastSeq = 0;
 // Cache of live user statuses received via USER_STATUS_UPDATE.
 // Keyed by user ID so we can apply the correct status when a user is
 // added to a space AFTER their status event already fired.
-const userStatusCache = new Map<string, UserStatus>();
+export const userStatusCache = new Map<string, UserStatus>();
 
 type WebRTCEventListener = (type: string, data: unknown) => void;
 const webrtcListeners: WebRTCEventListener[] = [];
@@ -93,12 +97,7 @@ function addMembersToSpace(spaceId: string, rows: SpaceMemberWithUser[]) {
 			// Replace any placeholder members for the same users with real data
 			const filteredMembers = s.members.filter((m) => !incomingUserIds.has(m.user_id));
 			const newUsers = rows
-				.map((r) => {
-					// Apply cached live status so users don't appear offline
-					// when the REST snapshot still has status_id=0.
-					const liveStatus = userStatusCache.get(r.user.id);
-					return liveStatus !== undefined ? { ...r.user, status_id: liveStatus } : r.user;
-				})
+				.map((r) => r.user)
 				.filter((u) => !existingUserIds.has(u.id));
 			const newMembers = rows.map(({ user: _u, max_pos: _p, ...m }) => m as GatewayMember);
 			return {
@@ -124,10 +123,7 @@ function handleEvent(event: GatewayEvent) {
 		case "READY": {
 			const { user, sessionToken, unread_rooms } = payload.data;
 			// The connected user is always online by definition.
-			// Override whatever the DB stored so every downstream consumer
-			// (SPACE_CREATE's currentUserData, the sidebar, etc.) sees status=1.
-			const onlineUser = { ...user, status_id: 1 as UserStatus };
-			currentUser.set(onlineUser);
+			currentUser.set(user);
 			wsSessionToken.set(sessionToken);
 			userStatusCache.set(user.id, 1);
 			unreadChannels.set(new Set(unread_rooms ?? []));
@@ -137,12 +133,14 @@ function handleEvent(event: GatewayEvent) {
 			unreadConversations.set(new Set(unread_convs ?? []));
 			// Fetch friends, pending/sent requests, and conversations eagerly
 			// so they are available before FriendsView mounts.
-			Promise.all([getPendingRequests(), getSentRequests(), getFriends(), getConversations()])
-				.then(([pending, sent, friendList, convList]) => {
+			Promise.all([getPendingRequests(), getSentRequests(), getFriends(), getConversations(), listMyTeamInvites(), getMyBuckets()])
+				.then(([pending, sent, friendList, convList, teamInvites, bucketList]) => {
 					pendingFriendRequests.set(pending);
 					sentFriendRequests.set(sent);
 					friends.set(friendList);
 					conversations.set(convList);
+					pendingTeamInvites.set(teamInvites);
+					myBuckets.set(bucketList);
 					friendsReady.set(true);
 				})
 				.catch((err) => {
@@ -202,7 +200,6 @@ function handleEvent(event: GatewayEvent) {
 						alias: null,
 						created_at: spaceCreateData.space.created_at,
 						updated_at: spaceCreateData.space.updated_at,
-						deleted_at: null,
 					}
 				: undefined;
 			const space: GatewaySpace = {
@@ -221,6 +218,14 @@ function handleEvent(event: GatewayEvent) {
 			const spaceActivities = spaceCreateData.activities as Record<string, any> | undefined;
 			if (spaceActivities) {
 				userActivities.update((all) => ({ ...all, ...spaceActivities }));
+			}
+
+			// Cache member statuses from Redis so lazy-loaded members get correct status
+			const memberStatuses = spaceCreateData.member_statuses as Record<string, number> | undefined;
+			if (memberStatuses) {
+				for (const [uid, status] of Object.entries(memberStatuses)) {
+					userStatusCache.set(uid, status as UserStatus);
+				}
 			}
 
 			gatewaySpaces.update((spaces) => {
@@ -439,35 +444,18 @@ function handleEvent(event: GatewayEvent) {
 			break;
 		}
 		case "USER_STATUS_UPDATE": {
-			console.log("[WS] Received status update:", payload.data);
 			const raw = payload.data;
-			// Always persist the latest live status so it can be applied
-			// to users who are added to the store later.
 			userStatusCache.set(raw.user_id, raw.status_id);
+			// Create new object references for affected spaces so Svelte detects the change
 			gatewaySpaces.update((spaces) =>
-				spaces.map((s) => ({
-					...s,
-					users: s.users.map((u) => {
-						if (u.id === raw.user_id) {
-							return {
-								...u,
-								status_id: raw.status_id,
-							};
-						}
-						return u;
-					}),
-				})),
+				spaces.map((s) =>
+					s.users.some((u) => u.id === raw.user_id) ? { ...s } : s,
+				),
 			);
 			conversations.update((convs) =>
-				convs.map((c) => ({
-					...c,
-					members: c.members.map((m) => {
-						if (m.user_id === raw.user_id) {
-							return { ...m, user: { ...m.user, status_id: raw.status_id } };
-						}
-						return m;
-					}),
-				})),
+				convs.map((c) =>
+					c.members.some((m) => m.user_id === raw.user_id) ? { ...c } : c,
+				),
 			);
 			break;
 		}
@@ -672,16 +660,10 @@ function handleEvent(event: GatewayEvent) {
 		}
 		case "SPACE_MEMBER_ADD": {
 			const raw = payload.data;
-			// Refresh the member list so the newly joined user appears.
-			// The new member is definitely online (they just connected and joined),
-			// so force status=1 on their row to avoid the DB snapshot returning 0.
+			// The new member is online (they just joined)
+			userStatusCache.set(raw.user_id, 1);
 			getSpaceMembers(raw.space_id)
-				.then((rows) => {
-					const patched = rows.map((r) =>
-						r.id === raw.member_id ? { ...r, users: { ...r.user, status_id: 1 as UserStatus } } : r,
-					);
-					addMembersToSpace(raw.space_id, patched);
-				})
+				.then((rows) => addMembersToSpace(raw.space_id, rows))
 				.catch((err) => console.error("[WS] Failed to refresh members after join:", err));
 			break;
 		}
@@ -883,7 +865,6 @@ function handleEvent(event: GatewayEvent) {
 						alias: null,
 						created_at: new Date().toISOString(),
 						updated_at: new Date().toISOString(),
-						deleted_at: null,
 					};
 					const alreadyHasUser = s.users.some((u) => u.id === raw.user_id);
 					return {
@@ -972,14 +953,12 @@ function handleEvent(event: GatewayEvent) {
 								user_id: raw.user_id,
 								created_at: new Date().toISOString(),
 								updated_at: new Date().toISOString(),
-								deleted_at: null,
 								user: {
 									id: raw.user_id,
 									username: raw.username ?? "",
 									alias: raw.alias ?? null,
 									avatar: raw.avatar ?? null,
 									banner: raw.banner ?? null,
-									status_id: raw.status_id ?? 0,
 								},
 							},
 						],
@@ -1202,6 +1181,11 @@ function handleEvent(event: GatewayEvent) {
 				activeCall.set(null);
 				callVoiceStates.set([]);
 			}
+			break;
+		}
+		case "TEAM_INVITE_CREATE": {
+			const inv = payload.data;
+			pendingTeamInvites.update((list) => [...list, inv]);
 			break;
 		}
 		default:

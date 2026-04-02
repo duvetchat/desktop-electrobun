@@ -4,6 +4,7 @@
 	import { currentUser, gatewaySpaces, typingUsers, userActivities } from "$lib/stores.svelte";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
 	import { getSpaceMembers, MEMBERS_PAGE_SIZE, type SpaceMemberWithUser } from "$lib/api/spaces";
+	import { userStatusCache } from "$lib/api/ws/connection";
 	import MemberProfilePopover from "$lib/components/MemberProfilePopover.svelte";
 	import { getAvatarURL } from "$lib/common/common";
 
@@ -49,7 +50,7 @@
 	function convertMember(member: GatewayMember, sp: GatewaySpace): MemberOnSidebar | null {
 		const u = sp.users.find((usr) => usr.id === member.user_id);
 		if (!u) return null;
-		const sid = u.status_id as number;
+		const sid = userStatusCache.get(u.id) ?? 0;
 		const status: MemberOnSidebar["status"] = sid === 1 ? "online" : sid === 2 ? "dnd" : "offline";
 		return {
 			id: u.id,
@@ -59,7 +60,7 @@
 			avatar_url: getAvatarURL(u.id, u.avatar),
 			banner_url: getAvatarURL(u.id, u.banner),
 			status,
-			is_bot: false,
+			is_bot: u.is_bot ?? false,
 			is_owner: u.id === sp.owner_id,
 			roles: (sp.member_roles[u.id] ?? [])
 				.map((rid) => sp.roles.find((r) => r.id === rid))
@@ -89,7 +90,9 @@
 				const incomingUserIds = new Set(rows.map((r) => r.user.id));
 				// Replace any placeholder members for the same users with real data
 				const filteredMembers = s.members.filter((m) => !incomingUserIds.has(m.user_id));
-				const newUsers = rows.map((r) => r.user).filter((u) => !existingUserIds.has(u.id));
+				const newUsers = rows
+					.map((r) => r.user)
+					.filter((u) => !existingUserIds.has(u.id));
 				const newMembers = rows.map(({ user: _u, max_pos: _p, ...m }) => m);
 				return {
 					...s,

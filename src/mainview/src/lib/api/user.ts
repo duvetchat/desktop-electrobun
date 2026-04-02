@@ -12,7 +12,6 @@ interface UserMeResult {
 	avatar: string | null;
 	banner: string | null;
 	custom: string;
-	status_id: string;
 	created_at: string;
 	updated_at: string;
 }

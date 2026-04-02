@@ -9,14 +9,13 @@ export interface ConversationMember {
 	user_id: string;
 	created_at: string;
 	updated_at: string;
-	deleted_at: string | null;
 	user: {
 		id: string;
 		username: string;
 		alias: string | null;
 		avatar: string | null;
 		banner: string | null;
-		status_id: number;
+		is_bot?: boolean;
 	};
 }
 
@@ -27,7 +26,6 @@ export interface Conversation {
 	owner_id: string;
 	created_at: string;
 	updated_at: string;
-	deleted_at: string | null;
 	members: ConversationMember[];
 }
 
@@ -40,7 +38,6 @@ export interface DirectMessage {
 	type: MessageType;
 	created_at: string;
 	updated_at: string;
-	deleted_at: string | null;
 	nonce?: string;
 	ref_message_id?: string | null;
 	referenced_message?: import("$lib/types").ReferencedMessage | null;
@@ -50,6 +47,7 @@ export interface DirectMessage {
 		alias: string | null;
 		avatar: string | null;
 		banner: string | null;
+		is_bot?: boolean;
 	};
 	attachments?: import("$lib/types").Attachment[] | null;
 	reactions?: import("$lib/types").MessageReaction[] | null;

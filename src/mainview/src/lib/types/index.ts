@@ -115,7 +115,6 @@ export interface GatewayMessage {
 	type: MessageType;
 	created_at: string;
 	updated_at: string;
-	deleted_at: string | null;
 	nonce?: string;
 	user?: GatewayUser;
 	member_alias?: string | null;
@@ -134,6 +133,7 @@ export interface Message {
 	author_id: string;
 	author_name: string;
 	author_avatar_url: string | null;
+	author_is_bot: boolean;
 	created_at: string;
 	updated_at: string;
 	nonce?: string;
@@ -166,7 +166,6 @@ export interface GatewayRoomOverwrite {
 	allow_flags: number;
 	created_at: string;
 	updated_at: string;
-	deleted_at: string | null;
 }
 
 export type RoomType = 1 | 2 | 3; // 1 = text, 2 = voice, 3 = category
@@ -182,7 +181,6 @@ export interface GatewayRoom {
 	nsfw: boolean;
 	created_at: string;
 	updated_at: string;
-	deleted_at: string | null;
 }
 
 export interface GatewayMember {
@@ -192,7 +190,6 @@ export interface GatewayMember {
 	alias: string | null;
 	created_at: string;
 	updated_at: string;
-	deleted_at: string | null;
 }
 
 export interface GatewayRole {
@@ -206,7 +203,6 @@ export interface GatewayRole {
 	permissions: number;
 	created_at: string;
 	updated_at: string;
-	deleted_at: string | null;
 	hoisted: boolean;
 	position: number;
 }
@@ -225,10 +221,9 @@ export interface GatewayUser {
 	avatar: string | null;
 	banner: string | null;
 	custom: string;
-	status_id: UserStatus;
+	is_bot: boolean;
 	created_at: string;
 	updated_at: string;
-	deleted_at: string | null;
 }
 
 export interface GatewayVoiceState {
@@ -256,7 +251,6 @@ export interface GatewaySpace {
 	voice_states?: GatewayVoiceState[];
 	created_at: string;
 	updated_at: string;
-	deleted_at: string | null;
 }
 
 export interface SpaceEmoji {
@@ -266,7 +260,6 @@ export interface SpaceEmoji {
 	attachment_id: string;
 	created_at: string;
 	updated_at: string;
-	deleted_at: string | null;
 }
 
 export interface SpaceSticker {
@@ -276,7 +269,6 @@ export interface SpaceSticker {
 	attachment_id: string;
 	created_at: string;
 	updated_at: string;
-	deleted_at: string | null;
 }
 
 export interface GatewaySpaceCreatePayload {
@@ -289,7 +281,6 @@ export interface GatewaySpaceCreatePayload {
 		locale: string | null;
 		created_at: string;
 		updated_at: string;
-		deleted_at: string | null;
 	};
 	rooms: Record<string, GatewayRoom>;
 	roles_permissions: Record<string, GatewayRole>;
@@ -298,6 +289,7 @@ export interface GatewaySpaceCreatePayload {
 	owner_id: string;
 	voice_states?: GatewayVoiceState[];
 	activities?: Record<string, import("$lib/stores.svelte").UserActivity>;
+	member_statuses?: Record<string, number>;
 }
 
 export interface ReactionEvent {
@@ -403,6 +395,7 @@ export interface MemberRoleEvent {
 export interface SpaceMemberEvent {
 	member_id: string;
 	space_id: string;
+	user_id: string;
 }
 
 export interface GuildMemberAddEvent {
@@ -525,7 +518,8 @@ export type GatewayEventPayload =
 	| { type: "CALL_INCOMING"; data: CallIncomingEvent }
 	| { type: "CALL_ACCEPTED"; data: CallResponseEvent }
 	| { type: "CALL_DECLINED"; data: CallResponseEvent }
-	| { type: "CALL_ENDED"; data: CallEndedEvent };
+	| { type: "CALL_ENDED"; data: CallEndedEvent }
+	| { type: "TEAM_INVITE_CREATE"; data: any };
 
 export interface GatewayEvent {
 	op: number;
@@ -569,11 +563,13 @@ export function roomTypeToChannelType(type: RoomType): Channel["type"] {
 export function gatewayMessageToMessage(msg: GatewayMessage, spaces: GatewaySpace[]): Message {
 	let author_name = "Unknown";
 	let author_avatar_url: string | null = null;
+	let author_is_bot = false;
 
 	if (msg.user) {
 		const memberAlias = msg.member_alias ?? null;
 		author_name = memberAlias ?? msg.user.alias ?? msg.user.username;
 		author_avatar_url = getAvatarURL(msg.user.id, msg.user.avatar);
+		author_is_bot = msg.user.is_bot ?? false;
 	} else {
 		for (const space of spaces) {
 			const user = space.users.find((u) => u.id === msg.author_id);
@@ -581,6 +577,7 @@ export function gatewayMessageToMessage(msg: GatewayMessage, spaces: GatewaySpac
 				const member = space.members.find((m) => m.user_id === msg.author_id);
 				author_name = member?.alias ?? user.alias ?? user.username;
 				author_avatar_url = getAvatarURL(user.id, user.avatar);
+				author_is_bot = user.is_bot ?? false;
 				break;
 			}
 		}
@@ -593,6 +590,7 @@ export function gatewayMessageToMessage(msg: GatewayMessage, spaces: GatewaySpac
 		author_id: msg.author_id,
 		author_name,
 		author_avatar_url,
+		author_is_bot,
 		created_at: msg.created_at,
 		updated_at: msg.updated_at,
 		nonce: msg.nonce,
@@ -703,7 +701,7 @@ function userStatusToString(statusId: UserStatus): MemberOnSidebar["status"] {
 	}
 }
 
-export function gatewaySpaceToMembers(space: GatewaySpace): MemberOnSidebar[] {
+export function gatewaySpaceToMembers(space: GatewaySpace, statusLookup?: Map<string, UserStatus>): MemberOnSidebar[] {
 	const memberUserIds = new Set(space.members.map((m) => m.user_id));
 	return space.users
 		.filter((u) => memberUserIds.has(u.id))
@@ -716,8 +714,8 @@ export function gatewaySpaceToMembers(space: GatewaySpace): MemberOnSidebar[] {
 				raw_username: u.username,
 				avatar_url: getAvatarURL(u.id, u.avatar),
 				banner_url: getAvatarURL(u.id, u.banner),
-				status: userStatusToString(u.status_id),
-				is_bot: false,
+				status: userStatusToString(statusLookup?.get(u.id) ?? 0),
+				is_bot: u.is_bot ?? false,
 				is_owner: u.id === space.owner_id,
 				roles: (space.member_roles[u.id] ?? [])
 					.map((roleId) => space.roles.find((r) => r.id === roleId))

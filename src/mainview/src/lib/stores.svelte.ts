@@ -4,6 +4,8 @@ import { writable } from "svelte/store";
 import type { GatewaySpace, GatewayUser, Message, SpaceEmoji, SpaceSticker } from "$lib/types";
 import type { FriendRequest, Friend } from "$lib/api/friends";
 import type { Conversation, DirectMessage } from "$lib/api/conversations";
+import type { TeamInvite } from "$lib/api/developer";
+import type { StorageBucket } from "$lib/api/user";
 
 const SESSION_KEY = "duvet_session_token";
 
@@ -82,6 +84,9 @@ export const friendsReady = writable<boolean>(false);
 
 export const conversations = writable<Conversation[]>([]);
 export const dmMessages = writable<Record<string, DirectMessage[]>>({});
+export const pendingTeamInvites = writable<TeamInvite[]>([]);
+export const botInviteRequest = writable<string | null>(null);
+export const myBuckets = writable<StorageBucket[]>([]);
 
 export interface TypingUser {
 	user_id: string;

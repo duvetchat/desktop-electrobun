@@ -1,10 +1,14 @@
 <script lang="ts">
 	import type { MemberOnSidebar, Role } from "$lib/types";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
+	import ImagePreview from "$lib/components/ImagePreview.svelte";
 	import { Camera as CameraIcon, Trash2 as TrashIcon } from "@lucide/svelte";
 	import { userActivities } from "$lib/stores.svelte";
 	import { resolveActivityIcon } from "$lib/activity-icons";
 	import ElapsedTime from "$lib/components/ElapsedTime.svelte";
+
+	let previewSrc = $state("");
+	let previewOpen = $state(false);
 
 	let {
 		member,
@@ -86,12 +90,17 @@
 				{/if}
 			</div>
 		</div>
+	{:else if member.banner_url}
+		<button
+			type="button"
+			class="h-24 w-full cursor-pointer"
+			style="background-image: url('{member.banner_url}'); background-size: cover; background-position: center;"
+			onclick={() => { previewSrc = member.banner_url!; previewOpen = true; }}
+		></button>
 	{:else}
 		<div
 			class="h-24 w-full"
-			style={member.banner_url
-				? `background-image: url('${member.banner_url}'); background-size: cover; background-position: center;`
-				: getBannerStyle(member)}
+			style={getBannerStyle(member)}
 		></div>
 	{/if}
 
@@ -124,8 +133,12 @@
 						{/if}
 					</div>
 				</div>
+			{:else if member.avatar_url}
+				<button type="button" class="cursor-pointer rounded-full" onclick={() => { previewSrc = member.avatar_url!; previewOpen = true; }}>
+					<UserAvatar src={member.avatar_url} name={member.username} size={80} />
+				</button>
 			{:else}
-				<UserAvatar src={member.avatar_url} name={member.username} size={80} />
+				<UserAvatar src={null} name={member.username} size={80} />
 			{/if}
 			<div
 				class="absolute right-0 bottom-0 h-6 w-6 rounded-full border-4 border-zinc-800
@@ -142,8 +155,11 @@
 		<div class="h-14"></div>
 
 		<div class="mt-4 rounded-lg bg-zinc-950 p-3">
-			<h2 class="break-all text-lg leading-tight font-bold text-zinc-100">
+			<h2 class="flex items-center gap-1.5 break-all text-lg leading-tight font-bold text-zinc-100">
 				{member.username}
+				{#if member.is_bot}
+					<span class="rounded bg-stone-600 px-1.5 py-0.5 text-xxs font-semibold text-white">BOT</span>
+				{/if}
 			</h2>
 			<p class="break-all text-sm font-medium text-zinc-400">
 				@{member.raw_username}
@@ -197,6 +213,8 @@
 		</div>
 	</div>
 </div>
+
+<ImagePreview src={previewSrc} bind:open={previewOpen} />
 
 <style>
 	.avatar-edit-group:hover .avatar-edit-overlay {

@@ -19,6 +19,7 @@
 	import type { MemberOnSidebar, GatewaySpace, PaneNode, Guild, Tab } from "$lib/types";
 
 	import { gatewayMessageToMessage, gatewaySpaceToMembers, roomTypeToChannelType } from "$lib/types";
+	import { userStatusCache } from "$lib/api/ws/connection";
 	import PaneView from "$lib/components/PaneView.svelte";
 	import TabBar from "$lib/components/TabBar.svelte";
 	import Chat from "$lib/components/Chat.svelte";
@@ -111,7 +112,7 @@
 	const activeTabSpace = $derived(
 		activeTab?.spaceId ? ($gatewaySpaces.find((s) => s.id === activeTab.spaceId) ?? null) : null,
 	);
-	const activeTabMembers = $derived(activeTabSpace ? gatewaySpaceToMembers(activeTabSpace) : members);
+	const activeTabMembers = $derived(activeTabSpace ? gatewaySpaceToMembers(activeTabSpace, userStatusCache) : members);
 	// Channel info comes directly from the tab — no cross-guild lookup needed.
 	const activeChannel = $derived(
 		activeTab

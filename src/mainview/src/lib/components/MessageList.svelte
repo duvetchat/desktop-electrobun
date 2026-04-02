@@ -3,7 +3,7 @@
 	import { onDestroy, onMount, tick } from "svelte";
 	import { updateMessage, deleteMessage, getMessageThread } from "$lib/api/messages";
 	import { Dialog, Popover } from "bits-ui";
-	import { currentUser, jumpToMessageRequest, gatewaySpaces, pageVisible } from "$lib/stores.svelte";
+	import { currentUser, jumpToMessageRequest, gatewaySpaces, pageVisible, botInviteRequest } from "$lib/stores.svelte";
 	import {
 		addRoomReaction,
 		removeRoomReaction,
@@ -15,9 +15,10 @@
 
 	import { gatewayMessageToMessage } from "$lib/types";
 	import { MessageType, type MemberOnSidebar, type GatewaySpace, type Message, type SpaceEmoji } from "$lib/types";
-	import { getHostURL } from "$lib/common/common";
+	import { getHostURL, getAvatarURL } from "$lib/common/common";
 
 	import InviteEmbed from "$lib/components/InviteEmbed.svelte";
+	import BotInviteEmbed from "$lib/components/BotInviteEmbed.svelte";
 	import MessageLinkEmbed from "$lib/components/MessageLinkEmbed.svelte";
 	import EmbedCard from "$lib/components/EmbedCard.svelte";
 	import VoiceNotePlayer from "$lib/components/VoiceNotePlayer.svelte";
@@ -524,6 +525,16 @@
 	const roomLinkRegex = /^duvet:\/\/channels\/([^/]+)\/([^/]+)\/([^/]+)$/;
 	const convLinkRegex = /^duvet:\/\/conversations\/([^/]+)\/([^/]+)$/;
 
+	function parseBotInviteLink(url: string): string | null {
+		try {
+			const u = new URL(url);
+			if (u.origin === window.location.origin && u.hash.startsWith("#bot:")) {
+				return decodeURIComponent(u.hash.slice(5));
+			}
+		} catch {}
+		return null;
+	}
+
 	function tryNavigateMessageLink(url: string): boolean {
 		const roomMatch = roomLinkRegex.exec(url);
 		if (roomMatch) {
@@ -595,6 +606,7 @@
 	function processMessageContent(content: string) {
 		const urls = content.match(urlRegex) || [];
 		const inviteCodes: string[] = [];
+		const botInviteIds: string[] = [];
 		const messageLinks: { spaceId: string; roomId: string; messageId: string; conversationId?: string }[] = [];
 
 		urls.forEach((url) => {
@@ -620,12 +632,18 @@
 						return;
 					}
 				}
+
+				const botId = parseBotInviteLink(url);
+				if (botId) {
+					botInviteIds.push(botId);
+					return;
+				}
 			} catch {
 				// Invalid URL, ignore
 			}
 		});
 
-		return { text: content, inviteCodes, messageLinks };
+		return { text: content, inviteCodes, botInviteIds, messageLinks };
 	}
 
 	function parseTextSegments(text: string) {
@@ -839,7 +857,7 @@
 								})}
 						>
 							<UserAvatar
-								src={message.referenced_message.author_avatar ?? null}
+								src={getAvatarURL(message.referenced_message.author_id ?? "", message.referenced_message.author_avatar)}
 								name={message.referenced_message.author_name ?? "?"}
 								size={16}
 							/>
@@ -913,6 +931,9 @@
 									>
 										{message.author_name}
 									</span>
+								{/if}
+								{#if message.author_is_bot}
+									<span class="mr-1.5 rounded bg-stone-600 px-1 py-0.5 text-xxs font-semibold text-white">BOT</span>
 								{/if}
 								<span class="text-xs font-medium text-zinc-400">{formatTimestamp(message.created_at, now)}</span>
 							</div>
@@ -1071,6 +1092,16 @@
 														}}>{segment.content}</button
 													>
 												{/if}
+											{:else if parseBotInviteLink(segment.content)}
+												<button
+													type="button"
+													class="cursor-pointer text-stone-300 hover:underline"
+													onclick={(e) => {
+														e.stopPropagation();
+														const id = parseBotInviteLink(segment.content);
+														if (id) botInviteRequest.set(id);
+													}}
+												>{segment.content}</button>
 											{:else}
 												<a
 													href={segment.content}
@@ -1095,6 +1126,13 @@
 								<div class="flex flex-col gap-2">
 									{#each processed.inviteCodes as code}
 										<InviteEmbed {code} />
+									{/each}
+								</div>
+							{/if}
+							{#if processed.botInviteIds.length > 0}
+								<div class="flex flex-col gap-2">
+									{#each processed.botInviteIds as botId}
+										<BotInviteEmbed botUserId={botId} />
 									{/each}
 								</div>
 							{/if}

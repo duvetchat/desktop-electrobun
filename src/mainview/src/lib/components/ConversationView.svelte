@@ -15,7 +15,7 @@
 		conversationsWithCalls,
 		jumpToMessageRequest,
 	} from "$lib/stores.svelte";
-	import { sendEventMessage } from "$lib/api/ws/connection";
+	import { sendEventMessage, userStatusCache } from "$lib/api/ws/connection";
 	import {
 		getDirectMessages,
 		getDirectMessageById,
@@ -117,8 +117,8 @@
 			raw_username: m.user?.username ?? m.user_id.slice(0, 8),
 			avatar_url: getAvatarURL(m.user_id, m.user?.avatar),
 			banner_url: getAvatarURL(m.user_id, m.user?.banner),
-			status: m.user?.status_id === 1 ? "online" : m.user?.status_id === 2 ? "dnd" : "offline",
-			is_bot: false,
+			status: (userStatusCache.get(m.user_id) === 1 ? "online" : userStatusCache.get(m.user_id) === 2 ? "dnd" : "offline") as "online" | "dnd" | "offline",
+			is_bot: m.user?.is_bot ?? false,
 			is_owner: m.user_id === conversation.owner_id,
 			roles: [],
 		})),
@@ -165,6 +165,7 @@
 				member?.user?.username ??
 				msg.author_id.slice(0, 8),
 			author_avatar_url: getAvatarURL(msg.author_id, msg.user?.avatar ?? member?.user?.avatar),
+			author_is_bot: msg.user?.is_bot ?? false,
 			created_at: msg.created_at,
 			updated_at: msg.updated_at,
 			nonce: msg.nonce,
@@ -308,7 +309,6 @@
 			type: 0,
 			created_at: isoNow,
 			updated_at: isoNow,
-			deleted_at: null,
 			nonce,
 			ref_message_id: ref?.message_id ?? null,
 			referenced_message: refMsg
@@ -396,7 +396,6 @@
 			type: MessageType.Voice,
 			created_at: isoNow,
 			updated_at: isoNow,
-			deleted_at: null,
 			nonce,
 			attachments: [
 				{

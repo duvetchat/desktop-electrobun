@@ -6,7 +6,6 @@ export interface FriendRequest {
 	recipient_id: string;
 	created_at: string;
 	updated_at: string;
-	deleted_at: string | null;
 	user_username: string;
 	user_alias: string | null;
 	user_avatar: string | null;

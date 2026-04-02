@@ -56,9 +56,16 @@
 </script>
 
 {#if loading}
-	<div class="mt-2 flex max-w-xs items-center gap-2 rounded-lg border border-zinc-700 bg-zinc-900 p-4">
-		<div class="h-4 w-4 animate-spin rounded-full border-2 border-stone-400 border-t-transparent"></div>
-		<span class="text-sm text-zinc-400">Loading invite…</span>
+	<div class="mt-2 max-w-xs rounded-lg border border-zinc-700 bg-zinc-900 p-4">
+		<div class="mb-3 h-3 w-44 animate-pulse rounded bg-zinc-800"></div>
+		<div class="mb-4 flex items-center gap-3">
+			<div class="h-12 w-12 shrink-0 animate-pulse rounded-xl bg-zinc-800"></div>
+			<div class="flex flex-col gap-1.5">
+				<div class="h-4 w-28 animate-pulse rounded bg-zinc-800"></div>
+				<div class="h-3 w-20 animate-pulse rounded bg-zinc-800"></div>
+			</div>
+		</div>
+		<div class="h-9 w-full animate-pulse rounded-md bg-zinc-800"></div>
 	</div>
 {:else if !error && invite}
 	<div

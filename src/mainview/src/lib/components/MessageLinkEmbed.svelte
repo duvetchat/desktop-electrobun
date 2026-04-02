@@ -52,6 +52,7 @@
 					author_id: raw.author_id,
 					author_name: raw.user?.alias ?? raw.user?.username ?? raw.author_id.slice(0, 8),
 					author_avatar_url: getAvatarURL(raw.author_id, raw.user?.avatar),
+					author_is_bot: raw.user?.is_bot ?? false,
 					created_at: raw.created_at,
 					updated_at: raw.updated_at,
 					embeds: raw.embeds ?? null,
