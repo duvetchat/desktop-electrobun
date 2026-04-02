@@ -9,6 +9,7 @@
 		Smile as SmileIcon,
 		Sticker as StickerIcon,
 		Database as DatabaseIcon,
+		Paperclip as PaperclipIcon,
 		X as XIcon,
 		Pencil as PencilIcon,
 		Trash2 as TrashIcon,
@@ -34,6 +35,7 @@
 
 	import type { GatewaySpace, SpaceEmoji, SpaceSticker } from "$lib/types";
 	import type { StorageBucket, CreateBucketPayload } from "$lib/api/user";
+	import { getSpaceAttachments, getSpaceStorageUsed, deleteSpaceAttachment, deleteAllSpaceAttachments, type SpaceAttachment } from "$lib/api/spaces";
 	import { getHostURL } from "$lib/common/common";
 
 	const attachmentHost = getHostURL();
@@ -48,7 +50,7 @@
 		open?: boolean;
 	} = $props();
 
-	type Section = "overview" | "members" | "roles" | "emojis" | "stickers" | "storage";
+	type Section = "overview" | "members" | "roles" | "emojis" | "stickers" | "storage" | "attachments";
 	let activeSection = $state<Section>("roles");
 
 	const PERMISSIONS = ALL_PERMISSIONS;
@@ -526,6 +528,58 @@
 		}
 	});
 
+	// Space attachments
+	let spaceAttachments = $state<SpaceAttachment[]>([]);
+	let spaceStorageUsed = $state(0);
+	let spaceAttachmentsLoading = $state(false);
+
+	function formatFileSize(bytes: number): string {
+		if (bytes < 1024) return `${bytes} B`;
+		if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+		return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+	}
+
+	async function loadSpaceAttachments() {
+		if (!spaceId) return;
+		spaceAttachmentsLoading = true;
+		try {
+			[spaceAttachments, { total_size: spaceStorageUsed }] = await Promise.all([
+				getSpaceAttachments(spaceId),
+				getSpaceStorageUsed(spaceId),
+			]);
+		} catch (e) {
+			toast(e instanceof Error ? e.message : "Failed to load attachments", "error");
+		} finally {
+			spaceAttachmentsLoading = false;
+		}
+	}
+
+	async function handleDeleteSpaceAttachment(att: SpaceAttachment) {
+		if (!spaceId) return;
+		const sid = spaceId;
+		await confirmAction(`Delete "${att.filename}"?`, "Deleting", async () => {
+			await deleteSpaceAttachment(sid, att.id);
+			spaceAttachments = spaceAttachments.filter((a) => a.id !== att.id);
+			spaceStorageUsed -= att.size_bytes;
+		});
+	}
+
+	async function handleDeleteAllSpaceAttachments() {
+		if (!spaceId) return;
+		const sid = spaceId;
+		await confirmAction("Delete all attachments in this space? This cannot be undone.", "Deleting", async () => {
+			await deleteAllSpaceAttachments(sid);
+			spaceAttachments = [];
+			spaceStorageUsed = 0;
+		});
+	}
+
+	$effect(() => {
+		if (activeSection === "attachments" && spaceId) {
+			void loadSpaceAttachments();
+		}
+	});
+
 	function resetSpaceBucketForm() {
 		sbName = "";
 		sbEndpoint = "";
@@ -729,6 +783,16 @@
 								Storage
 							</button>
 						{/if}
+						<button
+							class="flex items-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium transition-colors duration-100
+                            {activeSection === 'attachments'
+								? 'bg-zinc-800 text-white'
+								: 'text-zinc-400 hover:bg-zinc-800/60 hover:text-zinc-200'}"
+							onclick={() => (activeSection = "attachments")}
+						>
+							<PaperclipIcon class="size-4" />
+							Attachments
+						</button>
 					</nav>
 				</aside>
 
@@ -747,7 +811,9 @@
 											? "Stickers"
 											: activeSection === "storage"
 												? "Storage"
-												: "Members"}
+												: activeSection === "attachments"
+													? "Attachments"
+													: "Members"}
 						</h2>
 						<Dialog.Close
 							class="rounded-lg p-1.5 text-zinc-400 transition-colors duration-150 hover:bg-zinc-800 hover:text-white"
@@ -1702,6 +1768,82 @@
 								{/if}
 							{:else}
 								<p class="text-sm text-zinc-400">You don't have permission to manage storage for this server.</p>
+							{/if}
+						{:else if activeSection === "attachments"}
+							<div class="flex items-center justify-between rounded-lg border border-zinc-800 bg-zinc-800/40 px-4 py-3">
+								<div class="text-sm text-zinc-300">
+									<span class="font-semibold text-white">{spaceAttachments.length}</span>
+									file{spaceAttachments.length !== 1 ? "s" : ""}
+									<span class="mx-1 text-zinc-600">&middot;</span>
+									{formatFileSize(spaceStorageUsed)}
+								</div>
+								{#if spaceAttachments.length > 0}
+									<button
+										onclick={handleDeleteAllSpaceAttachments}
+										class="flex items-center gap-1.5 rounded-md bg-red-600/20 px-3 py-1.5 text-xs font-semibold text-red-400 transition-colors hover:bg-red-600/30"
+									>
+										<TrashIcon class="size-3.5" />
+										Delete All
+									</button>
+								{/if}
+							</div>
+
+							{#if spaceAttachmentsLoading}
+								<div class="space-y-2">
+									{#each Array(5) as _}
+										<div class="h-14 animate-pulse rounded-lg bg-zinc-800/40"></div>
+									{/each}
+								</div>
+							{:else if spaceAttachments.length === 0}
+								<div class="flex flex-col items-center justify-center py-16 text-zinc-500">
+									<PaperclipIcon class="mb-3 size-10" />
+									<p class="text-sm">No attachments in this space</p>
+								</div>
+							{:else}
+								<div class="space-y-1">
+									{#each spaceAttachments as att (att.id)}
+										{@const isImage = att.content_type.startsWith("image/")}
+										{@const isAudio = att.content_type.startsWith("audio/")}
+										<div class="group rounded-lg border border-zinc-800 bg-zinc-800/30 transition-colors hover:bg-zinc-800/50">
+											<div class="flex items-center gap-3 px-3 py-2.5">
+												{#if isImage}
+													<img src="{attachmentHost}/attachments/{att.id}" alt="" class="h-10 w-10 shrink-0 rounded bg-zinc-700 object-cover" />
+												{:else if isAudio}
+													<div class="flex h-10 w-10 shrink-0 items-center justify-center rounded bg-zinc-700">
+														<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-zinc-400"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" /><path d="M19 10v2a7 7 0 0 1-14 0v-2" /><line x1="12" x2="12" y1="19" y2="22" /></svg>
+													</div>
+												{:else}
+													<div class="flex h-10 w-10 shrink-0 items-center justify-center rounded bg-zinc-700">
+														<PaperclipIcon class="size-4 text-zinc-400" />
+													</div>
+												{/if}
+												<div class="min-w-0 flex-1">
+													<p class="truncate text-sm text-zinc-200">{att.filename}</p>
+													<p class="text-xs text-zinc-500">
+														{formatFileSize(att.size_bytes)}
+														<span class="mx-1 text-zinc-600">&middot;</span>
+														{new Date(att.created_at).toLocaleDateString()}
+													</p>
+												</div>
+												<a
+													href="{attachmentHost}/attachments/{att.id}"
+													download={att.filename}
+													class="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-zinc-500 opacity-0 transition-all group-hover:opacity-100 hover:bg-zinc-700 hover:text-zinc-200"
+													title="Download"
+												>
+													<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" x2="12" y1="15" y2="3" /></svg>
+												</a>
+												<button
+													onclick={() => handleDeleteSpaceAttachment(att)}
+													class="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-zinc-500 opacity-0 transition-all group-hover:opacity-100 hover:bg-red-600/20 hover:text-red-400"
+													title="Delete"
+												>
+													<TrashIcon class="size-4" />
+												</button>
+											</div>
+										</div>
+									{/each}
+								</div>
 							{/if}
 						{/if}
 					</div>

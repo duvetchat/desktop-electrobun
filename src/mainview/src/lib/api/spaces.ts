@@ -42,3 +42,34 @@ export async function getSpaceMember(spaceId: string, memberId: string): Promise
 export async function leaveSpace(spaceId: string): Promise<void> {
 	await api.delete(`/api/spaces/${spaceId}/members/@me`);
 }
+
+// ── Space Attachments ───────────────────────────────────────────────────────
+
+export interface SpaceAttachment {
+	id: string;
+	message_id: string | null;
+	filename: string;
+	content_type: string;
+	size_bytes: number;
+	width?: number | null;
+	height?: number | null;
+	created_at: string;
+}
+
+export async function getSpaceAttachments(spaceId: string): Promise<SpaceAttachment[]> {
+	const res = await api.get(`/api/spaces/${spaceId}/attachments`);
+	return res.data;
+}
+
+export async function getSpaceStorageUsed(spaceId: string): Promise<{ total_size: number }> {
+	const res = await api.get(`/api/spaces/${spaceId}/attachments/storage`);
+	return res.data;
+}
+
+export async function deleteSpaceAttachment(spaceId: string, attachmentId: string): Promise<void> {
+	await api.delete(`/api/spaces/${spaceId}/attachments/${attachmentId}`);
+}
+
+export async function deleteAllSpaceAttachments(spaceId: string): Promise<void> {
+	await api.delete(`/api/spaces/${spaceId}/attachments`);
+}
