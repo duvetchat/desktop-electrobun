@@ -35,7 +35,13 @@
 
 	import type { GatewaySpace, SpaceEmoji, SpaceSticker } from "$lib/types";
 	import type { StorageBucket, CreateBucketPayload } from "$lib/api/user";
-	import { getSpaceAttachments, getSpaceStorageUsed, deleteSpaceAttachment, deleteAllSpaceAttachments, type SpaceAttachment } from "$lib/api/spaces";
+	import {
+		getSpaceAttachments,
+		getSpaceStorageUsed,
+		deleteSpaceAttachment,
+		deleteAllSpaceAttachments,
+		type SpaceAttachment,
+	} from "$lib/api/spaces";
 	import { getHostURL } from "$lib/common/common";
 
 	const attachmentHost = getHostURL();
@@ -428,6 +434,7 @@
 	const canManageEmojis = $derived(hasSpacePermission(Permission.ManageSpaceEmojis));
 	const canManageStickers = $derived(hasSpacePermission(Permission.ManageSpaceStickers));
 	const canManageBuckets = $derived(hasSpacePermission(Permission.ManageSpaceBuckets));
+	const canManageAttachments = $derived(hasSpacePermission(Permission.ManageSpaceAttachments));
 
 	// ── sticker handlers ────────────────────────────────────────
 	async function loadStickers() {
@@ -1605,44 +1612,45 @@
 											>
 										</label>
 										<div class="grid grid-cols-2 gap-3">
-												<div>
-													<label for="sb-max-bytes" class="mb-1 block text-xs font-semibold text-zinc-400 uppercase"
-														>Total Limit (MB)</label
-													>
-													<input
-														id="sb-max-bytes"
-														type="number"
-														min="0"
-														step="1"
-														bind:value={sbMaxBytesMB}
-														placeholder="No limit"
-														disabled={!!editingSpaceBucket}
-														class="h-9 w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 text-sm text-white placeholder-zinc-500 outline-none focus:border-stone-500 disabled:opacity-50 disabled:cursor-not-allowed"
-													/>
-												</div>
-												<div>
-													<label for="sb-upload-limit" class="mb-1 block text-xs font-semibold text-zinc-400 uppercase"
-														>Per-file Limit (MB)</label
-													>
-													<input
-														id="sb-upload-limit"
-														type="number"
-														min="0"
-														step="1"
-														bind:value={sbUploadLimitMB}
-														placeholder="No limit"
-														disabled={!!editingSpaceBucket}
-														class="h-9 w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 text-sm text-white placeholder-zinc-500 outline-none focus:border-stone-500 disabled:opacity-50 disabled:cursor-not-allowed"
-													/>
-												</div>
+											<div>
+												<label for="sb-max-bytes" class="mb-1 block text-xs font-semibold text-zinc-400 uppercase"
+													>Total Limit (MB)</label
+												>
+												<input
+													id="sb-max-bytes"
+													type="number"
+													min="0"
+													step="1"
+													bind:value={sbMaxBytesMB}
+													placeholder="No limit"
+													disabled={!!editingSpaceBucket}
+													class="h-9 w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 text-sm text-white placeholder-zinc-500 outline-none focus:border-stone-500 disabled:cursor-not-allowed disabled:opacity-50"
+												/>
 											</div>
-											{#if editingSpaceBucket}
-												<p class="text-xxs text-zinc-600">Limits cannot be changed after creation.</p>
-											{:else}
-												<p class="text-xxs text-zinc-600">
-													Leave empty for no limits. Once set, limits cannot be changed — only removed by deleting the bucket.
-												</p>
-											{/if}
+											<div>
+												<label for="sb-upload-limit" class="mb-1 block text-xs font-semibold text-zinc-400 uppercase"
+													>Per-file Limit (MB)</label
+												>
+												<input
+													id="sb-upload-limit"
+													type="number"
+													min="0"
+													step="1"
+													bind:value={sbUploadLimitMB}
+													placeholder="No limit"
+													disabled={!!editingSpaceBucket}
+													class="h-9 w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 text-sm text-white placeholder-zinc-500 outline-none focus:border-stone-500 disabled:cursor-not-allowed disabled:opacity-50"
+												/>
+											</div>
+										</div>
+										{#if editingSpaceBucket}
+											<p class="text-xxs text-zinc-600">Limits cannot be changed after creation.</p>
+										{:else}
+											<p class="text-xxs text-zinc-600">
+												Leave empty for no limits. Once set, limits cannot be changed — only removed by deleting the
+												bucket.
+											</p>
+										{/if}
 										<div class="flex justify-end gap-2 pt-1">
 											<button
 												class="rounded-md px-3 py-1.5 text-sm text-zinc-300 transition-colors hover:bg-zinc-800"
@@ -1706,8 +1714,14 @@
 													{#if bucket.max_bytes}
 														{@const pct = Math.min(Math.round((bucket.used_bytes / bucket.max_bytes) * 100), 100)}
 														<div class="mt-1.5 space-y-1">
-															<div class="flex items-center justify-between text-xxs text-zinc-500">
-																<span>{(bucket.used_bytes / 1024 / 1024).toFixed(1)} MB / {(bucket.max_bytes / 1024 / 1024).toFixed(0)} MB</span>
+															<div class="text-xxs flex items-center justify-between text-zinc-500">
+																<span
+																	>{(bucket.used_bytes / 1024 / 1024).toFixed(1)} MB / {(
+																		bucket.max_bytes /
+																		1024 /
+																		1024
+																	).toFixed(0)} MB</span
+																>
 																<span>{pct}%</span>
 															</div>
 															<div class="h-1.5 w-full overflow-hidden rounded-full bg-zinc-700">
@@ -1721,11 +1735,15 @@
 																></div>
 															</div>
 															{#if bucket.upload_limit_bytes}
-																<p class="text-xxs text-zinc-600">Per-file: {(bucket.upload_limit_bytes / 1024 / 1024).toFixed(0)} MB</p>
+																<p class="text-xxs text-zinc-600">
+																	Per-file: {(bucket.upload_limit_bytes / 1024 / 1024).toFixed(0)} MB
+																</p>
 															{/if}
 														</div>
 													{:else if bucket.upload_limit_bytes}
-														<p class="text-xxs mt-0.5 text-zinc-600">Per-file: {(bucket.upload_limit_bytes / 1024 / 1024).toFixed(0)} MB</p>
+														<p class="text-xxs mt-0.5 text-zinc-600">
+															Per-file: {(bucket.upload_limit_bytes / 1024 / 1024).toFixed(0)} MB
+														</p>
 													{/if}
 												</div>
 												<div
@@ -1777,7 +1795,7 @@
 									<span class="mx-1 text-zinc-600">&middot;</span>
 									{formatFileSize(spaceStorageUsed)}
 								</div>
-								{#if spaceAttachments.length > 0}
+								{#if spaceAttachments.length > 0 && canManageAttachments}
 									<button
 										onclick={handleDeleteAllSpaceAttachments}
 										class="flex items-center gap-1.5 rounded-md bg-red-600/20 px-3 py-1.5 text-xs font-semibold text-red-400 transition-colors hover:bg-red-600/30"
@@ -1804,13 +1822,33 @@
 									{#each spaceAttachments as att (att.id)}
 										{@const isImage = att.content_type.startsWith("image/")}
 										{@const isAudio = att.content_type.startsWith("audio/")}
-										<div class="group rounded-lg border border-zinc-800 bg-zinc-800/30 transition-colors hover:bg-zinc-800/50">
+										<div
+											class="group rounded-lg border border-zinc-800 bg-zinc-800/30 transition-colors hover:bg-zinc-800/50"
+										>
 											<div class="flex items-center gap-3 px-3 py-2.5">
 												{#if isImage}
-													<img src="{attachmentHost}/attachments/{att.id}" alt="" class="h-10 w-10 shrink-0 rounded bg-zinc-700 object-cover" />
+													<img
+														src="{attachmentHost}/attachments/{att.id}"
+														alt=""
+														class="h-10 w-10 shrink-0 rounded bg-zinc-700 object-cover"
+													/>
 												{:else if isAudio}
 													<div class="flex h-10 w-10 shrink-0 items-center justify-center rounded bg-zinc-700">
-														<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-zinc-400"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" /><path d="M19 10v2a7 7 0 0 1-14 0v-2" /><line x1="12" x2="12" y1="19" y2="22" /></svg>
+														<svg
+															xmlns="http://www.w3.org/2000/svg"
+															width="16"
+															height="16"
+															viewBox="0 0 24 24"
+															fill="none"
+															stroke="currentColor"
+															stroke-width="2"
+															stroke-linecap="round"
+															stroke-linejoin="round"
+															class="text-zinc-400"
+															><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" /><path
+																d="M19 10v2a7 7 0 0 1-14 0v-2"
+															/><line x1="12" x2="12" y1="19" y2="22" /></svg
+														>
 													</div>
 												{:else}
 													<div class="flex h-10 w-10 shrink-0 items-center justify-center rounded bg-zinc-700">
@@ -1831,15 +1869,30 @@
 													class="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-zinc-500 opacity-0 transition-all group-hover:opacity-100 hover:bg-zinc-700 hover:text-zinc-200"
 													title="Download"
 												>
-													<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" x2="12" y1="15" y2="3" /></svg>
+													<svg
+														xmlns="http://www.w3.org/2000/svg"
+														width="16"
+														height="16"
+														viewBox="0 0 24 24"
+														fill="none"
+														stroke="currentColor"
+														stroke-width="2"
+														stroke-linecap="round"
+														stroke-linejoin="round"
+														><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline
+															points="7 10 12 15 17 10"
+														/><line x1="12" x2="12" y1="15" y2="3" /></svg
+													>
 												</a>
-												<button
-													onclick={() => handleDeleteSpaceAttachment(att)}
-													class="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-zinc-500 opacity-0 transition-all group-hover:opacity-100 hover:bg-red-600/20 hover:text-red-400"
-													title="Delete"
-												>
-													<TrashIcon class="size-4" />
-												</button>
+												{#if canManageAttachments}
+													<button
+														onclick={() => handleDeleteSpaceAttachment(att)}
+														class="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-zinc-500 opacity-0 transition-all group-hover:opacity-100 hover:bg-red-600/20 hover:text-red-400"
+														title="Delete"
+													>
+														<TrashIcon class="size-4" />
+													</button>
+												{/if}
 											</div>
 										</div>
 									{/each}
