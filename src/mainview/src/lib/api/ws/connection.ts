@@ -49,12 +49,14 @@ import { audioStore } from "$lib/stores/audio.svelte";
 import { getElectrobunRpc } from "$lib/electrobun-rpc";
 
 // Listen for activity updates from Electrobun IPC (VS Code, etc.)
-getElectrobunRpc().then((rpc) => {
-	if (!rpc) return;
-	rpc.on.activityUpdate((activities) => {
-		sendEventMessage("ACTIVITY_UPDATE", { activities });
-	});
-}).catch(() => {});
+getElectrobunRpc()
+	.then((rpc) => {
+		if (!rpc) return;
+		rpc.on.activityUpdate((activities) => {
+			sendEventMessage("ACTIVITY_UPDATE", { activities });
+		});
+	})
+	.catch(() => {});
 
 // Active socket — module-level so sendMessage can access it
 let activeSocket: WebSocket | null = null;
@@ -96,9 +98,7 @@ function addMembersToSpace(spaceId: string, rows: SpaceMemberWithUser[]) {
 			const incomingUserIds = new Set(rows.map((r) => r.user.id));
 			// Replace any placeholder members for the same users with real data
 			const filteredMembers = s.members.filter((m) => !incomingUserIds.has(m.user_id));
-			const newUsers = rows
-				.map((r) => r.user)
-				.filter((u) => !existingUserIds.has(u.id));
+			const newUsers = rows.map((r) => r.user).filter((u) => !existingUserIds.has(u.id));
 			const newMembers = rows.map(({ user: _u, max_pos: _p, ...m }) => m as GatewayMember);
 			return {
 				...s,
@@ -133,7 +133,14 @@ function handleEvent(event: GatewayEvent) {
 			unreadConversations.set(new Set(unread_convs ?? []));
 			// Fetch friends, pending/sent requests, and conversations eagerly
 			// so they are available before FriendsView mounts.
-			Promise.all([getPendingRequests(), getSentRequests(), getFriends(), getConversations(), listMyTeamInvites(), getMyBuckets()])
+			Promise.all([
+				getPendingRequests(),
+				getSentRequests(),
+				getFriends(),
+				getConversations(),
+				listMyTeamInvites(),
+				getMyBuckets(),
+			])
 				.then(([pending, sent, friendList, convList, teamInvites, bucketList]) => {
 					pendingFriendRequests.set(pending);
 					sentFriendRequests.set(sent);
@@ -447,15 +454,9 @@ function handleEvent(event: GatewayEvent) {
 			const raw = payload.data;
 			userStatusCache.set(raw.user_id, raw.status_id);
 			// Create new object references for affected spaces so Svelte detects the change
-			gatewaySpaces.update((spaces) =>
-				spaces.map((s) =>
-					s.users.some((u) => u.id === raw.user_id) ? { ...s } : s,
-				),
-			);
+			gatewaySpaces.update((spaces) => spaces.map((s) => (s.users.some((u) => u.id === raw.user_id) ? { ...s } : s)));
 			conversations.update((convs) =>
-				convs.map((c) =>
-					c.members.some((m) => m.user_id === raw.user_id) ? { ...c } : c,
-				),
+				convs.map((c) => (c.members.some((m) => m.user_id === raw.user_id) ? { ...c } : c)),
 			);
 			break;
 		}

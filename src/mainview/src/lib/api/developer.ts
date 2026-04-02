@@ -110,7 +110,7 @@ export async function listApplications(teamId: string): Promise<Application[]> {
 export async function updateApplication(
 	teamId: string,
 	appId: string,
-	data: { name?: string; description?: string },
+	data: { name?: string; description?: string; public?: boolean },
 ): Promise<Application> {
 	const res = await api.patch(`/api/users/@me/teams/${teamId}/applications/${appId}`, data);
 	return res.data;

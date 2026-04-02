@@ -20,6 +20,8 @@
 		ChevronLeft as ChevronLeftIcon,
 		Eye as EyeIcon,
 		EyeOff as EyeOffIcon,
+		Globe as GlobeIcon,
+		Lock as LockIcon,
 	} from "@lucide/svelte";
 	import { Dialog } from "bits-ui";
 	import { slide } from "svelte/transition";
@@ -639,6 +641,16 @@
 			devEditingApp = null;
 		} catch (e) {
 			toast(e instanceof Error ? e.message : "Failed to update application", "error");
+		}
+	}
+
+	async function handleTogglePublic(app: Application) {
+		if (!devSelectedTeam) return;
+		try {
+			const updated = await updateApplication(devSelectedTeam.id, app.id, { public: !app.public });
+			devApps = devApps.map((a) => (a.id === updated.id ? updated : a));
+		} catch (e) {
+			toast(e instanceof Error ? e.message : "Failed to update visibility", "error");
 		}
 	}
 
@@ -1922,6 +1934,17 @@
 																	<p class="text-xxs mt-1 text-zinc-600">ID: {app.id}</p>
 																</div>
 																<div class="flex items-center gap-1">
+																	<button
+																		class="flex items-center gap-1 rounded-md px-2 py-1 text-xs transition-colors {app.public ? 'text-green-400 hover:bg-green-600/20' : 'text-zinc-500 hover:bg-zinc-700 hover:text-zinc-200'}"
+																		title={app.public ? "Public — anyone can add this bot" : "Private — only team members can add"}
+																		onclick={() => handleTogglePublic(app)}
+																	>
+																		{#if app.public}
+																			<GlobeIcon class="size-3.5" />
+																		{:else}
+																			<LockIcon class="size-3.5" />
+																		{/if}
+																	</button>
 																	<button
 																		class="rounded-md p-1.5 text-zinc-500 hover:bg-zinc-700 hover:text-zinc-200"
 																		title="Edit"
