@@ -242,7 +242,7 @@
 						onOpenChange={(o) => {
 							activePopoverMemberId = o ? member.id : null;
 						}}
-						triggerClass="group relative mb-0.5 flex h-10 w-full items-center overflow-hidden px-3 text-zinc-200 hover:bg-zinc-800 hover:text-white {member.status ===
+						triggerClass="group relative flex h-10 w-full items-center overflow-hidden px-3 text-zinc-200 hover:bg-zinc-800 hover:text-white {member.status ===
 						'offline'
 							? 'opacity-60'
 							: ''}"
