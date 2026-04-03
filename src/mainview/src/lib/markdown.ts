@@ -43,12 +43,13 @@ const LANGS = [
 	"graphql",
 ] as const;
 
-const THEME = "github-dark-default";
+const DEFAULT_THEME = "github-dark-default";
+let currentThemeName = DEFAULT_THEME;
 
 function getHighlighter(): Promise<Highlighter> {
 	if (!highlighterPromise) {
 		highlighterPromise = createHighlighter({
-			themes: [THEME],
+			themes: [DEFAULT_THEME],
 			langs: [...LANGS],
 		}).then((h) => {
 			highlighter = h;
@@ -60,6 +61,69 @@ function getHighlighter(): Promise<Highlighter> {
 
 // Eagerly init on module load
 getHighlighter();
+
+function stripJsonc(text: string): string {
+	// Remove single-line comments (// ...) and multi-line comments (/* ... */)
+	// but not inside strings
+	let result = "";
+	let i = 0;
+	while (i < text.length) {
+		if (text[i] === '"') {
+			const start = i;
+			i++;
+			while (i < text.length && text[i] !== '"') {
+				if (text[i] === "\\") i++;
+				i++;
+			}
+			i++;
+			result += text.slice(start, i);
+		} else if (text[i] === "/" && text[i + 1] === "/") {
+			while (i < text.length && text[i] !== "\n") i++;
+		} else if (text[i] === "/" && text[i + 1] === "*") {
+			i += 2;
+			while (i < text.length && !(text[i] === "*" && text[i + 1] === "/")) i++;
+			i += 2;
+		} else {
+			result += text[i];
+			i++;
+		}
+	}
+	// Remove trailing commas before } or ]
+	return result.replace(/,\s*([}\]])/g, "$1");
+}
+
+export async function loadCustomTheme(url: string): Promise<void> {
+	const h = await getHighlighter();
+	try {
+		const res = await fetch(url);
+		if (!res.ok) throw new Error(`HTTP ${res.status}`);
+		const raw = await res.text();
+		const themeData = JSON.parse(stripJsonc(raw));
+		const name = themeData.name || "custom-theme";
+		await h.loadTheme(themeData);
+		currentThemeName = name;
+		if (typeof window !== "undefined") localStorage.setItem("duvet.code_theme_url", url);
+	} catch (e) {
+		console.error("[Shiki] Failed to load custom theme:", e);
+		throw e;
+	}
+}
+
+export async function resetTheme(): Promise<void> {
+	currentThemeName = DEFAULT_THEME;
+	if (typeof window !== "undefined") localStorage.removeItem("duvet.code_theme_url");
+}
+
+export function getThemeUrl(): string {
+	if (typeof localStorage === "undefined") return "";
+	return localStorage.getItem("duvet.code_theme_url") ?? "";
+}
+
+// Auto-load saved custom theme on init
+if (typeof window !== "undefined") {
+	const savedThemeUrl = localStorage.getItem("duvet.code_theme_url");
+	if (savedThemeUrl) loadCustomTheme(savedThemeUrl).catch(() => {});
+}
 
 const LANG_ALIASES: Record<string, string> = {
 	js: "javascript",
@@ -121,12 +185,12 @@ function highlightCode(code: string, lang: string): string {
 	}
 	try {
 		const loaded = highlighter.getLoadedLanguages();
-		if (!loaded.includes(resolved as any)) {
+		if (!loaded.includes(resolved)) {
 			return escapeHtml(code);
 		}
 		const html = highlighter.codeToHtml(code, {
 			lang: resolved,
-			theme: THEME,
+			theme: currentThemeName,
 		});
 		// shiki returns <pre class="shiki ..."><code>...</code></pre>
 		// Extract just the inner content of <code>

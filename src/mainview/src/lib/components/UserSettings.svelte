@@ -22,6 +22,7 @@
 		EyeOff as EyeOffIcon,
 		Globe as GlobeIcon,
 		Lock as LockIcon,
+		Palette as PaletteIcon,
 	} from "@lucide/svelte";
 	import { Dialog } from "bits-ui";
 	import { slide } from "svelte/transition";
@@ -52,6 +53,7 @@
 	import { sendVerificationEmail, sendResetPasswordEmail, sendChangeEmail, logout } from "$lib/api/auth";
 	import { audioStore, type SoundEvent } from "$lib/stores/audio.svelte";
 	import VoiceNotePlayer from "$lib/components/VoiceNotePlayer.svelte";
+	import { loadCustomTheme, resetTheme, getThemeUrl, renderMarkdown } from "$lib/markdown";
 	import {
 		listTeams,
 		createTeam,
@@ -85,7 +87,7 @@
 		open?: boolean;
 	} = $props();
 
-	type Section = "account" | "security" | "audio" | "attachments" | "buckets" | "developer";
+	type Section = "account" | "security" | "audio" | "appearance" | "attachments" | "buckets" | "developer";
 	let activeSection = $state<Section>("account");
 
 	// Attachments state
@@ -325,6 +327,30 @@
 			};
 		} else {
 			previewingSound = null;
+		}
+	}
+
+	// Appearance state
+	let codeThemeUrl = $state(getThemeUrl());
+	let savingTheme = $state(false);
+	let themeVersion = $state(0);
+
+	async function handleSaveTheme() {
+		const url = codeThemeUrl.trim();
+		savingTheme = true;
+		try {
+			if (!url) {
+				await resetTheme();
+				toast("Theme reset to default", "success");
+			} else {
+				await loadCustomTheme(url);
+				toast("Code theme applied!", "success");
+			}
+			themeVersion++;
+		} catch (e) {
+			toast(e instanceof Error ? e.message : "Failed to load theme", "error");
+		} finally {
+			savingTheme = false;
 		}
 	}
 
@@ -961,6 +987,14 @@
 						</button>
 						<button
 							class="flex items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-sm font-medium transition-colors
+								{activeSection === 'appearance' ? 'bg-zinc-800 text-white' : 'text-zinc-400 hover:bg-zinc-800/60 hover:text-zinc-200'}"
+							onclick={() => (activeSection = "appearance")}
+						>
+							<PaletteIcon class="size-4 shrink-0" />
+							Appearance
+						</button>
+						<button
+							class="flex items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-sm font-medium transition-colors
 								{activeSection === 'buckets' ? 'bg-zinc-800 text-white' : 'text-zinc-400 hover:bg-zinc-800/60 hover:text-zinc-200'}"
 							onclick={() => (activeSection = "buckets")}
 						>
@@ -998,7 +1032,7 @@
 					<!-- Header -->
 					<div class="flex shrink-0 items-center justify-between border-b border-zinc-800 px-6 py-4">
 						<h2 class="text-base font-semibold text-white">
-							{#if activeSection === "account"}My Account{:else if activeSection === "security"}Security{:else if activeSection === "audio"}Audio{:else if activeSection === "attachments"}Attachments{:else if activeSection === "buckets"}S3
+							{#if activeSection === "account"}My Account{:else if activeSection === "security"}Security{:else if activeSection === "audio"}Audio{:else if activeSection === "appearance"}Appearance{:else if activeSection === "attachments"}Attachments{:else if activeSection === "buckets"}S3
 								Buckets{:else if activeSection === "developer"}Developer{/if}
 						</h2>
 						<Dialog.Close
@@ -1206,6 +1240,51 @@
 										</div>
 									</div>
 								{/each}
+							</div>
+						{:else if activeSection === "appearance"}
+							<p class="mb-4 text-xs text-zinc-500">
+								Customize how code blocks look in messages. Paste a URL to a VS Code theme JSON file.
+							</p>
+
+							<div class="space-y-3">
+								<div>
+									<label for="code-theme-url" class="mb-1 block text-xs font-medium text-zinc-400">Code Theme URL</label>
+									<input
+										id="code-theme-url"
+										type="text"
+										bind:value={codeThemeUrl}
+										placeholder="https://raw.githubusercontent.com/.../theme.json"
+										class="w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-white placeholder-zinc-500 outline-none focus:border-zinc-500"
+										onkeydown={(e) => e.key === "Enter" && handleSaveTheme()}
+									/>
+								</div>
+								<div class="flex items-center gap-2">
+									<button
+										class="rounded-md bg-stone-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-stone-500 disabled:opacity-50"
+										onclick={handleSaveTheme}
+										disabled={savingTheme}
+									>
+										{savingTheme ? "Loading..." : "Apply"}
+									</button>
+									{#if codeThemeUrl}
+										<button
+											class="rounded-md px-4 py-2 text-sm font-medium text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-white"
+											onclick={() => { codeThemeUrl = ""; handleSaveTheme(); }}
+										>
+											Reset to default
+										</button>
+									{/if}
+								</div>
+							</div>
+
+							<!-- Preview -->
+							<div class="mt-6">
+								<p class="mb-2 text-xs font-medium text-zinc-400">Preview</p>
+								{#key themeVersion}
+									<p class="msg-content text-sm text-zinc-200">
+										{@html renderMarkdown("```go\npackage main\n\nimport \"fmt\"\n\nfunc main() {\n\tnames := []string{\"Alice\", \"Bob\"}\n\tfor _, name := range names {\n\t\tfmt.Printf(\"Hello, %s!\\n\", name)\n\t}\n}\n```")}
+									</p>
+								{/key}
 							</div>
 						{:else if activeSection === "attachments"}
 							<!-- Active custom bucket banner -->

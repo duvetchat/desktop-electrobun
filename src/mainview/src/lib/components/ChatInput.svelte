@@ -235,11 +235,13 @@
 		let off = 0;
 
 		function rawLen(n: Node): number {
+			const tag = (n as Element).tagName;
+			if (tag === "BR") return 1;
 			const mention = (n as Element).getAttribute?.("data-mention");
 			if (mention) return `<@${mention}>`.length;
 			const cemoji = (n as Element).getAttribute?.("data-cemoji");
 			if (cemoji) return `<:${cemoji}:>`.length;
-			if ((n as Element).tagName === "IMG") return ((n as HTMLImageElement).alt ?? "").length;
+			if (tag === "IMG") return ((n as HTMLImageElement).alt ?? "").length;
 			return -1; // not an atomic node
 		}
 
@@ -272,11 +274,13 @@
 		let placed = false;
 
 		function atomicLen(n: Node): number {
+			const tag = (n as Element).tagName;
+			if (tag === "BR") return 1;
 			const mention = (n as Element).getAttribute?.("data-mention");
 			if (mention) return `<@${mention}>`.length;
 			const cemoji = (n as Element).getAttribute?.("data-cemoji");
 			if (cemoji) return `<:${cemoji}:>`.length;
-			if ((n as Element).tagName === "IMG") return ((n as HTMLImageElement).alt ?? "").length;
+			if (tag === "IMG") return ((n as HTMLImageElement).alt ?? "").length;
 			return -1;
 		}
 
@@ -454,9 +458,12 @@
 	}
 
 	// ── Event handlers ──────────────────────────────────────────────────────────
+	let pendingOffset: number | null = null;
+
 	function handleInput() {
-		const offset = getOffset();
 		const raw = getRaw(inputEl);
+		const offset = pendingOffset ?? getOffset();
+		pendingOffset = null;
 		isEmpty = !raw.trim();
 		rerender(raw, offset);
 		pushUndo(raw, offset);
@@ -465,6 +472,11 @@
 	}
 
 	function handleKeyDown(e: KeyboardEvent) {
+		// Capture start offset before browser modifies the DOM on delete with selection
+		const sel = window.getSelection();
+		if (sel && !sel.isCollapsed && (e.key === "Backspace" || e.key === "Delete")) {
+			pendingOffset = getOffset();
+		}
 		// Undo/Redo
 		if ((e.ctrlKey || e.metaKey) && e.key === "z" && !e.shiftKey) {
 			e.preventDefault();
@@ -599,11 +611,13 @@
 		function nodeLen(n: Node): number {
 			if (n.nodeType === Node.TEXT_NODE) return (n.textContent ?? "").length;
 			const el = n as Element;
+			const tag = el.tagName;
+			if (tag === "BR") return 1;
 			const mention = el.getAttribute?.("data-mention");
 			if (mention) return `<@${mention}>`.length;
 			const cemoji = el.getAttribute?.("data-cemoji");
 			if (cemoji) return `<:${cemoji}:>`.length;
-			if (el.tagName === "IMG") return ((n as HTMLImageElement).alt ?? "").length;
+			if (tag === "IMG") return ((n as HTMLImageElement).alt ?? "").length;
 			return -1; // has children
 		}
 
@@ -696,16 +710,21 @@
 		if (e.clipboardData?.files && e.clipboardData.files.length > 0) {
 			pendingFiles = [...pendingFiles, ...Array.from(e.clipboardData.files)];
 		}
-		const osText = e.clipboardData?.getData("text/plain") ?? "";
-		// Prefer internal clipboard if it matches what OS clipboard would give us (same copy session)
-		const text = internalClipboard ?? osText;
+		const osText = (e.clipboardData?.getData("text/plain") ?? "").replace(/\r\n/g, "\n");
+		// Use internal clipboard only if OS clipboard matches (same copy/cut session)
+		const text = internalClipboard && osText === internalClipboard ? internalClipboard : osText;
 		if (!text) return;
 		const sel = window.getSelection();
 		if (sel && !sel.isCollapsed) {
 			sel.deleteFromDocument();
 		}
-		const raw = getRaw(inputEl);
-		const pos = getOffset();
+		let raw = getRaw(inputEl);
+		let pos = getOffset();
+		// Empty contenteditable may have a phantom newline
+		if (isEmpty || raw === "\n") {
+			raw = "";
+			pos = 0;
+		}
 		const newRaw = raw.slice(0, pos) + text + raw.slice(pos);
 		const newPos = pos + text.length;
 		rerender(newRaw, newPos);

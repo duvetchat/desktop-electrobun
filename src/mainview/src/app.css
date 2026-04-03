@@ -320,7 +320,12 @@
 
 	* {
 		@apply border-border;
-		font-family: system-ui, -apple-system, 'Open Sans', Arial, sans-serif;
+		font-family:
+			system-ui,
+			-apple-system,
+			"Open Sans",
+			Arial,
+			sans-serif;
 	}
 
 	input,
