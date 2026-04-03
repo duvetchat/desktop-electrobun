@@ -15,8 +15,12 @@
 		class?: string;
 	} = $props();
 
+	const MAX_RETRIES = 3;
+	const RETRY_DELAY = 2000;
+
 	let imgLoaded = $state(false);
 	let imgError = $state(false);
+	let retryCount = $state(0);
 
 	let lastSrc: string | null | undefined;
 	$effect(() => {
@@ -24,8 +28,20 @@
 			lastSrc = src;
 			imgLoaded = false;
 			imgError = !src;
+			retryCount = 0;
 		}
 	});
+
+	function handleError() {
+		if (retryCount < MAX_RETRIES) {
+			retryCount++;
+			setTimeout(() => {
+				imgError = false;
+			}, RETRY_DELAY * retryCount);
+		} else {
+			imgError = true;
+		}
+	}
 
 	const showImg = $derived(!!src && !imgError);
 </script>
@@ -42,7 +58,7 @@
 			alt={name}
 			style="width: 100%; height: 100%; object-fit: cover; opacity: {imgLoaded ? 1 : 0}; position: absolute; inset: 0;"
 			onload={() => (imgLoaded = true)}
-			onerror={() => (imgError = true)}
+			onerror={handleError}
 			draggable="false"
 		/>
 	{/if}
