@@ -86,6 +86,7 @@ export const conversations = writable<Conversation[]>([]);
 export const dmMessages = writable<Record<string, DirectMessage[]>>({});
 export const pendingTeamInvites = writable<TeamInvite[]>([]);
 export const botInviteRequest = writable<string | null>(null);
+export const spaceInviteRequest = writable<string | null>(null);
 export const myBuckets = writable<StorageBucket[]>([]);
 
 export interface TypingUser {

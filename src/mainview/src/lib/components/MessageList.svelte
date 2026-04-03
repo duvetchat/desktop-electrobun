@@ -3,7 +3,7 @@
 	import { onDestroy, onMount, tick } from "svelte";
 	import { updateMessage, deleteMessage, getMessageThread } from "$lib/api/messages";
 	import { Dialog, Popover } from "bits-ui";
-	import { currentUser, jumpToMessageRequest, gatewaySpaces, pageVisible, botInviteRequest } from "$lib/stores.svelte";
+	import { currentUser, jumpToMessageRequest, gatewaySpaces, pageVisible, botInviteRequest, spaceInviteRequest } from "$lib/stores.svelte";
 	import {
 		addRoomReaction,
 		removeRoomReaction,
@@ -15,7 +15,7 @@
 
 	import { gatewayMessageToMessage } from "$lib/types";
 	import { MessageType, type MemberOnSidebar, type GatewaySpace, type Message, type SpaceEmoji } from "$lib/types";
-	import { getHostURL, getAvatarURL } from "$lib/common/common";
+	import { getHostURL, getAvatarURL, DUVET_DOMAIN } from "$lib/common/common";
 
 	import InviteEmbed from "$lib/components/InviteEmbed.svelte";
 	import BotInviteEmbed from "$lib/components/BotInviteEmbed.svelte";
@@ -520,16 +520,29 @@
 	}
 
 	// ── Message link navigation ────────────────────────────────────────────────
-	// Room link: duvet://channels/{spaceId}/{roomId}/{messageId}
-	// Conv link: duvet://conversations/{conversationId}/{messageId}
-	const roomLinkRegex = /^duvet:\/\/channels\/([^/]+)\/([^/]+)\/([^/]+)$/;
-	const convLinkRegex = /^duvet:\/\/conversations\/([^/]+)\/([^/]+)$/;
+	const DOMAIN_ESCAPED = DUVET_DOMAIN.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+	const roomLinkRegex = new RegExp(`^${DOMAIN_ESCAPED}/channels/([^/]+)/([^/]+)/([^/]+)$`);
+	const convLinkRegex = new RegExp(`^${DOMAIN_ESCAPED}/conversations/([^/]+)/([^/]+)$`);
+
+	function parseInviteLink(url: string): boolean {
+		return parseInviteCode(url) !== null;
+	}
+
+	function parseInviteCode(url: string): string | null {
+		try {
+			const u = new URL(url);
+			if ((u.origin === DUVET_DOMAIN || u.origin === window.location.origin) && u.pathname === "/invite") {
+				return u.searchParams.get("code");
+			}
+		} catch {}
+		return null;
+	}
 
 	function parseBotInviteLink(url: string): string | null {
 		try {
 			const u = new URL(url);
-			if (u.origin === window.location.origin && u.hash.startsWith("#bot:")) {
-				return decodeURIComponent(u.hash.slice(5));
+			if ((u.origin === DUVET_DOMAIN || u.origin === window.location.origin) && u.pathname === "/invite") {
+				return u.searchParams.get("bot");
 			}
 		} catch {}
 		return null;
@@ -1092,14 +1105,16 @@
 														}}>{segment.content}</button
 													>
 												{/if}
-											{:else if parseBotInviteLink(segment.content)}
+											{:else if parseInviteLink(segment.content) || parseBotInviteLink(segment.content)}
+												{@const botId = parseBotInviteLink(segment.content)}
+												{@const invCode = parseInviteCode(segment.content)}
 												<button
 													type="button"
 													class="cursor-pointer text-stone-300 hover:underline"
 													onclick={(e) => {
 														e.stopPropagation();
-														const id = parseBotInviteLink(segment.content);
-														if (id) botInviteRequest.set(id);
+														if (botId) botInviteRequest.set(botId);
+														else if (invCode) spaceInviteRequest.set(invCode);
 													}}
 												>{segment.content}</button>
 											{:else}
@@ -1404,7 +1419,7 @@
 							onclick={() => {
 								navigator.clipboard
 									.writeText(
-										`${isConversation ? `duvet://conversations/${channelId}/${message.id}` : `duvet://channels/${spaceId}/${channelId}/${message.id}`}`,
+										`${isConversation ? `${DUVET_DOMAIN}/conversations/${channelId}/${message.id}` : `${DUVET_DOMAIN}/channels/${spaceId}/${channelId}/${message.id}`}`,
 									)
 									.catch(console.error);
 							}}
@@ -1572,7 +1587,7 @@
 							onclick={() => {
 								navigator.clipboard
 									.writeText(
-										`${isConversation ? `duvet://conversations/${channelId}/${message.id}` : `duvet://channels/${spaceId}/${channelId}/${message.id}`}`,
+										`${isConversation ? `${DUVET_DOMAIN}/conversations/${channelId}/${message.id}` : `${DUVET_DOMAIN}/channels/${spaceId}/${channelId}/${message.id}`}`,
 									)
 									.catch(console.error);
 							}}

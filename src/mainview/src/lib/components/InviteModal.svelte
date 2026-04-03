@@ -3,7 +3,7 @@
 	import { Dialog } from "bits-ui";
 	import { createRoomInvite } from "$lib/api/rooms";
 	import type { Channel } from "$lib/types";
-	import { route } from "$lib/common/common";
+	import { route, DUVET_DOMAIN } from "$lib/common/common";
 
 	let {
 		open = $bindable(false),
@@ -38,7 +38,7 @@
 		isLoading = true;
 		try {
 			const code = await createRoomInvite(spaceId, channel.id);
-			inviteLink = `${window.location.origin}${route(`/invite?code=${encodeURIComponent(code)}`)}`;
+			inviteLink = `${DUVET_DOMAIN}/invite?code=${encodeURIComponent(code)}`;
 		} catch (err) {
 			genError = err instanceof Error ? err.message : "Failed to generate link.";
 		} finally {

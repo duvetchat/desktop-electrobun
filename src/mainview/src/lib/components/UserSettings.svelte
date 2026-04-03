@@ -46,7 +46,7 @@
 		type StorageBucket,
 		type CreateBucketPayload,
 	} from "$lib/api/user";
-	import { getHostURL, getAvatarURL, route } from "$lib/common/common";
+	import { getHostURL, getAvatarURL, route, DUVET_DOMAIN } from "$lib/common/common";
 	import { confirmAction } from "$lib/stores/confirm.svelte";
 	import { toast } from "$lib/stores/toast.svelte";
 	import { sendVerificationEmail, sendResetPasswordEmail, sendChangeEmail, logout } from "$lib/api/auth";
@@ -705,7 +705,7 @@
 	}
 
 	function getBotInviteLink(botUserId: string): string {
-		return `${window.location.origin}${route("/app.html")}#bot:${botUserId}`;
+		return `${DUVET_DOMAIN}/invite?bot=${botUserId}`;
 	}
 
 	function copyBotInviteLink(botUserId: string) {

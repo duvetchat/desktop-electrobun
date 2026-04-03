@@ -10,12 +10,14 @@
 	import VoiceChat from "$lib/components/VoiceChat.svelte";
 	import { makeLeaf, makeSplit, removeLeaf, updateLeaf } from "$lib/pane";
 	import { canViewRoom } from "$lib/permissions";
-	import { activeCall, activeVoiceRoomId, currentUser, friendsReady, gatewaySpaces, botInviteRequest } from "$lib/stores.svelte";
+	import { activeCall, activeVoiceRoomId, currentUser, friendsReady, gatewaySpaces, botInviteRequest, spaceInviteRequest } from "$lib/stores.svelte";
 	import CallModal from "$lib/components/CallModal.svelte";
 	import BotInviteModal from "$lib/components/BotInviteModal.svelte";
+	import SpaceInviteModal from "$lib/components/SpaceInviteModal.svelte";
 	import type { PaneNode, Tab } from "$lib/types";
 	import { gatewaySpaceToGuild, gatewaySpaceToMembers } from "$lib/types";
 	import { userStatusCache } from "$lib/api/ws/connection";
+	import { DUVET_DOMAIN } from "$lib/common/common";
 
 	const layoutPrefsKey = "duvet.layout.panels.v1";
 
@@ -28,7 +30,14 @@
 		history.replaceState(null, "", window.location.pathname + window.location.search);
 	}
 
-	// React to bot invite requests from MessageList or other components
+	let spaceInviteOpen = $state(false);
+	let spaceInviteCode = $state("");
+
+	function openSpaceInvite(code: string) {
+		spaceInviteCode = code;
+		spaceInviteOpen = true;
+	}
+
 	$effect(() => {
 		const id = $botInviteRequest;
 		if (id) {
@@ -37,41 +46,29 @@
 		}
 	});
 
-	function checkBotHash() {
-		const hash = window.location.hash;
-		if (hash.startsWith("#bot:")) {
-			openBotInvite(decodeURIComponent(hash.slice(5)));
+	$effect(() => {
+		const code = $spaceInviteRequest;
+		if (code) {
+			openSpaceInvite(code);
+			spaceInviteRequest.set(null);
 		}
-	}
+	});
 
 	onMount(() => {
-		checkBotHash();
-
-		// Listen for hash changes (e.g. clicking a bot invite link while already in the app)
-		window.addEventListener("hashchange", checkBotHash);
-
-		// Intercept clicks on bot invite links to open modal instead of navigating
-		function handleLinkClick(e: MouseEvent) {
-			const anchor = (e.target as HTMLElement).closest("a");
-			if (!anchor) return;
-			const href = anchor.href;
-			if (!href) return;
-			try {
-				const url = new URL(href);
-				if (url.origin === window.location.origin && url.hash.startsWith("#bot:")) {
-					e.preventDefault();
-					openBotInvite(decodeURIComponent(url.hash.slice(5)));
+		// Check for ?bot= query param (from /invite?bot=xxx redirect)
+		const urlParams = new URLSearchParams(window.location.search);
+		const botParam = urlParams.get("bot");
+		if (botParam) {
+			// Defer opening until gateway is connected and spaces are loaded
+			const unsub = friendsReady.subscribe((ready) => {
+				if (ready) {
+					openBotInvite(botParam);
+					unsub();
 				}
-			} catch {
-				// ignore invalid URLs
-			}
+			});
+			// Clean URL
+			history.replaceState(null, "", window.location.pathname);
 		}
-		document.addEventListener("click", handleLinkClick);
-
-		onDestroy(() => {
-			window.removeEventListener("hashchange", checkBotHash);
-			document.removeEventListener("click", handleLinkClick);
-		});
 
 		try {
 			const saved = localStorage.getItem(layoutPrefsKey);
@@ -447,3 +444,4 @@
 {/if}
 
 <BotInviteModal bind:open={botInviteOpen} bind:botUserId={botInviteId} />
+<SpaceInviteModal bind:open={spaceInviteOpen} bind:inviteCode={spaceInviteCode} />

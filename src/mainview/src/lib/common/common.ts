@@ -1,5 +1,7 @@
 const isDevServer = import.meta.env.DEV;
 
+export const DUVET_DOMAIN = "https://duvet.andremor.eu.org";
+
 const routes: Record<string, string> = {
 	"/index.html": "/",
 	"/app.html": "/app",

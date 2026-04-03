@@ -10,8 +10,12 @@
 		return route(`/invite.html?code=${encodeURIComponent(code)}`);
 	}
 
-	function loginUrlForInvite(code: string) {
-		return route(`/index.html?redirect=${encodeURIComponent(inviteUrl(code))}`);
+	function botInviteUrl(id: string) {
+		return route(`/invite.html?bot=${encodeURIComponent(id)}`);
+	}
+
+	function loginUrlForRedirect(redirectUrl: string) {
+		return route(`/index.html?redirect=${encodeURIComponent(redirectUrl)}`);
 	}
 
 	function readCodeFromHash(hash: string) {
@@ -21,9 +25,10 @@
 
 	let code = "";
 	let invite = $state<InviteInfo | null>(null);
-	let loading = $state(true);
 	let joining = $state(false);
+	let loading = $state(true);
 	let error = $state("");
+
 	const numberFormatter = new Intl.NumberFormat(typeof navigator !== "undefined" ? navigator.language : "en-US");
 
 	function formatCount(value: number) {
@@ -31,24 +36,32 @@
 	}
 
 	onMount(async () => {
+		const botParam = page.url.searchParams.get("bot");
 		code = page.url.searchParams.get("code") ?? readCodeFromHash(window.location.hash) ?? "";
 
-		if (!code) {
-			error = "Invite code is required.";
-			loading = false;
-			return;
-		}
-
-		try {
-			invite = await getInvite(code);
-		} catch (err) {
-			const msg = err instanceof Error ? err.message : "This invite is invalid or has expired.";
-			if (msg === "Session invalid or expired") {
-				window.location.href = loginUrlForInvite(code);
+		if (botParam) {
+			if (!userSession.token) {
+				window.location.href = loginUrlForRedirect(botInviteUrl(botParam));
 				return;
 			}
-			error = msg;
-		} finally {
+			// Redirect to app — the gateway needs to be connected for the space list
+			window.location.href = route(`/app.html?bot=${encodeURIComponent(botParam)}`);
+			return;
+		} else if (code) {
+			try {
+				invite = await getInvite(code);
+			} catch (err) {
+				const msg = err instanceof Error ? err.message : "This invite is invalid or has expired.";
+				if (msg === "Session invalid or expired") {
+					window.location.href = loginUrlForRedirect(inviteUrl(code));
+					return;
+				}
+				error = msg;
+			} finally {
+				loading = false;
+			}
+		} else {
+			error = "Invalid invite link.";
 			loading = false;
 		}
 	});
@@ -57,7 +70,7 @@
 		if (!code) return;
 
 		if (!userSession.token) {
-			window.location.href = loginUrlForInvite(code);
+			window.location.href = loginUrlForRedirect(inviteUrl(code));
 			return;
 		}
 
@@ -69,7 +82,7 @@
 		} catch (err) {
 			const msg = err instanceof Error ? err.message : "We couldn't join this server. Please try again.";
 			if (msg === "Session invalid or expired") {
-				window.location.href = loginUrlForInvite(code);
+				window.location.href = loginUrlForRedirect(inviteUrl(code));
 				return;
 			}
 			error = msg;
@@ -77,14 +90,15 @@
 			joining = false;
 		}
 	}
+
 </script>
 
 <section class="flex min-h-screen items-center justify-center bg-zinc-950 p-6">
 	<div class="w-full max-w-md rounded-3xl border border-zinc-700 bg-zinc-900/90 p-10 shadow-2xl backdrop-blur-xl">
 		{#if loading}
 			<div class="flex flex-col items-center gap-4 text-zinc-300">
-				<div class="h-10 w-10 animate-spin rounded-full border-4 border-red-500 border-t-transparent"></div>
-				<p>Loading invite…</p>
+				<div class="h-10 w-10 animate-spin rounded-full border-4 border-stone-500 border-t-transparent"></div>
+				<p>Loading…</p>
 			</div>
 		{:else if error && !invite}
 			<div class="text-center">
@@ -103,14 +117,13 @@
 					class="mt-6 rounded-lg bg-zinc-800 px-6 py-2.5 text-sm font-medium text-white transition hover:bg-zinc-700"
 					onclick={() => (window.location.href = route("/index.html"))}
 				>
-					Back to sign in
+					Go back
 				</button>
 			</div>
 		{:else if invite}
 			<div class="text-center">
-				<!-- Server icon placeholder -->
 				<div
-					class="mx-auto mb-5 flex h-20 w-20 items-center justify-center rounded-2xl bg-linear-to-br from-red-500 to-red-700 text-3xl font-bold text-white shadow-lg select-none"
+					class="mx-auto mb-5 flex h-20 w-20 items-center justify-center rounded-2xl bg-linear-to-br from-stone-500 to-stone-700 text-3xl font-bold text-white shadow-lg select-none"
 				>
 					{invite.space_name.charAt(0).toUpperCase()}
 				</div>
@@ -140,7 +153,7 @@
 
 				{#if userSession.token}
 					<button
-						class="w-full rounded-xl bg-red-600 py-3 text-base font-semibold text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
+						class="w-full rounded-xl bg-stone-600 py-3 text-base font-semibold text-white transition hover:bg-stone-500 disabled:cursor-not-allowed disabled:opacity-60"
 						onclick={handleJoin}
 						disabled={joining}
 					>
@@ -149,8 +162,8 @@
 				{:else}
 					<p class="mb-4 text-sm text-zinc-300">Sign in to join this server.</p>
 					<button
-						class="w-full rounded-xl bg-red-600 py-3 text-base font-semibold text-white transition hover:bg-red-700"
-						onclick={() => (window.location.href = loginUrlForInvite(code))}
+						class="w-full rounded-xl bg-stone-600 py-3 text-base font-semibold text-white transition hover:bg-stone-500"
+						onclick={() => (window.location.href = loginUrlForRedirect(inviteUrl(code)))}
 					>
 						Sign in to join
 					</button>
