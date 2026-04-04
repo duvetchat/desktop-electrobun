@@ -239,6 +239,7 @@ export interface GatewaySpace {
 	name: string;
 	description: string | null;
 	banner: string | null;
+	icon?: string | null;
 	owner_id: string;
 	locale: string | null;
 	member?: GatewayMember;
@@ -396,6 +397,7 @@ export interface SpaceMemberEvent {
 	member_id: string;
 	space_id: string;
 	user_id: string;
+	status_id?: number;
 }
 
 export interface GuildMemberAddEvent {
@@ -467,6 +469,7 @@ export type GatewayEventPayload =
 	| { type: "SPACE_UPDATE"; data: GatewaySpace }
 	| { type: "ROOM_CREATE"; data: GatewayRoom }
 	| { type: "ROOM_UPDATE"; data: GatewayRoom }
+	| { type: "ROOM_REORDER"; data: { rooms: GatewayRoom[] } }
 	| { type: "ROOM_DELETE"; data: RoomDeleteEvent }
 	| { type: "ROOM_OVERWRITE_UPDATE"; data: GatewayRoomOverwrite }
 	| { type: "ROOM_OVERWRITE_DELETE"; data: OverwriteDeleteEvent }
@@ -478,6 +481,7 @@ export type GatewayEventPayload =
 	| { type: "USER_STATUS_UPDATE"; data: GatewayUserStatusUpdate }
 	| { type: "USER_ACTIVITY_UPDATE"; data: { user_id: string; activities: import("$lib/stores.svelte").UserActivity[] | null } }
 	| { type: "VOICE_STATE_UPDATE"; data: VoiceStateEvent }
+	| { type: "VOICE_SESSION_REPLACED"; data: { room_id: string } }
 	| { type: "VOICE_JOINED"; data: VoiceJoinedEvent }
 	| { type: "WEBRTC_ICE_CANDIDATE"; data: WebRTCEvent }
 	| { type: "WEBRTC_RENEGOTIATE"; data: WebRTCEvent }
@@ -607,7 +611,8 @@ export function gatewaySpaceToGuild(space: GatewaySpace): Guild {
 	return {
 		id: space.id,
 		name: space.name,
-		icon_url: "",
+		icon_url: space.icon ? getAvatarURL(space.id, space.icon) ?? "" : "",
+		banner_url: space.banner ? getAvatarURL(space.id, space.banner) ?? "" : "",
 		channels: space.rooms.map((room) => {
 			const channelType = roomTypeToChannelType(room.type);
 			const channel: Channel = {
@@ -661,6 +666,7 @@ export interface Guild {
 	id: string;
 	name: string;
 	icon_url: string;
+	banner_url: string;
 	channels: Channel[];
 	category?: string;
 	muted?: boolean;

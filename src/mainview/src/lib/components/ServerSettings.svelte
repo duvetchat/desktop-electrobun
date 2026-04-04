@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { toast } from "$lib/stores/toast.svelte";
 	import { confirmAction } from "$lib/stores/confirm.svelte";
+	import { getApiError } from "$lib/api/api";
 	import {
 		GripVertical as DotsSixVerticalIcon,
 		Shield as ShieldStarIcon,
@@ -18,6 +19,10 @@
 		Plus as PlusIcon,
 	} from "@lucide/svelte";
 	import { Checkbox, Dialog } from "bits-ui";
+	import ImageCropModal from "$lib/components/ImageCropModal.svelte";
+	import UserAvatar from "$lib/components/UserAvatar.svelte";
+	import SpaceBanner from "$lib/components/SpaceBanner.svelte";
+	import SpaceIcon from "$lib/components/SpaceIcon.svelte";
 	import { createRole, updateRole, deleteRole } from "$lib/api/roles";
 	import { listEmojis, createEmoji, updateEmoji, deleteEmoji } from "$lib/api/emojis";
 	import { listStickers, createSticker, updateSticker, deleteSticker } from "$lib/api/stickers";
@@ -31,7 +36,6 @@
 	} from "$lib/api/space-buckets";
 	import { currentUser } from "$lib/stores.svelte";
 	import { Permission, ALL_PERMISSIONS } from "$lib/permissions";
-	import UserAvatar from "$lib/components/UserAvatar.svelte";
 
 	import type { GatewaySpace, SpaceEmoji, SpaceSticker } from "$lib/types";
 	import type { StorageBucket, CreateBucketPayload } from "$lib/api/user";
@@ -40,9 +44,11 @@
 		getSpaceStorageUsed,
 		deleteSpaceAttachment,
 		deleteAllSpaceAttachments,
+		updateSpace,
 		type SpaceAttachment,
 	} from "$lib/api/spaces";
-	import { getHostURL } from "$lib/common/common";
+	import { getHostURL, getAvatarURL } from "$lib/common/common";
+	import { gatewaySpaces } from "$lib/stores.svelte";
 
 	const attachmentHost = getHostURL();
 
@@ -57,9 +63,84 @@
 	} = $props();
 
 	type Section = "overview" | "members" | "roles" | "emojis" | "stickers" | "storage" | "attachments";
-	let activeSection = $state<Section>("roles");
+	let activeSection = $state<Section>("overview");
 
 	const PERMISSIONS = ALL_PERMISSIONS;
+
+	// Overview form state
+	let ovName = $state("");
+	let ovDescription = $state("");
+	let ovLocale = $state("");
+	let ovSaving = $state(false);
+	let showSpaceIconCrop = $state(false);
+	let showSpaceBannerCrop = $state(false);
+	let pendingIcon = $state<File | "remove" | null>(null);
+	let pendingBanner = $state<File | "remove" | null>(null);
+	let pendingIconPreview = $state<string | null>(null);
+	let pendingBannerPreview = $state<string | null>(null);
+
+	function onSpaceIconCrop(file: File) {
+		pendingIcon = file;
+		if (pendingIconPreview) URL.revokeObjectURL(pendingIconPreview);
+		pendingIconPreview = URL.createObjectURL(file);
+	}
+
+	function onSpaceBannerCrop(file: File) {
+		pendingBanner = file;
+		if (pendingBannerPreview) URL.revokeObjectURL(pendingBannerPreview);
+		pendingBannerPreview = URL.createObjectURL(file);
+	}
+
+	let ovHasChanges = $derived(
+		space !== null &&
+			(ovName !== (space.name ?? "") ||
+				ovDescription !== (space.description ?? "") ||
+				ovLocale !== (space.locale ?? "") ||
+				pendingIcon !== null ||
+				pendingBanner !== null),
+	);
+
+	$effect(() => {
+		if (open && space) {
+			ovName = space.name ?? "";
+			ovDescription = space.description ?? "";
+			ovLocale = space.locale ?? "";
+		}
+	});
+
+	async function handleSaveOverview() {
+		if (!spaceId || !ovHasChanges) return;
+		ovSaving = true;
+		try {
+			const updated = await updateSpace(spaceId, {
+				name: ovName.trim() || undefined,
+				description: ovDescription.trim() || null,
+				locale: ovLocale.trim() || null,
+				banner: pendingBanner instanceof File ? pendingBanner : undefined,
+				icon: pendingIcon instanceof File ? pendingIcon : undefined,
+				remove_banner: pendingBanner === "remove",
+				remove_icon: pendingIcon === "remove",
+			});
+			// Clean up previews
+			if (pendingIconPreview) { URL.revokeObjectURL(pendingIconPreview); pendingIconPreview = null; }
+			if (pendingBannerPreview) { URL.revokeObjectURL(pendingBannerPreview); pendingBannerPreview = null; }
+			pendingIcon = null;
+			pendingBanner = null;
+			// Update the local store
+			gatewaySpaces.update((spaces) =>
+				spaces.map((s) =>
+					s.id === spaceId
+						? { ...s, name: updated.name, description: updated.description, locale: updated.locale, banner: updated.banner, icon: updated.icon }
+						: s,
+				),
+			);
+			toast("Space updated!", "success");
+		} catch (e) {
+			toast(getApiError(e, "Failed to update"), "error");
+		} finally {
+			ovSaving = false;
+		}
+	}
 
 	// ── color helpers ────────────────────────────────────────────
 	function intToHex(n: undefined | number | null): string {
@@ -266,7 +347,7 @@
 			newRoleUseGradient = false;
 		} catch (err) {
 			console.error("Failed to create role:", err);
-			toast(`${err}`, "error");
+			toast(getApiError(err, "Failed to create role"), "error");
 		} finally {
 			isCreating = false;
 		}
@@ -298,7 +379,7 @@
 			editingRoleId = null;
 		} catch (err) {
 			console.error("Failed to update role:", err);
-			toast(`${err}`, "error");
+			toast(getApiError(err, "Failed to update role"), "error");
 		} finally {
 			isCreating = false;
 		}
@@ -360,7 +441,7 @@
 			spaceEmojis = await listEmojis(spaceId);
 		} catch (err) {
 			console.error("Failed to load emojis:", err);
-			toast(`${err}`, "error");
+			toast(getApiError(err, "Failed to load emojis"), "error");
 		} finally {
 			emojisLoading = false;
 		}
@@ -387,7 +468,7 @@
 			await loadEmojis();
 		} catch (err) {
 			console.error("Failed to upload emoji:", err);
-			toast(`${err}`, "error");
+			toast(getApiError(err, "Failed to upload emoji"), "error");
 		} finally {
 			isUploadingEmoji = false;
 		}
@@ -412,7 +493,7 @@
 			await loadEmojis();
 		} catch (err) {
 			console.error("Failed to update emoji:", err);
-			toast(`${err}`, "error");
+			toast(getApiError(err, "Failed to update emoji"), "error");
 		}
 	}
 
@@ -444,7 +525,7 @@
 			spaceStickers = await listStickers(spaceId);
 		} catch (err) {
 			console.error("Failed to load stickers:", err);
-			toast(`${err}`, "error");
+			toast(getApiError(err, "Failed to load stickers"), "error");
 		} finally {
 			stickersLoading = false;
 		}
@@ -471,7 +552,7 @@
 			await loadStickers();
 		} catch (err) {
 			console.error("Failed to upload sticker:", err);
-			toast(`${err}`, "error");
+			toast(getApiError(err, "Failed to upload sticker"), "error");
 		} finally {
 			isUploadingSticker = false;
 		}
@@ -496,7 +577,7 @@
 			await loadStickers();
 		} catch (err) {
 			console.error("Failed to update sticker:", err);
-			toast(`${err}`, "error");
+			toast(getApiError(err, "Failed to update sticker"), "error");
 		}
 	}
 
@@ -555,7 +636,7 @@
 				getSpaceStorageUsed(spaceId),
 			]);
 		} catch (e) {
-			toast(e instanceof Error ? e.message : "Failed to load attachments", "error");
+			toast(getApiError(e, "Failed to load attachments"), "error");
 		} finally {
 			spaceAttachmentsLoading = false;
 		}
@@ -682,7 +763,7 @@
 			}
 			await loadSpaceBuckets();
 		} catch (e) {
-			toast(e instanceof Error ? e.message : "Failed to toggle bucket", "error");
+			toast(getApiError(e, "Failed to toggle bucket"), "error");
 		} finally {
 			togglingSpaceBucketId = null;
 		}
@@ -833,13 +914,110 @@
 					<!-- Scrollable content -->
 					<div class="flex-1 space-y-5 overflow-y-auto p-6">
 						{#if activeSection === "overview"}
-							<div class="text-sm text-zinc-300">
-								<p class="mb-1 text-base font-medium text-white">
-									{space?.name}
-								</p>
-								<p class="text-xs text-zinc-400">
-									Server ID: {spaceId}
-								</p>
+							<div class="space-y-5">
+								<!-- Banner -->
+								<div>
+									<span class="mb-1.5 block text-xs font-semibold tracking-wide text-zinc-400 uppercase">Banner</span>
+									<div class="group relative h-24 w-60 overflow-hidden rounded-lg bg-zinc-800">
+										{#if pendingBannerPreview}
+											<img src={pendingBannerPreview} alt="banner" class="h-full w-full object-cover" />
+											<div class="absolute inset-0 flex items-center justify-center gap-2 bg-black/60 opacity-0 transition-opacity group-hover:opacity-100">
+												<button class="rounded p-1.5 text-white hover:bg-white/20" onclick={() => showSpaceBannerCrop = true}><PencilIcon class="size-4" /></button>
+												<button class="rounded p-1.5 text-red-400 hover:bg-white/20" onclick={() => { if (pendingBannerPreview) URL.revokeObjectURL(pendingBannerPreview); pendingBanner = null; pendingBannerPreview = null; }}><XIcon class="size-4" /></button>
+											</div>
+										{:else if pendingBanner === "remove"}
+											<div class="flex h-full items-center justify-center text-zinc-600">No banner</div>
+											<div class="absolute inset-0 flex items-center justify-center bg-black/60 opacity-0 transition-opacity group-hover:opacity-100">
+												<button class="text-xs text-white" onclick={() => { pendingBanner = null; }}>Undo</button>
+											</div>
+										{:else if space?.banner}
+											<img src={getAvatarURL(space.id, space.banner)} alt="banner" class="h-full w-full object-cover" />
+											<div class="absolute inset-0 flex items-center justify-center gap-2 bg-black/60 opacity-0 transition-opacity group-hover:opacity-100">
+												<button class="rounded p-1.5 text-white hover:bg-white/20" onclick={() => showSpaceBannerCrop = true}><PencilIcon class="size-4" /></button>
+												<button class="rounded p-1.5 text-red-400 hover:bg-white/20" onclick={() => { pendingBanner = "remove"; }}><TrashIcon class="size-4" /></button>
+											</div>
+										{:else}
+											<button class="flex h-full w-full items-center justify-center text-zinc-500 transition-colors hover:bg-zinc-700 hover:text-zinc-300" onclick={() => showSpaceBannerCrop = true}>
+												<PlusIcon class="mr-1.5 size-4" /> Set banner
+											</button>
+										{/if}
+									</div>
+								</div>
+
+								<!-- Icon -->
+								<div>
+									<span class="mb-1.5 block text-xs font-semibold tracking-wide text-zinc-400 uppercase">Icon</span>
+									<div class="group relative h-20 w-20">
+										{#if pendingIconPreview}
+											<img src={pendingIconPreview} alt="icon" class="h-full w-full rounded-2xl object-cover" />
+											<div class="absolute inset-0 flex items-center justify-center gap-1 rounded-2xl bg-black/60 opacity-0 transition-opacity group-hover:opacity-100">
+												<button class="rounded p-1 text-white hover:bg-white/20" onclick={() => showSpaceIconCrop = true}><PencilIcon class="size-3.5" /></button>
+												<button class="rounded p-1 text-red-400 hover:bg-white/20" onclick={() => { if (pendingIconPreview) URL.revokeObjectURL(pendingIconPreview); pendingIcon = null; pendingIconPreview = null; }}><XIcon class="size-3.5" /></button>
+											</div>
+										{:else if pendingIcon === "remove"}
+											<div class="flex h-full w-full items-center justify-center rounded-2xl bg-zinc-800 text-zinc-600"><XIcon class="size-5" /></div>
+											<div class="absolute inset-0 flex items-center justify-center rounded-2xl bg-black/60 opacity-0 transition-opacity group-hover:opacity-100">
+												<button class="text-xs text-white" onclick={() => { pendingIcon = null; }}>Undo</button>
+											</div>
+										{:else if space?.icon}
+											<img src={getAvatarURL(space.id, space.icon)} alt="icon" class="h-full w-full rounded-2xl object-cover" />
+											<div class="absolute inset-0 flex items-center justify-center gap-1 rounded-2xl bg-black/60 opacity-0 transition-opacity group-hover:opacity-100">
+												<button class="rounded p-1 text-white hover:bg-white/20" onclick={() => showSpaceIconCrop = true}><PencilIcon class="size-3.5" /></button>
+												<button class="rounded p-1 text-red-400 hover:bg-white/20" onclick={() => { pendingIcon = "remove"; }}><TrashIcon class="size-3.5" /></button>
+											</div>
+										{:else}
+											<button class="flex h-full w-full items-center justify-center rounded-2xl bg-zinc-800 text-zinc-500 transition-colors hover:bg-zinc-700 hover:text-zinc-300" onclick={() => showSpaceIconCrop = true}>
+												<PlusIcon class="size-5" />
+											</button>
+										{/if}
+									</div>
+								</div>
+
+								<p class="text-xxs text-zinc-500">Server ID: {spaceId}</p>
+
+								<!-- Name -->
+								<label class="block space-y-1.5">
+									<span class="text-xs font-semibold tracking-wide text-zinc-400 uppercase">Server Name</span>
+									<input
+										type="text"
+										bind:value={ovName}
+										placeholder="Server name"
+										class="h-10 w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 text-sm text-zinc-100 outline-none focus:ring-1 focus:ring-stone-500"
+									/>
+								</label>
+
+								<!-- Description -->
+								<label class="block space-y-1.5">
+									<span class="text-xs font-semibold tracking-wide text-zinc-400 uppercase">Description</span>
+									<textarea
+										bind:value={ovDescription}
+										placeholder="What is this server about?"
+										rows="3"
+										class="w-full resize-none rounded-md border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 outline-none focus:ring-1 focus:ring-stone-500"
+									></textarea>
+								</label>
+
+								<!-- Locale -->
+								<label class="block space-y-1.5">
+									<span class="text-xs font-semibold tracking-wide text-zinc-400 uppercase">Locale</span>
+									<input
+										type="text"
+										bind:value={ovLocale}
+										placeholder="en-US"
+										class="h-10 w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 text-sm text-zinc-100 outline-none focus:ring-1 focus:ring-stone-500"
+									/>
+								</label>
+
+								<!-- Save -->
+								{#if ovHasChanges}
+									<button
+										onclick={handleSaveOverview}
+										disabled={ovSaving}
+										class="rounded-md bg-stone-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-stone-500 disabled:opacity-50"
+									>
+										{ovSaving ? "Saving..." : "Save Changes"}
+									</button>
+								{/if}
 							</div>
 						{:else if activeSection === "roles"}
 							{#if canManageRoles && space}
@@ -1929,3 +2107,6 @@
 		background: var(--color-zinc-500);
 	}
 </style>
+
+<ImageCropModal bind:open={showSpaceIconCrop} title="Change Icon" aspect={1} round targetWidth={256} targetHeight={256} onConfirm={(f) => onSpaceIconCrop(f)} />
+<ImageCropModal bind:open={showSpaceBannerCrop} title="Change Banner" aspect={5 / 2} targetWidth={600} targetHeight={240} onConfirm={(f) => onSpaceBannerCrop(f)} />

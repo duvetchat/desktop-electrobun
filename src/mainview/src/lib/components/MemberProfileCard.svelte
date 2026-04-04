@@ -10,6 +10,31 @@
 	let previewSrc = $state("");
 	let previewOpen = $state(false);
 
+	const MAX_RETRIES = 3;
+	const RETRY_DELAY = 2000;
+	let bannerError = $state(false);
+	let bannerRetryCount = $state(0);
+
+	let lastBannerSrc: string | null | undefined;
+	$effect(() => {
+		if (member?.banner_url !== lastBannerSrc) {
+			lastBannerSrc = member?.banner_url;
+			bannerError = false;
+			bannerRetryCount = 0;
+		}
+	});
+
+	function handleBannerError() {
+		if (bannerRetryCount < MAX_RETRIES) {
+			bannerRetryCount++;
+			setTimeout(() => {
+				bannerError = false;
+			}, RETRY_DELAY * bannerRetryCount);
+		} else {
+			bannerError = true;
+		}
+	}
+
 	let {
 		member,
 		editable = false,
@@ -62,11 +87,18 @@
 	<!-- Banner -->
 	{#if editable}
 		<div
-			class="group relative h-24 w-full"
-			style={member.banner_url
-				? `background-image: url('${member.banner_url}'); background-size: cover; background-position: center;`
-				: getBannerStyle(member)}
+			class="group relative h-24 w-full overflow-hidden"
+			style={member.banner_url && !bannerError ? undefined : getBannerStyle(member)}
 		>
+			{#if member.banner_url && !bannerError}
+				<img
+					src="{member.banner_url}{bannerRetryCount ? `?r=${bannerRetryCount}` : ''}"
+					alt="banner"
+					class="h-full w-full object-cover"
+					onerror={handleBannerError}
+					draggable="false"
+				/>
+			{/if}
 			<div class="absolute inset-0 flex items-center justify-center gap-2 bg-black/0 transition-colors group-hover:bg-black/40">
 				{#if onBannerClick}
 					<button
@@ -90,13 +122,20 @@
 				{/if}
 			</div>
 		</div>
-	{:else if member.banner_url}
+	{:else if member.banner_url && !bannerError}
 		<button
 			type="button"
-			class="h-24 w-full cursor-pointer"
-			style="background-image: url('{member.banner_url}'); background-size: cover; background-position: center;"
+			class="h-24 w-full cursor-pointer overflow-hidden"
 			onclick={() => { previewSrc = member.banner_url!; previewOpen = true; }}
-		></button>
+		>
+			<img
+				src="{member.banner_url}{bannerRetryCount ? `?r=${bannerRetryCount}` : ''}"
+				alt="banner"
+				class="h-full w-full object-cover"
+				onerror={handleBannerError}
+				draggable="false"
+			/>
+		</button>
 	{:else}
 		<div
 			class="h-24 w-full"

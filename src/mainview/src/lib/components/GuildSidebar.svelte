@@ -9,8 +9,8 @@
 	import { ContextMenu, Dialog, Tabs } from "bits-ui";
 	import { onMount } from "svelte";
 	import type { Guild } from "$lib/types";
-	import { createSpace } from "$lib/api/spaces";
-	import { leaveSpace } from "$lib/api/spaces";
+	import { createSpace, leaveSpace } from "$lib/api/spaces";
+	import SpaceIcon from "$lib/components/SpaceIcon.svelte";
 	import JoinInviteModal from "$lib/components/JoinInviteModal.svelte";
 	import {
 		pendingFriendRequests,
@@ -286,22 +286,7 @@
 									onclick={() => selectGuild(guild)}
 									class="group/btn relative size-10 rounded-lg transition-all duration-150 select-none"
 								>
-									{#if guild.icon_url}
-										<img
-											src={guild.icon_url}
-											alt={guild.name}
-											class="size-10 rounded-lg object-cover transition-transform duration-150 group-hover/btn:scale-105"
-										/>
-									{:else}
-										<div
-											class="flex size-10 items-center justify-center rounded-lg text-sm font-bold {guild.id ===
-											activeGuildId
-												? 'bg-stone-700 text-stone-100 ring-1 ring-stone-500/50'
-												: 'bg-stone-900/65 text-stone-200 group-hover/btn:bg-stone-800/80 group-hover/btn:text-stone-100'} transition-all duration-150"
-										>
-											{initials(guild.name)}
-										</div>
-									{/if}
+									<SpaceIcon src={guild.icon_url || null} name={guild.name} size={40} class="transition-transform duration-150 group-hover/btn:scale-105" />
 									{#if mentionCountBySpace[guild.id] && guild.id !== activeGuildId}
 										<span
 											class="absolute -right-1 -bottom-1 flex size-4 items-center justify-center rounded-full bg-red-600 text-[9px] font-bold text-white ring-2 ring-stone-900"
@@ -365,22 +350,7 @@
 								onclick={() => selectGuild(guild)}
 								class="group/btn relative size-10 rounded-lg transition-all duration-150 select-none"
 							>
-								{#if guild.icon_url}
-									<img
-										src={guild.icon_url}
-										alt={guild.name}
-										class="size-10 rounded-lg object-cover transition-transform duration-150 group-hover/btn:scale-105"
-									/>
-								{:else}
-									<div
-										class="flex size-10 items-center justify-center rounded-lg text-sm font-bold {guild.id ===
-										activeGuildId
-											? 'bg-stone-700 text-stone-100 ring-1 ring-stone-500/50'
-											: 'bg-stone-900/65 text-stone-200 group-hover/btn:bg-stone-800/80 group-hover/btn:text-stone-100'} transition-all duration-150"
-									>
-										{initials(guild.name)}
-									</div>
-								{/if}
+								<SpaceIcon src={guild.icon_url || null} name={guild.name} size={40} class="transition-transform duration-150 group-hover/btn:scale-105" />
 								{#if mentionCountBySpace[guild.id] && guild.id !== activeGuildId}
 									<span
 										class="absolute -right-1 -bottom-1 flex size-4 items-center justify-center rounded-full bg-red-600 text-[9px] font-bold text-white ring-2 ring-stone-900"

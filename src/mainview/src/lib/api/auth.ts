@@ -94,11 +94,11 @@ export async function logIn(options: { password: string; email: string }) {
 
 			return res.data;
 		} else {
-			throw new Error("El servidor no devolvió un token válido");
+			throw new Error("Server did not return a valid token");
 		}
 	} catch (err: any) {
 		console.log(err);
-		const message = err.response?.data?.error || "Error al iniciar sesión";
+		const message = err.response?.data?.error || "Failed to log in";
 		throw new Error(message, { cause: err });
 	}
 }

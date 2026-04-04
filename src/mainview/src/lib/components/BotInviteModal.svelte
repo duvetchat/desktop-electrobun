@@ -6,6 +6,7 @@
 	import { getAvatarURL } from "$lib/common/common";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
 	import { toast } from "$lib/stores/toast.svelte";
+	import { getApiError } from "$lib/api/api";
 
 	let {
 		open = $bindable(false),
@@ -50,7 +51,7 @@
 			toast(`Bot added to ${spaceName}!`, "success");
 			open = false;
 		} catch (err) {
-			toast(err instanceof Error ? err.message : "Failed to add bot", "error");
+			toast(getApiError(err, "Failed to add bot"), "error");
 		} finally {
 			adding = false;
 		}

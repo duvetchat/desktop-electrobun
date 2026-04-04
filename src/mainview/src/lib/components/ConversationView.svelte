@@ -35,6 +35,7 @@
 	import type { Friend } from "$lib/api/friends";
 	import { MessageType, type Message, type MessageReference } from "$lib/types";
 	import { toast } from "$lib/stores/toast.svelte";
+	import { getApiError } from "$lib/api/api";
 	import { MessageSquare, Phone, UserPlus, Users } from "@lucide/svelte";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
 	import Chat from "$lib/components/Chat.svelte";
@@ -413,7 +414,7 @@
 
 		sendDMVoiceNote(conversation.id, blob, nonce).catch((err) => {
 			failedNonces = new Set(failedNonces).add(nonce);
-			toast(err instanceof Error ? err.message : "Failed to send voice note", "error");
+			toast(getApiError(err, "Failed to send voice note"), "error");
 		});
 	}
 

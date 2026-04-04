@@ -29,7 +29,7 @@
 	import { currentUser, channelMessages, gatewaySpaces, dmMessages, conversations } from "$lib/stores.svelte";
 	import MemberProfileCard from "$lib/components/MemberProfileCard.svelte";
 	import ImageCropModal from "$lib/components/ImageCropModal.svelte";
-	import api from "$lib/api/api";
+	import api, { getApiError } from "$lib/api/api";
 	import {
 		updateUser,
 		getMyAttachments,
@@ -267,7 +267,7 @@
 			}
 			await loadBuckets();
 		} catch (e) {
-			toast(e instanceof Error ? e.message : "Failed to toggle bucket", "error");
+			toast(getApiError(e, "Failed to toggle bucket"), "error");
 		} finally {
 			togglingBucketId = null;
 		}
@@ -282,7 +282,7 @@
 			await sendVerificationEmail();
 			toast("Verification email sent! Check your inbox.", "success");
 		} catch (err) {
-			toast(err instanceof Error ? err.message : "Failed to send verification email", "error");
+			toast(getApiError(err, "Failed to send verification email"), "error");
 		} finally {
 			sendingVerification = false;
 		}
@@ -297,7 +297,7 @@
 			await sendResetPasswordEmail();
 			toast("Reset password email sent! Check your inbox.", "success");
 		} catch (err) {
-			toast(err instanceof Error ? err.message : "Failed to send reset password email", "error");
+			toast(getApiError(err, "Failed to send reset password email"), "error");
 		} finally {
 			sendingReset = false;
 		}
@@ -348,7 +348,7 @@
 			}
 			themeVersion++;
 		} catch (e) {
-			toast(e instanceof Error ? e.message : "Failed to load theme", "error");
+			toast(getApiError(e, "Failed to load theme"), "error");
 		} finally {
 			savingTheme = false;
 		}
@@ -366,7 +366,7 @@
 			toast("Verification email sent to your new address. Check your inbox.", "success");
 			newEmail = "";
 		} catch (err) {
-			toast(err instanceof Error ? err.message : "Failed to send email change request", "error");
+			toast(getApiError(err, "Failed to send email change request"), "error");
 		} finally {
 			sendingEmailChange = false;
 		}
@@ -480,8 +480,27 @@
 	let pendingBotBanner = $state<File | "remove" | null>(null);
 	let savingBotProfile = $state(false);
 	let botUsers = $state<Record<string, BotUser>>({});
+	let botEditUsername = $state("");
+	let botEditAlias = $state("");
+	let botEditingAppId = $state<string | null>(null);
 
-	const hasBotProfileChanges = $derived(pendingBotAvatar !== null || pendingBotBanner !== null);
+	function startBotEdit(app: Application) {
+		const bu = app.bot_user_id ? botUsers[app.bot_user_id] : null;
+		botEditUsername = bu?.username ?? "";
+		botEditAlias = bu?.alias ?? "";
+		botEditingAppId = app.id;
+	}
+
+	const hasBotProfileChanges = $derived(
+		pendingBotAvatar !== null ||
+			pendingBotBanner !== null ||
+			(botEditingAppId !== null &&
+				(() => {
+					const app = devApps.find((a) => a.id === botEditingAppId);
+					const bu = app?.bot_user_id ? botUsers[app.bot_user_id] : null;
+					return botEditUsername !== (bu?.username ?? "") || botEditAlias !== (bu?.alias ?? "");
+				})()),
+	);
 
 	function onBotAvatarCrop(file: File) {
 		pendingBotAvatar = file;
@@ -523,7 +542,10 @@
 		if (!devSelectedTeam || !app.bot_user_id) return;
 		savingBotProfile = true;
 		try {
+			const bu = app.bot_user_id ? botUsers[app.bot_user_id] : null;
 			await updateBot(devSelectedTeam.id, app.id, {
+				username: botEditUsername.trim() && botEditUsername !== bu?.username ? botEditUsername.trim() : undefined,
+				alias: botEditAlias.trim() || (bu?.alias ? null : undefined),
 				avatar: pendingBotAvatar instanceof File ? pendingBotAvatar : undefined,
 				banner: pendingBotBanner instanceof File ? pendingBotBanner : undefined,
 				remove_avatar: pendingBotAvatar === "remove",
@@ -540,7 +562,7 @@
 				if (fresh) botUsers = { ...botUsers, [app.bot_user_id]: fresh };
 			}
 		} catch (e) {
-			toast(e instanceof Error ? e.message : "Failed to update bot", "error");
+			toast(getApiError(e, "Failed to update bot"), "error");
 		} finally {
 			savingBotProfile = false;
 		}
@@ -551,7 +573,7 @@
 		try {
 			devTeams = await listTeams();
 		} catch (e) {
-			toast(e instanceof Error ? e.message : "Failed to load teams", "error");
+			toast(getApiError(e, "Failed to load teams"), "error");
 		} finally {
 			devLoading = false;
 		}
@@ -573,7 +595,7 @@
 			});
 			botUsers = map;
 		} catch (e) {
-			toast(e instanceof Error ? e.message : "Failed to load team details", "error");
+			toast(getApiError(e, "Failed to load team details"), "error");
 		} finally {
 			devAppsLoading = false;
 		}
@@ -588,7 +610,7 @@
 			devNewTeamName = "";
 			await selectTeam(team);
 		} catch (e) {
-			toast(e instanceof Error ? e.message : "Failed to create team", "error");
+			toast(getApiError(e, "Failed to create team"), "error");
 		} finally {
 			devCreatingTeam = false;
 		}
@@ -614,7 +636,7 @@
 			if (devSelectedTeam?.id === updated.id) devSelectedTeam = updated;
 			devEditingTeam = null;
 		} catch (e) {
-			toast(e instanceof Error ? e.message : "Failed to update team", "error");
+			toast(getApiError(e, "Failed to update team"), "error");
 		}
 	}
 
@@ -626,7 +648,7 @@
 			toast("Invite sent!", "success");
 			devInviteEmail = "";
 		} catch (e) {
-			toast(e instanceof Error ? e.message : "Failed to invite", "error");
+			toast(getApiError(e, "Failed to invite"), "error");
 		} finally {
 			devInviting = false;
 		}
@@ -650,7 +672,7 @@
 			devNewAppName = "";
 			devNewAppDesc = "";
 		} catch (e) {
-			toast(e instanceof Error ? e.message : "Failed to create application", "error");
+			toast(getApiError(e, "Failed to create application"), "error");
 		} finally {
 			devCreatingApp = false;
 		}
@@ -666,7 +688,7 @@
 			devApps = devApps.map((a) => (a.id === updated.id ? updated : a));
 			devEditingApp = null;
 		} catch (e) {
-			toast(e instanceof Error ? e.message : "Failed to update application", "error");
+			toast(getApiError(e, "Failed to update application"), "error");
 		}
 	}
 
@@ -676,7 +698,7 @@
 			const updated = await updateApplication(devSelectedTeam.id, app.id, { public: !app.public });
 			devApps = devApps.map((a) => (a.id === updated.id ? updated : a));
 		} catch (e) {
-			toast(e instanceof Error ? e.message : "Failed to update visibility", "error");
+			toast(getApiError(e, "Failed to update visibility"), "error");
 		}
 	}
 
@@ -698,7 +720,7 @@
 			devApps = devApps.map((a) => (a.id === app.id ? { ...a, bot_user_id: "created" } : a));
 			toast("Bot created! Copy the token — it won't be shown again.", "success");
 		} catch (e) {
-			toast(e instanceof Error ? e.message : "Failed to create bot", "error");
+			toast(getApiError(e, "Failed to create bot"), "error");
 		}
 	}
 
@@ -746,7 +768,7 @@
 			toast("Invite accepted!", "success");
 			void loadDevTeams();
 		} catch (e) {
-			toast(e instanceof Error ? e.message : "Failed to accept invite", "error");
+			toast(getApiError(e, "Failed to accept invite"), "error");
 		}
 	}
 
@@ -756,7 +778,7 @@
 			pendingTeamInvites.update((list) => list.filter((i) => i.id !== inviteId));
 			toast("Invite declined", "success");
 		} catch (e) {
-			toast(e instanceof Error ? e.message : "Failed to decline invite", "error");
+			toast(getApiError(e, "Failed to decline invite"), "error");
 		}
 	}
 
@@ -2068,6 +2090,25 @@
 																			</button>
 																		</div>
 																	</div>
+																			<!-- Bot name/alias editing -->
+																			<div class="mt-2 space-y-2">
+																				<input
+																					type="text"
+																					value={botEditingAppId === app.id ? botEditUsername : (botUsers[app.bot_user_id ?? ""]?.username ?? "")}
+																					placeholder="Username"
+																					class="w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-xs text-white placeholder-zinc-500 outline-none focus:border-zinc-500"
+																					onfocus={() => { if (botEditingAppId !== app.id) startBotEdit(app); }}
+																					oninput={(e) => { if (botEditingAppId !== app.id) startBotEdit(app); botEditUsername = e.currentTarget.value; }}
+																				/>
+																				<input
+																					type="text"
+																					value={botEditingAppId === app.id ? botEditAlias : (botUsers[app.bot_user_id ?? ""]?.alias ?? "")}
+																					placeholder="Display name (optional)"
+																					class="w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-xs text-white placeholder-zinc-500 outline-none focus:border-zinc-500"
+																					onfocus={() => { if (botEditingAppId !== app.id) startBotEdit(app); }}
+																					oninput={(e) => { if (botEditingAppId !== app.id) startBotEdit(app); botEditAlias = e.currentTarget.value; }}
+																				/>
+																			</div>
 																	<div class="mt-2 flex items-center gap-2">
 																		<span class="text-xxs text-zinc-500">Invite link:</span>
 																		<code class="text-xxs flex-1 truncate rounded bg-zinc-900 px-2 py-1 text-zinc-400"

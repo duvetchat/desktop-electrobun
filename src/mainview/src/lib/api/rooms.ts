@@ -30,7 +30,7 @@ export async function deleteRoom(spaceId: string, roomId: string): Promise<void>
 export async function updateRoom(
 	spaceId: string,
 	roomId: string,
-	payload: { name?: string; description?: string | null; clear_description?: boolean },
+	payload: { name?: string; description?: string | null; parent_id?: string | null; position?: number },
 ): Promise<GatewayRoom> {
 	const response = await api.patch(`/api/spaces/${spaceId}/rooms/${roomId}`, payload);
 	return response.data;

@@ -24,6 +24,27 @@
 		collapsed?: boolean;
 	} = $props();
 
+	const MAX_BANNER_RETRIES = 3;
+	const BANNER_RETRY_DELAY = 2000;
+	let bannerErrors = $state(new Set<string>());
+	let bannerRetryCounts = $state(new Map<string, number>());
+
+	function handleBannerError(memberId: string) {
+		const count = (bannerRetryCounts.get(memberId) ?? 0) + 1;
+		bannerRetryCounts.set(memberId, count);
+		if (count < MAX_BANNER_RETRIES) {
+			bannerErrors.add(memberId);
+			bannerErrors = new Set(bannerErrors);
+			setTimeout(() => {
+				bannerErrors.delete(memberId);
+				bannerErrors = new Set(bannerErrors);
+			}, BANNER_RETRY_DELAY * count);
+		} else {
+			bannerErrors.add(memberId);
+			bannerErrors = new Set(bannerErrors);
+		}
+	}
+
 	const TYPING_TIMEOUT = 5000;
 	let now = $state(Date.now());
 	$effect(() => {
@@ -249,11 +270,14 @@
 						{onRemoveMember}
 					>
 						{#snippet children()}
-							{#if member.banner_url}
-								<div
-									class="pointer-events-none absolute inset-0 bg-cover bg-right opacity-15"
-									style="background-image: url('{member.banner_url}');"
-								></div>
+							{#if member.banner_url && !bannerErrors.has(member.id)}
+								<img
+									src="{member.banner_url}{bannerRetryCounts.get(member.id) ? `?r=${bannerRetryCounts.get(member.id)}` : ''}"
+									alt=""
+									class="pointer-events-none absolute inset-0 h-full w-full object-cover object-right opacity-15"
+									onerror={() => handleBannerError(member.id)}
+									draggable="false"
+								/>
 							{/if}
 							<div class="relative flex min-w-0 items-center gap-2.5">
 								<div class="relative shrink-0">

@@ -192,3 +192,11 @@ const api: ApiClient = {
 };
 
 export default api;
+
+export function getApiError(err: unknown, fallback: string): string {
+	if (err instanceof FetchError && err.response?.data?.error) {
+		return err.response.data.error;
+	}
+	if (err instanceof Error) return err.message;
+	return fallback;
+}

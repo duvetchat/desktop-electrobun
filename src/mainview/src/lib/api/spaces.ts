@@ -43,6 +43,39 @@ export async function leaveSpace(spaceId: string): Promise<void> {
 	await api.delete(`/api/spaces/${spaceId}/members/@me`);
 }
 
+export async function updateSpace(
+	spaceId: string,
+	data: {
+		name?: string;
+		description?: string | null;
+		locale?: string | null;
+		banner?: File | null;
+		icon?: File | null;
+		remove_banner?: boolean;
+		remove_icon?: boolean;
+	},
+): Promise<any> {
+	const hasFiles = data.banner instanceof File || data.icon instanceof File;
+	if (hasFiles || data.remove_banner || data.remove_icon) {
+		const form = new FormData();
+		if (data.name) form.append("name", data.name);
+		if (data.description !== undefined && data.description !== null) form.append("description", data.description);
+		if (data.locale !== undefined && data.locale !== null) form.append("locale", data.locale);
+		if (data.banner instanceof File) form.append("banner", data.banner);
+		if (data.icon instanceof File) form.append("icon", data.icon);
+		if (data.remove_banner) form.append("remove_banner", "true");
+		if (data.remove_icon) form.append("remove_icon", "true");
+		const res = await api.patch(`/api/spaces/${spaceId}`, form);
+		return res.data;
+	}
+	const res = await api.patch(`/api/spaces/${spaceId}`, {
+		name: data.name,
+		description: data.description,
+		locale: data.locale,
+	});
+	return res.data;
+}
+
 // ── Space Attachments ───────────────────────────────────────────────────────
 
 export interface SpaceAttachment {

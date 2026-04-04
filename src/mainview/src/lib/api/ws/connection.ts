@@ -37,7 +37,7 @@ import { getWSHostURL, getAvatarURL, route } from "$lib/common/common";
 import { get } from "svelte/store";
 import { getSpaceMembers, type SpaceMemberWithUser } from "$lib/api/spaces";
 
-import type { GatewayEvent, GatewaySpace, GatewayMember, UserStatus } from "$lib/types";
+import type { GatewayEvent, GatewaySpace, GatewayMember, GatewayRoom, UserStatus } from "$lib/types";
 
 import { gatewayMessageToMessage } from "$lib/types";
 
@@ -61,7 +61,7 @@ getElectrobunRpc()
 // Active socket — module-level so sendMessage can access it
 let activeSocket: WebSocket | null = null;
 
-// Último sequence number recibido, para resume al reconectar
+// Last received sequence number, used for resume on reconnect
 let lastSeq = 0;
 
 // Cache of live user statuses received via USER_STATUS_UPDATE.
@@ -256,7 +256,7 @@ function handleEvent(event: GatewayEvent) {
 					if (s.id !== updated.id) {
 						return s;
 					}
-					return updated;
+					return { ...s, ...updated };
 				}),
 			);
 			break;
@@ -557,6 +557,13 @@ function handleEvent(event: GatewayEvent) {
 
 			break;
 		}
+		case "VOICE_SESSION_REPLACED": {
+			const { room_id } = payload.data;
+			if (get(activeVoiceRoomId) === room_id) {
+				activeVoiceRoomId.set(null);
+			}
+			break;
+		}
 		case "VOICE_JOINED":
 		case "WEBRTC_ICE_CANDIDATE":
 		case "WEBRTC_RENEGOTIATE":
@@ -661,8 +668,7 @@ function handleEvent(event: GatewayEvent) {
 		}
 		case "SPACE_MEMBER_ADD": {
 			const raw = payload.data;
-			// The new member is online (they just joined)
-			userStatusCache.set(raw.user_id, 1);
+			userStatusCache.set(raw.user_id, (raw.status_id ?? 0) as UserStatus);
 			getSpaceMembers(raw.space_id)
 				.then((rows) => addMembersToSpace(raw.space_id, rows))
 				.catch((err) => console.error("[WS] Failed to refresh members after join:", err));
@@ -706,6 +712,27 @@ function handleEvent(event: GatewayEvent) {
 					return {
 						...s,
 						rooms: s.rooms.map((r) => (r.id === room.id ? room : r)),
+					};
+				}),
+			);
+			break;
+		}
+		case "ROOM_REORDER": {
+			const { rooms } = payload.data as { rooms: GatewayRoom[] };
+			if (!rooms || rooms.length === 0) break;
+			const spaceId = rooms[0].space_id;
+			gatewaySpaces.update((spaces) =>
+				spaces.map((s) => {
+					if (s.id !== spaceId) return s;
+					return {
+						...s,
+						rooms: s.rooms.map((r) => {
+							const updated = rooms.find((u) => u.id === r.id);
+							if (updated) {
+								return { ...r, position: updated.position, parent_id: updated.parent_id };
+							}
+							return r;
+						}),
 					};
 				}),
 			);
@@ -1286,6 +1313,10 @@ export function createWebSocketConnection(): GatewayConnection {
 			};
 			if (lastSeq > 0) {
 				identifyData.last_seq = lastSeq;
+				const gwToken = get(wsSessionToken);
+				if (gwToken) {
+					identifyData.session_token = gwToken;
+				}
 			}
 			socket.send(JSON.stringify({ type: "identify", data: identifyData }));
 			startHeartbeat(socket);

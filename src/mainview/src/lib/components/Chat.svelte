@@ -14,6 +14,7 @@
 	import { listEmojis } from "$lib/api/emojis";
 	import { getAvatarURL } from "$lib/common/common";
 	import { listStickers } from "$lib/api/stickers";
+	import { getApiError } from "$lib/api/api";
 
 	let {
 		messages,
@@ -304,7 +305,7 @@
 
 		sendMessage(channelId, content, nonce, ref, files, undefined, stickerAttachmentId).catch((err) => {
 			failedNonces = new Set(failedNonces).add(nonce);
-			toast(err instanceof Error ? err.message : "Failed to send message", "error");
+			toast(getApiError(err, "Failed to send message"), "error");
 		});
 	}
 
@@ -324,7 +325,7 @@
 		failedNonces = newSet;
 		sendMessage(channelId, message.content, nonce).catch((err) => {
 			failedNonces = new Set(failedNonces).add(nonce);
-			toast(err instanceof Error ? err.message : "Failed to send message", "error");
+			toast(getApiError(err, "Failed to send message"), "error");
 		});
 	}
 
@@ -415,7 +416,7 @@
 
 		sendVoiceNote(channelId, blob, nonce).catch((err) => {
 			failedNonces = new Set(failedNonces).add(nonce);
-			toast(err instanceof Error ? err.message : "Failed to send voice note", "error");
+			toast(getApiError(err, "Failed to send voice note"), "error");
 		});
 	}
 

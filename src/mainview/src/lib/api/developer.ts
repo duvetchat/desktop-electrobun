@@ -139,10 +139,19 @@ export async function deleteBot(teamId: string, appId: string): Promise<void> {
 export async function updateBot(
 	teamId: string,
 	appId: string,
-	data: { username?: string; avatar?: File | null; banner?: File | null; remove_avatar?: boolean; remove_banner?: boolean },
+	data: {
+		username?: string;
+		alias?: string | null;
+		avatar?: File | null;
+		banner?: File | null;
+		remove_avatar?: boolean;
+		remove_banner?: boolean;
+	},
 ): Promise<any> {
 	const form = new FormData();
 	if (data.username) form.append("username", data.username);
+	if (data.alias) form.append("alias", data.alias);
+	else if (data.alias === null) form.append("alias", "");
 	if (data.avatar) form.append("avatar", data.avatar);
 	if (data.banner) form.append("banner", data.banner);
 	if (data.remove_avatar) form.append("remove_avatar", "true");
@@ -156,6 +165,7 @@ export async function updateBot(
 export interface BotUser {
 	id: string;
 	username: string;
+	alias: string | null;
 	avatar: string | null;
 	banner: string | null;
 	is_bot: boolean;

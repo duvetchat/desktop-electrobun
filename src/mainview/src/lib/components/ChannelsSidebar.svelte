@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { toast } from "$lib/stores/toast.svelte";
+	import { getApiError } from "$lib/api/api";
 	import {
 		EllipsisVertical as DotsThreeVerticalIcon,
 		Hash as HashIcon,
@@ -22,10 +23,12 @@
 	import { hasPermission, Permission } from "$lib/permissions";
 	import ServerSettings from "$lib/components/ServerSettings.svelte";
 	import ChannelSettings from "$lib/components/ChannelSettings.svelte";
-	import { createRoom, deleteRoom } from "$lib/api/rooms";
+	import { createRoom, deleteRoom, updateRoom } from "$lib/api/rooms";
 	import InviteModal from "$lib/components/InviteModal.svelte";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
 	import UserStatusBar from "$lib/components/UserStatusBar.svelte";
+	import SpaceBanner from "$lib/components/SpaceBanner.svelte";
+	import SpaceIcon from "$lib/components/SpaceIcon.svelte";
 	import { speakingUsers, activeVoiceRoomId, gatewaySpaces, unreadChannels, mentionCounts } from "$lib/stores.svelte";
 
 	// props
@@ -94,7 +97,7 @@
 			newChannelCategory = null;
 		} catch (e) {
 			console.error(e);
-			toast("Failed to create channel", "error");
+			toast(getApiError(e, "Failed to create channel"), "error");
 		} finally {
 			isCreating = false;
 		}
@@ -108,7 +111,7 @@
 			confirmDeleteChannel = null;
 		} catch (err) {
 			console.error("Failed to delete channel:", err);
-			toast("Failed to delete channel", "error");
+			toast(getApiError(err, "Failed to delete channel"), "error");
 		} finally {
 			isDeletingChannel = false;
 		}
@@ -161,6 +164,120 @@
 
 	function getSubChannels(categoryId: string) {
 		return channels.filter((c) => c.categoryId === categoryId).sort((a, b) => (a.position ?? 0) - (b.position ?? 0));
+	}
+
+	// ── Drag & Drop reorder ───────────────────────────────────────────────────
+	let draggedChannelId = $state<string | null>(null);
+	let dropTargetIdx = $state<number | null>(null);
+
+	function handleDragStartReorder(e: DragEvent, channelId: string) {
+		draggedChannelId = channelId;
+		e.dataTransfer!.effectAllowed = "move";
+		e.dataTransfer!.setData("text/x-reorder", channelId);
+	}
+
+	let dropPosition = $state<"above" | "below" | "into" | null>(null);
+
+	function handleDragOver(e: DragEvent, idx: number) {
+		if (!draggedChannelId) return;
+		e.preventDefault();
+		e.dataTransfer!.dropEffect = "move";
+
+		const target = e.currentTarget as HTMLElement;
+		const rect = target.getBoundingClientRect();
+		const y = e.clientY - rect.top;
+		const item = sidebarItems[idx];
+
+		if (item?.kind === "category") {
+			// Categories: top third = above, middle = into, bottom third = below
+			if (y < rect.height / 3) dropPosition = "above";
+			else if (y > (rect.height * 2) / 3) dropPosition = "below";
+			else dropPosition = "into";
+		} else {
+			// Channels: top half = above, bottom half = below
+			dropPosition = y < rect.height / 2 ? "above" : "below";
+		}
+
+		dropTargetIdx = idx;
+	}
+
+	function handleDragOverEnd(e: DragEvent) {
+		if (!draggedChannelId) return;
+		e.preventDefault();
+		e.dataTransfer!.dropEffect = "move";
+		dropTargetIdx = sidebarItems.length;
+		dropPosition = "below";
+	}
+
+	function handleDragEnd() {
+		draggedChannelId = null;
+		dropTargetIdx = null;
+		dropPosition = null;
+	}
+
+	async function handleDrop(e: DragEvent, targetIdx: number) {
+		e.preventDefault();
+		const srcId = draggedChannelId;
+		const pos = dropPosition;
+		draggedChannelId = null;
+		dropTargetIdx = null;
+		dropPosition = null;
+
+		if (!srcId || !space) return;
+
+		const srcItem = sidebarItems.find((it) => it.channel.id === srcId);
+		if (!srcItem) return;
+
+		let newParentId: string | null;
+		let newPosition: number;
+
+		if (targetIdx >= sidebarItems.length) {
+			// Dropped at the very end — put at root, last position
+			const rootChannels = channels.filter((c) => !c.categoryId && c.type !== "category");
+			newParentId = null;
+			newPosition = rootChannels.length;
+		} else {
+			const targetItem = sidebarItems[targetIdx];
+			if (srcId === targetItem.channel.id) return;
+
+			if (targetItem.kind === "category" && pos === "into") {
+				// Drop into category → first position inside
+				newParentId = targetItem.channel.id;
+				newPosition = 0;
+			} else {
+				const targetPos = targetItem.channel.position ?? 0;
+				newParentId = targetItem.channel.categoryId ?? null;
+
+				if (targetItem.kind === "category") {
+					// Above/below a category → root level
+					newParentId = null;
+					newPosition = pos === "above" ? targetPos : targetPos + 1;
+				} else {
+					newPosition = pos === "above" ? targetPos : targetPos + 1;
+				}
+			}
+		}
+
+		// Don't move to same spot
+		const srcParent = srcItem.channel.categoryId ?? null;
+		if (srcParent === newParentId && srcItem.channel.position === newPosition) return;
+
+		try {
+			await updateRoom(guild.id, srcId, {
+				parent_id: newParentId,
+				position: newPosition,
+			});
+		} catch (err) {
+			toast(getApiError(err, "Failed to move channel"), "error");
+		}
+	}
+
+	function dropIndicatorClass(idx: number): string {
+		if (dropTargetIdx !== idx || !draggedChannelId) return "";
+		if (dropPosition === "above") return "border-t-2 border-stone-400";
+		if (dropPosition === "below") return "border-b-2 border-stone-400";
+		if (dropPosition === "into") return "ring-1 ring-stone-500";
+		return "";
 	}
 
 	function selectChannel(channel: Channel) {
@@ -230,16 +347,13 @@
 	{#if !showChannels}
 		<!-- Collapsed: guild avatar + vertical user controls -->
 		<div class="flex flex-1 flex-col items-center gap-2 pt-3">
-			<div
-				class="flex size-10 shrink-0 items-center justify-center rounded-xl bg-stone-800 text-sm font-bold text-zinc-300"
-			>
-				{guild.name.slice(0, 2).toUpperCase()}
-			</div>
+			<SpaceIcon src={guild.icon_url || null} name={guild.name} size={40} />
 		</div>
 		<UserStatusBar collapsed />
 	{:else}
 		<!-- Scrollable content area — flex-1 so user bar is always pinned to bottom -->
 		<div class="flex min-h-0 flex-1 flex-col overflow-hidden">
+			<SpaceBanner src={guild.banner_url || null} height="6rem" class="shrink-0 rounded-none" />
 			<div
 				class="relative flex h-10 shrink-0 items-center justify-between border-b border-stone-800 bg-stone-950/50 px-3 font-semibold text-stone-100"
 			>
@@ -278,7 +392,7 @@
 				>
 					Channels
 				</div>
-				{#each sidebarItems as item}
+				{#each sidebarItems as item, itemIdx}
 					{#if item.kind === "category"}
 						{@const categoryRoom = space?.rooms.find((r) => r.id === item.channel.id)}
 						{@const canManageCategory =
@@ -287,9 +401,14 @@
 							<ContextMenu.Trigger>
 								<button
 									type="button"
-									class="flex h-10 w-full items-center gap-1.5 rounded-md border-0 bg-transparent px-3 text-left text-[11px] font-semibold tracking-wide text-zinc-400 uppercase hover:bg-stone-800/40 hover:text-zinc-200"
+									class="flex h-10 w-full items-center gap-1.5 rounded-md border-0 bg-transparent px-3 text-left text-[11px] font-semibold tracking-wide text-zinc-400 uppercase hover:bg-stone-800/40 hover:text-zinc-200 {dropIndicatorClass(itemIdx)}"
 									onclick={() => toggleCategory(item.channel.id)}
 									aria-expanded={expanded[item.channel.id]}
+									draggable="true"
+									ondragstart={(e) => handleDragStartReorder(e, item.channel.id)}
+									ondragover={(e) => handleDragOver(e, itemIdx)}
+									ondrop={(e) => handleDrop(e, itemIdx)}
+									ondragend={handleDragEnd}
 								>
 									{#if expanded[item.channel.id]}
 										<ChevronDownIcon class="size-3.5 shrink-0" aria-hidden="true" />
@@ -342,12 +461,13 @@
 						{channel.id === activeChannelId
 											? 'bg-stone-700 text-stone-100 ring-1 ring-stone-500/40'
 											: 'text-stone-300 hover:bg-stone-800 hover:text-stone-100'}
-						{!canJoin ? 'cursor-not-allowed text-zinc-500 opacity-50' : ''}"
+						{!canJoin ? 'cursor-not-allowed text-zinc-500 opacity-50' : ''} {dropIndicatorClass(itemIdx)}"
 										aria-pressed={channel.id === activeChannelId}
 										title={channel.name}
 										draggable="true"
 										ondragstart={(e) => {
-											e.dataTransfer!.effectAllowed = "copy";
+											handleDragStartReorder(e, channel.id);
+											e.dataTransfer!.effectAllowed = "move";
 											e.dataTransfer!.setData(
 												"text/plain",
 												JSON.stringify({
@@ -359,6 +479,9 @@
 												}),
 											);
 										}}
+										ondragover={(e) => handleDragOver(e, itemIdx)}
+										ondrop={(e) => handleDrop(e, itemIdx)}
+										ondragend={handleDragEnd}
 										onclick={() => canJoin && selectChannel(channel)}
 										ondblclick={() => canJoin && channel.type === "voice" && joinVoiceChannel(channel)}
 										onkeydown={(e) => canJoin && onKeyDown(e, buttonIndex)}
@@ -379,7 +502,7 @@
 										<span class="min-w-0 flex-1 truncate">{channel.name}</span>
 										{#if channel.type === "text" && $mentionCounts[channel.id]}
 											<span
-												class="ml-1 flex size-4 shrink-0 items-center justify-center rounded-full bg-red-600 text-[10px] font-bold text-white"
+												class="text-xxs ml-1 flex size-4 shrink-0 items-center justify-center rounded-full bg-red-600 font-bold text-white"
 												>{$mentionCounts[channel.id]}</span
 											>
 										{:else if channel.type === "text" && $unreadChannels.has(channel.id)}
@@ -468,6 +591,14 @@
 						</div>
 					{/if}
 				{/each}
+				<!-- Drop zone at the end -->
+				{#if draggedChannelId}
+					<div
+						class="h-6 rounded {dropTargetIdx === sidebarItems.length ? 'bg-stone-700/50' : ''}"
+						ondragover={handleDragOverEnd}
+						ondrop={(e) => handleDrop(e, sidebarItems.length)}
+					></div>
+				{/if}
 			</div>
 		</div>
 		<!-- end scrollable content area -->

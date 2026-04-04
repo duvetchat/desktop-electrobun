@@ -164,9 +164,9 @@
 	}
 
 	// ── Scroll to highlighted message ─────────────────────────────────────────
-	// tick() espera el parche del DOM de Svelte, pero el browser necesita
-	// terminar el layout (especialmente con flex-col-reverse + muchos mensajes).
-	// Dos requestAnimationFrame aseguran que el layout esté completo antes de scrollear.
+	// tick() waits for Svelte's DOM patch, but the browser still needs to
+	// finish layout (especially with flex-col-reverse + many messages).
+	// Two requestAnimationFrame calls ensure layout is complete before scrolling.
 	$effect(() => {
 		const id = highlightedMessageId;
 		if (!id) return;

@@ -122,7 +122,7 @@ export function getThemeUrl(): string {
 // Auto-load saved custom theme on init
 if (typeof window !== "undefined") {
 	const savedThemeUrl = localStorage.getItem("duvet.code_theme_url");
-	if (savedThemeUrl) loadCustomTheme(savedThemeUrl).catch(() => {});
+	if (savedThemeUrl) loadCustomTheme(savedThemeUrl).catch(() => { });
 }
 
 const LANG_ALIASES: Record<string, string> = {
@@ -146,7 +146,82 @@ function escapeHtml(s: string): string {
 }
 
 function isBlockHtml(s: string): boolean {
-	return /^<(h[123]|blockquote|pre)[\s>]/.test(s);
+	return /^<(h[123]|blockquote|pre|ul|ol|table)[\s>]/.test(s);
+}
+
+// ── List regex ──────────────────────────────────────────────────────────────
+const UL_RE = /^(\s*)[-*]\s+(.*)/;
+const OL_RE = /^(\s*)\d+[.)]\s+(.*)/;
+
+function parseList(
+	lines: string[],
+	startIdx: number,
+	inline: (s: string) => string,
+): { html: string; consumed: number } {
+	const items: string[] = [];
+	const firstMatch = UL_RE.exec(lines[startIdx]) ?? OL_RE.exec(lines[startIdx]);
+	if (!firstMatch) return { html: "", consumed: 0 };
+	const ordered = OL_RE.test(lines[startIdx]);
+	let i = startIdx;
+	const re = ordered ? OL_RE : UL_RE;
+	while (i < lines.length) {
+		const m = re.exec(lines[i]);
+		if (!m) break;
+		items.push(inline(m[2]));
+		i++;
+	}
+	const tag = ordered ? "ol" : "ul";
+	const cls = ordered ? "msg-ol" : "msg-ul";
+	const html = `<${tag} class="${cls}">${items.map((it) => `<li>${it}</li>`).join("")}</${tag}>`;
+	return { html, consumed: i - startIdx };
+}
+
+// ── Table regex ─────────────────────────────────────────────────────────────
+function parseTable(
+	lines: string[],
+	startIdx: number,
+	inline: (s: string) => string,
+): { html: string; consumed: number } {
+	// Need at least header + separator + 1 row
+	if (startIdx + 2 > lines.length) return { html: "", consumed: 0 };
+	const headerLine = lines[startIdx];
+	const sepLine = lines[startIdx + 1];
+	if (!headerLine.includes("|") || !sepLine.includes("|")) return { html: "", consumed: 0 };
+	// Separator must be like |---|---|
+	if (!/^[\s|:-]+$/.test(sepLine)) return { html: "", consumed: 0 };
+
+	function parseCells(line: string): string[] {
+		return line
+			.replace(/^\||\|$/g, "")
+			.split("|")
+			.map((c) => c.trim());
+	}
+
+	const headers = parseCells(headerLine);
+	// Parse alignment from separator
+	const sepCells = parseCells(sepLine);
+	const aligns: ("left" | "center" | "right" | "")[] = sepCells.map((c) => {
+		const left = c.startsWith(":");
+		const right = c.endsWith(":");
+		if (left && right) return "center";
+		if (right) return "right";
+		if (left) return "left";
+		return "";
+	});
+
+	const rows: string[][] = [];
+	let i = startIdx + 2;
+	while (i < lines.length && lines[i].includes("|")) {
+		rows.push(parseCells(lines[i]));
+		i++;
+	}
+
+	const alignAttr = (idx: number) => (aligns[idx] ? ` style="text-align:${aligns[idx]}"` : "");
+	const thead = `<thead><tr>${headers.map((h, idx) => `<th${alignAttr(idx)}>${inline(h)}</th>`).join("")}</tr></thead>`;
+	const tbody = rows.length
+		? `<tbody>${rows.map((row) => `<tr>${row.map((c, idx) => `<td${alignAttr(idx)}>${inline(c)}</td>`).join("")}</tr>`).join("")}</tbody>`
+		: "";
+	return { html: `<table class="msg-table">${thead}${tbody}</table>`, consumed: i - startIdx };
 }
 
 function applyInline(
@@ -173,7 +248,7 @@ function applyInline(
 	s = s.replace(/&lt;:([a-f0-9-]+):&gt;/g, (full, id) => {
 		const ce = customEmojiMap?.[id];
 		if (!ce) return `<span class="${ceDelCls}" title="Emoji deleted">💩</span>`;
-		return `<img class="${ceCls}" src="${emojiHost}/attachments/${ce.attachment_id}" alt="<:${id}:>" title=":${escapeHtml(ce.name)}:" draggable="false" loading="lazy" onerror="var r=+(this.dataset.r||0);if(r<10){this.dataset.r=r+1;this.src=this.src.split('?')[0]+'?r='+Date.now()}else{this.replaceWith(Object.assign(document.createElement('span'),{className:'${ceDelCls}',title:'Emoji deleted',textContent:'💩'}))}">`;
+		return `<img class="${ceCls}" src="${emojiHost}/attachments/${ce.attachment_id}" alt="${escapeHtml(ce.name)}" title=":${escapeHtml(ce.name)}:" draggable="false" loading="lazy" onerror="var r=+(this.dataset.r||0);if(r<10){this.dataset.r=r+1;this.src=this.src.split('?')[0]+'?r='+Date.now()}else{this.replaceWith(Object.assign(document.createElement('span'),{className:'${ceDelCls}',title:'Emoji deleted',textContent:'💩'}))}">`;
 	});
 	return s;
 }
@@ -233,22 +308,51 @@ export function renderMarkdown(
 
 	// ── 3. Process line by line for block elements ─────────────────────────────
 	const lines = s.split("\n");
-	const out: string[] = lines.map((line) => {
+	const out: string[] = [];
+	const inline = (t: string) => applyInline(renderEmoji(t), false, mentionMap, customEmojiMap);
+
+	let i = 0;
+	while (i < lines.length) {
+		const line = lines[i];
 		let m: RegExpExecArray | null;
+
+		// Lists
+		if (UL_RE.test(line) || OL_RE.test(line)) {
+			const { html, consumed } = parseList(lines, i, inline);
+			if (consumed > 0) {
+				out.push(html);
+				i += consumed;
+				continue;
+			}
+		}
+
+		// Tables
+		if (line.includes("|") && i + 1 < lines.length && lines[i + 1].includes("|")) {
+			const { html, consumed } = parseTable(lines, i, inline);
+			if (consumed > 0) {
+				out.push(html);
+				i += consumed;
+				continue;
+			}
+		}
+
 		if ((m = /^### (.*)/.exec(line)))
-			return `<h3 class="msg-h3">${applyInline(renderEmoji(m[1]), false, mentionMap, customEmojiMap)}</h3>`;
-		if ((m = /^## (.*)/.exec(line)))
-			return `<h2 class="msg-h2">${applyInline(renderEmoji(m[1]), false, mentionMap, customEmojiMap)}</h2>`;
-		if ((m = /^# (.*)/.exec(line)))
-			return `<h1 class="msg-h1">${applyInline(renderEmoji(m[1]), false, mentionMap, customEmojiMap)}</h1>`;
-		if ((m = /^-# (.*)/.exec(line)))
-			return `<span class="msg-subtext">${applyInline(renderEmoji(m[1]), false, mentionMap, customEmojiMap)}</span>`;
-		if ((m = /^>>> (.*)/.exec(line)))
-			return `<blockquote class="msg-blockquote">${applyInline(renderEmoji(m[1]), false, mentionMap, customEmojiMap)}</blockquote>`;
-		if ((m = /^> (.*)/.exec(line)))
-			return `<blockquote class="msg-blockquote">${applyInline(renderEmoji(m[1]), false, mentionMap, customEmojiMap)}</blockquote>`;
-		return applyInline(renderEmoji(line, large), large, mentionMap, customEmojiMap);
-	});
+			out.push(`<h3 class="msg-h3">${inline(m[1])}</h3>`);
+		else if ((m = /^## (.*)/.exec(line)))
+			out.push(`<h2 class="msg-h2">${inline(m[1])}</h2>`);
+		else if ((m = /^# (.*)/.exec(line)))
+			out.push(`<h1 class="msg-h1">${inline(m[1])}</h1>`);
+		else if ((m = /^-# (.*)/.exec(line)))
+			out.push(`<span class="msg-subtext">${inline(m[1])}</span>`);
+		else if ((m = /^>>> (.*)/.exec(line)))
+			out.push(`<blockquote class="msg-blockquote">${inline(m[1])}</blockquote>`);
+		else if ((m = /^> (.*)/.exec(line)))
+			out.push(`<blockquote class="msg-blockquote">${inline(m[1])}</blockquote>`);
+		else
+			out.push(applyInline(renderEmoji(line, large), large, mentionMap, customEmojiMap));
+
+		i++;
+	}
 
 	// ── 4. Join with <br> except around block elements ─────────────────────────
 	let result = "";
