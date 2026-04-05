@@ -4,6 +4,7 @@
 	import { Popover } from "bits-ui";
 	import type { MemberOnSidebar, GatewaySpace, Role } from "$lib/types";
 	import { currentUser, friends, pendingFriendRequests, sentFriendRequests, userActivities } from "$lib/stores.svelte";
+	import { BADGES } from "$lib/badges";
 	import { assignRoleToMember, removeRoleFromMember } from "$lib/api/roles";
 	import { sendFriendRequest, getSentRequests } from "$lib/api/friends";
 	import { Permission, ALL_PERMISSIONS } from "$lib/permissions";
@@ -238,6 +239,14 @@
 					<p class="text-sm font-medium text-zinc-400">
 						@{member.raw_username}
 					</p>
+
+					{#if BADGES.some((b) => member.badges & b.flag)}
+						<div class="mt-2 flex gap-1">
+							{#each BADGES.filter((b) => member.badges & b.flag) as badge}
+								<img src={badge.icon} alt={badge.name} title={badge.name} class="h-6 w-6 rounded" />
+							{/each}
+						</div>
+					{/if}
 
 					{#if $userActivities[member.id]?.length}
 						<div class="my-3 h-px w-full bg-zinc-800"></div>

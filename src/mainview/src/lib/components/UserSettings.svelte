@@ -806,6 +806,7 @@
 				? null
 				: (pendingBannerPreview ?? ($currentUser ? getAvatarURL($currentUser.id, $currentUser.banner) : null)),
 		status: "online" as const,
+		badges: $currentUser?.badges ?? 0,
 		is_bot: $currentUser?.is_bot ?? false,
 		is_owner: false,
 		roles: [] as import("$lib/types").Role[],

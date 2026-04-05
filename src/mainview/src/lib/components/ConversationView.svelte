@@ -119,6 +119,7 @@
 			avatar_url: getAvatarURL(m.user_id, m.user?.avatar),
 			banner_url: getAvatarURL(m.user_id, m.user?.banner),
 			status: (userStatusCache.get(m.user_id) === 1 ? "online" : userStatusCache.get(m.user_id) === 2 ? "dnd" : "offline") as "online" | "dnd" | "offline",
+			badges: m.user?.badges ?? 0,
 			is_bot: m.user?.is_bot ?? false,
 			is_owner: m.user_id === conversation.owner_id,
 			roles: [],

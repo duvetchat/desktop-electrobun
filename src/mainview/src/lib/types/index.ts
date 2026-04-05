@@ -221,6 +221,8 @@ export interface GatewayUser {
 	avatar: string | null;
 	banner: string | null;
 	custom: string;
+	flags: number;
+	badges: number;
 	is_bot: boolean;
 	created_at: string;
 	updated_at: string;
@@ -375,6 +377,8 @@ export interface UserUpdateEvent {
 	alias: string | null;
 	avatar: string | null;
 	banner: string | null;
+	flags?: number;
+	badges?: number;
 }
 
 export interface VoiceJoinedEvent {
@@ -691,6 +695,7 @@ export interface MemberOnSidebar {
 	avatar_url: string | null;
 	banner_url: string | null;
 	status: "offline" | "online" | "idle" | "dnd";
+	badges: number;
 	is_bot: boolean;
 	is_owner: boolean;
 	roles: Role[];
@@ -721,6 +726,7 @@ export function gatewaySpaceToMembers(space: GatewaySpace, statusLookup?: Map<st
 				avatar_url: getAvatarURL(u.id, u.avatar),
 				banner_url: getAvatarURL(u.id, u.banner),
 				status: userStatusToString(statusLookup?.get(u.id) ?? 0),
+				badges: u.badges ?? 0,
 				is_bot: u.is_bot ?? false,
 				is_owner: u.id === space.owner_id,
 				roles: (space.member_roles[u.id] ?? [])

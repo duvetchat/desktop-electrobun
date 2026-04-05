@@ -81,6 +81,7 @@
 			avatar_url: getAvatarURL(u.id, u.avatar),
 			banner_url: getAvatarURL(u.id, u.banner),
 			status,
+			badges: u.badges ?? 0,
 			is_bot: u.is_bot ?? false,
 			is_owner: u.id === sp.owner_id,
 			roles: (sp.member_roles[u.id] ?? [])

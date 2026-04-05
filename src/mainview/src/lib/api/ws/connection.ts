@@ -372,31 +372,19 @@ function handleEvent(event: GatewayEvent) {
 		}
 		case "USER_UPDATE": {
 			const raw = payload.data;
-			currentUser.update((u) =>
-				u?.id === raw.id
-					? {
-							...u,
-							username: raw.username,
-							alias: raw.alias,
-							avatar: raw.avatar,
-							banner: raw.banner,
-						}
-					: u,
-			);
+			const patch: Record<string, any> = {
+				username: raw.username,
+				alias: raw.alias,
+				avatar: raw.avatar,
+				banner: raw.banner,
+			};
+			if (raw.flags !== undefined) patch.flags = raw.flags;
+			if (raw.badges !== undefined) patch.badges = raw.badges;
+			currentUser.update((u) => (u?.id === raw.id ? { ...u, ...patch } : u));
 			gatewaySpaces.update((spaces) =>
 				spaces.map((s) => ({
 					...s,
-					users: s.users.map((u) =>
-						u.id === raw.id
-							? {
-									...u,
-									username: raw.username,
-									alias: raw.alias,
-									avatar: raw.avatar,
-									banner: raw.banner,
-								}
-							: u,
-					),
+					users: s.users.map((u) => (u.id === raw.id ? { ...u, ...patch } : u)),
 				})),
 			);
 			const newName = raw.alias ?? raw.username;

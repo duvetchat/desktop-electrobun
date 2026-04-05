@@ -7,12 +7,14 @@
 		size = 40,
 		mouthOpen = 0,
 		class: className = "",
+		oncontextmenu = undefined,
 	}: {
 		src?: string | null | undefined;
 		name: string;
 		size?: string | number;
 		mouthOpen?: number;
 		class?: string;
+		oncontextmenu?: (e: MouseEvent) => void;
 	} = $props();
 
 	const MAX_RETRIES = 3;
@@ -51,6 +53,7 @@
 		? size + 'px'
 		: size}; border-radius: 50%; overflow: hidden; position: relative;"
 	class={className}
+	{oncontextmenu}
 >
 	{#if showImg}
 		<img

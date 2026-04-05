@@ -154,3 +154,13 @@ export async function me(): Promise<UserMeResult> {
 	const response = await api.get("/api/users/@me");
 	return response.data;
 }
+
+// ── Internal (Staff only) ───────────────────────────────────────────────────
+
+export async function updateUserFlagsBadges(
+	userId: string,
+	data: { flags?: number; badges?: number },
+): Promise<any> {
+	const res = await api.patch(`/api/internal/users/${userId}/flags-badges`, data);
+	return res.data;
+}

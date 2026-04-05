@@ -15,6 +15,7 @@
 	import { untrack } from "svelte";
 	import { Dialog } from "bits-ui";
 	import { Permission } from "$lib/permissions";
+	import { getApiError } from "$lib/api/api";
 	import { updateRoom, upsertRoomOverwrite, deleteRoomOverwrite } from "$lib/api/rooms";
 	import { currentUser } from "$lib/stores.svelte";
 	import type { GatewaySpace, GatewayRoom, GatewayRoomOverwrite } from "$lib/types";
@@ -63,7 +64,7 @@
 				await updateRoom(space.id, room.id, payload);
 			}
 		} catch (e) {
-			overviewError = e instanceof Error ? e.message : "Failed to save";
+			overviewError = getApiError(e, "Failed to save");
 		} finally {
 			overviewSaving = false;
 		}
@@ -260,7 +261,7 @@
 				),
 			]);
 		} catch (e) {
-			saveError = e instanceof Error ? e.message : "Failed to save";
+			saveError = getApiError(e, "Failed to save");
 			console.error("Failed to save overwrites:", e);
 		} finally {
 			isSaving = false;
@@ -299,7 +300,9 @@
 				<aside class="flex w-56 shrink-0 flex-col border-r border-zinc-800 bg-zinc-950 py-6">
 					<div class="mb-4 px-4">
 						<div class="mb-1 flex items-center gap-1.5 px-2">
-							{#if room.type === 1}
+							{#if room.type === 3}
+								<GearSixIcon class="size-3.5 shrink-0 text-zinc-400" />
+							{:else if room.type === 1}
 								<HashIcon class="size-3.5 shrink-0 text-zinc-400" />
 							{:else}
 								<SpeakerIcon class="size-3.5 shrink-0 text-zinc-400" />
@@ -320,14 +323,16 @@
 							Overview
 						</button>
 
-						<button
-							class="flex items-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium transition-colors duration-100
-								{activeSection === 'permissions' ? 'bg-zinc-800 text-white' : 'text-zinc-400 hover:bg-zinc-800/60 hover:text-zinc-200'}"
-							onclick={() => (activeSection = "permissions")}
-						>
-							<ShieldIcon class="size-4" />
-							Permissions
-						</button>
+						{#if room.type !== 3}
+							<button
+								class="flex items-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium transition-colors duration-100
+									{activeSection === 'permissions' ? 'bg-zinc-800 text-white' : 'text-zinc-400 hover:bg-zinc-800/60 hover:text-zinc-200'}"
+								onclick={() => (activeSection = "permissions")}
+							>
+								<ShieldIcon class="size-4" />
+								Permissions
+							</button>
+						{/if}
 
 						<div class="mx-1 mt-auto border-t border-zinc-800 pt-4">
 							{#if !confirmDelete}
@@ -336,11 +341,11 @@
 									onclick={() => (confirmDelete = true)}
 								>
 									<TrashIcon class="size-4" />
-									Delete Channel
+									Delete {room.type === 3 ? "Category" : "Channel"}
 								</button>
 							{:else}
 								<div class="px-3 py-2 text-xs text-zinc-400">
-									<p class="mb-2 font-medium text-red-400">Delete this channel?</p>
+									<p class="mb-2 font-medium text-red-400">Delete this {room.type === 3 ? "category" : "channel"}?</p>
 									<div class="flex gap-2">
 										<button
 											class="flex-1 rounded bg-red-600 px-2 py-1 text-xs text-white transition-colors hover:bg-red-500"
@@ -386,31 +391,33 @@
 							<div class="max-w-xl space-y-5 px-6 py-6">
 								<div class="space-y-1.5">
 									<label for="ch-name" class="block text-xs font-semibold tracking-wide text-zinc-400 uppercase">
-										Channel Name
+										{room.type === 3 ? "Category Name" : "Channel Name"}
 									</label>
 									<input
 										id="ch-name"
 										type="text"
 										bind:value={editName}
 										class="w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500 focus:ring-2 focus:ring-indigo-500/60 focus:outline-none"
-										placeholder="channel-name"
+										placeholder={room.type === 3 ? "category-name" : "channel-name"}
 										maxlength="64"
 									/>
 								</div>
 
-								<div class="space-y-1.5">
-									<label for="ch-desc" class="block text-xs font-semibold tracking-wide text-zinc-400 uppercase">
-										Description
-									</label>
-									<textarea
-										id="ch-desc"
-										bind:value={editDescription}
-										rows="3"
-										class="w-full resize-none rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500 focus:ring-2 focus:ring-indigo-500/60 focus:outline-none"
-										placeholder="Optional description…"
-										maxlength="256"
-									></textarea>
-								</div>
+								{#if room.type !== 3}
+									<div class="space-y-1.5">
+										<label for="ch-desc" class="block text-xs font-semibold tracking-wide text-zinc-400 uppercase">
+											Description
+										</label>
+										<textarea
+											id="ch-desc"
+											bind:value={editDescription}
+											rows="3"
+											class="w-full resize-none rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500 focus:ring-2 focus:ring-indigo-500/60 focus:outline-none"
+											placeholder="Optional description…"
+											maxlength="256"
+										></textarea>
+									</div>
+								{/if}
 
 								{#if overviewError}
 									<p class="text-sm text-red-400">{overviewError}</p>

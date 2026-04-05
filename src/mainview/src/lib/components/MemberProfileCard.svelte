@@ -4,6 +4,7 @@
 	import ImagePreview from "$lib/components/ImagePreview.svelte";
 	import { Camera as CameraIcon, Trash2 as TrashIcon } from "@lucide/svelte";
 	import { userActivities } from "$lib/stores.svelte";
+	import { BADGES } from "$lib/badges";
 	import { resolveActivityIcon } from "$lib/activity-icons";
 	import ElapsedTime from "$lib/components/ElapsedTime.svelte";
 
@@ -203,6 +204,14 @@
 			<p class="break-all text-sm font-medium text-zinc-400">
 				@{member.raw_username}
 			</p>
+
+			{#if BADGES.some((b) => member.badges & b.flag)}
+				<div class="mt-2 flex gap-1">
+					{#each BADGES.filter((b) => member.badges & b.flag) as badge}
+						<img src={badge.icon} alt={badge.name} title={badge.name} class="h-6 w-6 rounded" />
+					{/each}
+				</div>
+			{/if}
 
 			{#if $userActivities[member.id]?.length}
 				<div class="my-3 h-px w-full bg-zinc-800"></div>

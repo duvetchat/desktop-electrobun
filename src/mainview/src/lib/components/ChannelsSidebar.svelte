@@ -16,7 +16,9 @@
 		MicOff as MicrophoneSlashIcon,
 		Headphones as HeadphonesIcon,
 		MonitorUp as MonitorUpIcon,
+		Pencil as PencilIcon,
 	} from "@lucide/svelte";
+
 	import { ContextMenu, Dialog, DropdownMenu } from "bits-ui";
 	import { onMount } from "svelte";
 	import type { Guild, Channel, RoomType } from "$lib/types";
@@ -58,6 +60,7 @@
 
 	let confirmDeleteChannel = $state<Channel | null>(null);
 	let isDeletingChannel = $state(false);
+
 
 	let showInviteModal = $state(false);
 	let inviteModalChannel = $state<Channel | null>(null);
@@ -231,17 +234,21 @@
 		let newParentId: string | null;
 		let newPosition: number;
 
+		const isDraggingCategory = srcItem.channel.type === "category";
+
 		if (targetIdx >= sidebarItems.length) {
 			// Dropped at the very end — put at root, last position
 			const rootChannels = channels.filter((c) => !c.categoryId && c.type !== "category");
 			newParentId = null;
-			newPosition = rootChannels.length;
+			newPosition = isDraggingCategory
+				? channels.filter((c) => !c.categoryId).length
+				: rootChannels.length;
 		} else {
 			const targetItem = sidebarItems[targetIdx];
 			if (srcId === targetItem.channel.id) return;
 
-			if (targetItem.kind === "category" && pos === "into") {
-				// Drop into category → first position inside
+			if (targetItem.kind === "category" && pos === "into" && !isDraggingCategory) {
+				// Drop into category → first position inside (categories can't nest)
 				newParentId = targetItem.channel.id;
 				newPosition = 0;
 			} else {
@@ -258,15 +265,17 @@
 			}
 		}
 
+		// Categories always stay at root
+		if (isDraggingCategory) newParentId = null;
+
 		// Don't move to same spot
 		const srcParent = srcItem.channel.categoryId ?? null;
 		if (srcParent === newParentId && srcItem.channel.position === newPosition) return;
 
 		try {
-			await updateRoom(guild.id, srcId, {
-				parent_id: newParentId,
-				position: newPosition,
-			});
+			const payload: { position: number; parent_id?: string | null } = { position: newPosition };
+			if (!isDraggingCategory) payload.parent_id = newParentId;
+			await updateRoom(guild.id, srcId, payload);
 		} catch (err) {
 			toast(getApiError(err, "Failed to move channel"), "error");
 		}
@@ -432,6 +441,15 @@
 										</div>
 									</ContextMenu.Item>
 									{#if canManageCategory}
+										<ContextMenu.Item
+											class="w-full px-3 py-2 text-left text-sm text-zinc-100 transition-colors hover:bg-zinc-700"
+											onSelect={() => openChannelSettings(item.channel)}
+										>
+											<div class="flex items-center gap-2">
+												<PencilIcon class="size-4 text-zinc-400" />
+												Edit Category
+											</div>
+										</ContextMenu.Item>
 										<div class="my-1 border-t border-zinc-700"></div>
 										<ContextMenu.Item
 											class="w-full px-3 py-2 text-left text-sm text-red-400 transition-colors hover:bg-zinc-700"
@@ -439,7 +457,7 @@
 										>
 											<div class="flex items-center gap-2">
 												<TrashSimpleIcon class="size-4" />
-												Delete Channel
+												Delete Category
 											</div>
 										</ContextMenu.Item>
 									{/if}

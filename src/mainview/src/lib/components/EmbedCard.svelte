@@ -59,15 +59,15 @@
 	</button>
 {:else if embed.type === EmbedType.Gifv || embed.type === EmbedType.Image || (!embed.title && !embed.description && !embed.author && !embed.footer && !embed.fields?.length && (embed.image || embed.video))}
 	{#if embed.video}
-		<video src={proxyVideoUrl(embed.video.url)} muted playsinline controls class="mt-1 max-w-xs self-start rounded"
+		<video src={proxyVideoUrl(embed.video.url)} muted playsinline controls class="mt-1 max-w-[550px] max-h-[350px] self-start rounded"
 		></video>
 	{:else if embed.image}
 		<button
 			type="button"
-			class="mt-1 block max-w-xs cursor-zoom-in self-start rounded"
+			class="mt-1 block max-w-[550px] cursor-zoom-in self-start rounded"
 			onclick={() => onImageClick?.(embed.image!.url)}
 		>
-			<img src={embed.image.url} alt="" class="max-w-xs rounded" loading="lazy" />
+			<img src={embed.image.url} alt="" class="max-w-[550px] max-h-[350px] rounded" loading="lazy" />
 		</button>
 	{/if}
 {:else if embed.title || embed.description || embed.video || embed.image}

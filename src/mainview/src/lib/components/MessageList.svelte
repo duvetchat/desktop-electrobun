@@ -3,7 +3,7 @@
 	import { onDestroy, onMount, tick } from "svelte";
 	import { updateMessage, deleteMessage, getMessageThread } from "$lib/api/messages";
 	import { Dialog, Popover } from "bits-ui";
-	import { currentUser, jumpToMessageRequest, gatewaySpaces, pageVisible, botInviteRequest, spaceInviteRequest } from "$lib/stores.svelte";
+	import { currentUser, jumpToMessageRequest, gatewaySpaces, pageVisible, botInviteRequest, spaceInviteRequest, friends, sentFriendRequests, pendingFriendRequests } from "$lib/stores.svelte";
 	import {
 		addRoomReaction,
 		removeRoomReaction,
@@ -28,6 +28,12 @@
 	import ImagePreview from "$lib/components/ImagePreview.svelte";
 	import MemberProfilePopover from "$lib/components/MemberProfilePopover.svelte";
 	import type { MessageReaction } from "$lib/types";
+	import { sendFriendRequest, getSentRequests } from "$lib/api/friends";
+	import { updateUserFlagsBadges } from "$lib/api/user";
+	import { getApiError } from "$lib/api/api";
+	import { toast } from "$lib/stores/toast.svelte";
+	import { get } from "svelte/store";
+	import { FLAGS, BADGES, isStaff as checkStaff } from "$lib/badges";
 
 	let {
 		messages,
@@ -94,6 +100,84 @@
 	let lastSeenMsgId = "";
 	let deletingMessageId = $state<string | null>(null);
 	let activePopoverMsgId = $state<string | null>(null);
+	let avatarPopoverWasOpen = false;
+
+	// User context menu
+	let userMenuPos = $state<{ x: number; y: number } | null>(null);
+	let userMenuTargetId = $state<string | null>(null);
+
+	function openUserMenu(e: MouseEvent, userId: string) {
+		e.preventDefault();
+		userMenuPos = { x: e.clientX, y: e.clientY };
+		userMenuTargetId = userId;
+	}
+
+	function closeUserMenu() {
+		userMenuPos = null;
+		userMenuTargetId = null;
+	}
+
+	function isFriend(userId: string): boolean {
+		return get(friends).some((f) => f.sender_id === userId || f.recipient_id === userId);
+	}
+
+	function hasPendingRequest(userId: string): boolean {
+		return get(sentFriendRequests).some((r) => r.recipient_id === userId)
+			|| get(pendingFriendRequests).some((r) => r.sender_id === userId);
+	}
+
+	async function handleSendFriendRequest(userId: string) {
+		closeUserMenu();
+		try {
+			await sendFriendRequest(userId);
+			const sent = await getSentRequests();
+			sentFriendRequests.set(sent);
+			toast("Friend request sent", "success");
+		} catch (err) {
+			toast(getApiError(err, "Failed to send friend request"), "error");
+		}
+	}
+
+	// Staff flags/badges editor
+	let flagsBadgesTarget = $state<{ id: string; flags: number; badges: number } | null>(null);
+	let flagsBadgesOpen = $state(false);
+	let flagsBadgesSaving = $state(false);
+	let editFlags = $state(0);
+	let editBadges = $state(0);
+
+	const isStaff = $derived(checkStaff($currentUser?.flags ?? 0));
+
+	function openFlagsBadgesEditor(userId: string) {
+		closeUserMenu();
+		const user = space?.users.find((u) => u.id === userId);
+		if (!user) return;
+		flagsBadgesTarget = { id: user.id, flags: user.flags ?? 0, badges: user.badges ?? 0 };
+		editFlags = flagsBadgesTarget.flags;
+		editBadges = flagsBadgesTarget.badges;
+		flagsBadgesOpen = true;
+	}
+
+	async function saveFlagsBadges() {
+		if (!flagsBadgesTarget) return;
+		flagsBadgesSaving = true;
+		try {
+			await updateUserFlagsBadges(flagsBadgesTarget.id, { flags: editFlags, badges: editBadges });
+			flagsBadgesOpen = false;
+		} catch (err) {
+			toast(getApiError(err, "Failed to update flags/badges"), "error");
+		} finally {
+			flagsBadgesSaving = false;
+		}
+	}
+
+	function toggleFlag(flag: number) {
+		editFlags = editFlags ^ flag;
+	}
+
+	function toggleBadge(badge: number) {
+		editBadges = editBadges ^ badge;
+	}
+
 	let threadModalOpen = $state(false);
 	let threadLoading = $state(false);
 	let threadError = $state("");
@@ -900,11 +984,16 @@
 							<button
 								type="button"
 								class="mt-0.5 mr-3 shrink-0 rounded-full {msgMember ? 'cursor-pointer' : 'cursor-default'}"
+								onmousedown={() => {
+									avatarPopoverWasOpen = activePopoverMsgId === message.id;
+								}}
 								onclick={() => {
-									if (msgMember) activePopoverMsgId = message.id;
+									if (!msgMember) return;
+									if (avatarPopoverWasOpen) return;
+									activePopoverMsgId = message.id;
 								}}
 							>
-								<UserAvatar src={message.author_avatar_url} name={message.author_name} size={40} />
+								<UserAvatar src={message.author_avatar_url} name={message.author_name} size={40} oncontextmenu={(e) => openUserMenu(e, message.author_id)} />
 							</button>
 						{/key}
 					{:else}
@@ -1191,8 +1280,8 @@
 												</div>
 											{/if}
 										{:else if att.deleted}
-											{@const dw = Math.min(att.width ?? 200, 400)}
-											{@const dh = Math.min(att.height ?? 48, 400)}
+											{@const dw = Math.min(att.width ?? 200, 550)}
+											{@const dh = Math.min(att.height ?? 48, 350)}
 											<div
 												class="flex flex-col items-center justify-center gap-1 rounded-md border border-dashed border-zinc-700 bg-zinc-800/30"
 												style="width: {dw}px; height: {dh}px; max-width: 100%;"
@@ -1215,9 +1304,9 @@
 												<span class="text-xs text-zinc-500">Attachment deleted</span>
 											</div>
 										{:else if att.content_type.startsWith("image/")}
-											{@const rawW = att.width ?? 400}
-											{@const rawH = att.height ?? 400}
-											{@const imgScale = Math.min(400 / rawW, 400 / rawH, 1)}
+											{@const rawW = att.width ?? 550}
+											{@const rawH = att.height ?? 350}
+											{@const imgScale = Math.min(550 / rawW, 350 / rawH, 1)}
 											{@const iw = Math.round(rawW * imgScale)}
 											{@const ih = Math.round(rawH * imgScale)}
 											<button
@@ -1253,9 +1342,9 @@
 												/>
 											</button>
 										{:else if att.content_type.startsWith("video/")}
-											{@const rawVW = att.width ?? 400}
-											{@const rawVH = att.height ?? 300}
-											{@const vidScale = Math.min(400 / rawVW, 300 / rawVH, 1)}
+											{@const rawVW = att.width ?? 550}
+											{@const rawVH = att.height ?? 350}
+											{@const vidScale = Math.min(550 / rawVW, 350 / rawVH, 1)}
 											{@const vw = Math.round(rawVW * vidScale)}
 											{@const vh = Math.round(rawVH * vidScale)}
 											<div
@@ -1801,3 +1890,93 @@
 </Dialog.Root>
 
 <ImagePreview src={previewSrc} alt={previewAlt} bind:open={previewOpen} />
+
+<!-- User context menu (right-click avatar) -->
+{#if userMenuPos && userMenuTargetId}
+	<!-- svelte-ignore a11y_no_static_element_interactions -->
+	<div class="fixed inset-0 z-200" onclick={closeUserMenu} oncontextmenu={(e) => { e.preventDefault(); closeUserMenu(); }}></div>
+	{@const isSelf = userMenuTargetId === $currentUser?.id}
+	{@const alreadyFriend = !isSelf && isFriend(userMenuTargetId)}
+	{@const pending = !isSelf && !alreadyFriend && hasPendingRequest(userMenuTargetId)}
+	{@const canSendRequest = !isSelf && !alreadyFriend && !pending}
+	<div
+		class="fixed z-201 min-w-44 rounded-lg border border-zinc-700 bg-zinc-800 py-1 shadow-2xl"
+		style="left: {userMenuPos.x}px; top: {userMenuPos.y}px;"
+	>
+		{#if !isSelf}
+			<button
+				class="w-full px-3 py-2 text-left text-sm transition-colors {canSendRequest ? 'text-zinc-100 hover:bg-zinc-700' : 'text-zinc-500 cursor-not-allowed'}"
+				disabled={!canSendRequest}
+				onclick={() => handleSendFriendRequest(userMenuTargetId!)}
+			>
+				{alreadyFriend ? "Already Friends" : pending ? "Request Pending" : "Send Friend Request"}
+			</button>
+		{/if}
+		<button
+			class="w-full px-3 py-2 text-left text-sm text-zinc-100 transition-colors hover:bg-zinc-700"
+			onclick={() => { navigator.clipboard.writeText(userMenuTargetId!); closeUserMenu(); }}
+		>
+			Copy User ID
+		</button>
+		{#if isStaff}
+			<div class="my-1 border-t border-zinc-700"></div>
+			<button
+				class="w-full px-3 py-2 text-left text-sm text-amber-400 transition-colors hover:bg-zinc-700"
+				onclick={() => openFlagsBadgesEditor(userMenuTargetId!)}
+			>
+				Edit Flags & Badges
+			</button>
+		{/if}
+	</div>
+{/if}
+
+<!-- Staff: Flags & Badges Editor -->
+{#if flagsBadgesTarget}
+	<Dialog.Root bind:open={flagsBadgesOpen}>
+		<Dialog.Portal>
+			<Dialog.Overlay class="fixed inset-0 z-500 bg-black/70 backdrop-blur-sm" />
+			<Dialog.Content class="fixed inset-0 z-501 flex items-center justify-center p-4">
+				<div class="w-full max-w-sm rounded-xl border border-zinc-700 bg-zinc-900 p-6 text-zinc-100 shadow-2xl">
+					<h2 class="mb-4 text-lg font-semibold">Edit Flags & Badges</h2>
+					<p class="mb-4 text-xs text-zinc-400">User: {flagsBadgesTarget.id}</p>
+
+					<div class="mb-4 space-y-2">
+						<h3 class="text-xs font-semibold tracking-wide text-zinc-400 uppercase">Flags</h3>
+						{#each FLAGS as f}
+							<label class="flex items-center gap-2 text-sm">
+								<input type="checkbox" checked={!!(editFlags & f.flag)} onchange={() => toggleFlag(f.flag)} class="accent-amber-500" />
+								{f.name}
+							</label>
+						{/each}
+					</div>
+
+					<div class="mb-6 space-y-2">
+						<h3 class="text-xs font-semibold tracking-wide text-zinc-400 uppercase">Badges</h3>
+						{#each BADGES as b}
+							<label class="flex items-center gap-2 text-sm">
+								<input type="checkbox" checked={!!(editBadges & b.flag)} onchange={() => toggleBadge(b.flag)} class="accent-amber-500" />
+								{b.name}
+							</label>
+						{/each}
+					</div>
+
+					<div class="flex gap-3">
+						<button
+							class="rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-amber-500 disabled:opacity-50"
+							disabled={flagsBadgesSaving}
+							onclick={saveFlagsBadges}
+						>
+							{flagsBadgesSaving ? "Saving…" : "Save"}
+						</button>
+						<button
+							class="rounded-lg bg-zinc-700 px-4 py-2 text-sm font-medium text-zinc-100 transition-colors hover:bg-zinc-600"
+							onclick={() => (flagsBadgesOpen = false)}
+						>
+							Cancel
+						</button>
+					</div>
+				</div>
+			</Dialog.Content>
+		</Dialog.Portal>
+	</Dialog.Root>
+{/if}

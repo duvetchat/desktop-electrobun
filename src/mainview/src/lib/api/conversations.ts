@@ -15,6 +15,7 @@ export interface ConversationMember {
 		alias: string | null;
 		avatar: string | null;
 		banner: string | null;
+		badges?: number;
 		is_bot?: boolean;
 	};
 }
