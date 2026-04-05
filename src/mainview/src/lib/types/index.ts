@@ -550,6 +550,7 @@ export interface GatewayReadyActiveCall {
 export interface GatewayReadyData {
 	user: GatewayUser;
 	sessionToken: string;
+	guild_ids?: string[];
 	unread_rooms?: string[];
 	last_read_rooms?: Record<string, string>;
 	last_msg_rooms?: Record<string, string>;

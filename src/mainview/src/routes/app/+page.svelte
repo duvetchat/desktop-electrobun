@@ -10,7 +10,7 @@
 	import VoiceChat from "$lib/components/VoiceChat.svelte";
 	import { makeLeaf, makeSplit, removeLeaf, updateLeaf } from "$lib/pane";
 	import { canViewRoom } from "$lib/permissions";
-	import { activeCall, activeVoiceRoomId, currentUser, friendsReady, gatewaySpaces, botInviteRequest, spaceInviteRequest } from "$lib/stores.svelte";
+	import { activeCall, activeVoiceRoomId, currentUser, friendsReady, gatewaySpaces, botInviteRequest, spaceInviteRequest, allSpacesReady } from "$lib/stores.svelte";
 	import CallModal from "$lib/components/CallModal.svelte";
 	import BotInviteModal from "$lib/components/BotInviteModal.svelte";
 	import SpaceInviteModal from "$lib/components/SpaceInviteModal.svelte";
@@ -137,9 +137,65 @@
 	const activeMembers = $derived(activeSpace ? gatewaySpaceToMembers(activeSpace, userStatusCache) : []);
 
 	// ── Pane tree ─────────────────────────────────────────────────────────────
+	const OPEN_ROOMS_KEY = "duvet.openRooms.v1";
 	const initialRootPane = makeLeaf();
 	let rootPane = $state<PaneNode>(initialRootPane);
 	let focusedPaneId = $state<string>(initialRootPane.id);
+	let hasRestoredRooms = $state(false);
+
+	// Save pane tree to localStorage whenever it changes
+	$effect(() => {
+		if (!hasRestoredRooms) return;
+		localStorage.setItem(OPEN_ROOMS_KEY, JSON.stringify({ pane: rootPane, activeSpaceId: sidebarSpaceId }));
+	});
+
+	// Filter pane tree: remove tabs/leaves the user can no longer view
+	function filterPaneTree(node: PaneNode, spaces: typeof $gatewaySpaces): PaneNode | null {
+		if (node.kind === "leaf") {
+			const validTabs = node.tabs.filter((tab) => {
+				const space = spaces.find((s) => s.id === tab.spaceId);
+				if (!space) return false;
+				const room = space.rooms.find((r) => r.id === tab.channelId);
+				if (!room) return false;
+				return canViewRoom(space, room);
+			});
+			if (validTabs.length === 0) return null;
+			return {
+				...node,
+				tabs: validTabs,
+				activeChannelId: validTabs.some((t) => t.channelId === node.activeChannelId)
+					? node.activeChannelId
+					: validTabs[0].channelId,
+			};
+		}
+		const a = filterPaneTree(node.a, spaces);
+		const b = filterPaneTree(node.b, spaces);
+		if (!a && !b) return null;
+		if (!a) return b;
+		if (!b) return a;
+		return { ...node, a, b };
+	}
+
+	// Restore pane tree after all SPACE_CREATE events arrive
+	$effect(() => {
+		if (!$allSpacesReady || hasRestoredRooms) return;
+		hasRestoredRooms = true;
+		try {
+			const raw = localStorage.getItem(OPEN_ROOMS_KEY);
+			if (!raw) return;
+			const saved = JSON.parse(raw) as { pane?: PaneNode; activeSpaceId?: string | null };
+			if (!saved.pane) return;
+			const filtered = filterPaneTree(saved.pane, $gatewaySpaces);
+			if (!filtered) return;
+			rootPane = filtered;
+			focusedPaneId = firstLeaf(filtered).id;
+			if (saved.activeSpaceId && $gatewaySpaces.some((s) => s.id === saved.activeSpaceId)) {
+				sidebarSpaceId = saved.activeSpaceId;
+			}
+		} catch {
+			localStorage.removeItem(OPEN_ROOMS_KEY);
+		}
+	});
 
 	// Sidebar selection → open in focused pane
 	function onSidebarSelect(channelId: string) {

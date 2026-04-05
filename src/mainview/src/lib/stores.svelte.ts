@@ -177,3 +177,6 @@ if (safeStorage) {
 		}
 	});
 }
+
+// Signal from connection.ts when all SPACE_CREATE events have been received
+export const allSpacesReady = writable(false);

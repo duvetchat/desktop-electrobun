@@ -27,6 +27,7 @@ import {
 	userActivities,
 	pendingTeamInvites,
 	myBuckets,
+	allSpacesReady,
 } from "$lib/stores.svelte";
 import { getFriends, getPendingRequests, getSentRequests } from "$lib/api/friends";
 import { getConversations } from "$lib/api/conversations";
@@ -63,6 +64,10 @@ let activeSocket: WebSocket | null = null;
 
 // Last received sequence number, used for resume on reconnect
 let lastSeq = 0;
+
+// Track expected SPACE_CREATE events to know when all spaces are loaded
+let expectedGuildIds: Set<string> | null = null;
+let receivedGuildIds = new Set<string>();
 
 // Cache of live user statuses received via USER_STATUS_UPDATE.
 // Keyed by user ID so we can apply the correct status when a user is
@@ -194,6 +199,13 @@ function handleEvent(event: GatewayEvent) {
 			// from before the reconnect would never be shown.
 			gatewaySpaces.set([]);
 			friendsReady.set(false);
+			allSpacesReady.set(false);
+			const guildIds = payload.data.guild_ids ?? [];
+			expectedGuildIds = new Set(guildIds);
+			receivedGuildIds = new Set();
+			if (guildIds.length === 0) {
+				allSpacesReady.set(true);
+			}
 			break;
 		}
 		case "SPACE_CREATE": {
@@ -242,6 +254,11 @@ function handleEvent(event: GatewayEvent) {
 				}
 				return [...spaces, space];
 			});
+
+			receivedGuildIds.add(space.id);
+			if (expectedGuildIds && receivedGuildIds.size >= expectedGuildIds.size) {
+				allSpacesReady.set(true);
+			}
 			break;
 		}
 		case "SPACE_DELETE": {
