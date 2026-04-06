@@ -147,7 +147,7 @@
 					<span class="text-xxs shrink-0 text-zinc-500">{formatTime(message.created_at)}</span>
 				</div>
 				<p class="line-clamp-3 text-sm wrap-break-word whitespace-pre-wrap text-zinc-300">
-					{@html renderMarkdown(message.content)}
+					{@html renderMarkdown(message.content ?? "")}
 				</p>
 			</div>
 		</div>

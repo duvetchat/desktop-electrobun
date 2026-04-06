@@ -27,20 +27,19 @@ export interface Conversation {
 	owner_id: string;
 	created_at: string;
 	updated_at: string;
+	deleted_at: string | null;
 	members: ConversationMember[];
 }
 
 export interface DirectMessage {
 	id: string;
-	room_id: string | null;
 	conversation_id: string | null;
 	author_id: string;
-	content: string;
+	content: string | null;
 	type: MessageType;
 	created_at: string;
 	updated_at: string;
 	nonce?: string;
-	ref_message_id?: string | null;
 	referenced_message?: import("$lib/types").ReferencedMessage | null;
 	user?: {
 		id: string;

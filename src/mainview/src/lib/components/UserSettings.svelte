@@ -1191,7 +1191,7 @@
 							<div class="rounded-lg border border-zinc-800 bg-zinc-800/40 px-4 py-4">
 								<p class="text-xs font-semibold tracking-wide text-zinc-400 uppercase">Email</p>
 								<p class="mt-1 text-xs text-zinc-500">
-									Current: <span class="text-zinc-300">{$currentUser?.email ?? "—"}</span>
+									Current: <span class="text-zinc-300">{"—"}</span>
 								</p>
 								<div class="mt-3 flex items-center gap-2">
 									<input

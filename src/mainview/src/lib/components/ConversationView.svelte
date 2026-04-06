@@ -171,7 +171,7 @@
 			created_at: msg.created_at,
 			updated_at: msg.updated_at,
 			nonce: msg.nonce,
-			ref_message_id: msg.ref_message_id ?? null,
+			ref_message_id: msg.referenced_message?.message_id ?? null,
 			referenced_message: msg.referenced_message ?? null,
 			attachments: msg.attachments ?? null,
 			reactions: msg.reactions ?? null,
@@ -304,7 +304,6 @@
 		const refMsg = ref?.message_id ? allMsgs.find((m) => m.id === ref.message_id) : null;
 		const pending: DirectMessage = {
 			id: nonce,
-			room_id: null,
 			conversation_id: conversation.id,
 			author_id: user.id,
 			content,
@@ -312,10 +311,8 @@
 			created_at: isoNow,
 			updated_at: isoNow,
 			nonce,
-			ref_message_id: ref?.message_id ?? null,
 			referenced_message: refMsg
 				? {
-						id: refMsg.id,
 						type: 0,
 						message_id: refMsg.id,
 						room_id: null,
@@ -370,7 +367,7 @@
 	function dmRetry(message: Message) {
 		const nonce = message.nonce!;
 		failedNonces = new Set([...failedNonces].filter((n) => n !== nonce));
-		sendDirectMessage(conversation.id, message.content, nonce).catch(() => {
+		sendDirectMessage(conversation.id, message.content ?? "", nonce).catch(() => {
 			failedNonces = new Set(failedNonces).add(nonce);
 		});
 	}
@@ -391,7 +388,6 @@
 		const isoNow = new Date().toISOString();
 		const pending: DirectMessage = {
 			id: nonce,
-			room_id: null,
 			conversation_id: conversation.id,
 			author_id: user.id,
 			content: "",

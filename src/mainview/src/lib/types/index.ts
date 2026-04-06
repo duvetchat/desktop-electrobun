@@ -1,4 +1,6 @@
 import { getAvatarURL } from "$lib/common/common";
+import type { Conversation, DirectMessage } from "$lib/api/conversations";
+import type { UserActivity } from "$lib/stores.svelte";
 
 export interface EmbedMedia {
 	url: string;
@@ -40,6 +42,7 @@ export const EmbedType = {
 
 export interface Embed {
 	type?: string | null;
+	provider?: string;
 	title?: string | null;
 	description?: string | null;
 	url?: string | null;
@@ -55,13 +58,14 @@ export interface Embed {
 
 export interface Attachment {
 	id: string;
-	message_id: string;
+	message_id: string | null;
 	filename: string;
 	content_type: string;
 	size_bytes: number;
 	width?: number | null;
 	height?: number | null;
 	created_at: string;
+	deleted_at?: string | null;
 	deleted?: boolean;
 	pending?: boolean;
 }
@@ -81,12 +85,11 @@ export interface MessageReference {
 }
 
 export interface ReferencedMessage {
-	id: string;
 	type: number | null;
 	message_id: string | null;
 	room_id: string | null;
 	space_id: string | null;
-	content?: string;
+	content?: string | null;
 	author_id?: string;
 	author_name?: string;
 	author_avatar?: string | null;
@@ -109,7 +112,7 @@ export interface MessageReaction {
 
 export interface GatewayMessage {
 	id: string;
-	room_id: string;
+	room_id: string | null;
 	author_id: string;
 	content: string | null;
 	type: MessageType;
@@ -117,9 +120,7 @@ export interface GatewayMessage {
 	updated_at: string;
 	nonce?: string;
 	user?: GatewayUser;
-	member_alias?: string | null;
 	referenced_message?: ReferencedMessage | null;
-	ref_message_id?: string | null;
 	embeds?: Embed[] | null;
 	attachments?: Attachment[] | null;
 	reactions?: MessageReaction[] | null;
@@ -128,7 +129,7 @@ export interface GatewayMessage {
 
 export interface Message {
 	id: string;
-	content: string;
+	content: string | null;
 	type: MessageType;
 	author_id: string;
 	author_name: string;
@@ -172,7 +173,7 @@ export type RoomType = 1 | 2 | 3; // 1 = text, 2 = voice, 3 = category
 
 export interface GatewayRoom {
 	id: string;
-	space_id: string;
+	space_id: string | null;
 	parent_id: string | null;
 	type: RoomType;
 	name: string;
@@ -212,9 +213,7 @@ export type UserStatus = 0 | 1 | 2; // 0 = offline, 1 = online, 2 = dnd
 export interface GatewayUser {
 	id: string;
 	username: string;
-	email: string;
 	email_verified: boolean;
-	password: string;
 	alias: string | null;
 	birthdate: string | null;
 	phone: string | null;
@@ -274,24 +273,31 @@ export interface SpaceSticker {
 	updated_at: string;
 }
 
+export interface GatewaySpaceCreateSpace {
+	id: string;
+	name: string;
+	description: string | null;
+	owner_id: string;
+	banner: string | null;
+	locale: string | null;
+	icon: string | null;
+	created_at: string;
+	updated_at: string;
+	deleted_at: string | null;
+}
+
 export interface GatewaySpaceCreatePayload {
-	space: {
-		id: string;
-		name: string;
-		description: string | null;
-		banner: string | null;
-		owner_id: string;
-		locale: string | null;
-		created_at: string;
-		updated_at: string;
-	};
+	space: GatewaySpaceCreateSpace;
 	rooms: Record<string, GatewayRoom>;
 	roles_permissions: Record<string, GatewayRole>;
 	member_roles: Partial<Record<string, string[]>>;
 	overwrites?: Record<string, GatewayRoomOverwrite[]>;
 	owner_id: string;
 	voice_states?: GatewayVoiceState[];
-	activities?: Record<string, import("$lib/stores.svelte").UserActivity>;
+	activities?: Record<string, UserActivity[]>;
+	member_statuses?: Record<string, number>;
+	voice_states?: GatewayVoiceState[];
+	activities?: Record<string, UserActivity>;
 	member_statuses?: Record<string, number>;
 }
 
@@ -329,14 +335,23 @@ export interface CallIncomingEvent {
 	initiator_id: string;
 	initiator_name: string;
 	initiator_avatar: string | null;
-	member_ids: string[];
+}
+
+export interface CallAcceptedEvent {
+	conversation_id: string;
+	user_id: string;
+}
+
+export interface CallDeclinedEvent {
+	conversation_id: string;
+	user_id: string;
 }
 
 export interface CallEndedEvent {
 	conversation_id: string;
 }
 
-export interface VoiceStateEvent {
+export interface VoiceStateUpdateEvent {
 	room_id: string;
 	user_id: string;
 	joined: boolean;
@@ -345,15 +360,36 @@ export interface VoiceStateEvent {
 	screen_sharing?: boolean;
 }
 
-export interface WebRTCEvent {
-	candidate?: string;
-	sdpMLineIndex?: number;
-	sdpMid?: string;
-	sdp?: string;
+export interface VoiceSessionReplacedEvent {
+	room_id: string;
+}
+
+export interface WebRTCIceCandidateEvent {
+	candidate: string;
+	room_id: string;
+}
+
+export interface WebRTCRenegotiateEvent {
+	offer: RTCSessionDescriptionInit;
+	room_id: string;
+}
+
+export interface WebRTCRenegotiateAnswerEvent {
+	room_id: string;
+	answer: RTCSessionDescriptionInit;
+}
+
+export interface UserActivityUpdateEvent {
+	user_id: string;
+	activities: UserActivity[] | null;
 }
 
 export interface SpaceDeleteEvent {
 	id: string;
+}
+
+export interface RoomReorderEvent {
+	rooms: GatewayRoom[];
 }
 
 export interface RoomDeleteEvent {
@@ -367,8 +403,15 @@ export interface OverwriteDeleteEvent {
 }
 
 export interface MentionCreateEvent {
+	message_id: string;
 	room_id: string;
-	conversation_id?: string;
+	author_id: string;
+}
+
+export interface DMMentionCreateEvent {
+	message_id: string;
+	conversation_id: string;
+	author_id: string;
 }
 
 export interface UserUpdateEvent {
@@ -377,13 +420,13 @@ export interface UserUpdateEvent {
 	alias: string | null;
 	avatar: string | null;
 	banner: string | null;
-	flags?: number;
-	badges?: number;
+	flags: number;
+	badges: number;
 }
 
 export interface VoiceJoinedEvent {
-	user_id: string;
-	sdp: string;
+	room_id: string;
+	answer: RTCSessionDescriptionInit;
 }
 
 export interface RoleDeleteEvent {
@@ -391,48 +434,69 @@ export interface RoleDeleteEvent {
 	space_id: string;
 }
 
-export interface MemberRoleEvent {
+export interface MemberRoleAddEvent {
 	member_id: string;
 	role_id: string;
 	space_id: string;
 }
 
-export interface SpaceMemberEvent {
+export interface MemberRoleRemoveEvent {
 	member_id: string;
-	space_id: string;
-	user_id: string;
-	status_id?: number;
+	role_id: string;
 }
 
-export interface GuildMemberAddEvent {
+export interface SpaceMemberAddEvent {
 	space_id: string;
 	user_id: string;
 	member_id: string;
+	status_id: number;
 	user?: GatewayUser;
 }
 
-export interface GuildMemberRemoveEvent {
+export interface SpaceMemberRemoveEvent {
 	space_id: string;
 	user_id: string;
 	member_id: string;
 }
 
-export interface SpaceAssetDeleteEvent {
-	id: string;
-	space_id: string;
-}
 
 export interface FriendRequestRejectEvent {
+	id: string;
+}
+
+export interface FriendRequestCreateEvent {
+	id: string;
+	sender_id: string;
+	username: string;
+	alias: string | null;
+	avatar: string | null;
+}
+
+export interface FriendRequestAcceptEvent {
+	id: string;
 	request_id: string;
+	sender_id: string;
+	recipient_id: string;
+	user?: GatewayUser;
 }
 
 export interface FriendRemoveEvent {
 	user_id: string;
 }
 
+export interface TeamInviteCreateEvent {
+	id: string;
+	team_id: string;
+	user_id: string;
+	invited_by: string;
+	created_at: string;
+	team_name: string;
+	invited_by_username: string;
+}
+
 export interface ConversationUpdateEvent {
 	id: string;
-	name: string | null;
+	name: string;
 }
 
 export interface ConversationDeleteEvent {
@@ -448,7 +512,6 @@ export interface ConversationMemberAddEvent {
 	avatar?: string | null;
 	banner?: string | null;
 	status_id?: number;
-	user?: GatewayUser;
 }
 
 export interface ConversationMemberRemoveEvent {
@@ -461,11 +524,6 @@ export interface DMMessageDeleteEvent {
 	conversation_id: string;
 }
 
-export interface CallResponseEvent {
-	conversation_id: string;
-	user_id: string;
-}
-
 export type GatewayEventPayload =
 	| { type: "READY"; data: GatewayReadyData }
 	| { type: "SPACE_CREATE"; data: GatewaySpaceCreatePayload }
@@ -473,7 +531,7 @@ export type GatewayEventPayload =
 	| { type: "SPACE_UPDATE"; data: GatewaySpace }
 	| { type: "ROOM_CREATE"; data: GatewayRoom }
 	| { type: "ROOM_UPDATE"; data: GatewayRoom }
-	| { type: "ROOM_REORDER"; data: { rooms: GatewayRoom[] } }
+	| { type: "ROOM_REORDER"; data: RoomReorderEvent }
 	| { type: "ROOM_DELETE"; data: RoomDeleteEvent }
 	| { type: "ROOM_OVERWRITE_UPDATE"; data: GatewayRoomOverwrite }
 	| { type: "ROOM_OVERWRITE_DELETE"; data: OverwriteDeleteEvent }
@@ -481,53 +539,52 @@ export type GatewayEventPayload =
 	| { type: "MESSAGE_UPDATE"; data: GatewayMessage }
 	| { type: "MESSAGE_DELETE"; data: GatewayMessageDelete }
 	| { type: "MENTION_CREATE"; data: MentionCreateEvent }
+	| { type: "DM_MENTION_CREATE"; data: DMMentionCreateEvent }
 	| { type: "USER_UPDATE"; data: UserUpdateEvent }
 	| { type: "USER_STATUS_UPDATE"; data: GatewayUserStatusUpdate }
-	| { type: "USER_ACTIVITY_UPDATE"; data: { user_id: string; activities: import("$lib/stores.svelte").UserActivity[] | null } }
-	| { type: "VOICE_STATE_UPDATE"; data: VoiceStateEvent }
-	| { type: "VOICE_SESSION_REPLACED"; data: { room_id: string } }
+	| { type: "USER_ACTIVITY_UPDATE"; data: UserActivityUpdateEvent }
+	| { type: "VOICE_STATE_UPDATE"; data: VoiceStateUpdateEvent }
+	| { type: "VOICE_SESSION_REPLACED"; data: VoiceSessionReplacedEvent }
 	| { type: "VOICE_JOINED"; data: VoiceJoinedEvent }
-	| { type: "WEBRTC_ICE_CANDIDATE"; data: WebRTCEvent }
-	| { type: "WEBRTC_RENEGOTIATE"; data: WebRTCEvent }
-	| { type: "WEBRTC_RENEGOTIATE_ANSWER"; data: WebRTCEvent }
+	| { type: "WEBRTC_ICE_CANDIDATE"; data: WebRTCIceCandidateEvent }
+	| { type: "WEBRTC_RENEGOTIATE"; data: WebRTCRenegotiateEvent }
+	| { type: "WEBRTC_RENEGOTIATE_ANSWER"; data: WebRTCRenegotiateAnswerEvent }
 	| { type: "ROLE_CREATE"; data: GatewayRole }
 	| { type: "ROLE_UPDATE"; data: GatewayRole }
 	| { type: "ROLE_DELETE"; data: RoleDeleteEvent }
-	| { type: "MEMBER_ROLE_ADD"; data: MemberRoleEvent }
-	| { type: "MEMBER_ROLE_REMOVE"; data: MemberRoleEvent }
-	| { type: "SPACE_MEMBER_ADD"; data: SpaceMemberEvent }
-	| { type: "SPACE_MEMBER_REMOVE"; data: SpaceMemberEvent }
-	| { type: "GUILD_MEMBER_ADD"; data: GuildMemberAddEvent }
-	| { type: "GUILD_MEMBER_REMOVE"; data: GuildMemberRemoveEvent }
+	| { type: "MEMBER_ROLE_ADD"; data: MemberRoleAddEvent }
+	| { type: "MEMBER_ROLE_REMOVE"; data: MemberRoleRemoveEvent }
+	| { type: "SPACE_MEMBER_ADD"; data: SpaceMemberAddEvent }
+	| { type: "SPACE_MEMBER_REMOVE"; data: SpaceMemberRemoveEvent }
 	| { type: "SPACE_EMOJI_CREATE"; data: SpaceEmoji }
 	| { type: "SPACE_EMOJI_UPDATE"; data: SpaceEmoji }
-	| { type: "SPACE_EMOJI_DELETE"; data: SpaceAssetDeleteEvent }
+	| { type: "SPACE_EMOJI_DELETE"; data: SpaceEmoji }
 	| { type: "SPACE_STICKER_CREATE"; data: SpaceSticker }
 	| { type: "SPACE_STICKER_UPDATE"; data: SpaceSticker }
-	| { type: "SPACE_STICKER_DELETE"; data: SpaceAssetDeleteEvent }
+	| { type: "SPACE_STICKER_DELETE"; data: SpaceSticker }
 	| { type: "REACTION_ADD"; data: ReactionEvent }
 	| { type: "REACTION_REMOVE"; data: ReactionRemoveEvent }
-	| { type: "FRIEND_REQUEST_CREATE"; data: import("$lib/api/friends").FriendRequest }
-	| { type: "FRIEND_REQUEST_ACCEPT"; data: import("$lib/api/friends").Friend }
+	| { type: "FRIEND_REQUEST_CREATE"; data: FriendRequestCreateEvent }
+	| { type: "FRIEND_REQUEST_ACCEPT"; data: FriendRequestAcceptEvent }
 	| { type: "FRIEND_REQUEST_REJECT"; data: FriendRequestRejectEvent }
 	| { type: "FRIEND_REMOVE"; data: FriendRemoveEvent }
-	| { type: "CONVERSATION_CREATE"; data: import("$lib/api/conversations").Conversation }
+	| { type: "CONVERSATION_CREATE"; data: Conversation }
 	| { type: "CONVERSATION_UPDATE"; data: ConversationUpdateEvent }
 	| { type: "CONVERSATION_DELETE"; data: ConversationDeleteEvent }
 	| { type: "CONVERSATION_MEMBER_ADD"; data: ConversationMemberAddEvent }
 	| { type: "CONVERSATION_MEMBER_REMOVE"; data: ConversationMemberRemoveEvent }
-	| { type: "DM_MESSAGE_CREATE"; data: import("$lib/api/conversations").DirectMessage }
-	| { type: "DM_MESSAGE_UPDATE"; data: import("$lib/api/conversations").DirectMessage }
+	| { type: "DM_MESSAGE_CREATE"; data: DirectMessage }
+	| { type: "DM_MESSAGE_UPDATE"; data: DirectMessage }
 	| { type: "DM_MESSAGE_DELETE"; data: DMMessageDeleteEvent }
 	| { type: "DM_REACTION_ADD"; data: ReactionEvent }
 	| { type: "DM_REACTION_REMOVE"; data: ReactionRemoveEvent }
 	| { type: "TYPING"; data: TypingEvent }
 	| { type: "DM_TYPING"; data: DMTypingEvent }
 	| { type: "CALL_INCOMING"; data: CallIncomingEvent }
-	| { type: "CALL_ACCEPTED"; data: CallResponseEvent }
-	| { type: "CALL_DECLINED"; data: CallResponseEvent }
+	| { type: "CALL_ACCEPTED"; data: CallAcceptedEvent }
+	| { type: "CALL_DECLINED"; data: CallDeclinedEvent }
 	| { type: "CALL_ENDED"; data: CallEndedEvent }
-	| { type: "TEAM_INVITE_CREATE"; data: any };
+	| { type: "TEAM_INVITE_CREATE"; data: TeamInviteCreateEvent };
 
 export interface GatewayEvent {
 	op: number;
@@ -550,7 +607,7 @@ export interface GatewayReadyActiveCall {
 export interface GatewayReadyData {
 	user: GatewayUser;
 	sessionToken: string;
-	guild_ids?: string[];
+	guild_ids: string[];
 	unread_rooms?: string[];
 	last_read_rooms?: Record<string, string>;
 	last_msg_rooms?: Record<string, string>;
@@ -575,8 +632,7 @@ export function gatewayMessageToMessage(msg: GatewayMessage, spaces: GatewaySpac
 	let author_is_bot = false;
 
 	if (msg.user) {
-		const memberAlias = msg.member_alias ?? null;
-		author_name = memberAlias ?? msg.user.alias ?? msg.user.username;
+		author_name = msg.user.alias ?? msg.user.username;
 		author_avatar_url = getAvatarURL(msg.user.id, msg.user.avatar);
 		author_is_bot = msg.user.is_bot ?? false;
 	} else {
@@ -604,7 +660,7 @@ export function gatewayMessageToMessage(msg: GatewayMessage, spaces: GatewaySpac
 		updated_at: msg.updated_at,
 		nonce: msg.nonce,
 		referenced_message: msg.referenced_message ?? null,
-		ref_message_id: msg.ref_message_id ?? null,
+		ref_message_id: msg.referenced_message?.message_id ?? null,
 		embeds: msg.embeds ?? null,
 		attachments: msg.attachments ?? null,
 		reactions: msg.reactions ?? null,

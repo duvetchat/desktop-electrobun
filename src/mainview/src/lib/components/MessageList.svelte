@@ -767,7 +767,7 @@
 	// ── Message actions ────────────────────────────────────────────────────────
 	function startEdit(message: Message) {
 		editingMessageId = message.id;
-		editContent = message.content;
+		editContent = message.content ?? "";
 	}
 
 	function cancelEdit() {
@@ -914,7 +914,7 @@
 			{@const isDifferentDay = !chronoPrev || !isSameCalendarDay(message.created_at, chronoPrev.created_at)}
 			{@const isPending = message.id === message.nonce}
 			{@const isFailed = isPending && failedNonces.has(message.nonce ?? "")}
-			{@const emojiOnly = isOnlyEmojis(message.content) && countEmojis(message.content) <= 5}
+			{@const emojiOnly = isOnlyEmojis(message.content ?? "") && countEmojis(message.content ?? "") <= 5}
 
 			{@const isHighlighted = highlightedMessageId === message.id}
 			{@const isMention =
@@ -1130,9 +1130,9 @@
 								/>
 							</button>
 						{:else}
-							{@const processed = processMessageContent(message.content)}
+							{@const processed = processMessageContent(message.content ?? "")}
 							{@const isOnlyLink =
-								/^\s*https?:\/\/\S+\s*$/.test(message.content) && message.embeds && message.embeds.length > 0}
+								/^\s*https?:\/\/\S+\s*$/.test(message.content ?? "") && message.embeds && message.embeds.length > 0}
 							{#if !isOnlyLink}
 								<div
 									role="textbox"
@@ -1857,11 +1857,11 @@
 											<span class="max-w-24 truncate text-xs font-medium text-zinc-400">{parentMsg.author_name}</span>
 											<span class="truncate text-xs text-zinc-500"
 												>{@html renderMarkdown(
-													parentMsg.content.slice(0, 60),
+													(parentMsg.content ?? "").slice(0, 60),
 													false,
 													mentionMap,
 													customEmojiMap,
-												)}{parentMsg.content.length > 60 ? "…" : ""}</span
+												)}{(parentMsg.content ?? "").length > 60 ? "…" : ""}</span
 											>
 										</div>
 									{/if}
@@ -1875,7 +1875,7 @@
 												>
 											</div>
 											<p class="msg-content text-sm wrap-break-word whitespace-pre-wrap text-zinc-200">
-												{@html renderMarkdown(threadMsg.content, false, mentionMap, customEmojiMap)}
+												{@html renderMarkdown(threadMsg.content ?? "", false, mentionMap, customEmojiMap)}
 											</p>
 										</div>
 									</div>

@@ -298,21 +298,22 @@ function handleEvent(event: GatewayEvent) {
 		}
 		case "MESSAGE_CREATE": {
 			const raw = payload.data;
+			const roomId = raw.room_id;
+			if (!roomId) break;
 			const spaces = get(gatewaySpaces);
 			const message = gatewayMessageToMessage(raw, spaces);
-			if (raw.room_id && raw.room_id !== get(activeTextRoomId)) {
+			if (roomId !== get(activeTextRoomId)) {
 				unreadChannels.update((s) => {
-					s.add(raw.room_id);
+					s.add(roomId);
 					return s;
 				});
 			}
 			typingUsers.update((all) => {
-				const key = raw.room_id;
-				if (!all[key]) return all;
-				return { ...all, [key]: all[key].filter((u) => u.user_id !== raw.author_id) };
+				if (!all[roomId]) return all;
+				return { ...all, [roomId]: all[roomId].filter((u) => u.user_id !== raw.author_id) };
 			});
 			channelMessages.update((all) => {
-				const existing = all[raw.room_id] ?? [];
+				const existing = all[roomId] ?? [];
 
 				// If it matches a pending message by nonce, replace it
 				if (message.nonce) {
@@ -322,7 +323,7 @@ function handleEvent(event: GatewayEvent) {
 						newMessages[pendingIndex] = message;
 						return {
 							...all,
-							[raw.room_id]: newMessages,
+							[roomId]: newMessages,
 						};
 					}
 				}
@@ -333,7 +334,7 @@ function handleEvent(event: GatewayEvent) {
 				}
 				return {
 					...all,
-					[raw.room_id]: [...existing, message],
+					[roomId]: [...existing, message],
 				};
 			});
 			break;
@@ -376,14 +377,20 @@ function handleEvent(event: GatewayEvent) {
 			break;
 		}
 		case "MENTION_CREATE": {
-			const { room_id, conversation_id } = payload.data;
-			const key = room_id ?? conversation_id;
-			if (key) {
-				mentionCounts.update((all) => ({ ...all, [key]: (all[key] ?? 0) + 1 }));
-				const isActive = key === get(activeTextRoomId) || key === get(activeDMConvId);
-				if (!isActive || !get(pageVisible)) {
-					audioStore.play("notification");
-				}
+			const { room_id } = payload.data;
+			mentionCounts.update((all) => ({ ...all, [room_id]: (all[room_id] ?? 0) + 1 }));
+			const isActive = room_id === get(activeTextRoomId);
+			if (!isActive || !get(pageVisible)) {
+				audioStore.play("notification");
+			}
+			break;
+		}
+		case "DM_MENTION_CREATE": {
+			const { conversation_id } = payload.data;
+			mentionCounts.update((all) => ({ ...all, [conversation_id]: (all[conversation_id] ?? 0) + 1 }));
+			const isActive = conversation_id === get(activeDMConvId);
+			if (!isActive || !get(pageVisible)) {
+				audioStore.play("notification");
 			}
 			break;
 		}
@@ -394,9 +401,9 @@ function handleEvent(event: GatewayEvent) {
 				alias: raw.alias,
 				avatar: raw.avatar,
 				banner: raw.banner,
+				flags: raw.flags,
+				badges: raw.badges,
 			};
-			if (raw.flags !== undefined) patch.flags = raw.flags;
-			if (raw.badges !== undefined) patch.badges = raw.badges;
 			currentUser.update((u) => (u?.id === raw.id ? { ...u, ...patch } : u));
 			gatewaySpaces.update((spaces) =>
 				spaces.map((s) => ({
@@ -882,68 +889,25 @@ function handleEvent(event: GatewayEvent) {
 			});
 			break;
 		}
-		case "GUILD_MEMBER_ADD": {
-			const raw = payload.data;
-			// The joining user already receives SPACE_CREATE; this event
-			// updates the members list for everyone else already in the space.
-			gatewaySpaces.update((spaces) =>
-				spaces.map((s) => {
-					if (s.id !== raw.space_id) return s;
-					const alreadyHasMember = s.members.some((m) => m.id === raw.member_id);
-					if (alreadyHasMember) return s;
-					const newMember: import("$lib/types").GatewayMember = {
-						id: raw.member_id,
-						space_id: raw.space_id,
-						user_id: raw.user_id,
-						alias: null,
-						created_at: new Date().toISOString(),
-						updated_at: new Date().toISOString(),
-					};
-					const alreadyHasUser = s.users.some((u) => u.id === raw.user_id);
-					return {
-						...s,
-						members: [...s.members, newMember],
-						users: raw.user && !alreadyHasUser ? [...s.users, raw.user] : s.users,
-					};
-				}),
-			);
-			break;
-		}
-		case "GUILD_MEMBER_REMOVE": {
-			const raw = payload.data;
-			gatewaySpaces.update((spaces) =>
-				spaces.map((s) => {
-					if (s.id !== raw.space_id) return s;
-					return {
-						...s,
-						members: s.members.filter((m) => m.id !== raw.member_id),
-						users: s.users.filter((u) => u.id !== raw.user_id),
-						member_roles: Object.fromEntries(Object.entries(s.member_roles).filter(([uid]) => uid !== raw.user_id)),
-					};
-				}),
-			);
-			break;
-		}
 		case "FRIEND_REQUEST_CREATE": {
-			const req = payload.data;
-			pendingFriendRequests.update((reqs) => {
-				if (reqs.some((r) => r.id === req.id)) return reqs;
-				return [...reqs, req];
-			});
+			// Event shape differs from store type; refetch the full list.
+			getPendingRequests()
+				.then((list) => pendingFriendRequests.set(list))
+				.catch((err) => console.error("[WS] Failed to refresh pending requests:", err));
 			break;
 		}
 		case "FRIEND_REQUEST_ACCEPT": {
 			const raw = payload.data;
-			friends.update((list) => {
-				if (list.some((f) => f.id === raw.id)) return list;
-				return [...list, raw];
-			});
+			// Event shape differs from store type; refetch the full lists.
+			getFriends()
+				.then((list) => friends.set(list))
+				.catch((err) => console.error("[WS] Failed to refresh friends:", err));
 			sentFriendRequests.update((reqs) => reqs.filter((r) => r.id !== raw.request_id));
 			break;
 		}
 		case "FRIEND_REQUEST_REJECT": {
 			const raw = payload.data;
-			sentFriendRequests.update((reqs) => reqs.filter((r) => r.id !== raw.request_id));
+			sentFriendRequests.update((reqs) => reqs.filter((r) => r.id !== raw.id));
 			break;
 		}
 		case "FRIEND_REMOVE": {
@@ -1178,7 +1142,7 @@ function handleEvent(event: GatewayEvent) {
 					initiatorName: d.initiator_name,
 					initiatorAvatar: d.initiator_avatar,
 					state: "ringing",
-					memberIds: d.member_ids,
+					memberIds: [],
 				});
 			}
 			break;

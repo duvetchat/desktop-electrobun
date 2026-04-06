@@ -84,6 +84,9 @@
 	let pendingFiles = $state<File[]>([]);
 	let lastTypingSent = 0;
 
+	// Store original send data for retry (files, ref, sticker)
+	const retryData = new Map<string, { files?: File[]; ref?: MessageReference; stickerAttachmentId?: string }>();
+
 	// Load emojis and stickers into global stores on space change
 	$effect(() => {
 		if (spaceId) {
@@ -148,7 +151,7 @@
 		if (index < 0 || index >= msgs.length) return false;
 		editMessageIndex = index;
 		editingMessageId = msgs[index].id;
-		editContent = msgs[index].content;
+		editContent = msgs[index].content ?? "";
 		return true;
 	}
 
@@ -287,7 +290,7 @@
 			...(ref
 				? {
 						referenced_message: {
-							id: ref.message_id,
+							message_id: ref.message_id,
 							content: messages.find((m) => m.id === ref.message_id)?.content ?? "",
 							author_id: messages.find((m) => m.id === ref.message_id)?.author_id ?? "",
 							author_name: messages.find((m) => m.id === ref.message_id)?.author_name ?? "",
@@ -303,10 +306,13 @@
 			[channelId]: [...(all[channelId] ?? []), pendingMessage],
 		}));
 
-		sendMessage(channelId, content, nonce, ref, files, undefined, stickerAttachmentId).catch((err) => {
-			failedNonces = new Set(failedNonces).add(nonce);
-			toast(getApiError(err, "Failed to send message"), "error");
-		});
+		retryData.set(nonce, { files, ref, stickerAttachmentId });
+		sendMessage(channelId, content, nonce, ref, files, undefined, stickerAttachmentId)
+			.then(() => retryData.delete(nonce))
+			.catch((err) => {
+				failedNonces = new Set(failedNonces).add(nonce);
+				toast(getApiError(err, "Failed to send message"), "error");
+			});
 	}
 
 	function handleReply(message: Message) {
@@ -320,13 +326,16 @@
 			return;
 		}
 		const nonce = message.nonce!;
+		const saved = retryData.get(nonce);
 		const newSet = new Set(failedNonces);
 		newSet.delete(nonce);
 		failedNonces = newSet;
-		sendMessage(channelId, message.content, nonce).catch((err) => {
-			failedNonces = new Set(failedNonces).add(nonce);
-			toast(getApiError(err, "Failed to send message"), "error");
-		});
+		sendMessage(channelId, message.content ?? "", nonce, saved?.ref, saved?.files, undefined, saved?.stickerAttachmentId)
+			.then(() => retryData.delete(nonce))
+			.catch((err) => {
+				failedNonces = new Set(failedNonces).add(nonce);
+				toast(getApiError(err, "Failed to send message"), "error");
+			});
 	}
 
 	function handleTyping(text: string) {
@@ -365,6 +374,7 @@
 			onDismiss(nonce);
 			return;
 		}
+		retryData.delete(nonce);
 		const newSet = new Set(failedNonces);
 		newSet.delete(nonce);
 		failedNonces = newSet;
