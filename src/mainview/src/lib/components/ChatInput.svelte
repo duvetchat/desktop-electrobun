@@ -8,6 +8,7 @@
 	import { searchEmojis, toTwemojiUrl, type EmojiEntry } from "$lib/emoji";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
 	import type { MemberOnSidebar, SpaceEmoji, SpaceSticker } from "$lib/types";
+	import { selectedMicId } from "$lib/stores.svelte";
 	import { getHostURL } from "$lib/common/common";
 
 	const ceHost = getHostURL();
@@ -80,8 +81,10 @@
 
 	async function startRecording() {
 		try {
+			const micId = $selectedMicId;
 			const rawStream = await navigator.mediaDevices.getUserMedia({
 				audio: {
+					...(micId ? { deviceId: { exact: micId } } : {}),
 					noiseSuppression: true,
 					echoCancellation: true,
 					autoGainControl: true,

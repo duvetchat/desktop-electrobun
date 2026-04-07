@@ -9,6 +9,11 @@
 		Plus as PlusIcon,
 		Check as CheckIcon,
 		Minus as MinusIcon,
+		Link2 as WebhookIcon,
+		Copy as CopyIcon,
+		Pencil as PencilIcon,
+		Upload as UploadIcon,
+		Camera as CameraIcon,
 	} from "@lucide/svelte";
 	import { fly } from "svelte/transition";
 	import { cubicOut } from "svelte/easing";
@@ -17,7 +22,18 @@
 	import { Permission } from "$lib/permissions";
 	import { getApiError } from "$lib/api/api";
 	import { updateRoom, upsertRoomOverwrite, deleteRoomOverwrite } from "$lib/api/rooms";
+	import {
+		listWebhooks,
+		createWebhook,
+		updateWebhook,
+		deleteWebhook,
+		resetWebhookToken,
+		type Webhook,
+	} from "$lib/api/webhooks";
+	import { toast } from "$lib/stores/toast.svelte";
+	import { confirmAction } from "$lib/stores/confirm.svelte";
 	import { currentUser } from "$lib/stores.svelte";
+	import { getHostURL, DUVET_DOMAIN } from "$lib/common/common";
 	import type { GatewaySpace, GatewayRoom, GatewayRoomOverwrite } from "$lib/types";
 
 	let {
@@ -32,7 +48,7 @@
 		onDelete?: () => void;
 	} = $props();
 
-	type Section = "overview" | "permissions";
+	type Section = "overview" | "permissions" | "webhooks";
 	let activeSection = $state<Section>("overview");
 
 	// ── overview state ────────────────────────────────────────────
@@ -280,6 +296,165 @@
 		}
 	}
 
+	// ── webhook state ───────────────────────────────────────────
+	const attachmentHost = getHostURL();
+	let webhooksLoading = $state(false);
+	let roomWebhooks = $state<Webhook[]>([]);
+	let newWebhookName = $state("");
+	let newWebhookAvatar = $state<File | null>(null);
+	let newWebhookAvatarPreview = $state<string | null>(null);
+
+	function pickNewWebhookAvatar() {
+		const input = document.createElement("input");
+		input.type = "file";
+		input.accept = "image/*";
+		input.onchange = () => {
+			const file = input.files?.[0];
+			if (!file) return;
+			if (newWebhookAvatarPreview) URL.revokeObjectURL(newWebhookAvatarPreview);
+			newWebhookAvatar = file;
+			newWebhookAvatarPreview = URL.createObjectURL(file);
+		};
+		input.click();
+	}
+
+	function clearNewWebhookAvatar() {
+		if (newWebhookAvatarPreview) URL.revokeObjectURL(newWebhookAvatarPreview);
+		newWebhookAvatar = null;
+		newWebhookAvatarPreview = null;
+	}
+	let createdWebhookToken = $state<string | null>(null);
+	let createdWebhookId = $state<string | null>(null);
+	let editingWebhookId = $state<string | null>(null);
+	let editingWebhookName = $state("");
+	let editingWebhookAvatar = $state<File | "remove" | null>(null);
+	let editingWebhookAvatarPreview = $state<string | null>(null);
+
+	function pickEditWebhookAvatar() {
+		const input = document.createElement("input");
+		input.type = "file";
+		input.accept = "image/*";
+		input.onchange = () => {
+			const file = input.files?.[0];
+			if (!file) return;
+			if (editingWebhookAvatarPreview) URL.revokeObjectURL(editingWebhookAvatarPreview);
+			editingWebhookAvatar = file;
+			editingWebhookAvatarPreview = URL.createObjectURL(file);
+		};
+		input.click();
+	}
+
+	function removeEditWebhookAvatar() {
+		if (editingWebhookAvatarPreview) URL.revokeObjectURL(editingWebhookAvatarPreview);
+		editingWebhookAvatar = "remove";
+		editingWebhookAvatarPreview = null;
+	}
+	let isDeletingWebhook = $state<Record<string, boolean>>({});
+	let isCreatingWebhook = $state(false);
+
+	async function loadWebhooks() {
+		webhooksLoading = true;
+		try {
+			roomWebhooks = await listWebhooks(space.id, room.id);
+		} catch (err) {
+			console.error("Failed to load webhooks:", err);
+			toast(getApiError(err, "Failed to load webhooks"), "error");
+		} finally {
+			webhooksLoading = false;
+		}
+	}
+
+	$effect(() => {
+		if (activeSection === "webhooks") {
+			loadWebhooks();
+		}
+	});
+
+	async function handleCreateWebhook() {
+		if (!newWebhookName.trim()) return;
+		isCreatingWebhook = true;
+		createdWebhookToken = null;
+		createdWebhookId = null;
+		try {
+			const result = await createWebhook(space.id, room.id, newWebhookName.trim(), newWebhookAvatar ?? undefined);
+			createdWebhookToken = result.token;
+			createdWebhookId = result.webhook.id;
+			newWebhookName = "";
+			clearNewWebhookAvatar();
+			await loadWebhooks();
+		} catch (err) {
+			console.error("Failed to create webhook:", err);
+			toast(getApiError(err, "Failed to create webhook"), "error");
+		} finally {
+			isCreatingWebhook = false;
+		}
+	}
+
+	function startWebhookEdit(wh: Webhook) {
+		editingWebhookId = wh.id;
+		editingWebhookName = wh.username;
+		editingWebhookAvatar = null;
+		editingWebhookAvatarPreview = wh.avatar ? `${attachmentHost}/attachments/${wh.avatar}` : null;
+	}
+
+	function cancelWebhookEdit() {
+		editingWebhookId = null;
+		editingWebhookName = "";
+		editingWebhookAvatarPreview = null;
+		editingWebhookAvatar = null;
+	}
+
+	async function handleUpdateWebhook() {
+		if (!editingWebhookId || !editingWebhookName.trim()) return;
+		try {
+			await updateWebhook(space.id, room.id, editingWebhookId, {
+				username: editingWebhookName.trim(),
+				avatar: editingWebhookAvatar instanceof File ? editingWebhookAvatar : undefined,
+				remove_avatar: editingWebhookAvatar === "remove",
+			});
+			cancelWebhookEdit();
+			await loadWebhooks();
+		} catch (err) {
+			console.error("Failed to update webhook:", err);
+			toast(getApiError(err, "Failed to update webhook"), "error");
+		}
+	}
+
+	async function handleDeleteWebhook(webhookId: string) {
+		const wh = roomWebhooks.find((w) => w.id === webhookId);
+		if (!wh) return;
+		const whName = wh.username;
+		await confirmAction(`Delete webhook "${whName}"? This can't be undone.`, "Deleting", async () => {
+			isDeletingWebhook = { ...isDeletingWebhook, [webhookId]: true };
+			try {
+				await deleteWebhook(space.id, room.id, webhookId);
+				await loadWebhooks();
+			} finally {
+				isDeletingWebhook = { ...isDeletingWebhook, [webhookId]: false };
+			}
+		});
+	}
+
+	async function handleResetWebhookToken(webhookId: string) {
+		await confirmAction("Reset this webhook's token? The old token will stop working immediately.", "Reset Token", async () => {
+			try {
+				const newToken = await resetWebhookToken(space.id, room.id, webhookId);
+				createdWebhookToken = newToken;
+				createdWebhookId = webhookId;
+				toast("Token reset successfully", "success");
+			} catch (err) {
+				console.error("Failed to reset webhook token:", err);
+				toast(getApiError(err, "Failed to reset token"), "error");
+			}
+		});
+	}
+
+	function copyWebhookUrl(webhookId: string, token: string) {
+		const url = `${DUVET_DOMAIN}/api/webhooks/${webhookId}/${token}`;
+		navigator.clipboard.writeText(url);
+		toast("Webhook URL copied to clipboard", "success");
+	}
+
 	// delete channel
 	let confirmDelete = $state(false);
 
@@ -334,6 +509,17 @@
 							</button>
 						{/if}
 
+						{#if room.type === 1}
+							<button
+								class="flex items-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium transition-colors duration-100
+									{activeSection === 'webhooks' ? 'bg-zinc-800 text-white' : 'text-zinc-400 hover:bg-zinc-800/60 hover:text-zinc-200'}"
+								onclick={() => (activeSection = "webhooks")}
+							>
+								<WebhookIcon class="size-4" />
+								Webhooks
+							</button>
+						{/if}
+
 						<div class="mx-1 mt-auto border-t border-zinc-800 pt-4">
 							{#if !confirmDelete}
 								<button
@@ -374,7 +560,11 @@
 					<!-- Header -->
 					<div class="flex shrink-0 items-center justify-between border-b border-zinc-800 px-6 py-4">
 						<h2 class="text-base font-semibold text-white capitalize">
-							{activeSection === "overview" ? "Overview" : "Permissions"}
+							{activeSection === "overview"
+									? "Overview"
+									: activeSection === "permissions"
+										? "Permissions"
+										: "Webhooks"}
 						</h2>
 						<button
 							class="rounded-lg p-1.5 text-zinc-400 transition-colors duration-150 hover:bg-zinc-800 hover:text-white"
@@ -562,6 +752,227 @@
 									{/if}
 								</div>
 							</div>
+						{:else if activeSection === "webhooks"}
+							{#if webhooksLoading}
+								<p class="px-6 py-6 text-sm text-zinc-400">Loading webhooks...</p>
+							{:else}
+								<div class="max-w-xl space-y-5 px-6 py-6">
+									<!-- Create new webhook -->
+									<div class="space-y-4 rounded-xl border border-zinc-700 bg-zinc-900 p-5">
+										<div class="space-y-1">
+											<h3 class="text-sm font-semibold tracking-wide text-white">Create Webhook</h3>
+											<p class="text-xs text-zinc-400">
+												Webhooks allow external services to send messages to this channel.
+											</p>
+										</div>
+
+										<div class="space-y-3">
+											<label class="block space-y-1.5">
+												<span class="text-[11px] font-semibold tracking-wide text-zinc-400 uppercase">Username</span>
+												<input
+													type="text"
+													class="w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 placeholder-zinc-500 outline-none focus:border-zinc-500"
+													placeholder="Webhook Bot"
+													bind:value={newWebhookName}
+												/>
+											</label>
+
+											<div class="space-y-1.5">
+												<span class="text-[11px] font-semibold tracking-wide text-zinc-400 uppercase">Avatar (optional)</span>
+												<div class="flex items-center gap-3">
+													<div class="group relative size-14 shrink-0 overflow-hidden rounded-full bg-zinc-700">
+														{#if newWebhookAvatarPreview}
+															<img src={newWebhookAvatarPreview} alt="Preview" class="size-full object-cover" />
+														{:else}
+															<div class="flex size-full items-center justify-center">
+																<WebhookIcon class="size-6 text-zinc-500" />
+															</div>
+														{/if}
+														<div class="absolute inset-0 flex items-center justify-center gap-1 bg-black/0 transition-colors group-hover:bg-black/50">
+															<button
+																type="button"
+																class="flex size-6 cursor-pointer items-center justify-center rounded-full bg-black/60 text-white opacity-0 transition-opacity hover:bg-black/80 group-hover:opacity-100"
+																title="Change avatar"
+																onclick={pickNewWebhookAvatar}
+															>
+																<CameraIcon class="size-3" />
+															</button>
+															{#if newWebhookAvatarPreview}
+																<button
+																	type="button"
+																	class="flex size-6 cursor-pointer items-center justify-center rounded-full bg-black/60 text-red-400 opacity-0 transition-opacity hover:bg-black/80 group-hover:opacity-100"
+																	title="Remove avatar"
+																	onclick={clearNewWebhookAvatar}
+																>
+																	<TrashIcon class="size-3" />
+																</button>
+															{/if}
+														</div>
+													</div>
+													<p class="text-xs text-zinc-500">Click to upload an avatar</p>
+												</div>
+											</div>
+
+											<button
+												class="flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
+												onclick={handleCreateWebhook}
+												disabled={isCreatingWebhook || !newWebhookName.trim()}
+											>
+												<PlusIcon class="size-4" />
+												{isCreatingWebhook ? "Creating..." : "Create"}
+											</button>
+										</div>
+									</div>
+
+									<!-- Token reveal box -->
+									{#if createdWebhookToken && createdWebhookId}
+										<div class="overflow-hidden rounded-xl border border-amber-600/30 bg-amber-950/20 p-4">
+											<p class="mb-2 text-xs font-semibold text-amber-300">
+												Webhook Token (shown only once)
+											</p>
+											<div class="flex items-center gap-2">
+												<code class="min-w-0 flex-1 truncate rounded-md bg-zinc-800 px-3 py-2 text-xs text-zinc-200">
+													{createdWebhookToken}
+												</code>
+												<button
+													class="flex shrink-0 items-center gap-1.5 rounded-md bg-zinc-700 px-3 py-2 text-xs font-medium text-zinc-200 transition-colors hover:bg-zinc-600"
+													onclick={() => copyWebhookUrl(createdWebhookId!, createdWebhookToken!)}
+													title="Copy Webhook URL"
+												>
+													<CopyIcon class="size-3.5" />
+													Copy URL
+												</button>
+											</div>
+											<p class="mt-2 truncate text-[11px] text-amber-400/70" title="{DUVET_DOMAIN}/api/webhooks/{createdWebhookId}/{createdWebhookToken}">
+												Webhook URL: {DUVET_DOMAIN}/api/webhooks/{createdWebhookId}/{createdWebhookToken}
+											</p>
+											<button
+												class="mt-2 text-xs text-zinc-400 transition-colors hover:text-zinc-200"
+												onclick={() => { createdWebhookToken = null; createdWebhookId = null; }}
+											>
+												Dismiss
+											</button>
+										</div>
+									{/if}
+
+									<!-- Webhook list -->
+									{#if roomWebhooks.length === 0}
+										<div class="flex flex-col items-center justify-center py-12 text-center">
+											<WebhookIcon class="mb-3 size-10 text-zinc-600" />
+											<p class="text-sm text-zinc-400">No webhooks yet.</p>
+											<p class="mt-1 text-xs text-zinc-500">Create one above to get started.</p>
+										</div>
+									{:else}
+										<div class="space-y-1">
+											{#each roomWebhooks as wh (wh.id)}
+												<div
+													class="group flex items-center gap-3 rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2.5"
+												>
+													<!-- Avatar -->
+													{#if wh.avatar}
+														<img
+															src="{attachmentHost}/attachments/{wh.avatar}"
+															alt={wh.username}
+															class="size-8 shrink-0 rounded-full object-cover"
+														/>
+													{:else}
+														<div class="flex size-8 shrink-0 items-center justify-center rounded-full bg-zinc-700">
+															<WebhookIcon class="size-4 text-zinc-400" />
+														</div>
+													{/if}
+
+													{#if editingWebhookId === wh.id}
+														<div class="group/edit relative size-10 shrink-0 overflow-hidden rounded-full bg-zinc-700">
+															{#if editingWebhookAvatarPreview}
+																<img src={editingWebhookAvatarPreview} alt="Preview" class="size-full object-cover" />
+															{:else}
+																<div class="flex size-full items-center justify-center">
+																	<WebhookIcon class="size-4 text-zinc-500" />
+																</div>
+															{/if}
+															<div class="absolute inset-0 flex items-center justify-center gap-0.5 bg-black/0 transition-colors group-hover/edit:bg-black/50">
+																<button
+																	type="button"
+																	class="flex size-5 cursor-pointer items-center justify-center rounded-full bg-black/60 text-white opacity-0 transition-opacity hover:bg-black/80 group-hover/edit:opacity-100"
+																	title="Change avatar"
+																	onclick={pickEditWebhookAvatar}
+																>
+																	<CameraIcon class="size-2.5" />
+																</button>
+																{#if editingWebhookAvatarPreview}
+																	<button
+																		type="button"
+																		class="flex size-5 cursor-pointer items-center justify-center rounded-full bg-black/60 text-red-400 opacity-0 transition-opacity hover:bg-black/80 group-hover/edit:opacity-100"
+																		title="Remove avatar"
+																		onclick={removeEditWebhookAvatar}
+																	>
+																		<TrashIcon class="size-2.5" />
+																	</button>
+																{/if}
+															</div>
+														</div>
+														<div class="flex min-w-0 flex-1 flex-col gap-2">
+															<input
+																type="text"
+																class="w-full rounded-md border border-zinc-600 bg-zinc-700 px-2 py-1 text-sm text-zinc-100 outline-none focus:border-zinc-500"
+																bind:value={editingWebhookName}
+																onkeydown={(e) => {
+																	if (e.key === "Enter") handleUpdateWebhook();
+																	if (e.key === "Escape") cancelWebhookEdit();
+																}}
+															/>
+														</div>
+														<button
+															class="rounded p-1.5 text-green-400 transition-colors hover:bg-zinc-700"
+															onclick={handleUpdateWebhook}
+															title="Save"
+														>
+															<CheckIcon class="size-4" />
+														</button>
+														<button
+															class="rounded p-1.5 text-zinc-400 transition-colors hover:bg-zinc-700"
+															onclick={cancelWebhookEdit}
+															title="Cancel"
+														>
+															<XIcon class="size-4" />
+														</button>
+													{:else}
+														<div class="min-w-0 flex-1">
+															<p class="truncate text-sm font-medium text-zinc-200">{wh.username}</p>
+															<p class="truncate text-xs text-zinc-500">
+																Created {new Date(wh.created_at).toLocaleDateString()}
+															</p>
+														</div>
+
+														<button
+															class="rounded p-1.5 text-zinc-400 opacity-0 transition-all group-hover:opacity-100 hover:bg-zinc-700 hover:text-zinc-200"
+															onclick={() => startWebhookEdit(wh)}
+															title="Rename"
+														>
+															<PencilIcon class="size-4" />
+														</button>
+														<button
+															class="rounded p-1.5 text-zinc-400 opacity-0 transition-all group-hover:opacity-100 hover:bg-zinc-700 hover:text-amber-400"
+															onclick={() => handleResetWebhookToken(wh.id)}
+															title="Reset Token"
+														>
+															<WebhookIcon class="size-4" />
+														</button>
+														<button
+															class="rounded p-1.5 text-zinc-400 opacity-0 transition-all group-hover:opacity-100 hover:bg-zinc-700 hover:text-red-400"
+															onclick={() => handleDeleteWebhook(wh.id)}
+															disabled={isDeletingWebhook[wh.id]}
+															title="Delete"
+														>
+															<TrashIcon class="size-4" />
+														</button>
+													{/if}
+												</div>
+											{/each}
+										</div>
+									{/if}
+								</div>
+							{/if}
 						{/if}
 					</div>
 

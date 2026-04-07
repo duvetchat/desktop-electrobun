@@ -908,6 +908,7 @@
 			{@const isConsecutive =
 				chronoPrev &&
 				chronoPrev.author_id === message.author_id &&
+				chronoPrev.author_name === message.author_name &&
 				new Date(message.created_at).getTime() - new Date(chronoPrev.created_at).getTime() <= 5 * 60 * 1_000}
 			{@const showHeader = !isConsecutive || !!message.referenced_message}
 			{@const isLast = i === 0}

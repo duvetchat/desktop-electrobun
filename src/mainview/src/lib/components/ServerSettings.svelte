@@ -516,7 +516,6 @@
 	const canManageStickers = $derived(hasSpacePermission(Permission.ManageSpaceStickers));
 	const canManageBuckets = $derived(hasSpacePermission(Permission.ManageSpaceBuckets));
 	const canManageAttachments = $derived(hasSpacePermission(Permission.ManageSpaceAttachments));
-
 	// ── sticker handlers ────────────────────────────────────────
 	async function loadStickers() {
 		if (!spaceId) return;

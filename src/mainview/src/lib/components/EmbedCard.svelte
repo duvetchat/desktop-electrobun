@@ -32,6 +32,10 @@
 		return `border-image: linear-gradient(180deg, ${from}, ${to}) 1`;
 	}
 
+	function isTikTokEmbed(embed: Embed): boolean {
+		return embed.provider === "TikTok" && !!embed.video?.url;
+	}
+
 	function isDirectVideo(url: string): boolean {
 		try {
 			const parsed = new URL(url);
@@ -70,6 +74,31 @@
 			<img src={embed.image.url} alt="" class="max-w-[550px] max-h-[350px] rounded" loading="lazy" />
 		</button>
 	{/if}
+{:else if isTikTokEmbed(embed)}
+	<div class="mt-1 flex w-[320px] flex-col overflow-hidden rounded-md border-l-4 bg-zinc-800/60" style="border-color: #fe2c55;">
+		<div class="px-3 py-2.5">
+			{#if embed.provider}
+				<span class="text-xxs font-semibold text-zinc-400">{embed.provider}</span>
+			{/if}
+			{#if embed.title}
+				{#if embed.url}
+					<a href={embed.url} target="_blank" rel="noopener noreferrer" class="line-clamp-2 text-sm font-semibold text-stone-300 hover:underline">{embed.title}</a>
+				{:else}
+					<span class="line-clamp-2 text-sm font-semibold text-zinc-100">{embed.title}</span>
+				{/if}
+			{/if}
+		</div>
+		<div class="aspect-[9/16] w-full">
+			<iframe
+				src={embed.video?.url}
+				title={embed.title ?? "TikTok"}
+				class="h-full w-full"
+				allow="autoplay; encrypted-media"
+				allowfullscreen
+				sandbox="allow-scripts allow-same-origin allow-popups"
+			></iframe>
+		</div>
+	</div>
 {:else if embed.title || embed.description || embed.video || embed.image}
 	<div
 		class="mt-1 flex max-w-sm flex-col overflow-hidden rounded-md border-l-4 bg-zinc-800/60"

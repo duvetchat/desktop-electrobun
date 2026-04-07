@@ -296,9 +296,6 @@ export interface GatewaySpaceCreatePayload {
 	voice_states?: GatewayVoiceState[];
 	activities?: Record<string, UserActivity[]>;
 	member_statuses?: Record<string, number>;
-	voice_states?: GatewayVoiceState[];
-	activities?: Record<string, UserActivity>;
-	member_statuses?: Record<string, number>;
 }
 
 export interface ReactionEvent {
@@ -660,7 +657,7 @@ export function gatewayMessageToMessage(msg: GatewayMessage, spaces: GatewaySpac
 		updated_at: msg.updated_at,
 		nonce: msg.nonce,
 		referenced_message: msg.referenced_message ?? null,
-		ref_message_id: msg.referenced_message?.message_id ?? null,
+		ref_message_id: msg.referenced_message?.message_id ?? (msg as unknown as Record<string, string>).ref_message_id ?? null,
 		embeds: msg.embeds ?? null,
 		attachments: msg.attachments ?? null,
 		reactions: msg.reactions ?? null,
