@@ -679,4 +679,9 @@
 		background: oklch(0.36 0.1 270 / 0.6);
 		color: oklch(0.85 0.14 270);
 	}
+
+	.msg-link {
+		color: oklch(0.72 0.12 240);
+		text-decoration: underline;
+	}
 }

@@ -745,18 +745,15 @@
 
 	function parseTextSegments(text: string) {
 		const segments: { type: "text" | "link"; content: string }[] = [];
+		const bareUrlRegex = /(?<!\]\()(?:https?|duvet):\/\/[^\s)]+(?:\)[^\s)]*)*|(?<=\s|^)(?:https?|duvet):\/\/[^\s]+/g;
 		let lastIndex = 0;
-		urlRegex.lastIndex = 0;
 		let match;
-		while ((match = urlRegex.exec(text)) !== null) {
+		while ((match = bareUrlRegex.exec(text)) !== null) {
 			if (match.index > lastIndex) {
-				segments.push({
-					type: "text",
-					content: text.slice(lastIndex, match.index),
-				});
+				segments.push({ type: "text", content: text.slice(lastIndex, match.index) });
 			}
-			segments.push({ type: "link", content: match.at(0) ?? "" });
-			lastIndex = urlRegex.lastIndex;
+			segments.push({ type: "link", content: match[0] });
+			lastIndex = bareUrlRegex.lastIndex;
 		}
 		if (lastIndex < text.length) {
 			segments.push({ type: "text", content: text.slice(lastIndex) });

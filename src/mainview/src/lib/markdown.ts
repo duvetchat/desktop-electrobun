@@ -237,6 +237,8 @@ function applyInline(
 	s = s.replace(/(?<!\w)_([^\s_](?:[^_]*[^\s_])?)_(?!\w)/gs, (_, t) => `<em>${t}</em>`);
 	s = s.replace(/~~(.+?)~~/gs, (_, t) => `<del>${t}</del>`);
 	s = s.replace(/\|\|(.+?)\|\|/gs, (_, t) => `<span class="msg-spoiler">${t}</span>`);
+	// Markdown links [text](url)
+	s = s.replace(/\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g, (_, text, url) => `<a href="${url}" target="_blank" rel="noopener noreferrer" class="msg-link">${text}</a>`);
 	// Resolve <@id> mentions to @username
 	s = s.replace(/&lt;@([a-f0-9-]+)&gt;/g, (_, id) => {
 		const name = mentionMap?.[id] ?? id.slice(0, 8);
