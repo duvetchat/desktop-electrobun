@@ -32,8 +32,7 @@
 	} from "$lib/api/webhooks";
 	import { toast } from "$lib/stores/toast.svelte";
 	import { confirmAction } from "$lib/stores/confirm.svelte";
-	import { currentUser } from "$lib/stores.svelte";
-	import { getHostURL, DUVET_DOMAIN } from "$lib/common/common";
+	import { getHostURL } from "$lib/common/common";
 	import type { GatewaySpace, GatewayRoom, GatewayRoomOverwrite } from "$lib/types";
 
 	let {
@@ -450,7 +449,7 @@
 	}
 
 	function copyWebhookUrl(webhookId: string, token: string) {
-		const url = `${DUVET_DOMAIN}/api/webhooks/${webhookId}/${token}`;
+		const url = `${attachmentHost}/api/webhooks/${webhookId}/${token}`;
 		navigator.clipboard.writeText(url);
 		toast("Webhook URL copied to clipboard", "success");
 	}
@@ -843,8 +842,8 @@
 													Copy URL
 												</button>
 											</div>
-											<p class="mt-2 truncate text-[11px] text-amber-400/70" title="{DUVET_DOMAIN}/api/webhooks/{createdWebhookId}/{createdWebhookToken}">
-												Webhook URL: {DUVET_DOMAIN}/api/webhooks/{createdWebhookId}/{createdWebhookToken}
+											<p class="mt-2 truncate text-[11px] text-amber-400/70" title="{attachmentHost}/api/webhooks/{createdWebhookId}/{createdWebhookToken}">
+												Webhook URL: {attachmentHost}/api/webhooks/{createdWebhookId}/{createdWebhookToken}
 											</p>
 											<button
 												class="mt-2 text-xs text-zinc-400 transition-colors hover:text-zinc-200"
