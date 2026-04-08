@@ -38,7 +38,7 @@ import { getWSHostURL, getAvatarURL, route } from "$lib/common/common";
 import { get } from "svelte/store";
 import { getSpaceMembers, type SpaceMemberWithUser } from "$lib/api/spaces";
 
-import type { GatewayEvent, GatewaySpace, GatewayMember, GatewayRoom, UserStatus } from "$lib/types";
+import type { GatewayEvent, GatewaySpace, UserStatus } from "$lib/types";
 
 import { gatewayMessageToMessage } from "$lib/types";
 
@@ -57,7 +57,7 @@ getElectrobunRpc()
 			sendEventMessage("ACTIVITY_UPDATE", { activities });
 		});
 	})
-	.catch(() => {});
+	.catch(() => { });
 
 // Active socket — module-level so sendMessage can access it
 let activeSocket: WebSocket | null = null;
@@ -70,9 +70,16 @@ let expectedGuildIds: Set<string> | null = null;
 let receivedGuildIds = new Set<string>();
 
 // Cache of live user statuses received via USER_STATUS_UPDATE.
-// Keyed by user ID so we can apply the correct status when a user is
-// added to a space AFTER their status event already fired.
+// Keys: "userId" for global status (regular users), "userId:spaceId" for
+// per-space status (sharded bots). Lookups check space-specific key first,
+// then fall back to the global key.
 export const userStatusCache = new Map<string, UserStatus>();
+
+// Returns the global status for a user.
+// Used for contexts without a specific space (e.g., conversations).
+export function getUserOnlineStatus(userId: string): UserStatus {
+	return userStatusCache.get(userId) ?? 0;
+}
 
 type WebRTCEventListener = (type: string, data: unknown) => void;
 const webrtcListeners: WebRTCEventListener[] = [];
@@ -104,7 +111,7 @@ function addMembersToSpace(spaceId: string, rows: SpaceMemberWithUser[]) {
 			// Replace any placeholder members for the same users with real data
 			const filteredMembers = s.members.filter((m) => !incomingUserIds.has(m.user_id));
 			const newUsers = rows.map((r) => r.user).filter((u) => !existingUserIds.has(u.id));
-			const newMembers = rows.map(({ user: _u, max_pos: _p, ...m }) => m as GatewayMember);
+			const newMembers = rows.map(({ user: _u, max_pos: _p, ...m }) => m);
 			return {
 				...s,
 				users: [...s.users, ...newUsers],
@@ -127,10 +134,9 @@ function handleEvent(event: GatewayEvent) {
 	switch (payload.type) {
 		case "READY": {
 			const { user, sessionToken, unread_rooms } = payload.data;
-			// The connected user is always online by definition.
+			// Per-space statuses are set via SPACE_CREATE member_statuses.
 			currentUser.set(user);
 			wsSessionToken.set(sessionToken);
-			userStatusCache.set(user.id, 1);
 			unreadChannels.set(new Set(unread_rooms ?? []));
 			lastReadRooms.set(payload.data.last_read_rooms ?? {});
 			lastMsgRooms.set(payload.data.last_msg_rooms ?? {});
@@ -161,7 +167,7 @@ function handleEvent(event: GatewayEvent) {
 				});
 			getMentionCounts()
 				.then((counts) => mentionCounts.set(counts))
-				.catch(() => {});
+				.catch(() => { });
 			// Restore active calls
 			const readyData = payload.data;
 			const activeCalls = readyData.active_calls ?? [];
@@ -213,13 +219,13 @@ function handleEvent(event: GatewayEvent) {
 			const currentUserData = get(currentUser);
 			const selfMember: import("$lib/types").GatewayMember | undefined = currentUserData
 				? {
-						id: currentUserData.id,
-						space_id: spaceCreateData.space.id,
-						user_id: currentUserData.id,
-						alias: null,
-						created_at: spaceCreateData.space.created_at,
-						updated_at: spaceCreateData.space.updated_at,
-					}
+					id: currentUserData.id,
+					space_id: spaceCreateData.space.id,
+					user_id: currentUserData.id,
+					alias: null,
+					created_at: spaceCreateData.space.created_at,
+					updated_at: spaceCreateData.space.updated_at,
+				}
 				: undefined;
 			const space: GatewaySpace = {
 				...spaceCreateData.space,
@@ -234,16 +240,17 @@ function handleEvent(event: GatewayEvent) {
 			};
 
 			// Load initial activities for this space
-			const spaceActivities = spaceCreateData.activities as Record<string, any> | undefined;
+			const spaceActivities = spaceCreateData.activities;
 			if (spaceActivities) {
 				userActivities.update((all) => ({ ...all, ...spaceActivities }));
 			}
 
-			// Cache member statuses from Redis so lazy-loaded members get correct status
-			const memberStatuses = spaceCreateData.member_statuses as Record<string, number> | undefined;
+			// Cache member statuses from Redis so lazy-loaded members get correct status.
+			// member_statuses are keyed by userId (global status).
+			const memberStatuses = spaceCreateData.member_statuses;
 			if (memberStatuses) {
 				for (const [uid, status] of Object.entries(memberStatuses)) {
-					userStatusCache.set(uid, status as UserStatus);
+					userStatusCache.set(uid, status);
 				}
 			}
 
@@ -447,15 +454,15 @@ function handleEvent(event: GatewayEvent) {
 					members: c.members.map((m) =>
 						m.user_id === raw.id
 							? {
-									...m,
-									user: {
-										...m.user,
-										username: raw.username,
-										alias: raw.alias,
-										avatar: raw.avatar,
-										banner: raw.banner,
-									},
-								}
+								...m,
+								user: {
+									...m.user,
+									username: raw.username,
+									alias: raw.alias,
+									avatar: raw.avatar,
+									banner: raw.banner,
+								},
+							}
 							: m,
 					),
 				})),
@@ -464,7 +471,12 @@ function handleEvent(event: GatewayEvent) {
 		}
 		case "USER_STATUS_UPDATE": {
 			const raw = payload.data;
+			// Global status update (no space_id) — always set the userId key
 			userStatusCache.set(raw.user_id, raw.status_id);
+			// Per-space status (sharded bots) — also set userId:spaceId key
+			if (raw.space_id) {
+				userStatusCache.set(`${raw.user_id}:${raw.space_id}`, raw.status_id);
+			}
 			// Create new object references for affected spaces so Svelte detects the change
 			gatewaySpaces.update((spaces) => spaces.map((s) => (s.users.some((u) => u.id === raw.user_id) ? { ...s } : s)));
 			conversations.update((convs) =>
@@ -680,7 +692,7 @@ function handleEvent(event: GatewayEvent) {
 		}
 		case "SPACE_MEMBER_ADD": {
 			const raw = payload.data;
-			userStatusCache.set(raw.user_id, (raw.status_id ?? 0) as UserStatus);
+			userStatusCache.set(raw.user_id, raw.status_id);
 			getSpaceMembers(raw.space_id)
 				.then((rows) => addMembersToSpace(raw.space_id, rows))
 				.catch((err) => console.error("[WS] Failed to refresh members after join:", err));
@@ -730,7 +742,7 @@ function handleEvent(event: GatewayEvent) {
 			break;
 		}
 		case "ROOM_REORDER": {
-			const { rooms } = payload.data as { rooms: GatewayRoom[] };
+			const { rooms } = payload.data;
 			if (!rooms || rooms.length === 0) break;
 			const spaceId = rooms[0].space_id;
 			gatewaySpaces.update((spaces) =>

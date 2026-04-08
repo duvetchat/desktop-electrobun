@@ -15,7 +15,7 @@
 		conversationsWithCalls,
 		jumpToMessageRequest,
 	} from "$lib/stores.svelte";
-	import { sendEventMessage, userStatusCache } from "$lib/api/ws/connection";
+	import { sendEventMessage, getUserOnlineStatus } from "$lib/api/ws/connection";
 	import {
 		getDirectMessages,
 		getDirectMessageById,
@@ -118,7 +118,7 @@
 			raw_username: m.user?.username ?? m.user_id.slice(0, 8),
 			avatar_url: getAvatarURL(m.user_id, m.user?.avatar),
 			banner_url: getAvatarURL(m.user_id, m.user?.banner),
-			status: (userStatusCache.get(m.user_id) === 1 ? "online" : userStatusCache.get(m.user_id) === 2 ? "dnd" : "offline") as "online" | "dnd" | "offline",
+			status: (getUserOnlineStatus(m.user_id) === 1 ? "online" : getUserOnlineStatus(m.user_id) === 2 ? "dnd" : "offline") as "online" | "dnd" | "offline",
 			badges: m.user?.badges ?? 0,
 			is_bot: m.user?.is_bot ?? false,
 			is_owner: m.user_id === conversation.owner_id,

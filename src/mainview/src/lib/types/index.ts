@@ -153,6 +153,7 @@ export interface GatewayMessageDelete {
 
 export interface GatewayUserStatusUpdate {
 	user_id: string;
+	space_id?: string;
 	status_id: UserStatus;
 }
 
@@ -295,7 +296,7 @@ export interface GatewaySpaceCreatePayload {
 	owner_id: string;
 	voice_states?: GatewayVoiceState[];
 	activities?: Record<string, UserActivity[]>;
-	member_statuses?: Record<string, number>;
+	member_statuses?: Record<string, UserStatus>;
 }
 
 export interface ReactionEvent {
@@ -446,7 +447,7 @@ export interface SpaceMemberAddEvent {
 	space_id: string;
 	user_id: string;
 	member_id: string;
-	status_id: number;
+	status_id: UserStatus;
 	user?: GatewayUser;
 }
 
@@ -605,6 +606,7 @@ export interface GatewayReadyData {
 	user: GatewayUser;
 	sessionToken: string;
 	guild_ids: string[];
+	shard?: [number, number];
 	unread_rooms?: string[];
 	last_read_rooms?: Record<string, string>;
 	last_msg_rooms?: Record<string, string>;
@@ -779,7 +781,7 @@ export function gatewaySpaceToMembers(space: GatewaySpace, statusLookup?: Map<st
 				raw_username: u.username,
 				avatar_url: getAvatarURL(u.id, u.avatar),
 				banner_url: getAvatarURL(u.id, u.banner),
-				status: userStatusToString(statusLookup?.get(u.id) ?? 0),
+				status: userStatusToString(statusLookup?.get(`${u.id}:${space.id}`) ?? statusLookup?.get(u.id) ?? 0),
 				badges: u.badges ?? 0,
 				is_bot: u.is_bot ?? false,
 				is_owner: u.id === space.owner_id,

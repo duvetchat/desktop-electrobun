@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { EmbedType, type Embed } from "$lib/types";
 	import { getHostURL } from "$lib/common/common";
+	import { renderMarkdown } from "$lib/markdown";
 
 	let { embed, onImageClick }: { embed: Embed; onImageClick?: (src: string) => void } = $props();
 
@@ -139,7 +140,7 @@
 					{/if}
 
 					{#if embed.description}
-						<p class="line-clamp-3 text-xs wrap-break-word whitespace-pre-line text-zinc-400">{embed.description}</p>
+						<p class="line-clamp-3 text-xs wrap-break-word text-zinc-400">{@html renderMarkdown(embed.description)}</p>
 					{/if}
 
 					{#if embed.fields && embed.fields.length > 0}
@@ -147,7 +148,7 @@
 							{#each embed.fields as field}
 								<div class="flex min-w-0 flex-col {field.inline ? '' : 'w-full'}">
 									<span class="text-xxs font-semibold tracking-wide text-zinc-400 uppercase">{field.name}</span>
-									<span class="text-xs text-zinc-300">{field.value}</span>
+									<span class="text-xs text-zinc-300">{@html renderMarkdown(field.value)}</span>
 								</div>
 							{/each}
 						</div>
