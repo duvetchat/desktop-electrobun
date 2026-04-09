@@ -209,7 +209,7 @@
 				localAudioStream = denoised.stream;
 				denoiseCleanup = denoised.cleanup;
 			} catch (e) {
-				console.error("Failed to get local audio", e);
+				console.error("[Voice] Failed to get local audio:", e);
 				// Fallback to raw stream if denoise fails
 				if (rawMicStream && !localAudioStream) {
 					localAudioStream = rawMicStream;

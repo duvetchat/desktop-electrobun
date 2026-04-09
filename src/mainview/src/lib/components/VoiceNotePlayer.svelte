@@ -1,24 +1,34 @@
 <script lang="ts">
 	import { onMount, onDestroy } from "svelte";
 	import { Play, Pause } from "@lucide/svelte";
+	import { voiceNote, playVoiceNote, toggleVoiceNote, seekVoiceNote } from "$lib/stores/voiceNotePlayer.svelte";
 
 	let {
 		src,
+		attachmentId = "",
+		authorName = "",
+		channelName = "",
 		compact = false,
 	}: {
 		src: string;
+		attachmentId?: string;
+		authorName?: string;
+		channelName?: string;
 		compact?: boolean;
 	} = $props();
 
-	let audioEl = $state<HTMLAudioElement | null>(null);
-	let playing = $state(false);
-	let currentTime = $state(0);
-	let duration = $state(0);
 	let bars = $state<number[]>([]);
-	let blobUrl = $state<string | null>(null);
-	let animFrame = 0;
+	let localDuration = $state(0);
+	let wavSrc = $state<string | null>(null);
 
 	const BAR_COUNT = 50;
+
+	// Is this the currently active voice note?
+	const isActive = $derived($voiceNote?.attachmentId === attachmentId && attachmentId !== "");
+	const playing = $derived(isActive ? $voiceNote!.playing : false);
+	const currentTime = $derived(isActive ? $voiceNote!.currentTime : 0);
+	const duration = $derived(isActive && $voiceNote!.duration > 0 ? $voiceNote!.duration : localDuration);
+	const progress = $derived(duration > 0 ? currentTime / duration : 0);
 
 	function fallbackBars(s: string): number[] {
 		let hash = 0;
@@ -36,7 +46,6 @@
 	function audioBufferToWav(buffer: AudioBuffer): ArrayBuffer {
 		const numChannels = buffer.numberOfChannels;
 		const sampleRate = buffer.sampleRate;
-		const format = 1; // PCM
 		const bitsPerSample = 16;
 		const channels: Float32Array[] = [];
 		for (let i = 0; i < numChannels; i++) channels.push(buffer.getChannelData(i));
@@ -54,7 +63,7 @@
 		writeStr(8, "WAVE");
 		writeStr(12, "fmt ");
 		view.setUint32(16, 16, true);
-		view.setUint16(20, format, true);
+		view.setUint16(20, 1, true);
 		view.setUint16(22, numChannels, true);
 		view.setUint32(24, sampleRate, true);
 		view.setUint32(28, sampleRate * numChannels * (bitsPerSample / 8), true);
@@ -81,15 +90,13 @@
 
 			const ctx = new AudioContext();
 			const decoded = await ctx.decodeAudioData(buf);
-			duration = decoded.duration;
+			localDuration = decoded.duration;
 			const raw = decoded.getChannelData(0);
 			ctx.close();
 
-			// Convert to WAV for perfect cross-browser seeking
 			const wavBuf = audioBufferToWav(decoded);
-			blobUrl = URL.createObjectURL(new Blob([wavBuf], { type: "audio/wav" }));
+			wavSrc = URL.createObjectURL(new Blob([wavBuf], { type: "audio/wav" }));
 
-			// Analyze waveform
 			const blockSize = Math.floor(raw.length / BAR_COUNT);
 			if (blockSize === 0) return;
 
@@ -106,7 +113,7 @@
 			const max = Math.max(...result, 0.001);
 			bars = result.map((v) => 0.08 + (v / max) * 0.92);
 		} catch {
-			if (!blobUrl) blobUrl = url;
+			if (!wavSrc) wavSrc = url;
 		}
 	}
 
@@ -118,43 +125,23 @@
 	}
 
 	function togglePlay() {
-		if (!audioEl) return;
-		if (playing) {
-			audioEl.pause();
+		if (isActive) {
+			toggleVoiceNote();
 		} else {
-			audioEl.play().catch(() => {});
+			playVoiceNote(wavSrc || src, attachmentId, authorName, channelName);
 		}
 	}
 
 	function handleSeek(e: MouseEvent) {
-		if (!audioEl || !duration) return;
+		if (!duration) return;
 		const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
 		const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-		audioEl.currentTime = ratio * duration;
-		currentTime = audioEl.currentTime;
-	}
-
-	function syncFromElement() {
-		if (!audioEl) return;
-		currentTime = audioEl.currentTime;
-		if (audioEl.duration && isFinite(audioEl.duration) && audioEl.duration > 0) {
-			duration = audioEl.duration;
-		}
-	}
-
-	function startTick() {
-		stopTick();
-		function tick() {
-			syncFromElement();
-			if (playing) animFrame = requestAnimationFrame(tick);
-		}
-		animFrame = requestAnimationFrame(tick);
-	}
-
-	function stopTick() {
-		if (animFrame) {
-			cancelAnimationFrame(animFrame);
-			animFrame = 0;
+		if (isActive) {
+			seekVoiceNote(ratio * duration);
+		} else {
+			// Start playing at the seeked position
+			playVoiceNote(wavSrc || src, attachmentId, authorName, channelName);
+			seekVoiceNote(ratio * duration);
 		}
 	}
 
@@ -164,11 +151,8 @@
 	});
 
 	onDestroy(() => {
-		stopTick();
-		if (blobUrl && blobUrl !== src) URL.revokeObjectURL(blobUrl);
+		if (wavSrc && wavSrc !== src) URL.revokeObjectURL(wavSrc);
 	});
-
-	const progress = $derived(duration > 0 ? currentTime / duration : 0);
 </script>
 
 <div
@@ -176,34 +160,6 @@
 		? 'max-w-none min-w-0 rounded-[12px] px-[10px] py-[6px]'
 		: 'max-w-[320px] min-w-[240px] rounded-[18px] py-[8px] pr-[14px] pl-[10px]'} border border-[oklch(0.30_0.01_80/0.6)] bg-[oklch(0.22_0.01_80/0.8)]"
 >
-	{#if blobUrl}
-		<audio
-			bind:this={audioEl}
-			src={blobUrl}
-			preload="auto"
-			onloadedmetadata={() => {
-				if (audioEl && isFinite(audioEl.duration)) duration = audioEl.duration;
-			}}
-			ondurationchange={() => {
-				if (audioEl && isFinite(audioEl.duration)) duration = audioEl.duration;
-			}}
-			ontimeupdate={syncFromElement}
-			onplay={() => {
-				playing = true;
-				startTick();
-			}}
-			onpause={() => {
-				playing = false;
-				stopTick();
-			}}
-			onended={() => {
-				playing = false;
-				currentTime = 0;
-				stopTick();
-			}}
-		></audio>
-	{/if}
-
 	<button
 		class="flex items-center justify-center {compact
 			? 'size-[28px]'

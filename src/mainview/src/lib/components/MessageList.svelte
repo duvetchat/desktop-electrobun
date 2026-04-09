@@ -1081,8 +1081,13 @@
 										<span class="text-[11px] text-zinc-500">Sending...</span>
 									</div>
 								</div>
-							{:else if voiceAtt && !voiceAtt.deleted}
-								<VoiceNotePlayer src="{attachmentHost}/attachments/{voiceAtt.id}" />
+							{:else if voiceAtt && !voiceAtt.deleted_at}
+								<VoiceNotePlayer
+									src="{attachmentHost}/attachments/{voiceAtt.id}"
+									attachmentId={voiceAtt.id}
+									authorName={message.author_name ?? "Unknown"}
+									channelName={space?.rooms.find((r) => r.id === channelId)?.name ?? ""}
+								/>
 							{:else}
 								<div
 									class="flex h-12 items-center gap-2 rounded-2xl border border-dashed border-zinc-700/50 px-4"
@@ -1277,7 +1282,7 @@
 													<span class="shrink-0 text-xs text-zinc-600">{formatFileSize(att.size_bytes)}</span>
 												</div>
 											{/if}
-										{:else if att.deleted}
+										{:else if att.deleted_at}
 											{@const dw = Math.min(att.width ?? 200, 550)}
 											{@const dh = Math.min(att.height ?? 48, 350)}
 											<div

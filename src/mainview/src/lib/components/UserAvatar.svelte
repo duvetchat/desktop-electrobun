@@ -48,6 +48,7 @@
 	const showImg = $derived(!!src && !imgError);
 </script>
 
+<!-- svelte-ignore a11y_no_static_element_interactions -->
 <div
 	style="width: {typeof size === 'number' ? size + 'px' : size}; height: {typeof size === 'number'
 		? size + 'px'

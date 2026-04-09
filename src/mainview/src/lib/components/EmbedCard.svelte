@@ -175,7 +175,6 @@
 				<video
 					src={proxyVideoUrl(embed.video.url)}
 					poster={embed.image?.url ?? embed.thumbnail?.url ?? ""}
-					autoplay
 					muted
 					playsinline
 					controls

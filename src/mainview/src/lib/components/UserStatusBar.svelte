@@ -30,6 +30,7 @@
 	import { hasPermission, Permission } from "$lib/permissions";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
 	import UserSettings from "$lib/components/UserSettings.svelte";
+	import VoiceNoteBar from "$lib/components/VoiceNoteBar.svelte";
 
 	let {
 		collapsed = false,
@@ -160,6 +161,10 @@
 		return "bg-red-950";
 	}
 </script>
+
+{#if !collapsed}
+	<VoiceNoteBar />
+{/if}
 
 <!-- Voice status pill -->
 {#if !collapsed && $activeVoiceRoomId && (activeVoiceRoom || isInConversationCall)}
