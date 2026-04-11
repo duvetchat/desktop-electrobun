@@ -42,6 +42,10 @@ import type { GatewayEvent, GatewaySpace, UserStatus } from "$lib/types";
 
 import { gatewayMessageToMessage } from "$lib/types";
 
+// Token is passed via query string because the WebSocket API does not support
+// custom headers during the handshake. Ideally the gateway would accept a
+// short-lived ticket instead so the long-lived session token is not logged in
+// server access logs or browser history.
 export function getStreamURL(): string {
 	return `${getWSHostURL()}/gateway?token=${localStorage.getItem("duvet_session_token")}`;
 }
@@ -129,11 +133,12 @@ function handleEvent(event: GatewayEvent) {
 		console.warn("[WS] Received event with no data:", event);
 		return;
 	}
-	console.log("[WS] Received event:", event);
+	if (import.meta.env.DEV) console.log("[WS] Received event:", event);
 	const payload = event.d;
 	switch (payload.type) {
 		case "READY": {
 			const { user, sessionToken, unread_rooms } = payload.data;
+			lastSeq = 0;
 			// Per-space statuses are set via SPACE_CREATE member_statuses.
 			currentUser.set(user);
 			wsSessionToken.set(sessionToken);
@@ -280,7 +285,16 @@ function handleEvent(event: GatewayEvent) {
 					if (s.id !== updated.id) {
 						return s;
 					}
-					return { ...s, ...updated };
+					return {
+						...s,
+						name: updated.name ?? s.name,
+						description: updated.description ?? s.description,
+						icon: updated.icon !== undefined ? updated.icon : s.icon,
+						banner: updated.banner !== undefined ? updated.banner : s.banner,
+						locale: updated.locale !== undefined ? updated.locale : s.locale,
+						owner_id: updated.owner_id ?? s.owner_id,
+						updated_at: updated.updated_at ?? s.updated_at,
+					};
 				}),
 			);
 			break;
@@ -471,11 +485,16 @@ function handleEvent(event: GatewayEvent) {
 		}
 		case "USER_STATUS_UPDATE": {
 			const raw = payload.data;
-			// Global status update (no space_id) — always set the userId key
-			userStatusCache.set(raw.user_id, raw.status_id);
-			// Per-space status (sharded bots) — also set userId:spaceId key
-			if (raw.space_id) {
-				userStatusCache.set(`${raw.user_id}:${raw.space_id}`, raw.status_id);
+			if (raw.status_id === 0) {
+				userStatusCache.delete(raw.user_id);
+				if (raw.space_id) {
+					userStatusCache.delete(`${raw.user_id}:${raw.space_id}`);
+				}
+			} else {
+				userStatusCache.set(raw.user_id, raw.status_id);
+				if (raw.space_id) {
+					userStatusCache.set(`${raw.user_id}:${raw.space_id}`, raw.status_id);
+				}
 			}
 			// Create new object references for affected spaces so Svelte detects the change
 			gatewaySpaces.update((spaces) => spaces.map((s) => (s.users.some((u) => u.id === raw.user_id) ? { ...s } : s)));
@@ -1198,7 +1217,7 @@ function handleEvent(event: GatewayEvent) {
 			break;
 		}
 		default:
-			console.log("[WS] Unhandled event:", event);
+			if (import.meta.env.DEV) console.log("[WS] Unhandled event:", event);
 	}
 }
 
@@ -1210,7 +1229,9 @@ export interface GatewayConnection {
 const HEARTBEAT_INTERVAL_MS = 45_000;
 const HEARTBEAT_TIMEOUT_MS = 15_000;
 const MAX_RECONNECT_ATTEMPTS = 5;
-const MAX_RECONNECT_DELAY_MS = 2500;
+const INITIAL_RECONNECT_DELAY_MS = 1000;
+const MAX_RECONNECT_DELAY_MS = 30_000;
+const RECONNECT_JITTER_MS = 1000;
 
 export function createWebSocketConnection(): GatewayConnection {
 	let destroyed = false;
@@ -1287,7 +1308,7 @@ export function createWebSocketConnection(): GatewayConnection {
 		activeSocket = socket;
 
 		socket.onopen = () => {
-			console.log("[WS] Connected");
+			if (import.meta.env.DEV) console.log("[WS] Connected");
 			reconnectAttempts = 0;
 			const identifyData: Record<string, unknown> = {
 				token: localStorage.getItem("duvet_session_token"),
@@ -1311,7 +1332,7 @@ export function createWebSocketConnection(): GatewayConnection {
 					return;
 				}
 				if (msg.event === "payload") {
-					console.log("[WS] Payload:", msg);
+					if (import.meta.env.DEV) console.log("[WS] Payload:", msg);
 					handleEvent(msg);
 				}
 			} catch (err) {
@@ -1353,13 +1374,15 @@ export function createWebSocketConnection(): GatewayConnection {
 		};
 
 		socket.onclose = () => {
-			console.log("[WS] Disconnected");
+			if (import.meta.env.DEV) console.log("[WS] Disconnected");
 			stopHeartbeat();
 			currentSocket = null;
 			activeSocket = null;
 			if (!destroyed) {
 				reconnectAttempts++;
-				reconnectTimer = setTimeout(connect, MAX_RECONNECT_DELAY_MS);
+				const baseDelay = Math.min(INITIAL_RECONNECT_DELAY_MS * 2 ** (reconnectAttempts - 1), MAX_RECONNECT_DELAY_MS);
+				const jitter = Math.random() * RECONNECT_JITTER_MS;
+				reconnectTimer = setTimeout(connect, baseDelay + jitter);
 			}
 		};
 	}

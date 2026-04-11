@@ -72,7 +72,7 @@
 		const u = sp.users.find((usr) => usr.id === member.user_id);
 		if (!u) return null;
 		const sid = (sp ? userStatusCache.get(`${u.id}:${sp.id}`) : undefined) ?? userStatusCache.get(u.id) ?? 0;
-		const status: MemberOnSidebar["status"] = sid === 1 ? "online" : sid === 2 ? "dnd" : "offline";
+		const status: MemberOnSidebar["status"] = sid === 1 ? "online" : "offline";
 		return {
 			id: u.id,
 			member_id: member.id,

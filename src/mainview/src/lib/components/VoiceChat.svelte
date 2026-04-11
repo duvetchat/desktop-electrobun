@@ -37,6 +37,7 @@
 	let pendingIceCandidates: RTCIceCandidate[] = [];
 	let negotiationReady = false;
 	let negotiationChain: Promise<void> = Promise.resolve();
+	let webrtcGeneration = 0;
 	// Resolves once VOICE_JOINED has been processed. Every WEBRTC_RENEGOTIATE
 	// awaits this gate so it never runs before the initial answer is applied.
 	let voiceJoinedResolve: (() => void) | null = null;
@@ -107,7 +108,9 @@
 	let currentMicId = $state($selectedMicId);
 
 	let myUserId = $state<string | null>(null);
-	currentUser.subscribe((u) => (myUserId = u?.id || null));
+	$effect(() => {
+		myUserId = $currentUser?.id || null;
+	});
 
 	let focusedUserId = $state<string | null>(null);
 
@@ -229,6 +232,7 @@
 		if (peerConnection) {
 			peerConnection.close();
 		}
+		webrtcGeneration++;
 		remoteAudioElements = {};
 		remoteVideoElements = {};
 		pendingIceCandidates = [];
@@ -319,16 +323,16 @@
 				const source = audioContext.createMediaStreamSource(new MediaStream([event.track]));
 				source.connect(analyser);
 				const dataArray = new Uint8Array(analyser.frequencyBinCount);
+				const gen = webrtcGeneration;
 
 				const checkAudioLevel = () => {
-					if (isDestroyed || !audioContext || event.track.readyState === "ended") return;
+					if (isDestroyed || !audioContext || event.track.readyState === "ended" || gen !== webrtcGeneration) return;
 					analyser.getByteFrequencyData(dataArray);
 					let sum = 0;
 					for (let i = 0; i < dataArray.length; i++) {
 						sum += dataArray[i];
 					}
 					const average = sum / dataArray.length;
-					// Normalize to 0-1 (values above ~50 are loud speech)
 					const amplitude = Math.min(1, average / 50);
 
 					speakingUsers.update((set) => {
@@ -390,16 +394,16 @@
 			}
 
 			const dataArray = new Uint8Array(localAnalyser.frequencyBinCount);
+			const localGen = webrtcGeneration;
 
 			const checkLocalLevel = () => {
-				if (isDestroyed || !audioContext || !localAnalyser) return;
+				if (isDestroyed || !audioContext || !localAnalyser || localGen !== webrtcGeneration) return;
 				localAnalyser.getByteFrequencyData(dataArray);
 				let sum = 0;
 				for (let i = 0; i < dataArray.length; i++) {
 					sum += dataArray[i];
 				}
 				const average = sum / dataArray.length;
-				// Normalize to 0-1 (values above ~50 are loud speech)
 				const amplitude = Math.min(1, average / 50);
 
 				speakingUsers.update((set) => {

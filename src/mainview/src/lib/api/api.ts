@@ -99,7 +99,7 @@ const coreFetch = async <T = any>(endpoint: string, options: FetchRequestConfig 
 		url = urlObj.toString();
 	}
 
-	console.log(`[duvet-api] Requesting: ${url}`);
+	if (import.meta.env.DEV) console.log(`[duvet-api] Requesting: ${url}`);
 
 	let response = await fetch(url, fetchOptions);
 

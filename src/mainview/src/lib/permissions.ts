@@ -97,11 +97,16 @@ export function computeRoomPermissions(space: GatewaySpace, room: GatewayRoom): 
 	apply(everyoneOw?.deny_flags ?? 0, everyoneOw?.allow_flags ?? 0);
 
 	// 4. Role-specific overwrites for the member's roles (skip @everyone)
+	// Aggregate all role overwrites first, then apply once (matches Discord model)
+	let roleAllow = 0;
+	let roleDeny = 0;
 	for (const ow of overwrites) {
 		if (ow.target_type === OVERWRITE_ROLE && ow.target_id !== spaceId && myRoles.includes(ow.target_id)) {
-			apply(ow.deny_flags, ow.allow_flags);
+			roleAllow |= ow.allow_flags;
+			roleDeny |= ow.deny_flags;
 		}
 	}
+	apply(roleDeny, roleAllow);
 
 	// 5. Member-specific overwrite
 	const memberOw = overwrites.find((o) => o.target_type === OVERWRITE_MEMBER && o.target_id === member.user_id);

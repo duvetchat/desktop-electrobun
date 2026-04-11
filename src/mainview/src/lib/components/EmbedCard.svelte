@@ -188,6 +188,7 @@
 						class="h-full w-full"
 						allow="autoplay; encrypted-media; picture-in-picture"
 						allowfullscreen
+						sandbox="allow-scripts allow-same-origin allow-popups"
 					></iframe>
 				</div>
 			{/if}

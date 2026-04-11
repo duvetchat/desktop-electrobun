@@ -5,7 +5,6 @@ interface UserMeResult {
 	username: string;
 	email: string;
 	email_verified: boolean;
-	password: string;
 	alias: string;
 	birthdate: string | null;
 	phone: string | null;

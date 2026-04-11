@@ -1,11 +1,51 @@
 import { SvelteSet } from "svelte/reactivity";
-import { writable } from "svelte/store";
+import { writable, type Writable } from "svelte/store";
 
 import type { GatewaySpace, GatewayUser, Message, SpaceEmoji, SpaceSticker } from "$lib/types";
 import type { FriendRequest, Friend } from "$lib/api/friends";
 import type { Conversation, DirectMessage } from "$lib/api/conversations";
 import type { TeamInvite } from "$lib/api/developer";
 import type { StorageBucket } from "$lib/api/user";
+
+const MAX_CACHED_CHANNELS = 50;
+
+function createEvictingMessageStore<T>(): Writable<Record<string, T[]>> {
+	const channelAccess: string[] = [];
+	const inner = writable<Record<string, T[]>>({});
+
+	function touchChannels(data: Record<string, T[]>) {
+		for (const key of Object.keys(data)) {
+			const idx = channelAccess.indexOf(key);
+			if (idx > -1) channelAccess.splice(idx, 1);
+			channelAccess.push(key);
+		}
+	}
+
+	function evict(data: Record<string, T[]>): Record<string, T[]> {
+		if (channelAccess.length <= MAX_CACHED_CHANNELS) return data;
+		const toEvict = channelAccess.splice(0, channelAccess.length - MAX_CACHED_CHANNELS);
+		const result = { ...data };
+		for (const key of toEvict) {
+			delete result[key];
+		}
+		return result;
+	}
+
+	return {
+		subscribe: inner.subscribe,
+		set(value: Record<string, T[]>) {
+			touchChannels(value);
+			inner.set(evict(value));
+		},
+		update(fn: (value: Record<string, T[]>) => Record<string, T[]>) {
+			inner.update((current) => {
+				const next = fn(current);
+				touchChannels(next);
+				return evict(next);
+			});
+		},
+	};
+}
 
 const SESSION_KEY = "duvet_session_token";
 
@@ -58,7 +98,7 @@ export const userSession = createUserSession();
 export const gatewaySpaces = writable<GatewaySpace[]>([]);
 export const currentUser = writable<GatewayUser | null>(null);
 export const wsSessionToken = writable<string | null>(null);
-export const channelMessages = writable<Record<string, Message[]>>({});
+export const channelMessages = createEvictingMessageStore<Message>();
 export const speakingUsers = writable<SvelteSet<string>>(new SvelteSet());
 export const userAmplitudes = writable<Record<string, number>>({});
 export interface UserActivity {
@@ -83,7 +123,7 @@ export const friends = writable<Friend[]>([]);
 export const friendsReady = writable<boolean>(false);
 
 export const conversations = writable<Conversation[]>([]);
-export const dmMessages = writable<Record<string, DirectMessage[]>>({});
+export const dmMessages = createEvictingMessageStore<DirectMessage>();
 export const pendingTeamInvites = writable<TeamInvite[]>([]);
 export const botInviteRequest = writable<string | null>(null);
 export const spaceInviteRequest = writable<string | null>(null);

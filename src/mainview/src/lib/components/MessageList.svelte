@@ -285,7 +285,7 @@
 		intervalId = window.setInterval(() => {
 			now = Date.now();
 		}, 30_000);
-		document.addEventListener("click", handleCodeCopy);
+		scrollEl?.addEventListener("click", handleCodeCopy);
 	});
 
 	onDestroy(() => {
@@ -293,7 +293,7 @@
 		if (intervalId) {
 			window.clearInterval(intervalId);
 		}
-		document.removeEventListener("click", handleCodeCopy);
+		scrollEl?.removeEventListener("click", handleCodeCopy);
 	});
 
 	// ── Sorting ────────────────────────────────────────────────────────────────

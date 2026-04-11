@@ -209,7 +209,7 @@ export interface GatewayRole {
 	position: number;
 }
 
-export type UserStatus = 0 | 1 | 2; // 0 = offline, 1 = online, 2 = dnd
+export type UserStatus = 0 | 1; // 0 = offline, 1 = online
 
 export interface GatewayUser {
 	id: string;
@@ -284,7 +284,6 @@ export interface GatewaySpaceCreateSpace {
 	icon: string | null;
 	created_at: string;
 	updated_at: string;
-	deleted_at: string | null;
 }
 
 export interface GatewaySpaceCreatePayload {
@@ -761,8 +760,6 @@ function userStatusToString(statusId: UserStatus): MemberOnSidebar["status"] {
 	switch (statusId) {
 		case 1:
 			return "online";
-		case 2:
-			return "dnd";
 		default:
 			return "offline";
 	}
