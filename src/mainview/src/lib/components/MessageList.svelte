@@ -22,6 +22,7 @@
 	import MessageLinkEmbed from "$lib/components/MessageLinkEmbed.svelte";
 	import EmbedCard from "$lib/components/EmbedCard.svelte";
 	import VoiceNotePlayer from "$lib/components/VoiceNotePlayer.svelte";
+	import AudioFilePlayer from "$lib/components/AudioFilePlayer.svelte";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
 	import ChatInput from "$lib/components/ChatInput.svelte";
 	import EmojiPicker from "$lib/components/EmojiPicker.svelte";
@@ -1387,6 +1388,15 @@
 													}}
 												></video>
 											</div>
+										{:else if att.content_type.startsWith("audio/")}
+											<AudioFilePlayer
+												src="{attachmentHost}{att.url ?? `/attachments/${att.id}`}"
+												attachmentId={att.id}
+												filename={att.filename}
+												sizeBytes={att.size_bytes}
+												authorName={message.author_name ?? "Unknown"}
+												channelName={space?.rooms.find((r) => r.id === channelId)?.name ?? ""}
+											/>
 										{:else}
 											<a
 												href="{attachmentHost}{att.url ?? `/attachments/${att.id}`}"

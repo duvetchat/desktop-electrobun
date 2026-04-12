@@ -1,13 +1,30 @@
 <script lang="ts">
-	import { Play, Pause, X } from "@lucide/svelte";
+	import { Play, Pause, X, Volume1, Volume2, VolumeX } from "@lucide/svelte";
 	import { fly } from "svelte/transition";
-	import { voiceNote, toggleVoiceNote, seekVoiceNote, stopVoiceNote } from "$lib/stores/voiceNotePlayer.svelte";
+	import {
+		voiceNote,
+		toggleVoiceNote,
+		seekVoiceNote,
+		stopVoiceNote,
+		audioVolume,
+		getAttachmentRate,
+		cyclePlaybackRate,
+	} from "$lib/stores/voiceNotePlayer.svelte";
+	import { formatDuration } from "$lib/utils/time";
 
-	function formatTime(secs: number): string {
-		if (!isFinite(secs) || secs < 0) return "0:00";
-		const m = Math.floor(secs / 60);
-		const s = Math.floor(secs % 60);
-		return `${m}:${s.toString().padStart(2, "0")}`;
+	let showVolume = $state(false);
+	let volumeTimeout: ReturnType<typeof setTimeout> | null = null;
+	let rate = $state(1);
+
+	// Sync rate when active attachment changes
+	$effect(() => {
+		if ($voiceNote) rate = getAttachmentRate($voiceNote.attachmentId);
+	});
+
+	function handleCycleRate() {
+		if (!$voiceNote) return;
+		cyclePlaybackRate($voiceNote.attachmentId);
+		rate = getAttachmentRate($voiceNote.attachmentId);
 	}
 
 	function handleSeek(e: MouseEvent) {
@@ -16,6 +33,15 @@
 		const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
 		const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
 		seekVoiceNote(ratio * note.duration);
+	}
+
+	function showVolumeSlider() {
+		if (volumeTimeout) clearTimeout(volumeTimeout);
+		showVolume = true;
+	}
+
+	function hideVolumeSlider() {
+		volumeTimeout = setTimeout(() => (showVolume = false), 250);
 	}
 
 	const progress = $derived($voiceNote && $voiceNote.duration > 0 ? $voiceNote.currentTime / $voiceNote.duration : 0);
@@ -40,9 +66,9 @@
 			</button>
 
 			<div class="flex min-w-0 flex-1 flex-col gap-0.5">
-				<div class="flex items-center gap-1.5">
-					<span class="truncate text-xs font-medium text-zinc-200">{$voiceNote.authorName}</span>
-					<span class="text-xxs truncate text-zinc-500">{$voiceNote.channelName}</span>
+				<div class="flex min-w-0 items-center gap-1.5">
+					<span class="truncate text-xs font-medium text-zinc-200">{$voiceNote.filename ?? $voiceNote.authorName}</span>
+					<span class="text-xxs shrink-0 text-zinc-500">{$voiceNote.channelName}</span>
 				</div>
 				<!-- svelte-ignore a11y_click_events_have_key_events -->
 				<!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -52,10 +78,53 @@
 						style="width: {progress * 100}%;"
 					></div>
 				</div>
-				<span class="text-xxs tabular-nums text-zinc-500">
-					{formatTime($voiceNote.playing || $voiceNote.currentTime > 0 ? $voiceNote.currentTime : $voiceNote.duration)}
-					/ {formatTime($voiceNote.duration)}
-				</span>
+				<div class="flex items-center gap-1">
+					<span class="text-xxs text-zinc-500 tabular-nums">
+						{formatDuration(
+							$voiceNote.playing || $voiceNote.currentTime > 0 ? $voiceNote.currentTime : $voiceNote.duration,
+						)}
+						/ {formatDuration($voiceNote.duration)}
+					</span>
+					<button
+						class="cursor-pointer rounded px-0.5 text-[9px] font-semibold text-zinc-500 tabular-nums transition-colors hover:bg-zinc-700 hover:text-zinc-300"
+						onclick={handleCycleRate}>{rate}x</button
+					>
+				</div>
+			</div>
+
+			<!-- svelte-ignore a11y_no_static_element_interactions -->
+			<div class="relative shrink-0" onmouseenter={showVolumeSlider} onmouseleave={hideVolumeSlider}>
+				<button
+					class="flex size-6 cursor-pointer items-center justify-center text-zinc-500 transition-colors hover:text-zinc-300"
+				>
+					{#if $audioVolume === 0}
+						<VolumeX class="size-3" />
+					{:else if $audioVolume < 0.5}
+						<Volume1 class="size-3" />
+					{:else}
+						<Volume2 class="size-3" />
+					{/if}
+				</button>
+
+				{#if showVolume}
+					<!-- svelte-ignore a11y_no_static_element_interactions -->
+					<!-- svelte-ignore a11y_click_events_have_key_events -->
+					<div
+						class="absolute bottom-full left-1/2 z-50 mb-0 flex -translate-x-1/2 flex-col items-center gap-1 rounded-lg border border-zinc-700 bg-zinc-800 p-2 pb-3 shadow-xl"
+					>
+						<input
+							type="range"
+							min="0"
+							max="1"
+							step="0.01"
+							value={$audioVolume}
+							oninput={(e) => audioVolume.set(parseFloat((e.currentTarget as HTMLInputElement).value))}
+							class="volume-slider h-20 w-1.5"
+							style="writing-mode: vertical-lr; direction: rtl;"
+						/>
+						<span class="text-xxs text-zinc-400 tabular-nums">{Math.round($audioVolume * 100)}%</span>
+					</div>
+				{/if}
 			</div>
 
 			<button

@@ -1,7 +1,9 @@
 <script lang="ts">
-	import { onMount, onDestroy } from "svelte";
+	import { onMount } from "svelte";
 	import { Play, Pause } from "@lucide/svelte";
-	import { voiceNote, playVoiceNote, toggleVoiceNote, seekVoiceNote } from "$lib/stores/voiceNotePlayer.svelte";
+	import { voiceNote, playVoiceNote, toggleVoiceNote, seekVoiceNote, getAttachmentRate, cyclePlaybackRate } from "$lib/stores/voiceNotePlayer.svelte";
+	import { formatDuration } from "$lib/utils/time";
+	import { waveformCache, MAX_WAVEFORM_CACHE, analyzeWaveform, fallbackBars } from "$lib/audio/waveform";
 
 	let {
 		src,
@@ -20,108 +22,41 @@
 	let bars = $state<number[]>([]);
 	let localDuration = $state(0);
 	let wavSrc = $state<string | null>(null);
+	// svelte-ignore state_referenced_locally
+	let rate = $state(getAttachmentRate(attachmentId));
 
 	const BAR_COUNT = 50;
 
-	// Is this the currently active voice note?
 	const isActive = $derived($voiceNote?.attachmentId === attachmentId && attachmentId !== "");
 	const playing = $derived(isActive ? $voiceNote!.playing : false);
 	const currentTime = $derived(isActive ? $voiceNote!.currentTime : 0);
 	const duration = $derived(isActive && $voiceNote!.duration > 0 ? $voiceNote!.duration : localDuration);
 	const progress = $derived(duration > 0 ? currentTime / duration : 0);
 
-	function fallbackBars(s: string): number[] {
-		let hash = 0;
-		for (let i = 0; i < s.length; i++) {
-			hash = ((hash << 5) - hash + s.charCodeAt(i)) | 0;
-		}
-		const result: number[] = [];
-		for (let i = 0; i < BAR_COUNT; i++) {
-			hash = ((hash << 5) - hash + i * 7) | 0;
-			result.push(0.15 + (((hash >>> 0) % 100) / 100) * 0.85);
-		}
-		return result;
-	}
-
-	function audioBufferToWav(buffer: AudioBuffer): ArrayBuffer {
-		const numChannels = buffer.numberOfChannels;
-		const sampleRate = buffer.sampleRate;
-		const bitsPerSample = 16;
-		const channels: Float32Array[] = [];
-		for (let i = 0; i < numChannels; i++) channels.push(buffer.getChannelData(i));
-		const numSamples = buffer.length;
-		const dataSize = numSamples * numChannels * (bitsPerSample / 8);
-		const headerSize = 44;
-		const wav = new ArrayBuffer(headerSize + dataSize);
-		const view = new DataView(wav);
-
-		function writeStr(offset: number, s: string) {
-			for (let i = 0; i < s.length; i++) view.setUint8(offset + i, s.charCodeAt(i));
-		}
-		writeStr(0, "RIFF");
-		view.setUint32(4, 36 + dataSize, true);
-		writeStr(8, "WAVE");
-		writeStr(12, "fmt ");
-		view.setUint32(16, 16, true);
-		view.setUint16(20, 1, true);
-		view.setUint16(22, numChannels, true);
-		view.setUint32(24, sampleRate, true);
-		view.setUint32(28, sampleRate * numChannels * (bitsPerSample / 8), true);
-		view.setUint16(32, numChannels * (bitsPerSample / 8), true);
-		view.setUint16(34, bitsPerSample, true);
-		writeStr(36, "data");
-		view.setUint32(40, dataSize, true);
-
-		let offset = 44;
-		for (let i = 0; i < numSamples; i++) {
-			for (let ch = 0; ch < numChannels; ch++) {
-				const s = Math.max(-1, Math.min(1, channels[ch][i]));
-				view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7fff, true);
-				offset += 2;
-			}
-		}
-		return wav;
+	function handleCycleRate() {
+		cyclePlaybackRate(attachmentId);
+		rate = getAttachmentRate(attachmentId);
 	}
 
 	async function loadAndAnalyze(url: string) {
 		try {
-			const res = await fetch(url);
-			const buf = await res.arrayBuffer();
+			const streamUrl = url.includes("?") ? `${url}&stream=1` : `${url}?stream=1`;
+			const result = await analyzeWaveform(streamUrl, BAR_COUNT);
+			bars = result.bars;
+			localDuration = result.duration;
+			wavSrc = URL.createObjectURL(new Blob([result.wavBuf], { type: "audio/wav" }));
 
-			const ctx = new AudioContext();
-			const decoded = await ctx.decodeAudioData(buf);
-			localDuration = decoded.duration;
-			const raw = decoded.getChannelData(0);
-			ctx.close();
-
-			const wavBuf = audioBufferToWav(decoded);
-			wavSrc = URL.createObjectURL(new Blob([wavBuf], { type: "audio/wav" }));
-
-			const blockSize = Math.floor(raw.length / BAR_COUNT);
-			if (blockSize === 0) return;
-
-			const result: number[] = [];
-			for (let i = 0; i < BAR_COUNT; i++) {
-				let sum = 0;
-				const start = i * blockSize;
-				for (let j = start; j < start + blockSize && j < raw.length; j++) {
-					sum += Math.abs(raw[j]);
+			if (attachmentId) {
+				if (waveformCache.size >= MAX_WAVEFORM_CACHE) {
+					const firstKey = waveformCache.keys().next().value;
+					if (firstKey) waveformCache.delete(firstKey);
 				}
-				result.push(sum / blockSize);
+				waveformCache.set(attachmentId, { bars, wavUrl: wavSrc!, duration: localDuration });
 			}
-
-			const max = Math.max(...result, 0.001);
-			bars = result.map((v) => 0.08 + (v / max) * 0.92);
-		} catch {
+		} catch (e) {
+			if (import.meta.env.DEV) console.error("[VoiceNotePlayer] loadAndAnalyze failed:", e);
 			if (!wavSrc) wavSrc = url;
 		}
-	}
-
-	function formatTime(secs: number): string {
-		if (!isFinite(secs) || secs < 0) return "0:00";
-		const m = Math.floor(secs / 60);
-		const s = Math.floor(secs % 60);
-		return `${m}:${s.toString().padStart(2, "0")}`;
 	}
 
 	function togglePlay() {
@@ -139,31 +74,33 @@
 		if (isActive) {
 			seekVoiceNote(ratio * duration);
 		} else {
-			// Start playing at the seeked position
 			playVoiceNote(wavSrc || src, attachmentId, authorName, channelName);
 			seekVoiceNote(ratio * duration);
 		}
 	}
 
 	onMount(() => {
-		bars = fallbackBars(src);
+		const cached = waveformCache.get(attachmentId);
+		if (cached) {
+			bars = cached.bars;
+			wavSrc = cached.wavUrl;
+			localDuration = cached.duration;
+			return;
+		}
+		bars = fallbackBars(src, BAR_COUNT);
 		loadAndAnalyze(src);
-	});
-
-	onDestroy(() => {
-		if (wavSrc && wavSrc !== src) URL.revokeObjectURL(wavSrc);
 	});
 </script>
 
 <div
-	class="flex items-center gap-[10px] {compact
-		? 'max-w-none min-w-0 rounded-[12px] px-[10px] py-[6px]'
-		: 'max-w-[320px] min-w-[240px] rounded-[18px] py-[8px] pr-[14px] pl-[10px]'} border border-[oklch(0.30_0.01_80/0.6)] bg-[oklch(0.22_0.01_80/0.8)]"
+	class="flex items-center gap-2.5 {compact
+		? 'max-w-none min-w-0 rounded-xl px-2.5 py-1.5'
+		: 'max-w-[320px] min-w-60 rounded-[18px] py-2 pr-3.5 pl-2.5'} border border-[oklch(0.30_0.01_80/0.6)] bg-[oklch(0.22_0.01_80/0.8)]"
 >
 	<button
 		class="flex items-center justify-center {compact
-			? 'size-[28px]'
-			: 'size-[36px]'} shrink-0 cursor-pointer rounded-full border-none bg-[oklch(0.55_0.15_250)] text-white transition-[background] duration-150 hover:bg-[oklch(0.62_0.15_250)]"
+			? 'size-7'
+			: 'size-9'} shrink-0 cursor-pointer rounded-full border-none bg-[oklch(0.55_0.15_250)] text-white transition-[background] duration-150 hover:bg-[oklch(0.62_0.15_250)]"
 		onclick={togglePlay}
 	>
 		{#if playing}
@@ -173,17 +110,17 @@
 		{/if}
 	</button>
 
-	<div class="flex min-w-0 flex-1 flex-col gap-[4px]">
+	<div class="flex min-w-0 flex-1 flex-col gap-1">
 		<!-- svelte-ignore a11y_click_events_have_key_events -->
 		<!-- svelte-ignore a11y_no_static_element_interactions -->
 		<div
-			class="relative flex items-center gap-[1.5px] {compact ? 'h-[20px]' : 'h-[28px]'} cursor-pointer"
+			class="relative flex items-center gap-[1.5px] {compact ? 'h-5' : 'h-7'} cursor-pointer"
 			onclick={handleSeek}
 		>
 			{#each bars as height, i}
 				{@const barProgress = i / bars.length}
 				<div
-					class="min-h-[3px] flex-1 rounded-[2px] transition-[background] duration-100"
+					class="min-h-0.75 flex-1 rounded-xs transition-[background] duration-100"
 					style="height: {height * 100}%; {barProgress <= progress
 						? 'background: oklch(0.65 0.15 250);'
 						: 'background: oklch(0.40 0.01 80);'}"
@@ -191,13 +128,21 @@
 			{/each}
 			<div
 				class="absolute top-1/2 {compact
-					? 'size-[8px]'
-					: 'size-[10px]'} pointer-events-none -translate-x-1/2 -translate-y-1/2 rounded-full bg-[oklch(0.65_0.15_250)] shadow-[0_0_4px_oklch(0.5_0.15_250/0.5)]"
+					? 'size-2'
+					: 'size-2.5'} pointer-events-none -translate-x-1/2 -translate-y-1/2 rounded-full bg-[oklch(0.65_0.15_250)] shadow-[0_0_4px_oklch(0.5_0.15_250/0.5)]"
 				style="left: {progress * 100}%;"
 			></div>
 		</div>
-		<span class="text-[oklch(0.52_0.01_80)] tabular-nums {compact ? 'text-[10px]' : 'text-[11px]'}"
-			>{formatTime(playing || currentTime > 0 ? currentTime : duration)}</span
-		>
+		<div class="flex items-center gap-1.5">
+			<span class="text-[oklch(0.52_0.01_80)] tabular-nums {compact ? 'text-xxs' : 'text-[11px]'}"
+				>{formatDuration(playing || currentTime > 0 ? currentTime : duration)}</span
+			>
+			{#if !compact}
+				<button
+					class="cursor-pointer rounded px-1 text-xxs font-semibold tabular-nums text-zinc-500 transition-colors hover:bg-zinc-700 hover:text-zinc-300"
+					onclick={handleCycleRate}
+				>{rate}x</button>
+			{/if}
+		</div>
 	</div>
 </div>

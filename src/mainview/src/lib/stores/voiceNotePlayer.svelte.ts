@@ -1,10 +1,12 @@
 import { writable, get } from "svelte/store";
+import { getHostURL } from "$lib/common/common";
 
 export interface VoiceNoteState {
 	src: string;
 	attachmentId: string;
 	authorName: string;
 	channelName: string;
+	filename?: string;
 	playing: boolean;
 	currentTime: number;
 	duration: number;
@@ -16,6 +18,35 @@ export const voiceNote = writable<VoiceNoteState | null>(EMPTY);
 
 let audio: HTMLAudioElement | null = null;
 let animFrame = 0;
+
+const VOLUME_KEY = "duvet_audio_volume";
+let currentVolume = typeof window !== "undefined" ? parseFloat(localStorage.getItem(VOLUME_KEY) ?? "1") : 1;
+
+export const audioVolume = writable<number>(currentVolume);
+audioVolume.subscribe((v) => {
+	currentVolume = v;
+	if (typeof window !== "undefined") localStorage.setItem(VOLUME_KEY, String(v));
+	if (audio) audio.volume = v;
+});
+
+export const PLAYBACK_RATES = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2] as const;
+const rateByAttachment = new Map<string, typeof PLAYBACK_RATES[number]>();
+export function getAttachmentRate(attachmentId: string): number {
+	return rateByAttachment.get(attachmentId) ?? 1;
+}
+
+export function cyclePlaybackRate(attachmentId: string) {
+	const curRate = rateByAttachment.get(attachmentId) ?? 1;
+	const idx = PLAYBACK_RATES.indexOf(curRate);
+	const next = PLAYBACK_RATES[(idx + 1) % PLAYBACK_RATES.length];
+	rateByAttachment.set(attachmentId, next);
+	if (audio) {
+		const current = get(voiceNote);
+		if (current && current.attachmentId === attachmentId) {
+			audio.playbackRate = next;
+		}
+	}
+}
 
 function tick() {
 	if (!audio) return;
@@ -39,7 +70,31 @@ function cleanup() {
 	}
 }
 
-export function playVoiceNote(src: string, attachmentId: string, authorName: string, channelName: string) {
+const RESIGN_THRESHOLD_MS = 30 * 60 * 1000; // Re-sign if less than 30 minutes remaining
+
+function isUrlExpiringSoon(url: string): boolean {
+	try {
+		const match = url.match(/[?&]exp=(\d+)/);
+		if (!match) return false;
+		const exp = parseInt(match[1], 10) * 1000;
+		return exp - Date.now() < RESIGN_THRESHOLD_MS;
+	} catch {
+		return false;
+	}
+}
+
+async function refreshSignedUrl(attachmentId: string, currentSrc: string): Promise<string> {
+	try {
+		const res = await fetch(`${getHostURL()}/attachments/${attachmentId}/resign`, { method: "POST", headers: { Authorization: `Bearer ${localStorage.getItem("duvet_access_token")}` } });
+		if (!res.ok) return currentSrc;
+		const data = await res.json();
+		return `${getHostURL()}${data.url}`;
+	} catch {
+		return currentSrc;
+	}
+}
+
+export async function playVoiceNote(src: string, attachmentId: string, authorName: string, channelName: string, filename?: string) {
 	const current = get(voiceNote);
 
 	// Same note — toggle play/pause
@@ -50,8 +105,15 @@ export function playVoiceNote(src: string, attachmentId: string, authorName: str
 
 	cleanup();
 
+	// Re-sign URL if expiring soon
+	if (isUrlExpiringSoon(src)) {
+		src = await refreshSignedUrl(attachmentId, src);
+	}
+
 	audio = new Audio(src);
 	audio.preload = "auto";
+	audio.volume = currentVolume;
+	audio.playbackRate = rateByAttachment.get(attachmentId) ?? 1;
 
 	audio.addEventListener("loadedmetadata", () => {
 		if (audio && isFinite(audio.duration)) {
@@ -69,6 +131,7 @@ export function playVoiceNote(src: string, attachmentId: string, authorName: str
 		attachmentId,
 		authorName,
 		channelName,
+		filename,
 		playing: true,
 		currentTime: 0,
 		duration: 0,
@@ -93,7 +156,9 @@ export function toggleVoiceNote() {
 			animFrame = 0;
 		}
 	} else {
-		audio.play().catch(() => {});
+		audio.play().catch(() => {
+			voiceNote.update((s) => (s ? { ...s, playing: false } : s));
+		});
 		voiceNote.update((s) => (s ? { ...s, playing: true } : s));
 		animFrame = requestAnimationFrame(tick);
 	}

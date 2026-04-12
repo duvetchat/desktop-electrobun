@@ -6,6 +6,7 @@
 	import StickerPicker from "$lib/components/StickerPicker.svelte";
 	import GifPicker from "$lib/components/GifPicker.svelte";
 	import { searchEmojis, toTwemojiUrl, type EmojiEntry } from "$lib/emoji";
+	import { formatDuration } from "$lib/utils/time";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
 	import type { MemberOnSidebar, SpaceEmoji, SpaceSticker } from "$lib/types";
 	import { selectedMicId } from "$lib/stores.svelte";
@@ -73,11 +74,6 @@
 	let mediaRecorder: MediaRecorder | null = null;
 	let recordingInterval: ReturnType<typeof setInterval> | null = null;
 
-	function formatDuration(secs: number): string {
-		const m = Math.floor(secs / 60);
-		const s = secs % 60;
-		return `${m}:${s.toString().padStart(2, "0")}`;
-	}
 
 	async function startRecording() {
 		try {
