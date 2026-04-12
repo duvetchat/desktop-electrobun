@@ -1401,7 +1401,7 @@
 												<!-- Thumbnail -->
 												{#if isImage}
 													<img
-														src="{attachmentHost}/attachments/{att.id}"
+														src="{attachmentHost}{att.url ?? `/attachments/${att.id}`}"
 														alt=""
 														class="h-10 w-10 shrink-0 rounded bg-zinc-700 object-cover"
 													/>
@@ -1441,7 +1441,7 @@
 												</div>
 												<!-- Download -->
 												<a
-													href="{attachmentHost}/attachments/{att.id}"
+													href="{attachmentHost}{att.url ?? `/attachments/${att.id}`}"
 													download={att.filename}
 													class="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-zinc-500 opacity-0 transition-all group-hover:opacity-100 hover:bg-zinc-700 hover:text-zinc-200"
 													title="Download"
@@ -1472,7 +1472,7 @@
 											</div>
 											{#if isAudio}
 												<div class="px-3 pb-2.5">
-													<VoiceNotePlayer src="{attachmentHost}/attachments/{att.id}" compact />
+													<VoiceNotePlayer src="{attachmentHost}{att.url ?? `/attachments/${att.id}`}" compact />
 												</div>
 											{/if}
 										</div>

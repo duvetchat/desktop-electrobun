@@ -2005,7 +2005,7 @@
 											<div class="flex items-center gap-3 px-3 py-2.5">
 												{#if isImage}
 													<img
-														src="{attachmentHost}/attachments/{att.id}"
+														src="{attachmentHost}{att.url ?? `/attachments/${att.id}`}"
 														alt=""
 														class="h-10 w-10 shrink-0 rounded bg-zinc-700 object-cover"
 													/>
@@ -2041,7 +2041,7 @@
 													</p>
 												</div>
 												<a
-													href="{attachmentHost}/attachments/{att.id}"
+													href="{attachmentHost}{att.url ?? `/attachments/${att.id}`}"
 													download={att.filename}
 													class="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-zinc-500 opacity-0 transition-all group-hover:opacity-100 hover:bg-zinc-700 hover:text-zinc-200"
 													title="Download"

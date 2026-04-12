@@ -1083,7 +1083,7 @@
 								</div>
 							{:else if voiceAtt && !voiceAtt.deleted_at}
 								<VoiceNotePlayer
-									src="{attachmentHost}/attachments/{voiceAtt.id}"
+									src="{attachmentHost}{voiceAtt.url ?? `/attachments/${voiceAtt.id}`}"
 									attachmentId={voiceAtt.id}
 									authorName={message.author_name ?? "Unknown"}
 									channelName={space?.rooms.find((r) => r.id === channelId)?.name ?? ""}
@@ -1316,11 +1316,11 @@
 												type="button"
 												class="relative block cursor-zoom-in overflow-hidden rounded-md"
 												style="width: {iw}px; height: {ih}px; max-width: 100%;"
-												onclick={() => openPreview(`${attachmentHost}/attachments/${att.id}`, att.filename)}
+												onclick={() => openPreview(`${attachmentHost}${att.url ?? `/attachments/${att.id}`}`, att.filename)}
 											>
 												<div class="img-skeleton absolute inset-0 animate-pulse bg-zinc-700/40"></div>
 												<img
-													src="{attachmentHost}/attachments/{att.id}"
+													src="{attachmentHost}{att.url ?? `/attachments/${att.id}`}"
 													alt={att.filename}
 													class="relative h-full w-full rounded-md object-contain text-transparent"
 													loading="lazy"
@@ -1333,7 +1333,8 @@
 														if (retries < 10) {
 															img.dataset.retries = String(retries + 1);
 															setTimeout(() => {
-																img.src = img.src.split("?")[0] + "?r=" + Date.now();
+																const base = img.src.replace(/[&?]r=\d+/, "");
+																	img.src = base + (base.includes("?") ? "&" : "?") + "r=" + Date.now();
 															}, 1000);
 														} else {
 															const parent = img.parentElement!;
@@ -1361,7 +1362,7 @@
 												</div>
 												<!-- svelte-ignore a11y_media_has_caption -->
 												<video
-													src="{attachmentHost}/attachments/{att.id}"
+													src="{attachmentHost}{att.url ?? `/attachments/${att.id}`}"
 													controls
 													class="relative h-full w-full rounded-md"
 													onloadeddata={(e) => {
@@ -1374,7 +1375,8 @@
 														if (retries < 10) {
 															vid.dataset.retries = String(retries + 1);
 															setTimeout(() => {
-																vid.src = vid.src.split("?")[0] + "?r=" + Date.now();
+																const base = vid.src.replace(/[&?]r=\d+/, "");
+																	vid.src = base + (base.includes("?") ? "&" : "?") + "r=" + Date.now();
 															}, 1000);
 														} else {
 															const parent = vid.parentElement!;
@@ -1387,7 +1389,7 @@
 											</div>
 										{:else}
 											<a
-												href="{attachmentHost}/attachments/{att.id}"
+												href="{attachmentHost}{att.url ?? `/attachments/${att.id}`}"
 												target="_blank"
 												rel="noopener noreferrer"
 												class="mt-1 inline-flex max-w-xs items-center gap-2 rounded-md bg-zinc-800/60 px-3 py-2 text-sm text-zinc-300 hover:bg-zinc-700/60"

@@ -68,6 +68,7 @@ export interface Attachment {
 	deleted_at?: string | null;
 	deleted?: boolean;
 	pending?: boolean;
+	url?: string;
 }
 
 export const MessageReferenceType = {

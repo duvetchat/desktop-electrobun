@@ -36,6 +36,7 @@ export interface UserAttachment {
 	width?: number | null;
 	height?: number | null;
 	created_at: string;
+	url?: string;
 }
 
 export interface StorageStatus {

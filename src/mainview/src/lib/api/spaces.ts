@@ -87,6 +87,7 @@ export interface SpaceAttachment {
 	width?: number | null;
 	height?: number | null;
 	created_at: string;
+	url?: string;
 }
 
 export async function getSpaceAttachments(spaceId: string): Promise<SpaceAttachment[]> {
