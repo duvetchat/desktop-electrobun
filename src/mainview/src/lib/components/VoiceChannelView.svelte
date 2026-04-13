@@ -129,7 +129,6 @@
 		const offsets: Record<string, { x: number; y: number }> = {};
 		const cols = gridCols;
 		const speakerIndex = lastSpeakerId ? voiceUsers.findIndex((u) => u.id === lastSpeakerId) : -1;
-		console.log("[EyeGaze] cols:", cols, "speakerIndex:", speakerIndex, "lastSpeakerId:", lastSpeakerId, "users:", voiceUsers.length);
 
 		for (let i = 0; i < voiceUsers.length; i++) {
 			const user = voiceUsers[i];
@@ -149,9 +148,7 @@
 			if (dist === 0) {
 				offsets[user.id] = { x: 0, y: 0 };
 			} else {
-				const offset = { x: Math.max(-1, Math.min(1, dx / dist)), y: Math.max(-1, Math.min(1, dy / dist)) };
-				console.log("[EyeGaze]", user.id.slice(0, 8), "idx:", i, "row:", myRow, "col:", myCol, "→ sp row:", spRow, "col:", spCol, "offset:", offset);
-				offsets[user.id] = offset;
+				offsets[user.id] = { x: Math.max(-1, Math.min(1, dx / dist)), y: Math.max(-1, Math.min(1, dy / dist)) };
 			}
 		}
 		return offsets;

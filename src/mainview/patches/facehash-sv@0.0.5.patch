@@ -1,5 +1,5 @@
 diff --git a/dist/Facehash.svelte b/dist/Facehash.svelte
-index 51b3ac356ea10233417d4b77e84a2eacaecd3c0b..d9d7a040a4e89e72024dd8363c17a027a05a45cd 100644
+index 51b3ac356ea10233417d4b77e84a2eacaecd3c0b..c0f230aba567ab85975d2fb48d09ed591633cff4 100644
 --- a/dist/Facehash.svelte
 +++ b/dist/Facehash.svelte
 @@ -67,6 +67,19 @@
@@ -31,15 +31,10 @@ index 51b3ac356ea10233417d4b77e84a2eacaecd3c0b..d9d7a040a4e89e72024dd8363c17a027
  		class: className,
  		style,
  		...restProps
-@@ -127,8 +142,51 @@
+@@ -127,8 +142,46 @@
  
  	let isHovered = $state(false);
  
-+	$effect(() => {
-+		if (eyeOffset.x !== 0 || eyeOffset.y !== 0) {
-+			console.log("[Facehash] name:", name, "eyeOffset:", eyeOffset, "margin-left:", eyeOffset.x * 5, "margin-top:", eyeOffset.y * 5);
-+		}
-+	});
 +
  	let resolvedColors = $derived(colors && colors.length > 0 ? colors : [...DEFAULT_COLORS]);
  
@@ -83,7 +78,7 @@ index 51b3ac356ea10233417d4b77e84a2eacaecd3c0b..d9d7a040a4e89e72024dd8363c17a027
  	// deterministic values from name
  	let faceData = $derived.by(() => {
  		const hash = stringHash(name);
-@@ -229,21 +287,53 @@
+@@ -229,21 +282,53 @@
  		style:transition={interactive ? 'transform 0.3s cubic-bezier(0.4, 0, 0.2, 1)' : undefined}
  		style:color="#000000"
  	>
