@@ -117,8 +117,7 @@
 							min="0"
 							max="1"
 							step="0.01"
-							value={$audioVolume}
-							oninput={(e) => audioVolume.set(parseFloat((e.currentTarget as HTMLInputElement).value))}
+							bind:value={$audioVolume}
 							class="volume-slider h-20 w-1.5"
 							style="writing-mode: vertical-lr; direction: rtl;"
 						/>

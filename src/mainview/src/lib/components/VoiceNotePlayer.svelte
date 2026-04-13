@@ -22,9 +22,6 @@
 	let bars = $state<number[]>([]);
 	let localDuration = $state(0);
 	let wavSrc = $state<string | null>(null);
-	// svelte-ignore state_referenced_locally
-	let rate = $state(getAttachmentRate(attachmentId));
-
 	const BAR_COUNT = 50;
 
 	const isActive = $derived($voiceNote?.attachmentId === attachmentId && attachmentId !== "");
@@ -32,10 +29,14 @@
 	const currentTime = $derived(isActive ? $voiceNote!.currentTime : 0);
 	const duration = $derived(isActive && $voiceNote!.duration > 0 ? $voiceNote!.duration : localDuration);
 	const progress = $derived(duration > 0 ? currentTime / duration : 0);
+	// Re-read rate from map on every voiceNote tick so external changes (e.g. VoiceNoteBar) are reflected
+	const rate = $derived.by(() => {
+		void $voiceNote;
+		return getAttachmentRate(attachmentId);
+	});
 
 	function handleCycleRate() {
 		cyclePlaybackRate(attachmentId);
-		rate = getAttachmentRate(attachmentId);
 	}
 
 	async function loadAndAnalyze(url: string) {

@@ -25,13 +25,15 @@
 	let bars = $state<number[]>([]);
 	let localDuration = $state(0);
 	let showVolume = $state(false);
-	// svelte-ignore state_referenced_locally
-	let rate = $state(getAttachmentRate(attachmentId));
 	let volumeTimeout: ReturnType<typeof setTimeout> | null = null;
+
+	const rate = $derived.by(() => {
+		void $voiceNote;
+		return getAttachmentRate(attachmentId);
+	});
 
 	function handleCycleRate() {
 		cyclePlaybackRate(attachmentId);
-		rate = getAttachmentRate(attachmentId);
 	}
 
 	function showVolumeSlider() {
@@ -189,8 +191,7 @@
 						min="0"
 						max="1"
 						step="0.01"
-						value={$audioVolume}
-						oninput={(e) => audioVolume.set(parseFloat((e.currentTarget as HTMLInputElement).value))}
+						bind:value={$audioVolume}
 						class="volume-slider h-24 w-1.5"
 						style="writing-mode: vertical-lr; direction: rtl;"
 					/>

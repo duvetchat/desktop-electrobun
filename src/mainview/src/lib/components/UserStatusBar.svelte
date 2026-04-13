@@ -8,6 +8,7 @@
 		SignalLow as CellSignalLowIcon,
 		PhoneOff as PhoneDisconnectIcon,
 		Settings as GearSixIcon,
+		AudioLines,
 	} from "@lucide/svelte";
 	import { ContextMenu } from "bits-ui";
 	import {
@@ -22,6 +23,7 @@
 		activeCall,
 		callVoiceStates,
 		conversations,
+		noiseSuppression,
 	} from "$lib/stores.svelte";
 	import { get } from "svelte/store";
 	import { sendEventMessage } from "$lib/api/ws/connection";
@@ -113,8 +115,18 @@
 
 	async function loadAvailableMics() {
 		try {
-			const devices = await navigator.mediaDevices.enumerateDevices();
-			availableMics = devices.filter((d) => d.kind === "audioinput");
+			let devices = await navigator.mediaDevices.enumerateDevices();
+			let mics = devices.filter((d) => d.kind === "audioinput");
+
+			// If labels are empty, request mic permission first to unlock device labels
+			if (mics.length > 0 && !mics[0].label) {
+				const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+				stream.getTracks().forEach((t) => t.stop());
+				devices = await navigator.mediaDevices.enumerateDevices();
+				mics = devices.filter((d) => d.kind === "audioinput");
+			}
+
+			availableMics = mics;
 		} catch (err) {
 			console.error("Failed to fetch media devices:", err);
 		}
@@ -286,6 +298,16 @@
 			<HeadphonesIcon class="size-4" />
 		</button>
 		<button
+			class="flex size-8 items-center justify-center rounded-lg transition-colors hover:bg-zinc-800"
+			class:text-emerald-400={$noiseSuppression}
+			class:text-zinc-400={!$noiseSuppression}
+			aria-label="Toggle Noise Suppression"
+			title={$noiseSuppression ? "Noise suppression on" : "Noise suppression off"}
+			onclick={() => noiseSuppression.update((v) => !v)}
+		>
+			<AudioLines class="size-4" />
+		</button>
+		<button
 			class="flex size-8 items-center justify-center rounded-lg text-zinc-400 transition-colors hover:bg-zinc-800"
 			aria-label="User Settings"
 			onclick={() => (showUserSettings = true)}
@@ -369,6 +391,16 @@
 				onclick={toggleDeafen}
 			>
 				<HeadphonesIcon class="size-5" />
+			</button>
+			<button
+				class="flex h-10 w-10 items-center justify-center rounded-lg transition-colors hover:bg-zinc-800"
+				class:text-emerald-400={$noiseSuppression}
+				class:text-zinc-400={!$noiseSuppression}
+				aria-label="Toggle Noise Suppression"
+				title={$noiseSuppression ? "Noise suppression on" : "Noise suppression off"}
+				onclick={() => noiseSuppression.update((v) => !v)}
+			>
+				<AudioLines class="size-5" />
 			</button>
 			<button
 				class="flex h-10 w-10 items-center justify-center rounded-lg transition-colors hover:bg-zinc-800"

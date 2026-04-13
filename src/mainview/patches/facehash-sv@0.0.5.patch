@@ -1,8 +1,8 @@
 diff --git a/dist/Facehash.svelte b/dist/Facehash.svelte
-index 51b3ac356ea10233417d4b77e84a2eacaecd3c0b..85876b8c418129aca10398669323699cdf94651a 100644
+index 51b3ac356ea10233417d4b77e84a2eacaecd3c0b..d9d7a040a4e89e72024dd8363c17a027a05a45cd 100644
 --- a/dist/Facehash.svelte
 +++ b/dist/Facehash.svelte
-@@ -67,6 +67,13 @@
+@@ -67,6 +67,19 @@
  		 * Only used when variant="gradient".
  		 */
  		gradientOverlayClass?: string;
@@ -13,20 +13,86 @@ index 51b3ac356ea10233417d4b77e84a2eacaecd3c0b..85876b8c418129aca10398669323699c
 +		 * @default 0
 +		 */
 +		mouthOpen?: number;
++
++		/**
++		 * Eye offset for gaze tracking. x/y range: -1 to 1.
++		 * @default { x: 0, y: 0 }
++		 */
++		eyeOffset?: { x: number; y: number };
  	}
  </script>
  
-@@ -120,6 +127,7 @@
+@@ -120,6 +133,8 @@
  		colors,
  		colorClasses,
  		gradientOverlayClass,
 +		mouthOpen = 0,
++		eyeOffset = { x: 0, y: 0 },
  		class: className,
  		style,
  		...restProps
-@@ -232,18 +240,48 @@
- 		<!-- Face SVG -->
- 		<faceData.FaceComponent style="width: 60%; height: auto; max-width: 90%; max-height: 40%;" />
+@@ -127,8 +142,51 @@
+ 
+ 	let isHovered = $state(false);
+ 
++	$effect(() => {
++		if (eyeOffset.x !== 0 || eyeOffset.y !== 0) {
++			console.log("[Facehash] name:", name, "eyeOffset:", eyeOffset, "margin-left:", eyeOffset.x * 5, "margin-top:", eyeOffset.y * 5);
++		}
++	});
++
+ 	let resolvedColors = $derived(colors && colors.length > 0 ? colors : [...DEFAULT_COLORS]);
+ 
++	// deterministic blink via JS interval
++	let isBlinking = $state(false);
++
++	$effect(() => {
++		const h = stringHash(name);
++		const interval = 3000 + (h % 3000);
++		const delay = ((h >> 12) % 500);
++
++		const timeout = setTimeout(() => {
++			const id = setInterval(() => {
++				isBlinking = true;
++				setTimeout(() => (isBlinking = false), 150);
++			}, interval);
++			// first blink
++			isBlinking = true;
++			setTimeout(() => (isBlinking = false), 150);
++			return () => clearInterval(id);
++		}, delay);
++
++		const id = setInterval(() => {
++			isBlinking = true;
++			setTimeout(() => (isBlinking = false), 150);
++		}, interval);
++
++		return () => {
++			clearTimeout(timeout);
++			clearInterval(id);
++		};
++	});
++
++	let blinkTiming = $derived.by(() => {
++		const h = stringHash(name);
++		const duration = 3 + (h % 3000) / 1000;
++		const delay = ((h >> 12) % 500) / 1000;
++		return { duration, delay };
++	});
++
+ 	// deterministic values from name
+ 	let faceData = $derived.by(() => {
+ 		const hash = stringHash(name);
+@@ -229,21 +287,53 @@
+ 		style:transition={interactive ? 'transform 0.3s cubic-bezier(0.4, 0, 0.2, 1)' : undefined}
+ 		style:color="#000000"
+ 	>
+-		<!-- Face SVG -->
+-		<faceData.FaceComponent style="width: 60%; height: auto; max-width: 90%; max-height: 40%;" />
++		<!-- Face SVG with eye tracking + blink -->
++		<div style="width: 60%; max-width: 90%; max-height: 40%; transform: translate({eyeOffset.x * 5}px, {eyeOffset.y * 5}px) scaleY({isBlinking ? 0.1 : 1}); transition: transform 0.15s ease-out; transform-origin: center center;">
++			<faceData.FaceComponent style="width: 100%; height: auto;" />
++		</div>
  
 -		<!-- Initial letter -->
 +		<!-- Mouth: animated SVG ellipse driven by mouthOpen (0–1), fallback to initial -->
@@ -85,10 +151,10 @@ index 51b3ac356ea10233417d4b77e84a2eacaecd3c0b..85876b8c418129aca10398669323699c
  	</div>
  </div>
 diff --git a/dist/Facehash.svelte.d.ts b/dist/Facehash.svelte.d.ts
-index 4784c748879836800e22a7748224f3172b090ad5..d0af452576859a26b3535f63c2957895dc9b66d7 100644
+index 4784c748879836800e22a7748224f3172b090ad5..9949e76e0eae1811632f3a0a21edab4ec0b00a03 100644
 --- a/dist/Facehash.svelte.d.ts
 +++ b/dist/Facehash.svelte.d.ts
-@@ -52,6 +52,12 @@ export interface FacehashProps extends Omit<HTMLAttributes<HTMLDivElement>, 'chi
+@@ -52,6 +52,17 @@ export interface FacehashProps extends Omit<HTMLAttributes<HTMLDivElement>, 'chi
       * Only used when variant="gradient".
       */
      gradientOverlayClass?: string;
@@ -98,30 +164,37 @@ index 4784c748879836800e22a7748224f3172b090ad5..d0af452576859a26b3535f63c2957895
 +     * @default 0
 +     */
 +    mouthOpen?: number;
++    /**
++     * Eye offset for gaze tracking. x/y range: -1 to 1.
++     * @default { x: 0, y: 0 }
++     */
++    eyeOffset?: { x: number; y: number };
  }
  declare const Facehash: import("svelte").Component<FacehashProps, {}, "">;
  type Facehash = ReturnType<typeof Facehash>;
 diff --git a/dist/avatar/AvatarFallback.svelte b/dist/avatar/AvatarFallback.svelte
-index 3bdb75e3d0d833100d136286e23b93fdea2743f0..a37418713dbf1fe8901b18c801847e22a9568297 100644
+index 3bdb75e3d0d833100d136286e23b93fdea2743f0..41f1823d460e89c573908e86575b7c0e45c534c9 100644
 --- a/dist/avatar/AvatarFallback.svelte
 +++ b/dist/avatar/AvatarFallback.svelte
-@@ -19,6 +19,7 @@
+@@ -19,6 +19,8 @@
  		colors?: string[];
  		colorClasses?: string[];
  		gradientOverlayClass?: string;
 +		mouthOpen?: number;
++		eyeOffset?: { x: number; y: number };
  	}
  
  	interface Props extends Omit<HTMLAttributes<HTMLSpanElement>, 'children'> {
 diff --git a/dist/avatar/AvatarFallback.svelte.d.ts b/dist/avatar/AvatarFallback.svelte.d.ts
-index 73eae5ef1a047e179061ca01c1bccf3eec831642..ac3ecc91f36a4f9788a0fb46ad398617b0efbf5e 100644
+index 73eae5ef1a047e179061ca01c1bccf3eec831642..433a51bed8a838370612ecdafe8d640949274e43 100644
 --- a/dist/avatar/AvatarFallback.svelte.d.ts
 +++ b/dist/avatar/AvatarFallback.svelte.d.ts
-@@ -10,6 +10,7 @@ interface FacehashProps {
+@@ -10,6 +10,8 @@ interface FacehashProps {
      colors?: string[];
      colorClasses?: string[];
      gradientOverlayClass?: string;
 +    mouthOpen?: number;
++    eyeOffset?: { x: number; y: number };
  }
  interface Props extends Omit<HTMLAttributes<HTMLSpanElement>, 'children'> {
      /**

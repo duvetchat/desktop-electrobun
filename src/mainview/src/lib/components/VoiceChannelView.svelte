@@ -96,6 +96,67 @@
 	let videoAccepted = $state<Record<string, boolean>>({});
 	let focusedUserId = $state<string | null>(null);
 
+	// Track grid columns for eye gaze direction
+	let gridEl = $state<HTMLDivElement | null>(null);
+	let gridCols = $state(2);
+
+	$effect(() => {
+		if (!gridEl) return;
+		const observer = new ResizeObserver(() => {
+			if (!gridEl) return;
+			const computed = getComputedStyle(gridEl);
+			const cols = computed.gridTemplateColumns.split(" ").filter((s) => s !== "").length;
+			gridCols = Math.max(1, cols);
+		});
+		observer.observe(gridEl);
+		return () => observer.disconnect();
+	});
+
+	// Track the last speaking user for eye gaze
+	let lastSpeakerId = $state<string | null>(null);
+
+	$effect(() => {
+		const speaking = voiceUsers.filter((u) => $speakingUsers.has(u.id));
+		if (speaking.length > 0) {
+			lastSpeakerId = speaking[speaking.length - 1].id;
+		} else {
+			lastSpeakerId = null;
+		}
+	});
+
+	// Reactive eye offsets — recomputed when lastSpeakerId, voiceUsers, or gridCols change
+	const eyeOffsets = $derived.by(() => {
+		const offsets: Record<string, { x: number; y: number }> = {};
+		const cols = gridCols;
+		const speakerIndex = lastSpeakerId ? voiceUsers.findIndex((u) => u.id === lastSpeakerId) : -1;
+		console.log("[EyeGaze] cols:", cols, "speakerIndex:", speakerIndex, "lastSpeakerId:", lastSpeakerId, "users:", voiceUsers.length);
+
+		for (let i = 0; i < voiceUsers.length; i++) {
+			const user = voiceUsers[i];
+			if (!lastSpeakerId || lastSpeakerId === user.id || speakerIndex === -1) {
+				offsets[user.id] = { x: 0, y: 0 };
+				continue;
+			}
+
+			const myCol = i % cols;
+			const myRow = Math.floor(i / cols);
+			const spCol = speakerIndex % cols;
+			const spRow = Math.floor(speakerIndex / cols);
+
+			const dx = spCol - myCol;
+			const dy = spRow - myRow;
+			const dist = Math.sqrt(dx * dx + dy * dy);
+			if (dist === 0) {
+				offsets[user.id] = { x: 0, y: 0 };
+			} else {
+				const offset = { x: Math.max(-1, Math.min(1, dx / dist)), y: Math.max(-1, Math.min(1, dy / dist)) };
+				console.log("[EyeGaze]", user.id.slice(0, 8), "idx:", i, "row:", myRow, "col:", myCol, "→ sp row:", spRow, "col:", spCol, "offset:", offset);
+				offsets[user.id] = offset;
+			}
+		}
+		return offsets;
+	});
+
 	function srcObject(node: HTMLVideoElement, stream: MediaStream) {
 		node.srcObject = stream;
 		return {
@@ -171,6 +232,7 @@
 			</div>
 		{:else}
 			<div
+				bind:this={gridEl}
 				class={voiceUsers.length === 1
 					? "flex h-full flex-col"
 					: focusedUserId
@@ -180,7 +242,7 @@
 					? "grid-template-columns: repeat(auto-fit, minmax(240px, 1fr))"
 					: ""}
 			>
-				{#each voiceUsers as user (user.id)}
+				{#each voiceUsers as user, idx (user.id)}
 					{@const isLocal = user.id === $currentUser?.id}
 					{@const videoStream = isLocal ? $voiceLocalVideoStream : $voiceRemoteVideoStreams[user.id]}
 					{@const isSpeaking = $speakingUsers.has(user.id) && !user.muted}
@@ -243,7 +305,7 @@
 						{:else if videoStream && !isLocal}
 							<!-- Remote user is sharing but viewer hasn't accepted -->
 							<div class="flex flex-col items-center justify-center gap-3">
-								<UserAvatar src={user.avatar_url} name={user.username} size={64} mouthOpen={$userAmplitudes[user.id] ?? 0} />
+								<UserAvatar src={user.avatar_url} name={user.username} size={64} mouthOpen={$userAmplitudes[user.id] ?? 0} eyeOffset={eyeOffsets[user.id] ?? { x: 0, y: 0 }} />
 								<button
 									class="flex items-center gap-2 rounded-lg bg-stone-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-stone-500"
 									onclick={(e) => {
@@ -257,7 +319,7 @@
 							</div>
 						{:else}
 							<div class="flex items-center justify-center">
-								<UserAvatar src={user.avatar_url} name={user.username} size={80} mouthOpen={$userAmplitudes[user.id] ?? 0} />
+								<UserAvatar src={user.avatar_url} name={user.username} size={80} mouthOpen={$userAmplitudes[user.id] ?? 0} eyeOffset={eyeOffsets[user.id] ?? { x: 0, y: 0 }} />
 							</div>
 						{/if}
 

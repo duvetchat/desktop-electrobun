@@ -6,6 +6,7 @@
 		name,
 		size = 40,
 		mouthOpen = 0,
+		eyeOffset = { x: 0, y: 0 },
 		class: className = "",
 		oncontextmenu = undefined,
 	}: {
@@ -13,6 +14,7 @@
 		name: string;
 		size?: string | number;
 		mouthOpen?: number;
+		eyeOffset?: { x: number; y: number };
 		class?: string;
 		oncontextmenu?: (e: MouseEvent) => void;
 	} = $props();
@@ -69,7 +71,7 @@
 	{#if !showImg || !imgLoaded}
 		<Avatar style="width: 100%; height: 100%;">
 			<AvatarFallback {name} facehash={false}>
-				<Facehash {name} size="100%" {mouthOpen} />
+				<Facehash {name} size="100%" {mouthOpen} {eyeOffset} />
 			</AvatarFallback>
 		</Avatar>
 	{/if}

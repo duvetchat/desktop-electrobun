@@ -21,6 +21,7 @@
 		voiceRemoteVideoStreams,
 		voiceLocalVideoStream,
 		isScreenSharing,
+		noiseSuppression,
 	} from "$lib/stores.svelte";
 	import { getAvatarURL } from "$lib/common/common";
 
@@ -31,7 +32,7 @@
 	}: { channelId: string; channelName: string; compact?: boolean } = $props();
 
 	let peerConnection: RTCPeerConnection | null = null;
-	let localAudioStream: MediaStream | null = null;
+	let localAudioStream = $state<MediaStream | null>(null);
 	let audioSender: RTCRtpSender | null = null;
 	let localVideoStream = $state<MediaStream | null>(null);
 	let pendingIceCandidates: RTCIceCandidate[] = [];
@@ -208,12 +209,15 @@
 				if (!audioContext) {
 					audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
 				}
-				const denoised = await createDenoisedStream(rawMicStream, audioContext);
-				localAudioStream = denoised.stream;
-				denoiseCleanup = denoised.cleanup;
+				if ($noiseSuppression) {
+					const denoised = await createDenoisedStream(rawMicStream, audioContext);
+					localAudioStream = denoised.stream;
+					denoiseCleanup = denoised.cleanup;
+				} else {
+					localAudioStream = rawMicStream;
+				}
 			} catch (e) {
 				console.error("[Voice] Failed to get local audio:", e);
-				// Fallback to raw stream if denoise fails
 				if (rawMicStream && !localAudioStream) {
 					localAudioStream = rawMicStream;
 				}
@@ -463,6 +467,29 @@
 		}
 	});
 
+	// Toggle noise suppression live
+	$effect(() => {
+		const ns = $noiseSuppression;
+		if (!rawMicStream || !peerConnection) return;
+
+		if (ns) {
+			if (!audioContext) {
+				audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+			}
+			createDenoisedStream(rawMicStream, audioContext).then((denoised) => {
+				if (denoiseCleanup) denoiseCleanup();
+				localAudioStream = denoised.stream;
+				denoiseCleanup = denoised.cleanup;
+			}).catch(() => {});
+		} else {
+			if (denoiseCleanup) {
+				denoiseCleanup();
+				denoiseCleanup = null;
+			}
+			localAudioStream = rawMicStream;
+		}
+	});
+
 	async function switchMicrophone(deviceId: string) {
 		const constraints = deviceId ? { audio: { deviceId: { exact: deviceId } } } : { audio: true };
 		const newRawStream = await navigator.mediaDevices.getUserMedia(constraints);
@@ -478,14 +505,18 @@
 		rawMicStream = newRawStream;
 
 		// Apply denoise to new stream
-		if (!audioContext) {
-			audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-		}
-		try {
-			const denoised = await createDenoisedStream(newRawStream, audioContext);
-			localAudioStream = denoised.stream;
-			denoiseCleanup = denoised.cleanup;
-		} catch {
+		if ($noiseSuppression) {
+			if (!audioContext) {
+				audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+			}
+			try {
+				const denoised = await createDenoisedStream(newRawStream, audioContext);
+				localAudioStream = denoised.stream;
+				denoiseCleanup = denoised.cleanup;
+			} catch {
+				localAudioStream = newRawStream;
+			}
+		} else {
 			localAudioStream = newRawStream;
 		}
 

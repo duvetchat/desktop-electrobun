@@ -1472,7 +1472,7 @@
 											</div>
 											{#if isAudio}
 												<div class="px-3 pb-2.5">
-													<VoiceNotePlayer src="{attachmentHost}{att.url ?? `/attachments/${att.id}`}" compact />
+													<VoiceNotePlayer src="{attachmentHost}{att.url ?? `/attachments/${att.id}`}" attachmentId={att.id} compact />
 												</div>
 											{/if}
 										</div>

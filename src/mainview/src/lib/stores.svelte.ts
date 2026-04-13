@@ -203,6 +203,12 @@ export const voiceRemoteVideoStreams = writable<Record<string, MediaStream>>({})
 export const voiceLocalVideoStream = writable<MediaStream | null>(null);
 export const isScreenSharing = writable<boolean>(false);
 
+const safeStorageNs = typeof window !== "undefined" ? localStorage : null;
+export const noiseSuppression = writable<boolean>(safeStorageNs?.getItem("duvet_noise_suppression") !== "false");
+noiseSuppression.subscribe((v) => {
+	safeStorageNs?.setItem("duvet_noise_suppression", String(v));
+});
+
 let initialMicId = "";
 const safeStorage = getSafeStorage();
 if (safeStorage) {
