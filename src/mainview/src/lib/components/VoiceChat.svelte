@@ -472,22 +472,36 @@
 		const ns = $noiseSuppression;
 		if (!rawMicStream || !peerConnection) return;
 
-		if (ns) {
-			if (!audioContext) {
-				audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+		async function apply() {
+			if (ns) {
+				if (!audioContext) {
+					audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+				}
+				try {
+					if (denoiseCleanup) denoiseCleanup();
+					const denoised = await createDenoisedStream(rawMicStream!, audioContext!);
+					localAudioStream = denoised.stream;
+					denoiseCleanup = denoised.cleanup;
+				} catch {
+					localAudioStream = rawMicStream;
+				}
+			} else {
+				if (denoiseCleanup) {
+					denoiseCleanup();
+					denoiseCleanup = null;
+				}
+				localAudioStream = rawMicStream;
 			}
-			createDenoisedStream(rawMicStream, audioContext).then((denoised) => {
-				if (denoiseCleanup) denoiseCleanup();
-				localAudioStream = denoised.stream;
-				denoiseCleanup = denoised.cleanup;
-			}).catch(() => {});
-		} else {
-			if (denoiseCleanup) {
-				denoiseCleanup();
-				denoiseCleanup = null;
+
+			// Force track replacement on the sender (Edge/Chromium needs this)
+			if (audioSender && localAudioStream) {
+				const shouldSend = !$isMuted && !$isDeafened;
+				const track = shouldSend ? localAudioStream.getAudioTracks().at(0) ?? null : null;
+				await audioSender.replaceTrack(track).catch(console.warn);
 			}
-			localAudioStream = rawMicStream;
 		}
+
+		apply();
 	});
 
 	async function switchMicrophone(deviceId: string) {
