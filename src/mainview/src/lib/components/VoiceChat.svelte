@@ -4,6 +4,7 @@
 	import { SvelteSet } from "svelte/reactivity";
 	import { onWebRTCEvent, sendEventMessage } from "$lib/api/ws/connection";
 	import { audioStore } from "$lib/stores/audio.svelte";
+	import { toast } from "$lib/stores/toast.svelte";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
 	import { hasPermission, Permission } from "$lib/permissions";
 	import { createDenoisedStream } from "$lib/audio/noise-suppression";
@@ -55,9 +56,10 @@
 	});
 
 	$effect(() => {
-		if ($screenShareRequested) {
-			screenShareRequested.set(false);
-			void toggleScreenShare();
+		if ($screenShareRequested.active) {
+			const withAudio = $screenShareRequested.withAudio;
+			screenShareRequested.set({ active: false, withAudio: false });
+			void toggleScreenShare(withAudio);
 		}
 	});
 
@@ -549,12 +551,14 @@
 		}
 	}
 
-	async function toggleScreenShare() {
+	async function toggleScreenShare(withAudio = false) {
 		if ($isScreenSharing) {
-			// Remove the video sender from the existing connection — no reconnect needed
-			const sender = peerConnection?.getSenders().find((s) => s.track?.kind === "video");
-			if (sender) {
-				peerConnection?.removeTrack(sender);
+			// Remove the video and screen audio senders from the existing connection
+			const screenTracks = localVideoStream?.getTracks() ?? [];
+			for (const sender of peerConnection?.getSenders() ?? []) {
+				if (sender.track && screenTracks.includes(sender.track)) {
+					peerConnection?.removeTrack(sender);
+				}
 			}
 			localVideoStream?.getTracks().forEach((t) => t.stop());
 			localVideoStream = null;
@@ -568,9 +572,20 @@
 			});
 		} else {
 			try {
-				localVideoStream = await navigator.mediaDevices.getDisplayMedia({
-					video: true,
-				});
+				try {
+					localVideoStream = await navigator.mediaDevices.getDisplayMedia({
+						video: true,
+						audio: withAudio,
+					});
+				} catch (displayErr: any) {
+					if (withAudio && displayErr?.name === "NotReadableError") {
+						// Audio capture failed (window selected instead of tab) — retry without audio
+						localVideoStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+						toast("Audio only works when sharing a browser tab, not a window.", "info");
+					} else {
+						throw displayErr;
+					}
+				}
 				isScreenSharing.set(true);
 				audioStore.play("screen_sharing_on");
 				sendEventMessage("VOICE_SYNC", {
@@ -584,12 +599,18 @@
 				if (!videoTrack) return;
 
 				videoTrack.onended = () => {
-					if ($isScreenSharing) toggleScreenShare(); // turn off when user clicks browser's stop sharing
+					if ($isScreenSharing) toggleScreenShare();
 				};
 
-				// Add directly to the live peerConnection — the server's OnTrack will
-				// fire and renegotiatePeer will push the track to all other peers.
 				peerConnection?.addTrack(videoTrack, localVideoStream);
+
+				// Add screen share audio track if present
+				const screenAudioTrack = localVideoStream.getAudioTracks().at(0);
+				if (screenAudioTrack) {
+					peerConnection?.addTrack(screenAudioTrack, localVideoStream);
+				} else if (withAudio) {
+					toast("Audio not captured. Share a browser tab (not a window or screen) to include audio.", "info");
+				}
 			} catch (err) {
 				console.error("Screen share failed", err);
 			}
@@ -837,7 +858,7 @@
 			class="rounded-full p-4 hover:bg-zinc-700 {$isScreenSharing
 				? 'bg-stone-400/20 text-stone-200 hover:bg-stone-400/30'
 				: 'text-zinc-200'} transition-all"
-			onclick={toggleScreenShare}
+			onclick={() => toggleScreenShare()}
 			aria-label="Share Screen"
 		>
 			<MonitorUp class="size-5" />

@@ -95,6 +95,16 @@
 	let videoPlayingStates = $state<Record<string, boolean>>({});
 	let videoAccepted = $state<Record<string, boolean>>({});
 	let focusedUserId = $state<string | null>(null);
+	let showStreamMenu = $state(false);
+	let streamVolumes = $state<Record<string, number>>({});
+	let videoRefs = $state<Record<string, HTMLVideoElement>>({});
+
+	// Sync volume to video elements
+	$effect(() => {
+		for (const [uid, vol] of Object.entries(streamVolumes)) {
+			if (videoRefs[uid]) videoRefs[uid].volume = vol;
+		}
+	});
 
 	// Track grid columns for eye gaze direction
 	let gridEl = $state<HTMLDivElement | null>(null);
@@ -267,6 +277,7 @@
 					>
 						{#if videoStream && (isLocal || videoAccepted[user.id])}
 							<video
+								bind:this={videoRefs[user.id]}
 								use:srcObject={videoStream}
 								autoplay
 								playsinline
@@ -287,17 +298,31 @@
 								</div>
 							{/if}
 							{#if !isLocal}
-								<button
-									class="absolute top-2 right-2 z-20 flex items-center gap-1.5 rounded-md bg-black/70 px-2.5 py-1.5 text-xs text-zinc-300 opacity-0 backdrop-blur-sm transition-all group-hover:opacity-100 hover:bg-red-600/80 hover:text-white"
-									onclick={(e) => {
-										e.stopPropagation();
-										videoAccepted = { ...videoAccepted, [user.id]: false };
-										videoPlayingStates = { ...videoPlayingStates, [user.id]: false };
-									}}
-								>
-									<PhoneOff class="size-3" />
-									Stop watching
-								</button>
+								<div class="absolute top-2 right-2 z-20 flex items-center gap-2 opacity-0 transition-all group-hover:opacity-100">
+									<div class="flex items-center gap-1.5 rounded-md bg-black/70 px-2.5 py-1.5 backdrop-blur-sm">
+										<Volume2 class="size-3 text-zinc-400" />
+										<input
+											type="range"
+											min="0"
+											max="1"
+											step="0.01"
+											value={streamVolumes[user.id] ?? 1}
+											oninput={(e) => (streamVolumes = { ...streamVolumes, [user.id]: parseFloat((e.currentTarget as HTMLInputElement).value) })}
+											class="h-1 w-16 cursor-pointer accent-white"
+										/>
+									</div>
+									<button
+										class="flex items-center gap-1.5 rounded-md bg-black/70 px-2.5 py-1.5 text-xs text-zinc-300 backdrop-blur-sm transition-colors hover:bg-red-600/80 hover:text-white"
+										onclick={(e) => {
+											e.stopPropagation();
+											videoAccepted = { ...videoAccepted, [user.id]: false };
+											videoPlayingStates = { ...videoPlayingStates, [user.id]: false };
+										}}
+									>
+										<PhoneOff class="size-3" />
+										Stop
+									</button>
+								</div>
 							{/if}
 						{:else if videoStream && !isLocal}
 							<!-- Remote user is sharing but viewer hasn't accepted -->
@@ -343,14 +368,39 @@
 	<!-- Controls -->
 	<div class="flex shrink-0 items-center justify-center gap-2 border-t border-zinc-800 px-4 py-4">
 		{#if isConnected}
-			<button
-				class="flex flex-col items-center gap-1 rounded-xl px-4 py-2.5 text-zinc-300 transition-colors hover:bg-zinc-800"
-				onclick={() => screenShareRequested.set(true)}
-				title="Share screen"
-			>
-				<MonitorUp class="size-5" />
-				<span class="text-xxs text-zinc-400">Stream</span>
-			</button>
+			<div class="relative">
+				<button
+					class="flex flex-col items-center gap-1 rounded-xl px-4 py-2.5 text-zinc-300 transition-colors hover:bg-zinc-800"
+					onclick={() => (showStreamMenu = !showStreamMenu)}
+					title="Share screen"
+				>
+					<MonitorUp class="size-5" />
+					<span class="text-xxs text-zinc-400">Stream</span>
+				</button>
+				{#if showStreamMenu}
+					<!-- svelte-ignore a11y_no_static_element_interactions -->
+					<!-- svelte-ignore a11y_click_events_have_key_events -->
+					<div
+						class="absolute bottom-full left-1/2 z-50 mb-2 flex -translate-x-1/2 flex-col overflow-hidden rounded-lg border border-zinc-700 bg-zinc-800 shadow-xl"
+						onmouseleave={() => (showStreamMenu = false)}
+					>
+						<button
+							class="flex items-center gap-2 whitespace-nowrap px-3 py-2 text-sm text-zinc-200 transition-colors hover:bg-zinc-700"
+							onclick={() => { showStreamMenu = false; screenShareRequested.set({ active: true, withAudio: false }); }}
+						>
+							<MonitorUp class="size-4" />
+							Screen only
+						</button>
+						<button
+							class="flex items-center gap-2 whitespace-nowrap px-3 py-2 text-sm text-zinc-200 transition-colors hover:bg-zinc-700"
+							onclick={() => { showStreamMenu = false; screenShareRequested.set({ active: true, withAudio: true }); }}
+						>
+							<Volume2 class="size-4" />
+							Screen + Audio
+						</button>
+					</div>
+				{/if}
+			</div>
 			<button
 				class="flex flex-col items-center gap-1 rounded-xl px-4 py-2.5 transition-colors {$isMuted
 					? 'bg-red-500/10 text-red-400 hover:bg-red-500/20'
