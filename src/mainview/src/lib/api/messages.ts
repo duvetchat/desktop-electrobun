@@ -1,4 +1,5 @@
 import api from "$lib/api/api";
+import { createAckThrottle } from "$lib/api/ack";
 import type { GatewayMessage, MessageReference } from "$lib/types";
 
 export async function getMessages(roomId: string, before?: string, signal?: AbortSignal): Promise<GatewayMessage[]> {
@@ -84,10 +85,15 @@ export async function deleteMessage(messageId: string, roomId: string): Promise<
 	await api.delete(`/api/rooms/${roomId}/messages/${messageId}`);
 }
 
-export async function ackRoom(roomId: string, messageId: string): Promise<void> {
-	await api.post(`/api/rooms/${roomId}/ack`, { message_id: messageId }).catch((err) => {
-		console.error(`[ack] failed for room=${roomId} msg=${messageId}`, err);
-	});
+const throttledRoomAck = createAckThrottle((roomId, messageId) =>
+	api.post(`/api/rooms/${roomId}/ack`, { message_id: messageId }).then(
+		() => undefined,
+		(err) => console.error(`[ack] failed for room=${roomId} msg=${messageId}`, err),
+	),
+);
+
+export function ackRoom(roomId: string, messageId: string): Promise<void> {
+	return throttledRoomAck(roomId, messageId);
 }
 
 export async function getMentionCounts(): Promise<Record<string, number>> {

@@ -61,7 +61,6 @@
 	let confirmDeleteChannel = $state<Channel | null>(null);
 	let isDeletingChannel = $state(false);
 
-
 	let showInviteModal = $state(false);
 	let inviteModalChannel = $state<Channel | null>(null);
 
@@ -240,9 +239,7 @@
 			// Dropped at the very end — put at root, last position
 			const rootChannels = channels.filter((c) => !c.categoryId && c.type !== "category");
 			newParentId = null;
-			newPosition = isDraggingCategory
-				? channels.filter((c) => !c.categoryId).length
-				: rootChannels.length;
+			newPosition = isDraggingCategory ? channels.filter((c) => !c.categoryId).length : rootChannels.length;
 		} else {
 			const targetItem = sidebarItems[targetIdx];
 			if (srcId === targetItem.channel.id) return;
@@ -410,7 +407,9 @@
 							<ContextMenu.Trigger>
 								<button
 									type="button"
-									class="flex h-10 w-full items-center gap-1.5 rounded-md border-0 bg-transparent px-3 text-left text-[11px] font-semibold tracking-wide text-zinc-400 uppercase hover:bg-stone-800/40 hover:text-zinc-200 {dropIndicatorClass(itemIdx)}"
+									class="flex h-10 w-full items-center gap-1.5 rounded-md border-0 bg-transparent px-3 text-left text-[11px] font-semibold tracking-wide text-zinc-400 uppercase hover:bg-stone-800/40 hover:text-zinc-200 {dropIndicatorClass(
+										itemIdx,
+									)}"
 									onclick={() => toggleCategory(item.channel.id)}
 									aria-expanded={expanded[item.channel.id]}
 									draggable="true"
@@ -611,6 +610,8 @@
 				{/each}
 				<!-- Drop zone at the end -->
 				{#if draggedChannelId}
+					<!-- Only a target for mouse drags, which have no keyboard equivalent yet. -->
+					<!-- svelte-ignore a11y_no_static_element_interactions -->
 					<div
 						class="h-6 rounded {dropTargetIdx === sidebarItems.length ? 'bg-stone-700/50' : ''}"
 						ondragover={handleDragOverEnd}

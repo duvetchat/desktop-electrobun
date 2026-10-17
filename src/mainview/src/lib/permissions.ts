@@ -92,9 +92,20 @@ export function computeRoomPermissions(space: GatewaySpace, room: GatewayRoom): 
 		perms |= allow;
 	};
 
-	// 3. @everyone overwrite — the everyone role shares the space ID
-	const everyoneOw = overwrites.find((o) => o.target_type === OVERWRITE_ROLE && o.target_id === spaceId);
-	apply(everyoneOw?.deny_flags ?? 0, everyoneOw?.allow_flags ?? 0);
+	// 3. @everyone overwrite — the everyone role shares the space ID. Same rules as the server copies
+	// (duvet-api and duvet-gateway ComputePermissionsForRoom): it only applies if the member holds the
+	// role, and duplicate overwrites for it are combined.
+	let everyoneAllow = 0;
+	let everyoneDeny = 0;
+	if (myRoles.includes(spaceId)) {
+		for (const ow of overwrites) {
+			if (ow.target_type === OVERWRITE_ROLE && ow.target_id === spaceId) {
+				everyoneAllow |= ow.allow_flags;
+				everyoneDeny |= ow.deny_flags;
+			}
+		}
+	}
+	apply(everyoneDeny, everyoneAllow);
 
 	// 4. Role-specific overwrites for the member's roles (skip @everyone)
 	// Aggregate all role overwrites first, then apply once (matches Discord model)

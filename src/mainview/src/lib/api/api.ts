@@ -3,7 +3,7 @@ import { accessToken } from "$lib/stores/auth";
 import { get } from "svelte/store";
 
 export interface FetchRequestConfig extends Omit<RequestInit, "body"> {
-	params?: Record<string, string | number | boolean>;
+	params?: Record<string, string | number | boolean | null | undefined>;
 	data?: any;
 	_retry?: boolean;
 }
@@ -34,6 +34,16 @@ export class FetchError extends Error {
 		this.name = "FetchError";
 		this.config = config;
 		this.response = response;
+	}
+}
+
+class RefreshFailedError extends Error {
+	status: number;
+
+	constructor(status: number) {
+		super(`Refresh token request failed with status ${status}`);
+		this.name = "RefreshFailedError";
+		this.status = status;
 	}
 }
 
@@ -132,13 +142,23 @@ const coreFetch = async <T = any>(endpoint: string, options: FetchRequestConfig 
 						refreshHeaders.set("X-Session-Token", currentSessionToken);
 					}
 
-					const res = await fetch(`${getHostURL()}/api/auth/refresh`, {
-						method: "POST",
-						credentials: "include",
-						headers: refreshHeaders,
-					});
+					const refresh = () =>
+						fetch(`${getHostURL()}/api/auth/refresh`, {
+							method: "POST",
+							credentials: "include",
+							headers: refreshHeaders,
+						});
+					let res = await refresh();
+					// A 429 means "try again later", not an invalid session: wait as long as the API says,
+					// up to 20s per attempt so queued requests aren't held for minutes.
+					for (let attempt = 0; res.status === 429 && attempt < 3; attempt++) {
+						const waitSeconds =
+							Number(res.headers.get("Retry-After") ?? res.headers.get("X-RateLimit-Reset-After")) || 1;
+						await new Promise((r) => setTimeout(r, Math.min(Math.ceil(waitSeconds), 20) * 1000));
+						res = await refresh();
+					}
 
-					if (!res.ok) throw new Error("Refresh token request failed");
+					if (!res.ok) throw new RefreshFailedError(res.status);
 
 					const resData = await res.json();
 					const newToken = resData.token;
@@ -164,10 +184,15 @@ const coreFetch = async <T = any>(endpoint: string, options: FetchRequestConfig 
 				} catch (refreshError: any) {
 					processQueue(refreshError, null);
 
-					accessToken.set(null);
-					localStorage.removeItem("duvet_session_token");
-
-					window.location.replace(route("/sign-in"));
+					// Only a rejected session signs out; rate limits, server and network errors don't.
+					if (
+						refreshError instanceof RefreshFailedError &&
+						(refreshError.status === 401 || refreshError.status === 403)
+					) {
+						accessToken.set(null);
+						localStorage.removeItem("duvet_session_token");
+						window.location.replace(route("/sign-in.html")); // the packaged app only has the .html
+					}
 					reject(refreshError);
 				} finally {
 					isRefreshing = false;

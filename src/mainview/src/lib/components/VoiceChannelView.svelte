@@ -17,6 +17,7 @@
 	import { getAvatarURL } from "$lib/common/common";
 	import { LoaderCircle, Mic, MicOff, Headphones, Phone, PhoneOff, MonitorUp, Volume2 } from "@lucide/svelte";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
+	import { hasPermission, Permission } from "$lib/permissions";
 
 	let {
 		channelId,
@@ -35,6 +36,13 @@
 	} = $props();
 
 	const isConnected = $derived(callMode || $activeVoiceRoomId === channelId);
+	// Without SpeakInVoice the mic stays muted: UserStatusBar mutes it when the permission goes.
+	const canSpeak = $derived.by(() => {
+		if (callMode) return true;
+		const space = $gatewaySpaces.find((s) => s.rooms.some((r) => r.id === channelId));
+		const room = space?.rooms.find((r) => r.id === channelId);
+		return space && room ? hasPermission(space, room, Permission.SpeakInVoice) : true;
+	});
 
 	const voiceUsers = $derived.by(() => {
 		if (callMode) {
@@ -186,6 +194,7 @@
 	}
 
 	function toggleMute() {
+		if (!canSpeak) return;
 		isMuted.update((m) => !m);
 		if ($activeVoiceRoomId) {
 			sendEventMessage("VOICE_SYNC", {
@@ -298,7 +307,9 @@
 								</div>
 							{/if}
 							{#if !isLocal}
-								<div class="absolute top-2 right-2 z-20 flex items-center gap-2 opacity-0 transition-all group-hover:opacity-100">
+								<div
+									class="absolute top-2 right-2 z-20 flex items-center gap-2 opacity-0 transition-all group-hover:opacity-100"
+								>
 									<div class="flex items-center gap-1.5 rounded-md bg-black/70 px-2.5 py-1.5 backdrop-blur-sm">
 										<Volume2 class="size-3 text-zinc-400" />
 										<input
@@ -307,7 +318,11 @@
 											max="1"
 											step="0.01"
 											value={streamVolumes[user.id] ?? 1}
-											oninput={(e) => (streamVolumes = { ...streamVolumes, [user.id]: parseFloat((e.currentTarget as HTMLInputElement).value) })}
+											oninput={(e) =>
+												(streamVolumes = {
+													...streamVolumes,
+													[user.id]: parseFloat((e.currentTarget as HTMLInputElement).value),
+												})}
 											class="h-1 w-16 cursor-pointer accent-white"
 										/>
 									</div>
@@ -327,7 +342,13 @@
 						{:else if videoStream && !isLocal}
 							<!-- Remote user is sharing but viewer hasn't accepted -->
 							<div class="flex flex-col items-center justify-center gap-3">
-								<UserAvatar src={user.avatar_url} name={user.username} size={64} mouthOpen={$userAmplitudes[user.id] ?? 0} eyeOffset={eyeOffsets[user.id] ?? { x: 0, y: 0 }} />
+								<UserAvatar
+									src={user.avatar_url}
+									name={user.username}
+									size={64}
+									mouthOpen={$userAmplitudes[user.id] ?? 0}
+									eyeOffset={eyeOffsets[user.id] ?? { x: 0, y: 0 }}
+								/>
 								<button
 									class="flex items-center gap-2 rounded-lg bg-stone-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-stone-500"
 									onclick={(e) => {
@@ -341,7 +362,13 @@
 							</div>
 						{:else}
 							<div class="flex items-center justify-center">
-								<UserAvatar src={user.avatar_url} name={user.username} size={80} mouthOpen={$userAmplitudes[user.id] ?? 0} eyeOffset={eyeOffsets[user.id] ?? { x: 0, y: 0 }} />
+								<UserAvatar
+									src={user.avatar_url}
+									name={user.username}
+									size={80}
+									mouthOpen={$userAmplitudes[user.id] ?? 0}
+									eyeOffset={eyeOffsets[user.id] ?? { x: 0, y: 0 }}
+								/>
 							</div>
 						{/if}
 
@@ -385,15 +412,21 @@
 						onmouseleave={() => (showStreamMenu = false)}
 					>
 						<button
-							class="flex items-center gap-2 whitespace-nowrap px-3 py-2 text-sm text-zinc-200 transition-colors hover:bg-zinc-700"
-							onclick={() => { showStreamMenu = false; screenShareRequested.set({ active: true, withAudio: false }); }}
+							class="flex items-center gap-2 px-3 py-2 text-sm whitespace-nowrap text-zinc-200 transition-colors hover:bg-zinc-700"
+							onclick={() => {
+								showStreamMenu = false;
+								screenShareRequested.set({ active: true, withAudio: false });
+							}}
 						>
 							<MonitorUp class="size-4" />
 							Screen only
 						</button>
 						<button
-							class="flex items-center gap-2 whitespace-nowrap px-3 py-2 text-sm text-zinc-200 transition-colors hover:bg-zinc-700"
-							onclick={() => { showStreamMenu = false; screenShareRequested.set({ active: true, withAudio: true }); }}
+							class="flex items-center gap-2 px-3 py-2 text-sm whitespace-nowrap text-zinc-200 transition-colors hover:bg-zinc-700"
+							onclick={() => {
+								showStreamMenu = false;
+								screenShareRequested.set({ active: true, withAudio: true });
+							}}
 						>
 							<Volume2 class="size-4" />
 							Screen + Audio
@@ -405,8 +438,11 @@
 				class="flex flex-col items-center gap-1 rounded-xl px-4 py-2.5 transition-colors {$isMuted
 					? 'bg-red-500/10 text-red-400 hover:bg-red-500/20'
 					: 'text-zinc-300 hover:bg-zinc-800'}"
+				class:opacity-50={!canSpeak}
+				class:cursor-not-allowed={!canSpeak}
+				disabled={!canSpeak}
 				onclick={toggleMute}
-				title={$isMuted ? "Unmute" : "Mute"}
+				title={!canSpeak ? "You can't speak in this room" : $isMuted ? "Unmute" : "Mute"}
 			>
 				{#if $isMuted}
 					<MicOff class="size-5" />

@@ -1,6 +1,7 @@
 import {
 	channelMessages,
 	wsSessionToken,
+	iceServers,
 	gatewaySpaces,
 	currentUser,
 	pendingFriendRequests,
@@ -32,7 +33,7 @@ import {
 import { getFriends, getPendingRequests, getSentRequests } from "$lib/api/friends";
 import { getConversations } from "$lib/api/conversations";
 import { listMyTeamInvites } from "$lib/api/developer";
-import { getMyBuckets } from "$lib/api/user";
+import { getMyBuckets, me as fetchMe } from "$lib/api/user";
 import { getMentionCounts } from "$lib/api/messages";
 import { getWSHostURL, getAvatarURL, route } from "$lib/common/common";
 import { get } from "svelte/store";
@@ -61,13 +62,35 @@ getElectrobunRpc()
 			sendEventMessage("ACTIVITY_UPDATE", { activities });
 		});
 	})
-	.catch(() => { });
+	.catch(() => {});
 
 // Active socket — module-level so sendMessage can access it
 let activeSocket: WebSocket | null = null;
 
 // Last received sequence number, used for resume on reconnect
 let lastSeq = 0;
+
+// Last VOICE_STATE_UPDATE version seen per room and user. Updates can arrive out of order; one
+// that isn't newer than what's shown is dropped.
+const voiceStateVersions = new Map<string, number>();
+
+/** Records a version from a snapshot (READY, SPACE_CREATE) without judging it. */
+function noteVoiceStateVersion(roomId: string, userId: string, version: number | undefined) {
+	if (version === undefined) return;
+	const key = `${roomId}:${userId}`;
+	if ((voiceStateVersions.get(key) ?? 0) < version) voiceStateVersions.set(key, version);
+}
+
+/** Whether an update is older than one already applied; records it when it isn't. */
+function isStaleVoiceState(roomId: string, userId: string, version: number | undefined): boolean {
+	if (version === undefined) return false; // a gateway that doesn't send versions
+	const key = `${roomId}:${userId}`;
+	const last = voiceStateVersions.get(key);
+	// Equal is the same state again (each change gets a new version), like a call's catch-up on rejoin.
+	if (last !== undefined && version < last) return true;
+	voiceStateVersions.set(key, version);
+	return false;
+}
 
 // Track expected SPACE_CREATE events to know when all spaces are loaded
 let expectedGuildIds: Set<string> | null = null;
@@ -142,6 +165,8 @@ function handleEvent(event: GatewayEvent) {
 			// Per-space statuses are set via SPACE_CREATE member_statuses.
 			currentUser.set(user);
 			wsSessionToken.set(sessionToken);
+			if (payload.data.ice_servers) iceServers.set(payload.data.ice_servers);
+			voiceStateVersions.clear();
 			unreadChannels.set(new Set(unread_rooms ?? []));
 			lastReadRooms.set(payload.data.last_read_rooms ?? {});
 			lastMsgRooms.set(payload.data.last_msg_rooms ?? {});
@@ -172,7 +197,7 @@ function handleEvent(event: GatewayEvent) {
 				});
 			getMentionCounts()
 				.then((counts) => mentionCounts.set(counts))
-				.catch(() => { });
+				.catch(() => {});
 			// Restore active calls
 			const readyData = payload.data;
 			const activeCalls = readyData.active_calls ?? [];
@@ -185,6 +210,7 @@ function handleEvent(event: GatewayEvent) {
 						callVoiceStates.update((states) => {
 							const filtered = states.filter((s) => s.room_id !== call.conversation_id);
 							for (const vs of call.voice_states!) {
+								noteVoiceStateVersion(call.conversation_id, vs.user_id, vs.version);
 								filtered.push({
 									room_id: call.conversation_id,
 									user_id: vs.user_id,
@@ -224,13 +250,13 @@ function handleEvent(event: GatewayEvent) {
 			const currentUserData = get(currentUser);
 			const selfMember: import("$lib/types").GatewayMember | undefined = currentUserData
 				? {
-					id: currentUserData.id,
-					space_id: spaceCreateData.space.id,
-					user_id: currentUserData.id,
-					alias: null,
-					created_at: spaceCreateData.space.created_at,
-					updated_at: spaceCreateData.space.updated_at,
-				}
+						id: currentUserData.id,
+						space_id: spaceCreateData.space.id,
+						user_id: currentUserData.id,
+						alias: null,
+						created_at: spaceCreateData.space.created_at,
+						updated_at: spaceCreateData.space.updated_at,
+					}
 				: undefined;
 			const space: GatewaySpace = {
 				...spaceCreateData.space,
@@ -264,6 +290,8 @@ function handleEvent(event: GatewayEvent) {
 				if (exists) {
 					return spaces;
 				}
+				// Only for a snapshot that's kept: a skipped one mustn't hide newer updates.
+				for (const vs of space.voice_states ?? []) noteVoiceStateVersion(vs.room_id, vs.user_id, vs.version);
 				return [...spaces, space];
 			});
 
@@ -368,9 +396,12 @@ function handleEvent(event: GatewayEvent) {
 				const result: typeof all = {};
 				for (const [roomId, msgs] of Object.entries(all)) {
 					result[roomId] = msgs.map((m) => {
+						// The update payload carries no attachments or reactions: keep the existing ones.
 						if (m.id === updatedMessage.id)
 							return {
 								...updatedMessage,
+								attachments: updatedMessage.attachments ?? m.attachments,
+								reactions: updatedMessage.reactions ?? m.reactions,
 								referenced_message: updatedMessage.referenced_message ?? m.referenced_message,
 							};
 						if (m.referenced_message?.message_id === updatedMessage.id) {
@@ -468,15 +499,15 @@ function handleEvent(event: GatewayEvent) {
 					members: c.members.map((m) =>
 						m.user_id === raw.id
 							? {
-								...m,
-								user: {
-									...m.user,
-									username: raw.username,
-									alias: raw.alias,
-									avatar: raw.avatar,
-									banner: raw.banner,
-								},
-							}
+									...m,
+									user: {
+										...m.user,
+										username: raw.username,
+										alias: raw.alias,
+										avatar: raw.avatar,
+										banner: raw.banner,
+									},
+								}
 							: m,
 					),
 				})),
@@ -510,6 +541,7 @@ function handleEvent(event: GatewayEvent) {
 		}
 		case "VOICE_STATE_UPDATE": {
 			const raw = payload.data;
+			if (isStaleVoiceState(raw.room_id, raw.user_id, raw.version)) break;
 
 			// Update call voice states for conversation calls
 			const currentCall = get(activeCall);
@@ -572,6 +604,7 @@ function handleEvent(event: GatewayEvent) {
 								muted: raw.muted,
 								deafened: raw.deafened,
 								screen_sharing: raw.screen_sharing,
+								version: raw.version,
 							});
 						} else {
 							nextStates[existingIdx] = {
@@ -579,6 +612,7 @@ function handleEvent(event: GatewayEvent) {
 								muted: raw.muted,
 								deafened: raw.deafened,
 								screen_sharing: raw.screen_sharing,
+								version: raw.version,
 							};
 						}
 					} else {
@@ -1059,7 +1093,14 @@ function handleEvent(event: GatewayEvent) {
 				const existing = all[conversationId] ?? [];
 				return {
 					...all,
-					[conversationId]: existing.map((m) => (m.id === msg.id ? msg : m)),
+					// The update payload carries no attachments, reactions or reply data: keep the existing ones.
+					[conversationId]: existing.map((m) => {
+						if (m.id === msg.id) return { ...m, ...msg };
+						if (m.referenced_message?.message_id === msg.id) {
+							return { ...m, referenced_message: { ...m.referenced_message, content: msg.content } };
+						}
+						return m;
+					}),
 				};
 			});
 			break;
@@ -1228,7 +1269,7 @@ export interface GatewayConnection {
 
 const HEARTBEAT_INTERVAL_MS = 45_000;
 const HEARTBEAT_TIMEOUT_MS = 15_000;
-const MAX_RECONNECT_ATTEMPTS = 5;
+const RECONNECTS_PER_SESSION_CHECK = 5;
 const INITIAL_RECONNECT_DELAY_MS = 1000;
 const MAX_RECONNECT_DELAY_MS = 30_000;
 const RECONNECT_JITTER_MS = 1000;
@@ -1364,12 +1405,11 @@ export function createWebSocketConnection(): GatewayConnection {
 					break;
 			}
 
-			if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
-				console.error("[WS] Maximum reconnect attempts reached. Please refresh the page.");
-				destroyed = true;
-				socket.close();
-				localStorage.removeItem("duvet_session_token");
-				window.location.replace(route("/sign-in.html"));
+			// On the first failure and every few after it, ask the API about the session: the gateway
+			// may just be down, or the access token expired. The API refreshes the token, or signs out
+			// only if the session is really gone; reconnecting goes on either way (the delay is capped).
+			if (reconnectAttempts % RECONNECTS_PER_SESSION_CHECK === 0) {
+				fetchMe().catch((checkErr) => console.warn("[WS] Session check while reconnecting failed:", checkErr));
 			}
 		};
 

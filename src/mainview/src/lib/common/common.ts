@@ -22,6 +22,7 @@ export function route(path: string): string {
 }
 
 export function getHostURL(): string {
+	if (VITE_API_URL) return VITE_API_URL;
 	let base: string;
 	let protocol: string = "https://";
 	switch (VITE_DOMAIN_TARGET_ENV) {
@@ -49,6 +50,7 @@ export function getAvatarURL(_userId: string, avatar: string | null | undefined)
 }
 
 export function getWSHostURL(): string {
+	if (VITE_WS_URL) return VITE_WS_URL;
 	let base: string;
 	let protocol: string = "wss://";
 	switch (VITE_DOMAIN_TARGET_ENV) {

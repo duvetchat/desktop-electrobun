@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount, onDestroy } from "svelte";
 	import { onWebRTCEvent, sendEventMessage } from "$lib/api/ws/connection";
-	import { activeCall, isMuted, isDeafened, selectedMicId } from "$lib/stores.svelte";
+	import { activeCall, iceServers, isMuted, isDeafened, selectedMicId } from "$lib/stores.svelte";
 	import { createDenoisedStream } from "$lib/audio/noise-suppression";
 
 	let { conversationId }: { conversationId: string } = $props();
@@ -144,7 +144,7 @@
 		audioSender = null;
 
 		peerConnection = new RTCPeerConnection({
-			iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+			iceServers: $iceServers,
 		});
 
 		peerConnection.onnegotiationneeded = async () => {

@@ -1,4 +1,5 @@
 import api from "$lib/api/api";
+import { createAckThrottle } from "$lib/api/ack";
 import type { MessageType } from "$lib/types";
 
 export type ConversationType = 1 | 2; // 1 = DM, 2 = group
@@ -180,6 +181,13 @@ export async function deleteDirectMessage(conversationId: string, messageId: str
 	await api.delete(`/api/users/@me/conversations/${conversationId}/messages/${messageId}`);
 }
 
-export async function ackConversation(conversationId: string, messageId: string): Promise<void> {
-	await api.post(`/api/users/@me/conversations/${conversationId}/ack`, { message_id: messageId });
+const throttledConversationAck = createAckThrottle((conversationId, messageId) =>
+	api.post(`/api/users/@me/conversations/${conversationId}/ack`, { message_id: messageId }).then(
+		() => undefined,
+		(err) => console.error(`[ack] failed for conversation=${conversationId} msg=${messageId}`, err),
+	),
+);
+
+export function ackConversation(conversationId: string, messageId: string): Promise<void> {
+	return throttledConversationAck(conversationId, messageId);
 }

@@ -2,7 +2,7 @@
   "name": "@duvet/desktop",
   "version": "1.0.0",
   "scripts": {
-    "start": "bun run --cwd ./src/mainview build && electrobun dev",
+    "start": "bun run --cwd ./src/mainview build --mode development && electrobun dev",
     "dev": "electrobun dev --watch",
     "dev:hmr": "concurrently \"bun run hmr\" \"bun run dev\"",
     "hmr": "bun run --cwd ./src/mainview dev",

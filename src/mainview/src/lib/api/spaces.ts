@@ -20,14 +20,8 @@ export async function getSpaceMembers(
 	cursor?: { id: string; pos: number | null },
 	signal?: AbortSignal,
 ): Promise<SpaceMemberWithUser[]> {
-	const params = new URLSearchParams({ count: String(MEMBERS_PAGE_SIZE) });
-	if (cursor) {
-		params.set("after_id", cursor.id);
-		if (cursor.pos != null) params.set("after_pos", String(cursor.pos));
-	}
-
 	const response = await api.get(`/api/spaces/${spaceId}/members`, {
-		params,
+		params: { count: MEMBERS_PAGE_SIZE, after_id: cursor?.id, after_pos: cursor?.pos },
 		signal,
 	});
 

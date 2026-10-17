@@ -98,6 +98,8 @@ export const userSession = createUserSession();
 export const gatewaySpaces = writable<GatewaySpace[]>([]);
 export const currentUser = writable<GatewayUser | null>(null);
 export const wsSessionToken = writable<string | null>(null);
+// ICE servers for voice peer connections; READY replaces them with the gateway's own list.
+export const iceServers = writable<RTCIceServer[]>([{ urls: "stun:stun.l.google.com:19302" }]);
 export const channelMessages = createEvictingMessageStore<Message>();
 export const speakingUsers = writable<SvelteSet<string>>(new SvelteSet());
 export const userAmplitudes = writable<Record<string, number>>({});
@@ -198,7 +200,10 @@ export const isMuted = writable<boolean>(false);
 export const isDeafened = writable<boolean>(false);
 export const activeVoiceRoomId = writable<string | null>(null);
 export const voiceConnectionState = writable<RTCPeerConnectionState>("new");
-export const screenShareRequested = writable<{ active: boolean; withAudio: boolean }>({ active: false, withAudio: false });
+export const screenShareRequested = writable<{ active: boolean; withAudio: boolean }>({
+	active: false,
+	withAudio: false,
+});
 export const voiceRemoteVideoStreams = writable<Record<string, MediaStream>>({});
 export const voiceLocalVideoStream = writable<MediaStream | null>(null);
 export const isScreenSharing = writable<boolean>(false);

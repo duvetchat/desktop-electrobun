@@ -21,7 +21,10 @@ export interface Friend {
 	user_avatar: string | null;
 }
 
-export async function sendFriendRequest(userId: string): Promise<FriendRequest> {
+// The API returns the bare request, without the other user's details.
+export async function sendFriendRequest(
+	userId: string,
+): Promise<Omit<FriendRequest, "user_username" | "user_alias" | "user_avatar">> {
 	const res = await api.post("/api/users/@me/friends/requests", { user_id: userId });
 	return res.data;
 }

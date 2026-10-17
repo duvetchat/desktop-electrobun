@@ -23,6 +23,7 @@
 		voiceLocalVideoStream,
 		isScreenSharing,
 		noiseSuppression,
+		iceServers,
 	} from "$lib/stores.svelte";
 	import { getAvatarURL } from "$lib/common/common";
 
@@ -200,31 +201,19 @@
 		const room = space?.rooms.find((r) => r.id === channelId);
 		// For conversation calls (no space/room), always allow speaking
 		const canSpeak = space && room ? hasPermission(space, room, Permission.SpeakInVoice) : true;
+		couldSpeak = canSpeak;
 
 		if (!canSpeak) {
 			isMuted.set(true);
 		} else {
 			try {
-				const constraints = $selectedMicId ? { audio: { deviceId: { exact: $selectedMicId } } } : { audio: true };
-				rawMicStream = await navigator.mediaDevices.getUserMedia(constraints);
-
-				if (!audioContext) {
-					audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-				}
-				if ($noiseSuppression) {
-					const denoised = await createDenoisedStream(rawMicStream, audioContext);
-					localAudioStream = denoised.stream;
-					denoiseCleanup = denoised.cleanup;
-				} else {
-					localAudioStream = rawMicStream;
-				}
+				await acquireMic();
 			} catch (e) {
 				console.error("[Voice] Failed to get local audio:", e);
-				if (rawMicStream && !localAudioStream) {
-					localAudioStream = rawMicStream;
-				}
 			}
 		}
+		// Left while the browser was asking for the mic: don't join after all.
+		if (isDestroyed) return;
 
 		activeVoiceRoomId.set(channelId);
 		connectWebRTC();
@@ -232,6 +221,116 @@
 
 	onDestroy(() => {
 		leaveVoice();
+	});
+
+	/** Opens the selected microphone into localAudioStream, denoised when that's on. If voice was
+	 * left meanwhile, the mic is released again instead. */
+	async function acquireMic() {
+		const constraints = $selectedMicId ? { audio: { deviceId: { exact: $selectedMicId } } } : { audio: true };
+		const stream = await navigator.mediaDevices.getUserMedia(constraints);
+		if (isDestroyed) {
+			stream.getTracks().forEach((t) => t.stop());
+			return;
+		}
+		rawMicStream = stream;
+		if (!audioContext) {
+			audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+		}
+		if (!$noiseSuppression) {
+			localAudioStream = stream;
+			return;
+		}
+		try {
+			const denoised = await createDenoisedStream(stream, audioContext);
+			if (isDestroyed) {
+				denoised.cleanup();
+				stream.getTracks().forEach((t) => t.stop());
+				return;
+			}
+			localAudioStream = denoised.stream;
+			denoiseCleanup = denoised.cleanup;
+		} catch (e) {
+			console.error("[Voice] Noise suppression failed, using the raw microphone:", e);
+			localAudioStream = stream;
+		}
+	}
+
+	/** Drives the speaking indicator of the local user from localAudioStream. */
+	function startLocalLevelMeter() {
+		const stream = localAudioStream;
+		if (!stream) return;
+
+		if (!audioContext) {
+			audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+		}
+		if (!localAnalyser) {
+			localAnalyser = audioContext.createAnalyser();
+			localAnalyser.fftSize = 256;
+		}
+		if (!localAudioSource || localAudioSource.mediaStream !== stream) {
+			if (localAudioSource) localAudioSource.disconnect();
+			try {
+				localAudioSource = audioContext.createMediaStreamSource(stream);
+				localAudioSource.connect(localAnalyser);
+			} catch (err) {
+				console.error("AudioSource error", err);
+			}
+		}
+
+		const dataArray = new Uint8Array(localAnalyser.frequencyBinCount);
+		const localGen = webrtcGeneration;
+
+		const checkLocalLevel = () => {
+			if (isDestroyed || !audioContext || !localAnalyser || localGen !== webrtcGeneration) return;
+			localAnalyser.getByteFrequencyData(dataArray);
+			let sum = 0;
+			for (let i = 0; i < dataArray.length; i++) {
+				sum += dataArray[i];
+			}
+			const average = sum / dataArray.length;
+			const amplitude = Math.min(1, average / 50);
+
+			speakingUsers.update((set) => {
+				const newSet = new SvelteSet(set);
+				if (average > 10 && !$isMuted && myUserId) newSet.add(myUserId);
+				else if (myUserId) newSet.delete(myUserId);
+				return newSet;
+			});
+			if (myUserId) {
+				const id = myUserId;
+				userAmplitudes.update((a) => ({ ...a, [id]: average > 10 && !$isMuted ? amplitude : 0 }));
+			}
+
+			requestAnimationFrame(checkLocalLevel);
+		};
+		checkLocalLevel();
+	}
+
+	// Joined without SpeakInVoice, then got it: open the mic once per grant (a failure isn't retried
+	// on every store update) and send on the audio transceiver. Self-mute stays as it was set on
+	// joining, so nobody's mic goes live by surprise.
+	let couldSpeak = true; // SpeakInVoice as last seen; onMount sets it to the value on joining
+	$effect(() => {
+		const space = $gatewaySpaces.find((s) => s.rooms.some((r) => r.id === channelId));
+		const room = space?.rooms.find((r) => r.id === channelId);
+		if (!space || !room) return;
+		if (!hasPermission(space, room, Permission.SpeakInVoice)) {
+			couldSpeak = false;
+			return;
+		}
+		if (couldSpeak || localAudioStream || !audioSender) return;
+		couldSpeak = true;
+		acquireMic()
+			.then(async () => {
+				const track = localAudioStream?.getAudioTracks().at(0) ?? null;
+				if (!track || !audioSender) return;
+				await audioSender.replaceTrack(!$isMuted && !$isDeafened ? track : null);
+				startLocalLevelMeter();
+			})
+			.catch((err) => {
+				console.error("[Voice] Failed to open the mic after getting SpeakInVoice:", err);
+				toast("Couldn't open your microphone", "error");
+			});
 	});
 
 	async function connectWebRTC() {
@@ -251,7 +350,7 @@
 		connectionState.set("new");
 
 		peerConnection = new RTCPeerConnection({
-			iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+			iceServers: $iceServers,
 		});
 
 		peerConnection.onnegotiationneeded = async () => {
@@ -381,53 +480,11 @@
 				.forEach((track) => {
 					peerConnection?.addTrack(track, localAudioStream!);
 				});
-
-			if (!audioContext) {
-				audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-			}
-			if (!localAnalyser) {
-				localAnalyser = audioContext.createAnalyser();
-				localAnalyser.fftSize = 256;
-			}
-			if (!localAudioSource || localAudioSource.mediaStream !== localAudioStream) {
-				if (localAudioSource) localAudioSource.disconnect();
-				try {
-					localAudioSource = audioContext.createMediaStreamSource(localAudioStream);
-					localAudioSource.connect(localAnalyser);
-				} catch (err) {
-					console.error("AudioSource error", err);
-				}
-			}
-
-			const dataArray = new Uint8Array(localAnalyser.frequencyBinCount);
-			const localGen = webrtcGeneration;
-
-			const checkLocalLevel = () => {
-				if (isDestroyed || !audioContext || !localAnalyser || localGen !== webrtcGeneration) return;
-				localAnalyser.getByteFrequencyData(dataArray);
-				let sum = 0;
-				for (let i = 0; i < dataArray.length; i++) {
-					sum += dataArray[i];
-				}
-				const average = sum / dataArray.length;
-				const amplitude = Math.min(1, average / 50);
-
-				speakingUsers.update((set) => {
-					const newSet = new SvelteSet(set);
-					if (average > 10 && !$isMuted && myUserId) newSet.add(myUserId);
-					else if (myUserId) newSet.delete(myUserId);
-					return newSet;
-				});
-				if (myUserId) {
-					const id = myUserId;
-					userAmplitudes.update((a) => ({ ...a, [id]: average > 10 && !$isMuted ? amplitude : 0 }));
-				}
-
-				requestAnimationFrame(checkLocalLevel);
-			};
-			checkLocalLevel();
+			startLocalLevelMeter();
 		} else {
-			peerConnection?.addTransceiver("audio", { direction: "recvonly" });
+			// sendrecv even without a mic: SpeakInVoice granted later starts sending on it with
+			// replaceTrack, with no renegotiation.
+			audioSender = peerConnection?.addTransceiver("audio", { direction: "sendrecv" }).sender ?? null;
 		}
 		if (localVideoStream) {
 			localVideoStream.getTracks().forEach((track) => {
@@ -498,7 +555,7 @@
 			// Force track replacement on the sender (Edge/Chromium needs this)
 			if (audioSender && localAudioStream) {
 				const shouldSend = !$isMuted && !$isDeafened;
-				const track = shouldSend ? localAudioStream.getAudioTracks().at(0) ?? null : null;
+				const track = shouldSend ? (localAudioStream.getAudioTracks().at(0) ?? null) : null;
 				await audioSender.replaceTrack(track).catch(console.warn);
 			}
 		}
@@ -786,10 +843,10 @@
 								e.stopPropagation();
 								startVideo(user.id);
 							}}
-							aria-label="Ver stream"
+							aria-label="Watch stream"
 						>
 							<Play class="mb-3 size-10 text-zinc-300" />
-							<span class="text-sm font-medium text-zinc-300">Clic para ver</span>
+							<span class="text-sm font-medium text-zinc-300">Click to watch</span>
 						</button>
 					{:else if !videoPlayingStates[user.id]}
 						<div

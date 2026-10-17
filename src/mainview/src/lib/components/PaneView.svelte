@@ -895,6 +895,9 @@
 	</div>
 {:else}
 	<!-- ── Leaf ───────────────────────────────────────────────────────────────── -->
+	<!-- Clicking a pane focuses it; following DOM focus instead would also move it on programmatic
+	     focus, like a split remounting its chat inputs. The keyboard has no pane focus to move. -->
+	<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
 	<div
 		class="relative flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden {isFocused
 			? 'ring-1 ring-blue-500/40 ring-inset'
@@ -1002,7 +1005,7 @@
 					<button
 						type="button"
 						class="rounded p-1 text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-red-400"
-						title="Cerrar panel"
+						title="Close pane"
 						onclick={onClose}
 					>
 						<svg

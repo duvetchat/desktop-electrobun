@@ -3,7 +3,17 @@
 	import { onDestroy, onMount, tick } from "svelte";
 	import { updateMessage, deleteMessage, getMessageThread } from "$lib/api/messages";
 	import { Dialog, Popover } from "bits-ui";
-	import { currentUser, jumpToMessageRequest, gatewaySpaces, pageVisible, botInviteRequest, spaceInviteRequest, friends, sentFriendRequests, pendingFriendRequests } from "$lib/stores.svelte";
+	import {
+		currentUser,
+		jumpToMessageRequest,
+		gatewaySpaces,
+		pageVisible,
+		botInviteRequest,
+		spaceInviteRequest,
+		friends,
+		sentFriendRequests,
+		pendingFriendRequests,
+	} from "$lib/stores.svelte";
 	import {
 		addRoomReaction,
 		removeRoomReaction,
@@ -123,8 +133,10 @@
 	}
 
 	function hasPendingRequest(userId: string): boolean {
-		return get(sentFriendRequests).some((r) => r.recipient_id === userId)
-			|| get(pendingFriendRequests).some((r) => r.sender_id === userId);
+		return (
+			get(sentFriendRequests).some((r) => r.recipient_id === userId) ||
+			get(pendingFriendRequests).some((r) => r.sender_id === userId)
+		);
 	}
 
 	async function handleSendFriendRequest(userId: string) {
@@ -660,9 +672,7 @@
 		return false;
 	}
 
-	function resolveMessageLink(
-		url: string,
-	): {
+	function resolveMessageLink(url: string): {
 		spaceName: string;
 		roomName: string;
 		spaceId: string;
@@ -992,7 +1002,12 @@
 									activePopoverMsgId = message.id;
 								}}
 							>
-								<UserAvatar src={message.author_avatar_url} name={message.author_name} size={40} oncontextmenu={(e) => openUserMenu(e, message.author_id)} />
+								<UserAvatar
+									src={message.author_avatar_url}
+									name={message.author_name}
+									size={40}
+									oncontextmenu={(e) => openUserMenu(e, message.author_id)}
+								/>
 							</button>
 						{/key}
 					{:else}
@@ -1034,7 +1049,7 @@
 									</span>
 								{/if}
 								{#if message.author_is_bot}
-									<span class="mr-1.5 rounded bg-stone-600 px-1 py-0.5 text-xxs font-semibold text-white">BOT</span>
+									<span class="text-xxs mr-1.5 rounded bg-stone-600 px-1 py-0.5 font-semibold text-white">BOT</span>
 								{/if}
 								<span class="text-xs font-medium text-zinc-400">{formatTimestamp(message.created_at, now)}</span>
 							</div>
@@ -1208,8 +1223,8 @@
 														e.stopPropagation();
 														if (botId) botInviteRequest.set(botId);
 														else if (invCode) spaceInviteRequest.set(invCode);
-													}}
-												>{segment.content}</button>
+													}}>{segment.content}</button
+												>
 											{:else}
 												<a
 													href={segment.content}
@@ -1317,7 +1332,8 @@
 												type="button"
 												class="relative block cursor-zoom-in overflow-hidden rounded-md"
 												style="width: {iw}px; height: {ih}px; max-width: 100%;"
-												onclick={() => openPreview(`${attachmentHost}${att.url ?? `/attachments/${att.id}`}`, att.filename)}
+												onclick={() =>
+													openPreview(`${attachmentHost}${att.url ?? `/attachments/${att.id}`}`, att.filename)}
 											>
 												<div class="img-skeleton absolute inset-0 animate-pulse bg-zinc-700/40"></div>
 												<img
@@ -1335,7 +1351,7 @@
 															img.dataset.retries = String(retries + 1);
 															setTimeout(() => {
 																const base = img.src.replace(/[&?]r=\d+/, "");
-																	img.src = base + (base.includes("?") ? "&" : "?") + "r=" + Date.now();
+																img.src = base + (base.includes("?") ? "&" : "?") + "r=" + Date.now();
 															}, 1000);
 														} else {
 															const parent = img.parentElement!;
@@ -1377,7 +1393,7 @@
 															vid.dataset.retries = String(retries + 1);
 															setTimeout(() => {
 																const base = vid.src.replace(/[&?]r=\d+/, "");
-																	vid.src = base + (base.includes("?") ? "&" : "?") + "r=" + Date.now();
+																vid.src = base + (base.includes("?") ? "&" : "?") + "r=" + Date.now();
 															}, 1000);
 														} else {
 															const parent = vid.parentElement!;
@@ -1907,9 +1923,22 @@
 <ImagePreview src={previewSrc} alt={previewAlt} bind:open={previewOpen} />
 
 <!-- User context menu (right-click avatar) -->
+<svelte:window
+	onkeydown={(e) => {
+		if (userMenuPos && e.key === "Escape") closeUserMenu();
+	}}
+/>
 {#if userMenuPos && userMenuTargetId}
-	<!-- svelte-ignore a11y_no_static_element_interactions -->
-	<div class="fixed inset-0 z-200" onclick={closeUserMenu} oncontextmenu={(e) => { e.preventDefault(); closeUserMenu(); }}></div>
+	<!-- Escape closes it too (svelte:window above), so the backdrop's click is mouse-only on purpose. -->
+	<!-- svelte-ignore a11y_no_static_element_interactions, a11y_click_events_have_key_events -->
+	<div
+		class="fixed inset-0 z-200"
+		onclick={closeUserMenu}
+		oncontextmenu={(e) => {
+			e.preventDefault();
+			closeUserMenu();
+		}}
+	></div>
 	{@const isSelf = userMenuTargetId === $currentUser?.id}
 	{@const alreadyFriend = !isSelf && isFriend(userMenuTargetId)}
 	{@const pending = !isSelf && !alreadyFriend && hasPendingRequest(userMenuTargetId)}
@@ -1920,7 +1949,9 @@
 	>
 		{#if !isSelf}
 			<button
-				class="w-full px-3 py-2 text-left text-sm transition-colors {canSendRequest ? 'text-zinc-100 hover:bg-zinc-700' : 'text-zinc-500 cursor-not-allowed'}"
+				class="w-full px-3 py-2 text-left text-sm transition-colors {canSendRequest
+					? 'text-zinc-100 hover:bg-zinc-700'
+					: 'cursor-not-allowed text-zinc-500'}"
 				disabled={!canSendRequest}
 				onclick={() => handleSendFriendRequest(userMenuTargetId!)}
 			>
@@ -1929,7 +1960,10 @@
 		{/if}
 		<button
 			class="w-full px-3 py-2 text-left text-sm text-zinc-100 transition-colors hover:bg-zinc-700"
-			onclick={() => { navigator.clipboard.writeText(userMenuTargetId!); closeUserMenu(); }}
+			onclick={() => {
+				navigator.clipboard.writeText(userMenuTargetId!);
+				closeUserMenu();
+			}}
 		>
 			Copy User ID
 		</button>
@@ -1959,7 +1993,12 @@
 						<h3 class="text-xs font-semibold tracking-wide text-zinc-400 uppercase">Flags</h3>
 						{#each FLAGS as f}
 							<label class="flex items-center gap-2 text-sm">
-								<input type="checkbox" checked={!!(editFlags & f.flag)} onchange={() => toggleFlag(f.flag)} class="accent-amber-500" />
+								<input
+									type="checkbox"
+									checked={!!(editFlags & f.flag)}
+									onchange={() => toggleFlag(f.flag)}
+									class="accent-amber-500"
+								/>
 								{f.name}
 							</label>
 						{/each}
@@ -1969,7 +2008,12 @@
 						<h3 class="text-xs font-semibold tracking-wide text-zinc-400 uppercase">Badges</h3>
 						{#each BADGES as b}
 							<label class="flex items-center gap-2 text-sm">
-								<input type="checkbox" checked={!!(editBadges & b.flag)} onchange={() => toggleBadge(b.flag)} class="accent-amber-500" />
+								<input
+									type="checkbox"
+									checked={!!(editBadges & b.flag)}
+									onchange={() => toggleBadge(b.flag)}
+									class="accent-amber-500"
+								/>
 								{b.name}
 							</label>
 						{/each}

@@ -4,11 +4,15 @@ import { defineConfig, loadEnv } from "vite";
 
 export default defineConfig(({ mode }) => {
 	const env = loadEnv(mode, process.cwd(), "");
+	// URL overrides only apply in development mode (dev:hmr, start); every other mode, including build:canary, ignores them.
+	const devURL = (url = "") => (mode === "development" ? url.replace(/\/+$/, "") : "");
 	return {
 		plugins: [tailwindcss(), sveltekit()],
 		define: {
 			VITE_APP_ENV: JSON.stringify(mode),
 			VITE_DOMAIN_TARGET_ENV: JSON.stringify(env.VITE_DOMAIN_TARGET_ENV || "andremor"),
+			VITE_API_URL: JSON.stringify(devURL(env.VITE_API_URL)),
+			VITE_WS_URL: JSON.stringify(devURL(env.VITE_WS_URL)),
 		},
 		build: {
 			rollupOptions: {

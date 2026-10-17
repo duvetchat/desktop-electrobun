@@ -16,6 +16,7 @@
 				<span class="flex-1">{t.message}</span>
 				<button
 					class="shrink-0 text-current opacity-50 transition-opacity hover:opacity-100"
+					aria-label="Dismiss"
 					onclick={() => toastStore.dismiss(t.id)}
 				>
 					<svg

@@ -217,8 +217,6 @@ export interface GatewayUser {
 	username: string;
 	email_verified: boolean;
 	alias: string | null;
-	birthdate: string | null;
-	phone: string | null;
 	avatar: string | null;
 	banner: string | null;
 	custom: string;
@@ -232,9 +230,10 @@ export interface GatewayUser {
 export interface GatewayVoiceState {
 	room_id: string;
 	user_id: string;
-	muted?: boolean;
-	deafened?: boolean;
-	screen_sharing?: boolean;
+	muted: boolean;
+	deafened: boolean;
+	screen_sharing: boolean;
+	version: number;
 }
 
 export interface GatewaySpace {
@@ -353,13 +352,16 @@ export interface VoiceStateUpdateEvent {
 	room_id: string;
 	user_id: string;
 	joined: boolean;
-	muted?: boolean;
-	deafened?: boolean;
-	screen_sharing?: boolean;
+	muted: boolean;
+	deafened: boolean;
+	screen_sharing: boolean;
+	/** Grows with every change: an update not newer than the last one seen for this user and room is stale. */
+	version: number;
 }
 
 export interface VoiceSessionReplacedEvent {
 	room_id: string;
+	reason?: "permissions";
 }
 
 export interface WebRTCIceCandidateEvent {
@@ -456,7 +458,6 @@ export interface SpaceMemberRemoveEvent {
 	user_id: string;
 	member_id: string;
 }
-
 
 export interface FriendRequestRejectEvent {
 	id: string;
@@ -594,12 +595,15 @@ export interface GatewayEvent {
 export interface GatewayReadyActiveCall {
 	conversation_id: string;
 	initiator_id: string;
-	voice_states?: {
-		user_id: string;
-		muted?: boolean;
-		deafened?: boolean;
-		screen_sharing?: boolean;
-	}[];
+	voice_states:
+		| {
+				user_id: string;
+				muted: boolean;
+				deafened: boolean;
+				screen_sharing: boolean;
+				version: number;
+		  }[]
+		| null;
 }
 
 export interface GatewayReadyData {
@@ -612,6 +616,8 @@ export interface GatewayReadyData {
 	last_msg_rooms?: Record<string, string>;
 	unread_convs?: string[];
 	active_calls?: GatewayReadyActiveCall[];
+	/** Not sent to bots. */
+	ice_servers?: RTCIceServer[];
 }
 
 export function roomTypeToChannelType(type: RoomType): Channel["type"] {
@@ -659,7 +665,8 @@ export function gatewayMessageToMessage(msg: GatewayMessage, spaces: GatewaySpac
 		updated_at: msg.updated_at,
 		nonce: msg.nonce,
 		referenced_message: msg.referenced_message ?? null,
-		ref_message_id: msg.referenced_message?.message_id ?? (msg as unknown as Record<string, string>).ref_message_id ?? null,
+		ref_message_id:
+			msg.referenced_message?.message_id ?? (msg as unknown as Record<string, string>).ref_message_id ?? null,
 		embeds: msg.embeds ?? null,
 		attachments: msg.attachments ?? null,
 		reactions: msg.reactions ?? null,
@@ -671,8 +678,8 @@ export function gatewaySpaceToGuild(space: GatewaySpace): Guild {
 	return {
 		id: space.id,
 		name: space.name,
-		icon_url: space.icon ? getAvatarURL(space.id, space.icon) ?? "" : "",
-		banner_url: space.banner ? getAvatarURL(space.id, space.banner) ?? "" : "",
+		icon_url: space.icon ? (getAvatarURL(space.id, space.icon) ?? "") : "",
+		banner_url: space.banner ? (getAvatarURL(space.id, space.banner) ?? "") : "",
 		channels: space.rooms.map((room) => {
 			const channelType = roomTypeToChannelType(room.type);
 			const channel: Channel = {

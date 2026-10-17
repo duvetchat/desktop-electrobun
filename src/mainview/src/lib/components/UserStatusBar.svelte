@@ -24,6 +24,7 @@
 		callVoiceStates,
 		conversations,
 		noiseSuppression,
+		isScreenSharing,
 	} from "$lib/stores.svelte";
 	import { get } from "svelte/store";
 	import { sendEventMessage } from "$lib/api/ws/connection";
@@ -64,8 +65,18 @@
 	);
 
 	$effect(() => {
-		if (!canSpeak) {
-			$isMuted = true;
+		if (!canSpeak && !get(isMuted)) {
+			// Tell the gateway too: when SpeakInVoice comes back it keeps showing this client muted,
+			// which it stays until the user unmutes.
+			isMuted.set(true);
+			if ($activeVoiceRoomId) {
+				sendEventMessage("VOICE_SYNC", {
+					room_id: $activeVoiceRoomId,
+					muted: true,
+					deafened: $isDeafened,
+					screen_sharing: $isScreenSharing,
+				});
+			}
 		}
 	});
 
@@ -145,6 +156,7 @@
 				room_id: $activeVoiceRoomId,
 				muted: $isMuted,
 				deafened: $isDeafened,
+				screen_sharing: $isScreenSharing,
 			});
 		}
 	}
@@ -157,6 +169,7 @@
 				room_id: $activeVoiceRoomId,
 				muted: $isMuted,
 				deafened: $isDeafened,
+				screen_sharing: $isScreenSharing,
 			});
 		}
 	}

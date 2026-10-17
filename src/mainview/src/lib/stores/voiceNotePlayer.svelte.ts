@@ -1,4 +1,5 @@
 import { writable, get } from "svelte/store";
+import api from "$lib/api/api";
 import { getHostURL } from "$lib/common/common";
 
 export interface VoiceNoteState {
@@ -30,7 +31,7 @@ audioVolume.subscribe((v) => {
 });
 
 export const PLAYBACK_RATES = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2] as const;
-const rateByAttachment = new Map<string, typeof PLAYBACK_RATES[number]>();
+const rateByAttachment = new Map<string, (typeof PLAYBACK_RATES)[number]>();
 export function getAttachmentRate(attachmentId: string): number {
 	return rateByAttachment.get(attachmentId) ?? 1;
 }
@@ -85,16 +86,21 @@ function isUrlExpiringSoon(url: string): boolean {
 
 async function refreshSignedUrl(attachmentId: string, currentSrc: string): Promise<string> {
 	try {
-		const res = await fetch(`${getHostURL()}/attachments/${attachmentId}/resign`, { method: "POST", headers: { Authorization: `Bearer ${localStorage.getItem("duvet_access_token")}` } });
-		if (!res.ok) return currentSrc;
-		const data = await res.json();
-		return `${getHostURL()}${data.url}`;
+		// Through the API client: it sends the current access token and refreshes it if needed.
+		const res = await api.post<{ url: string }>(`/attachments/${attachmentId}/resign`);
+		return `${getHostURL()}${res.data.url}`;
 	} catch {
 		return currentSrc;
 	}
 }
 
-export async function playVoiceNote(src: string, attachmentId: string, authorName: string, channelName: string, filename?: string) {
+export async function playVoiceNote(
+	src: string,
+	attachmentId: string,
+	authorName: string,
+	channelName: string,
+	filename?: string,
+) {
 	const current = get(voiceNote);
 
 	// Same note — toggle play/pause

@@ -234,7 +234,7 @@
 >
 	<div class="flex flex-col items-center justify-center gap-1.5 py-2">
 		<button
-			title="Amigos"
+			title="Friends"
 			onclick={onFriendsSelect}
 			class="relative flex size-9 items-center justify-center rounded-lg transition-all duration-150 {isFriendsActive
 				? 'bg-indigo-600 text-white'
@@ -286,7 +286,12 @@
 									onclick={() => selectGuild(guild)}
 									class="group/btn relative size-10 rounded-lg transition-all duration-150 select-none"
 								>
-									<SpaceIcon src={guild.icon_url || null} name={guild.name} size={40} class="transition-transform duration-150 group-hover/btn:scale-105" />
+									<SpaceIcon
+										src={guild.icon_url || null}
+										name={guild.name}
+										size={40}
+										class="transition-transform duration-150 group-hover/btn:scale-105"
+									/>
 									{#if mentionCountBySpace[guild.id] && guild.id !== activeGuildId}
 										<span
 											class="absolute -right-1 -bottom-1 flex size-4 items-center justify-center rounded-full bg-red-600 text-[9px] font-bold text-white ring-2 ring-stone-900"
@@ -350,7 +355,12 @@
 								onclick={() => selectGuild(guild)}
 								class="group/btn relative size-10 rounded-lg transition-all duration-150 select-none"
 							>
-								<SpaceIcon src={guild.icon_url || null} name={guild.name} size={40} class="transition-transform duration-150 group-hover/btn:scale-105" />
+								<SpaceIcon
+									src={guild.icon_url || null}
+									name={guild.name}
+									size={40}
+									class="transition-transform duration-150 group-hover/btn:scale-105"
+								/>
 								{#if mentionCountBySpace[guild.id] && guild.id !== activeGuildId}
 									<span
 										class="absolute -right-1 -bottom-1 flex size-4 items-center justify-center rounded-full bg-red-600 text-[9px] font-bold text-white ring-2 ring-stone-900"
