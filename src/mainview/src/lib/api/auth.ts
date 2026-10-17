@@ -1,4 +1,4 @@
-import api from "$lib/api/api";
+import api, { markSessionRefreshed } from "$lib/api/api";
 import { accessToken } from "$lib/stores/auth";
 import { get } from "svelte/store";
 
@@ -91,6 +91,7 @@ export async function logIn(options: { password: string; email: string }) {
 			if (res.data.session_token) {
 				localStorage.setItem("duvet_refresh_token", res.data.session_token);
 			}
+			markSessionRefreshed();
 
 			return res.data;
 		} else {

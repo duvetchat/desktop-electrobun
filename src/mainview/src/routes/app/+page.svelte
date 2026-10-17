@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onDestroy, onMount } from "svelte";
 	import { createWebSocketConnection } from "$lib/api/ws/connection";
+	import { keepSessionFresh } from "$lib/api/api";
 	import ChannelsSidebar from "$lib/components/ChannelsSidebar.svelte";
 	import DMSidebar from "$lib/components/DMSidebar.svelte";
 	import FriendsView from "$lib/components/FriendsView.svelte";
@@ -98,9 +99,16 @@
 		}
 		layoutPrefsHydrated = true;
 
-		const conn = createWebSocketConnection();
+		const session = keepSessionFresh();
+		let conn: ReturnType<typeof createWebSocketConnection> | null = null;
+		let destroyed = false;
+		void session.ready.then(() => {
+			if (!destroyed) conn = createWebSocketConnection();
+		});
 		onDestroy(() => {
-			conn.destroy();
+			destroyed = true;
+			session.stop();
+			conn?.destroy();
 		});
 	});
 

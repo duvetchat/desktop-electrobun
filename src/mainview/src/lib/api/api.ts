@@ -47,19 +47,94 @@ class RefreshFailedError extends Error {
 	}
 }
 
-let isRefreshing = false;
-let failedQueue: Array<{ resolve: (value: any) => void; reject: (reason?: any) => void }> = [];
+// Sessions last 24 h: keepSessionFresh renews them an hour early, so the access token doesn't run
+// out while the app is in use.
+const REFRESHED_AT_KEY = "duvet_session_refreshed_at";
+const REFRESH_AFTER_MS = 23 * 60 * 60 * 1000;
 
-const processQueue = (error: any, token: string | null = null) => {
-	failedQueue.forEach((prom) => {
-		if (error) {
-			prom.reject(error);
-		} else {
-			prom.resolve(token);
-		}
+/** Notes that the session's tokens were just issued, by logging in or refreshing. */
+export function markSessionRefreshed(): void {
+	localStorage.setItem(REFRESHED_AT_KEY, String(Date.now()));
+}
+
+let refreshing: Promise<string> | null = null;
+
+/** Rotates the session's tokens and resolves to the new access token. Concurrent callers share one
+ * request. A rejected session (401/403) signs out; rate limits, server and network errors don't. */
+export function refreshSession(): Promise<string> {
+	refreshing ??= requestRefresh().finally(() => {
+		refreshing = null;
 	});
-	failedQueue = [];
-};
+	return refreshing;
+}
+
+async function requestRefresh(): Promise<string> {
+	const refreshHeaders = new Headers();
+	const currentSessionToken = localStorage.getItem("duvet_refresh_token");
+	if (currentSessionToken) {
+		refreshHeaders.set("X-Session-Token", currentSessionToken);
+	}
+	const refresh = () =>
+		fetch(`${getHostURL()}/api/auth/refresh`, {
+			method: "POST",
+			credentials: "include",
+			headers: refreshHeaders,
+		});
+	try {
+		let res = await refresh();
+		// A 429 means "try again later", not an invalid session: wait as long as the API says,
+		// up to 20s per attempt so queued requests aren't held for minutes.
+		for (let attempt = 0; res.status === 429 && attempt < 3; attempt++) {
+			const waitSeconds = Number(res.headers.get("Retry-After") ?? res.headers.get("X-RateLimit-Reset-After")) || 1;
+			await new Promise((r) => setTimeout(r, Math.min(Math.ceil(waitSeconds), 20) * 1000));
+			res = await refresh();
+		}
+		if (!res.ok) throw new RefreshFailedError(res.status);
+
+		const resData = await res.json();
+		const newToken: string = resData.token;
+		accessToken.set(newToken);
+		localStorage.setItem("duvet_session_token", newToken);
+		if (resData.session_token) {
+			localStorage.setItem("duvet_refresh_token", resData.session_token);
+		}
+		markSessionRefreshed();
+		return newToken;
+	} catch (refreshError) {
+		if (refreshError instanceof RefreshFailedError && (refreshError.status === 401 || refreshError.status === 403)) {
+			accessToken.set(null);
+			localStorage.removeItem("duvet_session_token");
+			window.location.replace(route("/sign-in.html")); // the packaged app only has the .html
+		}
+		throw refreshError;
+	}
+}
+
+/** Renews the session before it expires: checked now, every 10 minutes and whenever the app comes
+ * back into view (timers don't run while the computer sleeps). `ready` settles once a renewal due
+ * right away is done: open the gateway connection after it, since a refresh revokes the old access
+ * token mid-identify otherwise. */
+export function keepSessionFresh(): { ready: Promise<void>; stop: () => void } {
+	const check = async () => {
+		if (!localStorage.getItem("duvet_refresh_token")) return;
+		const refreshedAt = Number(localStorage.getItem(REFRESHED_AT_KEY)) || 0;
+		if (Date.now() - refreshedAt < REFRESH_AFTER_MS) return;
+		await refreshSession().catch((err) => console.error("[API] Session refresh ahead of expiry failed:", err));
+	};
+	const onVisible = () => {
+		if (!document.hidden) void check();
+	};
+	const ready = check();
+	const timer = setInterval(() => void check(), 10 * 60 * 1000);
+	document.addEventListener("visibilitychange", onVisible);
+	return {
+		ready,
+		stop: () => {
+			clearInterval(timer);
+			document.removeEventListener("visibilitychange", onVisible);
+		},
+	};
+}
 
 const buildFetchResponse = async (res: Response): Promise<FetchResponse> => {
 	let responseData = null;
@@ -117,87 +192,20 @@ const coreFetch = async <T = any>(endpoint: string, options: FetchRequestConfig 
 		const fetchResp = await buildFetchResponse(response);
 
 		if (response.status === 401 && !options._retry) {
-			if (isRefreshing) {
-				return new Promise<string>((resolve, reject) => {
-					failedQueue.push({ resolve, reject });
-				})
-					.then((newToken) => {
-						headers.set("Authorization", `Bearer ${newToken}`);
-						fetchOptions.headers = headers;
-						return fetch(url, fetchOptions).then(buildFetchResponse);
-					})
-					.catch((err) => Promise.reject(err));
-			}
-
 			options._retry = true;
-			isRefreshing = true;
-
-			return new Promise(async (resolve, reject) => {
-				try {
-					console.log("[API] Critical Refresh - Single Instance Only");
-
-					const refreshHeaders = new Headers();
-					const currentSessionToken = localStorage.getItem("duvet_refresh_token");
-					if (currentSessionToken) {
-						refreshHeaders.set("X-Session-Token", currentSessionToken);
-					}
-
-					const refresh = () =>
-						fetch(`${getHostURL()}/api/auth/refresh`, {
-							method: "POST",
-							credentials: "include",
-							headers: refreshHeaders,
-						});
-					let res = await refresh();
-					// A 429 means "try again later", not an invalid session: wait as long as the API says,
-					// up to 20s per attempt so queued requests aren't held for minutes.
-					for (let attempt = 0; res.status === 429 && attempt < 3; attempt++) {
-						const waitSeconds =
-							Number(res.headers.get("Retry-After") ?? res.headers.get("X-RateLimit-Reset-After")) || 1;
-						await new Promise((r) => setTimeout(r, Math.min(Math.ceil(waitSeconds), 20) * 1000));
-						res = await refresh();
-					}
-
-					if (!res.ok) throw new RefreshFailedError(res.status);
-
-					const resData = await res.json();
-					const newToken = resData.token;
-
-					accessToken.set(newToken);
-					localStorage.setItem("duvet_session_token", newToken);
-					if (resData.session_token) {
-						localStorage.setItem("duvet_refresh_token", resData.session_token);
-					}
-
-					headers.set("Authorization", `Bearer ${newToken}`);
-					fetchOptions.headers = headers;
-					processQueue(null, newToken);
-
-					const retryResponse = await fetch(url, fetchOptions);
-					const parsedRetry = await buildFetchResponse(retryResponse);
-
-					if (!retryResponse.ok) {
-						reject(new FetchError(`Request failed with status ${retryResponse.status}`, options, parsedRetry));
-					} else {
-						resolve(parsedRetry);
-					}
-				} catch (refreshError: any) {
-					processQueue(refreshError, null);
-
-					// Only a rejected session signs out; rate limits, server and network errors don't.
-					if (
-						refreshError instanceof RefreshFailedError &&
-						(refreshError.status === 401 || refreshError.status === 403)
-					) {
-						accessToken.set(null);
-						localStorage.removeItem("duvet_session_token");
-						window.location.replace(route("/sign-in.html")); // the packaged app only has the .html
-					}
-					reject(refreshError);
-				} finally {
-					isRefreshing = false;
-				}
-			});
+			// Sent before a refresh that has finished since: retry with its tokens. Refreshing again
+			// would revoke them under the requests already retrying with them.
+			const current = get(accessToken) || localStorage.getItem("duvet_session_token");
+			const newToken = current && current !== token ? current : await refreshSession();
+			headers.set("Authorization", `Bearer ${newToken}`);
+			const newSessionToken = localStorage.getItem("duvet_refresh_token");
+			if (newSessionToken) headers.set("X-Session-Token", newSessionToken);
+			const retryResponse = await fetch(url, { ...fetchOptions, headers });
+			const parsedRetry = await buildFetchResponse(retryResponse);
+			if (!retryResponse.ok) {
+				throw new FetchError(`Request failed with status ${retryResponse.status}`, options, parsedRetry);
+			}
+			return parsedRetry;
 		}
 
 		return Promise.reject(new FetchError(`Request failed with status ${response.status}`, options, fetchResp));
