@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { X as XIcon, Link2 as LinkSimpleIcon, Copy as CopySimpleIcon, Check as CheckIcon } from "@lucide/svelte";
+	import { getApiError } from "$lib/api/api";
 	import { Dialog } from "bits-ui";
 	import { createRoomInvite } from "$lib/api/rooms";
 	import type { Channel } from "$lib/types";
@@ -40,7 +41,7 @@
 			const code = await createRoomInvite(spaceId, channel.id);
 			inviteLink = `${DUVET_DOMAIN}/invite?code=${encodeURIComponent(code)}`;
 		} catch (err) {
-			genError = err instanceof Error ? err.message : "Failed to generate link.";
+			genError = getApiError(err, "Failed to generate link.");
 		} finally {
 			isLoading = false;
 		}

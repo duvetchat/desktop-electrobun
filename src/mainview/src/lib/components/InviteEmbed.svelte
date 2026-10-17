@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount } from "svelte";
+	import { getApiError } from "$lib/api/api";
 	import { getInvite, joinInvite } from "$lib/api/invites";
 	import type { InviteInfo } from "$lib/api/invites";
 	import { userSession } from "$lib/stores.svelte";
@@ -48,7 +49,7 @@
 			await joinInvite(code);
 			joined = true;
 		} catch (err) {
-			joinError = err instanceof Error ? err.message : "Failed to join.";
+			joinError = getApiError(err, "Failed to join.");
 		} finally {
 			joining = false;
 		}

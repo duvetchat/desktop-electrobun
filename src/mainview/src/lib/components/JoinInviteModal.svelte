@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { X as XIcon } from "@lucide/svelte";
+	import { getApiError } from "$lib/api/api";
 	import { Dialog } from "bits-ui";
 	import { getInvite, joinInvite } from "$lib/api/invites";
 	import type { InviteInfo } from "$lib/api/invites";
@@ -42,7 +43,7 @@
 		try {
 			invite = await getInvite(c);
 		} catch (err) {
-			loadError = err instanceof Error ? err.message : "Invite not found or has expired.";
+			loadError = getApiError(err, "Invite not found or has expired.");
 		} finally {
 			loading = false;
 		}
@@ -56,7 +57,7 @@
 			await joinInvite(code);
 			open = false;
 		} catch (err) {
-			joinError = err instanceof Error ? err.message : "Failed to join server.";
+			joinError = getApiError(err, "Failed to join server.");
 		} finally {
 			joining = false;
 		}

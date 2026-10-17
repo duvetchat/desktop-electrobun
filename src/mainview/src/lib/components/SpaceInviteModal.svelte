@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { Dialog } from "bits-ui";
+	import { getApiError } from "$lib/api/api";
 	import { X as XIcon } from "@lucide/svelte";
 	import { getInvite, joinInvite, type InviteInfo } from "$lib/api/invites";
 	import { toast } from "$lib/stores/toast.svelte";
@@ -48,7 +49,7 @@
 			joined = true;
 			toast("Joined!", "success");
 		} catch (err) {
-			error = err instanceof Error ? err.message : "Failed to join.";
+			error = getApiError(err, "Failed to join.");
 		} finally {
 			joining = false;
 		}

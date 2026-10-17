@@ -616,7 +616,7 @@
 		try {
 			spaceBuckets = await getSpaceBuckets(spaceId);
 		} catch (e) {
-			spaceBucketsError = e instanceof Error ? e.message : "Failed to load";
+			spaceBucketsError = getApiError(e, "Failed to load");
 		} finally {
 			spaceBucketsLoading = false;
 		}
@@ -737,7 +737,7 @@
 				resetSpaceBucketForm();
 				await loadSpaceBuckets();
 			} catch (e) {
-				spaceBucketsError = e instanceof Error ? e.message : "Failed to save";
+				spaceBucketsError = getApiError(e, "Failed to save");
 			} finally {
 				spaceBucketSaving = false;
 			}

@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount } from "svelte";
+	import { getApiError } from "$lib/api/api";
 	import { get } from "svelte/store";
 	import { currentUser, pendingFriendRequests, sentFriendRequests, friends, conversations } from "$lib/stores.svelte";
 	import {
@@ -95,7 +96,7 @@
 			const sent = await getSentRequests();
 			sentFriendRequests.set(sent);
 		} catch (err) {
-			addError = err instanceof Error ? err.message : "Failed to send request";
+			addError = getApiError(err, "Failed to send request");
 		} finally {
 			loading = false;
 		}
@@ -185,7 +186,7 @@
 			closeGroupModal();
 			activeConversationId = conv.id;
 		} catch (err) {
-			groupError = err instanceof Error ? err.message : "Failed to create group";
+			groupError = getApiError(err, "Failed to create group");
 		}
 	}
 

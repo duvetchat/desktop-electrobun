@@ -1,3 +1,5 @@
+import { getApiError } from "$lib/api/api";
+
 interface ConfirmState {
 	message: string;
 	confirmLabel?: string;
@@ -35,7 +37,7 @@ class ConfirmStore {
 			this.pending = null;
 			this.loading = false;
 		} catch (err) {
-			this.error = err instanceof Error ? err.message : "Something went wrong";
+			this.error = getApiError(err, "Something went wrong");
 			this.loading = false;
 		}
 	}

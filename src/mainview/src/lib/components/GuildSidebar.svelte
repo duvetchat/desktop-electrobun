@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { promptDialog } from "$lib/stores/prompt.svelte";
+	import { getApiError } from "$lib/api/api";
 	import {
 		Plus as PlusIcon,
 		ChevronDown as CaretDownIcon,
@@ -188,7 +189,7 @@
 			await createSpace(serverName.trim(), serverDescription.trim() || undefined);
 			showModal = false;
 		} catch (e) {
-			createError = e instanceof Error ? e.message : "Unknown error";
+			createError = getApiError(e, "Unknown error");
 		} finally {
 			creating = false;
 		}
@@ -222,7 +223,7 @@
 		try {
 			await leaveSpace(guildId);
 		} catch (e) {
-			leaveError = e instanceof Error ? e.message : "Failed to leave server";
+			leaveError = getApiError(e, "Failed to leave server");
 		} finally {
 			leavingGuildId = null;
 		}

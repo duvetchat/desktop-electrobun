@@ -146,7 +146,7 @@
 			onMemberAdded?.(newMember);
 			showAddMemberModal = false;
 		} catch (err) {
-			addMemberError = err instanceof Error ? err.message : "Failed to add member";
+			addMemberError = getApiError(err, "Failed to add member");
 		} finally {
 			addMemberLoading = false;
 		}

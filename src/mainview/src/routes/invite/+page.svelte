@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount } from "svelte";
+	import { getApiError } from "$lib/api/api";
 	import { page } from "$app/state";
 	import { getInvite, joinInvite } from "$lib/api/invites";
 	import type { InviteInfo } from "$lib/api/invites";
@@ -51,7 +52,7 @@
 			try {
 				invite = await getInvite(code);
 			} catch (err) {
-				const msg = err instanceof Error ? err.message : "This invite is invalid or has expired.";
+				const msg = getApiError(err, "This invite is invalid or has expired.");
 				if (msg === "Session invalid or expired") {
 					window.location.href = loginUrlForRedirect(inviteUrl(code));
 					return;
@@ -80,7 +81,7 @@
 			await joinInvite(code);
 			window.location.href = route("/app.html");
 		} catch (err) {
-			const msg = err instanceof Error ? err.message : "We couldn't join this server. Please try again.";
+			const msg = getApiError(err, "We couldn't join this server. Please try again.");
 			if (msg === "Session invalid or expired") {
 				window.location.href = loginUrlForRedirect(inviteUrl(code));
 				return;

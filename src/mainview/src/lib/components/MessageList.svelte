@@ -836,7 +836,7 @@
 			const thread = await getMessageThread(channelId, message.id);
 			threadMessages = thread.map((m) => gatewayMessageToMessage(m, $gatewaySpaces));
 		} catch (e) {
-			threadError = e instanceof Error ? e.message : "Failed to load message thread.";
+			threadError = getApiError(e, "Failed to load message thread.");
 		} finally {
 			threadLoading = false;
 		}

@@ -113,7 +113,7 @@
 				getMyBuckets(),
 			]);
 		} catch (err) {
-			attachmentsError = err instanceof Error ? err.message : "Failed to load";
+			attachmentsError = getApiError(err, "Failed to load");
 		} finally {
 			attachmentsLoading = false;
 		}
@@ -168,7 +168,7 @@
 			buckets = await getMyBuckets();
 			myBuckets.set(buckets);
 		} catch (e) {
-			bucketsError = e instanceof Error ? e.message : "Failed to load";
+			bucketsError = getApiError(e, "Failed to load");
 		} finally {
 			bucketsLoading = false;
 		}
@@ -230,7 +230,7 @@
 				resetBucketForm();
 				await loadBuckets();
 			} catch (e) {
-				bucketsError = e instanceof Error ? e.message : "Failed to save";
+				bucketsError = getApiError(e, "Failed to save");
 			} finally {
 				bucketSaving = false;
 			}
@@ -948,7 +948,7 @@
 			saveSuccess = true;
 			setTimeout(() => (saveSuccess = false), 2000);
 		} catch (err) {
-			saveError = err instanceof Error ? err.message : "Failed to save changes";
+			saveError = getApiError(err, "Failed to save changes");
 		} finally {
 			saving = false;
 		}
