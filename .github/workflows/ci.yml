@@ -1,0 +1,41 @@
+# Lint (oxlint) and type checks (svelte-check) on every push to main and every pull request.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+# A newer push to the same branch or PR makes the older run pointless.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.3
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 10.25.0
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 26
+          cache: pnpm
+          cache-dependency-path: src/mainview/pnpm-lock.yaml
+      - run: bun install --frozen-lockfile
+      # Before the lint: its type-aware rules read src/mainview's packages and the
+      # .svelte-kit/tsconfig.json that this install's svelte-kit sync writes.
+      - run: pnpm install --frozen-lockfile
+        working-directory: src/mainview
+      - run: bun run lint
+      - run: pnpm run check
+        working-directory: src/mainview
