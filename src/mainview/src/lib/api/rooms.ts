@@ -57,8 +57,11 @@ export async function deleteRoomOverwrite(spaceId: string, roomId: string, targe
 	await api.delete(`/api/spaces/${spaceId}/rooms/${roomId}/overwrites/${targetId}`);
 }
 
-export async function createRoomInvite(spaceId: string, roomId: string): Promise<string> {
-	const response = await api.post<{ code: string }>(`/api/spaces/${spaceId}/rooms/${roomId}/invites`);
+/** Makes an invite to the room that works for maxAge seconds (0: until it is revoked); returns its code. */
+export async function createRoomInvite(spaceId: string, roomId: string, maxAge: number): Promise<string> {
+	const response = await api.post<{ code: string }>(`/api/spaces/${spaceId}/rooms/${roomId}/invites`, {
+		max_age: maxAge,
+	});
 	const data = response.data;
 	return data.code;
 }

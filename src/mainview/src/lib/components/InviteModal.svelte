@@ -23,12 +23,29 @@
 	let genError = $state("");
 	let linkInput = $state<HTMLInputElement | undefined>(undefined);
 
-	// A new link when the modal opens or its channel changes, and only then: every update of the
-	// space (someone joining, a role change) hands the props down again, and each run of
-	// generate() makes another invite that never expires.
+	// How long a new link works. Like Discord, 7 days unless you pick otherwise.
+	const EXPIRY_OPTIONS = [
+		{ label: "30 minutes", seconds: 30 * 60 },
+		{ label: "1 hour", seconds: 60 * 60 },
+		{ label: "6 hours", seconds: 6 * 60 * 60 },
+		{ label: "12 hours", seconds: 12 * 60 * 60 },
+		{ label: "1 day", seconds: 24 * 60 * 60 },
+		{ label: "7 days", seconds: 7 * 24 * 60 * 60 },
+		{ label: "Never", seconds: 0 },
+	];
+	let maxAge = $state(7 * 24 * 60 * 60);
+	// The age the shown link was made with: the select can already say another while it is made.
+	let linkAge = $state(0);
+	const expiryLabel = $derived(EXPIRY_OPTIONS.find((o) => o.seconds === linkAge)?.label ?? "");
+	// Only the latest request shows: a slower earlier one mustn't replace the link the last pick asked for.
+	let request = 0;
+
+	// A new link when the modal opens, its channel changes or another expiry is picked, and only
+	// then: every update of the space (someone joining, a role change) hands the props down again,
+	// and each run of generate() makes another invite.
 	let generatedFor: string | null = null;
 	$effect(() => {
-		const key = open && channel ? channel.id : null;
+		const key = open && channel ? `${channel.id}:${maxAge}` : null;
 		if (key === generatedFor) {
 			return;
 		}
@@ -40,17 +57,22 @@
 
 	async function generate() {
 		if (!channel || !spaceId) return;
+		const mine = ++request;
+		const age = maxAge;
 		inviteLink = "";
 		genError = "";
 		copied = false;
 		isLoading = true;
 		try {
-			const code = await createRoomInvite(spaceId, channel.id);
+			const code = await createRoomInvite(spaceId, channel.id, age);
+			if (mine !== request) return;
 			inviteLink = `${DUVET_DOMAIN}/invite?code=${encodeURIComponent(code)}`;
+			linkAge = age;
 		} catch (err) {
+			if (mine !== request) return;
 			genError = getApiError(err, "Failed to generate link.");
 		} finally {
-			isLoading = false;
+			if (mine === request) isLoading = false;
 		}
 	}
 
@@ -132,8 +154,21 @@
 								{/if}
 							</button>
 						</div>
-						<p class="text-xs text-zinc-400">This link never expires.</p>
+						<p class="text-xs text-zinc-400">
+							{linkAge === 0 ? "This link never expires." : `This link expires in ${expiryLabel}.`}
+						</p>
 					{/if}
+					<label class="flex items-center justify-end gap-2 text-xs text-zinc-400">
+						Expire after
+						<select
+							bind:value={maxAge}
+							class="rounded-md border border-zinc-700 bg-zinc-800 px-2 py-1 text-xs text-zinc-200 focus:ring-1 focus:ring-stone-500 focus:outline-none"
+						>
+							{#each EXPIRY_OPTIONS as option (option.seconds)}
+								<option value={option.seconds}>{option.label}</option>
+							{/each}
+						</select>
+					</label>
 				</div>
 			</div>
 		</Dialog.Content>

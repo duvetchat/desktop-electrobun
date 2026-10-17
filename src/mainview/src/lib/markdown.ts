@@ -253,7 +253,7 @@ function applyInline(
 	s = s.replace(/&lt;:([a-f0-9-]+):&gt;/g, (full, id) => {
 		const ce = customEmojiMap?.[id];
 		if (!ce) return `<span class="${ceDelCls}" title="Emoji deleted">💩</span>`;
-		return `<img class="${ceCls}" src="${emojiHost}/attachments/${ce.attachment_id}" alt="${escapeHtml(ce.name)}" title=":${escapeHtml(ce.name)}:" draggable="false" loading="lazy" onerror="var r=+(this.dataset.r||0);if(r<10){this.dataset.r=r+1;this.src=this.src.split('?')[0]+'?r='+Date.now()}else{this.replaceWith(Object.assign(document.createElement('span'),{className:'${ceDelCls}',title:'Emoji deleted',textContent:'💩'}))}">`;
+		return `<img class="${ceCls}" src="${emojiHost}/attachments/${ce.attachment_id}" alt="${escapeHtml(ce.name)}" title=":${escapeHtml(ce.name)}:" draggable="false" loading="lazy" onerror="var r=+(this.dataset.r||0);if(r<10){this.dataset.r=r+1;this.src=this.src.split('?')[0]+'?r='+Date.now()}else{this.replaceWith(Object.assign(document.createElement('span'),{title:'Emoji failed to load',textContent:this.title}))}">`;
 	});
 	return s;
 }

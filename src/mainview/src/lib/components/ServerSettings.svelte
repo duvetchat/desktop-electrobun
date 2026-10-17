@@ -11,6 +11,7 @@
 		Sticker as StickerIcon,
 		Database as DatabaseIcon,
 		Paperclip as PaperclipIcon,
+		Link2 as LinkIcon,
 		X as XIcon,
 		Pencil as PencilIcon,
 		Trash2 as TrashIcon,
@@ -49,6 +50,7 @@
 	} from "$lib/api/spaces";
 	import { getHostURL, getAvatarURL } from "$lib/common/common";
 	import { gatewaySpaces } from "$lib/stores.svelte";
+	import { listSpaceInvites, revokeInvite, type InviteLink } from "$lib/api/invites";
 
 	const attachmentHost = getHostURL();
 
@@ -62,7 +64,7 @@
 		open?: boolean;
 	} = $props();
 
-	type Section = "overview" | "members" | "roles" | "emojis" | "stickers" | "storage" | "attachments";
+	type Section = "overview" | "members" | "roles" | "invites" | "emojis" | "stickers" | "storage" | "attachments";
 	let activeSection = $state<Section>("overview");
 
 	const PERMISSIONS = ALL_PERMISSIONS;
@@ -529,6 +531,7 @@
 	const canManageStickers = $derived(hasSpacePermission(Permission.ManageSpaceStickers));
 	const canManageBuckets = $derived(hasSpacePermission(Permission.ManageSpaceBuckets));
 	const canManageAttachments = $derived(hasSpacePermission(Permission.ManageSpaceAttachments));
+	const canManageInvites = $derived(hasSpacePermission(Permission.ManageInvites));
 	// ── sticker handlers ────────────────────────────────────────
 	async function loadStickers() {
 		if (!spaceId) return;
@@ -657,26 +660,70 @@
 	async function handleDeleteSpaceAttachment(att: SpaceAttachment) {
 		if (!spaceId) return;
 		const sid = spaceId;
-		await confirmAction(`Delete "${att.filename}"?`, "Delete", async () => {
-			await deleteSpaceAttachment(sid, att.id);
-			spaceAttachments = spaceAttachments.filter((a) => a.id !== att.id);
-			spaceStorageUsed -= att.size_bytes;
-		});
+		await confirmAction(
+			`Delete "${att.filename}"? Emojis and stickers made from it are deleted too.`,
+			"Delete",
+			async () => {
+				await deleteSpaceAttachment(sid, att.id);
+				spaceAttachments = spaceAttachments.filter((a) => a.id !== att.id);
+				spaceStorageUsed -= att.size_bytes;
+			},
+		);
 	}
 
 	async function handleDeleteAllSpaceAttachments() {
 		if (!spaceId) return;
 		const sid = spaceId;
-		await confirmAction("Delete all attachments in this space? This cannot be undone.", "Delete", async () => {
-			await deleteAllSpaceAttachments(sid);
-			spaceAttachments = [];
-			spaceStorageUsed = 0;
-		});
+		await confirmAction(
+			"Delete all attachments in this space? Its emojis and stickers go with them. This cannot be undone.",
+			"Delete",
+			async () => {
+				await deleteAllSpaceAttachments(sid);
+				spaceAttachments = [];
+				spaceStorageUsed = 0;
+			},
+		);
 	}
 
 	$effect(() => {
 		if (activeSection === "attachments" && spaceId) {
 			void loadSpaceAttachments();
+		}
+	});
+
+	// Invites: the ones that still work, and revoking them.
+	let spaceInvites = $state<InviteLink[]>([]);
+	let spaceInvitesLoading = $state(false);
+
+	async function loadSpaceInvites() {
+		if (!spaceId) return;
+		spaceInvitesLoading = true;
+		try {
+			spaceInvites = await listSpaceInvites(spaceId);
+		} catch (e) {
+			toast(getApiError(e, "Failed to load invites"), "error");
+		} finally {
+			spaceInvitesLoading = false;
+		}
+	}
+
+	async function handleRevokeInvite(invite: InviteLink) {
+		if (!spaceId) return;
+		const sid = spaceId;
+		await confirmAction("Revoke this invite? Its link stops working.", "Revoke", async () => {
+			await revokeInvite(sid, invite.id);
+			spaceInvites = spaceInvites.filter((i) => i.id !== invite.id);
+		});
+	}
+
+	function inviteCreator(userId: string): string {
+		const user = space?.users.find((u) => u.id === userId);
+		return user ? (user.alias ?? user.username) : "Unknown user";
+	}
+
+	$effect(() => {
+		if (activeSection === "invites" && spaceId) {
+			void loadSpaceInvites();
 		}
 	});
 
@@ -849,6 +896,19 @@
 							Members
 						</button>
 
+						{#if canManageInvites}
+							<button
+								class="flex items-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium transition-colors duration-100
+                            {activeSection === 'invites'
+									? 'bg-zinc-800 text-white'
+									: 'text-zinc-400 hover:bg-zinc-800/60 hover:text-zinc-200'}"
+								onclick={() => (activeSection = "invites")}
+							>
+								<LinkIcon class="size-4" />
+								Invites
+							</button>
+						{/if}
+
 						<button
 							class="flex items-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium transition-colors duration-100
                             {activeSection === 'emojis'
@@ -905,15 +965,17 @@
 								? "Overview"
 								: activeSection === "roles"
 									? "Roles"
-									: activeSection === "emojis"
-										? "Emojis"
-										: activeSection === "stickers"
-											? "Stickers"
-											: activeSection === "storage"
-												? "Storage"
-												: activeSection === "attachments"
-													? "Attachments"
-													: "Members"}
+									: activeSection === "invites"
+										? "Invites"
+										: activeSection === "emojis"
+											? "Emojis"
+											: activeSection === "stickers"
+												? "Stickers"
+												: activeSection === "storage"
+													? "Storage"
+													: activeSection === "attachments"
+														? "Attachments"
+														: "Members"}
 						</h2>
 						<Dialog.Close
 							class="rounded-lg p-1.5 text-zinc-400 transition-colors duration-150 hover:bg-zinc-800 hover:text-white"
@@ -2053,6 +2115,52 @@
 								{/if}
 							{:else}
 								<p class="text-sm text-zinc-400">You don't have permission to manage storage for this server.</p>
+							{/if}
+						{:else if activeSection === "invites"}
+							<p class="mb-3 text-sm text-zinc-400">
+								The invite links that still work. Revoking one makes it stop working for everyone.
+							</p>
+							{#if spaceInvitesLoading}
+								<div class="space-y-2">
+									{#each Array(3) as _}
+										<div class="h-14 animate-pulse rounded-lg bg-zinc-800/40"></div>
+									{/each}
+								</div>
+							{:else if spaceInvites.length === 0}
+								<div class="flex flex-col items-center justify-center py-16 text-zinc-500">
+									<LinkIcon class="mb-3 size-10" />
+									<p class="text-sm">No invites</p>
+								</div>
+							{:else}
+								<div class="space-y-1">
+									{#each spaceInvites as invite (invite.id)}
+										{@const room = space?.rooms.find((r) => r.id === invite.room_id)}
+										<div
+											class="group flex items-center gap-3 rounded-lg border border-zinc-800 bg-zinc-800/30 px-3 py-2.5 transition-colors hover:bg-zinc-800/50"
+										>
+											<div class="min-w-0 flex-1">
+												<p class="truncate font-mono text-sm text-zinc-200">{invite.code}</p>
+												<p class="text-xs text-zinc-500">
+													#{room?.name ?? "deleted channel"}
+													<span class="mx-1 text-zinc-600">&middot;</span>
+													{inviteCreator(invite.created_by)}
+													<span class="mx-1 text-zinc-600">&middot;</span>
+													{invite.expires_at
+														? `Expires ${new Date(invite.expires_at).toLocaleString()}`
+														: "Never expires"}
+												</p>
+											</div>
+											<button
+												onclick={() => handleRevokeInvite(invite)}
+												class="flex h-8 shrink-0 items-center gap-1.5 rounded-md px-2 text-xs font-medium text-zinc-500 opacity-0 transition-all group-hover:opacity-100 hover:bg-red-600/20 hover:text-red-400"
+												title="Revoke"
+											>
+												<TrashIcon class="size-4" />
+												Revoke
+											</button>
+										</div>
+									{/each}
+								</div>
 							{/if}
 						{:else if activeSection === "attachments"}
 							<div class="flex items-center justify-between rounded-lg border border-zinc-800 bg-zinc-800/40 px-4 py-3">

@@ -2,6 +2,7 @@
 	import { computeRoomPermissions, Permission } from "$lib/permissions";
 	import { onDestroy, onMount, tick } from "svelte";
 	import { updateMessage, deleteMessage, getMessageThread } from "$lib/api/messages";
+	import { confirmAction } from "$lib/stores/confirm.svelte";
 	import { Dialog, Popover } from "bits-ui";
 	import {
 		currentUser,
@@ -810,19 +811,20 @@
 		e.preventDefault();
 	}
 
-	async function handleDelete(messageId: string) {
-		deletingMessageId = messageId;
-		try {
-			if (onDeleteMsg) {
-				await onDeleteMsg(messageId);
-			} else {
-				await deleteMessage(messageId, channelId);
+	// Asks first, as deleting a channel does: there's no undo. A failure shows in the dialog.
+	function handleDelete(messageId: string) {
+		return confirmAction("Delete this message? This can't be undone.", "Delete", async () => {
+			deletingMessageId = messageId;
+			try {
+				if (onDeleteMsg) {
+					await onDeleteMsg(messageId);
+				} else {
+					await deleteMessage(messageId, channelId);
+				}
+			} finally {
+				deletingMessageId = null;
 			}
-		} catch (e) {
-			console.error(e);
-		} finally {
-			deletingMessageId = null;
-		}
+		});
 	}
 
 	async function openThreadModal(message: Message) {
