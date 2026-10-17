@@ -955,24 +955,34 @@ function handleEvent(event: GatewayEvent) {
 			break;
 		}
 		case "FRIEND_REQUEST_CREATE": {
-			// Event shape differs from store type; refetch the full list.
-			getPendingRequests()
-				.then((list) => pendingFriendRequests.set(list))
-				.catch((err) => console.error("[WS] Failed to refresh pending requests:", err));
+			// Event shape differs from store type; refetch the full list. The sender's other
+			// sessions get it too, for their sent requests.
+			if (payload.data.sender_id === get(currentUser)?.id) {
+				getSentRequests()
+					.then((list) => sentFriendRequests.set(list))
+					.catch((err) => console.error("[WS] Failed to refresh sent requests:", err));
+			} else {
+				getPendingRequests()
+					.then((list) => pendingFriendRequests.set(list))
+					.catch((err) => console.error("[WS] Failed to refresh pending requests:", err));
+			}
 			break;
 		}
 		case "FRIEND_REQUEST_ACCEPT": {
 			const raw = payload.data;
-			// Event shape differs from store type; refetch the full lists.
+			// Event shape differs from store type; refetch the full lists. Both sides get it.
 			getFriends()
 				.then((list) => friends.set(list))
 				.catch((err) => console.error("[WS] Failed to refresh friends:", err));
 			sentFriendRequests.update((reqs) => reqs.filter((r) => r.id !== raw.request_id));
+			pendingFriendRequests.update((reqs) => reqs.filter((r) => r.id !== raw.request_id));
 			break;
 		}
 		case "FRIEND_REQUEST_REJECT": {
+			// Rejected by the recipient or cancelled by the sender; both sides get it.
 			const raw = payload.data;
 			sentFriendRequests.update((reqs) => reqs.filter((r) => r.id !== raw.id));
+			pendingFriendRequests.update((reqs) => reqs.filter((r) => r.id !== raw.id));
 			break;
 		}
 		case "FRIEND_REMOVE": {
