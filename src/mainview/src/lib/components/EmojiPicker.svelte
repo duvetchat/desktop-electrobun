@@ -36,12 +36,12 @@
 </script>
 
 <div
-	class="flex h-[420px] w-[360px] flex-col overflow-hidden rounded-[10px] border border-[oklch(0.30_0.01_80)] bg-[oklch(0.19_0.008_80)] font-[inherit] shadow-[0_8px_32px_rgba(0,0,0,0.55)]"
+	class="rounded-10px flex h-105 w-90 flex-col overflow-hidden border border-[oklch(0.30_0.01_80)] bg-[oklch(0.19_0.008_80)] font-[inherit] shadow-[0_8px_32px_rgba(0,0,0,0.55)]"
 	role="dialog"
 	aria-label="Emoji picker"
 >
 	<!-- Search bar -->
-	<div class="flex shrink-0 items-center gap-2 border-b border-[oklch(0.25_0.01_80)] px-3 pt-[10px] pb-2">
+	<div class="flex shrink-0 items-center gap-2 border-b border-[oklch(0.25_0.01_80)] px-3 pt-2.5 pb-2">
 		<svg
 			width="14"
 			height="14"
@@ -67,7 +67,7 @@
 		/>
 		{#if searchQuery}
 			<button
-				class="flex shrink-0 cursor-pointer items-center rounded-[3px] border-none bg-none p-[2px] text-[oklch(0.55_0.01_80)] hover:text-[oklch(0.8_0.01_80)]"
+				class="flex shrink-0 cursor-pointer items-center rounded-[3px] border-none bg-none p-0.5 text-[oklch(0.55_0.01_80)] hover:text-[oklch(0.8_0.01_80)]"
 				onclick={() => (searchQuery = "")}
 				aria-label="Clear search"
 			>
@@ -87,7 +87,7 @@
 	{#if !isSearching}
 		<!-- Category tabs -->
 		<div
-			class="flex shrink-0 items-center gap-[2px] overflow-x-auto border-b border-[oklch(0.25_0.01_80)] px-[10px] pt-[6px] pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+			class="flex shrink-0 items-center gap-0.5 overflow-x-auto border-b border-[oklch(0.25_0.01_80)] px-2.5 pt-1.5 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
 			role="tablist"
 			aria-label="Emoji categories"
 		>
@@ -96,7 +96,7 @@
 					role="tab"
 					aria-selected={activeCategory === 0}
 					aria-label="Server Emojis"
-					class="flex shrink-0 cursor-pointer items-center justify-center rounded-[6px] border-none bg-none px-[5px] py-1 transition-[opacity,background] duration-[120ms] {activeCategory ===
+					class="flex shrink-0 cursor-pointer items-center justify-center rounded-md border-none bg-none px-1.25 py-1 transition-[opacity,background] duration-120 {activeCategory ===
 					0
 						? 'bg-[oklch(0.30_0.015_80)] opacity-100'
 						: 'opacity-55 hover:bg-[oklch(0.28_0.01_80)] hover:opacity-85'}"
@@ -128,7 +128,7 @@
 					role="tab"
 					aria-selected={activeCategory === i + categoryOffset}
 					aria-label={cat.label}
-					class="flex shrink-0 cursor-pointer items-center justify-center rounded-[6px] border-none bg-none px-[5px] py-1 transition-[opacity,background] duration-[120ms] {activeCategory ===
+					class="flex shrink-0 cursor-pointer items-center justify-center rounded-md border-none bg-none px-1.25 py-1 transition-[opacity,background] duration-120 {activeCategory ===
 					i + categoryOffset
 						? 'bg-[oklch(0.30_0.015_80)] opacity-100'
 						: 'opacity-55 hover:bg-[oklch(0.28_0.01_80)] hover:opacity-85'}"
@@ -143,22 +143,20 @@
 
 	<!-- Emoji grid -->
 	<div
-		class="flex-1 overflow-y-auto px-[10px] pt-[6px] pb-[10px] [scrollbar-color:oklch(0.35_0.01_80)_transparent] [scrollbar-width:thin] [&::-webkit-scrollbar]:w-[5px] [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-[oklch(0.35_0.01_80)] [&::-webkit-scrollbar-track]:bg-transparent"
+		class="flex-1 overflow-y-auto px-2.5 pt-1.5 pb-2.5 [scrollbar-color:oklch(0.35_0.01_80)_transparent] [scrollbar-width:thin] [&::-webkit-scrollbar]:w-1.25 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-[oklch(0.35_0.01_80)] [&::-webkit-scrollbar-track]:bg-transparent"
 		role="tabpanel"
 	>
 		{#if isSearching}
 			{#if searchResults.length === 0}
-				<div class="py-[30px] text-center text-[13px] text-[oklch(0.52_0.01_80)]">No results for "{searchQuery}"</div>
+				<div class="py-7.5 text-center text-[13px] text-[oklch(0.52_0.01_80)]">No results for "{searchQuery}"</div>
 			{:else}
-				<div
-					class="px-[2px] pt-[6px] pb-2 text-[10px] font-bold tracking-[0.06em] text-[oklch(0.52_0.01_80)] uppercase"
-				>
+				<div class="text-xxs px-0.5 pt-1.5 pb-2 font-bold tracking-[0.06em] text-[oklch(0.52_0.01_80)] uppercase">
 					Search results
 				</div>
-				<div class="grid grid-cols-8 gap-[2px]">
+				<div class="grid grid-cols-8 gap-0.5">
 					{#each searchResults as entry (entry.emoji + entry.name)}
 						<button
-							class="flex cursor-pointer items-center justify-center rounded-[6px] border-none bg-none p-[5px] transition-[background,transform] duration-100 hover:scale-[1.18] hover:bg-[oklch(0.30_0.01_80)] active:scale-100"
+							class="flex cursor-pointer items-center justify-center rounded-md border-none bg-none p-1.25 transition-[background,transform] duration-100 hover:scale-[1.18] hover:bg-[oklch(0.30_0.01_80)] active:scale-100"
 							onclick={() => pick(entry.emoji)}
 							title={entry.name}
 							aria-label={entry.name}
@@ -183,13 +181,13 @@
 				</div>
 			{/if}
 		{:else if hasCustom && activeCategory === 0}
-			<div class="px-[2px] pt-[6px] pb-2 text-[10px] font-bold tracking-[0.06em] text-[oklch(0.52_0.01_80)] uppercase">
+			<div class="text-xxs px-0.5 pt-1.5 pb-2 font-bold tracking-[0.06em] text-[oklch(0.52_0.01_80)] uppercase">
 				Server Emojis
 			</div>
-			<div class="grid grid-cols-8 gap-[2px]">
+			<div class="grid grid-cols-8 gap-0.5">
 				{#each customEmojis as ce (ce.id)}
 					<button
-						class="flex cursor-pointer items-center justify-center rounded-[6px] border-none bg-none p-[5px] transition-[background,transform] duration-100 hover:scale-[1.18] hover:bg-[oklch(0.30_0.01_80)] active:scale-100"
+						class="flex cursor-pointer items-center justify-center rounded-md border-none bg-none p-1.25 transition-[background,transform] duration-100 hover:scale-[1.18] hover:bg-[oklch(0.30_0.01_80)] active:scale-100"
 						onclick={() => pick(`<:${ce.id}:>`)}
 						title=":{ce.name}:"
 						aria-label=":{ce.name}:"
@@ -205,13 +203,13 @@
 			</div>
 		{:else}
 			{@const cat = emojiCategories[activeCategory - categoryOffset]}
-			<div class="px-[2px] pt-[6px] pb-2 text-[10px] font-bold tracking-[0.06em] text-[oklch(0.52_0.01_80)] uppercase">
+			<div class="text-xxs px-0.5 pt-1.5 pb-2 font-bold tracking-[0.06em] text-[oklch(0.52_0.01_80)] uppercase">
 				{cat.label}
 			</div>
-			<div class="grid grid-cols-8 gap-[2px]">
+			<div class="grid grid-cols-8 gap-0.5">
 				{#each cat.emojis as entry (entry.emoji)}
 					<button
-						class="flex cursor-pointer items-center justify-center rounded-[6px] border-none bg-none p-[5px] transition-[background,transform] duration-100 hover:scale-[1.18] hover:bg-[oklch(0.30_0.01_80)] active:scale-100"
+						class="flex cursor-pointer items-center justify-center rounded-md border-none bg-none p-1.25 transition-[background,transform] duration-100 hover:scale-[1.18] hover:bg-[oklch(0.30_0.01_80)] active:scale-100"
 						onclick={() => pick(entry.emoji)}
 						title={entry.name}
 						aria-label={entry.name}
