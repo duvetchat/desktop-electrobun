@@ -590,6 +590,9 @@ export interface GatewayEvent {
 	d?: GatewayEventPayload;
 	s: number;
 	event: string;
+	/** With `event: "close-with-reason"`, sent just before the gateway closes the socket. */
+	code?: number;
+	reason?: string;
 }
 
 export interface GatewayReadyActiveCall {

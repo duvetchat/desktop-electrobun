@@ -1382,6 +1382,15 @@ export function createWebSocketConnection(): GatewayConnection {
 					onHeartbeatAck();
 					return;
 				}
+				if (msg.event === "close-with-reason") {
+					// 4004: the gateway rejected or revoked the token. Ask the API about the session now
+					// rather than after a few more tries with that token: a dead session gets a 401
+					// there, which signs out; a live one passes, and reconnecting uses its current token.
+					if (msg.code === 4004) {
+						fetchMe().catch((err) => console.warn("[WS] Session check after a 4004 failed:", err));
+					}
+					return;
+				}
 				if (msg.event === "payload") {
 					if (import.meta.env.DEV) console.log("[WS] Payload:", msg);
 					handleEvent(msg);
