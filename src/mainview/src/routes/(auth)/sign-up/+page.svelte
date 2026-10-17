@@ -201,7 +201,7 @@
 							class="flex h-4 w-4 items-center justify-center rounded border border-stone-600 bg-stone-900/70 data-[state=checked]:border-stone-600 data-[state=checked]:bg-stone-600"
 						>
 							{#if acceptTerms}
-								<span class="text-[10px] text-white">✓</span>
+								<span class="text-xxs text-white">✓</span>
 							{/if}
 						</Checkbox.Root>
 						<span

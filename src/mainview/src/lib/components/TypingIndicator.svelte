@@ -35,7 +35,7 @@
 </script>
 
 {#if activeTypers.length > 0}
-	<div class="flex min-h-[20px] items-center gap-[6px] px-3 pt-[2px] pb-1 text-xs text-[oklch(0.65_0.01_80)]">
+	<div class="flex min-h-5 items-center gap-1.5 px-3 pt-0.5 pb-1 text-xs text-[oklch(0.65_0.01_80)]">
 		<div class="flex items-center">
 			{#each activeTypers.slice(0, 3) as user, i (user.user_id)}
 				<div class="rounded-full border-[1.5px] border-[oklch(0.19_0.008_80)] {i === 0 ? '' : '-ml-1'}">
@@ -46,7 +46,7 @@
 		<span class="text-xs text-[oklch(0.65_0.01_80)] [&_strong]:font-semibold [&_strong]:text-[oklch(0.85_0.008_80)]"
 			>{typingText()}</span
 		>
-		<div class="ml-[2px] flex items-center gap-[3px]" aria-hidden="true">
+		<div class="ml-0.5 flex items-center gap-0.75" aria-hidden="true">
 			<span class="animate-typing-bounce block size-1 rounded-full bg-[oklch(0.55_0.01_80)]"></span>
 			<span class="animate-typing-bounce block size-1 rounded-full bg-[oklch(0.55_0.01_80)] [animation-delay:0.2s]"
 			></span>

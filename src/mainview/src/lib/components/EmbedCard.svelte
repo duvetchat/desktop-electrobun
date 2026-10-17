@@ -57,7 +57,7 @@
 		<img
 			src={embed.image.url}
 			alt={embed.title ?? "Sticker"}
-			class="h-[160px] w-[160px] object-contain"
+			class="h-40 w-40 object-contain"
 			loading="lazy"
 			title={embed.title ?? ""}
 		/>
@@ -69,15 +69,15 @@
 			muted
 			playsinline
 			controls
-			class="mt-1 max-h-[350px] max-w-[550px] self-start rounded"
+			class="mt-1 max-h-87.5 max-w-137.5 self-start rounded"
 		></video>
 	{:else if embed.image}
 		<button
 			type="button"
-			class="mt-1 block max-w-[550px] cursor-zoom-in self-start rounded"
+			class="mt-1 block max-w-137.5 cursor-zoom-in self-start rounded"
 			onclick={() => onImageClick?.(embed.image!.url)}
 		>
-			<img src={embed.image.url} alt="" class="max-h-[350px] max-w-[550px] rounded" loading="lazy" />
+			<img src={embed.image.url} alt="" class="max-h-87.5 max-w-137.5 rounded" loading="lazy" />
 		</button>
 	{/if}
 {:else if isTikTokEmbed(embed)}
@@ -102,7 +102,7 @@
 				{/if}
 			{/if}
 		</div>
-		<div class="aspect-[9/16] w-full">
+		<div class="aspect-9/16 w-full">
 			<iframe
 				src={embed.video?.url}
 				title={embed.title ?? "TikTok"}

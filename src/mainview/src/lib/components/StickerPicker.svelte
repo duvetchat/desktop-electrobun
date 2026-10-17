@@ -16,12 +16,12 @@
 </script>
 
 <div
-	class="flex h-[420px] w-[360px] flex-col overflow-hidden rounded-[10px] border border-[oklch(0.30_0.01_80)] bg-[oklch(0.19_0.008_80)] font-[inherit] shadow-[0_8px_32px_rgba(0,0,0,0.55)]"
+	class="rounded-10px flex h-105 w-90 flex-col overflow-hidden border border-[oklch(0.30_0.01_80)] bg-[oklch(0.19_0.008_80)] font-[inherit] shadow-[0_8px_32px_rgba(0,0,0,0.55)]"
 	role="dialog"
 	aria-label="Sticker picker"
 >
 	<!-- Search bar -->
-	<div class="flex shrink-0 items-center gap-2 border-b border-[oklch(0.25_0.01_80)] px-3 pt-[10px] pb-2">
+	<div class="flex shrink-0 items-center gap-2 border-b border-[oklch(0.25_0.01_80)] px-3 pt-2.5 pb-2">
 		<svg
 			width="14"
 			height="14"
@@ -46,7 +46,7 @@
 		/>
 		{#if searchQuery}
 			<button
-				class="flex shrink-0 cursor-pointer items-center rounded-[3px] border-none bg-none p-[2px] text-[oklch(0.55_0.01_80)] hover:text-[oklch(0.8_0.01_80)]"
+				class="flex shrink-0 cursor-pointer items-center rounded-[3px] border-none bg-none p-0.5 text-[oklch(0.55_0.01_80)] hover:text-[oklch(0.8_0.01_80)]"
 				onclick={() => (searchQuery = "")}
 				aria-label="Clear search"
 			>
@@ -65,7 +65,7 @@
 
 	<!-- Sticker grid -->
 	<div
-		class="flex-1 overflow-y-auto px-3 py-3 [scrollbar-color:oklch(0.35_0.01_80)_transparent] [scrollbar-width:thin] [&::-webkit-scrollbar]:w-[5px] [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-[oklch(0.35_0.01_80)] [&::-webkit-scrollbar-track]:bg-transparent"
+		class="flex-1 overflow-y-auto px-3 py-3 [scrollbar-color:oklch(0.35_0.01_80)_transparent] [scrollbar-width:thin] [&::-webkit-scrollbar]:w-1.25 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-[oklch(0.35_0.01_80)] [&::-webkit-scrollbar-track]:bg-transparent"
 	>
 		{#if stickers.length === 0}
 			<div class="flex h-full flex-col items-center justify-center text-center">
@@ -87,7 +87,7 @@
 				<p class="text-xs text-[oklch(0.45_0.01_80)]">No stickers available</p>
 			</div>
 		{:else if filtered.length === 0}
-			<div class="py-[30px] text-center text-[13px] text-[oklch(0.52_0.01_80)]">No results for "{searchQuery}"</div>
+			<div class="py-7.5 text-center text-[13px] text-[oklch(0.52_0.01_80)]">No results for "{searchQuery}"</div>
 		{:else}
 			<div class="grid grid-cols-3 gap-2">
 				{#each filtered as sticker (sticker.id)}
@@ -100,7 +100,7 @@
 						<img
 							src="{host}/attachments/{sticker.attachment_id}"
 							alt={sticker.name}
-							class="pointer-events-none h-[100px] w-[100px] object-contain select-none"
+							class="pointer-events-none h-25 w-25 object-contain select-none"
 							loading="lazy"
 						/>
 					</button>

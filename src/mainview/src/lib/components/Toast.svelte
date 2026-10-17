@@ -3,7 +3,7 @@
 </script>
 
 {#if toastStore.items.length > 0}
-	<div class="pointer-events-none fixed right-4 bottom-4 z-[9999] flex flex-col gap-2">
+	<div class="pointer-events-none fixed right-4 bottom-4 z-9999 flex flex-col gap-2">
 		{#each toastStore.items as t (t.id)}
 			<div
 				class="animate-slide-in pointer-events-auto flex items-center gap-2 rounded-lg border px-4 py-2.5 text-sm shadow-lg backdrop-blur-sm

@@ -110,7 +110,7 @@
 {#if open}
 	<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 	<div
-		class="fixed inset-0 z-[200] flex items-center justify-center bg-black/85 backdrop-blur-sm"
+		class="fixed inset-0 z-200 flex items-center justify-center bg-black/85 backdrop-blur-sm"
 		role="dialog"
 		aria-modal="true"
 		tabindex="-1"
