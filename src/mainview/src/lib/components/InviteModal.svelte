@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { untrack } from "svelte";
 	import { X as XIcon, Link2 as LinkSimpleIcon, Copy as CopySimpleIcon, Check as CheckIcon } from "@lucide/svelte";
 	import { getApiError } from "$lib/api/api";
 	import { Dialog } from "bits-ui";
@@ -22,13 +23,19 @@
 	let genError = $state("");
 	let linkInput = $state<HTMLInputElement | undefined>(undefined);
 
-	// Re-generate whenever the modal opens or the channel changes
-
+	// A new link when the modal opens or its channel changes, and only then: every update of the
+	// space (someone joining, a role change) hands the props down again, and each run of
+	// generate() makes another invite that never expires.
+	let generatedFor: string | null = null;
 	$effect(() => {
-		if (!open || !channel) {
+		const key = open && channel ? channel.id : null;
+		if (key === generatedFor) {
 			return;
 		}
-		generate();
+		generatedFor = key;
+		if (key !== null) {
+			untrack(() => generate());
+		}
 	});
 
 	async function generate() {

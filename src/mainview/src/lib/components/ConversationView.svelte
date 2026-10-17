@@ -195,7 +195,8 @@
 				cached.updated_at === msg.updated_at &&
 				cached.attachments === msg.attachments &&
 				cached.reactions === msg.reactions &&
-				cached.embeds === msg.embeds
+				cached.embeds === msg.embeds &&
+				cached.referenced_message === (msg.referenced_message ?? null)
 			) {
 				result.push(cached);
 			} else {
@@ -693,7 +694,11 @@
 							onclick={() => handleAddMember(uid)}
 							disabled={addMemberLoading}
 						>
-							<UserAvatar src={friend.user_avatar ?? null} name={friend.user_alias ?? friend.user_username} size={32} />
+							<UserAvatar
+								src={getAvatarURL(getFriendOtherId(friend), friend.user_avatar)}
+								name={friend.user_alias ?? friend.user_username}
+								size={32}
+							/>
 							<div class="flex min-w-0 flex-col">
 								<span class="text-sm text-stone-200">{friend.user_alias ?? friend.user_username}</span>
 								<span class="text-xs text-zinc-500">@{friend.user_username}</span>

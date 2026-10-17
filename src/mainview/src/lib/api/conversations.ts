@@ -35,6 +35,7 @@ export interface Conversation {
 export interface DirectMessage {
 	id: string;
 	conversation_id: string | null;
+	/** Always set for a DM: the API's type allows null only because webhook room messages share the table. */
 	author_id: string;
 	content: string | null;
 	type: MessageType;

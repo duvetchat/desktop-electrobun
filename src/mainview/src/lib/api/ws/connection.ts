@@ -39,7 +39,7 @@ import { getWSHostURL, getAvatarURL, route } from "$lib/common/common";
 import { get } from "svelte/store";
 import { getSpaceMembers, type SpaceMemberWithUser } from "$lib/api/spaces";
 
-import type { GatewayEvent, GatewaySpace, UserStatus } from "$lib/types";
+import type { GatewayEvent, GatewaySpace, ReferencedMessage, UserStatus } from "$lib/types";
 
 import { gatewayMessageToMessage } from "$lib/types";
 
@@ -146,6 +146,12 @@ function addMembersToSpace(spaceId: string, rows: SpaceMemberWithUser[]) {
 			};
 		}),
 	);
+}
+
+/** A reply's reference once the message it quotes is deleted: only the reference itself stays,
+ * as the API sends it from then on, and the reply shows the original as deleted. */
+function deletedReference(ref: ReferencedMessage): ReferencedMessage {
+	return { type: ref.type, message_id: ref.message_id, room_id: ref.room_id, space_id: ref.space_id };
 }
 
 function handleEvent(event: GatewayEvent) {
@@ -377,9 +383,13 @@ function handleEvent(event: GatewayEvent) {
 					}
 				}
 
-				// Prevent duplicates (e.g., from hot-reloads or double socket connections)
-				if (existing.some((m) => m.id === message.id)) {
-					return all;
+				// Already listed (a history load while its files were uploading, a second socket): the
+				// event has the finished message, files included, so it replaces that copy.
+				const listed = existing.findIndex((m) => m.id === message.id);
+				if (listed !== -1) {
+					const newMessages = [...existing];
+					newMessages[listed] = message;
+					return { ...all, [roomId]: newMessages };
 				}
 				return {
 					...all,
@@ -423,7 +433,13 @@ function handleEvent(event: GatewayEvent) {
 				const existing = all[raw.room_id] ?? [];
 				return {
 					...all,
-					[raw.room_id]: existing.filter((m) => m.id !== raw.id),
+					[raw.room_id]: existing
+						.filter((m) => m.id !== raw.id)
+						.map((m) =>
+							m.referenced_message?.message_id === raw.id
+								? { ...m, referenced_message: deletedReference(m.referenced_message) }
+								: m,
+						),
 				};
 			});
 			break;
@@ -1000,12 +1016,9 @@ function handleEvent(event: GatewayEvent) {
 		}
 		case "CONVERSATION_UPDATE": {
 			const raw = payload.data;
-			conversations.update((list) => list.map((c) => (c.id === raw.id ? { ...c, name: raw.name } : c)));
-			break;
-		}
-		case "CONVERSATION_DELETE": {
-			const raw = payload.data;
-			conversations.update((list) => list.filter((c) => c.id !== raw.id));
+			conversations.update((list) =>
+				list.map((c) => (c.id === raw.id ? { ...c, name: raw.name, owner_id: raw.owner_id } : c)),
+			);
 			break;
 		}
 		case "CONVERSATION_MEMBER_ADD": {
@@ -1082,7 +1095,13 @@ function handleEvent(event: GatewayEvent) {
 						return { ...all, [conversationId]: updated };
 					}
 				}
-				if (existing.some((m) => m.id === msg.id)) return all;
+				// Already listed: the event's copy is the finished one (see MESSAGE_CREATE).
+				const listed = existing.findIndex((m) => m.id === msg.id);
+				if (listed !== -1) {
+					const updated = [...existing];
+					updated[listed] = msg;
+					return { ...all, [conversationId]: updated };
+				}
 				return { ...all, [conversationId]: [...existing, msg] };
 			});
 			// Move conversation to top
@@ -1103,9 +1122,16 @@ function handleEvent(event: GatewayEvent) {
 				const existing = all[conversationId] ?? [];
 				return {
 					...all,
-					// The update payload carries no attachments, reactions or reply data: keep the existing ones.
+					// The update payload carries what an edit changes, not attachments, reactions or reply data.
 					[conversationId]: existing.map((m) => {
-						if (m.id === msg.id) return { ...m, ...msg };
+						if (m.id === msg.id)
+							return {
+								...m,
+								content: msg.content,
+								updated_at: msg.updated_at,
+								embeds: msg.embeds,
+								sticker_attachment_id: msg.sticker_attachment_id,
+							};
 						if (m.referenced_message?.message_id === msg.id) {
 							return { ...m, referenced_message: { ...m.referenced_message, content: msg.content } };
 						}
@@ -1121,7 +1147,13 @@ function handleEvent(event: GatewayEvent) {
 				const existing = all[raw.conversation_id] ?? [];
 				return {
 					...all,
-					[raw.conversation_id]: existing.filter((m) => m.id !== raw.id),
+					[raw.conversation_id]: existing
+						.filter((m) => m.id !== raw.id)
+						.map((m) =>
+							m.referenced_message?.message_id === raw.id
+								? { ...m, referenced_message: deletedReference(m.referenced_message) }
+								: m,
+						),
 				};
 			});
 			break;

@@ -423,7 +423,7 @@
 		const wh = roomWebhooks.find((w) => w.id === webhookId);
 		if (!wh) return;
 		const whName = wh.username;
-		await confirmAction(`Delete webhook "${whName}"? This can't be undone.`, "Deleting", async () => {
+		await confirmAction(`Delete webhook "${whName}"? This can't be undone.`, "Delete", async () => {
 			isDeletingWebhook = { ...isDeletingWebhook, [webhookId]: true };
 			try {
 				await deleteWebhook(space.id, room.id, webhookId);

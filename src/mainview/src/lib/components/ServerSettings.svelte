@@ -402,7 +402,7 @@
 		const roleName = sortedRoles.find((r) => r.id === roleId)?.name ?? "this role";
 		if (!spaceId) return;
 		const sid = spaceId;
-		await confirmAction(`Delete "${roleName}"? This can't be undone.`, "Deleting", async () => {
+		await confirmAction(`Delete "${roleName}"? This can't be undone.`, "Delete", async () => {
 			await deleteRole(sid, roleId);
 			if (editingRoleId === roleId) {
 				editingRoleId = null;
@@ -514,7 +514,7 @@
 		if (!spaceId) return;
 		const sid = spaceId;
 		const emojiName = spaceEmojis.find((e) => e.id === emojiId)?.name ?? "this emoji";
-		await confirmAction(`Delete ":${emojiName}:"? This can't be undone.`, "Deleting", async () => {
+		await confirmAction(`Delete ":${emojiName}:"? This can't be undone.`, "Delete", async () => {
 			isDeletingEmoji = { ...isDeletingEmoji, [emojiId]: true };
 			try {
 				await deleteEmoji(sid, emojiId);
@@ -597,7 +597,7 @@
 		if (!spaceId) return;
 		const sid = spaceId;
 		const stickerName = spaceStickers.find((s) => s.id === stickerId)?.name ?? "this sticker";
-		await confirmAction(`Delete "${stickerName}"? This can't be undone.`, "Deleting", async () => {
+		await confirmAction(`Delete "${stickerName}"? This can't be undone.`, "Delete", async () => {
 			isDeletingSticker = { ...isDeletingSticker, [stickerId]: true };
 			try {
 				await deleteSticker(sid, stickerId);
@@ -657,7 +657,7 @@
 	async function handleDeleteSpaceAttachment(att: SpaceAttachment) {
 		if (!spaceId) return;
 		const sid = spaceId;
-		await confirmAction(`Delete "${att.filename}"?`, "Deleting", async () => {
+		await confirmAction(`Delete "${att.filename}"?`, "Delete", async () => {
 			await deleteSpaceAttachment(sid, att.id);
 			spaceAttachments = spaceAttachments.filter((a) => a.id !== att.id);
 			spaceStorageUsed -= att.size_bytes;
@@ -667,7 +667,7 @@
 	async function handleDeleteAllSpaceAttachments() {
 		if (!spaceId) return;
 		const sid = spaceId;
-		await confirmAction("Delete all attachments in this space? This cannot be undone.", "Deleting", async () => {
+		await confirmAction("Delete all attachments in this space? This cannot be undone.", "Delete", async () => {
 			await deleteAllSpaceAttachments(sid);
 			spaceAttachments = [];
 			spaceStorageUsed = 0;
@@ -758,7 +758,7 @@
 		if (!spaceId) return;
 		const sid = spaceId;
 		const b = spaceBuckets.find((x) => x.id === id);
-		await confirmAction(`Delete bucket "${b?.name}"?`, "Deleting", async () => {
+		await confirmAction(`Delete bucket "${b?.name}"?`, "Delete", async () => {
 			await deleteSpaceBucket(sid, id);
 			await loadSpaceBuckets();
 		});
@@ -1395,10 +1395,13 @@
 																	startEdit(role);
 																}}>Edit</button
 															>
-															<button
-																class="h-7 rounded-md bg-red-800/70 px-2.5 text-xs text-white transition-colors hover:bg-red-700 disabled:opacity-50"
-																onclick={() => handleDeleteRole(role.id)}>Delete</button
-															>
+															<!-- everyone (its ID is the space's) can be edited, not deleted -->
+															{#if role.id !== spaceId}
+																<button
+																	class="h-7 rounded-md bg-red-800/70 px-2.5 text-xs text-white transition-colors hover:bg-red-700 disabled:opacity-50"
+																	onclick={() => handleDeleteRole(role.id)}>Delete</button
+																>
+															{/if}
 														</div>
 													</div>
 												{/if}
@@ -1430,7 +1433,11 @@
 												: 'hover:bg-zinc-750 border-zinc-700 bg-zinc-800'}"
 											onclick={() => (selectedMemberUserId = member.user_id)}
 										>
-											<UserAvatar src={user?.avatar ?? null} name={user?.username ?? "Unknown"} size={32} />
+											<UserAvatar
+												src={getAvatarURL(member.user_id, user?.avatar)}
+												name={user?.username ?? "Unknown"}
+												size={32}
+											/>
 											<div class="min-w-0 flex-1">
 												<p class="truncate text-sm font-medium text-zinc-200">
 													{member.alias ?? user?.username ?? "Unknown member"}
@@ -1457,7 +1464,7 @@
 											</div>
 											<div class="flex items-center gap-3">
 												<UserAvatar
-													src={selectedSettingsUser.avatar ?? null}
+													src={getAvatarURL(selectedSettingsUser.id, selectedSettingsUser.avatar)}
 													name={selectedSettingsUser.username}
 													size={40}
 												/>

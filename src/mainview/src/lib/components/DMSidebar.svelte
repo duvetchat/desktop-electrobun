@@ -5,6 +5,7 @@
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
 	import UserStatusBar from "$lib/components/UserStatusBar.svelte";
 	import type { Conversation } from "$lib/api/conversations";
+	import { getAvatarURL } from "$lib/common/common";
 
 	let {
 		activeConversationId = null,
@@ -32,7 +33,7 @@
 		if (conv.type === 2) return null;
 		const me = get(currentUser);
 		const other = conv.members.find((m) => m.user_id !== me?.id);
-		return other?.user?.avatar;
+		return getAvatarURL(other?.user_id ?? "", other?.user?.avatar);
 	}
 </script>
 

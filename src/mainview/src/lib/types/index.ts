@@ -114,7 +114,9 @@ export interface MessageReaction {
 export interface GatewayMessage {
 	id: string;
 	room_id: string | null;
-	author_id: string;
+	/** Null for webhook messages, which carry webhook_id instead. */
+	author_id: string | null;
+	webhook_id?: string;
 	content: string | null;
 	type: MessageType;
 	created_at: string;
@@ -133,6 +135,8 @@ export interface Message {
 	content: string | null;
 	type: MessageType;
 	author_id: string;
+	/** Set on a webhook's messages, whose author_id is the webhook: there is no user behind them. */
+	webhook_id?: string;
 	author_name: string;
 	author_avatar_url: string | null;
 	author_is_bot: boolean;
@@ -173,6 +177,48 @@ export interface GatewayRoomOverwrite {
 
 export type RoomType = 1 | 2 | 3; // 1 = text, 2 = voice, 3 = category
 
+/** MESSAGE_UPDATE: the edited message, without its attachments, reactions or referenced message. */
+export interface MessageUpdateEvent {
+	id: string;
+	room_id: string | null;
+	author_id: string | null;
+	content: string | null;
+	type: MessageType;
+	created_at: string;
+	updated_at: string;
+	sticker_attachment_id: string | null;
+	embeds: Embed[] | null;
+	user?: GatewayUser;
+}
+
+/** DM_MESSAGE_UPDATE: like MESSAGE_UPDATE, for a conversation. */
+export interface DMMessageUpdateEvent {
+	id: string;
+	conversation_id: string | null;
+	author_id: string | null;
+	content: string | null;
+	type: MessageType;
+	created_at: string;
+	updated_at: string;
+	sticker_attachment_id: string | null;
+	embeds: Embed[] | null;
+	user?: GatewayUser;
+}
+
+/** SPACE_UPDATE: the space itself, without its rooms, roles or members. */
+export interface SpaceUpdateEvent {
+	id: string;
+	name: string;
+	description: string | null;
+	owner_id: string;
+	banner: string | null;
+	locale: string | null;
+	icon: string | null;
+	created_at: string;
+	updated_at: string;
+	deleted_at: string | null;
+}
+
 export interface GatewayRoom {
 	id: string;
 	space_id: string | null;
@@ -184,6 +230,8 @@ export interface GatewayRoom {
 	nsfw: boolean;
 	created_at: string;
 	updated_at: string;
+	/** Always null in ROOM_* events; the SPACE_CREATE snapshot leaves it out. */
+	deleted_at?: string | null;
 }
 
 export interface GatewayMember {
@@ -206,6 +254,8 @@ export interface GatewayRole {
 	permissions: number;
 	created_at: string;
 	updated_at: string;
+	/** Always null in ROLE_* events; the SPACE_CREATE snapshot leaves it out. */
+	deleted_at?: string | null;
 	hoisted: boolean;
 	position: number;
 }
@@ -493,13 +543,11 @@ export interface TeamInviteCreateEvent {
 	invited_by_username: string;
 }
 
+/** The conversation's name and owner as they are now (renamed, or its owner left). */
 export interface ConversationUpdateEvent {
 	id: string;
-	name: string;
-}
-
-export interface ConversationDeleteEvent {
-	id: string;
+	name: string | null;
+	owner_id: string;
 }
 
 export interface ConversationMemberAddEvent {
@@ -527,7 +575,7 @@ export type GatewayEventPayload =
 	| { type: "READY"; data: GatewayReadyData }
 	| { type: "SPACE_CREATE"; data: GatewaySpaceCreatePayload }
 	| { type: "SPACE_DELETE"; data: SpaceDeleteEvent }
-	| { type: "SPACE_UPDATE"; data: GatewaySpace }
+	| { type: "SPACE_UPDATE"; data: SpaceUpdateEvent }
 	| { type: "ROOM_CREATE"; data: GatewayRoom }
 	| { type: "ROOM_UPDATE"; data: GatewayRoom }
 	| { type: "ROOM_REORDER"; data: RoomReorderEvent }
@@ -535,7 +583,7 @@ export type GatewayEventPayload =
 	| { type: "ROOM_OVERWRITE_UPDATE"; data: GatewayRoomOverwrite }
 	| { type: "ROOM_OVERWRITE_DELETE"; data: OverwriteDeleteEvent }
 	| { type: "MESSAGE_CREATE"; data: GatewayMessage }
-	| { type: "MESSAGE_UPDATE"; data: GatewayMessage }
+	| { type: "MESSAGE_UPDATE"; data: MessageUpdateEvent }
 	| { type: "MESSAGE_DELETE"; data: GatewayMessageDelete }
 	| { type: "MENTION_CREATE"; data: MentionCreateEvent }
 	| { type: "DM_MENTION_CREATE"; data: DMMentionCreateEvent }
@@ -569,11 +617,10 @@ export type GatewayEventPayload =
 	| { type: "FRIEND_REMOVE"; data: FriendRemoveEvent }
 	| { type: "CONVERSATION_CREATE"; data: Conversation }
 	| { type: "CONVERSATION_UPDATE"; data: ConversationUpdateEvent }
-	| { type: "CONVERSATION_DELETE"; data: ConversationDeleteEvent }
 	| { type: "CONVERSATION_MEMBER_ADD"; data: ConversationMemberAddEvent }
 	| { type: "CONVERSATION_MEMBER_REMOVE"; data: ConversationMemberRemoveEvent }
 	| { type: "DM_MESSAGE_CREATE"; data: DirectMessage }
-	| { type: "DM_MESSAGE_UPDATE"; data: DirectMessage }
+	| { type: "DM_MESSAGE_UPDATE"; data: DMMessageUpdateEvent }
 	| { type: "DM_MESSAGE_DELETE"; data: DMMessageDeleteEvent }
 	| { type: "DM_REACTION_ADD"; data: ReactionEvent }
 	| { type: "DM_REACTION_REMOVE"; data: ReactionRemoveEvent }
@@ -660,7 +707,9 @@ export function gatewayMessageToMessage(msg: GatewayMessage, spaces: GatewaySpac
 		id: msg.id,
 		content: msg.content ?? "",
 		type: msg.type ?? 0,
-		author_id: msg.author_id,
+		// A webhook's message has no author: its webhook stands in, as in the synthetic user.
+		author_id: msg.author_id ?? msg.webhook_id ?? "",
+		webhook_id: msg.webhook_id,
 		author_name,
 		author_avatar_url,
 		author_is_bot,

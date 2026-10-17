@@ -18,6 +18,7 @@
 	import { UserPlus, UserCheck, UserX, Users, Clock, Send, MessageSquare, Check, ChevronLeft } from "@lucide/svelte";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
 	import ConversationView from "$lib/components/ConversationView.svelte";
+	import { getAvatarURL } from "$lib/common/common";
 
 	let {
 		activeConversationId = $bindable<string | null>(null),
@@ -201,13 +202,6 @@
 		if (conv.type === 2) return `${conv.members.length} members`;
 		return "Direct message";
 	}
-
-	function convAvatarSrc(conv: Conversation): string | null | undefined {
-		if (conv.type === 2) return null;
-		const me = get(currentUser);
-		const other = conv.members.find((m) => m.user_id !== me?.id);
-		return other?.user?.avatar;
-	}
 </script>
 
 <div class="flex h-full flex-col bg-[var(--bg-primary,#1e1f22)] text-[var(--text-primary,#dbdee1)]">
@@ -315,7 +309,11 @@
 							<li
 								class="flex items-center gap-3 rounded-md px-3 py-2 transition-[background] duration-100 hover:bg-[var(--bg-hover,#35373c)]"
 							>
-								<UserAvatar src={friend.user_avatar} name={friend.user_alias ?? friend.user_username} size={36} />
+								<UserAvatar
+									src={getAvatarURL(getFriendUserId(friend), friend.user_avatar)}
+									name={friend.user_alias ?? friend.user_username}
+									size={36}
+								/>
 								<div class="flex min-w-0 flex-1 flex-col gap-0.5">
 									<span class="overflow-hidden text-[13px] font-medium text-ellipsis whitespace-nowrap"
 										>{friend.user_alias ?? friend.user_username}</span
@@ -356,7 +354,11 @@
 							<li
 								class="flex items-center gap-3 rounded-md px-3 py-2 transition-[background] duration-100 hover:bg-[var(--bg-hover,#35373c)]"
 							>
-								<UserAvatar src={req.user_avatar} name={req.user_alias ?? req.user_username} size={36} />
+								<UserAvatar
+									src={getAvatarURL(req.sender_id, req.user_avatar)}
+									name={req.user_alias ?? req.user_username}
+									size={36}
+								/>
 								<div class="flex min-w-0 flex-1 flex-col gap-0.5">
 									<span class="overflow-hidden text-[13px] font-medium text-ellipsis whitespace-nowrap"
 										>{req.user_alias ?? req.user_username}</span
@@ -399,7 +401,11 @@
 							<li
 								class="flex items-center gap-3 rounded-md px-3 py-2 transition-[background] duration-100 hover:bg-[var(--bg-hover,#35373c)]"
 							>
-								<UserAvatar src={req.user_avatar} name={req.user_alias ?? req.user_username} size={36} />
+								<UserAvatar
+									src={getAvatarURL(req.recipient_id, req.user_avatar)}
+									name={req.user_alias ?? req.user_username}
+									size={36}
+								/>
 								<div class="flex min-w-0 flex-1 flex-col gap-0.5">
 									<span class="overflow-hidden text-[13px] font-medium text-ellipsis whitespace-nowrap"
 										>{req.user_alias ?? req.user_username}</span
@@ -514,7 +520,11 @@
 									: ''}"
 								onclick={() => toggleFriend(uid)}
 							>
-								<UserAvatar src={f.user_avatar ?? null} name={f.user_alias ?? f.user_username} size={32} />
+								<UserAvatar
+									src={getAvatarURL(getFriendUserId(f), f.user_avatar)}
+									name={f.user_alias ?? f.user_username}
+									size={32}
+								/>
 								<span class="flex-1 overflow-hidden text-[13px] font-medium text-ellipsis whitespace-nowrap"
 									>{f.user_alias ?? f.user_username}</span
 								>

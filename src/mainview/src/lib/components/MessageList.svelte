@@ -950,41 +950,47 @@
 						<div class="mr-3 flex w-10 shrink-0 items-center justify-end">
 							<div class="rounded-tl-5px h-3.5 w-5.25 border-t-2 border-l-2 border-zinc-500/60"></div>
 						</div>
-						<!-- Reply preview -->
-						<button
-							type="button"
-							class="flex min-w-0 -translate-y-1.25 cursor-pointer items-start gap-1.5 text-xs text-zinc-400 transition-colors hover:text-zinc-100"
-							onclick={() =>
-								jumpToMessageRequest.set({
-									id: crypto.randomUUID(),
-									spaceId: message.referenced_message!.space_id ?? spaceId,
-									roomId: message.referenced_message!.room_id ?? channelId,
-									messageId: message.referenced_message!.message_id!,
-								})}
-						>
-							<UserAvatar
-								src={getAvatarURL(message.referenced_message.author_id ?? "", message.referenced_message.author_avatar)}
-								name={message.referenced_message.author_name ?? "?"}
-								size={16}
-							/>
-							<span class="shrink-0 font-medium text-zinc-300">{message.referenced_message.author_name}</span>
-							<span class="msg-content truncate opacity-80"
-								>{@html renderMarkdown(
-									message.referenced_message.content ?? "",
-									false,
-									mentionMap,
-									customEmojiMap,
-								)}</span
+						{#if !message.referenced_message.created_at}
+							<!-- The referenced message is gone: the API sends only the reference then -->
+							<span class="-translate-y-1.25 text-xs text-zinc-500 italic">Original message was deleted</span>
+						{:else}
+							<!-- Reply preview -->
+							<button
+								type="button"
+								class="flex min-w-0 -translate-y-1.25 cursor-pointer items-start gap-1.5 text-xs text-zinc-400 transition-colors hover:text-zinc-100"
+								onclick={() =>
+									jumpToMessageRequest.set({
+										id: crypto.randomUUID(),
+										spaceId: message.referenced_message!.space_id ?? spaceId,
+										roomId: message.referenced_message!.room_id ?? channelId,
+										messageId: message.referenced_message!.message_id!,
+									})}
 							>
-							{#if message.referenced_message.created_at}
+								<UserAvatar
+									src={getAvatarURL(
+										message.referenced_message.author_id ?? "",
+										message.referenced_message.author_avatar,
+									)}
+									name={message.referenced_message.author_name ?? "?"}
+									size={16}
+								/>
+								<span class="shrink-0 font-medium text-zinc-300">{message.referenced_message.author_name}</span>
+								<span class="msg-content truncate opacity-80"
+									>{@html renderMarkdown(
+										message.referenced_message.content ?? "",
+										false,
+										mentionMap,
+										customEmojiMap,
+									)}</span
+								>
 								<span class="shrink-0 opacity-50"
 									>{new Date(message.referenced_message.created_at).toLocaleTimeString(locale, {
 										hour: "2-digit",
 										minute: "2-digit",
 									})}</span
 								>
-							{/if}
-						</button>
+							</button>
+						{/if}
 					</div>
 				{/if}
 				<div class="flex items-start">
@@ -1006,7 +1012,7 @@
 									src={message.author_avatar_url}
 									name={message.author_name}
 									size={40}
-									oncontextmenu={(e) => openUserMenu(e, message.author_id)}
+									oncontextmenu={(e) => openUserMenu(e, message.webhook_id ? "" : message.author_id)}
 								/>
 							</button>
 						{/key}
@@ -1806,7 +1812,7 @@
 				<div data-unread-divider class="my-2 flex items-center gap-3 px-2 select-none">
 					<div class="h-px flex-1 bg-red-500/50"></div>
 					<span class="shrink-0 text-xs font-semibold whitespace-nowrap text-red-400">
-						{unreadCount === 1 ? "1 mensaje nuevo" : `${unreadCount} mensajes nuevos`}
+						{unreadCount === 1 ? "1 new message" : `${unreadCount} new messages`}
 					</span>
 					<div class="h-px flex-1 bg-red-500/50"></div>
 				</div>

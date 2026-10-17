@@ -128,7 +128,7 @@
 	async function handleDeleteAttachment(id: string) {
 		const att = attachments.find((a) => a.id === id);
 		const name = att?.filename ?? "this file";
-		await confirmAction(`Delete "${name}"?`, "Deleting", async () => {
+		await confirmAction(`Delete "${name}"?`, "Delete", async () => {
 			await deleteMyAttachment(id);
 			attachments = attachments.filter((a) => a.id !== id);
 			await refreshStorageStatus();
@@ -136,7 +136,7 @@
 	}
 
 	async function handleDeleteAll() {
-		await confirmAction("Delete all your attachments? This cannot be undone.", "Deleting", async () => {
+		await confirmAction("Delete all your attachments? This cannot be undone.", "Delete", async () => {
 			await deleteAllMyAttachments();
 			attachments = [];
 			await refreshStorageStatus();
@@ -249,7 +249,7 @@
 
 	async function handleDeleteBucket(id: string) {
 		const b = buckets.find((x) => x.id === id);
-		await confirmAction(`Delete bucket "${b?.name}"?`, "Deleting", async () => {
+		await confirmAction(`Delete bucket "${b?.name}"?`, "Delete", async () => {
 			await deleteMyBucket(id);
 			await loadBuckets();
 		});
@@ -617,7 +617,7 @@
 	}
 
 	async function handleDeleteTeam(team: Team) {
-		await confirmAction(`Delete team "${team.name}"? All applications will be deleted.`, "Deleting", async () => {
+		await confirmAction(`Delete team "${team.name}"? All applications will be deleted.`, "Delete", async () => {
 			await deleteTeam(team.id);
 			devTeams = devTeams.filter((t) => t.id !== team.id);
 			if (devSelectedTeam?.id === team.id) {
@@ -657,7 +657,7 @@
 	async function handleRemoveMember(userId: string, username: string) {
 		if (!devSelectedTeam) return;
 		const teamId = devSelectedTeam.id;
-		await confirmAction(`Remove "${username}" from team?`, "Removing", async () => {
+		await confirmAction(`Remove "${username}" from team?`, "Remove", async () => {
 			await removeTeamMember(teamId, userId);
 			devMembers = devMembers.filter((m) => m.user_id !== userId);
 		});
@@ -705,7 +705,7 @@
 	async function handleDeleteApp(app: Application) {
 		if (!devSelectedTeam) return;
 		const teamId = devSelectedTeam.id;
-		await confirmAction(`Delete application "${app.name}"?`, "Deleting", async () => {
+		await confirmAction(`Delete application "${app.name}"?`, "Delete", async () => {
 			await deleteApplication(teamId, app.id);
 			devApps = devApps.filter((a) => a.id !== app.id);
 		});
@@ -738,7 +738,7 @@
 	async function handleDeleteBot(app: Application) {
 		if (!devSelectedTeam) return;
 		const teamId = devSelectedTeam.id;
-		await confirmAction("Delete this bot? It will be removed from all spaces.", "Deleting", async () => {
+		await confirmAction("Delete this bot? It will be removed from all spaces.", "Delete", async () => {
 			await deleteBot(teamId, app.id);
 			devApps = devApps.map((a) => (a.id === app.id ? { ...a, bot_user_id: null, bot_token_hash: null } : a));
 			devBotToken = null;

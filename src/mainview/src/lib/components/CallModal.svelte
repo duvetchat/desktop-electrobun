@@ -4,6 +4,7 @@
 	import { sendEventMessage } from "$lib/api/ws/connection";
 	import { Phone, PhoneOff, PhoneIncoming, Mic, MicOff, X } from "@lucide/svelte";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
+	import { getAvatarURL } from "$lib/common/common";
 	import { audioStore } from "$lib/stores/audio.svelte";
 	import { onDestroy } from "svelte";
 
@@ -72,7 +73,7 @@
 				<span
 					class="animate-call-pulse absolute -inset-5 rounded-full border border-emerald-400/20 [animation-delay:0.4s]"
 				></span>
-				<UserAvatar src={call.initiatorAvatar} name={call.initiatorName} size={80} />
+				<UserAvatar src={getAvatarURL(call.initiatorId, call.initiatorAvatar)} name={call.initiatorName} size={80} />
 			</div>
 
 			<!-- Name and status -->

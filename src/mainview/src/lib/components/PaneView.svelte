@@ -962,7 +962,7 @@
 				<button
 					type="button"
 					class="rounded p-1 text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-200"
-					title="Dividir horizontalmente"
+					title="Split horizontally"
 					onclick={splitH}
 				>
 					<svg
@@ -983,7 +983,7 @@
 				<button
 					type="button"
 					class="rounded p-1 text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-200"
-					title="Dividir verticalmente"
+					title="Split vertically"
 					onclick={splitV}
 				>
 					<svg
@@ -1064,12 +1064,12 @@
 								class="rounded border border-blue-500/50 bg-zinc-900/90 px-2 py-1 text-xs font-medium text-blue-400"
 							>
 								{splitZone === "left"
-									? "← Dividir izquierda"
+									? "← Split left"
 									: splitZone === "right"
-										? "Dividir derecha →"
+										? "Split right →"
 										: splitZone === "top"
-											? "↑ Dividir arriba"
-											: "Dividir abajo ↓"}
+											? "↑ Split up"
+											: "Split down ↓"}
 							</span>
 						</div>
 					{/if}
