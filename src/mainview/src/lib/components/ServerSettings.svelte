@@ -122,15 +122,28 @@
 				remove_icon: pendingIcon === "remove",
 			});
 			// Clean up previews
-			if (pendingIconPreview) { URL.revokeObjectURL(pendingIconPreview); pendingIconPreview = null; }
-			if (pendingBannerPreview) { URL.revokeObjectURL(pendingBannerPreview); pendingBannerPreview = null; }
+			if (pendingIconPreview) {
+				URL.revokeObjectURL(pendingIconPreview);
+				pendingIconPreview = null;
+			}
+			if (pendingBannerPreview) {
+				URL.revokeObjectURL(pendingBannerPreview);
+				pendingBannerPreview = null;
+			}
 			pendingIcon = null;
 			pendingBanner = null;
 			// Update the local store
 			gatewaySpaces.update((spaces) =>
 				spaces.map((s) =>
 					s.id === spaceId
-						? { ...s, name: updated.name, description: updated.description, locale: updated.locale, banner: updated.banner, icon: updated.icon }
+						? {
+								...s,
+								name: updated.name,
+								description: updated.description,
+								locale: updated.locale,
+								banner: updated.banner,
+								icon: updated.icon,
+							}
 						: s,
 				),
 			);
@@ -920,23 +933,55 @@
 									<div class="group relative h-24 w-60 overflow-hidden rounded-lg bg-zinc-800">
 										{#if pendingBannerPreview}
 											<img src={pendingBannerPreview} alt="banner" class="h-full w-full object-cover" />
-											<div class="absolute inset-0 flex items-center justify-center gap-2 bg-black/60 opacity-0 transition-opacity group-hover:opacity-100">
-												<button class="rounded p-1.5 text-white hover:bg-white/20" onclick={() => showSpaceBannerCrop = true}><PencilIcon class="size-4" /></button>
-												<button class="rounded p-1.5 text-red-400 hover:bg-white/20" onclick={() => { if (pendingBannerPreview) URL.revokeObjectURL(pendingBannerPreview); pendingBanner = null; pendingBannerPreview = null; }}><XIcon class="size-4" /></button>
+											<div
+												class="absolute inset-0 flex items-center justify-center gap-2 bg-black/60 opacity-0 transition-opacity group-hover:opacity-100"
+											>
+												<button
+													class="rounded p-1.5 text-white hover:bg-white/20"
+													onclick={() => (showSpaceBannerCrop = true)}><PencilIcon class="size-4" /></button
+												>
+												<button
+													class="rounded p-1.5 text-red-400 hover:bg-white/20"
+													onclick={() => {
+														if (pendingBannerPreview) URL.revokeObjectURL(pendingBannerPreview);
+														pendingBanner = null;
+														pendingBannerPreview = null;
+													}}><XIcon class="size-4" /></button
+												>
 											</div>
 										{:else if pendingBanner === "remove"}
 											<div class="flex h-full items-center justify-center text-zinc-600">No banner</div>
-											<div class="absolute inset-0 flex items-center justify-center bg-black/60 opacity-0 transition-opacity group-hover:opacity-100">
-												<button class="text-xs text-white" onclick={() => { pendingBanner = null; }}>Undo</button>
+											<div
+												class="absolute inset-0 flex items-center justify-center bg-black/60 opacity-0 transition-opacity group-hover:opacity-100"
+											>
+												<button
+													class="text-xs text-white"
+													onclick={() => {
+														pendingBanner = null;
+													}}>Undo</button
+												>
 											</div>
 										{:else if space?.banner}
 											<img src={getAvatarURL(space.id, space.banner)} alt="banner" class="h-full w-full object-cover" />
-											<div class="absolute inset-0 flex items-center justify-center gap-2 bg-black/60 opacity-0 transition-opacity group-hover:opacity-100">
-												<button class="rounded p-1.5 text-white hover:bg-white/20" onclick={() => showSpaceBannerCrop = true}><PencilIcon class="size-4" /></button>
-												<button class="rounded p-1.5 text-red-400 hover:bg-white/20" onclick={() => { pendingBanner = "remove"; }}><TrashIcon class="size-4" /></button>
+											<div
+												class="absolute inset-0 flex items-center justify-center gap-2 bg-black/60 opacity-0 transition-opacity group-hover:opacity-100"
+											>
+												<button
+													class="rounded p-1.5 text-white hover:bg-white/20"
+													onclick={() => (showSpaceBannerCrop = true)}><PencilIcon class="size-4" /></button
+												>
+												<button
+													class="rounded p-1.5 text-red-400 hover:bg-white/20"
+													onclick={() => {
+														pendingBanner = "remove";
+													}}><TrashIcon class="size-4" /></button
+												>
 											</div>
 										{:else}
-											<button class="flex h-full w-full items-center justify-center text-zinc-500 transition-colors hover:bg-zinc-700 hover:text-zinc-300" onclick={() => showSpaceBannerCrop = true}>
+											<button
+												class="flex h-full w-full items-center justify-center text-zinc-500 transition-colors hover:bg-zinc-700 hover:text-zinc-300"
+												onclick={() => (showSpaceBannerCrop = true)}
+											>
 												<PlusIcon class="mr-1.5 size-4" /> Set banner
 											</button>
 										{/if}
@@ -949,23 +994,61 @@
 									<div class="group relative h-20 w-20">
 										{#if pendingIconPreview}
 											<img src={pendingIconPreview} alt="icon" class="h-full w-full rounded-2xl object-cover" />
-											<div class="absolute inset-0 flex items-center justify-center gap-1 rounded-2xl bg-black/60 opacity-0 transition-opacity group-hover:opacity-100">
-												<button class="rounded p-1 text-white hover:bg-white/20" onclick={() => showSpaceIconCrop = true}><PencilIcon class="size-3.5" /></button>
-												<button class="rounded p-1 text-red-400 hover:bg-white/20" onclick={() => { if (pendingIconPreview) URL.revokeObjectURL(pendingIconPreview); pendingIcon = null; pendingIconPreview = null; }}><XIcon class="size-3.5" /></button>
+											<div
+												class="absolute inset-0 flex items-center justify-center gap-1 rounded-2xl bg-black/60 opacity-0 transition-opacity group-hover:opacity-100"
+											>
+												<button
+													class="rounded p-1 text-white hover:bg-white/20"
+													onclick={() => (showSpaceIconCrop = true)}><PencilIcon class="size-3.5" /></button
+												>
+												<button
+													class="rounded p-1 text-red-400 hover:bg-white/20"
+													onclick={() => {
+														if (pendingIconPreview) URL.revokeObjectURL(pendingIconPreview);
+														pendingIcon = null;
+														pendingIconPreview = null;
+													}}><XIcon class="size-3.5" /></button
+												>
 											</div>
 										{:else if pendingIcon === "remove"}
-											<div class="flex h-full w-full items-center justify-center rounded-2xl bg-zinc-800 text-zinc-600"><XIcon class="size-5" /></div>
-											<div class="absolute inset-0 flex items-center justify-center rounded-2xl bg-black/60 opacity-0 transition-opacity group-hover:opacity-100">
-												<button class="text-xs text-white" onclick={() => { pendingIcon = null; }}>Undo</button>
+											<div class="flex h-full w-full items-center justify-center rounded-2xl bg-zinc-800 text-zinc-600">
+												<XIcon class="size-5" />
+											</div>
+											<div
+												class="absolute inset-0 flex items-center justify-center rounded-2xl bg-black/60 opacity-0 transition-opacity group-hover:opacity-100"
+											>
+												<button
+													class="text-xs text-white"
+													onclick={() => {
+														pendingIcon = null;
+													}}>Undo</button
+												>
 											</div>
 										{:else if space?.icon}
-											<img src={getAvatarURL(space.id, space.icon)} alt="icon" class="h-full w-full rounded-2xl object-cover" />
-											<div class="absolute inset-0 flex items-center justify-center gap-1 rounded-2xl bg-black/60 opacity-0 transition-opacity group-hover:opacity-100">
-												<button class="rounded p-1 text-white hover:bg-white/20" onclick={() => showSpaceIconCrop = true}><PencilIcon class="size-3.5" /></button>
-												<button class="rounded p-1 text-red-400 hover:bg-white/20" onclick={() => { pendingIcon = "remove"; }}><TrashIcon class="size-3.5" /></button>
+											<img
+												src={getAvatarURL(space.id, space.icon)}
+												alt="icon"
+												class="h-full w-full rounded-2xl object-cover"
+											/>
+											<div
+												class="absolute inset-0 flex items-center justify-center gap-1 rounded-2xl bg-black/60 opacity-0 transition-opacity group-hover:opacity-100"
+											>
+												<button
+													class="rounded p-1 text-white hover:bg-white/20"
+													onclick={() => (showSpaceIconCrop = true)}><PencilIcon class="size-3.5" /></button
+												>
+												<button
+													class="rounded p-1 text-red-400 hover:bg-white/20"
+													onclick={() => {
+														pendingIcon = "remove";
+													}}><TrashIcon class="size-3.5" /></button
+												>
 											</div>
 										{:else}
-											<button class="flex h-full w-full items-center justify-center rounded-2xl bg-zinc-800 text-zinc-500 transition-colors hover:bg-zinc-700 hover:text-zinc-300" onclick={() => showSpaceIconCrop = true}>
+											<button
+												class="flex h-full w-full items-center justify-center rounded-2xl bg-zinc-800 text-zinc-500 transition-colors hover:bg-zinc-700 hover:text-zinc-300"
+												onclick={() => (showSpaceIconCrop = true)}
+											>
 												<PlusIcon class="size-5" />
 											</button>
 										{/if}
@@ -2083,6 +2166,24 @@
 	</Dialog.Portal>
 </Dialog.Root>
 
+<ImageCropModal
+	bind:open={showSpaceIconCrop}
+	title="Change Icon"
+	aspect={1}
+	round
+	targetWidth={256}
+	targetHeight={256}
+	onConfirm={(f) => onSpaceIconCrop(f)}
+/>
+<ImageCropModal
+	bind:open={showSpaceBannerCrop}
+	title="Change Banner"
+	aspect={5 / 2}
+	targetWidth={600}
+	targetHeight={240}
+	onConfirm={(f) => onSpaceBannerCrop(f)}
+/>
+
 <style>
 	.color-swatch::-webkit-color-swatch-wrapper {
 		padding: 0;
@@ -2106,6 +2207,3 @@
 		background: var(--color-zinc-500);
 	}
 </style>
-
-<ImageCropModal bind:open={showSpaceIconCrop} title="Change Icon" aspect={1} round targetWidth={256} targetHeight={256} onConfirm={(f) => onSpaceIconCrop(f)} />
-<ImageCropModal bind:open={showSpaceBannerCrop} title="Change Banner" aspect={5 / 2} targetWidth={600} targetHeight={240} onConfirm={(f) => onSpaceBannerCrop(f)} />

@@ -51,10 +51,7 @@
 	const showImg = $derived(!!src && !imgError);
 </script>
 
-<div
-	style="width: {size}px; height: {size}px;"
-	class="relative shrink-0 overflow-hidden rounded-xl {className}"
->
+<div style="width: {size}px; height: {size}px;" class="relative shrink-0 overflow-hidden rounded-xl {className}">
 	{#if showImg}
 		<img
 			{src}
@@ -67,7 +64,8 @@
 		/>
 	{/if}
 	{#if !showImg || !imgLoaded}
-		<div class="flex h-full w-full items-center justify-center bg-linear-to-br from-stone-500 to-stone-700 font-bold text-white select-none"
+		<div
+			class="flex h-full w-full items-center justify-center bg-linear-to-br from-stone-500 to-stone-700 font-bold text-white select-none"
 			style="font-size: {size * 0.35}px;"
 		>
 			{initials(name)}

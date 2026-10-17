@@ -435,17 +435,21 @@
 	}
 
 	async function handleResetWebhookToken(webhookId: string) {
-		await confirmAction("Reset this webhook's token? The old token will stop working immediately.", "Reset Token", async () => {
-			try {
-				const newToken = await resetWebhookToken(space.id, room.id, webhookId);
-				createdWebhookToken = newToken;
-				createdWebhookId = webhookId;
-				toast("Token reset successfully", "success");
-			} catch (err) {
-				console.error("Failed to reset webhook token:", err);
-				toast(getApiError(err, "Failed to reset token"), "error");
-			}
-		});
+		await confirmAction(
+			"Reset this webhook's token? The old token will stop working immediately.",
+			"Reset Token",
+			async () => {
+				try {
+					const newToken = await resetWebhookToken(space.id, room.id, webhookId);
+					createdWebhookToken = newToken;
+					createdWebhookId = webhookId;
+					toast("Token reset successfully", "success");
+				} catch (err) {
+					console.error("Failed to reset webhook token:", err);
+					toast(getApiError(err, "Failed to reset token"), "error");
+				}
+			},
+		);
 	}
 
 	function copyWebhookUrl(webhookId: string, token: string) {
@@ -559,11 +563,7 @@
 					<!-- Header -->
 					<div class="flex shrink-0 items-center justify-between border-b border-zinc-800 px-6 py-4">
 						<h2 class="text-base font-semibold text-white capitalize">
-							{activeSection === "overview"
-									? "Overview"
-									: activeSection === "permissions"
-										? "Permissions"
-										: "Webhooks"}
+							{activeSection === "overview" ? "Overview" : activeSection === "permissions" ? "Permissions" : "Webhooks"}
 						</h2>
 						<button
 							class="rounded-lg p-1.5 text-zinc-400 transition-colors duration-150 hover:bg-zinc-800 hover:text-white"
@@ -777,7 +777,9 @@
 											</label>
 
 											<div class="space-y-1.5">
-												<span class="text-[11px] font-semibold tracking-wide text-zinc-400 uppercase">Avatar (optional)</span>
+												<span class="text-[11px] font-semibold tracking-wide text-zinc-400 uppercase"
+													>Avatar (optional)</span
+												>
 												<div class="flex items-center gap-3">
 													<div class="group relative size-14 shrink-0 overflow-hidden rounded-full bg-zinc-700">
 														{#if newWebhookAvatarPreview}
@@ -787,10 +789,12 @@
 																<WebhookIcon class="size-6 text-zinc-500" />
 															</div>
 														{/if}
-														<div class="absolute inset-0 flex items-center justify-center gap-1 bg-black/0 transition-colors group-hover:bg-black/50">
+														<div
+															class="absolute inset-0 flex items-center justify-center gap-1 bg-black/0 transition-colors group-hover:bg-black/50"
+														>
 															<button
 																type="button"
-																class="flex size-6 cursor-pointer items-center justify-center rounded-full bg-black/60 text-white opacity-0 transition-opacity hover:bg-black/80 group-hover:opacity-100"
+																class="flex size-6 cursor-pointer items-center justify-center rounded-full bg-black/60 text-white opacity-0 transition-opacity group-hover:opacity-100 hover:bg-black/80"
 																title="Change avatar"
 																onclick={pickNewWebhookAvatar}
 															>
@@ -799,7 +803,7 @@
 															{#if newWebhookAvatarPreview}
 																<button
 																	type="button"
-																	class="flex size-6 cursor-pointer items-center justify-center rounded-full bg-black/60 text-red-400 opacity-0 transition-opacity hover:bg-black/80 group-hover:opacity-100"
+																	class="flex size-6 cursor-pointer items-center justify-center rounded-full bg-black/60 text-red-400 opacity-0 transition-opacity group-hover:opacity-100 hover:bg-black/80"
 																	title="Remove avatar"
 																	onclick={clearNewWebhookAvatar}
 																>
@@ -826,9 +830,7 @@
 									<!-- Token reveal box -->
 									{#if createdWebhookToken && createdWebhookId}
 										<div class="overflow-hidden rounded-xl border border-amber-600/30 bg-amber-950/20 p-4">
-											<p class="mb-2 text-xs font-semibold text-amber-300">
-												Webhook Token (shown only once)
-											</p>
+											<p class="mb-2 text-xs font-semibold text-amber-300">Webhook Token (shown only once)</p>
 											<div class="flex items-center gap-2">
 												<code class="min-w-0 flex-1 truncate rounded-md bg-zinc-800 px-3 py-2 text-xs text-zinc-200">
 													{createdWebhookToken}
@@ -842,12 +844,18 @@
 													Copy URL
 												</button>
 											</div>
-											<p class="mt-2 truncate text-[11px] text-amber-400/70" title="{attachmentHost}/api/webhooks/{createdWebhookId}/{createdWebhookToken}">
+											<p
+												class="mt-2 truncate text-[11px] text-amber-400/70"
+												title="{attachmentHost}/api/webhooks/{createdWebhookId}/{createdWebhookToken}"
+											>
 												Webhook URL: {attachmentHost}/api/webhooks/{createdWebhookId}/{createdWebhookToken}
 											</p>
 											<button
 												class="mt-2 text-xs text-zinc-400 transition-colors hover:text-zinc-200"
-												onclick={() => { createdWebhookToken = null; createdWebhookId = null; }}
+												onclick={() => {
+													createdWebhookToken = null;
+													createdWebhookId = null;
+												}}
 											>
 												Dismiss
 											</button>
@@ -889,10 +897,12 @@
 																	<WebhookIcon class="size-4 text-zinc-500" />
 																</div>
 															{/if}
-															<div class="absolute inset-0 flex items-center justify-center gap-0.5 bg-black/0 transition-colors group-hover/edit:bg-black/50">
+															<div
+																class="absolute inset-0 flex items-center justify-center gap-0.5 bg-black/0 transition-colors group-hover/edit:bg-black/50"
+															>
 																<button
 																	type="button"
-																	class="flex size-5 cursor-pointer items-center justify-center rounded-full bg-black/60 text-white opacity-0 transition-opacity hover:bg-black/80 group-hover/edit:opacity-100"
+																	class="flex size-5 cursor-pointer items-center justify-center rounded-full bg-black/60 text-white opacity-0 transition-opacity group-hover/edit:opacity-100 hover:bg-black/80"
 																	title="Change avatar"
 																	onclick={pickEditWebhookAvatar}
 																>
@@ -901,7 +911,7 @@
 																{#if editingWebhookAvatarPreview}
 																	<button
 																		type="button"
-																		class="flex size-5 cursor-pointer items-center justify-center rounded-full bg-black/60 text-red-400 opacity-0 transition-opacity hover:bg-black/80 group-hover/edit:opacity-100"
+																		class="flex size-5 cursor-pointer items-center justify-center rounded-full bg-black/60 text-red-400 opacity-0 transition-opacity group-hover/edit:opacity-100 hover:bg-black/80"
 																		title="Remove avatar"
 																		onclick={removeEditWebhookAvatar}
 																	>

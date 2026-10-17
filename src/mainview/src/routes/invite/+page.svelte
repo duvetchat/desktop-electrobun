@@ -90,7 +90,6 @@
 			joining = false;
 		}
 	}
-
 </script>
 
 <section class="flex min-h-screen items-center justify-center bg-zinc-950 p-6">

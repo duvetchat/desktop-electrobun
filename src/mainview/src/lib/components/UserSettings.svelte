@@ -1271,7 +1271,8 @@
 
 							<div class="space-y-3">
 								<div>
-									<label for="code-theme-url" class="mb-1 block text-xs font-medium text-zinc-400">Code Theme URL</label>
+									<label for="code-theme-url" class="mb-1 block text-xs font-medium text-zinc-400">Code Theme URL</label
+									>
 									<input
 										id="code-theme-url"
 										type="text"
@@ -1292,7 +1293,10 @@
 									{#if codeThemeUrl}
 										<button
 											class="rounded-md px-4 py-2 text-sm font-medium text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-white"
-											onclick={() => { codeThemeUrl = ""; handleSaveTheme(); }}
+											onclick={() => {
+												codeThemeUrl = "";
+												handleSaveTheme();
+											}}
 										>
 											Reset to default
 										</button>
@@ -1305,7 +1309,9 @@
 								<p class="mb-2 text-xs font-medium text-zinc-400">Preview</p>
 								{#key themeVersion}
 									<p class="msg-content text-sm text-zinc-200">
-										{@html renderMarkdown("```go\npackage main\n\nimport \"fmt\"\n\nfunc main() {\n\tnames := []string{\"Alice\", \"Bob\"}\n\tfor _, name := range names {\n\t\tfmt.Printf(\"Hello, %s!\\n\", name)\n\t}\n}\n```")}
+										{@html renderMarkdown(
+											'```go\npackage main\n\nimport "fmt"\n\nfunc main() {\n\tnames := []string{"Alice", "Bob"}\n\tfor _, name := range names {\n\t\tfmt.Printf("Hello, %s!\\n", name)\n\t}\n}\n```',
+										)}
 									</p>
 								{/key}
 							</div>
@@ -1472,7 +1478,11 @@
 											</div>
 											{#if isAudio}
 												<div class="px-3 pb-2.5">
-													<VoiceNotePlayer src="{attachmentHost}{att.url ?? `/attachments/${att.id}`}" attachmentId={att.id} compact />
+													<VoiceNotePlayer
+														src="{attachmentHost}{att.url ?? `/attachments/${att.id}`}"
+														attachmentId={att.id}
+														compact
+													/>
 												</div>
 											{/if}
 										</div>
@@ -2037,8 +2047,12 @@
 																</div>
 																<div class="flex items-center gap-1">
 																	<button
-																		class="flex items-center gap-1 rounded-md px-2 py-1 text-xs transition-colors {app.public ? 'text-green-400 hover:bg-green-600/20' : 'text-zinc-500 hover:bg-zinc-700 hover:text-zinc-200'}"
-																		title={app.public ? "Public — anyone can add this bot" : "Private — only team members can add"}
+																		class="flex items-center gap-1 rounded-md px-2 py-1 text-xs transition-colors {app.public
+																			? 'text-green-400 hover:bg-green-600/20'
+																			: 'text-zinc-500 hover:bg-zinc-700 hover:text-zinc-200'}"
+																		title={app.public
+																			? "Public — anyone can add this bot"
+																			: "Private — only team members can add"}
 																		onclick={() => handleTogglePublic(app)}
 																	>
 																		{#if app.public}
@@ -2091,25 +2105,39 @@
 																			</button>
 																		</div>
 																	</div>
-																			<!-- Bot name/alias editing -->
-																			<div class="mt-2 space-y-2">
-																				<input
-																					type="text"
-																					value={botEditingAppId === app.id ? botEditUsername : (botUsers[app.bot_user_id ?? ""]?.username ?? "")}
-																					placeholder="Username"
-																					class="w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-xs text-white placeholder-zinc-500 outline-none focus:border-zinc-500"
-																					onfocus={() => { if (botEditingAppId !== app.id) startBotEdit(app); }}
-																					oninput={(e) => { if (botEditingAppId !== app.id) startBotEdit(app); botEditUsername = e.currentTarget.value; }}
-																				/>
-																				<input
-																					type="text"
-																					value={botEditingAppId === app.id ? botEditAlias : (botUsers[app.bot_user_id ?? ""]?.alias ?? "")}
-																					placeholder="Display name (optional)"
-																					class="w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-xs text-white placeholder-zinc-500 outline-none focus:border-zinc-500"
-																					onfocus={() => { if (botEditingAppId !== app.id) startBotEdit(app); }}
-																					oninput={(e) => { if (botEditingAppId !== app.id) startBotEdit(app); botEditAlias = e.currentTarget.value; }}
-																				/>
-																			</div>
+																	<!-- Bot name/alias editing -->
+																	<div class="mt-2 space-y-2">
+																		<input
+																			type="text"
+																			value={botEditingAppId === app.id
+																				? botEditUsername
+																				: (botUsers[app.bot_user_id ?? ""]?.username ?? "")}
+																			placeholder="Username"
+																			class="w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-xs text-white placeholder-zinc-500 outline-none focus:border-zinc-500"
+																			onfocus={() => {
+																				if (botEditingAppId !== app.id) startBotEdit(app);
+																			}}
+																			oninput={(e) => {
+																				if (botEditingAppId !== app.id) startBotEdit(app);
+																				botEditUsername = e.currentTarget.value;
+																			}}
+																		/>
+																		<input
+																			type="text"
+																			value={botEditingAppId === app.id
+																				? botEditAlias
+																				: (botUsers[app.bot_user_id ?? ""]?.alias ?? "")}
+																			placeholder="Display name (optional)"
+																			class="w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-xs text-white placeholder-zinc-500 outline-none focus:border-zinc-500"
+																			onfocus={() => {
+																				if (botEditingAppId !== app.id) startBotEdit(app);
+																			}}
+																			oninput={(e) => {
+																				if (botEditingAppId !== app.id) startBotEdit(app);
+																				botEditAlias = e.currentTarget.value;
+																			}}
+																		/>
+																	</div>
 																	<div class="mt-2 flex items-center gap-2">
 																		<span class="text-xxs text-zinc-500">Invite link:</span>
 																		<code class="text-xxs flex-1 truncate rounded bg-zinc-900 px-2 py-1 text-zinc-400"

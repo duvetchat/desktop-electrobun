@@ -74,7 +74,6 @@
 	let mediaRecorder: MediaRecorder | null = null;
 	let recordingInterval: ReturnType<typeof setInterval> | null = null;
 
-
 	async function startRecording() {
 		try {
 			const micId = $selectedMicId;

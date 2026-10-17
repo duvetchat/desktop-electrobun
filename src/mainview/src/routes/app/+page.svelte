@@ -10,7 +10,16 @@
 	import VoiceChat from "$lib/components/VoiceChat.svelte";
 	import { makeLeaf, makeSplit, removeLeaf, updateLeaf } from "$lib/pane";
 	import { canViewRoom } from "$lib/permissions";
-	import { activeCall, activeVoiceRoomId, currentUser, friendsReady, gatewaySpaces, botInviteRequest, spaceInviteRequest, allSpacesReady } from "$lib/stores.svelte";
+	import {
+		activeCall,
+		activeVoiceRoomId,
+		currentUser,
+		friendsReady,
+		gatewaySpaces,
+		botInviteRequest,
+		spaceInviteRequest,
+		allSpacesReady,
+	} from "$lib/stores.svelte";
 	import CallModal from "$lib/components/CallModal.svelte";
 	import BotInviteModal from "$lib/components/BotInviteModal.svelte";
 	import SpaceInviteModal from "$lib/components/SpaceInviteModal.svelte";
@@ -241,7 +250,9 @@
 	const sidebarGuild = $derived(guilds.find((g) => g.id === sidebarSpaceId) ?? activeGuild);
 	const memberSidebarSpaceId = $derived(sidebarSpaceId);
 	const memberSidebarSpace = $derived($gatewaySpaces.find((s) => s.id === memberSidebarSpaceId) ?? null);
-	const memberSidebarMembers = $derived(memberSidebarSpace ? gatewaySpaceToMembers(memberSidebarSpace, userStatusCache) : []);
+	const memberSidebarMembers = $derived(
+		memberSidebarSpace ? gatewaySpaceToMembers(memberSidebarSpace, userStatusCache) : [],
+	);
 
 	function syncSidebarToLeaf(node: PaneNode, leafId: string) {
 		const leaf = findLeaf(node, leafId);

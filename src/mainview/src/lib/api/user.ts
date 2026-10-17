@@ -157,10 +157,7 @@ export async function me(): Promise<UserMeResult> {
 
 // ── Internal (Staff only) ───────────────────────────────────────────────────
 
-export async function updateUserFlagsBadges(
-	userId: string,
-	data: { flags?: number; badges?: number },
-): Promise<any> {
+export async function updateUserFlagsBadges(userId: string, data: { flags?: number; badges?: number }): Promise<any> {
 	const res = await api.patch(`/api/internal/users/${userId}/flags-badges`, data);
 	return res.data;
 }

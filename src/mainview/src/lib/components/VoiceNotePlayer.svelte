@@ -1,7 +1,14 @@
 <script lang="ts">
 	import { onMount } from "svelte";
 	import { Play, Pause } from "@lucide/svelte";
-	import { voiceNote, playVoiceNote, toggleVoiceNote, seekVoiceNote, getAttachmentRate, cyclePlaybackRate } from "$lib/stores/voiceNotePlayer.svelte";
+	import {
+		voiceNote,
+		playVoiceNote,
+		toggleVoiceNote,
+		seekVoiceNote,
+		getAttachmentRate,
+		cyclePlaybackRate,
+	} from "$lib/stores/voiceNotePlayer.svelte";
 	import { formatDuration } from "$lib/utils/time";
 	import { waveformCache, MAX_WAVEFORM_CACHE, analyzeWaveform, fallbackBars } from "$lib/audio/waveform";
 
@@ -114,10 +121,7 @@
 	<div class="flex min-w-0 flex-1 flex-col gap-1">
 		<!-- svelte-ignore a11y_click_events_have_key_events -->
 		<!-- svelte-ignore a11y_no_static_element_interactions -->
-		<div
-			class="relative flex items-center gap-[1.5px] {compact ? 'h-5' : 'h-7'} cursor-pointer"
-			onclick={handleSeek}
-		>
+		<div class="relative flex items-center gap-[1.5px] {compact ? 'h-5' : 'h-7'} cursor-pointer" onclick={handleSeek}>
 			{#each bars as height, i}
 				{@const barProgress = i / bars.length}
 				<div
@@ -140,9 +144,9 @@
 			>
 			{#if !compact}
 				<button
-					class="cursor-pointer rounded px-1 text-xxs font-semibold tabular-nums text-zinc-500 transition-colors hover:bg-zinc-700 hover:text-zinc-300"
-					onclick={handleCycleRate}
-				>{rate}x</button>
+					class="text-xxs cursor-pointer rounded px-1 font-semibold text-zinc-500 tabular-nums transition-colors hover:bg-zinc-700 hover:text-zinc-300"
+					onclick={handleCycleRate}>{rate}x</button
+				>
 			{/if}
 		</div>
 	</div>

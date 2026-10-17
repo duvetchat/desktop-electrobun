@@ -257,9 +257,19 @@
 							{#each $userActivities[member.id] as activity}
 								<div class="flex items-center gap-2">
 									<div class="relative shrink-0">
-										<img src={resolveActivityIcon(activity.assets?.large_image)} alt="" title={activity.assets?.large_text ?? ""} class="h-10 w-10 rounded" />
+										<img
+											src={resolveActivityIcon(activity.assets?.large_image)}
+											alt=""
+											title={activity.assets?.large_text ?? ""}
+											class="h-10 w-10 rounded"
+										/>
 										{#if activity.assets?.small_image}
-											<img src={resolveActivityIcon(activity.assets.small_image)} alt="" title={activity.assets?.small_text ?? ""} class="absolute -right-1 -bottom-1 h-5 w-5 rounded border border-zinc-900 bg-zinc-800 p-0.5" />
+											<img
+												src={resolveActivityIcon(activity.assets.small_image)}
+												alt=""
+												title={activity.assets?.small_text ?? ""}
+												class="absolute -right-1 -bottom-1 h-5 w-5 rounded border border-zinc-900 bg-zinc-800 p-0.5"
+											/>
 										{/if}
 									</div>
 									<div class="flex min-w-0 flex-col">

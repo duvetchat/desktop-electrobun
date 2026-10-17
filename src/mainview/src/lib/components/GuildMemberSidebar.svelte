@@ -112,9 +112,7 @@
 				const incomingUserIds = new Set(rows.map((r) => r.user.id));
 				// Replace any placeholder members for the same users with real data
 				const filteredMembers = s.members.filter((m) => !incomingUserIds.has(m.user_id));
-				const newUsers = rows
-					.map((r) => r.user)
-					.filter((u) => !existingUserIds.has(u.id));
+				const newUsers = rows.map((r) => r.user).filter((u) => !existingUserIds.has(u.id));
 				const newMembers = rows.map(({ user: _u, max_pos: _p, ...m }) => m);
 				return {
 					...s,
@@ -273,7 +271,9 @@
 						{#snippet children()}
 							{#if member.banner_url && !bannerErrors.has(member.id)}
 								<img
-									src="{member.banner_url}{bannerRetryCounts.get(member.id) ? `?r=${bannerRetryCounts.get(member.id)}` : ''}"
+									src="{member.banner_url}{bannerRetryCounts.get(member.id)
+										? `?r=${bannerRetryCounts.get(member.id)}`
+										: ''}"
 									alt=""
 									class="pointer-events-none absolute inset-0 h-full w-full object-cover object-right opacity-15"
 									onerror={() => handleBannerError(member.id)}
@@ -324,7 +324,11 @@
 										{/if}
 									</span>
 									{#if $userActivities[member.id]?.length}
-										<p class="truncate text-xs text-zinc-500">{$userActivities[member.id][0].name}{$userActivities[member.id][0].state ? ` — ${$userActivities[member.id][0].state}` : ""}</p>
+										<p class="truncate text-xs text-zinc-500">
+											{$userActivities[member.id][0].name}{$userActivities[member.id][0].state
+												? ` — ${$userActivities[member.id][0].state}`
+												: ""}
+										</p>
 									{/if}
 								</div>
 							</div>

@@ -100,11 +100,13 @@
 					draggable="false"
 				/>
 			{/if}
-			<div class="absolute inset-0 flex items-center justify-center gap-2 bg-black/0 transition-colors group-hover:bg-black/40">
+			<div
+				class="absolute inset-0 flex items-center justify-center gap-2 bg-black/0 transition-colors group-hover:bg-black/40"
+			>
 				{#if onBannerClick}
 					<button
 						type="button"
-						class="flex h-8 w-8 cursor-pointer items-center justify-center rounded-full bg-black/60 text-white opacity-0 transition-opacity hover:bg-black/80 group-hover:opacity-100"
+						class="flex h-8 w-8 cursor-pointer items-center justify-center rounded-full bg-black/60 text-white opacity-0 transition-opacity group-hover:opacity-100 hover:bg-black/80"
 						title="Change banner"
 						onclick={onBannerClick}
 					>
@@ -114,7 +116,7 @@
 				{#if onBannerRemove && member.banner_url}
 					<button
 						type="button"
-						class="flex h-8 w-8 cursor-pointer items-center justify-center rounded-full bg-black/60 text-red-400 opacity-0 transition-opacity hover:bg-black/80 group-hover:opacity-100"
+						class="flex h-8 w-8 cursor-pointer items-center justify-center rounded-full bg-black/60 text-red-400 opacity-0 transition-opacity group-hover:opacity-100 hover:bg-black/80"
 						title="Remove banner"
 						onclick={onBannerRemove}
 					>
@@ -127,7 +129,10 @@
 		<button
 			type="button"
 			class="h-24 w-full cursor-pointer overflow-hidden"
-			onclick={() => { previewSrc = member.banner_url!; previewOpen = true; }}
+			onclick={() => {
+				previewSrc = member.banner_url!;
+				previewOpen = true;
+			}}
 		>
 			<img
 				src="{member.banner_url}{bannerRetryCount ? `?r=${bannerRetryCount}` : ''}"
@@ -138,10 +143,7 @@
 			/>
 		</button>
 	{:else}
-		<div
-			class="h-24 w-full"
-			style={getBannerStyle(member)}
-		></div>
+		<div class="h-24 w-full" style={getBannerStyle(member)}></div>
 	{/if}
 
 	<div class="relative px-4 pb-4">
@@ -150,11 +152,13 @@
 			{#if editable}
 				<div class="avatar-edit-group relative overflow-hidden rounded-full">
 					<UserAvatar src={member.avatar_url} name={member.username} size={80} />
-					<div class="absolute inset-0 flex items-center justify-center gap-1 rounded-full bg-black/0 transition-colors avatar-edit-overlay">
+					<div
+						class="avatar-edit-overlay absolute inset-0 flex items-center justify-center gap-1 rounded-full bg-black/0 transition-colors"
+					>
 						{#if onAvatarClick}
 							<button
 								type="button"
-								class="flex h-7 w-7 cursor-pointer items-center justify-center rounded-full bg-black/60 text-white opacity-0 transition-opacity hover:bg-black/80 avatar-edit-btn"
+								class="avatar-edit-btn flex h-7 w-7 cursor-pointer items-center justify-center rounded-full bg-black/60 text-white opacity-0 transition-opacity hover:bg-black/80"
 								title="Change avatar"
 								onclick={onAvatarClick}
 							>
@@ -164,7 +168,7 @@
 						{#if onAvatarRemove && member.avatar_url}
 							<button
 								type="button"
-								class="flex h-7 w-7 cursor-pointer items-center justify-center rounded-full bg-black/60 text-red-400 opacity-0 transition-opacity hover:bg-black/80 avatar-edit-btn"
+								class="avatar-edit-btn flex h-7 w-7 cursor-pointer items-center justify-center rounded-full bg-black/60 text-red-400 opacity-0 transition-opacity hover:bg-black/80"
 								title="Remove avatar"
 								onclick={onAvatarRemove}
 							>
@@ -174,7 +178,14 @@
 					</div>
 				</div>
 			{:else if member.avatar_url}
-				<button type="button" class="cursor-pointer rounded-full" onclick={() => { previewSrc = member.avatar_url!; previewOpen = true; }}>
+				<button
+					type="button"
+					class="cursor-pointer rounded-full"
+					onclick={() => {
+						previewSrc = member.avatar_url!;
+						previewOpen = true;
+					}}
+				>
 					<UserAvatar src={member.avatar_url} name={member.username} size={80} />
 				</button>
 			{:else}
@@ -195,13 +206,13 @@
 		<div class="h-14"></div>
 
 		<div class="mt-4 rounded-lg bg-zinc-950 p-3">
-			<h2 class="flex items-center gap-1.5 break-all text-lg leading-tight font-bold text-zinc-100">
+			<h2 class="flex items-center gap-1.5 text-lg leading-tight font-bold break-all text-zinc-100">
 				{member.username}
 				{#if member.is_bot}
-					<span class="rounded bg-stone-600 px-1.5 py-0.5 text-xxs font-semibold text-white">BOT</span>
+					<span class="text-xxs rounded bg-stone-600 px-1.5 py-0.5 font-semibold text-white">BOT</span>
 				{/if}
 			</h2>
-			<p class="break-all text-sm font-medium text-zinc-400">
+			<p class="text-sm font-medium break-all text-zinc-400">
 				@{member.raw_username}
 			</p>
 
@@ -222,9 +233,19 @@
 					{#each $userActivities[member.id] as activity}
 						<div class="flex items-center gap-2">
 							<div class="relative shrink-0">
-								<img src={resolveActivityIcon(activity.assets?.large_image)} alt="" title={activity.assets?.large_text ?? ""} class="h-10 w-10 rounded" />
+								<img
+									src={resolveActivityIcon(activity.assets?.large_image)}
+									alt=""
+									title={activity.assets?.large_text ?? ""}
+									class="h-10 w-10 rounded"
+								/>
 								{#if activity.assets?.small_image}
-									<img src={resolveActivityIcon(activity.assets.small_image)} alt="" title={activity.assets?.small_text ?? ""} class="absolute -right-1 -bottom-1 h-5 w-5 rounded border border-zinc-900 bg-zinc-800 p-0.5" />
+									<img
+										src={resolveActivityIcon(activity.assets.small_image)}
+										alt=""
+										title={activity.assets?.small_text ?? ""}
+										class="absolute -right-1 -bottom-1 h-5 w-5 rounded border border-zinc-900 bg-zinc-800 p-0.5"
+									/>
 								{/if}
 							</div>
 							<div class="flex min-w-0 flex-col">
@@ -249,9 +270,7 @@
 				<h3 class="mb-2 text-left text-[11px] font-bold tracking-wide text-zinc-400 uppercase">Roles</h3>
 				<div class="flex flex-wrap gap-1">
 					{#each visibleRoles as role}
-						<div
-							class="flex w-min items-center gap-1.5 rounded border border-zinc-800 bg-zinc-900 px-2 py-1 shadow-sm"
-						>
+						<div class="flex w-min items-center gap-1.5 rounded border border-zinc-800 bg-zinc-900 px-2 py-1 shadow-sm">
 							<div class="h-3 w-3 rounded-full" style={roleBadgeStyle(role)}></div>
 							<span class="text-xs font-medium text-zinc-300">{role.name}</span>
 						</div>

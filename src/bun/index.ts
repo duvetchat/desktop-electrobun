@@ -103,8 +103,7 @@ const win = new BrowserWindow({
 });
 
 // ── IPC Server for external apps (VS Code, etc.) ────────────────────────────
-const IPC_PIPE =
-	process.platform === "win32" ? "\\\\.\\pipe\\duvet-ipc" : "/tmp/duvet-ipc.sock";
+const IPC_PIPE = process.platform === "win32" ? "\\\\.\\pipe\\duvet-ipc" : "/tmp/duvet-ipc.sock";
 
 // Clean up stale socket on Unix
 if (process.platform !== "win32") {

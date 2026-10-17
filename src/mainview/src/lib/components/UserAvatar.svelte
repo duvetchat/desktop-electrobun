@@ -60,7 +60,7 @@
 >
 	{#if showImg}
 		<img
-			src={src}
+			{src}
 			alt={name}
 			style="width: 100%; height: 100%; object-fit: cover; opacity: {imgLoaded ? 1 : 0}; position: absolute; inset: 0;"
 			onload={() => (imgLoaded = true)}

@@ -1,7 +1,15 @@
 <script lang="ts">
 	import { onMount } from "svelte";
 	import { Play, Pause, Music, Volume1, Volume2, VolumeX } from "@lucide/svelte";
-	import { voiceNote, playVoiceNote, toggleVoiceNote, seekVoiceNote, audioVolume, getAttachmentRate, cyclePlaybackRate } from "$lib/stores/voiceNotePlayer.svelte";
+	import {
+		voiceNote,
+		playVoiceNote,
+		toggleVoiceNote,
+		seekVoiceNote,
+		audioVolume,
+		getAttachmentRate,
+		cyclePlaybackRate,
+	} from "$lib/stores/voiceNotePlayer.svelte";
 	import { formatDuration } from "$lib/utils/time";
 	import { formatFileSize } from "$lib/utils/format";
 	import { waveformCache, MAX_WAVEFORM_CACHE, analyzeWaveform, fallbackBars } from "$lib/audio/waveform";
@@ -114,7 +122,7 @@
 </script>
 
 <div class="flex max-w-87.5 min-w-62.5 flex-col gap-1 rounded-lg border border-zinc-700/60 bg-zinc-800/70 px-3 py-2.5">
-	<div class="flex items-center gap-2 min-w-0">
+	<div class="flex min-w-0 items-center gap-2">
 		<Music class="size-4 shrink-0 text-zinc-500" />
 		<div class="flex min-w-0 flex-col">
 			<a
@@ -122,8 +130,8 @@
 				target="_blank"
 				rel="noopener noreferrer"
 				class="truncate text-sm font-medium text-blue-400 hover:underline"
-				download={filename}
-			>{filename}</a>
+				download={filename}>{filename}</a
+			>
 			<span class="text-xxs text-zinc-500">{formatFileSize(sizeBytes)}</span>
 		</div>
 	</div>
@@ -140,25 +148,22 @@
 			{/if}
 		</button>
 
-		<span class="text-xxs shrink-0 tabular-nums text-zinc-400">
+		<span class="text-xxs shrink-0 text-zinc-400 tabular-nums">
 			{formatDuration(playing || currentTime > 0 ? currentTime : 0)}/{formatDuration(duration)}
 		</span>
 
 		<button
-			class="cursor-pointer rounded px-1 text-xxs font-semibold tabular-nums text-zinc-500 transition-colors hover:bg-zinc-700 hover:text-zinc-300"
-			onclick={handleCycleRate}
-		>{rate}x</button>
+			class="text-xxs cursor-pointer rounded px-1 font-semibold text-zinc-500 tabular-nums transition-colors hover:bg-zinc-700 hover:text-zinc-300"
+			onclick={handleCycleRate}>{rate}x</button
+		>
 
 		<!-- svelte-ignore a11y_click_events_have_key_events -->
 		<!-- svelte-ignore a11y_no_static_element_interactions -->
-		<div
-			class="relative flex h-6 min-w-0 flex-1 cursor-pointer items-end gap-px"
-			onclick={handleSeek}
-		>
+		<div class="relative flex h-6 min-w-0 flex-1 cursor-pointer items-end gap-px" onclick={handleSeek}>
 			{#each bars as height, i}
 				{@const barProgress = i / bars.length}
 				<div
-					class="min-h-0.5 flex-1 rounded-px transition-[background] duration-100"
+					class="rounded-px min-h-0.5 flex-1 transition-[background] duration-100"
 					style="height: {height * 100}%; {barProgress <= progress
 						? 'background: oklch(0.65 0.15 250);'
 						: 'background: oklch(0.35 0.01 80);'}"
@@ -195,7 +200,7 @@
 						class="volume-slider h-24 w-1.5"
 						style="writing-mode: vertical-lr; direction: rtl;"
 					/>
-					<span class="text-xxs tabular-nums text-zinc-400">{Math.round($audioVolume * 100)}%</span>
+					<span class="text-xxs text-zinc-400 tabular-nums">{Math.round($audioVolume * 100)}%</span>
 				</div>
 			{/if}
 		</div>

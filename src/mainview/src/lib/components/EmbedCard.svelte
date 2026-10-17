@@ -64,7 +64,12 @@
 	</button>
 {:else if embed.type === EmbedType.Gifv || embed.type === EmbedType.Image || (!embed.title && !embed.description && !embed.author && !embed.footer && !embed.fields?.length && (embed.image || embed.video))}
 	{#if embed.video}
-		<video src={proxyVideoUrl(embed.video.url)} muted playsinline controls class="mt-1 max-w-[550px] max-h-[350px] self-start rounded"
+		<video
+			src={proxyVideoUrl(embed.video.url)}
+			muted
+			playsinline
+			controls
+			class="mt-1 max-h-[350px] max-w-[550px] self-start rounded"
 		></video>
 	{:else if embed.image}
 		<button
@@ -72,18 +77,26 @@
 			class="mt-1 block max-w-[550px] cursor-zoom-in self-start rounded"
 			onclick={() => onImageClick?.(embed.image!.url)}
 		>
-			<img src={embed.image.url} alt="" class="max-w-[550px] max-h-[350px] rounded" loading="lazy" />
+			<img src={embed.image.url} alt="" class="max-h-[350px] max-w-[550px] rounded" loading="lazy" />
 		</button>
 	{/if}
 {:else if isTikTokEmbed(embed)}
-	<div class="mt-1 flex w-[320px] flex-col overflow-hidden rounded-md border-l-4 bg-zinc-800/60" style="border-color: #fe2c55;">
+	<div
+		class="mt-1 flex w-[320px] flex-col overflow-hidden rounded-md border-l-4 bg-zinc-800/60"
+		style="border-color: #fe2c55;"
+	>
 		<div class="px-3 py-2.5">
 			{#if embed.provider}
 				<span class="text-xxs font-semibold text-zinc-400">{embed.provider}</span>
 			{/if}
 			{#if embed.title}
 				{#if embed.url}
-					<a href={embed.url} target="_blank" rel="noopener noreferrer" class="line-clamp-2 text-sm font-semibold text-stone-300 hover:underline">{embed.title}</a>
+					<a
+						href={embed.url}
+						target="_blank"
+						rel="noopener noreferrer"
+						class="line-clamp-2 text-sm font-semibold text-stone-300 hover:underline">{embed.title}</a
+					>
 				{:else}
 					<span class="line-clamp-2 text-sm font-semibold text-zinc-100">{embed.title}</span>
 				{/if}

@@ -330,7 +330,15 @@
 		const newSet = new Set(failedNonces);
 		newSet.delete(nonce);
 		failedNonces = newSet;
-		sendMessage(channelId, message.content ?? "", nonce, saved?.ref, saved?.files, undefined, saved?.stickerAttachmentId)
+		sendMessage(
+			channelId,
+			message.content ?? "",
+			nonce,
+			saved?.ref,
+			saved?.files,
+			undefined,
+			saved?.stickerAttachmentId,
+		)
 			.then(() => retryData.delete(nonce))
 			.catch((err) => {
 				failedNonces = new Set(failedNonces).add(nonce);

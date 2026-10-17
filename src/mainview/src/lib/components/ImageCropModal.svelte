@@ -107,34 +107,34 @@
 	async function handleConfirm() {
 		processing = true;
 		try {
-		if (!file || !imgEl) return;
+			if (!file || !imgEl) return;
 
-		const isAnimated = file.type === "image/gif" || file.type === "image/webp";
+			const isAnimated = file.type === "image/gif" || file.type === "image/webp";
 
-		let outputFile: File | null = null;
+			let outputFile: File | null = null;
 
-		if (isAnimated && "ImageDecoder" in window) {
-			outputFile = await cropAnimated(file);
-		}
+			if (isAnimated && "ImageDecoder" in window) {
+				outputFile = await cropAnimated(file);
+			}
 
-		if (!outputFile) {
-			const canvas = document.createElement("canvas");
-			canvas.width = targetWidth;
-			canvas.height = targetHeight;
-			const ctx = canvas.getContext("2d")!;
-			ctx.imageSmoothingEnabled = true;
-			ctx.imageSmoothingQuality = "high";
-			ctx.drawImage(imgEl, cropX, cropY, cropW, cropH, 0, 0, targetWidth, targetHeight);
+			if (!outputFile) {
+				const canvas = document.createElement("canvas");
+				canvas.width = targetWidth;
+				canvas.height = targetHeight;
+				const ctx = canvas.getContext("2d")!;
+				ctx.imageSmoothingEnabled = true;
+				ctx.imageSmoothingQuality = "high";
+				ctx.drawImage(imgEl, cropX, cropY, cropW, cropH, 0, 0, targetWidth, targetHeight);
 
-			const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/png"));
-			if (!blob) return;
-			outputFile = new File([blob], "image.png", { type: "image/png" });
-		}
+				const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/png"));
+				if (!blob) return;
+				outputFile = new File([blob], "image.png", { type: "image/png" });
+			}
 
-		onConfirm(outputFile);
-		open = false;
-		file = null;
-		imgSrc = "";
+			onConfirm(outputFile);
+			open = false;
+			file = null;
+			imgSrc = "";
 		} finally {
 			processing = false;
 		}

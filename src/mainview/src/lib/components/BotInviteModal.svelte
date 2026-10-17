@@ -61,7 +61,9 @@
 <Dialog.Root bind:open>
 	<Dialog.Portal>
 		<Dialog.Overlay class="fixed inset-0 z-50 bg-black/60" />
-		<Dialog.Content class="fixed top-1/2 left-1/2 z-50 w-full max-w-sm -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-zinc-700 bg-zinc-900 p-6 shadow-2xl">
+		<Dialog.Content
+			class="fixed top-1/2 left-1/2 z-50 w-full max-w-sm -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-zinc-700 bg-zinc-900 p-6 shadow-2xl"
+		>
 			<div class="mb-4 flex items-center justify-between">
 				<h2 class="text-base font-semibold text-white">Add Bot to Space</h2>
 				<Dialog.Close class="rounded-md p-1 text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-white">
@@ -81,7 +83,7 @@
 					<div>
 						<div class="flex items-center gap-1.5">
 							<span class="text-sm font-semibold text-white">{bot.username}</span>
-							<span class="rounded bg-stone-600 px-1 py-0.5 text-xxs font-semibold text-white">BOT</span>
+							<span class="text-xxs rounded bg-stone-600 px-1 py-0.5 font-semibold text-white">BOT</span>
 						</div>
 					</div>
 				</div>
@@ -94,7 +96,9 @@
 							onclick={() => handleAdd(space.id)}
 							disabled={adding}
 						>
-							<div class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-linear-to-br from-stone-500 to-stone-700 text-sm font-bold text-white select-none">
+							<div
+								class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-linear-to-br from-stone-500 to-stone-700 text-sm font-bold text-white select-none"
+							>
 								{space.name.charAt(0).toUpperCase()}
 							</div>
 							<span class="truncate text-sm text-white">{space.name}</span>

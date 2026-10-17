@@ -122,7 +122,7 @@ export function getThemeUrl(): string {
 // Auto-load saved custom theme on init
 if (typeof window !== "undefined") {
 	const savedThemeUrl = localStorage.getItem("duvet.code_theme_url");
-	if (savedThemeUrl) loadCustomTheme(savedThemeUrl).catch(() => { });
+	if (savedThemeUrl) loadCustomTheme(savedThemeUrl).catch(() => {});
 }
 
 const LANG_ALIASES: Record<string, string> = {
@@ -238,7 +238,10 @@ function applyInline(
 	s = s.replace(/~~(.+?)~~/gs, (_, t) => `<del>${t}</del>`);
 	s = s.replace(/\|\|(.+?)\|\|/gs, (_, t) => `<span class="msg-spoiler">${t}</span>`);
 	// Markdown links [text](url)
-	s = s.replace(/\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g, (_, text, url) => `<a href="${url}" target="_blank" rel="noopener noreferrer" class="msg-link">${text}</a>`);
+	s = s.replace(
+		/\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g,
+		(_, text, url) => `<a href="${url}" target="_blank" rel="noopener noreferrer" class="msg-link">${text}</a>`,
+	);
 	// Resolve <@id> mentions to @username
 	s = s.replace(/&lt;@([a-f0-9-]+)&gt;/g, (_, id) => {
 		const name = mentionMap?.[id] ?? id.slice(0, 8);
@@ -338,20 +341,13 @@ export function renderMarkdown(
 			}
 		}
 
-		if ((m = /^### (.*)/.exec(line)))
-			out.push(`<h3 class="msg-h3">${inline(m[1])}</h3>`);
-		else if ((m = /^## (.*)/.exec(line)))
-			out.push(`<h2 class="msg-h2">${inline(m[1])}</h2>`);
-		else if ((m = /^# (.*)/.exec(line)))
-			out.push(`<h1 class="msg-h1">${inline(m[1])}</h1>`);
-		else if ((m = /^-# (.*)/.exec(line)))
-			out.push(`<span class="msg-subtext">${inline(m[1])}</span>`);
-		else if ((m = /^>>> (.*)/.exec(line)))
-			out.push(`<blockquote class="msg-blockquote">${inline(m[1])}</blockquote>`);
-		else if ((m = /^> (.*)/.exec(line)))
-			out.push(`<blockquote class="msg-blockquote">${inline(m[1])}</blockquote>`);
-		else
-			out.push(applyInline(renderEmoji(line, large), large, mentionMap, customEmojiMap));
+		if ((m = /^### (.*)/.exec(line))) out.push(`<h3 class="msg-h3">${inline(m[1])}</h3>`);
+		else if ((m = /^## (.*)/.exec(line))) out.push(`<h2 class="msg-h2">${inline(m[1])}</h2>`);
+		else if ((m = /^# (.*)/.exec(line))) out.push(`<h1 class="msg-h1">${inline(m[1])}</h1>`);
+		else if ((m = /^-# (.*)/.exec(line))) out.push(`<span class="msg-subtext">${inline(m[1])}</span>`);
+		else if ((m = /^>>> (.*)/.exec(line))) out.push(`<blockquote class="msg-blockquote">${inline(m[1])}</blockquote>`);
+		else if ((m = /^> (.*)/.exec(line))) out.push(`<blockquote class="msg-blockquote">${inline(m[1])}</blockquote>`);
+		else out.push(applyInline(renderEmoji(line, large), large, mentionMap, customEmojiMap));
 
 		i++;
 	}
