@@ -571,19 +571,24 @@
 		onFocus(node.id);
 	}
 
-	function handleTabClose(channelId: string) {
+	// Closes these tabs in one update. When the active one goes, the first tab left after it takes its
+	// place, or else the last one before it.
+	function handleTabClose(channelIds: string[]) {
 		if (node.kind !== "leaf") {
 			return;
 		}
-		const idx = node.tabs.findIndex((t) => t.channelId === channelId);
-		const tabs = node.tabs.filter((t) => t.channelId !== channelId);
+		const closing = new Set(channelIds);
+		const tabs = node.tabs.filter((t) => !closing.has(t.channelId));
 		if (tabs.length === 0 && onClose) {
 			onClose();
 			return;
 		}
 		let activeChannelId = node.activeChannelId;
-		if (activeChannelId === channelId) {
-			activeChannelId = (tabs[idx] ?? tabs[idx - 1])?.channelId ?? null;
+		if (activeChannelId && closing.has(activeChannelId)) {
+			const idx = node.tabs.findIndex((t) => t.channelId === activeChannelId);
+			const open = (t: Tab) => !closing.has(t.channelId);
+			activeChannelId =
+				(node.tabs.slice(idx + 1).find(open) ?? node.tabs.slice(0, idx).findLast(open))?.channelId ?? null;
 		}
 		// Focus this pane AFTER the update (onUpdate triggers syncSidebarToLeaf
 		// with the already-updated tree, so sidebarSpaceId gets the right guild).
@@ -670,7 +675,7 @@
 		if (node.kind !== "leaf" || focusedPaneId !== node.id) return;
 		if (!node.activeChannelId) return;
 		e.preventDefault();
-		handleTabClose(node.activeChannelId);
+		handleTabClose([node.activeChannelId]);
 	}
 
 	onMount(() => window.addEventListener("keydown", handleCtrlW));
