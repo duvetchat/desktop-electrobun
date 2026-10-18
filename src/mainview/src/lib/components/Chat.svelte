@@ -181,6 +181,10 @@
 	}
 
 	function handleGlobalKeyDown(event: KeyboardEvent) {
+		// Keys pressed in a dialog or a menu (a modal, a picker, the image preview) are theirs, not the chat's.
+		if (event.target instanceof Element && event.target.closest('[role="dialog"], [role="alertdialog"], [role="menu"]'))
+			return;
+
 		const isCtrlShiftUp = event.ctrlKey && event.shiftKey && event.key === "ArrowUp";
 		const isCtrlShiftDown = event.ctrlKey && event.shiftKey && event.key === "ArrowDown";
 

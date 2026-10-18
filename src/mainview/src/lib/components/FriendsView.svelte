@@ -235,15 +235,15 @@
 			{/key}
 		</div>
 	{:else}
-		<div class="border-b border-(--border,#3f4147) px-5 pt-4">
+		<div class="border-b border-[#3f4147] px-5 pt-4">
 			<div class="mb-3 flex items-center justify-between">
 				<h2 class="m-0 mb-3 text-base font-semibold">Friends</h2>
 			</div>
 			<div class="flex gap-1">
 				<button
-					class="flex cursor-pointer items-center gap-1.5 rounded-t border-none bg-none px-3 py-1.5 text-[13px] transition-colors duration-150 {activeTab ===
+					class="flex cursor-pointer items-center gap-1.5 rounded-t border-b-2 border-transparent bg-none px-3 py-1.5 text-[13px] transition-colors duration-150 {activeTab ===
 					'friends'
-						? 'border-b-2 border-b-(--accent,#5865f2) bg-(--bg-secondary,#2b2d31) text-(--text-primary,#dbdee1)'
+						? 'border-b-[#5865f2] bg-(--bg-secondary,#2b2d31) text-(--text-primary,#dbdee1)'
 						: 'text-(--text-secondary,#949ba4) hover:bg-(--bg-hover,#35373c) hover:text-(--text-primary,#dbdee1)'}"
 					onclick={() => (activeTab = "friends")}
 				>
@@ -256,9 +256,9 @@
 					{/if}
 				</button>
 				<button
-					class="flex cursor-pointer items-center gap-1.5 rounded-t border-none bg-none px-3 py-1.5 text-[13px] transition-colors duration-150 {activeTab ===
+					class="flex cursor-pointer items-center gap-1.5 rounded-t border-b-2 border-transparent bg-none px-3 py-1.5 text-[13px] transition-colors duration-150 {activeTab ===
 					'pending'
-						? 'border-b-2 border-b-(--accent,#5865f2) bg-(--bg-secondary,#2b2d31) text-(--text-primary,#dbdee1)'
+						? 'border-b-[#5865f2] bg-(--bg-secondary,#2b2d31) text-(--text-primary,#dbdee1)'
 						: 'text-(--text-secondary,#949ba4) hover:bg-(--bg-hover,#35373c) hover:text-(--text-primary,#dbdee1)'}"
 					onclick={() => (activeTab = "pending")}
 				>
@@ -271,9 +271,9 @@
 					{/if}
 				</button>
 				<button
-					class="flex cursor-pointer items-center gap-1.5 rounded-t border-none bg-none px-3 py-1.5 text-[13px] transition-colors duration-150 {activeTab ===
+					class="flex cursor-pointer items-center gap-1.5 rounded-t border-b-2 border-transparent bg-none px-3 py-1.5 text-[13px] transition-colors duration-150 {activeTab ===
 					'sent'
-						? 'border-b-2 border-b-(--accent,#5865f2) bg-(--bg-secondary,#2b2d31) text-(--text-primary,#dbdee1)'
+						? 'border-b-[#5865f2] bg-(--bg-secondary,#2b2d31) text-(--text-primary,#dbdee1)'
 						: 'text-(--text-secondary,#949ba4) hover:bg-(--bg-hover,#35373c) hover:text-(--text-primary,#dbdee1)'}"
 					onclick={() => (activeTab = "sent")}
 				>
@@ -281,9 +281,9 @@
 					Sent
 				</button>
 				<button
-					class="flex cursor-pointer items-center gap-1.5 rounded-t border-none bg-none px-3 py-1.5 text-[13px] transition-colors duration-150 {activeTab ===
+					class="flex cursor-pointer items-center gap-1.5 rounded-t border-b-2 border-transparent bg-none px-3 py-1.5 text-[13px] transition-colors duration-150 {activeTab ===
 					'add'
-						? 'border-b-2 border-b-[#23a55a] bg-(--bg-secondary,#2b2d31) text-[#23a55a]'
+						? 'border-b-[#23a55a] bg-(--bg-secondary,#2b2d31) text-[#23a55a]'
 						: 'text-(--text-secondary,#949ba4) hover:bg-(--bg-hover,#35373c) hover:text-(--text-primary,#dbdee1)'}"
 					onclick={() => (activeTab = "add")}
 				>
@@ -426,14 +426,14 @@
 					<p class="m-0 mb-4 text-[13px] text-(--text-secondary,#949ba4)">Send a friend request using a user ID.</p>
 					<div class="flex gap-2">
 						<input
-							class="flex-1 rounded border border-(--border,#3f4147) bg-(--bg-tertiary,#1e1f22) px-3 py-2 text-sm text-(--text-primary,#dbdee1) outline-none focus:border-(--accent,#5865f2)"
+							class="flex-1 rounded border border-[#3f4147] bg-(--bg-tertiary,#1e1f22) px-3 py-2 text-sm text-(--text-primary,#dbdee1) outline-none focus:border-[#5865f2]"
 							type="text"
 							placeholder="User ID"
 							bind:value={addUserId}
 							onkeydown={(e) => e.key === "Enter" && handleSendRequest()}
 						/>
 						<button
-							class="flex cursor-pointer items-center gap-1.5 rounded border-none bg-(--accent,#5865f2) px-4 py-2 text-[13px] font-medium whitespace-nowrap text-white hover:bg-[#4752c4] disabled:cursor-not-allowed disabled:opacity-60"
+							class="flex cursor-pointer items-center gap-1.5 rounded border-none bg-[#5865f2] px-4 py-2 text-[13px] font-medium whitespace-nowrap text-white hover:bg-[#4752c4] disabled:cursor-not-allowed disabled:opacity-60"
 							onclick={handleSendRequest}
 							disabled={loading}
 						>
@@ -467,7 +467,7 @@
 	>
 		<!-- svelte-ignore a11y_interactive_supports_focus -->
 		<div
-			class="flex w-100 max-w-[90vw] flex-col gap-3 rounded-lg border border-(--border,#3f4147) bg-(--bg-primary,#1e1f22) p-6"
+			class="flex w-100 max-w-[90vw] flex-col gap-3 rounded-lg border border-[#3f4147] bg-(--bg-primary,#1e1f22) p-6"
 			onclick={(e) => e.stopPropagation()}
 			role="dialog"
 			onkeydown={() => {}}
@@ -479,7 +479,7 @@
 				>
 				<input
 					id="group-name"
-					class="flex-1 rounded border border-(--border,#3f4147) bg-(--bg-tertiary,#1e1f22) px-3 py-2 text-sm text-(--text-primary,#dbdee1) outline-none focus:border-(--accent,#5865f2)"
+					class="flex-1 rounded border border-[#3f4147] bg-(--bg-tertiary,#1e1f22) px-3 py-2 text-sm text-(--text-primary,#dbdee1) outline-none focus:border-[#5865f2]"
 					type="text"
 					placeholder="e.g. Best friends"
 					bind:value={groupName}
@@ -490,12 +490,12 @@
 				<label class="text-xs font-medium tracking-wider text-(--text-secondary,#949ba4) uppercase">
 					Add friends
 					{#if selectedFriendIds.size > 0}
-						<span class="ml-1.5 font-semibold tracking-normal text-(--accent,#5865f2) normal-case"
+						<span class="ml-1.5 font-semibold tracking-normal text-[#5865f2] normal-case"
 							>{selectedFriendIds.size} selected</span
 						>
 					{/if}
 				</label>
-				<div class="max-h-50 overflow-y-auto rounded border border-(--border,#3f4147) bg-(--bg-tertiary,#1e1f22)">
+				<div class="max-h-50 overflow-y-auto rounded border border-[#3f4147] bg-(--bg-tertiary,#1e1f22)">
 					{#if $friends.length === 0}
 						<p class="m-0 p-4 text-center text-[13px] text-(--text-secondary,#949ba4)">No friends added yet</p>
 					{:else}
@@ -518,7 +518,7 @@
 									>{f.user_alias ?? f.user_username}</span
 								>
 								{#if selected}
-									<Check size={16} class="shrink-0 text-(--accent,#5865f2)" />
+									<Check size={16} class="shrink-0 text-[#5865f2]" />
 								{/if}
 							</button>
 						{/each}
@@ -530,7 +530,7 @@
 			{/if}
 			<div class="flex justify-end gap-2">
 				<button
-					class="flex cursor-pointer items-center gap-1.5 rounded border-none bg-(--accent,#5865f2) px-4 py-2 text-[13px] font-medium whitespace-nowrap text-white hover:bg-[#4752c4]"
+					class="flex cursor-pointer items-center gap-1.5 rounded border-none bg-[#5865f2] px-4 py-2 text-[13px] font-medium whitespace-nowrap text-white hover:bg-[#4752c4]"
 					onclick={handleCreateGroup}>Create group</button
 				>
 				<button

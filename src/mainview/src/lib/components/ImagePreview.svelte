@@ -94,6 +94,17 @@
 		}
 	}
 
+	// The overlay takes the keyboard while it's open, so its shortcuts work, and hands it back when it closes.
+	function focusWhileOpen(node: HTMLElement) {
+		const previous = document.activeElement;
+		node.focus();
+		return {
+			destroy() {
+				if (previous instanceof HTMLElement) previous.focus();
+			},
+		};
+	}
+
 	function handleBackdropClick(e: MouseEvent) {
 		if (e.target === e.currentTarget) {
 			open = false;
@@ -114,6 +125,7 @@
 		role="dialog"
 		aria-modal="true"
 		tabindex="-1"
+		use:focusWhileOpen
 		onclick={handleBackdropClick}
 		onkeydown={handleKeyDown}
 		onwheel={handleWheel}
