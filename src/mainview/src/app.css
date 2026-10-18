@@ -376,8 +376,15 @@
 }
 
 @layer components {
+	/* Nothing in the app is selectable (the body is select-none) but what opts in with select-text: a
+	   message's text, embeds and the values meant to be copied. */
 	button,
 	[role="button"],
+	[role="menuitem"],
+	[role="menuitemcheckbox"],
+	[role="menuitemradio"],
+	[role="option"],
+	[role="tab"],
 	a[href],
 	label[for],
 	[data-slot="trigger"] {

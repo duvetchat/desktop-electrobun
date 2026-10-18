@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount } from "svelte";
 	import { Popover } from "bits-ui";
-	import { Smile as SmileIcon, Sticker as StickerIcon, Image as GifIcon, Paperclip, Mic, Square } from "@lucide/svelte";
+	import { Smile as SmileIcon, Sticker as StickerIcon, Image as GifIcon, Plus, Mic, Square } from "@lucide/svelte";
 	import EmojiPicker from "$lib/components/EmojiPicker.svelte";
 	import StickerPicker from "$lib/components/StickerPicker.svelte";
 	import GifPicker from "$lib/components/GifPicker.svelte";
@@ -63,9 +63,12 @@
 	let showStickerPicker = $state(false);
 	let showGifPicker = $state(false);
 	let isEmpty = $state(true);
+	// Empty means no characters at all, so a space hides the placeholder too (sending trims on its own). An
+	// emptied contenteditable can still hold a phantom newline.
+	const hasNoText = (raw: string) => raw === "" || raw === "\n";
 
 	$effect(() => {
-		isEmpty = !initialValue.trim();
+		isEmpty = hasNoText(initialValue);
 	});
 
 	// ── Voice recording ──────────────────────────────────────────────────────
@@ -147,7 +150,7 @@
 	onMount(() => {
 		if (initialValue) {
 			rerender(initialValue, initialValue.length);
-			isEmpty = !initialValue.trim();
+			isEmpty = hasNoText(initialValue);
 		}
 		if (autofocus) {
 			requestAnimationFrame(() => {
@@ -345,7 +348,7 @@
 		undoIndex--;
 		const { raw, cursor } = undoStack[undoIndex];
 		rerender(raw, cursor);
-		isEmpty = !raw.trim();
+		isEmpty = hasNoText(raw);
 		onValueChange?.(raw);
 	}
 
@@ -354,7 +357,7 @@
 		undoIndex++;
 		const { raw, cursor } = undoStack[undoIndex];
 		rerender(raw, cursor);
-		isEmpty = !raw.trim();
+		isEmpty = hasNoText(raw);
 		onValueChange?.(raw);
 	}
 
@@ -430,7 +433,7 @@
 		const newPos = mentionQueryStart + mention.length;
 
 		rerender(newRaw, newPos);
-		isEmpty = !newRaw.trim();
+		isEmpty = hasNoText(newRaw);
 		onValueChange?.(newRaw);
 		mentionSuggestions = [];
 		mentionQueryStart = -1;
@@ -447,7 +450,7 @@
 		const newPos = emojiQueryStart + entry.emoji.length;
 
 		rerender(newRaw, newPos);
-		isEmpty = !newRaw.trim();
+		isEmpty = hasNoText(newRaw);
 		onValueChange?.(newRaw);
 		suggestions = [];
 		emojiQueryStart = -1;
@@ -462,7 +465,7 @@
 		const raw = getRaw(inputEl);
 		const offset = pendingOffset ?? getOffset();
 		pendingOffset = null;
-		isEmpty = !raw.trim();
+		isEmpty = hasNoText(raw);
 		rerender(raw, offset);
 		pushUndo(raw, offset);
 		checkAutocomplete(raw, offset);
@@ -699,7 +702,7 @@
 		const pos = getOffset();
 		rerender(raw, pos);
 		pushUndo(raw, pos);
-		isEmpty = !raw.trim();
+		isEmpty = hasNoText(raw);
 		onValueChange?.(raw);
 	}
 
@@ -727,7 +730,7 @@
 		const newPos = pos + text.length;
 		rerender(newRaw, newPos);
 		pushUndo(newRaw, newPos);
-		isEmpty = !newRaw.trim();
+		isEmpty = hasNoText(newRaw);
 		checkAutocomplete(newRaw, newPos);
 		onValueChange?.(newRaw);
 	}
@@ -751,7 +754,7 @@
 		const newRaw = raw.slice(0, offset) + emoji + raw.slice(offset);
 		const newPos = offset + emoji.length;
 		rerender(newRaw, newPos);
-		isEmpty = !newRaw.trim();
+		isEmpty = hasNoText(newRaw);
 		onValueChange?.(newRaw);
 
 		requestAnimationFrame(() => {
@@ -904,8 +907,20 @@
 			</button>
 		{:else}
 			<div
-				class="pointer-events-auto flex-1 rounded-xl border-none bg-[oklch(0.22_0.01_80/0.8)] px-3 py-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]"
+				class="pointer-events-auto flex flex-1 items-start gap-3 rounded-xl border-none bg-[oklch(0.22_0.01_80/0.8)] px-3 py-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]"
 			>
+				{#if showActions}
+					<!-- File picker button, inside the box before the text as in Discord -->
+					<button
+						type="button"
+						class="flex size-5 shrink-0 cursor-pointer items-center justify-center text-[oklch(0.70_0.01_80)] transition-colors duration-150 outline-none hover:text-[oklch(0.96_0.005_80)]"
+						title="Attach files"
+						aria-label="Attach files"
+						onclick={() => fileInputEl?.click()}
+					>
+						<Plus class="size-5" />
+					</button>
+				{/if}
 				<div
 					bind:this={inputEl}
 					contenteditable="true"
@@ -913,7 +928,7 @@
 					tabindex="0"
 					aria-multiline="false"
 					aria-label={placeholder}
-					class="ce-input focus-override block max-h-36 min-h-5 w-full overflow-y-auto text-sm leading-5 wrap-break-word whitespace-pre-wrap text-[oklch(0.96_0.005_80)] caret-[oklch(0.96_0.005_80)] outline-none [scrollbar-width:thin] {isEmpty
+					class="ce-input focus-override block max-h-36 min-h-5 min-w-0 flex-1 overflow-y-auto text-sm leading-5 wrap-break-word whitespace-pre-wrap text-[oklch(0.96_0.005_80)] caret-[oklch(0.96_0.005_80)] outline-none select-text [scrollbar-width:thin] {isEmpty
 						? 'ce-empty'
 						: ''}"
 					data-placeholder={placeholder}
@@ -926,17 +941,6 @@
 			</div>
 
 			{#if showActions}
-				<!-- File picker button -->
-				<button
-					type="button"
-					class="ce-action-btn flex size-10 shrink-0 cursor-pointer items-center justify-center rounded-xl border border-[oklch(0.40_0.01_80/0.7)] bg-[oklch(0.22_0.01_80/0.7)] text-[oklch(0.70_0.01_80)] transition-colors duration-150 outline-none hover:bg-[oklch(0.28_0.01_80)] hover:text-[oklch(0.96_0.005_80)]"
-					title="Attach files"
-					aria-label="Attach files"
-					onclick={() => fileInputEl?.click()}
-				>
-					<Paperclip class="size-5" />
-				</button>
-
 				<!-- Voice note button -->
 				{#if onVoiceNote}
 					<button

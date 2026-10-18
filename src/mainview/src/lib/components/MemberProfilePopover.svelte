@@ -233,10 +233,10 @@
 				</div>
 
 				<div class="mt-4 rounded-lg bg-zinc-950 p-3">
-					<h2 class="text-lg leading-tight font-bold text-zinc-100">
+					<h2 class="text-lg leading-tight font-bold text-zinc-100 select-text">
 						{member.username}
 					</h2>
-					<p class="text-sm font-medium text-zinc-400">
+					<p class="text-sm font-medium text-zinc-400 select-text">
 						@{member.raw_username}
 					</p>
 

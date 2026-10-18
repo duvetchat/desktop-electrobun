@@ -832,7 +832,9 @@
 										<div class="overflow-hidden rounded-xl border border-amber-600/30 bg-amber-950/20 p-4">
 											<p class="mb-2 text-xs font-semibold text-amber-300">Webhook Token (shown only once)</p>
 											<div class="flex items-center gap-2">
-												<code class="min-w-0 flex-1 truncate rounded-md bg-zinc-800 px-3 py-2 text-xs text-zinc-200">
+												<code
+													class="min-w-0 flex-1 truncate rounded-md bg-zinc-800 px-3 py-2 text-xs text-zinc-200 select-text"
+												>
 													{createdWebhookToken}
 												</code>
 												<button

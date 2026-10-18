@@ -2043,7 +2043,7 @@
 																	{#if app.description}
 																		<p class="text-xs text-zinc-500">{app.description}</p>
 																	{/if}
-																	<p class="text-xxs mt-1 text-zinc-600">ID: {app.id}</p>
+																	<p class="text-xxs mt-1 text-zinc-600 select-text">ID: {app.id}</p>
 																</div>
 																<div class="flex items-center gap-1">
 																	<button
@@ -2140,7 +2140,8 @@
 																	</div>
 																	<div class="mt-2 flex items-center gap-2">
 																		<span class="text-xxs text-zinc-500">Invite link:</span>
-																		<code class="text-xxs flex-1 truncate rounded bg-zinc-900 px-2 py-1 text-zinc-400"
+																		<code
+																			class="text-xxs flex-1 truncate rounded bg-zinc-900 px-2 py-1 text-zinc-400 select-text"
 																			>{getBotInviteLink(app.bot_user_id ?? "")}</code
 																		>
 																		<button
@@ -2322,7 +2323,8 @@
 													Bot Token — copy it now, it won't be shown again!
 												</p>
 												<div class="flex items-center gap-2">
-													<code class="flex-1 rounded bg-zinc-900 px-3 py-2 font-mono text-xs break-all text-zinc-300"
+													<code
+														class="flex-1 rounded bg-zinc-900 px-3 py-2 font-mono text-xs break-all text-zinc-300 select-text"
 														>{devShowToken ? devBotToken : "\u2022".repeat(40)}</code
 													>
 													<button
