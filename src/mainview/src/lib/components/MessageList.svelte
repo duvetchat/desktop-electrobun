@@ -220,9 +220,8 @@
 	});
 
 	// ── Load-more on scroll ───────────────────────────────────────────────────
-	// Blocked until the scroll-position sync effect runs after initial render.
-	// Without this, the skeleton→messages DOM swap fires a synchronous scroll
-	// event that sets isAtBottom=true before scroll-to-unread can run.
+	// Blocked until the visit is placed (placeVisit): before that, a scroll event (the skeleton→messages
+	// swap fires one) would set isAtBottom from a position that isn't the visit's yet.
 	let scrollUnlocked = false;
 
 	function handleScroll() {
@@ -422,65 +421,109 @@
 	});
 	const unreadCount = $derived(unreadDividerIdx ?? 0);
 
-	// Track which unread-after IDs we've already scrolled to (survives channel switches)
-	const scrolledUnreadIds = new Set<string>();
+	// ── Where a visit opens ────────────────────────────────────────────────────
+	// The list stays mounted across channels and while hidden (the friends view hides it), and a hidden
+	// list has no size: it can't be scrolled, and it loses its position. So each visit (another channel,
+	// or the list showing again) is placed once it's loaded and visible: at the unread divider, with the
+	// last read message at the top, when there is one, else at the bottom (a jump to a highlighted
+	// message places itself). Only then does isAtBottom follow the real position, which unblocks the acks.
+	let visitChannel = "";
+	let placedFor = "";
+	// The dividers this visit has scrolled to: one placed later in it (new messages while away from the
+	// bottom) is scrolled to once.
+	let scrolledUnreadIds = new Set<string>();
 
-	// Scroll to the unread divider on first render of unread messages.
-	// Reading isInitialLoading ensures re-run when skeleton → messages.
-	$effect(() => {
-		const id = unreadAfterMessageId;
-		const idx = unreadDividerIdx;
-		const loading = isInitialLoading;
+	function startVisit() {
+		placedFor = "";
+		scrolledUnreadIds = new Set();
+		scrollUnlocked = false;
+		isAtBottom = false;
+	}
+
+	function placeVisit() {
 		const chId = channelId;
-		if (loading || !id || !idx || scrolledUnreadIds.has(id)) return;
+		if (
+			placedFor === chId ||
+			isInitialLoading ||
+			sortedMessages.length === 0 ||
+			!scrollEl ||
+			scrollEl.clientHeight === 0
+		)
+			return;
+		placedFor = chId;
+		const id = unreadAfterMessageId;
+		const unread = !!id && !!unreadDividerIdx;
+		if (id && unread) scrolledUnreadIds.add(id);
+		const jumping = !!highlightedMessageId;
 		void tick().then(() => {
 			requestAnimationFrame(() => {
 				requestAnimationFrame(() => {
-					if (channelId !== chId) return; // stale rAF
-					const target =
-						scrollEl?.querySelector(`[data-message-id="${id}"]`) ?? scrollEl?.querySelector("[data-unread-divider]");
-					if (target) {
-						target.scrollIntoView({ behavior: "instant", block: "start" });
-						scrolledUnreadIds.add(id);
+					if (channelId !== chId || !scrollEl) return;
+					if (!jumping) {
+						const target = unread
+							? (scrollEl.querySelector(`[data-message-id="${id}"]`) ?? scrollEl.querySelector("[data-unread-divider]"))
+							: null;
+						if (target) target.scrollIntoView({ behavior: "instant", block: "start" });
+						else scrollEl.scrollTop = 0;
 					}
+					// One more frame, so the position read is the one just set.
+					requestAnimationFrame(() => {
+						if (channelId !== chId || !scrollEl) return;
+						isAtBottom = scrollEl.scrollTop >= -50;
+						wasAtBottom = isAtBottom;
+						scrollUnlocked = true;
+					});
 				});
 			});
 		});
-	});
+	}
 
-	// Sync isAtBottom with the real scroll position once per channel, AFTER
-	// the scroll-to-unread effect above has had a chance to run (same
-	// tick→rAF→rAF timing, but defined later so its rAF executes second).
-	// This is the ONLY mechanism that sets isAtBottom=true from false (the
-	// initial value), which unblocks the ACK effect in PaneView.
-	let syncedForChannel = "";
 	$effect(() => {
 		const chId = channelId;
-		const len = sortedMessages.length;
-		const loading = isInitialLoading;
-		// On ANY channel change (even mid-loading), immediately lock scroll
-		// updates and reset isAtBottom. This prevents handleScroll from
-		// setting isAtBottom=true with a stale scrollTop during skeleton.
-		if (chId !== syncedForChannel) {
-			scrollUnlocked = false;
-			isAtBottom = false;
+		if (chId !== visitChannel) {
+			visitChannel = chId;
+			// Before the new-message effect below sees this channel's messages: counted against the last
+			// channel's, they would pass for new ones.
+			prevMessageCount = 0;
+			lastSeenMsgId = "";
+			startVisit();
 		}
-		if (loading || len === 0 || chId === syncedForChannel) return;
-		syncedForChannel = chId;
-		// Wait 3 rAFs: scroll-to-unread uses tick→rAF→rAF (2 frames),
-		// so we need one more to read the position AFTER the scroll settled.
+		placeVisit();
+	});
+
+	// The list showing again is a visit too; while hidden, it's at the bottom of nothing anyone sees.
+	$effect(() => {
+		const el = scrollEl;
+		let shown = el.clientHeight > 0;
+		const observer = new ResizeObserver(() => {
+			const showing = el.clientHeight > 0;
+			if (showing && !shown) {
+				startVisit();
+				placeVisit();
+			} else if (!showing && shown) {
+				isAtBottom = false;
+				wasAtBottom = false;
+			}
+			shown = showing;
+		});
+		observer.observe(el);
+		return () => observer.disconnect();
+	});
+
+	// A divider placed later in the visit (new messages while away from the bottom) is scrolled to once.
+	$effect(() => {
+		const id = unreadAfterMessageId;
+		const idx = unreadDividerIdx;
+		const chId = channelId;
+		if (placedFor !== chId || !id || !idx || scrolledUnreadIds.has(id)) return;
+		scrolledUnreadIds.add(id);
 		void tick().then(() => {
 			requestAnimationFrame(() => {
 				requestAnimationFrame(() => {
-					requestAnimationFrame(() => {
-						if (channelId !== chId) return;
-						if (scrollEl) {
-							isAtBottom = scrollEl.scrollTop >= -50;
-							wasAtBottom = isAtBottom;
-							console.log("[sync] isAtBottom:", isAtBottom, "scrollTop:", scrollEl.scrollTop);
-						}
-						scrollUnlocked = true;
-					});
+					if (channelId !== chId || !scrollEl) return;
+					const target =
+						scrollEl.querySelector(`[data-message-id="${id}"]`) ?? scrollEl.querySelector("[data-unread-divider]");
+					target?.scrollIntoView({ behavior: "instant", block: "start" });
 				});
 			});
 		});
@@ -492,8 +535,9 @@
 		const visible = $pageVisible;
 
 		// When page becomes visible again, sync scroll state with actual position
-		// (it may be stale if messages arrived while the tab was hidden).
-		if (visible && scrollEl) {
+		// (it may be stale if messages arrived while the tab was hidden). Not before the visit is placed,
+		// nor while the list is hidden: its scrollTop is then no position anyone sees.
+		if (visible && scrollUnlocked && scrollEl && scrollEl.clientHeight > 0) {
 			const val = scrollEl.scrollTop >= -50;
 			wasAtBottom = val;
 			isAtBottom = val;
@@ -534,13 +578,6 @@
 		}
 
 		prevMessageCount = count;
-	});
-
-	// Reset on channel switch.
-	$effect(() => {
-		const _chId = channelId;
-		prevMessageCount = 0;
-		lastSeenMsgId = "";
 	});
 
 	// ── Formatting ─────────────────────────────────────────────────────────────
