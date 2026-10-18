@@ -371,3 +371,25 @@ export function renderMarkdown(
 
 	return result;
 }
+
+// A message on one line, for the quote above a reply or a thread's parent: code blocks become inline
+// code, and the block syntax (headings, quotes, lists, line breaks) goes.
+export function renderMarkdownLine(
+	input: string,
+	mentionMap?: Record<string, string>,
+	customEmojiMap?: CustomEmojiMap,
+): string {
+	const codes: string[] = [];
+	const line = input
+		.replace(/```[\w+#-]*\n?([\s\S]*?)```/g, (_, code: string) => {
+			codes.push(code.trim().replace(/\s+/g, " "));
+			return `\x00P${codes.length - 1}\x00`;
+		})
+		.split("\n")
+		.map((l) => l.replace(/^(?:#{1,3} |-# |>>> |> |\s*[-*]\s+|\s*\d+[.)]\s+)/, ""))
+		.join(" ");
+	return renderMarkdown(line, false, mentionMap, customEmojiMap).replace(
+		/\x00P(\d+)\x00/g,
+		(_, i) => `<code class="msg-inline-code">${escapeHtml(codes[+i])}</code>`,
+	);
+}

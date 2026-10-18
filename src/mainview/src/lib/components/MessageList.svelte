@@ -22,7 +22,7 @@
 		removeConversationReaction,
 	} from "$lib/api/reactions";
 	import { renderEmoji, isOnlyEmojis, countEmojis } from "$lib/emoji";
-	import { renderMarkdown, type CustomEmojiMap } from "$lib/markdown";
+	import { renderMarkdown, renderMarkdownLine, type CustomEmojiMap } from "$lib/markdown";
 
 	import { gatewayMessageToMessage } from "$lib/types";
 	import { MessageType, type MemberOnSidebar, type GatewaySpace, type Message, type SpaceEmoji } from "$lib/types";
@@ -1017,9 +1017,8 @@
 								/>
 								<span class="shrink-0 font-medium text-zinc-300">{message.referenced_message.author_name}</span>
 								<span class="msg-content truncate opacity-80"
-									>{@html renderMarkdown(
+									>{@html renderMarkdownLine(
 										message.referenced_message.content ?? "",
-										false,
 										mentionMap,
 										customEmojiMap,
 									)}</span
@@ -1932,14 +1931,11 @@
 									{#if parentMsg}
 										<div class="mb-2 flex items-center gap-1.5 border-l-2 border-zinc-600 pl-1">
 											<UserAvatar src={parentMsg.author_avatar_url} name={parentMsg.author_name} size={14} />
-											<span class="max-w-24 truncate text-xs font-medium text-zinc-400">{parentMsg.author_name}</span>
+											<span class="max-w-24 shrink-0 truncate text-xs font-medium text-zinc-400"
+												>{parentMsg.author_name}</span
+											>
 											<span class="truncate text-xs text-zinc-500"
-												>{@html renderMarkdown(
-													(parentMsg.content ?? "").slice(0, 60),
-													false,
-													mentionMap,
-													customEmojiMap,
-												)}{(parentMsg.content ?? "").length > 60 ? "…" : ""}</span
+												>{@html renderMarkdownLine(parentMsg.content ?? "", mentionMap, customEmojiMap)}</span
 											>
 										</div>
 									{/if}
