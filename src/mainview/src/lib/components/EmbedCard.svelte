@@ -85,7 +85,7 @@
 		class="mt-1 flex w-[320px] flex-col overflow-hidden rounded-md border-l-4 bg-zinc-800/60"
 		style="border-color: #fe2c55;"
 	>
-		<div class="px-3 py-2.5">
+		<div class="px-3 py-2.5 select-text">
 			{#if embed.provider}
 				<span class="text-xxs font-semibold text-zinc-400">{embed.provider}</span>
 			{/if}
@@ -120,7 +120,7 @@
 	>
 		{#if embed.author || embed.title || embed.description || embed.fields?.length || embed.footer || embed.thumbnail}
 			<div class="flex gap-3 px-3 py-2.5">
-				<div class="flex min-w-0 flex-1 flex-col gap-1">
+				<div class="flex min-w-0 flex-1 flex-col gap-1 select-text">
 					{#if embed.author}
 						<div class="flex items-center gap-1.5">
 							{#if embed.author.icon_url}

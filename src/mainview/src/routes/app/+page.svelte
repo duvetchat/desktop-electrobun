@@ -296,9 +296,11 @@
 		activeDMId = null;
 	}
 
+	// The Friends button always opens the friends list, from an open DM or group too.
 	function handleFriendsSelect() {
 		showFriendsView = true;
 		activeSpaceId = null;
+		activeDMId = null;
 	}
 
 	// When leaving voice, switch active tab away from the voice channel

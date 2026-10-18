@@ -1948,7 +1948,7 @@
 													>{new Date(threadMsg.created_at).toLocaleString(locale)}</span
 												>
 											</div>
-											<p class="msg-content text-sm wrap-break-word whitespace-pre-wrap text-zinc-200">
+											<p class="msg-content text-sm wrap-break-word whitespace-pre-wrap text-zinc-200 select-text">
 												{@html renderMarkdown(threadMsg.content ?? "", false, mentionMap, customEmojiMap)}
 											</p>
 										</div>
