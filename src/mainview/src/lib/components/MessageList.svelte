@@ -208,12 +208,14 @@
 	}
 
 	const locale = typeof navigator !== "undefined" ? navigator.language : "en-US";
-	const dateFormatter = new Intl.DateTimeFormat(locale, {
+	// Words are English, as next to them ("Today", "just now") and in the rest of the UI; clock times keep
+	// the system's format.
+	const dateFormatter = new Intl.DateTimeFormat("en", {
 		month: "long",
 		day: "numeric",
 		year: "numeric",
 	});
-	const relativeFormatter = new Intl.RelativeTimeFormat(locale, {
+	const relativeFormatter = new Intl.RelativeTimeFormat("en", {
 		numeric: "auto",
 	});
 
