@@ -1,4 +1,5 @@
-# Lint (oxlint) and type checks (svelte-check) on every push to main and every pull request.
+# Lint (oxlint), formatting (Prettier) and type checks (svelte-check) on every push to main and every
+# pull request.
 name: CI
 
 on:
@@ -37,5 +38,6 @@ jobs:
       - run: pnpm install --frozen-lockfile
         working-directory: src/mainview
       - run: bun run lint
+      - run: bun run format:check
       - run: pnpm run check
         working-directory: src/mainview
