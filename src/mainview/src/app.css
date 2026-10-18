@@ -141,7 +141,7 @@
 	--animate-call-pulse: call-pulse 1.5s ease-out infinite;
 
 	--font-sans: "Manrope", "sans-serif";
-	--font-mono: "Source Code Pro", "monospace";
+	--font-mono: "Source Code Pro", monospace;
 	--font-alt: "Courier", "sans-serif";
 	--font-display: "Cal Sans", "sans-serif";
 
@@ -534,6 +534,11 @@
 		display: block;
 		padding: 8px 0;
 		color: oklch(0.88 0.015 80);
+	}
+
+	/* The global `*` font-family would otherwise reach every line and token of the block. */
+	.msg-code-block * {
+		font-family: inherit;
 	}
 
 	.msg-ln {
