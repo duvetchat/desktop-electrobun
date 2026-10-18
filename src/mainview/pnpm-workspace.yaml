@@ -1,2 +1,0 @@
-patchedDependencies:
-  facehash-sv@0.0.5: patches/facehash-sv@0.0.5.patch
