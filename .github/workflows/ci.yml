@@ -1,11 +1,11 @@
-# Lint (oxlint), formatting (Prettier) and type checks (svelte-check) on every push to main and every
-# pull request.
+# Lint (oxlint), formatting (Prettier) and type checks (svelte-check) on every pull request.
 name: CI
 
+# Not on pushes to main, since the pull request already ran it; by hand from the Actions tab, on
+# any branch.
 on:
-  push:
-    branches: [main]
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
