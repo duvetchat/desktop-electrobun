@@ -162,16 +162,21 @@
 		return "#" + (n >>> 0).toString(16).padStart(6, "0");
 	}
 
+	// An offline member's name is dimmed by mixing its color into the sidebar's background, not with an
+	// opacity: text under an opacity loses ClearType and looks thinner than the online names.
 	function getMemberColorStyle(member: MemberOnSidebar): string {
+		const dim = (color: string) =>
+			member.status === "offline" ? `color-mix(in oklab, ${color} 60%, var(--color-zinc-900))` : color;
 		const highest = [...member.roles]
 			.filter((r) => r.color_from !== null && r.color_from !== undefined)
 			.sort((a, b) => b.position - a.position)
 			.at(0);
-		if (!highest) return "color: var(--color-zinc-100)";
-		const from = intToHex(highest.color_from);
+		if (!highest) return `color: ${dim("var(--color-zinc-100)")}`;
+		const from = dim(intToHex(highest.color_from));
 		if (highest.color_to === null || highest.color_to === undefined) return `color: ${from}`;
-		const to = intToHex(highest.color_to);
-		const via = highest.color_via !== null && highest.color_via !== undefined ? `, ${intToHex(highest.color_via)}` : "";
+		const to = dim(intToHex(highest.color_to));
+		const via =
+			highest.color_via !== null && highest.color_via !== undefined ? `, ${dim(intToHex(highest.color_via))}` : "";
 		return `background: linear-gradient(90deg, ${from}${via}, ${to}); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;`;
 	}
 
@@ -262,10 +267,7 @@
 						onOpenChange={(o) => {
 							activePopoverMemberId = o ? member.id : null;
 						}}
-						triggerClass="group relative flex h-10 w-full items-center overflow-hidden px-3 text-zinc-200 hover:bg-zinc-800 hover:text-white {member.status ===
-						'offline'
-							? 'opacity-60'
-							: ''}"
+						triggerClass="group relative flex h-10 w-full items-center overflow-hidden px-3 text-zinc-200 hover:bg-zinc-800 hover:text-white"
 						{onRemoveMember}
 					>
 						{#snippet children()}
@@ -275,13 +277,16 @@
 										? `?r=${bannerRetryCounts.get(member.id)}`
 										: ''}"
 									alt=""
-									class="pointer-events-none absolute inset-0 h-full w-full object-cover object-right opacity-15"
+									class="pointer-events-none absolute inset-0 h-full w-full object-cover object-right {member.status ===
+									'offline'
+										? 'opacity-9'
+										: 'opacity-15'}"
 									onerror={() => handleBannerError(member.id)}
 									draggable="false"
 								/>
 							{/if}
 							<div class="relative flex min-w-0 items-center gap-2.5">
-								<div class="relative shrink-0">
+								<div class="relative shrink-0 {member.status === 'offline' ? 'opacity-60' : ''}">
 									<UserAvatar src={member.avatar_url} name={member.username} size={30} />
 									{#if isTyping(member.id)}
 										<span
@@ -314,13 +319,18 @@
 								</div>
 
 								<div class="min-w-0 text-left">
-									<span class="flex items-center gap-1 truncate font-medium" style={getMemberColorStyle(member)}>
+									<span
+										class="flex items-center gap-1 truncate leading-5 font-medium"
+										style={getMemberColorStyle(member)}
+									>
 										<span class="truncate">{member.username}</span>
 										{#if member.is_bot}
-											<span class="text-xxs text-zinc-400">BOT</span>
+											<span class="text-xxs text-zinc-400 {member.status === 'offline' ? 'opacity-60' : ''}">BOT</span>
 										{/if}
 										{#if member.is_owner}
-											<CrownSimpleIcon class="size-3 text-amber-500" />
+											<CrownSimpleIcon
+												class="size-3 text-amber-500 {member.status === 'offline' ? 'opacity-60' : ''}"
+											/>
 										{/if}
 									</span>
 									{#if $userActivities[member.id]?.length}
