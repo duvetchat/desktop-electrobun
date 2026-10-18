@@ -79,12 +79,11 @@
 	let channelHighlightedMessage = $state<Partial<Record<string, string | null>>>({});
 	// last-read message ID per channel, used to render the unread divider
 	let channelUnreadAfter = $state<Partial<Record<string, string | null>>>({});
-	// last message ID that was ACK'd per channel (used to set the divider on re-entry)
-	let channelLastAcked = $state<Partial<Record<string, string>>>({});
 	let paneIsAtBottom = $state(false);
 	// Plain let (not $state) to avoid self-reactive mutation in $effect
 	let lastAckChannelId: string | null = null;
-	// Non-reactive dedup map — prevents sending the same ACK twice
+	// Non-reactive dedup map — prevents sending the same ACK twice. It also sets the divider on re-entry,
+	// without making that effect rerun on every ack.
 	const ackedMsgIds = new Map<string, string>();
 	// track handled jump request ids to avoid double-processing
 	let lastHandledJumpId = $state<string | null>(null);
@@ -124,6 +123,50 @@
 			: null,
 	);
 
+	// The newest confirmed (non-pending) message. UUIDv7 IDs compare by time as strings.
+	function newestConfirmedId(msgs: { id: string; nonce?: string | null }[]): string | null {
+		let newestId: string | null = null;
+		for (const m of msgs) {
+			if (m.id === m.nonce) continue;
+			if (!newestId || m.id > newestId) newestId = m.id;
+		}
+		return newestId;
+	}
+
+	// Acks the channel's newest confirmed message, unless that one already was, and clears its unread
+	// badge and mention count.
+	function ackNewest(channelId: string, msgs: { id: string; nonce?: string | null }[]) {
+		const newestId = newestConfirmedId(msgs);
+		if (!newestId || newestId === ackedMsgIds.get(channelId)) return;
+		ackedMsgIds.set(channelId, newestId);
+		unreadChannels.update((s) => {
+			s.delete(channelId);
+			return s;
+		});
+		mentionCounts.update((all) => {
+			const copy = { ...all };
+			delete copy[channelId];
+			return copy;
+		});
+		ackRoom(channelId, newestId).catch((err) => console.error("[ack] network error:", err));
+	}
+
+	// ACK when leaving the channel (channel switch / unmount) — only if at bottom. It comes before the
+	// effect below, which resets paneIsAtBottom for the next channel: Svelte reruns effects in order,
+	// and this cleanup has to read the value of the channel being left. A channel left read through
+	// loses its unread divider: the next visit opens at the bottom, unless new messages came meanwhile.
+	$effect(() => {
+		const channelId = node.kind === "leaf" ? node.activeChannelId : null;
+		return () => {
+			if (!channelId) return;
+			const msgs = get(channelMessages)[channelId] ?? [];
+			if (paneIsAtBottom) ackNewest(channelId, msgs);
+			if (channelUnreadAfter[channelId] && ackedMsgIds.get(channelId) === newestConfirmedId(msgs)) {
+				channelUnreadAfter[channelId] = null;
+			}
+		};
+	});
+
 	// Track the active text room globally so MESSAGE_CREATE can skip adding it to unread.
 	// Also detects re-entry into an already-loaded channel that received new messages while away.
 	$effect(() => {
@@ -142,8 +185,10 @@
 			});
 			// Set the unread divider position (re-entry only — first entry is
 			// handled in the load effect's .then() where we have real messages).
-			if (hadUnread && loadedChannels.has(channelId) && channelLastAcked[channelId]) {
-				channelUnreadAfter[channelId] = channelLastAcked[channelId];
+			// A channel loaded while the pane was hidden has no ack of this session: READY has its read position.
+			if (hadUnread && loadedChannels.has(channelId)) {
+				const lastRead = ackedMsgIds.get(channelId) ?? get(lastReadRooms)[channelId] ?? get(lastMsgRooms)[channelId];
+				if (lastRead) channelUnreadAfter[channelId] = lastRead;
 			}
 		} else {
 			activeTextRoomId.set(null);
@@ -163,26 +208,7 @@
 		if (channelUnreadAfter[channelId] != null) {
 			channelUnreadAfter[channelId] = null;
 		}
-		// Find newest confirmed (non-pending) message via UUID v7 lex order
-		let newestId: string | null = null;
-		for (const m of msgs) {
-			if (m.id === m.nonce) continue;
-			if (!newestId || m.id > newestId) newestId = m.id;
-		}
-		if (newestId && newestId !== ackedMsgIds.get(channelId)) {
-			ackedMsgIds.set(channelId, newestId);
-			unreadChannels.update((s) => {
-				s.delete(channelId);
-				return s;
-			});
-			mentionCounts.update((all) => {
-				const copy = { ...all };
-				delete copy[channelId];
-				return copy;
-			});
-			channelLastAcked[channelId] = newestId;
-			ackRoom(channelId, newestId).catch((err) => console.error("[ack] network error:", err));
-		}
+		ackNewest(channelId, msgs);
 	}
 
 	// ACK reactively when at bottom and messages change.
@@ -202,25 +228,30 @@
 		if (channelUnreadAfter[channelId] != null) {
 			channelUnreadAfter[channelId] = null;
 		}
-		let newestId: string | null = null;
-		for (const m of msgs) {
-			if (m.id === m.nonce) continue;
-			if (!newestId || m.id > newestId) newestId = m.id;
+		ackNewest(channelId, msgs);
+	});
+
+	// Opening a channel reads it, as its badge already says: once per visit (another channel, or the pane
+	// showing again), the newest message is acked as soon as it's loaded and the window has focus,
+	// wherever the list opens. The unread divider stays for the visit. After a jump (messages below
+	// still to load) the bottom acks instead.
+	let visitChannel = "";
+	let visitAcked = false;
+	$effect(() => {
+		const msgs = activeMessages;
+		const visible = $pageVisible;
+		const channelId =
+			isActive && node.kind === "leaf" && node.activeChannelId && activeChannel?.type === "text"
+				? node.activeChannelId
+				: "";
+		if (channelId !== visitChannel) {
+			visitChannel = channelId;
+			visitAcked = false;
 		}
-		if (newestId && newestId !== ackedMsgIds.get(channelId)) {
-			ackedMsgIds.set(channelId, newestId);
-			unreadChannels.update((s) => {
-				s.delete(channelId);
-				return s;
-			});
-			mentionCounts.update((all) => {
-				const copy = { ...all };
-				delete copy[channelId];
-				return copy;
-			});
-			channelLastAcked[channelId] = newestId;
-			ackRoom(channelId, newestId).catch((err) => console.error("[ack] network error:", err));
-		}
+		if (!channelId || visitAcked || !visible || msgs.length === 0) return;
+		if (channelInitialLoading[channelId] || channelHasMoreBelow[channelId] === true) return;
+		visitAcked = true;
+		ackNewest(channelId, msgs);
 	});
 
 	// ACK on a 5-second interval as a safety net.
@@ -237,35 +268,6 @@
 			if (ackInterval) {
 				clearInterval(ackInterval);
 				ackInterval = null;
-			}
-		};
-	});
-
-	// ACK when leaving the channel (channel switch / unmount) — only if at bottom.
-	$effect(() => {
-		const channelId = node.kind === "leaf" ? node.activeChannelId : null;
-		return () => {
-			if (!channelId || !paneIsAtBottom) return;
-			const msgs = get(channelMessages)[channelId] ?? [];
-			if (msgs.length === 0) return;
-			let newestId: string | null = null;
-			for (const m of msgs) {
-				if (m.id === m.nonce) continue;
-				if (!newestId || m.id > newestId) newestId = m.id;
-			}
-			if (newestId && newestId !== ackedMsgIds.get(channelId)) {
-				ackedMsgIds.set(channelId, newestId);
-				channelLastAcked[channelId] = newestId;
-				unreadChannels.update((s) => {
-					s.delete(channelId);
-					return s;
-				});
-				mentionCounts.update((all) => {
-					const copy = { ...all };
-					delete copy[channelId];
-					return copy;
-				});
-				ackRoom(channelId, newestId).catch((err) => console.error("[ack] cleanup error:", err));
 			}
 		};
 	});
