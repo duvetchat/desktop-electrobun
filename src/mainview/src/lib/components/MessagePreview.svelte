@@ -1,26 +1,45 @@
 <script lang="ts">
-	import { Hash as HashIcon, Paperclip as PaperclipIcon } from "@lucide/svelte";
+	import { Hash as HashIcon } from "@lucide/svelte";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
+	import MessageAttachments from "$lib/components/MessageAttachments.svelte";
 	import { renderMarkdown, type CustomEmojiMap } from "$lib/markdown";
 	import type { Message } from "$lib/types";
 
 	// A message as the search results and the pinned messages list it: its channel (when given), author,
-	// date, content, files and sticker. The content is marked data-search-content for the search's
-	// highlights.
+	// date, content, and its voice note, sticker or files as the chat shows them, smaller; onPreview opens
+	// an image. The content is marked data-search-content for the search's highlights.
 	let {
 		message,
 		roomName = null,
 		mentionMap = {},
 		customEmojiMap = {},
+		onPreview,
 	}: {
 		message: Message;
 		roomName?: string | null;
 		mentionMap?: Record<string, string>;
 		customEmojiMap?: CustomEmojiMap;
+		onPreview: (src: string, alt?: string) => void;
 	} = $props();
 
 	const locale = typeof navigator !== "undefined" ? navigator.language : "en-US";
 	const formatDate = (iso: string) => new Date(iso).toLocaleString(locale, { dateStyle: "short", timeStyle: "short" });
+
+	const html = $derived(message.content ? renderMarkdown(message.content, false, mentionMap, customEmojiMap) : "");
+	// The content shows six lines; Show more shows the rest. clamped says whether the six hide some of it,
+	// measured once the content is laid out, and again when it or its width changes.
+	let contentEl = $state<HTMLElement | null>(null);
+	let expanded = $state(false);
+	let clamped = $state(false);
+	$effect(() => {
+		if (!contentEl || !html || expanded) return;
+		const el = contentEl;
+		const measure = () => (clamped = el.scrollHeight > el.clientHeight + 1);
+		measure();
+		const observer = new ResizeObserver(measure);
+		observer.observe(el);
+		return () => observer.disconnect();
+	});
 </script>
 
 {#if roomName !== null}
@@ -38,19 +57,24 @@
 			<span class="truncate text-sm font-semibold text-stone-100">{message.author_name}</span>
 			<span class="text-xxs shrink-0 text-stone-500">{formatDate(message.created_at)}</span>
 		</div>
-		{#if message.content}
-			<div data-search-content class="line-clamp-6 text-sm wrap-break-word whitespace-pre-wrap text-stone-300">
-				{@html renderMarkdown(message.content, false, mentionMap, customEmojiMap)}
+		{#if html}
+			<div
+				bind:this={contentEl}
+				data-search-content
+				class="text-sm wrap-break-word whitespace-pre-wrap text-stone-300 {expanded ? '' : 'line-clamp-6'}"
+			>
+				{@html html}
 			</div>
+			{#if clamped}
+				<button
+					type="button"
+					class="mt-0.5 self-start text-xs font-medium text-stone-400 hover:text-stone-200 hover:underline"
+					onclick={() => (expanded = !expanded)}
+				>
+					{expanded ? "Show less" : "Show more"}
+				</button>
+			{/if}
 		{/if}
-		{#each message.attachments ?? [] as a (a.id)}
-			<div class="flex min-w-0 items-center gap-1 text-xs text-stone-400">
-				<PaperclipIcon class="size-3 shrink-0" />
-				<span class="truncate">{a.filename}</span>
-			</div>
-		{/each}
-		{#if message.sticker_attachment_id}
-			<span class="text-xs text-stone-500 italic">Sticker</span>
-		{/if}
+		<MessageAttachments {message} channelName={roomName ?? ""} {onPreview} maxWidth={320} maxHeight={240} />
 	</div>
 </div>

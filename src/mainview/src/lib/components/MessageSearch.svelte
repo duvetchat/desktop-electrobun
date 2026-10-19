@@ -3,6 +3,7 @@
 	import { tick } from "svelte";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
 	import MessagePreview from "$lib/components/MessagePreview.svelte";
+	import ImagePreview from "$lib/components/ImagePreview.svelte";
 	import { searchSpaceMessages, type MessageSearch } from "$lib/api/messages";
 	import { searchConversationMessages, type DirectMessage } from "$lib/api/conversations";
 	import { getApiError } from "$lib/api/api";
@@ -307,9 +308,19 @@
 		input?.focus();
 	}
 
+	// A result's image opens over the app.
+	let previewSrc = $state("");
+	let previewAlt = $state("");
+	let previewOpen = $state(false);
+	function openPreview(src: string, alt = "") {
+		previewSrc = src;
+		previewAlt = alt;
+		previewOpen = true;
+	}
+
 	function jump(e: MouseEvent | KeyboardEvent, r: Result) {
-		// A link in the message opens itself.
-		if (e.target instanceof Element && e.target.closest("a")) return;
+		// A link, a button (like Show more) or a file in the message is its own: a click on it doesn't jump.
+		if (e.target instanceof Element && e.target.closest("a, button, [data-attachments]")) return;
 		jumpToMessageRequest.set(
 			space && r.roomId
 				? { id: crypto.randomUUID(), spaceId: space.id, roomId: r.roomId, messageId: r.message.id }
@@ -494,6 +505,7 @@
 						roomName={r.roomId ? roomName(r.roomId) : null}
 						{mentionMap}
 						{customEmojiMap}
+						onPreview={openPreview}
 					/>
 				</div>
 			{/each}
@@ -509,3 +521,5 @@
 		</div>
 	</aside>
 {/if}
+
+<ImagePreview src={previewSrc} alt={previewAlt} bind:open={previewOpen} />
