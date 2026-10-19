@@ -116,6 +116,11 @@
 					name: "Manage Messages",
 					description: "Allows members to delete or edit any message in this channel.",
 				},
+				{
+					flag: Permission.PinMessages,
+					name: "Pin Messages",
+					description: "Allows members to pin and unpin messages in this channel.",
+				},
 			],
 		},
 		{

@@ -19,6 +19,7 @@ export const Permission = {
 	ManageBots: 1 << 14, // 16384
 	ManageSpaceAttachments: 1 << 15, // 32768
 	ManageSpaceWebhooks: 1 << 16, // 65536
+	PinMessages: 1 << 17, // 131072
 } as const;
 
 export type PermissionFlag = (typeof Permission)[keyof typeof Permission];
@@ -41,6 +42,7 @@ export const ALL_PERMISSIONS: ReadonlyArray<{ flag: PermissionFlag; name: string
 	{ flag: Permission.ManageBots, name: "Manage Bots" },
 	{ flag: Permission.ManageSpaceAttachments, name: "Manage Attachments" },
 	{ flag: Permission.ManageSpaceWebhooks, name: "Manage Webhooks" },
+	{ flag: Permission.PinMessages, name: "Pin Messages" },
 ];
 
 // target_type values for RoomOverwrite

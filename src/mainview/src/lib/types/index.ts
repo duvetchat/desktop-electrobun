@@ -100,6 +100,8 @@ export interface ReferencedMessage {
 export const MessageType = {
 	Text: 0,
 	Voice: 1,
+	/** A room's or conversation's notice that its author pinned the message it references; no content. */
+	PinNotice: 2,
 } as const;
 
 export type MessageType = (typeof MessageType)[keyof typeof MessageType];
@@ -128,6 +130,8 @@ export interface GatewayMessage {
 	attachments?: Attachment[] | null;
 	reactions?: MessageReaction[] | null;
 	sticker_attachment_id?: string | null;
+	/** When it was pinned; null while it isn't. Events that create or edit a message leave it out. */
+	pinned_at?: string | null;
 }
 
 export interface Message {
@@ -149,6 +153,8 @@ export interface Message {
 	attachments?: Attachment[] | null;
 	reactions?: MessageReaction[] | null;
 	sticker_attachment_id?: string | null;
+	/** When it was pinned; null while it isn't. Events that create or edit a message leave it out. */
+	pinned_at?: string | null;
 }
 
 export interface GatewayMessageDelete {
@@ -367,6 +373,8 @@ export interface TypingEvent {
 	alias: string | null;
 	avatar: string | null;
 	room_id: string;
+	/** Recording a voice message rather than typing. */
+	recording: boolean;
 }
 
 export interface DMTypingEvent {
@@ -375,6 +383,8 @@ export interface DMTypingEvent {
 	username: string;
 	alias: string | null;
 	avatar: string | null;
+	/** Recording a voice message rather than typing. */
+	recording: boolean;
 }
 
 export interface CallIncomingEvent {
@@ -571,6 +581,20 @@ export interface DMMessageDeleteEvent {
 	conversation_id: string;
 }
 
+/** A room's message was pinned (pinned_at set) or unpinned (pinned_at null). */
+export interface MessagePinUpdateEvent {
+	id: string;
+	room_id: string;
+	pinned_at: string | null;
+}
+
+/** MessagePinUpdateEvent for a conversation's message. */
+export interface DMMessagePinUpdateEvent {
+	id: string;
+	conversation_id: string;
+	pinned_at: string | null;
+}
+
 export type GatewayEventPayload =
 	| { type: "READY"; data: GatewayReadyData }
 	| { type: "SPACE_CREATE"; data: GatewaySpaceCreatePayload }
@@ -585,6 +609,7 @@ export type GatewayEventPayload =
 	| { type: "MESSAGE_CREATE"; data: GatewayMessage }
 	| { type: "MESSAGE_UPDATE"; data: MessageUpdateEvent }
 	| { type: "MESSAGE_DELETE"; data: GatewayMessageDelete }
+	| { type: "MESSAGE_PIN_UPDATE"; data: MessagePinUpdateEvent }
 	| { type: "MENTION_CREATE"; data: MentionCreateEvent }
 	| { type: "DM_MENTION_CREATE"; data: DMMentionCreateEvent }
 	| { type: "USER_UPDATE"; data: UserUpdateEvent }
@@ -622,6 +647,7 @@ export type GatewayEventPayload =
 	| { type: "DM_MESSAGE_CREATE"; data: DirectMessage }
 	| { type: "DM_MESSAGE_UPDATE"; data: DMMessageUpdateEvent }
 	| { type: "DM_MESSAGE_DELETE"; data: DMMessageDeleteEvent }
+	| { type: "DM_MESSAGE_PIN_UPDATE"; data: DMMessagePinUpdateEvent }
 	| { type: "DM_REACTION_ADD"; data: ReactionEvent }
 	| { type: "DM_REACTION_REMOVE"; data: ReactionRemoveEvent }
 	| { type: "TYPING"; data: TypingEvent }
@@ -723,6 +749,7 @@ export function gatewayMessageToMessage(msg: GatewayMessage, spaces: GatewaySpac
 		attachments: msg.attachments ?? null,
 		reactions: msg.reactions ?? null,
 		sticker_attachment_id: msg.sticker_attachment_id ?? null,
+		pinned_at: msg.pinned_at ?? null,
 	};
 }
 

@@ -6,6 +6,22 @@ export interface CustomEmojiMap {
 	[id: string]: { name: string; attachment_id: string };
 }
 
+/** A space's custom emojis by ID, as renderMarkdown takes them. */
+export function customEmojiMapOf(emojis: { id: string; name: string; attachment_id: string }[]): CustomEmojiMap {
+	const map: CustomEmojiMap = {};
+	for (const e of emojis) map[e.id] = { name: e.name, attachment_id: e.attachment_id };
+	return map;
+}
+
+/** The name a mention of each member shows, by user ID, as renderMarkdown takes them. */
+export function mentionMapOf(
+	members: { id: string; username: string; raw_username: string }[],
+): Record<string, string> {
+	const map: Record<string, string> = {};
+	for (const m of members) map[m.id] = m.username || m.raw_username;
+	return map;
+}
+
 const emojiHost = getHostURL();
 
 let highlighterPromise: Promise<Highlighter> | null = null;
@@ -141,7 +157,7 @@ const LANG_ALIASES: Record<string, string> = {
 	rb: "ruby",
 };
 
-function escapeHtml(s: string): string {
+export function escapeHtml(s: string): string {
 	return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 

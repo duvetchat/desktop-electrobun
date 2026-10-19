@@ -1,4 +1,5 @@
 import {
+	pinUpdates,
 	channelMessages,
 	wsSessionToken,
 	iceServers,
@@ -406,13 +407,14 @@ function handleEvent(event: GatewayEvent) {
 				const result: typeof all = {};
 				for (const [roomId, msgs] of Object.entries(all)) {
 					result[roomId] = msgs.map((m) => {
-						// The update payload carries no attachments or reactions: keep the existing ones.
+						// The update payload carries no attachments, reactions or pin: keep the existing ones.
 						if (m.id === updatedMessage.id)
 							return {
 								...updatedMessage,
 								attachments: updatedMessage.attachments ?? m.attachments,
 								reactions: updatedMessage.reactions ?? m.reactions,
 								referenced_message: updatedMessage.referenced_message ?? m.referenced_message,
+								pinned_at: m.pinned_at,
 							};
 						if (m.referenced_message?.message_id === updatedMessage.id) {
 							return {
@@ -425,6 +427,16 @@ function handleEvent(event: GatewayEvent) {
 				}
 				return result;
 			});
+			break;
+		}
+		case "MESSAGE_PIN_UPDATE": {
+			const { id, room_id, pinned_at } = payload.data;
+			channelMessages.update((all) => {
+				const msgs = all[room_id];
+				if (!msgs) return all;
+				return { ...all, [room_id]: msgs.map((m) => (m.id === id ? { ...m, pinned_at } : m)) };
+			});
+			pinUpdates.set({ channelId: room_id, messageId: id });
 			break;
 		}
 		case "MESSAGE_DELETE": {
@@ -1139,6 +1151,16 @@ function handleEvent(event: GatewayEvent) {
 					}),
 				};
 			});
+			break;
+		}
+		case "DM_MESSAGE_PIN_UPDATE": {
+			const { id, conversation_id, pinned_at } = payload.data;
+			dmMessages.update((all) => {
+				const msgs = all[conversation_id];
+				if (!msgs) return all;
+				return { ...all, [conversation_id]: msgs.map((m) => (m.id === id ? { ...m, pinned_at } : m)) };
+			});
+			pinUpdates.set({ channelId: conversation_id, messageId: id });
 			break;
 		}
 		case "DM_MESSAGE_DELETE": {
