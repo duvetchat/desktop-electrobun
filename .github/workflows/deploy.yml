@@ -1,0 +1,35 @@
+# Deploys main to the production VPS (duvet.chat) on every push to it; by hand from the Actions tab
+# too, which deploys main whatever branch it's started from. CI already ran on the pull request.
+# DEPLOY_SSH_KEY can only run /usr/local/bin/duvet-deploy on the VPS (the forced command of its
+# entry in root's authorized_keys), which pulls main and rebuilds the service named after this repo.
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Never cancelled halfway through a build: a newer push waits for the running deploy instead. The
+# VPS also takes one deploy at a time across the repos.
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Deploy on the VPS
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy
+          chmod 600 ~/.ssh/deploy
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          ssh -i ~/.ssh/deploy -o BatchMode=yes -o ServerAliveInterval=30 root@server.duvet.chat "${{ github.event.repository.name }}"
