@@ -26,9 +26,9 @@
 		removeConversationReaction,
 	} from "$lib/api/reactions";
 	import { renderEmoji, isOnlyEmojis, countEmojis } from "$lib/emoji";
-	import { customEmojiMapOf, mentionMapOf, renderMarkdown, renderMarkdownLine } from "$lib/markdown";
+	import { customEmojiMapOf, mentionMapOf, parseTextSegments, renderMarkdown, renderMarkdownLine } from "$lib/markdown";
 
-	import { gatewayMessageToMessage } from "$lib/types";
+	import { gatewayMessageToMessage, isComponentsV2, messageText } from "$lib/types";
 	import { MessageType, type MemberOnSidebar, type GatewaySpace, type Message, type SpaceEmoji } from "$lib/types";
 	import { getHostURL, getAvatarURL, DUVET_DOMAIN } from "$lib/common/common";
 
@@ -37,6 +37,7 @@
 	import MessageLinkEmbed from "$lib/components/MessageLinkEmbed.svelte";
 	import EmbedCard from "$lib/components/EmbedCard.svelte";
 	import MessageAttachments from "$lib/components/MessageAttachments.svelte";
+	import MessageComponents from "$lib/components/MessageComponents.svelte";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
 	import ChatInput from "$lib/components/ChatInput.svelte";
 	import EmojiPicker from "$lib/components/EmojiPicker.svelte";
@@ -783,24 +784,6 @@
 		return { text: content, inviteCodes, botInviteIds, messageLinks };
 	}
 
-	function parseTextSegments(text: string) {
-		const segments: { type: "text" | "link"; content: string }[] = [];
-		const bareUrlRegex = /(?<!\]\()(?:https?|duvet):\/\/[^\s)]+(?:\)[^\s)]*)*|(?<=\s|^)(?:https?|duvet):\/\/[^\s]+/g;
-		let lastIndex = 0;
-		let match;
-		while ((match = bareUrlRegex.exec(text)) !== null) {
-			if (match.index > lastIndex) {
-				segments.push({ type: "text", content: text.slice(lastIndex, match.index) });
-			}
-			segments.push({ type: "link", content: match[0] });
-			lastIndex = bareUrlRegex.lastIndex;
-		}
-		if (lastIndex < text.length) {
-			segments.push({ type: "text", content: text.slice(lastIndex) });
-		}
-		return segments;
-	}
-
 	// ── Message actions ────────────────────────────────────────────────────────
 	function startEdit(message: Message) {
 		editingMessageId = message.id;
@@ -984,7 +967,9 @@
 
 			{@const isHighlighted = highlightedMessageId === message.id}
 			{@const isMention =
-				!!$currentUser && message.author_id !== $currentUser.id && message.content?.includes(`<@${$currentUser.id}>`)}
+				!!$currentUser &&
+				message.author_id !== $currentUser.id &&
+				messageText(message).includes(`<@${$currentUser.id}>`)}
 			{@const msgMember = members.find((m) => m.id === message.author_id)}
 			{#if message.type === MessageType.PinNotice}
 				<!-- A pin notice: who pinned which message, as Discord shows it -->
@@ -1068,13 +1053,14 @@
 										size={16}
 									/>
 									<span class="shrink-0 font-medium text-zinc-300">{message.referenced_message.author_name}</span>
-									<span class="msg-content truncate opacity-80"
-										>{@html renderMarkdownLine(
-											message.referenced_message.content ?? "",
-											mentionMap,
-											customEmojiMap,
-										)}</span
-									>
+									{#if message.referenced_message.content}
+										<span class="msg-content truncate opacity-80"
+											>{@html renderMarkdownLine(message.referenced_message.content, mentionMap, customEmojiMap)}</span
+										>
+									{:else}
+										<!-- No text to show: only files, a sticker or components -->
+										<span class="truncate italic opacity-80">Click to see message</span>
+									{/if}
 									<span class="shrink-0 opacity-50"
 										>{new Date(message.referenced_message.created_at).toLocaleTimeString(locale, {
 											hour: "2-digit",
@@ -1146,7 +1132,11 @@
 											{message.author_name}
 										</span>
 									{/if}
-									{#if message.author_is_bot}
+									{#if message.webhook_id}
+										<span class="text-xxs mr-1.5 rounded bg-stone-600 px-1 py-0.5 font-semibold text-white"
+											>WEBHOOK</span
+										>
+									{:else if message.author_is_bot}
 										<span class="text-xxs mr-1.5 rounded bg-stone-600 px-1 py-0.5 font-semibold text-white">BOT</span>
 									{/if}
 									<span class="text-xs font-medium text-zinc-400">{formatTimestamp(message.created_at, now)}</span>
@@ -1183,6 +1173,16 @@
 								</div>
 							{:else if message.type === MessageType.Voice || message.sticker_attachment_id}
 								<MessageAttachments {message} {channelName} onPreview={openPreview} />
+							{:else if isComponentsV2(message)}
+								<!-- The components are all of it: its files show where they place them -->
+								<MessageComponents
+									components={message.components ?? []}
+									{space}
+									{members}
+									{mentionMap}
+									{customEmojiMap}
+									onPreview={openPreview}
+								/>
 							{:else}
 								{@const processed = processMessageContent(message.content ?? "")}
 								{@const isOnlyLink =
@@ -1316,6 +1316,17 @@
 									</div>
 								{/if}
 								<MessageAttachments {message} {channelName} onPreview={openPreview} />
+								{#if message.components?.length}
+									<!-- Rows of buttons and selects below the content -->
+									<MessageComponents
+										components={message.components}
+										{space}
+										{members}
+										{mentionMap}
+										{customEmojiMap}
+										onPreview={openPreview}
+									/>
+								{/if}
 							{/if}
 
 							<!-- Reactions display -->

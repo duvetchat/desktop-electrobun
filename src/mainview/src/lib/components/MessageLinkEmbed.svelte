@@ -2,7 +2,7 @@
 	import { onMount } from "svelte";
 	import { getMessageById } from "$lib/api/messages";
 	import { getDirectMessageById } from "$lib/api/conversations";
-	import { gatewayMessageToMessage } from "$lib/types";
+	import { gatewayMessageToMessage, messageText } from "$lib/types";
 	import { gatewaySpaces, jumpToMessageRequest, conversations } from "$lib/stores.svelte";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
 	import type { Message } from "$lib/types";
@@ -147,7 +147,7 @@
 					<span class="text-xxs shrink-0 text-zinc-500">{formatTime(message.created_at)}</span>
 				</div>
 				<p class="line-clamp-3 text-sm wrap-break-word whitespace-pre-wrap text-zinc-300">
-					{@html renderMarkdown(message.content ?? "")}
+					{@html renderMarkdown(messageText(message))}
 				</p>
 			</div>
 		</div>

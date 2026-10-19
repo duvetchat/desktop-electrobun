@@ -106,6 +106,107 @@ export const MessageType = {
 
 export type MessageType = (typeof MessageType)[keyof typeof MessageType];
 
+export const MessageFlag = {
+	/** The components are the whole message: it has no content, embeds or files of its own. */
+	IsComponentsV2: 1 << 15,
+} as const;
+
+/** The component types a message can have (components.Type in the API). */
+export const ComponentType = {
+	ActionRow: 1,
+	Button: 2,
+	StringSelect: 3,
+	UserSelect: 5,
+	RoleSelect: 6,
+	MentionableSelect: 7,
+	RoomSelect: 8,
+	Section: 9,
+	TextDisplay: 10,
+	Thumbnail: 11,
+	MediaGallery: 12,
+	File: 13,
+	Separator: 14,
+	Container: 17,
+} as const;
+
+export type ComponentType = (typeof ComponentType)[keyof typeof ComponentType];
+
+export const ButtonStyle = {
+	Primary: 1,
+	Secondary: 2,
+	Success: 3,
+	Danger: 4,
+	/** Opens its url instead of sending an interaction. */
+	Link: 5,
+} as const;
+
+/** A button's or an option's emoji: a space emoji by id, or a Unicode one by name. */
+export interface ComponentEmoji {
+	id?: string;
+	name?: string;
+	animated?: boolean;
+}
+
+export interface SelectOption {
+	label: string;
+	value: string;
+	description?: string;
+	emoji?: ComponentEmoji;
+	default?: boolean;
+}
+
+export interface ComponentDefaultValue {
+	id: string;
+	type: "user" | "role" | "room";
+}
+
+/** An image, a video or a file: an http(s) url, or for a file sent with the message a signed /attachments path, with its type and size. */
+export interface ComponentMedia {
+	url: string;
+	attachment_id?: string;
+	content_type?: string;
+	width?: number;
+	height?: number;
+}
+
+export interface GalleryItem {
+	media: ComponentMedia;
+	description?: string;
+	spoiler?: boolean;
+}
+
+/** Any message component (components.Component in the API): its type says which of the fields it has. */
+export interface Component {
+	type: ComponentType;
+	id?: number;
+	components?: Component[];
+	accessory?: Component;
+	custom_id?: string;
+	style?: number;
+	label?: string;
+	emoji?: ComponentEmoji;
+	url?: string;
+	disabled?: boolean;
+	placeholder?: string;
+	min_values?: number;
+	max_values?: number;
+	options?: SelectOption[];
+	default_values?: ComponentDefaultValue[];
+	room_types?: RoomType[];
+	content?: string;
+	media?: ComponentMedia;
+	description?: string;
+	spoiler?: boolean;
+	items?: GalleryItem[];
+	file?: ComponentMedia;
+	/** A file's name and size, from the file sent with the message. */
+	name?: string;
+	size?: number;
+	divider?: boolean;
+	spacing?: number;
+	accent_color?: number;
+}
+
 export interface MessageReaction {
 	emoji_name: string;
 	emoji_id?: string | null;
@@ -132,6 +233,9 @@ export interface GatewayMessage {
 	sticker_attachment_id?: string | null;
 	/** When it was pinned; null while it isn't. Events that create or edit a message leave it out. */
 	pinned_at?: string | null;
+	/** MessageFlag bits. The thread endpoint leaves them and the components out. */
+	flags?: number;
+	components?: Component[] | null;
 }
 
 export interface Message {
@@ -155,6 +259,8 @@ export interface Message {
 	sticker_attachment_id?: string | null;
 	/** When it was pinned; null while it isn't. Events that create or edit a message leave it out. */
 	pinned_at?: string | null;
+	flags?: number;
+	components?: Component[] | null;
 }
 
 export interface GatewayMessageDelete {
@@ -194,6 +300,8 @@ export interface MessageUpdateEvent {
 	updated_at: string;
 	sticker_attachment_id: string | null;
 	embeds: Embed[] | null;
+	flags: number;
+	components: Component[] | null;
 	user?: GatewayUser;
 }
 
@@ -754,7 +862,27 @@ export function gatewayMessageToMessage(msg: GatewayMessage, spaces: GatewaySpac
 		reactions: msg.reactions ?? null,
 		sticker_attachment_id: msg.sticker_attachment_id ?? null,
 		pinned_at: msg.pinned_at ?? null,
+		flags: msg.flags ?? 0,
+		components: msg.components ?? null,
 	};
+}
+
+export function isComponentsV2(message: Pick<Message, "flags">): boolean {
+	return ((message.flags ?? 0) & MessageFlag.IsComponentsV2) !== 0;
+}
+
+/** The text a message shows: its content, or its text displays' when its components are all of it. */
+export function messageText(message: Pick<Message, "flags" | "content" | "components">): string {
+	if (!isComponentsV2(message)) return message.content ?? "";
+	const texts: string[] = [];
+	const walk = (components: Component[] | null | undefined) => {
+		for (const c of components ?? []) {
+			if (c.type === ComponentType.TextDisplay && c.content) texts.push(c.content);
+			walk(c.components);
+		}
+	};
+	walk(message.components);
+	return texts.join("\n");
 }
 
 export function gatewaySpaceToGuild(space: GatewaySpace): Guild {

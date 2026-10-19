@@ -2,12 +2,13 @@
 	import { Hash as HashIcon } from "@lucide/svelte";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
 	import MessageAttachments from "$lib/components/MessageAttachments.svelte";
+	import MessageComponents from "$lib/components/MessageComponents.svelte";
 	import { renderMarkdown, type CustomEmojiMap } from "$lib/markdown";
-	import type { Message } from "$lib/types";
+	import { isComponentsV2, type Message } from "$lib/types";
 
 	// A message as the search results and the pinned messages list it: its channel (when given), author,
-	// date, content, and its voice note, sticker or files as the chat shows them, smaller; onPreview opens
-	// an image. The content is marked data-search-content for the search's highlights.
+	// date, content, and its voice note, sticker, files or components as the chat shows them, smaller;
+	// onPreview opens an image. The content is marked data-search-content for the search's highlights.
 	let {
 		message,
 		roomName = null,
@@ -75,6 +76,11 @@
 				</button>
 			{/if}
 		{/if}
-		<MessageAttachments {message} channelName={roomName ?? ""} {onPreview} maxWidth={320} maxHeight={240} />
+		{#if !isComponentsV2(message)}
+			<MessageAttachments {message} channelName={roomName ?? ""} {onPreview} maxWidth={320} maxHeight={240} />
+		{/if}
+		{#if message.components?.length}
+			<MessageComponents components={message.components} {mentionMap} {customEmojiMap} {onPreview} compact />
+		{/if}
 	</div>
 </div>
