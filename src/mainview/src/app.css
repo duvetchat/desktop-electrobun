@@ -369,6 +369,12 @@
 		background: oklch(0.85 0.14 95);
 	}
 
+	/* The words a message search found, in its results (MessageSearch.svelte). */
+	::highlight(search-hit) {
+		background: oklch(0.72 0.13 85 / 0.4);
+		color: oklch(0.97 0.01 85);
+	}
+
 	a {
 		color: skyblue;
 		text-decoration: underline;

@@ -1,5 +1,6 @@
 import api from "$lib/api/api";
 import { createAckThrottle } from "$lib/api/ack";
+import { messageSearchParams, type MessageSearch, type MessageSearchResponse } from "$lib/api/messages";
 import type { MessageType } from "$lib/types";
 
 export type ConversationType = 1 | 2; // 1 = DM, 2 = group
@@ -55,6 +56,8 @@ export interface DirectMessage {
 	reactions?: import("$lib/types").MessageReaction[] | null;
 	embeds?: import("$lib/types").Embed[] | null;
 	sticker_attachment_id?: string | null;
+	/** When it was pinned; null while it isn't. Events that create or edit a message leave it out. */
+	pinned_at?: string | null;
 }
 
 export async function getConversations(): Promise<Conversation[]> {
@@ -110,6 +113,33 @@ export async function getDirectMessageById(
 	signal?: AbortSignal,
 ): Promise<DirectMessage> {
 	const res = await api.get(`/api/users/@me/conversations/${conversationId}/messages/${messageId}`, { signal });
+	return res.data;
+}
+
+/** A conversation's pinned messages, the last pinned first. */
+export async function getConversationPins(conversationId: string, signal?: AbortSignal): Promise<DirectMessage[]> {
+	const res = await api.get(`/api/users/@me/conversations/${conversationId}/pins`, { signal });
+	return res.data;
+}
+
+/** Pins a message of a conversation, which posts the conversation's pin notice. */
+export async function pinConversationMessage(conversationId: string, messageId: string): Promise<void> {
+	await api.put(`/api/users/@me/conversations/${conversationId}/pins/${messageId}`);
+}
+
+export async function unpinConversationMessage(conversationId: string, messageId: string): Promise<void> {
+	await api.delete(`/api/users/@me/conversations/${conversationId}/pins/${messageId}`);
+}
+
+export async function searchConversationMessages(
+	conversationId: string,
+	search: MessageSearch,
+	signal?: AbortSignal,
+): Promise<MessageSearchResponse<DirectMessage>> {
+	const res = await api.get(
+		`/api/users/@me/conversations/${conversationId}/messages/search?${messageSearchParams(search)}`,
+		{ signal },
+	);
 	return res.data;
 }
 
@@ -174,8 +204,9 @@ export async function updateDirectMessage(
 	return res.data;
 }
 
-export async function sendConversationTyping(conversationId: string): Promise<void> {
-	await api.post(`/api/users/@me/conversations/${conversationId}/typing`);
+/** Tells the conversation the user is typing, or recording a voice message. */
+export async function sendConversationTyping(conversationId: string, recording = false): Promise<void> {
+	await api.post(`/api/users/@me/conversations/${conversationId}/typing`, recording ? { recording } : undefined);
 }
 
 export async function deleteDirectMessage(conversationId: string, messageId: string): Promise<void> {

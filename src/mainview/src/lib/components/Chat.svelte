@@ -1,9 +1,11 @@
 <script lang="ts">
-	import { Search as MagnifyingGlassIcon, Bookmark as BookmarkSimpleIcon, Hash as HashIcon } from "@lucide/svelte";
+	import { Hash as HashIcon } from "@lucide/svelte";
 
 	import { onMount, onDestroy } from "svelte";
 	import ChatInput from "$lib/components/ChatInput.svelte";
 	import MessageList from "$lib/components/MessageList.svelte";
+	import MessageSearch from "$lib/components/MessageSearch.svelte";
+	import PinnedMessages from "$lib/components/PinnedMessages.svelte";
 	import type { Message, MemberOnSidebar, GatewaySpace, MessageReference, Embed } from "$lib/types";
 	import { MessageReferenceType } from "$lib/types";
 	import { sendMessage, sendVoiceNote, sendTypingIndicator } from "$lib/api/messages";
@@ -75,7 +77,8 @@
 		onDeleteMsg?: (msgId: string) => Promise<void>;
 		onRetry?: (message: Message) => void;
 		onDismiss?: (nonce: string) => void;
-		sendTyping?: () => void;
+		/** Tells the others the user is typing, or recording a voice message. */
+		sendTyping?: (recording: boolean) => void;
 		onUnreadMark?: (messageId: string) => void;
 		onVoiceNoteOverride?: (blob: Blob) => void;
 	} = $props();
@@ -83,6 +86,7 @@
 	let chatInputRef = $state<{ focus: () => void; focusAndInsert: (char: string) => void } | null>(null);
 	let pendingFiles = $state<File[]>([]);
 	let lastTypingSent = 0;
+	let lastTypingRecording = false;
 
 	// Store original send data for retry (files, ref, sticker)
 	const retryData = new Map<string, { files?: File[]; ref?: MessageReference; stickerAttachmentId?: string }>();
@@ -352,6 +356,12 @@
 
 	function handleTyping(text: string) {
 		if (!text) return;
+		notifyTyping(false);
+	}
+
+	// Shows the user typing, or recording a voice message, and tells the others: at most every 3
+	// seconds, but at once when typing turns into recording or back.
+	function notifyTyping(recording: boolean) {
 		const now = Date.now();
 		const user = $currentUser;
 		if (user) {
@@ -367,18 +377,20 @@
 							alias: user.alias ?? null,
 							avatar: user.avatar ?? null,
 							timestamp: now,
+							recording,
 						},
 					],
 				};
 			});
 		}
-		if (now - lastTypingSent < 3000) return;
+		if (now - lastTypingSent < 3000 && recording === lastTypingRecording) return;
 		lastTypingSent = now;
+		lastTypingRecording = recording;
 		if (sendTyping) {
-			sendTyping();
+			sendTyping(recording);
 			return;
 		}
-		sendTypingIndicator(channelId);
+		sendTypingIndicator(channelId, recording);
 	}
 
 	function dismissFailedMessage(nonce: string) {
@@ -513,18 +525,12 @@
 				{channelName}
 			</div>
 			<div class="flex flex-row items-center gap-3">
-				<BookmarkSimpleIcon
-					class="size-4 text-zinc-400 duration-100 hover:scale-[1.05] hover:text-zinc-200 active:scale-[0.95]"
-				/>
-				<div
-					class="relative flex h-8 w-48 items-center rounded-lg border border-stone-800/90 bg-stone-900/40 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)] transition-colors focus-within:border-stone-600/80 focus-within:bg-stone-900/65"
-				>
-					<MagnifyingGlassIcon class="absolute left-2.5 size-3.5 text-stone-500" />
-					<input
-						placeholder="Search messages"
-						class="h-full w-full border-none bg-transparent pr-2.5 pl-8 text-xs font-medium text-stone-100 placeholder:text-stone-500/90 focus:ring-0 focus:outline-none"
-					/>
-				</div>
+				{#key channelId}
+					<PinnedMessages {space} {channelId} {members} {customEmojis} />
+				{/key}
+				{#key spaceId}
+					<MessageSearch {space} {members} {customEmojis} />
+				{/key}
 			</div>
 		</div>
 	{/if}
@@ -631,6 +637,7 @@
 			placeholder={placeholder ?? `Message #${channelName}`}
 			onSubmit={handleSendMessage}
 			onVoiceNote={handleVoiceNote}
+			onRecording={() => notifyTyping(true)}
 			onArrowUpWhenEmpty={tryEditLastMessage}
 			onValueChange={handleTyping}
 			{members}

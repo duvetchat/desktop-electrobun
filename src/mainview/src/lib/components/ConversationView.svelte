@@ -39,6 +39,8 @@
 	import { MessageSquare, Phone, UserPlus, Users } from "@lucide/svelte";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
 	import Chat from "$lib/components/Chat.svelte";
+	import MessageSearch from "$lib/components/MessageSearch.svelte";
+	import PinnedMessages from "$lib/components/PinnedMessages.svelte";
 	import GuildMemberSidebar from "$lib/components/GuildMemberSidebar.svelte";
 	import VoiceChannelView from "$lib/components/VoiceChannelView.svelte";
 	import type { MemberOnSidebar } from "$lib/types";
@@ -177,6 +179,7 @@
 			reactions: msg.reactions ?? null,
 			embeds: msg.embeds ?? null,
 			sticker_attachment_id: msg.sticker_attachment_id ?? null,
+			pinned_at: msg.pinned_at ?? null,
 		};
 	}
 
@@ -196,6 +199,7 @@
 				cached.attachments === msg.attachments &&
 				cached.reactions === msg.reactions &&
 				cached.embeds === msg.embeds &&
+				cached.pinned_at === (msg.pinned_at ?? null) &&
 				cached.referenced_message === (msg.referenced_message ?? null)
 			) {
 				result.push(cached);
@@ -555,7 +559,9 @@
 	});
 </script>
 
-<div class="flex flex-1 flex-col overflow-hidden bg-[linear-gradient(180deg,oklch(0.22_0.01_80),oklch(0.19_0.008_80))]">
+<div
+	class="relative flex flex-1 flex-col overflow-hidden bg-[linear-gradient(180deg,oklch(0.22_0.01_80),oklch(0.19_0.008_80))]"
+>
 	<!-- Header -->
 	<div
 		class="flex h-10 shrink-0 items-center gap-2 border-b border-stone-800 bg-stone-950/45 px-3 font-semibold text-stone-100"
@@ -597,6 +603,12 @@
 					<Users class="size-3.5" />
 				</button>
 			{/if}
+			{#key conversation.id}
+				<PinnedMessages channelId={conversation.id} conversation members={convMembers} toDirectMessage={toMessage} />
+				<div class="ml-2">
+					<MessageSearch conversationId={conversation.id} members={convMembers} toDirectMessage={toMessage} />
+				</div>
+			{/key}
 		</div>
 	</div>
 
@@ -645,7 +657,7 @@
 			onDeleteMsg={dmDelete}
 			onRetry={dmRetry}
 			onDismiss={dmDismiss}
-			sendTyping={() => sendConversationTyping(conversation.id).catch(() => {})}
+			sendTyping={(recording) => sendConversationTyping(conversation.id, recording).catch(() => {})}
 			onVoiceNoteOverride={dmVoiceNote}
 			members={convMembers}
 			unreadAfterMessageId={convUnreadAfter}

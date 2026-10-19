@@ -1,12 +1,15 @@
 <script lang="ts">
-	import { computeRoomPermissions, Permission } from "$lib/permissions";
+	import { hasPermission, Permission } from "$lib/permissions";
 	import { onDestroy, onMount, tick } from "svelte";
-	import { updateMessage, deleteMessage, getMessageThread } from "$lib/api/messages";
+	import { Pin as PinIcon, PinOff as PinOffIcon } from "@lucide/svelte";
+	import { updateMessage, deleteMessage, getMessageThread, pinRoomMessage, unpinRoomMessage } from "$lib/api/messages";
+	import { pinConversationMessage, unpinConversationMessage } from "$lib/api/conversations";
 	import { confirmAction } from "$lib/stores/confirm.svelte";
 	import { Dialog, Popover } from "bits-ui";
 	import {
 		currentUser,
 		jumpToMessageRequest,
+		pinsPanelRequest,
 		gatewaySpaces,
 		pageVisible,
 		botInviteRequest,
@@ -22,7 +25,7 @@
 		removeConversationReaction,
 	} from "$lib/api/reactions";
 	import { renderEmoji, isOnlyEmojis, countEmojis } from "$lib/emoji";
-	import { renderMarkdown, renderMarkdownLine, type CustomEmojiMap } from "$lib/markdown";
+	import { customEmojiMapOf, mentionMapOf, renderMarkdown, renderMarkdownLine } from "$lib/markdown";
 
 	import { gatewayMessageToMessage } from "$lib/types";
 	import { MessageType, type MemberOnSidebar, type GatewaySpace, type Message, type SpaceEmoji } from "$lib/types";
@@ -330,19 +333,8 @@
 	);
 
 	const authorColors = $derived(buildAuthorColorMap(members));
-	const mentionMap = $derived(
-		members.reduce<Record<string, string>>((map, m) => {
-			map[m.id] = m.username || m.raw_username;
-			return map;
-		}, {}),
-	);
-
-	const customEmojiMap: CustomEmojiMap = $derived(
-		customEmojis.reduce<CustomEmojiMap>((map, ce) => {
-			map[ce.id] = { name: ce.name, attachment_id: ce.attachment_id };
-			return map;
-		}, {}),
-	);
+	const mentionMap = $derived(mentionMapOf(members));
+	const customEmojiMap = $derived(customEmojiMapOf(customEmojis));
 
 	// ── Image preview ─────────────────────────────────────────────────────────
 	let previewSrc = $state("");
@@ -883,23 +875,41 @@
 		}
 	}
 
-	function currentUserCanManageMessages(): boolean {
+	// Whether the current user has a permission in this room (the owner has every one); false outside spaces.
+	function currentUserCan(flag: number): boolean {
 		if (!$currentUser || !space) {
 			return false;
 		}
-		if ($currentUser.id === space.owner_id) {
-			return true;
-		}
 		const room = space.rooms.find((r) => r.id === channelId);
-		if (!room) {
-			return false;
-		}
+		return !!room && hasPermission(space, room, flag);
+	}
+
+	// Pins are for those with PinMessages in a room, and for every member of a conversation.
+	const canPin = $derived(isConversation || currentUserCan(Permission.PinMessages));
+	let pinningMessageId = $state<string | null>(null);
+
+	async function togglePin(message: Message) {
+		const pin = !message.pinned_at;
+		pinningMessageId = message.id;
 		try {
-			const perms = computeRoomPermissions(space, room);
-			return (perms & Permission.ManageMessages) === Permission.ManageMessages;
-		} catch {
-			return false;
+			if (isConversation) await (pin ? pinConversationMessage : unpinConversationMessage)(channelId, message.id);
+			else await (pin ? pinRoomMessage : unpinRoomMessage)(channelId, message.id);
+		} catch (err) {
+			toast(getApiError(err, pin ? "Couldn't pin the message" : "Couldn't unpin the message"), "error");
+		} finally {
+			pinningMessageId = null;
 		}
+	}
+
+	// A pin notice's link to the message it pinned.
+	function jumpToPinned(message: Message) {
+		const messageId = message.referenced_message?.message_id;
+		if (!messageId) return;
+		jumpToMessageRequest.set(
+			isConversation
+				? { id: crypto.randomUUID(), spaceId: "", roomId: "", messageId, conversationId: channelId }
+				: { id: crypto.randomUUID(), spaceId, roomId: channelId, messageId },
+		);
 	}
 </script>
 
@@ -956,6 +966,7 @@
 			{@const chronoPrev = sortedMessages.at(i + 1)}
 			{@const isConsecutive =
 				chronoPrev &&
+				chronoPrev.type !== MessageType.PinNotice &&
 				chronoPrev.author_id === message.author_id &&
 				chronoPrev.author_name === message.author_name &&
 				new Date(message.created_at).getTime() - new Date(chronoPrev.created_at).getTime() <= 5 * 60 * 1_000}
@@ -970,190 +981,606 @@
 			{@const isMention =
 				!!$currentUser && message.author_id !== $currentUser.id && message.content?.includes(`<@${$currentUser.id}>`)}
 			{@const msgMember = members.find((m) => m.id === message.author_id)}
-			<div
-				data-message-id={message.id}
-				class="group relative flex flex-col rounded-md px-3 {isLast ? 'mb-3' : 'mb-1'} {message.referenced_message
-					? 'mt-2 pt-2'
-					: showHeader
+			{#if message.type === MessageType.PinNotice}
+				<!-- A pin notice: who pinned which message, as Discord shows it -->
+				<div
+					data-message-id={message.id}
+					class="group relative -mx-3 flex items-center rounded-md px-3 py-1 {isLast ? 'mb-3' : 'mb-1'} {showHeader
 						? 'mt-4'
-						: 'mt-0'} {isFailed
-					? 'bg-red-500/10 hover:bg-red-500/15'
-					: isHighlighted
-						? 'bg-yellow-500/15 hover:bg-yellow-500/20'
-						: isMention
-							? 'border-l-2 border-yellow-500/60 bg-yellow-500/10 hover:bg-yellow-500/15'
-							: 'hover:bg-zinc-800/55'} -mx-3"
-				style={isFailed ? "" : isPending ? "opacity: 0.5; pointer-events: none;" : ""}
-			>
-				{#if message.referenced_message}
-					<div class="mb-0.5 flex min-w-0 items-start">
-						<!-- L-connector aligned to avatar column -->
-						<div class="mr-3 flex w-10 shrink-0 items-center justify-end">
-							<div class="rounded-tl-5px h-3.5 w-5.25 border-t-2 border-l-2 border-zinc-500/60"></div>
-						</div>
-						{#if !message.referenced_message.created_at}
-							<!-- The referenced message is gone: the API sends only the reference then -->
-							<span class="-translate-y-1.25 text-xs text-zinc-500 italic">Original message was deleted</span>
-						{:else}
-							<!-- Reply preview -->
-							<button
-								type="button"
-								class="flex min-w-0 -translate-y-1.25 cursor-pointer items-start gap-1.5 text-xs text-zinc-400 transition-colors hover:text-zinc-100"
-								onclick={() =>
-									jumpToMessageRequest.set({
-										id: crypto.randomUUID(),
-										spaceId: message.referenced_message!.space_id ?? spaceId,
-										roomId: message.referenced_message!.room_id ?? channelId,
-										messageId: message.referenced_message!.message_id!,
-									})}
-							>
-								<UserAvatar
-									src={getAvatarURL(
-										message.referenced_message.author_id ?? "",
-										message.referenced_message.author_avatar,
-									)}
-									name={message.referenced_message.author_name ?? "?"}
-									size={16}
-								/>
-								<span class="shrink-0 font-medium text-zinc-300">{message.referenced_message.author_name}</span>
-								<span class="msg-content truncate opacity-80"
-									>{@html renderMarkdownLine(
-										message.referenced_message.content ?? "",
-										mentionMap,
-										customEmojiMap,
-									)}</span
-								>
-								<span class="shrink-0 opacity-50"
-									>{new Date(message.referenced_message.created_at).toLocaleTimeString(locale, {
-										hour: "2-digit",
-										minute: "2-digit",
-									})}</span
-								>
-							</button>
-						{/if}
+						: 'mt-1'} {isHighlighted ? 'bg-yellow-500/15' : 'hover:bg-zinc-800/55'}"
+				>
+					<div class="mr-3 flex w-10 shrink-0 justify-end">
+						<PinIcon class="size-4 text-zinc-500" />
 					</div>
-				{/if}
-				<div class="flex items-start">
-					{#if showHeader}
-						{#key message.author_avatar_url}
-							<button
-								type="button"
-								class="mt-0.5 mr-3 shrink-0 rounded-full {msgMember ? 'cursor-pointer' : 'cursor-default'}"
-								onmousedown={() => {
-									avatarPopoverWasOpen = activePopoverMsgId === message.id;
-								}}
-								onclick={() => {
-									if (!msgMember) return;
-									if (avatarPopoverWasOpen) return;
-									activePopoverMsgId = message.id;
-								}}
-							>
-								<UserAvatar
-									src={message.author_avatar_url}
-									name={message.author_name}
-									size={40}
-									oncontextmenu={(e) => openUserMenu(e, message.webhook_id ? "" : message.author_id)}
-								/>
-							</button>
-						{/key}
-					{:else}
-						<div class="mr-3 w-10 shrink-0 text-right">
-							<span
-								class="text-xxs leading-5 whitespace-nowrap text-zinc-500 opacity-0 select-none group-hover:opacity-100"
-							>
-								{new Date(message.created_at).toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" })}
-							</span>
+					<p class="min-w-0 text-sm text-zinc-400">
+						<span class="font-medium text-zinc-200">{message.author_name}</span>
+						pinned
+						<button
+							type="button"
+							class="font-medium text-zinc-200 hover:underline"
+							onclick={() => jumpToPinned(message)}>a message</button
+						>
+						to this {isConversation ? "conversation" : "channel"}. See all
+						<button
+							type="button"
+							class="font-medium text-zinc-200 hover:underline"
+							onclick={() => pinsPanelRequest.set({ id: crypto.randomUUID(), channelId })}>pinned messages</button
+						>.
+						<span class="ml-1 text-xs text-zinc-500">{formatTimestamp(message.created_at, now)}</span>
+					</p>
+				</div>
+			{:else}
+				<div
+					data-message-id={message.id}
+					class="group relative flex flex-col rounded-md px-3 {isLast ? 'mb-3' : 'mb-1'} {message.referenced_message
+						? 'mt-2 pt-2'
+						: showHeader
+							? 'mt-4'
+							: 'mt-0'} {isFailed
+						? 'bg-red-500/10 hover:bg-red-500/15'
+						: isHighlighted
+							? 'bg-yellow-500/15 hover:bg-yellow-500/20'
+							: isMention
+								? 'border-l-2 border-yellow-500/60 bg-yellow-500/10 hover:bg-yellow-500/15'
+								: 'hover:bg-zinc-800/55'} -mx-3"
+					style={isFailed ? "" : isPending ? "opacity: 0.5; pointer-events: none;" : ""}
+				>
+					{#if message.referenced_message}
+						<div class="mb-0.5 flex min-w-0 items-start">
+							<!-- L-connector aligned to avatar column -->
+							<div class="mr-3 flex w-10 shrink-0 items-center justify-end">
+								<div class="rounded-tl-5px h-3.5 w-5.25 border-t-2 border-l-2 border-zinc-500/60"></div>
+							</div>
+							{#if !message.referenced_message.created_at}
+								<!-- The referenced message is gone: the API sends only the reference then -->
+								<span class="-translate-y-1.25 text-xs text-zinc-500 italic">Original message was deleted</span>
+							{:else}
+								<!-- Reply preview -->
+								<button
+									type="button"
+									class="flex min-w-0 -translate-y-1.25 cursor-pointer items-start gap-1.5 text-xs text-zinc-400 transition-colors hover:text-zinc-100"
+									onclick={() =>
+										jumpToMessageRequest.set({
+											id: crypto.randomUUID(),
+											spaceId: message.referenced_message!.space_id ?? spaceId,
+											roomId: message.referenced_message!.room_id ?? channelId,
+											messageId: message.referenced_message!.message_id!,
+										})}
+								>
+									<UserAvatar
+										src={getAvatarURL(
+											message.referenced_message.author_id ?? "",
+											message.referenced_message.author_avatar,
+										)}
+										name={message.referenced_message.author_name ?? "?"}
+										size={16}
+									/>
+									<span class="shrink-0 font-medium text-zinc-300">{message.referenced_message.author_name}</span>
+									<span class="msg-content truncate opacity-80"
+										>{@html renderMarkdownLine(
+											message.referenced_message.content ?? "",
+											mentionMap,
+											customEmojiMap,
+										)}</span
+									>
+									<span class="shrink-0 opacity-50"
+										>{new Date(message.referenced_message.created_at).toLocaleTimeString(locale, {
+											hour: "2-digit",
+											minute: "2-digit",
+										})}</span
+									>
+								</button>
+							{/if}
 						</div>
 					{/if}
-
-					<div class="flex min-w-0 flex-1 flex-col">
+					<div class="flex items-start">
 						{#if showHeader}
-							<div class="mb-0.5 flex items-center">
-								{#if msgMember}
-									<MemberProfilePopover
-										member={msgMember}
-										{spaceId}
-										{space}
-										side="right"
-										open={activePopoverMsgId === message.id}
-										onOpenChange={(o) => {
-											activePopoverMsgId = o ? message.id : null;
-										}}
-										triggerClass="font-semibold mr-2 hover:underline cursor-pointer"
-										triggerStyle={authorColors[message.author_id] || "color: var(--color-zinc-100)"}
-									>
-										{#snippet children()}
-											{message.author_name}
-										{/snippet}
-									</MemberProfilePopover>
-								{:else}
-									<span
-										class="mr-2 cursor-default font-semibold"
-										style={authorColors[message.author_id] || "color: var(--color-zinc-100)"}
-									>
-										{message.author_name}
-									</span>
-								{/if}
-								{#if message.author_is_bot}
-									<span class="text-xxs mr-1.5 rounded bg-stone-600 px-1 py-0.5 font-semibold text-white">BOT</span>
-								{/if}
-								<span class="text-xs font-medium text-zinc-400">{formatTimestamp(message.created_at, now)}</span>
+							{#key message.author_avatar_url}
+								<button
+									type="button"
+									class="mt-0.5 mr-3 shrink-0 rounded-full {msgMember ? 'cursor-pointer' : 'cursor-default'}"
+									onmousedown={() => {
+										avatarPopoverWasOpen = activePopoverMsgId === message.id;
+									}}
+									onclick={() => {
+										if (!msgMember) return;
+										if (avatarPopoverWasOpen) return;
+										activePopoverMsgId = message.id;
+									}}
+								>
+									<UserAvatar
+										src={message.author_avatar_url}
+										name={message.author_name}
+										size={40}
+										oncontextmenu={(e) => openUserMenu(e, message.webhook_id ? "" : message.author_id)}
+									/>
+								</button>
+							{/key}
+						{:else}
+							<div class="mr-3 w-10 shrink-0 text-right">
+								<span
+									class="text-xxs leading-5 whitespace-nowrap text-zinc-500 opacity-0 select-none group-hover:opacity-100"
+								>
+									{new Date(message.created_at).toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" })}
+								</span>
 							</div>
 						{/if}
 
-						{#if editingMessageId === message.id}
-							<div class="relative flex w-full flex-col gap-1">
-								<ChatInput
-									initialValue={editContent}
-									onValueChange={(text) => {
-										editContent = text;
-									}}
-									onSubmit={(text) => saveEdit(message.id, text)}
-									onCancel={cancelEdit}
-									showActions={false}
-									autofocus
-									{members}
-									{customEmojis}
-								/>
-								<div class="text-xxs text-zinc-400">
-									escape to <button
-										type="button"
-										class="cursor-pointer text-stone-300 hover:underline"
-										onclick={cancelEdit}>cancel</button
-									>
-									• enter to
-									<button
-										type="button"
-										class="cursor-pointer text-stone-300 hover:underline"
-										onclick={() => saveEdit(message.id, editContent)}>save</button
-									>
+						<div class="flex min-w-0 flex-1 flex-col">
+							{#if showHeader}
+								<div class="mb-0.5 flex items-center">
+									{#if msgMember}
+										<MemberProfilePopover
+											member={msgMember}
+											{spaceId}
+											{space}
+											side="right"
+											open={activePopoverMsgId === message.id}
+											onOpenChange={(o) => {
+												activePopoverMsgId = o ? message.id : null;
+											}}
+											triggerClass="font-semibold mr-2 hover:underline cursor-pointer"
+											triggerStyle={authorColors[message.author_id] || "color: var(--color-zinc-100)"}
+										>
+											{#snippet children()}
+												{message.author_name}
+											{/snippet}
+										</MemberProfilePopover>
+									{:else}
+										<span
+											class="mr-2 cursor-default font-semibold"
+											style={authorColors[message.author_id] || "color: var(--color-zinc-100)"}
+										>
+											{message.author_name}
+										</span>
+									{/if}
+									{#if message.author_is_bot}
+										<span class="text-xxs mr-1.5 rounded bg-stone-600 px-1 py-0.5 font-semibold text-white">BOT</span>
+									{/if}
+									<span class="text-xs font-medium text-zinc-400">{formatTimestamp(message.created_at, now)}</span>
 								</div>
-							</div>
-						{:else if message.type === MessageType.Voice}
-							<!-- Voice note -->
-							{@const voiceAtt = message.attachments?.find((a) => a.content_type.startsWith("audio/"))}
-							{#if voiceAtt?.pending}
-								<div
-									class="flex max-w-64 min-w-48 items-center gap-2.5 rounded-2xl px-3.5 py-1"
-									style="background: oklch(0.22 0.01 80 / 0.8); border: 1px solid oklch(0.30 0.01 80 / 0.6);"
-								>
-									<div class="size-9 shrink-0 animate-pulse rounded-full bg-zinc-700"></div>
-									<div class="flex flex-1 flex-col gap-1.5">
-										<div class="h-7 animate-pulse rounded bg-zinc-700/40"></div>
-										<span class="text-[11px] text-zinc-500">Sending...</span>
+							{/if}
+
+							{#if editingMessageId === message.id}
+								<div class="relative flex w-full flex-col gap-1">
+									<ChatInput
+										initialValue={editContent}
+										onValueChange={(text) => {
+											editContent = text;
+										}}
+										onSubmit={(text) => saveEdit(message.id, text)}
+										onCancel={cancelEdit}
+										showActions={false}
+										autofocus
+										{members}
+										{customEmojis}
+									/>
+									<div class="text-xxs text-zinc-400">
+										escape to <button
+											type="button"
+											class="cursor-pointer text-stone-300 hover:underline"
+											onclick={cancelEdit}>cancel</button
+										>
+										• enter to
+										<button
+											type="button"
+											class="cursor-pointer text-stone-300 hover:underline"
+											onclick={() => saveEdit(message.id, editContent)}>save</button
+										>
 									</div>
 								</div>
-							{:else if voiceAtt && !voiceAtt.deleted_at}
-								<VoiceNotePlayer
-									src="{attachmentHost}{voiceAtt.url ?? `/attachments/${voiceAtt.id}`}"
-									attachmentId={voiceAtt.id}
-									authorName={message.author_name ?? "Unknown"}
-									channelName={space?.rooms.find((r) => r.id === channelId)?.name ?? ""}
-								/>
+							{:else if message.type === MessageType.Voice}
+								<!-- Voice note -->
+								{@const voiceAtt = message.attachments?.find((a) => a.content_type.startsWith("audio/"))}
+								{#if voiceAtt?.pending}
+									<div
+										class="flex max-w-64 min-w-48 items-center gap-2.5 rounded-2xl px-3.5 py-1"
+										style="background: oklch(0.22 0.01 80 / 0.8); border: 1px solid oklch(0.30 0.01 80 / 0.6);"
+									>
+										<div class="size-9 shrink-0 animate-pulse rounded-full bg-zinc-700"></div>
+										<div class="flex flex-1 flex-col gap-1.5">
+											<div class="h-7 animate-pulse rounded bg-zinc-700/40"></div>
+											<span class="text-[11px] text-zinc-500">Sending...</span>
+										</div>
+									</div>
+								{:else if voiceAtt && !voiceAtt.deleted_at}
+									<VoiceNotePlayer
+										src="{attachmentHost}{voiceAtt.url ?? `/attachments/${voiceAtt.id}`}"
+										attachmentId={voiceAtt.id}
+										authorName={message.author_name ?? "Unknown"}
+										channelName={space?.rooms.find((r) => r.id === channelId)?.name ?? ""}
+									/>
+								{:else}
+									<div
+										class="flex h-12 items-center gap-2 rounded-2xl border border-dashed border-zinc-700/50 px-4"
+										style="background: oklch(0.20 0.008 80 / 0.5);"
+									>
+										<svg
+											xmlns="http://www.w3.org/2000/svg"
+											width="16"
+											height="16"
+											viewBox="0 0 24 24"
+											fill="none"
+											stroke="currentColor"
+											stroke-width="1.5"
+											stroke-linecap="round"
+											stroke-linejoin="round"
+											class="text-zinc-600"
+											><path d="M3 6h18" /><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" /><path
+												d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"
+											/></svg
+										>
+										<span class="text-xs text-zinc-500 italic">Voice note deleted</span>
+									</div>
+								{/if}
+							{:else if message.sticker_attachment_id}
+								<button
+									type="button"
+									class="mt-1 h-40 w-40 cursor-zoom-in"
+									onclick={() => openPreview(`${attachmentHost}/attachments/${message.sticker_attachment_id}`)}
+								>
+									<img
+										src="{attachmentHost}/attachments/{message.sticker_attachment_id}"
+										alt="Sticker"
+										class="h-40 w-40 object-contain"
+										loading="lazy"
+										onerror={(e) => {
+											const img = e.currentTarget as HTMLImageElement;
+											const parent = img.parentElement!;
+											img.remove();
+											parent.onclick = null;
+											parent.style.cursor = "default";
+											parent.innerHTML = `<div class="flex flex-col items-center justify-center w-40 h-40 rounded-md border border-dashed border-zinc-700 bg-zinc-800/30 gap-1"><span class="text-2xl">💩</span><span class="text-xs text-zinc-500">Sticker deleted</span></div>`;
+										}}
+									/>
+								</button>
 							{:else}
-								<div
-									class="flex h-12 items-center gap-2 rounded-2xl border border-dashed border-zinc-700/50 px-4"
-									style="background: oklch(0.20 0.008 80 / 0.5);"
+								{@const processed = processMessageContent(message.content ?? "")}
+								{@const isOnlyLink =
+									/^\s*https?:\/\/\S+\s*$/.test(message.content ?? "") && message.embeds && message.embeds.length > 0}
+								{#if !isOnlyLink}
+									<div
+										role="textbox"
+										aria-readonly="true"
+										tabindex="-1"
+										class="{isFailed ? 'text-red-400' : 'text-zinc-200'} {emojiOnly
+											? ''
+											: showHeader
+												? ''
+												: 'leading-5'} cursor-text pr-12 text-left wrap-break-word select-text"
+										style={emojiOnly ? "line-height: 3rem" : ""}
+										onclick={(e) => {
+											if (e.detail === 3 && $currentUser && message.author_id === $currentUser.id) {
+												startEdit(message);
+											}
+										}}
+										onkeydown={(e) => {
+											if (e.key === "Enter" && $currentUser && message.author_id === $currentUser.id) {
+												startEdit(message);
+											}
+										}}
+									>
+										{#each parseTextSegments(processed.text) as segment}
+											{#if segment.type === "link"}
+												{#if roomLinkRegex.test(segment.content) || convLinkRegex.test(segment.content)}
+													{@const resolved = resolveMessageLink(segment.content)}
+													{#if resolved}
+														<button
+															type="button"
+															class="mx-0.5 inline-flex cursor-pointer items-center gap-1 rounded border border-zinc-600/50 bg-zinc-700/70 px-1.5 py-0.5 align-middle text-zinc-300 transition-colors hover:bg-zinc-600/80 hover:text-white"
+															onclick={(e) => {
+																e.stopPropagation();
+																tryNavigateMessageLink(segment.content);
+															}}
+															title="{resolved.spaceName} › #{resolved.roomName}"
+														>
+															<span class="text-xs text-zinc-400">#</span>
+															<span class="text-xs font-medium">{resolved.roomName}</span>
+															<svg
+																xmlns="http://www.w3.org/2000/svg"
+																width="10"
+																height="10"
+																viewBox="0 0 24 24"
+																fill="none"
+																stroke="currentColor"
+																stroke-width="2.5"
+																stroke-linecap="round"
+																stroke-linejoin="round"
+																class="shrink-0 text-zinc-400"><path d="m9 18 6-6-6-6" /></svg
+															>
+														</button>
+													{:else}
+														<button
+															type="button"
+															class="cursor-pointer text-xs text-zinc-500 transition-colors hover:text-zinc-300"
+															onclick={(e) => {
+																e.stopPropagation();
+																tryNavigateMessageLink(segment.content);
+															}}>{segment.content}</button
+														>
+													{/if}
+												{:else if parseInviteLink(segment.content) || parseBotInviteLink(segment.content)}
+													{@const botId = parseBotInviteLink(segment.content)}
+													{@const invCode = parseInviteCode(segment.content)}
+													<button
+														type="button"
+														class="cursor-pointer text-stone-300 hover:underline"
+														onclick={(e) => {
+															e.stopPropagation();
+															if (botId) botInviteRequest.set(botId);
+															else if (invCode) spaceInviteRequest.set(invCode);
+														}}>{segment.content}</button
+													>
+												{:else}
+													<a
+														href={segment.content}
+														target="_blank"
+														rel="noopener noreferrer"
+														class="text-stone-300 hover:underline"
+														onclick={(e) => {
+															e.stopPropagation();
+														}}>{segment.content}</a
+													>
+												{/if}
+											{:else}
+												{@html renderMarkdown(segment.content, emojiOnly, mentionMap, customEmojiMap)}
+											{/if}
+										{/each}
+										{#if message.updated_at !== message.created_at}
+											<span class="text-xxs ml-1 text-zinc-500"
+												>(edited {formatTimestamp(message.updated_at, now)})</span
+											>
+										{/if}
+									</div>
+								{/if}
+								{#if processed.inviteCodes.length > 0}
+									<div class="flex flex-col gap-2">
+										{#each processed.inviteCodes as code}
+											<InviteEmbed {code} />
+										{/each}
+									</div>
+								{/if}
+								{#if processed.botInviteIds.length > 0}
+									<div class="flex flex-col gap-2">
+										{#each processed.botInviteIds as botId}
+											<BotInviteEmbed botUserId={botId} />
+										{/each}
+									</div>
+								{/if}
+								{#if processed.messageLinks.length > 0}
+									<div class="flex flex-col gap-1">
+										{#each processed.messageLinks as ml}
+											<MessageLinkEmbed
+												spaceId={ml.spaceId}
+												roomId={ml.roomId}
+												messageId={ml.messageId}
+												conversationId={ml.conversationId}
+											/>
+										{/each}
+									</div>
+								{/if}
+								{#if message.embeds && message.embeds.length > 0}
+									<div class="flex flex-col gap-1">
+										{#each message.embeds as embed}
+											<EmbedCard {embed} onImageClick={(src) => openPreview(src)} />
+										{/each}
+									</div>
+								{/if}
+								{#if message.attachments && message.attachments.length > 0}
+									<div class="mt-1 flex flex-col gap-1">
+										{#each message.attachments as att}
+											{#if att.pending}
+												{#if att.content_type.startsWith("image/")}
+													<div
+														class="flex h-40 w-64 animate-pulse items-center justify-center rounded-md bg-zinc-700/40"
+													>
+														<span class="text-xs text-zinc-500">Uploading {att.filename}...</span>
+													</div>
+												{:else if att.content_type.startsWith("video/")}
+													<div
+														class="flex h-44 w-80 animate-pulse items-center justify-center rounded-md bg-zinc-700/40"
+													>
+														<span class="text-xs text-zinc-500">Uploading {att.filename}...</span>
+													</div>
+												{:else}
+													<div
+														class="inline-flex max-w-xs animate-pulse items-center gap-2 rounded-md bg-zinc-800/60 px-3 py-2"
+													>
+														<span class="text-xs text-zinc-500">Uploading {att.filename}...</span>
+														<span class="shrink-0 text-xs text-zinc-600">{formatFileSize(att.size_bytes)}</span>
+													</div>
+												{/if}
+											{:else if att.deleted_at}
+												{@const dw = Math.min(att.width ?? 200, 550)}
+												{@const dh = Math.min(att.height ?? 48, 350)}
+												<div
+													class="flex flex-col items-center justify-center gap-1 rounded-md border border-dashed border-zinc-700 bg-zinc-800/30"
+													style="width: {dw}px; height: {dh}px; max-width: 100%;"
+												>
+													<svg
+														xmlns="http://www.w3.org/2000/svg"
+														width="20"
+														height="20"
+														viewBox="0 0 24 24"
+														fill="none"
+														stroke="currentColor"
+														stroke-width="1.5"
+														stroke-linecap="round"
+														stroke-linejoin="round"
+														class="text-zinc-600"
+														><path d="M3 6h18" /><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" /><path
+															d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"
+														/><line x1="10" x2="10" y1="11" y2="17" /><line x1="14" x2="14" y1="11" y2="17" /></svg
+													>
+													<span class="text-xs text-zinc-500">Attachment deleted</span>
+												</div>
+											{:else if att.content_type.startsWith("image/")}
+												{@const rawW = att.width ?? 550}
+												{@const rawH = att.height ?? 350}
+												{@const imgScale = Math.min(550 / rawW, 350 / rawH, 1)}
+												{@const iw = Math.round(rawW * imgScale)}
+												{@const ih = Math.round(rawH * imgScale)}
+												<button
+													type="button"
+													class="relative block cursor-zoom-in overflow-hidden rounded-md"
+													style="width: {iw}px; height: {ih}px; max-width: 100%;"
+													onclick={() =>
+														openPreview(`${attachmentHost}${att.url ?? `/attachments/${att.id}`}`, att.filename)}
+												>
+													<div class="img-skeleton absolute inset-0 animate-pulse bg-zinc-700/40"></div>
+													<img
+														src="{attachmentHost}{att.url ?? `/attachments/${att.id}`}"
+														alt={att.filename}
+														class="relative h-full w-full rounded-md object-contain text-transparent"
+														loading="lazy"
+														onload={(e) => {
+															(e.currentTarget as HTMLElement).parentElement?.querySelector(".img-skeleton")?.remove();
+														}}
+														onerror={(e) => {
+															const img = e.currentTarget as HTMLImageElement;
+															const retries = parseInt(img.dataset.retries ?? "0");
+															if (retries < 10) {
+																img.dataset.retries = String(retries + 1);
+																setTimeout(() => {
+																	const base = img.src.replace(/[&?]r=\d+/, "");
+																	img.src = base + (base.includes("?") ? "&" : "?") + "r=" + Date.now();
+																}, 1000);
+															} else {
+																const parent = img.parentElement!;
+																parent.querySelector(".img-skeleton")?.remove();
+																img.remove();
+																parent.innerHTML = `<div class="flex flex-col items-center justify-center w-full h-full bg-zinc-800/60 rounded-md gap-1"><span class="text-2xl">💩</span><span class="text-xs text-zinc-500">Failed to load</span></div>`;
+															}
+														}}
+													/>
+												</button>
+											{:else if att.content_type.startsWith("video/")}
+												{@const rawVW = att.width ?? 550}
+												{@const rawVH = att.height ?? 350}
+												{@const vidScale = Math.min(550 / rawVW, 350 / rawVH, 1)}
+												{@const vw = Math.round(rawVW * vidScale)}
+												{@const vh = Math.round(rawVH * vidScale)}
+												<div
+													class="relative overflow-hidden rounded-md"
+													style="width: {vw}px; height: {vh}px; max-width: 100%;"
+												>
+													<div
+														class="video-skeleton absolute inset-0 flex animate-pulse items-center justify-center bg-zinc-700/40"
+													>
+														<span class="text-xs text-zinc-500">Loading video...</span>
+													</div>
+													<!-- svelte-ignore a11y_media_has_caption -->
+													<video
+														src="{attachmentHost}{att.url ?? `/attachments/${att.id}`}"
+														controls
+														class="relative h-full w-full rounded-md"
+														onloadeddata={(e) => {
+															const el = e.currentTarget as HTMLVideoElement;
+															el.parentElement?.querySelector(".video-skeleton")?.remove();
+														}}
+														onerror={(e) => {
+															const vid = e.currentTarget as HTMLVideoElement;
+															const retries = parseInt(vid.dataset.retries ?? "0");
+															if (retries < 10) {
+																vid.dataset.retries = String(retries + 1);
+																setTimeout(() => {
+																	const base = vid.src.replace(/[&?]r=\d+/, "");
+																	vid.src = base + (base.includes("?") ? "&" : "?") + "r=" + Date.now();
+																}, 1000);
+															} else {
+																const parent = vid.parentElement!;
+																parent.querySelector(".video-skeleton")?.remove();
+																vid.remove();
+																parent.innerHTML = `<div class="flex flex-col items-center justify-center w-full h-full bg-zinc-800/60 rounded-md gap-1"><span class="text-2xl">💩</span><span class="text-xs text-zinc-500">Failed to load</span></div>`;
+															}
+														}}
+													></video>
+												</div>
+											{:else if att.content_type.startsWith("audio/")}
+												<AudioFilePlayer
+													src="{attachmentHost}{att.url ?? `/attachments/${att.id}`}"
+													attachmentId={att.id}
+													filename={att.filename}
+													sizeBytes={att.size_bytes}
+													authorName={message.author_name ?? "Unknown"}
+													channelName={space?.rooms.find((r) => r.id === channelId)?.name ?? ""}
+												/>
+											{:else}
+												<a
+													href="{attachmentHost}{att.url ?? `/attachments/${att.id}`}"
+													target="_blank"
+													rel="noopener noreferrer"
+													class="mt-1 inline-flex max-w-xs items-center gap-2 rounded-md bg-zinc-800/60 px-3 py-2 text-sm text-zinc-300 hover:bg-zinc-700/60"
+												>
+													<span class="truncate">{att.filename}</span>
+													<span class="shrink-0 text-xs text-zinc-500">{formatFileSize(att.size_bytes)}</span>
+												</a>
+											{/if}
+										{/each}
+									</div>
+								{/if}
+							{/if}
+
+							<!-- Reactions display -->
+							{#if message.reactions && message.reactions.length > 0}
+								<div class="mt-1 flex flex-wrap gap-1">
+									{#each message.reactions as reaction}
+										{@const isMeReacted = $currentUser ? reaction.users.includes($currentUser.id) : false}
+										{@const ce = reaction.emoji_id ? customEmojis.find((e) => e.id === reaction.emoji_id) : null}
+										<button
+											class="inline-flex items-center gap-1.5 rounded-lg border px-2 py-1 text-sm transition-colors {isMeReacted
+												? 'border-indigo-500/40 bg-indigo-500/20 text-indigo-300'
+												: 'border-zinc-700 bg-zinc-800/60 text-zinc-400 hover:bg-zinc-700/60'}"
+											onclick={() => handleReactionToggle(message, reaction.emoji_name, reaction.emoji_id)}
+											title={reaction.emoji_name}
+										>
+											{#if ce}
+												<img
+													src="{attachmentHost}/attachments/{ce.attachment_id}"
+													alt=":{ce.name}:"
+													class="size-5 object-contain"
+												/>
+											{:else}
+												{@html renderEmoji(reaction.emoji_name)}
+											{/if}
+											<span class="font-medium">{reaction.count}</span>
+										</button>
+									{/each}
+								</div>
+							{/if}
+						</div>
+					</div>
+					<!-- end inner row -->
+
+					<!-- Action toolbar -->
+					{#if isFailed}
+						<div
+							class="absolute -top-3 right-4 z-10 flex overflow-hidden rounded border border-zinc-800 bg-zinc-700 shadow-sm"
+						>
+							<button
+								class="px-2 py-1.5 text-xs text-stone-300 transition-colors hover:bg-zinc-600"
+								onclick={() => onRetry(message)}>Retry</button
+							>
+							<div class="w-px bg-zinc-800"></div>
+							<button
+								class="px-2 py-1.5 text-xs text-zinc-400 transition-colors hover:bg-zinc-600 hover:text-white"
+								onclick={() => onDismiss(message.nonce!)}>Dismiss</button
+							>
+						</div>
+					{:else if !isPending && $currentUser && message.author_id === $currentUser.id && editingMessageId !== message.id}
+						<div
+							class="absolute -top-3 right-2 z-10 overflow-hidden rounded border border-zinc-800 bg-zinc-700 shadow-sm transition-opacity {reactingMessageId ===
+							message.id
+								? 'flex'
+								: 'hidden group-hover:flex'}"
+						>
+							<Popover.Root
+								bind:open={() => reactingMessageId === message.id, (v) => (reactingMessageId = v ? message.id : null)}
+							>
+								<Popover.Trigger
+									class="p-1.5 text-zinc-400 transition-colors hover:bg-zinc-600 hover:text-zinc-200"
+									title="Add reaction"
+									aria-label="Add reaction"
 								>
 									<svg
 										xmlns="http://www.w3.org/2000/svg"
@@ -1162,379 +1589,114 @@
 										viewBox="0 0 24 24"
 										fill="none"
 										stroke="currentColor"
-										stroke-width="1.5"
+										stroke-width="2"
 										stroke-linecap="round"
 										stroke-linejoin="round"
-										class="text-zinc-600"
-										><path d="M3 6h18" /><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" /><path
-											d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"
-										/></svg
+										><circle cx="12" cy="12" r="10" /><path d="M8 14s1.5 2 4 2 4-2 4-2" /><line
+											x1="9"
+											x2="9.01"
+											y1="9"
+											y2="9"
+										/><line x1="15" x2="15.01" y1="9" y2="9" /></svg
 									>
-									<span class="text-xs text-zinc-500 italic">Voice note deleted</span>
-								</div>
-							{/if}
-						{:else if message.sticker_attachment_id}
+								</Popover.Trigger>
+								<Popover.Portal>
+									<Popover.Content side="top" align="end" sideOffset={8} class="z-100">
+										<EmojiPicker onSelect={(emoji) => handleReactionPick(message.id, emoji)} {customEmojis} />
+									</Popover.Content>
+								</Popover.Portal>
+							</Popover.Root>
+							<div class="w-px bg-zinc-800"></div>
 							<button
-								type="button"
-								class="mt-1 h-40 w-40 cursor-zoom-in"
-								onclick={() => openPreview(`${attachmentHost}/attachments/${message.sticker_attachment_id}`)}
+								class="p-1.5 text-zinc-400 transition-colors hover:bg-zinc-600 hover:text-zinc-200"
+								onclick={() => onReply?.(message)}
+								title="Reply"
+								aria-label="Reply"
 							>
-								<img
-									src="{attachmentHost}/attachments/{message.sticker_attachment_id}"
-									alt="Sticker"
-									class="h-40 w-40 object-contain"
-									loading="lazy"
-									onerror={(e) => {
-										const img = e.currentTarget as HTMLImageElement;
-										const parent = img.parentElement!;
-										img.remove();
-										parent.onclick = null;
-										parent.style.cursor = "default";
-										parent.innerHTML = `<div class="flex flex-col items-center justify-center w-40 h-40 rounded-md border border-dashed border-zinc-700 bg-zinc-800/30 gap-1"><span class="text-2xl">💩</span><span class="text-xs text-zinc-500">Sticker deleted</span></div>`;
-									}}
-								/>
+								<svg
+									xmlns="http://www.w3.org/2000/svg"
+									width="16"
+									height="16"
+									viewBox="0 0 24 24"
+									fill="none"
+									stroke="currentColor"
+									stroke-width="2"
+									stroke-linecap="round"
+									stroke-linejoin="round"><polyline points="9 17 4 12 9 7" /><path d="M20 18v-2a4 4 0 0 0-4-4H4" /></svg
+								>
 							</button>
-						{:else}
-							{@const processed = processMessageContent(message.content ?? "")}
-							{@const isOnlyLink =
-								/^\s*https?:\/\/\S+\s*$/.test(message.content ?? "") && message.embeds && message.embeds.length > 0}
-							{#if !isOnlyLink}
-								<div
-									role="textbox"
-									aria-readonly="true"
-									tabindex="-1"
-									class="{isFailed ? 'text-red-400' : 'text-zinc-200'} {emojiOnly
-										? ''
-										: showHeader
-											? ''
-											: 'leading-5'} cursor-text pr-12 text-left wrap-break-word select-text"
-									style={emojiOnly ? "line-height: 3rem" : ""}
-									onclick={(e) => {
-										if (e.detail === 3 && $currentUser && message.author_id === $currentUser.id) {
-											startEdit(message);
-										}
-									}}
-									onkeydown={(e) => {
-										if (e.key === "Enter" && $currentUser && message.author_id === $currentUser.id) {
-											startEdit(message);
-										}
-									}}
+							<div class="w-px bg-zinc-800"></div>
+							<button
+								class="p-1.5 text-zinc-400 transition-colors hover:bg-zinc-600 hover:text-zinc-200"
+								onclick={() => {
+									navigator.clipboard
+										.writeText(
+											`${isConversation ? `${DUVET_DOMAIN}/conversations/${channelId}/${message.id}` : `${DUVET_DOMAIN}/channels/${spaceId}/${channelId}/${message.id}`}`,
+										)
+										.catch(console.error);
+								}}
+								title="Copy message link"
+								aria-label="Copy message link"
+							>
+								<svg
+									xmlns="http://www.w3.org/2000/svg"
+									width="16"
+									height="16"
+									viewBox="0 0 24 24"
+									fill="none"
+									stroke="currentColor"
+									stroke-width="2"
+									stroke-linecap="round"
+									stroke-linejoin="round"
+									><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" /><path
+										d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"
+									/></svg
 								>
-									{#each parseTextSegments(processed.text) as segment}
-										{#if segment.type === "link"}
-											{#if roomLinkRegex.test(segment.content) || convLinkRegex.test(segment.content)}
-												{@const resolved = resolveMessageLink(segment.content)}
-												{#if resolved}
-													<button
-														type="button"
-														class="mx-0.5 inline-flex cursor-pointer items-center gap-1 rounded border border-zinc-600/50 bg-zinc-700/70 px-1.5 py-0.5 align-middle text-zinc-300 transition-colors hover:bg-zinc-600/80 hover:text-white"
-														onclick={(e) => {
-															e.stopPropagation();
-															tryNavigateMessageLink(segment.content);
-														}}
-														title="{resolved.spaceName} › #{resolved.roomName}"
-													>
-														<span class="text-xs text-zinc-400">#</span>
-														<span class="text-xs font-medium">{resolved.roomName}</span>
-														<svg
-															xmlns="http://www.w3.org/2000/svg"
-															width="10"
-															height="10"
-															viewBox="0 0 24 24"
-															fill="none"
-															stroke="currentColor"
-															stroke-width="2.5"
-															stroke-linecap="round"
-															stroke-linejoin="round"
-															class="shrink-0 text-zinc-400"><path d="m9 18 6-6-6-6" /></svg
-														>
-													</button>
-												{:else}
-													<button
-														type="button"
-														class="cursor-pointer text-xs text-zinc-500 transition-colors hover:text-zinc-300"
-														onclick={(e) => {
-															e.stopPropagation();
-															tryNavigateMessageLink(segment.content);
-														}}>{segment.content}</button
-													>
-												{/if}
-											{:else if parseInviteLink(segment.content) || parseBotInviteLink(segment.content)}
-												{@const botId = parseBotInviteLink(segment.content)}
-												{@const invCode = parseInviteCode(segment.content)}
-												<button
-													type="button"
-													class="cursor-pointer text-stone-300 hover:underline"
-													onclick={(e) => {
-														e.stopPropagation();
-														if (botId) botInviteRequest.set(botId);
-														else if (invCode) spaceInviteRequest.set(invCode);
-													}}>{segment.content}</button
-												>
-											{:else}
-												<a
-													href={segment.content}
-													target="_blank"
-													rel="noopener noreferrer"
-													class="text-stone-300 hover:underline"
-													onclick={(e) => {
-														e.stopPropagation();
-													}}>{segment.content}</a
-												>
-											{/if}
-										{:else}
-											{@html renderMarkdown(segment.content, emojiOnly, mentionMap, customEmojiMap)}
-										{/if}
-									{/each}
-									{#if message.updated_at !== message.created_at}
-										<span class="text-xxs ml-1 text-zinc-500">(edited {formatTimestamp(message.updated_at, now)})</span>
+							</button>
+							<div class="w-px bg-zinc-800"></div>
+							<button
+								class="p-1.5 text-zinc-400 transition-colors hover:bg-zinc-600 hover:text-zinc-200"
+								onclick={() => openThreadModal(message)}
+								title="View thread"
+								aria-label="View thread"
+							>
+								<svg
+									xmlns="http://www.w3.org/2000/svg"
+									width="16"
+									height="16"
+									viewBox="0 0 24 24"
+									fill="none"
+									stroke="currentColor"
+									stroke-width="2"
+									stroke-linecap="round"
+									stroke-linejoin="round"
+									><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></svg
+								>
+							</button>
+							{#if canPin}
+								<div class="w-px bg-zinc-800"></div>
+								<button
+									class="p-1.5 text-zinc-400 transition-colors hover:bg-zinc-600 hover:text-zinc-200 disabled:cursor-not-allowed disabled:opacity-50"
+									onclick={() => togglePin(message)}
+									disabled={pinningMessageId === message.id}
+									title={message.pinned_at ? "Unpin message" : "Pin message"}
+									aria-label={message.pinned_at ? "Unpin message" : "Pin message"}
+								>
+									{#if message.pinned_at}
+										<PinOffIcon class="size-4" />
+									{:else}
+										<PinIcon class="size-4" />
 									{/if}
-								</div>
+								</button>
 							{/if}
-							{#if processed.inviteCodes.length > 0}
-								<div class="flex flex-col gap-2">
-									{#each processed.inviteCodes as code}
-										<InviteEmbed {code} />
-									{/each}
-								</div>
-							{/if}
-							{#if processed.botInviteIds.length > 0}
-								<div class="flex flex-col gap-2">
-									{#each processed.botInviteIds as botId}
-										<BotInviteEmbed botUserId={botId} />
-									{/each}
-								</div>
-							{/if}
-							{#if processed.messageLinks.length > 0}
-								<div class="flex flex-col gap-1">
-									{#each processed.messageLinks as ml}
-										<MessageLinkEmbed
-											spaceId={ml.spaceId}
-											roomId={ml.roomId}
-											messageId={ml.messageId}
-											conversationId={ml.conversationId}
-										/>
-									{/each}
-								</div>
-							{/if}
-							{#if message.embeds && message.embeds.length > 0}
-								<div class="flex flex-col gap-1">
-									{#each message.embeds as embed}
-										<EmbedCard {embed} onImageClick={(src) => openPreview(src)} />
-									{/each}
-								</div>
-							{/if}
-							{#if message.attachments && message.attachments.length > 0}
-								<div class="mt-1 flex flex-col gap-1">
-									{#each message.attachments as att}
-										{#if att.pending}
-											{#if att.content_type.startsWith("image/")}
-												<div class="flex h-40 w-64 animate-pulse items-center justify-center rounded-md bg-zinc-700/40">
-													<span class="text-xs text-zinc-500">Uploading {att.filename}...</span>
-												</div>
-											{:else if att.content_type.startsWith("video/")}
-												<div class="flex h-44 w-80 animate-pulse items-center justify-center rounded-md bg-zinc-700/40">
-													<span class="text-xs text-zinc-500">Uploading {att.filename}...</span>
-												</div>
-											{:else}
-												<div
-													class="inline-flex max-w-xs animate-pulse items-center gap-2 rounded-md bg-zinc-800/60 px-3 py-2"
-												>
-													<span class="text-xs text-zinc-500">Uploading {att.filename}...</span>
-													<span class="shrink-0 text-xs text-zinc-600">{formatFileSize(att.size_bytes)}</span>
-												</div>
-											{/if}
-										{:else if att.deleted_at}
-											{@const dw = Math.min(att.width ?? 200, 550)}
-											{@const dh = Math.min(att.height ?? 48, 350)}
-											<div
-												class="flex flex-col items-center justify-center gap-1 rounded-md border border-dashed border-zinc-700 bg-zinc-800/30"
-												style="width: {dw}px; height: {dh}px; max-width: 100%;"
-											>
-												<svg
-													xmlns="http://www.w3.org/2000/svg"
-													width="20"
-													height="20"
-													viewBox="0 0 24 24"
-													fill="none"
-													stroke="currentColor"
-													stroke-width="1.5"
-													stroke-linecap="round"
-													stroke-linejoin="round"
-													class="text-zinc-600"
-													><path d="M3 6h18" /><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" /><path
-														d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"
-													/><line x1="10" x2="10" y1="11" y2="17" /><line x1="14" x2="14" y1="11" y2="17" /></svg
-												>
-												<span class="text-xs text-zinc-500">Attachment deleted</span>
-											</div>
-										{:else if att.content_type.startsWith("image/")}
-											{@const rawW = att.width ?? 550}
-											{@const rawH = att.height ?? 350}
-											{@const imgScale = Math.min(550 / rawW, 350 / rawH, 1)}
-											{@const iw = Math.round(rawW * imgScale)}
-											{@const ih = Math.round(rawH * imgScale)}
-											<button
-												type="button"
-												class="relative block cursor-zoom-in overflow-hidden rounded-md"
-												style="width: {iw}px; height: {ih}px; max-width: 100%;"
-												onclick={() =>
-													openPreview(`${attachmentHost}${att.url ?? `/attachments/${att.id}`}`, att.filename)}
-											>
-												<div class="img-skeleton absolute inset-0 animate-pulse bg-zinc-700/40"></div>
-												<img
-													src="{attachmentHost}{att.url ?? `/attachments/${att.id}`}"
-													alt={att.filename}
-													class="relative h-full w-full rounded-md object-contain text-transparent"
-													loading="lazy"
-													onload={(e) => {
-														(e.currentTarget as HTMLElement).parentElement?.querySelector(".img-skeleton")?.remove();
-													}}
-													onerror={(e) => {
-														const img = e.currentTarget as HTMLImageElement;
-														const retries = parseInt(img.dataset.retries ?? "0");
-														if (retries < 10) {
-															img.dataset.retries = String(retries + 1);
-															setTimeout(() => {
-																const base = img.src.replace(/[&?]r=\d+/, "");
-																img.src = base + (base.includes("?") ? "&" : "?") + "r=" + Date.now();
-															}, 1000);
-														} else {
-															const parent = img.parentElement!;
-															parent.querySelector(".img-skeleton")?.remove();
-															img.remove();
-															parent.innerHTML = `<div class="flex flex-col items-center justify-center w-full h-full bg-zinc-800/60 rounded-md gap-1"><span class="text-2xl">💩</span><span class="text-xs text-zinc-500">Failed to load</span></div>`;
-														}
-													}}
-												/>
-											</button>
-										{:else if att.content_type.startsWith("video/")}
-											{@const rawVW = att.width ?? 550}
-											{@const rawVH = att.height ?? 350}
-											{@const vidScale = Math.min(550 / rawVW, 350 / rawVH, 1)}
-											{@const vw = Math.round(rawVW * vidScale)}
-											{@const vh = Math.round(rawVH * vidScale)}
-											<div
-												class="relative overflow-hidden rounded-md"
-												style="width: {vw}px; height: {vh}px; max-width: 100%;"
-											>
-												<div
-													class="video-skeleton absolute inset-0 flex animate-pulse items-center justify-center bg-zinc-700/40"
-												>
-													<span class="text-xs text-zinc-500">Loading video...</span>
-												</div>
-												<!-- svelte-ignore a11y_media_has_caption -->
-												<video
-													src="{attachmentHost}{att.url ?? `/attachments/${att.id}`}"
-													controls
-													class="relative h-full w-full rounded-md"
-													onloadeddata={(e) => {
-														const el = e.currentTarget as HTMLVideoElement;
-														el.parentElement?.querySelector(".video-skeleton")?.remove();
-													}}
-													onerror={(e) => {
-														const vid = e.currentTarget as HTMLVideoElement;
-														const retries = parseInt(vid.dataset.retries ?? "0");
-														if (retries < 10) {
-															vid.dataset.retries = String(retries + 1);
-															setTimeout(() => {
-																const base = vid.src.replace(/[&?]r=\d+/, "");
-																vid.src = base + (base.includes("?") ? "&" : "?") + "r=" + Date.now();
-															}, 1000);
-														} else {
-															const parent = vid.parentElement!;
-															parent.querySelector(".video-skeleton")?.remove();
-															vid.remove();
-															parent.innerHTML = `<div class="flex flex-col items-center justify-center w-full h-full bg-zinc-800/60 rounded-md gap-1"><span class="text-2xl">💩</span><span class="text-xs text-zinc-500">Failed to load</span></div>`;
-														}
-													}}
-												></video>
-											</div>
-										{:else if att.content_type.startsWith("audio/")}
-											<AudioFilePlayer
-												src="{attachmentHost}{att.url ?? `/attachments/${att.id}`}"
-												attachmentId={att.id}
-												filename={att.filename}
-												sizeBytes={att.size_bytes}
-												authorName={message.author_name ?? "Unknown"}
-												channelName={space?.rooms.find((r) => r.id === channelId)?.name ?? ""}
-											/>
-										{:else}
-											<a
-												href="{attachmentHost}{att.url ?? `/attachments/${att.id}`}"
-												target="_blank"
-												rel="noopener noreferrer"
-												class="mt-1 inline-flex max-w-xs items-center gap-2 rounded-md bg-zinc-800/60 px-3 py-2 text-sm text-zinc-300 hover:bg-zinc-700/60"
-											>
-												<span class="truncate">{att.filename}</span>
-												<span class="shrink-0 text-xs text-zinc-500">{formatFileSize(att.size_bytes)}</span>
-											</a>
-										{/if}
-									{/each}
-								</div>
-							{/if}
-						{/if}
-
-						<!-- Reactions display -->
-						{#if message.reactions && message.reactions.length > 0}
-							<div class="mt-1 flex flex-wrap gap-1">
-								{#each message.reactions as reaction}
-									{@const isMeReacted = $currentUser ? reaction.users.includes($currentUser.id) : false}
-									{@const ce = reaction.emoji_id ? customEmojis.find((e) => e.id === reaction.emoji_id) : null}
-									<button
-										class="inline-flex items-center gap-1.5 rounded-lg border px-2 py-1 text-sm transition-colors {isMeReacted
-											? 'border-indigo-500/40 bg-indigo-500/20 text-indigo-300'
-											: 'border-zinc-700 bg-zinc-800/60 text-zinc-400 hover:bg-zinc-700/60'}"
-										onclick={() => handleReactionToggle(message, reaction.emoji_name, reaction.emoji_id)}
-										title={reaction.emoji_name}
-									>
-										{#if ce}
-											<img
-												src="{attachmentHost}/attachments/{ce.attachment_id}"
-												alt=":{ce.name}:"
-												class="size-5 object-contain"
-											/>
-										{:else}
-											{@html renderEmoji(reaction.emoji_name)}
-										{/if}
-										<span class="font-medium">{reaction.count}</span>
-									</button>
-								{/each}
-							</div>
-						{/if}
-					</div>
-				</div>
-				<!-- end inner row -->
-
-				<!-- Action toolbar -->
-				{#if isFailed}
-					<div
-						class="absolute -top-3 right-4 z-10 flex overflow-hidden rounded border border-zinc-800 bg-zinc-700 shadow-sm"
-					>
-						<button
-							class="px-2 py-1.5 text-xs text-stone-300 transition-colors hover:bg-zinc-600"
-							onclick={() => onRetry(message)}>Retry</button
-						>
-						<div class="w-px bg-zinc-800"></div>
-						<button
-							class="px-2 py-1.5 text-xs text-zinc-400 transition-colors hover:bg-zinc-600 hover:text-white"
-							onclick={() => onDismiss(message.nonce!)}>Dismiss</button
-						>
-					</div>
-				{:else if !isPending && $currentUser && message.author_id === $currentUser.id && editingMessageId !== message.id}
-					<div
-						class="absolute -top-3 right-2 z-10 overflow-hidden rounded border border-zinc-800 bg-zinc-700 shadow-sm transition-opacity {reactingMessageId ===
-						message.id
-							? 'flex'
-							: 'hidden group-hover:flex'}"
-					>
-						<Popover.Root
-							bind:open={() => reactingMessageId === message.id, (v) => (reactingMessageId = v ? message.id : null)}
-						>
-							<Popover.Trigger
-								class="p-1.5 text-zinc-400 transition-colors hover:bg-zinc-600 hover:text-zinc-200"
-								title="Add reaction"
-								aria-label="Add reaction"
+							<div class="w-px bg-zinc-800"></div>
+							<button
+								class="p-1.5 text-zinc-400 transition-colors hover:bg-zinc-600 hover:text-white"
+								onclick={() => {
+									startEdit(message);
+								}}
+								title="Edit message"
+								aria-label="Edit message"
 							>
 								<svg
 									xmlns="http://www.w3.org/2000/svg"
@@ -1546,255 +1708,11 @@
 									stroke-width="2"
 									stroke-linecap="round"
 									stroke-linejoin="round"
-									><circle cx="12" cy="12" r="10" /><path d="M8 14s1.5 2 4 2 4-2 4-2" /><line
-										x1="9"
-										x2="9.01"
-										y1="9"
-										y2="9"
-									/><line x1="15" x2="15.01" y1="9" y2="9" /></svg
+									><path
+										d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"
+									/><path d="m15 5 4 4" /></svg
 								>
-							</Popover.Trigger>
-							<Popover.Portal>
-								<Popover.Content side="top" align="end" sideOffset={8} class="z-100">
-									<EmojiPicker onSelect={(emoji) => handleReactionPick(message.id, emoji)} {customEmojis} />
-								</Popover.Content>
-							</Popover.Portal>
-						</Popover.Root>
-						<div class="w-px bg-zinc-800"></div>
-						<button
-							class="p-1.5 text-zinc-400 transition-colors hover:bg-zinc-600 hover:text-zinc-200"
-							onclick={() => onReply?.(message)}
-							title="Reply"
-							aria-label="Reply"
-						>
-							<svg
-								xmlns="http://www.w3.org/2000/svg"
-								width="16"
-								height="16"
-								viewBox="0 0 24 24"
-								fill="none"
-								stroke="currentColor"
-								stroke-width="2"
-								stroke-linecap="round"
-								stroke-linejoin="round"><polyline points="9 17 4 12 9 7" /><path d="M20 18v-2a4 4 0 0 0-4-4H4" /></svg
-							>
-						</button>
-						<div class="w-px bg-zinc-800"></div>
-						<button
-							class="p-1.5 text-zinc-400 transition-colors hover:bg-zinc-600 hover:text-zinc-200"
-							onclick={() => {
-								navigator.clipboard
-									.writeText(
-										`${isConversation ? `${DUVET_DOMAIN}/conversations/${channelId}/${message.id}` : `${DUVET_DOMAIN}/channels/${spaceId}/${channelId}/${message.id}`}`,
-									)
-									.catch(console.error);
-							}}
-							title="Copy message link"
-							aria-label="Copy message link"
-						>
-							<svg
-								xmlns="http://www.w3.org/2000/svg"
-								width="16"
-								height="16"
-								viewBox="0 0 24 24"
-								fill="none"
-								stroke="currentColor"
-								stroke-width="2"
-								stroke-linecap="round"
-								stroke-linejoin="round"
-								><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" /><path
-									d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"
-								/></svg
-							>
-						</button>
-						<div class="w-px bg-zinc-800"></div>
-						<button
-							class="p-1.5 text-zinc-400 transition-colors hover:bg-zinc-600 hover:text-zinc-200"
-							onclick={() => openThreadModal(message)}
-							title="View thread"
-							aria-label="View thread"
-						>
-							<svg
-								xmlns="http://www.w3.org/2000/svg"
-								width="16"
-								height="16"
-								viewBox="0 0 24 24"
-								fill="none"
-								stroke="currentColor"
-								stroke-width="2"
-								stroke-linecap="round"
-								stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></svg
-							>
-						</button>
-						<div class="w-px bg-zinc-800"></div>
-						<button
-							class="p-1.5 text-zinc-400 transition-colors hover:bg-zinc-600 hover:text-white"
-							onclick={() => {
-								startEdit(message);
-							}}
-							title="Edit message"
-							aria-label="Edit message"
-						>
-							<svg
-								xmlns="http://www.w3.org/2000/svg"
-								width="16"
-								height="16"
-								viewBox="0 0 24 24"
-								fill="none"
-								stroke="currentColor"
-								stroke-width="2"
-								stroke-linecap="round"
-								stroke-linejoin="round"
-								><path
-									d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"
-								/><path d="m15 5 4 4" /></svg
-							>
-						</button>
-						<div class="w-px bg-zinc-800"></div>
-						<button
-							class="p-1.5 text-zinc-400 transition-colors hover:bg-zinc-600 hover:text-red-400 disabled:cursor-not-allowed disabled:opacity-50"
-							onclick={() => handleDelete(message.id)}
-							disabled={deletingMessageId === message.id}
-							title="Delete message"
-							aria-label="Delete message"
-						>
-							{#if deletingMessageId === message.id}
-								<svg
-									xmlns="http://www.w3.org/2000/svg"
-									width="16"
-									height="16"
-									viewBox="0 0 24 24"
-									fill="none"
-									stroke="currentColor"
-									stroke-width="2"
-									stroke-linecap="round"
-									stroke-linejoin="round"
-									class="animate-spin"><path d="M21 12a9 9 0 1 1-6.219-8.56" /></svg
-								>
-							{:else}
-								<svg
-									xmlns="http://www.w3.org/2000/svg"
-									width="16"
-									height="16"
-									viewBox="0 0 24 24"
-									fill="none"
-									stroke="currentColor"
-									stroke-width="2"
-									stroke-linecap="round"
-									stroke-linejoin="round"
-									><path d="M3 6h18" /><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" /><path
-										d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"
-									/><line x1="10" x2="10" y1="11" y2="17" /><line x1="14" x2="14" y1="11" y2="17" /></svg
-								>
-							{/if}
-						</button>
-					</div>
-				{:else if !isPending && $currentUser && message.author_id !== $currentUser.id && editingMessageId !== message.id}
-					<div
-						class="absolute -top-3 right-2 z-10 overflow-hidden rounded border border-zinc-800 bg-zinc-700 shadow-sm transition-opacity {reactingMessageId ===
-						message.id
-							? 'flex'
-							: 'hidden group-hover:flex'}"
-					>
-						<Popover.Root
-							bind:open={() => reactingMessageId === message.id, (v) => (reactingMessageId = v ? message.id : null)}
-						>
-							<Popover.Trigger
-								class="p-1.5 text-zinc-400 transition-colors hover:bg-zinc-600 hover:text-zinc-200"
-								title="Add reaction"
-								aria-label="Add reaction"
-							>
-								<svg
-									xmlns="http://www.w3.org/2000/svg"
-									width="16"
-									height="16"
-									viewBox="0 0 24 24"
-									fill="none"
-									stroke="currentColor"
-									stroke-width="2"
-									stroke-linecap="round"
-									stroke-linejoin="round"
-									><circle cx="12" cy="12" r="10" /><path d="M8 14s1.5 2 4 2 4-2 4-2" /><line
-										x1="9"
-										x2="9.01"
-										y1="9"
-										y2="9"
-									/><line x1="15" x2="15.01" y1="9" y2="9" /></svg
-								>
-							</Popover.Trigger>
-							<Popover.Portal>
-								<Popover.Content side="top" align="end" sideOffset={8} class="z-100">
-									<EmojiPicker onSelect={(emoji) => handleReactionPick(message.id, emoji)} {customEmojis} />
-								</Popover.Content>
-							</Popover.Portal>
-						</Popover.Root>
-						<div class="w-px bg-zinc-800"></div>
-						<button
-							class="p-1.5 text-zinc-400 transition-colors hover:bg-zinc-600 hover:text-zinc-200"
-							onclick={() => onReply?.(message)}
-							title="Reply"
-							aria-label="Reply"
-						>
-							<svg
-								xmlns="http://www.w3.org/2000/svg"
-								width="16"
-								height="16"
-								viewBox="0 0 24 24"
-								fill="none"
-								stroke="currentColor"
-								stroke-width="2"
-								stroke-linecap="round"
-								stroke-linejoin="round"><polyline points="9 17 4 12 9 7" /><path d="M20 18v-2a4 4 0 0 0-4-4H4" /></svg
-							>
-						</button>
-						<div class="w-px bg-zinc-800"></div>
-						<button
-							class="p-1.5 text-zinc-400 transition-colors hover:bg-zinc-600 hover:text-zinc-200"
-							onclick={() => {
-								navigator.clipboard
-									.writeText(
-										`${isConversation ? `${DUVET_DOMAIN}/conversations/${channelId}/${message.id}` : `${DUVET_DOMAIN}/channels/${spaceId}/${channelId}/${message.id}`}`,
-									)
-									.catch(console.error);
-							}}
-							title="Copy message link"
-							aria-label="Copy message link"
-						>
-							<svg
-								xmlns="http://www.w3.org/2000/svg"
-								width="16"
-								height="16"
-								viewBox="0 0 24 24"
-								fill="none"
-								stroke="currentColor"
-								stroke-width="2"
-								stroke-linecap="round"
-								stroke-linejoin="round"
-								><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" /><path
-									d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"
-								/></svg
-							>
-						</button>
-						<div class="w-px bg-zinc-800"></div>
-						<button
-							class="p-1.5 text-zinc-400 transition-colors hover:bg-zinc-600 hover:text-zinc-200"
-							onclick={() => openThreadModal(message)}
-							title="View thread"
-							aria-label="View thread"
-						>
-							<svg
-								xmlns="http://www.w3.org/2000/svg"
-								width="16"
-								height="16"
-								viewBox="0 0 24 24"
-								fill="none"
-								stroke="currentColor"
-								stroke-width="2"
-								stroke-linecap="round"
-								stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></svg
-							>
-						</button>
-						{#if currentUserCanManageMessages()}
+							</button>
 							<div class="w-px bg-zinc-800"></div>
 							<button
 								class="p-1.5 text-zinc-400 transition-colors hover:bg-zinc-600 hover:text-red-400 disabled:cursor-not-allowed disabled:opacity-50"
@@ -1833,10 +1751,173 @@
 									>
 								{/if}
 							</button>
-						{/if}
-					</div>
-				{/if}
-			</div>
+						</div>
+					{:else if !isPending && $currentUser && message.author_id !== $currentUser.id && editingMessageId !== message.id}
+						<div
+							class="absolute -top-3 right-2 z-10 overflow-hidden rounded border border-zinc-800 bg-zinc-700 shadow-sm transition-opacity {reactingMessageId ===
+							message.id
+								? 'flex'
+								: 'hidden group-hover:flex'}"
+						>
+							<Popover.Root
+								bind:open={() => reactingMessageId === message.id, (v) => (reactingMessageId = v ? message.id : null)}
+							>
+								<Popover.Trigger
+									class="p-1.5 text-zinc-400 transition-colors hover:bg-zinc-600 hover:text-zinc-200"
+									title="Add reaction"
+									aria-label="Add reaction"
+								>
+									<svg
+										xmlns="http://www.w3.org/2000/svg"
+										width="16"
+										height="16"
+										viewBox="0 0 24 24"
+										fill="none"
+										stroke="currentColor"
+										stroke-width="2"
+										stroke-linecap="round"
+										stroke-linejoin="round"
+										><circle cx="12" cy="12" r="10" /><path d="M8 14s1.5 2 4 2 4-2 4-2" /><line
+											x1="9"
+											x2="9.01"
+											y1="9"
+											y2="9"
+										/><line x1="15" x2="15.01" y1="9" y2="9" /></svg
+									>
+								</Popover.Trigger>
+								<Popover.Portal>
+									<Popover.Content side="top" align="end" sideOffset={8} class="z-100">
+										<EmojiPicker onSelect={(emoji) => handleReactionPick(message.id, emoji)} {customEmojis} />
+									</Popover.Content>
+								</Popover.Portal>
+							</Popover.Root>
+							<div class="w-px bg-zinc-800"></div>
+							<button
+								class="p-1.5 text-zinc-400 transition-colors hover:bg-zinc-600 hover:text-zinc-200"
+								onclick={() => onReply?.(message)}
+								title="Reply"
+								aria-label="Reply"
+							>
+								<svg
+									xmlns="http://www.w3.org/2000/svg"
+									width="16"
+									height="16"
+									viewBox="0 0 24 24"
+									fill="none"
+									stroke="currentColor"
+									stroke-width="2"
+									stroke-linecap="round"
+									stroke-linejoin="round"><polyline points="9 17 4 12 9 7" /><path d="M20 18v-2a4 4 0 0 0-4-4H4" /></svg
+								>
+							</button>
+							<div class="w-px bg-zinc-800"></div>
+							<button
+								class="p-1.5 text-zinc-400 transition-colors hover:bg-zinc-600 hover:text-zinc-200"
+								onclick={() => {
+									navigator.clipboard
+										.writeText(
+											`${isConversation ? `${DUVET_DOMAIN}/conversations/${channelId}/${message.id}` : `${DUVET_DOMAIN}/channels/${spaceId}/${channelId}/${message.id}`}`,
+										)
+										.catch(console.error);
+								}}
+								title="Copy message link"
+								aria-label="Copy message link"
+							>
+								<svg
+									xmlns="http://www.w3.org/2000/svg"
+									width="16"
+									height="16"
+									viewBox="0 0 24 24"
+									fill="none"
+									stroke="currentColor"
+									stroke-width="2"
+									stroke-linecap="round"
+									stroke-linejoin="round"
+									><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" /><path
+										d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"
+									/></svg
+								>
+							</button>
+							<div class="w-px bg-zinc-800"></div>
+							<button
+								class="p-1.5 text-zinc-400 transition-colors hover:bg-zinc-600 hover:text-zinc-200"
+								onclick={() => openThreadModal(message)}
+								title="View thread"
+								aria-label="View thread"
+							>
+								<svg
+									xmlns="http://www.w3.org/2000/svg"
+									width="16"
+									height="16"
+									viewBox="0 0 24 24"
+									fill="none"
+									stroke="currentColor"
+									stroke-width="2"
+									stroke-linecap="round"
+									stroke-linejoin="round"
+									><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></svg
+								>
+							</button>
+							{#if canPin}
+								<div class="w-px bg-zinc-800"></div>
+								<button
+									class="p-1.5 text-zinc-400 transition-colors hover:bg-zinc-600 hover:text-zinc-200 disabled:cursor-not-allowed disabled:opacity-50"
+									onclick={() => togglePin(message)}
+									disabled={pinningMessageId === message.id}
+									title={message.pinned_at ? "Unpin message" : "Pin message"}
+									aria-label={message.pinned_at ? "Unpin message" : "Pin message"}
+								>
+									{#if message.pinned_at}
+										<PinOffIcon class="size-4" />
+									{:else}
+										<PinIcon class="size-4" />
+									{/if}
+								</button>
+							{/if}
+							{#if currentUserCan(Permission.ManageMessages)}
+								<div class="w-px bg-zinc-800"></div>
+								<button
+									class="p-1.5 text-zinc-400 transition-colors hover:bg-zinc-600 hover:text-red-400 disabled:cursor-not-allowed disabled:opacity-50"
+									onclick={() => handleDelete(message.id)}
+									disabled={deletingMessageId === message.id}
+									title="Delete message"
+									aria-label="Delete message"
+								>
+									{#if deletingMessageId === message.id}
+										<svg
+											xmlns="http://www.w3.org/2000/svg"
+											width="16"
+											height="16"
+											viewBox="0 0 24 24"
+											fill="none"
+											stroke="currentColor"
+											stroke-width="2"
+											stroke-linecap="round"
+											stroke-linejoin="round"
+											class="animate-spin"><path d="M21 12a9 9 0 1 1-6.219-8.56" /></svg
+										>
+									{:else}
+										<svg
+											xmlns="http://www.w3.org/2000/svg"
+											width="16"
+											height="16"
+											viewBox="0 0 24 24"
+											fill="none"
+											stroke="currentColor"
+											stroke-width="2"
+											stroke-linecap="round"
+											stroke-linejoin="round"
+											><path d="M3 6h18" /><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" /><path
+												d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"
+											/><line x1="10" x2="10" y1="11" y2="17" /><line x1="14" x2="14" y1="11" y2="17" /></svg
+										>
+									{/if}
+								</button>
+							{/if}
+						</div>
+					{/if}
+				</div>
+			{/if}
 
 			{#if isDifferentDay}
 				<div class="my-3 flex items-center gap-3 px-2 select-none">

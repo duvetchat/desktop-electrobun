@@ -1,7 +1,16 @@
 <script lang="ts">
 	import { onMount } from "svelte";
 	import { Popover } from "bits-ui";
-	import { Smile as SmileIcon, Sticker as StickerIcon, Image as GifIcon, Plus, Mic, Square } from "@lucide/svelte";
+	import {
+		Smile as SmileIcon,
+		Sticker as StickerIcon,
+		Image as GifIcon,
+		Plus,
+		Mic,
+		Square,
+		Pause,
+		Play,
+	} from "@lucide/svelte";
 	import EmojiPicker from "$lib/components/EmojiPicker.svelte";
 	import StickerPicker from "$lib/components/StickerPicker.svelte";
 	import GifPicker from "$lib/components/GifPicker.svelte";
@@ -32,6 +41,7 @@
 		initialValue = "",
 		onSubmit,
 		onVoiceNote,
+		onRecording,
 		onCancel,
 		onValueChange,
 		onArrowUpWhenEmpty,
@@ -46,6 +56,8 @@
 		initialValue?: string;
 		onSubmit: (text: string, files?: File[], stickerAttachmentId?: string) => void;
 		onVoiceNote?: (blob: Blob) => void;
+		/** Called when a voice note's recording starts, and every second while it goes on. */
+		onRecording?: () => void;
 		onCancel?: () => void;
 		onValueChange?: (text: string) => void;
 		onArrowUpWhenEmpty?: () => void;
@@ -74,6 +86,8 @@
 	// ── Voice recording ──────────────────────────────────────────────────────
 	let recording = $state(false);
 	let recordingDuration = $state(0);
+	// A paused recording keeps what it has; the timer and the "recording" notices wait for it.
+	let paused = $state(false);
 	let mediaRecorder: MediaRecorder | null = null;
 	let recordingInterval: ReturnType<typeof setInterval> | null = null;
 
@@ -104,12 +118,28 @@
 			};
 			mediaRecorder.start();
 			recording = true;
+			paused = false;
 			recordingDuration = 0;
+			onRecording?.();
 			recordingInterval = setInterval(() => {
+				if (paused) return;
 				recordingDuration++;
+				onRecording?.();
 			}, 1000);
 		} catch {
 			// Permission denied or no mic
+		}
+	}
+
+	function togglePause() {
+		if (!mediaRecorder || mediaRecorder.state === "inactive") return;
+		if (paused) {
+			mediaRecorder.resume();
+			paused = false;
+			onRecording?.();
+		} else {
+			mediaRecorder.pause();
+			paused = true;
 		}
 	}
 
@@ -118,6 +148,7 @@
 			mediaRecorder.stop();
 		}
 		recording = false;
+		paused = false;
 		if (recordingInterval) {
 			clearInterval(recordingInterval);
 			recordingInterval = null;
@@ -133,6 +164,7 @@
 			mediaRecorder.stop();
 		}
 		recording = false;
+		paused = false;
 		if (recordingInterval) {
 			clearInterval(recordingInterval);
 			recordingInterval = null;
@@ -874,11 +906,24 @@
 				class="pointer-events-auto flex-1 rounded-xl border border-[oklch(0.4_0.15_25/0.4)] bg-[oklch(0.20_0.02_25/0.5)] px-3 py-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]"
 			>
 				<div class="flex h-5 items-center gap-3">
-					<div class="size-2.5 animate-pulse rounded-full bg-red-500"></div>
+					<div class="size-2.5 rounded-full {paused ? 'bg-zinc-500' : 'animate-pulse bg-red-500'}"></div>
 					<span class="text-sm font-medium text-zinc-300 tabular-nums">{formatDuration(recordingDuration)}</span>
-					<span class="text-xs text-zinc-500">Recording...</span>
+					<span class="text-xs text-zinc-500">{paused ? "Paused" : "Recording..."}</span>
 				</div>
 			</div>
+			<button
+				type="button"
+				class="ce-action-btn flex size-10 shrink-0 cursor-pointer items-center justify-center rounded-xl border border-[oklch(0.40_0.01_80/0.7)] bg-[oklch(0.22_0.01_80/0.7)] text-[oklch(0.70_0.01_80)] transition-colors duration-150 outline-none hover:bg-[oklch(0.28_0.01_80)] hover:text-[oklch(0.96_0.005_80)]"
+				title={paused ? "Resume recording" : "Pause recording"}
+				aria-label={paused ? "Resume recording" : "Pause recording"}
+				onclick={togglePause}
+			>
+				{#if paused}
+					<Play class="size-4" fill="currentColor" />
+				{:else}
+					<Pause class="size-4" fill="currentColor" />
+				{/if}
+			</button>
 			<button
 				type="button"
 				class="ce-action-btn flex size-10 shrink-0 cursor-pointer items-center justify-center rounded-xl border border-[oklch(0.40_0.01_80/0.7)] bg-[oklch(0.22_0.01_80/0.7)] text-[oklch(0.70_0.01_80)] transition-colors duration-150 outline-none hover:bg-[oklch(0.28_0.01_80)] hover:text-[oklch(0.96_0.005_80)]"

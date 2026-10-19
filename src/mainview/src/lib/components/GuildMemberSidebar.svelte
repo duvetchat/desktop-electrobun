@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { Crown as CrownSimpleIcon } from "@lucide/svelte";
+	import { Crown as CrownSimpleIcon, Mic as MicIcon } from "@lucide/svelte";
 	import type { MemberOnSidebar, Role, GatewaySpace, GatewayMember } from "$lib/types";
 	import { currentUser, gatewaySpaces, typingUsers, userActivities } from "$lib/stores.svelte";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
@@ -58,6 +58,11 @@
 		if (!channelId) return false;
 		const entry = ($typingUsers[channelId] ?? []).find((u) => u.user_id === userId);
 		return !!entry && now - entry.timestamp < TYPING_TIMEOUT;
+	}
+
+	// Whether the member's typing notice says they are recording a voice message.
+	function isRecording(userId: string): boolean {
+		return isTyping(userId) && !!($typingUsers[channelId ?? ""] ?? []).find((u) => u.user_id === userId)?.recording;
 	}
 
 	// ── Pagination ─────────────────────────────────────────────────────────────
@@ -292,17 +297,21 @@
 										<span
 											class="absolute -right-0.5 -bottom-0.5 flex h-3 w-4 items-center justify-center gap-0.5 rounded-full border-2 border-zinc-900 bg-zinc-700"
 										>
-											<span
-												class="block size-0.5 animate-[member-typing-bounce_1.2s_ease-in-out_infinite] rounded-full bg-[oklch(0.75_0.01_80)]"
-											></span>
-											<span
-												class="block size-0.5 animate-[member-typing-bounce_1.2s_ease-in-out_infinite] rounded-full bg-[oklch(0.75_0.01_80)]"
-												style="animation-delay:0.2s"
-											></span>
-											<span
-												class="block size-0.5 animate-[member-typing-bounce_1.2s_ease-in-out_infinite] rounded-full bg-[oklch(0.75_0.01_80)]"
-												style="animation-delay:0.4s"
-											></span>
+											{#if isRecording(member.id)}
+												<MicIcon class="size-2 animate-pulse text-red-400" />
+											{:else}
+												<span
+													class="block size-0.5 animate-[member-typing-bounce_1.2s_ease-in-out_infinite] rounded-full bg-[oklch(0.75_0.01_80)]"
+												></span>
+												<span
+													class="block size-0.5 animate-[member-typing-bounce_1.2s_ease-in-out_infinite] rounded-full bg-[oklch(0.75_0.01_80)]"
+													style="animation-delay:0.2s"
+												></span>
+												<span
+													class="block size-0.5 animate-[member-typing-bounce_1.2s_ease-in-out_infinite] rounded-full bg-[oklch(0.75_0.01_80)]"
+													style="animation-delay:0.4s"
+												></span>
+											{/if}
 										</span>
 									{:else}
 										<span

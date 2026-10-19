@@ -137,6 +137,8 @@ export interface TypingUser {
 	alias: string | null;
 	avatar: string | null;
 	timestamp: number;
+	/** Recording a voice message rather than typing. */
+	recording?: boolean;
 }
 
 // key = roomId or conversationId
@@ -171,6 +173,12 @@ export const jumpToMessageRequest = writable<{
 	messageId: string;
 	conversationId?: string;
 } | null>(null);
+
+/** The last pin or unpin of a message, so the open pins panel of its room or conversation reloads. */
+export const pinUpdates = writable<{ channelId: string; messageId: string } | null>(null);
+
+/** Asks the pins panel of a room or conversation to open, as a pin notice's link does. */
+export const pinsPanelRequest = writable<{ id: string; channelId: string } | null>(null);
 
 export type CallState = "idle" | "calling" | "ringing" | "connected";
 
