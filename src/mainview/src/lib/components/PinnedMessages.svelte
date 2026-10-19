@@ -3,6 +3,7 @@
 	import { Popover } from "bits-ui";
 	import { untrack } from "svelte";
 	import MessagePreview from "$lib/components/MessagePreview.svelte";
+	import ImagePreview from "$lib/components/ImagePreview.svelte";
 	import { getRoomPins, unpinRoomMessage } from "$lib/api/messages";
 	import { getConversationPins, unpinConversationMessage, type DirectMessage } from "$lib/api/conversations";
 	import { getApiError } from "$lib/api/api";
@@ -50,6 +51,17 @@
 	});
 	const mentionMap = $derived(mentionMapOf(members));
 	const customEmojiMap = $derived(customEmojiMapOf(customEmojis));
+
+	// A pinned image opens over the app; the list closes first, as a click outside it would close it.
+	let previewSrc = $state("");
+	let previewAlt = $state("");
+	let previewOpen = $state(false);
+	function openPreview(src: string, alt = "") {
+		open = false;
+		previewSrc = src;
+		previewAlt = alt;
+		previewOpen = true;
+	}
 
 	async function load() {
 		controller?.abort();
@@ -142,7 +154,7 @@
 					<div
 						class="group relative flex shrink-0 flex-col gap-1 rounded-md border border-stone-800/80 bg-stone-900/60 px-3 py-2"
 					>
-						<MessagePreview message={m} {mentionMap} {customEmojiMap} />
+						<MessagePreview message={m} {mentionMap} {customEmojiMap} onPreview={openPreview} />
 						<div class="absolute top-1.5 right-1.5 hidden items-center gap-1 group-focus-within:flex group-hover:flex">
 							<button
 								class="rounded bg-stone-800 px-2 py-0.5 text-xs font-medium text-stone-200 hover:bg-stone-700"
@@ -167,3 +179,5 @@
 		</Popover.Content>
 	</Popover.Portal>
 </Popover.Root>
+
+<ImagePreview src={previewSrc} alt={previewAlt} bind:open={previewOpen} />
