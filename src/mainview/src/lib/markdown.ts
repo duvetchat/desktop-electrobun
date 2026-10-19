@@ -409,3 +409,22 @@ export function renderMarkdownLine(
 		(_, i) => `<code class="msg-inline-code">${escapeHtml(codes[+i])}</code>`,
 	);
 }
+
+/** Splits a message's text into its bare links (http(s) and duvet://) and the text between them, for renderMarkdown. */
+export function parseTextSegments(text: string) {
+	const segments: { type: "text" | "link"; content: string }[] = [];
+	const bareUrlRegex = /(?<!\]\()(?:https?|duvet):\/\/[^\s)]+(?:\)[^\s)]*)*|(?<=\s|^)(?:https?|duvet):\/\/[^\s]+/g;
+	let lastIndex = 0;
+	let match;
+	while ((match = bareUrlRegex.exec(text)) !== null) {
+		if (match.index > lastIndex) {
+			segments.push({ type: "text", content: text.slice(lastIndex, match.index) });
+		}
+		segments.push({ type: "link", content: match[0] });
+		lastIndex = bareUrlRegex.lastIndex;
+	}
+	if (lastIndex < text.length) {
+		segments.push({ type: "text", content: text.slice(lastIndex) });
+	}
+	return segments;
+}
