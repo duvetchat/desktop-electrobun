@@ -373,9 +373,10 @@ export interface TypingEvent {
 	alias: string | null;
 	avatar: string | null;
 	room_id: string;
-	/** Recording a voice message rather than typing. */
-	recording: boolean;
 }
+
+/** A user recording a voice message in a room: what TYPING has. */
+export type RecordingEvent = TypingEvent;
 
 export interface DMTypingEvent {
 	conversation_id: string;
@@ -383,9 +384,10 @@ export interface DMTypingEvent {
 	username: string;
 	alias: string | null;
 	avatar: string | null;
-	/** Recording a voice message rather than typing. */
-	recording: boolean;
 }
+
+/** A user recording a voice message in a conversation: what DM_TYPING has. */
+export type DMRecordingEvent = DMTypingEvent;
 
 export interface CallIncomingEvent {
 	conversation_id: string;
@@ -652,6 +654,8 @@ export type GatewayEventPayload =
 	| { type: "DM_REACTION_REMOVE"; data: ReactionRemoveEvent }
 	| { type: "TYPING"; data: TypingEvent }
 	| { type: "DM_TYPING"; data: DMTypingEvent }
+	| { type: "RECORDING"; data: RecordingEvent }
+	| { type: "DM_RECORDING"; data: DMRecordingEvent }
 	| { type: "CALL_INCOMING"; data: CallIncomingEvent }
 	| { type: "CALL_ACCEPTED"; data: CallAcceptedEvent }
 	| { type: "CALL_DECLINED"; data: CallDeclinedEvent }

@@ -8,7 +8,7 @@
 	import PinnedMessages from "$lib/components/PinnedMessages.svelte";
 	import type { Message, MemberOnSidebar, GatewaySpace, MessageReference, Embed } from "$lib/types";
 	import { MessageReferenceType } from "$lib/types";
-	import { sendMessage, sendVoiceNote, sendTypingIndicator } from "$lib/api/messages";
+	import { sendMessage, sendVoiceNote, sendTypingIndicator, sendRecordingIndicator } from "$lib/api/messages";
 	import { MessageType } from "$lib/types";
 	import { currentUser, channelMessages, typingUsers, spaceEmojis, spaceStickers } from "$lib/stores.svelte";
 	import { toast } from "$lib/stores/toast.svelte";
@@ -44,6 +44,7 @@
 		onRetry = undefined,
 		onDismiss = undefined,
 		sendTyping = undefined,
+		sendRecording = undefined,
 		onUnreadMark = undefined,
 		onVoiceNoteOverride = undefined,
 	}: {
@@ -77,8 +78,9 @@
 		onDeleteMsg?: (msgId: string) => Promise<void>;
 		onRetry?: (message: Message) => void;
 		onDismiss?: (nonce: string) => void;
-		/** Tells the others the user is typing, or recording a voice message. */
-		sendTyping?: (recording: boolean) => void;
+		/** Tell the others the user is typing, or recording a voice message; a room's go to its endpoints. */
+		sendTyping?: () => void;
+		sendRecording?: () => void;
 		onUnreadMark?: (messageId: string) => void;
 		onVoiceNoteOverride?: (blob: Blob) => void;
 	} = $props();
@@ -386,11 +388,8 @@
 		if (now - lastTypingSent < 3000 && recording === lastTypingRecording) return;
 		lastTypingSent = now;
 		lastTypingRecording = recording;
-		if (sendTyping) {
-			sendTyping(recording);
-			return;
-		}
-		sendTypingIndicator(channelId, recording);
+		if (recording) (sendRecording ?? (() => sendRecordingIndicator(channelId)))();
+		else (sendTyping ?? (() => sendTypingIndicator(channelId)))();
 	}
 
 	function dismissFailedMessage(nonce: string) {

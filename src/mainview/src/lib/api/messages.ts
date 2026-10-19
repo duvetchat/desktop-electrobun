@@ -139,9 +139,14 @@ export async function updateMessage(messageId: string, content: string, roomId: 
 	return res.data;
 }
 
-/** Tells the room the user is typing, or recording a voice message. */
-export async function sendTypingIndicator(roomId: string, recording = false): Promise<void> {
-	await api.post(`/api/rooms/${roomId}/typing`, recording ? { recording } : undefined).catch(() => {});
+/** Tells the room the user is typing. */
+export async function sendTypingIndicator(roomId: string): Promise<void> {
+	await api.post(`/api/rooms/${roomId}/typing`).catch(() => {});
+}
+
+/** Tells the room the user is recording a voice message. */
+export async function sendRecordingIndicator(roomId: string): Promise<void> {
+	await api.post(`/api/rooms/${roomId}/recording`).catch(() => {});
 }
 
 export async function deleteMessage(messageId: string, roomId: string): Promise<void> {

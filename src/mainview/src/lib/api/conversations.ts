@@ -204,9 +204,14 @@ export async function updateDirectMessage(
 	return res.data;
 }
 
-/** Tells the conversation the user is typing, or recording a voice message. */
-export async function sendConversationTyping(conversationId: string, recording = false): Promise<void> {
-	await api.post(`/api/users/@me/conversations/${conversationId}/typing`, recording ? { recording } : undefined);
+/** Tells the conversation the user is typing. */
+export async function sendConversationTyping(conversationId: string): Promise<void> {
+	await api.post(`/api/users/@me/conversations/${conversationId}/typing`);
+}
+
+/** Tells the conversation the user is recording a voice message. */
+export async function sendConversationRecording(conversationId: string): Promise<void> {
+	await api.post(`/api/users/@me/conversations/${conversationId}/recording`);
 }
 
 export async function deleteDirectMessage(conversationId: string, messageId: string): Promise<void> {

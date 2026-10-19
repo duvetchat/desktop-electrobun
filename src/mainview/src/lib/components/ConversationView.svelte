@@ -23,6 +23,7 @@
 		sendDirectMessage,
 		sendDMVoiceNote,
 		sendConversationTyping,
+		sendConversationRecording,
 		updateDirectMessage,
 		deleteDirectMessage,
 		addConversationMember,
@@ -657,7 +658,8 @@
 			onDeleteMsg={dmDelete}
 			onRetry={dmRetry}
 			onDismiss={dmDismiss}
-			sendTyping={(recording) => sendConversationTyping(conversation.id, recording).catch(() => {})}
+			sendTyping={() => sendConversationTyping(conversation.id).catch(() => {})}
+			sendRecording={() => sendConversationRecording(conversation.id).catch(() => {})}
 			onVoiceNoteOverride={dmVoiceNote}
 			members={convMembers}
 			unreadAfterMessageId={convUnreadAfter}
