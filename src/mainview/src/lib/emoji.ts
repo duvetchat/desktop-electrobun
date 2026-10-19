@@ -31,9 +31,12 @@ export function toTwemojiUrl(emoji: string): string {
 // Regex that matches one "grapheme cluster" worth of emoji — covers most
 // common emoji including ZWJ sequences, flags, skin-tone modifiers, keycaps.
 // Key: both \p{Emoji_Presentation} AND \p{Emoji}\uFE0F are valid emoji starts
-// (the latter covers text-default emojis like ❤ U+2764 and 🗣 U+1F5E3).
-const EMOJI_REGEX =
-	/\p{Regional_Indicator}{2}|(?:\p{Emoji_Presentation}|\p{Emoji}\uFE0F)\uFE0F?(?:\u200D(?:\p{Emoji_Presentation}|\p{Emoji})\uFE0F?|\uD83C[\uDFFB-\uDFFF])*|[\d#*]\uFE0F?\u20E3/gu;
+// (the latter covers text-default emojis like ❤ U+2764 and 🗣 U+1F5E3), and so is
+// a modifier base with its skin tone (✌🏽). In a /u regex a skin tone is the code
+// point \p{Emoji_Modifier}, not a surrogate pair. Keycaps go first: a digit with
+// \uFE0F alone is an emoji too, and would leave the keycap's mark behind. The chat input shares it.
+export const EMOJI_REGEX =
+	/[\d#*]\uFE0F?\u20E3|\p{Regional_Indicator}{2}|(?:\p{Emoji_Modifier_Base}\p{Emoji_Modifier}|\p{Emoji_Presentation}|\p{Emoji}\uFE0F)\uFE0F?(?:\p{Emoji_Modifier}|\u200D(?:\p{Emoji_Modifier_Base}\p{Emoji_Modifier}|\p{Emoji_Presentation}|\p{Emoji})\uFE0F?)*/gu;
 
 /** Replace Unicode emoji in a plain string with Twemoji <img> tags. */
 export function renderEmoji(text: string, large = false): string {

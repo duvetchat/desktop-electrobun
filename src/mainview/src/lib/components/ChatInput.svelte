@@ -14,7 +14,8 @@
 	import EmojiPicker from "$lib/components/EmojiPicker.svelte";
 	import StickerPicker from "$lib/components/StickerPicker.svelte";
 	import GifPicker from "$lib/components/GifPicker.svelte";
-	import { searchEmojis, toTwemojiUrl, type EmojiEntry } from "$lib/emoji";
+	import { searchEmojis, toTwemojiUrl, EMOJI_REGEX, type EmojiEntry } from "$lib/emoji";
+	import { escapeHtml } from "$lib/markdown";
 	import { formatDuration } from "$lib/utils/time";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
 	import type { MemberOnSidebar, SpaceEmoji, SpaceSticker } from "$lib/types";
@@ -22,19 +23,6 @@
 	import { getHostURL } from "$lib/common/common";
 
 	const ceHost = getHostURL();
-
-	// Module-level clipboard fallback shared across all ChatInput instances
-	let internalClipboard: string | null = null;
-
-	// Clear internal clipboard when window regains focus (user may have copied externally)
-	if (typeof window !== "undefined") {
-		window.addEventListener("focus", () => {
-			internalClipboard = null;
-		});
-	}
-
-	const EMOJI_RE =
-		/\p{Regional_Indicator}{2}|(?:\p{Emoji_Presentation}|\p{Emoji}\uFE0F)(?:\u200D(?:\p{Emoji_Presentation}|\p{Emoji})\uFE0F?|\uD83C[\uDFFB-\uDFFF])*|[\d#*]\uFE0F?\u20E3/gu;
 
 	let {
 		placeholder = "",
@@ -183,6 +171,8 @@
 		if (initialValue) {
 			rerender(initialValue, initialValue.length);
 			isEmpty = hasNoText(initialValue);
+			// Undo goes back to the message being edited, not to an empty box.
+			undoStack = [{ raw: initialValue, cursor: initialValue.length }];
 		}
 		if (autofocus) {
 			requestAnimationFrame(() => {
@@ -231,9 +221,9 @@
 		return ce ? `${ceHost}/attachments/${ce.attachment_id}` : "";
 	}
 
+	// Names are whatever their owners chose, "<" and quotes included, so they go in escaped.
 	function buildHtml(text: string): string {
 		if (!text) return "";
-		EMOJI_RE.lastIndex = 0;
 		return text
 			.replace(/&/g, "&amp;")
 			.replace(/</g, "&lt;")
@@ -241,15 +231,15 @@
 			.replace(
 				/&lt;@([a-f0-9-]+)&gt;/g,
 				(_, id) =>
-					`<span class="mention-chip" contenteditable="false" data-mention="${id}">@${resolveMentionName(id)}</span>`,
+					`<span class="mention-chip" contenteditable="false" data-mention="${id}">@${escapeHtml(resolveMentionName(id))}</span>`,
 			)
 			.replace(/&lt;:([a-f0-9-]+):&gt;/g, (_, id) => {
 				const url = resolveCustomEmojiUrl(id);
 				if (!url) return `&lt;:${id}:&gt;`;
-				return `<img class="emoji-img custom-emoji-chip" src="${url}" alt=":${resolveCustomEmojiName(id)}:" data-cemoji="${id}" draggable="false" contenteditable="false">`;
+				return `<img class="emoji-img custom-emoji-chip" src="${url}" alt=":${escapeHtml(resolveCustomEmojiName(id))}:" data-cemoji="${id}" draggable="false" contenteditable="false">`;
 			})
 			.replace(
-				EMOJI_RE,
+				EMOJI_REGEX,
 				(e) => `<span class="emoji-img" style="--tw:url('${toTwemojiUrl(e)}')" aria-label="${e}">${e}</span>`,
 			)
 			.replace(/\n/g, "<br>");
@@ -260,43 +250,14 @@
 		return getRawFromChildren(el);
 	}
 
-	// Cursor position as UTF-16 offset in raw text
+	// Cursor position as UTF-16 offset in raw text. The caret can be in a text node or between an element's
+	// children, the input's own included: a line break typed on an empty line leaves it there, and reading
+	// that as the end of the text sent the caret to the end.
 	function getOffset(): number {
 		const sel = window.getSelection();
 		if (!sel || sel.rangeCount === 0) return 0;
 		const range = sel.getRangeAt(0);
-		let off = 0;
-
-		function rawLen(n: Node): number {
-			const tag = (n as Element).tagName;
-			if (tag === "BR") return 1;
-			const mention = (n as Element).getAttribute?.("data-mention");
-			if (mention) return `<@${mention}>`.length;
-			const cemoji = (n as Element).getAttribute?.("data-cemoji");
-			if (cemoji) return `<:${cemoji}:>`.length;
-			if (tag === "IMG") return ((n as HTMLImageElement).alt ?? "").length;
-			return -1; // not an atomic node
-		}
-
-		function walk(n: Node): boolean {
-			if (n === range.startContainer) {
-				off += range.startOffset;
-				return true;
-			}
-			if (n.nodeType === Node.TEXT_NODE) {
-				off += (n.textContent ?? "").length;
-			} else {
-				const len = rawLen(n);
-				if (len >= 0) {
-					off += len;
-				} else {
-					for (const c of Array.from(n.childNodes)) if (walk(c)) return true;
-				}
-			}
-			return false;
-		}
-		for (const c of Array.from(inputEl.childNodes)) if (walk(c)) break;
-		return off;
+		return measureRawOffset(range.startContainer, range.startOffset);
 	}
 
 	function setOffset(target: number): void {
@@ -362,10 +323,11 @@
 	let undoIndex = 0;
 	let lastPushTime = 0;
 
-	function pushUndo(raw: string, cursor: number) {
+	// merge: false makes a step of its own, for an insertion (a suggestion, an emoji, a paste) right after typing.
+	function pushUndo(raw: string, cursor: number, merge = true) {
 		const now = Date.now();
 		// Debounce: merge if < 400ms and same-ish content
-		if (now - lastPushTime < 400 && undoIndex === undoStack.length - 1) {
+		if (merge && now - lastPushTime < 400 && undoIndex === undoStack.length - 1) {
 			undoStack[undoIndex] = { raw, cursor };
 		} else {
 			undoStack = undoStack.slice(0, undoIndex + 1);
@@ -404,8 +366,10 @@
 	function checkAutocomplete(raw: string, cursor: number) {
 		const before = raw.slice(0, cursor);
 
+		// @ and : start a suggestion only at a word's start, so an e-mail address, a time (10:30) or an emoticon (:D,
+		// as an emoji's needs two letters) doesn't become a mention or an emoji on Enter.
 		// Check @mention autocomplete first
-		const mentionMatch = /@(\w*)$/.exec(before);
+		const mentionMatch = /(?<=^|\s)@([\p{L}\p{N}_]*)$/u.exec(before);
 		if (mentionMatch && members.length > 0) {
 			mentionQueryStart = before.length - mentionMatch[0].length;
 			const query = mentionMatch[1].toLowerCase();
@@ -422,7 +386,7 @@
 		mentionQueryStart = -1;
 
 		// Check :emoji autocomplete (custom + default)
-		const m = /:([\w\d_]{1,})$/.exec(before);
+		const m = /(?<=^|\s):([\w\d_]{2,})$/.exec(before);
 		if (m) {
 			emojiQueryStart = before.length - m[0].length;
 			const query = m[1].toLowerCase();
@@ -465,6 +429,7 @@
 		const newPos = mentionQueryStart + mention.length;
 
 		rerender(newRaw, newPos);
+		pushUndo(newRaw, newPos, false);
 		isEmpty = hasNoText(newRaw);
 		onValueChange?.(newRaw);
 		mentionSuggestions = [];
@@ -482,6 +447,7 @@
 		const newPos = emojiQueryStart + entry.emoji.length;
 
 		rerender(newRaw, newPos);
+		pushUndo(newRaw, newPos, false);
 		isEmpty = hasNoText(newRaw);
 		onValueChange?.(newRaw);
 		suggestions = [];
@@ -492,8 +458,17 @@
 
 	// ── Event handlers ──────────────────────────────────────────────────────────
 	let pendingOffset: number | null = null;
+	// The caret's offset when the input last lost the focus, for the emoji picker, which takes it.
+	let blurOffset: number | null = null;
 
-	function handleInput() {
+	function rememberCaret() {
+		blurOffset = getOffset();
+	}
+
+	// An IME composes its text in the input, and a rerender would commit what it has so far and start it over (日本
+	// came out as ににほにほん日本), so the input waits for compositionend, which comes here too.
+	function handleInput(e?: Event) {
+		if ((e as InputEvent | undefined)?.isComposing) return;
 		const raw = getRaw(inputEl);
 		const offset = pendingOffset ?? getOffset();
 		pendingOffset = null;
@@ -505,6 +480,8 @@
 	}
 
 	function handleKeyDown(e: KeyboardEvent) {
+		// While an IME composes, keys are its own: an Enter picks its text, and must not send.
+		if (e.isComposing) return;
 		// Capture start offset before browser modifies the DOM on delete with selection
 		const sel = window.getSelection();
 		if (sel && !sel.isCollapsed && (e.key === "Backspace" || e.key === "Delete")) {
@@ -585,6 +562,9 @@
 			inputEl.innerHTML = "";
 			isEmpty = true;
 			pendingFiles = [];
+			// What was sent is no draft to undo back to.
+			undoStack = [{ raw: "", cursor: 0 }];
+			undoIndex = 0;
 			return;
 		}
 
@@ -709,26 +689,33 @@
 		return raw.slice(start, end);
 	}
 
-	function handleCopy(e: ClipboardEvent) {
+	// A copy or a cut gives other apps the text as it reads, with mentions as @name and the space's custom emojis as
+	// :name:, and keeps the raw text under this type, which a paste here prefers: mentions and emojis come back.
+	const RAW_CLIPBOARD_TYPE = "application/x-duvet-message";
+
+	function displayText(raw: string): string {
+		return raw
+			.replace(/<@([a-f0-9-]+)>/g, (_, id) => `@${resolveMentionName(id)}`)
+			.replace(/<:([a-f0-9-]+):>/g, (m, id) =>
+				customEmojis.some((e) => e.id === id) ? `:${resolveCustomEmojiName(id)}:` : m,
+			);
+	}
+
+	function copySelection(e: ClipboardEvent): boolean {
 		const text = getSelectedRaw();
-		if (text == null) return;
+		if (text == null || !e.clipboardData) return false;
 		e.preventDefault();
-		internalClipboard = text;
-		if (e.clipboardData) {
-			e.clipboardData.setData("text/plain", text);
-		}
-		navigator.clipboard.writeText(text).catch(() => {});
+		e.clipboardData.setData("text/plain", displayText(text));
+		e.clipboardData.setData(RAW_CLIPBOARD_TYPE, text);
+		return true;
+	}
+
+	function handleCopy(e: ClipboardEvent) {
+		copySelection(e);
 	}
 
 	function handleCut(e: ClipboardEvent) {
-		const text = getSelectedRaw();
-		if (text == null) return;
-		e.preventDefault();
-		internalClipboard = text;
-		if (e.clipboardData) {
-			e.clipboardData.setData("text/plain", text);
-		}
-		navigator.clipboard.writeText(text).catch(() => {});
+		if (!copySelection(e)) return;
 		window.getSelection()?.deleteFromDocument();
 		const raw = getRaw(inputEl);
 		const pos = getOffset();
@@ -743,9 +730,10 @@
 		if (e.clipboardData?.files && e.clipboardData.files.length > 0) {
 			pendingFiles = [...pendingFiles, ...Array.from(e.clipboardData.files)];
 		}
-		const osText = (e.clipboardData?.getData("text/plain") ?? "").replace(/\r\n/g, "\n");
-		// Use internal clipboard only if OS clipboard matches (same copy/cut session)
-		const text = internalClipboard && osText === internalClipboard ? internalClipboard : osText;
+		const text = (e.clipboardData?.getData(RAW_CLIPBOARD_TYPE) || e.clipboardData?.getData("text/plain") || "").replace(
+			/\r\n/g,
+			"\n",
+		);
 		if (!text) return;
 		const sel = window.getSelection();
 		if (sel && !sel.isCollapsed) {
@@ -761,7 +749,7 @@
 		const newRaw = raw.slice(0, pos) + text + raw.slice(pos);
 		const newPos = pos + text.length;
 		rerender(newRaw, newPos);
-		pushUndo(newRaw, newPos);
+		pushUndo(newRaw, newPos, false);
 		isEmpty = hasNoText(newRaw);
 		checkAutocomplete(newRaw, newPos);
 		onValueChange?.(newRaw);
@@ -781,11 +769,15 @@
 	function handleEmojiPick(emoji: string) {
 		showEmojiPicker = false;
 		if (!inputEl) return;
-		const offset = getOffset();
 		const raw = getRaw(inputEl);
+		// The picker's search box has the focus by now: the emoji goes where the caret was when the input lost it.
+		const sel = window.getSelection();
+		const inInput = !!sel && sel.rangeCount > 0 && inputEl.contains(sel.anchorNode);
+		const offset = inInput ? getOffset() : Math.min(blurOffset ?? raw.length, raw.length);
 		const newRaw = raw.slice(0, offset) + emoji + raw.slice(offset);
 		const newPos = offset + emoji.length;
 		rerender(newRaw, newPos);
+		pushUndo(newRaw, newPos, false);
 		isEmpty = hasNoText(newRaw);
 		onValueChange?.(newRaw);
 
@@ -825,7 +817,7 @@
 				Members matching <strong
 					>@{getRaw(inputEl)
 						.slice(0, getOffset())
-						.match(/@(\w*)$/)?.[1]}</strong
+						.match(/@([\p{L}\p{N}_]*)$/u)?.[1]}</strong
 				>
 			</div>
 			{#each mentionSuggestions as member, i}
@@ -979,6 +971,8 @@
 					data-placeholder={placeholder}
 					onkeydown={handleKeyDown}
 					oninput={handleInput}
+					oncompositionend={handleInput}
+					onblur={rememberCaret}
 					onpaste={handlePaste}
 					oncopy={handleCopy}
 					oncut={handleCut}
