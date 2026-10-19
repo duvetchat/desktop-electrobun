@@ -40,7 +40,7 @@ import { getWSHostURL, getAvatarURL, route } from "$lib/common/common";
 import { get } from "svelte/store";
 import { getSpaceMembers, type SpaceMemberWithUser } from "$lib/api/spaces";
 
-import type { GatewayEvent, GatewaySpace, ReferencedMessage, UserStatus } from "$lib/types";
+import type { DMTypingEvent, GatewayEvent, GatewaySpace, ReferencedMessage, TypingEvent, UserStatus } from "$lib/types";
 
 import { gatewayMessageToMessage } from "$lib/types";
 
@@ -153,6 +153,16 @@ function addMembersToSpace(spaceId: string, rows: SpaceMemberWithUser[]) {
  * as the API sends it from then on, and the reply shows the original as deleted. */
 function deletedReference(ref: ReferencedMessage): ReferencedMessage {
 	return { type: ref.type, message_id: ref.message_id, room_id: ref.room_id, space_id: ref.space_id };
+}
+
+/** Someone typing (TYPING, DM_TYPING) or recording a voice message (RECORDING, DM_RECORDING) in a room or a
+ * conversation, shown until the notice gets old: either one replaces the other. */
+function showNotice(key: string, raw: TypingEvent | DMTypingEvent, recording: boolean) {
+	if (raw.user_id === get(currentUser)?.id) return;
+	typingUsers.update((all) => {
+		const filtered = (all[key] ?? []).filter((u) => u.user_id !== raw.user_id);
+		return { ...all, [key]: [...filtered, { ...raw, recording, timestamp: Date.now() }] };
+	});
 }
 
 function handleEvent(event: GatewayEvent) {
@@ -1241,28 +1251,14 @@ function handleEvent(event: GatewayEvent) {
 			});
 			break;
 		}
-		case "TYPING": {
-			const raw = payload.data;
-			const me = get(currentUser);
-			if (raw.user_id === me?.id) break;
-			typingUsers.update((all) => {
-				const key = raw.room_id;
-				const filtered = (all[key] ?? []).filter((u) => u.user_id !== raw.user_id);
-				return { ...all, [key]: [...filtered, { ...raw, timestamp: Date.now() }] };
-			});
+		case "TYPING":
+		case "RECORDING":
+			showNotice(payload.data.room_id, payload.data, payload.type === "RECORDING");
 			break;
-		}
-		case "DM_TYPING": {
-			const raw = payload.data;
-			const me = get(currentUser);
-			if (raw.user_id === me?.id) break;
-			typingUsers.update((all) => {
-				const key = raw.conversation_id;
-				const filtered = (all[key] ?? []).filter((u) => u.user_id !== raw.user_id);
-				return { ...all, [key]: [...filtered, { ...raw, timestamp: Date.now() }] };
-			});
+		case "DM_TYPING":
+		case "DM_RECORDING":
+			showNotice(payload.data.conversation_id, payload.data, payload.type === "DM_RECORDING");
 			break;
-		}
 		case "CALL_INCOMING": {
 			const d = payload.data;
 			// Track that this conversation has an active call
