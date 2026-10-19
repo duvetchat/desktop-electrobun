@@ -13,7 +13,7 @@ export default defineConfig(({ mode }) => {
 		server: { port: 5173, strictPort: true },
 		define: {
 			VITE_APP_ENV: JSON.stringify(mode),
-			VITE_DOMAIN_TARGET_ENV: JSON.stringify(env.VITE_DOMAIN_TARGET_ENV || "andremor"),
+			VITE_DOMAIN_TARGET_ENV: JSON.stringify(env.VITE_DOMAIN_TARGET_ENV || "duvet"),
 			VITE_API_URL: JSON.stringify(devURL(env.VITE_API_URL)),
 			VITE_WS_URL: JSON.stringify(devURL(env.VITE_WS_URL)),
 		},

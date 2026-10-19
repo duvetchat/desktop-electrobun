@@ -1,6 +1,6 @@
 const isDevServer = import.meta.env.DEV;
 
-export const DUVET_DOMAIN = "https://duvet.andremor.eu.org";
+export const DUVET_DOMAIN = "https://duvet.chat";
 
 const routes: Record<string, string> = {
 	"/index.html": "/",
@@ -36,8 +36,12 @@ export function getHostURL(): string {
 			break;
 
 		case "andremor":
-		default:
 			base = "duvet-api.andremor.eu.org";
+			break;
+
+		case "duvet":
+		default:
+			base = "api.duvet.chat";
 	}
 
 	return protocol + base;
@@ -64,8 +68,12 @@ export function getWSHostURL(): string {
 			break;
 
 		case "andremor":
-		default:
 			base = "duvet-ws.andremor.eu.org";
+			break;
+
+		case "duvet":
+		default:
+			base = "ws.duvet.chat";
 	}
 
 	return protocol + base;
