@@ -9,6 +9,7 @@
 		Volume2 as VoiceIcon,
 	} from "@lucide/svelte";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
+	import { canViewRoom } from "$lib/permissions";
 	import {
 		ComponentType,
 		type Component,
@@ -72,8 +73,11 @@
 		if (c.type === ComponentType.UserSelect) return users;
 		if (c.type === ComponentType.RoleSelect) return roles;
 		if (c.type === ComponentType.MentionableSelect) return [...users, ...roles];
-		return [...(space?.rooms ?? [])]
-			.filter((r) => !r.deleted_at && (!c.room_types?.length || c.room_types.includes(r.type)))
+		// The rooms the user can see, as the sidebar shows them: the API takes no others.
+		const s = space;
+		if (!s) return [];
+		return [...s.rooms]
+			.filter((r) => !r.deleted_at && canViewRoom(s, r) && (!c.room_types?.length || c.room_types.includes(r.type)))
 			.sort((a, b) => a.position - b.position)
 			.map((r) => ({ key: `room:${r.id}`, label: r.name, roomType: r.type }));
 	});

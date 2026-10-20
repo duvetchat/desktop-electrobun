@@ -126,6 +126,59 @@ export interface InteractionMetadata {
 	interacted_message_id?: string;
 	/** The interaction's first response, on its follow-ups. */
 	original_response_message_id?: string;
+	/** The command's name, for a command's interaction. */
+	name?: string;
+}
+
+/** The option types of an application's command (commands.OptionType in the API). */
+export const CommandOptionType = {
+	String: 3,
+	Integer: 4,
+	Boolean: 5,
+	User: 6,
+	Room: 7,
+	Role: 8,
+	Mentionable: 9,
+	Number: 10,
+} as const;
+
+/** What a command takes; the required ones come first. */
+export interface CommandOption {
+	type: number;
+	name: string;
+	description: string;
+	required?: boolean;
+	/** The only values it takes, for string, integer and number options. */
+	choices?: { name: string; value: string | number }[];
+	min_value?: number;
+	max_value?: number;
+	min_length?: number;
+	max_length?: number;
+	room_types?: RoomType[];
+}
+
+/** A chat command an application registers. */
+export interface ApplicationCommand {
+	id: string;
+	/** 1, a chat command. */
+	type: number;
+	application_id: string;
+	name: string;
+	description: string;
+	options: CommandOption[];
+	version: string;
+}
+
+export interface SpaceCommandApplication {
+	id: string;
+	name: string;
+	bot: { id: string; username: string; alias: string | null; avatar: string | null };
+}
+
+/** The commands a member can use in a space: those of the applications whose bots are in it. */
+export interface SpaceCommands {
+	applications: SpaceCommandApplication[];
+	commands: ApplicationCommand[];
 }
 
 /** The component types a message can have (components.Type in the API). */
