@@ -18,17 +18,24 @@
 	} from "$lib/types";
 
 	// A message's select menu: its own options, or the space's members, roles or rooms, with its defaults
-	// chosen. Choosing only changes what it shows for now, as there are no interactions to send.
+	// chosen. With onSubmit, a choice goes to the bot as soon as it's made (a single choice) or when the
+	// menu closes (several); then the menu shows its defaults again, as the bot's answer is what counts.
+	// Without it (the previews), choosing only changes what it shows.
 	let {
 		component: c,
 		space = null,
 		members = [],
 		emoji,
+		waiting = false,
+		onSubmit,
 	}: {
 		component: Component;
 		space?: GatewaySpace | null;
 		members?: MemberOnSidebar[];
 		emoji: Snippet<[ComponentEmoji | undefined]>;
+		/** While its interaction waits on the bot. */
+		waiting?: boolean;
+		onSubmit?: (values: string[]) => Promise<void>;
 	} = $props();
 
 	type Choice = {
@@ -72,6 +79,7 @@
 	});
 
 	const max = $derived(c.max_values ?? 1);
+	const min = $derived(c.min_values ?? 1);
 	const searchable = $derived(c.type !== ComponentType.StringSelect);
 
 	// What's chosen, by choice key: the defaults until something is picked.
@@ -82,6 +90,8 @@
 		return (c.default_values ?? []).map((d) => `${d.type}:${d.id}`);
 	}
 	let chosen = $state<string[]>(defaults());
+	// What was chosen when the menu opened, to tell whether closing it changed anything.
+	let openedWith: string[] = [];
 	let open = $state(false);
 	let query = $state("");
 
@@ -96,22 +106,38 @@
 		if (max <= 1) {
 			chosen = [key];
 			open = false;
+			submit();
 		} else if (chosen.includes(key)) {
 			chosen = chosen.filter((k) => k !== key);
 		} else if (chosen.length < max) {
 			chosen = [...chosen, key];
 		}
 	}
+
+	// Sends the choice: an option's value, or the member's, role's or room's ID (the part after the key's
+	// kind).
+	async function submit() {
+		if (!onSubmit) return;
+		await onSubmit(chosen.map((key) => key.slice(key.indexOf(":") + 1)));
+		chosen = defaults();
+	}
+
+	const sameChoice = (a: string[], b: string[]) => a.length === b.length && a.every((key) => b.includes(key));
 </script>
 
 <Popover.Root
 	bind:open
 	onOpenChange={(o) => {
-		if (!o) query = "";
+		if (o) {
+			openedWith = [...chosen];
+			return;
+		}
+		query = "";
+		if (max > 1 && !sameChoice(chosen, openedWith) && chosen.length >= min) submit();
 	}}
 >
 	<Popover.Trigger
-		disabled={c.disabled}
+		disabled={c.disabled || waiting}
 		class="flex min-h-10 w-full max-w-100 items-center gap-2 rounded-lg border border-zinc-700 bg-zinc-900/60 px-3 py-2 text-left text-sm transition-colors outline-none hover:border-zinc-600 disabled:pointer-events-none disabled:opacity-50"
 	>
 		<span class="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden">
@@ -124,7 +150,16 @@
 				{/each}
 			{/if}
 		</span>
-		<ChevronDownIcon class="size-4 shrink-0 text-zinc-400 transition-transform {open ? 'rotate-180' : ''}" />
+		{#if waiting}
+			<!-- Waiting on the bot, as the typing indicator's dots -->
+			<span class="flex shrink-0 items-center gap-1 text-zinc-400" aria-hidden="true">
+				<span class="animate-typing-bounce block size-1.5 rounded-full bg-current"></span>
+				<span class="animate-typing-bounce block size-1.5 rounded-full bg-current [animation-delay:0.2s]"></span>
+				<span class="animate-typing-bounce block size-1.5 rounded-full bg-current [animation-delay:0.4s]"></span>
+			</span>
+		{:else}
+			<ChevronDownIcon class="size-4 shrink-0 text-zinc-400 transition-transform {open ? 'rotate-180' : ''}" />
+		{/if}
 	</Popover.Trigger>
 	<Popover.Portal>
 		<Popover.Content

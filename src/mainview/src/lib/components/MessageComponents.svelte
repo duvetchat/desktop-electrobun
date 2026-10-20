@@ -1,7 +1,9 @@
 <script lang="ts">
-	import { ExternalLink as ExternalLinkIcon, FileText as FileIcon } from "@lucide/svelte";
+	import { CircleAlert as AlertIcon, ExternalLink as ExternalLinkIcon, FileText as FileIcon } from "@lucide/svelte";
 	import { SvelteSet } from "svelte/reactivity";
 	import ComponentSelect from "$lib/components/ComponentSelect.svelte";
+	import { FetchError, getApiError } from "$lib/api/api";
+	import type { ComponentUse } from "$lib/api/interactions";
 	import { getHostURL } from "$lib/common/common";
 	import { renderEmoji } from "$lib/emoji";
 	import { parseTextSegments, renderMarkdown, type CustomEmojiMap } from "$lib/markdown";
@@ -18,9 +20,10 @@
 	} from "$lib/types";
 
 	// A message's components as the chat draws them, for the message list and the message previews (pins,
-	// search results), which pass compact for smaller media. Link buttons open their url; the other buttons
-	// and the selects send nothing yet, as there are no interactions. data-attachments marks the media and
-	// the controls, so a click on them can be told from a click on the message.
+	// search results), which pass compact for smaller media. Link buttons open their url. With onInteract
+	// (the message list), the other buttons and the selects send an interaction and wait for the bot; the
+	// previews send none. data-attachments marks the media and the controls, so a click on them can be
+	// told from a click on the message.
 	let {
 		components,
 		space = null,
@@ -28,6 +31,7 @@
 		mentionMap = {},
 		customEmojiMap = {},
 		onPreview,
+		onInteract,
 		compact = false,
 	}: {
 		components: Component[];
@@ -36,6 +40,7 @@
 		mentionMap?: Record<string, string>;
 		customEmojiMap?: CustomEmojiMap;
 		onPreview: (src: string, alt?: string) => void;
+		onInteract?: (use: ComponentUse) => Promise<unknown>;
 		compact?: boolean;
 	} = $props();
 
@@ -44,6 +49,29 @@
 	const maxHeight = $derived(compact ? 240 : 350);
 	// The spoilers a click revealed, by the component or gallery item they hide.
 	const revealed = new SvelteSet<object>();
+	// The components waiting on the bot's first response, by custom_id, and why the last interaction failed.
+	const pending = new SvelteSet<string>();
+	let failure = $state<{ text: string; detail: string } | null>(null);
+
+	// Sends c's interaction (a select's with its values) and waits for the bot's first response, 3 seconds
+	// at most: the API answers 504 past them.
+	async function interact(c: Component, values?: string[]) {
+		const id = c.custom_id;
+		if (!onInteract || !id || pending.has(id)) return;
+		pending.add(id);
+		failure = null;
+		try {
+			await onInteract({ custom_id: id, component_type: c.type, values });
+		} catch (err) {
+			const text =
+				err instanceof FetchError && err.response?.status === 504
+					? "The application did not respond"
+					: "This interaction failed";
+			failure = { text, detail: getApiError(err, text) };
+		} finally {
+			pending.delete(id);
+		}
+	}
 
 	const selectTypes: number[] = [
 		ComponentType.StringSelect,
@@ -88,6 +116,12 @@
 	{#each components as component}
 		{@render node(component)}
 	{/each}
+	{#if failure}
+		<p role="alert" class="flex items-center gap-1.5 text-sm text-red-400" title={failure.detail}>
+			<AlertIcon class="size-4 shrink-0" />
+			{failure.text}
+		</p>
+	{/if}
 </div>
 
 {#snippet node(c: Component)}
@@ -178,7 +212,14 @@
 	{:else if c.type === ComponentType.Button}
 		{@render button(c)}
 	{:else if selectTypes.includes(c.type)}
-		<ComponentSelect component={c} {space} {members} {emoji} />
+		<ComponentSelect
+			component={c}
+			{space}
+			{members}
+			{emoji}
+			waiting={!!c.custom_id && pending.has(c.custom_id)}
+			onSubmit={onInteract ? (values) => interact(c, values) : undefined}
+		/>
 	{/if}
 {/snippet}
 
@@ -192,11 +233,28 @@
 			<ExternalLinkIcon class="size-3.5 shrink-0 opacity-80" />
 		</a>
 	{:else}
-		<button type="button" class={cls} disabled={c.disabled}>
-			{@render emoji(c.emoji)}
-			{#if c.label}<span class="truncate">{c.label}</span>{/if}
-			{#if c.style === ButtonStyle.Link}
-				<ExternalLinkIcon class="size-3.5 shrink-0 opacity-80" />
+		{@const waiting = !!c.custom_id && pending.has(c.custom_id)}
+		<button
+			type="button"
+			class="relative {cls}"
+			disabled={c.disabled}
+			aria-busy={waiting}
+			onclick={onInteract && c.style !== ButtonStyle.Link ? () => interact(c) : undefined}
+		>
+			<span class="inline-flex min-w-0 items-center gap-1.5 {waiting ? 'invisible' : ''}">
+				{@render emoji(c.emoji)}
+				{#if c.label}<span class="truncate">{c.label}</span>{/if}
+				{#if c.style === ButtonStyle.Link}
+					<ExternalLinkIcon class="size-3.5 shrink-0 opacity-80" />
+				{/if}
+			</span>
+			{#if waiting}
+				<!-- Waiting on the bot, as the typing indicator's dots -->
+				<span class="absolute inset-0 flex items-center justify-center gap-1" aria-hidden="true">
+					<span class="animate-typing-bounce block size-1.5 rounded-full bg-current"></span>
+					<span class="animate-typing-bounce block size-1.5 rounded-full bg-current [animation-delay:0.2s]"></span>
+					<span class="animate-typing-bounce block size-1.5 rounded-full bg-current [animation-delay:0.4s]"></span>
+				</span>
 			{/if}
 		</button>
 	{/if}

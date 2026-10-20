@@ -424,6 +424,7 @@ function handleEvent(event: GatewayEvent) {
 								attachments: updatedMessage.attachments ?? m.attachments,
 								reactions: updatedMessage.reactions ?? m.reactions,
 								referenced_message: updatedMessage.referenced_message ?? m.referenced_message,
+								interaction_metadata: updatedMessage.interaction_metadata ?? m.interaction_metadata,
 								pinned_at: m.pinned_at,
 							};
 						if (m.referenced_message?.message_id === updatedMessage.id) {
