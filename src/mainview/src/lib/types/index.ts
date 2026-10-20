@@ -109,9 +109,24 @@ export const MessageType = {
 export type MessageType = (typeof MessageType)[keyof typeof MessageType];
 
 export const MessageFlag = {
+	/** A bot's deferred response to an interaction, which it completes by editing the message. */
+	Loading: 1 << 7,
 	/** The components are the whole message: it has no content, embeds or files of its own. */
 	IsComponentsV2: 1 << 15,
 } as const;
+
+/** What a message a bot sends for an interaction says about it (interactions.Metadata in the API). */
+export interface InteractionMetadata {
+	id: string;
+	/** 2 for a command, 3 for a component. */
+	type: number;
+	/** Who used it, as they were when the message was made. */
+	user: { id: string; username: string; alias: string | null; avatar: string | null };
+	/** The message whose component was used, for a component's interaction. */
+	interacted_message_id?: string;
+	/** The interaction's first response, on its follow-ups. */
+	original_response_message_id?: string;
+}
 
 /** The component types a message can have (components.Type in the API). */
 export const ComponentType = {
@@ -238,6 +253,8 @@ export interface GatewayMessage {
 	/** MessageFlag bits. The thread endpoint leaves them and the components out. */
 	flags?: number;
 	components?: Component[] | null;
+	/** Set on the messages a bot sends for an interaction. */
+	interaction_metadata?: InteractionMetadata;
 }
 
 export interface Message {
@@ -263,6 +280,8 @@ export interface Message {
 	pinned_at?: string | null;
 	flags?: number;
 	components?: Component[] | null;
+	/** Set on the messages a bot sends for an interaction. */
+	interaction_metadata?: InteractionMetadata;
 }
 
 export interface GatewayMessageDelete {
@@ -304,6 +323,7 @@ export interface MessageUpdateEvent {
 	embeds: Embed[] | null;
 	flags: number;
 	components: Component[] | null;
+	interaction_metadata?: InteractionMetadata;
 	user?: GatewayUser;
 }
 
@@ -866,11 +886,17 @@ export function gatewayMessageToMessage(msg: GatewayMessage, spaces: GatewaySpac
 		pinned_at: msg.pinned_at ?? null,
 		flags: msg.flags ?? 0,
 		components: msg.components ?? null,
+		interaction_metadata: msg.interaction_metadata,
 	};
 }
 
 export function isComponentsV2(message: Pick<Message, "flags">): boolean {
 	return ((message.flags ?? 0) & MessageFlag.IsComponentsV2) !== 0;
+}
+
+/** Whether a message is a bot's deferred response that it hasn't completed yet. */
+export function isLoading(message: Pick<Message, "flags">): boolean {
+	return ((message.flags ?? 0) & MessageFlag.Loading) !== 0;
 }
 
 /** The text a message shows: its content, or its text displays' when its components are all of it. */

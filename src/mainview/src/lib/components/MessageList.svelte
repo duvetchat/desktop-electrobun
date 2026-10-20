@@ -1,8 +1,9 @@
 <script lang="ts">
 	import { hasPermission, Permission } from "$lib/permissions";
 	import { onDestroy, onMount, tick } from "svelte";
-	import { Pin as PinIcon, PinOff as PinOffIcon } from "@lucide/svelte";
+	import { CircleAlert as AlertIcon, Pin as PinIcon, PinOff as PinOffIcon } from "@lucide/svelte";
 	import { updateMessage, deleteMessage, getMessageThread, pinRoomMessage, unpinRoomMessage } from "$lib/api/messages";
+	import { sendComponentInteraction } from "$lib/api/interactions";
 	import { pinConversationMessage, unpinConversationMessage } from "$lib/api/conversations";
 	import { confirmAction } from "$lib/stores/confirm.svelte";
 	import { Dialog, Popover } from "bits-ui";
@@ -28,7 +29,7 @@
 	import { renderEmoji, isOnlyEmojis, countEmojis } from "$lib/emoji";
 	import { customEmojiMapOf, mentionMapOf, parseTextSegments, renderMarkdown, renderMarkdownLine } from "$lib/markdown";
 
-	import { gatewayMessageToMessage, isComponentsV2, messageText } from "$lib/types";
+	import { gatewayMessageToMessage, isComponentsV2, isLoading, messageText } from "$lib/types";
 	import { MessageType, type MemberOnSidebar, type GatewaySpace, type Message, type SpaceEmoji } from "$lib/types";
 	import { getHostURL, getAvatarURL, DUVET_DOMAIN } from "$lib/common/common";
 
@@ -958,7 +959,7 @@
 				chronoPrev.author_id === message.author_id &&
 				chronoPrev.author_name === message.author_name &&
 				new Date(message.created_at).getTime() - new Date(chronoPrev.created_at).getTime() <= 5 * 60 * 1_000}
-			{@const showHeader = !isConsecutive || !!message.referenced_message}
+			{@const showHeader = !isConsecutive || !!message.referenced_message || !!message.interaction_metadata}
 			{@const isLast = i === 0}
 			{@const isDifferentDay = !chronoPrev || !isSameCalendarDay(message.created_at, chronoPrev.created_at)}
 			{@const isPending = message.id === message.nonce}
@@ -1009,7 +1010,8 @@
 			{:else}
 				<div
 					data-message-id={message.id}
-					class="group relative flex flex-col rounded-md px-3 {isLast ? 'mb-3' : 'mb-1'} {message.referenced_message
+					class="group relative flex flex-col rounded-md px-3 {isLast ? 'mb-3' : 'mb-1'} {message.referenced_message ||
+					message.interaction_metadata
 						? 'mt-2 pt-2'
 						: showHeader
 							? 'mt-4'
@@ -1069,6 +1071,34 @@
 									>
 								</button>
 							{/if}
+						</div>
+					{:else if message.interaction_metadata}
+						{@const used = message.interaction_metadata}
+						{@const usedBy = used.user.alias ?? used.user.username}
+						<!-- Who used the interaction this message answers; a click goes to the component's message -->
+						<div class="mb-0.5 flex min-w-0 items-start">
+							<div class="mr-3 flex w-10 shrink-0 items-center justify-end">
+								<div class="rounded-tl-5px h-3.5 w-5.25 border-t-2 border-l-2 border-zinc-500/60"></div>
+							</div>
+							<button
+								type="button"
+								class="flex min-w-0 -translate-y-1.25 items-center gap-1.5 text-xs text-zinc-400 transition-colors {used.interacted_message_id
+									? 'cursor-pointer hover:text-zinc-100'
+									: 'cursor-default'}"
+								onclick={() => {
+									if (!used.interacted_message_id) return;
+									jumpToMessageRequest.set({
+										id: crypto.randomUUID(),
+										spaceId,
+										roomId: channelId,
+										messageId: used.interacted_message_id,
+									});
+								}}
+							>
+								<UserAvatar src={getAvatarURL(used.user.id, used.user.avatar)} name={usedBy} size={16} />
+								<span class="shrink-0 font-medium text-zinc-300">{usedBy}</span>
+								<span class="truncate">used <span class="font-medium text-zinc-300">{message.author_name}</span></span>
+							</button>
 						</div>
 					{/if}
 					<div class="flex items-start">
@@ -1173,6 +1203,25 @@
 								</div>
 							{:else if message.type === MessageType.Voice || message.sticker_attachment_id}
 								<MessageAttachments {message} {channelName} onPreview={openPreview} />
+							{:else if isLoading(message)}
+								<!-- A bot's deferred response: it has 15 minutes to complete it -->
+								{#if now - new Date(message.created_at).getTime() > 15 * 60_000}
+									<p class="flex items-center gap-1.5 text-sm text-red-400">
+										<AlertIcon class="size-4 shrink-0" />
+										The application did not respond
+									</p>
+								{:else}
+									<p class="flex items-center gap-1.5 text-sm text-zinc-400 italic">
+										{message.author_name} is thinking
+										<span class="flex items-center gap-0.75" aria-hidden="true">
+											<span class="animate-typing-bounce block size-1 rounded-full bg-current"></span>
+											<span class="animate-typing-bounce block size-1 rounded-full bg-current [animation-delay:0.2s]"
+											></span>
+											<span class="animate-typing-bounce block size-1 rounded-full bg-current [animation-delay:0.4s]"
+											></span>
+										</span>
+									</p>
+								{/if}
 							{:else if isComponentsV2(message)}
 								<!-- The components are all of it: its files show where they place them -->
 								<MessageComponents
@@ -1182,6 +1231,9 @@
 									{mentionMap}
 									{customEmojiMap}
 									onPreview={openPreview}
+									onInteract={isConversation
+										? undefined
+										: (use) => sendComponentInteraction(channelId, message.id, use)}
 								/>
 							{:else}
 								{@const processed = processMessageContent(message.content ?? "")}
@@ -1325,6 +1377,9 @@
 										{mentionMap}
 										{customEmojiMap}
 										onPreview={openPreview}
+										onInteract={isConversation
+											? undefined
+											: (use) => sendComponentInteraction(channelId, message.id, use)}
 									/>
 								{/if}
 							{/if}
