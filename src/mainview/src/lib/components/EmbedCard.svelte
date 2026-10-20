@@ -1,11 +1,12 @@
 <script lang="ts">
-	import { EmbedType, type Embed } from "$lib/types";
+	import { EmbedType, type Embed, type EmbedMedia } from "$lib/types";
 	import { getHostURL } from "$lib/common/common";
 	import { renderMarkdown } from "$lib/markdown";
 
 	let { embed, onImageClick }: { embed: Embed; onImageClick?: (src: string) => void } = $props();
 
-	const PROXY_HOSTS = new Set(["video.twimg.com"]);
+	// Videos the API fetches for the app: kktiktok.com's go only to a preview's bot.
+	const PROXY_HOSTS = new Set(["video.twimg.com", "kktiktok.com"]);
 
 	function proxyVideoUrl(url: string): string {
 		try {
@@ -37,7 +38,11 @@
 		return embed.provider === "TikTok" && !!embed.video?.url;
 	}
 
-	function isDirectVideo(url: string): boolean {
+	// A video plays as a file when its page says it is one (its content_type), or, for embeds without
+	// one, when its URL looks like one; anything else is a player page, framed.
+	function isDirectVideo(video: EmbedMedia): boolean {
+		if (video.content_type) return video.content_type.startsWith("video/");
+		const url = video.url;
 		try {
 			const parsed = new URL(url);
 			const p = parsed.pathname.toLowerCase();
@@ -62,11 +67,11 @@
 			title={embed.title ?? ""}
 		/>
 	</button>
-{:else if embed.type === EmbedType.Gifv || embed.type === EmbedType.Image || (!embed.title && !embed.description && !embed.author && !embed.footer && !embed.fields?.length && (embed.image || embed.video))}
+{:else if !isTikTokEmbed(embed) && (embed.type === EmbedType.Gifv || embed.type === EmbedType.Image || (!embed.title && !embed.description && !embed.author && !embed.footer && !embed.fields?.length && (embed.image || embed.video)))}
 	{#if embed.video}
 		<video
 			src={proxyVideoUrl(embed.video.url)}
-			muted
+			muted={embed.type === EmbedType.Gifv}
 			playsinline
 			controls
 			class="mt-1 max-h-87.5 max-w-137.5 self-start rounded"
@@ -184,7 +189,7 @@
 		{/if}
 
 		{#if embed.video}
-			{#if isDirectVideo(embed.video.url)}
+			{#if isDirectVideo(embed.video)}
 				<video
 					src={proxyVideoUrl(embed.video.url)}
 					poster={embed.image?.url ?? embed.thumbnail?.url ?? ""}

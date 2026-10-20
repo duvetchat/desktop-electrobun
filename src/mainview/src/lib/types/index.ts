@@ -6,6 +6,8 @@ export interface EmbedMedia {
 	url: string;
 	width?: number | null;
 	height?: number | null;
+	/** A video's media type, when known: video/* plays as a file, text/html is a player page. */
+	content_type?: string;
 }
 
 export interface EmbedFooter {
