@@ -18,9 +18,16 @@
 	import { escapeHtml } from "$lib/markdown";
 	import { formatDuration } from "$lib/utils/time";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
-	import type { MemberOnSidebar, SpaceEmoji, SpaceSticker } from "$lib/types";
+	import type {
+		ApplicationCommand,
+		MemberOnSidebar,
+		SpaceCommandApplication,
+		SpaceCommands,
+		SpaceEmoji,
+		SpaceSticker,
+	} from "$lib/types";
 	import { selectedMicId } from "$lib/stores.svelte";
-	import { getHostURL } from "$lib/common/common";
+	import { getAvatarURL, getHostURL } from "$lib/common/common";
 
 	const ceHost = getHostURL();
 
@@ -39,6 +46,8 @@
 		customEmojis = [],
 		spaceStickers = [],
 		pendingFiles = $bindable<File[]>([]),
+		loadCommands,
+		onCommand,
 	}: {
 		placeholder?: string;
 		initialValue?: string;
@@ -55,6 +64,10 @@
 		customEmojis?: SpaceEmoji[];
 		spaceStickers?: SpaceSticker[];
 		pendingFiles?: File[];
+		/** The commands "/" offers at the start of the message, where the user can use them (a room they can write in). */
+		loadCommands?: () => Promise<SpaceCommands>;
+		/** The command picked from the "/" menu, which the message box leaves for. */
+		onCommand?: (command: ApplicationCommand, app: SpaceCommandApplication) => void;
 	} = $props();
 
 	let inputEl = $state<HTMLDivElement>(null!);
@@ -205,6 +218,42 @@
 	let mentionSuggestions = $state<MemberOnSidebar[]>([]);
 	let mentionSelectedIdx = $state(0);
 	let mentionQueryStart = $state(-1); // char offset of '@' in raw text
+
+	// ── Command menu ────────────────────────────────────────────────────────────
+	// What follows the "/" that starts the message while the menu is open (null when it's closed), and the
+	// space's commands, asked for each time it opens (they're kept a few minutes).
+	let commandQuery = $state<string | null>(null);
+	let commandList = $state<SpaceCommands | null>(null);
+	// The last request for the list: an older one that answers late isn't shown.
+	let commandRequest: Promise<SpaceCommands> | null = null;
+	let commandSelectedIdx = $state(0);
+	let commandMenuEl = $state<HTMLDivElement>();
+	// The keyboard's choice stays in view as the arrows move it.
+	$effect(() => {
+		commandMenuEl?.querySelectorAll('[role="option"]')[commandSelectedIdx]?.scrollIntoView({ block: "nearest" });
+	});
+	// The whole message as a command's name: "/" and no space, a phantom line break aside.
+	const COMMAND_TEXT = /^\/(\S*)\n?$/u;
+	const commandSuggestions = $derived.by(() => {
+		const query = commandQuery?.toLowerCase();
+		if (query === undefined || !commandList) return [];
+		return commandList.commands.filter((c) => c.name.startsWith(query));
+	});
+
+	function commandApp(command: ApplicationCommand): SpaceCommandApplication | undefined {
+		return commandList?.applications.find((a) => a.id === command.application_id);
+	}
+
+	function pickCommand(command: ApplicationCommand | undefined) {
+		const app = command && commandApp(command);
+		if (!command || !app) return;
+		commandQuery = null;
+		inputEl.innerHTML = "";
+		isEmpty = true;
+		undoStack = [{ raw: "", cursor: 0 }];
+		undoIndex = 0;
+		onCommand?.(command, app);
+	}
 
 	function resolveMentionName(id: string): string {
 		const m = members.find((m) => m.id === id);
@@ -366,6 +415,31 @@
 	function checkAutocomplete(raw: string, cursor: number) {
 		const before = raw.slice(0, cursor);
 
+		// "/" opens the command menu while the whole message is a command's name: one typed before a draft
+		// would make Enter pick a command, and lose the draft.
+		const commandMatch = loadCommands ? COMMAND_TEXT.exec(raw) : null;
+		if (commandMatch && loadCommands) {
+			if (commandQuery === null) {
+				// This box stays as the rooms change: another space's list isn't shown while this one's loads.
+				commandList = null;
+				const request = loadCommands();
+				commandRequest = request;
+				request
+					.then((list) => {
+						if (commandRequest === request) commandList = list;
+					})
+					.catch((err) => console.error("Failed to load the space's commands:", err));
+			}
+			commandQuery = commandMatch[1];
+			commandSelectedIdx = 0;
+			mentionSuggestions = [];
+			mentionQueryStart = -1;
+			suggestions = [];
+			emojiQueryStart = -1;
+			return;
+		}
+		commandQuery = null;
+
 		// @ and : start a suggestion only at a word's start, so an e-mail address, a time (10:30) or an emoticon (:D,
 		// as an emoji's needs two letters) doesn't become a mention or an emoji on Enter.
 		// Check @mention autocomplete first
@@ -497,6 +571,30 @@
 			e.preventDefault();
 			redo();
 			return;
+		}
+
+		// Navigate the command menu, while the message is still a command's name (an undo can bring a draft back).
+		if (commandSuggestions.length > 0 && !COMMAND_TEXT.test(getRaw(inputEl))) commandQuery = null;
+		if (commandSuggestions.length > 0) {
+			if (e.key === "ArrowUp") {
+				e.preventDefault();
+				commandSelectedIdx = (commandSelectedIdx - 1 + commandSuggestions.length) % commandSuggestions.length;
+				return;
+			}
+			if (e.key === "ArrowDown") {
+				e.preventDefault();
+				commandSelectedIdx = (commandSelectedIdx + 1) % commandSuggestions.length;
+				return;
+			}
+			if (e.key === "Enter" || e.key === "Tab") {
+				e.preventDefault();
+				pickCommand(commandSuggestions[commandSelectedIdx]);
+				return;
+			}
+			if (e.key === "Escape") {
+				commandQuery = null;
+				return;
+			}
 		}
 
 		// Navigate mention autocomplete
@@ -806,6 +904,49 @@
 
 <!-- Wrapper with display:contents so children participate in parent flex -->
 <div class="contents">
+	<!-- Command menu -->
+	{#if commandSuggestions.length > 0}
+		<div
+			class="absolute right-0 bottom-[calc(100%+6px)] left-0 z-90 max-h-75 overflow-hidden overflow-y-auto rounded-lg border border-[oklch(0.30_0.01_80)] bg-[oklch(0.19_0.008_80)] py-1 shadow-[0_8px_24px_rgba(0,0,0,0.5)]"
+			role="listbox"
+			aria-label="Commands"
+			bind:this={commandMenuEl}
+		>
+			<div class="text-xxs px-3 pt-1.5 pb-1 font-bold tracking-wider text-[oklch(0.52_0.01_80)] uppercase">
+				{#if commandQuery}
+					Commands matching <strong>/{commandQuery}</strong>
+				{:else}
+					Commands
+				{/if}
+			</div>
+			{#each commandSuggestions as command, i (command.id)}
+				{@const bot = commandApp(command)?.bot}
+				<button
+					role="option"
+					aria-selected={i === commandSelectedIdx}
+					class="flex w-full cursor-pointer items-center gap-2.5 border-none bg-none px-3 py-1.5 text-left transition-[background] duration-100 {i ===
+					commandSelectedIdx
+						? 'bg-[oklch(0.28_0.01_80)]'
+						: 'hover:bg-[oklch(0.28_0.01_80)]'}"
+					onmousedown={(e) => {
+						e.preventDefault();
+						pickCommand(command);
+					}}
+					onmouseenter={() => (commandSelectedIdx = i)}
+				>
+					<span class="shrink-0 text-[13px] font-semibold text-[oklch(0.85_0.008_80)]">/{command.name}</span>
+					<span class="min-w-0 flex-1 truncate text-[12px] text-[oklch(0.62_0.01_80)]">{command.description}</span>
+					{#if bot}
+						<span class="flex shrink-0 items-center gap-1.5 text-[11px] text-[oklch(0.52_0.01_80)]">
+							<UserAvatar src={getAvatarURL(bot.id, bot.avatar)} name={bot.alias ?? bot.username} size={16} />
+							{bot.alias ?? bot.username}
+						</span>
+					{/if}
+				</button>
+			{/each}
+		</div>
+	{/if}
+
 	<!-- Mention autocomplete dropdown -->
 	{#if mentionSuggestions.length > 0}
 		<div

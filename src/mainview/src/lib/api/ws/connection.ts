@@ -39,6 +39,7 @@ import { getMentionCounts } from "$lib/api/messages";
 import { getWSHostURL, getAvatarURL, route } from "$lib/common/common";
 import { get } from "svelte/store";
 import { getSpaceMembers, type SpaceMemberWithUser } from "$lib/api/spaces";
+import { forgetSpaceCommands } from "$lib/api/interactions";
 
 import type { DMTypingEvent, GatewayEvent, GatewaySpace, ReferencedMessage, TypingEvent, UserStatus } from "$lib/types";
 
@@ -785,6 +786,8 @@ function handleEvent(event: GatewayEvent) {
 		case "SPACE_MEMBER_ADD": {
 			const raw = payload.data;
 			userStatusCache.set(raw.user_id, raw.status_id);
+			// The member may be a bot, whose commands the space's list doesn't have yet.
+			forgetSpaceCommands(raw.space_id);
 			getSpaceMembers(raw.space_id)
 				.then((rows) => addMembersToSpace(raw.space_id, rows))
 				.catch((err) => console.error("[WS] Failed to refresh members after join:", err));
@@ -792,6 +795,7 @@ function handleEvent(event: GatewayEvent) {
 		}
 		case "SPACE_MEMBER_REMOVE": {
 			const raw = payload.data;
+			forgetSpaceCommands(raw.space_id);
 			gatewaySpaces.update((spaces) =>
 				spaces.map((s) => {
 					if (s.id !== raw.space_id) return s;

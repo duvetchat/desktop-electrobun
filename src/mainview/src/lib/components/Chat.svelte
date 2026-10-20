@@ -3,10 +3,19 @@
 
 	import { onMount, onDestroy } from "svelte";
 	import ChatInput from "$lib/components/ChatInput.svelte";
+	import CommandOptions from "$lib/components/CommandOptions.svelte";
 	import MessageList from "$lib/components/MessageList.svelte";
 	import MessageSearch from "$lib/components/MessageSearch.svelte";
 	import PinnedMessages from "$lib/components/PinnedMessages.svelte";
-	import type { Message, MemberOnSidebar, GatewaySpace, MessageReference, Embed } from "$lib/types";
+	import type {
+		ApplicationCommand,
+		Message,
+		MemberOnSidebar,
+		GatewaySpace,
+		MessageReference,
+		Embed,
+		SpaceCommandApplication,
+	} from "$lib/types";
 	import { MessageReferenceType } from "$lib/types";
 	import { sendMessage, sendVoiceNote, sendTypingIndicator, sendRecordingIndicator } from "$lib/api/messages";
 	import { MessageType } from "$lib/types";
@@ -17,6 +26,8 @@
 	import { getAvatarURL } from "$lib/common/common";
 	import { listStickers } from "$lib/api/stickers";
 	import { getApiError } from "$lib/api/api";
+	import { getSpaceCommands, sendCommandInteraction } from "$lib/api/interactions";
+	import { hasPermission, Permission } from "$lib/permissions";
 
 	let {
 		messages,
@@ -87,6 +98,13 @@
 	let replyTo = $state<Message | null>(null);
 	let chatInputRef = $state<{ focus: () => void; focusAndInsert: (char: string) => void } | null>(null);
 	let pendingFiles = $state<File[]>([]);
+	// The command picked from the "/" menu, which the message box gives its place to.
+	let command = $state<{ command: ApplicationCommand; app: SpaceCommandApplication } | null>(null);
+	// Commands are for the rooms the user can write in, not for conversations.
+	const canUseCommands = $derived.by(() => {
+		const room = space?.rooms.find((r) => r.id === channelId);
+		return !!space && !!room && hasPermission(space, room, Permission.SendMessages);
+	});
 	let lastTypingSent = 0;
 	let lastTypingRecording = false;
 
@@ -115,6 +133,7 @@
 	// Focus input when switching channels
 	$effect(() => {
 		channelId;
+		command = null;
 		requestAnimationFrame(() => chatInputRef?.focus());
 	});
 
@@ -237,8 +256,9 @@
 
 		if (isOtherInputActive()) return;
 
-		// Focus chat input when typing a printable character
-		if (!event.ctrlKey && !event.metaKey && !event.altKey && event.key.length === 1) {
+		// Focus chat input when typing a printable character. A command's row has no message box: its keys
+		// (Space on its switch) are its own.
+		if (chatInputRef && !event.ctrlKey && !event.metaKey && !event.altKey && event.key.length === 1) {
 			event.preventDefault();
 			chatInputRef?.focusAndInsert(event.key);
 		}
@@ -630,19 +650,33 @@
 				{/if}
 			</div>
 		{/if}
-		<ChatInput
-			bind:this={chatInputRef}
-			bind:pendingFiles
-			placeholder={placeholder ?? `Message #${channelName}`}
-			onSubmit={handleSendMessage}
-			onVoiceNote={handleVoiceNote}
-			onRecording={() => notifyTyping(true)}
-			onArrowUpWhenEmpty={tryEditLastMessage}
-			onValueChange={handleTyping}
-			{members}
-			{customEmojis}
-			spaceStickers={spaceStickersArr}
-			autofocus
-		/>
+		{#if command}
+			{@const active = command}
+			<CommandOptions
+				command={active.command}
+				app={active.app}
+				{space}
+				{members}
+				onSend={(data) => sendCommandInteraction(channelId, active.app.id, data)}
+				onExit={() => (command = null)}
+			/>
+		{:else}
+			<ChatInput
+				bind:this={chatInputRef}
+				bind:pendingFiles
+				placeholder={placeholder ?? `Message #${channelName}`}
+				onSubmit={handleSendMessage}
+				onVoiceNote={handleVoiceNote}
+				onRecording={() => notifyTyping(true)}
+				onArrowUpWhenEmpty={tryEditLastMessage}
+				onValueChange={handleTyping}
+				{members}
+				{customEmojis}
+				spaceStickers={spaceStickersArr}
+				loadCommands={canUseCommands ? () => getSpaceCommands(spaceId) : undefined}
+				onCommand={(picked, app) => (command = { command: picked, app })}
+				autofocus
+			/>
+		{/if}
 	</div>
 </div>

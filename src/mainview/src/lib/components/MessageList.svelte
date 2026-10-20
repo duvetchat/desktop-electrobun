@@ -1097,7 +1097,11 @@
 							>
 								<UserAvatar src={getAvatarURL(used.user.id, used.user.avatar)} name={usedBy} size={16} />
 								<span class="shrink-0 font-medium text-zinc-300">{usedBy}</span>
-								<span class="truncate">used <span class="font-medium text-zinc-300">{message.author_name}</span></span>
+								<span class="truncate"
+									>used <span class="font-medium text-zinc-300"
+										>{used.name ? `/${used.name}` : message.author_name}</span
+									></span
+								>
 							</button>
 						</div>
 					{/if}
