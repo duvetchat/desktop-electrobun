@@ -5,3 +5,16 @@ src/mainview/build
 build
 .claude
 artifacts
+# Devenv
+.devenv*
+devenv.local.nix
+devenv.local.yaml
+
+# direnv
+.direnv
+
+# pre-commit
+.pre-commit-config.yaml
+
+# nix
+result
