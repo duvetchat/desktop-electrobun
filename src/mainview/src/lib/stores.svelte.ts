@@ -222,6 +222,12 @@ noiseSuppression.subscribe((v) => {
 	safeStorageNs?.setItem("duvet_noise_suppression", String(v));
 });
 
+/** Voice tiles show everyone's animated face, even those who have an avatar. */
+export const voiceFaces = writable<boolean>(safeStorageNs?.getItem("duvet_voice_faces") === "true");
+voiceFaces.subscribe((v) => {
+	safeStorageNs?.setItem("duvet_voice_faces", String(v));
+});
+
 let initialMicId = "";
 const safeStorage = getSafeStorage();
 if (safeStorage) {
