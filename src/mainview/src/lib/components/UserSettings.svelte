@@ -79,7 +79,7 @@
 		type TeamMember,
 		type Application,
 	} from "$lib/api/developer";
-	import { pendingTeamInvites, myBuckets } from "$lib/stores.svelte";
+	import { pendingTeamInvites, myBuckets, voiceFaces } from "$lib/stores.svelte";
 
 	let {
 		open = $bindable(false),
@@ -1314,6 +1314,34 @@
 										)}
 									</p>
 								{/key}
+							</div>
+
+							<!-- Faces in voice -->
+							<div class="rounded-lg border border-zinc-800 bg-zinc-800/40 px-4 py-4">
+								<div class="flex items-center justify-between gap-4">
+									<div>
+										<p class="text-xs font-semibold tracking-wide text-zinc-400 uppercase">Faces in voice</p>
+										<p class="mt-1 text-xs text-zinc-500">
+											Voice channel tiles show everyone's animated face instead of their avatar. Saved on this device.
+										</p>
+									</div>
+									<button
+										type="button"
+										role="switch"
+										aria-checked={$voiceFaces}
+										aria-label="Faces in voice"
+										onclick={() => voiceFaces.update((v) => !v)}
+										class="relative h-5 w-9 shrink-0 rounded-full transition-colors {$voiceFaces
+											? 'bg-indigo-500'
+											: 'bg-zinc-600'}"
+									>
+										<span
+											class="absolute top-0.5 left-0.5 size-4 rounded-full bg-white transition-transform {$voiceFaces
+												? 'translate-x-4'
+												: ''}"
+										></span>
+									</button>
+								</div>
 							</div>
 						{:else if activeSection === "attachments"}
 							<!-- Active custom bucket banner -->

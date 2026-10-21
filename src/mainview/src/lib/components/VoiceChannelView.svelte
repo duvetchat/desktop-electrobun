@@ -12,6 +12,7 @@
 		isScreenSharing,
 		callVoiceStates,
 		userAmplitudes,
+		voiceFaces,
 	} from "$lib/stores.svelte";
 	import { sendEventMessage } from "$lib/api/ws/connection";
 	import { getAvatarURL } from "$lib/common/common";
@@ -343,7 +344,7 @@
 							<!-- Remote user is sharing but viewer hasn't accepted -->
 							<div class="flex flex-col items-center justify-center gap-3">
 								<UserAvatar
-									src={user.avatar_url}
+									src={$voiceFaces ? null : user.avatar_url}
 									name={user.username}
 									size={64}
 									mouthOpen={$userAmplitudes[user.id] ?? 0}
@@ -363,7 +364,7 @@
 						{:else}
 							<div class="flex items-center justify-center">
 								<UserAvatar
-									src={user.avatar_url}
+									src={$voiceFaces ? null : user.avatar_url}
 									name={user.username}
 									size={80}
 									mouthOpen={$userAmplitudes[user.id] ?? 0}
