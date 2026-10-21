@@ -44,6 +44,7 @@
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
 	import ChatInput from "$lib/components/ChatInput.svelte";
 	import EmojiPicker from "$lib/components/EmojiPicker.svelte";
+	import ReactionCount from "$lib/components/ReactionCount.svelte";
 	import ImagePreview from "$lib/components/ImagePreview.svelte";
 	import MemberProfilePopover from "$lib/components/MemberProfilePopover.svelte";
 	import type { MessageReaction } from "$lib/types";
@@ -1377,10 +1378,11 @@
 								{/if}
 							{/if}
 
-							<!-- Reactions display -->
+							<!-- Reactions display, keyed by emoji: a badge keeps its element (and its count's roll) when
+							     another reaction comes or goes -->
 							{#if message.reactions && message.reactions.length > 0}
 								<div class="mt-1 flex flex-wrap gap-1">
-									{#each message.reactions as reaction}
+									{#each message.reactions as reaction (reaction.emoji_name)}
 										{@const isMeReacted = $currentUser ? reaction.users.includes($currentUser.id) : false}
 										{@const ce = reaction.emoji_id ? customEmojis.find((e) => e.id === reaction.emoji_id) : null}
 										<button
@@ -1399,7 +1401,7 @@
 											{:else}
 												{@html renderEmoji(reaction.emoji_name)}
 											{/if}
-											<span class="font-medium">{reaction.count}</span>
+											<ReactionCount count={reaction.count} />
 										</button>
 									{/each}
 								</div>
