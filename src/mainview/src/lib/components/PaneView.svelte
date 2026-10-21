@@ -326,10 +326,7 @@
 				}
 				channelInitialLoading[channelId] = false;
 				if (raw.length < 100) {
-					console.log("[loadmore] initial fetch: only", raw.length, "msgs → marking hasMore=false for", channelId);
 					channelHasMore[channelId] = false;
-				} else {
-					console.log("[loadmore] initial fetch: got", raw.length, "msgs → hasMore=true for", channelId);
 				}
 			})
 			.catch((err) => {
@@ -341,34 +338,24 @@
 	});
 
 	async function loadMoreMessages() {
-		console.log("[loadmore] loadMoreMessages called", {
-			kind: node.kind,
-			activeChannelId: node.kind === "leaf" ? node.activeChannelId : null,
-			isLoadingMore,
-			hasMore: node.kind === "leaf" && node.activeChannelId ? channelHasMore[node.activeChannelId] : "?",
-		});
 		if (node.kind !== "leaf" || !node.activeChannelId || isLoadingMore || activeChannel?.type !== "text") {
 			return;
 		}
 		const channelId = node.activeChannelId;
 		if (channelHasMore[channelId] === false) {
-			console.log("[loadmore] skipped — channelHasMore is false for", channelId);
 			return;
 		}
 
 		const current = $channelMessages[channelId];
 		// Still fetching initial messages — don't interfere
 		if (current === undefined || current === null) {
-			console.log("[loadmore] skipped — no messages in store yet for", channelId);
 			return;
 		}
 		// Loaded but empty channel → no history to fetch
 		if (current.length === 0) {
-			console.log("[loadmore] skipped — empty channel", channelId);
 			channelHasMore[channelId] = false;
 			return;
 		}
-		console.log("[loadmore] fetching older messages before oldest in", current.length, "msgs");
 
 		let oldest = current.at(0)!.id;
 		for (const m of current) {
@@ -388,9 +375,7 @@
 		try {
 			const raw = await getMessages(channelId, oldest, controller.signal);
 			clearTimeout(timeoutId);
-			console.log("[loadmore] loadMore fetch returned", raw.length, "msgs for", channelId);
 			if (raw.length === 0) {
-				console.log("[loadmore] no older msgs → marking hasMore=false");
 				channelHasMore[channelId] = false;
 			} else {
 				const msgs = raw.map((m) => gatewayMessageToMessage(m, $gatewaySpaces));

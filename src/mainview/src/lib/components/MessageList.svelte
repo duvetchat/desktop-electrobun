@@ -26,6 +26,7 @@
 		addConversationReaction,
 		removeConversationReaction,
 	} from "$lib/api/reactions";
+	import { arrival, arrivalAction, listEnd } from "$lib/arrivals";
 	import { renderEmoji, isOnlyEmojis, countEmojis } from "$lib/emoji";
 	import { customEmojiMapOf, mentionMapOf, parseTextSegments, renderMarkdown, renderMarkdownLine } from "$lib/markdown";
 
@@ -39,6 +40,7 @@
 	import EmbedCard from "$lib/components/EmbedCard.svelte";
 	import MessageAttachments from "$lib/components/MessageAttachments.svelte";
 	import MessageComponents from "$lib/components/MessageComponents.svelte";
+	import MessagePreview from "$lib/components/MessagePreview.svelte";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
 	import ChatInput from "$lib/components/ChatInput.svelte";
 	import EmojiPicker from "$lib/components/EmojiPicker.svelte";
@@ -108,7 +110,8 @@
 
 	// ── State ──────────────────────────────────────────────────────────────────
 	let scrollEl: HTMLElement;
-	let prevMessageCount = 0;
+	// The list's newest end as the new-message effect last saw it.
+	let prevEnd = listEnd([]);
 	// Non-reactive snapshot — updated by handleScroll, read by the new-message
 	// effect BEFORE the DOM mutation triggers a synchronous scroll event that
 	// would flip isAtBottom to false in flex-col-reverse.
@@ -232,7 +235,6 @@
 		// In flex-col-reverse, scrollTop=0 means the user is at the visual bottom (newest messages).
 		if (scrollUnlocked) {
 			const val = scrollEl.scrollTop >= -50;
-			if (val !== isAtBottom) console.log("[scroll] isAtBottom:", val, "scrollTop:", scrollEl.scrollTop);
 			isAtBottom = val;
 			wasAtBottom = val;
 		}
@@ -397,17 +399,9 @@
 		if (!unreadAfterMessageId) return null;
 		for (let i = 0; i < sortedMessages.length; i++) {
 			if (sortedMessages[i].id <= unreadAfterMessageId) {
-				console.log("[divider]", {
-					unreadAfterMessageId,
-					idx: i,
-					count: i,
-					msgId: sortedMessages[i].id,
-					total: sortedMessages.length,
-				});
 				return i;
 			}
 		}
-		console.log("[divider] all unread", { unreadAfterMessageId, total: sortedMessages.length });
 		return sortedMessages.length; // all loaded messages are unread
 	});
 	const unreadCount = $derived(unreadDividerIdx ?? 0);
@@ -473,9 +467,9 @@
 		const chId = channelId;
 		if (chId !== visitChannel) {
 			visitChannel = chId;
-			// Before the new-message effect below sees this channel's messages: counted against the last
+			// Before the new-message effect below sees this channel's messages: compared with the last
 			// channel's, they would pass for new ones.
-			prevMessageCount = 0;
+			prevEnd = listEnd([]);
 			lastSeenMsgId = "";
 			startVisit();
 		}
@@ -501,12 +495,13 @@
 		return () => observer.disconnect();
 	});
 
-	// A divider placed later in the visit (new messages while away from the bottom) is scrolled to once.
+	// A divider placed later in the visit (new messages while the window was away) is scrolled to once, when the
+	// list was at its bottom. Not while the user reads further up: there it only shows, rather than move them.
 	$effect(() => {
 		const id = unreadAfterMessageId;
 		const idx = unreadDividerIdx;
 		const chId = channelId;
-		if (placedFor !== chId || !id || !idx || scrolledUnreadIds.has(id)) return;
+		if (placedFor !== chId || !id || !idx || scrolledUnreadIds.has(id) || !wasAtBottom) return;
 		scrolledUnreadIds.add(id);
 		void tick().then(() => {
 			requestAnimationFrame(() => {
@@ -522,7 +517,7 @@
 
 	// ── Auto-scroll / unread divider when new messages arrive ──────────────────
 	$effect(() => {
-		const count = messages.length;
+		const end = listEnd(messages);
 		const visible = $pageVisible;
 
 		// When page becomes visible again, sync scroll state with actual position
@@ -534,41 +529,28 @@
 			isAtBottom = val;
 		}
 
-		if (count > prevMessageCount && prevMessageCount > 0) {
-			const newest = messages[messages.length - 1];
-			const me = $currentUser;
-			const isOwnSend = newest && me && newest.author_id === me.id;
-
-			if (isOwnSend) {
-				// Always scroll to bottom on own send.
-				tick().then(() => {
-					if (scrollEl) scrollEl.scrollTop = 0;
-				});
-			} else if (wasAtBottom && visible) {
-				// At bottom and page visible — auto-scroll to stay pinned.
-				tick().then(() => {
-					if (scrollEl) scrollEl.scrollTop = 0;
-				});
-			} else if (lastSeenMsgId) {
-				// Scrolled up or page hidden — place the unread divider.
-				onUnreadMark?.(lastSeenMsgId);
-			}
+		// The list also grows when scrolling up loads older messages: only what made its newest end newer is new.
+		const arrived = arrival(prevEnd, end);
+		const action = arrived && arrivalAction(arrived, $currentUser?.id, wasAtBottom && visible);
+		if (action === "bottom") {
+			// A message this window sends, or any while the user is at the bottom and looking.
+			tick().then(() => {
+				if (scrollEl) scrollEl.scrollTop = 0;
+			});
+		} else if (action === "unread" && lastSeenMsgId) {
+			// Scrolled up or page hidden — place the unread divider.
+			onUnreadMark?.(lastSeenMsgId);
 		}
 
 		// Keep lastSeenMsgId in sync while the user is actively viewing.
 		// Update when at bottom AND (page visible OR first initialisation).
 		// Without the init path, lastSeenMsgId stays "" and onUnreadMark
 		// never fires when the page is hidden before any scroll event.
-		if (wasAtBottom && (visible || !lastSeenMsgId)) {
-			let newest = "";
-			for (const m of messages) {
-				if (m.id === m.nonce) continue;
-				if (m.id > newest) newest = m.id;
-			}
-			if (newest) lastSeenMsgId = newest;
+		if (wasAtBottom && (visible || !lastSeenMsgId) && end.newest) {
+			lastSeenMsgId = end.newest.id;
 		}
 
-		prevMessageCount = count;
+		prevEnd = end;
 	});
 
 	// ── Formatting ─────────────────────────────────────────────────────────────
@@ -854,6 +836,13 @@
 		} finally {
 			threadLoading = false;
 		}
+	}
+
+	// An image of the thread opens over the app, and the thread closes first: under the image, it would keep
+	// the keyboard, and Escape would close it instead of the image.
+	function previewFromThread(src: string, alt?: string) {
+		threadModalOpen = false;
+		openPreview(src, alt);
 	}
 
 	// Whether the current user has a permission in this room (the owner has every one); false outside spaces.
@@ -1815,20 +1804,8 @@
 											>
 										</div>
 									{/if}
-									<div class="flex items-start gap-2">
-										<UserAvatar src={threadMsg.author_avatar_url} name={threadMsg.author_name} size={24} />
-										<div class="min-w-0 flex-1">
-											<div class="flex items-center gap-2">
-												<span class="text-sm font-semibold text-zinc-100">{threadMsg.author_name}</span>
-												<span class="text-xs text-zinc-500"
-													>{new Date(threadMsg.created_at).toLocaleString(locale)}</span
-												>
-											</div>
-											<p class="msg-content text-sm wrap-break-word whitespace-pre-wrap text-zinc-200 select-text">
-												{@html renderMarkdown(threadMsg.content ?? "", false, mentionMap, customEmojiMap)}
-											</p>
-										</div>
-									</div>
+									<!-- As the pins and the search show a message: its text, voice note, sticker, files or components -->
+									<MessagePreview message={threadMsg} {mentionMap} {customEmojiMap} onPreview={previewFromThread} />
 								</div>
 							{/each}
 						</div>
