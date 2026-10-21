@@ -2,6 +2,7 @@
 	import { CircleAlert as AlertIcon, ExternalLink as ExternalLinkIcon, FileText as FileIcon } from "@lucide/svelte";
 	import { SvelteSet } from "svelte/reactivity";
 	import ComponentSelect from "$lib/components/ComponentSelect.svelte";
+	import SpoilerCover from "$lib/components/SpoilerCover.svelte";
 	import { FetchError, getApiError } from "$lib/api/api";
 	import type { ComponentUse } from "$lib/api/interactions";
 	import { getHostURL } from "$lib/common/common";
@@ -140,7 +141,7 @@
 				{/each}
 			</div>
 			{#if hidden}
-				{@render spoilerCover(c)}
+				<SpoilerCover onReveal={() => revealed.add(c)} />
 			{/if}
 		</div>
 	{:else if c.type === ComponentType.ActionRow}
@@ -200,7 +201,7 @@
 				</span>
 			</a>
 			{#if hidden}
-				{@render spoilerCover(c)}
+				<SpoilerCover onReveal={() => revealed.add(c)} />
 			{/if}
 		</div>
 	{:else if c.type === ComponentType.Separator}
@@ -299,7 +300,7 @@
 				/>
 			</button>
 			{#if hidden}
-				{@render spoilerCover(c)}
+				<SpoilerCover onReveal={() => revealed.add(c)} />
 			{/if}
 		</div>
 	{/if}
@@ -373,20 +374,7 @@
 			</button>
 		{/if}
 		{#if hidden}
-			{@render spoilerCover(item)}
+			<SpoilerCover onReveal={() => revealed.add(item)} />
 		{/if}
 	</div>
-{/snippet}
-
-{#snippet spoilerCover(target: object)}
-	<button
-		type="button"
-		class="absolute inset-0 flex items-center justify-center bg-zinc-900/30 transition-colors hover:bg-zinc-900/20"
-		onclick={(e) => {
-			e.stopPropagation();
-			revealed.add(target);
-		}}
-	>
-		<span class="rounded-full bg-black/70 px-3 py-1 text-xs font-bold tracking-wide text-white">SPOILER</span>
-	</button>
 {/snippet}
