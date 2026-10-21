@@ -2,8 +2,14 @@
 	import { EmbedType, type Embed, type EmbedMedia } from "$lib/types";
 	import { getHostURL } from "$lib/common/common";
 	import { renderMarkdown } from "$lib/markdown";
+	import { formatShortDateTime } from "$lib/utils/time";
 
 	let { embed, onImageClick }: { embed: Embed; onImageClick?: (src: string) => void } = $props();
+
+	// The footer's line: its text and the embed's date, as "FxTwitter • 10/21/26, 3:02 AM".
+	const footerText = $derived(
+		[embed.footer?.text, embed.timestamp ? formatShortDateTime(embed.timestamp) : ""].filter(Boolean).join(" • "),
+	);
 
 	// Videos the API fetches for the app: kktiktok.com's go only to a preview's bot.
 	const PROXY_HOSTS = new Set(["video.twimg.com", "kktiktok.com"]);
@@ -67,7 +73,7 @@
 			title={embed.title ?? ""}
 		/>
 	</button>
-{:else if !isTikTokEmbed(embed) && (embed.type === EmbedType.Gifv || embed.type === EmbedType.Image || (!embed.title && !embed.description && !embed.author && !embed.footer && !embed.fields?.length && (embed.image || embed.video)))}
+{:else if !isTikTokEmbed(embed) && (embed.type === EmbedType.Gifv || embed.type === EmbedType.Image || (!embed.title && !embed.description && !embed.author && !footerText && !embed.fields?.length && (embed.image || embed.video)))}
 	{#if embed.video}
 		<video
 			src={proxyVideoUrl(embed.video.url)}
@@ -123,7 +129,7 @@
 		class="mt-1 flex max-w-sm flex-col overflow-hidden rounded-md border-l-4 bg-zinc-800/60"
 		style={embedBorderStyle(embed)}
 	>
-		{#if embed.author || embed.title || embed.description || embed.fields?.length || embed.footer || embed.thumbnail}
+		{#if embed.author || embed.title || embed.description || embed.fields?.length || footerText || embed.thumbnail}
 			<div class="flex gap-3 px-3 py-2.5">
 				<div class="flex min-w-0 flex-1 flex-col gap-1 select-text">
 					{#if embed.author}
@@ -172,8 +178,8 @@
 						</div>
 					{/if}
 
-					{#if embed.footer}
-						<span class="text-xxs mt-0.5 text-zinc-500">{embed.footer.text}</span>
+					{#if footerText}
+						<span class="text-xxs mt-0.5 text-zinc-500">{footerText}</span>
 					{/if}
 				</div>
 
