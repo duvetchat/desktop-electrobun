@@ -18,6 +18,7 @@
 		Upload as UploadIcon,
 		Check as CheckIcon,
 		Plus as PlusIcon,
+		ImagePlus as ImagePlusIcon,
 	} from "@lucide/svelte";
 	import { Checkbox, Dialog } from "bits-ui";
 	import ImageCropModal from "$lib/components/ImageCropModal.svelte";
@@ -216,6 +217,8 @@
 	let emojisLoading = $state(false);
 	let newEmojiName = $state("");
 	let newEmojiFile = $state<File | null>(null);
+	let newEmojiPreview = $state<string | null>(null);
+	let showEmojiCrop = $state(false);
 	let isUploadingEmoji = $state(false);
 	let editingEmojiId = $state<string | null>(null);
 	let editingEmojiName = $state("");
@@ -226,6 +229,8 @@
 	let stickersLoading = $state(false);
 	let newStickerName = $state("");
 	let newStickerFile = $state<File | null>(null);
+	let newStickerPreview = $state<string | null>(null);
+	let showStickerCrop = $state(false);
 	let isUploadingSticker = $state(false);
 	let editingStickerReact = $state<string | null>(null);
 	let editingStickerName = $state("");
@@ -468,9 +473,11 @@
 		}
 	});
 
-	function handleEmojiFileChange(e: Event) {
-		const input = e.target as HTMLInputElement;
-		newEmojiFile = input.files?.[0] ?? null;
+	// The new emoji's image, as the image editor made it, and its preview.
+	function setNewEmojiFile(file: File | null) {
+		newEmojiFile = file;
+		if (newEmojiPreview) URL.revokeObjectURL(newEmojiPreview);
+		newEmojiPreview = file ? URL.createObjectURL(file) : null;
 	}
 
 	async function handleUploadEmoji() {
@@ -479,7 +486,7 @@
 		try {
 			await createEmoji(spaceId, newEmojiName.trim(), newEmojiFile);
 			newEmojiName = "";
-			newEmojiFile = null;
+			setNewEmojiFile(null);
 			await loadEmojis();
 		} catch (err) {
 			console.error("Failed to upload emoji:", err);
@@ -552,9 +559,11 @@
 		}
 	});
 
-	function handleStickerFileChange(e: Event) {
-		const input = e.target as HTMLInputElement;
-		newStickerFile = input.files?.[0] ?? null;
+	// The new sticker's image, as the image editor made it, and its preview.
+	function setNewStickerFile(file: File | null) {
+		newStickerFile = file;
+		if (newStickerPreview) URL.revokeObjectURL(newStickerPreview);
+		newStickerPreview = file ? URL.createObjectURL(file) : null;
 	}
 
 	async function handleUploadSticker() {
@@ -563,7 +572,7 @@
 		try {
 			await createSticker(spaceId, newStickerName.trim(), newStickerFile);
 			newStickerName = "";
-			newStickerFile = null;
+			setNewStickerFile(null);
 			await loadStickers();
 		} catch (err) {
 			console.error("Failed to upload sticker:", err);
@@ -1571,8 +1580,8 @@
 											</p>
 										</div>
 
-										<div class="flex items-end gap-3">
-											<label class="block flex-1 space-y-1.5">
+										<div class="flex flex-wrap items-end gap-3">
+											<label class="block min-w-40 flex-1 space-y-1.5">
 												<span class="text-[11px] font-semibold tracking-wide text-zinc-400 uppercase">Name</span>
 												<input
 													type="text"
@@ -1584,12 +1593,18 @@
 
 											<label class="block space-y-1.5">
 												<span class="text-[11px] font-semibold tracking-wide text-zinc-400 uppercase">Image</span>
-												<input
-													type="file"
-													accept="image/*"
-													class="block w-full text-sm text-zinc-400 file:mr-3 file:cursor-pointer file:rounded-lg file:border-0 file:bg-zinc-700 file:px-3 file:py-2 file:text-sm file:font-medium file:text-zinc-200 file:transition-colors hover:file:bg-zinc-600"
-													onchange={handleEmojiFileChange}
-												/>
+												<button
+													type="button"
+													class="flex size-9.5 items-center justify-center overflow-hidden rounded-lg border border-dashed border-zinc-600 bg-zinc-800 text-zinc-400 transition-colors hover:border-zinc-400 hover:text-zinc-200"
+													title={newEmojiPreview ? "Change image" : "Choose image"}
+													onclick={() => (showEmojiCrop = true)}
+												>
+													{#if newEmojiPreview}
+														<img src={newEmojiPreview} alt="" class="size-full object-contain" />
+													{:else}
+														<ImagePlusIcon class="size-4" />
+													{/if}
+												</button>
 											</label>
 
 											<button
@@ -1691,8 +1706,8 @@
 											</p>
 										</div>
 
-										<div class="flex items-end gap-3">
-											<label class="block flex-1 space-y-1.5">
+										<div class="flex flex-wrap items-end gap-3">
+											<label class="block min-w-40 flex-1 space-y-1.5">
 												<span class="text-[11px] font-semibold tracking-wide text-zinc-400 uppercase">Name</span>
 												<input
 													type="text"
@@ -1704,12 +1719,18 @@
 
 											<label class="block space-y-1.5">
 												<span class="text-[11px] font-semibold tracking-wide text-zinc-400 uppercase">Image</span>
-												<input
-													type="file"
-													accept="image/*"
-													class="block w-full text-sm text-zinc-400 file:mr-3 file:cursor-pointer file:rounded-lg file:border-0 file:bg-zinc-700 file:px-3 file:py-2 file:text-sm file:font-medium file:text-zinc-200 file:transition-colors hover:file:bg-zinc-600"
-													onchange={handleStickerFileChange}
-												/>
+												<button
+													type="button"
+													class="flex size-9.5 items-center justify-center overflow-hidden rounded-lg border border-dashed border-zinc-600 bg-zinc-800 text-zinc-400 transition-colors hover:border-zinc-400 hover:text-zinc-200"
+													title={newStickerPreview ? "Change image" : "Choose image"}
+													onclick={() => (showStickerCrop = true)}
+												>
+													{#if newStickerPreview}
+														<img src={newStickerPreview} alt="" class="size-full object-contain" />
+													{:else}
+														<ImagePlusIcon class="size-4" />
+													{/if}
+												</button>
 											</label>
 
 											<button
@@ -2297,6 +2318,22 @@
 	targetWidth={600}
 	targetHeight={240}
 	onConfirm={(f) => onSpaceBannerCrop(f)}
+/>
+<ImageCropModal
+	bind:open={showEmojiCrop}
+	title="Emoji Image"
+	aspect={1}
+	targetWidth={128}
+	targetHeight={128}
+	onConfirm={(f) => setNewEmojiFile(f)}
+/>
+<ImageCropModal
+	bind:open={showStickerCrop}
+	title="Sticker Image"
+	aspect={1}
+	targetWidth={320}
+	targetHeight={320}
+	onConfirm={(f) => setNewStickerFile(f)}
 />
 
 <style>
