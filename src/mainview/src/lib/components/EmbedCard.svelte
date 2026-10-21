@@ -3,12 +3,17 @@
 	import { getHostURL } from "$lib/common/common";
 	import { renderMarkdown } from "$lib/markdown";
 	import { formatShortDateTime } from "$lib/utils/time";
+	import { webEmbed } from "$lib/urls";
 
 	let { embed, onImageClick }: { embed: Embed; onImageClick?: (src: string) => void } = $props();
 
+	// An embed's URLs come from a page or from whoever sent the message: the card takes only its http(s) ones
+	// (webEmbed), as another scheme, javascript: above all, would run in the app from a link or a frame.
+	const card = $derived(webEmbed(embed));
+
 	// The footer's line: its text and the embed's date, as "FxTwitter • 10/21/26, 3:02 AM".
 	const footerText = $derived(
-		[embed.footer?.text, embed.timestamp ? formatShortDateTime(embed.timestamp) : ""].filter(Boolean).join(" • "),
+		[card.footer?.text, card.timestamp ? formatShortDateTime(card.timestamp) : ""].filter(Boolean).join(" • "),
 	);
 
 	// Videos the API fetches for the app: kktiktok.com's go only to a preview's bot.
@@ -63,113 +68,115 @@
 	}
 </script>
 
-{#if embed.type === EmbedType.Sticker && embed.image}
-	<button type="button" class="mt-1 block cursor-zoom-in" onclick={() => onImageClick?.(embed.image!.url)}>
+{#if card.type === EmbedType.Sticker && card.image}
+	<button type="button" class="mt-1 block cursor-zoom-in" onclick={() => onImageClick?.(card.image!.url)}>
 		<img
-			src={embed.image.url}
-			alt={embed.title ?? "Sticker"}
+			src={card.image.url}
+			alt={card.title ?? "Sticker"}
 			class="h-40 w-40 object-contain"
 			loading="lazy"
-			title={embed.title ?? ""}
+			title={card.title ?? ""}
 		/>
 	</button>
-{:else if !isTikTokEmbed(embed) && (embed.type === EmbedType.Gifv || embed.type === EmbedType.Image || (!embed.title && !embed.description && !embed.author && !footerText && !embed.fields?.length && (embed.image || embed.video)))}
-	{#if embed.video}
+{:else if !isTikTokEmbed(card) && (card.type === EmbedType.Gifv || card.type === EmbedType.Image || (!card.title && !card.description && !card.author && !footerText && !card.fields?.length && (card.image || card.video)))}
+	{#if card.video}
 		<video
-			src={proxyVideoUrl(embed.video.url)}
-			muted={embed.type === EmbedType.Gifv}
+			src={proxyVideoUrl(card.video.url)}
+			muted={card.type === EmbedType.Gifv}
 			playsinline
 			controls
 			class="mt-1 max-h-87.5 max-w-137.5 self-start rounded"
 		></video>
-	{:else if embed.image}
+	{:else if card.image}
 		<button
 			type="button"
 			class="mt-1 block max-w-137.5 cursor-zoom-in self-start rounded"
-			onclick={() => onImageClick?.(embed.image!.url)}
+			onclick={() => onImageClick?.(card.image!.url)}
 		>
-			<img src={embed.image.url} alt="" class="max-h-87.5 max-w-137.5 rounded" loading="lazy" />
+			<img src={card.image.url} alt="" class="max-h-87.5 max-w-137.5 rounded" loading="lazy" />
 		</button>
 	{/if}
-{:else if isTikTokEmbed(embed)}
+{:else if isTikTokEmbed(card)}
 	<div
 		class="mt-1 flex w-[320px] flex-col overflow-hidden rounded-md border-l-4 bg-zinc-800/60"
 		style="border-color: #fe2c55;"
 	>
 		<div class="px-3 py-2.5 select-text">
-			{#if embed.provider}
-				<span class="text-xxs font-semibold text-zinc-400">{embed.provider}</span>
+			{#if card.provider}
+				<span class="text-xxs font-semibold text-zinc-400">{card.provider}</span>
 			{/if}
-			{#if embed.title}
-				{#if embed.url}
+			{#if card.title}
+				{#if card.url}
 					<a
-						href={embed.url}
+						href={card.url}
 						target="_blank"
 						rel="noopener noreferrer"
-						class="line-clamp-2 text-sm font-semibold text-stone-300 hover:underline">{embed.title}</a
+						class="line-clamp-2 text-sm font-semibold text-stone-300 hover:underline">{card.title}</a
 					>
 				{:else}
-					<span class="line-clamp-2 text-sm font-semibold text-zinc-100">{embed.title}</span>
+					<span class="line-clamp-2 text-sm font-semibold text-zinc-100">{card.title}</span>
 				{/if}
 			{/if}
 		</div>
-		<div class="aspect-9/16 w-full">
-			<iframe
-				src={embed.video?.url}
-				title={embed.title ?? "TikTok"}
-				class="h-full w-full"
-				allow="autoplay; encrypted-media"
-				allowfullscreen
-				sandbox="allow-scripts allow-same-origin allow-popups"
-			></iframe>
-		</div>
+		{#if card.video}
+			<div class="aspect-9/16 w-full">
+				<iframe
+					src={card.video.url}
+					title={card.title ?? "TikTok"}
+					class="h-full w-full"
+					allow="autoplay; encrypted-media"
+					allowfullscreen
+					sandbox="allow-scripts allow-same-origin allow-popups"
+				></iframe>
+			</div>
+		{/if}
 	</div>
-{:else if embed.title || embed.description || embed.video || embed.image}
+{:else if card.title || card.description || card.video || card.image}
 	<div
 		class="mt-1 flex max-w-sm flex-col overflow-hidden rounded-md border-l-4 bg-zinc-800/60"
-		style={embedBorderStyle(embed)}
+		style={embedBorderStyle(card)}
 	>
-		{#if embed.author || embed.title || embed.description || embed.fields?.length || footerText || embed.thumbnail}
+		{#if card.author || card.title || card.description || card.fields?.length || footerText || card.thumbnail}
 			<div class="flex gap-3 px-3 py-2.5">
 				<div class="flex min-w-0 flex-1 flex-col gap-1 select-text">
-					{#if embed.author}
+					{#if card.author}
 						<div class="flex items-center gap-1.5">
-							{#if embed.author.icon_url}
-								<img src={embed.author.icon_url} alt="" class="h-4 w-4 rounded-full" />
+							{#if card.author.icon_url}
+								<img src={card.author.icon_url} alt="" class="h-4 w-4 rounded-full" />
 							{/if}
-							{#if embed.author.url}
+							{#if card.author.url}
 								<a
-									href={embed.author.url}
+									href={card.author.url}
 									target="_blank"
 									rel="noopener noreferrer"
-									class="truncate text-xs text-zinc-400 hover:underline">{embed.author.name}</a
+									class="truncate text-xs text-zinc-400 hover:underline">{card.author.name}</a
 								>
 							{:else}
-								<span class="truncate text-xs text-zinc-400">{embed.author.name}</span>
+								<span class="truncate text-xs text-zinc-400">{card.author.name}</span>
 							{/if}
 						</div>
 					{/if}
 
-					{#if embed.title}
-						{#if embed.url}
+					{#if card.title}
+						{#if card.url}
 							<a
-								href={embed.url}
+								href={card.url}
 								target="_blank"
 								rel="noopener noreferrer"
-								class="line-clamp-2 text-sm font-semibold text-stone-300 hover:underline">{embed.title}</a
+								class="line-clamp-2 text-sm font-semibold text-stone-300 hover:underline">{card.title}</a
 							>
 						{:else}
-							<span class="line-clamp-2 text-sm font-semibold text-zinc-100">{embed.title}</span>
+							<span class="line-clamp-2 text-sm font-semibold text-zinc-100">{card.title}</span>
 						{/if}
 					{/if}
 
-					{#if embed.description}
-						<p class="line-clamp-3 text-xs wrap-break-word text-zinc-400">{@html renderMarkdown(embed.description)}</p>
+					{#if card.description}
+						<p class="line-clamp-3 text-xs wrap-break-word text-zinc-400">{@html renderMarkdown(card.description)}</p>
 					{/if}
 
-					{#if embed.fields && embed.fields.length > 0}
+					{#if card.fields && card.fields.length > 0}
 						<div class="mt-0.5 flex flex-wrap gap-x-4 gap-y-1">
-							{#each embed.fields as field}
+							{#each card.fields as field}
 								<div class="flex min-w-0 flex-col {field.inline ? '' : 'w-full'}">
 									<span class="text-xxs font-semibold tracking-wide text-zinc-400 uppercase">{field.name}</span>
 									<span class="text-xs text-zinc-300">{@html renderMarkdown(field.value)}</span>
@@ -183,9 +190,9 @@
 					{/if}
 				</div>
 
-				{#if embed.thumbnail}
+				{#if card.thumbnail}
 					<img
-						src={embed.thumbnail.url}
+						src={card.thumbnail.url}
 						alt=""
 						class="h-16 w-16 shrink-0 self-start rounded object-cover"
 						loading="lazy"
@@ -194,11 +201,11 @@
 			</div>
 		{/if}
 
-		{#if embed.video}
-			{#if isDirectVideo(embed.video)}
+		{#if card.video}
+			{#if isDirectVideo(card.video)}
 				<video
-					src={proxyVideoUrl(embed.video.url)}
-					poster={embed.image?.url ?? embed.thumbnail?.url ?? ""}
+					src={proxyVideoUrl(card.video.url)}
+					poster={card.image?.url ?? card.thumbnail?.url ?? ""}
 					muted
 					playsinline
 					controls
@@ -207,8 +214,8 @@
 			{:else}
 				<div class="aspect-video w-full">
 					<iframe
-						src={embed.video.url}
-						title={embed.title ?? ""}
+						src={card.video.url}
+						title={card.title ?? ""}
 						class="h-full w-full"
 						allow="autoplay; encrypted-media; picture-in-picture"
 						allowfullscreen
@@ -216,9 +223,9 @@
 					></iframe>
 				</div>
 			{/if}
-		{:else if embed.image}
-			<button type="button" class="block w-full cursor-zoom-in" onclick={() => onImageClick?.(embed.image!.url)}>
-				<img src={embed.image.url} alt="" class="max-h-64 w-full max-w-full object-cover" loading="lazy" />
+		{:else if card.image}
+			<button type="button" class="block w-full cursor-zoom-in" onclick={() => onImageClick?.(card.image!.url)}>
+				<img src={card.image.url} alt="" class="max-h-64 w-full max-w-full object-cover" loading="lazy" />
 			</button>
 		{/if}
 	</div>

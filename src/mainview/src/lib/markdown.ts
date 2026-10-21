@@ -253,10 +253,14 @@ function applyInline(
 	s = s.replace(/(?<!\w)_([^\s_](?:[^_]*[^\s_])?)_(?!\w)/gs, (_, t) => `<em>${t}</em>`);
 	s = s.replace(/~~(.+?)~~/gs, (_, t) => `<del>${t}</del>`);
 	s = s.replace(/\|\|(.+?)\|\|/gs, (_, t) => `<span class="msg-spoiler">${t}</span>`);
-	// Markdown links [text](url)
+	// Markdown links [text](url). The text comes escaped (renderEmoji), quotes included; the URL's are escaped
+	// again in case it ever doesn't, as one would end the href and start an attribute of the URL's own. A URL
+	// can't hold what becomes HTML later (a code's placeholder, \x00…; a mention or custom emoji, &lt;…) or
+	// already is (an emoji's <img>): that HTML would land in the href.
 	s = s.replace(
-		/\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g,
-		(_, text, url) => `<a href="${url}" target="_blank" rel="noopener noreferrer" class="msg-link">${text}</a>`,
+		/\[([^\]]+)\]\((https?:\/\/(?:(?!&lt;)[^)\x00<])+)\)/g,
+		(_, text, url) =>
+			`<a href="${url.replace(/"/g, "&quot;")}" target="_blank" rel="noopener noreferrer" class="msg-link">${text}</a>`,
 	);
 	// Resolve <@id> mentions to @username
 	s = s.replace(/&lt;@([a-f0-9-]+)&gt;/g, (_, id) => {
