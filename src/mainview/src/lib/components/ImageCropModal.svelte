@@ -1,6 +1,19 @@
 <script lang="ts">
 	import { Dialog } from "bits-ui";
-	import { X as XIcon } from "@lucide/svelte";
+	import { X as XIcon, ZoomIn as ZoomInIcon, ZoomOut as ZoomOutIcon } from "@lucide/svelte";
+	import {
+		coverCrop,
+		cropView,
+		frameSize,
+		maxZoom,
+		panCrop,
+		sliderZoom,
+		wheelZoom,
+		zoomCrop,
+		zoomOf,
+		zoomSlider,
+		type Crop,
+	} from "$lib/image-crop";
 	let GIFEncoder: any, quantize: any, applyPalette: any;
 
 	let {
@@ -21,28 +34,32 @@
 		onConfirm: (file: File) => void;
 	} = $props();
 
+	// The frame stays in the middle of the view, which shows the rest of the image dimmed around it.
+	const VIEW_WIDTH = 400;
+	const FRAME_MARGIN = 32;
+	let frameBox = $derived(frameSize(aspect, { width: VIEW_WIDTH - 2 * FRAME_MARGIN, height: 280 }));
+	let frameLeft = $derived((VIEW_WIDTH - frameBox.width) / 2);
+
 	let file = $state<File | null>(null);
 	let imgSrc = $state("");
 	let naturalW = $state(0);
 	let naturalH = $state(0);
+	let image = $derived({ width: naturalW, height: naturalH });
 
-	let cropX = $state(0);
-	let cropY = $state(0);
-	let cropW = $state(0);
-	let cropH = $state(0);
-	let dragging = $state(false);
-	let dragStart = $state({ mx: 0, my: 0, cx: 0, cy: 0 });
-
-	let containerEl: HTMLDivElement | undefined = $state();
-	let scale = $derived(containerEl ? Math.min(400 / naturalW, 400 / naturalH, 1) : 1);
-	let displayW = $derived(Math.round(naturalW * scale));
-	let displayH = $derived(Math.round(naturalH * scale));
+	// The part of the image the frame shows, in the image's pixels: what Apply keeps. It's replaced, never changed.
+	let crop = $state.raw<Crop>({ x: 0, y: 0, width: 0, height: 0 });
+	let zoom = $derived(zoomOf(crop, image, aspect));
+	let zoomLimit = $derived(maxZoom(image, aspect, { width: targetWidth, height: targetHeight }));
+	let view = $derived(cropView(crop, frameBox));
+	let dragStart: { mx: number; my: number; crop: Crop } | null = null;
 
 	function handleFileChange(e: Event) {
 		const input = e.target as HTMLInputElement;
 		const f = input.files?.[0];
 		if (!f) return;
 		file = f;
+		naturalW = 0;
+		naturalH = 0;
 		const reader = new FileReader();
 		reader.onload = () => {
 			imgSrc = reader.result as string;
@@ -54,51 +71,46 @@
 		const img = e.target as HTMLImageElement;
 		naturalW = img.naturalWidth;
 		naturalH = img.naturalHeight;
-		fitCrop();
+		crop = coverCrop(image, aspect);
 	}
 
-	function fitCrop() {
-		let w = naturalW;
-		let h = Math.round(w / aspect);
-		if (h > naturalH) {
-			h = naturalH;
-			w = Math.round(h * aspect);
-		}
-		cropW = w;
-		cropH = h;
-		cropX = Math.round((naturalW - w) / 2);
-		cropY = Math.round((naturalH - h) / 2);
+	function handlePointerDown(e: PointerEvent) {
+		if (e.button !== 0) return;
+		dragStart = { mx: e.clientX, my: e.clientY, crop };
+		(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
 	}
 
-	function handleMouseDown(e: MouseEvent) {
-		dragging = true;
-		dragStart = { mx: e.clientX, my: e.clientY, cx: cropX, cy: cropY };
+	function handlePointerMove(e: PointerEvent) {
+		if (!dragStart) return;
+		// The image follows the pointer, so the part of it in the frame moves the other way.
+		const dx = (dragStart.mx - e.clientX) / view.scale;
+		const dy = (dragStart.my - e.clientY) / view.scale;
+		crop = panCrop(dragStart.crop, image, dx, dy);
 	}
 
-	function handleMouseMove(e: MouseEvent) {
-		if (!dragging) return;
-		const dx = (e.clientX - dragStart.mx) / scale;
-		const dy = (e.clientY - dragStart.my) / scale;
-		cropX = Math.max(0, Math.min(naturalW - cropW, Math.round(dragStart.cx + dx)));
-		cropY = Math.max(0, Math.min(naturalH - cropH, Math.round(dragStart.cy + dy)));
-	}
-
-	function handleMouseUp() {
-		dragging = false;
+	function handlePointerUp() {
+		dragStart = null;
 	}
 
 	function handleWheel(e: WheelEvent) {
 		e.preventDefault();
-		const delta = e.deltaY > 0 ? 20 : -20;
-		const newW = Math.max(64, Math.min(naturalW, cropW + delta));
-		const newH = Math.round(newW / aspect);
-		if (newH > naturalH || newH < 32) return;
-		const centerX = cropX + cropW / 2;
-		const centerY = cropY + cropH / 2;
-		cropW = newW;
-		cropH = newH;
-		cropX = Math.max(0, Math.min(naturalW - cropW, Math.round(centerX - cropW / 2)));
-		cropY = Math.max(0, Math.min(naturalH - cropH, Math.round(centerY - cropH / 2)));
+		// The point of the image under the pointer stays under it.
+		const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+		const focus = {
+			x: (e.clientX - rect.left - frameLeft) / frameBox.width,
+			y: (e.clientY - rect.top - FRAME_MARGIN) / frameBox.height,
+		};
+		crop = zoomCrop(crop, image, aspect, wheelZoom(zoom, e.deltaY, zoomLimit), focus);
+	}
+
+	function handleZoomSlider(e: Event) {
+		const value = Number((e.target as HTMLInputElement).value);
+		crop = zoomCrop(crop, image, aspect, sliderZoom(value, zoomLimit));
+	}
+
+	// The result's name: the chosen file's, with the result's extension.
+	function renamed(name: string, ext: string): string {
+		return `${name.replace(/\.[^.]*$/, "") || "image"}.${ext}`;
 	}
 
 	let imgEl: HTMLImageElement | undefined = $state();
@@ -108,13 +120,18 @@
 		processing = true;
 		try {
 			if (!file || !imgEl) return;
-
-			const isAnimated = file.type === "image/gif" || file.type === "image/webp";
+			// What the frame shows now, even if the image is moved while the result is made.
+			const area = crop;
 
 			let outputFile: File | null = null;
 
-			if (isAnimated && "ImageDecoder" in window) {
-				outputFile = await cropAnimated(file);
+			// An animated image stays animated, as a GIF (cropAnimated gives null for a still one).
+			if ("ImageDecoder" in window && file.type.startsWith("image/")) {
+				try {
+					if (await ImageDecoder.isTypeSupported(file.type)) outputFile = await cropAnimated(file, area);
+				} catch (err) {
+					console.error("Failed to crop the animation, keeping a still image:", err);
+				}
 			}
 
 			if (!outputFile) {
@@ -124,11 +141,11 @@
 				const ctx = canvas.getContext("2d")!;
 				ctx.imageSmoothingEnabled = true;
 				ctx.imageSmoothingQuality = "high";
-				ctx.drawImage(imgEl, cropX, cropY, cropW, cropH, 0, 0, targetWidth, targetHeight);
+				ctx.drawImage(imgEl, area.x, area.y, area.width, area.height, 0, 0, targetWidth, targetHeight);
 
 				const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/png"));
 				if (!blob) return;
-				outputFile = new File([blob], "image.png", { type: "image/png" });
+				outputFile = new File([blob], renamed(file.name, "png"), { type: "image/png" });
 			}
 
 			onConfirm(outputFile);
@@ -140,7 +157,7 @@
 		}
 	}
 
-	async function cropAnimated(inputFile: File): Promise<File | null> {
+	async function cropAnimated(inputFile: File, area: Crop): Promise<File | null> {
 		const buffer = await inputFile.arrayBuffer();
 		// @ts-ignore — ImageDecoder is available in Chromium
 		const decoder = new ImageDecoder({ type: inputFile.type, data: buffer });
@@ -165,7 +182,8 @@
 		const canvas = document.createElement("canvas");
 		canvas.width = targetWidth;
 		canvas.height = targetHeight;
-		const ctx = canvas.getContext("2d")!;
+		// Every frame is read back to be encoded.
+		const ctx = canvas.getContext("2d", { willReadFrequently: true })!;
 
 		const encoder = GIFEncoder();
 
@@ -189,16 +207,30 @@
 			ctx.clearRect(0, 0, targetWidth, targetHeight);
 			ctx.imageSmoothingEnabled = true;
 			ctx.imageSmoothingQuality = "high";
-			ctx.drawImage(tempCanvas, cropX, cropY, cropW, cropH, 0, 0, targetWidth, targetHeight);
+			ctx.drawImage(tempCanvas, area.x, area.y, area.width, area.height, 0, 0, targetWidth, targetHeight);
 
-			const imageData = ctx.getImageData(0, 0, targetWidth, targetHeight);
-			const palette = quantize(imageData.data, 256);
-			const indexed = applyPalette(imageData.data, palette);
+			const { data } = ctx.getImageData(0, 0, targetWidth, targetHeight);
+			// A GIF's pixels are opaque or clear: one under half opacity turns clear, and any other opaque.
+			let firstClear = -1;
+			for (let p = 0; p < data.length; p += 4) {
+				if (data[p + 3] < 128) {
+					data[p] = data[p + 1] = data[p + 2] = data[p + 3] = 0;
+					if (firstClear < 0) firstClear = p / 4;
+				} else {
+					data[p + 3] = 255;
+				}
+			}
+			const format = firstClear < 0 ? "rgb565" : "rgba4444";
+			const palette = quantize(data, 256, { format, oneBitAlpha: true });
+			const indexed = applyPalette(data, palette, format);
 
 			encoder.writeFrame(indexed, targetWidth, targetHeight, {
 				palette,
 				delay: delayMs,
 				dispose: 2,
+				// The clear pixels all took one color of the palette, which the frame makes its transparent one.
+				transparent: firstClear >= 0,
+				transparentIndex: firstClear < 0 ? 0 : indexed[firstClear],
 			});
 		}
 
@@ -206,7 +238,7 @@
 		const gifBytes = encoder.bytes();
 		decoder.close();
 
-		return new File([new Blob([gifBytes])], "image.gif", { type: "image/gif" });
+		return new File([new Blob([gifBytes])], renamed(inputFile.name, "gif"), { type: "image/gif" });
 	}
 </script>
 
@@ -236,42 +268,56 @@
 							<input type="file" accept="image/*" class="hidden" onchange={handleFileChange} />
 						</label>
 					{:else}
-						<p class="mb-2 text-xs text-zinc-500">Drag to reposition. Scroll to resize.</p>
+						<p class="mb-2 text-xs text-zinc-500">Drag to reposition. Scroll to zoom.</p>
 						<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 						<div
-							class="relative mx-auto overflow-hidden rounded-lg bg-zinc-950 select-none"
-							style="width: {displayW}px; height: {displayH}px;"
-							bind:this={containerEl}
+							class="relative mx-auto cursor-grab touch-none overflow-hidden rounded-lg bg-zinc-950 select-none active:cursor-grabbing"
+							style="width: {VIEW_WIDTH}px; height: {frameBox.height + 2 * FRAME_MARGIN}px;"
 							role="application"
 							tabindex="-1"
-							onmousedown={handleMouseDown}
-							onmousemove={handleMouseMove}
-							onmouseup={handleMouseUp}
-							onmouseleave={handleMouseUp}
+							onpointerdown={handlePointerDown}
+							onpointermove={handlePointerMove}
+							onpointerup={handlePointerUp}
+							onpointercancel={handlePointerUp}
 							onwheel={handleWheel}
 						>
 							<img
 								bind:this={imgEl}
 								src={imgSrc}
 								alt="Preview"
-								class="block"
-								style="width: {displayW}px; height: {displayH}px;"
+								class="absolute block max-w-none {naturalW ? '' : 'invisible'}"
+								style="
+									left: {frameLeft + view.x}px;
+									top: {FRAME_MARGIN + view.y}px;
+									width: {naturalW * view.scale}px;
+									height: {naturalH * view.scale}px;
+								"
 								onload={onImageLoad}
 								draggable="false"
 							/>
-							<div class="pointer-events-none absolute inset-0 bg-black/60"></div>
+							<!-- The frame shows the result; its shadow dims the rest of the image. -->
 							<div
-								class="pointer-events-none absolute border-2 border-white/40 {round ? 'rounded-full' : 'rounded-md'}"
-								style="
-									left: {cropX * scale}px;
-									top: {cropY * scale}px;
-									width: {cropW * scale}px;
-									height: {cropH * scale}px;
-									background: url('{imgSrc}') no-repeat;
-									background-size: {displayW}px {displayH}px;
-									background-position: -{cropX * scale}px -{cropY * scale}px;
-								"
+								class="pointer-events-none absolute shadow-[0_0_0_9999px_rgb(0_0_0/0.6)] ring-2 ring-white/40 {round
+									? 'rounded-full'
+									: 'rounded-md'}"
+								style="left: {frameLeft}px; top: {FRAME_MARGIN}px; width: {frameBox.width}px; height: {frameBox.height}px;"
 							></div>
+						</div>
+
+						<div class="mx-auto mt-3 flex items-center gap-3" style="width: {VIEW_WIDTH}px;">
+							<ZoomOutIcon class="size-4 shrink-0 text-zinc-500" />
+							<input
+								type="range"
+								min="0"
+								max="1"
+								step="0.01"
+								value={zoomSlider(zoom, zoomLimit)}
+								oninput={handleZoomSlider}
+								disabled={zoomLimit <= 1}
+								aria-label="Zoom"
+								class="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-zinc-700 accent-stone-500 disabled:cursor-default disabled:opacity-40 [&::-webkit-slider-thumb]:h-3.5 [&::-webkit-slider-thumb]:w-3.5 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-stone-400"
+							/>
+							<ZoomInIcon class="size-4 shrink-0 text-zinc-500" />
 						</div>
 
 						<div class="mt-4 flex justify-between gap-3">

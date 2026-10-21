@@ -5,6 +5,7 @@
 	import MessageComponents from "$lib/components/MessageComponents.svelte";
 	import { renderMarkdown, type CustomEmojiMap } from "$lib/markdown";
 	import { isComponentsV2, type Message } from "$lib/types";
+	import { formatShortDateTime } from "$lib/utils/time";
 
 	// A message as the search results and the pinned messages list it: its channel (when given), author,
 	// date, content, and its voice note, sticker, files or components as the chat shows them, smaller;
@@ -22,9 +23,6 @@
 		customEmojiMap?: CustomEmojiMap;
 		onPreview: (src: string, alt?: string) => void;
 	} = $props();
-
-	const locale = typeof navigator !== "undefined" ? navigator.language : "en-US";
-	const formatDate = (iso: string) => new Date(iso).toLocaleString(locale, { dateStyle: "short", timeStyle: "short" });
 
 	const html = $derived(message.content ? renderMarkdown(message.content, false, mentionMap, customEmojiMap) : "");
 	// The content shows six lines; Show more shows the rest. clamped says whether the six hide some of it,
@@ -56,7 +54,7 @@
 	<div class="flex min-w-0 flex-1 flex-col">
 		<div class="flex items-baseline gap-1.5">
 			<span class="truncate text-sm font-semibold text-stone-100">{message.author_name}</span>
-			<span class="text-xxs shrink-0 text-stone-500">{formatDate(message.created_at)}</span>
+			<span class="text-xxs shrink-0 text-stone-500">{formatShortDateTime(message.created_at)}</span>
 		</div>
 		{#if html}
 			<div

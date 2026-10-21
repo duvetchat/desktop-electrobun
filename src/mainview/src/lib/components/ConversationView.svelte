@@ -124,7 +124,8 @@
 			status: (getUserOnlineStatus(m.user_id) === 1 ? "online" : "offline") as "online" | "offline",
 			badges: m.user?.badges ?? 0,
 			is_bot: m.user?.is_bot ?? false,
-			is_owner: m.user_id === conversation.owner_id,
+			// A DM's owner_id is just whoever opened it: only a group has an owner.
+			is_owner: conversation.type === 2 && m.user_id === conversation.owner_id,
 			roles: [],
 		})),
 	);
@@ -591,19 +592,17 @@
 					Add
 				</button>
 			{/if}
-			{#if conversation.type === 2}
-				<button
-					class="flex items-center gap-1 rounded px-2 py-1 text-xs font-normal {showMemberList
-						? 'bg-stone-800 text-zinc-200'
-						: 'text-zinc-400 hover:bg-stone-800 hover:text-zinc-200'}"
-					onclick={() => {
-						showMemberList = !showMemberList;
-					}}
-					title="Members"
-				>
-					<Users class="size-3.5" />
-				</button>
-			{/if}
+			<button
+				class="flex items-center gap-1 rounded px-2 py-1 text-xs font-normal {showMemberList
+					? 'bg-stone-800 text-zinc-200'
+					: 'text-zinc-400 hover:bg-stone-800 hover:text-zinc-200'}"
+				onclick={() => {
+					showMemberList = !showMemberList;
+				}}
+				title="Members"
+			>
+				<Users class="size-3.5" />
+			</button>
 			{#key conversation.id}
 				<PinnedMessages channelId={conversation.id} conversation members={convMembers} toDirectMessage={toMessage} />
 				<div class="ml-2">
@@ -669,11 +668,11 @@
 		/>
 
 		<!-- Member list sidebar -->
-		{#if conversation.type === 2 && showMemberList}
+		{#if showMemberList}
 			<GuildMemberSidebar
 				overrideMembers={convMembers}
 				channelId={conversation.id}
-				onRemoveMember={isOwner ? handleRemoveMember : undefined}
+				onRemoveMember={conversation.type === 2 && isOwner ? handleRemoveMember : undefined}
 			/>
 		{/if}
 	</div>

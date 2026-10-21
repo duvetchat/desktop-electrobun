@@ -303,7 +303,7 @@ export interface GatewayMessage {
 	sticker_attachment_id?: string | null;
 	/** When it was pinned; null while it isn't. Events that create or edit a message leave it out. */
 	pinned_at?: string | null;
-	/** MessageFlag bits. The thread endpoint leaves them and the components out. */
+	/** MessageFlag bits. */
 	flags?: number;
 	components?: Component[] | null;
 	/** Set on the messages a bot sends for an interaction. */

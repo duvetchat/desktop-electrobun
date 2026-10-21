@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { Hash as HashIcon } from "@lucide/svelte";
+	import { Eye as EyeIcon, EyeOff as EyeOffIcon, Hash as HashIcon } from "@lucide/svelte";
 
 	import { onMount, onDestroy } from "svelte";
 	import ChatInput from "$lib/components/ChatInput.svelte";
@@ -28,6 +28,7 @@
 	import { getApiError } from "$lib/api/api";
 	import { getSpaceCommands, sendCommandInteraction } from "$lib/api/interactions";
 	import { hasPermission, Permission } from "$lib/permissions";
+	import { displayName, isSpoiler, withSpoiler } from "$lib/spoilers";
 
 	let {
 		messages,
@@ -145,6 +146,12 @@
 
 	function removePendingFile(index: number) {
 		pendingFiles = pendingFiles.filter((_, i) => i !== index);
+	}
+
+	// A spoiler is a file named SPOILER_<name> (lib/spoilers): the toggle renames the file waiting to be
+	// sent, so whatever sends it (a room's message, a conversation's, a retry) sends it as a spoiler.
+	function toggleSpoiler(index: number) {
+		pendingFiles = pendingFiles.map((f, i) => (i === index ? withSpoiler(f, !isSpoiler(f.name)) : f));
 	}
 	let editingMessageId = $state<string | null>(null);
 	let editContent = $state("");
@@ -624,13 +631,30 @@
 				{#if pendingFiles.length > 0}
 					<div class="flex flex-wrap gap-1.5 border-t border-stone-800 bg-stone-900/90 px-3 py-1.5">
 						{#each pendingFiles as file, i}
+							{@const name = displayName(file.name)}
+							{@const spoiler = isSpoiler(file.name)}
 							<div class="flex max-w-56 items-center gap-1.5 rounded border border-stone-700 bg-stone-800 px-2 py-1">
-								<span class="truncate text-xs text-zinc-300">{file.name}</span>
+								<span class="truncate text-xs text-zinc-300">{name}</span>
 								<span class="text-xxs shrink-0 text-zinc-500">{formatFileSize(file.size)}</span>
+								<button
+									class="shrink-0 transition-colors {spoiler
+										? 'text-indigo-300 hover:text-indigo-200'
+										: 'text-zinc-500 hover:text-zinc-300'}"
+									onclick={() => toggleSpoiler(i)}
+									aria-pressed={spoiler}
+									aria-label="Mark {name} as spoiler"
+									title={spoiler ? "Remove spoiler" : "Mark as spoiler"}
+								>
+									{#if spoiler}
+										<EyeOffIcon class="size-3" />
+									{:else}
+										<EyeIcon class="size-3" />
+									{/if}
+								</button>
 								<button
 									class="shrink-0 text-zinc-500 transition-colors hover:text-zinc-300"
 									onclick={() => removePendingFile(i)}
-									aria-label="Remove {file.name}"
+									aria-label="Remove {name}"
 								>
 									<svg
 										xmlns="http://www.w3.org/2000/svg"

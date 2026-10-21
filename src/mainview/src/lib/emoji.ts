@@ -41,8 +41,9 @@ export const EMOJI_REGEX =
 /** Replace Unicode emoji in a plain string with Twemoji <img> tags. */
 export function renderEmoji(text: string, large = false): string {
 	const cls = large ? "emoji-img emoji-large" : "emoji-img";
-	// Escape HTML first to avoid XSS, then replace emoji
-	const escaped = text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+	// Escape HTML first to avoid XSS, then replace emoji. Quotes too: markdown puts parts of this text in
+	// attributes (a link's URL in its href), where an unescaped " would end the value and start an attribute.
+	const escaped = text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
 	return escaped.replace(EMOJI_REGEX, (emoji) => {
 		const url = toTwemojiUrl(emoji);
