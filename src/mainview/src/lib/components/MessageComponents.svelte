@@ -3,6 +3,7 @@
 	import { SvelteSet } from "svelte/reactivity";
 	import ComponentSelect from "$lib/components/ComponentSelect.svelte";
 	import SpoilerCover from "$lib/components/SpoilerCover.svelte";
+	import { webUrl } from "$lib/urls";
 	import { FetchError, getApiError } from "$lib/api/api";
 	import type { ComponentUse } from "$lib/api/interactions";
 	import { getHostURL } from "$lib/common/common";
@@ -91,7 +92,6 @@
 	};
 
 	// Only http(s) urls become links and media, whatever a bot sends (the API checks them too).
-	const webUrl = (url: string | undefined) => (url && /^https?:\/\//i.test(url) ? url : undefined);
 	// A file sent with the message comes as a signed path on the API's host; any other media is a full url.
 	const mediaSrc = (m: ComponentMedia) => (m.url.startsWith("/") ? host + m.url : (webUrl(m.url) ?? ""));
 	const isVideo = (m: ComponentMedia) =>
