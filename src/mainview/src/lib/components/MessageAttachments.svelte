@@ -1,13 +1,17 @@
 <script lang="ts">
+	import { SvelteSet } from "svelte/reactivity";
 	import AudioFilePlayer from "$lib/components/AudioFilePlayer.svelte";
+	import SpoilerCover from "$lib/components/SpoilerCover.svelte";
 	import VoiceNotePlayer from "$lib/components/VoiceNotePlayer.svelte";
 	import { getHostURL } from "$lib/common/common";
+	import { displayName, isSpoiler } from "$lib/spoilers";
 	import { MessageType, type Message } from "$lib/types";
 
 	// A message's voice note, sticker or files as the chat shows them, for the message list and the message
 	// previews (pins, search results). Images and videos fit in maxWidth × maxHeight; a click on an image or
 	// a sticker calls onPreview. data-attachments marks all of it, so a click on a file can be told from a
-	// click on its message.
+	// click on its message. A spoiler file (lib/spoilers) is blurred under a cover until a click reveals it,
+	// for as long as this view shows the message, and its name shows without the prefix.
 	let {
 		message,
 		channelName,
@@ -23,6 +27,8 @@
 	} = $props();
 
 	const attachmentHost = getHostURL();
+	// The spoiler files a click revealed, by attachment ID.
+	const revealed = new SvelteSet<string>();
 
 	function formatFileSize(bytes: number): string {
 		if (bytes < 1024) return `${bytes} B`;
@@ -100,18 +106,20 @@
 	{:else if message.attachments && message.attachments.length > 0}
 		<div class="mt-1 flex flex-col gap-1">
 			{#each message.attachments as att}
+				{@const name = displayName(att.filename)}
+				{@const hidden = isSpoiler(att.filename) && !revealed.has(att.id)}
 				{#if att.pending}
 					{#if att.content_type.startsWith("image/")}
 						<div class="flex h-40 w-64 animate-pulse items-center justify-center rounded-md bg-zinc-700/40">
-							<span class="text-xs text-zinc-500">Uploading {att.filename}...</span>
+							<span class="text-xs text-zinc-500">Uploading {name}...</span>
 						</div>
 					{:else if att.content_type.startsWith("video/")}
 						<div class="flex h-44 w-80 animate-pulse items-center justify-center rounded-md bg-zinc-700/40">
-							<span class="text-xs text-zinc-500">Uploading {att.filename}...</span>
+							<span class="text-xs text-zinc-500">Uploading {name}...</span>
 						</div>
 					{:else}
 						<div class="inline-flex max-w-xs animate-pulse items-center gap-2 rounded-md bg-zinc-800/60 px-3 py-2">
-							<span class="text-xs text-zinc-500">Uploading {att.filename}...</span>
+							<span class="text-xs text-zinc-500">Uploading {name}...</span>
 							<span class="shrink-0 text-xs text-zinc-600">{formatFileSize(att.size_bytes)}</span>
 						</div>
 					{/if}
@@ -145,39 +153,44 @@
 					{@const imgScale = Math.min(maxWidth / rawW, maxHeight / rawH, 1)}
 					{@const iw = Math.round(rawW * imgScale)}
 					{@const ih = Math.round(rawH * imgScale)}
-					<button
-						type="button"
-						class="relative block cursor-zoom-in overflow-hidden rounded-md"
-						style="width: {iw}px; height: {ih}px; max-width: 100%;"
-						onclick={() => onPreview(`${attachmentHost}${att.url ?? `/attachments/${att.id}`}`, att.filename)}
-					>
-						<div class="img-skeleton absolute inset-0 animate-pulse bg-zinc-700/40"></div>
-						<img
-							src="{attachmentHost}{att.url ?? `/attachments/${att.id}`}"
-							alt={att.filename}
-							class="relative h-full w-full rounded-md object-contain text-transparent"
-							loading="lazy"
-							onload={(e) => {
-								(e.currentTarget as HTMLElement).parentElement?.querySelector(".img-skeleton")?.remove();
-							}}
-							onerror={(e) => {
-								const img = e.currentTarget as HTMLImageElement;
-								const retries = parseInt(img.dataset.retries ?? "0");
-								if (retries < 10) {
-									img.dataset.retries = String(retries + 1);
-									setTimeout(() => {
-										const base = img.src.replace(/[&?]r=\d+/, "");
-										img.src = base + (base.includes("?") ? "&" : "?") + "r=" + Date.now();
-									}, 1000);
-								} else {
-									const parent = img.parentElement!;
-									parent.querySelector(".img-skeleton")?.remove();
-									img.remove();
-									parent.innerHTML = `<div class="flex flex-col items-center justify-center w-full h-full bg-zinc-800/60 rounded-md gap-1"><span class="text-2xl">💩</span><span class="text-xs text-zinc-500">Failed to load</span></div>`;
-								}
-							}}
-						/>
-					</button>
+					<div class="relative overflow-hidden rounded-md" style="width: {iw}px; height: {ih}px; max-width: 100%;">
+						<button
+							type="button"
+							class="relative block size-full cursor-zoom-in"
+							inert={hidden}
+							onclick={() => onPreview(`${attachmentHost}${att.url ?? `/attachments/${att.id}`}`, name)}
+						>
+							<div class="img-skeleton absolute inset-0 animate-pulse bg-zinc-700/40"></div>
+							<img
+								src="{attachmentHost}{att.url ?? `/attachments/${att.id}`}"
+								alt={name}
+								class="relative h-full w-full rounded-md object-contain text-transparent {hidden ? 'blur-xl' : ''}"
+								loading="lazy"
+								onload={(e) => {
+									(e.currentTarget as HTMLElement).parentElement?.querySelector(".img-skeleton")?.remove();
+								}}
+								onerror={(e) => {
+									const img = e.currentTarget as HTMLImageElement;
+									const retries = parseInt(img.dataset.retries ?? "0");
+									if (retries < 10) {
+										img.dataset.retries = String(retries + 1);
+										setTimeout(() => {
+											const base = img.src.replace(/[&?]r=\d+/, "");
+											img.src = base + (base.includes("?") ? "&" : "?") + "r=" + Date.now();
+										}, 1000);
+									} else {
+										const parent = img.parentElement!;
+										parent.querySelector(".img-skeleton")?.remove();
+										img.remove();
+										parent.innerHTML = `<div class="flex flex-col items-center justify-center w-full h-full bg-zinc-800/60 rounded-md gap-1"><span class="text-2xl">💩</span><span class="text-xs text-zinc-500">Failed to load</span></div>`;
+									}
+								}}
+							/>
+						</button>
+						{#if hidden}
+							<SpoilerCover onReveal={() => revealed.add(att.id)} />
+						{/if}
+					</div>
 				{:else if att.content_type.startsWith("video/")}
 					{@const rawVW = att.width ?? maxWidth}
 					{@const rawVH = att.height ?? maxHeight}
@@ -192,7 +205,8 @@
 						<video
 							src="{attachmentHost}{att.url ?? `/attachments/${att.id}`}"
 							controls
-							class="relative h-full w-full rounded-md"
+							class="relative h-full w-full rounded-md {hidden ? 'blur-xl' : ''}"
+							inert={hidden}
 							onloadeddata={(e) => {
 								const el = e.currentTarget as HTMLVideoElement;
 								el.parentElement?.querySelector(".video-skeleton")?.remove();
@@ -214,26 +228,45 @@
 								}
 							}}
 						></video>
+						{#if hidden}
+							<SpoilerCover onReveal={() => revealed.add(att.id)} />
+						{/if}
 					</div>
 				{:else if att.content_type.startsWith("audio/")}
-					<AudioFilePlayer
-						src="{attachmentHost}{att.url ?? `/attachments/${att.id}`}"
-						attachmentId={att.id}
-						filename={att.filename}
-						sizeBytes={att.size_bytes}
-						authorName={message.author_name ?? "Unknown"}
-						{channelName}
-					/>
+					<!-- As wide as the player. It clips only while hidden: the volume slider pops out above it. -->
+					<div class="relative max-w-87.5 rounded-lg {hidden ? 'overflow-hidden' : ''}">
+						<div class={hidden ? "blur-md" : ""} inert={hidden}>
+							<AudioFilePlayer
+								src="{attachmentHost}{att.url ?? `/attachments/${att.id}`}"
+								attachmentId={att.id}
+								filename={name}
+								sizeBytes={att.size_bytes}
+								authorName={message.author_name ?? "Unknown"}
+								{channelName}
+							/>
+						</div>
+						{#if hidden}
+							<SpoilerCover onReveal={() => revealed.add(att.id)} />
+						{/if}
+					</div>
 				{:else}
-					<a
-						href="{attachmentHost}{att.url ?? `/attachments/${att.id}`}"
-						target="_blank"
-						rel="noopener noreferrer"
-						class="mt-1 inline-flex max-w-xs items-center gap-2 rounded-md bg-zinc-800/60 px-3 py-2 text-sm text-zinc-300 hover:bg-zinc-700/60"
-					>
-						<span class="truncate">{att.filename}</span>
-						<span class="shrink-0 text-xs text-zinc-500">{formatFileSize(att.size_bytes)}</span>
-					</a>
+					<div class="relative mt-1 max-w-xs overflow-hidden rounded-md">
+						<a
+							href="{attachmentHost}{att.url ?? `/attachments/${att.id}`}"
+							target="_blank"
+							rel="noopener noreferrer"
+							class="flex items-center gap-2 rounded-md bg-zinc-800/60 px-3 py-2 text-sm text-zinc-300 hover:bg-zinc-700/60 {hidden
+								? 'blur-md'
+								: ''}"
+							inert={hidden}
+						>
+							<span class="truncate">{name}</span>
+							<span class="shrink-0 text-xs text-zinc-500">{formatFileSize(att.size_bytes)}</span>
+						</a>
+						{#if hidden}
+							<SpoilerCover onReveal={() => revealed.add(att.id)} />
+						{/if}
+					</div>
 				{/if}
 			{/each}
 		</div>
