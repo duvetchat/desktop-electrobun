@@ -6,6 +6,7 @@
 	import type { InviteInfo } from "$lib/api/invites";
 	import { userSession } from "$lib/stores.svelte";
 	import { route } from "$lib/common/common";
+	import { isUuid, signInUrl } from "$lib/urls";
 
 	function inviteUrl(code: string) {
 		return route(`/invite.html?code=${encodeURIComponent(code)}`);
@@ -13,10 +14,6 @@
 
 	function botInviteUrl(id: string) {
 		return route(`/invite.html?bot=${encodeURIComponent(id)}`);
-	}
-
-	function loginUrlForRedirect(redirectUrl: string) {
-		return route(`/index.html?redirect=${encodeURIComponent(redirectUrl)}`);
 	}
 
 	function readCodeFromHash(hash: string) {
@@ -41,8 +38,14 @@
 		code = page.url.searchParams.get("code") ?? readCodeFromHash(window.location.hash) ?? "";
 
 		if (botParam) {
+			// A bot's ID goes into the paths of the requests about it, and anyone can make this link.
+			if (!isUuid(botParam)) {
+				error = "Invalid invite link.";
+				loading = false;
+				return;
+			}
 			if (!userSession.token) {
-				window.location.href = loginUrlForRedirect(botInviteUrl(botParam));
+				window.location.href = signInUrl(botInviteUrl(botParam));
 				return;
 			}
 			// Redirect to app — the gateway needs to be connected for the space list
@@ -54,7 +57,7 @@
 			} catch (err) {
 				const msg = getApiError(err, "This invite is invalid or has expired.");
 				if (msg === "Session invalid or expired") {
-					window.location.href = loginUrlForRedirect(inviteUrl(code));
+					window.location.href = signInUrl(inviteUrl(code));
 					return;
 				}
 				error = msg;
@@ -71,7 +74,7 @@
 		if (!code) return;
 
 		if (!userSession.token) {
-			window.location.href = loginUrlForRedirect(inviteUrl(code));
+			window.location.href = signInUrl(inviteUrl(code));
 			return;
 		}
 
@@ -83,7 +86,7 @@
 		} catch (err) {
 			const msg = getApiError(err, "We couldn't join this server. Please try again.");
 			if (msg === "Session invalid or expired") {
-				window.location.href = loginUrlForRedirect(inviteUrl(code));
+				window.location.href = signInUrl(inviteUrl(code));
 				return;
 			}
 			error = msg;
@@ -163,7 +166,7 @@
 					<p class="mb-4 text-sm text-zinc-300">Sign in to join this server.</p>
 					<button
 						class="w-full rounded-xl bg-stone-600 py-3 text-base font-semibold text-white transition hover:bg-stone-500"
-						onclick={() => (window.location.href = loginUrlForRedirect(inviteUrl(code)))}
+						onclick={() => (window.location.href = signInUrl(inviteUrl(code)))}
 					>
 						Sign in to join
 					</button>

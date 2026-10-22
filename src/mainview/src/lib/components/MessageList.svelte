@@ -33,6 +33,7 @@
 	import { gatewayMessageToMessage, isComponentsV2, isLoading, messageText } from "$lib/types";
 	import { MessageType, type MemberOnSidebar, type GatewaySpace, type Message, type SpaceEmoji } from "$lib/types";
 	import { getHostURL, getAvatarURL, DUVET_DOMAIN } from "$lib/common/common";
+	import { isUuid, parseMessageLink, type MessageLink } from "$lib/urls";
 
 	import InviteEmbed from "$lib/components/InviteEmbed.svelte";
 	import BotInviteEmbed from "$lib/components/BotInviteEmbed.svelte";
@@ -631,10 +632,6 @@
 	}
 
 	// ── Message link navigation ────────────────────────────────────────────────
-	const DOMAIN_ESCAPED = DUVET_DOMAIN.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-	const roomLinkRegex = new RegExp(`^${DOMAIN_ESCAPED}/channels/([^/]+)/([^/]+)/([^/]+)$`);
-	const convLinkRegex = new RegExp(`^${DOMAIN_ESCAPED}/conversations/([^/]+)/([^/]+)$`);
-
 	function parseInviteLink(url: string): boolean {
 		return parseInviteCode(url) !== null;
 	}
@@ -653,73 +650,28 @@
 		try {
 			const u = new URL(url);
 			if ((u.origin === DUVET_DOMAIN || u.origin === window.location.origin) && u.pathname === "/invite") {
-				return u.searchParams.get("bot");
+				// Only a bot's ID: it goes into the paths of the requests about the bot.
+				const bot = u.searchParams.get("bot");
+				return isUuid(bot) ? bot : null;
 			}
 		} catch {}
 		return null;
 	}
 
 	function tryNavigateMessageLink(url: string): boolean {
-		const roomMatch = roomLinkRegex.exec(url);
-		if (roomMatch) {
-			const [, linkSpaceId, linkRoomId, linkMessageId] = roomMatch;
-			jumpToMessageRequest.set({
-				id: crypto.randomUUID(),
-				spaceId: linkSpaceId,
-				roomId: linkRoomId,
-				messageId: linkMessageId,
-			});
-			return true;
-		}
-		const convMatch = convLinkRegex.exec(url);
-		if (convMatch) {
-			const [, linkConvId, linkMessageId] = convMatch;
-			jumpToMessageRequest.set({
-				id: crypto.randomUUID(),
-				spaceId: "",
-				roomId: "",
-				messageId: linkMessageId,
-				conversationId: linkConvId,
-			});
-			return true;
-		}
-		return false;
+		const link = parseMessageLink(url);
+		if (!link) return false;
+		jumpToMessageRequest.set({ id: crypto.randomUUID(), ...link });
+		return true;
 	}
 
-	function resolveMessageLink(url: string): {
-		spaceName: string;
-		roomName: string;
-		spaceId: string;
-		roomId: string;
-		messageId: string;
-		conversationId?: string;
-	} | null {
-		const roomMatch = roomLinkRegex.exec(url);
-		if (roomMatch) {
-			const [, linkSpaceId, linkRoomId, linkMessageId] = roomMatch;
-			const sp = $gatewaySpaces.find((s) => s.id === linkSpaceId);
-			const rm = sp?.rooms.find((r) => r.id === linkRoomId);
-			return {
-				spaceId: linkSpaceId,
-				roomId: linkRoomId,
-				messageId: linkMessageId,
-				spaceName: sp?.name ?? "Unknown server",
-				roomName: rm?.name ?? "unknown",
-			};
-		}
-		const convMatch = convLinkRegex.exec(url);
-		if (convMatch) {
-			const [, linkConvId, linkMessageId] = convMatch;
-			return {
-				spaceId: "",
-				roomId: "",
-				messageId: linkMessageId,
-				conversationId: linkConvId,
-				spaceName: "",
-				roomName: "Direct Message",
-			};
-		}
-		return null;
+	function resolveMessageLink(url: string): (MessageLink & { spaceName: string; roomName: string }) | null {
+		const link = parseMessageLink(url);
+		if (!link) return null;
+		if (link.conversationId) return { ...link, spaceName: "", roomName: "Direct Message" };
+		const sp = $gatewaySpaces.find((s) => s.id === link.spaceId);
+		const rm = sp?.rooms.find((r) => r.id === link.roomId);
+		return { ...link, spaceName: sp?.name ?? "Unknown server", roomName: rm?.name ?? "unknown" };
 	}
 
 	// ── URL processing ─────────────────────────────────────────────────────────
@@ -729,40 +681,21 @@
 		const urls = content.match(urlRegex) || [];
 		const inviteCodes: string[] = [];
 		const botInviteIds: string[] = [];
-		const messageLinks: { spaceId: string; roomId: string; messageId: string; conversationId?: string }[] = [];
+		const messageLinks: MessageLink[] = [];
 
 		urls.forEach((url) => {
-			try {
-				const roomMatch = roomLinkRegex.exec(url);
-				if (roomMatch) {
-					const [, lSpaceId, lRoomId, lMessageId] = roomMatch;
-					messageLinks.push({ spaceId: lSpaceId, roomId: lRoomId, messageId: lMessageId });
-					return;
-				}
-				const convMatch = convLinkRegex.exec(url);
-				if (convMatch) {
-					const [, lConvId, lMessageId] = convMatch;
-					messageLinks.push({ spaceId: "", roomId: "", messageId: lMessageId, conversationId: lConvId });
-					return;
-				}
-
-				const parsed = new URL(url);
-				if (parsed.pathname === "/invite") {
-					const code = parsed.searchParams.get("code");
-					if (code) {
-						inviteCodes.push(code);
-						return;
-					}
-				}
-
-				const botId = parseBotInviteLink(url);
-				if (botId) {
-					botInviteIds.push(botId);
-					return;
-				}
-			} catch {
-				// Invalid URL, ignore
+			const link = parseMessageLink(url);
+			if (link) {
+				messageLinks.push(link);
+				return;
 			}
+			const code = parseInviteCode(url);
+			if (code) {
+				inviteCodes.push(code);
+				return;
+			}
+			const botId = parseBotInviteLink(url);
+			if (botId) botInviteIds.push(botId);
 		});
 
 		return { text: content, inviteCodes, botInviteIds, messageLinks };
@@ -1257,7 +1190,7 @@
 									>
 										{#each parseTextSegments(processed.text) as segment}
 											{#if segment.type === "link"}
-												{#if roomLinkRegex.test(segment.content) || convLinkRegex.test(segment.content)}
+												{#if parseMessageLink(segment.content)}
 													{@const resolved = resolveMessageLink(segment.content)}
 													{#if resolved}
 														<button

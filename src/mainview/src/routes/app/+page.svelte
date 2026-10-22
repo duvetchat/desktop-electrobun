@@ -28,6 +28,7 @@
 	import { gatewaySpaceToGuild, gatewaySpaceToMembers } from "$lib/types";
 	import { userStatusCache } from "$lib/api/ws/connection";
 	import { DUVET_DOMAIN } from "$lib/common/common";
+	import { isUuid } from "$lib/urls";
 
 	const layoutPrefsKey = "duvet.layout.panels.v1";
 
@@ -69,13 +70,16 @@
 		const urlParams = new URLSearchParams(window.location.search);
 		const botParam = urlParams.get("bot");
 		if (botParam) {
-			// Defer opening until gateway is connected and spaces are loaded
-			const unsub = friendsReady.subscribe((ready) => {
-				if (ready) {
-					openBotInvite(botParam);
-					unsub();
-				}
-			});
+			// Only a bot's ID: it goes into the paths of the requests about the bot, and anyone can make this link.
+			if (isUuid(botParam)) {
+				// Defer opening until gateway is connected and spaces are loaded
+				const unsub = friendsReady.subscribe((ready) => {
+					if (ready) {
+						openBotInvite(botParam);
+						unsub();
+					}
+				});
+			}
 			// Clean URL
 			history.replaceState(null, "", window.location.pathname);
 		}

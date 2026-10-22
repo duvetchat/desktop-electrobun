@@ -5,15 +5,12 @@
 	import type { InviteInfo } from "$lib/api/invites";
 	import { userSession } from "$lib/stores.svelte";
 	import { route } from "$lib/common/common";
+	import { signInUrl } from "$lib/urls";
 
 	let { code }: { code: string } = $props();
 
 	function inviteUrl(codeValue: string) {
 		return route(`/invite.html?code=${encodeURIComponent(codeValue)}`);
-	}
-
-	function loginUrlForInvite(codeValue: string) {
-		return route(`/index.html?redirect=${encodeURIComponent(inviteUrl(codeValue))}`);
 	}
 
 	let invite = $state<InviteInfo | null>(null);
@@ -40,7 +37,7 @@
 
 	async function handleJoin() {
 		if (!userSession.token) {
-			window.location.href = loginUrlForInvite(code);
+			window.location.href = signInUrl(inviteUrl(code));
 			return;
 		}
 		joining = true;

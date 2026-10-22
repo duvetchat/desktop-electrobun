@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { onMount } from "svelte";
 	import { Button, Label } from "bits-ui";
 	import { logIn } from "$lib/api/auth";
 	import { userSession } from "$lib/stores.svelte";
@@ -10,6 +11,13 @@
 	let password = $state("");
 	let doingRequest = $state(false);
 	let errorMessage = $state("");
+	// The page to go on to (an invite's), which creating an account instead goes on to as well.
+	let redirectQuery = $state("");
+
+	onMount(() => {
+		const redirect = new URLSearchParams(window.location.search).get("redirect");
+		if (redirect) redirectQuery = `?redirect=${encodeURIComponent(redirect)}`;
+	});
 
 	async function handleSubmit() {
 		doingRequest = true;
@@ -141,7 +149,9 @@
 
 			<footer class="mt-6 text-center text-sm text-zinc-300">
 				New to Duvet?
-				<a href="/sign-up" class="ml-1 text-stone-300 hover:text-stone-200 hover:underline">Create an account</a>
+				<a href="/sign-up{redirectQuery}" class="ml-1 text-stone-300 hover:text-stone-200 hover:underline"
+					>Create an account</a
+				>
 			</footer>
 		</div>
 	</div>
