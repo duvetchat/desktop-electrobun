@@ -120,7 +120,7 @@ export const MessageFlag = {
 /** What a message a bot sends for an interaction says about it (interactions.Metadata in the API). */
 export interface InteractionMetadata {
 	id: string;
-	/** 2 for a command, 3 for a component. */
+	/** 2 for a command, 3 for a component, 5 for a modal's submit. */
 	type: number;
 	/** Who used it, as they were when the message was made. */
 	user: { id: string; username: string; alias: string | null; avatar: string | null };
@@ -183,11 +183,13 @@ export interface SpaceCommands {
 	commands: ApplicationCommand[];
 }
 
-/** The component types a message can have (components.Type in the API). */
+/** The component types of messages and modals (components.Type in the API). */
 export const ComponentType = {
 	ActionRow: 1,
 	Button: 2,
 	StringSelect: 3,
+	/** A modal's. */
+	TextInput: 4,
 	UserSelect: 5,
 	RoleSelect: 6,
 	MentionableSelect: 7,
@@ -199,6 +201,14 @@ export const ComponentType = {
 	File: 13,
 	Separator: 14,
 	Container: 17,
+	/** A modal's: the label of the input it holds. */
+	Label: 18,
+	/** A modal's. */
+	RadioGroup: 21,
+	/** A modal's. */
+	CheckboxGroup: 22,
+	/** A modal's. */
+	Checkbox: 23,
 } as const;
 
 export type ComponentType = (typeof ComponentType)[keyof typeof ComponentType];
@@ -247,12 +257,14 @@ export interface GalleryItem {
 	spoiler?: boolean;
 }
 
-/** Any message component (components.Component in the API): its type says which of the fields it has. */
+/** Any message or modal component (components.Component in the API): its type says which of the fields it has. */
 export interface Component {
 	type: ComponentType;
 	id?: number;
 	components?: Component[];
 	accessory?: Component;
+	/** A modal's label: the input it names. */
+	component?: Component;
 	custom_id?: string;
 	style?: number;
 	label?: string;
@@ -265,6 +277,14 @@ export interface Component {
 	options?: SelectOption[];
 	default_values?: ComponentDefaultValue[];
 	room_types?: RoomType[];
+	/** A modal's input: whether it must be answered (true unless it says otherwise). */
+	required?: boolean;
+	/** A text input's bounds, in characters, and the text it starts with. */
+	min_length?: number;
+	max_length?: number;
+	value?: string;
+	/** Whether a checkbox starts checked. */
+	default?: boolean;
 	content?: string;
 	media?: ComponentMedia;
 	description?: string;
@@ -277,6 +297,14 @@ export interface Component {
 	divider?: boolean;
 	spacing?: number;
 	accent_color?: number;
+}
+
+/** A form a bot opens for the person who used its component or command (components.Modal in the API). */
+export interface Modal {
+	custom_id: string;
+	title: string;
+	/** Labels, each with its input, and text displays. */
+	components: Component[];
 }
 
 export interface MessageReaction {

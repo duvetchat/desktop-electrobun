@@ -681,7 +681,15 @@
 				app={active.app}
 				{space}
 				{members}
-				onSend={(data) => sendCommandInteraction(channelId, active.app.id, data)}
+				onSend={(data) =>
+					sendCommandInteraction(channelId, active.app.id, data, {
+						space,
+						members,
+						from: {
+							name: active.app.bot.alias ?? active.app.bot.username,
+							avatarUrl: getAvatarURL(active.app.bot.id, active.app.bot.avatar),
+						},
+					})}
 				onExit={() => (command = null)}
 			/>
 		{:else}
