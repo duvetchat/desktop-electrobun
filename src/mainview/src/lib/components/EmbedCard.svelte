@@ -3,13 +3,19 @@
 	import { getHostURL } from "$lib/common/common";
 	import { renderMarkdown } from "$lib/markdown";
 	import { formatShortDateTime } from "$lib/utils/time";
-	import { webEmbed } from "$lib/urls";
+	import { frameSandbox, webEmbed } from "$lib/urls";
 
 	let { embed, onImageClick }: { embed: Embed; onImageClick?: (src: string) => void } = $props();
 
 	// An embed's URLs come from a page or from whoever sent the message: the card takes only its http(s) ones
 	// (webEmbed), as another scheme, javascript: above all, would run in the app from a link or a frame.
 	const card = $derived(webEmbed(embed));
+
+	// The app's host and the API's, whose pages a card never frames (frameSandbox).
+	const ownHosts = [location.hostname];
+	try {
+		ownHosts.push(new URL(getHostURL()).hostname);
+	} catch {}
 
 	// The footer's line: its text and the embed's date, as "FxTwitter • 10/21/26, 3:02 AM".
 	const footerText = $derived(
@@ -119,16 +125,19 @@
 			{/if}
 		</div>
 		{#if card.video}
-			<div class="aspect-9/16 w-full">
-				<iframe
-					src={card.video.url}
-					title={card.title ?? "TikTok"}
-					class="h-full w-full"
-					allow="autoplay; encrypted-media"
-					allowfullscreen
-					sandbox="allow-scripts allow-same-origin allow-popups"
-				></iframe>
-			</div>
+			{@const sandbox = frameSandbox(card.video.url, ownHosts)}
+			{#if sandbox}
+				<div class="aspect-9/16 w-full">
+					<iframe
+						src={card.video.url}
+						title={card.title ?? "TikTok"}
+						class="h-full w-full"
+						allow="autoplay; encrypted-media"
+						allowfullscreen
+						{sandbox}
+					></iframe>
+				</div>
+			{/if}
 		{/if}
 	</div>
 {:else if card.title || card.description || card.video || card.image}
@@ -212,16 +221,19 @@
 					class="max-h-72 w-full max-w-full"
 				></video>
 			{:else}
-				<div class="aspect-video w-full">
-					<iframe
-						src={card.video.url}
-						title={card.title ?? ""}
-						class="h-full w-full"
-						allow="autoplay; encrypted-media; picture-in-picture"
-						allowfullscreen
-						sandbox="allow-scripts allow-same-origin allow-popups"
-					></iframe>
-				</div>
+				{@const sandbox = frameSandbox(card.video.url, ownHosts)}
+				{#if sandbox}
+					<div class="aspect-video w-full">
+						<iframe
+							src={card.video.url}
+							title={card.title ?? ""}
+							class="h-full w-full"
+							allow="autoplay; encrypted-media; picture-in-picture"
+							allowfullscreen
+							{sandbox}
+						></iframe>
+					</div>
+				{/if}
 			{/if}
 		{:else if card.image}
 			<button type="button" class="block w-full cursor-zoom-in" onclick={() => onImageClick?.(card.image!.url)}>
