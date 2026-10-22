@@ -507,6 +507,8 @@ export interface GatewayVoiceState {
 	muted: boolean;
 	deafened: boolean;
 	screen_sharing: boolean;
+	/** Their camera is on. A gateway from before cameras leaves it out: read it with `?? false`. */
+	camera: boolean;
 	version: number;
 }
 
@@ -635,6 +637,7 @@ export interface VoiceStateUpdateEvent {
 	muted: boolean;
 	deafened: boolean;
 	screen_sharing: boolean;
+	camera: boolean;
 	/** Grows with every change: an update not newer than the last one seen for this user and room is stale. */
 	version: number;
 }
@@ -642,6 +645,18 @@ export interface VoiceStateUpdateEvent {
 export interface VoiceSessionReplacedEvent {
 	room_id: string;
 	reason?: "permissions";
+}
+
+/** The gateway turned one of this session's videos off, or never let it on. */
+export interface VoiceVideoRefusedEvent {
+	room_id: string;
+	/** `screen` only comes with `permission`. */
+	kind: "camera" | "screen";
+	/** `limit`: the room already has its most cameras on; `permission`: no Video permission in the room;
+	 * `bitrate`: the camera sent more than the gateway allows. */
+	reason: "limit" | "permission" | "bitrate";
+	/** With `limit`: how many cameras the room can have on. */
+	limit?: number;
 }
 
 export interface WebRTCIceCandidateEvent {
@@ -902,6 +917,7 @@ export type GatewayEventPayload =
 	| { type: "USER_ACTIVITY_UPDATE"; data: UserActivityUpdateEvent }
 	| { type: "VOICE_STATE_UPDATE"; data: VoiceStateUpdateEvent }
 	| { type: "VOICE_SESSION_REPLACED"; data: VoiceSessionReplacedEvent }
+	| { type: "VOICE_VIDEO_REFUSED"; data: VoiceVideoRefusedEvent }
 	| { type: "VOICE_JOINED"; data: VoiceJoinedEvent }
 	| { type: "WEBRTC_ICE_CANDIDATE"; data: WebRTCIceCandidateEvent }
 	| { type: "WEBRTC_RENEGOTIATE"; data: WebRTCRenegotiateEvent }
@@ -965,6 +981,7 @@ export interface GatewayReadyActiveCall {
 				muted: boolean;
 				deafened: boolean;
 				screen_sharing: boolean;
+				camera: boolean;
 				version: number;
 		  }[]
 		| null;
@@ -1099,6 +1116,7 @@ export function gatewaySpaceToGuild(space: GatewaySpace): Guild {
 						muted: vs.muted,
 						deafened: vs.deafened,
 						screen_sharing: vs.screen_sharing,
+						camera: vs.camera,
 					};
 				});
 			}
@@ -1115,6 +1133,7 @@ export interface VoiceUser {
 	muted?: boolean;
 	deafened?: boolean;
 	screen_sharing?: boolean;
+	camera?: boolean;
 }
 
 export interface Channel {

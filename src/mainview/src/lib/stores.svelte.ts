@@ -221,6 +221,7 @@ export interface CallVoiceState {
 	muted?: boolean;
 	deafened?: boolean;
 	screen_sharing?: boolean;
+	camera?: boolean;
 }
 export const callVoiceStates = writable<CallVoiceState[]>([]);
 
@@ -232,9 +233,21 @@ export const screenShareRequested = writable<{ active: boolean; withAudio: boole
 	active: false,
 	withAudio: false,
 });
+/** Screens being shared, by user ID: each user's `<user_id>` stream, which also carries their voice. */
 export const voiceRemoteVideoStreams = writable<Record<string, MediaStream>>({});
+/** The screen this client shares. */
 export const voiceLocalVideoStream = writable<MediaStream | null>(null);
 export const isScreenSharing = writable<boolean>(false);
+/** This client's camera is on: its track goes out on the camera transceiver. */
+export const isCameraOn = writable<boolean>(false);
+/** Asks VoiceChat to turn the camera on (true) or off (false), as screenShareRequested does for the screen. */
+export const cameraRequested = writable<boolean | null>(null);
+/** Whether to receive others' video (cameras and screens). Off, the gateway sends none (`video_off`). */
+export const incomingVideo = writable<boolean>(true);
+/** The camera this client captures. */
+export const voiceLocalCameraStream = writable<MediaStream | null>(null);
+/** Others' cameras, by user ID: the `<user_id>.camera` streams. */
+export const voiceRemoteCameraStreams = writable<Record<string, MediaStream>>({});
 
 const safeStorageNs = typeof window !== "undefined" ? localStorage : null;
 export const noiseSuppression = writable<boolean>(safeStorageNs?.getItem("duvet_noise_suppression") !== "false");
@@ -259,6 +272,16 @@ if (safeStorage) {
 	selectedMicId.subscribe((value) => {
 		if (value) {
 			safeStorage.setItem("duvet_mic_id", value);
+		}
+	});
+}
+
+/** The camera picked in the camera menu; empty is the system's default. */
+export const selectedCameraId = writable<string>(safeStorage?.getItem("duvet_camera_id") || "");
+if (safeStorage) {
+	selectedCameraId.subscribe((value) => {
+		if (value) {
+			safeStorage.setItem("duvet_camera_id", value);
 		}
 	});
 }

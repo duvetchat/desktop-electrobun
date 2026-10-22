@@ -623,9 +623,9 @@
 		</button>
 	{/if}
 
-	<!-- Active call view -->
+	<!-- Active call view: a flex column, so the tiles scroll within its half and the controls stay in sight -->
 	{#if isInCall}
-		<div class="max-h-[50%] shrink-0 overflow-hidden border-b border-zinc-800">
+		<div class="flex max-h-[50%] shrink-0 flex-col overflow-hidden border-b border-zinc-800">
 			<VoiceChannelView
 				channelId={conversation.id}
 				channelName={conversationTitle()}

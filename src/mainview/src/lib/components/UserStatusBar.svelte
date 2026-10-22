@@ -24,10 +24,10 @@
 		callVoiceStates,
 		conversations,
 		noiseSuppression,
-		isScreenSharing,
 	} from "$lib/stores.svelte";
 	import { get } from "svelte/store";
 	import { sendEventMessage } from "$lib/api/ws/connection";
+	import { sendVoiceSync } from "$lib/voice";
 	import { fly } from "svelte/transition";
 	import { getHostURL, getAvatarURL } from "$lib/common/common";
 	import { hasPermission, Permission } from "$lib/permissions";
@@ -69,14 +69,7 @@
 			// Tell the gateway too: when SpeakInVoice comes back it keeps showing this client muted,
 			// which it stays until the user unmutes.
 			isMuted.set(true);
-			if ($activeVoiceRoomId) {
-				sendEventMessage("VOICE_SYNC", {
-					room_id: $activeVoiceRoomId,
-					muted: true,
-					deafened: $isDeafened,
-					screen_sharing: $isScreenSharing,
-				});
-			}
+			sendVoiceSync();
 		}
 	});
 
@@ -151,27 +144,13 @@
 	function toggleMute() {
 		if (!canSpeak) return;
 		isMuted.update((m) => !m);
-		if ($activeVoiceRoomId) {
-			sendEventMessage("VOICE_SYNC", {
-				room_id: $activeVoiceRoomId,
-				muted: $isMuted,
-				deafened: $isDeafened,
-				screen_sharing: $isScreenSharing,
-			});
-		}
+		sendVoiceSync();
 	}
 
 	function toggleDeafen() {
 		isDeafened.update((d) => !d);
 		if ($isDeafened) isMuted.set(true);
-		if ($activeVoiceRoomId) {
-			sendEventMessage("VOICE_SYNC", {
-				room_id: $activeVoiceRoomId,
-				muted: $isMuted,
-				deafened: $isDeafened,
-				screen_sharing: $isScreenSharing,
-			});
-		}
+		sendVoiceSync();
 	}
 
 	function pingIconColor(ms: number | null): string {

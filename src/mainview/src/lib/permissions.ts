@@ -20,6 +20,7 @@ export const Permission = {
 	ManageSpaceAttachments: 1 << 15, // 32768
 	ManageSpaceWebhooks: 1 << 16, // 65536
 	PinMessages: 1 << 17, // 131072
+	Video: 1 << 18, // 262144: turning on a camera and sharing the screen in voice
 } as const;
 
 export type PermissionFlag = (typeof Permission)[keyof typeof Permission];
@@ -43,6 +44,7 @@ export const ALL_PERMISSIONS: ReadonlyArray<{ flag: PermissionFlag; name: string
 	{ flag: Permission.ManageSpaceAttachments, name: "Manage Attachments" },
 	{ flag: Permission.ManageSpaceWebhooks, name: "Manage Webhooks" },
 	{ flag: Permission.PinMessages, name: "Pin Messages" },
+	{ flag: Permission.Video, name: "Video" },
 ];
 
 // target_type values for RoomOverwrite
