@@ -13,6 +13,7 @@
 		activeVoiceRoomId,
 		callVoiceStates,
 		conversationsWithCalls,
+		dropVoiceRequests,
 		jumpToMessageRequest,
 	} from "$lib/stores.svelte";
 	import { sendEventMessage, getUserOnlineStatus } from "$lib/api/ws/connection";
@@ -111,6 +112,9 @@
 		activeVoiceRoomId.set(null);
 		activeCall.set(null);
 		callVoiceStates.set([]);
+		// The call's VoiceChat may already be gone (its connection failed): a camera or screen request it didn't
+		// take goes with the call.
+		dropVoiceRequests();
 	}
 
 	const convMembers = $derived<MemberOnSidebar[]>(
