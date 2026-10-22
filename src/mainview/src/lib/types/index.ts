@@ -56,6 +56,8 @@ export interface Embed {
 	video?: EmbedMedia | null;
 	author?: EmbedAuthor | null;
 	fields?: EmbedField[];
+	/** The card a link's page publishes for its previews: a single container, drawn in place of the rest. */
+	components?: Component[];
 }
 
 export interface Attachment {
@@ -109,6 +111,11 @@ export const MessageType = {
 export type MessageType = (typeof MessageType)[keyof typeof MessageType];
 
 export const MessageFlag = {
+	/**
+	 * A bot's response to an interaction, or a follow-up, that only the user who used it sees. It isn't one of
+	 * the room's messages: no history has it, so it lasts until dismissed or the app reloads.
+	 */
+	Ephemeral: 1 << 6,
 	/** A bot's deferred response to an interaction, which it completes by editing the message. */
 	Loading: 1 << 7,
 	/** The components are the whole message: it has no content, embeds or files of its own. */
@@ -118,7 +125,7 @@ export const MessageFlag = {
 /** What a message a bot sends for an interaction says about it (interactions.Metadata in the API). */
 export interface InteractionMetadata {
 	id: string;
-	/** 2 for a command, 3 for a component. */
+	/** 2 for a command, 3 for a component, 5 for a modal's submit. */
 	type: number;
 	/** Who used it, as they were when the message was made. */
 	user: { id: string; username: string; alias: string | null; avatar: string | null };
@@ -181,11 +188,13 @@ export interface SpaceCommands {
 	commands: ApplicationCommand[];
 }
 
-/** The component types a message can have (components.Type in the API). */
+/** The component types of messages and modals (components.Type in the API). */
 export const ComponentType = {
 	ActionRow: 1,
 	Button: 2,
 	StringSelect: 3,
+	/** A modal's. */
+	TextInput: 4,
 	UserSelect: 5,
 	RoleSelect: 6,
 	MentionableSelect: 7,
@@ -197,6 +206,14 @@ export const ComponentType = {
 	File: 13,
 	Separator: 14,
 	Container: 17,
+	/** A modal's: the label of the input it holds. */
+	Label: 18,
+	/** A modal's. */
+	RadioGroup: 21,
+	/** A modal's. */
+	CheckboxGroup: 22,
+	/** A modal's. */
+	Checkbox: 23,
 } as const;
 
 export type ComponentType = (typeof ComponentType)[keyof typeof ComponentType];
@@ -245,12 +262,14 @@ export interface GalleryItem {
 	spoiler?: boolean;
 }
 
-/** Any message component (components.Component in the API): its type says which of the fields it has. */
+/** Any message or modal component (components.Component in the API): its type says which of the fields it has. */
 export interface Component {
 	type: ComponentType;
 	id?: number;
 	components?: Component[];
 	accessory?: Component;
+	/** A modal's label: the input it names. */
+	component?: Component;
 	custom_id?: string;
 	style?: number;
 	label?: string;
@@ -263,6 +282,14 @@ export interface Component {
 	options?: SelectOption[];
 	default_values?: ComponentDefaultValue[];
 	room_types?: RoomType[];
+	/** A modal's input: whether it must be answered (true unless it says otherwise). */
+	required?: boolean;
+	/** A text input's bounds, in characters, and the text it starts with. */
+	min_length?: number;
+	max_length?: number;
+	value?: string;
+	/** Whether a checkbox starts checked. */
+	default?: boolean;
 	content?: string;
 	media?: ComponentMedia;
 	description?: string;
@@ -275,6 +302,14 @@ export interface Component {
 	divider?: boolean;
 	spacing?: number;
 	accent_color?: number;
+}
+
+/** A form a bot opens for the person who used its component or command (components.Modal in the API). */
+export interface Modal {
+	custom_id: string;
+	title: string;
+	/** Labels, each with its input, and text displays. */
+	components: Component[];
 }
 
 export interface MessageReaction {
@@ -472,6 +507,8 @@ export interface GatewayVoiceState {
 	muted: boolean;
 	deafened: boolean;
 	screen_sharing: boolean;
+	/** Their camera is on. A gateway from before cameras leaves it out: read it with `?? false`. */
+	camera: boolean;
 	version: number;
 }
 
@@ -600,6 +637,7 @@ export interface VoiceStateUpdateEvent {
 	muted: boolean;
 	deafened: boolean;
 	screen_sharing: boolean;
+	camera: boolean;
 	/** Grows with every change: an update not newer than the last one seen for this user and room is stale. */
 	version: number;
 }
@@ -607,6 +645,18 @@ export interface VoiceStateUpdateEvent {
 export interface VoiceSessionReplacedEvent {
 	room_id: string;
 	reason?: "permissions";
+}
+
+/** The gateway turned one of this session's videos off, or never let it on. */
+export interface VoiceVideoRefusedEvent {
+	room_id: string;
+	/** `screen` only comes with `permission`. */
+	kind: "camera" | "screen";
+	/** `limit`: the room already has its most cameras on; `permission`: no Video permission in the room;
+	 * `bitrate`: the camera sent more than the gateway allows. */
+	reason: "limit" | "permission" | "bitrate";
+	/** With `limit`: how many cameras the room can have on. */
+	limit?: number;
 }
 
 export interface WebRTCIceCandidateEvent {
@@ -780,6 +830,71 @@ export interface DMMessagePinUpdateEvent {
 	pinned_at: string | null;
 }
 
+/** Where a storage transfer is (StorageTransfer's `status`). */
+export const StorageTransferStatus = {
+	Queued: 0,
+	Moving: 1,
+	Done: 2,
+	/** Stopped on an error: what it didn't move stays in the source. */
+	Failed: 3,
+	/** Stopped by a person: what it moved stays in the target. */
+	Cancelled: 4,
+} as const;
+
+export type StorageTransferStatus = (typeof StorageTransferStatus)[keyof typeof StorageTransferStatus];
+
+/** Where one of a transfer's files is (StorageTransferFile's `status`). */
+export const StorageTransferFileStatus = {
+	Pending: 0,
+	Copying: 1,
+	Moved: 2,
+	/** Left where it was: deleted, moved by something else, or too large for the target. */
+	Skipped: 3,
+	Failed: 4,
+} as const;
+
+export type StorageTransferFileStatus = (typeof StorageTransferFileStatus)[keyof typeof StorageTransferFileStatus];
+
+/** A move of a user's or a space's files from one of its storages to another, also the data of
+ * STORAGE_TRANSFER_UPDATE. A null bucket is the user's default storage. */
+export interface StorageTransfer {
+	id: string;
+	/** The user or the space whose files move. */
+	owner_id: string;
+	/** The user who started it, the only one who gets its events. */
+	started_by: string;
+	source_bucket_id: string | null;
+	target_bucket_id: string | null;
+	/** The originals stay in the source: asked for, or because the API couldn't tell whether source and target are one bucket. */
+	keep_source: boolean;
+	/** Source and target are one bucket under two names: only the rows change. */
+	same_bucket: boolean;
+	status: StorageTransferStatus;
+	/** Why it failed (`target full`, `source unreachable: …`, …); null otherwise. */
+	error: string | null;
+	total_files: number;
+	total_bytes: number;
+	moved_files: number;
+	moved_bytes: number;
+	/** Deleted meanwhile, moved by something else, or too large for the target. */
+	skipped_files: number;
+	failed_files: number;
+	created_at: string;
+	started_at: string | null;
+	finished_at: string | null;
+	updated_at: string;
+}
+
+/** One of a transfer's files (GET …/storage/transfers/{id}/files). */
+export interface StorageTransferFile {
+	attachment_id: string;
+	filename: string;
+	size_bytes: number;
+	status: StorageTransferFileStatus;
+	/** Why it was skipped or failed; null otherwise. */
+	error: string | null;
+}
+
 export type GatewayEventPayload =
 	| { type: "READY"; data: GatewayReadyData }
 	| { type: "SPACE_CREATE"; data: GatewaySpaceCreatePayload }
@@ -802,6 +917,7 @@ export type GatewayEventPayload =
 	| { type: "USER_ACTIVITY_UPDATE"; data: UserActivityUpdateEvent }
 	| { type: "VOICE_STATE_UPDATE"; data: VoiceStateUpdateEvent }
 	| { type: "VOICE_SESSION_REPLACED"; data: VoiceSessionReplacedEvent }
+	| { type: "VOICE_VIDEO_REFUSED"; data: VoiceVideoRefusedEvent }
 	| { type: "VOICE_JOINED"; data: VoiceJoinedEvent }
 	| { type: "WEBRTC_ICE_CANDIDATE"; data: WebRTCIceCandidateEvent }
 	| { type: "WEBRTC_RENEGOTIATE"; data: WebRTCRenegotiateEvent }
@@ -843,7 +959,8 @@ export type GatewayEventPayload =
 	| { type: "CALL_ACCEPTED"; data: CallAcceptedEvent }
 	| { type: "CALL_DECLINED"; data: CallDeclinedEvent }
 	| { type: "CALL_ENDED"; data: CallEndedEvent }
-	| { type: "TEAM_INVITE_CREATE"; data: TeamInviteCreateEvent };
+	| { type: "TEAM_INVITE_CREATE"; data: TeamInviteCreateEvent }
+	| { type: "STORAGE_TRANSFER_UPDATE"; data: StorageTransfer };
 
 export interface GatewayEvent {
 	op: number;
@@ -864,6 +981,7 @@ export interface GatewayReadyActiveCall {
 				muted: boolean;
 				deafened: boolean;
 				screen_sharing: boolean;
+				camera: boolean;
 				version: number;
 		  }[]
 		| null;
@@ -952,6 +1070,11 @@ export function isLoading(message: Pick<Message, "flags">): boolean {
 	return ((message.flags ?? 0) & MessageFlag.Loading) !== 0;
 }
 
+/** Whether a message is ephemeral: a bot's to this user alone, not one of the room's. */
+export function isEphemeral(message: Pick<Message, "flags">): boolean {
+	return ((message.flags ?? 0) & MessageFlag.Ephemeral) !== 0;
+}
+
 /** The text a message shows: its content, or its text displays' when its components are all of it. */
 export function messageText(message: Pick<Message, "flags" | "content" | "components">): string {
 	if (!isComponentsV2(message)) return message.content ?? "";
@@ -993,6 +1116,7 @@ export function gatewaySpaceToGuild(space: GatewaySpace): Guild {
 						muted: vs.muted,
 						deafened: vs.deafened,
 						screen_sharing: vs.screen_sharing,
+						camera: vs.camera,
 					};
 				});
 			}
@@ -1009,6 +1133,7 @@ export interface VoiceUser {
 	muted?: boolean;
 	deafened?: boolean;
 	screen_sharing?: boolean;
+	camera?: boolean;
 }
 
 export interface Channel {

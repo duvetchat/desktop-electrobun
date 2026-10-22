@@ -5,15 +5,19 @@
 	import Header from "$lib/components/Header.svelte";
 	import Toast from "$lib/components/Toast.svelte";
 	import ConfirmDialog from "$lib/components/ConfirmDialog.svelte";
+	import InteractionModal from "$lib/components/InteractionModal.svelte";
 	import PromptDialog from "$lib/components/PromptDialog.svelte";
+	import StorageTransferFailures from "$lib/components/StorageTransferFailures.svelte";
 
 	import { setupWindowControls } from "$lib/window-controls";
+	import { setupExternalLinks } from "$lib/external-links";
 	import { onMount } from "svelte";
 
 	let { children } = $props();
 
 	onMount(() => {
 		setupWindowControls();
+		setupExternalLinks();
 	});
 </script>
 
@@ -30,3 +34,5 @@
 <Toast />
 <ConfirmDialog />
 <PromptDialog />
+<InteractionModal />
+<StorageTransferFailures />

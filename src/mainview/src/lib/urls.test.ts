@@ -1,6 +1,16 @@
 import { describe, expect, test } from "bun:test";
-import type { Embed } from "$lib/types";
-import { frameSandbox, localUrl, webEmbed, webUrl } from "$lib/urls";
+import type { Component, Embed } from "$lib/types";
+import {
+	frameSandbox,
+	isUuid,
+	localUrl,
+	parseMessageLink,
+	pathSegment,
+	playerFrame,
+	signInUrl,
+	webEmbed,
+	webUrl,
+} from "$lib/urls";
 
 describe("webEmbed", () => {
 	test("keeps an embed's http(s) URLs", () => {
@@ -28,6 +38,72 @@ describe("webEmbed", () => {
 				footer: { text: "F", icon_url: evil },
 			}),
 		).toEqual({ title: "t", author: { name: "A" }, footer: { text: "F" } });
+	});
+
+	// A link's card, as the API reads it from the page: a container with a gallery, a section whose accessory is a
+	// link button, and a thumbnail.
+	const card: Component[] = [
+		{
+			type: 17,
+			accent_color: 8490232,
+			components: [
+				{ type: 12, items: [{ media: { url: "https://a.example/i.png" }, description: "alt" }] },
+				{
+					type: 9,
+					components: [{ type: 10, content: "# Title" }],
+					accessory: { type: 2, style: 5, label: "Open", url: "https://a.example/post" },
+				},
+				{
+					type: 9,
+					components: [{ type: 10, content: "x" }],
+					accessory: { type: 11, media: { url: "http://a.example/t.png" } },
+				},
+				{ type: 1, components: [{ type: 2, style: 5, label: "Docs", url: "https://docs.a.example" }] },
+			],
+		},
+	];
+
+	test("keeps a card whose links and media are all http(s)", () => {
+		expect(webEmbed({ title: "t", components: card }).components).toEqual(card);
+	});
+
+	test("drops a card with any other link or media URL, or a gallery item without media: it's drawn whole or not at all", () => {
+		const evil = "javascript:alert(1)";
+		const variants: unknown[] = [
+			[{ type: 17, components: [{ type: 1, components: [{ type: 2, style: 5, label: "Go", url: evil }] }] }],
+			[
+				{
+					type: 17,
+					components: [
+						{
+							type: 12,
+							items: [{ media: { url: "https://a.example/i.png" } }, { media: { url: "data:image/png;base64,AAAA" } }],
+						},
+					],
+				},
+			],
+			[
+				{
+					type: 17,
+					components: [
+						{
+							type: 9,
+							components: [{ type: 10, content: "x" }],
+							accessory: { type: 11, media: { url: "/attachments/x" } },
+						},
+					],
+				},
+			],
+			[{ type: 17, components: [{ type: 13, file: { url: "attachment://a.pdf" } }] }],
+			[{ type: 17, components: [{ type: 12, items: [{}] }] }],
+			[{ type: 17, components: [{ type: 2, style: 5, label: "Go", url: ["https://a.example"] }] }],
+			"not a list",
+		];
+		for (const components of variants) {
+			const embed: Embed = { title: "t" };
+			Object.assign(embed, { components });
+			expect(webEmbed(embed)).toEqual({ title: "t" });
+		}
 	});
 });
 
@@ -85,20 +161,26 @@ describe("frameSandbox", () => {
 	});
 
 	test("the players the API frames keep their own origin; any other page is framed without it", () => {
-		expect(frameSandbox("https://www.youtube.com/embed/abc", own)).toBe("allow-scripts allow-same-origin allow-popups");
-		expect(frameSandbox("https://www.youtube-nocookie.com/embed/abc", own)).toBe(
-			"allow-scripts allow-same-origin allow-popups",
-		);
-		expect(frameSandbox("https://www.tiktok.com/player/v1/123", own)).toBe(
-			"allow-scripts allow-same-origin allow-popups",
-		);
+		expect(frameSandbox("https://www.youtube.com/embed/abc", own)).toBe("allow-scripts allow-same-origin");
+		expect(frameSandbox("https://www.youtube-nocookie.com/embed/abc", own)).toBe("allow-scripts allow-same-origin");
+		expect(frameSandbox("https://www.tiktok.com/player/v1/123", own)).toBe("allow-scripts allow-same-origin");
 		for (const url of [
 			"https://player.example/v/1",
 			"https://youtube.com.evil.example/embed",
 			"https://eviltiktok.com/player",
 			"https://duvet.chat.evil.example/",
 		]) {
-			expect(frameSandbox(url, own)).toBe("allow-scripts allow-popups");
+			expect(frameSandbox(url, own)).toBe("allow-scripts");
+		}
+	});
+
+	test("no framed page may open windows (never allow-popups)", () => {
+		for (const url of [
+			"https://www.youtube.com/embed/abc",
+			"https://www.tiktok.com/player/v1/1",
+			"https://player.example/v/1",
+		]) {
+			expect(frameSandbox(url, own)).not.toContain("allow-popups");
 		}
 	});
 });
@@ -136,6 +218,169 @@ describe("localUrl", () => {
 			null,
 		]) {
 			expect(localUrl(redirect, "https://duvet.chat/sign-in")).toBeUndefined();
+		}
+	});
+});
+
+describe("signInUrl", () => {
+	test("the sign-in page reads the redirect back as the same page of the app", () => {
+		for (const redirect of [
+			"/invite.html?code=0190a3b2-0000-7000-8000-000000000001",
+			"/invite.html?bot=0190a3b2-0000-7000-8000-000000000002",
+			"/invite?code=a%20b&x=1#y",
+		]) {
+			const url = new URL(signInUrl(redirect), "https://duvet.chat");
+			expect(url.pathname).toBe("/sign-in.html");
+			expect(localUrl(url.searchParams.get("redirect"), url.href)).toBe(`https://duvet.chat${redirect}`);
+		}
+	});
+});
+
+// IDs as Duvet's are: UUIDs (v7 nowadays; any version reads).
+const ID1 = "0190a3b2-0000-7000-8000-000000000001";
+const ID2 = "0190a3b2-0000-7000-8000-000000000002";
+const ID3 = "0190a3b2-0000-7000-8000-000000000003";
+
+describe("isUuid", () => {
+	test("takes a UUID, in either case", () => {
+		expect(isUuid(ID1)).toBe(true);
+		expect(isUuid(ID1.toUpperCase())).toBe(true);
+		expect(isUuid("f47ac10b-58cc-4372-a567-0e02b2c3d479")).toBe(true);
+	});
+
+	test("refuses anything else, above all what would point a request at another endpoint", () => {
+		for (const value of [
+			"",
+			".",
+			"..",
+			"@me",
+			"../users/@me",
+			"..\\users\\@me",
+			`${ID1}/..`,
+			`${ID1}?x=1`,
+			`${ID1}#x`,
+			` ${ID1}`,
+			`${ID1}\n`,
+			ID1.replaceAll("-", ""),
+			`${ID1}0`,
+			"0190a3b2-0000-7000-8000-00000000000g",
+			null,
+			undefined,
+			42,
+			[ID1],
+			{ toString: () => ID1 },
+		]) {
+			expect(isUuid(value)).toBe(false);
+		}
+	});
+});
+
+describe("pathSegment", () => {
+	test("encodes what would end the segment or start a query or a hash", () => {
+		expect(pathSegment("a/b?c#d\\e f")).toBe("a%2Fb%3Fc%23d%5Ce%20f");
+		expect(pathSegment("🔥")).toBe(encodeURIComponent("🔥"));
+		expect(pathSegment("%2e%2e")).toBe("%252e%252e");
+		expect(pathSegment("...")).toBe("...");
+		expect(pathSegment(ID1)).toBe(ID1);
+	});
+
+	test('refuses "." and "..", which a URL resolves away however they are written, and nothing at all', () => {
+		for (const value of [".", "..", ""]) {
+			expect(() => pathSegment(value)).toThrow();
+		}
+	});
+
+	test("whatever the value, the request stays on its endpoint", () => {
+		for (const value of [
+			"../users/@me",
+			"..\\..\\users",
+			"x?y=/z",
+			"x#y",
+			"%2e%2e",
+			".%2e",
+			"a/../../b",
+			"...",
+			"🔥",
+		]) {
+			// Resolved as fetch resolves it.
+			const path = new URL(`https://api.test/api/invites/${pathSegment(value)}/join`).pathname;
+			expect(path.split("/")).toEqual(["", "api", "invites", path.split("/")[3], "join"]);
+		}
+	});
+});
+
+describe("parseMessageLink", () => {
+	test("reads a link to a room's message and to a conversation's", () => {
+		expect(parseMessageLink(`https://duvet.chat/channels/${ID1}/${ID2}/${ID3}`)).toEqual({
+			spaceId: ID1,
+			roomId: ID2,
+			messageId: ID3,
+		});
+		expect(parseMessageLink(`https://duvet.chat/conversations/${ID1}/${ID3}`)).toEqual({
+			spaceId: "",
+			roomId: "",
+			messageId: ID3,
+			conversationId: ID1,
+		});
+	});
+
+	test("refuses a link whose IDs aren't UUIDs: its preview fetches the message by them", () => {
+		for (const url of [
+			`https://duvet.chat/channels/${ID1}/..\\users\\@me?/x`,
+			`https://duvet.chat/channels/${ID1}/../${ID3}`,
+			`https://duvet.chat/channels/${ID1}/${ID2}/%2e%2e`,
+			`https://duvet.chat/channels/${ID1}/${ID2}/${ID3}?x=1`,
+			`https://duvet.chat/channels/${ID1}/${ID2}/${ID3}#x`,
+			`https://duvet.chat/channels/${ID1}/${ID2}/${ID3}/`,
+			`https://duvet.chat/channels/${ID1}/${ID2}`,
+			`https://duvet.chat/conversations/..\\..\\..\\spaces\\${ID1}\\invites?/${ID3}`,
+			`https://duvet.chat/conversations/@me/${ID3}`,
+			`https://duvet.chat/conversations/${ID1}/${ID3}/thread`,
+		]) {
+			expect(parseMessageLink(url)).toBeNull();
+		}
+	});
+
+	test("refuses links to other sites", () => {
+		for (const url of [
+			`https://evil.example/channels/${ID1}/${ID2}/${ID3}`,
+			`https://duvet.chat.evil.example/channels/${ID1}/${ID2}/${ID3}`,
+			`http://duvet.chat/channels/${ID1}/${ID2}/${ID3}`,
+			`duvet://channels/${ID1}/${ID2}/${ID3}`,
+		]) {
+			expect(parseMessageLink(url)).toBeNull();
+		}
+	});
+});
+
+describe("playerFrame", () => {
+	const own = ["localhost", "api.duvet.chat"];
+
+	test("the players the API frames itself load at once, with frameSandbox's sandbox", () => {
+		for (const url of [
+			"https://www.youtube.com/embed/abc",
+			"https://www.youtube-nocookie.com/embed/abc",
+			"https://www.tiktok.com/player/v1/123",
+			"https://youtube.com./embed/abc",
+		]) {
+			expect(playerFrame(url, own)).toEqual({ sandbox: frameSandbox(url, own)!, clickToPlay: false });
+		}
+	});
+
+	test("any other page waits for a click on its card, then gets frameSandbox's sandbox", () => {
+		for (const url of [
+			"https://player.example/v/1",
+			"http://vimeo.com/123",
+			"https://youtube.com.evil.example/embed",
+			"https://eviltiktok.com/player",
+		]) {
+			expect(playerFrame(url, own)).toEqual({ sandbox: frameSandbox(url, own)!, clickToPlay: true });
+		}
+	});
+
+	test("a page frameSandbox refuses isn't framed, click or not", () => {
+		for (const url of ["https://duvet.chat/app", "http://localhost:5173/app", "javascript:alert(1)", "not a url"]) {
+			expect(playerFrame(url, own)).toBeUndefined();
 		}
 	});
 });

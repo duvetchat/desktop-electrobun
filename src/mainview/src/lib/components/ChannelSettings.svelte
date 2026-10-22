@@ -132,6 +132,11 @@
 					name: "Speak in Voice",
 					description: "Allows members to speak in voice channels.",
 				},
+				{
+					flag: Permission.Video,
+					name: "Video",
+					description: "Allows members to turn on their camera and share their screen in voice channels.",
+				},
 			],
 		},
 	];

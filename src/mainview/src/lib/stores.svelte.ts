@@ -101,6 +101,26 @@ export const wsSessionToken = writable<string | null>(null);
 // ICE servers for voice peer connections; READY replaces them with the gateway's own list.
 export const iceServers = writable<RTCIceServer[]>([{ urls: "stun:stun.l.google.com:19302" }]);
 export const channelMessages = createEvictingMessageStore<Message>();
+// The ephemeral messages bots sent this user, by room: only this user sees them, and they aren't the room's
+// history, so they stay apart from it, in this window, until dismissed or the app reloads.
+export const ephemeralMessages = writable<Record<string, Message[]>>({});
+
+/** Adds an ephemeral message, or replaces the one with its ID. */
+export function keepEphemeral(roomId: string, message: Message) {
+	ephemeralMessages.update((all) => ({
+		...all,
+		[roomId]: [...(all[roomId] ?? []).filter((m) => m.id !== message.id), message],
+	}));
+}
+
+/** Removes an ephemeral message: its bot deleted it, or the user dismissed it, for this window. */
+export function dropEphemeral(roomId: string, messageId: string) {
+	ephemeralMessages.update((all) => {
+		const list = all[roomId];
+		if (!list?.some((m) => m.id === messageId)) return all;
+		return { ...all, [roomId]: list.filter((m) => m.id !== messageId) };
+	});
+}
 export const speakingUsers = writable<SvelteSet<string>>(new SvelteSet());
 export const userAmplitudes = writable<Record<string, number>>({});
 export interface UserActivity {
@@ -201,6 +221,7 @@ export interface CallVoiceState {
 	muted?: boolean;
 	deafened?: boolean;
 	screen_sharing?: boolean;
+	camera?: boolean;
 }
 export const callVoiceStates = writable<CallVoiceState[]>([]);
 
@@ -212,9 +233,21 @@ export const screenShareRequested = writable<{ active: boolean; withAudio: boole
 	active: false,
 	withAudio: false,
 });
+/** Screens being shared, by user ID: each user's `<user_id>` stream, which also carries their voice. */
 export const voiceRemoteVideoStreams = writable<Record<string, MediaStream>>({});
+/** The screen this client shares. */
 export const voiceLocalVideoStream = writable<MediaStream | null>(null);
 export const isScreenSharing = writable<boolean>(false);
+/** This client's camera is on: its track goes out on the camera transceiver. */
+export const isCameraOn = writable<boolean>(false);
+/** Asks VoiceChat to turn the camera on (true) or off (false), as screenShareRequested does for the screen. */
+export const cameraRequested = writable<boolean | null>(null);
+/** Whether to receive others' video (cameras and screens). Off, the gateway sends none (`video_off`). */
+export const incomingVideo = writable<boolean>(true);
+/** The camera this client captures. */
+export const voiceLocalCameraStream = writable<MediaStream | null>(null);
+/** Others' cameras, by user ID: the `<user_id>.camera` streams. */
+export const voiceRemoteCameraStreams = writable<Record<string, MediaStream>>({});
 
 const safeStorageNs = typeof window !== "undefined" ? localStorage : null;
 export const noiseSuppression = writable<boolean>(safeStorageNs?.getItem("duvet_noise_suppression") !== "false");
@@ -239,6 +272,16 @@ if (safeStorage) {
 	selectedMicId.subscribe((value) => {
 		if (value) {
 			safeStorage.setItem("duvet_mic_id", value);
+		}
+	});
+}
+
+/** The camera picked in the camera menu; empty is the system's default. */
+export const selectedCameraId = writable<string>(safeStorage?.getItem("duvet_camera_id") || "");
+if (safeStorage) {
+	selectedCameraId.subscribe((value) => {
+		if (value) {
+			safeStorage.setItem("duvet_camera_id", value);
 		}
 	});
 }

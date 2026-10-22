@@ -13,10 +13,30 @@
 		callVoiceStates,
 		userAmplitudes,
 		voiceFaces,
+		isCameraOn,
+		cameraRequested,
+		incomingVideo,
+		selectedCameraId,
+		voiceLocalCameraStream,
+		voiceRemoteCameraStreams,
 	} from "$lib/stores.svelte";
-	import { sendEventMessage } from "$lib/api/ws/connection";
+	import { sendVoiceSync } from "$lib/voice";
 	import { getAvatarURL } from "$lib/common/common";
-	import { LoaderCircle, Mic, MicOff, Headphones, Phone, PhoneOff, MonitorUp, Volume2 } from "@lucide/svelte";
+	import {
+		Check,
+		ChevronUp,
+		LoaderCircle,
+		Mic,
+		MicOff,
+		Headphones,
+		Phone,
+		PhoneOff,
+		MonitorUp,
+		Video,
+		VideoOff,
+		Volume2,
+	} from "@lucide/svelte";
+	import { DropdownMenu } from "bits-ui";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
 	import { hasPermission, Permission } from "$lib/permissions";
 
@@ -36,19 +56,27 @@
 		onHangUp?: () => void;
 	} = $props();
 
+	const NO_VIDEO = "You can't use video in this room";
+
 	const isConnected = $derived(callMode || $activeVoiceRoomId === channelId);
-	// Without SpeakInVoice the mic stays muted: UserStatusBar mutes it when the permission goes.
-	const canSpeak = $derived.by(() => {
-		if (callMode) return true;
+	// The space room this is; a call has none, and asks for no permission.
+	const voiceRoom = $derived.by(() => {
+		if (callMode) return null;
 		const space = $gatewaySpaces.find((s) => s.rooms.some((r) => r.id === channelId));
 		const room = space?.rooms.find((r) => r.id === channelId);
-		return space && room ? hasPermission(space, room, Permission.SpeakInVoice) : true;
+		return space && room ? { space, room } : null;
 	});
+	// Without SpeakInVoice the mic stays muted: UserStatusBar mutes it when the permission goes.
+	const canSpeak = $derived(!voiceRoom || hasPermission(voiceRoom.space, voiceRoom.room, Permission.SpeakInVoice));
+	// Video is the camera and the screen.
+	const canVideo = $derived(!voiceRoom || hasPermission(voiceRoom.space, voiceRoom.room, Permission.Video));
 
 	const voiceUsers = $derived.by(() => {
+		const me = $currentUser;
+		// This client's own camera and screen, as captured: shown at once, and refused ones go off here too.
+		const mine = { camera: $isCameraOn, screen_sharing: $isScreenSharing };
 		if (callMode) {
 			const states = $callVoiceStates.filter((vs) => vs.room_id === channelId);
-			const me = $currentUser;
 			const list = states.map((vs) => {
 				const member = callMembers.find((m) => m.id === vs.user_id);
 				const isMe = me && vs.user_id === me.id;
@@ -58,7 +86,8 @@
 					avatar_url: member?.avatar_url ?? null,
 					muted: isMe ? $isMuted : (vs.muted ?? false),
 					deafened: isMe ? $isDeafened : (vs.deafened ?? false),
-					screen_sharing: isMe ? $isScreenSharing : (vs.screen_sharing ?? false),
+					screen_sharing: isMe ? mine.screen_sharing : (vs.screen_sharing ?? false),
+					camera: isMe ? mine.camera : (vs.camera ?? false),
 				};
 			});
 			if (me && isConnected && !list.some((u) => u.id === me.id)) {
@@ -68,7 +97,7 @@
 					avatar_url: getAvatarURL(me.id, me.avatar),
 					muted: $isMuted,
 					deafened: $isDeafened,
-					screen_sharing: $isScreenSharing,
+					...mine,
 				});
 			}
 			return list;
@@ -76,16 +105,17 @@
 
 		const space = $gatewaySpaces.find((s) => s.id === spaceId);
 		const voiceStates = space?.voice_states?.filter((vs) => vs.room_id === channelId) ?? [];
-		const me = $currentUser;
 		const list = voiceStates.map((vs) => {
 			const user = space?.users.find((u) => u.id === vs.user_id);
+			const isMine = isConnected && vs.user_id === me?.id;
 			return {
 				id: vs.user_id,
 				username: user?.alias ?? user?.username ?? "Unknown",
 				avatar_url: user ? getAvatarURL(user.id, user.avatar) : null,
 				muted: vs.muted ?? false,
 				deafened: vs.deafened ?? false,
-				screen_sharing: vs.screen_sharing ?? false,
+				screen_sharing: isMine ? mine.screen_sharing : (vs.screen_sharing ?? false),
+				camera: isMine ? mine.camera : (vs.camera ?? false),
 			};
 		});
 		if (me && isConnected && !list.some((u) => u.id === me.id)) {
@@ -95,25 +125,31 @@
 				avatar_url: getAvatarURL(me.id, me.avatar),
 				muted: $isMuted,
 				deafened: $isDeafened,
-				screen_sharing: $isScreenSharing,
+				...mine,
 			});
 		}
 		return list;
 	});
 
-	let videoPlayingStates = $state<Record<string, boolean>>({});
-	let videoAccepted = $state<Record<string, boolean>>({});
-	let focusedUserId = $state<string | null>(null);
-	let showStreamMenu = $state(false);
-	let streamVolumes = $state<Record<string, number>>({});
-	let videoRefs = $state<Record<string, HTMLVideoElement>>({});
+	type VoiceUser = (typeof voiceUsers)[number];
+	type Tile = { key: string; kind: "person" | "screen"; user: VoiceUser };
 
-	// Sync volume to video elements
-	$effect(() => {
-		for (const [uid, vol] of Object.entries(streamVolumes)) {
-			if (videoRefs[uid]) videoRefs[uid].volume = vol;
-		}
-	});
+	// A tile per person, with their camera or their face, and one more for each screen being shared.
+	const tiles = $derived(
+		voiceUsers.flatMap((user): Tile[] => {
+			const person: Tile = { key: user.id, kind: "person", user };
+			return user.screen_sharing ? [person, { key: `${user.id}:screen`, kind: "screen", user }] : [person];
+		}),
+	);
+
+	// Videos that have shown a frame, by tile: until then the tile shows the face or a loader.
+	let playing = $state<Record<string, boolean>>({});
+	let videoAccepted = $state<Record<string, boolean>>({});
+	let focusedKey = $state<string | null>(null);
+	// A focused tile that's gone (its person left, or stopped sharing) leaves the grid as it was.
+	const focused = $derived(focusedKey && tiles.some((t) => t.key === focusedKey) ? focusedKey : null);
+	let showStreamMenu = $state(false);
+	let cameras = $state<MediaDeviceInfo[]>([]);
 
 	// Track grid columns for eye gaze direction
 	let gridEl = $state<HTMLDivElement | null>(null);
@@ -143,17 +179,20 @@
 		}
 	});
 
-	// Reactive eye offsets — recomputed when lastSpeakerId, voiceUsers, or gridCols change
+	// Reactive eye offsets: each face looks toward the speaker's tile, by where the tiles sit in the grid.
 	const eyeOffsets = $derived.by(() => {
 		const offsets: Record<string, { x: number; y: number }> = {};
 		const cols = gridCols;
-		const speakerIndex = lastSpeakerId ? voiceUsers.findIndex((u) => u.id === lastSpeakerId) : -1;
+		const speakerIndex = lastSpeakerId
+			? tiles.findIndex((t) => t.kind === "person" && t.user.id === lastSpeakerId)
+			: -1;
 
-		for (let i = 0; i < voiceUsers.length; i++) {
-			const user = voiceUsers[i];
-			if (!lastSpeakerId || lastSpeakerId === user.id || speakerIndex === -1) {
-				offsets[user.id] = { x: 0, y: 0 };
-				continue;
+		tiles.forEach((tile, i) => {
+			if (tile.kind !== "person") return;
+			const id = tile.user.id;
+			if (speakerIndex === -1 || lastSpeakerId === id) {
+				offsets[id] = { x: 0, y: 0 };
+				return;
 			}
 
 			const myCol = i % cols;
@@ -165,19 +204,61 @@
 			const dy = spRow - myRow;
 			const dist = Math.sqrt(dx * dx + dy * dy);
 			if (dist === 0) {
-				offsets[user.id] = { x: 0, y: 0 };
+				offsets[id] = { x: 0, y: 0 };
 			} else {
-				offsets[user.id] = { x: Math.max(-1, Math.min(1, dx / dist)), y: Math.max(-1, Math.min(1, dy / dist)) };
+				offsets[id] = { x: Math.max(-1, Math.min(1, dx / dist)), y: Math.max(-1, Math.min(1, dy / dist)) };
 			}
-		}
+		});
 		return offsets;
 	});
+
+	// Alone in a room, a tile fills the view. A call has no height of its own to fill (half the conversation at
+	// most): its tiles are a grid of small 16:9 ones, even alone.
+	const fills = $derived(!callMode && tiles.length === 1);
+
+	// Focused, a tile is big above the others; else they're a grid of 16:9 tiles.
+	function tileSize(key: string): string {
+		if (fills) return "min-h-0 w-full flex-1";
+		if (focused === key) return "order-first h-[60vh] w-full";
+		if (focused) return "aspect-video w-64 shrink-0";
+		return "aspect-video";
+	}
+
+	// A camera fills its 16:9 tile; a big one shows whole.
+	function cameraFit(key: string): string {
+		return fills || focused === key ? "object-contain" : "object-cover";
+	}
+
+	function toggleFocus(key: string) {
+		focusedKey = focused === key ? null : key;
+	}
 
 	function srcObject(node: HTMLVideoElement, stream: MediaStream) {
 		node.srcObject = stream;
 		return {
 			update(newStream: MediaStream) {
 				if (node.srcObject !== newStream) node.srcObject = newStream;
+			},
+		};
+	}
+
+	function setPlaying(key: string, value: boolean) {
+		if ((playing[key] ?? false) !== value) playing = { ...playing, [key]: value };
+	}
+
+	/** Notes when a tile's video has frames to show, and forgets it when the video goes. */
+	function trackPlaying(node: HTMLVideoElement, key: string) {
+		const onPlaying = () => setPlaying(key, true);
+		const onStalled = () => setPlaying(key, false);
+		node.addEventListener("playing", onPlaying);
+		node.addEventListener("waiting", onStalled);
+		node.addEventListener("emptied", onStalled);
+		return {
+			destroy() {
+				node.removeEventListener("playing", onPlaying);
+				node.removeEventListener("waiting", onStalled);
+				node.removeEventListener("emptied", onStalled);
+				setPlaying(key, false);
 			},
 		};
 	}
@@ -197,28 +278,43 @@
 	function toggleMute() {
 		if (!canSpeak) return;
 		isMuted.update((m) => !m);
-		if ($activeVoiceRoomId) {
-			sendEventMessage("VOICE_SYNC", {
-				room_id: $activeVoiceRoomId,
-				muted: $isMuted,
-				deafened: $isDeafened,
-				screen_sharing: $isScreenSharing,
-			});
-		}
+		sendVoiceSync();
 	}
 
 	function toggleDeafen() {
 		isDeafened.update((d) => !d);
 		if ($isDeafened) isMuted.set(true);
-		if ($activeVoiceRoomId) {
-			sendEventMessage("VOICE_SYNC", {
-				room_id: $activeVoiceRoomId,
-				muted: $isMuted,
-				deafened: $isDeafened,
-				screen_sharing: $isScreenSharing,
-			});
+		sendVoiceSync();
+	}
+
+	function toggleCamera() {
+		if (!canVideo) return;
+		cameraRequested.set(!$isCameraOn);
+	}
+
+	/** The cameras for the menu. Before the camera permission is given they have no names, so it's asked for
+	 * first, as the mic menu does. */
+	async function loadCameras() {
+		try {
+			const list = async () => (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === "videoinput");
+			cameras = await list();
+			if (cameras.length > 0 && !cameras[0].label) {
+				const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+				stream.getTracks().forEach((t) => t.stop());
+				cameras = await list();
+			}
+		} catch (err) {
+			console.error("[Voice] Couldn't list the cameras:", err);
 		}
 	}
+
+	// The camera in use, else the one picked, else the system's default (the first).
+	const activeCameraId = $derived(
+		$voiceLocalCameraStream?.getVideoTracks().at(0)?.getSettings().deviceId ||
+			$selectedCameraId ||
+			cameras.at(0)?.deviceId ||
+			"",
+	);
 </script>
 
 <div class="flex min-h-0 flex-1 flex-col bg-[linear-gradient(180deg,oklch(0.205_0.01_80),oklch(0.18_0.008_80))]">
@@ -250,143 +346,157 @@
 		{:else}
 			<div
 				bind:this={gridEl}
-				class={voiceUsers.length === 1
+				class={fills
 					? "flex h-full flex-col"
-					: focusedUserId
+					: focused
 						? "flex flex-row flex-wrap content-start gap-4"
-						: "grid content-start gap-4"}
-				style={!focusedUserId && voiceUsers.length !== 1
-					? "grid-template-columns: repeat(auto-fit, minmax(240px, 1fr))"
-					: ""}
+						: callMode
+							? "grid grid-cols-[repeat(auto-fit,minmax(200px,300px))] content-start justify-center gap-4"
+							: "grid grid-cols-[repeat(auto-fit,minmax(240px,1fr))] content-start gap-4"}
 			>
-				{#each voiceUsers as user, idx (user.id)}
-					{@const isLocal = user.id === $currentUser?.id}
-					{@const videoStream = isLocal ? $voiceLocalVideoStream : $voiceRemoteVideoStreams[user.id]}
+				{#each tiles as tile (tile.key)}
+					{@const user = tile.user}
+					<!-- This client's own tiles show its own capture; another session of the same user's is remote. -->
+					{@const isLocal = isConnected && user.id === $currentUser?.id}
 					{@const isSpeaking = $speakingUsers.has(user.id) && !user.muted}
 
 					<div
-						class="group relative flex cursor-pointer items-center justify-center overflow-hidden rounded-lg border bg-zinc-800/70 shadow-lg transition-all {voiceUsers.length ===
-						1
-							? 'min-h-0 w-full flex-1'
-							: focusedUserId === user.id
-								? 'order-first h-[60vh] w-full'
-								: focusedUserId
-									? 'h-48 w-64 shrink-0'
-									: 'h-48'} {isSpeaking
-							? 'border-transparent ring-2 ring-stone-400 ring-inset'
-							: 'border-zinc-700 hover:border-zinc-500'}"
+						class="group relative flex cursor-pointer items-center justify-center overflow-hidden rounded-lg border bg-zinc-800/70 shadow-lg transition-all {tileSize(
+							tile.key,
+						)} {isSpeaking ? 'border-transparent' : 'border-zinc-700 hover:border-zinc-500'}"
 						role="button"
 						tabindex="0"
-						onclick={() => (focusedUserId = focusedUserId === user.id ? null : user.id)}
+						aria-label={tile.kind === "screen" ? `${user.username}'s screen` : user.username}
+						onclick={() => toggleFocus(tile.key)}
 						onkeydown={(e) => {
 							if (e.key === "Enter" || e.key === " ") {
 								e.preventDefault();
-								focusedUserId = focusedUserId === user.id ? null : user.id;
+								toggleFocus(tile.key);
 							}
 						}}
 					>
-						{#if videoStream && (isLocal || videoAccepted[user.id])}
-							<video
-								bind:this={videoRefs[user.id]}
-								use:srcObject={videoStream}
-								autoplay
-								playsinline
-								muted={isLocal}
-								class="h-full w-full object-contain backdrop-blur-md transition-opacity duration-300 {videoPlayingStates[
-									user.id
-								]
-									? 'opacity-100'
-									: 'opacity-0'}"
-								onplaying={() => (videoPlayingStates = { ...videoPlayingStates, [user.id]: true })}
-								onwaiting={() => (videoPlayingStates = { ...videoPlayingStates, [user.id]: false })}
-							>
-								<track kind="captions" srclang="en" label="captions" />
-							</video>
-							{#if !videoPlayingStates[user.id]}
-								<div class="absolute inset-0 z-10 flex items-center justify-center rounded-lg bg-black/60">
-									<LoaderCircle class="size-8 animate-spin text-zinc-300" />
+						{#if tile.kind === "person"}
+							{@const cameraStream = !user.camera
+								? null
+								: isLocal
+									? $voiceLocalCameraStream
+									: $incomingVideo
+										? ($voiceRemoteCameraStreams[user.id] ?? null)
+										: null}
+							<!-- Videos are always muted: VoiceChat's <audio> plays everyone's sound. Only yours is mirrored. -->
+							{#if cameraStream}
+								<video
+									use:srcObject={cameraStream}
+									use:trackPlaying={tile.key}
+									autoplay
+									muted
+									playsinline
+									class="absolute inset-0 size-full {cameraFit(tile.key)} {isLocal ? '-scale-x-100' : ''}"
+								></video>
+							{/if}
+							{#if !cameraStream || !playing[tile.key]}
+								<div class="relative flex items-center justify-center">
+									<UserAvatar
+										src={$voiceFaces ? null : user.avatar_url}
+										name={user.username}
+										size={80}
+										mouthOpen={$userAmplitudes[user.id] ?? 0}
+										eyeOffset={eyeOffsets[user.id] ?? { x: 0, y: 0 }}
+									/>
+									{#if user.camera && !isLocal && !$incomingVideo}
+										<span
+											class="absolute -right-1 -bottom-1 rounded-full border border-zinc-700 bg-zinc-900 p-1.5"
+											title="Camera on. Incoming video is off."
+										>
+											<VideoOff class="size-3.5 text-zinc-400" />
+										</span>
+									{/if}
 								</div>
 							{/if}
-							{#if !isLocal}
-								<div
-									class="absolute top-2 right-2 z-20 flex items-center gap-2 opacity-0 transition-all group-hover:opacity-100"
-								>
-									<div class="flex items-center gap-1.5 rounded-md bg-black/70 px-2.5 py-1.5 backdrop-blur-sm">
-										<Volume2 class="size-3 text-zinc-400" />
-										<input
-											type="range"
-											min="0"
-											max="1"
-											step="0.01"
-											value={streamVolumes[user.id] ?? 1}
-											oninput={(e) =>
-												(streamVolumes = {
-													...streamVolumes,
-													[user.id]: parseFloat((e.currentTarget as HTMLInputElement).value),
-												})}
-											class="h-1 w-16 cursor-pointer accent-white"
-										/>
+						{:else}
+							{@const screenStream = isLocal
+								? $voiceLocalVideoStream
+								: $incomingVideo
+									? ($voiceRemoteVideoStreams[user.id] ?? null)
+									: null}
+							{#if !isLocal && !$incomingVideo}
+								<div class="flex flex-col items-center gap-2 text-zinc-400">
+									<VideoOff class="size-6" />
+									<span class="text-xs">Incoming video is off</span>
+								</div>
+							{:else if isLocal || videoAccepted[user.id]}
+								{#if screenStream}
+									<video
+										use:srcObject={screenStream}
+										use:trackPlaying={tile.key}
+										autoplay
+										muted
+										playsinline
+										class="absolute inset-0 size-full object-contain"
+									></video>
+								{/if}
+								{#if !screenStream || !playing[tile.key]}
+									<div class="absolute inset-0 flex items-center justify-center bg-black/60">
+										<LoaderCircle class="size-8 animate-spin text-zinc-300" />
 									</div>
+								{/if}
+								{#if !isLocal}
 									<button
-										class="flex items-center gap-1.5 rounded-md bg-black/70 px-2.5 py-1.5 text-xs text-zinc-300 backdrop-blur-sm transition-colors hover:bg-red-600/80 hover:text-white"
+										class="absolute top-2 right-2 z-10 flex items-center gap-1.5 rounded-md bg-black/70 px-2.5 py-1.5 text-xs text-zinc-300 opacity-0 backdrop-blur-sm transition-all group-hover:opacity-100 hover:bg-red-600/80 hover:text-white"
 										onclick={(e) => {
 											e.stopPropagation();
 											videoAccepted = { ...videoAccepted, [user.id]: false };
-											videoPlayingStates = { ...videoPlayingStates, [user.id]: false };
 										}}
 									>
 										<PhoneOff class="size-3" />
 										Stop
 									</button>
+								{/if}
+							{:else}
+								<!-- Remote user is sharing but viewer hasn't accepted -->
+								<div class="flex flex-col items-center justify-center gap-3">
+									<UserAvatar
+										src={$voiceFaces ? null : user.avatar_url}
+										name={user.username}
+										size={64}
+										mouthOpen={$userAmplitudes[user.id] ?? 0}
+										eyeOffset={eyeOffsets[user.id] ?? { x: 0, y: 0 }}
+									/>
+									<button
+										class="flex items-center gap-2 rounded-lg bg-stone-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-stone-500"
+										onclick={(e) => {
+											e.stopPropagation();
+											videoAccepted = { ...videoAccepted, [user.id]: true };
+										}}
+									>
+										<MonitorUp class="size-4" />
+										Watch stream
+									</button>
 								</div>
 							{/if}
-						{:else if videoStream && !isLocal}
-							<!-- Remote user is sharing but viewer hasn't accepted -->
-							<div class="flex flex-col items-center justify-center gap-3">
-								<UserAvatar
-									src={$voiceFaces ? null : user.avatar_url}
-									name={user.username}
-									size={64}
-									mouthOpen={$userAmplitudes[user.id] ?? 0}
-									eyeOffset={eyeOffsets[user.id] ?? { x: 0, y: 0 }}
-								/>
-								<button
-									class="flex items-center gap-2 rounded-lg bg-stone-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-stone-500"
-									onclick={(e) => {
-										e.stopPropagation();
-										videoAccepted = { ...videoAccepted, [user.id]: true };
-									}}
-								>
-									<MonitorUp class="size-4" />
-									Watch stream
-								</button>
-							</div>
-						{:else}
-							<div class="flex items-center justify-center">
-								<UserAvatar
-									src={$voiceFaces ? null : user.avatar_url}
-									name={user.username}
-									size={80}
-									mouthOpen={$userAmplitudes[user.id] ?? 0}
-									eyeOffset={eyeOffsets[user.id] ?? { x: 0, y: 0 }}
-								/>
-							</div>
 						{/if}
 
 						<!-- Name label -->
 						<div
-							class="absolute bottom-2 left-2 flex items-center gap-1.5 rounded-md bg-black/60 px-2 py-1 text-white backdrop-blur-md"
+							class="absolute bottom-2 left-2 z-10 flex max-w-[calc(100%-1rem)] items-center gap-1.5 rounded-md bg-black/60 px-2 py-1 text-white backdrop-blur-md"
 						>
-							{#if user.deafened}
-								<Headphones class="size-3.5 text-red-400" />
-							{:else if user.muted}
-								<MicOff class="size-3.5 text-red-400" />
+							{#if tile.kind === "screen"}
+								<MonitorUp class="size-3.5 shrink-0 text-blue-400" />
+								<span class="truncate text-xs font-medium">{user.username}'s screen</span>
+							{:else}
+								{#if user.deafened}
+									<Headphones class="size-3.5 shrink-0 text-red-400" />
+								{:else if user.muted}
+									<MicOff class="size-3.5 shrink-0 text-red-400" />
+								{/if}
+								<span class="truncate text-xs font-medium">{user.username}</span>
 							{/if}
-							{#if videoStream || user.screen_sharing}
-								<MonitorUp class="size-3.5 text-blue-400" />
-							{/if}
-							<span class="text-xs font-medium">{user.username}</span>
 						</div>
+
+						<!-- Speaking ring, above any video -->
+						{#if isSpeaking}
+							<div class="pointer-events-none absolute inset-0 z-20 rounded-lg ring-2 ring-stone-400 ring-inset"></div>
+						{/if}
 					</div>
 				{/each}
 			</div>
@@ -396,16 +506,93 @@
 	<!-- Controls -->
 	<div class="flex shrink-0 items-center justify-center gap-2 border-t border-zinc-800 px-4 py-4">
 		{#if isConnected}
+			<div class="flex items-stretch">
+				<button
+					class="flex flex-col items-center gap-1 rounded-l-xl py-2.5 pr-2 pl-4 transition-colors {$isCameraOn
+						? 'bg-stone-400/20 text-stone-200 hover:bg-stone-400/30'
+						: 'text-zinc-300 hover:bg-zinc-800'}"
+					class:opacity-50={!canVideo}
+					class:cursor-not-allowed={!canVideo}
+					disabled={!canVideo}
+					onclick={toggleCamera}
+					title={!canVideo ? NO_VIDEO : $isCameraOn ? "Turn off camera" : "Turn on camera"}
+				>
+					{#if $isCameraOn}
+						<Video class="size-5" />
+					{:else}
+						<VideoOff class="size-5" />
+					{/if}
+					<span class="text-xxs {$isCameraOn ? 'text-stone-200' : 'text-zinc-400'}">Camera</span>
+				</button>
+				<DropdownMenu.Root
+					onOpenChange={(open) => {
+						if (open) void loadCameras();
+					}}
+				>
+					<DropdownMenu.Trigger
+						class="flex items-center rounded-r-xl px-1.5 text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-200"
+						aria-label="Camera options"
+						title="Camera options"
+					>
+						<ChevronUp class="size-4" />
+					</DropdownMenu.Trigger>
+					<DropdownMenu.Portal>
+						<DropdownMenu.Content
+							class="z-200 w-64 overflow-hidden rounded-lg border border-zinc-700 bg-zinc-800 py-1 shadow-2xl"
+							side="top"
+							sideOffset={8}
+						>
+							<div
+								class="mb-1 border-b border-zinc-700 px-3 py-1.5 text-xs font-semibold tracking-wider text-zinc-400 uppercase"
+							>
+								Camera
+							</div>
+							{#if cameras.length === 0}
+								<div class="px-3 py-2 text-sm text-zinc-400">No cameras found</div>
+							{:else}
+								{#each cameras as camera, i (camera.deviceId || i)}
+									<DropdownMenu.Item
+										class="flex w-full cursor-pointer items-center justify-between gap-2 px-3 py-2 text-left text-sm text-zinc-100 transition-colors outline-none hover:bg-zinc-700 data-highlighted:bg-zinc-700"
+										onSelect={() => selectedCameraId.set(camera.deviceId)}
+									>
+										<span class="truncate">{camera.label || `Camera ${i + 1}`}</span>
+										{#if camera.deviceId && camera.deviceId === activeCameraId}
+											<Check class="size-4 shrink-0 text-stone-300" />
+										{/if}
+									</DropdownMenu.Item>
+								{/each}
+							{/if}
+							<DropdownMenu.Separator class="my-1 h-px bg-zinc-700" />
+							<DropdownMenu.CheckboxItem
+								class="flex w-full cursor-pointer items-center justify-between gap-2 px-3 py-2 text-left text-sm text-zinc-100 transition-colors outline-none hover:bg-zinc-700 data-highlighted:bg-zinc-700"
+								checked={$incomingVideo}
+								onCheckedChange={(checked) => incomingVideo.set(checked)}
+								title="Off, you receive no one's camera or screen"
+							>
+								{#snippet children({ checked })}
+									<span>Incoming video</span>
+									{#if checked}
+										<Check class="size-4 shrink-0 text-stone-300" />
+									{/if}
+								{/snippet}
+							</DropdownMenu.CheckboxItem>
+						</DropdownMenu.Content>
+					</DropdownMenu.Portal>
+				</DropdownMenu.Root>
+			</div>
 			<div class="relative">
 				<button
 					class="flex flex-col items-center gap-1 rounded-xl px-4 py-2.5 text-zinc-300 transition-colors hover:bg-zinc-800"
+					class:opacity-50={!canVideo}
+					class:cursor-not-allowed={!canVideo}
+					disabled={!canVideo}
 					onclick={() => (showStreamMenu = !showStreamMenu)}
-					title="Share screen"
+					title={!canVideo ? NO_VIDEO : "Share screen"}
 				>
 					<MonitorUp class="size-5" />
 					<span class="text-xxs text-zinc-400">Stream</span>
 				</button>
-				{#if showStreamMenu}
+				{#if showStreamMenu && canVideo}
 					<!-- svelte-ignore a11y_no_static_element_interactions -->
 					<!-- svelte-ignore a11y_click_events_have_key_events -->
 					<div

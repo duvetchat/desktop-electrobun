@@ -1,4 +1,5 @@
 import api from "$lib/api/api";
+import { pathSegment } from "$lib/urls";
 
 export interface InviteInfo {
 	code: string;
@@ -8,13 +9,23 @@ export interface InviteInfo {
 	member_count: number;
 }
 
+// An invite's code comes from a link anyone can write: it's one segment of the path (pathSegment). One that can't
+// be is no invite at all, and reads as the API's answer for any other code it doesn't know.
+function codeSegment(code: string): string {
+	try {
+		return pathSegment(code);
+	} catch {
+		throw new Error("invite link not found or has expired");
+	}
+}
+
 export async function getInvite(code: string): Promise<InviteInfo> {
-	const response = await api.get(`/api/invites/${encodeURIComponent(code)}`);
+	const response = await api.get(`/api/invites/${codeSegment(code)}`);
 	return response.data;
 }
 
 export async function joinInvite(code: string): Promise<InviteInfo> {
-	const response = await api.post(`/api/invites/${encodeURIComponent(code)}/join`);
+	const response = await api.post(`/api/invites/${codeSegment(code)}/join`);
 	return response.data;
 }
 

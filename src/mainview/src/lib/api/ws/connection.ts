@@ -1,6 +1,9 @@
 import {
 	pinUpdates,
 	channelMessages,
+	ephemeralMessages,
+	keepEphemeral,
+	dropEphemeral,
 	wsSessionToken,
 	iceServers,
 	gatewaySpaces,
@@ -43,7 +46,7 @@ import { forgetSpaceCommands } from "$lib/api/interactions";
 
 import type { DMTypingEvent, GatewayEvent, GatewaySpace, ReferencedMessage, TypingEvent, UserStatus } from "$lib/types";
 
-import { gatewayMessageToMessage } from "$lib/types";
+import { gatewayMessageToMessage, isEphemeral } from "$lib/types";
 
 // Token is passed via query string because the WebSocket API does not support
 // custom headers during the handshake. Ideally the gateway would accept a
@@ -54,6 +57,7 @@ export function getStreamURL(): string {
 }
 
 import { audioStore } from "$lib/stores/audio.svelte";
+import { storageTransfers } from "$lib/stores/storage-transfers.svelte";
 import { getElectrobunRpc } from "$lib/electrobun-rpc";
 
 // Listen for activity updates from Electrobun IPC (VS Code, etc.)
@@ -235,6 +239,7 @@ function handleEvent(event: GatewayEvent) {
 									muted: vs.muted,
 									deafened: vs.deafened,
 									screen_sharing: vs.screen_sharing,
+									camera: vs.camera,
 								});
 							}
 							return filtered;
@@ -369,7 +374,9 @@ function handleEvent(event: GatewayEvent) {
 			if (!roomId) break;
 			const spaces = get(gatewaySpaces);
 			const message = gatewayMessageToMessage(raw, spaces);
-			if (roomId !== get(activeTextRoomId)) {
+			// An ephemeral message, which a bot sent this user alone, isn't one of the room's: it leaves the room read.
+			const ephemeral = isEphemeral(message);
+			if (roomId !== get(activeTextRoomId) && !ephemeral) {
 				unreadChannels.update((s) => {
 					s.add(roomId);
 					return s;
@@ -379,6 +386,10 @@ function handleEvent(event: GatewayEvent) {
 				if (!all[roomId]) return all;
 				return { ...all, [roomId]: all[roomId].filter((u) => u.user_id !== raw.author_id) };
 			});
+			if (ephemeral) {
+				keepEphemeral(roomId, message);
+				break;
+			}
 			channelMessages.update((all) => {
 				const existing = all[roomId] ?? [];
 
@@ -414,6 +425,18 @@ function handleEvent(event: GatewayEvent) {
 			const raw = payload.data;
 			const spaces = get(gatewaySpaces);
 			const updatedMessage = gatewayMessageToMessage(raw, spaces);
+			// An ephemeral message stays so (its flag never changes), apart from the room's. One dismissed is gone.
+			if (isEphemeral(updatedMessage)) {
+				const roomId = raw.room_id;
+				const shown = roomId ? get(ephemeralMessages)[roomId]?.find((m) => m.id === updatedMessage.id) : undefined;
+				if (roomId && shown) {
+					keepEphemeral(roomId, {
+						...updatedMessage,
+						interaction_metadata: updatedMessage.interaction_metadata ?? shown.interaction_metadata,
+					});
+				}
+				break;
+			}
 			channelMessages.update((all) => {
 				const result: typeof all = {};
 				for (const [roomId, msgs] of Object.entries(all)) {
@@ -453,6 +476,7 @@ function handleEvent(event: GatewayEvent) {
 		}
 		case "MESSAGE_DELETE": {
 			const raw = payload.data;
+			dropEphemeral(raw.room_id, raw.id);
 			channelMessages.update((all) => {
 				const existing = all[raw.room_id] ?? [];
 				return {
@@ -602,6 +626,7 @@ function handleEvent(event: GatewayEvent) {
 									muted: raw.muted,
 									deafened: raw.deafened,
 									screen_sharing: raw.screen_sharing,
+									camera: raw.camera,
 								},
 							];
 						}
@@ -611,6 +636,7 @@ function handleEvent(event: GatewayEvent) {
 							muted: raw.muted,
 							deafened: raw.deafened,
 							screen_sharing: raw.screen_sharing,
+							camera: raw.camera,
 						};
 						return copy;
 					}
@@ -644,6 +670,7 @@ function handleEvent(event: GatewayEvent) {
 								muted: raw.muted,
 								deafened: raw.deafened,
 								screen_sharing: raw.screen_sharing,
+								camera: raw.camera,
 								version: raw.version,
 							});
 						} else {
@@ -652,6 +679,7 @@ function handleEvent(event: GatewayEvent) {
 								muted: raw.muted,
 								deafened: raw.deafened,
 								screen_sharing: raw.screen_sharing,
+								camera: raw.camera,
 								version: raw.version,
 							};
 						}
@@ -681,6 +709,8 @@ function handleEvent(event: GatewayEvent) {
 			}
 			break;
 		}
+		// VOICE_VIDEO_REFUSED goes to VoiceChat, which turns the camera off and says why.
+		case "VOICE_VIDEO_REFUSED":
 		case "VOICE_JOINED":
 		case "WEBRTC_ICE_CANDIDATE":
 		case "WEBRTC_RENEGOTIATE":
@@ -1320,6 +1350,11 @@ function handleEvent(event: GatewayEvent) {
 		case "TEAM_INVITE_CREATE": {
 			const inv = payload.data;
 			pendingTeamInvites.update((list) => [...list, inv]);
+			break;
+		}
+		case "STORAGE_TRANSFER_UPDATE": {
+			// Only who started the transfer gets it: when it's created, starts, moves and ends.
+			storageTransfers.set(payload.data, true);
 			break;
 		}
 		default:

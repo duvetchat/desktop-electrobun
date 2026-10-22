@@ -19,18 +19,72 @@ describe("text stays text", () => {
 		expect(html).not.toContain('"onmouseover');
 	});
 
-	test("a URL with code, a mention or an emoji in it isn't a link: their HTML would end up in the href", () => {
-		for (const text of [
-			"[x](https://a.example/`code`)",
-			"[x](https://a.example/<@0190a3b2-0000-7000-8000-000000000001>)",
-			"[x](https://a.example/😀)",
-		]) {
-			expect(renderMarkdown(text)).not.toContain("href=");
-		}
+	test("a URL with code in it isn't a link: the code is taken out first", () => {
+		expect(renderMarkdown("[x](https://a.example/`code`)")).not.toContain("href=");
 	});
 
 	test("a plain link keeps its URL", () => {
 		expect(hrefOf(renderMarkdown("[docs](https://duvet.chat/a?b=1&c=2)"))).toBe("https://duvet.chat/a?b=1&amp;c=2");
+	});
+});
+
+describe("a link's URL is kept as written", () => {
+	// What the inline rules would turn into HTML: emphasis, strikethrough, spoilers, mentions, emojis, tags.
+	const CASES: [string, string][] = [
+		["https://a.example/a*b*c", "https://a.example/a*b*c"],
+		["https://a.example/**b**", "https://a.example/**b**"],
+		["https://a.example/***b***", "https://a.example/***b***"],
+		["https://a.example/_x_", "https://a.example/_x_"],
+		["https://a.example/__x__", "https://a.example/__x__"],
+		["https://a.example/~~x~~", "https://a.example/~~x~~"],
+		["https://a.example/||x||", "https://a.example/||x||"],
+		["https://a.example/a<b>c", "https://a.example/a&lt;b&gt;c"],
+		["https://a.example/&lt;", "https://a.example/&amp;lt;"],
+		[
+			"https://a.example/<@0190a3b2-0000-7000-8000-000000000001>",
+			"https://a.example/&lt;@0190a3b2-0000-7000-8000-000000000001&gt;",
+		],
+		[
+			"https://a.example/<:0190a3b2-0000-7000-8000-000000000002:>",
+			"https://a.example/&lt;:0190a3b2-0000-7000-8000-000000000002:&gt;",
+		],
+		["https://a.example/😀", "https://a.example/😀"],
+	];
+
+	test("the inline rules leave the URL alone, and the text is the link's", () => {
+		for (const [url, href] of CASES) {
+			const html = renderMarkdown(`see [the page](${url}) now`);
+			expect(hrefOf(html)).toBe(href);
+			expect(html).toContain(`class="msg-link">the page</a> now`);
+		}
+	});
+
+	test("the same in a reply's one-line quote, a list, a quote, a heading and a table", () => {
+		for (const [url, href] of CASES) {
+			expect(hrefOf(renderMarkdownLine(`[x](${url})`))).toBe(href);
+			for (const text of [`- [x](${url})`, `> [x](${url})`, `## [x](${url})`, `| a |\n|---|\n| [x](${url}) |`]) {
+				expect(hrefOf(renderMarkdown(text))).toBe(href);
+			}
+		}
+	});
+
+	test("the text still takes formatting, and formatting around the link wraps it", () => {
+		expect(renderMarkdown("[**bold** _it_](https://a.example/_x_)")).toBe(
+			'<a href="https://a.example/_x_" target="_blank" rel="noopener noreferrer" class="msg-link"><strong>bold</strong> <em>it</em></a>',
+		);
+		expect(renderMarkdown("**[x](https://a.example/a*b)** ||[y](https://a.example/||)||")).toBe(
+			'<strong><a href="https://a.example/a*b" target="_blank" rel="noopener noreferrer" class="msg-link">x</a></strong> ' +
+				'<span class="msg-spoiler"><a href="https://a.example/||" target="_blank" rel="noopener noreferrer" class="msg-link">y</a></span>',
+		);
+	});
+
+	test("code in the text stays code, and the URL's quotes still can't end its href", () => {
+		expect(renderMarkdown("[`a*b*`](https://a.example/_x_)")).toBe(
+			'<a href="https://a.example/_x_" target="_blank" rel="noopener noreferrer" class="msg-link"><code class="msg-inline-code">a*b*</code></a>',
+		);
+		const html = renderMarkdown('[x](https://a.example/*"onmouseover="alert(1)*)');
+		expect(hrefOf(html)).toBe("https://a.example/*&quot;onmouseover=&quot;alert(1");
+		expect(html).not.toContain('"onmouseover');
 	});
 });
 
@@ -42,6 +96,27 @@ describe("a message's own \\x00 can't pass for a placeholder", () => {
 	test("it brings in no code's HTML, nor undefined", () => {
 		expect(renderMarkdown("`a` \x00I0\x00")).toBe('<code class="msg-inline-code">a</code> I0');
 		expect(renderMarkdown("\x00B9\x00 \x00I9\x00")).toBe("B9 I9");
+		expect(renderMarkdown("`a` \x00I0\x01 \x01")).toBe('<code class="msg-inline-code">a</code> I0 ');
+	});
+
+	test("text between two placeholders doesn't read as a third", () => {
+		const code = (c: string) => `<code class="msg-inline-code">${c}</code>`;
+		for (const between of ["B0", "I0", "I5", "L0", "L5", "P0"]) {
+			expect(renderMarkdown(`\`a\`${between}\`b\``)).toBe(`${code("a")}${between}${code("b")}`);
+			expect(renderMarkdownLine(`\`a\`${between}\`b\``)).toBe(`${code("a")}${between}${code("b")}`);
+			expect(renderMarkdownLine(`\`\`\` a\`\`\`${between}\`b\``)).toBe(`${code("a")}${between}${code("b")}`);
+		}
+		const link = '<a href="https://a.example/" target="_blank" rel="noopener noreferrer" class="msg-link">x</a>';
+		expect(renderMarkdown("[x](https://a.example/)I0`b`")).toBe(`${link}I0${code("b")}`);
+	});
+
+	test("inline code doesn't take a code block in: the block comes back where it was", () => {
+		for (const html of [renderMarkdown("`x``` b```y`"), renderMarkdownLine("`x``` b```y`")]) {
+			expect(html).not.toMatch(/[\x00\x01]/);
+			expect(html.startsWith("`x")).toBe(true);
+			expect(html.endsWith("y`")).toBe(true);
+		}
+		expect(renderMarkdownLine("`x``` b```y`")).toBe('`x<code class="msg-inline-code">b</code>y`');
 	});
 });
 
@@ -129,6 +204,13 @@ describe("the HTML it makes", () => {
 		"\x00I0\x00",
 		"\x00B0\x00",
 		"\x00P0\x00",
+		"\x01",
+		"\x00I0\x01",
+		"\x00L0\x01",
+		"B0",
+		"I0",
+		"L0",
+		"P0",
 		"\x00I1\x00",
 		"\x00B1\x00",
 		"onmouseover=",
@@ -259,7 +341,11 @@ describe("the HTML it makes", () => {
 				renderMarkdown(text, random() < 0.2, mentionMap, customEmojiMap),
 				renderMarkdownLine(text, mentionMap, customEmojiMap),
 			]) {
-				const problem = await inspect(html);
+				// A placeholder that didn't come back whole leaves its mark, or "undefined" in another's place.
+				const problem =
+					(await inspect(html)) ??
+					(/[\x00\x01]/.test(html) ? "a placeholder's mark" : null) ??
+					(html.includes("undefined") && !text.includes("undefined") ? "undefined" : null);
 				if (problem) found.push(`${problem} from ${JSON.stringify(text)}`);
 			}
 		}

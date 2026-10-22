@@ -25,6 +25,7 @@ export type AppRPCSchema = {
 			closeWindow: void;
 			minimizeWindow: void;
 			maximizeWindow: MaximizeParams;
+			openExternal: { url: string };
 		};
 	};
 	webview: {
@@ -40,6 +41,7 @@ export type AppRPCClient = {
 		closeWindow: () => void;
 		minimizeWindow: () => void;
 		maximizeWindow: (params: MaximizeParams) => void;
+		openExternal: (params: { url: string }) => void;
 	};
 	on: {
 		activityUpdate: (handler: (data: ActivityPayload[] | null) => void) => void;
@@ -55,7 +57,11 @@ export function isElectrobunWindow() {
 const activityListeners: ((data: ActivityPayload[] | null) => void)[] = [];
 
 async function createRpcClient(): Promise<AppRPCClient | null> {
-	if (!isElectrobunWindow()) return null;
+	// Only the top frame. Electrobun injects its preload into subframes on some platforms (macOS WKUserScript
+	// forMainFrameOnly:false), so isElectrobunWindow() can read true inside an embedded player page; wiring the
+	// RPC there would run the app's bun↔webview channel from a third-party frame. The app's RPC only ever
+	// belongs to its own top-level document.
+	if (!isElectrobunWindow() || window.top !== window) return null;
 
 	const { Electroview } = await import("electrobun/view");
 	const rpc = Electroview.defineRPC<AppRPCSchema>({

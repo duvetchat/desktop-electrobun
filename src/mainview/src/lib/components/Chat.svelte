@@ -16,7 +16,7 @@
 		Embed,
 		SpaceCommandApplication,
 	} from "$lib/types";
-	import { MessageReferenceType } from "$lib/types";
+	import { isEphemeral, MessageReferenceType } from "$lib/types";
 	import { sendMessage, sendVoiceNote, sendTypingIndicator, sendRecordingIndicator } from "$lib/api/messages";
 	import { MessageType } from "$lib/types";
 	import { currentUser, channelMessages, typingUsers, spaceEmojis, spaceStickers } from "$lib/stores.svelte";
@@ -191,8 +191,11 @@
 		tryEditAtIndex(0);
 	}
 
+	// The messages Ctrl+Up replies to: an ephemeral one isn't the room's, so nothing can reply to it.
 	function getAllMessages() {
-		return [...messages].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+		return messages
+			.filter((m) => !isEphemeral(m))
+			.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 	}
 
 	function tryReplyAtIndex(index: number) {
@@ -681,7 +684,15 @@
 				app={active.app}
 				{space}
 				{members}
-				onSend={(data) => sendCommandInteraction(channelId, active.app.id, data)}
+				onSend={(data) =>
+					sendCommandInteraction(channelId, active.app.id, data, {
+						space,
+						members,
+						from: {
+							name: active.app.bot.alias ?? active.app.bot.username,
+							avatarUrl: getAvatarURL(active.app.bot.id, active.app.bot.avatar),
+						},
+					})}
 				onExit={() => (command = null)}
 			/>
 		{:else}

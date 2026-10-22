@@ -1,10 +1,14 @@
 <script lang="ts">
 	import { hasPermission, Permission } from "$lib/permissions";
 	import { onDestroy, onMount, tick } from "svelte";
-	import { CircleAlert as AlertIcon, Pin as PinIcon, PinOff as PinOffIcon } from "@lucide/svelte";
+	import { CircleAlert as AlertIcon, Eye as EyeIcon, Pin as PinIcon, PinOff as PinOffIcon } from "@lucide/svelte";
 	import { updateMessage, deleteMessage, getMessageThread, pinRoomMessage, unpinRoomMessage } from "$lib/api/messages";
-	import { sendComponentInteraction } from "$lib/api/interactions";
-	import { pinConversationMessage, unpinConversationMessage } from "$lib/api/conversations";
+	import { sendComponentInteraction, type ComponentUse } from "$lib/api/interactions";
+	import {
+		getConversationMessageThread,
+		pinConversationMessage,
+		unpinConversationMessage,
+	} from "$lib/api/conversations";
 	import { confirmAction } from "$lib/stores/confirm.svelte";
 	import { Dialog, Popover } from "bits-ui";
 	import {
@@ -19,6 +23,7 @@
 		sentFriendRequests,
 		pendingFriendRequests,
 		conversations,
+		dropEphemeral,
 	} from "$lib/stores.svelte";
 	import {
 		addRoomReaction,
@@ -30,9 +35,10 @@
 	import { renderEmoji, isOnlyEmojis, countEmojis } from "$lib/emoji";
 	import { customEmojiMapOf, mentionMapOf, parseTextSegments, renderMarkdown, renderMarkdownLine } from "$lib/markdown";
 
-	import { gatewayMessageToMessage, isComponentsV2, isLoading, messageText } from "$lib/types";
+	import { gatewayMessageToMessage, isComponentsV2, isEphemeral, isLoading, messageText } from "$lib/types";
 	import { MessageType, type MemberOnSidebar, type GatewaySpace, type Message, type SpaceEmoji } from "$lib/types";
 	import { getHostURL, getAvatarURL, DUVET_DOMAIN } from "$lib/common/common";
+	import { isUuid, parseMessageLink, type MessageLink } from "$lib/urls";
 
 	import InviteEmbed from "$lib/components/InviteEmbed.svelte";
 	import BotInviteEmbed from "$lib/components/BotInviteEmbed.svelte";
@@ -338,6 +344,16 @@
 	const mentionMap = $derived(mentionMapOf(members));
 	const customEmojiMap = $derived(customEmojiMapOf(customEmojis));
 
+	// Uses a component of a bot's message. A modal the bot answers with opens with this room's members, roles
+	// and rooms for its selects, under the bot's name.
+	function interact(message: Message, use: ComponentUse) {
+		return sendComponentInteraction(channelId, message.id, use, {
+			space,
+			members,
+			from: { name: message.author_name, avatarUrl: message.author_avatar_url },
+		});
+	}
+
 	// ── Image preview ─────────────────────────────────────────────────────────
 	let previewSrc = $state("");
 	let previewAlt = $state("");
@@ -631,10 +647,6 @@
 	}
 
 	// ── Message link navigation ────────────────────────────────────────────────
-	const DOMAIN_ESCAPED = DUVET_DOMAIN.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-	const roomLinkRegex = new RegExp(`^${DOMAIN_ESCAPED}/channels/([^/]+)/([^/]+)/([^/]+)$`);
-	const convLinkRegex = new RegExp(`^${DOMAIN_ESCAPED}/conversations/([^/]+)/([^/]+)$`);
-
 	function parseInviteLink(url: string): boolean {
 		return parseInviteCode(url) !== null;
 	}
@@ -653,73 +665,28 @@
 		try {
 			const u = new URL(url);
 			if ((u.origin === DUVET_DOMAIN || u.origin === window.location.origin) && u.pathname === "/invite") {
-				return u.searchParams.get("bot");
+				// Only a bot's ID: it goes into the paths of the requests about the bot.
+				const bot = u.searchParams.get("bot");
+				return isUuid(bot) ? bot : null;
 			}
 		} catch {}
 		return null;
 	}
 
 	function tryNavigateMessageLink(url: string): boolean {
-		const roomMatch = roomLinkRegex.exec(url);
-		if (roomMatch) {
-			const [, linkSpaceId, linkRoomId, linkMessageId] = roomMatch;
-			jumpToMessageRequest.set({
-				id: crypto.randomUUID(),
-				spaceId: linkSpaceId,
-				roomId: linkRoomId,
-				messageId: linkMessageId,
-			});
-			return true;
-		}
-		const convMatch = convLinkRegex.exec(url);
-		if (convMatch) {
-			const [, linkConvId, linkMessageId] = convMatch;
-			jumpToMessageRequest.set({
-				id: crypto.randomUUID(),
-				spaceId: "",
-				roomId: "",
-				messageId: linkMessageId,
-				conversationId: linkConvId,
-			});
-			return true;
-		}
-		return false;
+		const link = parseMessageLink(url);
+		if (!link) return false;
+		jumpToMessageRequest.set({ id: crypto.randomUUID(), ...link });
+		return true;
 	}
 
-	function resolveMessageLink(url: string): {
-		spaceName: string;
-		roomName: string;
-		spaceId: string;
-		roomId: string;
-		messageId: string;
-		conversationId?: string;
-	} | null {
-		const roomMatch = roomLinkRegex.exec(url);
-		if (roomMatch) {
-			const [, linkSpaceId, linkRoomId, linkMessageId] = roomMatch;
-			const sp = $gatewaySpaces.find((s) => s.id === linkSpaceId);
-			const rm = sp?.rooms.find((r) => r.id === linkRoomId);
-			return {
-				spaceId: linkSpaceId,
-				roomId: linkRoomId,
-				messageId: linkMessageId,
-				spaceName: sp?.name ?? "Unknown server",
-				roomName: rm?.name ?? "unknown",
-			};
-		}
-		const convMatch = convLinkRegex.exec(url);
-		if (convMatch) {
-			const [, linkConvId, linkMessageId] = convMatch;
-			return {
-				spaceId: "",
-				roomId: "",
-				messageId: linkMessageId,
-				conversationId: linkConvId,
-				spaceName: "",
-				roomName: "Direct Message",
-			};
-		}
-		return null;
+	function resolveMessageLink(url: string): (MessageLink & { spaceName: string; roomName: string }) | null {
+		const link = parseMessageLink(url);
+		if (!link) return null;
+		if (link.conversationId) return { ...link, spaceName: "", roomName: "Direct Message" };
+		const sp = $gatewaySpaces.find((s) => s.id === link.spaceId);
+		const rm = sp?.rooms.find((r) => r.id === link.roomId);
+		return { ...link, spaceName: sp?.name ?? "Unknown server", roomName: rm?.name ?? "unknown" };
 	}
 
 	// ── URL processing ─────────────────────────────────────────────────────────
@@ -729,40 +696,21 @@
 		const urls = content.match(urlRegex) || [];
 		const inviteCodes: string[] = [];
 		const botInviteIds: string[] = [];
-		const messageLinks: { spaceId: string; roomId: string; messageId: string; conversationId?: string }[] = [];
+		const messageLinks: MessageLink[] = [];
 
 		urls.forEach((url) => {
-			try {
-				const roomMatch = roomLinkRegex.exec(url);
-				if (roomMatch) {
-					const [, lSpaceId, lRoomId, lMessageId] = roomMatch;
-					messageLinks.push({ spaceId: lSpaceId, roomId: lRoomId, messageId: lMessageId });
-					return;
-				}
-				const convMatch = convLinkRegex.exec(url);
-				if (convMatch) {
-					const [, lConvId, lMessageId] = convMatch;
-					messageLinks.push({ spaceId: "", roomId: "", messageId: lMessageId, conversationId: lConvId });
-					return;
-				}
-
-				const parsed = new URL(url);
-				if (parsed.pathname === "/invite") {
-					const code = parsed.searchParams.get("code");
-					if (code) {
-						inviteCodes.push(code);
-						return;
-					}
-				}
-
-				const botId = parseBotInviteLink(url);
-				if (botId) {
-					botInviteIds.push(botId);
-					return;
-				}
-			} catch {
-				// Invalid URL, ignore
+			const link = parseMessageLink(url);
+			if (link) {
+				messageLinks.push(link);
+				return;
 			}
+			const code = parseInviteCode(url);
+			if (code) {
+				inviteCodes.push(code);
+				return;
+			}
+			const botId = parseBotInviteLink(url);
+			if (botId) botInviteIds.push(botId);
 		});
 
 		return { text: content, inviteCodes, botInviteIds, messageLinks };
@@ -830,7 +778,10 @@
 		threadRootMessage = message;
 
 		try {
-			const thread = await getMessageThread(channelId, message.id);
+			// A conversation's thread has an endpoint of its own: channelId is the conversation there.
+			const thread = isConversation
+				? await getConversationMessageThread(channelId, message.id)
+				: await getMessageThread(channelId, message.id);
 			threadMessages = thread.map((m) => gatewayMessageToMessage(m, $gatewaySpaces));
 		} catch (e) {
 			threadError = getApiError(e, "Failed to load message thread.");
@@ -948,12 +899,14 @@
 				chronoPrev.type !== MessageType.PinNotice &&
 				chronoPrev.author_id === message.author_id &&
 				chronoPrev.author_name === message.author_name &&
+				isEphemeral(chronoPrev) === isEphemeral(message) &&
 				new Date(message.created_at).getTime() - new Date(chronoPrev.created_at).getTime() <= 5 * 60 * 1_000}
 			{@const showHeader = !isConsecutive || !!message.referenced_message || !!message.interaction_metadata}
 			{@const isLast = i === 0}
 			{@const isDifferentDay = !chronoPrev || !isSameCalendarDay(message.created_at, chronoPrev.created_at)}
 			{@const isPending = message.id === message.nonce}
 			{@const isFailed = isPending && failedNonces.has(message.nonce ?? "")}
+			{@const ephemeral = isEphemeral(message)}
 			{@const emojiOnly = isOnlyEmojis(message.content ?? "") && countEmojis(message.content ?? "") <= 5}
 
 			{@const isHighlighted = highlightedMessageId === message.id}
@@ -1225,9 +1178,7 @@
 									{mentionMap}
 									{customEmojiMap}
 									onPreview={openPreview}
-									onInteract={isConversation
-										? undefined
-										: (use) => sendComponentInteraction(channelId, message.id, use)}
+									onInteract={isConversation ? undefined : (use) => interact(message, use)}
 								/>
 							{:else}
 								{@const processed = processMessageContent(message.content ?? "")}
@@ -1257,7 +1208,7 @@
 									>
 										{#each parseTextSegments(processed.text) as segment}
 											{#if segment.type === "link"}
-												{#if roomLinkRegex.test(segment.content) || convLinkRegex.test(segment.content)}
+												{#if parseMessageLink(segment.content)}
 													{@const resolved = resolveMessageLink(segment.content)}
 													{#if resolved}
 														<button
@@ -1371,9 +1322,7 @@
 										{mentionMap}
 										{customEmojiMap}
 										onPreview={openPreview}
-										onInteract={isConversation
-											? undefined
-											: (use) => sendComponentInteraction(channelId, message.id, use)}
+										onInteract={isConversation ? undefined : (use) => interact(message, use)}
 									/>
 								{/if}
 							{/if}
@@ -1406,6 +1355,20 @@
 									{/each}
 								</div>
 							{/if}
+							{#if ephemeral}
+								<!-- A bot's to this user alone, and not the room's: it lasts until dismissed or the app reloads.
+								     Nothing of the room's (reactions, replies, pins, links) applies to it, so it has no toolbar. -->
+								<p class="mt-1 flex items-center gap-1 text-xs text-zinc-400">
+									<EyeIcon class="size-4 shrink-0" />
+									<span>Only you can see this</span>
+									<span aria-hidden="true">·</span>
+									<button
+										type="button"
+										class="cursor-pointer text-stone-300 hover:underline"
+										onclick={() => dropEphemeral(channelId, message.id)}>Dismiss message</button
+									>
+								</p>
+							{/if}
 						</div>
 					</div>
 					<!-- end inner row -->
@@ -1425,7 +1388,7 @@
 								onclick={() => onDismiss(message.nonce!)}>Dismiss</button
 							>
 						</div>
-					{:else if !isPending && $currentUser && message.author_id === $currentUser.id && editingMessageId !== message.id}
+					{:else if !isPending && !ephemeral && $currentUser && message.author_id === $currentUser.id && editingMessageId !== message.id}
 						<div
 							class="absolute -top-3 right-2 z-10 overflow-hidden rounded border border-zinc-800 bg-zinc-700 shadow-sm transition-opacity {reactingMessageId ===
 							message.id
@@ -1574,7 +1537,7 @@
 							<div class="w-px bg-zinc-800"></div>
 							{@render deleteButton(message)}
 						</div>
-					{:else if !isPending && $currentUser && message.author_id !== $currentUser.id && editingMessageId !== message.id}
+					{:else if !isPending && !ephemeral && $currentUser && message.author_id !== $currentUser.id && editingMessageId !== message.id}
 						<div
 							class="absolute -top-3 right-2 z-10 overflow-hidden rounded border border-zinc-800 bg-zinc-700 shadow-sm transition-opacity {reactingMessageId ===
 							message.id

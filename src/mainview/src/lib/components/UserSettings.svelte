@@ -23,6 +23,7 @@
 		Globe as GlobeIcon,
 		Lock as LockIcon,
 		Palette as PaletteIcon,
+		ArrowRightLeft as MoveIcon,
 	} from "@lucide/svelte";
 	import { Dialog } from "bits-ui";
 	import { slide } from "svelte/transition";
@@ -80,6 +81,22 @@
 		type Application,
 	} from "$lib/api/developer";
 	import { pendingTeamInvites, myBuckets, voiceFaces } from "$lib/stores.svelte";
+	import StorageTransferCard from "$lib/components/StorageTransferCard.svelte";
+	import MoveFilesDialog from "$lib/components/MoveFilesDialog.svelte";
+	import BucketFilesDialog from "$lib/components/BucketFilesDialog.svelte";
+	import FilePickerBar from "$lib/components/FilePickerBar.svelte";
+	import { FilePicker } from "$lib/file-picker.svelte";
+	import { storageTransfers, bucketFilesCount } from "$lib/stores/storage-transfers.svelte";
+	import {
+		bucketChoice,
+		countFiles,
+		defaultStorageChoice,
+		DEFAULT_STORAGE,
+		MAX_PICKED_FILES,
+		type PickableFile,
+		type StorageChoice,
+		type TransferFilter,
+	} from "$lib/storage-transfers";
 
 	let {
 		open = $bindable(false),
@@ -96,6 +113,10 @@
 	let attachmentsLoading = $state(false);
 	let attachmentsError = $state<string | null>(null);
 	let storageStatus = $state<StorageStatus | null>(null);
+	// The storage the list shows: "all", DEFAULT_STORAGE or a bucket ID. Picking files to move needs one.
+	let attachmentsLocation = $state("all");
+	const picker = new FilePicker(() => attachments);
+	let attachmentsLoadId = 0;
 
 	function formatFileSize(bytes: number): string {
 		if (bytes < 1024) return `${bytes} B`;
@@ -103,21 +124,35 @@
 		return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 	}
 
-	async function loadAttachments() {
+	async function loadAttachments(location = attachmentsLocation) {
+		// Only the last load counts: the location can change while one is on its way.
+		const loadId = ++attachmentsLoadId;
 		attachmentsLoading = true;
 		attachmentsError = null;
 		try {
-			[attachments, storageStatus, buckets] = await Promise.all([
-				getMyAttachments(),
+			const [list, status, bucketList] = await Promise.all([
+				getMyAttachments(location === "all" ? undefined : location),
 				getMyStorageStatus(),
 				getMyBuckets(),
 			]);
+			if (loadId !== attachmentsLoadId) return;
+			[attachments, storageStatus, buckets] = [list, status, bucketList];
+			storageTransfers.nameBuckets(bucketList);
+			picker.prune();
 		} catch (err) {
-			attachmentsError = getApiError(err, "Failed to load");
+			if (loadId === attachmentsLoadId) attachmentsError = getApiError(err, "Failed to load");
 		} finally {
-			attachmentsLoading = false;
+			if (loadId === attachmentsLoadId) attachmentsLoading = false;
 		}
 	}
+
+	/** Shows another storage's files. Its picks and kind filters start over. */
+	function setAttachmentsLocation(location: string) {
+		picker.clear();
+		attachmentsLocation = location;
+	}
+
+	const locationBytes = $derived(attachments.reduce((sum, a) => sum + a.size_bytes, 0));
 
 	async function refreshStorageStatus() {
 		try {
@@ -250,9 +285,27 @@
 	async function handleDeleteBucket(id: string) {
 		const b = buckets.find((x) => x.id === id);
 		await confirmAction(`Delete bucket "${b?.name}"?`, "Delete", async () => {
-			await deleteMyBucket(id);
-			await loadBuckets();
+			try {
+				await deleteMyBucket(id);
+			} catch (err) {
+				// Deleting it would break its files: offer to move them or delete them with it.
+				const files = bucketFilesCount(err);
+				if (files === null || !b) throw err;
+				bucketFilesRequest = { bucket: b, files };
+				return;
+			}
+			await afterBucketDeleted(id);
 		});
+	}
+
+	async function deleteBucketWithFiles(bucket: StorageBucket) {
+		await deleteMyBucket(bucket.id, true);
+		await afterBucketDeleted(bucket.id);
+	}
+
+	async function afterBucketDeleted(id: string) {
+		if (attachmentsLocation === id) setAttachmentsLocation("all");
+		await loadBuckets();
 	}
 
 	let togglingBucketId = $state<string | null>(null);
@@ -272,6 +325,81 @@
 			togglingBucketId = null;
 		}
 	}
+
+	// ── Moving files between your storages ──────────────────────────────────
+	const myTransfer = $derived(storageTransfers.active($currentUser?.id));
+	// Your default storage is one of them once its status is loaded (Attachments loads it, and so does a move).
+	const myStorageChoices = $derived<StorageChoice[]>([
+		...(storageStatus ? [defaultStorageChoice(storageStatus, buckets)] : []),
+		...buckets.map(bucketChoice),
+	]);
+	let moveOpen = $state(false);
+	let moveSourceId = $state("");
+	let moveFiles = $state.raw<PickableFile[]>([]);
+	let moveFilter = $state.raw<TransferFilter>({});
+	// The bucket whose "Move files…" is loading its files.
+	let movingBucketId = $state<string | null>(null);
+	let bucketFilesRequest = $state<{ bucket: StorageBucket; files: number } | null>(null);
+
+	function storageLabel(bucketId: string | null): string {
+		if (bucketId === null) return "Default storage";
+		return buckets.find((b) => b.id === bucketId)?.name ?? storageTransfers.storageName(bucketId) ?? "another bucket";
+	}
+
+	function openMovePicked() {
+		moveSourceId = attachmentsLocation;
+		moveFiles = picker.pickedFiles;
+		moveFilter = picker.filter;
+		moveOpen = true;
+	}
+
+	/** Opens the move of all of a bucket's files, with fresh numbers for the room left in each storage. */
+	async function openMoveBucket(bucket: StorageBucket) {
+		movingBucketId = bucket.id;
+		try {
+			const [files, status, bucketList] = await Promise.all([
+				getMyAttachments(bucket.id),
+				getMyStorageStatus(),
+				getMyBuckets(),
+			]);
+			storageStatus = status;
+			buckets = bucketList;
+			myBuckets.set(bucketList);
+			storageTransfers.nameBuckets(bucketList);
+			if (files.length === 0) {
+				toast(`"${bucket.name}" has no files.`, "info");
+				return;
+			}
+			moveSourceId = bucket.id;
+			moveFiles = files;
+			moveFilter = {};
+			moveOpen = true;
+		} catch (err) {
+			toast(getApiError(err, "Failed to load the bucket's files"), "error");
+		} finally {
+			movingBucketId = null;
+		}
+	}
+
+	function onMoveStarted() {
+		picker.picked.clear();
+		// "Make … active" may have changed the active bucket.
+		void loadBuckets();
+	}
+
+	// The transfer under way, if any, shows in both storage sections: loaded on opening one, then kept fresh.
+	$effect(() => {
+		if (open && (activeSection === "attachments" || activeSection === "buckets")) return storageTransfers.watch(null);
+	});
+
+	// When one of your transfers ends, files have moved: reload what the open section shows.
+	$effect(() =>
+		storageTransfers.onEnd((t) => {
+			if (!open || t.owner_id !== $currentUser?.id) return;
+			if (activeSection === "attachments") void loadAttachments();
+			else if (activeSection === "buckets") void loadBuckets();
+		}),
+	);
 
 	// Verification state
 	let sendingVerification = $state(false);
@@ -437,10 +565,10 @@
 		}
 	});
 
-	// Load attachments when switching to that section
+	// Load attachments when switching to that section, and again for each location picked
 	$effect(() => {
 		if (open && activeSection === "attachments") {
-			void loadAttachments();
+			void loadAttachments(attachmentsLocation);
 		}
 	});
 
@@ -1344,6 +1472,13 @@
 								</div>
 							</div>
 						{:else if activeSection === "attachments"}
+							{#if myTransfer}
+								<StorageTransferCard
+									transfer={myTransfer}
+									source={storageLabel(myTransfer.source_bucket_id)}
+									target={storageLabel(myTransfer.target_bucket_id)}
+								/>
+							{/if}
 							<!-- Active custom bucket banner -->
 							{#if hasActiveBucket}
 								{@const activeBucket = buckets.find((b) => b.is_active)}
@@ -1390,20 +1525,44 @@
 							{/if}
 
 							<!-- Summary bar -->
-							<div class="flex items-center justify-between rounded-lg border border-zinc-800 bg-zinc-800/40 px-4 py-3">
+							<div
+								class="flex items-center justify-between gap-3 rounded-lg border border-zinc-800 bg-zinc-800/40 px-4 py-3"
+							>
 								<div class="text-sm text-zinc-300">
 									<span class="font-semibold text-white">{attachments.length}</span>
 									file{attachments.length !== 1 ? "s" : ""}
+									{#if attachmentsLocation !== "all"}
+										<span class="mx-1 text-zinc-600">·</span>
+										{formatFileSize(locationBytes)}
+									{/if}
 								</div>
-								{#if attachments.length > 0}
-									<button
-										onclick={handleDeleteAll}
-										class="flex items-center gap-1.5 rounded-md bg-red-600/20 px-3 py-1.5 text-xs font-semibold text-red-400 transition-colors hover:bg-red-600/30"
-									>
-										<TrashIcon class="size-3.5" />
-										Delete All
-									</button>
-								{/if}
+								<div class="flex items-center gap-2">
+									{#if buckets.length > 0 || attachmentsLocation !== "all"}
+										<label class="flex items-center gap-2 text-xs text-zinc-400">
+											Location
+											<select
+												value={attachmentsLocation}
+												onchange={(e) => setAttachmentsLocation(e.currentTarget.value)}
+												class="max-w-40 rounded-md border border-zinc-700 bg-zinc-800 px-2 py-1 text-xs text-zinc-200 focus:ring-1 focus:ring-stone-500 focus:outline-none"
+											>
+												<option value="all">All</option>
+												<option value={DEFAULT_STORAGE}>Default storage</option>
+												{#each buckets as b (b.id)}
+													<option value={b.id}>{b.name}</option>
+												{/each}
+											</select>
+										</label>
+									{/if}
+									{#if attachments.length > 0 && attachmentsLocation === "all"}
+										<button
+											onclick={handleDeleteAll}
+											class="flex items-center gap-1.5 rounded-md bg-red-600/20 px-3 py-1.5 text-xs font-semibold text-red-400 transition-colors hover:bg-red-600/30"
+										>
+											<TrashIcon class="size-3.5" />
+											Delete All
+										</button>
+									{/if}
+								</div>
 							</div>
 
 							{#if attachmentsError}
@@ -1421,17 +1580,29 @@
 							{:else if attachments.length === 0}
 								<div class="flex flex-col items-center justify-center py-16 text-zinc-500">
 									<PaperclipIcon class="mb-3 size-10" />
-									<p class="text-sm">No attachments yet</p>
+									<p class="text-sm">{attachmentsLocation === "all" ? "No attachments yet" : "No files here"}</p>
 								</div>
 							{:else}
 								<div class="space-y-1">
-									{#each attachments as att (att.id)}
+									{#if attachmentsLocation !== "all"}
+										<FilePickerBar {picker} />
+									{/if}
+									{#each picker.shown as att (att.id)}
 										{@const isImage = att.content_type.startsWith("image/")}
 										{@const isAudio = att.content_type.startsWith("audio/")}
 										<div
 											class="group rounded-lg border border-zinc-800 bg-zinc-800/30 transition-colors hover:bg-zinc-800/50"
 										>
 											<div class="flex items-center gap-3 px-3 py-2.5">
+												{#if attachmentsLocation !== "all"}
+													<input
+														type="checkbox"
+														checked={picker.picked.has(att.id)}
+														onchange={() => picker.toggle(att.id)}
+														aria-label="Select {att.filename}"
+														class="size-4 shrink-0 rounded border-zinc-600 bg-zinc-800 accent-stone-500"
+													/>
+												{/if}
 												<!-- Thumbnail -->
 												{#if isImage}
 													<img
@@ -1518,6 +1689,13 @@
 								</div>
 							{/if}
 						{:else if activeSection === "buckets"}
+							{#if myTransfer}
+								<StorageTransferCard
+									transfer={myTransfer}
+									source={storageLabel(myTransfer.source_bucket_id)}
+									target={storageLabel(myTransfer.target_bucket_id)}
+								/>
+							{/if}
 							<p class="mb-4 text-xs text-zinc-500">
 								Connect your own S3/R2 buckets for unlimited storage. When a bucket is active, uploads go to your bucket
 								instead of the default and quota limits don't apply.
@@ -1807,6 +1985,20 @@
 														<XIcon class="size-4" />
 													{:else}
 														<CheckIcon class="size-4" />
+													{/if}
+												</button>
+												<button
+													class="flex h-8 w-8 items-center justify-center rounded-md text-zinc-500 transition-all hover:bg-zinc-700 hover:text-zinc-200 disabled:opacity-50"
+													title={myTransfer ? "Wait for the transfer under way to end" : "Move files…"}
+													onclick={() => openMoveBucket(bucket)}
+													disabled={movingBucketId === bucket.id || myTransfer !== null}
+												>
+													{#if movingBucketId === bucket.id}
+														<div
+															class="size-4 animate-spin rounded-full border-2 border-zinc-500 border-t-transparent"
+														></div>
+													{:else}
+														<MoveIcon class="size-4" />
 													{/if}
 												</button>
 												<button
@@ -2378,6 +2570,42 @@
 						{/if}
 					</div>
 
+					<!-- Move bar (appears while files of a location are picked) -->
+					{#if activeSection === "attachments" && attachmentsLocation !== "all" && picker.pickedFiles.length > 0}
+						{@const pickedCount = picker.pickedFiles.length}
+						{@const tooMany = (picker.filter.attachment_ids?.length ?? 0) > MAX_PICKED_FILES}
+						<div
+							transition:slide={{ duration: 200 }}
+							class="flex shrink-0 items-center justify-between gap-4 border-t border-zinc-800 bg-zinc-900/80 px-6 py-3"
+						>
+							<p class="min-w-0 truncate text-sm text-zinc-400">
+								{#if myTransfer}
+									Wait for the transfer under way to end.
+								{:else if tooMany}
+									Pick {MAX_PICKED_FILES} files at most, or Select all.
+								{:else}
+									{countFiles(pickedCount)} selected
+								{/if}
+							</p>
+							<div class="flex shrink-0 items-center gap-2">
+								<button
+									onclick={() => picker.picked.clear()}
+									class="rounded-md px-3 py-1.5 text-sm font-medium text-zinc-300 transition-colors hover:text-white"
+								>
+									Clear
+								</button>
+								<button
+									onclick={openMovePicked}
+									disabled={myTransfer !== null || tooMany}
+									class="flex items-center gap-1.5 rounded-md bg-stone-600 px-4 py-1.5 text-sm font-semibold text-white transition-colors hover:bg-stone-500 disabled:cursor-not-allowed disabled:opacity-50"
+								>
+									<MoveIcon class="size-4" />
+									Move {countFiles(pickedCount)} ({formatFileSize(picker.pickedBytes)}) to…
+								</button>
+							</div>
+						</div>
+					{/if}
+
 					<!-- Save bar (appears when there are unsaved changes) -->
 					{#if hasChanges || saveError}
 						<div
@@ -2457,4 +2685,18 @@
 	targetWidth={600}
 	targetHeight={240}
 	onConfirm={(f) => onBotBannerCrop(f)}
+/>
+<MoveFilesDialog
+	bind:open={moveOpen}
+	spaceId={null}
+	choices={myStorageChoices}
+	sourceId={moveSourceId}
+	files={moveFiles}
+	filter={moveFilter}
+	onStarted={onMoveStarted}
+/>
+<BucketFilesDialog
+	bind:request={bucketFilesRequest}
+	onMove={(bucket) => openMoveBucket(bucket)}
+	onDelete={deleteBucketWithFiles}
 />
