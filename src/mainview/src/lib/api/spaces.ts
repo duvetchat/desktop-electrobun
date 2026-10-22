@@ -84,8 +84,9 @@ export interface SpaceAttachment {
 	url?: string;
 }
 
-export async function getSpaceAttachments(spaceId: string): Promise<SpaceAttachment[]> {
-	const res = await api.get(`/api/spaces/${spaceId}/attachments`);
+/** The space's own uploads; with `bucket` (a bucket ID), only those in that bucket. */
+export async function getSpaceAttachments(spaceId: string, bucket?: string): Promise<SpaceAttachment[]> {
+	const res = await api.get(`/api/spaces/${spaceId}/attachments`, { params: { bucket } });
 	return res.data;
 }
 

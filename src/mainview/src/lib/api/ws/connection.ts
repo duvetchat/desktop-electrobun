@@ -57,6 +57,7 @@ export function getStreamURL(): string {
 }
 
 import { audioStore } from "$lib/stores/audio.svelte";
+import { storageTransfers } from "$lib/stores/storage-transfers.svelte";
 import { getElectrobunRpc } from "$lib/electrobun-rpc";
 
 // Listen for activity updates from Electrobun IPC (VS Code, etc.)
@@ -1342,6 +1343,11 @@ function handleEvent(event: GatewayEvent) {
 		case "TEAM_INVITE_CREATE": {
 			const inv = payload.data;
 			pendingTeamInvites.update((list) => [...list, inv]);
+			break;
+		}
+		case "STORAGE_TRANSFER_UPDATE": {
+			// Only who started the transfer gets it: when it's created, starts, moves and ends.
+			storageTransfers.set(payload.data, true);
 			break;
 		}
 		default:

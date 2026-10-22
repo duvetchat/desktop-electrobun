@@ -7,6 +7,7 @@
 	import ConfirmDialog from "$lib/components/ConfirmDialog.svelte";
 	import InteractionModal from "$lib/components/InteractionModal.svelte";
 	import PromptDialog from "$lib/components/PromptDialog.svelte";
+	import StorageTransferFailures from "$lib/components/StorageTransferFailures.svelte";
 
 	import { setupWindowControls } from "$lib/window-controls";
 	import { setupExternalLinks } from "$lib/external-links";
@@ -34,3 +35,4 @@
 <ConfirmDialog />
 <PromptDialog />
 <InteractionModal />
+<StorageTransferFailures />

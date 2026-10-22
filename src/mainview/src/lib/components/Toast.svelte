@@ -14,6 +14,18 @@
 						: 'border-zinc-700 bg-zinc-900/90 text-zinc-200'}"
 			>
 				<span class="flex-1">{t.message}</span>
+				{#if t.action}
+					{@const action = t.action}
+					<button
+						class="shrink-0 rounded px-1.5 py-0.5 text-xs font-semibold text-current underline-offset-2 hover:underline"
+						onclick={() => {
+							action.run();
+							toastStore.dismiss(t.id);
+						}}
+					>
+						{action.label}
+					</button>
+				{/if}
 				<button
 					class="shrink-0 text-current opacity-50 transition-opacity hover:opacity-100"
 					aria-label="Dismiss"
