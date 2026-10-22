@@ -2,6 +2,7 @@
 	import {
 		activeVoiceRoomId,
 		channelMessages,
+		ephemeralMessages,
 		gatewaySpaces,
 		jumpToMessageRequest,
 		unreadChannels,
@@ -18,7 +19,7 @@
 
 	import type { MemberOnSidebar, GatewaySpace, PaneNode, Guild, Tab } from "$lib/types";
 
-	import { gatewayMessageToMessage, gatewaySpaceToMembers, roomTypeToChannelType } from "$lib/types";
+	import { gatewayMessageToMessage, gatewaySpaceToMembers, isEphemeral, roomTypeToChannelType } from "$lib/types";
 	import { userStatusCache } from "$lib/api/ws/connection";
 	import PaneView from "$lib/components/PaneView.svelte";
 	import TabBar from "$lib/components/TabBar.svelte";
@@ -97,9 +98,14 @@
 		return channelHasMore[channelId] !== false;
 	}
 
-	const activeMessages = $derived(
-		node.kind === "leaf" && node.activeChannelId ? ($channelMessages[node.activeChannelId] ?? []) : [],
-	);
+	// The room's messages, and the ephemeral ones bots sent this user there, which show among them though no
+	// history has them.
+	const activeMessages = $derived.by(() => {
+		if (node.kind !== "leaf" || !node.activeChannelId) return [];
+		const history = $channelMessages[node.activeChannelId] ?? [];
+		const ephemeral = $ephemeralMessages[node.activeChannelId];
+		return ephemeral?.length ? [...history, ...ephemeral] : history;
+	});
 
 	// Derive channel/space/members from the active tab's own spaceId,
 	// so tabs from different servers always show the correct data.
@@ -123,11 +129,12 @@
 			: null,
 	);
 
-	// The newest confirmed (non-pending) message. UUIDv7 IDs compare by time as strings.
-	function newestConfirmedId(msgs: { id: string; nonce?: string | null }[]): string | null {
+	// The newest confirmed (non-pending) message of the room: an ephemeral one isn't the room's, which the read
+	// state is about. UUIDv7 IDs compare by time as strings.
+	function newestConfirmedId(msgs: { id: string; nonce?: string | null; flags?: number }[]): string | null {
 		let newestId: string | null = null;
 		for (const m of msgs) {
-			if (m.id === m.nonce) continue;
+			if (m.id === m.nonce || isEphemeral(m)) continue;
 			if (!newestId || m.id > newestId) newestId = m.id;
 		}
 		return newestId;
@@ -456,6 +463,15 @@
 
 	async function jumpToMessage(channelId: string, messageId: string) {
 		if (node.kind !== "leaf") return;
+
+		// An ephemeral message has no history around it to load: it's only here, where the list shows it.
+		if (get(ephemeralMessages)[channelId]?.some((m) => m.id === messageId)) {
+			channelHighlightedMessage[channelId] = messageId;
+			setTimeout(() => {
+				channelHighlightedMessage[channelId] = null;
+			}, 3000);
+			return;
+		}
 
 		const controller = new AbortController();
 		const timeoutId = setTimeout(() => controller.abort(), 10_000);

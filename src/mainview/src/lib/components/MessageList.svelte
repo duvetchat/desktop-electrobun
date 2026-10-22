@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { hasPermission, Permission } from "$lib/permissions";
 	import { onDestroy, onMount, tick } from "svelte";
-	import { CircleAlert as AlertIcon, Pin as PinIcon, PinOff as PinOffIcon } from "@lucide/svelte";
+	import { CircleAlert as AlertIcon, Eye as EyeIcon, Pin as PinIcon, PinOff as PinOffIcon } from "@lucide/svelte";
 	import { updateMessage, deleteMessage, getMessageThread, pinRoomMessage, unpinRoomMessage } from "$lib/api/messages";
 	import { sendComponentInteraction, type ComponentUse } from "$lib/api/interactions";
 	import {
@@ -23,6 +23,7 @@
 		sentFriendRequests,
 		pendingFriendRequests,
 		conversations,
+		dropEphemeral,
 	} from "$lib/stores.svelte";
 	import {
 		addRoomReaction,
@@ -34,7 +35,7 @@
 	import { renderEmoji, isOnlyEmojis, countEmojis } from "$lib/emoji";
 	import { customEmojiMapOf, mentionMapOf, parseTextSegments, renderMarkdown, renderMarkdownLine } from "$lib/markdown";
 
-	import { gatewayMessageToMessage, isComponentsV2, isLoading, messageText } from "$lib/types";
+	import { gatewayMessageToMessage, isComponentsV2, isEphemeral, isLoading, messageText } from "$lib/types";
 	import { MessageType, type MemberOnSidebar, type GatewaySpace, type Message, type SpaceEmoji } from "$lib/types";
 	import { getHostURL, getAvatarURL, DUVET_DOMAIN } from "$lib/common/common";
 	import { isUuid, parseMessageLink, type MessageLink } from "$lib/urls";
@@ -898,12 +899,14 @@
 				chronoPrev.type !== MessageType.PinNotice &&
 				chronoPrev.author_id === message.author_id &&
 				chronoPrev.author_name === message.author_name &&
+				isEphemeral(chronoPrev) === isEphemeral(message) &&
 				new Date(message.created_at).getTime() - new Date(chronoPrev.created_at).getTime() <= 5 * 60 * 1_000}
 			{@const showHeader = !isConsecutive || !!message.referenced_message || !!message.interaction_metadata}
 			{@const isLast = i === 0}
 			{@const isDifferentDay = !chronoPrev || !isSameCalendarDay(message.created_at, chronoPrev.created_at)}
 			{@const isPending = message.id === message.nonce}
 			{@const isFailed = isPending && failedNonces.has(message.nonce ?? "")}
+			{@const ephemeral = isEphemeral(message)}
 			{@const emojiOnly = isOnlyEmojis(message.content ?? "") && countEmojis(message.content ?? "") <= 5}
 
 			{@const isHighlighted = highlightedMessageId === message.id}
@@ -1352,6 +1355,20 @@
 									{/each}
 								</div>
 							{/if}
+							{#if ephemeral}
+								<!-- A bot's to this user alone, and not the room's: it lasts until dismissed or the app reloads.
+								     Nothing of the room's (reactions, replies, pins, links) applies to it, so it has no toolbar. -->
+								<p class="mt-1 flex items-center gap-1 text-xs text-zinc-400">
+									<EyeIcon class="size-4 shrink-0" />
+									<span>Only you can see this</span>
+									<span aria-hidden="true">·</span>
+									<button
+										type="button"
+										class="cursor-pointer text-stone-300 hover:underline"
+										onclick={() => dropEphemeral(channelId, message.id)}>Dismiss message</button
+									>
+								</p>
+							{/if}
 						</div>
 					</div>
 					<!-- end inner row -->
@@ -1371,7 +1388,7 @@
 								onclick={() => onDismiss(message.nonce!)}>Dismiss</button
 							>
 						</div>
-					{:else if !isPending && $currentUser && message.author_id === $currentUser.id && editingMessageId !== message.id}
+					{:else if !isPending && !ephemeral && $currentUser && message.author_id === $currentUser.id && editingMessageId !== message.id}
 						<div
 							class="absolute -top-3 right-2 z-10 overflow-hidden rounded border border-zinc-800 bg-zinc-700 shadow-sm transition-opacity {reactingMessageId ===
 							message.id
@@ -1520,7 +1537,7 @@
 							<div class="w-px bg-zinc-800"></div>
 							{@render deleteButton(message)}
 						</div>
-					{:else if !isPending && $currentUser && message.author_id !== $currentUser.id && editingMessageId !== message.id}
+					{:else if !isPending && !ephemeral && $currentUser && message.author_id !== $currentUser.id && editingMessageId !== message.id}
 						<div
 							class="absolute -top-3 right-2 z-10 overflow-hidden rounded border border-zinc-800 bg-zinc-700 shadow-sm transition-opacity {reactingMessageId ===
 							message.id

@@ -101,6 +101,26 @@ export const wsSessionToken = writable<string | null>(null);
 // ICE servers for voice peer connections; READY replaces them with the gateway's own list.
 export const iceServers = writable<RTCIceServer[]>([{ urls: "stun:stun.l.google.com:19302" }]);
 export const channelMessages = createEvictingMessageStore<Message>();
+// The ephemeral messages bots sent this user, by room: only this user sees them, and they aren't the room's
+// history, so they stay apart from it, in this window, until dismissed or the app reloads.
+export const ephemeralMessages = writable<Record<string, Message[]>>({});
+
+/** Adds an ephemeral message, or replaces the one with its ID. */
+export function keepEphemeral(roomId: string, message: Message) {
+	ephemeralMessages.update((all) => ({
+		...all,
+		[roomId]: [...(all[roomId] ?? []).filter((m) => m.id !== message.id), message],
+	}));
+}
+
+/** Removes an ephemeral message: its bot deleted it, or the user dismissed it, for this window. */
+export function dropEphemeral(roomId: string, messageId: string) {
+	ephemeralMessages.update((all) => {
+		const list = all[roomId];
+		if (!list?.some((m) => m.id === messageId)) return all;
+		return { ...all, [roomId]: list.filter((m) => m.id !== messageId) };
+	});
+}
 export const speakingUsers = writable<SvelteSet<string>>(new SvelteSet());
 export const userAmplitudes = writable<Record<string, number>>({});
 export interface UserActivity {
