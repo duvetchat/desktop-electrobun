@@ -3,7 +3,7 @@
 	import { onDestroy, onMount, tick } from "svelte";
 	import { CircleAlert as AlertIcon, Pin as PinIcon, PinOff as PinOffIcon } from "@lucide/svelte";
 	import { updateMessage, deleteMessage, getMessageThread, pinRoomMessage, unpinRoomMessage } from "$lib/api/messages";
-	import { sendComponentInteraction } from "$lib/api/interactions";
+	import { sendComponentInteraction, type ComponentUse } from "$lib/api/interactions";
 	import {
 		getConversationMessageThread,
 		pinConversationMessage,
@@ -342,6 +342,16 @@
 	const authorColors = $derived(buildAuthorColorMap(members));
 	const mentionMap = $derived(mentionMapOf(members));
 	const customEmojiMap = $derived(customEmojiMapOf(customEmojis));
+
+	// Uses a component of a bot's message. A modal the bot answers with opens with this room's members, roles
+	// and rooms for its selects, under the bot's name.
+	function interact(message: Message, use: ComponentUse) {
+		return sendComponentInteraction(channelId, message.id, use, {
+			space,
+			members,
+			from: { name: message.author_name, avatarUrl: message.author_avatar_url },
+		});
+	}
 
 	// ── Image preview ─────────────────────────────────────────────────────────
 	let previewSrc = $state("");
@@ -1165,9 +1175,7 @@
 									{mentionMap}
 									{customEmojiMap}
 									onPreview={openPreview}
-									onInteract={isConversation
-										? undefined
-										: (use) => sendComponentInteraction(channelId, message.id, use)}
+									onInteract={isConversation ? undefined : (use) => interact(message, use)}
 								/>
 							{:else}
 								{@const processed = processMessageContent(message.content ?? "")}
@@ -1311,9 +1319,7 @@
 										{mentionMap}
 										{customEmojiMap}
 										onPreview={openPreview}
-										onInteract={isConversation
-											? undefined
-											: (use) => sendComponentInteraction(channelId, message.id, use)}
+										onInteract={isConversation ? undefined : (use) => interact(message, use)}
 									/>
 								{/if}
 							{/if}

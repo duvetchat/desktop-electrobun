@@ -1,6 +1,8 @@
 import api from "$lib/api/api";
 import type { UsedOption } from "$lib/commands";
-import type { SpaceCommands } from "$lib/types";
+import type { ModalAnswer } from "$lib/modals";
+import { interactionModal, type ModalContext } from "$lib/stores/interactionModal.svelte";
+import type { Modal, SpaceCommands } from "$lib/types";
 
 /** What a person sends about the component of a bot's message they used. */
 export interface ComponentUse {
@@ -10,18 +12,38 @@ export interface ComponentUse {
 	values?: string[];
 }
 
+/** What a person's interaction answers: the type of the bot's first response, and for a modal (9), the modal and its application. */
+interface InteractionCreated {
+	type: number;
+	data?: Modal;
+	application_id?: string;
+}
+
+// The type of the bot's first response; a modal (9) opens, where the interaction happened.
+function answered(res: InteractionCreated, where: ModalContext): number {
+	if (res.type === 9 && res.data && res.application_id) {
+		interactionModal.open({ ...where, modal: res.data, applicationId: res.application_id });
+	}
+	return res.type;
+}
+
 /**
  * Uses a component of a bot's message in a room. The API waits up to 3 seconds for the bot's first
- * response and answers its type; without one, 504.
+ * response and answers its type; without one, 504. A modal it answers with opens.
  */
-export async function sendComponentInteraction(roomId: string, messageId: string, data: ComponentUse): Promise<number> {
-	const res = await api.post<{ type: number }>("/api/interactions", {
+export async function sendComponentInteraction(
+	roomId: string,
+	messageId: string,
+	data: ComponentUse,
+	where: Omit<ModalContext, "roomId" | "messageId">,
+): Promise<number> {
+	const res = await api.post<InteractionCreated>("/api/interactions", {
 		type: 3,
 		room_id: roomId,
 		message_id: messageId,
 		data,
 	});
-	return res.data.type;
+	return answered(res.data, { ...where, roomId, messageId });
 }
 
 /** What a person sends about the command they used: the command, as the space's list has it, and its options. */
@@ -33,20 +55,51 @@ export interface CommandUse {
 }
 
 /** Uses an application's command in a room, and answers the type of the bot's first response, as a component's. */
-export async function sendCommandInteraction(roomId: string, applicationId: string, data: CommandUse): Promise<number> {
+export async function sendCommandInteraction(
+	roomId: string,
+	applicationId: string,
+	data: CommandUse,
+	where: Omit<ModalContext, "roomId" | "messageId">,
+): Promise<number> {
 	try {
-		const res = await api.post<{ type: number }>("/api/interactions", {
+		const res = await api.post<InteractionCreated>("/api/interactions", {
 			type: 2,
 			room_id: roomId,
 			application_id: applicationId,
 			data,
 		});
-		return res.data.type;
+		return answered(res.data, { ...where, roomId });
 	} catch (err) {
 		// The command may have changed or gone: the next "/" asks for the lists again.
 		spaceCommands.clear();
 		throw err;
 	}
+}
+
+/** What a person sends about a modal they submit: its custom_id, and its labels with what they entered. */
+export interface ModalSubmit {
+	custom_id: string;
+	components: ModalAnswer[];
+}
+
+/**
+ * Submits a modal the application's bot opened in a room (from the message whose component opened it), and
+ * answers the type of the bot's first response, as a component's. A modal is submitted once.
+ */
+export async function sendModalSubmit(
+	roomId: string,
+	applicationId: string,
+	messageId: string | undefined,
+	data: ModalSubmit,
+): Promise<number> {
+	const res = await api.post<InteractionCreated>("/api/interactions", {
+		type: 5,
+		room_id: roomId,
+		application_id: applicationId,
+		message_id: messageId,
+		data,
+	});
+	return res.data.type;
 }
 
 // The spaces' commands, asked for when the "/" menu opens and kept for a few minutes, or until the space's
