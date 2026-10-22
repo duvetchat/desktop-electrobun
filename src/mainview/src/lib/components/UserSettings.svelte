@@ -115,6 +115,11 @@
 	let storageStatus = $state<StorageStatus | null>(null);
 	// The storage the list shows: "all", DEFAULT_STORAGE or a bucket ID. Picking files to move needs one.
 	let attachmentsLocation = $state("all");
+	// The location whose files `attachments` are, set with them. Until a load for the one picked succeeds, they're
+	// another's, which mustn't show or be picked as its: "Select all" would move every file of the one picked.
+	let attachmentsListed = $state<string | null>(null);
+	const listedHere = $derived(attachmentsListed === attachmentsLocation);
+	const picking = $derived(listedHere && attachmentsLocation !== "all");
 	const picker = new FilePicker(() => attachments);
 	let attachmentsLoadId = 0;
 
@@ -136,7 +141,7 @@
 				getMyBuckets(),
 			]);
 			if (loadId !== attachmentsLoadId) return;
-			[attachments, storageStatus, buckets] = [list, status, bucketList];
+			[attachments, attachmentsListed, storageStatus, buckets] = [list, location, status, bucketList];
 			storageTransfers.nameBuckets(bucketList);
 			picker.prune();
 		} catch (err) {
@@ -347,7 +352,10 @@
 	}
 
 	function openMovePicked() {
-		moveSourceId = attachmentsLocation;
+		// From the storage the picked files were listed in.
+		const source = attachmentsListed;
+		if (!picking || source === null) return;
+		moveSourceId = source;
 		moveFiles = picker.pickedFiles;
 		moveFilter = picker.filter;
 		moveOpen = true;
@@ -1529,11 +1537,13 @@
 								class="flex items-center justify-between gap-3 rounded-lg border border-zinc-800 bg-zinc-800/40 px-4 py-3"
 							>
 								<div class="text-sm text-zinc-300">
-									<span class="font-semibold text-white">{attachments.length}</span>
-									file{attachments.length !== 1 ? "s" : ""}
-									{#if attachmentsLocation !== "all"}
-										<span class="mx-1 text-zinc-600">·</span>
-										{formatFileSize(locationBytes)}
+									{#if listedHere}
+										<span class="font-semibold text-white">{attachments.length}</span>
+										file{attachments.length !== 1 ? "s" : ""}
+										{#if attachmentsLocation !== "all"}
+											<span class="mx-1 text-zinc-600">·</span>
+											{formatFileSize(locationBytes)}
+										{/if}
 									{/if}
 								</div>
 								<div class="flex items-center gap-2">
@@ -1577,6 +1587,8 @@
 										<div class="h-14 animate-pulse rounded-lg bg-zinc-800/40"></div>
 									{/each}
 								</div>
+							{:else if !listedHere}
+								<!-- The location's files didn't load (the error above says why): the list is another's. -->
 							{:else if attachments.length === 0}
 								<div class="flex flex-col items-center justify-center py-16 text-zinc-500">
 									<PaperclipIcon class="mb-3 size-10" />
@@ -1584,7 +1596,7 @@
 								</div>
 							{:else}
 								<div class="space-y-1">
-									{#if attachmentsLocation !== "all"}
+									{#if picking}
 										<FilePickerBar {picker} />
 									{/if}
 									{#each picker.shown as att (att.id)}
@@ -1594,7 +1606,7 @@
 											class="group rounded-lg border border-zinc-800 bg-zinc-800/30 transition-colors hover:bg-zinc-800/50"
 										>
 											<div class="flex items-center gap-3 px-3 py-2.5">
-												{#if attachmentsLocation !== "all"}
+												{#if picking}
 													<input
 														type="checkbox"
 														checked={picker.picked.has(att.id)}
@@ -2571,7 +2583,7 @@
 					</div>
 
 					<!-- Move bar (appears while files of a location are picked) -->
-					{#if activeSection === "attachments" && attachmentsLocation !== "all" && picker.pickedFiles.length > 0}
+					{#if activeSection === "attachments" && picking && picker.pickedFiles.length > 0}
 						{@const pickedCount = picker.pickedFiles.length}
 						{@const tooMany = (picker.filter.attachment_ids?.length ?? 0) > MAX_PICKED_FILES}
 						<div

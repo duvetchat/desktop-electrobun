@@ -57,6 +57,7 @@
 	} = $props();
 
 	const NO_VIDEO = "You can't use video in this room";
+	const NO_VOICE = "You're not connected to voice";
 
 	const isConnected = $derived(callMode || $activeVoiceRoomId === channelId);
 	// The space room this is; a call has none, and asks for no permission.
@@ -66,10 +67,17 @@
 		const room = space?.rooms.find((r) => r.id === channelId);
 		return space && room ? { space, room } : null;
 	});
+	// This client's VoiceChat has this room's or call's connection: routes/app/+page.svelte mounts it for a room the
+	// spaces have, or for the call. The controls can show without it: a call's a moment before it's mounted, and
+	// after it's gone (its connection failed, or another session took the voice over) while the call lasts; a room's
+	// in a tab left open on a room that's gone. A camera or screen request made then has no VoiceChat to take it.
+	const voiceLive = $derived($activeVoiceRoomId === channelId && (callMode || voiceRoom !== null));
 	// Without SpeakInVoice the mic stays muted: UserStatusBar mutes it when the permission goes.
 	const canSpeak = $derived(!voiceRoom || hasPermission(voiceRoom.space, voiceRoom.room, Permission.SpeakInVoice));
 	// Video is the camera and the screen.
 	const canVideo = $derived(!voiceRoom || hasPermission(voiceRoom.space, voiceRoom.room, Permission.Video));
+	const videoReady = $derived(voiceLive && canVideo);
+	const videoTitle = $derived(!voiceLive ? NO_VOICE : !canVideo ? NO_VIDEO : null);
 
 	const voiceUsers = $derived.by(() => {
 		const me = $currentUser;
@@ -288,8 +296,8 @@
 	}
 
 	function toggleCamera() {
-		if (!canVideo) return;
-		cameraRequested.set(!$isCameraOn);
+		if (!videoReady) return;
+		cameraRequested.set({ roomId: channelId, on: !$isCameraOn });
 	}
 
 	/** The cameras for the menu. Before the camera permission is given they have no names, so it's asked for
@@ -511,11 +519,11 @@
 					class="flex flex-col items-center gap-1 rounded-l-xl py-2.5 pr-2 pl-4 transition-colors {$isCameraOn
 						? 'bg-stone-400/20 text-stone-200 hover:bg-stone-400/30'
 						: 'text-zinc-300 hover:bg-zinc-800'}"
-					class:opacity-50={!canVideo}
-					class:cursor-not-allowed={!canVideo}
-					disabled={!canVideo}
+					class:opacity-50={!videoReady}
+					class:cursor-not-allowed={!videoReady}
+					disabled={!videoReady}
 					onclick={toggleCamera}
-					title={!canVideo ? NO_VIDEO : $isCameraOn ? "Turn off camera" : "Turn on camera"}
+					title={videoTitle ?? ($isCameraOn ? "Turn off camera" : "Turn on camera")}
 				>
 					{#if $isCameraOn}
 						<Video class="size-5" />
@@ -583,16 +591,16 @@
 			<div class="relative">
 				<button
 					class="flex flex-col items-center gap-1 rounded-xl px-4 py-2.5 text-zinc-300 transition-colors hover:bg-zinc-800"
-					class:opacity-50={!canVideo}
-					class:cursor-not-allowed={!canVideo}
-					disabled={!canVideo}
+					class:opacity-50={!videoReady}
+					class:cursor-not-allowed={!videoReady}
+					disabled={!videoReady}
 					onclick={() => (showStreamMenu = !showStreamMenu)}
-					title={!canVideo ? NO_VIDEO : "Share screen"}
+					title={videoTitle ?? "Share screen"}
 				>
 					<MonitorUp class="size-5" />
 					<span class="text-xxs text-zinc-400">Stream</span>
 				</button>
-				{#if showStreamMenu && canVideo}
+				{#if showStreamMenu && videoReady}
 					<!-- svelte-ignore a11y_no_static_element_interactions -->
 					<!-- svelte-ignore a11y_click_events_have_key_events -->
 					<div
@@ -603,7 +611,7 @@
 							class="flex items-center gap-2 px-3 py-2 text-sm whitespace-nowrap text-zinc-200 transition-colors hover:bg-zinc-700"
 							onclick={() => {
 								showStreamMenu = false;
-								screenShareRequested.set({ active: true, withAudio: false });
+								screenShareRequested.set({ roomId: channelId, withAudio: false });
 							}}
 						>
 							<MonitorUp class="size-4" />
@@ -613,7 +621,7 @@
 							class="flex items-center gap-2 px-3 py-2 text-sm whitespace-nowrap text-zinc-200 transition-colors hover:bg-zinc-700"
 							onclick={() => {
 								showStreamMenu = false;
-								screenShareRequested.set({ active: true, withAudio: true });
+								screenShareRequested.set({ roomId: channelId, withAudio: true });
 							}}
 						>
 							<Volume2 class="size-4" />

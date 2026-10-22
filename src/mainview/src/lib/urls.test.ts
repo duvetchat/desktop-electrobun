@@ -140,6 +140,42 @@ describe("webUrl", () => {
 	});
 });
 
+// The player URLs the API writes (embeds/youtube.go, embeds/tiktok.go).
+const PLAYER_URLS = [
+	"https://www.youtube.com/embed/dQw4w9WgXcQ",
+	"https://www.tiktok.com/player/v1/7234567890123456789?music_info=0&description=0&rel=0&autoplay=0",
+];
+
+// URLs of the players' sites, or like theirs, that aren't one: a page on a subdomain, another page of the site (it
+// could redirect the frame anywhere), a player URL with something more on it, or the same one written another way.
+const NOT_PLAYERS = [
+	"https://evil.youtube.com/embed/dQw4w9WgXcQ",
+	"https://m.youtube.com/embed/dQw4w9WgXcQ",
+	"https://youtube.com/embed/dQw4w9WgXcQ",
+	"https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ",
+	"https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+	"https://www.youtube.com/redirect?q=https://evil.example",
+	"https://www.youtube.com/embed/../redirect?q=https://evil.example",
+	"https://www.youtube.com/embed/%2e%2e/redirect?q=https://evil.example",
+	"https://www.youtube.com/embed/dQw4w9WgXcQ/../../redirect",
+	"https://www.youtube.com/embed/dQw4w9WgXcQ?list=x",
+	"https://www.youtube.com/embed/dQw4w9WgXcQ#x",
+	"https://www.youtube.com./embed/dQw4w9WgXcQ",
+	"https://www.youtube.com:443/embed/dQw4w9WgXcQ",
+	"https://user@www.youtube.com/embed/dQw4w9WgXcQ",
+	"https://WWW.YOUTUBE.COM/embed/dQw4w9WgXcQ",
+	"http://www.youtube.com/embed/dQw4w9WgXcQ",
+	"https://www.youtube.com.evil.example/embed/dQw4w9WgXcQ",
+	"https://creator.tiktok.com/player/v1/7234567890123456789?music_info=0&description=0&rel=0&autoplay=0",
+	"https://vm.tiktok.com/player/v1/7234567890123456789?music_info=0&description=0&rel=0&autoplay=0",
+	"https://www.tiktok.com/@someone/video/7234567890123456789",
+	"https://www.tiktok.com/player/v1/7234567890123456789",
+	"https://www.tiktok.com/player/v1/7234567890123456789?music_info=0&description=0&rel=0&autoplay=1",
+	"https://www.tiktok.com/player/v1/7234567890123456789?music_info=0&description=0&rel=0&autoplay=0&x=1",
+	"https://www.tiktok.com/player/v1/abc?music_info=0&description=0&rel=0&autoplay=0",
+	"https://www.tiktok.com.evil.example/player/v1/7234567890123456789?music_info=0&description=0&rel=0&autoplay=0",
+];
+
 describe("frameSandbox", () => {
 	const own = ["localhost", "api.duvet.chat"];
 
@@ -161,9 +197,9 @@ describe("frameSandbox", () => {
 	});
 
 	test("the players the API frames keep their own origin; any other page is framed without it", () => {
-		expect(frameSandbox("https://www.youtube.com/embed/abc", own)).toBe("allow-scripts allow-same-origin");
-		expect(frameSandbox("https://www.youtube-nocookie.com/embed/abc", own)).toBe("allow-scripts allow-same-origin");
-		expect(frameSandbox("https://www.tiktok.com/player/v1/123", own)).toBe("allow-scripts allow-same-origin");
+		for (const url of PLAYER_URLS) {
+			expect(frameSandbox(url, own)).toBe("allow-scripts allow-same-origin");
+		}
 		for (const url of [
 			"https://player.example/v/1",
 			"https://youtube.com.evil.example/embed",
@@ -174,12 +210,14 @@ describe("frameSandbox", () => {
 		}
 	});
 
+	test("only the exact player URLs keep their origin: not another page of their sites, nor one like them", () => {
+		for (const url of NOT_PLAYERS) {
+			expect(frameSandbox(url, own)).toBe("allow-scripts");
+		}
+	});
+
 	test("no framed page may open windows (never allow-popups)", () => {
-		for (const url of [
-			"https://www.youtube.com/embed/abc",
-			"https://www.tiktok.com/player/v1/1",
-			"https://player.example/v/1",
-		]) {
+		for (const url of [...PLAYER_URLS, "https://player.example/v/1"]) {
 			expect(frameSandbox(url, own)).not.toContain("allow-popups");
 		}
 	});
@@ -357,24 +395,20 @@ describe("playerFrame", () => {
 	const own = ["localhost", "api.duvet.chat"];
 
 	test("the players the API frames itself load at once, with frameSandbox's sandbox", () => {
-		for (const url of [
-			"https://www.youtube.com/embed/abc",
-			"https://www.youtube-nocookie.com/embed/abc",
-			"https://www.tiktok.com/player/v1/123",
-			"https://youtube.com./embed/abc",
-		]) {
-			expect(playerFrame(url, own)).toEqual({ sandbox: frameSandbox(url, own)!, clickToPlay: false });
+		for (const url of PLAYER_URLS) {
+			expect(playerFrame(url, own)).toEqual({ sandbox: "allow-scripts allow-same-origin", clickToPlay: false });
 		}
 	});
 
-	test("any other page waits for a click on its card, then gets frameSandbox's sandbox", () => {
+	test("any other page waits for a click on its card, and is framed without its origin", () => {
 		for (const url of [
 			"https://player.example/v/1",
 			"http://vimeo.com/123",
 			"https://youtube.com.evil.example/embed",
 			"https://eviltiktok.com/player",
+			...NOT_PLAYERS,
 		]) {
-			expect(playerFrame(url, own)).toEqual({ sandbox: frameSandbox(url, own)!, clickToPlay: true });
+			expect(playerFrame(url, own)).toEqual({ sandbox: "allow-scripts", clickToPlay: true });
 		}
 	});
 
