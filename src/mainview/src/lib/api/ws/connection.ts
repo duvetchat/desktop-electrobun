@@ -1,6 +1,9 @@
 import {
 	pinUpdates,
 	channelMessages,
+	ephemeralMessages,
+	keepEphemeral,
+	dropEphemeral,
 	wsSessionToken,
 	iceServers,
 	gatewaySpaces,
@@ -43,7 +46,7 @@ import { forgetSpaceCommands } from "$lib/api/interactions";
 
 import type { DMTypingEvent, GatewayEvent, GatewaySpace, ReferencedMessage, TypingEvent, UserStatus } from "$lib/types";
 
-import { gatewayMessageToMessage } from "$lib/types";
+import { gatewayMessageToMessage, isEphemeral } from "$lib/types";
 
 // Token is passed via query string because the WebSocket API does not support
 // custom headers during the handshake. Ideally the gateway would accept a
@@ -369,7 +372,9 @@ function handleEvent(event: GatewayEvent) {
 			if (!roomId) break;
 			const spaces = get(gatewaySpaces);
 			const message = gatewayMessageToMessage(raw, spaces);
-			if (roomId !== get(activeTextRoomId)) {
+			// An ephemeral message, which a bot sent this user alone, isn't one of the room's: it leaves the room read.
+			const ephemeral = isEphemeral(message);
+			if (roomId !== get(activeTextRoomId) && !ephemeral) {
 				unreadChannels.update((s) => {
 					s.add(roomId);
 					return s;
@@ -379,6 +384,10 @@ function handleEvent(event: GatewayEvent) {
 				if (!all[roomId]) return all;
 				return { ...all, [roomId]: all[roomId].filter((u) => u.user_id !== raw.author_id) };
 			});
+			if (ephemeral) {
+				keepEphemeral(roomId, message);
+				break;
+			}
 			channelMessages.update((all) => {
 				const existing = all[roomId] ?? [];
 
@@ -414,6 +423,18 @@ function handleEvent(event: GatewayEvent) {
 			const raw = payload.data;
 			const spaces = get(gatewaySpaces);
 			const updatedMessage = gatewayMessageToMessage(raw, spaces);
+			// An ephemeral message stays so (its flag never changes), apart from the room's. One dismissed is gone.
+			if (isEphemeral(updatedMessage)) {
+				const roomId = raw.room_id;
+				const shown = roomId ? get(ephemeralMessages)[roomId]?.find((m) => m.id === updatedMessage.id) : undefined;
+				if (roomId && shown) {
+					keepEphemeral(roomId, {
+						...updatedMessage,
+						interaction_metadata: updatedMessage.interaction_metadata ?? shown.interaction_metadata,
+					});
+				}
+				break;
+			}
 			channelMessages.update((all) => {
 				const result: typeof all = {};
 				for (const [roomId, msgs] of Object.entries(all)) {
@@ -453,6 +474,7 @@ function handleEvent(event: GatewayEvent) {
 		}
 		case "MESSAGE_DELETE": {
 			const raw = payload.data;
+			dropEphemeral(raw.room_id, raw.id);
 			channelMessages.update((all) => {
 				const existing = all[raw.room_id] ?? [];
 				return {

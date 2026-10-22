@@ -111,6 +111,11 @@ export const MessageType = {
 export type MessageType = (typeof MessageType)[keyof typeof MessageType];
 
 export const MessageFlag = {
+	/**
+	 * A bot's response to an interaction, or a follow-up, that only the user who used it sees. It isn't one of
+	 * the room's messages: no history has it, so it lasts until dismissed or the app reloads.
+	 */
+	Ephemeral: 1 << 6,
 	/** A bot's deferred response to an interaction, which it completes by editing the message. */
 	Loading: 1 << 7,
 	/** The components are the whole message: it has no content, embeds or files of its own. */
@@ -980,6 +985,11 @@ export function isComponentsV2(message: Pick<Message, "flags">): boolean {
 /** Whether a message is a bot's deferred response that it hasn't completed yet. */
 export function isLoading(message: Pick<Message, "flags">): boolean {
 	return ((message.flags ?? 0) & MessageFlag.Loading) !== 0;
+}
+
+/** Whether a message is ephemeral: a bot's to this user alone, not one of the room's. */
+export function isEphemeral(message: Pick<Message, "flags">): boolean {
+	return ((message.flags ?? 0) & MessageFlag.Ephemeral) !== 0;
 }
 
 /** The text a message shows: its content, or its text displays' when its components are all of it. */
