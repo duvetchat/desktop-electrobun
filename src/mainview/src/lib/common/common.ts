@@ -47,10 +47,22 @@ export function getHostURL(): string {
 	return protocol + base;
 }
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Whether value is a UUID, as Duvet's IDs are. An ID read from a message's text or a link (a message link's, a
+ * bot invite's) goes into an API path only then: a "..", "/", "\", "?" or "#" in it would send the request, with
+ * the user's credentials, to another endpoint.
+ */
+export function isUuid(value: unknown): value is string {
+	return typeof value === "string" && UUID.test(value);
+}
+
 export function getAvatarURL(_userId: string, avatar: string | null | undefined): string | null {
 	if (!avatar) return null;
 	if (avatar.startsWith("http://") || avatar.startsWith("https://")) return avatar;
-	return `${getHostURL()}/attachments/${avatar}`;
+	// Otherwise an attachment's ID (the API serves no other): a webhook's message can name any text as its avatar.
+	return isUuid(avatar) ? `${getHostURL()}/attachments/${avatar}` : null;
 }
 
 export function getWSHostURL(): string {

@@ -224,12 +224,15 @@
 							</button>
 						{/if}
 					{/if}
-					<button
-						class="rounded-lg bg-white/10 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-white/20"
-						onclick={() => (showPermissions = !showPermissions)}
-					>
-						{showPermissions ? "Hide" : "View"} Permissions
-					</button>
+					<!-- Permissions are a space's (its roles): a DM or a group has none, so there's nothing to view there. -->
+					{#if spaceId}
+						<button
+							class="rounded-lg bg-white/10 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-white/20"
+							onclick={() => (showPermissions = !showPermissions)}
+						>
+							{showPermissions ? "Hide" : "View"} Permissions
+						</button>
+					{/if}
 				</div>
 
 				<div class="mt-4 rounded-lg bg-zinc-950 p-3">

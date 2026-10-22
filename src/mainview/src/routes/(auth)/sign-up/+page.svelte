@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { onMount } from "svelte";
 	import { signIn, logIn } from "$lib/api/auth";
 	import { Button, Checkbox, Dialog, Label } from "bits-ui";
 	import { userSession } from "$lib/stores.svelte";
@@ -15,6 +16,13 @@
 	let doingRequest = $state(false);
 	let showTermsModal = $state(false);
 	let errorMessage = $state("");
+	// The page to go on to (an invite's), which signing in instead goes on to as well.
+	let redirectQuery = $state("");
+
+	onMount(() => {
+		const redirect = new URLSearchParams(window.location.search).get("redirect");
+		if (redirect) redirectQuery = `?redirect=${encodeURIComponent(redirect)}`;
+	});
 
 	const passwordsMatch = $derived(password === confirmPassword);
 	const canSubmit = $derived(
@@ -228,7 +236,7 @@
 
 			<footer class="mt-6 text-center text-sm text-zinc-300">
 				Already have an account?
-				<a href="/sign-in" class="ml-1 text-stone-300 hover:text-stone-200 hover:underline"> Sign in </a>
+				<a href="/sign-in{redirectQuery}" class="ml-1 text-stone-300 hover:text-stone-200 hover:underline"> Sign in </a>
 			</footer>
 		</div>
 	</div>

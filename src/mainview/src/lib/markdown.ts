@@ -253,15 +253,6 @@ function applyInline(
 	s = s.replace(/(?<!\w)_([^\s_](?:[^_]*[^\s_])?)_(?!\w)/gs, (_, t) => `<em>${t}</em>`);
 	s = s.replace(/~~(.+?)~~/gs, (_, t) => `<del>${t}</del>`);
 	s = s.replace(/\|\|(.+?)\|\|/gs, (_, t) => `<span class="msg-spoiler">${t}</span>`);
-	// Markdown links [text](url). The text comes escaped (renderEmoji), quotes included; the URL's are escaped
-	// again in case it ever doesn't, as one would end the href and start an attribute of the URL's own. A URL
-	// can't hold what becomes HTML later (a code's placeholder, \x00…; a mention or custom emoji, &lt;…) or
-	// already is (an emoji's <img>): that HTML would land in the href.
-	s = s.replace(
-		/\[([^\]]+)\]\((https?:\/\/(?:(?!&lt;)[^)\x00<])+)\)/g,
-		(_, text, url) =>
-			`<a href="${url.replace(/"/g, "&quot;")}" target="_blank" rel="noopener noreferrer" class="msg-link">${text}</a>`,
-	);
 	// Resolve <@id> mentions to @username
 	s = s.replace(/&lt;@([a-f0-9-]+)&gt;/g, (_, id) => {
 		const name = mentionMap?.[id] ?? id.slice(0, 8);
@@ -301,9 +292,11 @@ function highlightCode(code: string, lang: string): string {
 	}
 }
 
-// The renderer marks the code it takes out with \x00 placeholders, so the text it renders has no \x00 of its
-// own: one would pass for a placeholder and put another code's HTML where it stands, or "undefined".
-const withoutNul = (text: string) => text.replaceAll("\x00", "");
+// The renderer marks the code and links it takes out with placeholders that open with \x00 and close with \x01, so
+// the text it renders has neither of its own: one would pass for a placeholder's edge and put another code's or
+// link's HTML where it stands, or "undefined". As the two edges differ, text between two placeholders ("`a`L0`b`")
+// can't read as a third.
+const withoutMarks = (text: string) => text.replace(/[\x00\x01]/g, "");
 
 export function renderMarkdown(
 	input: string,
@@ -311,7 +304,7 @@ export function renderMarkdown(
 	mentionMap?: Record<string, string>,
 	customEmojiMap?: CustomEmojiMap,
 ): string {
-	return render(withoutNul(input), large, mentionMap, customEmojiMap);
+	return render(withoutMarks(input), large, mentionMap, customEmojiMap);
 }
 
 function render(
@@ -334,20 +327,35 @@ function render(
 		const escaped = escapeHtml(trimmed).replace(/"/g, "&quot;");
 		const copyBtn = `<button class="msg-code-copy" data-code="${escaped}" title="Copy code" aria-label="Copy code"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg></button>`;
 		codeBlocks.push(`<pre class="msg-code-block">${langBadge}${copyBtn}<code>${linesHtml}</code></pre>`);
-		return `\x00B${codeBlocks.length - 1}\x00`;
+		return `\x00B${codeBlocks.length - 1}\x01`;
 	});
 
 	// ── 2. Extract inline code ─────────────────────────────────────────────────
+	// Never across a placeholder (a code block's, or a reply quote's): it would come back inside this code, whole.
 	const inlineCodes: string[] = [];
-	s = s.replace(/`([^`\n]+)`/g, (_, code) => {
+	s = s.replace(/`([^`\n\x00\x01]+)`/g, (_, code) => {
 		inlineCodes.push(`<code class="msg-inline-code">${escapeHtml(code)}</code>`);
-		return `\x00I${inlineCodes.length - 1}\x00`;
+		return `\x00I${inlineCodes.length - 1}\x01`;
 	});
 
-	// ── 3. Process line by line for block elements ─────────────────────────────
+	const inline = (t: string) => applyInline(renderEmoji(t), false, mentionMap, customEmojiMap);
+
+	// ── 3. Extract links ───────────────────────────────────────────────────────
+	// Markdown links [text](url), taken out before the inline rules as code is, so that the URL stays as it was
+	// written: those rules would turn a *, _, ~~, || or < in it into HTML. It goes into the href escaped, quotes
+	// included (one would end the href and start an attribute of the URL's own), and only as http(s). It can't
+	// hold a code's placeholder (\x00…\x01): the code's HTML would land in the href. The text is rendered as any.
+	const links: string[] = [];
+	s = s.replace(/\[([^\]\n]+)\]\((https?:\/\/[^)\x00\x01\n]+)\)/g, (_, text: string, url: string) => {
+		links.push(
+			`<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer" class="msg-link">${inline(text)}</a>`,
+		);
+		return `\x00L${links.length - 1}\x01`;
+	});
+
+	// ── 4. Process line by line for block elements ─────────────────────────────
 	const lines = s.split("\n");
 	const out: string[] = [];
-	const inline = (t: string) => applyInline(renderEmoji(t), false, mentionMap, customEmojiMap);
 
 	let i = 0;
 	while (i < lines.length) {
@@ -385,22 +393,24 @@ function render(
 		i++;
 	}
 
-	// ── 4. Join with <br> except around block elements ─────────────────────────
+	// ── 5. Join with <br> except around block elements ─────────────────────────
 	let result = "";
 	for (let i = 0; i < out.length; i++) {
 		result += out[i];
 		if (i < out.length - 1) {
-			const currIsBlock = isBlockHtml(out[i]) || /^\x00B\d+\x00$/.test(out[i].trim());
-			const nextIsBlock = isBlockHtml(out[i + 1]) || /^\x00B\d+\x00$/.test(out[i + 1].trim());
+			const currIsBlock = isBlockHtml(out[i]) || /^\x00B\d+\x01$/.test(out[i].trim());
+			const nextIsBlock = isBlockHtml(out[i + 1]) || /^\x00B\d+\x01$/.test(out[i + 1].trim());
 			if (!currIsBlock && !nextIsBlock) {
 				result += "<br>";
 			}
 		}
 	}
 
-	// ── 5. Restore placeholders ────────────────────────────────────────────────
-	result = result.replace(/\x00B(\d+)\x00/g, (_, i) => codeBlocks[+i]);
-	result = result.replace(/\x00I(\d+)\x00/g, (_, i) => inlineCodes[+i]);
+	// ── 6. Restore placeholders ────────────────────────────────────────────────
+	// Links first: their text can hold a code's placeholder.
+	result = result.replace(/\x00L(\d+)\x01/g, (_, n) => links[+n]);
+	result = result.replace(/\x00B(\d+)\x01/g, (_, i) => codeBlocks[+i]);
+	result = result.replace(/\x00I(\d+)\x01/g, (_, i) => inlineCodes[+i]);
 
 	return result;
 }
@@ -413,16 +423,16 @@ export function renderMarkdownLine(
 	customEmojiMap?: CustomEmojiMap,
 ): string {
 	const codes: string[] = [];
-	const line = withoutNul(input)
+	const line = withoutMarks(input)
 		.replace(/```[\w+#-]*\n?([\s\S]*?)```/g, (_, code: string) => {
 			codes.push(code.trim().replace(/\s+/g, " "));
-			return `\x00P${codes.length - 1}\x00`;
+			return `\x00P${codes.length - 1}\x01`;
 		})
 		.split("\n")
 		.map((l) => l.replace(/^(?:#{1,3} |-# |>>> |> |\s*[-*]\s+|\s*\d+[.)]\s+)/, ""))
 		.join(" ");
 	return render(line, false, mentionMap, customEmojiMap).replace(
-		/\x00P(\d+)\x00/g,
+		/\x00P(\d+)\x01/g,
 		(_, i) => `<code class="msg-inline-code">${escapeHtml(codes[+i])}</code>`,
 	);
 }

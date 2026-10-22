@@ -1,3 +1,4 @@
+import { DUVET_DOMAIN, isUuid, route } from "$lib/common/common";
 import type { Embed, EmbedMedia } from "$lib/types";
 
 /**
@@ -66,4 +67,51 @@ export function localUrl(redirect: string | null, base: string): string | undefi
 		if (to.protocol === from.protocol && to.host === from.host) return to.href;
 	} catch {}
 	return undefined;
+}
+
+/** The sign-in page, which goes on to redirect (a path of the app, as localUrl reads it there) once signed in. */
+export function signInUrl(redirect: string): string {
+	return route(`/sign-in.html?redirect=${encodeURIComponent(redirect)}`);
+}
+
+// isUuid lives in common.ts, whose getAvatarURL needs it too.
+export { isUuid };
+
+/**
+ * value as one segment of an API path, for what isn't an ID (an invite's code, a reaction's emoji): encoded, so
+ * a "/", "\", "?" or "#" in it stays in it. "." and ".." are refused: encoding leaves them as they are, and a URL
+ * resolves them, "%2e" too, as the path's folder and the one above it. So is "", which drops the segment.
+ */
+export function pathSegment(value: string): string {
+	const segment = encodeURIComponent(value);
+	if (segment === "" || segment === "." || segment === "..") throw new Error(`Not a path segment: "${value}"`);
+	return segment;
+}
+
+/** The message a link names: its space, room and message, or its conversation and message (space and room empty). */
+export interface MessageLink {
+	spaceId: string;
+	roomId: string;
+	messageId: string;
+	conversationId?: string;
+}
+
+/**
+ * The message a link to one in Duvet names (https://duvet.chat/channels/<space>/<room>/<message>, or
+ * …/conversations/<conversation>/<message>), when each of its IDs is a UUID (isUuid); nothing otherwise. Its
+ * preview fetches the message by them as soon as it's on screen.
+ */
+export function parseMessageLink(url: string): MessageLink | null {
+	if (!url.startsWith(`${DUVET_DOMAIN}/`)) return null;
+	const [kind, ...ids] = url.slice(DUVET_DOMAIN.length + 1).split("/");
+	if (!ids.every(isUuid)) return null;
+	if (kind === "channels" && ids.length === 3) {
+		const [spaceId, roomId, messageId] = ids;
+		return { spaceId, roomId, messageId };
+	}
+	if (kind === "conversations" && ids.length === 2) {
+		const [conversationId, messageId] = ids;
+		return { spaceId: "", roomId: "", messageId, conversationId };
+	}
+	return null;
 }
