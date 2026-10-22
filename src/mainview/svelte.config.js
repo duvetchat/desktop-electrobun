@@ -28,9 +28,42 @@ import adapter from "@sveltejs/adapter-static";
 //  - connect-src: https: covers every API target in lib/common/common.ts over TLS (api.duvet.chat, the n128
 //    and andremor hosts) plus the presigned storage redirects (arbitrary R2 subdomains) and the GIF/theme
 //    fetches; the wss:// hosts are the gateways (ws.duvet.chat and the n128/andremor ones); localhost/
-//    127.0.0.1 (any port) cover the local dev API, gateway and S3 mock over http/ws.
+//    127.0.0.1 (any port) cover the local dev API, gateway and S3 mock over http/ws. In development mode
+//    only, the origins of the VITE_API_URL/VITE_WS_URL overrides (a LAN address, another wss host) are
+//    added too: vite.config.ts hands them over in DUVET_DEV_CONNECT_SRC, which it sets (empty in every
+//    other mode) before SvelteKit loads this file. See devConnectSources.
 //  - frame-ancestors is ignored inside a prerendered <meta> tag, but it is honoured by the dev server's
 //    response header and documents that the app is never meant to be framed.
+/** @typedef {NonNullable<NonNullable<NonNullable<import('@sveltejs/kit').KitConfig['csp']>['directives']>['connect-src']>[number]} CspSource */
+
+// The env variable through which vite.config.ts hands over the dev-only override URLs.
+export const DEV_CONNECT_ENV = "DUVET_DEV_CONNECT_SRC";
+
+/**
+ * The connect-src origins of the URL overrides (space-separated URLs, as vite.config.ts puts them in
+ * DEV_CONNECT_ENV): each URL's origin, so a path never widens or narrows it. What isn't an http(s) or
+ * ws(s) URL adds nothing.
+ * @param {string | undefined} urls
+ * @returns {CspSource[]}
+ */
+export function devConnectSources(urls) {
+  /** @type {CspSource[]} */
+  const sources = [];
+  for (const raw of (urls ?? "").split(/\s+/)) {
+    if (!raw) continue;
+    let url;
+    try {
+      url = new URL(raw);
+    } catch {
+      continue;
+    }
+    if (!["http:", "https:", "ws:", "wss:"].includes(url.protocol)) continue;
+    const origin = /** @type {CspSource} */ (url.origin);
+    if (!sources.includes(origin)) sources.push(origin);
+  }
+  return sources;
+}
+
 // The inline-script hashes below are inlined (not hoisted) so TypeScript infers them as CryptoSource literals;
 // src/mainview/src/lib/csp.test.ts recomputes each from its source file and fails if it drifts.
 /** @type {NonNullable<import('@sveltejs/kit').KitConfig['csp']>} */
@@ -61,6 +94,7 @@ const csp = {
       "ws://localhost:*",
       "http://127.0.0.1:*",
       "ws://127.0.0.1:*",
+      ...devConnectSources(process.env[DEV_CONNECT_ENV]),
     ],
     "frame-src": ["self", "https:", "http:"],
     "worker-src": ["self", "blob:"],

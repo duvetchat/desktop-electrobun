@@ -1,11 +1,17 @@
 import { sveltekit } from "@sveltejs/kit/vite";
 import tailwindcss from "@tailwindcss/vite";
 import { defineConfig, loadEnv } from "vite";
+import { DEV_CONNECT_ENV } from "./svelte.config.js";
 
 export default defineConfig(({ mode }) => {
 	const env = loadEnv(mode, process.cwd(), "");
 	// URL overrides only apply in development mode (dev:hmr, start); every other mode, including build:canary, ignores them.
 	const devURL = (url = "") => (mode === "development" ? url.replace(/\/+$/, "") : "");
+	const apiURL = devURL(env.VITE_API_URL);
+	const wsURL = devURL(env.VITE_WS_URL);
+	// The CSP in svelte.config.js lets the app reach them: SvelteKit loads that file when sveltekit() runs,
+	// below. Always set, so a value from the shell never reaches another mode's build.
+	process.env[DEV_CONNECT_ENV] = [apiURL, wsURL].filter(Boolean).join(" ");
 	return {
 		plugins: [tailwindcss(), sveltekit()],
 		// The desktop app (src/bun/index.ts) and app.html look for the dev server on 5173: if it's taken,
@@ -14,8 +20,8 @@ export default defineConfig(({ mode }) => {
 		define: {
 			VITE_APP_ENV: JSON.stringify(mode),
 			VITE_DOMAIN_TARGET_ENV: JSON.stringify(env.VITE_DOMAIN_TARGET_ENV || "duvet"),
-			VITE_API_URL: JSON.stringify(devURL(env.VITE_API_URL)),
-			VITE_WS_URL: JSON.stringify(devURL(env.VITE_WS_URL)),
+			VITE_API_URL: JSON.stringify(apiURL),
+			VITE_WS_URL: JSON.stringify(wsURL),
 		},
 		build: {
 			rollupOptions: {
