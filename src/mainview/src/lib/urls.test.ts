@@ -1,6 +1,16 @@
 import { describe, expect, test } from "bun:test";
-import type { Embed } from "$lib/types";
-import { frameSandbox, isUuid, localUrl, parseMessageLink, pathSegment, signInUrl, webEmbed, webUrl } from "$lib/urls";
+import type { Component, Embed } from "$lib/types";
+import {
+	frameSandbox,
+	isUuid,
+	localUrl,
+	parseMessageLink,
+	pathSegment,
+	playerFrame,
+	signInUrl,
+	webEmbed,
+	webUrl,
+} from "$lib/urls";
 
 describe("webEmbed", () => {
 	test("keeps an embed's http(s) URLs", () => {
@@ -28,6 +38,72 @@ describe("webEmbed", () => {
 				footer: { text: "F", icon_url: evil },
 			}),
 		).toEqual({ title: "t", author: { name: "A" }, footer: { text: "F" } });
+	});
+
+	// A link's card, as the API reads it from the page: a container with a gallery, a section whose accessory is a
+	// link button, and a thumbnail.
+	const card: Component[] = [
+		{
+			type: 17,
+			accent_color: 8490232,
+			components: [
+				{ type: 12, items: [{ media: { url: "https://a.example/i.png" }, description: "alt" }] },
+				{
+					type: 9,
+					components: [{ type: 10, content: "# Title" }],
+					accessory: { type: 2, style: 5, label: "Open", url: "https://a.example/post" },
+				},
+				{
+					type: 9,
+					components: [{ type: 10, content: "x" }],
+					accessory: { type: 11, media: { url: "http://a.example/t.png" } },
+				},
+				{ type: 1, components: [{ type: 2, style: 5, label: "Docs", url: "https://docs.a.example" }] },
+			],
+		},
+	];
+
+	test("keeps a card whose links and media are all http(s)", () => {
+		expect(webEmbed({ title: "t", components: card }).components).toEqual(card);
+	});
+
+	test("drops a card with any other link or media URL, or a gallery item without media: it's drawn whole or not at all", () => {
+		const evil = "javascript:alert(1)";
+		const variants: unknown[] = [
+			[{ type: 17, components: [{ type: 1, components: [{ type: 2, style: 5, label: "Go", url: evil }] }] }],
+			[
+				{
+					type: 17,
+					components: [
+						{
+							type: 12,
+							items: [{ media: { url: "https://a.example/i.png" } }, { media: { url: "data:image/png;base64,AAAA" } }],
+						},
+					],
+				},
+			],
+			[
+				{
+					type: 17,
+					components: [
+						{
+							type: 9,
+							components: [{ type: 10, content: "x" }],
+							accessory: { type: 11, media: { url: "/attachments/x" } },
+						},
+					],
+				},
+			],
+			[{ type: 17, components: [{ type: 13, file: { url: "attachment://a.pdf" } }] }],
+			[{ type: 17, components: [{ type: 12, items: [{}] }] }],
+			[{ type: 17, components: [{ type: 2, style: 5, label: "Go", url: ["https://a.example"] }] }],
+			"not a list",
+		];
+		for (const components of variants) {
+			const embed: Embed = { title: "t" };
+			Object.assign(embed, { components });
+			expect(webEmbed(embed)).toEqual({ title: "t" });
+		}
 	});
 });
 
@@ -273,6 +349,38 @@ describe("parseMessageLink", () => {
 			`duvet://channels/${ID1}/${ID2}/${ID3}`,
 		]) {
 			expect(parseMessageLink(url)).toBeNull();
+		}
+	});
+});
+
+describe("playerFrame", () => {
+	const own = ["localhost", "api.duvet.chat"];
+
+	test("the players the API frames itself load at once, with frameSandbox's sandbox", () => {
+		for (const url of [
+			"https://www.youtube.com/embed/abc",
+			"https://www.youtube-nocookie.com/embed/abc",
+			"https://www.tiktok.com/player/v1/123",
+			"https://youtube.com./embed/abc",
+		]) {
+			expect(playerFrame(url, own)).toEqual({ sandbox: frameSandbox(url, own)!, clickToPlay: false });
+		}
+	});
+
+	test("any other page waits for a click on its card, then gets frameSandbox's sandbox", () => {
+		for (const url of [
+			"https://player.example/v/1",
+			"http://vimeo.com/123",
+			"https://youtube.com.evil.example/embed",
+			"https://eviltiktok.com/player",
+		]) {
+			expect(playerFrame(url, own)).toEqual({ sandbox: frameSandbox(url, own)!, clickToPlay: true });
+		}
+	});
+
+	test("a page frameSandbox refuses isn't framed, click or not", () => {
+		for (const url of ["https://duvet.chat/app", "http://localhost:5173/app", "javascript:alert(1)", "not a url"]) {
+			expect(playerFrame(url, own)).toBeUndefined();
 		}
 	});
 });

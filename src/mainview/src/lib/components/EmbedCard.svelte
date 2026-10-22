@@ -1,9 +1,12 @@
 <script lang="ts">
+	import { Play as PlayIcon } from "@lucide/svelte";
+	import MessageComponents from "$lib/components/MessageComponents.svelte";
 	import { EmbedType, type Embed, type EmbedMedia } from "$lib/types";
 	import { getHostURL } from "$lib/common/common";
 	import { renderMarkdown } from "$lib/markdown";
 	import { formatShortDateTime } from "$lib/utils/time";
-	import { frameSandbox, webEmbed } from "$lib/urls";
+	import { playerFrame, webEmbed } from "$lib/urls";
+	import { getElectrobunRpc, isElectrobunWindow } from "$lib/electrobun-rpc";
 
 	let { embed, onImageClick }: { embed: Embed; onImageClick?: (src: string) => void } = $props();
 
@@ -16,6 +19,21 @@
 	try {
 		ownHosts.push(new URL(getHostURL()).hostname);
 	} catch {}
+
+	// The player page whose play button was clicked, framed from then on (playerFrame), and the image the button
+	// shows until then.
+	let playing = $state<string | null>(null);
+	const poster = $derived(card.image?.url ?? card.thumbnail?.url);
+
+	// In the packaged app, Electrobun's preload (with its RPC key) runs in frames too, so a page that isn't one of
+	// the players the API frames itself opens in the browser instead of in a frame.
+	function play(url: string) {
+		if (isElectrobunWindow()) {
+			void getElectrobunRpc().then((rpc) => rpc?.send.openExternal({ url }));
+			return;
+		}
+		playing = url;
+	}
 
 	// The footer's line: its text and the embed's date, as "FxTwitter • 10/21/26, 3:02 AM".
 	const footerText = $derived(
@@ -74,7 +92,12 @@
 	}
 </script>
 
-{#if card.type === EmbedType.Sticker && card.image}
+{#if card.components?.length}
+	<!-- The linked page's own card, drawn as a message's components: layout, text, media and link buttons -->
+	<div class="w-full max-w-108">
+		<MessageComponents components={card.components} onPreview={(src) => onImageClick?.(src)} />
+	</div>
+{:else if card.type === EmbedType.Sticker && card.image}
 	<button type="button" class="mt-1 block cursor-zoom-in" onclick={() => onImageClick?.(card.image!.url)}>
 		<img
 			src={card.image.url}
@@ -125,19 +148,7 @@
 			{/if}
 		</div>
 		{#if card.video}
-			{@const sandbox = frameSandbox(card.video.url, ownHosts)}
-			{#if sandbox}
-				<div class="aspect-9/16 w-full">
-					<iframe
-						src={card.video.url}
-						title={card.title ?? "TikTok"}
-						class="h-full w-full"
-						allow="autoplay; encrypted-media"
-						allowfullscreen
-						{sandbox}
-					></iframe>
-				</div>
-			{/if}
+			{@render player(card.video.url, card.title ?? "TikTok", "aspect-9/16", "autoplay; encrypted-media")}
 		{/if}
 	</div>
 {:else if card.title || card.description || card.video || card.image}
@@ -221,19 +232,12 @@
 					class="max-h-72 w-full max-w-full"
 				></video>
 			{:else}
-				{@const sandbox = frameSandbox(card.video.url, ownHosts)}
-				{#if sandbox}
-					<div class="aspect-video w-full">
-						<iframe
-							src={card.video.url}
-							title={card.title ?? ""}
-							class="h-full w-full"
-							allow="autoplay; encrypted-media; picture-in-picture"
-							allowfullscreen
-							{sandbox}
-						></iframe>
-					</div>
-				{/if}
+				{@render player(
+					card.video.url,
+					card.title ?? "",
+					"aspect-video",
+					"autoplay; encrypted-media; picture-in-picture",
+				)}
 			{/if}
 		{:else if card.image}
 			<button type="button" class="block w-full cursor-zoom-in" onclick={() => onImageClick?.(card.image!.url)}>
@@ -242,3 +246,32 @@
 		{/if}
 	</div>
 {/if}
+
+<!-- A player page, framed with playerFrame's sandbox: the players the API frames itself at once, any other page only
+     once its play button is clicked, over the embed's image while it waits. -->
+{#snippet player(url: string, title: string, aspect: string, allow: string)}
+	{@const frame = playerFrame(url, ownHosts)}
+	{#if frame}
+		<div class="relative w-full {aspect}">
+			{#if frame.clickToPlay && playing !== url}
+				<button
+					type="button"
+					class="group absolute inset-0 flex items-center justify-center bg-zinc-900"
+					aria-label={title ? `Play ${title}` : "Play"}
+					onclick={() => play(url)}
+				>
+					{#if poster}
+						<img src={poster} alt="" class="absolute inset-0 size-full object-cover" loading="lazy" />
+					{/if}
+					<span
+						class="relative flex size-14 items-center justify-center rounded-full bg-black/60 text-white transition-colors group-hover:bg-black/80"
+					>
+						<PlayIcon class="size-6 translate-x-0.5" fill="currentColor" stroke="none" />
+					</span>
+				</button>
+			{:else}
+				<iframe src={url} {title} class="h-full w-full" {allow} allowfullscreen sandbox={frame.sandbox}></iframe>
+			{/if}
+		</div>
+	{/if}
+{/snippet}

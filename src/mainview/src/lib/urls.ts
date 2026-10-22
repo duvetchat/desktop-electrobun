@@ -1,5 +1,5 @@
 import { DUVET_DOMAIN, isUuid, route } from "$lib/common/common";
-import type { Embed, EmbedMedia } from "$lib/types";
+import type { Component, ComponentMedia, Embed, EmbedMedia } from "$lib/types";
 
 /**
  * url when it's a string holding an absolute http(s) URL; nothing otherwise. An embed's URLs and a bot's
@@ -13,7 +13,29 @@ export function webUrl(url: unknown): string | undefined {
 
 const webMedia = (media: EmbedMedia | null | undefined) => (media && webUrl(media.url) ? media : undefined);
 
-/** embed with its http(s) URLs only (webUrl): a link without one loses its href, an image or a video goes. */
+// Whether components is a list whose links and media are all http(s) URLs (webUrl), with media in every gallery item.
+// The API leaves out what a component doesn't have, so a field it sent empty (null) counts as a bad one.
+function webComponents(components: unknown): boolean {
+	const media = (m: ComponentMedia | undefined, required = false) => (m === undefined ? !required : !!webUrl(m?.url));
+	return (
+		Array.isArray(components) &&
+		components.every(
+			(c: Component | null) =>
+				!!c &&
+				(c.url === undefined || !!webUrl(c.url)) &&
+				media(c.media) &&
+				media(c.file) &&
+				(c.items === undefined || (Array.isArray(c.items) && c.items.every((item) => media(item?.media, true)))) &&
+				(c.components === undefined || webComponents(c.components)) &&
+				(c.accessory === undefined || webComponents([c.accessory])),
+		)
+	);
+}
+
+/**
+ * embed with its http(s) URLs only (webUrl): a link without one loses its href, an image or a video goes, and so does
+ * a card (the components of a link's page), whole, as it's drawn whole.
+ */
 export function webEmbed(embed: Embed): Embed {
 	return {
 		...embed,
@@ -23,6 +45,7 @@ export function webEmbed(embed: Embed): Embed {
 		video: webMedia(embed.video),
 		author: embed.author && { ...embed.author, url: webUrl(embed.author.url), icon_url: webUrl(embed.author.icon_url) },
 		footer: embed.footer && { ...embed.footer, icon_url: webUrl(embed.footer.icon_url) },
+		components: embed.components?.length && webComponents(embed.components) ? embed.components : undefined,
 	};
 }
 
@@ -114,4 +137,16 @@ export function parseMessageLink(url: string): MessageLink | null {
 		return { spaceId: "", roomId: "", messageId, conversationId };
 	}
 	return null;
+}
+
+/**
+ * How an embed frames the player page at url, when frameSandbox lets it: at once for the players the API frames itself
+ * (PLAYERS), and for any other page only once its play button is clicked (clickToPlay), so that the page itself loads
+ * and runs only when someone asks for it. The poster the button shows, the embed's image, loads as any embed image.
+ */
+export function playerFrame(url: string, ownHosts: string[]): { sandbox: string; clickToPlay: boolean } | undefined {
+	const sandbox = frameSandbox(url, ownHosts);
+	if (!sandbox) return undefined;
+	const hostname = new URL(url).hostname.replace(/\.$/, "");
+	return { sandbox, clickToPlay: !PLAYERS.some((player) => onDomain(hostname, player)) };
 }

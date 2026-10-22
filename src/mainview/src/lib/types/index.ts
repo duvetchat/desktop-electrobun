@@ -56,6 +56,8 @@ export interface Embed {
 	video?: EmbedMedia | null;
 	author?: EmbedAuthor | null;
 	fields?: EmbedField[];
+	/** The card a link's page publishes for its previews: a single container, drawn in place of the rest. */
+	components?: Component[];
 }
 
 export interface Attachment {
