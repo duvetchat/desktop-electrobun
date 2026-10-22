@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import config from "../../svelte.config.js";
+import config, { DEV_CONNECT_ENV, devConnectSources } from "../../svelte.config.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const mainview = join(here, "..", "..");
@@ -49,6 +49,51 @@ describe("CSP locks down the dangerous directives", () => {
 		// only 'self', wasm-unsafe-eval and hash sources
 		for (const src of scriptSrc) {
 			expect(src === "self" || src === "wasm-unsafe-eval" || src.startsWith("sha256-")).toBe(true);
+		}
+	});
+});
+
+// The connect-src every build has: the API targets over TLS, the listed gateways and the local stack. The
+// dev-only URL overrides add their origins only when vite.config.ts hands them over (development mode).
+const BASE_CONNECT = [
+	"self",
+	"https:",
+	"wss://*.duvet.chat",
+	"wss://*.n128.xyz",
+	"wss://*.andremor.eu.org",
+	"http://localhost:*",
+	"ws://localhost:*",
+	"http://127.0.0.1:*",
+	"ws://127.0.0.1:*",
+];
+
+describe("connect-src and the dev-only URL overrides", () => {
+	it("is exactly the base list without overrides, as in every production build", () => {
+		expect(process.env[DEV_CONNECT_ENV] ?? "").toBe("");
+		expect(directives["connect-src"]).toEqual(BASE_CONNECT);
+	});
+
+	it("takes each override's origin: a LAN API, a wss gateway elsewhere, without paths or duplicates", () => {
+		expect(
+			devConnectSources("http://192.168.1.20:8080/ wss://gw.example.org/gateway http://192.168.1.20:8080"),
+		).toEqual(["http://192.168.1.20:8080", "wss://gw.example.org"]);
+		expect(devConnectSources("ws://10.0.0.5:8081")).toEqual(["ws://10.0.0.5:8081"]);
+	});
+
+	it("adds nothing for no overrides, or for what isn't an http(s) or ws(s) URL", () => {
+		expect(devConnectSources(undefined)).toEqual([]);
+		expect(devConnectSources("")).toEqual([]);
+		expect(devConnectSources("not a url javascript:alert(1) data:text/plain,x file:///etc/passwd")).toEqual([]);
+	});
+
+	it("puts the overrides vite.config.ts hands over after the base list", async () => {
+		process.env[DEV_CONNECT_ENV] = "http://192.168.1.20:8080 wss://gw.example.org";
+		try {
+			const fresh = (await import(`../../svelte.config.js?dev=${Date.now()}`)).default;
+			const connect = JSON.parse(JSON.stringify(fresh.kit.csp.directives["connect-src"]));
+			expect(connect).toEqual([...BASE_CONNECT, "http://192.168.1.20:8080", "wss://gw.example.org"]);
+		} finally {
+			delete process.env[DEV_CONNECT_ENV];
 		}
 	});
 });
