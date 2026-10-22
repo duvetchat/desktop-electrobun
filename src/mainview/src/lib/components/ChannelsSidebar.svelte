@@ -16,6 +16,7 @@
 		MicOff as MicrophoneSlashIcon,
 		Headphones as HeadphonesIcon,
 		MonitorUp as MonitorUpIcon,
+		Video as VideoIcon,
 		Pencil as PencilIcon,
 	} from "@lucide/svelte";
 
@@ -591,6 +592,9 @@
 											/>
 											<span class="flex-1 truncate {isSpeaking ? 'text-zinc-200' : ''}">{user.username}</span>
 											<div class="flex shrink-0 items-center gap-0.5">
+												{#if user.camera}
+													<VideoIcon class="size-3.5 text-blue-400" />
+												{/if}
 												{#if isSharing}
 													<MonitorUpIcon class="size-3.5 text-blue-400" />
 												{/if}

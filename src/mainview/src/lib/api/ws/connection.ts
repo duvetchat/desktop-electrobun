@@ -239,6 +239,7 @@ function handleEvent(event: GatewayEvent) {
 									muted: vs.muted,
 									deafened: vs.deafened,
 									screen_sharing: vs.screen_sharing,
+									camera: vs.camera,
 								});
 							}
 							return filtered;
@@ -625,6 +626,7 @@ function handleEvent(event: GatewayEvent) {
 									muted: raw.muted,
 									deafened: raw.deafened,
 									screen_sharing: raw.screen_sharing,
+									camera: raw.camera,
 								},
 							];
 						}
@@ -634,6 +636,7 @@ function handleEvent(event: GatewayEvent) {
 							muted: raw.muted,
 							deafened: raw.deafened,
 							screen_sharing: raw.screen_sharing,
+							camera: raw.camera,
 						};
 						return copy;
 					}
@@ -667,6 +670,7 @@ function handleEvent(event: GatewayEvent) {
 								muted: raw.muted,
 								deafened: raw.deafened,
 								screen_sharing: raw.screen_sharing,
+								camera: raw.camera,
 								version: raw.version,
 							});
 						} else {
@@ -675,6 +679,7 @@ function handleEvent(event: GatewayEvent) {
 								muted: raw.muted,
 								deafened: raw.deafened,
 								screen_sharing: raw.screen_sharing,
+								camera: raw.camera,
 								version: raw.version,
 							};
 						}
@@ -704,6 +709,8 @@ function handleEvent(event: GatewayEvent) {
 			}
 			break;
 		}
+		// VOICE_VIDEO_REFUSED goes to VoiceChat, which turns the camera off and says why.
+		case "VOICE_VIDEO_REFUSED":
 		case "VOICE_JOINED":
 		case "WEBRTC_ICE_CANDIDATE":
 		case "WEBRTC_RENEGOTIATE":

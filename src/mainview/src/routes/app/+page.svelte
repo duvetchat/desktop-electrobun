@@ -514,7 +514,7 @@
 {#if $activeVoiceRoomId && (globalVoiceRoom || isCallVoice)}
 	{#key $activeVoiceRoomId}
 		<div class="hidden" aria-hidden="true">
-			<VoiceChat channelId={$activeVoiceRoomId} channelName={globalVoiceRoom?.name ?? "Call"} />
+			<VoiceChat channelId={$activeVoiceRoomId} />
 		</div>
 	{/key}
 {/if}

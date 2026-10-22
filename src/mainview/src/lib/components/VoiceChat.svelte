@@ -1,42 +1,62 @@
 <script lang="ts">
-	import { LoaderCircle, MicOff, MonitorUp, PhoneOff, Play } from "@lucide/svelte";
-	import { onDestroy, onMount } from "svelte";
+	import { onDestroy, onMount, untrack } from "svelte";
 	import { SvelteSet } from "svelte/reactivity";
 	import { onWebRTCEvent, sendEventMessage } from "$lib/api/ws/connection";
 	import { audioStore } from "$lib/stores/audio.svelte";
 	import { toast } from "$lib/stores/toast.svelte";
-	import UserAvatar from "$lib/components/UserAvatar.svelte";
 	import { hasPermission, Permission } from "$lib/permissions";
 	import { createDenoisedStream } from "$lib/audio/noise-suppression";
+	import { sendVoiceSync } from "$lib/voice";
 	import {
+		CAMERA_MAX_BITRATE,
+		CAMERA_MAX_FRAMERATE,
+		cameraConstraints,
+		cameraErrorMessage,
+		readStreamId,
+		videoRefusedMessage,
+		vp8First,
+	} from "$lib/video";
+	import type { VoiceVideoRefusedEvent } from "$lib/types";
+	import {
+		activeCall,
 		activeVoiceRoomId,
+		cameraRequested,
 		currentUser,
 		gatewaySpaces,
+		iceServers,
+		incomingVideo,
+		isCameraOn,
 		isDeafened,
 		isMuted,
+		isScreenSharing,
+		noiseSuppression,
 		screenShareRequested,
+		selectedCameraId,
 		selectedMicId,
 		speakingUsers,
 		userAmplitudes,
 		voiceConnectionState,
-		voiceRemoteVideoStreams,
+		voiceLocalCameraStream,
 		voiceLocalVideoStream,
-		isScreenSharing,
-		noiseSuppression,
-		iceServers,
+		voiceRemoteCameraStreams,
+		voiceRemoteVideoStreams,
 	} from "$lib/stores.svelte";
-	import { getAvatarURL } from "$lib/common/common";
 
-	let {
-		channelId,
-		channelName,
-		compact = false,
-	}: { channelId: string; channelName: string; compact?: boolean } = $props();
+	// Mounted hidden (routes/app/+page.svelte) while this client is in a voice room or a call: it carries the
+	// WebRTC connection, captures the mic, the camera and the screen, and plays everyone's audio. What's seen of
+	// a voice room is VoiceChannelView.
+	let { channelId }: { channelId: string } = $props();
 
 	let peerConnection: RTCPeerConnection | null = null;
 	let localAudioStream = $state<MediaStream | null>(null);
 	let audioSender: RTCRtpSender | null = null;
-	let localVideoStream = $state<MediaStream | null>(null);
+	/** The screen this client shares, with its sound when it has any. */
+	let localScreenStream = $state<MediaStream | null>(null);
+	/** Sends the camera. It's created with the connection and VOICE_JOIN names it by its mid, so turning the
+	 * camera on or off is a replaceTrack: never a renegotiation that could cross one from the gateway. */
+	let cameraTransceiver: RTCRtpTransceiver | null = null;
+	let localCameraStream = $state<MediaStream | null>(null);
+	let cameraChain: Promise<void> = Promise.resolve();
 	let pendingIceCandidates: RTCIceCandidate[] = [];
 	let negotiationReady = false;
 	let negotiationChain: Promise<void> = Promise.resolve();
@@ -46,14 +66,23 @@
 	let voiceJoinedResolve: (() => void) | null = null;
 	let voiceJoinedPromise: Promise<void> = Promise.resolve();
 
-	// isScreenSharing is shared via store so VoiceChannelView can read it
+	// What others send, by user ID: their `<user_id>` stream (voice, and their screen and its sound while
+	// they share it) and their `<user_id>.camera` stream.
+	let remoteAudioStreams = $state<Record<string, MediaStream>>({});
+	let remoteScreenStreams = $state<Record<string, MediaStream>>({});
+	let remoteCameraStreams = $state<Record<string, MediaStream>>({});
 
 	$effect(() => {
-		voiceRemoteVideoStreams.set(remoteVideoElements);
+		voiceRemoteVideoStreams.set(remoteScreenStreams);
 	});
-
 	$effect(() => {
-		voiceLocalVideoStream.set(localVideoStream);
+		voiceLocalVideoStream.set(localScreenStream);
+	});
+	$effect(() => {
+		voiceRemoteCameraStreams.set(remoteCameraStreams);
+	});
+	$effect(() => {
+		voiceLocalCameraStream.set(localCameraStream);
 	});
 
 	$effect(() => {
@@ -64,19 +93,25 @@
 		}
 	});
 
-	let remoteAudioElements = $state<{ [id: string]: MediaStream }>({});
-	let remoteVideoElements = $state<{ [id: string]: MediaStream }>({});
-	let videoPlayingStates = $state<Record<string, boolean>>({});
-	let videoClickedStates = $state<Record<string, boolean>>({});
-	let videoEls: Record<string, HTMLVideoElement> = {};
-
 	let unsubscribeWs: () => void;
 	let audioContext: AudioContext | null = null;
 	let localAnalyser: AnalyserNode | null = null;
 	let localAudioSource: MediaStreamAudioSourceNode | null = null;
+	let localMeterRunning = false;
 	let denoiseCleanup: (() => void) | null = null;
 	let rawMicStream: MediaStream | null = null;
 	let isDestroyed = false;
+
+	const myUserId = $derived($currentUser?.id ?? null);
+	const isCall = $derived($activeCall?.conversationId === channelId);
+	// The space room this is; null in a call, and for a moment while the gateway reconnects.
+	const voiceRoom = $derived.by(() => {
+		const space = $gatewaySpaces.find((s) => s.rooms.some((r) => r.id === channelId));
+		const room = space?.rooms.find((r) => r.id === channelId);
+		return space && room ? { space, room } : null;
+	});
+	// The camera and the screen need Video in a room; a call asks for no permission.
+	const canVideo = $derived(!voiceRoom || hasPermission(voiceRoom.space, voiceRoom.room, Permission.Video));
 
 	function leaveVoice() {
 		if (isDestroyed) return;
@@ -87,6 +122,7 @@
 			peerConnection.close();
 			peerConnection = null;
 		}
+		cameraTransceiver = null;
 		if (denoiseCleanup) {
 			denoiseCleanup();
 			denoiseCleanup = null;
@@ -95,8 +131,12 @@
 			rawMicStream.getTracks().forEach((t) => t.stop());
 			rawMicStream = null;
 		}
-		if (localAudioStream) localAudioStream.getTracks().forEach((t) => t.stop());
-		if (localVideoStream) localVideoStream.getTracks().forEach((t) => t.stop());
+		stopTracks(localAudioStream);
+		stopTracks(localScreenStream);
+		// Stopping the camera's track is what turns its light off.
+		stopTracks(localCameraStream);
+		localCameraStream = null;
+		cameraRequested.set(null);
 		if (audioContext) audioContext.close();
 		if (unsubscribeWs) unsubscribeWs();
 		// Only clear global stores if we're still the active voice session
@@ -104,103 +144,93 @@
 			speakingUsers.set(new SvelteSet());
 			voiceRemoteVideoStreams.set({});
 			voiceLocalVideoStream.set(null);
+			voiceRemoteCameraStreams.set({});
+			voiceLocalCameraStream.set(null);
 			isScreenSharing.set(false);
+			isCameraOn.set(false);
 		}
 		if ($activeVoiceRoomId === channelId) activeVoiceRoomId.set(null);
 	}
 
 	let currentMicId = $state($selectedMicId);
 
-	let myUserId = $state<string | null>(null);
-	$effect(() => {
-		myUserId = $currentUser?.id || null;
-	});
+	function handleWebRTCEvent(type: string, data: any) {
+		if (data.room_id !== channelId) return;
 
-	let focusedUserId = $state<string | null>(null);
-
-	const connectionState = voiceConnectionState;
-
-	const connectionLabel: Record<RTCPeerConnectionState, string> = {
-		new: "Connecting...",
-		connecting: "Connecting...",
-		connected: "Voice Connected",
-		disconnected: "Reconnecting...",
-		failed: "Connection Failed",
-		closed: "Disconnected",
-	};
+		if (type === "VOICE_JOINED") {
+			audioStore.play("join_vc");
+			const pc = peerConnection;
+			if (!pc) return;
+			// Process the initial answer immediately — not through the chain —
+			// so it can never be blocked by a queued WEBRTC_RENEGOTIATE.
+			pc.setRemoteDescription(new RTCSessionDescription(data.answer))
+				.then(() => {
+					if (pc !== peerConnection) return;
+					const toFlush = pendingIceCandidates;
+					pendingIceCandidates = [];
+					for (const candidate of toFlush) {
+						pc.addIceCandidate(candidate).catch(console.warn);
+					}
+					// Now it's safe to renegotiate (e.g. when screen share is added)
+					negotiationReady = true;
+				})
+				.catch(console.warn)
+				// Always open the gate so queued renegotiations can proceed.
+				.finally(() => voiceJoinedResolve?.());
+		} else if (type === "WEBRTC_ICE_CANDIDATE") {
+			const pc = peerConnection;
+			if (!pc) return;
+			const parsed = typeof data.candidate === "string" ? JSON.parse(data.candidate) : data.candidate;
+			const candidate = new RTCIceCandidate(parsed);
+			if (pc.remoteDescription) {
+				pc.addIceCandidate(candidate).catch(console.warn);
+			} else {
+				pendingIceCandidates.push(candidate);
+			}
+		} else if (type === "WEBRTC_RENEGOTIATE") {
+			const pc = peerConnection;
+			if (!pc) return;
+			// Capture the gate at enqueue-time. If VOICE_JOINED hasn't arrived
+			// yet this renegotiation will wait for it before running, regardless
+			// of its position in negotiationChain.
+			const readyGate = voiceJoinedPromise;
+			negotiationChain = negotiationChain
+				.then(async () => {
+					await readyGate; // never run before the initial answer is applied
+					if (pc !== peerConnection) return;
+					await pc.setRemoteDescription(new RTCSessionDescription(data.offer));
+					if (pc !== peerConnection) return;
+					const toFlush = pendingIceCandidates;
+					pendingIceCandidates = [];
+					for (const candidate of toFlush) {
+						pc.addIceCandidate(candidate).catch(console.warn);
+					}
+					const answer = await pc.createAnswer();
+					if (pc !== peerConnection) return;
+					await pc.setLocalDescription(answer);
+					sendEventMessage("WEBRTC_ANSWER", {
+						room_id: channelId,
+						answer: answer,
+					});
+				})
+				.catch(console.warn);
+		} else if (type === "WEBRTC_RENEGOTIATE_ANSWER") {
+			const pc = peerConnection;
+			if (!pc) return;
+			pc.setRemoteDescription(new RTCSessionDescription(data.answer)).catch(console.warn);
+		} else if (type === "VOICE_VIDEO_REFUSED") {
+			onVideoRefused(data as VoiceVideoRefusedEvent);
+		}
+	}
 
 	onMount(async () => {
-		unsubscribeWs = onWebRTCEvent((type, data: any) => {
-			if (data.room_id !== channelId) return;
+		unsubscribeWs = onWebRTCEvent(handleWebRTCEvent);
+		// A camera or screen left on in the room just left stayed there: this connection starts without them.
+		isScreenSharing.set(false);
+		isCameraOn.set(false);
 
-			if (type === "VOICE_JOINED") {
-				audioStore.play("join_vc");
-				const pc = peerConnection;
-				if (!pc) return;
-				// Process the initial answer immediately — not through the chain —
-				// so it can never be blocked by a queued WEBRTC_RENEGOTIATE.
-				pc.setRemoteDescription(new RTCSessionDescription(data.answer))
-					.then(() => {
-						if (pc !== peerConnection) return;
-						const toFlush = pendingIceCandidates;
-						pendingIceCandidates = [];
-						for (const candidate of toFlush) {
-							pc.addIceCandidate(candidate).catch(console.warn);
-						}
-						// Now it's safe to renegotiate (e.g. when screen share is added)
-						negotiationReady = true;
-					})
-					.catch(console.warn)
-					// Always open the gate so queued renegotiations can proceed.
-					.finally(() => voiceJoinedResolve?.());
-			} else if (type === "WEBRTC_ICE_CANDIDATE") {
-				const pc = peerConnection;
-				if (!pc) return;
-				const parsed = typeof data.candidate === "string" ? JSON.parse(data.candidate) : data.candidate;
-				const candidate = new RTCIceCandidate(parsed);
-				if (pc.remoteDescription) {
-					pc.addIceCandidate(candidate).catch(console.warn);
-				} else {
-					pendingIceCandidates.push(candidate);
-				}
-			} else if (type === "WEBRTC_RENEGOTIATE") {
-				const pc = peerConnection;
-				if (!pc) return;
-				// Capture the gate at enqueue-time. If VOICE_JOINED hasn't arrived
-				// yet this renegotiation will wait for it before running, regardless
-				// of its position in negotiationChain.
-				const readyGate = voiceJoinedPromise;
-				negotiationChain = negotiationChain
-					.then(async () => {
-						await readyGate; // never run before the initial answer is applied
-						if (pc !== peerConnection) return;
-						await pc.setRemoteDescription(new RTCSessionDescription(data.offer));
-						if (pc !== peerConnection) return;
-						const toFlush = pendingIceCandidates;
-						pendingIceCandidates = [];
-						for (const candidate of toFlush) {
-							pc.addIceCandidate(candidate).catch(console.warn);
-						}
-						const answer = await pc.createAnswer();
-						if (pc !== peerConnection) return;
-						await pc.setLocalDescription(answer);
-						sendEventMessage("WEBRTC_ANSWER", {
-							room_id: channelId,
-							answer: answer,
-						});
-					})
-					.catch(console.warn);
-			} else if (type === "WEBRTC_RENEGOTIATE_ANSWER") {
-				const pc = peerConnection;
-				if (!pc) return;
-				pc.setRemoteDescription(new RTCSessionDescription(data.answer)).catch(console.warn);
-			}
-		});
-
-		const space = $gatewaySpaces.find((s) => s.rooms.some((r) => r.id === channelId));
-		const room = space?.rooms.find((r) => r.id === channelId);
 		// For conversation calls (no space/room), always allow speaking
-		const canSpeak = space && room ? hasPermission(space, room, Permission.SpeakInVoice) : true;
+		const canSpeak = voiceRoom ? hasPermission(voiceRoom.space, voiceRoom.room, Permission.SpeakInVoice) : true;
 		couldSpeak = canSpeak;
 
 		if (!canSpeak) {
@@ -216,12 +246,31 @@
 		if (isDestroyed) return;
 
 		activeVoiceRoomId.set(channelId);
-		connectWebRTC();
+		connectWebRTC().catch((err) => console.error("[Voice] Couldn't connect:", err));
 	});
 
 	onDestroy(() => {
 		leaveVoice();
 	});
+
+	function ensureAudioContext(): AudioContext {
+		if (!audioContext) {
+			audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+		}
+		return audioContext;
+	}
+
+	function stopTracks(stream: MediaStream | null) {
+		stream?.getTracks().forEach((t) => t.stop());
+	}
+
+	const isLive = (track: MediaStreamTrack) => track.readyState === "live";
+
+	function without(streams: Record<string, MediaStream>, userId: string): Record<string, MediaStream> {
+		const next = { ...streams };
+		delete next[userId];
+		return next;
+	}
 
 	/** Opens the selected microphone into localAudioStream, denoised when that's on. If voice was
 	 * left meanwhile, the mic is released again instead. */
@@ -233,15 +282,13 @@
 			return;
 		}
 		rawMicStream = stream;
-		if (!audioContext) {
-			audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-		}
+		const ctx = ensureAudioContext();
 		if (!$noiseSuppression) {
 			localAudioStream = stream;
 			return;
 		}
 		try {
-			const denoised = await createDenoisedStream(stream, audioContext);
+			const denoised = await createDenoisedStream(stream, ctx);
 			if (isDestroyed) {
 				denoised.cleanup();
 				stream.getTracks().forEach((t) => t.stop());
@@ -255,55 +302,118 @@
 		}
 	}
 
+	/** A user's speaking ring and their face's mouth, from the average level of their audio. */
+	function showLevel(userId: string, average: number) {
+		const speaking = average > 10;
+		speakingUsers.update((set) => {
+			const next = new SvelteSet(set);
+			if (speaking) next.add(userId);
+			else next.delete(userId);
+			return next;
+		});
+		userAmplitudes.update((a) => ({ ...a, [userId]: speaking ? Math.min(1, average / 50) : 0 }));
+	}
+
+	function averageLevel(data: Uint8Array): number {
+		let sum = 0;
+		for (let i = 0; i < data.length; i++) {
+			sum += data[i];
+		}
+		return sum / data.length;
+	}
+
+	/** Points the local meter at the stream being sent. Noise suppression and a mic switch replace that
+	 * stream: a meter left on the old one showed this user silent until they rejoined. */
+	function connectLocalMeter(stream: MediaStream) {
+		const ctx = ensureAudioContext();
+		if (!localAnalyser) {
+			localAnalyser = ctx.createAnalyser();
+			localAnalyser.fftSize = 256;
+		}
+		if (localAudioSource?.mediaStream === stream) return;
+		localAudioSource?.disconnect();
+		localAudioSource = null;
+		try {
+			localAudioSource = ctx.createMediaStreamSource(stream);
+			localAudioSource.connect(localAnalyser);
+		} catch (err) {
+			console.error("[Voice] Couldn't meter the microphone:", err);
+		}
+	}
+
+	$effect(() => {
+		const stream = localAudioStream;
+		if (stream && localMeterRunning) connectLocalMeter(stream);
+	});
+
 	/** Drives the speaking indicator of the local user from localAudioStream. */
 	function startLocalLevelMeter() {
 		const stream = localAudioStream;
 		if (!stream) return;
+		connectLocalMeter(stream);
+		if (localMeterRunning || !localAnalyser) return;
+		localMeterRunning = true;
 
-		if (!audioContext) {
-			audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-		}
-		if (!localAnalyser) {
-			localAnalyser = audioContext.createAnalyser();
-			localAnalyser.fftSize = 256;
-		}
-		if (!localAudioSource || localAudioSource.mediaStream !== stream) {
-			if (localAudioSource) localAudioSource.disconnect();
-			try {
-				localAudioSource = audioContext.createMediaStreamSource(stream);
-				localAudioSource.connect(localAnalyser);
-			} catch (err) {
-				console.error("AudioSource error", err);
-			}
-		}
-
-		const dataArray = new Uint8Array(localAnalyser.frequencyBinCount);
+		const analyser = localAnalyser;
+		const dataArray = new Uint8Array(analyser.frequencyBinCount);
 		const localGen = webrtcGeneration;
 
 		const checkLocalLevel = () => {
-			if (isDestroyed || !audioContext || !localAnalyser || localGen !== webrtcGeneration) return;
-			localAnalyser.getByteFrequencyData(dataArray);
-			let sum = 0;
-			for (let i = 0; i < dataArray.length; i++) {
-				sum += dataArray[i];
+			if (isDestroyed || !audioContext || localGen !== webrtcGeneration) {
+				localMeterRunning = false;
+				return;
 			}
-			const average = sum / dataArray.length;
-			const amplitude = Math.min(1, average / 50);
-
-			speakingUsers.update((set) => {
-				const newSet = new SvelteSet(set);
-				if (average > 10 && !$isMuted && myUserId) newSet.add(myUserId);
-				else if (myUserId) newSet.delete(myUserId);
-				return newSet;
-			});
-			if (myUserId) {
-				const id = myUserId;
-				userAmplitudes.update((a) => ({ ...a, [id]: average > 10 && !$isMuted ? amplitude : 0 }));
-			}
-
+			analyser.getByteFrequencyData(dataArray);
+			if (myUserId) showLevel(myUserId, $isMuted ? 0 : averageLevel(dataArray));
 			requestAnimationFrame(checkLocalLevel);
 		};
 		checkLocalLevel();
+	}
+
+	// The audio track that drives each remote user's speaking ring and face: one per user, as a shared tab's
+	// sound comes in the same stream as the voice and two meters would fight over the ring.
+	const meteredTracks = new Map<string, MediaStreamTrack>();
+
+	/** Meters a remote user's first live audio track, their voice in the usual order, unless one is metered
+	 * already. When that track leaves the stream, the next one takes over: a voice that came after a shared
+	 * tab's sound (they joined muted) is metered once the tab's sound ends. */
+	function meterUser(userId: string, stream: MediaStream) {
+		const current = meteredTracks.get(userId);
+		if (current && isLive(current) && stream.getAudioTracks().includes(current)) return;
+		const next = stream.getAudioTracks().find(isLive);
+		if (!next) {
+			meteredTracks.delete(userId);
+			return;
+		}
+		meteredTracks.set(userId, next);
+		startRemoteMeter(userId, next, stream);
+	}
+
+	function startRemoteMeter(userId: string, track: MediaStreamTrack, stream: MediaStream) {
+		const ctx = ensureAudioContext();
+		const analyser = ctx.createAnalyser();
+		analyser.fftSize = 256;
+		const source = ctx.createMediaStreamSource(new MediaStream([track]));
+		source.connect(analyser);
+		const dataArray = new Uint8Array(analyser.frequencyBinCount);
+		const gen = webrtcGeneration;
+
+		const checkAudioLevel = () => {
+			if (isDestroyed || !audioContext || gen !== webrtcGeneration) return;
+			if (meteredTracks.get(userId) !== track || !isLive(track) || !stream.getAudioTracks().includes(track)) {
+				source.disconnect();
+				showLevel(userId, 0);
+				if (meteredTracks.get(userId) === track) {
+					meteredTracks.delete(userId);
+					meterUser(userId, stream);
+				}
+				return;
+			}
+			analyser.getByteFrequencyData(dataArray);
+			showLevel(userId, averageLevel(dataArray));
+			requestAnimationFrame(checkAudioLevel);
+		};
+		checkAudioLevel();
 	}
 
 	// Joined without SpeakInVoice, then got it: open the mic once per grant (a failure isn't retried
@@ -311,10 +421,8 @@
 	// joining, so nobody's mic goes live by surprise.
 	let couldSpeak = true; // SpeakInVoice as last seen; onMount sets it to the value on joining
 	$effect(() => {
-		const space = $gatewaySpaces.find((s) => s.rooms.some((r) => r.id === channelId));
-		const room = space?.rooms.find((r) => r.id === channelId);
-		if (!space || !room) return;
-		if (!hasPermission(space, room, Permission.SpeakInVoice)) {
+		if (!voiceRoom) return;
+		if (!hasPermission(voiceRoom.space, voiceRoom.room, Permission.SpeakInVoice)) {
 			couldSpeak = false;
 			return;
 		}
@@ -333,13 +441,74 @@
 			});
 	});
 
+	/** Which of this client's transceivers carries what, by mid, for VOICE_JOIN and WEBRTC_RENEGOTIATE_OFFER:
+	 * the gateway takes any other video it gets for the screen. */
+	function trackLabels(): Record<string, "camera"> {
+		const mid = cameraTransceiver?.mid;
+		return mid ? { [mid]: "camera" } : {};
+	}
+
+	/** Offers VP8 first on the camera's transceiver: the gateway forwards it as it comes, and every viewer
+	 * decodes VP8. */
+	function preferVP8(transceiver: RTCRtpTransceiver) {
+		const codecs = RTCRtpReceiver.getCapabilities?.("video")?.codecs;
+		if (!codecs || typeof transceiver.setCodecPreferences !== "function") return;
+		try {
+			transceiver.setCodecPreferences(vp8First(codecs));
+		} catch (err) {
+			console.warn("[Voice] Couldn't put VP8 first for the camera:", err);
+		}
+	}
+
+	function handleTrack(event: RTCTrackEvent) {
+		const stream = event.streams.at(0);
+		const source = stream ? readStreamId(stream.id) : null;
+		if (!stream || !source) return;
+		const { userId } = source;
+		const track = event.track;
+
+		if (source.camera) {
+			if (track.kind !== "video") return;
+			remoteCameraStreams = { ...remoteCameraStreams, [userId]: stream };
+			// Taken away when its owner leaves, or when this client turns incoming video off.
+			const drop = () => {
+				if (stream.getVideoTracks().some(isLive) || remoteCameraStreams[userId] !== stream) return;
+				remoteCameraStreams = without(remoteCameraStreams, userId);
+			};
+			stream.onremovetrack = drop;
+			track.onended = drop;
+			return;
+		}
+
+		// Each kind stays until its last track has left: a shared tab's sound ending mustn't silence the voice.
+		const drop = () => {
+			if (!stream.getAudioTracks().some(isLive) && remoteAudioStreams[userId] === stream) {
+				remoteAudioStreams = without(remoteAudioStreams, userId);
+			}
+			if (!stream.getVideoTracks().some(isLive) && remoteScreenStreams[userId] === stream) {
+				remoteScreenStreams = without(remoteScreenStreams, userId);
+			}
+		};
+		stream.onremovetrack = drop;
+		track.onended = drop;
+
+		if (track.kind === "audio") {
+			remoteAudioStreams = { ...remoteAudioStreams, [userId]: stream };
+			meterUser(userId, stream);
+		} else {
+			remoteScreenStreams = { ...remoteScreenStreams, [userId]: stream };
+		}
+	}
+
 	async function connectWebRTC() {
 		if (peerConnection) {
 			peerConnection.close();
 		}
 		webrtcGeneration++;
-		remoteAudioElements = {};
-		remoteVideoElements = {};
+		remoteAudioStreams = {};
+		remoteScreenStreams = {};
+		remoteCameraStreams = {};
+		meteredTracks.clear();
 		pendingIceCandidates = [];
 		negotiationReady = false;
 		negotiationChain = Promise.resolve();
@@ -347,16 +516,15 @@
 			voiceJoinedResolve = resolve;
 		});
 		audioSender = null;
-		connectionState.set("new");
+		voiceConnectionState.set("new");
 
-		peerConnection = new RTCPeerConnection({
+		const pc = new RTCPeerConnection({
 			iceServers: $iceServers,
 		});
+		peerConnection = pc;
 
-		peerConnection.onnegotiationneeded = async () => {
-			if (!negotiationReady) return;
-			const pc = peerConnection;
-			if (!pc) return;
+		pc.onnegotiationneeded = async () => {
+			if (!negotiationReady || pc !== peerConnection) return;
 			try {
 				const offer = await pc.createOffer();
 				if (pc !== peerConnection) return;
@@ -364,21 +532,23 @@
 				sendEventMessage("WEBRTC_RENEGOTIATE_OFFER", {
 					room_id: channelId,
 					offer: offer,
+					tracks: trackLabels(),
 				});
 			} catch (err) {
 				console.error("[WebRTC] negotiationneeded error:", err);
 			}
 		};
 
-		peerConnection.onconnectionstatechange = () => {
-			const state = peerConnection?.connectionState;
-			if (state) connectionState.set(state);
+		pc.onconnectionstatechange = () => {
+			const state = pc.connectionState;
+			if (pc !== peerConnection) return;
+			voiceConnectionState.set(state);
 			if (state === "failed" && !isDestroyed) {
 				leaveVoice();
 			}
 		};
 
-		peerConnection.onicecandidate = (event) => {
+		pc.onicecandidate = (event) => {
 			if (event.candidate) {
 				sendEventMessage("WEBRTC_ICE_CANDIDATE", {
 					room_id: channelId,
@@ -387,89 +557,12 @@
 			}
 		};
 
-		peerConnection.ontrack = (event) => {
-			const stream = event.streams.at(0);
-			if (!stream) return;
-
-			const userId = stream.id;
-
-			stream.onremovetrack = (e) => {
-				if (e.track.kind === "video") {
-					delete remoteVideoElements[stream.id];
-					remoteVideoElements = { ...remoteVideoElements };
-					videoClickedStates = { ...videoClickedStates, [userId]: false };
-				} else {
-					delete remoteAudioElements[stream.id];
-					remoteAudioElements = { ...remoteAudioElements };
-				}
-			};
-
-			event.track.onended = () => {
-				if (event.track.kind === "video") {
-					delete remoteVideoElements[stream.id];
-					remoteVideoElements = { ...remoteVideoElements };
-					videoClickedStates = { ...videoClickedStates, [userId]: false };
-				} else {
-					delete remoteAudioElements[stream.id];
-					remoteAudioElements = { ...remoteAudioElements };
-				}
-			};
-
-			if (event.track.kind === "audio") {
-				remoteAudioElements[stream.id] = stream;
-				remoteAudioElements = { ...remoteAudioElements };
-
-				if (!audioContext) {
-					audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-				}
-
-				const analyser = audioContext.createAnalyser();
-				analyser.fftSize = 256;
-				const source = audioContext.createMediaStreamSource(new MediaStream([event.track]));
-				source.connect(analyser);
-				const dataArray = new Uint8Array(analyser.frequencyBinCount);
-				const gen = webrtcGeneration;
-
-				const checkAudioLevel = () => {
-					if (isDestroyed || !audioContext || event.track.readyState === "ended" || gen !== webrtcGeneration) return;
-					analyser.getByteFrequencyData(dataArray);
-					let sum = 0;
-					for (let i = 0; i < dataArray.length; i++) {
-						sum += dataArray[i];
-					}
-					const average = sum / dataArray.length;
-					const amplitude = Math.min(1, average / 50);
-
-					speakingUsers.update((set) => {
-						const newSet = new SvelteSet(set);
-						if (average > 10) newSet.add(userId);
-						else newSet.delete(userId);
-						return newSet;
-					});
-					userAmplitudes.update((a) => ({ ...a, [userId]: average > 10 ? amplitude : 0 }));
-
-					requestAnimationFrame(checkAudioLevel);
-				};
-				checkAudioLevel();
-			} else if (event.track.kind === "video") {
-				remoteVideoElements[stream.id] = stream;
-				remoteVideoElements = { ...remoteVideoElements };
-				// Each new stream requires a fresh click to play.
-				videoClickedStates = { ...videoClickedStates, [userId]: false };
-
-				// When the sharer stops, the track becomes muted before the server
-				// cleanup renegotiation arrives. Reset both states immediately.
-				event.track.onmute = () => {
-					videoPlayingStates = { ...videoPlayingStates, [userId]: false };
-					videoClickedStates = { ...videoClickedStates, [userId]: false };
-				};
-			}
-		};
+		pc.ontrack = handleTrack;
 
 		if (localAudioStream) {
 			const audioTrack = localAudioStream.getAudioTracks().at(0);
-			if (audioTrack && peerConnection) {
-				audioSender = peerConnection.addTrack(audioTrack, localAudioStream);
+			if (audioTrack) {
+				audioSender = pc.addTrack(audioTrack, localAudioStream);
 				if ($isMuted || $isDeafened) {
 					audioSender.replaceTrack(null).catch(console.warn);
 				}
@@ -478,38 +571,59 @@
 				.getTracks()
 				.filter((t) => t.kind !== "audio")
 				.forEach((track) => {
-					peerConnection?.addTrack(track, localAudioStream!);
+					pc.addTrack(track, localAudioStream!);
 				});
 			startLocalLevelMeter();
 		} else {
 			// sendrecv even without a mic: SpeakInVoice granted later starts sending on it with
 			// replaceTrack, with no renegotiation.
-			audioSender = peerConnection?.addTransceiver("audio", { direction: "sendrecv" }).sender ?? null;
+			audioSender = pc.addTransceiver("audio", { direction: "sendrecv" }).sender;
 		}
-		if (localVideoStream) {
-			localVideoStream.getTracks().forEach((track) => {
-				peerConnection?.addTrack(track, localVideoStream!);
+		// Receives the first screen shared in the room without a renegotiation.
+		if (localScreenStream) {
+			localScreenStream.getTracks().forEach((track) => {
+				pc.addTrack(track, localScreenStream!);
 			});
 		} else {
-			peerConnection?.addTransceiver("video", { direction: "recvonly" });
+			pc.addTransceiver("video", { direction: "recvonly" });
+		}
+		// After the recvonly one, so a screen shared before the gateway's answer goes on that one, never here.
+		// A single encoding, no simulcast: the gateway would forward each layer as a track of its own.
+		const camera = pc.addTransceiver("video", {
+			direction: "sendonly",
+			sendEncodings: [{ maxBitrate: CAMERA_MAX_BITRATE, maxFramerate: CAMERA_MAX_FRAMERATE }],
+		});
+		preferVP8(camera);
+		cameraTransceiver = camera;
+		if (cameraWanted) {
+			cameraWanted = false;
+			queueCamera(startCamera);
 		}
 
-		const offer = await peerConnection.createOffer();
-
-		await peerConnection.setLocalDescription(offer);
+		const offer = await pc.createOffer();
+		if (pc !== peerConnection) return;
+		await pc.setLocalDescription(offer);
+		if (pc !== peerConnection) return;
 
 		sendEventMessage("VOICE_JOIN", {
 			room_id: channelId,
 			offer: offer,
+			tracks: trackLabels(),
+			video_off: !$incomingVideo,
 		});
-
-		sendEventMessage("VOICE_SYNC", {
-			room_id: channelId,
-			muted: $isMuted,
-			deafened: $isDeafened,
-			screen_sharing: $isScreenSharing,
-		});
+		incomingVideoSent = $incomingVideo;
+		sendVoiceSync(channelId);
 	}
+
+	// Incoming video switched in the camera menu: VOICE_SYNC's video_off tells the gateway, which stops or
+	// starts sending this client cameras and screens.
+	let incomingVideoSent: boolean | null = null;
+	$effect(() => {
+		const incoming = $incomingVideo;
+		if (incomingVideoSent === null || incoming === incomingVideoSent) return;
+		incomingVideoSent = incoming;
+		sendVoiceSync(channelId);
+	});
 
 	$effect(() => {
 		const shouldSend = !$isMuted && !$isDeafened;
@@ -526,42 +640,45 @@
 		}
 	});
 
-	// Toggle noise suppression live
+	// Noise suppression switched during the call: the denoised or the raw mic takes the other's place.
+	let noiseSuppressionGen = 0;
 	$effect(() => {
-		const ns = $noiseSuppression;
+		const on = $noiseSuppression;
 		if (!rawMicStream || !peerConnection) return;
+		void applyNoiseSuppression(on, ++noiseSuppressionGen);
+	});
 
-		async function apply() {
-			if (ns) {
-				if (!audioContext) {
-					audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-				}
-				try {
-					if (denoiseCleanup) denoiseCleanup();
-					const denoised = await createDenoisedStream(rawMicStream!, audioContext!);
-					localAudioStream = denoised.stream;
-					denoiseCleanup = denoised.cleanup;
-				} catch {
-					localAudioStream = rawMicStream;
-				}
-			} else {
-				if (denoiseCleanup) {
-					denoiseCleanup();
-					denoiseCleanup = null;
-				}
-				localAudioStream = rawMicStream;
-			}
-
-			// Force track replacement on the sender (Edge/Chromium needs this)
-			if (audioSender && localAudioStream) {
-				const shouldSend = !$isMuted && !$isDeafened;
-				const track = shouldSend ? (localAudioStream.getAudioTracks().at(0) ?? null) : null;
-				await audioSender.replaceTrack(track).catch(console.warn);
+	async function applyNoiseSuppression(on: boolean, gen: number) {
+		const raw = rawMicStream;
+		if (!raw) return;
+		let next: MediaStream = raw;
+		let nextCleanup: (() => void) | null = null;
+		if (on) {
+			try {
+				const denoised = await createDenoisedStream(raw, ensureAudioContext());
+				next = denoised.stream;
+				nextCleanup = denoised.cleanup;
+			} catch (err) {
+				console.error("[Voice] Noise suppression failed, using the raw microphone:", err);
 			}
 		}
+		// Switched again, left, or another mic meanwhile: this one is already out of date.
+		if (gen !== noiseSuppressionGen || isDestroyed || raw !== rawMicStream) {
+			nextCleanup?.();
+			return;
+		}
+		denoiseCleanup?.();
+		denoiseCleanup = nextCleanup;
+		// The meter follows localAudioStream ($effect above), so the speaking ring and the face keep working.
+		localAudioStream = next;
 
-		apply();
-	});
+		// Force track replacement on the sender (Edge/Chromium needs this)
+		if (audioSender) {
+			const shouldSend = !$isMuted && !$isDeafened;
+			const track = shouldSend ? (next.getAudioTracks().at(0) ?? null) : null;
+			await audioSender.replaceTrack(track).catch(console.warn);
+		}
+	}
 
 	async function switchMicrophone(deviceId: string) {
 		const constraints = deviceId ? { audio: { deviceId: { exact: deviceId } } } : { audio: true };
@@ -579,11 +696,8 @@
 
 		// Apply denoise to new stream
 		if ($noiseSuppression) {
-			if (!audioContext) {
-				audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-			}
 			try {
-				const denoised = await createDenoisedStream(newRawStream, audioContext);
+				const denoised = await createDenoisedStream(newRawStream, ensureAudioContext());
 				localAudioStream = denoised.stream;
 				denoiseCleanup = denoised.cleanup;
 			} catch {
@@ -598,73 +712,67 @@
 			const shouldSend = !$isMuted && !$isDeafened;
 			await audioSender.replaceTrack(shouldSend ? newTrack : null);
 		}
-
-		if (audioContext && localAnalyser) {
-			if (localAudioSource) {
-				localAudioSource.disconnect();
-			}
-			localAudioSource = audioContext.createMediaStreamSource(localAudioStream);
-			localAudioSource.connect(localAnalyser);
-		}
 	}
 
 	async function toggleScreenShare(withAudio = false) {
 		if ($isScreenSharing) {
 			// Remove the video and screen audio senders from the existing connection
-			const screenTracks = localVideoStream?.getTracks() ?? [];
+			const screenTracks = localScreenStream?.getTracks() ?? [];
 			for (const sender of peerConnection?.getSenders() ?? []) {
 				if (sender.track && screenTracks.includes(sender.track)) {
 					peerConnection?.removeTrack(sender);
 				}
 			}
-			localVideoStream?.getTracks().forEach((t) => t.stop());
-			localVideoStream = null;
+			stopTracks(localScreenStream);
+			localScreenStream = null;
 			isScreenSharing.set(false);
 			audioStore.play("screen_sharing_off");
-			sendEventMessage("VOICE_SYNC", {
-				room_id: channelId,
-				muted: $isMuted,
-				deafened: $isDeafened,
-				screen_sharing: false,
-			});
+			sendVoiceSync(channelId);
 		} else {
+			if (!canVideo) {
+				videoOffNotice("You can't use video in this room");
+				return;
+			}
 			try {
+				let screen: MediaStream;
 				try {
-					localVideoStream = await navigator.mediaDevices.getDisplayMedia({
+					screen = await navigator.mediaDevices.getDisplayMedia({
 						video: true,
 						audio: withAudio,
 					});
 				} catch (displayErr: any) {
 					if (withAudio && displayErr?.name === "NotReadableError") {
 						// Audio capture failed (window selected instead of tab) — retry without audio
-						localVideoStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+						screen = await navigator.mediaDevices.getDisplayMedia({ video: true });
 						toast("Audio only works when sharing a browser tab, not a window.", "info");
 					} else {
 						throw displayErr;
 					}
 				}
+				// Left (or lost Video) while the screen picker was open: this capture belongs to no call.
+				if (isDestroyed || !canVideo || localScreenStream) {
+					stopTracks(screen);
+					if (!isDestroyed && !canVideo) videoOffNotice("You can't use video in this room");
+					return;
+				}
+				localScreenStream = screen;
 				isScreenSharing.set(true);
 				audioStore.play("screen_sharing_on");
-				sendEventMessage("VOICE_SYNC", {
-					room_id: channelId,
-					muted: $isMuted,
-					deafened: $isDeafened,
-					screen_sharing: true,
-				});
+				sendVoiceSync(channelId);
 
-				const videoTrack = localVideoStream.getVideoTracks().at(0);
+				const videoTrack = screen.getVideoTracks().at(0);
 				if (!videoTrack) return;
 
 				videoTrack.onended = () => {
 					if ($isScreenSharing) toggleScreenShare();
 				};
 
-				peerConnection?.addTrack(videoTrack, localVideoStream);
+				peerConnection?.addTrack(videoTrack, screen);
 
 				// Add screen share audio track if present
-				const screenAudioTrack = localVideoStream.getAudioTracks().at(0);
+				const screenAudioTrack = screen.getAudioTracks().at(0);
 				if (screenAudioTrack) {
-					peerConnection?.addTrack(screenAudioTrack, localVideoStream);
+					peerConnection?.addTrack(screenAudioTrack, screen);
 				} else if (withAudio) {
 					toast("Audio not captured. Share a browser tab (not a window or screen) to include audio.", "info");
 				}
@@ -674,7 +782,184 @@
 		}
 	}
 
-	function srcObject(node: HTMLAudioElement | HTMLVideoElement, stream: MediaStream) {
+	/** Runs camera changes one at a time, in the order asked: an off that comes while the camera opens (a
+	 * refusal, Video lost) still wins, and two switches never race. */
+	function queueCamera(change: () => Promise<void>) {
+		cameraChain = cameraChain.then(change).catch((err) => console.error("[Voice] Camera change failed:", err));
+	}
+
+	$effect(() => {
+		const wanted = $cameraRequested;
+		if (wanted === null) return;
+		cameraRequested.set(null);
+		queueCamera(wanted ? startCamera : stopCamera);
+	});
+
+	// Another camera picked in the menu while this one is on: it takes its place on the same transceiver.
+	let cameraDeviceAsked = $selectedCameraId;
+	$effect(() => {
+		const deviceId = $selectedCameraId;
+		if (deviceId === cameraDeviceAsked) return;
+		cameraDeviceAsked = deviceId;
+		queueCamera(() => switchCamera(deviceId));
+	});
+
+	// Video lost in the room mid-call: the camera and the screen go off, as the gateway turns them off.
+	$effect(() => {
+		if (canVideo) return;
+		untrack(() => {
+			if (!localCameraStream && !$isScreenSharing) return;
+			queueCamera(stopCamera);
+			if ($isScreenSharing) void toggleScreenShare();
+			videoOffNotice("You can't use video in this room");
+		});
+	});
+
+	/** The gateway turned the camera or the screen off, or never let it on (VOICE_VIDEO_REFUSED): the room
+	 * has its most cameras on, this user has no Video permission there, or the camera sent more than the
+	 * gateway allows. One that's already off was seen first here, as a permission's loss can be. */
+	function onVideoRefused(event: VoiceVideoRefusedEvent) {
+		if (event.kind === "screen") {
+			if (!$isScreenSharing) return;
+			void toggleScreenShare();
+		} else {
+			if (!localCameraStream) return;
+			queueCamera(stopCamera);
+		}
+		videoOffNotice(videoRefusedMessage(event, isCall ? "call" : "room"));
+	}
+
+	// A permission's loss turns the camera and the screen off at once, each with its own refusal: one notice.
+	let lastVideoNotice = { message: "", at: 0 };
+	function videoOffNotice(message: string) {
+		const now = Date.now();
+		if (message === lastVideoNotice.message && now - lastVideoNotice.at < 3000) return;
+		lastVideoNotice = { message, at: now };
+		toast(message, "error");
+	}
+
+	/** Opens the camera picked in the menu, or the default one when that one is gone. */
+	async function openCamera(deviceId: string): Promise<MediaStream> {
+		try {
+			return await navigator.mediaDevices.getUserMedia(cameraConstraints(deviceId));
+		} catch (err) {
+			const name = typeof err === "object" && err !== null && "name" in err ? err.name : undefined;
+			if (!deviceId || (name !== "OverconstrainedError" && name !== "NotFoundError")) throw err;
+			return navigator.mediaDevices.getUserMedia(cameraConstraints(""));
+		}
+	}
+
+	function prepareCameraTrack(track: MediaStreamTrack, stream: MediaStream) {
+		// Keeps the frame rate up over the sharpness when the bandwidth drops.
+		track.contentHint = "motion";
+		// Unplugged, or taken away by the system. stop() fires no ended.
+		track.onended = () => {
+			if (localCameraStream !== stream) return;
+			queueCamera(stopCamera);
+			toast("Your camera was disconnected", "error");
+		};
+	}
+
+	// Asked for before the connection had its camera transceiver, as a call's controls show before it joins:
+	// connectWebRTC turns it on once it has one.
+	let cameraWanted = false;
+
+	/** Puts the camera on its transceiver; VOICE_SYNC's camera then tells the gateway to forward it. */
+	async function startCamera() {
+		const transceiver = cameraTransceiver;
+		if (isDestroyed || localCameraStream) return;
+		if (!transceiver) {
+			cameraWanted = true;
+			return;
+		}
+		if (!canVideo) {
+			videoOffNotice("You can't use video in this room");
+			return;
+		}
+		let stream: MediaStream;
+		try {
+			stream = await openCamera($selectedCameraId);
+		} catch (err) {
+			console.error("[Voice] Couldn't open the camera:", err);
+			toast(cameraErrorMessage(err), "error");
+			return;
+		}
+		const track = stream.getVideoTracks().at(0);
+		// Left, or lost Video, while the camera was opening.
+		if (isDestroyed || transceiver !== cameraTransceiver || !track || !canVideo) {
+			stopTracks(stream);
+			if (!isDestroyed && !canVideo) videoOffNotice("You can't use video in this room");
+			return;
+		}
+		prepareCameraTrack(track, stream);
+		try {
+			await transceiver.sender.replaceTrack(track);
+		} catch (err) {
+			stopTracks(stream);
+			throw err;
+		}
+		// Unplugged meanwhile: its ended came before it was the camera, so nothing turned it off.
+		if (isDestroyed || track.readyState === "ended") {
+			if (!isDestroyed) {
+				await transceiver.sender.replaceTrack(null).catch(console.warn);
+				toast("Your camera was disconnected", "error");
+			}
+			stopTracks(stream);
+			return;
+		}
+		localCameraStream = stream;
+		isCameraOn.set(true);
+		sendVoiceSync(channelId);
+	}
+
+	async function stopCamera() {
+		cameraWanted = false;
+		const stream = localCameraStream;
+		if (!stream) return;
+		localCameraStream = null;
+		isCameraOn.set(false);
+		try {
+			await cameraTransceiver?.sender.replaceTrack(null);
+		} finally {
+			// Stopping the track is what turns the camera's light off.
+			stopTracks(stream);
+			if (!isDestroyed) sendVoiceSync(channelId);
+		}
+	}
+
+	async function switchCamera(deviceId: string) {
+		const transceiver = cameraTransceiver;
+		const current = localCameraStream;
+		if (isDestroyed || !transceiver || !current) return;
+		let stream: MediaStream;
+		try {
+			stream = await openCamera(deviceId);
+		} catch (err) {
+			console.error("[Voice] Couldn't switch cameras:", err);
+			toast(cameraErrorMessage(err), "error");
+			return;
+		}
+		const track = stream.getVideoTracks().at(0);
+		if (isDestroyed || localCameraStream !== current || !track) {
+			stopTracks(stream);
+			return;
+		}
+		prepareCameraTrack(track, stream);
+		try {
+			await transceiver.sender.replaceTrack(track);
+		} catch (err) {
+			stopTracks(stream);
+			throw err;
+		}
+		if (isDestroyed || localCameraStream !== current) {
+			stopTracks(stream);
+			return;
+		}
+		localCameraStream = stream;
+		stopTracks(current);
+	}
+
+	function srcObject(node: HTMLMediaElement, stream: MediaStream) {
 		node.srcObject = stream;
 		return {
 			update(newStream: MediaStream) {
@@ -683,20 +968,6 @@
 				}
 			},
 		};
-	}
-
-	function registerVideoEl(node: HTMLVideoElement, userId: string) {
-		videoEls[userId] = node;
-		return {
-			destroy() {
-				delete videoEls[userId];
-			},
-		};
-	}
-
-	function startVideo(userId: string) {
-		videoClickedStates = { ...videoClickedStates, [userId]: true };
-		videoEls[userId]?.play().catch(console.warn);
 	}
 
 	// Use an action to imperatively set the muted property on <audio> elements.
@@ -710,264 +981,11 @@
 			},
 		};
 	}
-
-	const voiceUsers = $derived(
-		(() => {
-			const fromGateway = $gatewaySpaces.flatMap((space) => {
-				const room = space.rooms.find((r) => r.id === channelId);
-				if (!room) return [];
-				const voiceStates = space.voice_states?.filter((vs) => vs.room_id === channelId) ?? [];
-				return voiceStates.map((vs) => {
-					const user = space.users.find((u) => u.id === vs.user_id);
-					return {
-						id: vs.user_id,
-						username: user?.alias ?? user?.username ?? "Unknown",
-						avatar_url: getAvatarURL(vs.user_id, user?.avatar),
-						muted: vs.muted ?? false,
-						deafened: vs.deafened ?? false,
-					};
-				});
-			});
-
-			// Fallback: always show local user while connected, even if gateway
-			// hasn't sent our voice_state yet.
-			const me = $currentUser;
-			if (me && !fromGateway.some((u) => u.id === me.id)) {
-				fromGateway.push({
-					id: me.id,
-					username: me.alias ?? me.username ?? "Me",
-					avatar_url: getAvatarURL(me.id, me.avatar),
-					muted: $isMuted,
-					deafened: $isDeafened,
-				});
-			}
-
-			return fromGateway;
-		})(),
-	);
 </script>
 
-<div
-	class="relative flex flex-1 flex-col text-white {compact
-		? 'bg-transparent'
-		: 'border-l border-zinc-800 bg-zinc-900 p-6'}"
->
-	{#if !compact}
-		<div class="mb-4">
-			<h1 class="flex items-center gap-2 text-2xl font-bold">
-				<span class="text-zinc-400 opacity-60">🔊</span>
-				{channelName}
-			</h1>
-			<p
-				class="text-sm {$connectionState === 'connected'
-					? 'text-zinc-400'
-					: $connectionState === 'disconnected'
-						? 'text-yellow-400'
-						: $connectionState === 'failed' || $connectionState === 'closed'
-							? 'text-red-400'
-							: 'text-zinc-500'}"
-			>
-				{connectionLabel[$connectionState]}
-			</p>
-		</div>
-	{/if}
-
-	<div
-		class="flex-1 overflow-y-auto {compact ? 'pb-14' : 'pb-24'} {voiceUsers.length === 1
-			? 'flex flex-col p-4'
-			: focusedUserId
-				? 'flex flex-row flex-wrap content-start gap-4 p-4'
-				: 'grid grid-cols-[repeat(auto-fit,minmax(320px,1fr))] content-start gap-4 p-4'}"
-	>
-		{#each voiceUsers as user (user.id)}
-			{@const isLocal = user.id === myUserId}
-			{@const videoStream = isLocal ? localVideoStream : remoteVideoElements[user.id]}
-			{@const audioStream = isLocal ? null : remoteAudioElements[user.id]}
-			{@const isSpeaking = $speakingUsers.has(user.id)}
-			{@const isForceMuted =
-				(!isLocal && audioStream && audioStream.getAudioTracks().every((t) => !t.enabled)) || user.muted}
-
-			<div
-				class="relative flex cursor-pointer items-center justify-center overflow-hidden rounded-lg border bg-zinc-800/70 shadow-lg transition-all {voiceUsers.length ===
-				1
-					? 'min-h-0 w-full flex-1'
-					: focusedUserId === user.id
-						? 'order-first h-[60vh] w-full'
-						: focusedUserId
-							? 'h-48 w-64 shrink-0'
-							: compact
-								? 'h-32'
-								: 'h-64'} {isSpeaking && !user.muted
-					? 'border-transparent ring-2 ring-stone-400 ring-inset'
-					: 'border-zinc-700 hover:border-zinc-500'}"
-				onclick={() => (focusedUserId = focusedUserId === user.id ? null : user.id)}
-				role="button"
-				tabindex="0"
-				onkeydown={(e) => {
-					if (e.key === "Enter" || e.key === " ") {
-						e.preventDefault();
-						focusedUserId = focusedUserId === user.id ? null : user.id;
-					}
-				}}
-				aria-label={`Focus participant ${user.username}`}
-			>
-				{#if videoStream}
-					<video
-						use:srcObject={videoStream}
-						use:registerVideoEl={user.id}
-						playsinline
-						muted
-						class="h-full w-full object-contain backdrop-blur-md transition-opacity duration-300 {videoPlayingStates[
-							user.id
-						]
-							? 'opacity-100'
-							: 'opacity-0'}"
-						onplaying={() =>
-							(videoPlayingStates = {
-								...videoPlayingStates,
-								[user.id]: true,
-							})}
-						onwaiting={() =>
-							(videoPlayingStates = {
-								...videoPlayingStates,
-								[user.id]: false,
-							})}
-					>
-						<track kind="captions" srclang="en" label="captions" />
-					</video>
-
-					{#if !isLocal && !videoClickedStates[user.id]}
-						<button
-							class="absolute inset-0 z-10 flex cursor-pointer flex-col items-center justify-center rounded-lg bg-black/70 backdrop-blur-sm"
-							onclick={(e) => {
-								e.stopPropagation();
-								startVideo(user.id);
-							}}
-							aria-label="Watch stream"
-						>
-							<Play class="mb-3 size-10 text-zinc-300" />
-							<span class="text-sm font-medium text-zinc-300">Click to watch</span>
-						</button>
-					{:else if !videoPlayingStates[user.id]}
-						<div
-							class="absolute inset-0 z-10 flex flex-col items-center justify-center rounded-lg bg-black/60 backdrop-blur-sm"
-						>
-							<LoaderCircle class="mb-3 size-10 animate-spin text-zinc-300" />
-							<span class="text-sm font-medium text-zinc-300">Connecting video...</span>
-						</div>
-					{/if}
-				{:else}
-					<div class="relative flex items-center justify-center">
-						{#if isSpeaking && !isForceMuted}
-							<span
-								class="absolute size-38.5 animate-[voice-pulse_1.1s_ease-out_infinite] rounded-full border border-emerald-300/30"
-							></span>
-							<span
-								class="absolute size-34 animate-[voice-pulse_1.1s_ease-out_0.35s_infinite] rounded-full border border-emerald-300/45"
-							></span>
-							<span
-								class="absolute size-29.5 animate-[voice-glow_0.9s_ease-in-out_infinite] rounded-full bg-emerald-300/12"
-							></span>
-						{/if}
-						<div class="relative">
-							<UserAvatar
-								src={user.avatar_url}
-								name={user.username}
-								size={96}
-								mouthOpen={$userAmplitudes[user.id] ?? 0}
-								class={isSpeaking && !isForceMuted ? "voice-avatar-speaking" : ""}
-							/>
-						</div>
-					</div>
-				{/if}
-
-				<div
-					class="absolute bottom-4 left-4 flex items-center gap-2 rounded-md bg-black/60 px-3 py-1.5 text-white backdrop-blur-md"
-				>
-					{#if user.deafened}
-						<PhoneOff class="size-4 text-red-400" />
-					{:else if isForceMuted}
-						<MicOff class="size-4 text-red-400" />
-					{/if}
-					<span class="text-sm font-medium">{user.username}</span>
-				</div>
-			</div>
-		{/each}
-	</div>
-
-	<div class="hidden">
-		{#each Object.entries(remoteAudioElements) as [id, stream] (id)}
-			<audio
-				use:srcObject={stream}
-				use:applyMuted={$isDeafened || (voiceUsers.find((u) => u.id === id)?.muted ?? false)}
-				autoplay
-				aria-label={`Audio stream ${id}`}
-			></audio>
-		{/each}
-	</div>
-
-	<div
-		class="absolute {compact
-			? 'bottom-2 gap-2 px-3 py-2'
-			: 'bottom-8 gap-4 px-6 py-3'} left-1/2 flex -translate-x-1/2 items-center rounded-full border border-zinc-700 bg-zinc-800/80 shadow-xl backdrop-blur-md"
-	>
-		<button
-			class="rounded-full p-4 hover:bg-zinc-700 {$isScreenSharing
-				? 'bg-stone-400/20 text-stone-200 hover:bg-stone-400/30'
-				: 'text-zinc-200'} transition-all"
-			onclick={() => toggleScreenShare()}
-			aria-label="Share Screen"
-		>
-			<MonitorUp class="size-5" />
-		</button>
-		<button
-			class="rounded-full bg-red-500/20 p-4 text-red-400 transition-all hover:bg-red-500/40"
-			onclick={leaveVoice}
-			aria-label="Leave Voice"
-		>
-			<PhoneOff class="size-5" />
-		</button>
-	</div>
-</div>
-
-<style>
-	:global(.voice-avatar-speaking) {
-		box-shadow:
-			0 0 0 2px oklch(0.8 0.12 160 / 0.35),
-			0 0 30px oklch(0.8 0.12 160 / 0.2);
-		animation: voice-avatar-breath 0.9s ease-in-out infinite;
-	}
-
-	@keyframes voice-pulse {
-		0% {
-			transform: scale(0.9);
-			opacity: 0.35;
-		}
-		100% {
-			transform: scale(1.08);
-			opacity: 0;
-		}
-	}
-
-	@keyframes voice-glow {
-		0%,
-		100% {
-			opacity: 0.35;
-			transform: scale(1);
-		}
-		50% {
-			opacity: 0.6;
-			transform: scale(1.06);
-		}
-	}
-
-	@keyframes voice-avatar-breath {
-		0%,
-		100% {
-			transform: scale(1);
-		}
-		50% {
-			transform: scale(1.03);
-		}
-	}
-</style>
+<!-- Everyone's voice, and the sound of the screens they share: that stream also carries the screen, whose
+     <video> in VoiceChannelView is muted so the voice doesn't play twice. Only deafening silences it: someone
+     muted sends no voice, but a tab they share keeps its sound. -->
+{#each Object.entries(remoteAudioStreams) as [id, stream] (id)}
+	<audio use:srcObject={stream} use:applyMuted={$isDeafened} autoplay aria-label={`Audio stream ${id}`}></audio>
+{/each}
