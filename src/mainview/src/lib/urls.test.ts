@@ -85,20 +85,26 @@ describe("frameSandbox", () => {
 	});
 
 	test("the players the API frames keep their own origin; any other page is framed without it", () => {
-		expect(frameSandbox("https://www.youtube.com/embed/abc", own)).toBe("allow-scripts allow-same-origin allow-popups");
-		expect(frameSandbox("https://www.youtube-nocookie.com/embed/abc", own)).toBe(
-			"allow-scripts allow-same-origin allow-popups",
-		);
-		expect(frameSandbox("https://www.tiktok.com/player/v1/123", own)).toBe(
-			"allow-scripts allow-same-origin allow-popups",
-		);
+		expect(frameSandbox("https://www.youtube.com/embed/abc", own)).toBe("allow-scripts allow-same-origin");
+		expect(frameSandbox("https://www.youtube-nocookie.com/embed/abc", own)).toBe("allow-scripts allow-same-origin");
+		expect(frameSandbox("https://www.tiktok.com/player/v1/123", own)).toBe("allow-scripts allow-same-origin");
 		for (const url of [
 			"https://player.example/v/1",
 			"https://youtube.com.evil.example/embed",
 			"https://eviltiktok.com/player",
 			"https://duvet.chat.evil.example/",
 		]) {
-			expect(frameSandbox(url, own)).toBe("allow-scripts allow-popups");
+			expect(frameSandbox(url, own)).toBe("allow-scripts");
+		}
+	});
+
+	test("no framed page may open windows (never allow-popups)", () => {
+		for (const url of [
+			"https://www.youtube.com/embed/abc",
+			"https://www.tiktok.com/player/v1/1",
+			"https://player.example/v/1",
+		]) {
+			expect(frameSandbox(url, own)).not.toContain("allow-popups");
 		}
 	});
 });
