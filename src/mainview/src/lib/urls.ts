@@ -34,7 +34,9 @@ const onDomain = (hostname: string, domain: string) => hostname === domain || ho
 /**
  * The sandbox to frame url's page with, or nothing when it mustn't be framed: a page of duvet.chat or of
  * ownHosts (the app's host and the API's) would run with that origin, the app's own included. The players
- * keep their origin; any other page gets an opaque one.
+ * keep their origin; any other page gets an opaque one. Neither gets allow-popups: in the packaged app a
+ * framed page's window.open would otherwise reach the native new-window handler and open arbitrary URLs in
+ * the system browser (src/bun/index.ts), so framed content may not open windows at all.
  */
 export function frameSandbox(url: string, ownHosts: string[]): string | undefined {
 	let parsed: URL;
@@ -48,9 +50,7 @@ export function frameSandbox(url: string, ownHosts: string[]): string | undefine
 	if (!/^https?:$/.test(parsed.protocol) || onDomain(hostname, "duvet.chat") || ownHosts.includes(hostname)) {
 		return undefined;
 	}
-	return PLAYERS.some((player) => onDomain(hostname, player))
-		? "allow-scripts allow-same-origin allow-popups"
-		: "allow-scripts allow-popups";
+	return PLAYERS.some((player) => onDomain(hostname, player)) ? "allow-scripts allow-same-origin" : "allow-scripts";
 }
 
 /**

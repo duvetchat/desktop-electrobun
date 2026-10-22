@@ -8,12 +8,14 @@
 	import PromptDialog from "$lib/components/PromptDialog.svelte";
 
 	import { setupWindowControls } from "$lib/window-controls";
+	import { setupExternalLinks } from "$lib/external-links";
 	import { onMount } from "svelte";
 
 	let { children } = $props();
 
 	onMount(() => {
 		setupWindowControls();
+		setupExternalLinks();
 	});
 </script>
 
