@@ -27,6 +27,7 @@ import {
 	activeCall,
 	callVoiceStates,
 	conversationsWithCalls,
+	dropVoiceRequests,
 	spaceEmojis,
 	spaceStickers,
 	userActivities,
@@ -1344,6 +1345,9 @@ function handleEvent(event: GatewayEvent) {
 				}
 				activeCall.set(null);
 				callVoiceStates.set([]);
+				// The call's VoiceChat may already be gone (its connection failed): a camera or screen request it
+				// didn't take goes with the call.
+				dropVoiceRequests();
 			}
 			break;
 		}

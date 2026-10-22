@@ -49,17 +49,25 @@ export function webEmbed(embed: Embed): Embed {
 	};
 }
 
-// The players the API frames itself, YouTube's and TikTok's: they need their own origin to play.
-const PLAYERS = ["youtube.com", "youtube-nocookie.com", "tiktok.com"];
+// The players the API frames itself, YouTube's and TikTok's, as it writes their URLs (embeds/youtube.go and
+// embeds/tiktok.go): they need their own origin to play. Only these exact URLs are players. Any other page of
+// those sites, or of their subdomains, could be someone's own or redirect the frame anywhere, and would load at
+// once with that origin.
+const PLAYERS = [
+	/^https:\/\/www\.youtube\.com\/embed\/[\w-]+$/,
+	/^https:\/\/www\.tiktok\.com\/player\/v1\/\d+\?music_info=0&description=0&rel=0&autoplay=0$/,
+];
+
+const isPlayer = (url: string) => PLAYERS.some((player) => player.test(url));
 
 const onDomain = (hostname: string, domain: string) => hostname === domain || hostname.endsWith(`.${domain}`);
 
 /**
  * The sandbox to frame url's page with, or nothing when it mustn't be framed: a page of duvet.chat or of
  * ownHosts (the app's host and the API's) would run with that origin, the app's own included. The players
- * keep their origin; any other page gets an opaque one. Neither gets allow-popups: in the packaged app a
- * framed page's window.open would otherwise reach the native new-window handler and open arbitrary URLs in
- * the system browser (src/bun/index.ts), so framed content may not open windows at all.
+ * (PLAYERS) keep their origin; any other page gets an opaque one. Neither gets allow-popups: in the packaged
+ * app a framed page's window.open would otherwise reach the native new-window handler and open arbitrary URLs
+ * in the system browser (src/bun/index.ts), so framed content may not open windows at all.
  */
 export function frameSandbox(url: string, ownHosts: string[]): string | undefined {
 	let parsed: URL;
@@ -73,7 +81,7 @@ export function frameSandbox(url: string, ownHosts: string[]): string | undefine
 	if (!/^https?:$/.test(parsed.protocol) || onDomain(hostname, "duvet.chat") || ownHosts.includes(hostname)) {
 		return undefined;
 	}
-	return PLAYERS.some((player) => onDomain(hostname, player)) ? "allow-scripts allow-same-origin" : "allow-scripts";
+	return isPlayer(url) ? "allow-scripts allow-same-origin" : "allow-scripts";
 }
 
 /**
@@ -147,6 +155,5 @@ export function parseMessageLink(url: string): MessageLink | null {
 export function playerFrame(url: string, ownHosts: string[]): { sandbox: string; clickToPlay: boolean } | undefined {
 	const sandbox = frameSandbox(url, ownHosts);
 	if (!sandbox) return undefined;
-	const hostname = new URL(url).hostname.replace(/\.$/, "");
-	return { sandbox, clickToPlay: !PLAYERS.some((player) => onDomain(hostname, player)) };
+	return { sandbox, clickToPlay: !isPlayer(url) };
 }

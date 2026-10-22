@@ -22,6 +22,7 @@
 		activeVoiceRoomId,
 		cameraRequested,
 		currentUser,
+		dropVoiceRequests,
 		gatewaySpaces,
 		iceServers,
 		incomingVideo,
@@ -85,12 +86,12 @@
 		voiceLocalCameraStream.set(localCameraStream);
 	});
 
+	// Only this room's or call's requests: one for another was left where no VoiceChat took it, and is dropped.
 	$effect(() => {
-		if ($screenShareRequested.active) {
-			const withAudio = $screenShareRequested.withAudio;
-			screenShareRequested.set({ active: false, withAudio: false });
-			void toggleScreenShare(withAudio);
-		}
+		const request = $screenShareRequested;
+		if (!request) return;
+		screenShareRequested.set(null);
+		if (request.roomId === channelId) void toggleScreenShare(request.withAudio);
 	});
 
 	let unsubscribeWs: () => void;
@@ -136,7 +137,7 @@
 		// Stopping the camera's track is what turns its light off.
 		stopTracks(localCameraStream);
 		localCameraStream = null;
-		cameraRequested.set(null);
+		dropVoiceRequests();
 		if (audioContext) audioContext.close();
 		if (unsubscribeWs) unsubscribeWs();
 		// Only clear global stores if we're still the active voice session
@@ -788,11 +789,13 @@
 		cameraChain = cameraChain.then(change).catch((err) => console.error("[Voice] Camera change failed:", err));
 	}
 
+	// Only this room's or call's requests: one for another, left where no VoiceChat took it, must not turn the
+	// camera on here.
 	$effect(() => {
-		const wanted = $cameraRequested;
-		if (wanted === null) return;
+		const request = $cameraRequested;
+		if (!request) return;
 		cameraRequested.set(null);
-		queueCamera(wanted ? startCamera : stopCamera);
+		if (request.roomId === channelId) queueCamera(request.on ? startCamera : stopCamera);
 	});
 
 	// Another camera picked in the menu while this one is on: it takes its place on the same transceiver.
@@ -860,8 +863,8 @@
 		};
 	}
 
-	// Asked for before the connection had its camera transceiver, as a call's controls show before it joins:
-	// connectWebRTC turns it on once it has one.
+	// Asked for before the connection had its camera transceiver: the controls work as soon as this is mounted,
+	// while the mic is still being opened. connectWebRTC turns it on once it has one.
 	let cameraWanted = false;
 
 	/** Puts the camera on its transceiver; VOICE_SYNC's camera then tells the gateway to forward it. */

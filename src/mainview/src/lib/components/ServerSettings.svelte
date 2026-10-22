@@ -663,8 +663,18 @@
 	let spaceAttachmentsLoading = $state(false);
 	// The bucket the list shows ("all" or a bucket ID). Picking files to move needs one.
 	let spaceAttachmentsLocation = $state("all");
+	// The space and location whose files `spaceAttachments` are, set with them (these settings stay mounted from
+	// one space to the next). Until a load for the location picked succeeds, they're another's, which mustn't show
+	// or be picked as its: "Select all" would move every file of the one picked.
+	let spaceAttachmentsListed = $state<{ spaceId: string; location: string } | null>(null);
+	const spaceListedHere = $derived(
+		spaceAttachmentsListed?.spaceId === spaceId && spaceAttachmentsListed?.location === spaceAttachmentsLocation,
+	);
+	// Moving a space's files ends with their originals deleted, so the API asks for ManageSpaceAttachments too, as
+	// deleting them does.
+	const canMoveSpaceFiles = $derived(canManageBuckets && canManageAttachments);
 	const spacePicker = new FilePicker(() => spaceAttachments);
-	const spacePicking = $derived(canManageBuckets && spaceAttachmentsLocation !== "all");
+	const spacePicking = $derived(canMoveSpaceFiles && spaceListedHere && spaceAttachmentsLocation !== "all");
 	const spaceLocationBytes = $derived(spaceAttachments.reduce((sum, a) => sum + a.size_bytes, 0));
 	let spaceAttachmentsLoadId = 0;
 
@@ -676,16 +686,18 @@
 
 	async function loadSpaceAttachments(location = spaceAttachmentsLocation) {
 		if (!spaceId) return;
+		const sid = spaceId;
 		// Only the last load counts: the location can change while one is on its way.
 		const loadId = ++spaceAttachmentsLoadId;
 		spaceAttachmentsLoading = true;
 		try {
 			const [list, used] = await Promise.all([
-				getSpaceAttachments(spaceId, location === "all" ? undefined : location),
-				getSpaceStorageUsed(spaceId),
+				getSpaceAttachments(sid, location === "all" ? undefined : location),
+				getSpaceStorageUsed(sid),
 			]);
 			if (loadId !== spaceAttachmentsLoadId) return;
 			spaceAttachments = list;
+			spaceAttachmentsListed = { spaceId: sid, location };
 			spaceStorageUsed = used.total_size;
 			spacePicker.prune();
 		} catch (e) {
@@ -700,6 +712,15 @@
 		spacePicker.clear();
 		spaceAttachmentsLocation = location;
 	}
+
+	// A location is one space's bucket, and these settings stay mounted from one space to the next: another space's
+	// list starts on all its files. This runs before the load, which would otherwise ask the new space for the old
+	// one's bucket.
+	let locationSpaceId: string | null | undefined;
+	$effect.pre(() => {
+		if (locationSpaceId !== undefined && spaceId !== locationSpaceId) setSpaceAttachmentsLocation("all");
+		locationSpaceId = spaceId;
+	});
 
 	// ── Moving files between the space's buckets ────────────────────────────
 	const spaceTransfer = $derived(canManageBuckets && spaceId ? storageTransfers.active(spaceId) : null);
@@ -720,7 +741,10 @@
 	}
 
 	function openMoveSpacePicked() {
-		spaceMoveSourceId = spaceAttachmentsLocation;
+		// From the bucket the picked files were listed in.
+		const listed = spaceAttachmentsListed;
+		if (!spacePicking || listed === null) return;
+		spaceMoveSourceId = listed.location;
 		spaceMoveFiles = spacePicker.pickedFiles;
 		spaceMoveFilter = spacePicker.filter;
 		spaceMoveOpen = true;
@@ -728,7 +752,7 @@
 
 	/** Opens the move of all of a bucket's files, with fresh numbers for the room left in each bucket. */
 	async function openMoveSpaceBucket(bucket: StorageBucket) {
-		if (!spaceId) return;
+		if (!spaceId || !canMoveSpaceFiles) return;
 		const sid = spaceId;
 		movingSpaceBucketId = bucket.id;
 		try {
@@ -930,9 +954,17 @@
 			try {
 				await deleteSpaceBucket(sid, id);
 			} catch (err) {
-				// Deleting it would break its files: offer to move them or delete them with it.
+				// Deleting it would break its files: offer to move them or delete them with it, which both take
+				// ManageSpaceAttachments too.
 				const files = bucketFilesCount(err);
 				if (files === null || !b) throw err;
+				if (!canManageAttachments) {
+					const them = files === 1 ? "it" : "them";
+					throw new Error(
+						`This bucket has ${countFiles(files)}. Moving or deleting ${them} takes the Manage Attachments permission.`,
+						{ cause: err },
+					);
+				}
 				spaceBucketFilesRequest = { bucket: b, files };
 				return;
 			}
@@ -2250,20 +2282,22 @@
 															<CheckIcon class="size-4" />
 														{/if}
 													</button>
-													<button
-														class="flex h-8 w-8 items-center justify-center rounded-md text-zinc-500 transition-all hover:bg-zinc-700 hover:text-zinc-200 disabled:opacity-50"
-														title={spaceTransfer ? "Wait for the transfer under way to end" : "Move files…"}
-														onclick={() => openMoveSpaceBucket(bucket)}
-														disabled={movingSpaceBucketId === bucket.id || spaceTransfer !== null}
-													>
-														{#if movingSpaceBucketId === bucket.id}
-															<div
-																class="size-4 animate-spin rounded-full border-2 border-zinc-500 border-t-transparent"
-															></div>
-														{:else}
-															<MoveIcon class="size-4" />
-														{/if}
-													</button>
+													{#if canMoveSpaceFiles}
+														<button
+															class="flex h-8 w-8 items-center justify-center rounded-md text-zinc-500 transition-all hover:bg-zinc-700 hover:text-zinc-200 disabled:opacity-50"
+															title={spaceTransfer ? "Wait for the transfer under way to end" : "Move files…"}
+															onclick={() => openMoveSpaceBucket(bucket)}
+															disabled={movingSpaceBucketId === bucket.id || spaceTransfer !== null}
+														>
+															{#if movingSpaceBucketId === bucket.id}
+																<div
+																	class="size-4 animate-spin rounded-full border-2 border-zinc-500 border-t-transparent"
+																></div>
+															{:else}
+																<MoveIcon class="size-4" />
+															{/if}
+														</button>
+													{/if}
 													<button
 														class="flex h-8 w-8 items-center justify-center rounded-md text-zinc-500 transition-all hover:bg-zinc-700 hover:text-zinc-200"
 														title="Edit"
@@ -2347,10 +2381,12 @@
 								class="flex items-center justify-between gap-3 rounded-lg border border-zinc-800 bg-zinc-800/40 px-4 py-3"
 							>
 								<div class="text-sm text-zinc-300">
-									<span class="font-semibold text-white">{spaceAttachments.length}</span>
-									file{spaceAttachments.length !== 1 ? "s" : ""}
-									<span class="mx-1 text-zinc-600">&middot;</span>
-									{formatFileSize(spaceAttachmentsLocation === "all" ? spaceStorageUsed : spaceLocationBytes)}
+									{#if spaceListedHere}
+										<span class="font-semibold text-white">{spaceAttachments.length}</span>
+										file{spaceAttachments.length !== 1 ? "s" : ""}
+										<span class="mx-1 text-zinc-600">&middot;</span>
+										{formatFileSize(spaceAttachmentsLocation === "all" ? spaceStorageUsed : spaceLocationBytes)}
+									{/if}
 								</div>
 								<div class="flex items-center gap-2">
 									{#if canManageBuckets && (spaceBuckets.length > 0 || spaceAttachmentsLocation !== "all")}
@@ -2385,6 +2421,11 @@
 									{#each Array(5) as _}
 										<div class="h-14 animate-pulse rounded-lg bg-zinc-800/40"></div>
 									{/each}
+								</div>
+							{:else if !spaceListedHere}
+								<!-- The location's files didn't load (a toast said why): the list is another's. -->
+								<div class="flex flex-col items-center justify-center py-16 text-zinc-500">
+									<p class="text-sm">Couldn't load the files here</p>
 								</div>
 							{:else if spaceAttachments.length === 0}
 								<div class="flex flex-col items-center justify-center py-16 text-zinc-500">

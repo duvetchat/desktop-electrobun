@@ -229,10 +229,9 @@ export const isMuted = writable<boolean>(false);
 export const isDeafened = writable<boolean>(false);
 export const activeVoiceRoomId = writable<string | null>(null);
 export const voiceConnectionState = writable<RTCPeerConnectionState>("new");
-export const screenShareRequested = writable<{ active: boolean; withAudio: boolean }>({
-	active: false,
-	withAudio: false,
-});
+/** Asks VoiceChat to share the screen, or to stop sharing it, in a room or call (its ID): only the VoiceChat of
+ * that room or call acts on it. */
+export const screenShareRequested = writable<{ roomId: string; withAudio: boolean } | null>(null);
 /** Screens being shared, by user ID: each user's `<user_id>` stream, which also carries their voice. */
 export const voiceRemoteVideoStreams = writable<Record<string, MediaStream>>({});
 /** The screen this client shares. */
@@ -240,14 +239,22 @@ export const voiceLocalVideoStream = writable<MediaStream | null>(null);
 export const isScreenSharing = writable<boolean>(false);
 /** This client's camera is on: its track goes out on the camera transceiver. */
 export const isCameraOn = writable<boolean>(false);
-/** Asks VoiceChat to turn the camera on (true) or off (false), as screenShareRequested does for the screen. */
-export const cameraRequested = writable<boolean | null>(null);
+/** Asks VoiceChat to turn the camera on or off in a room or call (its ID), as screenShareRequested does for the
+ * screen. Only the VoiceChat of that room or call acts on it, and any other drops it: a request no VoiceChat took
+ * must never turn the camera on in the next room or call. */
+export const cameraRequested = writable<{ roomId: string; on: boolean } | null>(null);
 /** Whether to receive others' video (cameras and screens). Off, the gateway sends none (`video_off`). */
 export const incomingVideo = writable<boolean>(true);
 /** The camera this client captures. */
 export const voiceLocalCameraStream = writable<MediaStream | null>(null);
 /** Others' cameras, by user ID: the `<user_id>.camera` streams. */
 export const voiceRemoteCameraStreams = writable<Record<string, MediaStream>>({});
+
+/** Drops the camera and screen requests no VoiceChat took, those of a room or call that's over. */
+export function dropVoiceRequests() {
+	cameraRequested.set(null);
+	screenShareRequested.set(null);
+}
 
 const safeStorageNs = typeof window !== "undefined" ? localStorage : null;
 export const noiseSuppression = writable<boolean>(safeStorageNs?.getItem("duvet_noise_suppression") !== "false");
