@@ -4,7 +4,11 @@
 	import { CircleAlert as AlertIcon, Pin as PinIcon, PinOff as PinOffIcon } from "@lucide/svelte";
 	import { updateMessage, deleteMessage, getMessageThread, pinRoomMessage, unpinRoomMessage } from "$lib/api/messages";
 	import { sendComponentInteraction } from "$lib/api/interactions";
-	import { pinConversationMessage, unpinConversationMessage } from "$lib/api/conversations";
+	import {
+		getConversationMessageThread,
+		pinConversationMessage,
+		unpinConversationMessage,
+	} from "$lib/api/conversations";
 	import { confirmAction } from "$lib/stores/confirm.svelte";
 	import { Dialog, Popover } from "bits-ui";
 	import {
@@ -763,7 +767,10 @@
 		threadRootMessage = message;
 
 		try {
-			const thread = await getMessageThread(channelId, message.id);
+			// A conversation's thread has an endpoint of its own: channelId is the conversation there.
+			const thread = isConversation
+				? await getConversationMessageThread(channelId, message.id)
+				: await getMessageThread(channelId, message.id);
 			threadMessages = thread.map((m) => gatewayMessageToMessage(m, $gatewaySpaces));
 		} catch (e) {
 			threadError = getApiError(e, "Failed to load message thread.");

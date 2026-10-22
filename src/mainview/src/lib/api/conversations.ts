@@ -1,7 +1,7 @@
 import api from "$lib/api/api";
 import { createAckThrottle } from "$lib/api/ack";
 import { messageSearchParams, type MessageSearch, type MessageSearchResponse } from "$lib/api/messages";
-import type { MessageType } from "$lib/types";
+import type { GatewayMessage, MessageType } from "$lib/types";
 
 export type ConversationType = 1 | 2; // 1 = DM, 2 = group
 
@@ -113,6 +113,16 @@ export async function getDirectMessageById(
 	signal?: AbortSignal,
 ): Promise<DirectMessage> {
 	const res = await api.get(`/api/users/@me/conversations/${conversationId}/messages/${messageId}`, { signal });
+	return res.data;
+}
+
+/** A conversation message's reply thread, oldest first, shaped as a room's thread is. */
+export async function getConversationMessageThread(
+	conversationId: string,
+	messageId: string,
+	signal?: AbortSignal,
+): Promise<GatewayMessage[]> {
+	const res = await api.get(`/api/users/@me/conversations/${conversationId}/messages/${messageId}/thread`, { signal });
 	return res.data;
 }
 
