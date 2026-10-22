@@ -19,9 +19,24 @@
 		Check as CheckIcon,
 		Plus as PlusIcon,
 		ImagePlus as ImagePlusIcon,
+		ArrowRightLeft as MoveIcon,
 	} from "@lucide/svelte";
 	import { Checkbox, Dialog } from "bits-ui";
+	import { slide } from "svelte/transition";
 	import ImageCropModal from "$lib/components/ImageCropModal.svelte";
+	import StorageTransferCard from "$lib/components/StorageTransferCard.svelte";
+	import MoveFilesDialog from "$lib/components/MoveFilesDialog.svelte";
+	import BucketFilesDialog from "$lib/components/BucketFilesDialog.svelte";
+	import FilePickerBar from "$lib/components/FilePickerBar.svelte";
+	import { FilePicker } from "$lib/file-picker.svelte";
+	import { storageTransfers, bucketFilesCount } from "$lib/stores/storage-transfers.svelte";
+	import {
+		bucketChoice,
+		countFiles,
+		MAX_PICKED_FILES,
+		type PickableFile,
+		type TransferFilter,
+	} from "$lib/storage-transfers";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
 	import SpaceBanner from "$lib/components/SpaceBanner.svelte";
 	import SpaceIcon from "$lib/components/SpaceIcon.svelte";
@@ -627,6 +642,7 @@
 		spaceBucketsError = null;
 		try {
 			spaceBuckets = await getSpaceBuckets(spaceId);
+			storageTransfers.nameBuckets(spaceBuckets);
 		} catch (e) {
 			spaceBucketsError = getApiError(e, "Failed to load");
 		} finally {
@@ -634,8 +650,9 @@
 		}
 	}
 
+	// Attachments lists the buckets as its locations.
 	$effect(() => {
-		if (activeSection === "storage" && spaceId) {
+		if ((activeSection === "storage" || (activeSection === "attachments" && canManageBuckets)) && spaceId) {
 			loadSpaceBuckets();
 		}
 	});
@@ -644,6 +661,12 @@
 	let spaceAttachments = $state<SpaceAttachment[]>([]);
 	let spaceStorageUsed = $state(0);
 	let spaceAttachmentsLoading = $state(false);
+	// The bucket the list shows ("all" or a bucket ID). Picking files to move needs one.
+	let spaceAttachmentsLocation = $state("all");
+	const spacePicker = new FilePicker(() => spaceAttachments);
+	const spacePicking = $derived(canManageBuckets && spaceAttachmentsLocation !== "all");
+	const spaceLocationBytes = $derived(spaceAttachments.reduce((sum, a) => sum + a.size_bytes, 0));
+	let spaceAttachmentsLoadId = 0;
 
 	function formatFileSize(bytes: number): string {
 		if (bytes < 1024) return `${bytes} B`;
@@ -651,20 +674,107 @@
 		return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 	}
 
-	async function loadSpaceAttachments() {
+	async function loadSpaceAttachments(location = spaceAttachmentsLocation) {
 		if (!spaceId) return;
+		// Only the last load counts: the location can change while one is on its way.
+		const loadId = ++spaceAttachmentsLoadId;
 		spaceAttachmentsLoading = true;
 		try {
-			[spaceAttachments, { total_size: spaceStorageUsed }] = await Promise.all([
-				getSpaceAttachments(spaceId),
+			const [list, used] = await Promise.all([
+				getSpaceAttachments(spaceId, location === "all" ? undefined : location),
 				getSpaceStorageUsed(spaceId),
 			]);
+			if (loadId !== spaceAttachmentsLoadId) return;
+			spaceAttachments = list;
+			spaceStorageUsed = used.total_size;
+			spacePicker.prune();
 		} catch (e) {
-			toast(getApiError(e, "Failed to load attachments"), "error");
+			if (loadId === spaceAttachmentsLoadId) toast(getApiError(e, "Failed to load attachments"), "error");
 		} finally {
-			spaceAttachmentsLoading = false;
+			if (loadId === spaceAttachmentsLoadId) spaceAttachmentsLoading = false;
 		}
 	}
+
+	/** Shows another bucket's files. Its picks and kind filters start over. */
+	function setSpaceAttachmentsLocation(location: string) {
+		spacePicker.clear();
+		spaceAttachmentsLocation = location;
+	}
+
+	// ── Moving files between the space's buckets ────────────────────────────
+	const spaceTransfer = $derived(canManageBuckets && spaceId ? storageTransfers.active(spaceId) : null);
+	const spaceStorageChoices = $derived(spaceBuckets.map(bucketChoice));
+	let spaceMoveOpen = $state(false);
+	let spaceMoveSourceId = $state("");
+	let spaceMoveFiles = $state.raw<PickableFile[]>([]);
+	let spaceMoveFilter = $state.raw<TransferFilter>({});
+	// The bucket whose "Move files…" is loading its files.
+	let movingSpaceBucketId = $state<string | null>(null);
+	let spaceBucketFilesRequest = $state<{ bucket: StorageBucket; files: number } | null>(null);
+
+	function spaceStorageLabel(bucketId: string | null): string {
+		if (bucketId === null) return "Default storage";
+		return (
+			spaceBuckets.find((b) => b.id === bucketId)?.name ?? storageTransfers.storageName(bucketId) ?? "another bucket"
+		);
+	}
+
+	function openMoveSpacePicked() {
+		spaceMoveSourceId = spaceAttachmentsLocation;
+		spaceMoveFiles = spacePicker.pickedFiles;
+		spaceMoveFilter = spacePicker.filter;
+		spaceMoveOpen = true;
+	}
+
+	/** Opens the move of all of a bucket's files, with fresh numbers for the room left in each bucket. */
+	async function openMoveSpaceBucket(bucket: StorageBucket) {
+		if (!spaceId) return;
+		const sid = spaceId;
+		movingSpaceBucketId = bucket.id;
+		try {
+			const [files, bucketList] = await Promise.all([getSpaceAttachments(sid, bucket.id), getSpaceBuckets(sid)]);
+			spaceBuckets = bucketList;
+			storageTransfers.nameBuckets(bucketList);
+			if (files.length === 0) {
+				toast(`"${bucket.name}" has no files.`, "info");
+				return;
+			}
+			spaceMoveSourceId = bucket.id;
+			spaceMoveFiles = files;
+			spaceMoveFilter = {};
+			spaceMoveOpen = true;
+		} catch (err) {
+			toast(getApiError(err, "Failed to load the bucket's files"), "error");
+		} finally {
+			movingSpaceBucketId = null;
+		}
+	}
+
+	function onSpaceMoveStarted() {
+		spacePicker.picked.clear();
+		// "Make … active" may have changed the active bucket.
+		void loadSpaceBuckets();
+	}
+
+	// The transfer under way, if any, shows in Storage and Attachments: loaded on opening one (only who
+	// started it gets its events, so other admins see it this way), then kept fresh.
+	$effect(() => {
+		if (open && canManageBuckets && spaceId && (activeSection === "storage" || activeSection === "attachments")) {
+			return storageTransfers.watch(spaceId);
+		}
+	});
+
+	// When one of the space's transfers ends, files have moved: reload what the open section shows.
+	$effect(() =>
+		storageTransfers.onEnd((t) => {
+			if (!open || t.owner_id !== spaceId) return;
+			if (activeSection === "storage") void loadSpaceBuckets();
+			else if (activeSection === "attachments") {
+				void loadSpaceAttachments();
+				void loadSpaceBuckets();
+			}
+		}),
+	);
 
 	async function handleDeleteSpaceAttachment(att: SpaceAttachment) {
 		if (!spaceId) return;
@@ -694,9 +804,10 @@
 		);
 	}
 
+	// Load the attachments on opening the section, and again for each location picked
 	$effect(() => {
 		if (activeSection === "attachments" && spaceId) {
-			void loadSpaceAttachments();
+			void loadSpaceAttachments(spaceAttachmentsLocation);
 		}
 	});
 
@@ -782,8 +893,9 @@
 					access_key_id: sbAccessKey.trim(),
 					secret_access_key: sbSecretKey.trim(),
 					use_path_style: sbUsePathStyle,
-					max_bytes: !editingSpaceBucket && maxMB > 0 ? Math.round(maxMB * 1024 * 1024) : undefined,
-					upload_limit_bytes: !editingSpaceBucket && uploadMB > 0 ? Math.round(uploadMB * 1024 * 1024) : undefined,
+					// Sent on an edit too: null removes a limit.
+					max_bytes: maxMB > 0 ? Math.round(maxMB * 1024 * 1024) : null,
+					upload_limit_bytes: uploadMB > 0 ? Math.round(uploadMB * 1024 * 1024) : null,
 				};
 				if (editingSpaceBucket) {
 					await updateSpaceBucket(sid, editingSpaceBucket.id, payload);
@@ -815,9 +927,28 @@
 		const sid = spaceId;
 		const b = spaceBuckets.find((x) => x.id === id);
 		await confirmAction(`Delete bucket "${b?.name}"?`, "Delete", async () => {
-			await deleteSpaceBucket(sid, id);
-			await loadSpaceBuckets();
+			try {
+				await deleteSpaceBucket(sid, id);
+			} catch (err) {
+				// Deleting it would break its files: offer to move them or delete them with it.
+				const files = bucketFilesCount(err);
+				if (files === null || !b) throw err;
+				spaceBucketFilesRequest = { bucket: b, files };
+				return;
+			}
+			await afterSpaceBucketDeleted(id);
 		});
+	}
+
+	async function deleteSpaceBucketWithFiles(bucket: StorageBucket) {
+		if (!spaceId) return;
+		await deleteSpaceBucket(spaceId, bucket.id, true);
+		await afterSpaceBucketDeleted(bucket.id);
+	}
+
+	async function afterSpaceBucketDeleted(id: string) {
+		if (spaceAttachmentsLocation === id) setSpaceAttachmentsLocation("all");
+		await loadSpaceBuckets();
 	}
 
 	async function handleToggleSpaceBucket(b: StorageBucket) {
@@ -1820,6 +1951,16 @@
 							{/if}
 						{:else if activeSection === "storage"}
 							{#if canManageBuckets}
+								{#if spaceTransfer}
+									<StorageTransferCard
+										transfer={spaceTransfer}
+										source={spaceStorageLabel(spaceTransfer.source_bucket_id)}
+										target={spaceStorageLabel(spaceTransfer.target_bucket_id)}
+										startedBy={spaceTransfer.started_by === $currentUser?.id
+											? null
+											: inviteCreator(spaceTransfer.started_by)}
+									/>
+								{/if}
 								<p class="mb-4 text-xs text-zinc-500">
 									Connect an S3-compatible bucket for this server's storage. When a bucket is active, uploads go to your
 									bucket.
@@ -1973,8 +2114,7 @@
 													step="1"
 													bind:value={sbMaxBytesMB}
 													placeholder="No limit"
-													disabled={!!editingSpaceBucket}
-													class="h-9 w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 text-sm text-white placeholder-zinc-500 outline-none focus:border-stone-500 disabled:cursor-not-allowed disabled:opacity-50"
+													class="h-9 w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 text-sm text-white placeholder-zinc-500 outline-none focus:border-stone-500"
 												/>
 											</div>
 											<div>
@@ -1988,19 +2128,14 @@
 													step="1"
 													bind:value={sbUploadLimitMB}
 													placeholder="No limit"
-													disabled={!!editingSpaceBucket}
-													class="h-9 w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 text-sm text-white placeholder-zinc-500 outline-none focus:border-stone-500 disabled:cursor-not-allowed disabled:opacity-50"
+													class="h-9 w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 text-sm text-white placeholder-zinc-500 outline-none focus:border-stone-500"
 												/>
 											</div>
 										</div>
-										{#if editingSpaceBucket}
-											<p class="text-xxs text-zinc-600">Limits cannot be changed after creation.</p>
-										{:else}
-											<p class="text-xxs text-zinc-600">
-												Leave empty for no limits. Once set, limits cannot be changed — only removed by deleting the
-												bucket.
-											</p>
-										{/if}
+										<p class="text-xxs text-zinc-600">
+											Leave empty to remove limits. When a total limit is set, oldest files are recycled automatically
+											when full.
+										</p>
 										<div class="flex justify-end gap-2 pt-1">
 											<button
 												class="rounded-md px-3 py-1.5 text-sm text-zinc-300 transition-colors hover:bg-zinc-800"
@@ -2116,6 +2251,20 @@
 														{/if}
 													</button>
 													<button
+														class="flex h-8 w-8 items-center justify-center rounded-md text-zinc-500 transition-all hover:bg-zinc-700 hover:text-zinc-200 disabled:opacity-50"
+														title={spaceTransfer ? "Wait for the transfer under way to end" : "Move files…"}
+														onclick={() => openMoveSpaceBucket(bucket)}
+														disabled={movingSpaceBucketId === bucket.id || spaceTransfer !== null}
+													>
+														{#if movingSpaceBucketId === bucket.id}
+															<div
+																class="size-4 animate-spin rounded-full border-2 border-zinc-500 border-t-transparent"
+															></div>
+														{:else}
+															<MoveIcon class="size-4" />
+														{/if}
+													</button>
+													<button
 														class="flex h-8 w-8 items-center justify-center rounded-md text-zinc-500 transition-all hover:bg-zinc-700 hover:text-zinc-200"
 														title="Edit"
 														onclick={() => startEditSpaceBucket(bucket)}
@@ -2184,22 +2333,51 @@
 								</div>
 							{/if}
 						{:else if activeSection === "attachments"}
-							<div class="flex items-center justify-between rounded-lg border border-zinc-800 bg-zinc-800/40 px-4 py-3">
+							{#if spaceTransfer}
+								<StorageTransferCard
+									transfer={spaceTransfer}
+									source={spaceStorageLabel(spaceTransfer.source_bucket_id)}
+									target={spaceStorageLabel(spaceTransfer.target_bucket_id)}
+									startedBy={spaceTransfer.started_by === $currentUser?.id
+										? null
+										: inviteCreator(spaceTransfer.started_by)}
+								/>
+							{/if}
+							<div
+								class="flex items-center justify-between gap-3 rounded-lg border border-zinc-800 bg-zinc-800/40 px-4 py-3"
+							>
 								<div class="text-sm text-zinc-300">
 									<span class="font-semibold text-white">{spaceAttachments.length}</span>
 									file{spaceAttachments.length !== 1 ? "s" : ""}
 									<span class="mx-1 text-zinc-600">&middot;</span>
-									{formatFileSize(spaceStorageUsed)}
+									{formatFileSize(spaceAttachmentsLocation === "all" ? spaceStorageUsed : spaceLocationBytes)}
 								</div>
-								{#if spaceAttachments.length > 0 && canManageAttachments}
-									<button
-										onclick={handleDeleteAllSpaceAttachments}
-										class="flex items-center gap-1.5 rounded-md bg-red-600/20 px-3 py-1.5 text-xs font-semibold text-red-400 transition-colors hover:bg-red-600/30"
-									>
-										<TrashIcon class="size-3.5" />
-										Delete All
-									</button>
-								{/if}
+								<div class="flex items-center gap-2">
+									{#if canManageBuckets && (spaceBuckets.length > 0 || spaceAttachmentsLocation !== "all")}
+										<label class="flex items-center gap-2 text-xs text-zinc-400">
+											Location
+											<select
+												value={spaceAttachmentsLocation}
+												onchange={(e) => setSpaceAttachmentsLocation(e.currentTarget.value)}
+												class="max-w-40 rounded-md border border-zinc-700 bg-zinc-800 px-2 py-1 text-xs text-zinc-200 focus:ring-1 focus:ring-stone-500 focus:outline-none"
+											>
+												<option value="all">All</option>
+												{#each spaceBuckets as b (b.id)}
+													<option value={b.id}>{b.name}</option>
+												{/each}
+											</select>
+										</label>
+									{/if}
+									{#if spaceAttachments.length > 0 && canManageAttachments && spaceAttachmentsLocation === "all"}
+										<button
+											onclick={handleDeleteAllSpaceAttachments}
+											class="flex items-center gap-1.5 rounded-md bg-red-600/20 px-3 py-1.5 text-xs font-semibold text-red-400 transition-colors hover:bg-red-600/30"
+										>
+											<TrashIcon class="size-3.5" />
+											Delete All
+										</button>
+									{/if}
+								</div>
 							</div>
 
 							{#if spaceAttachmentsLoading}
@@ -2211,17 +2389,31 @@
 							{:else if spaceAttachments.length === 0}
 								<div class="flex flex-col items-center justify-center py-16 text-zinc-500">
 									<PaperclipIcon class="mb-3 size-10" />
-									<p class="text-sm">No attachments in this space</p>
+									<p class="text-sm">
+										{spaceAttachmentsLocation === "all" ? "No attachments in this space" : "No files here"}
+									</p>
 								</div>
 							{:else}
 								<div class="space-y-1">
-									{#each spaceAttachments as att (att.id)}
+									{#if spacePicking}
+										<FilePickerBar picker={spacePicker} />
+									{/if}
+									{#each spacePicker.shown as att (att.id)}
 										{@const isImage = att.content_type.startsWith("image/")}
 										{@const isAudio = att.content_type.startsWith("audio/")}
 										<div
 											class="group rounded-lg border border-zinc-800 bg-zinc-800/30 transition-colors hover:bg-zinc-800/50"
 										>
 											<div class="flex items-center gap-3 px-3 py-2.5">
+												{#if spacePicking}
+													<input
+														type="checkbox"
+														checked={spacePicker.picked.has(att.id)}
+														onchange={() => spacePicker.toggle(att.id)}
+														aria-label="Select {att.filename}"
+														class="size-4 shrink-0 rounded border-zinc-600 bg-zinc-800 accent-stone-500"
+													/>
+												{/if}
 												{#if isImage}
 													<img
 														src="{attachmentHost}{att.url ?? `/attachments/${att.id}`}"
@@ -2296,11 +2488,66 @@
 							{/if}
 						{/if}
 					</div>
+
+					<!-- Move bar (appears while files of a bucket are picked) -->
+					{#if activeSection === "attachments" && spacePicking && spacePicker.pickedFiles.length > 0}
+						{@const pickedCount = spacePicker.pickedFiles.length}
+						{@const tooMany = (spacePicker.filter.attachment_ids?.length ?? 0) > MAX_PICKED_FILES}
+						<div
+							transition:slide={{ duration: 200 }}
+							class="flex shrink-0 items-center justify-between gap-4 border-t border-zinc-800 bg-zinc-900/80 px-6 py-3"
+						>
+							<p class="min-w-0 truncate text-sm text-zinc-400">
+								{#if spaceTransfer}
+									Wait for the transfer under way to end.
+								{:else if tooMany}
+									Pick {MAX_PICKED_FILES} files at most, or Select all.
+								{:else}
+									{countFiles(pickedCount)} selected
+								{/if}
+							</p>
+							<div class="flex shrink-0 items-center gap-2">
+								<button
+									onclick={() => spacePicker.picked.clear()}
+									class="rounded-md px-3 py-1.5 text-sm font-medium text-zinc-300 transition-colors hover:text-white"
+								>
+									Clear
+								</button>
+								<button
+									onclick={openMoveSpacePicked}
+									disabled={spaceTransfer !== null || tooMany}
+									class="flex items-center gap-1.5 rounded-md bg-stone-600 px-4 py-1.5 text-sm font-semibold text-white transition-colors hover:bg-stone-500 disabled:cursor-not-allowed disabled:opacity-50"
+								>
+									<MoveIcon class="size-4" />
+									Move {countFiles(pickedCount)} ({formatFileSize(spacePicker.pickedBytes)}) to…
+								</button>
+							</div>
+						</div>
+					{/if}
 				</div>
 			</div>
 		</Dialog.Content>
 	</Dialog.Portal>
 </Dialog.Root>
+
+<!-- Only with a space: without one, the dialog would move the user's files. -->
+{#if spaceId}
+	<MoveFilesDialog
+		bind:open={spaceMoveOpen}
+		{spaceId}
+		choices={spaceStorageChoices}
+		sourceId={spaceMoveSourceId}
+		files={spaceMoveFiles}
+		filter={spaceMoveFilter}
+		onStarted={onSpaceMoveStarted}
+	/>
+{/if}
+<BucketFilesDialog
+	bind:request={spaceBucketFilesRequest}
+	inSpace
+	onMove={(bucket) => openMoveSpaceBucket(bucket)}
+	onDelete={deleteSpaceBucketWithFiles}
+/>
 
 <ImageCropModal
 	bind:open={showSpaceIconCrop}

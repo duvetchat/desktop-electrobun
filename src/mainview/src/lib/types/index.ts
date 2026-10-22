@@ -815,6 +815,71 @@ export interface DMMessagePinUpdateEvent {
 	pinned_at: string | null;
 }
 
+/** Where a storage transfer is (StorageTransfer's `status`). */
+export const StorageTransferStatus = {
+	Queued: 0,
+	Moving: 1,
+	Done: 2,
+	/** Stopped on an error: what it didn't move stays in the source. */
+	Failed: 3,
+	/** Stopped by a person: what it moved stays in the target. */
+	Cancelled: 4,
+} as const;
+
+export type StorageTransferStatus = (typeof StorageTransferStatus)[keyof typeof StorageTransferStatus];
+
+/** Where one of a transfer's files is (StorageTransferFile's `status`). */
+export const StorageTransferFileStatus = {
+	Pending: 0,
+	Copying: 1,
+	Moved: 2,
+	/** Left where it was: deleted, moved by something else, or too large for the target. */
+	Skipped: 3,
+	Failed: 4,
+} as const;
+
+export type StorageTransferFileStatus = (typeof StorageTransferFileStatus)[keyof typeof StorageTransferFileStatus];
+
+/** A move of a user's or a space's files from one of its storages to another, also the data of
+ * STORAGE_TRANSFER_UPDATE. A null bucket is the user's default storage. */
+export interface StorageTransfer {
+	id: string;
+	/** The user or the space whose files move. */
+	owner_id: string;
+	/** The user who started it, the only one who gets its events. */
+	started_by: string;
+	source_bucket_id: string | null;
+	target_bucket_id: string | null;
+	/** The originals stay in the source: asked for, or because the API couldn't tell whether source and target are one bucket. */
+	keep_source: boolean;
+	/** Source and target are one bucket under two names: only the rows change. */
+	same_bucket: boolean;
+	status: StorageTransferStatus;
+	/** Why it failed (`target full`, `source unreachable: …`, …); null otherwise. */
+	error: string | null;
+	total_files: number;
+	total_bytes: number;
+	moved_files: number;
+	moved_bytes: number;
+	/** Deleted meanwhile, moved by something else, or too large for the target. */
+	skipped_files: number;
+	failed_files: number;
+	created_at: string;
+	started_at: string | null;
+	finished_at: string | null;
+	updated_at: string;
+}
+
+/** One of a transfer's files (GET …/storage/transfers/{id}/files). */
+export interface StorageTransferFile {
+	attachment_id: string;
+	filename: string;
+	size_bytes: number;
+	status: StorageTransferFileStatus;
+	/** Why it was skipped or failed; null otherwise. */
+	error: string | null;
+}
+
 export type GatewayEventPayload =
 	| { type: "READY"; data: GatewayReadyData }
 	| { type: "SPACE_CREATE"; data: GatewaySpaceCreatePayload }
@@ -878,7 +943,8 @@ export type GatewayEventPayload =
 	| { type: "CALL_ACCEPTED"; data: CallAcceptedEvent }
 	| { type: "CALL_DECLINED"; data: CallDeclinedEvent }
 	| { type: "CALL_ENDED"; data: CallEndedEvent }
-	| { type: "TEAM_INVITE_CREATE"; data: TeamInviteCreateEvent };
+	| { type: "TEAM_INVITE_CREATE"; data: TeamInviteCreateEvent }
+	| { type: "STORAGE_TRANSFER_UPDATE"; data: StorageTransfer };
 
 export interface GatewayEvent {
 	op: number;
