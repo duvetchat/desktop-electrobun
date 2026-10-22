@@ -301,9 +301,22 @@ function highlightCode(code: string, lang: string): string {
 	}
 }
 
+// The renderer marks the code it takes out with \x00 placeholders, so the text it renders has no \x00 of its
+// own: one would pass for a placeholder and put another code's HTML where it stands, or "undefined".
+const withoutNul = (text: string) => text.replaceAll("\x00", "");
+
 export function renderMarkdown(
 	input: string,
 	large = false,
+	mentionMap?: Record<string, string>,
+	customEmojiMap?: CustomEmojiMap,
+): string {
+	return render(withoutNul(input), large, mentionMap, customEmojiMap);
+}
+
+function render(
+	input: string,
+	large: boolean,
 	mentionMap?: Record<string, string>,
 	customEmojiMap?: CustomEmojiMap,
 ): string {
@@ -400,7 +413,7 @@ export function renderMarkdownLine(
 	customEmojiMap?: CustomEmojiMap,
 ): string {
 	const codes: string[] = [];
-	const line = input
+	const line = withoutNul(input)
 		.replace(/```[\w+#-]*\n?([\s\S]*?)```/g, (_, code: string) => {
 			codes.push(code.trim().replace(/\s+/g, " "));
 			return `\x00P${codes.length - 1}\x00`;
@@ -408,7 +421,7 @@ export function renderMarkdownLine(
 		.split("\n")
 		.map((l) => l.replace(/^(?:#{1,3} |-# |>>> |> |\s*[-*]\s+|\s*\d+[.)]\s+)/, ""))
 		.join(" ");
-	return renderMarkdown(line, false, mentionMap, customEmojiMap).replace(
+	return render(line, false, mentionMap, customEmojiMap).replace(
 		/\x00P(\d+)\x00/g,
 		(_, i) => `<code class="msg-inline-code">${escapeHtml(codes[+i])}</code>`,
 	);

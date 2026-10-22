@@ -3,6 +3,7 @@
 	import { logIn } from "$lib/api/auth";
 	import { userSession } from "$lib/stores.svelte";
 	import { route } from "$lib/common/common";
+	import { localUrl } from "$lib/urls";
 
 	let showPassword = $state(false);
 	let email = $state("");
@@ -16,8 +17,9 @@
 		try {
 			const result = await logIn({ email, password });
 			userSession.token = result.token;
+			// Only to a path of the app (localUrl): another site, or javascript:, would leave it or run in it.
 			const redirect = new URLSearchParams(window.location.search).get("redirect");
-			window.location.href = redirect || route("/app.html");
+			window.location.href = localUrl(redirect, window.location.href) ?? route("/app.html");
 		} catch (err) {
 			errorMessage = err instanceof Error ? err.message : "We couldn't sign you in. Check your details and try again.";
 		} finally {
