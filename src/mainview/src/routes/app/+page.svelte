@@ -510,8 +510,9 @@
 	</div>
 {/if}
 
-<!-- Global VoiceChat: mounted outside all navigation so audio never cuts -->
-{#if $activeVoiceRoomId && (globalVoiceRoom || isCallVoice)}
+<!-- Global VoiceChat: mounted outside all navigation so audio never cuts. It stays while a new gateway session's
+     spaces load, which have no rooms until then, and joins its room again; it goes if the room isn't among them. -->
+{#if $activeVoiceRoomId && (globalVoiceRoom || isCallVoice || !$allSpacesReady)}
 	{#key $activeVoiceRoomId}
 		<div class="hidden" aria-hidden="true">
 			<VoiceChat channelId={$activeVoiceRoomId} />
