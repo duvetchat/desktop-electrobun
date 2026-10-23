@@ -89,11 +89,19 @@ export interface MessageReference {
 	fail_if_not_exists?: boolean;
 }
 
+/** What a new message says about the mentions it makes beyond its text. */
+export interface AllowedMentions {
+	/** Whether a reply mentions the author of the message it replies to. Without allowed_mentions it does. */
+	replied_user: boolean;
+}
+
 export interface ReferencedMessage {
 	type: number | null;
 	message_id: string | null;
 	room_id: string | null;
 	space_id: string | null;
+	/** Whether the reply mentions the author of the message it replies to; it stays once that message is deleted. */
+	mention_author?: boolean;
 	content?: string | null;
 	author_id?: string;
 	author_name?: string;
@@ -1087,6 +1095,13 @@ export function messageText(message: Pick<Message, "flags" | "content" | "compon
 	};
 	walk(message.components);
 	return texts.join("\n");
+}
+
+/** Whether a message is a reply that mentions userId, the author of the message it replies to: as a reply does unless
+ * it's sent with allowed_mentions.replied_user false. Its text's mentions are messageText's. */
+export function mentionsByReply(message: Pick<Message, "referenced_message">, userId: string): boolean {
+	const ref = message.referenced_message;
+	return !!ref?.mention_author && ref.author_id === userId;
 }
 
 export function gatewaySpaceToGuild(space: GatewaySpace): Guild {

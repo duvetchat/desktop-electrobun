@@ -200,7 +200,13 @@ function addMembersToSpace(spaceId: string, rows: SpaceMemberWithUser[]) {
 /** A reply's reference once the message it quotes is deleted: only the reference itself stays,
  * as the API sends it from then on, and the reply shows the original as deleted. */
 function deletedReference(ref: ReferencedMessage): ReferencedMessage {
-	return { type: ref.type, message_id: ref.message_id, room_id: ref.room_id, space_id: ref.space_id };
+	return {
+		type: ref.type,
+		message_id: ref.message_id,
+		room_id: ref.room_id,
+		space_id: ref.space_id,
+		mention_author: ref.mention_author,
+	};
 }
 
 /** Someone typing (TYPING, DM_TYPING) or recording a voice message (RECORDING, DM_RECORDING) in a room or a

@@ -35,7 +35,7 @@
 		type DirectMessage,
 	} from "$lib/api/conversations";
 	import type { Friend } from "$lib/api/friends";
-	import { MessageType, type Message, type MessageReference } from "$lib/types";
+	import { MessageType, type AllowedMentions, type Message, type MessageReference } from "$lib/types";
 	import { toast } from "$lib/stores/toast.svelte";
 	import { getApiError } from "$lib/api/api";
 	import { MessageSquare, Phone, UserPlus, Users } from "@lucide/svelte";
@@ -307,6 +307,7 @@
 		ref: MessageReference | undefined,
 		files?: File[],
 		stickerAttachmentId?: string,
+		allowedMentions?: AllowedMentions,
 	) {
 		const user = get(currentUser);
 		if (!user) return;
@@ -348,7 +349,16 @@
 			sticker_attachment_id: stickerAttachmentId ?? null,
 		};
 		dmMessages.update((all) => ({ ...all, [conversation.id]: [...(all[conversation.id] ?? []), pending] }));
-		const real = await sendDirectMessage(conversation.id, content, nonce, ref, files, undefined, stickerAttachmentId);
+		const real = await sendDirectMessage(
+			conversation.id,
+			content,
+			nonce,
+			ref,
+			files,
+			undefined,
+			stickerAttachmentId,
+			allowedMentions,
+		);
 		dmMessages.update((all) => {
 			const existing = all[conversation.id] ?? [];
 			if (!existing.some((m) => m.id === nonce)) return all;
