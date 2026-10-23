@@ -1,4 +1,26 @@
-import { CommandOptionType, type ApplicationCommand, type CommandOption } from "$lib/types";
+import { CommandOptionType, type ApplicationCommand, type CommandOption, type SpaceCommands } from "$lib/types";
+
+/** The space's commands the "/" menu offers for what follows the slash: those whose name starts with it, in order. */
+export function matchingCommands(list: SpaceCommands, query: string): ApplicationCommand[] {
+	const prefix = query.toLowerCase();
+	return list.commands.filter((c) => c.name.startsWith(prefix));
+}
+
+/**
+ * What Enter picks for a command's name typed before the space's commands came: once they do, the first that
+ * matches, as the menu would have offered it, or null when none does or they don't come, and the text goes as a
+ * message.
+ */
+export async function commandOnceListed(
+	list: Promise<SpaceCommands>,
+	query: string,
+): Promise<ApplicationCommand | null> {
+	try {
+		return matchingCommands(await list, query)[0] ?? null;
+	} catch {
+		return null; // the menu, which asked for the list, logs why it failed
+	}
+}
 
 /** A command option's field: its text, a choice's value, a member's, role's or room's ID, or a switch's state. */
 export type FieldValue = string | number | boolean;
@@ -43,15 +65,16 @@ function check(o: CommandOption, v: FieldValue): { value: FieldValue } | { probl
 /**
  * The options a use of the command sends from its fields, or the first rule a field breaks, as the API checks
  * them: the required ones given (a switch is false until it's turned on), a text's length in characters, and a
- * number's kind and bounds. An empty field gives nothing.
+ * number's kind and bounds. An empty field gives nothing. The fields are a map by option name: an option may be
+ * named constructor or __proto__, which a plain object would read from its prototype.
  */
 export function usedOptions(
 	command: ApplicationCommand,
-	fields: Record<string, FieldValue | undefined>,
+	fields: ReadonlyMap<string, FieldValue>,
 ): { options: UsedOption[] } | { problem: string } {
 	const options: UsedOption[] = [];
 	for (const o of command.options) {
-		const v = fields[o.name] ?? (o.type === CommandOptionType.Boolean && o.required ? false : undefined);
+		const v = fields.get(o.name) ?? (o.type === CommandOptionType.Boolean && o.required ? false : undefined);
 		// An empty text field gives nothing, but a choice whose value is "" was picked.
 		if (v === undefined || (v === "" && !o.choices?.length)) {
 			if (o.required) return { problem: `${o.name} is required` };
