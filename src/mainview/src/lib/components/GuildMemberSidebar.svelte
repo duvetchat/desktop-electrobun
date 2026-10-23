@@ -90,6 +90,7 @@
 			badges: u.badges ?? 0,
 			is_bot: u.is_bot ?? false,
 			is_owner: u.id === sp.owner_id,
+			bio: u.custom ?? "",
 			roles: (sp.member_roles[u.id] ?? [])
 				.map((rid) => sp.roles.find((r) => r.id === rid))
 				.filter(Boolean)

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onDestroy, onMount } from "svelte";
+	import { onDestroy, onMount, untrack } from "svelte";
 	import { createWebSocketConnection } from "$lib/api/ws/connection";
 	import { keepSessionFresh } from "$lib/api/api";
 	import ChannelsSidebar from "$lib/components/ChannelsSidebar.svelte";
@@ -292,6 +292,24 @@
 		// Sync using the current (already up-to-date) rootPane
 		syncSidebarToLeaf(rootPane, id);
 	}
+
+	// The spaces there were when they had last all arrived.
+	let knownSpaceIds = new Set<string>();
+	// A space that goes (deleted, or left) stops being the one shown, and takes its tabs with it, as a restore
+	// leaves them out. Not while a new gateway session's spaces are arriving, when the list is short for a moment.
+	$effect(() => {
+		if (!$allSpacesReady) return;
+		const spaces = $gatewaySpaces;
+		const ids = new Set(spaces.map((s) => s.id));
+		const gone = [...knownSpaceIds].some((id) => !ids.has(id));
+		knownSpaceIds = ids;
+		if (!gone) return;
+		untrack(() => {
+			if (activeSpaceId && !ids.has(activeSpaceId)) activeSpaceId = null;
+			if (sidebarSpaceId && !ids.has(sidebarSpaceId)) sidebarSpaceId = null;
+			if (hasRestoredRooms) handlePaneUpdate(filterPaneTree(rootPane, spaces) ?? makeLeaf());
+		});
+	});
 
 	function handleGuildSelect(id: string) {
 		activeSpaceId = id;

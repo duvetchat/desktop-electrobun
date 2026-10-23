@@ -17,6 +17,8 @@ export interface ConversationMember {
 		alias: string | null;
 		avatar: string | null;
 		banner: string | null;
+		/** The bio. */
+		custom?: string;
 		badges?: number;
 		is_bot?: boolean;
 	};

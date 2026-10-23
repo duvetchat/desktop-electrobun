@@ -62,6 +62,7 @@
 		deleteSpaceAttachment,
 		deleteAllSpaceAttachments,
 		updateSpace,
+		deleteSpace,
 		type SpaceAttachment,
 	} from "$lib/api/spaces";
 	import { getHostURL, getAvatarURL } from "$lib/common/common";
@@ -170,6 +171,42 @@
 			toast(getApiError(e, "Failed to update"), "error");
 		} finally {
 			ovSaving = false;
+		}
+	}
+
+	// ── deleting the space (its owner alone, after typing its name) ──
+	const isOwner = $derived(!!$currentUser && !!space && $currentUser.id === space.owner_id);
+	let confirmingDelete = $state(false);
+	let deleteConfirm = $state("");
+	let deletingSpace = $state(false);
+	let deleteError = $state<string | null>(null);
+	const deleteNameMatches = $derived(!!space && deleteConfirm.trim() === space.name.trim());
+
+	// Each opening, and each space, starts it over.
+	$effect(() => {
+		if (open && spaceId) {
+			confirmingDelete = false;
+			deleteConfirm = "";
+			deleteError = null;
+		}
+	});
+
+	async function handleDeleteSpace() {
+		if (!spaceId || !space || !deleteNameMatches || deletingSpace) return;
+		const id = spaceId;
+		const name = space.name;
+		deletingSpace = true;
+		deleteError = null;
+		try {
+			await deleteSpace(id);
+			open = false;
+			// SPACE_DELETE follows; the space goes at once, and with it its panes and its voice room.
+			gatewaySpaces.update((spaces) => spaces.filter((s) => s.id !== id));
+			toast(`${name} was deleted`, "success");
+		} catch (e) {
+			deleteError = getApiError(e, "Failed to delete the space");
+		} finally {
+			deletingSpace = false;
 		}
 	}
 
@@ -1333,6 +1370,63 @@
 									>
 										{ovSaving ? "Saving..." : "Save Changes"}
 									</button>
+								{/if}
+
+								<!-- Delete: the owner's alone, confirmed by typing the space's name -->
+								{#if isOwner && space}
+									<div class="mt-8 rounded-lg border border-red-900/60 bg-red-950/20 p-4">
+										<h3 class="text-sm font-semibold text-red-300">Delete Space</h3>
+										<p class="mt-1 text-xs text-zinc-400">
+											It goes for everyone in it, with its rooms and messages. This can't be undone.
+										</p>
+										{#if !confirmingDelete}
+											<button
+												onclick={() => (confirmingDelete = true)}
+												class="mt-3 rounded-md bg-red-600 px-3 py-1.5 text-sm font-semibold text-white transition-colors hover:bg-red-500"
+											>
+												Delete Space
+											</button>
+										{:else}
+											<label class="mt-3 block space-y-1.5">
+												<span class="text-xs text-zinc-300">
+													Type <strong class="font-semibold text-zinc-100">{space.name}</strong> to delete it.
+												</span>
+												<input
+													type="text"
+													bind:value={deleteConfirm}
+													placeholder={space.name}
+													disabled={deletingSpace}
+													onkeydown={(e) => {
+														if (e.key === "Enter") void handleDeleteSpace();
+													}}
+													class="h-10 w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 text-sm text-zinc-100 outline-none focus:ring-1 focus:ring-red-500 disabled:opacity-50"
+												/>
+											</label>
+											{#if deleteError}
+												<p class="mt-2 text-sm text-red-400">{deleteError}</p>
+											{/if}
+											<div class="mt-3 flex gap-2">
+												<button
+													onclick={handleDeleteSpace}
+													disabled={!deleteNameMatches || deletingSpace}
+													class="rounded-md bg-red-600 px-3 py-1.5 text-sm font-semibold text-white transition-colors hover:bg-red-500 disabled:cursor-not-allowed disabled:opacity-50"
+												>
+													{deletingSpace ? "Deleting…" : "Delete Space"}
+												</button>
+												<button
+													onclick={() => {
+														confirmingDelete = false;
+														deleteConfirm = "";
+														deleteError = null;
+													}}
+													disabled={deletingSpace}
+													class="rounded-md px-3 py-1.5 text-sm font-medium text-zinc-300 transition-colors hover:text-white disabled:opacity-50"
+												>
+													Cancel
+												</button>
+											</div>
+										{/if}
+									</div>
 								{/if}
 							</div>
 						{:else if activeSection === "roles"}
