@@ -6,6 +6,8 @@ export interface MaximizeParams {
 }
 
 export interface ActivityPayload {
+	// 0 (or none) playing, 2 listening.
+	type?: number;
 	name: string;
 	details?: string;
 	state?: string;
@@ -26,6 +28,7 @@ export type AppRPCSchema = {
 			minimizeWindow: void;
 			maximizeWindow: MaximizeParams;
 			openExternal: { url: string };
+			setSpotifyActivity: { enabled: boolean };
 		};
 	};
 	webview: {
@@ -42,6 +45,7 @@ export type AppRPCClient = {
 		minimizeWindow: () => void;
 		maximizeWindow: (params: MaximizeParams) => void;
 		openExternal: (params: { url: string }) => void;
+		setSpotifyActivity: (params: { enabled: boolean }) => void;
 	};
 	on: {
 		activityUpdate: (handler: (data: ActivityPayload[] | null) => void) => void;

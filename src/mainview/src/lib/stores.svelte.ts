@@ -124,6 +124,8 @@ export function dropEphemeral(roomId: string, messageId: string) {
 export const speakingUsers = writable<SvelteSet<string>>(new SvelteSet());
 export const userAmplitudes = writable<Record<string, number>>({});
 export interface UserActivity {
+	/** 0 (or none) playing, 2 listening: Spotify's, as the desktop app shares it (lib/activity.ts). */
+	type?: number;
 	name: string;
 	details?: string;
 	state?: string;
@@ -266,6 +268,12 @@ noiseSuppression.subscribe((v) => {
 export const voiceFaces = writable<boolean>(safeStorageNs?.getItem("duvet_voice_faces") === "true");
 voiceFaces.subscribe((v) => {
 	safeStorageNs?.setItem("duvet_voice_faces", String(v));
+});
+
+/** The desktop app shares what Spotify plays on this computer as the user's activity; on unless turned off. */
+export const shareSpotify = writable<boolean>(safeStorageNs?.getItem("duvet_share_spotify") !== "false");
+shareSpotify.subscribe((v) => {
+	safeStorageNs?.setItem("duvet_share_spotify", String(v));
 });
 
 let initialMicId = "";

@@ -23,6 +23,7 @@
 		Globe as GlobeIcon,
 		Lock as LockIcon,
 		Palette as PaletteIcon,
+		Activity as ActivityIcon,
 		ArrowRightLeft as MoveIcon,
 	} from "@lucide/svelte";
 	import { Dialog } from "bits-ui";
@@ -80,7 +81,8 @@
 		type TeamMember,
 		type Application,
 	} from "$lib/api/developer";
-	import { pendingTeamInvites, myBuckets, voiceFaces } from "$lib/stores.svelte";
+	import { pendingTeamInvites, myBuckets, voiceFaces, shareSpotify } from "$lib/stores.svelte";
+	import { isElectrobunWindow } from "$lib/electrobun-rpc";
 	import StorageTransferCard from "$lib/components/StorageTransferCard.svelte";
 	import MoveFilesDialog from "$lib/components/MoveFilesDialog.svelte";
 	import BucketFilesDialog from "$lib/components/BucketFilesDialog.svelte";
@@ -104,7 +106,9 @@
 		open?: boolean;
 	} = $props();
 
-	type Section = "account" | "security" | "audio" | "appearance" | "attachments" | "buckets" | "developer";
+	type Section = "account" | "security" | "audio" | "appearance" | "activity" | "attachments" | "buckets" | "developer";
+	// Only the desktop app reads what this computer plays.
+	const desktopApp = isElectrobunWindow();
 	let activeSection = $state<Section>("account");
 
 	// Attachments state
@@ -1152,6 +1156,16 @@
 							<PaletteIcon class="size-4 shrink-0" />
 							Appearance
 						</button>
+						{#if desktopApp}
+							<button
+								class="flex items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-sm font-medium transition-colors
+									{activeSection === 'activity' ? 'bg-zinc-800 text-white' : 'text-zinc-400 hover:bg-zinc-800/60 hover:text-zinc-200'}"
+								onclick={() => (activeSection = "activity")}
+							>
+								<ActivityIcon class="size-4 shrink-0" />
+								Activity Privacy
+							</button>
+						{/if}
 						<button
 							class="flex items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-sm font-medium transition-colors
 								{activeSection === 'buckets' ? 'bg-zinc-800 text-white' : 'text-zinc-400 hover:bg-zinc-800/60 hover:text-zinc-200'}"
@@ -1191,7 +1205,8 @@
 					<!-- Header -->
 					<div class="flex shrink-0 items-center justify-between border-b border-zinc-800 px-6 py-4">
 						<h2 class="text-base font-semibold text-white">
-							{#if activeSection === "account"}My Account{:else if activeSection === "security"}Security{:else if activeSection === "audio"}Audio{:else if activeSection === "appearance"}Appearance{:else if activeSection === "attachments"}Attachments{:else if activeSection === "buckets"}S3
+							{#if activeSection === "account"}My Account{:else if activeSection === "security"}Security{:else if activeSection === "audio"}Audio{:else if activeSection === "appearance"}Appearance{:else if activeSection === "activity"}Activity
+								Privacy{:else if activeSection === "attachments"}Attachments{:else if activeSection === "buckets"}S3
 								Buckets{:else if activeSection === "developer"}Developer{/if}
 						</h2>
 						<Dialog.Close
@@ -1473,6 +1488,36 @@
 									>
 										<span
 											class="absolute top-0.5 left-0.5 size-4 rounded-full bg-white transition-transform {$voiceFaces
+												? 'translate-x-4'
+												: ''}"
+										></span>
+									</button>
+								</div>
+							</div>
+						{:else if activeSection === "activity"}
+							<div class="rounded-lg border border-zinc-800 bg-zinc-800/40 px-4 py-4">
+								<div class="flex items-center justify-between gap-4">
+									<div>
+										<p class="text-xs font-semibold tracking-wide text-zinc-400 uppercase">
+											Share what I listen to on Spotify
+										</p>
+										<p class="mt-1 text-xs text-zinc-500">
+											While Spotify plays on this computer, the people in your spaces see the song, its artist and how
+											far along it is. Saved on this device.
+										</p>
+									</div>
+									<button
+										type="button"
+										role="switch"
+										aria-checked={$shareSpotify}
+										aria-label="Share what I listen to on Spotify"
+										onclick={() => shareSpotify.update((v) => !v)}
+										class="relative h-5 w-9 shrink-0 rounded-full transition-colors {$shareSpotify
+											? 'bg-indigo-500'
+											: 'bg-zinc-600'}"
+									>
+										<span
+											class="absolute top-0.5 left-0.5 size-4 rounded-full bg-white transition-transform {$shareSpotify
 												? 'translate-x-4'
 												: ''}"
 										></span>

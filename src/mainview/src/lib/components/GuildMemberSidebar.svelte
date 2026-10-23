@@ -2,6 +2,7 @@
 	import { Crown as CrownSimpleIcon, Mic as MicIcon } from "@lucide/svelte";
 	import type { MemberOnSidebar, Role, GatewaySpace, GatewayMember } from "$lib/types";
 	import { currentUser, gatewaySpaces, typingUsers, userActivities } from "$lib/stores.svelte";
+	import { isSpotify, shownActivities } from "$lib/activity";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
 	import { getSpaceMembers, MEMBERS_PAGE_SIZE, type SpaceMemberWithUser } from "$lib/api/spaces";
 	import { userStatusCache } from "$lib/api/ws/connection";
@@ -342,11 +343,12 @@
 											/>
 										{/if}
 									</span>
-									{#if $userActivities[member.id]?.length}
+									{#if shownActivities($userActivities[member.id]).length}
+										{@const activity = shownActivities($userActivities[member.id])[0]}
 										<p class="truncate text-xs text-zinc-500">
-											{$userActivities[member.id][0].name}{$userActivities[member.id][0].state
-												? ` — ${$userActivities[member.id][0].state}`
-												: ""}
+											{isSpotify(activity)
+												? "Listening to Spotify"
+												: `${activity.name}${activity.state ? ` — ${activity.state}` : ""}`}
 										</p>
 									{/if}
 								</div>
