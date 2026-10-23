@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onDestroy, onMount, untrack } from "svelte";
 	import { SvelteSet } from "svelte/reactivity";
-	import { onWebRTCEvent, sendEventMessage } from "$lib/api/ws/connection";
+	import { gatewayConnection, onWebRTCEvent, sendEventMessage, wantFreshSession } from "$lib/api/ws/connection";
 	import { audioStore } from "$lib/stores/audio.svelte";
 	import { toast } from "$lib/stores/toast.svelte";
 	import { hasPermission, Permission } from "$lib/permissions";
@@ -47,6 +47,9 @@
 	// WebRTC connection, captures the mic, the camera and the screen, and plays everyone's audio. What's seen of
 	// a voice room is VoiceChannelView.
 	let { channelId }: { channelId: string } = $props();
+	// The room or call this one is for. channelId reads activeVoiceRoomId, so it's already the next room (or null)
+	// in the moment before {#key} destroys this one.
+	const ownRoomId = untrack(() => channelId);
 
 	let peerConnection: RTCPeerConnection | null = null;
 	let localAudioStream = $state<MediaStream | null>(null);
@@ -102,6 +105,15 @@
 	let denoiseCleanup: (() => void) | null = null;
 	let rawMicStream: MediaStream | null = null;
 	let isDestroyed = false;
+	// onMount got as far as joining: from then on, each new gateway session (READY) joins again.
+	let joining = false;
+	// The gateway connection the last VOICE_JOIN went out on.
+	let joinedOn: number | null = null;
+	// After this long without a word from the gateway (a sleep, say), a READY leaves voice instead of joining again,
+	// which would open the mic by surprise. A restart for a deploy takes well under it.
+	const REJOIN_WINDOW_MS = 3 * 60_000;
+	// The gateway answers a join it refuses with nothing (its permissions changed while it restarted, say).
+	const JOIN_TIMEOUT_MS = 15_000;
 
 	const myUserId = $derived($currentUser?.id ?? null);
 	const isCall = $derived($activeCall?.conversationId === channelId);
@@ -156,6 +168,15 @@
 	let currentMicId = $state($selectedMicId);
 
 	function handleWebRTCEvent(type: string, data: any) {
+		// A new gateway session (it restarted for a deploy, or this client's ended while it was away) has no voice
+		// connection of this client's: join again on it, with the mic, the camera and the screen as they are.
+		if (type === "READY") {
+			// A join sent on this connection went out after its identify, so it's already in the new session.
+			if (!joining || isDestroyed || $activeVoiceRoomId !== ownRoomId || joinedOn === gatewayConnection()) return;
+			if (joinedOn !== null && data.silent_ms > REJOIN_WINDOW_MS) leaveVoice();
+			else connectWebRTC().catch((err) => console.error("[Voice] Couldn't join again:", err));
+			return;
+		}
 		if (data.room_id !== channelId) return;
 
 		if (type === "VOICE_JOINED") {
@@ -247,6 +268,7 @@
 		if (isDestroyed) return;
 
 		activeVoiceRoomId.set(channelId);
+		joining = true;
 		connectWebRTC().catch((err) => console.error("[Voice] Couldn't connect:", err));
 	});
 
@@ -357,10 +379,10 @@
 
 		const analyser = localAnalyser;
 		const dataArray = new Uint8Array(analyser.frequencyBinCount);
-		const localGen = webrtcGeneration;
 
+		// It meters the mic, not the connection, so a join again keeps it going.
 		const checkLocalLevel = () => {
-			if (isDestroyed || !audioContext || localGen !== webrtcGeneration) {
+			if (isDestroyed || !audioContext) {
 				localMeterRunning = false;
 				return;
 			}
@@ -502,6 +524,13 @@
 	}
 
 	async function connectWebRTC() {
+		// The gateway is down (restarting, or this client is offline), and a VOICE_JOIN sent now would be lost: the
+		// next session's READY joins.
+		if (gatewayConnection() === null) {
+			wantFreshSession();
+			voiceConnectionState.set("new");
+			return;
+		}
 		if (peerConnection) {
 			peerConnection.close();
 		}
@@ -544,9 +573,11 @@
 			const state = pc.connectionState;
 			if (pc !== peerConnection) return;
 			voiceConnectionState.set(state);
-			if (state === "failed" && !isDestroyed) {
-				leaveVoice();
-			}
+			if (state !== "failed" || isDestroyed) return;
+			// With the gateway down too (a restart that lasts), the next session's READY joins again. With it up,
+			// it's this connection that can't get through: leave.
+			if (gatewayConnection() !== null) leaveVoice();
+			else wantFreshSession();
 		};
 
 		pc.onicecandidate = (event) => {
@@ -596,6 +627,12 @@
 		});
 		preferVP8(camera);
 		cameraTransceiver = camera;
+		// Joining again with the camera on: it goes on this connection's transceiver. Queued behind a camera change
+		// under way, which may be turning it on.
+		queueCamera(async () => {
+			const track = localCameraStream?.getVideoTracks().at(0);
+			if (track && cameraTransceiver === camera) await camera.sender.replaceTrack(track);
+		});
 		if (cameraWanted) {
 			cameraWanted = false;
 			queueCamera(startCamera);
@@ -606,14 +643,34 @@
 		await pc.setLocalDescription(offer);
 		if (pc !== peerConnection) return;
 
+		// The socket can have closed meanwhile.
+		const connection = gatewayConnection();
+		if (connection === null) {
+			wantFreshSession();
+			return;
+		}
 		sendEventMessage("VOICE_JOIN", {
 			room_id: channelId,
 			offer: offer,
 			tracks: trackLabels(),
 			video_off: !$incomingVideo,
 		});
+		joinedOn = connection;
 		incomingVideoSent = $incomingVideo;
 		sendVoiceSync(channelId);
+
+		// Unanswered for long, the join leaves rather than wait in "new" with the mic open; with the gateway down by
+		// then, the next session's READY joins again.
+		const generation = webrtcGeneration;
+		setTimeout(() => {
+			if (generation !== webrtcGeneration || isDestroyed || negotiationReady) return;
+			if (gatewayConnection() === null) {
+				wantFreshSession();
+				return;
+			}
+			toast("Couldn't connect to voice", "error");
+			leaveVoice();
+		}, JOIN_TIMEOUT_MS);
 	}
 
 	// Incoming video switched in the camera menu: VOICE_SYNC's video_off tells the gateway, which stops or
@@ -869,9 +926,8 @@
 
 	/** Puts the camera on its transceiver; VOICE_SYNC's camera then tells the gateway to forward it. */
 	async function startCamera() {
-		const transceiver = cameraTransceiver;
 		if (isDestroyed || localCameraStream) return;
-		if (!transceiver) {
+		if (!cameraTransceiver) {
 			cameraWanted = true;
 			return;
 		}
@@ -888,8 +944,10 @@
 			return;
 		}
 		const track = stream.getVideoTracks().at(0);
+		// The connection's transceiver of now: joining again while the camera opened made a new one.
+		const transceiver = cameraTransceiver;
 		// Left, or lost Video, while the camera was opening.
-		if (isDestroyed || transceiver !== cameraTransceiver || !track || !canVideo) {
+		if (isDestroyed || !transceiver || !track || !canVideo) {
 			stopTracks(stream);
 			if (!isDestroyed && !canVideo) videoOffNotice("You can't use video in this room");
 			return;
@@ -931,9 +989,8 @@
 	}
 
 	async function switchCamera(deviceId: string) {
-		const transceiver = cameraTransceiver;
 		const current = localCameraStream;
-		if (isDestroyed || !transceiver || !current) return;
+		if (isDestroyed || !cameraTransceiver || !current) return;
 		let stream: MediaStream;
 		try {
 			stream = await openCamera(deviceId);
@@ -943,7 +1000,9 @@
 			return;
 		}
 		const track = stream.getVideoTracks().at(0);
-		if (isDestroyed || localCameraStream !== current || !track) {
+		// The connection's transceiver of now, as in startCamera.
+		const transceiver = cameraTransceiver;
+		if (isDestroyed || localCameraStream !== current || !track || !transceiver) {
 			stopTracks(stream);
 			return;
 		}
