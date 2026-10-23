@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount } from "svelte";
+	import { SvelteMap } from "svelte/reactivity";
 	import { CircleAlert as AlertIcon, X as XIcon } from "@lucide/svelte";
 	import ComponentSelect from "$lib/components/ComponentSelect.svelte";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
@@ -39,7 +40,9 @@
 		onExit: () => void;
 	} = $props();
 
-	let fields = $state<Record<string, FieldValue | undefined>>({});
+	// By option name, in a map: every plain object already has a constructor and a __proto__, which an
+	// option may be named.
+	const fields = new SvelteMap<string, FieldValue>();
 	let sending = $state(false);
 	// Why the command wasn't sent, or what its interaction answered.
 	let notice = $state<{ text: string; detail: string } | null>(null);
@@ -108,7 +111,7 @@
 	// The select of an option with choices, of an optional boolean (true, false, or not given), or of members,
 	// roles or rooms: a message's, with what's chosen as its default, so that it shows it.
 	function selectOf(o: CommandOption): Component {
-		const v = fields[o.name];
+		const v = fields.get(o.name);
 		const base = { custom_id: o.name, placeholder: o.description, disabled: sending, min_values: 1, max_values: 1 };
 		if (o.type === CommandOptionType.Boolean) {
 			return {
@@ -145,8 +148,8 @@
 
 	// A select's pick: a boolean, a choice's value as the command has it, or the member's, role's or room's ID.
 	function choose(o: CommandOption, picked: string) {
-		if (o.type === CommandOptionType.Boolean) fields[o.name] = picked === "true";
-		else fields[o.name] = o.choices?.find((ch) => String(ch.value) === picked)?.value ?? picked;
+		if (o.type === CommandOptionType.Boolean) fields.set(o.name, picked === "true");
+		else fields.set(o.name, o.choices?.find((ch) => String(ch.value) === picked)?.value ?? picked);
 	}
 
 	const isText = (o: CommandOption) =>
@@ -189,14 +192,14 @@
 				>
 				{#if o.type === CommandOptionType.Boolean && o.required}
 					<!-- A required one always has a value: off until it's turned on -->
-					{@const on = fields[o.name] === true}
+					{@const on = fields.get(o.name) === true}
 					<button
 						type="button"
 						role="switch"
 						aria-checked={on}
 						aria-label={o.name}
 						disabled={sending}
-						onclick={() => (fields[o.name] = !on)}
+						onclick={() => fields.set(o.name, !on)}
 						class="relative h-5 w-9 shrink-0 rounded-full transition-colors disabled:opacity-50 {on
 							? 'bg-indigo-500'
 							: 'bg-zinc-600'}"
@@ -209,8 +212,8 @@
 					</button>
 				{:else if isText(o)}
 					<input
-						value={String(fields[o.name] ?? "")}
-						oninput={(e) => (fields[o.name] = e.currentTarget.value)}
+						value={String(fields.get(o.name) ?? "")}
+						oninput={(e) => fields.set(o.name, e.currentTarget.value)}
 						readonly={sending}
 						placeholder={o.description}
 						aria-label={o.name}

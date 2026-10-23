@@ -15,6 +15,7 @@
 	import StickerPicker from "$lib/components/StickerPicker.svelte";
 	import GifPicker from "$lib/components/GifPicker.svelte";
 	import { searchEmojis, toTwemojiUrl, EMOJI_REGEX, type EmojiEntry } from "$lib/emoji";
+	import { commandOnceListed, matchingCommands } from "$lib/commands";
 	import { escapeHtml } from "$lib/markdown";
 	import { formatDuration } from "$lib/utils/time";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
@@ -226,6 +227,8 @@
 	let commandList = $state<SpaceCommands | null>(null);
 	// The last request for the list: an older one that answers late isn't shown.
 	let commandRequest: Promise<SpaceCommands> | null = null;
+	// Enter on a command's name before the list came waits for it: one Enter at a time.
+	let enterAwaitingList = false;
 	let commandSelectedIdx = $state(0);
 	let commandMenuEl = $state<HTMLDivElement>();
 	// The keyboard's choice stays in view as the arrows move it.
@@ -234,11 +237,9 @@
 	});
 	// The whole message as a command's name: "/" and no space, a phantom line break aside.
 	const COMMAND_TEXT = /^\/(\S*)\n?$/u;
-	const commandSuggestions = $derived.by(() => {
-		const query = commandQuery?.toLowerCase();
-		if (query === undefined || !commandList) return [];
-		return commandList.commands.filter((c) => c.name.startsWith(query));
-	});
+	const commandSuggestions = $derived(
+		commandQuery === null || !commandList ? [] : matchingCommands(commandList, commandQuery),
+	);
 
 	function commandApp(command: ApplicationCommand): SpaceCommandApplication | undefined {
 		return commandList?.applications.find((a) => a.id === command.application_id);
@@ -653,16 +654,23 @@
 		// Send on Enter
 		if (e.key === "Enter" && !e.shiftKey) {
 			e.preventDefault();
-			const raw = getRaw(inputEl).trim();
-			if (!raw && pendingFiles.length === 0) return;
-			const filesToSend = pendingFiles.length > 0 ? [...pendingFiles] : undefined;
-			onSubmit(raw, filesToSend);
-			inputEl.innerHTML = "";
-			isEmpty = true;
-			pendingFiles = [];
-			// What was sent is no draft to undo back to.
-			undoStack = [{ raw: "", cursor: 0 }];
-			undoIndex = 0;
+			const raw = getRaw(inputEl);
+			const request = commandRequest;
+			// A command's name typed before the space's commands came: Enter waits for them, then picks the first
+			// match, as the menu would have, or sends the text when none matches.
+			if (commandQuery !== null && !commandList && request && COMMAND_TEXT.test(raw)) {
+				if (enterAwaitingList) return;
+				enterAwaitingList = true;
+				commandOnceListed(request, commandQuery).then((command) => {
+					enterAwaitingList = false;
+					// Another room's list by now, or other text: that Enter is over.
+					if (commandRequest !== request || getRaw(inputEl) !== raw) return;
+					if (command) pickCommand(command);
+					else sendMessage();
+				});
+				return;
+			}
+			sendMessage();
 			return;
 		}
 
@@ -670,6 +678,20 @@
 		if (e.key === "ArrowUp" && isEmpty && !e.ctrlKey) {
 			onArrowUpWhenEmpty?.();
 		}
+	}
+
+	// Sends what the box holds, with the files picked, and empties it.
+	function sendMessage() {
+		const raw = getRaw(inputEl).trim();
+		if (!raw && pendingFiles.length === 0) return;
+		const filesToSend = pendingFiles.length > 0 ? [...pendingFiles] : undefined;
+		onSubmit(raw, filesToSend);
+		inputEl.innerHTML = "";
+		isEmpty = true;
+		pendingFiles = [];
+		// What was sent is no draft to undo back to.
+		undoStack = [{ raw: "", cursor: 0 }];
+		undoIndex = 0;
 	}
 
 	function getSelectionRange(): { start: number; end: number } {
