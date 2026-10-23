@@ -31,6 +31,7 @@ import {
 	spaceEmojis,
 	spaceStickers,
 	userActivities,
+	shareSpotify,
 	pendingTeamInvites,
 	myBuckets,
 	allSpacesReady,
@@ -59,15 +60,33 @@ export function getStreamURL(): string {
 
 import { audioStore } from "$lib/stores/audio.svelte";
 import { storageTransfers } from "$lib/stores/storage-transfers.svelte";
-import { getElectrobunRpc } from "$lib/electrobun-rpc";
+import { getElectrobunRpc, type ActivityPayload } from "$lib/electrobun-rpc";
 
-// Listen for activity updates from Electrobun IPC (VS Code, etc.)
+// The user's activities as this app's Bun process reports them: the IPC apps' (VS Code, etc.) and Spotify's. The
+// gateway keeps them 2 minutes and shares only a change, so they go again every 45 s, and on each new session.
+let localActivities: ActivityPayload[] | null = null;
+const ACTIVITY_RESEND_MS = 45_000;
+// Set when they couldn't go (no socket), so that an empty list, which isn't resent, still reaches the gateway.
+let activitiesUnsent = false;
+
+function sendActivities() {
+	activitiesUnsent = gatewayConnection() === null;
+	sendEventMessage("ACTIVITY_UPDATE", { activities: localActivities });
+}
+
 getElectrobunRpc()
 	.then((rpc) => {
 		if (!rpc) return;
 		rpc.on.activityUpdate((activities) => {
-			sendEventMessage("ACTIVITY_UPDATE", { activities });
+			const unchanged = !activities?.length && !localActivities?.length;
+			localActivities = activities;
+			if (!unchanged) sendActivities();
 		});
+		setInterval(() => {
+			if (localActivities?.length || activitiesUnsent) sendActivities();
+		}, ACTIVITY_RESEND_MS);
+		// Spotify's reader runs in the Bun process; its setting is kept in this device's storage.
+		shareSpotify.subscribe((enabled) => rpc.send.setSpotifyActivity({ enabled }));
 	})
 	.catch(() => {});
 
@@ -214,6 +233,8 @@ function handleEvent(event: GatewayEvent) {
 			wsSessionToken.set(sessionToken);
 			if (payload.data.ice_servers) iceServers.set(payload.data.ice_servers);
 			voiceStateVersions.clear();
+			// The SPACE_CREATEs bring them again, without those a USER_ACTIVITY_UPDATE missed while away cleared.
+			userActivities.set({});
 			unreadChannels.set(new Set(unread_rooms ?? []));
 			lastReadRooms.set(payload.data.last_read_rooms ?? {});
 			lastMsgRooms.set(payload.data.last_msg_rooms ?? {});
@@ -305,6 +326,8 @@ function handleEvent(event: GatewayEvent) {
 			webrtcListeners.forEach((cb) => {
 				cb(payload.type, { silent_ms: silenceBeforeLast });
 			});
+			// Nor this app's activities, which the gateway may have let expire meanwhile.
+			if (localActivities?.length || activitiesUnsent) sendActivities();
 			break;
 		}
 		case "SPACE_CREATE": {
@@ -623,6 +646,13 @@ function handleEvent(event: GatewayEvent) {
 				userStatusCache.delete(raw.user_id);
 				if (raw.space_id) {
 					userStatusCache.delete(`${raw.user_id}:${raw.space_id}`);
+				} else if (raw.user_id in get(userActivities)) {
+					// Gone offline: the gateway dropped their activities too, which would show here otherwise.
+					userActivities.update((all) => {
+						const next = { ...all };
+						delete next[raw.user_id];
+						return next;
+					});
 				}
 			} else {
 				userStatusCache.set(raw.user_id, raw.status_id);
