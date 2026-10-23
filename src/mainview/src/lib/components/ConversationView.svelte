@@ -131,6 +131,7 @@
 			// A DM's owner_id is just whoever opened it: only a group has an owner.
 			is_owner: conversation.type === 2 && m.user_id === conversation.owner_id,
 			roles: [],
+			bio: m.user?.custom ?? "",
 		})),
 	);
 

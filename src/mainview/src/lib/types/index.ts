@@ -723,6 +723,8 @@ export interface UserUpdateEvent {
 	alias: string | null;
 	avatar: string | null;
 	banner: string | null;
+	/** The bio, "" when there's none. */
+	custom: string;
 	flags: number;
 	badges: number;
 }
@@ -1194,6 +1196,8 @@ export interface MemberOnSidebar {
 	is_bot: boolean;
 	is_owner: boolean;
 	roles: Role[];
+	/** The user's bio (their custom), "" when they have none. */
+	bio: string;
 }
 
 function userStatusToString(statusId: UserStatus): MemberOnSidebar["status"] {
@@ -1222,6 +1226,7 @@ export function gatewaySpaceToMembers(space: GatewaySpace, statusLookup?: Map<st
 				badges: u.badges ?? 0,
 				is_bot: u.is_bot ?? false,
 				is_owner: u.id === space.owner_id,
+				bio: u.custom ?? "",
 				roles: (space.member_roles[u.id] ?? [])
 					.map((roleId) => space.roles.find((r) => r.id === roleId))
 					.filter(Boolean)

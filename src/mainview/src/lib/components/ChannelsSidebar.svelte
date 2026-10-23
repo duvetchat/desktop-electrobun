@@ -79,10 +79,18 @@
 	}
 
 	let showServerSettings = $state(false);
+	// The space the settings were opened for. When it goes (deleted, or left) while they're open, the sidebar
+	// shows the next space: the settings close rather than show that one's.
+	let settingsSpaceId: string | null = null;
 
 	function openServerSettings() {
+		settingsSpaceId = guild.id;
 		showServerSettings = true;
 	}
+
+	$effect(() => {
+		if (showServerSettings && guild.id !== settingsSpaceId) showServerSettings = false;
+	});
 
 	function openCreateChannel() {
 		showCreateModal = true;

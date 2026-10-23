@@ -580,6 +580,8 @@ function handleEvent(event: GatewayEvent) {
 		}
 		case "USER_UPDATE": {
 			const raw = payload.data;
+			// An API from before bios sends no custom: the one shown stays.
+			const bio = raw.custom === undefined ? {} : { custom: raw.custom };
 			const patch: Record<string, any> = {
 				username: raw.username,
 				alias: raw.alias,
@@ -587,6 +589,7 @@ function handleEvent(event: GatewayEvent) {
 				banner: raw.banner,
 				flags: raw.flags,
 				badges: raw.badges,
+				...bio,
 			};
 			currentUser.update((u) => (u?.id === raw.id ? { ...u, ...patch } : u));
 			gatewaySpaces.update((spaces) =>
@@ -638,6 +641,7 @@ function handleEvent(event: GatewayEvent) {
 										alias: raw.alias,
 										avatar: raw.avatar,
 										banner: raw.banner,
+										...bio,
 									},
 								}
 							: m,
