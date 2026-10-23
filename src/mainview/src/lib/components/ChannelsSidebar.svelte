@@ -394,8 +394,10 @@
 				</DropdownMenu.Root>
 			</div>
 			<div class="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto p-2" role="list">
+				<!-- A sticky bar sticks inside the list's padding: -top-2 takes its 8 px back, so the bar meets the list's
+				     top edge and no row shows above it. -->
 				<div
-					class="sticky top-0 z-10 flex h-10 items-center border-b border-stone-800/70 bg-[linear-gradient(180deg,oklch(0.215_0.01_80),oklch(0.2_0.008_80))] px-3 text-[11px] font-semibold tracking-wide text-zinc-500 uppercase select-none"
+					class="sticky -top-2 z-10 flex h-10 items-center border-b border-stone-800/70 bg-[linear-gradient(180deg,oklch(0.215_0.01_80),oklch(0.2_0.008_80))] px-3 text-[11px] font-semibold tracking-wide text-zinc-500 uppercase select-none"
 				>
 					Channels
 				</div>
