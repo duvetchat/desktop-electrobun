@@ -77,6 +77,16 @@ let activeSocket: WebSocket | null = null;
 // Last received sequence number, used for resume on reconnect
 let lastSeq = 0;
 
+// Set by wantFreshSession until a READY comes: identify starts a new session instead of resuming this one.
+let freshSessionWanted = false;
+
+// Counts the connections to the gateway that opened, so what was sent can be matched to the session it reached.
+let connectionCount = 0;
+
+// When the gateway last sent an event or a heartbeat ack, and how long it had gone silent before the latest one.
+let lastHeardAt = 0;
+let silenceBeforeLast = 0;
+
 // Last VOICE_STATE_UPDATE version seen per room and user. Updates can arrive out of order; one
 // that isn't newer than what's shown is dropped.
 const voiceStateVersions = new Map<string, number>();
@@ -136,6 +146,19 @@ export async function sendEventMessage(type: string, data: unknown) {
 	}
 }
 
+/** The number of the open connection to the gateway, or null while there's none and a message sent would be lost.
+ * What's sent on a connection reaches the session its identify started or resumed. */
+export function gatewayConnection(): number | null {
+	return activeSocket?.readyState === WebSocket.OPEN ? connectionCount : null;
+}
+
+/** Makes the next identify start a new session rather than resume this one. VoiceChat asks for one when it has to
+ * join while the gateway is unreachable: it joins on that session's READY, which a resume doesn't send, and a
+ * resume would replay what its earlier connection was sent. */
+export function wantFreshSession() {
+	freshSessionWanted = true;
+}
+
 function addMembersToSpace(spaceId: string, rows: SpaceMemberWithUser[]) {
 	gatewaySpaces.update((spaces) =>
 		spaces.map((s) => {
@@ -185,6 +208,7 @@ function handleEvent(event: GatewayEvent) {
 		case "READY": {
 			const { user, sessionToken, unread_rooms } = payload.data;
 			lastSeq = 0;
+			freshSessionWanted = false;
 			// Per-space statuses are set via SPACE_CREATE member_statuses.
 			currentUser.set(user);
 			wsSessionToken.set(sessionToken);
@@ -252,6 +276,15 @@ function handleEvent(event: GatewayEvent) {
 				conversationsWithCalls.set(new Set());
 				callVoiceStates.set([]);
 			}
+			// The call this client is in is over when the new session doesn't list it: the gateway keeps calls in
+			// memory, so its restart ends them.
+			const ownCall = get(activeCall);
+			if (ownCall && !activeCalls.some((c) => c.conversation_id === ownCall.conversationId)) {
+				if (get(activeVoiceRoomId) === ownCall.conversationId) activeVoiceRoomId.set(null);
+				activeCall.set(null);
+				callVoiceStates.update((states) => states.filter((s) => s.room_id !== ownCall.conversationId));
+				dropVoiceRequests();
+			}
 
 			// Reset spaces so SPACE_CREATE events that follow repopulate them
 			// with fresh data (including current voice_states). Without this,
@@ -267,6 +300,11 @@ function handleEvent(event: GatewayEvent) {
 			if (guildIds.length === 0) {
 				allSpacesReady.set(true);
 			}
+			// A new session has no voice connection of this client's: VoiceChat joins its room or call again, unless
+			// the gateway had been silent for long.
+			webrtcListeners.forEach((cb) => {
+				cb(payload.type, { silent_ms: silenceBeforeLast });
+			});
 			break;
 		}
 		case "SPACE_CREATE": {
@@ -1458,13 +1496,14 @@ export function createWebSocketConnection(): GatewayConnection {
 			const identifyData: Record<string, unknown> = {
 				token: localStorage.getItem("duvet_session_token"),
 			};
-			if (lastSeq > 0) {
+			if (lastSeq > 0 && !freshSessionWanted) {
 				identifyData.last_seq = lastSeq;
 				const gwToken = get(wsSessionToken);
 				if (gwToken) {
 					identifyData.session_token = gwToken;
 				}
 			}
+			connectionCount++;
 			socket.send(JSON.stringify({ type: "identify", data: identifyData }));
 			startHeartbeat(socket);
 		};
@@ -1472,6 +1511,12 @@ export function createWebSocketConnection(): GatewayConnection {
 		socket.onmessage = (rawEvent) => {
 			try {
 				const msg: GatewayEvent = JSON.parse(rawEvent.data);
+				// Not a close-with-reason: a refused identify after a sleep would hide how long it lasted.
+				if (msg.event === "heartbeat_ack" || msg.event === "payload") {
+					const now = Date.now();
+					silenceBeforeLast = lastHeardAt ? now - lastHeardAt : 0;
+					lastHeardAt = now;
+				}
 				if (msg.event === "heartbeat_ack") {
 					onHeartbeatAck();
 					return;
