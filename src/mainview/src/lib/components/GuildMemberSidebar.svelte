@@ -1,6 +1,12 @@
 <script lang="ts">
 	import { Crown as CrownSimpleIcon, Mic as MicIcon } from "@lucide/svelte";
-	import type { MemberOnSidebar, Role, GatewaySpace, GatewayMember } from "$lib/types";
+	import {
+		userStatusToString,
+		type MemberOnSidebar,
+		type Role,
+		type GatewaySpace,
+		type GatewayMember,
+	} from "$lib/types";
 	import { currentUser, gatewaySpaces, typingUsers, userActivities } from "$lib/stores.svelte";
 	import { isSpotify, shownActivities } from "$lib/activity";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
@@ -78,7 +84,7 @@
 		const u = sp.users.find((usr) => usr.id === member.user_id);
 		if (!u) return null;
 		const sid = (sp ? userStatusCache.get(`${u.id}:${sp.id}`) : undefined) ?? userStatusCache.get(u.id) ?? 0;
-		const status: MemberOnSidebar["status"] = sid === 1 ? "online" : "offline";
+		const status = userStatusToString(sid);
 		return {
 			id: u.id,
 			member_id: member.id,

@@ -35,7 +35,13 @@
 		type DirectMessage,
 	} from "$lib/api/conversations";
 	import type { Friend } from "$lib/api/friends";
-	import { MessageType, type AllowedMentions, type Message, type MessageReference } from "$lib/types";
+	import {
+		MessageType,
+		userStatusToString,
+		type AllowedMentions,
+		type Message,
+		type MessageReference,
+	} from "$lib/types";
 	import { toast } from "$lib/stores/toast.svelte";
 	import { getApiError } from "$lib/api/api";
 	import { MessageSquare, Phone, UserPlus, Users } from "@lucide/svelte";
@@ -125,7 +131,7 @@
 			raw_username: m.user?.username ?? m.user_id.slice(0, 8),
 			avatar_url: getAvatarURL(m.user_id, m.user?.avatar),
 			banner_url: getAvatarURL(m.user_id, m.user?.banner),
-			status: (getUserOnlineStatus(m.user_id) === 1 ? "online" : "offline") as "online" | "offline",
+			status: userStatusToString(getUserOnlineStatus(m.user_id)),
 			badges: m.user?.badges ?? 0,
 			is_bot: m.user?.is_bot ?? false,
 			// A DM's owner_id is just whoever opened it: only a group has an owner.

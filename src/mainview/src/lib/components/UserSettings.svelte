@@ -84,6 +84,8 @@
 	} from "$lib/api/developer";
 	import { pendingTeamInvites, myBuckets, voiceFaces, shareSpotify } from "$lib/stores.svelte";
 	import { isElectrobunWindow } from "$lib/electrobun-rpc";
+	import { chosenStatus } from "$lib/status";
+	import { userStatusToString } from "$lib/types";
 	import StorageTransferCard from "$lib/components/StorageTransferCard.svelte";
 	import MoveFilesDialog from "$lib/components/MoveFilesDialog.svelte";
 	import BucketFilesDialog from "$lib/components/BucketFilesDialog.svelte";
@@ -951,7 +953,7 @@
 			pendingBanner === "remove"
 				? null
 				: (pendingBannerPreview ?? ($currentUser ? getAvatarURL($currentUser.id, $currentUser.banner) : null)),
-		status: "online" as const,
+		status: userStatusToString(chosenStatus($currentUser?.status)),
 		badges: $currentUser?.badges ?? 0,
 		is_bot: $currentUser?.is_bot ?? false,
 		is_owner: false,
