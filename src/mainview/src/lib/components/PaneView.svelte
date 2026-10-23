@@ -89,8 +89,15 @@
 	// track handled jump request ids to avoid double-processing
 	let lastHandledJumpId = $state<string | null>(null);
 
+	// A room this pane hasn't fetched yet counts as loading from its first render: the fetch below starts after it,
+	// and a list placed on the messages already in the store would keep that place behind the skeleton (a pane
+	// mounted again for a new gateway session).
 	const isInitialLoading = $derived(
-		!!(node.kind === "leaf" && node.activeChannelId && channelInitialLoading[node.activeChannelId]),
+		!!(
+			node.kind === "leaf" &&
+			node.activeChannelId &&
+			(channelInitialLoading[node.activeChannelId] ?? !loadedChannels.has(node.activeChannelId))
+		),
 	);
 	// Returns true when the channel still has older messages to load.
 	// Must use !== false because undefined means "not yet determined" (has more).
