@@ -40,3 +40,5 @@ jobs:
         working-directory: src/mainview
       - run: bun test
         working-directory: src/mainview
+      # The Bun process's own: the Spotify reader's parsing.
+      - run: bun test src/bun
