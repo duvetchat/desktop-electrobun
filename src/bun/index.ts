@@ -1,4 +1,6 @@
 import Electrobun, { BrowserView, BrowserWindow, Updater, Utils } from "electrobun/bun";
+import { fitActivity, MAX_ACTIVITIES, type ActivityPayload } from "./activities";
+import { startSpotifyReader, type SpotifyActivity } from "./spotify";
 
 const DEV_SERVER_PORT = 5173;
 const DEV_SERVER_URL = `http://localhost:${DEV_SERVER_PORT}`;
@@ -63,19 +65,6 @@ async function getMainViewUrl(): Promise<string> {
 
 const url = await getMainViewUrl();
 
-interface ActivityPayload {
-	name: string;
-	details?: string;
-	state?: string;
-	timestamps?: { start?: number; end?: number };
-	assets?: {
-		large_image?: string;
-		large_text?: string;
-		small_image?: string;
-		small_text?: string;
-	};
-}
-
 type AppRPCSchema = {
 	bun: {
 		requests: {};
@@ -92,6 +81,8 @@ type AppRPCSchema = {
 			};
 			startWindowResize: { direction: string };
 			stopWindowResize: void;
+			// The webview's "Share what I listen to on Spotify" setting, sent at start and on each change.
+			setSpotifyActivity: { enabled: boolean };
 		};
 	};
 	webview: {
@@ -104,6 +95,29 @@ type AppRPCSchema = {
 
 let savedFrame: { x: number; y: number; width: number; height: number } | null = null;
 let isManuallyMaximized = false;
+
+// Track activities per IPC client. Declared before the RPC, whose setSpotifyActivity sends them too: on macOS and
+// Linux an await comes before the IPC server, and the webview could ask meanwhile.
+const clientActivities = new Map<object, ActivityPayload>();
+
+// What Spotify plays here, while the webview's setting lets the reader run; it goes out with the IPC apps'.
+let spotifyActivity: SpotifyActivity | null = null;
+let stopSpotify: (() => void) | null = null;
+
+function setSpotifyActivity(enabled: boolean) {
+	if (enabled && !stopSpotify) {
+		stopSpotify = startSpotifyReader((activity) => {
+			spotifyActivity = activity;
+			broadcastAggregatedActivities();
+		});
+	} else if (!enabled && stopSpotify) {
+		stopSpotify();
+		stopSpotify = null;
+		spotifyActivity = null;
+	}
+	// A page that just loaded sends this first, so it gets what's current: the reader only reports changes.
+	broadcastAggregatedActivities();
+}
 
 const rpc = BrowserView.defineRPC<AppRPCSchema>({
 	handlers: {
@@ -123,6 +137,7 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 				isManuallyMaximized = true;
 			},
 			openExternal: ({ url: externalUrl }) => openExternalUrl(externalUrl),
+			setSpotifyActivity: ({ enabled }) => setSpotifyActivity(enabled),
 		},
 	},
 });
@@ -170,11 +185,10 @@ if (process.platform !== "win32") {
 	} catch {}
 }
 
-// Track activities per IPC client
-const clientActivities = new Map<object, ActivityPayload>();
-
 function broadcastAggregatedActivities() {
-	const all = [...clientActivities.values()];
+	// The gateway keeps MAX_ACTIVITIES: Spotify's has its place, and the IPC apps' fill the rest.
+	const spotify = spotifyActivity ? [spotifyActivity] : [];
+	const all = [...[...clientActivities.values()].slice(0, MAX_ACTIVITIES - spotify.length), ...spotify];
 	rpc.send.activityUpdate(all.length > 0 ? all : null);
 }
 
@@ -192,7 +206,10 @@ try {
 					try {
 						const msg = JSON.parse(line) as { type: string; data: unknown };
 						if (msg.type === "SET_ACTIVITY") {
-							clientActivities.set(socket, msg.data as ActivityPayload);
+							// An app can send anything: what it sends is fitted to the gateway's limits, or dropped.
+							const activity = fitActivity(msg.data);
+							if (activity) clientActivities.set(socket, activity);
+							else clientActivities.delete(socket);
 							broadcastAggregatedActivities();
 						} else if (msg.type === "CLEAR_ACTIVITY") {
 							clientActivities.delete(socket);
