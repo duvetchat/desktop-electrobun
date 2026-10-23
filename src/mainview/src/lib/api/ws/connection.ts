@@ -59,6 +59,7 @@ export function getStreamURL(): string {
 }
 
 import { audioStore } from "$lib/stores/audio.svelte";
+import { mentionSound } from "$lib/status";
 import { storageTransfers } from "$lib/stores/storage-transfers.svelte";
 import { getElectrobunRpc, type ActivityPayload } from "$lib/electrobun-rpc";
 
@@ -241,6 +242,8 @@ function handleEvent(event: GatewayEvent) {
 			voiceStateVersions.clear();
 			// The SPACE_CREATEs bring them again, without those a USER_ACTIVITY_UPDATE missed while away cleared.
 			userActivities.set({});
+			// And the statuses, without those of whoever went offline meanwhile.
+			userStatusCache.clear();
 			unreadChannels.set(new Set(unread_rooms ?? []));
 			lastReadRooms.set(payload.data.last_read_rooms ?? {});
 			lastMsgRooms.set(payload.data.last_msg_rooms ?? {});
@@ -373,6 +376,13 @@ function handleEvent(event: GatewayEvent) {
 			if (memberStatuses) {
 				for (const [uid, status] of Object.entries(memberStatuses)) {
 					userStatusCache.set(uid, status);
+				}
+				// The DM list shows them too, and may have loaded before this space did.
+				const me = currentUserData?.id;
+				const hasMember = (c: { members: { user_id: string }[] }) =>
+					c.members.some((m) => m.user_id !== me && m.user_id in memberStatuses);
+				if (get(conversations).some(hasMember)) {
+					conversations.update((convs) => convs.map((c) => (hasMember(c) ? { ...c } : c)));
 				}
 			}
 
@@ -563,8 +573,8 @@ function handleEvent(event: GatewayEvent) {
 		case "MENTION_CREATE": {
 			const { room_id } = payload.data;
 			mentionCounts.update((all) => ({ ...all, [room_id]: (all[room_id] ?? 0) + 1 }));
-			const isActive = room_id === get(activeTextRoomId);
-			if (!isActive || !get(pageVisible)) {
+			const onScreen = room_id === get(activeTextRoomId) && get(pageVisible);
+			if (mentionSound(get(currentUser)?.status, onScreen)) {
 				audioStore.play("notification");
 			}
 			break;
@@ -572,8 +582,8 @@ function handleEvent(event: GatewayEvent) {
 		case "DM_MENTION_CREATE": {
 			const { conversation_id } = payload.data;
 			mentionCounts.update((all) => ({ ...all, [conversation_id]: (all[conversation_id] ?? 0) + 1 }));
-			const isActive = conversation_id === get(activeDMConvId);
-			if (!isActive || !get(pageVisible)) {
+			const onScreen = conversation_id === get(activeDMConvId) && get(pageVisible);
+			if (mentionSound(get(currentUser)?.status, onScreen)) {
 				audioStore.play("notification");
 			}
 			break;
@@ -668,6 +678,11 @@ function handleEvent(event: GatewayEvent) {
 				userStatusCache.set(raw.user_id, raw.status_id);
 				if (raw.space_id) {
 					userStatusCache.set(`${raw.user_id}:${raw.space_id}`, raw.status_id);
+				}
+				// Our own while we're connected is the status we chose, here or in another session.
+				const me = get(currentUser);
+				if (!raw.space_id && me?.id === raw.user_id && me.status !== raw.status_id) {
+					currentUser.set({ ...me, status: raw.status_id });
 				}
 			}
 			// Create new object references for affected spaces so Svelte detects the change

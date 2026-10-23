@@ -1,5 +1,5 @@
 import api from "$lib/api/api";
-import type { StorageTransfer, StorageTransferFile, StorageTransferFileStatus } from "$lib/types";
+import type { ChosenStatus, StorageTransfer, StorageTransferFile, StorageTransferFileStatus } from "$lib/types";
 
 interface UserMeResult {
 	id: string;
@@ -14,6 +14,8 @@ interface UserMeResult {
 	custom: string;
 	created_at: string;
 	updated_at: string;
+	/** The status the user chose; a bot has none. */
+	status?: ChosenStatus;
 }
 
 export interface UpdateUserPayload {
@@ -210,6 +212,12 @@ export async function uploadProfileImage(
 
 export async function me(): Promise<UserMeResult> {
 	const response = await api.get("/api/users/@me");
+	return response.data;
+}
+
+/** Chooses the user's status, which everyone sees while they're connected. */
+export async function setMyStatus(status: ChosenStatus): Promise<UserMeResult> {
+	const response = await api.put("/api/users/@me/status", { status });
 	return response.data;
 }
 

@@ -492,7 +492,10 @@ export interface GatewayRole {
 	position: number;
 }
 
-export type UserStatus = 0 | 1; // 0 = offline, 1 = online
+export type UserStatus = 0 | 1 | 2; // 0 = offline, 1 = online, 2 = do not disturb
+
+/** The statuses a user can choose: offline isn't one, the gateway says it while they have no connection. */
+export type ChosenStatus = Exclude<UserStatus, 0>;
 
 export interface GatewayUser {
 	id: string;
@@ -507,6 +510,8 @@ export interface GatewayUser {
 	is_bot: boolean;
 	created_at: string;
 	updated_at: string;
+	/** The status the user chose: only on their own, in READY (a bot's has none). */
+	status?: ChosenStatus;
 }
 
 export interface GatewayVoiceState {
@@ -1200,10 +1205,13 @@ export interface MemberOnSidebar {
 	bio: string;
 }
 
-function userStatusToString(statusId: UserStatus): MemberOnSidebar["status"] {
+/** How a status_id shows: online, do not disturb, or else offline. */
+export function userStatusToString(statusId: UserStatus): MemberOnSidebar["status"] {
 	switch (statusId) {
 		case 1:
 			return "online";
+		case 2:
+			return "dnd";
 		default:
 			return "offline";
 	}
