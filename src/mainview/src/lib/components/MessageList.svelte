@@ -37,7 +37,14 @@
 	import { renderEmoji, isOnlyEmojis, countEmojis } from "$lib/emoji";
 	import { customEmojiMapOf, mentionMapOf, parseTextSegments, renderMarkdown, renderMarkdownLine } from "$lib/markdown";
 
-	import { gatewayMessageToMessage, isComponentsV2, isEphemeral, isLoading, messageText } from "$lib/types";
+	import {
+		gatewayMessageToMessage,
+		isComponentsV2,
+		isEphemeral,
+		isLoading,
+		mentionsByReply,
+		messageText,
+	} from "$lib/types";
 	import { MessageType, type MemberOnSidebar, type GatewaySpace, type Message, type SpaceEmoji } from "$lib/types";
 	import { getHostURL, getAvatarURL, DUVET_DOMAIN } from "$lib/common/common";
 	import { isUuid, parseMessageLink, type MessageLink } from "$lib/urls";
@@ -961,7 +968,7 @@
 			{@const isMention =
 				!!$currentUser &&
 				message.author_id !== $currentUser.id &&
-				messageText(message).includes(`<@${$currentUser.id}>`)}
+				(messageText(message).includes(`<@${$currentUser.id}>`) || mentionsByReply(message, $currentUser.id))}
 			{@const msgMember = members.find((m) => m.id === message.author_id)}
 			{#if message.type === MessageType.PinNotice}
 				<!-- A pin notice: who pinned which message, as Discord shows it -->

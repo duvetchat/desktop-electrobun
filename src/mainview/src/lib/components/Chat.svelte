@@ -8,6 +8,7 @@
 	import MessageSearch from "$lib/components/MessageSearch.svelte";
 	import PinnedMessages from "$lib/components/PinnedMessages.svelte";
 	import type {
+		AllowedMentions,
 		ApplicationCommand,
 		Message,
 		MemberOnSidebar,
@@ -85,6 +86,7 @@
 			ref: MessageReference | undefined,
 			files?: File[],
 			stickerAttachmentId?: string,
+			allowedMentions?: AllowedMentions,
 		) => Promise<void>;
 		onSaveEdit?: (msgId: string, content: string) => void | Promise<void>;
 		onDeleteMsg?: (msgId: string) => Promise<void>;
@@ -97,6 +99,15 @@
 		onVoiceNoteOverride?: (blob: Blob) => void;
 	} = $props();
 	let replyTo = $state<Message | null>(null);
+	// The reply bar's @: whether the reply mentions the author of the message it replies to. On for each new reply.
+	let replyMention = $state(true);
+	// Nobody to mention in a reply to one's own message, a webhook's, or a pin notice (the room's, not its pinner's).
+	const canMentionReplied = $derived(
+		!!replyTo &&
+			replyTo.author_id !== $currentUser?.id &&
+			!replyTo.webhook_id &&
+			replyTo.type !== MessageType.PinNotice,
+	);
 	let chatInputRef = $state<{ focus: () => void; focusAndInsert: (char: string) => void } | null>(null);
 	let pendingFiles = $state<File[]>([]);
 	// The command picked from the "/" menu, which the message box gives its place to.
@@ -109,8 +120,11 @@
 	let lastTypingSent = 0;
 	let lastTypingRecording = false;
 
-	// Store original send data for retry (files, ref, sticker)
-	const retryData = new Map<string, { files?: File[]; ref?: MessageReference; stickerAttachmentId?: string }>();
+	// Store original send data for retry (files, ref, sticker, the reply's mention)
+	const retryData = new Map<
+		string,
+		{ files?: File[]; ref?: MessageReference; stickerAttachmentId?: string; allowedMentions?: AllowedMentions }
+	>();
 
 	// Load emojis and stickers into global stores on space change
 	$effect(() => {
@@ -203,6 +217,7 @@
 		if (index < 0 || index >= msgs.length) return false;
 		replyMessageIndex = index;
 		replyTo = msgs[index];
+		replyMention = true;
 		return true;
 	}
 
@@ -292,12 +307,14 @@
 					room_id: channelId,
 				} as MessageReference)
 			: undefined;
+		// A reply mentions the author of the message it replies to unless the reply bar's @ is off.
+		const allowedMentions: AllowedMentions | undefined = replyTo ? { replied_user: replyMention } : undefined;
 
 		replyTo = null;
 
 		if (onSend) {
 			try {
-				await onSend(content, nonce, ref, files, stickerAttachmentId);
+				await onSend(content, nonce, ref, files, stickerAttachmentId, allowedMentions);
 			} catch {
 				failedNonces = new Set(failedNonces).add(nonce);
 			}
@@ -346,8 +363,8 @@
 			[channelId]: [...(all[channelId] ?? []), pendingMessage],
 		}));
 
-		retryData.set(nonce, { files, ref, stickerAttachmentId });
-		sendMessage(channelId, content, nonce, ref, files, undefined, stickerAttachmentId)
+		retryData.set(nonce, { files, ref, stickerAttachmentId, allowedMentions });
+		sendMessage(channelId, content, nonce, ref, files, undefined, stickerAttachmentId, allowedMentions)
 			.then(() => retryData.delete(nonce))
 			.catch((err) => {
 				failedNonces = new Set(failedNonces).add(nonce);
@@ -357,6 +374,7 @@
 
 	function handleReply(message: Message) {
 		replyTo = message;
+		replyMention = true;
 		chatInputRef?.focus();
 	}
 
@@ -378,6 +396,7 @@
 			saved?.files,
 			undefined,
 			saved?.stickerAttachmentId,
+			saved?.allowedMentions,
 		)
 			.then(() => retryData.delete(nonce))
 			.catch((err) => {
@@ -610,25 +629,45 @@
 						class="flex items-center justify-between border-t border-stone-800 bg-stone-900/90 px-3 py-1.5 text-xs text-zinc-400"
 					>
 						<span>Replying to <span class="font-semibold text-zinc-200">{replyTo.author_name}</span></span>
-						<button
-							class="text-zinc-500 transition-colors hover:text-zinc-300"
-							onclick={() => {
-								replyTo = null;
-							}}
-							aria-label="Cancel reply"
-						>
-							<svg
-								xmlns="http://www.w3.org/2000/svg"
-								width="14"
-								height="14"
-								viewBox="0 0 24 24"
-								fill="none"
-								stroke="currentColor"
-								stroke-width="2.5"
-								stroke-linecap="round"
-								stroke-linejoin="round"><path d="M18 6 6 18" /><path d="m6 6 12 12" /></svg
+						<div class="flex items-center gap-3">
+							{#if canMentionReplied}
+								<!-- Whether the reply mentions the author of the message it replies to -->
+								<button
+									type="button"
+									class="font-semibold transition-colors {replyMention
+										? 'text-indigo-400 hover:text-indigo-300'
+										: 'text-zinc-500 hover:text-zinc-300'}"
+									onclick={() => {
+										replyMention = !replyMention;
+										chatInputRef?.focus();
+									}}
+									aria-pressed={replyMention}
+									aria-label="Mention {replyTo.author_name}"
+									title={replyMention
+										? `Click to not mention ${replyTo.author_name}`
+										: `Click to mention ${replyTo.author_name}`}>@ {replyMention ? "ON" : "OFF"}</button
+								>
+							{/if}
+							<button
+								class="text-zinc-500 transition-colors hover:text-zinc-300"
+								onclick={() => {
+									replyTo = null;
+								}}
+								aria-label="Cancel reply"
 							>
-						</button>
+								<svg
+									xmlns="http://www.w3.org/2000/svg"
+									width="14"
+									height="14"
+									viewBox="0 0 24 24"
+									fill="none"
+									stroke="currentColor"
+									stroke-width="2.5"
+									stroke-linecap="round"
+									stroke-linejoin="round"><path d="M18 6 6 18" /><path d="m6 6 12 12" /></svg
+								>
+							</button>
+						</div>
 					</div>
 				{/if}
 				{#if pendingFiles.length > 0}
