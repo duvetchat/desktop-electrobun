@@ -536,8 +536,10 @@
 		}
 	}
 
+	// A section loads only while the settings are open: they stay mounted when closed, where each space switch would
+	// load the section picked, and a failure would show its toast to nobody who asked.
 	$effect(() => {
-		if (activeSection === "emojis" && spaceId) {
+		if (open && activeSection === "emojis" && spaceId) {
 			loadEmojis();
 		}
 	});
@@ -622,7 +624,7 @@
 	}
 
 	$effect(() => {
-		if (activeSection === "stickers" && spaceId) {
+		if (open && activeSection === "stickers" && spaceId) {
 			loadStickers();
 		}
 	});
@@ -705,7 +707,7 @@
 
 	// Attachments lists the buckets as its locations.
 	$effect(() => {
-		if ((activeSection === "storage" || (activeSection === "attachments" && canManageBuckets)) && spaceId) {
+		if (open && (activeSection === "storage" || (activeSection === "attachments" && canManageBuckets)) && spaceId) {
 			loadSpaceBuckets();
 		}
 	});
@@ -883,7 +885,7 @@
 
 	// Load the attachments on opening the section, and again for each location picked
 	$effect(() => {
-		if (activeSection === "attachments" && spaceId) {
+		if (open && activeSection === "attachments" && spaceId) {
 			void loadSpaceAttachments(spaceAttachmentsLocation);
 		}
 	});
@@ -919,7 +921,7 @@
 	}
 
 	$effect(() => {
-		if (activeSection === "invites" && spaceId) {
+		if (open && activeSection === "invites" && spaceId) {
 			void loadSpaceInvites();
 		}
 	});
