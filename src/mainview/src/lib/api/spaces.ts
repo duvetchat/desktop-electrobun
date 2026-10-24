@@ -37,6 +37,12 @@ export async function leaveSpace(spaceId: string): Promise<void> {
 	await api.delete(`/api/spaces/${spaceId}/members/@me`);
 }
 
+/** Deletes a space, for everyone in it: only its owner may (403 for anyone else, 404 once it's gone). Every member
+ * then gets SPACE_DELETE. */
+export async function deleteSpace(spaceId: string): Promise<void> {
+	await api.delete(`/api/spaces/${spaceId}`);
+}
+
 export async function updateSpace(
 	spaceId: string,
 	data: {

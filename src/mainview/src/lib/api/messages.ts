@@ -1,6 +1,6 @@
 import api from "$lib/api/api";
 import { createAckThrottle } from "$lib/api/ack";
-import type { GatewayMessage, MessageReference } from "$lib/types";
+import type { AllowedMentions, GatewayMessage, MessageReference } from "$lib/types";
 
 export async function getMessages(roomId: string, before?: string, signal?: AbortSignal): Promise<GatewayMessage[]> {
 	const res = await api.get(`/api/rooms/${roomId}/messages`, {
@@ -102,12 +102,14 @@ export async function sendMessage(
 	files?: File[],
 	msgEmbeds?: import("$lib/types").Embed[],
 	stickerAttachmentId?: string,
+	allowedMentions?: AllowedMentions,
 ): Promise<GatewayMessage> {
 	if (files && files.length > 0) {
 		const form = new FormData();
 		form.append("content", content);
 		if (nonce) form.append("nonce", nonce);
 		if (messageReference) form.append("message_reference", JSON.stringify(messageReference));
+		if (allowedMentions) form.append("allowed_mentions", JSON.stringify(allowedMentions));
 		for (const f of files) form.append("files", f);
 
 		const res = await api.post(`/api/rooms/${roomId}/messages`, form);
@@ -118,6 +120,7 @@ export async function sendMessage(
 		content,
 		nonce,
 		...(messageReference ? { message_reference: messageReference } : {}),
+		...(allowedMentions ? { allowed_mentions: allowedMentions } : {}),
 		...(msgEmbeds && msgEmbeds.length > 0 ? { embeds: msgEmbeds } : {}),
 		...(stickerAttachmentId ? { sticker_attachment_id: stickerAttachmentId } : {}),
 	});

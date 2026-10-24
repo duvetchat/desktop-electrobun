@@ -50,8 +50,18 @@ export type ArrivalAction = "bottom" | "unread" | null;
  * list follows its bottom (the user is there, looking). Otherwise it stays where the user reads, and someone
  * else's message gets the unread divider ("unread"). The user's own messages that come some other way (their
  * pin notices, what they send from another device) are no news to them, and leave them be.
+ *
+ * After a jump, while newer messages are still to load below (newerBelow), the list's bottom isn't the room's: what
+ * comes there is a page of history the reader scrolls into, which neither takes them to its end nor gets the divider.
  */
-export function arrivalAction(arrived: Arrival, me: string | undefined, following: boolean): ArrivalAction {
-	if (arrived.sent || following) return "bottom";
+export function arrivalAction(
+	arrived: Arrival,
+	me: string | undefined,
+	following: boolean,
+	newerBelow = false,
+): ArrivalAction {
+	if (arrived.sent) return "bottom";
+	if (newerBelow) return null;
+	if (following) return "bottom";
 	return arrived.message.author_id === me ? null : "unread";
 }
