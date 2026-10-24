@@ -22,22 +22,16 @@ describe("settingsSections", () => {
 		expect(settingsSections(~0 >>> 0)).toEqual(all);
 	});
 
-	test("each section comes with the permission its controls take, and the members list with any of them", () => {
+	test("each section comes with the permission its controls take", () => {
+		expect(settingsSections(Permission.ManageInvites)).toEqual(["invites", "emojis", "stickers"]);
+		expect(settingsSections(Permission.ManageSpaceEmojis)).toEqual(["emojis", "stickers"]);
+		expect(settingsSections(Permission.ManageSpaceStickers)).toEqual(["emojis", "stickers"]);
+		expect(settingsSections(Permission.ManageSpaceBuckets)).toEqual(["emojis", "stickers", "storage", "attachments"]);
+		expect(settingsSections(Permission.ManageSpaceAttachments)).toEqual(["emojis", "stickers", "attachments"]);
+	});
+
+	test("the members list comes with ManageRoles alone, as the roles do", () => {
 		expect(settingsSections(Permission.ManageRoles)).toEqual(["roles", "members", "emojis", "stickers"]);
-		expect(settingsSections(Permission.ManageInvites)).toEqual(["members", "invites", "emojis", "stickers"]);
-		expect(settingsSections(Permission.ManageSpaceEmojis)).toEqual(["members", "emojis", "stickers"]);
-		expect(settingsSections(Permission.ManageSpaceBuckets)).toEqual([
-			"members",
-			"emojis",
-			"stickers",
-			"storage",
-			"attachments",
-		]);
-		expect(settingsSections(Permission.ManageSpaceAttachments)).toEqual([
-			"members",
-			"emojis",
-			"stickers",
-			"attachments",
-		]);
+		expect(settingsSections(Permission.ManageInvites | Permission.ManageSpaceBuckets)).not.toContain("members");
 	});
 });

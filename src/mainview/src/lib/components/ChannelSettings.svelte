@@ -86,6 +86,8 @@
 	}
 
 	// ── permissions state ─────────────────────────────────────────
+	// The bits a room's overwrites can change something with. ManageRoles in a room changes nothing, so it has no row;
+	// an overwrite that carries it keeps it, as an edit changes only the bit it toggles.
 	const PERMISSION_GROUPS = [
 		{
 			label: "General Channel Permissions",
@@ -95,11 +97,6 @@
 					flag: Permission.ManageChannels,
 					name: "Manage Channel",
 					description: "Allows members to change this channel's name and description.",
-				},
-				{
-					flag: Permission.ManageRoles,
-					name: "Manage Permissions",
-					description: "Allows members to change this channel's permissions.",
 				},
 				{
 					flag: Permission.CreateInvites,
