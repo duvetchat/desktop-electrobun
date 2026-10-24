@@ -60,6 +60,7 @@ export function getStreamURL(): string {
 
 import { audioStore } from "$lib/stores/audio.svelte";
 import { mentionSound } from "$lib/status";
+import { callAcceptedAction } from "$lib/calls";
 import { storageTransfers } from "$lib/stores/storage-transfers.svelte";
 import { getElectrobunRpc, type ActivityPayload } from "$lib/electrobun-rpc";
 
@@ -1205,6 +1206,17 @@ function handleEvent(event: GatewayEvent) {
 		}
 		case "CONVERSATION_MEMBER_ADD": {
 			const raw = payload.data;
+			// The user was added to a group: the event says who joined, not what the group is, so it comes from the
+			// conversations list, as READY loads it.
+			if (raw.user_id === get(currentUser)?.id && !get(conversations).some((c) => c.id === raw.conversation_id)) {
+				getConversations()
+					.then((list) => {
+						const conv = list.find((c) => c.id === raw.conversation_id);
+						if (conv) conversations.update((all) => (all.some((c) => c.id === conv.id) ? all : [conv, ...all]));
+					})
+					.catch((err) => console.error("[WS] Failed to load the group the user was added to:", err));
+				break;
+			}
 			conversations.update((list) =>
 				list.map((c) => {
 					if (c.id !== raw.conversation_id) return c;
@@ -1236,6 +1248,16 @@ function handleEvent(event: GatewayEvent) {
 		}
 		case "CONVERSATION_MEMBER_REMOVE": {
 			const raw = payload.data;
+			// The user left the group or was removed from it: it goes from the list, and its view with it (FriendsView),
+			// and so does its unread dot, which nothing could clear any more.
+			if (raw.user_id === get(currentUser)?.id) {
+				conversations.update((list) => list.filter((c) => c.id !== raw.conversation_id));
+				unreadConversations.update((s) => {
+					s.delete(raw.conversation_id);
+					return s;
+				});
+				break;
+			}
 			conversations.update((list) =>
 				list.map((c) => {
 					if (c.id !== raw.conversation_id) return c;
@@ -1441,14 +1463,16 @@ function handleEvent(event: GatewayEvent) {
 		}
 		case "CALL_ACCEPTED": {
 			const d = payload.data;
-			activeCall.update((c) => {
-				if (c && c.conversationId === d.conversation_id && c.state === "calling") {
-					return { ...c, state: "connected" };
-				}
-				return c;
-			});
-			// Start VoiceChat with conversation_id as room
-			activeVoiceRoomId.set(d.conversation_id);
+			// Every member's sessions get it, whoever answered: the call this client placed joins, and one ringing here
+			// that the user answered on another device goes.
+			const action = callAcceptedAction(get(activeCall), d, get(currentUser)?.id);
+			if (action === "join") {
+				activeCall.update((c) => (c ? { ...c, state: "connected" } : c));
+				// Start VoiceChat with conversation_id as room
+				activeVoiceRoomId.set(d.conversation_id);
+			} else if (action === "dismiss") {
+				activeCall.set(null);
+			}
 			break;
 		}
 		case "CALL_DECLINED": {
