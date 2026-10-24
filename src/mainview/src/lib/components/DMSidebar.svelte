@@ -39,13 +39,12 @@
 		return getAvatarURL(other?.user_id ?? "", other?.user?.avatar);
 	}
 
-	// The other member's status, in a DM (a group has none), while they're connected. Statuses come through spaces,
-	// so someone who shares none with us looks offline, and offline shows nothing rather than a guess.
+	// The other member's status, in a DM (a group has none), offline included, as the member list shows it. Statuses
+	// come through spaces and friendships, so someone who is neither our friend nor in a space with us shows offline.
 	function convStatus(conv: Conversation): MemberOnSidebar["status"] | null {
 		if (conv.type === 2) return null;
 		const other = conv.members.find((m) => m.user_id !== get(currentUser)?.id);
-		const statusId = other ? getUserOnlineStatus(other.user_id) : 0;
-		return statusId === 0 ? null : userStatusToString(statusId);
+		return userStatusToString(other ? getUserOnlineStatus(other.user_id) : 0);
 	}
 </script>
 

@@ -36,7 +36,7 @@ import {
 	myBuckets,
 	allSpacesReady,
 } from "$lib/stores.svelte";
-import { getFriends, getPendingRequests, getSentRequests } from "$lib/api/friends";
+import { getFriends, getPendingRequests, getSentRequests, type Friend } from "$lib/api/friends";
 import { getConversations } from "$lib/api/conversations";
 import { listMyTeamInvites } from "$lib/api/developer";
 import { getMyBuckets, me as fetchMe } from "$lib/api/user";
@@ -143,6 +143,24 @@ export const userStatusCache = new Map<string, UserStatus>();
 // Used for contexts without a specific space (e.g., conversations).
 export function getUserOnlineStatus(userId: string): UserStatus {
 	return userStatusCache.get(userId) ?? 0;
+}
+
+/** Takes the statuses a friends list gives (status_id) for the friends the gateway hasn't told us about yet: what it
+ * says comes live, so it's newer. Friends hear each other's changes from then on, also with no space in common. */
+export function rememberFriendStatuses(list: Friend[]) {
+	const me = get(currentUser)?.id;
+	const learned = new Set<string>();
+	for (const f of list) {
+		const other = f.sender_id === me ? f.recipient_id : f.sender_id;
+		if (f.status_id && !userStatusCache.has(other)) {
+			userStatusCache.set(other, f.status_id);
+			learned.add(other);
+		}
+	}
+	// The DM list shows them too.
+	if (learned.size > 0) {
+		conversations.update((convs) => convs.map((c) => (c.members.some((m) => learned.has(m.user_id)) ? { ...c } : c)));
+	}
 }
 
 type WebRTCEventListener = (type: string, data: unknown) => void;
@@ -262,6 +280,7 @@ function handleEvent(event: GatewayEvent) {
 				.then(([pending, sent, friendList, convList, teamInvites, bucketList]) => {
 					pendingFriendRequests.set(pending);
 					sentFriendRequests.set(sent);
+					rememberFriendStatuses(friendList);
 					friends.set(friendList);
 					conversations.set(convList);
 					pendingTeamInvites.set(teamInvites);
@@ -383,6 +402,12 @@ function handleEvent(event: GatewayEvent) {
 					c.members.some((m) => m.user_id !== me && m.user_id in memberStatuses);
 				if (get(conversations).some(hasMember)) {
 					conversations.update((convs) => convs.map((c) => (hasMember(c) ? { ...c } : c)));
+				}
+				// And so does the friends list.
+				const isListed = (f: { sender_id: string; recipient_id: string }) =>
+					[f.sender_id, f.recipient_id].some((id) => id !== me && id in memberStatuses);
+				if (get(friends).some(isListed)) {
+					friends.update((all) => all.map((f) => (isListed(f) ? { ...f } : f)));
 				}
 			}
 
@@ -689,6 +714,9 @@ function handleEvent(event: GatewayEvent) {
 			gatewaySpaces.update((spaces) => spaces.map((s) => (s.users.some((u) => u.id === raw.user_id) ? { ...s } : s)));
 			conversations.update((convs) =>
 				convs.map((c) => (c.members.some((m) => m.user_id === raw.user_id) ? { ...c } : c)),
+			);
+			friends.update((all) =>
+				all.map((f) => (f.sender_id === raw.user_id || f.recipient_id === raw.user_id ? { ...f } : f)),
 			);
 			break;
 		}
@@ -1139,7 +1167,10 @@ function handleEvent(event: GatewayEvent) {
 			const raw = payload.data;
 			// Event shape differs from store type; refetch the full lists. Both sides get it.
 			getFriends()
-				.then((list) => friends.set(list))
+				.then((list) => {
+					rememberFriendStatuses(list);
+					friends.set(list);
+				})
 				.catch((err) => console.error("[WS] Failed to refresh friends:", err));
 			sentFriendRequests.update((reqs) => reqs.filter((r) => r.id !== raw.request_id));
 			pendingFriendRequests.update((reqs) => reqs.filter((r) => r.id !== raw.request_id));

@@ -1,4 +1,5 @@
 import api from "$lib/api/api";
+import type { UserStatus } from "$lib/types";
 
 export interface FriendRequest {
 	id: string;
@@ -19,6 +20,8 @@ export interface Friend {
 	user_username: string;
 	user_alias: string | null;
 	user_avatar: string | null;
+	/** The status the other user shows when the list was read: rememberFriendStatuses takes it. */
+	status_id: UserStatus;
 }
 
 // The API returns the bare request, without the other user's details.

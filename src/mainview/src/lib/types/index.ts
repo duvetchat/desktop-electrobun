@@ -787,6 +787,7 @@ export interface FriendRequestAcceptEvent {
 	sender_id: string;
 	recipient_id: string;
 	user?: GatewayUser;
+	status_id: UserStatus;
 }
 
 export interface FriendRemoveEvent {
