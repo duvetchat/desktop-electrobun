@@ -1028,6 +1028,12 @@ export function roomTypeToChannelType(type: RoomType): Channel["type"] {
 	}
 }
 
+/** A space's rooms once one is deleted (ROOM_DELETE): the rooms in it, a category's, move to the top level, as the API
+ * moves them without an event of their own. */
+export function withoutRoom(rooms: GatewayRoom[], roomId: string): GatewayRoom[] {
+	return rooms.filter((r) => r.id !== roomId).map((r) => (r.parent_id === roomId ? { ...r, parent_id: null } : r));
+}
+
 export function gatewayMessageToMessage(msg: GatewayMessage, spaces: GatewaySpace[]): Message {
 	let author_name = "Unknown";
 	let author_avatar_url: string | null = null;

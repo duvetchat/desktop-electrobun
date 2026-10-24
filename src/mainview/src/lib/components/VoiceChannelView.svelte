@@ -29,6 +29,7 @@
 		Mic,
 		MicOff,
 		Headphones,
+		Lock,
 		Phone,
 		PhoneOff,
 		MonitorUp,
@@ -72,6 +73,8 @@
 	// after it's gone (its connection failed, or another session took the voice over) while the call lasts; a room's
 	// in a tab left open on a room that's gone. A camera or screen request made then has no VoiceChat to take it.
 	const voiceLive = $derived($activeVoiceRoomId === channelId && (callMode || voiceRoom !== null));
+	// Without JoinVoice the gateway refuses the join, unanswered: the room is locked here, as ChannelsSidebar locks it.
+	const canJoin = $derived(!voiceRoom || hasPermission(voiceRoom.space, voiceRoom.room, Permission.JoinVoice));
 	// Without SpeakInVoice the mic stays muted: UserStatusBar mutes it when the permission goes.
 	const canSpeak = $derived(!voiceRoom || hasPermission(voiceRoom.space, voiceRoom.room, Permission.SpeakInVoice));
 	// Video is the camera and the screen.
@@ -272,6 +275,7 @@
 	}
 
 	function join() {
+		if (!canJoin) return;
 		$activeVoiceRoomId = channelId;
 	}
 
@@ -670,9 +674,17 @@
 		{:else}
 			<button
 				class="flex items-center gap-2 rounded-xl bg-stone-600 px-6 py-3 font-semibold text-white transition-colors hover:bg-stone-500"
+				class:opacity-50={!canJoin}
+				class:cursor-not-allowed={!canJoin}
+				disabled={!canJoin}
 				onclick={join}
+				title={canJoin ? undefined : "You can't join this voice channel"}
 			>
-				<Volume2 class="size-5" />
+				{#if canJoin}
+					<Volume2 class="size-5" />
+				{:else}
+					<Lock class="size-5" />
+				{/if}
 				Join channel
 			</button>
 		{/if}

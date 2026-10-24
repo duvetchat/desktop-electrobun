@@ -308,6 +308,13 @@
 		}
 	}
 
+	// What each message being sent was sent with besides its text (its files, reply, sticker, and the reply's mention),
+	// so that a retry sends it whole, as Chat's retryData does for a room's.
+	const dmRetryData = new Map<
+		string,
+		{ ref?: MessageReference; files?: File[]; stickerAttachmentId?: string; allowedMentions?: AllowedMentions }
+	>();
+
 	async function dmHandleSend(
 		content: string,
 		nonce: string,
@@ -356,6 +363,7 @@
 			sticker_attachment_id: stickerAttachmentId ?? null,
 		};
 		dmMessages.update((all) => ({ ...all, [conversation.id]: [...(all[conversation.id] ?? []), pending] }));
+		dmRetryData.set(nonce, { ref, files, stickerAttachmentId, allowedMentions });
 		const real = await sendDirectMessage(
 			conversation.id,
 			content,
@@ -366,6 +374,7 @@
 			stickerAttachmentId,
 			allowedMentions,
 		);
+		dmRetryData.delete(nonce);
 		dmMessages.update((all) => {
 			const existing = all[conversation.id] ?? [];
 			if (!existing.some((m) => m.id === nonce)) return all;
@@ -394,13 +403,26 @@
 
 	function dmRetry(message: Message) {
 		const nonce = message.nonce!;
+		const saved = dmRetryData.get(nonce);
 		failedNonces = new Set([...failedNonces].filter((n) => n !== nonce));
-		sendDirectMessage(conversation.id, message.content ?? "", nonce).catch(() => {
-			failedNonces = new Set(failedNonces).add(nonce);
-		});
+		sendDirectMessage(
+			conversation.id,
+			message.content ?? "",
+			nonce,
+			saved?.ref,
+			saved?.files,
+			undefined,
+			saved?.stickerAttachmentId,
+			saved?.allowedMentions,
+		)
+			.then(() => dmRetryData.delete(nonce))
+			.catch(() => {
+				failedNonces = new Set(failedNonces).add(nonce);
+			});
 	}
 
 	function dmDismiss(nonce: string) {
+		dmRetryData.delete(nonce);
 		failedNonces = new Set([...failedNonces].filter((n) => n !== nonce));
 		dmMessages.update((all) => ({
 			...all,

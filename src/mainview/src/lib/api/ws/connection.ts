@@ -48,7 +48,7 @@ import { forgetSpaceCommands } from "$lib/api/interactions";
 
 import type { DMTypingEvent, GatewayEvent, GatewaySpace, ReferencedMessage, TypingEvent, UserStatus } from "$lib/types";
 
-import { gatewayMessageToMessage, isEphemeral } from "$lib/types";
+import { gatewayMessageToMessage, isEphemeral, withoutRoom } from "$lib/types";
 
 // Token is passed via query string because the WebSocket API does not support
 // custom headers during the handshake. Ideally the gateway would accept a
@@ -829,6 +829,13 @@ function handleEvent(event: GatewayEvent) {
 			const { room_id } = payload.data;
 			if (get(activeVoiceRoomId) === room_id) {
 				activeVoiceRoomId.set(null);
+				// A call's voice that moved to another device takes the call there: this client is out of it, and can
+				// join it again from its conversation. Its camera or screen request goes with it, as when a call ends.
+				if (get(activeCall)?.conversationId === room_id) {
+					activeCall.set(null);
+					callVoiceStates.update((states) => states.filter((s) => s.room_id !== room_id));
+					dropVoiceRequests();
+				}
 			}
 			break;
 		}
@@ -971,7 +978,7 @@ function handleEvent(event: GatewayEvent) {
 					}
 					return {
 						...s,
-						rooms: s.rooms.filter((r) => r.id !== raw.id),
+						rooms: withoutRoom(s.rooms, raw.id),
 					};
 				}),
 			);

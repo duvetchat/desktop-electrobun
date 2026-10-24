@@ -52,6 +52,40 @@ const OVERWRITE_ROLE = 0;
 const OVERWRITE_MEMBER = 1;
 
 /**
+ * The current member's permissions in the space as a whole, as the API computes them for its space-level checks
+ * (ComputeSpacePermissions, which checkSpacePermission reads): the owner and Administrators have them all, and anyone
+ * else what their roles give, @everyone's included when they hold it. Room overwrites don't count here.
+ */
+export function computeSpacePermissions(space: GatewaySpace): number {
+	const { member, member_roles, roles, id: spaceId, owner_id } = space;
+
+	// No member loaded yet: @everyone's only, as computeRoomPermissions does
+	if (!member) {
+		return roles.find((r) => r.id === spaceId)?.permissions ?? 0;
+	}
+	if (member.user_id === owner_id) {
+		return ~0 >>> 0;
+	}
+
+	let perms = 0;
+	const myRoles = member_roles[member.user_id] ?? [];
+	for (const role of roles) {
+		if (myRoles.includes(role.id)) {
+			perms |= role.permissions;
+		}
+	}
+	if (perms & Permission.Administrator) {
+		return ~0 >>> 0;
+	}
+	return perms;
+}
+
+/** Returns true if the current member has ALL of the given permission flags in the space as a whole. */
+export function hasSpacePermission(space: GatewaySpace, permission: number): boolean {
+	return (computeSpacePermissions(space) & permission) === permission;
+}
+
+/**
  * Computes the effective permissions for the current member in a given room,
  * applying the standard overwrite cascade:
  *   1. Base permissions from the member's roles (OR'd together)

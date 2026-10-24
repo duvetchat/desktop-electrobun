@@ -52,7 +52,8 @@
 		deactivateSpaceBucket,
 	} from "$lib/api/space-buckets";
 	import { currentUser } from "$lib/stores.svelte";
-	import { Permission, ALL_PERMISSIONS } from "$lib/permissions";
+	import { Permission, ALL_PERMISSIONS, computeSpacePermissions } from "$lib/permissions";
+	import { settingsSections, type SettingsSection } from "$lib/space-settings";
 
 	import type { GatewaySpace, SpaceEmoji, SpaceSticker } from "$lib/types";
 	import type { StorageBucket, CreateBucketPayload } from "$lib/api/user";
@@ -81,8 +82,7 @@
 		open?: boolean;
 	} = $props();
 
-	type Section = "overview" | "members" | "roles" | "invites" | "emojis" | "stickers" | "storage" | "attachments";
-	let activeSection = $state<Section>("overview");
+	let activeSection = $state<SettingsSection>("overview");
 
 	const PERMISSIONS = ALL_PERMISSIONS;
 
@@ -359,20 +359,21 @@
 		}
 	}
 
+	// What the user may do in the space, as the API's checks compute it.
+	const spacePermissions = $derived(space ? computeSpacePermissions(space) : 0);
+
 	function hasSpacePermission(flag: number): boolean {
-		if (!$currentUser || !space) return false;
-		if ($currentUser.id === space.owner_id) return true;
-		const member = space.member;
-		const userRoleIds = space.member_roles[member?.user_id ?? ""] ?? [];
-		let perms = 0;
-		for (const role of space.roles) {
-			if (userRoleIds.includes(role.id)) {
-				perms |= role.permissions;
-			}
-		}
-		if (perms & Permission.Administrator) return true;
-		return (perms & flag) === flag;
+		return (spacePermissions & flag) === flag;
 	}
+
+	// The sections whose controls the API lets the user use; without any of those permissions, only the emoji and
+	// sticker lists, read-only.
+	const sections = $derived(settingsSections(spacePermissions));
+	// One they can't open (another space's settings, or a permission gone) gives way to the first they can, before it
+	// shows.
+	$effect.pre(() => {
+		if (!sections.includes(activeSection)) activeSection = sections[0];
+	});
 
 	const canManageRoles = $derived(hasSpacePermission(Permission.ManageRoles));
 
@@ -590,7 +591,6 @@
 	const canManageStickers = $derived(hasSpacePermission(Permission.ManageSpaceStickers));
 	const canManageBuckets = $derived(hasSpacePermission(Permission.ManageSpaceBuckets));
 	const canManageAttachments = $derived(hasSpacePermission(Permission.ManageSpaceAttachments));
-	const canManageInvites = $derived(hasSpacePermission(Permission.ManageInvites));
 	// ── sticker handlers ────────────────────────────────────────
 	async function loadStickers() {
 		if (!spaceId) return;
@@ -1072,40 +1072,46 @@
 					</div>
 
 					<nav class="flex flex-col gap-0.5 px-2">
-						<button
-							class="flex items-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium transition-colors duration-100
+						{#if sections.includes("overview")}
+							<button
+								class="flex items-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium transition-colors duration-100
                             {activeSection === 'overview'
-								? 'bg-zinc-800 text-white'
-								: 'text-zinc-400 hover:bg-zinc-800/60 hover:text-zinc-200'}"
-							onclick={() => (activeSection = "overview")}
-						>
-							<GearSixIcon class="size-4" />
-							Overview
-						</button>
+									? 'bg-zinc-800 text-white'
+									: 'text-zinc-400 hover:bg-zinc-800/60 hover:text-zinc-200'}"
+								onclick={() => (activeSection = "overview")}
+							>
+								<GearSixIcon class="size-4" />
+								Overview
+							</button>
+						{/if}
 
-						<button
-							class="flex items-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium transition-colors duration-100
+						{#if sections.includes("roles")}
+							<button
+								class="flex items-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium transition-colors duration-100
                             {activeSection === 'roles'
-								? 'bg-zinc-800 text-white'
-								: 'text-zinc-400 hover:bg-zinc-800/60 hover:text-zinc-200'}"
-							onclick={() => (activeSection = "roles")}
-						>
-							<ShieldStarIcon class="size-4" />
-							Roles
-						</button>
+									? 'bg-zinc-800 text-white'
+									: 'text-zinc-400 hover:bg-zinc-800/60 hover:text-zinc-200'}"
+								onclick={() => (activeSection = "roles")}
+							>
+								<ShieldStarIcon class="size-4" />
+								Roles
+							</button>
+						{/if}
 
-						<button
-							class="flex items-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium transition-colors duration-100
+						{#if sections.includes("members")}
+							<button
+								class="flex items-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium transition-colors duration-100
                             {activeSection === 'members'
-								? 'bg-zinc-800 text-white'
-								: 'text-zinc-400 hover:bg-zinc-800/60 hover:text-zinc-200'}"
-							onclick={() => (activeSection = "members")}
-						>
-							<UsersThreeIcon class="size-4" />
-							Members
-						</button>
+									? 'bg-zinc-800 text-white'
+									: 'text-zinc-400 hover:bg-zinc-800/60 hover:text-zinc-200'}"
+								onclick={() => (activeSection = "members")}
+							>
+								<UsersThreeIcon class="size-4" />
+								Members
+							</button>
+						{/if}
 
-						{#if canManageInvites}
+						{#if sections.includes("invites")}
 							<button
 								class="flex items-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium transition-colors duration-100
                             {activeSection === 'invites'
@@ -1140,7 +1146,7 @@
 							Stickers
 						</button>
 
-						{#if canManageBuckets}
+						{#if sections.includes("storage")}
 							<button
 								class="flex items-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium transition-colors duration-100
                             {activeSection === 'storage'
@@ -1152,16 +1158,18 @@
 								Storage
 							</button>
 						{/if}
-						<button
-							class="flex items-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium transition-colors duration-100
+						{#if sections.includes("attachments")}
+							<button
+								class="flex items-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium transition-colors duration-100
                             {activeSection === 'attachments'
-								? 'bg-zinc-800 text-white'
-								: 'text-zinc-400 hover:bg-zinc-800/60 hover:text-zinc-200'}"
-							onclick={() => (activeSection = "attachments")}
-						>
-							<PaperclipIcon class="size-4" />
-							Attachments
-						</button>
+									? 'bg-zinc-800 text-white'
+									: 'text-zinc-400 hover:bg-zinc-800/60 hover:text-zinc-200'}"
+								onclick={() => (activeSection = "attachments")}
+							>
+								<PaperclipIcon class="size-4" />
+								Attachments
+							</button>
+						{/if}
 					</nav>
 				</aside>
 

@@ -6,8 +6,9 @@
 	import { currentUser, friends, pendingFriendRequests, sentFriendRequests, userActivities } from "$lib/stores.svelte";
 	import { BADGES } from "$lib/badges";
 	import { assignRoleToMember, removeRoleFromMember } from "$lib/api/roles";
-	import { sendFriendRequest, getSentRequests } from "$lib/api/friends";
-	import { Permission, ALL_PERMISSIONS } from "$lib/permissions";
+	import { sendFriendRequest, getSentRequests, acceptFriendRequest } from "$lib/api/friends";
+	import { rememberFriendStatuses } from "$lib/api/ws/connection";
+	import { Permission, ALL_PERMISSIONS, hasSpacePermission } from "$lib/permissions";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
 	import ActivityList from "$lib/components/ActivityList.svelte";
 
@@ -81,15 +82,9 @@
 		return Array.from(set).sort();
 	}
 
+	// As the API checks it: the owner and Administrators pass, ManageRoles or not.
 	function currentUserCanManageRoles(): boolean {
-		if (!$currentUser || !space) return false;
-		if ($currentUser.id === space.owner_id) return true;
-		const userRoleIds = space.member_roles[space.member?.user_id ?? ""] ?? [];
-		let combined = 0;
-		for (const role of space.roles) {
-			if (userRoleIds.includes(role.id)) combined |= role.permissions;
-		}
-		return (combined & Permission.ManageRoles) === Permission.ManageRoles;
+		return !!space && hasSpacePermission(space, Permission.ManageRoles);
 	}
 
 	function isFriend(userId: string): boolean {
@@ -114,6 +109,23 @@
 			friendRequestState[userId] = "sent";
 			const sent = await getSentRequests();
 			sentFriendRequests.set(sent);
+		} catch {
+			friendRequestState[userId] = "error";
+		}
+	}
+
+	// Their request is accepted, as the Friends view does it: the API refuses one sent back while theirs waits.
+	async function handleAcceptFriendRequest(userId: string) {
+		const me = $currentUser;
+		const request = $pendingFriendRequests.find((r) => r.sender_id === userId && r.recipient_id === me?.id);
+		if (!request) return;
+		friendRequestState[userId] = "loading";
+		try {
+			const friend = await acceptFriendRequest(request.id);
+			pendingFriendRequests.update((reqs) => reqs.filter((r) => r.id !== request.id));
+			rememberFriendStatuses([friend]);
+			friends.update((list) => (list.some((f) => f.id === friend.id) ? list : [...list, friend]));
+			friendRequestState[userId] = "idle";
 		} catch {
 			friendRequestState[userId] = "error";
 		}
@@ -193,7 +205,7 @@
 							<button
 								class="flex items-center justify-center rounded-lg bg-white/10 px-2.5 py-1.5 transition-colors hover:bg-white/20 disabled:opacity-50"
 								title="Accept request"
-								onclick={() => handleSendFriendRequest(member.id)}
+								onclick={() => handleAcceptFriendRequest(member.id)}
 								disabled={reqState === "loading" || reqState === "sent"}
 							>
 								<UserPlus class="size-4" />

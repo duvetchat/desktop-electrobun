@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { promptDialog } from "$lib/stores/prompt.svelte";
+	import { confirmAction } from "$lib/stores/confirm.svelte";
 	import { getApiError } from "$lib/api/api";
 	import {
 		Plus as PlusIcon,
@@ -14,6 +15,7 @@
 	import SpaceIcon from "$lib/components/SpaceIcon.svelte";
 	import JoinInviteModal from "$lib/components/JoinInviteModal.svelte";
 	import {
+		currentUser,
 		pendingFriendRequests,
 		unreadChannels,
 		unreadConversations,
@@ -214,19 +216,16 @@
 		return counts;
 	});
 
-	let leavingGuildId = $state<string | null>(null);
-	let leaveError = $state("");
+	// The spaces the user owns, which the API won't let them leave: they can only delete one.
+	const ownedSpaceIds = $derived(
+		new Set($gatewaySpaces.filter((s) => s.owner_id === $currentUser?.id).map((s) => s.id)),
+	);
 
-	async function handleLeave(guildId: string) {
-		leavingGuildId = guildId;
-		leaveError = "";
-		try {
-			await leaveSpace(guildId);
-		} catch (e) {
-			leaveError = getApiError(e, "Failed to leave server");
-		} finally {
-			leavingGuildId = null;
-		}
+	// Leaving takes a confirmation, as the other actions that can't be undone do; the dialog shows a failure.
+	function handleLeave(guild: Guild) {
+		void confirmAction(`Leave "${guild.name}"? You'll need an invite to join it again.`, "Leave", () =>
+			leaveSpace(guild.id),
+		);
 	}
 </script>
 
@@ -279,6 +278,7 @@
 			{#if !group.collapsed}
 				<div role="group" class="flex flex-col items-center gap-1 px-2 py-1">
 					{#each group.guilds as guild}
+						{@const canLeave = !ownedSpaceIds.has(guild.id)}
 						<ContextMenu.Root>
 							<ContextMenu.Trigger>
 								<button
@@ -305,39 +305,45 @@
 									{/if}
 								</button>
 							</ContextMenu.Trigger>
-							<ContextMenu.Portal>
-								<ContextMenu.Content
-									class="z-50 min-w-44 rounded-lg border border-zinc-700 bg-zinc-900 py-1 shadow-2xl"
-								>
-									{#if folders.length > 0}
-										<div class="text-xxs px-3 py-1.5 font-semibold tracking-wide text-zinc-500 uppercase">
-											Move to folder
-										</div>
-										<ContextMenu.Item
-											class="w-full px-3 py-2 text-left text-sm text-zinc-200 transition-colors hover:bg-zinc-800"
-											onSelect={() => moveGuildToFolder(guild.id, null)}
-										>
-											Ungrouped
-										</ContextMenu.Item>
-										{#each folders as folder}
+							<!-- Nothing to offer the owner when there are no folders: they can't leave their space. -->
+							{#if folders.length > 0 || canLeave}
+								<ContextMenu.Portal>
+									<ContextMenu.Content
+										class="z-50 min-w-44 rounded-lg border border-zinc-700 bg-zinc-900 py-1 shadow-2xl"
+									>
+										{#if folders.length > 0}
+											<div class="text-xxs px-3 py-1.5 font-semibold tracking-wide text-zinc-500 uppercase">
+												Move to folder
+											</div>
 											<ContextMenu.Item
 												class="w-full px-3 py-2 text-left text-sm text-zinc-200 transition-colors hover:bg-zinc-800"
-												onSelect={() => moveGuildToFolder(guild.id, folder.id)}
+												onSelect={() => moveGuildToFolder(guild.id, null)}
 											>
-												{folder.name}
+												Ungrouped
 											</ContextMenu.Item>
-										{/each}
-										<div class="my-1 border-t border-zinc-800"></div>
-									{/if}
-									<ContextMenu.Item
-										class="w-full px-3 py-2 text-left text-sm text-red-400 transition-colors hover:bg-red-500/10"
-										disabled={leavingGuildId === guild.id}
-										onSelect={() => handleLeave(guild.id)}
-									>
-										{leavingGuildId === guild.id ? "Leaving…" : "Leave Server"}
-									</ContextMenu.Item>
-								</ContextMenu.Content>
-							</ContextMenu.Portal>
+											{#each folders as folder}
+												<ContextMenu.Item
+													class="w-full px-3 py-2 text-left text-sm text-zinc-200 transition-colors hover:bg-zinc-800"
+													onSelect={() => moveGuildToFolder(guild.id, folder.id)}
+												>
+													{folder.name}
+												</ContextMenu.Item>
+											{/each}
+											{#if canLeave}
+												<div class="my-1 border-t border-zinc-800"></div>
+											{/if}
+										{/if}
+										{#if canLeave}
+											<ContextMenu.Item
+												class="w-full px-3 py-2 text-left text-sm text-red-400 transition-colors hover:bg-red-500/10"
+												onSelect={() => handleLeave(guild)}
+											>
+												Leave Server
+											</ContextMenu.Item>
+										{/if}
+									</ContextMenu.Content>
+								</ContextMenu.Portal>
+							{/if}
 						</ContextMenu.Root>
 					{/each}
 				</div>
@@ -348,6 +354,7 @@
 			<div class="my-1.5 h-px w-8 bg-stone-800/80"></div>
 			<div role="group" class="flex flex-col items-center gap-1 px-2 py-1">
 				{#each ungroupedGuilds as guild}
+					{@const canLeave = !ownedSpaceIds.has(guild.id)}
 					<ContextMenu.Root>
 						<ContextMenu.Trigger>
 							<button
@@ -373,37 +380,45 @@
 								{/if}
 							</button>
 						</ContextMenu.Trigger>
-						<ContextMenu.Portal>
-							<ContextMenu.Content class="z-50 min-w-44 rounded-lg border border-zinc-700 bg-zinc-900 py-1 shadow-2xl">
-								{#if folders.length > 0}
-									<div class="text-xxs px-3 py-1.5 font-semibold tracking-wide text-zinc-500 uppercase">
-										Move to folder
-									</div>
-									<ContextMenu.Item
-										class="w-full px-3 py-2 text-left text-sm text-zinc-200 transition-colors hover:bg-zinc-800"
-										onSelect={() => moveGuildToFolder(guild.id, null)}
-									>
-										Ungrouped
-									</ContextMenu.Item>
-									{#each folders as folder}
+						<!-- Nothing to offer the owner when there are no folders: they can't leave their space. -->
+						{#if folders.length > 0 || canLeave}
+							<ContextMenu.Portal>
+								<ContextMenu.Content
+									class="z-50 min-w-44 rounded-lg border border-zinc-700 bg-zinc-900 py-1 shadow-2xl"
+								>
+									{#if folders.length > 0}
+										<div class="text-xxs px-3 py-1.5 font-semibold tracking-wide text-zinc-500 uppercase">
+											Move to folder
+										</div>
 										<ContextMenu.Item
 											class="w-full px-3 py-2 text-left text-sm text-zinc-200 transition-colors hover:bg-zinc-800"
-											onSelect={() => moveGuildToFolder(guild.id, folder.id)}
+											onSelect={() => moveGuildToFolder(guild.id, null)}
 										>
-											{folder.name}
+											Ungrouped
 										</ContextMenu.Item>
-									{/each}
-									<div class="my-1 border-t border-zinc-800"></div>
-								{/if}
-								<ContextMenu.Item
-									class="w-full px-3 py-2 text-left text-sm text-red-400 transition-colors hover:bg-red-500/10"
-									disabled={leavingGuildId === guild.id}
-									onSelect={() => handleLeave(guild.id)}
-								>
-									{leavingGuildId === guild.id ? "Leaving…" : "Leave Server"}
-								</ContextMenu.Item>
-							</ContextMenu.Content>
-						</ContextMenu.Portal>
+										{#each folders as folder}
+											<ContextMenu.Item
+												class="w-full px-3 py-2 text-left text-sm text-zinc-200 transition-colors hover:bg-zinc-800"
+												onSelect={() => moveGuildToFolder(guild.id, folder.id)}
+											>
+												{folder.name}
+											</ContextMenu.Item>
+										{/each}
+										{#if canLeave}
+											<div class="my-1 border-t border-zinc-800"></div>
+										{/if}
+									{/if}
+									{#if canLeave}
+										<ContextMenu.Item
+											class="w-full px-3 py-2 text-left text-sm text-red-400 transition-colors hover:bg-red-500/10"
+											onSelect={() => handleLeave(guild)}
+										>
+											Leave Server
+										</ContextMenu.Item>
+									{/if}
+								</ContextMenu.Content>
+							</ContextMenu.Portal>
+						{/if}
 					</ContextMenu.Root>
 				{/each}
 			</div>
@@ -448,7 +463,7 @@
 								bind:value={serverName}
 								placeholder="My awesome server"
 								class="rounded-md bg-zinc-800 px-3 py-2 text-sm text-white outline-none placeholder:text-zinc-500 focus:ring-1 focus:ring-stone-500"
-								maxlength={100}
+								maxlength={64}
 							/>
 						</div>
 						<div class="flex flex-col gap-1">
@@ -461,7 +476,7 @@
 								bind:value={serverDescription}
 								placeholder="What's this server about?"
 								class="rounded-md bg-zinc-800 px-3 py-2 text-sm text-white outline-none placeholder:text-zinc-500 focus:ring-1 focus:ring-stone-500"
-								maxlength={300}
+								maxlength={256}
 							/>
 						</div>
 						{#if createError}
@@ -513,12 +528,3 @@
 </Dialog.Root>
 
 <JoinInviteModal bind:open={showJoinPreview} code={joinCode} />
-
-{#if leaveError}
-	<div
-		class="fixed right-4 bottom-4 z-50 rounded-lg border border-red-700 bg-red-900/90 px-4 py-3 text-sm text-red-200 shadow-xl"
-	>
-		{leaveError}
-		<button onclick={() => (leaveError = "")} class="ml-3 text-red-400 hover:text-white">✕</button>
-	</div>
-{/if}

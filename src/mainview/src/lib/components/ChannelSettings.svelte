@@ -101,6 +101,11 @@
 					name: "Manage Permissions",
 					description: "Allows members to change this channel's permissions.",
 				},
+				{
+					flag: Permission.CreateInvites,
+					name: "Create Invite",
+					description: "Allows members to create invite links to this channel.",
+				},
 			],
 		},
 		{
