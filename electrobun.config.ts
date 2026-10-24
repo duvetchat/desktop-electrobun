@@ -15,6 +15,17 @@ export default {
 		},
 		mac: {
 			icon: "icon.iconset",
+			// macOS asks before the app uses the microphone or the camera, with these lines: Electrobun writes an
+			// entitlement's text into Info.plist as its usage description (audio-input as NSMicrophoneUsageDescription,
+			// camera as NSCameraUsageDescription), and an app without them can't open either. Screen sharing needs no
+			// entry: macOS asks for Screen Recording itself. With codesign on, Electrobun would also sign these texts as
+			// the entitlements' values, where the hardened runtime wants true: check the mic and the camera then.
+			entitlements: {
+				"com.apple.security.device.audio-input":
+					"Duvet uses your microphone for voice channels, calls and voice messages.",
+				"com.apple.security.device.camera":
+					"Duvet uses your camera when you turn on video in a voice channel or a call.",
+			},
 		},
 		win: {
 			icon: "icon.iconset/icon.ico",

@@ -34,12 +34,21 @@
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
 	import UserSettings from "$lib/components/UserSettings.svelte";
 	import VoiceNoteBar from "$lib/components/VoiceNoteBar.svelte";
+	import StatusMenu from "$lib/components/StatusMenu.svelte";
+	import StatusDot from "$lib/components/StatusDot.svelte";
+	import { STATUS_CHOICES, chosenStatus } from "$lib/status";
+	import { userStatusToString } from "$lib/types";
 
 	let {
 		collapsed = false,
 	}: {
 		collapsed?: boolean;
 	} = $props();
+
+	// The status the user chose, which everyone sees while they're connected.
+	const myChoice = $derived(chosenStatus($currentUser?.status));
+	const myStatus = $derived(userStatusToString(myChoice));
+	const myStatusLabel = $derived(STATUS_CHOICES.find((c) => c.status === myChoice)?.label ?? "");
 
 	const activeVoiceSpace = $derived(
 		$activeVoiceRoomId ? $gatewaySpaces.find((s) => s.rooms.some((r) => r.id === $activeVoiceRoomId)) : null,
@@ -257,7 +266,7 @@
 			</button>
 			<div class="my-0.5 w-6 border-t border-zinc-700"></div>
 		{/if}
-		<div class="relative">
+		<StatusMenu class="relative cursor-pointer rounded-full">
 			<UserAvatar
 				src={getAvatarURL($currentUser.id, $currentUser.avatar)}
 				name={$currentUser.alias || $currentUser.username}
@@ -266,7 +275,8 @@
 					? 'ring-[3px] ring-stone-500'
 					: ''}"
 			/>
-		</div>
+			<StatusDot status={myStatus} class="absolute -right-0.5 -bottom-0.5 size-3 border-2 border-zinc-900" />
+		</StatusMenu>
 		<button
 			class="flex size-8 items-center justify-center rounded-lg transition-colors hover:bg-zinc-800 {$isMuted
 				? 'text-red-400'
@@ -312,8 +322,8 @@
 <!-- Current user profile bar -->
 {#if !collapsed && $currentUser}
 	<div class="z-100 flex h-16 shrink-0 items-center gap-1 border-t border-zinc-800 bg-zinc-900 px-2">
-		<div
-			class="group flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-full p-1 transition-colors hover:bg-zinc-800"
+		<StatusMenu
+			class="group flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-full p-1 text-left transition-colors hover:bg-zinc-800"
 		>
 			<div class="relative shrink-0">
 				<UserAvatar
@@ -324,11 +334,13 @@
 						? 'ring-4 ring-stone-500'
 						: ''}"
 				/>
+				<StatusDot status={myStatus} class="absolute -right-0.5 -bottom-0.5 size-3 border-2 border-zinc-900" />
 			</div>
 			<div class="flex flex-col truncate">
 				<span class="truncate text-sm font-semibold text-zinc-200">{$currentUser.alias || $currentUser.username}</span>
+				<span class="text-xxs truncate text-zinc-400">{myStatusLabel}</span>
 			</div>
-		</div>
+		</StatusMenu>
 
 		<div class="relative flex shrink-0 items-center text-zinc-400">
 			<ContextMenu.Root bind:open={micContextOpen}>

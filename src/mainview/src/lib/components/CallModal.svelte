@@ -1,18 +1,20 @@
 <script lang="ts">
-	import { activeCall, activeVoiceRoomId, callVoiceStates } from "$lib/stores.svelte";
+	import { activeCall, activeVoiceRoomId, callVoiceStates, currentUser } from "$lib/stores.svelte";
 	import { isMuted } from "$lib/stores.svelte";
 	import { sendEventMessage } from "$lib/api/ws/connection";
 	import { Phone, PhoneOff, PhoneIncoming, Mic, MicOff, X } from "@lucide/svelte";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
 	import { getAvatarURL } from "$lib/common/common";
 	import { audioStore } from "$lib/stores/audio.svelte";
+	import { callRings } from "$lib/status";
 	import { onDestroy } from "svelte";
 
 	const call = $derived($activeCall);
 	let ringAudio: HTMLAudioElement | null = null;
 
+	// In do not disturb a call coming in shows without its ring.
 	$effect(() => {
-		if (call && (call.state === "ringing" || call.state === "calling")) {
+		if (call && callRings(call.state, $currentUser?.status)) {
 			if (!ringAudio) {
 				ringAudio = audioStore.playLoop("voice_calling");
 			}

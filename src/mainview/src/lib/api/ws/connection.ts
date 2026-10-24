@@ -59,6 +59,7 @@ export function getStreamURL(): string {
 }
 
 import { audioStore } from "$lib/stores/audio.svelte";
+import { mentionSound } from "$lib/status";
 import { storageTransfers } from "$lib/stores/storage-transfers.svelte";
 import { getElectrobunRpc, type ActivityPayload } from "$lib/electrobun-rpc";
 
@@ -200,7 +201,13 @@ function addMembersToSpace(spaceId: string, rows: SpaceMemberWithUser[]) {
 /** A reply's reference once the message it quotes is deleted: only the reference itself stays,
  * as the API sends it from then on, and the reply shows the original as deleted. */
 function deletedReference(ref: ReferencedMessage): ReferencedMessage {
-	return { type: ref.type, message_id: ref.message_id, room_id: ref.room_id, space_id: ref.space_id };
+	return {
+		type: ref.type,
+		message_id: ref.message_id,
+		room_id: ref.room_id,
+		space_id: ref.space_id,
+		mention_author: ref.mention_author,
+	};
 }
 
 /** Someone typing (TYPING, DM_TYPING) or recording a voice message (RECORDING, DM_RECORDING) in a room or a
@@ -235,6 +242,8 @@ function handleEvent(event: GatewayEvent) {
 			voiceStateVersions.clear();
 			// The SPACE_CREATEs bring them again, without those a USER_ACTIVITY_UPDATE missed while away cleared.
 			userActivities.set({});
+			// And the statuses, without those of whoever went offline meanwhile.
+			userStatusCache.clear();
 			unreadChannels.set(new Set(unread_rooms ?? []));
 			lastReadRooms.set(payload.data.last_read_rooms ?? {});
 			lastMsgRooms.set(payload.data.last_msg_rooms ?? {});
@@ -367,6 +376,13 @@ function handleEvent(event: GatewayEvent) {
 			if (memberStatuses) {
 				for (const [uid, status] of Object.entries(memberStatuses)) {
 					userStatusCache.set(uid, status);
+				}
+				// The DM list shows them too, and may have loaded before this space did.
+				const me = currentUserData?.id;
+				const hasMember = (c: { members: { user_id: string }[] }) =>
+					c.members.some((m) => m.user_id !== me && m.user_id in memberStatuses);
+				if (get(conversations).some(hasMember)) {
+					conversations.update((convs) => convs.map((c) => (hasMember(c) ? { ...c } : c)));
 				}
 			}
 
@@ -557,8 +573,8 @@ function handleEvent(event: GatewayEvent) {
 		case "MENTION_CREATE": {
 			const { room_id } = payload.data;
 			mentionCounts.update((all) => ({ ...all, [room_id]: (all[room_id] ?? 0) + 1 }));
-			const isActive = room_id === get(activeTextRoomId);
-			if (!isActive || !get(pageVisible)) {
+			const onScreen = room_id === get(activeTextRoomId) && get(pageVisible);
+			if (mentionSound(get(currentUser)?.status, onScreen)) {
 				audioStore.play("notification");
 			}
 			break;
@@ -566,14 +582,16 @@ function handleEvent(event: GatewayEvent) {
 		case "DM_MENTION_CREATE": {
 			const { conversation_id } = payload.data;
 			mentionCounts.update((all) => ({ ...all, [conversation_id]: (all[conversation_id] ?? 0) + 1 }));
-			const isActive = conversation_id === get(activeDMConvId);
-			if (!isActive || !get(pageVisible)) {
+			const onScreen = conversation_id === get(activeDMConvId) && get(pageVisible);
+			if (mentionSound(get(currentUser)?.status, onScreen)) {
 				audioStore.play("notification");
 			}
 			break;
 		}
 		case "USER_UPDATE": {
 			const raw = payload.data;
+			// An API from before bios sends no custom: the one shown stays.
+			const bio = raw.custom === undefined ? {} : { custom: raw.custom };
 			const patch: Record<string, any> = {
 				username: raw.username,
 				alias: raw.alias,
@@ -581,6 +599,7 @@ function handleEvent(event: GatewayEvent) {
 				banner: raw.banner,
 				flags: raw.flags,
 				badges: raw.badges,
+				...bio,
 			};
 			currentUser.update((u) => (u?.id === raw.id ? { ...u, ...patch } : u));
 			gatewaySpaces.update((spaces) =>
@@ -632,6 +651,7 @@ function handleEvent(event: GatewayEvent) {
 										alias: raw.alias,
 										avatar: raw.avatar,
 										banner: raw.banner,
+										...bio,
 									},
 								}
 							: m,
@@ -658,6 +678,11 @@ function handleEvent(event: GatewayEvent) {
 				userStatusCache.set(raw.user_id, raw.status_id);
 				if (raw.space_id) {
 					userStatusCache.set(`${raw.user_id}:${raw.space_id}`, raw.status_id);
+				}
+				// Our own while we're connected is the status we chose, here or in another session.
+				const me = get(currentUser);
+				if (!raw.space_id && me?.id === raw.user_id && me.status !== raw.status_id) {
+					currentUser.set({ ...me, status: raw.status_id });
 				}
 			}
 			// Create new object references for affected spaces so Svelte detects the change

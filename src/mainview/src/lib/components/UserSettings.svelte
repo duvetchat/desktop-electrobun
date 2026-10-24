@@ -48,6 +48,7 @@
 		type StorageStatus,
 		type StorageBucket,
 		type CreateBucketPayload,
+		BIO_MAX_LENGTH,
 	} from "$lib/api/user";
 	import { getHostURL, getAvatarURL, route, DUVET_DOMAIN } from "$lib/common/common";
 	import { confirmAction } from "$lib/stores/confirm.svelte";
@@ -83,6 +84,8 @@
 	} from "$lib/api/developer";
 	import { pendingTeamInvites, myBuckets, voiceFaces, shareSpotify } from "$lib/stores.svelte";
 	import { isElectrobunWindow } from "$lib/electrobun-rpc";
+	import { chosenStatus } from "$lib/status";
+	import { userStatusToString } from "$lib/types";
 	import StorageTransferCard from "$lib/components/StorageTransferCard.svelte";
 	import MoveFilesDialog from "$lib/components/MoveFilesDialog.svelte";
 	import BucketFilesDialog from "$lib/components/BucketFilesDialog.svelte";
@@ -563,15 +566,20 @@
 	// Form state
 	let username = $state("");
 	let alias = $state("");
+	let bio = $state("");
 	let saving = $state(false);
 	let saveError = $state<string | null>(null);
 	let saveSuccess = $state(false);
+	// Characters as the API counts them (code points), not the UTF-16 units maxlength would: an emoji is one.
+	const bioLength = $derived([...bio.trim()].length);
+	const bioTooLong = $derived(bioLength > BIO_MAX_LENGTH);
 
 	// Sync from currentUser when modal opens
 	$effect(() => {
 		if (open && $currentUser) {
 			username = $currentUser.username ?? "";
 			alias = $currentUser.alias ?? "";
+			bio = $currentUser.custom ?? "";
 			saveError = null;
 			saveSuccess = false;
 		}
@@ -945,20 +953,28 @@
 			pendingBanner === "remove"
 				? null
 				: (pendingBannerPreview ?? ($currentUser ? getAvatarURL($currentUser.id, $currentUser.banner) : null)),
-		status: "online" as const,
+		status: userStatusToString(chosenStatus($currentUser?.status)),
 		badges: $currentUser?.badges ?? 0,
 		is_bot: $currentUser?.is_bot ?? false,
 		is_owner: false,
 		roles: [] as import("$lib/types").Role[],
+		bio: bio.trim(),
 	});
 
 	const hasChanges = $derived(
 		$currentUser !== null &&
-			(username !== ($currentUser.username ?? "") || alias !== ($currentUser.alias ?? "") || hasImageChanges),
+			(username !== ($currentUser.username ?? "") ||
+				alias !== ($currentUser.alias ?? "") ||
+				bio.trim() !== ($currentUser.custom ?? "") ||
+				hasImageChanges),
 	);
 
 	async function handleSave() {
 		if (!$currentUser || saving) return;
+		if (bioTooLong) {
+			saveError = `Your bio can be at most ${BIO_MAX_LENGTH} characters.`;
+			return;
+		}
 		saving = true;
 		saveError = null;
 		saveSuccess = false;
@@ -970,6 +986,7 @@
 				const form = new FormData();
 				form.append("username", username.trim() || $currentUser!.username);
 				form.append("alias", alias.trim() || "");
+				form.append("custom", bio.trim());
 
 				if (pendingAvatar instanceof File) {
 					form.append("avatar", pendingAvatar);
@@ -989,10 +1006,12 @@
 				updated = await updateUser({
 					username: username.trim() || $currentUser!.username,
 					alias: alias.trim() || null,
+					custom: bio.trim(),
 				});
 			}
 
 			resetImageStages();
+			const newBio: string = updated.custom ?? "";
 
 			currentUser.update((u) =>
 				u
@@ -1002,6 +1021,7 @@
 							alias: updated.alias ?? null,
 							avatar: updated.avatar ?? null,
 							banner: updated.banner ?? null,
+							custom: newBio,
 						}
 					: u,
 			);
@@ -1022,6 +1042,7 @@
 										alias: updated.alias ?? null,
 										avatar: newAvatar,
 										banner: updated.banner ?? null,
+										custom: newBio,
 									}
 								: u,
 						),
@@ -1077,6 +1098,7 @@
 											alias: updated.alias ?? null,
 											avatar: newAvatar,
 											banner: updated.banner ?? null,
+											custom: newBio,
 										},
 									}
 								: m,
@@ -1098,6 +1120,7 @@
 		if (!$currentUser) return;
 		username = $currentUser.username ?? "";
 		alias = $currentUser.alias ?? "";
+		bio = $currentUser.custom ?? "";
 		resetImageStages();
 		saveError = null;
 	}
@@ -1246,6 +1269,27 @@
 									/>
 									<p class="mt-1 text-xs text-zinc-500">
 										This is how others see you. Leave empty to use your username.
+									</p>
+								</div>
+
+								<!-- Bio -->
+								<div>
+									<label for="bio" class="mb-1.5 block text-xs font-semibold tracking-wide text-zinc-400 uppercase">
+										About Me
+									</label>
+									<textarea
+										id="bio"
+										bind:value={bio}
+										rows="3"
+										placeholder="A few words about you"
+										aria-invalid={bioTooLong}
+										class="focus-override w-full resize-none rounded-md border bg-zinc-800 px-3 py-2 text-sm text-white placeholder-zinc-500 transition-colors outline-none [scrollbar-color:var(--color-zinc-600)_transparent] focus:ring-1 {bioTooLong
+											? 'border-red-500 focus:border-red-500 focus:ring-red-500'
+											: 'border-zinc-700 focus:border-stone-500 focus:ring-stone-500'}"
+									></textarea>
+									<p class="mt-1 flex justify-between gap-2 text-xs text-zinc-500">
+										<span>Shown on your profile. Leave empty for none.</span>
+										<span class={bioTooLong ? "text-red-400" : ""}>{bioLength}/{BIO_MAX_LENGTH}</span>
 									</p>
 								</div>
 
@@ -2688,7 +2732,7 @@
 								</button>
 								<button
 									onclick={handleSave}
-									disabled={saving}
+									disabled={saving || bioTooLong}
 									class="flex items-center gap-1.5 rounded-md bg-stone-600 px-4 py-1.5 text-sm font-semibold text-white transition-colors hover:bg-stone-500 disabled:cursor-not-allowed disabled:opacity-50"
 								>
 									{#if saveSuccess}
