@@ -426,7 +426,7 @@
 									)}"
 									onclick={() => toggleCategory(item.channel.id)}
 									aria-expanded={expanded[item.channel.id]}
-									draggable="true"
+									draggable={canManageCategory}
 									ondragstart={(e) => handleDragStartReorder(e, item.channel.id)}
 									ondragover={(e) => handleDragOver(e, itemIdx)}
 									ondrop={(e) => handleDrop(e, itemIdx)}
@@ -497,7 +497,9 @@
 										title={channel.name}
 										draggable="true"
 										ondragstart={(e) => {
-											handleDragStartReorder(e, channel.id);
+											// Anyone drags a room into a pane; it's reordered here only with ManageChannels in it,
+											// which the API checks.
+											if (canManage) handleDragStartReorder(e, channel.id);
 											e.dataTransfer!.effectAllowed = "move";
 											e.dataTransfer!.setData(
 												"text/plain",
@@ -704,6 +706,7 @@
 							bind:value={newChannelName}
 							class="h-10 w-full rounded-md border border-zinc-700 bg-zinc-800 pr-3 pl-8 text-sm text-white placeholder-zinc-500 outline-none focus:ring-1 focus:ring-stone-500"
 							placeholder="new-channel"
+							maxlength={64}
 							onkeydown={(e) => e.key === "Enter" && handleCreateChannel()}
 							use:focusOnMount
 						/>

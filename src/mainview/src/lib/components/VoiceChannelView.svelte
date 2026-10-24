@@ -73,8 +73,11 @@
 	// after it's gone (its connection failed, or another session took the voice over) while the call lasts; a room's
 	// in a tab left open on a room that's gone. A camera or screen request made then has no VoiceChat to take it.
 	const voiceLive = $derived($activeVoiceRoomId === channelId && (callMode || voiceRoom !== null));
-	// Without JoinVoice the gateway refuses the join, unanswered: the room is locked here, as ChannelsSidebar locks it.
-	const canJoin = $derived(!voiceRoom || hasPermission(voiceRoom.space, voiceRoom.room, Permission.JoinVoice));
+	// The gateway lets a member join with ViewChannels and JoinVoice in the room (voiceAccess) and refuses anyone else,
+	// unanswered: without them the room is locked here, as ChannelsSidebar locks it.
+	const canJoin = $derived(
+		!voiceRoom || hasPermission(voiceRoom.space, voiceRoom.room, Permission.ViewChannels | Permission.JoinVoice),
+	);
 	// Without SpeakInVoice the mic stays muted: UserStatusBar mutes it when the permission goes.
 	const canSpeak = $derived(!voiceRoom || hasPermission(voiceRoom.space, voiceRoom.room, Permission.SpeakInVoice));
 	// Video is the camera and the screen.

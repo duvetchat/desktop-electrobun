@@ -19,7 +19,7 @@
 	import { cubicOut } from "svelte/easing";
 	import { untrack } from "svelte";
 	import { Dialog } from "bits-ui";
-	import { Permission, canSetPermission, computeRoomPermissions } from "$lib/permissions";
+	import { Permission, canSetPermission, computeRoomPermissions, hasSpacePermission } from "$lib/permissions";
 	import { getApiError } from "$lib/api/api";
 	import { updateRoom, upsertRoomOverwrite, deleteRoomOverwrite } from "$lib/api/rooms";
 	import {
@@ -379,10 +379,13 @@
 		}
 	}
 
+	// Every webhook call takes ManageSpaceWebhooks in the space, as the API checks: without it there's no section.
+	const canManageWebhooks = $derived(hasSpacePermission(space, Permission.ManageSpaceWebhooks));
+
 	$effect(() => {
-		if (activeSection === "webhooks") {
-			loadWebhooks();
-		}
+		if (activeSection !== "webhooks") return;
+		if (canManageWebhooks) loadWebhooks();
+		else activeSection = "overview";
 	});
 
 	async function handleCreateWebhook() {
@@ -528,7 +531,7 @@
 							</button>
 						{/if}
 
-						{#if room.type === 1}
+						{#if room.type === 1 && canManageWebhooks}
 							<button
 								class="flex items-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium transition-colors duration-100
 									{activeSection === 'webhooks' ? 'bg-zinc-800 text-white' : 'text-zinc-400 hover:bg-zinc-800/60 hover:text-zinc-200'}"

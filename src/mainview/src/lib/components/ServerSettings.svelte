@@ -1382,7 +1382,8 @@
 									<input
 										type="text"
 										bind:value={ovLocale}
-										placeholder="en-US"
+										placeholder="en"
+										maxlength={4}
 										class="h-10 w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 text-sm text-zinc-100 outline-none focus:ring-1 focus:ring-stone-500"
 									/>
 								</label>
@@ -1471,6 +1472,7 @@
 											type="text"
 											placeholder="Role name"
 											bind:value={newRoleName}
+											maxlength={64}
 											class="h-10 w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 text-sm text-zinc-100 outline-none focus:ring-1 focus:ring-stone-500"
 										/>
 									</label>
@@ -1608,6 +1610,7 @@
 															type="text"
 															bind:value={editingRoleName}
 															placeholder="Role name"
+															maxlength={64}
 															class="w-full rounded-md border border-zinc-700 bg-zinc-900 p-2 text-sm text-zinc-100 outline-none focus:ring-1 focus:ring-stone-500"
 														/>
 
