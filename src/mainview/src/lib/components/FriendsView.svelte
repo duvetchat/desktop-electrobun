@@ -17,8 +17,11 @@
 	import { getConversations, createDM, createGroup, type Conversation } from "$lib/api/conversations";
 	import { UserPlus, UserCheck, UserX, Users, Clock, Send, MessageSquare, Check, ChevronLeft } from "@lucide/svelte";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
+	import StatusDot from "$lib/components/StatusDot.svelte";
 	import ConversationView from "$lib/components/ConversationView.svelte";
 	import { getAvatarURL } from "$lib/common/common";
+	import { getUserOnlineStatus, rememberFriendStatuses } from "$lib/api/ws/connection";
+	import { userStatusToString, type MemberOnSidebar } from "$lib/types";
 
 	let {
 		activeConversationId = $bindable<string | null>(null),
@@ -74,6 +77,7 @@
 				]);
 				pendingFriendRequests.set(pending);
 				sentFriendRequests.set(sent);
+				rememberFriendStatuses(friendList);
 				friends.set(friendList);
 				conversations.set(convList);
 			}
@@ -107,6 +111,7 @@
 		try {
 			const friend = await acceptFriendRequest(request.id);
 			pendingFriendRequests.update((reqs) => reqs.filter((r) => r.id !== request.id));
+			rememberFriendStatuses([friend]);
 			friends.update((list) => {
 				if (list.some((f) => f.id === friend.id)) return list;
 				return [...list, friend];
@@ -150,6 +155,12 @@
 		const me = get(currentUser);
 		if (!me) return "";
 		return friend.sender_id === me.id ? friend.recipient_id : friend.sender_id;
+	}
+
+	// A friend's status, offline included, as the DM list shows it: friends hear each other's, with or without a space
+	// in common.
+	function friendStatus(friend: Friend): MemberOnSidebar["status"] {
+		return userStatusToString(getUserOnlineStatus(getFriendUserId(friend)));
 	}
 
 	async function handleOpenDM(friend: Friend) {
@@ -304,14 +315,21 @@
 					<ul class="m-0 list-none px-2">
 						{#each $friends as friend (friend.id)}
 							{@const friendId = getFriendUserId(friend)}
+							{@const status = friendStatus(friend)}
 							<li
 								class="flex items-center gap-3 rounded-md px-3 py-2 transition-[background] duration-100 hover:bg-(--bg-hover,#35373c)"
 							>
-								<UserAvatar
-									src={getAvatarURL(getFriendUserId(friend), friend.user_avatar)}
-									name={friend.user_alias ?? friend.user_username}
-									size={36}
-								/>
+								<div class="relative shrink-0">
+									<UserAvatar
+										src={getAvatarURL(getFriendUserId(friend), friend.user_avatar)}
+										name={friend.user_alias ?? friend.user_username}
+										size={36}
+									/>
+									<StatusDot
+										{status}
+										class="absolute -right-0.5 -bottom-0.5 size-3 border-2 border-(--bg-primary,#1e1f22)"
+									/>
+								</div>
 								<div class="flex min-w-0 flex-1 flex-col gap-0.5">
 									<span class="overflow-hidden text-[13px] font-medium text-ellipsis whitespace-nowrap"
 										>{friend.user_alias ?? friend.user_username}</span
