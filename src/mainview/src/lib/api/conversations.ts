@@ -17,6 +17,8 @@ export interface ConversationMember {
 		alias: string | null;
 		avatar: string | null;
 		banner: string | null;
+		/** The bio. */
+		custom?: string;
 		badges?: number;
 		is_bot?: boolean;
 	};
@@ -173,12 +175,14 @@ export async function sendDirectMessage(
 	files?: File[],
 	msgEmbeds?: import("$lib/types").Embed[],
 	stickerAttachmentId?: string,
+	allowedMentions?: import("$lib/types").AllowedMentions,
 ): Promise<DirectMessage> {
 	if (files && files.length > 0) {
 		const form = new FormData();
 		form.append("content", content);
 		if (nonce) form.append("nonce", nonce);
 		if (messageReference) form.append("message_reference", JSON.stringify(messageReference));
+		if (allowedMentions) form.append("allowed_mentions", JSON.stringify(allowedMentions));
 		for (const f of files) form.append("files", f);
 
 		const res = await api.post(`/api/users/@me/conversations/${conversationId}/messages`, form);
@@ -189,6 +193,7 @@ export async function sendDirectMessage(
 		content,
 		nonce,
 		...(messageReference ? { message_reference: messageReference } : {}),
+		...(allowedMentions ? { allowed_mentions: allowedMentions } : {}),
 		...(msgEmbeds && msgEmbeds.length > 0 ? { embeds: msgEmbeds } : {}),
 		...(stickerAttachmentId ? { sticker_attachment_id: stickerAttachmentId } : {}),
 	});

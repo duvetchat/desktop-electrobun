@@ -24,6 +24,7 @@
 		pendingFriendRequests,
 		conversations,
 		dropEphemeral,
+		friendsReady,
 	} from "$lib/stores.svelte";
 	import {
 		addRoomReaction,
@@ -32,10 +33,18 @@
 		removeConversationReaction,
 	} from "$lib/api/reactions";
 	import { arrival, arrivalAction, listEnd } from "$lib/arrivals";
+	import { keepPlace, takePlace } from "$lib/kept-places";
 	import { renderEmoji, isOnlyEmojis, countEmojis } from "$lib/emoji";
 	import { customEmojiMapOf, mentionMapOf, parseTextSegments, renderMarkdown, renderMarkdownLine } from "$lib/markdown";
 
-	import { gatewayMessageToMessage, isComponentsV2, isEphemeral, isLoading, messageText } from "$lib/types";
+	import {
+		gatewayMessageToMessage,
+		isComponentsV2,
+		isEphemeral,
+		isLoading,
+		mentionsByReply,
+		messageText,
+	} from "$lib/types";
 	import { MessageType, type MemberOnSidebar, type GatewaySpace, type Message, type SpaceEmoji } from "$lib/types";
 	import { getHostURL, getAvatarURL, DUVET_DOMAIN } from "$lib/common/common";
 	import { isUuid, parseMessageLink, type MessageLink } from "$lib/urls";
@@ -119,6 +128,9 @@
 	let scrollEl: HTMLElement;
 	// The list's newest end as the new-message effect last saw it.
 	let prevEnd = listEnd([]);
+	// Whether newer messages were still to load below (after a jump) when the new-message effect last ran: the last
+	// page to load there comes with hasMoreMessagesBelow already off, so the list as it was before it is what tells.
+	let newerBelow = false;
 	// Non-reactive snapshot — updated by handleScroll, read by the new-message
 	// effect BEFORE the DOM mutation triggers a synchronous scroll event that
 	// would flip isAtBottom to false in flex-col-reverse.
@@ -263,6 +275,9 @@
 			if (sentinelBottom) {
 				const r = sentinelBottom.getBoundingClientRect();
 				if (r.top < scrollRect.bottom && r.bottom > scrollRect.top) {
+					// The page goes in below what the reader sees, and the browser keeps it in place (scroll anchoring), but
+					// not for a list scrolled to its very end, its bottom here: a pixel up, it does.
+					if (scrollEl.scrollTop > -1) scrollEl.scrollTop = -1;
 					void onLoadMoreBelow();
 				}
 			}
@@ -457,11 +472,17 @@
 		const unread = !!id && !!unreadDividerIdx;
 		if (id && unread) scrolledUnreadIds.add(id);
 		const jumping = !!highlightedMessageId;
+		const kept = takePlace(chId);
 		void tick().then(() => {
 			requestAnimationFrame(() => {
 				requestAnimationFrame(() => {
 					if (channelId !== chId || !scrollEl) return;
-					if (!jumping) {
+					const keptEl = kept && scrollEl.querySelector(`[data-message-id="${kept.messageId}"]`);
+					if (kept && keptEl && !jumping) {
+						// Back where the reader was when a new gateway session unmounted the app (keepReaderPlace).
+						const listTop = scrollEl.getBoundingClientRect().top;
+						scrollEl.scrollTop += keptEl.getBoundingClientRect().top - listTop - kept.offset;
+					} else if (!jumping) {
 						const target = unread
 							? (scrollEl.querySelector(`[data-message-id="${id}"]`) ?? scrollEl.querySelector("[data-unread-divider]"))
 							: null;
@@ -479,6 +500,37 @@
 			});
 		});
 	}
+
+	// A new gateway session (the gateway restarted, or the connection was lost for longer than a resume allows)
+	// unmounts the app until that session's friends and conversations are in: its READY clears friendsReady. While the
+	// list is still on screen then, the place of a reader up in it is kept, and the list mounted after it goes back
+	// there (placeVisit) rather than to its bottom.
+	function keepReaderPlace() {
+		if (!scrollEl || !scrollUnlocked || wasAtBottom || scrollEl.clientHeight === 0) return;
+		const view = scrollEl.getBoundingClientRect();
+		// The message at the bottom of the view: the first one in the DOM wholly in it, as the list runs bottom to top,
+		// or else the first one in it at all (a message taller than the view).
+		let partly: { messageId: string; offset: number } | null = null;
+		for (const el of scrollEl.querySelectorAll<HTMLElement>("[data-message-id]")) {
+			const r = el.getBoundingClientRect();
+			if (r.bottom <= view.top || r.top >= view.bottom) continue;
+			const place = { messageId: el.dataset.messageId ?? "", offset: r.top - view.top };
+			if (r.top >= view.top && r.bottom <= view.bottom) {
+				keepPlace(channelId, place);
+				return;
+			}
+			partly ??= place;
+		}
+		if (partly) keepPlace(channelId, partly);
+	}
+
+	onMount(() => {
+		let ready = get(friendsReady);
+		return friendsReady.subscribe((isReady) => {
+			if (ready && !isReady) keepReaderPlace();
+			ready = isReady;
+		});
+	});
 
 	$effect(() => {
 		const chId = channelId;
@@ -546,9 +598,10 @@
 			isAtBottom = val;
 		}
 
-		// The list also grows when scrolling up loads older messages: only what made its newest end newer is new.
+		// The list also grows when scrolling up loads older messages: only what made its newest end newer is new. And
+		// after a jump, what loads below is history the reader scrolls into.
 		const arrived = arrival(prevEnd, end);
-		const action = arrived && arrivalAction(arrived, $currentUser?.id, wasAtBottom && visible);
+		const action = arrived && arrivalAction(arrived, $currentUser?.id, wasAtBottom && visible, newerBelow);
 		if (action === "bottom") {
 			// A message this window sends, or any while the user is at the bottom and looking.
 			tick().then(() => {
@@ -568,6 +621,7 @@
 		}
 
 		prevEnd = end;
+		newerBelow = hasMoreMessagesBelow;
 	});
 
 	// ── Formatting ─────────────────────────────────────────────────────────────
@@ -843,9 +897,11 @@
 	}
 </script>
 
+<!-- The space under the newest message is the list's padding (pb-4), not that message's margin: a margin that changes
+     when another message comes below it stops the browser from keeping the reader's place (scroll anchoring). -->
 <div
 	bind:this={scrollEl}
-	class="flex flex-1 flex-col-reverse overflow-x-clip overflow-y-auto px-4 py-2"
+	class="flex flex-1 flex-col-reverse overflow-x-clip overflow-y-auto px-4 pt-2 pb-4"
 	onscroll={handleScroll}
 	oncopy={handleCopy}
 >
@@ -902,7 +958,6 @@
 				isEphemeral(chronoPrev) === isEphemeral(message) &&
 				new Date(message.created_at).getTime() - new Date(chronoPrev.created_at).getTime() <= 5 * 60 * 1_000}
 			{@const showHeader = !isConsecutive || !!message.referenced_message || !!message.interaction_metadata}
-			{@const isLast = i === 0}
 			{@const isDifferentDay = !chronoPrev || !isSameCalendarDay(message.created_at, chronoPrev.created_at)}
 			{@const isPending = message.id === message.nonce}
 			{@const isFailed = isPending && failedNonces.has(message.nonce ?? "")}
@@ -913,13 +968,13 @@
 			{@const isMention =
 				!!$currentUser &&
 				message.author_id !== $currentUser.id &&
-				messageText(message).includes(`<@${$currentUser.id}>`)}
+				(messageText(message).includes(`<@${$currentUser.id}>`) || mentionsByReply(message, $currentUser.id))}
 			{@const msgMember = members.find((m) => m.id === message.author_id)}
 			{#if message.type === MessageType.PinNotice}
 				<!-- A pin notice: who pinned which message, as Discord shows it -->
 				<div
 					data-message-id={message.id}
-					class="group relative -mx-3 flex items-center rounded-md px-3 py-1 {isLast ? 'mb-3' : 'mb-1'} {showHeader
+					class="group relative -mx-3 mb-1 flex items-center rounded-md px-3 py-1 {showHeader
 						? 'mt-4'
 						: 'mt-1'} {isHighlighted ? 'bg-yellow-500/15' : 'hover:bg-zinc-800/55'}"
 				>
@@ -953,7 +1008,7 @@
 			{:else}
 				<div
 					data-message-id={message.id}
-					class="group relative flex flex-col rounded-md px-3 {isLast ? 'mb-3' : 'mb-1'} {message.referenced_message ||
+					class="group relative mb-1 flex flex-col rounded-md px-3 {message.referenced_message ||
 					message.interaction_metadata
 						? 'mt-2 pt-2'
 						: showHeader

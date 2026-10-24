@@ -250,6 +250,12 @@
 						</div>
 					{/if}
 
+					{#if member.bio}
+						<div class="my-3 h-px w-full bg-zinc-800"></div>
+						<h3 class="mb-1 text-left text-[11px] font-bold tracking-wide text-zinc-400 uppercase">About</h3>
+						<p class="text-sm break-words whitespace-pre-wrap text-zinc-300 select-text">{member.bio}</p>
+					{/if}
+
 					<ActivityList activities={$userActivities[member.id]} />
 
 					{#if visibleRoles.length > 0}

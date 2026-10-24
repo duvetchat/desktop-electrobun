@@ -114,4 +114,18 @@ describe("arrivalAction", () => {
 		expect(action(pinNotice, true)).toBe("bottom");
 		expect(action(fromAnotherDevice, true)).toBe("bottom");
 	});
+
+	// After a jump, the list shows the messages around it, and newer ones load below as the reader scrolls down.
+	test("a page that loads below a jump leaves the reader where they are, at its bottom too, with no divider", () => {
+		const jump = page(31, 130);
+		const below = arrived(jump, [...jump, ...page(131, 230, () => "bob")])!;
+		expect(arrivalAction(below, "me", true, true)).toBeNull();
+		expect(arrivalAction(below, "me", false, true)).toBeNull();
+	});
+
+	test("a message this window sends there still takes the list down to it", () => {
+		const mine = sending("f1d2c3b4-0000-4000-8000-000000000000");
+		const came = arrived(list, [...list, mine])!;
+		expect(arrivalAction(came, "me", false, true)).toBe("bottom");
+	});
 });

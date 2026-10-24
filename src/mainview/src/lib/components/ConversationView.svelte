@@ -35,7 +35,13 @@
 		type DirectMessage,
 	} from "$lib/api/conversations";
 	import type { Friend } from "$lib/api/friends";
-	import { MessageType, type Message, type MessageReference } from "$lib/types";
+	import {
+		MessageType,
+		userStatusToString,
+		type AllowedMentions,
+		type Message,
+		type MessageReference,
+	} from "$lib/types";
 	import { toast } from "$lib/stores/toast.svelte";
 	import { getApiError } from "$lib/api/api";
 	import { MessageSquare, Phone, UserPlus, Users } from "@lucide/svelte";
@@ -125,12 +131,13 @@
 			raw_username: m.user?.username ?? m.user_id.slice(0, 8),
 			avatar_url: getAvatarURL(m.user_id, m.user?.avatar),
 			banner_url: getAvatarURL(m.user_id, m.user?.banner),
-			status: (getUserOnlineStatus(m.user_id) === 1 ? "online" : "offline") as "online" | "offline",
+			status: userStatusToString(getUserOnlineStatus(m.user_id)),
 			badges: m.user?.badges ?? 0,
 			is_bot: m.user?.is_bot ?? false,
 			// A DM's owner_id is just whoever opened it: only a group has an owner.
 			is_owner: conversation.type === 2 && m.user_id === conversation.owner_id,
 			roles: [],
+			bio: m.user?.custom ?? "",
 		})),
 	);
 
@@ -307,6 +314,7 @@
 		ref: MessageReference | undefined,
 		files?: File[],
 		stickerAttachmentId?: string,
+		allowedMentions?: AllowedMentions,
 	) {
 		const user = get(currentUser);
 		if (!user) return;
@@ -348,7 +356,16 @@
 			sticker_attachment_id: stickerAttachmentId ?? null,
 		};
 		dmMessages.update((all) => ({ ...all, [conversation.id]: [...(all[conversation.id] ?? []), pending] }));
-		const real = await sendDirectMessage(conversation.id, content, nonce, ref, files, undefined, stickerAttachmentId);
+		const real = await sendDirectMessage(
+			conversation.id,
+			content,
+			nonce,
+			ref,
+			files,
+			undefined,
+			stickerAttachmentId,
+			allowedMentions,
+		);
 		dmMessages.update((all) => {
 			const existing = all[conversation.id] ?? [];
 			if (!existing.some((m) => m.id === nonce)) return all;

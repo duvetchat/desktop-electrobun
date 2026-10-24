@@ -6,6 +6,9 @@
 	import UserStatusBar from "$lib/components/UserStatusBar.svelte";
 	import type { Conversation } from "$lib/api/conversations";
 	import { getAvatarURL } from "$lib/common/common";
+	import StatusDot from "$lib/components/StatusDot.svelte";
+	import { getUserOnlineStatus } from "$lib/api/ws/connection";
+	import { userStatusToString, type MemberOnSidebar } from "$lib/types";
 
 	let {
 		activeConversationId = null,
@@ -35,6 +38,15 @@
 		const other = conv.members.find((m) => m.user_id !== me?.id);
 		return getAvatarURL(other?.user_id ?? "", other?.user?.avatar);
 	}
+
+	// The other member's status, in a DM (a group has none), while they're connected. Statuses come through spaces,
+	// so someone who shares none with us looks offline, and offline shows nothing rather than a guess.
+	function convStatus(conv: Conversation): MemberOnSidebar["status"] | null {
+		if (conv.type === 2) return null;
+		const other = conv.members.find((m) => m.user_id !== get(currentUser)?.id);
+		const statusId = other ? getUserOnlineStatus(other.user_id) : 0;
+		return statusId === 0 ? null : userStatusToString(statusId);
+	}
 </script>
 
 <div
@@ -55,6 +67,7 @@
 
 	<div class="flex-1 overflow-y-auto py-1">
 		{#each $conversations as conv (conv.id)}
+			{@const status = convStatus(conv)}
 			<button
 				class="mx-1 flex w-[calc(100%-0.5rem)] items-center gap-2.5 rounded-md px-2 py-1.5 text-left transition-colors
 					{activeConversationId === conv.id
@@ -62,8 +75,11 @@
 					: 'text-stone-400 hover:bg-stone-800/60 hover:text-stone-200'}"
 				onclick={() => onSelect(conv.id)}
 			>
-				<div class="shrink-0">
+				<div class="relative shrink-0">
 					<UserAvatar src={convAvatarSrc(conv)} name={convTitle(conv)} size={32} />
+					{#if status}
+						<StatusDot {status} class="absolute -right-0.5 -bottom-0.5 size-3 border-2 border-stone-900" />
+					{/if}
 				</div>
 				<div class="flex min-w-0 flex-1 flex-col">
 					<span class="truncate text-sm leading-tight font-medium">{convTitle(conv)}</span>
