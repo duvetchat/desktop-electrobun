@@ -280,7 +280,7 @@
 					{#each group.guilds as guild}
 						{@const canLeave = !ownedSpaceIds.has(guild.id)}
 						<ContextMenu.Root>
-							<ContextMenu.Trigger>
+							<ContextMenu.Trigger disabled={folders.length === 0 && !canLeave}>
 								<button
 									title={guild.name}
 									aria-pressed={guild.id === activeGuildId}
@@ -305,7 +305,8 @@
 									{/if}
 								</button>
 							</ContextMenu.Trigger>
-							<!-- Nothing to offer the owner when there are no folders: they can't leave their space. -->
+							<!-- Nothing to offer the owner when there are no folders: they can't leave their space. The trigger is disabled
+							     then, as a right-click would leave the menu open, to show by itself once it had items. -->
 							{#if folders.length > 0 || canLeave}
 								<ContextMenu.Portal>
 									<ContextMenu.Content
@@ -356,7 +357,7 @@
 				{#each ungroupedGuilds as guild}
 					{@const canLeave = !ownedSpaceIds.has(guild.id)}
 					<ContextMenu.Root>
-						<ContextMenu.Trigger>
+						<ContextMenu.Trigger disabled={folders.length === 0 && !canLeave}>
 							<button
 								title={guild.name}
 								aria-pressed={guild.id === activeGuildId}
@@ -380,7 +381,8 @@
 								{/if}
 							</button>
 						</ContextMenu.Trigger>
-						<!-- Nothing to offer the owner when there are no folders: they can't leave their space. -->
+						<!-- Nothing to offer the owner when there are no folders: they can't leave their space. The trigger is disabled
+						     then, as a right-click would leave the menu open, to show by itself once it had items. -->
 						{#if folders.length > 0 || canLeave}
 							<ContextMenu.Portal>
 								<ContextMenu.Content
