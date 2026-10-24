@@ -65,3 +65,13 @@ export function arrivalAction(
 	if (following) return "bottom";
 	return arrived.message.author_id === me ? null : "unread";
 }
+
+/**
+ * A room's or a conversation's messages once the API answered a send of this window's: its copy of the message takes
+ * the place of the one being sent, whose ID is the send's nonce, and drops any other copy. The list is as it was when
+ * the one being sent is gone, which the gateway's event replaced already.
+ */
+export function withSentMessage<T extends { id: string }>(messages: T[], nonce: string, sent: T): T[] {
+	if (!messages.some((m) => m.id === nonce)) return messages;
+	return messages.filter((m) => m.id !== sent.id).map((m) => (m.id === nonce ? sent : m));
+}

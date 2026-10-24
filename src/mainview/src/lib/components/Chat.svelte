@@ -12,15 +12,23 @@
 		ApplicationCommand,
 		Message,
 		MemberOnSidebar,
+		GatewayMessage,
 		GatewaySpace,
 		MessageReference,
 		Embed,
 		SpaceCommandApplication,
 	} from "$lib/types";
-	import { isEphemeral, MessageReferenceType } from "$lib/types";
+	import { gatewayMessageToMessage, isEphemeral, MessageReferenceType } from "$lib/types";
 	import { sendMessage, sendVoiceNote, sendTypingIndicator, sendRecordingIndicator } from "$lib/api/messages";
 	import { MessageType } from "$lib/types";
-	import { currentUser, channelMessages, typingUsers, spaceEmojis, spaceStickers } from "$lib/stores.svelte";
+	import {
+		currentUser,
+		channelMessages,
+		gatewaySpaces,
+		typingUsers,
+		spaceEmojis,
+		spaceStickers,
+	} from "$lib/stores.svelte";
 	import { toast } from "$lib/stores/toast.svelte";
 	import TypingIndicator from "$lib/components/TypingIndicator.svelte";
 	import { listEmojis } from "$lib/api/emojis";
@@ -30,6 +38,7 @@
 	import { getSpaceCommands, sendCommandInteraction } from "$lib/api/interactions";
 	import { hasPermission, Permission } from "$lib/permissions";
 	import { displayName, isSpoiler, withSpoiler } from "$lib/spoilers";
+	import { withSentMessage } from "$lib/arrivals";
 
 	let {
 		messages,
@@ -372,11 +381,26 @@
 
 		retryData.set(nonce, { files, ref, stickerAttachmentId, allowedMentions });
 		sendMessage(channelId, content, nonce, ref, files, undefined, stickerAttachmentId, allowedMentions)
-			.then(() => retryData.delete(nonce))
+			.then(sent(channelId, nonce))
 			.catch((err) => {
 				failedNonces = new Set(failedNonces).add(nonce);
 				toast(getApiError(err, "Failed to send message"), "error");
 			});
+	}
+
+	// What follows a send of this window's that the API took: its retry data goes, and the API's copy takes the place of
+	// its pending one, by its nonce, as MESSAGE_CREATE's does. That event can be missed (a connection that dropped and
+	// didn't resume), and the message would stay pending. The room is the one it was sent to.
+	function sent(roomId: string, nonce: string) {
+		return (raw: GatewayMessage) => {
+			retryData.delete(nonce);
+			const message = gatewayMessageToMessage(raw, $gatewaySpaces);
+			channelMessages.update((all) => {
+				const existing = all[roomId] ?? [];
+				const shown = withSentMessage(existing, nonce, message);
+				return shown === existing ? all : { ...all, [roomId]: shown };
+			});
+		};
 	}
 
 	function handleReply(message: Message) {
@@ -398,7 +422,7 @@
 		// A voice note goes again as one: its audio, not its empty text.
 		if (saved?.voiceNote) {
 			sendVoiceNote(channelId, saved.voiceNote, nonce)
-				.then(() => retryData.delete(nonce))
+				.then(sent(channelId, nonce))
 				.catch((err) => {
 					failedNonces = new Set(failedNonces).add(nonce);
 					toast(getApiError(err, "Failed to send voice note"), "error");
@@ -415,7 +439,7 @@
 			saved?.stickerAttachmentId,
 			saved?.allowedMentions,
 		)
-			.then(() => retryData.delete(nonce))
+			.then(sent(channelId, nonce))
 			.catch((err) => {
 				failedNonces = new Set(failedNonces).add(nonce);
 				toast(getApiError(err, "Failed to send message"), "error");
@@ -515,7 +539,7 @@
 
 		retryData.set(nonce, { voiceNote: blob });
 		sendVoiceNote(channelId, blob, nonce)
-			.then(() => retryData.delete(nonce))
+			.then(sent(channelId, nonce))
 			.catch((err) => {
 				failedNonces = new Set(failedNonces).add(nonce);
 				toast(getApiError(err, "Failed to send voice note"), "error");

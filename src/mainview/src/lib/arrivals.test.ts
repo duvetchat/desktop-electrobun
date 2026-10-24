@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { arrival, arrivalAction, listEnd } from "$lib/arrivals";
+import { arrival, arrivalAction, listEnd, withSentMessage } from "$lib/arrivals";
 import { MessageType, type Message } from "$lib/types";
 
 // The API's IDs are UUIDv7, in time order; a message being sent has its nonce, a random UUID, for an ID.
@@ -127,5 +127,26 @@ describe("arrivalAction", () => {
 		const mine = sending("f1d2c3b4-0000-4000-8000-000000000000");
 		const came = arrived(list, [...list, mine])!;
 		expect(arrivalAction(came, "me", false, true)).toBe("bottom");
+	});
+});
+
+describe("withSentMessage", () => {
+	const nonce = "f1d2c3b4-0000-4000-8000-000000000000";
+	// The API's answer to the send: the message with its own ID, and the nonce it was sent with.
+	const answer: Message = { ...message(131, "me"), nonce };
+
+	test("the API's copy takes the place of the message being sent", () => {
+		const list = [...page(129, 130), sending(nonce)];
+		expect(withSentMessage(list, nonce, answer)).toEqual([...page(129, 130), answer]);
+	});
+
+	test("another copy of it, listed meanwhile, goes", () => {
+		const list = [...page(129, 130), answer, sending(nonce)];
+		expect(withSentMessage(list, nonce, answer)).toEqual([...page(129, 130), answer]);
+	});
+
+	test("once the gateway's event has replaced the message being sent, the list stays as it is", () => {
+		const list = [...page(129, 130), answer];
+		expect(withSentMessage(list, nonce, answer)).toBe(list);
 	});
 });

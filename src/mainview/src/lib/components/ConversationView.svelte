@@ -44,6 +44,7 @@
 	} from "$lib/types";
 	import { toast } from "$lib/stores/toast.svelte";
 	import { getApiError } from "$lib/api/api";
+	import { withSentMessage } from "$lib/arrivals";
 	import { MessageSquare, Phone, UserPlus, Users } from "@lucide/svelte";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
 	import Chat from "$lib/components/Chat.svelte";
@@ -380,14 +381,18 @@
 			stickerAttachmentId,
 			allowedMentions,
 		);
+		showSent(nonce, real);
+	}
+
+	// What follows a send of this window's that the API took: its retry data goes, and the API's copy takes the place of
+	// its pending one, by its nonce, as DM_MESSAGE_CREATE's does. That event can be missed, and the message would stay
+	// pending.
+	function showSent(nonce: string, real: DirectMessage) {
 		dmRetryData.delete(nonce);
 		dmMessages.update((all) => {
 			const existing = all[conversation.id] ?? [];
-			if (!existing.some((m) => m.id === nonce)) return all;
-			return {
-				...all,
-				[conversation.id]: existing.filter((m) => m.id !== real.id).map((m) => (m.id === nonce ? real : m)),
-			};
+			const shown = withSentMessage(existing, nonce, real);
+			return shown === existing ? all : { ...all, [conversation.id]: shown };
 		});
 	}
 
@@ -414,7 +419,7 @@
 		// A voice note goes again as one: its audio, not its empty text.
 		if (saved?.voiceNote) {
 			sendDMVoiceNote(conversation.id, saved.voiceNote, nonce)
-				.then(() => dmRetryData.delete(nonce))
+				.then((real) => showSent(nonce, real))
 				.catch((err) => {
 					failedNonces = new Set(failedNonces).add(nonce);
 					toast(getApiError(err, "Failed to send voice note"), "error");
@@ -431,7 +436,7 @@
 			saved?.stickerAttachmentId,
 			saved?.allowedMentions,
 		)
-			.then(() => dmRetryData.delete(nonce))
+			.then((real) => showSent(nonce, real))
 			.catch((err) => {
 				failedNonces = new Set(failedNonces).add(nonce);
 				toast(getApiError(err, "Failed to send message"), "error");
@@ -478,7 +483,7 @@
 
 		dmRetryData.set(nonce, { voiceNote: blob });
 		sendDMVoiceNote(conversation.id, blob, nonce)
-			.then(() => dmRetryData.delete(nonce))
+			.then((real) => showSent(nonce, real))
 			.catch((err) => {
 				failedNonces = new Set(failedNonces).add(nonce);
 				toast(getApiError(err, "Failed to send voice note"), "error");
