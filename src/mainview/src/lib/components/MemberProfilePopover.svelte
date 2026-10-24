@@ -8,7 +8,7 @@
 	import { assignRoleToMember, removeRoleFromMember } from "$lib/api/roles";
 	import { sendFriendRequest, getSentRequests, acceptFriendRequest } from "$lib/api/friends";
 	import { rememberFriendStatuses } from "$lib/api/ws/connection";
-	import { Permission, ALL_PERMISSIONS, hasSpacePermission } from "$lib/permissions";
+	import { Permission, ALL_PERMISSIONS, canManageRoleAt, hasSpacePermission } from "$lib/permissions";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
 	import ActivityList from "$lib/components/ActivityList.svelte";
 
@@ -82,7 +82,8 @@
 		return Array.from(set).sort();
 	}
 
-	// As the API checks it: the owner and Administrators pass, ManageRoles or not.
+	// As the API checks it: the owner and Administrators pass, ManageRoles or not. Each role then takes being below the
+	// user's highest one (canManageRoleAt), which Administrator doesn't pass.
 	function currentUserCanManageRoles(): boolean {
 		return !!space && hasSpacePermission(space, Permission.ManageRoles);
 	}
@@ -310,12 +311,14 @@
 							{#each assignableRoles as role}
 								{@const memberHasRole = member.roles.some((mr) => mr.id === role.id)}
 								{@const toggleKey = `${member.id}-${role.id}`}
+								{@const manageable = canManageRoleAt(space, role.position)}
 								<button
-									class="w-fit rounded-full px-2 py-0.5 text-xs transition-colors disabled:opacity-50 {memberHasRole
+									class="w-fit rounded-full px-2 py-0.5 text-xs transition-colors disabled:cursor-not-allowed disabled:opacity-50 {memberHasRole
 										? 'bg-stone-600 text-white hover:bg-stone-500'
 										: 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700'}"
 									onclick={() => toggleMemberRole(member, role.id)}
-									disabled={togglingRoles[toggleKey]}
+									disabled={togglingRoles[toggleKey] || !manageable}
+									title={manageable ? undefined : "Only roles below your highest role can be assigned or removed"}
 								>
 									<div class="flex items-center gap-1">
 										<div class="h-2.5 w-2.5 rounded-full" style={roleBadgeStyle(role)}></div>

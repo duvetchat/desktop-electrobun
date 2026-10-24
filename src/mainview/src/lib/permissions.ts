@@ -85,6 +85,41 @@ export function hasSpacePermission(space: GatewaySpace, permission: number): boo
 	return (computeSpacePermissions(space) & permission) === permission;
 }
 
+/** The position of the highest role the current member holds (@everyone's is 0), or -1 when they hold none. */
+export function highestRolePosition(space: GatewaySpace): number {
+	const { member, member_roles, roles } = space;
+	if (!member) return -1;
+	const myRoles = member_roles[member.user_id] ?? [];
+	let highest = -1;
+	for (const role of roles) {
+		if (myRoles.includes(role.id) && role.position > highest) {
+			highest = role.position;
+		}
+	}
+	return highest;
+}
+
+/**
+ * Whether the current member may manage a role at this position, as the API's checkRoleHierarchy allows: edit or
+ * delete it, assign it to a member or take it from one, or move a role there. Only roles below their highest one, or
+ * any for the space's owner; unlike the permissions, Administrator doesn't change it. ManageRoles is checked apart.
+ */
+export function canManageRoleAt(space: GatewaySpace, position: number): boolean {
+	if (space.member && space.member.user_id === space.owner_id) {
+		return true;
+	}
+	return position < highestRolePosition(space);
+}
+
+/**
+ * Whether an edit may set a permission flag on a role, or as an overwrite's allow or deny: the API takes a newly set
+ * flag only from someone who has it (`granted`: computeSpacePermissions for a role, computeRoomPermissions for an
+ * overwrite), and keeping one already set (`saved`), or removing it, from anyone who may edit it.
+ */
+export function canSetPermission(granted: number, saved: number, flag: number): boolean {
+	return ((granted | saved) & flag) === flag;
+}
+
 /**
  * Computes the effective permissions for the current member in a given room,
  * applying the standard overwrite cascade:

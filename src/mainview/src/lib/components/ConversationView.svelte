@@ -308,11 +308,17 @@
 		}
 	}
 
-	// What each message being sent was sent with besides its text (its files, reply, sticker, and the reply's mention),
-	// so that a retry sends it whole, as Chat's retryData does for a room's.
+	// What each message being sent was sent with besides its text (its files, reply, sticker, and the reply's mention,
+	// or a voice note's audio), so that a retry sends it whole, as Chat's retryData does for a room's.
 	const dmRetryData = new Map<
 		string,
-		{ ref?: MessageReference; files?: File[]; stickerAttachmentId?: string; allowedMentions?: AllowedMentions }
+		{
+			ref?: MessageReference;
+			files?: File[];
+			stickerAttachmentId?: string;
+			allowedMentions?: AllowedMentions;
+			voiceNote?: Blob;
+		}
 	>();
 
 	async function dmHandleSend(
@@ -405,6 +411,16 @@
 		const nonce = message.nonce!;
 		const saved = dmRetryData.get(nonce);
 		failedNonces = new Set([...failedNonces].filter((n) => n !== nonce));
+		// A voice note goes again as one: its audio, not its empty text.
+		if (saved?.voiceNote) {
+			sendDMVoiceNote(conversation.id, saved.voiceNote, nonce)
+				.then(() => dmRetryData.delete(nonce))
+				.catch((err) => {
+					failedNonces = new Set(failedNonces).add(nonce);
+					toast(getApiError(err, "Failed to send voice note"), "error");
+				});
+			return;
+		}
 		sendDirectMessage(
 			conversation.id,
 			message.content ?? "",
@@ -416,8 +432,9 @@
 			saved?.allowedMentions,
 		)
 			.then(() => dmRetryData.delete(nonce))
-			.catch(() => {
+			.catch((err) => {
 				failedNonces = new Set(failedNonces).add(nonce);
+				toast(getApiError(err, "Failed to send message"), "error");
 			});
 	}
 
@@ -459,10 +476,13 @@
 		};
 		dmMessages.update((all) => ({ ...all, [conversation.id]: [...(all[conversation.id] ?? []), pending] }));
 
-		sendDMVoiceNote(conversation.id, blob, nonce).catch((err) => {
-			failedNonces = new Set(failedNonces).add(nonce);
-			toast(getApiError(err, "Failed to send voice note"), "error");
-		});
+		dmRetryData.set(nonce, { voiceNote: blob });
+		sendDMVoiceNote(conversation.id, blob, nonce)
+			.then(() => dmRetryData.delete(nonce))
+			.catch((err) => {
+				failedNonces = new Set(failedNonces).add(nonce);
+				toast(getApiError(err, "Failed to send voice note"), "error");
+			});
 	}
 
 	async function handleRemoveMember(userId: string) {

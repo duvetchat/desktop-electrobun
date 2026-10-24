@@ -52,7 +52,13 @@
 		deactivateSpaceBucket,
 	} from "$lib/api/space-buckets";
 	import { currentUser } from "$lib/stores.svelte";
-	import { Permission, ALL_PERMISSIONS, computeSpacePermissions } from "$lib/permissions";
+	import {
+		Permission,
+		ALL_PERMISSIONS,
+		canManageRoleAt,
+		canSetPermission,
+		computeSpacePermissions,
+	} from "$lib/permissions";
 	import { settingsSections, type SettingsSection } from "$lib/space-settings";
 
 	import type { GatewaySpace, SpaceEmoji, SpaceSticker } from "$lib/types";
@@ -330,9 +336,16 @@
 		isDragging = true;
 	}
 
+	// A role moves only where the API lets the user put it, below their highest role (checkRoleHierarchy, which counts
+	// the bottom place, @everyone's, as 1). @everyone's own place never changes, whatever the list shows.
+	function canMoveRoleTo(role: { id: string }, index: number): boolean {
+		if (!space || role.id === space.id) return true;
+		return canManageRoleAt(space, Math.max(sortedRoles.length - 1 - index, 1));
+	}
+
 	function onDragOver(e: DragEvent, i: number) {
 		e.preventDefault();
-		if (dragIndex === i) {
+		if (dragIndex === i || !draggedRole || !canMoveRoleTo(draggedRole, i)) {
 			return;
 		}
 		const items = [...sortedRoles];
@@ -376,6 +389,9 @@
 	});
 
 	const canManageRoles = $derived(hasSpacePermission(Permission.ManageRoles));
+	// The permissions of the role being edited as saved: the edit may keep or remove them, but add only ones the user
+	// has (canSetPermission), as the API checks.
+	const editingRoleSaved = $derived(space?.roles.find((r) => r.id === editingRoleId)?.permissions ?? 0);
 
 	function permissionsToFlags(permissions: number[]): number {
 		return permissions.reduce((acc, perm) => acc | perm, 0);
@@ -1343,6 +1359,7 @@
 										type="text"
 										bind:value={ovName}
 										placeholder="Server name"
+										maxlength={64}
 										class="h-10 w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 text-sm text-zinc-100 outline-none focus:ring-1 focus:ring-stone-500"
 									/>
 								</label>
@@ -1354,6 +1371,7 @@
 										bind:value={ovDescription}
 										placeholder="What is this server about?"
 										rows="3"
+										maxlength={256}
 										class="w-full resize-none rounded-md border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 outline-none [scrollbar-color:var(--color-zinc-600)_transparent] focus:ring-1 focus:ring-stone-500"
 									></textarea>
 								</label>
@@ -1529,11 +1547,16 @@
 										<p class="mb-1.5 text-xs font-medium text-zinc-400">Permissions</p>
 										<div class="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
 											{#each PERMISSIONS as perm}
+												{@const settable = canSetPermission(spacePermissions, 0, perm.flag)}
 												<label
-													class="flex h-9 cursor-pointer items-center gap-2 rounded-md border border-zinc-800 bg-zinc-800/70 px-2.5 text-xs text-zinc-200 hover:text-white"
+													class="flex h-9 items-center gap-2 rounded-md border border-zinc-800 bg-zinc-800/70 px-2.5 text-xs text-zinc-200 {settable
+														? 'cursor-pointer hover:text-white'
+														: 'cursor-not-allowed opacity-50'}"
+													title={settable ? undefined : "You can only grant permissions you have"}
 												>
 													<Checkbox.Root
 														checked={newRolePermissions.includes(perm.flag)}
+														disabled={!settable}
 														onCheckedChange={() => {
 															togglePermission(perm.flag, false);
 														}}
@@ -1560,12 +1583,13 @@
 									<h3 class="text-sm font-semibold text-white">Existing Roles</h3>
 									<p class="text-xs text-zinc-400">Drag to reorder. Edit or delete using actions on the right.</p>
 									{#each sortedRoles as role, i}
+										{@const manageable = canManageRoleAt(space, role.position)}
 										<div
 											class="overflow-hidden rounded-xl border border-zinc-700 bg-zinc-900 transition-opacity duration-100"
 											class:opacity-40={isDragging && dragIndex !== i}
 											class:ring-2={isDragging && dragIndex === i}
 											class:ring-stone-500={isDragging && dragIndex === i}
-											draggable={editingRoleId !== role.id}
+											draggable={editingRoleId !== role.id && manageable}
 											ondragstart={() => {
 												onDragStart(i);
 											}}
@@ -1679,11 +1703,16 @@
 															<p class="mb-1.5 text-xs font-medium text-zinc-400">Permissions</p>
 															<div class="grid grid-cols-2 gap-1.5">
 																{#each PERMISSIONS as perm}
+																	{@const settable = canSetPermission(spacePermissions, editingRoleSaved, perm.flag)}
 																	<label
-																		class="flex cursor-pointer items-center gap-2 text-xs text-zinc-200 hover:text-white"
+																		class="flex items-center gap-2 text-xs text-zinc-200 {settable
+																			? 'cursor-pointer hover:text-white'
+																			: 'cursor-not-allowed opacity-50'}"
+																		title={settable ? undefined : "You can only grant permissions you have"}
 																	>
 																		<Checkbox.Root
 																			checked={(editingRolePermissions & perm.flag) === perm.flag}
+																			disabled={!settable}
 																			onCheckedChange={() => {
 																				togglePermission(perm.flag, true);
 																			}}
@@ -1724,9 +1753,14 @@
 																{getPermissionNames(role.permissions)}
 															</p>
 														</div>
-														<div class="ml-1 flex shrink-0 gap-1.5">
+														<!-- Only a role below the user's highest one, as the API's checkRoleHierarchy allows -->
+														<div
+															class="ml-1 flex shrink-0 gap-1.5"
+															title={manageable ? undefined : "Only roles below your highest role can be managed"}
+														>
 															<button
-																class="h-7 rounded-md bg-zinc-700 px-2.5 text-xs text-zinc-100 transition-colors hover:bg-zinc-600"
+																class="h-7 rounded-md bg-zinc-700 px-2.5 text-xs text-zinc-100 transition-colors hover:bg-zinc-600 disabled:cursor-not-allowed disabled:opacity-50"
+																disabled={!manageable}
 																onclick={() => {
 																	startEdit(role);
 																}}>Edit</button
@@ -1734,7 +1768,8 @@
 															<!-- everyone (its ID is the space's) can be edited, not deleted -->
 															{#if role.id !== spaceId}
 																<button
-																	class="h-7 rounded-md bg-red-800/70 px-2.5 text-xs text-white transition-colors hover:bg-red-700 disabled:opacity-50"
+																	class="h-7 rounded-md bg-red-800/70 px-2.5 text-xs text-white transition-colors hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+																	disabled={!manageable}
 																	onclick={() => handleDeleteRole(role.id)}>Delete</button
 																>
 															{/if}

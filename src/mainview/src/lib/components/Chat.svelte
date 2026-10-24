@@ -120,10 +120,16 @@
 	let lastTypingSent = 0;
 	let lastTypingRecording = false;
 
-	// Store original send data for retry (files, ref, sticker, the reply's mention)
+	// Store original send data for retry (files, ref, sticker, the reply's mention, or a voice note's audio)
 	const retryData = new Map<
 		string,
-		{ files?: File[]; ref?: MessageReference; stickerAttachmentId?: string; allowedMentions?: AllowedMentions }
+		{
+			files?: File[];
+			ref?: MessageReference;
+			stickerAttachmentId?: string;
+			allowedMentions?: AllowedMentions;
+			voiceNote?: Blob;
+		}
 	>();
 
 	// Load emojis and stickers into global stores on space change
@@ -315,8 +321,9 @@
 		if (onSend) {
 			try {
 				await onSend(content, nonce, ref, files, stickerAttachmentId, allowedMentions);
-			} catch {
+			} catch (err) {
 				failedNonces = new Set(failedNonces).add(nonce);
+				toast(getApiError(err, "Failed to send message"), "error");
 			}
 			return;
 		}
@@ -388,6 +395,16 @@
 		const newSet = new Set(failedNonces);
 		newSet.delete(nonce);
 		failedNonces = newSet;
+		// A voice note goes again as one: its audio, not its empty text.
+		if (saved?.voiceNote) {
+			sendVoiceNote(channelId, saved.voiceNote, nonce)
+				.then(() => retryData.delete(nonce))
+				.catch((err) => {
+					failedNonces = new Set(failedNonces).add(nonce);
+					toast(getApiError(err, "Failed to send voice note"), "error");
+				});
+			return;
+		}
 		sendMessage(
 			channelId,
 			message.content ?? "",
@@ -496,10 +513,13 @@
 			[channelId]: [...(all[channelId] ?? []), pendingMessage],
 		}));
 
-		sendVoiceNote(channelId, blob, nonce).catch((err) => {
-			failedNonces = new Set(failedNonces).add(nonce);
-			toast(getApiError(err, "Failed to send voice note"), "error");
-		});
+		retryData.set(nonce, { voiceNote: blob });
+		sendVoiceNote(channelId, blob, nonce)
+			.then(() => retryData.delete(nonce))
+			.catch((err) => {
+				failedNonces = new Set(failedNonces).add(nonce);
+				toast(getApiError(err, "Failed to send voice note"), "error");
+			});
 	}
 
 	let fileDragOver = $state(false);

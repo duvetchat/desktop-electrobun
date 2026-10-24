@@ -1,5 +1,12 @@
 import { describe, expect, test } from "bun:test";
-import { computeSpacePermissions, hasSpacePermission, Permission } from "$lib/permissions";
+import {
+	canManageRoleAt,
+	canSetPermission,
+	computeSpacePermissions,
+	hasSpacePermission,
+	highestRolePosition,
+	Permission,
+} from "$lib/permissions";
 import type { GatewayRole, GatewaySpace } from "$lib/types";
 
 // @everyone's role has the space's ID.
@@ -7,7 +14,7 @@ const SPACE = "01920000-0000-7000-8000-0000000005a0";
 const OWNER = "01920000-0000-7000-8000-00000000000a";
 const ME = "01920000-0000-7000-8000-00000000b0b0";
 
-const role = (id: string, permissions: number): GatewayRole => ({
+const role = (id: string, permissions: number, position = 0): GatewayRole => ({
 	id,
 	space_id: SPACE,
 	name: id,
@@ -19,7 +26,7 @@ const role = (id: string, permissions: number): GatewayRole => ({
 	created_at: "",
 	updated_at: "",
 	hoisted: false,
-	position: 0,
+	position,
 });
 
 // The space as this client has it: its roles, and the ones the member (the user, `me`) holds.
@@ -72,5 +79,46 @@ describe("hasSpacePermission", () => {
 	test("without the member loaded, @everyone's", () => {
 		const unloaded = space([role(SPACE, Permission.ManageInvites), role("mods", Permission.ManageRoles)], [], null);
 		expect(computeSpacePermissions(unloaded)).toBe(Permission.ManageInvites);
+	});
+});
+
+describe("canManageRoleAt", () => {
+	// @everyone at 0, then the space's roles up to the admins' at 3.
+	const roles = [
+		role(SPACE, 0, 0),
+		role("helpers", 0, 1),
+		role("mods", Permission.ManageRoles, 2),
+		role("admins", Permission.Administrator, 3),
+	];
+
+	test("a member manages only the roles below their highest one", () => {
+		const mod = space(roles, [SPACE, "helpers", "mods"]);
+		expect(highestRolePosition(mod)).toBe(2);
+		expect(canManageRoleAt(mod, 0)).toBe(true);
+		expect(canManageRoleAt(mod, 1)).toBe(true);
+		expect(canManageRoleAt(mod, 2)).toBe(false);
+		expect(canManageRoleAt(mod, 3)).toBe(false);
+	});
+
+	test("Administrator doesn't change it", () => {
+		const admin = space([...roles, role("owners-friends", 0, 4)], [SPACE, "admins"]);
+		expect(canManageRoleAt(admin, 2)).toBe(true);
+		expect(canManageRoleAt(admin, 3)).toBe(false);
+		expect(canManageRoleAt(admin, 4)).toBe(false);
+	});
+
+	test("with @everyone alone a member manages none, and the owner manages every one", () => {
+		expect(canManageRoleAt(space(roles, [SPACE]), 0)).toBe(false);
+		expect(highestRolePosition(space(roles, []))).toBe(-1);
+		expect(canManageRoleAt(space(roles, [SPACE], OWNER), 3)).toBe(true);
+	});
+});
+
+describe("canSetPermission", () => {
+	test("a newly set flag takes having it; one already set can be kept or removed", () => {
+		const granted = Permission.SendMessages | Permission.ViewChannels;
+		expect(canSetPermission(granted, 0, Permission.SendMessages)).toBe(true);
+		expect(canSetPermission(granted, 0, Permission.ManageMessages)).toBe(false);
+		expect(canSetPermission(granted, Permission.ManageMessages, Permission.ManageMessages)).toBe(true);
 	});
 });

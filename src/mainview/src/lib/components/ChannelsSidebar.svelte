@@ -23,7 +23,7 @@
 	import { ContextMenu, Dialog, DropdownMenu } from "bits-ui";
 	import { onMount } from "svelte";
 	import type { Guild, Channel, RoomType } from "$lib/types";
-	import { hasPermission, Permission } from "$lib/permissions";
+	import { hasPermission, hasSpacePermission, Permission } from "$lib/permissions";
 	import ServerSettings from "$lib/components/ServerSettings.svelte";
 	import ChannelSettings from "$lib/components/ChannelSettings.svelte";
 	import { createRoom, deleteRoom, updateRoom } from "$lib/api/rooms";
@@ -390,13 +390,16 @@
 								<GearSixIcon class="size-4 text-zinc-400" />
 								Server Settings
 							</DropdownMenu.Item>
-							<DropdownMenu.Item
-								class="flex w-full items-center gap-2.5 px-3 py-2 text-sm text-zinc-100 transition-colors hover:bg-zinc-700"
-								onSelect={openCreateChannel}
-							>
-								<PlusIcon class="size-4 text-zinc-400" />
-								Create Channel
-							</DropdownMenu.Item>
+							<!-- The API creates a room for ManageChannels in the space -->
+							{#if space && hasSpacePermission(space, Permission.ManageChannels)}
+								<DropdownMenu.Item
+									class="flex w-full items-center gap-2.5 px-3 py-2 text-sm text-zinc-100 transition-colors hover:bg-zinc-700"
+									onSelect={openCreateChannel}
+								>
+									<PlusIcon class="size-4 text-zinc-400" />
+									Create Channel
+								</DropdownMenu.Item>
+							{/if}
 						</DropdownMenu.Content>
 					</DropdownMenu.Portal>
 				</DropdownMenu.Root>
@@ -551,7 +554,8 @@
 												Copy Channel ID
 											</div>
 										</ContextMenu.Item>
-										{#if channel.type !== "category"}
+										<!-- The API creates an invite for CreateInvites in the room, overwrites included -->
+										{#if channel.type !== "category" && space && room && hasPermission(space, room, Permission.CreateInvites)}
 											<ContextMenu.Item
 												class="w-full px-3 py-2 text-left text-sm text-zinc-100 transition-colors hover:bg-zinc-700"
 												onSelect={() => openInviteModal(channel)}
