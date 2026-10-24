@@ -34,6 +34,11 @@
 	type Tab = "friends" | "pending" | "sent" | "add";
 	let activeTab = $state<Tab>("friends");
 	const activeConversation = $derived($conversations.find((c) => c.id === activeConversationId) ?? null);
+	// An open conversation that leaves the list (the user left its group, or was removed from it) closes, and stays
+	// closed should it come back.
+	$effect(() => {
+		if (activeConversationId && !activeConversation) activeConversationId = null;
+	});
 
 	let addUserId = $state("");
 	let addError = $state("");

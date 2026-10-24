@@ -7,6 +7,7 @@
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
 	import { toast } from "$lib/stores/toast.svelte";
 	import { getApiError } from "$lib/api/api";
+	import { hasSpacePermission, Permission } from "$lib/permissions";
 
 	let {
 		open = $bindable(false),
@@ -15,6 +16,9 @@
 		open?: boolean;
 		botUserId?: string;
 	} = $props();
+
+	// The spaces the user can add a bot to: the API takes ManageBots in the space.
+	const botSpaces = $derived($gatewaySpaces.filter((s) => hasSpacePermission(s, Permission.ManageBots)));
 
 	let bot = $state<BotUser | null>(null);
 	let loading = $state(false);
@@ -90,7 +94,7 @@
 
 				<p class="mb-3 text-xs text-zinc-500">Select a space:</p>
 				<div class="flex max-h-48 flex-col gap-1 overflow-y-auto">
-					{#each $gatewaySpaces as space (space.id)}
+					{#each botSpaces as space (space.id)}
 						<button
 							class="flex items-center gap-3 rounded-lg bg-zinc-800 px-3 py-2.5 text-left transition-colors hover:bg-zinc-700 disabled:opacity-50"
 							onclick={() => handleAdd(space.id)}
@@ -108,6 +112,8 @@
 
 				{#if $gatewaySpaces.length === 0}
 					<p class="py-4 text-center text-sm text-zinc-500">You're not in any spaces yet.</p>
+				{:else if botSpaces.length === 0}
+					<p class="py-4 text-center text-sm text-zinc-500">Adding a bot to a space takes Manage Bots in it.</p>
 				{/if}
 			{/if}
 		</Dialog.Content>

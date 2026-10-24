@@ -23,7 +23,7 @@
 	import { ContextMenu, Dialog, DropdownMenu } from "bits-ui";
 	import { onMount } from "svelte";
 	import type { Guild, Channel, RoomType } from "$lib/types";
-	import { hasPermission, Permission } from "$lib/permissions";
+	import { hasPermission, hasSpacePermission, Permission } from "$lib/permissions";
 	import ServerSettings from "$lib/components/ServerSettings.svelte";
 	import ChannelSettings from "$lib/components/ChannelSettings.svelte";
 	import { createRoom, deleteRoom, updateRoom } from "$lib/api/rooms";
@@ -390,13 +390,16 @@
 								<GearSixIcon class="size-4 text-zinc-400" />
 								Server Settings
 							</DropdownMenu.Item>
-							<DropdownMenu.Item
-								class="flex w-full items-center gap-2.5 px-3 py-2 text-sm text-zinc-100 transition-colors hover:bg-zinc-700"
-								onSelect={openCreateChannel}
-							>
-								<PlusIcon class="size-4 text-zinc-400" />
-								Create Channel
-							</DropdownMenu.Item>
+							<!-- The API creates a room for ManageChannels in the space -->
+							{#if space && hasSpacePermission(space, Permission.ManageChannels)}
+								<DropdownMenu.Item
+									class="flex w-full items-center gap-2.5 px-3 py-2 text-sm text-zinc-100 transition-colors hover:bg-zinc-700"
+									onSelect={openCreateChannel}
+								>
+									<PlusIcon class="size-4 text-zinc-400" />
+									Create Channel
+								</DropdownMenu.Item>
+							{/if}
 						</DropdownMenu.Content>
 					</DropdownMenu.Portal>
 				</DropdownMenu.Root>
@@ -423,7 +426,7 @@
 									)}"
 									onclick={() => toggleCategory(item.channel.id)}
 									aria-expanded={expanded[item.channel.id]}
-									draggable="true"
+									draggable={canManageCategory}
 									ondragstart={(e) => handleDragStartReorder(e, item.channel.id)}
 									ondragover={(e) => handleDragOver(e, itemIdx)}
 									ondrop={(e) => handleDrop(e, itemIdx)}
@@ -494,7 +497,9 @@
 										title={channel.name}
 										draggable="true"
 										ondragstart={(e) => {
-											handleDragStartReorder(e, channel.id);
+											// Anyone drags a room into a pane; it's reordered here only with ManageChannels in it,
+											// which the API checks.
+											if (canManage) handleDragStartReorder(e, channel.id);
 											e.dataTransfer!.effectAllowed = "move";
 											e.dataTransfer!.setData(
 												"text/plain",
@@ -551,7 +556,8 @@
 												Copy Channel ID
 											</div>
 										</ContextMenu.Item>
-										{#if channel.type !== "category"}
+										<!-- The API creates an invite for CreateInvites in the room, overwrites included -->
+										{#if channel.type !== "category" && space && room && hasPermission(space, room, Permission.CreateInvites)}
 											<ContextMenu.Item
 												class="w-full px-3 py-2 text-left text-sm text-zinc-100 transition-colors hover:bg-zinc-700"
 												onSelect={() => openInviteModal(channel)}
@@ -700,6 +706,7 @@
 							bind:value={newChannelName}
 							class="h-10 w-full rounded-md border border-zinc-700 bg-zinc-800 pr-3 pl-8 text-sm text-white placeholder-zinc-500 outline-none focus:ring-1 focus:ring-stone-500"
 							placeholder="new-channel"
+							maxlength={64}
 							onkeydown={(e) => e.key === "Enter" && handleCreateChannel()}
 							use:focusOnMount
 						/>
