@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+	readerRestartDelay,
 	sameSpotifyActivity,
 	spotifyActivity,
 	trackFromAppleScript,
@@ -121,5 +122,23 @@ describe("trackFromPlayerctl", () => {
 		expect(trackFromPlayerctl(stuck, 105_000, last)?.start).toBe(50_000);
 		// Another song at position 0 starts now.
 		expect(trackFromPlayerctl(stuck.replace("Bugambilia", "Otra"), 105_000, last)?.start).toBe(105_000);
+	});
+});
+
+describe("readerRestartDelay", () => {
+	test("starts a reader that worked again in 5 s", () => {
+		expect(readerRestartDelay(true, 0)).toBe(5_000);
+		expect(readerRestartDelay(true, 300_000)).toBe(5_000);
+	});
+
+	test("keeps trying a reader that didn't work, less and less often, up to every 5 minutes", () => {
+		const waits: number[] = [];
+		let wait = 0;
+		for (let i = 0; i < 6; i++) waits.push((wait = readerRestartDelay(false, wait)));
+		expect(waits).toEqual([30_000, 60_000, 120_000, 240_000, 300_000, 300_000]);
+	});
+
+	test("waits 30 s again once a reader that had worked fails", () => {
+		expect(readerRestartDelay(false, readerRestartDelay(true, 300_000))).toBe(30_000);
 	});
 });

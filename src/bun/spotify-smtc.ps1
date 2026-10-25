@@ -12,9 +12,12 @@ Add-Type -AssemblyName System.Runtime.WindowsRuntime
 $asTask = ([System.WindowsRuntimeSystemExtensions].GetMethods() | Where-Object {
 	$_.Name -eq 'AsTask' -and $_.GetParameters().Count -eq 1 -and $_.GetParameters()[0].ParameterType.Name -match '^IAsyncOperation.1$'
 })[0]
+# Windows' media controls can stop answering (RequestAsync never returning, or refusing with RPC_E_CALL_CANCELED): a
+# call they don't answer in 15 seconds fails. At the start the reader then ends with nothing read, and spotify.ts tries
+# again later; in the loop, that read finds nothing playing.
 function Await($operation, [Type]$type) {
 	$task = $asTask.MakeGenericMethod($type).Invoke($null, @($operation))
-	$task.Wait(-1) | Out-Null
+	if (-not $task.Wait(15000)) { throw "Windows' media controls didn't answer in 15 seconds" }
 	$task.Result
 }
 [Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager, Windows.Media.Control, ContentType = WindowsRuntime] | Out-Null
