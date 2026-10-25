@@ -173,12 +173,12 @@ function spawnSmtcReader() {
 }
 
 /** How long the Windows reader waits to start again after it ended, the wait before that being [lastDelayMs]. One
- * that [read] a song or that nothing plays died afterwards (PowerShell killed, say) and starts again soon. One that read
- * nothing couldn't run: Windows' media controls refused it or didn't answer (RequestAsync failed with
- * RPC_E_CALL_CANCELED, or never answered, on 2026-10-25), so it tries again less and less often, up to every 5
- * minutes, and reads again once they answer. */
-export function readerRestartDelay(read: boolean, lastDelayMs: number): number {
-	if (read) return 5_000;
+ * that [worked] (it read a song, or that nothing plays, and ran 10 s at least) died afterwards (PowerShell killed, say)
+ * and starts again soon. Any other couldn't run: Windows' media controls refused it or didn't answer (RequestAsync
+ * failed with RPC_E_CALL_CANCELED, or never answered, on 2026-10-25), or something kills it at once, so it tries
+ * again less and less often, up to every 5 minutes, and reads again once it can. */
+export function readerRestartDelay(worked: boolean, lastDelayMs: number): number {
+	if (worked) return 5_000;
 	return Math.min(Math.max(lastDelayMs * 2, 30_000), 300_000);
 }
 
@@ -187,12 +187,13 @@ function readWindows(report: (track: SpotifyTrack | null) => void): () => void {
 	let stopped = false;
 	let restart: ReturnType<typeof setTimeout> | undefined;
 	let delay = 0;
-	const again = (read: boolean, why: string) => {
-		delay = readerRestartDelay(read, delay);
-		if (!read) console.error(`[Spotify] The Windows reader can't run (${why}); trying again in ${delay / 1000} s`);
+	const again = (worked: boolean, why: string) => {
+		delay = readerRestartDelay(worked, delay);
+		if (!worked) console.error(`[Spotify] The Windows reader can't run (${why}); trying again in ${delay / 1000} s`);
 		restart = setTimeout(run, delay);
 	};
 	const run = () => {
+		const startedAt = Date.now();
 		let read = false;
 		let child: ReturnType<typeof spawnSmtcReader>;
 		try {
@@ -209,8 +210,9 @@ function readWindows(report: (track: SpotifyTrack | null) => void): () => void {
 		void readLines(child.stderr, (line) => console.warn("[Spotify]", line));
 		void child.exited.then((code) => {
 			if (stopped) return;
+			// It worked if it read and ran a while: one that dies right after a line is failing too.
+			again(read && Date.now() - startedAt >= 10_000, `exit code ${code}`);
 			report(null);
-			again(read, `exit code ${code}`);
 		});
 	};
 	run();
@@ -234,6 +236,9 @@ async function readLines(stream: ReadableStream<Uint8Array>, onLine: (line: stri
 			newline = buffered.indexOf("\n");
 		}
 	}
+	// The last line may have no newline: PowerShell's error, say, which says why the reader ended.
+	const last = (buffered + decoder.decode()).trim();
+	if (last) onLine(last);
 }
 
 function poll(read: () => Promise<SpotifyTrack | null>, report: (track: SpotifyTrack | null) => void): () => void {

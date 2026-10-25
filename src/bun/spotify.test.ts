@@ -126,19 +126,19 @@ describe("trackFromPlayerctl", () => {
 });
 
 describe("readerRestartDelay", () => {
-	test("starts a reader that read something again in 5 s", () => {
+	test("starts a reader that worked again in 5 s", () => {
 		expect(readerRestartDelay(true, 0)).toBe(5_000);
 		expect(readerRestartDelay(true, 300_000)).toBe(5_000);
 	});
 
-	test("keeps trying a reader that read nothing, less and less often, up to every 5 minutes", () => {
+	test("keeps trying a reader that didn't work, less and less often, up to every 5 minutes", () => {
 		const waits: number[] = [];
 		let wait = 0;
 		for (let i = 0; i < 6; i++) waits.push((wait = readerRestartDelay(false, wait)));
 		expect(waits).toEqual([30_000, 60_000, 120_000, 240_000, 300_000, 300_000]);
 	});
 
-	test("waits 30 s again once a reader that had read dies with nothing read", () => {
+	test("waits 30 s again once a reader that had worked fails", () => {
 		expect(readerRestartDelay(false, readerRestartDelay(true, 300_000))).toBe(30_000);
 	});
 });
