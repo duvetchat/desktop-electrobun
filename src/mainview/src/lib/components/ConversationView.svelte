@@ -13,6 +13,7 @@
 		activeVoiceRoomId,
 		callVoiceStates,
 		conversationsWithCalls,
+		ownCallsRinging,
 		dropVoiceRequests,
 		jumpToMessageRequest,
 	} from "$lib/stores.svelte";
@@ -81,6 +82,9 @@
 	const isInCall = $derived($activeCall?.state === "connected" && $activeCall?.conversationId === conversation.id);
 	const hasOngoingCall = $derived($conversationsWithCalls.has(conversation.id));
 	const canJoinCall = $derived(hasOngoingCall && !isInCall);
+	// The user's own call, placed on another device, still rings the others: it shows going on, and Join waits for
+	// someone to answer it.
+	const joinWaits = $derived($ownCallsRinging.has(conversation.id));
 
 	const callVoiceMembers = $derived(
 		conversation.members.map((m) => ({
@@ -681,7 +685,14 @@
 	</div>
 
 	<!-- Call in progress banner (visible when not in the call) -->
-	{#if canJoinCall}
+	{#if canJoinCall && joinWaits}
+		<div
+			class="flex shrink-0 items-center justify-center gap-2 border-b border-emerald-800/50 bg-emerald-900/30 px-4 py-2 text-sm text-emerald-300"
+		>
+			<Phone class="size-4" />
+			<span class="font-medium">Call in progress</span>
+		</div>
+	{:else if canJoinCall}
 		<button
 			class="flex shrink-0 items-center justify-center gap-2 border-b border-emerald-800/50 bg-emerald-900/30 px-4 py-2 text-sm text-emerald-300 transition-colors hover:bg-emerald-900/50"
 			onclick={joinCall}

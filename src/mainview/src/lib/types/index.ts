@@ -629,6 +629,30 @@ export interface CallIncomingEvent {
 	initiator_avatar: string | null;
 }
 
+/** The user started a call, on this device or another: it rings none of theirs. */
+export interface CallOutgoingEvent {
+	conversation_id: string;
+}
+
+/** Someone in a call's voice, as READY's active calls and CALL_ONGOING carry them. */
+export interface GatewayCallVoiceState {
+	user_id: string;
+	muted: boolean;
+	deafened: boolean;
+	screen_sharing: boolean;
+	camera: boolean;
+	version: number;
+}
+
+/** A call goes on in one of the user's conversations without ringing them: its ring window ended before they
+ * answered, or they joined the group during it. They can still join it. */
+export interface CallOngoingEvent {
+	conversation_id: string;
+	initiator_id: string;
+	/** Who is in its voice; null while nobody is. */
+	voice_states: GatewayCallVoiceState[] | null;
+}
+
 export interface CallAcceptedEvent {
 	conversation_id: string;
 	user_id: string;
@@ -972,6 +996,8 @@ export type GatewayEventPayload =
 	| { type: "RECORDING"; data: RecordingEvent }
 	| { type: "DM_RECORDING"; data: DMRecordingEvent }
 	| { type: "CALL_INCOMING"; data: CallIncomingEvent }
+	| { type: "CALL_OUTGOING"; data: CallOutgoingEvent }
+	| { type: "CALL_ONGOING"; data: CallOngoingEvent }
 	| { type: "CALL_ACCEPTED"; data: CallAcceptedEvent }
 	| { type: "CALL_DECLINED"; data: CallDeclinedEvent }
 	| { type: "CALL_ENDED"; data: CallEndedEvent }
@@ -991,16 +1017,18 @@ export interface GatewayEvent {
 export interface GatewayReadyActiveCall {
 	conversation_id: string;
 	initiator_id: string;
-	voice_states:
-		| {
-				user_id: string;
-				muted: boolean;
-				deafened: boolean;
-				screen_sharing: boolean;
-				camera: boolean;
-				version: number;
-		  }[]
-		| null;
+	// The caller's name and avatar, as CALL_INCOMING carries them, whether the call still rings the user, and whether
+	// someone has answered it. A gateway from before calls followed users across their devices sends none of the four,
+	// and the client then does what it did before.
+	initiator_name?: string;
+	initiator_avatar?: string | null;
+	voice_states: GatewayCallVoiceState[] | null;
+	/** Whether the call still rings the user: false for their own call, once they answered or declined it on any
+	 * device, and once its ring window passed. */
+	ringing?: boolean;
+	/** Whether someone other than its caller has accepted it: on the caller's devices, false means it still rings the
+	 * others. */
+	answered?: boolean;
 }
 
 export interface GatewayReadyData {
