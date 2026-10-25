@@ -210,6 +210,15 @@
 		}
 
 		dropTargetIdx = idx;
+
+		// A category dropped on a room inside another lands right after that category (handleDrop), so the line goes
+		// under that category's last room. Over its own rooms there's none, as dropping there does nothing.
+		const categoryId = item?.channel.categoryId;
+		if (categoryId && channels.find((c) => c.id === draggedChannelId)?.type === "category") {
+			const own = categoryId === draggedChannelId;
+			dropTargetIdx = own ? null : sidebarItems.findLastIndex((it) => it.channel.categoryId === categoryId);
+			dropPosition = own ? null : "below";
+		}
 	}
 
 	function handleDragOverEnd(e: DragEvent) {
