@@ -48,7 +48,7 @@ import { forgetSpaceCommands } from "$lib/api/interactions";
 
 import type { DMTypingEvent, GatewayEvent, GatewaySpace, ReferencedMessage, TypingEvent, UserStatus } from "$lib/types";
 
-import { gatewayMessageToMessage, isEphemeral } from "$lib/types";
+import { gatewayMessageToMessage, isEphemeral, withCreatedRole, withoutRoom } from "$lib/types";
 
 // Token is passed via query string because the WebSocket API does not support
 // custom headers during the handshake. Ideally the gateway would accept a
@@ -60,6 +60,8 @@ export function getStreamURL(): string {
 
 import { audioStore } from "$lib/stores/audio.svelte";
 import { mentionSound } from "$lib/status";
+import { callAcceptedAction } from "$lib/calls";
+import { sendAgain } from "$lib/resend";
 import { storageTransfers } from "$lib/stores/storage-transfers.svelte";
 import { getElectrobunRpc, type ActivityPayload } from "$lib/electrobun-rpc";
 
@@ -195,6 +197,38 @@ export function gatewayConnection(): number | null {
  * resume would replay what its earlier connection was sent. */
 export function wantFreshSession() {
 	freshSessionWanted = true;
+}
+
+// The CALL_ACCEPT still waiting for the gateway's CALL_ACCEPTED, and the connection it went out on.
+let pendingAccept: { conversationId: string; sentOn: number | null } | null = null;
+
+/** Accepts the call ringing here, or joins one going on: a CALL_ACCEPT, kept until the gateway's CALL_ACCEPTED for
+ * this user answers it. The connection it goes out on can drop before the gateway gets it, so the next session,
+ * resumed or new, sends it again (sendAgain). */
+export function acceptCall(conversationId: string) {
+	pendingAccept = { conversationId, sentOn: gatewayConnection() };
+	sendEventMessage("CALL_ACCEPT", { conversation_id: conversationId });
+}
+
+// Sends a CALL_ACCEPT the gateway may not have got again, for the call this client is still in.
+function resendCallAccept() {
+	const pending = pendingAccept;
+	const connection = gatewayConnection();
+	if (!pending || connection === null) return;
+	if (get(activeCall)?.conversationId !== pending.conversationId) {
+		pendingAccept = null;
+		return;
+	}
+	if (sendAgain({ sentOn: pending.sentOn, answered: false }, connection)) acceptCall(pending.conversationId);
+}
+
+/** The session resumed: what the gateway got before the old socket dropped, it answered in the replay just handled.
+ * What it didn't get was lost with that socket: VoiceChat joins again (RESUMED), and a CALL_ACCEPT goes again. */
+function onResumed() {
+	resendCallAccept();
+	webrtcListeners.forEach((cb) => {
+		cb("RESUMED", {});
+	});
 }
 
 function addMembersToSpace(spaceId: string, rows: SpaceMemberWithUser[]) {
@@ -334,6 +368,8 @@ function handleEvent(event: GatewayEvent) {
 				callVoiceStates.update((states) => states.filter((s) => s.room_id !== ownCall.conversationId));
 				dropVoiceRequests();
 			}
+			// A CALL_ACCEPT the old session may never have got goes to this one, for a call that goes on.
+			resendCallAccept();
 
 			// Reset spaces so SPACE_CREATE events that follow repopulate them
 			// with fresh data (including current voice_states). Without this,
@@ -828,6 +864,13 @@ function handleEvent(event: GatewayEvent) {
 			const { room_id } = payload.data;
 			if (get(activeVoiceRoomId) === room_id) {
 				activeVoiceRoomId.set(null);
+				// A call's voice that moved to another device takes the call there: this client is out of it, and can
+				// join it again from its conversation. Its camera or screen request goes with it, as when a call ends.
+				if (get(activeCall)?.conversationId === room_id) {
+					activeCall.set(null);
+					callVoiceStates.update((states) => states.filter((s) => s.room_id !== room_id));
+					dropVoiceRequests();
+				}
 			}
 			break;
 		}
@@ -854,7 +897,7 @@ function handleEvent(event: GatewayEvent) {
 					}
 					return {
 						...s,
-						roles: [...s.roles, role],
+						roles: withCreatedRole(s.roles, role),
 					};
 				}),
 			);
@@ -970,7 +1013,7 @@ function handleEvent(event: GatewayEvent) {
 					}
 					return {
 						...s,
-						rooms: s.rooms.filter((r) => r.id !== raw.id),
+						rooms: withoutRoom(s.rooms, raw.id),
 					};
 				}),
 			);
@@ -1205,6 +1248,17 @@ function handleEvent(event: GatewayEvent) {
 		}
 		case "CONVERSATION_MEMBER_ADD": {
 			const raw = payload.data;
+			// The user was added to a group: the event says who joined, not what the group is, so it comes from the
+			// conversations list, as READY loads it.
+			if (raw.user_id === get(currentUser)?.id && !get(conversations).some((c) => c.id === raw.conversation_id)) {
+				getConversations()
+					.then((list) => {
+						const conv = list.find((c) => c.id === raw.conversation_id);
+						if (conv) conversations.update((all) => (all.some((c) => c.id === conv.id) ? all : [conv, ...all]));
+					})
+					.catch((err) => console.error("[WS] Failed to load the group the user was added to:", err));
+				break;
+			}
 			conversations.update((list) =>
 				list.map((c) => {
 					if (c.id !== raw.conversation_id) return c;
@@ -1236,6 +1290,16 @@ function handleEvent(event: GatewayEvent) {
 		}
 		case "CONVERSATION_MEMBER_REMOVE": {
 			const raw = payload.data;
+			// The user left the group or was removed from it: it goes from the list, and its view with it (FriendsView),
+			// and so does its unread dot, which nothing could clear any more.
+			if (raw.user_id === get(currentUser)?.id) {
+				conversations.update((list) => list.filter((c) => c.id !== raw.conversation_id));
+				unreadConversations.update((s) => {
+					s.delete(raw.conversation_id);
+					return s;
+				});
+				break;
+			}
 			conversations.update((list) =>
 				list.map((c) => {
 					if (c.id !== raw.conversation_id) return c;
@@ -1441,14 +1505,19 @@ function handleEvent(event: GatewayEvent) {
 		}
 		case "CALL_ACCEPTED": {
 			const d = payload.data;
-			activeCall.update((c) => {
-				if (c && c.conversationId === d.conversation_id && c.state === "calling") {
-					return { ...c, state: "connected" };
-				}
-				return c;
-			});
-			// Start VoiceChat with conversation_id as room
-			activeVoiceRoomId.set(d.conversation_id);
+			const me = get(currentUser)?.id;
+			// The gateway got this user's CALL_ACCEPT.
+			if (d.user_id === me && pendingAccept?.conversationId === d.conversation_id) pendingAccept = null;
+			// Every member's sessions get it, whoever answered: the call this client placed joins, and one ringing here
+			// that the user answered on another device goes.
+			const action = callAcceptedAction(get(activeCall), d, me);
+			if (action === "join") {
+				activeCall.update((c) => (c ? { ...c, state: "connected" } : c));
+				// Start VoiceChat with conversation_id as room
+				activeVoiceRoomId.set(d.conversation_id);
+			} else if (action === "dismiss") {
+				activeCall.set(null);
+			}
 			break;
 		}
 		case "CALL_DECLINED": {
@@ -1457,6 +1526,7 @@ function handleEvent(event: GatewayEvent) {
 		}
 		case "CALL_ENDED": {
 			const d = payload.data;
+			if (pendingAccept?.conversationId === d.conversation_id) pendingAccept = null;
 			conversationsWithCalls.update((s) => {
 				s.delete(d.conversation_id);
 				return new Set(s);
@@ -1575,6 +1645,8 @@ export function createWebSocketConnection(): GatewayConnection {
 
 		currentSocket = socket;
 		activeSocket = socket;
+		// Set while this connection asked to resume and doesn't know yet whether it did.
+		let resumeProbe = false;
 
 		socket.onopen = () => {
 			if (import.meta.env.DEV) console.log("[WS] Connected");
@@ -1591,6 +1663,12 @@ export function createWebSocketConnection(): GatewayConnection {
 			}
 			connectionCount++;
 			socket.send(JSON.stringify({ type: "identify", data: identifyData }));
+			// Asking to resume, the client learns that it did from this heartbeat's answer, which the gateway queues
+			// behind the session's replay; a session that can't resume sends READY before it.
+			if (identifyData.session_token) {
+				resumeProbe = true;
+				socket.send(JSON.stringify({ type: "heartbeat", data: {} }));
+			}
 			startHeartbeat(socket);
 		};
 
@@ -1605,6 +1683,11 @@ export function createWebSocketConnection(): GatewayConnection {
 				}
 				if (msg.event === "heartbeat_ack") {
 					onHeartbeatAck();
+					// No READY before it: the session resumed, and its replay has been handled.
+					if (resumeProbe) {
+						resumeProbe = false;
+						onResumed();
+					}
 					return;
 				}
 				if (msg.event === "close-with-reason") {
@@ -1618,6 +1701,8 @@ export function createWebSocketConnection(): GatewayConnection {
 				}
 				if (msg.event === "payload") {
 					if (import.meta.env.DEV) console.log("[WS] Payload:", msg);
+					// The session couldn't resume: it's a new one, which READY tells the app about.
+					if (msg.d?.type === "READY") resumeProbe = false;
 					handleEvent(msg);
 				}
 			} catch (err) {

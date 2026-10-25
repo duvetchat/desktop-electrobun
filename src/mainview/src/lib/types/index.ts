@@ -1028,6 +1028,18 @@ export function roomTypeToChannelType(type: RoomType): Channel["type"] {
 	}
 }
 
+/** A space's rooms once one is deleted (ROOM_DELETE): the rooms in it, a category's, move to the top level, as the API
+ * moves them without an event of their own. */
+export function withoutRoom(rooms: GatewayRoom[], roomId: string): GatewayRoom[] {
+	return rooms.filter((r) => r.id !== roomId).map((r) => (r.parent_id === roomId ? { ...r, parent_id: null } : r));
+}
+
+/** A space's roles once one is created (ROLE_CREATE): the API puts it at position 1, just above @everyone's 0, and
+ * moves every other role from 1 up by one (ShiftRolePositions) without an event of their own. */
+export function withCreatedRole(roles: GatewayRole[], created: GatewayRole): GatewayRole[] {
+	return [...roles.map((r) => (r.position >= 1 ? { ...r, position: r.position + 1 } : r)), created];
+}
+
 export function gatewayMessageToMessage(msg: GatewayMessage, spaces: GatewaySpace[]): Message {
 	let author_name = "Unknown";
 	let author_avatar_url: string | null = null;

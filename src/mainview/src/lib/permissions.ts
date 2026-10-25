@@ -52,6 +52,75 @@ const OVERWRITE_ROLE = 0;
 const OVERWRITE_MEMBER = 1;
 
 /**
+ * The current member's permissions in the space as a whole, as the API computes them for its space-level checks
+ * (ComputeSpacePermissions, which checkSpacePermission reads): the owner and Administrators have them all, and anyone
+ * else what their roles give, @everyone's included when they hold it. Room overwrites don't count here.
+ */
+export function computeSpacePermissions(space: GatewaySpace): number {
+	const { member, member_roles, roles, id: spaceId, owner_id } = space;
+
+	// No member loaded yet: @everyone's only, as computeRoomPermissions does
+	if (!member) {
+		return roles.find((r) => r.id === spaceId)?.permissions ?? 0;
+	}
+	if (member.user_id === owner_id) {
+		return ~0 >>> 0;
+	}
+
+	let perms = 0;
+	const myRoles = member_roles[member.user_id] ?? [];
+	for (const role of roles) {
+		if (myRoles.includes(role.id)) {
+			perms |= role.permissions;
+		}
+	}
+	if (perms & Permission.Administrator) {
+		return ~0 >>> 0;
+	}
+	return perms;
+}
+
+/** Returns true if the current member has ALL of the given permission flags in the space as a whole. */
+export function hasSpacePermission(space: GatewaySpace, permission: number): boolean {
+	return (computeSpacePermissions(space) & permission) === permission;
+}
+
+/** The position of the highest role the current member holds (@everyone's is 0), or -1 when they hold none. */
+export function highestRolePosition(space: GatewaySpace): number {
+	const { member, member_roles, roles } = space;
+	if (!member) return -1;
+	const myRoles = member_roles[member.user_id] ?? [];
+	let highest = -1;
+	for (const role of roles) {
+		if (myRoles.includes(role.id) && role.position > highest) {
+			highest = role.position;
+		}
+	}
+	return highest;
+}
+
+/**
+ * Whether the current member may manage a role at this position, as the API's checkRoleHierarchy allows: edit or
+ * delete it, assign it to a member or take it from one, or move a role there. Only roles below their highest one, or
+ * any for the space's owner; unlike the permissions, Administrator doesn't change it. ManageRoles is checked apart.
+ */
+export function canManageRoleAt(space: GatewaySpace, position: number): boolean {
+	if (space.member && space.member.user_id === space.owner_id) {
+		return true;
+	}
+	return position < highestRolePosition(space);
+}
+
+/**
+ * Whether an edit may set a permission flag on a role, or as an overwrite's allow or deny: the API takes a newly set
+ * flag only from someone who has it (`granted`: computeSpacePermissions for a role, computeRoomPermissions for an
+ * overwrite), and keeping one already set (`saved`), or removing it, from anyone who may edit it.
+ */
+export function canSetPermission(granted: number, saved: number, flag: number): boolean {
+	return ((granted | saved) & flag) === flag;
+}
+
+/**
  * Computes the effective permissions for the current member in a given room,
  * applying the standard overwrite cascade:
  *   1. Base permissions from the member's roles (OR'd together)
@@ -134,6 +203,20 @@ export function computeRoomPermissions(space: GatewaySpace, room: GatewayRoom): 
 export function canViewRoom(space: GatewaySpace, room: GatewayRoom): boolean {
 	const perms = computeRoomPermissions(space, room);
 	return (perms & Permission.ViewChannels) !== 0;
+}
+
+/**
+ * The rooms of a space its sidebar shows: those the current member can view, and each category holding any of them,
+ * whether the member can view the category or not, with only those rooms. A category with no rooms in it shows when
+ * the member can view it.
+ */
+export function shownRooms(space: GatewaySpace): GatewayRoom[] {
+	const visible = new Set(space.rooms.filter((r) => r.type !== 3 && canViewRoom(space, r)).map((r) => r.id));
+	return space.rooms.filter((room) => {
+		if (room.type !== 3) return visible.has(room.id);
+		const inside = space.rooms.filter((r) => r.parent_id === room.id);
+		return inside.length === 0 ? canViewRoom(space, room) : inside.some((r) => visible.has(r.id));
+	});
 }
 
 /** Returns true if the current member has ALL of the given permission flags in a room. */

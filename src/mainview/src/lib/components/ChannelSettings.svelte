@@ -19,7 +19,7 @@
 	import { cubicOut } from "svelte/easing";
 	import { untrack } from "svelte";
 	import { Dialog } from "bits-ui";
-	import { Permission } from "$lib/permissions";
+	import { Permission, canSetPermission, computeRoomPermissions, hasSpacePermission } from "$lib/permissions";
 	import { getApiError } from "$lib/api/api";
 	import { updateRoom, upsertRoomOverwrite, deleteRoomOverwrite } from "$lib/api/rooms";
 	import {
@@ -86,6 +86,8 @@
 	}
 
 	// ── permissions state ─────────────────────────────────────────
+	// The bits a room's overwrites can change something with. ManageRoles in a room changes nothing, so it has no row;
+	// an overwrite that carries it keeps it, as an edit changes only the bit it toggles.
 	const PERMISSION_GROUPS = [
 		{
 			label: "General Channel Permissions",
@@ -97,9 +99,9 @@
 					description: "Allows members to change this channel's name and description.",
 				},
 				{
-					flag: Permission.ManageRoles,
-					name: "Manage Permissions",
-					description: "Allows members to change this channel's permissions.",
+					flag: Permission.CreateInvites,
+					name: "Create Invite",
+					description: "Allows members to create invite links to this channel.",
 				},
 			],
 		},
@@ -170,6 +172,10 @@
 	let selectedPending = $derived(
 		selectedTargetId ? (pendingOverwrites.find((o) => o.target_id === selectedTargetId) ?? null) : null,
 	);
+	// The API takes a flag newly allowed or denied only from someone who has it in this room (UpsertRoomOverwrite's
+	// grantable mask); what the saved overwrite already allows or denies can be kept or removed by anyone.
+	const roomGranted = $derived(computeRoomPermissions(space, room));
+	const selectedSaved = $derived(roomOverwrites.find((o) => o.target_id === selectedTargetId));
 
 	$effect(() => {
 		// auto-select first overwrite if none selected
@@ -373,10 +379,13 @@
 		}
 	}
 
+	// Every webhook call takes ManageSpaceWebhooks in the space, as the API checks: without it there's no section.
+	const canManageWebhooks = $derived(hasSpacePermission(space, Permission.ManageSpaceWebhooks));
+
 	$effect(() => {
-		if (activeSection === "webhooks") {
-			loadWebhooks();
-		}
+		if (activeSection !== "webhooks") return;
+		if (canManageWebhooks) loadWebhooks();
+		else activeSection = "overview";
 	});
 
 	async function handleCreateWebhook() {
@@ -522,7 +531,7 @@
 							</button>
 						{/if}
 
-						{#if room.type === 1}
+						{#if room.type === 1 && canManageWebhooks}
 							<button
 								class="flex items-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium transition-colors duration-100
 									{activeSection === 'webhooks' ? 'bg-zinc-800 text-white' : 'text-zinc-400 hover:bg-zinc-800/60 hover:text-zinc-200'}"
@@ -719,6 +728,10 @@
 												<div class="space-y-3">
 													{#each group.perms as perm (perm.flag)}
 														{@const state = getPermState(perm.flag)}
+														{@const canDeny =
+															state === -1 || canSetPermission(roomGranted, selectedSaved?.deny_flags ?? 0, perm.flag)}
+														{@const canAllow =
+															state === 1 || canSetPermission(roomGranted, selectedSaved?.allow_flags ?? 0, perm.flag)}
 														<div class="flex items-start justify-between gap-4 py-2">
 															<div class="min-w-0 flex-1">
 																<p class="text-sm font-medium text-zinc-200">{perm.name}</p>
@@ -729,8 +742,11 @@
 																<button
 																	class="flex size-7 items-center justify-center rounded transition-colors
 																		{state === -1 ? 'bg-red-600 text-white' : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200'}"
+																	class:opacity-40={!canDeny}
+																	class:cursor-not-allowed={!canDeny}
+																	disabled={!canDeny}
 																	onclick={() => setPermState(perm.flag, state === -1 ? 0 : -1)}
-																	title="Deny"
+																	title={canDeny ? "Deny" : "You can only deny permissions you have in this channel"}
 																>
 																	<XIcon class="size-3.5" />
 																</button>
@@ -747,8 +763,11 @@
 																<button
 																	class="flex size-7 items-center justify-center rounded transition-colors
 																		{state === 1 ? 'bg-green-600 text-white' : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200'}"
+																	class:opacity-40={!canAllow}
+																	class:cursor-not-allowed={!canAllow}
+																	disabled={!canAllow}
 																	onclick={() => setPermState(perm.flag, state === 1 ? 0 : 1)}
-																	title="Allow"
+																	title={canAllow ? "Allow" : "You can only allow permissions you have in this channel"}
 																>
 																	<CheckIcon class="size-3.5" />
 																</button>

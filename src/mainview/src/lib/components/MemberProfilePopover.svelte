@@ -6,8 +6,9 @@
 	import { currentUser, friends, pendingFriendRequests, sentFriendRequests, userActivities } from "$lib/stores.svelte";
 	import { BADGES } from "$lib/badges";
 	import { assignRoleToMember, removeRoleFromMember } from "$lib/api/roles";
-	import { sendFriendRequest, getSentRequests } from "$lib/api/friends";
-	import { Permission, ALL_PERMISSIONS } from "$lib/permissions";
+	import { sendFriendRequest, getSentRequests, acceptFriendRequest } from "$lib/api/friends";
+	import { rememberFriendStatuses } from "$lib/api/ws/connection";
+	import { Permission, ALL_PERMISSIONS, canManageRoleAt, hasSpacePermission } from "$lib/permissions";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
 	import ActivityList from "$lib/components/ActivityList.svelte";
 
@@ -81,15 +82,10 @@
 		return Array.from(set).sort();
 	}
 
+	// As the API checks it: the owner and Administrators pass, ManageRoles or not. Each role then takes being below the
+	// user's highest one (canManageRoleAt), which Administrator doesn't pass.
 	function currentUserCanManageRoles(): boolean {
-		if (!$currentUser || !space) return false;
-		if ($currentUser.id === space.owner_id) return true;
-		const userRoleIds = space.member_roles[space.member?.user_id ?? ""] ?? [];
-		let combined = 0;
-		for (const role of space.roles) {
-			if (userRoleIds.includes(role.id)) combined |= role.permissions;
-		}
-		return (combined & Permission.ManageRoles) === Permission.ManageRoles;
+		return !!space && hasSpacePermission(space, Permission.ManageRoles);
 	}
 
 	function isFriend(userId: string): boolean {
@@ -114,6 +110,23 @@
 			friendRequestState[userId] = "sent";
 			const sent = await getSentRequests();
 			sentFriendRequests.set(sent);
+		} catch {
+			friendRequestState[userId] = "error";
+		}
+	}
+
+	// Their request is accepted, as the Friends view does it: the API refuses one sent back while theirs waits.
+	async function handleAcceptFriendRequest(userId: string) {
+		const me = $currentUser;
+		const request = $pendingFriendRequests.find((r) => r.sender_id === userId && r.recipient_id === me?.id);
+		if (!request) return;
+		friendRequestState[userId] = "loading";
+		try {
+			const friend = await acceptFriendRequest(request.id);
+			pendingFriendRequests.update((reqs) => reqs.filter((r) => r.id !== request.id));
+			rememberFriendStatuses([friend]);
+			friends.update((list) => (list.some((f) => f.id === friend.id) ? list : [...list, friend]));
+			friendRequestState[userId] = "idle";
 		} catch {
 			friendRequestState[userId] = "error";
 		}
@@ -193,7 +206,7 @@
 							<button
 								class="flex items-center justify-center rounded-lg bg-white/10 px-2.5 py-1.5 transition-colors hover:bg-white/20 disabled:opacity-50"
 								title="Accept request"
-								onclick={() => handleSendFriendRequest(member.id)}
+								onclick={() => handleAcceptFriendRequest(member.id)}
 								disabled={reqState === "loading" || reqState === "sent"}
 							>
 								<UserPlus class="size-4" />
@@ -298,12 +311,14 @@
 							{#each assignableRoles as role}
 								{@const memberHasRole = member.roles.some((mr) => mr.id === role.id)}
 								{@const toggleKey = `${member.id}-${role.id}`}
+								{@const manageable = canManageRoleAt(space, role.position)}
 								<button
-									class="w-fit rounded-full px-2 py-0.5 text-xs transition-colors disabled:opacity-50 {memberHasRole
+									class="w-fit rounded-full px-2 py-0.5 text-xs transition-colors disabled:cursor-not-allowed disabled:opacity-50 {memberHasRole
 										? 'bg-stone-600 text-white hover:bg-stone-500'
 										: 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700'}"
 									onclick={() => toggleMemberRole(member, role.id)}
-									disabled={togglingRoles[toggleKey]}
+									disabled={togglingRoles[toggleKey] || !manageable}
+									title={manageable ? undefined : "Only roles below your highest role can be assigned or removed"}
 								>
 									<div class="flex items-center gap-1">
 										<div class="h-2.5 w-2.5 rounded-full" style={roleBadgeStyle(role)}></div>

@@ -10,7 +10,7 @@
 	import PaneView from "$lib/components/PaneView.svelte";
 	import VoiceChat from "$lib/components/VoiceChat.svelte";
 	import { makeLeaf, makeSplit, removeLeaf, updateLeaf } from "$lib/pane";
-	import { canViewRoom } from "$lib/permissions";
+	import { canViewRoom, shownRooms } from "$lib/permissions";
 	import {
 		activeCall,
 		activeVoiceRoomId,
@@ -116,19 +116,8 @@
 		});
 	});
 
-	const guilds = $derived(
-		$gatewaySpaces.map((space) => {
-			const visibleRooms = space.rooms.filter((room) => canViewRoom(space, room));
-			const visibleIds = new Set(visibleRooms.map((r) => r.id));
-			const filteredRooms = visibleRooms.filter(
-				(r) =>
-					r.type !== 3 ||
-					!space.rooms.some((c) => c.parent_id === r.id) ||
-					space.rooms.some((c) => c.parent_id === r.id && visibleIds.has(c.id)),
-			);
-			return gatewaySpaceToGuild({ ...space, rooms: filteredRooms });
-		}),
-	);
+	// A room the user can view shows in its category, which shows with it even when the user can't view the category.
+	const guilds = $derived($gatewaySpaces.map((space) => gatewaySpaceToGuild({ ...space, rooms: shownRooms(space) })));
 
 	let activeSpaceId = $state<string | null>(null);
 	let showFriendsView = $state(true);
