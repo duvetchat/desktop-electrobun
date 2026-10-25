@@ -1029,9 +1029,16 @@ export function roomTypeToChannelType(type: RoomType): Channel["type"] {
 }
 
 /** A space's rooms once one is deleted (ROOM_DELETE): the rooms in it, a category's, move to the top level, as the API
- * moves them without an event of their own. */
+ * moves them; the ROOM_REORDER that follows gives them their new places. */
 export function withoutRoom(rooms: GatewayRoom[], roomId: string): GatewayRoom[] {
 	return rooms.filter((r) => r.id !== roomId).map((r) => (r.parent_id === roomId ? { ...r, parent_id: null } : r));
+}
+
+/** Where a room or category dropped below everything goes: after the highest place at the top level. Its rooms and
+ * categories share positions, which keep the gaps deleted rooms leave, so their count can be a place that's taken.
+ * The moving room doesn't count, so one already last stays where it is. */
+export function topLevelEnd(channels: Channel[], movingId: string): number {
+	return Math.max(-1, ...channels.filter((c) => !c.categoryId && c.id !== movingId).map((c) => c.position)) + 1;
 }
 
 /** A space's roles once one is created (ROLE_CREATE): the API puts it at position 1, just above @everyone's 0, and

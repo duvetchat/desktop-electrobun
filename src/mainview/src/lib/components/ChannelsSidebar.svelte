@@ -22,7 +22,7 @@
 
 	import { ContextMenu, Dialog, DropdownMenu } from "bits-ui";
 	import { onMount } from "svelte";
-	import type { Guild, Channel, RoomType } from "$lib/types";
+	import { topLevelEnd, type Guild, type Channel, type RoomType } from "$lib/types";
 	import { hasPermission, hasSpacePermission, Permission } from "$lib/permissions";
 	import ServerSettings from "$lib/components/ServerSettings.svelte";
 	import ChannelSettings from "$lib/components/ChannelSettings.svelte";
@@ -245,10 +245,9 @@
 		const isDraggingCategory = srcItem.channel.type === "category";
 
 		if (targetIdx >= sidebarItems.length) {
-			// Dropped at the very end — put at root, last position
-			const rootChannels = channels.filter((c) => !c.categoryId && c.type !== "category");
+			// Dropped at the very end — put at root, after its last room or category
 			newParentId = null;
-			newPosition = isDraggingCategory ? channels.filter((c) => !c.categoryId).length : rootChannels.length;
+			newPosition = topLevelEnd(channels, srcId);
 		} else {
 			const targetItem = sidebarItems[targetIdx];
 			if (srcId === targetItem.channel.id) return;
