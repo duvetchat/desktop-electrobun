@@ -1,5 +1,12 @@
-import type { ActiveCallInfo } from "$lib/stores.svelte";
-import type { CallAcceptedEvent, CallDeclinedEvent, CallOngoingEvent, GatewayReadyActiveCall } from "$lib/types";
+import type { ActiveCallInfo, CallVoiceState } from "$lib/stores.svelte";
+import type {
+	CallAcceptedEvent,
+	CallDeclinedEvent,
+	CallOngoingEvent,
+	GatewayCallVoiceState,
+	GatewayReadyActiveCall,
+	VoiceStateUpdateEvent,
+} from "$lib/types";
 
 /** The call this client shows: ringing, being placed, or connected. */
 type ShownCall = Pick<ActiveCallInfo, "conversationId" | "state">;
@@ -76,4 +83,40 @@ export function callToRingOnReady(listed: GatewayReadyActiveCall[]): GatewayRead
  */
 export function ownCallsRingingOnReady(listed: GatewayReadyActiveCall[], me: string): Set<string> {
 	return new Set(listed.filter((c) => c.initiator_id === me && c.answered === false).map((c) => c.conversation_id));
+}
+
+/** Who is in a call's voice, from READY or CALL_ONGOING, as this client keeps them (callVoiceStates). */
+export function callVoiceStatesOf(conversationId: string, states: GatewayCallVoiceState[] | null): CallVoiceState[] {
+	return (states ?? []).map((vs) => ({
+		room_id: conversationId,
+		user_id: vs.user_id,
+		muted: vs.muted,
+		deafened: vs.deafened,
+		screen_sharing: vs.screen_sharing,
+		camera: vs.camera,
+	}));
+}
+
+/** The calls' voice states after a VOICE_STATE_UPDATE: who joined is added, or updated, and who left goes. */
+export function withCallVoiceState(states: CallVoiceState[], update: VoiceStateUpdateEvent): CallVoiceState[] {
+	const idx = states.findIndex((s) => s.room_id === update.room_id && s.user_id === update.user_id);
+	if (!update.joined) return idx === -1 ? states : states.filter((_, i) => i !== idx);
+	const state: CallVoiceState = {
+		room_id: update.room_id,
+		user_id: update.user_id,
+		muted: update.muted,
+		deafened: update.deafened,
+		screen_sharing: update.screen_sharing,
+		camera: update.camera,
+	};
+	return idx === -1 ? [...states, state] : states.map((s, i) => (i === idx ? state : s));
+}
+
+/** The calls' voice states without the user's in one call: they hung up there. */
+export function withoutCallVoiceOf(
+	states: CallVoiceState[],
+	conversationId: string,
+	userId: string | undefined,
+): CallVoiceState[] {
+	return states.filter((s) => !(s.room_id === conversationId && s.user_id === userId));
 }

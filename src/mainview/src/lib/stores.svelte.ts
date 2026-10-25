@@ -228,6 +228,9 @@ export interface CallVoiceState {
 	screen_sharing?: boolean;
 	camera?: boolean;
 }
+/** Who is in the voice of each call going on that this client knows of (conversationsWithCalls), whether or not it's
+ * in it, by room_id, the call's conversation: from READY and CALL_ONGOING, kept up with VOICE_STATE_UPDATE, and
+ * dropped when the call ends. */
 export const callVoiceStates = writable<CallVoiceState[]>([]);
 
 export const isMuted = writable<boolean>(false);

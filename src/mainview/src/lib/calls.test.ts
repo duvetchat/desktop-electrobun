@@ -5,10 +5,13 @@ import {
 	callOngoingAction,
 	callOnReady,
 	callToRingOnReady,
+	callVoiceStatesOf,
 	ownCallsRingingOnReady,
+	withCallVoiceState,
+	withoutCallVoiceOf,
 } from "$lib/calls";
-import type { CallState } from "$lib/stores.svelte";
-import type { GatewayReadyActiveCall } from "$lib/types";
+import type { CallState, CallVoiceState } from "$lib/stores.svelte";
+import type { GatewayReadyActiveCall, VoiceStateUpdateEvent } from "$lib/types";
 
 const ME = "01920000-0000-7000-8000-00000000b0b0";
 const THEM = "01920000-0000-7000-8000-00000000a11c";
@@ -26,6 +29,14 @@ const listed = (fields: Partial<GatewayReadyActiveCall> = {}): GatewayReadyActiv
 	initiator_id: THEM,
 	voice_states: null,
 	...fields,
+});
+const voice = (user_id: string, version = 1) => ({
+	user_id,
+	muted: false,
+	deafened: false,
+	screen_sharing: false,
+	camera: false,
+	version,
 });
 
 describe("callAcceptedAction", () => {
@@ -163,5 +174,53 @@ describe("ownCallsRingingOnReady", () => {
 
 	test("none from a gateway that doesn't say whether calls are answered: Join shows, as before", () => {
 		expect(ownCallsRingingOnReady([listed({ initiator_id: ME })], ME)).toEqual(new Set());
+	});
+});
+
+describe("call voice states", () => {
+	const state = (user_id: string, room_id = CONV, muted = false): CallVoiceState => ({
+		room_id,
+		user_id,
+		muted,
+		deafened: false,
+		screen_sharing: false,
+		camera: false,
+	});
+	const update = (user_id: string, joined: boolean, muted = false, room_id = CONV): VoiceStateUpdateEvent => ({
+		room_id,
+		user_id,
+		joined,
+		muted,
+		deafened: false,
+		screen_sharing: false,
+		camera: false,
+		version: 2,
+	});
+
+	test("who is in a call, from READY or CALL_ONGOING, in the conversation's room", () => {
+		expect(callVoiceStatesOf(CONV, [voice(THEM), voice(ME)])).toEqual([state(THEM), state(ME)]);
+		expect(callVoiceStatesOf(CONV, null)).toEqual([]);
+	});
+
+	test("someone joining a call is added; a change of theirs replaces their state", () => {
+		const joined = withCallVoiceState([state(ME)], update(THEM, true));
+		expect(joined).toEqual([state(ME), state(THEM)]);
+		expect(withCallVoiceState(joined, update(THEM, true, true))).toEqual([state(ME), state(THEM, CONV, true)]);
+	});
+
+	test("someone leaving a call goes; one who wasn't in it changes nothing", () => {
+		const states = [state(ME), state(THEM)];
+		expect(withCallVoiceState(states, update(THEM, false))).toEqual([state(ME)]);
+		expect(withCallVoiceState(states, update(THEM, false, false, OTHER_CONV))).toBe(states);
+	});
+
+	test("each call keeps its own: the same user in another call is another state", () => {
+		const states = [state(THEM, OTHER_CONV)];
+		expect(withCallVoiceState(states, update(THEM, true))).toEqual([state(THEM, OTHER_CONV), state(THEM)]);
+	});
+
+	test("hanging up takes the user out of that call only, and leaves the others in it", () => {
+		const states = [state(ME), state(THEM), state(ME, OTHER_CONV)];
+		expect(withoutCallVoiceOf(states, CONV, ME)).toEqual([state(THEM), state(ME, OTHER_CONV)]);
 	});
 });

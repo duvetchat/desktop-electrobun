@@ -18,6 +18,7 @@
 		jumpToMessageRequest,
 	} from "$lib/stores.svelte";
 	import { acceptCall, sendEventMessage, getUserOnlineStatus } from "$lib/api/ws/connection";
+	import { withoutCallVoiceOf } from "$lib/calls";
 	import {
 		getDirectMessages,
 		getDirectMessageById,
@@ -93,6 +94,19 @@
 			avatar_url: getAvatarURL(m.user_id, m.user?.avatar),
 		})),
 	);
+	// Who is in the call's voice, shown on the banner of a call this client isn't in.
+	const inCallNow = $derived(
+		$callVoiceStates
+			.filter((vs) => vs.room_id === conversation.id)
+			.map(
+				(vs) =>
+					callVoiceMembers.find((m) => m.id === vs.user_id) ?? {
+						id: vs.user_id,
+						username: vs.user_id.slice(0, 8),
+						avatar_url: null,
+					},
+			),
+	);
 
 	function joinCall() {
 		const user = get(currentUser);
@@ -122,7 +136,8 @@
 		sendEventMessage("CALL_LEAVE", { conversation_id: call.conversationId });
 		activeVoiceRoomId.set(null);
 		activeCall.set(null);
-		callVoiceStates.set([]);
+		// The others stay in it, as its banner shows.
+		callVoiceStates.update((states) => withoutCallVoiceOf(states, call.conversationId, get(currentUser)?.id));
 		// The call's VoiceChat may already be gone (its connection failed): a camera or screen request it didn't
 		// take goes with the call.
 		dropVoiceRequests();
@@ -684,13 +699,26 @@
 		</div>
 	</div>
 
-	<!-- Call in progress banner (visible when not in the call) -->
+	<!-- Call in progress banner (visible when not in the call), with who is in it -->
+	{#snippet inCallAvatars()}
+		{#if inCallNow.length > 0}
+			<span class="flex items-center -space-x-1.5" title={inCallNow.map((m) => m.username).join(", ")}>
+				{#each inCallNow.slice(0, 4) as member (member.id)}
+					<UserAvatar src={member.avatar_url} name={member.username} size={20} class="ring-2 ring-stone-900" />
+				{/each}
+			</span>
+			{#if inCallNow.length > 4}
+				<span class="text-xs text-emerald-400">+{inCallNow.length - 4}</span>
+			{/if}
+		{/if}
+	{/snippet}
 	{#if canJoinCall && joinWaits}
 		<div
 			class="flex shrink-0 items-center justify-center gap-2 border-b border-emerald-800/50 bg-emerald-900/30 px-4 py-2 text-sm text-emerald-300"
 		>
 			<Phone class="size-4" />
 			<span class="font-medium">Call in progress</span>
+			{@render inCallAvatars()}
 		</div>
 	{:else if canJoinCall}
 		<button
@@ -699,6 +727,7 @@
 		>
 			<Phone class="size-4" />
 			<span class="font-medium">Call in progress — Join</span>
+			{@render inCallAvatars()}
 		</button>
 	{/if}
 

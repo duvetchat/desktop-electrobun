@@ -67,7 +67,9 @@ import {
 	callOngoingAction,
 	callOnReady,
 	callToRingOnReady,
+	callVoiceStatesOf,
 	ownCallsRingingOnReady,
+	withCallVoiceState,
 } from "$lib/calls";
 import { sendAgain } from "$lib/resend";
 import { storageTransfers } from "$lib/stores/storage-transfers.svelte";
@@ -347,38 +349,16 @@ function handleEvent(event: GatewayEvent) {
 			getMentionCounts()
 				.then((counts) => mentionCounts.set(counts))
 				.catch(() => {});
-			// Restore active calls
-			const readyData = payload.data;
-			const activeCalls = readyData.active_calls ?? [];
-			if (activeCalls.length > 0) {
-				const callSet = new Set<string>();
-				for (const call of activeCalls) {
-					callSet.add(call.conversation_id);
-					// Populate voice states for this call
-					if (call.voice_states) {
-						callVoiceStates.update((states) => {
-							const filtered = states.filter((s) => s.room_id !== call.conversation_id);
-							for (const vs of call.voice_states!) {
-								noteVoiceStateVersion(call.conversation_id, vs.user_id, vs.version);
-								filtered.push({
-									room_id: call.conversation_id,
-									user_id: vs.user_id,
-									muted: vs.muted,
-									deafened: vs.deafened,
-									screen_sharing: vs.screen_sharing,
-									camera: vs.camera,
-								});
-							}
-							return filtered;
-						});
-					}
-				}
-				conversationsWithCalls.set(callSet);
-			} else {
-				conversationsWithCalls.set(new Set());
-				callVoiceStates.set([]);
-			}
+			// The calls going on in the user's conversations, and who is in each, as the new session has them.
+			const activeCalls = payload.data.active_calls ?? [];
+			conversationsWithCalls.set(new Set(activeCalls.map((c) => c.conversation_id)));
 			ownCallsRinging.set(ownCallsRingingOnReady(activeCalls, user.id));
+			for (const call of activeCalls) {
+				for (const vs of call.voice_states ?? []) {
+					noteVoiceStateVersion(call.conversation_id, vs.user_id, vs.version);
+				}
+			}
+			callVoiceStates.set(activeCalls.flatMap((c) => callVoiceStatesOf(c.conversation_id, c.voice_states)));
 			const ownCall = get(activeCall);
 			const ownCallNow = callOnReady(ownCall, activeCalls);
 			if (ownCall && ownCallNow === "end") {
@@ -386,7 +366,6 @@ function handleEvent(event: GatewayEvent) {
 				// memory, so its restart ends them.
 				if (get(activeVoiceRoomId) === ownCall.conversationId) activeVoiceRoomId.set(null);
 				activeCall.set(null);
-				callVoiceStates.update((states) => states.filter((s) => s.room_id !== ownCall.conversationId));
 				dropVoiceRequests();
 			} else if (ownCallNow === "dismiss") {
 				// It rang here, and no longer rings the user: they answered or declined it on another device while this one
@@ -803,45 +782,17 @@ function handleEvent(event: GatewayEvent) {
 			const raw = payload.data;
 			if (isStaleVoiceState(raw.room_id, raw.user_id, raw.version)) break;
 
-			// Update call voice states for conversation calls
-			const currentCall = get(activeCall);
-			if (currentCall && raw.room_id === currentCall.conversationId) {
-				callVoiceStates.update((states) => {
-					if (raw.joined) {
-						const idx = states.findIndex((s) => s.user_id === raw.user_id && s.room_id === raw.room_id);
-						if (idx === -1) {
-							// New user joined the call
-							if (raw.user_id !== get(currentUser)?.id) {
-								audioStore.play("join_vc");
-							}
-							return [
-								...states,
-								{
-									room_id: raw.room_id,
-									user_id: raw.user_id,
-									muted: raw.muted,
-									deafened: raw.deafened,
-									screen_sharing: raw.screen_sharing,
-									camera: raw.camera,
-								},
-							];
-						}
-						const copy = [...states];
-						copy[idx] = {
-							...copy[idx],
-							muted: raw.muted,
-							deafened: raw.deafened,
-							screen_sharing: raw.screen_sharing,
-							camera: raw.camera,
-						};
-						return copy;
-					}
-					// User left the call
-					if (raw.user_id !== get(currentUser)?.id) {
-						audioStore.play("leave_vc");
-					}
-					return states.filter((s) => !(s.user_id === raw.user_id && s.room_id === raw.room_id));
-				});
+			// Who is in each call the user knows of: the call this client shows, and those going on without it, which
+			// their conversation shows with who is in them. Joins and leaves sound only in the call this client shows.
+			const inShownCall = get(activeCall)?.conversationId === raw.room_id;
+			if (inShownCall || get(conversationsWithCalls).has(raw.room_id)) {
+				const states = get(callVoiceStates);
+				if (inShownCall && raw.user_id !== get(currentUser)?.id) {
+					const wasIn = states.some((s) => s.user_id === raw.user_id && s.room_id === raw.room_id);
+					if (!raw.joined) audioStore.play("leave_vc");
+					else if (!wasIn) audioStore.play("join_vc");
+				}
+				callVoiceStates.set(withCallVoiceState(states, raw));
 			}
 
 			gatewaySpaces.update((spaces) =>
@@ -903,10 +854,10 @@ function handleEvent(event: GatewayEvent) {
 			if (get(activeVoiceRoomId) === room_id) {
 				activeVoiceRoomId.set(null);
 				// A call's voice that moved to another device takes the call there: this client is out of it, and can
-				// join it again from its conversation. Its camera or screen request goes with it, as when a call ends.
+				// join it again from its conversation, which shows who is in it, the user too. Its camera or screen
+				// request goes with it, as when a call ends.
 				if (get(activeCall)?.conversationId === room_id) {
 					activeCall.set(null);
-					callVoiceStates.update((states) => states.filter((s) => s.room_id !== room_id));
 					dropVoiceRequests();
 				}
 			}
@@ -1551,9 +1502,14 @@ function handleEvent(event: GatewayEvent) {
 		}
 		case "CALL_ONGOING": {
 			// A call goes on without ringing the user: its ring window passed before they answered it, or they joined the
-			// group during it. It stops ringing here, and shows going on, for the user to join.
+			// group during it. It stops ringing here, and shows going on, with who is in it, for the user to join.
 			const d = payload.data;
 			conversationsWithCalls.update((s) => new Set(s).add(d.conversation_id));
+			for (const vs of d.voice_states ?? []) noteVoiceStateVersion(d.conversation_id, vs.user_id, vs.version);
+			callVoiceStates.update((states) => [
+				...states.filter((s) => s.room_id !== d.conversation_id),
+				...callVoiceStatesOf(d.conversation_id, d.voice_states),
+			]);
 			if (callOngoingAction(get(activeCall), d) === "dismiss") activeCall.set(null);
 			break;
 		}
@@ -1593,6 +1549,7 @@ function handleEvent(event: GatewayEvent) {
 				return new Set(s);
 			});
 			stopOwnCallRinging(d.conversation_id);
+			callVoiceStates.update((states) => states.filter((s) => s.room_id !== d.conversation_id));
 			const current = get(activeCall);
 			if (current && current.conversationId === d.conversation_id) {
 				// Only disconnect voice if still in this conversation's call, not a different voice channel
@@ -1600,7 +1557,6 @@ function handleEvent(event: GatewayEvent) {
 					activeVoiceRoomId.set(null);
 				}
 				activeCall.set(null);
-				callVoiceStates.set([]);
 				// The call's VoiceChat may already be gone (its connection failed): a camera or screen request it
 				// didn't take goes with the call.
 				dropVoiceRequests();
