@@ -211,13 +211,17 @@
 
 		dropTargetIdx = idx;
 
-		// A category dropped on a room inside another lands right after that category (handleDrop), so the line goes
-		// under that category's last room. Over its own rooms there's none, as dropping there does nothing.
-		const categoryId = item?.channel.categoryId;
-		if (categoryId && channels.find((c) => c.id === draggedChannelId)?.type === "category") {
-			const own = categoryId === draggedChannelId;
-			dropTargetIdx = own ? null : sidebarItems.findLastIndex((it) => it.channel.categoryId === categoryId);
-			dropPosition = own ? null : "below";
+		// Over its own header or rooms a dragged category does nothing, so no line. Over a room inside another category
+		// it lands right after that category (handleDrop), so the line goes under that category's last room.
+		if (channels.find((c) => c.id === draggedChannelId)?.type === "category") {
+			const categoryId = item?.channel.categoryId;
+			if (item?.channel.id === draggedChannelId || categoryId === draggedChannelId) {
+				dropTargetIdx = null;
+				dropPosition = null;
+			} else if (categoryId) {
+				dropTargetIdx = sidebarItems.findLastIndex((it) => it.channel.categoryId === categoryId);
+				dropPosition = "below";
+			}
 		}
 	}
 
@@ -305,6 +309,15 @@
 		if (dropPosition === "above") return "border-t-2 border-stone-400";
 		if (dropPosition === "below") return "border-b-2 border-stone-400";
 		if (dropPosition === "into") return "ring-1 ring-stone-500";
+		return "";
+	}
+
+	// A room's line is drawn on its wrapper, which holds its voice users under the button, so it sits under them too.
+	// It's a shadow in the gap between rooms: a border would add its width to the wrapper's height and shift the rows.
+	function roomDropIndicatorClass(idx: number): string {
+		if (dropTargetIdx !== idx || !draggedChannelId) return "";
+		if (dropPosition === "above") return "rounded-lg shadow-[0_-2px_0_0_var(--color-stone-400)]";
+		if (dropPosition === "below") return "rounded-lg shadow-[0_2px_0_0_var(--color-stone-400)]";
 		return "";
 	}
 
@@ -497,7 +510,7 @@
 						{@const canManage = space && room ? hasPermission(space, room, Permission.ManageChannels) : false}
 						{@const canJoin =
 							channel.type !== "voice" || (space && room && hasPermission(space, room, Permission.JoinVoice))}
-						<div role="listitem" class="group/channel">
+						<div role="listitem" class="group/channel {roomDropIndicatorClass(itemIdx)}">
 							<ContextMenu.Root>
 								<ContextMenu.Trigger>
 									<button
@@ -505,7 +518,7 @@
 						{channel.id === activeChannelId
 											? 'bg-stone-700 text-stone-100 ring-1 ring-stone-500/40'
 											: 'text-stone-300 hover:bg-stone-800 hover:text-stone-100'}
-						{!canJoin ? 'cursor-not-allowed text-zinc-500 opacity-50' : ''} {dropIndicatorClass(itemIdx)}"
+						{!canJoin ? 'cursor-not-allowed text-zinc-500 opacity-50' : ''}"
 										aria-pressed={channel.id === activeChannelId}
 										title={channel.name}
 										draggable="true"
