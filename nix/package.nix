@@ -140,7 +140,7 @@ stdenv.mkDerivation {
     runHook preInstall
     app=$out/lib/duvet-desktop
     mkdir -p $app $out/bin $out/share/applications $out/share/icons/hicolor/256x256/apps
-    cp -a build/dev-linux-x64/desktop-dev/. $app/
+    cp -a build/dev-linux-x64/Duvet-dev/. $app/
     # The launcher preloads libcef.so by a path relative to its cwd.
     makeWrapper $app/bin/launcher $out/bin/duvet-desktop \
       --chdir $app/bin \

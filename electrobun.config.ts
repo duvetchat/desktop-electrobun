@@ -5,7 +5,9 @@ import pkg from "./package.json";
 
 export default {
 	app: {
-		name: "desktop",
+		// The shortcut, the bundle (`Duvet-<channel>`) and the installer are named after it. The install folder, the
+		// app's data and the uninstall key go by the identifier, so renaming the app moves none of them.
+		name: "Duvet",
 		version: pkg.version,
 		identifier: "com.duvet.desktop",
 	},
