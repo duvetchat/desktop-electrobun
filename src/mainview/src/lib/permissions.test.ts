@@ -6,8 +6,9 @@ import {
 	hasSpacePermission,
 	highestRolePosition,
 	Permission,
+	shownRooms,
 } from "$lib/permissions";
-import type { GatewayRole, GatewaySpace } from "$lib/types";
+import type { GatewayRole, GatewayRoom, GatewayRoomOverwrite, GatewaySpace, RoomType } from "$lib/types";
 
 // @everyone's role has the space's ID.
 const SPACE = "01920000-0000-7000-8000-0000000005a0";
@@ -120,5 +121,51 @@ describe("canSetPermission", () => {
 		expect(canSetPermission(granted, 0, Permission.SendMessages)).toBe(true);
 		expect(canSetPermission(granted, 0, Permission.ManageMessages)).toBe(false);
 		expect(canSetPermission(granted, Permission.ManageMessages, Permission.ManageMessages)).toBe(true);
+	});
+});
+
+describe("shownRooms", () => {
+	const room = (id: string, type: RoomType, parent_id: string | null = null): GatewayRoom => ({
+		id,
+		space_id: SPACE,
+		parent_id,
+		type,
+		name: id,
+		description: null,
+		position: 0,
+		nsfw: false,
+		created_at: "",
+		updated_at: "",
+	});
+	// @everyone views every room, and the member holds it, but not a room denied to it.
+	const denied = (roomId: string): GatewayRoomOverwrite => ({
+		id: `overwrite-${roomId}`,
+		room_id: roomId,
+		target_id: SPACE,
+		target_type: 0,
+		deny_flags: Permission.ViewChannels,
+		allow_flags: 0,
+		created_at: "",
+		updated_at: "",
+	});
+	const shown = (rooms: GatewayRoom[], overwrites: GatewayRoomOverwrite[]) =>
+		shownRooms({
+			...space([role(SPACE, Permission.ViewChannels)], [SPACE]),
+			rooms,
+			room_overwrites: overwrites,
+		}).map((r) => r.id);
+
+	test("a category the member can't view shows with the rooms in it they can, and only those", () => {
+		const rooms = [room("cat", 3), room("open", 1, "cat"), room("closed", 1, "cat"), room("lobby", 1)];
+		expect(shown(rooms, [denied("cat"), denied("closed")])).toEqual(["cat", "open", "lobby"]);
+	});
+
+	test("a category none of whose rooms the member can view doesn't show, viewable or not", () => {
+		const rooms = [room("cat", 3), room("closed", 1, "cat"), room("hid", 3), room("voice", 2, "hid")];
+		expect(shown(rooms, [denied("closed"), denied("hid"), denied("voice")])).toEqual([]);
+	});
+
+	test("an empty category shows when the member can view it", () => {
+		expect(shown([room("empty", 3), room("hidden", 3)], [denied("hidden")])).toEqual(["empty"]);
 	});
 });
