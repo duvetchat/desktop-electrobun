@@ -2,6 +2,7 @@
 	import { onDestroy, onMount, untrack } from "svelte";
 	import { SvelteSet } from "svelte/reactivity";
 	import { gatewayConnection, onWebRTCEvent, sendEventMessage, wantFreshSession } from "$lib/api/ws/connection";
+	import { sendAgain } from "$lib/resend";
 	import { audioStore } from "$lib/stores/audio.svelte";
 	import { toast } from "$lib/stores/toast.svelte";
 	import { hasPermission, Permission } from "$lib/permissions";
@@ -107,8 +108,9 @@
 	let isDestroyed = false;
 	// onMount got as far as joining: from then on, each new gateway session (READY) joins again.
 	let joining = false;
-	// The gateway connection the last VOICE_JOIN went out on.
+	// The gateway connection the last VOICE_JOIN went out on, and whether its VOICE_JOINED came.
 	let joinedOn: number | null = null;
+	let joinAnswered = false;
 	// After this long without a word from the gateway (a sleep, say), a READY leaves voice instead of joining again,
 	// which would open the mic by surprise. A restart for a deploy takes well under it.
 	const REJOIN_WINDOW_MS = 3 * 60_000;
@@ -177,9 +179,22 @@
 			else connectWebRTC().catch((err) => console.error("[Voice] Couldn't join again:", err));
 			return;
 		}
+		// A resumed session answered in its replay what the gateway got before the socket dropped: a join still
+		// unanswered, which went out on the dropped connection, never reached it, and joins again here. Each connection
+		// gets READY or RESUMED, never both.
+		if (type === "RESUMED") {
+			const connection = gatewayConnection();
+			if (!joining || isDestroyed || $activeVoiceRoomId !== ownRoomId || connection === null) return;
+			const join = joinedOn === null ? null : { sentOn: joinedOn, answered: joinAnswered };
+			if (sendAgain(join, connection)) {
+				connectWebRTC().catch((err) => console.error("[Voice] Couldn't join again:", err));
+			}
+			return;
+		}
 		if (data.room_id !== channelId) return;
 
 		if (type === "VOICE_JOINED") {
+			joinAnswered = true;
 			audioStore.play("join_vc");
 			const pc = peerConnection;
 			if (!pc) return;
@@ -656,6 +671,7 @@
 			video_off: !$incomingVideo,
 		});
 		joinedOn = connection;
+		joinAnswered = false;
 		incomingVideoSent = $incomingVideo;
 		sendVoiceSync(channelId);
 

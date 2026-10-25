@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { activeCall, activeVoiceRoomId, callVoiceStates, currentUser } from "$lib/stores.svelte";
 	import { isMuted } from "$lib/stores.svelte";
-	import { sendEventMessage } from "$lib/api/ws/connection";
+	import { acceptCall, sendEventMessage } from "$lib/api/ws/connection";
 	import { Phone, PhoneOff, PhoneIncoming, Mic, MicOff, X } from "@lucide/svelte";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
 	import { getAvatarURL } from "$lib/common/common";
@@ -32,7 +32,7 @@
 	function accept() {
 		if (!call) return;
 		const convId = call.conversationId;
-		sendEventMessage("CALL_ACCEPT", { conversation_id: convId });
+		acceptCall(convId);
 		activeCall.update((c) => (c ? { ...c, state: "connected" } : null));
 		// Delay slightly so gateway processes CALL_ACCEPT before VoiceChat sends VOICE_JOIN
 		setTimeout(() => activeVoiceRoomId.set(convId), 50);
