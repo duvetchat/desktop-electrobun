@@ -69,7 +69,9 @@ import {
 	callToRingOnReady,
 	callVoiceStatesOf,
 	ownCallsRingingOnReady,
+	placeAgain,
 	withCallVoiceState,
+	type PlacedCall,
 } from "$lib/calls";
 import { sendAgain } from "$lib/resend";
 import { storageTransfers } from "$lib/stores/storage-transfers.svelte";
@@ -232,6 +234,32 @@ function resendCallAccept() {
 	if (sendAgain({ sentOn: pending.sentOn, answered: false }, connection)) acceptCall(pending.conversationId);
 }
 
+// The CALL_INITIATE of the call this client places, until the gateway shows it has the call.
+let placedCall: PlacedCall | null = null;
+
+/** Places a call: a CALL_INITIATE, kept until the gateway shows it has the call (its CALL_OUTGOING, a decline or an
+ * answer). The connection it goes out on can drop before the gateway gets it, which would leave the caller on
+ * "Calling…" until they cancel, so a resumed session sends it again (placeAgain). */
+export function placeCall(conversationId: string, memberIds: string[]) {
+	placedCall = { conversationId, memberIds, sentOn: gatewayConnection(), answered: false };
+	sendEventMessage("CALL_INITIATE", { conversation_id: conversationId, member_ids: memberIds });
+}
+
+// The gateway has the call in this conversation: if it's the one this client places, its CALL_INITIATE got there.
+function gatewayHasCall(conversationId: string) {
+	if (placedCall?.conversationId === conversationId) placedCall = { ...placedCall, answered: true };
+}
+
+// Sends a CALL_INITIATE the gateway may not have got again, for the call this client still places.
+function resendPlacedCall() {
+	const connection = gatewayConnection();
+	if (connection === null) return;
+	const placed = placedCall;
+	const action = placeAgain(placed, get(activeCall), connection);
+	if (action === "drop") placedCall = null;
+	else if (action === "again" && placed) placeCall(placed.conversationId, placed.memberIds);
+}
+
 // The user's own call in that conversation, if it was ringing the others, no longer does: someone answered it, or it
 // ended.
 function stopOwnCallRinging(conversationId: string) {
@@ -244,8 +272,10 @@ function stopOwnCallRinging(conversationId: string) {
 }
 
 /** The session resumed: what the gateway got before the old socket dropped, it answered in the replay just handled.
- * What it didn't get was lost with that socket: VoiceChat joins again (RESUMED), and a CALL_ACCEPT goes again. */
+ * What it didn't get was lost with that socket: VoiceChat joins again (RESUMED), and a CALL_INITIATE or a CALL_ACCEPT
+ * goes again. */
 function onResumed() {
+	resendPlacedCall();
 	resendCallAccept();
 	webrtcListeners.forEach((cb) => {
 		cb("RESUMED", {});
@@ -385,6 +415,8 @@ function handleEvent(event: GatewayEvent) {
 					memberIds: [],
 				});
 			}
+			// The call this client places, if the new session lists it, is one the gateway has.
+			for (const call of activeCalls) gatewayHasCall(call.conversation_id);
 			// A CALL_ACCEPT the old session may never have got goes to this one, for a call that goes on.
 			resendCallAccept();
 
@@ -1494,10 +1526,11 @@ function handleEvent(event: GatewayEvent) {
 		}
 		case "CALL_OUTGOING": {
 			// The user started a call, on this device or another: it rings none of theirs. The others show it going on,
-			// without Join while it rings the others (ownCallsRinging).
+			// without Join while it rings the others (ownCallsRinging); the one placing it learns the gateway has it.
 			const { conversation_id } = payload.data;
 			conversationsWithCalls.update((s) => new Set(s).add(conversation_id));
 			ownCallsRinging.update((s) => new Set(s).add(conversation_id));
+			gatewayHasCall(conversation_id);
 			break;
 		}
 		case "CALL_ONGOING": {
@@ -1537,6 +1570,7 @@ function handleEvent(event: GatewayEvent) {
 			// The gateway tells the caller, and every session of whoever declined: a call ringing here that the user
 			// declined on another device stops. The call ends once everyone it rang declined it (CALL_ENDED).
 			const d = payload.data;
+			gatewayHasCall(d.conversation_id);
 			if (callDeclinedAction(get(activeCall), d, get(currentUser)?.id) === "dismiss") activeCall.set(null);
 			break;
 		}
@@ -1544,6 +1578,7 @@ function handleEvent(event: GatewayEvent) {
 			// The call is over, or it is for the user, who left its group: whatever it rang, placed or connected here ends.
 			const d = payload.data;
 			if (pendingAccept?.conversationId === d.conversation_id) pendingAccept = null;
+			if (placedCall?.conversationId === d.conversation_id) placedCall = null;
 			conversationsWithCalls.update((s) => {
 				s.delete(d.conversation_id);
 				return new Set(s);

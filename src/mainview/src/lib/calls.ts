@@ -7,6 +7,7 @@ import type {
 	GatewayReadyActiveCall,
 	VoiceStateUpdateEvent,
 } from "$lib/types";
+import { sendAgain, type AwaitedSend } from "$lib/resend";
 
 /** The call this client shows: ringing, being placed, or connected. */
 type ShownCall = Pick<ActiveCallInfo, "conversationId" | "state">;
@@ -119,4 +120,26 @@ export function withoutCallVoiceOf(
 	userId: string | undefined,
 ): CallVoiceState[] {
 	return states.filter((s) => !(s.room_id === conversationId && s.user_id === userId));
+}
+
+/** The CALL_INITIATE of the call this client places, and whom it rings, until the gateway shows it has the call. */
+export interface PlacedCall extends AwaitedSend {
+	conversationId: string;
+	memberIds: string[];
+}
+
+/**
+ * What a resumed session does with the CALL_INITIATE of the call this client places. While this client still places
+ * that call, it goes again ("again") when sendAgain says so: it went out on an earlier connection, and nothing has
+ * shown that the gateway got it (its CALL_OUTGOING, a decline, an answer). Once this client no longer places that
+ * call (it was answered, cancelled or ended), it's forgotten ("drop").
+ */
+export function placeAgain(
+	placed: PlacedCall | null,
+	call: ShownCall | null,
+	connection: number,
+): "again" | "drop" | null {
+	if (!placed) return null;
+	if (call?.conversationId !== placed.conversationId || call.state !== "calling") return "drop";
+	return sendAgain(placed, connection) ? "again" : null;
 }

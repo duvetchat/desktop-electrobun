@@ -7,6 +7,7 @@ import {
 	callToRingOnReady,
 	callVoiceStatesOf,
 	ownCallsRingingOnReady,
+	placeAgain,
 	withCallVoiceState,
 	withoutCallVoiceOf,
 } from "$lib/calls";
@@ -222,5 +223,37 @@ describe("call voice states", () => {
 	test("hanging up takes the user out of that call only, and leaves the others in it", () => {
 		const states = [state(ME), state(THEM), state(ME, OTHER_CONV)];
 		expect(withoutCallVoiceOf(states, CONV, ME)).toEqual([state(THEM), state(ME, OTHER_CONV)]);
+	});
+});
+
+describe("placeAgain", () => {
+	const placed = (sentOn: number | null, answered = false, conversationId = CONV) => ({
+		conversationId,
+		memberIds: [ME, THEM],
+		sentOn,
+		answered,
+	});
+
+	test("a CALL_INITIATE from an earlier connection that nothing showed the gateway got goes again", () => {
+		expect(placeAgain(placed(3), call("calling"), 4)).toBe("again");
+		// It found no socket open.
+		expect(placeAgain(placed(null), call("calling"), 4)).toBe("again");
+	});
+
+	test("not one sent on this connection, after its identify, nor one the gateway showed it has", () => {
+		expect(placeAgain(placed(4), call("calling"), 4)).toBeNull();
+		// Its CALL_OUTGOING, a decline, or READY listing the call came.
+		expect(placeAgain(placed(3, true), call("calling"), 4)).toBeNull();
+	});
+
+	test("forgotten once this client no longer places that call: answered, cancelled or ended", () => {
+		expect(placeAgain(placed(3), call("connected"), 4)).toBe("drop");
+		expect(placeAgain(placed(3), null, 4)).toBe("drop");
+		expect(placeAgain(placed(3), call("calling", OTHER_CONV), 4)).toBe("drop");
+		expect(placeAgain(placed(3), call("ringing"), 4)).toBe("drop");
+	});
+
+	test("nothing placed, nothing to send", () => {
+		expect(placeAgain(null, call("calling"), 4)).toBeNull();
 	});
 });
