@@ -1525,8 +1525,9 @@ function handleEvent(event: GatewayEvent) {
 			break;
 		}
 		case "CALL_OUTGOING": {
-			// The user started a call, on this device or another: it rings none of theirs. The others show it going on,
-			// without Join while it rings the others (ownCallsRinging); the one placing it learns the gateway has it.
+			// The user started a call, on this device or another: it rings none of theirs. The others show it as calling
+			// from another device, without Join or the call button, while it rings the others (ownCallsRinging); the one
+			// placing it learns the gateway has it.
 			const { conversation_id } = payload.data;
 			conversationsWithCalls.update((s) => new Set(s).add(conversation_id));
 			ownCallsRinging.update((s) => new Set(s).add(conversation_id));

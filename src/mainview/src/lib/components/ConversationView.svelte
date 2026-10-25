@@ -83,8 +83,8 @@
 	const isInCall = $derived($activeCall?.state === "connected" && $activeCall?.conversationId === conversation.id);
 	const hasOngoingCall = $derived($conversationsWithCalls.has(conversation.id));
 	const canJoinCall = $derived(hasOngoingCall && !isInCall);
-	// The user's own call, placed on another device, still rings the others: it shows going on, and Join waits for
-	// someone to answer it.
+	// The user's own call, placed on another device, still rings the others: it shows as calling from there, and Join
+	// and the call button wait for someone to answer it.
 	const joinWaits = $derived($ownCallsRinging.has(conversation.id));
 
 	const callVoiceMembers = $derived(
@@ -515,7 +515,7 @@
 
 	function startCall() {
 		const user = get(currentUser);
-		if (!user || get(activeCall)) return;
+		if (!user || get(activeCall) || joinWaits) return;
 		const memberIds = conversation.members.map((m) => m.user_id);
 		placeCall(conversation.id, memberIds);
 		activeCall.set({
@@ -661,7 +661,7 @@
 			<button
 				class="flex items-center gap-1 rounded px-2 py-1 text-xs font-normal text-zinc-400 hover:bg-stone-800 hover:text-zinc-200 disabled:cursor-not-allowed disabled:opacity-40"
 				onclick={startCall}
-				disabled={!!$activeCall}
+				disabled={!!$activeCall || joinWaits}
 				title="Start call"
 			>
 				<Phone class="size-3.5" />
@@ -714,7 +714,7 @@
 			class="flex shrink-0 items-center justify-center gap-2 border-b border-emerald-800/50 bg-emerald-900/30 px-4 py-2 text-sm text-emerald-300"
 		>
 			<Phone class="size-4" />
-			<span class="font-medium">Call in progress</span>
+			<span class="font-medium">Calling from another device</span>
 			{@render inCallAvatars()}
 		</div>
 	{:else if canJoinCall}

@@ -216,8 +216,8 @@ export interface ActiveCallInfo {
 export const activeCall = writable<ActiveCallInfo | null>(null);
 // Set of conversation IDs that have an active call (even if I'm not in it)
 export const conversationsWithCalls = writable<Set<string>>(new Set());
-/** The conversations whose call is the user's own and still rings the others, nobody having answered it: on the user's
- * other devices it shows without Join until someone does. */
+/** The conversations whose call is the user's own and still rings the others, nobody having answered it: the user's
+ * other devices show it as calling from another device, without Join or the call button, until someone does. */
 export const ownCallsRinging = writable<Set<string>>(new Set());
 
 export interface CallVoiceState {
