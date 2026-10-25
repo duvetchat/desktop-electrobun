@@ -1,4 +1,5 @@
 import { getHostURL, route } from "$lib/common/common";
+import { renewalDue, renewOnceMore, type SessionCheck } from "$lib/session";
 import { accessToken } from "$lib/stores/auth";
 import { get } from "svelte/store";
 
@@ -47,10 +48,10 @@ class RefreshFailedError extends Error {
 	}
 }
 
-// Sessions last 24 h: keepSessionFresh renews them an hour early, so the access token doesn't run
-// out while the app is in use.
+// When the session's tokens were issued: keepSessionFresh renews them by their age (renewalDue).
 const REFRESHED_AT_KEY = "duvet_session_refreshed_at";
-const REFRESH_AFTER_MS = 23 * 60 * 60 * 1000;
+// A renewal that failed without an answer goes once more after this, well inside the API's 30 s rotation grace.
+const LOST_RENEWAL_RETRY_MS = 3000;
 
 /** Notes that the session's tokens were just issued, by logging in or refreshing. */
 export function markSessionRefreshed(): void {
@@ -60,7 +61,8 @@ export function markSessionRefreshed(): void {
 let refreshing: Promise<string> | null = null;
 
 /** Rotates the session's tokens and resolves to the new access token. Concurrent callers share one
- * request. A rejected session (401/403) signs out; rate limits, server and network errors don't. */
+ * request, its retry included. A rejected session (401/403) signs out; rate limits, server and network
+ * errors don't, and a network error goes once more first. */
 export function refreshSession(): Promise<string> {
 	refreshing ??= requestRefresh().finally(() => {
 		refreshing = null;
@@ -80,7 +82,7 @@ async function requestRefresh(): Promise<string> {
 			credentials: "include",
 			headers: refreshHeaders,
 		});
-	try {
+	const renew = async () => {
 		let res = await refresh();
 		// A 429 means "try again later", not an invalid session: wait as long as the API says,
 		// up to 20s per attempt so queued requests aren't held for minutes.
@@ -90,8 +92,15 @@ async function requestRefresh(): Promise<string> {
 			res = await refresh();
 		}
 		if (!res.ok) throw new RefreshFailedError(res.status);
-
-		const resData = await res.json();
+		return res.json();
+	};
+	try {
+		// Failed without an answer, it goes once more with the same session token, inside the API's rotation grace.
+		const resData = await renewOnceMore(
+			renew,
+			(err) => err instanceof RefreshFailedError,
+			() => new Promise((r) => setTimeout(r, LOST_RENEWAL_RETRY_MS)),
+		);
 		const newToken: string = resData.token;
 		accessToken.set(newToken);
 		localStorage.setItem("duvet_session_token", newToken);
@@ -111,21 +120,21 @@ async function requestRefresh(): Promise<string> {
 }
 
 /** Renews the session before it expires: checked now, every 10 minutes and whenever the app comes
- * back into view (timers don't run while the computer sleeps). `ready` settles once a renewal due
- * right away is done: open the gateway connection after it, since a refresh revokes the old access
- * token mid-identify otherwise. */
+ * back into view (timers don't run while the computer sleeps), each with its own age (renewalDue).
+ * `ready` settles once a renewal due right away is done: open the gateway connection after it,
+ * since a refresh revokes the old access token mid-identify otherwise. */
 export function keepSessionFresh(): { ready: Promise<void>; stop: () => void } {
-	const check = async () => {
+	const check = async (when: SessionCheck) => {
 		if (!localStorage.getItem("duvet_refresh_token")) return;
 		const refreshedAt = Number(localStorage.getItem(REFRESHED_AT_KEY)) || 0;
-		if (Date.now() - refreshedAt < REFRESH_AFTER_MS) return;
+		if (!renewalDue(when, refreshedAt, Date.now())) return;
 		await refreshSession().catch((err) => console.error("[API] Session refresh ahead of expiry failed:", err));
 	};
 	const onVisible = () => {
-		if (!document.hidden) void check();
+		if (!document.hidden) void check("visible");
 	};
-	const ready = check();
-	const timer = setInterval(() => void check(), 10 * 60 * 1000);
+	const ready = check("start");
+	const timer = setInterval(() => void check("tick"), 10 * 60 * 1000);
 	document.addEventListener("visibilitychange", onVisible);
 	return {
 		ready,
