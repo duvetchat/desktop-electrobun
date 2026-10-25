@@ -22,7 +22,7 @@
 
 	import { ContextMenu, Dialog, DropdownMenu } from "bits-ui";
 	import { onMount } from "svelte";
-	import { topLevelEnd, type Guild, type Channel, type RoomType } from "$lib/types";
+	import { categoryDropPosition, topLevelEnd, type Guild, type Channel, type RoomType } from "$lib/types";
 	import { hasPermission, hasSpacePermission, Permission } from "$lib/permissions";
 	import ServerSettings from "$lib/components/ServerSettings.svelte";
 	import ChannelSettings from "$lib/components/ChannelSettings.svelte";
@@ -264,6 +264,11 @@
 					// Above/below a category → root level
 					newParentId = null;
 					newPosition = pos === "above" ? targetPos : targetPos + 1;
+				} else if (isDraggingCategory) {
+					// A category can't go inside another, so a room inside one stands for it (its own place is within
+					// that category, not at the root). On a room of its own category it has nowhere to go.
+					if (srcId === newParentId) return;
+					newPosition = categoryDropPosition(channels, targetItem.channel, pos === "above" ? "above" : "below");
 				} else {
 					newPosition = pos === "above" ? targetPos : targetPos + 1;
 				}

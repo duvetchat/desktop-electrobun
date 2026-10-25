@@ -1041,6 +1041,17 @@ export function topLevelEnd(channels: Channel[], movingId: string): number {
 	return Math.max(-1, ...channels.filter((c) => !c.categoryId && c.id !== movingId).map((c) => c.position)) + 1;
 }
 
+/** Where a category dropped above or below a room goes at the top level. A category can't go inside another, so a room
+ * inside one stands for it: the category goes right after that one, on either side of the room, since its rooms show
+ * below its header. (The room's own place counts within its category, not at the top level.) A loose room is at the
+ * top level itself: the category goes above or below it. Like every place the API takes, it's counted with the dragged
+ * category still where it is, so it's the same wherever that category starts, before the target one or after it. */
+export function categoryDropPosition(channels: Channel[], room: Channel, side: "above" | "below"): number {
+	const category = room.categoryId ? channels.find((c) => c.id === room.categoryId) : undefined;
+	if (category) return category.position + 1;
+	return side === "above" ? room.position : room.position + 1;
+}
+
 /** A space's roles once one is created (ROLE_CREATE): the API puts it at position 1, just above @everyone's 0, and
  * moves every other role from 1 up by one (ShiftRolePositions) without an event of their own. */
 export function withCreatedRole(roles: GatewayRole[], created: GatewayRole): GatewayRole[] {
