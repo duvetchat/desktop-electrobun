@@ -44,6 +44,9 @@
 		activeCall.set(null);
 	}
 
+	// Only the calling screen goes here; the gateway decides what the cancel does. When it ends the call, CALL_ENDED
+	// takes it away. When the user called back into a call going on after hanging up, it takes just their voice out
+	// (decision 64): the call goes on, and its conversation shows it with Join, as after hanging up.
 	function cancel() {
 		if (!call) return;
 		sendEventMessage("CALL_CANCEL", { conversation_id: call.conversationId });
