@@ -260,6 +260,16 @@ function resendPlacedCall() {
 	else if (action === "again" && placed) placeCall(placed.conversationId, placed.memberIds);
 }
 
+// Whether this client's CALL_INITIATE or CALL_ACCEPT for the call in that conversation went out on the open
+// connection, after its identify.
+function sentOnThisConnection(conversationId: string): boolean {
+	const connection = gatewayConnection();
+	return (
+		connection !== null &&
+		[placedCall, pendingAccept].some((send) => send?.conversationId === conversationId && send.sentOn === connection)
+	);
+}
+
 // The user's own call in that conversation, if it was ringing the others, no longer does: someone answered it, or it
 // ended.
 function stopOwnCallRinging(conversationId: string) {
@@ -390,17 +400,29 @@ function handleEvent(event: GatewayEvent) {
 			}
 			callVoiceStates.set(activeCalls.flatMap((c) => callVoiceStatesOf(c.conversation_id, c.voice_states)));
 			const ownCall = get(activeCall);
-			const ownCallNow = callOnReady(ownCall, activeCalls);
+			const ownCallNow = callOnReady(ownCall, activeCalls, {
+				silentMs: silenceBeforeLast,
+				sentOnThisConnection: !!ownCall && sentOnThisConnection(ownCall.conversationId),
+			});
 			if (ownCall && ownCallNow === "end") {
 				// The call this client is in is over when the new session doesn't list it: the gateway keeps calls in
 				// memory, so its restart ends them.
 				if (get(activeVoiceRoomId) === ownCall.conversationId) activeVoiceRoomId.set(null);
 				activeCall.set(null);
 				dropVoiceRequests();
+			} else if (ownCall && ownCallNow === "keep") {
+				// Placed or answered on this connection, which READY was built before the gateway got: the call stays.
+				conversationsWithCalls.update((s) => new Set(s).add(ownCall.conversationId));
 			} else if (ownCallNow === "dismiss") {
 				// It rang here, and no longer rings the user: they answered or declined it on another device while this one
-				// was away, or its ring window passed. It shows as a call going on.
+				// was away, or its ring window passed. Or this client was placing it, someone answered it meanwhile, and
+				// the gateway was silent too long to join it now. It shows as a call going on, with Join.
 				activeCall.set(null);
+			} else if (ownCall && ownCallNow === "join") {
+				// This client was placing it, and someone answered it while this client was away: it joins, as on the
+				// CALL_ACCEPTED it missed.
+				activeCall.update((c) => (c ? { ...c, state: "connected" } : c));
+				activeVoiceRoomId.set(ownCall.conversationId);
 			}
 			// A call that still rings the user rings here too, with its caller as READY has them, unless this client shows
 			// another one.

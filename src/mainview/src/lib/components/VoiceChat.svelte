@@ -2,7 +2,7 @@
 	import { onDestroy, onMount, untrack } from "svelte";
 	import { SvelteSet } from "svelte/reactivity";
 	import { gatewayConnection, onWebRTCEvent, sendEventMessage, wantFreshSession } from "$lib/api/ws/connection";
-	import { sendAgain } from "$lib/resend";
+	import { REJOIN_WINDOW_MS, sendAgain } from "$lib/resend";
 	import { audioStore } from "$lib/stores/audio.svelte";
 	import { toast } from "$lib/stores/toast.svelte";
 	import { hasPermission, Permission } from "$lib/permissions";
@@ -111,9 +111,6 @@
 	// The gateway connection the last VOICE_JOIN went out on, and whether its VOICE_JOINED came.
 	let joinedOn: number | null = null;
 	let joinAnswered = false;
-	// After this long without a word from the gateway (a sleep, say), a READY leaves voice instead of joining again,
-	// which would open the mic by surprise. A restart for a deploy takes well under it.
-	const REJOIN_WINDOW_MS = 3 * 60_000;
 	// The gateway answers a join it refuses with nothing (its permissions changed while it restarted, say).
 	const JOIN_TIMEOUT_MS = 15_000;
 

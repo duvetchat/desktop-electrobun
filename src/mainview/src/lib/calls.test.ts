@@ -11,6 +11,7 @@ import {
 	withCallVoiceState,
 	withoutCallVoiceOf,
 } from "$lib/calls";
+import { REJOIN_WINDOW_MS } from "$lib/resend";
 import type { CallState, CallVoiceState } from "$lib/stores.svelte";
 import type { GatewayReadyActiveCall, VoiceStateUpdateEvent } from "$lib/types";
 
@@ -109,33 +110,75 @@ describe("callOngoingAction", () => {
 });
 
 describe("callOnReady", () => {
+	// A READY after a short silence, with nothing of this client's sent on its own connection.
+	const soon = { silentMs: 5_000, sentOnThisConnection: false };
+	const afterSleep = { silentMs: REJOIN_WINDOW_MS + 1, sentOnThisConnection: false };
+	const sentHere = { silentMs: 5_000, sentOnThisConnection: true };
+
 	test("a call the new session doesn't list is over, whatever its state here", () => {
 		for (const state of ["ringing", "calling", "connected"] as const) {
-			expect(callOnReady(call(state), [])).toBe("end");
-			expect(callOnReady(call(state), [listed({ conversation_id: OTHER_CONV })])).toBe("end");
+			expect(callOnReady(call(state), [], soon)).toBe("end");
+			expect(callOnReady(call(state), [listed({ conversation_id: OTHER_CONV })], soon)).toBe("end");
 		}
+	});
+
+	test("but one placed or answered on READY's own connection stays: READY was built before the gateway got it", () => {
+		expect(callOnReady(call("calling"), [], sentHere)).toBe("keep");
+		expect(callOnReady(call("connected"), [], sentHere)).toBe("keep");
 	});
 
 	test("a call ringing here stops when READY says it no longer rings the user", () => {
 		// They answered or declined it on another device while this one was away, or its ring window passed.
-		expect(callOnReady(call("ringing"), [listed({ ringing: false })])).toBe("dismiss");
+		expect(callOnReady(call("ringing"), [listed({ ringing: false })], soon)).toBe("dismiss");
 	});
 
 	test("a call ringing here rings on while READY says it still rings the user", () => {
-		expect(callOnReady(call("ringing"), [listed({ ringing: true })])).toBeNull();
+		expect(callOnReady(call("ringing"), [listed({ ringing: true })], soon)).toBeNull();
 	});
 
 	test("a gateway that doesn't say whether it rings leaves it ringing, as before", () => {
-		expect(callOnReady(call("ringing"), [listed()])).toBeNull();
+		expect(callOnReady(call("ringing"), [listed()], soon)).toBeNull();
 	});
 
-	test("a call this client places or is in stays: it never rings the user", () => {
-		expect(callOnReady(call("calling"), [listed({ initiator_id: ME, ringing: false })])).toBeNull();
-		expect(callOnReady(call("connected"), [listed({ ringing: false })])).toBeNull();
+	test("the call this client places joins when READY says someone answered it, as on the CALL_ACCEPTED it missed", () => {
+		expect(callOnReady(call("calling"), [listed({ initiator_id: ME, ringing: false, answered: true })], soon)).toBe(
+			"join",
+		);
+		// Its CALL_INITIATE answered someone else's call.
+		expect(callOnReady(call("calling"), [listed({ ringing: false, answered: true })], soon)).toBe("join");
+	});
+
+	test("after a silence past the rejoin window it stops calling instead, and shows the call with Join", () => {
+		expect(callOnReady(call("calling"), [listed({ initiator_id: ME, answered: true })], afterSleep)).toBe("dismiss");
+		expect(
+			callOnReady(call("calling"), [listed({ initiator_id: ME, answered: true })], {
+				...soon,
+				silentMs: REJOIN_WINDOW_MS,
+			}),
+		).toBe("join");
+	});
+
+	test("one placed on READY's own connection waits for the CALL_ACCEPTED that answers it", () => {
+		expect(callOnReady(call("calling"), [listed({ answered: true })], sentHere)).toBeNull();
+		expect(
+			callOnReady(call("calling"), [listed({ answered: true })], { ...sentHere, silentMs: REJOIN_WINDOW_MS + 1 }),
+		).toBeNull();
+	});
+
+	test("the call this client places calls on while nobody has answered it, or the gateway doesn't say", () => {
+		expect(
+			callOnReady(call("calling"), [listed({ initiator_id: ME, ringing: false, answered: false })], soon),
+		).toBeNull();
+		expect(callOnReady(call("calling"), [listed({ initiator_id: ME })], afterSleep)).toBeNull();
+	});
+
+	test("a call this client is in stays", () => {
+		expect(callOnReady(call("connected"), [listed({ ringing: false, answered: true })], afterSleep)).toBeNull();
 	});
 
 	test("without a call here, nothing to do", () => {
-		expect(callOnReady(null, [listed({ ringing: true })])).toBeNull();
+		expect(callOnReady(null, [listed({ ringing: true })], soon)).toBeNull();
+		expect(callOnReady(null, [], sentHere)).toBeNull();
 	});
 });
 

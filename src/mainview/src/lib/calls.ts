@@ -7,7 +7,7 @@ import type {
 	GatewayReadyActiveCall,
 	VoiceStateUpdateEvent,
 } from "$lib/types";
-import { sendAgain, type AwaitedSend } from "$lib/resend";
+import { REJOIN_WINDOW_MS, sendAgain, type AwaitedSend } from "$lib/resend";
 
 /** The call this client shows: ringing, being placed, or connected. */
 type ShownCall = Pick<ActiveCallInfo, "conversationId" | "state">;
@@ -54,18 +54,42 @@ export function callOngoingAction(call: ShownCall | null, ongoing: CallOngoingEv
 	return call.state === "ringing" ? "dismiss" : null;
 }
 
+/** What READY needs to know of this client, besides the calls it lists. */
+export interface ReadyContext {
+	/** How long the gateway had been silent before this READY. */
+	silentMs: number;
+	/** This client's CALL_INITIATE or CALL_ACCEPT for the call it shows went out on READY's own connection, after its
+	 * identify: READY was built before the gateway got it. */
+	sentOnThisConnection: boolean;
+}
+
 /**
- * What a new gateway session's READY means for the call this client shows. One it doesn't list is over ("end"): the
- * gateway keeps calls in memory, so its restart ends them, and the call may have ended while this client was away. One
- * ringing here that READY says no longer rings the user goes ("dismiss"): they answered or declined it on another
- * device meanwhile, or its ring window ended. It takes a `ringing` false to say so: a gateway from before calls
- * followed users across their devices sends no `ringing`, and the call rings on, as it did then.
+ * What a new gateway session's READY means for the call this client shows.
+ * - One it doesn't list is over ("end"): the gateway keeps calls in memory, so its restart ends them, and the call may
+ *   have ended while this client was away. Not when this client placed or answered it on READY's own connection:
+ *   READY was built before the gateway got that, so the call stays ("keep"), and its events follow.
+ * - One ringing here that READY says no longer rings the user goes ("dismiss"): they answered or declined it on another
+ *   device meanwhile, or its ring window ended.
+ * - One this client places that READY says someone answered, whose CALL_ACCEPTED it missed, joins ("join"), as on
+ *   CALL_ACCEPTED, but only when the gateway was silent for less than the rejoin window, as voice rejoins. After a
+ *   longer silence (a sleep, say) it stops calling instead ("dismiss"), and shows as a call going on, with Join. Not
+ *   one placed on READY's own connection, whose CALL_ACCEPTED follows.
+ * It takes a `ringing` false or an `answered` true to say so: a gateway from before calls followed users across their
+ * devices sends neither, and the call rings, or calls, on, as it did then.
  */
-export function callOnReady(call: ShownCall | null, listed: GatewayReadyActiveCall[]): "end" | "dismiss" | null {
+export function callOnReady(
+	call: ShownCall | null,
+	listed: GatewayReadyActiveCall[],
+	context: ReadyContext,
+): "end" | "keep" | "dismiss" | "join" | null {
 	if (!call) return null;
 	const same = listed.find((c) => c.conversation_id === call.conversationId);
-	if (!same) return "end";
-	return call.state === "ringing" && same.ringing === false ? "dismiss" : null;
+	if (!same) return context.sentOnThisConnection ? "keep" : "end";
+	if (call.state === "ringing" && same.ringing === false) return "dismiss";
+	if (call.state === "calling" && same.answered === true && !context.sentOnThisConnection) {
+		return context.silentMs > REJOIN_WINDOW_MS ? "dismiss" : "join";
+	}
+	return null;
 }
 
 /**
