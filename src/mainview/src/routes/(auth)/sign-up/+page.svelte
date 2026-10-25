@@ -106,7 +106,7 @@
 								id="alias"
 								name="alias"
 								type="text"
-								maxlength={64}
+								maxlength={32}
 								bind:value={alias}
 								class="w-full rounded-lg border border-stone-700 bg-stone-900/70 px-4 py-3 text-zinc-100 placeholder:text-zinc-400 focus:ring-2 focus:ring-stone-500/70 focus:outline-none"
 								placeholder="How others see you"

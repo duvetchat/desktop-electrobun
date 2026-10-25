@@ -16,7 +16,7 @@
 		dropVoiceRequests,
 		jumpToMessageRequest,
 	} from "$lib/stores.svelte";
-	import { sendEventMessage, getUserOnlineStatus } from "$lib/api/ws/connection";
+	import { acceptCall, sendEventMessage, getUserOnlineStatus } from "$lib/api/ws/connection";
 	import {
 		getDirectMessages,
 		getDirectMessageById,
@@ -99,7 +99,7 @@
 			conversation_id: conversation.id,
 			member_ids: memberIds,
 		});
-		sendEventMessage("CALL_ACCEPT", { conversation_id: conversation.id });
+		acceptCall(conversation.id);
 		activeCall.set({
 			conversationId: conversation.id,
 			initiatorId: user.id,

@@ -205,6 +205,20 @@ export function canViewRoom(space: GatewaySpace, room: GatewayRoom): boolean {
 	return (perms & Permission.ViewChannels) !== 0;
 }
 
+/**
+ * The rooms of a space its sidebar shows: those the current member can view, and each category holding any of them,
+ * whether the member can view the category or not, with only those rooms. A category with no rooms in it shows when
+ * the member can view it.
+ */
+export function shownRooms(space: GatewaySpace): GatewayRoom[] {
+	const visible = new Set(space.rooms.filter((r) => r.type !== 3 && canViewRoom(space, r)).map((r) => r.id));
+	return space.rooms.filter((room) => {
+		if (room.type !== 3) return visible.has(room.id);
+		const inside = space.rooms.filter((r) => r.parent_id === room.id);
+		return inside.length === 0 ? canViewRoom(space, room) : inside.some((r) => visible.has(r.id));
+	});
+}
+
 /** Returns true if the current member has ALL of the given permission flags in a room. */
 export function hasPermission(space: GatewaySpace, room: GatewayRoom, permission: number): boolean {
 	const perms = computeRoomPermissions(space, room);
