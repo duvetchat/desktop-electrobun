@@ -36,7 +36,7 @@
 	import { listStickers } from "$lib/api/stickers";
 	import { getApiError } from "$lib/api/api";
 	import { getSpaceCommands, sendCommandInteraction } from "$lib/api/interactions";
-	import { hasPermission, Permission } from "$lib/permissions";
+	import { hasPermission, mentionableRooms, Permission } from "$lib/permissions";
 	import { displayName, isSpoiler, withSpoiler } from "$lib/spoilers";
 	import { withSentMessage } from "$lib/arrivals";
 
@@ -126,6 +126,8 @@
 		const room = space?.rooms.find((r) => r.id === channelId);
 		return !!space && !!room && hasPermission(space, room, Permission.SendMessages);
 	});
+	// The rooms "#" suggests; a conversation has none.
+	const mentionRooms = $derived(space ? mentionableRooms(space) : []);
 	let lastTypingSent = 0;
 	let lastTypingRecording = false;
 
@@ -789,6 +791,7 @@
 				onArrowUpWhenEmpty={tryEditLastMessage}
 				onValueChange={handleTyping}
 				{members}
+				rooms={mentionRooms}
 				{customEmojis}
 				spaceStickers={spaceStickersArr}
 				loadCommands={canUseCommands ? () => getSpaceCommands(spaceId) : undefined}

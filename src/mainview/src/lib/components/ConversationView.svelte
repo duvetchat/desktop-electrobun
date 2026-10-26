@@ -296,7 +296,7 @@
 		if (req.conversationId !== conversation.id) return;
 		lastHandledJumpId = req.id;
 		jumpToMessageRequest.set(null);
-		void jumpToMessage(req.messageId);
+		if (req.messageId) void jumpToMessage(req.messageId);
 	});
 
 	async function jumpToMessage(messageId: string) {

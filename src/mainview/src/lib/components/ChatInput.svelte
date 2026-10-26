@@ -10,6 +10,8 @@
 		Square,
 		Pause,
 		Play,
+		Hash as HashIcon,
+		Volume2 as VoiceIcon,
 	} from "@lucide/svelte";
 	import EmojiPicker from "$lib/components/EmojiPicker.svelte";
 	import StickerPicker from "$lib/components/StickerPicker.svelte";
@@ -21,13 +23,14 @@
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
 	import type {
 		ApplicationCommand,
+		GatewayRoom,
 		MemberOnSidebar,
 		SpaceCommandApplication,
 		SpaceCommands,
 		SpaceEmoji,
 		SpaceSticker,
 	} from "$lib/types";
-	import { selectedMicId } from "$lib/stores.svelte";
+	import { roomNames, selectedMicId } from "$lib/stores.svelte";
 	import { getAvatarURL, getHostURL } from "$lib/common/common";
 
 	const ceHost = getHostURL();
@@ -44,6 +47,7 @@
 		showActions = true,
 		autofocus = false,
 		members = [],
+		rooms = [],
 		customEmojis = [],
 		spaceStickers = [],
 		pendingFiles = $bindable<File[]>([]),
@@ -62,6 +66,8 @@
 		showActions?: boolean;
 		autofocus?: boolean;
 		members?: MemberOnSidebar[];
+		/** The rooms "#" suggests: those of the space the user can view. */
+		rooms?: GatewayRoom[];
 		customEmojis?: SpaceEmoji[];
 		spaceStickers?: SpaceSticker[];
 		pendingFiles?: File[];
@@ -220,6 +226,11 @@
 	let mentionSelectedIdx = $state(0);
 	let mentionQueryStart = $state(-1); // char offset of '@' in raw text
 
+	// ── Room mention autocomplete ───────────────────────────────────────────────
+	let roomSuggestions = $state<GatewayRoom[]>([]);
+	let roomSelectedIdx = $state(0);
+	let roomQueryStart = $state(-1); // char offset of '#' in raw text
+
 	// ── Command menu ────────────────────────────────────────────────────────────
 	// What follows the "/" that starts the message while the menu is open (null when it's closed), and the
 	// space's commands, asked for each time it opens (they're kept a few minutes).
@@ -261,6 +272,11 @@
 		return m ? m.username || m.raw_username : id.slice(0, 8);
 	}
 
+	// As messages show it: a room the user can't view, or one that's gone, has no name to show.
+	function roomMentionText(id: string): string {
+		return `#${$roomNames[id] ?? "unknown"}`;
+	}
+
 	function resolveCustomEmojiName(id: string): string {
 		const ce = customEmojis.find((e) => e.id === id);
 		return ce ? ce.name : id.slice(0, 8);
@@ -282,6 +298,11 @@
 				/&lt;@([a-f0-9-]+)&gt;/g,
 				(_, id) =>
 					`<span class="mention-chip" contenteditable="false" data-mention="${id}">@${escapeHtml(resolveMentionName(id))}</span>`,
+			)
+			.replace(
+				/&lt;#([a-f0-9-]+)&gt;/g,
+				(_, id) =>
+					`<span class="mention-chip" contenteditable="false" data-room="${id}">${escapeHtml(roomMentionText(id))}</span>`,
 			)
 			.replace(/&lt;:([a-f0-9-]+):&gt;/g, (_, id) => {
 				const url = resolveCustomEmojiUrl(id);
@@ -322,6 +343,8 @@
 			if (tag === "BR") return 1;
 			const mention = (n as Element).getAttribute?.("data-mention");
 			if (mention) return `<@${mention}>`.length;
+			const room = (n as Element).getAttribute?.("data-room");
+			if (room) return `<#${room}>`.length;
 			const cemoji = (n as Element).getAttribute?.("data-cemoji");
 			if (cemoji) return `<:${cemoji}:>`.length;
 			if (tag === "IMG") return ((n as HTMLImageElement).alt ?? "").length;
@@ -435,6 +458,8 @@
 			commandSelectedIdx = 0;
 			mentionSuggestions = [];
 			mentionQueryStart = -1;
+			roomSuggestions = [];
+			roomQueryStart = -1;
 			suggestions = [];
 			emojiQueryStart = -1;
 			return;
@@ -452,13 +477,33 @@
 				.filter((m) => m.raw_username.toLowerCase().startsWith(query) || m.username.toLowerCase().startsWith(query))
 				.slice(0, 10);
 			mentionSelectedIdx = 0;
-			// Clear emoji suggestions when mention is active
+			// Clear emoji and room suggestions when mention is active
+			roomSuggestions = [];
+			roomQueryStart = -1;
 			suggestions = [];
 			emojiQueryStart = -1;
 			return;
 		}
 		mentionSuggestions = [];
 		mentionQueryStart = -1;
+
+		// # suggests the space's rooms the same way, those whose name starts with what follows it first. A heading's
+		// "# " closes it, as a space ends the query.
+		const roomMatch = rooms.length > 0 ? /(?<=^|\s)#([\p{L}\p{N}_-]*)$/u.exec(before) : null;
+		if (roomMatch) {
+			roomQueryStart = before.length - roomMatch[0].length;
+			const query = roomMatch[1].toLowerCase();
+			const named = [...rooms].sort((a, b) => a.name.localeCompare(b.name));
+			const starts = named.filter((r) => r.name.toLowerCase().startsWith(query));
+			const contains = named.filter((r) => !starts.includes(r) && r.name.toLowerCase().includes(query));
+			roomSuggestions = [...starts, ...contains].slice(0, 10);
+			roomSelectedIdx = 0;
+			suggestions = [];
+			emojiQueryStart = -1;
+			return;
+		}
+		roomSuggestions = [];
+		roomQueryStart = -1;
 
 		// Check :emoji autocomplete (custom + default)
 		const m = /(?<=^|\s):([\w\d_]{2,})$/.exec(before);
@@ -510,6 +555,25 @@
 		mentionSuggestions = [];
 		mentionQueryStart = -1;
 		mentionSelectedIdx = 0;
+		inputEl.focus();
+	}
+
+	function insertRoomSuggestion(room: GatewayRoom) {
+		const raw = getRaw(inputEl);
+		const cursor = getOffset();
+		const before = raw.slice(0, roomQueryStart);
+		const after = raw.slice(cursor);
+		const mention = `<#${room.id}> `;
+		const newRaw = before + mention + after;
+		const newPos = roomQueryStart + mention.length;
+
+		rerender(newRaw, newPos);
+		pushUndo(newRaw, newPos, false);
+		isEmpty = hasNoText(newRaw);
+		onValueChange?.(newRaw);
+		roomSuggestions = [];
+		roomQueryStart = -1;
+		roomSelectedIdx = 0;
 		inputEl.focus();
 	}
 
@@ -622,6 +686,30 @@
 			}
 		}
 
+		// Navigate room autocomplete
+		if (roomSuggestions.length > 0) {
+			if (e.key === "ArrowUp") {
+				e.preventDefault();
+				roomSelectedIdx = (roomSelectedIdx - 1 + roomSuggestions.length) % roomSuggestions.length;
+				return;
+			}
+			if (e.key === "ArrowDown") {
+				e.preventDefault();
+				roomSelectedIdx = (roomSelectedIdx + 1) % roomSuggestions.length;
+				return;
+			}
+			if (e.key === "Enter" || e.key === "Tab") {
+				e.preventDefault();
+				insertRoomSuggestion(roomSuggestions[roomSelectedIdx]);
+				return;
+			}
+			if (e.key === "Escape") {
+				roomSuggestions = [];
+				roomQueryStart = -1;
+				return;
+			}
+		}
+
 		// Navigate emoji autocomplete
 		if (suggestions.length > 0) {
 			if (e.key === "ArrowUp") {
@@ -724,6 +812,8 @@
 		const tag = elem.tagName;
 		const mention = elem.getAttribute("data-mention");
 		if (mention) return `<@${mention}>`;
+		const room = elem.getAttribute("data-room");
+		if (room) return `<#${room}>`;
 		const cemoji = elem.getAttribute("data-cemoji");
 		if (cemoji) return `<:${cemoji}:>`;
 		if (tag === "IMG") return (n as HTMLImageElement).alt ?? "";
@@ -748,6 +838,8 @@
 			if (tag === "BR") return 1;
 			const mention = el.getAttribute?.("data-mention");
 			if (mention) return `<@${mention}>`.length;
+			const room = el.getAttribute?.("data-room");
+			if (room) return `<#${room}>`.length;
 			const cemoji = el.getAttribute?.("data-cemoji");
 			if (cemoji) return `<:${cemoji}:>`.length;
 			if (tag === "IMG") return ((n as HTMLImageElement).alt ?? "").length;
@@ -809,13 +901,14 @@
 		return raw.slice(start, end);
 	}
 
-	// A copy or a cut gives other apps the text as it reads, with mentions as @name and the space's custom emojis as
-	// :name:, and keeps the raw text under this type, which a paste here prefers: mentions and emojis come back.
+	// A copy or a cut gives other apps the text as it reads, with mentions as @name and #room and the space's custom
+	// emojis as :name:, and keeps the raw text under this type, which a paste here prefers: mentions and emojis come back.
 	const RAW_CLIPBOARD_TYPE = "application/x-duvet-message";
 
 	function displayText(raw: string): string {
 		return raw
 			.replace(/<@([a-f0-9-]+)>/g, (_, id) => `@${resolveMentionName(id)}`)
+			.replace(/<#([a-f0-9-]+)>/g, (_, id) => roomMentionText(id))
 			.replace(/<:([a-f0-9-]+):>/g, (m, id) =>
 				customEmojis.some((e) => e.id === id) ? `:${resolveCustomEmojiName(id)}:` : m,
 			);
@@ -1002,6 +1095,45 @@
 					{#if member.raw_username !== member.username}
 						<span class="text-[11px] text-[oklch(0.52_0.01_80)]">@{member.raw_username}</span>
 					{/if}
+				</button>
+			{/each}
+		</div>
+	{/if}
+
+	<!-- Room mention autocomplete dropdown -->
+	{#if roomSuggestions.length > 0}
+		<div
+			class="absolute right-0 bottom-[calc(100%+6px)] left-0 z-90 max-h-75 overflow-hidden overflow-y-auto rounded-lg border border-[oklch(0.30_0.01_80)] bg-[oklch(0.19_0.008_80)] py-1 shadow-[0_8px_24px_rgba(0,0,0,0.5)]"
+			role="listbox"
+			aria-label="Room suggestions"
+		>
+			<div class="text-xxs px-3 pt-1.5 pb-1 font-bold tracking-wider text-[oklch(0.52_0.01_80)] uppercase">
+				Rooms matching <strong
+					>#{getRaw(inputEl)
+						.slice(0, getOffset())
+						.match(/#([\p{L}\p{N}_-]*)$/u)?.[1]}</strong
+				>
+			</div>
+			{#each roomSuggestions as room, i (room.id)}
+				<button
+					role="option"
+					aria-selected={i === roomSelectedIdx}
+					class="flex w-full cursor-pointer items-center gap-2.5 border-none bg-none px-3 py-1.5 text-left transition-[background] duration-100 {i ===
+					roomSelectedIdx
+						? 'bg-[oklch(0.28_0.01_80)]'
+						: 'hover:bg-[oklch(0.28_0.01_80)]'}"
+					onmousedown={(e) => {
+						e.preventDefault();
+						insertRoomSuggestion(room);
+					}}
+					onmouseenter={() => (roomSelectedIdx = i)}
+				>
+					{#if room.type === 2}
+						<VoiceIcon class="size-4 shrink-0 text-[oklch(0.62_0.01_80)]" aria-label="Voice room" />
+					{:else}
+						<HashIcon class="size-4 shrink-0 text-[oklch(0.62_0.01_80)]" />
+					{/if}
+					<span class="truncate text-[13px] text-[oklch(0.85_0.008_80)]">{room.name}</span>
 				</button>
 			{/each}
 		</div>

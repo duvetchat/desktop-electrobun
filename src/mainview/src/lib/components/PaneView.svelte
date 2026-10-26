@@ -559,7 +559,7 @@
 			}
 		}
 
-		void jumpToMessage(req.roomId, req.messageId);
+		if (req.messageId) void jumpToMessage(req.roomId, req.messageId);
 	});
 
 	// ── Leaf: tab management ──────────────────────────────────────────────────

@@ -4,6 +4,7 @@
 	import MessageAttachments from "$lib/components/MessageAttachments.svelte";
 	import MessageComponents from "$lib/components/MessageComponents.svelte";
 	import { renderMarkdown, type CustomEmojiMap } from "$lib/markdown";
+	import { openRoomMention, roomNames } from "$lib/stores.svelte";
 	import { isComponentsV2, type Message } from "$lib/types";
 	import { formatShortDateTime } from "$lib/utils/time";
 
@@ -24,7 +25,9 @@
 		onPreview: (src: string, alt?: string) => void;
 	} = $props();
 
-	const html = $derived(message.content ? renderMarkdown(message.content, false, mentionMap, customEmojiMap) : "");
+	const html = $derived(
+		message.content ? renderMarkdown(message.content, false, mentionMap, customEmojiMap, $roomNames) : "",
+	);
 	// The content shows six lines; Show more shows the rest. clamped says whether the six hide some of it,
 	// measured once the content is laid out, and again when it or its width changes.
 	let contentEl = $state<HTMLElement | null>(null);
@@ -47,7 +50,8 @@
 		{roomName}
 	</div>
 {/if}
-<div class="flex items-start gap-2.5">
+<!-- A room's mention opens the room; the search result or pin around it doesn't take the click too. -->
+<div class="flex items-start gap-2.5" onclickcapture={openRoomMention}>
 	<div class="mt-0.5 shrink-0">
 		<UserAvatar src={message.author_avatar_url} name={message.author_name} size={32} />
 	</div>

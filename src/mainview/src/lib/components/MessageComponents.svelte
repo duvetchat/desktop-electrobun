@@ -9,6 +9,7 @@
 	import { getHostURL } from "$lib/common/common";
 	import { renderEmoji } from "$lib/emoji";
 	import { parseTextSegments, renderMarkdown, type CustomEmojiMap } from "$lib/markdown";
+	import { roomNames } from "$lib/stores.svelte";
 	import { formatFileSize } from "$lib/utils/format";
 	import {
 		ButtonStyle,
@@ -173,7 +174,7 @@
 						>{segment.content}</a
 					>
 				{:else}
-					{@html renderMarkdown(segment.content, false, mentionMap, customEmojiMap)}
+					{@html renderMarkdown(segment.content, false, mentionMap, customEmojiMap, $roomNames)}
 				{/if}
 			{/each}
 		</div>

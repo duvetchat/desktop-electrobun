@@ -1,6 +1,7 @@
 import { SvelteSet } from "svelte/reactivity";
-import { writable, type Writable } from "svelte/store";
+import { get, readable, writable, type Writable } from "svelte/store";
 
+import { canViewRoom, roomNamesOf } from "$lib/permissions";
 import type { GatewaySpace, GatewayUser, Message, SpaceEmoji, SpaceSticker } from "$lib/types";
 import type { FriendRequest, Friend } from "$lib/api/friends";
 import type { Conversation, DirectMessage } from "$lib/api/conversations";
@@ -96,6 +97,20 @@ function createUserSession() {
 export const userSession = createUserSession();
 
 export const gatewaySpaces = writable<GatewaySpace[]>([]);
+/**
+ * The name a mention of each room shows (roomNamesOf the user's spaces). It changes only when one of them does, not with
+ * every change of a space (someone's presence), which would render every message's text again.
+ */
+export const roomNames = readable<Record<string, string>>({}, (set) => {
+	let last: Record<string, string> = {};
+	return gatewaySpaces.subscribe((spaces) => {
+		const next = roomNamesOf(spaces);
+		const ids = Object.keys(next);
+		if (ids.length === Object.keys(last).length && ids.every((id) => last[id] === next[id])) return;
+		last = next;
+		set(next);
+	});
+});
 export const currentUser = writable<GatewayUser | null>(null);
 export const wsSessionToken = writable<string | null>(null);
 // ICE servers for voice peer connections; READY replaces them with the gateway's own list.
@@ -192,9 +207,28 @@ export const jumpToMessageRequest = writable<{
 	id: string; // unique request id to prevent duplicate handling
 	spaceId: string;
 	roomId: string;
-	messageId: string;
+	/** Without one, the room only opens. */
+	messageId?: string;
 	conversationId?: string;
 } | null>(null);
+
+/**
+ * A click on a room's mention in a message, which markdown gives the room's ID only when the user can view it, opens
+ * that room in the focused pane. The click goes no further, so a quote or a search result around the mention doesn't
+ * act on it too.
+ */
+export function openRoomMention(e: MouseEvent) {
+	const mention = (e.target as Element | null)?.closest?.(".msg-room-mention[data-room-id]");
+	if (!(mention instanceof HTMLElement)) return;
+	e.preventDefault();
+	e.stopPropagation();
+	const roomId = mention.dataset.roomId;
+	const space = get(gatewaySpaces).find((s) => s.rooms.some((r) => r.id === roomId));
+	const room = space?.rooms.find((r) => r.id === roomId);
+	// Gone, or out of sight, since the message was drawn.
+	if (!space || !room || !canViewRoom(space, room)) return;
+	jumpToMessageRequest.set({ id: crypto.randomUUID(), spaceId: space.id, roomId: room.id });
+}
 
 /** The last pin or unpin of a message, so the open pins panel of its room or conversation reloads. */
 export const pinUpdates = writable<{ channelId: string; messageId: string } | null>(null);
