@@ -140,6 +140,12 @@ describe("callOnReady", () => {
 		expect(callOnReady(call("ringing"), [listed()], soon)).toBeNull();
 	});
 
+	test("a call ringing here rings on when READY says someone else answered it: a group's, still the user's to answer", () => {
+		// Joining it would open the mic in a call the user never answered.
+		expect(callOnReady(call("ringing"), [listed({ ringing: true, answered: true })], soon)).toBeNull();
+		expect(callOnReady(call("ringing"), [listed({ ringing: true, answered: true })], afterSleep)).toBeNull();
+	});
+
 	test("the call this client places joins when READY says someone answered it, as on the CALL_ACCEPTED it missed", () => {
 		expect(callOnReady(call("calling"), [listed({ initiator_id: ME, ringing: false, answered: true })], soon)).toBe(
 			"join",
