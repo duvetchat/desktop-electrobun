@@ -27,6 +27,7 @@
 	} from "$lib/stores.svelte";
 	import { get } from "svelte/store";
 	import { sendEventMessage } from "$lib/api/ws/connection";
+	import { withoutCallVoiceOf } from "$lib/calls";
 	import { sendVoiceSync } from "$lib/voice";
 	import { fly } from "svelte/transition";
 	import { getHostURL, getAvatarURL } from "$lib/common/common";
@@ -218,9 +219,11 @@
 				aria-label="Disconnect"
 				onclick={() => {
 					if (isInConversationCall && $activeCall) {
-						sendEventMessage("CALL_LEAVE", { conversation_id: $activeCall.conversationId });
+						const conversationId = $activeCall.conversationId;
+						sendEventMessage("CALL_LEAVE", { conversation_id: conversationId });
 						activeCall.set(null);
-						callVoiceStates.set([]);
+						// The others stay in it, as its conversation's banner shows.
+						callVoiceStates.update((states) => withoutCallVoiceOf(states, conversationId, $currentUser?.id));
 					}
 					$activeVoiceRoomId = null;
 				}}
@@ -255,9 +258,11 @@
 				aria-label="Disconnect"
 				onclick={() => {
 					if (isInConversationCall && $activeCall) {
-						sendEventMessage("CALL_LEAVE", { conversation_id: $activeCall.conversationId });
+						const conversationId = $activeCall.conversationId;
+						sendEventMessage("CALL_LEAVE", { conversation_id: conversationId });
 						activeCall.set(null);
-						callVoiceStates.set([]);
+						// The others stay in it, as its conversation's banner shows.
+						callVoiceStates.update((states) => withoutCallVoiceOf(states, conversationId, $currentUser?.id));
 					}
 					$activeVoiceRoomId = null;
 				}}

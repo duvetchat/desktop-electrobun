@@ -216,6 +216,9 @@ export interface ActiveCallInfo {
 export const activeCall = writable<ActiveCallInfo | null>(null);
 // Set of conversation IDs that have an active call (even if I'm not in it)
 export const conversationsWithCalls = writable<Set<string>>(new Set());
+/** The conversations whose call is the user's own and still rings the others, nobody having answered it: the user's
+ * other devices show it as calling from another device, without Join or the call button, until someone does. */
+export const ownCallsRinging = writable<Set<string>>(new Set());
 
 export interface CallVoiceState {
 	room_id: string;
@@ -225,6 +228,9 @@ export interface CallVoiceState {
 	screen_sharing?: boolean;
 	camera?: boolean;
 }
+/** Who is in the voice of each call going on that this client knows of (conversationsWithCalls), whether or not it's
+ * in it, by room_id, the call's conversation: from READY and CALL_ONGOING, kept up with VOICE_STATE_UPDATE, and
+ * dropped when the call ends. */
 export const callVoiceStates = writable<CallVoiceState[]>([]);
 
 export const isMuted = writable<boolean>(false);

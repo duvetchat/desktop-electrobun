@@ -14,3 +14,8 @@ export interface AwaitedSend {
 export function sendAgain(send: AwaitedSend | null, connection: number): boolean {
 	return send !== null && !send.answered && send.sentOn !== connection;
 }
+
+/** After this long without a word from the gateway (a sleep, say), a new session's READY doesn't take the user into
+ * voice, which would open the mic by surprise: VoiceChat leaves instead of joining again, and a call still being placed
+ * that was answered meanwhile stops calling instead of joining. A restart for a deploy takes well under it. */
+export const REJOIN_WINDOW_MS = 3 * 60_000;
