@@ -198,6 +198,9 @@ if (typeof document !== "undefined") {
 }
 export const lastReadRooms = writable<Record<string, string>>({});
 export const lastMsgRooms = writable<Record<string, string>>({});
+// Each conversation's read position: READY's (last_read_convs) and this session's acks. Null when READY had none (an
+// older gateway), so that a conversation missing from it can't pass for one never read.
+export const lastReadConvs = writable<Record<string, string> | null>(null);
 export const mentionCounts = writable<Record<string, number>>({});
 
 export const unreadConversations = writable<Set<string>>(new Set());

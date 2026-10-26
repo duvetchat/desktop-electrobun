@@ -6,6 +6,7 @@
 		dmMessages,
 		friends,
 		unreadConversations,
+		lastReadConvs,
 		activeDMConvId,
 		pageVisible,
 		mentionCounts,
@@ -532,30 +533,52 @@
 		});
 	}
 
+	// The newest message the server has: not one still being sent.
+	function newestConfirmedId(msgs: { id: string; nonce?: string }[]): string {
+		let newestId = "";
+		for (const m of msgs) {
+			if (m.id === m.nonce) continue;
+			if (m.id > newestId) newestId = m.id;
+		}
+		return newestId;
+	}
+
+	// Acks the conversation's newest confirmed message, unless that one already was, and clears its unread dot and
+	// mention count.
+	function ackNewest(convId: string, msgs: { id: string; nonce?: string }[]) {
+		const newestId = newestConfirmedId(msgs);
+		if (!newestId || newestId === ackedConvMsgId.get(convId)) return;
+		ackedConvMsgId.set(convId, newestId);
+		lastReadConvs.update((all) => (all ? { ...all, [convId]: newestId } : all));
+		unreadConversations.update((s) => {
+			s.delete(convId);
+			return s;
+		});
+		mentionCounts.update((all) => {
+			const copy = { ...all };
+			delete copy[convId];
+			return copy;
+		});
+		ackConversation(convId, newestId).catch(() => {});
+	}
+
+	// Where an unread conversation's divider goes: after its read position, or above all of it when it was never read
+	// ("0": every message is newer). Without READY's read positions (an older gateway), nowhere.
+	function unreadAfterOf(convId: string): string | null {
+		const positions = get(lastReadConvs);
+		if (!positions) return null;
+		const lastRead = positions[convId];
+		if (!lastRead) return "0";
+		return newestConfirmedId(get(dmMessages)[convId] ?? []) > lastRead ? lastRead : null;
+	}
+
 	// ACK helper — sends an ack for the newest confirmed DM if at bottom.
 	function tryAckConversation() {
 		const msgs = get(dmMessages)[conversation.id] ?? [];
 		if (!isAtBottom || isLoading || !get(pageVisible) || msgs.length === 0) return;
 		// Clear the unread divider
 		if (convUnreadAfter != null) convUnreadAfter = null;
-		let newestId = "";
-		for (const m of msgs) {
-			if (m.id === m.nonce) continue;
-			if (m.id > newestId) newestId = m.id;
-		}
-		if (newestId && newestId !== ackedConvMsgId.get(conversation.id)) {
-			ackedConvMsgId.set(conversation.id, newestId);
-			unreadConversations.update((s) => {
-				s.delete(conversation.id);
-				return s;
-			});
-			mentionCounts.update((all) => {
-				const copy = { ...all };
-				delete copy[conversation.id];
-				return copy;
-			});
-			ackConversation(conversation.id, newestId).catch(() => {});
-		}
+		ackNewest(conversation.id, msgs);
 	}
 
 	// ACK reactively when at bottom, page visible, and messages change.
@@ -565,24 +588,7 @@
 		const visible = $pageVisible;
 		if (!atBottom || !visible || isLoading || msgs.length === 0) return;
 		if (convUnreadAfter != null) convUnreadAfter = null;
-		let newestId = "";
-		for (const m of msgs) {
-			if (m.id === m.nonce) continue;
-			if (m.id > newestId) newestId = m.id;
-		}
-		if (newestId && newestId !== ackedConvMsgId.get(conversation.id)) {
-			ackedConvMsgId.set(conversation.id, newestId);
-			unreadConversations.update((s) => {
-				s.delete(conversation.id);
-				return s;
-			});
-			mentionCounts.update((all) => {
-				const copy = { ...all };
-				delete copy[conversation.id];
-				return copy;
-			});
-			ackConversation(conversation.id, newestId).catch(() => {});
-		}
+		ackNewest(conversation.id, msgs);
 	});
 
 	// ACK on a 5-second interval as a safety net.
@@ -602,41 +608,33 @@
 		};
 	});
 
-	// ACK when leaving the conversation — only if at bottom.
+	// ACK when leaving the conversation — only if at bottom. Only the bottom reads it, not opening it: one left above
+	// its newest messages is unread again, as the server still has it, and opens at its divider the next time.
 	$effect(() => {
 		const convId = conversation.id;
 		return () => {
-			if (!isAtBottom) return;
 			const msgs = get(dmMessages)[convId] ?? [];
-			if (msgs.length === 0) return;
-			let newestId = "";
-			for (const m of msgs) {
-				if (m.id === m.nonce) continue;
-				if (m.id > newestId) newestId = m.id;
-			}
-			if (newestId && newestId !== ackedConvMsgId.get(convId)) {
-				ackedConvMsgId.set(convId, newestId);
+			if (isAtBottom) ackNewest(convId, msgs);
+			if (convUnreadAfter && ackedConvMsgId.get(convId) === newestConfirmedId(msgs)) convUnreadAfter = null;
+			if (convUnreadAfter) {
 				unreadConversations.update((s) => {
-					s.delete(convId);
+					s.add(convId);
 					return s;
 				});
-				mentionCounts.update((all) => {
-					const copy = { ...all };
-					delete copy[convId];
-					return copy;
-				});
-				ackConversation(convId, newestId).catch(() => {});
 			}
 		};
 	});
 
 	onMount(() => {
 		activeDMConvId.set(conversation.id);
+		const hadUnread = get(unreadConversations).has(conversation.id);
 		unreadConversations.update((s) => {
 			s.delete(conversation.id);
 			return s;
 		});
 		loadMessages().then(() => {
+			// An unread conversation opens at its divider (MessageList places the visit there).
+			if (hadUnread) convUnreadAfter = unreadAfterOf(conversation.id);
 			isLoading = false;
 		});
 		return () => {

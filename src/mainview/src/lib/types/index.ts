@@ -1040,6 +1040,7 @@ export interface GatewayReadyData {
 	last_read_rooms?: Record<string, string>;
 	last_msg_rooms?: Record<string, string>;
 	unread_convs?: string[];
+	last_read_convs?: Record<string, string>;
 	active_calls?: GatewayReadyActiveCall[];
 	/** Not sent to bots. */
 	ice_servers?: RTCIceServer[];
