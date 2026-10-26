@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { hasPermission, Permission } from "$lib/permissions";
+	import { hasPermission, mentionableRooms, Permission } from "$lib/permissions";
 	import { onDestroy, onMount, tick } from "svelte";
 	import { CircleAlert as AlertIcon, Eye as EyeIcon, Pin as PinIcon, PinOff as PinOffIcon } from "@lucide/svelte";
 	import { updateMessage, deleteMessage, getMessageThread, pinRoomMessage, unpinRoomMessage } from "$lib/api/messages";
@@ -25,6 +25,8 @@
 		conversations,
 		dropEphemeral,
 		friendsReady,
+		roomNames,
+		openRoomMention,
 	} from "$lib/stores.svelte";
 	import {
 		addRoomReaction,
@@ -327,6 +329,8 @@
 			now = Date.now();
 		}, 30_000);
 		scrollEl?.addEventListener("click", handleCodeCopy);
+		// In the capture phase, so the quote a mention sits in doesn't jump to its message too.
+		scrollEl?.addEventListener("click", openRoomMention, true);
 	});
 
 	onDestroy(() => {
@@ -335,6 +339,7 @@
 			window.clearInterval(intervalId);
 		}
 		scrollEl?.removeEventListener("click", handleCodeCopy);
+		scrollEl?.removeEventListener("click", openRoomMention, true);
 	});
 
 	// ── Sorting ────────────────────────────────────────────────────────────────
@@ -358,6 +363,8 @@
 	const authorColors = $derived(buildAuthorColorMap(members));
 	const mentionMap = $derived(mentionMapOf(members));
 	const customEmojiMap = $derived(customEmojiMapOf(customEmojis));
+	// The rooms "#" suggests while a message is edited.
+	const mentionRooms = $derived(space ? mentionableRooms(space) : []);
 
 	// Uses a component of a bot's message. A modal the bot answers with opens with this room's members, roles
 	// and rooms for its selects, under the bot's name.
@@ -1055,7 +1062,12 @@
 									<span class="shrink-0 font-medium text-zinc-300">{message.referenced_message.author_name}</span>
 									{#if message.referenced_message.content}
 										<span class="msg-content truncate opacity-80"
-											>{@html renderMarkdownLine(message.referenced_message.content, mentionMap, customEmojiMap)}</span
+											>{@html renderMarkdownLine(
+												message.referenced_message.content,
+												mentionMap,
+												customEmojiMap,
+												$roomNames,
+											)}</span
 										>
 									{:else}
 										<!-- No text to show: only files, a sticker or components -->
@@ -1188,6 +1200,7 @@
 										autofocus
 										{members}
 										{customEmojis}
+										rooms={mentionRooms}
 									/>
 									<div class="text-xxs text-zinc-400">
 										escape to <button
@@ -1324,7 +1337,7 @@
 													>
 												{/if}
 											{:else}
-												{@html renderMarkdown(segment.content, emojiOnly, mentionMap, customEmojiMap)}
+												{@html renderMarkdown(segment.content, emojiOnly, mentionMap, customEmojiMap, $roomNames)}
 											{/if}
 										{/each}
 										{#if message.updated_at !== message.created_at}
@@ -1820,7 +1833,12 @@
 												>{parentMsg.author_name}</span
 											>
 											<span class="truncate text-xs text-zinc-500"
-												>{@html renderMarkdownLine(parentMsg.content ?? "", mentionMap, customEmojiMap)}</span
+												>{@html renderMarkdownLine(
+													parentMsg.content ?? "",
+													mentionMap,
+													customEmojiMap,
+													$roomNames,
+												)}</span
 											>
 										</div>
 									{/if}

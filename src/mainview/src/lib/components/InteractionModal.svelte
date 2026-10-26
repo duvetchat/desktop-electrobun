@@ -9,7 +9,7 @@
 	import { renderEmoji } from "$lib/emoji";
 	import { customEmojiMapOf, mentionMapOf, parseTextSegments, renderMarkdown } from "$lib/markdown";
 	import { initialValues, isRequired, modalAnswers, modalInputs, type ModalValue } from "$lib/modals";
-	import { spaceEmojis } from "$lib/stores.svelte";
+	import { roomNames, spaceEmojis } from "$lib/stores.svelte";
 	import { interactionModal, type OpenedModal } from "$lib/stores/interactionModal.svelte";
 	import { ComponentType, type Component, type ComponentEmoji } from "$lib/types";
 
@@ -175,7 +175,7 @@
 												class="text-stone-300 hover:underline">{segment.content}</a
 											>
 										{:else}
-											{@html renderMarkdown(segment.content, false, mentionMap, customEmojiMap)}
+											{@html renderMarkdown(segment.content, false, mentionMap, customEmojiMap, $roomNames)}
 										{/if}
 									{/each}
 								</div>

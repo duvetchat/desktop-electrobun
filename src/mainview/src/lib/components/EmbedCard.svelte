@@ -4,6 +4,7 @@
 	import { EmbedType, type Embed, type EmbedMedia } from "$lib/types";
 	import { getHostURL } from "$lib/common/common";
 	import { renderMarkdown } from "$lib/markdown";
+	import { roomNames } from "$lib/stores.svelte";
 	import { formatShortDateTime } from "$lib/utils/time";
 	import { playerFrame, webEmbed } from "$lib/urls";
 	import { getElectrobunRpc, isElectrobunWindow } from "$lib/electrobun-rpc";
@@ -191,7 +192,9 @@
 					{/if}
 
 					{#if card.description}
-						<p class="line-clamp-3 text-xs wrap-break-word text-zinc-400">{@html renderMarkdown(card.description)}</p>
+						<p class="line-clamp-3 text-xs wrap-break-word text-zinc-400">
+							{@html renderMarkdown(card.description, false, undefined, undefined, $roomNames)}
+						</p>
 					{/if}
 
 					{#if card.fields && card.fields.length > 0}
@@ -199,7 +202,9 @@
 							{#each card.fields as field}
 								<div class="flex min-w-0 flex-col {field.inline ? '' : 'w-full'}">
 									<span class="text-xxs font-semibold tracking-wide text-zinc-400 uppercase">{field.name}</span>
-									<span class="text-xs text-zinc-300">{@html renderMarkdown(field.value)}</span>
+									<span class="text-xs text-zinc-300"
+										>{@html renderMarkdown(field.value, false, undefined, undefined, $roomNames)}</span
+									>
 								</div>
 							{/each}
 						</div>

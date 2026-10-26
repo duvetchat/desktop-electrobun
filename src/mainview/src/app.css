@@ -683,7 +683,8 @@
 		color: oklch(0.92 0.01 80);
 	}
 
-	.msg-mention {
+	.msg-mention,
+	.msg-room-mention {
 		background: oklch(0.3 0.08 270 / 0.5);
 		color: oklch(0.78 0.12 270);
 		border-radius: 3px;
@@ -692,9 +693,18 @@
 		cursor: pointer;
 	}
 
-	.msg-mention:hover {
+	.msg-mention:hover,
+	.msg-room-mention:hover {
 		background: oklch(0.36 0.1 270 / 0.6);
 		color: oklch(0.85 0.14 270);
+	}
+
+	/* A room the reader can't view, or one that's gone: there's nothing to open. */
+	.msg-room-unknown,
+	.msg-room-unknown:hover {
+		background: oklch(0.3 0.01 270 / 0.4);
+		color: oklch(0.65 0.02 270);
+		cursor: default;
 	}
 
 	.msg-link {
