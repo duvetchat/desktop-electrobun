@@ -1,7 +1,7 @@
 <script lang="ts">
-	import { activeCall, activeVoiceRoomId, callVoiceStates, currentUser } from "$lib/stores.svelte";
+	import { activeCall, activeVoiceRoomId, currentUser } from "$lib/stores.svelte";
 	import { isMuted } from "$lib/stores.svelte";
-	import { acceptCall, sendEventMessage } from "$lib/api/ws/connection";
+	import { acceptCall, cancelCall, sendEventMessage } from "$lib/api/ws/connection";
 	import { Phone, PhoneOff, PhoneIncoming, Mic, MicOff, X } from "@lucide/svelte";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
 	import { getAvatarURL } from "$lib/common/common";
@@ -44,21 +44,14 @@
 		activeCall.set(null);
 	}
 
-	// Only the calling screen goes here; the gateway decides what the cancel does. When it ends the call, CALL_ENDED
-	// takes it away. When the user called back into a call going on after hanging up, it takes just their voice out
-	// (decision 64): the call goes on, and its conversation shows it with Join, as after hanging up.
+	// The calling screen goes, and the user's own call no longer shows as ringing the others; the gateway decides the
+	// rest. When it ends the call, CALL_ENDED takes it away. When the user called back into a call going on after
+	// hanging up, it takes just their voice out (decision 64): the call goes on, and its conversation shows it with
+	// Join, as after hanging up.
 	function cancel() {
 		if (!call) return;
-		sendEventMessage("CALL_CANCEL", { conversation_id: call.conversationId });
+		cancelCall(call.conversationId);
 		activeCall.set(null);
-	}
-
-	function hangUp() {
-		if (!call) return;
-		sendEventMessage("CALL_LEAVE", { conversation_id: call.conversationId });
-		activeVoiceRoomId.set(null);
-		activeCall.set(null);
-		callVoiceStates.set([]);
 	}
 
 	function toggleMute() {

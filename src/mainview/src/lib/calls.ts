@@ -103,6 +103,20 @@ export function callToRingOnReady(listed: GatewayReadyActiveCall[]): GatewayRead
 }
 
 /**
+ * Whether the user's own call in a conversation, still ringing the others (ownCallsRinging), is being placed on another
+ * device: the conversation then shows "Calling from another device", without Join or the call button. Not on a
+ * device that shows that call: the one placing it, which the gateway tells too (CALL_OUTGOING) and which shows its
+ * calling screen, or one in it.
+ */
+export function callingFromAnotherDevice(
+	conversationId: string,
+	ownRinging: ReadonlySet<string>,
+	call: ShownCall | null,
+): boolean {
+	return ownRinging.has(conversationId) && call?.conversationId !== conversationId;
+}
+
+/**
  * The conversations whose call READY lists as the user's own, still ringing the others because nobody has answered it
  * (ownCallsRinging). A gateway from before calls followed users across their devices doesn't say, and none is.
  */

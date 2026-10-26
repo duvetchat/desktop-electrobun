@@ -18,7 +18,7 @@
 		jumpToMessageRequest,
 	} from "$lib/stores.svelte";
 	import { acceptCall, placeCall, sendEventMessage, getUserOnlineStatus } from "$lib/api/ws/connection";
-	import { withoutCallVoiceOf } from "$lib/calls";
+	import { callingFromAnotherDevice, withoutCallVoiceOf } from "$lib/calls";
 	import {
 		getDirectMessages,
 		getDirectMessageById,
@@ -85,7 +85,7 @@
 	const canJoinCall = $derived(hasOngoingCall && !isInCall);
 	// The user's own call, placed on another device, still rings the others: it shows as calling from there, and Join
 	// and the call button wait for someone to answer it.
-	const joinWaits = $derived($ownCallsRinging.has(conversation.id));
+	const joinWaits = $derived(callingFromAnotherDevice(conversation.id, $ownCallsRinging, $activeCall));
 
 	const callVoiceMembers = $derived(
 		conversation.members.map((m) => ({

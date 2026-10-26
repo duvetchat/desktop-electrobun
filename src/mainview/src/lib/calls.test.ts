@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
 	callAcceptedAction,
 	callDeclinedAction,
+	callingFromAnotherDevice,
 	callOngoingAction,
 	callOnReady,
 	callToRingOnReady,
@@ -206,6 +207,27 @@ describe("callToRingOnReady", () => {
 	test("none from a gateway that doesn't say whether calls ring, which never rang at READY", () => {
 		expect(callToRingOnReady([listed(), listed({ conversation_id: OTHER_CONV })])).toBeNull();
 		expect(callToRingOnReady([])).toBeNull();
+	});
+});
+
+describe("callingFromAnotherDevice", () => {
+	const ringing = new Set([CONV]);
+
+	test("the user's own call still ringing the others, on a device that isn't placing it", () => {
+		expect(callingFromAnotherDevice(CONV, ringing, null)).toBe(true);
+		// This client shows another call.
+		expect(callingFromAnotherDevice(CONV, ringing, call("connected", OTHER_CONV))).toBe(true);
+		expect(callingFromAnotherDevice(CONV, ringing, call("calling", OTHER_CONV))).toBe(true);
+	});
+
+	test("not on the device placing it, which the gateway tells too, nor on one in it", () => {
+		expect(callingFromAnotherDevice(CONV, ringing, call("calling"))).toBe(false);
+		expect(callingFromAnotherDevice(CONV, ringing, call("connected"))).toBe(false);
+	});
+
+	test("not once it no longer rings the others: answered, cancelled or ended", () => {
+		expect(callingFromAnotherDevice(CONV, new Set(), null)).toBe(false);
+		expect(callingFromAnotherDevice(CONV, new Set([OTHER_CONV]), null)).toBe(false);
 	});
 });
 

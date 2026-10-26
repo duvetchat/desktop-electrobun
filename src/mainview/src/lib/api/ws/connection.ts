@@ -250,6 +250,15 @@ function gatewayHasCall(conversationId: string) {
 	if (placedCall?.conversationId === conversationId) placedCall = { ...placedCall, answered: true };
 }
 
+/** Cancels the call this client places: a CALL_CANCEL. If it's the user's own call, still ringing the others, it no
+ * longer rings them: the gateway ends it, and CALL_ENDED follows. One they called back into after hanging up goes on
+ * without them (decision 64), and wasn't ringing anyone: it was answered. */
+export function cancelCall(conversationId: string) {
+	sendEventMessage("CALL_CANCEL", { conversation_id: conversationId });
+	stopOwnCallRinging(conversationId);
+	if (placedCall?.conversationId === conversationId) placedCall = null;
+}
+
 // Sends a CALL_INITIATE the gateway may not have got again, for the call this client still places.
 function resendPlacedCall() {
 	const connection = gatewayConnection();
