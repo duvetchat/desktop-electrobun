@@ -165,14 +165,14 @@
 		ackRoom(channelId, newestId).catch((err) => console.error("[ack] network error:", err));
 	}
 
-	// ACK when leaving the channel (channel switch / unmount) — only if at bottom. It comes before the
-	// effect below, which resets paneIsAtBottom for the next channel: Svelte reruns effects in order,
-	// and this cleanup has to read the value of the channel being left. Only the bottom reads a channel,
-	// not opening it. One left read through loses its unread divider: the next visit opens at the bottom,
-	// unless new messages came meanwhile. One left above its newest messages keeps its divider, and is
-	// unread again in the sidebar, as the server still has it.
+	// ACK when leaving the channel (channel switch, the Friends view hiding the pane, unmount) — only if
+	// at bottom. It comes before the effect below, which resets paneIsAtBottom for the next channel:
+	// Svelte reruns effects in order, and this cleanup has to read the value of the channel being left.
+	// Only the bottom reads a channel, not opening it. One left read through loses its unread divider:
+	// the next visit opens at the bottom, unless new messages came meanwhile. One left above its newest
+	// messages keeps its divider, and is unread again in the sidebar, as the server still has it.
 	$effect(() => {
-		const channelId = node.kind === "leaf" ? node.activeChannelId : null;
+		const channelId = isActive && node.kind === "leaf" ? node.activeChannelId : null;
 		return () => {
 			if (!channelId) return;
 			const msgs = get(channelMessages)[channelId] ?? [];
