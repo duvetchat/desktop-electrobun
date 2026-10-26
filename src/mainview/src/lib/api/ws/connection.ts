@@ -20,6 +20,7 @@ import {
 	activeTextRoomId,
 	lastReadRooms,
 	lastMsgRooms,
+	lastReadConvs,
 	unreadConversations,
 	activeDMConvId,
 	pageVisible,
@@ -371,6 +372,7 @@ function handleEvent(event: GatewayEvent) {
 			lastMsgRooms.set(payload.data.last_msg_rooms ?? {});
 			const { unread_convs } = payload.data;
 			unreadConversations.set(new Set(unread_convs ?? []));
+			lastReadConvs.set(payload.data.last_read_convs ?? null);
 			// Fetch friends, pending/sent requests, and conversations eagerly
 			// so they are available before FriendsView mounts.
 			Promise.all([
