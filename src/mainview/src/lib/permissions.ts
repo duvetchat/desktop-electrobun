@@ -219,6 +219,21 @@ export function shownRooms(space: GatewaySpace): GatewayRoom[] {
 	});
 }
 
+/** The rooms of a space a message can mention (`<#id>`): those the current member can view, categories aside. */
+export function mentionableRooms(space: GatewaySpace): GatewayRoom[] {
+	return space.rooms.filter((r) => r.type !== 3 && !r.deleted_at && canViewRoom(space, r));
+}
+
+/**
+ * The name a mention of each room shows, by ID, over all the user's spaces. Only the rooms they can view have one, so
+ * a mention of any other room, or of one that's gone, can't give its name away.
+ */
+export function roomNamesOf(spaces: GatewaySpace[]): Record<string, string> {
+	const names: Record<string, string> = {};
+	for (const space of spaces) for (const room of mentionableRooms(space)) names[room.id] = room.name;
+	return names;
+}
+
 /** Returns true if the current member has ALL of the given permission flags in a room. */
 export function hasPermission(space: GatewaySpace, room: GatewayRoom, permission: number): boolean {
 	const perms = computeRoomPermissions(space, room);

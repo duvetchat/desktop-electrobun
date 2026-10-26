@@ -5,7 +5,9 @@ import {
 	computeSpacePermissions,
 	hasSpacePermission,
 	highestRolePosition,
+	mentionableRooms,
 	Permission,
+	roomNamesOf,
 	shownRooms,
 } from "$lib/permissions";
 import type { GatewayRole, GatewayRoom, GatewayRoomOverwrite, GatewaySpace, RoomType } from "$lib/types";
@@ -124,30 +126,31 @@ describe("canSetPermission", () => {
 	});
 });
 
+const room = (id: string, type: RoomType, parent_id: string | null = null): GatewayRoom => ({
+	id,
+	space_id: SPACE,
+	parent_id,
+	type,
+	name: id,
+	description: null,
+	position: 0,
+	nsfw: false,
+	created_at: "",
+	updated_at: "",
+});
+// @everyone views every room, and the member holds it, but not a room denied to it.
+const denied = (roomId: string): GatewayRoomOverwrite => ({
+	id: `overwrite-${roomId}`,
+	room_id: roomId,
+	target_id: SPACE,
+	target_type: 0,
+	deny_flags: Permission.ViewChannels,
+	allow_flags: 0,
+	created_at: "",
+	updated_at: "",
+});
+
 describe("shownRooms", () => {
-	const room = (id: string, type: RoomType, parent_id: string | null = null): GatewayRoom => ({
-		id,
-		space_id: SPACE,
-		parent_id,
-		type,
-		name: id,
-		description: null,
-		position: 0,
-		nsfw: false,
-		created_at: "",
-		updated_at: "",
-	});
-	// @everyone views every room, and the member holds it, but not a room denied to it.
-	const denied = (roomId: string): GatewayRoomOverwrite => ({
-		id: `overwrite-${roomId}`,
-		room_id: roomId,
-		target_id: SPACE,
-		target_type: 0,
-		deny_flags: Permission.ViewChannels,
-		allow_flags: 0,
-		created_at: "",
-		updated_at: "",
-	});
 	const shown = (rooms: GatewayRoom[], overwrites: GatewayRoomOverwrite[]) =>
 		shownRooms({
 			...space([role(SPACE, Permission.ViewChannels)], [SPACE]),
@@ -167,5 +170,43 @@ describe("shownRooms", () => {
 
 	test("an empty category shows when the member can view it", () => {
 		expect(shown([room("empty", 3), room("hidden", 3)], [denied("hidden")])).toEqual(["empty"]);
+	});
+});
+
+describe("room mentions", () => {
+	const viewing = (rooms: GatewayRoom[], overwrites: GatewayRoomOverwrite[]): GatewaySpace => ({
+		...space([role(SPACE, Permission.ViewChannels)], [SPACE]),
+		rooms,
+		room_overwrites: overwrites,
+	});
+
+	test("a space's mentionable rooms are those the member can view, categories aside", () => {
+		const rooms = [
+			room("cat", 3),
+			room("open", 1, "cat"),
+			room("closed", 1, "cat"),
+			room("voice", 2),
+			{ ...room("gone", 1), deleted_at: "2026-10-26T00:00:00Z" },
+		];
+		expect(mentionableRooms(viewing(rooms, [denied("closed")])).map((r) => r.id)).toEqual(["open", "voice"]);
+	});
+
+	test("their names come from every space, and only theirs", () => {
+		const OTHER = "01920000-0000-7000-8000-0000000005b0";
+		const other: GatewaySpace = {
+			...space([role(OTHER, Permission.ViewChannels)], [OTHER]),
+			id: OTHER,
+			rooms: [{ ...room("elsewhere", 1), space_id: OTHER, name: "Elsewhere" }],
+		};
+		const names = roomNamesOf([
+			viewing([room("open", 1), room("closed", 1), room("cat", 3)], [denied("closed")]),
+			other,
+		]);
+		expect(names).toEqual({ open: "open", elsewhere: "Elsewhere" });
+	});
+
+	test("a member none of whose roles views a room names none of them", () => {
+		const blind = { ...space([role(SPACE, 0)], [SPACE]), rooms: [room("open", 1)] };
+		expect(roomNamesOf([blind])).toEqual({});
 	});
 });

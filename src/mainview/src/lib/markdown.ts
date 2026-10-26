@@ -245,6 +245,7 @@ function applyInline(
 	large: boolean,
 	mentionMap?: Record<string, string>,
 	customEmojiMap?: CustomEmojiMap,
+	roomNames?: Record<string, string>,
 ): string {
 	s = s.replace(/\*\*\*(.+?)\*\*\*/gs, (_, t) => `<strong><em>${t}</em></strong>`);
 	s = s.replace(/\*\*(.+?)\*\*/gs, (_, t) => `<strong>${t}</strong>`);
@@ -265,6 +266,13 @@ function applyInline(
 		const ce = customEmojiMap?.[id];
 		if (!ce) return `<span class="${ceDelCls}" title="Emoji deleted">💩</span>`;
 		return `<img class="${ceCls}" src="${emojiHost}/attachments/${ce.attachment_id}" alt="${escapeHtml(ce.name)}" title=":${escapeHtml(ce.name)}:" draggable="false" loading="lazy" onerror="var r=+(this.dataset.r||0);if(r<10){this.dataset.r=r+1;this.src=this.src.split('?')[0]+'?r='+Date.now()}else{this.replaceWith(Object.assign(document.createElement('span'),{title:'Emoji failed to load',textContent:this.title}))}">`;
+	});
+	// Resolve <#id> room mentions to #name, for the rooms the reader can view (roomNames). Any other one, or one that's
+	// gone, reads #unknown, with no room to open. Last, so that no rule above reads a room's name as markdown.
+	s = s.replace(/&lt;#([a-f0-9-]+)&gt;/g, (_, id: string) => {
+		const name = roomNames?.[id];
+		if (name === undefined) return `<span class="msg-room-mention msg-room-unknown">#unknown</span>`;
+		return `<span class="msg-room-mention" data-room-id="${id}">#${escapeHtml(name)}</span>`;
 	});
 	return s;
 }
@@ -303,8 +311,9 @@ export function renderMarkdown(
 	large = false,
 	mentionMap?: Record<string, string>,
 	customEmojiMap?: CustomEmojiMap,
+	roomNames?: Record<string, string>,
 ): string {
-	return render(withoutMarks(input), large, mentionMap, customEmojiMap);
+	return render(withoutMarks(input), large, mentionMap, customEmojiMap, roomNames);
 }
 
 function render(
@@ -312,6 +321,7 @@ function render(
 	large: boolean,
 	mentionMap?: Record<string, string>,
 	customEmojiMap?: CustomEmojiMap,
+	roomNames?: Record<string, string>,
 ): string {
 	// ── 1. Extract fenced code blocks ─────────────────────────────────────────
 	const codeBlocks: string[] = [];
@@ -338,7 +348,7 @@ function render(
 		return `\x00I${inlineCodes.length - 1}\x01`;
 	});
 
-	const inline = (t: string) => applyInline(renderEmoji(t), false, mentionMap, customEmojiMap);
+	const inline = (t: string) => applyInline(renderEmoji(t), false, mentionMap, customEmojiMap, roomNames);
 
 	// ── 3. Extract links ───────────────────────────────────────────────────────
 	// Markdown links [text](url), taken out before the inline rules as code is, so that the URL stays as it was
@@ -388,7 +398,7 @@ function render(
 		else if ((m = /^-# (.*)/.exec(line))) out.push(`<span class="msg-subtext">${inline(m[1])}</span>`);
 		else if ((m = /^>>> (.*)/.exec(line))) out.push(`<blockquote class="msg-blockquote">${inline(m[1])}</blockquote>`);
 		else if ((m = /^> (.*)/.exec(line))) out.push(`<blockquote class="msg-blockquote">${inline(m[1])}</blockquote>`);
-		else out.push(applyInline(renderEmoji(line, large), large, mentionMap, customEmojiMap));
+		else out.push(applyInline(renderEmoji(line, large), large, mentionMap, customEmojiMap, roomNames));
 
 		i++;
 	}
@@ -421,6 +431,7 @@ export function renderMarkdownLine(
 	input: string,
 	mentionMap?: Record<string, string>,
 	customEmojiMap?: CustomEmojiMap,
+	roomNames?: Record<string, string>,
 ): string {
 	const codes: string[] = [];
 	const line = withoutMarks(input)
@@ -431,7 +442,7 @@ export function renderMarkdownLine(
 		.split("\n")
 		.map((l) => l.replace(/^(?:#{1,3} |-# |>>> |> |\s*[-*]\s+|\s*\d+[.)]\s+)/, ""))
 		.join(" ");
-	return render(line, false, mentionMap, customEmojiMap).replace(
+	return render(line, false, mentionMap, customEmojiMap, roomNames).replace(
 		/\x00P(\d+)\x01/g,
 		(_, i) => `<code class="msg-inline-code">${escapeHtml(codes[+i])}</code>`,
 	);

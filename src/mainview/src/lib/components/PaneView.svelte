@@ -165,18 +165,26 @@
 		ackRoom(channelId, newestId).catch((err) => console.error("[ack] network error:", err));
 	}
 
-	// ACK when leaving the channel (channel switch / unmount) — only if at bottom. It comes before the
-	// effect below, which resets paneIsAtBottom for the next channel: Svelte reruns effects in order,
-	// and this cleanup has to read the value of the channel being left. A channel left read through
-	// loses its unread divider: the next visit opens at the bottom, unless new messages came meanwhile.
+	// ACK when leaving the channel (channel switch, the Friends view hiding the pane, unmount) — only if
+	// at bottom. It comes before the effect below, which resets paneIsAtBottom for the next channel:
+	// Svelte reruns effects in order, and this cleanup has to read the value of the channel being left.
+	// Only the bottom reads a channel, not opening it. One left read through loses its unread divider:
+	// the next visit opens at the bottom, unless new messages came meanwhile. One left above its newest
+	// messages keeps its divider, and is unread again in the sidebar, as the server still has it.
 	$effect(() => {
-		const channelId = node.kind === "leaf" ? node.activeChannelId : null;
+		const channelId = isActive && node.kind === "leaf" ? node.activeChannelId : null;
 		return () => {
 			if (!channelId) return;
 			const msgs = get(channelMessages)[channelId] ?? [];
 			if (paneIsAtBottom) ackNewest(channelId, msgs);
 			if (channelUnreadAfter[channelId] && ackedMsgIds.get(channelId) === newestConfirmedId(msgs)) {
 				channelUnreadAfter[channelId] = null;
+			}
+			if (channelUnreadAfter[channelId]) {
+				unreadChannels.update((s) => {
+					s.add(channelId);
+					return s;
+				});
 			}
 		};
 	});
@@ -242,29 +250,6 @@
 		if (channelUnreadAfter[channelId] != null) {
 			channelUnreadAfter[channelId] = null;
 		}
-		ackNewest(channelId, msgs);
-	});
-
-	// Opening a channel reads it, as its badge already says: once per visit (another channel, or the pane
-	// showing again), the newest message is acked as soon as it's loaded and the window has focus,
-	// wherever the list opens. The unread divider stays for the visit. After a jump (messages below
-	// still to load) the bottom acks instead.
-	let visitChannel = "";
-	let visitAcked = false;
-	$effect(() => {
-		const msgs = activeMessages;
-		const visible = $pageVisible;
-		const channelId =
-			isActive && node.kind === "leaf" && node.activeChannelId && activeChannel?.type === "text"
-				? node.activeChannelId
-				: "";
-		if (channelId !== visitChannel) {
-			visitChannel = channelId;
-			visitAcked = false;
-		}
-		if (!channelId || visitAcked || !visible || msgs.length === 0) return;
-		if (channelInitialLoading[channelId] || channelHasMoreBelow[channelId] === true) return;
-		visitAcked = true;
 		ackNewest(channelId, msgs);
 	});
 
@@ -559,7 +544,7 @@
 			}
 		}
 
-		void jumpToMessage(req.roomId, req.messageId);
+		if (req.messageId) void jumpToMessage(req.roomId, req.messageId);
 	});
 
 	// ── Leaf: tab management ──────────────────────────────────────────────────

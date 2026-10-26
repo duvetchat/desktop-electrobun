@@ -3,7 +3,7 @@
 	import { getMessageById } from "$lib/api/messages";
 	import { getDirectMessageById } from "$lib/api/conversations";
 	import { gatewayMessageToMessage, messageText } from "$lib/types";
-	import { gatewaySpaces, jumpToMessageRequest, conversations } from "$lib/stores.svelte";
+	import { gatewaySpaces, jumpToMessageRequest, conversations, roomNames } from "$lib/stores.svelte";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
 	import type { Message } from "$lib/types";
 	import { renderMarkdown } from "$lib/markdown";
@@ -147,7 +147,7 @@
 					<span class="text-xxs shrink-0 text-zinc-500">{formatTime(message.created_at)}</span>
 				</div>
 				<p class="line-clamp-3 text-sm wrap-break-word whitespace-pre-wrap text-zinc-300">
-					{@html renderMarkdown(messageText(message))}
+					{@html renderMarkdown(messageText(message), false, undefined, undefined, $roomNames)}
 				</p>
 			</div>
 		</div>

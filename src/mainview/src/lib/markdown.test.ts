@@ -120,16 +120,56 @@ describe("a message's own \\x00 can't pass for a placeholder", () => {
 	});
 });
 
+describe("room mentions", () => {
+	const ROOM = "0190a3b2-0000-7000-8000-0000000000c1";
+	const EMOJI = "0190a3b2-0000-7000-8000-0000000000e1";
+	const names = { [ROOM]: "general" };
+
+	test("a room the reader can view reads #name, with its ID to open it", () => {
+		expect(renderMarkdown(`see <#${ROOM}>`, false, undefined, undefined, names)).toBe(
+			`see <span class="msg-room-mention" data-room-id="${ROOM}">#general</span>`,
+		);
+	});
+
+	test("any other room, or one that's gone, reads #unknown, with no ID", () => {
+		const html = renderMarkdown(`<#${ROOM}>`);
+		expect(html).toBe(`<span class="msg-room-mention msg-room-unknown">#unknown</span>`);
+		expect(renderMarkdown(`<#${ROOM}>`, false, undefined, undefined, {})).toBe(html);
+	});
+
+	test("in code, it stays as written", () => {
+		const html = renderMarkdown(`\`<#${ROOM}>\``, false, undefined, undefined, names);
+		expect(html).toBe(`<code class="msg-inline-code">&lt;#${ROOM}&gt;</code>`);
+	});
+
+	test("a room's name is text: escaped, and neither markdown nor an emoji", () => {
+		const html = renderMarkdown(`<#${ROOM}>`, false, undefined, undefined, {
+			[ROOM]: `**x** <:${EMOJI}:> <b>"`,
+		});
+		expect(html).toBe(
+			`<span class="msg-room-mention" data-room-id="${ROOM}">#**x** &lt;:${EMOJI}:&gt; &lt;b&gt;&quot;</span>`,
+		);
+	});
+
+	test("a reply's one-line quote reads it too", () => {
+		expect(renderMarkdownLine(`# <#${ROOM}>`, undefined, undefined, names)).toBe(
+			`<span class="msg-room-mention" data-room-id="${ROOM}">#general</span>`,
+		);
+	});
+});
+
 // Random text made of the pieces of markdown, HTML, URLs, mentions, emojis and placeholders, rendered both ways
 // and read back with an HTML5 tokenizer (HTMLRewriter): every tag and attribute must be one the renderer means to
 // write, every href http(s), every src an emoji's. The names in the maps are hostile, as a member's can be.
 describe("the HTML it makes", () => {
 	const ID1 = "0190a3b2-0000-7000-8000-000000000001";
 	const ID2 = "0190a3b2-0000-7000-8000-000000000002";
+	const ID3 = "0190a3b2-0000-7000-8000-000000000003";
 	const mentionMap = { [ID1]: `"><img src=x onerror=alert(1)>'&<b>` };
 	const customEmojiMap = {
 		[ID2]: { name: `x"><script>alert(1)</script>'`, attachment_id: "0190a3b2-0000-7000-8000-0000000000aa" },
 	};
+	const roomNames = { [ID3]: `"><img src=x onerror=alert(1)>'&<b>` };
 	const PIECES = [
 		"[",
 		"]",
@@ -160,10 +200,14 @@ describe("the HTML it makes", () => {
 		":",
 		`<@${ID1}>`,
 		`<:${ID2}:>`,
+		`<#${ID3}>`,
 		"<@abc>",
 		"<:abc:>",
+		"<#abc>",
 		"<@",
 		"<:",
+		"<#",
+		"#",
 		"**",
 		"*",
 		"_",
@@ -256,7 +300,7 @@ describe("the HTML it makes", () => {
 	const ATTRIBUTES: Record<string, Set<string>> = {
 		a: new Set(["href", "target", "rel", "class"]),
 		img: new Set(["class", "src", "alt", "title", "draggable", "loading", "onerror"]),
-		span: new Set(["class", "title", "style"]),
+		span: new Set(["class", "title", "style", "data-room-id"]),
 		button: new Set(["class", "data-code", "title", "aria-label"]),
 		svg: new Set([
 			"xmlns",
@@ -295,6 +339,7 @@ describe("the HTML it makes", () => {
 				!/^(text-align:(left|right|center)|[a-z-]+:[#\w .,()%-]+(;[a-z-]+:[#\w .,()%-]+)*;?)$/.test(value)
 			)
 				return `style ${value}`;
+			if (name === "data-room-id" && !/^[a-f0-9-]+$/.test(value)) return `data-room-id ${value}`;
 			if (name === "target" && value !== "_blank") return `target ${value}`;
 			if (name === "rel" && value !== "noopener noreferrer") return `rel ${value}`;
 		}
@@ -338,8 +383,8 @@ describe("the HTML it makes", () => {
 			if (random() < 0.5)
 				text = `[${pick(PIECES)}${pick(PIECES)}](${pick(["https://", "http://", "javascript:", "javascript://", ""])}${text})${pick(PIECES)}`;
 			for (const html of [
-				renderMarkdown(text, random() < 0.2, mentionMap, customEmojiMap),
-				renderMarkdownLine(text, mentionMap, customEmojiMap),
+				renderMarkdown(text, random() < 0.2, mentionMap, customEmojiMap, roomNames),
+				renderMarkdownLine(text, mentionMap, customEmojiMap, roomNames),
 			]) {
 				// A placeholder that didn't come back whole leaves its mark, or "undefined" in another's place.
 				const problem =

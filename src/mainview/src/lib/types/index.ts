@@ -629,6 +629,30 @@ export interface CallIncomingEvent {
 	initiator_avatar: string | null;
 }
 
+/** The user started a call, on this device or another: it rings none of theirs. */
+export interface CallOutgoingEvent {
+	conversation_id: string;
+}
+
+/** Someone in a call's voice, as READY's active calls and CALL_ONGOING carry them. */
+export interface GatewayCallVoiceState {
+	user_id: string;
+	muted: boolean;
+	deafened: boolean;
+	screen_sharing: boolean;
+	camera: boolean;
+	version: number;
+}
+
+/** A call goes on in one of the user's conversations without ringing them: its ring window ended before they
+ * answered, or they joined the group during it. They can still join it. */
+export interface CallOngoingEvent {
+	conversation_id: string;
+	initiator_id: string;
+	/** Who is in its voice; null while nobody is. */
+	voice_states: GatewayCallVoiceState[] | null;
+}
+
 export interface CallAcceptedEvent {
 	conversation_id: string;
 	user_id: string;
@@ -972,6 +996,8 @@ export type GatewayEventPayload =
 	| { type: "RECORDING"; data: RecordingEvent }
 	| { type: "DM_RECORDING"; data: DMRecordingEvent }
 	| { type: "CALL_INCOMING"; data: CallIncomingEvent }
+	| { type: "CALL_OUTGOING"; data: CallOutgoingEvent }
+	| { type: "CALL_ONGOING"; data: CallOngoingEvent }
 	| { type: "CALL_ACCEPTED"; data: CallAcceptedEvent }
 	| { type: "CALL_DECLINED"; data: CallDeclinedEvent }
 	| { type: "CALL_ENDED"; data: CallEndedEvent }
@@ -991,16 +1017,18 @@ export interface GatewayEvent {
 export interface GatewayReadyActiveCall {
 	conversation_id: string;
 	initiator_id: string;
-	voice_states:
-		| {
-				user_id: string;
-				muted: boolean;
-				deafened: boolean;
-				screen_sharing: boolean;
-				camera: boolean;
-				version: number;
-		  }[]
-		| null;
+	// The caller's name and avatar, as CALL_INCOMING carries them, whether the call still rings the user, and whether
+	// someone has answered it. A gateway from before calls followed users across their devices sends none of the four,
+	// and the client then does what it did before.
+	initiator_name?: string;
+	initiator_avatar?: string | null;
+	voice_states: GatewayCallVoiceState[] | null;
+	/** Whether the call still rings the user: false for their own call, once they answered or declined it on any
+	 * device, and once its ring window passed. */
+	ringing?: boolean;
+	/** Whether someone other than its caller has accepted it: on the caller's devices, false means it still rings the
+	 * others. */
+	answered?: boolean;
 }
 
 export interface GatewayReadyData {
@@ -1012,6 +1040,7 @@ export interface GatewayReadyData {
 	last_read_rooms?: Record<string, string>;
 	last_msg_rooms?: Record<string, string>;
 	unread_convs?: string[];
+	last_read_convs?: Record<string, string>;
 	active_calls?: GatewayReadyActiveCall[];
 	/** Not sent to bots. */
 	ice_servers?: RTCIceServer[];
@@ -1029,9 +1058,27 @@ export function roomTypeToChannelType(type: RoomType): Channel["type"] {
 }
 
 /** A space's rooms once one is deleted (ROOM_DELETE): the rooms in it, a category's, move to the top level, as the API
- * moves them without an event of their own. */
+ * moves them; the ROOM_REORDER that follows gives them their new places. */
 export function withoutRoom(rooms: GatewayRoom[], roomId: string): GatewayRoom[] {
 	return rooms.filter((r) => r.id !== roomId).map((r) => (r.parent_id === roomId ? { ...r, parent_id: null } : r));
+}
+
+/** Where a room or category dropped below everything goes: after the highest place at the top level. Its rooms and
+ * categories share positions, which keep the gaps deleted rooms leave, so their count can be a place that's taken.
+ * The moving room doesn't count, so one already last stays where it is. */
+export function topLevelEnd(channels: Channel[], movingId: string): number {
+	return Math.max(-1, ...channels.filter((c) => !c.categoryId && c.id !== movingId).map((c) => c.position)) + 1;
+}
+
+/** Where a category dropped above or below a room goes at the top level. A category can't go inside another, so a room
+ * inside one stands for it: the category goes right after that one, on either side of the room, since its rooms show
+ * below its header. (The room's own place counts within its category, not at the top level.) A loose room is at the
+ * top level itself: the category goes above or below it. Like every place the API takes, it's counted with the dragged
+ * category still where it is, so it's the same wherever that category starts, before the target one or after it. */
+export function categoryDropPosition(channels: Channel[], room: Channel, side: "above" | "below"): number {
+	const category = room.categoryId ? channels.find((c) => c.id === room.categoryId) : undefined;
+	if (category) return category.position + 1;
+	return side === "above" ? room.position : room.position + 1;
 }
 
 /** A space's roles once one is created (ROLE_CREATE): the API puts it at position 1, just above @everyone's 0, and

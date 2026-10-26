@@ -6,6 +6,7 @@
 		dmMessages,
 		friends,
 		unreadConversations,
+		lastReadConvs,
 		activeDMConvId,
 		pageVisible,
 		mentionCounts,
@@ -13,10 +14,12 @@
 		activeVoiceRoomId,
 		callVoiceStates,
 		conversationsWithCalls,
+		ownCallsRinging,
 		dropVoiceRequests,
 		jumpToMessageRequest,
 	} from "$lib/stores.svelte";
-	import { acceptCall, sendEventMessage, getUserOnlineStatus } from "$lib/api/ws/connection";
+	import { acceptCall, placeCall, sendEventMessage, getUserOnlineStatus } from "$lib/api/ws/connection";
+	import { callingFromAnotherDevice, withoutCallVoiceOf } from "$lib/calls";
 	import {
 		getDirectMessages,
 		getDirectMessageById,
@@ -81,6 +84,9 @@
 	const isInCall = $derived($activeCall?.state === "connected" && $activeCall?.conversationId === conversation.id);
 	const hasOngoingCall = $derived($conversationsWithCalls.has(conversation.id));
 	const canJoinCall = $derived(hasOngoingCall && !isInCall);
+	// The user's own call, placed on another device, still rings the others: it shows as calling from there, and Join
+	// and the call button wait for someone to answer it.
+	const joinWaits = $derived(callingFromAnotherDevice(conversation.id, $ownCallsRinging, $activeCall));
 
 	const callVoiceMembers = $derived(
 		conversation.members.map((m) => ({
@@ -88,6 +94,19 @@
 			username: m.user?.alias ?? m.user?.username ?? m.user_id.slice(0, 8),
 			avatar_url: getAvatarURL(m.user_id, m.user?.avatar),
 		})),
+	);
+	// Who is in the call's voice, shown on the banner of a call this client isn't in.
+	const inCallNow = $derived(
+		$callVoiceStates
+			.filter((vs) => vs.room_id === conversation.id)
+			.map(
+				(vs) =>
+					callVoiceMembers.find((m) => m.id === vs.user_id) ?? {
+						id: vs.user_id,
+						username: vs.user_id.slice(0, 8),
+						avatar_url: null,
+					},
+			),
 	);
 
 	function joinCall() {
@@ -118,7 +137,8 @@
 		sendEventMessage("CALL_LEAVE", { conversation_id: call.conversationId });
 		activeVoiceRoomId.set(null);
 		activeCall.set(null);
-		callVoiceStates.set([]);
+		// The others stay in it, as its banner shows.
+		callVoiceStates.update((states) => withoutCallVoiceOf(states, call.conversationId, get(currentUser)?.id));
 		// The call's VoiceChat may already be gone (its connection failed): a camera or screen request it didn't
 		// take goes with the call.
 		dropVoiceRequests();
@@ -277,7 +297,7 @@
 		if (req.conversationId !== conversation.id) return;
 		lastHandledJumpId = req.id;
 		jumpToMessageRequest.set(null);
-		void jumpToMessage(req.messageId);
+		if (req.messageId) void jumpToMessage(req.messageId);
 	});
 
 	async function jumpToMessage(messageId: string) {
@@ -496,12 +516,9 @@
 
 	function startCall() {
 		const user = get(currentUser);
-		if (!user || get(activeCall)) return;
+		if (!user || get(activeCall) || joinWaits) return;
 		const memberIds = conversation.members.map((m) => m.user_id);
-		sendEventMessage("CALL_INITIATE", {
-			conversation_id: conversation.id,
-			member_ids: memberIds,
-		});
+		placeCall(conversation.id, memberIds);
 		activeCall.set({
 			conversationId: conversation.id,
 			initiatorId: user.id,
@@ -516,30 +533,52 @@
 		});
 	}
 
+	// The newest message the server has: not one still being sent.
+	function newestConfirmedId(msgs: { id: string; nonce?: string }[]): string {
+		let newestId = "";
+		for (const m of msgs) {
+			if (m.id === m.nonce) continue;
+			if (m.id > newestId) newestId = m.id;
+		}
+		return newestId;
+	}
+
+	// Acks the conversation's newest confirmed message, unless that one already was, and clears its unread dot and
+	// mention count.
+	function ackNewest(convId: string, msgs: { id: string; nonce?: string }[]) {
+		const newestId = newestConfirmedId(msgs);
+		if (!newestId || newestId === ackedConvMsgId.get(convId)) return;
+		ackedConvMsgId.set(convId, newestId);
+		lastReadConvs.update((all) => (all ? { ...all, [convId]: newestId } : all));
+		unreadConversations.update((s) => {
+			s.delete(convId);
+			return s;
+		});
+		mentionCounts.update((all) => {
+			const copy = { ...all };
+			delete copy[convId];
+			return copy;
+		});
+		ackConversation(convId, newestId).catch(() => {});
+	}
+
+	// Where an unread conversation's divider goes: after its read position, or above all of it when it was never read
+	// ("0": every message is newer). Without READY's read positions (an older gateway), nowhere.
+	function unreadAfterOf(convId: string): string | null {
+		const positions = get(lastReadConvs);
+		if (!positions) return null;
+		const lastRead = positions[convId];
+		if (!lastRead) return "0";
+		return newestConfirmedId(get(dmMessages)[convId] ?? []) > lastRead ? lastRead : null;
+	}
+
 	// ACK helper — sends an ack for the newest confirmed DM if at bottom.
 	function tryAckConversation() {
 		const msgs = get(dmMessages)[conversation.id] ?? [];
 		if (!isAtBottom || isLoading || !get(pageVisible) || msgs.length === 0) return;
 		// Clear the unread divider
 		if (convUnreadAfter != null) convUnreadAfter = null;
-		let newestId = "";
-		for (const m of msgs) {
-			if (m.id === m.nonce) continue;
-			if (m.id > newestId) newestId = m.id;
-		}
-		if (newestId && newestId !== ackedConvMsgId.get(conversation.id)) {
-			ackedConvMsgId.set(conversation.id, newestId);
-			unreadConversations.update((s) => {
-				s.delete(conversation.id);
-				return s;
-			});
-			mentionCounts.update((all) => {
-				const copy = { ...all };
-				delete copy[conversation.id];
-				return copy;
-			});
-			ackConversation(conversation.id, newestId).catch(() => {});
-		}
+		ackNewest(conversation.id, msgs);
 	}
 
 	// ACK reactively when at bottom, page visible, and messages change.
@@ -549,24 +588,7 @@
 		const visible = $pageVisible;
 		if (!atBottom || !visible || isLoading || msgs.length === 0) return;
 		if (convUnreadAfter != null) convUnreadAfter = null;
-		let newestId = "";
-		for (const m of msgs) {
-			if (m.id === m.nonce) continue;
-			if (m.id > newestId) newestId = m.id;
-		}
-		if (newestId && newestId !== ackedConvMsgId.get(conversation.id)) {
-			ackedConvMsgId.set(conversation.id, newestId);
-			unreadConversations.update((s) => {
-				s.delete(conversation.id);
-				return s;
-			});
-			mentionCounts.update((all) => {
-				const copy = { ...all };
-				delete copy[conversation.id];
-				return copy;
-			});
-			ackConversation(conversation.id, newestId).catch(() => {});
-		}
+		ackNewest(conversation.id, msgs);
 	});
 
 	// ACK on a 5-second interval as a safety net.
@@ -586,41 +608,33 @@
 		};
 	});
 
-	// ACK when leaving the conversation — only if at bottom.
+	// ACK when leaving the conversation — only if at bottom. Only the bottom reads it, not opening it: one left above
+	// its newest messages is unread again, as the server still has it, and opens at its divider the next time.
 	$effect(() => {
 		const convId = conversation.id;
 		return () => {
-			if (!isAtBottom) return;
 			const msgs = get(dmMessages)[convId] ?? [];
-			if (msgs.length === 0) return;
-			let newestId = "";
-			for (const m of msgs) {
-				if (m.id === m.nonce) continue;
-				if (m.id > newestId) newestId = m.id;
-			}
-			if (newestId && newestId !== ackedConvMsgId.get(convId)) {
-				ackedConvMsgId.set(convId, newestId);
+			if (isAtBottom) ackNewest(convId, msgs);
+			if (convUnreadAfter && ackedConvMsgId.get(convId) === newestConfirmedId(msgs)) convUnreadAfter = null;
+			if (convUnreadAfter) {
 				unreadConversations.update((s) => {
-					s.delete(convId);
+					s.add(convId);
 					return s;
 				});
-				mentionCounts.update((all) => {
-					const copy = { ...all };
-					delete copy[convId];
-					return copy;
-				});
-				ackConversation(convId, newestId).catch(() => {});
 			}
 		};
 	});
 
 	onMount(() => {
 		activeDMConvId.set(conversation.id);
+		const hadUnread = get(unreadConversations).has(conversation.id);
 		unreadConversations.update((s) => {
 			s.delete(conversation.id);
 			return s;
 		});
 		loadMessages().then(() => {
+			// An unread conversation opens at its divider (MessageList places the visit there).
+			if (hadUnread) convUnreadAfter = unreadAfterOf(conversation.id);
 			isLoading = false;
 		});
 		return () => {
@@ -645,7 +659,7 @@
 			<button
 				class="flex items-center gap-1 rounded px-2 py-1 text-xs font-normal text-zinc-400 hover:bg-stone-800 hover:text-zinc-200 disabled:cursor-not-allowed disabled:opacity-40"
 				onclick={startCall}
-				disabled={!!$activeCall}
+				disabled={!!$activeCall || joinWaits}
 				title="Start call"
 			>
 				<Phone class="size-3.5" />
@@ -680,14 +694,35 @@
 		</div>
 	</div>
 
-	<!-- Call in progress banner (visible when not in the call) -->
-	{#if canJoinCall}
+	<!-- Call in progress banner (visible when not in the call), with who is in it -->
+	{#snippet inCallAvatars()}
+		{#if inCallNow.length > 0}
+			<span class="flex items-center -space-x-1.5" title={inCallNow.map((m) => m.username).join(", ")}>
+				{#each inCallNow.slice(0, 4) as member (member.id)}
+					<UserAvatar src={member.avatar_url} name={member.username} size={20} class="ring-2 ring-stone-900" />
+				{/each}
+			</span>
+			{#if inCallNow.length > 4}
+				<span class="text-xs text-emerald-400">+{inCallNow.length - 4}</span>
+			{/if}
+		{/if}
+	{/snippet}
+	{#if canJoinCall && joinWaits}
+		<div
+			class="flex shrink-0 items-center justify-center gap-2 border-b border-emerald-800/50 bg-emerald-900/30 px-4 py-2 text-sm text-emerald-300"
+		>
+			<Phone class="size-4" />
+			<span class="font-medium">Calling from another device</span>
+			{@render inCallAvatars()}
+		</div>
+	{:else if canJoinCall}
 		<button
 			class="flex shrink-0 items-center justify-center gap-2 border-b border-emerald-800/50 bg-emerald-900/30 px-4 py-2 text-sm text-emerald-300 transition-colors hover:bg-emerald-900/50"
 			onclick={joinCall}
 		>
 			<Phone class="size-4" />
 			<span class="font-medium">Call in progress — Join</span>
+			{@render inCallAvatars()}
 		</button>
 	{/if}
 
