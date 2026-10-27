@@ -1,17 +1,15 @@
 <script lang="ts">
 	import { onMount } from "svelte";
 	import { LoaderCircle as CircleNotchIcon, Search as MagnifyingGlassIcon } from "@lucide/svelte";
+	import { gifsUrl, parseGifs, type Gif } from "$lib/gifs";
 
 	const { onSelect } = $props<{ onSelect: (url: string) => void }>();
 
 	let query = $state("");
-	let gifs: any[] = $state([]);
+	let gifs: Gif[] = $state([]);
 	let loading = $state(false);
 	let error = $state("");
 	let currentRequestId = 0;
-
-	const TENOR_KEY = "LIVDSRZULELA";
-	const LIMIT = 20;
 
 	function friendlyError(err: unknown) {
 		if (err instanceof DOMException && err.name === "AbortError") {
@@ -20,45 +18,17 @@
 		return "Couldn't load GIFs. Check your connection and try again.";
 	}
 
-	async function fetchTrending(signal?: AbortSignal) {
+	// KLIPY's trending GIFs while the search box is blank, else its search's (gifsUrl).
+	async function loadGifs(signal?: AbortSignal) {
 		loading = true;
 		error = "";
 		const requestId = ++currentRequestId;
 		try {
-			const res = await fetch(`https://g.tenor.com/v1/trending?key=${TENOR_KEY}&limit=${LIMIT}`, { signal });
+			const res = await fetch(gifsUrl(query), { signal });
 			if (!res.ok) throw new Error("Failed to fetch GIFs");
 			const data = await res.json();
 			if (requestId === currentRequestId) {
-				gifs = data.results;
-			}
-		} catch (err) {
-			if (requestId === currentRequestId) {
-				error = friendlyError(err);
-			}
-		} finally {
-			if (requestId === currentRequestId) {
-				loading = false;
-			}
-		}
-	}
-
-	async function searchGifs(signal?: AbortSignal) {
-		if (!query.trim()) {
-			return fetchTrending(signal);
-		}
-
-		loading = true;
-		error = "";
-		const requestId = ++currentRequestId;
-		try {
-			const res = await fetch(
-				`https://g.tenor.com/v1/search?q=${encodeURIComponent(query)}&key=${TENOR_KEY}&limit=${LIMIT}`,
-				{ signal },
-			);
-			if (!res.ok) throw new Error("Failed to fetch GIFs");
-			const data = await res.json();
-			if (requestId === currentRequestId) {
-				gifs = data.results;
+				gifs = parseGifs(data);
 			}
 		} catch (err) {
 			if (requestId === currentRequestId) {
@@ -78,23 +48,18 @@
 		searchTimeout = setTimeout(() => {
 			searchAbortController?.abort();
 			searchAbortController = new AbortController();
-			void searchGifs(searchAbortController.signal);
+			void loadGifs(searchAbortController.signal);
 		}, 500);
 	}
 
 	onMount(() => {
 		searchAbortController = new AbortController();
-		void fetchTrending(searchAbortController.signal);
+		void loadGifs(searchAbortController.signal);
 		return () => {
 			clearTimeout(searchTimeout);
 			searchAbortController?.abort();
 		};
 	});
-
-	function selectGif(gif: any) {
-		const url = gif.media.at(0)?.gif.url ?? "";
-		onSelect(url);
-	}
 </script>
 
 <div
@@ -110,7 +75,7 @@
 				type="text"
 				bind:value={query}
 				oninput={handleInput}
-				placeholder="Search Tenor..."
+				placeholder="Search GIFs..."
 				maxlength={120}
 				aria-label="Search GIFs"
 				class="block w-full rounded-lg border border-zinc-700 bg-zinc-800 py-2 pr-3 pl-9 text-sm text-zinc-100 placeholder-zinc-500 focus:border-stone-500 focus:ring-1 focus:ring-stone-500 focus:outline-none"
@@ -134,9 +99,7 @@
 					onclick={() => {
 						searchAbortController?.abort();
 						searchAbortController = new AbortController();
-						void (query.trim()
-							? searchGifs(searchAbortController.signal)
-							: fetchTrending(searchAbortController.signal));
+						void loadGifs(searchAbortController.signal);
 					}}
 				>
 					Try again
@@ -150,18 +113,21 @@
 					<button
 						type="button"
 						class="group relative w-full cursor-pointer break-inside-avoid overflow-hidden rounded-lg border border-zinc-700 bg-zinc-800 text-left"
-						onclick={() => selectGif(gif)}
-						aria-label={`Send GIF ${gif.content_description || "result"}`}
+						onclick={() => onSelect(gif.url)}
+						aria-label={`Send GIF ${gif.description || "result"}`}
 					>
 						<img
-							src={gif.media.at(0)?.tinygif.url}
-							alt={gif.content_description}
+							src={gif.preview.url}
+							width={gif.preview.width}
+							height={gif.preview.height}
+							alt={gif.description}
 							class="h-auto w-full object-cover transition-opacity group-hover:opacity-85"
 							loading="lazy"
 						/>
 					</button>
 				{/each}
 			</div>
+			<p class="pt-2 pb-1 text-center text-xs text-zinc-500">GIFs from KLIPY</p>
 		{/if}
 	</div>
 </div>
