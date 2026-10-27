@@ -1063,6 +1063,21 @@ export function withoutRoom(rooms: GatewayRoom[], roomId: string): GatewayRoom[]
 	return rooms.filter((r) => r.id !== roomId).map((r) => (r.parent_id === roomId ? { ...r, parent_id: null } : r));
 }
 
+/** A space once a room of it goes with ROOM_DELETE, deleted or no longer one the user can view: its overwrites and the
+ * voice states in it go too, as nothing updates them while it's away. If it comes back, ROOM_CREATE brings it with
+ * them as they are then. */
+export function spaceWithoutRoom<S extends Pick<GatewaySpace, "rooms" | "room_overwrites" | "voice_states">>(
+	space: S,
+	roomId: string,
+): S {
+	return {
+		...space,
+		rooms: withoutRoom(space.rooms, roomId),
+		room_overwrites: space.room_overwrites.filter((o) => o.room_id !== roomId),
+		voice_states: space.voice_states?.filter((v) => v.room_id !== roomId),
+	};
+}
+
 /** Where a room or category dropped below everything goes: after the highest place at the top level. Its rooms and
  * categories share positions, which keep the gaps deleted rooms leave, so their count can be a place that's taken.
  * The moving room doesn't count, so one already last stays where it is. */

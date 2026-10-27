@@ -50,7 +50,7 @@ import { forgetSpaceCommands } from "$lib/api/interactions";
 
 import type { DMTypingEvent, GatewayEvent, GatewaySpace, ReferencedMessage, TypingEvent, UserStatus } from "$lib/types";
 
-import { gatewayMessageToMessage, isEphemeral, withCreatedRole, withoutRoom } from "$lib/types";
+import { gatewayMessageToMessage, isEphemeral, spaceWithoutRoom, withCreatedRole } from "$lib/types";
 
 // Token is passed via query string because the WebSocket API does not support
 // custom headers during the handshake. Ideally the gateway would accept a
@@ -1065,10 +1065,7 @@ function handleEvent(event: GatewayEvent) {
 					if (s.id !== raw.space_id) {
 						return s;
 					}
-					return {
-						...s,
-						rooms: withoutRoom(s.rooms, raw.id),
-					};
+					return spaceWithoutRoom(s, raw.id);
 				}),
 			);
 			break;
