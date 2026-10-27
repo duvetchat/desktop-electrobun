@@ -1,7 +1,7 @@
 import { webUrl } from "$lib/urls";
 
-// The GIF picker asks KLIPY with the app's key, as the mobile app does (its lib/data/gifs.dart), so both apps offer
-// and send the same GIFs. It's a client's key, shipped in the app as Tenor's was before Tenor ended its API.
+// The GIF picker asks KLIPY with the app's key, as duvetchat/mobile#28 does, so both apps offer and send the same
+// GIFs. It's a client's key, shipped in the app as Tenor's was before Tenor ended its API.
 const KLIPY_KEY = "wrQpsWVVgJF6SQwLGINJ4D8uEJsya3rB0gmmwKF3SgN5SdkGZH3z6r2L0z2JJqUF";
 const PER_PAGE = 20;
 
@@ -37,17 +37,20 @@ const field = (value: unknown, key: string) => (isObject(value) ? value[key] : u
 const dimension = (value: unknown) =>
 	typeof value === "number" && Number.isFinite(value) && value > 0 ? value : undefined;
 
-// The GIF of one of an item's sizes (file.md, file.sm…), when it has an http(s) URL.
+// The GIF of one of an item's sizes (file.md, file.sm…), when it has an http(s) URL without whitespace: a pick sends
+// the URL as the message's text, word for word, and a link there ends at whitespace.
 function gifOf(file: unknown, size: string): GifFile | undefined {
 	const gif = field(field(file, size), "gif");
 	const url = webUrl(field(gif, "url"));
-	return url ? { url, width: dimension(field(gif, "width")), height: dimension(field(gif, "height")) } : undefined;
+	return url && !/\s/.test(url)
+		? { url, width: dimension(field(gif, "width")), height: dimension(field(gif, "height")) }
+		: undefined;
 }
 
 /**
  * The GIFs of KLIPY's answer (its data.data): each one's medium GIF to send, or its large one without a medium one,
  * and its small one for the grid, else its extra-small or medium one. Ads (any type but "gif") are left out, and so
- * is an item without a GIF to send or one to show.
+ * is an item without a GIF to send or one to show (gifOf).
  */
 export function parseGifs(json: unknown): Gif[] {
 	const items = field(field(json, "data"), "data");

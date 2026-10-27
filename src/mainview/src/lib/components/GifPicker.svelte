@@ -71,11 +71,12 @@
 			<div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
 				<MagnifyingGlassIcon class="size-4 text-zinc-500" />
 			</div>
+			<!-- KLIPY's attribution guidelines require "Search KLIPY" as the search box's placeholder. -->
 			<input
 				type="text"
 				bind:value={query}
 				oninput={handleInput}
-				placeholder="Search GIFs..."
+				placeholder="Search KLIPY"
 				maxlength={120}
 				aria-label="Search GIFs"
 				class="block w-full rounded-lg border border-zinc-700 bg-zinc-800 py-2 pr-3 pl-9 text-sm text-zinc-100 placeholder-zinc-500 focus:border-stone-500 focus:ring-1 focus:ring-stone-500 focus:outline-none"

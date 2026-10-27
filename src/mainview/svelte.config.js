@@ -22,7 +22,7 @@ import adapter from "@sveltejs/adapter-static";
 //    and hashing them is not feasible; this is the standard CSP trade-off and does not weaken script
 //    protection. https: covers the Google Fonts stylesheet (@import in app.css).
 //  - img-/media-src are deliberately broad (http(s)/data/blob): link embeds, avatars and GIFs come from
-//    arbitrary origins and are inert (the GIF picker's from KLIPY, static.klipy.com).
+//    arbitrary origins and are inert (the GIF picker's from KLIPY, static*.klipy.com).
 //  - frame-src allows http(s): EmbedCard frames player pages (YouTube, TikTok, others) each under an
 //    opaque-origin sandbox.
 //  - connect-src: https: covers every API target in lib/common/common.ts over TLS (api.duvet.chat, the n128

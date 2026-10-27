@@ -74,6 +74,26 @@ describe("parseGifs", () => {
 		]);
 	});
 
+	test("describes a GIF by its title only when that's text", () => {
+		for (const title of [42, null, true, { text: "GIF" }, ["GIF"]]) {
+			expect(parseGifs(answer({ ...item(1, allSizes(1)), title }))[0].description).toBe("");
+		}
+	});
+
+	test("skips an item whose GIF URLs hold whitespace, as a pick sends its URL word for word", () => {
+		const whitespace = [" ", "\t", "\n", String.fromCharCode(160)];
+		const urls = whitespace.flatMap((space) => [
+			`${gifUrl("1-md")}${space}`,
+			`https://static.klipy.com/ii/a${space}b.gif`,
+		]);
+		for (const url of urls) {
+			const spaced = { gif: { url, width: 640, height: 640 } };
+			expect(parseGifs(answer(item(1, { ...allSizes(1), md: spaced, hd: spaced })))).toEqual([]);
+			// A large GIF without it is sent instead, as for a medium GIF without a URL.
+			expect(parseGifs(answer(item(2, { ...allSizes(2), md: spaced })))[0].url).toBe(gifUrl("2-hd"));
+		}
+	});
+
 	test("skips malformed items and keeps the rest", () => {
 		const notWeb = { ...allSizes(3), md: { gif: { url: "javascript:alert(1)" } }, hd: { gif: { url: 7 } } };
 		const gifs = parseGifs(
