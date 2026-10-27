@@ -1,4 +1,5 @@
 import { getAvatarURL } from "$lib/common/common";
+import { memberStatus } from "$lib/status";
 import type { Conversation, DirectMessage } from "$lib/api/conversations";
 import type { UserActivity } from "$lib/stores.svelte";
 
@@ -1379,7 +1380,7 @@ export function gatewaySpaceToMembers(space: GatewaySpace, statusLookup?: Map<st
 				raw_username: u.username,
 				avatar_url: getAvatarURL(u.id, u.avatar),
 				banner_url: getAvatarURL(u.id, u.banner),
-				status: userStatusToString(statusLookup?.get(`${u.id}:${space.id}`) ?? statusLookup?.get(u.id) ?? 0),
+				status: userStatusToString(statusLookup ? memberStatus(statusLookup, u, space.id) : 0),
 				badges: u.badges ?? 0,
 				is_bot: u.is_bot ?? false,
 				is_owner: u.id === space.owner_id,
