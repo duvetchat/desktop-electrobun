@@ -1,10 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import {
 	categoryDropPosition,
+	spaceWithoutRoom,
 	topLevelEnd,
 	withoutRoom,
 	type Channel,
 	type GatewayRoom,
+	type GatewayRoomOverwrite,
+	type GatewayVoiceState,
 	type RoomType,
 } from "$lib/types";
 
@@ -46,6 +49,43 @@ describe("withoutRoom", () => {
 		const left = withoutRoom(rooms, "random");
 		expect(left).toEqual([room("cat", 3), room("general", 1, "cat")]);
 		expect(left[1]).toBe(rooms[1]);
+	});
+});
+
+describe("spaceWithoutRoom", () => {
+	const overwrite = (room_id: string, target_id: string): GatewayRoomOverwrite => ({
+		id: `${room_id}:${target_id}`,
+		room_id,
+		target_id,
+		target_type: 0,
+		deny_flags: 0,
+		allow_flags: 2,
+		created_at: "",
+		updated_at: "",
+	});
+	const voice = (room_id: string, user_id: string): GatewayVoiceState => ({
+		room_id,
+		user_id,
+		muted: false,
+		deafened: false,
+		screen_sharing: false,
+		camera: false,
+		version: 1,
+	});
+
+	test("the room's overwrites and the voice states in it go with it, the rest of the space stays", () => {
+		const space = {
+			name: "space",
+			rooms: [room("lounge", 2), room("general", 1)],
+			room_overwrites: [overwrite("lounge", "everyone"), overwrite("general", "everyone")],
+			voice_states: [voice("lounge", "ana"), voice("lounge", "bo"), voice("stage", "cy")],
+		};
+		expect(spaceWithoutRoom(space, "lounge")).toEqual({
+			name: "space",
+			rooms: [room("general", 1)],
+			room_overwrites: [overwrite("general", "everyone")],
+			voice_states: [voice("stage", "cy")],
+		});
 	});
 });
 
