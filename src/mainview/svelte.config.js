@@ -22,16 +22,17 @@ import adapter from "@sveltejs/adapter-static";
 //    and hashing them is not feasible; this is the standard CSP trade-off and does not weaken script
 //    protection. https: covers the Google Fonts stylesheet (@import in app.css).
 //  - img-/media-src are deliberately broad (http(s)/data/blob): link embeds, avatars and GIFs come from
-//    arbitrary origins and are inert.
+//    arbitrary origins and are inert (the GIF picker's from KLIPY, static*.klipy.com).
 //  - frame-src allows http(s): EmbedCard frames player pages (YouTube, TikTok, others) each under an
 //    opaque-origin sandbox.
 //  - connect-src: https: covers every API target in lib/common/common.ts over TLS (api.duvet.chat, the n128
-//    and andremor hosts) plus the presigned storage redirects (arbitrary R2 subdomains) and the GIF/theme
-//    fetches; the wss:// hosts are the gateways (ws.duvet.chat and the n128/andremor ones); localhost/
-//    127.0.0.1 (any port) cover the local dev API, gateway and S3 mock over http/ws. In development mode
-//    only, the origins of the VITE_API_URL/VITE_WS_URL overrides (a LAN address, another wss host) are
-//    added too: vite.config.ts hands them over in DUVET_DEV_CONNECT_SRC, which it sets (empty in every
-//    other mode) before SvelteKit loads this file. See devConnectSources.
+//    and andremor hosts) plus the presigned storage redirects (arbitrary R2 subdomains), the GIF picker's
+//    KLIPY requests (api.klipy.com, lib/gifs.ts) and the theme fetches; the wss:// hosts are the gateways
+//    (ws.duvet.chat and the n128/andremor ones); localhost/127.0.0.1 (any port) cover the local dev API,
+//    gateway and S3 mock over http/ws. In development mode only, the origins of the VITE_API_URL/
+//    VITE_WS_URL overrides (a LAN address, another wss host) are added too: vite.config.ts hands them over
+//    in DUVET_DEV_CONNECT_SRC, which it sets (empty in every other mode) before SvelteKit loads this file.
+//    See devConnectSources.
 //  - frame-ancestors is ignored inside a prerendered <meta> tag, but it is honoured by the dev server's
 //    response header and documents that the app is never meant to be framed.
 /** @typedef {NonNullable<NonNullable<NonNullable<import('@sveltejs/kit').KitConfig['csp']>['directives']>['connect-src']>[number]} CspSource */
