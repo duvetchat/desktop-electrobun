@@ -11,30 +11,42 @@
 	let error = $state("");
 	let currentRequestId = 0;
 
-	function friendlyError(err: unknown) {
-		if (err instanceof DOMException && err.name === "AbortError") {
-			return "Request timed out. Try again.";
-		}
-		return "Couldn't load GIFs. Check your connection and try again.";
-	}
+	// A request KLIPY hasn't answered by then fails, as the mobile app's does, so the picker offers to try again
+	// instead of spinning.
+	const TIMEOUT_MS = 10_000;
 
-	// KLIPY's trending GIFs while the search box is blank, else its search's (gifsUrl).
-	async function loadGifs(signal?: AbortSignal) {
+	// KLIPY's trending GIFs while the search box is blank, else its search's (gifsUrl). signal is the picker's own:
+	// it aborts a request that a newer one replaced, or the closing picker's, and those show nothing.
+	async function loadGifs(signal: AbortSignal) {
 		loading = true;
 		error = "";
 		const requestId = ++currentRequestId;
+		// The request's own controller, which the picker's signal or the timeout aborts, and timedOut tells which. Not
+		// AbortSignal.any and AbortSignal.timeout: an older Mac's WebKit, which the app runs on there, lacks them (any
+		// came with Safari 17.4, timeout with 16).
+		const request = new AbortController();
+		const stop = () => request.abort();
+		let timedOut = false;
+		const timer = setTimeout(() => {
+			timedOut = true;
+			request.abort();
+		}, TIMEOUT_MS);
+		if (signal.aborted) request.abort();
+		else signal.addEventListener("abort", stop);
 		try {
-			const res = await fetch(gifsUrl(query), { signal });
+			const res = await fetch(gifsUrl(query), { signal: request.signal });
 			if (!res.ok) throw new Error("Failed to fetch GIFs");
 			const data = await res.json();
 			if (requestId === currentRequestId) {
 				gifs = parseGifs(data);
 			}
-		} catch (err) {
-			if (requestId === currentRequestId) {
-				error = friendlyError(err);
+		} catch {
+			if (requestId === currentRequestId && !signal.aborted) {
+				error = timedOut ? "Request timed out. Try again." : "Couldn't load GIFs. Check your connection and try again.";
 			}
 		} finally {
+			clearTimeout(timer);
+			signal.removeEventListener("abort", stop);
 			if (requestId === currentRequestId) {
 				loading = false;
 			}
