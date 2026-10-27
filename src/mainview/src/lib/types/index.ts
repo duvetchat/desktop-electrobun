@@ -1064,8 +1064,8 @@ export function withoutRoom(rooms: GatewayRoom[], roomId: string): GatewayRoom[]
 }
 
 /** A space once a room of it goes with ROOM_DELETE, deleted or no longer one the user can view: its overwrites and the
- * voice states in it go too, as nothing updates them while it's away. If it comes back, ROOM_CREATE brings it with
- * them as they are then. */
+ * voice states in it go too, as nothing updates them while it's away. If it comes back, ROOM_CREATE brings it,
+ * followed by its overwrites and voice states as they are then. */
 export function spaceWithoutRoom<S extends Pick<GatewaySpace, "rooms" | "room_overwrites" | "voice_states">>(
 	space: S,
 	roomId: string,
