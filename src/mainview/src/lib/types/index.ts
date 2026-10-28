@@ -462,8 +462,27 @@ export interface GatewayRoom {
 	nsfw: boolean;
 	created_at: string;
 	updated_at: string;
-	/** Always null in ROOM_* events; the SPACE_CREATE snapshot leaves it out. */
+	/** Always null in the API's ROOM_* events; the gateway's SPACE_CREATE leaves it out, and so do the ROOM_CREATE and
+	 * ROOM_UPDATE it builds from the snapshot. */
 	deleted_at?: string | null;
+}
+
+/** ROOM_CREATE: a room the connection gets now that it wasn't sent, a new one or one the user can view since a change,
+ * or the category that holds one. */
+export interface RoomCreateEvent extends Omit<GatewayRoom, "deleted_at"> {
+	/** For a room the user can view, their read state in it, as READY gives it for the rooms READY sends. Left out of a
+	 * category the user gets only as a container, of a bot's, and when the gateway couldn't read it. */
+	read_state?: RoomReadState;
+}
+
+/** A user's read state in a room, as READY's unread_rooms, last_read_rooms and last_msg_rooms have it. */
+export interface RoomReadState {
+	/** The room has a message the user hasn't read: unread_rooms lists it. */
+	unread: boolean;
+	/** The last message they read in the room, as last_read_rooms has it: null when they never read it. */
+	last_read: string | null;
+	/** The room's newest message, as last_msg_rooms has it: null when it has none. */
+	last_msg: string | null;
 }
 
 export interface GatewayMember {
@@ -940,7 +959,7 @@ export type GatewayEventPayload =
 	| { type: "SPACE_CREATE"; data: GatewaySpaceCreatePayload }
 	| { type: "SPACE_DELETE"; data: SpaceDeleteEvent }
 	| { type: "SPACE_UPDATE"; data: SpaceUpdateEvent }
-	| { type: "ROOM_CREATE"; data: GatewayRoom }
+	| { type: "ROOM_CREATE"; data: RoomCreateEvent }
 	| { type: "ROOM_UPDATE"; data: GatewayRoom }
 	| { type: "ROOM_REORDER"; data: RoomReorderEvent }
 	| { type: "ROOM_DELETE"; data: RoomDeleteEvent }
@@ -1076,6 +1095,31 @@ export function spaceWithoutRoom<S extends Pick<GatewaySpace, "rooms" | "room_ov
 		room_overwrites: space.room_overwrites.filter((o) => o.room_id !== roomId),
 		voice_states: space.voice_states?.filter((v) => v.room_id !== roomId),
 	};
+}
+
+/** READY's read states of the rooms (unread_rooms, last_read_rooms, last_msg_rooms) with a room's from its ROOM_CREATE in
+ * place of what they had of it: a room the user can view since READY comes with its unread mark, which READY couldn't
+ * give. newest is the newest message the client already has in the room: one newer than the read state's (its
+ * MESSAGE_CREATE came before the ROOM_CREATE, whose read state was read earlier) keeps the room unread, and stays its
+ * newest. */
+export function withRoomReadState(
+	rooms: { unread: Set<string>; lastRead: Record<string, string>; lastMsg: Record<string, string> },
+	roomId: string,
+	state: RoomReadState,
+	newest?: string,
+) {
+	const unread = new Set(rooms.unread);
+	const lastRead = { ...rooms.lastRead };
+	const lastMsg = { ...rooms.lastMsg };
+	const newer = newest !== undefined && newest > (state.last_msg ?? "");
+	if (state.unread || newer) unread.add(roomId);
+	else unread.delete(roomId);
+	if (state.last_read) lastRead[roomId] = state.last_read;
+	else delete lastRead[roomId];
+	const last = newer ? newest : state.last_msg;
+	if (last) lastMsg[roomId] = last;
+	else delete lastMsg[roomId];
+	return { unread, lastRead, lastMsg };
 }
 
 /** Where a room or category dropped below everything goes: after the highest place at the top level. Its rooms and

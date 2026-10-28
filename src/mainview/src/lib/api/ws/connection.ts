@@ -50,7 +50,7 @@ import { forgetSpaceCommands } from "$lib/api/interactions";
 
 import type { DMTypingEvent, GatewayEvent, GatewaySpace, ReferencedMessage, TypingEvent, UserStatus } from "$lib/types";
 
-import { gatewayMessageToMessage, isEphemeral, spaceWithoutRoom, withCreatedRole } from "$lib/types";
+import { gatewayMessageToMessage, isEphemeral, spaceWithoutRoom, withCreatedRole, withRoomReadState } from "$lib/types";
 
 // Token is passed via query string because the WebSocket API does not support
 // custom headers during the handshake. Ideally the gateway would accept a
@@ -572,7 +572,8 @@ function handleEvent(event: GatewayEvent) {
 			break;
 		}
 		case "ROOM_CREATE": {
-			const room = payload.data;
+			// The read state is the user's, not the room's: the space keeps the room without it.
+			const { read_state: readState, ...room } = payload.data;
 			gatewaySpaces.update((spaces) =>
 				spaces.map((s) => {
 					if (s.id === room.space_id) {
@@ -587,6 +588,22 @@ function handleEvent(event: GatewayEvent) {
 					return s;
 				}),
 			);
+			if (readState) {
+				// A message still being sent has its nonce for an id until its MESSAGE_CREATE.
+				const loaded = get(channelMessages)[room.id] ?? [];
+				const newest = loaded
+					.filter((m) => m.id !== m.nonce)
+					.reduce<string | undefined>((max, m) => (max === undefined || m.id > max ? m.id : max), undefined);
+				const read = withRoomReadState(
+					{ unread: get(unreadChannels), lastRead: get(lastReadRooms), lastMsg: get(lastMsgRooms) },
+					room.id,
+					readState,
+					newest,
+				);
+				unreadChannels.set(read.unread);
+				lastReadRooms.set(read.lastRead);
+				lastMsgRooms.set(read.lastMsg);
+			}
 			break;
 		}
 		case "MESSAGE_CREATE": {
