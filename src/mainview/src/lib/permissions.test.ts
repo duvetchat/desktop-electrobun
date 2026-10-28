@@ -2,7 +2,9 @@ import { describe, expect, test } from "bun:test";
 import {
 	canManageRoleAt,
 	canSetPermission,
+	computeRoomPermissions,
 	computeSpacePermissions,
+	hasPermission,
 	hasSpacePermission,
 	highestRolePosition,
 	mentionableRooms,
@@ -208,5 +210,74 @@ describe("room mentions", () => {
 	test("a member none of whose roles views a room names none of them", () => {
 		const blind = { ...space([role(SPACE, 0)], [SPACE]), rooms: [room("open", 1)] };
 		expect(roomNamesOf([blind])).toEqual({});
+	});
+});
+
+describe("computeRoomPermissions", () => {
+	const EVERYONE = Permission.ViewChannels | Permission.SendMessages;
+	const MANAGING = Permission.ManageChannels | Permission.ManageMessages | Permission.PinMessages;
+	const ALL = ~0 >>> 0;
+	const staff = room("staff", 1);
+	// An overwrite in "staff" for a role (target_type 0) or a member (1).
+	const overwrite = (
+		target_id: string,
+		target_type: number,
+		allow_flags: number,
+		deny_flags: number,
+	): GatewayRoomOverwrite => ({
+		id: `overwrite-${target_id}`,
+		room_id: staff.id,
+		target_id,
+		target_type,
+		allow_flags,
+		deny_flags,
+		created_at: "",
+		updated_at: "",
+	});
+	// The space as `me` has it, holding @everyone and the managers' role unless told otherwise.
+	const spaceWith = (
+		overwrites: GatewayRoomOverwrite[],
+		me: string | null = ME,
+		held = [SPACE, "managers"],
+	): GatewaySpace => ({
+		...space([role(SPACE, EVERYONE), role("managers", MANAGING), role("admins", Permission.Administrator)], held, me),
+		rooms: [staff],
+		room_overwrites: overwrites,
+	});
+	const permsIn = (overwrites: GatewayRoomOverwrite[], me: string | null = ME, held = [SPACE, "managers"]) =>
+		computeRoomPermissions(spaceWith(overwrites, me, held), staff);
+	const everyoneDeniedView = overwrite(SPACE, 0, 0, Permission.ViewChannels);
+
+	test("a member who can view the room has what the cascade gives them there", () => {
+		expect(permsIn([])).toBe(EVERYONE | MANAGING);
+		expect(permsIn([overwrite(SPACE, 0, 0, Permission.SendMessages)])).toBe(Permission.ViewChannels | MANAGING);
+	});
+
+	test("without ViewChannels in the room, whichever overwrite took it, they have no other permission there", () => {
+		expect(permsIn([everyoneDeniedView])).toBe(0);
+		expect(permsIn([overwrite("managers", 0, 0, Permission.ViewChannels)])).toBe(0);
+		expect(permsIn([overwrite(ME, 1, 0, Permission.ViewChannels)])).toBe(0);
+		expect(hasPermission(spaceWith([everyoneDeniedView]), staff, Permission.ManageChannels)).toBe(false);
+		expect(hasPermission(spaceWith([everyoneDeniedView]), staff, Permission.SendMessages)).toBe(false);
+	});
+
+	test("ViewChannels given back by their role's or their own overwrite brings the rest back", () => {
+		expect(permsIn([everyoneDeniedView, overwrite("managers", 0, Permission.ViewChannels, 0)])).toBe(
+			EVERYONE | MANAGING,
+		);
+		expect(permsIn([everyoneDeniedView, overwrite(ME, 1, Permission.ViewChannels, 0)])).toBe(EVERYONE | MANAGING);
+	});
+
+	test("the space's owner and Administrators keep every permission, denied ViewChannels or not", () => {
+		expect(permsIn([everyoneDeniedView, overwrite(OWNER, 1, 0, Permission.ViewChannels)], OWNER, [SPACE])).toBe(ALL);
+		expect(permsIn([everyoneDeniedView, overwrite(ME, 1, 0, Permission.ViewChannels)], ME, [SPACE, "admins"])).toBe(
+			ALL,
+		);
+	});
+
+	test("without the member loaded, @everyone's, which give nothing without ViewChannels", () => {
+		expect(permsIn([], null)).toBe(EVERYONE);
+		const blind = { ...spaceWith([], null), roles: [role(SPACE, Permission.SendMessages)] };
+		expect(computeRoomPermissions(blind, staff)).toBe(0);
 	});
 });

@@ -128,14 +128,15 @@ export function canSetPermission(granted: number, saved: number, flag: number): 
  *   3. @everyone role overwrite  (deny → allow)
  *   4. Member's role overwrites  (deny → allow)
  *   5. Member-specific overwrite (deny → allow)
+ *   6. Without ViewChannels in the room, no permission at all there
  */
 export function computeRoomPermissions(space: GatewaySpace, room: GatewayRoom): number {
 	const { member, member_roles, roles, room_overwrites, id: spaceId, owner_id } = space;
 
-	// No member loaded yet — fall back to @everyone role permissions only
+	// No member loaded yet — fall back to @everyone role permissions only, and to none without ViewChannels (6)
 	if (!member) {
-		const everyoneRole = roles.find((r) => r.id === spaceId);
-		return everyoneRole?.permissions ?? 0;
+		const everyone = roles.find((r) => r.id === spaceId)?.permissions ?? 0;
+		return everyone & Permission.ViewChannels ? everyone : 0;
 	}
 	// 0. Server owner bypasses all permissions
 	if (member.user_id === owner_id) {
@@ -196,7 +197,9 @@ export function computeRoomPermissions(space: GatewaySpace, room: GatewayRoom): 
 	const memberOw = overwrites.find((o) => o.target_type === OVERWRITE_MEMBER && o.target_id === member.user_id);
 	apply(memberOw?.deny_flags ?? 0, memberOw?.allow_flags ?? 0);
 
-	return perms;
+	// 6. A member left without ViewChannels has no other permission in the room either, as the server copies
+	// (and the mobile app's canInRoom) have it; the owner and Administrators returned above keep every one.
+	return perms & Permission.ViewChannels ? perms : 0;
 }
 
 /** Returns true if the current member can view the given room. */

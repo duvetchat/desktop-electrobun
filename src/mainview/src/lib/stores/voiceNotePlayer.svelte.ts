@@ -94,6 +94,13 @@ async function refreshSignedUrl(attachmentId: string, currentSrc: string): Promi
 	}
 }
 
+// How many times a note was asked to play: a player that waits before it plays (VoiceNotePlayer, for its analysis) can
+// tell whether another note was asked for meanwhile.
+let playRequests = 0;
+export function voiceNotePlayRequests(): number {
+	return playRequests;
+}
+
 export async function playVoiceNote(
 	src: string,
 	attachmentId: string,
@@ -101,6 +108,7 @@ export async function playVoiceNote(
 	channelName: string,
 	filename?: string,
 ) {
+	playRequests++;
 	const current = get(voiceNote);
 
 	// Same note — toggle play/pause
