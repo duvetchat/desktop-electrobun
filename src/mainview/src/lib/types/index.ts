@@ -546,6 +546,8 @@ export interface GatewayUser {
 	is_bot: boolean;
 	created_at: string;
 	updated_at: string;
+	/** The API's user objects carry it; the gateway's (READY, SPACE_CREATE) leave it out. */
+	deleted_at?: string | null;
 	/** The status the user chose: only on their own, in READY (a bot's has none). */
 	status?: ChosenStatus;
 }
@@ -833,12 +835,18 @@ export interface FriendRequestRejectEvent {
 	id: string;
 }
 
+/** It reaches the recipient and the sender's own sessions. The two copies differ only in `user`, the other user's public
+ * profile: the sender's for the recipient, the recipient's for the sender's sessions. username, alias, avatar and banner
+ * are the sender's in both. An API from before recipient_id, banner and user leaves them out. */
 export interface FriendRequestCreateEvent {
 	id: string;
 	sender_id: string;
+	recipient_id?: string;
 	username: string;
 	alias: string | null;
 	avatar: string | null;
+	banner?: string | null;
+	user?: GatewayUser;
 }
 
 export interface FriendRequestAcceptEvent {
