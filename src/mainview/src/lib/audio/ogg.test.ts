@@ -105,8 +105,16 @@ describe("repairOggOpus", () => {
 		expect(
 			repairOggOpus(file(page(2, 0n, 0, [head]), page(0, 0n, 1, [tags]), page(0, 0n, 2, [frame], SERIAL + 1))),
 		).toBeNull();
-		// Cut short.
-		expect(repairOggOpus(file(page(2, 0n, 0, [head]), page(0, 0n, 1, [tags])).slice(0, 40))).toBeNull();
+		// Cut short, in its last page.
+		const whole = file(page(2, 0n, 0, [head]), page(0, 0n, 1, [tags]), page(0, 0n, 2, [frame]));
+		expect(repairOggOpus(whole)).not.toBeNull();
+		expect(repairOggOpus(whole.slice(0, whole.byteLength - 1))).toBeNull();
+	});
+});
+
+describe("oggCrc", () => {
+	test("is the Ogg CRC: the check value of its parameters", () => {
+		expect(oggCrc(text("123456789"))).toBe(0x89a1897f);
 	});
 });
 
@@ -131,10 +139,11 @@ describe("analyzeWaveform", () => {
 			page(0, 1920n, 4, [frame]),
 		);
 		const decoded: bigint[] = [];
-		// A browser that, like Firefox, rejects an Ogg Opus stream whose first audio page ends at 0.
+		// A browser that, like Firefox, rejects an Ogg Opus stream whose first audio page ends at 0. Like any browser, it
+		// takes the buffer it's given, which can't be read again.
 		class StrictAudioContext {
 			async decodeAudioData(buffer: ArrayBuffer) {
-				const first = pagesOf(buffer)[2].granule;
+				const first = pagesOf(structuredClone(buffer, { transfer: [buffer] }))[2].granule;
 				decoded.push(first);
 				if (first === 0n) throw new DOMException("invalid content", "EncodingError");
 				const length = 2880;

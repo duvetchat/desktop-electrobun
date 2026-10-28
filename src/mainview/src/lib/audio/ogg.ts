@@ -21,7 +21,7 @@ export function oggCrc(bytes: Uint8Array): number {
 }
 
 /** How many samples, at 48 kHz, an Opus packet decodes to, from its TOC byte (RFC 6716, 3.1). */
-export function opusSamples(packet: Uint8Array): number {
+export function opusSamples(packet: ArrayLike<number>): number {
 	const config = packet[0] >> 3;
 	const ms =
 		config < 12 ? [10, 20, 40, 60][config % 4] : config < 16 ? [10, 20][config % 2] : [2.5, 5, 10, 20][config % 4];
@@ -31,14 +31,17 @@ export function opusSamples(packet: Uint8Array): number {
 }
 
 /** The file with each page's granule position at the end of the last packet it completes (pre-skip included, -1 on a
- * page that completes none), the last page ending the stream, and the CRCs computed again; null when it isn't one
- * whole Ogg Opus stream. */
+ * page that completes none), the last page ending the stream, and the CRCs computed again; null when it isn't whole
+ * Ogg pages of one stream, the first packet OpusHead, with three packets at least. */
 export function repairOggOpus(input: ArrayBuffer): ArrayBuffer | null {
 	const data = new Uint8Array(input.slice(0));
 	const view = new DataView(data.buffer);
 	const pages: { at: number; length: number; completes: number; samples: number }[] = [];
 	let packets = 0;
-	let packet: number[] = [];
+	// Of the packet being read, only what's needed of it: its first eight bytes (OpusHead's magic, or a TOC byte and a
+	// frame count) and its length, so that a file of one huge packet takes no more memory than any other.
+	let head: number[] = [];
+	let packetLength = 0;
 	let pos = 0;
 	while (pos < data.length) {
 		if (pos + 27 > data.length || view.getUint32(pos, true) !== 0x5367674f) return null; // "OggS"
@@ -51,15 +54,16 @@ export function repairOggOpus(input: ArrayBuffer): ArrayBuffer | null {
 		let samples = 0;
 		for (let i = 0; i < segments; i++) {
 			const size = data[pos + 27 + i];
-			packet.push(...data.subarray(body, body + size));
+			if (head.length < 8) head.push(...data.subarray(body, body + Math.min(size, 8 - head.length)));
+			packetLength += size;
 			body += size;
 			if (size < 255) {
-				const bytes = Uint8Array.from(packet);
-				if (packets === 0 && new TextDecoder().decode(bytes.subarray(0, 8)) !== "OpusHead") return null;
-				if (packets >= 2 && bytes.length > 0) samples += opusSamples(bytes);
+				if (packets === 0 && String.fromCharCode(...head) !== "OpusHead") return null;
+				if (packets >= 2 && packetLength > 0) samples += opusSamples(head);
 				packets++;
 				completes++;
-				packet = [];
+				head = [];
+				packetLength = 0;
 			}
 		}
 		pages.push({ at: pos, length: end - pos, completes, samples });
