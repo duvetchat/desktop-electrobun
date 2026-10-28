@@ -1,3 +1,5 @@
+import { repairOggOpus } from "$lib/audio/ogg";
+
 export const waveformCache = new Map<string, { bars: number[]; wavUrl: string; duration: number }>();
 export const MAX_WAVEFORM_CACHE = 50;
 
@@ -22,10 +24,20 @@ export async function analyzeWaveform(
 	const buf = await res.arrayBuffer();
 
 	const ctx = new AudioContext();
-	const decoded = await ctx.decodeAudioData(buf);
+	let decoded: AudioBuffer;
+	try {
+		// decodeAudioData detaches the buffer it gets: the original stays for the repair.
+		decoded = await ctx.decodeAudioData(buf.slice(0));
+	} catch (e) {
+		// An Ogg Opus voice note recorded on Android, which Firefox can't decode as it is (lib/audio/ogg.ts).
+		const repaired = repairOggOpus(buf);
+		if (!repaired) throw e;
+		decoded = await ctx.decodeAudioData(repaired);
+	} finally {
+		ctx.close();
+	}
 	const duration = decoded.duration;
 	const raw = decoded.getChannelData(0);
-	ctx.close();
 
 	const wavBuf = audioBufferToWav(decoded);
 
