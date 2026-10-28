@@ -572,7 +572,8 @@ function handleEvent(event: GatewayEvent) {
 			break;
 		}
 		case "ROOM_CREATE": {
-			const room = payload.data;
+			// The read state is the user's, not the room's: the space keeps the room without it.
+			const { read_state: readState, ...room } = payload.data;
 			gatewaySpaces.update((spaces) =>
 				spaces.map((s) => {
 					if (s.id === room.space_id) {
@@ -587,11 +588,17 @@ function handleEvent(event: GatewayEvent) {
 					return s;
 				}),
 			);
-			if (room.read_state) {
+			if (readState) {
+				// A message still being sent has its nonce for an id until its MESSAGE_CREATE.
+				const loaded = get(channelMessages)[room.id] ?? [];
+				const newest = loaded
+					.filter((m) => m.id !== m.nonce)
+					.reduce<string | undefined>((max, m) => (max === undefined || m.id > max ? m.id : max), undefined);
 				const read = withRoomReadState(
 					{ unread: get(unreadChannels), lastRead: get(lastReadRooms), lastMsg: get(lastMsgRooms) },
 					room.id,
-					room.read_state,
+					readState,
+					newest,
 				);
 				unreadChannels.set(read.unread);
 				lastReadRooms.set(read.lastRead);

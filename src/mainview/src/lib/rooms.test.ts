@@ -124,6 +124,22 @@ describe("withRoomReadState", () => {
 			lastMsg: { general: "m2" },
 		});
 	});
+
+	test("a message the client has that's newer than the read state keeps the room unread, as its newest", () => {
+		// Its MESSAGE_CREATE came before the ROOM_CREATE, whose read state was read before the message.
+		const read = { unread: false, last_read: "m3", last_msg: "m3" };
+		expect(withRoomReadState(ready(), "secret", read, "m4")).toEqual({
+			unread: new Set(["general", "secret"]),
+			lastRead: { general: "m1", secret: "m3" },
+			lastMsg: { general: "m2", secret: "m4" },
+		});
+		// One the read state already counts changes nothing.
+		expect(withRoomReadState(ready(), "secret", read, "m3")).toEqual({
+			unread: new Set(["general"]),
+			lastRead: { general: "m1", secret: "m3" },
+			lastMsg: { general: "m2", secret: "m3" },
+		});
+	});
 });
 
 describe("topLevelEnd", () => {
