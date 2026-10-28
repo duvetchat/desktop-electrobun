@@ -1,9 +1,10 @@
 <script lang="ts">
-	import { onMount } from "svelte";
+	import { onDestroy, onMount } from "svelte";
 	import { Play, Pause } from "@lucide/svelte";
 	import {
 		voiceNote,
 		playVoiceNote,
+		voiceNotePlayRequests,
 		toggleVoiceNote,
 		seekVoiceNote,
 		getAttachmentRate,
@@ -30,6 +31,10 @@
 	let localDuration = $state(0);
 	let wavSrc = $state<string | null>(null);
 	let analysis: Promise<void> | undefined;
+	let destroyed = false;
+	onDestroy(() => {
+		destroyed = true;
+	});
 	const BAR_COUNT = 50;
 
 	const isActive = $derived($voiceNote?.attachmentId === attachmentId && attachmentId !== "");
@@ -74,8 +79,11 @@
 			return;
 		}
 		// The WAV the analysis makes is what plays: an Android voice note doesn't play as it is in Firefox, and its
-		// failed player would stay the note's until another note plays.
+		// failed player would stay the note's until another note plays. Once the analysis is done, the note plays only if
+		// no other was asked to play meanwhile, and while this player is still there.
+		const requests = voiceNotePlayRequests();
 		await analysis;
+		if (destroyed || voiceNotePlayRequests() !== requests) return;
 		playVoiceNote(wavSrc || src, attachmentId, authorName, channelName);
 	}
 
