@@ -1,7 +1,8 @@
 <script lang="ts">
+	import MascotPeek from "$lib/components/MascotPeek.svelte";
 	import { onMount } from "svelte";
 	import { signIn, logIn } from "$lib/api/auth";
-	import { Button, Checkbox, Dialog, Label } from "bits-ui";
+	import { Button, Checkbox, Dialog } from "bits-ui";
 	import { userSession } from "$lib/stores.svelte";
 	import { route } from "$lib/common/common";
 	import { localUrl } from "$lib/urls";
@@ -24,9 +25,21 @@
 		if (redirect) redirectQuery = `?redirect=${encodeURIComponent(redirect)}`;
 	});
 
+	// The same rules the mobile app checks before it asks the server.
+	const usernameValid = $derived(/^[a-zA-Z0-9_.]{2,32}$/.test(username.trim()));
+	const emailValid = $derived(/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email.trim()));
+	const passwordLong = $derived(password.length >= 8);
 	const passwordsMatch = $derived(password === confirmPassword);
 	const canSubmit = $derived(
 		username.trim() && email.trim() && password && confirmPassword && passwordsMatch && acceptTerms,
+	);
+
+	// The sentence grows a line once the one before it reads right; the display name may stay empty.
+	const shown = $derived(
+		1 +
+			(usernameValid ? 1 : 0) +
+			(usernameValid && emailValid ? 1 : 0) +
+			(usernameValid && emailValid && passwordLong ? 1 : 0),
 	);
 
 	async function handleSubmit() {
@@ -51,195 +64,212 @@
 			doingRequest = false;
 		}
 	}
+
+	// What the mascot does: it follows what's typed, and shuts its eyes on a password.
+	let focusedField = $state<"text" | "secret" | null>(null);
+	let typed = $state(0);
+	const mood = $derived(focusedField === "secret" ? (showPassword ? "peek" : "shy") : "awake");
+	const look = $derived(focusedField === "text" ? Math.min(typed, 28) / 14 - 1 : 0);
+
+	const onText = {
+		onfocus: (e: FocusEvent & { currentTarget: HTMLInputElement }) => {
+			focusedField = "text";
+			typed = e.currentTarget.value.length;
+		},
+		oninput: (e: Event & { currentTarget: HTMLInputElement }) => (typed = e.currentTarget.value.length),
+		onblur: () => (focusedField = null),
+	};
+	const onSecret = { onfocus: () => (focusedField = "secret"), onblur: () => (focusedField = null) };
+
+	/** What sizes an inline field: its text, or its placeholder while empty (bullets for a hidden password). */
+	const sizer = (value: string, placeholder: string, secret = false) =>
+		value ? (secret && !showPassword ? "•".repeat(value.length) : value) : placeholder;
 </script>
 
-<section class="h-full overflow-y-auto bg-zinc-950 p-4 sm:p-8">
-	<div class="mx-auto flex min-h-full w-full max-w-lg items-center justify-center py-6 sm:py-10">
-		<div
-			class="w-full rounded-2xl border border-stone-700/70 bg-[linear-gradient(180deg,oklch(0.2_0.01_80/.96),oklch(0.17_0.008_80/.98))] p-6 text-zinc-100 shadow-2xl sm:p-8"
-		>
-			<header class="mb-6 text-center">
-				<div
-					class="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-linear-to-br from-stone-500 to-stone-700 text-white shadow-md shadow-stone-900/40"
+<section class="signup h-full overflow-y-auto">
+	<p class="signup-brand" aria-hidden="true">Duvet<span>.chat</span></p>
+
+	<form
+		class="signup-form"
+		onsubmit={(e) => {
+			e.preventDefault();
+			handleSubmit();
+		}}
+		novalidate
+		aria-label="Create your account"
+	>
+		<fieldset disabled={doingRequest} class="m-0 border-0 p-0">
+			<h1 class="signup-lead">a cozy place to talk, and you're about to join it.</h1>
+
+			<p class="signup-line">
+				Hi, I'm
+				<span class="signup-sizer" data-text={sizer(alias, "your name", false)}
+					><input
+						id="alias"
+						name="alias"
+						type="text"
+						aria-label="Display name (optional)"
+						maxlength={32}
+						bind:value={alias}
+						class="signup-slot focus-override"
+						size={1}
+						placeholder="your name"
+						{...onText}
+					/></span
+				>,
+			</p>
+
+			<p class="signup-line">
+				people find me as @<span class="signup-sizer" data-text={sizer(username, "username", false)}
+					><input
+						id="username"
+						name="username"
+						type="text"
+						aria-label="Username"
+						aria-describedby="username-hint"
+						aria-invalid={username.length > 0 && !usernameValid}
+						autocomplete="username"
+						autocapitalize="off"
+						autocorrect="off"
+						spellcheck="false"
+						maxlength={32}
+						required
+						bind:value={username}
+						class="signup-slot focus-override"
+						size={1}
+						placeholder="username"
+						{...onText}
+					/></span
 				>
-					<svg viewBox="0 0 24 24" class="h-6 w-6" fill="none" stroke="currentColor" stroke-width="1.5">
-						<path d="M12 11c2 0 3.5-1.5 3.5-3.5S14 4 12 4s-3.5 1.5-3.5 3.5S10 11 12 11z" />
-						<path d="M6 20v-1a4 4 0 014-4h4a4 4 0 014 4v1" />
-					</svg>
-				</div>
-				<h1 class="text-2xl font-semibold text-white sm:text-3xl">Create your account</h1>
-				<p class="mt-1 text-sm text-zinc-300 sm:text-base">Join Duvet and start chatting in seconds.</p>
-			</header>
+			</p>
+			<p id="username-hint" class="signup-hint" class:is-error={username.length > 0 && !usernameValid}>
+				Letters, numbers, dots and _, 2 to 32. It's how people mention you.
+			</p>
 
-			<form
-				class="space-y-4"
-				onsubmit={(e) => {
-					e.preventDefault();
-					handleSubmit();
-				}}
-				novalidate
-			>
-				<fieldset disabled={doingRequest} class="m-0 space-y-4 border-0 p-0">
-					<div class="grid gap-4 sm:grid-cols-2">
-						<div>
-							<Label.Root for="username" class="mb-2 block text-sm font-medium text-zinc-300">Username</Label.Root>
-							<input
-								id="username"
-								name="username"
-								type="text"
-								autocomplete="username"
-								autocapitalize="off"
-								autocorrect="off"
-								spellcheck="false"
-								maxlength={32}
-								required
-								bind:value={username}
-								class="w-full rounded-lg border border-stone-700 bg-stone-900/70 px-4 py-3 text-zinc-100 placeholder:text-zinc-400 focus:ring-2 focus:ring-stone-500/70 focus:outline-none"
-								placeholder="e.g. alex"
-							/>
-						</div>
-						<div>
-							<Label.Root for="alias" class="mb-2 block text-sm font-medium text-zinc-300"
-								>Display name (optional)</Label.Root
-							>
-							<input
-								id="alias"
-								name="alias"
-								type="text"
-								maxlength={32}
-								bind:value={alias}
-								class="w-full rounded-lg border border-stone-700 bg-stone-900/70 px-4 py-3 text-zinc-100 placeholder:text-zinc-400 focus:ring-2 focus:ring-stone-500/70 focus:outline-none"
-								placeholder="How others see you"
-							/>
-						</div>
-					</div>
+			<p class="signup-line" class:is-hidden={shown < 2} inert={shown < 2}>
+				and you can reach me at
+				<span class="signup-sizer" data-text={sizer(email, "you@example.com", false)}
+					><input
+						id="email"
+						name="email"
+						type="email"
+						aria-label="Email"
+						autocomplete="email"
+						inputmode="email"
+						autocapitalize="off"
+						autocorrect="off"
+						spellcheck="false"
+						maxlength={254}
+						required
+						bind:value={email}
+						class="signup-slot focus-override"
+						size={1}
+						placeholder="you@example.com"
+						{...onText}
+					/></span
+				>.
+			</p>
 
-					<div>
-						<Label.Root for="email" class="mb-2 block text-sm font-medium text-zinc-300">Email</Label.Root>
-						<input
-							id="email"
-							name="email"
-							type="email"
-							autocomplete="email"
-							inputmode="email"
-							autocapitalize="off"
-							autocorrect="off"
-							spellcheck="false"
-							maxlength={254}
-							required
-							bind:value={email}
-							class="w-full rounded-lg border border-stone-700 bg-stone-900/70 px-4 py-3 text-zinc-100 placeholder:text-zinc-400 focus:ring-2 focus:ring-stone-500/70 focus:outline-none"
-							placeholder="you@example.com"
-						/>
-					</div>
-
-					<div>
-						<div class="mb-2 flex items-center justify-between">
-							<Label.Root for="password" class="block text-sm font-medium text-zinc-300">Password</Label.Root>
-							<span class="text-xs text-zinc-400">Minimum 8 characters</span>
-						</div>
-						<div class="relative">
-							<input
-								id="password"
-								name="password"
-								type={showPassword ? "text" : "password"}
-								autocomplete="new-password"
-								minlength={8}
-								maxlength={128}
-								required
-								bind:value={password}
-								class="w-full rounded-lg border border-stone-700 bg-stone-900/70 px-4 py-3 pr-11 text-zinc-100 placeholder:text-zinc-400 focus:ring-2 focus:ring-stone-500/70 focus:outline-none"
-								placeholder="Create a password"
-							/>
-							<button
-								type="button"
-								class="absolute top-1/2 right-2 -translate-y-1/2 rounded p-1 text-zinc-400 hover:text-zinc-100"
-								aria-pressed={showPassword}
-								aria-label={showPassword ? "Hide password" : "Show password"}
-								onclick={() => (showPassword = !showPassword)}
-							>
-								<svg
-									xmlns="http://www.w3.org/2000/svg"
-									class="h-5 w-5"
-									fill="none"
-									viewBox="0 0 24 24"
-									stroke="currentColor"
-									stroke-width="1.5"
-								>
-									<path
-										stroke-linecap="round"
-										stroke-linejoin="round"
-										d="M2.5 12s3.5-7 9.5-7 9.5 7 9.5 7-3.5 7-9.5 7S2.5 12 2.5 12z"
-									/>
-									<circle cx="12" cy="12" r="3" />
-								</svg>
-							</button>
-						</div>
-					</div>
-
-					<div>
-						<Label.Root for="confirmPassword" class="mb-2 block text-sm font-medium text-zinc-300"
-							>Confirm password</Label.Root
-						>
-						<input
-							id="confirmPassword"
-							name="confirmPassword"
+			<p class="signup-line" class:is-hidden={shown < 3} inert={shown < 3}>
+				My password is
+				<span class="signup-secret">
+					<span class="signup-sizer" data-text={sizer(password, "8 or more", true)}
+						><input
+							id="password"
+							name="password"
 							type={showPassword ? "text" : "password"}
+							aria-label="Password, at least 8 characters"
 							autocomplete="new-password"
 							minlength={8}
 							maxlength={128}
 							required
-							bind:value={confirmPassword}
-							class="w-full rounded-lg border border-stone-700 bg-stone-900/70 px-4 py-3 text-zinc-100 placeholder:text-zinc-400 focus:ring-2 focus:ring-stone-500/70 focus:outline-none"
-							placeholder="Re-enter your password"
-							aria-invalid={!passwordsMatch && confirmPassword.length > 0}
-						/>
-						{#if confirmPassword && !passwordsMatch}
-							<p class="mt-2 text-xs text-rose-400">Passwords don't match.</p>
-						{/if}
-					</div>
-
-					{#if errorMessage}
-						<p class="rounded-md border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-sm text-rose-300">
-							{errorMessage}
-						</p>
-					{/if}
-
-					<label class="inline-flex items-center gap-2 text-sm text-zinc-300">
-						<Checkbox.Root
-							bind:checked={acceptTerms}
-							class="flex h-4 w-4 items-center justify-center rounded border border-stone-600 bg-stone-900/70 data-[state=checked]:border-stone-600 data-[state=checked]:bg-stone-600"
-						>
-							{#if acceptTerms}
-								<span class="text-xxs text-white">✓</span>
-							{/if}
-						</Checkbox.Root>
-						<span
-							>I agree to the <button
-								type="button"
-								class="ml-1 text-stone-300 hover:text-stone-200 hover:underline"
-								onclick={() => (showTermsModal = true)}>Terms of use</button
-							></span
-						>
-					</label>
-
-					<Button.Root
-						type="submit"
-						class="flex w-full items-center justify-center rounded-lg bg-linear-to-br from-stone-500 to-stone-700 py-3 font-semibold text-white shadow-lg shadow-stone-900/40 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
-						disabled={!canSubmit || doingRequest}
-						aria-busy={doingRequest}
+							bind:value={password}
+							class="signup-slot focus-override"
+							size={1}
+							placeholder="8 or more"
+							{...onSecret}
+						/></span
 					>
-						{doingRequest ? "Creating account..." : "Create account"}
-					</Button.Root>
-				</fieldset>
-			</form>
+					<button
+						type="button"
+						class="signup-eye"
+						aria-pressed={showPassword}
+						aria-label={showPassword ? "Hide password" : "Show password"}
+						onclick={() => (showPassword = !showPassword)}
+					>
+						<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+							<path
+								stroke-linecap="round"
+								stroke-linejoin="round"
+								d="M2.5 12s3.5-7 9.5-7 9.5 7 9.5 7-3.5 7-9.5 7S2.5 12 2.5 12z"
+							/>
+							<circle cx="12" cy="12" r="3" />
+						</svg>
+					</button>
+				</span>
+			</p>
 
-			<footer class="mt-6 text-center text-sm text-zinc-300">
-				Already have an account?
-				<a href="/sign-in{redirectQuery}" class="ml-1 text-stone-300 hover:text-stone-200 hover:underline"> Sign in </a>
-			</footer>
-		</div>
-	</div>
+			<p class="signup-line" class:is-hidden={shown < 4} inert={shown < 4}>
+				once more, to be sure:
+				<span class="signup-sizer" data-text={sizer(confirmPassword, "the same", true)}
+					><input
+						id="confirmPassword"
+						name="confirmPassword"
+						type={showPassword ? "text" : "password"}
+						aria-label="Confirm password"
+						aria-invalid={!passwordsMatch && confirmPassword.length > 0}
+						autocomplete="new-password"
+						minlength={8}
+						maxlength={128}
+						required
+						bind:value={confirmPassword}
+						class="signup-slot focus-override"
+						size={1}
+						placeholder="the same"
+						{...onSecret}
+					/></span
+				>.
+			</p>
+			{#if confirmPassword && !passwordsMatch}
+				<p class="signup-hint is-error" role="status">Passwords don't match.</p>
+			{/if}
+
+			{#if errorMessage}
+				<p class="signup-error" role="alert">{errorMessage}</p>
+			{/if}
+
+			<div class="signup-actions" class:is-hidden={shown < 4} inert={shown < 4}>
+				<label class="signup-terms">
+					<Checkbox.Root bind:checked={acceptTerms} class="signup-check">
+						{#if acceptTerms}
+							<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"
+								><path d="M3.5 8.5l3 3 6-7" stroke-linecap="round" stroke-linejoin="round" /></svg
+							>
+						{/if}
+					</Checkbox.Root>
+					<span
+						>I agree to the <button type="button" class="auth-link" onclick={() => (showTermsModal = true)}
+							>Terms of use</button
+						></span
+					>
+				</label>
+				<Button.Root
+					type="submit"
+					class="auth-primary signup-submit disabled:cursor-not-allowed disabled:opacity-50"
+					disabled={!canSubmit || doingRequest}
+					aria-busy={doingRequest}
+				>
+					{doingRequest ? "Creating account..." : "Create my account"}
+				</Button.Root>
+			</div>
+
+			<p class="signup-footer">
+				Already have an account? <a href="/sign-in{redirectQuery}" class="auth-link">Sign in</a>
+			</p>
+		</fieldset>
+	</form>
+
+	<MascotPeek {mood} {look} class="signup-mascot" />
 </section>
 
 <Dialog.Root bind:open={showTermsModal}>
@@ -248,13 +278,232 @@
 		<Dialog.Content class="fixed inset-0 z-50 flex items-center justify-center p-4">
 			<div class="w-full max-w-lg rounded-2xl border border-stone-700/70 bg-stone-950/95 p-6 text-white">
 				<Dialog.Title class="mb-3 text-xl font-semibold">Terms of use</Dialog.Title>
-				<Dialog.Description class="text-sm leading-6 text-zinc-300">
+				<Dialog.Description class="text-duvet-ink2 text-sm leading-6">
 					By creating an account, you agree to follow community guidelines and use Duvet respectfully.
 				</Dialog.Description>
 				<div class="mt-6 flex justify-end">
-					<Dialog.Close class="rounded-md bg-stone-600 px-4 py-2 text-white hover:bg-stone-500">Close</Dialog.Close>
+					<Dialog.Close class="bg-fill-600 text-fixed-white hover:bg-fill-500 rounded-md px-4 py-2">Close</Dialog.Close>
 				</div>
 			</div>
 		</Dialog.Content>
 	</Dialog.Portal>
 </Dialog.Root>
+
+<style>
+	.signup {
+		position: relative;
+		overflow-x: clip;
+		background:
+			radial-gradient(45% 50% at 85% 100%, color-mix(in oklab, var(--duvet-accent) 18%, transparent), transparent 70%),
+			var(--duvet-bg);
+		color: var(--duvet-ink);
+	}
+
+	.signup-brand {
+		position: absolute;
+		top: 2rem;
+		left: clamp(1.5rem, 8vw, 7.5rem);
+		font-size: 1.375rem;
+		font-weight: 700;
+		letter-spacing: -0.02em;
+	}
+
+	.signup-brand span {
+		color: var(--duvet-accent);
+	}
+
+	.signup-form {
+		max-width: 76rem;
+		padding: 7rem clamp(1.5rem, 8vw, 7.5rem) 12rem;
+	}
+
+	.signup-lead {
+		margin-bottom: 1.75rem;
+		font-size: 1.25rem;
+		font-weight: 400;
+		color: var(--duvet-ink2);
+	}
+
+	.signup-line {
+		font-size: clamp(1.6rem, 3.4vw, 2.9rem);
+		font-weight: 700;
+		line-height: 1.45;
+		letter-spacing: -0.02em;
+		transition:
+			opacity 260ms ease,
+			transform 260ms ease;
+	}
+
+	.signup-line.is-hidden,
+	.signup-actions.is-hidden {
+		opacity: 0;
+		transform: translateY(8px);
+		pointer-events: none;
+	}
+
+	/* An inline field as wide as its text: the field and an invisible copy of that text share one grid cell. */
+	.signup-sizer {
+		display: inline-grid;
+		max-width: 100%;
+		vertical-align: baseline;
+	}
+
+	.signup-sizer::after {
+		content: attr(data-text);
+		grid-area: 1 / 1;
+		visibility: hidden;
+		white-space: pre;
+		padding: 0 0.2em;
+		font-weight: 500;
+	}
+
+	/* Its underline is its focus ring, so it takes no global one (focus-override). */
+	.signup-slot {
+		grid-area: 1 / 1;
+		width: 100%;
+		min-width: 2ch;
+		border: 0;
+		border-bottom: 3px solid color-mix(in oklab, var(--duvet-ink2) 45%, transparent);
+		border-radius: 0;
+		background: transparent;
+		padding: 0 0.15em;
+		color: var(--duvet-accent-text);
+		font: inherit;
+		font-weight: 500;
+		letter-spacing: inherit;
+		transition: border-color 140ms ease;
+	}
+
+	.signup-slot::placeholder {
+		color: color-mix(in oklab, var(--duvet-ink2) 55%, transparent);
+	}
+
+	.signup-slot:focus,
+	.signup-slot:focus-visible {
+		outline: none;
+		border-bottom-color: var(--duvet-accent);
+	}
+
+	.signup-slot[aria-invalid="true"] {
+		border-bottom-color: var(--duvet-danger);
+	}
+
+	.signup-secret {
+		display: inline-flex;
+		align-items: baseline;
+		gap: 0.25em;
+	}
+
+	.signup-eye {
+		align-self: center;
+		width: 0.8em;
+		height: 0.8em;
+		border-radius: 8px;
+		color: var(--duvet-ink2);
+	}
+
+	.signup-eye:hover {
+		color: var(--duvet-ink);
+	}
+
+	.signup-eye:focus-visible {
+		outline: 2px solid var(--duvet-accent-text);
+		outline-offset: 4px;
+	}
+
+	.signup-hint {
+		margin: 0.25rem 0 0.75rem;
+		font-size: 0.95rem;
+		color: var(--duvet-ink2);
+	}
+
+	.signup-hint.is-error {
+		color: var(--duvet-danger);
+	}
+
+	.signup-error {
+		margin-top: 1.25rem;
+		max-width: 40rem;
+		border-radius: 12px;
+		background: color-mix(in oklab, var(--duvet-danger) 12%, transparent);
+		padding: 0.6rem 0.9rem;
+		color: var(--duvet-danger);
+	}
+
+	.signup-actions {
+		transition: opacity 260ms ease;
+		margin-top: 2.25rem;
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 1.25rem 2rem;
+	}
+
+	.signup-terms {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.6rem;
+		font-size: 1rem;
+		color: var(--duvet-ink2);
+	}
+
+	:global(.signup-check) {
+		display: flex;
+		width: 1.25rem;
+		height: 1.25rem;
+		align-items: center;
+		justify-content: center;
+		border-radius: 6px;
+		background: var(--duvet-sunk);
+		box-shadow: var(--duvet-shadow-press);
+		color: var(--duvet-on-accent);
+	}
+
+	:global(.signup-check[data-state="checked"]) {
+		background: var(--duvet-accent);
+		box-shadow: none;
+	}
+
+	:global(.signup-check svg) {
+		width: 0.9rem;
+		height: 0.9rem;
+	}
+
+	:global(.signup-check:focus-visible) {
+		outline: 2px solid var(--duvet-accent-text);
+		outline-offset: 2px;
+	}
+
+	:global(.signup-submit) {
+		width: auto !important;
+		padding-inline: 1.75rem !important;
+		font-size: 1.05rem;
+	}
+
+	.signup-footer {
+		margin-top: 1.5rem;
+		font-size: 1rem;
+		color: var(--duvet-ink2);
+	}
+
+	:global(.signup-mascot) {
+		position: absolute;
+		right: clamp(1rem, 10vw, 9rem);
+		bottom: -3.25rem;
+		width: clamp(150px, 18vw, 240px);
+		pointer-events: none;
+	}
+
+	@media (max-width: 720px) {
+		:global(.signup-mascot) {
+			width: 120px;
+			bottom: -2.5rem;
+		}
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.signup-line {
+			transition: none;
+		}
+	}
+</style>
