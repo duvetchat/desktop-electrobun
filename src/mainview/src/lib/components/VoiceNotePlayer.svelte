@@ -29,6 +29,7 @@
 	let bars = $state<number[]>([]);
 	let localDuration = $state(0);
 	let wavSrc = $state<string | null>(null);
+	let analysis: Promise<void> | undefined;
 	const BAR_COUNT = 50;
 
 	const isActive = $derived($voiceNote?.attachmentId === attachmentId && attachmentId !== "");
@@ -67,12 +68,15 @@
 		}
 	}
 
-	function togglePlay() {
+	async function togglePlay() {
 		if (isActive) {
 			toggleVoiceNote();
-		} else {
-			playVoiceNote(wavSrc || src, attachmentId, authorName, channelName);
+			return;
 		}
+		// The WAV the analysis makes is what plays: an Android voice note doesn't play as it is in Firefox, and its
+		// failed player would stay the note's until another note plays.
+		await analysis;
+		playVoiceNote(wavSrc || src, attachmentId, authorName, channelName);
 	}
 
 	function handleSeek(e: MouseEvent) {
@@ -96,7 +100,7 @@
 			return;
 		}
 		bars = fallbackBars(src, BAR_COUNT);
-		loadAndAnalyze(src);
+		analysis = loadAndAnalyze(src);
 	});
 </script>
 
