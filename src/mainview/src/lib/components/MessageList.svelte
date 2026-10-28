@@ -725,8 +725,8 @@
 		return `background: linear-gradient(90deg, ${from}${via}, ${to}); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;`;
 	}
 
-	function buildAuthorColorMap(members: MemberOnSidebar[]) {
-		return members.reduce<Record<string, string>>((map, member) => {
+	function buildAuthorColorMap(sidebarMembers: MemberOnSidebar[]) {
+		return sidebarMembers.reduce<Record<string, string>>((map, member) => {
 			map[member.id] = getMemberColorStyle(member);
 			return map;
 		}, {});

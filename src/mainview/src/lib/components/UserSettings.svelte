@@ -816,10 +816,10 @@
 		}
 	}
 
-	async function handleRemoveMember(userId: string, username: string) {
+	async function handleRemoveMember(userId: string, memberName: string) {
 		if (!devSelectedTeam) return;
 		const teamId = devSelectedTeam.id;
-		await confirmAction(`Remove "${username}" from team?`, "Remove", async () => {
+		await confirmAction(`Remove "${memberName}" from team?`, "Remove", async () => {
 			await removeTeamMember(teamId, userId);
 			devMembers = devMembers.filter((m) => m.user_id !== userId);
 		});

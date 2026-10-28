@@ -409,11 +409,11 @@ function render(
 
 	// ── 5. Join with <br> except around block elements ─────────────────────────
 	let result = "";
-	for (let i = 0; i < out.length; i++) {
-		result += out[i];
-		if (i < out.length - 1) {
-			const currIsBlock = isBlockHtml(out[i]) || /^\x00B\d+\x01$/.test(out[i].trim());
-			const nextIsBlock = isBlockHtml(out[i + 1]) || /^\x00B\d+\x01$/.test(out[i + 1].trim());
+	for (let j = 0; j < out.length; j++) {
+		result += out[j];
+		if (j < out.length - 1) {
+			const currIsBlock = isBlockHtml(out[j]) || /^\x00B\d+\x01$/.test(out[j].trim());
+			const nextIsBlock = isBlockHtml(out[j + 1]) || /^\x00B\d+\x01$/.test(out[j + 1].trim());
 			if (!currIsBlock && !nextIsBlock) {
 				result += "<br>";
 			}
@@ -423,8 +423,8 @@ function render(
 	// ── 6. Restore placeholders ────────────────────────────────────────────────
 	// Links first: their text can hold a code's placeholder.
 	result = result.replace(/\x00L(\d+)\x01/g, (_, n) => links[+n]);
-	result = result.replace(/\x00B(\d+)\x01/g, (_, i) => codeBlocks[+i]);
-	result = result.replace(/\x00I(\d+)\x01/g, (_, i) => inlineCodes[+i]);
+	result = result.replace(/\x00B(\d+)\x01/g, (_, n) => codeBlocks[+n]);
+	result = result.replace(/\x00I(\d+)\x01/g, (_, n) => inlineCodes[+n]);
 
 	return result;
 }

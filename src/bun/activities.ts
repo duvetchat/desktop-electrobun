@@ -20,9 +20,9 @@ export interface ActivityPayload {
 }
 
 /** A text cut to the gateway's 128 characters (code points, as it counts them), ending in an ellipsis when cut. */
-export function clip(text: string): string {
-	const chars = [...text];
-	return chars.length <= MAX_TEXT ? text : `${chars.slice(0, MAX_TEXT - 1).join("")}…`;
+export function clip(value: string): string {
+	const chars = [...value];
+	return chars.length <= MAX_TEXT ? value : `${chars.slice(0, MAX_TEXT - 1).join("")}…`;
 }
 
 /** An IPC app's activity as the gateway takes it, or null when it has no name. Texts are clipped, an image too big

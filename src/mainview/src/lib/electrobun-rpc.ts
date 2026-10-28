@@ -81,7 +81,8 @@ async function createRpcClient(): Promise<AppRPCClient | null> {
 		},
 	});
 
-	new Electroview({ rpc });
+	// The view wires rpc to the Bun process; nothing else needs it.
+	void new Electroview({ rpc });
 
 	const client: AppRPCClient = {
 		send: rpc.send,

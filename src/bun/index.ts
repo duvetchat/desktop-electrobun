@@ -211,10 +211,12 @@ try {
 				for (const line of lines) {
 					if (!line.trim()) continue;
 					try {
-						const msg = JSON.parse(line) as { type: string; data: unknown };
+						// An app can send anything: a message without a type is dropped, and an activity is fitted to the
+						// gateway's limits, or dropped.
+						const msg: unknown = JSON.parse(line);
+						if (typeof msg !== "object" || msg === null || !("type" in msg)) continue;
 						if (msg.type === "SET_ACTIVITY") {
-							// An app can send anything: what it sends is fitted to the gateway's limits, or dropped.
-							const activity = fitActivity(msg.data);
+							const activity = fitActivity("data" in msg ? msg.data : undefined);
 							if (activity) clientActivities.set(socket, activity);
 							else clientActivities.delete(socket);
 							broadcastAggregatedActivities();

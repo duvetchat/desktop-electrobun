@@ -268,7 +268,7 @@
 	}
 
 	function resolveMentionName(id: string): string {
-		const m = members.find((m) => m.id === id);
+		const m = members.find((member) => member.id === id);
 		return m ? m.username || m.raw_username : id.slice(0, 8);
 	}
 

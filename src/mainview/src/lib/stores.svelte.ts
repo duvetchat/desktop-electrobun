@@ -52,24 +52,23 @@ const SESSION_KEY = "duvet_session_token";
 
 type SafeStorage = Pick<Storage, "getItem" | "setItem" | "removeItem">;
 
+function isSafeStorage(candidate: unknown): candidate is SafeStorage {
+	return (
+		typeof candidate === "object" &&
+		candidate !== null &&
+		"getItem" in candidate &&
+		typeof candidate.getItem === "function" &&
+		"setItem" in candidate &&
+		typeof candidate.setItem === "function" &&
+		"removeItem" in candidate &&
+		typeof candidate.removeItem === "function"
+	);
+}
+
 function getSafeStorage(): SafeStorage | null {
 	const candidate =
-		typeof globalThis !== "undefined" ? ((globalThis as { localStorage?: unknown }).localStorage ?? null) : null;
-
-	if (!candidate || typeof candidate !== "object") {
-		return null;
-	}
-
-	const maybeStorage = candidate as Partial<Storage>;
-	if (
-		typeof maybeStorage.getItem !== "function" ||
-		typeof maybeStorage.setItem !== "function" ||
-		typeof maybeStorage.removeItem !== "function"
-	) {
-		return null;
-	}
-
-	return maybeStorage as SafeStorage;
+		typeof globalThis !== "undefined" ? (globalThis as { localStorage?: unknown }).localStorage : undefined;
+	return isSafeStorage(candidate) ? candidate : null;
 }
 
 function createUserSession() {
@@ -221,7 +220,7 @@ export const jumpToMessageRequest = writable<{
  * act on it too.
  */
 export function openRoomMention(e: MouseEvent) {
-	const mention = (e.target as Element | null)?.closest?.(".msg-room-mention[data-room-id]");
+	const mention = e.target instanceof Element ? e.target.closest(".msg-room-mention[data-room-id]") : null;
 	if (!(mention instanceof HTMLElement)) return;
 	e.preventDefault();
 	e.stopPropagation();

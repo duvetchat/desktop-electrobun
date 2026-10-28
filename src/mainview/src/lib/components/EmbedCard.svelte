@@ -57,8 +57,8 @@
 		return "#" + (n >>> 0).toString(16).padStart(6, "0");
 	}
 
-	function embedBorderStyle(embed: Embed): string {
-		const c = embed.color;
+	function embedBorderStyle(cardEmbed: Embed): string {
+		const c = cardEmbed.color;
 		if (!c || c.color_from == null) return "border-color: var(--color-zinc-700)";
 		const from = intToHex(c.color_from);
 		if (c.color_to == null) return `border-color: ${from}`;
@@ -70,8 +70,8 @@
 		return `border-image: linear-gradient(180deg, ${from}, ${to}) 1`;
 	}
 
-	function isTikTokEmbed(embed: Embed): boolean {
-		return embed.provider === "TikTok" && !!embed.video?.url;
+	function isTikTokEmbed(cardEmbed: Embed): boolean {
+		return cardEmbed.provider === "TikTok" && !!cardEmbed.video?.url;
 	}
 
 	// A video plays as a file when its page says it is one (its content_type), or, for embeds without
