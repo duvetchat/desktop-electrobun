@@ -466,6 +466,24 @@ export interface GatewayRoom {
 	deleted_at?: string | null;
 }
 
+/** ROOM_CREATE: a room the connection gets now that it wasn't sent, a new one or one the user can view since a change,
+ * or the category that holds one. */
+export interface RoomCreateEvent extends GatewayRoom {
+	/** For a room the user can view, their read state in it, as READY gives it for the rooms READY sends. Left out of a
+	 * category the user gets only as a container, of a bot's, and when the gateway couldn't read it. */
+	read_state?: RoomReadState;
+}
+
+/** A user's read state in a room, as READY's unread_rooms, last_read_rooms and last_msg_rooms have it. */
+export interface RoomReadState {
+	/** The room has a message the user hasn't read: unread_rooms lists it. */
+	unread: boolean;
+	/** The last message they read in the room, as last_read_rooms has it: null when they never read it. */
+	last_read: string | null;
+	/** The room's newest message, as last_msg_rooms has it: null when it has none. */
+	last_msg: string | null;
+}
+
 export interface GatewayMember {
 	id: string;
 	space_id: string;
@@ -940,7 +958,7 @@ export type GatewayEventPayload =
 	| { type: "SPACE_CREATE"; data: GatewaySpaceCreatePayload }
 	| { type: "SPACE_DELETE"; data: SpaceDeleteEvent }
 	| { type: "SPACE_UPDATE"; data: SpaceUpdateEvent }
-	| { type: "ROOM_CREATE"; data: GatewayRoom }
+	| { type: "ROOM_CREATE"; data: RoomCreateEvent }
 	| { type: "ROOM_UPDATE"; data: GatewayRoom }
 	| { type: "ROOM_REORDER"; data: RoomReorderEvent }
 	| { type: "ROOM_DELETE"; data: RoomDeleteEvent }
@@ -1076,6 +1094,26 @@ export function spaceWithoutRoom<S extends Pick<GatewaySpace, "rooms" | "room_ov
 		room_overwrites: space.room_overwrites.filter((o) => o.room_id !== roomId),
 		voice_states: space.voice_states?.filter((v) => v.room_id !== roomId),
 	};
+}
+
+/** READY's read states of the rooms (unread_rooms, last_read_rooms, last_msg_rooms) with a room's from its ROOM_CREATE in
+ * place of what they had of it: a room the user can view since READY comes with its unread mark, which READY couldn't
+ * give. */
+export function withRoomReadState(
+	rooms: { unread: Set<string>; lastRead: Record<string, string>; lastMsg: Record<string, string> },
+	roomId: string,
+	state: RoomReadState,
+) {
+	const unread = new Set(rooms.unread);
+	const lastRead = { ...rooms.lastRead };
+	const lastMsg = { ...rooms.lastMsg };
+	if (state.unread) unread.add(roomId);
+	else unread.delete(roomId);
+	if (state.last_read) lastRead[roomId] = state.last_read;
+	else delete lastRead[roomId];
+	if (state.last_msg) lastMsg[roomId] = state.last_msg;
+	else delete lastMsg[roomId];
+	return { unread, lastRead, lastMsg };
 }
 
 /** Where a room or category dropped below everything goes: after the highest place at the top level. Its rooms and

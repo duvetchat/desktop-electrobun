@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
 	categoryDropPosition,
 	spaceWithoutRoom,
+	withRoomReadState,
 	topLevelEnd,
 	withoutRoom,
 	type Channel,
@@ -85,6 +86,42 @@ describe("spaceWithoutRoom", () => {
 			rooms: [room("general", 1)],
 			room_overwrites: [overwrite("general", "everyone")],
 			voice_states: [voice("stage", "cy")],
+		});
+	});
+});
+
+describe("withRoomReadState", () => {
+	const ready = () => ({
+		unread: new Set(["general"]),
+		lastRead: { general: "m1", secret: "m0" },
+		lastMsg: { general: "m2", secret: "m0" },
+	});
+
+	test("a room viewable since READY with messages its user hasn't read is unread, at their read position", () => {
+		const read = ready();
+		expect(withRoomReadState(read, "secret", { unread: true, last_read: "m3", last_msg: "m5" })).toEqual({
+			unread: new Set(["general", "secret"]),
+			lastRead: { general: "m1", secret: "m3" },
+			lastMsg: { general: "m2", secret: "m5" },
+		});
+		expect(read).toEqual(ready());
+	});
+
+	test("one read up to its newest message, never read, or without messages takes the room's place as it is", () => {
+		expect(withRoomReadState(ready(), "general", { unread: false, last_read: "m2", last_msg: "m2" })).toEqual({
+			unread: new Set(),
+			lastRead: { general: "m2", secret: "m0" },
+			lastMsg: { general: "m2", secret: "m0" },
+		});
+		expect(withRoomReadState(ready(), "secret", { unread: true, last_read: null, last_msg: "m5" })).toEqual({
+			unread: new Set(["general", "secret"]),
+			lastRead: { general: "m1" },
+			lastMsg: { general: "m2", secret: "m5" },
+		});
+		expect(withRoomReadState(ready(), "secret", { unread: false, last_read: null, last_msg: null })).toEqual({
+			unread: new Set(["general"]),
+			lastRead: { general: "m1" },
+			lastMsg: { general: "m2" },
 		});
 	});
 });
