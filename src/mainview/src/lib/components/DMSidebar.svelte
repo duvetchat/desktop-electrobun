@@ -9,15 +9,20 @@
 	import StatusDot from "$lib/components/StatusDot.svelte";
 	import { getUserOnlineStatus } from "$lib/api/ws/connection";
 	import { userStatusToString, type MemberOnSidebar } from "$lib/types";
+	import { conversationTab, tabDragData } from "$lib/pane";
 
 	let {
 		activeConversationId = null,
 		onSelect,
 		onNewGroup,
+		embedded = false,
 	}: {
 		activeConversationId?: string | null;
 		onSelect: (id: string) => void;
 		onNewGroup?: () => void;
+		/** Drawn as a tree under the Direct messages row of the spaces column, which has the user's bar: only the
+		 * conversations show, without a column of their own. */
+		embedded?: boolean;
 	} = $props();
 
 	function convTitle(conv: Conversation): string {
@@ -48,48 +53,85 @@
 	}
 </script>
 
-<div
-	class="flex h-full w-60 shrink-0 flex-col overflow-hidden border-r border-stone-800 bg-[linear-gradient(180deg,oklch(0.215_0.01_80),oklch(0.185_0.008_80))] text-stone-100/90"
->
-	<div class="flex h-10 shrink-0 items-center justify-between border-b border-stone-800 px-3">
-		<span class="text-xs font-semibold tracking-wide text-zinc-400 uppercase">Direct Messages</span>
+{#snippet conversationList()}
+	{#each $conversations as conv (conv.id)}
+		{@const status = convStatus(conv)}
+		{@const unread = $unreadConversations.has(conv.id)}
+		<button
+			class="focus-visible:outline-duvet-accent flex w-full items-center gap-2.5 rounded-[10px] px-2 py-1.5 text-left transition-colors focus-visible:outline-2
+				{activeConversationId === conv.id
+				? 'bg-duvet-accent-tint text-duvet-accent-text'
+				: unread
+					? 'text-duvet-ink hover:bg-duvet-card'
+					: 'text-duvet-ink2 hover:bg-duvet-card hover:text-duvet-ink'}"
+			aria-current={activeConversationId === conv.id ? "true" : undefined}
+			onclick={() => onSelect(conv.id)}
+			draggable="true"
+			ondragstart={(e) => {
+				// Dragged onto a pane, it opens there as a tab, or splits it, as a room does.
+				e.dataTransfer!.effectAllowed = "copyMove";
+				e.dataTransfer!.setData("text/plain", tabDragData(conversationTab(conv, get(currentUser)?.id)));
+			}}
+		>
+			<div class="relative shrink-0">
+				<UserAvatar src={convAvatarSrc(conv)} name={convTitle(conv)} size={embedded ? 26 : 32} />
+				{#if status}
+					<StatusDot {status} class="border-duvet-sunk absolute -right-0.5 -bottom-0.5 size-3 border-2" />
+				{/if}
+			</div>
+			<div class="flex min-w-0 flex-1 flex-col">
+				<span class="truncate text-sm leading-tight {unread ? 'font-bold' : 'font-medium'}">{convTitle(conv)}</span>
+				<span class="text-duvet-ink2 truncate text-xs">{convSubtitle(conv)}</span>
+			</div>
+			{#if unread}
+				<span class="bg-duvet-accent ml-1 size-2 shrink-0 rounded-full" aria-label="Unread"></span>
+			{/if}
+		</button>
+	{/each}
+{/snippet}
+
+{#if embedded}
+	<div
+		class="border-duvet-line mb-1 ml-[19px] flex flex-col gap-px border-l-2 py-0.5 pl-2.5"
+		role="group"
+		aria-label="Conversations"
+	>
 		{#if onNewGroup}
 			<button
-				class="flex items-center gap-1 rounded px-1.5 py-1 text-xs text-zinc-500 transition-colors hover:bg-stone-800 hover:text-zinc-200"
+				class="text-duvet-ink2 hover:bg-duvet-card hover:text-duvet-ink focus-visible:outline-duvet-accent flex h-8 w-full items-center gap-1.5 rounded-[10px] px-2 text-left text-sm transition-colors focus-visible:outline-2"
 				onclick={onNewGroup}
-				title="New group"
 			>
-				<UsersRound class="size-3.5" />
+				<UsersRound class="size-4" />
+				New group
 			</button>
 		{/if}
+		{@render conversationList()}
+		{#if $conversations.length === 0}
+			<p class="text-duvet-ink2 px-2 py-1.5 text-[13px]">No conversations yet</p>
+		{/if}
 	</div>
+{:else}
+	<div
+		class="border-duvet-line bg-duvet-sunk text-duvet-ink flex h-full w-60 shrink-0 flex-col overflow-hidden border-r"
+	>
+		<div class="border-duvet-line flex h-10 shrink-0 items-center justify-between border-b px-3">
+			<span class="text-duvet-ink2 text-[13px] font-bold">Direct messages</span>
+			{#if onNewGroup}
+				<button
+					class="text-duvet-ink2 hover:bg-duvet-card hover:text-duvet-ink flex items-center gap-1 rounded px-1.5 py-1 text-xs transition-colors"
+					onclick={onNewGroup}
+					title="New group"
+					aria-label="New group"
+				>
+					<UsersRound class="size-3.5" />
+				</button>
+			{/if}
+		</div>
 
-	<div class="flex-1 overflow-y-auto py-1">
-		{#each $conversations as conv (conv.id)}
-			{@const status = convStatus(conv)}
-			<button
-				class="mx-1 flex w-[calc(100%-0.5rem)] items-center gap-2.5 rounded-md px-2 py-1.5 text-left transition-colors
-					{activeConversationId === conv.id
-					? 'bg-stone-700/60 text-stone-100'
-					: 'text-stone-400 hover:bg-stone-800/60 hover:text-stone-200'}"
-				onclick={() => onSelect(conv.id)}
-			>
-				<div class="relative shrink-0">
-					<UserAvatar src={convAvatarSrc(conv)} name={convTitle(conv)} size={32} />
-					{#if status}
-						<StatusDot {status} class="absolute -right-0.5 -bottom-0.5 size-3 border-2 border-stone-900" />
-					{/if}
-				</div>
-				<div class="flex min-w-0 flex-1 flex-col">
-					<span class="truncate text-sm leading-tight font-medium">{convTitle(conv)}</span>
-					<span class="truncate text-xs opacity-50">{convSubtitle(conv)}</span>
-				</div>
-				{#if $unreadConversations.has(conv.id)}
-					<span class="ml-1 size-2 shrink-0 rounded-full bg-white"></span>
-				{/if}
-			</button>
-		{/each}
+		<div class="flex flex-1 flex-col gap-px overflow-y-auto p-1">
+			{@render conversationList()}
+		</div>
+
+		<UserStatusBar />
 	</div>
-
-	<UserStatusBar />
-</div>
+{/if}

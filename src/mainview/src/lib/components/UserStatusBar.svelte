@@ -183,7 +183,7 @@
 <!-- Voice status pill -->
 {#if !collapsed && $activeVoiceRoomId && (activeVoiceRoom || isInConversationCall)}
 	<div
-		class="shrink-0 border-t border-zinc-800"
+		class="border-duvet-line shrink-0 border-b"
 		in:fly={{ y: 20, duration: 200, opacity: 1 }}
 		out:fly={{ y: 20, duration: 200, opacity: 1 }}
 	>
@@ -235,7 +235,7 @@
 {/if}
 
 {#if collapsed && $currentUser}
-	<div class="flex shrink-0 flex-col items-center gap-1 border-t border-zinc-800 bg-zinc-900 px-1 py-2">
+	<div class="border-duvet-line bg-duvet-sunk flex shrink-0 flex-col items-center gap-1 border-t px-1 py-2">
 		{#if $activeVoiceRoomId}
 			<div
 				class="size-8 rounded-lg {isInConversationCall
@@ -280,7 +280,7 @@
 					? 'ring-[3px] ring-stone-500'
 					: ''}"
 			/>
-			<StatusDot status={myStatus} class="absolute -right-0.5 -bottom-0.5 size-3 border-2 border-zinc-900" />
+			<StatusDot status={myStatus} class="border-duvet-sunk absolute -right-0.5 -bottom-0.5 size-3 border-2" />
 		</StatusMenu>
 		<button
 			class="flex size-8 items-center justify-center rounded-lg transition-colors hover:bg-zinc-800 {$isMuted
@@ -326,7 +326,7 @@
 
 <!-- Current user profile bar -->
 {#if !collapsed && $currentUser}
-	<div class="z-100 flex h-16 shrink-0 items-center gap-1 border-t border-zinc-800 bg-zinc-900 px-2">
+	<div class="bg-duvet-card z-100 flex h-14 shrink-0 items-center gap-1 px-1.5">
 		<StatusMenu
 			class="group flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-full p-1 text-left transition-colors hover:bg-zinc-800"
 		>
@@ -339,10 +339,10 @@
 						? 'ring-4 ring-stone-500'
 						: ''}"
 				/>
-				<StatusDot status={myStatus} class="absolute -right-0.5 -bottom-0.5 size-3 border-2 border-zinc-900" />
+				<StatusDot status={myStatus} class="border-duvet-card absolute -right-0.5 -bottom-0.5 size-3 border-2" />
 			</div>
 			<div class="flex flex-col truncate">
-				<span class="truncate text-sm font-semibold text-zinc-200">{$currentUser.alias || $currentUser.username}</span>
+				<span class="text-duvet-ink truncate text-sm font-semibold">{$currentUser.alias || $currentUser.username}</span>
 				<span class="text-xxs truncate text-zinc-400">{myStatusLabel}</span>
 			</div>
 		</StatusMenu>

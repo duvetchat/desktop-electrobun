@@ -45,28 +45,24 @@
 </script>
 
 {#if active.length > 0}
-	<div class="flex min-h-5 items-center gap-1.5 px-3 pt-0.5 pb-1 text-xs text-[oklch(0.65_0.01_80)]">
+	<div class="text-night-65 flex min-h-5 items-center gap-1.5 px-3 pt-0.5 pb-1 text-xs">
 		<div class="flex items-center">
 			{#each active.slice(0, 3) as user, i (user.user_id)}
-				<div class="rounded-full border-[1.5px] border-[oklch(0.19_0.008_80)] {i === 0 ? '' : '-ml-1'}">
+				<div class="border-night-19 rounded-full border-[1.5px] {i === 0 ? '' : '-ml-1'}">
 					<UserAvatar src={getAvatarURL(user.user_id, user.avatar)} name={displayName(user)} size={18} />
 				</div>
 			{/each}
 		</div>
 		{#if typers.length > 0}
-			<span class="text-xs text-[oklch(0.65_0.01_80)] [&_strong]:font-semibold [&_strong]:text-[oklch(0.85_0.008_80)]"
-				>{typingText()}</span
-			>
+			<span class="text-night-65 [&_strong]:text-night-85 text-xs [&_strong]:font-semibold">{typingText()}</span>
 			<div class="ml-0.5 flex items-center gap-0.75" aria-hidden="true">
-				<span class="animate-typing-bounce block size-1 rounded-full bg-[oklch(0.55_0.01_80)]"></span>
-				<span class="animate-typing-bounce block size-1 rounded-full bg-[oklch(0.55_0.01_80)] [animation-delay:0.2s]"
-				></span>
-				<span class="animate-typing-bounce block size-1 rounded-full bg-[oklch(0.55_0.01_80)] [animation-delay:0.4s]"
-				></span>
+				<span class="animate-typing-bounce bg-night-55 block size-1 rounded-full"></span>
+				<span class="animate-typing-bounce bg-night-55 block size-1 rounded-full [animation-delay:0.2s]"></span>
+				<span class="animate-typing-bounce bg-night-55 block size-1 rounded-full [animation-delay:0.4s]"></span>
 			</div>
 		{/if}
 		{#if recorders.length > 0}
-			<span class="text-xs text-[oklch(0.65_0.01_80)] {typers.length > 0 ? 'ml-1.5' : ''}">{recordingText()}</span>
+			<span class="text-night-65 text-xs {typers.length > 0 ? 'ml-1.5' : ''}">{recordingText()}</span>
 			<MicIcon class="size-3 animate-pulse text-red-400" aria-hidden="true" />
 		{/if}
 	</div>

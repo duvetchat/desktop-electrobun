@@ -26,10 +26,18 @@
 	let {
 		activeConversationId = $bindable<string | null>(null),
 		showGroupModal = $bindable(false),
+		onOpenConversation,
 	}: {
 		activeConversationId?: string | null;
 		showGroupModal?: boolean;
+		/** Opens a conversation somewhere else (a tab in a pane); without it, it opens here. */
+		onOpenConversation?: (conversationId: string) => void;
 	} = $props();
+
+	function openConversation(id: string) {
+		if (onOpenConversation) onOpenConversation(id);
+		else activeConversationId = id;
+	}
 
 	type Tab = "friends" | "pending" | "sent" | "add";
 	let activeTab = $state<Tab>("friends");
@@ -178,7 +186,7 @@
 				if (list.some((c) => c.id === conv.id)) return list;
 				return [conv, ...list];
 			});
-			activeConversationId = conv.id;
+			openConversation(conv.id);
 		} catch (err) {
 			console.error("[DM] Failed to open DM:", err);
 		}
@@ -201,7 +209,7 @@
 				return [conv, ...list];
 			});
 			closeGroupModal();
-			activeConversationId = conv.id;
+			openConversation(conv.id);
 		} catch (err) {
 			groupError = getApiError(err, "Failed to create group");
 		}
@@ -251,7 +259,7 @@
 			{/key}
 		</div>
 	{:else}
-		<div class="border-b border-[#3f4147] px-5 pt-4">
+		<div class="border-b border-[var(--friends-line,#3f4147)] px-5 pt-4">
 			<div class="mb-3 flex items-center justify-between">
 				<h2 class="m-0 mb-3 text-base font-semibold">Friends</h2>
 			</div>
@@ -281,7 +289,7 @@
 					<Clock size={14} />
 					Pending
 					{#if $pendingFriendRequests.length > 0}
-						<span class="rounded-10px bg-[#da3633] px-1.5 py-px text-[11px] font-semibold text-white"
+						<span class="rounded-10px text-fixed-white bg-[#da3633] px-1.5 py-px text-[11px] font-semibold"
 							>{$pendingFriendRequests.length}</span
 						>
 					{/if}
@@ -299,7 +307,7 @@
 				<button
 					class="flex cursor-pointer items-center gap-1.5 rounded-t border-b-2 border-transparent bg-none px-3 py-1.5 text-[13px] transition-colors duration-150 {activeTab ===
 					'add'
-						? 'border-b-[#23a55a] bg-(--bg-secondary,#2b2d31) text-[#23a55a]'
+						? 'border-b-[#23a55a] bg-(--bg-secondary,#2b2d31) text-[var(--friends-green-ink,#23a55a)]'
 						: 'text-(--text-secondary,#949ba4) hover:bg-(--bg-hover,#35373c) hover:text-(--text-primary,#dbdee1)'}"
 					onclick={() => (activeTab = "add")}
 				>
@@ -350,7 +358,7 @@
 										<MessageSquare size={14} />
 									</button>
 									<button
-										class="flex size-7 cursor-pointer items-center justify-center rounded-full border-none bg-(--bg-tertiary,#35373c) text-[#da3633] transition-colors duration-100 hover:bg-[#da3633] hover:text-white"
+										class="hover:text-fixed-white flex size-7 cursor-pointer items-center justify-center rounded-full border-none bg-(--bg-tertiary,#35373c) text-[#da3633] transition-colors duration-100 hover:bg-[#da3633]"
 										title="Remove friend"
 										onclick={() => handleUnfriend(friend)}
 									>
@@ -388,14 +396,14 @@
 								</div>
 								<div class="flex gap-1.5">
 									<button
-										class="flex size-7 cursor-pointer items-center justify-center rounded-full border-none bg-(--bg-tertiary,#35373c) text-[#23a55a] transition-colors duration-100 hover:bg-[#23a55a] hover:text-white"
+										class="hover:text-fixed-white flex size-7 cursor-pointer items-center justify-center rounded-full border-none bg-(--bg-tertiary,#35373c) text-[var(--friends-green-ink,#23a55a)] transition-colors duration-100 hover:bg-[#23a55a]"
 										title="Accept"
 										onclick={() => handleAccept(req)}
 									>
 										<UserCheck size={14} />
 									</button>
 									<button
-										class="flex size-7 cursor-pointer items-center justify-center rounded-full border-none bg-(--bg-tertiary,#35373c) text-[#da3633] transition-colors duration-100 hover:bg-[#da3633] hover:text-white"
+										class="hover:text-fixed-white flex size-7 cursor-pointer items-center justify-center rounded-full border-none bg-(--bg-tertiary,#35373c) text-[#da3633] transition-colors duration-100 hover:bg-[#da3633]"
 										title="Decline"
 										onclick={() => handleReject(req)}
 									>
@@ -433,7 +441,7 @@
 								</div>
 								<div class="flex gap-1.5">
 									<button
-										class="flex size-7 cursor-pointer items-center justify-center rounded-full border-none bg-(--bg-tertiary,#35373c) text-[#da3633] transition-colors duration-100 hover:bg-[#da3633] hover:text-white"
+										class="hover:text-fixed-white flex size-7 cursor-pointer items-center justify-center rounded-full border-none bg-(--bg-tertiary,#35373c) text-[#da3633] transition-colors duration-100 hover:bg-[#da3633]"
 										title="Cancel request"
 										onclick={() => handleCancelSent(req)}
 									>
@@ -449,14 +457,14 @@
 					<p class="m-0 mb-4 text-[13px] text-(--text-secondary,#949ba4)">Send a friend request using a user ID.</p>
 					<div class="flex gap-2">
 						<input
-							class="flex-1 rounded border border-[#3f4147] bg-(--bg-tertiary,#1e1f22) px-3 py-2 text-sm text-(--text-primary,#dbdee1) outline-none focus:border-[#5865f2]"
+							class="flex-1 rounded border border-[var(--friends-line,#3f4147)] bg-(--bg-tertiary,#1e1f22) px-3 py-2 text-sm text-(--text-primary,#dbdee1) outline-none focus:border-[#5865f2]"
 							type="text"
 							placeholder="User ID"
 							bind:value={addUserId}
 							onkeydown={(e) => e.key === "Enter" && handleSendRequest()}
 						/>
 						<button
-							class="flex cursor-pointer items-center gap-1.5 rounded border-none bg-[#5865f2] px-4 py-2 text-[13px] font-medium whitespace-nowrap text-white hover:bg-[#4752c4] disabled:cursor-not-allowed disabled:opacity-60"
+							class="text-fixed-white flex cursor-pointer items-center gap-1.5 rounded border-none bg-[#5865f2] px-4 py-2 text-[13px] font-medium whitespace-nowrap hover:bg-[#4752c4] disabled:cursor-not-allowed disabled:opacity-60"
 							onclick={handleSendRequest}
 							disabled={loading}
 						>
@@ -472,7 +480,11 @@
 						<p class="mt-2.5 rounded bg-[rgba(218,54,51,0.15)] px-3 py-2 text-[13px] text-[#da3633]">{addError}</p>
 					{/if}
 					{#if addSuccess}
-						<p class="mt-2.5 rounded bg-[rgba(35,165,90,0.15)] px-3 py-2 text-[13px] text-[#23a55a]">{addSuccess}</p>
+						<p
+							class="mt-2.5 rounded bg-[rgba(35,165,90,0.15)] px-3 py-2 text-[13px] text-[var(--friends-green-ink,#23a55a)]"
+						>
+							{addSuccess}
+						</p>
 					{/if}
 				</div>
 			{/if}
@@ -490,7 +502,7 @@
 	>
 		<!-- svelte-ignore a11y_interactive_supports_focus -->
 		<div
-			class="flex w-100 max-w-[90vw] flex-col gap-3 rounded-lg border border-[#3f4147] bg-(--bg-primary,#1e1f22) p-6"
+			class="flex w-100 max-w-[90vw] flex-col gap-3 rounded-lg border border-[var(--friends-line,#3f4147)] bg-(--bg-primary,#1e1f22) p-6"
 			onclick={(e) => e.stopPropagation()}
 			role="dialog"
 			onkeydown={() => {}}
@@ -502,7 +514,7 @@
 				>
 				<input
 					id="group-name"
-					class="flex-1 rounded border border-[#3f4147] bg-(--bg-tertiary,#1e1f22) px-3 py-2 text-sm text-(--text-primary,#dbdee1) outline-none focus:border-[#5865f2]"
+					class="flex-1 rounded border border-[var(--friends-line,#3f4147)] bg-(--bg-tertiary,#1e1f22) px-3 py-2 text-sm text-(--text-primary,#dbdee1) outline-none focus:border-[#5865f2]"
 					type="text"
 					placeholder="e.g. Best friends"
 					bind:value={groupName}
@@ -518,7 +530,9 @@
 						>
 					{/if}
 				</label>
-				<div class="max-h-50 overflow-y-auto rounded border border-[#3f4147] bg-(--bg-tertiary,#1e1f22)">
+				<div
+					class="max-h-50 overflow-y-auto rounded border border-[var(--friends-line,#3f4147)] bg-(--bg-tertiary,#1e1f22)"
+				>
 					{#if $friends.length === 0}
 						<p class="m-0 p-4 text-center text-[13px] text-(--text-secondary,#949ba4)">No friends added yet</p>
 					{:else}
@@ -553,11 +567,11 @@
 			{/if}
 			<div class="flex justify-end gap-2">
 				<button
-					class="flex cursor-pointer items-center gap-1.5 rounded border-none bg-[#5865f2] px-4 py-2 text-[13px] font-medium whitespace-nowrap text-white hover:bg-[#4752c4]"
+					class="text-fixed-white flex cursor-pointer items-center gap-1.5 rounded border-none bg-[#5865f2] px-4 py-2 text-[13px] font-medium whitespace-nowrap hover:bg-[#4752c4]"
 					onclick={handleCreateGroup}>Create group</button
 				>
 				<button
-					class="cursor-pointer rounded border-none bg-(--bg-tertiary,#35373c) px-4 py-2 text-[13px] text-(--text-primary,#dbdee1) hover:bg-[#454850]"
+					class="cursor-pointer rounded border-none bg-(--bg-tertiary,#35373c) px-4 py-2 text-[13px] text-(--text-primary,#dbdee1) hover:bg-[var(--friends-hover-strong,#454850)]"
 					onclick={closeGroupModal}>Cancel</button
 				>
 			</div>

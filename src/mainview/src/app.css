@@ -1,5 +1,5 @@
-@import url("https://fonts.googleapis.com/css2?family=Source+Code+Pro:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500;1,600;1,700&display=swap");
-@import url("https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Fira+Mono:wght@400;500;700&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Fira+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&display=swap");
 
 @import "tailwindcss";
 @plugin "tailwindcss-animate";
@@ -9,6 +9,25 @@
 :root {
 	--app-height: 100vh;
 	--app-width: 100vw;
+
+	/* Duvet: the shell's palette. The app is dark only for now; .duvet-light holds the light values for later. */
+	--duvet-bg: #14151d;
+	--duvet-sunk: #0f1017;
+	--duvet-card: #1e2030;
+	--duvet-line: rgba(255, 255, 255, 0.08);
+	--duvet-ink: #ecedf5;
+	--duvet-ink2: #9b9eb5;
+	--duvet-accent: #7b83f5;
+	--duvet-on-accent: #14151d;
+	--duvet-accent-text: #a6abff;
+	--duvet-accent-tint: rgba(123, 131, 245, 0.16);
+	--duvet-chosen: #3a3d52;
+	--duvet-chosen-ink: #f2f3f9;
+	--duvet-alive: #a8dff0;
+	--duvet-danger: #f08c84;
+	--duvet-shadow-raised: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 1px 2px rgba(0, 0, 0, 0.45);
+	--duvet-shadow-press: inset 0 2px 4px rgba(0, 0, 0, 0.5);
+	--duvet-shadow-float: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 18px 48px rgba(0, 0, 0, 0.55);
 
 	/* Colors */
 	--background: hsl(0 0% 100%);
@@ -44,13 +63,224 @@
 	--shadow-date-field-focus: 0px 0px 0px 3px rgba(24, 24, 27, 0.17);
 }
 
+.duvet-light {
+	--duvet-bg: #f3f4f9;
+	--duvet-sunk: #e7e8f0;
+	--duvet-card: #ffffff;
+	--duvet-line: rgba(34, 36, 58, 0.09);
+	--duvet-ink: #22243a;
+	--duvet-ink2: #62657c;
+	--duvet-accent: #5a62de;
+	--duvet-on-accent: #ffffff;
+	--duvet-accent-text: #4c54d2;
+	--duvet-accent-tint: rgba(90, 98, 222, 0.12);
+	--duvet-chosen: #22243a;
+	--duvet-chosen-ink: #ffffff;
+	--duvet-alive: #2a86ab;
+	--duvet-danger: #c2413b;
+	--duvet-shadow-raised: inset 0 1px 0 #ffffff, 0 1px 2px rgba(34, 36, 58, 0.12);
+	--duvet-shadow-press: inset 0 2px 4px rgba(34, 36, 58, 0.18);
+	--duvet-shadow-float: inset 0 1px 0 #ffffff, 0 18px 48px rgba(34, 36, 58, 0.18);
+
+	/* The app's components were drawn for the dark: in light the colors their classes name turn over, so they need
+	   no light variant of their own. text-white and the white tints (bg-white/10) are the neutral ink, dark here;
+	   what sits on a color (a button, a badge, a photo) says fixed-white instead, which stays white. */
+	--color-white: #181a2e;
+	/* The ones a component reads with its dark value as the fallback (var(--x, dark)), defined here only. */
+	--recording-line: rgba(194, 65, 59, 0.35);
+	--recording-tint: #fbeceb;
+	--recording-ink: #c2413b;
+	--recording-hover: #f6dcda;
+	--recording-ink-hover: #9e2f2a;
+	--mention-chip-ink: #2f6fd0;
+	--status-online: #2a86ab;
+	--bg-primary: #ffffff;
+	--bg-secondary: #e7e8f0;
+	--bg-tertiary: #e7e8f0;
+	--bg-hover: #e7e8f0;
+	--text-primary: #22243a;
+	--text-secondary: #62657c;
+	--friends-line: #d6d8e3;
+	--friends-green-ink: #1a7f45;
+	--friends-hover-strong: #d6d8e3;
+	/* The neutral scales turn over: a dark surface (stone/zinc 950-700) is a light one, light text (400-50) dark ink. */
+	--color-stone-50: #181a2e;
+	--color-stone-100: #22243a;
+	--color-stone-200: #2d2f44;
+	--color-stone-300: #3b3e54;
+	--color-stone-400: #4e5168;
+	--color-stone-500: #62657c;
+	--color-stone-600: #a4a7bb;
+	--color-stone-700: #d6d8e3;
+	--color-stone-800: #e7e8f0;
+	--color-stone-900: #f3f4f9;
+	--color-stone-950: #ffffff;
+	--color-zinc-50: #181a2e;
+	--color-zinc-100: #22243a;
+	--color-zinc-200: #2d2f44;
+	--color-zinc-300: #3b3e54;
+	--color-zinc-400: #4e5168;
+	--color-zinc-500: #62657c;
+	--color-zinc-600: #a4a7bb;
+	--color-zinc-700: #d6d8e3;
+	--color-zinc-800: #e7e8f0;
+	--color-zinc-900: #f3f4f9;
+	--color-zinc-950: #ffffff;
+	/* The colors' light shades (text on dark) darken to 700-900, enough for text on light; their dark ones (tinted
+	   panels) lighten. 500-800, the fills, stay. */
+	--color-red-50: oklch(25.8% 0.092 26.042);
+	--color-red-100: oklch(39.6% 0.141 25.723);
+	--color-red-200: oklch(39.6% 0.141 25.723);
+	--color-red-300: oklch(44.4% 0.177 26.899);
+	--color-red-400: oklch(50.5% 0.213 27.518);
+	--color-red-900: oklch(93.6% 0.032 17.717);
+	--color-red-950: oklch(97.1% 0.013 17.38);
+	--color-orange-50: oklch(26.6% 0.079 36.259);
+	--color-orange-100: oklch(40.8% 0.123 38.172);
+	--color-orange-200: oklch(40.8% 0.123 38.172);
+	--color-orange-300: oklch(47% 0.157 37.304);
+	--color-orange-400: oklch(55.3% 0.195 38.402);
+	--color-orange-900: oklch(95.4% 0.038 75.164);
+	--color-orange-950: oklch(98% 0.016 73.684);
+	--color-amber-50: oklch(27.9% 0.077 45.635);
+	--color-amber-100: oklch(41.4% 0.112 45.904);
+	--color-amber-200: oklch(41.4% 0.112 45.904);
+	--color-amber-300: oklch(47.3% 0.137 46.201);
+	--color-amber-400: oklch(55.5% 0.163 48.998);
+	--color-amber-900: oklch(96.2% 0.059 95.617);
+	--color-amber-950: oklch(98.7% 0.022 95.277);
+	--color-yellow-50: oklch(28.6% 0.066 53.813);
+	--color-yellow-100: oklch(42.1% 0.095 57.708);
+	--color-yellow-200: oklch(42.1% 0.095 57.708);
+	--color-yellow-300: oklch(47.6% 0.114 61.907);
+	--color-yellow-400: oklch(55.4% 0.135 66.442);
+	--color-yellow-900: oklch(97.3% 0.071 103.193);
+	--color-yellow-950: oklch(98.7% 0.026 102.212);
+	--color-lime-50: oklch(27.4% 0.072 132.109);
+	--color-lime-100: oklch(40.5% 0.101 131.063);
+	--color-lime-200: oklch(40.5% 0.101 131.063);
+	--color-lime-300: oklch(45.3% 0.124 130.933);
+	--color-lime-400: oklch(53.2% 0.157 131.589);
+	--color-lime-900: oklch(96.7% 0.067 122.328);
+	--color-lime-950: oklch(98.6% 0.031 120.757);
+	--color-green-50: oklch(26.6% 0.065 152.934);
+	--color-green-100: oklch(39.3% 0.095 152.535);
+	--color-green-200: oklch(39.3% 0.095 152.535);
+	--color-green-300: oklch(44.8% 0.119 151.328);
+	--color-green-400: oklch(52.7% 0.154 150.069);
+	--color-green-900: oklch(96.2% 0.044 156.743);
+	--color-green-950: oklch(98.2% 0.018 155.826);
+	--color-emerald-50: oklch(26.2% 0.051 172.552);
+	--color-emerald-100: oklch(37.8% 0.077 168.94);
+	--color-emerald-200: oklch(37.8% 0.077 168.94);
+	--color-emerald-300: oklch(43.2% 0.095 166.913);
+	--color-emerald-400: oklch(50.8% 0.118 165.612);
+	--color-emerald-900: oklch(95% 0.052 163.051);
+	--color-emerald-950: oklch(97.9% 0.021 166.113);
+	--color-teal-50: oklch(27.7% 0.046 192.524);
+	--color-teal-100: oklch(38.6% 0.063 188.416);
+	--color-teal-200: oklch(38.6% 0.063 188.416);
+	--color-teal-300: oklch(43.7% 0.078 188.216);
+	--color-teal-400: oklch(51.1% 0.096 186.391);
+	--color-teal-900: oklch(95.3% 0.051 180.801);
+	--color-teal-950: oklch(98.4% 0.014 180.72);
+	--color-cyan-50: oklch(30.2% 0.056 229.695);
+	--color-cyan-100: oklch(39.8% 0.07 227.392);
+	--color-cyan-200: oklch(39.8% 0.07 227.392);
+	--color-cyan-300: oklch(45% 0.085 224.283);
+	--color-cyan-400: oklch(52% 0.105 223.128);
+	--color-cyan-900: oklch(95.6% 0.045 203.388);
+	--color-cyan-950: oklch(98.4% 0.019 200.873);
+	--color-sky-50: oklch(29.3% 0.066 243.157);
+	--color-sky-100: oklch(39.1% 0.09 240.876);
+	--color-sky-200: oklch(39.1% 0.09 240.876);
+	--color-sky-300: oklch(44.3% 0.11 240.79);
+	--color-sky-400: oklch(50% 0.134 242.749);
+	--color-sky-900: oklch(95.1% 0.026 236.824);
+	--color-sky-950: oklch(97.7% 0.013 236.62);
+	--color-blue-50: oklch(28.2% 0.091 267.935);
+	--color-blue-100: oklch(37.9% 0.146 265.522);
+	--color-blue-200: oklch(37.9% 0.146 265.522);
+	--color-blue-300: oklch(42.4% 0.199 265.638);
+	--color-blue-400: oklch(48.8% 0.243 264.376);
+	--color-blue-900: oklch(93.2% 0.032 255.585);
+	--color-blue-950: oklch(97% 0.014 254.604);
+	--color-indigo-50: oklch(25.7% 0.09 281.288);
+	--color-indigo-100: oklch(35.9% 0.144 278.697);
+	--color-indigo-200: oklch(35.9% 0.144 278.697);
+	--color-indigo-300: oklch(39.8% 0.195 277.366);
+	--color-indigo-400: oklch(45.7% 0.24 277.023);
+	--color-indigo-900: oklch(93% 0.034 272.788);
+	--color-indigo-950: oklch(96.2% 0.018 272.314);
+	--color-violet-50: oklch(28.3% 0.141 291.089);
+	--color-violet-100: oklch(38% 0.189 293.745);
+	--color-violet-200: oklch(38% 0.189 293.745);
+	--color-violet-300: oklch(43.2% 0.232 292.759);
+	--color-violet-400: oklch(49.1% 0.27 292.581);
+	--color-violet-900: oklch(94.3% 0.029 294.588);
+	--color-violet-950: oklch(96.9% 0.016 293.756);
+	--color-purple-50: oklch(29.1% 0.149 302.717);
+	--color-purple-100: oklch(38.1% 0.176 304.987);
+	--color-purple-200: oklch(38.1% 0.176 304.987);
+	--color-purple-300: oklch(43.8% 0.218 303.724);
+	--color-purple-400: oklch(49.6% 0.265 301.924);
+	--color-purple-900: oklch(94.6% 0.033 307.174);
+	--color-purple-950: oklch(97.7% 0.014 308.299);
+	--color-fuchsia-50: oklch(29.3% 0.136 325.661);
+	--color-fuchsia-100: oklch(40.1% 0.17 325.612);
+	--color-fuchsia-200: oklch(40.1% 0.17 325.612);
+	--color-fuchsia-300: oklch(45.2% 0.211 324.591);
+	--color-fuchsia-400: oklch(51.8% 0.253 323.949);
+	--color-fuchsia-900: oklch(95.2% 0.037 318.852);
+	--color-fuchsia-950: oklch(97.7% 0.017 320.058);
+	--color-pink-50: oklch(28.4% 0.109 3.907);
+	--color-pink-100: oklch(40.8% 0.153 2.432);
+	--color-pink-200: oklch(40.8% 0.153 2.432);
+	--color-pink-300: oklch(45.9% 0.187 3.815);
+	--color-pink-400: oklch(52.5% 0.223 3.958);
+	--color-pink-900: oklch(94.8% 0.028 342.258);
+	--color-pink-950: oklch(97.1% 0.014 343.198);
+	--color-rose-50: oklch(27.1% 0.105 12.094);
+	--color-rose-100: oklch(41% 0.159 10.272);
+	--color-rose-200: oklch(41% 0.159 10.272);
+	--color-rose-300: oklch(45.5% 0.188 13.697);
+	--color-rose-400: oklch(51.4% 0.222 16.935);
+	--color-rose-900: oklch(94.1% 0.03 12.58);
+	--color-rose-950: oklch(96.9% 0.015 12.422);
+	--color-night-165: oklch(0.995 0.012 278);
+	--color-night-17: oklch(0.99 0.012 278);
+	--color-night-18: oklch(0.985 0.012 278);
+	--color-night-19: oklch(0.98 0.012 278);
+	--color-night-20: oklch(0.975 0.012 278);
+	--color-night-205: oklch(0.972 0.012 278);
+	--color-night-22: oklch(0.965 0.012 278);
+	--color-night-25: oklch(0.945 0.012 278);
+	--color-night-28: oklch(0.925 0.012 278);
+	--color-night-30: oklch(0.915 0.012 278);
+	--color-night-30t: oklch(0.905 0.03 278);
+	--color-night-35: oklch(0.89 0.012 278);
+	--color-night-40: oklch(0.8 0.024 278);
+	--color-night-45: oklch(0.6 0.035 278);
+	--color-night-50: oklch(0.56 0.035 278);
+	--color-night-52: oklch(0.52 0.035 278);
+	--color-night-55: oklch(0.5 0.035 278);
+	--color-night-62: oklch(0.45 0.035 278);
+	--color-night-65: oklch(0.43 0.035 278);
+	--color-night-70: oklch(0.41 0.035 278);
+	--color-night-75: oklch(0.38 0.035 278);
+	--color-night-80: oklch(0.34 0.035 278);
+	--color-night-85: oklch(0.3 0.035 278);
+	--color-night-92: oklch(0.27 0.035 278);
+	--color-night-96: oklch(0.24 0.035 278);
+}
+
 .dark {
 	/* Colors */
-	--background: oklch(0.19 0.008 80);
-	--background-alt: oklch(0.22 0.01 80);
-	--foreground: oklch(0.97 0.003 80);
-	--foreground-alt: oklch(0.8 0.006 80);
-	--muted: oklch(0.29 0.01 80);
+	--background: oklch(0.19 0.013 278);
+	--background-alt: oklch(0.22 0.016 278);
+	--foreground: oklch(0.97 0.005 278);
+	--foreground-alt: oklch(0.8 0.01 278);
+	--muted: oklch(0.29 0.016 278);
 	--muted-foreground: hsla(0 0% 100% / 0.4);
 	--border: hsl(0 0% 96%);
 	--border-input: hsla(0 0% 96% / 0.17);
@@ -60,10 +290,10 @@
 	--dark-40: hsl(0 0% 96% / 0.4);
 	--dark-10: hsl(0 0% 96% / 0.1);
 	--dark-04: hsl(0 0% 96% / 0.04);
-	--accent: oklch(0.82 0.01 80);
-	--accent-foreground: oklch(0.2 0.006 80);
+	--accent: oklch(0.82 0.016 278);
+	--accent-foreground: oklch(0.2 0.01 278);
 	--destructive: hsl(350 89% 60%);
-	--line: oklch(0.16 0.006 80);
+	--line: oklch(0.16 0.01 278);
 	--tertiary: hsl(61.3 100% 82.2%);
 	/* white */
 	--contrast: hsl(0 0% 100%);
@@ -76,6 +306,59 @@
 	--shadow-btn: 0px 1px 0px 1px rgba(0, 0, 0, 0.2);
 	--shadow-card: 0px 2px 0px 1px rgba(0, 0, 0, 0.4);
 	--shadow-date-field-focus: 0px 0px 0px 3px rgba(244, 244, 245, 0.1);
+}
+
+@theme {
+	/* Tailwind's warm stone, cooled to Duvet's night (hue 278): the app's stone-* classes follow it. */
+	--color-stone-50: oklch(0.985 0.004 278);
+	--color-stone-100: oklch(0.97 0.006 278);
+	--color-stone-200: oklch(0.923 0.008 278);
+	--color-stone-300: oklch(0.869 0.011 278);
+	--color-stone-400: oklch(0.709 0.016 278);
+	--color-stone-500: oklch(0.553 0.02 278);
+	--color-stone-600: oklch(0.444 0.02 278);
+	--color-stone-700: oklch(0.374 0.02 278);
+	--color-stone-800: oklch(0.268 0.018 278);
+	--color-stone-900: oklch(0.216 0.016 278);
+	--color-stone-950: oklch(0.147 0.012 278);
+}
+
+/* Static: each one is in the CSS whether a class names it or not, as style attributes and app.css use them too. */
+@theme static {
+	/* White that stays white in light too: text and marks on a color, a photo or a dark scrim. */
+	--color-fixed-white: #ffffff;
+	/* The slate of the neutral buttons and badges with white text (bg-fill-600 text-fixed-white), which stays dark in
+	   light, as the chosen pill does: the dark theme's stone-500 to 700. */
+	--color-fill-500: oklch(0.553 0.02 278);
+	--color-fill-600: oklch(0.444 0.02 278);
+	--color-fill-700: oklch(0.374 0.02 278);
+	/* Night: the grays the components named as literals (bg-[oklch(0.19_0.013_278)]), by lightness, so the light theme
+	   can turn them over with the rest. */
+	--color-night-165: oklch(0.165 0.01 278);
+	--color-night-17: oklch(0.17 0.013 278);
+	--color-night-18: oklch(0.18 0.013 278);
+	--color-night-19: oklch(0.19 0.013 278);
+	--color-night-20: oklch(0.2 0.016 278);
+	--color-night-205: oklch(0.205 0.016 278);
+	--color-night-22: oklch(0.22 0.016 278);
+	--color-night-25: oklch(0.25 0.016 278);
+	--color-night-28: oklch(0.28 0.016 278);
+	--color-night-30: oklch(0.3 0.016 278);
+	--color-night-30t: oklch(0.3 0.024 278);
+	--color-night-35: oklch(0.35 0.016 278);
+	--color-night-40: oklch(0.4 0.016 278);
+	--color-night-45: oklch(0.45 0.016 278);
+	--color-night-50: oklch(0.5 0.016 278);
+	--color-night-52: oklch(0.52 0.016 278);
+	--color-night-55: oklch(0.55 0.016 278);
+	--color-night-62: oklch(0.62 0.016 278);
+	--color-night-65: oklch(0.65 0.016 278);
+	--color-night-70: oklch(0.7 0.016 278);
+	--color-night-75: oklch(0.75 0.016 278);
+	--color-night-80: oklch(0.8 0.016 278);
+	--color-night-85: oklch(0.85 0.013 278);
+	--color-night-92: oklch(0.92 0.016 278);
+	--color-night-96: oklch(0.96 0.008 278);
 }
 
 @theme inline {
@@ -100,6 +383,25 @@
 	--color-line: var(--line);
 	--color-contrast: var(--contrast);
 
+	--color-duvet-bg: var(--duvet-bg);
+	--color-duvet-sunk: var(--duvet-sunk);
+	--color-duvet-card: var(--duvet-card);
+	--color-duvet-line: var(--duvet-line);
+	--color-duvet-ink: var(--duvet-ink);
+	--color-duvet-ink2: var(--duvet-ink2);
+	--color-duvet-accent: var(--duvet-accent);
+	--color-duvet-on-accent: var(--duvet-on-accent);
+	--color-duvet-accent-text: var(--duvet-accent-text);
+	--color-duvet-accent-tint: var(--duvet-accent-tint);
+	--color-duvet-chosen: var(--duvet-chosen);
+	--color-duvet-chosen-ink: var(--duvet-chosen-ink);
+	--color-duvet-alive: var(--duvet-alive);
+	--color-duvet-danger: var(--duvet-danger);
+
+	--shadow-duvet-raised: var(--duvet-shadow-raised);
+	--shadow-duvet-press: var(--duvet-shadow-press);
+	--shadow-duvet-float: var(--duvet-shadow-float);
+
 	--shadow-mini: var(--shadow-mini);
 	--shadow-mini-inset: var(--shadow-mini-inset);
 	--shadow-popover: var(--shadow-popover);
@@ -119,6 +421,7 @@
 	--radius-9px: 9px;
 	--radius-10px: 10px;
 	--radius-15px: 15px;
+	--radius-row: 12px;
 
 	--spacing-input: 3rem;
 	--spacing-input-sm: 2.5rem;
@@ -140,8 +443,8 @@
 	--animate-typing-bounce: typing-bounce 1.2s ease-in-out infinite;
 	--animate-call-pulse: call-pulse 1.5s ease-out infinite;
 
-	--font-sans: "Manrope", "sans-serif";
-	--font-mono: "Source Code Pro", monospace;
+	--font-sans: "Fira Sans", system-ui, -apple-system, "Open Sans", Arial, sans-serif;
+	--font-mono: "Fira Mono", ui-monospace, Menlo, Consolas, monospace;
 	--font-alt: "Courier", "sans-serif";
 	--font-display: "Cal Sans", "sans-serif";
 
@@ -320,12 +623,7 @@
 
 	* {
 		@apply border-border;
-		font-family:
-			system-ui,
-			-apple-system,
-			"Open Sans",
-			Arial,
-			sans-serif;
+		font-family: var(--font-sans);
 	}
 
 	input,
@@ -399,7 +697,7 @@
 
 	* {
 		scrollbar-width: thin;
-		scrollbar-color: oklch(0.45 0.01 80 / 0.8) oklch(0.2 0.006 80 / 0.45);
+		scrollbar-color: oklch(0.45 0.016 278 / 0.8) oklch(0.2 0.01 278 / 0.45);
 	}
 
 	*::-webkit-scrollbar {
@@ -408,17 +706,17 @@
 	}
 
 	*::-webkit-scrollbar-track {
-		background: oklch(0.2 0.006 80 / 0.45);
+		background: oklch(0.2 0.01 278 / 0.45);
 	}
 
 	*::-webkit-scrollbar-thumb {
-		background: oklch(0.45 0.01 80 / 0.8);
+		background: oklch(0.45 0.016 278 / 0.8);
 		border-radius: 999px;
-		border: 2px solid oklch(0.2 0.006 80 / 0.45);
+		border: 2px solid oklch(0.2 0.01 278 / 0.45);
 	}
 
 	*::-webkit-scrollbar-thumb:hover {
-		background: oklch(0.52 0.01 80 / 0.9);
+		background: oklch(0.52 0.016 278 / 0.9);
 	}
 
 	*:not(body):not(.focus-override) {
@@ -484,8 +782,8 @@
 		vertical-align: middle;
 		margin: 0 0.02em;
 		border-radius: 3px;
-		background: oklch(0.22 0.008 80);
-		border: 1px dashed oklch(0.35 0.01 80);
+		background: oklch(0.22 0.013 278);
+		border: 1px dashed oklch(0.35 0.016 278);
 		cursor: default;
 	}
 
@@ -500,8 +798,8 @@
 	/* ── Message markdown ───────────────────────────────────────────────── */
 	.msg-code-block {
 		position: relative;
-		background: oklch(0.17 0.006 80);
-		border: 1px solid oklch(0.28 0.008 80 / 0.7);
+		background: oklch(0.17 0.01 278);
+		border: 1px solid oklch(0.28 0.013 278 / 0.7);
 		border-radius: 5px;
 		margin: 4px 0;
 		font-family: var(--font-mono);
@@ -521,9 +819,9 @@
 		width: 28px;
 		height: 28px;
 		border-radius: 5px;
-		border: 1px solid oklch(0.32 0.01 80);
-		background: oklch(0.2 0.008 80);
-		color: oklch(0.55 0.01 80);
+		border: 1px solid oklch(0.32 0.016 278);
+		background: oklch(0.2 0.013 278);
+		color: oklch(0.55 0.016 278);
 		cursor: pointer;
 		opacity: 0;
 		transition:
@@ -536,8 +834,8 @@
 		opacity: 1;
 	}
 	.msg-code-copy:hover {
-		color: oklch(0.9 0.01 80);
-		background: oklch(0.26 0.01 80);
+		color: oklch(0.9 0.016 278);
+		background: oklch(0.26 0.016 278);
 	}
 	.msg-code-copy.copied {
 		color: oklch(0.75 0.15 145);
@@ -546,7 +844,7 @@
 	.msg-code-block code {
 		display: block;
 		padding: 8px 0;
-		color: oklch(0.88 0.015 80);
+		color: oklch(0.88 0.024 278);
 	}
 
 	/* The global `*` font-family would otherwise reach every line and token of the block. */
@@ -559,9 +857,9 @@
 		min-width: 2rem;
 		padding: 0 0.75rem 0 0.75rem;
 		text-align: right;
-		color: oklch(0.48 0.008 80);
+		color: oklch(0.48 0.013 278);
 		user-select: none;
-		border-right: 1px solid oklch(0.28 0.008 80 / 0.5);
+		border-right: 1px solid oklch(0.28 0.013 278 / 0.5);
 		margin-right: 0.75rem;
 		font-size: 0.8em;
 	}
@@ -571,7 +869,7 @@
 		top: 6px;
 		right: 10px;
 		font-size: 0.7em;
-		color: oklch(0.5 0.008 80);
+		color: oklch(0.5 0.013 278);
 		font-family: var(--font-mono);
 		user-select: none;
 		text-transform: lowercase;
@@ -580,11 +878,11 @@
 	.msg-inline-code {
 		font-family: var(--font-mono);
 		font-size: 0.85em;
-		background: oklch(0.22 0.008 80);
-		border: 1px solid oklch(0.32 0.01 80 / 0.55);
+		background: oklch(0.22 0.013 278);
+		border: 1px solid oklch(0.32 0.016 278 / 0.55);
 		border-radius: 3px;
 		padding: 0.1em 0.35em;
-		color: oklch(0.88 0.02 80);
+		color: oklch(0.88 0.03 278);
 	}
 
 	.msg-h1 {
@@ -609,15 +907,15 @@
 	}
 
 	.msg-blockquote {
-		border-left: 4px solid oklch(0.5 0.01 80 / 0.7);
+		border-left: 4px solid oklch(0.5 0.016 278 / 0.7);
 		padding-left: 0.65rem;
 		display: block;
-		color: oklch(0.78 0.01 80);
+		color: oklch(0.78 0.016 278);
 	}
 
 	.msg-subtext {
 		font-size: 0.75em;
-		color: oklch(0.58 0.01 80);
+		color: oklch(0.58 0.016 278);
 		display: block;
 	}
 
@@ -649,26 +947,26 @@
 
 	.msg-table th,
 	.msg-table td {
-		border: 1px solid oklch(0.32 0.01 80);
+		border: 1px solid oklch(0.32 0.016 278);
 		padding: 4px 10px;
 	}
 
 	.msg-table th {
-		background: oklch(0.2 0.008 80);
+		background: oklch(0.2 0.013 278);
 		font-weight: 600;
-		color: oklch(0.88 0.01 80);
+		color: oklch(0.88 0.016 278);
 	}
 
 	.msg-table td {
-		color: oklch(0.78 0.01 80);
+		color: oklch(0.78 0.016 278);
 	}
 
 	.msg-table tr:nth-child(even) td {
-		background: oklch(0.17 0.006 80 / 0.5);
+		background: oklch(0.17 0.01 278 / 0.5);
 	}
 
 	.msg-spoiler {
-		background: oklch(0.32 0.01 80);
+		background: oklch(0.32 0.016 278);
 		color: transparent;
 		border-radius: 3px;
 		padding: 0 3px;
@@ -679,8 +977,8 @@
 	}
 
 	.msg-spoiler:hover {
-		background: oklch(0.42 0.01 80);
-		color: oklch(0.92 0.01 80);
+		background: oklch(0.42 0.016 278);
+		color: oklch(0.92 0.016 278);
 	}
 
 	.msg-mention,
@@ -709,6 +1007,216 @@
 
 	.msg-link {
 		color: oklch(0.72 0.12 240);
+		text-decoration: underline;
+	}
+}
+
+/* ── Light ──────────────────────────────────────────────────────────────────
+   The light theme's own values for what this file colors directly (the page, scrollbars, selection, message
+   markdown); the components' classes turn over through the variables in .duvet-light above. */
+html.duvet-light,
+html.duvet-light body,
+html.duvet-light #svelte {
+	background: var(--duvet-bg);
+}
+
+@layer base {
+	.duvet-light ::highlight(search-hit) {
+		color: #22243a;
+	}
+
+	.duvet-light a {
+		color: #2f6fd0;
+	}
+}
+
+@layer components {
+	.duvet-light * {
+		scrollbar-color: oklch(0.78 0.02 278 / 0.9) oklch(0.95 0.008 278 / 0.6);
+	}
+
+	.duvet-light *::-webkit-scrollbar-track {
+		background: oklch(0.95 0.008 278 / 0.6);
+	}
+
+	.duvet-light *::-webkit-scrollbar-thumb {
+		background: oklch(0.78 0.02 278 / 0.9);
+		border-color: oklch(0.95 0.008 278 / 0.6);
+	}
+
+	.duvet-light *::-webkit-scrollbar-thumb:hover {
+		background: oklch(0.68 0.024 278 / 0.95);
+	}
+
+	.duvet-light .emoji-deleted {
+		background: #e7e8f0;
+		border-color: #b4b7c9;
+	}
+
+	.duvet-light .msg-code-block {
+		background: #f6f7fa;
+		border-color: rgba(34, 36, 58, 0.12);
+	}
+
+	.duvet-light .msg-code-copy {
+		border-color: rgba(34, 36, 58, 0.15);
+		background: #ffffff;
+		color: #62657c;
+	}
+
+	.duvet-light .msg-code-copy:hover {
+		color: #22243a;
+		background: #e7e8f0;
+	}
+
+	.duvet-light .msg-code-copy.copied {
+		color: oklch(0.5 0.15 145);
+	}
+
+	.duvet-light .msg-code-block code {
+		color: #22243a;
+	}
+
+	.duvet-light .msg-ln {
+		color: #8a8da3;
+		border-right-color: rgba(34, 36, 58, 0.1);
+	}
+
+	.duvet-light .msg-code-lang {
+		color: #6e7188;
+	}
+
+	.duvet-light .msg-inline-code {
+		background: #e7e8f0;
+		border-color: rgba(34, 36, 58, 0.12);
+		color: #2d2f44;
+	}
+
+	.duvet-light .msg-blockquote {
+		border-left-color: rgba(98, 101, 124, 0.5);
+		color: #3b3e54;
+	}
+
+	.duvet-light .msg-subtext {
+		color: #62657c;
+	}
+
+	.duvet-light .msg-table th,
+	.duvet-light .msg-table td {
+		border-color: rgba(34, 36, 58, 0.15);
+	}
+
+	.duvet-light .msg-table th {
+		background: #eef0f5;
+		color: #22243a;
+	}
+
+	.duvet-light .msg-table td {
+		color: #3b3e54;
+	}
+
+	.duvet-light .msg-table tr:nth-child(even) td {
+		background: rgba(34, 36, 58, 0.03);
+	}
+
+	.duvet-light .msg-spoiler {
+		background: #c9cbd8;
+	}
+
+	.duvet-light .msg-spoiler:hover {
+		background: #dcdee8;
+		color: #22243a;
+	}
+
+	.duvet-light .msg-mention,
+	.duvet-light .msg-room-mention {
+		background: rgba(90, 98, 222, 0.14);
+		color: #4c54d2;
+	}
+
+	.duvet-light .msg-mention:hover,
+	.duvet-light .msg-room-mention:hover {
+		background: rgba(90, 98, 222, 0.22);
+		color: #3f47c4;
+	}
+
+	.duvet-light .msg-room-unknown,
+	.duvet-light .msg-room-unknown:hover {
+		background: rgba(34, 36, 58, 0.06);
+		color: #62657c;
+	}
+
+	.duvet-light .msg-link {
+		color: #2f6fd0;
+	}
+
+	/* Code blocks carry both themes' token colors (markdown.ts highlights with a dark and a light theme): each theme
+	   shows its own. */
+	.msg-code-block span[style*="--shiki-dark"] {
+		color: var(--shiki-dark);
+		font-style: var(--shiki-dark-font-style);
+		font-weight: var(--shiki-dark-font-weight);
+		text-decoration: var(--shiki-dark-text-decoration);
+	}
+
+	.duvet-light .msg-code-block span[style*="--shiki-light"] {
+		color: var(--shiki-light);
+		font-style: var(--shiki-light-font-style);
+		font-weight: var(--shiki-light-font-weight);
+		text-decoration: var(--shiki-light-text-decoration);
+	}
+}
+
+/* The sign-in, sign-up and account pages' fields, primary button and links (AuthScene draws the rest). */
+@layer components {
+	.auth-field {
+		width: 100%;
+		border-radius: 12px;
+		border: 1px solid transparent;
+		background: var(--duvet-sunk);
+		box-shadow: var(--duvet-shadow-press);
+		padding: 0.75rem 1rem;
+		color: var(--duvet-ink);
+		transition: border-color 120ms ease;
+	}
+	.auth-field::placeholder {
+		color: var(--duvet-ink2);
+	}
+	.auth-field:focus {
+		outline: none;
+		border-color: var(--duvet-accent);
+	}
+	.auth-primary {
+		display: flex;
+		width: 100%;
+		align-items: center;
+		justify-content: center;
+		border-radius: 14px;
+		background: var(--duvet-accent);
+		color: var(--duvet-on-accent);
+		padding: 0.8rem 1rem;
+		font-weight: 700;
+		box-shadow:
+			inset 0 1px 0 rgba(255, 255, 255, 0.3),
+			0 6px 16px color-mix(in oklab, var(--duvet-accent) 35%, transparent);
+		transition: filter 120ms ease;
+	}
+	.auth-primary:hover {
+		filter: brightness(1.07);
+	}
+	.auth-primary:active {
+		box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.25);
+	}
+	.auth-primary:focus-visible,
+	.auth-link:focus-visible {
+		outline: 2px solid var(--duvet-accent-text);
+		outline-offset: 2px;
+	}
+	.auth-link {
+		color: var(--duvet-accent-text);
+		font-weight: 600;
+	}
+	.auth-link:hover {
 		text-decoration: underline;
 	}
 }

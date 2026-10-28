@@ -60,12 +60,15 @@ const LANGS = [
 ] as const;
 
 const DEFAULT_THEME = "github-dark-default";
+// The light theme's: code blocks carry both themes' colors, and app.css shows the one of the theme the app is in. A
+// custom theme (Appearance) replaces the dark one.
+const LIGHT_THEME = "github-light-default";
 let currentThemeName = DEFAULT_THEME;
 
 function getHighlighter(): Promise<Highlighter> {
 	if (!highlighterPromise) {
 		highlighterPromise = createHighlighter({
-			themes: [DEFAULT_THEME],
+			themes: [DEFAULT_THEME, LIGHT_THEME],
 			langs: [...LANGS],
 		}).then((h) => {
 			highlighter = h;
@@ -289,7 +292,8 @@ function highlightCode(code: string, lang: string): string {
 		}
 		const html = highlighter.codeToHtml(code, {
 			lang: resolved,
-			theme: currentThemeName,
+			themes: { dark: currentThemeName, light: LIGHT_THEME },
+			defaultColor: false,
 		});
 		// shiki returns <pre class="shiki ..."><code>...</code></pre>
 		// Extract just the inner content of <code>

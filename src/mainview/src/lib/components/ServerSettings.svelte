@@ -1234,11 +1234,11 @@
 												class="absolute inset-0 flex items-center justify-center gap-2 bg-black/60 opacity-0 transition-opacity group-hover:opacity-100"
 											>
 												<button
-													class="rounded p-1.5 text-white hover:bg-white/20"
+													class="text-fixed-white hover:bg-fixed-white/20 rounded p-1.5"
 													onclick={() => (showSpaceBannerCrop = true)}><PencilIcon class="size-4" /></button
 												>
 												<button
-													class="rounded p-1.5 text-red-400 hover:bg-white/20"
+													class="hover:bg-fixed-white/20 rounded p-1.5 text-red-400"
 													onclick={() => {
 														if (pendingBannerPreview) URL.revokeObjectURL(pendingBannerPreview);
 														pendingBanner = null;
@@ -1252,7 +1252,7 @@
 												class="absolute inset-0 flex items-center justify-center bg-black/60 opacity-0 transition-opacity group-hover:opacity-100"
 											>
 												<button
-													class="text-xs text-white"
+													class="text-fixed-white text-xs"
 													onclick={() => {
 														pendingBanner = null;
 													}}>Undo</button
@@ -1264,11 +1264,11 @@
 												class="absolute inset-0 flex items-center justify-center gap-2 bg-black/60 opacity-0 transition-opacity group-hover:opacity-100"
 											>
 												<button
-													class="rounded p-1.5 text-white hover:bg-white/20"
+													class="text-fixed-white hover:bg-fixed-white/20 rounded p-1.5"
 													onclick={() => (showSpaceBannerCrop = true)}><PencilIcon class="size-4" /></button
 												>
 												<button
-													class="rounded p-1.5 text-red-400 hover:bg-white/20"
+													class="hover:bg-fixed-white/20 rounded p-1.5 text-red-400"
 													onclick={() => {
 														pendingBanner = "remove";
 													}}><TrashIcon class="size-4" /></button
@@ -1295,11 +1295,11 @@
 												class="absolute inset-0 flex items-center justify-center gap-1 rounded-2xl bg-black/60 opacity-0 transition-opacity group-hover:opacity-100"
 											>
 												<button
-													class="rounded p-1 text-white hover:bg-white/20"
+													class="text-fixed-white hover:bg-fixed-white/20 rounded p-1"
 													onclick={() => (showSpaceIconCrop = true)}><PencilIcon class="size-3.5" /></button
 												>
 												<button
-													class="rounded p-1 text-red-400 hover:bg-white/20"
+													class="hover:bg-fixed-white/20 rounded p-1 text-red-400"
 													onclick={() => {
 														if (pendingIconPreview) URL.revokeObjectURL(pendingIconPreview);
 														pendingIcon = null;
@@ -1315,7 +1315,7 @@
 												class="absolute inset-0 flex items-center justify-center rounded-2xl bg-black/60 opacity-0 transition-opacity group-hover:opacity-100"
 											>
 												<button
-													class="text-xs text-white"
+													class="text-fixed-white text-xs"
 													onclick={() => {
 														pendingIcon = null;
 													}}>Undo</button
@@ -1331,11 +1331,11 @@
 												class="absolute inset-0 flex items-center justify-center gap-1 rounded-2xl bg-black/60 opacity-0 transition-opacity group-hover:opacity-100"
 											>
 												<button
-													class="rounded p-1 text-white hover:bg-white/20"
+													class="text-fixed-white hover:bg-fixed-white/20 rounded p-1"
 													onclick={() => (showSpaceIconCrop = true)}><PencilIcon class="size-3.5" /></button
 												>
 												<button
-													class="rounded p-1 text-red-400 hover:bg-white/20"
+													class="hover:bg-fixed-white/20 rounded p-1 text-red-400"
 													onclick={() => {
 														pendingIcon = "remove";
 													}}><TrashIcon class="size-3.5" /></button
@@ -1395,7 +1395,7 @@
 									<button
 										onclick={handleSaveOverview}
 										disabled={ovSaving}
-										class="rounded-md bg-stone-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-stone-500 disabled:opacity-50"
+										class="bg-fill-600 text-fixed-white hover:bg-fill-500 rounded-md px-4 py-2 text-sm font-medium transition-colors disabled:opacity-50"
 									>
 										{ovSaving ? "Saving..." : "Save Changes"}
 									</button>
@@ -1411,7 +1411,7 @@
 										{#if !confirmingDelete}
 											<button
 												onclick={() => (confirmingDelete = true)}
-												class="mt-3 rounded-md bg-red-600 px-3 py-1.5 text-sm font-semibold text-white transition-colors hover:bg-red-500"
+												class="text-fixed-white mt-3 rounded-md bg-red-600 px-3 py-1.5 text-sm font-semibold transition-colors hover:bg-red-500"
 											>
 												Delete Space
 											</button>
@@ -1438,7 +1438,7 @@
 												<button
 													onclick={handleDeleteSpace}
 													disabled={!deleteNameMatches || deletingSpace}
-													class="rounded-md bg-red-600 px-3 py-1.5 text-sm font-semibold text-white transition-colors hover:bg-red-500 disabled:cursor-not-allowed disabled:opacity-50"
+													class="text-fixed-white rounded-md bg-red-600 px-3 py-1.5 text-sm font-semibold transition-colors hover:bg-red-500 disabled:cursor-not-allowed disabled:opacity-50"
 												>
 													{deletingSpace ? "Deleting…" : "Delete Space"}
 												</button>
@@ -1540,7 +1540,7 @@
 									>
 										<Checkbox.Root
 											bind:checked={newRoleHoisted}
-											class="text-xxs flex size-4 items-center justify-center rounded border border-zinc-600 bg-zinc-900 text-transparent data-[state=checked]:border-stone-600 data-[state=checked]:bg-stone-600 data-[state=checked]:text-white"
+											class="text-xxs data-[state=checked]:bg-fill-600 data-[state=checked]:text-fixed-white flex size-4 items-center justify-center rounded border border-zinc-600 bg-zinc-900 text-transparent data-[state=checked]:border-stone-600"
 											>✓</Checkbox.Root
 										>
 										Display role members separately in sidebar
@@ -1564,7 +1564,7 @@
 														onCheckedChange={() => {
 															togglePermission(perm.flag, false);
 														}}
-														class="text-xxs flex size-4 items-center justify-center rounded border border-zinc-600 bg-zinc-900 text-transparent data-[state=checked]:border-stone-600 data-[state=checked]:bg-stone-600 data-[state=checked]:text-white"
+														class="text-xxs data-[state=checked]:bg-fill-600 data-[state=checked]:text-fixed-white flex size-4 items-center justify-center rounded border border-zinc-600 bg-zinc-900 text-transparent data-[state=checked]:border-stone-600"
 														>✓</Checkbox.Root
 													>
 													{perm.name}
@@ -1574,7 +1574,7 @@
 									</div>
 
 									<button
-										class="h-10 w-full rounded-md bg-stone-600 px-3 text-sm font-medium text-white transition-colors hover:bg-stone-500 disabled:opacity-50"
+										class="bg-fill-600 text-fixed-white hover:bg-fill-500 h-10 w-full rounded-md px-3 text-sm font-medium transition-colors disabled:opacity-50"
 										onclick={handleCreateRole}
 										disabled={isCreating || !newRoleName.trim()}
 									>
@@ -1627,7 +1627,7 @@
 																			editingRoleClearColors = !editingRoleClearColors;
 																		}}
 																		class="text-xxs rounded px-1.5 py-0.5 transition-colors {editingRoleClearColors
-																			? 'bg-red-500 text-white'
+																			? 'text-fixed-white bg-red-500'
 																			: 'bg-zinc-700 text-zinc-300 hover:text-zinc-100'}">Clear color</button
 																	>
 																	{#if !editingRoleClearColors}
@@ -1697,7 +1697,7 @@
 														>
 															<Checkbox.Root
 																bind:checked={editingRoleHoisted}
-																class="text-xxs flex size-4 items-center justify-center rounded border border-zinc-600 bg-zinc-900 text-transparent data-[state=checked]:border-stone-600 data-[state=checked]:bg-stone-600 data-[state=checked]:text-white"
+																class="text-xxs data-[state=checked]:bg-fill-600 data-[state=checked]:text-fixed-white flex size-4 items-center justify-center rounded border border-zinc-600 bg-zinc-900 text-transparent data-[state=checked]:border-stone-600"
 																>✓</Checkbox.Root
 															>
 															Display role members separately in sidebar
@@ -1721,7 +1721,7 @@
 																			onCheckedChange={() => {
 																				togglePermission(perm.flag, true);
 																			}}
-																			class="text-xxs flex size-4 items-center justify-center rounded border border-zinc-600 bg-zinc-900 text-transparent data-[state=checked]:border-stone-600 data-[state=checked]:bg-stone-600 data-[state=checked]:text-white"
+																			class="text-xxs data-[state=checked]:bg-fill-600 data-[state=checked]:text-fixed-white flex size-4 items-center justify-center rounded border border-zinc-600 bg-zinc-900 text-transparent data-[state=checked]:border-stone-600"
 																			>✓</Checkbox.Root
 																		>
 																		{perm.name}
@@ -1732,7 +1732,7 @@
 
 														<div class="flex gap-2">
 															<button
-																class="flex-1 rounded-md bg-stone-600 px-2 py-1.5 text-xs font-medium text-white transition-colors hover:bg-stone-500 disabled:opacity-50"
+																class="bg-fill-600 text-fixed-white hover:bg-fill-500 flex-1 rounded-md px-2 py-1.5 text-xs font-medium transition-colors disabled:opacity-50"
 																onclick={handleUpdateRole}
 																disabled={isCreating}>Save</button
 															>
@@ -1773,7 +1773,7 @@
 															<!-- everyone (its ID is the space's) can be edited, not deleted -->
 															{#if role.id !== spaceId}
 																<button
-																	class="h-7 rounded-md bg-red-800/70 px-2.5 text-xs text-white transition-colors hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+																	class="text-fixed-white h-7 rounded-md bg-red-800/70 px-2.5 text-xs transition-colors hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
 																	disabled={!manageable}
 																	onclick={() => handleDeleteRole(role.id)}>Delete</button
 																>
@@ -1913,7 +1913,7 @@
 											</label>
 
 											<button
-												class="flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
+												class="text-fixed-white flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium transition-colors hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
 												onclick={handleUploadEmoji}
 												disabled={isUploadingEmoji || !newEmojiName.trim() || !newEmojiFile}
 											>
@@ -2039,7 +2039,7 @@
 											</label>
 
 											<button
-												class="flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
+												class="text-fixed-white flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium transition-colors hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
 												onclick={handleUploadSticker}
 												disabled={isUploadingSticker || !newStickerName.trim() || !newStickerFile}
 											>
@@ -2316,7 +2316,7 @@
 												onclick={resetSpaceBucketForm}>Cancel</button
 											>
 											<button
-												class="rounded-md bg-stone-600 px-4 py-1.5 text-sm font-semibold text-white transition-colors hover:bg-stone-500 disabled:opacity-50"
+												class="bg-fill-600 text-fixed-white hover:bg-fill-500 rounded-md px-4 py-1.5 text-sm font-semibold transition-colors disabled:opacity-50"
 												disabled={spaceBucketSaving}
 												onclick={handleSaveSpaceBucket}
 											>
@@ -2699,7 +2699,7 @@
 								<button
 									onclick={openMoveSpacePicked}
 									disabled={spaceTransfer !== null || tooMany}
-									class="flex items-center gap-1.5 rounded-md bg-stone-600 px-4 py-1.5 text-sm font-semibold text-white transition-colors hover:bg-stone-500 disabled:cursor-not-allowed disabled:opacity-50"
+									class="bg-fill-600 text-fixed-white hover:bg-fill-500 flex items-center gap-1.5 rounded-md px-4 py-1.5 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50"
 								>
 									<MoveIcon class="size-4" />
 									Move {countFiles(pickedCount)} ({formatFileSize(spacePicker.pickedBytes)}) to…

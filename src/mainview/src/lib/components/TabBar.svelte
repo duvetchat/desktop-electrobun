@@ -1,8 +1,16 @@
 <script lang="ts">
-	import { Hash as HashIcon, Volume2 as SpeakerSimpleHighIcon } from "@lucide/svelte";
 	import { ContextMenu } from "bits-ui";
 	import type { Tab } from "$lib/types";
-	import { gatewaySpaces } from "$lib/stores.svelte";
+	import { tabDragData, tabFromDragData, tabNews, tabTitle } from "$lib/pane";
+	import {
+		conversations,
+		currentUser,
+		gatewaySpaces,
+		mentionCounts,
+		unreadChannels,
+		unreadConversations,
+	} from "$lib/stores.svelte";
+	import TabIcon from "$lib/components/TabIcon.svelte";
 
 	let {
 		tabs,
@@ -41,18 +49,9 @@
 	function handleTabDragStart(e: DragEvent, origIndex: number) {
 		dragSrcIndex = origIndex;
 		e.dataTransfer!.effectAllowed = "move";
-		const tab = tabs[origIndex];
 		e.dataTransfer!.setData(
 			"text/plain",
-			JSON.stringify({
-				type: "tab",
-				index: origIndex,
-				sourceLeafId: leafId,
-				channelId: tab.channelId,
-				channelName: tab.channelName,
-				channelType: tab.channelType,
-				spaceId: tab.spaceId,
-			}),
+			tabDragData(tabs[origIndex], { type: "tab", index: origIndex, sourceLeafId: leafId }),
 		);
 	}
 
@@ -86,6 +85,7 @@
 			channelName?: string;
 			channelType?: string;
 			spaceId?: string;
+			kind?: unknown;
 		};
 		try {
 			data = JSON.parse(raw);
@@ -95,21 +95,12 @@
 			return;
 		}
 
-		if (data.type === "channel") {
-			onChannelDrop({
-				channelId: data.channelId!,
-				channelName: data.channelName!,
-				channelType: data.channelType!,
-				spaceId: data.spaceId!,
-			});
-		} else if (data.type === "tab" && dragSrcIndex === null && data.channelId) {
+		const dropped = tabFromDragData(data);
+		if (data.type === "channel" && dropped) {
+			onChannelDrop(dropped);
+		} else if (data.type === "tab" && dragSrcIndex === null && dropped) {
 			// Tab dragged from a different pane's tab bar — open it here
-			onChannelDrop({
-				channelId: data.channelId,
-				channelName: data.channelName ?? data.channelId,
-				channelType: data.channelType ?? "text",
-				spaceId: data.spaceId ?? "",
-			});
+			onChannelDrop(dropped);
 		} else if (data.type === "tab" && dragSrcIndex !== null && dropIndex !== null) {
 			const arr = [...tabs];
 			const [moved] = arr.splice(dragSrcIndex, 1);
@@ -143,6 +134,7 @@
 	const menuItemClass =
 		"w-full px-3 py-2 text-left text-sm text-zinc-100 transition-colors hover:bg-zinc-700 data-disabled:cursor-default data-disabled:opacity-40 data-disabled:hover:bg-transparent";
 
+	// The active tab names its space after the room; the others only in their tooltip, to keep the row short.
 	const showServerNames = true;
 
 	function getSpaceName(spaceId: string): string {
@@ -167,8 +159,8 @@
 	auto here, since Chromium ignores the ::-webkit-scrollbar styles otherwise. -->
 <div
 	bind:this={barEl}
-	class="flex h-10 shrink-0 items-stretch overflow-x-auto overflow-y-hidden border-b border-zinc-800 bg-zinc-900 select-none [scrollbar-color:auto] [scrollbar-width:auto] [&::-webkit-scrollbar]:h-1 [&::-webkit-scrollbar-thumb]:border-0 {sidebarDragOver
-		? 'ring-1 ring-stone-500/60 ring-inset'
+	class="bg-duvet-bg flex h-12 shrink-0 items-center gap-1 overflow-x-auto overflow-y-hidden px-2 select-none [scrollbar-color:auto] [scrollbar-width:auto] [&::-webkit-scrollbar]:h-1 [&::-webkit-scrollbar-thumb]:border-0 {sidebarDragOver
+		? 'ring-duvet-accent/60 ring-1 ring-inset'
 		: ''}"
 	role="tablist"
 	tabindex="-1"
@@ -182,13 +174,22 @@
 		<ContextMenu.Root>
 			<ContextMenu.Trigger>
 				{#snippet child({ props })}
+					{@const isActive = tab.channelId === activeTabId}
+					{@const news = tabNews(tab, $unreadChannels, $unreadConversations, $mentionCounts)}
+					{@const mentions = news.mentions}
+					{@const unread = !isActive && news.unread}
+					{@const title = tabTitle(tab, $conversations, $currentUser?.id)}
+					{@const spaceName = getSpaceName(tab.spaceId)}
 					<div
 						{...props}
-						class="group relative flex shrink-0 cursor-pointer items-center gap-1.5 border-r border-zinc-800 px-3 text-sm transition-all duration-100
-						{tab.channelId === activeTabId
-							? 'border-t-2 border-t-stone-300 bg-zinc-800 text-white'
-							: 'border-t-2 border-t-transparent text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200'}
+						class="group rounded-row focus-visible:outline-duvet-accent relative flex h-9 shrink-0 cursor-pointer items-center gap-1.5 px-3 text-sm transition-colors duration-100 focus-visible:outline-2
+						{isActive
+							? 'bg-duvet-card text-duvet-ink shadow-duvet-raised font-semibold'
+							: unread
+								? 'text-duvet-ink hover:bg-duvet-card/60 font-bold'
+								: 'text-duvet-ink2 hover:bg-duvet-card/60 hover:text-duvet-ink'}
 						{dragSrcIndex === tab.origIndex ? 'opacity-40' : 'opacity-100'}"
+						title={spaceName ? `${title} · ${spaceName}` : title}
 						role="tab"
 						tabindex="0"
 						aria-selected={tab.channelId === activeTabId}
@@ -201,24 +202,25 @@
 					>
 						<!-- Drop insertion indicator -->
 						{#if dropIndex === i && dragSrcIndex !== null && dragSrcIndex !== tab.origIndex}
-							<div class="absolute top-1 bottom-1 left-0 w-0.5 rounded-full bg-stone-300"></div>
+							<div class="bg-duvet-accent absolute top-1 bottom-1 -left-0.5 w-0.5 rounded-full"></div>
 						{/if}
 
-						{#if tab.channelType === "text"}
-							<HashIcon class="size-3.5 shrink-0 opacity-70" />
-						{:else}
-							<SpeakerSimpleHighIcon class="size-3.5 shrink-0 opacity-70" />
-						{/if}
-						<span class="max-w-40 truncate text-xs font-medium">
-							{#if showServerNames}
-								<span class="font-normal text-zinc-500">{getSpaceName(tab.spaceId)}/</span>{tab.channelName}
-							{:else}
-								{tab.channelName}
+						<TabIcon {tab} size={14} />
+						<span class="max-w-48 truncate">
+							{title}
+							{#if showServerNames && isActive && spaceName}
+								<span class="text-duvet-ink2 ml-1 text-xs font-normal">{spaceName}</span>
 							{/if}
 						</span>
+						{#if mentions > 0 && !isActive}
+							<span
+								class="bg-duvet-accent text-duvet-on-accent flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full px-1 text-[11px] font-bold"
+								aria-label="{mentions} mentions">{mentions}</span
+							>
+						{/if}
 						<button
 							type="button"
-							class="ml-0.5 flex items-center justify-center rounded p-0.5 text-zinc-300 opacity-0 transition-opacity group-hover:opacity-60 hover:bg-zinc-700 hover:opacity-100"
+							class="text-duvet-ink2 hover:bg-duvet-chosen hover:text-duvet-chosen-ink -mr-1 flex items-center justify-center rounded p-0.5 opacity-0 transition-opacity group-focus-within:opacity-60 group-hover:opacity-60 hover:opacity-100 focus-visible:opacity-100"
 							onclick={(e) => {
 								e.stopPropagation();
 								onClose([tab.channelId]);
@@ -276,14 +278,14 @@
 	<!-- After-last-tab drop indicator -->
 	{#if dropIndex === previewTabs.length && dragSrcIndex !== null}
 		<div class="flex items-center px-0.5">
-			<div class="h-5/6 w-0.5 rounded-full bg-stone-300"></div>
+			<div class="bg-duvet-accent h-5/6 w-0.5 rounded-full"></div>
 		</div>
 	{/if}
 
 	<!-- Spacer: also acts as drop zone when dragging from sidebar -->
-	<div class="min-w-4 flex-1 {sidebarDragOver ? 'bg-stone-500/10' : ''}">
+	<div class="h-full min-w-4 flex-1 {sidebarDragOver ? 'bg-duvet-accent-tint' : ''}">
 		{#if sidebarDragOver}
-			<div class="flex h-full items-center gap-1.5 px-3 text-xs text-stone-300">
+			<div class="text-duvet-accent-text flex h-full items-center gap-1.5 px-3 text-xs">
 				<svg
 					xmlns="http://www.w3.org/2000/svg"
 					width="12"

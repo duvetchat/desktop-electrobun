@@ -126,7 +126,7 @@
 		{:else if invite}
 			<div class="text-center">
 				<div
-					class="mx-auto mb-5 flex h-20 w-20 items-center justify-center rounded-2xl bg-linear-to-br from-stone-500 to-stone-700 text-3xl font-bold text-white shadow-lg select-none"
+					class="from-fill-500 to-fill-700 text-fixed-white mx-auto mb-5 flex h-20 w-20 items-center justify-center rounded-2xl bg-linear-to-br text-3xl font-bold shadow-lg select-none"
 				>
 					{invite.space_name.charAt(0).toUpperCase()}
 				</div>
@@ -143,7 +143,7 @@
 				{/if}
 
 				<div class="mb-6 flex items-center justify-center gap-2">
-					<span class="inline-block h-2 w-2 rounded-full bg-stone-300"></span>
+					<span class="inline-block h-2 w-2 rounded-full bg-[var(--status-online,var(--color-stone-300))]"></span>
 					<span class="text-sm text-zinc-300"
 						>{formatCount(invite.member_count)}
 						{invite.member_count === 1 ? "Member" : "Members"}</span
@@ -156,7 +156,7 @@
 
 				{#if userSession.token}
 					<button
-						class="w-full rounded-xl bg-stone-600 py-3 text-base font-semibold text-white transition hover:bg-stone-500 disabled:cursor-not-allowed disabled:opacity-60"
+						class="bg-fill-600 text-fixed-white hover:bg-fill-500 w-full rounded-xl py-3 text-base font-semibold transition disabled:cursor-not-allowed disabled:opacity-60"
 						onclick={handleJoin}
 						disabled={joining}
 					>
@@ -165,7 +165,7 @@
 				{:else}
 					<p class="mb-4 text-sm text-zinc-300">Sign in to join this server.</p>
 					<button
-						class="w-full rounded-xl bg-stone-600 py-3 text-base font-semibold text-white transition hover:bg-stone-500"
+						class="bg-fill-600 text-fixed-white hover:bg-fill-500 w-full rounded-xl py-3 text-base font-semibold transition"
 						onclick={() => (window.location.href = signInUrl(inviteUrl(code)))}
 					>
 						Sign in to join

@@ -11,9 +11,11 @@
 		lastMsgRooms,
 		pageVisible,
 		mentionCounts,
+		conversations,
+		currentUser,
 	} from "$lib/stores.svelte";
 	import { get } from "svelte/store";
-	import { makeSplit, makeLeaf } from "$lib/pane";
+	import { closeTabsIn, isConversationTab, makeSplit, makeLeaf, tabFromDragData, tabTitle } from "$lib/pane";
 	import { getMessages, getMessagesAfter, getMessageById, ackRoom } from "$lib/api/messages";
 	import { onMount, onDestroy } from "svelte";
 
@@ -22,6 +24,8 @@
 	import { gatewayMessageToMessage, gatewaySpaceToMembers, isEphemeral, roomTypeToChannelType } from "$lib/types";
 	import { userStatusCache } from "$lib/api/ws/connection";
 	import PaneView from "$lib/components/PaneView.svelte";
+	import ConversationView from "$lib/components/ConversationView.svelte";
+	import TabIcon from "$lib/components/TabIcon.svelte";
 	import TabBar from "$lib/components/TabBar.svelte";
 	import Chat from "$lib/components/Chat.svelte";
 	import VoiceChannelView from "$lib/components/VoiceChannelView.svelte";
@@ -44,6 +48,7 @@
 		showMembersSidebar = true,
 		onToggleMembers = null,
 		isActive = true,
+		showTabs = true,
 	}: {
 		node: PaneNode;
 		onUpdate: (n: PaneNode) => void;
@@ -67,6 +72,8 @@
 		showMembersSidebar?: boolean;
 		onToggleMembers?: (() => void) | null;
 		isActive?: boolean;
+		/** Off when the spaces column lists the open chats: each pane then only names its active one. */
+		showTabs?: boolean;
 	} = $props();
 
 	// ── Leaf: message loading ─────────────────────────────────────────────────
@@ -126,6 +133,14 @@
 	);
 	const activeTabMembers = $derived(activeTabSpace ? gatewaySpaceToMembers(activeTabSpace, userStatusCache) : members);
 	// Channel info comes directly from the tab — no cross-guild lookup needed.
+	// A conversation's tab shows the conversation, as the friends view did; one that left the list (the user left the
+	// group) shows nothing until the page drops its tab.
+	const activeConversation = $derived(
+		activeTab && isConversationTab(activeTab)
+			? ($conversations.find((c) => c.id === activeTab.channelId) ?? null)
+			: null,
+	);
+
 	const activeChannel = $derived(
 		activeTab
 			? {
@@ -516,6 +531,8 @@
 		const req = $jumpToMessageRequest;
 		if (!req || req.id === lastHandledJumpId) return;
 		if (node.kind !== "leaf") return;
+		// A conversation's: the page opens its tab, and its ConversationView jumps.
+		if (req.conversationId) return;
 
 		const hasRoom = node.tabs.some((t) => t.channelId === req.roomId);
 		const thisPaneIsFocused = focusedPaneId === node.id;
@@ -570,18 +587,10 @@
 		if (node.kind !== "leaf") {
 			return;
 		}
-		const closing = new Set(channelIds);
-		const tabs = node.tabs.filter((t) => !closing.has(t.channelId));
+		const { tabs, activeChannelId } = closeTabsIn(node, channelIds);
 		if (tabs.length === 0 && onClose) {
 			onClose();
 			return;
-		}
-		let activeChannelId = node.activeChannelId;
-		if (activeChannelId && closing.has(activeChannelId)) {
-			const idx = node.tabs.findIndex((t) => t.channelId === activeChannelId);
-			const open = (t: Tab) => !closing.has(t.channelId);
-			activeChannelId =
-				(node.tabs.slice(idx + 1).find(open) ?? node.tabs.slice(0, idx).findLast(open))?.channelId ?? null;
 		}
 		// Focus this pane AFTER the update (onUpdate triggers syncSidebarToLeaf
 		// with the already-updated tree, so sidebarSpaceId gets the right guild).
@@ -758,17 +767,11 @@
 				channelName?: string;
 				channelType?: string;
 				spaceId?: string;
+				kind?: unknown;
 			};
 			dragType = data.type === "tab" ? "tab" : "channel";
 			sourceLeafId = data.sourceLeafId ?? null;
-			if (data.channelId) {
-				tab = {
-					channelId: data.channelId,
-					channelName: data.channelName ?? data.channelId,
-					channelType: data.channelType ?? "text",
-					spaceId: data.spaceId ?? "",
-				};
-			}
+			tab = tabFromDragData(data);
 		} catch {
 			return;
 		}
@@ -841,6 +844,7 @@
 		onToggleChannels,
 		showMembersSidebar,
 		onToggleMembers,
+		showTabs,
 	});
 </script>
 
@@ -872,8 +876,8 @@
 			type="button"
 			class="shrink-0 {node.direction === 'h'
 				? 'w-1 cursor-col-resize'
-				: 'h-1 cursor-row-resize'} bg-zinc-800 transition-colors hover:bg-blue-500 active:bg-blue-400 {isDragging
-				? 'bg-blue-500'
+				: 'h-1 cursor-row-resize'} bg-duvet-line hover:bg-duvet-accent active:bg-duvet-accent transition-colors {isDragging
+				? 'bg-duvet-accent'
 				: ''}"
 			onmousedown={startResize}
 			aria-label="Resize split"
@@ -896,36 +900,54 @@
 {:else}
 	<!-- ── Leaf ───────────────────────────────────────────────────────────────── -->
 	<!-- Clicking a pane focuses it; following DOM focus instead would also move it on programmatic
-	     focus, like a split remounting its chat inputs. The keyboard has no pane focus to move. -->
+	     focus, like a split remounting its chat inputs. The keyboard has no pane focus to move. Only a pane of a
+	     split (which has onClose) rings when focused: a lone pane is always the focused one. -->
 	<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
 	<div
-		class="relative flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden {isFocused
-			? 'ring-1 ring-blue-500/40 ring-inset'
+		class="bg-duvet-bg relative flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden {isFocused && onClose
+			? 'ring-duvet-accent/40 ring-1 ring-inset'
 			: ''}"
 		role="region"
 		aria-label="Chat pane"
 		onclick={() => onFocus(node.id)}
 	>
 		<!-- Tab bar + pane actions -->
-		<div class="flex min-w-0 shrink-0 items-stretch border-b border-zinc-800">
+		<div class="border-duvet-line bg-duvet-bg flex min-w-0 shrink-0 items-stretch border-b">
 			<div class="min-w-0 flex-1 overflow-hidden">
-				<TabBar
-					tabs={node.tabs}
-					activeTabId={node.activeChannelId}
-					leafId={node.id}
-					onSelect={handleTabSelect}
-					onClose={handleTabClose}
-					onReorder={handleTabReorder}
-					onChannelDrop={handleChannelDrop}
-				/>
+				{#if showTabs}
+					<TabBar
+						tabs={node.tabs}
+						activeTabId={node.activeChannelId}
+						leafId={node.id}
+						onSelect={handleTabSelect}
+						onClose={handleTabClose}
+						onReorder={handleTabReorder}
+						onChannelDrop={handleChannelDrop}
+					/>
+				{:else}
+					<!-- The spaces column lists the tabs: the pane names the one it shows. -->
+					<div class="flex h-12 min-w-0 items-center gap-1.5 px-4 text-sm">
+						{#if activeTab}
+							<TabIcon tab={activeTab} size={16} />
+							<span class="text-duvet-ink truncate font-bold"
+								>{tabTitle(activeTab, $conversations, $currentUser?.id)}</span
+							>
+							{#if activeTabSpace}
+								<span class="text-duvet-ink2 truncate text-xs">{activeTabSpace.name}</span>
+							{/if}
+						{:else}
+							<span class="text-duvet-ink2">No chat open</span>
+						{/if}
+					</div>
+				{/if}
 			</div>
 
 			<!-- Pane action buttons -->
-			<div class="flex shrink-0 items-center gap-0.5 bg-zinc-900 px-1">
+			<div class="flex shrink-0 items-center gap-0.5 px-1.5">
 				{#if onToggleChannels}
 					<button
 						type="button"
-						class="rounded-md p-1.5 text-zinc-400 hover:bg-zinc-800 hover:text-white"
+						class="text-duvet-ink2 hover:bg-duvet-card hover:text-duvet-ink focus-visible:outline-duvet-accent rounded-lg p-1.5 focus-visible:outline-2"
 						onclick={onToggleChannels}
 						aria-label={showChannelsSidebar ? "Collapse channels panel" : "Expand channels panel"}
 						title={showChannelsSidebar ? "Hide channels" : "Show channels"}
@@ -941,7 +963,7 @@
 				{#if onToggleMembers}
 					<button
 						type="button"
-						class="rounded-md p-1.5 text-zinc-400 hover:bg-zinc-800 hover:text-white"
+						class="text-duvet-ink2 hover:bg-duvet-card hover:text-duvet-ink focus-visible:outline-duvet-accent rounded-lg p-1.5 focus-visible:outline-2"
 						onclick={onToggleMembers}
 						aria-label={showMembersSidebar ? "Collapse members panel" : "Expand members panel"}
 						title={showMembersSidebar ? "Hide members" : "Show members"}
@@ -955,14 +977,15 @@
 				{/if}
 
 				{#if onToggleChannels || onToggleMembers}
-					<div class="mx-1 h-4 w-px bg-zinc-700"></div>
+					<div class="bg-duvet-line mx-1 h-4 w-px"></div>
 				{/if}
 
 				<!-- Split horizontal -->
 				<button
 					type="button"
-					class="rounded p-1 text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-200"
+					class="text-duvet-ink2 hover:bg-duvet-card hover:text-duvet-ink focus-visible:outline-duvet-accent rounded-lg p-1.5 transition-colors focus-visible:outline-2"
 					title="Split horizontally"
+					aria-label="Split horizontally"
 					onclick={splitH}
 				>
 					<svg
@@ -982,8 +1005,9 @@
 				<!-- Split vertical -->
 				<button
 					type="button"
-					class="rounded p-1 text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-200"
+					class="text-duvet-ink2 hover:bg-duvet-card hover:text-duvet-ink focus-visible:outline-duvet-accent rounded-lg p-1.5 transition-colors focus-visible:outline-2"
 					title="Split vertically"
+					aria-label="Split vertically"
 					onclick={splitV}
 				>
 					<svg
@@ -1004,8 +1028,9 @@
 				{#if onClose}
 					<button
 						type="button"
-						class="rounded p-1 text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-red-400"
+						class="text-duvet-ink2 hover:bg-duvet-card hover:text-duvet-danger focus-visible:outline-duvet-accent rounded-lg p-1.5 transition-colors focus-visible:outline-2"
 						title="Close pane"
+						aria-label="Close pane"
 						onclick={onClose}
 					>
 						<svg
@@ -1101,6 +1126,27 @@
 						}
 					}}
 				/>
+			{:else if activeTab && isConversationTab(activeTab)}
+				<!-- Only while the panes show: the friends view hides them, and a conversation on screen counts as read
+				     (activeDMConvId) and is acked. -->
+				{#if isActive && activeConversation}
+					{#key activeConversation.id}
+						<ConversationView
+							conversation={activeConversation}
+							onMemberAdded={(m) => {
+								const convId = activeConversation?.id;
+								if (!convId) return;
+								conversations.update((list) =>
+									list.map((c) => {
+										if (c.id !== convId) return c;
+										if (c.members.some((x) => x.id === m.id || x.user_id === m.user_id)) return c;
+										return { ...c, members: [...c.members, m] };
+									}),
+								);
+							}}
+						/>
+					{/key}
+				{/if}
 			{:else if activeChannel?.type === "voice"}
 				<VoiceChannelView
 					channelId={node.activeChannelId ?? ""}
@@ -1108,7 +1154,7 @@
 					spaceId={activeTab?.spaceId ?? ""}
 				/>
 			{:else}
-				<div class="flex flex-1 flex-col items-center justify-center gap-2 text-zinc-500">
+				<div class="text-duvet-ink2 flex flex-1 flex-col items-center justify-center gap-2">
 					<svg
 						xmlns="http://www.w3.org/2000/svg"
 						width="32"

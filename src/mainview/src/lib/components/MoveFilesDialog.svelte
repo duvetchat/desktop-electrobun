@@ -231,12 +231,14 @@
 					</Dialog.Close>
 					{#if targets.length > 0}
 						<button
-							class="flex min-w-24 items-center justify-center gap-1.5 rounded-md bg-stone-600 px-4 py-1.5 text-sm font-semibold text-white transition-colors hover:bg-stone-500 disabled:opacity-50"
+							class="bg-fill-600 text-fixed-white hover:bg-fill-500 flex min-w-24 items-center justify-center gap-1.5 rounded-md px-4 py-1.5 text-sm font-semibold transition-colors disabled:opacity-50"
 							disabled={!canStart || starting}
 							onclick={start}
 						>
 							{#if starting}
-								<div class="size-3.5 animate-spin rounded-full border-2 border-white/30 border-t-white"></div>
+								<div
+									class="border-fixed-white/30 border-t-fixed-white size-3.5 animate-spin rounded-full border-2"
+								></div>
 								Starting…
 							{:else}
 								Move {countFiles(room?.files ?? 0)}

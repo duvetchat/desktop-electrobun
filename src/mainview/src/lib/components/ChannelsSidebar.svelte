@@ -41,12 +41,16 @@
 		activeChannelId = null,
 		onSelect = () => {},
 		showChannels = true,
+		embedded = false,
 	}: {
 		guild: Guild;
 		channels: Channel[];
 		activeChannelId?: string | null;
 		onSelect?: (channelId: string) => void;
 		showChannels?: boolean;
+		/** Drawn as a tree under the space's row in the spaces column, which has the space's name, menu and the user's
+		 * bar: only the rooms show, without a column of their own. */
+		embedded?: boolean;
 	} = $props();
 
 	let buttons = $state<(HTMLElement | null)[]>([]);
@@ -83,7 +87,8 @@
 	// shows the next space: the settings close rather than show that one's.
 	let settingsSpaceId: string | null = null;
 
-	function openServerSettings() {
+	// The spaces column opens these from the space's row, as the header's menu does.
+	export function openServerSettings() {
 		settingsSpaceId = guild.id;
 		showServerSettings = true;
 	}
@@ -92,7 +97,7 @@
 		if (showServerSettings && guild.id !== settingsSpaceId) showServerSettings = false;
 	});
 
-	function openCreateChannel() {
+	export function openCreateChannel() {
 		showCreateModal = true;
 	}
 
@@ -306,9 +311,9 @@
 
 	function dropIndicatorClass(idx: number): string {
 		if (dropTargetIdx !== idx || !draggedChannelId) return "";
-		if (dropPosition === "above") return "border-t-2 border-stone-400";
-		if (dropPosition === "below") return "border-b-2 border-stone-400";
-		if (dropPosition === "into") return "ring-1 ring-stone-500";
+		if (dropPosition === "above") return "border-t-2 border-duvet-accent";
+		if (dropPosition === "below") return "border-b-2 border-duvet-accent";
+		if (dropPosition === "into") return "ring-1 ring-duvet-accent";
 		return "";
 	}
 
@@ -316,8 +321,8 @@
 	// It's a shadow in the gap between rooms: a border would add its width to the wrapper's height and shift the rows.
 	function roomDropIndicatorClass(idx: number): string {
 		if (dropTargetIdx !== idx || !draggedChannelId) return "";
-		if (dropPosition === "above") return "rounded-lg shadow-[0_-2px_0_0_var(--color-stone-400)]";
-		if (dropPosition === "below") return "rounded-lg shadow-[0_2px_0_0_var(--color-stone-400)]";
+		if (dropPosition === "above") return "rounded-lg shadow-[0_-2px_0_0_var(--duvet-accent)]";
+		if (dropPosition === "below") return "rounded-lg shadow-[0_2px_0_0_var(--duvet-accent)]";
 		return "";
 	}
 
@@ -381,11 +386,11 @@
 </script>
 
 <div
-	class="flex h-full flex-col overflow-hidden border-r border-stone-800 bg-[linear-gradient(180deg,oklch(0.215_0.01_80),oklch(0.185_0.008_80))] text-stone-100/90 transition-[width] duration-200 {showChannels
-		? 'w-60'
-		: 'w-14'}"
+	class={embedded
+		? "text-duvet-ink flex flex-col"
+		: `border-duvet-line bg-duvet-sunk text-duvet-ink flex h-full flex-col overflow-hidden border-r transition-[width] duration-200 ${showChannels ? "w-60" : "w-14"}`}
 >
-	{#if !showChannels}
+	{#if !showChannels && !embedded}
 		<!-- Collapsed: guild avatar + vertical user controls -->
 		<div class="flex flex-1 flex-col items-center gap-2 pt-3">
 			<SpaceIcon src={guild.icon_url || null} name={guild.name} size={40} />
@@ -393,51 +398,64 @@
 		<UserStatusBar collapsed />
 	{:else}
 		<!-- Scrollable content area — flex-1 so user bar is always pinned to bottom -->
-		<div class="flex min-h-0 flex-1 flex-col overflow-hidden">
-			<SpaceBanner src={guild.banner_url || null} height="6rem" class="shrink-0 rounded-none" />
-			<div
-				class="relative flex h-10 shrink-0 items-center justify-between border-b border-stone-800 bg-stone-950/50 px-3 font-semibold text-stone-100"
-			>
-				<span class="truncate">{guild.name}</span>
-				<DropdownMenu.Root>
-					<DropdownMenu.Trigger class="ml-auto shrink-0 text-zinc-400 hover:text-white" aria-label="Server menu">
-						<DotsThreeVerticalIcon class="size-4" />
-					</DropdownMenu.Trigger>
-					<DropdownMenu.Portal>
-						<DropdownMenu.Content
-							class="z-50 w-52 overflow-hidden rounded-lg border border-zinc-700 bg-zinc-800 py-1 shadow-2xl"
-							sideOffset={6}
-							align="end"
-						>
-							<DropdownMenu.Item
-								class="flex w-full items-center gap-2.5 px-3 py-2 text-sm text-zinc-100 transition-colors hover:bg-zinc-700"
-								onSelect={openServerSettings}
+		<div class={embedded ? "flex flex-col" : "flex min-h-0 flex-1 flex-col overflow-hidden"}>
+			{#if !embedded}
+				<SpaceBanner src={guild.banner_url || null} height="6rem" class="shrink-0 rounded-none" />
+				<div
+					class="border-duvet-line text-duvet-ink relative flex h-10 shrink-0 items-center justify-between border-b px-3 font-semibold"
+				>
+					<span class="truncate">{guild.name}</span>
+					<DropdownMenu.Root>
+						<DropdownMenu.Trigger class="ml-auto shrink-0 text-zinc-400 hover:text-white" aria-label="Server menu">
+							<DotsThreeVerticalIcon class="size-4" />
+						</DropdownMenu.Trigger>
+						<DropdownMenu.Portal>
+							<DropdownMenu.Content
+								class="z-50 w-52 overflow-hidden rounded-lg border border-zinc-700 bg-zinc-800 py-1 shadow-2xl"
+								sideOffset={6}
+								align="end"
 							>
-								<GearSixIcon class="size-4 text-zinc-400" />
-								Server Settings
-							</DropdownMenu.Item>
-							<!-- The API creates a room for ManageChannels in the space -->
-							{#if space && hasSpacePermission(space, Permission.ManageChannels)}
 								<DropdownMenu.Item
 									class="flex w-full items-center gap-2.5 px-3 py-2 text-sm text-zinc-100 transition-colors hover:bg-zinc-700"
-									onSelect={openCreateChannel}
+									onSelect={openServerSettings}
 								>
-									<PlusIcon class="size-4 text-zinc-400" />
-									Create Channel
+									<GearSixIcon class="size-4 text-zinc-400" />
+									Server Settings
 								</DropdownMenu.Item>
-							{/if}
-						</DropdownMenu.Content>
-					</DropdownMenu.Portal>
-				</DropdownMenu.Root>
-			</div>
-			<div class="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto p-2" role="list">
-				<!-- A sticky bar sticks inside the list's padding: -top-2 takes its 8 px back, so the bar meets the list's
-				     top edge and no row shows above it. -->
-				<div
-					class="sticky -top-2 z-10 flex h-10 items-center border-b border-stone-800/70 bg-[linear-gradient(180deg,oklch(0.215_0.01_80),oklch(0.2_0.008_80))] px-3 text-[11px] font-semibold tracking-wide text-zinc-500 uppercase select-none"
-				>
-					Channels
+								<!-- The API creates a room for ManageChannels in the space -->
+								{#if space && hasSpacePermission(space, Permission.ManageChannels)}
+									<DropdownMenu.Item
+										class="flex w-full items-center gap-2.5 px-3 py-2 text-sm text-zinc-100 transition-colors hover:bg-zinc-700"
+										onSelect={openCreateChannel}
+									>
+										<PlusIcon class="size-4 text-zinc-400" />
+										Create Channel
+									</DropdownMenu.Item>
+								{/if}
+							</DropdownMenu.Content>
+						</DropdownMenu.Portal>
+					</DropdownMenu.Root>
 				</div>
+			{/if}
+			<!-- Embedded, the rooms hang from the space's row on a guide line, and the spaces column scrolls them. -->
+			<div
+				class={embedded
+					? "border-duvet-line mb-1 ml-[19px] flex flex-col gap-px border-l-2 py-0.5 pl-2.5"
+					: "flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto p-2"}
+				role="list"
+			>
+				{#if !embedded}
+					<!-- A sticky bar sticks inside the list's padding: -top-2 takes its 8 px back, so the bar meets the list's
+					     top edge and no row shows above it. -->
+					<div
+						class="border-duvet-line bg-duvet-sunk text-duvet-ink2 sticky -top-2 z-10 flex h-10 items-center border-b px-3 text-[13px] font-bold select-none"
+					>
+						Channels
+					</div>
+				{/if}
+				{#if sidebarItems.length === 0}
+					<p class="text-duvet-ink2 px-2 py-1.5 text-[13px]">No rooms you can see yet</p>
+				{/if}
 				{#each sidebarItems as item, itemIdx}
 					{#if item.kind === "category"}
 						{@const categoryRoom = space?.rooms.find((r) => r.id === item.channel.id)}
@@ -447,7 +465,7 @@
 							<ContextMenu.Trigger>
 								<button
 									type="button"
-									class="flex h-10 w-full items-center gap-1.5 rounded-md border-0 bg-transparent px-3 text-left text-[11px] font-semibold tracking-wide text-zinc-400 uppercase hover:bg-stone-800/40 hover:text-zinc-200 {dropIndicatorClass(
+									class="rounded-row text-duvet-ink2 hover:text-duvet-ink focus-visible:outline-duvet-accent mt-1 flex h-7 w-full items-center gap-1 border-0 bg-transparent px-1.5 text-left text-[13px] font-bold focus-visible:outline-2 {dropIndicatorClass(
 										itemIdx,
 									)}"
 									onclick={() => toggleCategory(item.channel.id)}
@@ -463,7 +481,7 @@
 									{:else}
 										<ChevronRightIcon class="size-3.5 shrink-0" aria-hidden="true" />
 									{/if}
-									<span>{item.channel.name}</span>
+									<span class="truncate">{item.channel.name}</span>
 								</button>
 							</ContextMenu.Trigger>
 							<ContextMenu.Portal>
@@ -510,15 +528,20 @@
 						{@const canManage = space && room ? hasPermission(space, room, Permission.ManageChannels) : false}
 						{@const canJoin =
 							channel.type !== "voice" || (space && room && hasPermission(space, room, Permission.JoinVoice))}
+						{@const isUnread =
+							channel.type === "text" && ($unreadChannels.has(channel.id) || !!$mentionCounts[channel.id])}
+						{@const voiceCount = channel.voiceUsers?.length ?? 0}
 						<div role="listitem" class="group/channel {roomDropIndicatorClass(itemIdx)}">
 							<ContextMenu.Root>
 								<ContextMenu.Trigger>
 									<button
-										class="flex h-10 w-full items-center gap-1.5 rounded-lg px-3.5 text-left
+										class="focus-visible:outline-duvet-accent flex h-8 w-full items-center gap-1.5 rounded-[10px] px-2 text-left text-sm focus-visible:outline-2
 						{channel.id === activeChannelId
-											? 'bg-stone-700 text-stone-100 ring-1 ring-stone-500/40'
-											: 'text-stone-300 hover:bg-stone-800 hover:text-stone-100'}
-						{!canJoin ? 'cursor-not-allowed text-zinc-500 opacity-50' : ''}"
+											? 'bg-duvet-accent-tint text-duvet-accent-text font-semibold'
+											: isUnread
+												? 'text-duvet-ink hover:bg-duvet-card font-bold'
+												: 'text-duvet-ink2 hover:bg-duvet-card hover:text-duvet-ink'}
+						{!canJoin ? 'cursor-not-allowed opacity-50' : ''}"
 										aria-pressed={channel.id === activeChannelId}
 										title={channel.name}
 										draggable="true"
@@ -546,14 +569,18 @@
 										onkeydown={(e) => canJoin && onKeyDown(e, buttonIndex)}
 										use:register={buttonIndex}
 									>
-										<span class="relative shrink-0 {channel.id === activeChannelId ? 'text-white' : 'text-zinc-400'}">
+										<span
+											class="relative shrink-0 {channel.type === 'voice' && voiceCount > 0
+												? 'text-duvet-alive'
+												: 'text-duvet-ink2'}"
+										>
 											{#if channel.type === "text"}
-												<HashIcon class="size-5" />
+												<HashIcon class="size-4" />
 											{:else if channel.type === "voice"}
-												<SpeakerSimpleHighIcon class="size-5" />
+												<SpeakerSimpleHighIcon class="size-4" />
 												{#if !canJoin}
 													<LockSimpleIcon
-														class="absolute -right-2 -bottom-1 size-4 rounded-full bg-zinc-900 text-red-400"
+														class="bg-duvet-sunk text-duvet-danger absolute -right-2 -bottom-1 size-3.5 rounded-full"
 													/>
 												{/if}
 											{/if}
@@ -561,11 +588,11 @@
 										<span class="min-w-0 flex-1 truncate">{channel.name}</span>
 										{#if channel.type === "text" && $mentionCounts[channel.id]}
 											<span
-												class="text-xxs ml-1 flex size-4 shrink-0 items-center justify-center rounded-full bg-red-600 font-bold text-white"
-												>{$mentionCounts[channel.id]}</span
+												class="bg-duvet-accent text-duvet-on-accent ml-1 flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full px-1 text-[11px] font-bold"
+												aria-label="{$mentionCounts[channel.id]} mentions">{$mentionCounts[channel.id]}</span
 											>
-										{:else if channel.type === "text" && $unreadChannels.has(channel.id)}
-											<span class="ml-1 size-2 shrink-0 rounded-full bg-white"></span>
+										{:else if voiceCount > 0}
+											<span class="text-duvet-ink2 ml-1 shrink-0 text-xs font-normal">{voiceCount} in voice</span>
 										{/if}
 									</button>
 								</ContextMenu.Trigger>
@@ -619,20 +646,20 @@
 								</ContextMenu.Portal>
 							</ContextMenu.Root>
 							{#if channel.type === "voice" && channel.voiceUsers && channel.voiceUsers.length > 0}
-								<div class="space-y-1 py-1 pl-8">
+								<div class="space-y-1 py-1 pl-7">
 									{#each channel.voiceUsers as user (user.id)}
 										{@const isSharing = user.screen_sharing ?? false}
 										{@const isSpeaking = $speakingUsers.has(user.id) && !user.muted}
-										<div class="flex items-center gap-2 text-sm text-zinc-400">
+										<div class="text-duvet-ink2 flex items-center gap-2 text-[13px]">
 											<UserAvatar
 												src={user.avatar_url}
 												name={user.username}
 												size={24}
 												class="box-border shrink-0 transition-colors duration-200 {isSpeaking
-													? 'border-2 border-green-500'
+													? 'border-duvet-alive border-2'
 													: 'border-2 border-transparent'}"
 											/>
-											<span class="flex-1 truncate {isSpeaking ? 'text-zinc-200' : ''}">{user.username}</span>
+											<span class="flex-1 truncate {isSpeaking ? 'text-duvet-ink' : ''}">{user.username}</span>
 											<div class="flex shrink-0 items-center gap-0.5">
 												{#if user.camera}
 													<VideoIcon class="size-3.5 text-blue-400" />
@@ -659,7 +686,7 @@
 					<!-- Only a target for mouse drags, which have no keyboard equivalent yet. -->
 					<!-- svelte-ignore a11y_no_static_element_interactions -->
 					<div
-						class="h-6 rounded {dropTargetIdx === sidebarItems.length ? 'bg-stone-700/50' : ''}"
+						class="h-6 rounded {dropTargetIdx === sidebarItems.length ? 'bg-duvet-accent-tint' : ''}"
 						ondragover={handleDragOverEnd}
 						ondrop={(e) => handleDrop(e, sidebarItems.length)}
 					></div>
@@ -668,7 +695,9 @@
 		</div>
 		<!-- end scrollable content area -->
 
-		<UserStatusBar />
+		{#if !embedded}
+			<UserStatusBar />
+		{/if}
 	{/if}
 </div>
 
@@ -744,7 +773,7 @@
 						>Cancel</Dialog.Close
 					>
 					<button
-						class="rounded-md bg-stone-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-stone-500 disabled:opacity-50"
+						class="bg-fill-600 text-fixed-white hover:bg-fill-500 rounded-md px-4 py-2 text-sm font-medium transition-colors disabled:opacity-50"
 						onclick={handleCreateChannel}
 						disabled={!newChannelName.trim() || isCreating}
 					>
@@ -769,7 +798,7 @@
 				<div class="flex justify-end gap-3">
 					<Dialog.Close class="px-4 py-2 text-zinc-300 hover:underline">Cancel</Dialog.Close>
 					<button
-						class="rounded bg-red-600 px-4 py-2 text-white transition-colors hover:bg-red-700 disabled:opacity-50"
+						class="text-fixed-white rounded bg-red-600 px-4 py-2 transition-colors hover:bg-red-700 disabled:opacity-50"
 						onclick={handleDeleteChannel}
 						disabled={isDeletingChannel}
 					>

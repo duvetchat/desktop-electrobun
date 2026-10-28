@@ -166,7 +166,7 @@
 					class="rounded-px min-h-0.5 flex-1 transition-[background] duration-100"
 					style="height: {height * 100}%; {barProgress <= progress
 						? 'background: oklch(0.65 0.15 250);'
-						: 'background: oklch(0.35 0.01 80);'}"
+						: 'background: var(--color-night-35);'}"
 				></div>
 			{/each}
 		</div>

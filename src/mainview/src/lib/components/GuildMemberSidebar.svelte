@@ -179,7 +179,7 @@
 	// opacity: text under an opacity loses ClearType and looks thinner than the online names.
 	function getMemberColorStyle(member: MemberOnSidebar): string {
 		const dim = (color: string) =>
-			member.status === "offline" ? `color-mix(in oklab, ${color} 60%, var(--color-zinc-900))` : color;
+			member.status === "offline" ? `color-mix(in oklab, ${color} 60%, var(--duvet-bg))` : color;
 		const highest = [...member.roles]
 			.filter((r) => r.color_from !== null && r.color_from !== undefined)
 			.sort((a, b) => b.position - a.position)
@@ -253,21 +253,21 @@
 </script>
 
 <div
-	class="flex shrink-0 flex-col overflow-hidden border-l border-zinc-800 bg-zinc-900 transition-[width] duration-200 {collapsed
+	class="border-duvet-line bg-duvet-bg flex shrink-0 flex-col overflow-hidden border-l transition-[width] duration-200 motion-reduce:transition-none {collapsed
 		? 'w-0 border-l-0'
 		: 'w-64'}"
 >
-	<div class="flex h-10 shrink-0 items-center justify-between border-b border-zinc-800 px-3">
-		<p class="text-xs font-bold tracking-wide text-zinc-200 uppercase">Members</p>
-		<span class="text-[11px] text-zinc-500">{pagedMembers.filter((x) => x.status !== "offline").length} connected</span>
+	<div class="border-duvet-line flex h-12 shrink-0 items-center justify-between border-b px-4">
+		<p class="text-duvet-ink text-[13px] font-bold">Members</p>
+		<span class="text-duvet-ink2 text-xs">{pagedMembers.filter((x) => x.status !== "offline").length} online</span>
 	</div>
 	<div class="flex-1 overflow-y-auto" bind:this={listEl} onscroll={handleScroll}>
 		{#each [...groupedMembers.roles.map( (r) => ({ title: r.name, members: r.members }), ), ...(groupedMembers.unassigned.length ? [{ title: "Members", members: groupedMembers.unassigned }] : [])] as group}
 			<div>
 				<div
-					class="sticky top-0 z-10 flex h-10 items-center bg-zinc-900 px-3 text-[11px] font-semibold tracking-wide text-zinc-500 uppercase select-none"
+					class="bg-duvet-bg text-duvet-ink2 sticky top-0 z-10 flex h-9 items-end px-4 pb-1.5 text-[13px] font-bold select-none"
 				>
-					{group.title}
+					{group.title} — {group.members.length}
 				</div>
 
 				{#each group.members as member}
@@ -280,7 +280,7 @@
 						onOpenChange={(o) => {
 							activePopoverMemberId = o ? member.id : null;
 						}}
-						triggerClass="group relative flex h-10 w-full items-center overflow-hidden px-3 text-zinc-200 hover:bg-zinc-800 hover:text-white"
+						triggerClass="group relative mx-2 flex h-10 w-[calc(100%-1rem)] items-center overflow-hidden rounded-row px-2 text-duvet-ink hover:bg-duvet-card focus-visible:outline-2 focus-visible:outline-duvet-accent"
 						{onRemoveMember}
 					>
 						{#snippet children()}
@@ -303,29 +303,29 @@
 									<UserAvatar src={member.avatar_url} name={member.username} size={30} />
 									{#if isTyping(member.id)}
 										<span
-											class="absolute -right-0.5 -bottom-0.5 flex h-3 w-4 items-center justify-center gap-0.5 rounded-full border-2 border-zinc-900 bg-zinc-700"
+											class="border-duvet-bg absolute -right-0.5 -bottom-0.5 flex h-3 w-4 items-center justify-center gap-0.5 rounded-full border-2 bg-zinc-700"
 										>
 											{#if isRecording(member.id)}
 												<MicIcon class="size-2 animate-pulse text-red-400" />
 											{:else}
 												<span
-													class="block size-0.5 animate-[member-typing-bounce_1.2s_ease-in-out_infinite] rounded-full bg-[oklch(0.75_0.01_80)]"
+													class="bg-night-75 block size-0.5 animate-[member-typing-bounce_1.2s_ease-in-out_infinite] rounded-full"
 												></span>
 												<span
-													class="block size-0.5 animate-[member-typing-bounce_1.2s_ease-in-out_infinite] rounded-full bg-[oklch(0.75_0.01_80)]"
+													class="bg-night-75 block size-0.5 animate-[member-typing-bounce_1.2s_ease-in-out_infinite] rounded-full"
 													style="animation-delay:0.2s"
 												></span>
 												<span
-													class="block size-0.5 animate-[member-typing-bounce_1.2s_ease-in-out_infinite] rounded-full bg-[oklch(0.75_0.01_80)]"
+													class="bg-night-75 block size-0.5 animate-[member-typing-bounce_1.2s_ease-in-out_infinite] rounded-full"
 													style="animation-delay:0.4s"
 												></span>
 											{/if}
 										</span>
 									{:else}
 										<span
-											class="absolute -right-0.5 -bottom-0.5 h-2.5 w-2.5 rounded-full border-2 border-zinc-900
+											class="border-duvet-bg absolute -right-0.5 -bottom-0.5 h-2.5 w-2.5 rounded-full border-2
                                             {member.status === 'online'
-												? 'bg-stone-300'
+												? 'bg-duvet-alive'
 												: member.status === 'idle'
 													? 'bg-amber-500'
 													: member.status === 'dnd'

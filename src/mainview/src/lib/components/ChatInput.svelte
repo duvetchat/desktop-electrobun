@@ -1022,12 +1022,12 @@
 	<!-- Command menu -->
 	{#if commandSuggestions.length > 0}
 		<div
-			class="absolute right-0 bottom-[calc(100%+6px)] left-0 z-90 max-h-75 overflow-hidden overflow-y-auto rounded-lg border border-[oklch(0.30_0.01_80)] bg-[oklch(0.19_0.008_80)] py-1 shadow-[0_8px_24px_rgba(0,0,0,0.5)]"
+			class="border-night-30 bg-night-19 absolute right-0 bottom-[calc(100%+6px)] left-0 z-90 max-h-75 overflow-hidden overflow-y-auto rounded-lg border py-1 shadow-[0_8px_24px_rgba(0,0,0,0.5)]"
 			role="listbox"
 			aria-label="Commands"
 			bind:this={commandMenuEl}
 		>
-			<div class="text-xxs px-3 pt-1.5 pb-1 font-bold tracking-wider text-[oklch(0.52_0.01_80)] uppercase">
+			<div class="text-xxs text-night-52 px-3 pt-1.5 pb-1 font-bold tracking-wider uppercase">
 				{#if commandQuery}
 					Commands matching <strong>/{commandQuery}</strong>
 				{:else}
@@ -1041,18 +1041,18 @@
 					aria-selected={i === commandSelectedIdx}
 					class="flex w-full cursor-pointer items-center gap-2.5 border-none bg-none px-3 py-1.5 text-left transition-[background] duration-100 {i ===
 					commandSelectedIdx
-						? 'bg-[oklch(0.28_0.01_80)]'
-						: 'hover:bg-[oklch(0.28_0.01_80)]'}"
+						? 'bg-night-28'
+						: 'hover:bg-night-28'}"
 					onmousedown={(e) => {
 						e.preventDefault();
 						pickCommand(command);
 					}}
 					onmouseenter={() => (commandSelectedIdx = i)}
 				>
-					<span class="shrink-0 text-[13px] font-semibold text-[oklch(0.85_0.008_80)]">/{command.name}</span>
-					<span class="min-w-0 flex-1 truncate text-[12px] text-[oklch(0.62_0.01_80)]">{command.description}</span>
+					<span class="text-night-85 shrink-0 text-[13px] font-semibold">/{command.name}</span>
+					<span class="text-night-62 min-w-0 flex-1 truncate text-[12px]">{command.description}</span>
 					{#if bot}
-						<span class="flex shrink-0 items-center gap-1.5 text-[11px] text-[oklch(0.52_0.01_80)]">
+						<span class="text-night-52 flex shrink-0 items-center gap-1.5 text-[11px]">
 							<UserAvatar src={getAvatarURL(bot.id, bot.avatar)} name={bot.alias ?? bot.username} size={16} />
 							{bot.alias ?? bot.username}
 						</span>
@@ -1065,11 +1065,11 @@
 	<!-- Mention autocomplete dropdown -->
 	{#if mentionSuggestions.length > 0}
 		<div
-			class="absolute right-0 bottom-[calc(100%+6px)] left-0 z-90 max-h-75 overflow-hidden overflow-y-auto rounded-lg border border-[oklch(0.30_0.01_80)] bg-[oklch(0.19_0.008_80)] py-1 shadow-[0_8px_24px_rgba(0,0,0,0.5)]"
+			class="border-night-30 bg-night-19 absolute right-0 bottom-[calc(100%+6px)] left-0 z-90 max-h-75 overflow-hidden overflow-y-auto rounded-lg border py-1 shadow-[0_8px_24px_rgba(0,0,0,0.5)]"
 			role="listbox"
 			aria-label="Mention suggestions"
 		>
-			<div class="text-xxs px-3 pt-1.5 pb-1 font-bold tracking-wider text-[oklch(0.52_0.01_80)] uppercase">
+			<div class="text-xxs text-night-52 px-3 pt-1.5 pb-1 font-bold tracking-wider uppercase">
 				Members matching <strong
 					>@{getRaw(inputEl)
 						.slice(0, getOffset())
@@ -1082,8 +1082,8 @@
 					aria-selected={i === mentionSelectedIdx}
 					class="flex w-full cursor-pointer items-center gap-2.5 border-none bg-none px-3 py-1.5 text-left transition-[background] duration-100 {i ===
 					mentionSelectedIdx
-						? 'bg-[oklch(0.28_0.01_80)]'
-						: 'hover:bg-[oklch(0.28_0.01_80)]'}"
+						? 'bg-night-28'
+						: 'hover:bg-night-28'}"
 					onmousedown={(e) => {
 						e.preventDefault();
 						insertMentionSuggestion(member);
@@ -1091,9 +1091,9 @@
 					onmouseenter={() => (mentionSelectedIdx = i)}
 				>
 					<UserAvatar src={member.avatar_url} name={member.username} size={22} />
-					<span class="text-[13px] text-[oklch(0.85_0.008_80)]">{member.username}</span>
+					<span class="text-night-85 text-[13px]">{member.username}</span>
 					{#if member.raw_username !== member.username}
-						<span class="text-[11px] text-[oklch(0.52_0.01_80)]">@{member.raw_username}</span>
+						<span class="text-night-52 text-[11px]">@{member.raw_username}</span>
 					{/if}
 				</button>
 			{/each}
@@ -1103,11 +1103,11 @@
 	<!-- Room mention autocomplete dropdown -->
 	{#if roomSuggestions.length > 0}
 		<div
-			class="absolute right-0 bottom-[calc(100%+6px)] left-0 z-90 max-h-75 overflow-hidden overflow-y-auto rounded-lg border border-[oklch(0.30_0.01_80)] bg-[oklch(0.19_0.008_80)] py-1 shadow-[0_8px_24px_rgba(0,0,0,0.5)]"
+			class="border-night-30 bg-night-19 absolute right-0 bottom-[calc(100%+6px)] left-0 z-90 max-h-75 overflow-hidden overflow-y-auto rounded-lg border py-1 shadow-[0_8px_24px_rgba(0,0,0,0.5)]"
 			role="listbox"
 			aria-label="Room suggestions"
 		>
-			<div class="text-xxs px-3 pt-1.5 pb-1 font-bold tracking-wider text-[oklch(0.52_0.01_80)] uppercase">
+			<div class="text-xxs text-night-52 px-3 pt-1.5 pb-1 font-bold tracking-wider uppercase">
 				Rooms matching <strong
 					>#{getRaw(inputEl)
 						.slice(0, getOffset())
@@ -1120,8 +1120,8 @@
 					aria-selected={i === roomSelectedIdx}
 					class="flex w-full cursor-pointer items-center gap-2.5 border-none bg-none px-3 py-1.5 text-left transition-[background] duration-100 {i ===
 					roomSelectedIdx
-						? 'bg-[oklch(0.28_0.01_80)]'
-						: 'hover:bg-[oklch(0.28_0.01_80)]'}"
+						? 'bg-night-28'
+						: 'hover:bg-night-28'}"
 					onmousedown={(e) => {
 						e.preventDefault();
 						insertRoomSuggestion(room);
@@ -1129,11 +1129,11 @@
 					onmouseenter={() => (roomSelectedIdx = i)}
 				>
 					{#if room.type === 2}
-						<VoiceIcon class="size-4 shrink-0 text-[oklch(0.62_0.01_80)]" aria-label="Voice room" />
+						<VoiceIcon class="text-night-62 size-4 shrink-0" aria-label="Voice room" />
 					{:else}
-						<HashIcon class="size-4 shrink-0 text-[oklch(0.62_0.01_80)]" />
+						<HashIcon class="text-night-62 size-4 shrink-0" />
 					{/if}
-					<span class="truncate text-[13px] text-[oklch(0.85_0.008_80)]">{room.name}</span>
+					<span class="text-night-85 truncate text-[13px]">{room.name}</span>
 				</button>
 			{/each}
 		</div>
@@ -1142,11 +1142,11 @@
 	<!-- Emoji autocomplete dropdown -->
 	{#if suggestions.length > 0}
 		<div
-			class="absolute right-0 bottom-[calc(100%+6px)] left-0 z-90 max-h-75 overflow-hidden overflow-y-auto rounded-lg border border-[oklch(0.30_0.01_80)] bg-[oklch(0.19_0.008_80)] py-1 shadow-[0_8px_24px_rgba(0,0,0,0.5)]"
+			class="border-night-30 bg-night-19 absolute right-0 bottom-[calc(100%+6px)] left-0 z-90 max-h-75 overflow-hidden overflow-y-auto rounded-lg border py-1 shadow-[0_8px_24px_rgba(0,0,0,0.5)]"
 			role="listbox"
 			aria-label="Emoji suggestions"
 		>
-			<div class="text-xxs px-3 pt-1.5 pb-1 font-bold tracking-wider text-[oklch(0.52_0.01_80)] uppercase">
+			<div class="text-xxs text-night-52 px-3 pt-1.5 pb-1 font-bold tracking-wider uppercase">
 				Emoji matching <strong
 					>:{getRaw(inputEl)
 						.slice(0, getOffset())
@@ -1159,8 +1159,8 @@
 					aria-selected={i === selectedIdx}
 					class="flex w-full cursor-pointer items-center gap-2.5 border-none bg-none px-3 py-1.5 text-left transition-[background] duration-100 {i ===
 					selectedIdx
-						? 'bg-[oklch(0.28_0.01_80)]'
-						: 'hover:bg-[oklch(0.28_0.01_80)]'}"
+						? 'bg-night-28'
+						: 'hover:bg-night-28'}"
 					onmousedown={(e) => {
 						e.preventDefault();
 						insertSuggestion(entry);
@@ -1177,7 +1177,7 @@
 					{:else}
 						<img src={toTwemojiUrl(entry.emoji)} alt={entry.emoji} class="size-5.5 shrink-0" loading="lazy" />
 					{/if}
-					<span class="text-[13px] text-[oklch(0.85_0.008_80)]">:{entry.name.replace(/ /g, "_")}:</span>
+					<span class="text-night-85 text-[13px]">:{entry.name.replace(/ /g, "_")}:</span>
 				</button>
 			{/each}
 		</div>
@@ -1190,7 +1190,7 @@
 	<div class="contents">
 		{#if recording}
 			<div
-				class="pointer-events-auto flex-1 rounded-xl border border-[oklch(0.4_0.15_25/0.4)] bg-[oklch(0.20_0.02_25/0.5)] px-3 py-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]"
+				class="pointer-events-auto flex-1 rounded-xl border border-[var(--recording-line,oklch(0.4_0.15_25/0.4))] bg-[var(--recording-tint,oklch(0.20_0.02_25/0.5))] px-3 py-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]"
 			>
 				<div class="flex h-5 items-center gap-3">
 					<div class="size-2.5 rounded-full {paused ? 'bg-zinc-500' : 'animate-pulse bg-red-500'}"></div>
@@ -1200,7 +1200,7 @@
 			</div>
 			<button
 				type="button"
-				class="ce-action-btn flex size-10 shrink-0 cursor-pointer items-center justify-center rounded-xl border border-[oklch(0.40_0.01_80/0.7)] bg-[oklch(0.22_0.01_80/0.7)] text-[oklch(0.70_0.01_80)] transition-colors duration-150 outline-none hover:bg-[oklch(0.28_0.01_80)] hover:text-[oklch(0.96_0.005_80)]"
+				class="ce-action-btn border-night-40/70 bg-night-22/70 text-night-70 hover:bg-night-28 hover:text-night-96 flex size-10 shrink-0 cursor-pointer items-center justify-center rounded-xl border transition-colors duration-150 outline-none"
 				title={paused ? "Resume recording" : "Pause recording"}
 				aria-label={paused ? "Resume recording" : "Pause recording"}
 				onclick={togglePause}
@@ -1213,7 +1213,7 @@
 			</button>
 			<button
 				type="button"
-				class="ce-action-btn flex size-10 shrink-0 cursor-pointer items-center justify-center rounded-xl border border-[oklch(0.40_0.01_80/0.7)] bg-[oklch(0.22_0.01_80/0.7)] text-[oklch(0.70_0.01_80)] transition-colors duration-150 outline-none hover:bg-[oklch(0.28_0.01_80)] hover:text-[oklch(0.96_0.005_80)]"
+				class="ce-action-btn border-night-40/70 bg-night-22/70 text-night-70 hover:bg-night-28 hover:text-night-96 flex size-10 shrink-0 cursor-pointer items-center justify-center rounded-xl border transition-colors duration-150 outline-none"
 				title="Cancel recording"
 				onclick={cancelRecording}
 			>
@@ -1231,7 +1231,7 @@
 			</button>
 			<button
 				type="button"
-				class="ce-action-btn flex size-10 shrink-0 cursor-pointer items-center justify-center rounded-xl border border-[oklch(0.40_0.01_80/0.7)] bg-[oklch(0.22_0.01_80/0.7)] text-[oklch(0.7_0.15_25)] transition-colors duration-150 outline-none hover:bg-[oklch(0.28_0.02_25)] hover:text-[oklch(0.85_0.15_25)]"
+				class="ce-action-btn border-night-40/70 bg-night-22/70 flex size-10 shrink-0 cursor-pointer items-center justify-center rounded-xl border text-[var(--recording-ink,oklch(0.7_0.15_25))] transition-colors duration-150 outline-none hover:bg-[var(--recording-hover,oklch(0.28_0.02_25))] hover:text-[var(--recording-ink-hover,oklch(0.85_0.15_25))]"
 				title="Send voice note"
 				onclick={stopRecording}
 			>
@@ -1239,13 +1239,13 @@
 			</button>
 		{:else}
 			<div
-				class="pointer-events-auto flex flex-1 items-start gap-3 rounded-xl border-none bg-[oklch(0.22_0.01_80/0.8)] px-3 py-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]"
+				class="bg-night-22/80 pointer-events-auto flex flex-1 items-start gap-3 rounded-xl border-none px-3 py-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]"
 			>
 				{#if showActions}
 					<!-- File picker button, inside the box before the text as in Discord -->
 					<button
 						type="button"
-						class="flex size-5 shrink-0 cursor-pointer items-center justify-center text-[oklch(0.70_0.01_80)] transition-colors duration-150 outline-none hover:text-[oklch(0.96_0.005_80)]"
+						class="text-night-70 hover:text-night-96 flex size-5 shrink-0 cursor-pointer items-center justify-center transition-colors duration-150 outline-none"
 						title="Attach files"
 						aria-label="Attach files"
 						onclick={() => fileInputEl?.click()}
@@ -1260,7 +1260,7 @@
 					tabindex="0"
 					aria-multiline="false"
 					aria-label={placeholder}
-					class="ce-input focus-override block max-h-36 min-h-5 min-w-0 flex-1 overflow-y-auto text-sm leading-5 wrap-break-word whitespace-pre-wrap text-[oklch(0.96_0.005_80)] caret-[oklch(0.96_0.005_80)] outline-none select-text [scrollbar-width:thin] {isEmpty
+					class="ce-input focus-override text-night-96 caret-night-96 block max-h-36 min-h-5 min-w-0 flex-1 overflow-y-auto text-sm leading-5 wrap-break-word whitespace-pre-wrap outline-none select-text [scrollbar-width:thin] {isEmpty
 						? 'ce-empty'
 						: ''}"
 					data-placeholder={placeholder}
@@ -1279,7 +1279,7 @@
 				{#if onVoiceNote}
 					<button
 						type="button"
-						class="ce-action-btn flex size-10 shrink-0 cursor-pointer items-center justify-center rounded-xl border border-[oklch(0.40_0.01_80/0.7)] bg-[oklch(0.22_0.01_80/0.7)] text-[oklch(0.70_0.01_80)] transition-colors duration-150 outline-none hover:bg-[oklch(0.28_0.01_80)] hover:text-[oklch(0.96_0.005_80)]"
+						class="ce-action-btn border-night-40/70 bg-night-22/70 text-night-70 hover:bg-night-28 hover:text-night-96 flex size-10 shrink-0 cursor-pointer items-center justify-center rounded-xl border transition-colors duration-150 outline-none"
 						title="Record voice note"
 						aria-label="Record voice note"
 						onclick={startRecording}
@@ -1291,7 +1291,7 @@
 				<!-- Emoji picker button -->
 				<Popover.Root bind:open={showEmojiPicker}>
 					<Popover.Trigger
-						class="ce-action-btn flex size-10 shrink-0 cursor-pointer items-center justify-center rounded-xl border border-[oklch(0.40_0.01_80/0.7)] bg-[oklch(0.22_0.01_80/0.7)] text-[oklch(0.70_0.01_80)] transition-colors duration-150 outline-none hover:bg-[oklch(0.28_0.01_80)] hover:text-[oklch(0.96_0.005_80)]"
+						class="ce-action-btn border-night-40/70 bg-night-22/70 text-night-70 hover:bg-night-28 hover:text-night-96 flex size-10 shrink-0 cursor-pointer items-center justify-center rounded-xl border transition-colors duration-150 outline-none"
 						title="Open emoji picker"
 						aria-label="Open emoji picker"
 					>
@@ -1308,7 +1308,7 @@
 				{#if spaceStickers.length > 0}
 					<Popover.Root bind:open={showStickerPicker}>
 						<Popover.Trigger
-							class="ce-action-btn flex size-10 shrink-0 cursor-pointer items-center justify-center rounded-xl border border-[oklch(0.40_0.01_80/0.7)] bg-[oklch(0.22_0.01_80/0.7)] text-[oklch(0.70_0.01_80)] transition-colors duration-150 outline-none hover:bg-[oklch(0.28_0.01_80)] hover:text-[oklch(0.96_0.005_80)]"
+							class="ce-action-btn border-night-40/70 bg-night-22/70 text-night-70 hover:bg-night-28 hover:text-night-96 flex size-10 shrink-0 cursor-pointer items-center justify-center rounded-xl border transition-colors duration-150 outline-none"
 							title="Open sticker picker"
 							aria-label="Open sticker picker"
 						>
@@ -1325,7 +1325,7 @@
 				<!-- GIF picker button -->
 				<Popover.Root bind:open={showGifPicker}>
 					<Popover.Trigger
-						class="ce-action-btn flex size-10 shrink-0 cursor-pointer items-center justify-center rounded-xl border border-[oklch(0.40_0.01_80/0.7)] bg-[oklch(0.22_0.01_80/0.7)] text-[oklch(0.70_0.01_80)] transition-colors duration-150 outline-none hover:bg-[oklch(0.28_0.01_80)] hover:text-[oklch(0.96_0.005_80)]"
+						class="ce-action-btn border-night-40/70 bg-night-22/70 text-night-70 hover:bg-night-28 hover:text-night-96 flex size-10 shrink-0 cursor-pointer items-center justify-center rounded-xl border transition-colors duration-150 outline-none"
 						title="Open GIF picker"
 						aria-label="Open GIF picker"
 					>
@@ -1346,7 +1346,7 @@
 	/* Placeholder via CSS ::before — can't be done with Tailwind */
 	.ce-input.ce-empty::before {
 		content: attr(data-placeholder);
-		color: oklch(0.52 0.01 80);
+		color: var(--color-night-52);
 		pointer-events: none;
 		position: absolute;
 	}
@@ -1357,7 +1357,7 @@
 		padding: 1px 4px;
 		border-radius: 4px;
 		background: oklch(0.55 0.15 250 / 0.2);
-		color: oklch(0.75 0.12 250);
+		color: var(--mention-chip-ink, oklch(0.75 0.12 250));
 		font-weight: 500;
 		cursor: default;
 		user-select: all;

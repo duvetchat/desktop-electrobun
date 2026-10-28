@@ -1374,10 +1374,15 @@ export function gatewaySpaceToMembers(space: GatewaySpace, statusLookup?: Map<st
 }
 
 export interface Tab {
+	/** The room's ID, or the conversation's for a conversation's tab. */
 	channelId: string;
 	channelName: string;
+	/** A room's type ("text", "voice"); "conversation" for a conversation's tab. */
 	channelType: string;
+	/** The room's space; empty for a conversation's tab. */
 	spaceId: string;
+	/** What the tab shows: a room when it's missing, as every tab saved before conversations had tabs is one. */
+	kind?: "room" | "conversation";
 }
 
 export interface PaneLeaf {

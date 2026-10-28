@@ -574,7 +574,7 @@
 </script>
 
 <div
-	class="relative flex flex-1 flex-col overflow-hidden bg-[linear-gradient(180deg,oklch(0.22_0.01_80),oklch(0.19_0.008_80))]"
+	class="from-night-22 to-night-19 relative flex flex-1 flex-col overflow-hidden bg-linear-to-b"
 	ondragover={handleFileDragOver}
 	ondragleave={handleFileDragLeave}
 	ondrop={handleFileDrop}

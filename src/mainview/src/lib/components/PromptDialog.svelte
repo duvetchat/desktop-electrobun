@@ -39,7 +39,7 @@
 							Cancel
 						</AlertDialog.Cancel>
 						<AlertDialog.Action
-							class="rounded-md bg-stone-600 px-4 py-1.5 text-sm font-semibold text-white transition-colors hover:bg-stone-500"
+							class="bg-fill-600 text-fixed-white hover:bg-fill-500 rounded-md px-4 py-1.5 text-sm font-semibold transition-colors"
 							onclick={submit}
 						>
 							OK

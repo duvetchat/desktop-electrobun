@@ -332,7 +332,7 @@
 	);
 </script>
 
-<div class="flex min-h-0 flex-1 flex-col bg-[linear-gradient(180deg,oklch(0.205_0.01_80),oklch(0.18_0.008_80))]">
+<div class="from-night-205 to-night-18 flex min-h-0 flex-1 flex-col bg-linear-to-b">
 	<!-- Header -->
 	<div class="flex shrink-0 items-center gap-2 border-b border-zinc-800 px-4 py-3">
 		{#if callMode}
@@ -457,7 +457,7 @@
 								{/if}
 								{#if !isLocal}
 									<button
-										class="absolute top-2 right-2 z-10 flex items-center gap-1.5 rounded-md bg-black/70 px-2.5 py-1.5 text-xs text-zinc-300 opacity-0 backdrop-blur-sm transition-all group-hover:opacity-100 hover:bg-red-600/80 hover:text-white"
+										class="hover:text-fixed-white absolute top-2 right-2 z-10 flex items-center gap-1.5 rounded-md bg-black/70 px-2.5 py-1.5 text-xs text-zinc-300 opacity-0 backdrop-blur-sm transition-all group-hover:opacity-100 hover:bg-red-600/80"
 										onclick={(e) => {
 											e.stopPropagation();
 											videoAccepted = { ...videoAccepted, [user.id]: false };
@@ -478,7 +478,7 @@
 										eyeOffset={eyeOffsets[user.id] ?? { x: 0, y: 0 }}
 									/>
 									<button
-										class="flex items-center gap-2 rounded-lg bg-stone-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-stone-500"
+										class="bg-fill-600 text-fixed-white hover:bg-fill-500 flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors"
 										onclick={(e) => {
 											e.stopPropagation();
 											videoAccepted = { ...videoAccepted, [user.id]: true };
@@ -493,7 +493,7 @@
 
 						<!-- Name label -->
 						<div
-							class="absolute bottom-2 left-2 z-10 flex max-w-[calc(100%-1rem)] items-center gap-1.5 rounded-md bg-black/60 px-2 py-1 text-white backdrop-blur-md"
+							class="text-fixed-white absolute bottom-2 left-2 z-10 flex max-w-[calc(100%-1rem)] items-center gap-1.5 rounded-md bg-black/60 px-2 py-1 backdrop-blur-md"
 						>
 							{#if tile.kind === "screen"}
 								<MonitorUp class="size-3.5 shrink-0 text-blue-400" />
@@ -676,7 +676,7 @@
 			</button>
 		{:else}
 			<button
-				class="flex items-center gap-2 rounded-xl bg-stone-600 px-6 py-3 font-semibold text-white transition-colors hover:bg-stone-500"
+				class="bg-fill-600 text-fixed-white hover:bg-fill-500 flex items-center gap-2 rounded-xl px-6 py-3 font-semibold transition-colors"
 				class:opacity-50={!canJoin}
 				class:cursor-not-allowed={!canJoin}
 				disabled={!canJoin}

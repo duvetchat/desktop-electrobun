@@ -556,7 +556,7 @@
 									<p class="mb-2 font-medium text-red-400">Delete this {room.type === 3 ? "category" : "channel"}?</p>
 									<div class="flex gap-2">
 										<button
-											class="flex-1 rounded bg-red-600 px-2 py-1 text-xs text-white transition-colors hover:bg-red-500"
+											class="text-fixed-white flex-1 rounded bg-red-600 px-2 py-1 text-xs transition-colors hover:bg-red-500"
 											onclick={() => {
 												onDelete?.();
 												handleClose();
@@ -633,7 +633,7 @@
 
 								<div class="flex gap-3 pt-1">
 									<button
-										class="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-indigo-500 disabled:opacity-50"
+										class="text-fixed-white rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium transition-colors hover:bg-indigo-500 disabled:opacity-50"
 										disabled={overviewSaving || !editName.trim()}
 										onclick={saveOverview}
 									>
@@ -741,7 +741,7 @@
 																<!-- Deny -->
 																<button
 																	class="flex size-7 items-center justify-center rounded transition-colors
-																		{state === -1 ? 'bg-red-600 text-white' : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200'}"
+																		{state === -1 ? 'text-fixed-white bg-red-600' : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200'}"
 																	class:opacity-40={!canDeny}
 																	class:cursor-not-allowed={!canDeny}
 																	disabled={!canDeny}
@@ -762,7 +762,7 @@
 																<!-- Allow -->
 																<button
 																	class="flex size-7 items-center justify-center rounded transition-colors
-																		{state === 1 ? 'bg-green-600 text-white' : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200'}"
+																		{state === 1 ? 'text-fixed-white bg-green-600' : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200'}"
 																	class:opacity-40={!canAllow}
 																	class:cursor-not-allowed={!canAllow}
 																	disabled={!canAllow}
@@ -823,7 +823,7 @@
 														>
 															<button
 																type="button"
-																class="flex size-6 cursor-pointer items-center justify-center rounded-full bg-black/60 text-white opacity-0 transition-opacity group-hover:opacity-100 hover:bg-black/80"
+																class="text-fixed-white flex size-6 cursor-pointer items-center justify-center rounded-full bg-black/60 opacity-0 transition-opacity group-hover:opacity-100 hover:bg-black/80"
 																title="Change avatar"
 																onclick={pickNewWebhookAvatar}
 															>
@@ -846,7 +846,7 @@
 											</div>
 
 											<button
-												class="flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
+												class="text-fixed-white flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium transition-colors hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
 												onclick={handleCreateWebhook}
 												disabled={isCreatingWebhook || !newWebhookName.trim()}
 											>
@@ -933,7 +933,7 @@
 															>
 																<button
 																	type="button"
-																	class="flex size-5 cursor-pointer items-center justify-center rounded-full bg-black/60 text-white opacity-0 transition-opacity group-hover/edit:opacity-100 hover:bg-black/80"
+																	class="text-fixed-white flex size-5 cursor-pointer items-center justify-center rounded-full bg-black/60 opacity-0 transition-opacity group-hover/edit:opacity-100 hover:bg-black/80"
 																	title="Change avatar"
 																	onclick={pickEditWebhookAvatar}
 																>
@@ -1034,7 +1034,7 @@
 									Reset
 								</button>
 								<button
-									class="rounded-lg bg-indigo-600 px-4 py-1.5 text-sm font-medium text-white transition-colors hover:bg-indigo-500 disabled:opacity-50"
+									class="text-fixed-white rounded-lg bg-indigo-600 px-4 py-1.5 text-sm font-medium transition-colors hover:bg-indigo-500 disabled:opacity-50"
 									onclick={saveAll}
 									disabled={isSaving}
 								>

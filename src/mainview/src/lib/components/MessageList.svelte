@@ -1177,11 +1177,13 @@
 										</span>
 									{/if}
 									{#if message.webhook_id}
-										<span class="text-xxs mr-1.5 rounded bg-stone-600 px-1 py-0.5 font-semibold text-white"
+										<span class="text-xxs bg-fill-600 text-fixed-white mr-1.5 rounded px-1 py-0.5 font-semibold"
 											>WEBHOOK</span
 										>
 									{:else if message.author_is_bot}
-										<span class="text-xxs mr-1.5 rounded bg-stone-600 px-1 py-0.5 font-semibold text-white">BOT</span>
+										<span class="text-xxs bg-fill-600 text-fixed-white mr-1.5 rounded px-1 py-0.5 font-semibold"
+											>BOT</span
+										>
 									{/if}
 									<span class="text-xs font-medium text-zinc-400">{formatTimestamp(message.created_at, now)}</span>
 								</div>
@@ -1995,7 +1997,7 @@
 
 					<div class="flex gap-3">
 						<button
-							class="rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-amber-500 disabled:opacity-50"
+							class="text-fixed-white rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium transition-colors hover:bg-amber-500 disabled:opacity-50"
 							disabled={flagsBadgesSaving}
 							onclick={saveFlagsBadges}
 						>

@@ -643,9 +643,7 @@
 	});
 </script>
 
-<div
-	class="relative flex flex-1 flex-col overflow-hidden bg-[linear-gradient(180deg,oklch(0.22_0.01_80),oklch(0.19_0.008_80))]"
->
+<div class="from-night-22 to-night-19 relative flex flex-1 flex-col overflow-hidden bg-linear-to-b">
 	<!-- Header -->
 	<div
 		class="flex h-10 shrink-0 items-center gap-2 border-b border-stone-800 bg-stone-950/45 px-3 font-semibold text-stone-100"

@@ -9,7 +9,7 @@
 {#if isDesktop}
 	<header
 		id="window-titlebar"
-		class="electrobun-webkit-app-region-drag relative z-50 flex h-11 shrink-0 items-center justify-between border-b border-stone-800 bg-[linear-gradient(180deg,oklch(0.19_0.008_80),oklch(0.165_0.006_80))] px-2.5 text-stone-200"
+		class="electrobun-webkit-app-region-drag from-night-19 to-night-165 relative z-50 flex h-11 shrink-0 items-center justify-between border-b border-stone-800 bg-linear-to-b px-2.5 text-stone-200"
 	>
 		<div class="flex min-w-0 items-center">
 			<span class="text-[11px] font-semibold tracking-[0.16em] text-stone-100 uppercase">Duvet</span>
@@ -32,7 +32,7 @@
 			</Button.Root>
 			<Button.Root
 				id="window-close"
-				class="flex h-8 w-8 items-center justify-center rounded-md border border-transparent text-stone-400 transition-colors hover:border-red-500/30 hover:bg-red-500 hover:text-white"
+				class="hover:text-fixed-white flex h-8 w-8 items-center justify-center rounded-md border border-transparent text-stone-400 transition-colors hover:border-red-500/30 hover:bg-red-500"
 				aria-label="Close window"
 			>
 				<XIcon class="h-3.5 w-3.5" />

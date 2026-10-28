@@ -97,7 +97,7 @@
 						<!-- Server preview -->
 						<div class="mb-5 flex items-center gap-4">
 							<div
-								class="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-linear-to-br from-stone-500 to-stone-700 text-xl font-bold text-white select-none"
+								class="from-fill-500 to-fill-700 text-fixed-white flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-linear-to-br text-xl font-bold select-none"
 							>
 								{invite.space_name.charAt(0).toUpperCase()}
 							</div>
@@ -111,7 +111,8 @@
 									</p>
 								{/if}
 								<div class="mt-1 flex items-center gap-1.5">
-									<span class="inline-block h-2 w-2 rounded-full bg-stone-300"></span>
+									<span class="inline-block h-2 w-2 rounded-full bg-[var(--status-online,var(--color-stone-300))]"
+									></span>
 									<span class="text-xs text-zinc-400"
 										>{invite.member_count}
 										{invite.member_count === 1 ? "member" : "members"}</span
@@ -132,7 +133,7 @@
 								Cancel
 							</button>
 							<button
-								class="rounded-md bg-stone-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-stone-500 disabled:cursor-not-allowed disabled:opacity-50"
+								class="bg-fill-600 text-fixed-white hover:bg-fill-500 rounded-md px-4 py-2 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50"
 								onclick={handleJoin}
 								disabled={joining}
 							>

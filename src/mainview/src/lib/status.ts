@@ -18,7 +18,8 @@ export function chosenStatus(status: number | undefined): ChosenStatus {
 export function statusDotClass(status: MemberOnSidebar["status"]): string {
 	switch (status) {
 		case "online":
-			return "bg-stone-300";
+			// Light gray in the dark theme; ice in the light one, where the grays turn over (app.css).
+			return "bg-[var(--status-online,var(--color-stone-300))]";
 		case "idle":
 			return "bg-amber-500";
 		case "dnd":

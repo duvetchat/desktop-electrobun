@@ -202,7 +202,7 @@
 									: 'border-zinc-500'}"
 							>
 								{#if isChosen}
-									<CheckIcon class="size-3 text-white" />
+									<CheckIcon class="text-fixed-white size-3" />
 								{/if}
 							</span>
 						{:else if isChosen}

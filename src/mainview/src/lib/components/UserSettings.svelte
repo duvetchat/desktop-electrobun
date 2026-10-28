@@ -83,6 +83,9 @@
 		type Application,
 	} from "$lib/api/developer";
 	import { pendingTeamInvites, myBuckets, voiceFaces, shareSpotify } from "$lib/stores.svelte";
+	import { layoutPrefs } from "$lib/layout-prefs.svelte";
+	import { setThemePref, theme } from "$lib/theme.svelte";
+	import { parseThemePref } from "$lib/theme";
 	import { isElectrobunWindow } from "$lib/electrobun-rpc";
 	import { chosenStatus } from "$lib/status";
 	import { userStatusToString } from "$lib/types";
@@ -1124,6 +1127,33 @@
 		resetImageStages();
 		saveError = null;
 	}
+
+	// The shell's layout, saved on this device: the spaces column's mode and where the open chats are listed.
+	const themeChoices = [
+		{ value: "system", label: "System" },
+		{ value: "light", label: "Light" },
+		{ value: "dark", label: "Dark" },
+	] as const;
+	const spacesColumnChoices = [
+		{ value: "fixed", label: "Fixed" },
+		{ value: "auto-hide", label: "Auto-hide" },
+	] as const;
+	const openChatsChoices = [
+		{ value: "tabs", label: "Tabs on top" },
+		{ value: "vertical", label: "Vertical list" },
+	] as const;
+
+	// A radio group moves its choice with the arrow keys, as native radios do.
+	function radioKeydown(e: KeyboardEvent, values: readonly string[], current: string, set: (v: string) => void) {
+		const step =
+			e.key === "ArrowRight" || e.key === "ArrowDown" ? 1 : e.key === "ArrowLeft" || e.key === "ArrowUp" ? -1 : 0;
+		if (!step) return;
+		e.preventDefault();
+		const next = values[(values.indexOf(current) + step + values.length) % values.length];
+		set(next);
+		const group = (e.currentTarget as HTMLElement).closest('[role="radiogroup"]');
+		group?.querySelector<HTMLElement>(`[data-value="${next}"]`)?.focus();
+	}
 </script>
 
 <Dialog.Root bind:open>
@@ -1206,7 +1236,7 @@
 							<CodeIcon class="size-4 shrink-0" />
 							Developer
 							{#if $pendingTeamInvites.length > 0}
-								<span class="text-xxs ml-auto rounded-full bg-stone-600 px-1.5 py-0.5 font-bold text-white"
+								<span class="text-xxs bg-fill-600 text-fixed-white ml-auto rounded-full px-1.5 py-0.5 font-bold"
 									>{$pendingTeamInvites.length}</span
 								>
 							{/if}
@@ -1460,6 +1490,75 @@
 								{/each}
 							</div>
 						{:else if activeSection === "appearance"}
+							{#snippet segmented(
+								label: string,
+								description: string,
+								choices: readonly { value: string; label: string }[],
+								current: string,
+								set: (v: string) => void,
+							)}
+								<div class="flex items-center justify-between gap-4">
+									<div>
+										<p class="text-sm font-semibold text-zinc-200">{label}</p>
+										<p class="mt-1 text-xs text-zinc-500">{description}</p>
+									</div>
+									<div
+										role="radiogroup"
+										aria-label={label}
+										class="rounded-row bg-duvet-sunk shadow-duvet-press flex shrink-0 gap-1 p-1"
+									>
+										{#each choices as choice (choice.value)}
+											<button
+												type="button"
+												role="radio"
+												aria-checked={current === choice.value}
+												tabindex={current === choice.value ? 0 : -1}
+												data-value={choice.value}
+												class="focus-visible:outline-duvet-accent rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors focus-visible:outline-2 {current ===
+												choice.value
+													? 'bg-duvet-chosen text-duvet-chosen-ink shadow-duvet-raised'
+													: 'text-duvet-ink2 hover:text-duvet-ink'}"
+												onclick={() => set(choice.value)}
+												onkeydown={(e) =>
+													radioKeydown(
+														e,
+														choices.map((c) => c.value),
+														current,
+														set,
+													)}
+											>
+												{choice.label}
+											</button>
+										{/each}
+									</div>
+								</div>
+							{/snippet}
+
+							<!-- Layout -->
+							<div class="mb-6 space-y-4 rounded-lg border border-zinc-800 bg-zinc-800/40 px-4 py-4">
+								{@render segmented(
+									"Theme",
+									"System follows your computer's light or dark appearance. Saved on this device.",
+									themeChoices,
+									theme.pref,
+									(v) => setThemePref(parseThemePref(v)),
+								)}
+								{@render segmented(
+									"Spaces column",
+									"Auto-hide folds it to an edge that opens over the chat when you point at it.",
+									spacesColumnChoices,
+									layoutPrefs.spacesColumn,
+									(v) => (layoutPrefs.spacesColumn = v === "auto-hide" ? "auto-hide" : "fixed"),
+								)}
+								{@render segmented(
+									"Open chats",
+									"A vertical list puts them at the top of the spaces column instead of tabs over each chat.",
+									openChatsChoices,
+									layoutPrefs.openChats,
+									(v) => (layoutPrefs.openChats = v === "vertical" ? "vertical" : "tabs"),
+								)}
+							</div>
+
 							<p class="mb-4 text-xs text-zinc-500">
 								Customize how code blocks look in messages. Paste a URL to a VS Code theme JSON file.
 							</p>
@@ -1479,7 +1578,7 @@
 								</div>
 								<div class="flex items-center gap-2">
 									<button
-										class="rounded-md bg-stone-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-stone-500 disabled:opacity-50"
+										class="bg-fill-600 text-fixed-white hover:bg-fill-500 rounded-md px-4 py-2 text-sm font-medium transition-colors disabled:opacity-50"
 										onclick={handleSaveTheme}
 										disabled={savingTheme}
 									>
@@ -1531,7 +1630,7 @@
 											: 'bg-zinc-600'}"
 									>
 										<span
-											class="absolute top-0.5 left-0.5 size-4 rounded-full bg-white transition-transform {$voiceFaces
+											class="bg-fixed-white absolute top-0.5 left-0.5 size-4 rounded-full transition-transform {$voiceFaces
 												? 'translate-x-4'
 												: ''}"
 										></span>
@@ -1561,7 +1660,7 @@
 											: 'bg-zinc-600'}"
 									>
 										<span
-											class="absolute top-0.5 left-0.5 size-4 rounded-full bg-white transition-transform {$shareSpotify
+											class="bg-fixed-white absolute top-0.5 left-0.5 size-4 rounded-full transition-transform {$shareSpotify
 												? 'translate-x-4'
 												: ''}"
 										></span>
@@ -1979,7 +2078,7 @@
 											onclick={resetBucketForm}>Cancel</button
 										>
 										<button
-											class="rounded-md bg-stone-600 px-4 py-1.5 text-sm font-semibold text-white transition-colors hover:bg-stone-500 disabled:opacity-50"
+											class="bg-fill-600 text-fixed-white hover:bg-fill-500 rounded-md px-4 py-1.5 text-sm font-semibold transition-colors disabled:opacity-50"
 											disabled={bucketSaving}
 											onclick={handleSaveBucket}
 										>
@@ -2136,7 +2235,7 @@
 												</div>
 												<div class="flex items-center gap-2">
 													<button
-														class="rounded-md bg-stone-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-stone-500"
+														class="bg-fill-600 text-fixed-white hover:bg-fill-500 rounded-md px-3 py-1.5 text-xs font-medium transition-colors"
 														onclick={() => handleAcceptTeamInvite(invite.id)}
 													>
 														Accept
@@ -2168,7 +2267,7 @@
 										onkeydown={(e) => e.key === "Enter" && handleCreateTeam()}
 									/>
 									<button
-										class="flex items-center gap-1.5 rounded-md bg-stone-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-stone-500 disabled:opacity-50"
+										class="bg-fill-600 text-fixed-white hover:bg-fill-500 flex items-center gap-1.5 rounded-md px-3 py-2 text-sm font-medium transition-colors disabled:opacity-50"
 										onclick={handleCreateTeam}
 										disabled={devCreatingTeam || !devNewTeamName.trim()}
 									>
@@ -2221,7 +2320,7 @@
 												onkeydown={(e) => e.key === "Enter" && handleSaveTeamEdit()}
 											/>
 											<button
-												class="rounded-md bg-stone-600 px-2 py-1.5 text-xs text-white hover:bg-stone-500"
+												class="bg-fill-600 text-fixed-white hover:bg-fill-500 rounded-md px-2 py-1.5 text-xs"
 												onclick={handleSaveTeamEdit}>Save</button
 											>
 											<button
@@ -2291,7 +2390,7 @@
 												onkeydown={(e) => e.key === "Enter" && handleInviteMember()}
 											/>
 											<button
-												class="flex items-center gap-1 rounded-md bg-stone-600 px-2 py-1.5 text-xs text-white hover:bg-stone-500 disabled:opacity-50"
+												class="bg-fill-600 text-fixed-white hover:bg-fill-500 flex items-center gap-1 rounded-md px-2 py-1.5 text-xs disabled:opacity-50"
 												onclick={handleInviteMember}
 												disabled={devInviting || !devInviteEmail.trim()}
 											>
@@ -2317,7 +2416,7 @@
 												onkeydown={(e) => e.key === "Enter" && handleCreateApp()}
 											/>
 											<button
-												class="flex items-center gap-1 rounded-md bg-stone-600 px-2 py-1.5 text-xs text-white hover:bg-stone-500 disabled:opacity-50"
+												class="bg-fill-600 text-fixed-white hover:bg-fill-500 flex items-center gap-1 rounded-md px-2 py-1.5 text-xs disabled:opacity-50"
 												onclick={handleCreateApp}
 												disabled={devCreatingApp || !devNewAppName.trim()}
 											>
@@ -2348,7 +2447,7 @@
 																/>
 																<div class="flex gap-2">
 																	<button
-																		class="rounded-md bg-stone-600 px-3 py-1.5 text-xs text-white hover:bg-stone-500"
+																		class="bg-fill-600 text-fixed-white hover:bg-fill-500 rounded-md px-3 py-1.5 text-xs"
 																		onclick={handleSaveAppEdit}>Save</button
 																	>
 																	<button
@@ -2491,7 +2590,7 @@
 																							onclick={clearBotAvatar}
 																							title="Undo"
 																						>
-																							<XIcon class="size-4 text-white" />
+																							<XIcon class="text-fixed-white size-4" />
 																						</button>
 																					{:else if pendingBotAvatar === "remove"}
 																						<div
@@ -2506,7 +2605,7 @@
 																							}}
 																							title="Undo"
 																						>
-																							<RotateIcon class="size-4 text-white" />
+																							<RotateIcon class="text-fixed-white size-4" />
 																						</button>
 																					{:else if botU?.avatar}
 																						<img
@@ -2518,7 +2617,7 @@
 																							class="absolute inset-0 flex items-center justify-center gap-1 rounded-full bg-black/60 opacity-0 transition-opacity group-hover:opacity-100"
 																						>
 																							<button
-																								class="rounded p-0.5 text-white hover:bg-white/20"
+																								class="text-fixed-white hover:bg-fixed-white/20 rounded p-0.5"
 																								onclick={() => {
 																									botCropTargetApp = app;
 																									showBotAvatarCrop = true;
@@ -2526,7 +2625,7 @@
 																								title="Change"><PencilIcon class="size-3.5" /></button
 																							>
 																							<button
-																								class="rounded p-0.5 text-red-400 hover:bg-white/20"
+																								class="hover:bg-fixed-white/20 rounded p-0.5 text-red-400"
 																								onclick={removeBotAvatar}
 																								title="Remove"><TrashIcon class="size-3.5" /></button
 																							>
@@ -2557,7 +2656,7 @@
 																							onclick={clearBotBanner}
 																							title="Undo"
 																						>
-																							<XIcon class="size-4 text-white" />
+																							<XIcon class="text-fixed-white size-4" />
 																						</button>
 																					{:else if pendingBotBanner === "remove"}
 																						<div
@@ -2572,7 +2671,7 @@
 																							}}
 																							title="Undo"
 																						>
-																							<RotateIcon class="size-4 text-white" />
+																							<RotateIcon class="text-fixed-white size-4" />
 																						</button>
 																					{:else if botU?.banner}
 																						<img
@@ -2584,7 +2683,7 @@
 																							class="absolute inset-0 flex items-center justify-center gap-1 rounded bg-black/60 opacity-0 transition-opacity group-hover:opacity-100"
 																						>
 																							<button
-																								class="rounded p-0.5 text-white hover:bg-white/20"
+																								class="text-fixed-white hover:bg-fixed-white/20 rounded p-0.5"
 																								onclick={() => {
 																									botCropTargetApp = app;
 																									showBotBannerCrop = true;
@@ -2592,7 +2691,7 @@
 																								title="Change"><PencilIcon class="size-3.5" /></button
 																							>
 																							<button
-																								class="rounded p-0.5 text-red-400 hover:bg-white/20"
+																								class="hover:bg-fixed-white/20 rounded p-0.5 text-red-400"
 																								onclick={removeBotBanner}
 																								title="Remove"><TrashIcon class="size-3.5" /></button
 																							>
@@ -2613,7 +2712,7 @@
 																			</div>
 																			{#if hasBotProfileChanges}
 																				<button
-																					class="mt-2 rounded-md bg-stone-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-stone-500 disabled:opacity-50"
+																					class="bg-fill-600 text-fixed-white hover:bg-fill-500 mt-2 rounded-md px-3 py-1.5 text-xs font-medium transition-colors disabled:opacity-50"
 																					onclick={() => handleSaveBotProfile(app)}
 																					disabled={savingBotProfile}
 																				>
@@ -2624,7 +2723,7 @@
 																	{/if}
 																{:else}
 																	<button
-																		class="flex items-center gap-1.5 rounded-md bg-stone-700 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-stone-600"
+																		class="bg-fill-700 text-fixed-white hover:bg-fill-600 flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors"
 																		onclick={() => handleCreateBot(app)}
 																	>
 																		<BotIcon class="size-3.5" />
@@ -2698,7 +2797,7 @@
 								<button
 									onclick={openMovePicked}
 									disabled={myTransfer !== null || tooMany}
-									class="flex items-center gap-1.5 rounded-md bg-stone-600 px-4 py-1.5 text-sm font-semibold text-white transition-colors hover:bg-stone-500 disabled:cursor-not-allowed disabled:opacity-50"
+									class="bg-fill-600 text-fixed-white hover:bg-fill-500 flex items-center gap-1.5 rounded-md px-4 py-1.5 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50"
 								>
 									<MoveIcon class="size-4" />
 									Move {countFiles(pickedCount)} ({formatFileSize(picker.pickedBytes)}) to…
@@ -2733,7 +2832,7 @@
 								<button
 									onclick={handleSave}
 									disabled={saving || bioTooLong}
-									class="flex items-center gap-1.5 rounded-md bg-stone-600 px-4 py-1.5 text-sm font-semibold text-white transition-colors hover:bg-stone-500 disabled:cursor-not-allowed disabled:opacity-50"
+									class="bg-fill-600 text-fixed-white hover:bg-fill-500 flex items-center gap-1.5 rounded-md px-4 py-1.5 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50"
 								>
 									{#if saveSuccess}
 										<CheckIcon class="size-4" />

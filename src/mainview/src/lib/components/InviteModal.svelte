@@ -140,8 +140,8 @@
 								onclick={() => linkInput?.select()}
 							/>
 							<button
-								class="flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-2.5 text-sm font-medium text-white transition-colors
-                            {copied ? 'bg-stone-600 hover:bg-stone-500' : 'bg-stone-600 hover:bg-stone-500'}"
+								class="text-fixed-white flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors
+                            {copied ? 'bg-fill-600 hover:bg-fill-500' : 'bg-fill-600 hover:bg-fill-500'}"
 								onclick={copyLink}
 								aria-label="Copy link"
 							>

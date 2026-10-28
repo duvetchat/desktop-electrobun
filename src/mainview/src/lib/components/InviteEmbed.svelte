@@ -75,7 +75,7 @@
 		<div class="mb-4 flex items-center gap-3">
 			<!-- Server icon -->
 			<div
-				class="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-linear-to-br from-stone-500 to-stone-700 text-lg font-bold text-white select-none"
+				class="from-fill-500 to-fill-700 text-fixed-white flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-linear-to-br text-lg font-bold select-none"
 			>
 				{invite.space_name.charAt(0).toUpperCase()}
 			</div>
@@ -89,7 +89,8 @@
 					</p>
 				{/if}
 				<div class="mt-0.5 flex items-center gap-1.5">
-					<span class="inline-block h-2 w-2 shrink-0 rounded-full bg-stone-300"></span>
+					<span class="inline-block h-2 w-2 shrink-0 rounded-full bg-[var(--status-online,var(--color-stone-300))]"
+					></span>
 					<span class="text-xs text-zinc-400">
 						{formatCount(invite.member_count)}
 						{invite.member_count === 1 ? "Member" : "Members"}
@@ -103,10 +104,12 @@
 		{/if}
 
 		{#if joined}
-			<div class="w-full rounded-md bg-stone-700 py-2 text-center text-sm font-semibold text-white">You're in.</div>
+			<div class="bg-fill-700 text-fixed-white w-full rounded-md py-2 text-center text-sm font-semibold">
+				You're in.
+			</div>
 		{:else}
 			<button
-				class="w-full rounded-md bg-stone-600 py-2 text-sm font-semibold text-white transition-colors hover:bg-stone-500 disabled:cursor-not-allowed disabled:opacity-50"
+				class="bg-fill-600 text-fixed-white hover:bg-fill-500 w-full rounded-md py-2 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50"
 				onclick={handleJoin}
 				disabled={joining}
 			>
