@@ -13,7 +13,7 @@
 		spaceId = "",
 	}: {
 		open?: boolean;
-		channel?: Channel | null;
+		channel?: Pick<Channel, "id" | "name"> | null;
 		spaceId?: string;
 	} = $props();
 

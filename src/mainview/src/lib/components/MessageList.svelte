@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { hasPermission, mentionableRooms, Permission } from "$lib/permissions";
-	import { onDestroy, onMount, tick } from "svelte";
+	import { onDestroy, onMount, tick, type Snippet } from "svelte";
 	import { CircleAlert as AlertIcon, Eye as EyeIcon, Pin as PinIcon, PinOff as PinOffIcon } from "@lucide/svelte";
 	import { updateMessage, deleteMessage, getMessageThread, pinRoomMessage, unpinRoomMessage } from "$lib/api/messages";
 	import { sendComponentInteraction, type ComponentUse } from "$lib/api/interactions";
@@ -99,6 +99,7 @@
 		isAtBottom = $bindable(true),
 		onUnreadMark = undefined,
 		customEmojis = [],
+		intro = undefined,
 	}: {
 		messages: Message[];
 		members?: MemberOnSidebar[];
@@ -125,6 +126,8 @@
 		isAtBottom?: boolean;
 		onUnreadMark?: (messageId: string) => void;
 		customEmojis?: SpaceEmoji[];
+		/** Shown above the oldest message once there's nothing older to load, and alone in a chat with no messages. */
+		intro?: Snippet;
 	} = $props();
 
 	// ── State ──────────────────────────────────────────────────────────────────
@@ -930,7 +933,11 @@
 			{/each}
 		</div>
 	{:else if messages.length === 0}
-		<div class="mb-5 py-4 text-center text-zinc-400 italic">No messages yet. Send the first message.</div>
+		{#if intro}
+			{@render intro()}
+		{:else}
+			<div class="mb-5 py-4 text-center text-zinc-400 italic">No messages yet. Send the first message.</div>
+		{/if}
 	{:else}
 		<!-- Bottom sentinel: first in DOM → appears at visual bottom in flex-col-reverse.
              Visible when user scrolls to the bottom (newest messages area). -->
@@ -1022,7 +1029,7 @@
 					message.interaction_metadata
 						? 'mt-2 pt-2'
 						: showHeader
-							? 'mt-4'
+							? 'mt-3'
 							: 'mt-0'} {isFailed
 						? 'bg-red-500/10 hover:bg-red-500/15'
 						: isHighlighted
@@ -1167,7 +1174,7 @@
 
 						<div class="flex min-w-0 flex-1 flex-col">
 							{#if showHeader}
-								<div class="mb-0.5 flex items-center">
+								<div class="flex items-center leading-5">
 									{#if msgMember}
 										<MemberProfilePopover
 											member={msgMember}
@@ -1794,6 +1801,8 @@
 					</svg>
 				{/if}
 			</div>
+		{:else if intro}
+			{@render intro()}
 		{/if}
 	{/if}
 </div>

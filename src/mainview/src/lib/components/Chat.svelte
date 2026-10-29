@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { Eye as EyeIcon, EyeOff as EyeOffIcon } from "@lucide/svelte";
 
-	import { onMount, onDestroy, untrack } from "svelte";
+	import { onMount, onDestroy, untrack, type Snippet } from "svelte";
 	import ChatInput from "$lib/components/ChatInput.svelte";
 	import CommandOptions from "$lib/components/CommandOptions.svelte";
 	import MessageList from "$lib/components/MessageList.svelte";
@@ -68,6 +68,7 @@
 		sendRecording = undefined,
 		onUnreadMark = undefined,
 		onVoiceNoteOverride = undefined,
+		intro = undefined,
 	}: {
 		messages: Message[];
 		members?: MemberOnSidebar[];
@@ -104,6 +105,8 @@
 		sendRecording?: () => void;
 		onUnreadMark?: (messageId: string) => void;
 		onVoiceNoteOverride?: (blob: Blob) => void;
+		/** The start of the chat, above its oldest message (ChatIntro). */
+		intro?: Snippet;
 	} = $props();
 	let replyTo = $state<Message | null>(null);
 	// The reply bar's @: whether the reply mentions the author of the message it replies to. On for each new reply.
@@ -666,6 +669,7 @@
 		onReply={handleReply}
 		{onUnreadMark}
 		{customEmojis}
+		{intro}
 	/>
 
 	<div class="relative w-full">

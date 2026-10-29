@@ -33,7 +33,10 @@
 	import MembersButton from "$lib/components/MembersButton.svelte";
 	import MessageSearch from "$lib/components/MessageSearch.svelte";
 	import PinnedMessages from "$lib/components/PinnedMessages.svelte";
-	import { PanelRightClose, PanelRightOpen, PanelLeftClose, PanelLeftOpen } from "@lucide/svelte";
+	import { Hash, PanelRightClose, PanelRightOpen, PanelLeftClose, PanelLeftOpen, UserPlus } from "@lucide/svelte";
+	import ChatIntro from "$lib/components/ChatIntro.svelte";
+	import InviteModal from "$lib/components/InviteModal.svelte";
+	import { hasPermission, Permission } from "$lib/permissions";
 
 	// ── Props ──────────────────────────────────────────────────────────────────
 	let {
@@ -94,6 +97,7 @@
 	// last-read message ID per channel, used to render the unread divider
 	let channelUnreadAfter = $state<Partial<Record<string, string | null>>>({});
 	let paneIsAtBottom = $state(false);
+	let inviteOpen = $state(false);
 	// Plain let (not $state) to avoid self-reactive mutation in $effect
 	let lastAckChannelId: string | null = null;
 	// Non-reactive dedup map — prevents sending the same ACK twice. It also sets the divider on re-entry,
@@ -1155,7 +1159,35 @@
 			{/if}
 
 			{#if activeChannel?.type === "text"}
+				{@const introRoom = activeTabSpace?.rooms.find((r) => r.id === activeChannel.id)}
+				{#snippet roomIntro()}
+					<ChatIntro title={`#${activeChannel.name}`}>
+						{#snippet icon()}
+							<div
+								class="bg-duvet-card shadow-duvet-raised text-duvet-ink2 grid size-14 place-items-center rounded-2xl"
+							>
+								<Hash class="size-7" />
+							</div>
+						{/snippet}
+						<p>
+							The start of #{activeChannel.name}{activeTabSpace ? ` in ${activeTabSpace.name}` : ""}.
+						</p>
+						{#if activeTabSpace && introRoom && hasPermission(activeTabSpace, introRoom, Permission.CreateInvites)}
+							<div class="mt-3 flex flex-wrap gap-2">
+								<button
+									type="button"
+									class="bg-duvet-card text-duvet-ink2 shadow-duvet-raised hover:text-duvet-ink flex h-8 items-center gap-1.5 rounded-xl px-3 text-[13px] font-bold transition-colors motion-reduce:transition-none"
+									onclick={() => (inviteOpen = true)}
+								>
+									<UserPlus class="size-4" />
+									Invite people
+								</button>
+							</div>
+						{/if}
+					</ChatIntro>
+				{/snippet}
 				<Chat
+					intro={roomIntro}
 					messages={activeMessages}
 					channelId={node.activeChannelId ?? ""}
 					spaceId={activeTab?.spaceId ?? ""}
@@ -1229,4 +1261,8 @@
 			{/if}
 		</div>
 	</div>
+{/if}
+
+{#if activeChannel?.type === "text"}
+	<InviteModal bind:open={inviteOpen} channel={activeChannel} spaceId={activeTab?.spaceId ?? ""} />
 {/if}
