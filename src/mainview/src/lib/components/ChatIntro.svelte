@@ -22,5 +22,5 @@
 	<div class="text-duvet-ink2 flex flex-col gap-1 pr-28 text-sm">
 		{@render children()}
 	</div>
-	<MascotPeek class="pointer-events-none absolute right-6 -bottom-5 w-24" />
+	<MascotPeek class="pointer-events-none absolute right-6 bottom-4 w-20" />
 </div>

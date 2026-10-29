@@ -211,10 +211,10 @@
 								? `?r=${bannerRetryCounts.get(member.id)}`
 								: ''}"
 							alt=""
-							class="pointer-events-none absolute inset-0 h-full w-full object-cover object-right {member.status ===
+							class="pointer-events-none absolute inset-0 h-full w-full [mask-image:linear-gradient(to_right,transparent_40%,black_90%)] object-cover object-right {member.status ===
 							'offline'
-								? 'opacity-9'
-								: 'opacity-15'}"
+								? 'opacity-15'
+								: 'opacity-25'}"
 							onerror={() => handleBannerError(member.id)}
 							draggable="false"
 						/>
