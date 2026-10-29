@@ -1,4 +1,14 @@
-import { PINNED_SPACES_KEY, SPACE_FOLDERS_KEY, parseFolders, parsePinned, type SpaceFolder } from "$lib/nav";
+import {
+	NOW_PREFS_KEY,
+	PINNED_SPACES_KEY,
+	SPACE_FOLDERS_KEY,
+	defaultNowPrefs,
+	parseFolders,
+	parseNowPrefs,
+	parsePinned,
+	type NowPrefs,
+	type SpaceFolder,
+} from "$lib/nav";
 
 function read<T>(key: string, parse: (raw: string | null) => T, fallback: T): T {
 	if (typeof localStorage === "undefined") return fallback;
@@ -17,11 +27,12 @@ function write(key: string, value: unknown) {
 	}
 }
 
-/** How the user arranged the spaces column, saved on this device: the spaces they pinned, and the folders of the old
- * server rail. The column and its edge both read them. */
-export const navPrefs: { pinned: string[]; folders: SpaceFolder[] } = $state({
+/** How the user arranged the spaces column, saved on this device: the spaces they pinned, the folders of the old
+ * server rail, and what its Now section has folded or opened. The column and its edge both read them. */
+export const navPrefs: { pinned: string[]; folders: SpaceFolder[]; now: NowPrefs } = $state({
 	pinned: read(PINNED_SPACES_KEY, parsePinned, []),
 	folders: read(SPACE_FOLDERS_KEY, parseFolders, []),
+	now: read(NOW_PREFS_KEY, parseNowPrefs, { ...defaultNowPrefs }),
 });
 
 export function togglePinned(spaceId: string) {
@@ -52,4 +63,10 @@ export function createFolderWith(name: string, spaceId: string) {
 export function toggleFolder(folderId: string) {
 	navPrefs.folders = navPrefs.folders.map((f) => (f.id === folderId ? { ...f, collapsed: !f.collapsed } : f));
 	write(SPACE_FOLDERS_KEY, navPrefs.folders);
+}
+
+/** Folds or unfolds a part of the Now section, or lists all its voice rooms or only the busiest. */
+export function toggleNow(key: keyof NowPrefs) {
+	navPrefs.now = { ...navPrefs.now, [key]: !navPrefs.now[key] };
+	write(NOW_PREFS_KEY, navPrefs.now);
 }

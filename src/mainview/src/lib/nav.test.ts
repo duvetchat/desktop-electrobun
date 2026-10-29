@@ -1,5 +1,15 @@
 import { describe, expect, test } from "bun:test";
-import { fuzzyScore, groupSpaces, parseFolders, parsePinned, rankByQuery, spaceNews, type SpaceFolder } from "$lib/nav";
+import {
+	defaultNowPrefs,
+	fuzzyScore,
+	groupSpaces,
+	parseFolders,
+	parseNowPrefs,
+	parsePinned,
+	rankByQuery,
+	spaceNews,
+	type SpaceFolder,
+} from "$lib/nav";
 import { parseLayoutPrefs } from "$lib/layout-prefs";
 import { closeTabsIn, makeLeaf } from "$lib/pane";
 import type { Tab } from "$lib/types";
@@ -43,6 +53,18 @@ describe("saved values", () => {
 			{ id: "f", name: "Work", guildIds: ["a"], collapsed: true },
 		]);
 		expect(parseFolders('"nope"')).toEqual([]);
+	});
+
+	test("the Now section's prefs keep their booleans, and anything else is at its default", () => {
+		expect(parseNowPrefs('{"roomsFolded":true,"allRooms":true}')).toEqual({
+			roomsFolded: true,
+			friendsFolded: false,
+			allRooms: true,
+		});
+		expect(parseNowPrefs('{"friendsFolded":"yes","roomsFolded":1}')).toEqual(defaultNowPrefs);
+		expect(parseNowPrefs("[true]")).toEqual(defaultNowPrefs);
+		expect(parseNowPrefs("{")).toEqual(defaultNowPrefs);
+		expect(parseNowPrefs(null)).toEqual(defaultNowPrefs);
 	});
 
 	test("layout prefs from before the modes keep their panels and get the default modes", () => {

@@ -7,7 +7,6 @@
 		sendFriendRequest,
 		getPendingRequests,
 		getSentRequests,
-		acceptFriendRequest,
 		rejectFriendRequest,
 		getFriends,
 		unfriend,
@@ -20,6 +19,7 @@
 	import StatusDot from "$lib/components/StatusDot.svelte";
 	import ConversationView from "$lib/components/ConversationView.svelte";
 	import { getAvatarURL } from "$lib/common/common";
+	import { acceptRequest, declineRequest } from "$lib/friend-requests";
 	import { getUserOnlineStatus, rememberFriendStatuses } from "$lib/api/ws/connection";
 	import { userStatusToString, type MemberOnSidebar } from "$lib/types";
 
@@ -122,13 +122,7 @@
 
 	async function handleAccept(request: FriendRequest) {
 		try {
-			const friend = await acceptFriendRequest(request.id);
-			pendingFriendRequests.update((reqs) => reqs.filter((r) => r.id !== request.id));
-			rememberFriendStatuses([friend]);
-			friends.update((list) => {
-				if (list.some((f) => f.id === friend.id)) return list;
-				return [...list, friend];
-			});
+			await acceptRequest(request);
 		} catch (err) {
 			console.error("[Friends] Accept failed:", err);
 		}
@@ -136,8 +130,7 @@
 
 	async function handleReject(request: FriendRequest) {
 		try {
-			await rejectFriendRequest(request.id);
-			pendingFriendRequests.update((reqs) => reqs.filter((r) => r.id !== request.id));
+			await declineRequest(request);
 		} catch (err) {
 			console.error("[Friends] Reject failed:", err);
 		}

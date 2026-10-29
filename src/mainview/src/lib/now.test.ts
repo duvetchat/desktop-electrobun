@@ -7,22 +7,55 @@ import {
 	connectionNote,
 	fitFaces,
 	NOW_ROOMS,
-	nowKind,
+	joinableCalls,
+	liveIn,
+	friendsNow,
 	peopleCount,
 	voiceRoomLabel,
 	withSelf,
 } from "$lib/now";
 
-describe("nowKind", () => {
-	test("the user's own voice comes first, then the rooms with people, then the online friends", () => {
-		expect(nowKind(true, 2, 5)).toBe("voice");
-		expect(nowKind(true, 0, 0)).toBe("voice");
-		expect(nowKind(false, 2, 5)).toBe("rooms");
-		expect(nowKind(false, 0, 5)).toBe("friends");
+describe("joinableCalls", () => {
+	const calls = new Set(["a", "b", "c"]);
+
+	test("every call going on is offered while this client shows none and no pane shows its conversation", () => {
+		expect(joinableCalls(calls, null, null)).toEqual(["a", "b", "c"]);
 	});
 
-	test("nothing shows when nobody is in voice and no friend is online", () => {
-		expect(nowKind(false, 0, 0)).toBeNull();
+	test("the call this client shows, and the one whose conversation the pane shows, are left out", () => {
+		expect(joinableCalls(calls, { conversationId: "a" }, "c")).toEqual(["b"]);
+		expect(joinableCalls(new Set(), null, "a")).toEqual([]);
+	});
+});
+
+describe("liveIn", () => {
+	test("a shared screen wins over a camera", () => {
+		expect(liveIn([{ camera: true }, { screen_sharing: true }])).toBe("screen");
+		expect(liveIn([{ camera: true }, {}])).toBe("camera");
+	});
+
+	test("a room with neither shows nothing live", () => {
+		expect(liveIn([{ screen_sharing: false, camera: false }])).toBeNull();
+		expect(liveIn([])).toBeNull();
+	});
+});
+
+describe("friendsNow", () => {
+	const activities: Record<string, string> = { b: "song", c: "game", d: "song", e: "game" };
+	const activityOf = (id: string) => activities[id] ?? null;
+
+	test("the first friends doing something get rows, in order, and the others are faces", () => {
+		expect(friendsNow(["a", "b", "c", "d", "e"], activityOf, 2)).toEqual({
+			busy: [
+				{ friend: "b", activity: "song" },
+				{ friend: "c", activity: "game" },
+			],
+			rest: ["a", "d", "e"],
+		});
+	});
+
+	test("nobody doing anything leaves every friend a face", () => {
+		expect(friendsNow(["a", "f"], activityOf)).toEqual({ busy: [], rest: ["a", "f"] });
 	});
 });
 

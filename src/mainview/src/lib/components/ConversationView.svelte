@@ -18,7 +18,8 @@
 		dropVoiceRequests,
 		jumpToMessageRequest,
 	} from "$lib/stores.svelte";
-	import { acceptCall, placeCall, sendEventMessage, getUserOnlineStatus } from "$lib/api/ws/connection";
+	import { placeCall, sendEventMessage, getUserOnlineStatus } from "$lib/api/ws/connection";
+	import { joinConversationCall } from "$lib/voice";
 	import { callingFromAnotherDevice, withoutCallVoiceOf } from "$lib/calls";
 	import {
 		getDirectMessages,
@@ -114,25 +115,7 @@
 	);
 
 	function joinCall() {
-		const user = get(currentUser);
-		if (!user) return;
-		const memberIds = conversation.members.map((m) => m.user_id);
-		// Ensure call exists on gateway (idempotent if already exists)
-		sendEventMessage("CALL_INITIATE", {
-			conversation_id: conversation.id,
-			member_ids: memberIds,
-		});
-		acceptCall(conversation.id);
-		activeCall.set({
-			conversationId: conversation.id,
-			initiatorId: user.id,
-			initiatorName: user.alias ?? user.username ?? "You",
-			initiatorAvatar: user.avatar ?? null,
-			state: "connected",
-			memberIds,
-		});
-		// Delay slightly so gateway processes CALL_INITIATE before VoiceChat sends VOICE_JOIN
-		setTimeout(() => activeVoiceRoomId.set(conversation.id), 50);
+		joinConversationCall(conversation);
 	}
 
 	function hangUpCall() {

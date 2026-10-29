@@ -5,6 +5,31 @@ export const PINNED_SPACES_KEY = "duvet.nav.pinned.v1";
 /** The folders of the old server rail, which the spaces column shows as groups of its own. */
 export const SPACE_FOLDERS_KEY = "duvet.guildFolders.v1";
 
+/** What the Now section at the column's foot has folded or opened, which stays so until the user changes it. */
+export const NOW_PREFS_KEY = "duvet.nav.now.v1";
+
+/** Its voice rooms and its online friends folded to their headings, and every voice room listed past the busiest. */
+export type NowPrefs = { roomsFolded: boolean; friendsFolded: boolean; allRooms: boolean };
+
+export const defaultNowPrefs: NowPrefs = { roomsFolded: false, friendsFolded: false, allRooms: false };
+
+/** The Now section's prefs a saved value holds, each one it lacks (or holds something else in) at its default. */
+export function parseNowPrefs(raw: string | null): NowPrefs {
+	const prefs = { ...defaultNowPrefs };
+	if (!raw) return prefs;
+	try {
+		const parsed: unknown = JSON.parse(raw);
+		if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return prefs;
+		if ("roomsFolded" in parsed && typeof parsed.roomsFolded === "boolean") prefs.roomsFolded = parsed.roomsFolded;
+		if ("friendsFolded" in parsed && typeof parsed.friendsFolded === "boolean")
+			prefs.friendsFolded = parsed.friendsFolded;
+		if ("allRooms" in parsed && typeof parsed.allRooms === "boolean") prefs.allRooms = parsed.allRooms;
+		return prefs;
+	} catch {
+		return prefs;
+	}
+}
+
 export type SpaceFolder = {
 	id: string;
 	name: string;

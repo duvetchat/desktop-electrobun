@@ -140,6 +140,8 @@
 	// ── The space's actions: the server rail's and the space header's menus ──────
 	let channelsRef = $state<ReturnType<typeof ChannelsSidebar> | null>(null);
 	let showAddSpace = $state(false);
+	// How tall the rows are, all of them: the Now section below takes the rest of the column.
+	let rowsHeight = $state(0);
 
 	// The settings and the create room dialog belong to the space's tree, which shows for the selected space only.
 	async function withTreeOf(spaceId: string, action: (tree: ReturnType<typeof ChannelsSidebar>) => void) {
@@ -421,203 +423,224 @@
 		</button>
 	</div>
 
-	<div class="flex min-h-0 flex-1 flex-col overflow-y-auto px-2.5 pb-2">
-		{#if openChats}
-			{@render sectionHeader("Open")}
-			{#if openChats.tabs.length === 0}
-				<p class="text-duvet-ink2 mx-1.5 mb-1 text-[13px]">Pick a room to open it here</p>
-			{/if}
-			<ul class="flex flex-col gap-px" aria-label="Open chats">
-				{#each openChats.tabs as tab (tab.channelId)}
-					{@const isActive = tab.channelId === openChats.activeChannelId}
-					{@const news = tabNews(tab, $unreadChannels, $unreadConversations, $mentionCounts)}
-					{@const mentions = news.mentions}
-					{@const unread = !isActive && news.unread}
-					{@const title = tabTitle(tab, $conversations, $currentUser?.id)}
-					<li
-						class="group/open rounded-row relative {isActive
-							? 'bg-duvet-card shadow-duvet-raised'
-							: 'hover:bg-duvet-card/70'} {draggedTabId === tab.channelId ? 'opacity-40' : ''}"
-						draggable="true"
-						ondragstart={(e) => {
-							draggedTabId = tab.channelId;
-							e.dataTransfer!.effectAllowed = "move";
-							// The data a room's drag carries, so a pane takes it as a room or conversation to open.
-							e.dataTransfer!.setData("text/plain", tabDragData(tab));
-						}}
-						ondragover={(e) => {
-							if (!draggedTabId) return;
-							e.preventDefault();
-						}}
-						ondrop={(e) => {
-							if (!draggedTabId) return;
-							e.preventDefault();
-							dropTabOn(tab.channelId);
-							draggedTabId = null;
-						}}
-						ondragend={() => (draggedTabId = null)}
+	<!-- The rows and the Now section share what's left of the column: the section takes the room the rows don't need,
+	     and half of it at least when neither fits. What doesn't fit scrolls in each. -->
+	<div class="flex min-h-0 flex-1 flex-col" style="--rows-height: {rowsHeight}px">
+		<div class="min-h-0 flex-1 overflow-y-auto">
+			<div class="flex flex-col px-2.5 pb-2" bind:offsetHeight={rowsHeight}>
+				{#if openChats}
+					{@render sectionHeader("Open")}
+					{#if openChats.tabs.length === 0}
+						<p class="text-duvet-ink2 mx-1.5 mb-1 text-[13px]">Pick a room to open it here</p>
+					{/if}
+					<ul class="flex flex-col gap-px" aria-label="Open chats">
+						{#each openChats.tabs as tab (tab.channelId)}
+							{@const isActive = tab.channelId === openChats.activeChannelId}
+							{@const news = tabNews(tab, $unreadChannels, $unreadConversations, $mentionCounts)}
+							{@const mentions = news.mentions}
+							{@const unread = !isActive && news.unread}
+							{@const title = tabTitle(tab, $conversations, $currentUser?.id)}
+							<li
+								class="group/open rounded-row relative {isActive
+									? 'bg-duvet-card shadow-duvet-raised'
+									: 'hover:bg-duvet-card/70'} {draggedTabId === tab.channelId ? 'opacity-40' : ''}"
+								draggable="true"
+								ondragstart={(e) => {
+									draggedTabId = tab.channelId;
+									e.dataTransfer!.effectAllowed = "move";
+									// The data a room's drag carries, so a pane takes it as a room or conversation to open.
+									e.dataTransfer!.setData("text/plain", tabDragData(tab));
+								}}
+								ondragover={(e) => {
+									if (!draggedTabId) return;
+									e.preventDefault();
+								}}
+								ondrop={(e) => {
+									if (!draggedTabId) return;
+									e.preventDefault();
+									dropTabOn(tab.channelId);
+									draggedTabId = null;
+								}}
+								ondragend={() => (draggedTabId = null)}
+							>
+								<button
+									type="button"
+									class="rounded-row flex w-full items-center gap-2.5 px-2 py-1.5 pr-8 text-left {rowFocus}"
+									aria-current={isActive ? "true" : undefined}
+									onclick={() => openChats.onActivate(tab.channelId)}
+								>
+									<span
+										class="bg-duvet-bg shadow-duvet-press flex size-7 shrink-0 items-center justify-center rounded-lg"
+									>
+										<TabIcon {tab} size={isConversationTab(tab) ? 20 : 14} />
+									</span>
+									<span class="flex min-w-0 flex-1 flex-col leading-tight">
+										<span
+											class="truncate text-sm {isActive || unread
+												? 'text-duvet-ink font-bold'
+												: 'text-duvet-ink2 font-medium'}">{title}</span
+										>
+										<span class="text-duvet-ink2 truncate text-xs"
+											>{isConversationTab(tab) ? conversationKind(tab.channelId) : spaceNameOf(tab.spaceId)}</span
+										>
+									</span>
+									{#if mentions && !isActive}
+										<span class="group-focus-within/open:hidden group-hover/open:hidden">
+											{@render countPill(mentions, `${mentions} mentions`)}
+										</span>
+									{/if}
+								</button>
+								<button
+									type="button"
+									class="text-duvet-ink2 hover:bg-duvet-chosen hover:text-duvet-chosen-ink absolute top-1/2 right-1.5 flex size-6 -translate-y-1/2 items-center justify-center rounded-md opacity-0 group-focus-within/open:opacity-100 group-hover/open:opacity-100 {rowFocus}"
+									aria-label="Close {title}"
+									onclick={() => openChats.onClose(tab.channelId)}
+								>
+									<XIcon class="size-3.5" />
+								</button>
+							</li>
+						{/each}
+					</ul>
+					{@render sectionHeader("Spaces")}
+				{/if}
+
+				<div class={openChats ? "" : "mt-1"}>
+					<div
+						class="group/dm rounded-row flex items-center {isFriendsActive
+							? 'bg-duvet-card/70'
+							: 'hover:bg-duvet-card/70'}"
 					>
 						<button
 							type="button"
-							class="rounded-row flex w-full items-center gap-2.5 px-2 py-1.5 pr-8 text-left {rowFocus}"
-							aria-current={isActive ? "true" : undefined}
-							onclick={() => openChats.onActivate(tab.channelId)}
+							class="rounded-row flex min-w-0 flex-1 items-center gap-2.5 p-1.5 text-left text-[15px] {rowFocus}
+						{isFriendsActive || dmBadge ? 'text-duvet-ink font-bold' : 'text-duvet-ink2 hover:text-duvet-ink font-medium'}"
+							aria-expanded={isFriendsActive || !!activeConversationId}
+							onclick={onFriendsSelect}
 						>
-							<span class="bg-duvet-bg shadow-duvet-press flex size-7 shrink-0 items-center justify-center rounded-lg">
-								<TabIcon {tab} size={isConversationTab(tab) ? 20 : 14} />
+							<span
+								class="bg-duvet-card text-duvet-ink shadow-duvet-raised flex size-7 shrink-0 items-center justify-center rounded-[9px]"
+							>
+								<AtSignIcon class="size-4" />
 							</span>
-							<span class="flex min-w-0 flex-1 flex-col leading-tight">
-								<span
-									class="truncate text-sm {isActive || unread
-										? 'text-duvet-ink font-bold'
-										: 'text-duvet-ink2 font-medium'}">{title}</span
-								>
-								<span class="text-duvet-ink2 truncate text-xs"
-									>{isConversationTab(tab) ? conversationKind(tab.channelId) : spaceNameOf(tab.spaceId)}</span
-								>
-							</span>
-							{#if mentions && !isActive}
-								<span class="group-focus-within/open:hidden group-hover/open:hidden">
-									{@render countPill(mentions, `${mentions} mentions`)}
-								</span>
+							<span class="min-w-0 flex-1 truncate">Direct messages</span>
+							{#if dmBadge}
+								{@render countPill(dmBadge, `${dmBadge} new`)}
 							{/if}
 						</button>
+					</div>
+					<!-- The conversations show under the row in the friends view, and while the focused pane shows one of them. -->
+					{#if isFriendsActive || activeConversationId}
+						<DMSidebar embedded {activeConversationId} onSelect={onConversationSelect} {onNewGroup} />
+					{/if}
+				</div>
+
+				{#if groups.pinned.length}
+					{@render sectionHeader("Pinned")}
+					<ul class="flex flex-col gap-px">
+						{#each groups.pinned as id (id)}
+							{@const guild = guildById.get(id)}
+							{#if guild}{@render spaceRow(guild)}{/if}
+						{/each}
+					</ul>
+				{/if}
+
+				{#each groups.folders as group (group.folder.id)}
+					<button
+						type="button"
+						class="text-duvet-ink2 hover:text-duvet-ink mx-0.5 mt-3 mb-1 flex items-center gap-1 rounded-md px-1 text-left text-[13px] font-bold {rowFocus}"
+						aria-expanded={!group.folder.collapsed}
+						onclick={() => toggleFolder(group.folder.id)}
+					>
+						{#if group.folder.collapsed}
+							<ChevronRightIcon class="size-3.5" aria-hidden="true" />
+						{:else}
+							<ChevronDownIcon class="size-3.5" aria-hidden="true" />
+						{/if}
+						<span class="truncate">{group.folder.name}</span>
+					</button>
+					{#if !group.folder.collapsed || group.spaceIds.includes(expandedSpaceId ?? "")}
+						<ul class="flex flex-col gap-px">
+							{#each group.folder.collapsed ? group.spaceIds.filter((id) => id === expandedSpaceId) : group.spaceIds as id (id)}
+								{@const guild = guildById.get(id)}
+								{#if guild}{@render spaceRow(guild)}{/if}
+							{/each}
+						</ul>
+					{/if}
+				{/each}
+
+				{#if groups.news.length}
+					{@render sectionHeader("With news")}
+					<ul class="flex flex-col gap-px">
+						{#each groups.news as id (id)}
+							{@const guild = guildById.get(id)}
+							{#if guild}{@render spaceRow(guild)}{/if}
+						{/each}
+					</ul>
+				{/if}
+
+				{#if groups.quiet.length}
+					<!-- The Open list already put a "Spaces" header above the direct messages. -->
+					{#if !openChats && !groups.pinned.length && !groups.news.length && !groups.folders.length}
+						{@render sectionHeader("Spaces")}
+					{/if}
+					<ul class="mt-1 flex flex-col gap-px">
+						{#each shownQuiet as id (id)}
+							{@const guild = guildById.get(id)}
+							{#if guild}{@render spaceRow(guild)}{/if}
+						{/each}
+					</ul>
+					{#if foldedQuietCount > 0 || quietOpen}
 						<button
 							type="button"
-							class="text-duvet-ink2 hover:bg-duvet-chosen hover:text-duvet-chosen-ink absolute top-1/2 right-1.5 flex size-6 -translate-y-1/2 items-center justify-center rounded-md opacity-0 group-focus-within/open:opacity-100 group-hover/open:opacity-100 {rowFocus}"
-							aria-label="Close {title}"
-							onclick={() => openChats.onClose(tab.channelId)}
+							class="rounded-row text-duvet-ink2 hover:bg-duvet-card/70 hover:text-duvet-ink mt-px flex w-full items-center gap-2.5 p-1.5 text-left text-[15px] font-medium {rowFocus}"
+							aria-expanded={quietOpen}
+							onclick={() => (quietOpen = !quietOpen)}
 						>
-							<XIcon class="size-3.5" />
+							<span
+								class="bg-duvet-card shadow-duvet-raised flex size-7 shrink-0 items-center justify-center rounded-[9px] text-xs font-bold"
+								>{quietOpen ? groups.quiet.length : foldedQuietCount}</span
+							>
+							<span class="min-w-0 flex-1 truncate">
+								{#if quietOpen}Fold quiet Spaces{:else}{foldedQuietCount} quiet {foldedQuietCount === 1
+										? "Space"
+										: "Spaces"}{/if}
+							</span>
+							{#if quietOpen}
+								<ChevronDownIcon class="size-3.5 shrink-0" aria-hidden="true" />
+							{:else}
+								<ChevronRightIcon class="size-3.5 shrink-0" aria-hidden="true" />
+							{/if}
 						</button>
-					</li>
-				{/each}
-			</ul>
-			{@render sectionHeader("Spaces")}
-		{/if}
+					{/if}
+				{/if}
 
-		<div class={openChats ? "" : "mt-1"}>
-			<div
-				class="group/dm rounded-row flex items-center {isFriendsActive ? 'bg-duvet-card/70' : 'hover:bg-duvet-card/70'}"
-			>
 				<button
 					type="button"
-					class="rounded-row flex min-w-0 flex-1 items-center gap-2.5 p-1.5 text-left text-[15px] {rowFocus}
-						{isFriendsActive || dmBadge ? 'text-duvet-ink font-bold' : 'text-duvet-ink2 hover:text-duvet-ink font-medium'}"
-					aria-expanded={isFriendsActive || !!activeConversationId}
-					onclick={onFriendsSelect}
+					class="rounded-row text-duvet-ink2 hover:bg-duvet-card/70 hover:text-duvet-ink mt-3 flex w-full items-center gap-2.5 p-1.5 text-left text-sm font-medium {rowFocus}"
+					onclick={() => (showAddSpace = true)}
 				>
 					<span
-						class="bg-duvet-card text-duvet-ink shadow-duvet-raised flex size-7 shrink-0 items-center justify-center rounded-[9px]"
+						class="border-duvet-line text-duvet-ink2 flex size-7 shrink-0 items-center justify-center rounded-[9px] border border-dashed"
 					>
-						<AtSignIcon class="size-4" />
+						<PlusIcon class="size-4" />
 					</span>
-					<span class="min-w-0 flex-1 truncate">Direct messages</span>
-					{#if dmBadge}
-						{@render countPill(dmBadge, `${dmBadge} new`)}
-					{/if}
+					Join or create a Space
 				</button>
 			</div>
-			<!-- The conversations show under the row in the friends view, and while the focused pane shows one of them. -->
-			{#if isFriendsActive || activeConversationId}
-				<DMSidebar embedded {activeConversationId} onSelect={onConversationSelect} {onNewGroup} />
-			{/if}
 		</div>
 
-		{#if groups.pinned.length}
-			{@render sectionHeader("Pinned")}
-			<ul class="flex flex-col gap-px">
-				{#each groups.pinned as id (id)}
-					{@const guild = guildById.get(id)}
-					{#if guild}{@render spaceRow(guild)}{/if}
-				{/each}
-			</ul>
-		{/if}
-
-		{#each groups.folders as group (group.folder.id)}
-			<button
-				type="button"
-				class="text-duvet-ink2 hover:text-duvet-ink mx-0.5 mt-3 mb-1 flex items-center gap-1 rounded-md px-1 text-left text-[13px] font-bold {rowFocus}"
-				aria-expanded={!group.folder.collapsed}
-				onclick={() => toggleFolder(group.folder.id)}
-			>
-				{#if group.folder.collapsed}
-					<ChevronRightIcon class="size-3.5" aria-hidden="true" />
-				{:else}
-					<ChevronDownIcon class="size-3.5" aria-hidden="true" />
-				{/if}
-				<span class="truncate">{group.folder.name}</span>
-			</button>
-			{#if !group.folder.collapsed || group.spaceIds.includes(expandedSpaceId ?? "")}
-				<ul class="flex flex-col gap-px">
-					{#each group.folder.collapsed ? group.spaceIds.filter((id) => id === expandedSpaceId) : group.spaceIds as id (id)}
-						{@const guild = guildById.get(id)}
-						{#if guild}{@render spaceRow(guild)}{/if}
-					{/each}
-				</ul>
-			{/if}
-		{/each}
-
-		{#if groups.news.length}
-			{@render sectionHeader("With news")}
-			<ul class="flex flex-col gap-px">
-				{#each groups.news as id (id)}
-					{@const guild = guildById.get(id)}
-					{#if guild}{@render spaceRow(guild)}{/if}
-				{/each}
-			</ul>
-		{/if}
-
-		{#if groups.quiet.length}
-			<!-- The Open list already put a "Spaces" header above the direct messages. -->
-			{#if !openChats && !groups.pinned.length && !groups.news.length && !groups.folders.length}
-				{@render sectionHeader("Spaces")}
-			{/if}
-			<ul class="mt-1 flex flex-col gap-px">
-				{#each shownQuiet as id (id)}
-					{@const guild = guildById.get(id)}
-					{#if guild}{@render spaceRow(guild)}{/if}
-				{/each}
-			</ul>
-			{#if foldedQuietCount > 0 || quietOpen}
-				<button
-					type="button"
-					class="rounded-row text-duvet-ink2 hover:bg-duvet-card/70 hover:text-duvet-ink mt-px flex w-full items-center gap-2.5 p-1.5 text-left text-[15px] font-medium {rowFocus}"
-					aria-expanded={quietOpen}
-					onclick={() => (quietOpen = !quietOpen)}
-				>
-					<span
-						class="bg-duvet-card shadow-duvet-raised flex size-7 shrink-0 items-center justify-center rounded-[9px] text-xs font-bold"
-						>{quietOpen ? groups.quiet.length : foldedQuietCount}</span
-					>
-					<span class="min-w-0 flex-1 truncate">
-						{#if quietOpen}Fold quiet Spaces{:else}{foldedQuietCount} quiet {foldedQuietCount === 1
-								? "Space"
-								: "Spaces"}{/if}
-					</span>
-					{#if quietOpen}
-						<ChevronDownIcon class="size-3.5 shrink-0" aria-hidden="true" />
-					{:else}
-						<ChevronRightIcon class="size-3.5 shrink-0" aria-hidden="true" />
-					{/if}
-				</button>
-			{/if}
-		{/if}
-
-		<button
-			type="button"
-			class="rounded-row text-duvet-ink2 hover:bg-duvet-card/70 hover:text-duvet-ink mt-3 flex w-full items-center gap-2.5 p-1.5 text-left text-sm font-medium {rowFocus}"
-			onclick={() => (showAddSpace = true)}
-		>
-			<span
-				class="border-duvet-line text-duvet-ink2 flex size-7 shrink-0 items-center justify-center rounded-[9px] border border-dashed"
-			>
-				<PlusIcon class="size-4" />
-			</span>
-			Join or create a Space
-		</button>
-
-		<NowSection {guilds} controls={showUser} {onRoomSelect} {onConversationSelect} {onFriend} {onFriendsSelect} />
+		<div class="flex max-h-[max(50%,calc(100%-var(--rows-height)))] shrink-0 flex-col">
+			<NowSection
+				{guilds}
+				controls={showUser}
+				{isFriendsActive}
+				{activeConversationId}
+				{onRoomSelect}
+				{onConversationSelect}
+				{onFriend}
+				{onFriendsSelect}
+			/>
+		</div>
 	</div>
 
 	{#if showUser}

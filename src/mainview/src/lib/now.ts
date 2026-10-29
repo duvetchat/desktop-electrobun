@@ -1,26 +1,53 @@
 import type { Conversation } from "$lib/api/conversations";
 
-/** The voice rooms "In voice now" lists while the user isn't in voice. */
+/** The busiest voice rooms "In voice now" lists before the user opens the rest. */
 export const NOW_ROOMS = 3;
+/** The faces the voice dock's one row has room for, the user's own voice; the rest are a "+N". */
+export const NOW_DOCK_FACES = 3;
 /** The faces a voice room's row shows; the rest are a "+N". */
 export const NOW_ROOM_FACES = 4;
-/** The places in the online friends' row while nobody is in voice: their faces, the last one a "+N" when they're more. */
+/** The places in the online friends' row: their faces, the last one a "+N" when they're more. */
 export const NOW_FRIENDS = 8;
+/** The online friends with a row of what they're doing; the others doing something are faces with the rest. */
+export const NOW_FRIEND_ROWS = 3;
 
 /** A face in a stack: a person, round, dimmed when they're away, ringed while they speak. */
 export type Face = { id: string; src: string | null; name: string; dim?: boolean; speaking?: boolean };
 
-export type NowKind = "voice" | "rooms" | "friends";
-
 /**
- * What the spaces column's Now section shows: the voice the user is in, else the voice rooms of their spaces with
- * people in them, else their online friends. Nothing when there's none of those.
+ * The calls going on in the user's conversations that the column offers to join: not the one this client shows
+ * already (the voice dock has it connected, and the call dialog has it ringing or being placed), nor one in the
+ * conversation the focused pane shows, whose banner has Join.
  */
-export function nowKind(inVoice: boolean, liveRooms: number, onlineFriends: number): NowKind | null {
-	if (inVoice) return "voice";
-	if (liveRooms > 0) return "rooms";
-	if (onlineFriends > 0) return "friends";
+export function joinableCalls(
+	withCalls: ReadonlySet<string>,
+	shown: { conversationId: string } | null,
+	openConversationId: string | null,
+): string[] {
+	return [...withCalls].filter((id) => id !== shown?.conversationId && id !== openConversationId);
+}
+
+/** What a voice room shows live: someone's screen, else someone's camera. */
+export function liveIn(people: readonly { screen_sharing?: boolean; camera?: boolean }[]): "screen" | "camera" | null {
+	if (people.some((p) => p.screen_sharing)) return "screen";
+	if (people.some((p) => p.camera)) return "camera";
 	return null;
+}
+
+/** Online friends split for the column: the first `rows` doing something get a row with it, the rest a face. */
+export function friendsNow<F, A>(
+	online: readonly F[],
+	activityOf: (friend: F) => A | null,
+	rows = NOW_FRIEND_ROWS,
+): { busy: { friend: F; activity: A }[]; rest: F[] } {
+	const busy: { friend: F; activity: A }[] = [];
+	const rest: F[] = [];
+	for (const friend of online) {
+		const activity = busy.length < rows ? activityOf(friend) : null;
+		if (activity) busy.push({ friend, activity });
+		else rest.push(friend);
+	}
+	return { busy, rest };
 }
 
 /** The rooms with people in them, the busiest first, at most `max`; rooms as busy keep their order. */

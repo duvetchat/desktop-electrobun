@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { formatPlaybackTime, isSpotify, shownActivities, spotifySearchUrl } from "./activity";
+import { activityLine, formatPlaybackTime, isSpotify, shownActivities, spotifySearchUrl } from "./activity";
 import type { UserActivity } from "$lib/stores.svelte";
 
 const spotify: UserActivity = {
@@ -49,5 +49,24 @@ describe("formatPlaybackTime", () => {
 		expect(formatPlaybackTime(190_000)).toBe("3:10");
 		expect(formatPlaybackTime(3_725_000)).toBe("1:02:05");
 		expect(formatPlaybackTime(-5)).toBe("0:00");
+	});
+});
+
+describe("activityLine", () => {
+	test("a song reads as its title and artist", () => {
+		expect(activityLine(spotify)).toEqual({ kind: "listening", text: "Bugambilia — Nasa Histoires" });
+		expect(activityLine({ ...spotify, state: undefined })).toEqual({ kind: "listening", text: "Bugambilia" });
+		expect(activityLine({ ...spotify, details: undefined })).toEqual({
+			kind: "listening",
+			text: "Spotify",
+		});
+	});
+
+	test("anything else reads as what is played or listened to", () => {
+		expect(activityLine(game)).toEqual({ kind: "playing", text: "Visual Studio Code" });
+		expect(activityLine({ type: 2, name: "Apple Music" })).toEqual({
+			kind: "listening",
+			text: "Apple Music",
+		});
 	});
 });

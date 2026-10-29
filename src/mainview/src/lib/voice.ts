@@ -1,5 +1,6 @@
 import { get } from "svelte/store";
-import { sendEventMessage } from "$lib/api/ws/connection";
+import type { Conversation } from "$lib/api/conversations";
+import { acceptCall, sendEventMessage } from "$lib/api/ws/connection";
 import { withoutCallVoiceOf } from "$lib/calls";
 import {
 	activeCall,
@@ -39,6 +40,25 @@ export function toggleDeafen() {
 	isDeafened.update((d) => !d);
 	if (get(isDeafened)) isMuted.set(true);
 	sendVoiceSync();
+}
+
+/** Joins the call going on in a conversation, from its banner or the spaces column. The gateway takes CALL_INITIATE
+ * for a call it has as a no-op, and needs it before the VOICE_JOIN that VoiceChat sends once the room is set. */
+export function joinConversationCall(conversation: Pick<Conversation, "id" | "members">) {
+	const user = get(currentUser);
+	if (!user) return;
+	const memberIds = conversation.members.map((m) => m.user_id);
+	sendEventMessage("CALL_INITIATE", { conversation_id: conversation.id, member_ids: memberIds });
+	acceptCall(conversation.id);
+	activeCall.set({
+		conversationId: conversation.id,
+		initiatorId: user.id,
+		initiatorName: user.alias ?? user.username ?? "You",
+		initiatorAvatar: user.avatar ?? null,
+		state: "connected",
+		memberIds,
+	});
+	setTimeout(() => activeVoiceRoomId.set(conversation.id), 50);
 }
 
 /** Leaves the voice room or the call the user is in. A call's others stay in it, as its conversation's banner shows. */

@@ -75,8 +75,6 @@
 		updateBot,
 		getBotUser,
 		type BotUser,
-		acceptTeamInvite,
-		declineTeamInvite,
 		TeamRole,
 		type Team,
 		type TeamMember,
@@ -89,6 +87,7 @@
 	import { parseThemePref } from "$lib/theme";
 	import { isElectrobunWindow } from "$lib/electrobun-rpc";
 	import { chosenStatus } from "$lib/status";
+	import { answerTeamInvite } from "$lib/team-invites";
 	import { userStatusToString } from "$lib/types";
 	import StorageTransferCard from "$lib/components/StorageTransferCard.svelte";
 	import MoveFilesDialog from "$lib/components/MoveFilesDialog.svelte";
@@ -915,8 +914,7 @@
 
 	async function handleAcceptTeamInvite(inviteId: string) {
 		try {
-			await acceptTeamInvite(inviteId);
-			pendingTeamInvites.update((list) => list.filter((i) => i.id !== inviteId));
+			await answerTeamInvite(inviteId, true);
 			toast("Invite accepted!", "success");
 			void loadDevTeams();
 		} catch (e) {
@@ -926,8 +924,7 @@
 
 	async function handleDeclineTeamInvite(inviteId: string) {
 		try {
-			await declineTeamInvite(inviteId);
-			pendingTeamInvites.update((list) => list.filter((i) => i.id !== inviteId));
+			await answerTeamInvite(inviteId, false);
 			toast("Invite declined", "success");
 		} catch (e) {
 			toast(getApiError(e, "Failed to decline invite"), "error");
