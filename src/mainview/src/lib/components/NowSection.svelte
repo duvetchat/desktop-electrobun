@@ -1,12 +1,5 @@
 <script lang="ts">
-	import {
-		Headphones as HeadphonesIcon,
-		HeadphoneOff as HeadphoneOffIcon,
-		Mic as MicrophoneIcon,
-		MicOff as MicrophoneSlashIcon,
-		Phone as PhoneIcon,
-		PhoneOff as PhoneDisconnectIcon,
-	} from "@lucide/svelte";
+	import { Phone as PhoneIcon, PhoneOff as PhoneDisconnectIcon } from "@lucide/svelte";
 	import { getUserOnlineStatus } from "$lib/api/ws/connection";
 	import { getAvatarURL } from "$lib/common/common";
 	import {
@@ -32,19 +25,18 @@
 		currentUser,
 		friends,
 		gatewaySpaces,
-		isDeafened,
 		isMuted,
 		speakingUsers,
 		voiceConnectionState,
 	} from "$lib/stores.svelte";
 	import { userStatusToString, type Guild } from "$lib/types";
-	import { disconnectVoice, toggleDeafen, toggleMute } from "$lib/voice";
+	import { disconnectVoice } from "$lib/voice";
 	import FaceStack from "$lib/components/FaceStack.svelte";
 	import SpaceIcon from "$lib/components/SpaceIcon.svelte";
 	import StatusDot from "$lib/components/StatusDot.svelte";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
 
-	// The foot of the spaces column: what's going on now. The voice the user is in, with its controls when docked; else
+	// The foot of the spaces column: what's going on now. The voice the user is in, with Leave when docked; else
 	// the voice rooms of their spaces with people in them; else their online friends. Nothing when there's none of those.
 	let {
 		guilds,
@@ -55,7 +47,8 @@
 		onFriendsSelect,
 	}: {
 		guilds: Guild[];
-		/** Off beside the folded edge, which has the voice controls already: the dock then only says where they are. */
+		/** Off beside the folded edge, which has its own Leave: the dock then only says where the user is. Mute and
+		 * deafen are always the user bar's. */
 		controls?: boolean;
 		onRoomSelect: (spaceId: string, roomId: string) => void;
 		onConversationSelect: (conversationId: string) => void;
@@ -99,8 +92,6 @@
 				icon: guilds.find((g) => g.id === space.id)?.icon_url || null,
 				open: () => onRoomSelect(space.id, room.id),
 				people: withSelf(people, self),
-				// Without SpeakInVoice the mic stays muted: the user bar mutes it when the permission goes.
-				canSpeak: hasPermission(space, room, Permission.SpeakInVoice),
 			};
 		}
 		const call = $activeCall;
@@ -124,7 +115,6 @@
 			icon: null,
 			open: () => onConversationSelect(id),
 			people: withSelf(people, self),
-			canSpeak: true,
 		};
 	});
 
@@ -171,8 +161,6 @@
 	const rowFocus = "focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-duvet-accent";
 	const roundFocus = "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-duvet-accent";
 	const control = `hover:bg-duvet-bg flex size-8 shrink-0 items-center justify-center rounded-lg transition-colors motion-reduce:transition-none ${rowFocus}`;
-	// A control's color: the danger color while it's on (muted, deafened).
-	const tone = (on: boolean) => (on ? "text-duvet-danger" : "text-duvet-ink2 hover:text-duvet-ink");
 </script>
 
 {#if kind}
@@ -220,34 +208,6 @@
 							<FaceStack faces={dockFaces.faces} more={dockFaces.more} ring="ring-duvet-card" label={dockFacesLabel} />
 							{#if controls}
 								<span class="flex-1"></span>
-								<button
-									type="button"
-									class="{control} {tone($isMuted)} disabled:cursor-not-allowed disabled:opacity-50"
-									aria-label="Mute"
-									aria-pressed={$isMuted}
-									title={dock.canSpeak ? undefined : "You can't speak in this room"}
-									disabled={!dock.canSpeak}
-									onclick={toggleMute}
-								>
-									{#if $isMuted}
-										<MicrophoneSlashIcon class="size-4" />
-									{:else}
-										<MicrophoneIcon class="size-4" />
-									{/if}
-								</button>
-								<button
-									type="button"
-									class="{control} {tone($isDeafened)}"
-									aria-label="Deafen"
-									aria-pressed={$isDeafened}
-									onclick={toggleDeafen}
-								>
-									{#if $isDeafened}
-										<HeadphoneOffIcon class="size-4" />
-									{:else}
-										<HeadphonesIcon class="size-4" />
-									{/if}
-								</button>
 								<button
 									type="button"
 									class="{control} text-duvet-ink2 hover:text-duvet-danger"
