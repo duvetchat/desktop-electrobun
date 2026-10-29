@@ -2,7 +2,14 @@
 	import { onMount } from "svelte";
 	import { getApiError } from "$lib/api/api";
 	import { get } from "svelte/store";
-	import { currentUser, pendingFriendRequests, sentFriendRequests, friends, conversations } from "$lib/stores.svelte";
+	import {
+		currentUser,
+		pendingFriendRequests,
+		sentFriendRequests,
+		friends,
+		conversations,
+		userActivities,
+	} from "$lib/stores.svelte";
 	import {
 		sendFriendRequest,
 		getPendingRequests,
@@ -14,7 +21,24 @@
 		type Friend,
 	} from "$lib/api/friends";
 	import { getConversations, createDM, createGroup, type Conversation } from "$lib/api/conversations";
-	import { UserPlus, UserCheck, UserX, Users, Clock, Send, MessageSquare, Check, ChevronLeft } from "@lucide/svelte";
+	import {
+		UserPlus,
+		UserCheck,
+		UserX,
+		Users,
+		Clock,
+		Send,
+		MessageSquare,
+		Check,
+		ChevronLeft,
+		Gamepad2 as GameIcon,
+		Music as MusicIcon,
+		Search,
+		X as XIcon,
+	} from "@lucide/svelte";
+	import MascotPeek from "$lib/components/MascotPeek.svelte";
+	import { activityLine, shownActivities } from "$lib/activity";
+	import { confirmAction } from "$lib/stores/confirm.svelte";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
 	import StatusDot from "$lib/components/StatusDot.svelte";
 	import ConversationView from "$lib/components/ConversationView.svelte";
@@ -41,6 +65,34 @@
 
 	type Tab = "friends" | "pending" | "sent" | "add";
 	let activeTab = $state<Tab>("friends");
+	// The lists in the bar's segmented control; adding a friend is the bar's own button. Requests waiting on the user
+	// are counted in the accent.
+	const tabs = $derived<{ id: Tab; label: string; count: number; alert?: boolean }[]>([
+		{ id: "friends", label: "All", count: $friends.length },
+		{ id: "pending", label: "Pending", count: $pendingFriendRequests.length, alert: true },
+		{ id: "sent", label: "Sent", count: $sentFriendRequests.length },
+	]);
+	const focusRing =
+		"focus-override focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-duvet-accent";
+
+	// The friends, those matching the search, online first (idle and do not disturb are there too), with what each is
+	// playing or listening to.
+	let query = $state("");
+	const friendGroups = $derived.by(() => {
+		const q = query.trim().toLowerCase();
+		const rows = $friends
+			.filter((f) => !q || (f.user_alias ?? "").toLowerCase().includes(q) || f.user_username.toLowerCase().includes(q))
+			.map((friend) => {
+				const id = getFriendUserId(friend);
+				const activity = shownActivities($userActivities[id])[0];
+				return { friend, id, status: friendStatus(friend), activity: activity ? activityLine(activity) : null };
+			});
+		const groups = [
+			{ title: "Online", friends: rows.filter((r) => r.status !== "offline") },
+			{ title: "Offline", friends: rows.filter((r) => r.status === "offline") },
+		];
+		return groups.some((g) => g.friends.length > 0) ? groups : [];
+	});
 	const activeConversation = $derived($conversations.find((c) => c.id === activeConversationId) ?? null);
 	// An open conversation that leaves the list (the user left its group, or was removed from it) closes, and stays
 	// closed should it come back.
@@ -145,6 +197,13 @@
 		}
 	}
 
+	// Removing a friend can't be undone from here: it asks first.
+	function confirmUnfriend(friend: Friend) {
+		void confirmAction(`Remove ${friend.user_alias ?? friend.user_username} from your friends?`, "Remove", () =>
+			handleUnfriend(friend),
+		);
+	}
+
 	async function handleUnfriend(friend: Friend) {
 		const me = get(currentUser);
 		if (!me) return;
@@ -221,12 +280,48 @@
 	}
 </script>
 
-<div class="flex h-full flex-col bg-(--bg-primary,#1e1f22) text-(--text-primary,#dbdee1)">
+{#snippet empty(
+	mood: "awake" | "shy" | "peek",
+	title: string,
+	line: string,
+	action?: { label: string; run: () => void },
+)}
+	<div class="flex flex-col items-center px-6 py-16 text-center">
+		<MascotPeek class="w-24" {mood} />
+		<p class="text-duvet-ink mt-4 text-base font-bold">{title}</p>
+		<p class="text-duvet-ink2 mt-1 max-w-80 text-sm">{line}</p>
+		{#if action}
+			<button
+				type="button"
+				class="bg-duvet-accent text-duvet-on-accent shadow-duvet-raised mt-5 flex h-9 items-center gap-2 rounded-xl px-4 text-sm font-bold transition hover:brightness-110 motion-reduce:transition-none {focusRing}"
+				onclick={action.run}
+			>
+				<UserPlus class="size-4" />
+				{action.label}
+			</button>
+		{/if}
+	</div>
+{/snippet}
+
+{#snippet person(id: string, avatar: string | null, name: string, username: string, status?: MemberOnSidebar["status"])}
+	<div class="relative shrink-0">
+		<UserAvatar src={getAvatarURL(id, avatar)} {name} size={40} />
+		{#if status}
+			<StatusDot {status} class="border-duvet-bg absolute -right-0.5 -bottom-0.5 size-3.5 border-[3px]" />
+		{/if}
+	</div>
+	<div class="flex min-w-0 flex-1 flex-col leading-tight">
+		<span class="text-duvet-ink truncate text-sm font-bold">{name}</span>
+		<span class="text-duvet-ink2 truncate text-xs">@{username}</span>
+	</div>
+{/snippet}
+
+<div class="bg-duvet-bg text-duvet-ink flex h-full flex-col">
 	{#if activeConversation}
 		<div class="flex h-full flex-col overflow-hidden">
-			<div class="flex h-8 shrink-0 items-center border-b border-stone-800 bg-stone-950/45 px-2">
+			<div class="border-duvet-line flex h-9 shrink-0 items-center border-b px-2">
 				<button
-					class="flex items-center gap-1 rounded px-2 py-1 text-xs text-zinc-500 transition-colors hover:bg-stone-800 hover:text-zinc-200"
+					class="text-duvet-ink2 hover:bg-duvet-card hover:text-duvet-ink flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-semibold transition-colors motion-reduce:transition-none {focusRing}"
 					onclick={() => {
 						activeConversationId = null;
 					}}
@@ -252,235 +347,254 @@
 			{/key}
 		</div>
 	{:else}
-		<div class="border-b border-[var(--friends-line,#3f4147)] px-5 pt-4">
-			<div class="mb-3 flex items-center justify-between">
-				<h2 class="m-0 mb-3 text-base font-semibold">Friends</h2>
+		<!-- The bar, as a pane's: the title, the lists as a segmented control, and adding a friend. -->
+		<div class="border-duvet-line flex h-12 shrink-0 items-center gap-3 border-b px-4">
+			<Users class="text-duvet-ink2 size-4 shrink-0" />
+			<h2 class="text-sm font-bold">Friends</h2>
+			<div
+				class="bg-duvet-sunk shadow-duvet-press flex items-center gap-0.5 rounded-xl p-0.5"
+				role="tablist"
+				aria-label="Friend lists"
+			>
+				{#each tabs as tab (tab.id)}
+					{@const chosen = activeTab === tab.id}
+					<button
+						type="button"
+						role="tab"
+						aria-selected={chosen}
+						class="flex h-7 items-center gap-1.5 rounded-[10px] px-3 text-[13px] font-semibold transition-colors motion-reduce:transition-none {focusRing} {chosen
+							? 'bg-duvet-card text-duvet-ink shadow-duvet-raised'
+							: 'text-duvet-ink2 hover:text-duvet-ink'}"
+						onclick={() => (activeTab = tab.id)}
+					>
+						{tab.label}
+						{#if tab.count}
+							<span
+								class="flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[11px] font-bold tabular-nums {tab.alert
+									? 'bg-duvet-accent text-duvet-on-accent'
+									: 'bg-duvet-bg text-duvet-ink2'}">{tab.count}</span
+							>
+						{/if}
+					</button>
+				{/each}
 			</div>
-			<div class="flex gap-1">
-				<button
-					class="flex cursor-pointer items-center gap-1.5 rounded-t border-b-2 border-transparent bg-none px-3 py-1.5 text-[13px] transition-colors duration-150 {activeTab ===
-					'friends'
-						? 'border-b-[#5865f2] bg-(--bg-secondary,#2b2d31) text-(--text-primary,#dbdee1)'
-						: 'text-(--text-secondary,#949ba4) hover:bg-(--bg-hover,#35373c) hover:text-(--text-primary,#dbdee1)'}"
-					onclick={() => (activeTab = "friends")}
-				>
-					<Users size={14} />
-					Friends
-					{#if $friends.length > 0}
-						<span class="rounded-10px bg-(--bg-tertiary,#35373c) px-1.5 py-px text-[11px] font-semibold"
-							>{$friends.length}</span
-						>
-					{/if}
-				</button>
-				<button
-					class="flex cursor-pointer items-center gap-1.5 rounded-t border-b-2 border-transparent bg-none px-3 py-1.5 text-[13px] transition-colors duration-150 {activeTab ===
-					'pending'
-						? 'border-b-[#5865f2] bg-(--bg-secondary,#2b2d31) text-(--text-primary,#dbdee1)'
-						: 'text-(--text-secondary,#949ba4) hover:bg-(--bg-hover,#35373c) hover:text-(--text-primary,#dbdee1)'}"
-					onclick={() => (activeTab = "pending")}
-				>
-					<Clock size={14} />
-					Pending
-					{#if $pendingFriendRequests.length > 0}
-						<span class="rounded-10px text-fixed-white bg-[#da3633] px-1.5 py-px text-[11px] font-semibold"
-							>{$pendingFriendRequests.length}</span
-						>
-					{/if}
-				</button>
-				<button
-					class="flex cursor-pointer items-center gap-1.5 rounded-t border-b-2 border-transparent bg-none px-3 py-1.5 text-[13px] transition-colors duration-150 {activeTab ===
-					'sent'
-						? 'border-b-[#5865f2] bg-(--bg-secondary,#2b2d31) text-(--text-primary,#dbdee1)'
-						: 'text-(--text-secondary,#949ba4) hover:bg-(--bg-hover,#35373c) hover:text-(--text-primary,#dbdee1)'}"
-					onclick={() => (activeTab = "sent")}
-				>
-					<Send size={14} />
-					Sent
-				</button>
-				<button
-					class="flex cursor-pointer items-center gap-1.5 rounded-t border-b-2 border-transparent bg-none px-3 py-1.5 text-[13px] transition-colors duration-150 {activeTab ===
-					'add'
-						? 'border-b-[#23a55a] bg-(--bg-secondary,#2b2d31) text-[var(--friends-green-ink,#23a55a)]'
-						: 'text-(--text-secondary,#949ba4) hover:bg-(--bg-hover,#35373c) hover:text-(--text-primary,#dbdee1)'}"
-					onclick={() => (activeTab = "add")}
-				>
-					<UserPlus size={14} />
-					Add
-				</button>
-			</div>
+			<span class="flex-1"></span>
+			<button
+				type="button"
+				class="flex h-8 items-center gap-1.5 rounded-xl px-3 text-[13px] font-bold transition motion-reduce:transition-none {focusRing} {activeTab ===
+				'add'
+					? 'bg-duvet-sunk text-duvet-ink2 shadow-duvet-press'
+					: 'bg-duvet-accent text-duvet-on-accent shadow-duvet-raised hover:brightness-110'}"
+				onclick={() => (activeTab = "add")}
+			>
+				<UserPlus class="size-4" />
+				Add friend
+			</button>
 		</div>
 
-		<div class="flex-1 overflow-y-auto py-3">
-			{#if activeTab === "friends"}
-				{#if $friends.length === 0}
-					<div class="flex flex-col items-center justify-center gap-3 px-5 py-15 text-(--text-secondary,#949ba4)">
-						<Users size={40} />
-						<p>No friends yet</p>
-					</div>
-				{:else}
-					<ul class="m-0 list-none px-2">
-						{#each $friends as friend (friend.id)}
-							{@const friendId = getFriendUserId(friend)}
-							{@const status = friendStatus(friend)}
-							<li
-								class="flex items-center gap-3 rounded-md px-3 py-2 transition-[background] duration-100 hover:bg-(--bg-hover,#35373c)"
-							>
-								<div class="relative shrink-0">
-									<UserAvatar
-										src={getAvatarURL(getFriendUserId(friend), friend.user_avatar)}
-										name={friend.user_alias ?? friend.user_username}
-										size={36}
-									/>
-									<StatusDot
-										{status}
-										class="absolute -right-0.5 -bottom-0.5 size-3 border-2 border-(--bg-primary,#1e1f22)"
-									/>
-								</div>
-								<div class="flex min-w-0 flex-1 flex-col gap-0.5">
-									<span class="overflow-hidden text-[13px] font-medium text-ellipsis whitespace-nowrap"
-										>{friend.user_alias ?? friend.user_username}</span
-									>
-									<span class="text-[11px] text-(--text-secondary,#949ba4)">@{friend.user_username}</span>
-								</div>
-								<div class="flex gap-1.5">
-									<button
-										class="flex size-7 cursor-pointer items-center justify-center rounded-full border-none bg-(--bg-tertiary,#35373c) text-(--text-secondary,#949ba4) transition-colors duration-100 hover:bg-(--bg-tertiary,#35373c) hover:text-(--text-primary,#dbdee1)"
-										title="Direct message"
-										onclick={() => handleOpenDM(friend)}
-									>
-										<MessageSquare size={14} />
-									</button>
-									<button
-										class="hover:text-fixed-white flex size-7 cursor-pointer items-center justify-center rounded-full border-none bg-(--bg-tertiary,#35373c) text-[#da3633] transition-colors duration-100 hover:bg-[#da3633]"
-										title="Remove friend"
-										onclick={() => handleUnfriend(friend)}
-									>
-										<UserX size={14} />
-									</button>
-								</div>
-							</li>
+		<div class="flex-1 overflow-y-auto">
+			<div class="mx-auto w-full max-w-3xl px-4 py-4">
+				{#if activeTab === "friends"}
+					{#if $friends.length === 0}
+						{@render empty(
+							"awake",
+							"No friends yet",
+							"Add someone with their user ID, and they'll show here once they accept.",
+							{
+								label: "Add a friend",
+								run: () => (activeTab = "add"),
+							},
+						)}
+					{:else}
+						<label
+							class="bg-duvet-sunk shadow-duvet-press text-duvet-ink2 focus-within:outline-duvet-accent mb-4 flex h-10 items-center gap-2.5 rounded-xl px-3 focus-within:outline-2"
+						>
+							<Search class="size-4 shrink-0" />
+							<input
+								type="text"
+								class="focus-override text-duvet-ink placeholder:text-duvet-ink2 min-w-0 flex-1 bg-transparent text-sm outline-none"
+								placeholder="Search your friends"
+								aria-label="Search your friends"
+								bind:value={query}
+							/>
+						</label>
+						{#each friendGroups as group (group.title)}
+							{#if group.friends.length > 0}
+								<h3 class="text-duvet-ink2 mx-2 mt-2 mb-1 text-[13px] font-bold">
+									{group.title} <span class="tabular-nums">{group.friends.length}</span>
+								</h3>
+								<ul class="mb-3 flex flex-col gap-px">
+									{#each group.friends as { friend, id, status, activity } (friend.id)}
+										<li
+											class="group rounded-row hover:bg-duvet-card/70 flex items-center gap-3 px-2 py-2 transition-colors motion-reduce:transition-none"
+										>
+											<div class="relative shrink-0">
+												<UserAvatar
+													src={getAvatarURL(id, friend.user_avatar)}
+													name={friend.user_alias ?? friend.user_username}
+													size={40}
+												/>
+												<StatusDot
+													{status}
+													class="border-duvet-bg absolute -right-0.5 -bottom-0.5 size-3.5 border-[3px]"
+												/>
+											</div>
+											<div class="flex min-w-0 flex-1 flex-col leading-tight">
+												<span class="text-duvet-ink truncate text-sm font-bold"
+													>{friend.user_alias ?? friend.user_username}</span
+												>
+												<span class="text-duvet-ink2 flex min-w-0 items-center gap-1 text-xs">
+													{#if activity}
+														{#if activity.kind === "playing"}<GameIcon
+																class="size-3 shrink-0"
+																aria-hidden="true"
+															/>{:else}<MusicIcon class="size-3 shrink-0" aria-hidden="true" />{/if}
+														<span class="truncate">{activity.text}</span>
+													{:else}
+														<span class="truncate">@{friend.user_username}</span>
+													{/if}
+												</span>
+											</div>
+											<button
+												type="button"
+												class="bg-duvet-card text-duvet-ink2 shadow-duvet-raised hover:text-duvet-ink flex size-9 items-center justify-center rounded-xl transition-colors motion-reduce:transition-none {focusRing}"
+												aria-label="Message {friend.user_alias ?? friend.user_username}"
+												title="Message"
+												onclick={() => handleOpenDM(friend)}
+											>
+												<MessageSquare class="size-4" />
+											</button>
+											<button
+												type="button"
+												class="text-duvet-ink2 hover:text-duvet-danger hover:bg-duvet-card flex size-9 items-center justify-center rounded-xl opacity-0 transition group-focus-within:opacity-100 group-hover:opacity-100 focus-visible:opacity-100 motion-reduce:transition-none {focusRing}"
+												aria-label="Remove {friend.user_alias ?? friend.user_username} from your friends"
+												title="Remove friend"
+												onclick={() => confirmUnfriend(friend)}
+											>
+												<UserX class="size-4" />
+											</button>
+										</li>
+									{/each}
+								</ul>
+							{/if}
+						{:else}
+							<p class="text-duvet-ink2 px-2 py-8 text-center text-sm">No friend matches “{query}”.</p>
 						{/each}
-					</ul>
-				{/if}
-			{:else if activeTab === "pending"}
-				{#if $pendingFriendRequests.length === 0}
-					<div class="flex flex-col items-center justify-center gap-3 px-5 py-15 text-(--text-secondary,#949ba4)">
-						<Clock size={40} />
-						<p>No pending requests</p>
-					</div>
-				{:else}
-					<ul class="m-0 list-none px-2">
-						{#each $pendingFriendRequests as req (req.id)}
-							<li
-								class="flex items-center gap-3 rounded-md px-3 py-2 transition-[background] duration-100 hover:bg-(--bg-hover,#35373c)"
-							>
-								<UserAvatar
-									src={getAvatarURL(req.sender_id, req.user_avatar)}
-									name={req.user_alias ?? req.user_username}
-									size={36}
-								/>
-								<div class="flex min-w-0 flex-1 flex-col gap-0.5">
-									<span class="overflow-hidden text-[13px] font-medium text-ellipsis whitespace-nowrap"
-										>{req.user_alias ?? req.user_username}</span
-									>
-									<span class="text-[11px] text-(--text-secondary,#949ba4)"
-										>@{req.user_username} · {new Date(req.created_at).toLocaleDateString()}</span
-									>
-								</div>
-								<div class="flex gap-1.5">
+					{/if}
+				{:else if activeTab === "pending"}
+					{#if $pendingFriendRequests.length === 0}
+						{@render empty("shy", "No requests waiting", "When someone asks to be your friend, it shows here.")}
+					{:else}
+						<ul class="flex flex-col gap-2">
+							{#each $pendingFriendRequests as req (req.id)}
+								<li class="rounded-card bg-duvet-card shadow-duvet-raised flex items-center gap-3 p-3">
+									{@render person(
+										req.sender_id,
+										req.user_avatar,
+										req.user_alias ?? req.user_username,
+										req.user_username,
+									)}
+									{#if !Number.isNaN(Date.parse(req.created_at))}
+										<span class="text-duvet-ink2 hidden text-xs sm:block"
+											>{new Date(req.created_at).toLocaleDateString()}</span
+										>
+									{/if}
 									<button
-										class="hover:text-fixed-white flex size-7 cursor-pointer items-center justify-center rounded-full border-none bg-(--bg-tertiary,#35373c) text-[var(--friends-green-ink,#23a55a)] transition-colors duration-100 hover:bg-[#23a55a]"
-										title="Accept"
+										type="button"
+										class="bg-duvet-accent text-duvet-on-accent shadow-duvet-raised flex h-9 items-center gap-1.5 rounded-xl px-3 text-[13px] font-bold transition hover:brightness-110 motion-reduce:transition-none {focusRing}"
 										onclick={() => handleAccept(req)}
 									>
-										<UserCheck size={14} />
+										<UserCheck class="size-4" />
+										Accept
 									</button>
 									<button
-										class="hover:text-fixed-white flex size-7 cursor-pointer items-center justify-center rounded-full border-none bg-(--bg-tertiary,#35373c) text-[#da3633] transition-colors duration-100 hover:bg-[#da3633]"
+										type="button"
+										class="text-duvet-ink2 hover:bg-duvet-bg hover:text-duvet-danger flex size-9 items-center justify-center rounded-xl transition-colors motion-reduce:transition-none {focusRing}"
+										aria-label="Decline {req.user_alias ?? req.user_username}'s request"
 										title="Decline"
 										onclick={() => handleReject(req)}
 									>
-										<UserX size={14} />
+										<XIcon class="size-4" />
 									</button>
-								</div>
-							</li>
-						{/each}
-					</ul>
-				{/if}
-			{:else if activeTab === "sent"}
-				{#if $sentFriendRequests.length === 0}
-					<div class="flex flex-col items-center justify-center gap-3 px-5 py-15 text-(--text-secondary,#949ba4)">
-						<Send size={40} />
-						<p>No sent requests</p>
-					</div>
-				{:else}
-					<ul class="m-0 list-none px-2">
-						{#each $sentFriendRequests as req (req.id)}
-							<li
-								class="flex items-center gap-3 rounded-md px-3 py-2 transition-[background] duration-100 hover:bg-(--bg-hover,#35373c)"
-							>
-								<UserAvatar
-									src={getAvatarURL(req.recipient_id, req.user_avatar)}
-									name={req.user_alias ?? req.user_username}
-									size={36}
-								/>
-								<div class="flex min-w-0 flex-1 flex-col gap-0.5">
-									<span class="overflow-hidden text-[13px] font-medium text-ellipsis whitespace-nowrap"
-										>{req.user_alias ?? req.user_username}</span
+								</li>
+							{/each}
+						</ul>
+					{/if}
+				{:else if activeTab === "sent"}
+					{#if $sentFriendRequests.length === 0}
+						{@render empty("peek", "Nothing sent", "The requests you send wait here until they're answered.", {
+							label: "Add a friend",
+							run: () => (activeTab = "add"),
+						})}
+					{:else}
+						<ul class="flex flex-col gap-2">
+							{#each $sentFriendRequests as req (req.id)}
+								<li class="rounded-card bg-duvet-card shadow-duvet-raised flex items-center gap-3 p-3">
+									{@render person(
+										req.recipient_id,
+										req.user_avatar,
+										req.user_alias ?? req.user_username,
+										req.user_username,
+									)}
+									<span class="text-duvet-ink2 flex items-center gap-1.5 text-xs"
+										><Clock class="size-3.5" />Waiting</span
 									>
-									<span class="text-[11px] text-(--text-secondary,#949ba4)"
-										>@{req.user_username} · {new Date(req.created_at).toLocaleDateString()}</span
-									>
-								</div>
-								<div class="flex gap-1.5">
 									<button
-										class="hover:text-fixed-white flex size-7 cursor-pointer items-center justify-center rounded-full border-none bg-(--bg-tertiary,#35373c) text-[#da3633] transition-colors duration-100 hover:bg-[#da3633]"
-										title="Cancel request"
+										type="button"
+										class="text-duvet-ink2 hover:bg-duvet-bg hover:text-duvet-danger flex h-9 items-center rounded-xl px-3 text-[13px] font-semibold transition-colors motion-reduce:transition-none {focusRing}"
 										onclick={() => handleCancelSent(req)}
 									>
-										<UserX size={14} />
+										Cancel
 									</button>
-								</div>
-							</li>
-						{/each}
-					</ul>
-				{/if}
-			{:else if activeTab === "add"}
-				<div class="p-5">
-					<p class="m-0 mb-4 text-[13px] text-(--text-secondary,#949ba4)">Send a friend request using a user ID.</p>
-					<div class="flex gap-2">
-						<input
-							class="flex-1 rounded border border-[var(--friends-line,#3f4147)] bg-(--bg-tertiary,#1e1f22) px-3 py-2 text-sm text-(--text-primary,#dbdee1) outline-none focus:border-[#5865f2]"
-							type="text"
-							placeholder="User ID"
-							bind:value={addUserId}
-							onkeydown={(e) => e.key === "Enter" && handleSendRequest()}
+								</li>
+							{/each}
+						</ul>
+					{/if}
+				{:else if activeTab === "add"}
+					<div class="rounded-card bg-duvet-card shadow-duvet-raised relative mx-auto mt-10 max-w-lg px-6 pt-14 pb-6">
+						<MascotPeek
+							class="absolute -top-12 left-1/2 w-24 -translate-x-1/2"
+							mood={addUserId ? "awake" : "peek"}
+							look={0}
 						/>
-						<button
-							class="text-fixed-white flex cursor-pointer items-center gap-1.5 rounded border-none bg-[#5865f2] px-4 py-2 text-[13px] font-medium whitespace-nowrap hover:bg-[#4752c4] disabled:cursor-not-allowed disabled:opacity-60"
-							onclick={handleSendRequest}
-							disabled={loading}
+						<h3 class="text-center text-lg font-bold">Add a friend</h3>
+						<p class="text-duvet-ink2 mt-1 text-center text-sm">Send a request with their user ID.</p>
+						<form
+							class="mt-5 flex gap-2"
+							onsubmit={(e) => {
+								e.preventDefault();
+								void handleSendRequest();
+							}}
 						>
-							{#if loading}
-								Sending…
-							{:else}
-								<UserPlus size={14} />
-								Send request
-							{/if}
-						</button>
+							<input
+								class="bg-duvet-sunk shadow-duvet-press text-duvet-ink placeholder:text-duvet-ink2 focus-override focus-visible:outline-duvet-accent h-10 min-w-0 flex-1 rounded-xl px-3 text-sm outline-none focus-visible:outline-2"
+								type="text"
+								placeholder="User ID"
+								aria-label="User ID"
+								bind:value={addUserId}
+							/>
+							<button
+								type="submit"
+								class="bg-duvet-accent text-duvet-on-accent shadow-duvet-raised flex h-10 items-center gap-1.5 rounded-xl px-4 text-sm font-bold whitespace-nowrap transition hover:brightness-110 disabled:opacity-60 motion-reduce:transition-none {focusRing}"
+								disabled={loading}
+							>
+								{#if loading}
+									Sending…
+								{:else}
+									<Send class="size-4" />
+									Send request
+								{/if}
+							</button>
+						</form>
+						{#if addError}
+							<p class="text-duvet-danger mt-3 text-sm" role="alert">{addError}</p>
+						{/if}
+						{#if addSuccess}
+							<p class="text-duvet-alive mt-3 text-sm font-semibold" role="status">{addSuccess}</p>
+						{/if}
 					</div>
-					{#if addError}
-						<p class="mt-2.5 rounded bg-[rgba(218,54,51,0.15)] px-3 py-2 text-[13px] text-[#da3633]">{addError}</p>
-					{/if}
-					{#if addSuccess}
-						<p
-							class="mt-2.5 rounded bg-[rgba(35,165,90,0.15)] px-3 py-2 text-[13px] text-[var(--friends-green-ink,#23a55a)]"
-						>
-							{addSuccess}
-						</p>
-					{/if}
-				</div>
-			{/if}
+				{/if}
+			</div>
 		</div>
 	{/if}
 </div>
@@ -495,60 +609,49 @@
 	>
 		<!-- svelte-ignore a11y_interactive_supports_focus -->
 		<div
-			class="flex w-100 max-w-[90vw] flex-col gap-3 rounded-lg border border-[var(--friends-line,#3f4147)] bg-(--bg-primary,#1e1f22) p-6"
+			class="rounded-card bg-duvet-card text-duvet-ink shadow-duvet-float flex w-100 max-w-[90vw] flex-col gap-4 p-6"
 			onclick={(e) => e.stopPropagation()}
 			role="dialog"
+			aria-labelledby="group-title"
 			onkeydown={() => {}}
 		>
-			<h3 class="m-0 text-base font-semibold">Create private group</h3>
+			<h3 id="group-title" class="text-base font-bold">Create a group</h3>
 			<div class="flex flex-col gap-1.5">
-				<label for="group-name" class="text-xs font-medium tracking-wider text-(--text-secondary,#949ba4) uppercase"
-					>Group name</label
-				>
+				<label for="group-name" class="text-duvet-ink2 text-[13px] font-bold">Name</label>
 				<input
 					id="group-name"
-					class="flex-1 rounded border border-[var(--friends-line,#3f4147)] bg-(--bg-tertiary,#1e1f22) px-3 py-2 text-sm text-(--text-primary,#dbdee1) outline-none focus:border-[#5865f2]"
+					class="bg-duvet-sunk shadow-duvet-press text-duvet-ink placeholder:text-duvet-ink2 focus-override focus-visible:outline-duvet-accent h-10 rounded-xl px-3 text-sm outline-none focus-visible:outline-2"
 					type="text"
-					placeholder="e.g. Best friends"
+					placeholder="Best friends"
 					bind:value={groupName}
 				/>
 			</div>
 			<div class="flex flex-col gap-1.5">
-				<!-- svelte-ignore a11y_label_has_associated_control -->
-				<label class="text-xs font-medium tracking-wider text-(--text-secondary,#949ba4) uppercase">
-					Add friends
+				<p class="text-duvet-ink2 text-[13px] font-bold">
+					Friends
 					{#if selectedFriendIds.size > 0}
-						<span class="ml-1.5 font-semibold tracking-normal text-[#5865f2] normal-case"
-							>{selectedFriendIds.size} selected</span
-						>
+						<span class="text-duvet-accent-text ml-1">{selectedFriendIds.size} chosen</span>
 					{/if}
-				</label>
-				<div
-					class="max-h-50 overflow-y-auto rounded border border-[var(--friends-line,#3f4147)] bg-(--bg-tertiary,#1e1f22)"
-				>
+				</p>
+				<div class="bg-duvet-sunk shadow-duvet-press max-h-60 overflow-y-auto rounded-xl p-1">
 					{#if $friends.length === 0}
-						<p class="m-0 p-4 text-center text-[13px] text-(--text-secondary,#949ba4)">No friends added yet</p>
+						<p class="text-duvet-ink2 p-4 text-center text-[13px]">No friends to add yet</p>
 					{:else}
-						{#each $friends as f}
+						{#each $friends as f (f.id)}
 							{@const uid = getFriendUserId(f)}
 							{@const selected = selectedFriendIds.has(uid)}
 							<button
 								type="button"
-								class="flex w-full cursor-pointer items-center gap-2.5 border-none bg-transparent px-3 py-2 text-left text-(--text-primary,#dbdee1) transition-[background] duration-100 hover:bg-(--bg-hover,#35373c) {selected
-									? 'bg-[rgba(88,101,242,0.12)]'
-									: ''}"
+								aria-pressed={selected}
+								class="rounded-row flex w-full items-center gap-2.5 px-2 py-1.5 text-left transition-colors motion-reduce:transition-none {focusRing} {selected
+									? 'bg-duvet-card shadow-duvet-raised'
+									: 'hover:bg-duvet-card/60'}"
 								onclick={() => toggleFriend(uid)}
 							>
-								<UserAvatar
-									src={getAvatarURL(getFriendUserId(f), f.user_avatar)}
-									name={f.user_alias ?? f.user_username}
-									size={32}
-								/>
-								<span class="flex-1 overflow-hidden text-[13px] font-medium text-ellipsis whitespace-nowrap"
-									>{f.user_alias ?? f.user_username}</span
-								>
+								<UserAvatar src={getAvatarURL(uid, f.user_avatar)} name={f.user_alias ?? f.user_username} size={32} />
+								<span class="min-w-0 flex-1 truncate text-sm font-semibold">{f.user_alias ?? f.user_username}</span>
 								{#if selected}
-									<Check size={16} class="shrink-0 text-[#5865f2]" />
+									<Check class="text-duvet-accent-text size-4 shrink-0" />
 								{/if}
 							</button>
 						{/each}
@@ -556,16 +659,16 @@
 				</div>
 			</div>
 			{#if groupError}
-				<p class="mt-2.5 rounded bg-[rgba(218,54,51,0.15)] px-3 py-2 text-[13px] text-[#da3633]">{groupError}</p>
+				<p class="text-duvet-danger text-sm" role="alert">{groupError}</p>
 			{/if}
 			<div class="flex justify-end gap-2">
 				<button
-					class="text-fixed-white flex cursor-pointer items-center gap-1.5 rounded border-none bg-[#5865f2] px-4 py-2 text-[13px] font-medium whitespace-nowrap hover:bg-[#4752c4]"
-					onclick={handleCreateGroup}>Create group</button
+					class="text-duvet-ink2 hover:bg-duvet-bg hover:text-duvet-ink h-9 rounded-xl px-4 text-[13px] font-semibold transition-colors motion-reduce:transition-none {focusRing}"
+					onclick={closeGroupModal}>Cancel</button
 				>
 				<button
-					class="cursor-pointer rounded border-none bg-(--bg-tertiary,#35373c) px-4 py-2 text-[13px] text-(--text-primary,#dbdee1) hover:bg-[var(--friends-hover-strong,#454850)]"
-					onclick={closeGroupModal}>Cancel</button
+					class="bg-duvet-accent text-duvet-on-accent shadow-duvet-raised h-9 rounded-xl px-4 text-[13px] font-bold transition hover:brightness-110 motion-reduce:transition-none {focusRing}"
+					onclick={handleCreateGroup}>Create group</button
 				>
 			</div>
 		</div>
