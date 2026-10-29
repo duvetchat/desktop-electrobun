@@ -697,14 +697,26 @@
 		cursor: pointer;
 	}
 
-	* {
-		scrollbar-width: thin;
-		scrollbar-color: oklch(0.45 0.016 278 / 0.8) oklch(0.2 0.01 278 / 0.45);
+	/* For engines without the -webkit- scrollbar: Chromium (Windows' WebView2) drops those as soon as
+	   scrollbar-width or scrollbar-color is set, and draws its own bar, arrows and all. */
+	@supports not selector(::-webkit-scrollbar) {
+		* {
+			scrollbar-width: thin;
+			scrollbar-color: oklch(0.45 0.016 278 / 0.8) oklch(0.2 0.01 278 / 0.45);
+		}
 	}
 
 	*::-webkit-scrollbar {
 		width: 10px;
 		height: 10px;
+	}
+
+	*::-webkit-scrollbar-button {
+		display: none;
+	}
+
+	*::-webkit-scrollbar-corner {
+		background: transparent;
 	}
 
 	*::-webkit-scrollbar-track {
@@ -1033,8 +1045,10 @@ html.duvet-light #svelte {
 }
 
 @layer components {
-	.duvet-light * {
-		scrollbar-color: oklch(0.78 0.02 278 / 0.9) oklch(0.95 0.008 278 / 0.6);
+	@supports not selector(::-webkit-scrollbar) {
+		.duvet-light * {
+			scrollbar-color: oklch(0.78 0.02 278 / 0.9) oklch(0.95 0.008 278 / 0.6);
+		}
 	}
 
 	.duvet-light *::-webkit-scrollbar-track {

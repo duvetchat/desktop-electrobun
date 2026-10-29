@@ -155,11 +155,10 @@
 	);
 </script>
 
-<!-- A slim scrollbar: the scrollbar-width and scrollbar-color that app.css gives every element go back to
-	auto here, since Chromium ignores the ::-webkit-scrollbar styles otherwise. -->
+<!-- A slim scrollbar. -->
 <div
 	bind:this={barEl}
-	class="bg-duvet-bg flex h-12 shrink-0 items-center gap-1 overflow-x-auto overflow-y-hidden px-2 select-none [scrollbar-color:auto] [scrollbar-width:auto] [&::-webkit-scrollbar]:h-1 [&::-webkit-scrollbar-thumb]:border-0 {sidebarDragOver
+	class="bg-duvet-bg flex h-12 shrink-0 items-center gap-1 overflow-x-auto overflow-y-hidden px-2 select-none [&::-webkit-scrollbar]:h-1 [&::-webkit-scrollbar-thumb]:border-0 {sidebarDragOver
 		? 'ring-duvet-accent/60 ring-1 ring-inset'
 		: ''}"
 	role="tablist"

@@ -1280,7 +1280,7 @@
 											rows="3"
 											placeholder="A few words about you"
 											aria-invalid={bioTooLong}
-											class="focus-override w-full resize-none rounded-md border bg-zinc-800 px-3 py-2 text-sm text-white placeholder-zinc-500 transition-colors outline-none [scrollbar-color:var(--color-zinc-600)_transparent] focus:ring-1 {bioTooLong
+											class="focus-override w-full resize-none rounded-md border bg-zinc-800 px-3 py-2 text-sm text-white placeholder-zinc-500 transition-colors outline-none focus:ring-1 {bioTooLong
 												? 'border-red-500 focus:border-red-500 focus:ring-red-500'
 												: 'border-zinc-700 focus:border-stone-500 focus:ring-stone-500'}"
 										></textarea>

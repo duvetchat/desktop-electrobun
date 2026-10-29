@@ -143,7 +143,7 @@
 
 	<!-- Emoji grid -->
 	<div
-		class="[&::-webkit-scrollbar-thumb]:bg-night-35 flex-1 overflow-y-auto px-2.5 pt-1.5 pb-2.5 [scrollbar-color:var(--color-night-35)_transparent] [scrollbar-width:thin] [&::-webkit-scrollbar]:w-1.25 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-track]:bg-transparent"
+		class="[&::-webkit-scrollbar-thumb]:bg-night-35 flex-1 overflow-y-auto px-2.5 pt-1.5 pb-2.5 [&::-webkit-scrollbar]:w-1.25 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-track]:bg-transparent"
 		role="tabpanel"
 	>
 		{#if isSearching}

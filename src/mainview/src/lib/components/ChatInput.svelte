@@ -1260,7 +1260,7 @@
 					tabindex="0"
 					aria-multiline="false"
 					aria-label={placeholder}
-					class="ce-input focus-override text-night-96 caret-night-96 block max-h-36 min-h-5 min-w-0 flex-1 overflow-y-auto text-sm leading-5 wrap-break-word whitespace-pre-wrap outline-none select-text [scrollbar-width:thin] {isEmpty
+					class="ce-input focus-override text-night-96 caret-night-96 block max-h-36 min-h-5 min-w-0 flex-1 overflow-y-auto text-sm leading-5 wrap-break-word whitespace-pre-wrap outline-none select-text {isEmpty
 						? 'ce-empty'
 						: ''}"
 					data-placeholder={placeholder}

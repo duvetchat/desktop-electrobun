@@ -1221,7 +1221,7 @@
 					</div>
 
 					<!-- Scrollable content -->
-					<div class="flex-1 space-y-5 overflow-y-auto p-6 [scrollbar-color:var(--color-zinc-600)_transparent]">
+					<div class="flex-1 space-y-5 overflow-y-auto p-6">
 						{#if activeSection === "overview"}
 							<div class="space-y-5">
 								<!-- Banner -->
@@ -1374,7 +1374,7 @@
 										placeholder="What is this server about?"
 										rows="3"
 										maxlength={256}
-										class="w-full resize-none rounded-md border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 outline-none [scrollbar-color:var(--color-zinc-600)_transparent] focus:ring-1 focus:ring-stone-500"
+										class="w-full resize-none rounded-md border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 outline-none focus:ring-1 focus:ring-stone-500"
 									></textarea>
 								</label>
 

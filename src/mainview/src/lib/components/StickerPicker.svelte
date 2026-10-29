@@ -65,7 +65,7 @@
 
 	<!-- Sticker grid -->
 	<div
-		class="[&::-webkit-scrollbar-thumb]:bg-night-35 flex-1 overflow-y-auto px-3 py-3 [scrollbar-color:var(--color-night-35)_transparent] [scrollbar-width:thin] [&::-webkit-scrollbar]:w-1.25 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-track]:bg-transparent"
+		class="[&::-webkit-scrollbar-thumb]:bg-night-35 flex-1 overflow-y-auto px-3 py-3 [&::-webkit-scrollbar]:w-1.25 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-track]:bg-transparent"
 	>
 		{#if stickers.length === 0}
 			<div class="flex h-full flex-col items-center justify-center text-center">
