@@ -1,12 +1,10 @@
 <script lang="ts">
-	import { Eye as EyeIcon, EyeOff as EyeOffIcon, Hash as HashIcon } from "@lucide/svelte";
+	import { Eye as EyeIcon, EyeOff as EyeOffIcon } from "@lucide/svelte";
 
 	import { onMount, onDestroy } from "svelte";
 	import ChatInput from "$lib/components/ChatInput.svelte";
 	import CommandOptions from "$lib/components/CommandOptions.svelte";
 	import MessageList from "$lib/components/MessageList.svelte";
-	import MessageSearch from "$lib/components/MessageSearch.svelte";
-	import PinnedMessages from "$lib/components/PinnedMessages.svelte";
 	import type {
 		AllowedMentions,
 		ApplicationCommand,
@@ -56,7 +54,6 @@
 		unreadAfterMessageId = null,
 		onLoadMore = () => {},
 		onLoadMoreBelow = () => {},
-		showHeader = true,
 		placeholder = undefined,
 		failedNonces = $bindable(new Set<string>()),
 		isAtBottom = $bindable(true),
@@ -85,7 +82,6 @@
 		unreadAfterMessageId?: string | null;
 		onLoadMore?: () => Promise<void> | void;
 		onLoadMoreBelow?: () => Promise<void> | void;
-		showHeader?: boolean;
 		placeholder?: string;
 		failedNonces?: Set<string>;
 		isAtBottom?: boolean;
@@ -610,25 +606,6 @@
 			</div>
 		</div>
 	{/if}
-	{#if showHeader}
-		<div
-			class="flex h-10 shrink-0 items-center justify-between border-b border-stone-800 bg-stone-950/45 px-3 font-semibold text-stone-100"
-		>
-			<div class="flex flex-row items-center gap-2">
-				<HashIcon class="size-5 text-zinc-400" />
-				{channelName}
-			</div>
-			<div class="flex flex-row items-center gap-3">
-				{#key channelId}
-					<PinnedMessages {space} {channelId} {members} {customEmojis} />
-				{/key}
-				{#key spaceId}
-					<MessageSearch {space} {members} {customEmojis} />
-				{/key}
-			</div>
-		</div>
-	{/if}
-
 	<MessageList
 		{messages}
 		{members}

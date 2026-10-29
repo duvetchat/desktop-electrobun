@@ -4,6 +4,7 @@
 	import { keepSessionFresh } from "$lib/api/api";
 	import FriendsView from "$lib/components/FriendsView.svelte";
 	import GuildMemberSidebar from "$lib/components/GuildMemberSidebar.svelte";
+	import { spaceMembers } from "$lib/components/MemberList.svelte";
 	import PaneView from "$lib/components/PaneView.svelte";
 	import QuickSwitcher from "$lib/components/QuickSwitcher.svelte";
 	import SpaceEdge from "$lib/components/SpaceEdge.svelte";
@@ -12,6 +13,7 @@
 	import { createDM } from "$lib/api/conversations";
 	import { getApiError } from "$lib/api/api";
 	import { layoutPrefs } from "$lib/layout-prefs.svelte";
+	import { membersColumnOpen, onlineCount } from "$lib/members";
 	import type { OpenChats } from "$lib/nav";
 	import {
 		closeTabsIn,
@@ -338,7 +340,8 @@
 		switcherOpen = !switcherOpen;
 	}
 
-	// A friend picked in the switcher without a conversation yet: one starts, as the friends list's message button does.
+	// A friend picked in the switcher, or in the spaces column's online friends, without a conversation yet: one starts,
+	// as the friends list's message button does.
 	async function openFriendDM(userId: string) {
 		try {
 			const conv = await createDM(userId);
@@ -362,8 +365,9 @@
 	const sidebarGuild = $derived(guilds.find((g) => g.id === sidebarSpaceId) ?? activeGuild);
 	const memberSidebarSpaceId = $derived(sidebarSpaceId);
 	const memberSidebarSpace = $derived($gatewaySpaces.find((s) => s.id === memberSidebarSpaceId) ?? null);
-	const memberSidebarMembers = $derived(
-		memberSidebarSpace ? gatewaySpaceToMembers(memberSidebarSpace, userStatusCache) : [],
+	// The members column opens by itself in a busy room, unless the user opened or closed it.
+	const membersColumnIsOpen = $derived(
+		membersColumnOpen(layoutPrefs.membersColumn, onlineCount(spaceMembers(memberSidebarSpace))),
 	);
 
 	function syncSidebarToLeaf(node: PaneNode, leafId: string) {
@@ -610,10 +614,12 @@
 					onFriendsSelect={handleFriendsSelect}
 				/>
 			{/if}
+			<!-- Folded, the column slides out from under the edge (which stays on top) and back under it, fading as it
+				 goes; its visibility flips at the start of the reveal and the end of the hide. -->
 			<div
 				class={navDocked
 					? "h-full"
-					: `shadow-duvet-float absolute top-0 left-full h-full overflow-hidden rounded-r-[18px] transition-[opacity,translate,visibility] duration-200 ease-out motion-reduce:transition-none ${navRevealed ? "visible translate-x-0 opacity-100" : "invisible -translate-x-2 opacity-0"}`}
+					: `shadow-duvet-float absolute top-0 left-full h-full overflow-hidden rounded-r-[18px] transition-[opacity,translate,visibility] duration-200 motion-reduce:transition-none ${navRevealed ? "visible translate-x-0 opacity-100 ease-out" : "invisible -translate-x-full opacity-0 ease-in"}`}
 				inert={!navDocked && !navRevealed}
 			>
 				<SpaceNav
@@ -624,6 +630,7 @@
 					activeConversationId={showFriendsView ? null : focusedConversationId}
 					openChats={layoutPrefs.openChats === "vertical" ? focusedChats : null}
 					shortcutLabel={switcherShortcut}
+					showUser={navDocked}
 					onSpaceSelect={handleGuildSelect}
 					onRoomSelect={(spaceId, roomId) => onSidebarSelect(roomId, spaceId)}
 					onFriendsSelect={handleFriendsSelect}
@@ -632,6 +639,7 @@
 						showGroupModal = true;
 					}}
 					onOpenSwitcher={() => (switcherOpen = true)}
+					onFriend={(userId) => void openFriendDM(userId)}
 				/>
 			</div>
 		</div>
@@ -660,8 +668,8 @@
 					onToggleChannels={layoutPrefs.spacesColumn === "fixed"
 						? () => (layoutPrefs.showChannelsSidebar = !layoutPrefs.showChannelsSidebar)
 						: null}
-					showMembersSidebar={layoutPrefs.showMembersSidebar}
-					onToggleMembers={() => (layoutPrefs.showMembersSidebar = !layoutPrefs.showMembersSidebar)}
+					membersColumnOpen={membersColumnIsOpen}
+					onMembersColumn={(open) => (layoutPrefs.membersColumn = open ? "shown" : "hidden")}
 					{focusedPaneId}
 					onFocus={handleFocusChange}
 					isActive={!showFriendsView}
@@ -675,7 +683,7 @@
 				spaceId={memberSidebarSpaceId}
 				space={memberSidebarSpace}
 				channelId={sidebarActiveChannelId}
-				collapsed={!layoutPrefs.showMembersSidebar}
+				collapsed={!membersColumnIsOpen}
 			/>
 		{/if}
 	</div>

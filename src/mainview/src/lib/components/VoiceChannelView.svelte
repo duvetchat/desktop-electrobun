@@ -48,6 +48,7 @@
 		callMode = false,
 		callMembers = [],
 		onHangUp = undefined,
+		showHeader = true,
 	}: {
 		channelId: string;
 		channelName: string;
@@ -55,6 +56,8 @@
 		callMode?: boolean;
 		callMembers?: { id: string; username: string; avatar_url: string | null }[];
 		onHangUp?: () => void;
+		/** Off in a pane, whose bar names the room in its tab and says whether it's connected. */
+		showHeader?: boolean;
 	} = $props();
 
 	const NO_VIDEO = "You can't use video in this room";
@@ -334,19 +337,21 @@
 
 <div class="from-night-205 to-night-18 flex min-h-0 flex-1 flex-col bg-linear-to-b">
 	<!-- Header -->
-	<div class="flex shrink-0 items-center gap-2 border-b border-zinc-800 px-4 py-3">
-		{#if callMode}
-			<Phone class="size-4 shrink-0 text-emerald-400" />
-		{:else}
-			<Volume2 class="size-4 shrink-0 text-zinc-400" />
-		{/if}
-		<h2 class="truncate font-semibold text-zinc-100">{channelName}</h2>
-		{#if isConnected}
-			<span class="ml-auto shrink-0 rounded-full bg-stone-500/10 px-2 py-0.5 text-xs font-medium text-stone-400">
-				Connected
-			</span>
-		{/if}
-	</div>
+	{#if showHeader}
+		<div class="flex shrink-0 items-center gap-2 border-b border-zinc-800 px-4 py-3">
+			{#if callMode}
+				<Phone class="size-4 shrink-0 text-emerald-400" />
+			{:else}
+				<Volume2 class="size-4 shrink-0 text-zinc-400" />
+			{/if}
+			<h2 class="truncate font-semibold text-zinc-100">{channelName}</h2>
+			{#if isConnected}
+				<span class="ml-auto shrink-0 rounded-full bg-stone-500/10 px-2 py-0.5 text-xs font-medium text-stone-400">
+					Connected
+				</span>
+			{/if}
+		</div>
+	{/if}
 
 	<!-- Video / Users grid -->
 	<div class="min-h-0 flex-1 overflow-y-auto p-4">

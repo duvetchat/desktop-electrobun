@@ -59,7 +59,7 @@
 	<span class="border-duvet-sunk bg-duvet-accent absolute -top-0.5 -right-0.5 size-2.5 rounded-full border-2"></span>
 {/snippet}
 
-<div class="bg-duvet-sunk flex h-full w-[60px] flex-col items-center pt-3">
+<div class="bg-duvet-sunk relative z-10 flex h-full w-[60px] flex-col items-center pt-3">
 	<img src={mascot} alt="" class="mb-2 size-8 shrink-0 select-none" draggable="false" />
 	<button
 		type="button"

@@ -84,6 +84,7 @@
 	} from "$lib/api/developer";
 	import { pendingTeamInvites, myBuckets, voiceFaces, shareSpotify } from "$lib/stores.svelte";
 	import { layoutPrefs } from "$lib/layout-prefs.svelte";
+	import { BUSY_ROOM_ONLINE } from "$lib/members";
 	import { setThemePref, theme } from "$lib/theme.svelte";
 	import { parseThemePref } from "$lib/theme";
 	import { isElectrobunWindow } from "$lib/electrobun-rpc";
@@ -1142,6 +1143,11 @@
 		{ value: "tabs", label: "Tabs on top" },
 		{ value: "vertical", label: "Vertical list" },
 	] as const;
+	const membersColumnChoices = [
+		{ value: "auto", label: "Auto" },
+		{ value: "shown", label: "Shown" },
+		{ value: "hidden", label: "Hidden" },
+	] as const;
 
 	// A radio group moves its choice with the arrow keys, as native radios do.
 	function radioKeydown(e: KeyboardEvent, values: readonly string[], current: string, set: (v: string) => void) {
@@ -1556,6 +1562,13 @@
 									openChatsChoices,
 									layoutPrefs.openChats,
 									(v) => (layoutPrefs.openChats = v === "vertical" ? "vertical" : "tabs"),
+								)}
+								{@render segmented(
+									"Members column",
+									`Auto opens it in rooms with more than ${BUSY_ROOM_ONLINE} people online. The faces in the bar list the members either way.`,
+									membersColumnChoices,
+									layoutPrefs.membersColumn,
+									(v) => (layoutPrefs.membersColumn = v === "shown" || v === "hidden" ? v : "auto"),
 								)}
 							</div>
 

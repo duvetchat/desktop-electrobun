@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount } from "svelte";
+	import { onMount, type Snippet } from "svelte";
 	import { get } from "svelte/store";
 	import {
 		currentUser,
@@ -61,9 +61,13 @@
 	let {
 		conversation,
 		onMemberAdded = undefined,
+		onBarActions = undefined,
 	}: {
 		conversation: Conversation;
 		onMemberAdded?: (member: ConversationMember) => void;
+		/** A pane's bar, which names the conversation in its tab, shows its actions while it shows (null once it's
+		 * gone). Without one, the view has its own header with them. */
+		onBarActions?: (conversationId: string, actions: Snippet | null) => void;
 	} = $props();
 
 	let isLoading = $state(true);
@@ -625,6 +629,14 @@
 		};
 	});
 
+	$effect(() => {
+		if (!onBarActions) return;
+		const show = onBarActions;
+		const convId = conversation.id;
+		show(convId, actions);
+		return () => show(convId, null);
+	});
+
 	onMount(() => {
 		activeDMConvId.set(conversation.id);
 		const hadUnread = get(unreadConversations).has(conversation.id);
@@ -643,54 +655,58 @@
 	});
 </script>
 
-<div class="from-night-22 to-night-19 relative flex flex-1 flex-col overflow-hidden bg-linear-to-b">
-	<!-- Header -->
-	<div
-		class="flex h-10 shrink-0 items-center gap-2 border-b border-stone-800 bg-stone-950/45 px-3 font-semibold text-stone-100"
+<!-- The call, the group's members and its pins and search: in the pane's bar, or else in a header of its own -->
+{#snippet actions()}
+	{@const buttonClass =
+		"text-duvet-ink2 hover:bg-duvet-card hover:text-duvet-ink focus-visible:outline-duvet-accent flex items-center gap-1 rounded-lg p-1.5 text-xs font-semibold transition-colors focus-visible:outline-2 disabled:cursor-not-allowed disabled:opacity-40 motion-reduce:transition-none"}
+	<button
+		type="button"
+		class={buttonClass}
+		onclick={startCall}
+		disabled={!!$activeCall || joinWaits}
+		title="Start call"
+		aria-label="Start call"
 	>
-		<MessageSquare class="size-4 text-zinc-400" />
-		<span>{conversationTitle()}</span>
+		<Phone class="size-4" />
+	</button>
+	{#if conversation.type === 2 && isOwner}
+		<button type="button" class={buttonClass} onclick={openAddMemberModal} title="Add member">
+			<UserPlus class="size-4" />
+			Add
+		</button>
+	{/if}
+	<!-- A group says how many it has here, where its members open. -->
+	<button
+		type="button"
+		class="{buttonClass} {showMemberList ? 'bg-duvet-card text-duvet-ink' : ''}"
+		onclick={() => {
+			showMemberList = !showMemberList;
+		}}
+		title="Members"
+		aria-label={conversation.type === 2 ? `Members, ${conversation.members.length}` : "Members"}
+		aria-pressed={showMemberList}
+	>
+		<Users class="size-4" />
 		{#if conversation.type === 2}
-			<span class="ml-1 text-xs text-zinc-500">{conversation.members.length} members</span>
+			<span class="tabular-nums">{conversation.members.length}</span>
 		{/if}
-		<div class="ml-auto flex items-center gap-1">
-			<button
-				class="flex items-center gap-1 rounded px-2 py-1 text-xs font-normal text-zinc-400 hover:bg-stone-800 hover:text-zinc-200 disabled:cursor-not-allowed disabled:opacity-40"
-				onclick={startCall}
-				disabled={!!$activeCall || joinWaits}
-				title="Start call"
-			>
-				<Phone class="size-3.5" />
-			</button>
-			{#if conversation.type === 2 && isOwner}
-				<button
-					class="flex items-center gap-1 rounded px-2 py-1 text-xs font-normal text-zinc-400 hover:bg-stone-800 hover:text-zinc-200"
-					onclick={openAddMemberModal}
-					title="Add member"
-				>
-					<UserPlus class="size-3.5" />
-					Add
-				</button>
-			{/if}
-			<button
-				class="flex items-center gap-1 rounded px-2 py-1 text-xs font-normal {showMemberList
-					? 'bg-stone-800 text-zinc-200'
-					: 'text-zinc-400 hover:bg-stone-800 hover:text-zinc-200'}"
-				onclick={() => {
-					showMemberList = !showMemberList;
-				}}
-				title="Members"
-			>
-				<Users class="size-3.5" />
-			</button>
-			{#key conversation.id}
-				<PinnedMessages channelId={conversation.id} conversation members={convMembers} toDirectMessage={toMessage} />
-				<div class="ml-2">
-					<MessageSearch conversationId={conversation.id} members={convMembers} toDirectMessage={toMessage} />
-				</div>
-			{/key}
+	</button>
+	{#key conversation.id}
+		<PinnedMessages channelId={conversation.id} conversation members={convMembers} toDirectMessage={toMessage} />
+		<MessageSearch conversationId={conversation.id} members={convMembers} toDirectMessage={toMessage} />
+	{/key}
+{/snippet}
+
+<div class="from-night-22 to-night-19 relative flex flex-1 flex-col overflow-hidden bg-linear-to-b">
+	{#if !onBarActions}
+		<div class="border-duvet-line flex h-12 shrink-0 items-center gap-2 border-b px-3 font-semibold">
+			<MessageSquare class="text-duvet-ink2 size-4" />
+			<span class="truncate">{conversationTitle()}</span>
+			<div class="ml-auto flex items-center gap-1">
+				{@render actions()}
+			</div>
 		</div>
-	</div>
+	{/if}
 
 	<!-- Call in progress banner (visible when not in the call), with who is in it -->
 	{#snippet inCallAvatars()}
@@ -740,7 +756,6 @@
 	<!-- Body: messages + optional member sidebar -->
 	<div class="flex flex-1 overflow-hidden">
 		<Chat
-			showHeader={false}
 			{messages}
 			channelId={conversation.id}
 			channelName={conversationTitle()}

@@ -21,14 +21,12 @@
 		gatewaySpaces,
 		voiceConnectionState,
 		activeCall,
-		callVoiceStates,
 		conversations,
 		noiseSuppression,
 	} from "$lib/stores.svelte";
 	import { get } from "svelte/store";
-	import { sendEventMessage } from "$lib/api/ws/connection";
-	import { withoutCallVoiceOf } from "$lib/calls";
-	import { sendVoiceSync } from "$lib/voice";
+	import { callName } from "$lib/now";
+	import { disconnectVoice, sendVoiceSync, toggleDeafen, toggleMute as toggleMic } from "$lib/voice";
 	import { fly } from "svelte/transition";
 	import { getHostURL, getAvatarURL } from "$lib/common/common";
 	import { hasPermission, Permission } from "$lib/permissions";
@@ -42,8 +40,11 @@
 
 	let {
 		collapsed = false,
+		showVoice = true,
 	}: {
 		collapsed?: boolean;
+		/** Off where the voice the user is in shows on its own, as the spaces column's Now section does. */
+		showVoice?: boolean;
 	} = $props();
 
 	// The status the user chose, which everyone sees while they're connected.
@@ -60,12 +61,10 @@
 	);
 	const callConversationName = $derived.by(() => {
 		if (!isInConversationCall || !$activeCall) return "";
-		const conv = $conversations.find((c) => c.id === $activeCall!.conversationId);
-		if (!conv) return "Call";
-		const me = $currentUser;
-		if (conv.type === 2) return conv.name ?? "Group call";
-		const other = conv.members.find((m) => m.user_id !== me?.id);
-		return other?.user?.alias ?? other?.user?.username ?? "Call";
+		return callName(
+			$conversations.find((c) => c.id === $activeCall!.conversationId),
+			$currentUser?.id,
+		);
 	});
 
 	const canSpeak = $derived(
@@ -153,14 +152,7 @@
 
 	function toggleMute() {
 		if (!canSpeak) return;
-		isMuted.update((m) => !m);
-		sendVoiceSync();
-	}
-
-	function toggleDeafen() {
-		isDeafened.update((d) => !d);
-		if ($isDeafened) isMuted.set(true);
-		sendVoiceSync();
+		toggleMic();
 	}
 
 	function pingIconColor(ms: number | null): string {
@@ -181,7 +173,7 @@
 {/if}
 
 <!-- Voice status pill -->
-{#if !collapsed && $activeVoiceRoomId && (activeVoiceRoom || isInConversationCall)}
+{#if !collapsed && showVoice && $activeVoiceRoomId && (activeVoiceRoom || isInConversationCall)}
 	<div
 		class="border-duvet-line shrink-0 border-b"
 		in:fly={{ y: 20, duration: 200, opacity: 1 }}
@@ -217,16 +209,7 @@
 			<button
 				class="shrink-0 rounded-full p-1.5 text-zinc-400 transition-colors hover:bg-zinc-700 hover:text-zinc-200"
 				aria-label="Disconnect"
-				onclick={() => {
-					if (isInConversationCall && $activeCall) {
-						const conversationId = $activeCall.conversationId;
-						sendEventMessage("CALL_LEAVE", { conversation_id: conversationId });
-						activeCall.set(null);
-						// The others stay in it, as its conversation's banner shows.
-						callVoiceStates.update((states) => withoutCallVoiceOf(states, conversationId, $currentUser?.id));
-					}
-					$activeVoiceRoomId = null;
-				}}
+				onclick={disconnectVoice}
 			>
 				<PhoneDisconnectIcon class="size-3.5" />
 			</button>
@@ -256,16 +239,7 @@
 			<button
 				class="flex size-8 items-center justify-center rounded-lg text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-red-400"
 				aria-label="Disconnect"
-				onclick={() => {
-					if (isInConversationCall && $activeCall) {
-						const conversationId = $activeCall.conversationId;
-						sendEventMessage("CALL_LEAVE", { conversation_id: conversationId });
-						activeCall.set(null);
-						// The others stay in it, as its conversation's banner shows.
-						callVoiceStates.update((states) => withoutCallVoiceOf(states, conversationId, $currentUser?.id));
-					}
-					$activeVoiceRoomId = null;
-				}}
+				onclick={disconnectVoice}
 			>
 				<PhoneDisconnectIcon class="size-4" />
 			</button>

@@ -13,11 +13,12 @@
 		mentionCounts,
 		conversations,
 		currentUser,
+		spaceEmojis,
 	} from "$lib/stores.svelte";
 	import { get } from "svelte/store";
 	import { closeTabsIn, isConversationTab, makeSplit, makeLeaf, tabFromDragData, tabTitle } from "$lib/pane";
 	import { getMessages, getMessagesAfter, getMessageById, ackRoom } from "$lib/api/messages";
-	import { onMount, onDestroy } from "svelte";
+	import { onMount, onDestroy, type Snippet } from "svelte";
 
 	import type { MemberOnSidebar, GatewaySpace, PaneNode, Guild, Tab } from "$lib/types";
 
@@ -29,6 +30,9 @@
 	import TabBar from "$lib/components/TabBar.svelte";
 	import Chat from "$lib/components/Chat.svelte";
 	import VoiceChannelView from "$lib/components/VoiceChannelView.svelte";
+	import MembersButton from "$lib/components/MembersButton.svelte";
+	import MessageSearch from "$lib/components/MessageSearch.svelte";
+	import PinnedMessages from "$lib/components/PinnedMessages.svelte";
 	import { PanelRightClose, PanelRightOpen, PanelLeftClose, PanelLeftOpen } from "@lucide/svelte";
 
 	// ── Props ──────────────────────────────────────────────────────────────────
@@ -45,8 +49,8 @@
 		onFocus,
 		showChannelsSidebar = true,
 		onToggleChannels = null,
-		showMembersSidebar = true,
-		onToggleMembers = null,
+		membersColumnOpen = false,
+		onMembersColumn = null,
 		isActive = true,
 		showTabs = true,
 	}: {
@@ -69,8 +73,10 @@
 		onFocus: (id: string) => void;
 		showChannelsSidebar?: boolean;
 		onToggleChannels?: (() => void) | null;
-		showMembersSidebar?: boolean;
-		onToggleMembers?: (() => void) | null;
+		/** Whether the members column beside the panes is open; it shows the focused pane's room's members. */
+		membersColumnOpen?: boolean;
+		/** Opens or closes the members column, as the user's choice. */
+		onMembersColumn?: ((open: boolean) => void) | null;
 		isActive?: boolean;
 		/** Off when the spaces column lists the open chats: each pane then only names its active one. */
 		showTabs?: boolean;
@@ -842,10 +848,21 @@
 		onMoveTab,
 		showChannelsSidebar,
 		onToggleChannels,
-		showMembersSidebar,
-		onToggleMembers,
+		membersColumnOpen,
+		onMembersColumn,
 		showTabs,
 	});
+
+	// ── Leaf: the bar's actions ──────────────────────────────────────────────
+	// The pane's one bar has the active chat's actions after its tabs (or its name). A room's are the pane's own; a
+	// conversation's are its view's, which hands them here while it shows.
+	const roomEmojis = $derived(activeTab?.spaceId ? ($spaceEmojis[activeTab.spaceId] ?? []) : []);
+	let conversationActions = $state<{ conversationId: string; actions: Snippet } | null>(null);
+
+	function showConversationActions(conversationId: string, actions: Snippet | null) {
+		if (actions) conversationActions = { conversationId, actions };
+		else if (conversationActions?.conversationId === conversationId) conversationActions = null;
+	}
 </script>
 
 {#if node.kind === "split"}
@@ -902,16 +919,19 @@
 	<!-- Clicking a pane focuses it; following DOM focus instead would also move it on programmatic
 	     focus, like a split remounting its chat inputs. The keyboard has no pane focus to move. Only a pane of a
 	     split (which has onClose) rings when focused: a lone pane is always the focused one. -->
+	<!-- The pane is the container its bar's search field collapses in when the pane is narrow. -->
 	<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
 	<div
-		class="bg-duvet-bg relative flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden {isFocused && onClose
+		class="bg-duvet-bg @container/pane relative flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden {isFocused &&
+		onClose
 			? 'ring-duvet-accent/40 ring-1 ring-inset'
 			: ''}"
 		role="region"
 		aria-label="Chat pane"
 		onclick={() => onFocus(node.id)}
 	>
-		<!-- Tab bar + pane actions -->
+		<!-- The pane's one bar: its tabs, or the name of the chat it shows, then the chat's actions and the pane's. The
+		     tabs scroll before the actions get squeezed. -->
 		<div class="border-duvet-line bg-duvet-bg flex min-w-0 shrink-0 items-stretch border-b">
 			<div class="min-w-0 flex-1 overflow-hidden">
 				{#if showTabs}
@@ -942,6 +962,37 @@
 				{/if}
 			</div>
 
+			<!-- The active chat's actions -->
+			<div class="flex shrink-0 items-center gap-1 pl-1.5">
+				{#if activeChannel?.type === "text"}
+					{#key node.activeChannelId}
+						<PinnedMessages
+							space={activeTabSpace}
+							channelId={node.activeChannelId ?? ""}
+							members={activeTabMembers}
+							customEmojis={roomEmojis}
+						/>
+					{/key}
+					{#key activeTab?.spaceId}
+						<MessageSearch space={activeTabSpace} members={activeTabMembers} customEmojis={roomEmojis} />
+					{/key}
+				{:else if activeChannel?.type === "voice" && $activeVoiceRoomId === node.activeChannelId}
+					<span class="bg-duvet-accent-tint text-duvet-accent-text rounded-full px-2 py-0.5 text-xs font-medium"
+						>Connected</span
+					>
+				{:else if conversationActions && conversationActions.conversationId === activeConversation?.id}
+					{@render conversationActions.actions()}
+				{/if}
+				{#if activeTabSpace && activeTab && !isConversationTab(activeTab) && onMembersColumn}
+					<MembersButton
+						space={activeTabSpace}
+						channelId={activeTab.channelId}
+						columnOpen={membersColumnOpen}
+						onColumn={onMembersColumn}
+					/>
+				{/if}
+			</div>
+
 			<!-- Pane action buttons -->
 			<div class="flex shrink-0 items-center gap-0.5 px-1.5">
 				{#if onToggleChannels}
@@ -960,15 +1011,16 @@
 					</button>
 				{/if}
 
-				{#if onToggleMembers}
+				<!-- The members column is the focused pane's room's: a conversation has its own members. -->
+				{#if onMembersColumn && activeTabSpace}
 					<button
 						type="button"
 						class="text-duvet-ink2 hover:bg-duvet-card hover:text-duvet-ink focus-visible:outline-duvet-accent rounded-lg p-1.5 focus-visible:outline-2"
-						onclick={onToggleMembers}
-						aria-label={showMembersSidebar ? "Collapse members panel" : "Expand members panel"}
-						title={showMembersSidebar ? "Hide members" : "Show members"}
+						onclick={() => onMembersColumn(!membersColumnOpen)}
+						aria-label={membersColumnOpen ? "Collapse members panel" : "Expand members panel"}
+						title={membersColumnOpen ? "Hide members" : "Show members"}
 					>
-						{#if showMembersSidebar}
+						{#if membersColumnOpen}
 							<PanelRightClose class="size-4" />
 						{:else}
 							<PanelRightOpen class="size-4" />
@@ -976,7 +1028,7 @@
 					</button>
 				{/if}
 
-				{#if onToggleChannels || onToggleMembers}
+				{#if onToggleChannels || (onMembersColumn && activeTabSpace)}
 					<div class="bg-duvet-line mx-1 h-4 w-px"></div>
 				{/if}
 
@@ -1133,6 +1185,7 @@
 					{#key activeConversation.id}
 						<ConversationView
 							conversation={activeConversation}
+							onBarActions={showConversationActions}
 							onMemberAdded={(m) => {
 								const convId = activeConversation?.id;
 								if (!convId) return;
@@ -1149,6 +1202,7 @@
 				{/if}
 			{:else if activeChannel?.type === "voice"}
 				<VoiceChannelView
+					showHeader={false}
 					channelId={node.activeChannelId ?? ""}
 					channelName={activeChannel.name}
 					spaceId={activeTab?.spaceId ?? ""}

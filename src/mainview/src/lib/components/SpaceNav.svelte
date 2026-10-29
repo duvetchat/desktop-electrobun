@@ -39,6 +39,7 @@
 	import AddSpaceModal from "$lib/components/AddSpaceModal.svelte";
 	import ChannelsSidebar from "$lib/components/ChannelsSidebar.svelte";
 	import DMSidebar from "$lib/components/DMSidebar.svelte";
+	import NowSection from "$lib/components/NowSection.svelte";
 	import SpaceIcon from "$lib/components/SpaceIcon.svelte";
 	import TabIcon from "$lib/components/TabIcon.svelte";
 	import UserStatusBar from "$lib/components/UserStatusBar.svelte";
@@ -51,12 +52,14 @@
 		activeConversationId = null,
 		openChats = null,
 		shortcutLabel = "Ctrl K",
+		showUser = true,
 		onSpaceSelect,
 		onRoomSelect,
 		onFriendsSelect,
 		onConversationSelect,
 		onNewGroup,
 		onOpenSwitcher,
+		onFriend,
 	}: {
 		guilds: Guild[];
 		/** The space whose rooms show as a tree under its row. */
@@ -67,12 +70,16 @@
 		activeConversationId?: string | null;
 		openChats?: OpenChats | null;
 		shortcutLabel?: string;
+		/** Off when the column shows beside the folded edge, which already has the user's controls. */
+		showUser?: boolean;
 		onSpaceSelect: (spaceId: string) => void;
 		onRoomSelect: (spaceId: string, roomId: string) => void;
 		onFriendsSelect: () => void;
 		onConversationSelect: (conversationId: string) => void;
 		onNewGroup: () => void;
 		onOpenSwitcher: () => void;
+		/** Opens the direct message with a friend, as the quick switcher's friends do. */
+		onFriend: (userId: string) => void;
 	} = $props();
 
 	const newsBySpace = $derived(
@@ -609,13 +616,18 @@
 			</span>
 			Join or create a Space
 		</button>
+
+		<NowSection {guilds} controls={showUser} {onRoomSelect} {onConversationSelect} {onFriend} {onFriendsSelect} />
 	</div>
 
-	<div class="shrink-0 px-2.5 pb-2.5">
-		<div class="rounded-card bg-duvet-card shadow-duvet-raised overflow-hidden">
-			<UserStatusBar />
+	{#if showUser}
+		<div class="shrink-0 px-2.5 pb-2.5">
+			<div class="rounded-card bg-duvet-card shadow-duvet-raised overflow-hidden">
+				<!-- The Now section above has the voice the user is in. -->
+				<UserStatusBar showVoice={false} />
+			</div>
 		</div>
-	</div>
+	{/if}
 </nav>
 
 <AddSpaceModal bind:open={showAddSpace} />
