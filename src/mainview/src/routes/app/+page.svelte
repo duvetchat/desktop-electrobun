@@ -6,6 +6,7 @@
 	import GuildMemberSidebar from "$lib/components/GuildMemberSidebar.svelte";
 	import { spaceMembers } from "$lib/components/MemberList.svelte";
 	import PaneView from "$lib/components/PaneView.svelte";
+	import KeyboardLayer from "$lib/components/KeyboardLayer.svelte";
 	import QuickSwitcher from "$lib/components/QuickSwitcher.svelte";
 	import SpaceEdge from "$lib/components/SpaceEdge.svelte";
 	import SpaceNav from "$lib/components/SpaceNav.svelte";
@@ -38,6 +39,8 @@
 		botInviteRequest,
 		spaceInviteRequest,
 		allSpacesReady,
+		unreadChannels,
+		unreadConversations,
 	} from "$lib/stores.svelte";
 	import { toast } from "$lib/stores/toast.svelte";
 	import CallModal from "$lib/components/CallModal.svelte";
@@ -338,6 +341,24 @@
 		if (!switcherOpen && document.querySelector('[role="dialog"], [role="alertdialog"]')) return;
 		e.preventDefault();
 		switcherOpen = !switcherOpen;
+	}
+
+	// ── The keyboard: the chats it moves between, and where the next unread one is ──
+	const focusedTabIds = $derived(focusedChats.tabs.map((t) => t.channelId));
+	// The conversations first, then each Space's rooms, as the spaces column has them.
+	const unreadOrder = $derived([
+		...$conversations.map((c) => c.id),
+		...guilds.flatMap((g) => g.channels.map((c) => c.id)),
+	]);
+	const unreadChats = $derived(new Set([...$unreadConversations, ...$unreadChannels]));
+
+	function openChat(id: string) {
+		if ($conversations.some((c) => c.id === id)) {
+			openConversationTab(id);
+			return;
+		}
+		const guild = guilds.find((g) => g.channels.some((c) => c.id === id));
+		if (guild) onSidebarSelect(id, guild.id);
 	}
 
 	// A friend picked in the switcher, or in the spaces column's online friends, without a conversation yet: one starts,
@@ -702,6 +723,18 @@
 <!-- Global call UI: ringing/calling overlay -->
 {#if $activeCall}
 	<CallModal />
+{/if}
+
+{#if $currentUser && $friendsReady}
+	<KeyboardLayer
+		{isMac}
+		tabs={focusedTabIds}
+		activeId={showFriendsView ? null : sidebarActiveChannelId}
+		onActivate={activateTab}
+		{unreadOrder}
+		unread={unreadChats}
+		onOpenChat={openChat}
+	/>
 {/if}
 
 <QuickSwitcher

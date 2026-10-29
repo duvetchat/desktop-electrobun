@@ -68,6 +68,7 @@
 			: 'bg-duvet-card text-duvet-ink'} {iconFocus}"
 		aria-label="Direct messages"
 		aria-pressed={isFriendsActive}
+		data-jump
 		onclick={onFriendsSelect}
 	>
 		<AtSignIcon class="size-4" />
@@ -91,6 +92,7 @@
 					aria-label={title}
 					aria-current={isActive ? "true" : undefined}
 					{title}
+					data-jump
 					onclick={() => openChats.onActivate(tab.channelId)}
 				>
 					<TabIcon {tab} size={16} />
@@ -111,6 +113,7 @@
 					aria-label={guild.name}
 					aria-current={isSelected ? "true" : undefined}
 					title={guild.name}
+					data-jump
 					onclick={() => onSpaceSelect(guild.id)}
 				>
 					<SpaceIcon src={guild.icon_url || null} name={guild.name} size={30} class="rounded-[9px]" />

@@ -260,9 +260,10 @@
 	}
 
 	const rowFocus = "focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-duvet-accent";
-	const menuContentClass = "z-200 min-w-48 rounded-lg border border-zinc-700 bg-zinc-800 py-1 shadow-duvet-float";
+	const menuContentClass =
+		"rounded-card border-duvet-line bg-duvet-card text-duvet-ink shadow-duvet-float z-200 min-w-52 focus-override border p-1.5 outline-none";
 	const menuItemClass =
-		"flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm text-zinc-100 transition-colors data-highlighted:bg-zinc-700 hover:bg-zinc-700";
+		"rounded-row flex w-full cursor-pointer items-center gap-2.5 px-2.5 py-2 text-left text-sm font-medium transition-colors data-highlighted:bg-duvet-bg/60 motion-reduce:transition-none";
 </script>
 
 {#snippet countPill(count: number, label: string)}
@@ -292,6 +293,7 @@
 								{news?.unread || isSelected ? 'text-duvet-ink font-bold' : 'text-duvet-ink2 hover:text-duvet-ink font-medium'}"
 							aria-expanded={isSelected ? expanded : undefined}
 							aria-current={isSelected ? "true" : undefined}
+							data-jump
 							onclick={() => selectSpace(guild.id)}
 						>
 							<!-- The row reads as the space's name, not its monogram as well. -->
@@ -330,10 +332,10 @@
 								<DropdownMenu.Content class={menuContentClass} sideOffset={4} align="start">
 									{#each actions as action (action.label)}
 										{#if action.separatorBefore}
-											<DropdownMenu.Separator class="my-1 border-t border-zinc-700" />
+											<DropdownMenu.Separator class="border-duvet-line mx-1 my-1 border-t" />
 										{/if}
 										<DropdownMenu.Item
-											class="{menuItemClass} {action.danger ? 'text-red-400' : ''}"
+											class="{menuItemClass} {action.danger ? 'text-duvet-danger' : ''}"
 											onSelect={action.onSelect}
 										>
 											<action.icon class="size-4 {action.danger ? '' : 'text-zinc-400'}" />
@@ -350,9 +352,12 @@
 				<ContextMenu.Content class={menuContentClass}>
 					{#each actions as action (action.label)}
 						{#if action.separatorBefore}
-							<ContextMenu.Separator class="my-1 border-t border-zinc-700" />
+							<ContextMenu.Separator class="border-duvet-line mx-1 my-1 border-t" />
 						{/if}
-						<ContextMenu.Item class="{menuItemClass} {action.danger ? 'text-red-400' : ''}" onSelect={action.onSelect}>
+						<ContextMenu.Item
+							class="{menuItemClass} {action.danger ? 'text-duvet-danger' : ''}"
+							onSelect={action.onSelect}
+						>
 							<action.icon class="size-4 {action.danger ? '' : 'text-zinc-400'}" />
 							{action.label}
 						</ContextMenu.Item>
@@ -383,6 +388,7 @@
 								type="button"
 								class="hover:bg-duvet-card flex h-8 w-full items-center gap-1.5 rounded-[10px] px-2 text-left text-sm {rowFocus}
 									{room.type === 'text' ? 'text-duvet-ink font-bold' : 'text-duvet-ink2 hover:text-duvet-ink'}"
+								data-jump
 								onclick={() => onRoomSelect(guild.id, room.id)}
 							>
 								{#if room.type === "voice"}
@@ -467,6 +473,7 @@
 									type="button"
 									class="rounded-row flex w-full items-center gap-2.5 px-2 py-1.5 pr-8 text-left {rowFocus}"
 									aria-current={isActive ? "true" : undefined}
+									data-jump
 									onclick={() => openChats.onActivate(tab.channelId)}
 								>
 									<span
@@ -515,6 +522,7 @@
 							class="rounded-row flex min-w-0 flex-1 items-center gap-2.5 p-1.5 text-left text-[15px] {rowFocus}
 						{isFriendsActive || dmBadge ? 'text-duvet-ink font-bold' : 'text-duvet-ink2 hover:text-duvet-ink font-medium'}"
 							aria-expanded={isFriendsActive || !!activeConversationId}
+							data-jump
 							onclick={onFriendsSelect}
 						>
 							<span
@@ -594,6 +602,7 @@
 							type="button"
 							class="rounded-row text-duvet-ink2 hover:bg-duvet-card/70 hover:text-duvet-ink mt-px flex w-full items-center gap-2.5 p-1.5 text-left text-[15px] font-medium {rowFocus}"
 							aria-expanded={quietOpen}
+							data-jump
 							onclick={() => (quietOpen = !quietOpen)}
 						>
 							<span

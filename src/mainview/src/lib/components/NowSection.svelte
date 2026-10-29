@@ -347,6 +347,7 @@
 								type="button"
 								class="rounded-row hover:bg-duvet-bg/60 flex min-w-0 flex-1 items-center gap-2.5 p-1 text-left transition-colors motion-reduce:transition-none {rowFocus}"
 								aria-label="Open {call.name}"
+								data-jump
 								onclick={() => onConversationSelect(call.conv.id)}
 							>
 								<span
@@ -466,6 +467,7 @@
 									? `, ${liveLabel[live].toLowerCase()}`
 									: ''}"
 								title="{channel.name} in {guild.name}"
+								data-jump
 								onclick={() => onRoomSelect(guild.id, channel.id)}
 							>
 								<span class="contents" aria-hidden="true"
@@ -518,6 +520,7 @@
 									aria-label="Message {friend.name}, {activity.kind === 'playing'
 										? 'playing'
 										: 'listening to'} {activity.text}"
+									data-jump
 									onclick={() => onFriend(friend.id)}
 								>
 									<span class="relative shrink-0">
@@ -551,6 +554,7 @@
 									class="relative block rounded-full {roundFocus}"
 									aria-label="Message {friend.name}"
 									title={friend.name}
+									data-jump
 									onclick={() => onFriend(friend.id)}
 								>
 									<UserAvatar src={friend.src} name={friend.name} size={26} />
@@ -590,6 +594,7 @@
 					type="button"
 					class="rounded-row hover:bg-duvet-bg/60 flex min-w-0 flex-1 items-center gap-2 px-1.5 py-1 text-left transition-colors motion-reduce:transition-none {rowFocus}"
 					aria-label="Open {dock.name}{dock.kind === 'room' ? ` in ${dock.place}` : ''}, {dockFacesLabel}"
+					data-jump
 					onclick={dock.open}
 				>
 					<span class="flex min-w-0 flex-1 flex-col leading-tight">

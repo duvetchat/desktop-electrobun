@@ -1,5 +1,5 @@
 /** The layout of the app's shell, saved on this device. The panels' visibility has been saved here since before the
- * spaces column; the column's, the open chats' and the members column's modes were added to the same value, which older
+ * spaces column; the column's, the open chats' and the members column's modes and keyboard navigation were added to the same value, which older
  * builds ignore. They still read showMembersSidebar, which is saved with the members column's mode for them. */
 export const LAYOUT_PREFS_KEY = "duvet.layout.panels.v1";
 
@@ -15,6 +15,9 @@ export type LayoutPrefs = {
 	showChannelsSidebar: boolean;
 	spacesColumn: SpacesColumnMode;
 	openChats: OpenChatsMode;
+	/** Single keys move around once the message box is left (Esc): see keyboard.ts. Off, only the shortcuts with a
+	 * modifier work. */
+	keyboardNavigation: boolean;
 };
 
 export const defaultLayoutPrefs: LayoutPrefs = {
@@ -22,6 +25,7 @@ export const defaultLayoutPrefs: LayoutPrefs = {
 	showChannelsSidebar: true,
 	spacesColumn: "fixed",
 	openChats: "tabs",
+	keyboardNavigation: false,
 };
 
 /** The prefs a saved value holds, each one it lacks (or holds something else in) at its default. The members column
@@ -44,6 +48,7 @@ export function parseLayoutPrefs(raw: string | null): LayoutPrefs {
 	if (typeof saved.showChannelsSidebar === "boolean") prefs.showChannelsSidebar = saved.showChannelsSidebar;
 	if (saved.spacesColumn === "fixed" || saved.spacesColumn === "auto-hide") prefs.spacesColumn = saved.spacesColumn;
 	if (saved.openChats === "tabs" || saved.openChats === "vertical") prefs.openChats = saved.openChats;
+	if (typeof saved.keyboardNavigation === "boolean") prefs.keyboardNavigation = saved.keyboardNavigation;
 	return prefs;
 }
 

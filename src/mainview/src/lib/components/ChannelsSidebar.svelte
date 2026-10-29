@@ -564,6 +564,7 @@
 										ondragover={(e) => handleDragOver(e, itemIdx)}
 										ondrop={(e) => handleDrop(e, itemIdx)}
 										ondragend={handleDragEnd}
+										data-jump
 										onclick={() => canJoin && selectChannel(channel)}
 										ondblclick={() => canJoin && channel.type === "voice" && joinVoiceChannel(channel)}
 										onkeydown={(e) => canJoin && onKeyDown(e, buttonIndex)}

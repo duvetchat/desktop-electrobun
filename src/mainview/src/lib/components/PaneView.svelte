@@ -928,6 +928,7 @@
 			: ''}"
 		role="region"
 		aria-label="Chat pane"
+		data-pane-focused={isFocused ? "true" : undefined}
 		onclick={() => onFocus(node.id)}
 	>
 		<!-- The pane's one bar: its tabs, or the name of the chat it shows, then the chat's actions and the pane's. The

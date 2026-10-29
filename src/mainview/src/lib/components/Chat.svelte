@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { Eye as EyeIcon, EyeOff as EyeOffIcon } from "@lucide/svelte";
 
-	import { onMount, onDestroy } from "svelte";
+	import { onMount, onDestroy, untrack } from "svelte";
 	import ChatInput from "$lib/components/ChatInput.svelte";
 	import CommandOptions from "$lib/components/CommandOptions.svelte";
 	import MessageList from "$lib/components/MessageList.svelte";
@@ -37,6 +37,8 @@
 	import { hasPermission, mentionableRooms, Permission } from "$lib/permissions";
 	import { displayName, isSpoiler, withSpoiler } from "$lib/spoilers";
 	import { withSentMessage } from "$lib/arrivals";
+	import { chatRequest, keyboard, leaveMessageBox } from "$lib/keyboard.svelte";
+	import { layoutPrefs } from "$lib/layout-prefs.svelte";
 
 	let {
 		messages,
@@ -158,11 +160,13 @@
 	const customEmojis = $derived(spaceId ? ($spaceEmojis[spaceId] ?? []) : []);
 	const spaceStickersArr = $derived(spaceId ? ($spaceStickers[spaceId] ?? []) : []);
 
-	// Focus input when switching channels
+	// Focus input when switching channels, unless keyboard navigation switched them and goes on
 	$effect(() => {
 		channelId;
 		command = null;
-		requestAnimationFrame(() => chatInputRef?.focus());
+		requestAnimationFrame(() => {
+			if (!keyboard.keepNavigating) chatInputRef?.focus();
+		});
 	});
 
 	function formatFileSize(bytes: number): string {
@@ -407,6 +411,35 @@
 		chatInputRef?.focus();
 	}
 
+	// Esc in the message box drops the reply being written; with nothing to drop, keyboard navigation leaves the box
+	// for the messages.
+	function handleEscape() {
+		if (replyTo) replyTo = null;
+		else if (layoutPrefs.keyboardNavigation) leaveMessageBox(rootEl ?? null);
+	}
+
+	// What keyboard navigation asks of this chat, when it's the focused pane's: reply to or edit the message under the
+	// cursor, or go back to the message box. Only the user's own messages are edited, as their menu offers.
+	let rootEl = $state<HTMLElement>();
+	$effect(() => {
+		const request = chatRequest.current;
+		if (!request || !rootEl || !request.pane.contains(rootEl)) return;
+		untrack(() => {
+			chatRequest.current = null;
+			if (request.kind === "write") {
+				chatInputRef?.focus();
+				return;
+			}
+			const message = messages.find((m) => m.id === request.messageId);
+			if (!message || isEphemeral(message) || message.type === MessageType.PinNotice) return;
+			if (request.kind === "reply") handleReply(message);
+			else if (message.author_id === $currentUser?.id) {
+				editingMessageId = message.id;
+				editContent = message.content ?? "";
+			}
+		});
+	});
+
 	function retryMessage(message: Message) {
 		if (onRetry) {
 			onRetry(message);
@@ -570,6 +603,7 @@
 </script>
 
 <div
+	bind:this={rootEl}
 	class="from-night-22 to-night-19 relative flex flex-1 flex-col overflow-hidden bg-linear-to-b"
 	ondragover={handleFileDragOver}
 	ondragleave={handleFileDragLeave}
@@ -766,6 +800,7 @@
 				onVoiceNote={handleVoiceNote}
 				onRecording={() => notifyTyping(true)}
 				onArrowUpWhenEmpty={tryEditLastMessage}
+				onCancel={handleEscape}
 				onValueChange={handleTyping}
 				{members}
 				rooms={mentionRooms}

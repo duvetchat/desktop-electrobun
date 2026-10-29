@@ -10,6 +10,7 @@
 		unpinConversationMessage,
 	} from "$lib/api/conversations";
 	import { confirmAction } from "$lib/stores/confirm.svelte";
+	import { keyboard } from "$lib/keyboard.svelte";
 	import { Dialog, Popover } from "bits-ui";
 	import {
 		currentUser,
@@ -983,7 +984,9 @@
 					data-message-id={message.id}
 					class="group relative -mx-3 mb-1 flex items-center rounded-md px-3 py-1 {showHeader
 						? 'mt-4'
-						: 'mt-1'} {isHighlighted ? 'bg-yellow-500/15' : 'hover:bg-zinc-800/55'}"
+						: 'mt-1'} {isHighlighted ? 'bg-yellow-500/15' : 'hover:bg-zinc-800/55'} {keyboard.cursor === message.id
+						? 'outline-duvet-accent outline-2 -outline-offset-2'
+						: ''}"
 				>
 					<div class="mr-3 flex w-10 shrink-0 justify-end">
 						<PinIcon class="size-4 text-zinc-500" />
@@ -1026,9 +1029,23 @@
 							? 'bg-yellow-500/15 hover:bg-yellow-500/20'
 							: isMention
 								? 'border-l-2 border-yellow-500/60 bg-yellow-500/10 hover:bg-yellow-500/15'
-								: 'hover:bg-zinc-800/55'} -mx-3"
+								: 'hover:bg-zinc-800/55'} -mx-3 {keyboard.cursor === message.id
+						? 'outline-duvet-accent outline-2 -outline-offset-2'
+						: ''}"
 					style={isFailed ? "" : isPending ? "opacity: 0.5; pointer-events: none;" : ""}
 				>
+					{#if keyboard.cursor === message.id && !isPending && !ephemeral}
+						<!-- What the keys do here, while keyboard navigation's cursor is on this message. -->
+						<span
+							class="bg-duvet-card text-duvet-ink2 shadow-duvet-raised pointer-events-none absolute right-3 -bottom-3 z-10 flex items-center gap-2 rounded-lg px-2 py-0.5 text-[11px] font-medium"
+							aria-hidden="true"
+						>
+							<span><kbd class="text-duvet-ink font-bold">r</kbd> reply</span>
+							{#if $currentUser && message.author_id === $currentUser.id}
+								<span><kbd class="text-duvet-ink font-bold">e</kbd> edit</span>
+							{/if}
+						</span>
+					{/if}
 					{#if message.referenced_message}
 						<div class="mb-0.5 flex min-w-0 items-start">
 							<!-- L-connector aligned to avatar column -->

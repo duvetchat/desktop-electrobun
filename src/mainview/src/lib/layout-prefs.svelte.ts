@@ -21,6 +21,7 @@ $effect.root(() => {
 			showChannelsSidebar: layoutPrefs.showChannelsSidebar,
 			spacesColumn: layoutPrefs.spacesColumn,
 			openChats: layoutPrefs.openChats,
+			keyboardNavigation: layoutPrefs.keyboardNavigation,
 		});
 		try {
 			localStorage.setItem(LAYOUT_PREFS_KEY, value);

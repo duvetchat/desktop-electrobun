@@ -73,7 +73,10 @@ describe("saved values", () => {
 			showChannelsSidebar: true,
 			spacesColumn: "fixed",
 			openChats: "tabs",
+			keyboardNavigation: false,
 		});
+		expect(parseLayoutPrefs('{"keyboardNavigation":true}').keyboardNavigation).toBe(true);
+		expect(parseLayoutPrefs('{"keyboardNavigation":"yes"}').keyboardNavigation).toBe(false);
 		expect(parseLayoutPrefs('{"spacesColumn":"auto-hide","openChats":"vertical"}')).toMatchObject({
 			spacesColumn: "auto-hide",
 			openChats: "vertical",

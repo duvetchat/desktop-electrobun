@@ -65,6 +65,7 @@
 					? 'text-duvet-ink hover:bg-duvet-card'
 					: 'text-duvet-ink2 hover:bg-duvet-card hover:text-duvet-ink'}"
 			aria-current={activeConversationId === conv.id ? "true" : undefined}
+			data-jump
 			onclick={() => onSelect(conv.id)}
 			draggable="true"
 			ondragstart={(e) => {
