@@ -199,7 +199,7 @@
 					bind:this={inputEl}
 					bind:value={query}
 					type="text"
-					class="text-duvet-ink placeholder:text-duvet-ink2 h-12 min-w-0 flex-1 bg-transparent text-[15px]"
+					class="text-duvet-ink placeholder:text-duvet-ink2 focus-override h-12 min-w-0 flex-1 bg-transparent text-[15px] outline-none"
 					placeholder="Where to?"
 					role="combobox"
 					aria-label="Search spaces, rooms and conversations"

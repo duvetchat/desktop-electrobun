@@ -24,6 +24,8 @@
 	--duvet-chosen: #3a3d52;
 	--duvet-chosen-ink: #f2f3f9;
 	--duvet-alive: #a8dff0;
+	/* An online status: alive, as voice and the mobile app have it. */
+	--status-online: var(--duvet-alive);
 	--duvet-danger: #f08c84;
 	--duvet-shadow-raised: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 1px 2px rgba(0, 0, 0, 0.45);
 	--duvet-shadow-press: inset 0 2px 4px rgba(0, 0, 0, 0.5);

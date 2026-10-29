@@ -38,26 +38,36 @@
 	</DropdownMenu.Trigger>
 	<DropdownMenu.Portal>
 		<DropdownMenu.Content
-			class="z-200 w-64 overflow-hidden rounded-lg border border-zinc-700 bg-zinc-800 py-1 shadow-2xl"
+			class="rounded-card border-duvet-line bg-duvet-card text-duvet-ink shadow-duvet-float focus-override z-200 flex w-72 flex-col gap-1 border p-1.5 outline-none"
 			side="top"
 			align="start"
 			sideOffset={8}
 		>
 			{#each STATUS_CHOICES as choice (choice.status)}
+				{@const chosen = current === choice.status}
+				<!-- The chosen status sits pressed in, as a chosen thing does in Duvet. -->
 				<DropdownMenu.Item
-					class="flex w-full cursor-pointer items-start gap-2.5 px-3 py-2 text-left text-sm text-zinc-100 transition-colors hover:bg-zinc-700 data-disabled:cursor-default data-disabled:opacity-50 data-highlighted:bg-zinc-700"
+					class="rounded-row flex w-full cursor-pointer items-center gap-3 p-2 text-left transition-colors data-disabled:cursor-default data-disabled:opacity-50 motion-reduce:transition-none {chosen
+						? 'bg-duvet-bg shadow-duvet-press'
+						: 'data-highlighted:bg-duvet-bg/60'}"
 					disabled={saving}
 					onSelect={() => choose(choice.status)}
 				>
-					<StatusDot status={userStatusToString(choice.status)} class="mt-1 size-2.5 shrink-0" />
-					<span class="flex min-w-0 flex-1 flex-col">
-						<span>{choice.label}</span>
+					<span
+						class="flex size-9 shrink-0 items-center justify-center rounded-xl {chosen
+							? 'bg-duvet-card shadow-duvet-raised'
+							: 'bg-duvet-bg shadow-duvet-press'}"
+					>
+						<StatusDot status={userStatusToString(choice.status)} class="size-3" />
+					</span>
+					<span class="flex min-w-0 flex-1 flex-col leading-tight">
+						<span class="text-sm font-bold">{choice.label}</span>
 						{#if choice.description}
-							<span class="text-xs text-zinc-400">{choice.description}</span>
+							<span class="text-duvet-ink2 mt-0.5 text-xs">{choice.description}</span>
 						{/if}
 					</span>
-					{#if current === choice.status}
-						<Check class="mt-0.5 size-4 shrink-0 text-zinc-300" />
+					{#if chosen}
+						<Check class="text-duvet-accent-text size-4 shrink-0" />
 					{/if}
 				</DropdownMenu.Item>
 			{/each}
