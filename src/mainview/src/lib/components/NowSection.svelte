@@ -334,11 +334,8 @@
 {/snippet}
 
 {#if anything}
-	<!-- Below the rows, with a fade over the last of them. What doesn't fit scrolls in it; the voice dock stays. -->
-	<section
-		class="bg-duvet-sunk before:from-duvet-sunk relative flex min-h-0 flex-col px-2.5 pb-1 before:pointer-events-none before:absolute before:inset-x-0 before:-top-4 before:h-4 before:bg-linear-to-t before:to-transparent"
-		aria-label="Now"
-	>
+	<!-- Right under the rows. What doesn't fit scrolls in it; the voice dock stays. -->
+	<section class="flex min-h-0 flex-col px-2.5 pb-1" aria-label="Now">
 		<div class="-mx-2.5 flex min-h-0 flex-col overflow-y-auto px-2.5">
 			{#if asks > 0}
 				<ul class="flex flex-col gap-1 pt-2" aria-label="Asking you">
