@@ -13,5 +13,5 @@
 		onReveal();
 	}}
 >
-	<span class="rounded-full bg-black/70 px-3 py-1 text-xs font-bold tracking-wide text-white">SPOILER</span>
+	<span class="text-fixed-white rounded-full bg-black/70 px-3 py-1 text-xs font-bold tracking-wide">SPOILER</span>
 </button>

@@ -115,12 +115,12 @@
 <div
 	class="flex items-center gap-2.5 {compact
 		? 'max-w-none min-w-0 rounded-xl px-2.5 py-1.5'
-		: 'max-w-[320px] min-w-60 rounded-[18px] py-2 pr-3.5 pl-2.5'} border border-[oklch(0.30_0.01_80/0.6)] bg-[oklch(0.22_0.01_80/0.8)]"
+		: 'max-w-[320px] min-w-60 rounded-[18px] py-2 pr-3.5 pl-2.5'} border-night-30/60 bg-night-22/80 border"
 >
 	<button
 		class="flex items-center justify-center {compact
 			? 'size-7'
-			: 'size-9'} shrink-0 cursor-pointer rounded-full border-none bg-[oklch(0.55_0.15_250)] text-white transition-[background] duration-150 hover:bg-[oklch(0.62_0.15_250)]"
+			: 'size-9'} text-fixed-white shrink-0 cursor-pointer rounded-full border-none bg-[oklch(0.55_0.15_250)] transition-[background] duration-150 hover:bg-[oklch(0.62_0.15_250)]"
 		onclick={togglePlay}
 	>
 		{#if playing}
@@ -140,7 +140,7 @@
 					class="min-h-0.75 flex-1 rounded-xs transition-[background] duration-100"
 					style="height: {height * 100}%; {barProgress <= progress
 						? 'background: oklch(0.65 0.15 250);'
-						: 'background: oklch(0.40 0.01 80);'}"
+						: 'background: var(--color-night-40);'}"
 				></div>
 			{/each}
 			<div
@@ -151,7 +151,7 @@
 			></div>
 		</div>
 		<div class="flex items-center gap-1.5">
-			<span class="text-[oklch(0.52_0.01_80)] tabular-nums {compact ? 'text-xxs' : 'text-[11px]'}"
+			<span class="text-night-52 tabular-nums {compact ? 'text-xxs' : 'text-[11px]'}"
 				>{formatDuration(playing || currentTime > 0 ? currentTime : duration)}</span
 			>
 			{#if !compact}

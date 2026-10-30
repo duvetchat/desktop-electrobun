@@ -75,16 +75,19 @@
 		updateBot,
 		getBotUser,
 		type BotUser,
-		acceptTeamInvite,
-		declineTeamInvite,
 		TeamRole,
 		type Team,
 		type TeamMember,
 		type Application,
 	} from "$lib/api/developer";
 	import { pendingTeamInvites, myBuckets, voiceFaces, shareSpotify } from "$lib/stores.svelte";
+	import { layoutPrefs } from "$lib/layout-prefs.svelte";
+	import { BUSY_ROOM_ONLINE } from "$lib/members";
+	import { setThemePref, theme } from "$lib/theme.svelte";
+	import { parseThemePref } from "$lib/theme";
 	import { isElectrobunWindow } from "$lib/electrobun-rpc";
 	import { chosenStatus } from "$lib/status";
+	import { answerTeamInvite } from "$lib/team-invites";
 	import { userStatusToString } from "$lib/types";
 	import StorageTransferCard from "$lib/components/StorageTransferCard.svelte";
 	import MoveFilesDialog from "$lib/components/MoveFilesDialog.svelte";
@@ -113,6 +116,17 @@
 	// Only the desktop app reads what this computer plays.
 	const desktopApp = isElectrobunWindow();
 	let activeSection = $state<Section>("account");
+	// The sidebar's sections, in order; Developer sits apart, after a line.
+	const settingsSections = [
+		{ id: "account", label: "My Account", icon: UserIcon },
+		{ id: "attachments", label: "Attachments", icon: PaperclipIcon },
+		{ id: "security", label: "Security", icon: ShieldIcon },
+		{ id: "audio", label: "Audio", icon: VolumeIcon },
+		{ id: "appearance", label: "Appearance", icon: PaletteIcon },
+		...(desktopApp ? [{ id: "activity", label: "Activity Privacy", icon: ActivityIcon } as const] : []),
+		{ id: "buckets", label: "S3 Buckets", icon: DatabaseIcon },
+		{ id: "developer", label: "Developer", icon: CodeIcon },
+	] as const satisfies readonly { id: Section; label: string; icon: unknown }[];
 
 	// Attachments state
 	const attachmentHost = getHostURL();
@@ -911,8 +925,7 @@
 
 	async function handleAcceptTeamInvite(inviteId: string) {
 		try {
-			await acceptTeamInvite(inviteId);
-			pendingTeamInvites.update((list) => list.filter((i) => i.id !== inviteId));
+			await answerTeamInvite(inviteId, true);
 			toast("Invite accepted!", "success");
 			void loadDevTeams();
 		} catch (e) {
@@ -922,8 +935,7 @@
 
 	async function handleDeclineTeamInvite(inviteId: string) {
 		try {
-			await declineTeamInvite(inviteId);
-			pendingTeamInvites.update((list) => list.filter((i) => i.id !== inviteId));
+			await answerTeamInvite(inviteId, false);
 			toast("Invite declined", "success");
 		} catch (e) {
 			toast(getApiError(e, "Failed to decline invite"), "error");
@@ -1124,97 +1136,81 @@
 		resetImageStages();
 		saveError = null;
 	}
+
+	// The shell's layout, saved on this device: the spaces column's mode and where the open chats are listed.
+	const themeChoices = [
+		{ value: "system", label: "System" },
+		{ value: "light", label: "Light" },
+		{ value: "dark", label: "Dark" },
+	] as const;
+	const spacesColumnChoices = [
+		{ value: "fixed", label: "Fixed" },
+		{ value: "auto-hide", label: "Auto-hide" },
+	] as const;
+	const openChatsChoices = [
+		{ value: "tabs", label: "Tabs on top" },
+		{ value: "vertical", label: "Vertical list" },
+	] as const;
+	const membersColumnChoices = [
+		{ value: "auto", label: "Auto" },
+		{ value: "shown", label: "Shown" },
+		{ value: "hidden", label: "Hidden" },
+	] as const;
+	const keyboardChoices = [
+		{ value: "off", label: "Off" },
+		{ value: "on", label: "On" },
+	] as const;
+
+	// A radio group moves its choice with the arrow keys, as native radios do.
+	function radioKeydown(e: KeyboardEvent, values: readonly string[], current: string, set: (v: string) => void) {
+		const step =
+			e.key === "ArrowRight" || e.key === "ArrowDown" ? 1 : e.key === "ArrowLeft" || e.key === "ArrowUp" ? -1 : 0;
+		if (!step) return;
+		e.preventDefault();
+		const next = values[(values.indexOf(current) + step + values.length) % values.length];
+		set(next);
+		const group = (e.currentTarget as HTMLElement).closest('[role="radiogroup"]');
+		group?.querySelector<HTMLElement>(`[data-value="${next}"]`)?.focus();
+	}
 </script>
 
 <Dialog.Root bind:open>
 	<Dialog.Portal>
 		<Dialog.Overlay class="fixed inset-0 z-500 bg-black/70 backdrop-blur-sm" />
-		<Dialog.Content class="fixed inset-0 z-501 flex items-center justify-center p-4">
+		<Dialog.Content class="fixed inset-0 z-501 flex items-center justify-center p-4 sm:p-8">
 			<div
-				class="flex h-[85vh] w-full max-w-3xl overflow-hidden rounded-xl border border-zinc-700 bg-zinc-900 text-zinc-100 shadow-2xl"
+				class="rounded-card border-duvet-line bg-duvet-bg text-duvet-ink shadow-duvet-float flex h-full max-h-[920px] w-full max-w-[1180px] overflow-hidden border"
 			>
 				<!-- Left sidebar -->
-				<aside class="flex w-52 shrink-0 flex-col border-r border-zinc-800 bg-zinc-950 py-6">
-					<div class="mb-3 px-4">
-						<p class="text-xxs mb-1 px-2 font-bold tracking-widest text-zinc-400 uppercase">User Settings</p>
-					</div>
-					<nav class="flex flex-col gap-0.5 px-2">
-						<button
-							class="flex items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-sm font-medium transition-colors
-								{activeSection === 'account' ? 'bg-zinc-800 text-white' : 'text-zinc-400 hover:bg-zinc-800/60 hover:text-zinc-200'}"
-							onclick={() => (activeSection = "account")}
-						>
-							<UserIcon class="size-4 shrink-0" />
-							My Account
-						</button>
-						<button
-							class="flex items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-sm font-medium transition-colors
-								{activeSection === 'attachments' ? 'bg-zinc-800 text-white' : 'text-zinc-400 hover:bg-zinc-800/60 hover:text-zinc-200'}"
-							onclick={() => (activeSection = "attachments")}
-						>
-							<PaperclipIcon class="size-4 shrink-0" />
-							Attachments
-						</button>
-						<button
-							class="flex items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-sm font-medium transition-colors
-								{activeSection === 'security' ? 'bg-zinc-800 text-white' : 'text-zinc-400 hover:bg-zinc-800/60 hover:text-zinc-200'}"
-							onclick={() => (activeSection = "security")}
-						>
-							<ShieldIcon class="size-4 shrink-0" />
-							Security
-						</button>
-						<button
-							class="flex items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-sm font-medium transition-colors
-								{activeSection === 'audio' ? 'bg-zinc-800 text-white' : 'text-zinc-400 hover:bg-zinc-800/60 hover:text-zinc-200'}"
-							onclick={() => (activeSection = "audio")}
-						>
-							<VolumeIcon class="size-4 shrink-0" />
-							Audio
-						</button>
-						<button
-							class="flex items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-sm font-medium transition-colors
-								{activeSection === 'appearance' ? 'bg-zinc-800 text-white' : 'text-zinc-400 hover:bg-zinc-800/60 hover:text-zinc-200'}"
-							onclick={() => (activeSection = "appearance")}
-						>
-							<PaletteIcon class="size-4 shrink-0" />
-							Appearance
-						</button>
-						{#if desktopApp}
-							<button
-								class="flex items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-sm font-medium transition-colors
-									{activeSection === 'activity' ? 'bg-zinc-800 text-white' : 'text-zinc-400 hover:bg-zinc-800/60 hover:text-zinc-200'}"
-								onclick={() => (activeSection = "activity")}
-							>
-								<ActivityIcon class="size-4 shrink-0" />
-								Activity Privacy
-							</button>
-						{/if}
-						<button
-							class="flex items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-sm font-medium transition-colors
-								{activeSection === 'buckets' ? 'bg-zinc-800 text-white' : 'text-zinc-400 hover:bg-zinc-800/60 hover:text-zinc-200'}"
-							onclick={() => (activeSection = "buckets")}
-						>
-							<DatabaseIcon class="size-4 shrink-0" />
-							S3 Buckets
-						</button>
-						<div class="my-2 border-t border-zinc-800"></div>
-						<button
-							class="flex items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-sm font-medium transition-colors
-								{activeSection === 'developer' ? 'bg-zinc-800 text-white' : 'text-zinc-400 hover:bg-zinc-800/60 hover:text-zinc-200'}"
-							onclick={() => (activeSection = "developer")}
-						>
-							<CodeIcon class="size-4 shrink-0" />
-							Developer
-							{#if $pendingTeamInvites.length > 0}
-								<span class="text-xxs ml-auto rounded-full bg-stone-600 px-1.5 py-0.5 font-bold text-white"
-									>{$pendingTeamInvites.length}</span
-								>
+				<aside class="bg-duvet-sunk flex w-64 shrink-0 flex-col py-6">
+					<p class="text-duvet-ink2 mb-2 px-6 text-[13px] font-bold">Settings</p>
+					<nav class="flex flex-col gap-0.5 px-3">
+						{#each settingsSections as section (section.id)}
+							{#if section.id === "developer"}
+								<div class="border-duvet-line mx-3 my-2 border-t"></div>
 							{/if}
-						</button>
+							<button
+								class="rounded-row flex h-9 items-center gap-2.5 px-3 text-left text-sm font-semibold transition-colors motion-reduce:transition-none {activeSection ===
+								section.id
+									? 'bg-duvet-card text-duvet-ink shadow-duvet-raised'
+									: 'text-duvet-ink2 hover:bg-duvet-card/60 hover:text-duvet-ink'}"
+								aria-current={activeSection === section.id ? "page" : undefined}
+								onclick={() => (activeSection = section.id)}
+							>
+								<section.icon class="size-4 shrink-0" />
+								{section.label}
+								{#if section.id === "developer" && $pendingTeamInvites.length > 0}
+									<span
+										class="bg-duvet-accent text-duvet-on-accent ml-auto flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[11px] font-bold"
+										>{$pendingTeamInvites.length}</span
+									>
+								{/if}
+							</button>
+						{/each}
 					</nav>
-					<div class="mt-auto px-2 pb-4">
+					<div class="mt-auto px-3 pb-2">
 						<button
-							class="flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-sm font-medium text-red-400 transition-colors hover:bg-red-600/10 hover:text-red-300"
+							class="rounded-row text-duvet-danger hover:bg-duvet-danger/10 flex h-9 w-full items-center gap-2.5 px-3 text-left text-sm font-semibold transition-colors motion-reduce:transition-none"
 							onclick={logout}
 						>
 							<LogOutIcon class="size-4 shrink-0" />
@@ -1226,187 +1222,188 @@
 				<!-- Main content -->
 				<div class="flex min-w-0 flex-1 flex-col">
 					<!-- Header -->
-					<div class="flex shrink-0 items-center justify-between border-b border-zinc-800 px-6 py-4">
-						<h2 class="text-base font-semibold text-white">
+					<div class="border-duvet-line flex h-16 shrink-0 items-center justify-between border-b px-8">
+						<h2 class="text-lg font-bold">
 							{#if activeSection === "account"}My Account{:else if activeSection === "security"}Security{:else if activeSection === "audio"}Audio{:else if activeSection === "appearance"}Appearance{:else if activeSection === "activity"}Activity
 								Privacy{:else if activeSection === "attachments"}Attachments{:else if activeSection === "buckets"}S3
 								Buckets{:else if activeSection === "developer"}Developer{/if}
 						</h2>
 						<Dialog.Close
-							class="flex h-8 w-8 items-center justify-center rounded-lg text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-200"
+							class="text-duvet-ink2 hover:bg-duvet-card hover:text-duvet-ink flex size-9 items-center justify-center rounded-xl transition-colors motion-reduce:transition-none"
 						>
 							<XIcon class="size-4" />
 						</Dialog.Close>
 					</div>
 
-					<!-- Scrollable content -->
-					<div class="flex-1 space-y-6 overflow-y-auto px-6 py-6">
-						{#if activeSection === "account"}
-							<!-- Profile preview card -->
-							<MemberProfileCard
-								member={previewMember}
-								editable
-								onAvatarClick={() => (showAvatarCrop = true)}
-								onAvatarRemove={() => handleRemoveImageStage("avatar")}
-								onBannerClick={() => (showBannerCrop = true)}
-								onBannerRemove={() => handleRemoveImageStage("banner")}
-							/>
+					<!-- Scrollable content, at a width that reads well however wide the window is -->
+					<div class="flex-1 overflow-y-auto">
+						<div class="mx-auto w-full max-w-4xl space-y-6 px-8 py-8">
+							{#if activeSection === "account"}
+								<!-- Profile preview card -->
+								<MemberProfileCard
+									member={previewMember}
+									editable
+									onAvatarClick={() => (showAvatarCrop = true)}
+									onAvatarRemove={() => handleRemoveImageStage("avatar")}
+									onBannerClick={() => (showBannerCrop = true)}
+									onBannerRemove={() => handleRemoveImageStage("banner")}
+								/>
 
-							<!-- Form fields -->
-							<div class="space-y-5">
-								<!-- Display name -->
-								<div>
-									<label for="alias" class="mb-1.5 block text-xs font-semibold tracking-wide text-zinc-400 uppercase">
-										Display Name
-									</label>
-									<input
-										id="alias"
-										type="text"
-										bind:value={alias}
-										maxlength={32}
-										placeholder={$currentUser?.username ?? ""}
-										class="focus-override h-10 w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 text-sm text-white placeholder-zinc-500 transition-colors outline-none focus:border-stone-500 focus:ring-1 focus:ring-stone-500"
-									/>
-									<p class="mt-1 text-xs text-zinc-500">
-										This is how others see you. Leave empty to use your username.
-									</p>
-								</div>
-
-								<!-- Bio -->
-								<div>
-									<label for="bio" class="mb-1.5 block text-xs font-semibold tracking-wide text-zinc-400 uppercase">
-										About Me
-									</label>
-									<textarea
-										id="bio"
-										bind:value={bio}
-										rows="3"
-										placeholder="A few words about you"
-										aria-invalid={bioTooLong}
-										class="focus-override w-full resize-none rounded-md border bg-zinc-800 px-3 py-2 text-sm text-white placeholder-zinc-500 transition-colors outline-none [scrollbar-color:var(--color-zinc-600)_transparent] focus:ring-1 {bioTooLong
-											? 'border-red-500 focus:border-red-500 focus:ring-red-500'
-											: 'border-zinc-700 focus:border-stone-500 focus:ring-stone-500'}"
-									></textarea>
-									<p class="mt-1 flex justify-between gap-2 text-xs text-zinc-500">
-										<span>Shown on your profile. Leave empty for none.</span>
-										<span class={bioTooLong ? "text-red-400" : ""}>{bioLength}/{BIO_MAX_LENGTH}</span>
-									</p>
-								</div>
-
-								<!-- Username -->
-								<div>
-									<label
-										for="username"
-										class="mb-1.5 block text-xs font-semibold tracking-wide text-zinc-400 uppercase"
-									>
-										Username
-									</label>
-									<input
-										id="username"
-										type="text"
-										bind:value={username}
-										maxlength={32}
-										placeholder="username"
-										class="focus-override h-10 w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 text-sm text-white placeholder-zinc-500 transition-colors outline-none focus:border-stone-500 focus:ring-1 focus:ring-stone-500"
-									/>
-								</div>
-							</div>
-						{:else if activeSection === "security"}
-							<!-- Email verification -->
-							{#if $currentUser && !$currentUser.email_verified}
-								<div class="flex items-center gap-3 rounded-lg border border-amber-600/30 bg-amber-950/20 px-4 py-3">
-									<svg
-										xmlns="http://www.w3.org/2000/svg"
-										width="20"
-										height="20"
-										viewBox="0 0 24 24"
-										fill="none"
-										stroke="currentColor"
-										stroke-width="2"
-										stroke-linecap="round"
-										stroke-linejoin="round"
-										class="shrink-0 text-amber-500"
-									>
-										<rect width="20" height="16" x="2" y="4" rx="2" />
-										<path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" />
-									</svg>
-									<div class="min-w-0 flex-1">
-										<p class="text-sm font-medium text-amber-300">Email not verified</p>
-										<p class="text-xs text-amber-400/60">Verify your email to secure your account.</p>
-									</div>
-									<button
-										onclick={handleSendVerification}
-										disabled={sendingVerification}
-										class="shrink-0 rounded-md bg-amber-600/20 px-3 py-1.5 text-xs font-semibold text-amber-300 transition-colors hover:bg-amber-600/30 disabled:opacity-50"
-									>
-										{sendingVerification ? "Sending..." : "Send verification"}
-									</button>
-								</div>
-							{:else if $currentUser?.email_verified}
-								<div
-									class="flex items-center gap-3 rounded-lg border border-emerald-800/50 bg-emerald-900/20 px-4 py-3"
-								>
-									<svg
-										xmlns="http://www.w3.org/2000/svg"
-										width="20"
-										height="20"
-										viewBox="0 0 24 24"
-										fill="none"
-										stroke="currentColor"
-										stroke-width="2"
-										stroke-linecap="round"
-										stroke-linejoin="round"
-										class="shrink-0 text-emerald-400"
-									>
-										<rect width="20" height="16" x="2" y="4" rx="2" />
-										<path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" />
-									</svg>
-									<p class="text-sm font-medium text-emerald-300">Email verified</p>
-								</div>
-							{/if}
-
-							<!-- Password -->
-							<div class="rounded-lg border border-zinc-800 bg-zinc-800/40 px-4 py-4">
-								<div class="flex items-center justify-between">
+								<!-- Form fields -->
+								<div class="space-y-5">
+									<!-- Display name -->
 									<div>
-										<p class="text-xs font-semibold tracking-wide text-zinc-400 uppercase">Password</p>
-										<p class="mt-1 text-xs text-zinc-500">Send a reset link to your email to change your password.</p>
+										<label for="alias" class="mb-1.5 block text-xs font-semibold tracking-wide text-zinc-400 uppercase">
+											Display Name
+										</label>
+										<input
+											id="alias"
+											type="text"
+											bind:value={alias}
+											maxlength={32}
+											placeholder={$currentUser?.username ?? ""}
+											class="focus-override h-10 w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 text-sm text-white placeholder-zinc-500 transition-colors outline-none focus:border-stone-500 focus:ring-1 focus:ring-stone-500"
+										/>
+										<p class="mt-1 text-xs text-zinc-500">
+											This is how others see you. Leave empty to use your username.
+										</p>
 									</div>
-									<button
-										onclick={handleSendResetPassword}
-										disabled={sendingReset}
-										class="shrink-0 rounded-md bg-zinc-700 px-3 py-1.5 text-xs font-semibold text-zinc-200 transition-colors hover:bg-zinc-600 disabled:opacity-50"
-									>
-										{sendingReset ? "Sending..." : "Reset password"}
-									</button>
-								</div>
-							</div>
 
-							<!-- Change email -->
-							<div class="rounded-lg border border-zinc-800 bg-zinc-800/40 px-4 py-4">
-								<p class="text-xs font-semibold tracking-wide text-zinc-400 uppercase">Email</p>
-								<p class="mt-1 text-xs text-zinc-500">
-									Current: <span class="text-zinc-300">{"—"}</span>
-								</p>
-								<div class="mt-3 flex items-center gap-2">
-									<input
-										type="email"
-										bind:value={newEmail}
-										placeholder="New email address"
-										class="h-9 flex-1 rounded-md border border-zinc-700 bg-zinc-800 px-3 text-sm text-white placeholder-zinc-500 outline-none focus:border-stone-500 focus:ring-1 focus:ring-stone-500"
-									/>
-									<button
-										onclick={handleSendChangeEmail}
-										disabled={sendingEmailChange || !newEmail.trim()}
-										class="shrink-0 rounded-md bg-zinc-700 px-3 py-1.5 text-xs font-semibold text-zinc-200 transition-colors hover:bg-zinc-600 disabled:opacity-50"
-									>
-										{sendingEmailChange ? "Sending..." : "Send verification"}
-									</button>
+									<!-- Bio -->
+									<div>
+										<label for="bio" class="mb-1.5 block text-xs font-semibold tracking-wide text-zinc-400 uppercase">
+											About Me
+										</label>
+										<textarea
+											id="bio"
+											bind:value={bio}
+											rows="3"
+											placeholder="A few words about you"
+											aria-invalid={bioTooLong}
+											class="focus-override w-full resize-none rounded-md border bg-zinc-800 px-3 py-2 text-sm text-white placeholder-zinc-500 transition-colors outline-none focus:ring-1 {bioTooLong
+												? 'border-red-500 focus:border-red-500 focus:ring-red-500'
+												: 'border-zinc-700 focus:border-stone-500 focus:ring-stone-500'}"
+										></textarea>
+										<p class="mt-1 flex justify-between gap-2 text-xs text-zinc-500">
+											<span>Shown on your profile. Leave empty for none.</span>
+											<span class={bioTooLong ? "text-red-400" : ""}>{bioLength}/{BIO_MAX_LENGTH}</span>
+										</p>
+									</div>
+
+									<!-- Username -->
+									<div>
+										<label
+											for="username"
+											class="mb-1.5 block text-xs font-semibold tracking-wide text-zinc-400 uppercase"
+										>
+											Username
+										</label>
+										<input
+											id="username"
+											type="text"
+											bind:value={username}
+											maxlength={32}
+											placeholder="username"
+											class="focus-override h-10 w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 text-sm text-white placeholder-zinc-500 transition-colors outline-none focus:border-stone-500 focus:ring-1 focus:ring-stone-500"
+										/>
+									</div>
 								</div>
-								<p class="mt-2 text-xs text-zinc-600">A verification link will be sent to the new address.</p>
-							</div>
-						{:else if activeSection === "audio"}
-							{@const sliders: { key: SoundEvent | "master"; label: string }[] = [
+							{:else if activeSection === "security"}
+								<!-- Email verification -->
+								{#if $currentUser && !$currentUser.email_verified}
+									<div class="flex items-center gap-3 rounded-lg border border-amber-600/30 bg-amber-950/20 px-4 py-3">
+										<svg
+											xmlns="http://www.w3.org/2000/svg"
+											width="20"
+											height="20"
+											viewBox="0 0 24 24"
+											fill="none"
+											stroke="currentColor"
+											stroke-width="2"
+											stroke-linecap="round"
+											stroke-linejoin="round"
+											class="shrink-0 text-amber-500"
+										>
+											<rect width="20" height="16" x="2" y="4" rx="2" />
+											<path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" />
+										</svg>
+										<div class="min-w-0 flex-1">
+											<p class="text-sm font-medium text-amber-300">Email not verified</p>
+											<p class="text-xs text-amber-400/60">Verify your email to secure your account.</p>
+										</div>
+										<button
+											onclick={handleSendVerification}
+											disabled={sendingVerification}
+											class="shrink-0 rounded-md bg-amber-600/20 px-3 py-1.5 text-xs font-semibold text-amber-300 transition-colors hover:bg-amber-600/30 disabled:opacity-50"
+										>
+											{sendingVerification ? "Sending..." : "Send verification"}
+										</button>
+									</div>
+								{:else if $currentUser?.email_verified}
+									<div
+										class="flex items-center gap-3 rounded-lg border border-emerald-800/50 bg-emerald-900/20 px-4 py-3"
+									>
+										<svg
+											xmlns="http://www.w3.org/2000/svg"
+											width="20"
+											height="20"
+											viewBox="0 0 24 24"
+											fill="none"
+											stroke="currentColor"
+											stroke-width="2"
+											stroke-linecap="round"
+											stroke-linejoin="round"
+											class="shrink-0 text-emerald-400"
+										>
+											<rect width="20" height="16" x="2" y="4" rx="2" />
+											<path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" />
+										</svg>
+										<p class="text-sm font-medium text-emerald-300">Email verified</p>
+									</div>
+								{/if}
+
+								<!-- Password -->
+								<div class="rounded-lg border border-zinc-800 bg-zinc-800/40 px-4 py-4">
+									<div class="flex items-center justify-between">
+										<div>
+											<p class="text-xs font-semibold tracking-wide text-zinc-400 uppercase">Password</p>
+											<p class="mt-1 text-xs text-zinc-500">Send a reset link to your email to change your password.</p>
+										</div>
+										<button
+											onclick={handleSendResetPassword}
+											disabled={sendingReset}
+											class="shrink-0 rounded-md bg-zinc-700 px-3 py-1.5 text-xs font-semibold text-zinc-200 transition-colors hover:bg-zinc-600 disabled:opacity-50"
+										>
+											{sendingReset ? "Sending..." : "Reset password"}
+										</button>
+									</div>
+								</div>
+
+								<!-- Change email -->
+								<div class="rounded-lg border border-zinc-800 bg-zinc-800/40 px-4 py-4">
+									<p class="text-xs font-semibold tracking-wide text-zinc-400 uppercase">Email</p>
+									<p class="mt-1 text-xs text-zinc-500">
+										Current: <span class="text-zinc-300">{"—"}</span>
+									</p>
+									<div class="mt-3 flex items-center gap-2">
+										<input
+											type="email"
+											bind:value={newEmail}
+											placeholder="New email address"
+											class="h-9 flex-1 rounded-md border border-zinc-700 bg-zinc-800 px-3 text-sm text-white placeholder-zinc-500 outline-none focus:border-stone-500 focus:ring-1 focus:ring-stone-500"
+										/>
+										<button
+											onclick={handleSendChangeEmail}
+											disabled={sendingEmailChange || !newEmail.trim()}
+											class="shrink-0 rounded-md bg-zinc-700 px-3 py-1.5 text-xs font-semibold text-zinc-200 transition-colors hover:bg-zinc-600 disabled:opacity-50"
+										>
+											{sendingEmailChange ? "Sending..." : "Send verification"}
+										</button>
+									</div>
+									<p class="mt-2 text-xs text-zinc-600">A verification link will be sent to the new address.</p>
+								</div>
+							{:else if activeSection === "audio"}
+								{@const sliders: { key: SoundEvent | "master"; label: string }[] = [
 								{ key: "master", label: "Master Volume" },
 								{ key: "notification", label: "Mentions" },
 								{ key: "join_vc", label: "Join Voice" },
@@ -1415,304 +1412,428 @@
 								{ key: "screen_sharing_on", label: "Screen Share On" },
 								{ key: "screen_sharing_off", label: "Screen Share Off" },
 							]}
-							<div class="space-y-4">
-								{#each sliders as { key, label } (key)}
-									{@const value = key === "master" ? audioStore.settings.master : audioStore.settings[key]}
-									<div class="rounded-lg border border-zinc-800 bg-zinc-800/40 px-4 py-3">
-										<div class="mb-2 flex items-center justify-between">
-											<span class="text-sm font-medium text-zinc-200">{label}</span>
-											<span class="text-xs text-zinc-500 tabular-nums">{value}%</span>
+								<div class="space-y-4">
+									{#each sliders as { key, label } (key)}
+										{@const value = key === "master" ? audioStore.settings.master : audioStore.settings[key]}
+										<div class="rounded-lg border border-zinc-800 bg-zinc-800/40 px-4 py-3">
+											<div class="mb-2 flex items-center justify-between">
+												<span class="text-sm font-medium text-zinc-200">{label}</span>
+												<span class="text-xs text-zinc-500 tabular-nums">{value}%</span>
+											</div>
+											<div class="flex items-center gap-3">
+												<input
+													type="range"
+													min="0"
+													max="200"
+													step="1"
+													{value}
+													oninput={(e) => {
+														const v = parseInt((e.target as HTMLInputElement).value);
+														if (key === "master") {
+															audioStore.setMaster(v);
+														} else {
+															audioStore.set(key, v);
+														}
+													}}
+													class="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-zinc-700 accent-stone-500 [&::-webkit-slider-thumb]:h-3.5 [&::-webkit-slider-thumb]:w-3.5 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-stone-400"
+												/>
+												{#if key !== "master"}
+													<button
+														class="shrink-0 rounded p-1 transition-colors hover:bg-zinc-700 {previewingSound === key
+															? 'text-stone-400'
+															: 'text-zinc-500 hover:text-zinc-200'}"
+														title={previewingSound === key ? "Stop" : "Preview"}
+														onclick={() => togglePreview(key)}
+													>
+														{#if previewingSound === key}
+															<StopIcon class="size-3.5" />
+														{:else}
+															<VolumeIcon class="size-3.5" />
+														{/if}
+													</button>
+												{/if}
+											</div>
 										</div>
-										<div class="flex items-center gap-3">
-											<input
-												type="range"
-												min="0"
-												max="200"
-												step="1"
-												{value}
-												oninput={(e) => {
-													const v = parseInt((e.target as HTMLInputElement).value);
-													if (key === "master") {
-														audioStore.setMaster(v);
-													} else {
-														audioStore.set(key, v);
-													}
-												}}
-												class="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-zinc-700 accent-stone-500 [&::-webkit-slider-thumb]:h-3.5 [&::-webkit-slider-thumb]:w-3.5 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-stone-400"
-											/>
-											{#if key !== "master"}
-												<button
-													class="shrink-0 rounded p-1 transition-colors hover:bg-zinc-700 {previewingSound === key
-														? 'text-stone-400'
-														: 'text-zinc-500 hover:text-zinc-200'}"
-													title={previewingSound === key ? "Stop" : "Preview"}
-													onclick={() => togglePreview(key)}
-												>
-													{#if previewingSound === key}
-														<StopIcon class="size-3.5" />
-													{:else}
-														<VolumeIcon class="size-3.5" />
-													{/if}
-												</button>
-											{/if}
-										</div>
-									</div>
-								{/each}
-							</div>
-						{:else if activeSection === "appearance"}
-							<p class="mb-4 text-xs text-zinc-500">
-								Customize how code blocks look in messages. Paste a URL to a VS Code theme JSON file.
-							</p>
-
-							<div class="space-y-3">
-								<div>
-									<label for="code-theme-url" class="mb-1 block text-xs font-medium text-zinc-400">Code Theme URL</label
-									>
-									<input
-										id="code-theme-url"
-										type="text"
-										bind:value={codeThemeUrl}
-										placeholder="https://raw.githubusercontent.com/.../theme.json"
-										class="w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-white placeholder-zinc-500 outline-none focus:border-zinc-500"
-										onkeydown={(e) => e.key === "Enter" && handleSaveTheme()}
-									/>
-								</div>
-								<div class="flex items-center gap-2">
-									<button
-										class="rounded-md bg-stone-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-stone-500 disabled:opacity-50"
-										onclick={handleSaveTheme}
-										disabled={savingTheme}
-									>
-										{savingTheme ? "Loading..." : "Apply"}
-									</button>
-									{#if codeThemeUrl}
-										<button
-											class="rounded-md px-4 py-2 text-sm font-medium text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-white"
-											onclick={() => {
-												codeThemeUrl = "";
-												handleSaveTheme();
-											}}
-										>
-											Reset to default
-										</button>
-									{/if}
-								</div>
-							</div>
-
-							<!-- Preview -->
-							<div class="mt-6">
-								<p class="mb-2 text-xs font-medium text-zinc-400">Preview</p>
-								{#key themeVersion}
-									<p class="msg-content text-sm text-zinc-200">
-										{@html renderMarkdown(
-											'```go\npackage main\n\nimport "fmt"\n\nfunc main() {\n\tnames := []string{"Alice", "Bob"}\n\tfor _, name := range names {\n\t\tfmt.Printf("Hello, %s!\\n", name)\n\t}\n}\n```',
-										)}
-									</p>
-								{/key}
-							</div>
-
-							<!-- Faces in voice -->
-							<div class="rounded-lg border border-zinc-800 bg-zinc-800/40 px-4 py-4">
-								<div class="flex items-center justify-between gap-4">
-									<div>
-										<p class="text-xs font-semibold tracking-wide text-zinc-400 uppercase">Faces in voice</p>
-										<p class="mt-1 text-xs text-zinc-500">
-											Voice channel tiles show everyone's animated face instead of their avatar. Saved on this device.
-										</p>
-									</div>
-									<button
-										type="button"
-										role="switch"
-										aria-checked={$voiceFaces}
-										aria-label="Faces in voice"
-										onclick={() => voiceFaces.update((v) => !v)}
-										class="relative h-5 w-9 shrink-0 rounded-full transition-colors {$voiceFaces
-											? 'bg-indigo-500'
-											: 'bg-zinc-600'}"
-									>
-										<span
-											class="absolute top-0.5 left-0.5 size-4 rounded-full bg-white transition-transform {$voiceFaces
-												? 'translate-x-4'
-												: ''}"
-										></span>
-									</button>
-								</div>
-							</div>
-						{:else if activeSection === "activity"}
-							<div class="rounded-lg border border-zinc-800 bg-zinc-800/40 px-4 py-4">
-								<div class="flex items-center justify-between gap-4">
-									<div>
-										<p class="text-xs font-semibold tracking-wide text-zinc-400 uppercase">
-											Share what I listen to on Spotify
-										</p>
-										<p class="mt-1 text-xs text-zinc-500">
-											While Spotify plays on this computer, the people in your spaces see the song, its artist and how
-											far along it is. Saved on this device.
-										</p>
-									</div>
-									<button
-										type="button"
-										role="switch"
-										aria-checked={$shareSpotify}
-										aria-label="Share what I listen to on Spotify"
-										onclick={() => shareSpotify.update((v) => !v)}
-										class="relative h-5 w-9 shrink-0 rounded-full transition-colors {$shareSpotify
-											? 'bg-indigo-500'
-											: 'bg-zinc-600'}"
-									>
-										<span
-											class="absolute top-0.5 left-0.5 size-4 rounded-full bg-white transition-transform {$shareSpotify
-												? 'translate-x-4'
-												: ''}"
-										></span>
-									</button>
-								</div>
-							</div>
-						{:else if activeSection === "attachments"}
-							{#if myTransfer}
-								<StorageTransferCard
-									transfer={myTransfer}
-									source={storageLabel(myTransfer.source_bucket_id)}
-									target={storageLabel(myTransfer.target_bucket_id)}
-								/>
-							{/if}
-							<!-- Active custom bucket banner -->
-							{#if hasActiveBucket}
-								{@const activeBucket = buckets.find((b) => b.is_active)}
-								<div
-									class="flex items-center gap-3 rounded-lg border border-emerald-800/50 bg-emerald-900/20 px-4 py-3"
-								>
-									<DatabaseIcon class="size-5 shrink-0 text-emerald-400" />
-									<div class="min-w-0 flex-1">
-										<p class="text-sm font-medium text-emerald-300">Using your own storage</p>
-										<p class="truncate text-xs text-emerald-400/60">
-											{activeBucket?.name} · {activeBucket?.bucket_name}
-										</p>
-									</div>
-									<span class="text-xxs shrink-0 rounded bg-emerald-600/20 px-1.5 py-0.5 font-semibold text-emerald-400"
-										>NO QUOTA</span
-									>
-								</div>
-							{/if}
-							<!-- Default storage quota (always shown) -->
-							{#if storageStatus}
-								<div class="space-y-3 rounded-lg border border-zinc-800 bg-zinc-800/40 px-4 py-4">
-									<div class="flex items-center justify-between">
-										<p class="text-sm font-semibold text-white">Default Storage</p>
-										<p class="text-xs text-zinc-400">
-											{formatFileSize(storageStatus.used_bytes)} / {formatFileSize(storageStatus.max_bytes)}
-										</p>
-									</div>
-									<!-- Progress bar -->
-									<div class="h-2 w-full overflow-hidden rounded-full bg-zinc-700">
-										<div
-											class="h-full rounded-full transition-all duration-300 {storageStatus.percentage_used > 90
-												? 'bg-red-500'
-												: storageStatus.percentage_used > 70
-													? 'bg-yellow-500'
-													: 'bg-stone-500'}"
-											style="width: {Math.min(storageStatus.percentage_used, 100)}%"
-										></div>
-									</div>
-									<div class="flex gap-4 text-xs text-zinc-500">
-										<span>{storageStatus.percentage_used}% used</span>
-										<span>Upload limit: {formatFileSize(storageStatus.upload_limit_bytes)} per file</span>
-									</div>
-								</div>
-							{/if}
-
-							<!-- Summary bar -->
-							<div
-								class="flex items-center justify-between gap-3 rounded-lg border border-zinc-800 bg-zinc-800/40 px-4 py-3"
-							>
-								<div class="text-sm text-zinc-300">
-									{#if listedHere}
-										<span class="font-semibold text-white">{attachments.length}</span>
-										file{attachments.length !== 1 ? "s" : ""}
-										{#if attachmentsLocation !== "all"}
-											<span class="mx-1 text-zinc-600">·</span>
-											{formatFileSize(locationBytes)}
-										{/if}
-									{/if}
-								</div>
-								<div class="flex items-center gap-2">
-									{#if buckets.length > 0 || attachmentsLocation !== "all"}
-										<label class="flex items-center gap-2 text-xs text-zinc-400">
-											Location
-											<select
-												value={attachmentsLocation}
-												onchange={(e) => setAttachmentsLocation(e.currentTarget.value)}
-												class="max-w-40 rounded-md border border-zinc-700 bg-zinc-800 px-2 py-1 text-xs text-zinc-200 focus:ring-1 focus:ring-stone-500 focus:outline-none"
-											>
-												<option value="all">All</option>
-												<option value={DEFAULT_STORAGE}>Default storage</option>
-												{#each buckets as b (b.id)}
-													<option value={b.id}>{b.name}</option>
-												{/each}
-											</select>
-										</label>
-									{/if}
-									{#if attachments.length > 0 && attachmentsLocation === "all"}
-										<button
-											onclick={handleDeleteAll}
-											class="flex items-center gap-1.5 rounded-md bg-red-600/20 px-3 py-1.5 text-xs font-semibold text-red-400 transition-colors hover:bg-red-600/30"
-										>
-											<TrashIcon class="size-3.5" />
-											Delete All
-										</button>
-									{/if}
-								</div>
-							</div>
-
-							{#if attachmentsError}
-								<p class="rounded-md bg-red-400/10 px-3 py-2 text-sm text-red-400">
-									{attachmentsError}
-								</p>
-							{/if}
-
-							{#if attachmentsLoading}
-								<div class="space-y-2">
-									{#each Array(5) as _}
-										<div class="h-14 animate-pulse rounded-lg bg-zinc-800/40"></div>
 									{/each}
 								</div>
-							{:else if !listedHere}
-								<!-- The location's files didn't load (the error above says why): the list is another's. -->
-							{:else if attachments.length === 0}
-								<div class="flex flex-col items-center justify-center py-16 text-zinc-500">
-									<PaperclipIcon class="mb-3 size-10" />
-									<p class="text-sm">{attachmentsLocation === "all" ? "No attachments yet" : "No files here"}</p>
-								</div>
-							{:else}
-								<div class="space-y-1">
-									{#if picking}
-										<FilePickerBar {picker} />
-									{/if}
-									{#each picker.shown as att (att.id)}
-										{@const isImage = att.content_type.startsWith("image/")}
-										{@const isAudio = att.content_type.startsWith("audio/")}
+							{:else if activeSection === "appearance"}
+								{#snippet segmented(
+									label: string,
+									description: string,
+									choices: readonly { value: string; label: string }[],
+									current: string,
+									set: (v: string) => void,
+								)}
+									<div class="flex items-center justify-between gap-4">
+										<div>
+											<p class="text-sm font-semibold text-zinc-200">{label}</p>
+											<p class="mt-1 text-xs text-zinc-500">{description}</p>
+										</div>
 										<div
-											class="group rounded-lg border border-zinc-800 bg-zinc-800/30 transition-colors hover:bg-zinc-800/50"
+											role="radiogroup"
+											aria-label={label}
+											class="rounded-row bg-duvet-sunk shadow-duvet-press flex shrink-0 gap-1 p-1"
 										>
-											<div class="flex items-center gap-3 px-3 py-2.5">
-												{#if picking}
-													<input
-														type="checkbox"
-														checked={picker.picked.has(att.id)}
-														onchange={() => picker.toggle(att.id)}
-														aria-label="Select {att.filename}"
-														class="size-4 shrink-0 rounded border-zinc-600 bg-zinc-800 accent-stone-500"
-													/>
-												{/if}
-												<!-- Thumbnail -->
-												{#if isImage}
-													<img
-														src="{attachmentHost}{att.url ?? `/attachments/${att.id}`}"
-														alt=""
-														class="h-10 w-10 shrink-0 rounded bg-zinc-700 object-cover"
-													/>
-												{:else if isAudio}
-													<div class="flex h-10 w-10 shrink-0 items-center justify-center rounded bg-zinc-700">
+											{#each choices as choice (choice.value)}
+												<button
+													type="button"
+													role="radio"
+													aria-checked={current === choice.value}
+													tabindex={current === choice.value ? 0 : -1}
+													data-value={choice.value}
+													class="focus-visible:outline-duvet-accent rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors focus-visible:outline-2 {current ===
+													choice.value
+														? 'bg-duvet-chosen text-duvet-chosen-ink shadow-duvet-raised'
+														: 'text-duvet-ink2 hover:text-duvet-ink'}"
+													onclick={() => set(choice.value)}
+													onkeydown={(e) =>
+														radioKeydown(
+															e,
+															choices.map((c) => c.value),
+															current,
+															set,
+														)}
+												>
+													{choice.label}
+												</button>
+											{/each}
+										</div>
+									</div>
+								{/snippet}
+
+								<!-- Layout -->
+								<div class="mb-6 space-y-4 rounded-lg border border-zinc-800 bg-zinc-800/40 px-4 py-4">
+									{@render segmented(
+										"Theme",
+										"System follows your computer's light or dark appearance. Saved on this device.",
+										themeChoices,
+										theme.pref,
+										(v) => setThemePref(parseThemePref(v)),
+									)}
+									{@render segmented(
+										"Spaces column",
+										"Auto-hide folds it to an edge that opens over the chat when you point at it.",
+										spacesColumnChoices,
+										layoutPrefs.spacesColumn,
+										(v) => (layoutPrefs.spacesColumn = v === "auto-hide" ? "auto-hide" : "fixed"),
+									)}
+									{@render segmented(
+										"Open chats",
+										"A vertical list puts them at the top of the spaces column instead of tabs over each chat.",
+										openChatsChoices,
+										layoutPrefs.openChats,
+										(v) => (layoutPrefs.openChats = v === "vertical" ? "vertical" : "tabs"),
+									)}
+									{@render segmented(
+										"Members column",
+										`Auto opens it in rooms with more than ${BUSY_ROOM_ONLINE} people online. The faces in the bar list the members either way.`,
+										membersColumnChoices,
+										layoutPrefs.membersColumn,
+										(v) => (layoutPrefs.membersColumn = v === "shown" || v === "hidden" ? v : "auto"),
+									)}
+									{@render segmented(
+										"Keyboard navigation",
+										"Esc in the message box moves to the messages: j and k go through them, r replies, e edits, f shows jump marks. Press ? for all of them.",
+										keyboardChoices,
+										layoutPrefs.keyboardNavigation ? "on" : "off",
+										(v) => (layoutPrefs.keyboardNavigation = v === "on"),
+									)}
+								</div>
+
+								<p class="mb-4 text-xs text-zinc-500">
+									Customize how code blocks look in messages. Paste a URL to a VS Code theme JSON file.
+								</p>
+
+								<div class="space-y-3">
+									<div>
+										<label for="code-theme-url" class="mb-1 block text-xs font-medium text-zinc-400"
+											>Code Theme URL</label
+										>
+										<input
+											id="code-theme-url"
+											type="text"
+											bind:value={codeThemeUrl}
+											placeholder="https://raw.githubusercontent.com/.../theme.json"
+											class="w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-white placeholder-zinc-500 outline-none focus:border-zinc-500"
+											onkeydown={(e) => e.key === "Enter" && handleSaveTheme()}
+										/>
+									</div>
+									<div class="flex items-center gap-2">
+										<button
+											class="bg-fill-600 text-fixed-white hover:bg-fill-500 rounded-md px-4 py-2 text-sm font-medium transition-colors disabled:opacity-50"
+											onclick={handleSaveTheme}
+											disabled={savingTheme}
+										>
+											{savingTheme ? "Loading..." : "Apply"}
+										</button>
+										{#if codeThemeUrl}
+											<button
+												class="rounded-md px-4 py-2 text-sm font-medium text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-white"
+												onclick={() => {
+													codeThemeUrl = "";
+													handleSaveTheme();
+												}}
+											>
+												Reset to default
+											</button>
+										{/if}
+									</div>
+								</div>
+
+								<!-- Preview -->
+								<div class="mt-6">
+									<p class="mb-2 text-xs font-medium text-zinc-400">Preview</p>
+									{#key themeVersion}
+										<p class="msg-content text-sm text-zinc-200">
+											{@html renderMarkdown(
+												'```go\npackage main\n\nimport "fmt"\n\nfunc main() {\n\tnames := []string{"Alice", "Bob"}\n\tfor _, name := range names {\n\t\tfmt.Printf("Hello, %s!\\n", name)\n\t}\n}\n```',
+											)}
+										</p>
+									{/key}
+								</div>
+
+								<!-- Faces in voice -->
+								<div class="rounded-lg border border-zinc-800 bg-zinc-800/40 px-4 py-4">
+									<div class="flex items-center justify-between gap-4">
+										<div>
+											<p class="text-xs font-semibold tracking-wide text-zinc-400 uppercase">Faces in voice</p>
+											<p class="mt-1 text-xs text-zinc-500">
+												Voice channel tiles show everyone's animated face instead of their avatar. Saved on this device.
+											</p>
+										</div>
+										<button
+											type="button"
+											role="switch"
+											aria-checked={$voiceFaces}
+											aria-label="Faces in voice"
+											onclick={() => voiceFaces.update((v) => !v)}
+											class="relative h-5 w-9 shrink-0 rounded-full transition-colors {$voiceFaces
+												? 'bg-indigo-500'
+												: 'bg-zinc-600'}"
+										>
+											<span
+												class="bg-fixed-white absolute top-0.5 left-0.5 size-4 rounded-full transition-transform {$voiceFaces
+													? 'translate-x-4'
+													: ''}"
+											></span>
+										</button>
+									</div>
+								</div>
+							{:else if activeSection === "activity"}
+								<div class="rounded-lg border border-zinc-800 bg-zinc-800/40 px-4 py-4">
+									<div class="flex items-center justify-between gap-4">
+										<div>
+											<p class="text-xs font-semibold tracking-wide text-zinc-400 uppercase">
+												Share what I listen to on Spotify
+											</p>
+											<p class="mt-1 text-xs text-zinc-500">
+												While Spotify plays on this computer, the people in your spaces see the song, its artist and how
+												far along it is. Saved on this device.
+											</p>
+										</div>
+										<button
+											type="button"
+											role="switch"
+											aria-checked={$shareSpotify}
+											aria-label="Share what I listen to on Spotify"
+											onclick={() => shareSpotify.update((v) => !v)}
+											class="relative h-5 w-9 shrink-0 rounded-full transition-colors {$shareSpotify
+												? 'bg-indigo-500'
+												: 'bg-zinc-600'}"
+										>
+											<span
+												class="bg-fixed-white absolute top-0.5 left-0.5 size-4 rounded-full transition-transform {$shareSpotify
+													? 'translate-x-4'
+													: ''}"
+											></span>
+										</button>
+									</div>
+								</div>
+							{:else if activeSection === "attachments"}
+								{#if myTransfer}
+									<StorageTransferCard
+										transfer={myTransfer}
+										source={storageLabel(myTransfer.source_bucket_id)}
+										target={storageLabel(myTransfer.target_bucket_id)}
+									/>
+								{/if}
+								<!-- Active custom bucket banner -->
+								{#if hasActiveBucket}
+									{@const activeBucket = buckets.find((b) => b.is_active)}
+									<div
+										class="flex items-center gap-3 rounded-lg border border-emerald-800/50 bg-emerald-900/20 px-4 py-3"
+									>
+										<DatabaseIcon class="size-5 shrink-0 text-emerald-400" />
+										<div class="min-w-0 flex-1">
+											<p class="text-sm font-medium text-emerald-300">Using your own storage</p>
+											<p class="truncate text-xs text-emerald-400/60">
+												{activeBucket?.name} · {activeBucket?.bucket_name}
+											</p>
+										</div>
+										<span
+											class="text-xxs shrink-0 rounded bg-emerald-600/20 px-1.5 py-0.5 font-semibold text-emerald-400"
+											>NO QUOTA</span
+										>
+									</div>
+								{/if}
+								<!-- Default storage quota (always shown) -->
+								{#if storageStatus}
+									<div class="space-y-3 rounded-lg border border-zinc-800 bg-zinc-800/40 px-4 py-4">
+										<div class="flex items-center justify-between">
+											<p class="text-sm font-semibold text-white">Default Storage</p>
+											<p class="text-xs text-zinc-400">
+												{formatFileSize(storageStatus.used_bytes)} / {formatFileSize(storageStatus.max_bytes)}
+											</p>
+										</div>
+										<!-- Progress bar -->
+										<div class="h-2 w-full overflow-hidden rounded-full bg-zinc-700">
+											<div
+												class="h-full rounded-full transition-all duration-300 {storageStatus.percentage_used > 90
+													? 'bg-red-500'
+													: storageStatus.percentage_used > 70
+														? 'bg-yellow-500'
+														: 'bg-stone-500'}"
+												style="width: {Math.min(storageStatus.percentage_used, 100)}%"
+											></div>
+										</div>
+										<div class="flex gap-4 text-xs text-zinc-500">
+											<span>{storageStatus.percentage_used}% used</span>
+											<span>Upload limit: {formatFileSize(storageStatus.upload_limit_bytes)} per file</span>
+										</div>
+									</div>
+								{/if}
+
+								<!-- Summary bar -->
+								<div
+									class="flex items-center justify-between gap-3 rounded-lg border border-zinc-800 bg-zinc-800/40 px-4 py-3"
+								>
+									<div class="text-sm text-zinc-300">
+										{#if listedHere}
+											<span class="font-semibold text-white">{attachments.length}</span>
+											file{attachments.length !== 1 ? "s" : ""}
+											{#if attachmentsLocation !== "all"}
+												<span class="mx-1 text-zinc-600">·</span>
+												{formatFileSize(locationBytes)}
+											{/if}
+										{/if}
+									</div>
+									<div class="flex items-center gap-2">
+										{#if buckets.length > 0 || attachmentsLocation !== "all"}
+											<label class="flex items-center gap-2 text-xs text-zinc-400">
+												Location
+												<select
+													value={attachmentsLocation}
+													onchange={(e) => setAttachmentsLocation(e.currentTarget.value)}
+													class="max-w-40 rounded-md border border-zinc-700 bg-zinc-800 px-2 py-1 text-xs text-zinc-200 focus:ring-1 focus:ring-stone-500 focus:outline-none"
+												>
+													<option value="all">All</option>
+													<option value={DEFAULT_STORAGE}>Default storage</option>
+													{#each buckets as b (b.id)}
+														<option value={b.id}>{b.name}</option>
+													{/each}
+												</select>
+											</label>
+										{/if}
+										{#if attachments.length > 0 && attachmentsLocation === "all"}
+											<button
+												onclick={handleDeleteAll}
+												class="flex items-center gap-1.5 rounded-md bg-red-600/20 px-3 py-1.5 text-xs font-semibold text-red-400 transition-colors hover:bg-red-600/30"
+											>
+												<TrashIcon class="size-3.5" />
+												Delete All
+											</button>
+										{/if}
+									</div>
+								</div>
+
+								{#if attachmentsError}
+									<p class="rounded-md bg-red-400/10 px-3 py-2 text-sm text-red-400">
+										{attachmentsError}
+									</p>
+								{/if}
+
+								{#if attachmentsLoading}
+									<div class="space-y-2">
+										{#each Array(5) as _}
+											<div class="h-14 animate-pulse rounded-lg bg-zinc-800/40"></div>
+										{/each}
+									</div>
+								{:else if !listedHere}
+									<!-- The location's files didn't load (the error above says why): the list is another's. -->
+								{:else if attachments.length === 0}
+									<div class="flex flex-col items-center justify-center py-16 text-zinc-500">
+										<PaperclipIcon class="mb-3 size-10" />
+										<p class="text-sm">{attachmentsLocation === "all" ? "No attachments yet" : "No files here"}</p>
+									</div>
+								{:else}
+									<div class="space-y-1">
+										{#if picking}
+											<FilePickerBar {picker} />
+										{/if}
+										{#each picker.shown as att (att.id)}
+											{@const isImage = att.content_type.startsWith("image/")}
+											{@const isAudio = att.content_type.startsWith("audio/")}
+											<div
+												class="group rounded-lg border border-zinc-800 bg-zinc-800/30 transition-colors hover:bg-zinc-800/50"
+											>
+												<div class="flex items-center gap-3 px-3 py-2.5">
+													{#if picking}
+														<input
+															type="checkbox"
+															checked={picker.picked.has(att.id)}
+															onchange={() => picker.toggle(att.id)}
+															aria-label="Select {att.filename}"
+															class="size-4 shrink-0 rounded border-zinc-600 bg-zinc-800 accent-stone-500"
+														/>
+													{/if}
+													<!-- Thumbnail -->
+													{#if isImage}
+														<img
+															src="{attachmentHost}{att.url ?? `/attachments/${att.id}`}"
+															alt=""
+															class="h-10 w-10 shrink-0 rounded bg-zinc-700 object-cover"
+														/>
+													{:else if isAudio}
+														<div class="flex h-10 w-10 shrink-0 items-center justify-center rounded bg-zinc-700">
+															<svg
+																xmlns="http://www.w3.org/2000/svg"
+																width="16"
+																height="16"
+																viewBox="0 0 24 24"
+																fill="none"
+																stroke="currentColor"
+																stroke-width="2"
+																stroke-linecap="round"
+																stroke-linejoin="round"
+																class="text-zinc-400"
+																><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" /><path
+																	d="M19 10v2a7 7 0 0 1-14 0v-2"
+																/><line x1="12" x2="12" y1="19" y2="22" /></svg
+															>
+														</div>
+													{:else}
+														<div class="flex h-10 w-10 shrink-0 items-center justify-center rounded bg-zinc-700">
+															<PaperclipIcon class="size-4 text-zinc-400" />
+														</div>
+													{/if}
+													<!-- Info -->
+													<div class="min-w-0 flex-1">
+														<p class="truncate text-sm text-zinc-200">
+															{att.filename}
+														</p>
+														<p class="text-xs text-zinc-500">
+															{formatFileSize(att.size_bytes)}
+															<span class="mx-1 text-zinc-600">·</span>
+															{new Date(att.created_at).toLocaleDateString()}
+														</p>
+													</div>
+													<!-- Download -->
+													<a
+														href="{attachmentHost}{att.url ?? `/attachments/${att.id}`}"
+														download={att.filename}
+														class="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-zinc-500 opacity-0 transition-all group-hover:opacity-100 hover:bg-zinc-700 hover:text-zinc-200"
+														title="Download"
+													>
 														<svg
 															xmlns="http://www.w3.org/2000/svg"
 															width="16"
@@ -1723,952 +1844,914 @@
 															stroke-width="2"
 															stroke-linecap="round"
 															stroke-linejoin="round"
-															class="text-zinc-400"
-															><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" /><path
-																d="M19 10v2a7 7 0 0 1-14 0v-2"
-															/><line x1="12" x2="12" y1="19" y2="22" /></svg
+															><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline
+																points="7 10 12 15 17 10"
+															/><line x1="12" x2="12" y1="15" y2="3" /></svg
 														>
-													</div>
-												{:else}
-													<div class="flex h-10 w-10 shrink-0 items-center justify-center rounded bg-zinc-700">
-														<PaperclipIcon class="size-4 text-zinc-400" />
-													</div>
-												{/if}
-												<!-- Info -->
-												<div class="min-w-0 flex-1">
-													<p class="truncate text-sm text-zinc-200">
-														{att.filename}
-													</p>
-													<p class="text-xs text-zinc-500">
-														{formatFileSize(att.size_bytes)}
-														<span class="mx-1 text-zinc-600">·</span>
-														{new Date(att.created_at).toLocaleDateString()}
-													</p>
-												</div>
-												<!-- Download -->
-												<a
-													href="{attachmentHost}{att.url ?? `/attachments/${att.id}`}"
-													download={att.filename}
-													class="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-zinc-500 opacity-0 transition-all group-hover:opacity-100 hover:bg-zinc-700 hover:text-zinc-200"
-													title="Download"
-												>
-													<svg
-														xmlns="http://www.w3.org/2000/svg"
-														width="16"
-														height="16"
-														viewBox="0 0 24 24"
-														fill="none"
-														stroke="currentColor"
-														stroke-width="2"
-														stroke-linecap="round"
-														stroke-linejoin="round"
-														><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline
-															points="7 10 12 15 17 10"
-														/><line x1="12" x2="12" y1="15" y2="3" /></svg
-													>
-												</a>
-												<!-- Delete -->
-												<button
-													onclick={() => handleDeleteAttachment(att.id)}
-													class="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-zinc-500 opacity-0 transition-all group-hover:opacity-100 hover:bg-red-600/20 hover:text-red-400"
-													title="Delete attachment"
-												>
-													<TrashIcon class="size-4" />
-												</button>
-											</div>
-											{#if isAudio}
-												<div class="px-3 pb-2.5">
-													<VoiceNotePlayer
-														src="{attachmentHost}{att.url ?? `/attachments/${att.id}`}"
-														attachmentId={att.id}
-														compact
-													/>
-												</div>
-											{/if}
-										</div>
-									{/each}
-								</div>
-							{/if}
-						{:else if activeSection === "buckets"}
-							{#if myTransfer}
-								<StorageTransferCard
-									transfer={myTransfer}
-									source={storageLabel(myTransfer.source_bucket_id)}
-									target={storageLabel(myTransfer.target_bucket_id)}
-								/>
-							{/if}
-							<p class="mb-4 text-xs text-zinc-500">
-								Connect your own S3/R2 buckets for unlimited storage. When a bucket is active, uploads go to your bucket
-								instead of the default and quota limits don't apply.
-							</p>
-
-							{#if !bucketsLoading}
-								<div class="mb-4 flex gap-3 rounded-lg border border-amber-600/30 bg-amber-950/20 px-4 py-3">
-									<svg
-										xmlns="http://www.w3.org/2000/svg"
-										width="20"
-										height="20"
-										viewBox="0 0 24 24"
-										fill="none"
-										stroke="currentColor"
-										stroke-width="2"
-										stroke-linecap="round"
-										stroke-linejoin="round"
-										class="mt-0.5 shrink-0 text-amber-500"
-										><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3" /><path
-											d="M12 9v4"
-										/><path d="M12 17h.01" /></svg
-									>
-									<div class="space-y-1 text-xs text-amber-300/80">
-										<p class="font-semibold text-amber-300">Before adding a bucket</p>
-										<p>
-											Only enter credentials that <strong>you own and control</strong>. If someone shared credentials
-											with you, be aware that:
-										</p>
-										<ul class="list-disc space-y-0.5 pl-4">
-											<li>
-												The bucket owner can <strong>read, modify, or delete</strong> all your uploaded files at any time.
-											</li>
-											<li>
-												They can <strong>revoke access</strong> without warning, causing your attachments to stop loading.
-											</li>
-											<li>
-												Your files may be <strong>logged, monitored, or shared</strong> by the bucket owner.
-											</li>
-										</ul>
-									</div>
-								</div>
-							{/if}
-
-							{#if bucketsError}
-								<p class="mb-4 rounded-md bg-red-400/10 px-3 py-2 text-sm text-red-400">
-									{bucketsError}
-								</p>
-							{/if}
-
-							<!-- Create / Edit form -->
-							{#if showBucketForm}
-								<div class="mb-4 space-y-3 rounded-lg border border-zinc-800 bg-zinc-800/40 p-4">
-									<h3 class="text-sm font-semibold text-white">
-										{editingBucket ? "Edit Bucket" : "New Bucket"}
-									</h3>
-									<div class="grid grid-cols-2 gap-3">
-										<div>
-											<label for="bucket-name" class="mb-1 block text-xs font-semibold text-zinc-400 uppercase"
-												>Name</label
-											>
-											<input
-												id="bucket-name"
-												type="text"
-												bind:value={bName}
-												placeholder="My R2"
-												class="h-9 w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 text-sm text-white placeholder-zinc-500 outline-none focus:border-stone-500"
-											/>
-										</div>
-										<div>
-											<label for="bucket-region" class="mb-1 block text-xs font-semibold text-zinc-400 uppercase"
-												>Region</label
-											>
-											<input
-												id="bucket-region"
-												type="text"
-												bind:value={bRegion}
-												placeholder="auto"
-												class="h-9 w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 text-sm text-white placeholder-zinc-500 outline-none focus:border-stone-500"
-											/>
-										</div>
-									</div>
-									<div>
-										<label for="bucket-endpoint" class="mb-1 block text-xs font-semibold text-zinc-400 uppercase"
-											>Endpoint</label
-										>
-										<input
-											id="bucket-endpoint"
-											type="text"
-											bind:value={bEndpoint}
-											placeholder="https://account-id.r2.cloudflarestorage.com"
-											class="h-9 w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 text-sm text-white placeholder-zinc-500 outline-none focus:border-stone-500"
-										/>
-									</div>
-									<div>
-										<label for="bucket-bucket-name" class="mb-1 block text-xs font-semibold text-zinc-400 uppercase"
-											>Bucket Name</label
-										>
-										<input
-											id="bucket-bucket-name"
-											type="text"
-											bind:value={bBucketName}
-											placeholder="my-bucket"
-											class="h-9 w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 text-sm text-white placeholder-zinc-500 outline-none focus:border-stone-500"
-										/>
-									</div>
-									<div class="grid grid-cols-2 gap-3">
-										<div>
-											<label for="bucket-access-key" class="mb-1 block text-xs font-semibold text-zinc-400 uppercase"
-												>Access Key ID</label
-											>
-											<input
-												id="bucket-access-key"
-												type="text"
-												bind:value={bAccessKey}
-												placeholder="access key"
-												class="h-9 w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 text-sm text-white placeholder-zinc-500 outline-none focus:border-stone-500"
-											/>
-										</div>
-										<div>
-											<label for="bucket-secret-key" class="mb-1 block text-xs font-semibold text-zinc-400 uppercase"
-												>Secret Access Key</label
-											>
-											<input
-												id="bucket-secret-key"
-												type="password"
-												bind:value={bSecretKey}
-												placeholder={editingBucket ? "leave empty to keep current" : "secret key"}
-												class="h-9 w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 text-sm text-white placeholder-zinc-500 outline-none focus:border-stone-500"
-											/>
-										</div>
-									</div>
-									<label class="flex cursor-pointer items-center gap-2">
-										<input
-											type="checkbox"
-											bind:checked={bUsePathStyle}
-											class="size-4 rounded border-zinc-600 bg-zinc-800 accent-stone-500"
-										/>
-										<span class="text-xs text-zinc-400"
-											>Use path-style addressing <span class="text-zinc-600">(required for MinIO, RustFS, etc.)</span
-											></span
-										>
-									</label>
-									<div class="grid grid-cols-2 gap-3">
-										<div>
-											<label for="b-max-bytes" class="mb-1 block text-xs font-semibold text-zinc-400 uppercase"
-												>Total Limit (MB)</label
-											>
-											<input
-												id="b-max-bytes"
-												type="number"
-												min="0"
-												step="1"
-												bind:value={bMaxBytesMB}
-												placeholder="No limit"
-												class="h-9 w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 text-sm text-white placeholder-zinc-500 outline-none focus:border-stone-500"
-											/>
-										</div>
-										<div>
-											<label for="b-upload-limit" class="mb-1 block text-xs font-semibold text-zinc-400 uppercase"
-												>Per-file Limit (MB)</label
-											>
-											<input
-												id="b-upload-limit"
-												type="number"
-												min="0"
-												step="1"
-												bind:value={bUploadLimitMB}
-												placeholder="No limit"
-												class="h-9 w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 text-sm text-white placeholder-zinc-500 outline-none focus:border-stone-500"
-											/>
-										</div>
-									</div>
-									<p class="text-xxs text-zinc-600">
-										Leave empty to remove limits. When a total limit is set, oldest files are recycled automatically
-										when full.
-									</p>
-									<div class="flex justify-end gap-2 pt-1">
-										<button
-											class="rounded-md px-3 py-1.5 text-sm text-zinc-300 transition-colors hover:bg-zinc-800"
-											onclick={resetBucketForm}>Cancel</button
-										>
-										<button
-											class="rounded-md bg-stone-600 px-4 py-1.5 text-sm font-semibold text-white transition-colors hover:bg-stone-500 disabled:opacity-50"
-											disabled={bucketSaving}
-											onclick={handleSaveBucket}
-										>
-											{bucketSaving ? "Saving..." : editingBucket ? "Update" : "Create"}
-										</button>
-									</div>
-								</div>
-							{:else}
-								<button
-									class="mb-4 flex items-center gap-2 rounded-md bg-stone-600/20 px-3 py-2 text-sm font-medium text-stone-300 transition-colors hover:bg-stone-600/30"
-									onclick={() => {
-										resetBucketForm();
-										showBucketForm = true;
-									}}
-								>
-									<PlusIcon class="size-4" /> Add Bucket
-								</button>
-							{/if}
-
-							<!-- Bucket list -->
-							{#if bucketsLoading}
-								<div class="space-y-2">
-									{#each Array(3) as _}
-										<div class="h-16 animate-pulse rounded-lg bg-zinc-800/40"></div>
-									{/each}
-								</div>
-							{:else if buckets.length === 0}
-								<div class="flex flex-col items-center justify-center py-12 text-zinc-500">
-									<DatabaseIcon class="mb-3 size-10" />
-									<p class="text-sm">No buckets configured</p>
-								</div>
-							{:else}
-								<div class="space-y-2">
-									{#each buckets as bucket (bucket.id)}
-										<div
-											class="group flex items-center gap-3 rounded-lg border border-zinc-800 bg-zinc-800/30 px-4 py-3 transition-colors hover:bg-zinc-800/50"
-										>
-											<div class="min-w-0 flex-1">
-												<div class="flex items-center gap-2">
-													<span class="text-sm font-medium text-zinc-200">{bucket.name}</span>
-													{#if bucket.is_active}
-														<span
-															class="text-xxs rounded bg-emerald-600/20 px-1.5 py-0.5 font-semibold text-emerald-400"
-															>ACTIVE</span
-														>
-													{:else}
-														<span class="text-xxs rounded bg-zinc-600/20 px-1.5 py-0.5 font-semibold text-zinc-400"
-															>INACTIVE</span
-														>
-													{/if}
-												</div>
-												<p class="mt-0.5 truncate text-xs text-zinc-500">
-													{bucket.bucket_name} · {bucket.endpoint}
-												</p>
-												{#if bucket.max_bytes}
-													{@const pct = Math.min(Math.round((bucket.used_bytes / bucket.max_bytes) * 100), 100)}
-													<div class="mt-1.5 space-y-1">
-														<div class="text-xxs flex items-center justify-between text-zinc-500">
-															<span
-																>{(bucket.used_bytes / 1024 / 1024).toFixed(1)} MB / {(
-																	bucket.max_bytes /
-																	1024 /
-																	1024
-																).toFixed(0)} MB</span
-															>
-															<span>{pct}%</span>
-														</div>
-														<div class="h-1.5 w-full overflow-hidden rounded-full bg-zinc-700">
-															<div
-																class="h-full rounded-full transition-all duration-300 {pct > 90
-																	? 'bg-red-500'
-																	: pct > 70
-																		? 'bg-yellow-500'
-																		: 'bg-stone-500'}"
-																style="width: {pct}%"
-															></div>
-														</div>
-														{#if bucket.upload_limit_bytes}
-															<p class="text-xxs text-zinc-600">
-																Per-file: {(bucket.upload_limit_bytes / 1024 / 1024).toFixed(0)} MB
-															</p>
-														{/if}
-													</div>
-												{:else if bucket.upload_limit_bytes}
-													<p class="text-xxs mt-0.5 text-zinc-600">
-														Per-file: {(bucket.upload_limit_bytes / 1024 / 1024).toFixed(0)} MB
-													</p>
-												{/if}
-											</div>
-											<div
-												class="flex shrink-0 items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100"
-											>
-												<button
-													class="flex h-8 w-8 items-center justify-center rounded-md text-zinc-500 transition-all hover:bg-zinc-700 hover:text-zinc-200 disabled:opacity-50"
-													title={bucket.is_active ? "Deactivate" : "Activate"}
-													onclick={() => handleToggleActive(bucket)}
-													disabled={togglingBucketId === bucket.id}
-												>
-													{#if togglingBucketId === bucket.id}
-														<div
-															class="size-4 animate-spin rounded-full border-2 border-zinc-500 border-t-transparent"
-														></div>
-													{:else if bucket.is_active}
-														<XIcon class="size-4" />
-													{:else}
-														<CheckIcon class="size-4" />
-													{/if}
-												</button>
-												<button
-													class="flex h-8 w-8 items-center justify-center rounded-md text-zinc-500 transition-all hover:bg-zinc-700 hover:text-zinc-200 disabled:opacity-50"
-													title={myTransfer ? "Wait for the transfer under way to end" : "Move files…"}
-													onclick={() => openMoveBucket(bucket)}
-													disabled={movingBucketId === bucket.id || myTransfer !== null}
-												>
-													{#if movingBucketId === bucket.id}
-														<div
-															class="size-4 animate-spin rounded-full border-2 border-zinc-500 border-t-transparent"
-														></div>
-													{:else}
-														<MoveIcon class="size-4" />
-													{/if}
-												</button>
-												<button
-													class="flex h-8 w-8 items-center justify-center rounded-md text-zinc-500 transition-all hover:bg-zinc-700 hover:text-zinc-200"
-													title="Edit"
-													onclick={() => startEditBucket(bucket)}
-												>
-													<PencilIcon class="size-4" />
-												</button>
-												<button
-													class="flex h-8 w-8 items-center justify-center rounded-md text-zinc-500 transition-all hover:bg-red-600/20 hover:text-red-400"
-													title="Delete"
-													onclick={() => handleDeleteBucket(bucket.id)}
-												>
-													<TrashIcon class="size-4" />
-												</button>
-											</div>
-										</div>
-									{/each}
-								</div>
-							{/if}
-						{:else if activeSection === "developer"}
-							{#if $pendingTeamInvites.length > 0}
-								<div class="mb-6">
-									<h4 class="mb-2 text-xs font-bold tracking-widest text-zinc-400 uppercase">Pending Team Invites</h4>
-									<div class="space-y-2">
-										{#each $pendingTeamInvites as invite (invite.id)}
-											<div
-												class="flex items-center justify-between rounded-md border border-stone-700/50 bg-stone-900/30 px-4 py-3"
-											>
-												<div>
-													<p class="text-sm font-medium text-white">{invite.team_name}</p>
-													<p class="text-xxs text-zinc-500">Invited by {invite.invited_by_username}</p>
-												</div>
-												<div class="flex items-center gap-2">
+													</a>
+													<!-- Delete -->
 													<button
-														class="rounded-md bg-stone-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-stone-500"
-														onclick={() => handleAcceptTeamInvite(invite.id)}
+														onclick={() => handleDeleteAttachment(att.id)}
+														class="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-zinc-500 opacity-0 transition-all group-hover:opacity-100 hover:bg-red-600/20 hover:text-red-400"
+														title="Delete attachment"
 													>
-														Accept
-													</button>
-													<button
-														class="rounded-md px-3 py-1.5 text-xs font-medium text-zinc-400 transition-colors hover:bg-zinc-700 hover:text-white"
-														onclick={() => handleDeclineTeamInvite(invite.id)}
-													>
-														Decline
+														<TrashIcon class="size-4" />
 													</button>
 												</div>
+												{#if isAudio}
+													<div class="px-3 pb-2.5">
+														<VoiceNotePlayer
+															src="{attachmentHost}{att.url ?? `/attachments/${att.id}`}"
+															attachmentId={att.id}
+															compact
+														/>
+													</div>
+												{/if}
 											</div>
-										{/each}
-									</div>
-								</div>
-							{/if}
-
-							{#if !devSelectedTeam}
-								<p class="mb-4 text-xs text-zinc-500">
-									Create a team to manage applications and bots. Team members can collaborate on your apps.
-								</p>
-
-								<div class="mb-4 flex gap-2">
-									<input
-										type="text"
-										bind:value={devNewTeamName}
-										placeholder="Team name"
-										class="flex-1 rounded-md border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-white placeholder-zinc-500 outline-none focus:border-zinc-500"
-										onkeydown={(e) => e.key === "Enter" && handleCreateTeam()}
-									/>
-									<button
-										class="flex items-center gap-1.5 rounded-md bg-stone-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-stone-500 disabled:opacity-50"
-										onclick={handleCreateTeam}
-										disabled={devCreatingTeam || !devNewTeamName.trim()}
-									>
-										<PlusIcon class="size-4" />
-										Create
-									</button>
-								</div>
-
-								{#if devLoading}
-									<p class="text-sm text-zinc-500">Loading...</p>
-								{:else if devTeams.length === 0}
-									<p class="text-sm text-zinc-500">No teams yet. Create one to get started.</p>
-								{:else}
-									<div class="space-y-2">
-										{#each devTeams as team (team.id)}
-											<button
-												class="group flex w-full items-center justify-between rounded-md border border-zinc-700 bg-zinc-800/50 px-4 py-3 text-left transition-colors hover:border-zinc-600 hover:bg-zinc-800"
-												onclick={() => selectTeam(team)}
-											>
-												<div>
-													<p class="text-sm font-medium text-white">{team.name}</p>
-													<p class="text-xxs text-zinc-500">ID: {team.id}</p>
-												</div>
-												<ChevronLeftIcon class="size-4 rotate-180 text-zinc-500 group-hover:text-zinc-300" />
-											</button>
 										{/each}
 									</div>
 								{/if}
-							{:else}
-								<button
-									class="mb-4 flex items-center gap-1 text-sm text-zinc-400 transition-colors hover:text-white"
-									onclick={() => {
-										devSelectedTeam = null;
-										devApps = [];
-										devMembers = [];
-										devBotToken = null;
-									}}
-								>
-									<ChevronLeftIcon class="size-4" />
-									Back to teams
-								</button>
+							{:else if activeSection === "buckets"}
+								{#if myTransfer}
+									<StorageTransferCard
+										transfer={myTransfer}
+										source={storageLabel(myTransfer.source_bucket_id)}
+										target={storageLabel(myTransfer.target_bucket_id)}
+									/>
+								{/if}
+								<p class="mb-4 text-xs text-zinc-500">
+									Connect your own S3/R2 buckets for unlimited storage. When a bucket is active, uploads go to your
+									bucket instead of the default and quota limits don't apply.
+								</p>
 
-								<div class="mb-6 flex items-center justify-between">
-									{#if devEditingTeam?.id === devSelectedTeam.id}
-										<div class="flex flex-1 items-center gap-2">
+								{#if !bucketsLoading}
+									<div class="mb-4 flex gap-3 rounded-lg border border-amber-600/30 bg-amber-950/20 px-4 py-3">
+										<svg
+											xmlns="http://www.w3.org/2000/svg"
+											width="20"
+											height="20"
+											viewBox="0 0 24 24"
+											fill="none"
+											stroke="currentColor"
+											stroke-width="2"
+											stroke-linecap="round"
+											stroke-linejoin="round"
+											class="mt-0.5 shrink-0 text-amber-500"
+											><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3" /><path
+												d="M12 9v4"
+											/><path d="M12 17h.01" /></svg
+										>
+										<div class="space-y-1 text-xs text-amber-300/80">
+											<p class="font-semibold text-amber-300">Before adding a bucket</p>
+											<p>
+												Only enter credentials that <strong>you own and control</strong>. If someone shared credentials
+												with you, be aware that:
+											</p>
+											<ul class="list-disc space-y-0.5 pl-4">
+												<li>
+													The bucket owner can <strong>read, modify, or delete</strong> all your uploaded files at any time.
+												</li>
+												<li>
+													They can <strong>revoke access</strong> without warning, causing your attachments to stop loading.
+												</li>
+												<li>
+													Your files may be <strong>logged, monitored, or shared</strong> by the bucket owner.
+												</li>
+											</ul>
+										</div>
+									</div>
+								{/if}
+
+								{#if bucketsError}
+									<p class="mb-4 rounded-md bg-red-400/10 px-3 py-2 text-sm text-red-400">
+										{bucketsError}
+									</p>
+								{/if}
+
+								<!-- Create / Edit form -->
+								{#if showBucketForm}
+									<div class="mb-4 space-y-3 rounded-lg border border-zinc-800 bg-zinc-800/40 p-4">
+										<h3 class="text-sm font-semibold text-white">
+											{editingBucket ? "Edit Bucket" : "New Bucket"}
+										</h3>
+										<div class="grid grid-cols-2 gap-3">
+											<div>
+												<label for="bucket-name" class="mb-1 block text-xs font-semibold text-zinc-400 uppercase"
+													>Name</label
+												>
+												<input
+													id="bucket-name"
+													type="text"
+													bind:value={bName}
+													placeholder="My R2"
+													class="h-9 w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 text-sm text-white placeholder-zinc-500 outline-none focus:border-stone-500"
+												/>
+											</div>
+											<div>
+												<label for="bucket-region" class="mb-1 block text-xs font-semibold text-zinc-400 uppercase"
+													>Region</label
+												>
+												<input
+													id="bucket-region"
+													type="text"
+													bind:value={bRegion}
+													placeholder="auto"
+													class="h-9 w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 text-sm text-white placeholder-zinc-500 outline-none focus:border-stone-500"
+												/>
+											</div>
+										</div>
+										<div>
+											<label for="bucket-endpoint" class="mb-1 block text-xs font-semibold text-zinc-400 uppercase"
+												>Endpoint</label
+											>
 											<input
+												id="bucket-endpoint"
 												type="text"
-												bind:value={devEditTeamName}
-												class="flex-1 rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-white outline-none focus:border-zinc-500"
-												onkeydown={(e) => e.key === "Enter" && handleSaveTeamEdit()}
+												bind:value={bEndpoint}
+												placeholder="https://account-id.r2.cloudflarestorage.com"
+												class="h-9 w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 text-sm text-white placeholder-zinc-500 outline-none focus:border-stone-500"
 											/>
+										</div>
+										<div>
+											<label for="bucket-bucket-name" class="mb-1 block text-xs font-semibold text-zinc-400 uppercase"
+												>Bucket Name</label
+											>
+											<input
+												id="bucket-bucket-name"
+												type="text"
+												bind:value={bBucketName}
+												placeholder="my-bucket"
+												class="h-9 w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 text-sm text-white placeholder-zinc-500 outline-none focus:border-stone-500"
+											/>
+										</div>
+										<div class="grid grid-cols-2 gap-3">
+											<div>
+												<label for="bucket-access-key" class="mb-1 block text-xs font-semibold text-zinc-400 uppercase"
+													>Access Key ID</label
+												>
+												<input
+													id="bucket-access-key"
+													type="text"
+													bind:value={bAccessKey}
+													placeholder="access key"
+													class="h-9 w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 text-sm text-white placeholder-zinc-500 outline-none focus:border-stone-500"
+												/>
+											</div>
+											<div>
+												<label for="bucket-secret-key" class="mb-1 block text-xs font-semibold text-zinc-400 uppercase"
+													>Secret Access Key</label
+												>
+												<input
+													id="bucket-secret-key"
+													type="password"
+													bind:value={bSecretKey}
+													placeholder={editingBucket ? "leave empty to keep current" : "secret key"}
+													class="h-9 w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 text-sm text-white placeholder-zinc-500 outline-none focus:border-stone-500"
+												/>
+											</div>
+										</div>
+										<label class="flex cursor-pointer items-center gap-2">
+											<input
+												type="checkbox"
+												bind:checked={bUsePathStyle}
+												class="size-4 rounded border-zinc-600 bg-zinc-800 accent-stone-500"
+											/>
+											<span class="text-xs text-zinc-400"
+												>Use path-style addressing <span class="text-zinc-600">(required for MinIO, RustFS, etc.)</span
+												></span
+											>
+										</label>
+										<div class="grid grid-cols-2 gap-3">
+											<div>
+												<label for="b-max-bytes" class="mb-1 block text-xs font-semibold text-zinc-400 uppercase"
+													>Total Limit (MB)</label
+												>
+												<input
+													id="b-max-bytes"
+													type="number"
+													min="0"
+													step="1"
+													bind:value={bMaxBytesMB}
+													placeholder="No limit"
+													class="h-9 w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 text-sm text-white placeholder-zinc-500 outline-none focus:border-stone-500"
+												/>
+											</div>
+											<div>
+												<label for="b-upload-limit" class="mb-1 block text-xs font-semibold text-zinc-400 uppercase"
+													>Per-file Limit (MB)</label
+												>
+												<input
+													id="b-upload-limit"
+													type="number"
+													min="0"
+													step="1"
+													bind:value={bUploadLimitMB}
+													placeholder="No limit"
+													class="h-9 w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 text-sm text-white placeholder-zinc-500 outline-none focus:border-stone-500"
+												/>
+											</div>
+										</div>
+										<p class="text-xxs text-zinc-600">
+											Leave empty to remove limits. When a total limit is set, oldest files are recycled automatically
+											when full.
+										</p>
+										<div class="flex justify-end gap-2 pt-1">
 											<button
-												class="rounded-md bg-stone-600 px-2 py-1.5 text-xs text-white hover:bg-stone-500"
-												onclick={handleSaveTeamEdit}>Save</button
+												class="rounded-md px-3 py-1.5 text-sm text-zinc-300 transition-colors hover:bg-zinc-800"
+												onclick={resetBucketForm}>Cancel</button
 											>
 											<button
-												class="rounded-md px-2 py-1.5 text-xs text-zinc-400 hover:text-white"
-												onclick={() => (devEditingTeam = null)}>Cancel</button
+												class="bg-fill-600 text-fixed-white hover:bg-fill-500 rounded-md px-4 py-1.5 text-sm font-semibold transition-colors disabled:opacity-50"
+												disabled={bucketSaving}
+												onclick={handleSaveBucket}
 											>
+												{bucketSaving ? "Saving..." : editingBucket ? "Update" : "Create"}
+											</button>
 										</div>
-									{:else}
-										<h3 class="text-lg font-semibold text-white">{devSelectedTeam.name}</h3>
-										<div class="flex items-center gap-1">
-											{#if devSelectedTeam.owner_id === $currentUser?.id}
-												<button
-													class="rounded-md p-1.5 text-zinc-500 hover:bg-zinc-700 hover:text-zinc-200"
-													title="Edit"
-													onclick={() => {
-														devEditingTeam = devSelectedTeam;
-														devEditTeamName = devSelectedTeam?.name ?? "";
-													}}
-												>
-													<PencilIcon class="size-4" />
-												</button>
-												<button
-													class="rounded-md p-1.5 text-zinc-500 hover:bg-red-600/20 hover:text-red-400"
-													title="Delete"
-													onclick={() => devSelectedTeam && handleDeleteTeam(devSelectedTeam)}
-												>
-													<TrashIcon class="size-4" />
-												</button>
-											{/if}
-										</div>
-									{/if}
-								</div>
+									</div>
+								{:else}
+									<button
+										class="mb-4 flex items-center gap-2 rounded-md bg-stone-600/20 px-3 py-2 text-sm font-medium text-stone-300 transition-colors hover:bg-stone-600/30"
+										onclick={() => {
+											resetBucketForm();
+											showBucketForm = true;
+										}}
+									>
+										<PlusIcon class="size-4" /> Add Bucket
+									</button>
+								{/if}
 
-								<!-- Members -->
-								<div class="mb-6">
-									<h4 class="mb-2 text-xs font-bold tracking-widest text-zinc-400 uppercase">Members</h4>
-									<div class="space-y-1">
-										{#each devMembers as member (member.user_id)}
-											<div class="flex items-center justify-between rounded-md bg-zinc-800/50 px-3 py-2">
-												<div class="flex items-center gap-2">
-													<span class="text-sm text-white">{member.username}</span>
-													{#if member.role === TeamRole.Admin}
-														<span class="text-xxs rounded bg-stone-700 px-1.5 py-0.5 font-medium text-stone-300"
-															>Admin</span
-														>
+								<!-- Bucket list -->
+								{#if bucketsLoading}
+									<div class="space-y-2">
+										{#each Array(3) as _}
+											<div class="h-16 animate-pulse rounded-lg bg-zinc-800/40"></div>
+										{/each}
+									</div>
+								{:else if buckets.length === 0}
+									<div class="flex flex-col items-center justify-center py-12 text-zinc-500">
+										<DatabaseIcon class="mb-3 size-10" />
+										<p class="text-sm">No buckets configured</p>
+									</div>
+								{:else}
+									<div class="space-y-2">
+										{#each buckets as bucket (bucket.id)}
+											<div
+												class="group flex items-center gap-3 rounded-lg border border-zinc-800 bg-zinc-800/30 px-4 py-3 transition-colors hover:bg-zinc-800/50"
+											>
+												<div class="min-w-0 flex-1">
+													<div class="flex items-center gap-2">
+														<span class="text-sm font-medium text-zinc-200">{bucket.name}</span>
+														{#if bucket.is_active}
+															<span
+																class="text-xxs rounded bg-emerald-600/20 px-1.5 py-0.5 font-semibold text-emerald-400"
+																>ACTIVE</span
+															>
+														{:else}
+															<span class="text-xxs rounded bg-zinc-600/20 px-1.5 py-0.5 font-semibold text-zinc-400"
+																>INACTIVE</span
+															>
+														{/if}
+													</div>
+													<p class="mt-0.5 truncate text-xs text-zinc-500">
+														{bucket.bucket_name} · {bucket.endpoint}
+													</p>
+													{#if bucket.max_bytes}
+														{@const pct = Math.min(Math.round((bucket.used_bytes / bucket.max_bytes) * 100), 100)}
+														<div class="mt-1.5 space-y-1">
+															<div class="text-xxs flex items-center justify-between text-zinc-500">
+																<span
+																	>{(bucket.used_bytes / 1024 / 1024).toFixed(1)} MB / {(
+																		bucket.max_bytes /
+																		1024 /
+																		1024
+																	).toFixed(0)} MB</span
+																>
+																<span>{pct}%</span>
+															</div>
+															<div class="h-1.5 w-full overflow-hidden rounded-full bg-zinc-700">
+																<div
+																	class="h-full rounded-full transition-all duration-300 {pct > 90
+																		? 'bg-red-500'
+																		: pct > 70
+																			? 'bg-yellow-500'
+																			: 'bg-stone-500'}"
+																	style="width: {pct}%"
+																></div>
+															</div>
+															{#if bucket.upload_limit_bytes}
+																<p class="text-xxs text-zinc-600">
+																	Per-file: {(bucket.upload_limit_bytes / 1024 / 1024).toFixed(0)} MB
+																</p>
+															{/if}
+														</div>
+													{:else if bucket.upload_limit_bytes}
+														<p class="text-xxs mt-0.5 text-zinc-600">
+															Per-file: {(bucket.upload_limit_bytes / 1024 / 1024).toFixed(0)} MB
+														</p>
 													{/if}
 												</div>
-												{#if devSelectedTeam.owner_id === $currentUser?.id && member.user_id !== $currentUser?.id}
+												<div
+													class="flex shrink-0 items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100"
+												>
 													<button
-														class="text-zinc-500 hover:text-red-400"
-														title="Remove"
-														onclick={() => handleRemoveMember(member.user_id, member.username)}
+														class="flex h-8 w-8 items-center justify-center rounded-md text-zinc-500 transition-all hover:bg-zinc-700 hover:text-zinc-200 disabled:opacity-50"
+														title={bucket.is_active ? "Deactivate" : "Activate"}
+														onclick={() => handleToggleActive(bucket)}
+														disabled={togglingBucketId === bucket.id}
 													>
-														<XIcon class="size-4" />
+														{#if togglingBucketId === bucket.id}
+															<div
+																class="size-4 animate-spin rounded-full border-2 border-zinc-500 border-t-transparent"
+															></div>
+														{:else if bucket.is_active}
+															<XIcon class="size-4" />
+														{:else}
+															<CheckIcon class="size-4" />
+														{/if}
 													</button>
-												{/if}
+													<button
+														class="flex h-8 w-8 items-center justify-center rounded-md text-zinc-500 transition-all hover:bg-zinc-700 hover:text-zinc-200 disabled:opacity-50"
+														title={myTransfer ? "Wait for the transfer under way to end" : "Move files…"}
+														onclick={() => openMoveBucket(bucket)}
+														disabled={movingBucketId === bucket.id || myTransfer !== null}
+													>
+														{#if movingBucketId === bucket.id}
+															<div
+																class="size-4 animate-spin rounded-full border-2 border-zinc-500 border-t-transparent"
+															></div>
+														{:else}
+															<MoveIcon class="size-4" />
+														{/if}
+													</button>
+													<button
+														class="flex h-8 w-8 items-center justify-center rounded-md text-zinc-500 transition-all hover:bg-zinc-700 hover:text-zinc-200"
+														title="Edit"
+														onclick={() => startEditBucket(bucket)}
+													>
+														<PencilIcon class="size-4" />
+													</button>
+													<button
+														class="flex h-8 w-8 items-center justify-center rounded-md text-zinc-500 transition-all hover:bg-red-600/20 hover:text-red-400"
+														title="Delete"
+														onclick={() => handleDeleteBucket(bucket.id)}
+													>
+														<TrashIcon class="size-4" />
+													</button>
+												</div>
 											</div>
 										{/each}
 									</div>
-									{#if devSelectedTeam.owner_id === $currentUser?.id}
-										<div class="mt-2 flex gap-2">
-											<input
-												type="text"
-												bind:value={devInviteEmail}
-												placeholder="Email to invite"
-												class="flex-1 rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-xs text-white placeholder-zinc-500 outline-none focus:border-zinc-500"
-												onkeydown={(e) => e.key === "Enter" && handleInviteMember()}
-											/>
-											<button
-												class="flex items-center gap-1 rounded-md bg-stone-600 px-2 py-1.5 text-xs text-white hover:bg-stone-500 disabled:opacity-50"
-												onclick={handleInviteMember}
-												disabled={devInviting || !devInviteEmail.trim()}
-											>
-												<UserPlusIcon class="size-3.5" />
-												Invite
-											</button>
+								{/if}
+							{:else if activeSection === "developer"}
+								{#if $pendingTeamInvites.length > 0}
+									<div class="mb-6">
+										<h4 class="mb-2 text-xs font-bold tracking-widest text-zinc-400 uppercase">Pending Team Invites</h4>
+										<div class="space-y-2">
+											{#each $pendingTeamInvites as invite (invite.id)}
+												<div
+													class="flex items-center justify-between rounded-md border border-stone-700/50 bg-stone-900/30 px-4 py-3"
+												>
+													<div>
+														<p class="text-sm font-medium text-white">{invite.team_name}</p>
+														<p class="text-xxs text-zinc-500">Invited by {invite.invited_by_username}</p>
+													</div>
+													<div class="flex items-center gap-2">
+														<button
+															class="bg-fill-600 text-fixed-white hover:bg-fill-500 rounded-md px-3 py-1.5 text-xs font-medium transition-colors"
+															onclick={() => handleAcceptTeamInvite(invite.id)}
+														>
+															Accept
+														</button>
+														<button
+															class="rounded-md px-3 py-1.5 text-xs font-medium text-zinc-400 transition-colors hover:bg-zinc-700 hover:text-white"
+															onclick={() => handleDeclineTeamInvite(invite.id)}
+														>
+															Decline
+														</button>
+													</div>
+												</div>
+											{/each}
+										</div>
+									</div>
+								{/if}
+
+								{#if !devSelectedTeam}
+									<p class="mb-4 text-xs text-zinc-500">
+										Create a team to manage applications and bots. Team members can collaborate on your apps.
+									</p>
+
+									<div class="mb-4 flex gap-2">
+										<input
+											type="text"
+											bind:value={devNewTeamName}
+											placeholder="Team name"
+											class="flex-1 rounded-md border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-white placeholder-zinc-500 outline-none focus:border-zinc-500"
+											onkeydown={(e) => e.key === "Enter" && handleCreateTeam()}
+										/>
+										<button
+											class="bg-fill-600 text-fixed-white hover:bg-fill-500 flex items-center gap-1.5 rounded-md px-3 py-2 text-sm font-medium transition-colors disabled:opacity-50"
+											onclick={handleCreateTeam}
+											disabled={devCreatingTeam || !devNewTeamName.trim()}
+										>
+											<PlusIcon class="size-4" />
+											Create
+										</button>
+									</div>
+
+									{#if devLoading}
+										<p class="text-sm text-zinc-500">Loading...</p>
+									{:else if devTeams.length === 0}
+										<p class="text-sm text-zinc-500">No teams yet. Create one to get started.</p>
+									{:else}
+										<div class="space-y-2">
+											{#each devTeams as team (team.id)}
+												<button
+													class="group flex w-full items-center justify-between rounded-md border border-zinc-700 bg-zinc-800/50 px-4 py-3 text-left transition-colors hover:border-zinc-600 hover:bg-zinc-800"
+													onclick={() => selectTeam(team)}
+												>
+													<div>
+														<p class="text-sm font-medium text-white">{team.name}</p>
+														<p class="text-xxs text-zinc-500">ID: {team.id}</p>
+													</div>
+													<ChevronLeftIcon class="size-4 rotate-180 text-zinc-500 group-hover:text-zinc-300" />
+												</button>
+											{/each}
 										</div>
 									{/if}
-								</div>
+								{:else}
+									<button
+										class="mb-4 flex items-center gap-1 text-sm text-zinc-400 transition-colors hover:text-white"
+										onclick={() => {
+											devSelectedTeam = null;
+											devApps = [];
+											devMembers = [];
+											devBotToken = null;
+										}}
+									>
+										<ChevronLeftIcon class="size-4" />
+										Back to teams
+									</button>
 
-								<!-- Applications -->
-								<div>
-									<h4 class="mb-2 text-xs font-bold tracking-widest text-zinc-400 uppercase">Applications</h4>
-									{#if devAppsLoading}
-										<p class="text-sm text-zinc-500">Loading...</p>
-									{:else}
-										<div class="mb-3 flex gap-2">
-											<input
-												type="text"
-												bind:value={devNewAppName}
-												placeholder="App name"
-												class="flex-1 rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-xs text-white placeholder-zinc-500 outline-none focus:border-zinc-500"
-												onkeydown={(e) => e.key === "Enter" && handleCreateApp()}
-											/>
-											<button
-												class="flex items-center gap-1 rounded-md bg-stone-600 px-2 py-1.5 text-xs text-white hover:bg-stone-500 disabled:opacity-50"
-												onclick={handleCreateApp}
-												disabled={devCreatingApp || !devNewAppName.trim()}
-											>
-												<PlusIcon class="size-3.5" />
-												Create
-											</button>
-										</div>
-
-										{#if devApps.length === 0}
-											<p class="text-sm text-zinc-500">No applications yet.</p>
+									<div class="mb-6 flex items-center justify-between">
+										{#if devEditingTeam?.id === devSelectedTeam.id}
+											<div class="flex flex-1 items-center gap-2">
+												<input
+													type="text"
+													bind:value={devEditTeamName}
+													class="flex-1 rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-white outline-none focus:border-zinc-500"
+													onkeydown={(e) => e.key === "Enter" && handleSaveTeamEdit()}
+												/>
+												<button
+													class="bg-fill-600 text-fixed-white hover:bg-fill-500 rounded-md px-2 py-1.5 text-xs"
+													onclick={handleSaveTeamEdit}>Save</button
+												>
+												<button
+													class="rounded-md px-2 py-1.5 text-xs text-zinc-400 hover:text-white"
+													onclick={() => (devEditingTeam = null)}>Cancel</button
+												>
+											</div>
 										{:else}
-											<div class="space-y-3">
-												{#each devApps as app (app.id)}
-													<div class="rounded-md border border-zinc-700 bg-zinc-800/50 p-4">
-														{#if devEditingApp?.id === app.id}
-															<div class="space-y-2">
-																<input
-																	type="text"
-																	bind:value={devEditAppName}
-																	placeholder="App name"
-																	class="w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-white outline-none focus:border-zinc-500"
-																/>
-																<input
-																	type="text"
-																	bind:value={devEditAppDesc}
-																	placeholder="Description (optional)"
-																	class="w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-white outline-none focus:border-zinc-500"
-																/>
-																<div class="flex gap-2">
-																	<button
-																		class="rounded-md bg-stone-600 px-3 py-1.5 text-xs text-white hover:bg-stone-500"
-																		onclick={handleSaveAppEdit}>Save</button
-																	>
-																	<button
-																		class="rounded-md px-3 py-1.5 text-xs text-zinc-400 hover:text-white"
-																		onclick={() => (devEditingApp = null)}>Cancel</button
-																	>
-																</div>
-															</div>
-														{:else}
-															<div class="mb-2 flex items-start justify-between">
-																<div>
-																	<p class="text-sm font-medium text-white">{app.name}</p>
-																	{#if app.description}
-																		<p class="text-xs text-zinc-500">{app.description}</p>
-																	{/if}
-																	<p class="text-xxs mt-1 text-zinc-600 select-text">ID: {app.id}</p>
-																</div>
-																<div class="flex items-center gap-1">
-																	<button
-																		class="flex items-center gap-1 rounded-md px-2 py-1 text-xs transition-colors {app.public
-																			? 'text-green-400 hover:bg-green-600/20'
-																			: 'text-zinc-500 hover:bg-zinc-700 hover:text-zinc-200'}"
-																		title={app.public
-																			? "Public — anyone can add this bot"
-																			: "Private — only team members can add"}
-																		onclick={() => handleTogglePublic(app)}
-																	>
-																		{#if app.public}
-																			<GlobeIcon class="size-3.5" />
-																		{:else}
-																			<LockIcon class="size-3.5" />
-																		{/if}
-																	</button>
-																	<button
-																		class="rounded-md p-1.5 text-zinc-500 hover:bg-zinc-700 hover:text-zinc-200"
-																		title="Edit"
-																		onclick={() => {
-																			devEditingApp = app;
-																			devEditAppName = app.name;
-																			devEditAppDesc = app.description ?? "";
-																		}}
-																	>
-																		<PencilIcon class="size-4" />
-																	</button>
-																	<button
-																		class="rounded-md p-1.5 text-zinc-500 hover:bg-red-600/20 hover:text-red-400"
-																		title="Delete"
-																		onclick={() => handleDeleteApp(app)}
-																	>
-																		<TrashIcon class="size-4" />
-																	</button>
-																</div>
-															</div>
-															<div class="mt-3 border-t border-zinc-700 pt-3">
-																{#if app.bot_user_id}
-																	<div class="flex items-center justify-between">
-																		<div class="flex items-center gap-2">
-																			<BotIcon class="size-4 text-stone-400" />
-																			<span class="text-xs text-zinc-300">Bot active</span>
-																		</div>
-																		<div class="flex items-center gap-1">
-																			<button
-																				class="flex items-center gap-1 rounded-md px-2 py-1 text-xs text-zinc-400 hover:bg-zinc-700 hover:text-white"
-																				onclick={() => handleResetBotToken(app)}
-																			>
-																				<RotateIcon class="size-3.5" />
-																				Reset Token
-																			</button>
-																			<button
-																				class="flex items-center gap-1 rounded-md px-2 py-1 text-xs text-red-400 hover:bg-red-600/20"
-																				onclick={() => handleDeleteBot(app)}
-																			>
-																				<TrashIcon class="size-3.5" />
-																				Delete Bot
-																			</button>
-																		</div>
-																	</div>
-																	<!-- Bot name/alias editing -->
-																	<div class="mt-2 space-y-2">
-																		<input
-																			type="text"
-																			value={botEditingAppId === app.id
-																				? botEditUsername
-																				: (botUsers[app.bot_user_id ?? ""]?.username ?? "")}
-																			placeholder="Username"
-																			class="w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-xs text-white placeholder-zinc-500 outline-none focus:border-zinc-500"
-																			onfocus={() => {
-																				if (botEditingAppId !== app.id) startBotEdit(app);
-																			}}
-																			oninput={(e) => {
-																				if (botEditingAppId !== app.id) startBotEdit(app);
-																				botEditUsername = e.currentTarget.value;
-																			}}
-																		/>
-																		<input
-																			type="text"
-																			value={botEditingAppId === app.id
-																				? botEditAlias
-																				: (botUsers[app.bot_user_id ?? ""]?.alias ?? "")}
-																			placeholder="Display name (optional)"
-																			class="w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-xs text-white placeholder-zinc-500 outline-none focus:border-zinc-500"
-																			onfocus={() => {
-																				if (botEditingAppId !== app.id) startBotEdit(app);
-																			}}
-																			oninput={(e) => {
-																				if (botEditingAppId !== app.id) startBotEdit(app);
-																				botEditAlias = e.currentTarget.value;
-																			}}
-																		/>
-																	</div>
-																	<div class="mt-2 flex items-center gap-2">
-																		<span class="text-xxs text-zinc-500">Invite link:</span>
-																		<code
-																			class="text-xxs flex-1 truncate rounded bg-zinc-900 px-2 py-1 text-zinc-400 select-text"
-																			>{getBotInviteLink(app.bot_user_id ?? "")}</code
+											<h3 class="text-lg font-semibold text-white">{devSelectedTeam.name}</h3>
+											<div class="flex items-center gap-1">
+												{#if devSelectedTeam.owner_id === $currentUser?.id}
+													<button
+														class="rounded-md p-1.5 text-zinc-500 hover:bg-zinc-700 hover:text-zinc-200"
+														title="Edit"
+														onclick={() => {
+															devEditingTeam = devSelectedTeam;
+															devEditTeamName = devSelectedTeam?.name ?? "";
+														}}
+													>
+														<PencilIcon class="size-4" />
+													</button>
+													<button
+														class="rounded-md p-1.5 text-zinc-500 hover:bg-red-600/20 hover:text-red-400"
+														title="Delete"
+														onclick={() => devSelectedTeam && handleDeleteTeam(devSelectedTeam)}
+													>
+														<TrashIcon class="size-4" />
+													</button>
+												{/if}
+											</div>
+										{/if}
+									</div>
+
+									<!-- Members -->
+									<div class="mb-6">
+										<h4 class="mb-2 text-xs font-bold tracking-widest text-zinc-400 uppercase">Members</h4>
+										<div class="space-y-1">
+											{#each devMembers as member (member.user_id)}
+												<div class="flex items-center justify-between rounded-md bg-zinc-800/50 px-3 py-2">
+													<div class="flex items-center gap-2">
+														<span class="text-sm text-white">{member.username}</span>
+														{#if member.role === TeamRole.Admin}
+															<span class="text-xxs rounded bg-stone-700 px-1.5 py-0.5 font-medium text-stone-300"
+																>Admin</span
+															>
+														{/if}
+													</div>
+													{#if devSelectedTeam.owner_id === $currentUser?.id && member.user_id !== $currentUser?.id}
+														<button
+															class="text-zinc-500 hover:text-red-400"
+															title="Remove"
+															onclick={() => handleRemoveMember(member.user_id, member.username)}
+														>
+															<XIcon class="size-4" />
+														</button>
+													{/if}
+												</div>
+											{/each}
+										</div>
+										{#if devSelectedTeam.owner_id === $currentUser?.id}
+											<div class="mt-2 flex gap-2">
+												<input
+													type="text"
+													bind:value={devInviteEmail}
+													placeholder="Email to invite"
+													class="flex-1 rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-xs text-white placeholder-zinc-500 outline-none focus:border-zinc-500"
+													onkeydown={(e) => e.key === "Enter" && handleInviteMember()}
+												/>
+												<button
+													class="bg-fill-600 text-fixed-white hover:bg-fill-500 flex items-center gap-1 rounded-md px-2 py-1.5 text-xs disabled:opacity-50"
+													onclick={handleInviteMember}
+													disabled={devInviting || !devInviteEmail.trim()}
+												>
+													<UserPlusIcon class="size-3.5" />
+													Invite
+												</button>
+											</div>
+										{/if}
+									</div>
+
+									<!-- Applications -->
+									<div>
+										<h4 class="mb-2 text-xs font-bold tracking-widest text-zinc-400 uppercase">Applications</h4>
+										{#if devAppsLoading}
+											<p class="text-sm text-zinc-500">Loading...</p>
+										{:else}
+											<div class="mb-3 flex gap-2">
+												<input
+													type="text"
+													bind:value={devNewAppName}
+													placeholder="App name"
+													class="flex-1 rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-xs text-white placeholder-zinc-500 outline-none focus:border-zinc-500"
+													onkeydown={(e) => e.key === "Enter" && handleCreateApp()}
+												/>
+												<button
+													class="bg-fill-600 text-fixed-white hover:bg-fill-500 flex items-center gap-1 rounded-md px-2 py-1.5 text-xs disabled:opacity-50"
+													onclick={handleCreateApp}
+													disabled={devCreatingApp || !devNewAppName.trim()}
+												>
+													<PlusIcon class="size-3.5" />
+													Create
+												</button>
+											</div>
+
+											{#if devApps.length === 0}
+												<p class="text-sm text-zinc-500">No applications yet.</p>
+											{:else}
+												<div class="space-y-3">
+													{#each devApps as app (app.id)}
+														<div class="rounded-md border border-zinc-700 bg-zinc-800/50 p-4">
+															{#if devEditingApp?.id === app.id}
+																<div class="space-y-2">
+																	<input
+																		type="text"
+																		bind:value={devEditAppName}
+																		placeholder="App name"
+																		class="w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-white outline-none focus:border-zinc-500"
+																	/>
+																	<input
+																		type="text"
+																		bind:value={devEditAppDesc}
+																		placeholder="Description (optional)"
+																		class="w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-white outline-none focus:border-zinc-500"
+																	/>
+																	<div class="flex gap-2">
+																		<button
+																			class="bg-fill-600 text-fixed-white hover:bg-fill-500 rounded-md px-3 py-1.5 text-xs"
+																			onclick={handleSaveAppEdit}>Save</button
 																		>
 																		<button
-																			class="shrink-0 rounded p-1 text-zinc-500 hover:bg-zinc-700 hover:text-white"
-																			title="Copy"
-																			onclick={() => copyBotInviteLink(app.bot_user_id ?? "")}
+																			class="rounded-md px-3 py-1.5 text-xs text-zinc-400 hover:text-white"
+																			onclick={() => (devEditingApp = null)}>Cancel</button
 																		>
-																			<CopyIcon class="size-3.5" />
+																	</div>
+																</div>
+															{:else}
+																<div class="mb-2 flex items-start justify-between">
+																	<div>
+																		<p class="text-sm font-medium text-white">{app.name}</p>
+																		{#if app.description}
+																			<p class="text-xs text-zinc-500">{app.description}</p>
+																		{/if}
+																		<p class="text-xxs mt-1 text-zinc-600 select-text">ID: {app.id}</p>
+																	</div>
+																	<div class="flex items-center gap-1">
+																		<button
+																			class="flex items-center gap-1 rounded-md px-2 py-1 text-xs transition-colors {app.public
+																				? 'text-green-400 hover:bg-green-600/20'
+																				: 'text-zinc-500 hover:bg-zinc-700 hover:text-zinc-200'}"
+																			title={app.public
+																				? "Public — anyone can add this bot"
+																				: "Private — only team members can add"}
+																			onclick={() => handleTogglePublic(app)}
+																		>
+																			{#if app.public}
+																				<GlobeIcon class="size-3.5" />
+																			{:else}
+																				<LockIcon class="size-3.5" />
+																			{/if}
+																		</button>
+																		<button
+																			class="rounded-md p-1.5 text-zinc-500 hover:bg-zinc-700 hover:text-zinc-200"
+																			title="Edit"
+																			onclick={() => {
+																				devEditingApp = app;
+																				devEditAppName = app.name;
+																				devEditAppDesc = app.description ?? "";
+																			}}
+																		>
+																			<PencilIcon class="size-4" />
+																		</button>
+																		<button
+																			class="rounded-md p-1.5 text-zinc-500 hover:bg-red-600/20 hover:text-red-400"
+																			title="Delete"
+																			onclick={() => handleDeleteApp(app)}
+																		>
+																			<TrashIcon class="size-4" />
 																		</button>
 																	</div>
-																	{#if hasActiveBucket}
-																		{@const botU = app.bot_user_id ? botUsers[app.bot_user_id] : null}
-																		<div class="mt-3 border-t border-zinc-700 pt-3">
-																			<p class="text-xxs mb-2 text-zinc-500">Bot appearance</p>
-																			<div class="flex items-center gap-3">
-																				<!-- Avatar -->
-																				<div class="group relative">
-																					{#if botAvatarPreview}
-																						<img
-																							src={botAvatarPreview}
-																							alt="avatar"
-																							class="h-12 w-12 rounded-full object-cover"
-																						/>
-																						<button
-																							class="absolute inset-0 flex items-center justify-center rounded-full bg-black/60 opacity-0 transition-opacity group-hover:opacity-100"
-																							onclick={clearBotAvatar}
-																							title="Undo"
-																						>
-																							<XIcon class="size-4 text-white" />
-																						</button>
-																					{:else if pendingBotAvatar === "remove"}
-																						<div
-																							class="flex h-12 w-12 items-center justify-center rounded-full bg-zinc-800 text-zinc-600"
-																						>
-																							<XIcon class="size-4" />
-																						</div>
-																						<button
-																							class="absolute inset-0 flex items-center justify-center rounded-full bg-black/60 opacity-0 transition-opacity group-hover:opacity-100"
-																							onclick={() => {
-																								pendingBotAvatar = null;
-																							}}
-																							title="Undo"
-																						>
-																							<RotateIcon class="size-4 text-white" />
-																						</button>
-																					{:else if botU?.avatar}
-																						<img
-																							src={getAvatarURL(botU.id, botU.avatar)}
-																							alt="avatar"
-																							class="h-12 w-12 rounded-full object-cover"
-																						/>
-																						<div
-																							class="absolute inset-0 flex items-center justify-center gap-1 rounded-full bg-black/60 opacity-0 transition-opacity group-hover:opacity-100"
-																						>
+																</div>
+																<div class="mt-3 border-t border-zinc-700 pt-3">
+																	{#if app.bot_user_id}
+																		<div class="flex items-center justify-between">
+																			<div class="flex items-center gap-2">
+																				<BotIcon class="size-4 text-stone-400" />
+																				<span class="text-xs text-zinc-300">Bot active</span>
+																			</div>
+																			<div class="flex items-center gap-1">
+																				<button
+																					class="flex items-center gap-1 rounded-md px-2 py-1 text-xs text-zinc-400 hover:bg-zinc-700 hover:text-white"
+																					onclick={() => handleResetBotToken(app)}
+																				>
+																					<RotateIcon class="size-3.5" />
+																					Reset Token
+																				</button>
+																				<button
+																					class="flex items-center gap-1 rounded-md px-2 py-1 text-xs text-red-400 hover:bg-red-600/20"
+																					onclick={() => handleDeleteBot(app)}
+																				>
+																					<TrashIcon class="size-3.5" />
+																					Delete Bot
+																				</button>
+																			</div>
+																		</div>
+																		<!-- Bot name/alias editing -->
+																		<div class="mt-2 space-y-2">
+																			<input
+																				type="text"
+																				value={botEditingAppId === app.id
+																					? botEditUsername
+																					: (botUsers[app.bot_user_id ?? ""]?.username ?? "")}
+																				placeholder="Username"
+																				class="w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-xs text-white placeholder-zinc-500 outline-none focus:border-zinc-500"
+																				onfocus={() => {
+																					if (botEditingAppId !== app.id) startBotEdit(app);
+																				}}
+																				oninput={(e) => {
+																					if (botEditingAppId !== app.id) startBotEdit(app);
+																					botEditUsername = e.currentTarget.value;
+																				}}
+																			/>
+																			<input
+																				type="text"
+																				value={botEditingAppId === app.id
+																					? botEditAlias
+																					: (botUsers[app.bot_user_id ?? ""]?.alias ?? "")}
+																				placeholder="Display name (optional)"
+																				class="w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-xs text-white placeholder-zinc-500 outline-none focus:border-zinc-500"
+																				onfocus={() => {
+																					if (botEditingAppId !== app.id) startBotEdit(app);
+																				}}
+																				oninput={(e) => {
+																					if (botEditingAppId !== app.id) startBotEdit(app);
+																					botEditAlias = e.currentTarget.value;
+																				}}
+																			/>
+																		</div>
+																		<div class="mt-2 flex items-center gap-2">
+																			<span class="text-xxs text-zinc-500">Invite link:</span>
+																			<code
+																				class="text-xxs flex-1 truncate rounded bg-zinc-900 px-2 py-1 text-zinc-400 select-text"
+																				>{getBotInviteLink(app.bot_user_id ?? "")}</code
+																			>
+																			<button
+																				class="shrink-0 rounded p-1 text-zinc-500 hover:bg-zinc-700 hover:text-white"
+																				title="Copy"
+																				onclick={() => copyBotInviteLink(app.bot_user_id ?? "")}
+																			>
+																				<CopyIcon class="size-3.5" />
+																			</button>
+																		</div>
+																		{#if hasActiveBucket}
+																			{@const botU = app.bot_user_id ? botUsers[app.bot_user_id] : null}
+																			<div class="mt-3 border-t border-zinc-700 pt-3">
+																				<p class="text-xxs mb-2 text-zinc-500">Bot appearance</p>
+																				<div class="flex items-center gap-3">
+																					<!-- Avatar -->
+																					<div class="group relative">
+																						{#if botAvatarPreview}
+																							<img
+																								src={botAvatarPreview}
+																								alt="avatar"
+																								class="h-12 w-12 rounded-full object-cover"
+																							/>
 																							<button
-																								class="rounded p-0.5 text-white hover:bg-white/20"
+																								class="absolute inset-0 flex items-center justify-center rounded-full bg-black/60 opacity-0 transition-opacity group-hover:opacity-100"
+																								onclick={clearBotAvatar}
+																								title="Undo"
+																							>
+																								<XIcon class="text-fixed-white size-4" />
+																							</button>
+																						{:else if pendingBotAvatar === "remove"}
+																							<div
+																								class="flex h-12 w-12 items-center justify-center rounded-full bg-zinc-800 text-zinc-600"
+																							>
+																								<XIcon class="size-4" />
+																							</div>
+																							<button
+																								class="absolute inset-0 flex items-center justify-center rounded-full bg-black/60 opacity-0 transition-opacity group-hover:opacity-100"
+																								onclick={() => {
+																									pendingBotAvatar = null;
+																								}}
+																								title="Undo"
+																							>
+																								<RotateIcon class="text-fixed-white size-4" />
+																							</button>
+																						{:else if botU?.avatar}
+																							<img
+																								src={getAvatarURL(botU.id, botU.avatar)}
+																								alt="avatar"
+																								class="h-12 w-12 rounded-full object-cover"
+																							/>
+																							<div
+																								class="absolute inset-0 flex items-center justify-center gap-1 rounded-full bg-black/60 opacity-0 transition-opacity group-hover:opacity-100"
+																							>
+																								<button
+																									class="text-fixed-white hover:bg-fixed-white/20 rounded p-0.5"
+																									onclick={() => {
+																										botCropTargetApp = app;
+																										showBotAvatarCrop = true;
+																									}}
+																									title="Change"><PencilIcon class="size-3.5" /></button
+																								>
+																								<button
+																									class="hover:bg-fixed-white/20 rounded p-0.5 text-red-400"
+																									onclick={removeBotAvatar}
+																									title="Remove"><TrashIcon class="size-3.5" /></button
+																								>
+																							</div>
+																						{:else}
+																							<button
+																								class="flex h-12 w-12 items-center justify-center rounded-full bg-zinc-800 text-zinc-500 transition-colors hover:bg-zinc-700 hover:text-zinc-300"
 																								onclick={() => {
 																									botCropTargetApp = app;
 																									showBotAvatarCrop = true;
 																								}}
-																								title="Change"><PencilIcon class="size-3.5" /></button
+																								title="Set avatar"
 																							>
+																								<PlusIcon class="size-4" />
+																							</button>
+																						{/if}
+																					</div>
+																					<!-- Banner -->
+																					<div class="group relative">
+																						{#if botBannerPreview}
+																							<img
+																								src={botBannerPreview}
+																								alt="banner"
+																								class="h-12 w-28 rounded object-cover"
+																							/>
 																							<button
-																								class="rounded p-0.5 text-red-400 hover:bg-white/20"
-																								onclick={removeBotAvatar}
-																								title="Remove"><TrashIcon class="size-3.5" /></button
+																								class="absolute inset-0 flex items-center justify-center rounded bg-black/60 opacity-0 transition-opacity group-hover:opacity-100"
+																								onclick={clearBotBanner}
+																								title="Undo"
 																							>
-																						</div>
-																					{:else}
-																						<button
-																							class="flex h-12 w-12 items-center justify-center rounded-full bg-zinc-800 text-zinc-500 transition-colors hover:bg-zinc-700 hover:text-zinc-300"
-																							onclick={() => {
-																								botCropTargetApp = app;
-																								showBotAvatarCrop = true;
-																							}}
-																							title="Set avatar"
-																						>
-																							<PlusIcon class="size-4" />
-																						</button>
-																					{/if}
-																				</div>
-																				<!-- Banner -->
-																				<div class="group relative">
-																					{#if botBannerPreview}
-																						<img
-																							src={botBannerPreview}
-																							alt="banner"
-																							class="h-12 w-28 rounded object-cover"
-																						/>
-																						<button
-																							class="absolute inset-0 flex items-center justify-center rounded bg-black/60 opacity-0 transition-opacity group-hover:opacity-100"
-																							onclick={clearBotBanner}
-																							title="Undo"
-																						>
-																							<XIcon class="size-4 text-white" />
-																						</button>
-																					{:else if pendingBotBanner === "remove"}
-																						<div
-																							class="flex h-12 w-28 items-center justify-center rounded bg-zinc-800 text-zinc-600"
-																						>
-																							<XIcon class="size-4" />
-																						</div>
-																						<button
-																							class="absolute inset-0 flex items-center justify-center rounded bg-black/60 opacity-0 transition-opacity group-hover:opacity-100"
-																							onclick={() => {
-																								pendingBotBanner = null;
-																							}}
-																							title="Undo"
-																						>
-																							<RotateIcon class="size-4 text-white" />
-																						</button>
-																					{:else if botU?.banner}
-																						<img
-																							src={getAvatarURL(botU.id, botU.banner)}
-																							alt="banner"
-																							class="h-12 w-28 rounded object-cover"
-																						/>
-																						<div
-																							class="absolute inset-0 flex items-center justify-center gap-1 rounded bg-black/60 opacity-0 transition-opacity group-hover:opacity-100"
-																						>
+																								<XIcon class="text-fixed-white size-4" />
+																							</button>
+																						{:else if pendingBotBanner === "remove"}
+																							<div
+																								class="flex h-12 w-28 items-center justify-center rounded bg-zinc-800 text-zinc-600"
+																							>
+																								<XIcon class="size-4" />
+																							</div>
 																							<button
-																								class="rounded p-0.5 text-white hover:bg-white/20"
+																								class="absolute inset-0 flex items-center justify-center rounded bg-black/60 opacity-0 transition-opacity group-hover:opacity-100"
+																								onclick={() => {
+																									pendingBotBanner = null;
+																								}}
+																								title="Undo"
+																							>
+																								<RotateIcon class="text-fixed-white size-4" />
+																							</button>
+																						{:else if botU?.banner}
+																							<img
+																								src={getAvatarURL(botU.id, botU.banner)}
+																								alt="banner"
+																								class="h-12 w-28 rounded object-cover"
+																							/>
+																							<div
+																								class="absolute inset-0 flex items-center justify-center gap-1 rounded bg-black/60 opacity-0 transition-opacity group-hover:opacity-100"
+																							>
+																								<button
+																									class="text-fixed-white hover:bg-fixed-white/20 rounded p-0.5"
+																									onclick={() => {
+																										botCropTargetApp = app;
+																										showBotBannerCrop = true;
+																									}}
+																									title="Change"><PencilIcon class="size-3.5" /></button
+																								>
+																								<button
+																									class="hover:bg-fixed-white/20 rounded p-0.5 text-red-400"
+																									onclick={removeBotBanner}
+																									title="Remove"><TrashIcon class="size-3.5" /></button
+																								>
+																							</div>
+																						{:else}
+																							<button
+																								class="flex h-12 w-28 items-center justify-center rounded bg-zinc-800 text-zinc-500 transition-colors hover:bg-zinc-700 hover:text-zinc-300"
 																								onclick={() => {
 																									botCropTargetApp = app;
 																									showBotBannerCrop = true;
 																								}}
-																								title="Change"><PencilIcon class="size-3.5" /></button
+																								title="Set banner"
 																							>
-																							<button
-																								class="rounded p-0.5 text-red-400 hover:bg-white/20"
-																								onclick={removeBotBanner}
-																								title="Remove"><TrashIcon class="size-3.5" /></button
-																							>
-																						</div>
-																					{:else}
-																						<button
-																							class="flex h-12 w-28 items-center justify-center rounded bg-zinc-800 text-zinc-500 transition-colors hover:bg-zinc-700 hover:text-zinc-300"
-																							onclick={() => {
-																								botCropTargetApp = app;
-																								showBotBannerCrop = true;
-																							}}
-																							title="Set banner"
-																						>
-																							<PlusIcon class="size-4" />
-																						</button>
-																					{/if}
+																								<PlusIcon class="size-4" />
+																							</button>
+																						{/if}
+																					</div>
 																				</div>
+																				{#if hasBotProfileChanges}
+																					<button
+																						class="bg-fill-600 text-fixed-white hover:bg-fill-500 mt-2 rounded-md px-3 py-1.5 text-xs font-medium transition-colors disabled:opacity-50"
+																						onclick={() => handleSaveBotProfile(app)}
+																						disabled={savingBotProfile}
+																					>
+																						{savingBotProfile ? "Saving..." : "Save Changes"}
+																					</button>
+																				{/if}
 																			</div>
-																			{#if hasBotProfileChanges}
-																				<button
-																					class="mt-2 rounded-md bg-stone-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-stone-500 disabled:opacity-50"
-																					onclick={() => handleSaveBotProfile(app)}
-																					disabled={savingBotProfile}
-																				>
-																					{savingBotProfile ? "Saving..." : "Save Changes"}
-																				</button>
-																			{/if}
-																		</div>
+																		{/if}
+																	{:else}
+																		<button
+																			class="bg-fill-700 text-fixed-white hover:bg-fill-600 flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors"
+																			onclick={() => handleCreateBot(app)}
+																		>
+																			<BotIcon class="size-3.5" />
+																			Create Bot
+																		</button>
 																	{/if}
-																{:else}
-																	<button
-																		class="flex items-center gap-1.5 rounded-md bg-stone-700 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-stone-600"
-																		onclick={() => handleCreateBot(app)}
-																	>
-																		<BotIcon class="size-3.5" />
-																		Create Bot
-																	</button>
-																{/if}
-															</div>
-														{/if}
-													</div>
-												{/each}
-											</div>
-										{/if}
-
-										{#if devBotToken}
-											<div class="mt-4 rounded-md border border-yellow-700/50 bg-yellow-900/20 p-4">
-												<p class="mb-2 text-xs font-medium text-yellow-300">
-													Bot Token — copy it now, it won't be shown again!
-												</p>
-												<div class="flex items-center gap-2">
-													<code
-														class="flex-1 rounded bg-zinc-900 px-3 py-2 font-mono text-xs break-all text-zinc-300 select-text"
-														>{devShowToken ? devBotToken : "\u2022".repeat(40)}</code
-													>
-													<button
-														class="rounded-md p-1.5 text-zinc-400 hover:text-white"
-														title={devShowToken ? "Hide" : "Show"}
-														onclick={() => (devShowToken = !devShowToken)}
-													>
-														{#if devShowToken}<EyeOffIcon class="size-4" />{:else}<EyeIcon class="size-4" />{/if}
-													</button>
-													<button
-														class="rounded-md p-1.5 text-zinc-400 hover:text-white"
-														title="Copy"
-														onclick={copyToken}
-													>
-														<CopyIcon class="size-4" />
-													</button>
+																</div>
+															{/if}
+														</div>
+													{/each}
 												</div>
-											</div>
+											{/if}
+
+											{#if devBotToken}
+												<div class="mt-4 rounded-md border border-yellow-700/50 bg-yellow-900/20 p-4">
+													<p class="mb-2 text-xs font-medium text-yellow-300">
+														Bot Token — copy it now, it won't be shown again!
+													</p>
+													<div class="flex items-center gap-2">
+														<code
+															class="flex-1 rounded bg-zinc-900 px-3 py-2 font-mono text-xs break-all text-zinc-300 select-text"
+															>{devShowToken ? devBotToken : "\u2022".repeat(40)}</code
+														>
+														<button
+															class="rounded-md p-1.5 text-zinc-400 hover:text-white"
+															title={devShowToken ? "Hide" : "Show"}
+															onclick={() => (devShowToken = !devShowToken)}
+														>
+															{#if devShowToken}<EyeOffIcon class="size-4" />{:else}<EyeIcon class="size-4" />{/if}
+														</button>
+														<button
+															class="rounded-md p-1.5 text-zinc-400 hover:text-white"
+															title="Copy"
+															onclick={copyToken}
+														>
+															<CopyIcon class="size-4" />
+														</button>
+													</div>
+												</div>
+											{/if}
 										{/if}
-									{/if}
-								</div>
+									</div>
+								{/if}
 							{/if}
-						{/if}
+						</div>
 					</div>
 
 					<!-- Move bar (appears while files of a location are picked) -->
@@ -2698,7 +2781,7 @@
 								<button
 									onclick={openMovePicked}
 									disabled={myTransfer !== null || tooMany}
-									class="flex items-center gap-1.5 rounded-md bg-stone-600 px-4 py-1.5 text-sm font-semibold text-white transition-colors hover:bg-stone-500 disabled:cursor-not-allowed disabled:opacity-50"
+									class="bg-fill-600 text-fixed-white hover:bg-fill-500 flex items-center gap-1.5 rounded-md px-4 py-1.5 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50"
 								>
 									<MoveIcon class="size-4" />
 									Move {countFiles(pickedCount)} ({formatFileSize(picker.pickedBytes)}) to…
@@ -2733,7 +2816,7 @@
 								<button
 									onclick={handleSave}
 									disabled={saving || bioTooLong}
-									class="flex items-center gap-1.5 rounded-md bg-stone-600 px-4 py-1.5 text-sm font-semibold text-white transition-colors hover:bg-stone-500 disabled:cursor-not-allowed disabled:opacity-50"
+									class="bg-fill-600 text-fixed-white hover:bg-fill-500 flex items-center gap-1.5 rounded-md px-4 py-1.5 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50"
 								>
 									{#if saveSuccess}
 										<CheckIcon class="size-4" />

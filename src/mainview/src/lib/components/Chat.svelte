@@ -1,12 +1,10 @@
 <script lang="ts">
-	import { Eye as EyeIcon, EyeOff as EyeOffIcon, Hash as HashIcon } from "@lucide/svelte";
+	import { Eye as EyeIcon, EyeOff as EyeOffIcon } from "@lucide/svelte";
 
-	import { onMount, onDestroy } from "svelte";
+	import { onMount, onDestroy, untrack, type Snippet } from "svelte";
 	import ChatInput from "$lib/components/ChatInput.svelte";
 	import CommandOptions from "$lib/components/CommandOptions.svelte";
 	import MessageList from "$lib/components/MessageList.svelte";
-	import MessageSearch from "$lib/components/MessageSearch.svelte";
-	import PinnedMessages from "$lib/components/PinnedMessages.svelte";
 	import type {
 		AllowedMentions,
 		ApplicationCommand,
@@ -39,6 +37,8 @@
 	import { hasPermission, mentionableRooms, Permission } from "$lib/permissions";
 	import { displayName, isSpoiler, withSpoiler } from "$lib/spoilers";
 	import { withSentMessage } from "$lib/arrivals";
+	import { chatRequest, keyboard, leaveMessageBox } from "$lib/keyboard.svelte";
+	import { layoutPrefs } from "$lib/layout-prefs.svelte";
 
 	let {
 		messages,
@@ -56,7 +56,6 @@
 		unreadAfterMessageId = null,
 		onLoadMore = () => {},
 		onLoadMoreBelow = () => {},
-		showHeader = true,
 		placeholder = undefined,
 		failedNonces = $bindable(new Set<string>()),
 		isAtBottom = $bindable(true),
@@ -69,6 +68,7 @@
 		sendRecording = undefined,
 		onUnreadMark = undefined,
 		onVoiceNoteOverride = undefined,
+		intro = undefined,
 	}: {
 		messages: Message[];
 		members?: MemberOnSidebar[];
@@ -85,7 +85,6 @@
 		unreadAfterMessageId?: string | null;
 		onLoadMore?: () => Promise<void> | void;
 		onLoadMoreBelow?: () => Promise<void> | void;
-		showHeader?: boolean;
 		placeholder?: string;
 		failedNonces?: Set<string>;
 		isAtBottom?: boolean;
@@ -106,6 +105,8 @@
 		sendRecording?: () => void;
 		onUnreadMark?: (messageId: string) => void;
 		onVoiceNoteOverride?: (blob: Blob) => void;
+		/** The start of the chat, above its oldest message (ChatIntro). */
+		intro?: Snippet;
 	} = $props();
 	let replyTo = $state<Message | null>(null);
 	// The reply bar's @: whether the reply mentions the author of the message it replies to. On for each new reply.
@@ -162,11 +163,13 @@
 	const customEmojis = $derived(spaceId ? ($spaceEmojis[spaceId] ?? []) : []);
 	const spaceStickersArr = $derived(spaceId ? ($spaceStickers[spaceId] ?? []) : []);
 
-	// Focus input when switching channels
+	// Focus input when switching channels, unless keyboard navigation switched them and goes on
 	$effect(() => {
 		channelId;
 		command = null;
-		requestAnimationFrame(() => chatInputRef?.focus());
+		requestAnimationFrame(() => {
+			if (!keyboard.keepNavigating) chatInputRef?.focus();
+		});
 	});
 
 	function formatFileSize(bytes: number): string {
@@ -411,6 +414,35 @@
 		chatInputRef?.focus();
 	}
 
+	// Esc in the message box drops the reply being written; with nothing to drop, keyboard navigation leaves the box
+	// for the messages.
+	function handleEscape() {
+		if (replyTo) replyTo = null;
+		else if (layoutPrefs.keyboardNavigation) leaveMessageBox(rootEl ?? null);
+	}
+
+	// What keyboard navigation asks of this chat, when it's the focused pane's: reply to or edit the message under the
+	// cursor, or go back to the message box. Only the user's own messages are edited, as their menu offers.
+	let rootEl = $state<HTMLElement>();
+	$effect(() => {
+		const request = chatRequest.current;
+		if (!request || !rootEl || !request.pane.contains(rootEl)) return;
+		untrack(() => {
+			chatRequest.current = null;
+			if (request.kind === "write") {
+				chatInputRef?.focus();
+				return;
+			}
+			const message = messages.find((m) => m.id === request.messageId);
+			if (!message || isEphemeral(message) || message.type === MessageType.PinNotice) return;
+			if (request.kind === "reply") handleReply(message);
+			else if (message.author_id === $currentUser?.id) {
+				editingMessageId = message.id;
+				editContent = message.content ?? "";
+			}
+		});
+	});
+
 	function retryMessage(message: Message) {
 		if (onRetry) {
 			onRetry(message);
@@ -574,7 +606,8 @@
 </script>
 
 <div
-	class="relative flex flex-1 flex-col overflow-hidden bg-[linear-gradient(180deg,oklch(0.22_0.01_80),oklch(0.19_0.008_80))]"
+	bind:this={rootEl}
+	class="from-night-22 to-night-19 relative flex flex-1 flex-col overflow-hidden bg-linear-to-b"
 	ondragover={handleFileDragOver}
 	ondragleave={handleFileDragLeave}
 	ondrop={handleFileDrop}
@@ -610,25 +643,6 @@
 			</div>
 		</div>
 	{/if}
-	{#if showHeader}
-		<div
-			class="flex h-10 shrink-0 items-center justify-between border-b border-stone-800 bg-stone-950/45 px-3 font-semibold text-stone-100"
-		>
-			<div class="flex flex-row items-center gap-2">
-				<HashIcon class="size-5 text-zinc-400" />
-				{channelName}
-			</div>
-			<div class="flex flex-row items-center gap-3">
-				{#key channelId}
-					<PinnedMessages {space} {channelId} {members} {customEmojis} />
-				{/key}
-				{#key spaceId}
-					<MessageSearch {space} {members} {customEmojis} />
-				{/key}
-			</div>
-		</div>
-	{/if}
-
 	<MessageList
 		{messages}
 		{members}
@@ -655,6 +669,7 @@
 		onReply={handleReply}
 		{onUnreadMark}
 		{customEmojis}
+		{intro}
 	/>
 
 	<div class="relative w-full">
@@ -789,6 +804,7 @@
 				onVoiceNote={handleVoiceNote}
 				onRecording={() => notifyTyping(true)}
 				onArrowUpWhenEmpty={tryEditLastMessage}
+				onCancel={handleEscape}
 				onValueChange={handleTyping}
 				{members}
 				rooms={mentionRooms}

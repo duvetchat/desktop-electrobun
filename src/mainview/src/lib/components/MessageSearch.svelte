@@ -13,8 +13,10 @@
 	import { canViewRoom } from "$lib/permissions";
 	import { customEmojiMapOf, escapeHtml, mentionMapOf } from "$lib/markdown";
 
-	// The search box of a channel's or a conversation's header, and the panel of its results. The panel
-	// is absolute: it covers the right side of the nearest positioned ancestor, under its 2.5rem header.
+	// The search box of a pane's bar (or a conversation's header), and the panel of its results. The panel is absolute:
+	// it covers the right side of the nearest positioned ancestor, the pane, under its 3rem bar. In a narrow pane (its
+	// container, under 48rem) the box folds to its icon until it's focused or holds a search, and its suggestions open
+	// from its left edge, where the pane has room for them.
 	let {
 		space = null,
 		conversationId = "",
@@ -381,16 +383,18 @@
 </script>
 
 <div
-	class="relative flex h-8 items-center rounded-lg border border-stone-800/90 bg-stone-900/40 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)] transition-[width,border-color,background-color] focus-within:border-stone-600/80 focus-within:bg-stone-900/65 {open
+	class="border-duvet-line bg-duvet-sunk focus-within:border-duvet-accent relative flex h-8 shrink-0 items-center rounded-lg border transition-[width,border-color] motion-reduce:transition-none {open
 		? 'w-64'
-		: 'w-48 focus-within:w-64'}"
+		: text
+			? 'w-48'
+			: 'w-48 focus-within:w-64 @max-3xl/pane:w-8 @max-3xl/pane:not-focus-within:overflow-hidden @max-3xl/pane:focus-within:w-44'}"
 >
-	<SearchIcon class="pointer-events-none absolute left-2.5 size-3.5 text-stone-500" />
+	<SearchIcon class="text-duvet-ink2 pointer-events-none absolute left-2.5 size-3.5" />
 	<!-- 2px wider on the left than the input's text so a first label's background shows whole -->
 	<div aria-hidden="true" class="pointer-events-none absolute inset-0 pr-7 pl-7.5">
 		<div
 			bind:this={mirror}
-			class="h-full overflow-hidden pl-0.5 text-xs leading-7.5 font-medium whitespace-pre text-stone-100"
+			class="text-duvet-ink h-full overflow-hidden pl-0.5 text-xs leading-7.5 font-medium whitespace-pre"
 		>
 			{@html mirrorHtml}
 		</div>
@@ -401,7 +405,7 @@
 		placeholder="Search messages"
 		aria-label="Search messages"
 		spellcheck="false"
-		class="relative z-10 h-full w-full border-none bg-transparent pr-7 pl-8 text-xs font-medium text-transparent caret-stone-100 placeholder:text-stone-500/90 focus:ring-0 focus:outline-none"
+		class="caret-duvet-ink placeholder:text-duvet-ink2 relative z-10 h-full w-full border-none bg-transparent pr-7 pl-8 text-xs font-medium text-transparent focus:ring-0 focus:outline-none"
 		onscroll={syncScroll}
 		oninput={() => {
 			syncCaret();
@@ -435,7 +439,7 @@
 		<div
 			role="listbox"
 			tabindex="-1"
-			class="absolute top-full right-0 z-40 mt-1 flex w-80 flex-col gap-0.5 rounded-lg border border-stone-800 bg-stone-950 p-1.5 font-normal shadow-xl"
+			class="absolute top-full right-0 z-40 mt-1 flex w-80 flex-col gap-0.5 rounded-lg border border-stone-800 bg-stone-950 p-1.5 font-normal shadow-xl @max-3xl/pane:right-auto @max-3xl/pane:left-0 @max-3xl/pane:w-64"
 			onmousedown={(e) => e.preventDefault()}
 		>
 			{#each suggestions as s, i (s.key)}
@@ -462,7 +466,7 @@
 
 {#if open}
 	<aside
-		class="absolute top-10 right-0 bottom-0 z-30 flex w-104 max-w-full flex-col border-l border-stone-800 bg-stone-950 font-normal shadow-2xl"
+		class="absolute top-12 right-0 bottom-0 z-30 flex w-104 max-w-full flex-col border-l border-stone-800 bg-stone-950 font-normal shadow-2xl"
 		aria-label="Search results"
 	>
 		<div class="flex h-10 shrink-0 items-center justify-between border-b border-stone-800 px-3">

@@ -85,11 +85,12 @@
 	];
 
 	const buttonColors: Record<number, string> = {
-		[ButtonStyle.Primary]: "bg-indigo-500 hover:bg-indigo-600",
-		[ButtonStyle.Secondary]: "bg-zinc-700 hover:bg-zinc-600",
-		[ButtonStyle.Success]: "bg-green-700 hover:bg-green-800",
-		[ButtonStyle.Danger]: "bg-red-600 hover:bg-red-700",
-		[ButtonStyle.Link]: "bg-zinc-700 hover:bg-zinc-600",
+		// The colored ones keep white text in light too; the gray ones' text turns over with their gray.
+		[ButtonStyle.Primary]: "bg-indigo-500 text-fixed-white hover:bg-indigo-600",
+		[ButtonStyle.Secondary]: "bg-zinc-700 text-white hover:bg-zinc-600",
+		[ButtonStyle.Success]: "bg-green-700 text-fixed-white hover:bg-green-800",
+		[ButtonStyle.Danger]: "bg-red-600 text-fixed-white hover:bg-red-700",
+		[ButtonStyle.Link]: "bg-zinc-700 text-white hover:bg-zinc-600",
 	};
 
 	// Only http(s) urls become links and media, whatever a bot sends (the API checks them too).
@@ -226,7 +227,7 @@
 {/snippet}
 
 {#snippet button(c: Component)}
-	{@const cls = `inline-flex h-8 max-w-full min-w-15 items-center justify-center gap-1.5 rounded-lg px-4 text-sm font-medium text-white no-underline transition-colors disabled:pointer-events-none disabled:opacity-50 ${buttonColors[c.style ?? ButtonStyle.Secondary] ?? buttonColors[ButtonStyle.Secondary]}`}
+	{@const cls = `inline-flex h-8 max-w-full min-w-15 items-center justify-center gap-1.5 rounded-lg px-4 text-sm font-medium no-underline transition-colors disabled:pointer-events-none disabled:opacity-50 ${buttonColors[c.style ?? ButtonStyle.Secondary] ?? buttonColors[ButtonStyle.Secondary]}`}
 	{@const href = webUrl(c.url)}
 	{#if c.style === ButtonStyle.Link && href && !c.disabled}
 		<a {href} target="_blank" rel="noopener noreferrer" class={cls}>

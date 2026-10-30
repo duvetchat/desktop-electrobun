@@ -65,7 +65,7 @@
 	{/if}
 	{#if !showImg || !imgLoaded}
 		<div
-			class="flex h-full w-full items-center justify-center bg-linear-to-br from-stone-500 to-stone-700 font-bold text-white select-none"
+			class="bg-duvet-chosen text-duvet-chosen-ink shadow-duvet-raised flex h-full w-full items-center justify-center font-bold select-none"
 			style="font-size: {size * 0.35}px;"
 		>
 			{initials(name)}

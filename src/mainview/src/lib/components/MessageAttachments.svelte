@@ -44,7 +44,7 @@
 		{#if voiceAtt?.pending}
 			<div
 				class="flex max-w-64 min-w-48 items-center gap-2.5 rounded-2xl px-3.5 py-1"
-				style="background: oklch(0.22 0.01 80 / 0.8); border: 1px solid oklch(0.30 0.01 80 / 0.6);"
+				style="background: color-mix(in oklab, var(--color-night-22) 80%, transparent); border: 1px solid color-mix(in oklab, var(--color-night-30) 60%, transparent);"
 			>
 				<div class="size-9 shrink-0 animate-pulse rounded-full bg-zinc-700"></div>
 				<div class="flex flex-1 flex-col gap-1.5">
@@ -62,7 +62,7 @@
 		{:else}
 			<div
 				class="flex h-12 items-center gap-2 rounded-2xl border border-dashed border-zinc-700/50 px-4"
-				style="background: oklch(0.20 0.008 80 / 0.5);"
+				style="background: color-mix(in oklab, var(--color-night-20) 50%, transparent);"
 			>
 				<svg
 					xmlns="http://www.w3.org/2000/svg"

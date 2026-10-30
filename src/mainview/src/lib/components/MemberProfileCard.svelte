@@ -105,7 +105,7 @@
 				{#if onBannerClick}
 					<button
 						type="button"
-						class="flex h-8 w-8 cursor-pointer items-center justify-center rounded-full bg-black/60 text-white opacity-0 transition-opacity group-hover:opacity-100 hover:bg-black/80"
+						class="text-fixed-white flex h-8 w-8 cursor-pointer items-center justify-center rounded-full bg-black/60 opacity-0 transition-opacity group-hover:opacity-100 hover:bg-black/80"
 						title="Change banner"
 						onclick={onBannerClick}
 					>
@@ -157,7 +157,7 @@
 						{#if onAvatarClick}
 							<button
 								type="button"
-								class="avatar-edit-btn flex h-7 w-7 cursor-pointer items-center justify-center rounded-full bg-black/60 text-white opacity-0 transition-opacity hover:bg-black/80"
+								class="avatar-edit-btn text-fixed-white flex h-7 w-7 cursor-pointer items-center justify-center rounded-full bg-black/60 opacity-0 transition-opacity hover:bg-black/80"
 								title="Change avatar"
 								onclick={onAvatarClick}
 							>
@@ -208,7 +208,7 @@
 			<h2 class="flex items-center gap-1.5 text-lg leading-tight font-bold break-all text-zinc-100">
 				{member.username}
 				{#if member.is_bot}
-					<span class="text-xxs rounded bg-stone-600 px-1.5 py-0.5 font-semibold text-white">BOT</span>
+					<span class="text-xxs bg-fill-600 text-fixed-white rounded px-1.5 py-0.5 font-semibold">BOT</span>
 				{/if}
 			</h2>
 			<p class="text-sm font-medium break-all text-zinc-400">

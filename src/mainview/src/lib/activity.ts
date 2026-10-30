@@ -19,6 +19,14 @@ export function shownActivities(list: UserActivity[] | undefined, now = Date.now
 	);
 }
 
+/** An activity in a line, for a friend's row beside its icon: the song and its artist, or what's played or listened to. */
+export function activityLine(activity: UserActivity): { kind: "listening" | "playing"; text: string } {
+	if (isSpotify(activity) && activity.details) {
+		return { kind: "listening", text: activity.state ? `${activity.details} — ${activity.state}` : activity.details };
+	}
+	return { kind: activity.type === ActivityType.Listening ? "listening" : "playing", text: activity.name };
+}
+
 /** A search for the song on Spotify's web player, as the activity has no track ID to link the song itself. */
 export function spotifySearchUrl(activity: UserActivity): string {
 	const query = [activity.details, activity.state].filter(Boolean).join(" ");
