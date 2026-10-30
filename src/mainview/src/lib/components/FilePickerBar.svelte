@@ -27,11 +27,13 @@
 					aria-pressed={on}
 					onclick={() => picker.toggleKind(kind)}
 					class="rounded-full px-2.5 py-1 text-xs font-medium transition-colors {on
-						? 'bg-stone-600 text-white'
+						? 'bg-fill-600 text-fixed-white'
 						: 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200'}"
 				>
 					{FILE_KIND_LABELS[kind]}
-					<span class="ml-0.5 tabular-nums {on ? 'text-white/70' : 'text-zinc-500'}">{picker.kindCounts[kind]}</span>
+					<span class="ml-0.5 tabular-nums {on ? 'text-fixed-white/70' : 'text-zinc-500'}"
+						>{picker.kindCounts[kind]}</span
+					>
 				</button>
 			{/if}
 		{/each}

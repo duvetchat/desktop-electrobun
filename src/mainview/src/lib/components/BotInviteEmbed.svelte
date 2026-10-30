@@ -47,13 +47,13 @@
 			<div class="min-w-0">
 				<div class="flex items-center gap-1.5">
 					<p class="truncate text-sm font-semibold text-white">{bot.username}</p>
-					<span class="text-xxs rounded bg-stone-600 px-1 py-0.5 font-semibold text-white">BOT</span>
+					<span class="text-xxs bg-fill-600 text-fixed-white rounded px-1 py-0.5 font-semibold">BOT</span>
 				</div>
 			</div>
 		</div>
 
 		<button
-			class="w-full rounded-md bg-stone-600 py-2 text-sm font-semibold text-white transition-colors hover:bg-stone-500"
+			class="bg-fill-600 text-fixed-white hover:bg-fill-500 w-full rounded-md py-2 text-sm font-semibold transition-colors"
 			onclick={() => botInviteRequest.set(botUserId)}
 		>
 			Add to Space

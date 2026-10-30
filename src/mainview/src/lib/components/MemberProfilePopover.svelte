@@ -314,7 +314,7 @@
 								{@const manageable = canManageRoleAt(space, role.position)}
 								<button
 									class="w-fit rounded-full px-2 py-0.5 text-xs transition-colors disabled:cursor-not-allowed disabled:opacity-50 {memberHasRole
-										? 'bg-stone-600 text-white hover:bg-stone-500'
+										? 'bg-fill-600 text-fixed-white hover:bg-fill-500'
 										: 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700'}"
 									onclick={() => toggleMemberRole(member, role.id)}
 									disabled={togglingRoles[toggleKey] || !manageable}

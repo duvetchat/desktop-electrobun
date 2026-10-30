@@ -14,6 +14,14 @@
 
   <script>
     (() => {
+      // The light theme (lib/theme.ts): the pick saved in Appearance, or the system's while it's System, dark when
+      // the system says nothing. Set here, before anything paints, so a light system doesn't flash dark.
+      try {
+        const pick = localStorage.getItem("duvet.theme.v1");
+        const systemLight = !!window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches;
+        if (pick === "light" || (pick !== "dark" && systemLight)) document.documentElement.classList.add("duvet-light");
+      } catch {}
+
       const path = window.location.pathname;
       const isDev = window.location.port === "5173";
 

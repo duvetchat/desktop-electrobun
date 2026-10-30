@@ -33,12 +33,14 @@
 							Cancel
 						</AlertDialog.Cancel>
 						<button
-							class="flex min-w-20 items-center justify-center gap-1.5 rounded-md bg-red-600 px-4 py-1.5 text-sm font-semibold text-white transition-colors hover:bg-red-500 disabled:opacity-50"
+							class="text-fixed-white flex min-w-20 items-center justify-center gap-1.5 rounded-md bg-red-600 px-4 py-1.5 text-sm font-semibold transition-colors hover:bg-red-500 disabled:opacity-50"
 							disabled={confirmStore.loading}
 							onclick={() => confirmStore.execute()}
 						>
 							{#if confirmStore.loading}
-								<div class="size-3.5 animate-spin rounded-full border-2 border-white/30 border-t-white"></div>
+								<div
+									class="border-fixed-white/30 border-t-fixed-white size-3.5 animate-spin rounded-full border-2"
+								></div>
 								{confirmStore.pending.confirmLabel ?? "Confirm"}...
 							{:else}
 								{confirmStore.pending.confirmLabel ?? "Confirm"}

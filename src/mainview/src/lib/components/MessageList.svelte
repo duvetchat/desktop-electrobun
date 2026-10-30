@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { hasPermission, mentionableRooms, Permission } from "$lib/permissions";
-	import { onDestroy, onMount, tick } from "svelte";
+	import { onDestroy, onMount, tick, type Snippet } from "svelte";
 	import { CircleAlert as AlertIcon, Eye as EyeIcon, Pin as PinIcon, PinOff as PinOffIcon } from "@lucide/svelte";
 	import { updateMessage, deleteMessage, getMessageThread, pinRoomMessage, unpinRoomMessage } from "$lib/api/messages";
 	import { sendComponentInteraction, type ComponentUse } from "$lib/api/interactions";
@@ -10,6 +10,7 @@
 		unpinConversationMessage,
 	} from "$lib/api/conversations";
 	import { confirmAction } from "$lib/stores/confirm.svelte";
+	import { keyboard } from "$lib/keyboard.svelte";
 	import { Dialog, Popover } from "bits-ui";
 	import {
 		currentUser,
@@ -98,6 +99,7 @@
 		isAtBottom = $bindable(true),
 		onUnreadMark = undefined,
 		customEmojis = [],
+		intro = undefined,
 	}: {
 		messages: Message[];
 		members?: MemberOnSidebar[];
@@ -124,6 +126,8 @@
 		isAtBottom?: boolean;
 		onUnreadMark?: (messageId: string) => void;
 		customEmojis?: SpaceEmoji[];
+		/** Shown above the oldest message once there's nothing older to load, and alone in a chat with no messages. */
+		intro?: Snippet;
 	} = $props();
 
 	// ── State ──────────────────────────────────────────────────────────────────
@@ -929,7 +933,11 @@
 			{/each}
 		</div>
 	{:else if messages.length === 0}
-		<div class="mb-5 py-4 text-center text-zinc-400 italic">No messages yet. Send the first message.</div>
+		{#if intro}
+			{@render intro()}
+		{:else}
+			<div class="mb-5 py-4 text-center text-zinc-400 italic">No messages yet. Send the first message.</div>
+		{/if}
 	{:else}
 		<!-- Bottom sentinel: first in DOM → appears at visual bottom in flex-col-reverse.
              Visible when user scrolls to the bottom (newest messages area). -->
@@ -983,7 +991,9 @@
 					data-message-id={message.id}
 					class="group relative -mx-3 mb-1 flex items-center rounded-md px-3 py-1 {showHeader
 						? 'mt-4'
-						: 'mt-1'} {isHighlighted ? 'bg-yellow-500/15' : 'hover:bg-zinc-800/55'}"
+						: 'mt-1'} {isHighlighted ? 'bg-yellow-500/15' : 'hover:bg-zinc-800/55'} {keyboard.cursor === message.id
+						? 'outline-duvet-accent outline-2 -outline-offset-2'
+						: ''}"
 				>
 					<div class="mr-3 flex w-10 shrink-0 justify-end">
 						<PinIcon class="size-4 text-zinc-500" />
@@ -1019,16 +1029,30 @@
 					message.interaction_metadata
 						? 'mt-2 pt-2'
 						: showHeader
-							? 'mt-4'
+							? 'mt-3'
 							: 'mt-0'} {isFailed
 						? 'bg-red-500/10 hover:bg-red-500/15'
 						: isHighlighted
 							? 'bg-yellow-500/15 hover:bg-yellow-500/20'
 							: isMention
 								? 'border-l-2 border-yellow-500/60 bg-yellow-500/10 hover:bg-yellow-500/15'
-								: 'hover:bg-zinc-800/55'} -mx-3"
+								: 'hover:bg-zinc-800/55'} -mx-3 {keyboard.cursor === message.id
+						? 'outline-duvet-accent outline-2 -outline-offset-2'
+						: ''}"
 					style={isFailed ? "" : isPending ? "opacity: 0.5; pointer-events: none;" : ""}
 				>
+					{#if keyboard.cursor === message.id && !isPending && !ephemeral}
+						<!-- What the keys do here, while keyboard navigation's cursor is on this message. -->
+						<span
+							class="bg-duvet-card text-duvet-ink2 shadow-duvet-raised pointer-events-none absolute right-3 -bottom-3 z-10 flex items-center gap-2 rounded-lg px-2 py-0.5 text-[11px] font-medium"
+							aria-hidden="true"
+						>
+							<span><kbd class="text-duvet-ink font-bold">r</kbd> reply</span>
+							{#if $currentUser && message.author_id === $currentUser.id}
+								<span><kbd class="text-duvet-ink font-bold">e</kbd> edit</span>
+							{/if}
+						</span>
+					{/if}
 					{#if message.referenced_message}
 						<div class="mb-0.5 flex min-w-0 items-start">
 							<!-- L-connector aligned to avatar column -->
@@ -1150,7 +1174,7 @@
 
 						<div class="flex min-w-0 flex-1 flex-col">
 							{#if showHeader}
-								<div class="mb-0.5 flex items-center">
+								<div class="flex items-center leading-5">
 									{#if msgMember}
 										<MemberProfilePopover
 											member={msgMember}
@@ -1177,11 +1201,13 @@
 										</span>
 									{/if}
 									{#if message.webhook_id}
-										<span class="text-xxs mr-1.5 rounded bg-stone-600 px-1 py-0.5 font-semibold text-white"
+										<span class="text-xxs bg-fill-600 text-fixed-white mr-1.5 rounded px-1 py-0.5 font-semibold"
 											>WEBHOOK</span
 										>
 									{:else if message.author_is_bot}
-										<span class="text-xxs mr-1.5 rounded bg-stone-600 px-1 py-0.5 font-semibold text-white">BOT</span>
+										<span class="text-xxs bg-fill-600 text-fixed-white mr-1.5 rounded px-1 py-0.5 font-semibold"
+											>BOT</span
+										>
 									{/if}
 									<span class="text-xs font-medium text-zinc-400">{formatTimestamp(message.created_at, now)}</span>
 								</div>
@@ -1775,6 +1801,8 @@
 					</svg>
 				{/if}
 			</div>
+		{:else if intro}
+			{@render intro()}
 		{/if}
 	{/if}
 </div>
@@ -1995,7 +2023,7 @@
 
 					<div class="flex gap-3">
 						<button
-							class="rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-amber-500 disabled:opacity-50"
+							class="text-fixed-white rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium transition-colors hover:bg-amber-500 disabled:opacity-50"
 							disabled={flagsBadgesSaving}
 							onclick={saveFlagsBadges}
 						>

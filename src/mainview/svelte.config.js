@@ -11,10 +11,10 @@ import adapter from "@sveltejs/adapter-static";
 // Notes on the hashes and keywords below:
 //  - "wasm-unsafe-eval": Shiki's Oniguruma highlighter and the rnnoise noise-suppression worklet both
 //    compile WebAssembly; without it WebAssembly.instantiate throws and code blocks / voice break.
-//  - The two script-src hashes are the inline bootstrap in app.html (the pre-hydration redirect). The
-//    HTML parser normalises CRLF to LF before hashing, so the LF hash is the one browsers check; the
-//    CRLF hash is kept as a belt-and-suspenders fallback. src/mainview/src/lib/csp.test.ts recomputes
-//    them from app.html and fails if either drifts.
+//  - The two script-src hashes are the inline bootstrap in app.html (the light theme's class, set before the
+//    first paint, and the pre-hydration redirect). The HTML parser normalises CRLF to LF before hashing,
+//    so the LF hash is the one browsers check; the CRLF hash is kept as a belt-and-suspenders fallback.
+//    src/mainview/src/lib/csp.test.ts recomputes them from app.html and fails if either drifts.
 //  - script-src-attr allows exactly one inline event handler: the custom-emoji <img onerror> retry in
 //    markdown.ts (the only inline handler the app renders). 'unsafe-hashes' is required for attributes.
 //    csp.test.ts recomputes this hash from markdown.ts.
@@ -75,8 +75,8 @@ const csp = {
     "script-src": [
       "self",
       "wasm-unsafe-eval", // Shiki (Oniguruma) + rnnoise compile WebAssembly
-      "sha256-EGXrGjrdkeO8rpxkWo74ks0sshnuN8zFcLAGZEXkfEE=", // app.html bootstrap, LF-normalised (what browsers hash)
-      "sha256-2qdrStSh/v7pnjaGmymkqbK23y9RboeNKmFCDLlDwAc=", // app.html bootstrap, CRLF fallback
+      "sha256-zzaXRVbQBei+ll7JAk73YcKqgcfztyoTvbZNi10yw6I=", // app.html bootstrap, LF-normalised (what browsers hash)
+      "sha256-HHSkphUC9tsdH2k2OIgFMoGkbhF9VSglkiC5TArnbaQ=", // app.html bootstrap, CRLF fallback
     ],
     // The one inline event handler the app renders: the custom-emoji <img onerror> retry in markdown.ts.
     "script-src-attr": ["unsafe-hashes", "sha256-Nd49K6zAbHBtNZ2ylrgPZM3IXQa52jge41l3ChhYTOA="],

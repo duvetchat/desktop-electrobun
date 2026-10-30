@@ -91,14 +91,14 @@
 			<div class="flex items-center gap-4">
 				{#if call.state === "ringing"}
 					<button
-						class="flex size-14 items-center justify-center rounded-full bg-emerald-600 text-white shadow-lg transition-all hover:bg-emerald-500 hover:shadow-emerald-500/25 active:scale-95"
+						class="text-fixed-white flex size-14 items-center justify-center rounded-full bg-emerald-600 shadow-lg transition-all hover:bg-emerald-500 hover:shadow-emerald-500/25 active:scale-95"
 						onclick={accept}
 						aria-label="Accept call"
 					>
 						<Phone class="size-6" />
 					</button>
 					<button
-						class="flex size-14 items-center justify-center rounded-full bg-red-600 text-white shadow-lg transition-all hover:bg-red-500 hover:shadow-red-500/25 active:scale-95"
+						class="text-fixed-white flex size-14 items-center justify-center rounded-full bg-red-600 shadow-lg transition-all hover:bg-red-500 hover:shadow-red-500/25 active:scale-95"
 						onclick={decline}
 						aria-label="Decline call"
 					>
@@ -107,7 +107,7 @@
 				{:else}
 					<!-- Calling state: cancel button -->
 					<button
-						class="flex size-14 items-center justify-center rounded-full bg-red-600 text-white shadow-lg transition-all hover:bg-red-500 hover:shadow-red-500/25 active:scale-95"
+						class="text-fixed-white flex size-14 items-center justify-center rounded-full bg-red-600 shadow-lg transition-all hover:bg-red-500 hover:shadow-red-500/25 active:scale-95"
 						onclick={cancel}
 						aria-label="Cancel call"
 					>

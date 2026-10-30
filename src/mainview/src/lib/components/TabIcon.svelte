@@ -1,0 +1,39 @@
+<script lang="ts">
+	import { Hash as HashIcon, UsersRound as UsersRoundIcon, Volume2 as SpeakerSimpleHighIcon } from "@lucide/svelte";
+	import { getAvatarURL } from "$lib/common/common";
+	import { isConversationTab, otherMember, tabTitle } from "$lib/pane";
+	import { conversations, currentUser } from "$lib/stores.svelte";
+	import type { Tab } from "$lib/types";
+	import UserAvatar from "$lib/components/UserAvatar.svelte";
+
+	/** A tab's mark: # for a text room, the speaker for a voice one, the other member's avatar for a DM and the group
+	 * icon for a group. */
+	let { tab, size = 14, class: className = "" }: { tab: Tab; size?: number; class?: string } = $props();
+
+	const conv = $derived(isConversationTab(tab) ? $conversations.find((c) => c.id === tab.channelId) : undefined);
+	const other = $derived(conv ? otherMember(conv, $currentUser?.id) : null);
+</script>
+
+{#if isConversationTab(tab)}
+	{#if conv?.type === 2 || !other}
+		<span
+			class="bg-duvet-chosen text-duvet-chosen-ink flex shrink-0 items-center justify-center rounded-full {className}"
+			style="width: {size + 4}px; height: {size + 4}px;"
+			aria-hidden="true"
+		>
+			<UsersRoundIcon style="width: {size * 0.75}px; height: {size * 0.75}px;" />
+		</span>
+	{:else}
+		<span class="shrink-0 {className}" aria-hidden="true">
+			<UserAvatar
+				src={getAvatarURL(other.user_id, other.user?.avatar)}
+				name={tabTitle(tab, $conversations, $currentUser?.id)}
+				size={size + 4}
+			/>
+		</span>
+	{/if}
+{:else if tab.channelType === "voice"}
+	<SpeakerSimpleHighIcon class="text-duvet-alive shrink-0 {className}" style="width: {size}px; height: {size}px;" />
+{:else}
+	<HashIcon class="text-duvet-ink2 shrink-0 {className}" style="width: {size}px; height: {size}px;" />
+{/if}

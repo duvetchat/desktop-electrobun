@@ -14,7 +14,7 @@
 	import { hasPermission, Permission } from "$lib/permissions";
 	import { customEmojiMapOf, mentionMapOf } from "$lib/markdown";
 
-	// The pin button of a channel's or a conversation's header, and the list of its pinned messages, the
+	// The pin button of a pane's bar (or a conversation's header), and the list of its pinned messages, the
 	// last pinned first. A message jumps to itself; who can pin unpins it from here too.
 	let {
 		space = null,
@@ -123,9 +123,9 @@
 
 <Popover.Root bind:open>
 	<Popover.Trigger
-		class="flex items-center justify-center rounded p-1 transition-colors hover:text-zinc-200 {open
-			? 'text-zinc-100'
-			: 'text-zinc-400'}"
+		class="hover:bg-duvet-card hover:text-duvet-ink focus-visible:outline-duvet-accent flex items-center justify-center rounded-lg p-1.5 transition-colors focus-visible:outline-2 motion-reduce:transition-none {open
+			? 'bg-duvet-card text-duvet-ink'
+			: 'text-duvet-ink2'}"
 		title="Pinned messages"
 		aria-label="Pinned messages"
 	>

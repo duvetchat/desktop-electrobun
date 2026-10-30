@@ -87,7 +87,7 @@
 					<div>
 						<div class="flex items-center gap-1.5">
 							<span class="text-sm font-semibold text-white">{bot.username}</span>
-							<span class="text-xxs rounded bg-stone-600 px-1 py-0.5 font-semibold text-white">BOT</span>
+							<span class="text-xxs bg-fill-600 text-fixed-white rounded px-1 py-0.5 font-semibold">BOT</span>
 						</div>
 					</div>
 				</div>
@@ -101,7 +101,7 @@
 							disabled={adding}
 						>
 							<div
-								class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-linear-to-br from-stone-500 to-stone-700 text-sm font-bold text-white select-none"
+								class="from-fill-500 to-fill-700 text-fixed-white flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-linear-to-br text-sm font-bold select-none"
 							>
 								{space.name.charAt(0).toUpperCase()}
 							</div>

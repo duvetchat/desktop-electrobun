@@ -167,7 +167,7 @@
 		aria-label="/{command.name}"
 		tabindex="-1"
 		onkeydown={handleKeyDown}
-		class="flex flex-wrap items-center gap-2 rounded-xl bg-[oklch(0.22_0.01_80/0.8)] px-3 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)] outline-none"
+		class="bg-night-22/80 flex flex-wrap items-center gap-2 rounded-xl px-3 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)] outline-none"
 	>
 		<span
 			class="flex h-8 shrink-0 items-center gap-1.5 rounded-md bg-indigo-500/15 pr-1 pl-2 text-sm font-semibold text-indigo-200"
@@ -205,7 +205,7 @@
 							: 'bg-zinc-600'}"
 					>
 						<span
-							class="absolute top-0.5 left-0.5 size-4 rounded-full bg-white transition-transform {on
+							class="bg-fixed-white absolute top-0.5 left-0.5 size-4 rounded-full transition-transform {on
 								? 'translate-x-4'
 								: ''}"
 						></span>

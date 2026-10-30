@@ -297,7 +297,7 @@
 							/>
 							<!-- The frame shows the result; its shadow dims the rest of the image. -->
 							<div
-								class="pointer-events-none absolute shadow-[0_0_0_9999px_rgb(0_0_0/0.6)] ring-2 ring-white/40 {round
+								class="ring-fixed-white/40 pointer-events-none absolute shadow-[0_0_0_9999px_rgb(0_0_0/0.6)] ring-2 {round
 									? 'rounded-full'
 									: 'rounded-md'}"
 								style="left: {frameLeft}px; top: {FRAME_MARGIN}px; width: {frameBox.width}px; height: {frameBox.height}px;"
@@ -329,7 +329,7 @@
 								}}>Change image</button
 							>
 							<button
-								class="rounded-md bg-stone-600 px-5 py-1.5 text-sm font-semibold text-white transition-colors hover:bg-stone-500"
+								class="bg-fill-600 text-fixed-white hover:bg-fill-500 rounded-md px-5 py-1.5 text-sm font-semibold transition-colors"
 								onclick={handleConfirm}
 								disabled={processing}>{processing ? "Processing..." : "Apply"}</button
 							>

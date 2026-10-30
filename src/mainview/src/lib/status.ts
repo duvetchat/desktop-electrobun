@@ -4,8 +4,8 @@ import type { ChosenStatus, MemberOnSidebar } from "$lib/types";
 /** The statuses a user can choose (PUT /api/users/@me/status), as the user panel's menu lists them. Others see the
  * one chosen while the user is connected. */
 export const STATUS_CHOICES: { status: ChosenStatus; label: string; description?: string }[] = [
-	{ status: 1, label: "Online" },
-	{ status: 2, label: "Do Not Disturb", description: "No notification sounds, and incoming calls don't ring" },
+	{ status: 1, label: "Online", description: "Sounds and calls as usual" },
+	{ status: 2, label: "Do Not Disturb", description: "No sounds, and calls don't ring" },
 ];
 
 /** The status a user chose, from what their READY or /users/@me says: do not disturb, or else online (a gateway from
@@ -18,7 +18,8 @@ export function chosenStatus(status: number | undefined): ChosenStatus {
 export function statusDotClass(status: MemberOnSidebar["status"]): string {
 	switch (status) {
 		case "online":
-			return "bg-stone-300";
+			// Ice, alive (app.css).
+			return "bg-[var(--status-online,var(--color-stone-300))]";
 		case "idle":
 			return "bg-amber-500";
 		case "dnd":

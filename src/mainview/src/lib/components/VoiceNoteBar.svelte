@@ -55,7 +55,7 @@
 	>
 		<div class="flex items-center gap-2 px-2 py-1.5 select-none">
 			<button
-				class="flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-full bg-[oklch(0.55_0.15_250)] text-white transition-colors hover:bg-[oklch(0.62_0.15_250)]"
+				class="text-fixed-white flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-full bg-[oklch(0.55_0.15_250)] transition-colors hover:bg-[oklch(0.62_0.15_250)]"
 				onclick={toggleVoiceNote}
 			>
 				{#if $voiceNote.playing}

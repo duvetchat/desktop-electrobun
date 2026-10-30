@@ -59,7 +59,7 @@
 
 	function embedBorderStyle(embed: Embed): string {
 		const c = embed.color;
-		if (!c || c.color_from == null) return "border-color: rgb(63 63 70)";
+		if (!c || c.color_from == null) return "border-color: var(--color-zinc-700)";
 		const from = intToHex(c.color_from);
 		if (c.color_to == null) return `border-color: ${from}`;
 		const to = intToHex(c.color_to);
@@ -269,7 +269,7 @@
 						<img src={poster} alt="" class="absolute inset-0 size-full object-cover" loading="lazy" />
 					{/if}
 					<span
-						class="relative flex size-14 items-center justify-center rounded-full bg-black/60 text-white transition-colors group-hover:bg-black/80"
+						class="text-fixed-white relative flex size-14 items-center justify-center rounded-full bg-black/60 transition-colors group-hover:bg-black/80"
 					>
 						<PlayIcon class="size-6 translate-x-0.5" fill="currentColor" stroke="none" />
 					</span>

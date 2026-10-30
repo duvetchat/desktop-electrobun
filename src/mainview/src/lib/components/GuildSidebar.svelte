@@ -1,19 +1,18 @@
 <script lang="ts">
 	import { promptDialog } from "$lib/stores/prompt.svelte";
 	import { confirmAction } from "$lib/stores/confirm.svelte";
-	import { getApiError } from "$lib/api/api";
 	import {
 		Plus as PlusIcon,
 		ChevronDown as CaretDownIcon,
 		FolderPlus as FolderPlusIcon,
 		Users as UsersIcon,
 	} from "@lucide/svelte";
-	import { ContextMenu, Dialog, Tabs } from "bits-ui";
+	import { ContextMenu } from "bits-ui";
 	import { onMount } from "svelte";
 	import type { Guild } from "$lib/types";
-	import { createSpace, leaveSpace } from "$lib/api/spaces";
+	import { leaveSpace } from "$lib/api/spaces";
 	import SpaceIcon from "$lib/components/SpaceIcon.svelte";
-	import JoinInviteModal from "$lib/components/JoinInviteModal.svelte";
+	import AddSpaceModal from "$lib/components/AddSpaceModal.svelte";
 	import {
 		currentUser,
 		pendingFriendRequests,
@@ -137,64 +136,11 @@
 			.toUpperCase();
 	}
 
-	// ── Create server modal ────────────────────────────────────────────────────
+	// ── Add server modal ───────────────────────────────────────────────────────
 	let showModal = $state(false);
-	let modalTab = $state<"create" | "join">("create");
-	let serverName = $state("");
-	let serverDescription = $state("");
-	let creating = $state(false);
-	let createError = $state("");
-
-	// ── Join server modal ──────────────────────────────────────────────────────
-	let joinInputValue = $state("");
-	let showJoinPreview = $state(false);
-	let joinCode = $state<string | null>(null);
-
-	function extractCode(input: string): string {
-		const value = input.trim();
-		if (!value) return "";
-
-		const htmlMatch = value.match(/[?&]code=([^&#\s]+)/);
-		if (htmlMatch?.[1]) return decodeURIComponent(htmlMatch[1]);
-
-		const pathMatch = value.match(/\/invite\/([^/?#\s]+)/);
-		if (pathMatch?.[1]) return pathMatch[1];
-
-		const hashMatch = value.match(/#invite:([^\s]+)/);
-		if (hashMatch?.[1]) return decodeURIComponent(hashMatch[1]);
-
-		return value;
-	}
 
 	function openModal() {
-		modalTab = "create";
-		serverName = "";
-		serverDescription = "";
-		createError = "";
-		joinInputValue = "";
 		showModal = true;
-	}
-
-	function handleJoinSubmit() {
-		const code = extractCode(joinInputValue);
-		if (!code) return;
-		joinCode = code;
-		showModal = false;
-		showJoinPreview = true;
-	}
-
-	async function handleCreate() {
-		if (!serverName.trim()) return;
-		creating = true;
-		createError = "";
-		try {
-			await createSpace(serverName.trim(), serverDescription.trim() || undefined);
-			showModal = false;
-		} catch (e) {
-			createError = getApiError(e, "Unknown error");
-		} finally {
-			creating = false;
-		}
 	}
 
 	const friendsBadgeCount = $derived($pendingFriendRequests.length + $unreadConversations.size);
@@ -230,20 +176,20 @@
 </script>
 
 <nav
-	class="flex h-full w-full max-w-16 flex-col justify-start border-r border-stone-800 bg-[linear-gradient(180deg,oklch(0.2_0.01_80),oklch(0.17_0.008_80))]"
+	class="from-night-20 to-night-17 flex h-full w-full max-w-16 flex-col justify-start border-r border-stone-800 bg-linear-to-b"
 >
 	<div class="flex flex-col items-center justify-center gap-1.5 py-2">
 		<button
 			title="Friends"
 			onclick={onFriendsSelect}
 			class="relative flex size-9 items-center justify-center rounded-lg transition-all duration-150 {isFriendsActive
-				? 'bg-indigo-600 text-white'
+				? 'text-fixed-white bg-indigo-600'
 				: 'bg-stone-900/65 text-stone-200 hover:bg-stone-800/80 hover:text-stone-100'}"
 		>
 			<UsersIcon class="size-4" />
 			{#if friendsBadgeCount > 0}
 				<span
-					class="absolute -top-0.5 -right-0.5 flex size-4 items-center justify-center rounded-full bg-red-500 text-[9px] font-bold text-white"
+					class="text-fixed-white absolute -top-0.5 -right-0.5 flex size-4 items-center justify-center rounded-full bg-red-500 text-[9px] font-bold"
 				>
 					{friendsBadgeCount > 9 ? "9+" : friendsBadgeCount}
 				</span>
@@ -295,7 +241,7 @@
 									/>
 									{#if mentionCountBySpace[guild.id] && guild.id !== activeGuildId}
 										<span
-											class="absolute -right-1 -bottom-1 flex size-4 items-center justify-center rounded-full bg-red-600 text-[9px] font-bold text-white ring-2 ring-stone-900"
+											class="text-fixed-white absolute -right-1 -bottom-1 flex size-4 items-center justify-center rounded-full bg-red-600 text-[9px] font-bold ring-2 ring-stone-900"
 											>{mentionCountBySpace[guild.id]}</span
 										>
 									{:else if spacesWithUnread.has(guild.id) && guild.id !== activeGuildId}
@@ -372,7 +318,7 @@
 								/>
 								{#if mentionCountBySpace[guild.id] && guild.id !== activeGuildId}
 									<span
-										class="absolute -right-1 -bottom-1 flex size-4 items-center justify-center rounded-full bg-red-600 text-[9px] font-bold text-white ring-2 ring-stone-900"
+										class="text-fixed-white absolute -right-1 -bottom-1 flex size-4 items-center justify-center rounded-full bg-red-600 text-[9px] font-bold ring-2 ring-stone-900"
 										>{mentionCountBySpace[guild.id]}</span
 									>
 								{:else if spacesWithUnread.has(guild.id) && guild.id !== activeGuildId}
@@ -428,105 +374,4 @@
 	</div>
 </nav>
 
-<Dialog.Root bind:open={showModal}>
-	<Dialog.Portal>
-		<Dialog.Overlay class="fixed inset-0 z-50 bg-black/60" />
-		<Dialog.Content class="fixed inset-0 z-50 flex items-center justify-center p-4">
-			<div
-				class="flex w-full max-w-sm flex-col gap-4 rounded-xl border border-zinc-700 bg-zinc-900 p-6 text-zinc-100 shadow-2xl"
-			>
-				<Dialog.Title class="text-center text-lg font-bold text-white">Add a Server</Dialog.Title>
-				<p class="-mt-2 text-center text-sm text-zinc-300">Create your own or join one with an invite code.</p>
-
-				<Tabs.Root bind:value={modalTab}>
-					<Tabs.List class="grid grid-cols-2 gap-2 rounded-lg bg-stone-800/80 p-1">
-						<Tabs.Trigger
-							value="create"
-							class="rounded-md px-3 py-2 text-sm font-semibold text-zinc-300 data-[state=active]:bg-stone-600 data-[state=active]:text-white"
-						>
-							Create
-						</Tabs.Trigger>
-						<Tabs.Trigger
-							value="join"
-							class="rounded-md px-3 py-2 text-sm font-semibold text-zinc-300 data-[state=active]:bg-stone-600 data-[state=active]:text-white"
-						>
-							Join
-						</Tabs.Trigger>
-					</Tabs.List>
-
-					<Tabs.Content value="create" class="mt-4 space-y-3">
-						<div class="flex flex-col gap-1">
-							<label for="server-name" class="text-xs font-semibold tracking-wider text-zinc-400 uppercase"
-								>Server Name <span class="text-red-400">*</span></label
-							>
-							<input
-								id="server-name"
-								type="text"
-								bind:value={serverName}
-								placeholder="My awesome server"
-								class="rounded-md bg-zinc-800 px-3 py-2 text-sm text-white outline-none placeholder:text-zinc-500 focus:ring-1 focus:ring-stone-500"
-								maxlength={64}
-							/>
-						</div>
-						<div class="flex flex-col gap-1">
-							<label for="server-desc" class="text-xs font-semibold tracking-wider text-zinc-400 uppercase"
-								>Description <span class="text-zinc-500">(optional)</span></label
-							>
-							<input
-								id="server-desc"
-								type="text"
-								bind:value={serverDescription}
-								placeholder="What's this server about?"
-								class="rounded-md bg-zinc-800 px-3 py-2 text-sm text-white outline-none placeholder:text-zinc-500 focus:ring-1 focus:ring-stone-500"
-								maxlength={256}
-							/>
-						</div>
-						{#if createError}
-							<p class="text-xs text-red-400">{createError}</p>
-						{/if}
-						<div class="flex justify-end">
-							<button
-								onclick={handleCreate}
-								disabled={creating || !serverName.trim()}
-								class="rounded-md bg-stone-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-stone-500 disabled:cursor-not-allowed disabled:opacity-50"
-								>{creating ? "Creating…" : "Create"}</button
-							>
-						</div>
-					</Tabs.Content>
-
-					<Tabs.Content value="join" class="mt-4 space-y-3">
-						<div class="flex flex-col gap-1">
-							<label for="join-code" class="text-xs font-semibold tracking-wider text-zinc-400 uppercase"
-								>Invite Code or Link</label
-							>
-							<input
-								id="join-code"
-								type="text"
-								bind:value={joinInputValue}
-								placeholder="abc123 or invite?code=abc123"
-								class="rounded-md bg-zinc-800 px-3 py-2 font-mono text-sm text-white outline-none placeholder:text-zinc-500 focus:ring-1 focus:ring-stone-500"
-							/>
-						</div>
-						<div class="flex justify-end">
-							<button
-								onclick={handleJoinSubmit}
-								disabled={!joinInputValue.trim()}
-								class="rounded-md bg-stone-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-stone-500 disabled:cursor-not-allowed disabled:opacity-50"
-								>Preview</button
-							>
-						</div>
-					</Tabs.Content>
-				</Tabs.Root>
-
-				<div class="mt-1 flex justify-center">
-					<Dialog.Close
-						class="rounded-md px-4 py-2 text-sm text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-white"
-						>Cancel</Dialog.Close
-					>
-				</div>
-			</div>
-		</Dialog.Content>
-	</Dialog.Portal>
-</Dialog.Root>
-
-<JoinInviteModal bind:open={showJoinPreview} code={joinCode} />
+<AddSpaceModal bind:open={showModal} />
