@@ -1,4 +1,4 @@
-import { MessageType, type CallNotice, type Message } from "$lib/types";
+import { MessageType, type CallNotice, type GatewayReadyActiveCall, type Message } from "$lib/types";
 
 /**
  * Which of its sentences a call notice says to whoever reads it (decision 172):
@@ -79,6 +79,38 @@ export function callNoticeText(line: CallNoticeLine): string {
  */
 export function callNoticeSeen(call: CallNotice, me: string, answered: boolean): boolean {
 	return answered || call.participants.includes(me);
+}
+
+/**
+ * The calls the user answered from one of their devices, accepting or declining them, by conversation, as this client
+ * hears it: CALL_ACCEPTED or CALL_DECLINED with their own ID. Such a call's notice, once it ends, is seen
+ * (callNoticeSeen), and uses its answer up. An answer goes when a new call rings the user in its conversation (its
+ * CALL_INCOMING, or a READY that lists it still ringing them), as it was to an earlier call, and when they leave the
+ * group, whose notices no longer reach them.
+ */
+export class CallAnswers {
+	readonly #conversations = new Set<string>();
+
+	/** The user answered the call going on in the conversation. */
+	answered(conversationId: string) {
+		this.#conversations.add(conversationId);
+	}
+
+	/** A new call rings the user in the conversation, or they left it: an answer kept there no longer counts. */
+	drop(conversationId: string) {
+		this.#conversations.delete(conversationId);
+	}
+
+	/** A new session's READY: a call it lists still ringing the user, they haven't answered. A gateway that doesn't say
+	 * whether it rings drops nothing. */
+	ready(calls: Pick<GatewayReadyActiveCall, "conversation_id" | "ringing">[]) {
+		for (const call of calls) if (call.ringing === true) this.drop(call.conversation_id);
+	}
+
+	/** Whether the user answered the call a notice of the conversation tells of; the notice uses the answer up. */
+	take(conversationId: string): boolean {
+		return this.#conversations.delete(conversationId);
+	}
 }
 
 /** A conversation's read state on this client: whether it shows unread, and the user's read position in it, as

@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+	CallAnswers,
 	callDuration,
 	callNoticeCase,
 	callNoticeLine,
@@ -159,6 +160,45 @@ describe("callNoticeSeen", () => {
 	test("not whoever it rang who never answered", () => {
 		expect(callNoticeSeen(call([ALICE]), ME, false)).toBe(false);
 		expect(callNoticeSeen(call([ALICE, CAROL]), ME, false)).toBe(false);
+	});
+});
+
+describe("CallAnswers", () => {
+	const CONV = "01920000-0000-7000-8000-0000000000c1";
+	const OTHER_CONV = "01920000-0000-7000-8000-0000000000c2";
+
+	test("the notice of a call the user answered finds the answer, once", () => {
+		const answers = new CallAnswers();
+		answers.answered(CONV);
+		expect(answers.take(OTHER_CONV)).toBe(false);
+		expect(answers.take(CONV)).toBe(true);
+		expect(answers.take(CONV)).toBe(false);
+	});
+
+	test("a new call ringing the user there, or their leaving the group, drops it", () => {
+		const answers = new CallAnswers();
+		answers.answered(CONV);
+		answers.drop(CONV);
+		expect(answers.take(CONV)).toBe(false);
+	});
+
+	test("a READY that lists the conversation's call still ringing them drops it, one they answered keeps it", () => {
+		const answers = new CallAnswers();
+		answers.answered(CONV);
+		answers.answered(OTHER_CONV);
+		answers.ready([
+			{ conversation_id: CONV, ringing: true },
+			{ conversation_id: OTHER_CONV, ringing: false },
+		]);
+		expect(answers.take(CONV)).toBe(false);
+		expect(answers.take(OTHER_CONV)).toBe(true);
+	});
+
+	test("a READY from a gateway that doesn't say whether a call rings drops nothing", () => {
+		const answers = new CallAnswers();
+		answers.answered(CONV);
+		answers.ready([{ conversation_id: CONV }]);
+		expect(answers.take(CONV)).toBe(true);
 	});
 });
 

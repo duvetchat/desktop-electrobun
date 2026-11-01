@@ -225,10 +225,11 @@
 		tryEditAtIndex(0);
 	}
 
-	// The messages Ctrl+Up replies to: an ephemeral one isn't the room's, so nothing can reply to it.
+	// The messages Ctrl+Up replies to: an ephemeral one isn't the room's, so nothing can reply to it, and a notice's row
+	// has no Reply, which keyboard navigation's r skips too (decision 174).
 	function getAllMessages() {
 		return messages
-			.filter((m) => !isEphemeral(m))
+			.filter((m) => !isEphemeral(m) && !isNotice(m))
 			.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 	}
 

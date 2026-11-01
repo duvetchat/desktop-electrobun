@@ -609,7 +609,11 @@
 		return () => {
 			const msgs = get(dmMessages)[convId] ?? [];
 			if (isAtBottom) ackNewest(convId, msgs);
-			if (convUnreadAfter && ackedConvMsgId.get(convId) === newestConfirmedId(msgs)) convUnreadAfter = null;
+			// Read up to its newest message, it isn't unread: this view acked it, or the read position is there already, as
+			// a call notice of a call the user saw moves it.
+			const newest = newestConfirmedId(msgs);
+			const read = ackedConvMsgId.get(convId) === newest || (get(lastReadConvs)?.[convId] ?? "") >= newest;
+			if (convUnreadAfter && read) convUnreadAfter = null;
 			if (convUnreadAfter) {
 				unreadConversations.update((s) => {
 					s.add(convId);

@@ -894,8 +894,8 @@
 	// Pins are for those with PinMessages in a room, and for every member of a conversation.
 	const canPin = $derived(isConversation || currentUserCan(Permission.PinMessages));
 
-	// A pin notice isn't its pinner's to delete, as the API has it: ManageMessages deletes it in a room,
-	// the owner in a group, and either member in a DM.
+	// A notice isn't its author's to delete (a pin notice's pinner, a call notice's caller), as the API has it:
+	// ManageMessages deletes it in a room, the owner in a group, and either member in a DM.
 	const canDeleteNotices = $derived.by(() => {
 		if (!isConversation) return currentUserCan(Permission.ManageMessages);
 		const conversation = $conversations.find((c) => c.id === channelId);
