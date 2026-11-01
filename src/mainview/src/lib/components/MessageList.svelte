@@ -1,7 +1,13 @@
 <script lang="ts">
 	import { hasPermission, mentionableRooms, Permission } from "$lib/permissions";
 	import { onDestroy, onMount, tick, type Snippet } from "svelte";
-	import { CircleAlert as AlertIcon, Eye as EyeIcon, Pin as PinIcon, PinOff as PinOffIcon } from "@lucide/svelte";
+	import {
+		CircleAlert as AlertIcon,
+		Eye as EyeIcon,
+		Phone as PhoneIcon,
+		Pin as PinIcon,
+		PinOff as PinOffIcon,
+	} from "@lucide/svelte";
 	import { updateMessage, deleteMessage, getMessageThread, pinRoomMessage, unpinRoomMessage } from "$lib/api/messages";
 	import { sendComponentInteraction, type ComponentUse } from "$lib/api/interactions";
 	import {
@@ -28,6 +34,7 @@
 		friendsReady,
 		roomNames,
 		openRoomMention,
+		lastReadConvs,
 	} from "$lib/stores.svelte";
 	import {
 		addRoomReaction,
@@ -36,6 +43,7 @@
 		removeConversationReaction,
 	} from "$lib/api/reactions";
 	import { arrival, arrivalAction, listEnd } from "$lib/arrivals";
+	import { callNoticeLine, callNoticeText } from "$lib/call-notices";
 	import { keepPlace, takePlace } from "$lib/kept-places";
 	import { renderEmoji, isOnlyEmojis, countEmojis } from "$lib/emoji";
 	import { customEmojiMapOf, mentionMapOf, parseTextSegments, renderMarkdown, renderMarkdownLine } from "$lib/markdown";
@@ -45,6 +53,7 @@
 		isComponentsV2,
 		isEphemeral,
 		isLoading,
+		isNotice,
 		mentionsByReply,
 		messageText,
 	} from "$lib/types";
@@ -364,6 +373,15 @@
 			.map(({ m }) => m),
 	);
 
+	// What each call notice says to this user, by its ID: its row, and the quote of a reply to it.
+	const callNoticeLines = $derived(
+		new Map(
+			messages.flatMap((m) => {
+				const line = callNoticeLine(m, $currentUser?.id);
+				return line ? [[m.id, line] as const] : [];
+			}),
+		),
+	);
 	const authorColors = $derived(buildAuthorColorMap(members));
 	const mentionMap = $derived(mentionMapOf(members));
 	const customEmojiMap = $derived(customEmojiMapOf(customEmojis));
@@ -610,9 +628,11 @@
 		}
 
 		// The list also grows when scrolling up loads older messages: only what made its newest end newer is new. And
-		// after a jump, what loads below is history the reader scrolls into.
+		// after a jump, what loads below is history the reader scrolls into. A conversation's read position says what
+		// the user has read already: a call notice of a call they saw (DM_MESSAGE_CREATE moved it there first).
 		const arrived = arrival(prevEnd, end);
-		const action = arrived && arrivalAction(arrived, $currentUser?.id, wasAtBottom && visible, newerBelow);
+		const readUpTo = isConversation ? get(lastReadConvs)?.[channelId] : undefined;
+		const action = arrived && arrivalAction(arrived, $currentUser?.id, wasAtBottom && visible, newerBelow, readUpTo);
 		if (action === "bottom") {
 			// A message this window sends, or any while the user is at the bottom and looking.
 			tick().then(() => {
@@ -967,7 +987,7 @@
 			{@const chronoPrev = sortedMessages.at(i + 1)}
 			{@const isConsecutive =
 				chronoPrev &&
-				chronoPrev.type !== MessageType.PinNotice &&
+				!isNotice(chronoPrev) &&
 				chronoPrev.author_id === message.author_id &&
 				chronoPrev.author_name === message.author_name &&
 				isEphemeral(chronoPrev) === isEphemeral(message) &&
@@ -985,8 +1005,9 @@
 				message.author_id !== $currentUser.id &&
 				(messageText(message).includes(`<@${$currentUser.id}>`) || mentionsByReply(message, $currentUser.id))}
 			{@const msgMember = members.find((m) => m.id === message.author_id)}
-			{#if message.type === MessageType.PinNotice}
-				<!-- A pin notice: who pinned which message, as Discord shows it -->
+			{@const callLine = callNoticeLines.get(message.id)}
+			{#if message.type === MessageType.PinNotice || callLine}
+				<!-- A notice: who pinned which message, as Discord shows it, or a call of the conversation that ended -->
 				<div
 					data-message-id={message.id}
 					class="group relative -mx-3 mb-1 flex items-center rounded-md px-3 py-1 {showHeader
@@ -996,22 +1017,31 @@
 						: ''}"
 				>
 					<div class="mr-3 flex w-10 shrink-0 justify-end">
-						<PinIcon class="size-4 text-zinc-500" />
+						{#if callLine}
+							<!-- Red for a call the user missed -->
+							<PhoneIcon class="size-4 {callLine.missed ? 'text-red-400' : 'text-zinc-500'}" />
+						{:else}
+							<PinIcon class="size-4 text-zinc-500" />
+						{/if}
 					</div>
 					<p class="min-w-0 text-sm text-zinc-400">
-						<span class="font-medium text-zinc-200">{message.author_name}</span>
-						pinned
-						<button
-							type="button"
-							class="font-medium text-zinc-200 hover:underline"
-							onclick={() => jumpToPinned(message)}>a message</button
-						>
-						to this {isConversation ? "conversation" : "channel"}. See all
-						<button
-							type="button"
-							class="font-medium text-zinc-200 hover:underline"
-							onclick={() => pinsPanelRequest.set({ id: crypto.randomUUID(), channelId })}>pinned messages</button
-						>.
+						{#if callLine}
+							{callLine.before}<span class="font-medium text-zinc-200">{callLine.name}</span>{callLine.after}
+						{:else}
+							<span class="font-medium text-zinc-200">{message.author_name}</span>
+							pinned
+							<button
+								type="button"
+								class="font-medium text-zinc-200 hover:underline"
+								onclick={() => jumpToPinned(message)}>a message</button
+							>
+							to this {isConversation ? "conversation" : "channel"}. See all
+							<button
+								type="button"
+								class="font-medium text-zinc-200 hover:underline"
+								onclick={() => pinsPanelRequest.set({ id: crypto.randomUUID(), channelId })}>pinned messages</button
+							>.
+						{/if}
 						<span class="ml-1 text-xs text-zinc-500">{formatTimestamp(message.created_at, now)}</span>
 					</p>
 					{#if canDeleteNotices}
@@ -1063,6 +1093,7 @@
 								<!-- The referenced message is gone: the API sends only the reference then -->
 								<span class="-translate-y-1.25 text-xs text-zinc-500 italic">Original message was deleted</span>
 							{:else}
+								{@const quotedCall = callNoticeLines.get(message.referenced_message.message_id ?? "")}
 								<!-- Reply preview -->
 								<button
 									type="button"
@@ -1075,27 +1106,33 @@
 											messageId: message.referenced_message!.message_id!,
 										})}
 								>
-									<UserAvatar
-										src={getAvatarURL(
-											message.referenced_message.author_id ?? "",
-											message.referenced_message.author_avatar,
-										)}
-										name={message.referenced_message.author_name ?? "?"}
-										size={16}
-									/>
-									<span class="shrink-0 font-medium text-zinc-300">{message.referenced_message.author_name}</span>
-									{#if message.referenced_message.content}
-										<span class="msg-content truncate opacity-80"
-											>{@html renderMarkdownLine(
-												message.referenced_message.content,
-												mentionMap,
-												customEmojiMap,
-												$roomNames,
-											)}</span
-										>
+									{#if quotedCall}
+										<!-- A call notice has no text: what its row says, which names its caller -->
+										<PhoneIcon class="size-4 shrink-0 {quotedCall.missed ? 'text-red-400' : 'text-zinc-500'}" />
+										<span class="truncate opacity-80">{callNoticeText(quotedCall)}</span>
 									{:else}
-										<!-- No text to show: only files, a sticker or components -->
-										<span class="truncate italic opacity-80">Click to see message</span>
+										<UserAvatar
+											src={getAvatarURL(
+												message.referenced_message.author_id ?? "",
+												message.referenced_message.author_avatar,
+											)}
+											name={message.referenced_message.author_name ?? "?"}
+											size={16}
+										/>
+										<span class="shrink-0 font-medium text-zinc-300">{message.referenced_message.author_name}</span>
+										{#if message.referenced_message.content}
+											<span class="msg-content truncate opacity-80"
+												>{@html renderMarkdownLine(
+													message.referenced_message.content,
+													mentionMap,
+													customEmojiMap,
+													$roomNames,
+												)}</span
+											>
+										{:else}
+											<!-- No text to show: only files, a sticker or components -->
+											<span class="truncate italic opacity-80">Click to see message</span>
+										{/if}
 									{/if}
 									<span class="shrink-0 opacity-50"
 										>{new Date(message.referenced_message.created_at).toLocaleTimeString(locale, {
@@ -1853,21 +1890,28 @@
 						<div class="flex flex-col gap-2">
 							{#each threadMessages as threadMsg}
 								{@const parentMsg = threadMsg.ref_message_id ? threadMsgMap.get(threadMsg.ref_message_id) : null}
+								{@const parentCall = parentMsg ? callNoticeLine(parentMsg, $currentUser?.id) : null}
 								<div class="rounded-md border border-zinc-800 bg-zinc-800/30 px-3 py-2">
 									{#if parentMsg}
 										<div class="mb-2 flex items-center gap-1.5 border-l-2 border-zinc-600 pl-1">
-											<UserAvatar src={parentMsg.author_avatar_url} name={parentMsg.author_name} size={14} />
-											<span class="max-w-24 shrink-0 truncate text-xs font-medium text-zinc-400"
-												>{parentMsg.author_name}</span
-											>
-											<span class="truncate text-xs text-zinc-500"
-												>{@html renderMarkdownLine(
-													parentMsg.content ?? "",
-													mentionMap,
-													customEmojiMap,
-													$roomNames,
-												)}</span
-											>
+											{#if parentCall}
+												<!-- A call notice, quoted as the list quotes it -->
+												<PhoneIcon class="size-3.5 shrink-0 {parentCall.missed ? 'text-red-400' : 'text-zinc-500'}" />
+												<span class="truncate text-xs text-zinc-500">{callNoticeText(parentCall)}</span>
+											{:else}
+												<UserAvatar src={parentMsg.author_avatar_url} name={parentMsg.author_name} size={14} />
+												<span class="max-w-24 shrink-0 truncate text-xs font-medium text-zinc-400"
+													>{parentMsg.author_name}</span
+												>
+												<span class="truncate text-xs text-zinc-500"
+													>{@html renderMarkdownLine(
+														parentMsg.content ?? "",
+														mentionMap,
+														customEmojiMap,
+														$roomNames,
+													)}</span
+												>
+											{/if}
 										</div>
 									{/if}
 									<!-- As the pins and the search show a message: its text, voice note, sticker, files or components -->
