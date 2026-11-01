@@ -44,6 +44,7 @@
 	} from "$lib/api/reactions";
 	import { arrival, arrivalAction, listEnd } from "$lib/arrivals";
 	import { callNoticeLine, callNoticeText } from "$lib/call-notices";
+	import { quoteJump } from "$lib/jumps";
 	import { keepPlace, takePlace } from "$lib/kept-places";
 	import { renderEmoji, isOnlyEmojis, countEmojis } from "$lib/emoji";
 	import { customEmojiMapOf, mentionMapOf, parseTextSegments, renderMarkdown, renderMarkdownLine } from "$lib/markdown";
@@ -926,6 +927,12 @@
 				: { id: crypto.randomUUID(), spaceId, roomId: channelId, messageId },
 		);
 	}
+
+	// A reply's quote goes to the message it quotes, in this room or conversation.
+	function jumpToQuoted(message: Message) {
+		const link = message.referenced_message && quoteJump(message.referenced_message, { spaceId, channelId });
+		if (link) jumpToMessageRequest.set({ id: crypto.randomUUID(), ...link });
+	}
 </script>
 
 <!-- The space under the newest message is the list's padding (pb-4), not that message's margin: a margin that changes
@@ -960,9 +967,11 @@
 		{/if}
 	{:else}
 		<!-- Bottom sentinel: first in DOM → appears at visual bottom in flex-col-reverse.
-             Visible when user scrolls to the bottom (newest messages area). -->
+             Visible when user scrolls to the bottom (newest messages area). One height whether it spins or not, and
+             shrink-0, as the list's flex column would shrink it to its content: a change would move the list (scroll
+             anchoring), whose scroll asks for the page below again. -->
 		{#if hasMoreMessagesBelow}
-			<div data-sentinel-bottom class="flex w-full flex-col items-center gap-1 py-3">
+			<div data-sentinel-bottom class="flex h-11 w-full shrink-0 flex-col items-center justify-center gap-1">
 				{#if isLoadingMoreBelow}
 					<svg
 						class="h-5 w-5 animate-spin text-zinc-400"
@@ -1098,13 +1107,7 @@
 								<button
 									type="button"
 									class="flex min-w-0 -translate-y-1.25 cursor-pointer items-start gap-1.5 text-xs text-zinc-400 transition-colors hover:text-zinc-100"
-									onclick={() =>
-										jumpToMessageRequest.set({
-											id: crypto.randomUUID(),
-											spaceId: message.referenced_message!.space_id ?? spaceId,
-											roomId: message.referenced_message!.room_id ?? channelId,
-											messageId: message.referenced_message!.message_id!,
-										})}
+									onclick={() => jumpToQuoted(message)}
 								>
 									{#if quotedCall}
 										<!-- A call notice has no text: what its row says, which names its caller -->
