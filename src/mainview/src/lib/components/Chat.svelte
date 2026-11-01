@@ -16,7 +16,7 @@
 		Embed,
 		SpaceCommandApplication,
 	} from "$lib/types";
-	import { gatewayMessageToMessage, isEphemeral, MessageReferenceType } from "$lib/types";
+	import { gatewayMessageToMessage, isEphemeral, isNotice, MessageReferenceType } from "$lib/types";
 	import { sendMessage, sendVoiceNote, sendTypingIndicator, sendRecordingIndicator } from "$lib/api/messages";
 	import { MessageType } from "$lib/types";
 	import {
@@ -111,12 +111,10 @@
 	let replyTo = $state<Message | null>(null);
 	// The reply bar's @: whether the reply mentions the author of the message it replies to. On for each new reply.
 	let replyMention = $state(true);
-	// Nobody to mention in a reply to one's own message, a webhook's, or a pin notice (the room's, not its pinner's).
+	// Nobody to mention in a reply to one's own message, a webhook's, or a notice: a pin's or a call's is the room's or
+	// the conversation's, not its pinner's or caller's.
 	const canMentionReplied = $derived(
-		!!replyTo &&
-			replyTo.author_id !== $currentUser?.id &&
-			!replyTo.webhook_id &&
-			replyTo.type !== MessageType.PinNotice,
+		!!replyTo && replyTo.author_id !== $currentUser?.id && !replyTo.webhook_id && !isNotice(replyTo),
 	);
 	let chatInputRef = $state<{ focus: () => void; focusAndInsert: (char: string) => void } | null>(null);
 	let pendingFiles = $state<File[]>([]);
@@ -204,11 +202,13 @@
 		}
 	});
 
+	// The messages Ctrl+Shift+Up and Up in an empty message box edit: the user's own, which a notice of theirs (a pin's,
+	// or a call's they placed) isn't, as nobody edits one.
 	function getOwnMessages() {
 		const user = $currentUser;
 		if (!user) return [];
 		return [...messages]
-			.filter((m) => m.author_id === user.id && !failedNonces.has(m.nonce ?? ""))
+			.filter((m) => m.author_id === user.id && !isNotice(m) && !failedNonces.has(m.nonce ?? ""))
 			.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 	}
 
@@ -225,10 +225,11 @@
 		tryEditAtIndex(0);
 	}
 
-	// The messages Ctrl+Up replies to: an ephemeral one isn't the room's, so nothing can reply to it.
+	// The messages Ctrl+Up replies to: an ephemeral one isn't the room's, so nothing can reply to it, and a notice's row
+	// has no Reply, which keyboard navigation's r skips too (decision 174).
 	function getAllMessages() {
 		return messages
-			.filter((m) => !isEphemeral(m))
+			.filter((m) => !isEphemeral(m) && !isNotice(m))
 			.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 	}
 
@@ -434,7 +435,7 @@
 				return;
 			}
 			const message = messages.find((m) => m.id === request.messageId);
-			if (!message || isEphemeral(message) || message.type === MessageType.PinNotice) return;
+			if (!message || isEphemeral(message) || isNotice(message)) return;
 			if (request.kind === "reply") handleReply(message);
 			else if (message.author_id === $currentUser?.id) {
 				editingMessageId = message.id;

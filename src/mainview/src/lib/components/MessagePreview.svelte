@@ -1,16 +1,18 @@
 <script lang="ts">
-	import { Hash as HashIcon } from "@lucide/svelte";
+	import { Hash as HashIcon, Phone as PhoneIcon } from "@lucide/svelte";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
 	import MessageAttachments from "$lib/components/MessageAttachments.svelte";
 	import MessageComponents from "$lib/components/MessageComponents.svelte";
+	import { callNoticeLine, callNoticeText } from "$lib/call-notices";
 	import { renderMarkdown, type CustomEmojiMap } from "$lib/markdown";
-	import { openRoomMention, roomNames } from "$lib/stores.svelte";
+	import { currentUser, openRoomMention, roomNames } from "$lib/stores.svelte";
 	import { isComponentsV2, type Message } from "$lib/types";
 	import { formatShortDateTime } from "$lib/utils/time";
 
 	// A message as the search results and the pinned messages list it: its channel (when given), author,
 	// date, content, and its voice note, sticker, files or components as the chat shows them, smaller;
-	// onPreview opens an image. The content is marked data-search-content for the search's highlights.
+	// onPreview opens an image. The content is marked data-search-content for the search's highlights. A thread
+	// can start at a call notice, which says what its row in the chat does.
 	let {
 		message,
 		roomName = null,
@@ -28,6 +30,7 @@
 	const html = $derived(
 		message.content ? renderMarkdown(message.content, false, mentionMap, customEmojiMap, $roomNames) : "",
 	);
+	const callLine = $derived(callNoticeLine(message, $currentUser?.id));
 	// The content shows six lines; Show more shows the rest. clamped says whether the six hide some of it,
 	// measured once the content is laid out, and again when it or its width changes.
 	let contentEl = $state<HTMLElement | null>(null);
@@ -60,6 +63,12 @@
 			<span class="truncate text-sm font-semibold text-stone-100">{message.author_name}</span>
 			<span class="text-xxs shrink-0 text-stone-500">{formatShortDateTime(message.created_at)}</span>
 		</div>
+		{#if callLine}
+			<p class="flex items-center gap-1.5 text-sm text-stone-400">
+				<PhoneIcon class="size-4 shrink-0 {callLine.missed ? 'text-red-400' : 'text-stone-500'}" />
+				{callNoticeText(callLine)}
+			</p>
+		{/if}
 		{#if html}
 			<div
 				bind:this={contentEl}

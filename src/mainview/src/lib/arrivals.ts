@@ -53,16 +53,21 @@ export type ArrivalAction = "bottom" | "unread" | null;
  *
  * After a jump, while newer messages are still to load below (newerBelow), the list's bottom isn't the room's: what
  * comes there is a page of history the reader scrolls into, which neither takes them to its end nor gets the divider.
+ *
+ * Nor does a message at or before the user's read position (readUpTo), which they have read already: a conversation's
+ * call notice of a call they saw, which the API leaves read for them.
  */
 export function arrivalAction(
 	arrived: Arrival,
 	me: string | undefined,
 	following: boolean,
 	newerBelow = false,
+	readUpTo?: string,
 ): ArrivalAction {
 	if (arrived.sent) return "bottom";
 	if (newerBelow) return null;
 	if (following) return "bottom";
+	if (readUpTo !== undefined && arrived.message.id <= readUpTo) return null;
 	return arrived.message.author_id === me ? null : "unread";
 }
 

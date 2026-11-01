@@ -43,6 +43,7 @@
 	import type { Friend } from "$lib/api/friends";
 	import {
 		MessageType,
+		sentAt,
 		userStatusToString,
 		type AllowedMentions,
 		type Message,
@@ -196,7 +197,7 @@
 				msg.author_id.slice(0, 8),
 			author_avatar_url: getAvatarURL(msg.author_id, msg.user?.avatar ?? member?.user?.avatar),
 			author_is_bot: msg.user?.is_bot ?? false,
-			created_at: msg.created_at,
+			created_at: sentAt(msg),
 			updated_at: msg.updated_at,
 			nonce: msg.nonce,
 			ref_message_id: msg.referenced_message?.message_id ?? null,
@@ -206,6 +207,7 @@
 			embeds: msg.embeds ?? null,
 			sticker_attachment_id: msg.sticker_attachment_id ?? null,
 			pinned_at: msg.pinned_at ?? null,
+			call: msg.call,
 		};
 	}
 
@@ -607,7 +609,11 @@
 		return () => {
 			const msgs = get(dmMessages)[convId] ?? [];
 			if (isAtBottom) ackNewest(convId, msgs);
-			if (convUnreadAfter && ackedConvMsgId.get(convId) === newestConfirmedId(msgs)) convUnreadAfter = null;
+			// Read up to its newest message, it isn't unread: this view acked it, or the read position is there already, as
+			// a call notice of a call the user saw moves it.
+			const newest = newestConfirmedId(msgs);
+			const read = ackedConvMsgId.get(convId) === newest || (get(lastReadConvs)?.[convId] ?? "") >= newest;
+			if (convUnreadAfter && read) convUnreadAfter = null;
 			if (convUnreadAfter) {
 				unreadConversations.update((s) => {
 					s.add(convId);
