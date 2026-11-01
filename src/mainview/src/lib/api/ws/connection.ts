@@ -48,9 +48,25 @@ import { get } from "svelte/store";
 import { getSpaceMembers, type SpaceMemberWithUser } from "$lib/api/spaces";
 import { forgetSpaceCommands } from "$lib/api/interactions";
 
-import type { DMTypingEvent, GatewayEvent, GatewaySpace, ReferencedMessage, TypingEvent, UserStatus } from "$lib/types";
+import type {
+	CallNotice,
+	DMTypingEvent,
+	GatewayEvent,
+	GatewaySpace,
+	ReferencedMessage,
+	TypingEvent,
+	UserStatus,
+} from "$lib/types";
 
-import { gatewayMessageToMessage, isEphemeral, spaceWithoutRoom, withCreatedRole, withRoomReadState } from "$lib/types";
+import {
+	gatewayMessageToMessage,
+	isEphemeral,
+	MessageType,
+	spaceWithoutRoom,
+	withCreatedRole,
+	withRoomReadState,
+} from "$lib/types";
+import { CallAnswers, callNoticeSeen, readAfterCallNotice } from "$lib/call-notices";
 
 // Token is passed via query string because the WebSocket API does not support
 // custom headers during the handshake. Ideally the gateway would accept a
@@ -280,6 +296,47 @@ function sentOnThisConnection(conversationId: string): boolean {
 	);
 }
 
+// The calls the user answered from one of their devices, whose notices then leave the conversation read for them, as the
+// API does.
+const callAnswers = new CallAnswers();
+
+// A call notice that comes (DM_MESSAGE_CREATE) leaves its conversation read, up to it, for a user who saw the call: they
+// were in it, or answered it (callAnswers). For one who missed it, it's news like any message. The open conversation
+// shows its own unread state: only its read position moves, which keeps the divider off a call it saw (MessageList).
+function readCallNotice(conversationId: string, noticeId: string, call: CallNotice, open: boolean) {
+	const answered = callAnswers.take(conversationId);
+	const me = get(currentUser)?.id;
+	const seen = !!me && callNoticeSeen(call, me, answered);
+	const positions = get(lastReadConvs);
+	// The newest message listed besides the notice, which can be newer: the API can post a notice late.
+	const newest = (get(dmMessages)[conversationId] ?? [])
+		.filter((m) => m.id !== m.nonce && m.id !== noticeId)
+		.reduce<string | undefined>((max, m) => (max === undefined || m.id > max ? m.id : max), undefined);
+	const read = readAfterCallNotice(
+		{ unread: get(unreadConversations).has(conversationId), lastRead: positions?.[conversationId] },
+		noticeId,
+		seen,
+		newest,
+	);
+	if (positions && read.lastRead !== undefined && read.lastRead !== positions[conversationId]) {
+		lastReadConvs.set({ ...positions, [conversationId]: read.lastRead });
+	}
+	if (open) return;
+	unreadConversations.update((s) => {
+		if (read.unread) s.add(conversationId);
+		else s.delete(conversationId);
+		return s;
+	});
+	// Read, its mentions are too: the API counts only those after the read position.
+	if (!read.unread && conversationId in get(mentionCounts)) {
+		mentionCounts.update((all) => {
+			const copy = { ...all };
+			delete copy[conversationId];
+			return copy;
+		});
+	}
+}
+
 // The user's own call in that conversation, if it was ringing the others, no longer does: someone answered it, or it
 // ended.
 function stopOwnCallRinging(conversationId: string) {
@@ -402,6 +459,8 @@ function handleEvent(event: GatewayEvent) {
 				.catch(() => {});
 			// The calls going on in the user's conversations, and who is in each, as the new session has them.
 			const activeCalls = payload.data.active_calls ?? [];
+			// A call it lists still ringing the user, they haven't answered: an answer kept there was to an earlier one.
+			callAnswers.ready(activeCalls);
 			conversationsWithCalls.set(new Set(activeCalls.map((c) => c.conversation_id)));
 			ownCallsRinging.set(ownCallsRingingOnReady(activeCalls, user.id));
 			for (const call of activeCalls) {
@@ -1366,6 +1425,9 @@ function handleEvent(event: GatewayEvent) {
 					s.delete(raw.conversation_id);
 					return s;
 				});
+				// An answer kept there goes too: its call notices no longer reach them, and one would count for a later call's
+				// if they came back.
+				callAnswers.drop(raw.conversation_id);
 				break;
 			}
 			conversations.update((list) =>
@@ -1386,7 +1448,9 @@ function handleEvent(event: GatewayEvent) {
 			}
 			const conversationId = msg.conversation_id;
 			const isActiveConv = conversationId === get(activeDMConvId);
-			if (!isActiveConv) {
+			if (msg.type === MessageType.Call && msg.call) {
+				readCallNotice(conversationId, msg.id, msg.call, isActiveConv);
+			} else if (!isActiveConv) {
 				unreadConversations.update((s) => {
 					s.add(conversationId);
 					return s;
@@ -1553,6 +1617,8 @@ function handleEvent(event: GatewayEvent) {
 			break;
 		case "CALL_INCOMING": {
 			const d = payload.data;
+			// A new call: an answer of the user's heard before was to an earlier one.
+			callAnswers.drop(d.conversation_id);
 			// Track that this conversation has an active call
 			conversationsWithCalls.update((s) => {
 				s.add(d.conversation_id);
@@ -1597,6 +1663,8 @@ function handleEvent(event: GatewayEvent) {
 		case "CALL_ACCEPTED": {
 			const d = payload.data;
 			const me = get(currentUser)?.id;
+			// The user answered it, here or on another device: its notice leaves the conversation read for them.
+			if (d.user_id === me) callAnswers.answered(d.conversation_id);
 			// The gateway got this user's CALL_ACCEPT.
 			if (d.user_id === me && pendingAccept?.conversationId === d.conversation_id) pendingAccept = null;
 			// Someone answered the call, or its caller joined it again once someone had: if it's the user's own, its Join
@@ -1619,6 +1687,8 @@ function handleEvent(event: GatewayEvent) {
 			// declined on another device stops. The call ends once everyone it rang declined it (CALL_ENDED).
 			const d = payload.data;
 			gatewayHasCall(d.conversation_id);
+			// Declining it is answering it too (decision 143): its notice leaves the conversation read for them.
+			if (d.user_id === get(currentUser)?.id) callAnswers.answered(d.conversation_id);
 			if (callDeclinedAction(get(activeCall), d, get(currentUser)?.id) === "dismiss") activeCall.set(null);
 			break;
 		}

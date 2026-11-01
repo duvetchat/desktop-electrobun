@@ -1,7 +1,7 @@
 import api from "$lib/api/api";
 import { createAckThrottle } from "$lib/api/ack";
 import { messageSearchParams, type MessageSearch, type MessageSearchResponse } from "$lib/api/messages";
-import type { GatewayMessage, MessageType } from "$lib/types";
+import type { CallNotice, GatewayMessage, MessageType } from "$lib/types";
 
 export type ConversationType = 1 | 2; // 1 = DM, 2 = group
 
@@ -60,6 +60,8 @@ export interface DirectMessage {
 	sticker_attachment_id?: string | null;
 	/** When it was pinned; null while it isn't. Events that create or edit a message leave it out. */
 	pinned_at?: string | null;
+	/** A call notice's call: who was in it, and when. No other message has one. */
+	call?: CallNotice;
 }
 
 export async function getConversations(): Promise<Conversation[]> {

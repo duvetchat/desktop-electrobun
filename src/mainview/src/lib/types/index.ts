@@ -114,9 +114,21 @@ export const MessageType = {
 	Voice: 1,
 	/** A room's or conversation's notice that its author pinned the message it references; no content. */
 	PinNotice: 2,
+	/** A conversation's notice that a call in it ended, by its caller; no content, and its call says who was in it. */
+	Call: 3,
 } as const;
 
 export type MessageType = (typeof MessageType)[keyof typeof MessageType];
+
+/** What a call notice (MessageType.Call) says about its call (calls.Notice in the API). */
+export interface CallNotice {
+	/** Who was in the call, by user ID: its caller first, then each member who joined its voice, once. The caller alone
+	 * is a call nobody else got into. */
+	participants: string[];
+	/** When it started ringing, and when it ended. */
+	started_at: string;
+	ended_at: string;
+}
 
 export const MessageFlag = {
 	/**
@@ -351,6 +363,8 @@ export interface GatewayMessage {
 	components?: Component[] | null;
 	/** Set on the messages a bot sends for an interaction. */
 	interaction_metadata?: InteractionMetadata;
+	/** A call notice's call, in a conversation's thread; no other message has one. */
+	call?: CallNotice;
 }
 
 export interface Message {
@@ -378,6 +392,8 @@ export interface Message {
 	components?: Component[] | null;
 	/** Set on the messages a bot sends for an interaction. */
 	interaction_metadata?: InteractionMetadata;
+	/** A call notice's call; no other message has one. */
+	call?: CallNotice;
 }
 
 export interface GatewayMessageDelete {
@@ -1178,7 +1194,7 @@ export function gatewayMessageToMessage(msg: GatewayMessage, spaces: GatewaySpac
 		author_name,
 		author_avatar_url,
 		author_is_bot,
-		created_at: msg.created_at,
+		created_at: sentAt(msg),
 		updated_at: msg.updated_at,
 		nonce: msg.nonce,
 		referenced_message: msg.referenced_message ?? null,
@@ -1192,6 +1208,7 @@ export function gatewayMessageToMessage(msg: GatewayMessage, spaces: GatewaySpac
 		flags: msg.flags ?? 0,
 		components: msg.components ?? null,
 		interaction_metadata: msg.interaction_metadata,
+		call: msg.call,
 	};
 }
 
@@ -1207,6 +1224,19 @@ export function isLoading(message: Pick<Message, "flags">): boolean {
 /** Whether a message is ephemeral: a bot's to this user alone, not one of the room's. */
 export function isEphemeral(message: Pick<Message, "flags">): boolean {
 	return ((message.flags ?? 0) & MessageFlag.Ephemeral) !== 0;
+}
+
+/** Whether a message is a notice the API posts, a pin's or a call's, rather than one someone wrote: nobody edits or
+ * pins it, and a reply to it mentions nobody. */
+export function isNotice(message: Pick<Message, "type">): boolean {
+	return message.type === MessageType.PinNotice || message.type === MessageType.Call;
+}
+
+/** When a message was sent, as the chat shows it and orders it by: its creation, but a call notice's call's end, when
+ * its ID was minted. So the notice sits where its call ended, as the history has it by ID, also when the API posted it
+ * late, after newer messages. */
+export function sentAt(message: { created_at: string; call?: CallNotice }): string {
+	return message.call?.ended_at ?? message.created_at;
 }
 
 /** The text a message shows: its content, or its text displays' when its components are all of it. */

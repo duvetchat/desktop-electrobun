@@ -115,6 +115,25 @@ describe("arrivalAction", () => {
 		expect(action(fromAnotherDevice, true)).toBe("bottom");
 	});
 
+	// A call notice, by the call's caller. When the user saw the call, DM_MESSAGE_CREATE moved their read position in the
+	// conversation to it, as the API does.
+	const callNotice = { ...message(131, "bob"), type: MessageType.Call, content: null };
+	const callCame = () => arrived(list, [...list, callNotice])!;
+
+	test("a call notice of a call the user saw, read for them already, doesn't get the divider", () => {
+		expect(arrivalAction(callCame(), "me", false, false, callNotice.id)).toBeNull();
+	});
+
+	test("one of a call they missed does, as someone else's message", () => {
+		expect(arrivalAction(callCame(), "me", false, false, id(130))).toBe("unread");
+		expect(arrivalAction(callCame(), "me", false)).toBe("unread");
+	});
+
+	test("a list that follows its bottom goes down to either", () => {
+		expect(arrivalAction(callCame(), "me", true, false, callNotice.id)).toBe("bottom");
+		expect(arrivalAction(callCame(), "me", true, false, id(130))).toBe("bottom");
+	});
+
 	// After a jump, the list shows the messages around it, and newer ones load below as the reader scrolls down.
 	test("a page that loads below a jump leaves the reader where they are, at its bottom too, with no divider", () => {
 		const jump = page(31, 130);
