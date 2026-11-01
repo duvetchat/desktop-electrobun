@@ -283,7 +283,12 @@
 	// ── Jump to message ──────────────────────────────────────────────────────
 	let lastHandledJumpId = "";
 	let highlightedMessageId = $state<string | null>(null);
+	// Whether newer messages are still to load below: a jump loads the messages around one, not up to the newest.
 	let hasMoreBelow = $state(false);
+	let isLoadingMoreBelow = $state(false);
+	// The newest message of the pages a jump loaded, after which the next page below starts. Not the list's newest: a
+	// message that came meanwhile (another member's, or one this user sent) would leave those before it out.
+	let loadedBelowTo = "";
 
 	$effect(() => {
 		const req = $jumpToMessageRequest;
@@ -313,6 +318,7 @@
 
 			hasMore = rawAbove.length >= 100;
 			hasMoreBelow = rawBelow.length >= 100;
+			loadedBelowTo = rawBelow.reduce((newest, m) => (m.id > newest ? m.id : newest), anchor.id);
 			dmMessages.update((all) => ({ ...all, [conversation.id]: combined }));
 			highlightedMessageId = messageId;
 			setTimeout(() => {
@@ -320,6 +326,30 @@
 			}, 3000);
 		} catch (err) {
 			console.error("[DM] Failed to jump to message:", err);
+		}
+	}
+
+	// After a jump, the newer messages load below as the reader scrolls down to them, a page at a time, as a room's do. A
+	// page that fails to load is asked for again on the next scroll there.
+	async function handleLoadMoreBelow() {
+		const after = loadedBelowTo;
+		if (isLoadingMoreBelow || !hasMoreBelow || !after) return;
+		isLoadingMoreBelow = true;
+		try {
+			const fetched = await getDirectMessagesAfter(conversation.id, after);
+			// A jump meanwhile loaded pages of its own.
+			if (loadedBelowTo !== after) return;
+			loadedBelowTo = fetched.reduce((newest, m) => (m.id > newest ? m.id : newest), after);
+			dmMessages.update((all) => {
+				const existing = all[conversation.id] ?? [];
+				const existingIds = new Set(existing.map((m) => m.id));
+				return { ...all, [conversation.id]: [...existing, ...fetched.filter((m) => !existingIds.has(m.id))] };
+			});
+			hasMoreBelow = fetched.length >= 100;
+		} catch (err) {
+			console.error("[DM] Failed to load newer messages:", err);
+		} finally {
+			isLoadingMoreBelow = false;
 		}
 	}
 
@@ -566,21 +596,23 @@
 		return newestConfirmedId(get(dmMessages)[convId] ?? []) > lastRead ? lastRead : null;
 	}
 
-	// ACK helper — sends an ack for the newest confirmed DM if at bottom.
+	// ACK helper — sends an ack for the newest confirmed DM if at bottom. Not while newer messages are still to load
+	// below, as after a jump: the bottom of the list isn't the conversation's newest message then.
 	function tryAckConversation() {
 		const msgs = get(dmMessages)[conversation.id] ?? [];
-		if (!isAtBottom || isLoading || !get(pageVisible) || msgs.length === 0) return;
+		if (!isAtBottom || isLoading || hasMoreBelow || !get(pageVisible) || msgs.length === 0) return;
 		// Clear the unread divider
 		if (convUnreadAfter != null) convUnreadAfter = null;
 		ackNewest(conversation.id, msgs);
 	}
 
-	// ACK reactively when at bottom, page visible, and messages change.
+	// ACK reactively when at bottom, page visible, and messages change, once nothing newer is left to load below.
 	$effect(() => {
 		const msgs = $dmMessages[conversation.id] ?? [];
 		const atBottom = isAtBottom;
 		const visible = $pageVisible;
-		if (!atBottom || !visible || isLoading || msgs.length === 0) return;
+		const moreBelow = hasMoreBelow;
+		if (!atBottom || !visible || isLoading || moreBelow || msgs.length === 0) return;
 		if (convUnreadAfter != null) convUnreadAfter = null;
 		ackNewest(conversation.id, msgs);
 	});
@@ -608,11 +640,15 @@
 		const convId = conversation.id;
 		return () => {
 			const msgs = get(dmMessages)[convId] ?? [];
-			if (isAtBottom) ackNewest(convId, msgs);
+			// A list that stops short of the newest messages (a jump's, with newer ones still to load below) is no sign of
+			// having read them: it neither acks the conversation nor counts it read.
+			const reachesNewest = !hasMoreBelow;
+			if (isAtBottom && reachesNewest) ackNewest(convId, msgs);
 			// Read up to its newest message, it isn't unread: this view acked it, or the read position is there already, as
 			// a call notice of a call the user saw moves it.
 			const newest = newestConfirmedId(msgs);
-			const read = ackedConvMsgId.get(convId) === newest || (get(lastReadConvs)?.[convId] ?? "") >= newest;
+			const read =
+				reachesNewest && (ackedConvMsgId.get(convId) === newest || (get(lastReadConvs)?.[convId] ?? "") >= newest);
 			if (convUnreadAfter && read) convUnreadAfter = null;
 			if (convUnreadAfter) {
 				unreadConversations.update((s) => {
@@ -851,8 +887,10 @@
 			{isLoadingMore}
 			hasMoreMessages={hasMore}
 			hasMoreMessagesBelow={hasMoreBelow}
+			{isLoadingMoreBelow}
 			{highlightedMessageId}
 			onLoadMore={handleLoadMore}
+			onLoadMoreBelow={handleLoadMoreBelow}
 			bind:failedNonces
 			bind:isAtBottom
 			onSend={dmHandleSend}
