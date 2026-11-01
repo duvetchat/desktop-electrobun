@@ -17,3 +17,19 @@ export function quoteJump(
 	if (!list.spaceId) return { spaceId: "", roomId: "", messageId, conversationId: list.channelId };
 	return { spaceId: ref.space_id ?? list.spaceId, roomId: ref.room_id ?? list.channelId, messageId };
 }
+
+/**
+ * Whether a conversation counts as read once the user leaves it: the newest message its list has is read (the view
+ * acked it, or the read position is there already, as a call notice of a call the user saw moves it), and is the
+ * conversation's newest. After a jump, while newer messages are still to load below the jump's pages (moreBelow), the
+ * list's newest is the conversation's only when it came after those pages (loadedBelowTo), live: another member's
+ * message, a call's notice, or one the user sent.
+ */
+export function readWhenLeft(
+	list: { newest: string; moreBelow: boolean; loadedBelowTo: string },
+	acked: string | undefined,
+	readUpTo: string | undefined,
+): boolean {
+	const conversationsNewest = !list.moreBelow || list.newest > list.loadedBelowTo;
+	return conversationsNewest && (acked === list.newest || (readUpTo ?? "") >= list.newest);
+}

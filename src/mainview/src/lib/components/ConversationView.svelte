@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount, type Snippet } from "svelte";
+	import { onMount, untrack, type Snippet } from "svelte";
 	import { get } from "svelte/store";
 	import {
 		currentUser,
@@ -52,6 +52,7 @@
 	import { toast } from "$lib/stores/toast.svelte";
 	import { getApiError } from "$lib/api/api";
 	import { withSentMessage } from "$lib/arrivals";
+	import { readWhenLeft } from "$lib/jumps";
 	import { MessageSquare, Phone, UserPlus, Users } from "@lucide/svelte";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
 	import Chat from "$lib/components/Chat.svelte";
@@ -289,6 +290,11 @@
 	// The newest message of the pages a jump loaded, after which the next page below starts. Not the list's newest: a
 	// message that came meanwhile (another member's, or one this user sent) would leave those before it out.
 	let loadedBelowTo = "";
+	// When the last page below failed: the next one waits a while (belowRetryWait) before it's asked for again.
+	let belowFailedAt = 0;
+	const belowRetryWait = 2_000;
+	// The jumps so far: what a jump or a page below fetched is dropped when a newer jump has started since.
+	let jumps = 0;
 
 	$effect(() => {
 		const req = $jumpToMessageRequest;
@@ -300,12 +306,14 @@
 	});
 
 	async function jumpToMessage(messageId: string) {
+		const jump = ++jumps;
 		try {
 			const anchor = await getDirectMessageById(conversation.id, messageId);
 			const [rawAbove, rawBelow] = await Promise.all([
 				getDirectMessages(conversation.id, anchor.id),
 				getDirectMessagesAfter(conversation.id, anchor.id),
 			]);
+			if (jump !== jumps) return;
 
 			const allIds = new Set<string>();
 			const combined: DirectMessage[] = [];
@@ -319,6 +327,7 @@
 			hasMore = rawAbove.length >= 100;
 			hasMoreBelow = rawBelow.length >= 100;
 			loadedBelowTo = rawBelow.reduce((newest, m) => (m.id > newest ? m.id : newest), anchor.id);
+			belowFailedAt = 0;
 			dmMessages.update((all) => ({ ...all, [conversation.id]: combined }));
 			highlightedMessageId = messageId;
 			setTimeout(() => {
@@ -330,15 +339,18 @@
 	}
 
 	// After a jump, the newer messages load below as the reader scrolls down to them, a page at a time, as a room's do. A
-	// page that fails to load is asked for again on the next scroll there.
+	// page that fails, or hasn't come in 10 s (a room's waits as long), is asked for again on a scroll there once
+	// belowRetryWait has passed: the list also scrolls by itself (scroll anchoring), which must not ask again at once.
 	async function handleLoadMoreBelow() {
 		const after = loadedBelowTo;
-		if (isLoadingMoreBelow || !hasMoreBelow || !after) return;
+		if (isLoadingMoreBelow || !hasMoreBelow || !after || Date.now() - belowFailedAt < belowRetryWait) return;
+		const jump = jumps;
 		isLoadingMoreBelow = true;
+		const controller = new AbortController();
+		const timeoutId = setTimeout(() => controller.abort(), 10_000);
 		try {
-			const fetched = await getDirectMessagesAfter(conversation.id, after);
-			// A jump meanwhile loaded pages of its own.
-			if (loadedBelowTo !== after) return;
+			const fetched = await getDirectMessagesAfter(conversation.id, after, controller.signal);
+			if (jump !== jumps) return;
 			loadedBelowTo = fetched.reduce((newest, m) => (m.id > newest ? m.id : newest), after);
 			dmMessages.update((all) => {
 				const existing = all[conversation.id] ?? [];
@@ -347,8 +359,10 @@
 			});
 			hasMoreBelow = fetched.length >= 100;
 		} catch (err) {
+			belowFailedAt = Date.now();
 			console.error("[DM] Failed to load newer messages:", err);
 		} finally {
+			clearTimeout(timeoutId);
 			isLoadingMoreBelow = false;
 		}
 	}
@@ -637,18 +651,19 @@
 	// ACK when leaving the conversation — only if at bottom. Only the bottom reads it, not opening it: one left above
 	// its newest messages is unread again, as the server still has it, and opens at its divider the next time.
 	$effect(() => {
-		const convId = conversation.id;
+		// Untracked: the conversation's object changes with each of its messages, while the view stays (each conversation
+		// has a view of its own), and this effect's cleanup is leaving it.
+		const convId = untrack(() => conversation.id);
 		return () => {
 			const msgs = get(dmMessages)[convId] ?? [];
 			// A list that stops short of the newest messages (a jump's, with newer ones still to load below) is no sign of
-			// having read them: it neither acks the conversation nor counts it read.
-			const reachesNewest = !hasMoreBelow;
-			if (isAtBottom && reachesNewest) ackNewest(convId, msgs);
-			// Read up to its newest message, it isn't unread: this view acked it, or the read position is there already, as
-			// a call notice of a call the user saw moves it.
-			const newest = newestConfirmedId(msgs);
-			const read =
-				reachesNewest && (ackedConvMsgId.get(convId) === newest || (get(lastReadConvs)?.[convId] ?? "") >= newest);
+			// having read them: it doesn't ack the conversation.
+			if (isAtBottom && !hasMoreBelow) ackNewest(convId, msgs);
+			const read = readWhenLeft(
+				{ newest: newestConfirmedId(msgs), moreBelow: hasMoreBelow, loadedBelowTo },
+				ackedConvMsgId.get(convId),
+				get(lastReadConvs)?.[convId],
+			);
 			if (convUnreadAfter && read) convUnreadAfter = null;
 			if (convUnreadAfter) {
 				unreadConversations.update((s) => {

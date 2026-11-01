@@ -967,9 +967,11 @@
 		{/if}
 	{:else}
 		<!-- Bottom sentinel: first in DOM → appears at visual bottom in flex-col-reverse.
-             Visible when user scrolls to the bottom (newest messages area). -->
+             Visible when user scrolls to the bottom (newest messages area). One height whether it spins or not, and
+             shrink-0, as the list's flex column would shrink it to its content: a change would move the list (scroll
+             anchoring), whose scroll asks for the page below again. -->
 		{#if hasMoreMessagesBelow}
-			<div data-sentinel-bottom class="flex w-full flex-col items-center gap-1 py-3">
+			<div data-sentinel-bottom class="flex h-11 w-full shrink-0 flex-col items-center justify-center gap-1">
 				{#if isLoadingMoreBelow}
 					<svg
 						class="h-5 w-5 animate-spin text-zinc-400"
