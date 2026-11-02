@@ -13,6 +13,7 @@
   gsettings-desktop-schemas,
   adwaita-icon-theme,
   xdg-utils,
+  playerctl,
   electrobun-runtime,
 }:
 
@@ -144,7 +145,7 @@ stdenv.mkDerivation {
     # The launcher preloads libcef.so by a path relative to its cwd.
     makeWrapper $app/bin/launcher $out/bin/duvet-desktop \
       --chdir $app/bin \
-      --prefix PATH : ${lib.makeBinPath [ xdg-utils ]} \
+      --prefix PATH : ${lib.makeBinPath [ xdg-utils playerctl ]} \
       --suffix LD_LIBRARY_PATH : /run/opengl-driver/lib
     cp icon.iconset/icon_256x256.png $out/share/icons/hicolor/256x256/apps/duvet-desktop.png
     cat > $out/share/applications/duvet-desktop.desktop <<EOF
