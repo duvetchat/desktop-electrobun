@@ -1,6 +1,7 @@
 import Electrobun, { BrowserView, BrowserWindow, Updater, Utils } from "electrobun/bun";
 import { fitActivity, MAX_ACTIVITIES, type ActivityPayload } from "./activities";
 import { startSpotifyReader, type SpotifyActivity } from "./spotify";
+import { ipcPath, LineReader } from "./ipc";
 
 const DEV_SERVER_PORT = 5173;
 const DEV_SERVER_URL = `http://localhost:${DEV_SERVER_PORT}`;
@@ -175,7 +176,7 @@ Electrobun.events.on("new-window-open", (event: { data?: { detail?: { url?: stri
 });
 
 // ── IPC Server for external apps (VS Code, etc.) ────────────────────────────
-const IPC_PIPE = process.platform === "win32" ? "\\\\.\\pipe\\duvet-ipc" : "/tmp/duvet-ipc.sock";
+const IPC_PIPE = ipcPath(process.platform, process.env);
 
 // Clean up stale socket on Unix
 if (process.platform !== "win32") {
@@ -193,15 +194,21 @@ function broadcastAggregatedActivities() {
 }
 
 try {
-	Bun.listen({
+	Bun.listen<LineReader>({
 		unix: IPC_PIPE,
 		socket: {
 			open(socket) {
+				socket.data = new LineReader();
 				console.log("[IPC] Client connected");
 			},
 			data(socket, raw) {
-				const text = new TextDecoder().decode(raw);
-				for (const line of text.split("\n")) {
+				const lines = socket.data.push(raw);
+				if (!lines) {
+					console.error("[IPC] Line too long, closing client");
+					socket.terminate();
+					return;
+				}
+				for (const line of lines) {
 					if (!line.trim()) continue;
 					try {
 						const msg = JSON.parse(line) as { type: string; data: unknown };
