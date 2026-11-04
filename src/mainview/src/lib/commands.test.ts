@@ -215,6 +215,35 @@ const perms: ApplicationCommand = {
 };
 const withSubcommands: SpaceCommands = { applications: [], commands: [named("ping"), perms, named("poll")] };
 
+// A command whose options are only groups of subcommands, one of them holding an option the API refuses in a group.
+const admin: ApplicationCommand = {
+	...command(),
+	id: "admin",
+	name: "admin",
+	options: [
+		{
+			type: T.SubcommandGroup,
+			name: "role",
+			description: "Roles",
+			options: [
+				{
+					type: T.Subcommand,
+					name: "add",
+					description: "Adds a role",
+					options: [{ type: T.Role, name: "role", description: "d", required: true }],
+				},
+				{ type: T.String, name: "stray", description: "d" },
+			],
+		},
+		{
+			type: T.SubcommandGroup,
+			name: "room",
+			description: "Rooms",
+			options: [{ type: T.Subcommand, name: "lock", description: "Locks a room" }],
+		},
+	],
+};
+
 describe("commandEntries", () => {
 	test("offers a command without subcommands as itself, with its options", () => {
 		const roll = command({ type: T.Integer, name: "sides", description: "d" });
@@ -233,6 +262,13 @@ describe("commandEntries", () => {
 		expect(entries[0].group?.name).toBe("user");
 		expect(entries[0].subcommand?.name).toBe("get");
 		expect(entries[2].group).toBeUndefined();
+	});
+
+	test("offers the subcommands of a command whose options are only groups, and nothing else a group holds", () => {
+		expect(commandEntries(admin).map((e) => [e.name, e.group?.name, e.options.map((o) => o.name)])).toEqual([
+			["admin role add", "role", ["role"]],
+			["admin room lock", "room", []],
+		]);
 	});
 });
 
@@ -273,6 +309,7 @@ describe("commandQuery", () => {
 		expect(commandQuery("/Perms user get", withSubcommands)).toBe("Perms user get");
 		expect(commandQuery("/perms user get someone", withSubcommands)).toBeNull();
 		expect(commandQuery("/perms user", null)).toBeNull();
+		expect(commandQuery("/admin room l", { applications: [], commands: [admin] })).toBe("admin room l");
 	});
 });
 
