@@ -22,9 +22,10 @@ let audio: HTMLAudioElement | null = null;
 // What the note plays from: a WAV of it is held until it stops, so the note goes on once its player is gone (#167).
 let playingSrc: string | null = null;
 let animFrame = 0;
-// The note asked to play last while it waits for its URL to be signed again, and where a seek made meanwhile starts it.
-// It plays once it has its URL, unless another note was asked for or a stop came meanwhile (#175).
-let waiting: { attachmentId: string; seekTo: number | null } | null = null;
+// The note asked to play last while it waits for its URL to be signed again, where a seek made meanwhile starts it, and
+// its request to the API. It plays once it has its URL, unless another note was asked for, a stop came or the wait ran
+// out of time meanwhile (#175).
+let waiting: { attachmentId: string; seekTo: number | null; resign: AbortController } | null = null;
 
 const VOLUME_KEY = "duvet_audio_volume";
 let currentVolume = typeof window !== "undefined" ? parseFloat(localStorage.getItem(VOLUME_KEY) ?? "1") : 1;
@@ -65,7 +66,8 @@ function tick() {
 }
 
 function cleanup() {
-	// A note still waiting for its URL won't play either.
+	// A note still waiting for its URL won't play either, and its request to the API is dropped.
+	waiting?.resign.abort();
 	waiting = null;
 	if (animFrame) {
 		cancelAnimationFrame(animFrame);
@@ -94,13 +96,30 @@ function isUrlExpiringSoon(url: string): boolean {
 	}
 }
 
-async function refreshSignedUrl(attachmentId: string, currentSrc: string): Promise<string> {
+// How long a note waits for its URL to be signed again. Past it the request is dropped, nothing plays, and the next click
+// on the note asks again (#175).
+export const RESIGN_WAIT_MS = 15_000;
+
+/** What work settles with, unless signal aborts first. */
+function untilAborted<T>(work: Promise<T>, signal: AbortSignal): Promise<T> {
+	return new Promise<T>((resolve, reject) => {
+		const abort = () => reject(signal.reason);
+		signal.addEventListener("abort", abort, { once: true });
+		work.then(resolve, reject).finally(() => signal.removeEventListener("abort", abort));
+	});
+}
+
+/** The note's URL signed again; the URL it has when the API refuses or fails; null once signal aborts, the wait having
+ * run out of time or the note being asked for no more. */
+async function refreshSignedUrl(attachmentId: string, currentSrc: string, signal: AbortSignal): Promise<string | null> {
 	try {
-		// Through the API client: it sends the current access token and refreshes it if needed.
-		const res = await api.post<{ url: string }>(`/attachments/${attachmentId}/resign`);
+		// Through the API client: it sends the current access token and refreshes it if needed. A refresh of the session
+		// doesn't take the signal, so the wait ends with it all the same.
+		const sent = api.post<{ url: string }>(`/attachments/${attachmentId}/resign`, undefined, { signal });
+		const res = await untilAborted(sent, signal);
 		return `${getHostURL()}${res.data.url}`;
 	} catch {
-		return currentSrc;
+		return signal.aborted ? null : currentSrc;
 	}
 }
 
@@ -133,16 +152,22 @@ export async function playVoiceNote(
 	cleanup();
 
 	// Re-sign URL if expiring soon. Nothing plays meanwhile, and the bar shows nothing. If another note is asked for, or a
-	// stop comes, before the API answers, that one plays and this one doesn't (#175). It holds nothing while it waits: only
-	// a WAV is held, and a WAV's URL is never signed.
+	// stop comes, before the API answers, that one plays and this one doesn't (#175). Nor does it once RESIGN_WAIT_MS has
+	// gone by: the players show nothing for a note that doesn't start, so it shows as it did before the click, and the next
+	// click starts over. It holds nothing but its request while it waits: only a WAV is held, and a WAV's URL is never
+	// signed.
 	let startAt = 0;
 	if (isUrlExpiringSoon(src)) {
-		const wait = { attachmentId, seekTo: null as number | null };
+		const wait = { attachmentId, seekTo: null as number | null, resign: new AbortController() };
 		waiting = wait;
 		voiceNote.set(null);
-		src = await refreshSignedUrl(attachmentId, src);
-		if (waiting !== wait || playRequests !== request) return;
-		waiting = null;
+		const timer = setTimeout(() => wait.resign.abort(), RESIGN_WAIT_MS);
+		const signed = await refreshSignedUrl(attachmentId, src, wait.resign.signal);
+		clearTimeout(timer);
+		const latest = waiting === wait && playRequests === request;
+		if (waiting === wait) waiting = null;
+		if (!latest || signed === null) return;
+		src = signed;
 		startAt = wait.seekTo ?? 0;
 	}
 

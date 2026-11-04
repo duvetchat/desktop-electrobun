@@ -1,7 +1,13 @@
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, spyOn, test } from "bun:test";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, jest, spyOn, test } from "bun:test";
 import { get } from "svelte/store";
 import { releaseWav, wavUrlOf } from "$lib/audio/waveform";
-import { playVoiceNote, seekVoiceNote, stopVoiceNote, voiceNote } from "$lib/stores/voiceNotePlayer.svelte";
+import {
+	RESIGN_WAIT_MS,
+	playVoiceNote,
+	seekVoiceNote,
+	stopVoiceNote,
+	voiceNote,
+} from "$lib/stores/voiceNotePlayer.svelte";
 
 /** An <audio> as far as the voice note player uses one; end() plays it to its end. */
 class FakeAudio {
@@ -118,6 +124,7 @@ const playing = () => FakeAudio.all.filter((audio) => !audio.paused).map((audio)
 function slowApi() {
 	const pending: { url: string; answer: (res: Response) => void }[] = [];
 	const sent: string[] = [];
+	const signals: (AbortSignal | null)[] = [];
 	const realFetch = globalThis.fetch;
 	const fetched = spyOn(globalThis, "fetch").mockImplementation(((
 		input: string | URL | Request,
@@ -126,10 +133,12 @@ function slowApi() {
 		const url = input instanceof Request ? input.url : input.toString();
 		if (!url.endsWith("/resign")) return realFetch(input, init);
 		sent.push(url);
+		signals.push(init?.signal ?? null);
 		return new Promise<Response>((answer) => pending.push({ url, answer }));
 	}) as typeof fetch);
 	return {
 		sent,
+		signals,
 		answer() {
 			for (const { url, answer } of pending.splice(0)) {
 				const id = url.match(/attachments\/([^/]+)\/resign$/)?.[1] ?? "";
@@ -215,6 +224,26 @@ describe("a note whose URL is signed again before it plays", () => {
 		await first;
 		expect(FakeAudio.last?.currentTime).toBe(3);
 		expect(get(voiceNote)?.currentTime).toBe(3);
+	});
+
+	test("gives up on an API that doesn't answer in time, and the next click asks again", async () => {
+		jest.useFakeTimers();
+		try {
+			const first = playVoiceNote(expiring("note-a"), "note-a", "Ana", "general");
+			jest.advanceTimersByTime(RESIGN_WAIT_MS);
+			for (let turn = 0; turn < 10; turn++) await Promise.resolve();
+			const again = playVoiceNote(expiring("note-a"), "note-a", "Ana", "general");
+			expect(api.sent).toEqual([
+				"https://api.test/attachments/note-a/resign",
+				"https://api.test/attachments/note-a/resign",
+			]);
+			expect(api.signals[0]?.aborted).toBe(true);
+			expect(playing()).toEqual([]);
+			stopVoiceNote();
+			await Promise.all([first, again]);
+		} finally {
+			jest.useRealTimers();
+		}
 	});
 });
 
