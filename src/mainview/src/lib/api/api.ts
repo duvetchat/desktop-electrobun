@@ -123,21 +123,27 @@ function responseOf(xhr: XMLHttpRequest): Response {
 
 /** Sends a form as fetch sends it with init, through XMLHttpRequest, whose upload progress tells an upload that stalled
  * from a slow one (fetch has none): one that stops sending for uploadLimits.idleMs, or whose answer hasn't come
- * uploadLimits.answerMs after its last byte, is aborted and fails with an UploadTimeoutError. A network error fails as
- * fetch's does. bytes is the form's size (formBytes). */
+ * uploadLimits.answerMs after its last byte, is aborted and fails with an UploadTimeoutError. A network error, or an
+ * abort of init.signal (with its reason), fails as fetch's does. bytes is the form's size (formBytes). */
 function sendForm(url: string, init: RequestInit, form: FormData, bytes: number): Promise<Response> {
 	return new Promise((resolve, reject) => {
 		if (init.signal?.aborted) {
-			reject(new DOMException("The upload was aborted", "AbortError"));
+			reject(init.signal.reason);
 			return;
 		}
 		const xhr = new XMLHttpRequest();
 		let timer: ReturnType<typeof setTimeout> | undefined;
 		let settled = false;
+		const onAbort = () =>
+			settle(() => {
+				xhr.abort();
+				reject(init.signal?.reason);
+			});
 		const settle = (done: () => void) => {
 			if (settled) return;
 			settled = true;
 			clearTimeout(timer);
+			init.signal?.removeEventListener("abort", onAbort);
 			done();
 		};
 		const giveUpIn = (ms: number, why: string) => {
@@ -176,7 +182,7 @@ function sendForm(url: string, init: RequestInit, form: FormData, bytes: number)
 			});
 		xhr.onerror = () => settle(() => reject(new TypeError("Failed to fetch")));
 		xhr.onabort = () => settle(() => reject(new DOMException("The upload was aborted", "AbortError")));
-		init.signal?.addEventListener("abort", () => xhr.abort());
+		init.signal?.addEventListener("abort", onAbort);
 		waitForAnswer();
 		xhr.send(form);
 	});

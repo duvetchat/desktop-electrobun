@@ -295,6 +295,31 @@ describe("an upload", () => {
 		expect(FakeXHR.thrown).toEqual([]);
 	});
 
+	// As a fetch's: an abort of its signal fails it with the signal's reason, and a signal that outlives it keeps
+	// nothing of it (#182's review).
+	test("aborted by its signal fails with the signal's reason, and leaves no listener on it", async () => {
+		const before = new AbortController();
+		before.abort(new Error("left before"));
+		const form = messageForm(file(1024));
+		await expect(api.post("/api/rooms/r/messages", form, { signal: before.signal })).rejects.toThrow("left before");
+		expect(FakeXHR.last).toBeNull();
+
+		FakeXHR.onSend = () => {};
+		const during = new AbortController();
+		const upload = api.post("/api/rooms/r/messages", form, { signal: during.signal });
+		during.abort(new Error("left during"));
+		await expect(upload).rejects.toThrow("left during");
+		expect(FakeXHR.last!.aborted).toBe(true);
+
+		FakeXHR.onSend = (xhr) => queueMicrotask(() => xhr.respond(201, { id: "m" }));
+		const kept = new AbortController();
+		const added = spyOn(kept.signal, "addEventListener");
+		const removed = spyOn(kept.signal, "removeEventListener");
+		expect((await api.post("/api/rooms/r/messages", form, { signal: kept.signal })).status).toBe(201);
+		expect(added).toHaveBeenCalledTimes(1);
+		expect(removed).toHaveBeenCalledWith("abort", added.mock.calls[0][1]);
+	});
+
 	test("cut by the network fails as a fetch does", async () => {
 		FakeXHR.onSend = (xhr) => queueMicrotask(() => xhr.onerror?.());
 		await expect(api.post("/api/rooms/r/messages", messageForm(file(1024)))).rejects.toThrow("Failed to fetch");
