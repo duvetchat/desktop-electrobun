@@ -53,6 +53,7 @@
 				name: string;
 				sub: string;
 				avatar: string | null;
+				mentions: number;
 				unread: boolean;
 		  }
 		| { kind: "friend"; key: string; userId: string; name: string; avatar: string | null };
@@ -102,7 +103,8 @@
 				name: conv.type === 2 ? (conv.name ?? "Group") : (other?.user?.alias ?? other?.user?.username ?? "DM"),
 				sub: conv.type === 2 ? `${conv.members.length} members` : "Direct message",
 				avatar: conv.type === 2 ? null : (getAvatarURL(other?.user_id ?? "", other?.user?.avatar) ?? null),
-				unread: $unreadConversations.has(conv.id),
+				mentions: $mentionCounts[conv.id] ?? 0,
+				unread: $unreadConversations.has(conv.id) || !!$mentionCounts[conv.id],
 			});
 		}
 		// Friends without a conversation yet: picking one starts it.
@@ -125,7 +127,7 @@
 	// With nothing typed: what has news first (mentions, then unread rooms and conversations), then the spaces.
 	const results = $derived.by(() => {
 		if (query.trim()) return rankByQuery(allItems, query, (item) => item.name).slice(0, MAX_RESULTS);
-		const mentionsOf = (i: Item) => (i.kind === "room" ? i.mentions : 0);
+		const mentionsOf = (i: Item) => (i.kind === "room" || i.kind === "conversation" ? i.mentions : 0);
 		const withNews = allItems
 			.filter((i) => (i.kind === "room" || i.kind === "conversation") && i.unread)
 			.sort((a, b) => mentionsOf(b) - mentionsOf(a));
@@ -260,7 +262,7 @@
 						<span class="shrink-0 truncate text-xs {isActive ? 'text-duvet-chosen-ink/70' : 'text-duvet-ink2'}">
 							{#if item.kind === "space"}Space{:else if item.kind === "room"}{item.spaceName}{:else if item.kind === "conversation"}{item.sub}{:else}Friend{/if}
 						</span>
-						{#if item.kind === "room" && item.mentions}
+						{#if (item.kind === "room" || item.kind === "conversation") && item.mentions}
 							<span
 								class="bg-duvet-accent text-duvet-on-accent flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full px-1 text-[11px] font-bold"
 								aria-label="{item.mentions} mentions">{item.mentions}</span
