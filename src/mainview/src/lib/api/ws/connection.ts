@@ -77,7 +77,13 @@ export function getStreamURL(): string {
 }
 
 import { audioStore } from "$lib/stores/audio.svelte";
-import { applyStatusUpdate, mentionSound, noteMemberStatus } from "$lib/status";
+import {
+	applyStatusUpdate,
+	forgetMemberStatus,
+	forgetSpaceStatuses,
+	mentionSound,
+	noteMemberStatus,
+} from "$lib/status";
 import {
 	callAcceptedAction,
 	callDeclinedAction,
@@ -165,8 +171,9 @@ let expectedGuildIds: Set<string> | null = null;
 let receivedGuildIds = new Set<string>();
 
 // Cache of live user statuses. Keys: "userId" for a user's global status, "userId:spaceId" for their status in a
-// space (SPACE_CREATE, SPACE_MEMBER_ADD, and a sharded bot's USER_STATUS_UPDATE with that space_id). A space shows a
-// bot with its status there alone, and anyone else with their global one (memberStatus).
+// space (SPACE_CREATE, a bot's SPACE_MEMBER_ADD, and a sharded bot's USER_STATUS_UPDATE with that space_id), which
+// goes with SPACE_MEMBER_REMOVE and SPACE_DELETE. A space shows a bot with its status there alone, and anyone else
+// with their global one (memberStatus).
 export const userStatusCache = new Map<string, UserStatus>();
 
 // Returns the global status for a user.
@@ -607,6 +614,8 @@ function handleEvent(event: GatewayEvent) {
 		case "SPACE_DELETE": {
 			const { id } = payload.data;
 			gatewaySpaces.update((spaces) => spaces.filter((s) => s.id !== id));
+			// Its members' statuses there go with it: a bot's would outlive it otherwise.
+			forgetSpaceStatuses(userStatusCache, id);
 			break;
 		}
 		case "SPACE_UPDATE": {
@@ -1106,7 +1115,9 @@ function handleEvent(event: GatewayEvent) {
 		}
 		case "SPACE_MEMBER_ADD": {
 			const raw = payload.data;
-			noteMemberStatus(userStatusCache, raw.user_id, raw.space_id, raw.status_id);
+			// A bot's is its status in this space alone: offline until a USER_STATUS_UPDATE says a shard of it holds
+			// the space.
+			noteMemberStatus(userStatusCache, raw.user_id, raw.space_id, raw.status_id, raw.user?.is_bot);
 			// The member may be a bot, whose commands the space's list doesn't have yet.
 			forgetSpaceCommands(raw.space_id);
 			getSpaceMembers(raw.space_id)
@@ -1116,6 +1127,7 @@ function handleEvent(event: GatewayEvent) {
 		}
 		case "SPACE_MEMBER_REMOVE": {
 			const raw = payload.data;
+			forgetMemberStatus(userStatusCache, raw.user_id, raw.space_id);
 			forgetSpaceCommands(raw.space_id);
 			gatewaySpaces.update((spaces) =>
 				spaces.map((s) => {

@@ -47,17 +47,34 @@ export function spaceStatusKey(userId: string, spaceId: string): string {
 	return `${userId}:${spaceId}`;
 }
 
-/** Keeps a member's status as a space gives it (SPACE_CREATE's member_statuses, SPACE_MEMBER_ADD), for a bot or a
- * person alike: as their status in that space, which is a bot's there, and as their global status, which is a
- * person's (a bot connected in one space is connected). */
+/** Keeps a member's status as a space gives it (SPACE_CREATE's member_statuses, SPACE_MEMBER_ADD). A bot's is its
+ * status in that space alone, so it goes to that space's entry only; a person's is their global status. Where the
+ * space doesn't say who is a bot (`isBot` unknown, as in member_statuses), it goes to both: a space shows a bot by its
+ * entry there and a person by their global one (memberStatus), so neither reads the other's. */
 export function noteMemberStatus(
 	statuses: Map<string, UserStatus>,
 	userId: string,
 	spaceId: string,
 	status: UserStatus,
+	isBot?: boolean,
 ) {
-	statuses.set(userId, status);
-	statuses.set(spaceStatusKey(userId, spaceId), status);
+	if (isBot !== true) statuses.set(userId, status);
+	if (isBot !== false) statuses.set(spaceStatusKey(userId, spaceId), status);
+}
+
+/** Forgets a member's status in a space they left (SPACE_MEMBER_REMOVE). Their global status stays: a person's shows
+ * in their conversations and among friends. */
+export function forgetMemberStatus(statuses: Map<string, UserStatus>, userId: string, spaceId: string) {
+	statuses.delete(spaceStatusKey(userId, spaceId));
+}
+
+/** Forgets every member's status in a space the user is no longer in (SPACE_DELETE), so a bot's there can't outlive
+ * the space: a SPACE_CREATE of it later leaves out a bot whose shard is down, and sets nothing for it. */
+export function forgetSpaceStatuses(statuses: Map<string, UserStatus>, spaceId: string) {
+	const suffix = spaceStatusKey("", spaceId);
+	for (const key of statuses.keys()) {
+		if (key.endsWith(suffix)) statuses.delete(key);
+	}
 }
 
 /** Applies a USER_STATUS_UPDATE. One with a space_id is a bot's status in that space, its shard's there: only that
