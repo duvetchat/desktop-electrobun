@@ -53,6 +53,7 @@ import type {
 	DMTypingEvent,
 	GatewayEvent,
 	GatewaySpace,
+	Presence,
 	ReferencedMessage,
 	TypingEvent,
 	UserStatus,
@@ -83,6 +84,7 @@ import {
 	forgetSpaceStatuses,
 	mentionSound,
 	noteMemberStatus,
+	rememberFriendPresences,
 } from "$lib/status";
 import {
 	callAcceptedAction,
@@ -172,30 +174,23 @@ function isStaleVoiceState(roomId: string, userId: string, version: number | und
 let expectedGuildIds: Set<string> | null = null;
 let receivedGuildIds = new Set<string>();
 
-// Cache of live user statuses. Keys: "userId" for a user's global status, "userId:spaceId" for their status in a
-// space (SPACE_CREATE, a bot's SPACE_MEMBER_ADD, and a sharded bot's USER_STATUS_UPDATE with that space_id), which
-// goes with SPACE_MEMBER_REMOVE and SPACE_DELETE. A space shows a bot with its status there alone, and anyone else
-// with their global one (memberStatus).
-export const userStatusCache = new Map<string, UserStatus>();
+// Cache of live user presences: each one's status, with their client status (the platforms they're on). Keys:
+// "userId" for a user's global presence, "userId:spaceId" for their presence in a space (SPACE_CREATE, a bot's
+// SPACE_MEMBER_ADD, and a sharded bot's USER_STATUS_UPDATE with that space_id), which goes with SPACE_MEMBER_REMOVE
+// and SPACE_DELETE. A space shows a bot with its status there alone, and anyone else with their global one
+// (memberStatus).
+export const userStatusCache = new Map<string, Presence>();
 
 // Returns the global status for a user.
 // Used for contexts without a specific space (e.g., conversations).
 export function getUserOnlineStatus(userId: string): UserStatus {
-	return userStatusCache.get(userId) ?? 0;
+	return userStatusCache.get(userId)?.status_id ?? 0;
 }
 
-/** Takes the statuses a friends list gives (status_id) for the friends the gateway hasn't told us about yet: what it
- * says comes live, so it's newer. Friends hear each other's changes from then on, also with no space in common. */
+/** Takes the presences a friends list gives for the friends the gateway hasn't told us about yet
+ * (rememberFriendPresences). Friends hear each other's changes from then on, also with no space in common. */
 export function rememberFriendStatuses(list: Friend[]) {
-	const me = get(currentUser)?.id;
-	const learned = new Set<string>();
-	for (const f of list) {
-		const other = f.sender_id === me ? f.recipient_id : f.sender_id;
-		if (f.status_id && !userStatusCache.has(other)) {
-			userStatusCache.set(other, f.status_id);
-			learned.add(other);
-		}
-	}
+	const learned = rememberFriendPresences(userStatusCache, list, get(currentUser)?.id);
 	// The DM list shows them too.
 	if (learned.size > 0) {
 		conversations.update((convs) => convs.map((c) => (c.members.some((m) => learned.has(m.user_id)) ? { ...c } : c)));
@@ -576,11 +571,16 @@ function handleEvent(event: GatewayEvent) {
 
 			// Cache member statuses from Redis so lazy-loaded members get correct status.
 			// member_statuses are keyed by userId: a bot's status in this space, anyone else's global status. A bot
-			// whose shard holding the space is down is left out, and shows offline here.
+			// whose shard holding the space is down is left out, and shows offline here. member_client_status has
+			// the platforms of each of them.
 			const memberStatuses = spaceCreateData.member_statuses;
 			if (memberStatuses) {
+				const clientStatuses = spaceCreateData.member_client_status;
 				for (const [uid, status] of Object.entries(memberStatuses)) {
-					noteMemberStatus(userStatusCache, uid, space.id, status);
+					noteMemberStatus(userStatusCache, uid, space.id, {
+						status_id: status,
+						client_status: clientStatuses?.[uid],
+					});
 				}
 				// The DM list shows them too, and may have loaded before this space did.
 				const me = currentUserData?.id;
@@ -897,8 +897,8 @@ function handleEvent(event: GatewayEvent) {
 		}
 		case "USER_STATUS_UPDATE": {
 			const raw = payload.data;
-			// One with a space_id is a bot's status in that space (its shard's): its other spaces and its global
-			// status keep theirs.
+			// The status and the platforms the user is on. One with a space_id is a bot's status in that space (its
+			// shard's): its other spaces and its global status keep theirs.
 			applyStatusUpdate(userStatusCache, raw);
 			if (raw.status_id === 0) {
 				if (!raw.space_id && raw.user_id in get(userActivities)) {
@@ -1124,7 +1124,7 @@ function handleEvent(event: GatewayEvent) {
 			const raw = payload.data;
 			// A bot's is its status in this space alone: offline until a USER_STATUS_UPDATE says a shard of it holds
 			// the space.
-			noteMemberStatus(userStatusCache, raw.user_id, raw.space_id, raw.status_id, raw.user?.is_bot);
+			noteMemberStatus(userStatusCache, raw.user_id, raw.space_id, raw, raw.user?.is_bot);
 			// The member may be a bot, whose commands the space's list doesn't have yet.
 			forgetSpaceCommands(raw.space_id);
 			getSpaceMembers(raw.space_id)
