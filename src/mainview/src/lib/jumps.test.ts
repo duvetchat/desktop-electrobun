@@ -4,8 +4,11 @@ import {
 	dividerPastWindow,
 	inWindow,
 	keepJump,
+	keepRoomJumps,
+	knowMessage,
 	leaving,
 	loadedTo,
+	newestKnownIn,
 	quoteJump,
 	readWhenLeft,
 	takeJump,
@@ -161,10 +164,53 @@ describe("withPresent", () => {
 		expect(withPresent([message(30, "alice", "old"), mine], [copy, earlier])).toEqual([earlier, mine]);
 	});
 
+	test("a page read before the API stored the message being sent keeps the same text sent a minute earlier", () => {
+		// The page has no copy yet. The earlier "ok" was the newest message the client knew of when it sent the new one.
+		const earlier = message(298, "me", "ok");
+		const mine = { id: nonce, nonce, author_id: "me", content: "ok", created_at: at(59), known_newest: earlier.id };
+		const newest = [message(297, "alice", "hi"), earlier];
+		expect(withPresent([message(30, "alice", "old"), mine], newest)).toEqual([...newest, mine]);
+	});
+
+	test("two identical messages sent at once, the page holding only the first's copy: the earlier one stays", () => {
+		const earlier = message(297, "me", "ok");
+		const first = { id: nonce, nonce, author_id: "me", content: "ok", created_at: at(59), known_newest: earlier.id };
+		const other = "f1d2c3b4-0000-4000-8000-000000000001";
+		const second = { ...first, id: other, nonce: other };
+		const copyOfFirst = message(299, "me", "ok");
+		expect(withPresent([message(30, "alice", "old"), first, second], [earlier, copyOfFirst])).toEqual([
+			earlier,
+			first,
+			second,
+		]);
+	});
+
+	test("the copy is newer than the newest message the client knew of when it sent", () => {
+		const mine = { id: nonce, nonce, author_id: "me", content: "ok", created_at: at(59), known_newest: m(298) };
+		expect(withPresent([mine], [message(298, "alice", "hi"), message(299, "me", "ok")])).toEqual([
+			message(298, "alice", "hi"),
+			mine,
+		]);
+	});
+
 	test("what came after the newest page was cut stays, each message once", () => {
 		// 301 came live while the newest page was asked for; 300 is both in the list and in the page.
 		const current = [...page(1, 130), { id: m(300) }, { id: m(301) }];
 		expect(withPresent(current, page(201, 300))).toEqual([...page(201, 300), { id: m(301) }]);
+	});
+});
+
+describe("knowMessage", () => {
+	const m = (n: number) => `01930000-0000-7000-8000-${String(n).padStart(12, "0")}`;
+
+	test("keeps the newest message known in each room or conversation, which only a newer one moves", () => {
+		knowMessage("room-known", m(5));
+		knowMessage("room-known", m(3));
+		knowMessage("room-known", null);
+		knowMessage("conversation-known", m(1));
+		expect(newestKnownIn("room-known")).toBe(m(5));
+		expect(newestKnownIn("conversation-known")).toBe(m(1));
+		expect(newestKnownIn("never-known")).toBe("");
 	});
 });
 
@@ -248,6 +294,13 @@ describe("keepJump and takeJump", () => {
 		keepJump("c", kept);
 		keepJump("c", null);
 		expect(takeJump("c", list)).toBeNull();
+	});
+
+	test("a room's pane that goes leaves the jump of each room it shows on a jump's pages", () => {
+		// A READY remounts the app: the pane shows "jumped" on a jump's pages, "present" at its newest message.
+		keepRoomJumps({ jumped: true, present: false }, { jumped: true }, { jumped: m(220), present: m(40) });
+		expect(takeJump("jumped", list)).toEqual({ hasMore: true, loadedBelowTo: m(220) });
+		expect(takeJump("present", list)).toBeNull();
 	});
 });
 

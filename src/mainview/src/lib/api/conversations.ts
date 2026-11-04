@@ -48,6 +48,8 @@ export interface DirectMessage {
 	created_at: string;
 	updated_at: string;
 	nonce?: string;
+	/** A message being sent: the newest message of its conversation the client knew of when it sent it (withPresent). */
+	known_newest?: string;
 	referenced_message?: import("$lib/types").ReferencedMessage | null;
 	user?: {
 		id: string;

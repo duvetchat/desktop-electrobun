@@ -25,6 +25,7 @@
 		makeLeaf,
 		makeSplit,
 		removeLeaf,
+		spacesAndRooms,
 		updateLeaf,
 	} from "$lib/pane";
 	import { hasPermission, Permission, shownRooms } from "$lib/permissions";
@@ -420,16 +421,16 @@
 		syncSidebarToLeaf(rootPane, id);
 	}
 
-	// The spaces there were when they had last all arrived.
-	let knownSpaceIds = new Set<string>();
+	// The spaces and their rooms there were when they had last all arrived.
+	let knownIds = new Set<string>();
 	// A space that goes (deleted, or left) stops being the one shown, and takes its tabs with it, as a restore
-	// leaves them out. Not while a new gateway session's spaces are arriving, when the list is short for a moment.
+	// leaves them out; so does a room that goes (deleted, or taken from the user). Not while a new gateway session's
+	// spaces are arriving, when the list is short for a moment.
 	$effect(() => {
 		if (!$allSpacesReady) return;
 		const spaces = $gatewaySpaces;
-		const ids = new Set(spaces.map((s) => s.id));
-		const gone = [...knownSpaceIds].some((id) => !ids.has(id));
-		knownSpaceIds = ids;
+		const { ids, gone } = spacesAndRooms(knownIds, spaces);
+		knownIds = ids;
 		if (!gone) return;
 		untrack(() => {
 			if (activeSpaceId && !ids.has(activeSpaceId)) activeSpaceId = null;

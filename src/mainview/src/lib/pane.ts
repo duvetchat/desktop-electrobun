@@ -185,6 +185,18 @@ export function tabNews(
 	return { unread: unread || mentions > 0, mentions };
 }
 
+/**
+ * The IDs of the spaces and of their rooms, and whether one of those known before went: a space deleted or left, or a
+ * room deleted or taken from the user (its ROOM_DELETE). Its tabs then close, as tabStaysOpen no longer keeps them.
+ */
+export function spacesAndRooms(
+	known: ReadonlySet<string>,
+	spaces: GatewaySpace[],
+): { ids: Set<string>; gone: boolean } {
+	const ids = new Set(spaces.flatMap((s) => [s.id, ...s.rooms.map((r) => r.id)]));
+	return { ids, gone: [...known].some((id) => !ids.has(id)) };
+}
+
 /** The tabs that can stay open (filterPaneTree's keep): a room the user can still view, and a conversation still in
  * their list. */
 export function tabStaysOpen(spaces: GatewaySpace[], conversationIds: Set<string>): (tab: Tab) => boolean {
