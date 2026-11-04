@@ -16,9 +16,9 @@ import adapter from "@sveltejs/adapter-static";
 //    first paint, and the pre-hydration redirect). The HTML parser normalises CRLF to LF before hashing,
 //    so the LF hash is the one browsers check; the CRLF hash is kept as a belt-and-suspenders fallback.
 //    src/mainview/src/lib/csp.test.ts recomputes them from app.html and fails if either drifts.
-//  - script-src-attr allows exactly one inline event handler: the custom-emoji <img onerror> retry in
-//    markdown.ts (the only inline handler the app renders). 'unsafe-hashes' is required for attributes.
-//    csp.test.ts recomputes this hash from markdown.ts.
+//  - script-src-attr allows no inline event handler: the app renders none. A custom emoji's image that fails is
+//    tried again by a listener on the document (lib/emoji-retry.ts), and csp.test.ts checks that markdown.ts
+//    writes no handler into its HTML.
 //  - style-src keeps 'unsafe-inline': Svelte transitions and component style="" attributes are inline,
 //    and hashing them is not feasible; this is the standard CSP trade-off and does not weaken script
 //    protection. https: covers the Google Fonts stylesheet (@import in app.css).
@@ -89,8 +89,8 @@ const csp = {
       "sha256-zzaXRVbQBei+ll7JAk73YcKqgcfztyoTvbZNi10yw6I=", // app.html bootstrap, LF-normalised (what browsers hash)
       "sha256-HHSkphUC9tsdH2k2OIgFMoGkbhF9VSglkiC5TArnbaQ=", // app.html bootstrap, CRLF fallback
     ],
-    // The one inline event handler the app renders: the custom-emoji <img onerror> retry in markdown.ts.
-    "script-src-attr": ["unsafe-hashes", "sha256-Nd49K6zAbHBtNZ2ylrgPZM3IXQa52jge41l3ChhYTOA="],
+    // No inline event handler: the app renders none.
+    "script-src-attr": ["none"],
     "style-src": ["self", "unsafe-inline", "https:"],
     "style-src-attr": ["unsafe-inline"],
     "img-src": ["self", "data:", "blob:", "https:", "http:"],
