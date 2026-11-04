@@ -6,6 +6,7 @@ import {
 	IpcActivities,
 	MAX_SOURCE_BYTES,
 	RETRY_FAILED_MS,
+	within,
 	type Images,
 } from "./activity-images";
 
@@ -254,11 +255,32 @@ describe("ActivityImages", () => {
 		}
 	});
 
+	test("takes as an image only a text from the webview, whatever else its page sends", async () => {
+		for (const answer of [42, { image: INLINE }, [INLINE], true]) {
+			const cache = new ActivityImages(
+				async () => answer,
+				async () => PNG,
+			);
+			expect(await cache.inline("https://x.test/a.png")).toBeUndefined();
+			expect(cache.known("https://x.test/a.png")).toBeNull(); // counted as failed: tried again later
+		}
+	});
+
 	test("keeps no image that isn't an inline one of 8 KiB at most", async () => {
 		for (const answer of [`data:image/png;base64,${"A".repeat(8 << 10)}`, "https://x.test/a.png", "data:text/html,x"]) {
 			const { cache } = images({ thumbnail: () => answer });
 			expect(await cache.inline("https://x.test/a.png")).toBeUndefined();
 		}
+	});
+
+	test("keeps the 64 most recent failures, so a URL that failed long ago is tried again", async () => {
+		const { cache, calls } = images({ fetch: () => null });
+		for (let i = 0; i <= 64; i++) await cache.inline(`https://x.test/${i}.png`); // 65 failures: 0 goes
+		calls.fetched.length = 0;
+		await cache.inline("https://x.test/1.png");
+		expect(calls.fetched).toEqual([]);
+		await cache.inline("https://x.test/0.png");
+		expect(calls.fetched).toEqual(["https://x.test/0.png"]);
 	});
 
 	test("keeps the 64 most recently used images", async () => {
@@ -393,5 +415,14 @@ describe("IpcActivities", () => {
 		activities.set(first, { name: "A again" });
 		await settle();
 		expect(activities.activities().map((a) => a.name)).toEqual(["A again", "B"]);
+	});
+});
+
+describe("within", () => {
+	test("gives what comes in time, and gives up on what doesn't: a page that never loads holds no image's place", async () => {
+		expect(await within(Promise.resolve("loaded"), 50)).toBe("loaded");
+		const started = Date.now();
+		expect(await within(new Promise(() => {}), 50).catch((err: Error) => err.message)).toBe("nothing came in 50 ms");
+		expect(Date.now() - started).toBeLessThan(5_000);
 	});
 });

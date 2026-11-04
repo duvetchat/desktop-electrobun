@@ -1,6 +1,6 @@
 import Electrobun, { BrowserView, BrowserWindow, Updater, Utils } from "electrobun/bun";
 import { fitActivity, MAX_ACTIVITIES, type ActivityPayload } from "./activities";
-import { ActivityImages, IpcActivities } from "./activity-images";
+import { ActivityImages, IpcActivities, PAGE_WAIT_MS, within } from "./activity-images";
 import { startSpotifyReader, type SpotifyActivity } from "./spotify";
 import { ipcPath, LineReader } from "./ipc";
 
@@ -103,11 +103,12 @@ let savedFrame: { x: number; y: number; width: number; height: number } | null =
 let isManuallyMaximized = false;
 
 // The webview makes the IPC apps' images by URL inline once its page has loaded, which its first setSpotifyActivity
-// says: a request sent before then would find no page to answer it.
+// says: a request sent before then would find no page to answer it. An image waits for it PAGE_WAIT_MS at most, then
+// gives its place to the next one: a signed-out app's page never sends it.
 let markWebviewReady!: () => void;
 const webviewReady = new Promise<void>((resolve) => (markWebviewReady = resolve));
 const activityImages = new ActivityImages(async (bytes) => {
-	await webviewReady;
+	await within(webviewReady, PAGE_WAIT_MS);
 	return rpc.request.activityImage({ bytes: Buffer.from(bytes).toString("base64") });
 });
 

@@ -18,8 +18,23 @@ const KEPT_IMAGES = 64;
 /** How long an image that couldn't be fetched or made inline waits before an activity naming it tries it again. */
 export const RETRY_FAILED_MS = 2 * 60_000;
 
-/** Makes an image's bytes a small inline image (the webview's activityThumbnail), or null when it can't. */
-export type Thumbnailer = (bytes: Uint8Array) => Promise<string | null>;
+/**
+ * Makes an image's bytes a small inline image (the webview's activityThumbnail), or null when it can't. Its answer
+ * comes from a page, so it's taken as anything.
+ */
+export type Thumbnailer = (bytes: Uint8Array) => Promise<unknown>;
+
+/** How long an image waits for the webview's page to load, which may never come (a signed-out app). */
+export const PAGE_WAIT_MS = 30_000;
+
+/** promise, or a rejection once ms pass without it. */
+export function within<T>(promise: Promise<T>, ms: number): Promise<T> {
+	let timer: ReturnType<typeof setTimeout> | undefined;
+	const late = new Promise<never>((_, reject) => {
+		timer = setTimeout(() => reject(new Error(`nothing came in ${ms} ms`)), ms);
+	});
+	return Promise.race([promise, late]).finally(() => clearTimeout(timer));
+}
 
 /**
  * The bytes at url, an http(s) URL, or null when it isn't one, or its answer isn't a 2xx within FETCH_TIMEOUT_MS
@@ -176,18 +191,26 @@ export class ActivityImages implements Images {
 		const bytes = await this.fetchBytes(url, signal);
 		// No activity needs it any more: nothing failed.
 		if (signal?.aborted) return undefined;
-		let image: string | null = null;
+		let image: string | undefined;
 		// The webview decodes what it's given whole: an image its headers don't say is small enough never reaches it.
 		const fits = !!bytes && decodable(bytes);
 		if (fits) {
 			try {
-				image = await this.thumbnail(bytes);
+				// Only an inline image of 8 KiB at most is one.
+				const answer = await this.thumbnail(bytes);
+				if (
+					typeof answer === "string" &&
+					answer.startsWith("data:image/") &&
+					new TextEncoder().encode(answer).length <= MAX_IMAGE_BYTES
+				) {
+					image = answer;
+				}
 			} catch (err) {
 				console.error(`[activity images] the webview made no image from ${hostOf(url)}:`, err);
 				return undefined;
 			}
 		}
-		if (image?.startsWith("data:image/") && new TextEncoder().encode(image).length <= MAX_IMAGE_BYTES) {
+		if (image !== undefined) {
 			this.failed.delete(url);
 			this.kept.set(url, image);
 			if (this.kept.size > KEPT_IMAGES) this.kept.delete(this.kept.keys().next().value!);
