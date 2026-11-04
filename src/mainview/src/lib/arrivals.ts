@@ -43,7 +43,7 @@ export function arrival(before: ListEnd, after: ListEnd): Arrival | null {
 	return null;
 }
 
-export type ArrivalAction = "bottom" | "unread" | null;
+export type ArrivalAction = "bottom" | "present" | "unread" | null;
 
 /**
  * What a list does for a message that came: it goes down to it ("bottom") when this window sent it, or when the
@@ -53,6 +53,8 @@ export type ArrivalAction = "bottom" | "unread" | null;
  *
  * After a jump, while newer messages are still to load below (newerBelow), the list's bottom isn't the room's: what
  * comes there is a page of history the reader scrolls into, which neither takes them to its end nor gets the divider.
+ * A message this window sends from there takes the reader to the present ("present"): the list loads the newest
+ * messages and goes down to it, rather than to the bottom of the jump's pages.
  *
  * Nor does a message at or before the user's read position (readUpTo), which they have read already: a conversation's
  * call notice of a call they saw, which the API leaves read for them.
@@ -64,7 +66,7 @@ export function arrivalAction(
 	newerBelow = false,
 	readUpTo?: string,
 ): ArrivalAction {
-	if (arrived.sent) return "bottom";
+	if (arrived.sent) return newerBelow ? "present" : "bottom";
 	if (newerBelow) return null;
 	if (following) return "bottom";
 	if (readUpTo !== undefined && arrived.message.id <= readUpTo) return null;

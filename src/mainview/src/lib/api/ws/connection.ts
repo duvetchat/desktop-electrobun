@@ -39,7 +39,7 @@ import {
 	allSpacesReady,
 } from "$lib/stores.svelte";
 import { getFriends, getPendingRequests, getSentRequests, type Friend } from "$lib/api/friends";
-import { getConversations } from "$lib/api/conversations";
+import { getConversations, type Conversation } from "$lib/api/conversations";
 import { listMyTeamInvites } from "$lib/api/developer";
 import { getMyBuckets, me as fetchMe } from "$lib/api/user";
 import { getMentionCounts } from "$lib/api/messages";
@@ -55,6 +55,7 @@ import type {
 	GatewaySpace,
 	Presence,
 	ReferencedMessage,
+	RoomReadState,
 	TypingEvent,
 	UserStatus,
 } from "$lib/types";
@@ -63,9 +64,12 @@ import {
 	gatewayMessageToMessage,
 	isEphemeral,
 	MessageType,
+	readySpacesArrived,
 	spaceWithoutRoom,
+	withoutRoomMessages,
 	withCreatedRole,
-	withRoomReadState,
+	withRoomReadStates,
+	withSpaceCreate,
 } from "$lib/types";
 import { CallAnswers, callNoticeSeen, readAfterCallNotice } from "$lib/call-notices";
 
@@ -84,7 +88,9 @@ import {
 	forgetSpaceStatuses,
 	isMobileOnly,
 	mentionSound,
+	noteConversationMemberStatus,
 	noteMemberStatus,
+	rememberConversationPresences,
 	rememberFriendPresences,
 } from "$lib/status";
 import {
@@ -207,6 +213,13 @@ export function rememberFriendStatuses(list: Friend[]) {
 	if (learned.size > 0) {
 		conversations.update((convs) => convs.map((c) => (c.members.some((m) => learned.has(m.user_id)) ? { ...c } : c)));
 	}
+}
+
+/** Takes the presences a conversations list gives their members for those the gateway hasn't told us about yet
+ * (rememberConversationPresences): someone who is neither the user's friend nor in a space with them is known only
+ * from there, and their changes reach the user from then on. */
+export function rememberConversationStatuses(list: Conversation[]) {
+	rememberConversationPresences(userStatusCache, list, get(currentUser)?.id);
 }
 
 type WebRTCEventListener = (type: string, data: unknown) => void;
@@ -393,6 +406,27 @@ function addMembersToSpace(spaceId: string, rows: SpaceMemberWithUser[]) {
 	);
 }
 
+/** The newest message the client has of a room, but one still being sent, which has its nonce for an id until its
+ * MESSAGE_CREATE. */
+function newestLoaded(roomId: string): string | undefined {
+	return (get(channelMessages)[roomId] ?? [])
+		.filter((m) => m.id !== m.nonce)
+		.reduce<string | undefined>((max, m) => (max === undefined || m.id > max ? m.id : max), undefined);
+}
+
+/** Takes rooms' read states from the gateway (a ROOM_CREATE's, a SPACE_CREATE's) in place of what READY had of those
+ * rooms: a newer message the client already has keeps its room unread (withRoomReadStates). */
+function applyRoomReadStates(states: Record<string, RoomReadState>) {
+	const read = withRoomReadStates(
+		{ unread: get(unreadChannels), lastRead: get(lastReadRooms), lastMsg: get(lastMsgRooms) },
+		states,
+		newestLoaded,
+	);
+	unreadChannels.set(read.unread);
+	lastReadRooms.set(read.lastRead);
+	lastMsgRooms.set(read.lastMsg);
+}
+
 /** A reply's reference once the message it quotes is deleted: only the reference itself stays,
  * as the API sends it from then on, and the reply shows the original as deleted. */
 function deletedReference(ref: ReferencedMessage): ReferencedMessage {
@@ -460,6 +494,7 @@ function handleEvent(event: GatewayEvent) {
 					sentFriendRequests.set(sent);
 					rememberFriendStatuses(friendList);
 					friends.set(friendList);
+					rememberConversationStatuses(convList);
 					conversations.set(convList);
 					pendingTeamInvites.set(teamInvites);
 					myBuckets.set(bucketList);
@@ -527,11 +562,8 @@ function handleEvent(event: GatewayEvent) {
 			// A CALL_ACCEPT the old session may never have got goes to this one, for a call that goes on.
 			resendCallAccept();
 
-			// Reset spaces so SPACE_CREATE events that follow repopulate them
-			// with fresh data (including current voice_states). Without this,
-			// if the server rejects a resume and starts a new session, the
-			// exists-guard in SPACE_CREATE would skip updates and voice states
-			// from before the reconnect would never be shown.
+			// The SPACE_CREATEs that follow bring the spaces again, as the new session has them (their voice states
+			// included): one the user is no longer in doesn't come back.
 			gatewaySpaces.set([]);
 			friendsReady.set(false);
 			allSpacesReady.set(false);
@@ -609,18 +641,16 @@ function handleEvent(event: GatewayEvent) {
 				}
 			}
 
-			gatewaySpaces.update((spaces) => {
-				const exists = spaces.some((s) => s.id === space.id);
-				if (exists) {
-					return spaces;
-				}
-				// Only for a snapshot that's kept: a skipped one mustn't hide newer updates.
-				for (const vs of space.voice_states ?? []) noteVoiceStateVersion(vs.room_id, vs.user_id, vs.version);
-				return [...spaces, space];
-			});
+			// A later one of a space replaces the earlier one: the gateway goes by the last it sent.
+			gatewaySpaces.update((spaces) => withSpaceCreate(spaces, space));
+			for (const vs of space.voice_states ?? []) noteVoiceStateVersion(vs.room_id, vs.user_id, vs.version);
 
+			// The read states of its rooms, in one sent after READY: the unread marks of a space the user just joined.
+			if (spaceCreateData.read_states) applyRoomReadStates(spaceCreateData.read_states);
+
+			// Only READY's spaces count: one it didn't list, or a second of one, mustn't pass for one still to come.
 			receivedGuildIds.add(space.id);
-			if (expectedGuildIds && receivedGuildIds.size >= expectedGuildIds.size) {
+			if (expectedGuildIds && readySpacesArrived(expectedGuildIds, receivedGuildIds)) {
 				allSpacesReady.set(true);
 			}
 			break;
@@ -670,22 +700,7 @@ function handleEvent(event: GatewayEvent) {
 					return s;
 				}),
 			);
-			if (readState) {
-				// A message still being sent has its nonce for an id until its MESSAGE_CREATE.
-				const loaded = get(channelMessages)[room.id] ?? [];
-				const newest = loaded
-					.filter((m) => m.id !== m.nonce)
-					.reduce<string | undefined>((max, m) => (max === undefined || m.id > max ? m.id : max), undefined);
-				const read = withRoomReadState(
-					{ unread: get(unreadChannels), lastRead: get(lastReadRooms), lastMsg: get(lastMsgRooms) },
-					room.id,
-					readState,
-					newest,
-				);
-				unreadChannels.set(read.unread);
-				lastReadRooms.set(read.lastRead);
-				lastMsgRooms.set(read.lastMsg);
-			}
+			if (readState) applyRoomReadStates({ [room.id]: readState });
 			break;
 		}
 		case "MESSAGE_CREATE": {
@@ -713,12 +728,14 @@ function handleEvent(event: GatewayEvent) {
 			channelMessages.update((all) => {
 				const existing = all[roomId] ?? [];
 
-				// If it matches a pending message by nonce, replace it
+				// If it matches a pending message by nonce, replace it. A page that listed the message meanwhile (the newest
+				// one, as a send takes a jump's list to the present) has a copy without the nonce: that one goes.
 				if (message.nonce) {
 					const pendingIndex = existing.findIndex((m) => m.nonce === message.nonce);
 					if (pendingIndex !== -1) {
-						const newMessages = [...existing];
-						newMessages[pendingIndex] = message;
+						const newMessages = existing.flatMap((m, i) =>
+							i === pendingIndex ? [message] : m.id === message.id ? [] : [m],
+						);
 						return {
 							...all,
 							[roomId]: newMessages,
@@ -1171,6 +1188,8 @@ function handleEvent(event: GatewayEvent) {
 					return spaceWithoutRoom(s, raw.id);
 				}),
 			);
+			// Its loaded messages go too: given back, it loads what it missed (PaneView reloads it if it's on screen).
+			channelMessages.update((all) => withoutRoomMessages(all, raw.id));
 			break;
 		}
 		case "ROOM_UPDATE": {
@@ -1387,6 +1406,10 @@ function handleEvent(event: GatewayEvent) {
 		}
 		case "CONVERSATION_CREATE": {
 			const conv = payload.data;
+			// Each member with their presence, which their changes keep from now on: in a group, someone who is neither the
+			// user's friend nor in a space with them.
+			const me = get(currentUser)?.id;
+			for (const m of conv.members) if (m.user_id !== me) noteConversationMemberStatus(userStatusCache, m.user_id, m);
 			conversations.update((list) => {
 				if (list.some((c) => c.id === conv.id)) return list;
 				return [conv, ...list];
@@ -1408,16 +1431,23 @@ function handleEvent(event: GatewayEvent) {
 				getConversations()
 					.then((list) => {
 						const conv = list.find((c) => c.id === raw.conversation_id);
-						if (conv) conversations.update((all) => (all.some((c) => c.id === conv.id) ? all : [conv, ...all]));
+						if (!conv) return;
+						// Its members' presences, for those the gateway hasn't told us about.
+						rememberConversationStatuses([conv]);
+						conversations.update((all) => (all.some((c) => c.id === conv.id) ? all : [conv, ...all]));
 					})
 					.catch((err) => console.error("[WS] Failed to load the group the user was added to:", err));
 				break;
 			}
+			// The member's presence, which their changes keep from now on: they may be neither the user's friend nor in a
+			// space with them.
+			if (raw.user_id !== get(currentUser)?.id) noteConversationMemberStatus(userStatusCache, raw.user_id, raw);
 			conversations.update((list) =>
 				list.map((c) => {
 					if (c.id !== raw.conversation_id) return c;
 					const alreadyHas = c.members.some((m) => m.id === raw.member_id || m.user_id === raw.user_id);
-					if (alreadyHas) return c;
+					// Shown again with the presence just kept.
+					if (alreadyHas) return { ...c };
 					return {
 						...c,
 						members: [
@@ -1495,8 +1525,8 @@ function handleEvent(event: GatewayEvent) {
 				if (msg.nonce) {
 					const pendingIdx = existing.findIndex((m) => m.nonce === msg.nonce);
 					if (pendingIdx !== -1) {
-						const updated = [...existing];
-						updated[pendingIdx] = msg;
+						// And a page's copy of it listed meanwhile goes (see MESSAGE_CREATE).
+						const updated = existing.flatMap((m, i) => (i === pendingIdx ? [msg] : m.id === msg.id ? [] : [m]));
 						return { ...all, [conversationId]: updated };
 					}
 				}

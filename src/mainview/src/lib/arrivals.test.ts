@@ -142,10 +142,11 @@ describe("arrivalAction", () => {
 		expect(arrivalAction(below, "me", false, true)).toBeNull();
 	});
 
-	test("a message this window sends there still takes the list down to it", () => {
+	test("a message this window sends there takes the reader to the present, not to the bottom of the jump's pages", () => {
 		const mine = sending("f1d2c3b4-0000-4000-8000-000000000000");
 		const came = arrived(list, [...list, mine])!;
-		expect(arrivalAction(came, "me", false, true)).toBe("bottom");
+		expect(arrivalAction(came, "me", false, true)).toBe("present");
+		expect(arrivalAction(came, "me", true, true)).toBe("present");
 	});
 });
 

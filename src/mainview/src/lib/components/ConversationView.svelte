@@ -53,7 +53,7 @@
 	import { toast } from "$lib/stores/toast.svelte";
 	import { getApiError } from "$lib/api/api";
 	import { withSentMessage } from "$lib/arrivals";
-	import { readWhenLeft } from "$lib/jumps";
+	import { dividerPastWindow, inWindow, keepJump, leaving, loadedTo, takeJump, withPresent } from "$lib/jumps";
 	import { MessageSquare, Phone, UserPlus, Users } from "@lucide/svelte";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
 	import Chat from "$lib/components/Chat.svelte";
@@ -218,7 +218,9 @@
 	// Cache mapped messages to avoid re-creating objects on every store update
 	const messageCache = new Map<string, Message>();
 	const messages = $derived.by(() => {
-		const raw = $dmMessages[conversation.id] ?? [];
+		const all = $dmMessages[conversation.id] ?? [];
+		// While newer messages are still to load below a jump's pages, what came live past them waits for the pages.
+		const raw = hasMoreBelow ? inWindow(all, loadedBelowTo) : all;
 		const seen = new Set<string>();
 		const result: Message[] = [];
 		for (const msg of raw) {
@@ -254,15 +256,21 @@
 		return other?.user?.alias ?? other?.user?.username ?? "DM";
 	}
 
+	// What comes after an await is read with the conversation's ID taken before it: once the view is gone (another tab
+	// shows), its conversation prop is null.
 	async function loadMessages(before?: string) {
+		const convId = conversation.id;
+		const jump = jumps;
 		try {
-			const fetched = await getDirectMessages(conversation.id, before);
+			const fetched = await getDirectMessages(convId, before);
+			// A page that comes once the view is gone, or a jump has started (its pages are what the list shows), is dropped.
+			if (jump !== jumps) return;
 			hasMore = fetched.length === 100;
 			dmMessages.update((all) => {
-				const existing = all[conversation.id] ?? [];
+				const existing = all[convId] ?? [];
 				const existingIds = new Set(existing.map((m) => m.id));
 				const newMsgs = fetched.filter((m) => !existingIds.has(m.id));
-				return { ...all, [conversation.id]: [...newMsgs, ...existing] };
+				return { ...all, [convId]: [...newMsgs, ...existing] };
 			});
 		} catch (err) {
 			console.error("[DM] Failed to load messages:", err);
@@ -292,9 +300,17 @@
 	let isLoadingMoreBelow = $state(false);
 	// The newest message of the pages a jump loaded, after which the next page below starts. Not the list's newest: a
 	// message that came meanwhile (another member's, or one this user sent) would leave those before it out.
-	let loadedBelowTo = "";
+	let loadedBelowTo = $state("");
 	// When the last page below failed: the next one waits a while (belowRetryWait) before it's asked for again.
 	let belowFailedAt = 0;
+	// The page below while it's asked for: a jump, or a trip to the present, calls it off, so that the new pages' next
+	// one can be asked for at once rather than after it gives up.
+	let belowRequest: AbortController | null = null;
+	function callOffBelow() {
+		belowRequest?.abort();
+		belowRequest = null;
+		isLoadingMoreBelow = false;
+	}
 	const belowRetryWait = 2_000;
 	// The jumps so far: what a jump or a page below fetched is dropped when a newer jump has started since.
 	let jumps = 0;
@@ -309,12 +325,14 @@
 	});
 
 	async function jumpToMessage(messageId: string) {
+		const convId = conversation.id;
 		const jump = ++jumps;
+		callOffBelow();
 		try {
-			const anchor = await getDirectMessageById(conversation.id, messageId);
+			const anchor = await getDirectMessageById(convId, messageId);
 			const [rawAbove, rawBelow] = await Promise.all([
-				getDirectMessages(conversation.id, anchor.id),
-				getDirectMessagesAfter(conversation.id, anchor.id),
+				getDirectMessages(convId, anchor.id),
+				getDirectMessagesAfter(convId, anchor.id),
 			]);
 			if (jump !== jumps) return;
 
@@ -329,9 +347,9 @@
 
 			hasMore = rawAbove.length >= 100;
 			hasMoreBelow = rawBelow.length >= 100;
-			loadedBelowTo = rawBelow.reduce((newest, m) => (m.id > newest ? m.id : newest), anchor.id);
+			loadedBelowTo = loadedTo(anchor.id, rawBelow);
 			belowFailedAt = 0;
-			dmMessages.update((all) => ({ ...all, [conversation.id]: combined }));
+			dmMessages.update((all) => ({ ...all, [convId]: combined }));
 			highlightedMessageId = messageId;
 			setTimeout(() => {
 				highlightedMessageId = null;
@@ -347,26 +365,60 @@
 	async function handleLoadMoreBelow() {
 		const after = loadedBelowTo;
 		if (isLoadingMoreBelow || !hasMoreBelow || !after || Date.now() - belowFailedAt < belowRetryWait) return;
+		const convId = conversation.id;
 		const jump = jumps;
 		isLoadingMoreBelow = true;
 		const controller = new AbortController();
+		belowRequest = controller;
 		const timeoutId = setTimeout(() => controller.abort(), 10_000);
 		try {
-			const fetched = await getDirectMessagesAfter(conversation.id, after, controller.signal);
+			const fetched = await getDirectMessagesAfter(convId, after, controller.signal);
 			if (jump !== jumps) return;
-			loadedBelowTo = fetched.reduce((newest, m) => (m.id > newest ? m.id : newest), after);
+			loadedBelowTo = loadedTo(after, fetched);
 			dmMessages.update((all) => {
-				const existing = all[conversation.id] ?? [];
+				const existing = all[convId] ?? [];
 				const existingIds = new Set(existing.map((m) => m.id));
-				return { ...all, [conversation.id]: [...existing, ...fetched.filter((m) => !existingIds.has(m.id))] };
+				return { ...all, [convId]: [...existing, ...fetched.filter((m) => !existingIds.has(m.id))] };
 			});
 			hasMoreBelow = fetched.length >= 100;
 		} catch (err) {
-			belowFailedAt = Date.now();
+			// A page a jump called off isn't a failure of the new pages'.
+			if (jump === jumps) belowFailedAt = Date.now();
 			console.error("[DM] Failed to load newer messages:", err);
 		} finally {
 			clearTimeout(timeoutId);
-			isLoadingMoreBelow = false;
+			if (belowRequest === controller) {
+				belowRequest = null;
+				isLoadingMoreBelow = false;
+			}
+		}
+	}
+
+	// A message sent from a jump's pages takes the reader to the present: the conversation's newest page takes the place
+	// of the jump's pages, with the messages still being sent and what came after that page. True once it's there. One at
+	// a time: a second message sent meanwhile waits for the same trip.
+	let presentLoad: Promise<boolean> | null = null;
+	function jumpToPresent(): Promise<boolean> {
+		presentLoad ??= loadPresent().finally(() => (presentLoad = null));
+		return presentLoad;
+	}
+
+	async function loadPresent(): Promise<boolean> {
+		const convId = conversation.id;
+		const jump = ++jumps;
+		callOffBelow();
+		try {
+			const fetched = await getDirectMessages(convId);
+			if (jump !== jumps) return false;
+			hasMore = fetched.length === 100;
+			hasMoreBelow = false;
+			loadedBelowTo = "";
+			belowFailedAt = 0;
+			dmMessages.update((all) => ({ ...all, [convId]: withPresent(all[convId] ?? [], fetched) }));
+			return true;
+		} catch (err) {
+			console.error("[DM] Failed to load the newest messages:", err);
+			return false;
 		}
 	}
 
@@ -393,12 +445,13 @@
 	) {
 		const user = get(currentUser);
 		if (!user) return;
+		const convId = conversation.id;
 		const isoNow = new Date().toISOString();
-		const allMsgs = get(dmMessages)[conversation.id] ?? [];
+		const allMsgs = get(dmMessages)[convId] ?? [];
 		const refMsg = ref?.message_id ? allMsgs.find((m) => m.id === ref.message_id) : null;
 		const pending: DirectMessage = {
 			id: nonce,
-			conversation_id: conversation.id,
+			conversation_id: convId,
 			author_id: user.id,
 			content,
 			type: 0,
@@ -430,10 +483,10 @@
 				})) ?? null,
 			sticker_attachment_id: stickerAttachmentId ?? null,
 		};
-		dmMessages.update((all) => ({ ...all, [conversation.id]: [...(all[conversation.id] ?? []), pending] }));
+		dmMessages.update((all) => ({ ...all, [convId]: [...(all[convId] ?? []), pending] }));
 		dmRetryData.set(nonce, { ref, files, stickerAttachmentId, allowedMentions });
 		const real = await sendDirectMessage(
-			conversation.id,
+			convId,
 			content,
 			nonce,
 			ref,
@@ -442,45 +495,48 @@
 			stickerAttachmentId,
 			allowedMentions,
 		);
-		showSent(nonce, real);
+		showSent(convId, nonce, real);
 	}
 
 	// What follows a send of this window's that the API took: its retry data goes, and the API's copy takes the place of
 	// its pending one, by its nonce, as DM_MESSAGE_CREATE's does. That event can be missed, and the message would stay
 	// pending.
-	function showSent(nonce: string, real: DirectMessage) {
+	function showSent(convId: string, nonce: string, real: DirectMessage) {
 		dmRetryData.delete(nonce);
 		dmMessages.update((all) => {
-			const existing = all[conversation.id] ?? [];
+			const existing = all[convId] ?? [];
 			const shown = withSentMessage(existing, nonce, real);
-			return shown === existing ? all : { ...all, [conversation.id]: shown };
+			return shown === existing ? all : { ...all, [convId]: shown };
 		});
 	}
 
 	async function dmSaveEdit(messageId: string, content: string) {
-		const updated = await updateDirectMessage(conversation.id, messageId, content);
+		const convId = conversation.id;
+		const updated = await updateDirectMessage(convId, messageId, content);
 		dmMessages.update((all) => {
-			const existing = all[conversation.id] ?? [];
-			return { ...all, [conversation.id]: existing.map((m) => (m.id === messageId ? { ...m, ...updated } : m)) };
+			const existing = all[convId] ?? [];
+			return { ...all, [convId]: existing.map((m) => (m.id === messageId ? { ...m, ...updated } : m)) };
 		});
 	}
 
 	async function dmDelete(messageId: string) {
-		await deleteDirectMessage(conversation.id, messageId);
+		const convId = conversation.id;
+		await deleteDirectMessage(convId, messageId);
 		dmMessages.update((all) => ({
 			...all,
-			[conversation.id]: (all[conversation.id] ?? []).filter((m) => m.id !== messageId),
+			[convId]: (all[convId] ?? []).filter((m) => m.id !== messageId),
 		}));
 	}
 
 	function dmRetry(message: Message) {
+		const convId = conversation.id;
 		const nonce = message.nonce!;
 		const saved = dmRetryData.get(nonce);
 		failedNonces = new Set([...failedNonces].filter((n) => n !== nonce));
 		// A voice note goes again as one: its audio, not its empty text.
 		if (saved?.voiceNote) {
-			sendDMVoiceNote(conversation.id, saved.voiceNote, nonce)
-				.then((real) => showSent(nonce, real))
+			sendDMVoiceNote(convId, saved.voiceNote, nonce)
+				.then((real) => showSent(convId, nonce, real))
 				.catch((err) => {
 					failedNonces = new Set(failedNonces).add(nonce);
 					toast(getApiError(err, "Failed to send voice note"), "error");
@@ -488,7 +544,7 @@
 			return;
 		}
 		sendDirectMessage(
-			conversation.id,
+			convId,
 			message.content ?? "",
 			nonce,
 			saved?.ref,
@@ -497,7 +553,7 @@
 			saved?.stickerAttachmentId,
 			saved?.allowedMentions,
 		)
-			.then((real) => showSent(nonce, real))
+			.then((real) => showSent(convId, nonce, real))
 			.catch((err) => {
 				failedNonces = new Set(failedNonces).add(nonce);
 				toast(getApiError(err, "Failed to send message"), "error");
@@ -517,11 +573,12 @@
 		const nonce = crypto.randomUUID();
 		const user = get(currentUser);
 		if (!user) return;
+		const convId = conversation.id;
 
 		const isoNow = new Date().toISOString();
 		const pending: DirectMessage = {
 			id: nonce,
-			conversation_id: conversation.id,
+			conversation_id: convId,
 			author_id: user.id,
 			content: "",
 			type: MessageType.Voice,
@@ -540,11 +597,11 @@
 				},
 			],
 		};
-		dmMessages.update((all) => ({ ...all, [conversation.id]: [...(all[conversation.id] ?? []), pending] }));
+		dmMessages.update((all) => ({ ...all, [convId]: [...(all[convId] ?? []), pending] }));
 
 		dmRetryData.set(nonce, { voiceNote: blob });
-		sendDMVoiceNote(conversation.id, blob, nonce)
-			.then((real) => showSent(nonce, real))
+		sendDMVoiceNote(convId, blob, nonce)
+			.then((real) => showSent(convId, nonce, real))
 			.catch((err) => {
 				failedNonces = new Set(failedNonces).add(nonce);
 				toast(getApiError(err, "Failed to send voice note"), "error");
@@ -623,6 +680,17 @@
 		ackNewest(conversation.id, msgs);
 	}
 
+	// A message that came past a jump's pages shows only when the pages below reach it, yet the conversation is unread:
+	// its divider goes after the read position, so leaving keeps the dot, and the pages below show it in its place. Not
+	// without READY's read positions (an older gateway), as unreadAfterOf.
+	$effect(() => {
+		const all = $dmMessages[conversation.id] ?? [];
+		const positions = $lastReadConvs;
+		if (!hasMoreBelow || convUnreadAfter != null || !positions) return;
+		const at = dividerPastWindow(all, loadedBelowTo, me?.id, positions[conversation.id]);
+		if (at !== null) convUnreadAfter = at;
+	});
+
 	// ACK reactively when at bottom, page visible, and messages change, once nothing newer is left to load below.
 	$effect(() => {
 		const msgs = $dmMessages[conversation.id] ?? [];
@@ -660,15 +728,16 @@
 		return () => {
 			const msgs = get(dmMessages)[convId] ?? [];
 			// A list that stops short of the newest messages (a jump's, with newer ones still to load below) is no sign of
-			// having read them: it doesn't ack the conversation.
-			if (isAtBottom && !hasMoreBelow) ackNewest(convId, msgs);
-			const read = readWhenLeft(
-				{ newest: newestConfirmedId(msgs), moreBelow: hasMoreBelow, loadedBelowTo },
+			// having read them: it doesn't ack the conversation (leaving).
+			const left = leaving(
+				{ atBottom: isAtBottom, newest: newestConfirmedId(msgs), moreBelow: hasMoreBelow, loadedBelowTo },
+				convUnreadAfter,
 				ackedConvMsgId.get(convId),
 				get(lastReadConvs)?.[convId],
 			);
-			if (convUnreadAfter && read) convUnreadAfter = null;
-			if (convUnreadAfter) {
+			if (left.ack) ackNewest(convId, msgs);
+			if (!left.unread) convUnreadAfter = null;
+			else {
 				unreadConversations.update((s) => {
 					s.add(convId);
 					return s;
@@ -686,19 +755,38 @@
 	});
 
 	onMount(() => {
-		activeDMConvId.set(conversation.id);
-		const hadUnread = get(unreadConversations).has(conversation.id);
+		const convId = conversation.id;
+		activeDMConvId.set(convId);
+		const hadUnread = get(unreadConversations).has(convId);
 		unreadConversations.update((s) => {
-			s.delete(conversation.id);
+			s.delete(convId);
 			return s;
 		});
-		loadMessages().then(() => {
-			// An unread conversation opens at its divider (MessageList places the visit there).
-			if (hadUnread) convUnreadAfter = unreadAfterOf(conversation.id);
+		let gone = false;
+		// Back from another tab in the middle of a jump's pages: the list goes on from them, as a room's does, rather than
+		// putting the newest page beside them with the messages between left out.
+		const kept = takeJump(convId, get(dmMessages)[convId]);
+		if (kept) {
+			hasMore = kept.hasMore;
+			hasMoreBelow = true;
+			loadedBelowTo = kept.loadedBelowTo;
+			if (hadUnread) convUnreadAfter = unreadAfterOf(convId);
 			isLoading = false;
-		});
+		} else {
+			loadMessages().then(() => {
+				if (gone) return;
+				// An unread conversation opens at its divider (MessageList places the visit there).
+				if (hadUnread) convUnreadAfter = unreadAfterOf(convId);
+				isLoading = false;
+			});
+		}
 		return () => {
-			activeDMConvId.update((cur) => (cur === conversation.id ? null : cur));
+			// What the view still waits for (its first page, a jump's pages, a page below) is dropped as it comes.
+			gone = true;
+			jumps++;
+			callOffBelow();
+			keepJump(convId, hasMoreBelow ? { hasMore, loadedBelowTo } : null);
+			activeDMConvId.update((cur) => (cur === convId ? null : cur));
 		};
 	});
 </script>
@@ -911,6 +999,7 @@
 			{highlightedMessageId}
 			onLoadMore={handleLoadMore}
 			onLoadMoreBelow={handleLoadMoreBelow}
+			onJumpToPresent={jumpToPresent}
 			bind:failedNonces
 			bind:isAtBottom
 			onSend={dmHandleSend}

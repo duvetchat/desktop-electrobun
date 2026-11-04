@@ -85,10 +85,10 @@
 </script>
 
 <div class="w-80 overflow-hidden rounded-xl border border-zinc-700 bg-zinc-900 shadow-2xl">
-	<!-- Banner -->
+	<!-- Banner: 5:2, as it's cropped (600×240), and as a space's is. Without one, a block of the same size. -->
 	{#if editable}
 		<div
-			class="group relative h-24 w-full overflow-hidden"
+			class="group relative aspect-[5/2] w-full overflow-hidden"
 			style={member.banner_url && !bannerError ? undefined : getBannerStyle(member)}
 		>
 			{#if member.banner_url && !bannerError}
@@ -128,7 +128,7 @@
 	{:else if member.banner_url && !bannerError}
 		<button
 			type="button"
-			class="h-24 w-full cursor-pointer overflow-hidden"
+			class="aspect-[5/2] w-full cursor-pointer overflow-hidden"
 			onclick={() => {
 				previewSrc = member.banner_url!;
 				previewOpen = true;
@@ -143,7 +143,7 @@
 			/>
 		</button>
 	{:else}
-		<div class="h-24 w-full" style={getBannerStyle(member)}></div>
+		<div class="aspect-[5/2] w-full" style={getBannerStyle(member)}></div>
 	{/if}
 
 	<div class="relative px-4 pb-4">

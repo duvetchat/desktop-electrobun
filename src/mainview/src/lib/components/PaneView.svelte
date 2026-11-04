@@ -18,6 +18,7 @@
 	import { get } from "svelte/store";
 	import { closeTabsIn, isConversationTab, makeSplit, makeLeaf, tabFromDragData, tabTitle } from "$lib/pane";
 	import { getMessages, getMessagesAfter, getMessageById, ackRoom } from "$lib/api/messages";
+	import { dividerPastWindow, inWindow, leaving, loadedTo, withPresent } from "$lib/jumps";
 	import { onMount, onDestroy, type Snippet } from "svelte";
 
 	import type { MemberOnSidebar, GatewaySpace, PaneNode, Guild, Tab } from "$lib/types";
@@ -94,6 +95,17 @@
 	let isLoadingMoreBelow = $state(false);
 	let channelHasMore = $state<Partial<Record<string, boolean>>>({});
 	let channelHasMoreBelow = $state<Partial<Record<string, boolean>>>({});
+	// After a jump, where a room's next page below starts: after the newest message the jump's pages have loaded, never
+	// after one that came meanwhile (another member's, or one the user sent), whose messages before it would never load.
+	let channelLoadedBelowTo = $state<Partial<Record<string, string>>>({});
+	// When a room's last page below failed: the page is asked for again on a scroll there once BELOW_RETRY_WAIT has
+	// passed (the list also scrolls by itself, which must not ask again at once), rather than taken for the end.
+	const belowFailedAt = new Map<string, number>();
+	const BELOW_RETRY_WAIT = 2_000;
+	// A room's jumps so far: what an earlier jump, or a page asked for before the latest one, fetched is dropped.
+	const channelJumps = new Map<string, number>();
+	// A room's page below while it's asked for, which a jump aborts.
+	const belowRequests = new Map<string, AbortController>();
 	let channelInitialLoading = $state<Partial<Record<string, boolean>>>({});
 	let channelHighlightedMessage = $state<Partial<Record<string, string | null>>>({});
 	// last-read message ID per channel, used to render the unread divider
@@ -128,8 +140,12 @@
 	// history has them.
 	const activeMessages = $derived.by(() => {
 		if (node.kind !== "leaf" || !node.activeChannelId) return [];
-		const history = $channelMessages[node.activeChannelId] ?? [];
-		const ephemeral = $ephemeralMessages[node.activeChannelId];
+		const channelId = node.activeChannelId;
+		const all = $channelMessages[channelId] ?? [];
+		// While newer messages are still to load below a jump's pages, what came live past them waits for the pages.
+		const history =
+			channelHasMoreBelow[channelId] === true ? inWindow(all, channelLoadedBelowTo[channelId] ?? "") : all;
+		const ephemeral = $ephemeralMessages[channelId];
 		return ephemeral?.length ? [...history, ...ephemeral] : history;
 	});
 
@@ -161,6 +177,11 @@
 					type: activeTab.channelType,
 				}
 			: null,
+	);
+	// Whether the active room is one its space lists: the gateway takes away a room the user can no longer view
+	// (ROOM_DELETE, its loaded messages with it) and gives it back (ROOM_CREATE). A space not loaded yet doesn't count.
+	const activeRoomListed = $derived(
+		!activeTab || !activeTabSpace || activeTabSpace.rooms.some((r) => r.id === activeTab.channelId),
 	);
 
 	// The newest confirmed (non-pending) message of the room: an ephemeral one isn't the room's, which the read
@@ -195,19 +216,31 @@
 	// ACK when leaving the channel (channel switch, the Friends view hiding the pane, unmount) — only if
 	// at bottom. It comes before the effect below, which resets paneIsAtBottom for the next channel:
 	// Svelte reruns effects in order, and this cleanup has to read the value of the channel being left.
-	// Only the bottom reads a channel, not opening it. One left read through loses its unread divider:
-	// the next visit opens at the bottom, unless new messages came meanwhile. One left above its newest
-	// messages keeps its divider, and is unread again in the sidebar, as the server still has it.
+	// Only the bottom reads a channel, not opening it, and only the bottom of a list that reaches the room's newest
+	// message: a jump's pages, with newer messages still to load below, are no sign of having read those (leaving). One
+	// left read through loses its unread divider: the next visit opens at the bottom, unless new messages came meanwhile.
+	// One left above its newest messages keeps its divider, and is unread again in the sidebar, as the server still has
+	// it.
 	$effect(() => {
 		const channelId = isActive && node.kind === "leaf" ? node.activeChannelId : null;
 		return () => {
 			if (!channelId) return;
 			const msgs = get(channelMessages)[channelId] ?? [];
-			if (paneIsAtBottom) ackNewest(channelId, msgs);
-			if (channelUnreadAfter[channelId] && ackedMsgIds.get(channelId) === newestConfirmedId(msgs)) {
-				channelUnreadAfter[channelId] = null;
-			}
-			if (channelUnreadAfter[channelId]) {
+			const left = leaving(
+				{
+					atBottom: paneIsAtBottom,
+					newest: newestConfirmedId(msgs) ?? "",
+					moreBelow: channelHasMoreBelow[channelId] === true,
+					loadedBelowTo: channelLoadedBelowTo[channelId] ?? "",
+				},
+				channelUnreadAfter[channelId],
+				ackedMsgIds.get(channelId),
+				get(lastReadRooms)[channelId],
+			);
+			if (left.ack) ackNewest(channelId, msgs);
+			if (!left.unread) {
+				if (channelUnreadAfter[channelId]) channelUnreadAfter[channelId] = null;
+			} else {
 				unreadChannels.update((s) => {
 					s.add(channelId);
 					return s;
@@ -260,6 +293,21 @@
 		ackNewest(channelId, msgs);
 	}
 
+	// A message that came past a jump's pages shows only when the pages below reach it, yet the room is unread: its
+	// divider goes after the read position (this session's ack, or READY's), so leaving keeps the dot, and the pages below
+	// show it in its place.
+	$effect(() => {
+		if (node.kind !== "leaf" || !node.activeChannelId) return;
+		const channelId = node.activeChannelId;
+		const all = $channelMessages[channelId] ?? [];
+		if (channelHasMoreBelow[channelId] !== true || channelUnreadAfter[channelId] != null) return;
+		const acked = ackedMsgIds.get(channelId);
+		const lastRead = $lastReadRooms[channelId];
+		const readUpTo = acked && (!lastRead || acked > lastRead) ? acked : lastRead;
+		const at = dividerPastWindow(all, channelLoadedBelowTo[channelId] ?? "", $currentUser?.id, readUpTo);
+		if (at !== null) channelUnreadAfter[channelId] = at;
+	});
+
 	// ACK reactively when at bottom and messages change.
 	// All reactive deps must be read inline (not inside tryAckChannel) so Svelte
 	// tracks them properly — function calls don't create reactive subscriptions.
@@ -298,16 +346,18 @@
 		};
 	});
 
-	// Fetch initial messages only for text channels
+	// Fetch initial messages only for text channels. Not for a room taken away from the user: given back, it loads what it
+	// missed, at once if it's on screen, as its loaded messages went when it was taken away.
 	$effect(() => {
-		if (node.kind !== "leaf" || !node.activeChannelId || activeChannel?.type !== "text") {
+		if (node.kind !== "leaf" || !node.activeChannelId || activeChannel?.type !== "text" || !activeRoomListed) {
 			return;
 		}
 		const channelId = node.activeChannelId;
 		if (fetchingChannels.has(channelId)) return; // fetch already in-flight
 		if (loadedChannels.has(channelId)) {
 			// Self-heal: if marked loaded but store is empty and server knows
-			// the channel has messages, the original fetch silently failed — retry.
+			// the channel has messages, the original fetch silently failed (or the room was taken away and given
+			// back) — load it again.
 			const hasServerMsgs = !!get(lastMsgRooms)[channelId];
 			const hasClientMsgs = (get(channelMessages)[channelId]?.length ?? 0) > 0;
 			if (hasClientMsgs || !hasServerMsgs) return;
@@ -319,9 +369,16 @@
 		// re-runs when *other* channels finish loading and corrupting the
 		// dependency set so the effect misses the activeChannelId change.
 		channelInitialLoading[channelId] = true;
+		// A jump that starts meanwhile (to a message of a room just opened) puts its own pages in the list: this newest
+		// page would go in beside them, leaving the messages between out.
+		const jump = channelJumps.get(channelId) ?? 0;
 
 		getMessages(channelId)
 			.then((raw) => {
+				if (jump !== (channelJumps.get(channelId) ?? 0)) {
+					channelInitialLoading[channelId] = false;
+					return;
+				}
 				const msgs = raw.map((m) => gatewayMessageToMessage(m, $gatewaySpaces));
 				channelMessages.update((all) => {
 					const existing = all[channelId] ?? [];
@@ -351,9 +408,10 @@
 					}
 				}
 				channelInitialLoading[channelId] = false;
-				if (raw.length < 100) {
-					channelHasMore[channelId] = false;
-				}
+				channelHasMore[channelId] = raw.length >= 100;
+				// The newest page reaches the room's newest message: nothing newer to load below it.
+				channelHasMoreBelow[channelId] = false;
+				channelLoadedBelowTo[channelId] = "";
 			})
 			.catch((err) => {
 				console.error("Failed to fetch history:", err);
@@ -428,55 +486,99 @@
 		}
 	}
 
+	// A new jump of the room's (or a trip to its newest messages) starts: what earlier ones asked for is dropped as it
+	// comes, and its page below in flight is called off, so the new pages' next one can be asked for at once.
+	function startJump(channelId: string): number {
+		const jump = (channelJumps.get(channelId) ?? 0) + 1;
+		channelJumps.set(channelId, jump);
+		const inFlight = belowRequests.get(channelId);
+		if (inFlight) {
+			belowRequests.delete(channelId);
+			inFlight.abort();
+			isLoadingMoreBelow = false;
+		}
+		belowFailedAt.delete(channelId);
+		return jump;
+	}
+
+	// After a jump, the newer messages load below as the reader scrolls down to them, a page at a time, each after the
+	// newest of the jump's pages. A page that fails, or hasn't come in 10 s, is asked for again on a scroll there once
+	// BELOW_RETRY_WAIT has passed: newer messages are still to load.
 	async function loadMoreMessagesBelow() {
 		if (node.kind !== "leaf" || !node.activeChannelId || isLoadingMoreBelow || activeChannel?.type !== "text") {
 			return;
 		}
 		const channelId = node.activeChannelId;
-		if (channelHasMoreBelow[channelId] !== true) {
+		const after = channelLoadedBelowTo[channelId];
+		if (channelHasMoreBelow[channelId] !== true || !after) {
+			return;
+		}
+		if (Date.now() - (belowFailedAt.get(channelId) ?? 0) < BELOW_RETRY_WAIT) {
 			return;
 		}
 
-		const current = $channelMessages[channelId];
-		if (!current || current.length === 0) {
-			return;
-		}
-
-		let newest = current.at(0)!.id;
-		for (const m of current) {
-			if (m.id > newest) newest = m.id;
-		}
-
+		const jump = channelJumps.get(channelId) ?? 0;
 		isLoadingMoreBelow = true;
-
 		const controller = new AbortController();
+		belowRequests.set(channelId, controller);
 		const timeoutId = setTimeout(() => controller.abort(), 10_000);
 
 		try {
-			const raw = await getMessagesAfter(channelId, newest, controller.signal);
-			clearTimeout(timeoutId);
-			if (raw.length === 0) {
-				channelHasMoreBelow[channelId] = false;
-			} else {
-				const msgs = raw.map((m) => gatewayMessageToMessage(m, $gatewaySpaces));
-				channelMessages.update((all) => {
-					const existing = all[channelId] || [];
-					const existingIds = new Set(existing.map((m) => m.id));
-					return {
-						...all,
-						[channelId]: [...existing, ...msgs.filter((m) => !existingIds.has(m.id))],
-					};
-				});
-				if (raw.length < 100) {
-					channelHasMoreBelow[channelId] = false;
-				}
-			}
+			const raw = await getMessagesAfter(channelId, after, controller.signal);
+			if (jump !== (channelJumps.get(channelId) ?? 0)) return;
+			const msgs = raw.map((m) => gatewayMessageToMessage(m, $gatewaySpaces));
+			channelLoadedBelowTo[channelId] = loadedTo(after, raw);
+			channelMessages.update((all) => {
+				const existing = all[channelId] || [];
+				const existingIds = new Set(existing.map((m) => m.id));
+				return {
+					...all,
+					[channelId]: [...existing, ...msgs.filter((m) => !existingIds.has(m.id))],
+				};
+			});
+			// Fewer than a full page: it reached the newest message.
+			channelHasMoreBelow[channelId] = raw.length >= 100;
 		} catch (err) {
-			clearTimeout(timeoutId);
+			if (jump === (channelJumps.get(channelId) ?? 0)) belowFailedAt.set(channelId, Date.now());
 			console.error("Failed to load more below:", err);
-			channelHasMoreBelow[channelId] = false;
 		} finally {
-			isLoadingMoreBelow = false;
+			clearTimeout(timeoutId);
+			if (belowRequests.get(channelId) === controller) {
+				belowRequests.delete(channelId);
+				isLoadingMoreBelow = false;
+			}
+		}
+	}
+
+	// A message sent from a jump's pages takes the reader to the present: the room's newest page takes the place of the
+	// jump's pages, with the messages still being sent and what came after that page. True once it's there. One at a
+	// time: a second message sent meanwhile waits for the same trip.
+	const presentLoads = new Map<string, Promise<boolean>>();
+	function jumpToPresent(): Promise<boolean> {
+		if (node.kind !== "leaf" || !node.activeChannelId) return Promise.resolve(false);
+		const channelId = node.activeChannelId;
+		let load = presentLoads.get(channelId);
+		if (!load) {
+			load = loadPresent(channelId).finally(() => presentLoads.delete(channelId));
+			presentLoads.set(channelId, load);
+		}
+		return load;
+	}
+
+	async function loadPresent(channelId: string): Promise<boolean> {
+		const jump = startJump(channelId);
+		try {
+			const raw = await getMessages(channelId);
+			if (jump !== channelJumps.get(channelId)) return false;
+			const page = raw.map((m) => gatewayMessageToMessage(m, $gatewaySpaces));
+			channelMessages.update((all) => ({ ...all, [channelId]: withPresent(all[channelId] ?? [], page) }));
+			channelHasMore[channelId] = raw.length >= 100;
+			channelHasMoreBelow[channelId] = false;
+			channelLoadedBelowTo[channelId] = "";
+			return true;
+		} catch (err) {
+			console.error("Failed to load the newest messages:", err);
+			return false;
 		}
 	}
 
@@ -492,6 +594,7 @@
 			return;
 		}
 
+		const jump = startJump(channelId);
 		const controller = new AbortController();
 		const timeoutId = setTimeout(() => controller.abort(), 10_000);
 
@@ -506,6 +609,8 @@
 				getMessagesAfter(channelId, anchorId, controller.signal),
 			]);
 			clearTimeout(timeoutId);
+			// Of two jumps in a row, the last one's pages stay.
+			if (jump !== channelJumps.get(channelId)) return;
 
 			const anchorMsg = gatewayMessageToMessage(anchor, $gatewaySpaces);
 			const above = rawAbove.map((m) => gatewayMessageToMessage(m, $gatewaySpaces));
@@ -525,6 +630,7 @@
 			channelMessages.update((all) => ({ ...all, [channelId]: combined }));
 			channelHasMore[channelId] = rawAbove.length >= 100;
 			channelHasMoreBelow[channelId] = rawBelow.length >= 100;
+			channelLoadedBelowTo[channelId] = loadedTo(anchorId, rawBelow);
 			channelHighlightedMessage[channelId] = messageId;
 			channelInitialLoading[channelId] = false;
 
@@ -1206,6 +1312,7 @@
 					unreadAfterMessageId={node.activeChannelId ? (channelUnreadAfter[node.activeChannelId] ?? null) : null}
 					onLoadMore={loadMoreMessages}
 					onLoadMoreBelow={loadMoreMessagesBelow}
+					onJumpToPresent={jumpToPresent}
 					onUnreadMark={(msgId) => {
 						const chId = node.kind === "leaf" ? node.activeChannelId : null;
 						if (chId && channelUnreadAfter[chId] == null) {

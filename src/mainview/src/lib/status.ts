@@ -1,3 +1,4 @@
+import type { Conversation } from "$lib/api/conversations";
 import type { Friend } from "$lib/api/friends";
 import type { CallState } from "$lib/stores.svelte";
 import type {
@@ -109,23 +110,59 @@ export function applyStatusUpdate(statuses: Map<string, Presence>, update: Gatew
 	else statuses.set(key, keptPresence(update));
 }
 
+/** Takes the presences a list the API read gives (each user's status, with their client status) for the users the
+ * gateway hasn't told us about yet: what it says comes live, so it's newer. Returns whose it took. */
+function rememberPresences(statuses: Map<string, Presence>, listed: [string, Partial<Presence>][]): Set<string> {
+	const learned = new Set<string>();
+	for (const [userId, { status_id, client_status }] of listed) {
+		if (status_id && !statuses.has(userId)) {
+			statuses.set(userId, keptPresence({ status_id, client_status }));
+			learned.add(userId);
+		}
+	}
+	return learned;
+}
+
 /** Takes the presences a friends list gives (each friend's status, with their client status) for the friends the
- * gateway hasn't told us about yet: what it says comes live, so it's newer. Friends hear each other's changes from then
- * on, also with no space in common. Returns whose it took. */
+ * gateway hasn't told us about yet (rememberPresences). Friends hear each other's changes from then on, also with no
+ * space in common. Returns whose it took. */
 export function rememberFriendPresences(
 	statuses: Map<string, Presence>,
 	list: Friend[],
 	me: string | undefined,
 ): Set<string> {
-	const learned = new Set<string>();
-	for (const f of list) {
-		const other = f.sender_id === me ? f.recipient_id : f.sender_id;
-		if (f.status_id && !statuses.has(other)) {
-			statuses.set(other, keptPresence(f));
-			learned.add(other);
-		}
-	}
-	return learned;
+	return rememberPresences(
+		statuses,
+		list.map((f) => [f.sender_id === me ? f.recipient_id : f.sender_id, f]),
+	);
+}
+
+/** Takes the presences a conversations list gives their members, the user's own aside, for those the gateway hasn't
+ * told us about yet (rememberPresences). A DM's or a group's members hear each other's changes from then on, friends or
+ * not, with a space in common or not. Returns whose it took. */
+export function rememberConversationPresences(
+	statuses: Map<string, Presence>,
+	list: Pick<Conversation, "members">[],
+	me: string | undefined,
+): Set<string> {
+	return rememberPresences(
+		statuses,
+		list.flatMap((c) =>
+			c.members.filter((m) => m.user_id !== me).map((m): [string, Partial<Presence>] => [m.user_id, m]),
+		),
+	);
+}
+
+/** Keeps the presence an event gives a conversation's member (CONVERSATION_CREATE's members, CONVERSATION_MEMBER_ADD),
+ * as a space's events give theirs (noteMemberStatus): the API's as it sent the event, newer than what's kept of someone
+ * whose changes stopped reaching the user (a friend no more, a space left). One without a presence, from an API from
+ * before it, changes nothing. */
+export function noteConversationMemberStatus(
+	statuses: Map<string, Presence>,
+	userId: string,
+	{ status_id, client_status }: Partial<Presence>,
+) {
+	if (status_id !== undefined) statuses.set(userId, keptPresence({ status_id, client_status }));
 }
 
 /** A member's status as a space shows it. A bot's is its status in that space alone, so it's offline there while the

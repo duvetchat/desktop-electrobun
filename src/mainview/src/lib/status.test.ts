@@ -9,12 +9,15 @@ import {
 	memberMobileOnly,
 	memberStatus,
 	mentionSound,
+	noteConversationMemberStatus,
 	noteMemberStatus,
+	rememberConversationPresences,
 	rememberFriendPresences,
 	spaceStatusKey,
 	statusDotClass,
 	STATUS_CHOICES,
 } from "./status";
+import type { ConversationMember } from "$lib/api/conversations";
 import type { Friend } from "$lib/api/friends";
 import { userStatusToString, type ClientStatus, type Presence, type UserStatus } from "$lib/types";
 
@@ -331,5 +334,67 @@ describe("rememberFriendPresences", () => {
 		expect(learned.size).toBe(0);
 		expect(statuses.get("ana")).toEqual(on({ desktop: 1 }));
 		expect(statuses.has("cid")).toBe(false);
+	});
+});
+
+// Someone in a DM or a group with the user who is neither their friend nor in a space with them is known only from the
+// conversation: from the conversations list, CONVERSATION_CREATE and CONVERSATION_MEMBER_ADD, then their changes (#84).
+describe("a conversation's members' presences", () => {
+	// A member as the conversations list and CONVERSATION_CREATE give them, with their presence.
+	const member = (userId: string, shown: Partial<Presence> = {}): ConversationMember => ({
+		id: `member-${userId}`,
+		conversation_id: "conv",
+		user_id: userId,
+		created_at: "",
+		updated_at: "",
+		user: { id: userId, username: userId, alias: null, avatar: null, banner: null },
+		...shown,
+	});
+
+	test("the conversations list gives a stranger's status and platforms, and not the user's own", () => {
+		const statuses = new Map<string, Presence>();
+		const learned = rememberConversationPresences(
+			statuses,
+			[
+				{ members: [member("me", on({ web: 1 })), member("ana", on({ desktop: 1 }))] },
+				{ members: [member("me", on({ web: 1 })), member("bob", on({ mobile: 2 }, 2)), member("cid", presence(0))] },
+			],
+			"me",
+		);
+		expect([...learned]).toEqual(["ana", "bob"]);
+		expect(statuses.get("ana")).toEqual(on({ desktop: 1 }));
+		expect(statuses.get("bob")).toEqual(on({ mobile: 2 }, 2));
+		expect(memberMobileOnly(statuses, { id: "bob" })).toBe(true);
+		expect(statuses.has("me")).toBe(false);
+		expect(statuses.has("cid")).toBe(false);
+	});
+
+	test("the list keeps what the gateway said, which is newer, and an API from before presences gives none", () => {
+		const statuses = new Map<string, Presence>([["ana", on({ mobile: 1 })]]);
+		const learned = rememberConversationPresences(
+			statuses,
+			[{ members: [member("ana", on({ desktop: 2 }, 2)), member("dan")] }],
+			"me",
+		);
+		expect(learned.size).toBe(0);
+		expect(statuses.get("ana")).toEqual(on({ mobile: 1 }));
+		expect(statuses.has("dan")).toBe(false);
+	});
+
+	test("CONVERSATION_CREATE's and CONVERSATION_MEMBER_ADD's presence is kept, and USER_STATUS_UPDATE keeps it up", () => {
+		// Kept from a space the user has since left, whose changes no longer reach them.
+		const statuses = new Map<string, Presence>([["ana", on({ desktop: 1 })]]);
+		noteConversationMemberStatus(statuses, "ana", on({ mobile: 2 }, 2));
+		expect(statuses.get("ana")).toEqual(on({ mobile: 2 }, 2));
+		noteConversationMemberStatus(statuses, "bob", on({ web: 1 }));
+		expect(statuses.get("bob")).toEqual(on({ web: 1 }));
+		// Offline, as an event gives it: without platforms.
+		noteConversationMemberStatus(statuses, "cid", on({ mobile: 1 }, 0));
+		expect(statuses.get("cid")).toEqual(presence(0));
+		// An event from an API from before presences changes nothing.
+		noteConversationMemberStatus(statuses, "ana", {});
+		expect(statuses.get("ana")).toEqual(on({ mobile: 2 }, 2));
+		applyStatusUpdate(statuses, { user_id: "bob", status_id: 0 });
+		expect(statuses.has("bob")).toBe(false);
 	});
 });
