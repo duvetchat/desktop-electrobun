@@ -1,5 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { ipcPath, LineReader, MAX_LINE_LENGTH } from "./ipc";
+import { rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { ipcHeld, ipcPath, LineReader, MAX_LINE_LENGTH } from "./ipc";
 
 const bytes = (text: string) => new TextEncoder().encode(text);
 
@@ -47,5 +50,21 @@ describe("ipcPath", () => {
 			"/var/folders/ab/T/duvet-ipc.sock",
 		);
 		expect(ipcPath("linux", {})).toBe("/tmp/duvet-ipc.sock");
+	});
+});
+
+describe("ipcHeld", () => {
+	test("tells a pipe or socket something listens on from one nothing does", async () => {
+		// The test's own, never the app's.
+		const name = `duvet-ipc-test-${process.pid}-${Date.now()}`;
+		const path = process.platform === "win32" ? `\\\\.\\pipe\\${name}` : join(tmpdir(), `${name}.sock`);
+		expect(await ipcHeld(path)).toBe(false);
+		const server = Bun.listen({ unix: path, socket: { data() {} } });
+		try {
+			expect(await ipcHeld(path)).toBe(true);
+		} finally {
+			server.stop(true);
+			if (process.platform !== "win32") rmSync(path, { force: true });
+		}
 	});
 });

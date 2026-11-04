@@ -1,12 +1,5 @@
 import { activityThumbnail, base64Bytes } from "$lib/activity-thumbnail";
 
-export interface MaximizeParams {
-	availX: number;
-	availY: number;
-	availWidth: number;
-	availHeight: number;
-}
-
 export interface ActivityPayload {
 	// 0 (or none) playing, 2 listening.
 	type?: number;
@@ -28,7 +21,7 @@ export type AppRPCSchema = {
 		messages: {
 			closeWindow: void;
 			minimizeWindow: void;
-			maximizeWindow: MaximizeParams;
+			maximizeWindow: void;
 			openExternal: { url: string };
 			setSpotifyActivity: { enabled: boolean };
 		};
@@ -48,7 +41,7 @@ export type AppRPCClient = {
 	send: {
 		closeWindow: () => void;
 		minimizeWindow: () => void;
-		maximizeWindow: (params: MaximizeParams) => void;
+		maximizeWindow: () => void;
 		openExternal: (params: { url: string }) => void;
 		setSpotifyActivity: (params: { enabled: boolean }) => void;
 	};

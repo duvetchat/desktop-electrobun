@@ -8,6 +8,19 @@ export function ipcPath(platform: NodeJS.Platform, env: Record<string, string | 
 	return posix.join(dir, "duvet-ipc.sock");
 }
 
+/** Whether something listens at path already: a connection to it goes through. Another Duvet that runs keeps its IPC
+ * server: on Windows, Bun 1.3.9 panics listening on a pipe another process holds, past any try (#188), and on Unix the
+ * stale-socket cleanup would take the live socket over. */
+export async function ipcHeld(path: string): Promise<boolean> {
+	try {
+		const socket = await Bun.connect({ unix: path, socket: { data() {} } });
+		socket.end();
+		return true;
+	} catch {
+		return false;
+	}
+}
+
 // A line of 64 KiB of UTF-8 has at most this many UTF-16 units, so the documented limit always fits.
 export const MAX_LINE_LENGTH = 64 << 10;
 
