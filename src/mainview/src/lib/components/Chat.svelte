@@ -37,6 +37,7 @@
 	import { hasPermission, mentionableRooms, Permission } from "$lib/permissions";
 	import { displayName, isSpoiler, withSpoiler } from "$lib/spoilers";
 	import { withSentMessage } from "$lib/arrivals";
+	import { knowMessage, newestKnownIn } from "$lib/jumps";
 	import { chatRequest, keyboard, leaveMessageBox } from "$lib/keyboard.svelte";
 	import { layoutPrefs } from "$lib/layout-prefs.svelte";
 
@@ -367,6 +368,7 @@
 			created_at: isoNow,
 			updated_at: isoNow,
 			nonce,
+			known_newest: newestKnownIn(channelId),
 			attachments: pendingAttachments.length > 0 ? pendingAttachments : null,
 			sticker_attachment_id: stickerAttachmentId ?? null,
 			...(ref
@@ -403,6 +405,7 @@
 	function sent(roomId: string, nonce: string) {
 		return (raw: GatewayMessage) => {
 			retryData.delete(nonce);
+			knowMessage(roomId, raw.id);
 			const message = gatewayMessageToMessage(raw, $gatewaySpaces);
 			channelMessages.update((all) => {
 				const existing = all[roomId] ?? [];
@@ -557,6 +560,7 @@
 			created_at: isoNow,
 			updated_at: isoNow,
 			nonce,
+			known_newest: newestKnownIn(channelId),
 			attachments: [
 				{
 					id: "",

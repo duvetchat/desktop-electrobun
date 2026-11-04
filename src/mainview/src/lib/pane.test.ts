@@ -6,6 +6,7 @@ import {
 	isConversationTab,
 	makeLeaf,
 	makeSplit,
+	spacesAndRooms,
 	tabDragData,
 	tabFromDragData,
 	tabNews,
@@ -151,6 +152,20 @@ describe("restoring saved panes", () => {
 	test("without the conversations loaded, conversation tabs go and rooms stay", () => {
 		const saved = makeLeaf([conversationTab(dm, ME), room("r1")], "c1");
 		expect(filterPaneTree(saved, tabStaysOpen([space], new Set()))).toMatchObject({
+			tabs: [room("r1")],
+			activeChannelId: "r1",
+		});
+	});
+
+	test("a room that goes (deleted, or taken from the user) closes its tabs in every pane, as a space that goes does", () => {
+		const before = [{ ...space, rooms: [gatewayRoom("r1"), gatewayRoom("r2")] }];
+		const after = [{ ...space, rooms: [gatewayRoom("r1")] }];
+		const known = spacesAndRooms(new Set(), before).ids;
+		expect(spacesAndRooms(known, before).gone).toBe(false);
+		expect(spacesAndRooms(known, after).gone).toBe(true);
+		const open = makeSplit(makeLeaf([room("r1"), room("r2")], "r2"), makeLeaf([room("r2")], "r2"), "h");
+		expect(filterPaneTree(open, tabStaysOpen(after, new Set()))).toMatchObject({
+			kind: "leaf",
 			tabs: [room("r1")],
 			activeChannelId: "r1",
 		});

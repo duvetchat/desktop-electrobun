@@ -10,8 +10,6 @@ import {
 	type EmojiImage,
 } from "./emoji-retry";
 
-Object.assign(globalThis, { VITE_API_URL: "https://api.test", VITE_WS_URL: "", VITE_DOMAIN_TARGET_ENV: "duvet" });
-
 const URL_A = "https://api.test/attachments/0190a3b2-0000-7000-8000-000000000001";
 const URL_B = "https://api.test/attachments/0190a3b2-0000-7000-8000-000000000002";
 

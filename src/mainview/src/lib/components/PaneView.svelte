@@ -18,7 +18,7 @@
 	import { get } from "svelte/store";
 	import { closeTabsIn, isConversationTab, makeSplit, makeLeaf, tabFromDragData, tabTitle } from "$lib/pane";
 	import { getMessages, getMessagesAfter, getMessageById, ackRoom } from "$lib/api/messages";
-	import { dividerPastWindow, inWindow, leaving, loadedTo, withPresent } from "$lib/jumps";
+	import { dividerPastWindow, inWindow, keepRoomJumps, leaving, loadedTo, takeJump, withPresent } from "$lib/jumps";
 	import { onMount, onDestroy, type Snippet } from "svelte";
 
 	import type { MemberOnSidebar, GatewaySpace, PaneNode, Guild, Tab } from "$lib/types";
@@ -106,6 +106,8 @@
 	const channelJumps = new Map<string, number>();
 	// A room's page below while it's asked for, which a jump aborts.
 	const belowRequests = new Map<string, AbortController>();
+	// The pane going (a READY remounts the app, or the pane closes) leaves its rooms' jumps for the next view of them.
+	onDestroy(() => keepRoomJumps(channelHasMoreBelow, channelHasMore, channelLoadedBelowTo));
 	let channelInitialLoading = $state<Partial<Record<string, boolean>>>({});
 	let channelHighlightedMessage = $state<Partial<Record<string, string | null>>>({});
 	// last-read message ID per channel, used to render the unread divider
@@ -361,6 +363,17 @@
 			const hasServerMsgs = !!get(lastMsgRooms)[channelId];
 			const hasClientMsgs = (get(channelMessages)[channelId]?.length ?? 0) > 0;
 			if (hasClientMsgs || !hasServerMsgs) return;
+		}
+		// Shown again in the middle of a jump's pages (after a READY, or in another pane): the list goes on from them, as a
+		// conversation's does, rather than putting the newest page beside them with the messages between left out.
+		const kept = takeJump(channelId, get(channelMessages)[channelId]);
+		if (kept) {
+			loadedChannels.add(channelId);
+			channelHasMore[channelId] = kept.hasMore;
+			channelHasMoreBelow[channelId] = true;
+			channelLoadedBelowTo[channelId] = kept.loadedBelowTo;
+			channelInitialLoading[channelId] = false;
+			return;
 		}
 		loadedChannels.add(channelId);
 		fetchingChannels.add(channelId);

@@ -1,9 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { renderEmoji, toTwemojiUrl } from "$lib/emoji";
-
-// markdown.ts reads the API's host as it loads, from constants Vite defines at build time.
-Object.assign(globalThis, { VITE_API_URL: "https://api.test", VITE_WS_URL: "", VITE_DOMAIN_TARGET_ENV: "duvet" });
-const { renderMarkdown, renderMarkdownLine } = await import("$lib/markdown");
+import { renderMarkdown, renderMarkdownLine } from "$lib/markdown";
 
 // The value of the first href in html: what's between its quotes.
 const hrefOf = (html: string) => /href="([^"]*)"/.exec(html)?.[1];
