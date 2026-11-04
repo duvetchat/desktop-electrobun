@@ -35,7 +35,7 @@
 	import VoiceNoteBar from "$lib/components/VoiceNoteBar.svelte";
 	import StatusMenu from "$lib/components/StatusMenu.svelte";
 	import StatusDot from "$lib/components/StatusDot.svelte";
-	import { getUserMobileOnly } from "$lib/api/ws/connection";
+	import { ownMobileOnly } from "$lib/api/ws/connection";
 	import { STATUS_CHOICES, chosenStatus } from "$lib/status";
 	import { userStatusToString } from "$lib/types";
 
@@ -51,8 +51,6 @@
 	// The status the user chose, which everyone sees while they're connected.
 	const myChoice = $derived(chosenStatus($currentUser?.status));
 	const myStatus = $derived(userStatusToString(myChoice));
-	// A phone, as for anyone, when the gateway says the user is connected only from the mobile app.
-	const myMobileOnly = $derived(!!$currentUser && getUserMobileOnly($currentUser.id));
 	const myStatusLabel = $derived(STATUS_CHOICES.find((c) => c.status === myChoice)?.label ?? "");
 
 	const activeVoiceSpace = $derived(
@@ -259,7 +257,7 @@
 			/>
 			<StatusDot
 				status={myStatus}
-				mobileOnly={myMobileOnly}
+				mobileOnly={$ownMobileOnly}
 				class="text-duvet-sunk absolute -right-0.5 -bottom-0.5 w-3 border-2"
 			/>
 		</StatusMenu>
@@ -322,7 +320,7 @@
 				/>
 				<StatusDot
 					status={myStatus}
-					mobileOnly={myMobileOnly}
+					mobileOnly={$ownMobileOnly}
 					class="text-duvet-card absolute -right-0.5 -bottom-0.5 w-3 border-2"
 				/>
 			</div>

@@ -44,7 +44,7 @@ import { listMyTeamInvites } from "$lib/api/developer";
 import { getMyBuckets, me as fetchMe } from "$lib/api/user";
 import { getMentionCounts } from "$lib/api/messages";
 import { getWSHostURL, getAvatarURL, route } from "$lib/common/common";
-import { get } from "svelte/store";
+import { derived, get } from "svelte/store";
 import { getSpaceMembers, type SpaceMemberWithUser } from "$lib/api/spaces";
 import { forgetSpaceCommands } from "$lib/api/interactions";
 
@@ -194,14 +194,10 @@ export function getUserMobileOnly(userId: string): boolean {
 	return isMobileOnly(userStatusCache.get(userId)?.client_status);
 }
 
-/** Writes presences into the cache, and lets the user's own entries (the user panel, their card in Settings), which
- * read whether they're only on mobile along with currentUser, know when that changed for them. */
-function notePresences(write: () => void) {
-	const me = get(currentUser);
-	const wasMobileOnly = !!me && getUserMobileOnly(me.id);
-	write();
-	if (me && getUserMobileOnly(me.id) !== wasMobileOnly) currentUser.update((u) => (u ? { ...u } : u));
-}
+/** Whether the gateway shows the user themself only on mobile, for their own entries (the user panel, their card in
+ * Settings), which aren't drawn from a space's members. The cache isn't reactive: this reads it again whenever
+ * gatewaySpaces changes, which every event that writes a presence of theirs re-references (READY empties it). */
+export const ownMobileOnly = derived([gatewaySpaces, currentUser], ([, me]) => !!me && getUserMobileOnly(me.id));
 
 /** Takes the presences a friends list gives for the friends the gateway hasn't told us about yet
  * (rememberFriendPresences). Friends hear each other's changes from then on, also with no space in common. */
@@ -592,14 +588,12 @@ function handleEvent(event: GatewayEvent) {
 			const memberStatuses = spaceCreateData.member_statuses;
 			if (memberStatuses) {
 				const clientStatuses = spaceCreateData.member_client_status;
-				notePresences(() => {
-					for (const [uid, status] of Object.entries(memberStatuses)) {
-						noteMemberStatus(userStatusCache, uid, space.id, {
-							status_id: status,
-							client_status: clientStatuses?.[uid],
-						});
-					}
-				});
+				for (const [uid, status] of Object.entries(memberStatuses)) {
+					noteMemberStatus(userStatusCache, uid, space.id, {
+						status_id: status,
+						client_status: clientStatuses?.[uid],
+					});
+				}
 				// The DM list shows them too, and may have loaded before this space did.
 				const me = currentUserData?.id;
 				const hasMember = (c: { members: { user_id: string }[] }) =>
@@ -917,7 +911,7 @@ function handleEvent(event: GatewayEvent) {
 			const raw = payload.data;
 			// The status and the platforms the user is on. One with a space_id is a bot's status in that space (its
 			// shard's): its other spaces and its global status keep theirs.
-			notePresences(() => applyStatusUpdate(userStatusCache, raw));
+			applyStatusUpdate(userStatusCache, raw);
 			if (raw.status_id === 0) {
 				if (!raw.space_id && raw.user_id in get(userActivities)) {
 					// Gone offline: the gateway dropped their activities too, which would show here otherwise.
@@ -1142,7 +1136,7 @@ function handleEvent(event: GatewayEvent) {
 			const raw = payload.data;
 			// A bot's is its status in this space alone: offline until a USER_STATUS_UPDATE says a shard of it holds
 			// the space.
-			notePresences(() => noteMemberStatus(userStatusCache, raw.user_id, raw.space_id, raw, raw.user?.is_bot));
+			noteMemberStatus(userStatusCache, raw.user_id, raw.space_id, raw, raw.user?.is_bot);
 			// The member may be a bot, whose commands the space's list doesn't have yet.
 			forgetSpaceCommands(raw.space_id);
 			getSpaceMembers(raw.space_id)

@@ -87,7 +87,7 @@
 	import { parseThemePref } from "$lib/theme";
 	import { isElectrobunWindow } from "$lib/electrobun-rpc";
 	import { chosenStatus } from "$lib/status";
-	import { getUserMobileOnly } from "$lib/api/ws/connection";
+	import { ownMobileOnly } from "$lib/api/ws/connection";
 	import { answerTeamInvite } from "$lib/team-invites";
 	import { userStatusToString } from "$lib/types";
 	import StorageTransferCard from "$lib/components/StorageTransferCard.svelte";
@@ -968,7 +968,7 @@
 				: (pendingBannerPreview ?? ($currentUser ? getAvatarURL($currentUser.id, $currentUser.banner) : null)),
 		status: userStatusToString(chosenStatus($currentUser?.status)),
 		// A phone, as for anyone, when the gateway says the user is connected only from the mobile app.
-		mobile_only: !!$currentUser && getUserMobileOnly($currentUser.id),
+		mobile_only: $ownMobileOnly,
 		badges: $currentUser?.badges ?? 0,
 		is_bot: $currentUser?.is_bot ?? false,
 		is_owner: false,
