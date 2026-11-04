@@ -1,9 +1,65 @@
+import type { CommandUse } from "$lib/api/interactions";
 import { CommandOptionType, type ApplicationCommand, type CommandOption, type SpaceCommands } from "$lib/types";
 
-/** The space's commands the "/" menu offers for what follows the slash: those whose name starts with it, in order. */
-export function matchingCommands(list: SpaceCommands, query: string): ApplicationCommand[] {
+/**
+ * Something the "/" menu offers to run: a command, or for one with subcommands, each of them, in its group when it's
+ * in one. name is what runs, the command's name then its group's and its subcommand's, apart by spaces
+ * ("perms user get"), and options are what it takes: the command's, or the subcommand's.
+ */
+export interface CommandEntry {
+	command: ApplicationCommand;
+	group?: CommandOption;
+	subcommand?: CommandOption;
+	name: string;
+	description: string;
+	options: CommandOption[];
+}
+
+const isSubcommand = (o: CommandOption) => o.type === CommandOptionType.Subcommand;
+const isGroup = (o: CommandOption) => o.type === CommandOptionType.SubcommandGroup;
+
+/**
+ * What command can run: the command itself, or when its options are subcommands and groups of them (the API lets a
+ * command have only those, or none), each subcommand, in the order the command has them.
+ */
+export function commandEntries(command: ApplicationCommand): CommandEntry[] {
+	if (!command.options.some((o) => isSubcommand(o) || isGroup(o))) {
+		return [{ command, name: command.name, description: command.description, options: command.options }];
+	}
+	const entry = (subcommand: CommandOption, group?: CommandOption): CommandEntry => ({
+		command,
+		group,
+		subcommand,
+		name: [command.name, group?.name, subcommand.name].filter(Boolean).join(" "),
+		description: subcommand.description,
+		options: subcommand.options ?? [],
+	});
+	return command.options.flatMap((o) =>
+		isSubcommand(o) ? [entry(o)] : isGroup(o) ? (o.options ?? []).filter(isSubcommand).map((s) => entry(s, o)) : [],
+	);
+}
+
+/**
+ * What the "/" menu offers for what follows the slash: what the space's commands run (commandEntries) whose name
+ * starts with it, in order. A command without subcommands is one entry, its name.
+ */
+export function matchingCommands(list: SpaceCommands, query: string): CommandEntry[] {
 	const prefix = query.toLowerCase();
-	return list.commands.filter((c) => c.name.startsWith(prefix));
+	return list.commands.flatMap(commandEntries).filter((e) => e.name.startsWith(prefix));
+}
+
+/**
+ * What follows the slash while the whole message names something to run, for the "/" menu, or null when it doesn't:
+ * "/" and a word, a phantom line break aside, or, for a command of list with subcommands (the space's commands,
+ * once they came), its name and then up to two more words for its group and its subcommand ("/perms user g"). Text
+ * after any other command's name is a message, as it was before subcommands.
+ */
+export function commandQuery(raw: string, list: SpaceCommands | null): string | null {
+	const name = /^\/(\S*)\n?$/u.exec(raw);
+	if (name) return name[1];
+	const path = /^\/(\S+)((?: \S*){1,2})\n?$/u.exec(raw);
+	const command = path && list?.commands.find((c) => c.name === path[1].toLowerCase());
+	return command && command.options.some((o) => isSubcommand(o) || isGroup(o)) ? path[1] + path[2] : null;
 }
 
 /**
@@ -11,10 +67,7 @@ export function matchingCommands(list: SpaceCommands, query: string): Applicatio
  * matches, as the menu would have offered it, or null when none does or they don't come, and the text goes as a
  * message.
  */
-export async function commandOnceListed(
-	list: Promise<SpaceCommands>,
-	query: string,
-): Promise<ApplicationCommand | null> {
+export async function commandOnceListed(list: Promise<SpaceCommands>, query: string): Promise<CommandEntry | null> {
 	try {
 		return matchingCommands(await list, query)[0] ?? null;
 	} catch {
@@ -25,11 +78,12 @@ export async function commandOnceListed(
 /** A command option's field: its text, a choice's value, a member's, role's or room's ID, or a switch's state. */
 export type FieldValue = string | number | boolean;
 
-/** An option as a command's use sends it. */
+/** An option as a command's use sends it: one with its value, or a subcommand or a group with what it runs. */
 export interface UsedOption {
 	name: string;
 	type: number;
-	value: FieldValue;
+	value?: FieldValue;
+	options?: UsedOption[];
 }
 
 // The number in an integer or number option's text, within what the API takes (an integer within
@@ -63,17 +117,17 @@ function check(o: CommandOption, v: FieldValue): { value: FieldValue } | { probl
 }
 
 /**
- * The options a use of the command sends from its fields, or the first rule a field breaks, as the API checks
+ * The options a use of what entry runs sends from its fields, or the first rule a field breaks, as the API checks
  * them: the required ones given (a switch is false until it's turned on), a text's length in characters, and a
  * number's kind and bounds. An empty field gives nothing. The fields are a map by option name: an option may be
  * named constructor or __proto__, which a plain object would read from its prototype.
  */
 export function usedOptions(
-	command: ApplicationCommand,
+	entry: CommandEntry,
 	fields: ReadonlyMap<string, FieldValue>,
 ): { options: UsedOption[] } | { problem: string } {
 	const options: UsedOption[] = [];
-	for (const o of command.options) {
+	for (const o of entry.options) {
 		const v = fields.get(o.name) ?? (o.type === CommandOptionType.Boolean && o.required ? false : undefined);
 		// An empty text field gives nothing, but a choice whose value is "" was picked.
 		if (v === undefined || (v === "" && !o.choices?.length)) {
@@ -85,4 +139,15 @@ export function usedOptions(
 		options.push({ name: o.name, type: o.type, value: checked.value });
 	}
 	return { options };
+}
+
+/**
+ * The use of what entry runs with options, its used options, as the API takes it: a subcommand's options under it,
+ * and the subcommand under its group when it's in one.
+ */
+export function commandUse(entry: CommandEntry, options: UsedOption[]): CommandUse {
+	let used = options;
+	if (entry.subcommand) used = [{ name: entry.subcommand.name, type: CommandOptionType.Subcommand, options: used }];
+	if (entry.group) used = [{ name: entry.group.name, type: CommandOptionType.SubcommandGroup, options: used }];
+	return { id: entry.command.id, name: entry.command.name, type: 1, options: used };
 }
