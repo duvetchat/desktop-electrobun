@@ -350,7 +350,11 @@
 		scrollEl?.addEventListener("click", openRoomMention, true);
 	});
 
+	// Once the list is gone, what it still waits for (a frame, a tick) stops before reading its props: a conversation's
+	// view, gone with it (another tab shows), hands it a null conversation (desktop-electrobun#164).
+	let gone = false;
 	onDestroy(() => {
+		gone = true;
 		if (typeof window === "undefined") return;
 		if (intervalId) {
 			window.clearInterval(intervalId);
@@ -509,7 +513,7 @@
 		void tick().then(() => {
 			requestAnimationFrame(() => {
 				requestAnimationFrame(() => {
-					if (channelId !== chId || !scrollEl) return;
+					if (gone || channelId !== chId || !scrollEl) return;
 					const keptEl = kept && scrollEl.querySelector(`[data-message-id="${kept.messageId}"]`);
 					if (kept && keptEl && !jumping) {
 						// Back where the reader was when a new gateway session unmounted the app (keepReaderPlace).
@@ -524,7 +528,7 @@
 					}
 					// One more frame, so the position read is the one just set.
 					requestAnimationFrame(() => {
-						if (channelId !== chId || !scrollEl) return;
+						if (gone || channelId !== chId || !scrollEl) return;
 						isAtBottom = scrollEl.scrollTop >= -50;
 						wasAtBottom = isAtBottom;
 						scrollUnlocked = true;
@@ -608,7 +612,7 @@
 		void tick().then(() => {
 			requestAnimationFrame(() => {
 				requestAnimationFrame(() => {
-					if (channelId !== chId || !scrollEl) return;
+					if (gone || channelId !== chId || !scrollEl) return;
 					const target =
 						scrollEl.querySelector(`[data-message-id="${id}"]`) ?? scrollEl.querySelector("[data-unread-divider]");
 					target?.scrollIntoView({ behavior: "instant", block: "start" });
@@ -651,7 +655,7 @@
 				.catch(() => false)
 				.then(() => tick())
 				.then(() => {
-					if (channelId === chId && scrollEl) scrollEl.scrollTop = 0;
+					if (!gone && channelId === chId && scrollEl) scrollEl.scrollTop = 0;
 				});
 		} else if (action === "unread" && lastSeenMsgId) {
 			// Scrolled up or page hidden — place the unread divider.
