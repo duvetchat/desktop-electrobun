@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { UserActivity } from "$lib/stores.svelte";
-	import { resolveActivityIcon } from "$lib/activity-icons";
+	import { inlineActivityImage, resolveActivityIcon } from "$lib/activity-icons";
 	import { formatPlaybackTime, isSpotify, shownActivities, spotifySearchUrl } from "$lib/activity";
 	import ElapsedTime from "./ElapsedTime.svelte";
 
@@ -66,6 +66,8 @@
 					{/if}
 				</div>
 			{:else}
+				{@const small = inlineActivityImage(activity.assets?.small_image)}
+				<!-- Only inline images: one by URL would have its host learn the viewer's IP (lib/activity-icons.ts) -->
 				<div class="flex items-center gap-2">
 					<div class="relative shrink-0">
 						<img
@@ -74,9 +76,9 @@
 							title={activity.assets?.large_text ?? ""}
 							class="h-10 w-10 rounded"
 						/>
-						{#if activity.assets?.small_image}
+						{#if small}
 							<img
-								src={resolveActivityIcon(activity.assets.small_image)}
+								src={small}
 								alt=""
 								title={activity.assets?.small_text ?? ""}
 								class="absolute -right-1 -bottom-1 h-5 w-5 rounded border border-zinc-900 bg-zinc-800 p-0.5"
