@@ -299,7 +299,8 @@ describe("the HTML it makes", () => {
 	]);
 	const ATTRIBUTES: Record<string, Set<string>> = {
 		a: new Set(["href", "target", "rel", "class"]),
-		img: new Set(["class", "src", "alt", "title", "draggable", "loading", "onerror"]),
+		// No handler: a custom emoji's image that fails is tried again by the document (lib/emoji-retry.ts).
+		img: new Set(["class", "src", "alt", "title", "draggable", "loading"]),
 		span: new Set(["class", "title", "style", "data-room-id"]),
 		button: new Set(["class", "data-code", "title", "aria-label"]),
 		svg: new Set([
@@ -320,9 +321,6 @@ describe("the HTML it makes", () => {
 		pre: new Set(["class", "style", "tabindex"]),
 		code: new Set(["class"]),
 	};
-	// A custom emoji's image retries its load, then turns into its name: the one handler the renderer writes.
-	const RETRY =
-		"var r=+(this.dataset.r||0);if(r<10){this.dataset.r=r+1;this.src=this.src.split('?')[0]+'?r='+Date.now()}else{this.replaceWith(Object.assign(document.createElement('span'),{title:'Emoji failed to load',textContent:this.title}))}";
 	const twemoji = toTwemojiUrl("😀").replace(/[^/]+$/, "");
 
 	function violation(tag: string, attributes: Iterable<[string, string]>): string | null {
@@ -330,7 +328,6 @@ describe("the HTML it makes", () => {
 		const allowed = ATTRIBUTES[tag] ?? new Set(["class"]);
 		for (const [name, value] of attributes) {
 			if (!allowed.has(name)) return `${name} on <${tag}>`;
-			if (name === "onerror" && value !== RETRY) return `onerror ${value}`;
 			if (name === "href" && !/^https?:\/\//.test(value)) return `href ${value}`;
 			if (name === "src" && !value.startsWith(twemoji) && !value.startsWith("https://api.test/attachments/"))
 				return `src ${value}`;

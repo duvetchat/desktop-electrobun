@@ -1,4 +1,5 @@
 import { getAvatarURL } from "$lib/common/common";
+import { memberStatus } from "$lib/status";
 import type { Conversation, DirectMessage } from "$lib/api/conversations";
 import type { UserActivity } from "$lib/stores.svelte";
 
@@ -159,6 +160,10 @@ export interface InteractionMetadata {
 
 /** The option types of an application's command (commands.OptionType in the API). */
 export const CommandOptionType = {
+	/** Something a command does, with options of its own. */
+	Subcommand: 1,
+	/** Subcommands that go together. */
+	SubcommandGroup: 2,
 	String: 3,
 	Integer: 4,
 	Boolean: 5,
@@ -169,12 +174,17 @@ export const CommandOptionType = {
 	Number: 10,
 } as const;
 
-/** What a command takes; the required ones come first. */
+/**
+ * What a command takes; the required ones come first. A command's options are all subcommands and groups of them,
+ * or none: a subcommand's options take values, and a group's are its subcommands.
+ */
 export interface CommandOption {
 	type: number;
 	name: string;
 	description: string;
 	required?: boolean;
+	/** A subcommand's options, or a group's subcommands. */
+	options?: CommandOption[];
 	/** The only values it takes, for string, integer and number options. */
 	choices?: { name: string; value: string | number }[];
 	min_value?: number;
@@ -545,6 +555,8 @@ export interface GatewayUser {
 	is_bot: boolean;
 	created_at: string;
 	updated_at: string;
+	/** The API's user objects carry it; the gateway's (READY, SPACE_CREATE) leave it out. */
+	deleted_at?: string | null;
 	/** The status the user chose: only on their own, in READY (a bot's has none). */
 	status?: ChosenStatus;
 }
@@ -832,12 +844,18 @@ export interface FriendRequestRejectEvent {
 	id: string;
 }
 
+/** It reaches the recipient and the sender's own sessions. The two copies differ only in `user`, the other user's public
+ * profile: the sender's for the recipient, the recipient's for the sender's sessions. username, alias, avatar and banner
+ * are the sender's in both. An API from before recipient_id, banner and user leaves them out. */
 export interface FriendRequestCreateEvent {
 	id: string;
 	sender_id: string;
+	recipient_id?: string;
 	username: string;
 	alias: string | null;
 	avatar: string | null;
+	banner?: string | null;
+	user?: GatewayUser;
 }
 
 export interface FriendRequestAcceptEvent {
@@ -1199,7 +1217,8 @@ export function gatewayMessageToMessage(msg: GatewayMessage, spaces: GatewaySpac
 		nonce: msg.nonce,
 		referenced_message: msg.referenced_message ?? null,
 		ref_message_id:
-			msg.referenced_message?.message_id ?? (msg as unknown as Record<string, string>).ref_message_id ?? null,
+			msg.referenced_message?.message_id ??
+			("ref_message_id" in msg && typeof msg.ref_message_id === "string" ? msg.ref_message_id : null),
 		embeds: msg.embeds ?? null,
 		attachments: msg.attachments ?? null,
 		reactions: msg.reactions ?? null,
@@ -1379,7 +1398,7 @@ export function gatewaySpaceToMembers(space: GatewaySpace, statusLookup?: Map<st
 				raw_username: u.username,
 				avatar_url: getAvatarURL(u.id, u.avatar),
 				banner_url: getAvatarURL(u.id, u.banner),
-				status: userStatusToString(statusLookup?.get(`${u.id}:${space.id}`) ?? statusLookup?.get(u.id) ?? 0),
+				status: userStatusToString(statusLookup ? memberStatus(statusLookup, u, space.id) : 0),
 				badges: u.badges ?? 0,
 				is_bot: u.is_bot ?? false,
 				is_owner: u.id === space.owner_id,

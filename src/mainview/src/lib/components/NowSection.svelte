@@ -22,6 +22,7 @@
 	import { callingFromAnotherDevice } from "$lib/calls";
 	import { getAvatarURL } from "$lib/common/common";
 	import { acceptRequest, declineRequest } from "$lib/friend-requests";
+	import { friendUser } from "$lib/friends";
 	import {
 		capFaces,
 		callName,
@@ -255,10 +256,10 @@
 	// ── The user's friends who are online (idle and do not disturb are there too), with what they're doing ──
 	const onlineFriends = $derived(
 		$friends.flatMap((f) => {
-			const id = f.sender_id === me?.id ? f.recipient_id : f.sender_id;
-			const status = userStatusToString(getUserOnlineStatus(id));
+			const other = friendUser(f, me?.id);
+			const status = userStatusToString(getUserOnlineStatus(other.id));
 			if (status === "offline") return [];
-			return [{ id, src: getAvatarURL(id, f.user_avatar), name: f.user_alias ?? f.user_username, status }];
+			return [{ id: other.id, src: getAvatarURL(other.id, other.avatar), name: other.alias ?? other.username, status }];
 		}),
 	);
 	const friendsSplit = $derived(
@@ -382,10 +383,11 @@
 					{/each}
 
 					{#each requests as request (request.id)}
-						{@const name = request.user_alias ?? request.user_username}
+						{@const other = friendUser(request, me?.id)}
+						{@const name = other.alias ?? other.username}
 						<li class="rounded-card bg-duvet-card shadow-duvet-raised flex items-center gap-1 p-1">
 							<div class="flex min-w-0 flex-1 items-center gap-2.5 p-1">
-								<UserAvatar src={getAvatarURL(request.sender_id, request.user_avatar)} {name} size={32} />
+								<UserAvatar src={getAvatarURL(other.id, other.avatar)} {name} size={32} />
 								<span class="flex min-w-0 flex-1 flex-col leading-tight">
 									<span class="text-duvet-ink truncate text-sm font-bold">{name}</span>
 									<span class="text-duvet-ink2 truncate text-xs">Wants to be friends</span>

@@ -1,3 +1,5 @@
+import { activityThumbnail, base64Bytes } from "$lib/activity-thumbnail";
+
 export interface MaximizeParams {
 	availX: number;
 	availY: number;
@@ -32,7 +34,10 @@ export type AppRPCSchema = {
 		};
 	};
 	webview: {
-		requests: {};
+		requests: {
+			// An IPC app's activity image, which the Bun process fetched (in base64), made a small inline image.
+			activityImage: { params: { bytes: string }; response: string | null };
+		};
 		messages: {
 			activityUpdate: ActivityPayload[] | null;
 		};
@@ -70,7 +75,10 @@ async function createRpcClient(): Promise<AppRPCClient | null> {
 	const { Electroview } = await import("electrobun/view");
 	const rpc = Electroview.defineRPC<AppRPCSchema>({
 		handlers: {
-			requests: {},
+			requests: {
+				// Bun has no image decoder; this page has a canvas (lib/activity-thumbnail.ts).
+				activityImage: ({ bytes }) => activityThumbnail(base64Bytes(bytes)),
+			},
 			messages: {
 				activityUpdate: (data: ActivityPayload[] | null) => {
 					for (const listener of activityListeners) {
@@ -81,7 +89,8 @@ async function createRpcClient(): Promise<AppRPCClient | null> {
 		},
 	});
 
-	new Electroview({ rpc });
+	// The view wires rpc to the Bun process; nothing else needs it.
+	void new Electroview({ rpc });
 
 	const client: AppRPCClient = {
 		send: rpc.send,

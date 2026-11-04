@@ -5,9 +5,9 @@
 	import ChatInput from "$lib/components/ChatInput.svelte";
 	import CommandOptions from "$lib/components/CommandOptions.svelte";
 	import MessageList from "$lib/components/MessageList.svelte";
+	import type { CommandEntry } from "$lib/commands";
 	import type {
 		AllowedMentions,
-		ApplicationCommand,
 		Message,
 		MemberOnSidebar,
 		GatewayMessage,
@@ -118,8 +118,8 @@
 	);
 	let chatInputRef = $state<{ focus: () => void; focusAndInsert: (char: string) => void } | null>(null);
 	let pendingFiles = $state<File[]>([]);
-	// The command picked from the "/" menu, which the message box gives its place to.
-	let command = $state<{ command: ApplicationCommand; app: SpaceCommandApplication } | null>(null);
+	// What was picked from the "/" menu (a command, or one of its subcommands), which the message box gives its place to.
+	let command = $state<{ entry: CommandEntry; app: SpaceCommandApplication } | null>(null);
 	// Commands are for the rooms the user can write in, not for conversations.
 	const canUseCommands = $derived.by(() => {
 		const room = space?.rooms.find((r) => r.id === channelId);
@@ -781,7 +781,7 @@
 		{#if command}
 			{@const active = command}
 			<CommandOptions
-				command={active.command}
+				entry={active.entry}
 				app={active.app}
 				{space}
 				{members}
@@ -812,7 +812,7 @@
 				{customEmojis}
 				spaceStickers={spaceStickersArr}
 				loadCommands={canUseCommands ? () => getSpaceCommands(spaceId) : undefined}
-				onCommand={(picked, app) => (command = { command: picked, app })}
+				onCommand={(entry, app) => (command = { entry, app })}
 				autofocus
 			/>
 		{/if}

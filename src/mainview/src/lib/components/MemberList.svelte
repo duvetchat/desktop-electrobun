@@ -7,13 +7,13 @@
 		type Role,
 	} from "$lib/types";
 	import { userStatusCache } from "$lib/api/ws/connection";
+	import { memberStatus } from "$lib/status";
 	import { getAvatarURL } from "$lib/common/common";
 
 	function convertMember(member: GatewayMember, sp: GatewaySpace): MemberOnSidebar | null {
 		const u = sp.users.find((usr) => usr.id === member.user_id);
 		if (!u) return null;
-		const sid = (sp ? userStatusCache.get(`${u.id}:${sp.id}`) : undefined) ?? userStatusCache.get(u.id) ?? 0;
-		const status = userStatusToString(sid);
+		const status = userStatusToString(memberStatus(userStatusCache, u, sp.id));
 		return {
 			id: u.id,
 			member_id: member.id,

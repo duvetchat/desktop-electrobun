@@ -24,6 +24,8 @@
 
 	import { gatewayMessageToMessage, gatewaySpaceToMembers, isEphemeral, roomTypeToChannelType } from "$lib/types";
 	import { userStatusCache } from "$lib/api/ws/connection";
+	// A pane holds panes: Svelte 5 renders a component inside itself by importing it.
+	// oxlint-disable-next-line import/no-self-import
 	import PaneView from "$lib/components/PaneView.svelte";
 	import ConversationView from "$lib/components/ConversationView.svelte";
 	import TabIcon from "$lib/components/TabIcon.svelte";
@@ -554,8 +556,8 @@
 
 		if (!hasRoom) {
 			// Open the tab first (find tab info from gateway spaces)
-			const space = $gatewaySpaces.find((s) => s.id === req.spaceId);
-			const room = space?.rooms.find((r) => r.id === req.roomId);
+			const reqSpace = $gatewaySpaces.find((s) => s.id === req.spaceId);
+			const room = reqSpace?.rooms.find((r) => r.id === req.roomId);
 			if (room) {
 				openTab({
 					channelId: room.id,

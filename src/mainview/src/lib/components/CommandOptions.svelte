@@ -6,12 +6,11 @@
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
 	import { FetchError, getApiError } from "$lib/api/api";
 	import type { CommandUse } from "$lib/api/interactions";
-	import { usedOptions, type FieldValue } from "$lib/commands";
+	import { commandUse, usedOptions, type CommandEntry, type FieldValue } from "$lib/commands";
 	import { getAvatarURL } from "$lib/common/common";
 	import {
 		CommandOptionType,
 		ComponentType,
-		type ApplicationCommand,
 		type CommandOption,
 		type Component,
 		type GatewaySpace,
@@ -19,20 +18,20 @@
 		type SpaceCommandApplication,
 	} from "$lib/types";
 
-	// The message box in command mode: the command picked from the "/" menu, with a field for each of its
-	// options, in its order. Enter sends it once the required ones are there and every value is valid; while
-	// the bot answers, the fields wait (read-only, so the focus stays and a failure can be retried with Enter),
-	// and if it doesn't, the command keeps its values, with the reason below. Esc, the command's ×, or
-	// Backspace in an empty first field goes back to the message box.
+	// The message box in command mode: what was picked from the "/" menu (a command, or one of its subcommands),
+	// with a field for each of its options, in its order. Enter sends it once the required ones are there and every
+	// value is valid; while the bot answers, the fields wait (read-only, so the focus stays and a failure can be
+	// retried with Enter), and if it doesn't, the command keeps its values, with the reason below. Esc, the
+	// command's ×, or Backspace in an empty first field goes back to the message box.
 	let {
-		command,
+		entry,
 		app,
 		space = null,
 		members = [],
 		onSend,
 		onExit,
 	}: {
-		command: ApplicationCommand;
+		entry: CommandEntry;
 		app: SpaceCommandApplication;
 		space?: GatewaySpace | null;
 		members?: MemberOnSidebar[];
@@ -57,7 +56,7 @@
 
 	async function send() {
 		if (sending) return;
-		const used = usedOptions(command, fields);
+		const used = usedOptions(entry, fields);
 		if ("problem" in used) {
 			notice = { text: used.problem, detail: used.problem };
 			return;
@@ -65,7 +64,7 @@
 		sending = true;
 		notice = null;
 		try {
-			await onSend({ id: command.id, name: command.name, type: 1, options: used.options });
+			await onSend(commandUse(entry, used.options));
 			onExit();
 		} catch (err) {
 			const text =
@@ -90,7 +89,7 @@
 			send();
 		} else if (
 			e.key === "Backspace" &&
-			((target === rowEl && command.options.length === 0) ||
+			((target === rowEl && entry.options.length === 0) ||
 				(target instanceof HTMLInputElement &&
 					!target.readOnly &&
 					target.value === "" &&
@@ -164,17 +163,17 @@
 	<div
 		bind:this={rowEl}
 		role="group"
-		aria-label="/{command.name}"
+		aria-label="/{entry.name}"
 		tabindex="-1"
 		onkeydown={handleKeyDown}
 		class="bg-night-22/80 flex flex-wrap items-center gap-2 rounded-xl px-3 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)] outline-none"
 	>
 		<span
 			class="flex h-8 shrink-0 items-center gap-1.5 rounded-md bg-indigo-500/15 pr-1 pl-2 text-sm font-semibold text-indigo-200"
-			title={command.description}
+			title={entry.description}
 		>
 			<UserAvatar src={getAvatarURL(app.bot.id, app.bot.avatar)} name={botName} size={16} />
-			/{command.name}
+			/{entry.name}
 			<button
 				type="button"
 				class="rounded p-0.5 text-indigo-300 transition-colors hover:bg-indigo-500/20 hover:text-white"
@@ -184,7 +183,7 @@
 				<XIcon class="size-3.5" />
 			</button>
 		</span>
-		{#each command.options as o (o.name)}
+		{#each entry.options as o (o.name)}
 			<!-- A label, so that a click on the option's name goes to its field -->
 			<label data-option class="flex items-center gap-1.5" title={o.description}>
 				<span class="text-xs font-medium text-zinc-400"

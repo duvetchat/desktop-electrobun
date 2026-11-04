@@ -33,7 +33,7 @@ export async function setupWindowControls() {
 
 		if (rpc) {
 			const sendMaximize = () => {
-				const s = window.screen as any;
+				const s: Screen & { availLeft?: number; availTop?: number } = window.screen;
 				rpc.send.maximizeWindow({
 					availX: s.availLeft ?? 0,
 					availY: s.availTop ?? 0,
@@ -49,8 +49,7 @@ export async function setupWindowControls() {
 
 			const titlebar = document.getElementById("window-titlebar");
 			titlebar?.addEventListener("dblclick", (event) => {
-				const target = event.target as HTMLElement;
-				if (target.closest(".titlebar-actions")) return;
+				if (event.target instanceof Element && event.target.closest(".titlebar-actions")) return;
 				sendMaximize();
 			});
 			return;

@@ -51,8 +51,8 @@ export function webEmbed(embed: Embed): Embed {
 
 // The players the API frames itself, YouTube's and TikTok's, as it writes their URLs (embeds/youtube.go and
 // embeds/tiktok.go): they need their own origin to play. Only these exact URLs are players. Any other page of
-// those sites, or of their subdomains, could be someone's own or redirect the frame anywhere, and would load at
-// once with that origin.
+// those sites, or of their subdomains, could be someone's own or redirect the frame anywhere, and would run with
+// that origin.
 const PLAYERS = [
 	/^https:\/\/www\.youtube\.com\/embed\/[\w-]+$/,
 	/^https:\/\/www\.tiktok\.com\/player\/v1\/\d+\?music_info=0&description=0&rel=0&autoplay=0$/,
@@ -119,6 +119,17 @@ export function pathSegment(value: string): string {
 	return segment;
 }
 
+/**
+ * A link in a message's text as the mobile app reads it before it draws a card (duvetLinksIn, its
+ * lib/widgets/link_embeds.dart), and the API before it leaves out the preview of one of Duvet's own links, as the
+ * clients draw a card instead (mobileLink, api#216): up to a space or one of <>()[]"', and without the .,;:!? at its
+ * end. So a link that ends a sentence, or sits in brackets, gets its card: "(https://duvet.chat/invite/abc)" and
+ * "https://duvet.chat/invite?bot=<id>.". It's always the start of raw.
+ */
+export function cardLink(raw: string): string {
+	return (/^[^\s<>()[\]"']*/u.exec(raw)?.[0] ?? "").replace(/[.,;:!?]+$/u, "");
+}
+
 /** The message a link names: its space, room and message, or its conversation and message (space and room empty). */
 export interface MessageLink {
 	spaceId: string;
@@ -127,33 +138,90 @@ export interface MessageLink {
 	conversationId?: string;
 }
 
+/** What one of Duvet's own links names, which a message shows as a card: a space's invite, a bot's, or a message. */
+export type DuvetLink = { code: string } | { bot: string } | { message: MessageLink };
+
+const DUVET_HOST = new URL(DUVET_DOMAIN).hostname;
+
 /**
- * The message a link to one in Duvet names (https://duvet.chat/channels/<space>/<room>/<message>, or
- * …/conversations/<conversation>/<message>), when each of its IDs is a UUID (isUuid); nothing otherwise. Its
- * preview fetches the message by them as soon as it's on screen.
+ * What a link (read as cardLink reads it) names when it's one of Duvet's own, which the API leaves without a preview
+ * as the clients draw a card instead (isClientSideEmbed, in duvet-api's internal/adapters/embeds/opengraph.go). It's
+ * read as the API reads it: http or https; on duvet.chat or ownOrigin's host (the app's own, when it's a web page),
+ * in any case and with any port; its path decoded, without the slashes at its ends; its query and fragment ignored
+ * but an invite's code and bot. Nothing otherwise.
+ * - A space's invite: /invite?code=<code> or /invite/<code>. A code holds no / ? # or \, as the mobile app has it,
+ *   and reaches the API only through pathSegment (api/invites.ts).
+ * - A bot's: /invite?bot=<id> or /invite.html?bot=<id>. A link that names both a bot and a code is the bot's, as the
+ *   app's invite page and the mobile app take it, so its card shows what the link opens.
+ * - A message: /channels/<space>/<room>/<message> or /conversations/<conversation>/<message>.
+ * IDs go into API paths, so they're UUIDs (isUuid).
  */
-export function parseMessageLink(url: string): MessageLink | null {
-	if (!url.startsWith(`${DUVET_DOMAIN}/`)) return null;
-	const [kind, ...ids] = url.slice(DUVET_DOMAIN.length + 1).split("/");
-	if (!ids.every(isUuid)) return null;
-	if (kind === "channels" && ids.length === 3) {
-		const [spaceId, roomId, messageId] = ids;
-		return { spaceId, roomId, messageId };
+export function parseDuvetLink(url: string, ownOrigin: string): DuvetLink | null {
+	// The API takes a link from its "http://" or "https://", as written (mobileLink).
+	if (!/^https?:\/\//.test(url)) return null;
+	let parsed: URL;
+	let path: string;
+	try {
+		parsed = new URL(url);
+		path = decodeURIComponent(parsed.pathname);
+	} catch {
+		return null; // not a URL, or a path with a bad escape, which the API's url.Parse refuses too
 	}
-	if (kind === "conversations" && ids.length === 2) {
-		const [conversationId, messageId] = ids;
-		return { spaceId: "", roomId: "", messageId, conversationId };
+	if (parsed.hostname !== DUVET_HOST && parsed.hostname !== webHost(ownOrigin)) return null;
+	const [page, ...rest] = path.replace(/^\/+|\/+$/g, "").split("/");
+	if (rest.length === 0 && (page === "invite" || page === "invite.html")) {
+		const bot = parsed.searchParams.get("bot");
+		if (isUuid(bot)) return { bot };
+		// No client draws a card for invite.html?code=.
+		return page === "invite" ? inviteCode(parsed.searchParams.get("code")) : null;
+	}
+	if (page === "invite") return rest.length === 1 ? inviteCode(rest[0]) : null;
+	if (!rest.every(isUuid)) return null;
+	if (page === "channels" && rest.length === 3) {
+		const [spaceId, roomId, messageId] = rest;
+		return { message: { spaceId, roomId, messageId } };
+	}
+	if (page === "conversations" && rest.length === 2) {
+		const [conversationId, messageId] = rest;
+		return { message: { spaceId: "", roomId: "", messageId, conversationId } };
 	}
 	return null;
 }
 
+// A space's invite by its code, unless it's empty or holds a / ? # or \ (the mobile app's rule).
+const inviteCode = (code: string | null): DuvetLink | null => (code && !/[/?#\\]/.test(code) ? { code } : null);
+
+// The host of origin when it's a web page's: the packaged app's views:// has none.
+function webHost(origin: string): string | undefined {
+	try {
+		const parsed = new URL(origin);
+		return /^https?:$/.test(parsed.protocol) ? parsed.hostname : undefined;
+	} catch {
+		return undefined;
+	}
+}
+
+/** The cards a message's text shows for Duvet's own links (parseDuvetLink), in its order, each read as cardLink reads it. */
+export function duvetLinksIn(content: string, ownOrigin: string): DuvetLink[] {
+	const links = content.match(/(?:https?|duvet):\/\/[^\s]+/g) ?? [];
+	return links.flatMap((raw) => parseDuvetLink(cardLink(raw), ownOrigin) ?? []);
+}
+
 /**
- * How an embed frames the player page at url, when frameSandbox lets it: at once for the players the API frames itself
- * (PLAYERS), and for any other page only once its play button is clicked (clickToPlay), so that the page itself loads
- * and runs only when someone asks for it. The poster the button shows, the embed's image, loads as any embed image.
+ * How an embed frames the player page at url, when frameSandbox lets it: only once its play button is clicked, so that
+ * the page loads, and its host sees a view, only when someone asks for it (desktop#147). The poster the button shows,
+ * the embed's image, is a copy the API serves. player says whether it's one of the players the API frames itself
+ * (PLAYERS), with their origin: in the packaged app any other page opens in the browser instead, as Electrobun's
+ * preload runs in frames too, and a player is framed at src, where it starts at once, as the click asked.
  */
-export function playerFrame(url: string, ownHosts: string[]): { sandbox: string; clickToPlay: boolean } | undefined {
+export function playerFrame(
+	url: string,
+	ownHosts: string[],
+): { sandbox: string; player: boolean; src: string } | undefined {
 	const sandbox = frameSandbox(url, ownHosts);
 	if (!sandbox) return undefined;
-	return { sandbox, clickToPlay: !isPlayer(url) };
+	if (!isPlayer(url)) return { sandbox, player: false, src: url };
+	// YouTube's embed starts with autoplay=1; TikTok's player, as the API writes it, says autoplay=0 last.
+	const src = url.includes("?") ? url.replace(/&autoplay=0$/, "&autoplay=1") : `${url}?autoplay=1`;
+	return { sandbox, player: true, src };
 }

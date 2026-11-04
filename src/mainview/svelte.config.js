@@ -9,15 +9,16 @@ import adapter from "@sveltejs/adapter-static";
 // the app does load working.
 //
 // Notes on the hashes and keywords below:
-//  - "wasm-unsafe-eval": Shiki's Oniguruma highlighter and the rnnoise noise-suppression worklet both
-//    compile WebAssembly; without it WebAssembly.instantiate throws and code blocks / voice break.
+//  - "wasm-unsafe-eval": Shiki's Oniguruma highlighter and RNNoise (compiled on the main thread for the
+//    noise-suppression worklet) both compile WebAssembly; without it WebAssembly.compile and instantiate throw,
+//    code blocks break and the microphone goes out without noise suppression.
 //  - The two script-src hashes are the inline bootstrap in app.html (the light theme's class, set before the
 //    first paint, and the pre-hydration redirect). The HTML parser normalises CRLF to LF before hashing,
 //    so the LF hash is the one browsers check; the CRLF hash is kept as a belt-and-suspenders fallback.
 //    src/mainview/src/lib/csp.test.ts recomputes them from app.html and fails if either drifts.
-//  - script-src-attr allows exactly one inline event handler: the custom-emoji <img onerror> retry in
-//    markdown.ts (the only inline handler the app renders). 'unsafe-hashes' is required for attributes.
-//    csp.test.ts recomputes this hash from markdown.ts.
+//  - script-src-attr allows no inline event handler: the app renders none. A custom emoji's image that fails is
+//    tried again by a listener on the document (lib/emoji-retry.ts), and csp.test.ts checks that markdown.ts
+//    writes no handler into its HTML.
 //  - style-src keeps 'unsafe-inline': Svelte transitions and component style="" attributes are inline,
 //    and hashing them is not feasible; this is the standard CSP trade-off and does not weaken script
 //    protection. https: covers the Google Fonts stylesheet (@import in app.css).
@@ -41,6 +42,15 @@ import adapter from "@sveltejs/adapter-static";
 export const DEV_CONNECT_ENV = "DUVET_DEV_CONNECT_SRC";
 
 /**
+ * Whether the origin is one connect-src takes: an http(s) or ws(s) URL's, as connect-src writes them.
+ * @param {string} origin
+ * @returns {origin is CspSource}
+ */
+function isConnectSource(origin) {
+  return /^(https?|wss?):\/\//.test(origin);
+}
+
+/**
  * The connect-src origins of the URL overrides (space-separated URLs, as vite.config.ts puts them in
  * DEV_CONNECT_ENV): each URL's origin, so a path never widens or narrows it. What isn't an http(s) or
  * ws(s) URL adds nothing.
@@ -58,9 +68,10 @@ export function devConnectSources(urls) {
     } catch {
       continue;
     }
+    // By the protocol: a blob: URL's origin is its inner URL's, which isn't the URL the override names.
     if (!["http:", "https:", "ws:", "wss:"].includes(url.protocol)) continue;
-    const origin = /** @type {CspSource} */ (url.origin);
-    if (!sources.includes(origin)) sources.push(origin);
+    const origin = url.origin;
+    if (isConnectSource(origin) && !sources.includes(origin)) sources.push(origin);
   }
   return sources;
 }
@@ -78,8 +89,8 @@ const csp = {
       "sha256-zzaXRVbQBei+ll7JAk73YcKqgcfztyoTvbZNi10yw6I=", // app.html bootstrap, LF-normalised (what browsers hash)
       "sha256-HHSkphUC9tsdH2k2OIgFMoGkbhF9VSglkiC5TArnbaQ=", // app.html bootstrap, CRLF fallback
     ],
-    // The one inline event handler the app renders: the custom-emoji <img onerror> retry in markdown.ts.
-    "script-src-attr": ["unsafe-hashes", "sha256-Nd49K6zAbHBtNZ2ylrgPZM3IXQa52jge41l3ChhYTOA="],
+    // No inline event handler: the app renders none.
+    "script-src-attr": ["none"],
     "style-src": ["self", "unsafe-inline", "https:"],
     "style-src-attr": ["unsafe-inline"],
     "img-src": ["self", "data:", "blob:", "https:", "http:"],

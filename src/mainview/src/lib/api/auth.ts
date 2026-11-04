@@ -1,6 +1,5 @@
 import api, { markSessionRefreshed } from "$lib/api/api";
 import { accessToken } from "$lib/stores/auth";
-import { get } from "svelte/store";
 
 export async function signIn(options: { username: string; alias: string | null; password: string; email: string }) {
 	try {

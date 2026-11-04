@@ -2,7 +2,8 @@
 // one activity breaks a limit, so what an IPC app sends is fitted to the limits here: one app can't hide the others'.
 export const MAX_ACTIVITIES = 5;
 const MAX_TEXT = 128;
-const MAX_IMAGE_BYTES = 8 << 10;
+/** The most bytes an activity's image takes: the gateway keeps only data URIs this long at most. */
+export const MAX_IMAGE_BYTES = 8 << 10;
 
 export interface ActivityPayload {
 	// 0 (or none) playing, 2 listening.
@@ -20,13 +21,14 @@ export interface ActivityPayload {
 }
 
 /** A text cut to the gateway's 128 characters (code points, as it counts them), ending in an ellipsis when cut. */
-export function clip(text: string): string {
-	const chars = [...text];
-	return chars.length <= MAX_TEXT ? text : `${chars.slice(0, MAX_TEXT - 1).join("")}…`;
+export function clip(value: string): string {
+	const chars = [...value];
+	return chars.length <= MAX_TEXT ? value : `${chars.slice(0, MAX_TEXT - 1).join("")}…`;
 }
 
 /** An IPC app's activity as the gateway takes it, or null when it has no name. Texts are clipped, an image too big
- * is left out, a type other than listening shows as playing, and a field of the wrong type is dropped. */
+ * is left out, a type other than listening shows as playing, and a field of the wrong type is dropped. An image by
+ * URL is still a URL here: withInlineImages (activity-images.ts) makes it inline, or leaves it out. */
 export function fitActivity(data: unknown): ActivityPayload | null {
 	if (!isObject(data) || typeof data.name !== "string" || !data.name) return null;
 	const activity: ActivityPayload = {

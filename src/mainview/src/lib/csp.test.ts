@@ -25,11 +25,10 @@ describe("CSP inline-script hashes match the source they pin", () => {
 		expect(directives["script-src"]).toContain(sha256(lf));
 	});
 
-	it("the emoji onerror handler in markdown.ts is allowed", () => {
+	it("allows no inline event handler, and markdown.ts writes none: a failed emoji is tried again by the document", () => {
+		expect(directives["script-src-attr"]).toEqual(["none"]);
 		const md = readFileSync(join(mainview, "src", "lib", "markdown.ts"), "utf8");
-		const handler = md.match(/onerror="([^"]*)"/)?.[1];
-		expect(handler).toBeTruthy();
-		expect(directives["script-src-attr"]).toContain(sha256(handler!));
+		expect(md).not.toMatch(/\son[a-z]+=/);
 	});
 });
 
@@ -84,6 +83,8 @@ describe("connect-src and the dev-only URL overrides", () => {
 		expect(devConnectSources(undefined)).toEqual([]);
 		expect(devConnectSources("")).toEqual([]);
 		expect(devConnectSources("not a url javascript:alert(1) data:text/plain,x file:///etc/passwd")).toEqual([]);
+		// A blob: URL's origin is its inner URL's, an https one here: still no http(s) or ws(s) URL.
+		expect(devConnectSources("blob:https://gw.example.org/0190a3b2-0000-7000-8000-000000000001")).toEqual([]);
 	});
 
 	it("puts the overrides vite.config.ts hands over after the base list", async () => {

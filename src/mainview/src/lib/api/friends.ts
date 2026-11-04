@@ -1,33 +1,37 @@
 import api from "$lib/api/api";
-import type { UserStatus } from "$lib/types";
+import type { GatewayUser, UserStatus } from "$lib/types";
 
-export interface FriendRequest {
+/** The other user of a friendship or a friend request: `user` is their public profile, and the user_* fields repeat
+ * part of it, for the clients from before it. An API from before user_banner and user leaves them out: friendUser
+ * ($lib/friends) reads the other user from whichever there is. */
+export interface OtherUser {
+	user_username: string;
+	user_alias: string | null;
+	user_avatar: string | null;
+	user_banner?: string | null;
+	user?: GatewayUser;
+}
+
+/** A request's other user is its sender in the requests received, and its recipient in the ones sent. */
+export interface FriendRequest extends OtherUser {
 	id: string;
 	sender_id: string;
 	recipient_id: string;
 	created_at: string;
 	updated_at: string;
-	user_username: string;
-	user_alias: string | null;
-	user_avatar: string | null;
 }
 
-export interface Friend {
+export interface Friend extends OtherUser {
 	id: string;
 	request_id: string;
 	sender_id: string;
 	recipient_id: string;
-	user_username: string;
-	user_alias: string | null;
-	user_avatar: string | null;
 	/** The status the other user shows when the list was read: rememberFriendStatuses takes it. */
 	status_id: UserStatus;
 }
 
-// The API returns the bare request, without the other user's details.
-export async function sendFriendRequest(
-	userId: string,
-): Promise<Omit<FriendRequest, "user_username" | "user_alias" | "user_avatar">> {
+// The API returns the bare request, without the other user.
+export async function sendFriendRequest(userId: string): Promise<Omit<FriendRequest, keyof OtherUser>> {
 	const res = await api.post("/api/users/@me/friends/requests", { user_id: userId });
 	return res.data;
 }

@@ -3,6 +3,7 @@
 	import { Dialog } from "bits-ui";
 	import { tick } from "svelte";
 	import { getAvatarURL } from "$lib/common/common";
+	import { friendUser } from "$lib/friends";
 	import { canViewRoom, shownRooms } from "$lib/permissions";
 	import { rankByQuery } from "$lib/nav";
 	import {
@@ -106,14 +107,14 @@
 		}
 		// Friends without a conversation yet: picking one starts it.
 		for (const friend of $friends) {
-			const userId = friend.sender_id === me ? friend.recipient_id : friend.sender_id;
-			if (dmWith.has(userId)) continue;
+			const other = friendUser(friend, me);
+			if (dmWith.has(other.id)) continue;
 			items.push({
 				kind: "friend",
-				key: `friend:${userId}`,
-				userId,
-				name: friend.user_alias ?? friend.user_username,
-				avatar: getAvatarURL(userId, friend.user_avatar) ?? null,
+				key: `friend:${other.id}`,
+				userId: other.id,
+				name: other.alias ?? other.username,
+				avatar: getAvatarURL(other.id, other.avatar) ?? null,
 			});
 		}
 		return items;

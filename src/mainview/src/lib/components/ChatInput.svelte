@@ -17,12 +17,16 @@
 	import StickerPicker from "$lib/components/StickerPicker.svelte";
 	import GifPicker from "$lib/components/GifPicker.svelte";
 	import { searchEmojis, toTwemojiUrl, EMOJI_REGEX, type EmojiEntry } from "$lib/emoji";
-	import { commandOnceListed, matchingCommands } from "$lib/commands";
+	import {
+		commandOnceListed,
+		commandQuery as commandQueryOf,
+		matchingCommands,
+		type CommandEntry,
+	} from "$lib/commands";
 	import { escapeHtml } from "$lib/markdown";
 	import { formatDuration } from "$lib/utils/time";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
 	import type {
-		ApplicationCommand,
 		GatewayRoom,
 		MemberOnSidebar,
 		SpaceCommandApplication,
@@ -73,8 +77,8 @@
 		pendingFiles?: File[];
 		/** The commands "/" offers at the start of the message, where the user can use them (a room they can write in). */
 		loadCommands?: () => Promise<SpaceCommands>;
-		/** The command picked from the "/" menu, which the message box leaves for. */
-		onCommand?: (command: ApplicationCommand, app: SpaceCommandApplication) => void;
+		/** What was picked from the "/" menu (a command, or one of its subcommands), which the message box leaves for. */
+		onCommand?: (entry: CommandEntry, app: SpaceCommandApplication) => void;
 	} = $props();
 
 	let inputEl = $state<HTMLDivElement>(null!);
@@ -246,29 +250,28 @@
 	$effect(() => {
 		commandMenuEl?.querySelectorAll('[role="option"]')[commandSelectedIdx]?.scrollIntoView({ block: "nearest" });
 	});
-	// The whole message as a command's name: "/" and no space, a phantom line break aside.
-	const COMMAND_TEXT = /^\/(\S*)\n?$/u;
+	// What runs: each command, or each of its subcommands, by its whole name (lib/commands.ts).
 	const commandSuggestions = $derived(
 		commandQuery === null || !commandList ? [] : matchingCommands(commandList, commandQuery),
 	);
 
-	function commandApp(command: ApplicationCommand): SpaceCommandApplication | undefined {
-		return commandList?.applications.find((a) => a.id === command.application_id);
+	function commandApp(entry: CommandEntry): SpaceCommandApplication | undefined {
+		return commandList?.applications.find((a) => a.id === entry.command.application_id);
 	}
 
-	function pickCommand(command: ApplicationCommand | undefined) {
-		const app = command && commandApp(command);
-		if (!command || !app) return;
+	function pickCommand(entry: CommandEntry | undefined) {
+		const app = entry && commandApp(entry);
+		if (!entry || !app) return;
 		commandQuery = null;
 		inputEl.innerHTML = "";
 		isEmpty = true;
 		undoStack = [{ raw: "", cursor: 0 }];
 		undoIndex = 0;
-		onCommand?.(command, app);
+		onCommand?.(entry, app);
 	}
 
 	function resolveMentionName(id: string): string {
-		const m = members.find((m) => m.id === id);
+		const m = members.find((member) => member.id === id);
 		return m ? m.username || m.raw_username : id.slice(0, 8);
 	}
 
@@ -439,10 +442,11 @@
 	function checkAutocomplete(raw: string, cursor: number) {
 		const before = raw.slice(0, cursor);
 
-		// "/" opens the command menu while the whole message is a command's name: one typed before a draft
-		// would make Enter pick a command, and lose the draft.
-		const commandMatch = loadCommands ? COMMAND_TEXT.exec(raw) : null;
-		if (commandMatch && loadCommands) {
+		// "/" opens the command menu while the whole message names something to run (lib/commands.ts): a command's
+		// name, or one with subcommands and the words of its subcommand. One typed before a draft would make Enter
+		// pick a command, and lose the draft.
+		const typedCommand = loadCommands ? commandQueryOf(raw, commandList) : null;
+		if (typedCommand !== null && loadCommands) {
 			if (commandQuery === null) {
 				// This box stays as the rooms change: another space's list isn't shown while this one's loads.
 				commandList = null;
@@ -454,7 +458,7 @@
 					})
 					.catch((err) => console.error("Failed to load the space's commands:", err));
 			}
-			commandQuery = commandMatch[1];
+			commandQuery = typedCommand;
 			commandSelectedIdx = 0;
 			mentionSuggestions = [];
 			mentionQueryStart = -1;
@@ -639,7 +643,7 @@
 		}
 
 		// Navigate the command menu, while the message is still a command's name (an undo can bring a draft back).
-		if (commandSuggestions.length > 0 && !COMMAND_TEXT.test(getRaw(inputEl))) commandQuery = null;
+		if (commandSuggestions.length > 0 && commandQueryOf(getRaw(inputEl), commandList) === null) commandQuery = null;
 		if (commandSuggestions.length > 0) {
 			if (e.key === "ArrowUp") {
 				e.preventDefault();
@@ -746,14 +750,14 @@
 			const request = commandRequest;
 			// A command's name typed before the space's commands came: Enter waits for them, then picks the first
 			// match, as the menu would have, or sends the text when none matches.
-			if (commandQuery !== null && !commandList && request && COMMAND_TEXT.test(raw)) {
+			if (commandQuery !== null && !commandList && request && commandQueryOf(raw, null) !== null) {
 				if (enterAwaitingList) return;
 				enterAwaitingList = true;
-				commandOnceListed(request, commandQuery).then((command) => {
+				commandOnceListed(request, commandQuery).then((entry) => {
 					enterAwaitingList = false;
 					// Another room's list by now, or other text: that Enter is over.
 					if (commandRequest !== request || getRaw(inputEl) !== raw) return;
-					if (command) pickCommand(command);
+					if (entry) pickCommand(entry);
 					else sendMessage();
 				});
 				return;
@@ -1034,8 +1038,8 @@
 					Commands
 				{/if}
 			</div>
-			{#each commandSuggestions as command, i (command.id)}
-				{@const bot = commandApp(command)?.bot}
+			{#each commandSuggestions as entry, i (`${entry.command.id} ${entry.name}`)}
+				{@const bot = commandApp(entry)?.bot}
 				<button
 					role="option"
 					aria-selected={i === commandSelectedIdx}
@@ -1045,12 +1049,12 @@
 						: 'hover:bg-night-28'}"
 					onmousedown={(e) => {
 						e.preventDefault();
-						pickCommand(command);
+						pickCommand(entry);
 					}}
 					onmouseenter={() => (commandSelectedIdx = i)}
 				>
-					<span class="text-night-85 shrink-0 text-[13px] font-semibold">/{command.name}</span>
-					<span class="text-night-62 min-w-0 flex-1 truncate text-[12px]">{command.description}</span>
+					<span class="text-night-85 shrink-0 text-[13px] font-semibold">/{entry.name}</span>
+					<span class="text-night-62 min-w-0 flex-1 truncate text-[12px]">{entry.description}</span>
 					{#if bot}
 						<span class="text-night-52 flex shrink-0 items-center gap-1.5 text-[11px]">
 							<UserAvatar src={getAvatarURL(bot.id, bot.avatar)} name={bot.alias ?? bot.username} size={16} />
