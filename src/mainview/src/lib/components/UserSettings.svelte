@@ -2629,13 +2629,13 @@
 																							</button>
 																						{/if}
 																					</div>
-																					<!-- Banner -->
+																					<!-- Banner, 5:2 as it's cropped -->
 																					<div class="group relative">
 																						{#if botBannerPreview}
 																							<img
 																								src={botBannerPreview}
 																								alt="banner"
-																								class="h-12 w-28 rounded object-cover"
+																								class="aspect-[5/2] h-12 rounded object-cover"
 																							/>
 																							<button
 																								class="absolute inset-0 flex items-center justify-center rounded bg-black/60 opacity-0 transition-opacity group-hover:opacity-100"
@@ -2646,7 +2646,7 @@
 																							</button>
 																						{:else if pendingBotBanner === "remove"}
 																							<div
-																								class="flex h-12 w-28 items-center justify-center rounded bg-zinc-800 text-zinc-600"
+																								class="flex aspect-[5/2] h-12 items-center justify-center rounded bg-zinc-800 text-zinc-600"
 																							>
 																								<XIcon class="size-4" />
 																							</div>
@@ -2663,7 +2663,7 @@
 																							<img
 																								src={getAvatarURL(botU.id, botU.banner)}
 																								alt="banner"
-																								class="h-12 w-28 rounded object-cover"
+																								class="aspect-[5/2] h-12 rounded object-cover"
 																							/>
 																							<div
 																								class="absolute inset-0 flex items-center justify-center gap-1 rounded bg-black/60 opacity-0 transition-opacity group-hover:opacity-100"
@@ -2684,7 +2684,7 @@
 																							</div>
 																						{:else}
 																							<button
-																								class="flex h-12 w-28 items-center justify-center rounded bg-zinc-800 text-zinc-500 transition-colors hover:bg-zinc-700 hover:text-zinc-300"
+																								class="flex aspect-[5/2] h-12 items-center justify-center rounded bg-zinc-800 text-zinc-500 transition-colors hover:bg-zinc-700 hover:text-zinc-300"
 																								onclick={() => {
 																									botCropTargetApp = app;
 																									showBotBannerCrop = true;
