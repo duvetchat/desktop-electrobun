@@ -2,7 +2,7 @@ import Electrobun, { BrowserView, BrowserWindow, Screen, Updater, Utils } from "
 import { fitActivity, MAX_ACTIVITIES, type ActivityPayload } from "./activities";
 import { ActivityImages, IpcActivities, PAGE_WAIT_MS, within } from "./activity-images";
 import { startSpotifyReader, type SpotifyActivity } from "./spotify";
-import { ipcPath, LineReader } from "./ipc";
+import { ipcHeld, ipcPath, LineReader } from "./ipc";
 import { Maximizer } from "./window-frame";
 
 const DEV_SERVER_PORT = 5173;
@@ -190,9 +190,11 @@ Electrobun.events.on("new-window-open", (event: { data?: { detail?: { url?: stri
 
 // ── IPC Server for external apps (VS Code, etc.) ────────────────────────────
 const IPC_PIPE = ipcPath(process.platform, process.env);
+// Another Duvet that runs keeps its apps, and this one doesn't listen (#188).
+const ipcHeldElsewhere = await ipcHeld(IPC_PIPE);
 
 // Clean up stale socket on Unix
-if (process.platform !== "win32") {
+if (process.platform !== "win32" && !ipcHeldElsewhere) {
 	try {
 		const { unlinkSync } = await import("fs");
 		unlinkSync(IPC_PIPE);
@@ -206,45 +208,49 @@ function broadcastAggregatedActivities() {
 	rpc.send.activityUpdate(all.length > 0 ? all : null);
 }
 
-try {
-	Bun.listen<LineReader>({
-		unix: IPC_PIPE,
-		socket: {
-			open(socket) {
-				socket.data = new LineReader();
-				console.log("[IPC] Client connected");
-			},
-			data(socket, raw) {
-				const lines = socket.data.push(raw);
-				if (!lines) {
-					console.error("[IPC] Line too long, closing client");
-					socket.terminate();
-					return;
-				}
-				for (const line of lines) {
-					if (!line.trim()) continue;
-					try {
-						// An app can send anything: a message without a type is dropped, and an activity is fitted to the
-						// gateway's limits, or dropped.
-						const msg: unknown = JSON.parse(line);
-						if (typeof msg !== "object" || msg === null || !("type" in msg)) continue;
-						if (msg.type === "SET_ACTIVITY") {
-							clientActivities.set(socket, fitActivity("data" in msg ? msg.data : undefined));
-						} else if (msg.type === "CLEAR_ACTIVITY") {
-							clientActivities.clear(socket);
-						}
-					} catch (err) {
-						console.error("[IPC] Invalid message:", err);
+if (ipcHeldElsewhere) {
+	console.log(`[IPC] Another Duvet listens on ${IPC_PIPE}; this one doesn't`);
+} else {
+	try {
+		Bun.listen<LineReader>({
+			unix: IPC_PIPE,
+			socket: {
+				open(socket) {
+					socket.data = new LineReader();
+					console.log("[IPC] Client connected");
+				},
+				data(socket, raw) {
+					const lines = socket.data.push(raw);
+					if (!lines) {
+						console.error("[IPC] Line too long, closing client");
+						socket.terminate();
+						return;
 					}
-				}
+					for (const line of lines) {
+						if (!line.trim()) continue;
+						try {
+							// An app can send anything: a message without a type is dropped, and an activity is fitted to
+							// the gateway's limits, or dropped.
+							const msg: unknown = JSON.parse(line);
+							if (typeof msg !== "object" || msg === null || !("type" in msg)) continue;
+							if (msg.type === "SET_ACTIVITY") {
+								clientActivities.set(socket, fitActivity("data" in msg ? msg.data : undefined));
+							} else if (msg.type === "CLEAR_ACTIVITY") {
+								clientActivities.clear(socket);
+							}
+						} catch (err) {
+							console.error("[IPC] Invalid message:", err);
+						}
+					}
+				},
+				close(socket) {
+					console.log("[IPC] Client disconnected");
+					clientActivities.clear(socket);
+				},
 			},
-			close(socket) {
-				console.log("[IPC] Client disconnected");
-				clientActivities.clear(socket);
-			},
-		},
-	});
-	console.log(`[IPC] Listening on ${IPC_PIPE}`);
-} catch (err) {
-	console.error("[IPC] Failed to start server:", err);
+		});
+		console.log(`[IPC] Listening on ${IPC_PIPE}`);
+	} catch (err) {
+		console.error("[IPC] Failed to start server:", err);
+	}
 }
