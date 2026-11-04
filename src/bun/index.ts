@@ -1,5 +1,6 @@
 import Electrobun, { BrowserView, BrowserWindow, Updater, Utils } from "electrobun/bun";
 import { fitActivity, MAX_ACTIVITIES, type ActivityPayload } from "./activities";
+import { ActivityImages, IpcActivities, PAGE_WAIT_MS, within } from "./activity-images";
 import { startSpotifyReader, type SpotifyActivity } from "./spotify";
 import { ipcPath, LineReader } from "./ipc";
 
@@ -87,7 +88,11 @@ type AppRPCSchema = {
 		};
 	};
 	webview: {
-		requests: {};
+		requests: {
+			// An IPC app's activity image, fetched here: the webview makes it a small inline image (it has a canvas,
+			// Bun has no image decoder), or answers null. Its bytes go in base64.
+			activityImage: { params: { bytes: string }; response: string | null };
+		};
 		messages: {
 			activityUpdate: ActivityPayload[] | null;
 		};
@@ -97,9 +102,20 @@ type AppRPCSchema = {
 let savedFrame: { x: number; y: number; width: number; height: number } | null = null;
 let isManuallyMaximized = false;
 
-// Track activities per IPC client. Declared before the RPC, whose setSpotifyActivity sends them too: on macOS and
-// Linux an await comes before the IPC server, and the webview could ask meanwhile.
-const clientActivities = new Map<object, ActivityPayload>();
+// The webview makes the IPC apps' images by URL inline once its page has loaded, which its first setSpotifyActivity
+// says: a request sent before then would find no page to answer it. An image waits for it PAGE_WAIT_MS at most, then
+// gives its place to the next one: a signed-out app's page never sends it.
+let markWebviewReady!: () => void;
+const webviewReady = new Promise<void>((resolve) => (markWebviewReady = resolve));
+const activityImages = new ActivityImages(async (bytes) => {
+	await within(webviewReady, PAGE_WAIT_MS);
+	return rpc.request.activityImage({ bytes: Buffer.from(bytes).toString("base64") });
+});
+
+// Track activities per IPC client, each with its images inline: a URL would reach nobody (gateway#134). Declared
+// before the RPC, whose setSpotifyActivity sends them too: on macOS and Linux an await comes before the IPC server,
+// and the webview could ask meanwhile.
+const clientActivities = new IpcActivities(activityImages, () => broadcastAggregatedActivities());
 
 // What Spotify plays here, while the webview's setting lets the reader run; it goes out with the IPC apps'.
 let spotifyActivity: SpotifyActivity | null = null;
@@ -121,6 +137,8 @@ function setSpotifyActivity(enabled: boolean) {
 }
 
 const rpc = BrowserView.defineRPC<AppRPCSchema>({
+	// The webview's answer to activityImage, which decodes an image of up to 4 MiB; Electrobun's default is 1 s.
+	maxRequestTime: 10_000,
 	handlers: {
 		messages: {
 			closeWindow: () => win.close(),
@@ -138,7 +156,10 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 				isManuallyMaximized = true;
 			},
 			openExternal: ({ url: externalUrl }) => openExternalUrl(externalUrl),
-			setSpotifyActivity: ({ enabled }) => setSpotifyActivity(enabled),
+			setSpotifyActivity: ({ enabled }) => {
+				markWebviewReady();
+				setSpotifyActivity(enabled);
+			},
 		},
 	},
 });
@@ -189,7 +210,7 @@ if (process.platform !== "win32") {
 function broadcastAggregatedActivities() {
 	// The gateway keeps MAX_ACTIVITIES: Spotify's has its place, and the IPC apps' fill the rest.
 	const spotify = spotifyActivity ? [spotifyActivity] : [];
-	const all = [...[...clientActivities.values()].slice(0, MAX_ACTIVITIES - spotify.length), ...spotify];
+	const all = [...clientActivities.activities().slice(0, MAX_ACTIVITIES - spotify.length), ...spotify];
 	rpc.send.activityUpdate(all.length > 0 ? all : null);
 }
 
@@ -216,13 +237,9 @@ try {
 						const msg: unknown = JSON.parse(line);
 						if (typeof msg !== "object" || msg === null || !("type" in msg)) continue;
 						if (msg.type === "SET_ACTIVITY") {
-							const activity = fitActivity("data" in msg ? msg.data : undefined);
-							if (activity) clientActivities.set(socket, activity);
-							else clientActivities.delete(socket);
-							broadcastAggregatedActivities();
+							clientActivities.set(socket, fitActivity("data" in msg ? msg.data : undefined));
 						} else if (msg.type === "CLEAR_ACTIVITY") {
-							clientActivities.delete(socket);
-							broadcastAggregatedActivities();
+							clientActivities.clear(socket);
 						}
 					} catch (err) {
 						console.error("[IPC] Invalid message:", err);
@@ -231,8 +248,7 @@ try {
 			},
 			close(socket) {
 				console.log("[IPC] Client disconnected");
-				clientActivities.delete(socket);
-				broadcastAggregatedActivities();
+				clientActivities.clear(socket);
 			},
 		},
 	});

@@ -1,6 +1,7 @@
 import { renderEmoji } from "./emoji";
 import { createHighlighter, type Highlighter } from "shiki";
 import { getHostURL } from "$lib/common/common";
+import { CUSTOM_EMOJI_CLASS, retryEmojis } from "$lib/emoji-retry";
 
 export interface CustomEmojiMap {
 	[id: string]: { name: string; attachment_id: string };
@@ -23,6 +24,14 @@ export function mentionMapOf(
 }
 
 const emojiHost = getHostURL();
+// A custom emoji's image that fails to load is tried again after a wait, by the document (lib/emoji-retry.ts): the
+// image carries no handler of its own, so the page needs no inline script. A hot update of this module, in
+// development, runs it again: the old listener goes first. (Not import.meta.hot?.dispose(retryEmojis(document)):
+// without import.meta.hot, a build's, the call and its argument wouldn't run.)
+if (typeof document !== "undefined") {
+	const stopRetrying = retryEmojis(document);
+	import.meta.hot?.dispose(stopRetrying);
+}
 
 let highlighterPromise: Promise<Highlighter> | null = null;
 let highlighter: Highlighter | null = null;
@@ -263,12 +272,12 @@ function applyInline(
 		return `<span class="msg-mention">@${escapeHtml(name)}</span>`;
 	});
 	// Resolve <:id:> custom emojis to inline images
-	const ceCls = large ? "emoji-img emoji-large custom-emoji" : "emoji-img custom-emoji";
+	const ceCls = large ? `emoji-img emoji-large ${CUSTOM_EMOJI_CLASS}` : `emoji-img ${CUSTOM_EMOJI_CLASS}`;
 	const ceDelCls = large ? "emoji-deleted emoji-deleted-large" : "emoji-deleted";
 	s = s.replace(/&lt;:([a-f0-9-]+):&gt;/g, (full, id) => {
 		const ce = customEmojiMap?.[id];
 		if (!ce) return `<span class="${ceDelCls}" title="Emoji deleted">💩</span>`;
-		return `<img class="${ceCls}" src="${emojiHost}/attachments/${ce.attachment_id}" alt="${escapeHtml(ce.name)}" title=":${escapeHtml(ce.name)}:" draggable="false" loading="lazy" onerror="var r=+(this.dataset.r||0);if(r<10){this.dataset.r=r+1;this.src=this.src.split('?')[0]+'?r='+Date.now()}else{this.replaceWith(Object.assign(document.createElement('span'),{title:'Emoji failed to load',textContent:this.title}))}">`;
+		return `<img class="${ceCls}" src="${emojiHost}/attachments/${ce.attachment_id}" alt="${escapeHtml(ce.name)}" title=":${escapeHtml(ce.name)}:" draggable="false" loading="lazy">`;
 	});
 	// Resolve <#id> room mentions to #name, for the rooms the reader can view (roomNames). Any other one, or one that's
 	// gone, reads #unknown, with no room to open. Last, so that no rule above reads a room's name as markdown.

@@ -160,6 +160,10 @@ export interface InteractionMetadata {
 
 /** The option types of an application's command (commands.OptionType in the API). */
 export const CommandOptionType = {
+	/** Something a command does, with options of its own. */
+	Subcommand: 1,
+	/** Subcommands that go together. */
+	SubcommandGroup: 2,
 	String: 3,
 	Integer: 4,
 	Boolean: 5,
@@ -170,12 +174,17 @@ export const CommandOptionType = {
 	Number: 10,
 } as const;
 
-/** What a command takes; the required ones come first. */
+/**
+ * What a command takes; the required ones come first. A command's options are all subcommands and groups of them,
+ * or none: a subcommand's options take values, and a group's are its subcommands.
+ */
 export interface CommandOption {
 	type: number;
 	name: string;
 	description: string;
 	required?: boolean;
+	/** A subcommand's options, or a group's subcommands. */
+	options?: CommandOption[];
 	/** The only values it takes, for string, integer and number options. */
 	choices?: { name: string; value: string | number }[];
 	min_value?: number;

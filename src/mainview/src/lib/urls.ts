@@ -51,8 +51,8 @@ export function webEmbed(embed: Embed): Embed {
 
 // The players the API frames itself, YouTube's and TikTok's, as it writes their URLs (embeds/youtube.go and
 // embeds/tiktok.go): they need their own origin to play. Only these exact URLs are players. Any other page of
-// those sites, or of their subdomains, could be someone's own or redirect the frame anywhere, and would load at
-// once with that origin.
+// those sites, or of their subdomains, could be someone's own or redirect the frame anywhere, and would run with
+// that origin.
 const PLAYERS = [
 	/^https:\/\/www\.youtube\.com\/embed\/[\w-]+$/,
 	/^https:\/\/www\.tiktok\.com\/player\/v1\/\d+\?music_info=0&description=0&rel=0&autoplay=0$/,
@@ -119,6 +119,58 @@ export function pathSegment(value: string): string {
 	return segment;
 }
 
+/**
+ * A link in a message's text as the mobile app reads it before it draws a card (duvetLinksIn, its
+ * lib/widgets/link_embeds.dart), and the API before it leaves out the preview of one of Duvet's own links, as the
+ * clients draw a card instead (mobileLink, api#216): up to a space or one of <>()[]"', and without the .,;:!? at its
+ * end. So a link that ends a sentence, or sits in brackets, gets its card: "(https://duvet.chat/invite/abc)" and
+ * "https://duvet.chat/invite?bot=<id>.". It's always the start of raw.
+ */
+export function cardLink(raw: string): string {
+	return (/^[^\s<>()[\]"']*/u.exec(raw)?.[0] ?? "").replace(/[.,;:!?]+$/u, "");
+}
+
+/** What one of Duvet's invite links names: a space's invite, by its code, or the bot it adds to a space. */
+export type InviteLink = { code: string } | { bot: string };
+
+/**
+ * The invite a link names (read as cardLink reads it), on duvet.chat or at ownOrigin, the app's own: a space's from
+ * /invite?code=<code> or /invite/<code>, or a bot's from /invite?bot=<id> or /invite.html?bot=<id>, as the API and
+ * the mobile app read them; nothing otherwise. A bot's ID goes into API paths, so it's a UUID (isUuid), and a code
+ * holds no / ? # or \, as the mobile app has it. The slashes at the path's ends don't count, as for the API. A link
+ * that names both a bot and a code is the bot's, as the app's invite page and the mobile app take it, so its card
+ * shows what the link opens.
+ */
+export function parseInviteLink(url: string, ownOrigin: string): InviteLink | null {
+	let parsed: URL;
+	try {
+		parsed = new URL(url);
+	} catch {
+		return null;
+	}
+	if (parsed.origin !== DUVET_DOMAIN && parsed.origin !== ownOrigin) return null;
+	const segments = parsed.pathname.replace(/^\/+|\/+$/g, "").split("/");
+	const [page, rest] = segments;
+	const bot = parsed.searchParams.get("bot");
+	if (segments.length === 1 && (page === "invite" || page === "invite.html") && isUuid(bot)) return { bot };
+	const code =
+		segments.length === 1 && page === "invite"
+			? parsed.searchParams.get("code")
+			: segments.length === 2 && page === "invite"
+				? decodedSegment(rest)
+				: null;
+	return code && !/[/?#\\]/.test(code) ? { code } : null;
+}
+
+// A path segment as it reads, or null for one that doesn't decode.
+function decodedSegment(segment: string): string | null {
+	try {
+		return decodeURIComponent(segment);
+	} catch {
+		return null;
+	}
+}
+
 /** The message a link names: its space, room and message, or its conversation and message (space and room empty). */
 export interface MessageLink {
 	spaceId: string;
@@ -148,12 +200,20 @@ export function parseMessageLink(url: string): MessageLink | null {
 }
 
 /**
- * How an embed frames the player page at url, when frameSandbox lets it: at once for the players the API frames itself
- * (PLAYERS), and for any other page only once its play button is clicked (clickToPlay), so that the page itself loads
- * and runs only when someone asks for it. The poster the button shows, the embed's image, loads as any embed image.
+ * How an embed frames the player page at url, when frameSandbox lets it: only once its play button is clicked, so that
+ * the page loads, and its host sees a view, only when someone asks for it (desktop#147). The poster the button shows,
+ * the embed's image, is a copy the API serves. player says whether it's one of the players the API frames itself
+ * (PLAYERS), with their origin: in the packaged app any other page opens in the browser instead, as Electrobun's
+ * preload runs in frames too, and a player is framed at src, where it starts at once, as the click asked.
  */
-export function playerFrame(url: string, ownHosts: string[]): { sandbox: string; clickToPlay: boolean } | undefined {
+export function playerFrame(
+	url: string,
+	ownHosts: string[],
+): { sandbox: string; player: boolean; src: string } | undefined {
 	const sandbox = frameSandbox(url, ownHosts);
 	if (!sandbox) return undefined;
-	return { sandbox, clickToPlay: !isPlayer(url) };
+	if (!isPlayer(url)) return { sandbox, player: false, src: url };
+	// YouTube's embed starts with autoplay=1; TikTok's player, as the API writes it, says autoplay=0 last.
+	const src = url.includes("?") ? url.replace(/&autoplay=0$/, "&autoplay=1") : `${url}?autoplay=1`;
+	return { sandbox, player: true, src };
 }

@@ -46,7 +46,10 @@ export async function sendComponentInteraction(
 	return answered(res.data, { ...where, roomId, messageId });
 }
 
-/** What a person sends about the command they used: the command, as the space's list has it, and its options. */
+/**
+ * What a person sends about the command they used: the command, as the space's list has it, and its options, a
+ * subcommand's under it in its group (commandUse, lib/commands.ts).
+ */
 export interface CommandUse {
 	id: string;
 	name: string;
