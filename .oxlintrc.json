@@ -34,7 +34,6 @@
     "src/mainview/src/lib/stickers/icons.ts",
 		"node_modules",
 		".svelte-kit",
-		".hutch",
 		"build",
 		"dist",
 		"**/node_modules/**",

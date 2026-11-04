@@ -1,25 +1,5 @@
 // import { vitePreprocess } from '@sveltejs/vite-plugin-svelte';
 import adapter from "@sveltejs/adapter-static";
-import { existsSync, readFileSync } from "node:fs";
-import { resolve } from "node:path";
-import { fileURLToPath } from "node:url";
-
-// The Electrobun SDK, which `electrobun prepare` writes to the repository's .hutch/devkit (the root's `bun run devkit`;
-// start, hmr and build:canary run it first): since Electrobun 2 the npm package only downloads the tools, and its
-// modules throw. lib/electrobun-rpc.ts imports electrobun/view from the devkit, for Vite and for svelte-check (kit.alias
-// feeds both), and vite.config.ts lets the dev server serve it. A checkout without a devkit, like the server's that
-// builds duvet.chat, aliases nothing: that import only runs in the app's window (isElectrobunWindow), so the web build
-// bundles the npm package's throwing module in its place and never loads it.
-export const ELECTROBUN_DEVKIT = fileURLToPath(new URL("../../.hutch/devkit", import.meta.url));
-
-/** @returns {Record<string, string>} */
-function electrobunAliases() {
-  const manifest = resolve(ELECTROBUN_DEVKIT, "package.json");
-  if (!existsSync(manifest)) return {};
-  const target = JSON.parse(readFileSync(manifest, "utf8")).exports?.["./view"];
-  if (typeof target !== "string") throw new Error(`${manifest} exports no electrobun/view`);
-  return { "electrobun/view": resolve(ELECTROBUN_DEVKIT, target) };
-}
 
 // Content Security Policy. Every route is prerendered (adapter-static), so SvelteKit emits this as a
 // <meta http-equiv="content-security-policy"> tag and augments script-src with the hash of its own
@@ -147,7 +127,6 @@ const config = {
     adapter: adapter({
       precompress: true,
     }),
-    alias: electrobunAliases(),
     csp,
   },
 };

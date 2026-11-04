@@ -5,5 +5,16 @@ src/mainview/build
 build
 .claude
 artifacts
-# The Electrobun SDK and build state that `electrobun prepare` writes (Hutch's).
-.hutch/
+# Devenv
+.devenv*
+devenv.local.nix
+devenv.local.yaml
+
+# direnv
+.direnv
+
+# pre-commit
+.pre-commit-config.yaml
+
+# nix
+result
