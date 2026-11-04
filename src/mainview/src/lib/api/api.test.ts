@@ -204,12 +204,42 @@ describe("an upload", () => {
 		expect(getApiError(failure, "")).toBe("failed to upload attachment: file is too large");
 	});
 
-	test("that sends nothing for its idle time is aborted, and fails", async () => {
+	test("that stops sending once it started is aborted after its idle time, and fails", async () => {
 		uploadLimits.idleMs = 40;
-		FakeXHR.onSend = () => {};
+		FakeXHR.onSend = (xhr) => queueMicrotask(() => xhr.upload.onprogress?.());
 		const failure = await api.post("/api/rooms/r/messages", messageForm(file(1024))).catch((e: unknown) => e);
 		expect(failure).toBeInstanceOf(UploadTimeoutError);
 		expect(getApiError(failure, "")).toStartWith("Upload stalled: nothing went out for");
+		expect(FakeXHR.last!.aborted).toBe(true);
+	});
+
+	// The idle time counted from the send failed an upload that waited for a connection: Chromium opens 6 a host over
+	// HTTP/1.1, and the seventh upload waits for one of them with nothing sent (#182's review).
+	test("that waits longer than its idle time before it starts isn't given up for it", async () => {
+		uploadLimits.idleMs = 40;
+		FakeXHR.onSend = (xhr) =>
+			setTimeout(() => {
+				xhr.upload.onprogress?.();
+				setTimeout(() => xhr.respond(201, { id: "m" }), 10);
+			}, 120);
+		const res = await api.post("/api/rooms/r/messages", messageForm(file(1024)));
+		expect(res.status).toBe(201);
+		expect(FakeXHR.last!.aborted).toBe(false);
+	});
+
+	// A webview that reports no upload progress (WebKit's are unchecked) only gives up an upload on its answer's time.
+	test("that reports no progress at all is given up only when its answer doesn't come in its time", async () => {
+		uploadLimits.idleMs = 40;
+		uploadLimits.answerMs = () => 300;
+		FakeXHR.onSend = (xhr) => setTimeout(() => xhr.respond(201, { id: "m" }), 120);
+		expect((await api.post("/api/rooms/r/messages", messageForm(file(1024)))).status).toBe(201);
+
+		FakeXHR.onSend = () => {};
+		const upload = api.post("/api/rooms/r/messages", messageForm(file(1024)));
+		expect(await within(upload, 120)).toEqual({ settled: "pending after 120 ms" });
+		const failure = await upload.catch((e: unknown) => e);
+		expect(failure).toBeInstanceOf(UploadTimeoutError);
+		expect(getApiError(failure, "")).toBe("No answer to the upload in time");
 		expect(FakeXHR.last!.aborted).toBe(true);
 	});
 
@@ -228,10 +258,22 @@ describe("an upload", () => {
 		expect(FakeXHR.last!.aborted).toBe(false);
 	});
 
-	test("whose answer doesn't come in its time is aborted, and fails", async () => {
-		uploadLimits.idleMs = 5_000;
-		uploadLimits.answerMs = () => 40;
-		FakeXHR.onSend = (xhr) => queueMicrotask(() => xhr.upload.onload?.());
+	test("waits for its answer after its last byte, not its idle time; one that doesn't come in its time fails", async () => {
+		uploadLimits.idleMs = 40;
+		uploadLimits.answerMs = () => 300;
+		// Its bytes go out, and the API takes longer than the idle time to store them.
+		const sendsAll = (xhr: FakeXHR) => {
+			xhr.upload.onprogress?.();
+			xhr.upload.onload?.();
+		};
+		FakeXHR.onSend = (xhr) =>
+			queueMicrotask(() => {
+				sendsAll(xhr);
+				setTimeout(() => xhr.respond(201, { id: "m" }), 120);
+			});
+		expect((await api.post("/api/rooms/r/messages", messageForm(file(1024)))).status).toBe(201);
+
+		FakeXHR.onSend = (xhr) => queueMicrotask(() => sendsAll(xhr));
 		const failure = await api.post("/api/rooms/r/messages", messageForm(file(1024))).catch((e: unknown) => e);
 		expect(failure).toBeInstanceOf(UploadTimeoutError);
 		expect(getApiError(failure, "")).toBe("No answer to the upload in time");

@@ -88,10 +88,11 @@ export class TooLargeError extends Error {
 	}
 }
 
-/** When an upload is given up (#182). idleMs: it has sent nothing for that long, as when Chromium leaves an HTTP/3
- * upload the server stopped early hanging, or a link stalls; one that keeps moving is never cut, however slow. answerMs:
- * its answer hasn't come that long after its last byte, twice the API's own time for writing its files to storage
- * (copyTimeout: 30 s, and 1 s more per 256 KiB). */
+/** When an upload is given up (#182). idleMs: it has sent nothing for that long since its last progress, as when
+ * Chromium leaves an HTTP/3 upload the server stopped early hanging, or a link stalls; one that keeps moving is never
+ * cut, however slow. answerMs: its answer hasn't come that long after its last byte, or after it was sent while it
+ * reports no progress yet; twice the API's own time for writing its files to storage (copyTimeout: 30 s, and 1 s more
+ * per 256 KiB). */
 export const uploadLimits = {
 	idleMs: 30_000,
 	answerMs: (bytes: number) => 2 * (30_000 + Math.ceil(bytes / (256 * 1024)) * 1000),
@@ -121,7 +122,7 @@ function responseOf(xhr: XMLHttpRequest): Response {
 }
 
 /** Sends a form as fetch sends it with init, through XMLHttpRequest, whose upload progress tells an upload that stalled
- * from a slow one (fetch has none): one that sends nothing for uploadLimits.idleMs, or whose answer hasn't come
+ * from a slow one (fetch has none): one that stops sending for uploadLimits.idleMs, or whose answer hasn't come
  * uploadLimits.answerMs after its last byte, is aborted and fails with an UploadTimeoutError. A network error fails as
  * fetch's does. bytes is the form's size (formBytes). */
 function sendForm(url: string, init: RequestInit, form: FormData, bytes: number): Promise<Response> {
@@ -151,15 +152,19 @@ function sendForm(url: string, init: RequestInit, form: FormData, bytes: number)
 				ms,
 			);
 		};
+		// Before its first progress, an upload may still wait for a connection (HTTP/1.1 has 6 a host), and a webview may
+		// report none at all: only the answer's limit applies then, from the start. From its first progress on, it may go
+		// uploadLimits.idleMs without another.
 		const waitForProgress = () =>
 			giveUpIn(uploadLimits.idleMs, `Upload stalled: nothing went out for ${Math.round(uploadLimits.idleMs / 1000)} s`);
+		const waitForAnswer = () => giveUpIn(uploadLimits.answerMs(bytes), "No answer to the upload in time");
 
 		xhr.open(init.method ?? "POST", url);
 		xhr.withCredentials = init.credentials === "include";
 		xhr.responseType = "arraybuffer";
 		new Headers(init.headers).forEach((value, name) => xhr.setRequestHeader(name, value));
 		xhr.upload.onprogress = waitForProgress;
-		xhr.upload.onload = () => giveUpIn(uploadLimits.answerMs(bytes), "No answer to the upload in time");
+		xhr.upload.onload = waitForAnswer;
 		xhr.onload = () =>
 			settle(() => {
 				// A status a Response can't hold (outside 200-599) fails, as fetch fails such an answer.
@@ -172,7 +177,7 @@ function sendForm(url: string, init: RequestInit, form: FormData, bytes: number)
 		xhr.onerror = () => settle(() => reject(new TypeError("Failed to fetch")));
 		xhr.onabort = () => settle(() => reject(new DOMException("The upload was aborted", "AbortError")));
 		init.signal?.addEventListener("abort", () => xhr.abort());
-		waitForProgress();
+		waitForAnswer();
 		xhr.send(form);
 	});
 }
