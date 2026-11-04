@@ -1,6 +1,7 @@
 import { getHostURL, route } from "$lib/common/common";
 import { renewalDue, renewOnceMore, type SessionCheck } from "$lib/session";
 import { accessToken } from "$lib/stores/auth";
+import { formatFileSize } from "$lib/utils/format";
 import { get } from "svelte/store";
 
 export interface FetchRequestConfig extends Omit<RequestInit, "body"> {
@@ -45,6 +46,44 @@ class RefreshFailedError extends Error {
 		super(`Refresh token request failed with status ${status}`);
 		this.name = "RefreshFailedError";
 		this.status = status;
+	}
+}
+
+/** The largest request body the API reads (MaxBodyBytes, duvet-api's internal/http/middlewares/body.go). It answers a
+ * bigger one with a 413 before reading it, which Chromium never hands over HTTP/3, where the request then never ends
+ * (#182): a form this big isn't sent at all. */
+export const MAX_REQUEST_BYTES = 32 * 1024 * 1024;
+
+// What a multipart body adds around each of its fields, at most: the boundary line (a boundary has 70 characters at
+// most, RFC 2046), the Content-Disposition and Content-Type lines and the line ends. Names are counted three times,
+// for the escapes a browser writes in them (%22 for a quote).
+const PART_OVERHEAD = 256;
+
+/** The size of form as the multipart body a browser sends, or a little more: never less, whatever its boundary. */
+export function formBytes(form: FormData): number {
+	const encoder = new TextEncoder();
+	let bytes = PART_OVERHEAD; // the closing boundary
+	form.forEach((value, name) => {
+		bytes += PART_OVERHEAD + 3 * encoder.encode(name).length;
+		if (typeof value === "string") {
+			bytes += encoder.encode(value).length;
+		} else {
+			// A file's part also names the file, and its type: the browser writes application/octet-stream for none.
+			bytes += value.size + 3 * encoder.encode(value.name).length;
+			bytes += (value.type || "application/octet-stream").length;
+		}
+	});
+	return bytes;
+}
+
+/** A request refused before it's sent, as the API would refuse it: its body is over MAX_REQUEST_BYTES. */
+export class TooLargeError extends Error {
+	bytes: number;
+
+	constructor(bytes: number, scope = "") {
+		super(`Files too large: ${formatFileSize(bytes)}, ${MAX_REQUEST_BYTES / (1024 * 1024)} MB at most${scope}`);
+		this.name = "TooLargeError";
+		this.bytes = bytes;
 	}
 }
 
@@ -162,6 +201,11 @@ const buildFetchResponse = async (res: Response): Promise<FetchResponse> => {
 };
 
 const coreFetch = async <T = any>(endpoint: string, options: FetchRequestConfig = {}): Promise<FetchResponse<T>> => {
+	if (options.data instanceof FormData) {
+		const bytes = formBytes(options.data);
+		if (bytes > MAX_REQUEST_BYTES) throw new TooLargeError(bytes);
+	}
+
 	const token = get(accessToken) || localStorage.getItem("duvet_session_token");
 	const sessionToken = localStorage.getItem("duvet_refresh_token");
 
