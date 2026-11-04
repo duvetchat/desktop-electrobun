@@ -1,8 +1,5 @@
 import { describe, expect, test } from "bun:test";
-
-// The API's host comes from constants Vite defines at build time.
-Object.assign(globalThis, { VITE_API_URL: "https://api.test", VITE_WS_URL: "", VITE_DOMAIN_TARGET_ENV: "duvet" });
-const { getAvatarURL } = await import("$lib/common/common");
+import { getAvatarURL } from "$lib/common/common";
 
 describe("getAvatarURL", () => {
 	const ID = "0190a3b2-0000-7000-8000-000000000001";

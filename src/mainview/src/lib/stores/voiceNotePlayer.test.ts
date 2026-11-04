@@ -1,12 +1,7 @@
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import { get } from "svelte/store";
-
-// The store reaches the API client (to sign a note's URL again), which reads SvelteKit's environment and the API's
-// address.
-mock.module("$app/environment", () => ({ browser: false }));
-Object.assign(globalThis, { VITE_API_URL: "https://api.test", VITE_WS_URL: "", VITE_DOMAIN_TARGET_ENV: "duvet" });
-const { playVoiceNote, seekVoiceNote, stopVoiceNote, voiceNote } = await import("$lib/stores/voiceNotePlayer.svelte");
-const { releaseWav, wavUrlOf } = await import("$lib/audio/waveform");
+import { releaseWav, wavUrlOf } from "$lib/audio/waveform";
+import { playVoiceNote, seekVoiceNote, stopVoiceNote, voiceNote } from "$lib/stores/voiceNotePlayer.svelte";
 
 /** An <audio> as far as the voice note player uses one; end() plays it to its end. */
 class FakeAudio {
@@ -50,21 +45,12 @@ class FakeAudio {
 	}
 }
 
-// Only while this file's tests run: the test files share one global object (#166). The API client reads the session
-// from the browser's storage, which tests don't have.
+// Only while this file's tests run (#166).
 const saved = Object.fromEntries(
-	["Audio", "requestAnimationFrame", "cancelAnimationFrame", "localStorage"].map((name) => [
-		name,
-		Reflect.get(globalThis, name),
-	]),
+	["Audio", "requestAnimationFrame", "cancelAnimationFrame"].map((name) => [name, Reflect.get(globalThis, name)]),
 );
 beforeAll(() => {
-	Object.assign(globalThis, {
-		Audio: FakeAudio,
-		requestAnimationFrame: () => 0,
-		cancelAnimationFrame: () => {},
-		localStorage: { getItem: () => null, setItem: () => {}, removeItem: () => {} },
-	});
+	Object.assign(globalThis, { Audio: FakeAudio, requestAnimationFrame: () => 0, cancelAnimationFrame: () => {} });
 });
 afterAll(() => {
 	for (const [name, value] of Object.entries(saved)) {

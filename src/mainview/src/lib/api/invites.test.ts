@@ -1,13 +1,8 @@
-import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
-
-// The API client reads the session from the browser's storage, which tests don't have.
-mock.module("$app/environment", () => ({ browser: false }));
-Object.assign(globalThis, { VITE_API_URL: "https://api.test", VITE_WS_URL: "", VITE_DOMAIN_TARGET_ENV: "duvet" });
-Object.assign(globalThis, { localStorage: { getItem: () => null, setItem: () => {}, removeItem: () => {} } });
-const { getInvite, joinInvite } = await import("$lib/api/invites");
+import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
+import { getInvite, joinInvite } from "$lib/api/invites";
 
 // The requests the client sends, by URL; each answers as the API does for an invite it knows. Only while a test of this
-// file runs: the test files share one global object, and the next one's fetch is the real one (#166).
+// file runs: the next test, and the preload's check once the file is done, find the real fetch (#166).
 const sent: string[] = [];
 let fetched: ReturnType<typeof spyOn<typeof globalThis, "fetch">>;
 beforeEach(() => {
