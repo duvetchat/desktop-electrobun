@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { Play as PlayIcon } from "@lucide/svelte";
+	import EmbedPlayer from "$lib/components/EmbedPlayer.svelte";
 	import MessageComponents from "$lib/components/MessageComponents.svelte";
 	import { EmbedType, type Embed, type EmbedMedia } from "$lib/types";
 	import { getHostURL } from "$lib/common/common";
@@ -7,7 +7,6 @@
 	import { roomNames } from "$lib/stores.svelte";
 	import { formatShortDateTime } from "$lib/utils/time";
 	import { playerFrame, webEmbed } from "$lib/urls";
-	import { getElectrobunRpc, isElectrobunWindow } from "$lib/electrobun-rpc";
 
 	let { embed, onImageClick }: { embed: Embed; onImageClick?: (src: string) => void } = $props();
 
@@ -21,20 +20,8 @@
 		ownHosts.push(new URL(getHostURL()).hostname);
 	} catch {}
 
-	// The player page whose play button was clicked, framed from then on (playerFrame), and the image the button
-	// shows until then.
-	let playing = $state<string | null>(null);
+	// The image a player shows until it's played (EmbedPlayer).
 	const poster = $derived(card.image?.url ?? card.thumbnail?.url);
-
-	// In the packaged app, Electrobun's preload (with its RPC key) runs in frames too, so a page that isn't one of
-	// the players the API frames itself opens in the browser instead of in a frame; a player is framed.
-	function play(url: string, player: boolean) {
-		if (!player && isElectrobunWindow()) {
-			void getElectrobunRpc().then((rpc) => rpc?.send.openExternal({ url }));
-			return;
-		}
-		playing = url;
-	}
 
 	// The footer's line: its text and the embed's date, as "FxTwitter • 10/21/26, 3:02 AM".
 	const footerText = $derived(
@@ -152,7 +139,14 @@
 			{/if}
 		</div>
 		{#if card.video}
-			{@render player(card.video.url, card.title ?? "TikTok", "aspect-9/16", "autoplay; encrypted-media")}
+			<EmbedPlayer
+				url={card.video.url}
+				title={card.title ?? "TikTok"}
+				aspect="aspect-9/16"
+				allow="autoplay; encrypted-media"
+				{poster}
+				{ownHosts}
+			/>
 		{/if}
 	</div>
 {:else if card.title || card.description || card.video || card.image}
@@ -241,12 +235,14 @@
 					class="max-h-72 w-full max-w-full"
 				></video>
 			{:else}
-				{@render player(
-					card.video.url,
-					card.title ?? "",
-					"aspect-video",
-					"autoplay; encrypted-media; picture-in-picture",
-				)}
+				<EmbedPlayer
+					url={card.video.url}
+					title={card.title ?? ""}
+					aspect="aspect-video"
+					allow="autoplay; encrypted-media; picture-in-picture"
+					{poster}
+					{ownHosts}
+				/>
 			{/if}
 		{:else if card.image}
 			<button type="button" class="block w-full cursor-zoom-in" onclick={() => onImageClick?.(card.image!.url)}>
@@ -255,32 +251,3 @@
 		{/if}
 	</div>
 {/if}
-
-<!-- A player page, framed with playerFrame's sandbox once its play button is clicked, over the embed's image while it
-     waits: the players the API frames itself start then, any other page opens in the browser in the packaged app. -->
-{#snippet player(url: string, title: string, aspect: string, allow: string)}
-	{@const frame = playerFrame(url, ownHosts)}
-	{#if frame}
-		<div class="relative w-full {aspect}">
-			{#if playing !== url}
-				<button
-					type="button"
-					class="group absolute inset-0 flex items-center justify-center bg-zinc-900"
-					aria-label={title ? `Play ${title}` : "Play"}
-					onclick={() => play(url, frame.player)}
-				>
-					{#if poster}
-						<img src={poster} alt="" class="absolute inset-0 size-full object-cover" loading="lazy" />
-					{/if}
-					<span
-						class="text-fixed-white relative flex size-14 items-center justify-center rounded-full bg-black/60 transition-colors group-hover:bg-black/80"
-					>
-						<PlayIcon class="size-6 translate-x-0.5" fill="currentColor" stroke="none" />
-					</span>
-				</button>
-			{:else}
-				<iframe src={frame.src} {title} class="h-full w-full" {allow} allowfullscreen sandbox={frame.sandbox}></iframe>
-			{/if}
-		</div>
-	{/if}
-{/snippet}
