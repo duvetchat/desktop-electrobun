@@ -18,6 +18,7 @@
 	import { get } from "svelte/store";
 	import { closeTabsIn, isConversationTab, makeSplit, makeLeaf, tabFromDragData, tabTitle } from "$lib/pane";
 	import { getMessages, getMessagesAfter, getMessageById, ackRoom } from "$lib/api/messages";
+	import { loadedTo } from "$lib/jumps";
 	import { onMount, onDestroy, type Snippet } from "svelte";
 
 	import type { MemberOnSidebar, GatewaySpace, PaneNode, Guild, Tab } from "$lib/types";
@@ -94,6 +95,17 @@
 	let isLoadingMoreBelow = $state(false);
 	let channelHasMore = $state<Partial<Record<string, boolean>>>({});
 	let channelHasMoreBelow = $state<Partial<Record<string, boolean>>>({});
+	// After a jump, where a room's next page below starts: after the newest message the jump's pages have loaded, never
+	// after one that came meanwhile (another member's, or one the user sent), whose messages before it would never load.
+	let channelLoadedBelowTo = $state<Partial<Record<string, string>>>({});
+	// When a room's last page below failed: the page is asked for again on a scroll there once BELOW_RETRY_WAIT has
+	// passed (the list also scrolls by itself, which must not ask again at once), rather than taken for the end.
+	const belowFailedAt = new Map<string, number>();
+	const BELOW_RETRY_WAIT = 2_000;
+	// A room's jumps so far: what an earlier jump, or a page asked for before the latest one, fetched is dropped.
+	const channelJumps = new Map<string, number>();
+	// A room's page below while it's asked for, which a jump aborts.
+	const belowRequests = new Map<string, AbortController>();
 	let channelInitialLoading = $state<Partial<Record<string, boolean>>>({});
 	let channelHighlightedMessage = $state<Partial<Record<string, string | null>>>({});
 	// last-read message ID per channel, used to render the unread divider
@@ -319,9 +331,16 @@
 		// re-runs when *other* channels finish loading and corrupting the
 		// dependency set so the effect misses the activeChannelId change.
 		channelInitialLoading[channelId] = true;
+		// A jump that starts meanwhile (to a message of a room just opened) puts its own pages in the list: this newest
+		// page would go in beside them, leaving the messages between out.
+		const jump = channelJumps.get(channelId) ?? 0;
 
 		getMessages(channelId)
 			.then((raw) => {
+				if (jump !== (channelJumps.get(channelId) ?? 0)) {
+					channelInitialLoading[channelId] = false;
+					return;
+				}
 				const msgs = raw.map((m) => gatewayMessageToMessage(m, $gatewaySpaces));
 				channelMessages.update((all) => {
 					const existing = all[channelId] ?? [];
@@ -354,6 +373,9 @@
 				if (raw.length < 100) {
 					channelHasMore[channelId] = false;
 				}
+				// The newest page reaches the room's newest message: nothing newer to load below it.
+				channelHasMoreBelow[channelId] = false;
+				channelLoadedBelowTo[channelId] = "";
 			})
 			.catch((err) => {
 				console.error("Failed to fetch history:", err);
@@ -428,55 +450,67 @@
 		}
 	}
 
+	// A new jump of the room's (or a trip to its newest messages) starts: what earlier ones asked for is dropped as it
+	// comes, and its page below in flight is called off, so the new pages' next one can be asked for at once.
+	function startJump(channelId: string): number {
+		const jump = (channelJumps.get(channelId) ?? 0) + 1;
+		channelJumps.set(channelId, jump);
+		const inFlight = belowRequests.get(channelId);
+		if (inFlight) {
+			belowRequests.delete(channelId);
+			inFlight.abort();
+			isLoadingMoreBelow = false;
+		}
+		belowFailedAt.delete(channelId);
+		return jump;
+	}
+
+	// After a jump, the newer messages load below as the reader scrolls down to them, a page at a time, each after the
+	// newest of the jump's pages. A page that fails, or hasn't come in 10 s, is asked for again on a scroll there once
+	// BELOW_RETRY_WAIT has passed: newer messages are still to load.
 	async function loadMoreMessagesBelow() {
 		if (node.kind !== "leaf" || !node.activeChannelId || isLoadingMoreBelow || activeChannel?.type !== "text") {
 			return;
 		}
 		const channelId = node.activeChannelId;
-		if (channelHasMoreBelow[channelId] !== true) {
+		const after = channelLoadedBelowTo[channelId];
+		if (channelHasMoreBelow[channelId] !== true || !after) {
+			return;
+		}
+		if (Date.now() - (belowFailedAt.get(channelId) ?? 0) < BELOW_RETRY_WAIT) {
 			return;
 		}
 
-		const current = $channelMessages[channelId];
-		if (!current || current.length === 0) {
-			return;
-		}
-
-		let newest = current.at(0)!.id;
-		for (const m of current) {
-			if (m.id > newest) newest = m.id;
-		}
-
+		const jump = channelJumps.get(channelId) ?? 0;
 		isLoadingMoreBelow = true;
-
 		const controller = new AbortController();
+		belowRequests.set(channelId, controller);
 		const timeoutId = setTimeout(() => controller.abort(), 10_000);
 
 		try {
-			const raw = await getMessagesAfter(channelId, newest, controller.signal);
-			clearTimeout(timeoutId);
-			if (raw.length === 0) {
-				channelHasMoreBelow[channelId] = false;
-			} else {
-				const msgs = raw.map((m) => gatewayMessageToMessage(m, $gatewaySpaces));
-				channelMessages.update((all) => {
-					const existing = all[channelId] || [];
-					const existingIds = new Set(existing.map((m) => m.id));
-					return {
-						...all,
-						[channelId]: [...existing, ...msgs.filter((m) => !existingIds.has(m.id))],
-					};
-				});
-				if (raw.length < 100) {
-					channelHasMoreBelow[channelId] = false;
-				}
-			}
+			const raw = await getMessagesAfter(channelId, after, controller.signal);
+			if (jump !== (channelJumps.get(channelId) ?? 0)) return;
+			const msgs = raw.map((m) => gatewayMessageToMessage(m, $gatewaySpaces));
+			channelLoadedBelowTo[channelId] = loadedTo(after, raw);
+			channelMessages.update((all) => {
+				const existing = all[channelId] || [];
+				const existingIds = new Set(existing.map((m) => m.id));
+				return {
+					...all,
+					[channelId]: [...existing, ...msgs.filter((m) => !existingIds.has(m.id))],
+				};
+			});
+			// Fewer than a full page: it reached the newest message.
+			channelHasMoreBelow[channelId] = raw.length >= 100;
 		} catch (err) {
-			clearTimeout(timeoutId);
+			if (jump === (channelJumps.get(channelId) ?? 0)) belowFailedAt.set(channelId, Date.now());
 			console.error("Failed to load more below:", err);
-			channelHasMoreBelow[channelId] = false;
 		} finally {
-			isLoadingMoreBelow = false;
+			clearTimeout(timeoutId);
+			if (belowRequests.get(channelId) === controller) {
+				belowRequests.delete(channelId);
+				isLoadingMoreBelow = false;
+			}
 		}
 	}
 
@@ -492,6 +526,7 @@
 			return;
 		}
 
+		const jump = startJump(channelId);
 		const controller = new AbortController();
 		const timeoutId = setTimeout(() => controller.abort(), 10_000);
 
@@ -506,6 +541,8 @@
 				getMessagesAfter(channelId, anchorId, controller.signal),
 			]);
 			clearTimeout(timeoutId);
+			// Of two jumps in a row, the last one's pages stay.
+			if (jump !== channelJumps.get(channelId)) return;
 
 			const anchorMsg = gatewayMessageToMessage(anchor, $gatewaySpaces);
 			const above = rawAbove.map((m) => gatewayMessageToMessage(m, $gatewaySpaces));
@@ -525,6 +562,7 @@
 			channelMessages.update((all) => ({ ...all, [channelId]: combined }));
 			channelHasMore[channelId] = rawAbove.length >= 100;
 			channelHasMoreBelow[channelId] = rawBelow.length >= 100;
+			channelLoadedBelowTo[channelId] = loadedTo(anchorId, rawBelow);
 			channelHighlightedMessage[channelId] = messageId;
 			channelInitialLoading[channelId] = false;
 

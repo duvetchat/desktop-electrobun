@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { quoteJump, readWhenLeft } from "$lib/jumps";
+import { loadedTo, quoteJump, readWhenLeft } from "$lib/jumps";
 
 const QUOTED = "01920000-0000-7000-8000-0000000000aa";
 const CONVERSATION = "01920000-0000-7000-8000-0000000c0c0c";
@@ -62,5 +62,26 @@ describe("readWhenLeft", () => {
 
 	test("another member's message that came during the jump leaves it unread", () => {
 		expect(readWhenLeft({ newest: m(401), ...jumped }, undefined, m(350))).toBe(false);
+	});
+});
+
+describe("loadedTo", () => {
+	// A room's or a conversation's messages in order: m(1) is the oldest.
+	const m = (n: number) => `01930000-0000-7000-8000-${String(n).padStart(12, "0")}`;
+	const page = (from: number, to: number) => Array.from({ length: to - from + 1 }, (_, i) => ({ id: m(from + i) }));
+
+	test("a jump's pages, then each page below, move it to their newest message", () => {
+		// A jump to 30 loads 31 to 130 below it; the next page is 131 to 230.
+		const afterJump = loadedTo(m(30), page(31, 130));
+		expect(afterJump).toBe(m(130));
+		expect(loadedTo(afterJump, page(131, 230))).toBe(m(230));
+	});
+
+	test("a page in any order: its newest message", () => {
+		expect(loadedTo(m(130), [{ id: m(180) }, { id: m(230) }, { id: m(131) }])).toBe(m(230));
+	});
+
+	test("an empty page (nothing newer) leaves it where it was", () => {
+		expect(loadedTo(m(130), [])).toBe(m(130));
 	});
 });

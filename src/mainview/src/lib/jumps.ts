@@ -33,3 +33,12 @@ export function readWhenLeft(
 	const conversationsNewest = !list.moreBelow || list.newest > list.loadedBelowTo;
 	return conversationsNewest && (acked === list.newest || (readUpTo ?? "") >= list.newest);
 }
+
+/**
+ * Where the next page below a jump's pages starts: after the newest message those pages have loaded, the one before
+ * (`after`) or the newest of the page that just came. Never after a message that came meanwhile (another member's, or
+ * one the user sent), which isn't one of those pages: the messages between it and the pages would never load.
+ */
+export function loadedTo(after: string, page: { id: string }[]): string {
+	return page.reduce((newest, m) => (m.id > newest ? m.id : newest), after);
+}

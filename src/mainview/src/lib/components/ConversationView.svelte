@@ -53,7 +53,7 @@
 	import { toast } from "$lib/stores/toast.svelte";
 	import { getApiError } from "$lib/api/api";
 	import { withSentMessage } from "$lib/arrivals";
-	import { readWhenLeft } from "$lib/jumps";
+	import { loadedTo, readWhenLeft } from "$lib/jumps";
 	import { MessageSquare, Phone, UserPlus, Users } from "@lucide/svelte";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
 	import Chat from "$lib/components/Chat.svelte";
@@ -329,7 +329,7 @@
 
 			hasMore = rawAbove.length >= 100;
 			hasMoreBelow = rawBelow.length >= 100;
-			loadedBelowTo = rawBelow.reduce((newest, m) => (m.id > newest ? m.id : newest), anchor.id);
+			loadedBelowTo = loadedTo(anchor.id, rawBelow);
 			belowFailedAt = 0;
 			dmMessages.update((all) => ({ ...all, [conversation.id]: combined }));
 			highlightedMessageId = messageId;
@@ -354,7 +354,7 @@
 		try {
 			const fetched = await getDirectMessagesAfter(conversation.id, after, controller.signal);
 			if (jump !== jumps) return;
-			loadedBelowTo = fetched.reduce((newest, m) => (m.id > newest ? m.id : newest), after);
+			loadedBelowTo = loadedTo(after, fetched);
 			dmMessages.update((all) => {
 				const existing = all[conversation.id] ?? [];
 				const existingIds = new Set(existing.map((m) => m.id));
