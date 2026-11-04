@@ -20,7 +20,7 @@
 		gatewaySpaces,
 		userActivities,
 	} from "$lib/stores.svelte";
-	import { placeCall, sendEventMessage, getUserOnlineStatus } from "$lib/api/ws/connection";
+	import { placeCall, sendEventMessage, getUserMobileOnly, getUserOnlineStatus } from "$lib/api/ws/connection";
 	import { joinConversationCall } from "$lib/voice";
 	import { callingFromAnotherDevice, withoutCallVoiceOf } from "$lib/calls";
 	import { friendUser } from "$lib/friends";
@@ -65,6 +65,7 @@
 	import { getAvatarURL } from "$lib/common/common";
 	import { activityLine, shownActivities } from "$lib/activity";
 	import ChatIntro from "$lib/components/ChatIntro.svelte";
+	import StatusDot from "$lib/components/StatusDot.svelte";
 	import SpaceIcon from "$lib/components/SpaceIcon.svelte";
 
 	let {
@@ -148,6 +149,7 @@
 			avatar_url: getAvatarURL(m.user_id, m.user?.avatar),
 			banner_url: getAvatarURL(m.user_id, m.user?.banner),
 			status: userStatusToString(getUserOnlineStatus(m.user_id)),
+			mobile_only: getUserMobileOnly(m.user_id),
 			badges: m.user?.badges ?? 0,
 			is_bot: m.user?.is_bot ?? false,
 			// A DM's owner_id is just whoever opened it: only a group has an owner.
@@ -705,6 +707,7 @@
 {#snippet intro()}
 	{@const other = conversation.type === 2 ? null : conversation.members.find((m) => m.user_id !== me?.id)}
 	{@const status = other ? convMembers.find((m) => m.id === other.user_id)?.status : undefined}
+	{@const mobileOnly = other ? (convMembers.find((m) => m.id === other.user_id)?.mobile_only ?? false) : false}
 	{@const activity = other ? shownActivities($userActivities[other.user_id])[0] : undefined}
 	{@const shared = other ? $gatewaySpaces.filter((sp) => sp.members.some((m) => m.user_id === other.user_id)) : []}
 	<ChatIntro title={conversationTitle()}>
@@ -729,7 +732,8 @@
 				{#if other.user?.username}<span>@{other.user.username}</span>{/if}
 				{#if status}
 					<span class="flex items-center gap-1.5">
-						{#if status === "online"}<span class="bg-duvet-alive size-2 rounded-full"></span>{/if}
+						<!-- Online's dot, or the phone for someone only on mobile: no ring, its screen the pane's colour -->
+						{#if status === "online"}<StatusDot {status} {mobileOnly} class="text-duvet-bg w-2" />{/if}
 						{status === "online"
 							? "Online"
 							: status === "dnd"

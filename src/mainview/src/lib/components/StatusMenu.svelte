@@ -58,7 +58,7 @@
 							? 'bg-duvet-card shadow-duvet-raised'
 							: 'bg-duvet-bg shadow-duvet-press'}"
 					>
-						<StatusDot status={userStatusToString(choice.status)} class="size-3" />
+						<StatusDot status={userStatusToString(choice.status)} class="w-3" />
 					</span>
 					<span class="flex min-w-0 flex-1 flex-col leading-tight">
 						<span class="text-sm font-bold">{choice.label}</span>

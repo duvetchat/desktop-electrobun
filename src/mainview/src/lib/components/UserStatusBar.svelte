@@ -35,6 +35,7 @@
 	import VoiceNoteBar from "$lib/components/VoiceNoteBar.svelte";
 	import StatusMenu from "$lib/components/StatusMenu.svelte";
 	import StatusDot from "$lib/components/StatusDot.svelte";
+	import { ownMobileOnly } from "$lib/api/ws/connection";
 	import { STATUS_CHOICES, chosenStatus } from "$lib/status";
 	import { userStatusToString } from "$lib/types";
 
@@ -254,7 +255,11 @@
 					? 'ring-[3px] ring-stone-500'
 					: ''}"
 			/>
-			<StatusDot status={myStatus} class="border-duvet-sunk absolute -right-0.5 -bottom-0.5 size-3 border-2" />
+			<StatusDot
+				status={myStatus}
+				mobileOnly={$ownMobileOnly}
+				class="text-duvet-sunk absolute -right-0.5 -bottom-0.5 w-3 border-2"
+			/>
 		</StatusMenu>
 		<button
 			class="flex size-8 items-center justify-center rounded-lg transition-colors hover:bg-zinc-800 {$isMuted
@@ -313,7 +318,11 @@
 						? 'ring-4 ring-stone-500'
 						: ''}"
 				/>
-				<StatusDot status={myStatus} class="border-duvet-card absolute -right-0.5 -bottom-0.5 size-3 border-2" />
+				<StatusDot
+					status={myStatus}
+					mobileOnly={$ownMobileOnly}
+					class="text-duvet-card absolute -right-0.5 -bottom-0.5 w-3 border-2"
+				/>
 			</div>
 			<div class="flex flex-col truncate">
 				<span class="text-duvet-ink truncate text-sm font-semibold">{$currentUser.alias || $currentUser.username}</span>
