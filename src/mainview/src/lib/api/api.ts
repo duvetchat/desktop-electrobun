@@ -87,6 +87,87 @@ export class TooLargeError extends Error {
 	}
 }
 
+/** When an upload is given up (#182). idleMs: it has sent nothing for that long, as when Chromium leaves an HTTP/3
+ * upload the server stopped early hanging, or a link stalls; one that keeps moving is never cut, however slow. answerMs:
+ * its answer hasn't come that long after its last byte, twice the API's own time for writing its files to storage
+ * (copyTimeout: 30 s, and 1 s more per 256 KiB). */
+export const uploadLimits = {
+	idleMs: 30_000,
+	answerMs: (bytes: number) => 2 * (30_000 + Math.ceil(bytes / (256 * 1024)) * 1000),
+};
+
+/** An upload given up: it stopped sending, or its answer didn't come (uploadLimits). */
+export class UploadTimeoutError extends Error {
+	constructor(message: string) {
+		super(message);
+		this.name = "UploadTimeoutError";
+	}
+}
+
+// A null body status's answer can't hold a body, even an empty one.
+const NULL_BODY_STATUSES = new Set([101, 103, 204, 205, 304]);
+
+// The XMLHttpRequest's answer as fetch's: its status, its headers and its body.
+function responseOf(xhr: XMLHttpRequest): Response {
+	const headers = new Headers();
+	for (const line of xhr.getAllResponseHeaders().split("\r\n")) {
+		const colon = line.indexOf(":");
+		if (colon > 0) headers.append(line.slice(0, colon).trim(), line.slice(colon + 1).trim());
+	}
+	const response: unknown = xhr.response;
+	const body = response instanceof ArrayBuffer && !NULL_BODY_STATUSES.has(xhr.status) ? response : null;
+	return new Response(body, { status: xhr.status, statusText: xhr.statusText, headers });
+}
+
+/** Sends a form as fetch sends it with init, through XMLHttpRequest, whose upload progress tells an upload that stalled
+ * from a slow one (fetch has none): one that sends nothing for uploadLimits.idleMs, or whose answer hasn't come
+ * uploadLimits.answerMs after its last byte, is aborted and fails with an UploadTimeoutError. A network error fails as
+ * fetch's does. bytes is the form's size (formBytes). */
+function sendForm(url: string, init: RequestInit, form: FormData, bytes: number): Promise<Response> {
+	return new Promise((resolve, reject) => {
+		if (init.signal?.aborted) {
+			reject(new DOMException("The upload was aborted", "AbortError"));
+			return;
+		}
+		const xhr = new XMLHttpRequest();
+		let timer: ReturnType<typeof setTimeout> | undefined;
+		let settled = false;
+		const settle = (done: () => void) => {
+			if (settled) return;
+			settled = true;
+			clearTimeout(timer);
+			done();
+		};
+		const giveUpIn = (ms: number, why: string) => {
+			if (settled) return; // an upload event after the answer
+			clearTimeout(timer);
+			timer = setTimeout(
+				() =>
+					settle(() => {
+						xhr.abort();
+						reject(new UploadTimeoutError(why));
+					}),
+				ms,
+			);
+		};
+		const waitForProgress = () =>
+			giveUpIn(uploadLimits.idleMs, `Upload stalled: nothing went out for ${Math.round(uploadLimits.idleMs / 1000)} s`);
+
+		xhr.open(init.method ?? "POST", url);
+		xhr.withCredentials = init.credentials === "include";
+		xhr.responseType = "arraybuffer";
+		new Headers(init.headers).forEach((value, name) => xhr.setRequestHeader(name, value));
+		xhr.upload.onprogress = waitForProgress;
+		xhr.upload.onload = () => giveUpIn(uploadLimits.answerMs(bytes), "No answer to the upload in time");
+		xhr.onload = () => settle(() => resolve(responseOf(xhr)));
+		xhr.onerror = () => settle(() => reject(new TypeError("Failed to fetch")));
+		xhr.onabort = () => settle(() => reject(new DOMException("The upload was aborted", "AbortError")));
+		init.signal?.addEventListener("abort", () => xhr.abort());
+		waitForProgress();
+		xhr.send(form);
+	});
+}
+
 // When the session's tokens were issued: keepSessionFresh renews them by their age (renewalDue).
 const REFRESHED_AT_KEY = "duvet_session_refreshed_at";
 // A renewal that failed without an answer goes once more after this, well inside the API's 30 s rotation grace.
@@ -201,10 +282,12 @@ const buildFetchResponse = async (res: Response): Promise<FetchResponse> => {
 };
 
 const coreFetch = async <T = any>(endpoint: string, options: FetchRequestConfig = {}): Promise<FetchResponse<T>> => {
-	if (options.data instanceof FormData) {
-		const bytes = formBytes(options.data);
-		if (bytes > MAX_REQUEST_BYTES) throw new TooLargeError(bytes);
-	}
+	const form = options.data instanceof FormData ? options.data : null;
+	const bytes = form ? formBytes(form) : 0;
+	if (bytes > MAX_REQUEST_BYTES) throw new TooLargeError(bytes);
+	// A form goes up through XMLHttpRequest, which gives up an upload that stalls (sendForm); the rest through fetch.
+	const send = (url: string, init: RequestInit): Promise<Response> =>
+		form ? sendForm(url, init, form, bytes) : fetch(url, init);
 
 	const token = get(accessToken) || localStorage.getItem("duvet_session_token");
 	const sessionToken = localStorage.getItem("duvet_refresh_token");
@@ -239,7 +322,7 @@ const coreFetch = async <T = any>(endpoint: string, options: FetchRequestConfig 
 
 	if (import.meta.env.DEV) console.log(`[duvet-api] Requesting: ${url}`);
 
-	let response = await fetch(url, fetchOptions);
+	let response = await send(url, fetchOptions);
 
 	if (!response.ok) {
 		const fetchResp = await buildFetchResponse(response);
@@ -253,7 +336,7 @@ const coreFetch = async <T = any>(endpoint: string, options: FetchRequestConfig 
 			headers.set("Authorization", `Bearer ${newToken}`);
 			const newSessionToken = localStorage.getItem("duvet_refresh_token");
 			if (newSessionToken) headers.set("X-Session-Token", newSessionToken);
-			const retryResponse = await fetch(url, { ...fetchOptions, headers });
+			const retryResponse = await send(url, { ...fetchOptions, headers });
 			const parsedRetry = await buildFetchResponse(retryResponse);
 			if (!retryResponse.ok) {
 				throw new FetchError(`Request failed with status ${retryResponse.status}`, options, parsedRetry);

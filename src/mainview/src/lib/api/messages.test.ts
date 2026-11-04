@@ -3,18 +3,46 @@ import { MAX_REQUEST_BYTES } from "$lib/api/api";
 import { messageTooLarge, sendMessage } from "$lib/api/messages";
 import { MessageReferenceType } from "$lib/types";
 
-// The requests the client sends, by URL; each answers as the API does for a message it took. Only while a test of this
-// file runs (#166).
+// The requests the client sends, by URL, through fetch or XMLHttpRequest (a form's: Bun has none, this one stands in for
+// the webview's); each answers as the API does for a message it took. Only while a test of this file runs (#166).
 const sent: string[] = [];
+class FakeXHR {
+	url = "";
+	status = 0;
+	statusText = "";
+	response: ArrayBuffer | null = null;
+	upload = { onprogress: null, onload: null };
+	onload: (() => void) | null = null;
+	open(_method: string, url: string) {
+		this.url = url;
+	}
+	setRequestHeader() {}
+	getAllResponseHeaders() {
+		return "content-type: application/json\r\n";
+	}
+	send() {
+		sent.push(this.url);
+		queueMicrotask(() => {
+			this.status = 201;
+			this.response = new TextEncoder().encode(JSON.stringify({ id: "m" })).buffer;
+			this.onload?.();
+		});
+	}
+	abort() {}
+}
 let fetched: ReturnType<typeof spyOn<typeof globalThis, "fetch">>;
 beforeEach(() => {
 	sent.length = 0;
+	Object.assign(globalThis, { XMLHttpRequest: FakeXHR });
 	fetched = spyOn(globalThis, "fetch").mockImplementation((async (input: string | URL | Request) => {
 		sent.push(input instanceof Request ? input.url : input.toString());
 		return new Response(JSON.stringify({ id: "m" }), { status: 201, headers: { "Content-Type": "application/json" } });
 	}) as typeof fetch);
 });
-afterEach(() => fetched.mockRestore());
+afterEach(() => {
+	fetched.mockRestore();
+	delete (globalThis as { XMLHttpRequest?: unknown }).XMLHttpRequest;
+});
 
 const MiB = 1024 * 1024;
 const file = (bytes: number, name = "big.bin") => new File([new Uint8Array(bytes)], name);
