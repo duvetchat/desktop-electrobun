@@ -123,7 +123,15 @@ describe("inWindow", () => {
 describe("withPresent", () => {
 	const m = (n: number) => `01930000-0000-7000-8000-${String(n).padStart(12, "0")}`;
 	const page = (from: number, to: number) => Array.from({ length: to - from + 1 }, (_, i) => ({ id: m(from + i) }));
-	const sending = { id: "f1d2c3b4-0000-4000-8000-000000000000", nonce: "f1d2c3b4-0000-4000-8000-000000000000" };
+	const nonce = "f1d2c3b4-0000-4000-8000-000000000000";
+	const sending = { id: nonce, nonce };
+	const at = (minute: number) => new Date(Date.UTC(2026, 10, 4, 12, minute)).toISOString();
+	const message = (n: number, author: string, content: string) => ({
+		id: m(n),
+		author_id: author,
+		content,
+		created_at: at(n % 60),
+	});
 
 	test("the jump's pages give way to the newest page, with the message being sent", () => {
 		const jump = page(1, 130);
@@ -131,14 +139,6 @@ describe("withPresent", () => {
 	});
 
 	test("a message being sent that the page lists already (its files still going up) shows once, as being sent", () => {
-		const at = (minute: number) => new Date(Date.UTC(2026, 10, 4, 12, minute)).toISOString();
-		const message = (n: number, author: string, content: string) => ({
-			id: m(n),
-			author_id: author,
-			content,
-			created_at: at(n % 60),
-		});
-		const nonce = "f1d2c3b4-0000-4000-8000-000000000000";
 		const mine = { id: nonce, nonce, author_id: "me", content: "hello", created_at: at(59) };
 		// The API's copy of it, without the nonce; and the same text the user sent 50 minutes earlier, which is no copy.
 		const copy = message(299, "me", "hello");
@@ -149,6 +149,16 @@ describe("withPresent", () => {
 			message(298, "alice", "hi"),
 			mine,
 		]);
+	});
+
+	test("the same text sent a minute earlier stays: the copy is the newest message that matches", () => {
+		// The user sent "ok", jumped to an old message, and sent "ok" again from there: the newest page lists both the
+		// earlier "ok" and the copy of the one being sent, each within the copy's window.
+		const mine = { id: nonce, nonce, author_id: "me", content: "ok", created_at: at(59) };
+		const earlier = message(298, "me", "ok");
+		const copy = message(299, "me", "ok");
+		expect(withPresent([message(30, "alice", "old"), mine], [earlier, copy])).toEqual([earlier, mine]);
+		expect(withPresent([message(30, "alice", "old"), mine], [copy, earlier])).toEqual([earlier, mine]);
 	});
 
 	test("what came after the newest page was cut stays, each message once", () => {

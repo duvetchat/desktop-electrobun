@@ -124,9 +124,13 @@ const SENT_COPY_SKEW = 2 * 60_000;
  * their nonce) and those that came after the page was cut (newer than its newest), each once. The jump's pages go.
  *
  * The page can list a message still being sent already, without its nonce: the API lists a message while its files go
- * up. That copy goes, the one being sent staying until the API's answer or its event takes its place: a copy is a
- * message of the page the list didn't have, by the same author with the same text, dated no earlier than shortly
- * before the one being sent.
+ * up. That copy goes, the one being sent staying until the API's answer or its event takes its place: a copy is the
+ * newest message of the page the list didn't have, by the same author with the same text, dated no earlier than shortly
+ * before the one being sent. So the same text sent earlier within that window stays.
+ *
+ * ponytail: a page without the copy (read before the API stored the message, or a second identical message sent at
+ * once) still takes such an earlier message for it, missing until a reload. Telling them apart for sure needs the
+ * newest message the client knew of when it sent each, which the jump's pages don't hold.
  */
 export function withPresent<T extends Sendable>(current: T[], page: T[]): T[] {
 	const newest = page.reduce((max, m) => (m.id > max ? m.id : max), "");
@@ -136,14 +140,16 @@ export function withPresent<T extends Sendable>(current: T[], page: T[]): T[] {
 	const copies = new Set<string>();
 	for (const sending of kept.filter((m) => m.id === m.nonce)) {
 		const since = Date.parse(sending.created_at ?? "") - SENT_COPY_SKEW;
-		const copy = page.find(
-			(m) =>
-				!listed.has(m.id) &&
-				!copies.has(m.id) &&
-				m.author_id === sending.author_id &&
-				(m.content ?? "") === (sending.content ?? "") &&
-				Date.parse(m.created_at ?? "") >= since,
-		);
+		const copy = page
+			.filter(
+				(m) =>
+					!listed.has(m.id) &&
+					!copies.has(m.id) &&
+					m.author_id === sending.author_id &&
+					(m.content ?? "") === (sending.content ?? "") &&
+					Date.parse(m.created_at ?? "") >= since,
+			)
+			.reduce<T | undefined>((newestMatch, m) => (!newestMatch || m.id > newestMatch.id ? m : newestMatch), undefined);
 		if (copy) copies.add(copy.id);
 	}
 	return [...(copies.size ? page.filter((m) => !copies.has(m.id)) : page), ...kept];
