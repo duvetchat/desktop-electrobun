@@ -1,3 +1,4 @@
-# bun test runs every test file in one global object: src/test-preload.ts fails the run if one leaves fetch replaced.
+# Run with `bun test --isolate`: each test file in a global object of its own (#176). src/test-preload.ts runs first in
+# each, gives every file the same environment, and fails the run if a file leaves fetch replaced or files share a global.
 [test]
 preload = ["./src/test-preload.ts"]

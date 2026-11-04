@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { tags, type Tag } from "./server-render";
 
-Object.assign(globalThis, { VITE_API_URL: "https://api.test", VITE_WS_URL: "", VITE_DOMAIN_TARGET_ENV: "duvet" });
 const { default: EmbedPlayer } = await import("./EmbedPlayer.svelte");
 
 const YOUTUBE = "https://www.youtube.com/embed/dQw4w9WgXcQ";

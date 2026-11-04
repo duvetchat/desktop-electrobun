@@ -4,10 +4,7 @@ import { dirname, join, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Friend, FriendRequest } from "$lib/api/friends";
 import type { GatewayUser, MemberOnSidebar, UserUpdateEvent } from "$lib/types";
-
-// The API's host comes from constants Vite defines at build time.
-Object.assign(globalThis, { VITE_API_URL: "https://api.test", VITE_WS_URL: "", VITE_DOMAIN_TARGET_ENV: "duvet" });
-const { friendMember, friendUser, withUserUpdate } = await import("./friends");
+import { friendMember, friendUser, withUserUpdate } from "./friends";
 
 const me = "me";
 const ANA_AVATAR = "0190a3b2-0000-7000-8000-00000000a001";
