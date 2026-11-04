@@ -96,6 +96,7 @@ import {
 	withCallVoiceState,
 	type PlacedCall,
 } from "$lib/calls";
+import { withUserUpdate } from "$lib/friends";
 import { sendAgain } from "$lib/resend";
 import { storageTransfers } from "$lib/stores/storage-transfers.svelte";
 import { getElectrobunRpc, type ActivityPayload } from "$lib/electrobun-rpc";
@@ -886,6 +887,11 @@ function handleEvent(event: GatewayEvent) {
 					),
 				})),
 			);
+			// The friends list and the friend requests show the user too: friends get it, space in common or not.
+			const me = get(currentUser)?.id;
+			friends.update((list) => withUserUpdate(list, raw, me));
+			pendingFriendRequests.update((list) => withUserUpdate(list, raw, me));
+			sentFriendRequests.update((list) => withUserUpdate(list, raw, me));
 			break;
 		}
 		case "USER_STATUS_UPDATE": {

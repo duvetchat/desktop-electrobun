@@ -23,6 +23,7 @@
 	import { placeCall, sendEventMessage, getUserOnlineStatus } from "$lib/api/ws/connection";
 	import { joinConversationCall } from "$lib/voice";
 	import { callingFromAnotherDevice, withoutCallVoiceOf } from "$lib/calls";
+	import { friendUser } from "$lib/friends";
 	import {
 		getDirectMessages,
 		getDirectMessageById,
@@ -958,19 +959,16 @@
 				<div class="flex max-h-48 flex-col gap-0.5 overflow-y-auto">
 					{#each eligibleFriends as friend (friend.id)}
 						{@const uid = getFriendOtherId(friend)}
+						{@const other = friendUser(friend, $currentUser?.id)}
 						<button
 							class="flex items-center gap-2 rounded px-3 py-2 text-left hover:bg-stone-800 disabled:opacity-50"
 							onclick={() => handleAddMember(uid)}
 							disabled={addMemberLoading}
 						>
-							<UserAvatar
-								src={getAvatarURL(getFriendOtherId(friend), friend.user_avatar)}
-								name={friend.user_alias ?? friend.user_username}
-								size={32}
-							/>
+							<UserAvatar src={getAvatarURL(other.id, other.avatar)} name={other.alias ?? other.username} size={32} />
 							<div class="flex min-w-0 flex-col">
-								<span class="text-sm text-stone-200">{friend.user_alias ?? friend.user_username}</span>
-								<span class="text-xs text-zinc-500">@{friend.user_username}</span>
+								<span class="text-sm text-stone-200">{other.alias ?? other.username}</span>
+								<span class="text-xs text-zinc-500">@{other.username}</span>
 							</div>
 						</button>
 					{/each}
