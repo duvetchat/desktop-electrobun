@@ -12,9 +12,6 @@ export default {
 		identifier: "com.duvet.desktop",
 	},
 	build: {
-		// Electrobun 2 can run the main process on another runtime (Cottontail, Zig, Rust, Go, Odin): ours is Bun's,
-		// the one Electrobun ships (1.4.4 with 2.0.5).
-		mainProcess: "bun",
 		bun: {
 			entrypoint: "src/bun/index.ts",
 		},
