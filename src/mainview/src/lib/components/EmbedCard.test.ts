@@ -18,6 +18,15 @@ describe("embed videos", () => {
 		}
 	});
 
+	// Since api#219 the API sends another host's video only as its own signed proxy URL, which a client plays as it is:
+	// an unsigned /api/proxy/video?url= of its own making is a 403 (desktop#155).
+	test("an embed's videos play from their URL as the API sends it", () => {
+		const tags = videos("EmbedCard.svelte");
+		expect(tags.length).toBeGreaterThan(0);
+		for (const tag of tags) expect(tag).toMatch(/\ssrc=\{card\.video\.url\}/);
+		expect(readFileSync(join(import.meta.dir, "EmbedCard.svelte"), "utf8")).not.toContain("/api/proxy/video");
+	});
+
 	test("a component's video of another host preloads nothing", () => {
 		const tags = videos("MessageComponents.svelte");
 		expect(tags.length).toBeGreaterThan(0);

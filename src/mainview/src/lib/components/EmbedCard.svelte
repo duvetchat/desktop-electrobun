@@ -28,18 +28,6 @@
 		[card.footer?.text, card.timestamp ? formatShortDateTime(card.timestamp) : ""].filter(Boolean).join(" • "),
 	);
 
-	// Videos the API fetches for the app: kktiktok.com's go only to a preview's bot.
-	const PROXY_HOSTS = new Set(["video.twimg.com", "kktiktok.com"]);
-
-	function proxyVideoUrl(url: string): string {
-		try {
-			if (PROXY_HOSTS.has(new URL(url).hostname)) {
-				return `${getHostURL()}/api/proxy/video?url=${encodeURIComponent(url)}`;
-			}
-		} catch {}
-		return url;
-	}
-
 	function intToHex(n: number): string {
 		return "#" + (n >>> 0).toString(16).padStart(6, "0");
 	}
@@ -99,7 +87,7 @@
 	{#if card.video}
 		<!-- preload none: the video is asked for only when it's played, as its host sees each request -->
 		<video
-			src={proxyVideoUrl(card.video.url)}
+			src={card.video.url}
 			poster={card.thumbnail?.url ?? card.image?.url}
 			preload="none"
 			muted={card.type === EmbedType.Gifv}
@@ -226,7 +214,7 @@
 		{#if card.video}
 			{#if isDirectVideo(card.video)}
 				<video
-					src={proxyVideoUrl(card.video.url)}
+					src={card.video.url}
 					poster={card.image?.url ?? card.thumbnail?.url ?? ""}
 					preload="none"
 					muted

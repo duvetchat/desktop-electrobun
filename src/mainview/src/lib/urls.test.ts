@@ -2,11 +2,11 @@ import { describe, expect, test } from "bun:test";
 import type { Component, Embed } from "$lib/types";
 import {
 	cardLink,
+	duvetLinksIn,
 	frameSandbox,
 	isUuid,
 	localUrl,
-	parseInviteLink,
-	parseMessageLink,
+	parseDuvetLink,
 	pathSegment,
 	playerFrame,
 	signInUrl,
@@ -349,50 +349,6 @@ describe("pathSegment", () => {
 	});
 });
 
-describe("parseMessageLink", () => {
-	test("reads a link to a room's message and to a conversation's", () => {
-		expect(parseMessageLink(`https://duvet.chat/channels/${ID1}/${ID2}/${ID3}`)).toEqual({
-			spaceId: ID1,
-			roomId: ID2,
-			messageId: ID3,
-		});
-		expect(parseMessageLink(`https://duvet.chat/conversations/${ID1}/${ID3}`)).toEqual({
-			spaceId: "",
-			roomId: "",
-			messageId: ID3,
-			conversationId: ID1,
-		});
-	});
-
-	test("refuses a link whose IDs aren't UUIDs: its preview fetches the message by them", () => {
-		for (const url of [
-			`https://duvet.chat/channels/${ID1}/..\\users\\@me?/x`,
-			`https://duvet.chat/channels/${ID1}/../${ID3}`,
-			`https://duvet.chat/channels/${ID1}/${ID2}/%2e%2e`,
-			`https://duvet.chat/channels/${ID1}/${ID2}/${ID3}?x=1`,
-			`https://duvet.chat/channels/${ID1}/${ID2}/${ID3}#x`,
-			`https://duvet.chat/channels/${ID1}/${ID2}/${ID3}/`,
-			`https://duvet.chat/channels/${ID1}/${ID2}`,
-			`https://duvet.chat/conversations/..\\..\\..\\spaces\\${ID1}\\invites?/${ID3}`,
-			`https://duvet.chat/conversations/@me/${ID3}`,
-			`https://duvet.chat/conversations/${ID1}/${ID3}/thread`,
-		]) {
-			expect(parseMessageLink(url)).toBeNull();
-		}
-	});
-
-	test("refuses links to other sites", () => {
-		for (const url of [
-			`https://evil.example/channels/${ID1}/${ID2}/${ID3}`,
-			`https://duvet.chat.evil.example/channels/${ID1}/${ID2}/${ID3}`,
-			`http://duvet.chat/channels/${ID1}/${ID2}/${ID3}`,
-			`duvet://channels/${ID1}/${ID2}/${ID3}`,
-		]) {
-			expect(parseMessageLink(url)).toBeNull();
-		}
-	});
-});
-
 describe("playerFrame", () => {
 	const own = ["localhost", "api.duvet.chat"];
 
@@ -454,45 +410,95 @@ describe("cardLink", () => {
 	});
 });
 
-describe("parseInviteLink", () => {
+describe("parseDuvetLink", () => {
 	const own = "http://localhost:5173";
+	const read = (url: string) => parseDuvetLink(url, own);
+	const message = { message: { spaceId: ID1, roomId: ID2, messageId: ID3 } };
 
-	test("reads a space's invite from /invite?code= and /invite/<code>, and a bot's from /invite?bot= and /invite.html?bot=", () => {
-		expect(parseInviteLink("https://duvet.chat/invite?code=abc", own)).toEqual({ code: "abc" });
-		expect(parseInviteLink("https://duvet.chat/invite/abc", own)).toEqual({ code: "abc" });
-		expect(parseInviteLink("https://duvet.chat/invite/abc/", own)).toEqual({ code: "abc" });
-		expect(parseInviteLink("https://duvet.chat/invite/a%20b", own)).toEqual({ code: "a b" });
-		expect(parseInviteLink(`https://duvet.chat/invite?bot=${ID1}`, own)).toEqual({ bot: ID1 });
-		expect(parseInviteLink(`https://duvet.chat/invite.html?bot=${ID1}`, own)).toEqual({ bot: ID1 });
-		expect(parseInviteLink(`https://duvet.chat/invite.html?bot=${ID1.toUpperCase()}`, own)).toEqual({
-			bot: ID1.toUpperCase(),
+	test("reads a link to a room's message and to a conversation's", () => {
+		expect(read(`https://duvet.chat/channels/${ID1}/${ID2}/${ID3}`)).toEqual(message);
+		expect(read(`https://duvet.chat/conversations/${ID1}/${ID3}`)).toEqual({
+			message: { spaceId: "", roomId: "", messageId: ID3, conversationId: ID1 },
 		});
 	});
 
-	test("reads a bot's invite from a link that names a space's code too, as the invite page and the mobile app do", () => {
-		expect(parseInviteLink(`https://duvet.chat/invite?code=abc&bot=${ID1}`, own)).toEqual({ bot: ID1 });
-		expect(parseInviteLink(`https://duvet.chat/invite?bot=${ID1}&code=abc`, own)).toEqual({ bot: ID1 });
-		// A bot's ID that isn't a UUID names no bot: the code's card, as on mobile.
-		expect(parseInviteLink("https://duvet.chat/invite?code=abc&bot=x", own)).toEqual({ code: "abc" });
+	test("reads a space's invite from /invite?code= and /invite/<code>, and a bot's from /invite?bot= and /invite.html?bot=", () => {
+		expect(read("https://duvet.chat/invite?code=abc")).toEqual({ code: "abc" });
+		expect(read("https://duvet.chat/invite/abc")).toEqual({ code: "abc" });
+		expect(read("https://duvet.chat/invite/a%20b")).toEqual({ code: "a b" });
+		expect(read(`https://duvet.chat/invite?bot=${ID1}`)).toEqual({ bot: ID1 });
+		expect(read(`https://duvet.chat/invite.html?bot=${ID1}`)).toEqual({ bot: ID1 });
+		expect(read(`https://duvet.chat/invite.html?bot=${ID1.toUpperCase()}`)).toEqual({ bot: ID1.toUpperCase() });
 	});
 
-	test("reads them on the app's own pages too, as before", () => {
-		expect(parseInviteLink(`${own}/invite?code=abc`, own)).toEqual({ code: "abc" });
-		expect(parseInviteLink(`${own}/invite/abc`, own)).toEqual({ code: "abc" });
-		expect(parseInviteLink(`${own}/invite.html?bot=${ID1}`, own)).toEqual({ bot: ID1 });
+	test("reads a bot's invite from a link that names a space's code too, as the invite page and the mobile app do", () => {
+		expect(read(`https://duvet.chat/invite?code=abc&bot=${ID1}`)).toEqual({ bot: ID1 });
+		expect(read(`https://duvet.chat/invite?bot=${ID1}&code=abc`)).toEqual({ bot: ID1 });
+		// A bot's ID that isn't a UUID names no bot: the code's card, as on mobile.
+		expect(read("https://duvet.chat/invite?code=abc&bot=x")).toEqual({ code: "abc" });
+	});
+
+	test("reads them on the app's own pages too, when it's a web page", () => {
+		expect(read(`${own}/invite?code=abc`)).toEqual({ code: "abc" });
+		expect(read(`${own}/invite/abc`)).toEqual({ code: "abc" });
+		expect(read(`${own}/invite.html?bot=${ID1}`)).toEqual({ bot: ID1 });
+		expect(read(`${own}/channels/${ID1}/${ID2}/${ID3}`)).toEqual(message);
+		// The packaged app's views:// is no web page: only duvet.chat's links are Duvet's own there.
+		expect(parseDuvetLink("https://mainview/invite/abc", "views://mainview")).toBeNull();
+		expect(parseDuvetLink("https://duvet.chat/invite/abc", "views://mainview")).toEqual({ code: "abc" });
 	});
 
 	test("reads what the card names after a sentence's end, once read as cardLink reads it", () => {
-		expect(parseInviteLink(cardLink(`https://duvet.chat/invite?bot=${ID1}.`), own)).toEqual({ bot: ID1 });
-		expect(parseInviteLink(cardLink("https://duvet.chat/invite/abc),"), own)).toEqual({ code: "abc" });
+		expect(read(cardLink(`https://duvet.chat/invite?bot=${ID1}.`))).toEqual({ bot: ID1 });
+		expect(read(cardLink("https://duvet.chat/invite/abc),"))).toEqual({ code: "abc" });
 	});
 
-	test("refuses other sites, other pages, a bot's ID that isn't a UUID and a code no API path can hold", () => {
+	// desktop#154: the forms the API leaves without a preview, which drew no card here.
+	test("reads them as the API does: http or https, any case and port, the path's slashes trimmed, no query or fragment", () => {
 		for (const url of [
+			`https://duvet.chat/channels/${ID1}/${ID2}/${ID3}/`,
+			`https://duvet.chat/channels/${ID1}/${ID2}/${ID3}?x=1`,
+			`https://duvet.chat/channels/${ID1}/${ID2}/${ID3}#m`,
+			`https://Duvet.chat/channels/${ID1}/${ID2}/${ID3}`,
+			`https://DUVET.CHAT/channels/${ID1}/${ID2}/${ID3}`,
+			`https://duvet.chat:443/channels/${ID1}/${ID2}/${ID3}`,
+			`https://duvet.chat:8443/channels/${ID1}/${ID2}/${ID3}`,
+			`http://duvet.chat/channels/${ID1}/${ID2}/${ID3}`,
+			`https://duvet.chat//channels/${ID1}/${ID2}/${ID3}//`,
+			// The path decoded, as the API's url.Parse decodes it.
+			`https://duvet.chat/channels/${ID1}%2F${ID2}/${ID3}`,
+		]) {
+			expect({ url, card: read(url) }).toEqual({ url, card: message });
+		}
+		for (const url of [
+			"http://duvet.chat/invite/abc",
+			"http://duvet.chat:8080/invite/abc?x=1#y",
+			"https://Duvet.Chat/invite/abc/",
+			"https://duvet.chat/invite?code=abc#x",
+		]) {
+			expect({ url, card: read(url) }).toEqual({ url, card: { code: "abc" } });
+		}
+	});
+
+	test("refuses other sites, other pages, other schemes, and IDs that aren't UUIDs: a card fetches by them", () => {
+		for (const url of [
+			`https://duvet.chat/channels/${ID1}/..\\users\\@me?/x`,
+			`https://duvet.chat/channels/${ID1}/../${ID3}`,
+			`https://duvet.chat/channels/${ID1}/${ID2}/%2e%2e`,
+			`https://duvet.chat/channels/${ID1}/${ID2}`,
+			`https://duvet.chat/conversations/..\\..\\..\\spaces\\${ID1}\\invites?/${ID3}`,
+			`https://duvet.chat/conversations/@me/${ID3}`,
+			`https://duvet.chat/conversations/${ID1}/${ID3}/thread`,
+			`https://evil.example/channels/${ID1}/${ID2}/${ID3}`,
+			`https://duvet.chat.evil.example/channels/${ID1}/${ID2}/${ID3}`,
+			`duvet://channels/${ID1}/${ID2}/${ID3}`,
+			// The API takes a link only from its http:// or https:// as written (mobileLink).
+			`HTTPS://duvet.chat/channels/${ID1}/${ID2}/${ID3}`,
+			`https:/duvet.chat/channels/${ID1}/${ID2}/${ID3}`,
+			"ftp://duvet.chat/invite/abc",
 			"https://discord.com/invite/abc",
 			"https://duvet.chat.evil.example/invite/abc",
 			"https://www.duvet.chat/invite/abc",
-			"http://duvet.chat/invite/abc",
 			"https://duvet.chat/invite",
 			"https://duvet.chat/invite/",
 			"https://duvet.chat/invite?code=",
@@ -506,10 +512,139 @@ describe("parseInviteLink", () => {
 			"https://duvet.chat/invite?bot=../users/@me",
 			"https://duvet.chat/invite/?bot=x",
 			`https://duvet.chat/invite.html/x?bot=${ID1}`,
-			`https://duvet.chat/channels/${ID1}/${ID2}/${ID3}`,
 			"not a url",
 		]) {
-			expect(parseInviteLink(url, own)).toBeNull();
+			expect({ url, card: read(url) }).toEqual({ url, card: null });
+		}
+	});
+
+	// A code comes from a link anyone writes, and goes into the API's path as one segment (pathSegment, api/invites.ts).
+	test("never reads a code that takes the API's path anywhere else, as fetch resolves it or as the API routes it", () => {
+		for (const url of [
+			"https://duvet.chat/invite?code=a/b",
+			"https://duvet.chat/invite?code=a%2Fb",
+			"https://duvet.chat/invite?code=..%2F..%2Fusers%2F%40me",
+			"https://duvet.chat/invite?code=x%3Fy",
+			"https://duvet.chat/invite?code=x%23y",
+			"https://duvet.chat/invite?code=x%5Cy",
+			"https://duvet.chat/invite?code=..",
+			"https://duvet.chat/invite?code=.",
+			"https://duvet.chat/invite?code=%2e%2e",
+			"https://duvet.chat/invite?code=%252F",
+			"https://duvet.chat/invite/..",
+			"https://duvet.chat/invite/%2e%2e",
+			"https://duvet.chat/invite/a%2Fb",
+			"https://duvet.chat/invite/a%3Fb",
+			"https://duvet.chat/invite/a%23b",
+			"https://duvet.chat/invite/a%5Cb",
+			"https://duvet.chat/invite/a%2F..%2F..",
+		]) {
+			const card = read(url);
+			if (!card || !("code" in card)) continue;
+			let segment: string;
+			try {
+				segment = pathSegment(card.code);
+			} catch {
+				continue; // refused before any request
+			}
+			// The API routes on its path decoded (gin), so a / there would be one more segment.
+			const path = decodeURIComponent(new URL(`https://api.test/api/invites/${segment}/join`).pathname);
+			expect({ url, path: path.split("/") }).toEqual({ url, path: ["", "api", "invites", card.code, "join"] });
+		}
+	});
+});
+
+// The cases of duvet-api's internal/adapters/embeds/opengraph_test.go (dev 8ebb96f), against the desktop's reading of
+// a message's text (duvetLinksIn, as MessageList reads it): a link the API leaves without a preview has its card here,
+// and one the API previews has none (desktop#154).
+describe("Duvet's own links, as the API's tests read them", () => {
+	const [id1, id2, id3] = [1, 2, 3].map((n) => `0a0a0a0a-0000-4000-8000-00000000000${n}`);
+	const cards = (content: string, own: string) => ({ content, cards: duvetLinksIn(content, own).length });
+	// The packaged app: no web page of its own, so Duvet's links are duvet.chat's, production's FRONTEND_URL.
+	const app = "views://mainview";
+
+	test("TestExtractURLsLeavesTheClientsCards", () => {
+		for (const card of [
+			"https://duvet.chat/invite?code=abc123",
+			"https://duvet.chat/invite/abc123",
+			`https://duvet.chat/invite?bot=${id1}`,
+			`https://duvet.chat/channels/${id1}/${id2}/${id3}`,
+			`https://duvet.chat/conversations/${id1}/${id3}`,
+		]) {
+			const content = `look ${card} here`;
+			expect(cards(content, app)).toEqual({ content, cards: 1 });
+		}
+		for (const previewed of [
+			"https://duvet.chat/",
+			"https://duvet.chat/invite",
+			"https://duvet.chat/invite.html?code=abc123",
+			"https://duvet.chat/invite?bot=not-a-uuid",
+			`https://duvet.chat/channels/${id1}/${id2}`,
+			`https://duvet.chat/channels/general/${id2}/${id3}`,
+			`https://duvet.chat/channels/${id1}/${id2}/${id3}x`,
+			`https://duvet.chat/conversations/general/${id3}`,
+			"https://example.com/post",
+		]) {
+			const content = `look ${previewed} here`;
+			expect(cards(content, app)).toEqual({ content, cards: 0 });
+		}
+	});
+
+	test("TestExtractURLsLeavesOnlyTheFrontendsCards", () => {
+		// FRONTEND_URL https://Chat.Duvet.test:8443/app: the web build served there.
+		const own = "https://chat.duvet.test:8443";
+		const paths = [
+			"/invite?code=abc123",
+			`/invite?bot=${id1}`,
+			"/invite/abc123",
+			`/invite.html?bot=${id1}`,
+			`/channels/${id1}/${id1}/${id1}`,
+			`/conversations/${id1}/${id1}`,
+		];
+		for (const path of paths) {
+			for (const host of ["https://chat.duvet.test", "https://CHAT.duvet.test", "http://chat.duvet.test:8443"]) {
+				expect(cards(`look ${host}${path} here`, own)).toEqual({ content: `look ${host}${path} here`, cards: 1 });
+			}
+			for (const other of [
+				"https://discord.com",
+				"https://xchat.duvet.test",
+				"https://chat.duvet.test.example.com",
+				"https://example.com",
+			]) {
+				expect(cards(`look ${other}${path} here`, own)).toEqual({ content: `look ${other}${path} here`, cards: 0 });
+			}
+			// Where the API previews them: duvet.chat's links are Duvet's own here whatever the app's origin (#145), and
+			// the packaged app, with no web page of its own, as an API without FRONTEND_URL, takes no other host's.
+			expect(cards(`look https://duvet.chat${path} here`, own).cards).toBe(1);
+			expect(cards(`look https://chat.duvet.test${path} here`, app).cards).toBe(0);
+		}
+		expect(cards("look https://discord.com/invite/abc123 here", own).cards).toBe(0);
+		expect(cards("look https://chat.duvet.test/invite.html?code=abc123 here", own).cards).toBe(0);
+	});
+
+	test("TestExtractURLsReadsTheCardsAsTheMobileAppDoes", () => {
+		const [a, b, c] = [id1, id2, id3];
+		const nbsp = String.fromCharCode(0xa0);
+		for (const content of [
+			`see https://duvet.chat/channels/${a}/${b}/${c}.`,
+			`(https://duvet.chat/channels/${a}/${b}/${c})`,
+			`add it: https://duvet.chat/invite?bot=${a}.`,
+			`here https://duvet.chat/conversations/${a}/${c}, ok`,
+			`'https://duvet.chat/channels/${a}/${b}/${c}'`,
+			`is it https://duvet.chat/invite.html?bot=${a}?!`,
+			`https://duvet.chat/conversations/${a}/${c}${nbsp}and more`,
+			`https://duvet.chat/channels/${a}/${b}/${c}/`,
+			`https://duvet.chat/channels/${a}/${b}/${c}?x=1`,
+			"https://duvet.chat/invite/abc123/",
+		]) {
+			expect(cards(content, app)).toEqual({ content, cards: 1 });
+		}
+		for (const content of [
+			`(https://duvet.chat/channels/general/${b}/${c})`,
+			"see https://duvet.chat/invite.html?code=abc123.",
+			`https://example.com/invite?bot=${a}.`,
+		]) {
+			expect(cards(content, app)).toEqual({ content, cards: 0 });
 		}
 	});
 });
