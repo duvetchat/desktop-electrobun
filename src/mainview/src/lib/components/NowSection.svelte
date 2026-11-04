@@ -17,7 +17,7 @@
 	import { SvelteSet } from "svelte/reactivity";
 	import { getApiError } from "$lib/api/api";
 	import type { FriendRequest } from "$lib/api/friends";
-	import { getUserOnlineStatus } from "$lib/api/ws/connection";
+	import { getUserMobileOnly, getUserOnlineStatus } from "$lib/api/ws/connection";
 	import { activityLine, shownActivities } from "$lib/activity";
 	import { callingFromAnotherDevice } from "$lib/calls";
 	import { getAvatarURL } from "$lib/common/common";
@@ -259,7 +259,15 @@
 			const other = friendUser(f, me?.id);
 			const status = userStatusToString(getUserOnlineStatus(other.id));
 			if (status === "offline") return [];
-			return [{ id: other.id, src: getAvatarURL(other.id, other.avatar), name: other.alias ?? other.username, status }];
+			return [
+				{
+					id: other.id,
+					src: getAvatarURL(other.id, other.avatar),
+					name: other.alias ?? other.username,
+					status,
+					mobileOnly: getUserMobileOnly(other.id),
+				},
+			];
 		}),
 	);
 	const friendsSplit = $derived(
@@ -529,7 +537,8 @@
 										<UserAvatar src={friend.src} name={friend.name} size={28} />
 										<StatusDot
 											status={friend.status}
-											class="border-duvet-sunk absolute -right-0.5 -bottom-0.5 size-2.5 border-2"
+											mobileOnly={friend.mobileOnly}
+											class="text-duvet-sunk absolute -right-0.5 -bottom-0.5 w-2.5 border-2"
 										/>
 									</span>
 									<span class="flex min-w-0 flex-1 flex-col leading-tight">
@@ -562,7 +571,8 @@
 									<UserAvatar src={friend.src} name={friend.name} size={26} />
 									<StatusDot
 										status={friend.status}
-										class="border-duvet-sunk absolute -right-0.5 -bottom-0.5 size-2.5 border-2"
+										mobileOnly={friend.mobileOnly}
+										class="text-duvet-sunk absolute -right-0.5 -bottom-0.5 w-2.5 border-2"
 									/>
 								</button>
 							</li>

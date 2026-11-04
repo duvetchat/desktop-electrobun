@@ -1,5 +1,5 @@
 import { getAvatarURL } from "$lib/common/common";
-import { memberStatus } from "$lib/status";
+import { memberMobileOnly, memberStatus } from "$lib/status";
 import type { Conversation, DirectMessage } from "$lib/api/conversations";
 import type { UserActivity } from "$lib/stores.svelte";
 
@@ -411,10 +411,9 @@ export interface GatewayMessageDelete {
 	room_id: string;
 }
 
-export interface GatewayUserStatusUpdate {
+export interface GatewayUserStatusUpdate extends Presence {
 	user_id: string;
 	space_id?: string;
-	status_id: UserStatus;
 }
 
 // --- Gateway raw types ---
@@ -542,6 +541,20 @@ export type UserStatus = 0 | 1 | 2; // 0 = offline, 1 = online, 2 = do not distu
 /** The statuses a user can choose: offline isn't one, the gateway says it while they have no connection. */
 export type ChosenStatus = Exclude<UserStatus, 0>;
 
+/** What a client says it runs on when it identifies: the desktop app, a browser, or the mobile app. */
+export type ClientPlatform = "desktop" | "web" | "mobile";
+
+/** A user's client status: each platform they're connected on, with their status there, the same on each. A bot's
+ * connections, and a client that doesn't say what it runs on, count as desktop. */
+export type ClientStatus = Partial<Record<ClientPlatform, UserStatus>>;
+
+/** What others see of a user's connection, wherever the API and the gateway give it: their status, and their client
+ * status, which they leave out while the user is offline. */
+export interface Presence {
+	status_id: UserStatus;
+	client_status?: ClientStatus;
+}
+
 export interface GatewayUser {
 	id: string;
 	username: string;
@@ -632,6 +645,8 @@ export interface GatewaySpaceCreatePayload {
 	voice_states?: GatewayVoiceState[];
 	activities?: Record<string, UserActivity[]>;
 	member_statuses?: Record<string, UserStatus>;
+	/** The client status of each member member_statuses has, by user ID. */
+	member_client_status?: Record<string, ClientStatus>;
 }
 
 export interface ReactionEvent {
@@ -826,11 +841,11 @@ export interface MemberRoleRemoveEvent {
 	role_id: string;
 }
 
-export interface SpaceMemberAddEvent {
+/** Its presence is the new member's; a bot's is always offline, as a bot's status is per space. */
+export interface SpaceMemberAddEvent extends Presence {
 	space_id: string;
 	user_id: string;
 	member_id: string;
-	status_id: UserStatus;
 	user?: GatewayUser;
 }
 
@@ -858,13 +873,13 @@ export interface FriendRequestCreateEvent {
 	user?: GatewayUser;
 }
 
-export interface FriendRequestAcceptEvent {
+/** Its presence is that of `user`, the other side: from now on the two get each other's USER_STATUS_UPDATE. */
+export interface FriendRequestAcceptEvent extends Presence {
 	id: string;
 	request_id: string;
 	sender_id: string;
 	recipient_id: string;
 	user?: GatewayUser;
-	status_id: UserStatus;
 }
 
 export interface FriendRemoveEvent {
@@ -888,7 +903,8 @@ export interface ConversationUpdateEvent {
 	owner_id: string;
 }
 
-export interface ConversationMemberAddEvent {
+/** Its presence is the added user's. */
+export interface ConversationMemberAddEvent extends Presence {
 	conversation_id: string;
 	user_id: string;
 	member_id: string;
@@ -896,7 +912,6 @@ export interface ConversationMemberAddEvent {
 	alias?: string | null;
 	avatar?: string | null;
 	banner?: string | null;
-	status_id?: number;
 }
 
 export interface ConversationMemberRemoveEvent {
@@ -1365,6 +1380,8 @@ export interface MemberOnSidebar {
 	avatar_url: string | null;
 	banner_url: string | null;
 	status: "offline" | "online" | "idle" | "dnd";
+	/** They're connected only from the mobile app, and their status shows as a phone (isMobileOnly, lib/status.ts). */
+	mobile_only: boolean;
 	badges: number;
 	is_bot: boolean;
 	is_owner: boolean;
@@ -1385,7 +1402,10 @@ export function userStatusToString(statusId: UserStatus): MemberOnSidebar["statu
 	}
 }
 
-export function gatewaySpaceToMembers(space: GatewaySpace, statusLookup?: Map<string, UserStatus>): MemberOnSidebar[] {
+export function gatewaySpaceToMembers(
+	space: GatewaySpace,
+	statusLookup?: ReadonlyMap<string, Presence>,
+): MemberOnSidebar[] {
 	const memberUserIds = new Set(space.members.map((m) => m.user_id));
 	return space.users
 		.filter((u) => memberUserIds.has(u.id))
@@ -1399,6 +1419,7 @@ export function gatewaySpaceToMembers(space: GatewaySpace, statusLookup?: Map<st
 				avatar_url: getAvatarURL(u.id, u.avatar),
 				banner_url: getAvatarURL(u.id, u.banner),
 				status: userStatusToString(statusLookup ? memberStatus(statusLookup, u, space.id) : 0),
+				mobile_only: statusLookup ? memberMobileOnly(statusLookup, u) : false,
 				badges: u.badges ?? 0,
 				is_bot: u.is_bot ?? false,
 				is_owner: u.id === space.owner_id,

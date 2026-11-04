@@ -45,7 +45,7 @@
 	import MemberProfilePopover from "$lib/components/MemberProfilePopover.svelte";
 	import { getAvatarURL } from "$lib/common/common";
 	import { acceptRequest, declineRequest } from "$lib/friend-requests";
-	import { getUserOnlineStatus, rememberFriendStatuses } from "$lib/api/ws/connection";
+	import { getUserMobileOnly, getUserOnlineStatus, rememberFriendStatuses } from "$lib/api/ws/connection";
 	import { friendMember, friendUser } from "$lib/friends";
 	import { userStatusToString, type MemberOnSidebar } from "$lib/types";
 
@@ -83,7 +83,15 @@
 	const friendGroups = $derived.by(() => {
 		const q = query.trim().toLowerCase();
 		const rows = $friends
-			.map((friend) => ({ friend, member: friendMember(friend, $currentUser?.id, friendStatus(friend)) }))
+			.map((friend) => ({
+				friend,
+				member: friendMember(
+					friend,
+					$currentUser?.id,
+					friendStatus(friend),
+					getUserMobileOnly(getFriendUserId(friend)),
+				),
+			}))
 			.filter(
 				({ member }) =>
 					!q || member.username.toLowerCase().includes(q) || member.raw_username.toLowerCase().includes(q),
@@ -339,7 +347,7 @@
 	<div class="relative shrink-0">
 		<UserAvatar src={getAvatarURL(id, avatar)} {name} size={40} />
 		{#if status}
-			<StatusDot {status} class="border-duvet-bg absolute -right-0.5 -bottom-0.5 size-3.5 border-[3px]" />
+			<StatusDot {status} class="text-duvet-bg absolute -right-0.5 -bottom-0.5 w-3.5 border-[3px]" />
 		{/if}
 	</div>
 	<div class="flex min-w-0 flex-1 flex-col leading-tight">
@@ -486,7 +494,8 @@
 														<UserAvatar src={member.avatar_url} name={member.username} size={40} />
 														<StatusDot
 															status={member.status}
-															class="border-duvet-bg absolute -right-0.5 -bottom-0.5 size-3.5 border-[3px]"
+															mobileOnly={member.mobile_only}
+															class="text-duvet-bg absolute -right-0.5 -bottom-0.5 w-3.5 border-[3px]"
 														/>
 													</div>
 													<div class="flex min-w-0 flex-1 flex-col leading-tight">
@@ -541,7 +550,12 @@
 								<li class="rounded-card bg-duvet-card shadow-duvet-raised flex items-center gap-3 p-3">
 									<!-- Its card offers to accept the request, as the row's button does. -->
 									<MemberProfilePopover
-										member={friendMember(req, $currentUser?.id, userStatusToString(getUserOnlineStatus(other.id)))}
+										member={friendMember(
+											req,
+											$currentUser?.id,
+											userStatusToString(getUserOnlineStatus(other.id)),
+											getUserMobileOnly(other.id),
+										)}
 										side="bottom"
 										open={profileOpenFor === req.id}
 										onOpenChange={(o) => (profileOpenFor = o ? req.id : null)}

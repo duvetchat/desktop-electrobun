@@ -44,7 +44,7 @@ import { listMyTeamInvites } from "$lib/api/developer";
 import { getMyBuckets, me as fetchMe } from "$lib/api/user";
 import { getMentionCounts } from "$lib/api/messages";
 import { getWSHostURL, getAvatarURL, route } from "$lib/common/common";
-import { get } from "svelte/store";
+import { derived, get } from "svelte/store";
 import { getSpaceMembers, type SpaceMemberWithUser } from "$lib/api/spaces";
 import { forgetSpaceCommands } from "$lib/api/interactions";
 
@@ -53,6 +53,7 @@ import type {
 	DMTypingEvent,
 	GatewayEvent,
 	GatewaySpace,
+	Presence,
 	ReferencedMessage,
 	TypingEvent,
 	UserStatus,
@@ -81,8 +82,10 @@ import {
 	applyStatusUpdate,
 	forgetMemberStatus,
 	forgetSpaceStatuses,
+	isMobileOnly,
 	mentionSound,
 	noteMemberStatus,
+	rememberFriendPresences,
 } from "$lib/status";
 import {
 	callAcceptedAction,
@@ -100,6 +103,7 @@ import { withUserUpdate } from "$lib/friends";
 import { sendAgain } from "$lib/resend";
 import { storageTransfers } from "$lib/stores/storage-transfers.svelte";
 import { getElectrobunRpc, type ActivityPayload } from "$lib/electrobun-rpc";
+import { identifyData } from "$lib/api/ws/identify";
 
 // The user's activities as this app's Bun process reports them: the IPC apps' (VS Code, etc.) and Spotify's. The
 // gateway keeps them 2 minutes and shares only a change, so they go again every 45 s, and on each new session.
@@ -171,30 +175,34 @@ function isStaleVoiceState(roomId: string, userId: string, version: number | und
 let expectedGuildIds: Set<string> | null = null;
 let receivedGuildIds = new Set<string>();
 
-// Cache of live user statuses. Keys: "userId" for a user's global status, "userId:spaceId" for their status in a
-// space (SPACE_CREATE, a bot's SPACE_MEMBER_ADD, and a sharded bot's USER_STATUS_UPDATE with that space_id), which
-// goes with SPACE_MEMBER_REMOVE and SPACE_DELETE. A space shows a bot with its status there alone, and anyone else
-// with their global one (memberStatus).
-export const userStatusCache = new Map<string, UserStatus>();
+// Cache of live user presences: each one's status, with their client status (the platforms they're on). Keys:
+// "userId" for a user's global presence, "userId:spaceId" for their presence in a space (SPACE_CREATE, a bot's
+// SPACE_MEMBER_ADD, and a sharded bot's USER_STATUS_UPDATE with that space_id), which goes with SPACE_MEMBER_REMOVE
+// and SPACE_DELETE. A space shows a bot with its status there alone, and anyone else with their global one
+// (memberStatus).
+export const userStatusCache = new Map<string, Presence>();
 
 // Returns the global status for a user.
 // Used for contexts without a specific space (e.g., conversations).
 export function getUserOnlineStatus(userId: string): UserStatus {
-	return userStatusCache.get(userId) ?? 0;
+	return userStatusCache.get(userId)?.status_id ?? 0;
 }
 
-/** Takes the statuses a friends list gives (status_id) for the friends the gateway hasn't told us about yet: what it
- * says comes live, so it's newer. Friends hear each other's changes from then on, also with no space in common. */
+/** Whether a user is connected only from the mobile app, by their global presence, as getUserOnlineStatus: their
+ * status then shows as a phone. */
+export function getUserMobileOnly(userId: string): boolean {
+	return isMobileOnly(userStatusCache.get(userId)?.client_status);
+}
+
+/** Whether the gateway shows the user themself only on mobile, for their own entries (the user panel, their card in
+ * Settings), which aren't drawn from a space's members. The cache isn't reactive: this reads it again whenever
+ * gatewaySpaces changes, which every event that writes a presence of theirs re-references (READY empties it). */
+export const ownMobileOnly = derived([gatewaySpaces, currentUser], ([, me]) => !!me && getUserMobileOnly(me.id));
+
+/** Takes the presences a friends list gives for the friends the gateway hasn't told us about yet
+ * (rememberFriendPresences). Friends hear each other's changes from then on, also with no space in common. */
 export function rememberFriendStatuses(list: Friend[]) {
-	const me = get(currentUser)?.id;
-	const learned = new Set<string>();
-	for (const f of list) {
-		const other = f.sender_id === me ? f.recipient_id : f.sender_id;
-		if (f.status_id && !userStatusCache.has(other)) {
-			userStatusCache.set(other, f.status_id);
-			learned.add(other);
-		}
-	}
+	const learned = rememberFriendPresences(userStatusCache, list, get(currentUser)?.id);
 	// The DM list shows them too.
 	if (learned.size > 0) {
 		conversations.update((convs) => convs.map((c) => (c.members.some((m) => learned.has(m.user_id)) ? { ...c } : c)));
@@ -575,11 +583,16 @@ function handleEvent(event: GatewayEvent) {
 
 			// Cache member statuses from Redis so lazy-loaded members get correct status.
 			// member_statuses are keyed by userId: a bot's status in this space, anyone else's global status. A bot
-			// whose shard holding the space is down is left out, and shows offline here.
+			// whose shard holding the space is down is left out, and shows offline here. member_client_status has
+			// the platforms of each of them.
 			const memberStatuses = spaceCreateData.member_statuses;
 			if (memberStatuses) {
+				const clientStatuses = spaceCreateData.member_client_status;
 				for (const [uid, status] of Object.entries(memberStatuses)) {
-					noteMemberStatus(userStatusCache, uid, space.id, status);
+					noteMemberStatus(userStatusCache, uid, space.id, {
+						status_id: status,
+						client_status: clientStatuses?.[uid],
+					});
 				}
 				// The DM list shows them too, and may have loaded before this space did.
 				const me = currentUserData?.id;
@@ -896,8 +909,8 @@ function handleEvent(event: GatewayEvent) {
 		}
 		case "USER_STATUS_UPDATE": {
 			const raw = payload.data;
-			// One with a space_id is a bot's status in that space (its shard's): its other spaces and its global
-			// status keep theirs.
+			// The status and the platforms the user is on. One with a space_id is a bot's status in that space (its
+			// shard's): its other spaces and its global status keep theirs.
 			applyStatusUpdate(userStatusCache, raw);
 			if (raw.status_id === 0) {
 				if (!raw.space_id && raw.user_id in get(userActivities)) {
@@ -1123,7 +1136,7 @@ function handleEvent(event: GatewayEvent) {
 			const raw = payload.data;
 			// A bot's is its status in this space alone: offline until a USER_STATUS_UPDATE says a shard of it holds
 			// the space.
-			noteMemberStatus(userStatusCache, raw.user_id, raw.space_id, raw.status_id, raw.user?.is_bot);
+			noteMemberStatus(userStatusCache, raw.user_id, raw.space_id, raw, raw.user?.is_bot);
 			// The member may be a bot, whose commands the space's list doesn't have yet.
 			forgetSpaceCommands(raw.space_id);
 			getSpaceMembers(raw.space_id)
@@ -1836,21 +1849,15 @@ export function createWebSocketConnection(): GatewayConnection {
 		socket.onopen = () => {
 			if (import.meta.env.DEV) console.log("[WS] Connected");
 			reconnectAttempts = 0;
-			const identifyData: Record<string, unknown> = {
-				token: localStorage.getItem("duvet_session_token"),
-			};
-			if (lastSeq > 0 && !freshSessionWanted) {
-				identifyData.last_seq = lastSeq;
-				const gwToken = get(wsSessionToken);
-				if (gwToken) {
-					identifyData.session_token = gwToken;
-				}
-			}
+			const identify = identifyData(
+				localStorage.getItem("duvet_session_token"),
+				lastSeq > 0 && !freshSessionWanted ? { lastSeq, sessionToken: get(wsSessionToken) } : null,
+			);
 			connectionCount++;
-			socket.send(JSON.stringify({ type: "identify", data: identifyData }));
+			socket.send(JSON.stringify({ type: "identify", data: identify }));
 			// Asking to resume, the client learns that it did from this heartbeat's answer, which the gateway queues
 			// behind the session's replay; a session that can't resume sends READY before it.
-			if (identifyData.session_token) {
+			if (identify.session_token) {
 				resumeProbe = true;
 				socket.send(JSON.stringify({ type: "heartbeat", data: {} }));
 			}

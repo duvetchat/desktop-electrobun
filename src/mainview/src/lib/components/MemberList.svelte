@@ -7,7 +7,7 @@
 		type Role,
 	} from "$lib/types";
 	import { userStatusCache } from "$lib/api/ws/connection";
-	import { memberStatus } from "$lib/status";
+	import { memberMobileOnly, memberStatus } from "$lib/status";
 	import { getAvatarURL } from "$lib/common/common";
 
 	function convertMember(member: GatewayMember, sp: GatewaySpace): MemberOnSidebar | null {
@@ -22,6 +22,7 @@
 			avatar_url: getAvatarURL(u.id, u.avatar),
 			banner_url: getAvatarURL(u.id, u.banner),
 			status,
+			mobile_only: memberMobileOnly(userStatusCache, u),
 			badges: u.badges ?? 0,
 			is_bot: u.is_bot ?? false,
 			is_owner: u.id === sp.owner_id,
@@ -59,6 +60,7 @@
 	import { typingUsers, userActivities } from "$lib/stores.svelte";
 	import { isSpotify, shownActivities } from "$lib/activity";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
+	import StatusDot from "$lib/components/StatusDot.svelte";
 	import MemberProfilePopover from "$lib/components/MemberProfilePopover.svelte";
 
 	// The members, grouped under their highest hoisted role and the rest under Members, each opening their profile. The
@@ -243,16 +245,11 @@
 									{/if}
 								</span>
 							{:else}
-								<span
-									class="border-duvet-bg absolute -right-0.5 -bottom-0.5 h-2.5 w-2.5 rounded-full border-2
-                                            {member.status === 'online'
-										? 'bg-duvet-alive'
-										: member.status === 'idle'
-											? 'bg-amber-500'
-											: member.status === 'dnd'
-												? 'bg-red-500'
-												: 'bg-zinc-500'}"
-								></span>
+								<StatusDot
+									status={member.status}
+									mobileOnly={member.mobile_only}
+									class="text-duvet-bg absolute -right-0.5 -bottom-0.5 w-2.5 border-2"
+								/>
 							{/if}
 						</div>
 

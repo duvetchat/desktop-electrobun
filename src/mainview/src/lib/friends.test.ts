@@ -125,6 +125,7 @@ describe("friendMember", () => {
 		avatar_url: `https://api.test/attachments/${ANA_AVATAR}`,
 		banner_url: `https://api.test/attachments/${ANA_BANNER}`,
 		status: "online",
+		mobile_only: false,
 		badges: 1,
 		is_bot: false,
 		is_owner: false,
@@ -133,19 +134,26 @@ describe("friendMember", () => {
 	};
 
 	test("is a friend's profile card, from user, with the status they show", () => {
-		expect(friendMember(friendship(me, "ana", other(ana)), me, "online")).toEqual(card);
-		expect(friendMember(friendship("ana", me, other(ana)), me, "dnd")).toEqual({ ...card, status: "dnd" });
+		expect(friendMember(friendship(me, "ana", other(ana)), me, "online", false)).toEqual(card);
+		expect(friendMember(friendship("ana", me, other(ana)), me, "dnd", false)).toEqual({ ...card, status: "dnd" });
+	});
+
+	test("shows a phone for them when they're connected only from the mobile app (#82)", () => {
+		expect(friendMember(friendship(me, "ana", other(ana)), me, "online", true)).toEqual({ ...card, mobile_only: true });
 	});
 
 	test("is the profile card of whoever sent a request received", () => {
-		expect(friendMember(request("ana", me, other(ana)), me, "online")).toEqual(card);
+		expect(friendMember(request("ana", me, other(ana)), me, "online", false)).toEqual(card);
 	});
 
 	test("from an API from before user: the name, avatar and banner the user_* fields give, no bio, no badges", () => {
 		const before = { ...card, badges: 0, bio: "" };
 		const withBanner = { ...otherBefore(ana), user_banner: ANA_BANNER };
-		expect(friendMember(friendship(me, "ana", withBanner), me, "online")).toEqual(before);
-		expect(friendMember(request("ana", me, otherBefore(ana)), me, "online")).toEqual({ ...before, banner_url: null });
+		expect(friendMember(friendship(me, "ana", withBanner), me, "online", false)).toEqual(before);
+		expect(friendMember(request("ana", me, otherBefore(ana)), me, "online", false)).toEqual({
+			...before,
+			banner_url: null,
+		});
 	});
 });
 

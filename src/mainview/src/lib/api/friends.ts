@@ -1,5 +1,5 @@
 import api from "$lib/api/api";
-import type { GatewayUser, UserStatus } from "$lib/types";
+import type { GatewayUser, Presence } from "$lib/types";
 
 /** The other user of a friendship or a friend request: `user` is their public profile, and the user_* fields repeat
  * part of it, for the clients from before it. An API from before user_banner and user leaves them out: friendUser
@@ -21,13 +21,13 @@ export interface FriendRequest extends OtherUser {
 	updated_at: string;
 }
 
-export interface Friend extends OtherUser {
+/** Its presence is the other user's when the list was read (their status and client status): rememberFriendStatuses
+ * takes it. */
+export interface Friend extends OtherUser, Presence {
 	id: string;
 	request_id: string;
 	sender_id: string;
 	recipient_id: string;
-	/** The status the other user shows when the list was read: rememberFriendStatuses takes it. */
-	status_id: UserStatus;
 }
 
 // The API returns the bare request, without the other user.
