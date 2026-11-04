@@ -76,7 +76,13 @@ type Answer = { kind: "bytes"; blob: Blob } | { kind: "elsewhere" } | { kind: "g
 async function askAgain(deps: RetryDeps, url: string): Promise<Answer> {
 	const res = await request(deps, url, "GET");
 	if (!res || res.type === "opaqueredirect" || (res.status >= 300 && res.status < 400)) return { kind: "elsewhere" };
-	if (res.ok) return { kind: "bytes", blob: await res.blob() };
+	if (res.ok) {
+		try {
+			return { kind: "bytes", blob: await res.blob() };
+		} catch {
+			return { kind: "wait" }; // its body broke off
+		}
+	}
 	if (isGone(res.status)) return { kind: "gone" };
 	return { kind: "wait", ms: retryAfterMs(res.headers.get("Retry-After"), deps.now()) };
 }
@@ -129,21 +135,27 @@ export class EmojiRetries {
 	// What the images of url load next: a URL of its bytes, url itself (asked again, so no cache answers it) for the
 	// image to load, or null when they show the emoji's name.
 	private async recover(url: string, file: EmojiFile): Promise<string | null> {
+		let retryAfter: number | undefined;
 		// Its first failure: a HEAD answers from the attachment's row, never asking the bucket, so it tells a file that
-		// is gone without asking for it again. It can't tell the bucket's 502 or 503: the tries again can.
+		// is gone without asking for it again. It can't tell the bucket's 502 or 503: the tries again can. A 429 says
+		// how long the first waits.
 		if (file.attempts === 0) {
 			const head = await request(this.deps, url, "HEAD");
 			if (head && isGone(head.status)) {
 				file.gone = true;
 				return null;
 			}
+			if (head && !head.ok) retryAfter = retryAfterMs(head.headers.get("Retry-After"), this.deps.now());
 		}
-		let retryAfter: number | undefined;
 		while (file.attempts < EMOJI_RETRIES) {
+			if (retryAfter !== undefined && retryAfter > LONGEST_RETRY_AFTER_MS) break;
 			file.attempts++;
 			await this.deps.sleep(retryWait(file.attempts, retryAfter, this.deps.random));
-			// No image of it left in the page: the next one that fails asks again.
-			if (![...file.waiting].some((img) => img.isConnected)) return null;
+			// No image of it left in the page: it asks nothing more, and the next image of it that fails starts afresh.
+			if (![...file.waiting].some((img) => img.isConnected)) {
+				this.files.delete(url);
+				return null;
+			}
 			const answer = await askAgain(this.deps, url);
 			if (answer.kind === "bytes") {
 				file.loaded = this.deps.objectUrl(answer.blob);
@@ -155,7 +167,6 @@ export class EmojiRetries {
 				return null;
 			}
 			retryAfter = answer.ms;
-			if (retryAfter !== undefined && retryAfter > LONGEST_RETRY_AFTER_MS) break;
 		}
 		file.gaveUpAt = this.deps.now();
 		return null;

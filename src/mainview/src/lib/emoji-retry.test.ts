@@ -15,8 +15,9 @@ Object.assign(globalThis, { VITE_API_URL: "https://api.test", VITE_WS_URL: "", V
 const URL_A = "https://api.test/attachments/0190a3b2-0000-7000-8000-000000000001";
 const URL_B = "https://api.test/attachments/0190a3b2-0000-7000-8000-000000000002";
 
-// A page whose requests answer from a list, in order, and that writes down what happened, the waits included.
-function page(answers: (Response | Error)[]) {
+// A page whose requests answer from a list, in order, and that writes down what happened, the waits included. An
+// answer can be made as it's asked for.
+function page(answers: (Response | Error | (() => Response))[]) {
 	const events: string[] = [];
 	let now = 1_000_000;
 	let blobs = 0;
@@ -26,7 +27,7 @@ function page(answers: (Response | Error)[]) {
 			const answer = answers.shift();
 			if (!answer) throw new Error(`no answer left for ${init.method} ${url}`);
 			if (answer instanceof Error) throw answer;
-			return answer;
+			return typeof answer === "function" ? answer() : answer;
 		},
 		sleep: async (ms) => {
 			events.push(`wait ${ms}`);
@@ -201,6 +202,47 @@ describe("EmojiRetries", () => {
 		await retries.failed(img);
 		expect(events).toEqual([`HEAD ${URL_A}`, "wait 2000", `GET ${URL_A}`]);
 		expect(img.named).toBe(true);
+		// The HEAD's own.
+		const head = page([status(429, { "Retry-After": "3600" })]);
+		const other = image();
+		await head.retries.failed(other);
+		expect(head.events).toEqual([`HEAD ${URL_A}`]);
+		expect(other.named).toBe(true);
+	});
+
+	test("waits as long as a 429 to its HEAD asks before its first try again", async () => {
+		const { retries, events } = page([status(429, { "Retry-After": "30" }), ok()]);
+		const img = image();
+		await retries.failed(img);
+		expect(events).toEqual([`HEAD ${URL_A}`, "wait 30000", `GET ${URL_A}`]);
+		expect(img.shown).toEqual(["blob:emoji-1"]);
+	});
+
+	test("asks again after a wait for a file whose body broke off", async () => {
+		const broken = new Response(new ReadableStream({ start: (stream) => stream.error(new Error("connection reset")) }));
+		const { retries, events } = page([ok(), broken, ok()]);
+		const img = image();
+		await retries.failed(img);
+		expect(events).toEqual([`HEAD ${URL_A}`, "wait 2000", `GET ${URL_A}`, "wait 4000", `GET ${URL_A}`]);
+		expect(img.shown).toEqual(["blob:emoji-1"]);
+	});
+
+	test("forgets an emoji's tries once no image of it is left: the next image of it that fails starts afresh", async () => {
+		const img = image();
+		const { retries, events } = page([ok(), () => ((img.isConnected = false), status(503)), ok(), ok()]);
+		await retries.failed(img);
+		const next = image();
+		await retries.failed(next);
+		expect(events).toEqual([
+			`HEAD ${URL_A}`,
+			"wait 2000",
+			`GET ${URL_A}`, // a 503, as its image leaves the page
+			"wait 4000",
+			`HEAD ${URL_A}`,
+			"wait 2000",
+			`GET ${URL_A}`,
+		]);
+		expect(next.shown).toEqual(["blob:emoji-1"]);
 	});
 
 	test("shows the name of an emoji whose fetched bytes don't load, and keeps each emoji apart", async () => {
