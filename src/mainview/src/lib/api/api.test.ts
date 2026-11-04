@@ -141,6 +141,13 @@ describe("a form over the API's 32 MiB", () => {
 		expect(sent).toEqual([]);
 	});
 
+	// The API refuses a body over 32 MiB, and reads one of 32 MiB exactly (middlewares.RequestBody).
+	test("isn't refused at the limit itself: one counted at 32 MiB exactly is sent", async () => {
+		const form = messageForm(file(MAX_REQUEST_BYTES - formBytes(messageForm(file(0)))));
+		expect(formBytes(form)).toBe(MAX_REQUEST_BYTES);
+		expect((await api.post("/api/rooms/r/messages", form)).status).toBe(201);
+	});
+
 	test("isn't refused when it fits: it's sent as before", async () => {
 		const res = await api.post("/api/rooms/r/messages", messageForm(file(31 * MiB)));
 		expect(res.status).toBe(201);
