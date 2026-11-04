@@ -9,8 +9,9 @@ import adapter from "@sveltejs/adapter-static";
 // the app does load working.
 //
 // Notes on the hashes and keywords below:
-//  - "wasm-unsafe-eval": Shiki's Oniguruma highlighter and the rnnoise noise-suppression worklet both
-//    compile WebAssembly; without it WebAssembly.instantiate throws and code blocks / voice break.
+//  - "wasm-unsafe-eval": Shiki's Oniguruma highlighter and RNNoise (compiled on the main thread for the
+//    noise-suppression worklet) both compile WebAssembly; without it WebAssembly.compile and instantiate throw,
+//    code blocks break and the microphone goes out without noise suppression.
 //  - The two script-src hashes are the inline bootstrap in app.html (the light theme's class, set before the
 //    first paint, and the pre-hydration redirect). The HTML parser normalises CRLF to LF before hashing,
 //    so the LF hash is the one browsers check; the CRLF hash is kept as a belt-and-suspenders fallback.

@@ -32,8 +32,9 @@ export async function readRnnoiseWasm(): Promise<{ file: string; base64: string 
 
 /**
  * Serves "virtual:rnnoise-wasm", RNNoise's WebAssembly as a base64 string read out of the package at build time.
- * The noise-suppression worklet can't fetch or compile code, so the main thread compiles this and hands the module
- * over; the package's own loader compiles and instantiates in one step and gives the module to nobody.
+ * The noise-suppression worklet can't fetch it, and compiling it there would hold up the audio thread, so the main
+ * thread compiles this and hands the module over; the package's own loader compiles and instantiates in one step and
+ * gives the module to nobody.
  */
 export function rnnoiseWasm(): Plugin {
 	return {

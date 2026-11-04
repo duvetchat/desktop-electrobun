@@ -2,7 +2,7 @@ import rnnoiseWasm from "virtual:rnnoise-wasm";
 
 let rnnoiseModule: Promise<WebAssembly.Module> | null = null;
 
-/** RNNoise's WebAssembly, compiled once: the worklet can't compile code itself, so it gets the module. */
+/** RNNoise's WebAssembly, compiled once, here: compiling it in the worklet would hold up the audio thread. */
 function getRnnoiseModule(): Promise<WebAssembly.Module> {
 	if (!rnnoiseModule) {
 		const text = atob(rnnoiseWasm);

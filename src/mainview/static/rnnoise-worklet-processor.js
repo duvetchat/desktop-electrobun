@@ -2,9 +2,9 @@
  * AudioWorkletProcessor that runs RNNoise on the microphone in the audio thread itself, so no frame waits on
  * the main thread: before, the frames went there and back, and one that came back late went out as silence.
  *
- * This scope can neither fetch nor compile code, so the main thread compiles RNNoise's WebAssembly
- * (lib/audio/noise-suppression.ts) and hands the module over in processorOptions.module. Every processor of an
- * AudioContext shares one instance of it, each with an RNNoise state of its own.
+ * This scope has no fetch, and compiling RNNoise here would hold up the audio thread, so the main thread compiles
+ * its WebAssembly (lib/audio/noise-suppression.ts) and hands the module over in processorOptions.module. Every
+ * processor of an AudioContext shares one instance of it, the first one's, each with an RNNoise state of its own.
  *
  * Messages: the processor answers { type: "ready" } once RNNoise runs, or { type: "failed", message }; it takes
  * { type: "destroy" }, which frees its state and lets the node go.
@@ -51,7 +51,7 @@ export function createFrames(frameSize, delay) {
  * Passes one quantum through: its samples go into frames, `processFrame` processes each frame in place as soon
  * as it's full, and `output` gets the processed samples, as many as `input` brought, `delay` samples behind
  * them. What the frames can't cover yet goes out as silence, which a delay from frameDelay never leaves.
- * Allocates nothing, as it runs on the audio thread.
+ * Allocates no buffers (its subarrays are views), as it runs on the audio thread.
  * @param {ReturnType<typeof createFrames>} frames
  * @param {Float32Array} input
  * @param {Float32Array} output
