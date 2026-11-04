@@ -91,3 +91,22 @@ export function withPresent<T extends Sendable>(current: T[], page: T[]): T[] {
 	}
 	return [...(copies.size ? page.filter((m) => !copies.has(m.id)) : page), ...kept];
 }
+
+/**
+ * Where the unread divider goes once a message came past a jump's pages, which the list shows only when the pages below
+ * reach it (inWindow): after the read position (readUpTo), or above everything ("0") when there's none, if another
+ * member's message came there that the read position doesn't cover. Leaving then keeps the room or conversation unread,
+ * and the divider shows as the pages below reach the message. Null when nothing like that came: the user's own messages
+ * (from another device, a pin notice), one still being sent, and a seen call's notice (the read position covers it).
+ */
+export function dividerPastWindow(
+	messages: (Listed & { author_id: string })[],
+	loadedBelowTo: string,
+	me: string | undefined,
+	readUpTo: string | undefined,
+): string | null {
+	const news = messages.some(
+		(m) => m.id > loadedBelowTo && m.id !== m.nonce && m.author_id !== me && m.id > (readUpTo ?? ""),
+	);
+	return news ? (readUpTo ?? "0") : null;
+}

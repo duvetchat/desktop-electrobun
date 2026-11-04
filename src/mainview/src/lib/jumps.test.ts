@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { inWindow, loadedTo, quoteJump, readWhenLeft, withPresent } from "$lib/jumps";
+import { dividerPastWindow, inWindow, loadedTo, quoteJump, readWhenLeft, withPresent } from "$lib/jumps";
 
 const QUOTED = "01920000-0000-7000-8000-0000000000aa";
 const CONVERSATION = "01920000-0000-7000-8000-0000000c0c0c";
@@ -144,5 +144,36 @@ describe("withPresent", () => {
 		// 301 came live while the newest page was asked for; 300 is both in the list and in the page.
 		const current = [...page(1, 130), { id: m(300) }, { id: m(301) }];
 		expect(withPresent(current, page(201, 300))).toEqual([...page(201, 300), { id: m(301) }]);
+	});
+});
+
+describe("dividerPastWindow", () => {
+	// A jump to 20 loaded up to 120, with newer messages still below; the user read up to 400.
+	const m = (n: number) => `01930000-0000-7000-8000-${String(n).padStart(12, "0")}`;
+	const from = (n: number, author: string) => ({ id: m(n), author_id: author });
+	const jump = [from(20, "alice"), from(120, "me")];
+
+	test("another member's message past the jump's pages puts the divider after the read position", () => {
+		expect(dividerPastWindow([...jump, from(401, "alice")], m(120), "me", m(400))).toBe(m(400));
+	});
+
+	test("in a conversation never read, above everything", () => {
+		expect(dividerPastWindow([...jump, from(401, "alice")], m(120), "me", undefined)).toBe("0");
+	});
+
+	test("the user's own message, one still being sent, or one the read position covers sets none", () => {
+		const sending = {
+			id: "f1d2c3b4-0000-4000-8000-000000000000",
+			nonce: "f1d2c3b4-0000-4000-8000-000000000000",
+			author_id: "me",
+		};
+		expect(dividerPastWindow([...jump, from(401, "me")], m(120), "me", m(400))).toBeNull();
+		expect(dividerPastWindow([...jump, sending], m(120), "me", m(400))).toBeNull();
+		// A call's notice of a call the user saw: the read position moved to it.
+		expect(dividerPastWindow([...jump, from(401, "alice")], m(120), "me", m(401))).toBeNull();
+	});
+
+	test("the jump's own pages, history the reader scrolls into, set none", () => {
+		expect(dividerPastWindow([...jump, from(100, "alice")], m(120), "me", m(10))).toBeNull();
 	});
 });

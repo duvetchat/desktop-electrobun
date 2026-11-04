@@ -18,7 +18,7 @@
 	import { get } from "svelte/store";
 	import { closeTabsIn, isConversationTab, makeSplit, makeLeaf, tabFromDragData, tabTitle } from "$lib/pane";
 	import { getMessages, getMessagesAfter, getMessageById, ackRoom } from "$lib/api/messages";
-	import { inWindow, loadedTo, withPresent } from "$lib/jumps";
+	import { dividerPastWindow, inWindow, loadedTo, withPresent } from "$lib/jumps";
 	import { onMount, onDestroy, type Snippet } from "svelte";
 
 	import type { MemberOnSidebar, GatewaySpace, PaneNode, Guild, Tab } from "$lib/types";
@@ -275,6 +275,21 @@
 		}
 		ackNewest(channelId, msgs);
 	}
+
+	// A message that came past a jump's pages shows only when the pages below reach it, yet the room is unread: its
+	// divider goes after the read position (this session's ack, or READY's), so leaving keeps the dot, and the pages below
+	// show it in its place.
+	$effect(() => {
+		if (node.kind !== "leaf" || !node.activeChannelId) return;
+		const channelId = node.activeChannelId;
+		const all = $channelMessages[channelId] ?? [];
+		if (channelHasMoreBelow[channelId] !== true || channelUnreadAfter[channelId] != null) return;
+		const acked = ackedMsgIds.get(channelId);
+		const lastRead = $lastReadRooms[channelId];
+		const readUpTo = acked && (!lastRead || acked > lastRead) ? acked : lastRead;
+		const at = dividerPastWindow(all, channelLoadedBelowTo[channelId] ?? "", $currentUser?.id, readUpTo);
+		if (at !== null) channelUnreadAfter[channelId] = at;
+	});
 
 	// ACK reactively when at bottom and messages change.
 	// All reactive deps must be read inline (not inside tryAckChannel) so Svelte

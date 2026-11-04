@@ -53,7 +53,7 @@
 	import { toast } from "$lib/stores/toast.svelte";
 	import { getApiError } from "$lib/api/api";
 	import { withSentMessage } from "$lib/arrivals";
-	import { inWindow, loadedTo, readWhenLeft, withPresent } from "$lib/jumps";
+	import { dividerPastWindow, inWindow, loadedTo, readWhenLeft, withPresent } from "$lib/jumps";
 	import { MessageSquare, Phone, UserPlus, Users } from "@lucide/svelte";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
 	import Chat from "$lib/components/Chat.svelte";
@@ -651,6 +651,17 @@
 		if (convUnreadAfter != null) convUnreadAfter = null;
 		ackNewest(conversation.id, msgs);
 	}
+
+	// A message that came past a jump's pages shows only when the pages below reach it, yet the conversation is unread:
+	// its divider goes after the read position, so leaving keeps the dot, and the pages below show it in its place. Not
+	// without READY's read positions (an older gateway), as unreadAfterOf.
+	$effect(() => {
+		const all = $dmMessages[conversation.id] ?? [];
+		const positions = $lastReadConvs;
+		if (!hasMoreBelow || convUnreadAfter != null || !positions) return;
+		const at = dividerPastWindow(all, loadedBelowTo, me?.id, positions[conversation.id]);
+		if (at !== null) convUnreadAfter = at;
+	});
 
 	// ACK reactively when at bottom, page visible, and messages change, once nothing newer is left to load below.
 	$effect(() => {
