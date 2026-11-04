@@ -25,3 +25,18 @@ test("a voice note's player plays what it was kept with, a WAV or, without one, 
 	expect(player).toContain("wavSrc = cached.wavUrl ?? null;");
 	expect(player).toContain("keepWaveform(attachmentId, { bars, duration: localDuration, wavUrl: wavSrc });");
 });
+
+// Each player holds the WAV it plays from while it's there, the one kept for it as the one it made (lib/audio/
+// waveform.ts), and lets go of it when it goes; one that's gone before its analysis ends makes none (#167).
+test("a player holds its WAV while it's there, and makes none once it's gone", () => {
+	for (const file of ["VoiceNotePlayer.svelte", "AudioFilePlayer.svelte"]) {
+		const player = source(file);
+		expect(player).toMatch(/onDestroy\(\(\) => \{\s*destroyed = true;\s*\/\/[^\n]*\n\s*releaseWav\(wavSrc\);\s*\}\);/);
+		expect(player).toMatch(/wavSrc = cached\.wavUrl \?\? null;\s*holdWav\(wavSrc\);/);
+		const analyzed = player.indexOf("await analyzeWaveform(streamUrl, BAR_COUNT);");
+		const gone = player.indexOf("if (destroyed) return;", analyzed);
+		expect(analyzed).toBeGreaterThan(-1);
+		expect(gone).toBeGreaterThan(analyzed);
+		expect(player.indexOf("wavSrc = ", analyzed)).toBeGreaterThan(gone);
+	}
+});

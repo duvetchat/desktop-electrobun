@@ -1,5 +1,6 @@
 import { writable, get } from "svelte/store";
 import api from "$lib/api/api";
+import { holdWav, releaseWav } from "$lib/audio/waveform";
 import { getHostURL } from "$lib/common/common";
 
 export interface VoiceNoteState {
@@ -18,6 +19,8 @@ const EMPTY: VoiceNoteState | null = null;
 export const voiceNote = writable<VoiceNoteState | null>(EMPTY);
 
 let audio: HTMLAudioElement | null = null;
+// What the note plays from: a WAV of it is held until it stops, so the note goes on once its player is gone (#167).
+let playingSrc: string | null = null;
 let animFrame = 0;
 
 const VOLUME_KEY = "duvet_audio_volume";
@@ -69,6 +72,8 @@ function cleanup() {
 		audio.load();
 		audio = null;
 	}
+	releaseWav(playingSrc);
+	playingSrc = null;
 }
 
 const RESIGN_THRESHOLD_MS = 30 * 60 * 1000; // Re-sign if less than 30 minutes remaining
@@ -125,6 +130,8 @@ export async function playVoiceNote(
 	}
 
 	audio = new Audio(src);
+	holdWav(src);
+	playingSrc = src;
 	audio.preload = "auto";
 	audio.volume = currentVolume;
 	audio.playbackRate = rateByAttachment.get(attachmentId) ?? 1;
