@@ -10,7 +10,13 @@ import {
 } from "./activity-images";
 
 // A host to fetch images from, on loopback only.
-const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3]);
+// A 1×1 PNG.
+const PNG = Uint8Array.from(
+	atob("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="),
+	(c) => c.charCodeAt(0),
+);
+// The headers of a PNG of 16000×16000: 31 KB of 1-bit pixels would decode to a GB.
+const HUGE_PNG = new Uint8Array([...PNG.subarray(0, 16), 0, 0, 0x3e, 0x80, 0, 0, 0x3e, 0x80, ...PNG.subarray(24)]);
 let requests = 0;
 // What the last request asked to be compressed with.
 let acceptedEncoding: string | null = null;
@@ -182,6 +188,14 @@ describe("ActivityImages", () => {
 		expect(await cache.inline("https://x.test/a.png")).toBeUndefined();
 		answered = true;
 		expect(await cache.inline("https://x.test/a.png")).toBe(INLINE);
+	});
+
+	test("hands the webview no image its headers don't say is small enough to decode, nor what isn't an image", async () => {
+		for (const bytes of [HUGE_PNG, new TextEncoder().encode("<svg/>")]) {
+			const { cache, calls } = images({ fetch: () => bytes });
+			expect(await cache.inline("https://x.test/a.png")).toBeUndefined();
+			expect(calls.made).toBe(0);
+		}
 	});
 
 	test("keeps no image that isn't an inline one of 8 KiB at most", async () => {

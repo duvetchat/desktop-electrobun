@@ -5,6 +5,7 @@
 // as when that app loads it, then made small by the webview (Bun has no image decoder; a canvas has) and sent as a
 // data URI. One that can't be is left out of the activity, never sent as its URL.
 import { MAX_IMAGE_BYTES, type ActivityPayload } from "./activities";
+import { decodable } from "./image-size";
 
 /** The most bytes an image may have to be made inline: counted as it's read, before anything decodes it. */
 export const MAX_SOURCE_BYTES = 4 << 20;
@@ -120,7 +121,9 @@ export class ActivityImages {
 	private async make(url: string): Promise<string | undefined> {
 		const bytes = await this.fetchBytes(url);
 		let image: string | null = null;
-		if (bytes) {
+		// The webview decodes what it's given whole: an image its headers don't say is small enough never reaches it.
+		const fits = !!bytes && decodable(bytes);
+		if (fits) {
 			try {
 				image = await this.thumbnail(bytes);
 			} catch (err) {
@@ -134,7 +137,8 @@ export class ActivityImages {
 			if (this.kept.size > KEPT_IMAGES) this.kept.delete(this.kept.keys().next().value!);
 			return image;
 		}
-		console.error(`[activity images] no inline image from ${hostOf(url)}: ${bytes ? "not one" : "not fetched"}`);
+		const why = !bytes ? "not fetched" : !fits ? "not an image this size or kind" : "the webview made none";
+		console.error(`[activity images] no inline image from ${hostOf(url)}: ${why}`);
 		this.failed.set(url, this.now());
 		if (this.failed.size > KEPT_IMAGES) this.failed.delete(this.failed.keys().next().value!);
 		return undefined;
