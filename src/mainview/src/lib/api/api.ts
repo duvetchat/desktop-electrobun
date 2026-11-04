@@ -66,7 +66,8 @@ export function formBytes(form: FormData): number {
 	form.forEach((value, name) => {
 		bytes += PART_OVERHEAD + 3 * encoder.encode(name).length;
 		if (typeof value === "string") {
-			bytes += encoder.encode(value).length;
+			// A browser sends every line break of a text as CRLF: a lone LF or CR takes a byte more than it seems.
+			bytes += encoder.encode(value.replace(/\r\n|\r|\n/g, "\r\n")).length;
 		} else {
 			// A file's part also names the file, and its type: the browser writes application/octet-stream for none.
 			bytes += value.size + 3 * encoder.encode(value.name).length;

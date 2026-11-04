@@ -132,12 +132,24 @@ describe("a form's size", () => {
 		quoted.append('na"me', 'va"lue\r\nwith a line');
 		quoted.append("files", file(1000, 'qu"oted\r\n名前.png', "image/png"));
 		quoted.append("files", file(0, "", ""));
+		// A browser sends each lone LF or CR of a text as CRLF, a byte more each: 2000 of them were counted 1,262 bytes
+		// short.
+		const lineBreaks = (content: string) => {
+			const form = new FormData();
+			form.append("content", content);
+			form.append("files", file(1024));
+			return form;
+		};
 		const forms = [
 			new FormData(),
 			messageForm(),
 			messageForm(file(5 * MiB)),
 			messageForm(file(1), file(2, "ünïcödé.txt", "text/plain")),
 			quoted,
+			lineBreaks("a\n".repeat(2000)),
+			lineBreaks("a\r".repeat(2000)),
+			lineBreaks("a\r\n".repeat(2000)),
+			lineBreaks("x\n\ny\r\rz\r\n\n"),
 		];
 		for (const form of forms) {
 			const body = await new Response(form).arrayBuffer();
