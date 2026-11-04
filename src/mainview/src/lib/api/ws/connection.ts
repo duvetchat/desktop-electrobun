@@ -100,6 +100,7 @@ import { withUserUpdate } from "$lib/friends";
 import { sendAgain } from "$lib/resend";
 import { storageTransfers } from "$lib/stores/storage-transfers.svelte";
 import { getElectrobunRpc, type ActivityPayload } from "$lib/electrobun-rpc";
+import { identifyData } from "$lib/api/ws/identify";
 
 // The user's activities as this app's Bun process reports them: the IPC apps' (VS Code, etc.) and Spotify's. The
 // gateway keeps them 2 minutes and shares only a change, so they go again every 45 s, and on each new session.
@@ -1836,21 +1837,15 @@ export function createWebSocketConnection(): GatewayConnection {
 		socket.onopen = () => {
 			if (import.meta.env.DEV) console.log("[WS] Connected");
 			reconnectAttempts = 0;
-			const identifyData: Record<string, unknown> = {
-				token: localStorage.getItem("duvet_session_token"),
-			};
-			if (lastSeq > 0 && !freshSessionWanted) {
-				identifyData.last_seq = lastSeq;
-				const gwToken = get(wsSessionToken);
-				if (gwToken) {
-					identifyData.session_token = gwToken;
-				}
-			}
+			const identify = identifyData(
+				localStorage.getItem("duvet_session_token"),
+				lastSeq > 0 && !freshSessionWanted ? { lastSeq, sessionToken: get(wsSessionToken) } : null,
+			);
 			connectionCount++;
-			socket.send(JSON.stringify({ type: "identify", data: identifyData }));
+			socket.send(JSON.stringify({ type: "identify", data: identify }));
 			// Asking to resume, the client learns that it did from this heartbeat's answer, which the gateway queues
 			// behind the session's replay; a session that can't resume sends READY before it.
-			if (identifyData.session_token) {
+			if (identify.session_token) {
 				resumeProbe = true;
 				socket.send(JSON.stringify({ type: "heartbeat", data: {} }));
 			}

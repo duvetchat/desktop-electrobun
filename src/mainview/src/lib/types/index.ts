@@ -542,6 +542,9 @@ export type UserStatus = 0 | 1 | 2; // 0 = offline, 1 = online, 2 = do not distu
 /** The statuses a user can choose: offline isn't one, the gateway says it while they have no connection. */
 export type ChosenStatus = Exclude<UserStatus, 0>;
 
+/** What a client says it runs on when it identifies: the desktop app, a browser, or the mobile app. */
+export type ClientPlatform = "desktop" | "web" | "mobile";
+
 export interface GatewayUser {
 	id: string;
 	username: string;
