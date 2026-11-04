@@ -36,6 +36,8 @@
 	} from "$lib/types";
 	import { roomNames, selectedMicId } from "$lib/stores.svelte";
 	import { getAvatarURL, getHostURL } from "$lib/common/common";
+	import { messageTooLarge } from "$lib/api/messages";
+	import { toast } from "$lib/stores/toast.svelte";
 
 	const ceHost = getHostURL();
 
@@ -772,10 +774,16 @@
 		}
 	}
 
-	// Sends what the box holds, with the files picked, and empties it.
+	// Sends what the box holds, with the files picked, and empties it. A message too large for the API stays in the box,
+	// its text and files with it, and says so: nothing is sent (#182).
 	function sendMessage() {
 		const raw = getRaw(inputEl).trim();
 		if (!raw && pendingFiles.length === 0) return;
+		const tooLarge = messageTooLarge(raw, pendingFiles);
+		if (tooLarge) {
+			toast(tooLarge, "error");
+			return;
+		}
 		const filesToSend = pendingFiles.length > 0 ? [...pendingFiles] : undefined;
 		onSubmit(raw, filesToSend);
 		inputEl.innerHTML = "";

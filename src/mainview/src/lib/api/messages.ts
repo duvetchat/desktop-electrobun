@@ -1,4 +1,4 @@
-import api from "$lib/api/api";
+import api, { formBytes, MAX_REQUEST_BYTES, TooLargeError } from "$lib/api/api";
 import { createAckThrottle } from "$lib/api/ack";
 import type { AllowedMentions, GatewayMessage, MessageReference } from "$lib/types";
 
@@ -92,6 +92,21 @@ export async function getMessageThread(
 ): Promise<GatewayMessage[]> {
 	const res = await api.get(`/api/rooms/${roomId}/messages/${messageId}/thread`, { signal });
 	return res.data;
+}
+
+// What a message's form holds besides its text and files, at its largest: its nonce, its reply (message_reference) and
+// allowed_mentions, as sendMessage and sendDirectMessage write them, each a field of its own.
+const MESSAGE_FIELDS_BYTES = 2048;
+
+/** Why the API would refuse a message with files for its size, as the message box says it, or null: its text and files
+ * as a send puts them in its form, with room for its other fields. Such a message isn't sent (#182). */
+export function messageTooLarge(content: string, files: File[]): string | null {
+	if (files.length === 0) return null;
+	const form = new FormData();
+	form.append("content", content);
+	for (const f of files) form.append("files", f);
+	const bytes = formBytes(form) + MESSAGE_FIELDS_BYTES;
+	return bytes > MAX_REQUEST_BYTES ? new TooLargeError(bytes, "Message").message : null;
 }
 
 export async function sendMessage(
