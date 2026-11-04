@@ -1,6 +1,6 @@
-import { describe, expect, spyOn, test } from "bun:test";
+import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import { oggCrc, opusSamples, repairOggOpus } from "$lib/audio/ogg";
-import { analyzeWaveform } from "$lib/audio/waveform";
+import { analyzeWaveform, fileWavUrl, keepWaveform, MAX_WAVEFORM_CACHE, waveformCache } from "$lib/audio/waveform";
 
 const SERIAL = 0x4244293a;
 
@@ -166,9 +166,86 @@ describe("analyzeWaveform", () => {
 			expect(result.duration).toBe(0.06);
 			expect(result.bars).toHaveLength(4);
 			expect(new TextDecoder().decode(result.wavBuf.slice(0, 4))).toBe("RIFF");
+			// So it doesn't play as it is either (#118).
+			expect(result.repaired).toBe(true);
 		} finally {
 			fetched.mockRestore();
 			(globalThis as Record<string, unknown>).AudioContext = saved;
 		}
+	});
+
+	test("decodes a file the browser decodes as it is, and says it wasn't repaired", async () => {
+		const valid = file(page(2, 0n, 0, [head]), page(0, 0n, 1, [tags]), page(4, 1272n, 2, [frame]));
+		let decodes = 0;
+		class AudioContextAsChromium {
+			async decodeAudioData() {
+				decodes++;
+				const length = 960;
+				return {
+					duration: length / 48000,
+					numberOfChannels: 1,
+					sampleRate: 48000,
+					length,
+					getChannelData: () => new Float32Array(length).fill(0.5),
+				};
+			}
+			close() {}
+		}
+		const fetched = spyOn(globalThis, "fetch").mockResolvedValue(new Response(valid));
+		const saved = (globalThis as Record<string, unknown>).AudioContext;
+		(globalThis as Record<string, unknown>).AudioContext = AudioContextAsChromium;
+		try {
+			const result = await analyzeWaveform("/attachments/a?stream=1", 4);
+			expect(decodes).toBe(1);
+			expect(result.repaired).toBe(false);
+		} finally {
+			fetched.mockRestore();
+			(globalThis as Record<string, unknown>).AudioContext = saved;
+		}
+	});
+});
+
+// An audio file plays as it is where the browser decodes it as it is, and from the WAV its analysis made where it could
+// decode it only once repaired: Firefox and an Android voice recording sent as a file (#118).
+describe("fileWavUrl", () => {
+	const wav = new TextEncoder().encode("RIFF....WAVE").buffer;
+
+	test("gives no WAV for a file the browser decoded as it is, which plays as it is", () => {
+		expect(fileWavUrl({ repaired: false, wavBuf: wav })).toBeUndefined();
+	});
+
+	test("gives the WAV for one it decoded only once repaired", async () => {
+		const created = spyOn(URL, "createObjectURL");
+		try {
+			const url = fileWavUrl({ repaired: true, wavBuf: wav });
+			expect(created).toHaveBeenCalledTimes(1);
+			const [blob] = created.mock.calls[0];
+			expect(created.mock.results[0].value).toBe(url);
+			if (!(blob instanceof Blob)) throw new Error("the WAV's URL isn't a Blob's");
+			expect(blob.type).toBe("audio/wav");
+			expect(await blob.text()).toBe("RIFF....WAVE");
+		} finally {
+			created.mockRestore();
+		}
+	});
+});
+
+describe("keepWaveform", () => {
+	afterEach(() => waveformCache.clear());
+
+	test("keeps an attachment's analysis for its next player, as it's given: a WAV only when it has one", () => {
+		keepWaveform("file", { bars: [0.5], duration: 1 });
+		keepWaveform("note", { bars: [0.5], duration: 1, wavUrl: "blob:wav" });
+		expect(waveformCache.get("file")).toEqual({ bars: [0.5], duration: 1 });
+		expect(waveformCache.get("note")?.wavUrl).toBe("blob:wav");
+		keepWaveform("", { bars: [0.5], duration: 1 });
+		expect(waveformCache.has("")).toBe(false);
+	});
+
+	test("lets the oldest go past its limit", () => {
+		for (let i = 0; i <= MAX_WAVEFORM_CACHE; i++) keepWaveform(`a${i}`, { bars: [], duration: i });
+		expect(waveformCache.size).toBe(MAX_WAVEFORM_CACHE);
+		expect(waveformCache.has("a0")).toBe(false);
+		expect(waveformCache.has(`a${MAX_WAVEFORM_CACHE}`)).toBe(true);
 	});
 });

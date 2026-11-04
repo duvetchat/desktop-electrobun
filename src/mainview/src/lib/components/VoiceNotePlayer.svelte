@@ -11,7 +11,7 @@
 		cyclePlaybackRate,
 	} from "$lib/stores/voiceNotePlayer.svelte";
 	import { formatDuration } from "$lib/utils/time";
-	import { waveformCache, MAX_WAVEFORM_CACHE, analyzeWaveform, fallbackBars } from "$lib/audio/waveform";
+	import { waveformCache, analyzeWaveform, fallbackBars, keepWaveform, wavUrlOf } from "$lib/audio/waveform";
 
 	let {
 		src,
@@ -58,15 +58,8 @@
 			const result = await analyzeWaveform(streamUrl, BAR_COUNT);
 			bars = result.bars;
 			localDuration = result.duration;
-			wavSrc = URL.createObjectURL(new Blob([result.wavBuf], { type: "audio/wav" }));
-
-			if (attachmentId) {
-				if (waveformCache.size >= MAX_WAVEFORM_CACHE) {
-					const firstKey = waveformCache.keys().next().value;
-					if (firstKey) waveformCache.delete(firstKey);
-				}
-				waveformCache.set(attachmentId, { bars, wavUrl: wavSrc!, duration: localDuration });
-			}
+			wavSrc = wavUrlOf(result.wavBuf);
+			keepWaveform(attachmentId, { bars, duration: localDuration, wavUrl: wavSrc });
 		} catch (e) {
 			if (import.meta.env.DEV) console.error("[VoiceNotePlayer] loadAndAnalyze failed:", e);
 			if (!wavSrc) wavSrc = url;
@@ -103,7 +96,8 @@
 		const cached = waveformCache.get(attachmentId);
 		if (cached) {
 			bars = cached.bars;
-			wavSrc = cached.wavUrl;
+			// None when an audio file's player kept it, of a file this browser plays as it is.
+			wavSrc = cached.wavUrl ?? null;
 			localDuration = cached.duration;
 			return;
 		}

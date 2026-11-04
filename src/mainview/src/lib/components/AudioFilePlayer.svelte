@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount } from "svelte";
+	import { onDestroy, onMount } from "svelte";
 	import { Play, Pause, Music, Volume1, Volume2, VolumeX } from "@lucide/svelte";
 	import {
 		voiceNote,
@@ -9,10 +9,11 @@
 		audioVolume,
 		getAttachmentRate,
 		cyclePlaybackRate,
+		voiceNotePlayRequests,
 	} from "$lib/stores/voiceNotePlayer.svelte";
 	import { formatDuration } from "$lib/utils/time";
 	import { formatFileSize } from "$lib/utils/format";
-	import { waveformCache, MAX_WAVEFORM_CACHE, analyzeWaveform, fallbackBars } from "$lib/audio/waveform";
+	import { waveformCache, analyzeWaveform, fallbackBars, fileWavUrl, keepWaveform } from "$lib/audio/waveform";
 
 	let {
 		src,
@@ -32,6 +33,13 @@
 
 	let bars = $state<number[]>([]);
 	let localDuration = $state(0);
+	// The WAV it plays from, when this browser can't play the file as it is (fileWavUrl).
+	let wavSrc = $state<string | null>(null);
+	let analysis: Promise<void> | undefined;
+	let destroyed = false;
+	onDestroy(() => {
+		destroyed = true;
+	});
 	let showVolume = $state(false);
 	let volumeTimeout: ReturnType<typeof setTimeout> | null = null;
 
@@ -61,12 +69,17 @@
 	const duration = $derived(isActive && $voiceNote!.duration > 0 ? $voiceNote!.duration : localDuration);
 	const progress = $derived(duration > 0 ? currentTime / duration : 0);
 
-	function togglePlay() {
+	async function togglePlay() {
 		if (isActive) {
 			toggleVoiceNote();
-		} else {
-			playVoiceNote(src, attachmentId, authorName, channelName, filename);
+			return;
 		}
+		// What it plays from is known once the analysis is done, as a voice note's is: then it plays, if no other note was
+		// asked to play meanwhile, and while this player is still there.
+		const requests = voiceNotePlayRequests();
+		await analysis;
+		if (destroyed || voiceNotePlayRequests() !== requests) return;
+		playVoiceNote(wavSrc ?? src, attachmentId, authorName, channelName, filename);
 	}
 
 	function handleSeek(e: MouseEvent) {
@@ -76,7 +89,7 @@
 		if (isActive) {
 			seekVoiceNote(ratio * duration);
 		} else {
-			playVoiceNote(src, attachmentId, authorName, channelName, filename);
+			playVoiceNote(wavSrc ?? src, attachmentId, authorName, channelName, filename);
 			seekVoiceNote(ratio * duration);
 		}
 	}
@@ -87,14 +100,8 @@
 			const result = await analyzeWaveform(streamUrl, BAR_COUNT);
 			bars = result.bars;
 			localDuration = result.duration;
-
-			if (attachmentId) {
-				if (waveformCache.size >= MAX_WAVEFORM_CACHE) {
-					const firstKey = waveformCache.keys().next().value;
-					if (firstKey) waveformCache.delete(firstKey);
-				}
-				waveformCache.set(attachmentId, { bars, wavUrl: url, duration: localDuration });
-			}
+			wavSrc = fileWavUrl(result) ?? null;
+			keepWaveform(attachmentId, { bars, duration: localDuration, wavUrl: wavSrc ?? undefined });
 		} catch (e) {
 			if (import.meta.env.DEV) console.error("[AudioFilePlayer] waveform analysis failed:", e);
 		}
@@ -107,10 +114,11 @@
 		if (cached) {
 			bars = cached.bars;
 			localDuration = cached.duration;
+			wavSrc = cached.wavUrl ?? null;
 			return;
 		}
 
-		loadAndAnalyze(src);
+		analysis = loadAndAnalyze(src);
 
 		// Probe duration via metadata if waveform analysis is slow
 		const audio = new Audio(src);
