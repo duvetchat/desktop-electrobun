@@ -121,34 +121,6 @@ bun run format          # auto-fix
 bun run format:check    # check only
 ```
 
-### Nix
-
-**Development shell** ([devenv](https://devenv.sh/)): `devenv shell` (or `direnv allow`) installs the
-dependencies and swaps Electrobun's downloaded binaries (CLI, bun, CEF) for Nix-patched ones
-(`nix/electrobun.nix`), including the audio (ALSA/PulseAudio/PipeWire), video (VA-API, Vulkan, GL)
-and GTK libraries the call UI needs. Then `bun start` etc. work as above.
-
-**Run or install the app** (x86_64-linux):
-
-```bash
-nix run github:<owner>/desktop-electrobun        # or `nix run .` in a checkout
-nix profile install .                            # or add `overlays.default` to your NixOS config
-```
-
-The package is built with `electrobun build --env=dev`, which yields a plain app directory; the
-other environments produce a self-extracting installer that unpacks into `$HOME` at first run.
-
-Maintenance:
-
-- Bumping `electrobun` in `package.json` also needs `version` and `hashes` in `nix/electrobun.nix`
-  (the build asserts they match).
-- Changing either `bun.lock` needs a new `outputHash` for `nodeModules` in `nix/package.nix`: set it
-  to `lib.fakeHash`, build, copy the hash from the error.
-- Screen capture on Wayland goes through PipeWire and the desktop portal, so `pipewire` and an
-  `xdg-desktop-portal` backend must run on the host (they do on a standard NixOS desktop).
-- GPU drivers come from the host (`/run/opengl-driver/lib` on NixOS); on other distros use
-  [nixGL](https://github.com/nix-community/nixGL), else CEF falls back to software rendering.
-
 ## API Service (`api/`)
 
 Go REST API using Gin, PostgreSQL (pgx + sqlc), and Redis for session/cache.
