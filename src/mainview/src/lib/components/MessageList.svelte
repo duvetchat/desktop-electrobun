@@ -952,9 +952,13 @@
 		<!-- Bottom sentinel: first in DOM → appears at visual bottom in flex-col-reverse.
              Visible when user scrolls to the bottom (newest messages area). One height whether it spins or not, and
              shrink-0, as the list's flex column would shrink it to its content: a change would move the list (scroll
-             anchoring), whose scroll asks for the page below again. -->
+             anchoring), whose scroll asks for the page below again. Never the node the browser keeps in view as a page
+             goes in (overflow-anchor none): Firefox picked it, and so took the reader to each new page's end. -->
 		{#if hasMoreMessagesBelow}
-			<div data-sentinel-bottom class="flex h-11 w-full shrink-0 flex-col items-center justify-center gap-1">
+			<div
+				data-sentinel-bottom
+				class="flex h-11 w-full shrink-0 flex-col items-center justify-center gap-1 [overflow-anchor:none]"
+			>
 				{#if isLoadingMoreBelow}
 					<svg
 						class="h-5 w-5 animate-spin text-zinc-400"
