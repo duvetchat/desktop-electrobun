@@ -1,5 +1,5 @@
 import { getAvatarURL } from "$lib/common/common";
-import { memberStatus } from "$lib/status";
+import { memberMobileOnly, memberStatus } from "$lib/status";
 import type { Conversation, DirectMessage } from "$lib/api/conversations";
 import type { UserActivity } from "$lib/stores.svelte";
 
@@ -1380,6 +1380,8 @@ export interface MemberOnSidebar {
 	avatar_url: string | null;
 	banner_url: string | null;
 	status: "offline" | "online" | "idle" | "dnd";
+	/** They're connected only from the mobile app, and their status shows as a phone (isMobileOnly, lib/status.ts). */
+	mobile_only: boolean;
 	badges: number;
 	is_bot: boolean;
 	is_owner: boolean;
@@ -1417,6 +1419,7 @@ export function gatewaySpaceToMembers(
 				avatar_url: getAvatarURL(u.id, u.avatar),
 				banner_url: getAvatarURL(u.id, u.banner),
 				status: userStatusToString(statusLookup ? memberStatus(statusLookup, u, space.id) : 0),
+				mobile_only: statusLookup ? memberMobileOnly(statusLookup, u) : false,
 				badges: u.badges ?? 0,
 				is_bot: u.is_bot ?? false,
 				is_owner: u.id === space.owner_id,

@@ -192,7 +192,11 @@
 				<UserAvatar src={null} name={member.username} size={80} />
 			{/if}
 			<!-- Coloured as every status dot (statusDotClass, lib/status.ts): online in the theme's colour -->
-			<StatusDot status={member.status} class="absolute right-0 bottom-0 h-6 w-6 border-4 border-zinc-800" />
+			<StatusDot
+				status={member.status}
+				mobileOnly={member.mobile_only}
+				class="absolute right-0 bottom-0 w-6 border-4 text-zinc-800"
+			/>
 		</div>
 
 		<div class="h-14"></div>

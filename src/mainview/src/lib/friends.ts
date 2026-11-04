@@ -23,14 +23,15 @@ export function friendUser(f: Friend | FriendRequest, me: string | undefined): F
 
 /**
  * A friend, or the sender of a friend request, as their profile card (MemberProfilePopover) shows them, with the status
- * they show: from `user`, their public profile, as a DM's members are. They're a member of nothing here, so the card has
- * no roles and no space. From an API from before user, the user_* fields give their name, avatar and banner, and the
- * card shows no bio and no badges.
+ * they show and whether they're connected only from the mobile app: from `user`, their public profile, as a DM's
+ * members are. They're a member of nothing here, so the card has no roles and no space. From an API from before user,
+ * the user_* fields give their name, avatar and banner, and the card shows no bio and no badges.
  */
 export function friendMember(
 	f: Friend | FriendRequest,
 	me: string | undefined,
 	status: MemberOnSidebar["status"],
+	mobileOnly: boolean,
 ): MemberOnSidebar {
 	const user = friendUser(f, me);
 	return {
@@ -41,6 +42,7 @@ export function friendMember(
 		avatar_url: getAvatarURL(user.id, user.avatar),
 		banner_url: getAvatarURL(user.id, user.banner),
 		status,
+		mobile_only: mobileOnly,
 		badges: f.user?.badges ?? 0,
 		is_bot: f.user?.is_bot ?? false,
 		is_owner: false,

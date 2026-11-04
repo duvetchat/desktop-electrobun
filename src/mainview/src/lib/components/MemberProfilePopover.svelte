@@ -181,7 +181,11 @@
 				<div class="absolute -top-12 left-4 rounded-full border-[6px] border-zinc-800 bg-zinc-950">
 					<UserAvatar src={member.avatar_url} name={member.username} size={80} />
 					<!-- Coloured as every status dot (statusDotClass, lib/status.ts): online in the theme's colour -->
-					<StatusDot status={member.status} class="absolute right-0 bottom-0 h-6 w-6 border-4 border-zinc-800" />
+					<StatusDot
+						status={member.status}
+						mobileOnly={member.mobile_only}
+						class="absolute right-0 bottom-0 w-6 border-4 text-zinc-800"
+					/>
 				</div>
 
 				<div class="relative z-10 mt-2 flex h-10 w-full items-center justify-end gap-2">

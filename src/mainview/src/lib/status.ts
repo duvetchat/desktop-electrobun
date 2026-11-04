@@ -22,7 +22,7 @@ export function chosenStatus(status: number | undefined): ChosenStatus {
 	return status === 2 ? 2 : 1;
 }
 
-/** The background of the dot that shows a status on an avatar. */
+/** The background of the dot that shows a status on an avatar, and of the phone in its place (StatusDot). */
 export function statusDotClass(status: MemberOnSidebar["status"]): string {
 	switch (status) {
 		case "online":

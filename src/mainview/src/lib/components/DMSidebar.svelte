@@ -7,7 +7,7 @@
 	import type { Conversation } from "$lib/api/conversations";
 	import { getAvatarURL } from "$lib/common/common";
 	import StatusDot from "$lib/components/StatusDot.svelte";
-	import { getUserOnlineStatus } from "$lib/api/ws/connection";
+	import { getUserMobileOnly, getUserOnlineStatus } from "$lib/api/ws/connection";
 	import { userStatusToString, type MemberOnSidebar } from "$lib/types";
 	import { conversationTab, tabDragData } from "$lib/pane";
 
@@ -44,18 +44,23 @@
 		return getAvatarURL(other?.user_id ?? "", other?.user?.avatar);
 	}
 
-	// The other member's status, in a DM (a group has none), offline included, as the member list shows it. Statuses
-	// come through spaces and friendships, so someone who is neither our friend nor in a space with us shows offline.
-	function convStatus(conv: Conversation): MemberOnSidebar["status"] | null {
+	// The other member's status, in a DM (a group has none), offline included, as the member list shows it, and whether
+	// they're connected only from the mobile app. Statuses come through spaces and friendships, so someone who is
+	// neither our friend nor in a space with us shows offline.
+	function convStatus(conv: Conversation): { status: MemberOnSidebar["status"]; mobileOnly: boolean } | null {
 		if (conv.type === 2) return null;
 		const other = conv.members.find((m) => m.user_id !== get(currentUser)?.id);
-		return userStatusToString(other ? getUserOnlineStatus(other.user_id) : 0);
+		if (!other) return { status: "offline", mobileOnly: false };
+		return {
+			status: userStatusToString(getUserOnlineStatus(other.user_id)),
+			mobileOnly: getUserMobileOnly(other.user_id),
+		};
 	}
 </script>
 
 {#snippet conversationList()}
 	{#each $conversations as conv (conv.id)}
-		{@const status = convStatus(conv)}
+		{@const shown = convStatus(conv)}
 		{@const unread = $unreadConversations.has(conv.id)}
 		<button
 			class="focus-visible:outline-duvet-accent flex w-full items-center gap-2.5 rounded-[10px] px-2 py-1.5 text-left transition-colors focus-visible:outline-2
@@ -76,8 +81,12 @@
 		>
 			<div class="relative shrink-0">
 				<UserAvatar src={convAvatarSrc(conv)} name={convTitle(conv)} size={embedded ? 26 : 32} />
-				{#if status}
-					<StatusDot {status} class="border-duvet-sunk absolute -right-0.5 -bottom-0.5 size-3 border-2" />
+				{#if shown}
+					<StatusDot
+						status={shown.status}
+						mobileOnly={shown.mobileOnly}
+						class="text-duvet-sunk absolute -right-0.5 -bottom-0.5 w-3 border-2"
+					/>
 				{/if}
 			</div>
 			<div class="flex min-w-0 flex-1 flex-col">
