@@ -12,6 +12,7 @@
 	import type { GatewaySpace, MemberOnSidebar, Message, SpaceEmoji } from "$lib/types";
 	import { canViewRoom } from "$lib/permissions";
 	import { customEmojiMapOf, escapeHtml, mentionMapOf } from "$lib/markdown";
+	import { afterPress } from "$lib/press";
 
 	// The search box of a pane's bar (or a conversation's header), and the panel of its results. The panel is absolute:
 	// it covers the right side of the nearest positioned ancestor, the pane, under its 3rem bar. In a narrow pane (its
@@ -70,6 +71,22 @@
 	let dismissed = $state(false);
 	// The suggestion the arrow keys are on; at -1, Enter searches.
 	let selected = $state(-1);
+	let box = $state<HTMLElement | null>(null);
+	// A press elsewhere takes the focus from the empty box, which then shrinks (to its icon, in a narrow pane) and moves
+	// what's left of it in the bar, the pins and members buttons among them, from under the pointer before the press
+	// ends: the press would end on something else, and its click would be lost (#80). So the box keeps its width until
+	// the press has ended and made its click.
+	let pressHeld = $state(false);
+	$effect(() => {
+		if (!focused) return;
+		const onPress = (e: PointerEvent) => {
+			if (box?.contains(e.target as Node)) return;
+			pressHeld = true;
+			afterPress(window, () => (pressHeld = false));
+		};
+		window.addEventListener("pointerdown", onPress, true);
+		return () => window.removeEventListener("pointerdown", onPress, true);
+	});
 
 	// The word the caret is in: where it starts, and its text up to the caret.
 	const token = $derived.by(() => {
@@ -383,11 +400,14 @@
 </script>
 
 <div
+	bind:this={box}
 	class="border-duvet-line bg-duvet-sunk focus-within:border-duvet-accent relative flex h-8 shrink-0 items-center rounded-lg border transition-[width,border-color] motion-reduce:transition-none {open
 		? 'w-64'
 		: text
 			? 'w-48'
-			: 'w-48 focus-within:w-64 @max-3xl/pane:w-8 @max-3xl/pane:not-focus-within:overflow-hidden @max-3xl/pane:focus-within:w-44'}"
+			: pressHeld
+				? 'w-64 @max-3xl/pane:w-44'
+				: 'w-48 focus-within:w-64 @max-3xl/pane:w-8 @max-3xl/pane:not-focus-within:overflow-hidden @max-3xl/pane:focus-within:w-44'}"
 >
 	<SearchIcon class="text-duvet-ink2 pointer-events-none absolute left-2.5 size-3.5" />
 	<!-- 2px wider on the left than the input's text so a first label's background shows whole -->

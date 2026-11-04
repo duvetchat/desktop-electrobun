@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { conversations, currentUser, unreadConversations } from "$lib/stores.svelte";
+	import { conversations, currentUser, mentionCounts, unreadChannels, unreadConversations } from "$lib/stores.svelte";
 	import { get } from "svelte/store";
 	import { UsersRound } from "@lucide/svelte";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
@@ -9,7 +9,7 @@
 	import StatusDot from "$lib/components/StatusDot.svelte";
 	import { getUserMobileOnly, getUserOnlineStatus } from "$lib/api/ws/connection";
 	import { userStatusToString, type MemberOnSidebar } from "$lib/types";
-	import { conversationTab, tabDragData } from "$lib/pane";
+	import { conversationTab, tabDragData, tabNews } from "$lib/pane";
 
 	let {
 		activeConversationId = null,
@@ -45,8 +45,8 @@
 	}
 
 	// The other member's status, in a DM (a group has none), offline included, as the member list shows it, and whether
-	// they're connected only from the mobile app. Statuses come through spaces and friendships, so someone who is
-	// neither our friend nor in a space with us shows offline.
+	// they're connected only from the mobile app. Statuses come through spaces, friendships and conversations, so someone
+	// who is neither our friend nor in a space with us shows theirs too.
 	function convStatus(conv: Conversation): { status: MemberOnSidebar["status"]; mobileOnly: boolean } | null {
 		if (conv.type === 2) return null;
 		const other = conv.members.find((m) => m.user_id !== get(currentUser)?.id);
@@ -61,7 +61,14 @@
 {#snippet conversationList()}
 	{#each $conversations as conv (conv.id)}
 		{@const shown = convStatus(conv)}
-		{@const unread = $unreadConversations.has(conv.id)}
+		<!-- Its unread state and the mentions waiting in it, as its tab shows them: a mention leaves it unread. -->
+		{@const news = tabNews(
+			conversationTab(conv, $currentUser?.id),
+			$unreadChannels,
+			$unreadConversations,
+			$mentionCounts,
+		)}
+		{@const unread = news.unread}
 		<button
 			class="focus-visible:outline-duvet-accent flex w-full items-center gap-2.5 rounded-[10px] px-2 py-1.5 text-left transition-colors focus-visible:outline-2
 				{activeConversationId === conv.id
@@ -93,7 +100,13 @@
 				<span class="truncate text-sm leading-tight {unread ? 'font-bold' : 'font-medium'}">{convTitle(conv)}</span>
 				<span class="text-duvet-ink2 truncate text-xs">{convSubtitle(conv)}</span>
 			</div>
-			{#if unread}
+			{#if news.mentions}
+				<!-- Its mentions, as a room's row counts them -->
+				<span
+					class="bg-duvet-accent text-duvet-on-accent ml-1 flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full px-1 text-[11px] font-bold"
+					aria-label="{news.mentions} mentions">{news.mentions > 99 ? "99+" : news.mentions}</span
+				>
+			{:else if unread}
 				<span class="bg-duvet-accent ml-1 size-2 shrink-0 rounded-full" aria-label="Unread"></span>
 			{/if}
 		</button>

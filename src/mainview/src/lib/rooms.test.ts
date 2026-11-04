@@ -3,6 +3,7 @@ import {
 	categoryDropPosition,
 	spaceWithoutRoom,
 	withRoomReadState,
+	withRoomReadStates,
 	topLevelEnd,
 	withoutRoom,
 	type Channel,
@@ -139,6 +140,46 @@ describe("withRoomReadState", () => {
 			lastRead: { general: "m1", secret: "m3" },
 			lastMsg: { general: "m2", secret: "m3" },
 		});
+	});
+});
+
+// A SPACE_CREATE sent after READY (a space the user joined or made) has their read state in each of its rooms they can
+// view (read_states), as a ROOM_CREATE has its room's: the joined space shows its unread marks (#126).
+describe("withRoomReadStates", () => {
+	const ready = () => ({
+		unread: new Set(["general"]),
+		lastRead: { general: "m1" },
+		lastMsg: { general: "m2" },
+	});
+
+	test("a joined space's rooms take their read states, each as a ROOM_CREATE's", () => {
+		const read = ready();
+		const joined = {
+			news: { unread: true, last_read: null, last_msg: "m7" },
+			quiet: { unread: false, last_read: "m6", last_msg: "m6" },
+			empty: { unread: false, last_read: null, last_msg: null },
+		};
+		expect(withRoomReadStates(read, joined, () => undefined)).toEqual({
+			unread: new Set(["general", "news"]),
+			lastRead: { general: "m1", quiet: "m6" },
+			lastMsg: { general: "m2", news: "m7", quiet: "m6" },
+		});
+		expect(read).toEqual(ready());
+	});
+
+	test("a newer message the client already has of a room keeps it unread", () => {
+		// Its MESSAGE_CREATE came before the SPACE_CREATE, whose read states were read before the message.
+		const newest: Record<string, string> = { quiet: "m8" };
+		const joined = { quiet: { unread: false, last_read: "m6", last_msg: "m6" } };
+		expect(withRoomReadStates(ready(), joined, (roomId) => newest[roomId])).toEqual({
+			unread: new Set(["general", "quiet"]),
+			lastRead: { general: "m1", quiet: "m6" },
+			lastMsg: { general: "m2", quiet: "m8" },
+		});
+	});
+
+	test("none to take leaves the rooms as they are", () => {
+		expect(withRoomReadStates(ready(), {}, () => undefined)).toEqual(ready());
 	});
 });
 

@@ -170,8 +170,9 @@
 			class="z-301 w-80 overflow-hidden rounded-xl border border-zinc-700 bg-zinc-900 shadow-2xl"
 		>
 			{@const visibleRoles = member.roles.filter((role) => role.id !== spaceId)}
+			<!-- The banner, 5:2 as it's cropped (600×240) -->
 			<div
-				class="h-24 w-full"
+				class="aspect-[5/2] w-full"
 				style={member.banner_url
 					? `background-image: url('${member.banner_url}'); background-size: cover; background-position: center;`
 					: getMemberBannerStyle(member)}

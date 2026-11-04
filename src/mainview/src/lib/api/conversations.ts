@@ -1,11 +1,14 @@
 import api from "$lib/api/api";
 import { createAckThrottle } from "$lib/api/ack";
 import { messageSearchParams, type MessageSearch, type MessageSearchResponse } from "$lib/api/messages";
-import type { CallNotice, GatewayMessage, MessageType } from "$lib/types";
+import type { CallNotice, GatewayMessage, MessageType, Presence } from "$lib/types";
 
 export type ConversationType = 1 | 2; // 1 = DM, 2 = group
 
-export interface ConversationMember {
+/** Its presence is the member's when the conversations list was read, or the conversation's CONVERSATION_CREATE sent
+ * (their status and client status): rememberConversationStatuses and CONVERSATION_CREATE take it. An API from before
+ * it leaves it out. */
+export interface ConversationMember extends Partial<Presence> {
 	id: string;
 	conversation_id: string;
 	user_id: string;

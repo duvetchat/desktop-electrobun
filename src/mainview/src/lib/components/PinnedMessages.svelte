@@ -132,10 +132,13 @@
 		<PinIcon class="size-4" />
 	</Popover.Trigger>
 	<Popover.Portal>
+		<!-- It follows its button on every frame: opened from a focused search box, which then shrinks back and moves the
+		     button, it was left behind otherwise (#80). -->
 		<Popover.Content
 			side="bottom"
 			align="end"
 			sideOffset={8}
+			updatePositionStrategy="always"
 			class="z-50 flex max-h-[70vh] w-104 flex-col overflow-hidden rounded-lg border border-stone-800 bg-stone-950 font-normal shadow-2xl"
 		>
 			<div class="flex h-10 shrink-0 items-center gap-2 border-b border-stone-800 px-3">

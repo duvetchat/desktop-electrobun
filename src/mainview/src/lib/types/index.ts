@@ -647,6 +647,11 @@ export interface GatewaySpaceCreatePayload {
 	member_statuses?: Record<string, UserStatus>;
 	/** The client status of each member member_statuses has, by user ID. */
 	member_client_status?: Record<string, ClientStatus>;
+	/** In a person's SPACE_CREATE after READY (a space they joined or made, or its retry), their read state in each room
+	 * of it they can view, by room ID, as a ROOM_CREATE's read_state. READY's own SPACE_CREATEs have none, as READY has
+	 * theirs, nor has a bot's; nor one whose read failed, nor one of a space where they can view no room: its absence
+	 * says nothing about the rooms. */
+	read_states?: Record<string, RoomReadState>;
 }
 
 export interface ReactionEvent {
@@ -1169,6 +1174,39 @@ export function withRoomReadState(
 	if (last) lastMsg[roomId] = last;
 	else delete lastMsg[roomId];
 	return { unread, lastRead, lastMsg };
+}
+
+/** Whether every space READY listed (guild_ids) has had its SPACE_CREATE. One of a space READY didn't list (a space
+ * the user joined while their connection was identifying) or a second one of a space isn't one of those it waits for
+ * (#128). */
+export function readySpacesArrived(listed: ReadonlySet<string>, arrived: ReadonlySet<string>): boolean {
+	for (const id of listed) if (!arrived.has(id)) return false;
+	return true;
+}
+
+/** The spaces with one from a SPACE_CREATE: added at the end, or in the place of an earlier copy of it, which it
+ * replaces, as the gateway goes by the last SPACE_CREATE it sent and keeps the client up to date from there (#128). What
+ * a SPACE_CREATE doesn't carry stays as the client has it: the space's members and users it loaded, and the user's own
+ * member. */
+export function withSpaceCreate(spaces: GatewaySpace[], space: GatewaySpace): GatewaySpace[] {
+	const at = spaces.findIndex((s) => s.id === space.id);
+	if (at === -1) return [...spaces, space];
+	const { member, members, users } = spaces[at];
+	return spaces.map((s, i) => (i === at ? { ...space, member, members, users } : s));
+}
+
+/** READY's read states of the rooms with rooms' from the gateway in place of what they had of them, each as a
+ * ROOM_CREATE's is (withRoomReadState): a ROOM_CREATE's, or a SPACE_CREATE's read_states, which bring the unread marks of
+ * a space the user joined since READY. newest gives the newest message the client already has in a room. */
+export function withRoomReadStates(
+	rooms: { unread: Set<string>; lastRead: Record<string, string>; lastMsg: Record<string, string> },
+	states: Record<string, RoomReadState>,
+	newest: (roomId: string) => string | undefined,
+) {
+	return Object.entries(states).reduce(
+		(read, [roomId, state]) => withRoomReadState(read, roomId, state, newest(roomId)),
+		rooms,
+	);
 }
 
 /** Where a room or category dropped below everything goes: after the highest place at the top level. Its rooms and
