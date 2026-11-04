@@ -65,6 +65,13 @@ describe("Maximizer", () => {
 		expect(maximizer.press(small.workArea, [left, small])).toEqual(small.workArea);
 	});
 
+	test("puts a frame whose display is gone back on the one there is", () => {
+		const maximizer = new Maximizer();
+		maximizer.press({ x: 2100, y: 100, width: 1400, height: 900 }, displays);
+		// The right monitor unplugged: Windows moved the filled window onto the left one.
+		expect(maximizer.press(left.workArea, [left])).toEqual({ x: 520, y: 100, width: 1400, height: 900 });
+	});
+
 	test("does nothing without displays", () => {
 		expect(new Maximizer().press({ x: 0, y: 0, width: 800, height: 600 }, [])).toBeNull();
 	});

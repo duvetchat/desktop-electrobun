@@ -33,9 +33,9 @@ export function displayOf<D extends DisplayArea>(displays: D[], frame: Rect): D 
 	return best ?? displays.find((display) => display.isPrimary) ?? displays[0];
 }
 
-/** rect, at the place it had in from, moved into to and made to fit it. */
+/** rect, at the place it had in from, moved into to and made to fit it, from === to included: a frame whose display
+ * is gone (a dock unplugged) comes back on the one it fills. */
 function onto(rect: Rect, from: Rect, to: Rect): Rect {
-	if (same(from, to)) return rect;
 	const width = Math.min(rect.width, to.width);
 	const height = Math.min(rect.height, to.height);
 	return {
