@@ -238,6 +238,28 @@
 	// to send the request again, which the API refuses while it waits.
 	let profileOpenFor = $state<string | null>(null);
 
+	// A friend's banner shows faintly behind their row, and one that fails to load is tried again, as in the member list.
+	const MAX_BANNER_RETRIES = 3;
+	const BANNER_RETRY_DELAY = 2000;
+	let bannerErrors = $state(new Set<string>());
+	let bannerRetryCounts = $state(new Map<string, number>());
+
+	function handleBannerError(userId: string) {
+		const count = (bannerRetryCounts.get(userId) ?? 0) + 1;
+		bannerRetryCounts.set(userId, count);
+		if (count < MAX_BANNER_RETRIES) {
+			bannerErrors.add(userId);
+			bannerErrors = new Set(bannerErrors);
+			setTimeout(() => {
+				bannerErrors.delete(userId);
+				bannerErrors = new Set(bannerErrors);
+			}, BANNER_RETRY_DELAY * count);
+		} else {
+			bannerErrors.add(userId);
+			bannerErrors = new Set(bannerErrors);
+		}
+	}
+
 	async function handleOpenDM(friend: Friend) {
 		const me = get(currentUser);
 		if (!me) return;
@@ -436,14 +458,28 @@
 								<ul class="mb-3 flex flex-col gap-px">
 									{#each group.friends as { friend, member, activity } (friend.id)}
 										<li
-											class="group rounded-row hover:bg-duvet-card/70 flex items-center gap-3 px-2 py-2 transition-colors motion-reduce:transition-none"
+											class="group rounded-row hover:bg-duvet-card/70 relative flex items-center gap-3 overflow-hidden px-2 py-2 transition-colors motion-reduce:transition-none"
 										>
+											{#if member.banner_url && !bannerErrors.has(member.id)}
+												<img
+													src="{member.banner_url}{bannerRetryCounts.get(member.id)
+														? `?r=${bannerRetryCounts.get(member.id)}`
+														: ''}"
+													alt=""
+													class="pointer-events-none absolute inset-0 h-full w-full [mask-image:linear-gradient(to_right,transparent_40%,black_90%)] object-cover object-right {member.status ===
+													'offline'
+														? 'opacity-15'
+														: 'opacity-25'}"
+													onerror={() => handleBannerError(member.id)}
+													draggable="false"
+												/>
+											{/if}
 											<MemberProfilePopover
 												{member}
 												side="bottom"
 												open={profileOpenFor === friend.id}
 												onOpenChange={(o) => (profileOpenFor = o ? friend.id : null)}
-												triggerClass="rounded-row flex min-w-0 flex-1 cursor-pointer items-center gap-3 text-left {focusRing}"
+												triggerClass="rounded-row relative flex min-w-0 flex-1 cursor-pointer items-center gap-3 text-left {focusRing}"
 											>
 												{#snippet children()}
 													<div class="relative shrink-0">
@@ -471,7 +507,7 @@
 											</MemberProfilePopover>
 											<button
 												type="button"
-												class="bg-duvet-card text-duvet-ink2 shadow-duvet-raised hover:text-duvet-ink flex size-9 items-center justify-center rounded-xl transition-colors motion-reduce:transition-none {focusRing}"
+												class="bg-duvet-card text-duvet-ink2 shadow-duvet-raised hover:text-duvet-ink relative flex size-9 items-center justify-center rounded-xl transition-colors motion-reduce:transition-none {focusRing}"
 												aria-label="Message {member.username}"
 												title="Message"
 												onclick={() => handleOpenDM(friend)}
@@ -480,7 +516,7 @@
 											</button>
 											<button
 												type="button"
-												class="text-duvet-ink2 hover:text-duvet-danger hover:bg-duvet-card flex size-9 items-center justify-center rounded-xl opacity-0 transition group-focus-within:opacity-100 group-hover:opacity-100 focus-visible:opacity-100 motion-reduce:transition-none {focusRing}"
+												class="text-duvet-ink2 hover:text-duvet-danger hover:bg-duvet-card relative flex size-9 items-center justify-center rounded-xl opacity-0 transition group-focus-within:opacity-100 group-hover:opacity-100 focus-visible:opacity-100 motion-reduce:transition-none {focusRing}"
 												aria-label="Remove {member.username} from your friends"
 												title="Remove friend"
 												onclick={() => confirmUnfriend(friend)}
