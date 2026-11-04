@@ -41,19 +41,20 @@ export function retryAfterMs(header: string | null, now: number): number | undef
 export interface EmojiImage {
 	readonly src: string;
 	readonly isConnected: boolean;
-	/** Loads the image from src. */
-	show(src: string): void;
+	/** Loads the image from src; settled, when given, runs once the image has loaded it or failed to. */
+	show(src: string, settled?: () => void): void;
 	/** Shows the emoji's name instead of its image. */
 	showName(): void;
 }
 
-/** What a try again needs from the page: a fetch, a timer, a clock, chance, and a URL for bytes it fetched. */
+/** What a try again needs from the page: a fetch, a timer, a clock, chance, and URLs for bytes it fetched. */
 export interface RetryDeps {
 	fetch: (url: string, init: RequestInit) => Promise<Response>;
 	sleep: (ms: number) => Promise<void>;
 	now: () => number;
 	random: () => number;
 	objectUrl: (blob: Blob) => string;
+	revokeUrl: (url: string) => void;
 }
 
 // A 4xx but 429: the file is gone, or never was, and asking again won't change that.
@@ -91,10 +92,10 @@ async function askAgain(deps: RetryDeps, url: string): Promise<Answer> {
 // under way and the images waiting for it, and how it ended.
 interface EmojiFile {
 	attempts: number;
-	recovery?: Promise<string | null>;
+	recovery?: Promise<Blob | string | null>;
 	waiting: Set<EmojiImage>;
-	/** A URL of its bytes, fetched by a try again: an image of it shows them without asking again. */
-	loaded?: string;
+	/** Its bytes, fetched by a try again: an image of it shows them without asking again. */
+	loaded?: Blob;
 	gone?: boolean;
 	gaveUpAt?: number;
 }
@@ -115,7 +116,7 @@ export class EmojiRetries {
 		const url = img.src.split("?")[0];
 		let file = this.files.get(url);
 		if (file?.gone) return img.showName();
-		if (file?.loaded) return img.show(file.loaded);
+		if (file?.loaded) return this.showBytes(img, file.loaded);
 		// Its tries again all failed: its images show its name until GIVE_UP_MS after that, then try afresh.
 		if (file?.gaveUpAt !== undefined && this.deps.now() - file.gaveUpAt < GIVE_UP_MS) return img.showName();
 		if (!file || file.gaveUpAt !== undefined) {
@@ -129,12 +130,20 @@ export class EmojiRetries {
 		current.waiting.delete(img);
 		if (!img.isConnected) return;
 		if (next === null) img.showName();
+		else if (next instanceof Blob) this.showBytes(img, next);
 		else img.show(next);
 	}
 
-	// What the images of url load next: a URL of its bytes, url itself (asked again, so no cache answers it) for the
-	// image to load, or null when they show the emoji's name.
-	private async recover(url: string, file: EmojiFile): Promise<string | null> {
+	// img shows the bytes from a URL of its own, revoked once it has loaded them or failed to, so that no URL outlives
+	// its image's load; the bytes stay with the emoji, for its next image that fails.
+	private showBytes(img: EmojiImage, bytes: Blob) {
+		const url = this.deps.objectUrl(bytes);
+		img.show(url, () => this.deps.revokeUrl(url));
+	}
+
+	// What the images of url load next: its bytes, url itself (asked again, so no cache answers it) for the image to
+	// load, or null when they show the emoji's name.
+	private async recover(url: string, file: EmojiFile): Promise<Blob | string | null> {
 		let retryAfter: number | undefined;
 		// Its first failure: a HEAD answers from the attachment's row, never asking the bucket, so it tells a file that
 		// is gone without asking for it again. It can't tell the bucket's 502 or 503: the tries again can. A 429 says
@@ -158,7 +167,7 @@ export class EmojiRetries {
 			}
 			const answer = await askAgain(this.deps, url);
 			if (answer.kind === "bytes") {
-				file.loaded = this.deps.objectUrl(answer.blob);
+				file.loaded = answer.blob;
 				return file.loaded;
 			}
 			if (answer.kind === "elsewhere") return `${url}?r=${this.deps.now()}`;
@@ -188,6 +197,7 @@ export function retryEmojis(doc: Pick<EventTarget, "addEventListener" | "removeE
 		now: Date.now,
 		random: Math.random,
 		objectUrl: (blob) => URL.createObjectURL(blob),
+		revokeUrl: (url) => URL.revokeObjectURL(url),
 	});
 	const onError = (e: Event) => {
 		const img = e.target;
@@ -199,7 +209,13 @@ export function retryEmojis(doc: Pick<EventTarget, "addEventListener" | "removeE
 			get isConnected() {
 				return img.isConnected;
 			},
-			show: (src) => (img.src = src),
+			show: (src, settled) => {
+				if (settled) {
+					img.addEventListener("load", settled, { once: true });
+					img.addEventListener("error", settled, { once: true });
+				}
+				img.src = src;
+			},
 			showName: () =>
 				img.replaceWith(
 					Object.assign(img.ownerDocument.createElement("span"), {

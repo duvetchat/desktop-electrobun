@@ -21,6 +21,7 @@ function page(answers: (Response | Error | (() => Response))[]) {
 	const events: string[] = [];
 	let now = 1_000_000;
 	let blobs = 0;
+	const revoked: string[] = [];
 	const retries = new EmojiRetries({
 		fetch: async (url, init) => {
 			events.push(`${init.method} ${url}`);
@@ -36,8 +37,9 @@ function page(answers: (Response | Error | (() => Response))[]) {
 		now: () => now,
 		random: () => 0,
 		objectUrl: () => `blob:emoji-${++blobs}`,
+		revokeUrl: (url) => revoked.push(url),
 	});
-	return { retries, events, later: (ms: number) => (now += ms) };
+	return { retries, events, revoked, later: (ms: number) => (now += ms) };
 }
 
 function image(src = URL_A) {
@@ -46,9 +48,12 @@ function image(src = URL_A) {
 		isConnected: true as boolean,
 		shown: [] as string[],
 		named: false,
-		show(next: string) {
+		// The image loaded what it was shown.
+		loaded: () => {},
+		show(next: string, settled?: () => void) {
 			img.src = next;
 			img.shown.push(next);
+			img.loaded = settled ?? (() => {});
 		},
 		showName() {
 			img.named = true;
@@ -174,16 +179,21 @@ describe("EmojiRetries", () => {
 	});
 
 	test("asks once for all the images of an emoji, and shows its bytes to those that fail later", async () => {
-		const { retries, events } = page([ok(), ok()]);
+		const { retries, events, revoked } = page([ok(), ok()]);
 		const [one, two] = [image(), image()];
 		await Promise.all([retries.failed(one), retries.failed(two)]);
 		expect(events).toEqual([`HEAD ${URL_A}`, "wait 2000", `GET ${URL_A}`]);
-		expect(one.shown).toEqual(["blob:emoji-1"]);
-		expect(two.shown).toEqual(["blob:emoji-1"]);
+		// Each from a URL of its own, revoked once the image has loaded it.
+		expect([one.shown, two.shown]).toEqual([["blob:emoji-1"], ["blob:emoji-2"]]);
+		one.loaded();
+		expect(revoked).toEqual(["blob:emoji-1"]);
 		const three = image();
 		await retries.failed(three);
-		expect(three.shown).toEqual(["blob:emoji-1"]);
+		expect(three.shown).toEqual(["blob:emoji-3"]);
 		expect(events).toHaveLength(3);
+		three.loaded();
+		two.loaded();
+		expect(revoked).toEqual(["blob:emoji-1", "blob:emoji-3", "blob:emoji-2"]);
 	});
 
 	test("asks nothing more once no image of the emoji is left in the page", async () => {
