@@ -60,7 +60,7 @@
 	} from "$lib/types";
 	import { MessageType, type MemberOnSidebar, type GatewaySpace, type Message, type SpaceEmoji } from "$lib/types";
 	import { getHostURL, getAvatarURL, DUVET_DOMAIN } from "$lib/common/common";
-	import { isUuid, parseMessageLink, type MessageLink } from "$lib/urls";
+	import { cardLink, parseInviteLink, parseMessageLink, type MessageLink } from "$lib/urls";
 
 	import InviteEmbed from "$lib/components/InviteEmbed.svelte";
 	import BotInviteEmbed from "$lib/components/BotInviteEmbed.svelte";
@@ -733,31 +733,8 @@
 	}
 
 	// ── Message link navigation ────────────────────────────────────────────────
-	function parseInviteLink(url: string): boolean {
-		return parseInviteCode(url) !== null;
-	}
-
-	function parseInviteCode(url: string): string | null {
-		try {
-			const u = new URL(url);
-			if ((u.origin === DUVET_DOMAIN || u.origin === window.location.origin) && u.pathname === "/invite") {
-				return u.searchParams.get("code");
-			}
-		} catch {}
-		return null;
-	}
-
-	function parseBotInviteLink(url: string): string | null {
-		try {
-			const u = new URL(url);
-			if ((u.origin === DUVET_DOMAIN || u.origin === window.location.origin) && u.pathname === "/invite") {
-				// Only a bot's ID: it goes into the paths of the requests about the bot.
-				const bot = u.searchParams.get("bot");
-				return isUuid(bot) ? bot : null;
-			}
-		} catch {}
-		return null;
-	}
+	// An invite on duvet.chat or this app's own pages (lib/urls.ts).
+	const inviteOf = (url: string) => parseInviteLink(url, window.location.origin);
 
 	function tryNavigateMessageLink(url: string): boolean {
 		const link = parseMessageLink(url);
@@ -784,19 +761,17 @@
 		const botInviteIds: string[] = [];
 		const messageLinks: MessageLink[] = [];
 
-		urls.forEach((url) => {
+		urls.forEach((raw) => {
+			// Read as the mobile app reads it, and the API, which leaves out these links' previews for the cards.
+			const url = cardLink(raw);
 			const link = parseMessageLink(url);
 			if (link) {
 				messageLinks.push(link);
 				return;
 			}
-			const code = parseInviteCode(url);
-			if (code) {
-				inviteCodes.push(code);
-				return;
-			}
-			const botId = parseBotInviteLink(url);
-			if (botId) botInviteIds.push(botId);
+			const invite = inviteOf(url);
+			if (invite && "code" in invite) inviteCodes.push(invite.code);
+			else if (invite) botInviteIds.push(invite.bot);
 		});
 
 		return { text: content, inviteCodes, botInviteIds, messageLinks };
@@ -1342,15 +1317,18 @@
 									>
 										{#each parseTextSegments(processed.text) as segment}
 											{#if segment.type === "link"}
-												{#if parseMessageLink(segment.content)}
-													{@const resolved = resolveMessageLink(segment.content)}
+												{@const link = cardLink(segment.content)}
+												{@const invite = inviteOf(link)}
+												<!-- One of Duvet's own links reads as the cards do (cardLink): what follows it is text -->
+												{#if parseMessageLink(link)}
+													{@const resolved = resolveMessageLink(link)}
 													{#if resolved}
 														<button
 															type="button"
 															class="mx-0.5 inline-flex cursor-pointer items-center gap-1 rounded border border-zinc-600/50 bg-zinc-700/70 px-1.5 py-0.5 align-middle text-zinc-300 transition-colors hover:bg-zinc-600/80 hover:text-white"
 															onclick={(e) => {
 																e.stopPropagation();
-																tryNavigateMessageLink(segment.content);
+																tryNavigateMessageLink(link);
 															}}
 															title="{resolved.spaceName} › #{resolved.roomName}"
 														>
@@ -1375,22 +1353,20 @@
 															class="cursor-pointer text-xs text-zinc-500 transition-colors hover:text-zinc-300"
 															onclick={(e) => {
 																e.stopPropagation();
-																tryNavigateMessageLink(segment.content);
-															}}>{segment.content}</button
+																tryNavigateMessageLink(link);
+															}}>{link}</button
 														>
-													{/if}
-												{:else if parseInviteLink(segment.content) || parseBotInviteLink(segment.content)}
-													{@const botId = parseBotInviteLink(segment.content)}
-													{@const invCode = parseInviteCode(segment.content)}
+													{/if}{segment.content.slice(link.length)}
+												{:else if invite}
 													<button
 														type="button"
 														class="cursor-pointer text-stone-300 hover:underline"
 														onclick={(e) => {
 															e.stopPropagation();
-															if (botId) botInviteRequest.set(botId);
-															else if (invCode) spaceInviteRequest.set(invCode);
-														}}>{segment.content}</button
-													>
+															if ("bot" in invite) botInviteRequest.set(invite.bot);
+															else spaceInviteRequest.set(invite.code);
+														}}>{link}</button
+													>{segment.content.slice(link.length)}
 												{:else}
 													<a
 														href={segment.content}

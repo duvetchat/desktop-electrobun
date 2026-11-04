@@ -119,6 +119,56 @@ export function pathSegment(value: string): string {
 	return segment;
 }
 
+/**
+ * A link in a message's text as the mobile app reads it before it draws a card (duvetLinksIn, its
+ * lib/widgets/link_embeds.dart), and the API before it leaves out the preview of one of Duvet's own links, as the
+ * clients draw a card instead (mobileLink, api#216): up to a space or one of <>()[]"', and without the .,;:!? at its
+ * end. So a link that ends a sentence, or sits in brackets, gets its card: "(https://duvet.chat/invite/abc)" and
+ * "https://duvet.chat/invite?bot=<id>.". It's always the start of raw.
+ */
+export function cardLink(raw: string): string {
+	return (/^[^\s<>()[\]"']*/u.exec(raw)?.[0] ?? "").replace(/[.,;:!?]+$/u, "");
+}
+
+/** What one of Duvet's invite links names: a space's invite, by its code, or the bot it adds to a space. */
+export type InviteLink = { code: string } | { bot: string };
+
+/**
+ * The invite a link names (read as cardLink reads it), on duvet.chat or at ownOrigin, the app's own: a space's from
+ * /invite?code=<code> or /invite/<code>, or a bot's from /invite?bot=<id> or /invite.html?bot=<id>, as the API and
+ * the mobile app read them; nothing otherwise. A bot's ID goes into API paths, so it's a UUID (isUuid), and a code
+ * holds no / ? # or \, as the mobile app has it. The slashes at the path's ends don't count, as for the API.
+ */
+export function parseInviteLink(url: string, ownOrigin: string): InviteLink | null {
+	let parsed: URL;
+	try {
+		parsed = new URL(url);
+	} catch {
+		return null;
+	}
+	if (parsed.origin !== DUVET_DOMAIN && parsed.origin !== ownOrigin) return null;
+	const segments = parsed.pathname.replace(/^\/+|\/+$/g, "").split("/");
+	const [page, rest] = segments;
+	const code =
+		segments.length === 1 && page === "invite"
+			? parsed.searchParams.get("code")
+			: segments.length === 2 && page === "invite"
+				? decodedSegment(rest)
+				: null;
+	if (code && !/[/?#\\]/.test(code)) return { code };
+	const bot = parsed.searchParams.get("bot");
+	return segments.length === 1 && (page === "invite" || page === "invite.html") && isUuid(bot) ? { bot } : null;
+}
+
+// A path segment as it reads, or null for one that doesn't decode.
+function decodedSegment(segment: string): string | null {
+	try {
+		return decodeURIComponent(segment);
+	} catch {
+		return null;
+	}
+}
+
 /** The message a link names: its space, room and message, or its conversation and message (space and room empty). */
 export interface MessageLink {
 	spaceId: string;

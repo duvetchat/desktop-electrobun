@@ -1,9 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import type { Component, Embed } from "$lib/types";
 import {
+	cardLink,
 	frameSandbox,
 	isUuid,
 	localUrl,
+	parseInviteLink,
 	parseMessageLink,
 	pathSegment,
 	playerFrame,
@@ -415,6 +417,77 @@ describe("playerFrame", () => {
 	test("a page frameSandbox refuses isn't framed, click or not", () => {
 		for (const url of ["https://duvet.chat/app", "http://localhost:5173/app", "javascript:alert(1)", "not a url"]) {
 			expect(playerFrame(url, own)).toBeUndefined();
+		}
+	});
+});
+
+describe("cardLink", () => {
+	test("reads a link as the mobile app and the API do: up to a space or a bracket or quote, without its end's .,;:!?", () => {
+		const bot = `https://duvet.chat/invite?bot=${ID1}`;
+		expect(cardLink(`${bot}.`)).toBe(bot);
+		expect(cardLink(`${bot}),`)).toBe(bot);
+		expect(cardLink(`${bot}?!`)).toBe(bot);
+		expect(cardLink("https://duvet.chat/invite/abc)def")).toBe("https://duvet.chat/invite/abc");
+		expect(cardLink(`https://duvet.chat/channels/${ID1}/${ID2}/${ID3}"`)).toBe(
+			`https://duvet.chat/channels/${ID1}/${ID2}/${ID3}`,
+		);
+		expect(cardLink("https://duvet.chat/invite/abc>")).toBe("https://duvet.chat/invite/abc");
+		expect(cardLink("https://duvet.chat/invite/abc]")).toBe("https://duvet.chat/invite/abc");
+		expect(cardLink("https://duvet.chat/invite/abc'")).toBe("https://duvet.chat/invite/abc");
+		// The . in a link's middle stays.
+		expect(cardLink("https://duvet.chat/invite.html?bot=x")).toBe("https://duvet.chat/invite.html?bot=x");
+	});
+});
+
+describe("parseInviteLink", () => {
+	const own = "http://localhost:5173";
+
+	test("reads a space's invite from /invite?code= and /invite/<code>, and a bot's from /invite?bot= and /invite.html?bot=", () => {
+		expect(parseInviteLink("https://duvet.chat/invite?code=abc", own)).toEqual({ code: "abc" });
+		expect(parseInviteLink("https://duvet.chat/invite/abc", own)).toEqual({ code: "abc" });
+		expect(parseInviteLink("https://duvet.chat/invite/abc/", own)).toEqual({ code: "abc" });
+		expect(parseInviteLink("https://duvet.chat/invite/a%20b", own)).toEqual({ code: "a b" });
+		expect(parseInviteLink(`https://duvet.chat/invite?bot=${ID1}`, own)).toEqual({ bot: ID1 });
+		expect(parseInviteLink(`https://duvet.chat/invite.html?bot=${ID1}`, own)).toEqual({ bot: ID1 });
+		expect(parseInviteLink(`https://duvet.chat/invite.html?bot=${ID1.toUpperCase()}`, own)).toEqual({
+			bot: ID1.toUpperCase(),
+		});
+	});
+
+	test("reads them on the app's own pages too, as before", () => {
+		expect(parseInviteLink(`${own}/invite?code=abc`, own)).toEqual({ code: "abc" });
+		expect(parseInviteLink(`${own}/invite/abc`, own)).toEqual({ code: "abc" });
+		expect(parseInviteLink(`${own}/invite.html?bot=${ID1}`, own)).toEqual({ bot: ID1 });
+	});
+
+	test("reads what the card names after a sentence's end, once read as cardLink reads it", () => {
+		expect(parseInviteLink(cardLink(`https://duvet.chat/invite?bot=${ID1}.`), own)).toEqual({ bot: ID1 });
+		expect(parseInviteLink(cardLink("https://duvet.chat/invite/abc),"), own)).toEqual({ code: "abc" });
+	});
+
+	test("refuses other sites, other pages, a bot's ID that isn't a UUID and a code no API path can hold", () => {
+		for (const url of [
+			"https://discord.com/invite/abc",
+			"https://duvet.chat.evil.example/invite/abc",
+			"https://www.duvet.chat/invite/abc",
+			"http://duvet.chat/invite/abc",
+			"https://duvet.chat/invite",
+			"https://duvet.chat/invite/",
+			"https://duvet.chat/invite?code=",
+			"https://duvet.chat/invite.html?code=abc",
+			"https://duvet.chat/invite/abc/def",
+			"https://duvet.chat/invite//abc",
+			"https://duvet.chat/invites/abc",
+			"https://duvet.chat/Invite/abc",
+			"https://duvet.chat/invite/a%2Fb",
+			"https://duvet.chat/invite/%E0%A4%A",
+			"https://duvet.chat/invite?bot=../users/@me",
+			"https://duvet.chat/invite/?bot=x",
+			`https://duvet.chat/invite.html/x?bot=${ID1}`,
+			`https://duvet.chat/channels/${ID1}/${ID2}/${ID3}`,
+			"not a url",
+		]) {
+			expect(parseInviteLink(url, own)).toBeNull();
 		}
 	});
 });
