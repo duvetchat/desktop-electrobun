@@ -53,7 +53,7 @@
 	import { toast } from "$lib/stores/toast.svelte";
 	import { getApiError } from "$lib/api/api";
 	import { withSentMessage } from "$lib/arrivals";
-	import { dividerPastWindow, inWindow, loadedTo, readWhenLeft, withPresent } from "$lib/jumps";
+	import { dividerPastWindow, inWindow, leaving, loadedTo, withPresent } from "$lib/jumps";
 	import { MessageSquare, Phone, UserPlus, Users } from "@lucide/svelte";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
 	import Chat from "$lib/components/Chat.svelte";
@@ -700,15 +700,16 @@
 		return () => {
 			const msgs = get(dmMessages)[convId] ?? [];
 			// A list that stops short of the newest messages (a jump's, with newer ones still to load below) is no sign of
-			// having read them: it doesn't ack the conversation.
-			if (isAtBottom && !hasMoreBelow) ackNewest(convId, msgs);
-			const read = readWhenLeft(
-				{ newest: newestConfirmedId(msgs), moreBelow: hasMoreBelow, loadedBelowTo },
+			// having read them: it doesn't ack the conversation (leaving).
+			const left = leaving(
+				{ atBottom: isAtBottom, newest: newestConfirmedId(msgs), moreBelow: hasMoreBelow, loadedBelowTo },
+				convUnreadAfter,
 				ackedConvMsgId.get(convId),
 				get(lastReadConvs)?.[convId],
 			);
-			if (convUnreadAfter && read) convUnreadAfter = null;
-			if (convUnreadAfter) {
+			if (left.ack) ackNewest(convId, msgs);
+			if (!left.unread) convUnreadAfter = null;
+			else {
 				unreadConversations.update((s) => {
 					s.add(convId);
 					return s;

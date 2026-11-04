@@ -35,6 +35,22 @@ export function readWhenLeft(
 }
 
 /**
+ * What leaving a room's or a conversation's list does: it acks the newest message only from the bottom of a list that
+ * reaches it, with no newer messages to load below (the bottom of a jump's pages is no sign of having read them), and
+ * the list stays unread when it has an unread divider and isn't read once left (readWhenLeft).
+ */
+export function leaving(
+	list: { atBottom: boolean; newest: string; moreBelow: boolean; loadedBelowTo: string },
+	unreadAfter: string | null | undefined,
+	acked: string | undefined,
+	readUpTo: string | undefined,
+): { ack: boolean; unread: boolean } {
+	const ack = list.atBottom && !list.moreBelow && !!list.newest;
+	const read = readWhenLeft(list, ack ? list.newest : acked, readUpTo);
+	return { ack, unread: !!unreadAfter && !read };
+}
+
+/**
  * Where the next page below a jump's pages starts: after the newest message those pages have loaded, the one before
  * (`after`) or the newest of the page that just came. Never after a message that came meanwhile (another member's, or
  * one the user sent), which isn't one of those pages: the messages between it and the pages would never load.

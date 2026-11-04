@@ -18,7 +18,7 @@
 	import { get } from "svelte/store";
 	import { closeTabsIn, isConversationTab, makeSplit, makeLeaf, tabFromDragData, tabTitle } from "$lib/pane";
 	import { getMessages, getMessagesAfter, getMessageById, ackRoom } from "$lib/api/messages";
-	import { dividerPastWindow, inWindow, loadedTo, withPresent } from "$lib/jumps";
+	import { dividerPastWindow, inWindow, leaving, loadedTo, withPresent } from "$lib/jumps";
 	import { onMount, onDestroy, type Snippet } from "svelte";
 
 	import type { MemberOnSidebar, GatewaySpace, PaneNode, Guild, Tab } from "$lib/types";
@@ -211,19 +211,31 @@
 	// ACK when leaving the channel (channel switch, the Friends view hiding the pane, unmount) — only if
 	// at bottom. It comes before the effect below, which resets paneIsAtBottom for the next channel:
 	// Svelte reruns effects in order, and this cleanup has to read the value of the channel being left.
-	// Only the bottom reads a channel, not opening it. One left read through loses its unread divider:
-	// the next visit opens at the bottom, unless new messages came meanwhile. One left above its newest
-	// messages keeps its divider, and is unread again in the sidebar, as the server still has it.
+	// Only the bottom reads a channel, not opening it, and only the bottom of a list that reaches the room's newest
+	// message: a jump's pages, with newer messages still to load below, are no sign of having read those (leaving). One
+	// left read through loses its unread divider: the next visit opens at the bottom, unless new messages came meanwhile.
+	// One left above its newest messages keeps its divider, and is unread again in the sidebar, as the server still has
+	// it.
 	$effect(() => {
 		const channelId = isActive && node.kind === "leaf" ? node.activeChannelId : null;
 		return () => {
 			if (!channelId) return;
 			const msgs = get(channelMessages)[channelId] ?? [];
-			if (paneIsAtBottom) ackNewest(channelId, msgs);
-			if (channelUnreadAfter[channelId] && ackedMsgIds.get(channelId) === newestConfirmedId(msgs)) {
-				channelUnreadAfter[channelId] = null;
-			}
-			if (channelUnreadAfter[channelId]) {
+			const left = leaving(
+				{
+					atBottom: paneIsAtBottom,
+					newest: newestConfirmedId(msgs) ?? "",
+					moreBelow: channelHasMoreBelow[channelId] === true,
+					loadedBelowTo: channelLoadedBelowTo[channelId] ?? "",
+				},
+				channelUnreadAfter[channelId],
+				ackedMsgIds.get(channelId),
+				get(lastReadRooms)[channelId],
+			);
+			if (left.ack) ackNewest(channelId, msgs);
+			if (!left.unread) {
+				if (channelUnreadAfter[channelId]) channelUnreadAfter[channelId] = null;
+			} else {
 				unreadChannels.update((s) => {
 					s.add(channelId);
 					return s;

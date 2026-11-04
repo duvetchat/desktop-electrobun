@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { dividerPastWindow, inWindow, loadedTo, quoteJump, readWhenLeft, withPresent } from "$lib/jumps";
+import { dividerPastWindow, inWindow, leaving, loadedTo, quoteJump, readWhenLeft, withPresent } from "$lib/jumps";
 
 const QUOTED = "01920000-0000-7000-8000-0000000000aa";
 const CONVERSATION = "01920000-0000-7000-8000-0000000c0c0c";
@@ -175,5 +175,31 @@ describe("dividerPastWindow", () => {
 
 	test("the jump's own pages, history the reader scrolls into, set none", () => {
 		expect(dividerPastWindow([...jump, from(100, "alice")], m(120), "me", m(10))).toBeNull();
+	});
+});
+
+describe("leaving", () => {
+	// A room or conversation read up to 100 (its divider there); a jump to 60 loaded up to 160, newer messages below.
+	const m = (n: number) => `01930000-0000-7000-8000-${String(n).padStart(12, "0")}`;
+	const window = { newest: m(160), moreBelow: true, loadedBelowTo: m(160) };
+
+	test("the bottom of a jump's pages, with newer messages below, acks nothing and stays unread", () => {
+		expect(leaving({ atBottom: true, ...window }, m(100), undefined, m(100))).toEqual({ ack: false, unread: true });
+	});
+
+	test("the bottom of a list that reaches the newest message acks it, and the divider goes", () => {
+		const list = { atBottom: true, newest: m(400), moreBelow: false, loadedBelowTo: "" };
+		expect(leaving(list, m(100), undefined, m(100))).toEqual({ ack: true, unread: false });
+	});
+
+	test("a list left above its bottom acks nothing, and an unread one stays so", () => {
+		const list = { atBottom: false, newest: m(400), moreBelow: false, loadedBelowTo: "" };
+		expect(leaving(list, m(100), undefined, m(100))).toEqual({ ack: false, unread: true });
+		expect(leaving(list, null, undefined, m(100))).toEqual({ ack: false, unread: false });
+	});
+
+	test("one acked at its newest message earlier in the visit is read", () => {
+		const list = { atBottom: false, newest: m(400), moreBelow: false, loadedBelowTo: "" };
+		expect(leaving(list, m(100), m(400), m(100))).toEqual({ ack: false, unread: false });
 	});
 });
