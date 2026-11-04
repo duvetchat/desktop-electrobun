@@ -107,6 +107,7 @@ import {
 } from "$lib/calls";
 import { withUserUpdate } from "$lib/friends";
 import { sendAgain } from "$lib/resend";
+import { knowMessage } from "$lib/jumps";
 import { storageTransfers } from "$lib/stores/storage-transfers.svelte";
 import { getElectrobunRpc, type ActivityPayload } from "$lib/electrobun-rpc";
 import { identifyData } from "$lib/api/ws/identify";
@@ -417,6 +418,7 @@ function newestLoaded(roomId: string): string | undefined {
 /** Takes rooms' read states from the gateway (a ROOM_CREATE's, a SPACE_CREATE's) in place of what READY had of those
  * rooms: a newer message the client already has keeps its room unread (withRoomReadStates). */
 function applyRoomReadStates(states: Record<string, RoomReadState>) {
+	for (const [roomId, state] of Object.entries(states)) knowMessage(roomId, state.last_msg);
 	const read = withRoomReadStates(
 		{ unread: get(unreadChannels), lastRead: get(lastReadRooms), lastMsg: get(lastMsgRooms) },
 		states,
@@ -479,6 +481,9 @@ function handleEvent(event: GatewayEvent) {
 			const { unread_convs } = payload.data;
 			unreadConversations.set(new Set(unread_convs ?? []));
 			lastReadConvs.set(payload.data.last_read_convs ?? null);
+			// Each room's and conversation's newest message, which a message being sent records (withPresent).
+			for (const [roomId, id] of Object.entries(payload.data.last_msg_rooms ?? {})) knowMessage(roomId, id);
+			for (const [convId, id] of Object.entries(payload.data.last_msg_convs ?? {})) knowMessage(convId, id);
 			// Fetch friends, pending/sent requests, and conversations eagerly
 			// so they are available before FriendsView mounts.
 			Promise.all([
@@ -707,6 +712,7 @@ function handleEvent(event: GatewayEvent) {
 			const raw = payload.data;
 			const roomId = raw.room_id;
 			if (!roomId) break;
+			knowMessage(roomId, raw.id);
 			const spaces = get(gatewaySpaces);
 			const message = gatewayMessageToMessage(raw, spaces);
 			// An ephemeral message, which a bot sent this user alone, isn't one of the room's: it leaves the room read.
@@ -1504,6 +1510,7 @@ function handleEvent(event: GatewayEvent) {
 				return;
 			}
 			const conversationId = msg.conversation_id;
+			knowMessage(conversationId, msg.id);
 			const isActiveConv = conversationId === get(activeDMConvId);
 			if (msg.type === MessageType.Call && msg.call) {
 				readCallNotice(conversationId, msg.id, msg.call, isActiveConv);

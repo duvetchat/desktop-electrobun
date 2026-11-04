@@ -53,7 +53,17 @@
 	import { toast } from "$lib/stores/toast.svelte";
 	import { getApiError } from "$lib/api/api";
 	import { withSentMessage } from "$lib/arrivals";
-	import { dividerPastWindow, inWindow, keepJump, leaving, loadedTo, takeJump, withPresent } from "$lib/jumps";
+	import {
+		dividerPastWindow,
+		inWindow,
+		keepJump,
+		knowMessage,
+		leaving,
+		loadedTo,
+		newestKnownIn,
+		takeJump,
+		withPresent,
+	} from "$lib/jumps";
 	import { MessageSquare, Phone, UserPlus, Users } from "@lucide/svelte";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
 	import Chat from "$lib/components/Chat.svelte";
@@ -458,6 +468,7 @@
 			created_at: isoNow,
 			updated_at: isoNow,
 			nonce,
+			known_newest: newestKnownIn(convId),
 			referenced_message: refMsg
 				? {
 						type: 0,
@@ -503,6 +514,7 @@
 	// pending.
 	function showSent(convId: string, nonce: string, real: DirectMessage) {
 		dmRetryData.delete(nonce);
+		knowMessage(convId, real.id);
 		dmMessages.update((all) => {
 			const existing = all[convId] ?? [];
 			const shown = withSentMessage(existing, nonce, real);
@@ -585,6 +597,7 @@
 			created_at: isoNow,
 			updated_at: isoNow,
 			nonce,
+			known_newest: newestKnownIn(convId),
 			attachments: [
 				{
 					id: "",

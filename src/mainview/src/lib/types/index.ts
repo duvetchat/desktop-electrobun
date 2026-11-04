@@ -390,6 +390,8 @@ export interface Message {
 	created_at: string;
 	updated_at: string;
 	nonce?: string;
+	/** A message being sent: the newest message of its room the client knew of when it sent it (withPresent). */
+	known_newest?: string;
 	referenced_message?: ReferencedMessage | null;
 	ref_message_id?: string | null;
 	embeds?: Embed[] | null;
@@ -1114,6 +1116,9 @@ export interface GatewayReadyData {
 	last_msg_rooms?: Record<string, string>;
 	unread_convs?: string[];
 	last_read_convs?: Record<string, string>;
+	/** Each conversation's newest message: none for one without messages, nor for one whose newest is past the 90 days
+	 * the API keeps it. */
+	last_msg_convs?: Record<string, string>;
 	active_calls?: GatewayReadyActiveCall[];
 	/** Not sent to bots. */
 	ice_servers?: RTCIceServer[];

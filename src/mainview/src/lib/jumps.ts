@@ -114,7 +114,22 @@ export function inWindow<T extends Listed>(messages: T[], loadedBelowTo: string)
 	return shown.length === messages.length ? messages : shown;
 }
 
-type Sendable = Listed & { author_id?: string; content?: string | null; created_at?: string };
+// The newest message the client knows of in each room and conversation: READY's (last_msg_rooms, last_msg_convs), a
+// room's read state from its ROOM_CREATE or SPACE_CREATE, and each message that arrives or that this client sends. A
+// message being sent records it (known_newest), and withPresent tells the API's copy of it by it: the copy is newer.
+const newestKnown = new Map<string, string>();
+
+/** Notes a message of a room or conversation, by the API's ID, as known: only a newer one moves the mark. */
+export function knowMessage(listId: string, messageId: string | null | undefined) {
+	if (messageId && messageId > (newestKnown.get(listId) ?? "")) newestKnown.set(listId, messageId);
+}
+
+/** The newest message known in a room or conversation, or "" when none is. */
+export function newestKnownIn(listId: string): string {
+	return newestKnown.get(listId) ?? "";
+}
+
+type Sendable = Listed & { author_id?: string; content?: string | null; created_at?: string; known_newest?: string };
 
 // How long before a message being sent (by the client's clock) the API's copy of it can be dated (by the API's).
 const SENT_COPY_SKEW = 2 * 60_000;
@@ -124,13 +139,15 @@ const SENT_COPY_SKEW = 2 * 60_000;
  * their nonce) and those that came after the page was cut (newer than its newest), each once. The jump's pages go.
  *
  * The page can list a message still being sent already, without its nonce: the API lists a message while its files go
- * up. That copy goes, the one being sent staying until the API's answer or its event takes its place: a copy is the
- * newest message of the page the list didn't have, by the same author with the same text, dated no earlier than shortly
- * before the one being sent. So the same text sent earlier within that window stays.
+ * up. That copy goes, the one being sent staying until the API's answer or its event takes its place. A copy is the
+ * newest message of the page the list didn't have, newer than the newest message the client knew of there when it sent
+ * the one being sent (known_newest), by the same author with the same text, dated no earlier than shortly before it.
+ * So the same text sent earlier stays, also when the page was read before the API stored the copy. The window keeps
+ * out an older message with the same text where the client knew of none: READY gave no newest message there (none in
+ * the 90 days the API keeps it), and none arrived or was sent since.
  *
- * ponytail: a page without the copy (read before the API stored the message, or a second identical message sent at
- * once) still takes such an earlier message for it, missing until a reload. Telling them apart for sure needs the
- * newest message the client knew of when it sent each, which the jump's pages don't hold.
+ * ponytail: the same text sent from another device at about the same time, which this client hadn't heard of when it
+ * sent, can still be taken for the copy and missing until a reload; telling them apart needs the copy's nonce.
  */
 export function withPresent<T extends Sendable>(current: T[], page: T[]): T[] {
 	const newest = page.reduce((max, m) => (m.id > max ? m.id : max), "");
@@ -140,9 +157,11 @@ export function withPresent<T extends Sendable>(current: T[], page: T[]): T[] {
 	const copies = new Set<string>();
 	for (const sending of kept.filter((m) => m.id === m.nonce)) {
 		const since = Date.parse(sending.created_at ?? "") - SENT_COPY_SKEW;
+		const known = sending.known_newest ?? "";
 		const copy = page
 			.filter(
 				(m) =>
+					m.id > known &&
 					!listed.has(m.id) &&
 					!copies.has(m.id) &&
 					m.author_id === sending.author_id &&
