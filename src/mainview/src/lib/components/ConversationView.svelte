@@ -53,7 +53,7 @@
 	import { toast } from "$lib/stores/toast.svelte";
 	import { getApiError } from "$lib/api/api";
 	import { withSentMessage } from "$lib/arrivals";
-	import { dividerPastWindow, inWindow, leaving, loadedTo, withPresent } from "$lib/jumps";
+	import { dividerPastWindow, inWindow, keepJump, leaving, loadedTo, takeJump, withPresent } from "$lib/jumps";
 	import { MessageSquare, Phone, UserPlus, Users } from "@lucide/svelte";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
 	import Chat from "$lib/components/Chat.svelte";
@@ -748,16 +748,28 @@
 			return s;
 		});
 		let gone = false;
-		loadMessages().then(() => {
-			if (gone) return;
-			// An unread conversation opens at its divider (MessageList places the visit there).
+		// Back from another tab in the middle of a jump's pages: the list goes on from them, as a room's does, rather than
+		// putting the newest page beside them with the messages between left out.
+		const kept = takeJump(convId, get(dmMessages)[convId]);
+		if (kept) {
+			hasMore = kept.hasMore;
+			hasMoreBelow = true;
+			loadedBelowTo = kept.loadedBelowTo;
 			if (hadUnread) convUnreadAfter = unreadAfterOf(convId);
 			isLoading = false;
-		});
+		} else {
+			loadMessages().then(() => {
+				if (gone) return;
+				// An unread conversation opens at its divider (MessageList places the visit there).
+				if (hadUnread) convUnreadAfter = unreadAfterOf(convId);
+				isLoading = false;
+			});
+		}
 		return () => {
 			// What the view still waits for (its first page, a jump's pages, a page below) is dropped as it comes.
 			gone = true;
 			jumps++;
+			keepJump(convId, hasMoreBelow ? { hasMore, loadedBelowTo } : null);
 			activeDMConvId.update((cur) => (cur === convId ? null : cur));
 		};
 	});

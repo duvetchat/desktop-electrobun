@@ -61,6 +61,36 @@ export function loadedTo(after: string, page: { id: string }[]): string {
 
 type Listed = { id: string; nonce?: string | null };
 
+/** Where a conversation's jump left its list: whether older messages are left to load, and the newest message of the
+ * jump's pages, after which the next page below starts. */
+export interface KeptJump {
+	hasMore: boolean;
+	loadedBelowTo: string;
+}
+
+const keptJumps = new Map<string, KeptJump>();
+
+/**
+ * Keeps where a conversation's jump left its list as its view goes (another tab shows, or the friends view), as a room's
+ * pane keeps a room's, so that the view shown again goes on from the jump's pages, rather than putting the newest page
+ * beside them with the messages between left out. Null forgets it: the list reaches the present.
+ */
+export function keepJump(conversationId: string, kept: KeptJump | null) {
+	if (kept) keptJumps.set(conversationId, kept);
+	else keptJumps.delete(conversationId);
+}
+
+/**
+ * The jump kept for a conversation, which only its next view gets, and only while its list still holds the jump's
+ * pages: a list dropped meanwhile (the stores keep a few dozen) starts again from the newest page.
+ */
+export function takeJump(conversationId: string, list: { id: string }[] | undefined): KeptJump | null {
+	const kept = keptJumps.get(conversationId) ?? null;
+	keptJumps.delete(conversationId);
+	if (!kept || !list?.some((m) => m.id === kept.loadedBelowTo)) return null;
+	return kept;
+}
+
 /**
  * What a list shows while newer messages are still to load below a jump's pages: its messages up to the newest of
  * those pages (loadedBelowTo), and the ones being sent (their ID is their nonce), which take the reader to the

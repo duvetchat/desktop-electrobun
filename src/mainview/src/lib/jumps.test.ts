@@ -1,5 +1,15 @@
 import { describe, expect, test } from "bun:test";
-import { dividerPastWindow, inWindow, leaving, loadedTo, quoteJump, readWhenLeft, withPresent } from "$lib/jumps";
+import {
+	dividerPastWindow,
+	inWindow,
+	keepJump,
+	leaving,
+	loadedTo,
+	quoteJump,
+	readWhenLeft,
+	takeJump,
+	withPresent,
+} from "$lib/jumps";
 
 const QUOTED = "01920000-0000-7000-8000-0000000000aa";
 const CONVERSATION = "01920000-0000-7000-8000-0000000c0c0c";
@@ -201,5 +211,31 @@ describe("leaving", () => {
 	test("one acked at its newest message earlier in the visit is read", () => {
 		const list = { atBottom: false, newest: m(400), moreBelow: false, loadedBelowTo: "" };
 		expect(leaving(list, m(100), m(400), m(100))).toEqual({ ack: false, unread: false });
+	});
+});
+
+describe("keepJump and takeJump", () => {
+	// A jump to 20 loaded up to 220 (one page below already), newer messages still below, as its view went.
+	const m = (n: number) => `01930000-0000-7000-8000-${String(n).padStart(12, "0")}`;
+	const list = Array.from({ length: 220 }, (_, i) => ({ id: m(i + 1) }));
+	const kept = { hasMore: false, loadedBelowTo: m(220) };
+
+	test("the view shown again goes on from the jump's pages, once", () => {
+		keepJump("a", kept);
+		expect(takeJump("a", list)).toEqual(kept);
+		expect(takeJump("a", list)).toBeNull();
+	});
+
+	test("a list that lost the jump's pages meanwhile starts again from the newest page", () => {
+		keepJump("b", kept);
+		expect(takeJump("b", undefined)).toBeNull();
+		keepJump("b", kept);
+		expect(takeJump("b", list.slice(0, 120))).toBeNull();
+	});
+
+	test("a list that reached the present keeps nothing", () => {
+		keepJump("c", kept);
+		keepJump("c", null);
+		expect(takeJump("c", list)).toBeNull();
 	});
 });
