@@ -45,6 +45,7 @@
 	import { getAvatarURL } from "$lib/common/common";
 	import { acceptRequest, declineRequest } from "$lib/friend-requests";
 	import { getUserOnlineStatus, rememberFriendStatuses } from "$lib/api/ws/connection";
+	import { friendUser } from "$lib/friends";
 	import { userStatusToString, type MemberOnSidebar } from "$lib/types";
 
 	let {
@@ -81,11 +82,14 @@
 	const friendGroups = $derived.by(() => {
 		const q = query.trim().toLowerCase();
 		const rows = $friends
-			.filter((f) => !q || (f.user_alias ?? "").toLowerCase().includes(q) || f.user_username.toLowerCase().includes(q))
-			.map((friend) => {
+			.map((friend) => ({ friend, other: friendUser(friend, $currentUser?.id) }))
+			.filter(
+				({ other }) => !q || (other.alias ?? "").toLowerCase().includes(q) || other.username.toLowerCase().includes(q),
+			)
+			.map(({ friend, other }) => {
 				const id = getFriendUserId(friend);
 				const activity = shownActivities($userActivities[id])[0];
-				return { friend, id, status: friendStatus(friend), activity: activity ? activityLine(activity) : null };
+				return { friend, other, id, status: friendStatus(friend), activity: activity ? activityLine(activity) : null };
 			});
 		const groups = [
 			{ title: "Online", friends: rows.filter((r) => r.status !== "offline") },
@@ -199,7 +203,8 @@
 
 	// Removing a friend can't be undone from here: it asks first.
 	function confirmUnfriend(friend: Friend) {
-		void confirmAction(`Remove ${friend.user_alias ?? friend.user_username} from your friends?`, "Remove", () =>
+		const other = friendUser(friend, get(currentUser)?.id);
+		void confirmAction(`Remove ${other.alias ?? other.username} from your friends?`, "Remove", () =>
 			handleUnfriend(friend),
 		);
 	}
@@ -424,14 +429,14 @@
 									{group.title} <span class="tabular-nums">{group.friends.length}</span>
 								</h3>
 								<ul class="mb-3 flex flex-col gap-px">
-									{#each group.friends as { friend, id, status, activity } (friend.id)}
+									{#each group.friends as { friend, other, status, activity } (friend.id)}
 										<li
 											class="group rounded-row hover:bg-duvet-card/70 flex items-center gap-3 px-2 py-2 transition-colors motion-reduce:transition-none"
 										>
 											<div class="relative shrink-0">
 												<UserAvatar
-													src={getAvatarURL(id, friend.user_avatar)}
-													name={friend.user_alias ?? friend.user_username}
+													src={getAvatarURL(other.id, other.avatar)}
+													name={other.alias ?? other.username}
 													size={40}
 												/>
 												<StatusDot
@@ -440,9 +445,7 @@
 												/>
 											</div>
 											<div class="flex min-w-0 flex-1 flex-col leading-tight">
-												<span class="text-duvet-ink truncate text-sm font-bold"
-													>{friend.user_alias ?? friend.user_username}</span
-												>
+												<span class="text-duvet-ink truncate text-sm font-bold">{other.alias ?? other.username}</span>
 												<span class="text-duvet-ink2 flex min-w-0 items-center gap-1 text-xs">
 													{#if activity}
 														{#if activity.kind === "playing"}<GameIcon
@@ -451,14 +454,14 @@
 															/>{:else}<MusicIcon class="size-3 shrink-0" aria-hidden="true" />{/if}
 														<span class="truncate">{activity.text}</span>
 													{:else}
-														<span class="truncate">@{friend.user_username}</span>
+														<span class="truncate">@{other.username}</span>
 													{/if}
 												</span>
 											</div>
 											<button
 												type="button"
 												class="bg-duvet-card text-duvet-ink2 shadow-duvet-raised hover:text-duvet-ink flex size-9 items-center justify-center rounded-xl transition-colors motion-reduce:transition-none {focusRing}"
-												aria-label="Message {friend.user_alias ?? friend.user_username}"
+												aria-label="Message {other.alias ?? other.username}"
 												title="Message"
 												onclick={() => handleOpenDM(friend)}
 											>
@@ -467,7 +470,7 @@
 											<button
 												type="button"
 												class="text-duvet-ink2 hover:text-duvet-danger hover:bg-duvet-card flex size-9 items-center justify-center rounded-xl opacity-0 transition group-focus-within:opacity-100 group-hover:opacity-100 focus-visible:opacity-100 motion-reduce:transition-none {focusRing}"
-												aria-label="Remove {friend.user_alias ?? friend.user_username} from your friends"
+												aria-label="Remove {other.alias ?? other.username} from your friends"
 												title="Remove friend"
 												onclick={() => confirmUnfriend(friend)}
 											>
@@ -487,13 +490,9 @@
 					{:else}
 						<ul class="flex flex-col gap-2">
 							{#each $pendingFriendRequests as req (req.id)}
+								{@const other = friendUser(req, $currentUser?.id)}
 								<li class="rounded-card bg-duvet-card shadow-duvet-raised flex items-center gap-3 p-3">
-									{@render person(
-										req.sender_id,
-										req.user_avatar,
-										req.user_alias ?? req.user_username,
-										req.user_username,
-									)}
+									{@render person(other.id, other.avatar, other.alias ?? other.username, other.username)}
 									{#if !Number.isNaN(Date.parse(req.created_at))}
 										<span class="text-duvet-ink2 hidden text-xs sm:block"
 											>{new Date(req.created_at).toLocaleDateString()}</span
@@ -510,7 +509,7 @@
 									<button
 										type="button"
 										class="text-duvet-ink2 hover:bg-duvet-bg hover:text-duvet-danger flex size-9 items-center justify-center rounded-xl transition-colors motion-reduce:transition-none {focusRing}"
-										aria-label="Decline {req.user_alias ?? req.user_username}'s request"
+										aria-label="Decline {other.alias ?? other.username}'s request"
 										title="Decline"
 										onclick={() => handleReject(req)}
 									>
@@ -529,13 +528,9 @@
 					{:else}
 						<ul class="flex flex-col gap-2">
 							{#each $sentFriendRequests as req (req.id)}
+								{@const other = friendUser(req, $currentUser?.id)}
 								<li class="rounded-card bg-duvet-card shadow-duvet-raised flex items-center gap-3 p-3">
-									{@render person(
-										req.recipient_id,
-										req.user_avatar,
-										req.user_alias ?? req.user_username,
-										req.user_username,
-									)}
+									{@render person(other.id, other.avatar, other.alias ?? other.username, other.username)}
 									<span class="text-duvet-ink2 flex items-center gap-1.5 text-xs"
 										><Clock class="size-3.5" />Waiting</span
 									>
@@ -640,6 +635,7 @@
 						{#each $friends as f (f.id)}
 							{@const uid = getFriendUserId(f)}
 							{@const selected = selectedFriendIds.has(uid)}
+							{@const other = friendUser(f, $currentUser?.id)}
 							<button
 								type="button"
 								aria-pressed={selected}
@@ -648,8 +644,8 @@
 									: 'hover:bg-duvet-card/60'}"
 								onclick={() => toggleFriend(uid)}
 							>
-								<UserAvatar src={getAvatarURL(uid, f.user_avatar)} name={f.user_alias ?? f.user_username} size={32} />
-								<span class="min-w-0 flex-1 truncate text-sm font-semibold">{f.user_alias ?? f.user_username}</span>
+								<UserAvatar src={getAvatarURL(other.id, other.avatar)} name={other.alias ?? other.username} size={32} />
+								<span class="min-w-0 flex-1 truncate text-sm font-semibold">{other.alias ?? other.username}</span>
 								{#if selected}
 									<Check class="text-duvet-accent-text size-4 shrink-0" />
 								{/if}
