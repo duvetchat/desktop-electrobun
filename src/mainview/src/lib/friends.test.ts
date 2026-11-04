@@ -1,4 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
+import { dirname, join, sep } from "node:path";
+import { fileURLToPath } from "node:url";
 import type { Friend, FriendRequest } from "$lib/api/friends";
 import type { GatewayUser, MemberOnSidebar, UserUpdateEvent } from "$lib/types";
 
@@ -196,5 +199,20 @@ describe("withUserUpdate", () => {
 		const updated = withUserUpdate(list, anaUpdate({ id: me }), me);
 		expect(updated[0]).toBe(list[0]);
 		expect(updated[1]).toBe(list[1]);
+	});
+});
+
+// The API keeps the user_* fields only until the app and duvet-client read user (the owner's decision 83), so the app
+// reads a friend's or a request's other user through friendUser alone.
+describe("the user_* fields", () => {
+	test("are read nowhere but where friendUser and the types are", () => {
+		const src = join(dirname(fileURLToPath(import.meta.url)), "..");
+		const allowed = new Set(["lib/api/friends.ts", "lib/friends.ts"]);
+		const field = /(^|[^A-Za-z0-9_$])user_(username|alias|avatar|banner)($|[^A-Za-z0-9_$])/m;
+		const readers = [...new Bun.Glob("**/*.{ts,svelte}").scanSync({ cwd: src })]
+			.map((path) => path.split(sep).join("/"))
+			.filter((path) => !path.endsWith(".test.ts") && !allowed.has(path))
+			.filter((path) => field.test(readFileSync(join(src, path), "utf8")));
+		expect(readers).toEqual([]);
 	});
 });
