@@ -25,8 +25,13 @@ export function mentionMapOf(
 
 const emojiHost = getHostURL();
 // A custom emoji's image that fails to load is tried again after a wait, by the document (lib/emoji-retry.ts): the
-// image carries no handler of its own, so the page needs no inline script.
-if (typeof document !== "undefined") retryEmojis(document);
+// image carries no handler of its own, so the page needs no inline script. A hot update of this module, in
+// development, runs it again: the old listener goes first. (Not import.meta.hot?.dispose(retryEmojis(document)):
+// without import.meta.hot, a build's, the call and its argument wouldn't run.)
+if (typeof document !== "undefined") {
+	const stopRetrying = retryEmojis(document);
+	import.meta.hot?.dispose(stopRetrying);
+}
 
 let highlighterPromise: Promise<Highlighter> | null = null;
 let highlighter: Highlighter | null = null;

@@ -1,5 +1,16 @@
-import { describe, expect, test } from "bun:test";
-import { EMOJI_RETRIES, EmojiRetries, GIVE_UP_MS, retryAfterMs, retryWait, type EmojiImage } from "./emoji-retry";
+import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
+import {
+	CUSTOM_EMOJI_CLASS,
+	EMOJI_RETRIES,
+	EmojiRetries,
+	GIVE_UP_MS,
+	retryAfterMs,
+	retryEmojis,
+	retryWait,
+	type EmojiImage,
+} from "./emoji-retry";
+
+Object.assign(globalThis, { VITE_API_URL: "https://api.test", VITE_WS_URL: "", VITE_DOMAIN_TARGET_ENV: "duvet" });
 
 const URL_A = "https://api.test/attachments/0190a3b2-0000-7000-8000-000000000001";
 const URL_B = "https://api.test/attachments/0190a3b2-0000-7000-8000-000000000002";
@@ -225,5 +236,116 @@ describe("retryAfterMs", () => {
 		expect(retryAfterMs(null, now)).toBeUndefined();
 		expect(retryAfterMs("soon", now)).toBeUndefined();
 		expect(retryAfterMs("-1", now)).toBeUndefined();
+	});
+});
+
+// The document as an image's error reaches it, in the capture phase alone: the event doesn't bubble.
+function fakeDocument() {
+	const listeners: { type: string; listener: EventListenerOrEventListenerObject; capture: boolean }[] = [];
+	const inCapture = (options?: boolean | EventListenerOptions) =>
+		typeof options === "boolean" ? options : !!options?.capture;
+	return {
+		listeners,
+		addEventListener(
+			type: string,
+			listener: EventListenerOrEventListenerObject | null,
+			options?: boolean | AddEventListenerOptions,
+		) {
+			if (listener) listeners.push({ type, listener, capture: inCapture(options) });
+		},
+		removeEventListener(
+			type: string,
+			listener: EventListenerOrEventListenerObject | null,
+			options?: boolean | EventListenerOptions,
+		) {
+			const at = listeners.findIndex(
+				(l) => l.type === type && l.listener === listener && l.capture === inCapture(options),
+			);
+			if (at >= 0) listeners.splice(at, 1);
+		},
+		/** target failed to load. */
+		fail(target: object) {
+			const event = new Event("error");
+			Object.defineProperty(event, "target", { value: target });
+			for (const { type, listener, capture } of [...listeners]) {
+				if (type !== "error" || !capture) continue;
+				if (typeof listener === "function") listener(event);
+				else listener.handleEvent(event);
+			}
+		},
+	};
+}
+
+// An <img> as retryEmojis reads it.
+class FakeImage {
+	readonly isConnected = true;
+	readonly ownerDocument = { createElement: () => ({}) };
+	readonly classList: { contains: (name: string) => boolean };
+	readonly replaced = Promise.withResolvers<{ title?: string; textContent?: string }>();
+	constructor(
+		public src: string,
+		public title: string,
+		classes: string[],
+	) {
+		this.classList = { contains: (name) => classes.includes(name) };
+	}
+	replaceWith(node: { title?: string; textContent?: string }) {
+		this.replaced.resolve(node);
+	}
+}
+
+describe("retryEmojis", () => {
+	let fetched: ReturnType<typeof spyOn<typeof globalThis, "fetch">>;
+	beforeEach(() => {
+		Object.assign(globalThis, { HTMLImageElement: FakeImage });
+		// The file is gone: an emoji shows its name after its HEAD, and nothing waits.
+		fetched = spyOn(globalThis, "fetch").mockResolvedValue(new Response(null, { status: 404 }));
+	});
+	afterEach(() => {
+		fetched.mockRestore();
+		Reflect.deleteProperty(globalThis, "HTMLImageElement");
+	});
+
+	test("hears a custom emoji's image fail, in the capture phase, and tries it again", async () => {
+		const doc = fakeDocument();
+		retryEmojis(doc);
+		const img = new FakeImage(URL_A, "party", [CUSTOM_EMOJI_CLASS]);
+		doc.fail(img);
+		expect(fetched.mock.calls.map(([url, init]) => [url, init?.method])).toEqual([[URL_A, "HEAD"]]);
+		expect(await img.replaced.promise).toEqual({ title: "Emoji failed to load", textContent: "party" });
+	});
+
+	test("leaves any other image alone", async () => {
+		const doc = fakeDocument();
+		retryEmojis(doc);
+		const img = new FakeImage(URL_A, "an avatar", ["rounded-full"]);
+		doc.fail(img);
+		await Bun.sleep(0);
+		expect(fetched).not.toHaveBeenCalled();
+		expect(await Promise.race([img.replaced.promise, Bun.sleep(10).then(() => "kept")])).toBe("kept");
+	});
+
+	test("takes its listener away, as a hot update of markdown.ts does before it runs again", () => {
+		const doc = fakeDocument();
+		const stop = retryEmojis(doc);
+		stop();
+		expect(doc.listeners).toEqual([]);
+		doc.fail(new FakeImage(URL_A, "party", [CUSTOM_EMOJI_CLASS]));
+		expect(fetched).not.toHaveBeenCalled();
+	});
+
+	test("markdown.ts has the document listen as it loads in a page", async () => {
+		const doc = fakeDocument();
+		Object.assign(globalThis, { document: doc });
+		try {
+			// A module of its own: markdown.test.ts loads it with no document.
+			const markdown = "./markdown.ts?in-a-page";
+			await import(markdown);
+		} finally {
+			Reflect.deleteProperty(globalThis, "document");
+		}
+		expect(doc.listeners.map(({ type, capture }) => ({ type, capture }))).toEqual([{ type: "error", capture: true }]);
+		doc.fail(new FakeImage(URL_A, "party", [CUSTOM_EMOJI_CLASS]));
+		expect(fetched).toHaveBeenCalledTimes(1);
 	});
 });

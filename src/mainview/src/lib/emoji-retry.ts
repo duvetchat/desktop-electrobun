@@ -168,8 +168,9 @@ export const CUSTOM_EMOJI_CLASS = "custom-emoji";
 /**
  * Tries again every custom emoji's image of doc that fails to load. An image's error doesn't bubble, but a listener
  * on the document in the capture phase hears it: no image needs a handler of its own, and the page no inline one.
+ * Returns what takes the listener away.
  */
-export function retryEmojis(doc: Document) {
+export function retryEmojis(doc: Pick<EventTarget, "addEventListener" | "removeEventListener">): () => void {
 	const retries = new EmojiRetries({
 		fetch: (url, init) => fetch(url, init),
 		sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
@@ -177,25 +178,26 @@ export function retryEmojis(doc: Document) {
 		random: Math.random,
 		objectUrl: (blob) => URL.createObjectURL(blob),
 	});
-	doc.addEventListener(
-		"error",
-		(e) => {
-			const img = e.target;
-			if (!(img instanceof HTMLImageElement) || !img.classList.contains(CUSTOM_EMOJI_CLASS)) return;
-			void retries.failed({
-				get src() {
-					return img.src;
-				},
-				get isConnected() {
-					return img.isConnected;
-				},
-				show: (src) => (img.src = src),
-				showName: () =>
-					img.replaceWith(
-						Object.assign(doc.createElement("span"), { title: "Emoji failed to load", textContent: img.title }),
-					),
-			});
-		},
-		true,
-	);
+	const onError = (e: Event) => {
+		const img = e.target;
+		if (!(img instanceof HTMLImageElement) || !img.classList.contains(CUSTOM_EMOJI_CLASS)) return;
+		void retries.failed({
+			get src() {
+				return img.src;
+			},
+			get isConnected() {
+				return img.isConnected;
+			},
+			show: (src) => (img.src = src),
+			showName: () =>
+				img.replaceWith(
+					Object.assign(img.ownerDocument.createElement("span"), {
+						title: "Emoji failed to load",
+						textContent: img.title,
+					}),
+				),
+		});
+	};
+	doc.addEventListener("error", onError, true);
+	return () => doc.removeEventListener("error", onError, true);
 }
