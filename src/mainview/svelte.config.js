@@ -42,6 +42,15 @@ import adapter from "@sveltejs/adapter-static";
 export const DEV_CONNECT_ENV = "DUVET_DEV_CONNECT_SRC";
 
 /**
+ * Whether the origin is one connect-src takes: an http(s) or ws(s) URL's, as connect-src writes them.
+ * @param {string} origin
+ * @returns {origin is CspSource}
+ */
+function isConnectSource(origin) {
+  return /^(https?|wss?):\/\//.test(origin);
+}
+
+/**
  * The connect-src origins of the URL overrides (space-separated URLs, as vite.config.ts puts them in
  * DEV_CONNECT_ENV): each URL's origin, so a path never widens or narrows it. What isn't an http(s) or
  * ws(s) URL adds nothing.
@@ -59,9 +68,10 @@ export function devConnectSources(urls) {
     } catch {
       continue;
     }
+    // By the protocol: a blob: URL's origin is its inner URL's, which isn't the URL the override names.
     if (!["http:", "https:", "ws:", "wss:"].includes(url.protocol)) continue;
-    const origin = /** @type {CspSource} */ (url.origin);
-    if (!sources.includes(origin)) sources.push(origin);
+    const origin = url.origin;
+    if (isConnectSource(origin) && !sources.includes(origin)) sources.push(origin);
   }
   return sources;
 }

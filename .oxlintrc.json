@@ -10,7 +10,8 @@
 	"rules": {
 		"no-unused-vars": "warn",
 		"no-console": "off",
-		"eqeqeq": "warn",
+		"eqeqeq": ["warn", "always", { "null": "ignore" }],
+		"import/no-unassigned-import": ["warn", { "allow": ["**/*.css"] }],
 		"no-debugger": "error",
 		"no-control-regex": "off",
 		"no-unassigned-vars": "off",
