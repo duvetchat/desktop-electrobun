@@ -56,6 +56,7 @@
 		unreadAfterMessageId = null,
 		onLoadMore = () => {},
 		onLoadMoreBelow = () => {},
+		onJumpToPresent = undefined,
 		placeholder = undefined,
 		failedNonces = $bindable(new Set<string>()),
 		isAtBottom = $bindable(true),
@@ -85,6 +86,8 @@
 		unreadAfterMessageId?: string | null;
 		onLoadMore?: () => Promise<void> | void;
 		onLoadMoreBelow?: () => Promise<void> | void;
+		/** Takes the list from a jump's pages to the present, as a message is sent from there; true once it's there. */
+		onJumpToPresent?: () => Promise<boolean>;
 		placeholder?: string;
 		failedNonces?: Set<string>;
 		isAtBottom?: boolean;
@@ -659,6 +662,7 @@
 		{unreadAfterMessageId}
 		{onLoadMore}
 		{onLoadMoreBelow}
+		{onJumpToPresent}
 		{failedNonces}
 		bind:isAtBottom
 		{onSaveEdit}

@@ -6,6 +6,7 @@ import {
 	withRoomReadStates,
 	topLevelEnd,
 	withoutRoom,
+	withoutRoomMessages,
 	type Channel,
 	type GatewayRoom,
 	type GatewayRoomOverwrite,
@@ -322,5 +323,18 @@ describe("categoryDropPosition", () => {
 		expect(topLevelAfterMove(channels, "B", 4)).toEqual(["a", "C", "D", "B", "e", "F"]);
 		expect(categoryDropPosition(channels, e, "below")).toBe(5);
 		expect(topLevelAfterMove(channels, "B", 5)).toEqual(["a", "C", "D", "e", "B", "F"]);
+	});
+});
+
+describe("withoutRoomMessages", () => {
+	test("a room taken away loses its loaded messages, so that given back it loads what it missed; the others keep theirs", () => {
+		const all = { a: [{ id: "1" }, { id: "2" }], b: [{ id: "3" }] };
+		expect(withoutRoomMessages(all, "a")).toEqual({ b: [{ id: "3" }] });
+		expect(all.a).toHaveLength(2);
+	});
+
+	test("a room with nothing loaded leaves the messages as they are", () => {
+		const all = { b: [{ id: "3" }] };
+		expect(withoutRoomMessages(all, "a")).toBe(all);
 	});
 });

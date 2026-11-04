@@ -1151,6 +1151,16 @@ export function spaceWithoutRoom<S extends Pick<GatewaySpace, "rooms" | "room_ov
 	};
 }
 
+/** The loaded messages of every room but one that ROOM_DELETE takes away (deleted, or no longer one the user can view):
+ * nothing updates them while it's away, so if it comes back (ROOM_CREATE) it loads what it missed rather than show what
+ * it had. The same object when the room had none loaded. */
+export function withoutRoomMessages<T>(all: Record<string, T[]>, roomId: string): Record<string, T[]> {
+	if (!(roomId in all)) return all;
+	const rest = { ...all };
+	delete rest[roomId];
+	return rest;
+}
+
 /** READY's read states of the rooms (unread_rooms, last_read_rooms, last_msg_rooms) with a room's from its ROOM_CREATE in
  * place of what they had of it: a room the user can view since READY comes with its unread mark, which READY couldn't
  * give. newest is the newest message the client already has in the room: one newer than the read state's (its

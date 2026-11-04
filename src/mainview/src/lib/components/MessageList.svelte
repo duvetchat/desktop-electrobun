@@ -44,7 +44,7 @@
 	} from "$lib/api/reactions";
 	import { arrival, arrivalAction, listEnd } from "$lib/arrivals";
 	import { callNoticeLine, callNoticeText } from "$lib/call-notices";
-	import { quoteJump } from "$lib/jumps";
+	import { belowIndicator, quoteJump } from "$lib/jumps";
 	import { keepPlace, takePlace } from "$lib/kept-places";
 	import { renderEmoji, isOnlyEmojis, countEmojis } from "$lib/emoji";
 	import { customEmojiMapOf, mentionMapOf, parseTextSegments, renderMarkdown, renderMarkdownLine } from "$lib/markdown";
@@ -98,6 +98,7 @@
 		unreadAfterMessageId = null,
 		onLoadMore = () => {},
 		onLoadMoreBelow = () => {},
+		onJumpToPresent = undefined,
 		onRetry = () => {},
 		onDismiss = () => {},
 		onReply = undefined,
@@ -125,6 +126,8 @@
 		unreadAfterMessageId?: string | null;
 		onLoadMore?: () => Promise<void> | void;
 		onLoadMoreBelow?: () => Promise<void> | void;
+		/** Takes the list from a jump's pages to the present (the newest messages); true once it's there. */
+		onJumpToPresent?: () => Promise<boolean>;
 		onRetry?: (message: Message) => void;
 		onDismiss?: (nonce: string) => void;
 		onReply?: (message: Message) => void;
@@ -286,18 +289,21 @@
 			}
 		}
 
-		if (!isLoadingMoreBelow && hasMoreMessagesBelow) {
-			const sentinelBottom = scrollEl.querySelector("[data-sentinel-bottom]");
-			if (sentinelBottom) {
-				const r = sentinelBottom.getBoundingClientRect();
-				if (r.top < scrollRect.bottom && r.bottom > scrollRect.top) {
-					// The page goes in below what the reader sees, and the browser keeps it in place (scroll anchoring), but
-					// not for a list scrolled to its very end, its bottom here: a pixel up, it does.
-					if (scrollEl.scrollTop > -1) scrollEl.scrollTop = -1;
-					void onLoadMoreBelow();
-				}
-			}
-		}
+		if (hasMoreMessagesBelow) checkBelow();
+	}
+
+	// The "newer messages below" indicator in view: the list stays a pixel off its very bottom (belowIndicator), also
+	// while a page loads, and the page is asked for unless one is loading. The page goes in below what the reader sees,
+	// and the browser keeps it in place (scroll anchoring), but not for a list scrolled to its very end, its bottom here.
+	function checkBelow() {
+		const sentinelBottom = scrollEl?.querySelector("[data-sentinel-bottom]");
+		if (!scrollEl || !sentinelBottom) return;
+		const scrollRect = scrollEl.getBoundingClientRect();
+		const r = sentinelBottom.getBoundingClientRect();
+		if (r.top >= scrollRect.bottom || r.bottom <= scrollRect.top) return;
+		const next = belowIndicator(scrollEl.scrollTop, isLoadingMoreBelow);
+		if (next.scrollTop !== null) scrollEl.scrollTop = next.scrollTop;
+		if (next.ask) void onLoadMoreBelow();
 	}
 
 	function topObserverAction(_node: HTMLElement) {
@@ -347,7 +353,11 @@
 		scrollEl?.addEventListener("click", openRoomMention, true);
 	});
 
+	// Once the list is gone, what it still waits for (a frame, a tick) stops before reading its props: a conversation's
+	// view, gone with it (another tab shows), hands it a null conversation (desktop-electrobun#164).
+	let gone = false;
 	onDestroy(() => {
+		gone = true;
 		if (typeof window === "undefined") return;
 		if (intervalId) {
 			window.clearInterval(intervalId);
@@ -506,7 +516,7 @@
 		void tick().then(() => {
 			requestAnimationFrame(() => {
 				requestAnimationFrame(() => {
-					if (channelId !== chId || !scrollEl) return;
+					if (gone || channelId !== chId || !scrollEl) return;
 					const keptEl = kept && scrollEl.querySelector(`[data-message-id="${kept.messageId}"]`);
 					if (kept && keptEl && !jumping) {
 						// Back where the reader was when a new gateway session unmounted the app (keepReaderPlace).
@@ -521,10 +531,13 @@
 					}
 					// One more frame, so the position read is the one just set.
 					requestAnimationFrame(() => {
-						if (channelId !== chId || !scrollEl) return;
+						if (gone || channelId !== chId || !scrollEl) return;
 						isAtBottom = scrollEl.scrollTop >= -50;
 						wasAtBottom = isAtBottom;
 						scrollUnlocked = true;
+						// A visit that opens on the indicator (a jump's pages shown again) needs no scroll to ask for the page
+						// below: there, at the list's very bottom, scrolling down fires nothing.
+						if (hasMoreMessagesBelow) checkBelow();
 					});
 				});
 			});
@@ -605,7 +618,7 @@
 		void tick().then(() => {
 			requestAnimationFrame(() => {
 				requestAnimationFrame(() => {
-					if (channelId !== chId || !scrollEl) return;
+					if (gone || channelId !== chId || !scrollEl) return;
 					const target =
 						scrollEl.querySelector(`[data-message-id="${id}"]`) ?? scrollEl.querySelector("[data-unread-divider]");
 					target?.scrollIntoView({ behavior: "instant", block: "start" });
@@ -639,6 +652,17 @@
 			tick().then(() => {
 				if (scrollEl) scrollEl.scrollTop = 0;
 			});
+		} else if (action === "present") {
+			// A message this window sends from a jump's pages: the list goes to the present, then down to the message. Should
+			// the newest messages not load, it goes down to the bottom it has, where the pages below load as before.
+			const chId = channelId;
+			void tick()
+				.then(() => (onJumpToPresent ? onJumpToPresent() : false))
+				.catch(() => false)
+				.then(() => tick())
+				.then(() => {
+					if (!gone && channelId === chId && scrollEl) scrollEl.scrollTop = 0;
+				});
 		} else if (action === "unread" && lastSeenMsgId) {
 			// Scrolled up or page hidden — place the unread divider.
 			onUnreadMark?.(lastSeenMsgId);
@@ -928,9 +952,13 @@
 		<!-- Bottom sentinel: first in DOM → appears at visual bottom in flex-col-reverse.
              Visible when user scrolls to the bottom (newest messages area). One height whether it spins or not, and
              shrink-0, as the list's flex column would shrink it to its content: a change would move the list (scroll
-             anchoring), whose scroll asks for the page below again. -->
+             anchoring), whose scroll asks for the page below again. Never the node the browser keeps in view as a page
+             goes in (overflow-anchor none): Firefox picked it, and so took the reader to each new page's end. -->
 		{#if hasMoreMessagesBelow}
-			<div data-sentinel-bottom class="flex h-11 w-full shrink-0 flex-col items-center justify-center gap-1">
+			<div
+				data-sentinel-bottom
+				class="flex h-11 w-full shrink-0 flex-col items-center justify-center gap-1 [overflow-anchor:none]"
+			>
 				{#if isLoadingMoreBelow}
 					<svg
 						class="h-5 w-5 animate-spin text-zinc-400"
