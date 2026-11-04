@@ -39,7 +39,7 @@ import {
 	allSpacesReady,
 } from "$lib/stores.svelte";
 import { getFriends, getPendingRequests, getSentRequests, type Friend } from "$lib/api/friends";
-import { getConversations } from "$lib/api/conversations";
+import { getConversations, type Conversation } from "$lib/api/conversations";
 import { listMyTeamInvites } from "$lib/api/developer";
 import { getMyBuckets, me as fetchMe } from "$lib/api/user";
 import { getMentionCounts } from "$lib/api/messages";
@@ -84,7 +84,9 @@ import {
 	forgetSpaceStatuses,
 	isMobileOnly,
 	mentionSound,
+	noteConversationMemberStatus,
 	noteMemberStatus,
+	rememberConversationPresences,
 	rememberFriendPresences,
 } from "$lib/status";
 import {
@@ -207,6 +209,13 @@ export function rememberFriendStatuses(list: Friend[]) {
 	if (learned.size > 0) {
 		conversations.update((convs) => convs.map((c) => (c.members.some((m) => learned.has(m.user_id)) ? { ...c } : c)));
 	}
+}
+
+/** Takes the presences a conversations list gives their members for those the gateway hasn't told us about yet
+ * (rememberConversationPresences): someone who is neither the user's friend nor in a space with them is known only
+ * from there, and their changes reach the user from then on. */
+export function rememberConversationStatuses(list: Conversation[]) {
+	rememberConversationPresences(userStatusCache, list, get(currentUser)?.id);
 }
 
 type WebRTCEventListener = (type: string, data: unknown) => void;
@@ -460,6 +469,7 @@ function handleEvent(event: GatewayEvent) {
 					sentFriendRequests.set(sent);
 					rememberFriendStatuses(friendList);
 					friends.set(friendList);
+					rememberConversationStatuses(convList);
 					conversations.set(convList);
 					pendingTeamInvites.set(teamInvites);
 					myBuckets.set(bucketList);
@@ -1387,6 +1397,10 @@ function handleEvent(event: GatewayEvent) {
 		}
 		case "CONVERSATION_CREATE": {
 			const conv = payload.data;
+			// Each member with their presence, which their changes keep from now on: in a group, someone who is neither the
+			// user's friend nor in a space with them.
+			const me = get(currentUser)?.id;
+			for (const m of conv.members) if (m.user_id !== me) noteConversationMemberStatus(userStatusCache, m.user_id, m);
 			conversations.update((list) => {
 				if (list.some((c) => c.id === conv.id)) return list;
 				return [conv, ...list];
@@ -1408,16 +1422,23 @@ function handleEvent(event: GatewayEvent) {
 				getConversations()
 					.then((list) => {
 						const conv = list.find((c) => c.id === raw.conversation_id);
-						if (conv) conversations.update((all) => (all.some((c) => c.id === conv.id) ? all : [conv, ...all]));
+						if (!conv) return;
+						// Its members' presences, for those the gateway hasn't told us about.
+						rememberConversationStatuses([conv]);
+						conversations.update((all) => (all.some((c) => c.id === conv.id) ? all : [conv, ...all]));
 					})
 					.catch((err) => console.error("[WS] Failed to load the group the user was added to:", err));
 				break;
 			}
+			// The member's presence, which their changes keep from now on: they may be neither the user's friend nor in a
+			// space with them.
+			if (raw.user_id !== get(currentUser)?.id) noteConversationMemberStatus(userStatusCache, raw.user_id, raw);
 			conversations.update((list) =>
 				list.map((c) => {
 					if (c.id !== raw.conversation_id) return c;
 					const alreadyHas = c.members.some((m) => m.id === raw.member_id || m.user_id === raw.user_id);
-					if (alreadyHas) return c;
+					// Shown again with the presence just kept.
+					if (alreadyHas) return { ...c };
 					return {
 						...c,
 						members: [

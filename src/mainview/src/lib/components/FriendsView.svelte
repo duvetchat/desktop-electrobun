@@ -45,7 +45,12 @@
 	import MemberProfilePopover from "$lib/components/MemberProfilePopover.svelte";
 	import { getAvatarURL } from "$lib/common/common";
 	import { acceptRequest, declineRequest } from "$lib/friend-requests";
-	import { getUserMobileOnly, getUserOnlineStatus, rememberFriendStatuses } from "$lib/api/ws/connection";
+	import {
+		getUserMobileOnly,
+		getUserOnlineStatus,
+		rememberConversationStatuses,
+		rememberFriendStatuses,
+	} from "$lib/api/ws/connection";
 	import { friendMember, friendUser } from "$lib/friends";
 	import { userStatusToString, type MemberOnSidebar } from "$lib/types";
 
@@ -157,6 +162,7 @@
 				sentFriendRequests.set(sent);
 				rememberFriendStatuses(friendList);
 				friends.set(friendList);
+				rememberConversationStatuses(convList);
 				conversations.set(convList);
 			}
 		} catch (err) {

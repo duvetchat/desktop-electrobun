@@ -45,8 +45,8 @@
 	}
 
 	// The other member's status, in a DM (a group has none), offline included, as the member list shows it, and whether
-	// they're connected only from the mobile app. Statuses come through spaces and friendships, so someone who is
-	// neither our friend nor in a space with us shows offline.
+	// they're connected only from the mobile app. Statuses come through spaces, friendships and conversations, so someone
+	// who is neither our friend nor in a space with us shows theirs too.
 	function convStatus(conv: Conversation): { status: MemberOnSidebar["status"]; mobileOnly: boolean } | null {
 		if (conv.type === 2) return null;
 		const other = conv.members.find((m) => m.user_id !== get(currentUser)?.id);
