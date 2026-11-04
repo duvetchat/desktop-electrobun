@@ -23,10 +23,16 @@ export type Thumbnailer = (bytes: Uint8Array) => Promise<string | null>;
 
 /**
  * The bytes at url, an http(s) URL, or null when it isn't one, or its answer isn't a 2xx within FETCH_TIMEOUT_MS
- * and MAX_REDIRECTS redirects (each to an http(s) URL too), or it has more than MAX_SOURCE_BYTES, or it's compressed.
+ * and MAX_REDIRECTS redirects (each to an http(s) URL too), or it has more than MAX_SOURCE_BYTES, or it's compressed,
+ * or stop aborts first (no activity needs it any more).
  */
-export async function fetchImageBytes(url: string, timeoutMs = FETCH_TIMEOUT_MS): Promise<Uint8Array | null> {
-	const signal = AbortSignal.timeout(timeoutMs);
+export async function fetchImageBytes(
+	url: string,
+	stop?: AbortSignal,
+	timeoutMs = FETCH_TIMEOUT_MS,
+): Promise<Uint8Array | null> {
+	const timeout = AbortSignal.timeout(timeoutMs);
+	const signal = stop ? AbortSignal.any([stop, timeout]) : timeout;
 	try {
 		let target = new URL(url);
 		for (let redirects = 0; ; redirects++) {
@@ -82,44 +88,94 @@ async function readAtMost(body: ReadableStream<Uint8Array>, max: number): Promis
 	return bytes;
 }
 
+/** How many images are fetched and made inline at once, whatever the apps: the others wait for a place. */
+export const MAKING_AT_ONCE = 2;
+
+/** An activity's images as ActivityImages has them. */
+export interface Images {
+	/** url's inline image once made; null while one that couldn't be waits to be tried again; undefined to make. */
+	known(url: string): string | null | undefined;
+	/** Makes url's inline image, unless signal aborts first: undefined when it isn't made. */
+	inline(url: string, signal?: AbortSignal): Promise<string | undefined>;
+}
+
 /**
- * The inline images of the URLs activities name, each fetched and made once: kept for the next activity that names
- * it, and while it's being made, shared with any that names it meanwhile. One that couldn't be is tried again only
- * RETRY_FAILED_MS later, as an app sends its activity again every few seconds, but one the webview didn't answer for
- * (a page that was loading) is tried again with the next activity.
+ * The inline images of the URLs activities name, each fetched and made once and kept for the next activity that names
+ * it. MAKING_AT_ONCE are made at a time, and one an activity no longer needs (signal aborted) stops, or never starts.
+ * One that couldn't be is tried again only RETRY_FAILED_MS later, as an app sends its activity again every few
+ * seconds, but one the webview didn't answer for (a page that was loading) is tried again with the next activity.
  */
-export class ActivityImages {
+export class ActivityImages implements Images {
 	private readonly kept = new Map<string, string>();
 	private readonly failed = new Map<string, number>();
-	private readonly making = new Map<string, Promise<string | undefined>>();
+	private running = 0;
+	private readonly queue: (() => void)[] = [];
 
 	constructor(
 		private readonly thumbnail: Thumbnailer,
-		private readonly fetchBytes: (url: string) => Promise<Uint8Array | null> = fetchImageBytes,
+		private readonly fetchBytes: (url: string, signal?: AbortSignal) => Promise<Uint8Array | null> = fetchImageBytes,
 		private readonly now: () => number = Date.now,
+		private readonly atOnce = MAKING_AT_ONCE,
 	) {}
 
-	/** url's image inline, or undefined when it can't be. */
-	inline(url: string): Promise<string | undefined> {
+	known(url: string): string | null | undefined {
 		const kept = this.kept.get(url);
 		if (kept !== undefined) {
 			// The most recently used goes last, so it's the last to go.
 			this.kept.delete(url);
 			this.kept.set(url, kept);
-			return Promise.resolve(kept);
+			return kept;
 		}
 		const failedAt = this.failed.get(url);
-		if (failedAt !== undefined && this.now() - failedAt < RETRY_FAILED_MS) return Promise.resolve(undefined);
-		let making = this.making.get(url);
-		if (!making) {
-			making = this.make(url).finally(() => this.making.delete(url));
-			this.making.set(url, making);
-		}
-		return making;
+		return failedAt !== undefined && this.now() - failedAt < RETRY_FAILED_MS ? null : undefined;
 	}
 
-	private async make(url: string): Promise<string | undefined> {
-		const bytes = await this.fetchBytes(url);
+	async inline(url: string, signal?: AbortSignal): Promise<string | undefined> {
+		const known = this.known(url);
+		if (known !== undefined) return known ?? undefined;
+		if (!(await this.place(signal))) return undefined;
+		try {
+			if (signal?.aborted) return undefined;
+			// Made while this one waited for its place.
+			const meanwhile = this.known(url);
+			if (meanwhile !== undefined) return meanwhile ?? undefined;
+			return await this.make(url, signal);
+		} finally {
+			this.leave();
+		}
+	}
+
+	// A place among those making images, once one is free; false when signal aborts first.
+	private place(signal?: AbortSignal): Promise<boolean> {
+		if (signal?.aborted) return Promise.resolve(false);
+		if (this.running < this.atOnce) {
+			this.running++;
+			return Promise.resolve(true);
+		}
+		return new Promise((resolve) => {
+			const start = () => {
+				signal?.removeEventListener("abort", stop);
+				this.running++;
+				resolve(true);
+			};
+			const stop = () => {
+				this.queue.splice(this.queue.indexOf(start), 1);
+				resolve(false);
+			};
+			this.queue.push(start);
+			signal?.addEventListener("abort", stop, { once: true });
+		});
+	}
+
+	private leave() {
+		this.running--;
+		this.queue.shift()?.();
+	}
+
+	private async make(url: string, signal?: AbortSignal): Promise<string | undefined> {
+		const bytes = await this.fetchBytes(url, signal);
+		// No activity needs it any more: nothing failed.
+		if (signal?.aborted) return undefined;
 		let image: string | null = null;
 		// The webview decodes what it's given whole: an image its headers don't say is small enough never reaches it.
 		const fits = !!bytes && decodable(bytes);
@@ -154,17 +210,40 @@ function hostOf(url: string): string {
 	}
 }
 
+const isUrl = (image: string | undefined): image is string => image !== undefined && /^https?:\/\//i.test(image);
+
+/** The images activity names by URL. */
+export function imageUrls(activity: ActivityPayload): string[] {
+	return [activity.assets?.large_image, activity.assets?.small_image].filter(isUrl);
+}
+
 /**
- * The IPC apps' activities, each client's last, with their images inline (withInlineImages). An activity takes its
- * client's place once its images are, unless the client sent another, cleared it or left meanwhile: an image being
- * fetched never brings back an activity the app has replaced. onChange runs each time what's shown changes.
+ * activity with each image it names by URL as images knows it: inline once made, left out until then or when it
+ * can't be, never as its URL. Any other value is as the app sent it (a data URI, which the gateway checks).
+ */
+export function withKnownImages(activity: ActivityPayload, images: Pick<Images, "known">): ActivityPayload {
+	const assets = activity.assets;
+	if (!assets) return activity;
+	const known = (image: string | undefined) => (isUrl(image) ? (images.known(image) ?? undefined) : image);
+	return {
+		...activity,
+		assets: { ...assets, large_image: known(assets.large_image), small_image: known(assets.small_image) },
+	};
+}
+
+/**
+ * The IPC apps' activities, each client's last, with their images inline (withKnownImages). An activity shows at once,
+ * with the images made so far, and again once the others are made, so that an app that keeps changing them still
+ * shows. A client has its images made one activity at a time: a new one stops what its last one was making, unless it
+ * names the same images, and a cleared one or a client that left stops it too. onChange runs each time what's shown
+ * changes.
  */
 export class IpcActivities {
 	private readonly shown = new Map<object, ActivityPayload>();
-	private readonly pending = new Map<object, Promise<ActivityPayload>>();
+	private readonly making = new Map<object, { urls: string; activity: ActivityPayload; stop: AbortController }>();
 
 	constructor(
-		private readonly images: Pick<ActivityImages, "inline">,
+		private readonly images: Images,
 		private readonly onChange: () => void,
 	) {}
 
@@ -176,36 +255,47 @@ export class IpcActivities {
 	/** client's new activity, or null for none (fitActivity found nothing to show). */
 	set(client: object, activity: ActivityPayload | null) {
 		if (!activity) return this.clear(client);
-		const ready = withInlineImages(activity, this.images);
-		this.pending.set(client, ready);
-		void ready.then((inline) => {
-			if (this.pending.get(client) !== ready) return;
-			this.pending.delete(client);
-			this.shown.set(client, inline);
-			this.onChange();
-		});
+		const urls = imageUrls(activity);
+		const making = this.making.get(client);
+		if (making && making.urls === urls.join(" ")) {
+			// The same images, still being made: they show with this activity.
+			making.activity = activity;
+		} else {
+			making?.stop.abort();
+			this.making.delete(client);
+			const toMake = urls.filter((url) => this.images.known(url) === undefined);
+			if (toMake.length) this.make(client, activity, urls, toMake);
+		}
+		this.show(client, activity);
 	}
 
 	/** client has no activity any more: it cleared it, or left. */
 	clear(client: object) {
-		this.pending.delete(client);
+		this.making.get(client)?.stop.abort();
+		this.making.delete(client);
 		this.shown.delete(client);
 		this.onChange();
 	}
-}
 
-/**
- * activity with its images inline: each http(s) one as images makes it, or left out when it can't be, never as its
- * URL. Any other value is as the app sent it (a data URI, which the gateway checks).
- */
-export async function withInlineImages(
-	activity: ActivityPayload,
-	images: Pick<ActivityImages, "inline">,
-): Promise<ActivityPayload> {
-	const assets = activity.assets;
-	if (!assets) return activity;
-	const inline = (image: string | undefined) =>
-		image !== undefined && /^https?:\/\//i.test(image) ? images.inline(image) : Promise.resolve(image);
-	const [large, small] = await Promise.all([inline(assets.large_image), inline(assets.small_image)]);
-	return { ...activity, assets: { ...assets, large_image: large, small_image: small } };
+	private make(client: object, activity: ActivityPayload, urls: string[], toMake: string[]) {
+		const job = { urls: urls.join(" "), activity, stop: new AbortController() };
+		this.making.set(client, job);
+		Promise.all(toMake.map((url) => this.images.inline(url, job.stop.signal))).then(
+			() => {
+				if (this.making.get(client) !== job) return;
+				this.making.delete(client);
+				this.show(client, job.activity);
+			},
+			(err) => {
+				// The activity stays shown, without the images that weren't made.
+				console.error("[activity images] making an activity's images failed:", err);
+				if (this.making.get(client) === job) this.making.delete(client);
+			},
+		);
+	}
+
+	private show(client: object, activity: ActivityPayload) {
+		this.shown.set(client, withKnownImages(activity, this.images));
+		this.onChange();
+	}
 }
