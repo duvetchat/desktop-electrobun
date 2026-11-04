@@ -469,9 +469,11 @@ describe("parseInviteLink", () => {
 		});
 	});
 
-	test("reads a space's invite from a link that names a bot too, in its card and its button alike", () => {
-		expect(parseInviteLink(`https://duvet.chat/invite?code=abc&bot=${ID1}`, own)).toEqual({ code: "abc" });
-		expect(parseInviteLink(`https://duvet.chat/invite?bot=${ID1}&code=abc`, own)).toEqual({ code: "abc" });
+	test("reads a bot's invite from a link that names a space's code too, as the invite page and the mobile app do", () => {
+		expect(parseInviteLink(`https://duvet.chat/invite?code=abc&bot=${ID1}`, own)).toEqual({ bot: ID1 });
+		expect(parseInviteLink(`https://duvet.chat/invite?bot=${ID1}&code=abc`, own)).toEqual({ bot: ID1 });
+		// A bot's ID that isn't a UUID names no bot: the code's card, as on mobile.
+		expect(parseInviteLink("https://duvet.chat/invite?code=abc&bot=x", own)).toEqual({ code: "abc" });
 	});
 
 	test("reads them on the app's own pages too, as before", () => {

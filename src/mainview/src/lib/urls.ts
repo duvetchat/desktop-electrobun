@@ -137,7 +137,9 @@ export type InviteLink = { code: string } | { bot: string };
  * The invite a link names (read as cardLink reads it), on duvet.chat or at ownOrigin, the app's own: a space's from
  * /invite?code=<code> or /invite/<code>, or a bot's from /invite?bot=<id> or /invite.html?bot=<id>, as the API and
  * the mobile app read them; nothing otherwise. A bot's ID goes into API paths, so it's a UUID (isUuid), and a code
- * holds no / ? # or \, as the mobile app has it. The slashes at the path's ends don't count, as for the API.
+ * holds no / ? # or \, as the mobile app has it. The slashes at the path's ends don't count, as for the API. A link
+ * that names both a bot and a code is the bot's, as the app's invite page and the mobile app take it, so its card
+ * shows what the link opens.
  */
 export function parseInviteLink(url: string, ownOrigin: string): InviteLink | null {
 	let parsed: URL;
@@ -149,15 +151,15 @@ export function parseInviteLink(url: string, ownOrigin: string): InviteLink | nu
 	if (parsed.origin !== DUVET_DOMAIN && parsed.origin !== ownOrigin) return null;
 	const segments = parsed.pathname.replace(/^\/+|\/+$/g, "").split("/");
 	const [page, rest] = segments;
+	const bot = parsed.searchParams.get("bot");
+	if (segments.length === 1 && (page === "invite" || page === "invite.html") && isUuid(bot)) return { bot };
 	const code =
 		segments.length === 1 && page === "invite"
 			? parsed.searchParams.get("code")
 			: segments.length === 2 && page === "invite"
 				? decodedSegment(rest)
 				: null;
-	if (code && !/[/?#\\]/.test(code)) return { code };
-	const bot = parsed.searchParams.get("bot");
-	return segments.length === 1 && (page === "invite" || page === "invite.html") && isUuid(bot) ? { bot } : null;
+	return code && !/[/?#\\]/.test(code) ? { code } : null;
 }
 
 // A path segment as it reads, or null for one that doesn't decode.
