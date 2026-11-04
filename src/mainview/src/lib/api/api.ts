@@ -77,12 +77,17 @@ export function formBytes(form: FormData): number {
 	return bytes;
 }
 
-/** A request refused before it's sent, as the API would refuse it: its body is over MAX_REQUEST_BYTES. */
+/** A request refused before it's sent, as the API would refuse it: its body is over MAX_REQUEST_BYTES. Its message
+ * says what was too large (what), its size and how much of it is over the limit, which a size rounded to the limit's
+ * can't show. */
 export class TooLargeError extends Error {
 	bytes: number;
 
-	constructor(bytes: number, scope = "") {
-		super(`Files too large: ${formatFileSize(bytes)}, ${MAX_REQUEST_BYTES / (1024 * 1024)} MB at most${scope}`);
+	constructor(bytes: number, what = "Files") {
+		const over = formatFileSize(bytes - MAX_REQUEST_BYTES);
+		super(
+			`${what} too large: ${formatFileSize(bytes)}, ${over} over the ${MAX_REQUEST_BYTES / (1024 * 1024)} MB limit`,
+		);
 		this.name = "TooLargeError";
 		this.bytes = bytes;
 	}

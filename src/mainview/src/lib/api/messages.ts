@@ -106,7 +106,7 @@ export function messageTooLarge(content: string, files: File[]): string | null {
 	form.append("content", content);
 	for (const f of files) form.append("files", f);
 	const bytes = formBytes(form) + MESSAGE_FIELDS_BYTES;
-	return bytes > MAX_REQUEST_BYTES ? new TooLargeError(bytes, " per message").message : null;
+	return bytes > MAX_REQUEST_BYTES ? new TooLargeError(bytes, "Message").message : null;
 }
 
 export async function sendMessage(

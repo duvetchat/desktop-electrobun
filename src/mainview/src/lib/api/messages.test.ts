@@ -52,13 +52,13 @@ const file = (bytes: number, name = "big.bin") => new File([new Uint8Array(bytes
 
 // The message box asks before it sends: a message the API would refuse for its size stays in the box with this (#182).
 describe("a message too large for the API", () => {
-	test("is said so, with its size and the limit per message", () => {
-		expect(messageTooLarge("hi", [file(33 * MiB)])).toBe("Files too large: 33.00 MB, 32 MB at most per message");
+	test("is said so, with its size and how much of it is over the limit", () => {
+		expect(messageTooLarge("hi", [file(33 * MiB)])).toBe("Message too large: 33.00 MB, 1.00 MB over the 32 MB limit");
 	});
 
 	test("is its files together", () => {
 		expect(messageTooLarge("", [file(17 * MiB), file(17 * MiB, "second.bin")])).toBe(
-			"Files too large: 34.00 MB, 32 MB at most per message",
+			"Message too large: 34.00 MB, 2.00 MB over the 32 MB limit",
 		);
 	});
 
@@ -68,7 +68,8 @@ describe("a message too large for the API", () => {
 	});
 
 	// What the box lets through goes out whole, its reply and mentions with it, and within the API's 32 MiB on the wire:
-	// the largest file it takes, also beside a text of 3000 line breaks, which a browser sends as CRLF (#182).
+	// the largest file it takes, also beside a text of 3000 line breaks, which a browser sends as CRLF (#182). A byte
+	// more is refused, saying how much is over: its size rounds to the limit's (#182's review).
 	test("is one the box refuses, and only those: what it lets through reaches the API within its limit", async () => {
 		const reply = {
 			type: MessageReferenceType.Reply,
@@ -81,7 +82,9 @@ describe("a message too large for the API", () => {
 			without.append("content", content);
 			without.append("files", file(0, "photo.jpg"));
 			const largest = MAX_REQUEST_BYTES - 2048 - formBytes(without);
-			expect(messageTooLarge(content, [file(largest + 1, "photo.jpg")])).not.toBeNull();
+			expect(messageTooLarge(content, [file(largest + 1, "photo.jpg")])).toBe(
+				"Message too large: 32.00 MB, 1 B over the 32 MB limit",
+			);
 			const fits = file(largest, "photo.jpg");
 			expect(messageTooLarge(content, [fits])).toBeNull();
 			bodies.length = 0;

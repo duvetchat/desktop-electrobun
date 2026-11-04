@@ -111,10 +111,12 @@ function messageForm(...files: File[]) {
 // The API answers a body over 32 MiB with a 413 before reading it, which Chromium never hands over HTTP/3: the send
 // then never ended, with no error either (#182).
 describe("a form over the API's 32 MiB", () => {
-	test("is refused before anything is sent, with its size and the limit", async () => {
+	test("is refused before anything is sent, with its size and how much of it is over the limit", async () => {
 		const form = messageForm(file(33 * MiB));
 		expect(formBytes(form)).toBeGreaterThan(MAX_REQUEST_BYTES);
-		await expect(api.post("/api/rooms/r/messages", form)).rejects.toThrow("Files too large: 33.00 MB, 32 MB at most");
+		await expect(api.post("/api/rooms/r/messages", form)).rejects.toThrow(
+			"Files too large: 33.00 MB, 1.00 MB over the 32 MB limit",
+		);
 		await expect(api.patch("/api/users/@me", form)).rejects.toBeInstanceOf(TooLargeError);
 		expect(sent).toEqual([]);
 	});
@@ -122,7 +124,7 @@ describe("a form over the API's 32 MiB", () => {
 	test("counts its files together", async () => {
 		await expect(
 			api.post("/api/rooms/r/messages", messageForm(file(17 * MiB), file(17 * MiB, "second.bin"))),
-		).rejects.toThrow("Files too large: 34.00 MB, 32 MB at most");
+		).rejects.toThrow("Files too large: 34.00 MB, 2.00 MB over the 32 MB limit");
 		expect(sent).toEqual([]);
 	});
 
