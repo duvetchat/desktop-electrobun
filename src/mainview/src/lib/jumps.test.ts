@@ -4,6 +4,7 @@ import {
 	dividerPastWindow,
 	inWindow,
 	keepJump,
+	keepRoomJumps,
 	knowMessage,
 	leaving,
 	loadedTo,
@@ -293,6 +294,13 @@ describe("keepJump and takeJump", () => {
 		keepJump("c", kept);
 		keepJump("c", null);
 		expect(takeJump("c", list)).toBeNull();
+	});
+
+	test("a room's pane that goes leaves the jump of each room it shows on a jump's pages", () => {
+		// A READY remounts the app: the pane shows "jumped" on a jump's pages, "present" at its newest message.
+		keepRoomJumps({ jumped: true, present: false }, { jumped: true }, { jumped: m(220), present: m(40) });
+		expect(takeJump("jumped", list)).toEqual({ hasMore: true, loadedBelowTo: m(220) });
+		expect(takeJump("present", list)).toBeNull();
 	});
 });
 

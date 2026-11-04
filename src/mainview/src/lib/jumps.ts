@@ -72,8 +72,8 @@ export function belowIndicator(scrollTop: number, loading: boolean): { scrollTop
 
 type Listed = { id: string; nonce?: string | null };
 
-/** Where a conversation's jump left its list: whether older messages are left to load, and the newest message of the
- * jump's pages, after which the next page below starts. */
+/** Where a jump left a room's or a conversation's list: whether older messages are left to load, and the newest message
+ * of the jump's pages, after which the next page below starts. */
 export interface KeptJump {
 	hasMore: boolean;
 	loadedBelowTo: string;
@@ -82,22 +82,37 @@ export interface KeptJump {
 const keptJumps = new Map<string, KeptJump>();
 
 /**
- * Keeps where a conversation's jump left its list as its view goes (another tab shows, or the friends view), as a room's
- * pane keeps a room's, so that the view shown again goes on from the jump's pages, rather than putting the newest page
- * beside them with the messages between left out. Null forgets it: the list reaches the present.
+ * Keeps where a jump left a conversation's or a room's list as its view goes (another tab shows, the friends view, or a
+ * READY remounts the app), so that the view shown again goes on from the jump's pages, rather than putting the newest
+ * page beside them with the messages between left out. Null forgets it: the list reaches the present.
  */
-export function keepJump(conversationId: string, kept: KeptJump | null) {
-	if (kept) keptJumps.set(conversationId, kept);
-	else keptJumps.delete(conversationId);
+export function keepJump(listId: string, kept: KeptJump | null) {
+	if (kept) keptJumps.set(listId, kept);
+	else keptJumps.delete(listId);
 }
 
 /**
- * The jump kept for a conversation, which only its next view gets, and only while its list still holds the jump's
- * pages: a list dropped meanwhile (the stores keep a few dozen) starts again from the newest page.
+ * The jumps a room's pane leaves as it goes (a READY remounts the app, or the pane closes): each room it shows on a
+ * jump's pages, with newer messages still below. A room's tabs in one pane keep theirs while the pane stays.
  */
-export function takeJump(conversationId: string, list: { id: string }[] | undefined): KeptJump | null {
-	const kept = keptJumps.get(conversationId) ?? null;
-	keptJumps.delete(conversationId);
+export function keepRoomJumps(
+	moreBelow: Partial<Record<string, boolean>>,
+	more: Partial<Record<string, boolean>>,
+	loadedBelowTo: Partial<Record<string, string>>,
+) {
+	for (const [roomId, below] of Object.entries(moreBelow)) {
+		const to = loadedBelowTo[roomId];
+		if (below && to) keepJump(roomId, { hasMore: more[roomId] === true, loadedBelowTo: to });
+	}
+}
+
+/**
+ * The jump kept for a conversation or a room, which only its next view gets, and only while its list still holds the
+ * jump's pages: a list dropped meanwhile (the stores keep a few dozen) starts again from the newest page.
+ */
+export function takeJump(listId: string, list: { id: string }[] | undefined): KeptJump | null {
+	const kept = keptJumps.get(listId) ?? null;
+	keptJumps.delete(listId);
 	if (!kept || !list?.some((m) => m.id === kept.loadedBelowTo)) return null;
 	return kept;
 }
