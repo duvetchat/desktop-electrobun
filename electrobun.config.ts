@@ -40,6 +40,7 @@ export default {
 			"src/mainview/build/_app": "views/mainview/_app",
 			"src/mainview/build/sounds": "views/mainview/sounds",
 			"src/mainview/build/badges": "views/mainview/badges",
+			"src/mainview/build/rnnoise-worklet-processor.js": "views/mainview/rnnoise-worklet-processor.js",
 
 			"src/mainview/build/app.html": "views/mainview/app.html",
 			"src/mainview/build/index.html": "views/mainview/index.html",
