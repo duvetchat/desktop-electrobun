@@ -160,7 +160,15 @@ function sendForm(url: string, init: RequestInit, form: FormData, bytes: number)
 		new Headers(init.headers).forEach((value, name) => xhr.setRequestHeader(name, value));
 		xhr.upload.onprogress = waitForProgress;
 		xhr.upload.onload = () => giveUpIn(uploadLimits.answerMs(bytes), "No answer to the upload in time");
-		xhr.onload = () => settle(() => resolve(responseOf(xhr)));
+		xhr.onload = () =>
+			settle(() => {
+				// A status a Response can't hold (outside 200-599) fails, as fetch fails such an answer.
+				try {
+					resolve(responseOf(xhr));
+				} catch {
+					reject(new TypeError("Failed to fetch"));
+				}
+			});
 		xhr.onerror = () => settle(() => reject(new TypeError("Failed to fetch")));
 		xhr.onabort = () => settle(() => reject(new DOMException("The upload was aborted", "AbortError")));
 		init.signal?.addEventListener("abort", () => xhr.abort());

@@ -60,9 +60,25 @@ class FakeXHR {
 		this.status = status;
 		this.responseHeaders = "content-type: application/json; charset=utf-8\r\nx-ratelimit-remaining: 4\r\n";
 		this.response = new TextEncoder().encode(JSON.stringify(json)).buffer;
-		this.onload?.();
+		// As a browser does with an exception in an event handler: it's reported, and nothing else happens.
+		try {
+			this.onload?.();
+		} catch (e) {
+			FakeXHR.thrown.push(e);
+		}
 	}
+	static thrown: unknown[] = [];
 }
+
+// Whether the promise settles within ms, and how.
+const within = (promise: Promise<unknown>, ms: number) =>
+	Promise.race([
+		promise.then(
+			(value) => ({ settled: "resolved", value }),
+			(error: unknown) => ({ settled: "rejected", error }),
+		),
+		new Promise((resolve) => setTimeout(() => resolve({ settled: `pending after ${ms} ms` }), ms)),
+	]);
 
 let fetched: ReturnType<typeof spyOn<typeof globalThis, "fetch">>;
 const limits = { ...uploadLimits };
@@ -225,6 +241,16 @@ describe("an upload", () => {
 	test("waits for its answer as long as the API may take to store it", () => {
 		expect(uploadLimits.answerMs(0)).toBe(60_000);
 		expect(uploadLimits.answerMs(32 * MiB)).toBe(2 * (30_000 + 128_000));
+	});
+
+	// fetch fails an answer whose status a Response can't hold; new Response() threw inside the settled upload, which
+	// then stayed pending for good.
+	test("answered with a status outside 200-599 fails as a fetch does, at once", async () => {
+		FakeXHR.thrown = [];
+		FakeXHR.onSend = (xhr) => queueMicrotask(() => xhr.respond(999, { error: "weird" }));
+		const outcome = await within(api.patch("/api/users/@me", messageForm(file(1024))), 500);
+		expect(outcome).toMatchObject({ settled: "rejected", error: new TypeError("Failed to fetch") });
+		expect(FakeXHR.thrown).toEqual([]);
 	});
 
 	test("cut by the network fails as a fetch does", async () => {
