@@ -303,6 +303,14 @@
 	let loadedBelowTo = $state("");
 	// When the last page below failed: the next one waits a while (belowRetryWait) before it's asked for again.
 	let belowFailedAt = 0;
+	// The page below while it's asked for: a jump, or a trip to the present, calls it off, so that the new pages' next
+	// one can be asked for at once rather than after it gives up.
+	let belowRequest: AbortController | null = null;
+	function callOffBelow() {
+		belowRequest?.abort();
+		belowRequest = null;
+		isLoadingMoreBelow = false;
+	}
 	const belowRetryWait = 2_000;
 	// The jumps so far: what a jump or a page below fetched is dropped when a newer jump has started since.
 	let jumps = 0;
@@ -319,6 +327,7 @@
 	async function jumpToMessage(messageId: string) {
 		const convId = conversation.id;
 		const jump = ++jumps;
+		callOffBelow();
 		try {
 			const anchor = await getDirectMessageById(convId, messageId);
 			const [rawAbove, rawBelow] = await Promise.all([
@@ -360,6 +369,7 @@
 		const jump = jumps;
 		isLoadingMoreBelow = true;
 		const controller = new AbortController();
+		belowRequest = controller;
 		const timeoutId = setTimeout(() => controller.abort(), 10_000);
 		try {
 			const fetched = await getDirectMessagesAfter(convId, after, controller.signal);
@@ -372,11 +382,15 @@
 			});
 			hasMoreBelow = fetched.length >= 100;
 		} catch (err) {
-			belowFailedAt = Date.now();
+			// A page a jump called off isn't a failure of the new pages'.
+			if (jump === jumps) belowFailedAt = Date.now();
 			console.error("[DM] Failed to load newer messages:", err);
 		} finally {
 			clearTimeout(timeoutId);
-			isLoadingMoreBelow = false;
+			if (belowRequest === controller) {
+				belowRequest = null;
+				isLoadingMoreBelow = false;
+			}
 		}
 	}
 
@@ -392,6 +406,7 @@
 	async function loadPresent(): Promise<boolean> {
 		const convId = conversation.id;
 		const jump = ++jumps;
+		callOffBelow();
 		try {
 			const fetched = await getDirectMessages(convId);
 			if (jump !== jumps) return false;
@@ -769,6 +784,7 @@
 			// What the view still waits for (its first page, a jump's pages, a page below) is dropped as it comes.
 			gone = true;
 			jumps++;
+			callOffBelow();
 			keepJump(convId, hasMoreBelow ? { hasMore, loadedBelowTo } : null);
 			activeDMConvId.update((cur) => (cur === convId ? null : cur));
 		};

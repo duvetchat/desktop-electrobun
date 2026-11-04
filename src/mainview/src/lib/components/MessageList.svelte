@@ -44,7 +44,7 @@
 	} from "$lib/api/reactions";
 	import { arrival, arrivalAction, listEnd } from "$lib/arrivals";
 	import { callNoticeLine, callNoticeText } from "$lib/call-notices";
-	import { quoteJump } from "$lib/jumps";
+	import { belowIndicator, quoteJump } from "$lib/jumps";
 	import { keepPlace, takePlace } from "$lib/kept-places";
 	import { renderEmoji, isOnlyEmojis, countEmojis } from "$lib/emoji";
 	import { customEmojiMapOf, mentionMapOf, parseTextSegments, renderMarkdown, renderMarkdownLine } from "$lib/markdown";
@@ -289,18 +289,21 @@
 			}
 		}
 
-		if (!isLoadingMoreBelow && hasMoreMessagesBelow) {
-			const sentinelBottom = scrollEl.querySelector("[data-sentinel-bottom]");
-			if (sentinelBottom) {
-				const r = sentinelBottom.getBoundingClientRect();
-				if (r.top < scrollRect.bottom && r.bottom > scrollRect.top) {
-					// The page goes in below what the reader sees, and the browser keeps it in place (scroll anchoring), but
-					// not for a list scrolled to its very end, its bottom here: a pixel up, it does.
-					if (scrollEl.scrollTop > -1) scrollEl.scrollTop = -1;
-					void onLoadMoreBelow();
-				}
-			}
-		}
+		if (hasMoreMessagesBelow) checkBelow();
+	}
+
+	// The "newer messages below" indicator in view: the list stays a pixel off its very bottom (belowIndicator), also
+	// while a page loads, and the page is asked for unless one is loading. The page goes in below what the reader sees,
+	// and the browser keeps it in place (scroll anchoring), but not for a list scrolled to its very end, its bottom here.
+	function checkBelow() {
+		const sentinelBottom = scrollEl?.querySelector("[data-sentinel-bottom]");
+		if (!scrollEl || !sentinelBottom) return;
+		const scrollRect = scrollEl.getBoundingClientRect();
+		const r = sentinelBottom.getBoundingClientRect();
+		if (r.top >= scrollRect.bottom || r.bottom <= scrollRect.top) return;
+		const next = belowIndicator(scrollEl.scrollTop, isLoadingMoreBelow);
+		if (next.scrollTop !== null) scrollEl.scrollTop = next.scrollTop;
+		if (next.ask) void onLoadMoreBelow();
 	}
 
 	function topObserverAction(_node: HTMLElement) {
@@ -532,6 +535,9 @@
 						isAtBottom = scrollEl.scrollTop >= -50;
 						wasAtBottom = isAtBottom;
 						scrollUnlocked = true;
+						// A visit that opens on the indicator (a jump's pages shown again) needs no scroll to ask for the page
+						// below: there, at the list's very bottom, scrolling down fires nothing.
+						if (hasMoreMessagesBelow) checkBelow();
 					});
 				});
 			});

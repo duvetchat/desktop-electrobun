@@ -59,6 +59,17 @@ export function loadedTo(after: string, page: { id: string }[]): string {
 	return page.reduce((newest, m) => (m.id > newest ? m.id : newest), after);
 }
 
+/**
+ * What the "newer messages below" indicator does when the list shows it (scrollTop is the list's, 0 at its very
+ * bottom): it keeps the list a pixel off its very bottom, where the browser keeps the reader's place as a page goes in
+ * below (scroll anchoring), and where scrolling down still moves the list. At its very bottom a scroll down fires no
+ * scroll at all, so a page that failed meanwhile would never be asked for again. It does so while a page loads too, and
+ * asks for the page unless one is loading.
+ */
+export function belowIndicator(scrollTop: number, loading: boolean): { scrollTop: number | null; ask: boolean } {
+	return { scrollTop: scrollTop > -1 ? -1 : null, ask: !loading };
+}
+
 type Listed = { id: string; nonce?: string | null };
 
 /** Where a conversation's jump left its list: whether older messages are left to load, and the newest message of the

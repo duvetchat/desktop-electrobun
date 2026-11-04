@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+	belowIndicator,
 	dividerPastWindow,
 	inWindow,
 	keepJump,
@@ -237,5 +238,20 @@ describe("keepJump and takeJump", () => {
 		keepJump("c", kept);
 		keepJump("c", null);
 		expect(takeJump("c", list)).toBeNull();
+	});
+});
+
+describe("belowIndicator", () => {
+	test("in view at the list's very bottom: the list goes a pixel up, and the page is asked for", () => {
+		expect(belowIndicator(0, false)).toEqual({ scrollTop: -1, ask: true });
+	});
+
+	test("while a page loads: a pixel up all the same, so a scroll down asks again if it fails, but nothing asked now", () => {
+		expect(belowIndicator(0, true)).toEqual({ scrollTop: -1, ask: false });
+	});
+
+	test("a list already off its bottom stays where it is", () => {
+		expect(belowIndicator(-1, false)).toEqual({ scrollTop: null, ask: true });
+		expect(belowIndicator(-300, true)).toEqual({ scrollTop: null, ask: false });
 	});
 });
