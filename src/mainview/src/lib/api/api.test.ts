@@ -8,6 +8,7 @@ import api, {
 	UploadTimeoutError,
 	uploadLimits,
 } from "$lib/api/api";
+import { accessToken } from "$lib/stores/auth";
 
 // The requests the client sends, by URL, through fetch or XMLHttpRequest; each answers as the API does for a message it
 // took, unless a test says otherwise. Only while a test of this file runs: the next test, and the preload's check once
@@ -27,7 +28,7 @@ class FakeXHR {
 	aborted = false;
 	status = 0;
 	statusText = "";
-	response: ArrayBuffer | null = null;
+	response: ArrayBuffer | string | null = null;
 	responseHeaders = "";
 	upload: { onprogress: (() => void) | null; onload: (() => void) | null } = { onprogress: null, onload: null };
 	onload: (() => void) | null = null;
@@ -55,11 +56,14 @@ class FakeXHR {
 	getAllResponseHeaders() {
 		return this.responseHeaders;
 	}
-	respond(status: number, json: unknown) {
+	// An answer of the API, JSON, or empty without json (a 204's).
+	respond(status: number, json?: unknown) {
 		this.upload.onload?.();
 		this.status = status;
 		this.responseHeaders = "content-type: application/json; charset=utf-8\r\nx-ratelimit-remaining: 4\r\n";
-		this.response = new TextEncoder().encode(JSON.stringify(json)).buffer;
+		const text = json === undefined ? "" : JSON.stringify(json);
+		// As a browser does, by responseType: text by default.
+		this.response = this.responseType === "arraybuffer" ? new TextEncoder().encode(text).buffer : text;
 		// As a browser does with an exception in an event handler: it's reported, and nothing else happens.
 		try {
 			this.onload?.();
@@ -84,6 +88,8 @@ let fetched: ReturnType<typeof spyOn<typeof globalThis, "fetch">>;
 const limits = { ...uploadLimits };
 beforeEach(() => {
 	sent.length = 0;
+	localStorage.clear();
+	accessToken.set(null);
 	FakeXHR.last = null;
 	FakeXHR.onSend = (xhr) => queueMicrotask(() => xhr.respond(201, { id: "m" }));
 	Object.assign(globalThis, { XMLHttpRequest: FakeXHR });
@@ -158,6 +164,14 @@ describe("a form's size", () => {
 			form.append("files", file(1024));
 			return form;
 		};
+		// Each part's own lines, a name's escapes and a file name's, each with little else around it: none of them may
+		// be counted short (#182's review).
+		const manyParts = new FormData();
+		for (let i = 0; i < 100; i++) manyParts.append("a", file(0, "a"));
+		const quotedName = new FormData();
+		quotedName.append('"'.repeat(500), "v");
+		const quotedFileName = new FormData();
+		quotedFileName.append("files", file(0, '"'.repeat(500)));
 		const forms = [
 			new FormData(),
 			messageForm(),
@@ -168,6 +182,9 @@ describe("a form's size", () => {
 			lineBreaks("a\r".repeat(2000)),
 			lineBreaks("a\r\n".repeat(2000)),
 			lineBreaks("x\n\ny\r\rz\r\n\n"),
+			manyParts,
+			quotedName,
+			quotedFileName,
 		];
 		for (const form of forms) {
 			const body = await new Response(form).arrayBuffer();
@@ -195,6 +212,55 @@ describe("an upload", () => {
 		expect(xhr.headers["content-type"]).toBeUndefined();
 		expect(xhr.body).toBe(form);
 		expect(fetched).not.toHaveBeenCalled();
+	});
+
+	// As a fetch's: a refresh, then the same form again through XMLHttpRequest with the new tokens (#182's review).
+	test("refused for its session's tokens goes again with the refreshed ones", async () => {
+		localStorage.setItem("duvet_session_token", "access-1");
+		localStorage.setItem("duvet_refresh_token", "session-1");
+		fetched.mockImplementation((async (input: string | URL | Request) => {
+			sent.push(input instanceof Request ? input.url : input.toString());
+			const tokens = { token: "access-2", session_token: "session-2" };
+			return new Response(JSON.stringify(tokens), { status: 200, headers: { "Content-Type": "application/json" } });
+		}) as typeof fetch);
+		const xhrs: FakeXHR[] = [];
+		FakeXHR.onSend = (xhr) => {
+			xhrs.push(xhr);
+			queueMicrotask(() =>
+				xhrs.length === 1 ? xhr.respond(401, { error: "expired" }) : xhr.respond(201, { id: "m" }),
+			);
+		};
+		const form = messageForm(file(1024));
+		const res = await api.post("/api/rooms/r/messages", form);
+		expect(res).toMatchObject({ status: 201, data: { id: "m" } });
+		expect(sent).toEqual([
+			"https://api.test/api/rooms/r/messages",
+			"https://api.test/api/auth/refresh",
+			"https://api.test/api/rooms/r/messages",
+		]);
+		expect(xhrs).toHaveLength(2);
+		expect(xhrs[1].headers).toMatchObject({ authorization: "Bearer access-2", "x-session-token": "session-2" });
+		expect(xhrs[1].body).toBe(form);
+	});
+
+	// A 204 holds no body: a browser's Response refuses one for it, even empty, where Bun's takes it.
+	test("answered without a body, as a 204 is, is read as fetch reads it", async () => {
+		const BunResponse = globalThis.Response;
+		class BrowserResponse extends BunResponse {
+			constructor(body?: BodyInit | null, init?: ResponseInit) {
+				if (body != null && init?.status === 204)
+					throw new TypeError("Response with null body status cannot have body");
+				super(body, init);
+			}
+		}
+		globalThis.Response = BrowserResponse;
+		try {
+			FakeXHR.onSend = (xhr) => queueMicrotask(() => xhr.respond(204));
+			const res = await api.patch("/api/users/@me", messageForm(file(1024)));
+			expect(res).toMatchObject({ status: 204, data: null });
+		} finally {
+			globalThis.Response = BunResponse;
+		}
 	});
 
 	test("refused by the API fails with its error, as a fetch's does", async () => {
