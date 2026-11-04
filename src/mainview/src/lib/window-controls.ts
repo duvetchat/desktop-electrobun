@@ -8,21 +8,13 @@ function bindControl(id: string, handler: () => void) {
 
 function bindFallbackControls() {
 	bindControl("window-close", () => window.close());
-	bindControl("window-minimize", () => {
-		document.body.classList.remove("window-maximized");
-	});
 	bindControl("window-maximize", async () => {
 		if (!document.fullscreenElement) {
 			await document.documentElement.requestFullscreen().catch(() => undefined);
 		} else {
 			await document.exitFullscreen().catch(() => undefined);
 		}
-		toggleMaximizedUi();
 	});
-}
-
-function toggleMaximizedUi() {
-	document.body.classList.toggle("window-maximized");
 }
 
 export async function setupWindowControls() {
@@ -32,16 +24,9 @@ export async function setupWindowControls() {
 		const rpc = await getElectrobunRpc();
 
 		if (rpc) {
-			const sendMaximize = () => {
-				const s: Screen & { availLeft?: number; availTop?: number } = window.screen;
-				rpc.send.maximizeWindow({
-					availX: s.availLeft ?? 0,
-					availY: s.availTop ?? 0,
-					availWidth: s.availWidth,
-					availHeight: s.availHeight,
-				});
-				toggleMaximizedUi();
-			};
+			// The Bun process finds the display from the window's own frame: this page's window.screen can still be the
+			// monitor the window was dragged from (#187).
+			const sendMaximize = () => rpc.send.maximizeWindow();
 
 			bindControl("window-close", () => rpc.send.closeWindow());
 			bindControl("window-minimize", () => rpc.send.minimizeWindow());
