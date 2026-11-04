@@ -6,6 +6,7 @@
 	import { userActivities } from "$lib/stores.svelte";
 	import { BADGES } from "$lib/badges";
 	import ActivityList from "$lib/components/ActivityList.svelte";
+	import StatusDot from "$lib/components/StatusDot.svelte";
 
 	let previewSrc = $state("");
 	let previewOpen = $state(false);
@@ -190,16 +191,8 @@
 			{:else}
 				<UserAvatar src={null} name={member.username} size={80} />
 			{/if}
-			<div
-				class="absolute right-0 bottom-0 h-6 w-6 rounded-full border-4 border-zinc-800
-				{member.status === 'online'
-					? 'bg-stone-400'
-					: member.status === 'idle'
-						? 'bg-amber-500'
-						: member.status === 'dnd'
-							? 'bg-red-500'
-							: 'bg-zinc-500'}"
-			></div>
+			<!-- Coloured as every status dot (statusDotClass, lib/status.ts): online in the theme's colour -->
+			<StatusDot status={member.status} class="absolute right-0 bottom-0 h-6 w-6 border-4 border-zinc-800" />
 		</div>
 
 		<div class="h-14"></div>
