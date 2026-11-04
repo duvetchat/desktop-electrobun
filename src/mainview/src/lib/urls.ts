@@ -51,8 +51,8 @@ export function webEmbed(embed: Embed): Embed {
 
 // The players the API frames itself, YouTube's and TikTok's, as it writes their URLs (embeds/youtube.go and
 // embeds/tiktok.go): they need their own origin to play. Only these exact URLs are players. Any other page of
-// those sites, or of their subdomains, could be someone's own or redirect the frame anywhere, and would load at
-// once with that origin.
+// those sites, or of their subdomains, could be someone's own or redirect the frame anywhere, and would run with
+// that origin.
 const PLAYERS = [
 	/^https:\/\/www\.youtube\.com\/embed\/[\w-]+$/,
 	/^https:\/\/www\.tiktok\.com\/player\/v1\/\d+\?music_info=0&description=0&rel=0&autoplay=0$/,
@@ -198,12 +198,20 @@ export function parseMessageLink(url: string): MessageLink | null {
 }
 
 /**
- * How an embed frames the player page at url, when frameSandbox lets it: at once for the players the API frames itself
- * (PLAYERS), and for any other page only once its play button is clicked (clickToPlay), so that the page itself loads
- * and runs only when someone asks for it. The poster the button shows, the embed's image, loads as any embed image.
+ * How an embed frames the player page at url, when frameSandbox lets it: only once its play button is clicked, so that
+ * the page loads, and its host sees a view, only when someone asks for it (desktop#147). The poster the button shows,
+ * the embed's image, is a copy the API serves. player says whether it's one of the players the API frames itself
+ * (PLAYERS), with their origin: in the packaged app any other page opens in the browser instead, as Electrobun's
+ * preload runs in frames too, and a player is framed at src, where it starts at once, as the click asked.
  */
-export function playerFrame(url: string, ownHosts: string[]): { sandbox: string; clickToPlay: boolean } | undefined {
+export function playerFrame(
+	url: string,
+	ownHosts: string[],
+): { sandbox: string; player: boolean; src: string } | undefined {
 	const sandbox = frameSandbox(url, ownHosts);
 	if (!sandbox) return undefined;
-	return { sandbox, clickToPlay: !isPlayer(url) };
+	if (!isPlayer(url)) return { sandbox, player: false, src: url };
+	// YouTube's embed starts with autoplay=1; TikTok's player, as the API writes it, says autoplay=0 last.
+	const src = url.includes("?") ? url.replace(/&autoplay=0$/, "&autoplay=1") : `${url}?autoplay=1`;
+	return { sandbox, player: true, src };
 }

@@ -396,21 +396,36 @@ describe("parseMessageLink", () => {
 describe("playerFrame", () => {
 	const own = ["localhost", "api.duvet.chat"];
 
-	test("the players the API frames itself load at once, with frameSandbox's sandbox", () => {
+	test("the players the API frames itself wait for a click too, then keep their origin and start at once", () => {
+		const [youtube, tiktok] = PLAYER_URLS;
+		expect(playerFrame(youtube, own)).toEqual({
+			sandbox: "allow-scripts allow-same-origin",
+			player: true,
+			src: `${youtube}?autoplay=1`,
+		});
+		expect(playerFrame(tiktok, own)).toEqual({
+			sandbox: "allow-scripts allow-same-origin",
+			player: true,
+			src: tiktok.replace(/autoplay=0$/, "autoplay=1"),
+		});
 		for (const url of PLAYER_URLS) {
-			expect(playerFrame(url, own)).toEqual({ sandbox: "allow-scripts allow-same-origin", clickToPlay: false });
+			// The same player of the same video, told to start.
+			const { src } = playerFrame(url, own)!;
+			expect(new URL(src).origin + new URL(src).pathname).toBe(new URL(url).origin + new URL(url).pathname);
+			expect(new URL(src).searchParams.get("autoplay")).toBe("1");
 		}
 	});
 
-	test("any other page waits for a click on its card, and is framed without its origin", () => {
+	test("any other page waits for a click on its card, and is framed as it is, without its origin", () => {
 		for (const url of [
 			"https://player.example/v/1",
+			"https://player.example/v/1?autoplay=0",
 			"http://vimeo.com/123",
 			"https://youtube.com.evil.example/embed",
 			"https://eviltiktok.com/player",
 			...NOT_PLAYERS,
 		]) {
-			expect(playerFrame(url, own)).toEqual({ sandbox: "allow-scripts", clickToPlay: true });
+			expect(playerFrame(url, own)).toEqual({ sandbox: "allow-scripts", player: false, src: url });
 		}
 	});
 

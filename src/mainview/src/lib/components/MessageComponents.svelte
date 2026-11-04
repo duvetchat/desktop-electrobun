@@ -348,9 +348,12 @@
 		style={size ? `width: ${size.w}px; aspect-ratio: ${size.w} / ${size.h}; max-width: 100%;` : ""}
 	>
 		{#if isVideo(item.media)}
+			<!-- A video of another host (the API's proxy of it) is asked for only when it's played, as that host sees
+			     each request; a file the message carries (a path) loads as before. -->
 			<!-- svelte-ignore a11y_media_has_caption -->
 			<video
 				{src}
+				preload={item.media.url.startsWith("/") ? undefined : "none"}
 				controls
 				class="bg-black {alone ? 'object-contain' : 'object-cover'} {size || !alone ? 'size-full' : ''} {hidden
 					? 'blur-xl'

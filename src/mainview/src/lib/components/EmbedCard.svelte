@@ -27,9 +27,9 @@
 	const poster = $derived(card.image?.url ?? card.thumbnail?.url);
 
 	// In the packaged app, Electrobun's preload (with its RPC key) runs in frames too, so a page that isn't one of
-	// the players the API frames itself opens in the browser instead of in a frame.
-	function play(url: string) {
-		if (isElectrobunWindow()) {
+	// the players the API frames itself opens in the browser instead of in a frame; a player is framed.
+	function play(url: string, player: boolean) {
+		if (!player && isElectrobunWindow()) {
 			void getElectrobunRpc().then((rpc) => rpc?.send.openExternal({ url }));
 			return;
 		}
@@ -110,8 +110,11 @@
 	</button>
 {:else if !isTikTokEmbed(card) && (card.type === EmbedType.Gifv || card.type === EmbedType.Image || (!card.title && !card.description && !card.author && !footerText && !card.fields?.length && (card.image || card.video)))}
 	{#if card.video}
+		<!-- preload none: the video is asked for only when it's played, as its host sees each request -->
 		<video
 			src={proxyVideoUrl(card.video.url)}
+			poster={card.thumbnail?.url ?? card.image?.url}
+			preload="none"
 			muted={card.type === EmbedType.Gifv}
 			playsinline
 			controls
@@ -231,6 +234,7 @@
 				<video
 					src={proxyVideoUrl(card.video.url)}
 					poster={card.image?.url ?? card.thumbnail?.url ?? ""}
+					preload="none"
 					muted
 					playsinline
 					controls
@@ -252,18 +256,18 @@
 	</div>
 {/if}
 
-<!-- A player page, framed with playerFrame's sandbox: the players the API frames itself at once, any other page only
-     once its play button is clicked, over the embed's image while it waits. -->
+<!-- A player page, framed with playerFrame's sandbox once its play button is clicked, over the embed's image while it
+     waits: the players the API frames itself start then, any other page opens in the browser in the packaged app. -->
 {#snippet player(url: string, title: string, aspect: string, allow: string)}
 	{@const frame = playerFrame(url, ownHosts)}
 	{#if frame}
 		<div class="relative w-full {aspect}">
-			{#if frame.clickToPlay && playing !== url}
+			{#if playing !== url}
 				<button
 					type="button"
 					class="group absolute inset-0 flex items-center justify-center bg-zinc-900"
 					aria-label={title ? `Play ${title}` : "Play"}
-					onclick={() => play(url)}
+					onclick={() => play(url, frame.player)}
 				>
 					{#if poster}
 						<img src={poster} alt="" class="absolute inset-0 size-full object-cover" loading="lazy" />
@@ -275,7 +279,7 @@
 					</span>
 				</button>
 			{:else}
-				<iframe src={url} {title} class="h-full w-full" {allow} allowfullscreen sandbox={frame.sandbox}></iframe>
+				<iframe src={frame.src} {title} class="h-full w-full" {allow} allowfullscreen sandbox={frame.sandbox}></iframe>
 			{/if}
 		</div>
 	{/if}
