@@ -1,8 +1,9 @@
-import Electrobun, { BrowserView, BrowserWindow, Updater, Utils } from "electrobun/bun";
+import Electrobun, { BrowserView, BrowserWindow, Screen, Updater, Utils } from "electrobun/bun";
 import { fitActivity, MAX_ACTIVITIES, type ActivityPayload } from "./activities";
 import { ActivityImages, IpcActivities, PAGE_WAIT_MS, within } from "./activity-images";
 import { startSpotifyReader, type SpotifyActivity } from "./spotify";
 import { ipcPath, LineReader } from "./ipc";
+import { Maximizer } from "./window-frame";
 
 const DEV_SERVER_PORT = 5173;
 const DEV_SERVER_URL = `http://localhost:${DEV_SERVER_PORT}`;
@@ -73,7 +74,7 @@ type AppRPCSchema = {
 		messages: {
 			closeWindow: void;
 			minimizeWindow: void;
-			maximizeWindow: { availX: number; availY: number; availWidth: number; availHeight: number };
+			maximizeWindow: void;
 			openExternal: { url: string };
 			setWindowFrame: {
 				x: number;
@@ -99,8 +100,7 @@ type AppRPCSchema = {
 	};
 };
 
-let savedFrame: { x: number; y: number; width: number; height: number } | null = null;
-let isManuallyMaximized = false;
+const maximizer = new Maximizer();
 
 // The webview makes the IPC apps' images by URL inline once its page has loaded, which its first setSpotifyActivity
 // says: a request sent before then would find no page to answer it. An image waits for it PAGE_WAIT_MS at most, then
@@ -143,17 +143,9 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 		messages: {
 			closeWindow: () => win.close(),
 			minimizeWindow: () => win.minimize(),
-			maximizeWindow: ({ availX, availY, availWidth, availHeight }) => {
-				if (isManuallyMaximized && savedFrame) {
-					win.setFrame(savedFrame.x, savedFrame.y, savedFrame.width, savedFrame.height);
-					isManuallyMaximized = false;
-					savedFrame = null;
-					return;
-				}
-
-				savedFrame = win.getFrame();
-				win.setFrame(availX, availY, availWidth, availHeight);
-				isManuallyMaximized = true;
+			maximizeWindow: () => {
+				const frame = maximizer.press(win.getFrame(), Screen.getAllDisplays());
+				if (frame) win.setFrame(frame.x, frame.y, frame.width, frame.height);
 			},
 			openExternal: ({ url: externalUrl }) => openExternalUrl(externalUrl),
 			setSpotifyActivity: ({ enabled }) => {
