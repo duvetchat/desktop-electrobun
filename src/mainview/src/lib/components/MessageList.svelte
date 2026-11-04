@@ -98,6 +98,7 @@
 		unreadAfterMessageId = null,
 		onLoadMore = () => {},
 		onLoadMoreBelow = () => {},
+		onJumpToPresent = undefined,
 		onRetry = () => {},
 		onDismiss = () => {},
 		onReply = undefined,
@@ -125,6 +126,8 @@
 		unreadAfterMessageId?: string | null;
 		onLoadMore?: () => Promise<void> | void;
 		onLoadMoreBelow?: () => Promise<void> | void;
+		/** Takes the list from a jump's pages to the present (the newest messages); true once it's there. */
+		onJumpToPresent?: () => Promise<boolean>;
 		onRetry?: (message: Message) => void;
 		onDismiss?: (nonce: string) => void;
 		onReply?: (message: Message) => void;
@@ -639,6 +642,17 @@
 			tick().then(() => {
 				if (scrollEl) scrollEl.scrollTop = 0;
 			});
+		} else if (action === "present") {
+			// A message this window sends from a jump's pages: the list goes to the present, then down to the message. Should
+			// the newest messages not load, it goes down to the bottom it has, where the pages below load as before.
+			const chId = channelId;
+			void tick()
+				.then(() => (onJumpToPresent ? onJumpToPresent() : false))
+				.catch(() => false)
+				.then(() => tick())
+				.then(() => {
+					if (channelId === chId && scrollEl) scrollEl.scrollTop = 0;
+				});
 		} else if (action === "unread" && lastSeenMsgId) {
 			// Scrolled up or page hidden — place the unread divider.
 			onUnreadMark?.(lastSeenMsgId);

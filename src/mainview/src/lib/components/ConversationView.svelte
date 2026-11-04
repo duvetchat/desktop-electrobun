@@ -53,7 +53,7 @@
 	import { toast } from "$lib/stores/toast.svelte";
 	import { getApiError } from "$lib/api/api";
 	import { withSentMessage } from "$lib/arrivals";
-	import { loadedTo, readWhenLeft } from "$lib/jumps";
+	import { inWindow, loadedTo, readWhenLeft, withPresent } from "$lib/jumps";
 	import { MessageSquare, Phone, UserPlus, Users } from "@lucide/svelte";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
 	import Chat from "$lib/components/Chat.svelte";
@@ -218,7 +218,9 @@
 	// Cache mapped messages to avoid re-creating objects on every store update
 	const messageCache = new Map<string, Message>();
 	const messages = $derived.by(() => {
-		const raw = $dmMessages[conversation.id] ?? [];
+		const all = $dmMessages[conversation.id] ?? [];
+		// While newer messages are still to load below a jump's pages, what came live past them waits for the pages.
+		const raw = hasMoreBelow ? inWindow(all, loadedBelowTo) : all;
 		const seen = new Set<string>();
 		const result: Message[] = [];
 		for (const msg of raw) {
@@ -292,7 +294,7 @@
 	let isLoadingMoreBelow = $state(false);
 	// The newest message of the pages a jump loaded, after which the next page below starts. Not the list's newest: a
 	// message that came meanwhile (another member's, or one this user sent) would leave those before it out.
-	let loadedBelowTo = "";
+	let loadedBelowTo = $state("");
 	// When the last page below failed: the next one waits a while (belowRetryWait) before it's asked for again.
 	let belowFailedAt = 0;
 	const belowRetryWait = 2_000;
@@ -367,6 +369,33 @@
 		} finally {
 			clearTimeout(timeoutId);
 			isLoadingMoreBelow = false;
+		}
+	}
+
+	// A message sent from a jump's pages takes the reader to the present: the conversation's newest page takes the place
+	// of the jump's pages, with the messages still being sent and what came after that page. True once it's there. One at
+	// a time: a second message sent meanwhile waits for the same trip.
+	let presentLoad: Promise<boolean> | null = null;
+	function jumpToPresent(): Promise<boolean> {
+		presentLoad ??= loadPresent().finally(() => (presentLoad = null));
+		return presentLoad;
+	}
+
+	async function loadPresent(): Promise<boolean> {
+		const convId = conversation.id;
+		const jump = ++jumps;
+		try {
+			const fetched = await getDirectMessages(convId);
+			if (jump !== jumps) return false;
+			hasMore = fetched.length === 100;
+			hasMoreBelow = false;
+			loadedBelowTo = "";
+			belowFailedAt = 0;
+			dmMessages.update((all) => ({ ...all, [convId]: withPresent(all[convId] ?? [], fetched) }));
+			return true;
+		} catch (err) {
+			console.error("[DM] Failed to load the newest messages:", err);
+			return false;
 		}
 	}
 
@@ -911,6 +940,7 @@
 			{highlightedMessageId}
 			onLoadMore={handleLoadMore}
 			onLoadMoreBelow={handleLoadMoreBelow}
+			onJumpToPresent={jumpToPresent}
 			bind:failedNonces
 			bind:isAtBottom
 			onSend={dmHandleSend}

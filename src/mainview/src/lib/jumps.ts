@@ -42,3 +42,52 @@ export function readWhenLeft(
 export function loadedTo(after: string, page: { id: string }[]): string {
 	return page.reduce((newest, m) => (m.id > newest ? m.id : newest), after);
 }
+
+type Listed = { id: string; nonce?: string | null };
+
+/**
+ * What a list shows while newer messages are still to load below a jump's pages: its messages up to the newest of
+ * those pages (loadedBelowTo), and the ones being sent (their ID is their nonce), which take the reader to the
+ * present. A message that came live past the pages (another member's) shows when the pages below reach it, rather
+ * than right after the jump's pages, where the messages between would seem not to exist.
+ */
+export function inWindow<T extends Listed>(messages: T[], loadedBelowTo: string): T[] {
+	if (!loadedBelowTo) return messages;
+	const shown = messages.filter((m) => m.id <= loadedBelowTo || m.id === m.nonce);
+	return shown.length === messages.length ? messages : shown;
+}
+
+type Sendable = Listed & { author_id?: string; content?: string | null; created_at?: string };
+
+// How long before a message being sent (by the client's clock) the API's copy of it can be dated (by the API's).
+const SENT_COPY_SKEW = 2 * 60_000;
+
+/**
+ * A list taken to the present, from a jump's pages: the newest page, with the messages still being sent (their ID is
+ * their nonce) and those that came after the page was cut (newer than its newest), each once. The jump's pages go.
+ *
+ * The page can list a message still being sent already, without its nonce: the API lists a message while its files go
+ * up. That copy goes, the one being sent staying until the API's answer or its event takes its place: a copy is a
+ * message of the page the list didn't have, by the same author with the same text, dated no earlier than shortly
+ * before the one being sent.
+ */
+export function withPresent<T extends Sendable>(current: T[], page: T[]): T[] {
+	const newest = page.reduce((max, m) => (m.id > max ? m.id : max), "");
+	const inPage = new Set(page.map((m) => m.id));
+	const kept = current.filter((m) => !inPage.has(m.id) && (m.id === m.nonce || m.id > newest));
+	const listed = new Set(current.map((m) => m.id));
+	const copies = new Set<string>();
+	for (const sending of kept.filter((m) => m.id === m.nonce)) {
+		const since = Date.parse(sending.created_at ?? "") - SENT_COPY_SKEW;
+		const copy = page.find(
+			(m) =>
+				!listed.has(m.id) &&
+				!copies.has(m.id) &&
+				m.author_id === sending.author_id &&
+				(m.content ?? "") === (sending.content ?? "") &&
+				Date.parse(m.created_at ?? "") >= since,
+		);
+		if (copy) copies.add(copy.id);
+	}
+	return [...(copies.size ? page.filter((m) => !copies.has(m.id)) : page), ...kept];
+}

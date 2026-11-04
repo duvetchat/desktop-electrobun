@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { loadedTo, quoteJump, readWhenLeft } from "$lib/jumps";
+import { inWindow, loadedTo, quoteJump, readWhenLeft, withPresent } from "$lib/jumps";
 
 const QUOTED = "01920000-0000-7000-8000-0000000000aa";
 const CONVERSATION = "01920000-0000-7000-8000-0000000c0c0c";
@@ -83,5 +83,66 @@ describe("loadedTo", () => {
 
 	test("an empty page (nothing newer) leaves it where it was", () => {
 		expect(loadedTo(m(130), [])).toBe(m(130));
+	});
+});
+
+describe("inWindow", () => {
+	const m = (n: number) => `01930000-0000-7000-8000-${String(n).padStart(12, "0")}`;
+	const message = (n: number) => ({ id: m(n) });
+	// A message being sent has its nonce, a random UUID, for an ID: it sorts above the API's.
+	const sending = { id: "f1d2c3b4-0000-4000-8000-000000000000", nonce: "f1d2c3b4-0000-4000-8000-000000000000" };
+
+	test("a message that came live past the jump's pages waits for the pages below to reach it", () => {
+		const jump = [message(29), message(30), message(130)];
+		expect(inWindow([...jump, message(401)], m(130))).toEqual(jump);
+	});
+
+	test("a message being sent shows, as it takes the reader to the present", () => {
+		const jump = [message(30), message(130)];
+		expect(inWindow([...jump, sending], m(130))).toEqual([...jump, sending]);
+	});
+
+	test("a list that isn't a jump's shows everything, as it is", () => {
+		const list = [message(300), message(401)];
+		expect(inWindow(list, "")).toBe(list);
+		expect(inWindow(list, m(401))).toBe(list);
+	});
+});
+
+describe("withPresent", () => {
+	const m = (n: number) => `01930000-0000-7000-8000-${String(n).padStart(12, "0")}`;
+	const page = (from: number, to: number) => Array.from({ length: to - from + 1 }, (_, i) => ({ id: m(from + i) }));
+	const sending = { id: "f1d2c3b4-0000-4000-8000-000000000000", nonce: "f1d2c3b4-0000-4000-8000-000000000000" };
+
+	test("the jump's pages give way to the newest page, with the message being sent", () => {
+		const jump = page(1, 130);
+		expect(withPresent([...jump, sending], page(201, 300))).toEqual([...page(201, 300), sending]);
+	});
+
+	test("a message being sent that the page lists already (its files still going up) shows once, as being sent", () => {
+		const at = (minute: number) => new Date(Date.UTC(2026, 10, 4, 12, minute)).toISOString();
+		const message = (n: number, author: string, content: string) => ({
+			id: m(n),
+			author_id: author,
+			content,
+			created_at: at(n % 60),
+		});
+		const nonce = "f1d2c3b4-0000-4000-8000-000000000000";
+		const mine = { id: nonce, nonce, author_id: "me", content: "hello", created_at: at(59) };
+		// The API's copy of it, without the nonce; and the same text the user sent 50 minutes earlier, which is no copy.
+		const copy = message(299, "me", "hello");
+		const earlier = message(249, "me", "hello");
+		const newest = [earlier, message(298, "alice", "hi"), copy];
+		expect(withPresent([message(30, "alice", "old"), mine], newest)).toEqual([
+			earlier,
+			message(298, "alice", "hi"),
+			mine,
+		]);
+	});
+
+	test("what came after the newest page was cut stays, each message once", () => {
+		// 301 came live while the newest page was asked for; 300 is both in the list and in the page.
+		const current = [...page(1, 130), { id: m(300) }, { id: m(301) }];
+		expect(withPresent(current, page(201, 300))).toEqual([...page(201, 300), { id: m(301) }]);
 	});
 });

@@ -727,12 +727,14 @@ function handleEvent(event: GatewayEvent) {
 			channelMessages.update((all) => {
 				const existing = all[roomId] ?? [];
 
-				// If it matches a pending message by nonce, replace it
+				// If it matches a pending message by nonce, replace it. A page that listed the message meanwhile (the newest
+				// one, as a send takes a jump's list to the present) has a copy without the nonce: that one goes.
 				if (message.nonce) {
 					const pendingIndex = existing.findIndex((m) => m.nonce === message.nonce);
 					if (pendingIndex !== -1) {
-						const newMessages = [...existing];
-						newMessages[pendingIndex] = message;
+						const newMessages = existing.flatMap((m, i) =>
+							i === pendingIndex ? [message] : m.id === message.id ? [] : [m],
+						);
 						return {
 							...all,
 							[roomId]: newMessages,
@@ -1520,8 +1522,8 @@ function handleEvent(event: GatewayEvent) {
 				if (msg.nonce) {
 					const pendingIdx = existing.findIndex((m) => m.nonce === msg.nonce);
 					if (pendingIdx !== -1) {
-						const updated = [...existing];
-						updated[pendingIdx] = msg;
+						// And a page's copy of it listed meanwhile goes (see MESSAGE_CREATE).
+						const updated = existing.flatMap((m, i) => (i === pendingIdx ? [msg] : m.id === msg.id ? [] : [m]));
 						return { ...all, [conversationId]: updated };
 					}
 				}

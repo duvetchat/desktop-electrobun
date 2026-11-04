@@ -18,7 +18,7 @@
 	import { get } from "svelte/store";
 	import { closeTabsIn, isConversationTab, makeSplit, makeLeaf, tabFromDragData, tabTitle } from "$lib/pane";
 	import { getMessages, getMessagesAfter, getMessageById, ackRoom } from "$lib/api/messages";
-	import { loadedTo } from "$lib/jumps";
+	import { inWindow, loadedTo, withPresent } from "$lib/jumps";
 	import { onMount, onDestroy, type Snippet } from "svelte";
 
 	import type { MemberOnSidebar, GatewaySpace, PaneNode, Guild, Tab } from "$lib/types";
@@ -140,8 +140,12 @@
 	// history has them.
 	const activeMessages = $derived.by(() => {
 		if (node.kind !== "leaf" || !node.activeChannelId) return [];
-		const history = $channelMessages[node.activeChannelId] ?? [];
-		const ephemeral = $ephemeralMessages[node.activeChannelId];
+		const channelId = node.activeChannelId;
+		const all = $channelMessages[channelId] ?? [];
+		// While newer messages are still to load below a jump's pages, what came live past them waits for the pages.
+		const history =
+			channelHasMoreBelow[channelId] === true ? inWindow(all, channelLoadedBelowTo[channelId] ?? "") : all;
+		const ephemeral = $ephemeralMessages[channelId];
 		return ephemeral?.length ? [...history, ...ephemeral] : history;
 	});
 
@@ -511,6 +515,38 @@
 				belowRequests.delete(channelId);
 				isLoadingMoreBelow = false;
 			}
+		}
+	}
+
+	// A message sent from a jump's pages takes the reader to the present: the room's newest page takes the place of the
+	// jump's pages, with the messages still being sent and what came after that page. True once it's there. One at a
+	// time: a second message sent meanwhile waits for the same trip.
+	const presentLoads = new Map<string, Promise<boolean>>();
+	function jumpToPresent(): Promise<boolean> {
+		if (node.kind !== "leaf" || !node.activeChannelId) return Promise.resolve(false);
+		const channelId = node.activeChannelId;
+		let load = presentLoads.get(channelId);
+		if (!load) {
+			load = loadPresent(channelId).finally(() => presentLoads.delete(channelId));
+			presentLoads.set(channelId, load);
+		}
+		return load;
+	}
+
+	async function loadPresent(channelId: string): Promise<boolean> {
+		const jump = startJump(channelId);
+		try {
+			const raw = await getMessages(channelId);
+			if (jump !== channelJumps.get(channelId)) return false;
+			const page = raw.map((m) => gatewayMessageToMessage(m, $gatewaySpaces));
+			channelMessages.update((all) => ({ ...all, [channelId]: withPresent(all[channelId] ?? [], page) }));
+			channelHasMore[channelId] = raw.length >= 100;
+			channelHasMoreBelow[channelId] = false;
+			channelLoadedBelowTo[channelId] = "";
+			return true;
+		} catch (err) {
+			console.error("Failed to load the newest messages:", err);
+			return false;
 		}
 	}
 
@@ -1244,6 +1280,7 @@
 					unreadAfterMessageId={node.activeChannelId ? (channelUnreadAfter[node.activeChannelId] ?? null) : null}
 					onLoadMore={loadMoreMessages}
 					onLoadMoreBelow={loadMoreMessagesBelow}
+					onJumpToPresent={jumpToPresent}
 					onUnreadMark={(msgId) => {
 						const chId = node.kind === "leaf" ? node.activeChannelId : null;
 						if (chId && channelUnreadAfter[chId] == null) {
