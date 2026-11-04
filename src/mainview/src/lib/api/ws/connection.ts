@@ -55,6 +55,7 @@ import type {
 	GatewaySpace,
 	Presence,
 	ReferencedMessage,
+	RoomReadState,
 	TypingEvent,
 	UserStatus,
 } from "$lib/types";
@@ -65,7 +66,7 @@ import {
 	MessageType,
 	spaceWithoutRoom,
 	withCreatedRole,
-	withRoomReadState,
+	withRoomReadStates,
 } from "$lib/types";
 import { CallAnswers, callNoticeSeen, readAfterCallNotice } from "$lib/call-notices";
 
@@ -402,6 +403,27 @@ function addMembersToSpace(spaceId: string, rows: SpaceMemberWithUser[]) {
 	);
 }
 
+/** The newest message the client has of a room, but one still being sent, which has its nonce for an id until its
+ * MESSAGE_CREATE. */
+function newestLoaded(roomId: string): string | undefined {
+	return (get(channelMessages)[roomId] ?? [])
+		.filter((m) => m.id !== m.nonce)
+		.reduce<string | undefined>((max, m) => (max === undefined || m.id > max ? m.id : max), undefined);
+}
+
+/** Takes rooms' read states from the gateway (a ROOM_CREATE's, a SPACE_CREATE's) in place of what READY had of those
+ * rooms: a newer message the client already has keeps its room unread (withRoomReadStates). */
+function applyRoomReadStates(states: Record<string, RoomReadState>) {
+	const read = withRoomReadStates(
+		{ unread: get(unreadChannels), lastRead: get(lastReadRooms), lastMsg: get(lastMsgRooms) },
+		states,
+		newestLoaded,
+	);
+	unreadChannels.set(read.unread);
+	lastReadRooms.set(read.lastRead);
+	lastMsgRooms.set(read.lastMsg);
+}
+
 /** A reply's reference once the message it quotes is deleted: only the reference itself stays,
  * as the API sends it from then on, and the reply shows the original as deleted. */
 function deletedReference(ref: ReferencedMessage): ReferencedMessage {
@@ -629,6 +651,9 @@ function handleEvent(event: GatewayEvent) {
 				return [...spaces, space];
 			});
 
+			// The read states of its rooms, in one sent after READY: the unread marks of a space the user just joined.
+			if (spaceCreateData.read_states) applyRoomReadStates(spaceCreateData.read_states);
+
 			receivedGuildIds.add(space.id);
 			if (expectedGuildIds && receivedGuildIds.size >= expectedGuildIds.size) {
 				allSpacesReady.set(true);
@@ -680,22 +705,7 @@ function handleEvent(event: GatewayEvent) {
 					return s;
 				}),
 			);
-			if (readState) {
-				// A message still being sent has its nonce for an id until its MESSAGE_CREATE.
-				const loaded = get(channelMessages)[room.id] ?? [];
-				const newest = loaded
-					.filter((m) => m.id !== m.nonce)
-					.reduce<string | undefined>((max, m) => (max === undefined || m.id > max ? m.id : max), undefined);
-				const read = withRoomReadState(
-					{ unread: get(unreadChannels), lastRead: get(lastReadRooms), lastMsg: get(lastMsgRooms) },
-					room.id,
-					readState,
-					newest,
-				);
-				unreadChannels.set(read.unread);
-				lastReadRooms.set(read.lastRead);
-				lastMsgRooms.set(read.lastMsg);
-			}
+			if (readState) applyRoomReadStates({ [room.id]: readState });
 			break;
 		}
 		case "MESSAGE_CREATE": {
