@@ -469,6 +469,11 @@ describe("parseInviteLink", () => {
 		});
 	});
 
+	test("reads a space's invite from a link that names a bot too, in its card and its button alike", () => {
+		expect(parseInviteLink(`https://duvet.chat/invite?code=abc&bot=${ID1}`, own)).toEqual({ code: "abc" });
+		expect(parseInviteLink(`https://duvet.chat/invite?bot=${ID1}&code=abc`, own)).toEqual({ code: "abc" });
+	});
+
 	test("reads them on the app's own pages too, as before", () => {
 		expect(parseInviteLink(`${own}/invite?code=abc`, own)).toEqual({ code: "abc" });
 		expect(parseInviteLink(`${own}/invite/abc`, own)).toEqual({ code: "abc" });
