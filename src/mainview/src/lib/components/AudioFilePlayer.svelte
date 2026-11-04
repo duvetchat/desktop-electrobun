@@ -13,7 +13,15 @@
 	} from "$lib/stores/voiceNotePlayer.svelte";
 	import { formatDuration } from "$lib/utils/time";
 	import { formatFileSize } from "$lib/utils/format";
-	import { waveformCache, analyzeWaveform, fallbackBars, fileWavUrl, keepWaveform } from "$lib/audio/waveform";
+	import {
+		waveformCache,
+		analyzeWaveform,
+		fallbackBars,
+		fileWavUrl,
+		holdWav,
+		keepWaveform,
+		releaseWav,
+	} from "$lib/audio/waveform";
 
 	let {
 		src,
@@ -39,6 +47,8 @@
 	let destroyed = false;
 	onDestroy(() => {
 		destroyed = true;
+		// Its WAV goes once nothing else holds it: another player of the file, or the voice note player (#167).
+		releaseWav(wavSrc);
 	});
 	let showVolume = $state(false);
 	let volumeTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -98,6 +108,8 @@
 		try {
 			const streamUrl = url.includes("?") ? `${url}&stream=1` : `${url}?stream=1`;
 			const result = await analyzeWaveform(streamUrl, BAR_COUNT);
+			// A player that's gone makes no WAV: nothing would let go of it (#167).
+			if (destroyed) return;
 			bars = result.bars;
 			localDuration = result.duration;
 			wavSrc = fileWavUrl(result) ?? null;
@@ -115,6 +127,7 @@
 			bars = cached.bars;
 			localDuration = cached.duration;
 			wavSrc = cached.wavUrl ?? null;
+			holdWav(wavSrc);
 			return;
 		}
 

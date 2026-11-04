@@ -2,7 +2,8 @@ import { repairOggOpus } from "$lib/audio/ogg";
 
 /** What the players of an attachment's audio know of it from its analysis (analyzeWaveform), for its next player: its
  * bars, its duration, and, when it's to play from one, a WAV of it. A voice note always plays from its WAV; an audio
- * file only when this browser couldn't decode it as it is (fileWavUrl). wavUrl holds nothing but a WAV (#118). */
+ * file only when this browser couldn't decode it as it is (fileWavUrl). wavUrl holds nothing but a WAV (#118), and only
+ * while something holds it (holdWav): a WAV let go of is forgotten here with it (releaseWav, #167). */
 export interface Waveform {
 	bars: number[];
 	duration: number;
@@ -22,15 +23,47 @@ export function keepWaveform(attachmentId: string, waveform: Waveform) {
 	waveformCache.set(attachmentId, waveform);
 }
 
-/** A URL of the WAV an analysis made of some audio, to play it from. */
+// The WAVs wavUrlOf made that aren't revoked yet, each with how many hold it: the players that show it, and the voice
+// note player while it plays from it (lib/stores/voiceNotePlayer.svelte.ts). A WAV holds every sample, megabytes for a
+// long note, so the last to let go of one revokes it (#167).
+const wavHolds = new Map<string, number>();
+
+/** A URL of the WAV an analysis made of some audio, to play it from, held once for whoever asked for it: it lets go
+ * of it with releaseWav. */
 export function wavUrlOf(wavBuf: ArrayBuffer): string {
-	return URL.createObjectURL(new Blob([wavBuf], { type: "audio/wav" }));
+	const url = URL.createObjectURL(new Blob([wavBuf], { type: "audio/wav" }));
+	wavHolds.set(url, 1);
+	return url;
+}
+
+/** Holds a WAV wavUrlOf made once more, for one more player of it. Any other URL (a file's own) is left alone. */
+export function holdWav(url: string | null | undefined) {
+	if (!url) return;
+	const holds = wavHolds.get(url);
+	if (holds !== undefined) wavHolds.set(url, holds + 1);
+}
+
+/** Lets go of a WAV held once (wavUrlOf, holdWav). The last to let go of it revokes it, and the analysis kept with it
+ * is forgotten, as no player could play from it any more: the attachment's next player analyzes it again. */
+export function releaseWav(url: string | null | undefined) {
+	if (!url) return;
+	const holds = wavHolds.get(url);
+	if (holds === undefined) return;
+	if (holds > 1) {
+		wavHolds.set(url, holds - 1);
+		return;
+	}
+	wavHolds.delete(url);
+	URL.revokeObjectURL(url);
+	for (const [attachmentId, waveform] of waveformCache) {
+		if (waveform.wavUrl === url) waveformCache.delete(attachmentId);
+	}
 }
 
 /** The WAV an audio file plays from, if any: none for one this browser decoded as it is, which plays as it is (a file
  * can be long, and its WAV holds every sample); for one it could decode only once repaired, which it can't play as it
  * is either (an Android voice recording, in Firefox: lib/audio/ogg.ts), the WAV its analysis made, as a voice note plays
- * from (#118). */
+ * from (#118), held for the caller (wavUrlOf). */
 export function fileWavUrl(result: { repaired: boolean; wavBuf: ArrayBuffer }): string | undefined {
 	return result.repaired ? wavUrlOf(result.wavBuf) : undefined;
 }

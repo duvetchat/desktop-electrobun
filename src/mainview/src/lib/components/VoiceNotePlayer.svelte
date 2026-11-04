@@ -11,7 +11,15 @@
 		cyclePlaybackRate,
 	} from "$lib/stores/voiceNotePlayer.svelte";
 	import { formatDuration } from "$lib/utils/time";
-	import { waveformCache, analyzeWaveform, fallbackBars, keepWaveform, wavUrlOf } from "$lib/audio/waveform";
+	import {
+		waveformCache,
+		analyzeWaveform,
+		fallbackBars,
+		holdWav,
+		keepWaveform,
+		releaseWav,
+		wavUrlOf,
+	} from "$lib/audio/waveform";
 
 	let {
 		src,
@@ -34,6 +42,8 @@
 	let destroyed = false;
 	onDestroy(() => {
 		destroyed = true;
+		// Its WAV goes once nothing else holds it: another player of the note, or the voice note player (#167).
+		releaseWav(wavSrc);
 	});
 	const BAR_COUNT = 50;
 
@@ -56,6 +66,8 @@
 		try {
 			const streamUrl = url.includes("?") ? `${url}&stream=1` : `${url}?stream=1`;
 			const result = await analyzeWaveform(streamUrl, BAR_COUNT);
+			// A player that's gone makes no WAV: nothing would let go of it (#167).
+			if (destroyed) return;
 			bars = result.bars;
 			localDuration = result.duration;
 			wavSrc = wavUrlOf(result.wavBuf);
@@ -98,6 +110,7 @@
 			bars = cached.bars;
 			// None when an audio file's player kept it, of a file this browser plays as it is.
 			wavSrc = cached.wavUrl ?? null;
+			holdWav(wavSrc);
 			localDuration = cached.duration;
 			return;
 		}
