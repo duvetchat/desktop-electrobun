@@ -5,3 +5,5 @@ src/mainview/build
 build
 .claude
 artifacts
+# The Electrobun SDK and build state that `electrobun prepare` writes (Hutch's).
+.hutch/

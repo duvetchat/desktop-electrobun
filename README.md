@@ -76,15 +76,23 @@ desktop/
 ### Prerequisites
 
 - [Bun](https://bun.sh/) >= 1.3
-- [Electrobun CLI](https://electrobun.dev/) (installed via `electrobun` dependency)
+- [Electrobun](https://electrobun.dev/) 2, through the `electrobun` dependency: on its first run it downloads its build
+  tool, Hutch, which keeps Electrobun's runtime, Bun and the other tools it needs in `~/.hutch`, and writes the
+  Electrobun SDK to `.hutch/devkit` (ignored by git), where the app's `electrobun/*` imports come from
 
 ### Install
 
 ```bash
 cd desktop
 bun install
+bun run devkit   # electrobun prepare: the Electrobun SDK, in .hutch/devkit
 cd src/mainview && bun install && cd ../..
 ```
+
+`bun start`, `bun run hmr` and `bun run build:canary` prepare the SDK themselves. `bun run lint` and `bun run check`
+need it, so a fresh checkout runs `bun run devkit` before `src/mainview`'s install, whose `svelte-kit sync` points
+`electrobun/view` at it. The web build (`bun run build` in `src/mainview`, what duvet.chat serves) doesn't need it:
+the SDK's only import runs in the app's window.
 
 ### Development
 
@@ -107,6 +115,8 @@ bun run dev:hmr
 ```bash
 bun run dev
 ```
+
+It rebuilds when a file changes. On Windows, Electrobun 2 waits for the running app to close before it rebuilds.
 
 ### Production Build
 
