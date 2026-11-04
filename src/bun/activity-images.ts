@@ -22,7 +22,7 @@ export type Thumbnailer = (bytes: Uint8Array) => Promise<string | null>;
 
 /**
  * The bytes at url, an http(s) URL, or null when it isn't one, or its answer isn't a 2xx within FETCH_TIMEOUT_MS
- * and MAX_REDIRECTS redirects (each to an http(s) URL too), or it has more than MAX_SOURCE_BYTES.
+ * and MAX_REDIRECTS redirects (each to an http(s) URL too), or it has more than MAX_SOURCE_BYTES, or it's compressed.
  */
 export async function fetchImageBytes(url: string, timeoutMs = FETCH_TIMEOUT_MS): Promise<Uint8Array | null> {
 	const signal = AbortSignal.timeout(timeoutMs);
@@ -30,7 +30,15 @@ export async function fetchImageBytes(url: string, timeoutMs = FETCH_TIMEOUT_MS)
 		let target = new URL(url);
 		for (let redirects = 0; ; redirects++) {
 			if (target.protocol !== "http:" && target.protocol !== "https:") return null;
-			const res = await fetch(target, { redirect: "manual", signal });
+			// The bytes as they're sent: Bun's fetch would otherwise inflate a compressed answer, the one the app ships
+			// (1.3.9) whole before a byte of it is read here, so a few KiB of it could take gigabytes. So the host is
+			// asked for no compression, and an answer compressed all the same is refused.
+			const res = await fetch(target, {
+				redirect: "manual",
+				signal,
+				decompress: false,
+				headers: { "accept-encoding": "identity" },
+			});
 			const location = res.headers.get("location");
 			if (res.status >= 300 && res.status < 400 && location) {
 				await res.body?.cancel();
@@ -38,7 +46,13 @@ export async function fetchImageBytes(url: string, timeoutMs = FETCH_TIMEOUT_MS)
 				target = new URL(location, target);
 				continue;
 			}
-			if (!res.ok || !res.body || Number(res.headers.get("content-length")) > MAX_SOURCE_BYTES) {
+			const encoding = res.headers.get("content-encoding")?.trim().toLowerCase();
+			if (
+				!res.ok ||
+				!res.body ||
+				(encoding && encoding !== "identity") ||
+				Number(res.headers.get("content-length")) > MAX_SOURCE_BYTES
+			) {
 				await res.body?.cancel();
 				return null;
 			}

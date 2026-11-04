@@ -1,4 +1,5 @@
 import { afterAll, describe, expect, test } from "bun:test";
+import { gzipSync } from "node:zlib";
 import {
 	ActivityImages,
 	fetchImageBytes,
@@ -11,11 +12,14 @@ import {
 // A host to fetch images from, on loopback only.
 const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3]);
 let requests = 0;
+// What the last request asked to be compressed with.
+let acceptedEncoding: string | null = null;
 const server = Bun.serve({
 	hostname: "127.0.0.1",
 	port: 0,
 	async fetch(req) {
 		requests++;
+		acceptedEncoding = req.headers.get("accept-encoding");
 		const url = new URL(req.url);
 		const hops = /^\/hop\/(\d+)$/.exec(url.pathname);
 		if (hops) {
@@ -29,6 +33,11 @@ const server = Bun.serve({
 				return new Response(null, { status: 302, headers: { location: "file:///C:/Windows/win.ini" } });
 			case "/missing":
 				return new Response("not found", { status: 404 });
+			case "/gzipped.png":
+				// Compressed whatever the request asked: a few KiB of it could stand for gigabytes.
+				return new Response(gzipSync(PNG), { headers: { "content-type": "image/png", "content-encoding": "gzip" } });
+			case "/identity.png":
+				return new Response(PNG, { headers: { "content-type": "image/png", "content-encoding": "identity" } });
 			case "/too-big": {
 				// Chunked, so only reading it shows its size.
 				let sent = 0;
@@ -73,6 +82,12 @@ describe("fetchImageBytes", () => {
 	test("gives an image's bytes, following a few redirects", async () => {
 		expect(await fetchImageBytes(at("/icon.png"))).toEqual(PNG);
 		expect(await fetchImageBytes(at("/hop/3"))).toEqual(PNG);
+	});
+
+	test("asks for the bytes as they are, and refuses an answer compressed all the same", async () => {
+		expect(await fetchImageBytes(at("/gzipped.png"))).toBeNull();
+		expect(acceptedEncoding).toBe("identity");
+		expect(await fetchImageBytes(at("/identity.png"))).toEqual(PNG);
 	});
 
 	test("gives nothing past three redirects, or for one to a URL that isn't http(s)", async () => {
