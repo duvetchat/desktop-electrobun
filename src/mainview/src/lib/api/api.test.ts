@@ -280,9 +280,22 @@ describe("an upload", () => {
 		expect(FakeXHR.last!.aborted).toBe(true);
 	});
 
-	test("waits for its answer as long as the API may take to store it", () => {
+	// The API stores a request's files one after another, each in its own time: ten small files may take ten times
+	// what one does (#182's review).
+	test("waits for its answer as long as the API may take to store its files, one after another", async () => {
 		expect(uploadLimits.answerMs(0)).toBe(60_000);
-		expect(uploadLimits.answerMs(32 * MiB)).toBe(2 * (30_000 + 128_000));
+		expect(uploadLimits.answerMs(32 * MiB)).toBe(60_000 + 2 * 128_000);
+		expect(uploadLimits.answerMs(10 * 1024, 10)).toBe(10 * 60_000 + 2_000);
+		expect(uploadLimits.answerMs(10 * 1024, 0)).toBe(60_000 + 2_000);
+
+		const asked: [number, number | undefined][] = [];
+		uploadLimits.answerMs = (bytes, files) => {
+			asked.push([bytes, files]);
+			return 60_000;
+		};
+		const form = messageForm(file(1024), file(2048, "second.bin"), file(0, "third.bin"));
+		await api.post("/api/rooms/r/messages", form);
+		expect(asked).toContainEqual([formBytes(form), 3]);
 	});
 
 	// fetch fails an answer whose status a Response can't hold; new Response() threw inside the settled upload, which

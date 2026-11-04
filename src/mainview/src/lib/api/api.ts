@@ -90,12 +90,13 @@ export class TooLargeError extends Error {
 
 /** When an upload is given up (#182). idleMs: it has sent nothing for that long since its last progress, as when
  * Chromium leaves an HTTP/3 upload the server stopped early hanging, or a link stalls; one that keeps moving is never
- * cut, however slow. answerMs: its answer hasn't come that long after its last byte, or after it was sent while it
- * reports no progress yet; twice the API's own time for writing its files to storage (copyTimeout: 30 s, and 1 s more
- * per 256 KiB). */
+ * cut, however slow. answerMs: its answer hasn't come that long after its last byte left, or after it was sent while
+ * it reports no progress yet. The API stores a request's files one after another, each within copyTimeout (30 s, and
+ * 1 s more per 256 KiB) and its commit's 30 s: 60 s a file and 1 s per 256 KiB, and as long again per 256 KiB for the
+ * bytes still on their way when the last one left (in the connection's buffers, or a proxy's). */
 export const uploadLimits = {
 	idleMs: 30_000,
-	answerMs: (bytes: number) => 2 * (30_000 + Math.ceil(bytes / (256 * 1024)) * 1000),
+	answerMs: (bytes: number, files = 1) => 60_000 * Math.max(1, files) + 2_000 * Math.ceil(bytes / (256 * 1024)),
 };
 
 /** An upload given up: it stopped sending, or its answer didn't come (uploadLimits). */
@@ -126,6 +127,10 @@ function responseOf(xhr: XMLHttpRequest): Response {
  * uploadLimits.answerMs after its last byte, is aborted and fails with an UploadTimeoutError. A network error, or an
  * abort of init.signal (with its reason), fails as fetch's does. bytes is the form's size (formBytes). */
 function sendForm(url: string, init: RequestInit, form: FormData, bytes: number): Promise<Response> {
+	let files = 0;
+	form.forEach((value) => {
+		if (typeof value !== "string") files++;
+	});
 	return new Promise((resolve, reject) => {
 		if (init.signal?.aborted) {
 			reject(init.signal.reason);
@@ -163,7 +168,7 @@ function sendForm(url: string, init: RequestInit, form: FormData, bytes: number)
 		// uploadLimits.idleMs without another.
 		const waitForProgress = () =>
 			giveUpIn(uploadLimits.idleMs, `Upload stalled: nothing went out for ${Math.round(uploadLimits.idleMs / 1000)} s`);
-		const waitForAnswer = () => giveUpIn(uploadLimits.answerMs(bytes), "No answer to the upload in time");
+		const waitForAnswer = () => giveUpIn(uploadLimits.answerMs(bytes, files), "No answer to the upload in time");
 
 		xhr.open(init.method ?? "POST", url);
 		xhr.withCredentials = init.credentials === "include";
