@@ -178,6 +178,11 @@
 				}
 			: null,
 	);
+	// Whether the active room is one its space lists: the gateway takes away a room the user can no longer view
+	// (ROOM_DELETE, its loaded messages with it) and gives it back (ROOM_CREATE). A space not loaded yet doesn't count.
+	const activeRoomListed = $derived(
+		!activeTab || !activeTabSpace || activeTabSpace.rooms.some((r) => r.id === activeTab.channelId),
+	);
 
 	// The newest confirmed (non-pending) message of the room: an ephemeral one isn't the room's, which the read
 	// state is about. UUIDv7 IDs compare by time as strings.
@@ -341,16 +346,18 @@
 		};
 	});
 
-	// Fetch initial messages only for text channels
+	// Fetch initial messages only for text channels. Not for a room taken away from the user: given back, it loads what it
+	// missed, at once if it's on screen, as its loaded messages went when it was taken away.
 	$effect(() => {
-		if (node.kind !== "leaf" || !node.activeChannelId || activeChannel?.type !== "text") {
+		if (node.kind !== "leaf" || !node.activeChannelId || activeChannel?.type !== "text" || !activeRoomListed) {
 			return;
 		}
 		const channelId = node.activeChannelId;
 		if (fetchingChannels.has(channelId)) return; // fetch already in-flight
 		if (loadedChannels.has(channelId)) {
 			// Self-heal: if marked loaded but store is empty and server knows
-			// the channel has messages, the original fetch silently failed — retry.
+			// the channel has messages, the original fetch silently failed (or the room was taken away and given
+			// back) — load it again.
 			const hasServerMsgs = !!get(lastMsgRooms)[channelId];
 			const hasClientMsgs = (get(channelMessages)[channelId]?.length ?? 0) > 0;
 			if (hasClientMsgs || !hasServerMsgs) return;
@@ -401,9 +408,7 @@
 					}
 				}
 				channelInitialLoading[channelId] = false;
-				if (raw.length < 100) {
-					channelHasMore[channelId] = false;
-				}
+				channelHasMore[channelId] = raw.length >= 100;
 				// The newest page reaches the room's newest message: nothing newer to load below it.
 				channelHasMoreBelow[channelId] = false;
 				channelLoadedBelowTo[channelId] = "";

@@ -66,6 +66,7 @@ import {
 	MessageType,
 	readySpacesArrived,
 	spaceWithoutRoom,
+	withoutRoomMessages,
 	withCreatedRole,
 	withRoomReadStates,
 	withSpaceCreate,
@@ -1187,6 +1188,8 @@ function handleEvent(event: GatewayEvent) {
 					return spaceWithoutRoom(s, raw.id);
 				}),
 			);
+			// Its loaded messages go too: given back, it loads what it missed (PaneView reloads it if it's on screen).
+			channelMessages.update((all) => withoutRoomMessages(all, raw.id));
 			break;
 		}
 		case "ROOM_UPDATE": {
