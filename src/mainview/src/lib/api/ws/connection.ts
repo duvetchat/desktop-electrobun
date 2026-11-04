@@ -64,9 +64,11 @@ import {
 	gatewayMessageToMessage,
 	isEphemeral,
 	MessageType,
+	readySpacesArrived,
 	spaceWithoutRoom,
 	withCreatedRole,
 	withRoomReadStates,
+	withSpaceCreate,
 } from "$lib/types";
 import { CallAnswers, callNoticeSeen, readAfterCallNotice } from "$lib/call-notices";
 
@@ -559,11 +561,8 @@ function handleEvent(event: GatewayEvent) {
 			// A CALL_ACCEPT the old session may never have got goes to this one, for a call that goes on.
 			resendCallAccept();
 
-			// Reset spaces so SPACE_CREATE events that follow repopulate them
-			// with fresh data (including current voice_states). Without this,
-			// if the server rejects a resume and starts a new session, the
-			// exists-guard in SPACE_CREATE would skip updates and voice states
-			// from before the reconnect would never be shown.
+			// The SPACE_CREATEs that follow bring the spaces again, as the new session has them (their voice states
+			// included): one the user is no longer in doesn't come back.
 			gatewaySpaces.set([]);
 			friendsReady.set(false);
 			allSpacesReady.set(false);
@@ -641,21 +640,16 @@ function handleEvent(event: GatewayEvent) {
 				}
 			}
 
-			gatewaySpaces.update((spaces) => {
-				const exists = spaces.some((s) => s.id === space.id);
-				if (exists) {
-					return spaces;
-				}
-				// Only for a snapshot that's kept: a skipped one mustn't hide newer updates.
-				for (const vs of space.voice_states ?? []) noteVoiceStateVersion(vs.room_id, vs.user_id, vs.version);
-				return [...spaces, space];
-			});
+			// A later one of a space replaces the earlier one: the gateway goes by the last it sent.
+			gatewaySpaces.update((spaces) => withSpaceCreate(spaces, space));
+			for (const vs of space.voice_states ?? []) noteVoiceStateVersion(vs.room_id, vs.user_id, vs.version);
 
 			// The read states of its rooms, in one sent after READY: the unread marks of a space the user just joined.
 			if (spaceCreateData.read_states) applyRoomReadStates(spaceCreateData.read_states);
 
+			// Only READY's spaces count: one it didn't list, or a second of one, mustn't pass for one still to come.
 			receivedGuildIds.add(space.id);
-			if (expectedGuildIds && receivedGuildIds.size >= expectedGuildIds.size) {
+			if (expectedGuildIds && readySpacesArrived(expectedGuildIds, receivedGuildIds)) {
 				allSpacesReady.set(true);
 			}
 			break;
