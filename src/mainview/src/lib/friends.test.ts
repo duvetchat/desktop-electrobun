@@ -1,9 +1,14 @@
 import { describe, expect, test } from "bun:test";
 import type { Friend, FriendRequest } from "$lib/api/friends";
-import type { GatewayUser, UserUpdateEvent } from "$lib/types";
-import { friendUser, withUserUpdate } from "./friends";
+import type { GatewayUser, MemberOnSidebar, UserUpdateEvent } from "$lib/types";
+
+// The API's host comes from constants Vite defines at build time.
+Object.assign(globalThis, { VITE_API_URL: "https://api.test", VITE_WS_URL: "", VITE_DOMAIN_TARGET_ENV: "duvet" });
+const { friendMember, friendUser, withUserUpdate } = await import("./friends");
 
 const me = "me";
+const ANA_AVATAR = "0190a3b2-0000-7000-8000-00000000a001";
+const ANA_BANNER = "0190a3b2-0000-7000-8000-00000000a002";
 
 /** A user as the API gives any user. */
 function user(id: string, fields: Partial<GatewayUser> = {}): GatewayUser {
@@ -25,7 +30,7 @@ function user(id: string, fields: Partial<GatewayUser> = {}): GatewayUser {
 	};
 }
 
-const ana = user("ana", { alias: "Ana", avatar: "ana-avatar", banner: "ana-banner", custom: "Hi", badges: 1 });
+const ana = user("ana", { alias: "Ana", avatar: ANA_AVATAR, banner: ANA_BANNER, custom: "Hi", badges: 1 });
 const bob = user("bob", { avatar: "bob-avatar" });
 
 /** The other user as the API gives it: user, and the user_* fields that repeat it. */
@@ -94,13 +99,50 @@ describe("friendUser", () => {
 	});
 
 	test("from an API from before user: the user_* fields, as the side that isn't the user", () => {
-		const shown = { id: "ana", username: "ana", alias: "Ana", avatar: "ana-avatar" };
+		const shown = { id: "ana", username: "ana", alias: "Ana", avatar: ANA_AVATAR, banner: null };
 		// Whoever sent the request that made them friends.
 		expect(friendUser(friendship(me, "ana", otherBefore(ana)), me)).toEqual(shown);
 		expect(friendUser(friendship("ana", me, otherBefore(ana)), me)).toEqual(shown);
 		// A request received is the sender's, one sent the recipient's.
 		expect(friendUser(request("ana", me, otherBefore(ana)), me)).toEqual(shown);
 		expect(friendUser(request(me, "ana", otherBefore(ana)), me)).toEqual(shown);
+		// One with user_banner but not user yet.
+		const withBanner = { ...otherBefore(ana), user_banner: ANA_BANNER };
+		expect(friendUser(friendship(me, "ana", withBanner), me)).toEqual({ ...shown, banner: ANA_BANNER });
+	});
+});
+
+describe("friendMember", () => {
+	// Ana's profile card: her name and avatar, and the banner, bio and badges only user gives.
+	const card: MemberOnSidebar = {
+		id: "ana",
+		member_id: "",
+		username: "Ana",
+		raw_username: "ana",
+		avatar_url: `https://api.test/attachments/${ANA_AVATAR}`,
+		banner_url: `https://api.test/attachments/${ANA_BANNER}`,
+		status: "online",
+		badges: 1,
+		is_bot: false,
+		is_owner: false,
+		roles: [],
+		bio: "Hi",
+	};
+
+	test("is a friend's profile card, from user, with the status they show", () => {
+		expect(friendMember(friendship(me, "ana", other(ana)), me, "online")).toEqual(card);
+		expect(friendMember(friendship("ana", me, other(ana)), me, "dnd")).toEqual({ ...card, status: "dnd" });
+	});
+
+	test("is the profile card of whoever sent a request received", () => {
+		expect(friendMember(request("ana", me, other(ana)), me, "online")).toEqual(card);
+	});
+
+	test("from an API from before user: the name, avatar and banner the user_* fields give, no bio, no badges", () => {
+		const before = { ...card, badges: 0, bio: "" };
+		const withBanner = { ...otherBefore(ana), user_banner: ANA_BANNER };
+		expect(friendMember(friendship(me, "ana", withBanner), me, "online")).toEqual(before);
+		expect(friendMember(request("ana", me, otherBefore(ana)), me, "online")).toEqual({ ...before, banner_url: null });
 	});
 });
 
@@ -140,7 +182,13 @@ describe("withUserUpdate", () => {
 	test("from an API from before user: updates the user_* fields of the side that isn't the user", () => {
 		const [updated] = withUserUpdate([friendship("ana", me, otherBefore(ana))], anaUpdate(), me);
 		expect(updated.user).toBeUndefined();
-		expect(friendUser(updated, me)).toEqual({ id: "ana", username: "ana2", alias: "Ana B.", avatar: "ana-avatar-2" });
+		expect(friendUser(updated, me)).toEqual({
+			id: "ana",
+			username: "ana2",
+			alias: "Ana B.",
+			avatar: "ana-avatar-2",
+			banner: "ana-banner-2",
+		});
 	});
 
 	test("leaves everyone alone when the user's own profile changed", () => {

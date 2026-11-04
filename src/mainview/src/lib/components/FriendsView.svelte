@@ -42,10 +42,11 @@
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
 	import StatusDot from "$lib/components/StatusDot.svelte";
 	import ConversationView from "$lib/components/ConversationView.svelte";
+	import MemberProfilePopover from "$lib/components/MemberProfilePopover.svelte";
 	import { getAvatarURL } from "$lib/common/common";
 	import { acceptRequest, declineRequest } from "$lib/friend-requests";
 	import { getUserOnlineStatus, rememberFriendStatuses } from "$lib/api/ws/connection";
-	import { friendUser } from "$lib/friends";
+	import { friendMember, friendUser } from "$lib/friends";
 	import { userStatusToString, type MemberOnSidebar } from "$lib/types";
 
 	let {
@@ -82,18 +83,18 @@
 	const friendGroups = $derived.by(() => {
 		const q = query.trim().toLowerCase();
 		const rows = $friends
-			.map((friend) => ({ friend, other: friendUser(friend, $currentUser?.id) }))
+			.map((friend) => ({ friend, member: friendMember(friend, $currentUser?.id, friendStatus(friend)) }))
 			.filter(
-				({ other }) => !q || (other.alias ?? "").toLowerCase().includes(q) || other.username.toLowerCase().includes(q),
+				({ member }) =>
+					!q || member.username.toLowerCase().includes(q) || member.raw_username.toLowerCase().includes(q),
 			)
-			.map(({ friend, other }) => {
-				const id = getFriendUserId(friend);
-				const activity = shownActivities($userActivities[id])[0];
-				return { friend, other, id, status: friendStatus(friend), activity: activity ? activityLine(activity) : null };
+			.map(({ friend, member }) => {
+				const activity = shownActivities($userActivities[member.id])[0];
+				return { friend, member, activity: activity ? activityLine(activity) : null };
 			});
 		const groups = [
-			{ title: "Online", friends: rows.filter((r) => r.status !== "offline") },
-			{ title: "Offline", friends: rows.filter((r) => r.status === "offline") },
+			{ title: "Online", friends: rows.filter((r) => r.member.status !== "offline") },
+			{ title: "Offline", friends: rows.filter((r) => r.member.status === "offline") },
 		];
 		return groups.some((g) => g.friends.length > 0) ? groups : [];
 	});
@@ -232,6 +233,10 @@
 	function friendStatus(friend: Friend): MemberOnSidebar["status"] {
 		return userStatusToString(getUserOnlineStatus(getFriendUserId(friend)));
 	}
+
+	// The row whose profile card is open: a friend's, or a request's in Pending. Not in Sent, where the card would offer
+	// to send the request again, which the API refuses while it waits.
+	let profileOpenFor = $state<string | null>(null);
 
 	async function handleOpenDM(friend: Friend) {
 		const me = get(currentUser);
@@ -429,39 +434,45 @@
 									{group.title} <span class="tabular-nums">{group.friends.length}</span>
 								</h3>
 								<ul class="mb-3 flex flex-col gap-px">
-									{#each group.friends as { friend, other, status, activity } (friend.id)}
+									{#each group.friends as { friend, member, activity } (friend.id)}
 										<li
 											class="group rounded-row hover:bg-duvet-card/70 flex items-center gap-3 px-2 py-2 transition-colors motion-reduce:transition-none"
 										>
-											<div class="relative shrink-0">
-												<UserAvatar
-													src={getAvatarURL(other.id, other.avatar)}
-													name={other.alias ?? other.username}
-													size={40}
-												/>
-												<StatusDot
-													{status}
-													class="border-duvet-bg absolute -right-0.5 -bottom-0.5 size-3.5 border-[3px]"
-												/>
-											</div>
-											<div class="flex min-w-0 flex-1 flex-col leading-tight">
-												<span class="text-duvet-ink truncate text-sm font-bold">{other.alias ?? other.username}</span>
-												<span class="text-duvet-ink2 flex min-w-0 items-center gap-1 text-xs">
-													{#if activity}
-														{#if activity.kind === "playing"}<GameIcon
-																class="size-3 shrink-0"
-																aria-hidden="true"
-															/>{:else}<MusicIcon class="size-3 shrink-0" aria-hidden="true" />{/if}
-														<span class="truncate">{activity.text}</span>
-													{:else}
-														<span class="truncate">@{other.username}</span>
-													{/if}
-												</span>
-											</div>
+											<MemberProfilePopover
+												{member}
+												side="bottom"
+												open={profileOpenFor === friend.id}
+												onOpenChange={(o) => (profileOpenFor = o ? friend.id : null)}
+												triggerClass="rounded-row flex min-w-0 flex-1 cursor-pointer items-center gap-3 text-left {focusRing}"
+											>
+												{#snippet children()}
+													<div class="relative shrink-0">
+														<UserAvatar src={member.avatar_url} name={member.username} size={40} />
+														<StatusDot
+															status={member.status}
+															class="border-duvet-bg absolute -right-0.5 -bottom-0.5 size-3.5 border-[3px]"
+														/>
+													</div>
+													<div class="flex min-w-0 flex-1 flex-col leading-tight">
+														<span class="text-duvet-ink truncate text-sm font-bold">{member.username}</span>
+														<span class="text-duvet-ink2 flex min-w-0 items-center gap-1 text-xs">
+															{#if activity}
+																{#if activity.kind === "playing"}<GameIcon
+																		class="size-3 shrink-0"
+																		aria-hidden="true"
+																	/>{:else}<MusicIcon class="size-3 shrink-0" aria-hidden="true" />{/if}
+																<span class="truncate">{activity.text}</span>
+															{:else}
+																<span class="truncate">@{member.raw_username}</span>
+															{/if}
+														</span>
+													</div>
+												{/snippet}
+											</MemberProfilePopover>
 											<button
 												type="button"
 												class="bg-duvet-card text-duvet-ink2 shadow-duvet-raised hover:text-duvet-ink flex size-9 items-center justify-center rounded-xl transition-colors motion-reduce:transition-none {focusRing}"
-												aria-label="Message {other.alias ?? other.username}"
+												aria-label="Message {member.username}"
 												title="Message"
 												onclick={() => handleOpenDM(friend)}
 											>
@@ -470,7 +481,7 @@
 											<button
 												type="button"
 												class="text-duvet-ink2 hover:text-duvet-danger hover:bg-duvet-card flex size-9 items-center justify-center rounded-xl opacity-0 transition group-focus-within:opacity-100 group-hover:opacity-100 focus-visible:opacity-100 motion-reduce:transition-none {focusRing}"
-												aria-label="Remove {other.alias ?? other.username} from your friends"
+												aria-label="Remove {member.username} from your friends"
 												title="Remove friend"
 												onclick={() => confirmUnfriend(friend)}
 											>
@@ -492,7 +503,18 @@
 							{#each $pendingFriendRequests as req (req.id)}
 								{@const other = friendUser(req, $currentUser?.id)}
 								<li class="rounded-card bg-duvet-card shadow-duvet-raised flex items-center gap-3 p-3">
-									{@render person(other.id, other.avatar, other.alias ?? other.username, other.username)}
+									<!-- Its card offers to accept the request, as the row's button does. -->
+									<MemberProfilePopover
+										member={friendMember(req, $currentUser?.id, userStatusToString(getUserOnlineStatus(other.id)))}
+										side="bottom"
+										open={profileOpenFor === req.id}
+										onOpenChange={(o) => (profileOpenFor = o ? req.id : null)}
+										triggerClass="rounded-row flex min-w-0 flex-1 cursor-pointer items-center gap-3 text-left {focusRing}"
+									>
+										{#snippet children()}
+											{@render person(other.id, other.avatar, other.alias ?? other.username, other.username)}
+										{/snippet}
+									</MemberProfilePopover>
 									{#if !Number.isNaN(Date.parse(req.created_at))}
 										<span class="text-duvet-ink2 hidden text-xs sm:block"
 											>{new Date(req.created_at).toLocaleDateString()}</span
