@@ -52,7 +52,7 @@ export function webEmbed(embed: Embed): Embed {
 // The players the API frames itself, YouTube's and TikTok's, as it writes their URLs (embeds/youtube.go and
 // embeds/tiktok.go): they need their own origin to play. Only these exact URLs are players. Any other page of
 // those sites, or of their subdomains, could be someone's own or redirect the frame anywhere, and would run with
-// that origin.
+// that origin. src/bun/navigation.ts lets these pages load on macOS and Linux, whose rules also see frames.
 const PLAYERS = [
 	/^https:\/\/www\.youtube\.com\/embed\/[\w-]+$/,
 	/^https:\/\/www\.tiktok\.com\/player\/v1\/\d+\?music_info=0&description=0&rel=0&autoplay=0$/,

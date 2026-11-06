@@ -3,42 +3,11 @@ import { fitActivity, MAX_ACTIVITIES, type ActivityPayload } from "./activities"
 import { ActivityImages, IpcActivities, PAGE_WAIT_MS, within } from "./activity-images";
 import { startSpotifyReader, type SpotifyActivity } from "./spotify";
 import { ipcHeld, ipcPath, LineReader } from "./ipc";
+import { navigationRules } from "./navigation";
 import { Maximizer } from "./window-frame";
 
 const DEV_SERVER_PORT = 5173;
 const DEV_SERVER_URL = `http://localhost:${DEV_SERVER_PORT}`;
-
-// The main window may only ever navigate to the app's own pages and the trusted Duvet backends; every other
-// web navigation is blocked so a message link, embed or redirect can never replace the app (and its session
-// origin) with a third-party site (glob patterns, "^" = block, last match wins, default allow). External links
-// are opened in the system browser instead (see openExternal below). On Windows, Electrobun 1.15's WebView2 view
-// doesn't enforce these rules (measured 2026-10-22: a scripted navigation to an outside site went through, and
-// WebView2 itself blocks file:// from the app), so there the window stays on the app through the click handler
-// (lib/external-links.ts) and the frames' sandbox, which has no allow-top-navigation. Where they are enforced they
-// may apply to frames too, so the players the app frames are allowed.
-//   - http(s)://localhost / 127.0.0.1: the dev Vite server, API, gateway and S3 mock.
-//   - duvet.chat + subdomains: the web app, api.duvet.chat, ws.duvet.chat, docs.duvet.chat.
-//   - n128 / andremor: the alternate backend targets in lib/common/common.ts.
-//   - *.r2.cloudflarestorage.com: the presigned storage URLs attachment downloads redirect to.
-//   - YouTube and TikTok: the players EmbedCard frames (lib/urls.ts PLAYERS).
-const NAVIGATION_RULES = [
-	"^http://*",
-	"^https://*",
-	"^file://*", // a file dropped on the window would replace the app
-	"views://*",
-	"http://localhost:*",
-	"http://127.0.0.1:*",
-	"https://duvet.chat/*",
-	"https://*.duvet.chat/*",
-	"https://*.n128.xyz/*",
-	"https://*.andremor.eu.org/*",
-	"https://*.r2.cloudflarestorage.com/*",
-	"https://youtube.com/*",
-	"https://*.youtube.com/*",
-	"https://*.youtube-nocookie.com/*",
-	"https://tiktok.com/*",
-	"https://*.tiktok.com/*",
-];
 
 // Opens a URL in the system browser, never in a webview. Only http(s) and mailto: are allowed through — a
 // link the app routes here comes from message content or an embed, so a custom scheme (file:, a protocol
@@ -164,7 +133,6 @@ const win = new BrowserWindow({
 	titleBarStyle: "hidden",
 	renderer: rendererType,
 	sandbox: false,
-	navigationRules: JSON.stringify(NAVIGATION_RULES),
 	frame: {
 		height: 900,
 		width: 1400,
@@ -175,6 +143,9 @@ const win = new BrowserWindow({
 	url,
 	rpc,
 });
+
+// Through the webview: BrowserWindow stores a navigationRules option of its own, and never hands it to the native side.
+win.webview.setNavigationRules(navigationRules(currentOS, url === DEV_SERVER_URL ? url : null));
 
 // Backstop for any attempt to open a new window — window.open, target="_blank" or a modifier-click the
 // webview doesn't handle itself. The window never spawns a second webview or popup; the URL goes to the
