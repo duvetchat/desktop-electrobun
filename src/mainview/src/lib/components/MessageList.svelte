@@ -57,6 +57,7 @@
 		isNotice,
 		mentionsByReply,
 		messageText,
+		quotedAuthorName,
 	} from "$lib/types";
 	import { MessageType, type MemberOnSidebar, type GatewaySpace, type Message, type SpaceEmoji } from "$lib/types";
 	import { getHostURL, getAvatarURL, DUVET_DOMAIN } from "$lib/common/common";
@@ -1109,7 +1110,9 @@
 											name={message.referenced_message.author_name ?? "?"}
 											size={16}
 										/>
-										<span class="shrink-0 font-medium text-zinc-300">{message.referenced_message.author_name}</span>
+										<span class="shrink-0 font-medium text-zinc-300"
+											>{quotedAuthorName(message.referenced_message.author_name, message.referenced_message)}</span
+										>
 										{#if message.referenced_message.content}
 											<span class="msg-content truncate opacity-80"
 												>{@html renderMarkdownLine(
@@ -1881,7 +1884,7 @@
 											{:else}
 												<UserAvatar src={parentMsg.author_avatar_url} name={parentMsg.author_name} size={14} />
 												<span class="max-w-24 shrink-0 truncate text-xs font-medium text-zinc-400"
-													>{parentMsg.author_name}</span
+													>{quotedAuthorName(parentMsg.author_name, threadMsg.referenced_message)}</span
 												>
 												<span class="truncate text-xs text-zinc-500"
 													>{@html renderMarkdownLine(
