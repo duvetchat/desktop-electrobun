@@ -85,11 +85,13 @@
 	);
 </script>
 
-<div class="w-80 overflow-hidden rounded-xl border border-zinc-700 bg-zinc-900 shadow-2xl">
-	<!-- Banner: 5:2, as it's cropped (600×240), and as a space's is. Without one, a block of the same size. -->
+<div class="w-80 rounded-xl border border-zinc-700 bg-zinc-900 shadow-2xl">
+	<!-- Banner: 5:2, as it's cropped (600×240), and as a space's is. Without one, a block of the same size. It grows a
+	     little past the card on hover, under the avatar, which comes later; nothing clips it, so its corners are its own,
+	     and what's below clips itself. -->
 	{#if editable}
 		<div
-			class="group relative aspect-[5/2] w-full overflow-hidden"
+			class="group relative aspect-[5/2] w-full overflow-hidden rounded-t-[11px] transition-transform duration-150 motion-safe:hover:scale-105"
 			style={member.banner_url && !bannerError ? undefined : getBannerStyle(member)}
 		>
 			{#if member.banner_url && !bannerError}
@@ -129,7 +131,7 @@
 	{:else if member.banner_url && !bannerError}
 		<button
 			type="button"
-			class="aspect-[5/2] w-full cursor-pointer overflow-hidden"
+			class="aspect-[5/2] w-full cursor-pointer overflow-hidden rounded-t-[11px] transition-transform duration-150 motion-safe:hover:scale-105"
 			onclick={() => {
 				previewSrc = member.banner_url!;
 				previewOpen = true;
@@ -144,7 +146,10 @@
 			/>
 		</button>
 	{:else}
-		<div class="aspect-[5/2] w-full" style={getBannerStyle(member)}></div>
+		<div
+			class="aspect-[5/2] w-full rounded-t-[11px] transition-transform duration-150 motion-safe:hover:scale-105"
+			style={getBannerStyle(member)}
+		></div>
 	{/if}
 
 	<div class="relative px-4 pb-4">
@@ -202,7 +207,7 @@
 
 		<div class="h-14"></div>
 
-		<div class="mt-4 rounded-lg bg-zinc-950 p-3">
+		<div class="mt-4 overflow-hidden rounded-lg bg-zinc-950 p-3">
 			<h2 class="flex items-center gap-1.5 text-lg leading-tight font-bold break-all text-zinc-100">
 				{member.username}
 				{#if member.is_bot}
