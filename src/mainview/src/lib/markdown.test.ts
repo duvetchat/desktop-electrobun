@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import { isUuid } from "$lib/common/common";
 import { renderEmoji, toTwemojiUrl } from "$lib/emoji";
-import { mentionNamesIn, renderMarkdown, renderMarkdownLine } from "$lib/markdown";
+import { clickedMention, mentionNamesIn, renderMarkdown, renderMarkdownLine } from "$lib/markdown";
 
 // The value of the first href in html: what's between its quotes.
 const hrefOf = (html: string) => /href="([^"]*)"/.exec(html)?.[1];
@@ -152,6 +153,94 @@ describe("room mentions", () => {
 		expect(renderMarkdownLine(`# <#${ROOM}>`, undefined, undefined, names)).toBe(
 			`<span class="msg-room-mention" data-room-id="${ROOM}">#general</span>`,
 		);
+	});
+});
+
+describe("user mentions", () => {
+	const ANA = "0190a3b2-0000-7000-8000-0000000000a1";
+	const names = { [ANA]: "Ana" };
+
+	test("one of someone the map knows reads @name, with their ID to open their profile", () => {
+		expect(renderMarkdown(`hi <@${ANA}>`, false, names)).toBe(
+			`hi <span class="msg-mention" data-user-id="${ANA}">@Ana</span>`,
+		);
+	});
+
+	test("anyone else's, who left or isn't loaded, reads the start of the ID, with no ID to open", () => {
+		const html = `<span class="msg-mention">@0190a3b2</span>`;
+		expect(renderMarkdown(`<@${ANA}>`)).toBe(html);
+		expect(renderMarkdown(`<@${ANA}>`, false, {})).toBe(html);
+	});
+
+	test("what isn't an ID opens nothing, whatever the map says", () => {
+		expect(renderMarkdown("<@abc>", false, { abc: "Abc" })).toBe(`<span class="msg-mention">@Abc</span>`);
+		expect(renderMarkdown("<@abc>")).toBe(`<span class="msg-mention">@abc</span>`);
+		const short = `<@${ANA.slice(0, -1)}>`;
+		expect(renderMarkdown(short, false, { [ANA.slice(0, -1)]: "Ana" })).toBe(`<span class="msg-mention">@Ana</span>`);
+	});
+
+	test("in code, it stays as written", () => {
+		expect(renderMarkdown(`\`<@${ANA}>\``, false, names)).toBe(`<code class="msg-inline-code">&lt;@${ANA}&gt;</code>`);
+	});
+
+	test("a name is text: escaped, whatever it holds", () => {
+		const html = renderMarkdown(`<@${ANA}>`, false, { [ANA]: `"><img src=x onerror=alert(1)>` });
+		expect(html).toBe(
+			`<span class="msg-mention" data-user-id="${ANA}">@&quot;&gt;&lt;img src=x onerror=alert(1)&gt;</span>`,
+		);
+	});
+
+	test("a reply's one-line quote reads it too", () => {
+		expect(renderMarkdownLine(`# <@${ANA}>`, names)).toBe(
+			`<span class="msg-mention" data-user-id="${ANA}">@Ana</span>`,
+		);
+	});
+});
+
+describe("clickedMention", () => {
+	const ANA = "0190a3b2-0000-7000-8000-0000000000a1";
+	// Bun has no DOM: what a click lands on, as clickedMention reads it, inside a mention's chip or not.
+	class FakeElement extends EventTarget {
+		dataset: { userId?: string } = {};
+		constructor(
+			private chip: FakeElement | null,
+			private link: FakeElement | null = null,
+		) {
+			super();
+		}
+		closest(selector: string) {
+			if (selector === ".msg-mention[data-user-id]") return this.chip;
+			if (selector === "a") return this.link;
+			return null;
+		}
+	}
+	Object.assign(globalThis, { Element: FakeElement });
+	const chipOf = (userId: string | undefined, link: FakeElement | null = null) => {
+		const chip = new FakeElement(null, link);
+		chip.dataset.userId = userId;
+		return chip;
+	};
+
+	test("a click on a mention's chip, or inside it, finds the chip and who it names", () => {
+		const chip = chipOf(ANA);
+		const found = clickedMention(new FakeElement(chip));
+		expect(found?.userId).toBe(ANA);
+		expect(Object.is(found?.chip, chip)).toBe(true);
+	});
+
+	test("any other click finds nothing", () => {
+		expect(clickedMention(new FakeElement(null))).toBeNull();
+		expect(clickedMention(null)).toBeNull();
+		expect(clickedMention(new EventTarget())).toBeNull();
+	});
+
+	test("one in a link's text is the link's", () => {
+		expect(clickedMention(new FakeElement(chipOf(ANA, new FakeElement(null))))).toBeNull();
+	});
+
+	test("one without an ID opens nothing", () => {
+		expect(clickedMention(new FakeElement(chipOf(undefined)))).toBeNull();
+		expect(clickedMention(new FakeElement(chipOf("")))).toBeNull();
 	});
 });
 
@@ -318,7 +407,7 @@ describe("the HTML it makes", () => {
 		a: new Set(["href", "target", "rel", "class"]),
 		// No handler: a custom emoji's image that fails is tried again by the document (lib/emoji-retry.ts).
 		img: new Set(["class", "src", "alt", "title", "draggable", "loading"]),
-		span: new Set(["class", "title", "style", "data-room-id"]),
+		span: new Set(["class", "title", "style", "data-room-id", "data-user-id"]),
 		button: new Set(["class", "data-code", "title", "aria-label"]),
 		svg: new Set([
 			"xmlns",
@@ -354,6 +443,7 @@ describe("the HTML it makes", () => {
 			)
 				return `style ${value}`;
 			if (name === "data-room-id" && !/^[a-f0-9-]+$/.test(value)) return `data-room-id ${value}`;
+			if (name === "data-user-id" && !isUuid(value)) return `data-user-id ${value}`;
 			if (name === "target" && value !== "_blank") return `target ${value}`;
 			if (name === "rel" && value !== "noopener noreferrer") return `rel ${value}`;
 		}

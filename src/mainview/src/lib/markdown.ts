@@ -1,6 +1,6 @@
 import { renderEmoji } from "./emoji";
 import { createHighlighter, type Highlighter } from "shiki";
-import { getHostURL } from "$lib/common/common";
+import { getHostURL, isUuid } from "$lib/common/common";
 import { CUSTOM_EMOJI_CLASS, retryEmojis } from "$lib/emoji-retry";
 
 export interface CustomEmojiMap {
@@ -280,10 +280,12 @@ function applyInline(
 	s = s.replace(/(?<!\w)_([^\s_](?:[^_]*[^\s_])?)_(?!\w)/gs, (_, t) => `<em>${t}</em>`);
 	s = s.replace(/~~(.+?)~~/gs, (_, t) => `<del>${t}</del>`);
 	s = s.replace(/\|\|(.+?)\|\|/gs, (_, t) => `<span class="msg-spoiler">${t}</span>`);
-	// Resolve <@id> mentions to @username
-	s = s.replace(/&lt;@([a-f0-9-]+)&gt;/g, (_, id) => {
-		const name = mentionMap?.[id] ?? id.slice(0, 8);
-		return `<span class="msg-mention">@${escapeHtml(name)}</span>`;
+	// Resolve <@id> mentions to @username. One of someone the map knows carries their ID, to open their profile
+	// (clickedMention); any other one, of someone who left or isn't loaded, is only a name, as their name on a message is.
+	s = s.replace(/&lt;@([a-f0-9-]+)&gt;/g, (_, id: string) => {
+		const name = mentionMap?.[id];
+		const user = name !== undefined && isUuid(id) ? ` data-user-id="${id}"` : "";
+		return `<span class="msg-mention"${user}>@${escapeHtml(name ?? id.slice(0, 8))}</span>`;
 	});
 	// Resolve <:id:> custom emojis to inline images
 	const ceCls = large ? `emoji-img emoji-large ${CUSTOM_EMOJI_CLASS}` : `emoji-img ${CUSTOM_EMOJI_CLASS}`;
@@ -473,6 +475,17 @@ export function renderMarkdownLine(
 		/\x00P(\d+)\x01/g,
 		(_, i) => `<code class="msg-inline-code">${escapeHtml(codes[+i])}</code>`,
 	);
+}
+
+/**
+ * The mention a click landed on: its chip, which renderMarkdown gives the user's ID, and that ID. One in a link's text is
+ * the link's, as the app's external links go by what the click landed in.
+ */
+export function clickedMention(target: EventTarget | null): { chip: HTMLElement; userId: string } | null {
+	if (!(target instanceof Element)) return null;
+	const chip = target.closest<HTMLElement>(".msg-mention[data-user-id]");
+	const userId = chip?.dataset.userId;
+	return chip && userId && !chip.closest("a") ? { chip, userId } : null;
 }
 
 /** Splits a message's text into its bare links (http(s) and duvet://) and the text between them, for renderMarkdown. */

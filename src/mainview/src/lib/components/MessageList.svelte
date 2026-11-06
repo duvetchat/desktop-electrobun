@@ -77,6 +77,7 @@
 	import ReactionCount from "$lib/components/ReactionCount.svelte";
 	import ImagePreview from "$lib/components/ImagePreview.svelte";
 	import MemberProfilePopover from "$lib/components/MemberProfilePopover.svelte";
+	import MentionProfile from "$lib/components/MentionProfile.svelte";
 	import type { MessageReaction } from "$lib/types";
 	import { sendFriendRequest, getSentRequests } from "$lib/api/friends";
 	import { updateUserFlagsBadges } from "$lib/api/user";
@@ -161,6 +162,8 @@
 	let deletingMessageId = $state<string | null>(null);
 	let activePopoverMsgId = $state<string | null>(null);
 	let avatarPopoverWasOpen = false;
+	let mentionProfile: MentionProfile;
+	const openMention = (e: MouseEvent) => mentionProfile.open(e);
 
 	// User context menu
 	let userMenuPos = $state<{ x: number; y: number } | null>(null);
@@ -338,6 +341,7 @@
 		scrollEl?.addEventListener("click", copyCode);
 		// In the capture phase, so the quote a mention sits in doesn't jump to its message too.
 		scrollEl?.addEventListener("click", openRoomMention, true);
+		scrollEl?.addEventListener("click", openMention, true);
 	});
 
 	// Once the list is gone, what it still waits for (a frame, a tick) stops before reading its props: a conversation's
@@ -351,6 +355,7 @@
 		}
 		scrollEl?.removeEventListener("click", copyCode);
 		scrollEl?.removeEventListener("click", openRoomMention, true);
+		scrollEl?.removeEventListener("click", openMention, true);
 	});
 
 	// ── Sorting ────────────────────────────────────────────────────────────────
@@ -1856,7 +1861,7 @@
 						<p class="text-sm text-zinc-400">No thread messages found.</p>
 					{:else}
 						{@const threadMsgMap = new Map(threadMessages.map((m) => [m.id, m]))}
-						<div class="flex flex-col gap-2">
+						<div class="flex flex-col gap-2" onclickcapture={openMention}>
 							{#each threadMessages as threadMsg}
 								{@const parentMsg = threadMsg.ref_message_id ? threadMsgMap.get(threadMsg.ref_message_id) : null}
 								{@const parentCall = parentMsg ? callNoticeLine(parentMsg, $currentUser?.id) : null}
@@ -1936,6 +1941,8 @@
 {/snippet}
 
 <ImagePreview src={previewSrc} alt={previewAlt} bind:open={previewOpen} />
+
+<MentionProfile bind:this={mentionProfile} {members} {space} />
 
 <!-- User context menu (right-click avatar) -->
 <svelte:window

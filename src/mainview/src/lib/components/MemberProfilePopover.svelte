@@ -24,6 +24,7 @@
 		triggerClass = "",
 		triggerStyle = "",
 		onRemoveMember = undefined,
+		anchor = null,
 		children,
 	}: {
 		member: MemberOnSidebar;
@@ -35,7 +36,9 @@
 		triggerClass?: string;
 		triggerStyle?: string;
 		onRemoveMember?: (userId: string) => void;
-		children: Snippet;
+		/** What it opens beside, for one that opens by other means than a click on its children, and then has none. */
+		anchor?: HTMLElement | null;
+		children?: Snippet;
 	} = $props();
 
 	let showPermissions = $state(false);
@@ -160,11 +163,14 @@
 		onOpenChange(o);
 	}}
 >
-	<Popover.Trigger class={triggerClass} style={triggerStyle}>
-		{@render children()}
-	</Popover.Trigger>
+	{#if children}
+		<Popover.Trigger class={triggerClass} style={triggerStyle}>
+			{@render children()}
+		</Popover.Trigger>
+	{/if}
 	<Popover.Portal>
 		<Popover.Content
+			customAnchor={anchor}
 			{side}
 			align="start"
 			sideOffset={10}
