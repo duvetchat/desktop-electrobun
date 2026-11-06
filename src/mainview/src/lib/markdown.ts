@@ -23,6 +23,20 @@ export function mentionMapOf(
 	return map;
 }
 
+/**
+ * The name a mention shows of each of those people that text mentions, by user ID, as renderMarkdown takes them, where
+ * no list of members goes with the text. The first of them with an ID goes.
+ */
+export function mentionNamesIn(
+	text: string,
+	people: { id: string; username: string; alias?: string | null }[],
+): Record<string, string> {
+	const mentioned = new Set([...text.matchAll(/<@([a-f0-9-]+)>/g)].map((m) => m[1]));
+	const map: Record<string, string> = {};
+	for (const p of people) if (mentioned.has(p.id)) map[p.id] ??= p.alias ?? p.username;
+	return map;
+}
+
 const emojiHost = getHostURL();
 // A custom emoji's image that fails to load is tried again after a wait, by the document (lib/emoji-retry.ts): the
 // image carries no handler of its own, so the page needs no inline script. A hot update of this module, in

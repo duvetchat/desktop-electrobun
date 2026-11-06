@@ -2,6 +2,7 @@
 	import type { MemberOnSidebar, Role } from "$lib/types";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
 	import ImagePreview from "$lib/components/ImagePreview.svelte";
+	import ProfileBio from "$lib/components/ProfileBio.svelte";
 	import { Camera as CameraIcon, Trash2 as TrashIcon } from "@lucide/svelte";
 	import { userActivities } from "$lib/stores.svelte";
 	import { BADGES } from "$lib/badges";
@@ -223,7 +224,7 @@
 			{#if member.bio}
 				<div class="my-3 h-px w-full bg-zinc-800"></div>
 				<h3 class="mb-1 text-left text-[11px] font-bold tracking-wide text-zinc-400 uppercase">About</h3>
-				<p class="text-sm break-words whitespace-pre-wrap text-zinc-300">{member.bio}</p>
+				<ProfileBio bio={member.bio} />
 			{/if}
 
 			<ActivityList activities={$userActivities[member.id]} />

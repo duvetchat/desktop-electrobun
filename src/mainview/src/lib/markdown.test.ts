@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { renderEmoji, toTwemojiUrl } from "$lib/emoji";
-import { renderMarkdown, renderMarkdownLine } from "$lib/markdown";
+import { mentionNamesIn, renderMarkdown, renderMarkdownLine } from "$lib/markdown";
 
 // The value of the first href in html: what's between its quotes.
 const hrefOf = (html: string) => /href="([^"]*)"/.exec(html)?.[1];
@@ -152,6 +152,26 @@ describe("room mentions", () => {
 		expect(renderMarkdownLine(`# <#${ROOM}>`, undefined, undefined, names)).toBe(
 			`<span class="msg-room-mention" data-room-id="${ROOM}">#general</span>`,
 		);
+	});
+});
+
+describe("mentionNamesIn", () => {
+	const ANA = "0190a3b2-0000-7000-8000-000000000001";
+	const BOB = "0190a3b2-0000-7000-8000-000000000002";
+	const people = [
+		{ id: ANA, username: "ana", alias: "Ana" },
+		{ id: BOB, username: "bob", alias: null },
+		{ id: ANA, username: "ana", alias: "Another name" },
+	];
+
+	test("names those the text mentions, by alias or else username, the first of them with an ID", () => {
+		expect(mentionNamesIn(`<@${ANA}> and <@${BOB}>`, people)).toEqual({ [ANA]: "Ana", [BOB]: "bob" });
+	});
+
+	test("and nobody else", () => {
+		expect(mentionNamesIn(`<@${ANA}>`, people)).toEqual({ [ANA]: "Ana" });
+		expect(mentionNamesIn(`${ANA} @${BOB}`, people)).toEqual({});
+		expect(mentionNamesIn("<@01234567>", people)).toEqual({});
 	});
 });
 

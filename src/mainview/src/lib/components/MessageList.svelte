@@ -44,6 +44,7 @@
 	} from "$lib/api/reactions";
 	import { arrival, arrivalAction, listEnd } from "$lib/arrivals";
 	import { callNoticeLine, callNoticeText } from "$lib/call-notices";
+	import { copyCode } from "$lib/code-copy";
 	import { belowIndicator, quoteJump } from "$lib/jumps";
 	import { keepPlace, takePlace } from "$lib/kept-places";
 	import { renderEmoji, isOnlyEmojis, countEmojis } from "$lib/emoji";
@@ -330,26 +331,11 @@
 		});
 	});
 
-	function handleCodeCopy(e: MouseEvent) {
-		const btn = (e.target as HTMLElement).closest(".msg-code-copy") as HTMLButtonElement | null;
-		if (!btn) return;
-		const code = btn.dataset.code;
-		if (!code) return;
-		navigator.clipboard.writeText(code).then(() => {
-			btn.classList.add("copied");
-			btn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>`;
-			setTimeout(() => {
-				btn.classList.remove("copied");
-				btn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>`;
-			}, 1500);
-		});
-	}
-
 	onMount(() => {
 		intervalId = window.setInterval(() => {
 			now = Date.now();
 		}, 30_000);
-		scrollEl?.addEventListener("click", handleCodeCopy);
+		scrollEl?.addEventListener("click", copyCode);
 		// In the capture phase, so the quote a mention sits in doesn't jump to its message too.
 		scrollEl?.addEventListener("click", openRoomMention, true);
 	});
@@ -363,7 +349,7 @@
 		if (intervalId) {
 			window.clearInterval(intervalId);
 		}
-		scrollEl?.removeEventListener("click", handleCodeCopy);
+		scrollEl?.removeEventListener("click", copyCode);
 		scrollEl?.removeEventListener("click", openRoomMention, true);
 	});
 
