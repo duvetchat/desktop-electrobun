@@ -1,0 +1,12 @@
+[
+	{
+		"relation": ["delegate_permission/common.handle_all_urls"],
+		"target": {
+			"namespace": "android_app",
+			"package_name": "chat.duvet",
+			"sha256_cert_fingerprints": [
+				"E0:87:C3:A6:A3:8D:74:64:92:51:4C:D7:9C:C9:1F:3B:E3:AC:68:7E:59:F8:37:E0:B6:9B:58:56:45:B8:FE:3C"
+			]
+		}
+	}
+]
