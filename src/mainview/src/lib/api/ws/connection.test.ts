@@ -1,12 +1,14 @@
 import { afterAll, beforeAll, describe, expect, jest, spyOn, test } from "bun:test";
 import { get } from "svelte/store";
 import { openGateway, type TestGateway } from "$lib/api/ws/test-gateway";
-import { changeDraft, chatDrafts, draftOf } from "$lib/drafts";
+import { changeDraft, chatDrafts, draftOf, putBack } from "$lib/drafts";
 import { onReactionChange, type ReactionChange } from "$lib/reactions";
 import { MessageType, type Message } from "$lib/types";
 import { TYPING_TIMEOUT } from "$lib/typing";
+import { SENT_BEFORE_CANCEL } from "$lib/uploads";
 
 const stores = await import("$lib/stores.svelte");
+const { toastStore } = await import("$lib/stores/toast.svelte");
 
 const ME = "01920000-0000-7000-8000-00000000b0b0";
 const ALICE = "01920000-0000-7000-8000-00000000a11c";
@@ -187,6 +189,64 @@ describe("the message a draft replies to is deleted", () => {
 		changeDraft(conv, { replyTo: roomMessage(message(1)) });
 		deliver("DM_MESSAGE_DELETE", { id: message(1), conversation_id: conv });
 		expect(draftOf(get(chatDrafts), conv).replyTo).toBeNull();
+	});
+});
+
+// A message this window cancelled, which the API posted all the same (#211): its whole body was in as the client gave
+// up. Its create event takes out of the draft what the Cancel put back, and a notice says so.
+describe("a cancelled message that the API posts all the same", () => {
+	const photo = new File(["png"], "photo.png", { type: "image/png" });
+	const sent = { text: "fix this", files: [photo], replyTo: null, replyMention: true };
+	const notices = () => toastStore.items.filter((t) => t.message === SENT_BEFORE_CANCEL).length;
+	const emptied = { text: "", files: [], replyTo: null, replyMention: true };
+
+	test("in a room, leaves the draft as it was before the Cancel, says so, and shows as sent", () => {
+		ready({});
+		const room = conversation(40);
+		const before = notices();
+		putBack(room, "nonce-40", sent);
+		deliver("MESSAGE_CREATE", {
+			id: message(60),
+			room_id: room,
+			author_id: ME,
+			content: "fix this",
+			nonce: "nonce-40",
+		});
+		expect(draftOf(get(chatDrafts), room)).toEqual(emptied);
+		expect(notices()).toBe(before + 1);
+		expect(get(stores.channelMessages)[room].map((m) => m.id)).toEqual([message(60)]);
+	});
+
+	test("in a conversation too", () => {
+		ready({});
+		const conv = conversation(41);
+		const before = notices();
+		putBack(conv, "nonce-41", sent);
+		deliver("DM_MESSAGE_CREATE", {
+			id: message(61),
+			conversation_id: conv,
+			author_id: ME,
+			content: "fix this",
+			nonce: "nonce-41",
+		});
+		expect(draftOf(get(chatDrafts), conv)).toEqual(emptied);
+		expect(notices()).toBe(before + 1);
+	});
+
+	test("not for someone else's message with that nonce", () => {
+		ready({});
+		const room = conversation(42);
+		const before = notices();
+		putBack(room, "nonce-42", sent);
+		deliver("MESSAGE_CREATE", {
+			id: message(62),
+			room_id: room,
+			author_id: ALICE,
+			content: "fix this",
+			nonce: "nonce-42",
+		});
+		expect(draftOf(get(chatDrafts), room)).toMatchObject({ text: "fix this", files: [photo] });
+		expect(notices()).toBe(before);
 	});
 });
 
