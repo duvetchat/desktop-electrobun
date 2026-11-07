@@ -151,12 +151,11 @@ const win = new BrowserWindow({
 const rules = navigationRules(currentOS, url === DEV_SERVER_URL ? url : null);
 win.webview.on("dom-ready", () => win.webview.setNavigationRules(rules));
 
-// Backstop for any attempt to open a new window — window.open, target="_blank" or a modifier-click the
-// webview doesn't handle itself. The window never spawns a second webview or popup; the URL goes to the
-// system browser instead. The webview also routes ordinary external-link clicks over RPC (openExternal), so
-// this mainly covers scripted opens and modifier-clicks. Embedded players can't reach here: their iframe
-// sandbox drops allow-popups (lib/urls.ts frameSandbox). The event fires globally through Electrobun's
-// emitter (webviewEvents.ts → proc/native.ts webviewEventHandler) with the URL in event.data.detail.
+// What Electrobun reports as a new window goes to the system browser: a Ctrl or Cmd click. The webview sends every
+// other click on a link over RPC (openExternal, lib/external-links.ts). On Windows and Linux Electrobun has no hook for
+// a scripted window.open, which opens a second window: nothing in the app calls it, and embedded players can't, as their
+// iframe sandbox drops allow-popups (lib/urls.ts frameSandbox). The event fires globally through Electrobun's emitter
+// (webviewEvents.ts → proc/native.ts webviewEventHandler) with the URL in event.data.detail.
 Electrobun.events.on("new-window-open", (event: { data?: { detail?: { url?: string } | string } }) => {
 	const detail = event?.data?.detail;
 	const target = typeof detail === "string" ? detail : detail?.url;
