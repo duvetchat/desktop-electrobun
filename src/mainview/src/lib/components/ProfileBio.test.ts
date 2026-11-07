@@ -118,6 +118,15 @@ describe("a bio", () => {
 		expect(html("😀😀😀😀😀😀")).not.toContain("emoji-large");
 	});
 
+	// Scrolling one way makes the other auto too, and a heading's line height of 1.2 is less than some fonts need: a bio
+	// ending in one, in the font the app falls back to, got a scrollbar 10 px wide for the 1 px it could scroll.
+	test("scrolls sideways alone, however its last line sits in its font", async () => {
+		const [root] = await tags(ProfileBio, { bio: "# Hi" });
+		expect(root.attributes.class.split(/\s+/)).toEqual(
+			expect.arrayContaining(["overflow-x-auto", "overflow-y-hidden"]),
+		);
+	});
+
 	test("takes no click on a mention, and hears its copy button's", () => {
 		const source = component("ProfileBio.svelte");
 		expect(source).toContain("[&_.msg-mention]:pointer-events-none");
