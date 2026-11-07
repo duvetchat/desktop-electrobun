@@ -1,4 +1,5 @@
 import api from "$lib/api/api";
+import type { Message } from "$lib/types";
 import { pathSegment } from "$lib/urls";
 
 // A reaction's emoji_name is whatever its first sender put (the API takes any text): one segment of the path
@@ -34,4 +35,32 @@ export async function addConversationReaction(
 
 export async function removeConversationReaction(convId: string, messageId: string, emojiName: string): Promise<void> {
 	await api.delete(`/api/users/@me/conversations/${convId}/messages/${messageId}/reactions/${pathSegment(emojiName)}`);
+}
+
+/**
+ * Adds the user's reaction to a message, or takes it back when they had reacted with that emoji already: in a room of a
+ * space, or in a conversation (spaceId "", channelId the conversation). The gateway's REACTION_ADD or REACTION_REMOVE
+ * then shows it. A failure is only logged, as nothing has changed.
+ */
+export async function toggleReaction(
+	where: { spaceId: string; channelId: string },
+	message: Pick<Message, "id" | "reactions">,
+	me: string,
+	emojiName: string,
+	emojiId?: string | null,
+): Promise<void> {
+	const reacted = message.reactions?.find((r) => r.emoji_name === emojiName)?.users.includes(me) ?? false;
+	const { spaceId, channelId } = where;
+	try {
+		if (!spaceId) {
+			if (reacted) await removeConversationReaction(channelId, message.id, emojiName);
+			else await addConversationReaction(channelId, message.id, emojiName, emojiId);
+		} else if (reacted) {
+			await removeRoomReaction(channelId, message.id, emojiName);
+		} else {
+			await addRoomReaction(channelId, message.id, emojiName, emojiId);
+		}
+	} catch (e) {
+		console.error("Failed to toggle reaction:", e);
+	}
 }

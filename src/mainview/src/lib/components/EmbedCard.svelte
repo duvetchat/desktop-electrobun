@@ -8,7 +8,12 @@
 	import { formatShortDateTime } from "$lib/utils/time";
 	import { playerFrame, webEmbed } from "$lib/urls";
 
-	let { embed, onImageClick }: { embed: Embed; onImageClick?: (src: string) => void } = $props();
+	// compact: the smaller sizes of a message's preview (pins, search results, a thread), whose media fit in 320 × 240.
+	let {
+		embed,
+		onImageClick,
+		compact = false,
+	}: { embed: Embed; onImageClick?: (src: string) => void; compact?: boolean } = $props();
 
 	// An embed's URLs come from a page or from whoever sent the message: the card takes only its http(s) ones
 	// (webEmbed), as another scheme, javascript: above all, would run in the app from a link or a frame.
@@ -19,6 +24,10 @@
 	try {
 		ownHosts.push(new URL(getHostURL()).hostname);
 	} catch {}
+
+	// How large a lone image or video shows, and a lone image's button.
+	const mediaFit = $derived(compact ? "max-h-60 max-w-80" : "max-h-87.5 max-w-137.5");
+	const mediaWidth = $derived(compact ? "max-w-80" : "max-w-137.5");
 
 	// The image a player shows until it's played (EmbedPlayer).
 	const poster = $derived(card.image?.url ?? card.thumbnail?.url);
@@ -71,7 +80,7 @@
 {#if card.components?.length}
 	<!-- The linked page's own card, drawn as a message's components: layout, text, media and link buttons -->
 	<div class="w-full max-w-108">
-		<MessageComponents components={card.components} onPreview={(src) => onImageClick?.(src)} />
+		<MessageComponents components={card.components} onPreview={(src) => onImageClick?.(src)} {compact} />
 	</div>
 {:else if card.type === EmbedType.Sticker && card.image}
 	<button type="button" class="mt-1 block cursor-zoom-in" onclick={() => onImageClick?.(card.image!.url)}>
@@ -93,15 +102,15 @@
 			muted={card.type === EmbedType.Gifv}
 			playsinline
 			controls
-			class="mt-1 max-h-87.5 max-w-137.5 self-start rounded"
+			class="mt-1 self-start rounded {mediaFit}"
 		></video>
 	{:else if card.image}
 		<button
 			type="button"
-			class="mt-1 block max-w-137.5 cursor-zoom-in self-start rounded"
+			class="mt-1 block cursor-zoom-in self-start rounded {mediaWidth}"
 			onclick={() => onImageClick?.(card.image!.url)}
 		>
-			<img src={card.image.url} alt="" class="max-h-87.5 max-w-137.5 rounded" loading="lazy" />
+			<img src={card.image.url} alt="" class="rounded {mediaFit}" loading="lazy" />
 		</button>
 	{/if}
 {:else if isTikTokEmbed(card)}

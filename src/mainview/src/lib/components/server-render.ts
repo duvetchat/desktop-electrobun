@@ -1,14 +1,19 @@
 import type { Component } from "svelte";
-import { compile } from "svelte/compiler";
+import { compile, compileModule } from "svelte/compiler";
 import { render } from "svelte/server";
 
 // For tests of what a component draws: Bun loads a .svelte file compiled for the server, so that a test, once this
-// module has run, can import a component (await import(), as a static import would load it before) and render it.
+// module has run, can import a component (await import(), as a static import would load it before) and render it. A
+// package's .svelte.js modules, which use runes (bits-ui's), are compiled for the server too.
 Bun.plugin({
 	name: "svelte components for the server",
 	setup(build) {
 		build.onLoad({ filter: /\.svelte$/ }, async ({ path }) => ({
 			contents: compile(await Bun.file(path).text(), { filename: path, generate: "server" }).js.code,
+			loader: "js",
+		}));
+		build.onLoad({ filter: /\.svelte\.js$/ }, async ({ path }) => ({
+			contents: compileModule(await Bun.file(path).text(), { filename: path, generate: "server" }).js.code,
 			loader: "js",
 		}));
 	},

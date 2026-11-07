@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, jest, spyOn, test } from "bun:te
 import { get } from "svelte/store";
 import { openGateway, type TestGateway } from "$lib/api/ws/test-gateway";
 import { changeDraft, chatDrafts, draftOf } from "$lib/drafts";
+import { onReactionChange, type ReactionChange } from "$lib/reactions";
 import { MessageType, type Message } from "$lib/types";
 import { TYPING_TIMEOUT } from "$lib/typing";
 
@@ -119,6 +120,55 @@ describe("who shows as typing outside the open chat", () => {
 			unsubscribe();
 			jest.useRealTimers();
 		}
+	});
+});
+
+// A reaction event changes the message in the list that has it, a room's or a conversation's, and reaches what shows a
+// message those lists don't keep (a pin, a search result, who reacted), which has its own copy to change.
+describe("a reaction that comes", () => {
+	const thumbs = (users: string[]) => ({ emoji_name: "👍", emoji_id: null, count: users.length, users });
+
+	test("in a room, changes the message in its list, and reaches what hears them", () => {
+		const room = conversation(30);
+		stores.channelMessages.update((all) => ({
+			...all,
+			[room]: [{ ...roomMessage(message(40)), reactions: [thumbs([ALICE])] }],
+		}));
+		const heard: ReactionChange[] = [];
+		const stop = onReactionChange((change) => heard.push(change));
+		deliver("REACTION_ADD", { message_id: message(40), user_id: ME, emoji_name: "👍", emoji_id: null });
+		deliver("REACTION_REMOVE", { message_id: message(40), user_id: ALICE, emoji_name: "👍" });
+		stop();
+		expect(get(stores.channelMessages)[room][0].reactions).toEqual([thumbs([ME])]);
+		expect(heard.map((c) => [c.message_id, c.user_id, c.emoji_name, c.added])).toEqual([
+			[message(40), ME, "👍", true],
+			[message(40), ALICE, "👍", false],
+		]);
+	});
+
+	test("in a conversation, and for a message no list has, which only what hears them can show", () => {
+		const conv = conversation(31);
+		stores.dmMessages.update((all) => ({
+			...all,
+			[conv]: [
+				{
+					id: message(41),
+					conversation_id: conv,
+					author_id: ALICE,
+					content: "hi",
+					type: MessageType.Text,
+					created_at: "",
+					updated_at: "",
+				},
+			],
+		}));
+		const heard: ReactionChange[] = [];
+		const stop = onReactionChange((change) => heard.push(change));
+		deliver("DM_REACTION_ADD", { message_id: message(41), user_id: ALICE, emoji_name: "👍" });
+		deliver("DM_REACTION_ADD", { message_id: message(42), user_id: ALICE, emoji_name: "🎉" });
+		stop();
+		expect(get(stores.dmMessages)[conv][0].reactions).toEqual([thumbs([ALICE])]);
+		expect(heard.map((c) => c.message_id)).toEqual([message(41), message(42)]);
 	});
 });
 
