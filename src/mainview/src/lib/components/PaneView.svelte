@@ -1228,14 +1228,18 @@
 						<rect x="3" y="3" width="18" height="18" rx="2" /><line x1="3" y1="12" x2="21" y2="12" />
 					</svg>
 				</button>
-				<!-- Close pane -->
+				<!-- Close pane. The click stops here: the pane is gone once onClose has run, and its own click (which focuses
+				     it) would read a pane that isn't there. -->
 				{#if onClose}
 					<button
 						type="button"
 						class="text-duvet-ink2 hover:bg-duvet-card hover:text-duvet-danger focus-visible:outline-duvet-accent rounded-lg p-1.5 transition-colors focus-visible:outline-2"
 						title="Close pane"
 						aria-label="Close pane"
-						onclick={onClose}
+						onclick={(e) => {
+							e.stopPropagation();
+							onClose?.();
+						}}
 					>
 						<svg
 							xmlns="http://www.w3.org/2000/svg"
