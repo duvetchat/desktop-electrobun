@@ -71,7 +71,7 @@ import {
 	withRoomReadStates,
 	withSpaceCreate,
 } from "$lib/types";
-import { CallAnswers, callNoticeSeen, readAfterCallNotice } from "$lib/call-notices";
+import { CallAnswers, callNoticeSeen, newestBesidesNotice, readAfterCallNotice } from "$lib/call-notices";
 
 // Token is passed via query string because the WebSocket API does not support
 // custom headers during the handshake. Ideally the gateway would accept a
@@ -96,19 +96,24 @@ import {
 import {
 	callAcceptedAction,
 	callDeclinedAction,
+	callDeclinedNotice,
 	callOngoingAction,
 	callOnReady,
 	callToRingOnReady,
 	callVoiceStatesOf,
+	missedCallNotice,
 	ownCallsRingingOnReady,
 	placeAgain,
+	voiceEndedNotice,
 	withCallVoiceState,
 	type PlacedCall,
 } from "$lib/calls";
 import { withUserUpdate } from "$lib/friends";
 import { sendAgain } from "$lib/resend";
-import { knowMessage } from "$lib/jumps";
+import { dropReplyTo } from "$lib/drafts";
+import { knowMessage, newestKnownIn } from "$lib/jumps";
 import { storageTransfers } from "$lib/stores/storage-transfers.svelte";
+import { toast } from "$lib/stores/toast.svelte";
 import { getElectrobunRpc, type ActivityPayload } from "$lib/electrobun-rpc";
 import { identifyData } from "$lib/api/ws/identify";
 
@@ -337,10 +342,9 @@ function readCallNotice(conversationId: string, noticeId: string, call: CallNoti
 	const me = get(currentUser)?.id;
 	const seen = !!me && callNoticeSeen(call, me, answered);
 	const positions = get(lastReadConvs);
-	// The newest message listed besides the notice, which can be newer: the API can post a notice late.
-	const newest = (get(dmMessages)[conversationId] ?? [])
-		.filter((m) => m.id !== m.nonce && m.id !== noticeId)
-		.reduce<string | undefined>((max, m) => (max === undefined || m.id > max ? m.id : max), undefined);
+	// The newest message known besides the notice, which can be newer: the API can post a notice late, and that message
+	// may never have loaded here.
+	const newest = newestBesidesNotice(noticeId, get(dmMessages)[conversationId] ?? [], newestKnownIn(conversationId));
 	const read = readAfterCallNotice(
 		{ unread: get(unreadConversations).has(conversationId), lastRead: positions?.[conversationId] },
 		noticeId,
@@ -375,6 +379,46 @@ function stopOwnCallRinging(conversationId: string) {
 		next.delete(conversationId);
 		return next;
 	});
+}
+
+// The call in that conversation is over, or it is for the user, who left its group: whatever it rang, placed or connected
+// here ends.
+function callOver(conversationId: string) {
+	if (pendingAccept?.conversationId === conversationId) pendingAccept = null;
+	if (placedCall?.conversationId === conversationId) placedCall = null;
+	conversationsWithCalls.update((s) => {
+		s.delete(conversationId);
+		return new Set(s);
+	});
+	stopOwnCallRinging(conversationId);
+	callVoiceStates.update((states) => states.filter((s) => s.room_id !== conversationId));
+	const current = get(activeCall);
+	if (current && current.conversationId === conversationId) {
+		// Only disconnect voice if still in this conversation's call, not a different voice channel
+		if (get(activeVoiceRoomId) === conversationId) {
+			activeVoiceRoomId.set(null);
+		}
+		activeCall.set(null);
+		// The call's VoiceChat may already be gone (its connection failed): a camera or screen request it
+		// didn't take goes with the call.
+		dropVoiceRequests();
+	}
+}
+
+/** The user left a group, or was removed from it, as the API answered or the gateway told (CONVERSATION_MEMBER_REMOVE):
+ * it goes from the list, and its view and tabs with it (FriendsView, the page), and so does its unread dot, which nothing
+ * could clear any more. Its call ends here at once, rather than when the gateway's CALL_ENDED comes: the group's view,
+ * which has the call's controls, has gone. */
+export function conversationLeft(conversationId: string) {
+	conversations.update((list) => list.filter((c) => c.id !== conversationId));
+	unreadConversations.update((s) => {
+		s.delete(conversationId);
+		return s;
+	});
+	// An answer kept there goes too: its call notices no longer reach them, and one would count for a later call's
+	// if they came back.
+	callAnswers.drop(conversationId);
+	callOver(conversationId);
 }
 
 /** The session resumed: what the gateway got before the old socket dropped, it answered in the replay just handled.
@@ -820,6 +864,7 @@ function handleEvent(event: GatewayEvent) {
 		case "MESSAGE_DELETE": {
 			const raw = payload.data;
 			dropEphemeral(raw.room_id, raw.id);
+			dropReplyTo(raw.room_id, raw.id);
 			channelMessages.update((all) => {
 				const existing = all[raw.room_id] ?? [];
 				return {
@@ -1040,6 +1085,7 @@ function handleEvent(event: GatewayEvent) {
 		case "VOICE_SESSION_REPLACED": {
 			const { room_id } = payload.data;
 			if (get(activeVoiceRoomId) === room_id) {
+				toast(voiceEndedNotice(payload.data), payload.data.reason ? "error" : "info");
 				activeVoiceRoomId.set(null);
 				// A call's voice that moved to another device takes the call there: this client is out of it, and can
 				// join it again from its conversation, which shows who is in it, the user too. Its camera or screen
@@ -1480,17 +1526,8 @@ function handleEvent(event: GatewayEvent) {
 		}
 		case "CONVERSATION_MEMBER_REMOVE": {
 			const raw = payload.data;
-			// The user left the group or was removed from it: it goes from the list, and its view with it (FriendsView),
-			// and so does its unread dot, which nothing could clear any more.
 			if (raw.user_id === get(currentUser)?.id) {
-				conversations.update((list) => list.filter((c) => c.id !== raw.conversation_id));
-				unreadConversations.update((s) => {
-					s.delete(raw.conversation_id);
-					return s;
-				});
-				// An answer kept there goes too: its call notices no longer reach them, and one would count for a later call's
-				// if they came back.
-				callAnswers.drop(raw.conversation_id);
+				conversationLeft(raw.conversation_id);
 				break;
 			}
 			conversations.update((list) =>
@@ -1595,6 +1632,7 @@ function handleEvent(event: GatewayEvent) {
 		}
 		case "DM_MESSAGE_DELETE": {
 			const raw = payload.data;
+			dropReplyTo(raw.conversation_id, raw.id);
 			dmMessages.update((all) => {
 				const existing = all[raw.conversation_id] ?? [];
 				return {
@@ -1688,6 +1726,8 @@ function handleEvent(event: GatewayEvent) {
 				s.add(d.conversation_id);
 				return new Set(s);
 			});
+			const missed = missedCallNotice(get(activeCall), d);
+			if (missed) toast(missed);
 			// Show ringing modal if not already in a call
 			if (!get(activeCall)) {
 				activeCall.set({
@@ -1753,31 +1793,18 @@ function handleEvent(event: GatewayEvent) {
 			gatewayHasCall(d.conversation_id);
 			// Declining it is answering it too (decision 143): its notice leaves the conversation read for them.
 			if (d.user_id === get(currentUser)?.id) callAnswers.answered(d.conversation_id);
+			const declined = callDeclinedNotice(
+				get(activeCall),
+				d,
+				get(currentUser)?.id,
+				get(conversations).find((c) => c.id === d.conversation_id)?.members,
+			);
+			if (declined) toast(declined);
 			if (callDeclinedAction(get(activeCall), d, get(currentUser)?.id) === "dismiss") activeCall.set(null);
 			break;
 		}
 		case "CALL_ENDED": {
-			// The call is over, or it is for the user, who left its group: whatever it rang, placed or connected here ends.
-			const d = payload.data;
-			if (pendingAccept?.conversationId === d.conversation_id) pendingAccept = null;
-			if (placedCall?.conversationId === d.conversation_id) placedCall = null;
-			conversationsWithCalls.update((s) => {
-				s.delete(d.conversation_id);
-				return new Set(s);
-			});
-			stopOwnCallRinging(d.conversation_id);
-			callVoiceStates.update((states) => states.filter((s) => s.room_id !== d.conversation_id));
-			const current = get(activeCall);
-			if (current && current.conversationId === d.conversation_id) {
-				// Only disconnect voice if still in this conversation's call, not a different voice channel
-				if (get(activeVoiceRoomId) === d.conversation_id) {
-					activeVoiceRoomId.set(null);
-				}
-				activeCall.set(null);
-				// The call's VoiceChat may already be gone (its connection failed): a camera or screen request it
-				// didn't take goes with the call.
-				dropVoiceRequests();
-			}
+			callOver(payload.data.conversation_id);
 			break;
 		}
 		case "TEAM_INVITE_CREATE": {

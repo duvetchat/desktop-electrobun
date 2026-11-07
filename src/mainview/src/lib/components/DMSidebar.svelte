@@ -1,5 +1,12 @@
 <script lang="ts">
-	import { conversations, currentUser, mentionCounts, unreadChannels, unreadConversations } from "$lib/stores.svelte";
+	import {
+		conversations,
+		currentUser,
+		mentionCounts,
+		typingNow,
+		unreadChannels,
+		unreadConversations,
+	} from "$lib/stores.svelte";
 	import { get } from "svelte/store";
 	import { UsersRound } from "@lucide/svelte";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
@@ -10,6 +17,7 @@
 	import { getUserMobileOnly, getUserOnlineStatus } from "$lib/api/ws/connection";
 	import { userStatusToString, type MemberOnSidebar } from "$lib/types";
 	import { conversationTab, tabDragData, tabNews } from "$lib/pane";
+	import { typingSentence } from "$lib/typing";
 
 	let {
 		activeConversationId = null,
@@ -98,7 +106,8 @@
 			</div>
 			<div class="flex min-w-0 flex-1 flex-col">
 				<span class="truncate text-sm leading-tight {unread ? 'font-bold' : 'font-medium'}">{convTitle(conv)}</span>
-				<span class="text-duvet-ink2 truncate text-xs">{convSubtitle(conv)}</span>
+				<span class="text-duvet-ink2 truncate text-xs">{typingSentence($typingNow[conv.id]) ?? convSubtitle(conv)}</span
+				>
 			</div>
 			{#if news.mentions}
 				<!-- Its mentions, as a room's row counts them -->

@@ -52,6 +52,7 @@
 		rememberFriendStatuses,
 	} from "$lib/api/ws/connection";
 	import { friendMember, friendUser } from "$lib/friends";
+	import { newConversation } from "$lib/groups";
 	import { userStatusToString, type MemberOnSidebar } from "$lib/types";
 
 	let {
@@ -133,6 +134,7 @@
 		if (next.has(uid)) next.delete(uid);
 		else next.add(uid);
 		selectedFriendIds = next;
+		groupError = "";
 	}
 
 	function closeGroupModal() {
@@ -292,16 +294,13 @@
 
 	async function handleCreateGroup() {
 		groupError = "";
-		if (!groupName.trim()) {
-			groupError = "Enter a group name";
-			return;
-		}
-		if (selectedFriendIds.size === 0) {
-			groupError = "Add at least one friend to the group";
+		const plan = newConversation(selectedFriendIds, groupName);
+		if (plan.kind === "refused") {
+			groupError = plan.why;
 			return;
 		}
 		try {
-			const conv = await createGroup(groupName.trim(), [...selectedFriendIds]);
+			const conv = plan.kind === "dm" ? await createDM(plan.userId) : await createGroup(plan.name, plan.userIds);
 			conversations.update((list) => {
 				if (list.some((c) => c.id === conv.id)) return list;
 				return [conv, ...list];
@@ -309,7 +308,7 @@
 			closeGroupModal();
 			openConversation(conv.id);
 		} catch (err) {
-			groupError = getApiError(err, "Failed to create group");
+			groupError = getApiError(err, plan.kind === "dm" ? "Failed to open the conversation" : "Failed to create group");
 		}
 	}
 
@@ -674,7 +673,7 @@
 
 {#if showGroupModal}
 	<div
-		class="fixed inset-0 z-100 flex items-center justify-center bg-black/60"
+		class="fixed inset-0 z-100 flex items-start justify-center bg-black/60 pt-[12vh]"
 		onclick={closeGroupModal}
 		role="button"
 		tabindex="-1"
@@ -688,17 +687,9 @@
 			aria-labelledby="group-title"
 			onkeydown={() => {}}
 		>
-			<h3 id="group-title" class="text-base font-bold">Create a group</h3>
-			<div class="flex flex-col gap-1.5">
-				<label for="group-name" class="text-duvet-ink2 text-[13px] font-bold">Name</label>
-				<input
-					id="group-name"
-					class="bg-duvet-sunk shadow-duvet-press text-duvet-ink placeholder:text-duvet-ink2 focus-override focus-visible:outline-duvet-accent h-10 rounded-xl px-3 text-sm outline-none focus-visible:outline-2"
-					type="text"
-					placeholder="Best friends"
-					bind:value={groupName}
-				/>
-			</div>
+			<h3 id="group-title" class="text-base font-bold">
+				{selectedFriendIds.size === 1 ? "New conversation" : "Create a group"}
+			</h3>
 			<div class="flex flex-col gap-1.5">
 				<p class="text-duvet-ink2 text-[13px] font-bold">
 					Friends
@@ -732,6 +723,20 @@
 					{/if}
 				</div>
 			</div>
+			<!-- A name only for a group: one friend picked opens the DM with them. Under the friends, and with the dialog held
+			     at the top of the window, so that it showing doesn't move the row the pointer is about to click. -->
+			{#if selectedFriendIds.size > 1}
+				<div class="flex flex-col gap-1.5">
+					<label for="group-name" class="text-duvet-ink2 text-[13px] font-bold">Name</label>
+					<input
+						id="group-name"
+						class="bg-duvet-sunk shadow-duvet-press text-duvet-ink placeholder:text-duvet-ink2 focus-override focus-visible:outline-duvet-accent h-10 rounded-xl px-3 text-sm outline-none focus-visible:outline-2"
+						type="text"
+						placeholder="Best friends"
+						bind:value={groupName}
+					/>
+				</div>
+			{/if}
 			{#if groupError}
 				<p class="text-duvet-danger text-sm" role="alert">{groupError}</p>
 			{/if}
@@ -742,7 +747,7 @@
 				>
 				<button
 					class="bg-duvet-accent text-duvet-on-accent shadow-duvet-raised h-9 rounded-xl px-4 text-[13px] font-bold transition hover:brightness-110 motion-reduce:transition-none {focusRing}"
-					onclick={handleCreateGroup}>Create group</button
+					onclick={handleCreateGroup}>{selectedFriendIds.size === 1 ? "Start conversation" : "Create group"}</button
 				>
 			</div>
 		</div>

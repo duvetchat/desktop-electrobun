@@ -1,7 +1,29 @@
+<script lang="ts" module>
+	import type { AllowedMentions, MessageReference } from "$lib/types";
+
+	// Which sends failed, and what each message being sent was sent with besides its text (its files, reply, sticker,
+	// and the reply's mention, or a voice note's audio), so that a retry sends it whole, as Chat's retryData does for a
+	// room's. By nonce, and apart from the view, which goes with its tab: a failure can come after it's gone, and its
+	// message stays in the conversation's list, for its Retry when the conversation shows again.
+	let failedNonces = $state(new Set<string>());
+	const dmRetryData = new Map<
+		string,
+		{
+			ref?: MessageReference;
+			files?: File[];
+			stickerAttachmentId?: string;
+			allowedMentions?: AllowedMentions;
+			voiceNote?: Blob;
+		}
+	>();
+</script>
+
 <script lang="ts">
 	import { onMount, untrack, type Snippet } from "svelte";
 	import { get } from "svelte/store";
+	import { DropdownMenu } from "bits-ui";
 	import {
+		conversations,
 		currentUser,
 		dmMessages,
 		friends,
@@ -20,7 +42,13 @@
 		gatewaySpaces,
 		userActivities,
 	} from "$lib/stores.svelte";
-	import { placeCall, sendEventMessage, getUserMobileOnly, getUserOnlineStatus } from "$lib/api/ws/connection";
+	import {
+		conversationLeft,
+		placeCall,
+		sendEventMessage,
+		getUserMobileOnly,
+		getUserOnlineStatus,
+	} from "$lib/api/ws/connection";
 	import { joinConversationCall } from "$lib/voice";
 	import { callingFromAnotherDevice, withoutCallVoiceOf } from "$lib/calls";
 	import { friendUser } from "$lib/friends";
@@ -36,22 +64,20 @@
 		deleteDirectMessage,
 		addConversationMember,
 		removeConversationMember,
+		updateConversation,
+		leaveConversation,
 		ackConversation,
 		type Conversation,
 		type ConversationMember,
 		type DirectMessage,
 	} from "$lib/api/conversations";
 	import type { Friend } from "$lib/api/friends";
-	import {
-		MessageType,
-		sentAt,
-		userStatusToString,
-		type AllowedMentions,
-		type Message,
-		type MessageReference,
-	} from "$lib/types";
+	import { MessageType, sentAt, userStatusToString, type Message } from "$lib/types";
 	import { toast } from "$lib/stores/toast.svelte";
+	import { confirmAction } from "$lib/stores/confirm.svelte";
+	import { promptDialog } from "$lib/stores/prompt.svelte";
 	import { getApiError } from "$lib/api/api";
+	import { groupActions } from "$lib/groups";
 	import { withSentMessage } from "$lib/arrivals";
 	import {
 		dividerPastWindow,
@@ -64,7 +90,7 @@
 		takeJump,
 		withPresent,
 	} from "$lib/jumps";
-	import { MessageSquare, Phone, UserPlus, Users } from "@lucide/svelte";
+	import { Ellipsis, LogOut, MessageSquare, Pencil, Phone, UserPlus, Users } from "@lucide/svelte";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
 	import Chat from "$lib/components/Chat.svelte";
 	import MessageSearch from "$lib/components/MessageSearch.svelte";
@@ -93,7 +119,6 @@
 	let isLoading = $state(true);
 	let isLoadingMore = $state(false);
 	let hasMore = $state(true);
-	let failedNonces = $state(new Set<string>());
 	let isAtBottom = $state(false);
 	let convUnreadAfter = $state<string | null>(null);
 	const ackedConvMsgId = new Map<string, string>();
@@ -105,6 +130,7 @@
 
 	const me = $derived(get(currentUser));
 	const isOwner = $derived(me?.id === conversation.owner_id);
+	const actionsOnGroup = $derived(groupActions(conversation, me?.id));
 	const isInCall = $derived($activeCall?.state === "connected" && $activeCall?.conversationId === conversation.id);
 	const hasOngoingCall = $derived($conversationsWithCalls.has(conversation.id));
 	const canJoinCall = $derived(hasOngoingCall && !isInCall);
@@ -193,6 +219,31 @@
 		} finally {
 			addMemberLoading = false;
 		}
+	}
+
+	async function renameGroup() {
+		const convId = conversation.id;
+		const current = conversation.name ?? "";
+		const name = await promptDialog("Rename group", "Group name", current);
+		if (!name || name === current) return;
+		try {
+			const updated = await updateConversation(convId, name);
+			// CONVERSATION_UPDATE says so too, which can be missed.
+			conversations.update((list) =>
+				list.map((c) => (c.id === convId ? { ...c, name: updated.name, owner_id: updated.owner_id } : c)),
+			);
+		} catch (err) {
+			toast(getApiError(err, "Couldn't rename the group"), "error");
+		}
+	}
+
+	// A failure shows in the dialog, which stays. Done, the group goes here, its call too, whatever the gateway has said.
+	function leaveGroup() {
+		const convId = conversation.id;
+		void confirmAction("Leave the group?", "Leave group", async () => {
+			await leaveConversation(convId);
+			conversationLeft(convId);
+		});
 	}
 
 	// Map DirectMessage → Message for MessageList
@@ -431,19 +482,6 @@
 			return false;
 		}
 	}
-
-	// What each message being sent was sent with besides its text (its files, reply, sticker, and the reply's mention,
-	// or a voice note's audio), so that a retry sends it whole, as Chat's retryData does for a room's.
-	const dmRetryData = new Map<
-		string,
-		{
-			ref?: MessageReference;
-			files?: File[];
-			stickerAttachmentId?: string;
-			allowedMentions?: AllowedMentions;
-			voiceNote?: Blob;
-		}
-	>();
 
 	async function dmHandleSend(
 		content: string,
@@ -739,6 +777,8 @@
 		// has a view of its own), and this effect's cleanup is leaving it.
 		const convId = untrack(() => conversation.id);
 		return () => {
+			// Left, or removed from it: nothing to ack there any more, and an unread dot nothing could clear.
+			if (!get(conversations).some((c) => c.id === convId)) return;
 			const msgs = get(dmMessages)[convId] ?? [];
 			// A list that stops short of the newest messages (a jump's, with newer ones still to load below) is no sign of
 			// having read them: it doesn't ack the conversation (leaving).
@@ -902,6 +942,8 @@
 {#snippet actions()}
 	{@const buttonClass =
 		"text-duvet-ink2 hover:bg-duvet-card hover:text-duvet-ink focus-visible:outline-duvet-accent flex items-center gap-1 rounded-lg p-1.5 text-xs font-semibold transition-colors focus-visible:outline-2 disabled:cursor-not-allowed disabled:opacity-40 motion-reduce:transition-none"}
+	{@const groupMenuItem =
+		"rounded-row flex w-full cursor-pointer items-center gap-2.5 px-2.5 py-2 text-left text-sm font-medium transition-colors data-highlighted:bg-duvet-bg/60 motion-reduce:transition-none"}
 	<button
 		type="button"
 		class={buttonClass}
@@ -938,6 +980,31 @@
 		<PinnedMessages channelId={conversation.id} conversation members={convMembers} toDirectMessage={toMessage} />
 		<MessageSearch conversationId={conversation.id} members={convMembers} toDirectMessage={toMessage} />
 	{/key}
+	{#if actionsOnGroup.leave}
+		<DropdownMenu.Root>
+			<DropdownMenu.Trigger class={buttonClass} title="Group options" aria-label="Group options">
+				<Ellipsis class="size-4" />
+			</DropdownMenu.Trigger>
+			<DropdownMenu.Portal>
+				<DropdownMenu.Content
+					class="rounded-card border-duvet-line bg-duvet-card text-duvet-ink shadow-duvet-float focus-override z-200 min-w-44 border p-1.5 outline-none"
+					sideOffset={4}
+					align="end"
+				>
+					{#if actionsOnGroup.rename}
+						<DropdownMenu.Item class={groupMenuItem} onSelect={renameGroup}>
+							<Pencil class="text-duvet-ink2 size-4" />
+							Rename group
+						</DropdownMenu.Item>
+					{/if}
+					<DropdownMenu.Item class="{groupMenuItem} text-duvet-danger" onSelect={leaveGroup}>
+						<LogOut class="size-4" />
+						Leave group
+					</DropdownMenu.Item>
+				</DropdownMenu.Content>
+			</DropdownMenu.Portal>
+		</DropdownMenu.Root>
+	{/if}
 {/snippet}
 
 <div class="from-night-22 to-night-19 relative flex flex-1 flex-col overflow-hidden bg-linear-to-b">

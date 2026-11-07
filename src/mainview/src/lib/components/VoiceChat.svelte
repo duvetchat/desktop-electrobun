@@ -172,8 +172,10 @@
 		if (type === "READY") {
 			// A join sent on this connection went out after its identify, so it's already in the new session.
 			if (!joining || isDestroyed || $activeVoiceRoomId !== ownRoomId || joinedOn === gatewayConnection()) return;
-			if (joinedOn !== null && data.silent_ms > REJOIN_WINDOW_MS) leaveVoice();
-			else connectWebRTC().catch((err) => console.error("[Voice] Couldn't join again:", err));
+			if (joinedOn !== null && data.silent_ms > REJOIN_WINDOW_MS) {
+				toast("You left voice: the connection was lost for a while", "error");
+				leaveVoice();
+			} else joinVoice();
 			return;
 		}
 		// A resumed session answered in its replay what the gateway got before the socket dropped: a join still
@@ -183,9 +185,7 @@
 			const connection = gatewayConnection();
 			if (!joining || isDestroyed || $activeVoiceRoomId !== ownRoomId || connection === null) return;
 			const join = joinedOn === null ? null : { sentOn: joinedOn, answered: joinAnswered };
-			if (sendAgain(join, connection)) {
-				connectWebRTC().catch((err) => console.error("[Voice] Couldn't join again:", err));
-			}
+			if (sendAgain(join, connection)) joinVoice();
 			return;
 		}
 		if (data.room_id !== channelId) return;
@@ -274,6 +274,8 @@
 				await acquireMic();
 			} catch (e) {
 				console.error("[Voice] Failed to get local audio:", e);
+				// It joins all the same, to listen.
+				if (!isDestroyed) toast("Duvet can't use the microphone: you're listening only", "error");
 			}
 		}
 		// Left while the browser was asking for the mic: don't join after all.
@@ -281,7 +283,7 @@
 
 		activeVoiceRoomId.set(channelId);
 		joining = true;
-		connectWebRTC().catch((err) => console.error("[Voice] Couldn't connect:", err));
+		joinVoice();
 	});
 
 	onDestroy(() => {
@@ -535,6 +537,20 @@
 		}
 	}
 
+	// Joins, or joins again. One that can't even start (WebRTC is off in this browser, say) leaves with a notice, as one the
+	// gateway doesn't answer does, rather than wait for good with the mic open. An attempt that a newer one replaced fails
+	// for that, its connection closed, and says nothing.
+	function joinVoice() {
+		const attempt = connectWebRTC();
+		const generation = webrtcGeneration;
+		attempt.catch((err) => {
+			console.error("[Voice] Couldn't connect:", err);
+			if (generation !== webrtcGeneration || isDestroyed) return;
+			toast("Couldn't connect to voice", "error");
+			leaveVoice();
+		});
+	}
+
 	async function connectWebRTC() {
 		// The gateway is down (restarting, or this client is offline), and a VOICE_JOIN sent now would be lost: the
 		// next session's READY joins.
@@ -588,8 +604,10 @@
 			if (state !== "failed" || isDestroyed) return;
 			// With the gateway down too (a restart that lasts), the next session's READY joins again. With it up,
 			// it's this connection that can't get through: leave.
-			if (gatewayConnection() !== null) leaveVoice();
-			else wantFreshSession();
+			if (gatewayConnection() !== null) {
+				toast("Lost the connection to voice", "error");
+				leaveVoice();
+			} else wantFreshSession();
 		};
 
 		pc.onicecandidate = (event) => {

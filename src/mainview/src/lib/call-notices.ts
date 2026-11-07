@@ -121,11 +121,29 @@ export interface ConversationRead {
 }
 
 /**
+ * The newest message a client knows of in a conversation, a call notice that just came aside: what its list has loaded,
+ * and what it knows without having loaded it (known: READY's last_msg_convs and what arrived since, lib/jumps.ts), which
+ * can be the notice itself, as the same event feeds it and a READY can name it. No message of either kind proves there
+ * are no others: READY gives none past the API's 90 days, nor does an older gateway.
+ */
+export function newestBesidesNotice(
+	noticeId: string,
+	listed: { id: string; nonce?: string | null }[],
+	known: string,
+): string | undefined {
+	const ids = [...listed.filter((m) => m.id !== m.nonce).map((m) => m.id), known];
+	return ids.reduce<string | undefined>(
+		(max, id) => (!id || id === noticeId || (max !== undefined && max >= id) ? max : id),
+		undefined,
+	);
+}
+
+/**
  * A conversation's read state once one of its call notices comes (DM_MESSAGE_CREATE), as the API leaves the user's.
  * The notice's ID is minted as its call ends, so the API can post it late, after newer messages.
  * - A call the user saw (callNoticeSeen) leaves the conversation read up to the notice: their read position moves to
  *   it, unless it's further on already. It stays unread only for a newer message they haven't read; newest is the
- *   newest message this client lists in the conversation, the notice aside.
+ *   newest message this client knows of in the conversation, the notice aside (newestBesidesNotice).
  * - One they missed makes it unread, as any message does, unless their read position is past the notice already.
  */
 export function readAfterCallNotice(

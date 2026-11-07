@@ -2,6 +2,7 @@ import { SvelteSet } from "svelte/reactivity";
 import { get, readable, writable, type Writable } from "svelte/store";
 
 import { canViewRoom, roomNamesOf } from "$lib/permissions";
+import { typersAt } from "$lib/typing";
 import type { GatewaySpace, GatewayUser, Message, SpaceEmoji, SpaceSticker } from "$lib/types";
 import type { FriendRequest, Friend } from "$lib/api/friends";
 import type { Conversation, DirectMessage } from "$lib/api/conversations";
@@ -179,6 +180,27 @@ export interface TypingUser {
 
 // key = roomId or conversationId
 export const typingUsers = writable<Record<string, TypingUser[]>>({});
+/**
+ * Who shows as typing or recording in each chat right now, for the rows and tabs of chats that may not be open: the
+ * user aside, and each only until their notice gets old (typersAt), which no event says.
+ */
+export const typingNow = readable<Record<string, TypingUser[]>>({}, (set) => {
+	let timer: ReturnType<typeof setTimeout> | undefined;
+	function update() {
+		clearTimeout(timer);
+		const now = Date.now();
+		const { typers, nextEnd } = typersAt(get(typingUsers), get(currentUser)?.id, now);
+		set(typers);
+		if (nextEnd !== null) timer = setTimeout(update, nextEnd - now);
+	}
+	const stopNotices = typingUsers.subscribe(update);
+	const stopUser = currentUser.subscribe(update);
+	return () => {
+		clearTimeout(timer);
+		stopNotices();
+		stopUser();
+	};
+});
 
 export const unreadChannels = writable<Set<string>>(new Set());
 export const activeTextRoomId = writable<string | null>(null);
