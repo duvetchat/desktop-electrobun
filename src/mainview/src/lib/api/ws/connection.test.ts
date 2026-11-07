@@ -1,8 +1,9 @@
-import { afterAll, beforeAll, describe, expect, spyOn, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, jest, spyOn, test } from "bun:test";
 import { get } from "svelte/store";
 import { openGateway, type TestGateway } from "$lib/api/ws/test-gateway";
 import { changeDraft, chatDrafts, draftOf } from "$lib/drafts";
 import { MessageType, type Message } from "$lib/types";
+import { TYPING_TIMEOUT } from "$lib/typing";
 
 const stores = await import("$lib/stores.svelte");
 
@@ -61,6 +62,64 @@ beforeAll(async () => {
 afterAll(() => {
 	gateway.close();
 	fetchSpy.mockRestore();
+});
+
+describe("who shows as typing outside the open chat", () => {
+	const shown = (chatId: string) => (get(stores.typingNow)[chatId] ?? []).map((u) => u.user_id);
+	const notice = (chatId: string, userId: string) => ({ room_id: chatId, user_id: userId, username: "someone" });
+
+	test("anyone in any chat, a room or a conversation, once a TYPING or a RECORDING comes", () => {
+		const unsubscribe = stores.typingNow.subscribe(() => {});
+		const room = conversation(20);
+		const conv = conversation(21);
+		deliver("TYPING", notice(room, ALICE));
+		deliver("DM_RECORDING", { conversation_id: conv, user_id: ALICE, username: "alice" });
+		expect(shown(room)).toEqual([ALICE]);
+		expect(shown(conv)).toEqual([ALICE]);
+		expect(get(stores.typingNow)[conv]?.[0]?.recording).toBe(true);
+		unsubscribe();
+	});
+
+	test("not the user, whose own typing the chat also notes", () => {
+		const unsubscribe = stores.typingNow.subscribe(() => {});
+		const room = conversation(22);
+		ready({});
+		stores.typingUsers.update((all) => ({
+			...all,
+			[room]: [{ user_id: ME, username: "me", alias: null, avatar: null, timestamp: Date.now() }],
+		}));
+		expect(shown(room)).toEqual([]);
+		unsubscribe();
+	});
+
+	test("until they send their message", () => {
+		const unsubscribe = stores.typingNow.subscribe(() => {});
+		const room = conversation(23);
+		const conv = conversation(24);
+		deliver("TYPING", notice(room, ALICE));
+		deliver("DM_TYPING", { conversation_id: conv, user_id: ALICE, username: "alice" });
+		deliver("MESSAGE_CREATE", { id: message(1), room_id: room, author_id: ALICE, content: "hi" });
+		deliver("DM_MESSAGE_CREATE", { id: message(1), conversation_id: conv, author_id: ALICE, content: "hi" });
+		expect(shown(room)).toEqual([]);
+		expect(shown(conv)).toEqual([]);
+		unsubscribe();
+	});
+
+	test("or until their notice gets old, with nothing after it", () => {
+		jest.useFakeTimers();
+		const unsubscribe = stores.typingNow.subscribe(() => {});
+		try {
+			const room = conversation(25);
+			deliver("TYPING", notice(room, ALICE));
+			jest.advanceTimersByTime(TYPING_TIMEOUT - 1);
+			expect(shown(room)).toEqual([ALICE]);
+			jest.advanceTimersByTime(1);
+			expect(shown(room)).toEqual([]);
+		} finally {
+			unsubscribe();
+			jest.useRealTimers();
+		}
+	});
 });
 
 describe("the message a draft replies to is deleted", () => {

@@ -7,9 +7,11 @@
 		currentUser,
 		gatewaySpaces,
 		mentionCounts,
+		typingNow,
 		unreadChannels,
 		unreadConversations,
 	} from "$lib/stores.svelte";
+	import { typingSentence } from "$lib/typing";
 	import TabIcon from "$lib/components/TabIcon.svelte";
 
 	let {
@@ -182,6 +184,7 @@
 					{@const unread = !isActive && news.unread}
 					{@const title = tabTitle(tab, $conversations, $currentUser?.id)}
 					{@const spaceName = getSpaceName(tab.spaceId)}
+					{@const typing = typingSentence($typingNow[tab.channelId])}
 					<div
 						{...props}
 						class="group rounded-row focus-visible:outline-duvet-accent relative flex h-9 shrink-0 cursor-pointer items-center gap-1.5 px-3 text-sm transition-colors duration-100 focus-visible:outline-2
@@ -191,7 +194,7 @@
 								? 'text-duvet-ink hover:bg-duvet-card/60 font-bold'
 								: 'text-duvet-ink2 hover:bg-duvet-card/60 hover:text-duvet-ink'}
 						{dragSrcIndex === tab.origIndex ? 'opacity-40' : 'opacity-100'}"
-						title={spaceName ? `${title} · ${spaceName}` : title}
+						title={[title, spaceName, typing].filter(Boolean).join(" · ")}
 						role="tab"
 						tabindex="0"
 						aria-selected={tab.channelId === activeTabId}
@@ -208,6 +211,7 @@
 						{/if}
 
 						<TabIcon {tab} size={14} />
+						{#if typing}<span class="sr-only">{typing}</span>{/if}
 						<span class="max-w-48 truncate">
 							{title}
 							{#if showServerNames && isActive && spaceName}

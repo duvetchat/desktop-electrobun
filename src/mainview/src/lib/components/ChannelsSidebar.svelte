@@ -32,7 +32,16 @@
 	import UserStatusBar from "$lib/components/UserStatusBar.svelte";
 	import SpaceBanner from "$lib/components/SpaceBanner.svelte";
 	import SpaceIcon from "$lib/components/SpaceIcon.svelte";
-	import { speakingUsers, activeVoiceRoomId, gatewaySpaces, unreadChannels, mentionCounts } from "$lib/stores.svelte";
+	import {
+		speakingUsers,
+		activeVoiceRoomId,
+		gatewaySpaces,
+		typingNow,
+		unreadChannels,
+		mentionCounts,
+	} from "$lib/stores.svelte";
+	import { typingSentence } from "$lib/typing";
+	import TypingMark from "$lib/components/TypingMark.svelte";
 
 	// props
 	let {
@@ -531,6 +540,8 @@
 						{@const isUnread =
 							channel.type === "text" && ($unreadChannels.has(channel.id) || !!$mentionCounts[channel.id])}
 						{@const voiceCount = channel.voiceUsers?.length ?? 0}
+						{@const typers = channel.type === "text" ? $typingNow[channel.id] : undefined}
+						{@const typing = typingSentence(typers)}
 						<div role="listitem" class="group/channel {roomDropIndicatorClass(itemIdx)}">
 							<ContextMenu.Root>
 								<ContextMenu.Trigger>
@@ -543,7 +554,7 @@
 												: 'text-duvet-ink2 hover:bg-duvet-card hover:text-duvet-ink'}
 						{!canJoin ? 'cursor-not-allowed opacity-50' : ''}"
 										aria-pressed={channel.id === activeChannelId}
-										title={channel.name}
+										title={typing ? `${channel.name} · ${typing}` : channel.name}
 										draggable="true"
 										ondragstart={(e) => {
 											// Anyone drags a room into a pane; it's reordered here only with ManageChannels in it,
@@ -575,7 +586,9 @@
 												? 'text-duvet-alive'
 												: 'text-duvet-ink2'}"
 										>
-											{#if channel.type === "text"}
+											{#if typers}
+												<TypingMark users={typers} />
+											{:else if channel.type === "text"}
 												<HashIcon class="size-4" />
 											{:else if channel.type === "voice"}
 												<SpeakerSimpleHighIcon class="size-4" />
@@ -587,6 +600,7 @@
 											{/if}
 										</span>
 										<span class="min-w-0 flex-1 truncate">{channel.name}</span>
+										{#if typing}<span class="sr-only">{typing}</span>{/if}
 										{#if channel.type === "text" && $mentionCounts[channel.id]}
 											<span
 												class="bg-duvet-accent text-duvet-on-accent ml-1 flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full px-1 text-[11px] font-bold"

@@ -58,6 +58,7 @@
 <script lang="ts">
 	import { Crown as CrownSimpleIcon, Mic as MicIcon } from "@lucide/svelte";
 	import { typingUsers, userActivities } from "$lib/stores.svelte";
+	import { TYPING_TIMEOUT } from "$lib/typing";
 	import { isSpotify, shownActivities } from "$lib/activity";
 	import MemberBanner from "$lib/components/MemberBanner.svelte";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
@@ -84,7 +85,6 @@
 		profileSide?: "left" | "right" | "top" | "bottom";
 	} = $props();
 
-	const TYPING_TIMEOUT = 5000;
 	let now = $state(Date.now());
 	$effect(() => {
 		const t = setInterval(() => {
