@@ -68,6 +68,9 @@ const aborts = new Map<string, AbortController>();
 /** What a send resolves to when Cancel stopped its upload. */
 export const CANCELLED = Symbol("cancelled");
 
+/** The notice for a message whose Cancel came once the API had its whole body, and which it posted all the same. */
+export const SENT_BEFORE_CANCEL = "Your message was sent before it could be cancelled";
+
 // The upload of nonce went on: a change of its percent (and so of its files' bars) is news, a few more bytes aren't.
 function progressed(nonce: string, sent: number, total: number) {
 	messageUploads.update((all) => {

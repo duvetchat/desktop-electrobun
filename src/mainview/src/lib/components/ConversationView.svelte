@@ -587,7 +587,7 @@
 			sending = list.find((m) => m.id === nonce);
 			return { ...all, [convId]: kept };
 		});
-		if (sending) putBack(convId, withoutDeletedReply(fromDraft, sending));
+		if (sending) putBack(convId, nonce, withoutDeletedReply(fromDraft, sending));
 	}
 
 	async function dmSaveEdit(messageId: string, content: string) {

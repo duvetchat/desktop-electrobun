@@ -112,7 +112,8 @@ import {
 } from "$lib/calls";
 import { withUserUpdate } from "$lib/friends";
 import { sendAgain } from "$lib/resend";
-import { dropReplyTo } from "$lib/drafts";
+import { dropReplyTo, takeBack } from "$lib/drafts";
+import { SENT_BEFORE_CANCEL } from "$lib/uploads";
 import { knowMessage, newestKnownIn } from "$lib/jumps";
 import { reactionChanged, withReaction, type ReactionChange } from "$lib/reactions";
 import { customEmojiMapOf } from "$lib/markdown";
@@ -899,6 +900,9 @@ function handleEvent(event: GatewayEvent) {
 					[roomId]: [...existing, message],
 				};
 			});
+			// A message this window cancelled, which the API posted all the same: what the Cancel put back in the room's
+			// draft leaves it, and a notice says so.
+			if (raw.nonce && raw.author_id === get(currentUser)?.id && takeBack(roomId, raw.nonce)) toast(SENT_BEFORE_CANCEL);
 			break;
 		}
 		case "MESSAGE_UPDATE": {
@@ -1622,6 +1626,10 @@ function handleEvent(event: GatewayEvent) {
 				}
 				return { ...all, [conversationId]: [...existing, msg] };
 			});
+			// As a room's (MESSAGE_CREATE): a message this window cancelled, which the API posted all the same.
+			if (msg.nonce && msg.author_id === get(currentUser)?.id && takeBack(conversationId, msg.nonce)) {
+				toast(SENT_BEFORE_CANCEL);
+			}
 			// Move conversation to top
 			conversations.update((list) =>
 				list

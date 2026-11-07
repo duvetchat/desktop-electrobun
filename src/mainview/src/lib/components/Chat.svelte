@@ -443,7 +443,7 @@
 	// A send of this window's whose upload was cancelled (lib/uploads): the message leaves its room's list, and what it
 	// took from the room's draft goes back (lib/drafts' putBack): its files, and its text and reply while the draft has
 	// neither. When MESSAGE_CREATE has replaced it already, the message was posted after all: it stays, and nothing goes
-	// back.
+	// back. One that comes later takes back out what's still as it went (connection.ts, lib/drafts' takeBack).
 	function cancelled(roomId: string, nonce: string, fromDraft: SentDraft) {
 		retryData.delete(nonce);
 		let sending: Message | undefined;
@@ -454,7 +454,7 @@
 			sending = list.find((m) => m.id === nonce);
 			return { ...all, [roomId]: kept };
 		});
-		if (sending) putBack(roomId, withoutDeletedReply(fromDraft, sending));
+		if (sending) putBack(roomId, nonce, withoutDeletedReply(fromDraft, sending));
 	}
 
 	function handleReply(message: Message) {
