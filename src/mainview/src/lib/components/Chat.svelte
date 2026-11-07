@@ -40,14 +40,7 @@
 	import { gatewayMessageToMessage, isEphemeral, isNotice, MessageReferenceType } from "$lib/types";
 	import { sendMessage, sendVoiceNote, sendTypingIndicator, sendRecordingIndicator } from "$lib/api/messages";
 	import { MessageType } from "$lib/types";
-	import {
-		currentUser,
-		channelMessages,
-		gatewaySpaces,
-		typingUsers,
-		spaceEmojis,
-		spaceStickers,
-	} from "$lib/stores.svelte";
+	import { currentUser, channelMessages, gatewaySpaces, spaceEmojis, spaceStickers } from "$lib/stores.svelte";
 	import { toast } from "$lib/stores/toast.svelte";
 	import TypingIndicator from "$lib/components/TypingIndicator.svelte";
 	import { noticeDue } from "$lib/typing";
@@ -555,30 +548,11 @@
 		notifyTyping(false);
 	}
 
-	// Shows the user typing, or recording a voice message, and tells the others: at most every 3 seconds in each chat,
-	// but at once when typing turns into recording or back (noticeDue).
+	// Tells the others the user is typing, or recording a voice message: at most every 3 seconds in each chat, but at
+	// once when typing turns into recording or back (noticeDue). Nothing shows the user their own, so it isn't kept with
+	// the others' (typingUsers).
 	function notifyTyping(recording: boolean) {
 		const now = Date.now();
-		const user = $currentUser;
-		if (user) {
-			typingUsers.update((all) => {
-				const filtered = (all[channelId] ?? []).filter((u) => u.user_id !== user.id);
-				return {
-					...all,
-					[channelId]: [
-						...filtered,
-						{
-							user_id: user.id,
-							username: user.username,
-							alias: user.alias ?? null,
-							avatar: user.avatar ?? null,
-							timestamp: now,
-							recording,
-						},
-					],
-				};
-			});
-		}
 		if (!noticeDue(sentNotices, channelId, recording, now)) return;
 		if (recording) (sendRecording ?? (() => sendRecordingIndicator(channelId)))();
 		else (sendTyping ?? (() => sendTypingIndicator(channelId)))();
