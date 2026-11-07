@@ -169,8 +169,13 @@
 		</Popover.Trigger>
 	{/if}
 	<Popover.Portal>
+		<!-- Beside an anchor the focus isn't handed back as it closes: a press on a mention's chip focused the text around it,
+		     a whole message or search result, and a focus there would scroll it into view, ring it, and have Enter edit it. -->
 		<Popover.Content
 			customAnchor={anchor}
+			onCloseAutoFocus={(e) => {
+				if (anchor) e.preventDefault();
+			}}
 			{side}
 			align="start"
 			sideOffset={10}

@@ -31,6 +31,14 @@ test("the profile popover opens beside an anchor, without a trigger of its own",
 	expect(popover).toContain("customAnchor={anchor}");
 });
 
+// A press on a chip focuses the text around it (tabindex -1: a whole message, a search result). bits-ui hands the focus
+// back there as the popover closes, without preventScroll: the list moved, a click elsewhere lost its release to the move,
+// the text got a focus ring on Escape, and Enter then edited one's own message.
+test("a profile opened beside an anchor doesn't hand the focus back as it closes, and one with a trigger does", () => {
+	const popover = source("MemberProfilePopover.svelte");
+	expect(popover).toMatch(/onCloseAutoFocus=\{\(e\) => \{\s*if \(anchor\) e\.preventDefault\(\);\s*\}\}/);
+});
+
 // A mention of someone who left, or isn't loaded, opens nothing, and doesn't look as if it did.
 test("only a mention with an ID shows a pointer and reacts to it", () => {
 	const css = readFileSync(join(import.meta.dir, "../../app.css"), "utf8");
