@@ -28,28 +28,42 @@ export function resolveExternalHref(
 }
 
 /**
- * In the packaged app only, routes plain clicks on external links to the system browser over RPC. Modified
- * clicks (ctrl/cmd/shift/alt, middle button) and scripted window.open are left to Electrobun's native
- * new-window handling (src/bun/index.ts), so a link is never opened twice. No-op in the web build, where
- * target="_blank" already opens a normal browser tab.
+ * In the packaged app only, sends clicks on external links to the system browser over RPC: plain ones, and Shift, Alt
+ * (Option) and middle clicks. Left alone those would open a second window on Windows and Linux, with the app's profile
+ * and outside the navigation rules (src/bun/navigation.ts), as Electrobun has no hook for a new window there, and on
+ * macOS the rules would refuse them with nothing else happening. Ctrl and Cmd clicks don't get here: Electrobun's
+ * preload takes them first, for the new-window handler in src/bun/index.ts. The same clicks on the app's own links open
+ * nothing, for the same second window; a download link is left to the webview, which only downloads it. No-op in the
+ * web build, where target="_blank" already opens a normal browser tab.
  */
-export function setupExternalLinks(): void {
+export function setupExternalLinks(open: (url: string) => void = openInBrowser): void {
 	if (typeof window === "undefined" || !isElectrobunWindow()) return;
 
-	window.addEventListener(
-		"click",
-		(event) => {
-			if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-			if (event.defaultPrevented) return;
-			const el = event.target;
-			if (!(el instanceof Element)) return;
-			const anchor = el.closest("a");
-			if (!anchor) return;
-			const target = resolveExternalHref(anchor, location.origin);
-			if (!target) return;
+	const onClick = (event: MouseEvent) => {
+		if (event.defaultPrevented) return;
+		const el = event.target;
+		if (!(el instanceof Element)) return;
+		const anchor = el.closest("a");
+		if (!anchor) return;
+		const target = resolveExternalHref(anchor, location.origin);
+		if (target) {
 			event.preventDefault();
-			void getElectrobunRpc().then((rpc) => rpc?.send.openExternal({ url: target }));
+			open(target);
+		} else if ((event.button === 1 || event.shiftKey || event.altKey) && !anchor.hasAttribute("download")) {
+			event.preventDefault();
+		}
+	};
+	window.addEventListener("click", onClick, true);
+	// A middle click is no click, and the right button's auxclick is the context menu's.
+	window.addEventListener(
+		"auxclick",
+		(event) => {
+			if (event.button === 1) onClick(event);
 		},
 		true,
 	);
+}
+
+function openInBrowser(url: string): void {
+	void getElectrobunRpc().then((rpc) => rpc?.send.openExternal({ url }));
 }

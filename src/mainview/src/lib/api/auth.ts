@@ -1,4 +1,5 @@
 import api, { markSessionRefreshed } from "$lib/api/api";
+import { route } from "$lib/common/common";
 import { accessToken } from "$lib/stores/auth";
 
 export async function signIn(options: { username: string; alias: string | null; password: string; email: string }) {
@@ -74,7 +75,7 @@ export async function logout() {
 		accessToken.set(null);
 		localStorage.removeItem("duvet_session_token");
 		localStorage.removeItem("duvet_refresh_token");
-		window.location.href = "/";
+		window.location.href = route("/sign-in.html"); // the packaged app only has the .html
 	}
 }
 
