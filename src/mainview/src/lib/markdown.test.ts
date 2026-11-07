@@ -197,6 +197,27 @@ describe("user mentions", () => {
 	});
 });
 
+// The text holds only a custom emoji's ID, so one that's gone (or of a space the reader isn't in) has no name to show.
+describe("a custom emoji with no name to show", () => {
+	const GONE = "0190a3b2-0000-7000-8000-0000000000e2";
+
+	test("reads :emoji:, as text", () => {
+		expect(renderMarkdown(`Before <:${GONE}:> after`)).toBe("Before :emoji: after");
+		expect(renderMarkdownLine(`Before <:${GONE}:> after`)).toBe("Before :emoji: after");
+	});
+
+	test("reads the same alone, where a live one would be large", () => {
+		expect(renderMarkdown(`<:${GONE}:>`, true)).toBe(":emoji:");
+	});
+
+	test("a live one beside it is still its image", () => {
+		const emojis = { "0190a3b2-0000-7000-8000-0000000000e3": { name: "party", attachment_id: "file" } };
+		const html = renderMarkdown(`<:${GONE}:> <:0190a3b2-0000-7000-8000-0000000000e3:>`, false, undefined, emojis);
+		expect(html).toStartWith(":emoji: <img ");
+		expect(html).toContain('alt="party"');
+	});
+});
+
 // A member, an emoji or a room can be named as one of the others is written. Read in turn, the rules read each other's
 // output: a chip held a room's chip, whose click did both, and a room's chip inside an emoji's alt broke its image.
 describe("a name that holds a mention, an emoji or a room", () => {

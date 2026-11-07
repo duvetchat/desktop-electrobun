@@ -787,28 +787,6 @@
 		inset: 0;
 	}
 
-	.emoji-deleted {
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		width: 1.375em;
-		height: 1.375em;
-		vertical-align: middle;
-		margin: 0 0.02em;
-		border-radius: 3px;
-		background: oklch(0.22 0.013 278);
-		border: 1px dashed oklch(0.35 0.016 278);
-		cursor: default;
-	}
-
-	.emoji-deleted-large {
-		width: 3rem;
-		height: 3rem;
-		margin: 0 0.06em;
-		font-size: 1.5rem;
-		border-radius: 6px;
-	}
-
 	/* ── Message markdown ───────────────────────────────────────────────── */
 	.msg-code-block {
 		position: relative;
@@ -1067,11 +1045,6 @@ html.duvet-light #svelte {
 
 	.duvet-light *::-webkit-scrollbar-thumb:hover {
 		background: oklch(0.68 0.024 278 / 0.95);
-	}
-
-	.duvet-light .emoji-deleted {
-		background: #e7e8f0;
-		border-color: #b4b7c9;
 	}
 
 	.duvet-light .msg-code-block {

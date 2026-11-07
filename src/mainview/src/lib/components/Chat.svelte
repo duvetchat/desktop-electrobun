@@ -1,3 +1,21 @@
+<script lang="ts" module>
+	import type { AllowedMentions, MessageReference } from "$lib/types";
+
+	// What each message being sent was sent with besides its text (files, ref, sticker, the reply's mention, or a voice
+	// note's audio), for its Retry. By nonce, and apart from this view, which goes when a pane shows a conversation and
+	// on a READY: the message stays in its room's list, for its Retry when the room shows again.
+	const retryData = new Map<
+		string,
+		{
+			files?: File[];
+			ref?: MessageReference;
+			stickerAttachmentId?: string;
+			allowedMentions?: AllowedMentions;
+			voiceNote?: Blob;
+		}
+	>();
+</script>
+
 <script lang="ts">
 	import { Eye as EyeIcon, EyeOff as EyeOffIcon } from "@lucide/svelte";
 
@@ -7,12 +25,10 @@
 	import MessageList from "$lib/components/MessageList.svelte";
 	import type { CommandEntry } from "$lib/commands";
 	import type {
-		AllowedMentions,
 		Message,
 		MemberOnSidebar,
 		GatewayMessage,
 		GatewaySpace,
-		MessageReference,
 		Embed,
 		SpaceCommandApplication,
 	} from "$lib/types";
@@ -37,6 +53,7 @@
 	import { hasPermission, mentionableRooms, Permission } from "$lib/permissions";
 	import { displayName, isSpoiler, withSpoiler } from "$lib/spoilers";
 	import { withSentMessage } from "$lib/arrivals";
+	import { changeDraft, chatDrafts, draftOf } from "$lib/drafts";
 	import { knowMessage, newestKnownIn } from "$lib/jumps";
 	import { chatRequest, keyboard, leaveMessageBox } from "$lib/keyboard.svelte";
 	import { layoutPrefs } from "$lib/layout-prefs.svelte";
@@ -112,16 +129,22 @@
 		/** The start of the chat, above its oldest message (ChatIntro). */
 		intro?: Snippet;
 	} = $props();
-	let replyTo = $state<Message | null>(null);
-	// The reply bar's @: whether the reply mentions the author of the message it replies to. On for each new reply.
-	let replyMention = $state(true);
+	// What's unsent in this chat, which stays when the user leaves it, whichever panes show it (lib/drafts.ts). The
+	// message box keeps its text there, and this chat its reply and files.
+	const draft = $derived(draftOf($chatDrafts, channelId));
+	const replyTo = $derived(draft.replyTo);
+	const replyMention = $derived(draft.replyMention);
+	const pendingFiles = $derived(draft.files);
+	// The reply bar's @ is on for each new reply.
+	function setReply(message: Message | null) {
+		changeDraft(channelId, { replyTo: message, replyMention: true });
+	}
 	// Nobody to mention in a reply to one's own message, a webhook's, or a notice: a pin's or a call's is the room's or
 	// the conversation's, not its pinner's or caller's.
 	const canMentionReplied = $derived(
 		!!replyTo && replyTo.author_id !== $currentUser?.id && !replyTo.webhook_id && !isNotice(replyTo),
 	);
 	let chatInputRef = $state<{ focus: () => void; focusAndInsert: (char: string) => void } | null>(null);
-	let pendingFiles = $state<File[]>([]);
 	// What was picked from the "/" menu (a command, or one of its subcommands), which the message box gives its place to.
 	let command = $state<{ entry: CommandEntry; app: SpaceCommandApplication } | null>(null);
 	// Commands are for the rooms the user can write in, not for conversations.
@@ -133,18 +156,6 @@
 	const mentionRooms = $derived(space ? mentionableRooms(space) : []);
 	let lastTypingSent = 0;
 	let lastTypingRecording = false;
-
-	// Store original send data for retry (files, ref, sticker, the reply's mention, or a voice note's audio)
-	const retryData = new Map<
-		string,
-		{
-			files?: File[];
-			ref?: MessageReference;
-			stickerAttachmentId?: string;
-			allowedMentions?: AllowedMentions;
-			voiceNote?: Blob;
-		}
-	>();
 
 	// Load emojis and stickers into global stores on space change
 	$effect(() => {
@@ -165,10 +176,15 @@
 	const customEmojis = $derived(spaceId ? ($spaceEmojis[spaceId] ?? []) : []);
 	const spaceStickersArr = $derived(spaceId ? ($spaceStickers[spaceId] ?? []) : []);
 
-	// Focus input when switching channels, unless keyboard navigation switched them and goes on
+	// A command and an edit are of the chat they started in: they end on leaving it, as neither is a draft. Focus input
+	// when switching channels, unless keyboard navigation switched them and goes on
 	$effect(() => {
 		channelId;
 		command = null;
+		editingMessageId = null;
+		editContent = "";
+		editMessageIndex = null;
+		replyMessageIndex = null;
 		requestAnimationFrame(() => {
 			if (!keyboard.keepNavigating) chatInputRef?.focus();
 		});
@@ -181,13 +197,15 @@
 	}
 
 	function removePendingFile(index: number) {
-		pendingFiles = pendingFiles.filter((_, i) => i !== index);
+		changeDraft(channelId, { files: pendingFiles.filter((_, i) => i !== index) });
 	}
 
 	// A spoiler is a file named SPOILER_<name> (lib/spoilers): the toggle renames the file waiting to be
 	// sent, so whatever sends it (a room's message, a conversation's, a retry) sends it as a spoiler.
 	function toggleSpoiler(index: number) {
-		pendingFiles = pendingFiles.map((f, i) => (i === index ? withSpoiler(f, !isSpoiler(f.name)) : f));
+		changeDraft(channelId, {
+			files: pendingFiles.map((f, i) => (i === index ? withSpoiler(f, !isSpoiler(f.name)) : f)),
+		});
 	}
 	let editingMessageId = $state<string | null>(null);
 	let editContent = $state("");
@@ -241,8 +259,7 @@
 		const msgs = getAllMessages();
 		if (index < 0 || index >= msgs.length) return false;
 		replyMessageIndex = index;
-		replyTo = msgs[index];
-		replyMention = true;
+		setReply(msgs[index]);
 		return true;
 	}
 
@@ -259,6 +276,8 @@
 		// Keys pressed in a dialog or a menu (a modal, a picker, the image preview) are theirs, not the chat's.
 		if (event.target instanceof Element && event.target.closest('[role="dialog"], [role="alertdialog"], [role="menu"]'))
 			return;
+		// Hidden (the friends view hides the panes), the chat takes no keys: they'd go into a draft nobody sees.
+		if (!rootEl?.offsetParent) return;
 
 		const isCtrlShiftUp = event.ctrlKey && event.shiftKey && event.key === "ArrowUp";
 		const isCtrlShiftDown = event.ctrlKey && event.shiftKey && event.key === "ArrowDown";
@@ -297,7 +316,7 @@
 			event.preventDefault();
 			if (replyMessageIndex === null) return;
 			if (replyMessageIndex === 0) {
-				replyTo = null;
+				setReply(null);
 			} else {
 				tryReplyAtIndex(replyMessageIndex - 1);
 			}
@@ -335,7 +354,7 @@
 		// A reply mentions the author of the message it replies to unless the reply bar's @ is off.
 		const allowedMentions: AllowedMentions | undefined = replyTo ? { replied_user: replyMention } : undefined;
 
-		replyTo = null;
+		setReply(null);
 
 		if (onSend) {
 			try {
@@ -416,15 +435,14 @@
 	}
 
 	function handleReply(message: Message) {
-		replyTo = message;
-		replyMention = true;
+		setReply(message);
 		chatInputRef?.focus();
 	}
 
 	// Esc in the message box drops the reply being written; with nothing to drop, keyboard navigation leaves the box
 	// for the messages.
 	function handleEscape() {
-		if (replyTo) replyTo = null;
+		if (replyTo) setReply(null);
 		else if (layoutPrefs.keyboardNavigation) leaveMessageBox(rootEl ?? null);
 	}
 
@@ -608,7 +626,7 @@
 		fileDragOver = false;
 		if (!e.dataTransfer?.files.length) return;
 		e.preventDefault();
-		pendingFiles = [...pendingFiles, ...Array.from(e.dataTransfer.files)];
+		changeDraft(channelId, { files: [...pendingFiles, ...Array.from(e.dataTransfer.files)] });
 		chatInputRef?.focus();
 	}
 </script>
@@ -708,7 +726,7 @@
 										? 'text-indigo-400 hover:text-indigo-300'
 										: 'text-zinc-500 hover:text-zinc-300'}"
 									onclick={() => {
-										replyMention = !replyMention;
+										changeDraft(channelId, { replyMention: !replyMention });
 										chatInputRef?.focus();
 									}}
 									aria-pressed={replyMention}
@@ -720,9 +738,7 @@
 							{/if}
 							<button
 								class="text-zinc-500 transition-colors hover:text-zinc-300"
-								onclick={() => {
-									replyTo = null;
-								}}
+								onclick={() => setReply(null)}
 								aria-label="Cancel reply"
 							>
 								<svg
@@ -805,24 +821,28 @@
 				onExit={() => (command = null)}
 			/>
 		{:else}
-			<ChatInput
-				bind:this={chatInputRef}
-				bind:pendingFiles
-				placeholder={placeholder ?? `Message #${channelName}`}
-				onSubmit={handleSendMessage}
-				onVoiceNote={handleVoiceNote}
-				onRecording={() => notifyTyping(true)}
-				onArrowUpWhenEmpty={tryEditLastMessage}
-				onCancel={handleEscape}
-				onValueChange={handleTyping}
-				{members}
-				rooms={mentionRooms}
-				{customEmojis}
-				spaceStickers={spaceStickersArr}
-				loadCommands={canUseCommands ? () => getSpaceCommands(spaceId) : undefined}
-				onCommand={(entry, app) => (command = { entry, app })}
-				autofocus
-			/>
+			<!-- A box of its own for each chat: its text, undo steps, suggestions, pickers and recording are that chat's. -->
+			{#key channelId}
+				<ChatInput
+					bind:this={chatInputRef}
+					draftChat={channelId}
+					bind:pendingFiles={() => pendingFiles, (files) => changeDraft(channelId, { files })}
+					placeholder={placeholder ?? `Message #${channelName}`}
+					onSubmit={handleSendMessage}
+					onVoiceNote={handleVoiceNote}
+					onRecording={() => notifyTyping(true)}
+					onArrowUpWhenEmpty={tryEditLastMessage}
+					onCancel={handleEscape}
+					onValueChange={handleTyping}
+					{members}
+					rooms={mentionRooms}
+					{customEmojis}
+					spaceStickers={spaceStickersArr}
+					loadCommands={canUseCommands ? () => getSpaceCommands(spaceId) : undefined}
+					onCommand={(entry, app) => (command = { entry, app })}
+					autofocus={!keyboard.keepNavigating}
+				/>
+			{/key}
 		{/if}
 	</div>
 </div>

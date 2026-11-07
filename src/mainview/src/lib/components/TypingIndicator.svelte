@@ -3,10 +3,9 @@
 	import { typingUsers, currentUser } from "$lib/stores.svelte";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
 	import { getAvatarURL } from "$lib/common/common";
+	import { recordingPhrase, TYPING_TIMEOUT, typingPhrase } from "$lib/typing";
 
 	let { channelId }: { channelId: string } = $props();
-
-	const TYPING_TIMEOUT = 5000;
 
 	let now = $state(Date.now());
 
@@ -29,19 +28,6 @@
 	function displayName(u: { alias: string | null; username: string }): string {
 		return u.alias ?? u.username;
 	}
-
-	function typingText(): string {
-		if (typers.length === 1) return `${displayName(typers[0])} is typing`;
-		if (typers.length === 2) return `${displayName(typers[0])} and ${displayName(typers[1])} are typing`;
-		return "Several people are typing";
-	}
-
-	function recordingText(): string {
-		if (recorders.length === 1) return `${displayName(recorders[0])} is recording a voice message`;
-		if (recorders.length === 2)
-			return `${displayName(recorders[0])} and ${displayName(recorders[1])} are recording voice messages`;
-		return "Several people are recording voice messages";
-	}
 </script>
 
 {#if active.length > 0}
@@ -54,7 +40,8 @@
 			{/each}
 		</div>
 		{#if typers.length > 0}
-			<span class="text-night-65 [&_strong]:text-night-85 text-xs [&_strong]:font-semibold">{typingText()}</span>
+			<span class="text-night-65 [&_strong]:text-night-85 text-xs [&_strong]:font-semibold">{typingPhrase(typers)}</span
+			>
 			<div class="ml-0.5 flex items-center gap-0.75" aria-hidden="true">
 				<span class="animate-typing-bounce bg-night-55 block size-1 rounded-full"></span>
 				<span class="animate-typing-bounce bg-night-55 block size-1 rounded-full [animation-delay:0.2s]"></span>
@@ -62,7 +49,7 @@
 			</div>
 		{/if}
 		{#if recorders.length > 0}
-			<span class="text-night-65 text-xs {typers.length > 0 ? 'ml-1.5' : ''}">{recordingText()}</span>
+			<span class="text-night-65 text-xs {typers.length > 0 ? 'ml-1.5' : ''}">{recordingPhrase(recorders)}</span>
 			<MicIcon class="size-3 animate-pulse text-red-400" aria-hidden="true" />
 		{/if}
 	</div>

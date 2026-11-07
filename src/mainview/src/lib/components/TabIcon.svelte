@@ -2,19 +2,23 @@
 	import { Hash as HashIcon, UsersRound as UsersRoundIcon, Volume2 as SpeakerSimpleHighIcon } from "@lucide/svelte";
 	import { getAvatarURL } from "$lib/common/common";
 	import { isConversationTab, otherMember, tabTitle } from "$lib/pane";
-	import { conversations, currentUser } from "$lib/stores.svelte";
+	import { conversations, currentUser, typingNow } from "$lib/stores.svelte";
 	import type { Tab } from "$lib/types";
+	import TypingMark from "$lib/components/TypingMark.svelte";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
 
 	/** A tab's mark: # for a text room, the speaker for a voice one, the other member's avatar for a DM and the group
-	 * icon for a group. */
+	 * icon for a group; while someone types there, the dots that say so, in the same place. */
 	let { tab, size = 14, class: className = "" }: { tab: Tab; size?: number; class?: string } = $props();
 
 	const conv = $derived(isConversationTab(tab) ? $conversations.find((c) => c.id === tab.channelId) : undefined);
 	const other = $derived(conv ? otherMember(conv, $currentUser?.id) : null);
+	const typers = $derived($typingNow[tab.channelId]);
 </script>
 
-{#if isConversationTab(tab)}
+{#if typers}
+	<TypingMark users={typers} size={isConversationTab(tab) ? size + 4 : size} class="text-duvet-ink2 {className}" />
+{:else if isConversationTab(tab)}
 	{#if conv?.type === 2 || !other}
 		<span
 			class="bg-duvet-chosen text-duvet-chosen-ink flex shrink-0 items-center justify-center rounded-full {className}"

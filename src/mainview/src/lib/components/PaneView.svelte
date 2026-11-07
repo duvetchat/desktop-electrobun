@@ -1,3 +1,9 @@
+<script lang="ts" module>
+	// Which sends failed in the rooms, by nonce: a room's Chat goes when a pane shows a conversation and on a READY,
+	// while the message stays in its room's list, for its Retry when the room shows again.
+	let failedRoomSends = $state(new Set<string>());
+</script>
+
 <script lang="ts">
 	import {
 		activeVoiceRoomId,
@@ -16,7 +22,15 @@
 		spaceEmojis,
 	} from "$lib/stores.svelte";
 	import { get } from "svelte/store";
-	import { closeTabsIn, isConversationTab, makeSplit, makeLeaf, tabFromDragData, tabTitle } from "$lib/pane";
+	import {
+		closeTabsIn,
+		isConversationTab,
+		makeSplit,
+		makeLeaf,
+		tabDescription,
+		tabFromDragData,
+		tabTitle,
+	} from "$lib/pane";
 	import { getMessages, getMessagesAfter, getMessageById, ackRoom } from "$lib/api/messages";
 	import { dividerPastWindow, inWindow, keepRoomJumps, leaving, loadedTo, takeJump, withPresent } from "$lib/jumps";
 	import { onMount, onDestroy, type Snippet } from "svelte";
@@ -162,6 +176,7 @@
 		activeTab?.spaceId ? ($gatewaySpaces.find((s) => s.id === activeTab.spaceId) ?? null) : null,
 	);
 	const activeTabMembers = $derived(activeTabSpace ? gatewaySpaceToMembers(activeTabSpace, userStatusCache) : members);
+	const activeRoomDescription = $derived(tabDescription(activeTab, $gatewaySpaces));
 	// Channel info comes directly from the tab — no cross-guild lookup needed.
 	// A conversation's tab shows the conversation, as the friends view did; one that left the list (the user left the
 	// group) shows nothing until the page drops its tab.
@@ -1069,18 +1084,29 @@
 						onClose={handleTabClose}
 						onReorder={handleTabReorder}
 						onChannelDrop={handleChannelDrop}
+						description={activeRoomDescription}
 					/>
 				{:else}
 					<!-- The spaces column lists the tabs: the pane names the one it shows. -->
 					<div class="flex h-12 min-w-0 items-center gap-1.5 px-4 text-sm">
 						{#if activeTab}
 							<TabIcon tab={activeTab} size={16} />
-							<span class="text-duvet-ink truncate font-bold"
-								>{tabTitle(activeTab, $conversations, $currentUser?.id)}</span
-							>
-							{#if activeTabSpace}
-								<span class="text-duvet-ink2 truncate text-xs">{activeTabSpace.name}</span>
-							{/if}
+							<div class="flex min-w-0 flex-col">
+								<div class="flex min-w-0 items-center gap-1.5">
+									<span class="text-duvet-ink truncate font-bold"
+										>{tabTitle(activeTab, $conversations, $currentUser?.id)}</span
+									>
+									{#if activeTabSpace}
+										<span class="text-duvet-ink2 truncate text-xs">{activeTabSpace.name}</span>
+									{/if}
+								</div>
+								<!-- What the room is for, under its name: one line -->
+								{#if activeRoomDescription}
+									<span class="text-duvet-ink2 truncate text-xs" title={activeRoomDescription}
+										>{activeRoomDescription}</span
+									>
+								{/if}
+							</div>
 						{:else}
 							<span class="text-duvet-ink2">No chat open</span>
 						{/if}
@@ -1315,6 +1341,7 @@
 					space={activeTabSpace}
 					channelName={activeChannel.name}
 					members={activeTabMembers}
+					bind:failedNonces={failedRoomSends}
 					bind:isAtBottom={paneIsAtBottom}
 					{isInitialLoading}
 					{isLoadingMore}

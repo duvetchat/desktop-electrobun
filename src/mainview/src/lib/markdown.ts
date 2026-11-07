@@ -281,7 +281,6 @@ function applyInline(
 	s = s.replace(/~~(.+?)~~/gs, (_, t) => `<del>${t}</del>`);
 	s = s.replace(/\|\|(.+?)\|\|/gs, (_, t) => `<span class="msg-spoiler">${t}</span>`);
 	const ceCls = large ? `emoji-img emoji-large ${CUSTOM_EMOJI_CLASS}` : `emoji-img ${CUSTOM_EMOJI_CLASS}`;
-	const ceDelCls = large ? "emoji-deleted emoji-deleted-large" : "emoji-deleted";
 	// Mentions, custom emojis and rooms' mentions, last, so that no rule above reads their names as markdown, and in one
 	// pass, as a name can hold any of the three, which a later pass would read in what the pass before it wrote.
 	return s.replace(
@@ -294,10 +293,11 @@ function applyInline(
 				const user = name !== undefined && isUuid(userId) ? ` data-user-id="${userId}"` : "";
 				return `<span class="msg-mention"${user}>@${escapeHtml(name ?? userId.slice(0, 8))}</span>`;
 			}
-			// <:id:> is an inline image.
+			// <:id:> is an inline image. The text holds only its ID, so one that's gone, or of a space the reader isn't in,
+			// has no name to show.
 			if (emojiId !== undefined) {
 				const ce = customEmojiMap?.[emojiId];
-				if (!ce) return `<span class="${ceDelCls}" title="Emoji deleted">💩</span>`;
+				if (!ce) return ":emoji:";
 				return `<img class="${ceCls}" src="${emojiHost}/attachments/${ce.attachment_id}" alt="${escapeHtml(ce.name)}" title=":${escapeHtml(ce.name)}:" draggable="false" loading="lazy">`;
 			}
 			// <#id> reads #name, for the rooms the reader can view (roomNames). Any other one, or one that's gone, reads

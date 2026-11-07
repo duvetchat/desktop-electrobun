@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount } from "svelte";
+	import { onDestroy, onMount } from "svelte";
 	import { SvelteMap } from "svelte/reactivity";
 	import { CircleAlert as AlertIcon, X as XIcon } from "@lucide/svelte";
 	import ComponentSelect from "$lib/components/ComponentSelect.svelte";
@@ -49,6 +49,11 @@
 
 	const botName = $derived(app.bot.alias ?? app.bot.username);
 
+	// Left (the user went to another chat, which ends a command) before the bot answered: its answer closes nothing
+	// there.
+	let gone = false;
+	onDestroy(() => (gone = true));
+
 	onMount(() => {
 		// The first field, or the row of a command without options, so that Enter and Esc reach it.
 		(rowEl.querySelector<HTMLElement>("[data-option] input, [data-option] button") ?? rowEl).focus();
@@ -65,7 +70,7 @@
 		notice = null;
 		try {
 			await onSend(commandUse(entry, used.options));
-			onExit();
+			if (!gone) onExit();
 		} catch (err) {
 			const text =
 				err instanceof FetchError && err.response?.status === 504

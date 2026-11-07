@@ -29,9 +29,12 @@
 		gatewaySpaces,
 		mentionCounts,
 		pendingFriendRequests,
+		typingNow,
 		unreadChannels,
 		unreadConversations,
 	} from "$lib/stores.svelte";
+	import { typingSentence } from "$lib/typing";
+	import TypingMark from "$lib/components/TypingMark.svelte";
 	import { groupSpaces, spaceNews, type OpenChats, type SpaceNews } from "$lib/nav";
 	import { createFolderWith, moveSpaceToFolder, navPrefs, toggleFolder, togglePinned } from "$lib/nav-prefs.svelte";
 	import { isConversationTab, tabDragData, tabNews, tabTitle } from "$lib/pane";
@@ -383,20 +386,26 @@
 				<ul class="border-duvet-line mb-1 ml-[19px] flex flex-col gap-px border-l-2 py-0.5 pl-2.5">
 					{#each rooms as room (room.id)}
 						{@const mentions = $mentionCounts[room.id] ?? 0}
+						{@const typers = room.type === "text" ? $typingNow[room.id] : undefined}
+						{@const typing = typingSentence(typers)}
 						<li>
 							<button
 								type="button"
 								class="hover:bg-duvet-card flex h-8 w-full items-center gap-1.5 rounded-[10px] px-2 text-left text-sm {rowFocus}
 									{room.type === 'text' ? 'text-duvet-ink font-bold' : 'text-duvet-ink2 hover:text-duvet-ink'}"
+								title={typing ?? undefined}
 								data-jump
 								onclick={() => onRoomSelect(guild.id, room.id)}
 							>
-								{#if room.type === "voice"}
+								{#if typers}
+									<TypingMark users={typers} class="text-duvet-ink2" />
+								{:else if room.type === "voice"}
 									<SpeakerSimpleHighIcon class="text-duvet-alive size-4 shrink-0" />
 								{:else}
 									<HashIcon class="text-duvet-ink2 size-4 shrink-0" />
 								{/if}
 								<span class="min-w-0 flex-1 truncate">{room.name}</span>
+								{#if typing}<span class="sr-only">{typing}</span>{/if}
 								{#if mentions}
 									{@render countPill(mentions, `${mentions} mentions`)}
 								{:else if room.type === "voice"}
@@ -488,7 +497,8 @@
 												: 'text-duvet-ink2 font-medium'}">{title}</span
 										>
 										<span class="text-duvet-ink2 truncate text-xs"
-											>{isConversationTab(tab) ? conversationKind(tab.channelId) : spaceNameOf(tab.spaceId)}</span
+											>{typingSentence($typingNow[tab.channelId]) ??
+												(isConversationTab(tab) ? conversationKind(tab.channelId) : spaceNameOf(tab.spaceId))}</span
 										>
 									</span>
 									{#if mentions && !isActive}
