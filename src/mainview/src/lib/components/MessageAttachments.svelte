@@ -6,6 +6,7 @@
 	import { getHostURL } from "$lib/common/common";
 	import { displayName, isSpoiler } from "$lib/spoilers";
 	import { MessageType, type Message } from "$lib/types";
+	import { allUp, cancelUpload, fileShare, messageUploadNote, messageUploads } from "$lib/uploads";
 
 	// A message's voice note, sticker or files as the chat shows them, for the message list and the message
 	// previews (pins, search results). Images and videos fit in maxWidth × maxHeight; a click on an image or
@@ -29,6 +30,9 @@
 	const attachmentHost = getHostURL();
 	// The spoiler files a click revealed, by attachment ID.
 	const revealed = new SvelteSet<string>();
+	// How far the message's files are while this window sends it (lib/uploads), which every list showing it reads.
+	const upload = $derived(message.nonce ? $messageUploads[message.nonce] : undefined);
+	const sizes = $derived(message.attachments?.map((a) => a.size_bytes) ?? []);
 
 	function formatFileSize(bytes: number): string {
 		if (bytes < 1024) return `${bytes} B`;
@@ -105,22 +109,28 @@
 		</button>
 	{:else if message.attachments && message.attachments.length > 0}
 		<div class="mt-1 flex flex-col gap-1">
-			{#each message.attachments as att}
+			{#each message.attachments as att, i}
 				{@const name = displayName(att.filename)}
 				{@const hidden = isSpoiler(att.filename) && !revealed.has(att.id)}
 				{#if att.pending}
+					{@const share = upload ? fileShare(sizes, i, upload.sent, upload.total) : null}
+					{@const pulse = share === null ? "animate-pulse" : ""}
+					<!-- While its upload is followed, its share of it shows as a bar along its bottom, which takes the pulse's place -->
 					{#if att.content_type.startsWith("image/")}
-						<div class="flex h-40 w-64 animate-pulse items-center justify-center rounded-md bg-zinc-700/40">
+						<div class="relative flex h-40 w-64 items-center justify-center rounded-md bg-zinc-700/40 {pulse}">
 							<span class="text-xs text-zinc-500">Uploading {name}...</span>
+							{@render fileBar(share)}
 						</div>
 					{:else if att.content_type.startsWith("video/")}
-						<div class="flex h-44 w-80 animate-pulse items-center justify-center rounded-md bg-zinc-700/40">
+						<div class="relative flex h-44 w-80 items-center justify-center rounded-md bg-zinc-700/40 {pulse}">
 							<span class="text-xs text-zinc-500">Uploading {name}...</span>
+							{@render fileBar(share)}
 						</div>
 					{:else}
-						<div class="inline-flex max-w-xs animate-pulse items-center gap-2 rounded-md bg-zinc-800/60 px-3 py-2">
+						<div class="relative inline-flex max-w-xs items-center gap-2 rounded-md bg-zinc-800/60 px-3 py-2 {pulse}">
 							<span class="text-xs text-zinc-500">Uploading {name}...</span>
 							<span class="shrink-0 text-xs text-zinc-600">{formatFileSize(att.size_bytes)}</span>
+							{@render fileBar(share)}
 						</div>
 					{/if}
 				{:else if att.deleted_at}
@@ -269,6 +279,29 @@
 					</div>
 				{/if}
 			{/each}
+			{#if upload && message.attachments.some((a) => a.pending)}
+				<p class="flex items-center gap-2 text-xs text-zinc-400">
+					<span class="tabular-nums">{messageUploadNote(sizes, upload.sent, upload.total)}</span>
+					{#if !allUp(upload.sent, upload.total)}
+						<!-- Only while its bytes go up: once they're all up, the API may post the message whatever happens here. It
+						     takes the pointer the message being sent doesn't. -->
+						<button
+							type="button"
+							class="pointer-events-auto cursor-pointer text-stone-300 hover:underline"
+							aria-label="Cancel upload"
+							onclick={() => cancelUpload(message.nonce!)}>Cancel</button
+						>
+					{/if}
+				</p>
+			{/if}
 		</div>
 	{/if}
 </div>
+
+{#snippet fileBar(share: number | null)}
+	{#if share !== null}
+		<span class="absolute inset-x-2 bottom-1 h-1 overflow-hidden rounded-full bg-zinc-600/40" aria-hidden="true">
+			<span class="block h-full rounded-full bg-zinc-300" style="width: {share * 100}%"></span>
+		</span>
+	{/if}
+{/snippet}

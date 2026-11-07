@@ -42,3 +42,10 @@ export function changeDraft(chatId: string, change: Partial<ChatDraft>) {
 export function dropReplyTo(chatId: string, messageId: string) {
 	if (get(chatDrafts)[chatId]?.replyTo?.id === messageId) changeDraft(chatId, { replyTo: null });
 }
+
+/** The files of a message whose upload was cancelled go back to its chat's draft, after those the draft has, as the
+ * mobile app puts them back in its tray. The rest of the draft stays as it is. */
+export function putBackFiles(chatId: string, files: File[]) {
+	if (files.length === 0) return;
+	changeDraft(chatId, { files: [...draftOf(get(chatDrafts), chatId).files, ...files] });
+}

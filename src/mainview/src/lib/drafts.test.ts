@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, test } from "bun:test";
 import { get } from "svelte/store";
-import { changeDraft, chatDrafts, draftOf, dropReplyTo } from "$lib/drafts";
+import { changeDraft, chatDrafts, draftOf, dropReplyTo, putBackFiles } from "$lib/drafts";
 import { MessageType, type Message } from "$lib/types";
 
 const ROOM = "01900000-0000-7000-8000-000000000a01";
@@ -89,5 +89,34 @@ describe("the message a draft replies to goes", () => {
 		changeDraft(ROOM, { replyTo: reply("m1") });
 		dropReplyTo(ROOM, "m1");
 		expect(get(chatDrafts)).toEqual({});
+	});
+});
+
+// A message whose upload was cancelled (#61): its files come back to the chat's draft, as the mobile app's come back to
+// its tray, and nothing else of the draft changes.
+describe("a cancelled upload's files", () => {
+	const photo = new File(["png"], "photo.png", { type: "image/png" });
+
+	test("go back to the chat's draft, after the files it has, its text and reply as they were", () => {
+		changeDraft(ROOM, { text: "typed since", files: [file], replyTo: reply("m1") });
+		putBackFiles(ROOM, [photo]);
+		expect(draft(ROOM)).toEqual({
+			text: "typed since",
+			files: [file, photo],
+			replyTo: reply("m1"),
+			replyMention: true,
+		});
+		expect(get(chatDrafts)[OTHER_ROOM]).toBeUndefined();
+	});
+
+	test("make a draft of a chat that had none, with them alone", () => {
+		putBackFiles(CONVERSATION, [photo, file]);
+		expect(draft(CONVERSATION)).toEqual({ text: "", files: [photo, file], replyTo: null, replyMention: true });
+	});
+
+	test("none to put back changes nothing", () => {
+		const before = get(chatDrafts);
+		putBackFiles(ROOM, []);
+		expect(get(chatDrafts)).toBe(before);
 	});
 });

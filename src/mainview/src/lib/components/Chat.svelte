@@ -53,7 +53,8 @@
 	import { hasPermission, mentionableRooms, Permission } from "$lib/permissions";
 	import { displayName, isSpoiler, withSpoiler } from "$lib/spoilers";
 	import { withSentMessage } from "$lib/arrivals";
-	import { changeDraft, chatDrafts, draftOf } from "$lib/drafts";
+	import { changeDraft, chatDrafts, draftOf, putBackFiles } from "$lib/drafts";
+	import { CANCELLED, sendFollowed, withoutSending } from "$lib/uploads";
 	import { knowMessage, newestKnownIn } from "$lib/jumps";
 	import { chatRequest, keyboard, leaveMessageBox } from "$lib/keyboard.svelte";
 	import { layoutPrefs } from "$lib/layout-prefs.svelte";
@@ -410,8 +411,11 @@
 		}));
 
 		retryData.set(nonce, { files, ref, stickerAttachmentId, allowedMentions });
-		sendMessage(channelId, content, nonce, ref, files, undefined, stickerAttachmentId, allowedMentions)
-			.then(sent(channelId, nonce))
+		const roomId = channelId;
+		sendFollowed(nonce, files, (upload) =>
+			sendMessage(roomId, content, nonce, ref, files, undefined, stickerAttachmentId, allowedMentions, upload),
+		)
+			.then((raw) => (raw === CANCELLED ? cancelled(roomId, nonce, files) : sent(roomId, nonce)(raw)))
 			.catch((err) => {
 				failedNonces = new Set(failedNonces).add(nonce);
 				toast(getApiError(err, "Failed to send message"), "error");
@@ -432,6 +436,21 @@
 				return shown === existing ? all : { ...all, [roomId]: shown };
 			});
 		};
+	}
+
+	// A send of this window's whose upload was cancelled (lib/uploads): the message leaves its room's list, and its files
+	// go back to the room's draft, as the mobile app puts them back in its tray; its text doesn't come back, as there.
+	// When MESSAGE_CREATE has replaced it already, the message was posted after all: it stays, and so do its files.
+	function cancelled(roomId: string, nonce: string, files: File[] | undefined) {
+		retryData.delete(nonce);
+		let wasSending = false;
+		channelMessages.update((all) => {
+			const kept = withoutSending(all[roomId] ?? [], nonce);
+			if (!kept) return all;
+			wasSending = true;
+			return { ...all, [roomId]: kept };
+		});
+		if (wasSending) putBackFiles(roomId, files ?? []);
 	}
 
 	function handleReply(message: Message) {
@@ -488,17 +507,21 @@
 				});
 			return;
 		}
-		sendMessage(
-			channelId,
-			message.content ?? "",
-			nonce,
-			saved?.ref,
-			saved?.files,
-			undefined,
-			saved?.stickerAttachmentId,
-			saved?.allowedMentions,
+		const roomId = channelId;
+		sendFollowed(nonce, saved?.files, (upload) =>
+			sendMessage(
+				roomId,
+				message.content ?? "",
+				nonce,
+				saved?.ref,
+				saved?.files,
+				undefined,
+				saved?.stickerAttachmentId,
+				saved?.allowedMentions,
+				upload,
+			),
 		)
-			.then(sent(channelId, nonce))
+			.then((raw) => (raw === CANCELLED ? cancelled(roomId, nonce, saved?.files) : sent(roomId, nonce)(raw)))
 			.catch((err) => {
 				failedNonces = new Set(failedNonces).add(nonce);
 				toast(getApiError(err, "Failed to send message"), "error");
