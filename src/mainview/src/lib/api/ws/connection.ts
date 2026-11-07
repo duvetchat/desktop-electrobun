@@ -44,7 +44,7 @@ import { listMyTeamInvites } from "$lib/api/developer";
 import { getMyBuckets, me as fetchMe } from "$lib/api/user";
 import { getMentionCounts } from "$lib/api/messages";
 import { getWSHostURL, getAvatarURL, route } from "$lib/common/common";
-import { derived, get } from "svelte/store";
+import { derived, get, type Writable } from "svelte/store";
 import { getSpaceMembers, type SpaceMemberWithUser } from "$lib/api/spaces";
 import { forgetSpaceCommands } from "$lib/api/interactions";
 
@@ -53,7 +53,9 @@ import type {
 	DMTypingEvent,
 	GatewayEvent,
 	GatewaySpace,
+	MessageReaction,
 	Presence,
+	ReactionEvent,
 	ReferencedMessage,
 	RoomReadState,
 	TypingEvent,
@@ -112,6 +114,7 @@ import { withUserUpdate } from "$lib/friends";
 import { sendAgain } from "$lib/resend";
 import { dropReplyTo } from "$lib/drafts";
 import { knowMessage, newestKnownIn } from "$lib/jumps";
+import { reactionChanged, withReaction, type ReactionChange } from "$lib/reactions";
 import { storageTransfers } from "$lib/stores/storage-transfers.svelte";
 import { toast } from "$lib/stores/toast.svelte";
 import { getElectrobunRpc, type ActivityPayload } from "$lib/electrobun-rpc";
@@ -483,6 +486,30 @@ function deletedReference(ref: ReferencedMessage): ReferencedMessage {
 		space_id: ref.space_id,
 		mention_author: ref.mention_author,
 	};
+}
+
+/** A reaction event (REACTION_ADD, REACTION_REMOVE, and their DM_ ones) as the change it makes. */
+function reactionChange(event: ReactionEvent, added: boolean): ReactionChange {
+	const { message_id, user_id, emoji_name, emoji_id } = event;
+	return { message_id, user_id, emoji_name, emoji_id, added };
+}
+
+/** One user's reaction added to a message or taken back: the message shows it in the list that has it, a room's or a
+ * conversation's, and so does whatever else shows it (onReactionChange): a pin, a search result, who reacted. */
+function applyReaction<T extends { id: string; reactions?: MessageReaction[] | null }>(
+	messages: Writable<Record<string, T[]>>,
+	change: ReactionChange,
+) {
+	messages.update((all) => {
+		for (const [chatId, list] of Object.entries(all)) {
+			const at = list.findIndex((m) => m.id === change.message_id);
+			if (at < 0) continue;
+			const message = { ...list[at], reactions: withReaction(list[at].reactions, change) };
+			return { ...all, [chatId]: [...list.slice(0, at), message, ...list.slice(at + 1)] };
+		}
+		return all;
+	});
+	reactionChanged(change);
 }
 
 /** Someone typing (TYPING, DM_TYPING) or recording a voice message (RECORDING, DM_RECORDING) in a room or a
@@ -1356,67 +1383,12 @@ function handleEvent(event: GatewayEvent) {
 			});
 			break;
 		}
-		case "REACTION_ADD": {
-			const raw = payload.data;
-			channelMessages.update((all) => {
-				const updated = { ...all };
-				for (const [chId, msgs] of Object.entries(updated)) {
-					const idx = msgs.findIndex((m) => m.id === raw.message_id);
-					if (idx < 0) continue;
-					const msg = { ...msgs[idx] };
-					const reactions = [...(msg.reactions ?? [])];
-					const existing = reactions.findIndex((r) => r.emoji_name === raw.emoji_name);
-					if (existing >= 0) {
-						const r = { ...reactions[existing] };
-						if (!r.users.includes(raw.user_id)) {
-							r.users = [...r.users, raw.user_id];
-							r.count = r.users.length;
-						}
-						reactions[existing] = r;
-					} else {
-						reactions.push({
-							emoji_name: raw.emoji_name,
-							emoji_id: raw.emoji_id ?? null,
-							count: 1,
-							users: [raw.user_id],
-						});
-					}
-					msg.reactions = reactions;
-					updated[chId] = [...msgs.slice(0, idx), msg, ...msgs.slice(idx + 1)];
-					break;
-				}
-				return updated;
-			});
+		case "REACTION_ADD":
+			applyReaction(channelMessages, reactionChange(payload.data, true));
 			break;
-		}
-		case "REACTION_REMOVE": {
-			const raw = payload.data;
-			channelMessages.update((all) => {
-				const updated = { ...all };
-				for (const [chId, msgs] of Object.entries(updated)) {
-					const idx = msgs.findIndex((m) => m.id === raw.message_id);
-					if (idx < 0) continue;
-					const msg = { ...msgs[idx] };
-					let reactions = [...(msg.reactions ?? [])];
-					const existing = reactions.findIndex((r) => r.emoji_name === raw.emoji_name);
-					if (existing >= 0) {
-						const r = { ...reactions[existing] };
-						r.users = r.users.filter((u) => u !== raw.user_id);
-						r.count = r.users.length;
-						if (r.count === 0) {
-							reactions = reactions.filter((_, i) => i !== existing);
-						} else {
-							reactions[existing] = r;
-						}
-					}
-					msg.reactions = reactions;
-					updated[chId] = [...msgs.slice(0, idx), msg, ...msgs.slice(idx + 1)];
-					break;
-				}
-				return updated;
-			});
+		case "REACTION_REMOVE":
+			applyReaction(channelMessages, reactionChange(payload.data, false));
 			break;
-		}
 		case "FRIEND_REQUEST_CREATE": {
 			// Event shape differs from store type; refetch the full list. The sender's other
 			// sessions get it too, for their sent requests.
@@ -1648,67 +1620,12 @@ function handleEvent(event: GatewayEvent) {
 			});
 			break;
 		}
-		case "DM_REACTION_ADD": {
-			const raw = payload.data;
-			dmMessages.update((all) => {
-				const updated = { ...all };
-				for (const [convId, msgs] of Object.entries(updated)) {
-					const idx = msgs.findIndex((m) => m.id === raw.message_id);
-					if (idx < 0) continue;
-					const msg = { ...msgs[idx] };
-					const reactions = [...(msg.reactions ?? [])];
-					const existing = reactions.findIndex((r) => r.emoji_name === raw.emoji_name);
-					if (existing >= 0) {
-						const r = { ...reactions[existing] };
-						if (!r.users.includes(raw.user_id)) {
-							r.users = [...r.users, raw.user_id];
-							r.count = r.users.length;
-						}
-						reactions[existing] = r;
-					} else {
-						reactions.push({
-							emoji_name: raw.emoji_name,
-							emoji_id: raw.emoji_id ?? null,
-							count: 1,
-							users: [raw.user_id],
-						});
-					}
-					msg.reactions = reactions;
-					updated[convId] = [...msgs.slice(0, idx), msg, ...msgs.slice(idx + 1)];
-					break;
-				}
-				return updated;
-			});
+		case "DM_REACTION_ADD":
+			applyReaction(dmMessages, reactionChange(payload.data, true));
 			break;
-		}
-		case "DM_REACTION_REMOVE": {
-			const raw = payload.data;
-			dmMessages.update((all) => {
-				const updated = { ...all };
-				for (const [convId, msgs] of Object.entries(updated)) {
-					const idx = msgs.findIndex((m) => m.id === raw.message_id);
-					if (idx < 0) continue;
-					const msg = { ...msgs[idx] };
-					let reactions = [...(msg.reactions ?? [])];
-					const existing = reactions.findIndex((r) => r.emoji_name === raw.emoji_name);
-					if (existing >= 0) {
-						const r = { ...reactions[existing] };
-						r.users = r.users.filter((uid: string) => uid !== raw.user_id);
-						r.count = r.users.length;
-						if (r.count === 0) {
-							reactions = reactions.filter((_: unknown, i: number) => i !== existing);
-						} else {
-							reactions[existing] = r;
-						}
-					}
-					msg.reactions = reactions;
-					updated[convId] = [...msgs.slice(0, idx), msg, ...msgs.slice(idx + 1)];
-					break;
-				}
-				return updated;
-			});
+		case "DM_REACTION_REMOVE":
+			applyReaction(dmMessages, reactionChange(payload.data, false));
 			break;
-		}
 		case "TYPING":
 		case "RECORDING":
 			showNotice(payload.data.room_id, payload.data, payload.type === "RECORDING");

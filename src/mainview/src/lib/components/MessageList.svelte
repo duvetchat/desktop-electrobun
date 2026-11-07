@@ -1,13 +1,7 @@
 <script lang="ts">
 	import { hasPermission, mentionableRooms, Permission } from "$lib/permissions";
 	import { onDestroy, onMount, tick, type Snippet } from "svelte";
-	import {
-		CircleAlert as AlertIcon,
-		Eye as EyeIcon,
-		Phone as PhoneIcon,
-		Pin as PinIcon,
-		PinOff as PinOffIcon,
-	} from "@lucide/svelte";
+	import { Eye as EyeIcon, Phone as PhoneIcon, Pin as PinIcon, PinOff as PinOffIcon } from "@lucide/svelte";
 	import { updateMessage, deleteMessage, getMessageThread, pinRoomMessage, unpinRoomMessage } from "$lib/api/messages";
 	import { sendComponentInteraction, type ComponentUse } from "$lib/api/interactions";
 	import {
@@ -24,31 +18,25 @@
 		pinsPanelRequest,
 		gatewaySpaces,
 		pageVisible,
-		botInviteRequest,
-		spaceInviteRequest,
 		friends,
 		sentFriendRequests,
 		pendingFriendRequests,
 		conversations,
 		dropEphemeral,
 		friendsReady,
-		roomNames,
 		openRoomMention,
+		onOpenElsewhere,
 		lastReadConvs,
 	} from "$lib/stores.svelte";
-	import {
-		addRoomReaction,
-		removeRoomReaction,
-		addConversationReaction,
-		removeConversationReaction,
-	} from "$lib/api/reactions";
+	import { toggleReaction } from "$lib/api/reactions";
 	import { arrival, arrivalAction, listEnd } from "$lib/arrivals";
-	import { callNoticeLine, callNoticeText } from "$lib/call-notices";
+	import { callNoticeLine } from "$lib/call-notices";
 	import { copyCode } from "$lib/code-copy";
-	import { belowIndicator, quoteJump } from "$lib/jumps";
+	import { belowIndicator } from "$lib/jumps";
 	import { keepPlace, takePlace } from "$lib/kept-places";
-	import { renderEmoji, isOnlyEmojis, countEmojis } from "$lib/emoji";
-	import { customEmojiMapOf, mentionMapOf, parseTextSegments, renderMarkdown, renderMarkdownLine } from "$lib/markdown";
+	import { largeEmojis } from "$lib/emoji";
+	import { customEmojiMapOf, mentionMapOf } from "$lib/markdown";
+	import { nameColors } from "$lib/name-colors";
 
 	import {
 		gatewayMessageToMessage,
@@ -58,27 +46,26 @@
 		isNotice,
 		mentionsByReply,
 		messageText,
-		quotedAuthorName,
+		previewReplacesText,
 	} from "$lib/types";
 	import { MessageType, type MemberOnSidebar, type GatewaySpace, type Message, type SpaceEmoji } from "$lib/types";
-	import { getHostURL, getAvatarURL, DUVET_DOMAIN } from "$lib/common/common";
-	import { cardLink, duvetLinksIn, parseDuvetLink, type MessageLink } from "$lib/urls";
+	import { DUVET_DOMAIN } from "$lib/common/common";
 
-	import InviteEmbed from "$lib/components/InviteEmbed.svelte";
-	import BotInviteEmbed from "$lib/components/BotInviteEmbed.svelte";
-	import MessageLinkEmbed from "$lib/components/MessageLinkEmbed.svelte";
-	import EmbedCard from "$lib/components/EmbedCard.svelte";
+	import AuthorTag from "$lib/components/AuthorTag.svelte";
+	import DeferredResponse from "$lib/components/DeferredResponse.svelte";
+	import MessageCards from "$lib/components/MessageCards.svelte";
+	import MessageReactions from "$lib/components/MessageReactions.svelte";
+	import MessageReference from "$lib/components/MessageReference.svelte";
+	import MessageText from "$lib/components/MessageText.svelte";
 	import MessageAttachments from "$lib/components/MessageAttachments.svelte";
 	import MessageComponents from "$lib/components/MessageComponents.svelte";
 	import MessagePreview from "$lib/components/MessagePreview.svelte";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
 	import ChatInput from "$lib/components/ChatInput.svelte";
 	import EmojiPicker from "$lib/components/EmojiPicker.svelte";
-	import ReactionCount from "$lib/components/ReactionCount.svelte";
 	import ImagePreview from "$lib/components/ImagePreview.svelte";
 	import MemberProfilePopover from "$lib/components/MemberProfilePopover.svelte";
 	import MentionProfile from "$lib/components/MentionProfile.svelte";
-	import type { MessageReaction } from "$lib/types";
 	import { sendFriendRequest, getSentRequests } from "$lib/api/friends";
 	import { updateUserFlagsBadges } from "$lib/api/user";
 	import { getApiError } from "$lib/api/api";
@@ -248,9 +235,11 @@
 	let threadError = $state("");
 	let threadMessages = $state<Message[]>([]);
 	let threadRootMessage = $state<Message | null>(null);
+	// What a thread's message opens elsewhere (its quote's message, a link's chip or card, an invite) would show under the
+	// thread: the thread closes first.
+	onMount(() => onOpenElsewhere(() => (threadModalOpen = false)));
 	let now = $state(Date.now());
 	let intervalId: number;
-	const attachmentHost = getHostURL();
 
 	// The room's name, for the players' "now playing" (none in a conversation).
 	const channelName = $derived(space?.rooms.find((r) => r.id === channelId)?.name ?? "");
@@ -385,7 +374,7 @@
 			}),
 		),
 	);
-	const authorColors = $derived(buildAuthorColorMap(members));
+	const authorColors = $derived(nameColors(members));
 	const mentionMap = $derived(mentionMapOf(members));
 	const customEmojiMap = $derived(customEmojiMapOf(customEmojis));
 	// The rooms "#" suggests while a message is edited.
@@ -417,27 +406,9 @@
 
 	const isConversation = $derived(!spaceId);
 
-	async function handleReactionToggle(message: Message, emojiName: string, emojiId?: string | null) {
+	function handleReactionToggle(message: Message, emojiName: string, emojiId?: string | null) {
 		if (!$currentUser || !channelId) return;
-		const existing = (message.reactions ?? []).find((r) => r.emoji_name === emojiName);
-		const alreadyReacted = existing?.users.includes($currentUser.id) ?? false;
-		try {
-			if (isConversation) {
-				if (alreadyReacted) {
-					await removeConversationReaction(channelId, message.id, emojiName);
-				} else {
-					await addConversationReaction(channelId, message.id, emojiName, emojiId);
-				}
-			} else {
-				if (alreadyReacted) {
-					await removeRoomReaction(channelId, message.id, emojiName);
-				} else {
-					await addRoomReaction(channelId, message.id, emojiName, emojiId);
-				}
-			}
-		} catch (e) {
-			console.error("Failed to toggle reaction:", e);
-		}
+		void toggleReaction({ spaceId, channelId }, message, $currentUser.id, emojiName, emojiId);
 	}
 
 	function handleReactionPick(messageId: string, emoji: string) {
@@ -717,66 +688,6 @@
 		return relativeFormatter.format(Math.round(days / 7), "week");
 	}
 
-	function intToHex(n: undefined | number | null): string {
-		if (n == null) {
-			return "";
-		}
-		return `#${(n >>> 0).toString(16).padStart(6, "0")}`;
-	}
-
-	function getMemberColorStyle(member: MemberOnSidebar): string {
-		const highest = [...member.roles]
-			.filter((r) => r.color_from != null)
-			.sort((a, b) => b.position - a.position)
-			.at(0);
-		if (!highest) {
-			return "color: var(--color-zinc-100)";
-		}
-		const from = intToHex(highest.color_from);
-		if (highest.color_to == null) {
-			return `color: ${from}`;
-		}
-		const to = intToHex(highest.color_to);
-		const via = highest.color_via != null ? `, ${intToHex(highest.color_via)}` : "";
-		return `background: linear-gradient(90deg, ${from}${via}, ${to}); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;`;
-	}
-
-	function buildAuthorColorMap(sidebarMembers: MemberOnSidebar[]) {
-		return sidebarMembers.reduce<Record<string, string>>((map, member) => {
-			map[member.id] = getMemberColorStyle(member);
-			return map;
-		}, {});
-	}
-
-	// ── Message link navigation ────────────────────────────────────────────────
-	// One of Duvet's own links, on duvet.chat or this app's own pages, read as the API reads it (lib/urls.ts).
-	const duvetLinkOf = (url: string) => parseDuvetLink(url, window.location.origin);
-
-	function tryNavigateMessageLink(link: MessageLink) {
-		jumpToMessageRequest.set({ id: crypto.randomUUID(), ...link });
-	}
-
-	function resolveMessageLink(link: MessageLink): MessageLink & { spaceName: string; roomName: string } {
-		if (link.conversationId) return { ...link, spaceName: "", roomName: "Direct Message" };
-		const sp = $gatewaySpaces.find((s) => s.id === link.spaceId);
-		const rm = sp?.rooms.find((r) => r.id === link.roomId);
-		return { ...link, spaceName: sp?.name ?? "Unknown server", roomName: rm?.name ?? "unknown" };
-	}
-
-	// ── URL processing ─────────────────────────────────────────────────────────
-	// The cards under a message: Duvet's own links, whose previews the API leaves out for them.
-	function processMessageContent(content: string) {
-		const inviteCodes: string[] = [];
-		const botInviteIds: string[] = [];
-		const messageLinks: MessageLink[] = [];
-		for (const link of duvetLinksIn(content, window.location.origin)) {
-			if ("message" in link) messageLinks.push(link.message);
-			else if ("code" in link) inviteCodes.push(link.code);
-			else botInviteIds.push(link.bot);
-		}
-		return { text: content, inviteCodes, botInviteIds, messageLinks };
-	}
-
 	// ── Message actions ────────────────────────────────────────────────────────
 	function startEdit(message: Message) {
 		editingMessageId = message.id;
@@ -902,12 +813,6 @@
 				: { id: crypto.randomUUID(), spaceId, roomId: channelId, messageId },
 		);
 	}
-
-	// A reply's quote goes to the message it quotes, in this room or conversation.
-	function jumpToQuoted(message: Message) {
-		const link = message.referenced_message && quoteJump(message.referenced_message, { spaceId, channelId });
-		if (link) jumpToMessageRequest.set({ id: crypto.randomUUID(), ...link });
-	}
 </script>
 
 <!-- The space under the newest message is the list's padding (pb-4), not that message's margin: a margin that changes
@@ -985,7 +890,7 @@
 			{@const isPending = message.id === message.nonce}
 			{@const isFailed = isPending && failedNonces.has(message.nonce ?? "")}
 			{@const ephemeral = isEphemeral(message)}
-			{@const emojiOnly = isOnlyEmojis(message.content ?? "") && countEmojis(message.content ?? "") <= 5}
+			{@const emojiOnly = largeEmojis(message.content ?? "")}
 
 			{@const isHighlighted = highlightedMessageId === message.id}
 			{@const isMention =
@@ -1071,95 +976,14 @@
 							{/if}
 						</span>
 					{/if}
-					{#if message.referenced_message}
-						<div class="mb-0.5 flex min-w-0 items-start">
-							<!-- L-connector aligned to avatar column -->
-							<div class="mr-3 flex w-10 shrink-0 items-center justify-end">
-								<div class="rounded-tl-5px h-3.5 w-5.25 border-t-2 border-l-2 border-zinc-500/60"></div>
-							</div>
-							{#if !message.referenced_message.created_at}
-								<!-- The referenced message is gone: the API sends only the reference then -->
-								<span class="-translate-y-1.25 text-xs text-zinc-500 italic">Original message was deleted</span>
-							{:else}
-								{@const quotedCall = callNoticeLines.get(message.referenced_message.message_id ?? "")}
-								<!-- Reply preview -->
-								<button
-									type="button"
-									class="flex min-w-0 -translate-y-1.25 cursor-pointer items-start gap-1.5 text-xs text-zinc-400 transition-colors hover:text-zinc-100"
-									onclick={() => jumpToQuoted(message)}
-								>
-									{#if quotedCall}
-										<!-- A call notice has no text: what its row says, which names its caller -->
-										<PhoneIcon class="size-4 shrink-0 {quotedCall.missed ? 'text-red-400' : 'text-zinc-500'}" />
-										<span class="truncate opacity-80">{callNoticeText(quotedCall)}</span>
-									{:else}
-										<UserAvatar
-											src={getAvatarURL(
-												message.referenced_message.author_id ?? "",
-												message.referenced_message.author_avatar,
-											)}
-											name={message.referenced_message.author_name ?? "?"}
-											size={16}
-										/>
-										<span class="shrink-0 font-medium text-zinc-300"
-											>{quotedAuthorName(message.referenced_message.author_name, message.referenced_message)}</span
-										>
-										{#if message.referenced_message.content}
-											<span class="msg-content truncate opacity-80"
-												>{@html renderMarkdownLine(
-													message.referenced_message.content,
-													mentionMap,
-													customEmojiMap,
-													$roomNames,
-												)}</span
-											>
-										{:else}
-											<!-- No text to show: only files, a sticker or components -->
-											<span class="truncate italic opacity-80">Click to see message</span>
-										{/if}
-									{/if}
-									<span class="shrink-0 opacity-50"
-										>{new Date(message.referenced_message.created_at).toLocaleTimeString(locale, {
-											hour: "2-digit",
-											minute: "2-digit",
-										})}</span
-									>
-								</button>
-							{/if}
-						</div>
-					{:else if message.interaction_metadata}
-						{@const used = message.interaction_metadata}
-						{@const usedBy = used.user.alias ?? used.user.username}
-						<!-- Who used the interaction this message answers; a click goes to the component's message -->
-						<div class="mb-0.5 flex min-w-0 items-start">
-							<div class="mr-3 flex w-10 shrink-0 items-center justify-end">
-								<div class="rounded-tl-5px h-3.5 w-5.25 border-t-2 border-l-2 border-zinc-500/60"></div>
-							</div>
-							<button
-								type="button"
-								class="flex min-w-0 -translate-y-1.25 items-center gap-1.5 text-xs text-zinc-400 transition-colors {used.interacted_message_id
-									? 'cursor-pointer hover:text-zinc-100'
-									: 'cursor-default'}"
-								onclick={() => {
-									if (!used.interacted_message_id) return;
-									jumpToMessageRequest.set({
-										id: crypto.randomUUID(),
-										spaceId,
-										roomId: channelId,
-										messageId: used.interacted_message_id,
-									});
-								}}
-							>
-								<UserAvatar src={getAvatarURL(used.user.id, used.user.avatar)} name={usedBy} size={16} />
-								<span class="shrink-0 font-medium text-zinc-300">{usedBy}</span>
-								<span class="truncate"
-									>used <span class="font-medium text-zinc-300"
-										>{used.name ? `/${used.name}` : message.author_name}</span
-									></span
-								>
-							</button>
-						</div>
-					{/if}
+					<MessageReference
+						{message}
+						quotedCall={callNoticeLines.get(message.referenced_message?.message_id ?? "")}
+						{mentionMap}
+						{customEmojiMap}
+						{spaceId}
+						{channelId}
+					/>
 					<div class="flex items-start">
 						{#if showHeader}
 							{#key message.author_avatar_url}
@@ -1221,15 +1045,7 @@
 											{message.author_name}
 										</span>
 									{/if}
-									{#if message.webhook_id}
-										<span class="text-xxs bg-fill-600 text-fixed-white mr-1.5 rounded px-1 py-0.5 font-semibold"
-											>WEBHOOK</span
-										>
-									{:else if message.author_is_bot}
-										<span class="text-xxs bg-fill-600 text-fixed-white mr-1.5 rounded px-1 py-0.5 font-semibold"
-											>BOT</span
-										>
-									{/if}
+									<AuthorTag {message} class="mr-1.5" />
 									<span class="text-xs font-medium text-zinc-400">{formatTimestamp(message.created_at, now)}</span>
 								</div>
 							{/if}
@@ -1267,23 +1083,7 @@
 								<MessageAttachments {message} {channelName} onPreview={openPreview} />
 							{:else if isLoading(message)}
 								<!-- A bot's deferred response: it has 15 minutes to complete it -->
-								{#if now - new Date(message.created_at).getTime() > 15 * 60_000}
-									<p class="flex items-center gap-1.5 text-sm text-red-400">
-										<AlertIcon class="size-4 shrink-0" />
-										The application did not respond
-									</p>
-								{:else}
-									<p class="flex items-center gap-1.5 text-sm text-zinc-400 italic">
-										{message.author_name} is thinking
-										<span class="flex items-center gap-0.75" aria-hidden="true">
-											<span class="animate-typing-bounce block size-1 rounded-full bg-current"></span>
-											<span class="animate-typing-bounce block size-1 rounded-full bg-current [animation-delay:0.2s]"
-											></span>
-											<span class="animate-typing-bounce block size-1 rounded-full bg-current [animation-delay:0.4s]"
-											></span>
-										</span>
-									</p>
-								{/if}
+								<DeferredResponse {message} />
 							{:else if isComponentsV2(message)}
 								<!-- The components are all of it: its files show where they place them -->
 								<MessageComponents
@@ -1296,10 +1096,7 @@
 									onInteract={isConversation ? undefined : (use) => interact(message, use)}
 								/>
 							{:else}
-								{@const processed = processMessageContent(message.content ?? "")}
-								{@const isOnlyLink =
-									/^\s*https?:\/\/\S+\s*$/.test(message.content ?? "") && message.embeds && message.embeds.length > 0}
-								{#if !isOnlyLink}
+								{#if !previewReplacesText(message)}
 									<div
 										role="textbox"
 										aria-readonly="true"
@@ -1321,102 +1118,22 @@
 											}
 										}}
 									>
-										{#each parseTextSegments(processed.text) as segment}
-											{#if segment.type === "link"}
-												{@const link = cardLink(segment.content)}
-												{@const card = duvetLinkOf(link)}
-												<!-- One of Duvet's own links reads as the cards do (cardLink): what follows it is text -->
-												{#if card && "message" in card}
-													{@const resolved = resolveMessageLink(card.message)}
-													<button
-														type="button"
-														class="mx-0.5 inline-flex cursor-pointer items-center gap-1 rounded border border-zinc-600/50 bg-zinc-700/70 px-1.5 py-0.5 align-middle text-zinc-300 transition-colors hover:bg-zinc-600/80 hover:text-white"
-														onclick={(e) => {
-															e.stopPropagation();
-															tryNavigateMessageLink(card.message);
-														}}
-														title="{resolved.spaceName} › #{resolved.roomName}"
-													>
-														<span class="text-xs text-zinc-400">#</span>
-														<span class="text-xs font-medium">{resolved.roomName}</span>
-														<svg
-															xmlns="http://www.w3.org/2000/svg"
-															width="10"
-															height="10"
-															viewBox="0 0 24 24"
-															fill="none"
-															stroke="currentColor"
-															stroke-width="2.5"
-															stroke-linecap="round"
-															stroke-linejoin="round"
-															class="shrink-0 text-zinc-400"><path d="m9 18 6-6-6-6" /></svg
-														>
-													</button>{segment.content.slice(link.length)}
-												{:else if card}
-													<button
-														type="button"
-														class="cursor-pointer text-stone-300 hover:underline"
-														onclick={(e) => {
-															e.stopPropagation();
-															if ("bot" in card) botInviteRequest.set(card.bot);
-															else spaceInviteRequest.set(card.code);
-														}}>{link}</button
-													>{segment.content.slice(link.length)}
-												{:else}
-													<a
-														href={segment.content}
-														target="_blank"
-														rel="noopener noreferrer"
-														class="text-stone-300 hover:underline"
-														onclick={(e) => {
-															e.stopPropagation();
-														}}>{segment.content}</a
-													>
-												{/if}
-											{:else}
-												{@html renderMarkdown(segment.content, emojiOnly, mentionMap, customEmojiMap, $roomNames)}
-											{/if}
-										{/each}
-										{#if message.updated_at !== message.created_at}
-											<span class="text-xxs ml-1 text-zinc-500"
-												>(edited {formatTimestamp(message.updated_at, now)})</span
-											>
-										{/if}
+										<MessageText
+											content={message.content ?? ""}
+											large={emojiOnly}
+											{mentionMap}
+											{customEmojiMap}
+											edited={message.updated_at !== message.created_at
+												? `edited ${formatTimestamp(message.updated_at, now)}`
+												: null}
+										/>
 									</div>
 								{/if}
-								{#if processed.inviteCodes.length > 0}
-									<div class="flex flex-col gap-2">
-										{#each processed.inviteCodes as code}
-											<InviteEmbed {code} />
-										{/each}
-									</div>
-								{/if}
-								{#if processed.botInviteIds.length > 0}
-									<div class="flex flex-col gap-2">
-										{#each processed.botInviteIds as botId}
-											<BotInviteEmbed botUserId={botId} />
-										{/each}
-									</div>
-								{/if}
-								{#if processed.messageLinks.length > 0}
-									<div class="flex flex-col gap-1">
-										{#each processed.messageLinks as ml}
-											<MessageLinkEmbed
-												spaceId={ml.spaceId}
-												roomId={ml.roomId}
-												messageId={ml.messageId}
-												conversationId={ml.conversationId}
-											/>
-										{/each}
-									</div>
-								{/if}
-								{#if message.embeds && message.embeds.length > 0}
-									<div class="flex flex-col gap-1">
-										{#each message.embeds as embed}
-											<EmbedCard {embed} onImageClick={(src) => openPreview(src)} />
-										{/each}
-									</div>
-								{/if}
+								<MessageCards
+									content={message.content ?? ""}
+									embeds={message.embeds}
+									onPreview={(src) => openPreview(src)}
+								/>
 								<MessageAttachments {message} {channelName} onPreview={openPreview} />
 								{#if message.components?.length}
 									<!-- Rows of buttons and selects below the content -->
@@ -1432,34 +1149,11 @@
 								{/if}
 							{/if}
 
-							<!-- Reactions display, keyed by emoji: a badge keeps its element (and its count's roll) when
-							     another reaction comes or goes -->
-							{#if message.reactions && message.reactions.length > 0}
-								<div class="mt-1 flex flex-wrap gap-1">
-									{#each message.reactions as reaction (reaction.emoji_name)}
-										{@const isMeReacted = $currentUser ? reaction.users.includes($currentUser.id) : false}
-										{@const ce = reaction.emoji_id ? customEmojis.find((e) => e.id === reaction.emoji_id) : null}
-										<button
-											class="inline-flex items-center gap-1.5 rounded-lg border px-2 py-1 text-sm transition-colors {isMeReacted
-												? 'border-indigo-500/40 bg-indigo-500/20 text-indigo-300'
-												: 'border-zinc-700 bg-zinc-800/60 text-zinc-400 hover:bg-zinc-700/60'}"
-											onclick={() => handleReactionToggle(message, reaction.emoji_name, reaction.emoji_id)}
-											title={reaction.emoji_name}
-										>
-											{#if ce}
-												<img
-													src="{attachmentHost}/attachments/{ce.attachment_id}"
-													alt=":{ce.name}:"
-													class="size-5 object-contain"
-												/>
-											{:else}
-												{@html renderEmoji(reaction.emoji_name)}
-											{/if}
-											<ReactionCount count={reaction.count} />
-										</button>
-									{/each}
-								</div>
-							{/if}
+							<MessageReactions
+								reactions={message.reactions ?? []}
+								{customEmojiMap}
+								onToggle={(r) => handleReactionToggle(message, r.emoji_name, r.emoji_id)}
+							/>
 							{#if ephemeral}
 								<!-- A bot's to this user alone, and not the room's: it lasts until dismissed or the app reloads.
 								     Nothing of the room's (reactions, replies, pins, links) applies to it, so it has no toolbar. -->
@@ -1866,30 +1560,18 @@
 								{@const parentMsg = threadMsg.ref_message_id ? threadMsgMap.get(threadMsg.ref_message_id) : null}
 								{@const parentCall = parentMsg ? callNoticeLine(parentMsg, $currentUser?.id) : null}
 								<div class="rounded-md border border-zinc-800 bg-zinc-800/30 px-3 py-2">
-									{#if parentMsg}
-										<div class="mb-2 flex items-center gap-1.5 border-l-2 border-zinc-600 pl-1">
-											{#if parentCall}
-												<!-- A call notice, quoted as the list quotes it -->
-												<PhoneIcon class="size-3.5 shrink-0 {parentCall.missed ? 'text-red-400' : 'text-zinc-500'}" />
-												<span class="truncate text-xs text-zinc-500">{callNoticeText(parentCall)}</span>
-											{:else}
-												<UserAvatar src={parentMsg.author_avatar_url} name={parentMsg.author_name} size={14} />
-												<span class="max-w-24 shrink-0 truncate text-xs font-medium text-zinc-400"
-													>{quotedAuthorName(parentMsg.author_name, threadMsg.referenced_message)}</span
-												>
-												<span class="truncate text-xs text-zinc-500"
-													>{@html renderMarkdownLine(
-														parentMsg.content ?? "",
-														mentionMap,
-														customEmojiMap,
-														$roomNames,
-													)}</span
-												>
-											{/if}
-										</div>
-									{/if}
-									<!-- As the pins and the search show a message: its text, voice note, sticker, files or components -->
-									<MessagePreview message={threadMsg} {mentionMap} {customEmojiMap} onPreview={previewFromThread} />
+									<!-- As the pins and the search show a message, a reply's quote above it: its quote of a call notice
+									     says what the call's row does -->
+									<MessagePreview
+										message={threadMsg}
+										{spaceId}
+										{channelId}
+										{members}
+										{mentionMap}
+										{customEmojiMap}
+										quotedCall={parentCall}
+										onPreview={previewFromThread}
+									/>
 								</div>
 							{/each}
 						</div>

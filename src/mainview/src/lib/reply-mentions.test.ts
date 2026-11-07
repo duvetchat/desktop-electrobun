@@ -54,8 +54,10 @@ describe("quotedAuthorName", () => {
 	});
 });
 
-test("the message list names the author through it, above a reply and above a thread's reply", () => {
-	const list = readFileSync(join(import.meta.dir, "components/MessageList.svelte"), "utf8");
-	expect(list).toContain("{quotedAuthorName(message.referenced_message.author_name, message.referenced_message)}");
-	expect(list).toContain("{quotedAuthorName(parentMsg.author_name, threadMsg.referenced_message)}");
+// The list and the previews (pins, search results, a thread's replies) quote a reply's message through one component.
+test("a reply's quote names the author through it, in the message list and in the previews", () => {
+	const component = (file: string) => readFileSync(join(import.meta.dir, "components", file), "utf8");
+	expect(component("MessageReference.svelte")).toContain("{quotedAuthorName(ref.author_name, ref)}");
+	expect(component("MessageList.svelte")).toContain("<MessageReference");
+	expect(component("MessagePreview.svelte")).toContain("<MessageReference");
 });

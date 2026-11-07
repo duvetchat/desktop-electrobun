@@ -1,5 +1,5 @@
 import { SvelteSet } from "svelte/reactivity";
-import { get, readable, writable, type Writable } from "svelte/store";
+import { get, readable, writable, type Readable, type Writable } from "svelte/store";
 
 import { canViewRoom, roomNamesOf } from "$lib/permissions";
 import { typersAt } from "$lib/typing";
@@ -252,6 +252,23 @@ export function openRoomMention(e: MouseEvent) {
 	// Gone, or out of sight, since the message was drawn.
 	if (!space || !room || !canViewRoom(space, room)) return;
 	jumpToMessageRequest.set({ id: crypto.randomUUID(), spaceId: space.id, roomId: room.id });
+}
+
+/**
+ * Hears each request to open something elsewhere: a jump to a message or a room, a space's invite, a bot's. What shows
+ * messages over the chat (the pins list, a thread) closes on one, which a message in it can make (a reply's quote, a
+ * link's chip or card), as it would cover what opens. Returns what stops hearing them.
+ */
+export function onOpenElsewhere(listener: () => void): () => void {
+	const requests: Readable<unknown>[] = [jumpToMessageRequest, spaceInviteRequest, botInviteRequest];
+	const stops = requests.map((request) =>
+		request.subscribe((value) => {
+			if (value) listener();
+		}),
+	);
+	return () => {
+		for (const stop of stops) stop();
+	};
 }
 
 /** The last pin or unpin of a message, so the open pins panel of its room or conversation reloads. */
