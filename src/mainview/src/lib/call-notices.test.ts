@@ -6,6 +6,7 @@ import {
 	callNoticeLine,
 	callNoticeSeen,
 	callNoticeText,
+	newestBesidesNotice,
 	readAfterCallNotice,
 } from "$lib/call-notices";
 import { isNotice, MessageType, sentAt, type CallNotice, type Message } from "$lib/types";
@@ -259,6 +260,36 @@ describe("readAfterCallNotice", () => {
 			unread: true,
 			lastRead: id(30),
 		});
+	});
+});
+
+describe("newestBesidesNotice", () => {
+	const id = (n: number) => `01a15f8c-${String(n).padStart(4, "0")}-7000-8000-000000000000`;
+	const listed = (...ns: number[]) => ns.map((n) => ({ id: id(n) }));
+
+	test("a newer message the client knows of counts, though it never loaded it", () => {
+		expect(newestBesidesNotice(id(20), listed(10), id(30))).toBe(id(30));
+		expect(newestBesidesNotice(id(20), [], id(30))).toBe(id(30));
+	});
+
+	test("a loaded message newer than what it knows of counts: the mark doesn't follow what loads", () => {
+		expect(newestBesidesNotice(id(20), listed(10, 40), id(30))).toBe(id(40));
+	});
+
+	test("the notice isn't newer than itself, where it's the mark or in the list", () => {
+		expect(newestBesidesNotice(id(20), listed(10, 20), id(20))).toBe(id(10));
+		expect(newestBesidesNotice(id(20), [], id(20))).toBeUndefined();
+		const read = { unread: true, lastRead: id(5) };
+		expect(readAfterCallNotice(read, id(20), true, newestBesidesNotice(id(20), listed(10), id(20))).unread).toBe(false);
+	});
+
+	test("no entry proves nothing: it goes by the loaded messages", () => {
+		expect(newestBesidesNotice(id(20), listed(10, 30), "")).toBe(id(30));
+		expect(newestBesidesNotice(id(20), [], "")).toBeUndefined();
+	});
+
+	test("a message still being sent isn't known yet: its ID is its nonce", () => {
+		expect(newestBesidesNotice(id(20), [{ id: id(90), nonce: id(90) }, ...listed(10)], "")).toBe(id(10));
 	});
 });
 

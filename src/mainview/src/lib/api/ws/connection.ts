@@ -71,7 +71,7 @@ import {
 	withRoomReadStates,
 	withSpaceCreate,
 } from "$lib/types";
-import { CallAnswers, callNoticeSeen, readAfterCallNotice } from "$lib/call-notices";
+import { CallAnswers, callNoticeSeen, newestBesidesNotice, readAfterCallNotice } from "$lib/call-notices";
 
 // Token is passed via query string because the WebSocket API does not support
 // custom headers during the handshake. Ideally the gateway would accept a
@@ -110,7 +110,7 @@ import {
 } from "$lib/calls";
 import { withUserUpdate } from "$lib/friends";
 import { sendAgain } from "$lib/resend";
-import { knowMessage } from "$lib/jumps";
+import { knowMessage, newestKnownIn } from "$lib/jumps";
 import { storageTransfers } from "$lib/stores/storage-transfers.svelte";
 import { toast } from "$lib/stores/toast.svelte";
 import { getElectrobunRpc, type ActivityPayload } from "$lib/electrobun-rpc";
@@ -341,10 +341,9 @@ function readCallNotice(conversationId: string, noticeId: string, call: CallNoti
 	const me = get(currentUser)?.id;
 	const seen = !!me && callNoticeSeen(call, me, answered);
 	const positions = get(lastReadConvs);
-	// The newest message listed besides the notice, which can be newer: the API can post a notice late.
-	const newest = (get(dmMessages)[conversationId] ?? [])
-		.filter((m) => m.id !== m.nonce && m.id !== noticeId)
-		.reduce<string | undefined>((max, m) => (max === undefined || m.id > max ? m.id : max), undefined);
+	// The newest message known besides the notice, which can be newer: the API can post a notice late, and that message
+	// may never have loaded here.
+	const newest = newestBesidesNotice(noticeId, get(dmMessages)[conversationId] ?? [], newestKnownIn(conversationId));
 	const read = readAfterCallNotice(
 		{ unread: get(unreadConversations).has(conversationId), lastRead: positions?.[conversationId] },
 		noticeId,
