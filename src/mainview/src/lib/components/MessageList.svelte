@@ -44,6 +44,7 @@
 	} from "$lib/api/reactions";
 	import { arrival, arrivalAction, listEnd } from "$lib/arrivals";
 	import { callNoticeLine, callNoticeText } from "$lib/call-notices";
+	import { copyCode } from "$lib/code-copy";
 	import { belowIndicator, quoteJump } from "$lib/jumps";
 	import { keepPlace, takePlace } from "$lib/kept-places";
 	import { renderEmoji, isOnlyEmojis, countEmojis } from "$lib/emoji";
@@ -57,6 +58,7 @@
 		isNotice,
 		mentionsByReply,
 		messageText,
+		quotedAuthorName,
 	} from "$lib/types";
 	import { MessageType, type MemberOnSidebar, type GatewaySpace, type Message, type SpaceEmoji } from "$lib/types";
 	import { getHostURL, getAvatarURL, DUVET_DOMAIN } from "$lib/common/common";
@@ -75,6 +77,7 @@
 	import ReactionCount from "$lib/components/ReactionCount.svelte";
 	import ImagePreview from "$lib/components/ImagePreview.svelte";
 	import MemberProfilePopover from "$lib/components/MemberProfilePopover.svelte";
+	import MentionProfile from "$lib/components/MentionProfile.svelte";
 	import type { MessageReaction } from "$lib/types";
 	import { sendFriendRequest, getSentRequests } from "$lib/api/friends";
 	import { updateUserFlagsBadges } from "$lib/api/user";
@@ -159,6 +162,8 @@
 	let deletingMessageId = $state<string | null>(null);
 	let activePopoverMsgId = $state<string | null>(null);
 	let avatarPopoverWasOpen = false;
+	let mentionProfile: MentionProfile;
+	const openMention = (e: MouseEvent) => mentionProfile.open(e);
 
 	// User context menu
 	let userMenuPos = $state<{ x: number; y: number } | null>(null);
@@ -329,28 +334,14 @@
 		});
 	});
 
-	function handleCodeCopy(e: MouseEvent) {
-		const btn = (e.target as HTMLElement).closest(".msg-code-copy") as HTMLButtonElement | null;
-		if (!btn) return;
-		const code = btn.dataset.code;
-		if (!code) return;
-		navigator.clipboard.writeText(code).then(() => {
-			btn.classList.add("copied");
-			btn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>`;
-			setTimeout(() => {
-				btn.classList.remove("copied");
-				btn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>`;
-			}, 1500);
-		});
-	}
-
 	onMount(() => {
 		intervalId = window.setInterval(() => {
 			now = Date.now();
 		}, 30_000);
-		scrollEl?.addEventListener("click", handleCodeCopy);
+		scrollEl?.addEventListener("click", copyCode);
 		// In the capture phase, so the quote a mention sits in doesn't jump to its message too.
 		scrollEl?.addEventListener("click", openRoomMention, true);
+		scrollEl?.addEventListener("click", openMention, true);
 	});
 
 	// Once the list is gone, what it still waits for (a frame, a tick) stops before reading its props: a conversation's
@@ -362,8 +353,9 @@
 		if (intervalId) {
 			window.clearInterval(intervalId);
 		}
-		scrollEl?.removeEventListener("click", handleCodeCopy);
+		scrollEl?.removeEventListener("click", copyCode);
 		scrollEl?.removeEventListener("click", openRoomMention, true);
+		scrollEl?.removeEventListener("click", openMention, true);
 	});
 
 	// ── Sorting ────────────────────────────────────────────────────────────────
@@ -1109,7 +1101,9 @@
 											name={message.referenced_message.author_name ?? "?"}
 											size={16}
 										/>
-										<span class="shrink-0 font-medium text-zinc-300">{message.referenced_message.author_name}</span>
+										<span class="shrink-0 font-medium text-zinc-300"
+											>{quotedAuthorName(message.referenced_message.author_name, message.referenced_message)}</span
+										>
 										{#if message.referenced_message.content}
 											<span class="msg-content truncate opacity-80"
 												>{@html renderMarkdownLine(
@@ -1867,7 +1861,7 @@
 						<p class="text-sm text-zinc-400">No thread messages found.</p>
 					{:else}
 						{@const threadMsgMap = new Map(threadMessages.map((m) => [m.id, m]))}
-						<div class="flex flex-col gap-2">
+						<div class="flex flex-col gap-2" onclickcapture={openMention}>
 							{#each threadMessages as threadMsg}
 								{@const parentMsg = threadMsg.ref_message_id ? threadMsgMap.get(threadMsg.ref_message_id) : null}
 								{@const parentCall = parentMsg ? callNoticeLine(parentMsg, $currentUser?.id) : null}
@@ -1881,7 +1875,7 @@
 											{:else}
 												<UserAvatar src={parentMsg.author_avatar_url} name={parentMsg.author_name} size={14} />
 												<span class="max-w-24 shrink-0 truncate text-xs font-medium text-zinc-400"
-													>{parentMsg.author_name}</span
+													>{quotedAuthorName(parentMsg.author_name, threadMsg.referenced_message)}</span
 												>
 												<span class="truncate text-xs text-zinc-500"
 													>{@html renderMarkdownLine(
@@ -1947,6 +1941,8 @@
 {/snippet}
 
 <ImagePreview src={previewSrc} alt={previewAlt} bind:open={previewOpen} />
+
+<MentionProfile bind:this={mentionProfile} {members} {space} />
 
 <!-- User context menu (right-click avatar) -->
 <svelte:window

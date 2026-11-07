@@ -2,6 +2,7 @@
 	import { Search as SearchIcon, X as XIcon } from "@lucide/svelte";
 	import { tick } from "svelte";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
+	import MentionProfile from "$lib/components/MentionProfile.svelte";
 	import MessagePreview from "$lib/components/MessagePreview.svelte";
 	import ImagePreview from "$lib/components/ImagePreview.svelte";
 	import { searchSpaceMessages, type MessageSearch } from "$lib/api/messages";
@@ -61,6 +62,7 @@
 	});
 	const mentionMap = $derived(mentionMapOf(members));
 	const customEmojiMap = $derived(customEmojiMapOf(customEmojis));
+	let mentionProfile: MentionProfile;
 
 	// ── The box and its suggestions ──────────────────────────────────────────
 	let input = $state<HTMLInputElement | null>(null);
@@ -508,7 +510,11 @@
 				<XIcon class="size-4" />
 			</button>
 		</div>
-		<div bind:this={resultsEl} class="flex flex-1 flex-col gap-1.5 overflow-y-auto p-2">
+		<div
+			bind:this={resultsEl}
+			class="flex flex-1 flex-col gap-1.5 overflow-y-auto p-2"
+			onclickcapture={(e) => mentionProfile.open(e)}
+		>
 			{#if failure}
 				<p class="px-2 py-8 text-center text-xs text-red-400">{failure}</p>
 			{:else if !loading && results.length === 0}
@@ -547,3 +553,4 @@
 {/if}
 
 <ImagePreview src={previewSrc} alt={previewAlt} bind:open={previewOpen} />
+<MentionProfile bind:this={mentionProfile} {members} {space} />

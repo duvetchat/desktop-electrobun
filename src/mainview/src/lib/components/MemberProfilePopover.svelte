@@ -11,6 +11,7 @@
 	import { Permission, ALL_PERMISSIONS, canManageRoleAt, hasSpacePermission } from "$lib/permissions";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
 	import ActivityList from "$lib/components/ActivityList.svelte";
+	import ProfileBio from "$lib/components/ProfileBio.svelte";
 	import StatusDot from "$lib/components/StatusDot.svelte";
 
 	let {
@@ -23,6 +24,7 @@
 		triggerClass = "",
 		triggerStyle = "",
 		onRemoveMember = undefined,
+		anchor = null,
 		children,
 	}: {
 		member: MemberOnSidebar;
@@ -34,7 +36,9 @@
 		triggerClass?: string;
 		triggerStyle?: string;
 		onRemoveMember?: (userId: string) => void;
-		children: Snippet;
+		/** What it opens beside, for one that opens by other means than a click on its children, and then has none. */
+		anchor?: HTMLElement | null;
+		children?: Snippet;
 	} = $props();
 
 	let showPermissions = $state(false);
@@ -159,20 +163,29 @@
 		onOpenChange(o);
 	}}
 >
-	<Popover.Trigger class={triggerClass} style={triggerStyle}>
-		{@render children()}
-	</Popover.Trigger>
+	{#if children}
+		<Popover.Trigger class={triggerClass} style={triggerStyle}>
+			{@render children()}
+		</Popover.Trigger>
+	{/if}
 	<Popover.Portal>
+		<!-- Beside an anchor the focus isn't handed back as it closes: a press on a mention's chip focused the text around it,
+		     a whole message or search result, and a focus there would scroll it into view, ring it, and have Enter edit it. -->
 		<Popover.Content
+			customAnchor={anchor}
+			onCloseAutoFocus={(e) => {
+				if (anchor) e.preventDefault();
+			}}
 			{side}
 			align="start"
 			sideOffset={10}
-			class="z-301 w-80 overflow-hidden rounded-xl border border-zinc-700 bg-zinc-900 shadow-2xl"
+			class="z-301 w-80 rounded-xl border border-zinc-700 bg-zinc-900 shadow-2xl"
 		>
 			{@const visibleRoles = member.roles.filter((role) => role.id !== spaceId)}
-			<!-- The banner, 5:2 as it's cropped (600×240) -->
+			<!-- The banner, 5:2 as it's cropped (600×240). It grows a little past the card on hover, under the avatar, which comes
+			     later; nothing clips it, so its corners are its own, and what's below clips itself. -->
 			<div
-				class="aspect-[5/2] w-full"
+				class="aspect-[5/2] w-full rounded-t-[11px] transition-transform duration-150 motion-safe:hover:scale-105"
 				style={member.banner_url
 					? `background-image: url('${member.banner_url}'); background-size: cover; background-position: center;`
 					: getMemberBannerStyle(member)}
@@ -245,7 +258,7 @@
 					{/if}
 				</div>
 
-				<div class="mt-4 rounded-lg bg-zinc-950 p-3">
+				<div class="mt-4 overflow-hidden rounded-lg bg-zinc-950 p-3">
 					<h2 class="text-lg leading-tight font-bold text-zinc-100 select-text">
 						{member.username}
 					</h2>
@@ -264,7 +277,7 @@
 					{#if member.bio}
 						<div class="my-3 h-px w-full bg-zinc-800"></div>
 						<h3 class="mb-1 text-left text-[11px] font-bold tracking-wide text-zinc-400 uppercase">About</h3>
-						<p class="text-sm break-words whitespace-pre-wrap text-zinc-300 select-text">{member.bio}</p>
+						<ProfileBio bio={member.bio} />
 					{/if}
 
 					<ActivityList activities={$userActivities[member.id]} />

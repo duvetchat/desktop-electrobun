@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
@@ -26,7 +26,38 @@ test("the profile card shows the banner at 5:2, and a block as tall without one"
 test("the profile popover shows the banner at 5:2", () => {
 	const popover = source("MemberProfilePopover.svelte");
 	const frame = /<div\s+class="([^"]*)"\s+style=\{member\.banner_url/.exec(popover)?.[1].split(/\s+/);
-	expect(frame).toEqual(["aspect-[5/2]", "w-full"]);
+	expect(frame).toEqual(expect.arrayContaining(["aspect-[5/2]", "w-full"]));
+});
+
+// On hover a profile's banner grows a little past the card's outline, as a Space's icon did on hover (#81), unless the
+// system asks for less motion. So nothing around it clips it, its top corners are its own, one pixel tighter than the
+// card's inside its border, and the box of text below clips what's too long for it, as the card's root did.
+describe("a profile's banner on hover", () => {
+	const GROWS = ["rounded-t-[11px]", "transition-transform", "duration-150", "motion-safe:hover:scale-105"];
+	const textBox = (component: string) =>
+		classLists(component).find((list) => list.includes("bg-zinc-950") && list.includes("p-3"));
+
+	test("grows on the card, in each of its states, and nothing clips it", () => {
+		const card = source("MemberProfileCard.svelte");
+		const banner = card.slice(card.indexOf("<!-- Banner"), card.indexOf('<div class="relative px-4 pb-4">'));
+		const frames = classLists(banner).filter((list) => list.includes("w-full") && !list.includes("h-full"));
+		expect(frames).toHaveLength(3);
+		for (const frame of frames) expect(frame).toEqual(expect.arrayContaining(GROWS));
+		const root = classLists(card).find((list) => list.includes("w-80"));
+		expect(root).toContain("rounded-xl");
+		expect(root).not.toContain("overflow-hidden");
+		expect(textBox(card)).toContain("overflow-hidden");
+	});
+
+	test("grows on the popover, and nothing clips it", () => {
+		const popover = source("MemberProfilePopover.svelte");
+		const frame = /<div\s+class="([^"]*)"\s+style=\{member\.banner_url/.exec(popover)?.[1].split(/\s+/);
+		expect(frame).toEqual(expect.arrayContaining(GROWS));
+		const root = classLists(popover).find((list) => list.includes("w-80"));
+		expect(root).toContain("rounded-xl");
+		expect(root).not.toContain("overflow-hidden");
+		expect(textBox(popover)).toContain("overflow-hidden");
+	});
 });
 
 test("a bot's banner thumbnail in Developer settings is 5:2, as 48 px tall as its avatar's", () => {

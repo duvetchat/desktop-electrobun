@@ -1005,10 +1005,15 @@
 		cursor: pointer;
 	}
 
-	.msg-mention:hover,
+	.msg-mention[data-user-id]:hover,
 	.msg-room-mention:hover {
 		background: oklch(0.36 0.1 270 / 0.6);
 		color: oklch(0.85 0.14 270);
+	}
+
+	/* Someone who left, or isn't loaded: there's no profile to open. */
+	.msg-mention:not([data-user-id]) {
+		cursor: default;
 	}
 
 	/* A room the reader can't view, or one that's gone: there's nothing to open. */
@@ -1150,7 +1155,7 @@ html.duvet-light #svelte {
 		color: #4c54d2;
 	}
 
-	.duvet-light .msg-mention:hover,
+	.duvet-light .msg-mention[data-user-id]:hover,
 	.duvet-light .msg-room-mention:hover {
 		background: rgba(90, 98, 222, 0.22);
 		color: #3f47c4;
