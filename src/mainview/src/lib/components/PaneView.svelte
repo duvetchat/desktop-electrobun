@@ -1363,6 +1363,7 @@
 							channelUnreadAfter[chId] = msgId;
 						}
 					}}
+					paneFocused={isFocused}
 				/>
 			{:else if activeTab && isConversationTab(activeTab)}
 				<!-- Only while the panes show: the friends view hides them, and a conversation on screen counts as read
@@ -1371,6 +1372,7 @@
 					{#key activeConversation.id}
 						<ConversationView
 							conversation={activeConversation}
+							paneFocused={isFocused}
 							onBarActions={showConversationActions}
 							onMemberAdded={(m) => {
 								const convId = activeConversation?.id;

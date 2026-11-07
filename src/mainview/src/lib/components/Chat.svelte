@@ -95,6 +95,7 @@
 		onUnreadMark = undefined,
 		onVoiceNoteOverride = undefined,
 		intro = undefined,
+		paneFocused = true,
 	}: {
 		messages: Message[];
 		members?: MemberOnSidebar[];
@@ -135,6 +136,11 @@
 		onVoiceNoteOverride?: (blob: Blob) => void;
 		/** The start of the chat, above its oldest message (ChatIntro). */
 		intro?: Snippet;
+		/**
+		 * Whether this chat's pane is the focused one, whose message box takes a key pressed outside any input. A chat
+		 * outside the panes (the friends view's) is the one on screen.
+		 */
+		paneFocused?: boolean;
 	} = $props();
 	// What's unsent in this chat, which stays when the user leaves it, whichever panes show it (lib/drafts.ts). The
 	// message box keeps its text there, and this chat its reply and files.
@@ -330,9 +336,10 @@
 
 		if (isOtherInputActive()) return;
 
-		// Focus chat input when typing a printable character. A command's row has no message box: its keys
-		// (Space on its switch) are its own.
-		if (chatInputRef && !event.ctrlKey && !event.metaKey && !event.altKey && event.key.length === 1) {
+		// Focus chat input when typing a printable character, in the focused pane only: every pane's chat hears the key,
+		// and the first to take it put it in its own box, whichever pane the user was in. A command's row has no message
+		// box: its keys (Space on its switch) are its own.
+		if (paneFocused && chatInputRef && !event.ctrlKey && !event.metaKey && !event.altKey && event.key.length === 1) {
 			event.preventDefault();
 			chatInputRef?.focusAndInsert(event.key);
 		}

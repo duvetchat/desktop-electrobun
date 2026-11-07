@@ -17,3 +17,30 @@ describe("the user's typing notices", () => {
 		expect(chat).not.toMatch(/lastTypingSent|lastTypingRecording/);
 	});
 });
+
+// #204: each Chat listens for keys on window, and with two panes the first one registered put a key pressed with
+// nothing focused into its own box, whichever pane the user was in.
+describe("a key pressed outside any input", () => {
+	const chat = source("Chat.svelte");
+	const pane = source("PaneView.svelte");
+	const conversation = source("ConversationView.svelte");
+
+	test("goes into the focused pane's message box only", () => {
+		expect(chat).toMatch(
+			/if \(paneFocused && chatInputRef && !event\.ctrlKey && !event\.metaKey && !event\.altKey && event\.key\.length === 1\) \{\s*event\.preventDefault\(\);\s*chatInputRef\?\.focusAndInsert\(event\.key\);/,
+		);
+	});
+
+	test("a pane tells its chat, a room's or a conversation's, whether it's the focused one", () => {
+		expect(pane).toContain('const isFocused = $derived(node.kind === "leaf" && focusedPaneId === node.id);');
+		expect(pane).toMatch(/<Chat\b[\s\S]*?paneFocused=\{isFocused\}\s*\/>/);
+		expect(pane).toMatch(/<ConversationView\s+conversation=\{activeConversation\}\s+paneFocused=\{isFocused\}/);
+		expect(conversation).toMatch(/<Chat\b[\s\S]*?\{paneFocused\}\s*\/>/);
+	});
+
+	test("a chat outside the panes, the friends view's, is the one on screen, which takes them", () => {
+		expect(chat).toContain("paneFocused = true,");
+		expect(conversation).toContain("paneFocused = true,");
+		expect(source("FriendsView.svelte")).not.toContain("paneFocused");
+	});
+});
