@@ -32,6 +32,7 @@
 	import MemberProfileCard from "$lib/components/MemberProfileCard.svelte";
 	import ImageCropModal from "$lib/components/ImageCropModal.svelte";
 	import api, { getApiError } from "$lib/api/api";
+	import { uploadNote, uploadPercent } from "$lib/uploads";
 	import {
 		updateUser,
 		getMyAttachments,
@@ -583,6 +584,9 @@
 	let alias = $state("");
 	let bio = $state("");
 	let saving = $state(false);
+	// How far a new avatar or banner has gone up while the profile saves, in percent, which Save says: null until its
+	// first progress, and while nothing new goes up.
+	let profileUploadPercent = $state<number | null>(null);
 	let saveError = $state<string | null>(null);
 	let saveSuccess = $state(false);
 	// Characters as the API counts them (code points), not the UTF-16 units maxlength would: an emoji is one.
@@ -642,6 +646,8 @@
 	let pendingBotAvatar = $state<File | "remove" | null>(null);
 	let pendingBotBanner = $state<File | "remove" | null>(null);
 	let savingBotProfile = $state(false);
+	// As profileUploadPercent, for the bot's new avatar or banner.
+	let botUploadPercent = $state<number | null>(null);
 	let botUsers = $state<Record<string, BotUser>>({});
 	let botEditUsername = $state("");
 	let botEditAlias = $state("");
@@ -706,14 +712,22 @@
 		savingBotProfile = true;
 		try {
 			const bu = app.bot_user_id ? botUsers[app.bot_user_id] : null;
-			await updateBot(devSelectedTeam.id, app.id, {
-				username: botEditUsername.trim() && botEditUsername !== bu?.username ? botEditUsername.trim() : undefined,
-				alias: botEditAlias.trim() || (bu?.alias ? null : undefined),
-				avatar: pendingBotAvatar instanceof File ? pendingBotAvatar : undefined,
-				banner: pendingBotBanner instanceof File ? pendingBotBanner : undefined,
-				remove_avatar: pendingBotAvatar === "remove",
-				remove_banner: pendingBotBanner === "remove",
-			});
+			const uploading = pendingBotAvatar instanceof File || pendingBotBanner instanceof File;
+			await updateBot(
+				devSelectedTeam.id,
+				app.id,
+				{
+					username: botEditUsername.trim() && botEditUsername !== bu?.username ? botEditUsername.trim() : undefined,
+					alias: botEditAlias.trim() || (bu?.alias ? null : undefined),
+					avatar: pendingBotAvatar instanceof File ? pendingBotAvatar : undefined,
+					banner: pendingBotBanner instanceof File ? pendingBotBanner : undefined,
+					remove_avatar: pendingBotAvatar === "remove",
+					remove_banner: pendingBotBanner === "remove",
+				},
+				uploading ? { onUploadProgress: (sent, total) => (botUploadPercent = uploadPercent(sent, total)) } : undefined,
+			);
+			// Up and saved: what follows is the bot's profile read again.
+			botUploadPercent = null;
 			clearBotAvatar();
 			clearBotBanner();
 			pendingBotAvatar = null;
@@ -728,6 +742,7 @@
 			toast(getApiError(e, "Failed to update bot"), "error");
 		} finally {
 			savingBotProfile = false;
+			botUploadPercent = null;
 		}
 	}
 
@@ -1015,7 +1030,14 @@
 					form.append("remove_banner", "true");
 				}
 
-				const res = await api.patch("/api/users/@me", form);
+				const uploading = pendingAvatar instanceof File || pendingBanner instanceof File;
+				const res = await api.patch(
+					"/api/users/@me",
+					form,
+					uploading
+						? { onUploadProgress: (sent, total) => (profileUploadPercent = uploadPercent(sent, total)) }
+						: undefined,
+				);
 				updated = res.data;
 			} else {
 				updated = await updateUser({
@@ -1128,6 +1150,7 @@
 			saveError = getApiError(err, "Failed to save changes");
 		} finally {
 			saving = false;
+			profileUploadPercent = null;
 		}
 	}
 
@@ -2698,11 +2721,15 @@
 																				</div>
 																				{#if hasBotProfileChanges}
 																					<button
-																						class="bg-fill-600 text-fixed-white hover:bg-fill-500 mt-2 rounded-md px-3 py-1.5 text-xs font-medium transition-colors disabled:opacity-50"
+																						class="bg-fill-600 text-fixed-white hover:bg-fill-500 mt-2 rounded-md px-3 py-1.5 text-xs font-medium tabular-nums transition-colors disabled:opacity-50"
 																						onclick={() => handleSaveBotProfile(app)}
 																						disabled={savingBotProfile}
 																					>
-																						{savingBotProfile ? "Saving..." : "Save Changes"}
+																						{savingBotProfile
+																							? botUploadPercent === null
+																								? "Saving..."
+																								: uploadNote(botUploadPercent)
+																							: "Save Changes"}
 																					</button>
 																				{/if}
 																			</div>
@@ -2819,13 +2846,13 @@
 								<button
 									onclick={handleSave}
 									disabled={saving || bioTooLong}
-									class="bg-fill-600 text-fixed-white hover:bg-fill-500 flex items-center gap-1.5 rounded-md px-4 py-1.5 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+									class="bg-fill-600 text-fixed-white hover:bg-fill-500 flex items-center gap-1.5 rounded-md px-4 py-1.5 text-sm font-semibold tabular-nums transition-colors disabled:cursor-not-allowed disabled:opacity-50"
 								>
 									{#if saveSuccess}
 										<CheckIcon class="size-4" />
 										Saved
 									{:else if saving}
-										Saving…
+										{profileUploadPercent === null ? "Saving…" : uploadNote(profileUploadPercent)}
 									{:else}
 										Save Changes
 									{/if}

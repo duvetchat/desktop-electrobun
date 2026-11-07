@@ -8,7 +8,14 @@ export interface FetchRequestConfig extends Omit<RequestInit, "body"> {
 	params?: Record<string, string | number | boolean | null | undefined>;
 	data?: any;
 	_retry?: boolean;
+	/** A form's upload, as it goes: the bytes of its body sent so far, and their total. sent reaches total once the whole
+	 * body is up, and the request then waits for its answer. A form sent again (after a refresh) starts over from 0.
+	 * Other requests report nothing. */
+	onUploadProgress?: (sent: number, total: number) => void;
 }
+
+/** What the sender of a form may follow it with: its upload's progress, and a signal that aborts it. */
+export type UploadOptions = Pick<FetchRequestConfig, "onUploadProgress" | "signal">;
 
 export interface FetchResponse<T = any> {
 	data: T;
@@ -130,8 +137,15 @@ function responseOf(xhr: XMLHttpRequest): Response {
 /** Sends a form as fetch sends it with init, through XMLHttpRequest, whose upload progress tells an upload that stalled
  * from a slow one (fetch has none): one that stops sending for uploadLimits.idleMs, or whose answer hasn't come
  * uploadLimits.answerMs after its last byte, is aborted and fails with an UploadTimeoutError. A network error, or an
- * abort of init.signal (with its reason), fails as fetch's does. bytes is the form's size (formBytes). */
-function sendForm(url: string, init: RequestInit, form: FormData, bytes: number): Promise<Response> {
+ * abort of init.signal (with its reason), fails as fetch's does. bytes is the form's size (formBytes). onProgress gets
+ * the progress (FetchRequestConfig.onUploadProgress) until the request ends. */
+function sendForm(
+	url: string,
+	init: RequestInit,
+	form: FormData,
+	bytes: number,
+	onProgress?: (sent: number, total: number) => void,
+): Promise<Response> {
 	let files = 0;
 	form.forEach((value) => {
 		if (typeof value !== "string") files++;
@@ -174,13 +188,26 @@ function sendForm(url: string, init: RequestInit, form: FormData, bytes: number)
 		const waitForProgress = () =>
 			giveUpIn(uploadLimits.idleMs, `Upload stalled: nothing went out for ${Math.round(uploadLimits.idleMs / 1000)} s`);
 		const waitForAnswer = () => giveUpIn(uploadLimits.answerMs(bytes, files), "No answer to the upload in time");
+		// The body's size as the webview counts it, or as formBytes does while it says none.
+		let total = bytes;
+		const report = (sent: number) => {
+			if (!settled) onProgress?.(Math.min(sent, total), total);
+		};
 
 		xhr.open(init.method ?? "POST", url);
 		xhr.withCredentials = init.credentials === "include";
 		xhr.responseType = "arraybuffer";
 		new Headers(init.headers).forEach((value, name) => xhr.setRequestHeader(name, value));
-		xhr.upload.onprogress = waitForProgress;
-		xhr.upload.onload = waitForAnswer;
+		xhr.upload.onprogress = (e) => {
+			waitForProgress();
+			if (e.lengthComputable && e.total > 0) total = e.total;
+			report(e.loaded);
+		};
+		// Its last byte is out: from here on only the answer is awaited.
+		xhr.upload.onload = () => {
+			waitForAnswer();
+			report(total);
+		};
 		xhr.onload = () =>
 			settle(() => {
 				// A status a Response can't hold (outside 200-599) fails, as fetch fails such an answer.
@@ -315,9 +342,10 @@ const coreFetch = async <T = any>(endpoint: string, options: FetchRequestConfig 
 	const form = options.data instanceof FormData ? options.data : null;
 	const bytes = form ? formBytes(form) : 0;
 	if (bytes > MAX_REQUEST_BYTES) throw new TooLargeError(bytes);
-	// A form goes up through XMLHttpRequest, which gives up an upload that stalls (sendForm); the rest through fetch.
+	// A form goes up through XMLHttpRequest, which gives up an upload that stalls (sendForm) and reports how far it is;
+	// the rest through fetch.
 	const send = (url: string, init: RequestInit): Promise<Response> =>
-		form ? sendForm(url, init, form, bytes) : fetch(url, init);
+		form ? sendForm(url, init, form, bytes, options.onUploadProgress) : fetch(url, init);
 
 	const token = get(accessToken) || localStorage.getItem("duvet_session_token");
 	const sessionToken = localStorage.getItem("duvet_refresh_token");

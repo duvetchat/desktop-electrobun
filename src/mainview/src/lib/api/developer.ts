@@ -1,4 +1,4 @@
-import api from "$lib/api/api";
+import api, { type UploadOptions } from "$lib/api/api";
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -136,6 +136,7 @@ export async function deleteBot(teamId: string, appId: string): Promise<void> {
 	await api.delete(`/api/users/@me/teams/${teamId}/applications/${appId}/bot`);
 }
 
+/** Changes a bot's profile, always as a form, which upload follows. */
 export async function updateBot(
 	teamId: string,
 	appId: string,
@@ -147,6 +148,7 @@ export async function updateBot(
 		remove_avatar?: boolean;
 		remove_banner?: boolean;
 	},
+	upload?: UploadOptions,
 ): Promise<any> {
 	const form = new FormData();
 	if (data.username) form.append("username", data.username);
@@ -156,7 +158,7 @@ export async function updateBot(
 	if (data.banner) form.append("banner", data.banner);
 	if (data.remove_avatar) form.append("remove_avatar", "true");
 	if (data.remove_banner) form.append("remove_banner", "true");
-	const res = await api.patch(`/api/users/@me/teams/${teamId}/applications/${appId}/bot`, form);
+	const res = await api.patch(`/api/users/@me/teams/${teamId}/applications/${appId}/bot`, form, upload);
 	return res.data;
 }
 
