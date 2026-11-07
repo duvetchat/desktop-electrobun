@@ -377,6 +377,46 @@ function stopOwnCallRinging(conversationId: string) {
 	});
 }
 
+// The call in that conversation is over, or it is for the user, who left its group: whatever it rang, placed or connected
+// here ends.
+function callOver(conversationId: string) {
+	if (pendingAccept?.conversationId === conversationId) pendingAccept = null;
+	if (placedCall?.conversationId === conversationId) placedCall = null;
+	conversationsWithCalls.update((s) => {
+		s.delete(conversationId);
+		return new Set(s);
+	});
+	stopOwnCallRinging(conversationId);
+	callVoiceStates.update((states) => states.filter((s) => s.room_id !== conversationId));
+	const current = get(activeCall);
+	if (current && current.conversationId === conversationId) {
+		// Only disconnect voice if still in this conversation's call, not a different voice channel
+		if (get(activeVoiceRoomId) === conversationId) {
+			activeVoiceRoomId.set(null);
+		}
+		activeCall.set(null);
+		// The call's VoiceChat may already be gone (its connection failed): a camera or screen request it
+		// didn't take goes with the call.
+		dropVoiceRequests();
+	}
+}
+
+/** The user left a group, or was removed from it, as the API answered or the gateway told (CONVERSATION_MEMBER_REMOVE):
+ * it goes from the list, and its view and tabs with it (FriendsView, the page), and so does its unread dot, which nothing
+ * could clear any more. Its call ends here at once, rather than when the gateway's CALL_ENDED comes: the group's view,
+ * which has the call's controls, has gone. */
+export function conversationLeft(conversationId: string) {
+	conversations.update((list) => list.filter((c) => c.id !== conversationId));
+	unreadConversations.update((s) => {
+		s.delete(conversationId);
+		return s;
+	});
+	// An answer kept there goes too: its call notices no longer reach them, and one would count for a later call's
+	// if they came back.
+	callAnswers.drop(conversationId);
+	callOver(conversationId);
+}
+
 /** The session resumed: what the gateway got before the old socket dropped, it answered in the replay just handled.
  * What it didn't get was lost with that socket: VoiceChat joins again (RESUMED), and a CALL_INITIATE or a CALL_ACCEPT
  * goes again. */
@@ -1480,17 +1520,8 @@ function handleEvent(event: GatewayEvent) {
 		}
 		case "CONVERSATION_MEMBER_REMOVE": {
 			const raw = payload.data;
-			// The user left the group or was removed from it: it goes from the list, and its view with it (FriendsView),
-			// and so does its unread dot, which nothing could clear any more.
 			if (raw.user_id === get(currentUser)?.id) {
-				conversations.update((list) => list.filter((c) => c.id !== raw.conversation_id));
-				unreadConversations.update((s) => {
-					s.delete(raw.conversation_id);
-					return s;
-				});
-				// An answer kept there goes too: its call notices no longer reach them, and one would count for a later call's
-				// if they came back.
-				callAnswers.drop(raw.conversation_id);
+				conversationLeft(raw.conversation_id);
 				break;
 			}
 			conversations.update((list) =>
@@ -1757,27 +1788,7 @@ function handleEvent(event: GatewayEvent) {
 			break;
 		}
 		case "CALL_ENDED": {
-			// The call is over, or it is for the user, who left its group: whatever it rang, placed or connected here ends.
-			const d = payload.data;
-			if (pendingAccept?.conversationId === d.conversation_id) pendingAccept = null;
-			if (placedCall?.conversationId === d.conversation_id) placedCall = null;
-			conversationsWithCalls.update((s) => {
-				s.delete(d.conversation_id);
-				return new Set(s);
-			});
-			stopOwnCallRinging(d.conversation_id);
-			callVoiceStates.update((states) => states.filter((s) => s.room_id !== d.conversation_id));
-			const current = get(activeCall);
-			if (current && current.conversationId === d.conversation_id) {
-				// Only disconnect voice if still in this conversation's call, not a different voice channel
-				if (get(activeVoiceRoomId) === d.conversation_id) {
-					activeVoiceRoomId.set(null);
-				}
-				activeCall.set(null);
-				// The call's VoiceChat may already be gone (its connection failed): a camera or screen request it
-				// didn't take goes with the call.
-				dropVoiceRequests();
-			}
+			callOver(payload.data.conversation_id);
 			break;
 		}
 		case "TEAM_INVITE_CREATE": {

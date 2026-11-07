@@ -1,0 +1,155 @@
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { get } from "svelte/store";
+import { openGateway, type TestGateway } from "$lib/api/ws/test-gateway";
+import type { Conversation } from "$lib/api/conversations";
+
+const { conversationLeft } = await import("$lib/api/ws/connection");
+const {
+	activeCall,
+	activeVoiceRoomId,
+	callVoiceStates,
+	conversations,
+	conversationsWithCalls,
+	currentUser,
+	unreadConversations,
+} = await import("$lib/stores.svelte");
+
+const ME = "01920000-0000-7000-8000-00000000b0b0";
+const ANA = "01920000-0000-7000-8000-00000000a11c";
+const GROUP = "01920000-0000-7000-8000-0000000000c1";
+const DM = "01920000-0000-7000-8000-0000000000c2";
+
+const conversation = (id: string, type: 1 | 2, members: string[]): Conversation => ({
+	id,
+	type,
+	name: type === 2 ? "A group" : null,
+	owner_id: ME,
+	created_at: "",
+	updated_at: "",
+	deleted_at: null,
+	members: members.map((user_id) => ({
+		id: `${id}-${user_id}`,
+		conversation_id: id,
+		user_id,
+		created_at: "",
+		updated_at: "",
+		user: {
+			id: user_id,
+			username: user_id === ANA ? "ana" : "me",
+			alias: user_id === ANA ? "Ana" : null,
+			avatar: null,
+			banner: null,
+		},
+	})),
+});
+const shownCall = (conversationId: string, state: "ringing" | "calling" | "connected") => ({
+	conversationId,
+	state,
+	initiatorId: ME,
+	initiatorName: "me",
+	initiatorAvatar: null,
+	memberIds: [ME, ANA],
+});
+
+let gateway: TestGateway;
+
+beforeEach(async () => {
+	currentUser.set({
+		id: ME,
+		username: "me",
+		email_verified: true,
+		alias: null,
+		avatar: null,
+		banner: null,
+		custom: "",
+		flags: 0,
+		badges: 0,
+		is_bot: false,
+		created_at: "",
+		updated_at: "",
+	});
+	conversations.set([conversation(GROUP, 2, [ME, ANA]), conversation(DM, 1, [ME, ANA])]);
+	unreadConversations.set(new Set());
+	activeCall.set(null);
+	activeVoiceRoomId.set(null);
+	conversationsWithCalls.set(new Set());
+	callVoiceStates.set([]);
+	gateway = await openGateway();
+});
+
+afterEach(() => gateway.close());
+
+const listed = () => get(conversations).map((c) => c.id);
+
+describe("a group the user left, or was removed from", () => {
+	const inGroupCall = () => {
+		activeCall.set(shownCall(GROUP, "connected"));
+		activeVoiceRoomId.set(GROUP);
+		conversationsWithCalls.set(new Set([GROUP]));
+		callVoiceStates.set([
+			{ room_id: GROUP, user_id: ANA, muted: false, deafened: false, screen_sharing: false, camera: false },
+		]);
+	};
+	const callIsOver = () => {
+		expect(get(activeCall)).toBeNull();
+		expect(get(activeVoiceRoomId)).toBeNull();
+		expect(get(conversationsWithCalls).has(GROUP)).toBe(false);
+		expect(get(callVoiceStates)).toEqual([]);
+	};
+
+	test("its CONVERSATION_MEMBER_REMOVE takes it from the list, with its unread dot", () => {
+		unreadConversations.set(new Set([GROUP, DM]));
+		gateway.receive("CONVERSATION_MEMBER_REMOVE", { conversation_id: GROUP, user_id: ME });
+		expect(listed()).toEqual([DM]);
+		expect([...get(unreadConversations)]).toEqual([DM]);
+	});
+
+	test("and ends the call shown there, without waiting for the gateway's CALL_ENDED", () => {
+		inGroupCall();
+		gateway.receive("CONVERSATION_MEMBER_REMOVE", { conversation_id: GROUP, user_id: ME });
+		callIsOver();
+		// Which changes nothing when it comes.
+		gateway.receive("CALL_ENDED", { conversation_id: GROUP });
+		callIsOver();
+	});
+
+	test("a call that comes to an end first is over as well, and the removal that follows finds nothing to end", () => {
+		inGroupCall();
+		gateway.receive("CALL_ENDED", { conversation_id: GROUP });
+		callIsOver();
+		gateway.receive("CONVERSATION_MEMBER_REMOVE", { conversation_id: GROUP, user_id: ME });
+		callIsOver();
+		expect(listed()).toEqual([DM]);
+	});
+
+	test("a call ringing there stops", () => {
+		activeCall.set(shownCall(GROUP, "ringing"));
+		gateway.receive("CONVERSATION_MEMBER_REMOVE", { conversation_id: GROUP, user_id: ME });
+		expect(get(activeCall)).toBeNull();
+	});
+
+	test("a call or a voice room elsewhere goes on", () => {
+		activeCall.set(shownCall(DM, "connected"));
+		activeVoiceRoomId.set(DM);
+		gateway.receive("CONVERSATION_MEMBER_REMOVE", { conversation_id: GROUP, user_id: ME });
+		expect(get(activeCall)?.conversationId).toBe(DM);
+		expect(get(activeVoiceRoomId)).toBe(DM);
+	});
+
+	test("the API's answer does the same, with no event from the gateway at all", () => {
+		inGroupCall();
+		unreadConversations.set(new Set([GROUP]));
+		conversationLeft(GROUP);
+		expect(listed()).toEqual([DM]);
+		expect(get(unreadConversations).size).toBe(0);
+		callIsOver();
+	});
+
+	test("someone else leaving only takes them from its members", () => {
+		inGroupCall();
+		gateway.receive("CONVERSATION_MEMBER_REMOVE", { conversation_id: GROUP, user_id: ANA });
+		expect(listed()).toEqual([GROUP, DM]);
+		expect(get(conversations)[0].members.map((m) => m.user_id)).toEqual([ME]);
+		expect(get(activeCall)?.conversationId).toBe(GROUP);
+	});
+});

@@ -8,9 +8,9 @@ class PromptStore {
 	pending = $state<PromptState | null>(null);
 	value = $state("");
 
-	prompt(message: string, placeholder = ""): Promise<string | null> {
+	prompt(message: string, placeholder = "", initial = ""): Promise<string | null> {
 		return new Promise((resolve) => {
-			this.value = "";
+			this.value = initial;
 			this.pending = { message, placeholder, resolve };
 		});
 	}
@@ -23,6 +23,7 @@ class PromptStore {
 
 export const promptStore = new PromptStore();
 
-export function promptDialog(message: string, placeholder = ""): Promise<string | null> {
-	return promptStore.prompt(message, placeholder);
+/** Asks for a line of text, starting from `initial` when there's something to change. */
+export function promptDialog(message: string, placeholder = "", initial = ""): Promise<string | null> {
+	return promptStore.prompt(message, placeholder, initial);
 }
