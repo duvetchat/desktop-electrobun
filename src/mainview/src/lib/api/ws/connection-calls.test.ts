@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import { get } from "svelte/store";
 import { openGateway, type TestGateway } from "$lib/api/ws/test-gateway";
 import type { Conversation } from "$lib/api/conversations";
@@ -13,6 +13,7 @@ const {
 	currentUser,
 	unreadConversations,
 } = await import("$lib/stores.svelte");
+const { toastStore } = await import("$lib/stores/toast.svelte");
 
 const ME = "01920000-0000-7000-8000-00000000b0b0";
 const ANA = "01920000-0000-7000-8000-00000000a11c";
@@ -151,5 +152,128 @@ describe("a group the user left, or was removed from", () => {
 		expect(listed()).toEqual([GROUP, DM]);
 		expect(get(conversations)[0].members.map((m) => m.user_id)).toEqual([ME]);
 		expect(get(activeCall)?.conversationId).toBe(GROUP);
+	});
+});
+
+describe("what voice and calls tell the user", () => {
+	const OTHER_GROUP = "01920000-0000-7000-8000-0000000000c3";
+	const notices = () => toastStore.items.map((t) => [t.message, t.type]);
+
+	beforeEach(() => {
+		toastStore.items = [];
+	});
+
+	describe("VOICE_SESSION_REPLACED", () => {
+		test("voice taken over by another session says so, and leaves", () => {
+			activeVoiceRoomId.set(GROUP);
+			gateway.receive("VOICE_SESSION_REPLACED", { room_id: GROUP });
+			expect(notices()).toEqual([["Your voice moved to another device", "info"]]);
+			expect(get(activeVoiceRoomId)).toBeNull();
+		});
+
+		test("a call's voice takes the call with it", () => {
+			activeVoiceRoomId.set(GROUP);
+			activeCall.set(shownCall(GROUP, "connected"));
+			gateway.receive("VOICE_SESSION_REPLACED", { room_id: GROUP });
+			expect(notices()).toEqual([["Your voice moved to another device", "info"]]);
+			expect(get(activeCall)).toBeNull();
+		});
+
+		test("access lost isn't told as another device", () => {
+			activeVoiceRoomId.set(GROUP);
+			gateway.receive("VOICE_SESSION_REPLACED", { room_id: GROUP, reason: "permissions" });
+			expect(notices()).toEqual([["You can't be in this voice room anymore", "error"]]);
+			expect(get(activeVoiceRoomId)).toBeNull();
+		});
+
+		// The gateway tells all the user's sessions when the one that joined is gone: only one in that room acts on it.
+		test("one that isn't in that room says nothing, and stays where it is", () => {
+			activeVoiceRoomId.set(DM);
+			gateway.receive("VOICE_SESSION_REPLACED", { room_id: GROUP, reason: "permissions" });
+			expect(notices()).toEqual([]);
+			expect(get(activeVoiceRoomId)).toBe(DM);
+		});
+	});
+
+	describe("CALL_DECLINED", () => {
+		test("the device placing the call hears who turned it down, and goes on calling the others", () => {
+			activeCall.set(shownCall(GROUP, "calling"));
+			gateway.receive("CALL_DECLINED", { conversation_id: GROUP, user_id: ANA });
+			expect(notices()).toEqual([["Ana declined", "info"]]);
+			expect(get(activeCall)?.state).toBe("calling");
+		});
+
+		test("the user's own decline only stops it ringing", () => {
+			activeCall.set(shownCall(GROUP, "ringing"));
+			gateway.receive("CALL_DECLINED", { conversation_id: GROUP, user_id: ME });
+			expect(notices()).toEqual([]);
+			expect(get(activeCall)).toBeNull();
+		});
+
+		test("the caller's other devices say nothing", () => {
+			gateway.receive("CALL_DECLINED", { conversation_id: GROUP, user_id: ANA });
+			expect(notices()).toEqual([]);
+		});
+	});
+
+	describe("CALL_INCOMING", () => {
+		const incoming = (conversation_id: string) => ({
+			conversation_id,
+			initiator_id: ANA,
+			initiator_name: "Ana",
+			initiator_avatar: null,
+		});
+
+		test("during another call it's missed, and that call goes on", () => {
+			activeCall.set(shownCall(DM, "connected"));
+			gateway.receive("CALL_INCOMING", incoming(GROUP));
+			expect(notices()).toEqual([["Missed a call from Ana", "info"]]);
+			expect(get(activeCall)?.conversationId).toBe(DM);
+			// Its conversation offers to join it.
+			expect(get(conversationsWithCalls).has(GROUP)).toBe(true);
+		});
+
+		test("with no call it rings, and says nothing", () => {
+			gateway.receive("CALL_INCOMING", incoming(GROUP));
+			expect(notices()).toEqual([]);
+			expect(get(activeCall)?.state).toBe("ringing");
+		});
+
+		test("the call this client is placing, crossed with theirs, isn't missed", () => {
+			activeCall.set(shownCall(GROUP, "calling"));
+			gateway.receive("CALL_INCOMING", incoming(GROUP));
+			expect(notices()).toEqual([]);
+			expect(get(activeCall)?.state).toBe("calling");
+		});
+
+		test("a READY during a call says nothing of the calls it lists, on this READY or the next", async () => {
+			activeCall.set(shownCall(DM, "calling"));
+			const api = spyOn(globalThis, "fetch").mockImplementation((async (_input: string | URL | Request) =>
+				Response.json([])) as typeof fetch);
+			try {
+				const ready = {
+					user: get(currentUser),
+					sessionToken: "gateway-session",
+					guild_ids: [],
+					active_calls: [
+						{ conversation_id: DM, initiator_id: ME, ringing: false, voice_states: null },
+						{
+							conversation_id: OTHER_GROUP,
+							initiator_id: ANA,
+							initiator_name: "Ana",
+							ringing: true,
+							voice_states: null,
+						},
+					],
+				};
+				gateway.receive("READY", ready);
+				gateway.receive("READY", ready);
+				await Bun.sleep(0);
+			} finally {
+				api.mockRestore();
+			}
+			expect(notices()).toEqual([]);
+			expect(get(activeCall)?.conversationId).toBe(DM);
+		});
 	});
 });

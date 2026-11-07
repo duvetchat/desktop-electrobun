@@ -2,13 +2,16 @@ import { describe, expect, test } from "bun:test";
 import {
 	callAcceptedAction,
 	callDeclinedAction,
+	callDeclinedNotice,
 	callingFromAnotherDevice,
 	callOngoingAction,
 	callOnReady,
 	callToRingOnReady,
 	callVoiceStatesOf,
+	missedCallNotice,
 	ownCallsRingingOnReady,
 	placeAgain,
+	voiceEndedNotice,
 	withCallVoiceState,
 	withoutCallVoiceOf,
 } from "$lib/calls";
@@ -18,6 +21,7 @@ import type { GatewayReadyActiveCall, VoiceStateUpdateEvent } from "$lib/types";
 
 const ME = "01920000-0000-7000-8000-00000000b0b0";
 const THEM = "01920000-0000-7000-8000-00000000a11c";
+const OTHER = "01920000-0000-7000-8000-00000000b0b1";
 const CONV = "01920000-0000-7000-8000-0000000000c1";
 const OTHER_CONV = "01920000-0000-7000-8000-0000000000c2";
 // The call this client shows, and a CALL_ACCEPTED or CALL_DECLINED: who answered which conversation's call.
@@ -91,6 +95,74 @@ describe("callDeclinedAction", () => {
 	test("without a call here, or with another one, nothing changes", () => {
 		expect(callDeclinedAction(null, declinedBy(ME), ME)).toBeNull();
 		expect(callDeclinedAction(call("ringing", OTHER_CONV), declinedBy(ME), ME)).toBeNull();
+	});
+});
+
+describe("callDeclinedNotice", () => {
+	const members = [
+		{ user_id: ME, user: { id: ME, username: "me", alias: null, avatar: null, banner: null } },
+		{ user_id: THEM, user: { id: THEM, username: "ana", alias: "Ana", avatar: null, banner: null } },
+		{ user_id: OTHER, user: { id: OTHER, username: "bob", alias: null, avatar: null, banner: null } },
+	];
+
+	test("the device placing the call hears who turned it down, by the name the app shows", () => {
+		expect(callDeclinedNotice(call("calling"), declinedBy(THEM), ME, members)).toBe("Ana declined");
+		expect(callDeclinedNotice(call("calling"), declinedBy(OTHER), ME, members)).toBe("bob declined");
+	});
+
+	test("someone the conversation doesn't list, as the call's members can outrun it, is 'they'", () => {
+		expect(callDeclinedNotice(call("calling"), declinedBy(THEM), ME)).toBe("They declined");
+		expect(callDeclinedNotice(call("calling"), declinedBy(THEM), ME, [])).toBe("They declined");
+	});
+
+	test("the user's own decline only stops the ringing on their other devices", () => {
+		expect(callDeclinedNotice(call("ringing"), declinedBy(ME), ME, members)).toBeNull();
+		expect(callDeclinedNotice(call("calling"), declinedBy(ME), ME, members)).toBeNull();
+	});
+
+	test("a device that isn't placing the call says nothing: the caller's others, and one with no call", () => {
+		expect(callDeclinedNotice(null, declinedBy(THEM), ME, members)).toBeNull();
+		expect(callDeclinedNotice(call("calling", OTHER_CONV), declinedBy(THEM), ME, members)).toBeNull();
+		expect(callDeclinedNotice(call("ringing", OTHER_CONV), declinedBy(THEM), ME, members)).toBeNull();
+	});
+
+	test("once someone answered, a call goes on: a decline there says nothing", () => {
+		expect(callDeclinedNotice(call("connected"), declinedBy(THEM), ME, members)).toBeNull();
+	});
+});
+
+describe("missedCallNotice", () => {
+	const fromBob = (conversation_id = OTHER_CONV) => ({
+		conversation_id,
+		initiator_id: OTHER,
+		initiator_name: "bob",
+		initiator_avatar: null,
+	});
+
+	test("a call that comes during another is missed, whatever the state of the one shown", () => {
+		for (const state of ["ringing", "calling", "connected"] as const) {
+			expect(missedCallNotice(call(state), fromBob())).toBe("Missed a call from bob");
+		}
+	});
+
+	test("with no call shown it rings, and says nothing", () => {
+		expect(missedCallNotice(null, fromBob())).toBeNull();
+	});
+
+	test("the very call this client shows isn't missed: calls that crossed, or READY's own call again", () => {
+		for (const state of ["ringing", "calling", "connected"] as const) {
+			expect(missedCallNotice(call(state), fromBob(CONV))).toBeNull();
+		}
+	});
+});
+
+describe("voiceEndedNotice", () => {
+	test("without a reason a newer join of the user's took the voice, from another session", () => {
+		expect(voiceEndedNotice({ room_id: CONV })).toBe("Your voice moved to another device");
+	});
+
+	test("with one, they can't be in that room any more: nothing moved anywhere", () => {
+		expect(voiceEndedNotice({ room_id: CONV, reason: "permissions" })).toBe("You can't be in this voice room anymore");
 	});
 });
 

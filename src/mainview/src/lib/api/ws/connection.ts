@@ -96,12 +96,15 @@ import {
 import {
 	callAcceptedAction,
 	callDeclinedAction,
+	callDeclinedNotice,
 	callOngoingAction,
 	callOnReady,
 	callToRingOnReady,
 	callVoiceStatesOf,
+	missedCallNotice,
 	ownCallsRingingOnReady,
 	placeAgain,
+	voiceEndedNotice,
 	withCallVoiceState,
 	type PlacedCall,
 } from "$lib/calls";
@@ -109,6 +112,7 @@ import { withUserUpdate } from "$lib/friends";
 import { sendAgain } from "$lib/resend";
 import { knowMessage } from "$lib/jumps";
 import { storageTransfers } from "$lib/stores/storage-transfers.svelte";
+import { toast } from "$lib/stores/toast.svelte";
 import { getElectrobunRpc, type ActivityPayload } from "$lib/electrobun-rpc";
 import { identifyData } from "$lib/api/ws/identify";
 
@@ -1080,6 +1084,7 @@ function handleEvent(event: GatewayEvent) {
 		case "VOICE_SESSION_REPLACED": {
 			const { room_id } = payload.data;
 			if (get(activeVoiceRoomId) === room_id) {
+				toast(voiceEndedNotice(payload.data), payload.data.reason ? "error" : "info");
 				activeVoiceRoomId.set(null);
 				// A call's voice that moved to another device takes the call there: this client is out of it, and can
 				// join it again from its conversation, which shows who is in it, the user too. Its camera or screen
@@ -1719,6 +1724,8 @@ function handleEvent(event: GatewayEvent) {
 				s.add(d.conversation_id);
 				return new Set(s);
 			});
+			const missed = missedCallNotice(get(activeCall), d);
+			if (missed) toast(missed);
 			// Show ringing modal if not already in a call
 			if (!get(activeCall)) {
 				activeCall.set({
@@ -1784,6 +1791,13 @@ function handleEvent(event: GatewayEvent) {
 			gatewayHasCall(d.conversation_id);
 			// Declining it is answering it too (decision 143): its notice leaves the conversation read for them.
 			if (d.user_id === get(currentUser)?.id) callAnswers.answered(d.conversation_id);
+			const declined = callDeclinedNotice(
+				get(activeCall),
+				d,
+				get(currentUser)?.id,
+				get(conversations).find((c) => c.id === d.conversation_id)?.members,
+			);
+			if (declined) toast(declined);
 			if (callDeclinedAction(get(activeCall), d, get(currentUser)?.id) === "dismiss") activeCall.set(null);
 			break;
 		}

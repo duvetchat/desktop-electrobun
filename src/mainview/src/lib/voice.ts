@@ -29,9 +29,12 @@ export function sendVoiceSync(roomId: string | null = get(activeVoiceRoomId)) {
 	});
 }
 
-/** Mutes the mic, or unmutes it. Without SpeakInVoice in the room it stays muted: the caller doesn't offer it then. */
+/** Mutes the mic, or unmutes it, which also undeafens: someone who asks to talk hears too. Without SpeakInVoice in the
+ * room it stays muted: the caller doesn't offer it then. */
 export function toggleMute() {
-	isMuted.update((m) => !m);
+	const unmuting = get(isMuted);
+	isMuted.set(!unmuting);
+	if (unmuting) isDeafened.set(false);
 	sendVoiceSync();
 }
 
