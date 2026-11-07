@@ -1347,6 +1347,15 @@ export function mentionsByReply(message: Pick<Message, "referenced_message">, us
 	return !!ref?.mention_author && ref.author_id === userId;
 }
 
+/** The name of the author of the message a reply replies to, as the reply's quote shows it: with an @ when the reply
+ * mentioned them, so that everyone can tell it did. */
+export function quotedAuthorName(
+	name: string | undefined,
+	reference: Pick<ReferencedMessage, "mention_author"> | null | undefined,
+): string {
+	return `${reference?.mention_author ? "@" : ""}${name ?? ""}`;
+}
+
 export function gatewaySpaceToGuild(space: GatewaySpace): Guild {
 	return {
 		id: space.id,

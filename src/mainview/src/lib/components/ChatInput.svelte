@@ -25,6 +25,7 @@
 	} from "$lib/commands";
 	import { escapeHtml } from "$lib/markdown";
 	import { formatDuration } from "$lib/utils/time";
+	import MemberBanner from "$lib/components/MemberBanner.svelte";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
 	import type {
 		GatewayRoom,
@@ -1048,10 +1049,11 @@
 			</div>
 			{#each commandSuggestions as entry, i (`${entry.command.id} ${entry.name}`)}
 				{@const bot = commandApp(entry)?.bot}
+				{@const botMember = bot && members.find((m) => m.id === bot.id)}
 				<button
 					role="option"
 					aria-selected={i === commandSelectedIdx}
-					class="flex w-full cursor-pointer items-center gap-2.5 border-none bg-none px-3 py-1.5 text-left transition-[background] duration-100 {i ===
+					class="relative flex w-full cursor-pointer items-center gap-2.5 border-none bg-none px-3 py-1.5 text-left transition-[background] duration-100 {i ===
 					commandSelectedIdx
 						? 'bg-night-28'
 						: 'hover:bg-night-28'}"
@@ -1061,14 +1063,24 @@
 					}}
 					onmouseenter={() => (commandSelectedIdx = i)}
 				>
-					<span class="text-night-85 shrink-0 text-[13px] font-semibold">/{entry.name}</span>
-					<span class="text-night-62 min-w-0 flex-1 truncate text-[12px]">{entry.description}</span>
-					{#if bot}
-						<span class="text-night-52 flex shrink-0 items-center gap-1.5 text-[11px]">
-							<UserAvatar src={getAvatarURL(bot.id, bot.avatar)} name={bot.alias ?? bot.username} size={16} />
-							{bot.alias ?? bot.username}
-						</span>
-					{/if}
+					<MemberBanner src={botMember?.banner_url ?? null} offline={botMember?.status === "offline"} />
+					<span class="relative flex min-w-0 flex-1 items-center gap-2.5">
+						<span class="text-night-85 shrink-0 text-[13px] font-semibold">/{entry.name}</span>
+						<span
+							class="{botMember?.banner_url ? 'text-night-85' : 'text-night-62'} min-w-0 flex-1 truncate text-[12px]"
+							>{entry.description}</span
+						>
+						{#if bot}
+							<span
+								class="{botMember?.banner_url
+									? 'text-night-85'
+									: 'text-night-52'} flex shrink-0 items-center gap-1.5 text-[11px]"
+							>
+								<UserAvatar src={getAvatarURL(bot.id, bot.avatar)} name={bot.alias ?? bot.username} size={16} />
+								{bot.alias ?? bot.username}
+							</span>
+						{/if}
+					</span>
 				</button>
 			{/each}
 		</div>
@@ -1092,7 +1104,7 @@
 				<button
 					role="option"
 					aria-selected={i === mentionSelectedIdx}
-					class="flex w-full cursor-pointer items-center gap-2.5 border-none bg-none px-3 py-1.5 text-left transition-[background] duration-100 {i ===
+					class="relative flex w-full cursor-pointer items-center gap-2.5 border-none bg-none px-3 py-1.5 text-left transition-[background] duration-100 {i ===
 					mentionSelectedIdx
 						? 'bg-night-28'
 						: 'hover:bg-night-28'}"
@@ -1102,11 +1114,16 @@
 					}}
 					onmouseenter={() => (mentionSelectedIdx = i)}
 				>
-					<UserAvatar src={member.avatar_url} name={member.username} size={22} />
-					<span class="text-night-85 text-[13px]">{member.username}</span>
-					{#if member.raw_username !== member.username}
-						<span class="text-night-52 text-[11px]">@{member.raw_username}</span>
-					{/if}
+					<MemberBanner src={member.banner_url} offline={member.status === "offline"} />
+					<span class="relative flex min-w-0 items-center gap-2.5">
+						<UserAvatar src={member.avatar_url} name={member.username} size={22} />
+						<span class="text-night-85 text-[13px]">{member.username}</span>
+						{#if member.raw_username !== member.username}
+							<span class="{member.banner_url ? 'text-night-85' : 'text-night-52'} text-[11px]"
+								>@{member.raw_username}</span
+							>
+						{/if}
+					</span>
 				</button>
 			{/each}
 		</div>

@@ -3,42 +3,11 @@ import { fitActivity, MAX_ACTIVITIES, type ActivityPayload } from "./activities"
 import { ActivityImages, IpcActivities, PAGE_WAIT_MS, within } from "./activity-images";
 import { startSpotifyReader, type SpotifyActivity } from "./spotify";
 import { ipcHeld, ipcPath, LineReader } from "./ipc";
+import { navigationRules } from "./navigation";
 import { Maximizer } from "./window-frame";
 
 const DEV_SERVER_PORT = 5173;
 const DEV_SERVER_URL = `http://localhost:${DEV_SERVER_PORT}`;
-
-// The main window may only ever navigate to the app's own pages and the trusted Duvet backends; every other
-// web navigation is blocked so a message link, embed or redirect can never replace the app (and its session
-// origin) with a third-party site (glob patterns, "^" = block, last match wins, default allow). External links
-// are opened in the system browser instead (see openExternal below). On Windows, Electrobun 1.15's WebView2 view
-// doesn't enforce these rules (measured 2026-10-22: a scripted navigation to an outside site went through, and
-// WebView2 itself blocks file:// from the app), so there the window stays on the app through the click handler
-// (lib/external-links.ts) and the frames' sandbox, which has no allow-top-navigation. Where they are enforced they
-// may apply to frames too, so the players the app frames are allowed.
-//   - http(s)://localhost / 127.0.0.1: the dev Vite server, API, gateway and S3 mock.
-//   - duvet.chat + subdomains: the web app, api.duvet.chat, ws.duvet.chat, docs.duvet.chat.
-//   - n128 / andremor: the alternate backend targets in lib/common/common.ts.
-//   - *.r2.cloudflarestorage.com: the presigned storage URLs attachment downloads redirect to.
-//   - YouTube and TikTok: the players EmbedCard frames (lib/urls.ts PLAYERS).
-const NAVIGATION_RULES = [
-	"^http://*",
-	"^https://*",
-	"^file://*", // a file dropped on the window would replace the app
-	"views://*",
-	"http://localhost:*",
-	"http://127.0.0.1:*",
-	"https://duvet.chat/*",
-	"https://*.duvet.chat/*",
-	"https://*.n128.xyz/*",
-	"https://*.andremor.eu.org/*",
-	"https://*.r2.cloudflarestorage.com/*",
-	"https://youtube.com/*",
-	"https://*.youtube.com/*",
-	"https://*.youtube-nocookie.com/*",
-	"https://tiktok.com/*",
-	"https://*.tiktok.com/*",
-];
 
 // Opens a URL in the system browser, never in a webview. Only http(s) and mailto: are allowed through — a
 // link the app routes here comes from message content or an embed, so a custom scheme (file:, a protocol
@@ -164,7 +133,6 @@ const win = new BrowserWindow({
 	titleBarStyle: "hidden",
 	renderer: rendererType,
 	sandbox: false,
-	navigationRules: JSON.stringify(NAVIGATION_RULES),
 	frame: {
 		height: 900,
 		width: 1400,
@@ -176,12 +144,18 @@ const win = new BrowserWindow({
 	rpc,
 });
 
-// Backstop for any attempt to open a new window — window.open, target="_blank" or a modifier-click the
-// webview doesn't handle itself. The window never spawns a second webview or popup; the URL goes to the
-// system browser instead. The webview also routes ordinary external-link clicks over RPC (openExternal), so
-// this mainly covers scripted opens and modifier-clicks. Embedded players can't reach here: their iframe
-// sandbox drops allow-popups (lib/urls.ts frameSandbox). The event fires globally through Electrobun's
-// emitter (webviewEvents.ts → proc/native.ts webviewEventHandler) with the URL in event.data.detail.
+// Through the webview: BrowserWindow stores a navigationRules option of its own, and never hands it to the native side.
+// As each page loads, not right after new BrowserWindow: macOS reads them later on its main queue, from an address
+// nothing keeps, and right after new BrowserWindow that queue still has the webview's creation ahead of them, so a GC in
+// that gap could leave no rules, with no sign. Only the app's own first page can load before they apply.
+const rules = navigationRules(currentOS, url === DEV_SERVER_URL ? url : null);
+win.webview.on("dom-ready", () => win.webview.setNavigationRules(rules));
+
+// What Electrobun reports as a new window goes to the system browser: a Ctrl or Cmd click. The webview sends every
+// other click on a link over RPC (openExternal, lib/external-links.ts). On Windows and Linux Electrobun has no hook for
+// a scripted window.open, which opens a second window: nothing in the app calls it, and embedded players can't, as their
+// iframe sandbox drops allow-popups (lib/urls.ts frameSandbox). The event fires globally through Electrobun's emitter
+// (webviewEvents.ts → proc/native.ts webviewEventHandler) with the URL in event.data.detail.
 Electrobun.events.on("new-window-open", (event: { data?: { detail?: { url?: string } | string } }) => {
 	const detail = event?.data?.detail;
 	const target = typeof detail === "string" ? detail : detail?.url;

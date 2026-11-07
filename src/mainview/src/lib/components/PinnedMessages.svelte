@@ -2,6 +2,7 @@
 	import { Pin as PinIcon, X as XIcon } from "@lucide/svelte";
 	import { Popover } from "bits-ui";
 	import { untrack } from "svelte";
+	import MentionProfile from "$lib/components/MentionProfile.svelte";
 	import MessagePreview from "$lib/components/MessagePreview.svelte";
 	import ImagePreview from "$lib/components/ImagePreview.svelte";
 	import { getRoomPins, unpinRoomMessage } from "$lib/api/messages";
@@ -51,6 +52,7 @@
 	});
 	const mentionMap = $derived(mentionMapOf(members));
 	const customEmojiMap = $derived(customEmojiMapOf(customEmojis));
+	let mentionProfile: MentionProfile;
 
 	// A pinned image opens over the app; the list closes first, as a click outside it would close it.
 	let previewSrc = $state("");
@@ -145,7 +147,7 @@
 				<PinIcon class="size-4 text-stone-400" />
 				<span class="text-sm font-semibold text-stone-100">Pinned messages</span>
 			</div>
-			<div class="flex flex-col gap-1.5 overflow-y-auto p-2">
+			<div class="flex flex-col gap-1.5 overflow-y-auto p-2" onclickcapture={(e) => mentionProfile.open(e)}>
 				{#if failure}
 					<p class="px-2 py-8 text-center text-xs text-red-400">{failure}</p>
 				{:else if pins.length === 0}
@@ -184,3 +186,4 @@
 </Popover.Root>
 
 <ImagePreview src={previewSrc} alt={previewAlt} bind:open={previewOpen} />
+<MentionProfile bind:this={mentionProfile} {members} {space} />
