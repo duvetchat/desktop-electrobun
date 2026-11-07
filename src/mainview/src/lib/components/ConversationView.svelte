@@ -79,6 +79,8 @@
 	import { getApiError } from "$lib/api/api";
 	import { groupActions } from "$lib/groups";
 	import { withSentMessage } from "$lib/arrivals";
+	import { putBackFiles } from "$lib/drafts";
+	import { CANCELLED, sendFollowed, withoutSending } from "$lib/uploads";
 	import {
 		dividerPastWindow,
 		inWindow,
@@ -534,17 +536,11 @@
 		};
 		dmMessages.update((all) => ({ ...all, [convId]: [...(all[convId] ?? []), pending] }));
 		dmRetryData.set(nonce, { ref, files, stickerAttachmentId, allowedMentions });
-		const real = await sendDirectMessage(
-			convId,
-			content,
-			nonce,
-			ref,
-			files,
-			undefined,
-			stickerAttachmentId,
-			allowedMentions,
+		const real = await sendFollowed(nonce, files, (upload) =>
+			sendDirectMessage(convId, content, nonce, ref, files, undefined, stickerAttachmentId, allowedMentions, upload),
 		);
-		showSent(convId, nonce, real);
+		if (real === CANCELLED) dmCancelled(convId, nonce, files);
+		else showSent(convId, nonce, real);
 	}
 
 	// What follows a send of this window's that the API took: its retry data goes, and the API's copy takes the place of
@@ -558,6 +554,20 @@
 			const shown = withSentMessage(existing, nonce, real);
 			return shown === existing ? all : { ...all, [convId]: shown };
 		});
+	}
+
+	// As a room's (Chat's cancelled): a send whose upload was cancelled leaves the conversation's list, and its files go
+	// back to the conversation's draft, unless DM_MESSAGE_CREATE has replaced it, the message posted after all.
+	function dmCancelled(convId: string, nonce: string, files: File[] | undefined) {
+		dmRetryData.delete(nonce);
+		let wasSending = false;
+		dmMessages.update((all) => {
+			const kept = withoutSending(all[convId] ?? [], nonce);
+			if (!kept) return all;
+			wasSending = true;
+			return { ...all, [convId]: kept };
+		});
+		if (wasSending) putBackFiles(convId, files ?? []);
 	}
 
 	async function dmSaveEdit(messageId: string, content: string) {
@@ -593,17 +603,20 @@
 				});
 			return;
 		}
-		sendDirectMessage(
-			convId,
-			message.content ?? "",
-			nonce,
-			saved?.ref,
-			saved?.files,
-			undefined,
-			saved?.stickerAttachmentId,
-			saved?.allowedMentions,
+		sendFollowed(nonce, saved?.files, (upload) =>
+			sendDirectMessage(
+				convId,
+				message.content ?? "",
+				nonce,
+				saved?.ref,
+				saved?.files,
+				undefined,
+				saved?.stickerAttachmentId,
+				saved?.allowedMentions,
+				upload,
+			),
 		)
-			.then((real) => showSent(convId, nonce, real))
+			.then((real) => (real === CANCELLED ? dmCancelled(convId, nonce, saved?.files) : showSent(convId, nonce, real)))
 			.catch((err) => {
 				failedNonces = new Set(failedNonces).add(nonce);
 				toast(getApiError(err, "Failed to send message"), "error");

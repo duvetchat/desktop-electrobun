@@ -1,4 +1,4 @@
-import api from "$lib/api/api";
+import api, { type UploadOptions } from "$lib/api/api";
 import type { SpaceEmoji } from "$lib/types";
 
 export async function listEmojis(spaceId: string): Promise<SpaceEmoji[]> {
@@ -6,12 +6,17 @@ export async function listEmojis(spaceId: string): Promise<SpaceEmoji[]> {
 	return response.data;
 }
 
-export async function createEmoji(spaceId: string, name: string, file: File): Promise<SpaceEmoji> {
+export async function createEmoji(
+	spaceId: string,
+	name: string,
+	file: File,
+	upload?: UploadOptions,
+): Promise<SpaceEmoji> {
 	const form = new FormData();
 	form.append("name", name);
 	form.append("file", file);
 
-	const response = await api.post(`/api/spaces/${spaceId}/emojis`, form);
+	const response = await api.post(`/api/spaces/${spaceId}/emojis`, form, upload);
 	return response.data;
 }
 

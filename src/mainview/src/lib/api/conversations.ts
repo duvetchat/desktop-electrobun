@@ -1,4 +1,4 @@
-import api from "$lib/api/api";
+import api, { type UploadOptions } from "$lib/api/api";
 import { createAckThrottle } from "$lib/api/ack";
 import { messageSearchParams, type MessageSearch, type MessageSearchResponse } from "$lib/api/messages";
 import type { CallNotice, GatewayMessage, MessageType, Presence } from "$lib/types";
@@ -174,6 +174,7 @@ export async function getDirectMessagesAfter(
 	return res.data;
 }
 
+/** Sends a message to a conversation: with files, as a form, its text and files together, which upload follows. */
 export async function sendDirectMessage(
 	conversationId: string,
 	content: string,
@@ -183,6 +184,7 @@ export async function sendDirectMessage(
 	msgEmbeds?: import("$lib/types").Embed[],
 	stickerAttachmentId?: string,
 	allowedMentions?: import("$lib/types").AllowedMentions,
+	upload?: UploadOptions,
 ): Promise<DirectMessage> {
 	if (files && files.length > 0) {
 		const form = new FormData();
@@ -192,7 +194,7 @@ export async function sendDirectMessage(
 		if (allowedMentions) form.append("allowed_mentions", JSON.stringify(allowedMentions));
 		for (const f of files) form.append("files", f);
 
-		const res = await api.post(`/api/users/@me/conversations/${conversationId}/messages`, form);
+		const res = await api.post(`/api/users/@me/conversations/${conversationId}/messages`, form, upload);
 		return res.data;
 	}
 

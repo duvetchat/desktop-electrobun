@@ -1,4 +1,4 @@
-import api from "$lib/api/api";
+import api, { type UploadOptions } from "$lib/api/api";
 import type { SpaceSticker } from "$lib/types";
 
 export async function listStickers(spaceId: string): Promise<SpaceSticker[]> {
@@ -6,12 +6,17 @@ export async function listStickers(spaceId: string): Promise<SpaceSticker[]> {
 	return response.data;
 }
 
-export async function createSticker(spaceId: string, name: string, file: File): Promise<SpaceSticker> {
+export async function createSticker(
+	spaceId: string,
+	name: string,
+	file: File,
+	upload?: UploadOptions,
+): Promise<SpaceSticker> {
 	const form = new FormData();
 	form.append("name", name);
 	form.append("file", file);
 
-	const response = await api.post(`/api/spaces/${spaceId}/stickers`, form);
+	const response = await api.post(`/api/spaces/${spaceId}/stickers`, form, upload);
 	return response.data;
 }
 
