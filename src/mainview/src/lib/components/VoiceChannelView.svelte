@@ -20,7 +20,7 @@
 		voiceLocalCameraStream,
 		voiceRemoteCameraStreams,
 	} from "$lib/stores.svelte";
-	import { sendVoiceSync } from "$lib/voice";
+	import { toggleDeafen, toggleMute as toggleMic } from "$lib/voice";
 	import { getAvatarURL } from "$lib/common/common";
 	import {
 		Check,
@@ -295,14 +295,7 @@
 
 	function toggleMute() {
 		if (!canSpeak) return;
-		isMuted.update((m) => !m);
-		sendVoiceSync();
-	}
-
-	function toggleDeafen() {
-		isDeafened.update((d) => !d);
-		if ($isDeafened) isMuted.set(true);
-		sendVoiceSync();
+		toggleMic();
 	}
 
 	function toggleCamera() {

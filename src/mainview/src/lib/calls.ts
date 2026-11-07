@@ -1,10 +1,13 @@
 import type { ActiveCallInfo, CallVoiceState } from "$lib/stores.svelte";
+import type { ConversationMember } from "$lib/api/conversations";
 import type {
 	CallAcceptedEvent,
 	CallDeclinedEvent,
+	CallIncomingEvent,
 	CallOngoingEvent,
 	GatewayCallVoiceState,
 	GatewayReadyActiveCall,
+	VoiceSessionReplacedEvent,
 	VoiceStateUpdateEvent,
 } from "$lib/types";
 import { REJOIN_WINDOW_MS, sendAgain, type AwaitedSend } from "$lib/resend";
@@ -42,6 +45,46 @@ export function callDeclinedAction(
 ): "dismiss" | null {
 	if (!call || call.conversationId !== declined.conversation_id) return null;
 	return call.state === "ringing" && declined.user_id === me ? "dismiss" : null;
+}
+
+/**
+ * What a CALL_DECLINED tells the user: someone turned down the call this client is placing. Only there: their other
+ * devices get the event too, and so do those of whoever declined, where their own decline stops the ringing and says
+ * nothing. Others in a group hear nothing of it, and once someone has answered, the call goes on whoever declines. Someone
+ * whose connection ends while it rings them counts as declining it, and the event doesn't tell the two apart.
+ */
+export function callDeclinedNotice(
+	call: ShownCall | null,
+	declined: CallDeclinedEvent,
+	me: string | undefined,
+	members: Pick<ConversationMember, "user_id" | "user">[] = [],
+): string | null {
+	if (call?.conversationId !== declined.conversation_id || call.state !== "calling" || declined.user_id === me) {
+		return null;
+	}
+	const user = members.find((m) => m.user_id === declined.user_id)?.user;
+	return `${user?.alias ?? user?.username ?? "They"} declined`;
+}
+
+/**
+ * What a CALL_INCOMING that doesn't ring here tells the user: it came during another call, and this client shows one at a
+ * time. Not with no call shown, as it rings then. Nor for the call this client shows: two calls that crossed are one, and
+ * an event held for READY can repeat the call READY rang for.
+ */
+export function missedCallNotice(call: ShownCall | null, incoming: CallIncomingEvent): string | null {
+	if (!call || call.conversationId === incoming.conversation_id) return null;
+	return `Missed a call from ${incoming.initiator_name}`;
+}
+
+/**
+ * What the user is told when the gateway ends the voice this client is in (VOICE_SESSION_REPLACED). "permissions" means
+ * they can't be in that room any more: they lost ViewChannels or JoinVoice there, left its space, or it went. Without a
+ * reason, a newer join of theirs, from another session, took it.
+ */
+export function voiceEndedNotice(ended: VoiceSessionReplacedEvent): string {
+	return ended.reason === "permissions"
+		? "You can't be in this voice room anymore"
+		: "Your voice moved to another device";
 }
 
 /**
