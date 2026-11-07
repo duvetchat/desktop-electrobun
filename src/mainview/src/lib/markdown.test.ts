@@ -197,6 +197,47 @@ describe("user mentions", () => {
 	});
 });
 
+// A member, an emoji or a room can be named as one of the others is written. Read in turn, the rules read each other's
+// output: a chip held a room's chip, whose click did both, and a room's chip inside an emoji's alt broke its image.
+describe("a name that holds a mention, an emoji or a room", () => {
+	const USER = "0190a3b2-0000-7000-8000-0000000000a1";
+	const EMOJI = "0190a3b2-0000-7000-8000-0000000000e1";
+	const ROOM = "0190a3b2-0000-7000-8000-0000000000c1";
+	const ATTACHMENT = "0190a3b2-0000-7000-8000-0000000000aa";
+	const forms = `<@${USER}> <:${EMOJI}:> <#${ROOM}>`;
+	const asText = `&lt;@${USER}&gt; &lt;:${EMOJI}:&gt; &lt;#${ROOM}&gt;`;
+	const members = { [USER]: forms };
+	const emojis = { [EMOJI]: { name: forms, attachment_id: ATTACHMENT } };
+	const rooms = { [ROOM]: forms };
+	const member = `<span class="msg-mention" data-user-id="${USER}">@${asText}</span>`;
+	const room = `<span class="msg-room-mention" data-room-id="${ROOM}">#${asText}</span>`;
+	const emoji = `<img class="emoji-img custom-emoji" src="https://api.test/attachments/${ATTACHMENT}" alt="${asText}" title=":${asText}:" draggable="false" loading="lazy">`;
+
+	test("a member's stays text in their chip", () => {
+		expect(renderMarkdown(`<@${USER}>`, false, members, emojis, rooms)).toBe(member);
+	});
+
+	test("a room's stays text in its chip", () => {
+		expect(renderMarkdown(`<#${ROOM}>`, false, members, emojis, rooms)).toBe(room);
+	});
+
+	test("an emoji's stays text in its alt and title", () => {
+		expect(renderMarkdown(`<:${EMOJI}:>`, false, members, emojis, rooms)).toBe(emoji);
+	});
+
+	test("the three in one text are read once each, in a reply's quote too", () => {
+		const text = `<@${USER}> <:${EMOJI}:> <#${ROOM}>`;
+		expect(renderMarkdown(text, false, members, emojis, rooms)).toBe(`${member} ${emoji} ${room}`);
+		expect(renderMarkdownLine(text, members, emojis, rooms)).toBe(`${member} ${emoji} ${room}`);
+	});
+
+	test("what's written around them is still read", () => {
+		expect(renderMarkdown(`**<@${USER}>** \`<#${ROOM}>\``, false, members, emojis, rooms)).toBe(
+			`<strong>${member}</strong> <code class="msg-inline-code">&lt;#${ROOM}&gt;</code>`,
+		);
+	});
+});
+
 describe("clickedMention", () => {
 	const ANA = "0190a3b2-0000-7000-8000-0000000000a1";
 	// Bun has no DOM: what a click lands on, as clickedMention reads it, inside a mention's chip or not.
@@ -271,11 +312,13 @@ describe("the HTML it makes", () => {
 	const ID1 = "0190a3b2-0000-7000-8000-000000000001";
 	const ID2 = "0190a3b2-0000-7000-8000-000000000002";
 	const ID3 = "0190a3b2-0000-7000-8000-000000000003";
-	const mentionMap = { [ID1]: `"><img src=x onerror=alert(1)>'&<b>` };
+	// Each also holds what the others are written as, which only one pass over the text leaves alone.
+	const forms = `<@${ID1}><:${ID2}:><#${ID3}>`;
+	const mentionMap = { [ID1]: `"><img src=x onerror=alert(1)>'&<b>${forms}` };
 	const customEmojiMap = {
-		[ID2]: { name: `x"><script>alert(1)</script>'`, attachment_id: "0190a3b2-0000-7000-8000-0000000000aa" },
+		[ID2]: { name: `x"><script>alert(1)</script>'${forms}`, attachment_id: "0190a3b2-0000-7000-8000-0000000000aa" },
 	};
-	const roomNames = { [ID3]: `"><img src=x onerror=alert(1)>'&<b>` };
+	const roomNames = { [ID3]: `"><img src=x onerror=alert(1)>'&<b>${forms}` };
 	const PIECES = [
 		"[",
 		"]",

@@ -280,29 +280,33 @@ function applyInline(
 	s = s.replace(/(?<!\w)_([^\s_](?:[^_]*[^\s_])?)_(?!\w)/gs, (_, t) => `<em>${t}</em>`);
 	s = s.replace(/~~(.+?)~~/gs, (_, t) => `<del>${t}</del>`);
 	s = s.replace(/\|\|(.+?)\|\|/gs, (_, t) => `<span class="msg-spoiler">${t}</span>`);
-	// Resolve <@id> mentions to @username. One of someone the map knows carries their ID, to open their profile
-	// (clickedMention); any other one, of someone who left or isn't loaded, is only a name, as their name on a message is.
-	s = s.replace(/&lt;@([a-f0-9-]+)&gt;/g, (_, id: string) => {
-		const name = mentionMap?.[id];
-		const user = name !== undefined && isUuid(id) ? ` data-user-id="${id}"` : "";
-		return `<span class="msg-mention"${user}>@${escapeHtml(name ?? id.slice(0, 8))}</span>`;
-	});
-	// Resolve <:id:> custom emojis to inline images
 	const ceCls = large ? `emoji-img emoji-large ${CUSTOM_EMOJI_CLASS}` : `emoji-img ${CUSTOM_EMOJI_CLASS}`;
 	const ceDelCls = large ? "emoji-deleted emoji-deleted-large" : "emoji-deleted";
-	s = s.replace(/&lt;:([a-f0-9-]+):&gt;/g, (full, id) => {
-		const ce = customEmojiMap?.[id];
-		if (!ce) return `<span class="${ceDelCls}" title="Emoji deleted">💩</span>`;
-		return `<img class="${ceCls}" src="${emojiHost}/attachments/${ce.attachment_id}" alt="${escapeHtml(ce.name)}" title=":${escapeHtml(ce.name)}:" draggable="false" loading="lazy">`;
-	});
-	// Resolve <#id> room mentions to #name, for the rooms the reader can view (roomNames). Any other one, or one that's
-	// gone, reads #unknown, with no room to open. Last, so that no rule above reads a room's name as markdown.
-	s = s.replace(/&lt;#([a-f0-9-]+)&gt;/g, (_, id: string) => {
-		const name = roomNames?.[id];
-		if (name === undefined) return `<span class="msg-room-mention msg-room-unknown">#unknown</span>`;
-		return `<span class="msg-room-mention" data-room-id="${id}">#${escapeHtml(name)}</span>`;
-	});
-	return s;
+	// Mentions, custom emojis and rooms' mentions, last, so that no rule above reads their names as markdown, and in one
+	// pass, as a name can hold any of the three, which a later pass would read in what the pass before it wrote.
+	return s.replace(
+		/&lt;(?:@([a-f0-9-]+)|:([a-f0-9-]+):|#([a-f0-9-]+))&gt;/g,
+		(_, userId: string | undefined, emojiId: string | undefined, roomId: string | undefined) => {
+			// <@id> reads @username. One of someone the map knows carries their ID, to open their profile (clickedMention); any
+			// other one, of someone who left or isn't loaded, is only a name, as their name on a message is.
+			if (userId !== undefined) {
+				const name = mentionMap?.[userId];
+				const user = name !== undefined && isUuid(userId) ? ` data-user-id="${userId}"` : "";
+				return `<span class="msg-mention"${user}>@${escapeHtml(name ?? userId.slice(0, 8))}</span>`;
+			}
+			// <:id:> is an inline image.
+			if (emojiId !== undefined) {
+				const ce = customEmojiMap?.[emojiId];
+				if (!ce) return `<span class="${ceDelCls}" title="Emoji deleted">💩</span>`;
+				return `<img class="${ceCls}" src="${emojiHost}/attachments/${ce.attachment_id}" alt="${escapeHtml(ce.name)}" title=":${escapeHtml(ce.name)}:" draggable="false" loading="lazy">`;
+			}
+			// <#id> reads #name, for the rooms the reader can view (roomNames). Any other one, or one that's gone, reads
+			// #unknown, with no room to open.
+			const name = roomNames?.[roomId ?? ""];
+			if (name === undefined) return `<span class="msg-room-mention msg-room-unknown">#unknown</span>`;
+			return `<span class="msg-room-mention" data-room-id="${roomId}">#${escapeHtml(name)}</span>`;
+		},
+	);
 }
 
 function highlightCode(code: string, lang: string): string {
