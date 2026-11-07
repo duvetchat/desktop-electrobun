@@ -110,12 +110,15 @@
 		conversation,
 		onMemberAdded = undefined,
 		onBarActions = undefined,
+		paneFocused = true,
 	}: {
 		conversation: Conversation;
 		onMemberAdded?: (member: ConversationMember) => void;
 		/** A pane's bar, which names the conversation in its tab, shows its actions while it shows (null once it's
 		 * gone). Without one, the view has its own header with them. */
 		onBarActions?: (conversationId: string, actions: Snippet | null) => void;
+		/** Whether its pane is the focused one, as its Chat takes it; true outside the panes (the friends view's). */
+		paneFocused?: boolean;
 	} = $props();
 
 	let isLoading = $state(true);
@@ -1129,6 +1132,7 @@
 			onUnreadMark={(msgId) => {
 				if (convUnreadAfter == null) convUnreadAfter = msgId;
 			}}
+			{paneFocused}
 		/>
 
 		<!-- Member list sidebar -->

@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { ContextMenu } from "bits-ui";
 	import type { Tab } from "$lib/types";
-	import { tabDragData, tabFromDragData, tabNews, tabTitle } from "$lib/pane";
+	import { tabDragData, tabFromDragData, tabNews, tabTitle, tabTooltip } from "$lib/pane";
 	import {
 		conversations,
 		currentUser,
@@ -194,7 +194,7 @@
 								? 'text-duvet-ink hover:bg-duvet-card/60 font-bold'
 								: 'text-duvet-ink2 hover:bg-duvet-card/60 hover:text-duvet-ink'}
 						{dragSrcIndex === tab.origIndex ? 'opacity-40' : 'opacity-100'}"
-						title={[title, spaceName, typing].filter(Boolean).join(" · ")}
+						title={tabTooltip(tab, title, $gatewaySpaces, typing)}
 						role="tab"
 						tabindex="0"
 						aria-selected={tab.channelId === activeTabId}

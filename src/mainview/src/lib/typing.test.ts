@@ -1,6 +1,15 @@
 import { describe, expect, test } from "bun:test";
 import type { TypingUser } from "$lib/stores.svelte";
-import { recordingPhrase, TYPING_TIMEOUT, typersAt, typingPhrase, typingSentence } from "$lib/typing";
+import {
+	NOTICE_INTERVAL,
+	noticeDue,
+	recordingPhrase,
+	TYPING_TIMEOUT,
+	typersAt,
+	typingPhrase,
+	typingSentence,
+	type SentNotice,
+} from "$lib/typing";
 
 const NOW = 1_000_000;
 const user = (name: string, ago = 0, recording = false, alias: string | null = null): TypingUser => ({
@@ -64,5 +73,39 @@ describe("what a chat's row says", () => {
 		expect(recordingPhrase([user("ana"), user("bob"), user("eve")])).toBe(
 			"Several people are recording voice messages",
 		);
+	});
+});
+
+// #203: the time of the last notice was one for all the chats a pane's view showed, so the first key in a room within
+// 3 s of one in another room sent nothing there.
+describe("the user's own notices (noticeDue)", () => {
+	test("the first in a chat goes at once, whatever another chat was just sent", () => {
+		const sent = new Map<string, SentNotice>();
+		expect(noticeDue(sent, "general", false, NOW)).toBe(true);
+		expect(noticeDue(sent, "random", false, NOW + 1)).toBe(true);
+		expect(noticeDue(sent, "a-conversation", true, NOW + 2)).toBe(true);
+	});
+
+	test("in one chat, one goes every NOTICE_INTERVAL at most, counted from the last that went", () => {
+		const sent = new Map<string, SentNotice>();
+		expect(noticeDue(sent, "general", false, NOW)).toBe(true);
+		expect(noticeDue(sent, "general", false, NOW + 1000)).toBe(false);
+		expect(noticeDue(sent, "general", false, NOW + NOTICE_INTERVAL - 1)).toBe(false);
+		expect(noticeDue(sent, "general", false, NOW + NOTICE_INTERVAL)).toBe(true);
+		// Another chat's notices leave this one's time alone.
+		expect(noticeDue(sent, "random", false, NOW + NOTICE_INTERVAL + 1)).toBe(true);
+		expect(noticeDue(sent, "general", false, NOW + NOTICE_INTERVAL + 2)).toBe(false);
+	});
+
+	test("typing turning into recording, or back, goes at once", () => {
+		const sent = new Map<string, SentNotice>();
+		expect(noticeDue(sent, "general", false, NOW)).toBe(true);
+		expect(noticeDue(sent, "general", true, NOW + 100)).toBe(true);
+		expect(noticeDue(sent, "general", true, NOW + 200)).toBe(false);
+		expect(noticeDue(sent, "general", false, NOW + 300)).toBe(true);
+	});
+
+	test("goes no more often than the API lets one through, every 2 s per user and chat", () => {
+		expect(NOTICE_INTERVAL).toBeGreaterThanOrEqual(2000);
 	});
 });

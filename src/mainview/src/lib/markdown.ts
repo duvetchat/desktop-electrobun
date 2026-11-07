@@ -492,10 +492,17 @@ export function clickedMention(target: EventTarget | null): { chip: HTMLElement;
 	return chip && userId && !chip.closest("a") ? { chip, userId } : null;
 }
 
-/** Splits a message's text into its bare links (http(s) and duvet://) and the text between them, for renderMarkdown. */
+/**
+ * Splits a message's text into its bare links (http(s) and duvet://) and the text between them, for renderMarkdown. A
+ * link is read as the mobile app reads one (its lib/data/markdown.dart): up to a space, a < or a >, with a (…) in it
+ * only whole, as in Wikipedia's Foo_(bar), so that a ) closing a ( opened before the link is the text's; and without
+ * the .,;:!? or ]}"' at its end, the punctuation of the sentence around it. Not a markdown link's URL ([text](url)),
+ * which renderMarkdown takes.
+ */
 export function parseTextSegments(text: string) {
 	const segments: { type: "text" | "link"; content: string }[] = [];
-	const bareUrlRegex = /(?<!\]\()(?:https?|duvet):\/\/[^\s)]+(?:\)[^\s)]*)*|(?<=\s|^)(?:https?|duvet):\/\/[^\s]+/g;
+	const bareUrlRegex =
+		/(?<!\]\()(?:https?|duvet):\/\/(?:[^\s<>()]|\([^\s<>()]*\))*(?:[^\s<>.,;:!?()\]}"']|\([^\s<>()]*\))/g;
 	let lastIndex = 0;
 	let match;
 	while ((match = bareUrlRegex.exec(text)) !== null) {

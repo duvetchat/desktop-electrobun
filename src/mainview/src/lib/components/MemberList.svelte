@@ -57,8 +57,7 @@
 
 <script lang="ts">
 	import { Crown as CrownSimpleIcon, Mic as MicIcon } from "@lucide/svelte";
-	import { typingUsers, userActivities } from "$lib/stores.svelte";
-	import { TYPING_TIMEOUT } from "$lib/typing";
+	import { typingNow, userActivities } from "$lib/stores.svelte";
 	import { isSpotify, shownActivities } from "$lib/activity";
 	import MemberBanner from "$lib/components/MemberBanner.svelte";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
@@ -85,23 +84,17 @@
 		profileSide?: "left" | "right" | "top" | "bottom";
 	} = $props();
 
-	let now = $state(Date.now());
-	$effect(() => {
-		const t = setInterval(() => {
-			now = Date.now();
-		}, 1000);
-		return () => clearInterval(t);
-	});
+	// Who shows as typing or recording in the chat right now, as its rows and tabs show them (typingNow): everyone but the
+	// user, until their notice gets old.
+	const typers = $derived(channelId ? ($typingNow[channelId] ?? []) : []);
 
 	function isTyping(userId: string): boolean {
-		if (!channelId) return false;
-		const entry = ($typingUsers[channelId] ?? []).find((u) => u.user_id === userId);
-		return !!entry && now - entry.timestamp < TYPING_TIMEOUT;
+		return typers.some((u) => u.user_id === userId);
 	}
 
 	// Whether the member's typing notice says they are recording a voice message.
 	function isRecording(userId: string): boolean {
-		return isTyping(userId) && !!($typingUsers[channelId ?? ""] ?? []).find((u) => u.user_id === userId)?.recording;
+		return !!typers.find((u) => u.user_id === userId)?.recording;
 	}
 
 	// ── Helpers ────────────────────────────────────────────────────────────────
