@@ -1,3 +1,23 @@
+<script lang="ts" module>
+	import type { AllowedMentions, MessageReference } from "$lib/types";
+
+	// Which sends failed, and what each message being sent was sent with besides its text (its files, reply, sticker,
+	// and the reply's mention, or a voice note's audio), so that a retry sends it whole, as Chat's retryData does for a
+	// room's. By nonce, and apart from the view, which goes with its tab: a failure can come after it's gone, and its
+	// message stays in the conversation's list, for its Retry when the conversation shows again.
+	let failedNonces = $state(new Set<string>());
+	const dmRetryData = new Map<
+		string,
+		{
+			ref?: MessageReference;
+			files?: File[];
+			stickerAttachmentId?: string;
+			allowedMentions?: AllowedMentions;
+			voiceNote?: Blob;
+		}
+	>();
+</script>
+
 <script lang="ts">
 	import { onMount, untrack, type Snippet } from "svelte";
 	import { get } from "svelte/store";
@@ -52,14 +72,7 @@
 		type DirectMessage,
 	} from "$lib/api/conversations";
 	import type { Friend } from "$lib/api/friends";
-	import {
-		MessageType,
-		sentAt,
-		userStatusToString,
-		type AllowedMentions,
-		type Message,
-		type MessageReference,
-	} from "$lib/types";
+	import { MessageType, sentAt, userStatusToString, type Message } from "$lib/types";
 	import { toast } from "$lib/stores/toast.svelte";
 	import { confirmAction } from "$lib/stores/confirm.svelte";
 	import { promptDialog } from "$lib/stores/prompt.svelte";
@@ -106,7 +119,6 @@
 	let isLoading = $state(true);
 	let isLoadingMore = $state(false);
 	let hasMore = $state(true);
-	let failedNonces = $state(new Set<string>());
 	let isAtBottom = $state(false);
 	let convUnreadAfter = $state<string | null>(null);
 	const ackedConvMsgId = new Map<string, string>();
@@ -470,19 +482,6 @@
 			return false;
 		}
 	}
-
-	// What each message being sent was sent with besides its text (its files, reply, sticker, and the reply's mention,
-	// or a voice note's audio), so that a retry sends it whole, as Chat's retryData does for a room's.
-	const dmRetryData = new Map<
-		string,
-		{
-			ref?: MessageReference;
-			files?: File[];
-			stickerAttachmentId?: string;
-			allowedMentions?: AllowedMentions;
-			voiceNote?: Blob;
-		}
-	>();
 
 	async function dmHandleSend(
 		content: string,

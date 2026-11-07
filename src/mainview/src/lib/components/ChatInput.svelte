@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount } from "svelte";
+	import { onDestroy, onMount, untrack } from "svelte";
 	import { Popover } from "bits-ui";
 	import {
 		Smile as SmileIcon,
@@ -23,6 +23,7 @@
 		matchingCommands,
 		type CommandEntry,
 	} from "$lib/commands";
+	import { changeDraft, chatDrafts, draftOf } from "$lib/drafts";
 	import { escapeHtml } from "$lib/markdown";
 	import { formatDuration } from "$lib/utils/time";
 	import MemberBanner from "$lib/components/MemberBanner.svelte";
@@ -45,6 +46,7 @@
 	let {
 		placeholder = "",
 		initialValue = "",
+		draftChat,
 		onSubmit,
 		onVoiceNote,
 		onRecording,
@@ -63,6 +65,9 @@
 	}: {
 		placeholder?: string;
 		initialValue?: string;
+		/** The chat whose draft the box holds (lib/drafts.ts), for as long as it lives: it starts from that draft, keeps
+		 * it as it changes, and shows what another pane's box of the chat writes to it. */
+		draftChat?: string;
 		onSubmit: (text: string, files?: File[], stickerAttachmentId?: string) => void;
 		onVoiceNote?: (blob: Blob) => void;
 		/** Called when a voice note's recording starts, and every second while it goes on. */
@@ -98,6 +103,29 @@
 		isEmpty = hasNoText(initialValue);
 	});
 
+	// Read once: what comes after the user left this box's chat (an event of its element going away) writes that chat's
+	// draft, never the one they went to.
+	const chat = untrack(() => draftChat);
+	// The text this box last wrote to its chat's draft, or showed from it: any other text there is another box's.
+	let kept = "";
+	// What the box still waits for once it's gone (the commands list, the microphone, a file dialog) comes to nothing.
+	let destroyed = false;
+	onDestroy(() => {
+		destroyed = true;
+		cancelRecording();
+	});
+
+	function keepDraft(raw: string) {
+		if (!chat) return;
+		kept = hasNoText(raw) ? "" : raw;
+		changeDraft(chat, { text: kept });
+	}
+
+	function changed(raw: string) {
+		keepDraft(raw);
+		onValueChange?.(raw);
+	}
+
 	// ── Voice recording ──────────────────────────────────────────────────────
 	let recording = $state(false);
 	let recordingDuration = $state(0);
@@ -117,6 +145,10 @@
 					autoGainControl: true,
 				},
 			});
+			if (destroyed) {
+				rawStream.getTracks().forEach((t) => t.stop());
+				return;
+			}
 			const recordStream = rawStream;
 
 			const chunks: Blob[] = [];
@@ -126,7 +158,7 @@
 			};
 			mediaRecorder.onstop = () => {
 				rawStream.getTracks().forEach((t) => t.stop());
-				if (chunks.length > 0) {
+				if (chunks.length > 0 && !destroyed) {
 					const blob = new Blob(chunks, { type: "audio/webm;codecs=opus" });
 					onVoiceNote?.(blob);
 				}
@@ -188,7 +220,7 @@
 
 	function handleFileSelect(e: Event) {
 		const input = e.target as HTMLInputElement;
-		if (input.files) {
+		if (input.files && !destroyed) {
 			pendingFiles = [...pendingFiles, ...Array.from(input.files)];
 		}
 		input.value = "";
@@ -203,8 +235,12 @@
 		}
 		if (autofocus) {
 			requestAnimationFrame(() => {
-				inputEl?.focus();
-				if (initialValue) setOffset(initialValue.length);
+				if (destroyed) return;
+				takeFocus();
+				// A draft that is a command's name opens its menu again: Enter picks the command there, rather than post
+				// its name.
+				const raw = chat && document.activeElement === inputEl ? getRaw(inputEl) : "";
+				if (raw && commandQueryOf(raw, null) !== null) checkAutocomplete(raw, raw.length);
 			});
 		}
 	});
@@ -217,10 +253,43 @@
 			hadCustomEmojis = true;
 			const raw = getRaw(inputEl);
 			if (raw.includes("<:")) {
-				const pos = getOffset();
-				rerender(raw, pos);
+				if (selectionInBox()) rerender(raw, getOffset());
+				else inputEl.innerHTML = buildHtml(raw);
 			}
 		}
+	});
+
+	// A draft can come back before its space's members and rooms do (a READY brings them again): its chips follow them,
+	// in place, as rebuilding the text would end a composition.
+	$effect(() => {
+		void [members, $roomNames];
+		untrack(() => {
+			for (const chip of inputEl?.querySelectorAll<HTMLElement>("[data-mention], [data-room]") ?? []) {
+				const { mention, room } = chip.dataset;
+				const text = mention ? `@${resolveMentionName(mention)}` : roomMentionText(room ?? "");
+				if (chip.textContent !== text) chip.textContent = text;
+			}
+		});
+	});
+
+	// Shows the chat's draft: as the box starts, as its element comes back after a recording, and when another pane's
+	// box of the chat writes or sends it. The caret stays where it is: in that other box, or this one places it as it
+	// takes the focus. Undo starts over from here: what the other box sent or wrote isn't this one's to undo.
+	let filledEl: HTMLElement | null = null;
+	$effect(() => {
+		const el = inputEl;
+		if (!chat || !el) return;
+		const text = draftOf($chatDrafts, chat).text;
+		if (el === filledEl && text === kept) return;
+		filledEl = el;
+		kept = text;
+		untrack(() => {
+			el.innerHTML = buildHtml(text);
+			isEmpty = hasNoText(text);
+			undoStack = [{ raw: text, cursor: text.length }];
+			undoIndex = 0;
+			closeSuggestions();
+		});
 	});
 
 	// ── Autocomplete ────────────────────────────────────────────────────────────
@@ -270,7 +339,18 @@
 		isEmpty = true;
 		undoStack = [{ raw: "", cursor: 0 }];
 		undoIndex = 0;
+		keepDraft("");
 		onCommand?.(entry, app);
+	}
+
+	function closeSuggestions() {
+		commandQuery = null;
+		mentionSuggestions = [];
+		mentionQueryStart = -1;
+		roomSuggestions = [];
+		roomQueryStart = -1;
+		suggestions = [];
+		emojiQueryStart = -1;
 	}
 
 	function resolveMentionName(id: string): string {
@@ -422,7 +502,7 @@
 		const { raw, cursor } = undoStack[undoIndex];
 		rerender(raw, cursor);
 		isEmpty = hasNoText(raw);
-		onValueChange?.(raw);
+		changed(raw);
 	}
 
 	function redo() {
@@ -431,7 +511,7 @@
 		const { raw, cursor } = undoStack[undoIndex];
 		rerender(raw, cursor);
 		isEmpty = hasNoText(raw);
-		onValueChange?.(raw);
+		changed(raw);
 	}
 
 	// ── Re-render helpers ───────────────────────────────────────────────────────
@@ -451,7 +531,7 @@
 		const typedCommand = loadCommands ? commandQueryOf(raw, commandList) : null;
 		if (typedCommand !== null && loadCommands) {
 			if (commandQuery === null) {
-				// This box stays as the rooms change: another space's list isn't shown while this one's loads.
+				// Asked for each time the menu opens: an earlier list isn't shown while this one loads.
 				commandList = null;
 				const request = loadCommands();
 				commandRequest = request;
@@ -558,7 +638,7 @@
 		rerender(newRaw, newPos);
 		pushUndo(newRaw, newPos, false);
 		isEmpty = hasNoText(newRaw);
-		onValueChange?.(newRaw);
+		changed(newRaw);
 		mentionSuggestions = [];
 		mentionQueryStart = -1;
 		mentionSelectedIdx = 0;
@@ -577,7 +657,7 @@
 		rerender(newRaw, newPos);
 		pushUndo(newRaw, newPos, false);
 		isEmpty = hasNoText(newRaw);
-		onValueChange?.(newRaw);
+		changed(newRaw);
 		roomSuggestions = [];
 		roomQueryStart = -1;
 		roomSelectedIdx = 0;
@@ -595,7 +675,7 @@
 		rerender(newRaw, newPos);
 		pushUndo(newRaw, newPos, false);
 		isEmpty = hasNoText(newRaw);
-		onValueChange?.(newRaw);
+		changed(newRaw);
 		suggestions = [];
 		emojiQueryStart = -1;
 		selectedIdx = 0;
@@ -614,7 +694,7 @@
 	// An IME composes its text in the input, and a rerender would commit what it has so far and start it over (日本
 	// came out as ににほにほん日本), so the input waits for compositionend, which comes here too.
 	function handleInput(e?: Event) {
-		if ((e as InputEvent | undefined)?.isComposing) return;
+		if ((e as InputEvent | undefined)?.isComposing || !inputEl) return;
 		const raw = getRaw(inputEl);
 		const offset = pendingOffset ?? getOffset();
 		pendingOffset = null;
@@ -622,7 +702,7 @@
 		rerender(raw, offset);
 		pushUndo(raw, offset);
 		checkAutocomplete(raw, offset);
-		onValueChange?.(raw);
+		changed(raw);
 	}
 
 	function handleKeyDown(e: KeyboardEvent) {
@@ -759,7 +839,7 @@
 				commandOnceListed(request, commandQuery).then((entry) => {
 					enterAwaitingList = false;
 					// Another room's list by now, or other text: that Enter is over.
-					if (commandRequest !== request || getRaw(inputEl) !== raw) return;
+					if (destroyed || commandRequest !== request || getRaw(inputEl) !== raw) return;
 					if (entry) pickCommand(entry);
 					else sendMessage();
 				});
@@ -793,6 +873,7 @@
 		// What was sent is no draft to undo back to.
 		undoStack = [{ raw: "", cursor: 0 }];
 		undoIndex = 0;
+		keepDraft("");
 	}
 
 	function getSelectionRange(): { start: number; end: number } {
@@ -948,7 +1029,7 @@
 		rerender(raw, pos);
 		pushUndo(raw, pos);
 		isEmpty = hasNoText(raw);
-		onValueChange?.(raw);
+		changed(raw);
 	}
 
 	function handlePaste(e: ClipboardEvent) {
@@ -978,7 +1059,7 @@
 		pushUndo(newRaw, newPos, false);
 		isEmpty = hasNoText(newRaw);
 		checkAutocomplete(newRaw, newPos);
-		onValueChange?.(newRaw);
+		changed(newRaw);
 	}
 
 	function handleStickerPick(sticker: SpaceSticker) {
@@ -1005,7 +1086,7 @@
 		rerender(newRaw, newPos);
 		pushUndo(newRaw, newPos, false);
 		isEmpty = hasNoText(newRaw);
-		onValueChange?.(newRaw);
+		changed(newRaw);
 
 		requestAnimationFrame(() => {
 			inputEl.focus();
@@ -1013,8 +1094,24 @@
 		});
 	}
 
+	function selectionInBox(): boolean {
+		const sel = window.getSelection();
+		return !!sel?.anchorNode && !!inputEl?.contains(sel.anchorNode);
+	}
+
+	// Takes the focus. The caret stays where it was in the box; one that was elsewhere goes after the text, as the box
+	// comes back with a draft.
+	function takeFocus() {
+		if (!inputEl) return;
+		const caretHere = selectionInBox();
+		inputEl.focus();
+		if (caretHere || document.activeElement !== inputEl) return;
+		setOffset(getRaw(inputEl).length);
+		inputEl.scrollTop = inputEl.scrollHeight;
+	}
+
 	export function focus() {
-		requestAnimationFrame(() => inputEl?.focus());
+		requestAnimationFrame(takeFocus);
 	}
 
 	export function focusAndInsert(char: string) {
@@ -1026,7 +1123,7 @@
 		rerender(newRaw, pos + char.length);
 		pushUndo(newRaw, pos + char.length);
 		isEmpty = false;
-		onValueChange?.(newRaw);
+		changed(newRaw);
 	}
 </script>
 

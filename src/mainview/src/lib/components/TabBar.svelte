@@ -20,6 +20,7 @@
 		onClose,
 		onReorder,
 		onChannelDrop,
+		description = null,
 	}: {
 		tabs: Tab[];
 		activeTabId: string | null;
@@ -28,6 +29,8 @@
 		onClose: (channelIds: string[]) => void;
 		onReorder: (newOrder: Tab[]) => void;
 		onChannelDrop: (tab: Tab) => void;
+		/** What the active room is for: it takes what the tabs leave of the row, and nothing when they fill it. */
+		description?: string | null;
 	} = $props();
 
 	let barEl: HTMLElement;
@@ -297,6 +300,10 @@
 					stroke-linejoin="round"><path d="M12 5v14" /><path d="m19 12-7 7-7-7" /></svg
 				>
 				Open channel
+			</div>
+		{:else if description}
+			<div class="flex h-full items-center overflow-hidden px-2">
+				<span class="text-duvet-ink2 truncate text-xs" title={description}>{description}</span>
 			</div>
 		{/if}
 	</div>

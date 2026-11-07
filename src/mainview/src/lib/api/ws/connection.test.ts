@@ -1,7 +1,8 @@
 import { afterAll, beforeAll, describe, expect, spyOn, test } from "bun:test";
 import { get } from "svelte/store";
 import { openGateway, type TestGateway } from "$lib/api/ws/test-gateway";
-import { MessageType } from "$lib/types";
+import { changeDraft, chatDrafts, draftOf } from "$lib/drafts";
+import { MessageType, type Message } from "$lib/types";
 
 const stores = await import("$lib/stores.svelte");
 
@@ -9,6 +10,17 @@ const ME = "01920000-0000-7000-8000-00000000b0b0";
 const ALICE = "01920000-0000-7000-8000-00000000a11c";
 const message = (n: number) => `01a15f8c-${String(n).padStart(4, "0")}-7000-8000-000000000000`;
 const conversation = (n: number) => `01a15f8c-0000-7000-8000-${String(n).padStart(12, "0")}`;
+const roomMessage = (id: string): Message => ({
+	id,
+	content: "the message",
+	type: MessageType.Text,
+	author_id: ALICE,
+	author_name: "alice",
+	author_avatar_url: null,
+	author_is_bot: false,
+	created_at: "",
+	updated_at: "",
+});
 
 let gateway: TestGateway;
 
@@ -49,6 +61,24 @@ beforeAll(async () => {
 afterAll(() => {
 	gateway.close();
 	fetchSpy.mockRestore();
+});
+
+describe("the message a draft replies to is deleted", () => {
+	test("in a room, the draft goes on as no reply", () => {
+		const room = conversation(10);
+		changeDraft(room, { text: "hello", replyTo: roomMessage(message(1)) });
+		deliver("MESSAGE_DELETE", { id: message(2), room_id: room });
+		expect(draftOf(get(chatDrafts), room).replyTo).not.toBeNull();
+		deliver("MESSAGE_DELETE", { id: message(1), room_id: room });
+		expect(draftOf(get(chatDrafts), room)).toMatchObject({ text: "hello", replyTo: null });
+	});
+
+	test("in a conversation too", () => {
+		const conv = conversation(11);
+		changeDraft(conv, { replyTo: roomMessage(message(1)) });
+		deliver("DM_MESSAGE_DELETE", { id: message(1), conversation_id: conv });
+		expect(draftOf(get(chatDrafts), conv).replyTo).toBeNull();
+	});
 });
 
 describe("a seen call's notice that comes late", () => {

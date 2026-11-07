@@ -110,6 +110,7 @@ import {
 } from "$lib/calls";
 import { withUserUpdate } from "$lib/friends";
 import { sendAgain } from "$lib/resend";
+import { dropReplyTo } from "$lib/drafts";
 import { knowMessage, newestKnownIn } from "$lib/jumps";
 import { storageTransfers } from "$lib/stores/storage-transfers.svelte";
 import { toast } from "$lib/stores/toast.svelte";
@@ -863,6 +864,7 @@ function handleEvent(event: GatewayEvent) {
 		case "MESSAGE_DELETE": {
 			const raw = payload.data;
 			dropEphemeral(raw.room_id, raw.id);
+			dropReplyTo(raw.room_id, raw.id);
 			channelMessages.update((all) => {
 				const existing = all[raw.room_id] ?? [];
 				return {
@@ -1630,6 +1632,7 @@ function handleEvent(event: GatewayEvent) {
 		}
 		case "DM_MESSAGE_DELETE": {
 			const raw = payload.data;
+			dropReplyTo(raw.conversation_id, raw.id);
 			dmMessages.update((all) => {
 				const existing = all[raw.conversation_id] ?? [];
 				return {

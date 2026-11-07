@@ -173,6 +173,16 @@ export function tabTitle(tab: Tab, conversations: ConversationLike[], meId: stri
 	return conv ? conversationTitle(conv, meId) : tab.channelName;
 }
 
+/**
+ * What a tab's room is for, as its space has it now (a ROOM_UPDATE changes it), none when blank. A conversation has
+ * none.
+ */
+export function tabDescription(tab: Tab | null, spaces: GatewaySpace[]): string | null {
+	if (!tab || isConversationTab(tab)) return null;
+	const space = spaces.find((s) => s.id === tab.spaceId);
+	return space?.rooms.find((r) => r.id === tab.channelId)?.description?.trim() || null;
+}
+
 /** Whether a tab has messages the user hasn't read, and the mentions of them waiting in it (a room's or a DM's). */
 export function tabNews(
 	tab: Tab,

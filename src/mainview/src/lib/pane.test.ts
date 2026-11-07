@@ -7,6 +7,7 @@ import {
 	makeLeaf,
 	makeSplit,
 	spacesAndRooms,
+	tabDescription,
 	tabDragData,
 	tabFromDragData,
 	tabNews,
@@ -71,6 +72,58 @@ describe("conversation tabs", () => {
 			sourceLeafId: "L",
 		});
 		expect(tabFromDragData({})).toBeNull();
+	});
+});
+
+describe("tabDescription", () => {
+	const described = (description: string | null): GatewaySpace[] => [
+		{
+			id: "s1",
+			name: "Design Guild",
+			description: null,
+			banner: null,
+			owner_id: ME,
+			locale: null,
+			member_roles: {},
+			room_overwrites: [],
+			rooms: [
+				{
+					id: "r1",
+					space_id: "s1",
+					parent_id: null,
+					type: 1,
+					name: "r1",
+					description,
+					position: 0,
+					nsfw: false,
+					created_at: "",
+					updated_at: "",
+				},
+			],
+			members: [],
+			roles: [],
+			users: [],
+			created_at: "",
+			updated_at: "",
+		},
+	];
+
+	test("is what the tab's room is for, as its space has it now, trimmed", () => {
+		expect(tabDescription(room("r1"), described("  What it's for "))).toBe("What it's for");
+		expect(tabDescription(room("r1"), described("Changed since"))).toBe("Changed since");
+	});
+
+	test("none when blank, as the mobile app has it", () => {
+		expect(tabDescription(room("r1"), described(null))).toBeNull();
+		expect(tabDescription(room("r1"), described(""))).toBeNull();
+		expect(tabDescription(room("r1"), described("   "))).toBeNull();
+	});
+
+	test("none for a conversation, no tab, or a room its space no longer has", () => {
+		expect(tabDescription(conversationTab(dm, ME), described("Not this"))).toBeNull();
+		expect(tabDescription(null, described("Not this"))).toBeNull();
+		expect(tabDescription(room("gone"), described("Not this"))).toBeNull();
+		expect(tabDescription(room("r1", "another-space"), described("Not this"))).toBeNull();
 	});
 });
 
