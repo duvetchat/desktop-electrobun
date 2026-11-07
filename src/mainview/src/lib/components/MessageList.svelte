@@ -1,7 +1,13 @@
 <script lang="ts">
 	import { hasPermission, mentionableRooms, Permission } from "$lib/permissions";
 	import { onDestroy, onMount, tick, type Snippet } from "svelte";
-	import { Eye as EyeIcon, Phone as PhoneIcon, Pin as PinIcon, PinOff as PinOffIcon } from "@lucide/svelte";
+	import {
+		Eye as EyeIcon,
+		Phone as PhoneIcon,
+		Pin as PinIcon,
+		PinOff as PinOffIcon,
+		Users as UsersIcon,
+	} from "@lucide/svelte";
 	import { updateMessage, deleteMessage, getMessageThread, pinRoomMessage, unpinRoomMessage } from "$lib/api/messages";
 	import { sendComponentInteraction, type ComponentUse } from "$lib/api/interactions";
 	import {
@@ -26,6 +32,7 @@
 		friendsReady,
 		openRoomMention,
 		onOpenElsewhere,
+		reactorsRequest,
 		lastReadConvs,
 	} from "$lib/stores.svelte";
 	import { toggleReaction } from "$lib/api/reactions";
@@ -235,8 +242,8 @@
 	let threadError = $state("");
 	let threadMessages = $state<Message[]>([]);
 	let threadRootMessage = $state<Message | null>(null);
-	// What a thread's message opens elsewhere (its quote's message, a link's chip or card, an invite) would show under the
-	// thread: the thread closes first.
+	// What a thread's message opens elsewhere (its quote's message, a link's chip or card, an invite, who reacted) would
+	// show under the thread: the thread closes first.
 	onMount(() => onOpenElsewhere(() => (threadModalOpen = false)));
 	let now = $state(Date.now());
 	let intervalId: number;
@@ -409,6 +416,11 @@
 	function handleReactionToggle(message: Message, emojiName: string, emojiId?: string | null) {
 		if (!$currentUser || !channelId) return;
 		void toggleReaction({ spaceId, channelId }, message, $currentUser.id, emojiName, emojiId);
+	}
+
+	// Who reacted to a message: from its menu, on its first reaction, or from a reaction's right click, on that one.
+	function showReactors(message: Message, picked = message.reactions?.[0]?.emoji_name ?? "") {
+		reactorsRequest.set({ messageId: message.id, reactions: message.reactions ?? [], picked, members, customEmojiMap });
 	}
 
 	function handleReactionPick(messageId: string, emoji: string) {
@@ -1153,6 +1165,7 @@
 								reactions={message.reactions ?? []}
 								{customEmojiMap}
 								onToggle={(r) => handleReactionToggle(message, r.emoji_name, r.emoji_id)}
+								onShowReactors={(r) => showReactors(message, r.emoji_name)}
 							/>
 							{#if ephemeral}
 								<!-- A bot's to this user alone, and not the room's: it lasts until dismissed or the app reloads.
@@ -1226,6 +1239,7 @@
 									</Popover.Content>
 								</Popover.Portal>
 							</Popover.Root>
+							{@render reactionsButton(message)}
 							<div class="w-px bg-zinc-800"></div>
 							<button
 								class="p-1.5 text-zinc-400 transition-colors hover:bg-zinc-600 hover:text-zinc-200"
@@ -1375,6 +1389,7 @@
 									</Popover.Content>
 								</Popover.Portal>
 							</Popover.Root>
+							{@render reactionsButton(message)}
 							<div class="w-px bg-zinc-800"></div>
 							<button
 								class="p-1.5 text-zinc-400 transition-colors hover:bg-zinc-600 hover:text-zinc-200"
@@ -1581,6 +1596,21 @@
 		</Dialog.Content>
 	</Dialog.Portal>
 </Dialog.Root>
+
+<!-- Who reacted, in the menu of a message that has reactions -->
+{#snippet reactionsButton(message: Message)}
+	{#if message.reactions?.length}
+		<div class="w-px bg-zinc-800"></div>
+		<button
+			class="p-1.5 text-zinc-400 transition-colors hover:bg-zinc-600 hover:text-zinc-200"
+			onclick={() => showReactors(message)}
+			title="Reactions"
+			aria-label="Reactions"
+		>
+			<UsersIcon class="size-4" />
+		</button>
+	{/if}
+{/snippet}
 
 {#snippet deleteButton(message: Message)}
 	<button

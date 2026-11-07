@@ -102,7 +102,8 @@
 		const update = $pinUpdates;
 		if (update?.channelId === channelId && untrack(() => open)) untrack(() => void load());
 	});
-	// What a pin opens elsewhere (its quote's message, a link's chip or card, an invite) closes the list, as its Jump does.
+	// What a pin opens elsewhere (its quote's message, a link's chip or card, an invite, who reacted) closes the list, as
+	// its Jump does.
 	onMount(() => onOpenElsewhere(() => (open = false)));
 	// A pin notice's "pinned messages" link opens the list.
 	$effect(() => {

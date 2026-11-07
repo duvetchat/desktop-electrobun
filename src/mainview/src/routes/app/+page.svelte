@@ -47,6 +47,7 @@
 	import CallModal from "$lib/components/CallModal.svelte";
 	import BotInviteModal from "$lib/components/BotInviteModal.svelte";
 	import SpaceInviteModal from "$lib/components/SpaceInviteModal.svelte";
+	import ReactionsDialog from "$lib/components/ReactionsDialog.svelte";
 	import type { PaneNode, Tab } from "$lib/types";
 	import { gatewaySpaceToGuild, gatewaySpaceToMembers } from "$lib/types";
 	import { userStatusCache } from "$lib/api/ws/connection";
@@ -748,3 +749,4 @@
 
 <BotInviteModal bind:open={botInviteOpen} bind:botUserId={botInviteId} />
 <SpaceInviteModal bind:open={spaceInviteOpen} bind:inviteCode={spaceInviteCode} />
+<ReactionsDialog />

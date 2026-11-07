@@ -3,7 +3,16 @@ import { get, readable, writable, type Readable, type Writable } from "svelte/st
 
 import { canViewRoom, roomNamesOf } from "$lib/permissions";
 import { typersAt } from "$lib/typing";
-import type { GatewaySpace, GatewayUser, Message, SpaceEmoji, SpaceSticker } from "$lib/types";
+import type { CustomEmojiMap } from "$lib/markdown";
+import type {
+	GatewaySpace,
+	GatewayUser,
+	MemberOnSidebar,
+	Message,
+	MessageReaction,
+	SpaceEmoji,
+	SpaceSticker,
+} from "$lib/types";
 import type { FriendRequest, Friend } from "$lib/api/friends";
 import type { Conversation, DirectMessage } from "$lib/api/conversations";
 import type { TeamInvite } from "$lib/api/developer";
@@ -254,13 +263,26 @@ export function openRoomMention(e: MouseEvent) {
 	jumpToMessageRequest.set({ id: crypto.randomUUID(), spaceId: space.id, roomId: room.id });
 }
 
+/** Who reacted to a message, which its dialog (ReactionsDialog) shows: its reactions as they are, which the dialog keeps
+ * up with, the one picked, and the members the view knows, which name the people. */
+export interface ReactorsRequest {
+	messageId: string;
+	reactions: MessageReaction[];
+	picked: string;
+	members: MemberOnSidebar[];
+	customEmojiMap: CustomEmojiMap;
+}
+
+/** Asks the dialog of who reacted to open, from a message's menu or a reaction's right click. */
+export const reactorsRequest = writable<ReactorsRequest | null>(null);
+
 /**
- * Hears each request to open something elsewhere: a jump to a message or a room, a space's invite, a bot's. What shows
- * messages over the chat (the pins list, a thread) closes on one, which a message in it can make (a reply's quote, a
- * link's chip or card), as it would cover what opens. Returns what stops hearing them.
+ * Hears each request to open something elsewhere: a jump to a message or a room, a space's invite, a bot's, who
+ * reacted. What shows messages over the chat (the pins list, a thread) closes on one, which a message in it can make (a
+ * reply's quote, a link's chip or card, a reaction), as it would cover what opens. Returns what stops hearing them.
  */
 export function onOpenElsewhere(listener: () => void): () => void {
-	const requests: Readable<unknown>[] = [jumpToMessageRequest, spaceInviteRequest, botInviteRequest];
+	const requests: Readable<unknown>[] = [jumpToMessageRequest, spaceInviteRequest, botInviteRequest, reactorsRequest];
 	const stops = requests.map((request) =>
 		request.subscribe((value) => {
 			if (value) listener();

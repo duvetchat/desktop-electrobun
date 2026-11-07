@@ -6,16 +6,19 @@
 	import type { MessageReaction } from "$lib/types";
 
 	// A message's reactions, as the chat and the previews (pins, search results, a thread) show them: each emoji with its
-	// count, the user's own picked out. A click adds the user's reaction or takes it back. Each is keyed by its emoji: a
-	// badge keeps its element, and its count's roll, when another reaction comes or goes.
+	// count, the user's own picked out. A click adds the user's reaction or takes it back; a right click shows who reacted
+	// with it. Each is keyed by its emoji: a badge keeps its element, and its count's roll, when another reaction comes or
+	// goes.
 	let {
 		reactions,
 		customEmojiMap = {},
 		onToggle,
+		onShowReactors,
 	}: {
 		reactions: MessageReaction[];
 		customEmojiMap?: CustomEmojiMap;
 		onToggle: (reaction: MessageReaction) => void;
+		onShowReactors: (reaction: MessageReaction) => void;
 	} = $props();
 </script>
 
@@ -28,6 +31,10 @@
 					? 'border-indigo-500/40 bg-indigo-500/20 text-indigo-300'
 					: 'border-zinc-700 bg-zinc-800/60 text-zinc-400 hover:bg-zinc-700/60'}"
 				onclick={() => onToggle(reaction)}
+				oncontextmenu={(e) => {
+					e.preventDefault();
+					onShowReactors(reaction);
+				}}
 				title={reaction.emoji_name}
 			>
 				<ReactionEmoji {reaction} {customEmojiMap} />

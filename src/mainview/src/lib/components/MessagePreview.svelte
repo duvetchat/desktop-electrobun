@@ -17,7 +17,7 @@
 	import type { CustomEmojiMap } from "$lib/markdown";
 	import { nameColor } from "$lib/name-colors";
 	import { onReactionChange, withReaction } from "$lib/reactions";
-	import { currentUser, openRoomMention } from "$lib/stores.svelte";
+	import { currentUser, openRoomMention, reactorsRequest } from "$lib/stores.svelte";
 	import {
 		isComponentsV2,
 		isLoading,
@@ -165,7 +165,13 @@
 					<MessageComponents components={message.components} {mentionMap} {customEmojiMap} {onPreview} compact />
 				{/if}
 			{/if}
-			<MessageReactions {reactions} {customEmojiMap} onToggle={toggle} />
+			<MessageReactions
+				{reactions}
+				{customEmojiMap}
+				onToggle={toggle}
+				onShowReactors={(r) =>
+					reactorsRequest.set({ messageId: message.id, reactions, picked: r.emoji_name, members, customEmojiMap })}
+			/>
 		</div>
 	</div>
 </div>

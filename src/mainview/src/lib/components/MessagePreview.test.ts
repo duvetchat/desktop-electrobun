@@ -28,6 +28,7 @@ mock.module("$lib/stores.svelte", () => ({
 	jumpToMessageRequest: writable(null),
 	botInviteRequest: writable(null),
 	spaceInviteRequest: writable(null),
+	reactorsRequest: writable(null),
 	userSession: { token: null },
 	openRoomMention: () => {},
 }));
