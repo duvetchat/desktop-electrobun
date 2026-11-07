@@ -39,11 +39,11 @@ import {
 	allSpacesReady,
 } from "$lib/stores.svelte";
 import { getFriends, getPendingRequests, getSentRequests, type Friend } from "$lib/api/friends";
-import { getConversations, type Conversation } from "$lib/api/conversations";
+import { getConversations, getDirectMessageById, type Conversation } from "$lib/api/conversations";
 import { listMyTeamInvites } from "$lib/api/developer";
 import { getMyBuckets, me as fetchMe } from "$lib/api/user";
-import { getMentionCounts } from "$lib/api/messages";
-import { getWSHostURL, getAvatarURL, route } from "$lib/common/common";
+import { getMentionCounts, getMessageById } from "$lib/api/messages";
+import { getWSHostURL, getAvatarURL, isUuid, route } from "$lib/common/common";
 import { derived, get, type Writable } from "svelte/store";
 import { getSpaceMembers, type SpaceMemberWithUser } from "$lib/api/spaces";
 import { forgetSpaceCommands } from "$lib/api/interactions";
@@ -115,6 +115,15 @@ import { sendAgain } from "$lib/resend";
 import { dropReplyTo } from "$lib/drafts";
 import { knowMessage, newestKnownIn } from "$lib/jumps";
 import { reactionChanged, withReaction, type ReactionChange } from "$lib/reactions";
+import { customEmojiMapOf } from "$lib/markdown";
+import {
+	conversationPlace,
+	directMessageAuthor,
+	dropMentionNotice,
+	mentionNoticeOf,
+	roomPlace,
+	showMentionNotice,
+} from "$lib/mention-notices";
 import { storageTransfers } from "$lib/stores/storage-transfers.svelte";
 import { toast } from "$lib/stores/toast.svelte";
 import { getElectrobunRpc, type ActivityPayload } from "$lib/electrobun-rpc";
@@ -512,6 +521,63 @@ function applyReaction<T extends { id: string; reactions?: MessageReaction[] | n
 	reactionChanged(change);
 }
 
+// Whether a room or a conversation is on screen: open in the focused pane, in a window that's visible and focused.
+const roomOnScreen = (roomId: string) => roomId === get(activeTextRoomId) && get(pageVisible);
+const conversationOnScreen = (conversationId: string) => conversationId === get(activeDMConvId) && get(pageVisible);
+
+// The people a mention's text can name, by the names the app knows, as a bio's mentions are: the spaces' members, the
+// conversations', and the user.
+function knownPeople() {
+	const me = get(currentUser);
+	return [
+		...get(gatewaySpaces).flatMap((s) => s.users),
+		...get(conversations).flatMap((c) => c.members.flatMap((m) => m.user ?? [])),
+		...(me ? [me] : []),
+	];
+}
+
+/**
+ * A mention in a room that isn't on screen shows a notice (lib/mention-notices.ts) with its message. The room's
+ * MESSAGE_CREATE has usually brought it already, but it comes over another subscription, in no set order: one that isn't
+ * there yet is fetched, by its IDs alone (isUuid), which go into the request's path. A message deleted first, which
+ * the API no longer has, or one that can't be fetched, shows nothing, and so does one whose room came on screen
+ * meanwhile, or whose reader chose do not disturb.
+ */
+async function noticeRoomMention(roomId: string, messageId: string) {
+	let message = get(channelMessages)[roomId]?.find((m) => m.id === messageId);
+	if (!message) {
+		if (!isUuid(roomId) || !isUuid(messageId)) return;
+		try {
+			message = gatewayMessageToMessage(await getMessageById(roomId, messageId), get(gatewaySpaces));
+		} catch {
+			return;
+		}
+	}
+	const place = roomPlace(get(gatewaySpaces), roomId, messageId);
+	if (!place || !mentionSound(get(currentUser)?.status, roomOnScreen(roomId))) return;
+	const emojis = get(spaceEmojis)[place.link.spaceId] ?? [];
+	showMentionNotice(mentionNoticeOf(message, place, knownPeople(), customEmojiMapOf(emojis)));
+}
+
+/** A mention in a conversation that isn't on screen, as one in a room (noticeRoomMention). */
+async function noticeConversationMention(conversationId: string, messageId: string) {
+	let message = get(dmMessages)[conversationId]?.find((m) => m.id === messageId);
+	if (!message) {
+		if (!isUuid(conversationId) || !isUuid(messageId)) return;
+		try {
+			message = await getDirectMessageById(conversationId, messageId);
+		} catch {
+			return;
+		}
+	}
+	if (!mentionSound(get(currentUser)?.status, conversationOnScreen(conversationId))) return;
+	const conversation = get(conversations).find((c) => c.id === conversationId);
+	const author = directMessageAuthor(message, conversation);
+	const place = conversationPlace(conversation, conversationId, messageId, get(currentUser)?.id);
+	const shown = { ...message, author_name: author.name, author_avatar_url: author.avatar };
+	showMentionNotice(mentionNoticeOf(shown, place, knownPeople(), {}));
+}
+
 /** Someone typing (TYPING, DM_TYPING) or recording a voice message (RECORDING, DM_RECORDING) in a room or a
  * conversation, shown until the notice gets old: either one replaces the other. */
 function showNotice(key: string, raw: TypingEvent | DMTypingEvent, recording: boolean) {
@@ -892,6 +958,7 @@ function handleEvent(event: GatewayEvent) {
 			const raw = payload.data;
 			dropEphemeral(raw.room_id, raw.id);
 			dropReplyTo(raw.room_id, raw.id);
+			dropMentionNotice(raw.id);
 			channelMessages.update((all) => {
 				const existing = all[raw.room_id] ?? [];
 				return {
@@ -908,20 +975,20 @@ function handleEvent(event: GatewayEvent) {
 			break;
 		}
 		case "MENTION_CREATE": {
-			const { room_id } = payload.data;
+			const { room_id, message_id } = payload.data;
 			mentionCounts.update((all) => ({ ...all, [room_id]: (all[room_id] ?? 0) + 1 }));
-			const onScreen = room_id === get(activeTextRoomId) && get(pageVisible);
-			if (mentionSound(get(currentUser)?.status, onScreen)) {
+			if (mentionSound(get(currentUser)?.status, roomOnScreen(room_id))) {
 				audioStore.play("notification");
+				void noticeRoomMention(room_id, message_id);
 			}
 			break;
 		}
 		case "DM_MENTION_CREATE": {
-			const { conversation_id } = payload.data;
+			const { conversation_id, message_id } = payload.data;
 			mentionCounts.update((all) => ({ ...all, [conversation_id]: (all[conversation_id] ?? 0) + 1 }));
-			const onScreen = conversation_id === get(activeDMConvId) && get(pageVisible);
-			if (mentionSound(get(currentUser)?.status, onScreen)) {
+			if (mentionSound(get(currentUser)?.status, conversationOnScreen(conversation_id))) {
 				audioStore.play("notification");
+				void noticeConversationMention(conversation_id, message_id);
 			}
 			break;
 		}
@@ -1605,6 +1672,7 @@ function handleEvent(event: GatewayEvent) {
 		case "DM_MESSAGE_DELETE": {
 			const raw = payload.data;
 			dropReplyTo(raw.conversation_id, raw.id);
+			dropMentionNotice(raw.id);
 			dmMessages.update((all) => {
 				const existing = all[raw.conversation_id] ?? [];
 				return {

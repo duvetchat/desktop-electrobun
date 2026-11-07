@@ -48,11 +48,12 @@
 	import BotInviteModal from "$lib/components/BotInviteModal.svelte";
 	import SpaceInviteModal from "$lib/components/SpaceInviteModal.svelte";
 	import ReactionsDialog from "$lib/components/ReactionsDialog.svelte";
+	import MentionNotices from "$lib/components/MentionNotices.svelte";
 	import type { PaneNode, Tab } from "$lib/types";
 	import { gatewaySpaceToGuild, gatewaySpaceToMembers } from "$lib/types";
 	import { userStatusCache } from "$lib/api/ws/connection";
 	import { DUVET_DOMAIN } from "$lib/common/common";
-	import { isUuid } from "$lib/urls";
+	import { isUuid, type MessageLink } from "$lib/urls";
 
 	let botInviteOpen = $state(false);
 	let botInviteId = $state("");
@@ -237,6 +238,16 @@
 		const conversationId = req.conversationId;
 		untrack(() => openConversationTab(conversationId));
 	});
+
+	// A mention's notice opens its message. A room's opens in the focused pane, which the friends view would hide; a
+	// conversation's tab opens as any jump to it does (above).
+	function openMentioned(link: MessageLink) {
+		if (!link.conversationId && showFriendsView) {
+			showFriendsView = false;
+			activeDMId = null;
+		}
+		jumpToMessageRequest.set({ id: crypto.randomUUID(), ...link });
+	}
 
 	// Derive the active channel of the focused pane for sidebar highlight
 	function findLeaf(node: PaneNode, id: string): import("$lib/types").PaneLeaf | null {
@@ -750,3 +761,6 @@
 <BotInviteModal bind:open={botInviteOpen} bind:botUserId={botInviteId} />
 <SpaceInviteModal bind:open={spaceInviteOpen} bind:inviteCode={spaceInviteCode} />
 <ReactionsDialog />
+{#if $currentUser && $friendsReady}
+	<MentionNotices onOpen={openMentioned} />
+{/if}
