@@ -15,8 +15,13 @@
  *   Windows frames answer to their sandbox alone (lib/urls.ts). macOS's and Linux's see every frame
  *   (decidePolicyForNavigationAction, OnBeforeBrowse), so there the rules name:
  *   - the players the app frames, the pages of PLAYERS in lib/urls.ts;
- *   - about:, for the blank frames YouTube's player makes and the blank page macOS loads as a window closes;
+ *   - about:, for the blank frames YouTube's player makes;
  *   - devtools:, as Linux's Inspect Element goes through the same check.
+ *
+ * On macOS and Linux they don't hold against a script in a frame. Every frame gets Electrobun's internal bridge there,
+ * whose webviewTagSetNavigationRules and webviewTagUpdateSrc take any webview's ID, so a script in a player's page could
+ * clear the rules and load any URL in the window. That bridge is older than the rules: it's the risk those frames
+ * already carry (PLAYERS in lib/urls.ts). On Windows it only reaches the top frame.
  */
 export function navigationRules(platform: NodeJS.Platform, devServer: string | null): string[] {
 	return [

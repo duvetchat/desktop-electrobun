@@ -145,7 +145,11 @@ const win = new BrowserWindow({
 });
 
 // Through the webview: BrowserWindow stores a navigationRules option of its own, and never hands it to the native side.
-win.webview.setNavigationRules(navigationRules(currentOS, url === DEV_SERVER_URL ? url : null));
+// As each page loads, not right after new BrowserWindow: macOS reads them later on its main queue, from an address
+// nothing keeps, and right after new BrowserWindow that queue still has the webview's creation ahead of them, so a GC in
+// that gap could leave no rules, with no sign. Only the app's own first page can load before they apply.
+const rules = navigationRules(currentOS, url === DEV_SERVER_URL ? url : null);
+win.webview.on("dom-ready", () => win.webview.setNavigationRules(rules));
 
 // Backstop for any attempt to open a new window — window.open, target="_blank" or a modifier-click the
 // webview doesn't handle itself. The window never spawns a second webview or popup; the URL goes to the

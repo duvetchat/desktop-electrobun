@@ -99,7 +99,13 @@ describe("the main window", () => {
 	const main = readFileSync(join(import.meta.dir, "index.ts"), "utf8");
 
 	test("gets its rules through its webview", () => {
-		expect(main).toContain("win.webview.setNavigationRules(navigationRules(");
+		expect(main).toContain("win.webview.setNavigationRules(rules)");
 		expect(main).not.toContain("navigationRules:");
+	});
+
+	// macOS reads them later, from an address nothing keeps: right after new BrowserWindow, a GC could leave no rules.
+	test("gets them once a page has loaded, not as it's created", () => {
+		expect(main).toContain('win.webview.on("dom-ready", () => win.webview.setNavigationRules(rules));');
+		expect(main.match(/setNavigationRules\(/g)).toHaveLength(1);
 	});
 });
