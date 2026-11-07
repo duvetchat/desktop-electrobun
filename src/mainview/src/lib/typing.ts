@@ -3,6 +3,27 @@ import type { TypingUser } from "$lib/stores.svelte";
 /** How long a notice of someone typing or recording shows with nothing after it. */
 export const TYPING_TIMEOUT = 5000;
 
+/** How often the user's own notice goes out to a chat, at most: the API lets one through every 2 s per user and chat. */
+export const NOTICE_INTERVAL = 3000;
+
+/** The notice the user last sent a chat: when, and whether it said they were recording a voice message. */
+export interface SentNotice {
+	at: number;
+	recording: boolean;
+}
+
+/**
+ * Whether the user's notice of typing, or of recording a voice message, goes out to a chat now: at most every
+ * NOTICE_INTERVAL in each chat, as the API's limit is per user and chat, but at once when typing turns into recording
+ * or back. One that goes is recorded in sent, by chat.
+ */
+export function noticeDue(sent: Map<string, SentNotice>, chatId: string, recording: boolean, now: number): boolean {
+	const last = sent.get(chatId);
+	if (last && now - last.at < NOTICE_INTERVAL && last.recording === recording) return false;
+	sent.set(chatId, { at: now, recording });
+	return true;
+}
+
 /**
  * Who shows as typing or recording in each chat at a moment: everyone but the user, until their notice gets old,
  * which no event says; and when the next of them ends, or null when nobody shows.

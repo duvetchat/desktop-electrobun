@@ -1,5 +1,10 @@
 <script lang="ts" module>
 	import type { AllowedMentions, MessageReference } from "$lib/types";
+	import type { SentNotice } from "$lib/typing";
+
+	// The typing or recording notice the user last sent each chat (noticeDue in lib/typing.ts), by chat: a pane's Chat
+	// stays as its rooms change, and two panes can show one chat, while the API's limit is per chat.
+	const sentNotices = new Map<string, SentNotice>();
 
 	// What each message being sent was sent with besides its text (files, ref, sticker, the reply's mention, or a voice
 	// note's audio), for its Retry. By nonce, and apart from this view, which goes when a pane shows a conversation and
@@ -45,6 +50,7 @@
 	} from "$lib/stores.svelte";
 	import { toast } from "$lib/stores/toast.svelte";
 	import TypingIndicator from "$lib/components/TypingIndicator.svelte";
+	import { noticeDue } from "$lib/typing";
 	import { listEmojis } from "$lib/api/emojis";
 	import { getAvatarURL } from "$lib/common/common";
 	import { listStickers } from "$lib/api/stickers";
@@ -155,8 +161,6 @@
 	});
 	// The rooms "#" suggests; a conversation has none.
 	const mentionRooms = $derived(space ? mentionableRooms(space) : []);
-	let lastTypingSent = 0;
-	let lastTypingRecording = false;
 
 	// Load emojis and stickers into global stores on space change
 	$effect(() => {
@@ -544,8 +548,8 @@
 		notifyTyping(false);
 	}
 
-	// Shows the user typing, or recording a voice message, and tells the others: at most every 3
-	// seconds, but at once when typing turns into recording or back.
+	// Shows the user typing, or recording a voice message, and tells the others: at most every 3 seconds in each chat,
+	// but at once when typing turns into recording or back (noticeDue).
 	function notifyTyping(recording: boolean) {
 		const now = Date.now();
 		const user = $currentUser;
@@ -568,9 +572,7 @@
 				};
 			});
 		}
-		if (now - lastTypingSent < 3000 && recording === lastTypingRecording) return;
-		lastTypingSent = now;
-		lastTypingRecording = recording;
+		if (!noticeDue(sentNotices, channelId, recording, now)) return;
 		if (recording) (sendRecording ?? (() => sendRecordingIndicator(channelId)))();
 		else (sendTyping ?? (() => sendTypingIndicator(channelId)))();
 	}
