@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { isUuid } from "$lib/common/common";
 import { renderEmoji, toTwemojiUrl } from "$lib/emoji";
-import { clickedMention, mentionNamesIn, renderMarkdown, renderMarkdownLine } from "$lib/markdown";
+import { clickedMention, mentionNamesIn, parseTextSegments, renderMarkdown, renderMarkdownLine } from "$lib/markdown";
+import { cardLink, duvetLinksIn, parseDuvetLink } from "$lib/urls";
 
 // The value of the first href in html: what's between its quotes.
 const hrefOf = (html: string) => /href="([^"]*)"/.exec(html)?.[1];
@@ -326,6 +327,171 @@ describe("mentionNamesIn", () => {
 	});
 });
 
+// #215: a bare link took what followed it up to a space: the punctuation of its sentence, and the ) of brackets around
+// it. It then opened a URL ending in that, which many sites answer with a 404. It's read as the mobile app reads one.
+describe("a bare link", () => {
+	const linksIn = (text: string) =>
+		parseTextSegments(text)
+			.filter((s) => s.type === "link")
+			.map((s) => s.content);
+	const ID = "0190a3b2-0000-7000-8000-000000000001";
+
+	test("ends before the punctuation after it", () => {
+		expect(linksIn("see https://example.org/page, then")).toEqual(["https://example.org/page"]);
+		expect(linksIn("open https://example.org/a.")).toEqual(["https://example.org/a"]);
+		expect(linksIn("is it https://example.org/b?")).toEqual(["https://example.org/b"]);
+		expect(linksIn("really https://example.org/b?!...")).toEqual(["https://example.org/b"]);
+		expect(linksIn("https://example.org/a; http://example.org/b: and duvet://c!")).toEqual([
+			"https://example.org/a",
+			"http://example.org/b",
+			"duvet://c",
+		]);
+	});
+
+	test("keeps the punctuation inside it", () => {
+		expect(linksIn("https://example.org/a.b,c;d:e!f?g=1&h=2#i")).toEqual(["https://example.org/a.b,c;d:e!f?g=1&h=2#i"]);
+		expect(linksIn("http://example.org:8080/x")).toEqual(["http://example.org:8080/x"]);
+		expect(linksIn("https://example.org/it's")).toEqual(["https://example.org/it's"]);
+	});
+
+	test("isn't closed by the ) of brackets around it, and keeps its own", () => {
+		expect(linksIn("(https://example.org/c)")).toEqual(["https://example.org/c"]);
+		expect(linksIn("https://en.wikipedia.org/wiki/Duvet_(bedding)")).toEqual([
+			"https://en.wikipedia.org/wiki/Duvet_(bedding)",
+		]);
+		expect(linksIn("(see https://en.wikipedia.org/wiki/Duvet_(bedding)).")).toEqual([
+			"https://en.wikipedia.org/wiki/Duvet_(bedding)",
+		]);
+		expect(linksIn("https://example.org/a_(b)_c_(d)")).toEqual(["https://example.org/a_(b)_c_(d)"]);
+		// A ( it doesn't close, or a ) that closes nothing of its own, ends it.
+		expect(linksIn("https://example.org/a(b c)")).toEqual(["https://example.org/a"]);
+		expect(linksIn("https://example.org/a)b")).toEqual(["https://example.org/a"]);
+	});
+
+	test("ends before the quotes and brackets around it", () => {
+		for (const [open, close] of [
+			['"', '"'],
+			["'", "'"],
+			["[", "]"],
+			["{", "}"],
+			["<", ">"],
+		]) {
+			expect(linksIn(`${open}https://example.org/q${close}`)).toEqual(["https://example.org/q"]);
+		}
+	});
+
+	test("ends before a mention, an emoji or a room written right after it, which reads as one", () => {
+		for (const form of [`<@${ID}>`, `<:${ID}:>`, `<#${ID}>`]) {
+			expect(parseTextSegments(`https://example.org/x${form}`)).toEqual([
+				{ type: "link", content: "https://example.org/x" },
+				{ type: "text", content: form },
+			]);
+		}
+	});
+
+	test("leaves the text around it whole, in order", () => {
+		expect(parseTextSegments("(see https://example.org/a, and https://example.org/b_(c)).")).toEqual([
+			{ type: "text", content: "(see " },
+			{ type: "link", content: "https://example.org/a" },
+			{ type: "text", content: ", and " },
+			{ type: "link", content: "https://example.org/b_(c)" },
+			{ type: "text", content: ")." },
+		]);
+	});
+
+	test("a markdown link's URL is the markdown link's", () => {
+		expect(linksIn("[docs](https://example.org/a), see")).toEqual([]);
+		expect(renderMarkdown("[docs](https://example.org/a), see")).toContain('href="https://example.org/a"');
+	});
+
+	// The API leaves one of Duvet's own links without a preview as the mobile app reads it (mobileLink), and the cards
+	// under the text read it the same way (cardLink): the link in the text names what its card does.
+	test("one of Duvet's own names what its card does", () => {
+		for (const text of [
+			"join (https://duvet.chat/invite/abc).",
+			`add it: https://duvet.chat/invite?bot=${ID}.`,
+			`"https://duvet.chat/channels/${ID}/${ID}/${ID}",`,
+			`[https://duvet.chat/conversations/${ID}/${ID}]`,
+		]) {
+			const [link] = linksIn(text);
+			const card = parseDuvetLink(cardLink(link), "views://mainview");
+			expect(card).not.toBeNull();
+			expect([card]).toEqual(duvetLinksIn(text, "views://mainview"));
+		}
+	});
+
+	// Random text of URLs, brackets, quotes, punctuation and spaces: the links and the text between them are the text,
+	// each link starts with its scheme and closes its own brackets, and none ends with the punctuation around it.
+	test("whatever the text, is one link, and leaves the rest as it was", () => {
+		const PIECES = [
+			"https://a.example/",
+			"http://b.example/x",
+			"duvet://c",
+			"https://",
+			"x",
+			"_",
+			"😀",
+			" ",
+			"\n",
+			"\u00a0",
+			".",
+			",",
+			";",
+			":",
+			"!",
+			"?",
+			"(",
+			")",
+			"(y)",
+			"[",
+			"]",
+			"](",
+			"{",
+			"}",
+			'"',
+			"'",
+			"<",
+			">",
+			`<@${ID}>`,
+		];
+		let seed = 2150;
+		const random = () => {
+			seed ^= seed << 13;
+			seed >>>= 0;
+			seed ^= seed >>> 17;
+			seed ^= seed << 5;
+			seed >>>= 0;
+			return seed / 0x100000000;
+		};
+		const found: string[] = [];
+		for (let i = 0; i < 5000 && found.length < 5; i++) {
+			let text = "";
+			for (let n = 1 + Math.floor(random() * 16); n > 0; n--) text += PIECES[Math.floor(random() * PIECES.length)];
+			const segments = parseTextSegments(text);
+			let at = 0;
+			const problem =
+				(segments.map((s) => s.content).join("") !== text ? "not the text" : null) ??
+				segments
+					.map((s) => {
+						const before = text.slice(0, at);
+						at += s.content.length;
+						if (!s.content) return "an empty segment";
+						if (s.type === "text") return null;
+						if (!/^(?:https?|duvet):\/\/\S/.test(s.content)) return `${s.content}: no scheme`;
+						if (/[\s<>]/.test(s.content)) return `${s.content}: a space, < or >`;
+						if (/[.,;:!?\]}"']$/.test(s.content)) return `${s.content}: punctuation at its end`;
+						if (/[()]/.test(s.content.replace(/\([^()]*\)/g, ""))) return `${s.content}: a bracket of its own open`;
+						if (before.endsWith("](")) return `${s.content}: a markdown link's URL`;
+						return null;
+					})
+					.find((p) => p !== null) ??
+				null;
+			if (problem) found.push(`${problem} in ${JSON.stringify(text)}`);
+		}
+		expect(found).toEqual([]);
+	});
+});
+
 // Random text made of the pieces of markdown, HTML, URLs, mentions, emojis and placeholders, rendered both ways
 // and read back with an HTML5 tokenizer (HTMLRewriter): every tag and attribute must be one the renderer means to
 // write, every href http(s), every src an emoji's. The names in the maps are hostile, as a member's can be.
@@ -550,9 +716,16 @@ describe("the HTML it makes", () => {
 			for (let n = 1 + Math.floor(random() * 22); n > 0; n--) text += pick(PIECES);
 			if (random() < 0.5)
 				text = `[${pick(PIECES)}${pick(PIECES)}](${pick(["https://", "http://", "javascript:", "javascript://", ""])}${text})${pick(PIECES)}`;
+			// A message's text renders each piece between its bare links on its own (MessageText): those too.
+			const between = parseTextSegments(text)
+				.filter((s) => s.type === "text")
+				.map((s) => s.content);
 			for (const html of [
 				renderMarkdown(text, random() < 0.2, mentionMap, customEmojiMap, roomNames),
 				renderMarkdownLine(text, mentionMap, customEmojiMap, roomNames),
+				...(between.join("") === text
+					? []
+					: between.map((t) => renderMarkdown(t, false, mentionMap, customEmojiMap, roomNames))),
 			]) {
 				// A placeholder that didn't come back whole leaves its mark, or "undefined" in another's place.
 				const problem =
