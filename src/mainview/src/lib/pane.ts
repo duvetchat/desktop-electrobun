@@ -183,6 +183,16 @@ export function tabDescription(tab: Tab | null, spaces: GatewaySpace[]): string 
 	return space?.rooms.find((r) => r.id === tab.channelId)?.description?.trim() || null;
 }
 
+/**
+ * A tab's tooltip: its name (title), its room's space and what the room is for (tabDescription), which can always be
+ * read there, as the bar shows the active room's only in what the tabs leave of it; then who's typing there (typing,
+ * typingSentence's). A conversation's has its name and who's typing.
+ */
+export function tabTooltip(tab: Tab, title: string, spaces: GatewaySpace[], typing: string | null): string {
+	const spaceName = isConversationTab(tab) ? null : spaces.find((s) => s.id === tab.spaceId)?.name;
+	return [title, spaceName, tabDescription(tab, spaces), typing].filter(Boolean).join(" · ");
+}
+
 /** Whether a tab has messages the user hasn't read, and the mentions of them waiting in it (a room's or a DM's). */
 export function tabNews(
 	tab: Tab,
