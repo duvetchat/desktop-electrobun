@@ -1,4 +1,4 @@
-import api, { formBytes, MAX_REQUEST_BYTES, TooLargeError } from "$lib/api/api";
+import api, { formBytes, MAX_REQUEST_BYTES, TooLargeError, type UploadOptions } from "$lib/api/api";
 import { createAckThrottle } from "$lib/api/ack";
 import type { AllowedMentions, GatewayMessage, MessageReference } from "$lib/types";
 
@@ -109,6 +109,7 @@ export function messageTooLarge(content: string, files: File[]): string | null {
 	return bytes > MAX_REQUEST_BYTES ? new TooLargeError(bytes, "Message").message : null;
 }
 
+/** Sends a message to a room: with files, as a form, its text and files together, which upload follows. */
 export async function sendMessage(
 	roomId: string,
 	content: string,
@@ -118,6 +119,7 @@ export async function sendMessage(
 	msgEmbeds?: import("$lib/types").Embed[],
 	stickerAttachmentId?: string,
 	allowedMentions?: AllowedMentions,
+	upload?: UploadOptions,
 ): Promise<GatewayMessage> {
 	if (files && files.length > 0) {
 		const form = new FormData();
@@ -127,7 +129,7 @@ export async function sendMessage(
 		if (allowedMentions) form.append("allowed_mentions", JSON.stringify(allowedMentions));
 		for (const f of files) form.append("files", f);
 
-		const res = await api.post(`/api/rooms/${roomId}/messages`, form);
+		const res = await api.post(`/api/rooms/${roomId}/messages`, form, upload);
 		return res.data;
 	}
 

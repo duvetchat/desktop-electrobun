@@ -1,4 +1,4 @@
-import api from "$lib/api/api";
+import api, { type UploadOptions } from "$lib/api/api";
 import type { GatewayUser, GatewayMember } from "$lib/types";
 
 export const MEMBERS_PAGE_SIZE = 50;
@@ -43,6 +43,7 @@ export async function deleteSpace(spaceId: string): Promise<void> {
 	await api.delete(`/api/spaces/${spaceId}`);
 }
 
+/** Changes a space; with a new icon or banner, or one removed, as a form, which upload follows. */
 export async function updateSpace(
 	spaceId: string,
 	data: {
@@ -54,6 +55,7 @@ export async function updateSpace(
 		remove_banner?: boolean;
 		remove_icon?: boolean;
 	},
+	upload?: UploadOptions,
 ): Promise<any> {
 	const hasFiles = data.banner instanceof File || data.icon instanceof File;
 	if (hasFiles || data.remove_banner || data.remove_icon) {
@@ -65,7 +67,7 @@ export async function updateSpace(
 		if (data.icon instanceof File) form.append("icon", data.icon);
 		if (data.remove_banner) form.append("remove_banner", "true");
 		if (data.remove_icon) form.append("remove_icon", "true");
-		const res = await api.patch(`/api/spaces/${spaceId}`, form);
+		const res = await api.patch(`/api/spaces/${spaceId}`, form, upload);
 		return res.data;
 	}
 	const res = await api.patch(`/api/spaces/${spaceId}`, {

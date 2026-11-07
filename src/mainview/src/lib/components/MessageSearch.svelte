@@ -532,7 +532,10 @@
 				>
 					<MessagePreview
 						message={r.message}
+						spaceId={space?.id ?? ""}
+						channelId={r.roomId ?? conversationId}
 						roomName={r.roomId ? roomName(r.roomId) : null}
+						{members}
 						{mentionMap}
 						{customEmojiMap}
 						onPreview={openPreview}

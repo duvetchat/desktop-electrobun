@@ -66,6 +66,11 @@ export function countEmojis(text: string): number {
 	return [...text.matchAll(EMOJI_REGEX)].length + [...text.matchAll(CUSTOM_EMOJI_REGEX)].length;
 }
 
+/** Whether a message's text shows its emojis large, in the chat and the previews: it's only emojis, five at most. */
+export function largeEmojis(text: string): boolean {
+	return isOnlyEmojis(text) && countEmojis(text) <= 5;
+}
+
 // ── Emoji data ────────────────────────────────────────────────────────────
 // Sourced from emoji-datasource (iamcal) — complete dataset, maintained.
 // We derive every emoji at build/import time from the raw JSON so no emoji

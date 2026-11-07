@@ -79,6 +79,8 @@
 	import { getApiError } from "$lib/api/api";
 	import { groupActions } from "$lib/groups";
 	import { withSentMessage } from "$lib/arrivals";
+	import { putBack, withoutDeletedReply, type SentDraft } from "$lib/drafts";
+	import { CANCELLED, sendFollowed, withoutSending } from "$lib/uploads";
 	import {
 		dividerPastWindow,
 		inWindow,
@@ -534,17 +536,30 @@
 		};
 		dmMessages.update((all) => ({ ...all, [convId]: [...(all[convId] ?? []), pending] }));
 		dmRetryData.set(nonce, { ref, files, stickerAttachmentId, allowedMentions });
-		const real = await sendDirectMessage(
-			convId,
-			content,
-			nonce,
-			ref,
-			files,
-			undefined,
-			stickerAttachmentId,
-			allowedMentions,
+		// What a Cancel of its upload gives back to the draft, its reply as the list shows it: read now, as the view can be
+		// gone by then.
+		const fromDraft = sentDraft(content, files, ref, allowedMentions);
+		const real = await sendFollowed(nonce, files, (upload) =>
+			sendDirectMessage(convId, content, nonce, ref, files, undefined, stickerAttachmentId, allowedMentions, upload),
 		);
-		showSent(convId, nonce, real);
+		if (real === CANCELLED) dmCancelled(convId, nonce, fromDraft);
+		else showSent(convId, nonce, real);
+	}
+
+	// What a send took from the conversation's draft, for its Cancel: the reply's message is found in the list by its
+	// reference, as a Retry's saved data has nothing else.
+	function sentDraft(
+		text: string,
+		files: File[] | undefined,
+		ref: MessageReference | undefined,
+		allowedMentions: AllowedMentions | undefined,
+	): SentDraft {
+		return {
+			text,
+			files: files ?? [],
+			replyTo: messages.find((m) => m.id === ref?.message_id) ?? null,
+			replyMention: allowedMentions?.replied_user ?? true,
+		};
 	}
 
 	// What follows a send of this window's that the API took: its retry data goes, and the API's copy takes the place of
@@ -558,6 +573,21 @@
 			const shown = withSentMessage(existing, nonce, real);
 			return shown === existing ? all : { ...all, [convId]: shown };
 		});
+	}
+
+	// As a room's (Chat's cancelled): a send whose upload was cancelled leaves the conversation's list, and what it took
+	// from the conversation's draft goes back, unless DM_MESSAGE_CREATE has replaced it, the message posted after all.
+	function dmCancelled(convId: string, nonce: string, fromDraft: SentDraft) {
+		dmRetryData.delete(nonce);
+		let sending: DirectMessage | undefined;
+		dmMessages.update((all) => {
+			const list = all[convId] ?? [];
+			const kept = withoutSending(list, nonce);
+			if (!kept) return all;
+			sending = list.find((m) => m.id === nonce);
+			return { ...all, [convId]: kept };
+		});
+		if (sending) putBack(convId, nonce, withoutDeletedReply(fromDraft, sending));
 	}
 
 	async function dmSaveEdit(messageId: string, content: string) {
@@ -593,17 +623,21 @@
 				});
 			return;
 		}
-		sendDirectMessage(
-			convId,
-			message.content ?? "",
-			nonce,
-			saved?.ref,
-			saved?.files,
-			undefined,
-			saved?.stickerAttachmentId,
-			saved?.allowedMentions,
+		const fromDraft = sentDraft(message.content ?? "", saved?.files, saved?.ref, saved?.allowedMentions);
+		sendFollowed(nonce, saved?.files, (upload) =>
+			sendDirectMessage(
+				convId,
+				message.content ?? "",
+				nonce,
+				saved?.ref,
+				saved?.files,
+				undefined,
+				saved?.stickerAttachmentId,
+				saved?.allowedMentions,
+				upload,
+			),
 		)
-			.then((real) => showSent(convId, nonce, real))
+			.then((real) => (real === CANCELLED ? dmCancelled(convId, nonce, fromDraft) : showSent(convId, nonce, real)))
 			.catch((err) => {
 				failedNonces = new Set(failedNonces).add(nonce);
 				toast(getApiError(err, "Failed to send message"), "error");

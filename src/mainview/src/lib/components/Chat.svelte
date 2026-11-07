@@ -53,7 +53,8 @@
 	import { hasPermission, mentionableRooms, Permission } from "$lib/permissions";
 	import { displayName, isSpoiler, withSpoiler } from "$lib/spoilers";
 	import { withSentMessage } from "$lib/arrivals";
-	import { changeDraft, chatDrafts, draftOf } from "$lib/drafts";
+	import { changeDraft, chatDrafts, draftOf, putBack, withoutDeletedReply, type SentDraft } from "$lib/drafts";
+	import { CANCELLED, sendFollowed, withoutSending } from "$lib/uploads";
 	import { knowMessage, newestKnownIn } from "$lib/jumps";
 	import { chatRequest, keyboard, leaveMessageBox } from "$lib/keyboard.svelte";
 	import { layoutPrefs } from "$lib/layout-prefs.svelte";
@@ -353,6 +354,8 @@
 			: undefined;
 		// A reply mentions the author of the message it replies to unless the reply bar's @ is off.
 		const allowedMentions: AllowedMentions | undefined = replyTo ? { replied_user: replyMention } : undefined;
+		// What a Cancel of its upload gives back to the draft. A conversation's send (onSend) keeps its own.
+		const fromDraft: SentDraft = { text: content, files: files ?? [], replyTo, replyMention };
 
 		setReply(null);
 
@@ -410,8 +413,11 @@
 		}));
 
 		retryData.set(nonce, { files, ref, stickerAttachmentId, allowedMentions });
-		sendMessage(channelId, content, nonce, ref, files, undefined, stickerAttachmentId, allowedMentions)
-			.then(sent(channelId, nonce))
+		const roomId = channelId;
+		sendFollowed(nonce, files, (upload) =>
+			sendMessage(roomId, content, nonce, ref, files, undefined, stickerAttachmentId, allowedMentions, upload),
+		)
+			.then((raw) => (raw === CANCELLED ? cancelled(roomId, nonce, fromDraft) : sent(roomId, nonce)(raw)))
 			.catch((err) => {
 				failedNonces = new Set(failedNonces).add(nonce);
 				toast(getApiError(err, "Failed to send message"), "error");
@@ -432,6 +438,23 @@
 				return shown === existing ? all : { ...all, [roomId]: shown };
 			});
 		};
+	}
+
+	// A send of this window's whose upload was cancelled (lib/uploads): the message leaves its room's list, and what it
+	// took from the room's draft goes back (lib/drafts' putBack): its files, and its text and reply while the draft has
+	// neither. When MESSAGE_CREATE has replaced it already, the message was posted after all: it stays, and nothing goes
+	// back. One that comes later takes back out what's still as it went (connection.ts, lib/drafts' takeBack).
+	function cancelled(roomId: string, nonce: string, fromDraft: SentDraft) {
+		retryData.delete(nonce);
+		let sending: Message | undefined;
+		channelMessages.update((all) => {
+			const list = all[roomId] ?? [];
+			const kept = withoutSending(list, nonce);
+			if (!kept) return all;
+			sending = list.find((m) => m.id === nonce);
+			return { ...all, [roomId]: kept };
+		});
+		if (sending) putBack(roomId, nonce, withoutDeletedReply(fromDraft, sending));
 	}
 
 	function handleReply(message: Message) {
@@ -488,17 +511,28 @@
 				});
 			return;
 		}
-		sendMessage(
-			channelId,
-			message.content ?? "",
-			nonce,
-			saved?.ref,
-			saved?.files,
-			undefined,
-			saved?.stickerAttachmentId,
-			saved?.allowedMentions,
+		const roomId = channelId;
+		// What a Cancel gives back: the saved data has the reply's reference, whose message is found in the room's list.
+		const fromDraft: SentDraft = {
+			text: message.content ?? "",
+			files: saved?.files ?? [],
+			replyTo: messages.find((m) => m.id === saved?.ref?.message_id) ?? null,
+			replyMention: saved?.allowedMentions?.replied_user ?? true,
+		};
+		sendFollowed(nonce, saved?.files, (upload) =>
+			sendMessage(
+				roomId,
+				message.content ?? "",
+				nonce,
+				saved?.ref,
+				saved?.files,
+				undefined,
+				saved?.stickerAttachmentId,
+				saved?.allowedMentions,
+				upload,
+			),
 		)
-			.then(sent(channelId, nonce))
+			.then((raw) => (raw === CANCELLED ? cancelled(roomId, nonce, fromDraft) : sent(roomId, nonce)(raw)))
 			.catch((err) => {
 				failedNonces = new Set(failedNonces).add(nonce);
 				toast(getApiError(err, "Failed to send message"), "error");

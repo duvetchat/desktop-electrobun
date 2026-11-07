@@ -1340,6 +1340,11 @@ export function messageText(message: Pick<Message, "flags" | "content" | "compon
 	return texts.join("\n");
 }
 
+/** Whether a message is a lone link with its preview: the preview shows in its place, without the link above it. */
+export function previewReplacesText(message: Pick<Message, "content" | "embeds">): boolean {
+	return /^\s*https?:\/\/\S+\s*$/.test(message.content ?? "") && !!message.embeds?.length;
+}
+
 /** Whether a message is a reply that mentions userId, the author of the message it replies to: as a reply does unless
  * it's sent with allowed_mentions.replied_user false. Its text's mentions are messageText's. */
 export function mentionsByReply(message: Pick<Message, "referenced_message">, userId: string): boolean {

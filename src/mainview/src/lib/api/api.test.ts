@@ -30,7 +30,10 @@ class FakeXHR {
 	statusText = "";
 	response: ArrayBuffer | string | null = null;
 	responseHeaders = "";
-	upload: { onprogress: (() => void) | null; onload: (() => void) | null } = { onprogress: null, onload: null };
+	upload: {
+		onprogress: ((e: { loaded: number; total: number; lengthComputable: boolean }) => void) | null;
+		onload: (() => void) | null;
+	} = { onprogress: null, onload: null };
 	onload: (() => void) | null = null;
 	onerror: (() => void) | null = null;
 	onabort: (() => void) | null = null;
@@ -55,6 +58,10 @@ class FakeXHR {
 	}
 	getAllResponseHeaders() {
 		return this.responseHeaders;
+	}
+	// Bytes of its body going out, as a browser reports them: loaded of total, which it may not know.
+	sends(loaded: number, total = 1024, lengthComputable = true) {
+		this.upload.onprogress?.({ loaded, total: lengthComputable ? total : 0, lengthComputable });
 	}
 	// An answer of the API, JSON, or empty without json (a 204's).
 	respond(status: number, json?: unknown) {
@@ -281,7 +288,7 @@ describe("an upload", () => {
 
 	test("that stops sending once it started is aborted after its idle time, and fails", async () => {
 		uploadLimits.idleMs = 40;
-		FakeXHR.onSend = (xhr) => queueMicrotask(() => xhr.upload.onprogress?.());
+		FakeXHR.onSend = (xhr) => queueMicrotask(() => xhr.sends(512));
 		const failure = await api.post("/api/rooms/r/messages", messageForm(file(1024))).catch((e: unknown) => e);
 		expect(failure).toBeInstanceOf(UploadTimeoutError);
 		expect(getApiError(failure, "")).toStartWith("Upload stalled: nothing went out for");
@@ -294,7 +301,7 @@ describe("an upload", () => {
 		uploadLimits.idleMs = 40;
 		FakeXHR.onSend = (xhr) =>
 			setTimeout(() => {
-				xhr.upload.onprogress?.();
+				xhr.sends(512);
 				setTimeout(() => xhr.respond(201, { id: "m" }), 10);
 			}, 120);
 		const res = await api.post("/api/rooms/r/messages", messageForm(file(1024)));
@@ -323,7 +330,7 @@ describe("an upload", () => {
 		FakeXHR.onSend = (xhr) => {
 			let ticks = 0;
 			const tick = setInterval(() => {
-				if (++ticks < 12) return xhr.upload.onprogress?.();
+				if (++ticks < 12) return xhr.sends(ticks * 80);
 				clearInterval(tick);
 				xhr.respond(201, { id: "m" });
 			}, 15);
@@ -338,7 +345,7 @@ describe("an upload", () => {
 		uploadLimits.answerMs = () => 300;
 		// Its bytes go out, and the API takes longer than the idle time to store them.
 		const sendsAll = (xhr: FakeXHR) => {
-			xhr.upload.onprogress?.();
+			xhr.sends(1024);
 			xhr.upload.onload?.();
 		};
 		FakeXHR.onSend = (xhr) =>
@@ -415,6 +422,85 @@ describe("an upload", () => {
 
 	test("isn't what a JSON request is: that one still goes through fetch", async () => {
 		await api.post("/api/rooms/r/messages", { content: "hi" });
+		expect(fetched).toHaveBeenCalledTimes(1);
+		expect(FakeXHR.last).toBeNull();
+	});
+});
+
+// A cropped avatar, banner, icon, emoji or sticker went up saying only "Saving…" or "Uploading…" (#78): its sender now
+// gets the bytes of its body sent and their total as they go, which the image's Save or Upload shows in percent.
+describe("an upload's progress", () => {
+	test("reaches its sender as the bytes go out, all of them once the body is up, and nothing after the answer", async () => {
+		const seen: [number, number][] = [];
+		FakeXHR.onSend = (xhr) =>
+			queueMicrotask(() => {
+				xhr.sends(0, 4000);
+				xhr.sends(1500, 4000);
+				xhr.sends(4000, 4000);
+				// Its last byte out (respond's upload.onload), then its answer.
+				xhr.respond(201, { id: "m" });
+				xhr.sends(4000, 4000);
+			});
+		const res = await api.patch("/api/users/@me", messageForm(file(1024)), {
+			onUploadProgress: (up, total) => seen.push([up, total]),
+		});
+		expect(res.status).toBe(201);
+		expect(seen).toEqual([
+			[0, 4000],
+			[1500, 4000],
+			[4000, 4000],
+			[4000, 4000],
+		]);
+	});
+
+	test("counts the form's own size while the webview doesn't give the total", async () => {
+		const seen: [number, number][] = [];
+		const form = messageForm(file(1024));
+		FakeXHR.onSend = (xhr) =>
+			queueMicrotask(() => {
+				xhr.sends(100, 0, false);
+				xhr.respond(201, { id: "m" });
+			});
+		await api.post("/api/spaces/s/emojis", form, { onUploadProgress: (up, total) => seen.push([up, total]) });
+		expect(seen).toEqual([
+			[100, formBytes(form)],
+			[formBytes(form), formBytes(form)],
+		]);
+	});
+
+	test("starts over from 0 when the form goes again after a refresh", async () => {
+		localStorage.setItem("duvet_session_token", "access-1");
+		localStorage.setItem("duvet_refresh_token", "session-1");
+		fetched.mockImplementation((async (input: string | URL | Request) => {
+			sent.push(input instanceof Request ? input.url : input.toString());
+			const tokens = { token: "access-2", session_token: "session-2" };
+			return new Response(JSON.stringify(tokens), { status: 200, headers: { "Content-Type": "application/json" } });
+		}) as typeof fetch);
+		let tries = 0;
+		FakeXHR.onSend = (xhr) =>
+			queueMicrotask(() => {
+				if (++tries === 1) {
+					xhr.sends(4000, 4000);
+					xhr.respond(401, { error: "expired" });
+				} else {
+					xhr.sends(0, 4000);
+					xhr.respond(201, { id: "m" });
+				}
+			});
+		const seen: number[] = [];
+		const res = await api.post("/api/spaces/s/stickers", messageForm(file(1024)), {
+			onUploadProgress: (up) => seen.push(up),
+		});
+		expect(res.status).toBe(201);
+		// The first try's body, all up, then the second's from its own start.
+		expect(seen).toEqual([4000, 4000, 0, 4000]);
+	});
+
+	test("isn't reported for a request that isn't a form, which changes nothing else", async () => {
+		const seen: number[] = [];
+		const res = await api.patch("/api/users/@me", { alias: "a" }, { onUploadProgress: (up) => seen.push(up) });
+		expect(res.status).toBe(201);
+		expect(seen).toEqual([]);
 		expect(fetched).toHaveBeenCalledTimes(1);
 		expect(FakeXHR.last).toBeNull();
 	});

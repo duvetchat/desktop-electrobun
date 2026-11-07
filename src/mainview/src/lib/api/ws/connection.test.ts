@@ -1,11 +1,14 @@
 import { afterAll, beforeAll, describe, expect, jest, spyOn, test } from "bun:test";
 import { get } from "svelte/store";
 import { openGateway, type TestGateway } from "$lib/api/ws/test-gateway";
-import { changeDraft, chatDrafts, draftOf } from "$lib/drafts";
+import { changeDraft, chatDrafts, draftOf, putBack } from "$lib/drafts";
+import { onReactionChange, type ReactionChange } from "$lib/reactions";
 import { MessageType, type Message } from "$lib/types";
 import { TYPING_TIMEOUT } from "$lib/typing";
+import { SENT_BEFORE_CANCEL } from "$lib/uploads";
 
 const stores = await import("$lib/stores.svelte");
+const { toastStore } = await import("$lib/stores/toast.svelte");
 
 const ME = "01920000-0000-7000-8000-00000000b0b0";
 const ALICE = "01920000-0000-7000-8000-00000000a11c";
@@ -122,6 +125,55 @@ describe("who shows as typing outside the open chat", () => {
 	});
 });
 
+// A reaction event changes the message in the list that has it, a room's or a conversation's, and reaches what shows a
+// message those lists don't keep (a pin, a search result, who reacted), which has its own copy to change.
+describe("a reaction that comes", () => {
+	const thumbs = (users: string[]) => ({ emoji_name: "👍", emoji_id: null, count: users.length, users });
+
+	test("in a room, changes the message in its list, and reaches what hears them", () => {
+		const room = conversation(30);
+		stores.channelMessages.update((all) => ({
+			...all,
+			[room]: [{ ...roomMessage(message(40)), reactions: [thumbs([ALICE])] }],
+		}));
+		const heard: ReactionChange[] = [];
+		const stop = onReactionChange((change) => heard.push(change));
+		deliver("REACTION_ADD", { message_id: message(40), user_id: ME, emoji_name: "👍", emoji_id: null });
+		deliver("REACTION_REMOVE", { message_id: message(40), user_id: ALICE, emoji_name: "👍" });
+		stop();
+		expect(get(stores.channelMessages)[room][0].reactions).toEqual([thumbs([ME])]);
+		expect(heard.map((c) => [c.message_id, c.user_id, c.emoji_name, c.added])).toEqual([
+			[message(40), ME, "👍", true],
+			[message(40), ALICE, "👍", false],
+		]);
+	});
+
+	test("in a conversation, and for a message no list has, which only what hears them can show", () => {
+		const conv = conversation(31);
+		stores.dmMessages.update((all) => ({
+			...all,
+			[conv]: [
+				{
+					id: message(41),
+					conversation_id: conv,
+					author_id: ALICE,
+					content: "hi",
+					type: MessageType.Text,
+					created_at: "",
+					updated_at: "",
+				},
+			],
+		}));
+		const heard: ReactionChange[] = [];
+		const stop = onReactionChange((change) => heard.push(change));
+		deliver("DM_REACTION_ADD", { message_id: message(41), user_id: ALICE, emoji_name: "👍" });
+		deliver("DM_REACTION_ADD", { message_id: message(42), user_id: ALICE, emoji_name: "🎉" });
+		stop();
+		expect(get(stores.dmMessages)[conv][0].reactions).toEqual([thumbs([ALICE])]);
+		expect(heard.map((c) => c.message_id)).toEqual([message(41), message(42)]);
+	});
+});
+
 describe("the message a draft replies to is deleted", () => {
 	test("in a room, the draft goes on as no reply", () => {
 		const room = conversation(10);
@@ -137,6 +189,64 @@ describe("the message a draft replies to is deleted", () => {
 		changeDraft(conv, { replyTo: roomMessage(message(1)) });
 		deliver("DM_MESSAGE_DELETE", { id: message(1), conversation_id: conv });
 		expect(draftOf(get(chatDrafts), conv).replyTo).toBeNull();
+	});
+});
+
+// A message this window cancelled, which the API posted all the same (#211): its whole body was in as the client gave
+// up. Its create event takes out of the draft what the Cancel put back, and a notice says so.
+describe("a cancelled message that the API posts all the same", () => {
+	const photo = new File(["png"], "photo.png", { type: "image/png" });
+	const sent = { text: "fix this", files: [photo], replyTo: null, replyMention: true };
+	const notices = () => toastStore.items.filter((t) => t.message === SENT_BEFORE_CANCEL).length;
+	const emptied = { text: "", files: [], replyTo: null, replyMention: true };
+
+	test("in a room, leaves the draft as it was before the Cancel, says so, and shows as sent", () => {
+		ready({});
+		const room = conversation(40);
+		const before = notices();
+		putBack(room, "nonce-40", sent);
+		deliver("MESSAGE_CREATE", {
+			id: message(60),
+			room_id: room,
+			author_id: ME,
+			content: "fix this",
+			nonce: "nonce-40",
+		});
+		expect(draftOf(get(chatDrafts), room)).toEqual(emptied);
+		expect(notices()).toBe(before + 1);
+		expect(get(stores.channelMessages)[room].map((m) => m.id)).toEqual([message(60)]);
+	});
+
+	test("in a conversation too", () => {
+		ready({});
+		const conv = conversation(41);
+		const before = notices();
+		putBack(conv, "nonce-41", sent);
+		deliver("DM_MESSAGE_CREATE", {
+			id: message(61),
+			conversation_id: conv,
+			author_id: ME,
+			content: "fix this",
+			nonce: "nonce-41",
+		});
+		expect(draftOf(get(chatDrafts), conv)).toEqual(emptied);
+		expect(notices()).toBe(before + 1);
+	});
+
+	test("not for someone else's message with that nonce", () => {
+		ready({});
+		const room = conversation(42);
+		const before = notices();
+		putBack(room, "nonce-42", sent);
+		deliver("MESSAGE_CREATE", {
+			id: message(62),
+			room_id: room,
+			author_id: ALICE,
+			content: "fix this",
+			nonce: "nonce-42",
+		});
+		expect(draftOf(get(chatDrafts), room)).toMatchObject({ text: "fix this", files: [photo] });
+		expect(notices()).toBe(before);
 	});
 });
 

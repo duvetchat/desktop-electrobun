@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { Pin as PinIcon, X as XIcon } from "@lucide/svelte";
 	import { Popover } from "bits-ui";
-	import { untrack } from "svelte";
+	import { onMount, untrack } from "svelte";
 	import MentionProfile from "$lib/components/MentionProfile.svelte";
 	import MessagePreview from "$lib/components/MessagePreview.svelte";
 	import ImagePreview from "$lib/components/ImagePreview.svelte";
@@ -9,7 +9,13 @@
 	import { getConversationPins, unpinConversationMessage, type DirectMessage } from "$lib/api/conversations";
 	import { getApiError } from "$lib/api/api";
 	import { toast } from "$lib/stores/toast.svelte";
-	import { gatewaySpaces, jumpToMessageRequest, pinUpdates, pinsPanelRequest } from "$lib/stores.svelte";
+	import {
+		gatewaySpaces,
+		jumpToMessageRequest,
+		onOpenElsewhere,
+		pinUpdates,
+		pinsPanelRequest,
+	} from "$lib/stores.svelte";
 	import { gatewayMessageToMessage } from "$lib/types";
 	import type { GatewaySpace, MemberOnSidebar, Message, SpaceEmoji } from "$lib/types";
 	import { hasPermission, Permission } from "$lib/permissions";
@@ -96,6 +102,9 @@
 		const update = $pinUpdates;
 		if (update?.channelId === channelId && untrack(() => open)) untrack(() => void load());
 	});
+	// What a pin opens elsewhere (its quote's message, a link's chip or card, an invite, who reacted) closes the list, as
+	// its Jump does.
+	onMount(() => onOpenElsewhere(() => (open = false)));
 	// A pin notice's "pinned messages" link opens the list.
 	$effect(() => {
 		const req = $pinsPanelRequest;
@@ -159,7 +168,15 @@
 					<div
 						class="group relative flex shrink-0 flex-col gap-1 rounded-md border border-stone-800/80 bg-stone-900/60 px-3 py-2"
 					>
-						<MessagePreview message={m} {mentionMap} {customEmojiMap} onPreview={openPreview} />
+						<MessagePreview
+							message={m}
+							spaceId={conversation ? "" : (space?.id ?? "")}
+							{channelId}
+							{members}
+							{mentionMap}
+							{customEmojiMap}
+							onPreview={openPreview}
+						/>
 						<div class="absolute top-1.5 right-1.5 hidden items-center gap-1 group-focus-within:flex group-hover:flex">
 							<button
 								class="rounded bg-stone-800 px-2 py-0.5 text-xs font-medium text-stone-200 hover:bg-stone-700"

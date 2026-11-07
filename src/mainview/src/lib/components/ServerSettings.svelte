@@ -43,6 +43,7 @@
 	import { createRole, updateRole, deleteRole } from "$lib/api/roles";
 	import { listEmojis, createEmoji, updateEmoji, deleteEmoji } from "$lib/api/emojis";
 	import { listStickers, createSticker, updateSticker, deleteSticker } from "$lib/api/stickers";
+	import { uploadNote, uploadPercent } from "$lib/uploads";
 	import {
 		getSpaceBuckets,
 		createSpaceBucket,
@@ -97,6 +98,9 @@
 	let ovDescription = $state("");
 	let ovLocale = $state("");
 	let ovSaving = $state(false);
+	// How far a new icon or banner has gone up while the overview saves, in percent, which Save says: null until its
+	// first progress, and while nothing new goes up.
+	let ovUploadPercent = $state<number | null>(null);
 	let showSpaceIconCrop = $state(false);
 	let showSpaceBannerCrop = $state(false);
 	let pendingIcon = $state<File | "remove" | null>(null);
@@ -137,15 +141,20 @@
 		if (!spaceId || !ovHasChanges) return;
 		ovSaving = true;
 		try {
-			const updated = await updateSpace(spaceId, {
-				name: ovName.trim() || undefined,
-				description: ovDescription.trim() || null,
-				locale: ovLocale.trim() || null,
-				banner: pendingBanner instanceof File ? pendingBanner : undefined,
-				icon: pendingIcon instanceof File ? pendingIcon : undefined,
-				remove_banner: pendingBanner === "remove",
-				remove_icon: pendingIcon === "remove",
-			});
+			const uploading = pendingBanner instanceof File || pendingIcon instanceof File;
+			const updated = await updateSpace(
+				spaceId,
+				{
+					name: ovName.trim() || undefined,
+					description: ovDescription.trim() || null,
+					locale: ovLocale.trim() || null,
+					banner: pendingBanner instanceof File ? pendingBanner : undefined,
+					icon: pendingIcon instanceof File ? pendingIcon : undefined,
+					remove_banner: pendingBanner === "remove",
+					remove_icon: pendingIcon === "remove",
+				},
+				uploading ? { onUploadProgress: (sent, total) => (ovUploadPercent = uploadPercent(sent, total)) } : undefined,
+			);
 			// Clean up previews
 			if (pendingIconPreview) {
 				URL.revokeObjectURL(pendingIconPreview);
@@ -177,6 +186,7 @@
 			toast(getApiError(e, "Failed to update"), "error");
 		} finally {
 			ovSaving = false;
+			ovUploadPercent = null;
 		}
 	}
 
@@ -278,6 +288,8 @@
 	let newEmojiPreview = $state<string | null>(null);
 	let showEmojiCrop = $state(false);
 	let isUploadingEmoji = $state(false);
+	// How far the new emoji's image has gone up, in percent, which Upload says: null until its first progress.
+	let emojiUploadPercent = $state<number | null>(null);
 	let editingEmojiId = $state<string | null>(null);
 	let editingEmojiName = $state("");
 	let isDeletingEmoji = $state<Record<string, boolean>>({});
@@ -290,6 +302,8 @@
 	let newStickerPreview = $state<string | null>(null);
 	let showStickerCrop = $state(false);
 	let isUploadingSticker = $state(false);
+	// As emojiUploadPercent, for the new sticker's image.
+	let stickerUploadPercent = $state<number | null>(null);
 	let editingStickerReact = $state<string | null>(null);
 	let editingStickerName = $state("");
 	let isDeletingSticker = $state<Record<string, boolean>>({});
@@ -555,7 +569,11 @@
 		if (!newEmojiName.trim() || !newEmojiFile || !spaceId) return;
 		isUploadingEmoji = true;
 		try {
-			await createEmoji(spaceId, newEmojiName.trim(), newEmojiFile);
+			await createEmoji(spaceId, newEmojiName.trim(), newEmojiFile, {
+				onUploadProgress: (sent, total) => (emojiUploadPercent = uploadPercent(sent, total)),
+			});
+			// Up and saved: what follows is the list read again.
+			emojiUploadPercent = null;
 			newEmojiName = "";
 			setNewEmojiFile(null);
 			await loadEmojis();
@@ -564,6 +582,7 @@
 			toast(getApiError(err, "Failed to upload emoji"), "error");
 		} finally {
 			isUploadingEmoji = false;
+			emojiUploadPercent = null;
 		}
 	}
 
@@ -640,7 +659,11 @@
 		if (!newStickerName.trim() || !newStickerFile || !spaceId) return;
 		isUploadingSticker = true;
 		try {
-			await createSticker(spaceId, newStickerName.trim(), newStickerFile);
+			await createSticker(spaceId, newStickerName.trim(), newStickerFile, {
+				onUploadProgress: (sent, total) => (stickerUploadPercent = uploadPercent(sent, total)),
+			});
+			// Up and saved: what follows is the list read again.
+			stickerUploadPercent = null;
 			newStickerName = "";
 			setNewStickerFile(null);
 			await loadStickers();
@@ -649,6 +672,7 @@
 			toast(getApiError(err, "Failed to upload sticker"), "error");
 		} finally {
 			isUploadingSticker = false;
+			stickerUploadPercent = null;
 		}
 	}
 
@@ -1395,9 +1419,9 @@
 									<button
 										onclick={handleSaveOverview}
 										disabled={ovSaving}
-										class="bg-fill-600 text-fixed-white hover:bg-fill-500 rounded-md px-4 py-2 text-sm font-medium transition-colors disabled:opacity-50"
+										class="bg-fill-600 text-fixed-white hover:bg-fill-500 rounded-md px-4 py-2 text-sm font-medium tabular-nums transition-colors disabled:opacity-50"
 									>
-										{ovSaving ? "Saving..." : "Save Changes"}
+										{ovSaving ? (ovUploadPercent === null ? "Saving..." : uploadNote(ovUploadPercent)) : "Save Changes"}
 									</button>
 								{/if}
 
@@ -1913,12 +1937,16 @@
 											</label>
 
 											<button
-												class="text-fixed-white flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium transition-colors hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
+												class="text-fixed-white flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium tabular-nums transition-colors hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
 												onclick={handleUploadEmoji}
 												disabled={isUploadingEmoji || !newEmojiName.trim() || !newEmojiFile}
 											>
 												<UploadIcon class="size-4" />
-												{isUploadingEmoji ? "Uploading..." : "Upload"}
+												{isUploadingEmoji
+													? emojiUploadPercent === null
+														? "Uploading..."
+														: uploadNote(emojiUploadPercent)
+													: "Upload"}
 											</button>
 										</div>
 									</div>
@@ -2039,12 +2067,16 @@
 											</label>
 
 											<button
-												class="text-fixed-white flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium transition-colors hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
+												class="text-fixed-white flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium tabular-nums transition-colors hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
 												onclick={handleUploadSticker}
 												disabled={isUploadingSticker || !newStickerName.trim() || !newStickerFile}
 											>
 												<UploadIcon class="size-4" />
-												{isUploadingSticker ? "Uploading..." : "Upload"}
+												{isUploadingSticker
+													? stickerUploadPercent === null
+														? "Uploading..."
+														: uploadNote(stickerUploadPercent)
+													: "Upload"}
 											</button>
 										</div>
 									</div>
