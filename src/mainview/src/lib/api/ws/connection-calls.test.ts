@@ -4,6 +4,7 @@ import { openGateway, type TestGateway } from "$lib/api/ws/test-gateway";
 import type { Conversation } from "$lib/api/conversations";
 
 const { conversationLeft } = await import("$lib/api/ws/connection");
+const { leaveSpace } = await import("$lib/api/spaces");
 const {
 	activeCall,
 	activeVoiceRoomId,
@@ -11,6 +12,7 @@ const {
 	conversations,
 	conversationsWithCalls,
 	currentUser,
+	gatewaySpaces,
 	unreadConversations,
 } = await import("$lib/stores.svelte");
 const { toastStore } = await import("$lib/stores/toast.svelte");
@@ -192,6 +194,110 @@ describe("what voice and calls tell the user", () => {
 			gateway.receive("VOICE_SESSION_REPLACED", { room_id: GROUP, reason: "permissions" });
 			expect(notices()).toEqual([]);
 			expect(get(activeVoiceRoomId)).toBe(DM);
+		});
+	});
+
+	// #213: a ROOM_DELETE of the voice room the user was in (deleted, or hidden from them by a change of permissions) or a
+	// SPACE_DELETE of its space took them out of its voice with nothing said, and a VOICE_SESSION_REPLACED after it said
+	// nothing either: it speaks only in the room it's about, which voice had left by then.
+	describe("a voice room taken away", () => {
+		const SPACE = "01920000-0000-7000-8000-0000000005a1";
+		const OTHER_SPACE = "01920000-0000-7000-8000-0000000005a2";
+		const LOUNGE = "01920000-0000-7000-8000-0000000005a3";
+		const GENERAL = "01920000-0000-7000-8000-0000000005a4";
+		const lost = ["You can't be in this voice room anymore", "error"];
+		const room = (id: string, name: string, type: number) => ({ id, space_id: SPACE, name, type, position: 0 });
+		const replaced = () => gateway.receive("VOICE_SESSION_REPLACED", { room_id: LOUNGE, reason: "permissions" });
+		let restoreFetch: (() => void) | null = null;
+
+		beforeEach(() => {
+			gatewaySpaces.set([]);
+			gateway.receive("SPACE_CREATE", {
+				space: { id: SPACE, name: "Alpha", owner_id: ANA, created_at: "", updated_at: "" },
+				rooms: { [GENERAL]: room(GENERAL, "general", 1), [LOUNGE]: room(LOUNGE, "lounge", 2) },
+				roles_permissions: {},
+				member_roles: {},
+				overwrites: {},
+				voice_states: [],
+			});
+			activeVoiceRoomId.set(LOUNGE);
+		});
+		afterEach(() => {
+			restoreFetch?.();
+			restoreFetch = null;
+		});
+
+		// The API answers the user's leave (DELETE /members/@me) with status, its SPACE_DELETE going out before its answer
+		// (now) or after it.
+		function leaveAnswered(status: number, deleteNow: boolean) {
+			const fetched = spyOn(globalThis, "fetch").mockImplementation((async (_input: string | URL | Request) => {
+				if (status === 204 && deleteNow) gateway.receive("SPACE_DELETE", { id: SPACE });
+				return status === 204 ? new Response(null, { status }) : Response.json({ error: "no" }, { status });
+			}) as typeof fetch);
+			restoreFetch = () => fetched.mockRestore();
+		}
+
+		test("deleted or hidden, it says so, once, and voice leaves it", () => {
+			gateway.receive("ROOM_DELETE", room(LOUNGE, "lounge", 2));
+			expect(notices()).toEqual([lost]);
+			expect(get(activeVoiceRoomId)).toBeNull();
+			replaced();
+			expect(notices()).toEqual([lost]);
+		});
+
+		test("access lost first: the ROOM_DELETE that follows says nothing more", () => {
+			replaced();
+			gateway.receive("ROOM_DELETE", room(LOUNGE, "lounge", 2));
+			expect(notices()).toEqual([lost]);
+		});
+
+		test("its space deleted says so, once, and voice leaves it", () => {
+			gateway.receive("SPACE_DELETE", { id: SPACE });
+			expect(notices()).toEqual([lost]);
+			expect(get(activeVoiceRoomId)).toBeNull();
+			replaced();
+			expect(notices()).toEqual([lost]);
+		});
+
+		test("another room's ROOM_DELETE, or another space's SPACE_DELETE, changes nothing", () => {
+			gateway.receive("ROOM_DELETE", room(GENERAL, "general", 1));
+			gateway.receive("SPACE_DELETE", { id: OTHER_SPACE });
+			expect(notices()).toEqual([]);
+			expect(get(activeVoiceRoomId)).toBe(LOUNGE);
+		});
+
+		test("a call goes on through them", () => {
+			activeVoiceRoomId.set(GROUP);
+			gateway.receive("ROOM_DELETE", room(LOUNGE, "lounge", 2));
+			gateway.receive("SPACE_DELETE", { id: SPACE });
+			expect(notices()).toEqual([]);
+			expect(get(activeVoiceRoomId)).toBe(GROUP);
+		});
+
+		describe("a space the user leaves from here says nothing", () => {
+			test("with its SPACE_DELETE before the answer, and the gateway's VOICE_SESSION_REPLACED after", async () => {
+				leaveAnswered(204, true);
+				await leaveSpace(SPACE);
+				replaced();
+				expect(notices()).toEqual([]);
+				expect(get(activeVoiceRoomId)).toBeNull();
+			});
+
+			test("with its SPACE_DELETE after the answer, and the gateway's VOICE_SESSION_REPLACED before it", async () => {
+				leaveAnswered(204, false);
+				await leaveSpace(SPACE);
+				replaced();
+				gateway.receive("SPACE_DELETE", { id: SPACE });
+				expect(notices()).toEqual([]);
+				expect(get(activeVoiceRoomId)).toBeNull();
+			});
+
+			test("but a leave refused leaves it to say so when the space is deleted after all", async () => {
+				leaveAnswered(400, false);
+				await expect(leaveSpace(SPACE)).rejects.toThrow();
+				gateway.receive("SPACE_DELETE", { id: SPACE });
+				expect(notices()).toEqual([lost]);
+			});
 		});
 	});
 

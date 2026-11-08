@@ -33,8 +33,18 @@ export async function getSpaceMember(spaceId: string, memberId: string): Promise
 	return response.data;
 }
 
+/** The spaces the user is leaving, or has left, from this client: their SPACE_DELETE, which may come before the answer,
+ * says nothing of the voice it ends there (#213). That SPACE_DELETE takes the space off, and so does a leave refused. */
+export const spacesLeftHere = new Set<string>();
+
 export async function leaveSpace(spaceId: string): Promise<void> {
-	await api.delete(`/api/spaces/${spaceId}/members/@me`);
+	spacesLeftHere.add(spaceId);
+	try {
+		await api.delete(`/api/spaces/${spaceId}/members/@me`);
+	} catch (err) {
+		spacesLeftHere.delete(spaceId);
+		throw err;
+	}
 }
 
 /** Deletes a space, for everyone in it: only its owner may (403 for anyone else, 404 once it's gone). Every member
