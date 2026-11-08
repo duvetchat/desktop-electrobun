@@ -87,11 +87,11 @@
 
 <div class="w-80 rounded-xl border border-zinc-700 bg-zinc-900 shadow-2xl">
 	<!-- Banner: 5:2, as it's cropped (600×240), and as a space's is. Without one, a block of the same size. It grows a
-	     little past the card on hover, under the avatar, which comes later; nothing clips it, so its corners are its own,
-	     and what's below clips itself. -->
+	     little past the card on hover; nothing clips it, so its corners are its own, and what's below clips itself. The
+	     avatar comes later and covers its lower left, so it fades out while the banner (peer/banner) is hovered. -->
 	{#if editable}
 		<div
-			class="group relative aspect-[5/2] w-full overflow-hidden rounded-t-[11px] transition-transform duration-150 motion-safe:hover:scale-105"
+			class="group peer/banner relative aspect-[5/2] w-full overflow-hidden rounded-t-[11px] transition-transform duration-150 motion-safe:hover:scale-105"
 			style={member.banner_url && !bannerError ? undefined : getBannerStyle(member)}
 		>
 			{#if member.banner_url && !bannerError}
@@ -131,7 +131,7 @@
 	{:else if member.banner_url && !bannerError}
 		<button
 			type="button"
-			class="aspect-[5/2] w-full cursor-pointer overflow-hidden rounded-t-[11px] transition-transform duration-150 motion-safe:hover:scale-105"
+			class="peer/banner aspect-[5/2] w-full cursor-pointer overflow-hidden rounded-t-[11px] transition-transform duration-150 motion-safe:hover:scale-105"
 			onclick={() => {
 				previewSrc = member.banner_url!;
 				previewOpen = true;
@@ -147,14 +147,18 @@
 		</button>
 	{:else}
 		<div
-			class="aspect-[5/2] w-full rounded-t-[11px] transition-transform duration-150 motion-safe:hover:scale-105"
+			class="peer/banner aspect-[5/2] w-full rounded-t-[11px] transition-transform duration-150 motion-safe:hover:scale-105"
 			style={getBannerStyle(member)}
 		></div>
 	{/if}
 
 	<div class="relative px-4 pb-4">
-		<!-- Avatar -->
-		<div class="absolute -top-12 left-4 rounded-full border-[6px] border-zinc-800 bg-zinc-950">
+		<!-- Avatar: with its status dot, it fades out while the banner before this section is hovered, over the banner's
+		     150 ms, and with less motion asked too, as a fade moves nothing. It still takes the pointer: on it, the banner
+		     isn't hovered, so it shows, and its click is its own. -->
+		<div
+			class="absolute -top-12 left-4 rounded-full border-[6px] border-zinc-800 bg-zinc-950 transition-opacity duration-150 in-peer-hover/banner:opacity-0"
+		>
 			{#if editable}
 				<div class="avatar-edit-group relative overflow-hidden rounded-full">
 					<UserAvatar src={member.avatar_url} name={member.username} size={80} />
