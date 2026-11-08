@@ -2,6 +2,7 @@ import { get } from "svelte/store";
 import type { Conversation } from "$lib/api/conversations";
 import { acceptCall, sendEventMessage } from "$lib/api/ws/connection";
 import { withoutCallVoiceOf } from "$lib/calls";
+import { toast } from "$lib/stores/toast.svelte";
 import {
 	activeCall,
 	activeVoiceRoomId,
@@ -29,12 +30,41 @@ export function sendVoiceSync(roomId: string | null = get(activeVoiceRoomId)) {
 	});
 }
 
+// How the voice room or call this client is in asks for a microphone it doesn't have (the browser refused it): VoiceChat
+// sets it while it has none, and an unmute asks first. Resolves whether one is open.
+let askForMic: (() => Promise<boolean>) | null = null;
+let asking: Promise<void> | null = null;
+
+/** VoiceChat's way of asking for the microphone again, while it has none; null once it has one, or it's gone. */
+export function askForMicWith(ask: (() => Promise<boolean>) | null) {
+	askForMic = ask;
+}
+
 /** Mutes the mic, or unmutes it, which also undeafens: someone who asks to talk hears too. Without SpeakInVoice in the
- * room it stays muted: the caller doesn't offer it then. */
+ * room it stays muted: the caller doesn't offer it then. Without a microphone (the browser refused it) the unmute asks
+ * for it again first, and the user stays muted until it's open, as on the mobile app (#207). */
 export function toggleMute() {
 	const unmuting = get(isMuted);
+	if (unmuting && askForMic) {
+		asking ??= unmuteWithMic(askForMic).finally(() => (asking = null));
+		return;
+	}
 	isMuted.set(!unmuting);
 	if (unmuting) isDeafened.set(false);
+	sendVoiceSync();
+}
+
+async function unmuteWithMic(ask: () => Promise<boolean>) {
+	const room = get(activeVoiceRoomId);
+	const open = await ask();
+	// Voice left meanwhile: nothing to unmute, and nothing to say.
+	if (get(activeVoiceRoomId) !== room || !get(isMuted)) return;
+	if (!open) {
+		toast("Allow Duvet to use the microphone to talk", "error");
+		return;
+	}
+	isMuted.set(false);
+	isDeafened.set(false);
 	sendVoiceSync();
 }
 

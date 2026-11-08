@@ -7,7 +7,7 @@
 	import { toast } from "$lib/stores/toast.svelte";
 	import { hasPermission, Permission } from "$lib/permissions";
 	import { createDenoisedStream } from "$lib/audio/noise-suppression";
-	import { sendVoiceSync } from "$lib/voice";
+	import { askForMicWith, sendVoiceSync } from "$lib/voice";
 	import {
 		CAMERA_MAX_BITRATE,
 		CAMERA_MAX_FRAMERATE,
@@ -128,6 +128,7 @@
 	function leaveVoice() {
 		if (isDestroyed) return;
 		isDestroyed = true;
+		askForMicWith(null);
 		audioStore.play("leave_vc");
 		sendEventMessage("VOICE_LEAVE", { room_id: channelId });
 		if (peerConnection) {
@@ -274,8 +275,12 @@
 				await acquireMic();
 			} catch (e) {
 				console.error("[Voice] Failed to get local audio:", e);
-				// It joins all the same, to listen.
-				if (!isDestroyed) toast("Duvet can't use the microphone: you're listening only", "error");
+				// It joins all the same, to listen, muted, as the others then see it: unmuting asks for the microphone again.
+				if (!isDestroyed) {
+					isMuted.set(true);
+					askForMicWith(askForMicAgain);
+					toast("Duvet can't use the microphone: you're listening only", "error");
+				}
 			}
 		}
 		// Left while the browser was asking for the mic: don't join after all.
@@ -475,8 +480,26 @@
 			.catch((err) => {
 				console.error("[Voice] Failed to open the mic after getting SpeakInVoice:", err);
 				toast("Couldn't open your microphone", "error");
+				if (!isDestroyed) askForMicWith(askForMicAgain);
 			});
 	});
+
+	/** Asks the browser for the microphone again, for an unmute (askForMicWith): open, it's sent once the unmute takes
+	 * the user's mute off (the effect on isMuted below), and the meter follows it. Resolves whether it's open: not while
+	 * the browser still refuses it, nor once voice was left. */
+	async function askForMicAgain(): Promise<boolean> {
+		if (localAudioStream) return true;
+		try {
+			await acquireMic();
+		} catch (err) {
+			console.error("[Voice] The microphone is still refused:", err);
+			return false;
+		}
+		if (isDestroyed || !localAudioStream) return false;
+		askForMicWith(null);
+		startLocalLevelMeter();
+		return true;
+	}
 
 	/** Which of this client's transceivers carries what, by mid, for VOICE_JOIN and WEBRTC_RENEGOTIATE_OFFER:
 	 * the gateway takes any other video it gets for the screen. */
