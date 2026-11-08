@@ -4,10 +4,25 @@ import api, {
 	formBytes,
 	getApiError,
 	MAX_REQUEST_BYTES,
+	NoAnswerError,
+	refreshSession,
+	requestLimits,
 	TooLargeError,
 	UploadTimeoutError,
 	uploadLimits,
 } from "$lib/api/api";
+import { forgotPassword, sendChangeEmail, sendResetPasswordEmail, sendVerificationEmail, signIn } from "$lib/api/auth";
+import { createSpaceBucket, createSpaceTransfer, deleteSpaceBucket, updateSpaceBucket } from "$lib/api/space-buckets";
+import { deleteAllSpaceAttachments, deleteSpaceAttachment, getSpaceMembers } from "$lib/api/spaces";
+import {
+	createMyBucket,
+	createMyTransfer,
+	deleteAllMyAttachments,
+	deleteMyAttachment,
+	deleteMyBucket,
+	updateMyBucket,
+	type CreateBucketPayload,
+} from "$lib/api/user";
 import { accessToken } from "$lib/stores/auth";
 
 // The requests the client sends, by URL, through fetch or XMLHttpRequest; each answers as the API does for a message it
@@ -93,6 +108,7 @@ const within = (promise: Promise<unknown>, ms: number) =>
 
 let fetched: ReturnType<typeof spyOn<typeof globalThis, "fetch">>;
 const limits = { ...uploadLimits };
+const answerLimits = { ...requestLimits };
 beforeEach(() => {
 	sent.length = 0;
 	localStorage.clear();
@@ -101,6 +117,7 @@ beforeEach(() => {
 	FakeXHR.onSend = (xhr) => queueMicrotask(() => xhr.respond(201, { id: "m" }));
 	Object.assign(globalThis, { XMLHttpRequest: FakeXHR });
 	Object.assign(uploadLimits, limits);
+	Object.assign(requestLimits, answerLimits);
 	fetched = spyOn(globalThis, "fetch").mockImplementation((async (input: string | URL | Request) => {
 		sent.push(input instanceof Request ? input.url : input.toString());
 		return new Response(JSON.stringify({ id: "m" }), { status: 201, headers: { "Content-Type": "application/json" } });
@@ -503,5 +520,190 @@ describe("an upload's progress", () => {
 		expect(seen).toEqual([]);
 		expect(fetched).toHaveBeenCalledTimes(1);
 		expect(FakeXHR.last).toBeNull();
+	});
+});
+
+// #217: a request other than a form's went through fetch with no time limit, unless its caller passed a signal: one the
+// API or the network left hanging held whatever waited on it (a page of messages, a member list, the reactions dialog's
+// lookups) until the connection itself failed.
+describe("a request the API doesn't answer", () => {
+	// fetch as a browser's: what a signal aborts fails with its reason, the body's read too. answerIn: when the answer
+	// comes, never without; bodyEnds: false, an answer whose body never ends.
+	function answering(answerIn: number | null, bodyEnds = true) {
+		fetched.mockImplementation(((input: string | URL | Request, init?: RequestInit) => {
+			sent.push(input instanceof Request ? input.url : input.toString());
+			const signal = init?.signal;
+			return new Promise<Response>((resolve, reject) => {
+				signal?.addEventListener("abort", () => reject(signal.reason));
+				if (answerIn === null) return;
+				setTimeout(() => {
+					const body = new ReadableStream<Uint8Array>({
+						start(controller) {
+							controller.enqueue(new TextEncoder().encode(JSON.stringify({ id: "m" })));
+							if (bodyEnds) controller.close();
+							signal?.addEventListener("abort", () => controller.error(signal.reason));
+						},
+					});
+					resolve(new Response(body, { status: 200, headers: { "Content-Type": "application/json" } }));
+				}, answerIn);
+			});
+		}) as typeof fetch);
+	}
+	const errorOf = (outcome: unknown) =>
+		outcome && typeof outcome === "object" && "error" in outcome ? outcome.error : undefined;
+
+	test("fails after its limit as a network error does, a TypeError, which its caller's error path takes", async () => {
+		requestLimits.answerMs = 40;
+		answering(null);
+		const outcome = await within(api.get("/api/rooms/r/messages"), 1000);
+		expect(outcome).toMatchObject({ settled: "rejected" });
+		expect(errorOf(outcome)).toBeInstanceOf(NoAnswerError);
+		expect(errorOf(outcome)).toBeInstanceOf(TypeError);
+		expect(getApiError(errorOf(outcome), "fallback")).toBe("No answer from the server in time");
+	});
+
+	test("an answer whose body stops coming fails too", async () => {
+		requestLimits.answerMs = 40;
+		answering(0, false);
+		expect(errorOf(await within(api.get("/api/spaces/s/members"), 1000))).toBeInstanceOf(NoAnswerError);
+	});
+
+	// As the mobile app's client has it: what counts is how long nothing comes, not how long it all takes.
+	test("an answer that keeps coming, however slowly, isn't cut", async () => {
+		requestLimits.answerMs = 60;
+		const pieces = ["[", '{"id":"a"}', ",", '{"id":"b"}', "]"];
+		fetched.mockImplementation(((_input: string | URL | Request, init?: RequestInit) => {
+			const body = new ReadableStream<Uint8Array>({
+				async start(controller) {
+					init?.signal?.addEventListener("abort", () => controller.error(init.signal?.reason));
+					for (const piece of pieces) {
+						await Bun.sleep(30);
+						controller.enqueue(new TextEncoder().encode(piece));
+					}
+					controller.close();
+				},
+			});
+			return Promise.resolve(new Response(body, { status: 200, headers: { "Content-Type": "application/json" } }));
+		}) as typeof fetch);
+		const res = await api.get("/api/users/@me/attachments");
+		expect(res.data).toEqual([{ id: "a" }, { id: "b" }]);
+	});
+
+	test("one answered in time is as before, and its limit doesn't fire after", async () => {
+		requestLimits.answerMs = 40;
+		answering(5);
+		const res = await api.get("/api/rooms/r/messages");
+		expect(res).toMatchObject({ status: 200, data: { id: "m" } });
+		await Bun.sleep(60);
+	});
+
+	// The views pass their own signals to drop what a newer request replaced (a page, the member list, the pins, a
+	// search): those bound nothing, and their aborts stay theirs.
+	test("one with its caller's signal has the limit too, and that signal's abort fails as an abort", async () => {
+		requestLimits.answerMs = 40;
+		answering(null);
+		const late = await within(getSpaceMembers("s", undefined, new AbortController().signal), 1000);
+		expect(errorOf(late)).toBeInstanceOf(NoAnswerError);
+
+		requestLimits.answerMs = 10_000;
+		const caller = new AbortController();
+		const aborted = within(getSpaceMembers("s", undefined, caller.signal), 1000);
+		caller.abort();
+		const err = errorOf(await aborted);
+		expect(err).not.toBeInstanceOf(NoAnswerError);
+		expect(err).toMatchObject({ name: "AbortError" });
+	});
+
+	test("the routes the API answers only after slower work wait longer", async () => {
+		requestLimits.answerMs = 20;
+		requestLimits.slowAnswerMs = 10_000;
+		answering(60);
+		const bucket: CreateBucketPayload = {
+			name: "b",
+			endpoint: "https://s3.test",
+			bucket_name: "b",
+			access_key_id: "k",
+			secret_access_key: "s",
+		};
+		const slow: [string, () => Promise<unknown>][] = [
+			["a bucket registered", () => createMyBucket(bucket)],
+			["a bucket edited", () => updateMyBucket("b", bucket)],
+			["a space's bucket registered", () => createSpaceBucket("s", bucket)],
+			["a space's bucket edited", () => updateSpaceBucket("s", "b", bucket)],
+			["a transfer", () => createMyTransfer({ source: "default", target: "b" })],
+			["a space's transfer", () => createSpaceTransfer("s", { source: "a", target: "b" })],
+			["a file deleted", () => deleteMyAttachment("f")],
+			["a space's file deleted", () => deleteSpaceAttachment("s", "f")],
+			["a sign-up", () => signIn({ username: "u", alias: null, password: "p", email: "e@x.test" })],
+			["a verification email", () => sendVerificationEmail()],
+			["a reset email", () => forgotPassword("e@x.test")],
+			["a reset email from the settings", () => sendResetPasswordEmail()],
+			["an email change", () => sendChangeEmail("e@x.test")],
+		];
+		for (const [what, call] of slow) {
+			expect([what, await within(call(), 1000)]).toMatchObject([what, { settled: "resolved" }]);
+		}
+		// Any other gives up at the usual limit.
+		expect(await within(api.get("/api/users/@me/buckets"), 1000)).toMatchObject({ settled: "rejected" });
+	});
+
+	test("a deletion of every file waits as long as it takes: it lasts as long as their number", async () => {
+		requestLimits.answerMs = 20;
+		requestLimits.slowAnswerMs = 20;
+		answering(60);
+		for (const call of [
+			() => deleteAllMyAttachments(),
+			() => deleteAllSpaceAttachments("s"),
+			() => deleteMyBucket("b", true),
+			() => deleteSpaceBucket("s", "b", true),
+		]) {
+			expect(await within(call(), 1000)).toMatchObject({ settled: "resolved" });
+		}
+		expect(await within(deleteMyBucket("b"), 1000)).toMatchObject({ settled: "rejected" });
+	});
+
+	// A refresh whose answer is lost may have rotated the session: it goes once more with the same token, which the API
+	// answers with the new tokens for 30 s (renewOnceMore).
+	test("a refresh given up goes once more, inside the API's rotation grace, and the request then goes through", async () => {
+		requestLimits.answerMs = 40;
+		localStorage.setItem("duvet_session_token", "access-1");
+		localStorage.setItem("duvet_refresh_token", "session-1");
+		let refreshes = 0;
+		fetched.mockImplementation((async (input: string | URL | Request, init?: RequestInit) => {
+			const url = input instanceof Request ? input.url : input.toString();
+			sent.push(url);
+			if (url.endsWith("/api/auth/refresh") && ++refreshes === 1) {
+				return new Promise<Response>((_, reject) =>
+					init?.signal?.addEventListener("abort", () => reject(init.signal?.reason)),
+				);
+			}
+			if (url.endsWith("/api/auth/refresh")) return Response.json({ token: "access-2", session_token: "session-2" });
+			const token = new Headers(init?.headers).get("Authorization");
+			return token === "Bearer access-2"
+				? Response.json({ id: "m" })
+				: Response.json({ error: "expired" }, { status: 401 });
+		}) as typeof fetch);
+		const res = await api.get("/api/users/@me");
+		expect(res).toMatchObject({ status: 200, data: { id: "m" } });
+		expect(refreshes).toBe(2);
+		expect(localStorage.getItem("duvet_refresh_token")).toBe("session-2");
+	}, 10_000);
+
+	test("a refresh that never gets an answer fails, and signs nobody out", async () => {
+		requestLimits.answerMs = 40;
+		localStorage.setItem("duvet_session_token", "access-1");
+		localStorage.setItem("duvet_refresh_token", "session-1");
+		answering(null);
+		expect(errorOf(await within(refreshSession(), 8000))).toBeInstanceOf(NoAnswerError);
+		expect(localStorage.getItem("duvet_session_token")).toBe("access-1");
+	}, 10_000);
+
+	test("its limits stay above the API's slowest answers, and a refresh's second try inside the rotation grace", () => {
+		// An interaction: 3 s for the bot's response, and 10 s more for one on its way.
+		expect(answerLimits.answerMs).toBeGreaterThan(13_000);
+		// A refresh given up is tried again 3 s later, and the API keeps a rotation's tokens 30 s.
+		expect(answerLimits.answerMs + 3000).toBeLessThan(30_000);
+		// An email: 10 s to connect, then 30 s.
+		expect(answerLimits.slowAnswerMs).toBeGreaterThan(40_000);
 	});
 });

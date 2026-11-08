@@ -1,4 +1,4 @@
-import api, { type UploadOptions } from "$lib/api/api";
+import api, { requestLimits, type UploadOptions } from "$lib/api/api";
 import type { GatewayUser, GatewayMember } from "$lib/types";
 
 export const MEMBERS_PAGE_SIZE = 50;
@@ -33,8 +33,18 @@ export async function getSpaceMember(spaceId: string, memberId: string): Promise
 	return response.data;
 }
 
+/** The spaces the user is leaving, or has left, from this client: their SPACE_DELETE, which may come before the answer,
+ * says nothing of the voice it ends there (#213). That SPACE_DELETE takes the space off, and so does a leave refused. */
+export const spacesLeftHere = new Set<string>();
+
 export async function leaveSpace(spaceId: string): Promise<void> {
-	await api.delete(`/api/spaces/${spaceId}/members/@me`);
+	spacesLeftHere.add(spaceId);
+	try {
+		await api.delete(`/api/spaces/${spaceId}/members/@me`);
+	} catch (err) {
+		spacesLeftHere.delete(spaceId);
+		throw err;
+	}
 }
 
 /** Deletes a space, for everyone in it: only its owner may (403 for anyone else, 404 once it's gone). Every member
@@ -103,10 +113,12 @@ export async function getSpaceStorageUsed(spaceId: string): Promise<{ total_size
 	return res.data;
 }
 
+// The API deletes a file from its storage before it answers, each call within 30 s, so a deletion of every file takes
+// as long as their number (#217).
 export async function deleteSpaceAttachment(spaceId: string, attachmentId: string): Promise<void> {
-	await api.delete(`/api/spaces/${spaceId}/attachments/${attachmentId}`);
+	await api.delete(`/api/spaces/${spaceId}/attachments/${attachmentId}`, { answerMs: requestLimits.slowAnswerMs });
 }
 
 export async function deleteAllSpaceAttachments(spaceId: string): Promise<void> {
-	await api.delete(`/api/spaces/${spaceId}/attachments`);
+	await api.delete(`/api/spaces/${spaceId}/attachments`, { answerMs: Infinity });
 }
