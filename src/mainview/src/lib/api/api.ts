@@ -12,6 +12,32 @@ export interface FetchRequestConfig extends Omit<RequestInit, "body"> {
 	 * body is up, and the request then waits for its answer. A form sent again (after a refresh) starts over from 0.
 	 * Other requests report nothing. */
 	onUploadProgress?: (sent: number, total: number) => void;
+	/** How long a request other than a form's waits for its answer: requestLimits.answerMs unless its route needs longer
+	 * (slowAnswerMs), and Infinity to wait as long as it takes. A form's upload has its own (uploadLimits). */
+	answerMs?: number;
+}
+
+/** How long a request other than a form's goes without a sign of its answer (its headers, then each piece of its body)
+ * before it's given up and fails with a NoAnswerError, as a network error fails, so its caller's error path or retry
+ * runs (#217). An answer that keeps coming, however slowly, isn't cut, as the mobile app's client has it. */
+export const requestLimits = {
+	/** Every request's, the session's refresh included, as the mobile app's (duvet_client's defaultRequestTimeout): above
+	 * the API's slowest answers to them, an interaction's (3 s for the bot's response, then 10 s more for one on its
+	 * way) and a message search's (5 s for each of its two queries). A refresh given up is tried again 3 s later
+	 * (renewOnceMore), inside the API's 30 s rotation grace. */
+	answerMs: 20_000,
+	/** The routes the API answers only once work it bounds itself is done: a bucket's check when it's registered or
+	 * edited, a transfer's probe of its buckets and a file's deletion from its storage (30 s each), and an email it
+	 * sends (40 s: 10 s to connect, then 30 s). */
+	slowAnswerMs: 60_000,
+};
+
+/** A request whose answer didn't come in time (requestLimits): it fails as a network error does, a TypeError. */
+export class NoAnswerError extends TypeError {
+	constructor() {
+		super("No answer from the server in time");
+		this.name = "NoAnswerError";
+	}
 }
 
 /** What the sender of a form may follow it with: its upload's progress, and a signal that aborts it. */
@@ -225,6 +251,63 @@ function sendForm(
 	});
 }
 
+/** fetch, given up once ms pass without a sign of its answer (requestLimits): its headers, then each piece of its body,
+ * which is read here, so a server that stops halfway through it is given up too. Given up, the request is aborted and
+ * fails with a NoAnswerError; the answer comes back with its body in memory. An abort of init.signal fails as fetch's
+ * does. Not AbortSignal.any and AbortSignal.timeout: an older Mac's WebKit, which the app runs on there, lacks them
+ * (GifPicker). */
+async function fetchWithin(url: string, init: RequestInit, ms: number): Promise<Response> {
+	if (!Number.isFinite(ms)) return fetch(url, init);
+	const request = new AbortController();
+	const own = init.signal;
+	const stop = () => request.abort(own?.reason);
+	let late = false;
+	let timer: ReturnType<typeof setTimeout> | undefined;
+	const alive = () => {
+		clearTimeout(timer);
+		timer = setTimeout(() => {
+			late = true;
+			request.abort();
+		}, ms);
+	};
+	alive();
+	if (own?.aborted) stop();
+	else own?.addEventListener("abort", stop);
+	try {
+		const res = await fetch(url, { ...init, signal: request.signal });
+		alive();
+		const body = NULL_BODY_STATUSES.has(res.status) || !res.body ? null : await readBody(res.body, alive);
+		return new Response(body, { status: res.status, statusText: res.statusText, headers: res.headers });
+	} catch (err) {
+		if (late) throw new NoAnswerError();
+		throw err;
+	} finally {
+		clearTimeout(timer);
+		own?.removeEventListener("abort", stop);
+	}
+}
+
+// A body's bytes, read whole, with alive() at each piece.
+async function readBody(body: ReadableStream<Uint8Array>, alive: () => void): Promise<ArrayBuffer> {
+	const reader = body.getReader();
+	const pieces: Uint8Array[] = [];
+	let length = 0;
+	for (;;) {
+		const { done, value } = await reader.read();
+		if (done) break;
+		alive();
+		pieces.push(value);
+		length += value.length;
+	}
+	const bytes = new Uint8Array(length);
+	let at = 0;
+	for (const piece of pieces) {
+		bytes.set(piece, at);
+		at += piece.length;
+	}
+	return bytes.buffer;
+}
+
 // When the session's tokens were issued: keepSessionFresh renews them by their age (renewalDue).
 const REFRESHED_AT_KEY = "duvet_session_refreshed_at";
 // A renewal that failed without an answer goes once more after this, well inside the API's 30 s rotation grace.
@@ -254,11 +337,11 @@ async function requestRefresh(): Promise<string> {
 		refreshHeaders.set("X-Session-Token", currentSessionToken);
 	}
 	const refresh = () =>
-		fetch(`${getHostURL()}/api/auth/refresh`, {
-			method: "POST",
-			credentials: "include",
-			headers: refreshHeaders,
-		});
+		fetchWithin(
+			`${getHostURL()}/api/auth/refresh`,
+			{ method: "POST", credentials: "include", headers: refreshHeaders },
+			requestLimits.answerMs,
+		);
 	const renew = async () => {
 		let res = await refresh();
 		// A 429 means "try again later", not an invalid session: wait as long as the API says,
@@ -343,9 +426,11 @@ const coreFetch = async <T = any>(endpoint: string, options: FetchRequestConfig 
 	const bytes = form ? formBytes(form) : 0;
 	if (bytes > MAX_REQUEST_BYTES) throw new TooLargeError(bytes);
 	// A form goes up through XMLHttpRequest, which gives up an upload that stalls (sendForm) and reports how far it is;
-	// the rest through fetch.
+	// the rest through fetch, given up when its answer doesn't come in time (fetchWithin).
 	const send = (url: string, init: RequestInit): Promise<Response> =>
-		form ? sendForm(url, init, form, bytes, options.onUploadProgress) : fetch(url, init);
+		form
+			? sendForm(url, init, form, bytes, options.onUploadProgress)
+			: fetchWithin(url, init, options.answerMs ?? requestLimits.answerMs);
 
 	const token = get(accessToken) || localStorage.getItem("duvet_session_token");
 	const sessionToken = localStorage.getItem("duvet_refresh_token");

@@ -1,11 +1,12 @@
-import { afterEach, beforeEach, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { get } from "svelte/store";
 import { openGateway, type TestGateway } from "$lib/api/ws/test-gateway";
 
-const { toggleDeafen, toggleMute } = await import("$lib/voice");
+const { askForMicWith, toggleDeafen, toggleMute } = await import("$lib/voice");
 const { activeVoiceRoomId, isDeafened, isMuted } = await import("$lib/stores.svelte");
+const { toastStore } = await import("$lib/stores/toast.svelte");
 
 const ROOM = "01920000-0000-7000-8000-0000000000c1";
 
@@ -59,6 +60,77 @@ test("out of voice the choice is kept, and nothing is sent", () => {
 	toggleMute();
 	expect(state()).toEqual({ muted: false, deafened: false });
 	expect(gateway.sent("VOICE_SYNC")).toEqual([]);
+});
+
+// #207: a microphone the browser refused as voice joined left the user muted, and unmuting never asked for it again. As on
+// the mobile app, unmuting asks for it first (VoiceChat's ask), and the user stays muted until it's open.
+describe("unmuting without a microphone", () => {
+	let asks = 0;
+	let answer: (open: boolean) => void = () => {};
+	const ask = () => {
+		asks++;
+		return new Promise<boolean>((resolve) => (answer = resolve));
+	};
+	const notices = () => toastStore.items.map((t) => [t.message, t.type]);
+
+	beforeEach(() => {
+		asks = 0;
+		toastStore.items = [];
+		isMuted.set(true);
+		askForMicWith(ask);
+	});
+	afterEach(() => askForMicWith(null));
+
+	test("asks for it first: the user stays muted, and the others are told nothing, until it's open", async () => {
+		isDeafened.set(true);
+		toggleMute();
+		expect(asks).toBe(1);
+		expect(state()).toEqual({ muted: true, deafened: true });
+		expect(gateway.sent("VOICE_SYNC")).toEqual([]);
+		answer(true);
+		await Bun.sleep(0);
+		expect(state()).toEqual({ muted: false, deafened: false });
+		expect(told()).toMatchObject({ room_id: ROOM, muted: false, deafened: false });
+		expect(notices()).toEqual([]);
+	});
+
+	test("one still refused leaves the user muted, and says how to talk", async () => {
+		toggleMute();
+		answer(false);
+		await Bun.sleep(0);
+		expect(state()).toEqual({ muted: true, deafened: false });
+		expect(gateway.sent("VOICE_SYNC")).toEqual([]);
+		expect(notices()).toEqual([["Allow Duvet to use the microphone to talk", "error"]]);
+	});
+
+	test("a second press while it asks asks no more", async () => {
+		toggleMute();
+		toggleMute();
+		expect(asks).toBe(1);
+		answer(true);
+		await Bun.sleep(0);
+		expect(gateway.sent("VOICE_SYNC")).toHaveLength(1);
+		toggleMute();
+		toggleMute();
+		expect(asks).toBe(2);
+	});
+
+	test("voice left while it asks: nothing changes, and nothing is said", async () => {
+		toggleMute();
+		activeVoiceRoomId.set(null);
+		answer(true);
+		await Bun.sleep(0);
+		expect(state()).toEqual({ muted: true, deafened: false });
+		expect(gateway.sent("VOICE_SYNC")).toEqual([]);
+		expect(notices()).toEqual([]);
+	});
+
+	test("muting asks nothing", () => {
+		isMuted.set(false);
+		toggleMute();
+		expect(asks).toBe(0);
+		expect(told()).toMatchObject({ muted: true });
+	});
 });
 
 test("the voice room's controls go through the same functions as the user panel's", () => {

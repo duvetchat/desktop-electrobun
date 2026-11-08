@@ -1,4 +1,4 @@
-import api from "$lib/api/api";
+import api, { requestLimits } from "$lib/api/api";
 import type { ChosenStatus, StorageTransfer, StorageTransferFile, StorageTransferFileStatus } from "$lib/types";
 
 interface UserMeResult {
@@ -65,12 +65,14 @@ export async function getMyAttachments(bucket?: string): Promise<UserAttachment[
 	return res.data;
 }
 
+// The API deletes a file from its storage before it answers, each call within 30 s, so a deletion of every file takes
+// as long as their number (#217).
 export async function deleteMyAttachment(id: string): Promise<void> {
-	await api.delete(`/api/users/@me/attachments/${id}`);
+	await api.delete(`/api/users/@me/attachments/${id}`, { answerMs: requestLimits.slowAnswerMs });
 }
 
 export async function deleteAllMyAttachments(): Promise<void> {
-	await api.delete("/api/users/@me/attachments");
+	await api.delete("/api/users/@me/attachments", { answerMs: Infinity });
 }
 
 // ── Storage Buckets ──────────────────────────────────────────────────────────
@@ -122,20 +124,24 @@ export async function getMyBuckets(): Promise<StorageBucket[]> {
 	return res.data;
 }
 
+// The API checks a bucket it registers or edits for 30 s at most before it answers (#217).
 export async function createMyBucket(data: CreateBucketPayload): Promise<StorageBucket> {
-	const res = await api.post("/api/users/@me/buckets", data);
+	const res = await api.post("/api/users/@me/buckets", data, { answerMs: requestLimits.slowAnswerMs });
 	return res.data;
 }
 
 export async function updateMyBucket(id: string, data: UpdateBucketPayload): Promise<StorageBucket> {
-	const res = await api.patch(`/api/users/@me/buckets/${id}`, data);
+	const res = await api.patch(`/api/users/@me/buckets/${id}`, data, { answerMs: requestLimits.slowAnswerMs });
 	return res.data;
 }
 
 /** Deletes a bucket. One with files is a 409 (`bucket has files`, with their count in `files`) unless
- * `deleteFiles` deletes them first. */
+ * `deleteFiles` deletes them first, which takes as long as their number before the API answers. */
 export async function deleteMyBucket(id: string, deleteFiles = false): Promise<void> {
-	await api.delete(`/api/users/@me/buckets/${id}`, { params: { delete_files: deleteFiles || undefined } });
+	await api.delete(`/api/users/@me/buckets/${id}`, {
+		params: { delete_files: deleteFiles || undefined },
+		answerMs: deleteFiles ? Infinity : undefined,
+	});
 }
 
 export async function activateMyBucket(id: string): Promise<void> {
@@ -169,8 +175,9 @@ export interface TransferFilesQuery {
 	limit?: number;
 }
 
+// The API probes the transfer's buckets for 30 s at most before it answers (#217).
 export async function createMyTransfer(data: CreateTransferPayload): Promise<StorageTransfer> {
-	const res = await api.post("/api/users/@me/storage/transfers", data);
+	const res = await api.post("/api/users/@me/storage/transfers", data, { answerMs: requestLimits.slowAnswerMs });
 	return res.data;
 }
 

@@ -45,7 +45,7 @@ import { getMyBuckets, me as fetchMe } from "$lib/api/user";
 import { getMentionCounts, getMessageById } from "$lib/api/messages";
 import { getWSHostURL, getAvatarURL, isUuid, route } from "$lib/common/common";
 import { derived, get, type Writable } from "svelte/store";
-import { getSpaceMembers, type SpaceMemberWithUser } from "$lib/api/spaces";
+import { getSpaceMembers, spacesLeftHere, type SpaceMemberWithUser } from "$lib/api/spaces";
 import { forgetSpaceCommands } from "$lib/api/interactions";
 
 import type {
@@ -106,6 +106,7 @@ import {
 	missedCallNotice,
 	ownCallsRingingOnReady,
 	placeAgain,
+	VOICE_ROOM_LOST,
 	voiceEndedNotice,
 	withCallVoiceState,
 	type PlacedCall,
@@ -432,6 +433,18 @@ export function conversationLeft(conversationId: string) {
 	// if they came back.
 	callAnswers.drop(conversationId);
 	callOver(conversationId);
+}
+
+// The space a room is in, as this client has it.
+const spaceOfRoom = (roomId: string) => get(gatewaySpaces).find((s) => s.rooms.some((r) => r.id === roomId))?.id;
+
+/** The voice room this client is in, taken from the user (#213): deleted, or hidden from them by a change of permissions
+ * (its ROOM_DELETE), or its space deleted or left (SPACE_DELETE). Voice leaves it at once, so a VOICE_SESSION_REPLACED the
+ * gateway sends after says nothing more, and the user is told as that event tells lost access, unless they left that space
+ * themselves, from here. */
+function voiceRoomTaken(leftHere: boolean) {
+	if (!leftHere) toast(VOICE_ROOM_LOST, "error");
+	activeVoiceRoomId.set(null);
 }
 
 /** The session resumed: what the gateway got before the old socket dropped, it answered in the replay just handled.
@@ -800,6 +813,11 @@ function handleEvent(event: GatewayEvent) {
 		}
 		case "SPACE_DELETE": {
 			const { id } = payload.data;
+			const leftHere = spacesLeftHere.delete(id);
+			const voiceRoom = get(activeVoiceRoomId);
+			if (get(gatewaySpaces).some((s) => s.id === id && s.rooms.some((r) => r.id === voiceRoom))) {
+				voiceRoomTaken(leftHere);
+			}
 			gatewaySpaces.update((spaces) => spaces.filter((s) => s.id !== id));
 			// Its members' statuses there go with it: a bot's would outlive it otherwise.
 			forgetSpaceStatuses(userStatusCache, id);
@@ -1183,7 +1201,9 @@ function handleEvent(event: GatewayEvent) {
 		case "VOICE_SESSION_REPLACED": {
 			const { room_id } = payload.data;
 			if (get(activeVoiceRoomId) === room_id) {
-				toast(voiceEndedNotice(payload.data), payload.data.reason ? "error" : "info");
+				// Access lost to a space the user is leaving here says nothing, as its SPACE_DELETE doesn't.
+				const leftHere = payload.data.reason === "permissions" && spacesLeftHere.has(spaceOfRoom(room_id) ?? "");
+				if (!leftHere) toast(voiceEndedNotice(payload.data), payload.data.reason ? "error" : "info");
 				activeVoiceRoomId.set(null);
 				// A call's voice that moved to another device takes the call there: this client is out of it, and can
 				// join it again from its conversation, which shows who is in it, the user too. Its camera or screen
@@ -1330,6 +1350,7 @@ function handleEvent(event: GatewayEvent) {
 		}
 		case "ROOM_DELETE": {
 			const raw = payload.data;
+			if (get(activeVoiceRoomId) === raw.id) voiceRoomTaken(spacesLeftHere.has(raw.space_id));
 			gatewaySpaces.update((spaces) =>
 				spaces?.map((s) => {
 					if (s.id !== raw.space_id) {

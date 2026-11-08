@@ -1,5 +1,10 @@
 <script lang="ts" module>
 	import type { AllowedMentions, MessageReference } from "$lib/types";
+	import type { SentNotice } from "$lib/typing";
+
+	// The typing or recording notice the user last sent each chat (noticeDue in lib/typing.ts), by chat: a pane's Chat
+	// stays as its rooms change, and two panes can show one chat, while the API's limit is per chat.
+	const sentNotices = new Map<string, SentNotice>();
 
 	// What each message being sent was sent with besides its text (files, ref, sticker, the reply's mention, or a voice
 	// note's audio), for its Retry. By nonce, and apart from this view, which goes when a pane shows a conversation and
@@ -35,16 +40,10 @@
 	import { gatewayMessageToMessage, isEphemeral, isNotice, MessageReferenceType } from "$lib/types";
 	import { sendMessage, sendVoiceNote, sendTypingIndicator, sendRecordingIndicator } from "$lib/api/messages";
 	import { MessageType } from "$lib/types";
-	import {
-		currentUser,
-		channelMessages,
-		gatewaySpaces,
-		typingUsers,
-		spaceEmojis,
-		spaceStickers,
-	} from "$lib/stores.svelte";
+	import { currentUser, channelMessages, gatewaySpaces, spaceEmojis, spaceStickers } from "$lib/stores.svelte";
 	import { toast } from "$lib/stores/toast.svelte";
 	import TypingIndicator from "$lib/components/TypingIndicator.svelte";
+	import { noticeDue } from "$lib/typing";
 	import { listEmojis } from "$lib/api/emojis";
 	import { getAvatarURL } from "$lib/common/common";
 	import { listStickers } from "$lib/api/stickers";
@@ -89,6 +88,7 @@
 		onUnreadMark = undefined,
 		onVoiceNoteOverride = undefined,
 		intro = undefined,
+		paneFocused = true,
 	}: {
 		messages: Message[];
 		members?: MemberOnSidebar[];
@@ -129,6 +129,11 @@
 		onVoiceNoteOverride?: (blob: Blob) => void;
 		/** The start of the chat, above its oldest message (ChatIntro). */
 		intro?: Snippet;
+		/**
+		 * Whether this chat's pane is the focused one, whose message box takes a key pressed outside any input. A chat
+		 * outside the panes (the friends view's) is the one on screen.
+		 */
+		paneFocused?: boolean;
 	} = $props();
 	// What's unsent in this chat, which stays when the user leaves it, whichever panes show it (lib/drafts.ts). The
 	// message box keeps its text there, and this chat its reply and files.
@@ -155,8 +160,6 @@
 	});
 	// The rooms "#" suggests; a conversation has none.
 	const mentionRooms = $derived(space ? mentionableRooms(space) : []);
-	let lastTypingSent = 0;
-	let lastTypingRecording = false;
 
 	// Load emojis and stickers into global stores on space change
 	$effect(() => {
@@ -326,9 +329,10 @@
 
 		if (isOtherInputActive()) return;
 
-		// Focus chat input when typing a printable character. A command's row has no message box: its keys
-		// (Space on its switch) are its own.
-		if (chatInputRef && !event.ctrlKey && !event.metaKey && !event.altKey && event.key.length === 1) {
+		// Focus chat input when typing a printable character, in the focused pane only: every pane's chat hears the key,
+		// and the first to take it put it in its own box, whichever pane the user was in. A command's row has no message
+		// box: its keys (Space on its switch) are its own.
+		if (paneFocused && chatInputRef && !event.ctrlKey && !event.metaKey && !event.altKey && event.key.length === 1) {
 			event.preventDefault();
 			chatInputRef?.focusAndInsert(event.key);
 		}
@@ -544,33 +548,12 @@
 		notifyTyping(false);
 	}
 
-	// Shows the user typing, or recording a voice message, and tells the others: at most every 3
-	// seconds, but at once when typing turns into recording or back.
+	// Tells the others the user is typing, or recording a voice message: at most every 3 seconds in each chat, but at
+	// once when typing turns into recording or back (noticeDue). Nothing shows the user their own, so it isn't kept with
+	// the others' (typingUsers).
 	function notifyTyping(recording: boolean) {
 		const now = Date.now();
-		const user = $currentUser;
-		if (user) {
-			typingUsers.update((all) => {
-				const filtered = (all[channelId] ?? []).filter((u) => u.user_id !== user.id);
-				return {
-					...all,
-					[channelId]: [
-						...filtered,
-						{
-							user_id: user.id,
-							username: user.username,
-							alias: user.alias ?? null,
-							avatar: user.avatar ?? null,
-							timestamp: now,
-							recording,
-						},
-					],
-				};
-			});
-		}
-		if (now - lastTypingSent < 3000 && recording === lastTypingRecording) return;
-		lastTypingSent = now;
-		lastTypingRecording = recording;
+		if (!noticeDue(sentNotices, channelId, recording, now)) return;
 		if (recording) (sendRecording ?? (() => sendRecordingIndicator(channelId)))();
 		else (sendTyping ?? (() => sendTypingIndicator(channelId)))();
 	}

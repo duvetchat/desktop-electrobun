@@ -76,15 +76,17 @@ export function missedCallNotice(call: ShownCall | null, incoming: CallIncomingE
 	return `Missed a call from ${incoming.initiator_name}`;
 }
 
+/** What the user is told when they can't be in the voice room they're in any more: they lost access to it, or it was
+ * deleted or hidden from them, or its space was deleted (#213). */
+export const VOICE_ROOM_LOST = "You can't be in this voice room anymore";
+
 /**
  * What the user is told when the gateway ends the voice this client is in (VOICE_SESSION_REPLACED). "permissions" means
  * they can't be in that room any more: they lost ViewChannels or JoinVoice there, left its space, or it went. Without a
  * reason, a newer join of theirs, from another session, took it.
  */
 export function voiceEndedNotice(ended: VoiceSessionReplacedEvent): string {
-	return ended.reason === "permissions"
-		? "You can't be in this voice room anymore"
-		: "Your voice moved to another device";
+	return ended.reason === "permissions" ? VOICE_ROOM_LOST : "Your voice moved to another device";
 }
 
 /**

@@ -1,4 +1,6 @@
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import {
 	conversationTab,
 	conversationTitle,
@@ -13,6 +15,7 @@ import {
 	tabNews,
 	tabStaysOpen,
 	tabTitle,
+	tabTooltip,
 } from "$lib/pane";
 import type { GatewayRoom, GatewaySpace, PaneNode, Tab } from "$lib/types";
 
@@ -124,6 +127,67 @@ describe("tabDescription", () => {
 		expect(tabDescription(null, described("Not this"))).toBeNull();
 		expect(tabDescription(room("gone"), described("Not this"))).toBeNull();
 		expect(tabDescription(room("r1", "another-space"), described("Not this"))).toBeNull();
+	});
+});
+
+// #214: the bar shows the active room's description only in what the tabs leave of it, nothing once they fill it, and
+// no tooltip had it.
+describe("tabTooltip", () => {
+	const spaces = (description: string | null): GatewaySpace[] => [
+		{
+			id: "s1",
+			name: "Design Guild",
+			description: null,
+			banner: null,
+			owner_id: ME,
+			locale: null,
+			member_roles: {},
+			room_overwrites: [],
+			rooms: [
+				{
+					id: "r1",
+					space_id: "s1",
+					parent_id: null,
+					type: 1,
+					name: "r1",
+					description,
+					position: 0,
+					nsfw: false,
+					created_at: "",
+					updated_at: "",
+				},
+			],
+			members: [],
+			roles: [],
+			users: [],
+			created_at: "",
+			updated_at: "",
+		},
+	];
+
+	test("a room's has its name, its space and what it's for, as its space has it now, then who's typing", () => {
+		expect(tabTooltip(room("r1"), "general", spaces("  What it's for "), null)).toBe(
+			"general · Design Guild · What it's for",
+		);
+		expect(tabTooltip(room("r1"), "general", spaces("Changed since"), "ana is typing…")).toBe(
+			"general · Design Guild · Changed since · ana is typing…",
+		);
+	});
+
+	test("a room without a description has its name and its space", () => {
+		expect(tabTooltip(room("r1"), "general", spaces(null), null)).toBe("general · Design Guild");
+		expect(tabTooltip(room("r1"), "general", spaces("   "), null)).toBe("general · Design Guild");
+	});
+
+	test("a conversation's has its name and who's typing", () => {
+		const tab = conversationTab(dm, ME);
+		expect(tabTooltip(tab, "Maya", spaces("Not this"), null)).toBe("Maya");
+		expect(tabTooltip(tab, "Maya", spaces("Not this"), "Maya is typing…")).toBe("Maya · Maya is typing…");
+	});
+
+	test("the pane's tabs take it", () => {
+		const bar = readFileSync(join(import.meta.dir, "components", "TabBar.svelte"), "utf8");
+		expect(bar).toContain("title={tabTooltip(tab, title, $gatewaySpaces, typing)}");
 	});
 });
 
