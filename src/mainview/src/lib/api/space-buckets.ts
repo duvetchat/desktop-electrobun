@@ -1,4 +1,4 @@
-import api from "$lib/api/api";
+import api, { requestLimits } from "$lib/api/api";
 import type {
 	StorageBucket,
 	CreateBucketPayload,
@@ -13,8 +13,9 @@ export async function getSpaceBuckets(spaceId: string): Promise<StorageBucket[]>
 	return res.data;
 }
 
+// The API checks a bucket it registers or edits for 30 s at most before it answers (#217).
 export async function createSpaceBucket(spaceId: string, data: CreateBucketPayload): Promise<StorageBucket> {
-	const res = await api.post(`/api/spaces/${spaceId}/buckets`, data);
+	const res = await api.post(`/api/spaces/${spaceId}/buckets`, data, { answerMs: requestLimits.slowAnswerMs });
 	return res.data;
 }
 
@@ -23,15 +24,19 @@ export async function updateSpaceBucket(
 	bucketId: string,
 	data: UpdateBucketPayload,
 ): Promise<StorageBucket> {
-	const res = await api.patch(`/api/spaces/${spaceId}/buckets/${bucketId}`, data);
+	const res = await api.patch(`/api/spaces/${spaceId}/buckets/${bucketId}`, data, {
+		answerMs: requestLimits.slowAnswerMs,
+	});
 	return res.data;
 }
 
 /** Deletes a bucket. One with files is a 409 (`bucket has files`, with their count in `files`) unless
- * `deleteFiles` deletes them first, with the emojis and stickers made from them. */
+ * `deleteFiles` deletes them first, with the emojis and stickers made from them, which takes as long as their number
+ * before the API answers. */
 export async function deleteSpaceBucket(spaceId: string, bucketId: string, deleteFiles = false): Promise<void> {
 	await api.delete(`/api/spaces/${spaceId}/buckets/${bucketId}`, {
 		params: { delete_files: deleteFiles || undefined },
+		answerMs: deleteFiles ? Infinity : undefined,
 	});
 }
 
@@ -46,8 +51,11 @@ export async function deactivateSpaceBucket(spaceId: string, bucketId: string): 
 // ── Storage Transfers ────────────────────────────────────────────────────────
 // A space moves files only between its buckets: `source` and `target` are bucket IDs.
 
+// The API probes the transfer's buckets for 30 s at most before it answers (#217).
 export async function createSpaceTransfer(spaceId: string, data: CreateTransferPayload): Promise<StorageTransfer> {
-	const res = await api.post(`/api/spaces/${spaceId}/storage/transfers`, data);
+	const res = await api.post(`/api/spaces/${spaceId}/storage/transfers`, data, {
+		answerMs: requestLimits.slowAnswerMs,
+	});
 	return res.data;
 }
 

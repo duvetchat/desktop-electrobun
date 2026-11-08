@@ -1,4 +1,4 @@
-import api, { type UploadOptions } from "$lib/api/api";
+import api, { requestLimits, type UploadOptions } from "$lib/api/api";
 import type { GatewayUser, GatewayMember } from "$lib/types";
 
 export const MEMBERS_PAGE_SIZE = 50;
@@ -113,10 +113,12 @@ export async function getSpaceStorageUsed(spaceId: string): Promise<{ total_size
 	return res.data;
 }
 
+// The API deletes a file from its storage before it answers, each call within 30 s, so a deletion of every file takes
+// as long as their number (#217).
 export async function deleteSpaceAttachment(spaceId: string, attachmentId: string): Promise<void> {
-	await api.delete(`/api/spaces/${spaceId}/attachments/${attachmentId}`);
+	await api.delete(`/api/spaces/${spaceId}/attachments/${attachmentId}`, { answerMs: requestLimits.slowAnswerMs });
 }
 
 export async function deleteAllSpaceAttachments(spaceId: string): Promise<void> {
-	await api.delete(`/api/spaces/${spaceId}/attachments`);
+	await api.delete(`/api/spaces/${spaceId}/attachments`, { answerMs: Infinity });
 }

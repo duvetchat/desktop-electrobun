@@ -1,10 +1,13 @@
-import api, { markSessionRefreshed } from "$lib/api/api";
+import api, { markSessionRefreshed, requestLimits } from "$lib/api/api";
 import { route } from "$lib/common/common";
 import { accessToken } from "$lib/stores/auth";
 
+// The routes that send an email answer once it's sent, which the API gives 40 s at most (#217).
+const sendsEmail = { answerMs: requestLimits.slowAnswerMs };
+
 export async function signIn(options: { username: string; alias: string | null; password: string; email: string }) {
 	try {
-		await api.post("/api/auth/signin", options);
+		await api.post("/api/auth/signin", options, sendsEmail);
 	} catch (err: any) {
 		throw new Error(`Sign-in failed: ${err.response?.data?.error || err.message}`, { cause: err });
 	}
@@ -20,7 +23,7 @@ export async function verifyEmail(token: string) {
 
 export async function sendVerificationEmail() {
 	try {
-		await api.post("/api/auth/verify/send");
+		await api.post("/api/auth/verify/send", undefined, sendsEmail);
 	} catch (err: any) {
 		throw new Error(err.response?.data?.error || "Failed to send verification email", { cause: err });
 	}
@@ -36,7 +39,7 @@ export async function resetPassword(token: string, password: string) {
 
 export async function forgotPassword(email: string) {
 	try {
-		await api.post("/api/auth/forgot-password", { email });
+		await api.post("/api/auth/forgot-password", { email }, sendsEmail);
 	} catch (err: any) {
 		throw new Error(err.response?.data?.error || "Failed to send reset email", { cause: err });
 	}
@@ -44,7 +47,7 @@ export async function forgotPassword(email: string) {
 
 export async function sendResetPasswordEmail() {
 	try {
-		await api.post("/api/auth/reset-password/send");
+		await api.post("/api/auth/reset-password/send", undefined, sendsEmail);
 	} catch (err: any) {
 		throw new Error(err.response?.data?.error || "Failed to send reset password email", { cause: err });
 	}
@@ -60,7 +63,7 @@ export async function changeEmail(token: string, email: string) {
 
 export async function sendChangeEmail(email: string) {
 	try {
-		await api.post("/api/auth/change-email/send", { email });
+		await api.post("/api/auth/change-email/send", { email }, sendsEmail);
 	} catch (err: any) {
 		throw new Error(err.response?.data?.error || "Failed to send email change request", { cause: err });
 	}
