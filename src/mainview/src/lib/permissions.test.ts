@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import {
+	ALL_PERMISSIONS,
 	canManageRoleAt,
+	canModerate,
 	canSetPermission,
 	computeRoomPermissions,
 	computeSpacePermissions,
@@ -8,6 +10,8 @@ import {
 	hasSpacePermission,
 	highestRolePosition,
 	mentionableRooms,
+	moderationRank,
+	outranks,
 	Permission,
 	roomNamesOf,
 	shownRooms,
@@ -116,6 +120,136 @@ describe("canManageRoleAt", () => {
 		expect(canManageRoleAt(space(roles, [SPACE]), 0)).toBe(false);
 		expect(highestRolePosition(space(roles, []))).toBe(-1);
 		expect(canManageRoleAt(space(roles, [SPACE], OWNER), 3)).toBe(true);
+	});
+});
+
+// The flags are the API's (duvet-api's internal/domain/enum/permissions.go), in its order: the roles it keeps carry them.
+describe("Kick Members and Ban Members", () => {
+	test("come after Video, as the API's flags", () => {
+		expect(Permission.Video).toBe(1 << 18);
+		expect(Permission.KickMembers).toBe(1 << 19);
+		expect(Permission.BanMembers).toBe(1 << 20);
+	});
+
+	test("the role editor lists every flag once, in their order, each with a name and a description", () => {
+		const flags = Object.values(Permission);
+		expect(ALL_PERMISSIONS.map((p) => p.flag)).toEqual(flags);
+		expect(ALL_PERMISSIONS.slice(-2).map((p) => p.name)).toEqual(["Kick Members", "Ban Members"]);
+		for (const p of ALL_PERMISSIONS) expect(p.description.trim()).not.toBe("");
+	});
+
+	test("the owner and Administrators hold them, as they hold every permission", () => {
+		const both = Permission.KickMembers | Permission.BanMembers;
+		expect(hasSpacePermission(space([], [], OWNER), both)).toBe(true);
+		expect(hasSpacePermission(space([role("admins", Permission.Administrator)], ["admins"]), both)).toBe(true);
+	});
+});
+
+// Who may kick or ban whom, as the API decides it (services/moderation.go: refuseModeration, highestRole, outranks).
+describe("canModerate", () => {
+	const KICK = Permission.KickMembers;
+	const BAN = Permission.BanMembers;
+	const ANA = "01920000-0000-7000-8000-000000000a1a";
+	const BOB = "01920000-0000-7000-8000-000000000b0b";
+	const CAROL = "01920000-0000-7000-8000-00000000ca01";
+	const DAN = "01920000-0000-7000-8000-00000000da11";
+	const EVE = "01920000-0000-7000-8000-00000000e7e0";
+	// As the API's bans suite has them: @everyone at 0, Helpers (Kick Members) at 1, Moderators (both) at 2, Admins
+	// (Administrator) at 3, Senior (both) at 4. Ana is a Moderator, Bob a Helper, Dan an Admin and Eve a Senior; Carol
+	// holds @everyone alone.
+	const roles = [
+		role(SPACE, Permission.ViewChannels, 0),
+		role("helpers", KICK, 1),
+		role("mods", KICK | BAN, 2),
+		role("admins", Permission.Administrator, 3),
+		role("senior", KICK | BAN, 4),
+	];
+	const others = {
+		[OWNER]: [SPACE],
+		[ANA]: [SPACE, "mods"],
+		[BOB]: [SPACE, "helpers"],
+		[CAROL]: [SPACE],
+		[DAN]: [SPACE, "admins"],
+		[EVE]: [SPACE, "senior"],
+	};
+	// The space as `me` has it, holding @everyone and `mine`.
+	const as = (mine: string[], me = ME): GatewaySpace => ({
+		...space(roles, [], me),
+		member_roles: { ...others, [me]: [SPACE, ...mine] },
+	});
+	// Whom of them `me` may kick, and whom they may ban.
+	const reach = (s: GatewaySpace) => {
+		const everyone = [OWNER, ME, ANA, BOB, CAROL, DAN, EVE];
+		return {
+			kick: everyone.filter((u) => canModerate(s, u, KICK)),
+			ban: everyone.filter((u) => canModerate(s, u, BAN)),
+		};
+	};
+
+	test("the owner acts on anyone but themselves, whatever their roles, and holding none", () => {
+		const all = [ME, ANA, BOB, CAROL, DAN, EVE];
+		expect(reach(as([], OWNER))).toEqual({ kick: all, ban: all });
+	});
+
+	test("an Administrator only on members below their highest role: not one at their place, nor above, nor the owner", () => {
+		expect(reach(as(["admins"]))).toEqual({ kick: [ANA, BOB, CAROL], ban: [ANA, BOB, CAROL] });
+	});
+
+	test("a holder of both on members below them, not at their place nor above", () => {
+		expect(reach(as(["mods"]))).toEqual({ kick: [BOB, CAROL], ban: [BOB, CAROL] });
+		expect(reach(as(["senior"]))).toEqual({ kick: [ANA, BOB, CAROL, DAN], ban: [ANA, BOB, CAROL, DAN] });
+	});
+
+	test("Kick Members alone kicks, and doesn't ban", () => {
+		expect(reach(as(["helpers"]))).toEqual({ kick: [CAROL], ban: [] });
+	});
+
+	test("without the permission, nobody, whatever they outrank", () => {
+		const plain = { ...as([]), roles: [...roles, role("tall", Permission.ManageRoles, 9)] };
+		expect(reach({ ...plain, member_roles: { ...plain.member_roles, [ME]: [SPACE, "tall"] } })).toEqual({
+			kick: [],
+			ban: [],
+		});
+		expect(reach(as([]))).toEqual({ kick: [], ban: [] });
+	});
+
+	test("nobody acts on the owner, nor on themselves", () => {
+		const top = { ...as(["admins"]), roles: [...roles, role("crown", Permission.Administrator, 9)] };
+		const crowned = { ...top, member_roles: { ...top.member_roles, [ME]: [SPACE, "crown"] } };
+		expect(canModerate(crowned, OWNER, KICK)).toBe(false);
+		expect(canModerate(crowned, OWNER, BAN)).toBe(false);
+		expect(canModerate(crowned, ME, KICK)).toBe(false);
+		expect(canModerate(as([], OWNER), OWNER, BAN)).toBe(false);
+	});
+
+	test("@everyone doesn't count whatever its position: who holds nothing else is at -1, below every role", () => {
+		const high = { ...as(["helpers"]), roles: [role(SPACE, 0, 7), ...roles.slice(1)] };
+		expect(moderationRank(high, CAROL)).toBe(-1);
+		expect(moderationRank(high, ME)).toBe(1);
+		expect(canModerate(high, CAROL, KICK)).toBe(true);
+		// Two who hold nothing else are at one place, -1: neither acts on the other.
+		const helpless = { ...high, roles: [role(SPACE, KICK, 7), ...roles.slice(1)] };
+		expect(canModerate({ ...helpless, member_roles: { ...helpless.member_roles, [ME]: [SPACE] } }, CAROL, KICK)).toBe(
+			false,
+		);
+	});
+
+	test("a role the space no longer has counts for nothing", () => {
+		const s = as(["mods"]);
+		const withGone = { ...s, member_roles: { ...s.member_roles, [CAROL]: [SPACE, "gone"] } };
+		expect(moderationRank(withGone, CAROL)).toBe(-1);
+		expect(canModerate(withGone, CAROL, BAN)).toBe(true);
+	});
+
+	test("without the member loaded, nobody", () => {
+		expect(canModerate(space(roles, [], null), CAROL, KICK)).toBe(false);
+	});
+
+	test("outranks is strictly above", () => {
+		expect(outranks(2, 1)).toBe(true);
+		expect(outranks(2, 2)).toBe(false);
+		expect(outranks(0, -1)).toBe(true);
+		expect(outranks(-1, -1)).toBe(false);
 	});
 });
 

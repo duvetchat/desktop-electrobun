@@ -117,6 +117,7 @@ import { dropReplyTo, takeBack } from "$lib/drafts";
 import { SENT_BEFORE_CANCEL } from "$lib/uploads";
 import { knowMessage, newestKnownIn } from "$lib/jumps";
 import { reactionChanged, withReaction, type ReactionChange } from "$lib/reactions";
+import { banAdded, banLifted, forgetBans } from "$lib/bans";
 import { customEmojiMapOf } from "$lib/markdown";
 import {
 	conversationPlace,
@@ -721,6 +722,8 @@ function handleEvent(event: GatewayEvent) {
 			// The SPACE_CREATEs that follow bring the spaces again, as the new session has them (their voice states
 			// included): one the user is no longer in doesn't come back.
 			gatewaySpaces.set([]);
+			// And the bans loaded, whose events of the time away never came: a space's list loads anew as it's shown.
+			forgetBans();
 			friendsReady.set(false);
 			allSpacesReady.set(false);
 			const guildIds = payload.data.guild_ids ?? [];
@@ -819,8 +822,9 @@ function handleEvent(event: GatewayEvent) {
 				voiceRoomTaken(leftHere);
 			}
 			gatewaySpaces.update((spaces) => spaces.filter((s) => s.id !== id));
-			// Its members' statuses there go with it: a bot's would outlive it otherwise.
+			// Its members' statuses there go with it: a bot's would outlive it otherwise. So do its bans.
 			forgetSpaceStatuses(userStatusCache, id);
+			forgetBans(id);
 			break;
 		}
 		case "SPACE_UPDATE": {
@@ -1339,15 +1343,25 @@ function handleEvent(event: GatewayEvent) {
 				spaces.map((s) => {
 					if (s.id !== raw.space_id) return s;
 					const removedMember = s.members.find((m) => m.id === raw.member_id);
+					// Their roles go with them, as the API deletes them: one who joins again (a kick lets them) gets none of
+					// them back, and ranks for kicks and bans (canModerate) by the roles events give them then.
+					const { [raw.user_id]: _roles, ...memberRoles } = s.member_roles;
 					return {
 						...s,
 						members: s.members.filter((m) => m.id !== raw.member_id),
 						users: removedMember ? s.users.filter((u) => u.id !== removedMember.user_id) : s.users,
+						member_roles: memberRoles,
 					};
 				}),
 			);
 			break;
 		}
+		case "SPACE_BAN_ADD":
+			banAdded(payload.data);
+			break;
+		case "SPACE_BAN_REMOVE":
+			banLifted(payload.data);
+			break;
 		case "ROOM_DELETE": {
 			const raw = payload.data;
 			if (get(activeVoiceRoomId) === raw.id) voiceRoomTaken(spacesLeftHere.has(raw.space_id));

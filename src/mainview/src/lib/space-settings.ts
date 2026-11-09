@@ -6,6 +6,7 @@ export type SettingsSection =
 	| "roles"
 	| "members"
 	| "invites"
+	| "bans"
 	| "emojis"
 	| "stickers"
 	| "storage"
@@ -14,10 +15,11 @@ export type SettingsSection =
 /**
  * The sections of a space's settings that a member opens with these permissions (computeSpacePermissions), each with
  * the permission the API checks for its controls: the overview takes Administrator, the roles ManageRoles, the invites
- * ManageInvites, the storage ManageSpaceBuckets, and the attachments that or ManageSpaceAttachments. The members list
- * has no controls: it lists every member's roles for those who manage roles, as the settings show a member only what
- * they work with. The emoji and sticker lists are every member's; their controls take ManageSpaceEmojis and
- * ManageSpaceStickers. With none of these permissions, a member sees only the emoji and sticker lists, read-only.
+ * ManageInvites, the bans BanMembers (which lists them), the storage ManageSpaceBuckets, and the attachments that or
+ * ManageSpaceAttachments. The members list lists every member's roles for those who manage roles, as the settings show
+ * a member only what they work with; its only controls are a member's kick and ban, for those who may (canModerate).
+ * The emoji and sticker lists are every member's; their controls take ManageSpaceEmojis and ManageSpaceStickers. With
+ * none of these permissions, a member sees only the emoji and sticker lists, read-only.
  */
 export function settingsSections(permissions: number): SettingsSection[] {
 	const has = (flag: number) => (permissions & flag) === flag;
@@ -25,6 +27,7 @@ export function settingsSections(permissions: number): SettingsSection[] {
 	if (has(Permission.Administrator)) sections.push("overview");
 	if (has(Permission.ManageRoles)) sections.push("roles", "members");
 	if (has(Permission.ManageInvites)) sections.push("invites");
+	if (has(Permission.BanMembers)) sections.push("bans");
 	sections.push("emojis", "stickers");
 	if (has(Permission.ManageSpaceBuckets)) sections.push("storage");
 	if (has(Permission.ManageSpaceBuckets) || has(Permission.ManageSpaceAttachments)) sections.push("attachments");
