@@ -95,6 +95,7 @@
 		onUnreadMark = undefined,
 		onVoiceNoteOverride = undefined,
 		intro = undefined,
+		retryFirstPage = null,
 		paneFocused = true,
 	}: {
 		messages: Message[];
@@ -136,6 +137,8 @@
 		onVoiceNoteOverride?: (blob: Blob) => void;
 		/** The start of the chat, above its oldest message (ChatIntro). */
 		intro?: Snippet;
+		/** Set while the chat's first page has failed: an empty list says so, with Try again calling this (MessageList). */
+		retryFirstPage?: (() => void) | null;
 		/**
 		 * Whether this chat's pane is the focused one, whose message box takes a key pressed outside any input. A chat
 		 * outside the panes (the friends view's) is the one on screen.
@@ -722,6 +725,7 @@
 		{onUnreadMark}
 		{customEmojis}
 		{intro}
+		{retryFirstPage}
 	/>
 
 	<div class="relative w-full">

@@ -123,6 +123,9 @@
 	// The pane going (a READY remounts the app, or the pane closes) leaves its rooms' jumps for the next view of them.
 	onDestroy(() => keepRoomJumps(channelHasMoreBelow, channelHasMore, channelLoadedBelowTo));
 	let channelInitialLoading = $state<Partial<Record<string, boolean>>>({});
+	// Rooms whose first page failed, with nothing of them loaded since: the list says so, with Try again, rather than
+	// showing the room's start.
+	let channelLoadFailed = $state<Partial<Record<string, boolean>>>({});
 	let channelHighlightedMessage = $state<Partial<Record<string, string | null>>>({});
 	// last-read message ID per channel, used to render the unread divider
 	let channelUnreadAfter = $state<Partial<Record<string, string | null>>>({});
@@ -384,16 +387,24 @@
 		const kept = takeJump(channelId, get(channelMessages)[channelId]);
 		if (kept) {
 			loadedChannels.add(channelId);
+			channelLoadFailed[channelId] = false;
 			channelHasMore[channelId] = kept.hasMore;
 			channelHasMoreBelow[channelId] = true;
 			channelLoadedBelowTo[channelId] = kept.loadedBelowTo;
 			channelInitialLoading[channelId] = false;
 			return;
 		}
+		loadFirstPage(channelId);
+	});
+
+	// The room's newest page, which its list opens on. One that fails leaves the room unloaded, which its list says
+	// (channelLoadFailed): Try again asks for it again, as the room's next visit does.
+	function loadFirstPage(channelId: string) {
 		loadedChannels.add(channelId);
 		fetchingChannels.add(channelId);
+		channelLoadFailed[channelId] = false;
 		// Mutate instead of spread-replace — spreading reads the $state object
-		// which makes it a reactive dependency of this $effect, causing spurious
+		// which makes it a reactive dependency of the $effect above, causing spurious
 		// re-runs when *other* channels finish loading and corrupting the
 		// dependency set so the effect misses the activeChannelId change.
 		channelInitialLoading[channelId] = true;
@@ -444,10 +455,18 @@
 			.catch((err) => {
 				console.error("Failed to fetch history:", err);
 				loadedChannels.delete(channelId);
+				channelLoadFailed[channelId] = true;
 				channelInitialLoading[channelId] = false;
 			})
 			.finally(() => fetchingChannels.delete(channelId));
-	});
+	}
+
+	// Try again, on the active room's first page that failed.
+	function retryActiveRoom() {
+		if (node.kind === "leaf" && node.activeChannelId && !fetchingChannels.has(node.activeChannelId)) {
+			loadFirstPage(node.activeChannelId);
+		}
+	}
 
 	async function loadMoreMessages() {
 		if (node.kind !== "leaf" || !node.activeChannelId || isLoadingMore || activeChannel?.type !== "text") {
@@ -655,6 +674,7 @@
 
 			// Replace channel messages with context around anchor
 			loadedChannels.add(channelId);
+			channelLoadFailed[channelId] = false;
 			channelMessages.update((all) => ({ ...all, [channelId]: combined }));
 			channelHasMore[channelId] = rawAbove.length >= 100;
 			channelHasMoreBelow[channelId] = rawBelow.length >= 100;
@@ -1348,6 +1368,7 @@
 					bind:failedNonces={failedRoomSends}
 					bind:isAtBottom={paneIsAtBottom}
 					{isInitialLoading}
+					retryFirstPage={node.activeChannelId && channelLoadFailed[node.activeChannelId] ? retryActiveRoom : null}
 					{isLoadingMore}
 					{isLoadingMoreBelow}
 					hasMoreMessages={node.activeChannelId ? channelStillHasMore(node.activeChannelId) : true}
