@@ -420,6 +420,23 @@ describe("a bare link", () => {
 		}
 	});
 
+	// #223: the cards took each link up to a space, so one of Duvet's own glued after another link, by a < or a ), was
+	// read as part of that link: it had its button in the text, and no card.
+	test("one of Duvet's own glued after another link has its card, as it has its button", () => {
+		for (const text of [
+			"https://example.org<https://duvet.chat/invite/abc",
+			"(see https://example.org)https://duvet.chat/invite/abc",
+			`<https://example.org/a>https://duvet.chat/channels/${ID}/${ID}/${ID}.`,
+			`https://duvet.chat/invite/abc)https://duvet.chat/invite?bot=${ID}`,
+		]) {
+			const buttons = linksIn(text).flatMap((link) => parseDuvetLink(cardLink(link), "views://mainview") ?? []);
+			expect(buttons.length).toBeGreaterThan(0);
+			expect(duvetLinksIn(text, "views://mainview")).toEqual(buttons);
+		}
+		// A markdown link's still has its card, as the API leaves it without a preview.
+		expect(duvetLinksIn("[join us](https://duvet.chat/invite/abc)", "views://mainview")).toEqual([{ code: "abc" }]);
+	});
+
 	// Random text of URLs, brackets, quotes, punctuation and spaces: the links and the text between them are the text,
 	// each link starts with its scheme and closes its own brackets, and none ends with the punctuation around it.
 	test("whatever the text, is one link, and leaves the rest as it was", () => {

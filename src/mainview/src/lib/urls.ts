@@ -201,9 +201,14 @@ function webHost(origin: string): string | undefined {
 	}
 }
 
-/** The cards a message's text shows for Duvet's own links (parseDuvetLink), in its order, each read as cardLink reads it. */
+/**
+ * The cards a message's text shows for Duvet's own links (parseDuvetLink), in its order. Its links are found as the
+ * API finds the ones it leaves without a preview (mobileLink), and the mobile app its cards' (duvetLinksIn): each up to
+ * a space or one of <>()[]"', so one glued after another link by a < or a ) has its card, as it has its button in the
+ * text; each read as cardLink reads it.
+ */
 export function duvetLinksIn(content: string, ownOrigin: string): DuvetLink[] {
-	const links = content.match(/(?:https?|duvet):\/\/[^\s]+/g) ?? [];
+	const links = content.match(/(?:https?|duvet):\/\/[^\s<>()[\]"']+/g) ?? [];
 	return links.flatMap((raw) => parseDuvetLink(cardLink(raw), ownOrigin) ?? []);
 }
 
