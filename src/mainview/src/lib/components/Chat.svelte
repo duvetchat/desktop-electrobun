@@ -255,7 +255,7 @@
 	}
 
 	function tryEditLastMessage() {
-		tryEditAtIndex(0);
+		return tryEditAtIndex(0);
 	}
 
 	// The messages Ctrl+Up replies to: an ephemeral one isn't the room's, so nothing can reply to it, and a notice's row

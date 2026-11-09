@@ -74,7 +74,8 @@
 		onRecording?: () => void;
 		onCancel?: () => void;
 		onValueChange?: (text: string) => void;
-		onArrowUpWhenEmpty?: () => void;
+		/** Arrow Up in the empty box: starts editing the user's last message, and says whether it did. */
+		onArrowUpWhenEmpty?: () => boolean;
 		showActions?: boolean;
 		autofocus?: boolean;
 		members?: MemberOnSidebar[];
@@ -849,10 +850,9 @@
 			return;
 		}
 
-		// Edit last message on ArrowUp when input is empty
-		if (e.key === "ArrowUp" && isEmpty && !e.ctrlKey) {
-			onArrowUpWhenEmpty?.();
-		}
+		// Arrow Up in the empty box edits the user's last message. Its edit box has the caret at the message's end by then,
+		// and the key's own move would carry it up a line there, or to the start of a single one (Chromium).
+		if (e.key === "ArrowUp" && isEmpty && !e.ctrlKey && onArrowUpWhenEmpty?.()) e.preventDefault();
 	}
 
 	// Sends what the box holds, with the files picked, and empties it. A message too large for the API stays in the box,
