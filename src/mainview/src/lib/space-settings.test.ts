@@ -14,6 +14,7 @@ describe("settingsSections", () => {
 			"roles",
 			"members",
 			"invites",
+			"bans",
 			"emojis",
 			"stickers",
 			"storage",
@@ -28,6 +29,17 @@ describe("settingsSections", () => {
 		expect(settingsSections(Permission.ManageSpaceStickers)).toEqual(["emojis", "stickers"]);
 		expect(settingsSections(Permission.ManageSpaceBuckets)).toEqual(["emojis", "stickers", "storage", "attachments"]);
 		expect(settingsSections(Permission.ManageSpaceAttachments)).toEqual(["emojis", "stickers", "attachments"]);
+	});
+
+	test("the bans come with BanMembers, which lists them, and not with KickMembers alone", () => {
+		expect(settingsSections(Permission.BanMembers)).toEqual(["bans", "emojis", "stickers"]);
+		expect(settingsSections(Permission.KickMembers)).toEqual(["emojis", "stickers"]);
+		expect(settingsSections(Permission.ManageInvites | Permission.BanMembers)).toEqual([
+			"invites",
+			"bans",
+			"emojis",
+			"stickers",
+		]);
 	});
 
 	test("the members list comes with ManageRoles alone, as the roles do", () => {

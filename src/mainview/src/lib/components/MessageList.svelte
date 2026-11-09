@@ -79,6 +79,7 @@
 	import { toast } from "$lib/stores/toast.svelte";
 	import { get } from "svelte/store";
 	import { FLAGS, BADGES, isStaff as checkStaff } from "$lib/badges";
+	import { banRequest, kickFromSpace, moderationOf } from "$lib/moderation";
 
 	let {
 		messages,
@@ -1677,6 +1678,11 @@
 	{@const alreadyFriend = !isSelf && isFriend(userMenuTargetId)}
 	{@const pending = !isSelf && !alreadyFriend && hasPendingRequest(userMenuTargetId)}
 	{@const canSendRequest = !isSelf && !alreadyFriend && !pending}
+	<!-- Kick and Ban, for a member of the room's space whom the API would let the user act on. -->
+	{@const moderation = moderationOf(
+		space,
+		members.find((m) => m.id === userMenuTargetId),
+	)}
 	<div
 		class="fixed z-201 min-w-44 rounded-lg border border-zinc-700 bg-zinc-800 py-1 shadow-2xl"
 		style="left: {userMenuPos.x}px; top: {userMenuPos.y}px;"
@@ -1701,6 +1707,32 @@
 		>
 			Copy User ID
 		</button>
+		{#if moderation}
+			<div class="my-1 border-t border-zinc-700"></div>
+			{#if moderation.kick}
+				<button
+					class="w-full px-3 py-2 text-left text-sm text-red-400 transition-colors hover:bg-zinc-700"
+					onclick={() => {
+						const { target } = moderation;
+						closeUserMenu();
+						void kickFromSpace(target);
+					}}
+				>
+					Kick {moderation.target.name}
+				</button>
+			{/if}
+			{#if moderation.ban}
+				<button
+					class="w-full px-3 py-2 text-left text-sm text-red-400 transition-colors hover:bg-zinc-700"
+					onclick={() => {
+						banRequest.set(moderation.target);
+						closeUserMenu();
+					}}
+				>
+					Ban {moderation.target.name}
+				</button>
+			{/if}
+		{/if}
 		{#if isStaff}
 			<div class="my-1 border-t border-zinc-700"></div>
 			<button

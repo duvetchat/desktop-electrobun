@@ -20,6 +20,8 @@
 		Plus as PlusIcon,
 		ImagePlus as ImagePlusIcon,
 		ArrowRightLeft as MoveIcon,
+		Ban as BanIcon,
+		UserMinus as UserMinusIcon,
 	} from "@lucide/svelte";
 	import { Checkbox, Dialog } from "bits-ui";
 	import { slide } from "svelte/transition";
@@ -40,6 +42,8 @@
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
 	import SpaceBanner from "$lib/components/SpaceBanner.svelte";
 	import SpaceIcon from "$lib/components/SpaceIcon.svelte";
+	import SpaceBans from "$lib/components/SpaceBans.svelte";
+	import { banRequest, kickFromSpace, moderationOf } from "$lib/moderation";
 	import { createRole, updateRole, deleteRole } from "$lib/api/roles";
 	import { listEmojis, createEmoji, updateEmoji, deleteEmoji } from "$lib/api/emojis";
 	import { listStickers, createSticker, updateSticker, deleteSticker } from "$lib/api/stickers";
@@ -1089,6 +1093,17 @@
 		space && selectedMemberUserId ? (space.users.find((u) => u.id === selectedMemberUserId) ?? null) : null,
 	);
 
+	// Kick and Ban for the member picked, when the API would let the user act on them (moderationOf).
+	const selectedSettingsModeration = $derived(
+		selectedSettingsMember && selectedSettingsUser
+			? moderationOf(space, {
+					id: selectedSettingsUser.id,
+					member_id: selectedSettingsMember.id,
+					username: selectedSettingsMember.alias ?? selectedSettingsUser.alias ?? selectedSettingsUser.username,
+				})
+			: null,
+	);
+
 	const selectedSettingsRoles = $derived(
 		space && selectedMemberUserId
 			? (space.member_roles[selectedMemberUserId] ?? [])
@@ -1166,6 +1181,19 @@
 							</button>
 						{/if}
 
+						{#if sections.includes("bans")}
+							<button
+								class="flex items-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium transition-colors duration-100
+                            {activeSection === 'bans'
+									? 'bg-zinc-800 text-white'
+									: 'text-zinc-400 hover:bg-zinc-800/60 hover:text-zinc-200'}"
+								onclick={() => (activeSection = "bans")}
+							>
+								<BanIcon class="size-4" />
+								Bans
+							</button>
+						{/if}
+
 						<button
 							class="flex items-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium transition-colors duration-100
                             {activeSection === 'emojis'
@@ -1226,15 +1254,17 @@
 									? "Roles"
 									: activeSection === "invites"
 										? "Invites"
-										: activeSection === "emojis"
-											? "Emojis"
-											: activeSection === "stickers"
-												? "Stickers"
-												: activeSection === "storage"
-													? "Storage"
-													: activeSection === "attachments"
-														? "Attachments"
-														: "Members"}
+										: activeSection === "bans"
+											? "Bans"
+											: activeSection === "emojis"
+												? "Emojis"
+												: activeSection === "stickers"
+													? "Stickers"
+													: activeSection === "storage"
+														? "Storage"
+														: activeSection === "attachments"
+															? "Attachments"
+															: "Members"}
 						</h2>
 						<Dialog.Close
 							class="rounded-lg p-1.5 text-zinc-400 transition-colors duration-150 hover:bg-zinc-800 hover:text-white"
@@ -1577,7 +1607,7 @@
 											{#each PERMISSIONS as perm}
 												{@const settable = canSetPermission(spacePermissions, 0, perm.flag)}
 												<label
-													class="flex h-9 items-center gap-2 rounded-md border border-zinc-800 bg-zinc-800/70 px-2.5 text-xs text-zinc-200 {settable
+													class="flex items-start gap-2 rounded-md border border-zinc-800 bg-zinc-800/70 px-2.5 py-2 text-xs text-zinc-200 {settable
 														? 'cursor-pointer hover:text-white'
 														: 'cursor-not-allowed opacity-50'}"
 													title={settable ? undefined : "You can only grant permissions you have"}
@@ -1588,10 +1618,13 @@
 														onCheckedChange={() => {
 															togglePermission(perm.flag, false);
 														}}
-														class="text-xxs data-[state=checked]:bg-fill-600 data-[state=checked]:text-fixed-white flex size-4 items-center justify-center rounded border border-zinc-600 bg-zinc-900 text-transparent data-[state=checked]:border-stone-600"
+														class="text-xxs data-[state=checked]:bg-fill-600 data-[state=checked]:text-fixed-white flex size-4 shrink-0 items-center justify-center rounded border border-zinc-600 bg-zinc-900 text-transparent data-[state=checked]:border-stone-600"
 														>✓</Checkbox.Root
 													>
-													{perm.name}
+													<span class="min-w-0">
+														<span class="block leading-4">{perm.name}</span>
+														<span class="text-xxs mt-0.5 block leading-snug text-zinc-500">{perm.description}</span>
+													</span>
 												</label>
 											{/each}
 										</div>
@@ -1730,11 +1763,11 @@
 														<!-- Permissions -->
 														<div>
 															<p class="mb-1.5 text-xs font-medium text-zinc-400">Permissions</p>
-															<div class="grid grid-cols-2 gap-1.5">
+															<div class="grid grid-cols-2 gap-x-3 gap-y-2.5">
 																{#each PERMISSIONS as perm}
 																	{@const settable = canSetPermission(spacePermissions, editingRoleSaved, perm.flag)}
 																	<label
-																		class="flex items-center gap-2 text-xs text-zinc-200 {settable
+																		class="flex items-start gap-2 text-xs text-zinc-200 {settable
 																			? 'cursor-pointer hover:text-white'
 																			: 'cursor-not-allowed opacity-50'}"
 																		title={settable ? undefined : "You can only grant permissions you have"}
@@ -1745,10 +1778,15 @@
 																			onCheckedChange={() => {
 																				togglePermission(perm.flag, true);
 																			}}
-																			class="text-xxs data-[state=checked]:bg-fill-600 data-[state=checked]:text-fixed-white flex size-4 items-center justify-center rounded border border-zinc-600 bg-zinc-900 text-transparent data-[state=checked]:border-stone-600"
+																			class="text-xxs data-[state=checked]:bg-fill-600 data-[state=checked]:text-fixed-white flex size-4 shrink-0 items-center justify-center rounded border border-zinc-600 bg-zinc-900 text-transparent data-[state=checked]:border-stone-600"
 																			>✓</Checkbox.Root
 																		>
-																		{perm.name}
+																		<span class="min-w-0">
+																			<span class="block leading-4">{perm.name}</span>
+																			<span class="text-xxs mt-0.5 block leading-snug text-zinc-500"
+																				>{perm.description}</span
+																			>
+																		</span>
 																	</label>
 																{/each}
 															</div>
@@ -1891,6 +1929,30 @@
 													<p class="text-xs text-zinc-500">No roles assigned</p>
 												{/if}
 											</div>
+											{#if selectedSettingsModeration}
+												<div class="mt-4 flex gap-2 border-t border-zinc-700 pt-3">
+													{#if selectedSettingsModeration.kick}
+														<button
+															type="button"
+															class="flex h-8 items-center gap-1.5 rounded-md bg-red-600/15 px-3 text-xs font-medium text-red-400 transition-colors hover:bg-red-600/25"
+															onclick={() => void kickFromSpace(selectedSettingsModeration.target)}
+														>
+															<UserMinusIcon class="size-3.5" />
+															Kick
+														</button>
+													{/if}
+													{#if selectedSettingsModeration.ban}
+														<button
+															type="button"
+															class="flex h-8 items-center gap-1.5 rounded-md bg-red-600/15 px-3 text-xs font-medium text-red-400 transition-colors hover:bg-red-600/25"
+															onclick={() => banRequest.set(selectedSettingsModeration.target)}
+														>
+															<BanIcon class="size-3.5" />
+															Ban
+														</button>
+													{/if}
+												</div>
+											{/if}
 										</div>
 									{/if}
 								</div>
@@ -2539,6 +2601,10 @@
 										</div>
 									{/each}
 								</div>
+							{/if}
+						{:else if activeSection === "bans"}
+							{#if space}
+								<SpaceBans {space} />
 							{/if}
 						{:else if activeSection === "attachments"}
 							{#if spaceTransfer}
