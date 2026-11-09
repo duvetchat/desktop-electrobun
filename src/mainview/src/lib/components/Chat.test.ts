@@ -44,3 +44,18 @@ describe("a key pressed outside any input", () => {
 		expect(source("FriendsView.svelte")).not.toContain("paneFocused");
 	});
 });
+
+// #220: each Chat hears Ctrl+Up and Ctrl+Down (with Shift to edit) on window, and with two panes every one of them
+// started a reply or an edit, whatever had the focus. What a browser checked against a running app, kept here.
+test("the reply and edit shortcuts go to one chat: the one with the focus, or else the focused pane's", () => {
+	const chat = source("Chat.svelte");
+	expect(chat).toMatch(/<div\s+bind:this=\{rootEl\}\s+data-chat\s/);
+	expect(chat).toContain(
+		'const chatShortcut = event.ctrlKey && (event.key === "ArrowUp" || event.key === "ArrowDown");',
+	);
+	expect(chat).toContain(
+		"if (chatShortcut && !takesChatShortcut(document.activeElement, rootEl, paneFocused)) return;",
+	);
+	// Before any of the four acts.
+	expect(chat.indexOf("takesChatShortcut(document.activeElement")).toBeLessThan(chat.indexOf("if (isCtrlShiftUp)"));
+});

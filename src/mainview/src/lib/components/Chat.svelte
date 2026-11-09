@@ -63,6 +63,7 @@
 	import { CANCELLED, sendFollowed, withoutSending } from "$lib/uploads";
 	import { knowMessage, newestKnownIn } from "$lib/jumps";
 	import { chatRequest, keyboard, leaveMessageBox } from "$lib/keyboard.svelte";
+	import { takesChatShortcut } from "$lib/keyboard";
 	import { layoutPrefs } from "$lib/layout-prefs.svelte";
 
 	let {
@@ -291,6 +292,9 @@
 			return;
 		// Hidden (the friends view hides the panes), the chat takes no keys: they'd go into a draft nobody sees.
 		if (!rootEl?.offsetParent) return;
+		// Ctrl+Up and Ctrl+Down, with Shift to edit, are one chat's: the one with the focus, or else the focused pane's.
+		const chatShortcut = event.ctrlKey && (event.key === "ArrowUp" || event.key === "ArrowDown");
+		if (chatShortcut && !takesChatShortcut(document.activeElement, rootEl, paneFocused)) return;
 
 		const isCtrlShiftUp = event.ctrlKey && event.shiftKey && event.key === "ArrowUp";
 		const isCtrlShiftDown = event.ctrlKey && event.shiftKey && event.key === "ArrowDown";
@@ -660,6 +664,7 @@
 
 <div
 	bind:this={rootEl}
+	data-chat
 	class="from-night-22 to-night-19 relative flex flex-1 flex-col overflow-hidden bg-linear-to-b"
 	ondragover={handleFileDragOver}
 	ondragleave={handleFileDragLeave}
