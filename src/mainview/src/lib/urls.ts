@@ -208,8 +208,47 @@ function webHost(origin: string): string | undefined {
  * text; each read as cardLink reads it.
  */
 export function duvetLinksIn(content: string, ownOrigin: string): DuvetLink[] {
-	const links = content.match(/(?:https?|duvet):\/\/[^\s<>()[\]"']+/g) ?? [];
-	return links.flatMap((raw) => parseDuvetLink(cardLink(raw), ownOrigin) ?? []);
+	return [...content.matchAll(/(?:https?|duvet):\/\/[^\s<>()[\]"']+/g)].flatMap((m) => {
+		// Without the markers of emphasis around it, as the link in the text is (linkEmphasis).
+		const link = cardLink(m[0]);
+		const marks = linkEmphasis(link, content.slice(0, m.index)).join("").length;
+		return parseDuvetLink(link.slice(0, link.length - marks), ownOrigin) ?? [];
+	});
+}
+
+/** The tag markdown wraps text in for each marker of its emphasis (markdown.ts's applyInline). */
+export const EMPHASIS_TAGS: Record<string, string> = { "~~": "del", "**": "strong", __: "u", "*": "em", _: "em" };
+
+/**
+ * The emphasis markdown wraps a bare link in, as its opening markers, outermost first; none when nothing wraps it. A
+ * link can end with a *, a _ or a ~, which close emphasis when the text right before the link (before) opens it: the
+ * link ends before them, and "**https://a.example/x**" is the link https://a.example/x in bold. A URL's own * or _,
+ * which nothing right before it opens, stays its own, as do markers whose link would then end as no link does (with a
+ * . or a ', say). link is read from its scheme, as a whole bare link.
+ */
+export function linkEmphasis(link: string, before: string): string[] {
+	const closing = /[*_~]*$/.exec(link)?.[0] ?? "";
+	for (let n = closing.length; n > 0; n--) {
+		const opening = [...closing.slice(-n)].reverse().join("");
+		const marks = emphasisMarks(opening);
+		const ends = /:\/\/.*[^.,;:!?\]}"']$/.test(link.slice(0, -n));
+		// A _ opens only where no word goes on before it, as markdown reads one.
+		const opens = before.endsWith(opening) && !(marks?.[0] === "_" && /\w$/.test(before.slice(0, -n)));
+		if (marks && ends && opens) return marks;
+	}
+	return [];
+}
+
+// A run of markers read as markdown reads it, each marker the longest it can be (*** is ** then *, bold then italic);
+// nothing when it isn't one.
+function emphasisMarks(run: string): string[] | null {
+	const marks: string[] = [];
+	for (let rest = run; rest; rest = rest.slice(marks[marks.length - 1].length)) {
+		const mark = Object.keys(EMPHASIS_TAGS).find((m) => rest.startsWith(m));
+		if (!mark) return null;
+		marks.push(mark);
+	}
+	return marks;
 }
 
 /**

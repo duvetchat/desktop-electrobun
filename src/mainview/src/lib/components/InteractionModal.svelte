@@ -2,6 +2,7 @@
 	import { Dialog } from "bits-ui";
 	import { CircleAlert as AlertIcon, X as XIcon } from "@lucide/svelte";
 	import ComponentSelect from "$lib/components/ComponentSelect.svelte";
+	import Emphasis from "$lib/components/Emphasis.svelte";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
 	import { FetchError, getApiError } from "$lib/api/api";
 	import { sendModalSubmit } from "$lib/api/interactions";
@@ -168,12 +169,14 @@
 								<div class="min-w-0 text-sm wrap-break-word text-zinc-300 select-text">
 									{#each parseTextSegments(c.content ?? "") as segment}
 										{#if segment.type === "link"}
-											<a
-												href={segment.content}
-												target="_blank"
-												rel="noopener noreferrer"
-												class="text-stone-300 hover:underline">{segment.content}</a
-											>
+											<Emphasis marks={segment.emphasis}>
+												<a
+													href={segment.content}
+													target="_blank"
+													rel="noopener noreferrer"
+													class="text-stone-300 hover:underline">{segment.content}</a
+												>
+											</Emphasis>
 										{:else}
 											{@html renderMarkdown(segment.content, false, mentionMap, customEmojiMap, $roomNames)}
 										{/if}

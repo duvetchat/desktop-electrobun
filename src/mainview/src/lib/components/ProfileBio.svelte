@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { copyCode } from "$lib/code-copy";
+	import Emphasis from "$lib/components/Emphasis.svelte";
 	import { countEmojis, isOnlyEmojis } from "$lib/emoji";
 	import { friendUser } from "$lib/friends";
 	import { mentionNamesIn, parseTextSegments, renderMarkdown } from "$lib/markdown";
@@ -34,12 +35,15 @@
 	onclick={copyCode}
 >
 	{#each parseTextSegments(bio) as segment}
-		{#if segment.type === "link" && webUrl(segment.content)}
-			<a href={segment.content} target="_blank" rel="noopener noreferrer" class="text-stone-300 hover:underline"
-				>{segment.content}</a
-			>
-		{:else}
-			{@html renderMarkdown(segment.content, emojiOnly, mentionMap)}
-		{/if}
+		<!-- Emphasis around a link wraps it (parseTextSegments), a duvet:// one too, which stays text here -->
+		<Emphasis marks={segment.emphasis}>
+			{#if segment.type === "link" && webUrl(segment.content)}
+				<a href={segment.content} target="_blank" rel="noopener noreferrer" class="text-stone-300 hover:underline"
+					>{segment.content}</a
+				>
+			{:else}
+				{@html renderMarkdown(segment.content, emojiOnly, mentionMap)}
+			{/if}
+		</Emphasis>
 	{/each}
 </div>
