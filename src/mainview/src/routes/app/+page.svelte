@@ -48,6 +48,7 @@
 	import BotInviteModal from "$lib/components/BotInviteModal.svelte";
 	import SpaceInviteModal from "$lib/components/SpaceInviteModal.svelte";
 	import ReactionsDialog from "$lib/components/ReactionsDialog.svelte";
+	import BanDialog from "$lib/components/BanDialog.svelte";
 	import MentionNotices from "$lib/components/MentionNotices.svelte";
 	import type { PaneNode, Tab } from "$lib/types";
 	import { gatewaySpaceToGuild, gatewaySpaceToMembers } from "$lib/types";
@@ -761,6 +762,7 @@
 <BotInviteModal bind:open={botInviteOpen} bind:botUserId={botInviteId} />
 <SpaceInviteModal bind:open={spaceInviteOpen} bind:inviteCode={spaceInviteCode} />
 <ReactionsDialog />
+<BanDialog />
 {#if $currentUser && $friendsReady}
 	<MentionNotices onOpen={openMentioned} />
 {/if}

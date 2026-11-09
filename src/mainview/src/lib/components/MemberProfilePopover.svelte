@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { Snippet } from "svelte";
-	import { UserPlus, UserCheck, Loader2, RotateCcw } from "@lucide/svelte";
+	import { UserPlus, UserCheck, Loader2, RotateCcw, UserMinus, Ban } from "@lucide/svelte";
 	import { Popover } from "bits-ui";
 	import type { MemberOnSidebar, GatewaySpace, Role } from "$lib/types";
 	import { currentUser, friends, pendingFriendRequests, sentFriendRequests, userActivities } from "$lib/stores.svelte";
@@ -9,6 +9,7 @@
 	import { sendFriendRequest, getSentRequests, acceptFriendRequest } from "$lib/api/friends";
 	import { rememberFriendStatuses } from "$lib/api/ws/connection";
 	import { Permission, ALL_PERMISSIONS, canManageRoleAt, hasSpacePermission } from "$lib/permissions";
+	import { banRequest, kickFromSpace, moderationOf } from "$lib/moderation";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
 	import ActivityList from "$lib/components/ActivityList.svelte";
 	import ProfileBio from "$lib/components/ProfileBio.svelte";
@@ -44,6 +45,9 @@
 	let showPermissions = $state(false);
 	let friendRequestState = $state<Record<string, "idle" | "loading" | "sent" | "error">>({});
 	let togglingRoles = $state<Record<string, boolean>>({});
+
+	// Kick and Ban, when the API would let the user act on this member (moderationOf): in a space only.
+	const moderation = $derived(spaceId ? moderationOf(space, member) : null);
 
 	const assignableRoles = $derived(
 		space ? [...space.roles].filter((r) => r.id !== spaceId).sort((a, b) => b.position - a.position) : [],
@@ -349,6 +353,36 @@
 						</div>
 					{/if}
 				</div>
+
+				{#if moderation}
+					<div class="mt-3 flex flex-col gap-0.5 border-t border-zinc-800 pt-3">
+						{#if moderation.kick}
+							<button
+								class="flex w-full items-center gap-2 rounded-lg px-3 py-1.5 text-left text-xs font-medium text-red-400 transition-colors hover:bg-red-500/10"
+								onclick={() => {
+									const { target } = moderation;
+									onOpenChange(false);
+									void kickFromSpace(target);
+								}}
+							>
+								<UserMinus class="size-3.5 shrink-0" />
+								<span class="truncate">Kick {member.username}</span>
+							</button>
+						{/if}
+						{#if moderation.ban}
+							<button
+								class="flex w-full items-center gap-2 rounded-lg px-3 py-1.5 text-left text-xs font-medium text-red-400 transition-colors hover:bg-red-500/10"
+								onclick={() => {
+									banRequest.set(moderation.target);
+									onOpenChange(false);
+								}}
+							>
+								<Ban class="size-3.5 shrink-0" />
+								<span class="truncate">Ban {member.username}</span>
+							</button>
+						{/if}
+					</div>
+				{/if}
 
 				{#if onRemoveMember && $currentUser && member.id !== $currentUser.id}
 					<div class="mt-3 border-t border-zinc-800 pt-3">

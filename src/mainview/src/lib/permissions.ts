@@ -21,30 +21,92 @@ export const Permission = {
 	ManageSpaceWebhooks: 1 << 16, // 65536
 	PinMessages: 1 << 17, // 131072
 	Video: 1 << 18, // 262144: turning on a camera and sharing the screen in voice
+	KickMembers: 1 << 19, // 524288: removing from the space a member ranked below one's highest role (canModerate)
+	BanMembers: 1 << 20, // 1048576: banning users (a member ranked below is removed), listing the bans and lifting them
 } as const;
 
 export type PermissionFlag = (typeof Permission)[keyof typeof Permission];
 
-export const ALL_PERMISSIONS: ReadonlyArray<{ flag: PermissionFlag; name: string }> = [
-	{ flag: Permission.Administrator, name: "Administrator" },
-	{ flag: Permission.ViewChannels, name: "View Channels" },
-	{ flag: Permission.SendMessages, name: "Send Messages" },
-	{ flag: Permission.ManageMessages, name: "Manage Messages" },
-	{ flag: Permission.ManageChannels, name: "Manage Channels" },
-	{ flag: Permission.ChangeNickname, name: "Change Nickname" },
-	{ flag: Permission.JoinVoice, name: "Join Voice" },
-	{ flag: Permission.SpeakInVoice, name: "Speak in Voice" },
-	{ flag: Permission.ManageRoles, name: "Manage Roles" },
-	{ flag: Permission.ManageInvites, name: "Manage Invites" },
-	{ flag: Permission.CreateInvites, name: "Create Invites" },
-	{ flag: Permission.ManageSpaceEmojis, name: "Manage Emojis" },
-	{ flag: Permission.ManageSpaceBuckets, name: "Manage Buckets" },
-	{ flag: Permission.ManageSpaceStickers, name: "Manage Stickers" },
-	{ flag: Permission.ManageBots, name: "Manage Bots" },
-	{ flag: Permission.ManageSpaceAttachments, name: "Manage Attachments" },
-	{ flag: Permission.ManageSpaceWebhooks, name: "Manage Webhooks" },
-	{ flag: Permission.PinMessages, name: "Pin Messages" },
-	{ flag: Permission.Video, name: "Video" },
+/** Every permission a role can hold, as the role editor lists them: its name, and a line on what it allows. */
+export const ALL_PERMISSIONS: ReadonlyArray<{ flag: PermissionFlag; name: string; description: string }> = [
+	{
+		flag: Permission.Administrator,
+		name: "Administrator",
+		description: "Gives members every permission, in every room, whatever its overwrites say.",
+	},
+	{ flag: Permission.ViewChannels, name: "View Channels", description: "Allows members to see rooms and read them." },
+	{ flag: Permission.SendMessages, name: "Send Messages", description: "Allows members to send messages in rooms." },
+	{
+		flag: Permission.ManageMessages,
+		name: "Manage Messages",
+		description: "Allows members to delete anyone's messages.",
+	},
+	{
+		flag: Permission.ManageChannels,
+		name: "Manage Channels",
+		description: "Allows members to create, edit, move and delete rooms.",
+	},
+	{
+		flag: Permission.ChangeNickname,
+		name: "Change Nickname",
+		description: "Allows members to change their nickname in this space.",
+	},
+	{ flag: Permission.JoinVoice, name: "Join Voice", description: "Allows members to join voice rooms." },
+	{ flag: Permission.SpeakInVoice, name: "Speak in Voice", description: "Allows members to speak in voice rooms." },
+	{
+		flag: Permission.ManageRoles,
+		name: "Manage Roles",
+		description: "Allows members to edit, give and take the roles below their highest one.",
+	},
+	{
+		flag: Permission.ManageInvites,
+		name: "Manage Invites",
+		description: "Allows members to see the space's invites and revoke them.",
+	},
+	{ flag: Permission.CreateInvites, name: "Create Invites", description: "Allows members to create invite links." },
+	{
+		flag: Permission.ManageSpaceEmojis,
+		name: "Manage Emojis",
+		description: "Allows members to upload, rename and delete the space's emojis.",
+	},
+	{
+		flag: Permission.ManageSpaceBuckets,
+		name: "Manage Buckets",
+		description: "Allows members to manage the storage buckets the space's files go to.",
+	},
+	{
+		flag: Permission.ManageSpaceStickers,
+		name: "Manage Stickers",
+		description: "Allows members to upload, rename and delete the space's stickers.",
+	},
+	{ flag: Permission.ManageBots, name: "Manage Bots", description: "Allows members to add bots and remove them." },
+	{
+		flag: Permission.ManageSpaceAttachments,
+		name: "Manage Attachments",
+		description: "Allows members to manage and delete the space's files.",
+	},
+	{
+		flag: Permission.ManageSpaceWebhooks,
+		name: "Manage Webhooks",
+		description: "Allows members to create, edit and delete webhooks.",
+	},
+	{ flag: Permission.PinMessages, name: "Pin Messages", description: "Allows members to pin and unpin messages." },
+	{
+		flag: Permission.Video,
+		name: "Video",
+		description: "Allows members to turn on their camera and share their screen in voice rooms.",
+	},
+	{
+		flag: Permission.KickMembers,
+		name: "Kick Members",
+		description: "Allows members to remove members whose highest role is below theirs. They can join again.",
+	},
+	{
+		flag: Permission.BanMembers,
+		name: "Ban Members",
+		description:
+			"Allows members to ban members whose highest role is below theirs, keeping them out, and to lift bans.",
+	},
 ];
 
 // target_type values for RoomOverwrite
@@ -109,6 +171,42 @@ export function canManageRoleAt(space: GatewaySpace, position: number): boolean 
 		return true;
 	}
 	return position < highestRolePosition(space);
+}
+
+/**
+ * Where a member ranks for kicks and bans, as the API ranks them (highestRole in duvet-api's services/moderation.go): the
+ * position of the highest role they hold, a higher position ranking higher. @everyone, whose ID is the space's, doesn't
+ * count whatever its position, so a member who holds no other role is at -1, below every role. Unlike
+ * highestRolePosition (the current member's, for managing roles, where @everyone counts), it takes any member by their
+ * user ID.
+ */
+export function moderationRank(space: GatewaySpace, userId: string): number {
+	const held = space.member_roles[userId] ?? [];
+	let highest = -1;
+	for (const role of space.roles) {
+		if (role.id !== space.id && held.includes(role.id) && role.position > highest) {
+			highest = role.position;
+		}
+	}
+	return highest;
+}
+
+/** Whether a member who ranks at `actor` (moderationRank) may kick or ban one who ranks at `target`: only from strictly
+ * above, so two members at one place can't act on each other (outranks, in the API). */
+export function outranks(actor: number, target: number): boolean {
+	return actor > target;
+}
+
+/**
+ * Whether the current member may kick (KickMembers) or ban (BanMembers) the member `targetId` (their user ID), as the API
+ * lets them: never the space's owner, nor themselves; the owner anyone else; anyone else, an Administrator too, with the
+ * permission (Administrator gives it) and only a member who ranks below them (outranks).
+ */
+export function canModerate(space: GatewaySpace, targetId: string, permission: number): boolean {
+	const actor = space.member?.user_id;
+	if (!actor || targetId === actor || targetId === space.owner_id) return false;
+	if (!hasSpacePermission(space, permission)) return false;
+	return actor === space.owner_id || outranks(moderationRank(space, actor), moderationRank(space, targetId));
 }
 
 /**

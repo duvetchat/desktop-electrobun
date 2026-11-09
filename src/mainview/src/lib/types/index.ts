@@ -862,6 +862,27 @@ export interface SpaceMemberRemoveEvent {
 	member_id: string;
 }
 
+/** One of a space's bans: the banned user, with their public profile (the User object the API gives any user), why
+ * (null without a reason), who banned them (a person or a bot) and when. The space's list of bans gives them, a ban's
+ * answer gives one, and SPACE_BAN_ADD carries one. */
+export interface SpaceBan {
+	space_id: string;
+	user_id: string;
+	user: GatewayUser;
+	reason: string | null;
+	banned_by: string;
+	created_at: string;
+}
+
+/** A user banned from a space: to those who may list its bans (its owner, Administrators and holders of Ban Members). */
+export type SpaceBanAddEvent = SpaceBan;
+
+/** A user's ban lifted: to the same people. */
+export interface SpaceBanRemoveEvent {
+	space_id: string;
+	user_id: string;
+}
+
 export interface FriendRequestRejectEvent {
 	id: string;
 }
@@ -1044,6 +1065,8 @@ export type GatewayEventPayload =
 	| { type: "MEMBER_ROLE_REMOVE"; data: MemberRoleRemoveEvent }
 	| { type: "SPACE_MEMBER_ADD"; data: SpaceMemberAddEvent }
 	| { type: "SPACE_MEMBER_REMOVE"; data: SpaceMemberRemoveEvent }
+	| { type: "SPACE_BAN_ADD"; data: SpaceBanAddEvent }
+	| { type: "SPACE_BAN_REMOVE"; data: SpaceBanRemoveEvent }
 	| { type: "SPACE_EMOJI_CREATE"; data: SpaceEmoji }
 	| { type: "SPACE_EMOJI_UPDATE"; data: SpaceEmoji }
 	| { type: "SPACE_EMOJI_DELETE"; data: SpaceEmoji }
