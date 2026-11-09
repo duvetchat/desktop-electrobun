@@ -22,6 +22,7 @@
 		ArrowRightLeft as MoveIcon,
 		Ban as BanIcon,
 		UserMinus as UserMinusIcon,
+		Webhook as WebhookIcon,
 	} from "@lucide/svelte";
 	import { Checkbox, Dialog } from "bits-ui";
 	import { slide } from "svelte/transition";
@@ -43,6 +44,7 @@
 	import SpaceBanner from "$lib/components/SpaceBanner.svelte";
 	import SpaceIcon from "$lib/components/SpaceIcon.svelte";
 	import SpaceBans from "$lib/components/SpaceBans.svelte";
+	import Webhooks from "$lib/components/Webhooks.svelte";
 	import { banRequest, kickFromSpace, moderationOf } from "$lib/moderation";
 	import { createRole, updateRole, deleteRole } from "$lib/api/roles";
 	import { listEmojis, createEmoji, updateEmoji, deleteEmoji } from "$lib/api/emojis";
@@ -64,7 +66,7 @@
 		canSetPermission,
 		computeSpacePermissions,
 	} from "$lib/permissions";
-	import { settingsSections, type SettingsSection } from "$lib/space-settings";
+	import { settingsSections, webhookRooms, type SettingsSection } from "$lib/space-settings";
 
 	import type { GatewaySpace, SpaceEmoji, SpaceSticker } from "$lib/types";
 	import type { StorageBucket, CreateBucketPayload } from "$lib/api/user";
@@ -1216,6 +1218,19 @@
 							Stickers
 						</button>
 
+						{#if sections.includes("webhooks")}
+							<button
+								class="flex items-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium transition-colors duration-100
+                            {activeSection === 'webhooks'
+									? 'bg-zinc-800 text-white'
+									: 'text-zinc-400 hover:bg-zinc-800/60 hover:text-zinc-200'}"
+								onclick={() => (activeSection = "webhooks")}
+							>
+								<WebhookIcon class="size-4" />
+								Webhooks
+							</button>
+						{/if}
+
 						{#if sections.includes("storage")}
 							<button
 								class="flex items-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium transition-colors duration-100
@@ -1260,11 +1275,13 @@
 												? "Emojis"
 												: activeSection === "stickers"
 													? "Stickers"
-													: activeSection === "storage"
-														? "Storage"
-														: activeSection === "attachments"
-															? "Attachments"
-															: "Members"}
+													: activeSection === "webhooks"
+														? "Webhooks"
+														: activeSection === "storage"
+															? "Storage"
+															: activeSection === "attachments"
+																? "Attachments"
+																: "Members"}
 						</h2>
 						<Dialog.Close
 							class="rounded-lg p-1.5 text-zinc-400 transition-colors duration-150 hover:bg-zinc-800 hover:text-white"
@@ -2605,6 +2622,10 @@
 						{:else if activeSection === "bans"}
 							{#if space}
 								<SpaceBans {space} />
+							{/if}
+						{:else if activeSection === "webhooks"}
+							{#if space}
+								<Webhooks {space} rooms={webhookRooms(space)} />
 							{/if}
 						{:else if activeSection === "attachments"}
 							{#if spaceTransfer}
