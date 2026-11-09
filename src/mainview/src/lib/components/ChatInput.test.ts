@@ -80,3 +80,14 @@ test("a message too large for the API stays in the box, with why, and nothing is
 		/const tooLarge = messageTooLarge\(raw, pendingFiles\);\s*if \(tooLarge\) \{\s*toast\(tooLarge, "error"\);\s*return;\s*\}\s*const filesToSend = [^;]+;\s*onSubmit\(raw, filesToSend\);\s*inputEl\.innerHTML = "";/,
 	);
 });
+
+// #239: Arrow Up in the empty box started the edit of the user's last message, whose box put the caret at the message's
+// end, and then the key's own move carried it to the start of the line (Chromium). What a browser checked against a
+// running app, kept here.
+test("the Arrow Up that starts an edit doesn't move the edit box's caret off the message's end", () => {
+	expect(source("ChatInput.svelte")).toContain(
+		'if (e.key === "ArrowUp" && isEmpty && !e.ctrlKey && onArrowUpWhenEmpty?.()) e.preventDefault();',
+	);
+	// Only an edit that starts takes the key: with nothing to edit, it's left as it is.
+	expect(source("Chat.svelte")).toMatch(/function tryEditLastMessage\(\) \{\s*return tryEditAtIndex\(0\);/);
+});
