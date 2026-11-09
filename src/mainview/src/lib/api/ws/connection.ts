@@ -15,6 +15,7 @@ import {
 	conversations,
 	dmMessages,
 	typingUsers,
+	endOwnTyping,
 	activeVoiceRoomId,
 	unreadChannels,
 	activeTextRoomId,
@@ -887,6 +888,7 @@ function handleEvent(event: GatewayEvent) {
 				if (!all[roomId]) return all;
 				return { ...all, [roomId]: all[roomId].filter((u) => u.user_id !== raw.author_id) };
 			});
+			if (raw.author_id === get(currentUser)?.id) endOwnTyping(roomId);
 			if (ephemeral) {
 				keepEphemeral(roomId, message);
 				break;
@@ -1642,6 +1644,7 @@ function handleEvent(event: GatewayEvent) {
 					[conversationId]: all[conversationId].filter((u) => u.user_id !== msg.author_id),
 				};
 			});
+			if (msg.author_id === get(currentUser)?.id) endOwnTyping(conversationId);
 			dmMessages.update((all) => {
 				const existing = all[conversationId] ?? [];
 				if (msg.nonce) {
