@@ -67,6 +67,7 @@
 	import MessageAttachments from "$lib/components/MessageAttachments.svelte";
 	import MessageComponents from "$lib/components/MessageComponents.svelte";
 	import MessagePreview from "$lib/components/MessagePreview.svelte";
+	import MascotPeek from "$lib/components/MascotPeek.svelte";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
 	import ChatInput from "$lib/components/ChatInput.svelte";
 	import EmojiPicker from "$lib/components/EmojiPicker.svelte";
@@ -109,6 +110,7 @@
 		onUnreadMark = undefined,
 		customEmojis = [],
 		intro = undefined,
+		retryFirstPage = null,
 	}: {
 		messages: Message[];
 		members?: MemberOnSidebar[];
@@ -139,6 +141,11 @@
 		customEmojis?: SpaceEmoji[];
 		/** Shown above the oldest message once there's nothing older to load, and alone in a chat with no messages. */
 		intro?: Snippet;
+		/**
+		 * Set while the chat's first page has failed: with nothing of the chat here, the list says so, with Try again,
+		 * which calls this, rather than showing the chat's start.
+		 */
+		retryFirstPage?: (() => void) | null;
 	} = $props();
 
 	// ── State ──────────────────────────────────────────────────────────────────
@@ -853,7 +860,19 @@
 			{/each}
 		</div>
 	{:else if messages.length === 0}
-		{#if intro}
+		{#if retryFirstPage}
+			<div class="my-auto flex flex-col items-center px-6 py-16 text-center" role="status">
+				<MascotPeek class="w-24" mood="shy" />
+				<p class="text-duvet-ink mt-4 text-base font-bold">Couldn't load messages</p>
+				<button
+					type="button"
+					class="bg-duvet-card text-duvet-ink2 shadow-duvet-raised hover:text-duvet-ink mt-5 flex h-8 items-center rounded-xl px-3 text-[13px] font-bold transition-colors motion-reduce:transition-none"
+					onclick={() => retryFirstPage?.()}
+				>
+					Try again
+				</button>
+			</div>
+		{:else if intro}
 			{@render intro()}
 		{:else}
 			<div class="mb-5 py-4 text-center text-zinc-400 italic">No messages yet. Send the first message.</div>

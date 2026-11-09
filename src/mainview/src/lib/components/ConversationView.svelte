@@ -122,6 +122,9 @@
 	} = $props();
 
 	let isLoading = $state(true);
+	// Whether the first page failed, with nothing of the conversation loaded since: the list says so, with Try again,
+	// rather than showing the conversation's start.
+	let loadFailed = $state(false);
 	let isLoadingMore = $state(false);
 	let hasMore = $state(true);
 	let isAtBottom = $state(false);
@@ -323,14 +326,14 @@
 	}
 
 	// What comes after an await is read with the conversation's ID taken before it: once the view is gone (another tab
-	// shows), its conversation prop is null.
-	async function loadMessages(before?: string) {
+	// shows), its conversation prop is null. False when the page failed.
+	async function loadMessages(before?: string): Promise<boolean> {
 		const convId = conversation.id;
 		const jump = jumps;
 		try {
 			const fetched = await getDirectMessages(convId, before);
 			// A page that comes once the view is gone, or a jump has started (its pages are what the list shows), is dropped.
-			if (jump !== jumps) return;
+			if (jump !== jumps) return true;
 			hasMore = fetched.length === 100;
 			dmMessages.update((all) => {
 				const existing = all[convId] ?? [];
@@ -338,9 +341,31 @@
 				const newMsgs = fetched.filter((m) => !existingIds.has(m.id));
 				return { ...all, [convId]: [...newMsgs, ...existing] };
 			});
+			return true;
 		} catch (err) {
 			console.error("[DM] Failed to load messages:", err);
+			return false;
 		}
+	}
+
+	// Whether the conversation was unread as the view opened: its first page opens at the divider.
+	let hadUnread = false;
+	// Whether the view has gone (another tab shows).
+	let gone = false;
+
+	// The newest page, which the conversation opens on. One that fails leaves nothing of it loaded, which the list says
+	// (loadFailed): Try again calls this again.
+	function loadFirstPage() {
+		const convId = conversation.id;
+		isLoading = true;
+		loadFailed = false;
+		loadMessages().then((loaded) => {
+			if (gone) return;
+			loadFailed = !loaded;
+			// An unread conversation opens at its divider (MessageList places the visit there).
+			if (hadUnread) convUnreadAfter = unreadAfterOf(convId);
+			isLoading = false;
+		});
 	}
 
 	async function handleLoadMore() {
@@ -415,6 +440,7 @@
 			hasMoreBelow = rawBelow.length >= 100;
 			loadedBelowTo = loadedTo(anchor.id, rawBelow);
 			belowFailedAt = 0;
+			loadFailed = false;
 			dmMessages.update((all) => ({ ...all, [convId]: combined }));
 			highlightedMessageId = messageId;
 			setTimeout(() => {
@@ -847,12 +873,11 @@
 	onMount(() => {
 		const convId = conversation.id;
 		activeDMConvId.set(convId);
-		const hadUnread = get(unreadConversations).has(convId);
+		hadUnread = get(unreadConversations).has(convId);
 		unreadConversations.update((s) => {
 			s.delete(convId);
 			return s;
 		});
-		let gone = false;
 		// Back from another tab in the middle of a jump's pages: the list goes on from them, as a room's does, rather than
 		// putting the newest page beside them with the messages between left out.
 		const kept = takeJump(convId, get(dmMessages)[convId]);
@@ -863,12 +888,7 @@
 			if (hadUnread) convUnreadAfter = unreadAfterOf(convId);
 			isLoading = false;
 		} else {
-			loadMessages().then(() => {
-				if (gone) return;
-				// An unread conversation opens at its divider (MessageList places the visit there).
-				if (hadUnread) convUnreadAfter = unreadAfterOf(convId);
-				isLoading = false;
-			});
+			loadFirstPage();
 		}
 		return () => {
 			// What the view still waits for (its first page, a jump's pages, a page below) is dropped as it comes.
@@ -1109,6 +1129,7 @@
 			channelName={conversationTitle()}
 			placeholder={`Message ${conversationTitle()}`}
 			isInitialLoading={isLoading}
+			retryFirstPage={loadFailed ? loadFirstPage : null}
 			{isLoadingMore}
 			hasMoreMessages={hasMore}
 			hasMoreMessagesBelow={hasMoreBelow}
