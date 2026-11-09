@@ -6,7 +6,7 @@
 	import { renderMarkdown } from "$lib/markdown";
 	import { roomNames } from "$lib/stores.svelte";
 	import { formatShortDateTime } from "$lib/utils/time";
-	import { playerFrame, webEmbed } from "$lib/urls";
+	import { webEmbed } from "$lib/urls";
 
 	// compact: the smaller sizes of a message's preview (pins, search results, a thread), whose media fit in 320 × 240.
 	let {
