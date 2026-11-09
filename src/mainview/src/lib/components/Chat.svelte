@@ -281,7 +281,6 @@
 		const active = document.activeElement;
 		return (
 			active &&
-			(active as HTMLElement).dataset?.chatinput !== "true" &&
 			(active.tagName === "INPUT" || active.tagName === "TEXTAREA" || (active as HTMLElement).isContentEditable)
 		);
 	}
