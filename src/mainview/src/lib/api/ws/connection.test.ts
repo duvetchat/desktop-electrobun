@@ -125,6 +125,59 @@ describe("who shows as typing outside the open chat", () => {
 	});
 });
 
+// The user's own typing shows on their own row of the members column, and nowhere else (ownTyping, which only MemberList
+// reads).
+describe("the user's own typing", () => {
+	const own = (chatId: string) => get(stores.ownTyping)[chatId];
+
+	test("shows as they type or record, kept apart from the notices the rows, tabs and chat show", () => {
+		const unsubscribe = stores.typingNow.subscribe(() => {});
+		ready({});
+		const room = conversation(26);
+		stores.noteOwnTyping(room, false);
+		expect(own(room)).toBe(false);
+		stores.noteOwnTyping(room, true);
+		expect(own(room)).toBe(true);
+		expect(get(stores.typingUsers)[room]).toBeUndefined();
+		expect(get(stores.typingNow)[room]).toBeUndefined();
+		stores.endOwnTyping(room);
+		expect(own(room)).toBeUndefined();
+		unsubscribe();
+	});
+
+	test("until TYPING_TIMEOUT after their last key", () => {
+		jest.useFakeTimers();
+		try {
+			const room = conversation(27);
+			stores.noteOwnTyping(room, false);
+			jest.advanceTimersByTime(TYPING_TIMEOUT - 1);
+			stores.noteOwnTyping(room, false);
+			jest.advanceTimersByTime(TYPING_TIMEOUT - 1);
+			expect(own(room)).toBe(false);
+			jest.advanceTimersByTime(1);
+			expect(own(room)).toBeUndefined();
+		} finally {
+			jest.useRealTimers();
+		}
+	});
+
+	test("or until their own message comes, in a room or a conversation", () => {
+		ready({});
+		const room = conversation(28);
+		const conv = conversation(29);
+		stores.noteOwnTyping(room, false);
+		stores.noteOwnTyping(conv, true);
+		deliver("MESSAGE_CREATE", { id: message(70), room_id: room, author_id: ALICE, content: "hi" });
+		deliver("DM_MESSAGE_CREATE", { id: message(71), conversation_id: conv, author_id: ALICE, content: "hi" });
+		expect(own(room)).toBe(false);
+		expect(own(conv)).toBe(true);
+		deliver("MESSAGE_CREATE", { id: message(72), room_id: room, author_id: ME, content: "mine" });
+		deliver("DM_MESSAGE_CREATE", { id: message(73), conversation_id: conv, author_id: ME, content: "mine" });
+		expect(own(room)).toBeUndefined();
+		expect(own(conv)).toBeUndefined();
+	});
+});
+
 // A reaction event changes the message in the list that has it, a room's or a conversation's, and reaches what shows a
 // message those lists don't keep (a pin, a search result, who reacted), which has its own copy to change.
 describe("a reaction that comes", () => {

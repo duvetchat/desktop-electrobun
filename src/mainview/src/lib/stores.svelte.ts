@@ -2,7 +2,7 @@ import { SvelteSet } from "svelte/reactivity";
 import { get, readable, writable, type Readable, type Writable } from "svelte/store";
 
 import { canViewRoom, roomNamesOf } from "$lib/permissions";
-import { typersAt } from "$lib/typing";
+import { TYPING_TIMEOUT, typersAt } from "$lib/typing";
 import type { CustomEmojiMap } from "$lib/markdown";
 import type {
 	GatewaySpace,
@@ -210,6 +210,37 @@ export const typingNow = readable<Record<string, TypingUser[]>>({}, (set) => {
 		stopUser();
 	};
 });
+
+/**
+ * Where the user is typing, or recording a voice message, right now, by chat: whether they're recording. Only their
+ * own row of the members column shows it (MemberList): until TYPING_TIMEOUT after their last key, or second of
+ * recording, as the others' notices show, or until their message comes.
+ */
+export const ownTyping = writable<Record<string, boolean>>({});
+const ownTypingEnds = new Map<string, ReturnType<typeof setTimeout>>();
+
+/** The user typed in a chat, or recorded another second of a voice message there. */
+export function noteOwnTyping(chatId: string, recording: boolean) {
+	clearTimeout(ownTypingEnds.get(chatId));
+	ownTypingEnds.set(
+		chatId,
+		setTimeout(() => endOwnTyping(chatId), TYPING_TIMEOUT),
+	);
+	// A store tells its subscribers of every object it's handed, so only a change goes in, not every key.
+	if (get(ownTyping)[chatId] !== recording) ownTyping.update((all) => ({ ...all, [chatId]: recording }));
+}
+
+/** The user's typing in a chat stops showing: it got old, or their message came. */
+export function endOwnTyping(chatId: string) {
+	clearTimeout(ownTypingEnds.get(chatId));
+	ownTypingEnds.delete(chatId);
+	if (!(chatId in get(ownTyping))) return;
+	ownTyping.update((all) => {
+		const rest = { ...all };
+		delete rest[chatId];
+		return rest;
+	});
+}
 
 export const unreadChannels = writable<Set<string>>(new Set());
 export const activeTextRoomId = writable<string | null>(null);

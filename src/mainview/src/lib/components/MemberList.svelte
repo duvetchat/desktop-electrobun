@@ -57,7 +57,7 @@
 
 <script lang="ts">
 	import { Crown as CrownSimpleIcon, Mic as MicIcon } from "@lucide/svelte";
-	import { typingNow, userActivities } from "$lib/stores.svelte";
+	import { currentUser, ownTyping, typingNow, userActivities } from "$lib/stores.svelte";
 	import { isSpotify, shownActivities } from "$lib/activity";
 	import MemberBanner from "$lib/components/MemberBanner.svelte";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
@@ -84,16 +84,20 @@
 		profileSide?: "left" | "right" | "top" | "bottom";
 	} = $props();
 
-	// Who shows as typing or recording in the chat right now, as its rows and tabs show them (typingNow): everyone but the
-	// user, until their notice gets old.
+	// Who shows as typing or recording in the chat right now: everyone else as its rows and tabs show them (typingNow),
+	// until their notice gets old, and the user on their own row, the one place their own typing shows (ownTyping).
 	const typers = $derived(channelId ? ($typingNow[channelId] ?? []) : []);
+	// Whether the user is recording, while their own typing shows; undefined when it doesn't.
+	const ownRecording = $derived(channelId ? $ownTyping[channelId] : undefined);
 
 	function isTyping(userId: string): boolean {
+		if (userId === $currentUser?.id) return ownRecording !== undefined;
 		return typers.some((u) => u.user_id === userId);
 	}
 
 	// Whether the member's typing notice says they are recording a voice message.
 	function isRecording(userId: string): boolean {
+		if (userId === $currentUser?.id) return ownRecording === true;
 		return !!typers.find((u) => u.user_id === userId)?.recording;
 	}
 
