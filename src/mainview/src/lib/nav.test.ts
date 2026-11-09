@@ -8,6 +8,7 @@ import {
 	parsePinned,
 	rankByQuery,
 	spaceNews,
+	spaceReadAll,
 	type SpaceFolder,
 } from "$lib/nav";
 import { parseLayoutPrefs } from "$lib/layout-prefs";
@@ -139,6 +140,55 @@ describe("spaceNews", () => {
 		];
 		expect(spaceNews(rooms, new Set(["t2"]), { t1: 2, c1: 9 })).toEqual({ mentions: 2, unread: true, inVoice: 2 });
 		expect(spaceNews(rooms, new Set(), {})).toEqual({ mentions: 0, unread: false, inVoice: 2 });
+	});
+});
+
+describe("spaceReadAll", () => {
+	const rooms = [
+		{ id: "t1", type: "text" },
+		{ id: "t2", type: "text" },
+		{ id: "t3", type: "text" },
+		{ id: "v1", type: "voice", voiceUsers: [] },
+		{ id: "c1", type: "category" },
+	];
+	const newest: Record<string, string> = { t1: "m19", t2: "m29", t3: "m39", v1: "m49" };
+
+	test("each room the space's row counts as news is acked at its newest message, which becomes its read position", () => {
+		const read = spaceReadAll(
+			rooms,
+			{ unread: new Set(["t1", "v1", "elsewhere"]), mentions: { t2: 3, dm: 1 }, lastRead: { t1: "m10", t3: "m30" } },
+			(id) => newest[id] ?? "",
+		);
+		expect(read.acks).toEqual([
+			{ roomId: "t1", messageId: "m19" },
+			{ roomId: "t2", messageId: "m29" },
+		]);
+		// The space has no news left; another space's rooms and the conversations keep theirs, and a voice room is no news.
+		expect(spaceNews(rooms, read.unread, read.mentions)).toEqual({ mentions: 0, unread: false, inVoice: 0 });
+		expect(read.unread).toEqual(new Set(["v1", "elsewhere"]));
+		expect(read.mentions).toEqual({ dm: 1 });
+		// A room read already (t3) keeps its read position.
+		expect(read.lastRead).toEqual({ t1: "m19", t2: "m29", t3: "m30" });
+	});
+
+	test("a room whose newest message isn't known only loses its marks, and what was there isn't changed in place", () => {
+		const unread = new Set(["t1"]);
+		const mentions = { t1: 2 };
+		const lastRead = { t1: "m10" };
+		const read = spaceReadAll(rooms, { unread, mentions, lastRead }, () => "");
+		expect(read).toEqual({ acks: [], unread: new Set(), mentions: {}, lastRead: { t1: "m10" } });
+		expect(unread).toEqual(new Set(["t1"]));
+		expect(mentions).toEqual({ t1: 2 });
+	});
+
+	test("a space with no news is left as it is", () => {
+		const read = spaceReadAll(
+			rooms,
+			{ unread: new Set(["elsewhere"]), mentions: {}, lastRead: {} },
+			(id) => newest[id] ?? "",
+		);
+		expect(read.acks).toEqual([]);
+		expect(read.unread).toEqual(new Set(["elsewhere"]));
 	});
 });
 
