@@ -404,6 +404,28 @@ describe("a bare link", () => {
 		expect(renderMarkdown("[docs](https://example.org/a), see")).toContain('href="https://example.org/a"');
 	});
 
+	// #222: a URL in a markdown link's text was a bare link, the link's (…) taken for the URL's own brackets: the bare
+	// link ran to the markdown link's end, and the markdown link broke.
+	test("a markdown link's text is the markdown link's too, whatever it holds", () => {
+		for (const text of [
+			"[https://a.example](https://b.example)",
+			"see [https://a.example/x_(y)](https://b.example/z), then",
+			"[read https://a.example now](https://b.example)",
+			"[duvet://c](https://b.example)",
+		]) {
+			expect(parseTextSegments(text)).toEqual([{ type: "text", content: text }]);
+		}
+		expect(renderMarkdown("[https://a.example](https://b.example)")).toBe(
+			'<a href="https://b.example" target="_blank" rel="noopener noreferrer" class="msg-link">https://a.example</a>',
+		);
+		// The bare links around one are still links.
+		expect(parseTextSegments("https://c.example [https://a.example](https://b.example) https://d.example")).toEqual([
+			{ type: "link", content: "https://c.example" },
+			{ type: "text", content: " [https://a.example](https://b.example) " },
+			{ type: "link", content: "https://d.example" },
+		]);
+	});
+
 	// The API leaves one of Duvet's own links without a preview as the mobile app reads it (mobileLink), and the cards
 	// under the text read it the same way (cardLink): the link in the text names what its card does.
 	test("one of Duvet's own names what its card does", () => {
@@ -470,6 +492,8 @@ describe("a bare link", () => {
 			"<",
 			">",
 			`<@${ID}>`,
+			"[https://a.example/](http://b.example/x)",
+			"[see duvet://c](https://a.example/(y))",
 		];
 		let seed = 2150;
 		const random = () => {
@@ -499,6 +523,19 @@ describe("a bare link", () => {
 						if (/[.,;:!?\]}"']$/.test(s.content)) return `${s.content}: punctuation at its end`;
 						if (/[()]/.test(s.content.replace(/\([^()]*\)/g, ""))) return `${s.content}: a bracket of its own open`;
 						if (before.endsWith("](")) return `${s.content}: a markdown link's URL`;
+						return null;
+					})
+					.find((p) => p !== null) ??
+				// A markdown link that starts in the text stays whole in it: no link starts in its text or its URL.
+				[...text.matchAll(/\[[^\]\n]+\]\(https?:\/\/[^)\n]+\)/g)]
+					.map((m) => {
+						let start = 0;
+						for (const s of segments) {
+							const end = start + s.content.length;
+							if (m.index >= start && m.index < end)
+								return s.type === "text" && m.index + m[0].length > end ? `${m[0]}: a markdown link cut` : null;
+							start = end;
+						}
 						return null;
 					})
 					.find((p) => p !== null) ??
