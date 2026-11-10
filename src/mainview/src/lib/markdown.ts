@@ -2,7 +2,7 @@ import { renderEmoji } from "./emoji";
 import { createHighlighter, type Highlighter } from "shiki";
 import { getHostURL, isUuid } from "$lib/common/common";
 import { CUSTOM_EMOJI_CLASS, retryEmojis } from "$lib/emoji-retry";
-import { cardLink, linkEmphasis, parseDuvetLink, type DuvetLink } from "$lib/urls";
+import { cardLink, parseDuvetLink, type DuvetLink } from "$lib/urls";
 
 export interface CustomEmojiMap {
 	[id: string]: { name: string; attachment_id: string };
@@ -267,6 +267,20 @@ function parseTable(
 	return { html: `<table class="msg-table">${thead}${tbody}</table>`, consumed: i - startIdx };
 }
 
+// The inline rules of emphasis and spoilers, in the order they're read: each pair of markers, and the tags it becomes.
+const EMPHASIS: [RegExp, string, string][] = [
+	[/\*\*\*(.+?)\*\*\*/gs, "<strong><em>", "</em></strong>"],
+	[/\*\*(.+?)\*\*/gs, "<strong>", "</strong>"],
+	[/\*([^\s*](?:[^*]*[^\s*])?)\*/gs, "<em>", "</em>"],
+	[/__(.+?)__/gs, "<u>", "</u>"],
+	[/(?<!\w)_([^\s_](?:[^_]*[^\s_])?)_(?!\w)/gs, "<em>", "</em>"],
+	[/~~(.+?)~~/gs, "<del>", "</del>"],
+	[/\|\|(.+?)\|\|/gs, '<span class="msg-spoiler">', "</span>"],
+];
+
+const emphasized = (s: string) =>
+	EMPHASIS.reduce((text, [rule, open, close]) => text.replace(rule, (_, inner) => `${open}${inner}${close}`), s);
+
 function applyInline(
 	s: string,
 	large: boolean,
@@ -274,13 +288,7 @@ function applyInline(
 	customEmojiMap?: CustomEmojiMap,
 	roomNames?: Record<string, string>,
 ): string {
-	s = s.replace(/\*\*\*(.+?)\*\*\*/gs, (_, t) => `<strong><em>${t}</em></strong>`);
-	s = s.replace(/\*\*(.+?)\*\*/gs, (_, t) => `<strong>${t}</strong>`);
-	s = s.replace(/\*([^\s*](?:[^*]*[^\s*])?)\*/gs, (_, t) => `<em>${t}</em>`);
-	s = s.replace(/__(.+?)__/gs, (_, t) => `<u>${t}</u>`);
-	s = s.replace(/(?<!\w)_([^\s_](?:[^_]*[^\s_])?)_(?!\w)/gs, (_, t) => `<em>${t}</em>`);
-	s = s.replace(/~~(.+?)~~/gs, (_, t) => `<del>${t}</del>`);
-	s = s.replace(/\|\|(.+?)\|\|/gs, (_, t) => `<span class="msg-spoiler">${t}</span>`);
+	s = emphasized(s);
 	const ceCls = large ? `emoji-img emoji-large ${CUSTOM_EMOJI_CLASS}` : `emoji-img ${CUSTOM_EMOJI_CLASS}`;
 	// Mentions, custom emojis and rooms' mentions, last, so that no rule above reads their names as markdown, and in one
 	// pass, as a name can hold any of the three, which a later pass would read in what the pass before it wrote.
@@ -360,14 +368,45 @@ function masked(text: string): string {
 const BARE_LINK =
 	/(?<!\]\()(?:https?|duvet):\/\/(?:[^\s<>()\x00\x01]|\([^\s<>()\x00\x01]*\))*(?:[^\s<>.,;:!?()\]}"'\x00\x01]|\([^\s<>()\x00\x01]*\))/g;
 
+const WHOLE_LINK = new RegExp(`^${BARE_LINK.source}$`);
+
 // Where the bare links of text are, as [start, end] pairs, in order. text has what the renderer takes out first filled
-// in, or in its placeholders. A link wrapped in emphasis ("**https://a.example/x**") ends before the closing markers
-// (linkEmphasis), which the inline rules then read around it.
+// in, or in its placeholders. A link can end with markers of emphasis or a spoiler (* _ ~ |) that close what its line
+// opened before it, right before it ("**https://a.example/x**") or further back ("**see https://a.example/x**",
+// "||https://a.example/x||"): it ends before as many of them as the inline rules read as closing tags right after it,
+// trying the most first, and those are the text's. A URL's own * or _, which nothing before it opens, stays its own,
+// and so do markers whose link would then end as no link does (with a . or a ', say). The inline rules read every link
+// as one character, out of their way.
 function linkSpans(text: string): [number, number][] {
-	return [...text.matchAll(BARE_LINK)].map((m) => {
-		const marks = linkEmphasis(m[0], text.slice(0, m.index)).join("").length;
-		return [m.index, m.index + m[0].length - marks];
+	const spans = [...text.matchAll(BARE_LINK)].map((m): [number, number] => [m.index, m.index + m[0].length]);
+	// text from from to to, with the links in it, as far as they're decided, out of the inline rules' way, and with no
+	// \x02 of its own, the mark of the link being decided.
+	const read = (from: number, to: number) => {
+		let out = "";
+		let at = from;
+		for (const [start, end] of spans) {
+			if (end <= at || start >= to) continue;
+			out += `${text.slice(at, Math.max(start, at))}\x00`;
+			at = Math.min(end, to);
+		}
+		return (out + text.slice(at, to)).replace(/\x02/g, "\x00");
+	};
+	spans.forEach(([start, end], i) => {
+		const lineStart = text.lastIndexOf("\n", start - 1) + 1;
+		const nextLine = text.indexOf("\n", end);
+		const lineEnd = nextLine < 0 ? text.length : nextLine;
+		const link = text.slice(start, end);
+		const markers = /[*_~|]*$/.exec(link)?.[0] ?? "";
+		for (let n = markers.length; n > 0; n--) {
+			if (!WHOLE_LINK.test(link.slice(0, -n))) continue;
+			const tried = emphasized(`${read(lineStart, start)}\x02${link.slice(-n)}${read(end, lineEnd)}`);
+			if (/\x02(?:<\/[a-z]+>)+(?![*_~|])/.test(tried)) {
+				spans[i] = [start, end - n];
+				return;
+			}
+		}
 	});
+	return spans;
 }
 
 /**
@@ -601,4 +640,21 @@ export function parseTextSegments(text: string) {
 	}
 	if (at < text.length) segments.push({ type: "text", content: text.slice(at) });
 	return segments;
+}
+
+/**
+ * The cards a message's text shows for Duvet's own links (parseDuvetLink), in its order. Its links are found as the API
+ * finds the ones it leaves without a preview (mobileLink), and the mobile app its cards' (duvetLinksIn): each up to a
+ * space or one of <>()[]"', so one glued after another link by a < or a ) has its card, as it has its button in the text;
+ * each read as cardLink reads it, and where the text draws a link from the same place, without the markers of emphasis
+ * or a spoiler that end that one (linkSpans), so the card names what the button opens.
+ */
+export function duvetLinksIn(content: string, ownOrigin: string): DuvetLink[] {
+	const drawn = new Map(linkSpans(masked(content)));
+	return [...content.matchAll(/(?:https?|duvet):\/\/[^\s<>()[\]"']+/g)].flatMap((m) => {
+		const link = cardLink(m[0]);
+		const end = drawn.get(m.index);
+		const own = end !== undefined && /^[*_~|]+$/.test(link.slice(end - m.index)) ? link.slice(0, end - m.index) : link;
+		return parseDuvetLink(own, ownOrigin) ?? [];
+	});
 }

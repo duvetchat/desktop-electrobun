@@ -1,8 +1,18 @@
 import { describe, expect, test } from "bun:test";
 import { isUuid } from "$lib/common/common";
 import { renderEmoji, toTwemojiUrl } from "$lib/emoji";
-import { clickedMention, mentionNamesIn, parseTextSegments, renderMarkdown, renderMarkdownLine } from "$lib/markdown";
-import { cardLink, duvetLinksIn, EMPHASIS_TAGS, parseDuvetLink } from "$lib/urls";
+import {
+	clickedMention,
+	duvetLinksIn,
+	mentionNamesIn,
+	parseTextSegments,
+	renderMarkdown,
+	renderMarkdownLine,
+} from "$lib/markdown";
+import { cardLink, parseDuvetLink } from "$lib/urls";
+
+// The tag markdown wraps text in for each marker of its emphasis.
+const EMPHASIS_TAGS: Record<string, string> = { "~~": "del", "**": "strong", __: "u", "*": "em", _: "em" };
 
 // The value of the first href in html: what's between its quotes.
 const hrefOf = (html: string) => /href="([^"]*)"/.exec(html)?.[1];
@@ -485,6 +495,33 @@ describe("a bare link", () => {
 				"https://a.example/x**",
 				"https://a.example/y_",
 			]);
+		});
+
+		// #248: markers that opened before other text ("**see https://…**"), and a spoiler's, were left in the link: it opened
+		// a URL ending in them, and the emphasis or the spoiler never closed.
+		test("ends before the markers that close what its line opened before it, a spoiler too", () => {
+			const drawn = (text: string) => renderMarkdown(text, false, undefined, undefined, undefined, {});
+			const x = LINK("https://a.example/x");
+			expect(drawn("**see https://a.example/x**")).toBe(`<strong>see ${x}</strong>`);
+			expect(drawn("*see https://a.example/x*, _see https://a.example/x_")).toBe(
+				`<em>see ${x}</em>, <em>see ${x}</em>`,
+			);
+			expect(drawn("||https://a.example/x||")).toBe(`<span class="msg-spoiler">${x}</span>`);
+			expect(drawn("||see https://a.example/x|| now")).toBe(`<span class="msg-spoiler">see ${x}</span> now`);
+			expect(drawn("~~old: https://a.example/x and https://a.example/y~~")).toBe(
+				`<del>old: ${x} and ${LINK("https://a.example/y")}</del>`,
+			);
+			expect(drawn("**see https://a.example/x** and **https://a.example/y**")).toBe(
+				`<strong>see ${x}</strong> and <strong>${LINK("https://a.example/y")}</strong>`,
+			);
+			// What closed before the link, or opened on another line, is nothing the link's markers close.
+			expect(linksIn("**a** https://a.example/x**")).toEqual(["https://a.example/x**"]);
+			expect(linksIn("**a\nhttps://a.example/x**")).toEqual(["https://a.example/x**"]);
+			expect(linksIn("https://a.example/x|| ||")).toEqual(["https://a.example/x||"]);
+			// One of Duvet's own names what its card does.
+			const text = "**see https://duvet.chat/invite/abc** ||https://duvet.chat/invite/def||";
+			expect(linksIn(text)).toEqual(["https://duvet.chat/invite/abc", "https://duvet.chat/invite/def"]);
+			expect(duvetLinksIn(text, "views://mainview")).toEqual([{ code: "abc" }, { code: "def" }]);
 		});
 
 		test("one of Duvet's own names what its card does", () => {
