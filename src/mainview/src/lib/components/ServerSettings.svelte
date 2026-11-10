@@ -1032,7 +1032,7 @@
 			await doSave();
 		} else {
 			await confirmAction(
-				"You are about to connect external storage credentials to this server. Make sure you own and trust these credentials. The bucket owner can read, modify, or delete all emojis, and stickers, and revoke access at any time.",
+				"You are about to connect external storage credentials to this Space. Make sure you own and trust these credentials. The bucket owner can read, modify, or delete all emojis, and stickers, and revoke access at any time.",
 				"Yes, add bucket",
 				doSave,
 			);
@@ -1134,7 +1134,7 @@
 				<aside class="flex w-56 shrink-0 flex-col border-r border-zinc-800 bg-zinc-950 py-6">
 					<div class="mb-4 px-4">
 						<p class="text-xxs mb-1 px-2 font-bold tracking-widest text-zinc-400 uppercase">
-							{space?.name ?? "Server"} Settings
+							{space?.name ?? "Space"} Settings
 						</p>
 					</div>
 
@@ -1431,15 +1431,15 @@
 									</div>
 								</div>
 
-								<p class="text-xxs text-zinc-500">Server ID: {spaceId}</p>
+								<p class="text-xxs text-zinc-500">Space ID: {spaceId}</p>
 
 								<!-- Name -->
 								<label class="block space-y-1.5">
-									<span class="text-xs font-semibold tracking-wide text-zinc-400 uppercase">Server Name</span>
+									<span class="text-xs font-semibold tracking-wide text-zinc-400 uppercase">Space Name</span>
 									<input
 										type="text"
 										bind:value={ovName}
-										placeholder="Server name"
+										placeholder="Space name"
 										maxlength={64}
 										class="h-10 w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 text-sm text-zinc-100 outline-none focus:ring-1 focus:ring-stone-500"
 									/>
@@ -1450,7 +1450,7 @@
 									<span class="text-xs font-semibold tracking-wide text-zinc-400 uppercase">Description</span>
 									<textarea
 										bind:value={ovDescription}
-										placeholder="What is this server about?"
+										placeholder="What is this Space about?"
 										rows="3"
 										maxlength={256}
 										class="w-full resize-none rounded-md border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 outline-none focus:ring-1 focus:ring-stone-500 {thinScrollbar}"
@@ -1982,7 +1982,7 @@
 										<div class="space-y-1">
 											<h3 class="text-sm font-semibold tracking-wide text-white">Upload Emoji</h3>
 											<p class="text-xs text-zinc-400">
-												Custom emojis require a storage bucket configured for this server.
+												Custom emojis require a storage bucket configured for this Space.
 											</p>
 										</div>
 
@@ -2112,7 +2112,7 @@
 										<div class="space-y-1">
 											<h3 class="text-sm font-semibold tracking-wide text-white">Upload Sticker</h3>
 											<p class="text-xs text-zinc-400">
-												Custom stickers require a storage bucket configured for this server.
+												Custom stickers require a storage bucket configured for this Space.
 											</p>
 										</div>
 
@@ -2245,7 +2245,7 @@
 									/>
 								{/if}
 								<p class="mb-4 text-xs text-zinc-500">
-									Connect an S3-compatible bucket for this server's storage. When a bucket is active, uploads go to your
+									Connect an S3-compatible bucket for this Space's storage. When a bucket is active, uploads go to your
 									bucket.
 								</p>
 
@@ -2278,7 +2278,7 @@
 												</li>
 												<li>
 													They can <strong>revoke access</strong> without warning, breaking emojis, and stickers across the
-													server.
+													Space.
 												</li>
 												<li>
 													All uploaded files may be <strong>logged, monitored, or shared</strong> by the bucket owner.
@@ -2569,7 +2569,7 @@
 									</div>
 								{/if}
 							{:else}
-								<p class="text-sm text-zinc-400">You don't have permission to manage storage for this server.</p>
+								<p class="text-sm text-zinc-400">You don't have permission to manage storage for this Space.</p>
 							{/if}
 						{:else if activeSection === "invites"}
 							<p class="mb-3 text-sm text-zinc-400">
@@ -2596,7 +2596,7 @@
 											<div class="min-w-0 flex-1">
 												<p class="truncate font-mono text-sm text-zinc-200 select-text">{invite.code}</p>
 												<p class="text-xs text-zinc-500">
-													#{room?.name ?? "deleted channel"}
+													#{room?.name ?? "deleted room"}
 													<span class="mx-1 text-zinc-600">&middot;</span>
 													{inviteCreator(invite.created_by)}
 													<span class="mx-1 text-zinc-600">&middot;</span>

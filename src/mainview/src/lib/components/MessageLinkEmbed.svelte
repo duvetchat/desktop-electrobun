@@ -131,7 +131,7 @@
 					<span class="shrink-0 text-xs text-zinc-500">#</span>
 					<span class="max-w-22.5 truncate text-xs font-medium text-zinc-400">{room.name}</span>
 				{:else}
-					<span class="text-xs text-zinc-500 italic">unknown-channel</span>
+					<span class="text-xs text-zinc-500 italic">unknown-room</span>
 				{/if}
 			{/if}
 		</div>

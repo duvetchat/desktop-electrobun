@@ -34,7 +34,7 @@ export const ALL_PERMISSIONS: ReadonlyArray<{ flag: PermissionFlag; name: string
 		name: "Administrator",
 		description: "Gives members every permission, in every room, whatever its overwrites say.",
 	},
-	{ flag: Permission.ViewChannels, name: "View Channels", description: "Allows members to see rooms and read them." },
+	{ flag: Permission.ViewChannels, name: "View Rooms", description: "Allows members to see rooms and read them." },
 	{ flag: Permission.SendMessages, name: "Send Messages", description: "Allows members to send messages in rooms." },
 	{
 		flag: Permission.ManageMessages,
@@ -43,7 +43,7 @@ export const ALL_PERMISSIONS: ReadonlyArray<{ flag: PermissionFlag; name: string
 	},
 	{
 		flag: Permission.ManageChannels,
-		name: "Manage Channels",
+		name: "Manage Rooms",
 		description: "Allows members to create, edit, move and delete rooms.",
 	},
 	{

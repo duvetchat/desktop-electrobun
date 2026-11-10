@@ -69,9 +69,7 @@
 	<div
 		class="mt-2 max-w-xs rounded-lg border border-zinc-700 bg-zinc-900 p-4 transition-colors duration-150 hover:bg-zinc-800/90"
 	>
-		<p class="mb-3 text-xs font-semibold tracking-wider text-zinc-400 uppercase">
-			You've been invited to join a server
-		</p>
+		<p class="mb-3 text-xs font-semibold tracking-wider text-zinc-400 uppercase">You've been invited to join a Space</p>
 		<div class="mb-4 flex items-center gap-3">
 			<!-- Server icon -->
 			<div
@@ -113,7 +111,7 @@
 				onclick={handleJoin}
 				disabled={joining}
 			>
-				{joining ? "Joining…" : "Join server"}
+				{joining ? "Joining…" : "Join Space"}
 			</button>
 		{/if}
 	</div>

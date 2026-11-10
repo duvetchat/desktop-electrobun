@@ -42,7 +42,6 @@
 		const groups = groupSpaces(
 			guilds.map((g) => g.id),
 			navPrefs.pinned,
-			[],
 			(id) => newsBySpace.get(id)?.unread ?? false,
 		);
 		const ids = [...groups.pinned, ...groups.news];

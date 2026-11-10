@@ -95,13 +95,13 @@
 				<button
 					role="tab"
 					aria-selected={activeCategory === 0}
-					aria-label="Server Emojis"
+					aria-label="Space Emojis"
 					class="flex shrink-0 cursor-pointer items-center justify-center rounded-md border-none bg-none px-1.25 py-1 transition-[opacity,background] duration-120 {activeCategory ===
 					0
 						? 'bg-night-30t opacity-100'
 						: 'hover:bg-night-28 opacity-55 hover:opacity-85'}"
 					onclick={() => (activeCategory = 0)}
-					title="Server Emojis"
+					title="Space Emojis"
 				>
 					<svg
 						xmlns="http://www.w3.org/2000/svg"
@@ -181,7 +181,7 @@
 				</div>
 			{/if}
 		{:else if hasCustom && activeCategory === 0}
-			<div class="text-xxs text-night-52 px-0.5 pt-1.5 pb-2 font-bold tracking-[0.06em] uppercase">Server Emojis</div>
+			<div class="text-xxs text-night-52 px-0.5 pt-1.5 pb-2 font-bold tracking-[0.06em] uppercase">Space Emojis</div>
 			<div class="grid grid-cols-8 gap-0.5">
 				{#each customEmojis as ce (ce.id)}
 					<button

@@ -2,8 +2,6 @@ import type { Tab } from "$lib/types";
 
 /** The spaces the user pinned to the top of the spaces column, by ID, in the order they pinned them. */
 export const PINNED_SPACES_KEY = "duvet.nav.pinned.v1";
-/** The folders of the old server rail, which the spaces column shows as groups of its own. */
-export const SPACE_FOLDERS_KEY = "duvet.guildFolders.v1";
 
 /** What the Now section at the column's foot has folded or opened, which stays so until the user changes it. */
 export const NOW_PREFS_KEY = "duvet.nav.now.v1";
@@ -30,13 +28,6 @@ export function parseNowPrefs(raw: string | null): NowPrefs {
 	}
 }
 
-export type SpaceFolder = {
-	id: string;
-	name: string;
-	guildIds: string[];
-	collapsed: boolean;
-};
-
 /** The pinned space IDs a saved value holds; anything else in it (or a value that isn't JSON) is dropped. */
 export function parsePinned(raw: string | null): string[] {
 	if (!raw) return [];
@@ -49,56 +40,23 @@ export function parsePinned(raw: string | null): string[] {
 	}
 }
 
-/** The folders a saved value holds, as the server rail saved them. */
-export function parseFolders(raw: string | null): SpaceFolder[] {
-	if (!raw) return [];
-	try {
-		const parsed: unknown = JSON.parse(raw);
-		if (!Array.isArray(parsed)) return [];
-		return parsed.flatMap((f: unknown): SpaceFolder[] => {
-			if (!f || typeof f !== "object" || !("id" in f) || typeof f.id !== "string") return [];
-			const name = "name" in f && typeof f.name === "string" ? f.name : "Folder";
-			const ids = "guildIds" in f && Array.isArray(f.guildIds) ? (f.guildIds as unknown[]) : [];
-			const collapsed = "collapsed" in f && f.collapsed === true;
-			return [{ id: f.id, name, guildIds: ids.filter((id): id is string => typeof id === "string"), collapsed }];
-		});
-	} catch {
-		return [];
-	}
-}
-
 export type SpaceGroups = {
 	pinned: string[];
-	folders: { folder: SpaceFolder; spaceIds: string[] }[];
 	news: string[];
 	quiet: string[];
 };
 
 /**
- * The spaces column's groups. A pinned space shows under Pinned, in the order it was pinned; one in a folder, under
- * that folder; any other one under With news while it has an unread room or a mention, and under Quiet otherwise.
- * Each space shows once, and the IDs of spaces the user is no longer in are left out.
+ * The spaces column's groups. A pinned space shows under Pinned, in the order it was pinned; any other one under With
+ * news while it has an unread room or a mention, and under Quiet otherwise, both in the gateway's order. Each space
+ * shows once, and the IDs of spaces the user is no longer in are left out.
  */
-export function groupSpaces(
-	spaceIds: string[],
-	pinned: string[],
-	folders: SpaceFolder[],
-	hasNews: (spaceId: string) => boolean,
-): SpaceGroups {
+export function groupSpaces(spaceIds: string[], pinned: string[], hasNews: (spaceId: string) => boolean): SpaceGroups {
 	const present = new Set(spaceIds);
 	const pinnedIds = pinned.filter((id) => present.has(id));
-	const placed = new Set(pinnedIds);
-	const folderGroups = folders
-		.map((folder) => {
-			const ids = folder.guildIds.filter((id) => present.has(id) && !placed.has(id));
-			for (const id of ids) placed.add(id);
-			return { folder, spaceIds: ids };
-		})
-		.filter((g) => g.spaceIds.length > 0);
-	const rest = spaceIds.filter((id) => !placed.has(id));
+	const rest = spaceIds.filter((id) => !pinnedIds.includes(id));
 	return {
 		pinned: pinnedIds,
-		folders: folderGroups,
 		news: rest.filter((id) => hasNews(id)),
 		quiet: rest.filter((id) => !hasNews(id)),
 	};

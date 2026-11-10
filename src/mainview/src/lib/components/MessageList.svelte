@@ -960,7 +960,7 @@
 								class="font-medium text-zinc-200 hover:underline"
 								onclick={() => jumpToPinned(message)}>a message</button
 							>
-							to this {isConversation ? "conversation" : "channel"}. See all
+							to this {isConversation ? "conversation" : "room"}. See all
 							<button
 								type="button"
 								class="font-medium text-zinc-200 hover:underline"

@@ -32,7 +32,7 @@
 
 	const attachmentHost = getHostURL();
 	const several = $derived(rooms.length > 1);
-	const roomName = (id: string) => rooms.find((r) => r.id === id)?.name ?? "deleted channel";
+	const roomName = (id: string) => rooms.find((r) => r.id === id)?.name ?? "deleted room";
 
 	let webhooksLoading = $state(false);
 	let loadFailed = $state(false);
@@ -224,7 +224,7 @@
 				<div class="space-y-1">
 					<h3 class="text-sm font-semibold tracking-wide text-white">Create Webhook</h3>
 					<p class="text-xs text-zinc-400">
-						Webhooks allow external services to send messages to {several ? "a channel" : `#${rooms[0].name}`}.
+						Webhooks allow external services to send messages to {several ? "a room" : `#${rooms[0].name}`}.
 					</p>
 				</div>
 
@@ -241,7 +241,7 @@
 
 					{#if several}
 						<label class="block space-y-1.5">
-							<span class="text-[11px] font-semibold tracking-wide text-zinc-400 uppercase">Channel</span>
+							<span class="text-[11px] font-semibold tracking-wide text-zinc-400 uppercase">Room</span>
 							<select
 								class="h-9 w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 text-sm text-zinc-100 outline-none focus:border-zinc-500"
 								bind:value={newWebhookRoomId}
@@ -360,7 +360,7 @@
 				<p class="mt-1 text-xs text-zinc-500">
 					{rooms.length > 0
 						? "Create one above to get started."
-						: "Webhooks post in text channels, and there are none here you can see."}
+						: "Webhooks post in text rooms, and there are none here you can see."}
 				</p>
 			</div>
 		{:else}

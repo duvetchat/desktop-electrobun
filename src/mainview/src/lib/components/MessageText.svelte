@@ -36,7 +36,7 @@
 		if (link.conversationId) return { ...link, spaceName: "", roomName: "Direct Message" };
 		const sp = $gatewaySpaces.find((s) => s.id === link.spaceId);
 		const rm = sp?.rooms.find((r) => r.id === link.roomId);
-		return { ...link, spaceName: sp?.name ?? "Unknown server", roomName: rm?.name ?? "unknown" };
+		return { ...link, spaceName: sp?.name ?? "Unknown Space", roomName: rm?.name ?? "unknown" };
 	}
 </script>
 

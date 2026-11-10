@@ -77,54 +77,54 @@
 	// an overwrite that carries it keeps it, as an edit changes only the bit it toggles.
 	const PERMISSION_GROUPS = [
 		{
-			label: "General Channel Permissions",
+			label: "General Room Permissions",
 			perms: [
-				{ flag: Permission.ViewChannels, name: "View Channel", description: "Allows members to view this channel." },
+				{ flag: Permission.ViewChannels, name: "View Room", description: "Allows members to view this room." },
 				{
 					flag: Permission.ManageChannels,
-					name: "Manage Channel",
-					description: "Allows members to change this channel's name and description.",
+					name: "Manage Room",
+					description: "Allows members to change this room's name and description.",
 				},
 				{
 					flag: Permission.CreateInvites,
 					name: "Create Invite",
-					description: "Allows members to create invite links to this channel.",
+					description: "Allows members to create invite links to this room.",
 				},
 			],
 		},
 		{
-			label: "Text Channel Permissions",
+			label: "Text Room Permissions",
 			perms: [
 				{
 					flag: Permission.SendMessages,
 					name: "Send Messages",
-					description: "Allows members to send messages in this channel.",
+					description: "Allows members to send messages in this room.",
 				},
 				{
 					flag: Permission.ManageMessages,
 					name: "Manage Messages",
-					description: "Allows members to delete or edit any message in this channel.",
+					description: "Allows members to delete or edit any message in this room.",
 				},
 				{
 					flag: Permission.PinMessages,
 					name: "Pin Messages",
-					description: "Allows members to pin and unpin messages in this channel.",
+					description: "Allows members to pin and unpin messages in this room.",
 				},
 			],
 		},
 		{
-			label: "Voice Channel Permissions",
+			label: "Voice Room Permissions",
 			perms: [
-				{ flag: Permission.JoinVoice, name: "Join Voice", description: "Allows members to join voice channels." },
+				{ flag: Permission.JoinVoice, name: "Join Voice", description: "Allows members to join voice rooms." },
 				{
 					flag: Permission.SpeakInVoice,
 					name: "Speak in Voice",
-					description: "Allows members to speak in voice channels.",
+					description: "Allows members to speak in voice rooms.",
 				},
 				{
 					flag: Permission.Video,
 					name: "Video",
-					description: "Allows members to turn on their camera and share their screen in voice channels.",
+					description: "Allows members to turn on their camera and share their screen in voice rooms.",
 				},
 			],
 		},
@@ -377,11 +377,11 @@
 									onclick={() => (confirmDelete = true)}
 								>
 									<TrashIcon class="size-4" />
-									Delete {room.type === 3 ? "Category" : "Channel"}
+									Delete {room.type === 3 ? "Category" : "Room"}
 								</button>
 							{:else}
 								<div class="px-3 py-2 text-xs text-zinc-400">
-									<p class="mb-2 font-medium text-red-400">Delete this {room.type === 3 ? "category" : "channel"}?</p>
+									<p class="mb-2 font-medium text-red-400">Delete this {room.type === 3 ? "category" : "room"}?</p>
 									<div class="flex gap-2">
 										<button
 											class="text-fixed-white flex-1 rounded bg-red-600 px-2 py-1 text-xs transition-colors hover:bg-red-500"
@@ -427,14 +427,14 @@
 							<div class="max-w-xl space-y-5 px-6 py-6">
 								<div class="space-y-1.5">
 									<label for="ch-name" class="block text-xs font-semibold tracking-wide text-zinc-400 uppercase">
-										{room.type === 3 ? "Category Name" : "Channel Name"}
+										{room.type === 3 ? "Category Name" : "Room Name"}
 									</label>
 									<input
 										id="ch-name"
 										type="text"
 										bind:value={editName}
 										class="w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500 focus:ring-2 focus:ring-indigo-500/60 focus:outline-none"
-										placeholder={room.type === 3 ? "category-name" : "channel-name"}
+										placeholder={room.type === 3 ? "category-name" : "room-name"}
 										maxlength="64"
 									/>
 								</div>
@@ -574,7 +574,7 @@
 																	class:cursor-not-allowed={!canDeny}
 																	disabled={!canDeny}
 																	onclick={() => setPermState(perm.flag, state === -1 ? 0 : -1)}
-																	title={canDeny ? "Deny" : "You can only deny permissions you have in this channel"}
+																	title={canDeny ? "Deny" : "You can only deny permissions you have in this room"}
 																>
 																	<XIcon class="size-3.5" />
 																</button>
@@ -595,7 +595,7 @@
 																	class:cursor-not-allowed={!canAllow}
 																	disabled={!canAllow}
 																	onclick={() => setPermState(perm.flag, state === 1 ? 0 : 1)}
-																	title={canAllow ? "Allow" : "You can only allow permissions you have in this channel"}
+																	title={canAllow ? "Allow" : "You can only allow permissions you have in this room"}
 																>
 																	<CheckIcon class="size-3.5" />
 																</button>

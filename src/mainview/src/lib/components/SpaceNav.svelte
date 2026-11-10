@@ -5,9 +5,6 @@
 		ChevronDown as ChevronDownIcon,
 		ChevronRight as ChevronRightIcon,
 		Ellipsis as EllipsisIcon,
-		Folder as FolderIcon,
-		FolderMinus as FolderMinusIcon,
-		FolderPlus as FolderPlusIcon,
 		Hash as HashIcon,
 		LogOut as LogOutIcon,
 		Pin as PinIcon,
@@ -23,7 +20,6 @@
 	import { ackRoom } from "$lib/api/messages";
 	import { leaveSpace } from "$lib/api/spaces";
 	import { confirmAction } from "$lib/stores/confirm.svelte";
-	import { promptDialog } from "$lib/stores/prompt.svelte";
 	import { hasPermission, hasSpacePermission, Permission } from "$lib/permissions";
 	import {
 		conversations,
@@ -40,7 +36,7 @@
 	import TypingMark from "$lib/components/TypingMark.svelte";
 	import { newestKnownIn } from "$lib/jumps";
 	import { groupSpaces, spaceNews, spaceReadAll, type OpenChats, type SpaceNews } from "$lib/nav";
-	import { createFolderWith, moveSpaceToFolder, navPrefs, toggleFolder, togglePinned } from "$lib/nav-prefs.svelte";
+	import { navPrefs, togglePinned } from "$lib/nav-prefs.svelte";
 	import { isConversationTab, tabDragData, tabNews, tabTitle } from "$lib/pane";
 	import type { Guild } from "$lib/types";
 	import AddSpaceModal from "$lib/components/AddSpaceModal.svelte";
@@ -111,7 +107,6 @@
 		groupSpaces(
 			guilds.map((g) => g.id),
 			navPrefs.pinned,
-			navPrefs.folders,
 			(id) => (frozenNews?.spaceId === id ? frozenNews.news : (newsBySpace[id]?.unread ?? false)),
 		),
 	);
@@ -179,12 +174,6 @@
 		}
 	}
 
-	async function newFolderWith(spaceId: string) {
-		const name = await promptDialog("Folder name", "My folder");
-		if (!name?.trim()) return;
-		createFolderWith(name.trim(), spaceId);
-	}
-
 	type SpaceAction = {
 		label: string;
 		icon: typeof PinIcon;
@@ -196,7 +185,6 @@
 	function spaceActions(guild: Guild): SpaceAction[] {
 		const space = $gatewaySpaces.find((s) => s.id === guild.id);
 		const pinned = navPrefs.pinned.includes(guild.id);
-		const folder = navPrefs.folders.find((f) => f.guildIds.includes(guild.id));
 		const actions: SpaceAction[] = [
 			{
 				label: pinned ? "Unpin" : "Pin to top",
@@ -212,30 +200,12 @@
 		// The API creates a room for ManageChannels in the space
 		if (space && hasSpacePermission(space, Permission.ManageChannels)) {
 			actions.push({
-				label: "Create channel",
+				label: "Create room",
 				icon: PlusIcon,
 				onSelect: () => void withTreeOf(guild.id, (tree) => tree.openCreateChannel()),
 			});
 		}
 		actions.push({ label: "Mark all as read", icon: CheckCheckIcon, onSelect: () => markAllRead(guild) });
-		// The folders of the old server rail: the space moves between them, or into a new one.
-		const folderActions: SpaceAction[] = navPrefs.folders
-			.filter((f) => f.id !== folder?.id)
-			.map((f) => ({
-				label: `Move to ${f.name}`,
-				icon: FolderIcon,
-				onSelect: () => moveSpaceToFolder(guild.id, f.id),
-			}));
-		if (folder) {
-			folderActions.push({
-				label: `Take out of ${folder.name}`,
-				icon: FolderMinusIcon,
-				onSelect: () => moveSpaceToFolder(guild.id, null),
-			});
-		}
-		folderActions.push({ label: "New folder…", icon: FolderPlusIcon, onSelect: () => void newFolderWith(guild.id) });
-		folderActions[0].separatorBefore = true;
-		actions.push(...folderActions);
 		if (!ownedSpaceIds.has(guild.id)) {
 			actions.push({
 				label: "Leave space",
@@ -582,30 +552,6 @@
 					</ul>
 				{/if}
 
-				{#each groups.folders as group (group.folder.id)}
-					<button
-						type="button"
-						class="text-duvet-ink2 hover:text-duvet-ink mx-0.5 mt-3 mb-1 flex items-center gap-1 rounded-md px-1 text-left text-[13px] font-bold {rowFocus}"
-						aria-expanded={!group.folder.collapsed}
-						onclick={() => toggleFolder(group.folder.id)}
-					>
-						{#if group.folder.collapsed}
-							<ChevronRightIcon class="size-3.5" aria-hidden="true" />
-						{:else}
-							<ChevronDownIcon class="size-3.5" aria-hidden="true" />
-						{/if}
-						<span class="truncate">{group.folder.name}</span>
-					</button>
-					{#if !group.folder.collapsed || group.spaceIds.includes(expandedSpaceId ?? "")}
-						<ul class="flex flex-col gap-px">
-							{#each group.folder.collapsed ? group.spaceIds.filter((id) => id === expandedSpaceId) : group.spaceIds as id (id)}
-								{@const guild = guildById.get(id)}
-								{#if guild}{@render spaceRow(guild)}{/if}
-							{/each}
-						</ul>
-					{/if}
-				{/each}
-
 				{#if groups.news.length}
 					{@render sectionHeader("With news")}
 					<ul class="flex flex-col gap-px">
@@ -618,7 +564,7 @@
 
 				{#if groups.quiet.length}
 					<!-- The Open list already put a "Spaces" header above the direct messages. -->
-					{#if !openChats && !groups.pinned.length && !groups.news.length && !groups.folders.length}
+					{#if !openChats && !groups.pinned.length && !groups.news.length}
 						{@render sectionHeader("Spaces")}
 					{/if}
 					<ul class="mt-1 flex flex-col gap-px">
