@@ -8,7 +8,6 @@ import { join, relative, sep } from "node:path";
 // code (${…}, {…}, a class's group/name) aside.
 const src = join(import.meta.dir, "..");
 const LEFT_OUT: Record<string, string> = {
-	"lib/components/GuildSidebar.svelte": "the old server rail, which nothing draws",
 	"lib/components/server-render.ts": "test tooling: Svelte's server rendering",
 };
 // The API itself is still the server.
