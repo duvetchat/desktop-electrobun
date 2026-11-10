@@ -1,5 +1,10 @@
 <script lang="ts">
-	import { Search as SearchIcon, X as XIcon } from "@lucide/svelte";
+	import {
+		Hash as HashIcon,
+		MessageCircle as MessageCircleIcon,
+		Search as SearchIcon,
+		X as XIcon,
+	} from "@lucide/svelte";
 	import { tick } from "svelte";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
 	import MentionProfile from "$lib/components/MentionProfile.svelte";
@@ -8,13 +13,30 @@
 	import { searchSpaceMessages, type MessageSearch } from "$lib/api/messages";
 	import { searchConversationMessages, type DirectMessage } from "$lib/api/conversations";
 	import { getApiError } from "$lib/api/api";
-	import { gatewaySpaces, jumpToMessageRequest } from "$lib/stores.svelte";
+	import { friendUser } from "$lib/friends";
+	import { conversationTitle } from "$lib/pane";
+	import {
+		conversations,
+		currentUser,
+		friends,
+		gatewaySpaces,
+		jumpToMessageRequest,
+		spaceEmojis,
+	} from "$lib/stores.svelte";
 	import { gatewayMessageToMessage } from "$lib/types";
 	import type { GatewaySpace, MemberOnSidebar, Message, SpaceEmoji } from "$lib/types";
+	import type { MessageLink } from "$lib/urls";
 	import { canViewRoom } from "$lib/permissions";
-	import { customEmojiMapOf, escapeHtml, mentionMapOf } from "$lib/markdown";
+	import { customEmojiMapOf, escapeHtml, mentionMapOf, mentionNamesIn } from "$lib/markdown";
 	import { afterPress } from "$lib/press";
-	import { isoDay, parseSearch, roomSlug as slug, SEARCH_HAS as HAS } from "$lib/search";
+	import {
+		isoDay,
+		parseSearch,
+		roomSlug as slug,
+		searchEverywhere,
+		SEARCH_HAS as HAS,
+		type FoundMessage,
+	} from "$lib/search";
 
 	// The search box of a pane's bar (or a conversation's header), and the panel of its results. The panel is absolute:
 	// it covers the right side of the nearest positioned ancestor, the pane, under its 3rem bar. In a narrow pane (its
@@ -26,6 +48,8 @@
 		members = [],
 		customEmojis = [],
 		toDirectMessage,
+		everywhere = false,
+		onJump = (link) => jumpToMessageRequest.set({ id: crypto.randomUUID(), ...link }),
 	}: {
 		/** The space whose channels are searched. A conversation's search passes conversationId instead. */
 		space?: GatewaySpace | null;
@@ -35,6 +59,14 @@
 		customEmojis?: SpaceEmoji[];
 		/** How a conversation's results become messages. */
 		toDirectMessage?: (m: DirectMessage) => Message;
+		/**
+		 * Searches every Space the user is in and their 5 newest conversations at once, as the mobile app's search does:
+		 * the 20 newest messages found, newest first, each saying where it is. The filters that name a member or a channel,
+		 * which are a Space's or a conversation's, stay out of it.
+		 */
+		everywhere?: boolean;
+		/** Opens a result's message. */
+		onJump?: (link: MessageLink) => void;
 	} = $props();
 
 	const locale = typeof navigator !== "undefined" ? navigator.language : "en-US";
@@ -42,8 +74,12 @@
 
 	type Filter = { key: string; description: string };
 	const filters = $derived<Filter[]>([
-		{ key: "from", description: "Messages by a member" },
-		{ key: "mentions", description: "Messages that mention a member" },
+		...(everywhere
+			? []
+			: [
+					{ key: "from", description: "Messages by a member" },
+					{ key: "mentions", description: "Messages that mention a member" },
+				]),
 		...(space ? [{ key: "in", description: "Messages in a channel" }] : []),
 		{ key: "has", description: "link, embed, file, image, video, sound or sticker" },
 		{ key: "pinned", description: "true or false: pinned messages, or the others" },
@@ -196,7 +232,7 @@
 	}
 
 	// ── The search ───────────────────────────────────────────────────────────
-	type Result = { message: Message; roomId: string | null };
+	type Result = FoundMessage;
 	let open = $state(false);
 	let loading = $state(false);
 	let failure = $state<string | null>(null);
@@ -210,7 +246,10 @@
 	async function run(more = false) {
 		if (!more) {
 			if (!text.trim()) return close();
-			const parsed = parseSearch(text, members, rooms);
+			const parsed =
+				everywhere && /(?:^|\s)(?:from|mentions|in):\S/i.test(text)
+					? { error: "from:, mentions: and in: search a Space or a conversation" }
+					: parseSearch(text, members, rooms);
 			open = true;
 			results = [];
 			total = 0;
@@ -234,7 +273,9 @@
 		failure = null;
 		try {
 			let page: Result[];
-			if (space) {
+			if (everywhere) {
+				({ found: page, total } = await searchEverywhere(search, $gatewaySpaces, $conversations, ctl.signal));
+			} else if (space) {
 				const res = await searchSpaceMessages(space.id, search, ctl.signal);
 				page = res.messages.map((m) => ({ message: gatewayMessageToMessage(m, $gatewaySpaces), roomId: m.room_id }));
 				total = res.total_results;
@@ -284,14 +325,37 @@
 	function jump(e: MouseEvent | KeyboardEvent, r: Result) {
 		// A link, a button (like Show more) or a file in the message is its own: a click on it doesn't jump.
 		if (e.target instanceof Element && e.target.closest("a, button, [data-attachments]")) return;
-		jumpToMessageRequest.set(
-			space && r.roomId
-				? { id: crypto.randomUUID(), spaceId: space.id, roomId: r.roomId, messageId: r.message.id }
-				: { id: crypto.randomUUID(), spaceId: "", roomId: "", messageId: r.message.id, conversationId },
+		const spaceId = r.spaceId ?? space?.id;
+		onJump(
+			spaceId && r.roomId
+				? { spaceId, roomId: r.roomId, messageId: r.message.id }
+				: { spaceId: "", roomId: "", messageId: r.message.id, conversationId: r.conversationId ?? conversationId },
 		);
 	}
 
 	const roomName = (id: string) => space?.rooms.find((r) => r.id === id)?.name ?? "unknown-channel";
+
+	// Where a result found everywhere is: its room and Space, or its conversation.
+	function whereOf(r: Result): string {
+		if (r.conversationId) {
+			const conversation = $conversations.find((c) => c.id === r.conversationId);
+			return conversation ? conversationTitle(conversation, $currentUser?.id) : "Direct message";
+		}
+		const found = $gatewaySpaces.find((s) => s.id === r.spaceId);
+		return `${found?.rooms.find((room) => room.id === r.roomId)?.name ?? "unknown-channel"} · ${found?.name ?? "Space"}`;
+	}
+	// The names of the people results found everywhere mention, as the app knows them, and every custom emoji it has.
+	const everyone = $derived(
+		everywhere
+			? [
+					...$gatewaySpaces.flatMap((s) => s.users),
+					...$conversations.flatMap((c) => c.members.flatMap((m) => m.user ?? [])),
+					...$friends.map((f) => friendUser(f, $currentUser?.id)),
+					...($currentUser ? [$currentUser] : []),
+				]
+			: [],
+	);
+	const everyEmoji = $derived(everywhere ? customEmojiMapOf(Object.values($spaceEmojis).flat()) : {});
 
 	// ── Highlights ───────────────────────────────────────────────────────────
 	// Each character folded about as the API's search_fold does (lower case, no accents), one for one
@@ -366,8 +430,8 @@
 	<input
 		bind:this={input}
 		bind:value={text}
-		placeholder="Search messages"
-		aria-label="Search messages"
+		placeholder={everywhere ? "Search everywhere" : "Search messages"}
+		aria-label={everywhere ? "Search messages everywhere" : "Search messages"}
 		spellcheck="false"
 		class="caret-duvet-ink placeholder:text-duvet-ink2 relative z-10 h-full w-full border-none bg-transparent pr-7 pl-8 text-xs font-medium text-transparent focus:ring-0 focus:outline-none"
 		onscroll={syncScroll}
@@ -440,6 +504,8 @@
 				{:else if loading && results.length === 0}
 					Searching…
 				{:else}
+					<!-- Everywhere, the newest found of them all -->
+					{#if everywhere && results.length < total}{results.length} of{/if}
 					{total >= 1000 ? "1,000+" : total.toLocaleString(locale)}
 					{total === 1 ? "result" : "results"}
 				{/if}
@@ -472,19 +538,30 @@
 						if (e.key === "Enter") jump(e, r);
 					}}
 				>
+					{#if everywhere}
+						<!-- As a room's result names its room: here its Space too, or its conversation -->
+						<div class="text-xxs flex items-center gap-0.5 font-semibold text-stone-500">
+							{#if r.conversationId}
+								<MessageCircleIcon class="size-3" />
+							{:else}
+								<HashIcon class="size-3" />
+							{/if}
+							{whereOf(r)}
+						</div>
+					{/if}
 					<MessagePreview
 						message={r.message}
-						spaceId={space?.id ?? ""}
-						channelId={r.roomId ?? conversationId}
-						roomName={r.roomId ? roomName(r.roomId) : null}
-						{members}
-						{mentionMap}
-						{customEmojiMap}
+						spaceId={r.spaceId ?? space?.id ?? ""}
+						channelId={r.roomId ?? r.conversationId ?? conversationId}
+						roomName={!everywhere && r.roomId ? roomName(r.roomId) : null}
+						members={everywhere ? [] : members}
+						mentionMap={everywhere ? mentionNamesIn(r.message.content ?? "", everyone) : mentionMap}
+						customEmojiMap={everywhere ? everyEmoji : customEmojiMap}
 						onPreview={openPreview}
 					/>
 				</div>
 			{/each}
-			{#if !failure && results.length > 0 && results.length < total}
+			{#if !everywhere && !failure && results.length > 0 && results.length < total}
 				<button
 					class="shrink-0 rounded-md py-2 text-xs font-medium text-stone-400 hover:bg-stone-900 hover:text-stone-200 disabled:opacity-50"
 					disabled={loading}

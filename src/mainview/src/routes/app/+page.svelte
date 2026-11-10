@@ -240,8 +240,8 @@
 		untrack(() => openConversationTab(conversationId));
 	});
 
-	// A mention's notice opens its message. A room's opens in the focused pane, which the friends view would hide; a
-	// conversation's tab opens as any jump to it does (above).
+	// A mention's notice opens its message, and so does a result of the friends view's search everywhere. A room's opens
+	// in the focused pane, which the friends view would hide; a conversation's tab opens as any jump to it does (above).
 	function openMentioned(link: MessageLink) {
 		if (!link.conversationId && showFriendsView) {
 			showFriendsView = false;
@@ -686,6 +686,7 @@
 						bind:activeConversationId={activeDMId}
 						bind:showGroupModal
 						onOpenConversation={openConversationTab}
+						onOpenMessage={openMentioned}
 					/>
 				</div>
 			{/if}

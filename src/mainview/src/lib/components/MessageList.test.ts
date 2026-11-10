@@ -81,6 +81,6 @@ describe("a chat whose first page failed", () => {
 			/loadMessages\(\)\.then\(\(loaded\) => \{\s*if \(gone\) return;\s*loadFailed = !loaded;/,
 		);
 		expect(conversation).toContain("retryFirstPage={loadFailed ? loadFirstPage : null}");
-		expect(source("Chat.svelte")).toMatch(/<MessageList\b[\s\S]*?\{retryFirstPage\}\s*\/>/);
+		expect(source("Chat.svelte")).toMatch(/<MessageList\b[\s\S]*?\{retryFirstPage\}[^/]*\/>/);
 	});
 });

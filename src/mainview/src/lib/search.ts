@@ -1,4 +1,62 @@
-import type { MessageSearch } from "$lib/api/messages";
+import { searchConversationMessages, type Conversation } from "$lib/api/conversations";
+import { searchSpaceMessages, type MessageSearch } from "$lib/api/messages";
+import { directMessageToMessage, gatewayMessageToMessage, type GatewaySpace, type Message } from "$lib/types";
+
+/** A message a search found, and where it is: a room (of spaceId, when the search was everywhere), or a conversation. */
+export interface FoundMessage {
+	message: Message;
+	roomId: string | null;
+	spaceId?: string;
+	conversationId?: string;
+}
+
+/** How many messages the search everywhere shows. */
+export const EVERYWHERE_RESULTS = 20;
+
+/**
+ * The search everywhere, as the mobile app's (its GlobalSearch): each Space's, and the 5 newest conversations' (the
+ * list's first, as a message moves its conversation up), at once, with no API of its own, then the 20 newest messages
+ * found, newest first. One that fails leaves its messages out; all of them failing is a failure. The total is theirs
+ * together.
+ */
+export async function searchEverywhere(
+	search: MessageSearch,
+	spaces: GatewaySpace[],
+	conversations: Conversation[],
+	signal?: AbortSignal,
+): Promise<{ found: FoundMessage[]; total: number }> {
+	const searches = [
+		...spaces.map((space) =>
+			searchSpaceMessages(space.id, search, signal).then((res) => ({
+				found: res.messages.map(
+					(m): FoundMessage => ({ message: gatewayMessageToMessage(m, spaces), roomId: m.room_id, spaceId: space.id }),
+				),
+				total: res.total_results,
+			})),
+		),
+		...conversations.slice(0, 5).map((conversation) =>
+			searchConversationMessages(conversation.id, search, signal).then((res) => ({
+				found: res.messages.map(
+					(m): FoundMessage => ({
+						message: directMessageToMessage(m, conversation.members),
+						roomId: null,
+						conversationId: conversation.id,
+					}),
+				),
+				total: res.total_results,
+			})),
+		),
+	];
+	const settled = await Promise.allSettled(searches);
+	const answered = settled.flatMap((r) => (r.status === "fulfilled" ? [r.value] : []));
+	const failed = settled.find((r) => r.status === "rejected");
+	if (answered.length === 0 && failed) throw failed.reason;
+	const found = answered
+		.flatMap((a) => a.found)
+		.sort((a, b) => Date.parse(b.message.created_at) - Date.parse(a.message.created_at))
+		.slice(0, EVERYWHERE_RESULTS);
+	return { found, total: answered.reduce((sum, a) => sum + a.total, 0) };
+}
 
 /** What has: takes. */
 export const SEARCH_HAS = ["link", "embed", "file", "image", "video", "sound", "sticker"];

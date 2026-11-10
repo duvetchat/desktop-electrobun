@@ -1349,6 +1349,37 @@ export function sentAt(message: { created_at: string; call?: CallNotice }): stri
 	return message.call?.ended_at ?? message.created_at;
 }
 
+/** A conversation's message as the chat shows it: its author as the message names them, or else as the conversation's
+ * members do, or by the start of their ID. */
+export function directMessageToMessage(msg: DirectMessage, members: Conversation["members"]): Message {
+	const member = members.find((m) => m.user_id === msg.author_id);
+	return {
+		id: msg.id,
+		content: msg.content,
+		type: msg.type ?? 0,
+		author_id: msg.author_id,
+		author_name:
+			msg.user?.alias ??
+			msg.user?.username ??
+			member?.user?.alias ??
+			member?.user?.username ??
+			msg.author_id.slice(0, 8),
+		author_avatar_url: getAvatarURL(msg.author_id, msg.user?.avatar ?? member?.user?.avatar),
+		author_is_bot: msg.user?.is_bot ?? false,
+		created_at: sentAt(msg),
+		updated_at: msg.updated_at,
+		nonce: msg.nonce,
+		ref_message_id: msg.referenced_message?.message_id ?? null,
+		referenced_message: msg.referenced_message ?? null,
+		attachments: msg.attachments ?? null,
+		reactions: msg.reactions ?? null,
+		embeds: msg.embeds ?? null,
+		sticker_attachment_id: msg.sticker_attachment_id ?? null,
+		pinned_at: msg.pinned_at ?? null,
+		call: msg.call,
+	};
+}
+
 /** The text a message shows: its content, or its text displays' when its components are all of it. */
 export function messageText(message: Pick<Message, "flags" | "content" | "components">): string {
 	if (!isComponentsV2(message)) return message.content ?? "";

@@ -8,6 +8,7 @@ import {
 	PUT_BACK_KEPT_MS,
 	putBack,
 	takeBack,
+	threadDraft,
 	withoutDeletedReply,
 	type SentDraft,
 } from "$lib/drafts";
@@ -121,6 +122,16 @@ describe("a cancelled send", () => {
 		putBack(ROOM, "n1", sent());
 		expect(draft(ROOM)).toEqual({ text: RAW, files: [photo], replyTo: reply("m1"), replyMention: false });
 		expect(get(chatDrafts)[OTHER_ROOM]).toBeUndefined();
+	});
+
+	// #61: a thread's message box has a draft of its own, which its sends come from.
+	test("from a thread's draft gives back to it, and its create event takes back from it", () => {
+		const thread = threadDraft("01900000-0000-7000-8000-0000000000f1");
+		putBack(ROOM, "t1", sent(), thread);
+		expect(draft(thread)).toEqual({ text: RAW, files: [photo], replyTo: reply("m1"), replyMention: false });
+		expect(get(chatDrafts)[ROOM]).toBeUndefined();
+		expect(takeBack(ROOM, "t1")).toBe(true);
+		expect(get(chatDrafts)[thread]).toBeUndefined();
 	});
 
 	test("puts its files after those the draft has, its text and reply coming back all the same", () => {

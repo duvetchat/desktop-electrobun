@@ -14,6 +14,8 @@
 			stickerAttachmentId?: string;
 			allowedMentions?: AllowedMentions;
 			voiceNote?: Blob;
+			/** The draft it came from: the conversation's, or one of its threads'. */
+			draft?: string;
 		}
 	>();
 </script>
@@ -72,7 +74,7 @@
 		type DirectMessage,
 	} from "$lib/api/conversations";
 	import type { Friend } from "$lib/api/friends";
-	import { MessageType, sentAt, userStatusToString, type Message } from "$lib/types";
+	import { directMessageToMessage, MessageType, userStatusToString, type Message } from "$lib/types";
 	import { toast } from "$lib/stores/toast.svelte";
 	import { confirmAction } from "$lib/stores/confirm.svelte";
 	import { promptDialog } from "$lib/stores/prompt.svelte";
@@ -256,32 +258,7 @@
 
 	// Map DirectMessage → Message for MessageList
 	function toMessage(msg: DirectMessage): Message {
-		const member = conversation.members.find((m) => m.user_id === msg.author_id);
-		return {
-			id: msg.id,
-			content: msg.content,
-			type: msg.type ?? 0,
-			author_id: msg.author_id,
-			author_name:
-				msg.user?.alias ??
-				msg.user?.username ??
-				member?.user?.alias ??
-				member?.user?.username ??
-				msg.author_id.slice(0, 8),
-			author_avatar_url: getAvatarURL(msg.author_id, msg.user?.avatar ?? member?.user?.avatar),
-			author_is_bot: msg.user?.is_bot ?? false,
-			created_at: sentAt(msg),
-			updated_at: msg.updated_at,
-			nonce: msg.nonce,
-			ref_message_id: msg.referenced_message?.message_id ?? null,
-			referenced_message: msg.referenced_message ?? null,
-			attachments: msg.attachments ?? null,
-			reactions: msg.reactions ?? null,
-			embeds: msg.embeds ?? null,
-			sticker_attachment_id: msg.sticker_attachment_id ?? null,
-			pinned_at: msg.pinned_at ?? null,
-			call: msg.call,
-		};
+		return directMessageToMessage(msg, conversation.members);
 	}
 
 	// Cache mapped messages to avoid re-creating objects on every store update
@@ -521,6 +498,7 @@
 		files?: File[],
 		stickerAttachmentId?: string,
 		allowedMentions?: AllowedMentions,
+		draft = conversation.id,
 	) {
 		const user = get(currentUser);
 		if (!user) return;
@@ -564,14 +542,14 @@
 			sticker_attachment_id: stickerAttachmentId ?? null,
 		};
 		dmMessages.update((all) => ({ ...all, [convId]: [...(all[convId] ?? []), pending] }));
-		dmRetryData.set(nonce, { ref, files, stickerAttachmentId, allowedMentions });
+		dmRetryData.set(nonce, { ref, files, stickerAttachmentId, allowedMentions, draft });
 		// What a Cancel of its upload gives back to the draft, its reply as the list shows it: read now, as the view can be
 		// gone by then.
 		const fromDraft = sentDraft(content, files, ref, allowedMentions);
 		const real = await sendFollowed(nonce, files, (upload) =>
 			sendDirectMessage(convId, content, nonce, ref, files, undefined, stickerAttachmentId, allowedMentions, upload),
 		);
-		if (real === CANCELLED) dmCancelled(convId, nonce, fromDraft);
+		if (real === CANCELLED) dmCancelled(convId, nonce, fromDraft, draft);
 		else showSent(convId, nonce, real);
 	}
 
@@ -605,8 +583,9 @@
 	}
 
 	// As a room's (Chat's cancelled): a send whose upload was cancelled leaves the conversation's list, and what it took
-	// from the conversation's draft goes back, unless DM_MESSAGE_CREATE has replaced it, the message posted after all.
-	function dmCancelled(convId: string, nonce: string, fromDraft: SentDraft) {
+	// from its draft (into: the conversation's, or one of its threads') goes back, unless DM_MESSAGE_CREATE has replaced
+	// it, the message posted after all.
+	function dmCancelled(convId: string, nonce: string, fromDraft: SentDraft, into = convId) {
 		dmRetryData.delete(nonce);
 		let sending: DirectMessage | undefined;
 		dmMessages.update((all) => {
@@ -616,7 +595,7 @@
 			sending = list.find((m) => m.id === nonce);
 			return { ...all, [convId]: kept };
 		});
-		if (sending) putBack(convId, nonce, withoutDeletedReply(fromDraft, sending));
+		if (sending) putBack(convId, nonce, withoutDeletedReply(fromDraft, sending), into);
 	}
 
 	async function dmSaveEdit(messageId: string, content: string) {
@@ -666,7 +645,9 @@
 				upload,
 			),
 		)
-			.then((real) => (real === CANCELLED ? dmCancelled(convId, nonce, fromDraft) : showSent(convId, nonce, real)))
+			.then((real) =>
+				real === CANCELLED ? dmCancelled(convId, nonce, fromDraft, saved?.draft) : showSent(convId, nonce, real),
+			)
 			.catch((err) => {
 				failedNonces = new Set(failedNonces).add(nonce);
 				toast(getApiError(err, "Failed to send message"), "error");
