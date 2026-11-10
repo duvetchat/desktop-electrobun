@@ -1,6 +1,7 @@
 <script lang="ts">
 	import {
 		AtSign as AtSignIcon,
+		CheckCheck as CheckCheckIcon,
 		ChevronDown as ChevronDownIcon,
 		ChevronRight as ChevronRightIcon,
 		Ellipsis as EllipsisIcon,
@@ -19,6 +20,7 @@
 	} from "@lucide/svelte";
 	import { ContextMenu, DropdownMenu } from "bits-ui";
 	import { tick, untrack } from "svelte";
+	import { ackRoom } from "$lib/api/messages";
 	import { leaveSpace } from "$lib/api/spaces";
 	import { confirmAction } from "$lib/stores/confirm.svelte";
 	import { promptDialog } from "$lib/stores/prompt.svelte";
@@ -27,6 +29,7 @@
 		conversations,
 		currentUser,
 		gatewaySpaces,
+		lastReadRooms,
 		mentionCounts,
 		pendingFriendRequests,
 		typingNow,
@@ -35,7 +38,8 @@
 	} from "$lib/stores.svelte";
 	import { typingSentence } from "$lib/typing";
 	import TypingMark from "$lib/components/TypingMark.svelte";
-	import { groupSpaces, spaceNews, type OpenChats, type SpaceNews } from "$lib/nav";
+	import { newestKnownIn } from "$lib/jumps";
+	import { groupSpaces, spaceNews, spaceReadAll, type OpenChats, type SpaceNews } from "$lib/nav";
 	import { createFolderWith, moveSpaceToFolder, navPrefs, toggleFolder, togglePinned } from "$lib/nav-prefs.svelte";
 	import { isConversationTab, tabDragData, tabNews, tabTitle } from "$lib/pane";
 	import type { Guild } from "$lib/types";
@@ -160,6 +164,21 @@
 		);
 	}
 
+	// Every room of the space with news read, up to the newest message known there (spaceReadAll).
+	function markAllRead(guild: Guild) {
+		const read = spaceReadAll(
+			guild.channels,
+			{ unread: $unreadChannels, mentions: $mentionCounts, lastRead: $lastReadRooms },
+			newestKnownIn,
+		);
+		unreadChannels.set(read.unread);
+		mentionCounts.set(read.mentions);
+		lastReadRooms.set(read.lastRead);
+		for (const { roomId, messageId } of read.acks) {
+			ackRoom(roomId, messageId).catch((err) => console.error("[ack] network error:", err));
+		}
+	}
+
 	async function newFolderWith(spaceId: string) {
 		const name = await promptDialog("Folder name", "My folder");
 		if (!name?.trim()) return;
@@ -198,6 +217,7 @@
 				onSelect: () => void withTreeOf(guild.id, (tree) => tree.openCreateChannel()),
 			});
 		}
+		actions.push({ label: "Mark all as read", icon: CheckCheckIcon, onSelect: () => markAllRead(guild) });
 		// The folders of the old server rail: the space moves between them, or into a new one.
 		const folderActions: SpaceAction[] = navPrefs.folders
 			.filter((f) => f.id !== folder?.id)

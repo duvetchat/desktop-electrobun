@@ -32,8 +32,17 @@
 		tabTitle,
 	} from "$lib/pane";
 	import { getMessages, getMessagesAfter, getMessageById, ackRoom } from "$lib/api/messages";
-	import { dividerPastWindow, inWindow, keepRoomJumps, leaving, loadedTo, takeJump, withPresent } from "$lib/jumps";
-	import { onMount, onDestroy, type Snippet } from "svelte";
+	import {
+		dividerPastWindow,
+		inWindow,
+		keepRoomJumps,
+		leaving,
+		loadedTo,
+		readWhenLeft,
+		takeJump,
+		withPresent,
+	} from "$lib/jumps";
+	import { onMount, onDestroy, untrack, type Snippet } from "svelte";
 
 	import type { MemberOnSidebar, GatewaySpace, PaneNode, Guild, Tab } from "$lib/types";
 
@@ -295,6 +304,23 @@
 		} else {
 			activeTextRoomId.set(null);
 		}
+	});
+
+	// A room read up to the newest message its list has from elsewhere (the space's Mark all as read moves its read
+	// position there) has nothing new after its unread divider: the divider goes, shown or kept from an earlier visit.
+	$effect(() => {
+		const readUpTo = $lastReadRooms;
+		untrack(() => {
+			for (const [channelId, after] of Object.entries(channelUnreadAfter)) {
+				if (!after) continue;
+				const list = {
+					newest: newestConfirmedId(get(channelMessages)[channelId] ?? []) ?? "",
+					moreBelow: channelHasMoreBelow[channelId] === true,
+					loadedBelowTo: channelLoadedBelowTo[channelId] ?? "",
+				};
+				if (readWhenLeft(list, ackedMsgIds.get(channelId), readUpTo[channelId])) channelUnreadAfter[channelId] = null;
+			}
+		});
 	});
 
 	// ACK helper — sends an ack for the newest confirmed message if at bottom.
