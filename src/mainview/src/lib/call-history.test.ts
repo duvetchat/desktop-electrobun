@@ -269,6 +269,31 @@ describe("a call's row", () => {
 		expect(callRow(notice(9), undefined, ME)).toMatchObject({ title: "Conversation", avatar: null });
 		expect(callRow(text(9), dm, ME)).toBeNull();
 	});
+
+	// The user's membership of the group is newer than notice 9's call and older than notice 11's: they were added
+	// between the two (#261).
+	test("a group's call from before the user joined it doesn't say they missed it", () => {
+		const joinedLate = {
+			...group,
+			members: group.members.map((m) => (m.user_id === ME ? { ...m, id: id(10) } : m)),
+		};
+		const before = (participants: string[]) =>
+			callRow(notice(9, { conversation: GROUP, caller: BOB, participants }), joinedLate, ME)?.line;
+		expect(before([BOB, ALICE])).toEqual({
+			missed: false,
+			before: "",
+			name: "bob",
+			after: " started a call that lasted 5 minutes.",
+		});
+		expect(before([BOB])).toEqual({
+			missed: false,
+			before: "",
+			name: "bob",
+			after: " started a call. No one answered.",
+		});
+		const after = callRow(notice(11, { conversation: GROUP, caller: BOB, participants: [BOB, ALICE] }), joinedLate, ME);
+		expect(after?.line.missed).toBe(true);
+	});
 });
 
 describe("a row's call button", () => {

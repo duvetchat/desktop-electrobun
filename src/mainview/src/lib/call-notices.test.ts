@@ -24,15 +24,22 @@ const call = (participants: string[], ms = 5 * 60_000): CallNotice => ({
 	ended_at: new Date(Date.parse(START) + ms).toISOString(),
 });
 const lasting = (ms: number) => callDuration(call([ALICE], ms));
+// The reader's membership of the conversation, and notices from before and after it: UUIDv7s, which sort as they were
+// minted, the membership's as the reader joined and a notice's as its call ended.
+const BEFORE_JOINING = "019a5000-0000-7000-8000-000000000001";
+const JOINED = "019a6000-0000-7000-8000-0000000000b0";
+const AFTER_JOINING = "019a7000-0000-7000-8000-000000000002";
+type Notice = Pick<Message, "id" | "type" | "author_id" | "author_name" | "call">;
 // A call notice as a conversation's list has it: by its caller, named as the list names its author.
-const notice = (caller: string, c: CallNotice): Pick<Message, "type" | "author_id" | "author_name" | "call"> => ({
+const notice = (caller: string, c: CallNotice, id = AFTER_JOINING): Notice => ({
+	id,
 	type: MessageType.Call,
 	author_id: caller,
 	author_name: caller === ME ? "Me" : "Alice",
 	call: c,
 });
-const says = (n: Pick<Message, "type" | "author_id" | "author_name" | "call">, me: string | undefined) => {
-	const line = callNoticeLine(n, me);
+const says = (n: Notice, me: string | undefined, joined?: string) => {
+	const line = callNoticeLine(n, me, joined);
 	return line && callNoticeText(line);
 };
 
@@ -57,6 +64,18 @@ describe("callNoticeCase", () => {
 	test("a reader it doesn't know missed it", () => {
 		expect(callNoticeCase(call([ALICE, CAROL]), ALICE, undefined)).toBe("missed");
 		expect(callNoticeCase(call([ALICE]), ALICE, undefined)).toBe("missed-unanswered");
+	});
+
+	test("a call from before the reader joined its conversation wasn't theirs to miss", () => {
+		expect(callNoticeCase(call([ALICE, CAROL]), ALICE, ME, true)).toBe("before-joining");
+		expect(callNoticeCase(call([ALICE]), ALICE, ME, true)).toBe("before-joining-unanswered");
+	});
+
+	test("the reader's own calls, and the calls they were in, read the same from before they joined", () => {
+		// They were in the conversation before, left it, and were added again.
+		expect(callNoticeCase(call([ME, ALICE]), ME, ME, true)).toBe("in");
+		expect(callNoticeCase(call([ME]), ME, ME, true)).toBe("unanswered");
+		expect(callNoticeCase(call([ALICE, ME]), ALICE, ME, true)).toBe("in");
 	});
 });
 
@@ -105,6 +124,57 @@ describe("callNoticeLine", () => {
 		expect(callNoticeLine({ ...notice(ALICE, call([ALICE])), type: MessageType.PinNotice }, ME)).toBeNull();
 		expect(callNoticeLine({ ...notice(ALICE, call([ALICE])), type: MessageType.Text }, ME)).toBeNull();
 		expect(callNoticeLine({ ...notice(ALICE, call([ALICE])), call: undefined }, ME)).toBeNull();
+	});
+});
+
+// A group's call that ended before the reader was added to the group (#261): it never rang them.
+describe("callNoticeLine, by when the reader joined the conversation", () => {
+	test("a call from before they joined says who started it, and how long it lasted when others got in", () => {
+		const before = notice(ALICE, call([ALICE, CAROL], 20 * 60_000), BEFORE_JOINING);
+		expect(says(before, ME, JOINED)).toBe("Alice started a call that lasted 20 minutes.");
+		expect(callNoticeLine(before, ME, JOINED)).toEqual({
+			missed: false,
+			before: "",
+			name: "Alice",
+			after: " started a call that lasted 20 minutes.",
+		});
+	});
+
+	test("a call from before they joined that nobody answered says so, not that they missed it", () => {
+		const before = notice(ALICE, call([ALICE]), BEFORE_JOINING);
+		expect(says(before, ME, JOINED)).toBe("Alice started a call. No one answered.");
+		expect(callNoticeLine(before, ME, JOINED)).toEqual({
+			missed: false,
+			before: "",
+			name: "Alice",
+			after: " started a call. No one answered.",
+		});
+	});
+
+	test("a call from after they joined that they weren't in, they missed", () => {
+		const missed = callNoticeLine(notice(ALICE, call([ALICE, CAROL]), AFTER_JOINING), ME, JOINED);
+		expect(missed && callNoticeText(missed)).toBe("You missed a call from Alice that lasted 5 minutes.");
+		expect(missed?.missed).toBe(true);
+		const unanswered = callNoticeLine(notice(ALICE, call([ALICE]), AFTER_JOINING), ME, JOINED);
+		expect(unanswered && callNoticeText(unanswered)).toBe("You missed a call from Alice.");
+		expect(unanswered?.missed).toBe(true);
+	});
+
+	test("their own calls, and the calls they were in, read the same from before they joined", () => {
+		expect(says(notice(ME, call([ME, ALICE]), BEFORE_JOINING), ME, JOINED)).toBe(
+			"You started a call that lasted 5 minutes.",
+		);
+		expect(says(notice(ME, call([ME]), BEFORE_JOINING), ME, JOINED)).toBe("You started a call. No one answered.");
+		expect(says(notice(ALICE, call([ALICE, ME]), BEFORE_JOINING), ME, JOINED)).toBe(
+			"Alice started a call that lasted 5 minutes.",
+		);
+	});
+
+	test("without their membership, which this client may not know, a call reads as one from after", () => {
+		const before = notice(ALICE, call([ALICE, CAROL]), BEFORE_JOINING);
+		expect(says(before, ME, undefined)).toBe("You missed a call from Alice that lasted 5 minutes.");
+		expect(callNoticeLine(before, ME, undefined)?.missed).toBe(true);
+		expect(says(notice(ALICE, call([ALICE]), BEFORE_JOINING), ME, undefined)).toBe("You missed a call from Alice.");
 	});
 });
 

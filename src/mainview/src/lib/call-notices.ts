@@ -8,15 +8,37 @@ import { MessageType, type CallNotice, type GatewayReadyActiveCall, type Message
  *   minutes.";
  * - "unanswered": nobody but its caller got in, and the reader is the caller: "You started a call. No one answered.";
  * - "missed-unanswered": nobody but its caller got in, and the reader is someone it rang: "You missed a call from
- *   Alice.".
+ *   Alice.";
+ * - "before-joining": others got into it, before the reader joined its conversation, so it never rang them: "Alice
+ *   started a call that lasted 20 minutes.";
+ * - "before-joining-unanswered": nobody but its caller got in, before the reader joined: "Alice started a call. No one
+ *   answered.".
+ * The reader's own calls, and those they were in, read the same whenever they joined (they may have left the group and
+ * been added again).
  */
-export type CallNoticeCase = "in" | "missed" | "unanswered" | "missed-unanswered";
+export type CallNoticeCase =
+	| "in"
+	| "missed"
+	| "unanswered"
+	| "missed-unanswered"
+	| "before-joining"
+	| "before-joining-unanswered";
 
-/** The case of a call notice whose caller is callerId, for the reader me (undefined: nobody it knows). */
-export function callNoticeCase(call: CallNotice, callerId: string, me: string | undefined): CallNoticeCase {
+/** The case of a call notice whose caller is callerId, for the reader me (undefined: nobody it knows); beforeJoining:
+ * the notice is older than the reader's membership of its conversation. */
+export function callNoticeCase(
+	call: CallNotice,
+	callerId: string,
+	me: string | undefined,
+	beforeJoining = false,
+): CallNoticeCase {
 	const mine = me !== undefined && me === callerId;
-	if (!call.participants.some((id) => id !== callerId)) return mine ? "unanswered" : "missed-unanswered";
-	return mine || (me !== undefined && call.participants.includes(me)) ? "in" : "missed";
+	if (!call.participants.some((id) => id !== callerId)) {
+		if (mine) return "unanswered";
+		return beforeJoining ? "before-joining-unanswered" : "missed-unanswered";
+	}
+	if (mine || (me !== undefined && call.participants.includes(me))) return "in";
+	return beforeJoining ? "before-joining" : "missed";
 }
 
 /**
@@ -43,17 +65,24 @@ export interface CallNoticeLine {
 	after: string;
 }
 
-/** What a call notice says to its reader me (callNoticeCase), its caller named as the list names its author; null for
- * any other message. */
+/**
+ * What a call notice says to its reader me (callNoticeCase), its caller named as the list names its author; null for
+ * any other message. joined is the ID of the reader's membership of the notice's conversation (a ConversationMember's):
+ * a UUIDv7, minted as they joined, as the notice's is as its call ended, so a notice whose ID is older is from before
+ * they joined, as the API's list of their calls counts it. Without it (a membership this client doesn't know), the
+ * notice reads as one from after.
+ */
 export function callNoticeLine(
-	message: Pick<Message, "type" | "author_id" | "author_name" | "call">,
+	message: Pick<Message, "id" | "type" | "author_id" | "author_name" | "call">,
 	me: string | undefined,
+	joined?: string,
 ): CallNoticeLine | null {
 	const call = message.type === MessageType.Call ? message.call : undefined;
 	if (!call) return null;
 	const name = message.author_name;
-	switch (callNoticeCase(call, message.author_id, me)) {
+	switch (callNoticeCase(call, message.author_id, me, joined !== undefined && message.id < joined)) {
 		case "in":
+		case "before-joining":
 			return message.author_id === me
 				? { missed: false, before: `You started a call that lasted ${callDuration(call)}.`, name: "", after: "" }
 				: { missed: false, before: "", name, after: ` started a call that lasted ${callDuration(call)}.` };
@@ -63,6 +92,8 @@ export function callNoticeLine(
 			return { missed: false, before: "You started a call. No one answered.", name: "", after: "" };
 		case "missed-unanswered":
 			return { missed: true, before: "You missed a call from ", name, after: "." };
+		case "before-joining-unanswered":
+			return { missed: false, before: "", name, after: " started a call. No one answered." };
 	}
 }
 

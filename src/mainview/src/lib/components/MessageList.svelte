@@ -399,11 +399,14 @@
 			.map(({ m }) => m),
 	);
 
+	// The user's membership here (their member_id): a conversation's, minted as they joined it, which its call notices
+	// go by. A room has no call notices.
+	const joined = $derived(members.find((m) => m.id === $currentUser?.id)?.member_id);
 	// What each call notice says to this user, by its ID: its row, and the quote of a reply to it.
 	const callNoticeLines = $derived(
 		new Map(
 			messages.flatMap((m) => {
-				const line = callNoticeLine(m, $currentUser?.id);
+				const line = callNoticeLine(m, $currentUser?.id, joined);
 				return line ? [[m.id, line] as const] : [];
 			}),
 		),
@@ -1612,7 +1615,7 @@
 						<div class="flex flex-col gap-2" onclickcapture={openMention}>
 							{#each threadShown as threadMsg (threadMsg.id)}
 								{@const parentMsg = threadMsg.ref_message_id ? threadMsgMap.get(threadMsg.ref_message_id) : null}
-								{@const parentCall = parentMsg ? callNoticeLine(parentMsg, $currentUser?.id) : null}
+								{@const parentCall = parentMsg ? callNoticeLine(parentMsg, $currentUser?.id, joined) : null}
 								{@const root = threadRootMessage}
 								<div class="group relative rounded-md border border-zinc-800 bg-zinc-800/30 px-3 py-2">
 									<!-- As the pins and the search show a message, a reply's quote above it: its quote of a call notice
