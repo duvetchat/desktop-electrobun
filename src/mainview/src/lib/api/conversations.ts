@@ -116,6 +116,19 @@ export async function getDirectMessages(
 	return res.data;
 }
 
+/** How many call notices a page of the call history asks for (the API takes 1 to 100). */
+export const CALLS_PAGE_SIZE = 50;
+
+/** The user's call notices, from every conversation they're in, the newest first: the page before `before` (a notice's
+ * ID, the last of the page before), or the newest one. As a conversation's messages route gives them. */
+export async function getCallHistory(before: string | null, signal?: AbortSignal): Promise<DirectMessage[]> {
+	const res = await api.get<DirectMessage[]>("/api/users/@me/calls", {
+		params: { before, limit: CALLS_PAGE_SIZE },
+		signal,
+	});
+	return res.data;
+}
+
 export async function getDirectMessageById(
 	conversationId: string,
 	messageId: string,

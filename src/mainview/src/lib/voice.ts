@@ -1,18 +1,20 @@
 import { get } from "svelte/store";
 import type { Conversation } from "$lib/api/conversations";
-import { acceptCall, sendEventMessage } from "$lib/api/ws/connection";
-import { withoutCallVoiceOf } from "$lib/calls";
+import { acceptCall, placeCall, sendEventMessage } from "$lib/api/ws/connection";
+import { callingFromAnotherDevice, withoutCallVoiceOf } from "$lib/calls";
 import { toast } from "$lib/stores/toast.svelte";
 import {
 	activeCall,
 	activeVoiceRoomId,
 	callVoiceStates,
+	conversationsWithCalls,
 	currentUser,
 	incomingVideo,
 	isCameraOn,
 	isDeafened,
 	isMuted,
 	isScreenSharing,
+	ownCallsRinging,
 } from "$lib/stores.svelte";
 
 /** Sends this client's whole voice state in a room (the active one by default) as VOICE_SYNC. The gateway
@@ -92,6 +94,29 @@ export function joinConversationCall(conversation: Pick<Conversation, "id" | "me
 		memberIds,
 	});
 	setTimeout(() => activeVoiceRoomId.set(conversation.id), 50);
+}
+
+/** Calls a conversation, from its view or a row of the call history: CALL_INITIATE, and "Calling…" until someone answers.
+ * Nothing while the user is in a call, places one or one rings them, nor while their own call there still rings the
+ * others from another device, which has nothing to join until someone answers it. */
+export function startConversationCall(conversation: Pick<Conversation, "id" | "members">) {
+	const user = get(currentUser);
+	const call = get(activeCall);
+	if (!user || call || callingFromAnotherDevice(conversation.id, get(ownCallsRinging), call)) return;
+	const memberIds = conversation.members.map((m) => m.user_id);
+	placeCall(conversation.id, memberIds);
+	activeCall.set({
+		conversationId: conversation.id,
+		initiatorId: user.id,
+		initiatorName: user.alias ?? user.username ?? "You",
+		initiatorAvatar: user.avatar ?? null,
+		state: "calling",
+		memberIds,
+	});
+	conversationsWithCalls.update((s) => {
+		s.add(conversation.id);
+		return new Set(s);
+	});
 }
 
 /** Leaves the voice room or the call the user is in. A call's others stay in it, as its conversation's banner shows. */

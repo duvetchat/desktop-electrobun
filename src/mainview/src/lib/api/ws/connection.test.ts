@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, jest, spyOn, test } from "bun:test";
 import { get } from "svelte/store";
 import { openGateway, type TestGateway } from "$lib/api/ws/test-gateway";
+import { callHistory } from "$lib/call-history";
 import { changeDraft, chatDrafts, draftOf, putBack } from "$lib/drafts";
 import { onReactionChange, type ReactionChange } from "$lib/reactions";
 import { MessageType, type Message } from "$lib/types";
@@ -344,5 +345,66 @@ describe("a seen call's notice that comes late", () => {
 		}));
 		callNotice(message(20), loaded);
 		expect(get(stores.unreadConversations).has(loaded)).toBe(true);
+	});
+});
+
+// The Calls tab's list (#196), which the gateway's events keep current once it's loaded.
+describe("the call history", () => {
+	const calls = () => get(callHistory)?.calls.map((c) => c.id) ?? null;
+	const loaded = (conversationId: string) =>
+		callHistory.set({
+			calls: [
+				{
+					id: message(5),
+					conversation_id: conversationId,
+					author_id: ALICE,
+					content: null,
+					type: MessageType.Call,
+					created_at: "",
+					updated_at: "",
+					call: { participants: [ALICE], started_at: "2026-11-01T11:00:00Z", ended_at: "2026-11-01T11:00:30Z" },
+				},
+			],
+			before: message(5),
+			more: false,
+		});
+
+	test("takes a call notice that comes on top, and no other message", () => {
+		const conv = conversation(20);
+		loaded(conv);
+		callNotice(message(40), conv);
+		deliver("DM_MESSAGE_CREATE", {
+			id: message(41),
+			conversation_id: conv,
+			author_id: ALICE,
+			content: "hi",
+			type: MessageType.Text,
+			created_at: "",
+			updated_at: "",
+		});
+		expect(calls()).toEqual([message(40), message(5)]);
+	});
+
+	test("loses a notice that's deleted", () => {
+		const conv = conversation(21);
+		loaded(conv);
+		deliver("DM_MESSAGE_DELETE", { id: message(5), conversation_id: conv });
+		expect(calls()).toEqual([]);
+	});
+
+	test("loses the calls of a conversation the user is no longer in", () => {
+		const conv = conversation(22);
+		loaded(conv);
+		callNotice(message(40), conversation(23));
+		deliver("CONVERSATION_MEMBER_REMOVE", { conversation_id: conv, user_id: ME });
+		expect(calls()).toEqual([message(40)]);
+	});
+
+	test("is forgotten by a new session, whose events of the time away never came", () => {
+		loaded(conversation(24));
+		ready({});
+		expect(get(callHistory)).toBeNull();
+		callNotice(message(40), conversation(24));
+		expect(get(callHistory)).toBeNull();
 	});
 });

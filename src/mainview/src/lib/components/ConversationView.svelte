@@ -44,14 +44,8 @@
 		gatewaySpaces,
 		userActivities,
 	} from "$lib/stores.svelte";
-	import {
-		conversationLeft,
-		placeCall,
-		sendEventMessage,
-		getUserMobileOnly,
-		getUserOnlineStatus,
-	} from "$lib/api/ws/connection";
-	import { joinConversationCall } from "$lib/voice";
+	import { conversationLeft, sendEventMessage, getUserMobileOnly, getUserOnlineStatus } from "$lib/api/ws/connection";
+	import { joinConversationCall, startConversationCall } from "$lib/voice";
 	import { callingFromAnotherDevice, withoutCallVoiceOf } from "$lib/calls";
 	import { friendUser } from "$lib/friends";
 	import {
@@ -708,22 +702,7 @@
 	}
 
 	function startCall() {
-		const user = get(currentUser);
-		if (!user || get(activeCall) || joinWaits) return;
-		const memberIds = conversation.members.map((m) => m.user_id);
-		placeCall(conversation.id, memberIds);
-		activeCall.set({
-			conversationId: conversation.id,
-			initiatorId: user.id,
-			initiatorName: user.alias ?? user.username ?? "You",
-			initiatorAvatar: user.avatar ?? null,
-			state: "calling",
-			memberIds,
-		});
-		conversationsWithCalls.update((s) => {
-			s.add(conversation.id);
-			return new Set(s);
-		});
+		startConversationCall(conversation);
 	}
 
 	// The newest message the server has: not one still being sent.
