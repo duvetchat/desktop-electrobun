@@ -130,15 +130,15 @@
 		<div
 			class="absolute -top-12 left-4 rounded-full border-[6px] border-zinc-800 bg-zinc-950 transition-opacity duration-150 in-peer-hover/banner:opacity-0"
 		>
-			<div class="avatar-edit-group relative overflow-hidden rounded-full">
+			<div class="group/avatar relative overflow-hidden rounded-full">
 				<UserAvatar src={member.avatar_url} name={member.username} size={80} />
 				<div
-					class="avatar-edit-overlay absolute inset-0 flex items-center justify-center gap-1 rounded-full bg-black/0 transition-colors"
+					class="absolute inset-0 flex items-center justify-center gap-1 rounded-full bg-black/0 transition-colors group-hover/avatar:bg-black/40"
 				>
 					{#if onAvatarClick}
 						<button
 							type="button"
-							class="avatar-edit-btn text-fixed-white flex h-7 w-7 cursor-pointer items-center justify-center rounded-full bg-black/60 opacity-0 transition-opacity hover:bg-black/80"
+							class="text-fixed-white flex h-7 w-7 cursor-pointer items-center justify-center rounded-full bg-black/60 opacity-0 transition-opacity group-hover/avatar:opacity-100 hover:bg-black/80"
 							title="Change avatar"
 							onclick={onAvatarClick}
 						>
@@ -148,7 +148,7 @@
 					{#if onAvatarRemove && member.avatar_url}
 						<button
 							type="button"
-							class="avatar-edit-btn flex h-7 w-7 cursor-pointer items-center justify-center rounded-full bg-black/60 text-red-400 opacity-0 transition-opacity hover:bg-black/80"
+							class="flex h-7 w-7 cursor-pointer items-center justify-center rounded-full bg-black/60 text-red-400 opacity-0 transition-opacity group-hover/avatar:opacity-100 hover:bg-black/80"
 							title="Remove avatar"
 							onclick={onAvatarRemove}
 						>
@@ -209,12 +209,3 @@
 		</div>
 	</div>
 </div>
-
-<style>
-	.avatar-edit-group:hover .avatar-edit-overlay {
-		background-color: rgba(0, 0, 0, 0.4);
-	}
-	.avatar-edit-group:hover .avatar-edit-btn {
-		opacity: 1;
-	}
-</style>

@@ -124,6 +124,34 @@ describe("a profile's avatar while its banner is hovered", () => {
 	});
 });
 
+// Settings' avatar darkens, and shows Change avatar and Remove avatar, while the pointer is on it: a named group on its
+// box, as the banner's overlay uses a group, and no <style> of the card's own (#230).
+describe("the profile card's avatar on hover", () => {
+	test("darkens and shows its buttons through the avatar's own group", () => {
+		const card = source("MemberProfileCard.svelte");
+		expect(card).not.toContain("<style");
+		const lists = classLists(card);
+		const box = lists.filter((list) => list.includes("group/avatar"));
+		expect(box).toHaveLength(1);
+		expect(box[0]).toEqual(expect.arrayContaining(["relative", "overflow-hidden", "rounded-full"]));
+		const overlay = lists.filter((list) => list.includes("group-hover/avatar:bg-black/40"));
+		expect(overlay).toHaveLength(1);
+		expect(overlay[0]).toEqual(expect.arrayContaining(["absolute", "inset-0", "bg-black/0", "transition-colors"]));
+		const buttons = lists.filter((list) => list.includes("group-hover/avatar:opacity-100"));
+		expect(buttons).toHaveLength(2);
+		for (const button of buttons) expect(button).toEqual(expect.arrayContaining(["opacity-0", "transition-opacity"]));
+	});
+
+	// What Tailwind makes of the variant: inside a hovered element of the avatar's group, where the pointer can hover.
+	test("is the avatar's hover as Tailwind makes it", async () => {
+		const { compile } = await import("tailwindcss");
+		const css = (await compile("@tailwind utilities;")).build(["group-hover/avatar:opacity-100"]);
+		expect(css).toMatch(/:where\(\.group\\\/avatar\):hover \*/);
+		expect(css).toMatch(/@media \(hover: hover\)/);
+		expect(css).toMatch(/opacity: 100%/);
+	});
+});
+
 test("a bot's banner thumbnail in Developer settings is 5:2, as 48 px tall as its avatar's", () => {
 	const settings = source("UserSettings.svelte");
 	const thumbnail = settings.slice(settings.indexOf("<!-- Banner"), settings.indexOf("{#if hasBotProfileChanges}"));
