@@ -51,7 +51,7 @@ desktop/
 │               │       └── connection.ts   # WebSocket gateway client (events, resume, WebRTC)
 │               ├── components/   # Svelte 5 UI components
 │               │   ├── Chat/               # Message list, input, embeds
-│               │   ├── GuildSidebar/       # Space/server list
+│               │   ├── SpaceNav/           # Spaces column: their rooms, DMs, pinned Spaces
 │               │   ├── ChannelsSidebar/    # Channel tree per space
 │               │   ├── GuildMemberSidebar/ # Member list with roles
 │               │   ├── VoiceChat/          # WebRTC voice channel UI
