@@ -14,6 +14,13 @@ export interface WebhookCreateResponse {
 	token: string;
 }
 
+/** A webhook's URL, which posts as it, and its GitHub URL, the same with /github, which takes a GitHub repository's
+ * webhook (POST /api/webhooks/:id/:token/github). Both hold its token. */
+export function webhookUrls(host: string, webhookId: string, token: string): { url: string; github: string } {
+	const url = `${host}/api/webhooks/${webhookId}/${token}`;
+	return { url, github: `${url}/github` };
+}
+
 export async function listWebhooks(spaceId: string, roomId: string): Promise<Webhook[]> {
 	const res = await api.get(`/api/spaces/${spaceId}/rooms/${roomId}/webhooks`);
 	return res.data;

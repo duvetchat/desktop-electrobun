@@ -17,6 +17,7 @@
 		updateWebhook,
 		deleteWebhook,
 		resetWebhookToken,
+		webhookUrls,
 		type Webhook,
 	} from "$lib/api/webhooks";
 	import { toast } from "$lib/stores/toast.svelte";
@@ -207,10 +208,9 @@
 		);
 	}
 
-	function copyWebhookUrl(webhookId: string, token: string) {
-		const url = `${attachmentHost}/api/webhooks/${webhookId}/${token}`;
+	function copyWebhookUrl(url: string, what: string) {
 		navigator.clipboard.writeText(url);
-		toast("Webhook URL copied to clipboard", "success");
+		toast(`${what} copied to clipboard`, "success");
 	}
 </script>
 
@@ -305,6 +305,7 @@
 
 		<!-- Token reveal box -->
 		{#if createdWebhookToken && createdWebhookId}
+			{@const urls = webhookUrls(attachmentHost, createdWebhookId, createdWebhookToken)}
 			<div class="overflow-hidden rounded-xl border border-amber-600/30 bg-amber-950/20 p-4">
 				<p class="mb-2 text-xs font-semibold text-amber-300">Webhook Token (shown only once)</p>
 				<div class="flex items-center gap-2">
@@ -313,18 +314,26 @@
 					</code>
 					<button
 						class="flex shrink-0 items-center gap-1.5 rounded-md bg-zinc-700 px-3 py-2 text-xs font-medium text-zinc-200 transition-colors hover:bg-zinc-600"
-						onclick={() => copyWebhookUrl(createdWebhookId!, createdWebhookToken!)}
+						onclick={() => copyWebhookUrl(urls.url, "Webhook URL")}
 						title="Copy Webhook URL"
 					>
 						<CopyIcon class="size-3.5" />
 						Copy URL
 					</button>
+					<button
+						class="flex shrink-0 items-center gap-1.5 rounded-md bg-zinc-700 px-3 py-2 text-xs font-medium text-zinc-200 transition-colors hover:bg-zinc-600"
+						onclick={() => copyWebhookUrl(urls.github, "GitHub URL")}
+						title="Copy the URL with /github"
+					>
+						<CopyIcon class="size-3.5" />
+						Copy GitHub URL
+					</button>
 				</div>
-				<p
-					class="mt-2 truncate text-[11px] text-amber-400/70"
-					title="{attachmentHost}/api/webhooks/{createdWebhookId}/{createdWebhookToken}"
-				>
-					Webhook URL: {attachmentHost}/api/webhooks/{createdWebhookId}/{createdWebhookToken}
+				<p class="mt-2 truncate text-[11px] text-amber-400/70" title={urls.url}>
+					Webhook URL: {urls.url}
+				</p>
+				<p class="mt-1 text-[11px] text-zinc-400">
+					Paste the GitHub URL as a GitHub repository's webhook: its pushes, issues and pull requests post here.
 				</p>
 				<button
 					class="mt-2 text-xs text-zinc-400 transition-colors hover:text-zinc-200"
