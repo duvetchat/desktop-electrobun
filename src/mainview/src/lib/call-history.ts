@@ -156,13 +156,14 @@ export interface CallRow {
 }
 
 /** A call notice's row for the user me, in its conversation (undefined: one this client doesn't know); null for anything
- * but a call notice. */
+ * but a call notice. Its sentence goes by when they joined the conversation, as its notice's in the chat does. */
 export function callRow(
 	notice: DirectMessage,
 	conversation: Conversation | undefined,
 	me: string | undefined,
 ): CallRow | null {
-	const line = callNoticeLine(directMessageToMessage(notice, conversation?.members ?? []), me);
+	const joined = conversation?.members.find((m) => m.user_id === me)?.id;
+	const line = callNoticeLine(directMessageToMessage(notice, conversation?.members ?? []), me, joined);
 	if (!line || !notice.call || !notice.conversation_id) return null;
 	const other = conversation && otherMember(conversation, me);
 	return {

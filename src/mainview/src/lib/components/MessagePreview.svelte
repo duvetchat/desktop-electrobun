@@ -62,7 +62,10 @@
 		onPreview: (src: string, alt?: string) => void;
 	} = $props();
 
-	const callLine = $derived(callNoticeLine(message, $currentUser?.id));
+	// The user's membership of the conversation (their member_id), minted as they joined it: a call notice from before
+	// doesn't say they missed the call.
+	const joined = $derived(members.find((m) => m.id === $currentUser?.id)?.member_id);
+	const callLine = $derived(callNoticeLine(message, $currentUser?.id, joined));
 	const author = $derived(members.find((m) => m.id === message.author_id));
 	const text = $derived(message.content ?? "");
 

@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { render } from "svelte/server";
 import { readable, writable } from "svelte/store";
 import { tags, type Tag } from "./server-render";
-import type { MemberOnSidebar, Message } from "$lib/types";
+import { MessageType, type MemberOnSidebar, type Message } from "$lib/types";
 
 const ME = "0190a3b2-0000-7000-8000-000000000001";
 const ANA = "0190a3b2-0000-7000-8000-000000000002";
@@ -219,6 +219,58 @@ describe("a message's preview", () => {
 		}
 		expect(named(found, "script")).toEqual([]);
 		expect(html(hostile)).toContain("&lt;img src=x onerror=alert(3)&gt;");
+	});
+});
+
+// A thread can start at a call notice. A group's call that ended before the user joined the group never rang them
+// (#261).
+describe("a call notice's preview", () => {
+	const GROUP = "0190a3b2-0000-7000-8000-00000000c0c0";
+	const BEA = "0190a3b2-0000-7000-8000-000000000003";
+	// The user's membership of the group, minted as they joined it, after their account: one call ended before it, the
+	// other after.
+	const JOINED = "0190a3c2-0000-7000-8000-0000000b0000";
+	const BEFORE = "0190a3c1-0000-7000-8000-00000000ca11";
+	const AFTER = "0190a3c3-0000-7000-8000-00000000ca12";
+	const inGroup = [
+		...members,
+		{ ...members[0], id: ME, member_id: JOINED, username: "me", raw_username: "me", roles: [] },
+	];
+	const notice = (id: string, participants: string[]) =>
+		message({
+			id,
+			type: MessageType.Call,
+			call: { participants, started_at: "2026-11-01T10:00:00Z", ended_at: "2026-11-01T10:20:00Z" },
+		});
+	const groupProps = (m: Message) => ({
+		message: m,
+		spaceId: "",
+		channelId: GROUP,
+		members: inGroup,
+		onPreview: () => {},
+	});
+	// The notice's sentence, and whether its phone is red.
+	async function reads(m: Message) {
+		const text = render(MessagePreview, { props: groupProps(m) }).body.replace(/<[^>]*>/g, "");
+		const phone = named(await tags(MessagePreview, groupProps(m)), "svg").find((svg) =>
+			svg.attributes.class?.includes("lucide-phone"),
+		);
+		return { text, red: phone?.attributes.class.split(/\s+/).includes("text-red-400") };
+	}
+
+	test("of a call from before the user joined says who started it, without a red phone", async () => {
+		const answered = await reads(notice(BEFORE, [ANA, BEA]));
+		expect(answered.text).toContain("Ana started a call that lasted 20 minutes.");
+		expect(answered.red).toBe(false);
+		const unanswered = await reads(notice(BEFORE, [ANA]));
+		expect(unanswered.text).toContain("Ana started a call. No one answered.");
+		expect(unanswered.red).toBe(false);
+	});
+
+	test("of a call from after, which the user wasn't in, says they missed it", async () => {
+		const missed = await reads(notice(AFTER, [ANA, BEA]));
+		expect(missed.text).toContain("You missed a call from Ana that lasted 20 minutes.");
+		expect(missed.red).toBe(true);
 	});
 });
 
