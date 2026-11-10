@@ -2,6 +2,7 @@ import { renderEmoji } from "./emoji";
 import { createHighlighter, type Highlighter } from "shiki";
 import { getHostURL, isUuid } from "$lib/common/common";
 import { CUSTOM_EMOJI_CLASS, retryEmojis } from "$lib/emoji-retry";
+import { linkEmphasis } from "$lib/urls";
 
 export interface CustomEmojiMap {
 	[id: string]: { name: string; attachment_id: string };
@@ -496,21 +497,27 @@ export function clickedMention(target: EventTarget | null): { chip: HTMLElement;
  * Splits a message's text into its bare links (http(s) and duvet://) and the text between them, for renderMarkdown. A
  * link is read as the mobile app reads one (its lib/data/markdown.dart): up to a space, a < or a >, with a (…) in it
  * only whole, as in Wikipedia's Foo_(bar), so that a ) closing a ( opened before the link is the text's; and without
- * the .,;:!? or ]}"' at its end, the punctuation of the sentence around it. Not a markdown link's URL ([text](url)),
- * which renderMarkdown takes.
+ * the .,;:!? or ]}"' at its end, the punctuation of the sentence around it. Not in a markdown link ([text](url)), its
+ * text or its URL: it stays whole in the text around it, which renderMarkdown renders it in. A link wrapped in
+ * emphasis ("**https://a.example/x**") ends before the closing markers, and its emphasis takes the markers out of the
+ * text around it (linkEmphasis), for the link to be drawn in it (Emphasis.svelte).
  */
 export function parseTextSegments(text: string) {
-	const segments: { type: "text" | "link"; content: string }[] = [];
-	const bareUrlRegex =
-		/(?<!\]\()(?:https?|duvet):\/\/(?:[^\s<>()]|\([^\s<>()]*\))*(?:[^\s<>.,;:!?()\]}"']|\([^\s<>()]*\))/g;
+	const segments: { type: "text" | "link"; content: string; emphasis?: string[] }[] = [];
+	// A markdown link, as renderMarkdown takes one, or else a bare link.
+	const linkRegex =
+		/\[[^\]\n]+\]\(https?:\/\/[^)\n]+\)|(?<!\]\()(?:https?|duvet):\/\/(?:[^\s<>()]|\([^\s<>()]*\))*(?:[^\s<>.,;:!?()\]}"']|\([^\s<>()]*\))/g;
 	let lastIndex = 0;
 	let match;
-	while ((match = bareUrlRegex.exec(text)) !== null) {
-		if (match.index > lastIndex) {
-			segments.push({ type: "text", content: text.slice(lastIndex, match.index) });
-		}
-		segments.push({ type: "link", content: match[0] });
-		lastIndex = bareUrlRegex.lastIndex;
+	while ((match = linkRegex.exec(text)) !== null) {
+		if (match[0].startsWith("[")) continue;
+		const before = text.slice(lastIndex, match.index);
+		const emphasis = linkEmphasis(match[0], before);
+		const marks = emphasis.join("").length;
+		if (before.length > marks) segments.push({ type: "text", content: before.slice(0, before.length - marks) });
+		const content = match[0].slice(0, match[0].length - marks);
+		segments.push(emphasis.length > 0 ? { type: "link", content, emphasis } : { type: "link", content });
+		lastIndex = linkRegex.lastIndex;
 	}
 	if (lastIndex < text.length) {
 		segments.push({ type: "text", content: text.slice(lastIndex) });

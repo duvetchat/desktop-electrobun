@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { isUuid } from "$lib/common/common";
 import { renderEmoji, toTwemojiUrl } from "$lib/emoji";
 import { clickedMention, mentionNamesIn, parseTextSegments, renderMarkdown, renderMarkdownLine } from "$lib/markdown";
-import { cardLink, duvetLinksIn, parseDuvetLink } from "$lib/urls";
+import { cardLink, duvetLinksIn, EMPHASIS_TAGS, parseDuvetLink } from "$lib/urls";
 
 // The value of the first href in html: what's between its quotes.
 const hrefOf = (html: string) => /href="([^"]*)"/.exec(html)?.[1];
@@ -404,6 +404,74 @@ describe("a bare link", () => {
 		expect(renderMarkdown("[docs](https://example.org/a), see")).toContain('href="https://example.org/a"');
 	});
 
+	// #222: a URL in a markdown link's text was a bare link, the link's (…) taken for the URL's own brackets: the bare
+	// link ran to the markdown link's end, and the markdown link broke.
+	test("a markdown link's text is the markdown link's too, whatever it holds", () => {
+		for (const text of [
+			"[https://a.example](https://b.example)",
+			"see [https://a.example/x_(y)](https://b.example/z), then",
+			"[read https://a.example now](https://b.example)",
+			"[duvet://c](https://b.example)",
+		]) {
+			expect(parseTextSegments(text)).toEqual([{ type: "text", content: text }]);
+		}
+		expect(renderMarkdown("[https://a.example](https://b.example)")).toBe(
+			'<a href="https://b.example" target="_blank" rel="noopener noreferrer" class="msg-link">https://a.example</a>',
+		);
+		// The bare links around one are still links.
+		expect(parseTextSegments("https://c.example [https://a.example](https://b.example) https://d.example")).toEqual([
+			{ type: "link", content: "https://c.example" },
+			{ type: "text", content: " [https://a.example](https://b.example) " },
+			{ type: "link", content: "https://d.example" },
+		]);
+	});
+
+	// #221: a link can end with a * or a _, so the closing marker of emphasis around a bare link was the link's: it
+	// opened a URL ending in the marker, and the emphasis never closed.
+	describe("with emphasis around it", () => {
+		const closing = (marks: string[]) => [...marks.join("")].reverse().join("");
+
+		test("ends before the closing marker, and is wrapped as markdown wraps text", () => {
+			for (const marks of [["**"], ["*"], ["__"], ["_"], ["~~"], ["**", "*"], ["**", "_"], ["~~", "**"]]) {
+				expect(parseTextSegments(`look ${marks.join("")}https://a.example/x${closing(marks)} now`)).toEqual([
+					{ type: "text", content: "look " },
+					{ type: "link", content: "https://a.example/x", emphasis: marks },
+					{ type: "text", content: " now" },
+				]);
+				// The tags around the link (Emphasis.svelte) are those markdown puts around text with the same markers.
+				const tags = marks.map((mark) => EMPHASIS_TAGS[mark]);
+				expect(renderMarkdown(`${marks.join("")}x${closing(marks)}`)).toBe(
+					`${tags.map((tag) => `<${tag}>`).join("")}x${[...tags]
+						.reverse()
+						.map((tag) => `</${tag}>`)
+						.join("")}`,
+				);
+			}
+		});
+
+		test("keeps a URL's own * and _", () => {
+			expect(linksIn("**https://a.example/a_b_c**")).toEqual(["https://a.example/a_b_c"]);
+			expect(linksIn("**https://a.example/x_**")).toEqual(["https://a.example/x_"]);
+			expect(linksIn("_https://docs.example/object.__init___")).toEqual(["https://docs.example/object.__init__"]);
+			expect(linksIn("see https://a.example/a_b_ and https://a.example/*x*")).toEqual([
+				"https://a.example/a_b_",
+				"https://a.example/*x*",
+			]);
+			// Nothing right before it opens what its last characters would close: a _ inside a word opens nothing.
+			expect(linksIn("https://a.example/x** and snake_https://a.example/y_")).toEqual([
+				"https://a.example/x**",
+				"https://a.example/y_",
+			]);
+		});
+
+		test("one of Duvet's own names what its card does", () => {
+			const text = `**https://duvet.chat/invite/abc** and _https://duvet.chat/invite?bot=${ID}_`;
+			const buttons = linksIn(text).flatMap((link) => parseDuvetLink(cardLink(link), "views://mainview") ?? []);
+			expect(buttons).toEqual([{ code: "abc" }, { bot: ID }]);
+			expect(duvetLinksIn(text, "views://mainview")).toEqual(buttons);
+		});
+	});
+
 	// The API leaves one of Duvet's own links without a preview as the mobile app reads it (mobileLink), and the cards
 	// under the text read it the same way (cardLink): the link in the text names what its card does.
 	test("one of Duvet's own names what its card does", () => {
@@ -420,8 +488,26 @@ describe("a bare link", () => {
 		}
 	});
 
-	// Random text of URLs, brackets, quotes, punctuation and spaces: the links and the text between them are the text,
-	// each link starts with its scheme and closes its own brackets, and none ends with the punctuation around it.
+	// #223: the cards took each link up to a space, so one of Duvet's own glued after another link, by a < or a ), was
+	// read as part of that link: it had its button in the text, and no card.
+	test("one of Duvet's own glued after another link has its card, as it has its button", () => {
+		for (const text of [
+			"https://example.org<https://duvet.chat/invite/abc",
+			"(see https://example.org)https://duvet.chat/invite/abc",
+			`<https://example.org/a>https://duvet.chat/channels/${ID}/${ID}/${ID}.`,
+			`https://duvet.chat/invite/abc)https://duvet.chat/invite?bot=${ID}`,
+		]) {
+			const buttons = linksIn(text).flatMap((link) => parseDuvetLink(cardLink(link), "views://mainview") ?? []);
+			expect(buttons.length).toBeGreaterThan(0);
+			expect(duvetLinksIn(text, "views://mainview")).toEqual(buttons);
+		}
+		// A markdown link's still has its card, as the API leaves it without a preview.
+		expect(duvetLinksIn("[join us](https://duvet.chat/invite/abc)", "views://mainview")).toEqual([{ code: "abc" }]);
+	});
+
+	// Random text of URLs, brackets, quotes, punctuation, emphasis and spaces: the links, each with the markers of the
+	// emphasis around it, and the text between them are the text; each link starts with its scheme and closes its own
+	// brackets, and none ends with the punctuation around it.
 	test("whatever the text, is one link, and leaves the rest as it was", () => {
 		const PIECES = [
 			"https://a.example/",
@@ -430,6 +516,11 @@ describe("a bare link", () => {
 			"https://",
 			"x",
 			"_",
+			"*",
+			"**",
+			"__",
+			"~~",
+			"~",
 			"😀",
 			" ",
 			"\n",
@@ -453,6 +544,8 @@ describe("a bare link", () => {
 			"<",
 			">",
 			`<@${ID}>`,
+			"[https://a.example/](http://b.example/x)",
+			"[see duvet://c](https://a.example/(y))",
 		];
 		let seed = 2150;
 		const random = () => {
@@ -468,13 +561,18 @@ describe("a bare link", () => {
 			let text = "";
 			for (let n = 1 + Math.floor(random() * 16); n > 0; n--) text += PIECES[Math.floor(random() * PIECES.length)];
 			const segments = parseTextSegments(text);
+			// A segment as the text has it: a link with the markers of the emphasis around it.
+			const written = (s: (typeof segments)[number]) => {
+				const marks = s.emphasis?.join("") ?? "";
+				return `${marks}${s.content}${[...marks].reverse().join("")}`;
+			};
 			let at = 0;
 			const problem =
-				(segments.map((s) => s.content).join("") !== text ? "not the text" : null) ??
+				(segments.map(written).join("") !== text ? "not the text" : null) ??
 				segments
 					.map((s) => {
-						const before = text.slice(0, at);
-						at += s.content.length;
+						const before = text.slice(0, at + (s.emphasis?.join("").length ?? 0));
+						at += written(s).length;
 						if (!s.content) return "an empty segment";
 						if (s.type === "text") return null;
 						if (!/^(?:https?|duvet):\/\/\S/.test(s.content)) return `${s.content}: no scheme`;
@@ -482,6 +580,21 @@ describe("a bare link", () => {
 						if (/[.,;:!?\]}"']$/.test(s.content)) return `${s.content}: punctuation at its end`;
 						if (/[()]/.test(s.content.replace(/\([^()]*\)/g, ""))) return `${s.content}: a bracket of its own open`;
 						if (before.endsWith("](")) return `${s.content}: a markdown link's URL`;
+						if (s.emphasis?.some((mark) => !(mark in EMPHASIS_TAGS)))
+							return `${s.content}: a marker markdown doesn't read`;
+						return null;
+					})
+					.find((p) => p !== null) ??
+				// A markdown link that starts in the text stays whole in it: no link starts in its text or its URL.
+				[...text.matchAll(/\[[^\]\n]+\]\(https?:\/\/[^)\n]+\)/g)]
+					.map((m) => {
+						let start = 0;
+						for (const s of segments) {
+							const end = start + written(s).length;
+							if (m.index >= start && m.index < end)
+								return s.type === "text" && m.index + m[0].length > end ? `${m[0]}: a markdown link cut` : null;
+							start = end;
+						}
 						return null;
 					})
 					.find((p) => p !== null) ??

@@ -121,10 +121,11 @@
 	// After a jump, where a room's next page below starts: after the newest message the jump's pages have loaded, never
 	// after one that came meanwhile (another member's, or one the user sent), whose messages before it would never load.
 	let channelLoadedBelowTo = $state<Partial<Record<string, string>>>({});
-	// When a room's last page below failed: the page is asked for again on a scroll there once BELOW_RETRY_WAIT has
+	// When a room's last page above or below failed: the page is asked for again on a scroll there once RETRY_WAIT has
 	// passed (the list also scrolls by itself, which must not ask again at once), rather than taken for the end.
+	const aboveFailedAt = new Map<string, number>();
 	const belowFailedAt = new Map<string, number>();
-	const BELOW_RETRY_WAIT = 2_000;
+	const RETRY_WAIT = 2_000;
 	// A room's jumps so far: what an earlier jump, or a page asked for before the latest one, fetched is dropped.
 	const channelJumps = new Map<string, number>();
 	// A room's page below while it's asked for, which a jump aborts.
@@ -494,12 +495,17 @@
 		}
 	}
 
+	// The room's older messages load above as the reader scrolls up to them, a page at a time. A page that fails, or
+	// hasn't come in 10 s, is asked for again on a scroll there once RETRY_WAIT has passed: it isn't the room's start.
 	async function loadMoreMessages() {
 		if (node.kind !== "leaf" || !node.activeChannelId || isLoadingMore || activeChannel?.type !== "text") {
 			return;
 		}
 		const channelId = node.activeChannelId;
 		if (channelHasMore[channelId] === false) {
+			return;
+		}
+		if (Date.now() - (aboveFailedAt.get(channelId) ?? 0) < RETRY_WAIT) {
 			return;
 		}
 
@@ -552,8 +558,7 @@
 		} catch (err) {
 			clearTimeout(timeoutId);
 			console.error("Failed to load more:", err);
-			// On any error (including timeout), stop trying so the spinner clears
-			channelHasMore[channelId] = false;
+			aboveFailedAt.set(channelId, Date.now());
 		} finally {
 			isLoadingMore = false;
 		}
@@ -576,7 +581,7 @@
 
 	// After a jump, the newer messages load below as the reader scrolls down to them, a page at a time, each after the
 	// newest of the jump's pages. A page that fails, or hasn't come in 10 s, is asked for again on a scroll there once
-	// BELOW_RETRY_WAIT has passed: newer messages are still to load.
+	// RETRY_WAIT has passed: newer messages are still to load.
 	async function loadMoreMessagesBelow() {
 		if (node.kind !== "leaf" || !node.activeChannelId || isLoadingMoreBelow || activeChannel?.type !== "text") {
 			return;
@@ -586,7 +591,7 @@
 		if (channelHasMoreBelow[channelId] !== true || !after) {
 			return;
 		}
-		if (Date.now() - (belowFailedAt.get(channelId) ?? 0) < BELOW_RETRY_WAIT) {
+		if (Date.now() - (belowFailedAt.get(channelId) ?? 0) < RETRY_WAIT) {
 			return;
 		}
 
