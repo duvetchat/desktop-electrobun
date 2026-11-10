@@ -1,10 +1,10 @@
-import { describe, expect, mock, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { createRawSnippet } from "svelte";
 import { render } from "svelte/server";
 import { tags } from "./server-render";
-import type { Message } from "$lib/types";
+import { MessageType, type MemberOnSidebar, type Message } from "$lib/types";
 
 // UserAvatar draws with facehash-sv, whose package names its entry for the "svelte" condition alone, which Bun doesn't read.
 const facehash = await import(join(import.meta.dir, "../../../node_modules/facehash-sv/dist/index.js"));
@@ -17,6 +17,7 @@ Object.assign(globalThis, {
 	location: new URL("http://localhost:5173/app"),
 });
 const { default: MessageList } = await import("./MessageList.svelte");
+const { currentUser } = await import("$lib/stores.svelte");
 
 const source = (file: string) => readFileSync(join(import.meta.dir, file), "utf8");
 const intro = createRawSnippet(() => ({ render: () => "<p>The start of #general.</p>" }));
@@ -82,5 +83,120 @@ describe("a chat whose first page failed", () => {
 		);
 		expect(conversation).toContain("retryFirstPage={loadFailed ? loadFirstPage : null}");
 		expect(source("Chat.svelte")).toMatch(/<MessageList\b[\s\S]*?\{retryFirstPage\}[^/]*\/>/);
+	});
+});
+
+// A group's call that ended before the user joined the group never rang them (#261): its notice, and a reply's quote of
+// it, say who started it, without a red phone. A call after they joined, which they weren't in, they missed.
+describe("a group's call notices", () => {
+	const ME = "0190a3b2-0000-7000-8000-000000000001";
+	const ANA = message.author_id;
+	const BEA = "0190a3b2-0000-7000-8000-000000000003";
+	const GROUP = "0190a3b2-0000-7000-8000-00000000c0c0";
+	// Each member's membership ID, minted as they joined: the user joined between the two calls, after their account.
+	const member = (id: string, memberId: string, username: string): MemberOnSidebar => ({
+		id,
+		member_id: memberId,
+		username,
+		raw_username: username,
+		avatar_url: null,
+		banner_url: null,
+		status: "online",
+		mobile_only: false,
+		badges: 0,
+		is_bot: false,
+		is_owner: false,
+		roles: [],
+		bio: "",
+	});
+	const members = [
+		member(ANA, "0190a3b0-0000-7000-8000-00000000000a", "Ana"),
+		member(BEA, "0190a3b0-0000-7000-8000-00000000000b", "Bea"),
+		member(ME, "0190a3c2-0000-7000-8000-0000000b0000", "me"),
+	];
+	const notice = (id: string, participants: string[]): Message => ({
+		...message,
+		id,
+		content: null,
+		type: MessageType.Call,
+		call: { participants, started_at: "2026-11-01T10:00:00Z", ended_at: "2026-11-01T10:20:00Z" },
+	});
+	const before = notice("0190a3c1-0000-7000-8000-00000000ca11", [ANA, BEA]);
+	const after = notice("0190a3c3-0000-7000-8000-00000000ca12", [ANA, BEA]);
+	const reply: Message = {
+		...message,
+		id: "0190a3c4-0000-7000-8000-00000000bbbb",
+		content: "Sorry I missed it",
+		author_id: BEA,
+		author_name: "Bea",
+		referenced_message: {
+			type: 0,
+			message_id: before.id,
+			room_id: null,
+			space_id: null,
+			content: null,
+			author_id: ANA,
+			author_name: "Ana",
+			author_avatar: null,
+			created_at: before.created_at,
+		},
+	};
+	beforeEach(() =>
+		currentUser.set({
+			id: ME,
+			username: "me",
+			email_verified: true,
+			alias: null,
+			avatar: null,
+			banner: null,
+			custom: "",
+			flags: 0,
+			badges: 0,
+			is_bot: false,
+			created_at: "",
+			updated_at: "",
+		}),
+	);
+	afterEach(() => currentUser.set(null));
+
+	// The list's text, and its phones: how many, and how many are red.
+	async function reads(messages: Message[]) {
+		const p = { messages, channelId: GROUP, spaceId: "", members, intro };
+		const text = render(MessageList, { props: p }).body.replace(/<[^>]*>/g, "");
+		const phones = (await tags(MessageList, p)).filter(
+			(t) => t.name === "svg" && !!t.attributes.class?.includes("lucide-phone"),
+		);
+		const red = phones.filter((t) => t.attributes.class.split(/\s+/).includes("text-red-400"));
+		return { text, phones: phones.length, red: red.length };
+	}
+	const BEFORE_SAYS = "Ana started a call that lasted 20 minutes.";
+
+	test("one from before the user joined says who started it, without a red phone", async () => {
+		expect(await reads([before])).toEqual({ text: expect.stringContaining(BEFORE_SAYS), phones: 1, red: 0 });
+		expect((await reads([notice(before.id, [ANA])])).text).toContain("Ana started a call. No one answered.");
+	});
+
+	test("a reply's quote of it says the same", async () => {
+		const quoted = await reads([before, reply]);
+		expect(quoted.text.split(BEFORE_SAYS)).toHaveLength(3);
+		expect(quoted).toMatchObject({ phones: 2, red: 0 });
+	});
+
+	test("one from after, which the user wasn't in, they missed", async () => {
+		expect(await reads([after])).toEqual({
+			text: expect.stringContaining("You missed a call from Ana that lasted 20 minutes."),
+			phones: 1,
+			red: 1,
+		});
+	});
+
+	// A thread's dialog opens on a click, which a render on the server can't make: its root and its quotes read their
+	// notices as the list does.
+	test("a thread reads them as the list does", () => {
+		for (const file of ["MessageList.svelte", "MessagePreview.svelte"]) {
+			const calls = source(file).match(/callNoticeLine\([^)]*\)/g) ?? [];
+			expect(calls.length).toBeGreaterThan(0);
+			for (const call of calls) expect(call).toEndWith(", joined)");
+		}
 	});
 });
