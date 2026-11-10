@@ -1,44 +1,51 @@
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import {
 	defaultNowPrefs,
 	fuzzyScore,
 	groupSpaces,
-	parseFolders,
 	parseNowPrefs,
 	parsePinned,
 	rankByQuery,
 	spaceNews,
 	spaceReadAll,
-	type SpaceFolder,
 } from "$lib/nav";
 import { parseLayoutPrefs } from "$lib/layout-prefs";
 import { closeTabsIn, makeLeaf } from "$lib/pane";
 import type { Tab } from "$lib/types";
 
 describe("groupSpaces", () => {
-	const folder = (id: string, guildIds: string[]): SpaceFolder => ({ id, name: id, guildIds, collapsed: false });
-
-	test("pinned first, in pin order, then folders, then news and quiet", () => {
+	test("pinned first, in pin order, then news and quiet", () => {
 		const news = new Set(["b", "d"]);
-		const groups = groupSpaces(["a", "b", "c", "d", "e"], ["e", "a"], [folder("f", ["c"])], (id) => news.has(id));
+		const groups = groupSpaces(["a", "b", "c", "d", "e"], ["e", "a"], (id) => news.has(id));
 		expect(groups.pinned).toEqual(["e", "a"]);
-		expect(groups.folders.map((g) => g.spaceIds)).toEqual([["c"]]);
 		expect(groups.news).toEqual(["b", "d"]);
-		expect(groups.quiet).toEqual([]);
+		expect(groups.quiet).toEqual(["c"]);
 	});
 
-	test("a pinned space in a folder shows once, under Pinned", () => {
-		const groups = groupSpaces(["a", "b"], ["a"], [folder("f", ["a", "b"])], () => false);
-		expect(groups.pinned).toEqual(["a"]);
-		expect(groups.folders.map((g) => g.spaceIds)).toEqual([["b"]]);
-		expect(groups.quiet).toEqual([]);
+	// #57: the column has no folders of its own; a space that isn't pinned shows where the gateway's order puts it.
+	test("the spaces that aren't pinned keep the gateway's order", () => {
+		const news = new Set(["z", "a"]);
+		const groups = groupSpaces(["z", "m", "a", "q", "b"], ["q"], (id) => news.has(id));
+		expect(groups.news).toEqual(["z", "a"]);
+		expect(groups.quiet).toEqual(["m", "b"]);
+		expect(Object.keys(groups).sort()).toEqual(["news", "pinned", "quiet"]);
 	});
 
-	test("spaces the user left are left out, and an empty folder doesn't show", () => {
-		const groups = groupSpaces(["a"], ["gone"], [folder("f", ["gone"])], () => false);
+	test("spaces the user left are left out", () => {
+		const groups = groupSpaces(["a"], ["gone"], () => false);
 		expect(groups.pinned).toEqual([]);
-		expect(groups.folders).toEqual([]);
 		expect(groups.quiet).toEqual(["a"]);
+	});
+
+	// The folders the old server rail saved, under duvet.guildFolders.v1, are no longer read by the column.
+	test("the saved folders aren't read", () => {
+		const read = (file: string) => readFileSync(join(import.meta.dir, file), "utf8");
+		for (const file of ["nav.ts", "nav-prefs.svelte.ts", "components/SpaceNav.svelte", "components/SpaceEdge.svelte"]) {
+			expect(read(file)).not.toContain("guildFolders");
+			expect(read(file)).not.toMatch(/folders/i);
+		}
 	});
 });
 
@@ -47,13 +54,6 @@ describe("saved values", () => {
 		expect(parsePinned('["a", 1, "b", "a"]')).toEqual(["a", "b"]);
 		expect(parsePinned("{")).toEqual([]);
 		expect(parsePinned(null)).toEqual([]);
-	});
-
-	test("folders keep what the server rail saved", () => {
-		expect(parseFolders('[{"id":"f","name":"Work","guildIds":["a",2],"collapsed":true},{"name":"no id"}]')).toEqual([
-			{ id: "f", name: "Work", guildIds: ["a"], collapsed: true },
-		]);
-		expect(parseFolders('"nope"')).toEqual([]);
 	});
 
 	test("the Now section's prefs keep their booleans, and anything else is at its default", () => {

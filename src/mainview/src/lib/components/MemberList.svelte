@@ -63,9 +63,10 @@
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
 	import StatusDot from "$lib/components/StatusDot.svelte";
 	import MemberProfilePopover from "$lib/components/MemberProfilePopover.svelte";
+	import { memberGroups } from "$lib/members";
 
-	// The members, grouped under their highest hoisted role and the rest under Members, each opening their profile. The
-	// members column and the members popover of a pane's bar both show it; the one around it scrolls it.
+	// The members, in the groups memberGroups (lib/members.ts) makes, each opening their profile. The members column and
+	// the members popover of a pane's bar both show it; the one around it scrolls it.
 	let {
 		members,
 		spaceId = null,
@@ -125,44 +126,14 @@
 		return `background: linear-gradient(90deg, ${from}${via}, ${to}); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;`;
 	}
 
-	function groupMembers(list: MemberOnSidebar[]) {
-		const hoistedRoles = new Map<string, Role & { members: MemberOnSidebar[] }>();
-
-		const allHoisted = list
-			.flatMap((m) => m.roles)
-			.filter((r) => r.hoisted)
-			.sort((a, b) => b.position - a.position);
-
-		for (const role of allHoisted) {
-			if (!hoistedRoles.has(role.id)) {
-				hoistedRoles.set(role.id, { ...role, members: [] });
-			}
-		}
-
-		for (const member of list) {
-			const highest = [...member.roles]
-				.filter((r) => r.hoisted)
-				.sort((a, b) => b.position - a.position)
-				.at(0);
-
-			if (highest) {
-				hoistedRoles.get(highest.id)?.members.push(member);
-			}
-		}
-
-		return {
-			roles: [...hoistedRoles.values()].filter((r) => r.members.length),
-			unassigned: list.filter((m) => !m.roles.some((r) => r.hoisted)),
-		};
-	}
-
 	// ── Profile popup ──────────────────────────────────────────────────────────
 	let activePopoverMemberId = $state<string | null>(null);
 
-	const groupedMembers = $derived(groupMembers(members));
+	// A space's list has its roles; a conversation's (no space) has none.
+	const groupedMembers = $derived(memberGroups(members, spaceId !== null));
 </script>
 
-{#each [...groupedMembers.roles.map( (r) => ({ title: r.name, members: r.members }), ), ...(groupedMembers.unassigned.length ? [{ title: "Members", members: groupedMembers.unassigned }] : [])] as group}
+{#each groupedMembers as group}
 	<div>
 		<div
 			class="bg-duvet-bg text-duvet-ink2 sticky top-0 z-10 flex h-9 items-end px-4 pb-1.5 text-[13px] font-bold select-none"
@@ -195,15 +166,13 @@
 									{#if isRecording(member.id)}
 										<MicIcon class="size-2 animate-pulse text-red-400" />
 									{:else}
+										<span class="bg-night-75 animate-member-typing-bounce block size-0.5 rounded-full"></span>
 										<span
-											class="bg-night-75 block size-0.5 animate-[member-typing-bounce_1.2s_ease-in-out_infinite] rounded-full"
-										></span>
-										<span
-											class="bg-night-75 block size-0.5 animate-[member-typing-bounce_1.2s_ease-in-out_infinite] rounded-full"
+											class="bg-night-75 animate-member-typing-bounce block size-0.5 rounded-full"
 											style="animation-delay:0.2s"
 										></span>
 										<span
-											class="bg-night-75 block size-0.5 animate-[member-typing-bounce_1.2s_ease-in-out_infinite] rounded-full"
+											class="bg-night-75 animate-member-typing-bounce block size-0.5 rounded-full"
 											style="animation-delay:0.4s"
 										></span>
 									{/if}
@@ -242,18 +211,3 @@
 		{/each}
 	</div>
 {/each}
-
-<style>
-	@keyframes member-typing-bounce {
-		0%,
-		60%,
-		100% {
-			transform: translateY(0);
-			opacity: 0.5;
-		}
-		30% {
-			transform: translateY(-2px);
-			opacity: 1;
-		}
-	}
-</style>

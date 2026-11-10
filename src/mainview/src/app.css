@@ -443,7 +443,9 @@
 	--animate-exit-to-right: exit-to-right 0.2s ease;
 	--animate-slide-in: slide-in 0.2s ease-out;
 	--animate-typing-bounce: typing-bounce 1.2s ease-in-out infinite;
+	--animate-member-typing-bounce: member-typing-bounce 1.2s ease-in-out infinite;
 	--animate-call-pulse: call-pulse 1.5s ease-out infinite;
+	--animate-auth-drift: auth-drift 18s ease-in-out infinite alternate;
 
 	--font-sans: "Fira Sans", system-ui, -apple-system, "Open Sans", Arial, sans-serif;
 	--font-mono: "Fira Mono", ui-monospace, Menlo, Consolas, monospace;
@@ -610,6 +612,28 @@
 		100% {
 			transform: scale(1.15);
 			opacity: 0;
+		}
+	}
+
+	/* The members list's typing dots, which are smaller than a chat's: they hop 2 px. */
+	@keyframes member-typing-bounce {
+		0%,
+		60%,
+		100% {
+			transform: translateY(0);
+			opacity: 0.5;
+		}
+
+		30% {
+			transform: translateY(-2px);
+			opacity: 1;
+		}
+	}
+
+	/* The sign-in pages' folds of a duvet, drifting up and back. */
+	@keyframes auth-drift {
+		to {
+			transform: translateY(-24px);
 		}
 	}
 }

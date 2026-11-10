@@ -1,16 +1,12 @@
 <script lang="ts">
 	import type { MemberOnSidebar, Role } from "$lib/types";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
-	import ImagePreview from "$lib/components/ImagePreview.svelte";
 	import ProfileBio from "$lib/components/ProfileBio.svelte";
 	import { Camera as CameraIcon, Trash2 as TrashIcon } from "@lucide/svelte";
 	import { userActivities } from "$lib/stores.svelte";
 	import { BADGES } from "$lib/badges";
 	import ActivityList from "$lib/components/ActivityList.svelte";
 	import StatusDot from "$lib/components/StatusDot.svelte";
-
-	let previewSrc = $state("");
-	let previewOpen = $state(false);
 
 	const MAX_RETRIES = 3;
 	const RETRY_DELAY = 2000;
@@ -37,16 +33,15 @@
 		}
 	}
 
+	// Settings' preview of the user's profile, with what changes their avatar and banner on them.
 	let {
 		member,
-		editable = false,
 		onAvatarClick = undefined,
 		onAvatarRemove = undefined,
 		onBannerClick = undefined,
 		onBannerRemove = undefined,
 	}: {
 		member: MemberOnSidebar;
-		editable?: boolean;
 		onAvatarClick?: () => void;
 		onAvatarRemove?: () => void;
 		onBannerClick?: () => void;
@@ -89,54 +84,11 @@
 	<!-- Banner: 5:2, as it's cropped (600×240), and as a space's is. Without one, a block of the same size. It grows a
 	     little past the card on hover; nothing clips it, so its corners are its own, and what's below clips itself. The
 	     avatar comes later and covers its lower left, so it fades out while the banner (peer/banner) is hovered. -->
-	{#if editable}
-		<div
-			class="group peer/banner relative aspect-[5/2] w-full overflow-hidden rounded-t-[11px] transition-transform duration-150 motion-safe:hover:scale-105"
-			style={member.banner_url && !bannerError ? undefined : getBannerStyle(member)}
-		>
-			{#if member.banner_url && !bannerError}
-				<img
-					src="{member.banner_url}{bannerRetryCount ? `?r=${bannerRetryCount}` : ''}"
-					alt="banner"
-					class="h-full w-full object-cover"
-					onerror={handleBannerError}
-					draggable="false"
-				/>
-			{/if}
-			<div
-				class="absolute inset-0 flex items-center justify-center gap-2 bg-black/0 transition-colors group-hover:bg-black/40"
-			>
-				{#if onBannerClick}
-					<button
-						type="button"
-						class="text-fixed-white flex h-8 w-8 cursor-pointer items-center justify-center rounded-full bg-black/60 opacity-0 transition-opacity group-hover:opacity-100 hover:bg-black/80"
-						title="Change banner"
-						onclick={onBannerClick}
-					>
-						<CameraIcon class="size-4" />
-					</button>
-				{/if}
-				{#if onBannerRemove && member.banner_url}
-					<button
-						type="button"
-						class="flex h-8 w-8 cursor-pointer items-center justify-center rounded-full bg-black/60 text-red-400 opacity-0 transition-opacity group-hover:opacity-100 hover:bg-black/80"
-						title="Remove banner"
-						onclick={onBannerRemove}
-					>
-						<TrashIcon class="size-4" />
-					</button>
-				{/if}
-			</div>
-		</div>
-	{:else if member.banner_url && !bannerError}
-		<button
-			type="button"
-			class="peer/banner aspect-[5/2] w-full cursor-pointer overflow-hidden rounded-t-[11px] transition-transform duration-150 motion-safe:hover:scale-105"
-			onclick={() => {
-				previewSrc = member.banner_url!;
-				previewOpen = true;
-			}}
-		>
+	<div
+		class="group peer/banner relative aspect-[5/2] w-full overflow-hidden rounded-t-[11px] transition-transform duration-150 motion-safe:hover:scale-105"
+		style={member.banner_url && !bannerError ? undefined : getBannerStyle(member)}
+	>
+		{#if member.banner_url && !bannerError}
 			<img
 				src="{member.banner_url}{bannerRetryCount ? `?r=${bannerRetryCount}` : ''}"
 				alt="banner"
@@ -144,63 +96,67 @@
 				onerror={handleBannerError}
 				draggable="false"
 			/>
-		</button>
-	{:else}
+		{/if}
 		<div
-			class="peer/banner aspect-[5/2] w-full rounded-t-[11px] transition-transform duration-150 motion-safe:hover:scale-105"
-			style={getBannerStyle(member)}
-		></div>
-	{/if}
+			class="absolute inset-0 flex items-center justify-center gap-2 bg-black/0 transition-colors group-hover:bg-black/40"
+		>
+			{#if onBannerClick}
+				<button
+					type="button"
+					class="text-fixed-white flex h-8 w-8 cursor-pointer items-center justify-center rounded-full bg-black/60 opacity-0 transition-opacity group-hover:opacity-100 hover:bg-black/80"
+					title="Change banner"
+					onclick={onBannerClick}
+				>
+					<CameraIcon class="size-4" />
+				</button>
+			{/if}
+			{#if onBannerRemove && member.banner_url}
+				<button
+					type="button"
+					class="flex h-8 w-8 cursor-pointer items-center justify-center rounded-full bg-black/60 text-red-400 opacity-0 transition-opacity group-hover:opacity-100 hover:bg-black/80"
+					title="Remove banner"
+					onclick={onBannerRemove}
+				>
+					<TrashIcon class="size-4" />
+				</button>
+			{/if}
+		</div>
+	</div>
 
 	<div class="relative px-4 pb-4">
 		<!-- Avatar: with its status dot, it fades out while the banner before this section is hovered, over the banner's
 		     150 ms, and with less motion asked too, as a fade moves nothing. It still takes the pointer: on it, the banner
-		     isn't hovered, so it shows, and its click is its own. -->
+		     isn't hovered, so it shows, and its buttons are its own. -->
 		<div
 			class="absolute -top-12 left-4 rounded-full border-[6px] border-zinc-800 bg-zinc-950 transition-opacity duration-150 in-peer-hover/banner:opacity-0"
 		>
-			{#if editable}
-				<div class="avatar-edit-group relative overflow-hidden rounded-full">
-					<UserAvatar src={member.avatar_url} name={member.username} size={80} />
-					<div
-						class="avatar-edit-overlay absolute inset-0 flex items-center justify-center gap-1 rounded-full bg-black/0 transition-colors"
-					>
-						{#if onAvatarClick}
-							<button
-								type="button"
-								class="avatar-edit-btn text-fixed-white flex h-7 w-7 cursor-pointer items-center justify-center rounded-full bg-black/60 opacity-0 transition-opacity hover:bg-black/80"
-								title="Change avatar"
-								onclick={onAvatarClick}
-							>
-								<CameraIcon class="size-3.5" />
-							</button>
-						{/if}
-						{#if onAvatarRemove && member.avatar_url}
-							<button
-								type="button"
-								class="avatar-edit-btn flex h-7 w-7 cursor-pointer items-center justify-center rounded-full bg-black/60 text-red-400 opacity-0 transition-opacity hover:bg-black/80"
-								title="Remove avatar"
-								onclick={onAvatarRemove}
-							>
-								<TrashIcon class="size-3.5" />
-							</button>
-						{/if}
-					</div>
-				</div>
-			{:else if member.avatar_url}
-				<button
-					type="button"
-					class="cursor-pointer rounded-full"
-					onclick={() => {
-						previewSrc = member.avatar_url!;
-						previewOpen = true;
-					}}
+			<div class="group/avatar relative overflow-hidden rounded-full">
+				<UserAvatar src={member.avatar_url} name={member.username} size={80} />
+				<div
+					class="absolute inset-0 flex items-center justify-center gap-1 rounded-full bg-black/0 transition-colors group-hover/avatar:bg-black/40"
 				>
-					<UserAvatar src={member.avatar_url} name={member.username} size={80} />
-				</button>
-			{:else}
-				<UserAvatar src={null} name={member.username} size={80} />
-			{/if}
+					{#if onAvatarClick}
+						<button
+							type="button"
+							class="text-fixed-white flex h-7 w-7 cursor-pointer items-center justify-center rounded-full bg-black/60 opacity-0 transition-opacity group-hover/avatar:opacity-100 hover:bg-black/80"
+							title="Change avatar"
+							onclick={onAvatarClick}
+						>
+							<CameraIcon class="size-3.5" />
+						</button>
+					{/if}
+					{#if onAvatarRemove && member.avatar_url}
+						<button
+							type="button"
+							class="flex h-7 w-7 cursor-pointer items-center justify-center rounded-full bg-black/60 text-red-400 opacity-0 transition-opacity group-hover/avatar:opacity-100 hover:bg-black/80"
+							title="Remove avatar"
+							onclick={onAvatarRemove}
+						>
+							<TrashIcon class="size-3.5" />
+						</button>
+					{/if}
+				</div>
+			</div>
 			<!-- Coloured as every status dot (statusDotClass, lib/status.ts): online in the theme's colour -->
 			<StatusDot
 				status={member.status}
@@ -253,14 +209,3 @@
 		</div>
 	</div>
 </div>
-
-<ImagePreview src={previewSrc} bind:open={previewOpen} />
-
-<style>
-	.avatar-edit-group:hover .avatar-edit-overlay {
-		background-color: rgba(0, 0, 0, 0.4);
-	}
-	.avatar-edit-group:hover .avatar-edit-btn {
-		opacity: 1;
-	}
-</style>

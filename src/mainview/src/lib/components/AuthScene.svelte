@@ -44,300 +44,115 @@
 		const a = 18 + (i % 4) * 6;
 		return `M ${x} -20 C ${x + a} 160, ${x - a} 320, ${x + a * 0.6} 480 S ${x - a} 800, ${x + a * 0.4} 960`;
 	});
+
+	// The pillow is the mascot's own body, in both themes, and the form lives inside it. Its tokens are the night's, so
+	// what's written on it reads on its slate, and so are the palettes the forms use, which light mode turns over.
+	const night = [
+		"[--duvet-ink:#f2f3f9]",
+		"[--duvet-ink2:#b7bad0]",
+		"[--duvet-sunk:rgba(10,11,22,0.42)]",
+		"[--duvet-line:rgba(255,255,255,0.1)]",
+		"[--duvet-accent:#7b83f5]",
+		"[--duvet-on-accent:#14151d]",
+		"[--duvet-accent-text:#c3c6ff]",
+		"[--duvet-shadow-press:inset_0_2px_5px_rgba(0,0,0,0.45)]",
+		"[--duvet-danger:#f08c84]",
+		"[--color-stone-200:oklch(0.923_0.008_278)]",
+		"[--color-stone-500:oklch(0.553_0.02_278)]",
+		"[--color-stone-600:oklch(0.444_0.02_278)]",
+		"[--color-stone-700:oklch(0.374_0.02_278)]",
+		"[--color-stone-900:oklch(0.216_0.016_278)]",
+		"[--color-zinc-400:oklch(70.5%_0.015_286.067)]",
+		"[--color-zinc-600:oklch(44.2%_0.017_285.786)]",
+		"[--color-rose-300:oklch(81%_0.117_11.638)]",
+		"[--color-rose-400:oklch(71.2%_0.194_13.428)]",
+		"[--color-rose-500:oklch(64.5%_0.246_16.439)]",
+		"[--color-red-400:oklch(70.4%_0.191_22.216)]",
+		"[--color-red-600:oklch(57.7%_0.245_27.325)]",
+		"[--color-emerald-400:oklch(76.5%_0.177_163.223)]",
+		"[--color-emerald-600:oklch(59.6%_0.145_163.225)]",
+		"[--color-white:#fff]",
+	].join(" ");
+
+	// An eye with its lash, open and looking toward --look; shut (a lid where it was) while shy.
+	const eye =
+		"relative h-[22px] w-[22px] translate-x-(--look) rounded-[999px] bg-[#fff] transition-[translate,height,border-radius,margin] duration-[160ms,140ms,140ms,140ms] ease-[ease] motion-reduce:transition-none in-data-[mood=shy]:mt-2.5 in-data-[mood=shy]:h-1 in-data-[mood=shy]:translate-none before:absolute before:-top-1.5 before:h-[7px] before:w-0.5 before:rounded-[2px] before:bg-[#fff]";
 </script>
 
-<section class="auth-scene h-full overflow-y-auto">
-	<svg class="auth-folds" viewBox="0 0 480 940" preserveAspectRatio="xMaxYMid slice" aria-hidden="true">
+<section
+	class="bg-duvet-bg text-duvet-ink relative isolate h-full overflow-y-auto bg-[radial-gradient(40%_50%_at_72%_45%,color-mix(in_oklab,var(--duvet-accent)_20%,transparent),transparent_70%)]"
+>
+	<svg
+		class="stroke-duvet-ink animate-auth-drift absolute inset-y-0 right-0 left-auto -z-1 h-full w-[min(560px,60%)] fill-none stroke-1 opacity-7 motion-reduce:animate-none"
+		viewBox="0 0 480 940"
+		preserveAspectRatio="xMaxYMid slice"
+		aria-hidden="true"
+	>
 		{#each folds as d (d)}
 			<path {d} />
 		{/each}
 	</svg>
 
-	<div class="auth-layout">
-		<div class="auth-brand" aria-hidden="true">
+	<div
+		class="mx-auto grid min-h-full max-w-[1120px] items-center gap-8 px-5 pt-22 pb-10 min-[900px]:grid-cols-[1fr_minmax(0,440px)] min-[900px]:gap-16 min-[900px]:px-12 min-[900px]:py-16"
+	>
+		<div class="relative hidden min-[900px]:block" aria-hidden="true">
 			<!-- What Duvet is for, as stickers around its name: talking and voice move on their own; the mailbox and
 			     the heart answer what's typed in the form. -->
-			<div class="auth-sticker auth-sticker-chat"><Sticker icon={chat} enter={0.15} /></div>
-			<div class="auth-sticker auth-sticker-voice"><Sticker icon={headphones} enter={0.35} offset={60} /></div>
-			<div class="auth-sticker auth-sticker-mail">
+			<div class="pointer-events-none absolute -top-46 left-[44%] w-[210px]">
+				<Sticker icon={chat} enter={0.15} />
+			</div>
+			<div class="pointer-events-none absolute -bottom-52 -left-8 w-[190px]">
+				<Sticker icon={headphones} enter={0.35} offset={60} />
+			</div>
+			<div class="pointer-events-none absolute -bottom-50 left-[32%] w-[180px]">
 				<Sticker bind:this={mailbox} icon={mailboxIcon} loop={false} enter={0.55} />
 			</div>
-			<div class="auth-sticker auth-sticker-heart">
+			<div class="pointer-events-none absolute top-[18%] -right-10 w-[150px]">
 				<Sticker bind:this={heart} icon={heartIcon} loop={false} enter={0.75} />
 			</div>
-			<p class="auth-wordmark">Duvet</p>
-			<p class="auth-dot">.chat</p>
-			<p class="auth-tagline">a cozy place to talk</p>
+			<p class="text-duvet-ink text-[clamp(5rem,9vw,8.5rem)] leading-[0.9] font-bold tracking-[-0.04em]">Duvet</p>
+			<p
+				class="text-duvet-accent mt-1 pl-[0.4em] text-[clamp(2.5rem,4.5vw,4.25rem)] leading-none font-bold tracking-[-0.03em]"
+			>
+				.chat
+			</p>
+			<p class="text-duvet-ink2 mt-6 text-[1.25rem]">a cozy place to talk</p>
 		</div>
 
-		<div class="auth-pillow-wrap">
-			<div class="auth-pillow" data-mood={mood}>
-				<span class="auth-ear auth-ear-left" aria-hidden="true"><span></span></span>
-				<span class="auth-ear auth-ear-right" aria-hidden="true"><span></span></span>
-				<div class="auth-face" aria-hidden="true" style="--look: {shift}px">
-					<span class="auth-eye auth-eye-left"></span>
-					<span class="auth-eye auth-eye-right"></span>
-					<span class="auth-smile"></span>
+		<div class="flex justify-center">
+			<div
+				class="text-duvet-ink relative w-full max-w-[440px] rounded-[44px_44px_36px_36px/52px_52px_40px_40px] bg-[#3a3d52] px-8 pt-19 pb-8 shadow-[inset_0_2px_0_rgba(255,255,255,0.08),inset_0_-14px_28px_rgba(0,0,0,0.22),0_30px_70px_rgba(10,11,30,0.45)] {night}"
+				data-mood={mood}
+			>
+				<span
+					class="absolute -top-16 left-[18px] h-[92px] w-[104px] bg-[#3a3d52] [clip-path:polygon(8%_0%,100%_88%,30%_100%)]"
+					aria-hidden="true"
+					><span class="absolute inset-0 bg-[rgba(168,223,240,0.35)] [clip-path:polygon(20%_18%,86%_86%,36%_92%)]"
+					></span></span
+				>
+				<span
+					class="absolute -top-16 right-[18px] h-[92px] w-[104px] -scale-x-100 bg-[#3a3d52] [clip-path:polygon(8%_0%,100%_88%,30%_100%)]"
+					aria-hidden="true"
+					><span class="absolute inset-0 bg-[rgba(168,223,240,0.35)] [clip-path:polygon(20%_18%,86%_86%,36%_92%)]"
+					></span></span
+				>
+				<div
+					class="absolute top-[1.4rem] left-1/2 flex -translate-x-1/2 gap-[2.6rem]"
+					aria-hidden="true"
+					style="--look: {shift}px"
+				>
+					<!-- The left eye shuts while peeking, too. -->
+					<span
+						class="{eye} before:left-px before:-rotate-35 in-data-[mood=peek]:mt-2.5 in-data-[mood=peek]:h-1 in-data-[mood=peek]:translate-none"
+					></span>
+					<span class="{eye} before:right-px before:rotate-35"></span>
+					<span
+						class="absolute top-[26px] left-1/2 h-[9px] w-[22px] -translate-x-1/2 rounded-b-[22px] border-[2.5px] border-t-0 border-[rgba(255,255,255,0.55)]"
+					></span>
 				</div>
 				{@render children()}
 			</div>
 		</div>
 	</div>
 </section>
-
-<style>
-	.auth-scene {
-		position: relative;
-		background:
-			radial-gradient(40% 50% at 72% 45%, color-mix(in oklab, var(--duvet-accent) 20%, transparent), transparent 70%),
-			var(--duvet-bg);
-		color: var(--duvet-ink);
-		isolation: isolate;
-	}
-
-	.auth-folds {
-		position: absolute;
-		inset: 0 0 0 auto;
-		width: min(560px, 60%);
-		height: 100%;
-		z-index: -1;
-		fill: none;
-		stroke: var(--duvet-ink);
-		stroke-width: 1;
-		opacity: 0.07;
-		animation: auth-drift 18s ease-in-out infinite alternate;
-	}
-
-	@keyframes auth-drift {
-		to {
-			transform: translateY(-24px);
-		}
-	}
-
-	.auth-layout {
-		margin: 0 auto;
-		display: grid;
-		min-height: 100%;
-		max-width: 1120px;
-		align-items: center;
-		gap: 2rem;
-		padding: 5.5rem 1.25rem 2.5rem;
-	}
-
-	@media (min-width: 900px) {
-		.auth-layout {
-			grid-template-columns: 1fr minmax(0, 440px);
-			gap: 4rem;
-			padding: 4rem 3rem;
-		}
-	}
-
-	.auth-brand {
-		position: relative;
-		display: none;
-	}
-
-	@media (min-width: 900px) {
-		.auth-brand {
-			display: block;
-		}
-	}
-
-	.auth-sticker {
-		position: absolute;
-		pointer-events: none;
-	}
-
-	.auth-sticker-chat {
-		top: -11.5rem;
-		left: 44%;
-		width: 210px;
-	}
-
-	.auth-sticker-voice {
-		bottom: -13rem;
-		left: -2rem;
-		width: 190px;
-	}
-
-	.auth-sticker-mail {
-		bottom: -12.5rem;
-		left: 32%;
-		width: 180px;
-	}
-
-	.auth-sticker-heart {
-		top: 18%;
-		right: -2.5rem;
-		width: 150px;
-	}
-
-	.auth-wordmark {
-		font-size: clamp(5rem, 9vw, 8.5rem);
-		font-weight: 700;
-		line-height: 0.9;
-		letter-spacing: -0.04em;
-		color: var(--duvet-ink);
-	}
-
-	.auth-dot {
-		margin-top: 0.25rem;
-		padding-left: 0.4em;
-		font-size: clamp(2.5rem, 4.5vw, 4.25rem);
-		font-weight: 700;
-		line-height: 1;
-		letter-spacing: -0.03em;
-		color: var(--duvet-accent);
-	}
-
-	.auth-tagline {
-		margin-top: 1.5rem;
-		font-size: 1.25rem;
-		color: var(--duvet-ink2);
-	}
-
-	.auth-pillow-wrap {
-		display: flex;
-		justify-content: center;
-	}
-
-	/* The mascot's own body, in both themes: the form lives inside it. Its tokens are the night's, so what's
-	   written on it reads on its slate. */
-	.auth-pillow {
-		--duvet-ink: #f2f3f9;
-		--duvet-ink2: #b7bad0;
-		--duvet-sunk: rgba(10, 11, 22, 0.42);
-		--duvet-line: rgba(255, 255, 255, 0.1);
-		--duvet-accent: #7b83f5;
-		--duvet-on-accent: #14151d;
-		--duvet-accent-text: #c3c6ff;
-		--duvet-shadow-press: inset 0 2px 5px rgba(0, 0, 0, 0.45);
-		--duvet-danger: #f08c84;
-		/* The night's values of the palettes the forms use, which light mode turns over. */
-		--color-stone-200: oklch(0.923 0.008 278);
-		--color-stone-500: oklch(0.553 0.02 278);
-		--color-stone-600: oklch(0.444 0.02 278);
-		--color-stone-700: oklch(0.374 0.02 278);
-		--color-stone-900: oklch(0.216 0.016 278);
-		--color-zinc-400: oklch(70.5% 0.015 286.067);
-		--color-zinc-600: oklch(44.2% 0.017 285.786);
-		--color-rose-300: oklch(81% 0.117 11.638);
-		--color-rose-400: oklch(71.2% 0.194 13.428);
-		--color-rose-500: oklch(64.5% 0.246 16.439);
-		--color-red-400: oklch(70.4% 0.191 22.216);
-		--color-red-600: oklch(57.7% 0.245 27.325);
-		--color-emerald-400: oklch(76.5% 0.177 163.223);
-		--color-emerald-600: oklch(59.6% 0.145 163.225);
-		--color-white: #fff;
-		position: relative;
-		width: 100%;
-		max-width: 440px;
-		padding: 4.75rem 2rem 2rem;
-		border-radius: 44px 44px 36px 36px / 52px 52px 40px 40px;
-		background: #3a3d52;
-		color: var(--duvet-ink);
-		box-shadow:
-			inset 0 2px 0 rgba(255, 255, 255, 0.08),
-			inset 0 -14px 28px rgba(0, 0, 0, 0.22),
-			0 30px 70px rgba(10, 11, 30, 0.45);
-	}
-
-	.auth-ear {
-		position: absolute;
-		top: -64px;
-		width: 104px;
-		height: 92px;
-		background: #3a3d52;
-		clip-path: polygon(8% 0%, 100% 88%, 30% 100%);
-	}
-
-	.auth-ear span {
-		position: absolute;
-		inset: 0;
-		background: rgba(168, 223, 240, 0.35);
-		clip-path: polygon(20% 18%, 86% 86%, 36% 92%);
-	}
-
-	.auth-ear-left {
-		left: 18px;
-	}
-
-	.auth-ear-right {
-		right: 18px;
-		transform: scaleX(-1);
-	}
-
-	.auth-face {
-		position: absolute;
-		top: 1.4rem;
-		left: 50%;
-		display: flex;
-		gap: 2.6rem;
-		transform: translateX(-50%);
-	}
-
-	.auth-eye {
-		position: relative;
-		width: 22px;
-		height: 22px;
-		border-radius: 999px;
-		background: #fff;
-		transform: translateX(var(--look));
-		transition:
-			transform 160ms ease,
-			height 140ms ease,
-			border-radius 140ms ease,
-			margin 140ms ease;
-	}
-
-	/* The lashes. */
-	.auth-eye::before {
-		content: "";
-		position: absolute;
-		top: -6px;
-		width: 2px;
-		height: 7px;
-		border-radius: 2px;
-		background: #fff;
-	}
-
-	.auth-eye-left::before {
-		left: 1px;
-		transform: rotate(-35deg);
-	}
-
-	.auth-eye-right::before {
-		right: 1px;
-		transform: rotate(35deg);
-	}
-
-	.auth-smile {
-		position: absolute;
-		left: 50%;
-		top: 26px;
-		width: 22px;
-		height: 9px;
-		border: 2.5px solid rgba(255, 255, 255, 0.55);
-		border-top: 0;
-		border-radius: 0 0 22px 22px;
-		transform: translateX(-50%);
-	}
-
-	/* Shut: a lid where each eye was. */
-	[data-mood="shy"] .auth-eye,
-	[data-mood="peek"] .auth-eye-left {
-		height: 4px;
-		margin-top: 10px;
-		transform: none;
-	}
-
-	@media (prefers-reduced-motion: reduce) {
-		.auth-folds {
-			animation: none;
-		}
-
-		.auth-eye {
-			transition: none;
-		}
-	}
-</style>

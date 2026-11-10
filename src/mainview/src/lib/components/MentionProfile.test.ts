@@ -11,7 +11,7 @@ describe("what shows messages opens a mention's profile", () => {
 		const list = source("MessageList.svelte");
 		expect(list).toContain('scrollEl?.addEventListener("click", openMention, true);');
 		expect(list).toContain('scrollEl?.removeEventListener("click", openMention, true);');
-		expect(list).toMatch(/<div class="flex flex-col gap-2" onclickcapture=\{openMention\}>\s*\{#each threadMessages/);
+		expect(list).toMatch(/<div class="flex flex-col gap-2" onclickcapture=\{openMention\}>\s*\{#each threadShown /);
 		expect(list).toContain("<MentionProfile bind:this={mentionProfile} {members} {space} />");
 	});
 

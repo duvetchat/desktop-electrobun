@@ -21,7 +21,7 @@
 		type FriendRequest,
 		type Friend,
 	} from "$lib/api/friends";
-	import { getConversations, createDM, createGroup, type Conversation } from "$lib/api/conversations";
+	import { getConversations, createDM, createGroup } from "$lib/api/conversations";
 	import {
 		UserPlus,
 		UserCheck,
@@ -43,6 +43,8 @@
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
 	import StatusDot from "$lib/components/StatusDot.svelte";
 	import ConversationView from "$lib/components/ConversationView.svelte";
+	import MessageSearch from "$lib/components/MessageSearch.svelte";
+	import type { MessageLink } from "$lib/urls";
 	import MemberProfilePopover from "$lib/components/MemberProfilePopover.svelte";
 	import { getAvatarURL } from "$lib/common/common";
 	import { acceptRequest, declineRequest } from "$lib/friend-requests";
@@ -60,11 +62,14 @@
 		activeConversationId = $bindable<string | null>(null),
 		showGroupModal = $bindable(false),
 		onOpenConversation,
+		onOpenMessage,
 	}: {
 		activeConversationId?: string | null;
 		showGroupModal?: boolean;
 		/** Opens a conversation somewhere else (a tab in a pane); without it, it opens here. */
 		onOpenConversation?: (conversationId: string) => void;
+		/** Opens a message the bar's search found, a room's in a pane, which this view would hide. */
+		onOpenMessage?: (link: MessageLink) => void;
 	} = $props();
 
 	function openConversation(id: string) {
@@ -318,18 +323,6 @@
 			groupError = getApiError(err, plan.kind === "dm" ? "Failed to open the conversation" : "Failed to create group");
 		}
 	}
-
-	function convTitle(conv: Conversation): string {
-		const me = get(currentUser);
-		if (conv.type === 2) return conv.name ?? "Group";
-		const other = conv.members.find((m) => m.user_id !== me?.id);
-		return other?.user?.alias ?? other?.user?.username ?? "DM";
-	}
-
-	function convSubtitle(conv: Conversation): string {
-		if (conv.type === 2) return `${conv.members.length} members`;
-		return "Direct message";
-	}
 </script>
 
 {#snippet empty(
@@ -399,7 +392,8 @@
 			{/key}
 		</div>
 	{:else}
-		<!-- The bar, as a pane's: the title, the lists as a segmented control, and adding a friend. -->
+		<!-- The bar, as a pane's: the title, the lists as a segmented control, the search everywhere, as the mobile app
+		     has on its home, and adding a friend. -->
 		<div class="border-duvet-line flex h-12 shrink-0 items-center gap-3 border-b px-4">
 			<Users class="text-duvet-ink2 size-4 shrink-0" />
 			<h2 class="text-sm font-bold">Friends</h2>
@@ -431,6 +425,7 @@
 				{/each}
 			</div>
 			<span class="flex-1"></span>
+			<MessageSearch everywhere onJump={onOpenMessage} />
 			<button
 				type="button"
 				class="flex h-8 items-center gap-1.5 rounded-xl px-3 text-[13px] font-bold transition motion-reduce:transition-none {focusRing} {activeTab ===

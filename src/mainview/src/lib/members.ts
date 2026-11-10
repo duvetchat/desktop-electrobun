@@ -1,5 +1,5 @@
 import type { MembersColumnMode } from "$lib/layout-prefs";
-import type { MemberOnSidebar } from "$lib/types";
+import type { MemberOnSidebar, Role } from "$lib/types";
 
 /** In auto, the members column opens by itself once more than this many of the room's members are online: below it,
  * the faces in the pane's bar and their popover list them without taking a column from the chat. */
@@ -15,6 +15,45 @@ export function isOnline(member: Pick<MemberOnSidebar, "status">): boolean {
 
 export function onlineCount(members: readonly Pick<MemberOnSidebar, "status">[]): number {
 	return members.filter(isOnline).length;
+}
+
+/** A group of the members list, under its heading. */
+export type MemberGroup<M> = { title: string; members: M[] };
+
+/**
+ * The members list's groups, as the mobile app's members sheet has them. In a space: those online (busy too) under
+ * their highest hoisted role, the roles by rank, the others online under Online, then everyone offline under Offline.
+ * In a conversation, which has no roles: Online, Do not disturb, then Offline. Each group is by name, and an empty one
+ * isn't there.
+ */
+export function memberGroups<M extends Pick<MemberOnSidebar, "username" | "status" | "roles">>(
+	members: readonly M[],
+	inSpace: boolean,
+): MemberGroup<M>[] {
+	const online = members.filter(isOnline);
+	const groups: MemberGroup<M>[] = [];
+	if (inSpace) {
+		const byRole = new Map<string, { role: Role; members: M[] }>();
+		const rest: M[] = [];
+		for (const member of online) {
+			const role = member.roles.filter((r) => r.hoisted).sort((a, b) => b.position - a.position)[0];
+			if (!role) rest.push(member);
+			else if (byRole.has(role.id)) byRole.get(role.id)!.members.push(member);
+			else byRole.set(role.id, { role, members: [member] });
+		}
+		for (const { role, members: held } of [...byRole.values()].sort((a, b) => b.role.position - a.role.position))
+			groups.push({ title: role.name, members: held });
+		groups.push({ title: "Online", members: rest });
+	} else {
+		groups.push(
+			{ title: "Online", members: online.filter((m) => m.status !== "dnd") },
+			{ title: "Do not disturb", members: online.filter((m) => m.status === "dnd") },
+		);
+	}
+	groups.push({ title: "Offline", members: members.filter((m) => !isOnline(m)) });
+	return groups
+		.filter((g) => g.members.length > 0)
+		.map((g) => ({ ...g, members: [...g.members].sort((a, b) => a.username.localeCompare(b.username)) }));
 }
 
 /** Whether the members column is open: the user's choice when they made one, else whether the room is busy. */

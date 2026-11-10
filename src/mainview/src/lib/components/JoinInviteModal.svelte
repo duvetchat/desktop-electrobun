@@ -57,7 +57,7 @@
 			await joinInvite(code);
 			open = false;
 		} catch (err) {
-			joinError = getApiError(err, "Failed to join server.");
+			joinError = getApiError(err, "Failed to join the Space.");
 		} finally {
 			joining = false;
 		}
@@ -73,7 +73,7 @@
 			>
 				<!-- Header -->
 				<div class="flex items-center justify-between border-b border-zinc-700 px-5 py-4">
-					<h2 class="text-base font-semibold text-white">Join a Server</h2>
+					<h2 class="text-base font-semibold text-white">Join a Space</h2>
 					<button
 						class="rounded-lg p-1.5 text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-white"
 						onclick={() => (open = false)}

@@ -127,6 +127,17 @@ describe("a message's preview", () => {
 		expect(shown).toMatch(/rounded-lg border border-zinc-700 bg-zinc-900 p-4/);
 	});
 
+	// #250: each piece of a text between its bare links rendered on its own, so one that started with " - " was a list,
+	// and a link in a list item went out of the list.
+	test("reads the text around its links as one: what follows a link goes on its line, and a list stays one", () => {
+		const after = html(message({ content: "see https://example.org/x - and more" }));
+		expect(after).not.toContain("<ul");
+		expect(after).toMatch(/>https:\/\/example\.org\/x<\/a> - and more/);
+		expect(html(message({ content: "- one https://example.org/x\n- two" }))).toMatch(
+			/<ul class="msg-ul"><li>one <a [^>]*>https:\/\/example\.org\/x<\/a><\/li><li>two<\/li><\/ul>/,
+		);
+	});
+
 	test("shows its link previews, at a preview's size", async () => {
 		expect(html(rich)).toContain("Example page");
 		const images = named(await drawn(rich), "img").filter((i) => i.attributes.src === "https://media.test/big.png");

@@ -667,7 +667,7 @@
 			<button
 				class="flex flex-col items-center gap-1 rounded-xl bg-red-500/10 px-4 py-2.5 text-red-400 transition-colors hover:bg-red-500/20"
 				onclick={leave}
-				title="Leave voice channel"
+				title="Leave voice room"
 			>
 				<PhoneOff class="size-5" />
 				<span class="text-xxs text-red-400">Leave</span>
@@ -679,14 +679,14 @@
 				class:cursor-not-allowed={!canJoin}
 				disabled={!canJoin}
 				onclick={join}
-				title={canJoin ? undefined : "You can't join this voice channel"}
+				title={canJoin ? undefined : "You can't join this voice room"}
 			>
 				{#if canJoin}
 					<Volume2 class="size-5" />
 				{:else}
 					<Lock class="size-5" />
 				{/if}
-				Join channel
+				Join room
 			</button>
 		{/if}
 	</div>
