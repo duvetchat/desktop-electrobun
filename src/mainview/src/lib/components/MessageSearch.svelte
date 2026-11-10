@@ -51,7 +51,7 @@
 		everywhere = false,
 		onJump = (link) => jumpToMessageRequest.set({ id: crypto.randomUUID(), ...link }),
 	}: {
-		/** The space whose channels are searched. A conversation's search passes conversationId instead. */
+		/** The space whose rooms are searched. A conversation's search passes conversationId instead. */
 		space?: GatewaySpace | null;
 		conversationId?: string;
 		/** Whom from: and mentions: suggest, and the names mentions show in the results. */
@@ -61,7 +61,7 @@
 		toDirectMessage?: (m: DirectMessage) => Message;
 		/**
 		 * Searches every Space the user is in and their 5 newest conversations at once, as the mobile app's search does:
-		 * the 20 newest messages found, newest first, each saying where it is. The filters that name a member or a channel,
+		 * the 20 newest messages found, newest first, each saying where it is. The filters that name a member or a room,
 		 * which are a Space's or a conversation's, stay out of it.
 		 */
 		everywhere?: boolean;
@@ -80,7 +80,7 @@
 					{ key: "from", description: "Messages by a member" },
 					{ key: "mentions", description: "Messages that mention a member" },
 				]),
-		...(space ? [{ key: "in", description: "Messages in a channel" }] : []),
+		...(space ? [{ key: "in", description: "Messages in a room" }] : []),
 		{ key: "has", description: "link, embed, file, image, video, sound or sticker" },
 		{ key: "pinned", description: "true or false: pinned messages, or the others" },
 		{ key: "before", description: `Messages before a date, like ${today}` },
@@ -333,7 +333,7 @@
 		);
 	}
 
-	const roomName = (id: string) => space?.rooms.find((r) => r.id === id)?.name ?? "unknown-channel";
+	const roomName = (id: string) => space?.rooms.find((r) => r.id === id)?.name ?? "unknown-room";
 
 	// Where a result found everywhere is: its room and Space, or its conversation.
 	function whereOf(r: Result): string {
@@ -342,7 +342,7 @@
 			return conversation ? conversationTitle(conversation, $currentUser?.id) : "Direct message";
 		}
 		const found = $gatewaySpaces.find((s) => s.id === r.spaceId);
-		return `${found?.rooms.find((room) => room.id === r.roomId)?.name ?? "unknown-channel"} · ${found?.name ?? "Space"}`;
+		return `${found?.rooms.find((room) => room.id === r.roomId)?.name ?? "unknown-room"} · ${found?.name ?? "Space"}`;
 	}
 	// The names of the people results found everywhere mention, as the app knows them, and every custom emoji it has.
 	const everyone = $derived(

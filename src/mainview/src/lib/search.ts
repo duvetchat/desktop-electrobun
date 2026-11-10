@@ -65,7 +65,7 @@ export const SEARCH_HAS = ["link", "embed", "file", "image", "video", "sound", "
 export const isoDay = (d: Date) =>
 	`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 
-/** A channel's name as in:'s value, without spaces so the search splits into words and filters. */
+/** A room's name as in:'s value, without spaces so the search splits into words and filters. */
 export const roomSlug = (name: string) => name.toLowerCase().replace(/\s+/g, "-");
 
 function parseDay(value: string): Date | null {
