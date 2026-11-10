@@ -1268,7 +1268,6 @@
 								<!-- Profile preview card -->
 								<MemberProfileCard
 									member={previewMember}
-									editable
 									onAvatarClick={() => (showAvatarCrop = true)}
 									onAvatarRemove={() => handleRemoveImageStage("avatar")}
 									onBannerClick={() => (showBannerCrop = true)}

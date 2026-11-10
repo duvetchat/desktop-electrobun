@@ -16,11 +16,26 @@ test("profile banners are cropped at 5:2", () => {
 test("the profile card shows the banner at 5:2, and a block as tall without one", () => {
 	const card = source("MemberProfileCard.svelte");
 	const banner = card.slice(card.indexOf("<!-- Banner"), card.indexOf('<div class="relative px-4 pb-4">'));
-	// The banner's frames: the editable one, the one that opens it, and the block without one.
+	// The banner's frame, which holds the image, or else is the block of the member's role colour.
 	const frames = classLists(banner).filter((list) => list.includes("w-full") && !list.includes("h-full"));
-	expect(frames).toHaveLength(3);
-	for (const frame of frames) expect(frame).toContain("aspect-[5/2]");
+	expect(frames).toHaveLength(1);
+	expect(frames[0]).toContain("aspect-[5/2]");
+	expect(banner).toContain("style={member.banner_url && !bannerError ? undefined : getBannerStyle(member)}");
 	expect(banner).not.toMatch(/\bh-24\b/);
+});
+
+// Settings' preview is the card's only use, so the card draws only what it shows: no banner or avatar that opens a
+// preview, no plain avatar, and no switch between them (#229).
+test("the profile card draws only what Settings' preview shows", () => {
+	const card = source("MemberProfileCard.svelte");
+	for (const gone of ["editable", "previewSrc", "previewOpen", "ImagePreview", "{:else if member.avatar_url}"])
+		expect(card).not.toContain(gone);
+	const settings = source("UserSettings.svelte");
+	const use = /<MemberProfileCard\s[^]*?\/>/.exec(settings)?.[0] ?? "";
+	expect(use).toContain("member={previewMember}");
+	expect(use).not.toContain("editable");
+	for (const handler of ["onAvatarClick", "onAvatarRemove", "onBannerClick", "onBannerRemove"])
+		expect(use).toContain(handler);
 });
 
 test("the profile popover shows the banner at 5:2", () => {
@@ -37,12 +52,12 @@ describe("a profile's banner on hover", () => {
 	const textBox = (component: string) =>
 		classLists(component).find((list) => list.includes("bg-zinc-950") && list.includes("p-3"));
 
-	test("grows on the card, in each of its states, and nothing clips it", () => {
+	test("grows on the card, and nothing clips it", () => {
 		const card = source("MemberProfileCard.svelte");
 		const banner = card.slice(card.indexOf("<!-- Banner"), card.indexOf('<div class="relative px-4 pb-4">'));
 		const frames = classLists(banner).filter((list) => list.includes("w-full") && !list.includes("h-full"));
-		expect(frames).toHaveLength(3);
-		for (const frame of frames) expect(frame).toEqual(expect.arrayContaining(GROWS));
+		expect(frames).toHaveLength(1);
+		expect(frames[0]).toEqual(expect.arrayContaining(GROWS));
 		const root = classLists(card).find((list) => list.includes("w-80"));
 		expect(root).toContain("rounded-xl");
 		expect(root).not.toContain("overflow-hidden");
@@ -77,12 +92,10 @@ describe("a profile's avatar while its banner is hovered", () => {
 		const card = source("MemberProfileCard.svelte");
 		const banner = card.slice(card.indexOf("<!-- Banner"), card.indexOf('<div class="relative px-4 pb-4">'));
 		const frames = classLists(banner).filter((list) => list.includes("w-full") && !list.includes("h-full"));
-		expect(frames).toHaveLength(3);
-		for (const frame of frames) expect(frame).toContain("peer/banner");
-		// The section right after the banner's frame, whichever it is, and the avatar's box first in it.
-		const avatar = /\{\/if\}\s*<div class="relative px-4 pb-4">\s*(?:<!--[^]*?-->\s*)?<div\s+class="([^"]*)"/.exec(
-			card,
-		);
+		expect(frames).toHaveLength(1);
+		expect(frames[0]).toContain("peer/banner");
+		// The section right after the banner's frame, and the avatar's box first in it.
+		const avatar = /<\/div>\s*<div class="relative px-4 pb-4">\s*(?:<!--[^]*?-->\s*)?<div\s+class="([^"]*)"/.exec(card);
 		fadesAsMeant(avatar?.[1].split(/\s+/));
 		expect(avatar?.[1]).toContain("-top-12");
 	});
