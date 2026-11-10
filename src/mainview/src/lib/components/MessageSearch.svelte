@@ -14,6 +14,7 @@
 	import { canViewRoom } from "$lib/permissions";
 	import { customEmojiMapOf, escapeHtml, mentionMapOf } from "$lib/markdown";
 	import { afterPress } from "$lib/press";
+	import { isoDay, parseSearch, roomSlug as slug, SEARCH_HAS as HAS } from "$lib/search";
 
 	// The search box of a pane's bar (or a conversation's header), and the panel of its results. The panel is absolute:
 	// it covers the right side of the nearest positioned ancestor, the pane, under its 3rem bar. In a narrow pane (its
@@ -36,10 +37,7 @@
 		toDirectMessage?: (m: DirectMessage) => Message;
 	} = $props();
 
-	const HAS = ["link", "embed", "file", "image", "video", "sound", "sticker"];
 	const locale = typeof navigator !== "undefined" ? navigator.language : "en-US";
-	const isoDay = (d: Date) =>
-		`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 	const today = isoDay(new Date());
 
 	type Filter = { key: string; description: string };
@@ -54,8 +52,6 @@
 		{ key: "during", description: "Messages on a date" },
 	]);
 
-	// A channel's name as in:'s value, without spaces so the search splits into words and filters.
-	const slug = (name: string) => name.toLowerCase().replace(/\s+/g, "-");
 	const rooms = $derived.by(() => {
 		const s = space;
 		return s ? s.rooms.filter((r) => r.type === 1 && canViewRoom(s, r)) : [];
@@ -200,60 +196,6 @@
 	}
 
 	// ── The search ───────────────────────────────────────────────────────────
-	function parseDay(value: string): Date | null {
-		const m = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(value);
-		if (!m) return null;
-		const d = new Date(+m[1], +m[2] - 1, +m[3]);
-		return d.getMonth() === +m[2] - 1 ? d : null;
-	}
-	const nextDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1);
-
-	// The box's text as a search, or why it isn't one. As in Discord, after: and before: leave the day
-	// out, and during: is that day.
-	function parse(): { search: MessageSearch } | { error: string } {
-		const search: MessageSearch = {};
-		const words: string[] = [];
-		const add = (list: "authorIds" | "mentions" | "roomIds" | "has", v: string) => (search[list] ??= []).push(v);
-		for (const part of text.split(/\s+/).filter(Boolean)) {
-			const m = /^(from|mentions|in|has|pinned|before|after|during):(.*)$/i.exec(part);
-			if (!m) {
-				words.push(part);
-				continue;
-			}
-			const key = m[1].toLowerCase();
-			const value = m[2].toLowerCase();
-			if (!value) continue;
-			if (key === "from" || key === "mentions") {
-				const member =
-					members.find((u) => u.raw_username.toLowerCase() === value) ??
-					members.find((u) => u.username.toLowerCase() === value);
-				if (!member) return { error: `No member is called ${m[2]}` };
-				add(key === "from" ? "authorIds" : "mentions", member.id);
-			} else if (key === "in") {
-				const room = rooms.find((r) => slug(r.name) === value);
-				if (!room) return { error: `No channel is called ${m[2]}` };
-				add("roomIds", room.id);
-			} else if (key === "has") {
-				if (!HAS.includes(value)) return { error: `has: takes ${HAS.join(", ")}` };
-				add("has", value);
-			} else if (key === "pinned") {
-				if (value !== "true" && value !== "false") return { error: "pinned: takes true or false" };
-				search.pinned = value === "true";
-			} else {
-				const day = parseDay(value);
-				if (!day) return { error: `${key}: takes a date like ${today}` };
-				if (key === "before") search.before = day.toISOString();
-				else if (key === "after") search.after = nextDay(day).toISOString();
-				else {
-					search.after = day.toISOString();
-					search.before = nextDay(day).toISOString();
-				}
-			}
-		}
-		search.query = words.join(" ");
-		return { search };
-	}
-
 	type Result = { message: Message; roomId: string | null };
 	let open = $state(false);
 	let loading = $state(false);
@@ -268,7 +210,7 @@
 	async function run(more = false) {
 		if (!more) {
 			if (!text.trim()) return close();
-			const parsed = parse();
+			const parsed = parseSearch(text, members, rooms);
 			open = true;
 			results = [];
 			total = 0;
