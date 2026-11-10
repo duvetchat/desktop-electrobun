@@ -7,6 +7,7 @@ import {
 	shortcutCommand,
 	stepIndex,
 	tabAt,
+	takesChatShortcut,
 	type KeyLike,
 } from "$lib/keyboard";
 
@@ -125,5 +126,28 @@ describe("isTyping", () => {
 		expect(isTyping(el("INPUT", { type: "checkbox" }))).toBe(false);
 		expect(isTyping(el("DIV", { isContentEditable: false }))).toBe(false);
 		expect(isTyping(null)).toBe(false);
+	});
+});
+
+// #220: each pane's chat hears Ctrl+↑ and Ctrl+↓ (with Shift to edit) on window, and each acted on them: with two
+// panes, a reply or an edit started in both chats at once.
+describe("takesChatShortcut", () => {
+	// Bun has no DOM: the focused element as takesChatShortcut reads it, in a chat (its root) or in none.
+	const chatA = { chat: "A" };
+	const chatB = { chat: "B" };
+	const focusIn = (chat: object | null) => ({
+		closest: (selector: string) => (selector === "[data-chat]" ? chat : null),
+	});
+
+	test("the chat the focus is in takes it, whichever pane is the focused one", () => {
+		expect(takesChatShortcut(focusIn(chatA), chatA, false)).toBe(true);
+		expect(takesChatShortcut(focusIn(chatA), chatB, true)).toBe(false);
+	});
+
+	test("with the focus in no chat, the focused pane's chat takes it, and only it", () => {
+		for (const focused of [focusIn(null), null]) {
+			expect(takesChatShortcut(focused, chatA, true)).toBe(true);
+			expect(takesChatShortcut(focused, chatB, false)).toBe(false);
+		}
 	});
 });

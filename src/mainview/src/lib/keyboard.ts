@@ -138,3 +138,18 @@ export function isTyping(el: TypingTarget | null): boolean {
 	}
 	return el.isContentEditable === true;
 }
+
+/**
+ * Whether a chat takes a key it shares with the other panes' chats, which all hear it on window: Ctrl+↑ and Ctrl+↓,
+ * which pick a message to reply to, or with Shift one of the user's to edit. The chat the focus is in takes it (its
+ * message box, an edit's box); with the focus in no chat, the focused pane's. focused is the focused element, and chat
+ * the chat's root, which a chat marks data-chat.
+ */
+export function takesChatShortcut(
+	focused: { closest(selectors: string): unknown } | null,
+	chat: unknown,
+	paneFocused: boolean,
+): boolean {
+	const holder = focused?.closest("[data-chat]");
+	return holder ? holder === chat : paneFocused;
+}

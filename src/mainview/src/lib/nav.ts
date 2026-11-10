@@ -174,6 +174,42 @@ export function spaceNews(
 	return { mentions, unread, inVoice };
 }
 
+/** The rooms' unread marks, mentions and read positions once a space's are all read (spaceReadAll), and the acks that
+ * tell the API so. */
+export type SpaceRead = {
+	acks: { roomId: string; messageId: string }[];
+	unread: Set<string>;
+	mentions: Record<string, number>;
+	lastRead: Record<string, string>;
+};
+
+/**
+ * A space's Mark all as read, as the mobile app's: each of its text rooms its row counts as news (spaceNews: unread, or
+ * with mentions) loses its unread mark and its mentions, and is acked at the newest message known there (`newest`, ""
+ * when none is), which becomes its read position, so its unread divider doesn't come back when it opens. One whose newest
+ * message isn't known only loses its marks.
+ */
+export function spaceReadAll(
+	rooms: RoomLike[],
+	read: { unread: Set<string>; mentions: Record<string, number>; lastRead: Record<string, string> },
+	newest: (roomId: string) => string,
+): SpaceRead {
+	const unread = new Set(read.unread);
+	const mentions = { ...read.mentions };
+	const lastRead = { ...read.lastRead };
+	const acks: SpaceRead["acks"] = [];
+	for (const room of rooms) {
+		if (room.type !== "text" || (!unread.has(room.id) && !mentions[room.id])) continue;
+		unread.delete(room.id);
+		delete mentions[room.id];
+		const messageId = newest(room.id);
+		if (!messageId) continue;
+		acks.push({ roomId: room.id, messageId });
+		if (messageId > (lastRead[room.id] ?? "")) lastRead[room.id] = messageId;
+	}
+	return { acks, unread, mentions, lastRead };
+}
+
 /** The focused pane's tabs, which the spaces column lists on top when the open chats are a vertical list. */
 export type OpenChats = {
 	tabs: Tab[];

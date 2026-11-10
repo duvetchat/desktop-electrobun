@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Emphasis from "$lib/components/Emphasis.svelte";
 	import { parseTextSegments, renderMarkdown, type CustomEmojiMap } from "$lib/markdown";
 	import {
 		botInviteRequest,
@@ -43,54 +44,57 @@
 	{#if segment.type === "link"}
 		{@const link = cardLink(segment.content)}
 		{@const card = duvetLinkOf(link)}
-		<!-- One of Duvet's own links reads as the cards do (cardLink): what follows it is text -->
-		{#if card && "message" in card}
-			{@const resolved = resolveMessageLink(card.message)}
-			<button
-				type="button"
-				class="mx-0.5 inline-flex cursor-pointer items-center gap-1 rounded border border-zinc-600/50 bg-zinc-700/70 px-1.5 py-0.5 align-middle text-zinc-300 transition-colors hover:bg-zinc-600/80 hover:text-white"
-				onclick={(e) => {
-					e.stopPropagation();
-					jumpToMessageRequest.set({ id: crypto.randomUUID(), ...card.message });
-				}}
-				title="{resolved.spaceName} › #{resolved.roomName}"
-			>
-				<span class="text-xs text-zinc-400">#</span>
-				<span class="text-xs font-medium">{resolved.roomName}</span>
-				<svg
-					xmlns="http://www.w3.org/2000/svg"
-					width="10"
-					height="10"
-					viewBox="0 0 24 24"
-					fill="none"
-					stroke="currentColor"
-					stroke-width="2.5"
-					stroke-linecap="round"
-					stroke-linejoin="round"
-					class="shrink-0 text-zinc-400"><path d="m9 18 6-6-6-6" /></svg
+		<!-- One of Duvet's own links reads as the cards do (cardLink): what follows it is text. Emphasis around a link
+		     wraps it (parseTextSegments) -->
+		<Emphasis marks={segment.emphasis}>
+			{#if card && "message" in card}
+				{@const resolved = resolveMessageLink(card.message)}
+				<button
+					type="button"
+					class="mx-0.5 inline-flex cursor-pointer items-center gap-1 rounded border border-zinc-600/50 bg-zinc-700/70 px-1.5 py-0.5 align-middle text-zinc-300 transition-colors hover:bg-zinc-600/80 hover:text-white"
+					onclick={(e) => {
+						e.stopPropagation();
+						jumpToMessageRequest.set({ id: crypto.randomUUID(), ...card.message });
+					}}
+					title="{resolved.spaceName} › #{resolved.roomName}"
 				>
-			</button>{segment.content.slice(link.length)}
-		{:else if card}
-			<button
-				type="button"
-				class="cursor-pointer text-stone-300 hover:underline"
-				onclick={(e) => {
-					e.stopPropagation();
-					if ("bot" in card) botInviteRequest.set(card.bot);
-					else spaceInviteRequest.set(card.code);
-				}}>{link}</button
-			>{segment.content.slice(link.length)}
-		{:else}
-			<a
-				href={segment.content}
-				target="_blank"
-				rel="noopener noreferrer"
-				class="text-stone-300 hover:underline"
-				onclick={(e) => {
-					e.stopPropagation();
-				}}>{segment.content}</a
-			>
-		{/if}
+					<span class="text-xs text-zinc-400">#</span>
+					<span class="text-xs font-medium">{resolved.roomName}</span>
+					<svg
+						xmlns="http://www.w3.org/2000/svg"
+						width="10"
+						height="10"
+						viewBox="0 0 24 24"
+						fill="none"
+						stroke="currentColor"
+						stroke-width="2.5"
+						stroke-linecap="round"
+						stroke-linejoin="round"
+						class="shrink-0 text-zinc-400"><path d="m9 18 6-6-6-6" /></svg
+					>
+				</button>{segment.content.slice(link.length)}
+			{:else if card}
+				<button
+					type="button"
+					class="cursor-pointer text-stone-300 hover:underline"
+					onclick={(e) => {
+						e.stopPropagation();
+						if ("bot" in card) botInviteRequest.set(card.bot);
+						else spaceInviteRequest.set(card.code);
+					}}>{link}</button
+				>{segment.content.slice(link.length)}
+			{:else}
+				<a
+					href={segment.content}
+					target="_blank"
+					rel="noopener noreferrer"
+					class="text-stone-300 hover:underline"
+					onclick={(e) => {
+						e.stopPropagation();
+					}}>{segment.content}</a
+				>
+			{/if}
+		</Emphasis>
 	{:else}
 		{@html renderMarkdown(segment.content, large, mentionMap, customEmojiMap, $roomNames)}
 	{/if}

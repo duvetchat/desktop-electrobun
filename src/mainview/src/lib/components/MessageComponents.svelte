@@ -2,6 +2,7 @@
 	import { CircleAlert as AlertIcon, ExternalLink as ExternalLinkIcon, FileText as FileIcon } from "@lucide/svelte";
 	import { SvelteSet } from "svelte/reactivity";
 	import ComponentSelect from "$lib/components/ComponentSelect.svelte";
+	import Emphasis from "$lib/components/Emphasis.svelte";
 	import SpoilerCover from "$lib/components/SpoilerCover.svelte";
 	import { webUrl } from "$lib/urls";
 	import { FetchError, getApiError } from "$lib/api/api";
@@ -171,9 +172,11 @@
 		<div class="min-w-0 wrap-break-word text-zinc-200 select-text">
 			{#each parseTextSegments(c.content ?? "") as segment}
 				{#if segment.type === "link"}
-					<a href={segment.content} target="_blank" rel="noopener noreferrer" class="text-stone-300 hover:underline"
-						>{segment.content}</a
-					>
+					<Emphasis marks={segment.emphasis}>
+						<a href={segment.content} target="_blank" rel="noopener noreferrer" class="text-stone-300 hover:underline"
+							>{segment.content}</a
+						>
+					</Emphasis>
 				{:else}
 					{@html renderMarkdown(segment.content, false, mentionMap, customEmojiMap, $roomNames)}
 				{/if}
