@@ -43,6 +43,7 @@
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
 	import StatusDot from "$lib/components/StatusDot.svelte";
 	import ConversationView from "$lib/components/ConversationView.svelte";
+	import CallHistory from "$lib/components/CallHistory.svelte";
 	import MessageSearch from "$lib/components/MessageSearch.svelte";
 	import type { MessageLink } from "$lib/urls";
 	import MemberProfilePopover from "$lib/components/MemberProfilePopover.svelte";
@@ -77,14 +78,15 @@
 		else activeConversationId = id;
 	}
 
-	type Tab = "friends" | "pending" | "sent" | "add";
+	type Tab = "friends" | "pending" | "sent" | "calls" | "add";
 	let activeTab = $state<Tab>("friends");
-	// The lists in the bar's segmented control; adding a friend is the bar's own button. Requests waiting on the user
-	// are counted in the accent.
+	// The lists in the bar's segmented control, the call history last; adding a friend is the bar's own button. Requests
+	// waiting on the user are counted in the accent.
 	const tabs = $derived<{ id: Tab; label: string; count: number; alert?: boolean }[]>([
 		{ id: "friends", label: "All", count: $friends.length },
 		{ id: "pending", label: "Pending", count: $pendingFriendRequests.length, alert: true },
 		{ id: "sent", label: "Sent", count: $sentFriendRequests.length },
+		{ id: "calls", label: "Calls", count: 0 },
 	]);
 	const focusRing =
 		"focus-override focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-duvet-accent";
@@ -400,7 +402,7 @@
 			<div
 				class="bg-duvet-sunk shadow-duvet-press flex items-center gap-0.5 rounded-xl p-0.5"
 				role="tablist"
-				aria-label="Friend lists"
+				aria-label="Friends and calls"
 			>
 				{#each tabs as tab (tab.id)}
 					{@const chosen = activeTab === tab.id}
@@ -624,6 +626,8 @@
 							{/each}
 						</ul>
 					{/if}
+				{:else if activeTab === "calls"}
+					<CallHistory onOpen={onOpenMessage} />
 				{:else if activeTab === "add"}
 					<div class="rounded-card bg-duvet-card shadow-duvet-raised relative mx-auto mt-10 max-w-lg px-6 pt-14 pb-6">
 						<MascotPeek
