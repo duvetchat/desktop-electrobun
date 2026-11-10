@@ -113,7 +113,7 @@
 
 				<!-- Body -->
 				<div class="space-y-4 px-6 py-5">
-					<p class="text-sm text-zinc-300">Share this invite link. Anyone with this link can join the server.</p>
+					<p class="text-sm text-zinc-300">Share this invite link. Anyone with this link can join the Space.</p>
 
 					{#if isLoading}
 						<div class="flex items-center justify-center py-8">

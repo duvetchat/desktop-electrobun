@@ -1203,8 +1203,8 @@
 						type="button"
 						class="text-duvet-ink2 hover:bg-duvet-card hover:text-duvet-ink focus-visible:outline-duvet-accent rounded-lg p-1.5 focus-visible:outline-2"
 						onclick={onToggleChannels}
-						aria-label={showChannelsSidebar ? "Collapse channels panel" : "Expand channels panel"}
-						title={showChannelsSidebar ? "Hide channels" : "Show channels"}
+						aria-label={showChannelsSidebar ? "Collapse rooms panel" : "Expand rooms panel"}
+						title={showChannelsSidebar ? "Hide rooms" : "Show rooms"}
 					>
 						{#if showChannelsSidebar}
 							<PanelLeftClose class="size-4" />
@@ -1463,7 +1463,7 @@
 					>
 						<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
 					</svg>
-					<p class="text-sm opacity-50">Drag a channel here</p>
+					<p class="text-sm opacity-50">Drag a room here</p>
 				</div>
 			{/if}
 		</div>

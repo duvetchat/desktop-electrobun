@@ -21,7 +21,7 @@
 		type FriendRequest,
 		type Friend,
 	} from "$lib/api/friends";
-	import { getConversations, createDM, createGroup, type Conversation } from "$lib/api/conversations";
+	import { getConversations, createDM, createGroup } from "$lib/api/conversations";
 	import {
 		UserPlus,
 		UserCheck,
@@ -317,18 +317,6 @@
 		} catch (err) {
 			groupError = getApiError(err, plan.kind === "dm" ? "Failed to open the conversation" : "Failed to create group");
 		}
-	}
-
-	function convTitle(conv: Conversation): string {
-		const me = get(currentUser);
-		if (conv.type === 2) return conv.name ?? "Group";
-		const other = conv.members.find((m) => m.user_id !== me?.id);
-		return other?.user?.alias ?? other?.user?.username ?? "DM";
-	}
-
-	function convSubtitle(conv: Conversation): string {
-		if (conv.type === 2) return `${conv.members.length} members`;
-		return "Direct message";
 	}
 </script>
 

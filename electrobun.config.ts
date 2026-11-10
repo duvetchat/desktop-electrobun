@@ -24,9 +24,8 @@ export default {
 			// the entitlements' values, where the hardened runtime wants true: check the mic and the camera then.
 			entitlements: {
 				"com.apple.security.device.audio-input":
-					"Duvet uses your microphone for voice channels, calls and voice messages.",
-				"com.apple.security.device.camera":
-					"Duvet uses your camera when you turn on video in a voice channel or a call.",
+					"Duvet uses your microphone for voice rooms, calls and voice messages.",
+				"com.apple.security.device.camera": "Duvet uses your camera when you turn on video in a voice room or a call.",
 			},
 		},
 		win: {

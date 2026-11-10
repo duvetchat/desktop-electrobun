@@ -78,7 +78,7 @@
 			<div
 				class="flex w-full max-w-sm flex-col gap-4 rounded-xl border border-zinc-700 bg-zinc-900 p-6 text-zinc-100 shadow-2xl"
 			>
-				<Dialog.Title class="text-center text-lg font-bold text-white">Add a Server</Dialog.Title>
+				<Dialog.Title class="text-center text-lg font-bold text-white">Add a Space</Dialog.Title>
 				<p class="-mt-2 text-center text-sm text-zinc-300">Create your own or join one with an invite code.</p>
 
 				<Tabs.Root bind:value={modalTab}>
@@ -100,13 +100,13 @@
 					<Tabs.Content value="create" class="mt-4 space-y-3">
 						<div class="flex flex-col gap-1">
 							<label for="server-name" class="text-xs font-semibold tracking-wider text-zinc-400 uppercase"
-								>Server Name <span class="text-red-400">*</span></label
+								>Space Name <span class="text-red-400">*</span></label
 							>
 							<input
 								id="server-name"
 								type="text"
 								bind:value={serverName}
-								placeholder="My awesome server"
+								placeholder="My awesome Space"
 								class="rounded-md bg-zinc-800 px-3 py-2 text-sm text-white outline-none placeholder:text-zinc-500 focus:ring-1 focus:ring-stone-500"
 								maxlength={64}
 							/>
@@ -119,7 +119,7 @@
 								id="server-desc"
 								type="text"
 								bind:value={serverDescription}
-								placeholder="What's this server about?"
+								placeholder="What's this Space about?"
 								class="rounded-md bg-zinc-800 px-3 py-2 text-sm text-white outline-none placeholder:text-zinc-500 focus:ring-1 focus:ring-stone-500"
 								maxlength={256}
 							/>

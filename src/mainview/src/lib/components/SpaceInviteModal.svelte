@@ -63,7 +63,7 @@
 			class="fixed top-1/2 left-1/2 z-50 w-full max-w-sm -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-zinc-700 bg-zinc-900 p-6 shadow-2xl"
 		>
 			<div class="mb-4 flex items-center justify-between">
-				<h2 class="text-base font-semibold text-white">Server Invite</h2>
+				<h2 class="text-base font-semibold text-white">Space Invite</h2>
 				<Dialog.Close class="rounded-md p-1 text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-white">
 					<XIcon class="size-5" />
 				</Dialog.Close>
@@ -112,7 +112,7 @@
 						onclick={handleJoin}
 						disabled={joining}
 					>
-						{joining ? "Joining..." : "Join Server"}
+						{joining ? "Joining..." : "Join Space"}
 					</button>
 				{/if}
 			{/if}

@@ -84,7 +84,7 @@
 			await joinInvite(code);
 			window.location.href = route("/app.html");
 		} catch (err) {
-			const msg = getApiError(err, "We couldn't join this server. Please try again.");
+			const msg = getApiError(err, "We couldn't join this Space. Please try again.");
 			if (msg === "Session invalid or expired") {
 				window.location.href = signInUrl(inviteUrl(code));
 				return;
@@ -160,10 +160,10 @@
 						onclick={handleJoin}
 						disabled={joining}
 					>
-						{joining ? "Joining…" : "Join server"}
+						{joining ? "Joining…" : "Join Space"}
 					</button>
 				{:else}
-					<p class="mb-4 text-sm text-zinc-300">Sign in to join this server.</p>
+					<p class="mb-4 text-sm text-zinc-300">Sign in to join this Space.</p>
 					<button
 						class="bg-fill-600 text-fixed-white hover:bg-fill-500 w-full rounded-xl py-3 text-base font-semibold transition"
 						onclick={() => (window.location.href = signInUrl(inviteUrl(code)))}

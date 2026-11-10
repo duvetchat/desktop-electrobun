@@ -122,7 +122,7 @@
 			newChannelCategory = null;
 		} catch (e) {
 			console.error(e);
-			toast(getApiError(e, "Failed to create channel"), "error");
+			toast(getApiError(e, "Failed to create room"), "error");
 		} finally {
 			isCreating = false;
 		}
@@ -136,7 +136,7 @@
 			confirmDeleteChannel = null;
 		} catch (err) {
 			console.error("Failed to delete channel:", err);
-			toast(getApiError(err, "Failed to delete channel"), "error");
+			toast(getApiError(err, "Failed to delete room"), "error");
 		} finally {
 			isDeletingChannel = false;
 		}
@@ -314,7 +314,7 @@
 			if (!isDraggingCategory) payload.parent_id = newParentId;
 			await updateRoom(guild.id, srcId, payload);
 		} catch (err) {
-			toast(getApiError(err, "Failed to move channel"), "error");
+			toast(getApiError(err, "Failed to move room"), "error");
 		}
 	}
 
@@ -415,7 +415,7 @@
 				>
 					<span class="truncate">{guild.name}</span>
 					<DropdownMenu.Root>
-						<DropdownMenu.Trigger class="ml-auto shrink-0 text-zinc-400 hover:text-white" aria-label="Server menu">
+						<DropdownMenu.Trigger class="ml-auto shrink-0 text-zinc-400 hover:text-white" aria-label="Space menu">
 							<DotsThreeVerticalIcon class="size-4" />
 						</DropdownMenu.Trigger>
 						<DropdownMenu.Portal>
@@ -429,7 +429,7 @@
 									onSelect={openServerSettings}
 								>
 									<GearSixIcon class="size-4 text-zinc-400" />
-									Server Settings
+									Space Settings
 								</DropdownMenu.Item>
 								<!-- The API creates a room for ManageChannels in the space -->
 								{#if space && hasSpacePermission(space, Permission.ManageChannels)}
@@ -438,7 +438,7 @@
 										onSelect={openCreateChannel}
 									>
 										<PlusIcon class="size-4 text-zinc-400" />
-										Create Channel
+										Create Room
 									</DropdownMenu.Item>
 								{/if}
 							</DropdownMenu.Content>
@@ -459,7 +459,7 @@
 					<div
 						class="border-duvet-line bg-duvet-sunk text-duvet-ink2 sticky -top-2 z-10 flex h-10 items-center border-b px-3 text-[13px] font-bold select-none"
 					>
-						Channels
+						Rooms
 					</div>
 				{/if}
 				{#if sidebarItems.length === 0}
@@ -503,7 +503,7 @@
 									>
 										<div class="flex items-center gap-2">
 											<CopySimpleIcon class="size-4 text-zinc-400" />
-											Copy Channel ID
+											Copy Room ID
 										</div>
 									</ContextMenu.Item>
 									{#if canManageCategory}
@@ -621,7 +621,7 @@
 										>
 											<div class="flex items-center gap-2">
 												<CopySimpleIcon class="size-4 text-zinc-400" />
-												Copy Channel ID
+												Copy Room ID
 											</div>
 										</ContextMenu.Item>
 										<!-- The API creates an invite for CreateInvites in the room, overwrites included -->
@@ -653,7 +653,7 @@
 											>
 												<div class="flex items-center gap-2">
 													<TrashSimpleIcon class="size-4" />
-													Delete Channel
+													Delete Room
 												</div>
 											</ContextMenu.Item>
 										{/if}
@@ -723,19 +723,19 @@
 		<Dialog.Overlay class="fixed inset-0 z-50 bg-black/60" />
 		<Dialog.Content class="fixed inset-0 z-50 flex items-center justify-center p-4 text-zinc-200">
 			<div class="w-full max-w-sm rounded-xl border border-zinc-700 bg-zinc-900 p-5 shadow-2xl">
-				<h2 class="mb-4 text-lg font-semibold text-white">Create Channel</h2>
+				<h2 class="mb-4 text-lg font-semibold text-white">Create Room</h2>
 
 				<div class="mb-4">
 					<label for="channelType" class="mb-1 block text-xs font-semibold tracking-wide text-zinc-400 uppercase"
-						>Channel Type</label
+						>Room Type</label
 					>
 					<select
 						id="channelType"
 						bind:value={newChannelType}
 						class="h-10 w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 text-sm text-white outline-none focus:ring-1 focus:ring-stone-500"
 					>
-						<option value={1}>Text Channel</option>
-						<option value={2}>Voice Channel</option>
+						<option value={1}>Text Room</option>
+						<option value={2}>Voice Room</option>
 						<option value={3}>Category</option>
 					</select>
 				</div>
@@ -760,7 +760,7 @@
 
 				<div class="mb-5">
 					<label for="channelName" class="mb-1 block text-xs font-semibold tracking-wide text-zinc-400 uppercase"
-						>Channel Name</label
+						>Room Name</label
 					>
 					<div class="relative">
 						<span class="absolute top-2.5 left-3 text-zinc-500">
@@ -775,7 +775,7 @@
 							type="text"
 							bind:value={newChannelName}
 							class="h-10 w-full rounded-md border border-zinc-700 bg-zinc-800 pr-3 pl-8 text-sm text-white placeholder-zinc-500 outline-none focus:ring-1 focus:ring-stone-500"
-							placeholder="new-channel"
+							placeholder="new-room"
 							maxlength={64}
 							onkeydown={(e) => e.key === "Enter" && handleCreateChannel()}
 							use:focusOnMount
@@ -792,7 +792,7 @@
 						onclick={handleCreateChannel}
 						disabled={!newChannelName.trim() || isCreating}
 					>
-						Create Channel
+						Create Room
 					</button>
 				</div>
 			</div>
@@ -805,7 +805,7 @@
 		<Dialog.Overlay class="fixed inset-0 z-50 bg-black/50" />
 		<Dialog.Content class="fixed inset-0 z-50 flex items-center justify-center p-4 text-zinc-200">
 			<div class="w-96 rounded-lg border border-zinc-700 bg-zinc-800 p-6 shadow-lg">
-				<h2 class="mb-2 text-xl font-bold text-white">Delete Channel</h2>
+				<h2 class="mb-2 text-xl font-bold text-white">Delete Room</h2>
 				<p class="mb-6 text-zinc-400">
 					Are you sure you want to delete
 					<span class="font-semibold text-white">#{confirmDeleteChannel?.name}</span>? This action cannot be undone.
@@ -817,7 +817,7 @@
 						onclick={handleDeleteChannel}
 						disabled={isDeletingChannel}
 					>
-						Delete Channel
+						Delete Room
 					</button>
 				</div>
 			</div>

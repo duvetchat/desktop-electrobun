@@ -1268,7 +1268,6 @@
 								<!-- Profile preview card -->
 								<MemberProfileCard
 									member={previewMember}
-									editable
 									onAvatarClick={() => (showAvatarCrop = true)}
 									onAvatarRemove={() => handleRemoveImageStage("avatar")}
 									onBannerClick={() => (showBannerCrop = true)}
@@ -1624,7 +1623,7 @@
 										<div>
 											<p class="text-xs font-semibold tracking-wide text-zinc-400 uppercase">Faces in voice</p>
 											<p class="mt-1 text-xs text-zinc-500">
-												Voice channel tiles show everyone's animated face instead of their avatar. Saved on this device.
+												Voice room tiles show everyone's animated face instead of their avatar. Saved on this device.
 											</p>
 										</div>
 										<button

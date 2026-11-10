@@ -161,7 +161,7 @@
 					<p class="px-2 py-8 text-center text-xs text-red-400">{failure}</p>
 				{:else if pins.length === 0}
 					<p class="px-2 py-8 text-center text-xs text-stone-500">
-						{loading ? "Loading…" : `This ${conversation ? "conversation" : "channel"} has no pinned messages yet`}
+						{loading ? "Loading…" : `This ${conversation ? "conversation" : "room"} has no pinned messages yet`}
 					</p>
 				{/if}
 				{#each pins as m (m.id)}

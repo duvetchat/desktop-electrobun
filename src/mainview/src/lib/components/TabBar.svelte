@@ -303,7 +303,7 @@
 					stroke-linecap="round"
 					stroke-linejoin="round"><path d="M12 5v14" /><path d="m19 12-7 7-7-7" /></svg
 				>
-				Open channel
+				Open room
 			</div>
 		{:else if description}
 			<div class="flex h-full items-center overflow-hidden px-2">

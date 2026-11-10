@@ -17,6 +17,7 @@
 		updateWebhook,
 		deleteWebhook,
 		resetWebhookToken,
+		webhookUrls,
 		type Webhook,
 	} from "$lib/api/webhooks";
 	import { toast } from "$lib/stores/toast.svelte";
@@ -31,7 +32,7 @@
 
 	const attachmentHost = getHostURL();
 	const several = $derived(rooms.length > 1);
-	const roomName = (id: string) => rooms.find((r) => r.id === id)?.name ?? "deleted channel";
+	const roomName = (id: string) => rooms.find((r) => r.id === id)?.name ?? "deleted room";
 
 	let webhooksLoading = $state(false);
 	let loadFailed = $state(false);
@@ -207,10 +208,9 @@
 		);
 	}
 
-	function copyWebhookUrl(webhookId: string, token: string) {
-		const url = `${attachmentHost}/api/webhooks/${webhookId}/${token}`;
+	function copyWebhookUrl(url: string, what: string) {
 		navigator.clipboard.writeText(url);
-		toast("Webhook URL copied to clipboard", "success");
+		toast(`${what} copied to clipboard`, "success");
 	}
 </script>
 
@@ -224,7 +224,7 @@
 				<div class="space-y-1">
 					<h3 class="text-sm font-semibold tracking-wide text-white">Create Webhook</h3>
 					<p class="text-xs text-zinc-400">
-						Webhooks allow external services to send messages to {several ? "a channel" : `#${rooms[0].name}`}.
+						Webhooks allow external services to send messages to {several ? "a room" : `#${rooms[0].name}`}.
 					</p>
 				</div>
 
@@ -241,7 +241,7 @@
 
 					{#if several}
 						<label class="block space-y-1.5">
-							<span class="text-[11px] font-semibold tracking-wide text-zinc-400 uppercase">Channel</span>
+							<span class="text-[11px] font-semibold tracking-wide text-zinc-400 uppercase">Room</span>
 							<select
 								class="h-9 w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 text-sm text-zinc-100 outline-none focus:border-zinc-500"
 								bind:value={newWebhookRoomId}
@@ -305,6 +305,7 @@
 
 		<!-- Token reveal box -->
 		{#if createdWebhookToken && createdWebhookId}
+			{@const urls = webhookUrls(attachmentHost, createdWebhookId, createdWebhookToken)}
 			<div class="overflow-hidden rounded-xl border border-amber-600/30 bg-amber-950/20 p-4">
 				<p class="mb-2 text-xs font-semibold text-amber-300">Webhook Token (shown only once)</p>
 				<div class="flex items-center gap-2">
@@ -313,18 +314,26 @@
 					</code>
 					<button
 						class="flex shrink-0 items-center gap-1.5 rounded-md bg-zinc-700 px-3 py-2 text-xs font-medium text-zinc-200 transition-colors hover:bg-zinc-600"
-						onclick={() => copyWebhookUrl(createdWebhookId!, createdWebhookToken!)}
+						onclick={() => copyWebhookUrl(urls.url, "Webhook URL")}
 						title="Copy Webhook URL"
 					>
 						<CopyIcon class="size-3.5" />
 						Copy URL
 					</button>
+					<button
+						class="flex shrink-0 items-center gap-1.5 rounded-md bg-zinc-700 px-3 py-2 text-xs font-medium text-zinc-200 transition-colors hover:bg-zinc-600"
+						onclick={() => copyWebhookUrl(urls.github, "GitHub URL")}
+						title="Copy the URL with /github"
+					>
+						<CopyIcon class="size-3.5" />
+						Copy GitHub URL
+					</button>
 				</div>
-				<p
-					class="mt-2 truncate text-[11px] text-amber-400/70"
-					title="{attachmentHost}/api/webhooks/{createdWebhookId}/{createdWebhookToken}"
-				>
-					Webhook URL: {attachmentHost}/api/webhooks/{createdWebhookId}/{createdWebhookToken}
+				<p class="mt-2 truncate text-[11px] text-amber-400/70" title={urls.url}>
+					Webhook URL: {urls.url}
+				</p>
+				<p class="mt-1 text-[11px] text-zinc-400">
+					Paste the GitHub URL as a GitHub repository's webhook: its pushes, issues and pull requests post here.
 				</p>
 				<button
 					class="mt-2 text-xs text-zinc-400 transition-colors hover:text-zinc-200"
@@ -351,7 +360,7 @@
 				<p class="mt-1 text-xs text-zinc-500">
 					{rooms.length > 0
 						? "Create one above to get started."
-						: "Webhooks post in text channels, and there are none here you can see."}
+						: "Webhooks post in text rooms, and there are none here you can see."}
 				</p>
 			</div>
 		{:else}
