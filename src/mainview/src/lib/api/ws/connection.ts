@@ -119,6 +119,7 @@ import { SENT_BEFORE_CANCEL } from "$lib/uploads";
 import { knowMessage, newestKnownIn } from "$lib/jumps";
 import { reactionChanged, withReaction, type ReactionChange } from "$lib/reactions";
 import { banAdded, banLifted, forgetBans } from "$lib/bans";
+import { callNoticeCame, callNoticeDeleted, conversationCallsGone, forgetCalls } from "$lib/call-history";
 import { customEmojiMapOf } from "$lib/markdown";
 import {
 	conversationPlace,
@@ -432,8 +433,9 @@ export function conversationLeft(conversationId: string) {
 		return s;
 	});
 	// An answer kept there goes too: its call notices no longer reach them, and one would count for a later call's
-	// if they came back.
+	// if they came back. Its calls leave the call history, as the API lists only the conversations they're in.
 	callAnswers.drop(conversationId);
+	conversationCallsGone(conversationId);
 	callOver(conversationId);
 }
 
@@ -723,8 +725,10 @@ function handleEvent(event: GatewayEvent) {
 			// The SPACE_CREATEs that follow bring the spaces again, as the new session has them (their voice states
 			// included): one the user is no longer in doesn't come back.
 			gatewaySpaces.set([]);
-			// And the bans loaded, whose events of the time away never came: a space's list loads anew as it's shown.
+			// And the bans loaded, whose events of the time away never came: a space's list loads anew as it's shown. So
+			// does the call history.
 			forgetBans();
+			forgetCalls();
 			friendsReady.set(false);
 			allSpacesReady.set(false);
 			const guildIds = payload.data.guild_ids ?? [];
@@ -1631,6 +1635,7 @@ function handleEvent(event: GatewayEvent) {
 			const isActiveConv = conversationId === get(activeDMConvId);
 			if (msg.type === MessageType.Call && msg.call) {
 				readCallNotice(conversationId, msg.id, msg.call, isActiveConv);
+				callNoticeCame(msg);
 			} else if (!isActiveConv) {
 				unreadConversations.update((s) => {
 					s.add(conversationId);
@@ -1719,6 +1724,7 @@ function handleEvent(event: GatewayEvent) {
 			const raw = payload.data;
 			dropReplyTo(raw.conversation_id, raw.id);
 			dropMentionNotice(raw.id);
+			callNoticeDeleted(raw.id);
 			dmMessages.update((all) => {
 				const existing = all[raw.conversation_id] ?? [];
 				return {

@@ -4,8 +4,9 @@ import { join } from "node:path";
 import { get } from "svelte/store";
 import { openGateway, type TestGateway } from "$lib/api/ws/test-gateway";
 
-const { askForMicWith, toggleDeafen, toggleMute } = await import("$lib/voice");
-const { activeVoiceRoomId, isDeafened, isMuted } = await import("$lib/stores.svelte");
+const { askForMicWith, startConversationCall, toggleDeafen, toggleMute } = await import("$lib/voice");
+const { activeCall, activeVoiceRoomId, conversationsWithCalls, currentUser, isDeafened, isMuted, ownCallsRinging } =
+	await import("$lib/stores.svelte");
 const { toastStore } = await import("$lib/stores/toast.svelte");
 
 const ROOM = "01920000-0000-7000-8000-0000000000c1";
@@ -130,6 +131,71 @@ describe("unmuting without a microphone", () => {
 		toggleMute();
 		expect(asks).toBe(0);
 		expect(told()).toMatchObject({ muted: true });
+	});
+});
+
+// The conversation's call button and the call history's (#196) both call through it.
+describe("calling a conversation", () => {
+	const ME = "01920000-0000-7000-8000-00000000b0b0";
+	const ALICE = "01920000-0000-7000-8000-00000000a11c";
+	const DM = "01a15f8c-0000-7000-8000-0000000000d1";
+	const member = (user_id: string, username: string) => ({
+		id: `${DM}-${user_id}`,
+		conversation_id: DM,
+		user_id,
+		created_at: "",
+		updated_at: "",
+		user: { id: user_id, username, alias: null, avatar: null, banner: null },
+	});
+	const dm = { id: DM, members: [member(ME, "me"), member(ALICE, "alice")] };
+
+	beforeEach(() => {
+		currentUser.set({
+			id: ME,
+			username: "me",
+			email_verified: true,
+			alias: null,
+			avatar: null,
+			banner: null,
+			custom: "",
+			flags: 0,
+			badges: 0,
+			is_bot: false,
+			created_at: "",
+			updated_at: "",
+		});
+		activeCall.set(null);
+		ownCallsRinging.set(new Set());
+		conversationsWithCalls.set(new Set());
+	});
+
+	test("places the call: CALL_INITIATE with its members, and the user is calling", () => {
+		startConversationCall(dm);
+		expect(gateway.sent("CALL_INITIATE")).toEqual([{ conversation_id: DM, member_ids: [ME, ALICE] }]);
+		expect(get(activeCall)).toMatchObject({
+			conversationId: DM,
+			initiatorId: ME,
+			initiatorName: "me",
+			state: "calling",
+		});
+		expect(get(conversationsWithCalls).has(DM)).toBe(true);
+	});
+
+	test("does nothing while a call shows, or while the user's own call there rings from another device", () => {
+		const other = {
+			conversationId: ALICE,
+			initiatorId: ALICE,
+			initiatorName: "alice",
+			initiatorAvatar: null,
+			memberIds: [],
+		};
+		activeCall.set({ ...other, state: "ringing" });
+		startConversationCall(dm);
+		activeCall.set(null);
+		ownCallsRinging.set(new Set([DM]));
+		startConversationCall(dm);
+		expect(gateway.sent("CALL_INITIATE")).toEqual([]);
+		expect(get(activeCall)).toBeNull();
 	});
 });
 
