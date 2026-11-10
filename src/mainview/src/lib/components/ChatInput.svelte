@@ -374,6 +374,10 @@
 		return ce ? `${ceHost}/attachments/${ce.attachment_id}` : "";
 	}
 
+	// A member's or a room's chip, as buildHtml writes it into the box: its classes are in this file, so the build has them.
+	const MENTION_CHIP =
+		"inline cursor-default rounded px-1 py-px font-medium select-all bg-[oklch(0.55_0.15_250/0.2)] text-[color:var(--mention-chip-ink,oklch(0.75_0.12_250))]";
+
 	// Names are whatever their owners chose, "<" and quotes included, so they go in escaped.
 	function buildHtml(text: string): string {
 		if (!text) return "";
@@ -384,12 +388,12 @@
 			.replace(
 				/&lt;@([a-f0-9-]+)&gt;/g,
 				(_, id) =>
-					`<span class="mention-chip" contenteditable="false" data-mention="${id}">@${escapeHtml(resolveMentionName(id))}</span>`,
+					`<span class="${MENTION_CHIP}" contenteditable="false" data-mention="${id}">@${escapeHtml(resolveMentionName(id))}</span>`,
 			)
 			.replace(
 				/&lt;#([a-f0-9-]+)&gt;/g,
 				(_, id) =>
-					`<span class="mention-chip" contenteditable="false" data-room="${id}">${escapeHtml(roomMentionText(id))}</span>`,
+					`<span class="${MENTION_CHIP}" contenteditable="false" data-room="${id}">${escapeHtml(roomMentionText(id))}</span>`,
 			)
 			.replace(/&lt;:([a-f0-9-]+):&gt;/g, (_, id) => {
 				const url = resolveCustomEmojiUrl(id);
@@ -1386,8 +1390,8 @@
 					tabindex="0"
 					aria-multiline="false"
 					aria-label={placeholder}
-					class="ce-input focus-override text-night-96 caret-night-96 block max-h-36 min-h-5 min-w-0 flex-1 overflow-y-auto text-sm leading-5 wrap-break-word whitespace-pre-wrap outline-none select-text {isEmpty
-						? 'ce-empty'
+					class="focus-override text-night-96 caret-night-96 block max-h-36 min-h-5 min-w-0 flex-1 overflow-y-auto text-sm leading-5 wrap-break-word whitespace-pre-wrap outline-none select-text {isEmpty
+						? 'before:text-night-52 before:pointer-events-none before:absolute before:content-[attr(data-placeholder)]'
 						: ''}"
 					data-placeholder={placeholder}
 					onkeydown={handleKeyDown}
@@ -1467,25 +1471,3 @@
 		{/if}
 	</div>
 </div>
-
-<style>
-	/* Placeholder via CSS ::before — can't be done with Tailwind */
-	.ce-input.ce-empty::before {
-		content: attr(data-placeholder);
-		color: var(--color-night-52);
-		pointer-events: none;
-		position: absolute;
-	}
-
-	/* Mention chip — :global because injected via innerHTML */
-	:global(.mention-chip) {
-		display: inline;
-		padding: 1px 4px;
-		border-radius: 4px;
-		background: oklch(0.55 0.15 250 / 0.2);
-		color: var(--mention-chip-ink, oklch(0.75 0.12 250));
-		font-weight: 500;
-		cursor: default;
-		user-select: all;
-	}
-</style>

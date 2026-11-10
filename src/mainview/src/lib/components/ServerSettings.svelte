@@ -85,6 +85,14 @@
 
 	const attachmentHost = getHostURL();
 
+	// The settings' own thin scrollbars, where they scroll: a section's content and the description.
+	const thinScrollbar =
+		"[&::-webkit-scrollbar]:w-[5px] [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-[3px] [&::-webkit-scrollbar-thumb]:bg-zinc-600 [&::-webkit-scrollbar-thumb:hover]:bg-zinc-500";
+	// A role colour's input: the browser's colour well, its swatch filling it with no padding, border or corners but
+	// its own.
+	const colorSwatch =
+		"[&::-webkit-color-swatch-wrapper]:p-0 [&::-webkit-color-swatch]:rounded-[4px] [&::-webkit-color-swatch]:border-none size-7 cursor-pointer rounded-md border-2 border-zinc-600 bg-none p-0";
+
 	let {
 		space = null,
 		spaceId = null,
@@ -1292,7 +1300,7 @@
 					</div>
 
 					<!-- Scrollable content -->
-					<div class="flex-1 space-y-5 overflow-y-auto p-6">
+					<div class="flex-1 space-y-5 overflow-y-auto p-6 {thinScrollbar}">
 						{#if activeSection === "overview"}
 							<div class="space-y-5">
 								<!-- Banner -->
@@ -1445,7 +1453,7 @@
 										placeholder="What is this server about?"
 										rows="3"
 										maxlength={256}
-										class="w-full resize-none rounded-md border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 outline-none focus:ring-1 focus:ring-stone-500"
+										class="w-full resize-none rounded-md border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 outline-none focus:ring-1 focus:ring-stone-500 {thinScrollbar}"
 									></textarea>
 								</label>
 
@@ -1565,12 +1573,7 @@
 										</div>
 										<div class="flex flex-wrap items-center gap-3">
 											<div class="flex items-center gap-1.5">
-												<input
-													type="color"
-													bind:value={newRoleColorFrom}
-													class="color-swatch size-7 cursor-pointer rounded-md border-2 border-zinc-600 bg-none p-0"
-													title="Color from"
-												/>
+												<input type="color" bind:value={newRoleColorFrom} class={colorSwatch} title="Color from" />
 												<span class="text-xxs text-zinc-500">From</span>
 											</div>
 											{#if newRoleUseGradient}
@@ -1578,18 +1581,13 @@
 													<input
 														type="color"
 														bind:value={newRoleColorVia}
-														class="color-swatch size-7 cursor-pointer rounded-md border-2 border-zinc-600 bg-none p-0"
+														class={colorSwatch}
 														title="Color via (middle)"
 													/>
 													<span class="text-xxs text-zinc-500">Via</span>
 												</div>
 												<div class="flex items-center gap-1.5">
-													<input
-														type="color"
-														bind:value={newRoleColorTo}
-														class="color-swatch size-7 cursor-pointer rounded-md border-2 border-zinc-600 bg-none p-0"
-														title="Color to"
-													/>
+													<input type="color" bind:value={newRoleColorTo} class={colorSwatch} title="Color to" />
 													<span class="text-xxs text-zinc-500">To</span>
 												</div>
 											{/if}
@@ -1722,7 +1720,7 @@
 																		<input
 																			type="color"
 																			bind:value={editingRoleColorFrom}
-																			class="color-swatch size-7 cursor-pointer rounded-md border-2 border-zinc-600 bg-none p-0"
+																			class={colorSwatch}
 																			title="Color from"
 																		/>
 																		<span class="text-xxs text-zinc-500">From</span>
@@ -1732,7 +1730,7 @@
 																			<input
 																				type="color"
 																				bind:value={editingRoleColorVia}
-																				class="color-swatch size-7 cursor-pointer rounded-md border-2 border-zinc-600 bg-none p-0"
+																				class={colorSwatch}
 																				title="Via"
 																			/>
 																			<span class="text-xxs text-zinc-500">Via</span>
@@ -1741,7 +1739,7 @@
 																			<input
 																				type="color"
 																				bind:value={editingRoleColorTo}
-																				class="color-swatch size-7 cursor-pointer rounded-md border-2 border-zinc-600 bg-none p-0"
+																				class={colorSwatch}
 																				title="To"
 																			/>
 																			<span class="text-xxs text-zinc-500">To</span>
@@ -2884,27 +2882,3 @@
 	targetHeight={320}
 	onConfirm={(f) => setNewStickerFile(f)}
 />
-
-<style>
-	.color-swatch::-webkit-color-swatch-wrapper {
-		padding: 0;
-	}
-	.color-swatch::-webkit-color-swatch {
-		border: none;
-		border-radius: 4px;
-	}
-
-	::-webkit-scrollbar {
-		width: 5px;
-	}
-	::-webkit-scrollbar-track {
-		background: transparent;
-	}
-	::-webkit-scrollbar-thumb {
-		background: var(--color-zinc-600);
-		border-radius: 3px;
-	}
-	::-webkit-scrollbar-thumb:hover {
-		background: var(--color-zinc-500);
-	}
-</style>

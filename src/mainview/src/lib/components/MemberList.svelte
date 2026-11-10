@@ -195,15 +195,13 @@
 									{#if isRecording(member.id)}
 										<MicIcon class="size-2 animate-pulse text-red-400" />
 									{:else}
+										<span class="bg-night-75 animate-member-typing-bounce block size-0.5 rounded-full"></span>
 										<span
-											class="bg-night-75 block size-0.5 animate-[member-typing-bounce_1.2s_ease-in-out_infinite] rounded-full"
-										></span>
-										<span
-											class="bg-night-75 block size-0.5 animate-[member-typing-bounce_1.2s_ease-in-out_infinite] rounded-full"
+											class="bg-night-75 animate-member-typing-bounce block size-0.5 rounded-full"
 											style="animation-delay:0.2s"
 										></span>
 										<span
-											class="bg-night-75 block size-0.5 animate-[member-typing-bounce_1.2s_ease-in-out_infinite] rounded-full"
+											class="bg-night-75 animate-member-typing-bounce block size-0.5 rounded-full"
 											style="animation-delay:0.4s"
 										></span>
 									{/if}
@@ -242,18 +240,3 @@
 		{/each}
 	</div>
 {/each}
-
-<style>
-	@keyframes member-typing-bounce {
-		0%,
-		60%,
-		100% {
-			transform: translateY(0);
-			opacity: 0.5;
-		}
-		30% {
-			transform: translateY(-2px);
-			opacity: 1;
-		}
-	}
-</style>

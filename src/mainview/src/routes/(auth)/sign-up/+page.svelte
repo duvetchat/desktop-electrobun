@@ -84,13 +84,32 @@
 	/** What sizes an inline field: its text, or its placeholder while empty (bullets for a hidden password). */
 	const sizer = (value: string, placeholder: string, secret = false) =>
 		value ? (secret && !showPassword ? "•".repeat(value.length) : value) : placeholder;
+
+	// The sentence's lines. Each one fades in, rising a little, once the one before it reads right (hiddenPart).
+	const lineClass =
+		"text-[clamp(1.6rem,3.4vw,2.9rem)] leading-[1.45] font-bold tracking-[-0.02em] transition-[opacity,translate] duration-260 ease-[ease] motion-reduce:transition-none";
+	const hiddenPart = "pointer-events-none translate-y-2 opacity-0";
+	// An inline field as wide as its text: the field and an invisible copy of that text share one grid cell.
+	const sizerClass =
+		"inline-grid max-w-full align-baseline after:invisible after:col-start-1 after:row-start-1 after:px-[0.2em] after:font-medium after:whitespace-pre after:content-[attr(data-text)]";
+	// The field. Its underline is its focus ring, so it takes no global one (focus-override).
+	const slotClass =
+		"focus-override text-duvet-accent-text col-start-1 row-start-1 w-full min-w-[2ch] border-0 border-b-3 border-b-[color-mix(in_oklab,var(--duvet-ink2)_45%,transparent)] px-[0.15em] font-medium transition-[border-color] duration-140 ease-[ease] placeholder:text-[color-mix(in_oklab,var(--duvet-ink2)_55%,transparent)] focus:border-b-duvet-accent focus:outline-none aria-invalid:border-b-duvet-danger";
+	const hintClass = "mt-1 mb-3 text-[0.95rem]";
 </script>
 
-<section class="signup h-full overflow-y-auto">
-	<p class="signup-brand" aria-hidden="true">Duvet<span>.chat</span></p>
+<section
+	class="bg-duvet-bg text-duvet-ink relative h-full overflow-x-clip overflow-y-auto bg-[radial-gradient(45%_50%_at_85%_100%,color-mix(in_oklab,var(--duvet-accent)_18%,transparent),transparent_70%)]"
+>
+	<p
+		class="absolute top-8 left-[clamp(1.5rem,8vw,7.5rem)] text-[1.375rem] font-bold tracking-[-0.02em]"
+		aria-hidden="true"
+	>
+		Duvet<span class="text-duvet-accent">.chat</span>
+	</p>
 
 	<form
-		class="signup-form"
+		class="max-w-[76rem] px-[clamp(1.5rem,8vw,7.5rem)] pt-28 pb-48"
 		onsubmit={(e) => {
 			e.preventDefault();
 			handleSubmit();
@@ -99,11 +118,13 @@
 		aria-label="Create your account"
 	>
 		<fieldset disabled={doingRequest} class="m-0 border-0 p-0">
-			<h1 class="signup-lead">a cozy place to talk, and you're about to join it.</h1>
+			<h1 class="text-duvet-ink2 mb-7 text-[1.25rem] font-normal">
+				a cozy place to talk, and you're about to join it.
+			</h1>
 
-			<p class="signup-line">
+			<p class={lineClass}>
 				Hi, I'm
-				<span class="signup-sizer" data-text={sizer(alias, "your name", false)}
+				<span class={sizerClass} data-text={sizer(alias, "your name", false)}
 					><input
 						id="alias"
 						name="alias"
@@ -111,7 +132,7 @@
 						aria-label="Display name (optional)"
 						maxlength={32}
 						bind:value={alias}
-						class="signup-slot focus-override"
+						class={slotClass}
 						size={1}
 						placeholder="your name"
 						{...onText}
@@ -119,8 +140,8 @@
 				>,
 			</p>
 
-			<p class="signup-line">
-				people find me as @<span class="signup-sizer" data-text={sizer(username, "username", false)}
+			<p class={lineClass}>
+				people find me as @<span class={sizerClass} data-text={sizer(username, "username", false)}
 					><input
 						id="username"
 						name="username"
@@ -135,20 +156,23 @@
 						maxlength={32}
 						required
 						bind:value={username}
-						class="signup-slot focus-override"
+						class={slotClass}
 						size={1}
 						placeholder="username"
 						{...onText}
 					/></span
 				>
 			</p>
-			<p id="username-hint" class="signup-hint" class:is-error={username.length > 0 && !usernameValid}>
+			<p
+				id="username-hint"
+				class="{hintClass} {username.length > 0 && !usernameValid ? 'text-duvet-danger' : 'text-duvet-ink2'}"
+			>
 				Letters, numbers, dots and _, 2 to 32. It's how people mention you.
 			</p>
 
-			<p class="signup-line" class:is-hidden={shown < 2} inert={shown < 2}>
+			<p class="{lineClass} {shown < 2 ? hiddenPart : ''}" inert={shown < 2}>
 				and you can reach me at
-				<span class="signup-sizer" data-text={sizer(email, "you@example.com", false)}
+				<span class={sizerClass} data-text={sizer(email, "you@example.com", false)}
 					><input
 						id="email"
 						name="email"
@@ -162,7 +186,7 @@
 						maxlength={254}
 						required
 						bind:value={email}
-						class="signup-slot focus-override"
+						class={slotClass}
 						size={1}
 						placeholder="you@example.com"
 						{...onText}
@@ -170,10 +194,10 @@
 				>.
 			</p>
 
-			<p class="signup-line" class:is-hidden={shown < 3} inert={shown < 3}>
+			<p class="{lineClass} {shown < 3 ? hiddenPart : ''}" inert={shown < 3}>
 				My password is
-				<span class="signup-secret">
-					<span class="signup-sizer" data-text={sizer(password, "8 or more", true)}
+				<span class="inline-flex items-baseline gap-[0.25em]">
+					<span class={sizerClass} data-text={sizer(password, "8 or more", true)}
 						><input
 							id="password"
 							name="password"
@@ -184,7 +208,7 @@
 							maxlength={128}
 							required
 							bind:value={password}
-							class="signup-slot focus-override"
+							class={slotClass}
 							size={1}
 							placeholder="8 or more"
 							{...onSecret}
@@ -192,7 +216,7 @@
 					>
 					<button
 						type="button"
-						class="signup-eye"
+						class="text-duvet-ink2 hover:text-duvet-ink focus-visible:outline-duvet-accent-text size-[0.8em] self-center rounded-lg focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-solid"
 						aria-pressed={showPassword}
 						aria-label={showPassword ? "Hide password" : "Show password"}
 						onclick={() => (showPassword = !showPassword)}
@@ -209,9 +233,9 @@
 				</span>
 			</p>
 
-			<p class="signup-line" class:is-hidden={shown < 4} inert={shown < 4}>
+			<p class="{lineClass} {shown < 4 ? hiddenPart : ''}" inert={shown < 4}>
 				once more, to be sure:
-				<span class="signup-sizer" data-text={sizer(confirmPassword, "the same", true)}
+				<span class={sizerClass} data-text={sizer(confirmPassword, "the same", true)}
 					><input
 						id="confirmPassword"
 						name="confirmPassword"
@@ -223,7 +247,7 @@
 						maxlength={128}
 						required
 						bind:value={confirmPassword}
-						class="signup-slot focus-override"
+						class={slotClass}
 						size={1}
 						placeholder="the same"
 						{...onSecret}
@@ -231,19 +255,38 @@
 				>.
 			</p>
 			{#if confirmPassword && !passwordsMatch}
-				<p class="signup-hint is-error" role="status">Passwords don't match.</p>
+				<p class="{hintClass} text-duvet-danger" role="status">Passwords don't match.</p>
 			{/if}
 
 			{#if errorMessage}
-				<p class="signup-error" role="alert">{errorMessage}</p>
+				<p
+					class="text-duvet-danger mt-5 max-w-[40rem] rounded-xl bg-[color-mix(in_oklab,var(--duvet-danger)_12%,transparent)] px-[0.9rem] py-[0.6rem]"
+					role="alert"
+				>
+					{errorMessage}
+				</p>
 			{/if}
 
-			<div class="signup-actions" class:is-hidden={shown < 4} inert={shown < 4}>
-				<label class="signup-terms">
-					<Checkbox.Root bind:checked={acceptTerms} class="signup-check">
+			<div
+				class="mt-9 flex flex-wrap items-center gap-x-8 gap-y-5 transition-opacity duration-260 ease-[ease] {shown < 4
+					? hiddenPart
+					: ''}"
+				inert={shown < 4}
+			>
+				<label class="text-duvet-ink2 inline-flex items-center gap-[0.6rem] text-[1rem]">
+					<!-- Its outline is its focus ring, so it takes no global one (focus-override). -->
+					<Checkbox.Root
+						bind:checked={acceptTerms}
+						class="focus-override bg-duvet-sunk shadow-duvet-press text-duvet-on-accent data-[state=checked]:bg-duvet-accent focus-visible:outline-duvet-accent-text flex size-5 items-center justify-center rounded-[6px] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-solid data-[state=checked]:shadow-none"
+					>
 						{#if acceptTerms}
-							<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"
-								><path d="M3.5 8.5l3 3 6-7" stroke-linecap="round" stroke-linejoin="round" /></svg
+							<svg
+								class="size-[0.9rem]"
+								viewBox="0 0 16 16"
+								fill="none"
+								stroke="currentColor"
+								stroke-width="2.2"
+								aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" stroke-linecap="round" stroke-linejoin="round" /></svg
 							>
 						{/if}
 					</Checkbox.Root>
@@ -255,7 +298,7 @@
 				</label>
 				<Button.Root
 					type="submit"
-					class="auth-primary signup-submit disabled:cursor-not-allowed disabled:opacity-50"
+					class="auth-primary w-auto px-7 text-[1.05rem] disabled:cursor-not-allowed disabled:opacity-50"
 					disabled={!canSubmit || doingRequest}
 					aria-busy={doingRequest}
 				>
@@ -263,13 +306,17 @@
 				</Button.Root>
 			</div>
 
-			<p class="signup-footer">
+			<p class="text-duvet-ink2 mt-6 text-[1rem]">
 				Already have an account? <a href="/sign-in{redirectQuery}" class="auth-link">Sign in</a>
 			</p>
 		</fieldset>
 	</form>
 
-	<MascotPeek {mood} {look} class="signup-mascot" />
+	<MascotPeek
+		{mood}
+		{look}
+		class="pointer-events-none absolute right-[clamp(1rem,10vw,9rem)] -bottom-13 w-[clamp(150px,18vw,240px)] [@media(max-width:720px)]:-bottom-10 [@media(max-width:720px)]:w-[120px]"
+	/>
 </section>
 
 <Dialog.Root bind:open={showTermsModal}>
@@ -288,222 +335,3 @@
 		</Dialog.Content>
 	</Dialog.Portal>
 </Dialog.Root>
-
-<style>
-	.signup {
-		position: relative;
-		overflow-x: clip;
-		background:
-			radial-gradient(45% 50% at 85% 100%, color-mix(in oklab, var(--duvet-accent) 18%, transparent), transparent 70%),
-			var(--duvet-bg);
-		color: var(--duvet-ink);
-	}
-
-	.signup-brand {
-		position: absolute;
-		top: 2rem;
-		left: clamp(1.5rem, 8vw, 7.5rem);
-		font-size: 1.375rem;
-		font-weight: 700;
-		letter-spacing: -0.02em;
-	}
-
-	.signup-brand span {
-		color: var(--duvet-accent);
-	}
-
-	.signup-form {
-		max-width: 76rem;
-		padding: 7rem clamp(1.5rem, 8vw, 7.5rem) 12rem;
-	}
-
-	.signup-lead {
-		margin-bottom: 1.75rem;
-		font-size: 1.25rem;
-		font-weight: 400;
-		color: var(--duvet-ink2);
-	}
-
-	.signup-line {
-		font-size: clamp(1.6rem, 3.4vw, 2.9rem);
-		font-weight: 700;
-		line-height: 1.45;
-		letter-spacing: -0.02em;
-		transition:
-			opacity 260ms ease,
-			transform 260ms ease;
-	}
-
-	.signup-line.is-hidden,
-	.signup-actions.is-hidden {
-		opacity: 0;
-		transform: translateY(8px);
-		pointer-events: none;
-	}
-
-	/* An inline field as wide as its text: the field and an invisible copy of that text share one grid cell. */
-	.signup-sizer {
-		display: inline-grid;
-		max-width: 100%;
-		vertical-align: baseline;
-	}
-
-	.signup-sizer::after {
-		content: attr(data-text);
-		grid-area: 1 / 1;
-		visibility: hidden;
-		white-space: pre;
-		padding: 0 0.2em;
-		font-weight: 500;
-	}
-
-	/* Its underline is its focus ring, so it takes no global one (focus-override). */
-	.signup-slot {
-		grid-area: 1 / 1;
-		width: 100%;
-		min-width: 2ch;
-		border: 0;
-		border-bottom: 3px solid color-mix(in oklab, var(--duvet-ink2) 45%, transparent);
-		border-radius: 0;
-		background: transparent;
-		padding: 0 0.15em;
-		color: var(--duvet-accent-text);
-		font: inherit;
-		font-weight: 500;
-		letter-spacing: inherit;
-		transition: border-color 140ms ease;
-	}
-
-	.signup-slot::placeholder {
-		color: color-mix(in oklab, var(--duvet-ink2) 55%, transparent);
-	}
-
-	.signup-slot:focus,
-	.signup-slot:focus-visible {
-		outline: none;
-		border-bottom-color: var(--duvet-accent);
-	}
-
-	.signup-slot[aria-invalid="true"] {
-		border-bottom-color: var(--duvet-danger);
-	}
-
-	.signup-secret {
-		display: inline-flex;
-		align-items: baseline;
-		gap: 0.25em;
-	}
-
-	.signup-eye {
-		align-self: center;
-		width: 0.8em;
-		height: 0.8em;
-		border-radius: 8px;
-		color: var(--duvet-ink2);
-	}
-
-	.signup-eye:hover {
-		color: var(--duvet-ink);
-	}
-
-	.signup-eye:focus-visible {
-		outline: 2px solid var(--duvet-accent-text);
-		outline-offset: 4px;
-	}
-
-	.signup-hint {
-		margin: 0.25rem 0 0.75rem;
-		font-size: 0.95rem;
-		color: var(--duvet-ink2);
-	}
-
-	.signup-hint.is-error {
-		color: var(--duvet-danger);
-	}
-
-	.signup-error {
-		margin-top: 1.25rem;
-		max-width: 40rem;
-		border-radius: 12px;
-		background: color-mix(in oklab, var(--duvet-danger) 12%, transparent);
-		padding: 0.6rem 0.9rem;
-		color: var(--duvet-danger);
-	}
-
-	.signup-actions {
-		transition: opacity 260ms ease;
-		margin-top: 2.25rem;
-		display: flex;
-		flex-wrap: wrap;
-		align-items: center;
-		gap: 1.25rem 2rem;
-	}
-
-	.signup-terms {
-		display: inline-flex;
-		align-items: center;
-		gap: 0.6rem;
-		font-size: 1rem;
-		color: var(--duvet-ink2);
-	}
-
-	:global(.signup-check) {
-		display: flex;
-		width: 1.25rem;
-		height: 1.25rem;
-		align-items: center;
-		justify-content: center;
-		border-radius: 6px;
-		background: var(--duvet-sunk);
-		box-shadow: var(--duvet-shadow-press);
-		color: var(--duvet-on-accent);
-	}
-
-	:global(.signup-check[data-state="checked"]) {
-		background: var(--duvet-accent);
-		box-shadow: none;
-	}
-
-	:global(.signup-check svg) {
-		width: 0.9rem;
-		height: 0.9rem;
-	}
-
-	:global(.signup-check:focus-visible) {
-		outline: 2px solid var(--duvet-accent-text);
-		outline-offset: 2px;
-	}
-
-	:global(.signup-submit) {
-		width: auto !important;
-		padding-inline: 1.75rem !important;
-		font-size: 1.05rem;
-	}
-
-	.signup-footer {
-		margin-top: 1.5rem;
-		font-size: 1rem;
-		color: var(--duvet-ink2);
-	}
-
-	:global(.signup-mascot) {
-		position: absolute;
-		right: clamp(1rem, 10vw, 9rem);
-		bottom: -3.25rem;
-		width: clamp(150px, 18vw, 240px);
-		pointer-events: none;
-	}
-
-	@media (max-width: 720px) {
-		:global(.signup-mascot) {
-			width: 120px;
-			bottom: -2.5rem;
-		}
-	}
-
-	@media (prefers-reduced-motion: reduce) {
-		.signup-line {
-			transition: none;
-		}
-	}
-</style>
