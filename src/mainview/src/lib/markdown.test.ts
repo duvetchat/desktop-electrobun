@@ -530,6 +530,19 @@ describe("a bare link", () => {
 			expect(buttons).toEqual([{ code: "abc" }, { bot: ID }]);
 			expect(duvetLinksIn(text, "views://mainview")).toEqual(buttons);
 		});
+
+		// #254: a link followed by thousands of markers took about a second to draw, as each count of them was tried
+		// against the link's whole line. What nothing before the link opens is the link's, however much of it there is.
+		test("keeps markers nothing before it opens, however many, at once", () => {
+			const started = performance.now();
+			const stars = `https://a.example/x${"*".repeat(4980)}`;
+			expect(linksIn(stars)).toEqual([stars]);
+			renderMarkdown(stars, false, undefined, undefined, undefined, {});
+			duvetLinksIn(stars, "views://mainview");
+			const many = `**a ${"https://a.example/x** ".repeat(200)}`;
+			expect(linksIn(many)).toEqual(["https://a.example/x", ...Array(199).fill("https://a.example/x**")]);
+			expect(performance.now() - started).toBeLessThan(150);
+		});
 	});
 
 	// The API leaves one of Duvet's own links without a preview as the mobile app reads it (mobileLink), and the cards

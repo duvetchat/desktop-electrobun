@@ -370,13 +370,17 @@ const BARE_LINK =
 
 const WHOLE_LINK = new RegExp(`^${BARE_LINK.source}$`);
 
+// No emphasis closes with more markers: *** with __, ~~ and || around it make 9.
+const MAX_CLOSING_MARKERS = 12;
+
 // Where the bare links of text are, as [start, end] pairs, in order. text has what the renderer takes out first filled
 // in, or in its placeholders. A link can end with markers of emphasis or a spoiler (* _ ~ |) that close what its line
 // opened before it, right before it ("**https://a.example/x**") or further back ("**see https://a.example/x**",
 // "||https://a.example/x||"): it ends before as many of them as the inline rules read as closing tags right after it,
-// trying the most first, and those are the text's. A URL's own * or _, which nothing before it opens, stays its own,
-// and so do markers whose link would then end as no link does (with a . or a ', say). The inline rules read every link
-// as one character, out of their way.
+// trying the most first (MAX_CLOSING_MARKERS at most), and those are the text's. A link whose line holds none of its
+// markers' characters before it keeps them all, as a marker closes only what was opened before it (#254). A URL's own
+// * or _, which nothing before it opens, stays its own, and so do markers whose link would then end as no link does
+// (with a . or a ', say). The inline rules read every link as one character, out of their way.
 function linkSpans(text: string): [number, number][] {
 	const spans = [...text.matchAll(BARE_LINK)].map((m): [number, number] => [m.index, m.index + m[0].length]);
 	// text from from to to, with the links in it, as far as they're decided, out of the inline rules' way, and with no
@@ -396,10 +400,13 @@ function linkSpans(text: string): [number, number][] {
 		const nextLine = text.indexOf("\n", end);
 		const lineEnd = nextLine < 0 ? text.length : nextLine;
 		const link = text.slice(start, end);
-		const markers = /[*_~|]*$/.exec(link)?.[0] ?? "";
+		const markers = /[*_~|]*$/.exec(link)?.[0].slice(-MAX_CLOSING_MARKERS) ?? "";
+		const before = read(lineStart, start);
+		if (![...markers].some((c) => before.includes(c))) return;
+		const after = read(end, lineEnd);
 		for (let n = markers.length; n > 0; n--) {
 			if (!WHOLE_LINK.test(link.slice(0, -n))) continue;
-			const tried = emphasized(`${read(lineStart, start)}\x02${link.slice(-n)}${read(end, lineEnd)}`);
+			const tried = emphasized(`${before}\x02${link.slice(-n)}${after}`);
 			if (/\x02(?:<\/[a-z]+>)+(?![*_~|])/.test(tried)) {
 				spans[i] = [start, end - n];
 				return;
