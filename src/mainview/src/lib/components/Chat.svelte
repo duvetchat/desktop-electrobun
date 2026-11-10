@@ -7,8 +7,9 @@
 	const sentNotices = new Map<string, SentNotice>();
 
 	// What each message being sent was sent with besides its text (files, ref, sticker, the reply's mention, or a voice
-	// note's audio), for its Retry. By nonce, and apart from this view, which goes when a pane shows a conversation and
-	// on a READY: the message stays in its room's list, for its Retry when the room shows again.
+	// note's audio), and the draft it came from (a thread's, or else the room's), for its Retry. By nonce, and apart from
+	// this view, which goes when a pane shows a conversation and on a READY: the message stays in its room's list, for its
+	// Retry when the room shows again.
 	const retryData = new Map<
 		string,
 		{
@@ -17,6 +18,7 @@
 			stickerAttachmentId?: string;
 			allowedMentions?: AllowedMentions;
 			voiceNote?: Blob;
+			draft?: string;
 		}
 	>();
 </script>
@@ -59,9 +61,18 @@
 	import { hasPermission, mentionableRooms, Permission } from "$lib/permissions";
 	import { displayName, isSpoiler, withSpoiler } from "$lib/spoilers";
 	import { withSentMessage } from "$lib/arrivals";
-	import { changeDraft, chatDrafts, draftOf, putBack, withoutDeletedReply, type SentDraft } from "$lib/drafts";
+	import {
+		changeDraft,
+		chatDrafts,
+		draftOf,
+		putBack,
+		threadDraft,
+		withoutDeletedReply,
+		type SentDraft,
+	} from "$lib/drafts";
 	import { CANCELLED, sendFollowed, withoutSending } from "$lib/uploads";
 	import { knowMessage, newestKnownIn } from "$lib/jumps";
+	import { threadReplyTarget } from "$lib/threads";
 	import { chatRequest, keyboard, leaveMessageBox } from "$lib/keyboard.svelte";
 	import { takesChatShortcut } from "$lib/keyboard";
 	import { layoutPrefs } from "$lib/layout-prefs.svelte";
@@ -119,6 +130,8 @@
 		placeholder?: string;
 		failedNonces?: Set<string>;
 		isAtBottom?: boolean;
+		/** A conversation's send. draft is the draft it came from (the conversation's, or a thread's), where a Cancel of its
+		 * upload gives back what it took. */
 		onSend?: (
 			content: string,
 			nonce: string,
@@ -126,6 +139,7 @@
 			files?: File[],
 			stickerAttachmentId?: string,
 			allowedMentions?: AllowedMentions,
+			draft?: string,
 		) => Promise<void>;
 		onSaveEdit?: (msgId: string, content: string) => void | Promise<void>;
 		onDeleteMsg?: (msgId: string) => Promise<void>;
@@ -152,16 +166,20 @@
 	const replyTo = $derived(draft.replyTo);
 	const replyMention = $derived(draft.replyMention);
 	const pendingFiles = $derived(draft.files);
-	// The reply bar's @ is on for each new reply.
+	// The reply bar's @ is on for each new reply. key is the draft's: the chat's, or one of its threads'.
+	function setReplyIn(key: string, message: Message | null) {
+		changeDraft(key, { replyTo: message, replyMention: true });
+	}
 	function setReply(message: Message | null) {
-		changeDraft(channelId, { replyTo: message, replyMention: true });
+		setReplyIn(channelId, message);
 	}
 	// Nobody to mention in a reply to one's own message, a webhook's, or a notice: a pin's or a call's is the room's or
 	// the conversation's, not its pinner's or caller's.
-	const canMentionReplied = $derived(
-		!!replyTo && replyTo.author_id !== $currentUser?.id && !replyTo.webhook_id && !isNotice(replyTo),
-	);
+	const canMention = (message: Message) =>
+		message.author_id !== $currentUser?.id && !message.webhook_id && !isNotice(message);
 	let chatInputRef = $state<{ focus: () => void; focusAndInsert: (char: string) => void } | null>(null);
+	// The message box of the thread open in this chat's list, which replies in it.
+	let threadInputRef = $state<{ focus: () => void } | null>(null);
 	// What was picked from the "/" menu (a command, or one of its subcommands), which the message box gives its place to.
 	let command = $state<{ entry: CommandEntry; app: SpaceCommandApplication } | null>(null);
 	// Commands are for the rooms the user can write in, not for conversations.
@@ -211,15 +229,15 @@
 		return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 	}
 
-	function removePendingFile(index: number) {
-		changeDraft(channelId, { files: pendingFiles.filter((_, i) => i !== index) });
+	function removePendingFile(key: string, index: number) {
+		changeDraft(key, { files: draftOf($chatDrafts, key).files.filter((_, i) => i !== index) });
 	}
 
 	// A spoiler is a file named SPOILER_<name> (lib/spoilers): the toggle renames the file waiting to be
 	// sent, so whatever sends it (a room's message, a conversation's, a retry) sends it as a spoiler.
-	function toggleSpoiler(index: number) {
-		changeDraft(channelId, {
-			files: pendingFiles.map((f, i) => (i === index ? withSpoiler(f, !isSpoiler(f.name)) : f)),
+	function toggleSpoiler(key: string, index: number) {
+		changeDraft(key, {
+			files: draftOf($chatDrafts, key).files.map((f, i) => (i === index ? withSpoiler(f, !isSpoiler(f.name)) : f)),
 		});
 	}
 	let editingMessageId = $state<string | null>(null);
@@ -357,28 +375,43 @@
 		window.removeEventListener("keydown", handleGlobalKeyDown);
 	});
 
-	async function handleSendMessage(content: string, files?: File[], stickerAttachmentId?: string) {
+	// What a message is sent from: a draft (key), the chat's or one of its threads', and the message it replies to, with
+	// whether the reply mentions its author. The chat's message box sends its draft's reply.
+	type Sending = { key: string; replyTo: Message | null; replyMention: boolean };
+
+	async function handleSendMessage(
+		content: string,
+		files?: File[],
+		stickerAttachmentId?: string,
+		sending: Sending = { key: channelId, replyTo, replyMention },
+	) {
 		const nonce = crypto.randomUUID();
 		const user = $currentUser;
 		if (!user) return;
+		const replied = sending.replyTo;
 
-		const ref = replyTo
+		const ref = replied
 			? ({
 					type: MessageReferenceType.Reply,
-					message_id: replyTo.id,
+					message_id: replied.id,
 					room_id: channelId,
 				} as MessageReference)
 			: undefined;
 		// A reply mentions the author of the message it replies to unless the reply bar's @ is off.
-		const allowedMentions: AllowedMentions | undefined = replyTo ? { replied_user: replyMention } : undefined;
+		const allowedMentions: AllowedMentions | undefined = replied ? { replied_user: sending.replyMention } : undefined;
 		// What a Cancel of its upload gives back to the draft. A conversation's send (onSend) keeps its own.
-		const fromDraft: SentDraft = { text: content, files: files ?? [], replyTo, replyMention };
+		const fromDraft: SentDraft = {
+			text: content,
+			files: files ?? [],
+			replyTo: replied,
+			replyMention: sending.replyMention,
+		};
 
-		setReply(null);
+		setReplyIn(sending.key, null);
 
 		if (onSend) {
 			try {
-				await onSend(content, nonce, ref, files, stickerAttachmentId, allowedMentions);
+				await onSend(content, nonce, ref, files, stickerAttachmentId, allowedMentions, sending.key);
 			} catch (err) {
 				failedNonces = new Set(failedNonces).add(nonce);
 				toast(getApiError(err, "Failed to send message"), "error");
@@ -387,6 +420,8 @@
 		}
 
 		const isoNow = new Date().toISOString();
+		// The quote shows the message as the list has it, or else as it was picked: a thread's can be older than the list.
+		const quoted = replied ? (messages.find((m) => m.id === replied.id) ?? replied) : null;
 		const pendingAttachments =
 			files?.map((f) => ({
 				id: "",
@@ -410,15 +445,15 @@
 			known_newest: newestKnownIn(channelId),
 			attachments: pendingAttachments.length > 0 ? pendingAttachments : null,
 			sticker_attachment_id: stickerAttachmentId ?? null,
-			...(ref
+			...(ref && quoted
 				? {
 						referenced_message: {
 							message_id: ref.message_id,
-							content: messages.find((m) => m.id === ref.message_id)?.content ?? "",
-							author_id: messages.find((m) => m.id === ref.message_id)?.author_id ?? "",
-							author_name: messages.find((m) => m.id === ref.message_id)?.author_name ?? "",
-							author_avatar: messages.find((m) => m.id === ref.message_id)?.author_avatar_url ?? null,
-							created_at: messages.find((m) => m.id === ref.message_id)?.created_at ?? isoNow,
+							content: quoted.content ?? "",
+							author_id: quoted.author_id ?? "",
+							author_name: quoted.author_name ?? "",
+							author_avatar: quoted.author_avatar_url ?? null,
+							created_at: quoted.created_at ?? isoNow,
 						},
 					}
 				: {}),
@@ -429,12 +464,12 @@
 			[channelId]: [...(all[channelId] ?? []), pendingMessage],
 		}));
 
-		retryData.set(nonce, { files, ref, stickerAttachmentId, allowedMentions });
+		retryData.set(nonce, { files, ref, stickerAttachmentId, allowedMentions, draft: sending.key });
 		const roomId = channelId;
 		sendFollowed(nonce, files, (upload) =>
 			sendMessage(roomId, content, nonce, ref, files, undefined, stickerAttachmentId, allowedMentions, upload),
 		)
-			.then((raw) => (raw === CANCELLED ? cancelled(roomId, nonce, fromDraft) : sent(roomId, nonce)(raw)))
+			.then((raw) => (raw === CANCELLED ? cancelled(roomId, nonce, fromDraft, sending.key) : sent(roomId, nonce)(raw)))
 			.catch((err) => {
 				failedNonces = new Set(failedNonces).add(nonce);
 				toast(getApiError(err, "Failed to send message"), "error");
@@ -460,8 +495,9 @@
 	// A send of this window's whose upload was cancelled (lib/uploads): the message leaves its room's list, and what it
 	// took from the room's draft goes back (lib/drafts' putBack): its files, and its text and reply while the draft has
 	// neither. When MESSAGE_CREATE has replaced it already, the message was posted after all: it stays, and nothing goes
-	// back. One that comes later takes back out what's still as it went (connection.ts, lib/drafts' takeBack).
-	function cancelled(roomId: string, nonce: string, fromDraft: SentDraft) {
+	// back. One that comes later takes back out what's still as it went (connection.ts, lib/drafts' takeBack). into is the
+	// draft the send came from: the room's, or one of its threads'.
+	function cancelled(roomId: string, nonce: string, fromDraft: SentDraft, into = roomId) {
 		retryData.delete(nonce);
 		let sending: Message | undefined;
 		channelMessages.update((all) => {
@@ -471,7 +507,7 @@
 			sending = list.find((m) => m.id === nonce);
 			return { ...all, [roomId]: kept };
 		});
-		if (sending) putBack(roomId, nonce, withoutDeletedReply(fromDraft, sending));
+		if (sending) putBack(roomId, nonce, withoutDeletedReply(fromDraft, sending), into);
 	}
 
 	function handleReply(message: Message) {
@@ -549,11 +585,27 @@
 				upload,
 			),
 		)
-			.then((raw) => (raw === CANCELLED ? cancelled(roomId, nonce, fromDraft) : sent(roomId, nonce)(raw)))
+			.then((raw) => (raw === CANCELLED ? cancelled(roomId, nonce, fromDraft, saved?.draft) : sent(roomId, nonce)(raw)))
 			.catch((err) => {
 				failedNonces = new Set(failedNonces).add(nonce);
 				toast(getApiError(err, "Failed to send message"), "error");
 			});
+	}
+
+	// A reply in the thread of root, from its draft (threadReplyTarget).
+	function sendThreadReply(root: Message, content: string, files?: File[], stickerAttachmentId?: string) {
+		const key = threadDraft(root.id);
+		void handleSendMessage(content, files, stickerAttachmentId, {
+			key,
+			...threadReplyTarget(draftOf($chatDrafts, key), root),
+		});
+	}
+
+	// A message of the thread of root picked to reply to: its draft's reply bar shows it, and the thread's box takes the
+	// focus.
+	function replyInThread(message: Message, root: Message) {
+		setReplyIn(threadDraft(root.id), message);
+		threadInputRef?.focus();
 	}
 
 	function handleTyping(text: string) {
@@ -730,6 +782,8 @@
 		{customEmojis}
 		{intro}
 		{retryFirstPage}
+		{threadComposer}
+		onThreadReply={replyInThread}
 	/>
 
 	<div class="relative w-full">
@@ -743,98 +797,7 @@
 	<div
 		class="relative flex max-h-48 min-h-16 flex-row items-end gap-2 border-t border-stone-800 bg-stone-950/45 px-3 py-2"
 	>
-		{#if replyTo || pendingFiles.length > 0}
-			<div class="absolute right-0 bottom-full left-0 flex flex-col">
-				{#if replyTo}
-					<div
-						class="flex items-center justify-between border-t border-stone-800 bg-stone-900/90 px-3 py-1.5 text-xs text-zinc-400"
-					>
-						<span>Replying to <span class="font-semibold text-zinc-200">{replyTo.author_name}</span></span>
-						<div class="flex items-center gap-3">
-							{#if canMentionReplied}
-								<!-- Whether the reply mentions the author of the message it replies to -->
-								<button
-									type="button"
-									class="font-semibold transition-colors {replyMention
-										? 'text-indigo-400 hover:text-indigo-300'
-										: 'text-zinc-500 hover:text-zinc-300'}"
-									onclick={() => {
-										changeDraft(channelId, { replyMention: !replyMention });
-										chatInputRef?.focus();
-									}}
-									aria-pressed={replyMention}
-									aria-label="Mention {replyTo.author_name}"
-									title={replyMention
-										? `Click to not mention ${replyTo.author_name}`
-										: `Click to mention ${replyTo.author_name}`}>@ {replyMention ? "ON" : "OFF"}</button
-								>
-							{/if}
-							<button
-								class="text-zinc-500 transition-colors hover:text-zinc-300"
-								onclick={() => setReply(null)}
-								aria-label="Cancel reply"
-							>
-								<svg
-									xmlns="http://www.w3.org/2000/svg"
-									width="14"
-									height="14"
-									viewBox="0 0 24 24"
-									fill="none"
-									stroke="currentColor"
-									stroke-width="2.5"
-									stroke-linecap="round"
-									stroke-linejoin="round"><path d="M18 6 6 18" /><path d="m6 6 12 12" /></svg
-								>
-							</button>
-						</div>
-					</div>
-				{/if}
-				{#if pendingFiles.length > 0}
-					<div class="flex flex-wrap gap-1.5 border-t border-stone-800 bg-stone-900/90 px-3 py-1.5">
-						{#each pendingFiles as file, i}
-							{@const name = displayName(file.name)}
-							{@const spoiler = isSpoiler(file.name)}
-							<div class="flex max-w-56 items-center gap-1.5 rounded border border-stone-700 bg-stone-800 px-2 py-1">
-								<span class="truncate text-xs text-zinc-300">{name}</span>
-								<span class="text-xxs shrink-0 text-zinc-500">{formatFileSize(file.size)}</span>
-								<button
-									class="shrink-0 transition-colors {spoiler
-										? 'text-indigo-300 hover:text-indigo-200'
-										: 'text-zinc-500 hover:text-zinc-300'}"
-									onclick={() => toggleSpoiler(i)}
-									aria-pressed={spoiler}
-									aria-label="Mark {name} as spoiler"
-									title={spoiler ? "Remove spoiler" : "Mark as spoiler"}
-								>
-									{#if spoiler}
-										<EyeOffIcon class="size-3" />
-									{:else}
-										<EyeIcon class="size-3" />
-									{/if}
-								</button>
-								<button
-									class="shrink-0 text-zinc-500 transition-colors hover:text-zinc-300"
-									onclick={() => removePendingFile(i)}
-									aria-label="Remove {name}"
-								>
-									<svg
-										xmlns="http://www.w3.org/2000/svg"
-										width="12"
-										height="12"
-										viewBox="0 0 24 24"
-										fill="none"
-										stroke="currentColor"
-										stroke-width="2.5"
-										stroke-linecap="round"
-										stroke-linejoin="round"><path d="M18 6 6 18" /><path d="m6 6 12 12" /></svg
-									>
-								</button>
-							</div>
-						{/each}
-					</div>
-				{/if}
-			</div>
-		{/if}
+		{@render draftBars(channelId, () => chatInputRef?.focus())}
 		{#if command}
 			{@const active = command}
 			<CommandOptions
@@ -879,3 +842,128 @@
 		{/if}
 	</div>
 </div>
+
+<!-- A draft's reply bar and files, over its message box: the chat's, or a thread's (key). focus gives its box the
+     focus back. -->
+{#snippet draftBars(key: string, focus: () => void)}
+	{@const pending = draftOf($chatDrafts, key)}
+	{#if pending.replyTo || pending.files.length > 0}
+		<div class="absolute right-0 bottom-full left-0 flex flex-col">
+			{#if pending.replyTo}
+				<div
+					class="flex items-center justify-between border-t border-stone-800 bg-stone-900/90 px-3 py-1.5 text-xs text-zinc-400"
+				>
+					<span>Replying to <span class="font-semibold text-zinc-200">{pending.replyTo.author_name}</span></span>
+					<div class="flex items-center gap-3">
+						{#if canMention(pending.replyTo)}
+							<!-- Whether the reply mentions the author of the message it replies to -->
+							<button
+								type="button"
+								class="font-semibold transition-colors {pending.replyMention
+									? 'text-indigo-400 hover:text-indigo-300'
+									: 'text-zinc-500 hover:text-zinc-300'}"
+								onclick={() => {
+									changeDraft(key, { replyMention: !pending.replyMention });
+									focus();
+								}}
+								aria-pressed={pending.replyMention}
+								aria-label="Mention {pending.replyTo.author_name}"
+								title={pending.replyMention
+									? `Click to not mention ${pending.replyTo.author_name}`
+									: `Click to mention ${pending.replyTo.author_name}`}>@ {pending.replyMention ? "ON" : "OFF"}</button
+							>
+						{/if}
+						<button
+							class="text-zinc-500 transition-colors hover:text-zinc-300"
+							onclick={() => setReplyIn(key, null)}
+							aria-label="Cancel reply"
+						>
+							<svg
+								xmlns="http://www.w3.org/2000/svg"
+								width="14"
+								height="14"
+								viewBox="0 0 24 24"
+								fill="none"
+								stroke="currentColor"
+								stroke-width="2.5"
+								stroke-linecap="round"
+								stroke-linejoin="round"><path d="M18 6 6 18" /><path d="m6 6 12 12" /></svg
+							>
+						</button>
+					</div>
+				</div>
+			{/if}
+			{#if pending.files.length > 0}
+				<div class="flex flex-wrap gap-1.5 border-t border-stone-800 bg-stone-900/90 px-3 py-1.5">
+					{#each pending.files as file, i}
+						{@const name = displayName(file.name)}
+						{@const spoiler = isSpoiler(file.name)}
+						<div class="flex max-w-56 items-center gap-1.5 rounded border border-stone-700 bg-stone-800 px-2 py-1">
+							<span class="truncate text-xs text-zinc-300">{name}</span>
+							<span class="text-xxs shrink-0 text-zinc-500">{formatFileSize(file.size)}</span>
+							<button
+								class="shrink-0 transition-colors {spoiler
+									? 'text-indigo-300 hover:text-indigo-200'
+									: 'text-zinc-500 hover:text-zinc-300'}"
+								onclick={() => toggleSpoiler(key, i)}
+								aria-pressed={spoiler}
+								aria-label="Mark {name} as spoiler"
+								title={spoiler ? "Remove spoiler" : "Mark as spoiler"}
+							>
+								{#if spoiler}
+									<EyeOffIcon class="size-3" />
+								{:else}
+									<EyeIcon class="size-3" />
+								{/if}
+							</button>
+							<button
+								class="shrink-0 text-zinc-500 transition-colors hover:text-zinc-300"
+								onclick={() => removePendingFile(key, i)}
+								aria-label="Remove {name}"
+							>
+								<svg
+									xmlns="http://www.w3.org/2000/svg"
+									width="12"
+									height="12"
+									viewBox="0 0 24 24"
+									fill="none"
+									stroke="currentColor"
+									stroke-width="2.5"
+									stroke-linecap="round"
+									stroke-linejoin="round"><path d="M18 6 6 18" /><path d="m6 6 12 12" /></svg
+								>
+							</button>
+						</div>
+					{/each}
+				</div>
+			{/if}
+		</div>
+	{/if}
+{/snippet}
+
+<!-- The message box of the thread of root open in this chat's list, which replies in it (sendThreadReply): its own
+     draft (threadDraft), with its reply bar and files, and the message box's suggestions and pickers, without a voice
+     note, which replies to nothing, nor a command. -->
+{#snippet threadComposer(root: Message)}
+	{@const key = threadDraft(root.id)}
+	<div
+		class="relative flex max-h-48 min-h-16 shrink-0 flex-row items-end gap-2 border-t border-stone-800 bg-stone-950/45 px-3 py-2"
+	>
+		{@render draftBars(key, () => threadInputRef?.focus())}
+		{#key key}
+			<ChatInput
+				bind:this={threadInputRef}
+				draftChat={key}
+				bind:pendingFiles={() => draftOf($chatDrafts, key).files, (files) => changeDraft(key, { files })}
+				placeholder="Reply in thread"
+				onSubmit={(content, files, sticker) => sendThreadReply(root, content, files, sticker)}
+				onValueChange={handleTyping}
+				{members}
+				rooms={mentionRooms}
+				{customEmojis}
+				spaceStickers={spaceStickersArr}
+				autofocus
+			/>
+		{/key}
+	</div>
+{/snippet}

@@ -1,11 +1,25 @@
 import { describe, expect, test } from "bun:test";
 import { isUuid } from "$lib/common/common";
 import { renderEmoji, toTwemojiUrl } from "$lib/emoji";
-import { clickedMention, mentionNamesIn, parseTextSegments, renderMarkdown, renderMarkdownLine } from "$lib/markdown";
-import { cardLink, duvetLinksIn, EMPHASIS_TAGS, parseDuvetLink } from "$lib/urls";
+import {
+	clickedMention,
+	duvetLinksIn,
+	mentionNamesIn,
+	parseTextSegments,
+	renderMarkdown,
+	renderMarkdownLine,
+} from "$lib/markdown";
+import { cardLink, parseDuvetLink } from "$lib/urls";
+
+// The tag markdown wraps text in for each marker of its emphasis.
+const EMPHASIS_TAGS: Record<string, string> = { "~~": "del", "**": "strong", __: "u", "*": "em", _: "em" };
 
 // The value of the first href in html: what's between its quotes.
 const hrefOf = (html: string) => /href="([^"]*)"/.exec(html)?.[1];
+
+// A bare link as renderMarkdown draws one, given links to draw.
+const LINK = (url: string) =>
+	`<a href="${url}" target="_blank" rel="noopener noreferrer" class="msg-bare-link text-stone-300 hover:underline">${url}</a>`;
 
 describe("text stays text", () => {
 	test("a quote in a text is escaped", () => {
@@ -426,6 +440,24 @@ describe("a bare link", () => {
 		]);
 	});
 
+	// #249: a URL in inline code was a bare link, with the code's closing backtick, and the code never rendered.
+	test("isn't one in code, which renders as code", () => {
+		for (const text of [
+			"`https://a.example/x`",
+			"see `https://a.example/x` now",
+			"```\nhttps://a.example/x\n```",
+			"```js\nfetch('https://a.example/x');\n```",
+		]) {
+			expect(parseTextSegments(text)).toEqual([{ type: "text", content: text }]);
+		}
+		expect(renderMarkdown("`https://a.example/x`")).toBe('<code class="msg-inline-code">https://a.example/x</code>');
+		// Code right after a link is the code's, as the renderer takes code out first.
+		expect(parseTextSegments("https://a.example/`x` y")).toEqual([
+			{ type: "link", content: "https://a.example/" },
+			{ type: "text", content: "`x` y" },
+		]);
+	});
+
 	// #221: a link can end with a * or a _, so the closing marker of emphasis around a bare link was the link's: it
 	// opened a URL ending in the marker, and the emphasis never closed.
 	describe("with emphasis around it", () => {
@@ -433,18 +465,19 @@ describe("a bare link", () => {
 
 		test("ends before the closing marker, and is wrapped as markdown wraps text", () => {
 			for (const marks of [["**"], ["*"], ["__"], ["_"], ["~~"], ["**", "*"], ["**", "_"], ["~~", "**"]]) {
-				expect(parseTextSegments(`look ${marks.join("")}https://a.example/x${closing(marks)} now`)).toEqual([
-					{ type: "text", content: "look " },
-					{ type: "link", content: "https://a.example/x", emphasis: marks },
-					{ type: "text", content: " now" },
+				const text = `look ${marks.join("")}https://a.example/x${closing(marks)} now`;
+				expect(parseTextSegments(text)).toEqual([
+					{ type: "text", content: `look ${marks.join("")}` },
+					{ type: "link", content: "https://a.example/x" },
+					{ type: "text", content: `${closing(marks)} now` },
 				]);
-				// The tags around the link (Emphasis.svelte) are those markdown puts around text with the same markers.
+				// The tags around the link are those markdown puts around text with the same markers.
 				const tags = marks.map((mark) => EMPHASIS_TAGS[mark]);
-				expect(renderMarkdown(`${marks.join("")}x${closing(marks)}`)).toBe(
-					`${tags.map((tag) => `<${tag}>`).join("")}x${[...tags]
+				expect(renderMarkdown(text, false, undefined, undefined, undefined, {})).toBe(
+					`look ${tags.map((tag) => `<${tag}>`).join("")}${LINK("https://a.example/x")}${[...tags]
 						.reverse()
 						.map((tag) => `</${tag}>`)
-						.join("")}`,
+						.join("")} now`,
 				);
 			}
 		});
@@ -464,11 +497,51 @@ describe("a bare link", () => {
 			]);
 		});
 
+		// #248: markers that opened before other text ("**see https://…**"), and a spoiler's, were left in the link: it opened
+		// a URL ending in them, and the emphasis or the spoiler never closed.
+		test("ends before the markers that close what its line opened before it, a spoiler too", () => {
+			const drawn = (text: string) => renderMarkdown(text, false, undefined, undefined, undefined, {});
+			const x = LINK("https://a.example/x");
+			expect(drawn("**see https://a.example/x**")).toBe(`<strong>see ${x}</strong>`);
+			expect(drawn("*see https://a.example/x*, _see https://a.example/x_")).toBe(
+				`<em>see ${x}</em>, <em>see ${x}</em>`,
+			);
+			expect(drawn("||https://a.example/x||")).toBe(`<span class="msg-spoiler">${x}</span>`);
+			expect(drawn("||see https://a.example/x|| now")).toBe(`<span class="msg-spoiler">see ${x}</span> now`);
+			expect(drawn("~~old: https://a.example/x and https://a.example/y~~")).toBe(
+				`<del>old: ${x} and ${LINK("https://a.example/y")}</del>`,
+			);
+			expect(drawn("**see https://a.example/x** and **https://a.example/y**")).toBe(
+				`<strong>see ${x}</strong> and <strong>${LINK("https://a.example/y")}</strong>`,
+			);
+			// What closed before the link, or opened on another line, is nothing the link's markers close.
+			expect(linksIn("**a** https://a.example/x**")).toEqual(["https://a.example/x**"]);
+			expect(linksIn("**a\nhttps://a.example/x**")).toEqual(["https://a.example/x**"]);
+			expect(linksIn("https://a.example/x|| ||")).toEqual(["https://a.example/x||"]);
+			// One of Duvet's own names what its card does.
+			const text = "**see https://duvet.chat/invite/abc** ||https://duvet.chat/invite/def||";
+			expect(linksIn(text)).toEqual(["https://duvet.chat/invite/abc", "https://duvet.chat/invite/def"]);
+			expect(duvetLinksIn(text, "views://mainview")).toEqual([{ code: "abc" }, { code: "def" }]);
+		});
+
 		test("one of Duvet's own names what its card does", () => {
 			const text = `**https://duvet.chat/invite/abc** and _https://duvet.chat/invite?bot=${ID}_`;
 			const buttons = linksIn(text).flatMap((link) => parseDuvetLink(cardLink(link), "views://mainview") ?? []);
 			expect(buttons).toEqual([{ code: "abc" }, { bot: ID }]);
 			expect(duvetLinksIn(text, "views://mainview")).toEqual(buttons);
+		});
+
+		// #254: a link followed by thousands of markers took about a second to draw, as each count of them was tried
+		// against the link's whole line. What nothing before the link opens is the link's, however much of it there is.
+		test("keeps markers nothing before it opens, however many, at once", () => {
+			const started = performance.now();
+			const stars = `https://a.example/x${"*".repeat(4980)}`;
+			expect(linksIn(stars)).toEqual([stars]);
+			renderMarkdown(stars, false, undefined, undefined, undefined, {});
+			duvetLinksIn(stars, "views://mainview");
+			const many = `**a ${"https://a.example/x** ".repeat(200)}`;
+			expect(linksIn(many)).toEqual(["https://a.example/x", ...Array(199).fill("https://a.example/x**")]);
+			expect(performance.now() - started).toBeLessThan(150);
 		});
 	});
 
@@ -505,9 +578,8 @@ describe("a bare link", () => {
 		expect(duvetLinksIn("[join us](https://duvet.chat/invite/abc)", "views://mainview")).toEqual([{ code: "abc" }]);
 	});
 
-	// Random text of URLs, brackets, quotes, punctuation, emphasis and spaces: the links, each with the markers of the
-	// emphasis around it, and the text between them are the text; each link starts with its scheme and closes its own
-	// brackets, and none ends with the punctuation around it.
+	// Random text of URLs, brackets, quotes, punctuation, emphasis and spaces: the links and the text between them are the
+	// text; each link starts with its scheme and closes its own brackets, and none ends with the punctuation around it.
 	test("whatever the text, is one link, and leaves the rest as it was", () => {
 		const PIECES = [
 			"https://a.example/",
@@ -561,17 +633,13 @@ describe("a bare link", () => {
 			let text = "";
 			for (let n = 1 + Math.floor(random() * 16); n > 0; n--) text += PIECES[Math.floor(random() * PIECES.length)];
 			const segments = parseTextSegments(text);
-			// A segment as the text has it: a link with the markers of the emphasis around it.
-			const written = (s: (typeof segments)[number]) => {
-				const marks = s.emphasis?.join("") ?? "";
-				return `${marks}${s.content}${[...marks].reverse().join("")}`;
-			};
+			const written = (s: (typeof segments)[number]) => s.content;
 			let at = 0;
 			const problem =
 				(segments.map(written).join("") !== text ? "not the text" : null) ??
 				segments
 					.map((s) => {
-						const before = text.slice(0, at + (s.emphasis?.join("").length ?? 0));
+						const before = text.slice(0, at);
 						at += written(s).length;
 						if (!s.content) return "an empty segment";
 						if (s.type === "text") return null;
@@ -580,8 +648,6 @@ describe("a bare link", () => {
 						if (/[.,;:!?\]}"']$/.test(s.content)) return `${s.content}: punctuation at its end`;
 						if (/[()]/.test(s.content.replace(/\([^()]*\)/g, ""))) return `${s.content}: a bracket of its own open`;
 						if (before.endsWith("](")) return `${s.content}: a markdown link's URL`;
-						if (s.emphasis?.some((mark) => !(mark in EMPHASIS_TAGS)))
-							return `${s.content}: a marker markdown doesn't read`;
 						return null;
 					})
 					.find((p) => p !== null) ??
@@ -619,7 +685,16 @@ describe("the HTML it makes", () => {
 		[ID2]: { name: `x"><script>alert(1)</script>'${forms}`, attachment_id: "0190a3b2-0000-7000-8000-0000000000aa" },
 	};
 	const roomNames = { [ID3]: `"><img src=x onerror=alert(1)>'&<b>${forms}` };
+	// Duvet's own links on the app's host, whose chips name a space as hostile as any name.
+	const drawing = {
+		duvet: { ownOrigin: "https://duvet.chat", spaceName: () => `"><img src=x onerror=alert(1)>'&<b>${forms}` },
+	};
 	const PIECES = [
+		"https://duvet.chat/invite/",
+		`https://duvet.chat/channels/${ID1}/${ID3}/${ID2}`,
+		`https://duvet.chat/conversations/${ID1}/${ID2}`,
+		`https://duvet.chat/invite?bot=${ID1}`,
+		"duvet://c",
 		"[",
 		"]",
 		"(",
@@ -751,8 +826,22 @@ describe("the HTML it makes", () => {
 		// No handler: a custom emoji's image that fails is tried again by the document (lib/emoji-retry.ts).
 		img: new Set(["class", "src", "alt", "title", "draggable", "loading"]),
 		span: new Set(["class", "title", "style", "data-room-id", "data-user-id"]),
-		button: new Set(["class", "data-code", "title", "aria-label"]),
+		// A code block's copy button, and one of Duvet's own links: a message's chip, an invite's button.
+		button: new Set([
+			"class",
+			"data-code",
+			"title",
+			"aria-label",
+			"type",
+			"data-space",
+			"data-room",
+			"data-message",
+			"data-conversation",
+			"data-bot",
+			"data-invite",
+		]),
 		svg: new Set([
+			"class",
 			"xmlns",
 			"width",
 			"height",
@@ -787,6 +876,8 @@ describe("the HTML it makes", () => {
 				return `style ${value}`;
 			if (name === "data-room-id" && !/^[a-f0-9-]+$/.test(value)) return `data-room-id ${value}`;
 			if (name === "data-user-id" && !isUuid(value)) return `data-user-id ${value}`;
+			if (/^data-(space|room|message|conversation|bot)$/.test(name) && !isUuid(value)) return `${name} ${value}`;
+			if (name === "type" && value !== "button") return `type ${value}`;
 			if (name === "target" && value !== "_blank") return `target ${value}`;
 			if (name === "rel" && value !== "noopener noreferrer") return `rel ${value}`;
 		}
@@ -829,16 +920,12 @@ describe("the HTML it makes", () => {
 			for (let n = 1 + Math.floor(random() * 22); n > 0; n--) text += pick(PIECES);
 			if (random() < 0.5)
 				text = `[${pick(PIECES)}${pick(PIECES)}](${pick(["https://", "http://", "javascript:", "javascript://", ""])}${text})${pick(PIECES)}`;
-			// A message's text renders each piece between its bare links on its own (MessageText): those too.
-			const between = parseTextSegments(text)
-				.filter((s) => s.type === "text")
-				.map((s) => s.content);
 			for (const html of [
 				renderMarkdown(text, random() < 0.2, mentionMap, customEmojiMap, roomNames),
 				renderMarkdownLine(text, mentionMap, customEmojiMap, roomNames),
-				...(between.join("") === text
-					? []
-					: between.map((t) => renderMarkdown(t, false, mentionMap, customEmojiMap, roomNames))),
+				// With its bare links, as a bio and a component draw it, and as a message's text does, Duvet's own as chips.
+				renderMarkdown(text, random() < 0.2, mentionMap, customEmojiMap, roomNames, {}),
+				renderMarkdown(text, false, mentionMap, customEmojiMap, roomNames, drawing),
 			]) {
 				// A placeholder that didn't come back whole leaves its mark, or "undefined" in another's place.
 				const problem =

@@ -4,7 +4,8 @@
 	import InviteEmbed from "$lib/components/InviteEmbed.svelte";
 	import MessageLinkEmbed from "$lib/components/MessageLinkEmbed.svelte";
 	import type { Embed } from "$lib/types";
-	import { duvetLinksIn, type MessageLink } from "$lib/urls";
+	import { duvetLinksIn } from "$lib/markdown";
+	import type { MessageLink } from "$lib/urls";
 
 	// The cards under a message's text, as the chat and the previews (pins, search results, a thread) show them: those of
 	// Duvet's own links, whose previews the API leaves out for them (a space's invites, then bots', then messages'), then

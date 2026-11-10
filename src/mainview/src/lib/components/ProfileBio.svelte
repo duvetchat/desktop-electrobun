@@ -1,15 +1,14 @@
 <script lang="ts">
 	import { copyCode } from "$lib/code-copy";
-	import Emphasis from "$lib/components/Emphasis.svelte";
 	import { countEmojis, isOnlyEmojis } from "$lib/emoji";
 	import { friendUser } from "$lib/friends";
-	import { mentionNamesIn, parseTextSegments, renderMarkdown } from "$lib/markdown";
+	import { mentionNamesIn, renderMarkdown } from "$lib/markdown";
 	import { conversations, currentUser, friends, gatewaySpaces } from "$lib/stores.svelte";
-	import { webUrl } from "$lib/urls";
 
 	// A bio on a profile, with the messages' markdown, as anyone's text goes through it. It's nobody's space's: the people
 	// it mentions show by the names the app knows, its rooms as #unknown, and its custom emojis as the ones the reader
-	// doesn't have. A mention opens nothing here. A link is a plain <a>, which lib/external-links.ts opens as any.
+	// doesn't have. A mention opens nothing here. A bare link is a plain <a>, which lib/external-links.ts opens as any,
+	// and a duvet:// one stays text.
 	let { bio }: { bio: string } = $props();
 
 	const emojiOnly = $derived(isOnlyEmojis(bio) && countEmojis(bio) <= 5);
@@ -34,16 +33,5 @@
 		: ''}"
 	onclick={copyCode}
 >
-	{#each parseTextSegments(bio) as segment}
-		<!-- Emphasis around a link wraps it (parseTextSegments), a duvet:// one too, which stays text here -->
-		<Emphasis marks={segment.emphasis}>
-			{#if segment.type === "link" && webUrl(segment.content)}
-				<a href={segment.content} target="_blank" rel="noopener noreferrer" class="text-stone-300 hover:underline"
-					>{segment.content}</a
-				>
-			{:else}
-				{@html renderMarkdown(segment.content, emojiOnly, mentionMap)}
-			{/if}
-		</Emphasis>
-	{/each}
+	{@html renderMarkdown(bio, emojiOnly, mentionMap, undefined, undefined, {})}
 </div>

@@ -26,6 +26,12 @@ export function draftOf(drafts: Record<string, ChatDraft>, chatId: string): Chat
 	return drafts[chatId] ?? NO_DRAFT;
 }
 
+/**
+ * The draft of the replies to a message's thread, as the mobile app keys it: its text and files, and the message of the
+ * thread it replies to when it isn't the thread's own (replyTo).
+ */
+export const threadDraft = (rootId: string) => `thread:${rootId}`;
+
 /** Changes a chat's draft, and only that one. A draft left with nothing in it is forgotten. */
 export function changeDraft(chatId: string, change: Partial<ChatDraft>) {
 	chatDrafts.update((drafts) => {
@@ -56,8 +62,9 @@ export interface SentDraft {
  * to store a message's files once it has their bytes. */
 export const PUT_BACK_KEPT_MS = 5 * 60_000;
 
-// What each Cancel put back in its chat's draft, by the send's nonce, and until when it's remembered.
-const putBacks = new Map<string, { chatId: string; back: SentDraft; until: number }>();
+// What each Cancel put back in a draft of its chat (draft: the chat's own, or a thread's), by the send's nonce, and until
+// when it's remembered.
+const putBacks = new Map<string, { chatId: string; draft: string; back: SentDraft; until: number }>();
 
 // Forgets what was put back too long ago, and its files with it.
 function forgetOld(now: number) {
@@ -68,12 +75,13 @@ function forgetOld(now: number) {
  * What a message whose upload was cancelled took from its chat's draft goes back to it. Its files go after those the
  * draft has, as the mobile app puts them back in its tray. Its text and its reply, with its @, come back with them while
  * the draft has neither (blanks count as none): what the user wrote or picked since stays, and gets the files alone.
- * What went back is remembered by the send's nonce, for takeBack.
+ * What went back is remembered by the send's nonce, for takeBack. into is the draft the send came from: the chat's own,
+ * or one of its threads' (threadDraft).
  */
-export function putBack(chatId: string, nonce: string, sent: SentDraft) {
+export function putBack(chatId: string, nonce: string, sent: SentDraft, into = chatId) {
 	const now = Date.now();
 	forgetOld(now);
-	const draft = draftOf(get(chatDrafts), chatId);
+	const draft = draftOf(get(chatDrafts), into);
 	const whole = !draft.text.trim() && !draft.replyTo;
 	const back: SentDraft = { ...sent, text: whole ? sent.text : "", replyTo: whole ? sent.replyTo : null };
 	const change: Partial<ChatDraft> = {};
@@ -81,8 +89,8 @@ export function putBack(chatId: string, nonce: string, sent: SentDraft) {
 	if (back.text) change.text = back.text;
 	if (back.replyTo) Object.assign(change, { replyTo: back.replyTo, replyMention: back.replyMention });
 	if (Object.keys(change).length === 0) return;
-	changeDraft(chatId, change);
-	putBacks.set(nonce, { chatId, back, until: now + PUT_BACK_KEPT_MS });
+	changeDraft(into, change);
+	putBacks.set(nonce, { chatId, draft: into, back, until: now + PUT_BACK_KEPT_MS });
 }
 
 /**
@@ -97,7 +105,7 @@ export function takeBack(chatId: string, nonce: string): boolean {
 	if (!put || put.chatId !== chatId) return false;
 	putBacks.delete(nonce);
 	const { back } = put;
-	const draft = draftOf(get(chatDrafts), chatId);
+	const draft = draftOf(get(chatDrafts), put.draft);
 	const change: Partial<ChatDraft> = {};
 	const files = draft.files.filter((f) => !back.files.includes(f));
 	if (files.length < draft.files.length) change.files = files;
@@ -105,7 +113,7 @@ export function takeBack(chatId: string, nonce: string): boolean {
 	if (back.replyTo && draft.replyTo?.id === back.replyTo.id && draft.replyMention === back.replyMention) {
 		Object.assign(change, { replyTo: null, replyMention: true });
 	}
-	if (Object.keys(change).length > 0) changeDraft(chatId, change);
+	if (Object.keys(change).length > 0) changeDraft(put.draft, change);
 	return true;
 }
 

@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import type { Component, Embed } from "$lib/types";
+import { duvetLinksIn } from "$lib/markdown";
 import {
 	cardLink,
-	duvetLinksIn,
 	frameSandbox,
 	isUuid,
 	localUrl,

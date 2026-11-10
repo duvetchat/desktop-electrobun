@@ -2,13 +2,12 @@
 	import { Dialog } from "bits-ui";
 	import { CircleAlert as AlertIcon, X as XIcon } from "@lucide/svelte";
 	import ComponentSelect from "$lib/components/ComponentSelect.svelte";
-	import Emphasis from "$lib/components/Emphasis.svelte";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
 	import { FetchError, getApiError } from "$lib/api/api";
 	import { sendModalSubmit } from "$lib/api/interactions";
 	import { getHostURL } from "$lib/common/common";
 	import { renderEmoji } from "$lib/emoji";
-	import { customEmojiMapOf, mentionMapOf, parseTextSegments, renderMarkdown } from "$lib/markdown";
+	import { customEmojiMapOf, mentionMapOf, renderMarkdown } from "$lib/markdown";
 	import { initialValues, isRequired, modalAnswers, modalInputs, type ModalValue } from "$lib/modals";
 	import { roomNames, spaceEmojis } from "$lib/stores.svelte";
 	import { interactionModal, type OpenedModal } from "$lib/stores/interactionModal.svelte";
@@ -167,20 +166,7 @@
 						{#each opened.modal.components as c, i (c.id ?? i)}
 							{#if c.type === ComponentType.TextDisplay}
 								<div class="min-w-0 text-sm wrap-break-word text-zinc-300 select-text">
-									{#each parseTextSegments(c.content ?? "") as segment}
-										{#if segment.type === "link"}
-											<Emphasis marks={segment.emphasis}>
-												<a
-													href={segment.content}
-													target="_blank"
-													rel="noopener noreferrer"
-													class="text-stone-300 hover:underline">{segment.content}</a
-												>
-											</Emphasis>
-										{:else}
-											{@html renderMarkdown(segment.content, false, mentionMap, customEmojiMap, $roomNames)}
-										{/if}
-									{/each}
+									{@html renderMarkdown(c.content ?? "", false, mentionMap, customEmojiMap, $roomNames, {})}
 								</div>
 							{:else if c.type === ComponentType.Label && c.component?.custom_id}
 								{@render field(c, c.component)}

@@ -6,6 +6,7 @@
 		Phone as PhoneIcon,
 		Pin as PinIcon,
 		PinOff as PinOffIcon,
+		Reply as ReplyIcon,
 		Users as UsersIcon,
 	} from "@lucide/svelte";
 	import { updateMessage, deleteMessage, getMessageThread, pinRoomMessage, unpinRoomMessage } from "$lib/api/messages";
@@ -40,6 +41,7 @@
 	import { callNoticeLine } from "$lib/call-notices";
 	import { copyCode } from "$lib/code-copy";
 	import { belowIndicator } from "$lib/jumps";
+	import { threadNow } from "$lib/threads";
 	import { keepPlace, takePlace } from "$lib/kept-places";
 	import { largeEmojis } from "$lib/emoji";
 	import { customEmojiMapOf, mentionMapOf } from "$lib/markdown";
@@ -111,6 +113,8 @@
 		customEmojis = [],
 		intro = undefined,
 		retryFirstPage = null,
+		threadComposer = undefined,
+		onThreadReply = undefined,
 	}: {
 		messages: Message[];
 		members?: MemberOnSidebar[];
@@ -146,6 +150,10 @@
 		 * which calls this, rather than showing the chat's start.
 		 */
 		retryFirstPage?: (() => void) | null;
+		/** The message box of a thread (its root), under the thread's messages: it replies in the thread. */
+		threadComposer?: Snippet<[Message]>;
+		/** A message of the thread of root picked to reply to, from the thread. */
+		onThreadReply?: (message: Message, root: Message) => void;
 	} = $props();
 
 	// ── State ──────────────────────────────────────────────────────────────────
@@ -250,6 +258,17 @@
 	let threadError = $state("");
 	let threadMessages = $state<Message[]>([]);
 	let threadRootMessage = $state<Message | null>(null);
+	// The thread as it is now, with the replies the list has since it loaded, the user's own being sent among them.
+	const threadShown = $derived(threadNow(threadMessages, messages));
+	// A reply that comes while the thread shows goes at its end, which scrolls into view.
+	let threadScrollEl = $state<HTMLElement | null>(null);
+	let threadCount = 0;
+	$effect(() => {
+		const count = threadShown.length;
+		const grew = threadCount > 0 && count > threadCount;
+		threadCount = count;
+		if (grew) void tick().then(() => threadScrollEl?.scrollTo({ top: threadScrollEl.scrollHeight }));
+	});
 	// What a thread's message opens elsewhere (its quote's message, a link's chip or card, an invite, who reacted) would
 	// show under the thread: the thread closes first.
 	onMount(() => onOpenElsewhere(() => (threadModalOpen = false)));
@@ -1552,9 +1571,9 @@
 		<Dialog.Overlay class="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm" />
 		<Dialog.Content class="fixed inset-0 z-51 flex items-center justify-center p-4">
 			<div
-				class="max-h-[75vh] w-full max-w-2xl overflow-hidden rounded-xl border border-zinc-700 bg-zinc-900 text-zinc-100 shadow-2xl"
+				class="flex max-h-[75vh] w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-zinc-700 bg-zinc-900 text-zinc-100 shadow-2xl"
 			>
-				<div class="flex items-center justify-between border-b border-zinc-700 px-5 py-4">
+				<div class="flex shrink-0 items-center justify-between border-b border-zinc-700 px-5 py-4">
 					<div>
 						<h2 class="text-base font-semibold text-white">Message thread</h2>
 						{#if threadRootMessage}
@@ -1579,22 +1598,23 @@
 						>
 					</button>
 				</div>
-				<div class="max-h-[calc(75vh-4.5rem)] overflow-y-auto px-5 py-4">
+				<div bind:this={threadScrollEl} class="min-h-0 flex-1 overflow-y-auto px-5 py-4">
 					{#if threadLoading}
 						<div class="flex items-center justify-center py-8">
 							<div class="h-6 w-6 animate-spin rounded-full border-2 border-stone-400 border-t-transparent"></div>
 						</div>
 					{:else if threadError}
 						<p class="text-sm text-red-400">{threadError}</p>
-					{:else if threadMessages.length === 0}
+					{:else if threadShown.length === 0}
 						<p class="text-sm text-zinc-400">No thread messages found.</p>
 					{:else}
-						{@const threadMsgMap = new Map(threadMessages.map((m) => [m.id, m]))}
+						{@const threadMsgMap = new Map(threadShown.map((m) => [m.id, m]))}
 						<div class="flex flex-col gap-2" onclickcapture={openMention}>
-							{#each threadMessages as threadMsg}
+							{#each threadShown as threadMsg (threadMsg.id)}
 								{@const parentMsg = threadMsg.ref_message_id ? threadMsgMap.get(threadMsg.ref_message_id) : null}
 								{@const parentCall = parentMsg ? callNoticeLine(parentMsg, $currentUser?.id) : null}
-								<div class="rounded-md border border-zinc-800 bg-zinc-800/30 px-3 py-2">
+								{@const root = threadRootMessage}
+								<div class="group relative rounded-md border border-zinc-800 bg-zinc-800/30 px-3 py-2">
 									<!-- As the pins and the search show a message, a reply's quote above it: its quote of a call notice
 									     says what the call's row does -->
 									<MessagePreview
@@ -1607,11 +1627,28 @@
 										quotedCall={parentCall}
 										onPreview={previewFromThread}
 									/>
+									<!-- A message of the thread is replied to from here, as from the chat; not a notice, an ephemeral
+									     message, nor one still being sent (its ID is its nonce) -->
+									{#if onThreadReply && root && !isNotice(threadMsg) && !isEphemeral(threadMsg) && threadMsg.id !== threadMsg.nonce}
+										<button
+											type="button"
+											class="absolute top-1.5 right-1.5 flex size-6 items-center justify-center rounded text-zinc-400 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 hover:bg-zinc-700 hover:text-zinc-100 focus-visible:opacity-100"
+											title="Reply"
+											aria-label="Reply to {threadMsg.author_name}"
+											onclick={() => onThreadReply(threadMsg, root)}
+										>
+											<ReplyIcon class="size-3.5" />
+										</button>
+									{/if}
 								</div>
 							{/each}
 						</div>
 					{/if}
 				</div>
+				<!-- The thread's own message box, which replies in it -->
+				{#if threadComposer && threadRootMessage && !threadLoading && !threadError}
+					{@render threadComposer(threadRootMessage)}
+				{/if}
 			</div>
 		</Dialog.Content>
 	</Dialog.Portal>
