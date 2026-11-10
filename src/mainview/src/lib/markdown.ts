@@ -340,6 +340,26 @@ function highlightCode(code: string, lang: string): string {
 // can't read as a third.
 const withoutMarks = (text: string) => text.replace(/[\x00\x01]/g, "");
 
+// What the renderer takes out of a text before anything else, in this order: code blocks, inline code (never across a
+// block's placeholder), and markdown links, [text](url), whose URL holds no code.
+const CODE_BLOCK = /```([\w+#-]*)\n?([\s\S]*?)```/g;
+const INLINE_CODE = /`([^`\n\x00\x01]+)`/g;
+const MARKDOWN_LINK = /\[([^\]\n]+)\]\((https?:\/\/[^)\x00\x01\n]+)\)/g;
+
+// The text with what the renderer takes out first (code and markdown links) filled with \x00, a character for each, so
+// that a place in it is the same place in the text.
+function masked(text: string): string {
+	const fill = (taken: string) => "\x00".repeat(taken.length);
+	return text.replace(CODE_BLOCK, fill).replace(INLINE_CODE, fill).replace(MARKDOWN_LINK, fill);
+}
+
+// A bare link, as the mobile app reads one (its lib/data/markdown.dart): up to a space, a < or a >, with a (…) in it
+// only whole, as in Wikipedia's Foo_(bar), so that a ) closing a ( opened before the link is the text's; and without the
+// .,;:!? or ]}"' at its end, the punctuation of the sentence around it. Not right after "](", where a markdown link that
+// isn't one (its URL holds code) leaves its URL as text, and never across \x00 or \x01, what the renderer took out.
+const BARE_LINK =
+	/(?<!\]\()(?:https?|duvet):\/\/(?:[^\s<>()\x00\x01]|\([^\s<>()\x00\x01]*\))*(?:[^\s<>.,;:!?()\]}"'\x00\x01]|\([^\s<>()\x00\x01]*\))/g;
+
 export function renderMarkdown(
 	input: string,
 	large = false,
@@ -359,7 +379,7 @@ function render(
 ): string {
 	// ── 1. Extract fenced code blocks ─────────────────────────────────────────
 	const codeBlocks: string[] = [];
-	let s = input.replace(/```([\w+#-]*)\n?([\s\S]*?)```/g, (_, lang, code) => {
+	let s = input.replace(CODE_BLOCK, (_, lang, code) => {
 		const trimmed = code.replace(/\n$/, "");
 		const highlighted = highlightCode(trimmed, lang);
 		const lines = highlighted.split("\n");
@@ -377,7 +397,7 @@ function render(
 	// ── 2. Extract inline code ─────────────────────────────────────────────────
 	// Never across a placeholder (a code block's, or a reply quote's): it would come back inside this code, whole.
 	const inlineCodes: string[] = [];
-	s = s.replace(/`([^`\n\x00\x01]+)`/g, (_, code) => {
+	s = s.replace(INLINE_CODE, (_, code) => {
 		inlineCodes.push(`<code class="msg-inline-code">${escapeHtml(code)}</code>`);
 		return `\x00I${inlineCodes.length - 1}\x01`;
 	});
@@ -390,7 +410,7 @@ function render(
 	// included (one would end the href and start an attribute of the URL's own), and only as http(s). It can't
 	// hold a code's placeholder (\x00…\x01): the code's HTML would land in the href. The text is rendered as any.
 	const links: string[] = [];
-	s = s.replace(/\[([^\]\n]+)\]\((https?:\/\/[^)\x00\x01\n]+)\)/g, (_, text: string, url: string) => {
+	s = s.replace(MARKDOWN_LINK, (_, text: string, url: string) => {
 		links.push(
 			`<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer" class="msg-link">${inline(text)}</a>`,
 		);
@@ -494,30 +514,23 @@ export function clickedMention(target: EventTarget | null): { chip: HTMLElement;
 }
 
 /**
- * Splits a message's text into its bare links (http(s) and duvet://) and the text between them, for renderMarkdown. A
- * link is read as the mobile app reads one (its lib/data/markdown.dart): up to a space, a < or a >, with a (…) in it
- * only whole, as in Wikipedia's Foo_(bar), so that a ) closing a ( opened before the link is the text's; and without
- * the .,;:!? or ]}"' at its end, the punctuation of the sentence around it. Not in a markdown link ([text](url)), its
- * text or its URL: it stays whole in the text around it, which renderMarkdown renders it in. A link wrapped in
- * emphasis ("**https://a.example/x**") ends before the closing markers, and its emphasis takes the markers out of the
- * text around it (linkEmphasis), for the link to be drawn in it (Emphasis.svelte).
+ * Splits a message's text into its bare links (http(s) and duvet://, as BARE_LINK reads one) and the text between them,
+ * for renderMarkdown. Not in code nor in a markdown link ([text](url)), its text or its URL, which the renderer takes out
+ * first: they stay whole in the text around them, which renderMarkdown renders them in. A link wrapped in emphasis
+ * ("**https://a.example/x**") ends before the closing markers, and its emphasis takes the markers out of the text around
+ * it (linkEmphasis), for the link to be drawn in it (Emphasis.svelte).
  */
 export function parseTextSegments(text: string) {
 	const segments: { type: "text" | "link"; content: string; emphasis?: string[] }[] = [];
-	// A markdown link, as renderMarkdown takes one, or else a bare link.
-	const linkRegex =
-		/\[[^\]\n]+\]\(https?:\/\/[^)\n]+\)|(?<!\]\()(?:https?|duvet):\/\/(?:[^\s<>()]|\([^\s<>()]*\))*(?:[^\s<>.,;:!?()\]}"']|\([^\s<>()]*\))/g;
 	let lastIndex = 0;
-	let match;
-	while ((match = linkRegex.exec(text)) !== null) {
-		if (match[0].startsWith("[")) continue;
+	for (const match of masked(text).matchAll(BARE_LINK)) {
 		const before = text.slice(lastIndex, match.index);
 		const emphasis = linkEmphasis(match[0], before);
 		const marks = emphasis.join("").length;
 		if (before.length > marks) segments.push({ type: "text", content: before.slice(0, before.length - marks) });
 		const content = match[0].slice(0, match[0].length - marks);
 		segments.push(emphasis.length > 0 ? { type: "link", content, emphasis } : { type: "link", content });
-		lastIndex = linkRegex.lastIndex;
+		lastIndex = match.index + match[0].length;
 	}
 	if (lastIndex < text.length) {
 		segments.push({ type: "text", content: text.slice(lastIndex) });

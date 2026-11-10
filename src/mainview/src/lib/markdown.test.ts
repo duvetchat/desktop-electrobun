@@ -426,6 +426,24 @@ describe("a bare link", () => {
 		]);
 	});
 
+	// #249: a URL in inline code was a bare link, with the code's closing backtick, and the code never rendered.
+	test("isn't one in code, which renders as code", () => {
+		for (const text of [
+			"`https://a.example/x`",
+			"see `https://a.example/x` now",
+			"```\nhttps://a.example/x\n```",
+			"```js\nfetch('https://a.example/x');\n```",
+		]) {
+			expect(parseTextSegments(text)).toEqual([{ type: "text", content: text }]);
+		}
+		expect(renderMarkdown("`https://a.example/x`")).toBe('<code class="msg-inline-code">https://a.example/x</code>');
+		// Code right after a link is the code's, as the renderer takes code out first.
+		expect(parseTextSegments("https://a.example/`x` y")).toEqual([
+			{ type: "link", content: "https://a.example/" },
+			{ type: "text", content: "`x` y" },
+		]);
+	});
+
 	// #221: a link can end with a * or a _, so the closing marker of emphasis around a bare link was the link's: it
 	// opened a URL ending in the marker, and the emphasis never closed.
 	describe("with emphasis around it", () => {
