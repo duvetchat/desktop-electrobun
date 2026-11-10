@@ -2,14 +2,13 @@
 	import { CircleAlert as AlertIcon, ExternalLink as ExternalLinkIcon, FileText as FileIcon } from "@lucide/svelte";
 	import { SvelteSet } from "svelte/reactivity";
 	import ComponentSelect from "$lib/components/ComponentSelect.svelte";
-	import Emphasis from "$lib/components/Emphasis.svelte";
 	import SpoilerCover from "$lib/components/SpoilerCover.svelte";
 	import { webUrl } from "$lib/urls";
 	import { FetchError, getApiError } from "$lib/api/api";
 	import type { ComponentUse } from "$lib/api/interactions";
 	import { getHostURL } from "$lib/common/common";
 	import { renderEmoji } from "$lib/emoji";
-	import { parseTextSegments, renderMarkdown, type CustomEmojiMap } from "$lib/markdown";
+	import { renderMarkdown, type CustomEmojiMap } from "$lib/markdown";
 	import { roomNames } from "$lib/stores.svelte";
 	import { formatFileSize } from "$lib/utils/format";
 	import {
@@ -170,17 +169,7 @@
 		</div>
 	{:else if c.type === ComponentType.TextDisplay}
 		<div class="min-w-0 wrap-break-word text-zinc-200 select-text">
-			{#each parseTextSegments(c.content ?? "") as segment}
-				{#if segment.type === "link"}
-					<Emphasis marks={segment.emphasis}>
-						<a href={segment.content} target="_blank" rel="noopener noreferrer" class="text-stone-300 hover:underline"
-							>{segment.content}</a
-						>
-					</Emphasis>
-				{:else}
-					{@html renderMarkdown(segment.content, false, mentionMap, customEmojiMap, $roomNames)}
-				{/if}
-			{/each}
+			{@html renderMarkdown(c.content ?? "", false, mentionMap, customEmojiMap, $roomNames, {})}
 		</div>
 	{:else if c.type === ComponentType.Thumbnail}
 		{@render thumbnail(c)}

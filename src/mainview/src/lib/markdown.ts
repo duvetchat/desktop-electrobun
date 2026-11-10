@@ -2,7 +2,7 @@ import { renderEmoji } from "./emoji";
 import { createHighlighter, type Highlighter } from "shiki";
 import { getHostURL, isUuid } from "$lib/common/common";
 import { CUSTOM_EMOJI_CLASS, retryEmojis } from "$lib/emoji-retry";
-import { linkEmphasis } from "$lib/urls";
+import { cardLink, linkEmphasis, parseDuvetLink, type DuvetLink } from "$lib/urls";
 
 export interface CustomEmojiMap {
 	[id: string]: { name: string; attachment_id: string };
@@ -360,14 +360,70 @@ function masked(text: string): string {
 const BARE_LINK =
 	/(?<!\]\()(?:https?|duvet):\/\/(?:[^\s<>()\x00\x01]|\([^\s<>()\x00\x01]*\))*(?:[^\s<>.,;:!?()\]}"'\x00\x01]|\([^\s<>()\x00\x01]*\))/g;
 
+// Where the bare links of text are, as [start, end] pairs, in order. text has what the renderer takes out first filled
+// in, or in its placeholders. A link wrapped in emphasis ("**https://a.example/x**") ends before the closing markers
+// (linkEmphasis), which the inline rules then read around it.
+function linkSpans(text: string): [number, number][] {
+	return [...text.matchAll(BARE_LINK)].map((m) => {
+		const marks = linkEmphasis(m[0], text.slice(0, m.index)).join("").length;
+		return [m.index, m.index + m[0].length - marks];
+	});
+}
+
+/**
+ * How renderMarkdown draws a text's bare links, which are text without it: an http(s) one as a link, and a duvet:// one,
+ * which nothing here opens, as text. With duvet, Duvet's own links on duvet.chat or ownOrigin's host (parseDuvetLink,
+ * read as cardLink reads them, as the cards under the text are) are drawn as MessageText takes their clicks: a message's
+ * as a chip of its room, which names its space (spaceName), and an invite's as a button.
+ */
+export interface LinkDrawing {
+	duvet?: { ownOrigin: string; spaceName: (spaceId: string) => string | undefined };
+}
+
+function linkHtml(url: string, drawing: LinkDrawing, roomNames?: Record<string, string>): string {
+	const own = drawing.duvet;
+	const card = own ? cardLink(url) : "";
+	const duvet = own ? parseDuvetLink(card, own.ownOrigin) : null;
+	// What follows the card's link in the bare link is text, as the card reads the link without it.
+	if (own && duvet) return duvetLinkHtml(duvet, card, own.spaceName, roomNames) + escapeHtml(url.slice(card.length));
+	if (!/^https?:\/\//.test(url)) return escapeHtml(url);
+	return `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer" class="msg-bare-link text-stone-300 hover:underline">${escapeHtml(url)}</a>`;
+}
+
+// One of Duvet's own links: a message's as a chip of its room, an invite's as a button with the link. What it opens is
+// in its data, which MessageText reads; the IDs are UUIDs (parseDuvetLink), and an invite's code is escaped.
+function duvetLinkHtml(
+	link: DuvetLink,
+	text: string,
+	spaceName: (spaceId: string) => string | undefined,
+	roomNames?: Record<string, string>,
+): string {
+	if ("message" in link) {
+		const { spaceId, roomId, messageId, conversationId } = link.message;
+		const room = conversationId ? "Direct Message" : (roomNames?.[roomId] ?? "unknown");
+		const space = conversationId ? "" : (spaceName(spaceId) ?? "Unknown Space");
+		const data = conversationId
+			? `data-conversation="${conversationId}" data-message="${messageId}"`
+			: `data-space="${spaceId}" data-room="${roomId}" data-message="${messageId}"`;
+		return `<button type="button" class="msg-duvet-link mx-0.5 inline-flex cursor-pointer items-center gap-1 rounded border border-zinc-600/50 bg-zinc-700/70 px-1.5 py-0.5 align-middle text-zinc-300 transition-colors hover:bg-zinc-600/80 hover:text-white" ${data} title="${escapeHtml(`${space} › #${room}`)}"><span class="text-xs text-zinc-400">#</span><span class="text-xs font-medium">${escapeHtml(room)}</span><svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="shrink-0 text-zinc-400"><path d="m9 18 6-6-6-6"/></svg></button>`;
+	}
+	const data = "bot" in link ? `data-bot="${link.bot}"` : `data-invite="${escapeHtml(link.code)}"`;
+	return `<button type="button" class="msg-duvet-link cursor-pointer text-stone-300 hover:underline" ${data}>${escapeHtml(text)}</button>`;
+}
+
+/**
+ * A text's markdown as HTML. With links, its bare links too (LinkDrawing), read with the rest of the text: emphasis
+ * around one wraps it, and the text after one goes on its line.
+ */
 export function renderMarkdown(
 	input: string,
 	large = false,
 	mentionMap?: Record<string, string>,
 	customEmojiMap?: CustomEmojiMap,
 	roomNames?: Record<string, string>,
+	links?: LinkDrawing,
 ): string {
-	return render(withoutMarks(input), large, mentionMap, customEmojiMap, roomNames);
+	return render(withoutMarks(input), large, mentionMap, customEmojiMap, roomNames, links);
 }
 
 function render(
@@ -376,6 +432,7 @@ function render(
 	mentionMap?: Record<string, string>,
 	customEmojiMap?: CustomEmojiMap,
 	roomNames?: Record<string, string>,
+	drawing?: LinkDrawing,
 ): string {
 	// ── 1. Extract fenced code blocks ─────────────────────────────────────────
 	const codeBlocks: string[] = [];
@@ -416,6 +473,21 @@ function render(
 		);
 		return `\x00L${links.length - 1}\x01`;
 	});
+
+	// ── 3½. Extract bare links, when they're drawn ──────────────────────────────
+	// After code and markdown links, so neither holds one, and before the lines and the inline rules, which then read
+	// the text around a link as one: emphasis wraps the link, and what follows it goes on its line.
+	const bare: string[] = [];
+	if (drawing) {
+		let taken = "";
+		let at = 0;
+		for (const [start, end] of linkSpans(s)) {
+			taken += `${s.slice(at, start)}\x00U${bare.length}\x01`;
+			bare.push(linkHtml(s.slice(start, end), drawing, roomNames));
+			at = end;
+		}
+		s = taken + s.slice(at);
+	}
 
 	// ── 4. Process line by line for block elements ─────────────────────────────
 	const lines = s.split("\n");
@@ -475,6 +547,7 @@ function render(
 	result = result.replace(/\x00L(\d+)\x01/g, (_, n) => links[+n]);
 	result = result.replace(/\x00B(\d+)\x01/g, (_, n) => codeBlocks[+n]);
 	result = result.replace(/\x00I(\d+)\x01/g, (_, n) => inlineCodes[+n]);
+	result = result.replace(/\x00U(\d+)\x01/g, (_, n) => bare[+n]);
 
 	return result;
 }
@@ -514,26 +587,18 @@ export function clickedMention(target: EventTarget | null): { chip: HTMLElement;
 }
 
 /**
- * Splits a message's text into its bare links (http(s) and duvet://, as BARE_LINK reads one) and the text between them,
- * for renderMarkdown. Not in code nor in a markdown link ([text](url)), its text or its URL, which the renderer takes out
- * first: they stay whole in the text around them, which renderMarkdown renders them in. A link wrapped in emphasis
- * ("**https://a.example/x**") ends before the closing markers, and its emphasis takes the markers out of the text around
- * it (linkEmphasis), for the link to be drawn in it (Emphasis.svelte).
+ * A text's bare links (http(s) and duvet://, as BARE_LINK reads one), as renderMarkdown draws them, and the text between
+ * them, as written. Not in code nor in a markdown link ([text](url)), its text or its URL, which the renderer takes out
+ * first: they stay whole in the text around them.
  */
 export function parseTextSegments(text: string) {
-	const segments: { type: "text" | "link"; content: string; emphasis?: string[] }[] = [];
-	let lastIndex = 0;
-	for (const match of masked(text).matchAll(BARE_LINK)) {
-		const before = text.slice(lastIndex, match.index);
-		const emphasis = linkEmphasis(match[0], before);
-		const marks = emphasis.join("").length;
-		if (before.length > marks) segments.push({ type: "text", content: before.slice(0, before.length - marks) });
-		const content = match[0].slice(0, match[0].length - marks);
-		segments.push(emphasis.length > 0 ? { type: "link", content, emphasis } : { type: "link", content });
-		lastIndex = match.index + match[0].length;
+	const segments: { type: "text" | "link"; content: string }[] = [];
+	let at = 0;
+	for (const [start, end] of linkSpans(masked(text))) {
+		if (start > at) segments.push({ type: "text", content: text.slice(at, start) });
+		segments.push({ type: "link", content: text.slice(start, end) });
+		at = end;
 	}
-	if (lastIndex < text.length) {
-		segments.push({ type: "text", content: text.slice(lastIndex) });
-	}
+	if (at < text.length) segments.push({ type: "text", content: text.slice(at) });
 	return segments;
 }
