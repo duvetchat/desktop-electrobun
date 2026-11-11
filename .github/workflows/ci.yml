@@ -46,5 +46,5 @@ jobs:
       # Each test file in a global object and module registry of its own: what one leaves can't reach another (#176).
       - run: bun test --isolate
         working-directory: src/mainview
-      # The Bun process's own: the Spotify reader's parsing.
-      - run: bun test src/bun
+      # The Bun process's own (the Spotify reader's parsing), and the Windows signing script's.
+      - run: bun test src/bun scripts

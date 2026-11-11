@@ -57,6 +57,12 @@ export default {
 		},
 		watchIgnore: ["dist/**"],
 	},
+	// Windows signing, when DUVET_SIGN_ARGS says how (README's "Signing the Windows build"): the app's executables and
+	// libraries once it's built, before Hutch packs them, then the installer.
+	scripts: {
+		postBuild: "scripts/sign-app.ts",
+		postPackage: "scripts/sign-installer.ts",
+	},
 	runtime: {
 		dragRegions: true,
 	},

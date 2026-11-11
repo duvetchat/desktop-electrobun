@@ -124,6 +124,20 @@ It rebuilds when a file changes. On Windows, Electrobun 2 waits for the running 
 bun run build:canary
 ```
 
+### Signing the Windows build
+
+A Windows build is signed when `DUVET_SIGN_ARGS` holds signtool's sign options as a JSON array. Hutch runs
+`scripts/sign-app.ts` once the app is built, before it packs it, and `scripts/sign-installer.ts` once the installer is
+made. With a certificate in the Windows certificate store:
+
+```powershell
+$env:DUVET_SIGN_ARGS = '["/sha1", "<thumbprint>", "/fd", "SHA256", "/tr", "http://timestamp.digicert.com", "/td", "SHA256"]'
+bun run build:canary
+```
+
+It takes the newest Windows SDK's `signtool.exe`, or the one `SIGNTOOL` names. Without `DUVET_SIGN_ARGS` the build
+isn't signed. A self-signed certificate is only good for testing: other computers don't trust it.
+
 ### Formatting
 
 ```bash

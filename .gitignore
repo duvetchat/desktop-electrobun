@@ -7,3 +7,5 @@ build
 artifacts
 # The Electrobun SDK and build state that `electrobun prepare` writes (Hutch's).
 .hutch/
+# Where Hutch writes the runner of a build hook (scripts/sign-*.ts) while it runs.
+.cottontail-tmp/

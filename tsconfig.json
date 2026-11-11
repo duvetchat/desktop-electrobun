@@ -15,5 +15,5 @@
 		"skipLibCheck": true,
 		"noEmit": true
 	},
-	"include": ["src/bun", "electrobun.config.ts"]
+	"include": ["src/bun", "scripts", "electrobun.config.ts"]
 }
