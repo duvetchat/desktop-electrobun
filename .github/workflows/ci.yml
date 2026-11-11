@@ -31,6 +31,10 @@ jobs:
         with:
           node-version: 26
       - run: bun install --frozen-lockfile
+      # The Electrobun SDK (electrobun prepare), which src/bun's types and lib/electrobun-rpc.ts's come from. Its build
+      # tool, Hutch, downloads it with Electrobun's runtime into the runner's ~/.hutch, once per Electrobun version.
+      # Before src/mainview's install, whose svelte-kit sync points electrobun/view at it (svelte.config.js).
+      - run: bun run devkit
       # Before the lint: its type-aware rules read src/mainview's packages and the
       # .svelte-kit/tsconfig.json that this install's svelte-kit sync writes.
       - run: bun install --frozen-lockfile
