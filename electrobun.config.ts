@@ -13,7 +13,7 @@ export default {
 	},
 	build: {
 		// Electrobun 2 can run the main process on another runtime (Cottontail, Zig, Rust, Go, Odin): ours is Bun's,
-		// the one Electrobun ships (1.4.4 with 2.0.5).
+		// the one Electrobun ships (1.4.4 with 2.0.6).
 		mainProcess: "bun",
 		bun: {
 			entrypoint: "src/bun/index.ts",
