@@ -136,6 +136,22 @@ describe("the web's notifier", () => {
 		expect(shown?.options.silent).toBe(false);
 	});
 
+	// Chrome on Android has Notification and grants it, but only a service worker shows one: the constructor throws.
+	test("says a notification didn't show when the browser won't make one from the page", async () => {
+		class Refusing {
+			static permission = "granted";
+			constructor() {
+				throw new TypeError("Failed to construct 'Notification': Illegal constructor.");
+			}
+		}
+		Object.assign(globalThis, { Notification: Refusing });
+		const shown = await webNotifier(() => {})
+			.show(notice("Hi"), null, true)
+			.catch(() => "threw");
+		Object.assign(globalThis, { Notification: FakeNotification });
+		expect(shown).toBe(false);
+	});
+
 	// The browser's permission can change in another tab or in the site's settings, without a reload.
 	test("can show one while the browser allows it, as it says each time", () => {
 		const notifier = webNotifier(() => {});

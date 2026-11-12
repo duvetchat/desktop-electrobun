@@ -66,7 +66,13 @@ export function webNotifier(open: (link: MessageLink) => void): SystemNotifier {
 				renotify: true,
 				silent,
 			};
-			const shown = new Notification(place ? `${notice.authorName} (${place})` : notice.authorName, options);
+			let shown: Notification;
+			try {
+				shown = new Notification(place ? `${notice.authorName} (${place})` : notice.authorName, options);
+			} catch {
+				// Chrome on Android grants the permission, but shows only a service worker's: Duvet's notice instead.
+				return false;
+			}
 			shown.onclick = () => {
 				window.focus();
 				open(notice.link);
