@@ -25,7 +25,7 @@ Object.assign(globalThis, {
 	Notification: FakeNotification,
 	window: { focus: () => focused++ },
 });
-const { desktopNotifier, noticeText, webNotifier } = await import("$lib/system-notifications");
+const { desktopNotifier, noticeText, openClicked, webNotifier } = await import("$lib/system-notifications");
 
 const ME = "01920000-0000-7000-8000-00000000b0b0";
 const ROOM = "01920000-0000-7000-8000-0000000005a1";
@@ -180,5 +180,33 @@ describe("the web's notifier", () => {
 		expect(focused - before).toBe(1);
 		expect(opened).toEqual([link]);
 		expect(shown?.closed).toBe(true);
+	});
+});
+
+// Bun keeps the message of the toast clicked last until a page takes it: a click can come before any page listens (a
+// Duvet the click started, its sign-in page, a reload), and the page takes it as it starts and on each click.
+describe("a toast's click", () => {
+	test("opens the message Bun kept, once", async () => {
+		let kept: typeof link | null = link;
+		const rpc = {
+			request: {
+				takeClickedMessage: async () => {
+					const taken = kept;
+					kept = null;
+					return taken;
+				},
+			},
+		};
+		const opened: unknown[] = [];
+		await openClicked(rpc, (taking) => opened.push(taking));
+		await openClicked(rpc, (taking) => opened.push(taking));
+		expect(opened).toEqual([link]);
+	});
+
+	test("opens nothing when Bun doesn't answer", async () => {
+		const opened: unknown[] = [];
+		const rpc = { request: { takeClickedMessage: () => Promise.reject(new Error("RPC request timed out.")) } };
+		await openClicked(rpc, (taking) => opened.push(taking));
+		expect(opened).toEqual([]);
 	});
 });

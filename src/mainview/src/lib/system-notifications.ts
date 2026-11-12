@@ -83,6 +83,18 @@ export function webNotifier(open: (link: MessageLink) => void): SystemNotifier {
 	};
 }
 
+/**
+ * Opens the message of the toast clicked last, which Bun keeps until a page takes it (src/bun/index.ts): a click can
+ * come before any page listens (a Duvet the click started, its sign-in page, a reload). Taken once, it opens once.
+ */
+export async function openClicked(
+	rpc: { request: { takeClickedMessage: () => Promise<MessageLink | null> } },
+	open: (link: MessageLink) => void,
+) {
+	const link = await rpc.request.takeClickedMessage().catch(() => null);
+	if (link) open(link);
+}
+
 // What a click on a notification opens a message with: the app page's, the latest one mounted.
 let opener: ((link: MessageLink) => void) | null = null;
 let wired = false;
@@ -104,6 +116,9 @@ export async function startSystemNotifications(open: (link: MessageLink) => void
 	wired = true;
 	const rpc = await getElectrobunRpc();
 	if (!rpc) return;
-	rpc.on.openMessage((link) => opener?.(link));
+	const openLatest = () => openClicked(rpc, (link) => opener?.(link));
+	// Bun says a toast was clicked; one clicked before this page listened is taken as it starts.
+	rpc.on.messageClicked(() => void openLatest());
 	setSystemNotifier(desktopNotifier(rpc));
+	void openLatest();
 }

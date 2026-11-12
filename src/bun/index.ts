@@ -56,6 +56,9 @@ type AppRPCSchema = {
 			// A message that notifies without the focus, on Windows (lib/system-notifications.ts): shown as a toast. The
 			// answer says whether it showed: one that didn't shows as Duvet's notice instead.
 			showNotification: { params: NotificationRequest; response: boolean };
+			// The message of the toast clicked last, kept until a page takes it: a click can come before any page listens
+			// (a Duvet the click started, its sign-in page, a reload). null for none.
+			takeClickedMessage: { params: void; response: NotificationLink | null };
 		};
 		messages: {
 			closeWindow: void;
@@ -82,8 +85,8 @@ type AppRPCSchema = {
 		};
 		messages: {
 			activityUpdate: ActivityPayload[] | null;
-			// A click on a notification: the message it opens.
-			openMessage: NotificationLink;
+			// A toast was clicked: its message is the page's to take (takeClickedMessage).
+			messageClicked: void;
 		};
 	};
 };
@@ -148,6 +151,11 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 	handlers: {
 		requests: {
 			showNotification: (request) => showToast(request),
+			takeClickedMessage: () => {
+				const link = clicked;
+				clicked = null;
+				return link;
+			},
 		},
 		messages: {
 			closeWindow: () => win.close(),
@@ -274,10 +282,9 @@ if (ipcHeldElsewhere) {
 // comes back over this channel's own pipe through the forwarder (notification-forwarder.ts), and opens its message.
 // DISENO-NOTIFICACIONES.md, section 8.
 
-// How long a click's message waits for the page, which a Duvet the click started is still loading.
-const OPEN_WAIT_MS = 60_000;
-
 let notifications: { toasts: Toasts; scheme: string } | null = null;
+// The message of the toast clicked last, until a page takes it (takeClickedMessage).
+let clicked: NotificationLink | null = null;
 
 if (currentOS === "win32") void startNotifications();
 
@@ -309,7 +316,7 @@ async function listenForClicks({ pipe, scheme }: NotificationIdentity) {
 						socket.terminate();
 						return;
 					}
-					for (const line of lines) void openClicked(line, scheme);
+					for (const line of lines) openClicked(line, scheme);
 				},
 			},
 		});
@@ -319,8 +326,8 @@ async function listenForClicks({ pipe, scheme }: NotificationIdentity) {
 }
 
 // A click's link, from anything on this computer that can reach the pipe: only the channel's own open link with its
-// IDs (parseOpenUrl) brings the window to the front and opens the message.
-async function openClicked(line: string, scheme: string) {
+// IDs (parseOpenUrl) brings the window to the front, and its message is kept for the page, which is told.
+function openClicked(line: string, scheme: string) {
 	let sent: unknown;
 	try {
 		const msg: unknown = JSON.parse(line);
@@ -331,14 +338,10 @@ async function openClicked(line: string, scheme: string) {
 	}
 	const link = typeof sent === "string" ? parseOpenUrl(sent, scheme) : null;
 	if (!link) return;
+	clicked = link;
 	if (win.isMinimized()) win.unminimize();
 	win.focus();
-	try {
-		await within(webviewReady, OPEN_WAIT_MS);
-	} catch {
-		return;
-	}
-	rpc.send.openMessage(link);
+	rpc.send.messageClicked();
 }
 
 // A toast for the webview's request, with the author's photo when it's had within a moment (notification-avatars.ts),
