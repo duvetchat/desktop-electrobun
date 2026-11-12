@@ -33,8 +33,9 @@ const CLASSES = "HKCU\\Software\\Classes";
 
 /**
  * The reg commands that register a channel's sender (its AUMID's name and icon) and its link's handler: the forwarder,
- * run by the app's own Bun under conhost --headless, so no window shows (DISENO-NOTIFICACIONES.md, section 8). All in
- * the user's hive, so no administrator is asked.
+ * run by the app's own Bun under conhost --headless, so no window shows (DISENO-NOTIFICACIONES.md, section 8). conhost
+ * goes by its full path, which Windows expands as it runs the handler (REG_EXPAND_SZ), not by a name the search order
+ * finds. All in the user's hive, so no administrator is asked.
  */
 export function registryCommands(
 	id: NotificationIdentity,
@@ -42,14 +43,30 @@ export function registryCommands(
 ): string[][] {
 	const sender = `${CLASSES}\\AppUserModelId\\${id.aumid}`;
 	const scheme = `${CLASSES}\\${id.scheme}`;
-	const handler = `conhost.exe --headless "${paths.execPath}" "${paths.forwarderPath}" "%1"`;
+	const handler = `%SystemRoot%\\System32\\conhost.exe --headless "${paths.execPath}" "${paths.forwarderPath}" "%1"`;
 	return [
 		["reg", "add", sender, "/v", "DisplayName", "/t", "REG_SZ", "/d", id.displayName, "/f"],
 		["reg", "add", sender, "/v", "IconUri", "/t", "REG_SZ", "/d", paths.iconPath, "/f"],
 		["reg", "add", scheme, "/ve", "/t", "REG_SZ", "/d", `URL:${id.displayName}`, "/f"],
 		["reg", "add", scheme, "/v", "URL Protocol", "/t", "REG_SZ", "/d", "", "/f"],
-		["reg", "add", `${scheme}\\shell\\open\\command`, "/ve", "/t", "REG_SZ", "/d", handler, "/f"],
+		["reg", "add", `${scheme}\\shell\\open\\command`, "/ve", "/t", "REG_EXPAND_SZ", "/d", handler, "/f"],
 	];
+}
+
+/**
+ * Starts a channel's notifications: it listens for clicks first, so one that comes while the registry is written
+ * reaches this Duvet, where the forwarder, finding no pipe, would start another, then sets them up. False when the
+ * set-up failed, which is logged: no toasts show then, and earlier toasts' clicks still open their message.
+ */
+export async function listenAndSetUp(listen: () => Promise<void>, setUp: () => Promise<unknown>): Promise<boolean> {
+	await listen();
+	try {
+		await setUp();
+		return true;
+	} catch (err) {
+		console.error("[Notifications] Can't set them up:", err);
+		return false;
+	}
 }
 
 /**

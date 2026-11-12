@@ -1,5 +1,5 @@
-import { describe, expect, test } from "bun:test";
-import { toastXml, type ToastContent } from "./toasts";
+import { describe, expect, spyOn, test } from "bun:test";
+import { Toasts, toastXml, type ToastContent } from "./toasts";
 
 // A message's toast as the webview asks for it: who, what, where, the photo's cached file, and the link that opens it.
 const base: ToastContent = {
@@ -71,5 +71,94 @@ describe("a toast's XML", () => {
 		expect(xml).toContain('<audio src="ms-winsoundevent:Notification.IM"/>');
 		expect(xml).not.toContain("silent");
 		expect(wellFormed(xml)).toBe(true);
+	});
+});
+
+// The helper's process as a test drives it: the lines Toasts writes, and what the helper answers, says, or how it ends.
+function fakeHelper() {
+	const written: string[] = [];
+	const streams: ReadableStreamDefaultController<Uint8Array>[] = [];
+	const stream = () => new ReadableStream<Uint8Array>({ start: (c) => void streams.push(c) });
+	let end: (code: number) => void = () => {};
+	const helper = {
+		stdin: { write: (chunk: string) => void written.push(...chunk.split("\n").filter(Boolean)), flush() {} },
+		stdout: stream(),
+		stderr: stream(),
+		exited: new Promise<number>((resolve) => (end = resolve)),
+		exitCode: null as number | null,
+		kill: () => exit(1),
+	};
+	const [stdout, stderr] = streams;
+	const say = (to: ReadableStreamDefaultController<Uint8Array> | undefined, line: string) =>
+		to?.enqueue(new TextEncoder().encode(`${line}\n`));
+	function exit(code: number) {
+		helper.exitCode = code;
+		stdout?.close();
+		stderr?.close();
+		end(code);
+	}
+	return {
+		helper,
+		tags: () => written.map((line) => /"tag":"([^"]*)"/.exec(line)?.[1]),
+		answer: (answer: { tag: string; error?: string }) => say(stdout, JSON.stringify(answer)),
+		complain: (line: string) => say(stderr, line),
+		exit,
+	};
+}
+
+// What the webview asks Bun for answers whether the toast showed: one that didn't gets Duvet's notice instead.
+describe("the toast helper", () => {
+	test("answers whether each toast showed, as the helper says, and logs why one didn't", async () => {
+		const fake = fakeHelper();
+		const toasts = new Toasts("com.duvet.test", () => fake.helper);
+		const errors = spyOn(console, "error").mockImplementation(() => {});
+		const first = toasts.show({ ...base, tag: "m1" });
+		const second = toasts.show({ ...base, tag: "m2" });
+		fake.answer({ tag: "m2", error: "The notification platform is unavailable." });
+		fake.answer({ tag: "m1" });
+		const shown = [await first, await second];
+		const logged = errors.mock.calls.map((call) => call.join(" "));
+		errors.mockRestore();
+		expect(shown).toEqual([true, false]);
+		expect(fake.tags()).toEqual(["m1", "m2"]);
+		expect(logged.some((line) => line.includes("The notification platform is unavailable."))).toBe(true);
+	});
+
+	test("a toast it doesn't answer in time, or that it ended before answering, didn't show", async () => {
+		const fake = fakeHelper();
+		const toasts = new Toasts("com.duvet.test", () => fake.helper, 20);
+		const errors = spyOn(console, "error").mockImplementation(() => {});
+		const late = await toasts.show({ ...base, tag: "late" });
+		const cut = toasts.show({ ...base, tag: "cut" });
+		fake.exit(1);
+		const ended = await cut;
+		errors.mockRestore();
+		expect([late, ended]).toEqual([false, false]);
+	});
+
+	// PowerShell says why it can't run there: Constrained Language Mode refusing the WinRT types, say.
+	test("logs what the helper says on stderr, and that it ended", async () => {
+		const fake = fakeHelper();
+		const toasts = new Toasts("com.duvet.test", () => fake.helper, 20);
+		const errors = spyOn(console, "error").mockImplementation(() => {});
+		const shown = toasts.show(base);
+		fake.complain("Cannot find type [Windows.UI.Notifications.ToastNotificationManager]");
+		fake.exit(1);
+		await shown;
+		await Bun.sleep(10);
+		const logged = errors.mock.calls.map((call) => call.join(" "));
+		errors.mockRestore();
+		expect(logged.some((line) => line.includes("Cannot find type [Windows.UI.Notifications"))).toBe(true);
+		expect(logged.some((line) => line.includes("ended") && line.includes("1"))).toBe(true);
+	});
+
+	test("a helper that can't start shows nothing", async () => {
+		const errors = spyOn(console, "error").mockImplementation(() => {});
+		const toasts = new Toasts("com.duvet.test", () => {
+			throw new Error("powershell.exe was not found");
+		});
+		const shown = await toasts.show(base);
+		errors.mockRestore();
+		expect(shown).toBe(false);
 	});
 });

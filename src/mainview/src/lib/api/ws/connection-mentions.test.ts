@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, spyOn, test } from "bun:test";
 import { get } from "svelte/store";
 import { openGateway, type TestGateway } from "$lib/api/ws/test-gateway";
+import type { MentionNotice } from "$lib/mention-notices";
 
 // A mention plays the notification sound through an <audio>, which Bun has none of.
 class FakeAudio {
@@ -272,6 +273,17 @@ describe("ordinary messages", () => {
 		deliver("SPACE_UPDATE", { id: SPACE, name: "Alpha", default_notifications: 1 });
 	}
 	const others = { room_id: ROOM, author_id: ANA, user: ana, created_at: T, updated_at: T };
+	// A system notifier that keeps what it's asked to show, and answers whether it showed it.
+	const systemNotifier = (
+		keep: (notice: MentionNotice, place: string | null, silent: boolean) => void,
+		shows = true,
+	) => ({
+		available: () => true,
+		show: async (notice: MentionNotice, place: string | null, silent: boolean) => {
+			keep(notice, place, silent);
+			return shows;
+		},
+	});
 
 	test("in a room at every message, someone's message shows a notice and plays the sound once", async () => {
 		onDefaults();
@@ -335,7 +347,7 @@ describe("ordinary messages", () => {
 		onDefaults();
 		notificationLevels.set({ [ROOM]: 0 });
 		const system: [string, string | null][] = [];
-		setSystemNotifier({ available: () => true, show: (notice, place) => system.push([notice.id, place]) });
+		setSystemNotifier(systemNotifier((notice, place) => system.push([notice.id, place])));
 		stores.pageVisible.set(false);
 		const before = FakeAudio.plays;
 		roomMessage(88, ROOM, "Plain words");
@@ -354,7 +366,7 @@ describe("ordinary messages", () => {
 	test("a DM notifies every message by default, and its system notification names no place", async () => {
 		onDefaults();
 		const system: [string, string | null][] = [];
-		setSystemNotifier({ available: () => true, show: (notice, place) => system.push([notice.id, place]) });
+		setSystemNotifier(systemNotifier((notice, place) => system.push([notice.id, place])));
 		stores.pageVisible.set(false);
 		deliver("DM_MESSAGE_CREATE", {
 			id: message(90),
@@ -377,7 +389,7 @@ describe("ordinary messages", () => {
 		onDefaults();
 		notificationLevels.set({ [ROOM]: 0 });
 		const system: [string, boolean][] = [];
-		setSystemNotifier({ available: () => true, show: (notice, _, silent) => system.push([notice.id, silent]) });
+		setSystemNotifier(systemNotifier((notice, _, silent) => system.push([notice.id, silent])));
 		stores.pageVisible.set(false);
 		const before = FakeAudio.plays;
 		Object.defineProperty(navigator, "userActivation", { value: { hasBeenActive: false }, configurable: true });
@@ -400,7 +412,7 @@ describe("ordinary messages", () => {
 		onDefaults();
 		notificationLevels.set({ [ROOM]: 0 });
 		const silent: boolean[] = [];
-		setSystemNotifier({ available: () => true, show: (_notice, _place, quiet) => silent.push(quiet) });
+		setSystemNotifier(systemNotifier((_notice, _place, quiet) => silent.push(quiet)));
 		stores.pageVisible.set(false);
 		const volume = audioStore.get("notification");
 		audioStore.set("notification", 0);
@@ -420,7 +432,7 @@ describe("ordinary messages", () => {
 		onDefaults();
 		notificationLevels.set({ [ROOM]: 0 });
 		const system: string[] = [];
-		setSystemNotifier({ available: () => false, show: (notice) => system.push(notice.id) });
+		setSystemNotifier({ ...systemNotifier((notice) => system.push(notice.id)), available: () => false });
 		stores.pageVisible.set(false);
 		roomMessage(95, ROOM, "Plain words");
 		await settle();
@@ -428,6 +440,35 @@ describe("ordinary messages", () => {
 		stores.pageVisible.set(true);
 		expect(system).toEqual([]);
 		expect(noticeOf(message(95))).toBeDefined();
+	});
+
+	// Bun couldn't show the toast (its helper failed, or toasts weren't set up), or a browser refused the notification.
+	test("a system notification that couldn't show leaves Duvet's notice instead", async () => {
+		onDefaults();
+		notificationLevels.set({ [ROOM]: 0 });
+		setSystemNotifier(systemNotifier(() => {}, false));
+		stores.pageVisible.set(false);
+		roomMessage(96, ROOM, "Plain words");
+		await settle();
+		setSystemNotifier(null);
+		stores.pageVisible.set(true);
+		expect(noticeOf(message(96))).toBeDefined();
+	});
+
+	test("... unless its message was deleted while the system tried", async () => {
+		onDefaults();
+		notificationLevels.set({ [ROOM]: 0 });
+		let answer: (shown: boolean) => void = () => {};
+		setSystemNotifier({ available: () => true, show: () => new Promise<boolean>((resolve) => (answer = resolve)) });
+		stores.pageVisible.set(false);
+		roomMessage(97, ROOM, "Plain words");
+		await settle();
+		deliver("MESSAGE_DELETE", { id: message(97), room_id: ROOM });
+		answer(false);
+		await settle();
+		setSystemNotifier(null);
+		stores.pageVisible.set(true);
+		expect(noticeOf(message(97))).toBeUndefined();
 	});
 
 	// One browser tab notifies (lib/tab-notifications.ts): this one, without the focus, while another holds the lock.

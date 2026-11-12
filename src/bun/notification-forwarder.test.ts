@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { mkdtemp, rm } from "node:fs/promises";
+import { copyFile, link, mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { forward, forwarderScript } from "./notification-forwarder";
@@ -77,17 +77,25 @@ describe("the notification link forwarder", () => {
 		expect(duvet.lines.map((l) => JSON.parse(l))).toEqual([{ type: "OPEN_URL", url: URL_SENT }]);
 	});
 
-	// Bun puts the processes it starts on Windows in a job that ends them with it: the launcher goes through
-	// cmd /c start, whose child is out of that job, so the Duvet it starts outlives the forwarder.
-	test.skipIf(process.platform !== "win32")("the Duvet it starts outlives it, on Windows", async () => {
-		const pipe = pipePath();
-		const out = join(dir, "outlived.txt");
-		const script = join(dir, "notification-forwarder-start.js");
-		const launcher = ["cmd.exe", "/d", "/c", "start", "", "/b", process.execPath, stubPath, pipe, out];
-		await Bun.write(script, forwarderScript(pipe, launcher));
-		const proc = Bun.spawn([process.execPath, script, URL_SENT], { stdout: "ignore", stderr: "ignore" });
-		expect(await proc.exited).toBe(0);
-		await until(() => Bun.file(out).size > 0);
-		expect(JSON.parse(await Bun.file(out).text())).toEqual({ type: "OPEN_URL", url: URL_SENT });
-	});
+	// Bun puts the processes it starts on Windows in a job that ends them with it, unless they're detached. A launcher
+	// that went through cmd /c start, out of that job too, broke on a folder named with & or ^: cmd split the path.
+	test.skipIf(process.platform !== "win32")(
+		"the Duvet it starts outlives it, whatever its folder, on Windows",
+		async () => {
+			const pipe = pipePath();
+			const out = join(dir, "outlived.txt");
+			const script = join(dir, "notification-forwarder-start.js");
+			const folder = join(dir, "R&D ^1");
+			await mkdir(folder, { recursive: true });
+			const launcherExe = join(folder, "launcher.exe");
+			await link(process.execPath, launcherExe).catch(() => copyFile(process.execPath, launcherExe));
+			const launcher = [launcherExe, stubPath, pipe, out];
+			await Bun.write(script, forwarderScript(pipe, launcher));
+			const proc = Bun.spawn([process.execPath, script, URL_SENT], { stdout: "ignore", stderr: "ignore" });
+			expect(await proc.exited).toBe(0);
+			await until(() => Bun.file(out).size > 0);
+			expect(JSON.parse(await Bun.file(out).text())).toEqual({ type: "OPEN_URL", url: URL_SENT });
+		},
+		15_000,
+	);
 });
