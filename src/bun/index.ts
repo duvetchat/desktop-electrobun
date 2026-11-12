@@ -274,9 +274,8 @@ if (currentOS === "win32") void startNotifications();
 
 async function startNotifications() {
 	const identity = notificationIdentity(channel);
-	// The installed app's launcher, through cmd /c start: Bun ends what it starts with it, and the Duvet a click starts
-	// must outlive the forwarder.
-	const launcher = ["cmd.exe", "/d", "/c", "start", "", join(dirname(process.execPath), "launcher.exe")];
+	// The installed app's launcher, which the forwarder starts detached, so it outlives it (notification-forwarder.ts).
+	const launcher = [join(dirname(process.execPath), "launcher.exe")];
 	try {
 		await setUpNotifications(channel, Utils.paths.userData, forwarderScript(identity.pipe, launcher));
 	} catch (err) {

@@ -27,10 +27,13 @@ describe("the registry's keys", () => {
 		forwarderPath: String.raw`C:\Users\A B\AppData\Local\com.duvet.desktop\dev\notification-forwarder.js`,
 	};
 	const commands = registryCommands(notificationIdentity("dev"), paths);
-	const value = (key: string, name: string | null) => {
-		const command = commands.find((c) => c[2] === key && (name === null ? c[3] === "/ve" : c[4] === name));
-		return command?.[command.indexOf("/d") + 1];
+	// What the command that sets a value (name, or the key's default for null) gives after a flag: /d its data, /t its type.
+	const field = (key: string, name: string | null, flag: "/d" | "/t") => {
+		const found = commands.find((c) => c[2] === key && (name === null ? c[3] === "/ve" : c[4] === name));
+		return found?.[found.indexOf(flag) + 1];
 	};
+	const value = (key: string, name: string | null) => field(key, name, "/d");
+	const typeOf = (key: string, name: string | null) => field(key, name, "/t");
 
 	test("the sender, by its AUMID: its name and its icon, in the user's own hive", () => {
 		const key = String.raw`HKCU\Software\Classes\AppUserModelId\com.duvet.desktop.dev`;
@@ -38,12 +41,15 @@ describe("the registry's keys", () => {
 		expect(value(key, "IconUri")).toBe(paths.iconPath);
 	});
 
+	// conhost by its full path, which Windows expands as it runs the handler: a bare name is left to the search order.
 	test("the link's scheme, whose handler runs the forwarder without a window, every path quoted", () => {
 		const key = String.raw`HKCU\Software\Classes\duvet-dev`;
 		expect(value(key, "URL Protocol")).toBe("");
-		expect(value(String.raw`${key}\shell\open\command`, null)).toBe(
-			`conhost.exe --headless "${paths.execPath}" "${paths.forwarderPath}" "%1"`,
+		const handler = String.raw`${key}\shell\open\command`;
+		expect(value(handler, null)).toBe(
+			String.raw`%SystemRoot%\System32\conhost.exe --headless "${paths.execPath}" "${paths.forwarderPath}" "%1"`,
 		);
+		expect(typeOf(handler, null)).toBe("REG_EXPAND_SZ");
 	});
 
 	test("every command is reg add, forced", () => {
