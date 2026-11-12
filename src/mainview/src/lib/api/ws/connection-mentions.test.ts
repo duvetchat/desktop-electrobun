@@ -14,6 +14,7 @@ Object.assign(globalThis, { Audio: FakeAudio });
 
 const stores = await import("$lib/stores.svelte");
 const { mentionNotices } = await import("$lib/mention-notices");
+const { notificationLevels } = await import("$lib/notification-levels");
 
 const ME = "01920000-0000-7000-8000-00000000b0b0";
 const ANA = "01920000-0000-7000-8000-00000000a11c";
@@ -198,5 +199,47 @@ describe("a mention's notice", () => {
 		stores.activeDMConvId.set(null);
 		await settle();
 		expect(noticeOf(message(21))).toBeUndefined();
+	});
+});
+
+// A level of nothing silences a place: no notice and no sound for its mentions. A room's own level wins over its
+// Space's, and a Space's default of every message still notifies mentions.
+describe("a level of nothing", () => {
+	test("silences a Space's rooms, but not a room of it with a level of its own", async () => {
+		notificationLevels.set({ [SPACE]: 2 });
+		roomMessage(70);
+		mention(70);
+		notificationLevels.set({ [SPACE]: 2, [ROOM]: 1 });
+		roomMessage(71);
+		mention(71);
+		await settle();
+		notificationLevels.set({});
+		expect(noticeOf(message(70))).toBeUndefined();
+		expect(noticeOf(message(71))).toBeDefined();
+	});
+
+	test("silences a conversation", async () => {
+		notificationLevels.set({ [GROUP]: 2 });
+		deliver("DM_MESSAGE_CREATE", {
+			id: message(72),
+			conversation_id: GROUP,
+			author_id: ANA,
+			content: `In the group, <@${ME}>`,
+			user: ana,
+			created_at: T,
+			updated_at: T,
+		});
+		deliver("DM_MENTION_CREATE", { message_id: message(72), conversation_id: GROUP, author_id: ANA });
+		await settle();
+		notificationLevels.set({});
+		expect(noticeOf(message(72))).toBeUndefined();
+	});
+
+	test("a Space whose default is every message still notifies its mentions", async () => {
+		deliver("SPACE_UPDATE", { id: SPACE, name: "Alpha", default_notifications: 0 });
+		roomMessage(73);
+		mention(73);
+		await settle();
+		expect(noticeOf(message(73))).toBeDefined();
 	});
 });

@@ -473,9 +473,29 @@ export interface SpaceUpdateEvent {
 	banner: string | null;
 	locale: string | null;
 	icon: string | null;
+	default_notifications?: NotificationLevel;
 	created_at: string;
 	updated_at: string;
 	deleted_at: string | null;
+}
+
+/** What the user is told of in a place: 0 every message, 1 only mentions, 2 nothing. */
+export type NotificationLevel = 0 | 1 | 2;
+/** What a notification setting is about: 0 a Space, 1 a room, 2 a conversation. */
+export type NotificationTarget = 0 | 1 | 2;
+
+/** One of the user's own notification levels (GET /api/users/@me/notification-settings). */
+export interface NotificationSetting {
+	target_id: string;
+	target_type: NotificationTarget;
+	level: NotificationLevel;
+}
+
+/** NOTIFICATION_SETTINGS_UPDATE: one of the user's levels changed; null once the place follows its default again. */
+export interface NotificationSettingsUpdateEvent {
+	target_id: string;
+	target_type: NotificationTarget;
+	level: NotificationLevel | null;
 }
 
 export interface GatewayRoom {
@@ -595,6 +615,8 @@ export interface GatewaySpace {
 	icon?: string | null;
 	owner_id: string;
 	locale: string | null;
+	/** What members are told of until they choose (0 every message, 1 only mentions); an older gateway leaves it out. */
+	default_notifications?: NotificationLevel;
 	member?: GatewayMember;
 	member_roles: Partial<Record<string, string[]>>;
 	room_overwrites: GatewayRoomOverwrite[];
@@ -1050,6 +1072,7 @@ export type GatewayEventPayload =
 	| { type: "DM_MENTION_CREATE"; data: DMMentionCreateEvent }
 	| { type: "USER_UPDATE"; data: UserUpdateEvent }
 	| { type: "USER_STATUS_UPDATE"; data: GatewayUserStatusUpdate }
+	| { type: "NOTIFICATION_SETTINGS_UPDATE"; data: NotificationSettingsUpdateEvent }
 	| { type: "USER_ACTIVITY_UPDATE"; data: UserActivityUpdateEvent }
 	| { type: "VOICE_STATE_UPDATE"; data: VoiceStateUpdateEvent }
 	| { type: "VOICE_SESSION_REPLACED"; data: VoiceSessionReplacedEvent }

@@ -2,15 +2,8 @@
 	import { ContextMenu } from "bits-ui";
 	import type { Tab } from "$lib/types";
 	import { tabDragData, tabFromDragData, tabNews, tabTitle, tabTooltip } from "$lib/pane";
-	import {
-		conversations,
-		currentUser,
-		gatewaySpaces,
-		mentionCounts,
-		typingNow,
-		unreadChannels,
-		unreadConversations,
-	} from "$lib/stores.svelte";
+	import { conversations, currentUser, gatewaySpaces, typingNow } from "$lib/stores.svelte";
+	import { shownMentionCounts, shownUnreadConversations, shownUnreadRooms } from "$lib/notification-marks";
 	import { typingSentence } from "$lib/typing";
 	import TabIcon from "$lib/components/TabIcon.svelte";
 
@@ -179,7 +172,7 @@
 			<ContextMenu.Trigger>
 				{#snippet child({ props })}
 					{@const isActive = tab.channelId === activeTabId}
-					{@const news = tabNews(tab, $unreadChannels, $unreadConversations, $mentionCounts)}
+					{@const news = tabNews(tab, $shownUnreadRooms, $shownUnreadConversations, $shownMentionCounts)}
 					{@const mentions = news.mentions}
 					{@const unread = !isActive && news.unread}
 					{@const title = tabTitle(tab, $conversations, $currentUser?.id)}

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { untrack } from "svelte";
 	import { toast } from "$lib/stores/toast.svelte";
 	import { confirmAction } from "$lib/stores/confirm.svelte";
 	import { getApiError } from "$lib/api/api";
@@ -111,6 +112,8 @@
 	let ovName = $state("");
 	let ovDescription = $state("");
 	let ovLocale = $state("");
+	// What members are notified of until they choose: every message (0) or only mentions (1), the API's default.
+	let ovDefaultNotifications = $state<0 | 1>(1);
 	let ovSaving = $state(false);
 	// How far a new icon or banner has gone up while the overview saves, in percent, which Save says: null until its
 	// first progress, and while nothing new goes up.
@@ -139,16 +142,23 @@
 			(ovName !== (space.name ?? "") ||
 				ovDescription !== (space.description ?? "") ||
 				ovLocale !== (space.locale ?? "") ||
+				ovDefaultNotifications !== (space.default_notifications ?? 1) ||
 				pendingIcon !== null ||
 				pendingBanner !== null),
 	);
 
+	// The form takes the Space's values as it opens and for another Space, not with every new object of the Space: each
+	// presence update makes one (USER_STATUS_UPDATE), which wiped what the owner was typing or choosing.
+	const formSpaceId = $derived(open ? (space?.id ?? null) : null);
 	$effect(() => {
-		if (open && space) {
+		if (!formSpaceId) return;
+		untrack(() => {
+			if (!space) return;
 			ovName = space.name ?? "";
 			ovDescription = space.description ?? "";
 			ovLocale = space.locale ?? "";
-		}
+			ovDefaultNotifications = space.default_notifications === 0 ? 0 : 1;
+		});
 	});
 
 	async function handleSaveOverview() {
@@ -166,6 +176,10 @@
 					icon: pendingIcon instanceof File ? pendingIcon : undefined,
 					remove_banner: pendingBanner === "remove",
 					remove_icon: pendingIcon === "remove",
+					// Only when changed: a gateway from before it leaves the field out, read as only mentions, and saving the
+					// name alone mustn't overwrite a stored «every message».
+					default_notifications:
+						ovDefaultNotifications !== (space?.default_notifications ?? 1) ? ovDefaultNotifications : undefined,
 				},
 				uploading ? { onUploadProgress: (sent, total) => (ovUploadPercent = uploadPercent(sent, total)) } : undefined,
 			);
@@ -191,6 +205,7 @@
 								locale: updated.locale,
 								banner: updated.banner,
 								icon: updated.icon,
+								default_notifications: updated.default_notifications ?? s.default_notifications,
 							}
 						: s,
 				),
@@ -1467,6 +1482,21 @@
 										maxlength={4}
 										class="h-10 w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 text-sm text-zinc-100 outline-none focus:ring-1 focus:ring-stone-500"
 									/>
+								</label>
+
+								<!-- What members are notified of until they choose, in the Space's menu -->
+								<label class="block space-y-1.5">
+									<span class="text-xs font-semibold tracking-wide text-zinc-400 uppercase">Default Notifications</span>
+									<select
+										bind:value={ovDefaultNotifications}
+										class="h-10 w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 text-sm text-zinc-100 outline-none focus:ring-1 focus:ring-stone-500"
+									>
+										<option value={0}>All messages</option>
+										<option value={1}>Only mentions</option>
+									</select>
+									<span class="block text-xs text-zinc-500"
+										>Members are notified of this until they choose for themselves.</span
+									>
 								</label>
 
 								<!-- Save -->
