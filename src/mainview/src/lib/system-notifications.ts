@@ -26,23 +26,25 @@ export function noticeText(notice: MentionNotice, rooms: Record<string, string>)
 }
 
 /** The desktop app's notifier (Windows): each notification goes to the Bun process as a toast (src/bun/toasts.ts),
- * grouped by its chat. */
+ * grouped by its chat. Bun answers whether it showed; a request that fails is a toast that didn't. */
 export function desktopNotifier(rpc: {
-	send: { showNotification: (request: NotificationRequest) => void };
+	request: { showNotification: (request: NotificationRequest) => Promise<boolean> };
 }): SystemNotifier {
 	return {
 		available: () => true,
 		show: (notice, place, silent) =>
-			rpc.send.showNotification({
-				id: notice.id,
-				chatId: notice.link.conversationId || notice.link.roomId,
-				title: notice.authorName,
-				text: noticeText(notice, get(roomNames)),
-				place,
-				avatarUrl: notice.authorAvatar,
-				link: notice.link,
-				silent,
-			}),
+			rpc.request
+				.showNotification({
+					id: notice.id,
+					chatId: notice.link.conversationId || notice.link.roomId,
+					title: notice.authorName,
+					text: noticeText(notice, get(roomNames)),
+					place,
+					avatarUrl: notice.authorAvatar,
+					link: notice.link,
+					silent,
+				})
+				.catch(() => false),
 	};
 }
 
@@ -55,7 +57,7 @@ export function desktopNotifier(rpc: {
 export function webNotifier(open: (link: MessageLink) => void): SystemNotifier {
 	return {
 		available: () => Notification.permission === "granted",
-		show: (notice, place, silent) => {
+		show: async (notice, place, silent) => {
 			// renotify, which TypeScript's DOM types leave out: Chromium's, the browsers others ignore.
 			const options: NotificationOptions & { renotify: boolean } = {
 				body: noticeText(notice, get(roomNames)),
@@ -64,14 +66,33 @@ export function webNotifier(open: (link: MessageLink) => void): SystemNotifier {
 				renotify: true,
 				silent,
 			};
-			const shown = new Notification(place ? `${notice.authorName} (${place})` : notice.authorName, options);
+			let shown: Notification;
+			try {
+				shown = new Notification(place ? `${notice.authorName} (${place})` : notice.authorName, options);
+			} catch {
+				// Chrome on Android grants the permission, but shows only a service worker's: Duvet's notice instead.
+				return false;
+			}
 			shown.onclick = () => {
 				window.focus();
 				open(notice.link);
 				shown.close();
 			};
+			return true;
 		},
 	};
+}
+
+/**
+ * Opens the message of the toast clicked last, which Bun keeps until a page takes it (src/bun/index.ts): a click can
+ * come before any page listens (a Duvet the click started, its sign-in page, a reload). Taken once, it opens once.
+ */
+export async function openClicked(
+	rpc: { request: { takeClickedMessage: () => Promise<MessageLink | null> } },
+	open: (link: MessageLink) => void,
+) {
+	const link = await rpc.request.takeClickedMessage().catch(() => null);
+	if (link) open(link);
 }
 
 // What a click on a notification opens a message with: the app page's, the latest one mounted.
@@ -95,6 +116,9 @@ export async function startSystemNotifications(open: (link: MessageLink) => void
 	wired = true;
 	const rpc = await getElectrobunRpc();
 	if (!rpc) return;
-	rpc.on.openMessage((link) => opener?.(link));
+	const openLatest = () => openClicked(rpc, (link) => opener?.(link));
+	// Bun says a toast was clicked; one clicked before this page listened is taken as it starts.
+	rpc.on.messageClicked(() => void openLatest());
 	setSystemNotifier(desktopNotifier(rpc));
+	void openLatest();
 }

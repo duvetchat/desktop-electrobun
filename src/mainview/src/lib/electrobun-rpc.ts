@@ -31,14 +31,18 @@ export interface ActivityPayload {
 
 export type AppRPCSchema = {
 	bun: {
-		requests: {};
+		requests: {
+			// A toast for a message that notifies (src/bun/toasts.ts): whether it showed.
+			showNotification: { params: NotificationRequest; response: boolean };
+			// The message of the toast clicked last, which Bun keeps until a page takes it; null for none.
+			takeClickedMessage: { params: void; response: MessageLink | null };
+		};
 		messages: {
 			closeWindow: void;
 			minimizeWindow: void;
 			maximizeWindow: void;
 			openExternal: { url: string };
 			setSpotifyActivity: { enabled: boolean };
-			showNotification: NotificationRequest;
 		};
 	};
 	webview: {
@@ -48,8 +52,8 @@ export type AppRPCSchema = {
 		};
 		messages: {
 			activityUpdate: ActivityPayload[] | null;
-			// A click on a notification: the message it opens.
-			openMessage: MessageLink;
+			// A toast was clicked: its message is Bun's to take (takeClickedMessage).
+			messageClicked: void;
 		};
 	};
 };
@@ -61,11 +65,14 @@ export type AppRPCClient = {
 		maximizeWindow: () => void;
 		openExternal: (params: { url: string }) => void;
 		setSpotifyActivity: (params: { enabled: boolean }) => void;
-		showNotification: (params: NotificationRequest) => void;
+	};
+	request: {
+		showNotification: (params: NotificationRequest) => Promise<boolean>;
+		takeClickedMessage: () => Promise<MessageLink | null>;
 	};
 	on: {
 		activityUpdate: (handler: (data: ActivityPayload[] | null) => void) => void;
-		openMessage: (handler: (link: MessageLink) => void) => void;
+		messageClicked: (handler: () => void) => void;
 	};
 };
 
@@ -76,7 +83,7 @@ export function isElectrobunWindow() {
 }
 
 const activityListeners: ((data: ActivityPayload[] | null) => void)[] = [];
-const openMessageListeners: ((link: MessageLink) => void)[] = [];
+const clickListeners: (() => void)[] = [];
 
 async function createRpcClient(): Promise<AppRPCClient | null> {
 	// Only the top frame. Electrobun injects its preload into subframes on some platforms (macOS WKUserScript
@@ -87,6 +94,8 @@ async function createRpcClient(): Promise<AppRPCClient | null> {
 
 	const { Electroview } = await import("electrobun/view");
 	const rpc = Electroview.defineRPC<AppRPCSchema>({
+		// A toast's answer waits for its photo (2 s at most) and its helper's (10 s at most); Electrobun's default is 1 s.
+		maxRequestTime: 15_000,
 		handlers: {
 			requests: {
 				// Bun has no image decoder; this page has a canvas (lib/activity-thumbnail.ts).
@@ -98,8 +107,8 @@ async function createRpcClient(): Promise<AppRPCClient | null> {
 						listener(data);
 					}
 				},
-				openMessage: (link: MessageLink) => {
-					for (const listener of openMessageListeners) listener(link);
+				messageClicked: () => {
+					for (const listener of clickListeners) listener();
 				},
 			},
 		},
@@ -110,12 +119,16 @@ async function createRpcClient(): Promise<AppRPCClient | null> {
 
 	const client: AppRPCClient = {
 		send: rpc.send,
+		request: {
+			showNotification: (params) => rpc.request.showNotification(params),
+			takeClickedMessage: () => rpc.request.takeClickedMessage(),
+		},
 		on: {
 			activityUpdate: (handler) => {
 				activityListeners.push(handler);
 			},
-			openMessage: (handler) => {
-				openMessageListeners.push(handler);
+			messageClicked: (handler) => {
+				clickListeners.push(handler);
 			},
 		},
 	};

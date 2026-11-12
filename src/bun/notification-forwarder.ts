@@ -26,7 +26,8 @@ export async function forward(pipe: string, launcher: string[], url: string): Pr
 	} catch {
 		// No Duvet listens: one starts.
 	}
-	if (launcher.length > 0) Bun.spawn(launcher, { stdio: ["ignore", "ignore", "ignore"] }).unref();
+	// Detached: on Windows, Bun ends with it the processes it starts in its job, and a detached one is out of it.
+	if (launcher.length > 0) Bun.spawn(launcher, { stdio: ["ignore", "ignore", "ignore"], detached: true }).unref();
 	const end = Date.now() + 60_000;
 	while (Date.now() < end) {
 		await Bun.sleep(500);

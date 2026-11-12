@@ -1,4 +1,4 @@
-import type { Subprocess } from "bun";
+import { readLines } from "./lines";
 import toastScript from "./toast.ps1" with { type: "text" };
 
 /** A message's notification on Windows, as the webview asks for it (lib/system-notifications.ts). */
@@ -72,60 +72,111 @@ export function toastXml(t: ToastContent): string {
 }
 
 const RESTART_WAIT = 60_000;
+/** How long a toast waits for the helper's answer: the first one waits for PowerShell to start, a second or so. */
+const ANSWER_MS = 10_000;
+
+/** What Toasts needs of the helper's process, as Bun.spawn gives it; tests hand it their own. */
+export interface ToastHelper {
+	stdin: { write(chunk: string): unknown; flush(): unknown };
+	stdout: ReadableStream<Uint8Array>;
+	stderr: ReadableStream<Uint8Array>;
+	exited: Promise<number>;
+	exitCode: number | null;
+	kill(): void;
+}
+
+const spawnHelper = (argv: string[]): ToastHelper =>
+	Bun.spawn(argv, { stdin: "pipe", stdout: "pipe", stderr: "pipe", windowsHide: true });
+
+// A helper that runs, and its toasts still waiting for its answer, by tag.
+interface Running {
+	proc: ToastHelper;
+	waiting: Map<string, (shown: boolean) => void>;
+}
 
 /**
  * Shows toasts through a Windows PowerShell that stays open (toast.ps1), as the Spotify reader runs one: the first toast
  * takes about a second, as PowerShell starts, and the next a few milliseconds. One that ended starts again with the
- * next toast, once a minute at most.
+ * next toast, once a minute at most. What it writes to stderr, and its end, are logged.
  */
 export class Toasts {
-	#proc: Subprocess<"pipe", "pipe", "ignore"> | null = null;
+	#helper: Running | null = null;
 	#started = 0;
 	readonly #aumid: string;
+	readonly #start: (argv: string[]) => ToastHelper;
+	readonly #answerMs: number;
 
-	constructor(aumid: string) {
+	constructor(aumid: string, start = spawnHelper, answerMs = ANSWER_MS) {
 		this.#aumid = aumid;
+		this.#start = start;
+		this.#answerMs = answerMs;
 	}
 
-	show(t: ToastContent) {
-		const proc = this.#running();
-		if (!proc) return;
-		proc.stdin.write(`${JSON.stringify({ xml: toastXml(t), tag: t.tag, group: t.group })}\n`);
-		void proc.stdin.flush();
+	/** Shows a toast, and answers whether it showed, as the helper says within its time: false without an answer. */
+	show(t: ToastContent): Promise<boolean> {
+		const helper = this.#running();
+		if (!helper) return Promise.resolve(false);
+		return new Promise((resolve) => {
+			const done = (shown: boolean) => {
+				clearTimeout(timer);
+				helper.waiting.delete(t.tag);
+				resolve(shown);
+			};
+			const timer = setTimeout(() => done(false), this.#answerMs);
+			helper.waiting.set(t.tag, done);
+			try {
+				helper.proc.stdin.write(`${JSON.stringify({ xml: toastXml(t), tag: t.tag, group: t.group })}\n`);
+				Promise.resolve(helper.proc.stdin.flush()).catch(() => done(false));
+			} catch {
+				done(false);
+			}
+		});
 	}
 
 	stop() {
-		this.#proc?.kill();
-		this.#proc = null;
+		this.#helper?.proc.kill();
+		this.#helper = null;
 	}
 
-	#running() {
-		if (this.#proc && this.#proc.exitCode === null) return this.#proc;
-		if (this.#proc && Date.now() - this.#started < RESTART_WAIT) return null;
+	#running(): Running | null {
+		if (this.#helper && this.#helper.proc.exitCode === null) return this.#helper;
+		if (this.#helper && Date.now() - this.#started < RESTART_WAIT) return null;
 		this.#started = Date.now();
 		const command = Buffer.from(`$aumid = '${this.#aumid}'\n${toastScript}`, "utf16le").toString("base64");
-		const proc = Bun.spawn(["powershell.exe", "-NoLogo", "-NoProfile", "-NonInteractive", "-EncodedCommand", command], {
-			stdin: "pipe",
-			stdout: "pipe",
-			stderr: "ignore",
-			windowsHide: true,
+		let proc: ToastHelper;
+		try {
+			proc = this.#start(["powershell.exe", "-NoLogo", "-NoProfile", "-NonInteractive", "-EncodedCommand", command]);
+		} catch (err) {
+			console.error("[Notifications] The toast helper can't start:", err);
+			return null;
+		}
+		const helper: Running = { proc, waiting: new Map() };
+		this.#helper = helper;
+		void readLines(proc.stdout, (line) => heard(helper, line));
+		void readLines(proc.stderr, (line) => console.error("[Notifications] The toast helper says:", line));
+		void proc.exited.then((code) => {
+			// The toasts it hadn't answered didn't show.
+			for (const done of [...helper.waiting.values()]) done(false);
+			if (this.#helper === helper) console.error(`[Notifications] The toast helper ended (exit code ${code})`);
 		});
-		this.#proc = proc;
-		void logFailures(proc.stdout);
-		return proc;
+		return helper;
 	}
 }
 
-// What toast.ps1 says of a toast that failed, logged.
-async function logFailures(stdout: ReadableStream<Uint8Array>) {
-	const decoder = new TextDecoder();
-	let buffered = "";
-	for await (const chunk of stdout) {
-		buffered += decoder.decode(chunk, { stream: true });
-		for (let i = buffered.indexOf("\n"); i >= 0; i = buffered.indexOf("\n")) {
-			const line = buffered.slice(0, i).trim();
-			buffered = buffered.slice(i + 1);
-			if (line) console.error("[Notifications] A toast failed:", line);
-		}
+// An answer of toast.ps1's: {"tag"} for a toast it showed, {"tag", "error"} for one it couldn't, which is logged.
+function heard(helper: Running, line: string) {
+	let answer: unknown;
+	try {
+		answer = JSON.parse(line);
+	} catch {
+		answer = null;
 	}
+	if (typeof answer !== "object" || answer === null || !("tag" in answer) || typeof answer.tag !== "string") {
+		console.error("[Notifications] The toast helper says:", line);
+		return;
+	}
+	const said = "error" in answer ? answer.error : null;
+	const error = said == null ? null : typeof said === "string" ? said : JSON.stringify(said);
+	if (error !== null) console.error("[Notifications] A toast failed:", error);
+	helper.waiting.get(answer.tag)?.(error === null);
 }

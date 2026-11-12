@@ -25,7 +25,7 @@ Object.assign(globalThis, {
 	Notification: FakeNotification,
 	window: { focus: () => focused++ },
 });
-const { desktopNotifier, noticeText, webNotifier } = await import("$lib/system-notifications");
+const { desktopNotifier, noticeText, openClicked, webNotifier } = await import("$lib/system-notifications");
 
 const ME = "01920000-0000-7000-8000-00000000b0b0";
 const ROOM = "01920000-0000-7000-8000-0000000005a1";
@@ -71,11 +71,21 @@ describe("a notification's text", () => {
 });
 
 describe("the desktop's notifier", () => {
-	test("asks the Bun process for a toast: who, what, where, the photo, the message it opens, and its sound", () => {
+	// Bun answers whether the toast showed.
+	const bun = (answer: () => Promise<boolean>) => {
 		const sent: unknown[] = [];
-		const notifier = desktopNotifier({ send: { showNotification: (request: unknown) => sent.push(request) } });
+		const showNotification = (request: unknown) => {
+			sent.push(request);
+			return answer();
+		};
+		return { sent, rpc: { request: { showNotification } } };
+	};
+
+	test("asks the Bun process for a toast: who, what, where, the photo, the message it opens, and its sound", async () => {
+		const { sent, rpc } = bun(async () => true);
+		const notifier = desktopNotifier(rpc);
 		expect(notifier.available()).toBe(true);
-		notifier.show(notice("Hello"), "#general · Alpha", true);
+		expect(await notifier.show(notice("Hello"), "#general · Alpha", true)).toBe(true);
 		expect(sent).toEqual([
 			{
 				id: link.messageId,
@@ -90,12 +100,18 @@ describe("the desktop's notifier", () => {
 		]);
 	});
 
-	test("groups a conversation's toasts by the conversation, and asks one for the system's sound", () => {
-		const sent: unknown[] = [];
-		const notifier = desktopNotifier({ send: { showNotification: (request: unknown) => sent.push(request) } });
+	test("groups a conversation's toasts by the conversation, and asks one for the system's sound", async () => {
+		const { sent, rpc } = bun(async () => true);
 		const dm = { spaceId: "", roomId: "", messageId: "m", conversationId: "dm-1" };
-		notifier.show(notice("Hi", { link: dm }), null, false);
+		await desktopNotifier(rpc).show(notice("Hi", { link: dm }), null, false);
 		expect(sent).toEqual([expect.objectContaining({ chatId: "dm-1", silent: false })]);
+	});
+
+	// A toast that didn't show (Bun couldn't set them up, its helper failed, the request timed out) gets Duvet's notice.
+	test("says a toast didn't show when Bun says so, or doesn't answer", async () => {
+		expect(await desktopNotifier(bun(async () => false).rpc).show(notice("Hi"), null, true)).toBe(false);
+		const timedOut = bun(() => Promise.reject(new Error("RPC request timed out.")));
+		expect(await desktopNotifier(timedOut.rpc).show(notice("Hi"), null, true)).toBe(false);
 	});
 });
 
@@ -118,6 +134,22 @@ describe("the web's notifier", () => {
 		webNotifier(() => {}).show(notice("Hello"), null, false);
 		const [shown] = FakeNotification.made.splice(0);
 		expect(shown?.options.silent).toBe(false);
+	});
+
+	// Chrome on Android has Notification and grants it, but only a service worker shows one: the constructor throws.
+	test("says a notification didn't show when the browser won't make one from the page", async () => {
+		class Refusing {
+			static permission = "granted";
+			constructor() {
+				throw new TypeError("Failed to construct 'Notification': Illegal constructor.");
+			}
+		}
+		Object.assign(globalThis, { Notification: Refusing });
+		const shown = await webNotifier(() => {})
+			.show(notice("Hi"), null, true)
+			.catch(() => "threw");
+		Object.assign(globalThis, { Notification: FakeNotification });
+		expect(shown).toBe(false);
 	});
 
 	// The browser's permission can change in another tab or in the site's settings, without a reload.
@@ -148,5 +180,33 @@ describe("the web's notifier", () => {
 		expect(focused - before).toBe(1);
 		expect(opened).toEqual([link]);
 		expect(shown?.closed).toBe(true);
+	});
+});
+
+// Bun keeps the message of the toast clicked last until a page takes it: a click can come before any page listens (a
+// Duvet the click started, its sign-in page, a reload), and the page takes it as it starts and on each click.
+describe("a toast's click", () => {
+	test("opens the message Bun kept, once", async () => {
+		let kept: typeof link | null = link;
+		const rpc = {
+			request: {
+				takeClickedMessage: async () => {
+					const taken = kept;
+					kept = null;
+					return taken;
+				},
+			},
+		};
+		const opened: unknown[] = [];
+		await openClicked(rpc, (taking) => opened.push(taking));
+		await openClicked(rpc, (taking) => opened.push(taking));
+		expect(opened).toEqual([link]);
+	});
+
+	test("opens nothing when Bun doesn't answer", async () => {
+		const opened: unknown[] = [];
+		const rpc = { request: { takeClickedMessage: () => Promise.reject(new Error("RPC request timed out.")) } };
+		await openClicked(rpc, (taking) => opened.push(taking));
+		expect(opened).toEqual([]);
 	});
 });

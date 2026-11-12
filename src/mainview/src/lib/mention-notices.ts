@@ -113,6 +113,10 @@ function settle(messageId: string) {
 	if (settled.length > SETTLED_KEPT) settled.shift();
 }
 
+// The messages deleted since they came, the newest few hundred: a notice claimed for the system's notification, which
+// couldn't show it, doesn't show for one of them either.
+const dropped: string[] = [];
+
 /** Takes a message's one notice for the system's notification instead, unless it has had one, or was deleted. Returns
  * whether it's taken. */
 export function claimNotice(messageId: string): boolean {
@@ -124,9 +128,19 @@ export function claimNotice(messageId: string): boolean {
 /** Shows a mention's notice, unless its message has had one, or was deleted. Returns whether it shows. */
 export function showMentionNotice(notice: MentionNotice): boolean {
 	if (!claimNotice(notice.id)) return false;
+	push(notice);
+	return true;
+}
+
+/** Shows the notice of a message claimed for the system's notification (claimNotice), which couldn't show it, unless
+ * the message was deleted meanwhile. */
+export function showClaimedNotice(notice: MentionNotice) {
+	if (!dropped.includes(notice.id)) push(notice);
+}
+
+function push(notice: MentionNotice) {
 	mentionNotices.update((shown) => [notice, ...shown].slice(0, NOTICES_SHOWN));
 	setTimeout(() => dismissMentionNotice(notice.id), NOTICE_TIME);
-	return true;
 }
 
 /** Takes a message's notice away: its time is up, or it was clicked or closed. */
@@ -139,5 +153,7 @@ export function dismissMentionNotice(messageId: string) {
 /** A message was deleted: its notice goes, and one still on its way (its message being fetched) never shows. */
 export function dropMentionNotice(messageId: string) {
 	settle(messageId);
+	dropped.push(messageId);
+	if (dropped.length > SETTLED_KEPT) dropped.shift();
 	dismissMentionNotice(messageId);
 }

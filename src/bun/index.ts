@@ -5,7 +5,12 @@ import { ActivityImages, IpcActivities, PAGE_WAIT_MS, within } from "./activity-
 import { avatarForToast } from "./notification-avatars";
 import { forwarderScript } from "./notification-forwarder";
 import { openUrl, parseOpenUrl, type NotificationLink } from "./notification-links";
-import { notificationIdentity, setUpNotifications, type NotificationIdentity } from "./notification-setup";
+import {
+	listenAndSetUp,
+	notificationIdentity,
+	setUpNotifications,
+	type NotificationIdentity,
+} from "./notification-setup";
 import { Toasts } from "./toasts";
 import { startSpotifyReader, type SpotifyActivity } from "./spotify";
 import { ipcHeld, ipcPath, LineReader } from "./ipc";
@@ -47,7 +52,14 @@ const url = await getMainViewUrl();
 
 type AppRPCSchema = {
 	bun: {
-		requests: {};
+		requests: {
+			// A message that notifies without the focus, on Windows (lib/system-notifications.ts): shown as a toast. The
+			// answer says whether it showed: one that didn't shows as Duvet's notice instead.
+			showNotification: { params: NotificationRequest; response: boolean };
+			// The message of the toast clicked last, kept until a page takes it: a click can come before any page listens
+			// (a Duvet the click started, its sign-in page, a reload). null for none.
+			takeClickedMessage: { params: void; response: NotificationLink | null };
+		};
 		messages: {
 			closeWindow: void;
 			minimizeWindow: void;
@@ -63,8 +75,6 @@ type AppRPCSchema = {
 			stopWindowResize: void;
 			// The webview's "Share what I listen to on Spotify" setting, sent at start and on each change.
 			setSpotifyActivity: { enabled: boolean };
-			// A message that notifies without the focus, on Windows (lib/system-notifications.ts): shown as a toast.
-			showNotification: NotificationRequest;
 		};
 	};
 	webview: {
@@ -75,8 +85,8 @@ type AppRPCSchema = {
 		};
 		messages: {
 			activityUpdate: ActivityPayload[] | null;
-			// A click on a notification: the message it opens.
-			openMessage: NotificationLink;
+			// A toast was clicked: its message is the page's to take (takeClickedMessage).
+			messageClicked: void;
 		};
 	};
 };
@@ -139,6 +149,14 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 	// The webview's answer to activityImage, which decodes an image of up to 4 MiB; Electrobun's default is 1 s.
 	maxRequestTime: 10_000,
 	handlers: {
+		requests: {
+			showNotification: (request) => showToast(request),
+			takeClickedMessage: () => {
+				const link = clicked;
+				clicked = null;
+				return link;
+			},
+		},
 		messages: {
 			closeWindow: () => win.close(),
 			minimizeWindow: () => win.minimize(),
@@ -151,7 +169,6 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 				markWebviewReady();
 				setSpotifyActivity(enabled);
 			},
-			showNotification: (request) => void showToast(request),
 		},
 	},
 });
@@ -265,26 +282,21 @@ if (ipcHeldElsewhere) {
 // comes back over this channel's own pipe through the forwarder (notification-forwarder.ts), and opens its message.
 // DISENO-NOTIFICACIONES.md, section 8.
 
-// How long a click's message waits for the page, which a Duvet the click started is still loading.
-const OPEN_WAIT_MS = 60_000;
-
 let notifications: { toasts: Toasts; scheme: string } | null = null;
+// The message of the toast clicked last, until a page takes it (takeClickedMessage).
+let clicked: NotificationLink | null = null;
 
 if (currentOS === "win32") void startNotifications();
 
 async function startNotifications() {
 	const identity = notificationIdentity(channel);
-	// The installed app's launcher, through cmd /c start: Bun ends what it starts with it, and the Duvet a click starts
-	// must outlive the forwarder.
-	const launcher = ["cmd.exe", "/d", "/c", "start", "", join(dirname(process.execPath), "launcher.exe")];
-	try {
-		await setUpNotifications(channel, Utils.paths.userData, forwarderScript(identity.pipe, launcher));
-	} catch (err) {
-		console.error("[Notifications] Can't set them up:", err);
-		return;
-	}
-	notifications = { toasts: new Toasts(identity.aumid), scheme: identity.scheme };
-	await listenForClicks(identity);
+	// The installed app's launcher, which the forwarder starts detached, so it outlives it (notification-forwarder.ts).
+	const launcher = [join(dirname(process.execPath), "launcher.exe")];
+	const ready = await listenAndSetUp(
+		() => listenForClicks(identity),
+		() => setUpNotifications(channel, Utils.paths.userData, forwarderScript(identity.pipe, launcher)),
+	);
+	if (ready) notifications = { toasts: new Toasts(identity.aumid), scheme: identity.scheme };
 }
 
 // The channel's pipe, where the forwarder hands a click's link. Another Duvet of this channel that runs keeps it, as
@@ -304,7 +316,7 @@ async function listenForClicks({ pipe, scheme }: NotificationIdentity) {
 						socket.terminate();
 						return;
 					}
-					for (const line of lines) void openClicked(line, scheme);
+					for (const line of lines) openClicked(line, scheme);
 				},
 			},
 		});
@@ -314,8 +326,8 @@ async function listenForClicks({ pipe, scheme }: NotificationIdentity) {
 }
 
 // A click's link, from anything on this computer that can reach the pipe: only the channel's own open link with its
-// IDs (parseOpenUrl) brings the window to the front and opens the message.
-async function openClicked(line: string, scheme: string) {
+// IDs (parseOpenUrl) brings the window to the front, and its message is kept for the page, which is told.
+function openClicked(line: string, scheme: string) {
 	let sent: unknown;
 	try {
 		const msg: unknown = JSON.parse(line);
@@ -326,26 +338,24 @@ async function openClicked(line: string, scheme: string) {
 	}
 	const link = typeof sent === "string" ? parseOpenUrl(sent, scheme) : null;
 	if (!link) return;
+	clicked = link;
 	if (win.isMinimized()) win.unminimize();
 	win.focus();
-	try {
-		await within(webviewReady, OPEN_WAIT_MS);
-	} catch {
-		return;
-	}
-	rpc.send.openMessage(link);
+	rpc.send.messageClicked();
 }
 
-// A toast for the webview's request, with the author's photo when it's had within a moment (notification-avatars.ts).
-async function showToast(request: NotificationRequest) {
-	if (!notifications) return;
+// A toast for the webview's request, with the author's photo when it's had within a moment (notification-avatars.ts),
+// and whether it showed, as the helper answers (toasts.ts).
+async function showToast(request: NotificationRequest): Promise<boolean> {
+	// No toasts until they're set up, nor when that failed: the webview shows Duvet's notice instead.
+	if (!notifications) return false;
 	const avatarPath = request.avatarUrl
 		? await avatarForToast(request.avatarUrl, {
 				inline: (avatarUrl) => avatarImages.inline(avatarUrl),
 				dir: join(Utils.paths.userCache, "notification-avatars"),
 			})
 		: null;
-	notifications.toasts.show({
+	return notifications.toasts.show({
 		tag: request.id,
 		group: request.chatId,
 		title: request.title,
