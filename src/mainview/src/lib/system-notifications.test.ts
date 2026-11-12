@@ -71,11 +71,21 @@ describe("a notification's text", () => {
 });
 
 describe("the desktop's notifier", () => {
-	test("asks the Bun process for a toast: who, what, where, the photo, the message it opens, and its sound", () => {
+	// Bun answers whether the toast showed.
+	const bun = (answer: () => Promise<boolean>) => {
 		const sent: unknown[] = [];
-		const notifier = desktopNotifier({ send: { showNotification: (request: unknown) => sent.push(request) } });
+		const showNotification = (request: unknown) => {
+			sent.push(request);
+			return answer();
+		};
+		return { sent, rpc: { request: { showNotification } } };
+	};
+
+	test("asks the Bun process for a toast: who, what, where, the photo, the message it opens, and its sound", async () => {
+		const { sent, rpc } = bun(async () => true);
+		const notifier = desktopNotifier(rpc);
 		expect(notifier.available()).toBe(true);
-		notifier.show(notice("Hello"), "#general · Alpha", true);
+		expect(await notifier.show(notice("Hello"), "#general · Alpha", true)).toBe(true);
 		expect(sent).toEqual([
 			{
 				id: link.messageId,
@@ -90,12 +100,18 @@ describe("the desktop's notifier", () => {
 		]);
 	});
 
-	test("groups a conversation's toasts by the conversation, and asks one for the system's sound", () => {
-		const sent: unknown[] = [];
-		const notifier = desktopNotifier({ send: { showNotification: (request: unknown) => sent.push(request) } });
+	test("groups a conversation's toasts by the conversation, and asks one for the system's sound", async () => {
+		const { sent, rpc } = bun(async () => true);
 		const dm = { spaceId: "", roomId: "", messageId: "m", conversationId: "dm-1" };
-		notifier.show(notice("Hi", { link: dm }), null, false);
+		await desktopNotifier(rpc).show(notice("Hi", { link: dm }), null, false);
 		expect(sent).toEqual([expect.objectContaining({ chatId: "dm-1", silent: false })]);
+	});
+
+	// A toast that didn't show (Bun couldn't set them up, its helper failed, the request timed out) gets Duvet's notice.
+	test("says a toast didn't show when Bun says so, or doesn't answer", async () => {
+		expect(await desktopNotifier(bun(async () => false).rpc).show(notice("Hi"), null, true)).toBe(false);
+		const timedOut = bun(() => Promise.reject(new Error("RPC request timed out.")));
+		expect(await desktopNotifier(timedOut.rpc).show(notice("Hi"), null, true)).toBe(false);
 	});
 });
 

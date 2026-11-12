@@ -7,6 +7,7 @@
 // Windows gives no track ID or cover URL, so the activity carries neither on any system: clients show Spotify's
 // logo and link a search for the song.
 import { clip } from "./activities";
+import { readLines } from "./lines";
 import smtcScript from "./spotify-smtc.ps1" with { type: "text" };
 
 export interface SpotifyTrack {
@@ -221,24 +222,6 @@ function readWindows(report: (track: SpotifyTrack | null) => void): () => void {
 		clearTimeout(restart);
 		proc?.kill();
 	};
-}
-
-async function readLines(stream: ReadableStream<Uint8Array>, onLine: (line: string) => void) {
-	const decoder = new TextDecoder();
-	let buffered = "";
-	for await (const chunk of stream) {
-		buffered += decoder.decode(chunk, { stream: true });
-		let newline = buffered.indexOf("\n");
-		while (newline >= 0) {
-			const line = buffered.slice(0, newline).trim();
-			buffered = buffered.slice(newline + 1);
-			if (line) onLine(line);
-			newline = buffered.indexOf("\n");
-		}
-	}
-	// The last line may have no newline: PowerShell's error, say, which says why the reader ended.
-	const last = (buffered + decoder.decode()).trim();
-	if (last) onLine(last);
 }
 
 function poll(read: () => Promise<SpotifyTrack | null>, report: (track: SpotifyTrack | null) => void): () => void {

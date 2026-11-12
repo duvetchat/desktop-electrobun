@@ -26,23 +26,25 @@ export function noticeText(notice: MentionNotice, rooms: Record<string, string>)
 }
 
 /** The desktop app's notifier (Windows): each notification goes to the Bun process as a toast (src/bun/toasts.ts),
- * grouped by its chat. */
+ * grouped by its chat. Bun answers whether it showed; a request that fails is a toast that didn't. */
 export function desktopNotifier(rpc: {
-	send: { showNotification: (request: NotificationRequest) => void };
+	request: { showNotification: (request: NotificationRequest) => Promise<boolean> };
 }): SystemNotifier {
 	return {
 		available: () => true,
 		show: (notice, place, silent) =>
-			rpc.send.showNotification({
-				id: notice.id,
-				chatId: notice.link.conversationId || notice.link.roomId,
-				title: notice.authorName,
-				text: noticeText(notice, get(roomNames)),
-				place,
-				avatarUrl: notice.authorAvatar,
-				link: notice.link,
-				silent,
-			}),
+			rpc.request
+				.showNotification({
+					id: notice.id,
+					chatId: notice.link.conversationId || notice.link.roomId,
+					title: notice.authorName,
+					text: noticeText(notice, get(roomNames)),
+					place,
+					avatarUrl: notice.authorAvatar,
+					link: notice.link,
+					silent,
+				})
+				.catch(() => false),
 	};
 }
 
@@ -55,7 +57,7 @@ export function desktopNotifier(rpc: {
 export function webNotifier(open: (link: MessageLink) => void): SystemNotifier {
 	return {
 		available: () => Notification.permission === "granted",
-		show: (notice, place, silent) => {
+		show: async (notice, place, silent) => {
 			// renotify, which TypeScript's DOM types leave out: Chromium's, the browsers others ignore.
 			const options: NotificationOptions & { renotify: boolean } = {
 				body: noticeText(notice, get(roomNames)),
@@ -70,6 +72,7 @@ export function webNotifier(open: (link: MessageLink) => void): SystemNotifier {
 				open(notice.link);
 				shown.close();
 			};
+			return true;
 		},
 	};
 }

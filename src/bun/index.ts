@@ -52,7 +52,11 @@ const url = await getMainViewUrl();
 
 type AppRPCSchema = {
 	bun: {
-		requests: {};
+		requests: {
+			// A message that notifies without the focus, on Windows (lib/system-notifications.ts): shown as a toast. The
+			// answer says whether it showed: one that didn't shows as Duvet's notice instead.
+			showNotification: { params: NotificationRequest; response: boolean };
+		};
 		messages: {
 			closeWindow: void;
 			minimizeWindow: void;
@@ -68,8 +72,6 @@ type AppRPCSchema = {
 			stopWindowResize: void;
 			// The webview's "Share what I listen to on Spotify" setting, sent at start and on each change.
 			setSpotifyActivity: { enabled: boolean };
-			// A message that notifies without the focus, on Windows (lib/system-notifications.ts): shown as a toast.
-			showNotification: NotificationRequest;
 		};
 	};
 	webview: {
@@ -144,6 +146,9 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 	// The webview's answer to activityImage, which decodes an image of up to 4 MiB; Electrobun's default is 1 s.
 	maxRequestTime: 10_000,
 	handlers: {
+		requests: {
+			showNotification: (request) => showToast(request),
+		},
 		messages: {
 			closeWindow: () => win.close(),
 			minimizeWindow: () => win.minimize(),
@@ -156,7 +161,6 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 				markWebviewReady();
 				setSpotifyActivity(enabled);
 			},
-			showNotification: (request) => void showToast(request),
 		},
 	},
 });
@@ -337,16 +341,18 @@ async function openClicked(line: string, scheme: string) {
 	rpc.send.openMessage(link);
 }
 
-// A toast for the webview's request, with the author's photo when it's had within a moment (notification-avatars.ts).
-async function showToast(request: NotificationRequest) {
-	if (!notifications) return;
+// A toast for the webview's request, with the author's photo when it's had within a moment (notification-avatars.ts),
+// and whether it showed, as the helper answers (toasts.ts).
+async function showToast(request: NotificationRequest): Promise<boolean> {
+	// No toasts until they're set up, nor when that failed: the webview shows Duvet's notice instead.
+	if (!notifications) return false;
 	const avatarPath = request.avatarUrl
 		? await avatarForToast(request.avatarUrl, {
 				inline: (avatarUrl) => avatarImages.inline(avatarUrl),
 				dir: join(Utils.paths.userCache, "notification-avatars"),
 			})
 		: null;
-	notifications.toasts.show({
+	return notifications.toasts.show({
 		tag: request.id,
 		group: request.chatId,
 		title: request.title,

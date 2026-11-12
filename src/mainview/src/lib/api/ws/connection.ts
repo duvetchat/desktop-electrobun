@@ -135,6 +135,7 @@ import {
 	dropMentionNotice,
 	mentionNoticeOf,
 	roomPlace,
+	showClaimedNotice,
 	showMentionNotice,
 	type MentionNotice,
 } from "$lib/mention-notices";
@@ -557,8 +558,9 @@ const onScreen = (chatId: string) => get(chatsOnScreen).has(chatId) && get(pageV
 export interface SystemNotifier {
 	/** Whether it can show one now: the web's only while the browser allows it, which can change at any time. */
 	available(): boolean;
-	/** Shows a message's notification; one that isn't silent makes the system's sound, as Duvet plays none. */
-	show(notice: MentionNotice, place: string | null, silent: boolean): void;
+	/** Shows a message's notification, and answers whether it showed (one that didn't shows as Duvet's notice). One that
+	 * isn't silent makes the system's sound, as Duvet plays none. */
+	show(notice: MentionNotice, place: string | null, silent: boolean): Promise<boolean>;
 }
 let systemNotifier: SystemNotifier | null = null;
 export function setSystemNotifier(notifier: SystemNotifier | null) {
@@ -635,7 +637,10 @@ async function showNotification(target: NotifyTarget, messageId: string, kind: "
 			: await conversationNotice(target.conversationId, messageId, target.message);
 	if (!shown || get(currentUser)?.status === 2) return;
 	if (kind === "system" && systemNotifier) {
-		if (claimNotice(messageId)) systemNotifier.show(shown.notice, shown.place, silent);
+		if (!claimNotice(messageId)) return;
+		// One the system couldn't show (Bun's toasts not set up or failing, a browser refusing it) is Duvet's notice.
+		const showedBySystem = await systemNotifier.show(shown.notice, shown.place, silent);
+		if (!showedBySystem && !onScreen(chatOf(target))) showClaimedNotice(shown.notice);
 	} else if (!onScreen(chatOf(target))) {
 		showMentionNotice(shown.notice);
 	}
