@@ -1,14 +1,10 @@
 <script lang="ts">
-	import {
-		conversations,
-		currentUser,
-		mentionCounts,
-		typingNow,
-		unreadChannels,
-		unreadConversations,
-	} from "$lib/stores.svelte";
+	import { conversations, currentUser, typingNow } from "$lib/stores.svelte";
+	import { shownMentionCounts, shownUnreadConversations, shownUnreadRooms } from "$lib/notification-marks";
 	import { get } from "svelte/store";
 	import { UsersRound } from "@lucide/svelte";
+	import { ContextMenu } from "bits-ui";
+	import NotificationSubmenu from "$lib/components/NotificationSubmenu.svelte";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
 	import UserStatusBar from "$lib/components/UserStatusBar.svelte";
 	import type { Conversation } from "$lib/api/conversations";
@@ -72,53 +68,64 @@
 		<!-- Its unread state and the mentions waiting in it, as its tab shows them: a mention leaves it unread. -->
 		{@const news = tabNews(
 			conversationTab(conv, $currentUser?.id),
-			$unreadChannels,
-			$unreadConversations,
-			$mentionCounts,
+			$shownUnreadRooms,
+			$shownUnreadConversations,
+			$shownMentionCounts,
 		)}
 		{@const unread = news.unread}
-		<button
-			class="focus-visible:outline-duvet-accent flex w-full items-center gap-2.5 rounded-[10px] px-2 py-1.5 text-left transition-colors focus-visible:outline-2
+		<!-- Its right click chooses its notifications. -->
+		<ContextMenu.Root>
+			<ContextMenu.Trigger>
+				<button
+					class="focus-visible:outline-duvet-accent flex w-full items-center gap-2.5 rounded-[10px] px-2 py-1.5 text-left transition-colors focus-visible:outline-2
 				{activeConversationId === conv.id
-				? 'bg-duvet-accent-tint text-duvet-accent-text'
-				: unread
-					? 'text-duvet-ink hover:bg-duvet-card'
-					: 'text-duvet-ink2 hover:bg-duvet-card hover:text-duvet-ink'}"
-			aria-current={activeConversationId === conv.id ? "true" : undefined}
-			data-jump
-			onclick={() => onSelect(conv.id)}
-			draggable="true"
-			ondragstart={(e) => {
-				// Dragged onto a pane, it opens there as a tab, or splits it, as a room does.
-				e.dataTransfer!.effectAllowed = "copyMove";
-				e.dataTransfer!.setData("text/plain", tabDragData(conversationTab(conv, get(currentUser)?.id)));
-			}}
-		>
-			<div class="relative shrink-0">
-				<UserAvatar src={convAvatarSrc(conv)} name={convTitle(conv)} size={embedded ? 26 : 32} />
-				{#if shown}
-					<StatusDot
-						status={shown.status}
-						mobileOnly={shown.mobileOnly}
-						class="text-duvet-sunk absolute -right-0.5 -bottom-0.5 w-3 border-2"
-					/>
-				{/if}
-			</div>
-			<div class="flex min-w-0 flex-1 flex-col">
-				<span class="truncate text-sm leading-tight {unread ? 'font-bold' : 'font-medium'}">{convTitle(conv)}</span>
-				<span class="text-duvet-ink2 truncate text-xs">{typingSentence($typingNow[conv.id]) ?? convSubtitle(conv)}</span
+						? 'bg-duvet-accent-tint text-duvet-accent-text'
+						: unread
+							? 'text-duvet-ink hover:bg-duvet-card'
+							: 'text-duvet-ink2 hover:bg-duvet-card hover:text-duvet-ink'}"
+					aria-current={activeConversationId === conv.id ? "true" : undefined}
+					data-jump
+					onclick={() => onSelect(conv.id)}
+					draggable="true"
+					ondragstart={(e) => {
+						// Dragged onto a pane, it opens there as a tab, or splits it, as a room does.
+						e.dataTransfer!.effectAllowed = "copyMove";
+						e.dataTransfer!.setData("text/plain", tabDragData(conversationTab(conv, get(currentUser)?.id)));
+					}}
 				>
-			</div>
-			{#if news.mentions}
-				<!-- Its mentions, as a room's row counts them -->
-				<span
-					class="bg-duvet-accent text-duvet-on-accent ml-1 flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full px-1 text-[11px] font-bold"
-					aria-label="{news.mentions} mentions">{news.mentions > 99 ? "99+" : news.mentions}</span
-				>
-			{:else if unread}
-				<span class="bg-duvet-accent ml-1 size-2 shrink-0 rounded-full" aria-label="Unread"></span>
-			{/if}
-		</button>
+					<div class="relative shrink-0">
+						<UserAvatar src={convAvatarSrc(conv)} name={convTitle(conv)} size={embedded ? 26 : 32} />
+						{#if shown}
+							<StatusDot
+								status={shown.status}
+								mobileOnly={shown.mobileOnly}
+								class="text-duvet-sunk absolute -right-0.5 -bottom-0.5 w-3 border-2"
+							/>
+						{/if}
+					</div>
+					<div class="flex min-w-0 flex-1 flex-col">
+						<span class="truncate text-sm leading-tight {unread ? 'font-bold' : 'font-medium'}">{convTitle(conv)}</span>
+						<span class="text-duvet-ink2 truncate text-xs"
+							>{typingSentence($typingNow[conv.id]) ?? convSubtitle(conv)}</span
+						>
+					</div>
+					{#if news.mentions}
+						<!-- Its mentions, as a room's row counts them -->
+						<span
+							class="bg-duvet-accent text-duvet-on-accent ml-1 flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full px-1 text-[11px] font-bold"
+							aria-label="{news.mentions} mentions">{news.mentions > 99 ? "99+" : news.mentions}</span
+						>
+					{:else if unread}
+						<span class="bg-duvet-accent ml-1 size-2 shrink-0 rounded-full" aria-label="Unread"></span>
+					{/if}
+				</button>
+			</ContextMenu.Trigger>
+			<ContextMenu.Portal>
+				<ContextMenu.Content class="z-200 min-w-44 rounded-lg border border-zinc-700 bg-zinc-800 py-1 shadow-2xl">
+					<NotificationSubmenu targetId={conv.id} target={2} />
+				</ContextMenu.Content>
+			</ContextMenu.Portal>
+		</ContextMenu.Root>
 	{/each}
 {/snippet}
 

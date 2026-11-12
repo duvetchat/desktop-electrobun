@@ -44,6 +44,9 @@ import { getConversations, getDirectMessageById, type Conversation } from "$lib/
 import { listMyTeamInvites } from "$lib/api/developer";
 import { getMyBuckets, me as fetchMe } from "$lib/api/user";
 import { getMentionCounts, getMessageById } from "$lib/api/messages";
+import { getNotificationSettings } from "$lib/api/notifications";
+import { applyNotificationUpdate, notificationLevels } from "$lib/notification-levels";
+import { quietPlaces } from "$lib/notification-marks";
 import { getWSHostURL, getAvatarURL, isUuid, route } from "$lib/common/common";
 import { derived, get, type Writable } from "svelte/store";
 import { getSpaceMembers, spacesLeftHere, type SpaceMemberWithUser } from "$lib/api/spaces";
@@ -543,6 +546,11 @@ function applyReaction<T extends { id: string; reactions?: MessageReaction[] | n
 const roomOnScreen = (roomId: string) => roomId === get(activeTextRoomId) && get(pageVisible);
 const conversationOnScreen = (conversationId: string) => conversationId === get(activeDMConvId) && get(pageVisible);
 
+// Whether a mention in a room or a conversation plays its sound and shows its notice: not while it's on screen, nor in
+// do not disturb (mentionSound), nor where the user's level is nothing (lib/notification-marks.ts).
+const mentionNotifies = (placeId: string, onScreen: boolean) =>
+	mentionSound(get(currentUser)?.status, onScreen) && !get(quietPlaces).has(placeId);
+
 // The people a mention's text can name, by the names the app knows, as a bio's mentions are: the spaces' members, the
 // conversations', and the user.
 function knownPeople() {
@@ -572,7 +580,7 @@ async function noticeRoomMention(roomId: string, messageId: string) {
 		}
 	}
 	const place = roomPlace(get(gatewaySpaces), roomId, messageId);
-	if (!place || !mentionSound(get(currentUser)?.status, roomOnScreen(roomId))) return;
+	if (!place || !mentionNotifies(roomId, roomOnScreen(roomId))) return;
 	const emojis = get(spaceEmojis)[place.link.spaceId] ?? [];
 	showMentionNotice(mentionNoticeOf(message, place, knownPeople(), customEmojiMapOf(emojis)));
 }
@@ -588,7 +596,7 @@ async function noticeConversationMention(conversationId: string, messageId: stri
 			return;
 		}
 	}
-	if (!mentionSound(get(currentUser)?.status, conversationOnScreen(conversationId))) return;
+	if (!mentionNotifies(conversationId, conversationOnScreen(conversationId))) return;
 	const conversation = get(conversations).find((c) => c.id === conversationId);
 	const author = directMessageAuthor(message, conversation);
 	const place = conversationPlace(conversation, conversationId, messageId, get(currentUser)?.id);
@@ -666,6 +674,11 @@ function handleEvent(event: GatewayEvent) {
 				});
 			getMentionCounts()
 				.then((counts) => mentionCounts.set(counts))
+				.catch(() => {});
+			// The user's notification levels, which NOTIFICATION_SETTINGS_UPDATE keeps current. A fetch that fails keeps
+			// the ones the app had: they rarely change, and none at all would make every place notify by its default.
+			getNotificationSettings()
+				.then((settings) => notificationLevels.set(Object.fromEntries(settings.map((s) => [s.target_id, s.level]))))
 				.catch(() => {});
 			// The calls going on in the user's conversations, and who is in each, as the new session has them.
 			const activeCalls = payload.data.active_calls ?? [];
@@ -846,6 +859,7 @@ function handleEvent(event: GatewayEvent) {
 						icon: updated.icon !== undefined ? updated.icon : s.icon,
 						banner: updated.banner !== undefined ? updated.banner : s.banner,
 						locale: updated.locale !== undefined ? updated.locale : s.locale,
+						default_notifications: updated.default_notifications ?? s.default_notifications,
 						owner_id: updated.owner_id ?? s.owner_id,
 						updated_at: updated.updated_at ?? s.updated_at,
 					};
@@ -1009,7 +1023,7 @@ function handleEvent(event: GatewayEvent) {
 		case "MENTION_CREATE": {
 			const { room_id, message_id } = payload.data;
 			mentionCounts.update((all) => ({ ...all, [room_id]: (all[room_id] ?? 0) + 1 }));
-			if (mentionSound(get(currentUser)?.status, roomOnScreen(room_id))) {
+			if (mentionNotifies(room_id, roomOnScreen(room_id))) {
 				audioStore.play("notification");
 				void noticeRoomMention(room_id, message_id);
 			}
@@ -1018,7 +1032,7 @@ function handleEvent(event: GatewayEvent) {
 		case "DM_MENTION_CREATE": {
 			const { conversation_id, message_id } = payload.data;
 			mentionCounts.update((all) => ({ ...all, [conversation_id]: (all[conversation_id] ?? 0) + 1 }));
-			if (mentionSound(get(currentUser)?.status, conversationOnScreen(conversation_id))) {
+			if (mentionNotifies(conversation_id, conversationOnScreen(conversation_id))) {
 				audioStore.play("notification");
 				void noticeConversationMention(conversation_id, message_id);
 			}
@@ -1130,6 +1144,11 @@ function handleEvent(event: GatewayEvent) {
 			friends.update((all) =>
 				all.map((f) => (f.sender_id === raw.user_id || f.recipient_id === raw.user_id ? { ...f } : f)),
 			);
+			break;
+		}
+		case "NOTIFICATION_SETTINGS_UPDATE": {
+			const update = payload.data;
+			notificationLevels.update((levels) => applyNotificationUpdate(levels, update));
 			break;
 		}
 		case "USER_ACTIVITY_UPDATE": {

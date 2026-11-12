@@ -40,9 +40,8 @@
 		botInviteRequest,
 		spaceInviteRequest,
 		allSpacesReady,
-		unreadChannels,
-		unreadConversations,
 	} from "$lib/stores.svelte";
+	import { shownUnreadConversations, shownUnreadRooms } from "$lib/notification-marks";
 	import { toast } from "$lib/stores/toast.svelte";
 	import CallModal from "$lib/components/CallModal.svelte";
 	import BotInviteModal from "$lib/components/BotInviteModal.svelte";
@@ -364,7 +363,7 @@
 		...$conversations.map((c) => c.id),
 		...guilds.flatMap((g) => g.channels.map((c) => c.id)),
 	]);
-	const unreadChats = $derived(new Set([...$unreadConversations, ...$unreadChannels]));
+	const unreadChats = $derived(new Set([...$shownUnreadConversations, ...$shownUnreadRooms]));
 
 	function openChat(id: string) {
 		if ($conversations.some((c) => c.id === id)) {

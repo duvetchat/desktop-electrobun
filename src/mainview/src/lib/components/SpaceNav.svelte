@@ -30,8 +30,8 @@
 		pendingFriendRequests,
 		typingNow,
 		unreadChannels,
-		unreadConversations,
 	} from "$lib/stores.svelte";
+	import { shownMentionCounts, shownUnreadConversations, shownUnreadRooms } from "$lib/notification-marks";
 	import { typingSentence } from "$lib/typing";
 	import TypingMark from "$lib/components/TypingMark.svelte";
 	import { newestKnownIn } from "$lib/jumps";
@@ -42,6 +42,7 @@
 	import AddSpaceModal from "$lib/components/AddSpaceModal.svelte";
 	import ChannelsSidebar from "$lib/components/ChannelsSidebar.svelte";
 	import DMSidebar from "$lib/components/DMSidebar.svelte";
+	import NotificationSubmenu from "$lib/components/NotificationSubmenu.svelte";
 	import NowSection from "$lib/components/NowSection.svelte";
 	import SpaceIcon from "$lib/components/SpaceIcon.svelte";
 	import TabIcon from "$lib/components/TabIcon.svelte";
@@ -86,10 +87,9 @@
 	} = $props();
 
 	const newsBySpace = $derived(
-		Object.fromEntries(guilds.map((g) => [g.id, spaceNews(g.channels, $unreadChannels, $mentionCounts)])) as Record<
-			string,
-			SpaceNews
-		>,
+		Object.fromEntries(
+			guilds.map((g) => [g.id, spaceNews(g.channels, $shownUnreadRooms, $shownMentionCounts)]),
+		) as Record<string, SpaceNews>,
 	);
 
 	// The selected space stays in the group it was in when it was selected: moving its row would mount its rooms'
@@ -124,7 +124,7 @@
 	const shownQuiet = $derived(quietOpen ? groups.quiet : groups.quiet.filter((id) => id === expandedSpaceId));
 	const foldedQuietCount = $derived(groups.quiet.length - shownQuiet.length);
 
-	const dmBadge = $derived($pendingFriendRequests.length + $unreadConversations.size);
+	const dmBadge = $derived($pendingFriendRequests.length + $shownUnreadConversations.size);
 
 	// The spaces the user owns, which the API won't let them leave: they can only delete one.
 	const ownedSpaceIds = $derived(
@@ -174,12 +174,11 @@
 		}
 	}
 
+	// A space's menus list these, then its Notifications submenu, then Leave space for whoever doesn't own it.
 	type SpaceAction = {
 		label: string;
 		icon: typeof PinIcon;
 		onSelect: () => void;
-		danger?: boolean;
-		separatorBefore?: boolean;
 	};
 
 	function spaceActions(guild: Guild): SpaceAction[] {
@@ -206,15 +205,6 @@
 			});
 		}
 		actions.push({ label: "Mark all as read", icon: CheckCheckIcon, onSelect: () => markAllRead(guild) });
-		if (!ownedSpaceIds.has(guild.id)) {
-			actions.push({
-				label: "Leave space",
-				icon: LogOutIcon,
-				onSelect: () => handleLeave(guild),
-				danger: true,
-				separatorBefore: true,
-			});
-		}
 		return actions;
 	}
 
@@ -223,7 +213,7 @@
 	function roomsWithNews(guild: Guild) {
 		const space = $gatewaySpaces.find((s) => s.id === guild.id);
 		return guild.channels.filter((ch) => {
-			if (ch.type === "text") return $unreadChannels.has(ch.id) || !!$mentionCounts[ch.id];
+			if (ch.type === "text") return $shownUnreadRooms.has(ch.id) || !!$shownMentionCounts[ch.id];
 			if (ch.type !== "voice" || !ch.voiceUsers?.length || !space) return false;
 			const room = space.rooms.find((r) => r.id === ch.id);
 			return !!room && hasPermission(space, room, Permission.JoinVoice);
@@ -275,6 +265,8 @@
 	{@const expanded = guild.id === expandedSpaceId && !treeFolded}
 	{@const isSelected = guild.id === expandedSpaceId}
 	{@const actions = spaceActions(guild)}
+	<!-- What the space's Default notifies: its owner's choice, only mentions until they make one. -->
+	{@const spaceDefault = $gatewaySpaces.find((s) => s.id === guild.id)?.default_notifications ?? 1}
 	<li>
 		<ContextMenu.Root>
 			<ContextMenu.Trigger>
@@ -324,17 +316,25 @@
 							<DropdownMenu.Portal>
 								<DropdownMenu.Content class={menuContentClass} sideOffset={4} align="start">
 									{#each actions as action (action.label)}
-										{#if action.separatorBefore}
-											<DropdownMenu.Separator class="border-duvet-line mx-1 my-1 border-t" />
-										{/if}
-										<DropdownMenu.Item
-											class="{menuItemClass} {action.danger ? 'text-duvet-danger' : ''}"
-											onSelect={action.onSelect}
-										>
-											<action.icon class="size-4 {action.danger ? '' : 'text-zinc-400'}" />
+										<DropdownMenu.Item class={menuItemClass} onSelect={action.onSelect}>
+											<action.icon class="size-4 text-zinc-400" />
 											{action.label}
 										</DropdownMenu.Item>
 									{/each}
+									<NotificationSubmenu
+										targetId={guild.id}
+										target={0}
+										inherited={spaceDefault}
+										itemClass={menuItemClass}
+										contentClass={menuContentClass}
+									/>
+									{#if !ownedSpaceIds.has(guild.id)}
+										<DropdownMenu.Separator class="border-duvet-line mx-1 my-1 border-t" />
+										<DropdownMenu.Item class="{menuItemClass} text-duvet-danger" onSelect={() => handleLeave(guild)}>
+											<LogOutIcon class="size-4" />
+											Leave space
+										</DropdownMenu.Item>
+									{/if}
 								</DropdownMenu.Content>
 							</DropdownMenu.Portal>
 						</DropdownMenu.Root>
@@ -344,17 +344,25 @@
 			<ContextMenu.Portal>
 				<ContextMenu.Content class={menuContentClass}>
 					{#each actions as action (action.label)}
-						{#if action.separatorBefore}
-							<ContextMenu.Separator class="border-duvet-line mx-1 my-1 border-t" />
-						{/if}
-						<ContextMenu.Item
-							class="{menuItemClass} {action.danger ? 'text-duvet-danger' : ''}"
-							onSelect={action.onSelect}
-						>
-							<action.icon class="size-4 {action.danger ? '' : 'text-zinc-400'}" />
+						<ContextMenu.Item class={menuItemClass} onSelect={action.onSelect}>
+							<action.icon class="size-4 text-zinc-400" />
 							{action.label}
 						</ContextMenu.Item>
 					{/each}
+					<NotificationSubmenu
+						targetId={guild.id}
+						target={0}
+						inherited={spaceDefault}
+						itemClass={menuItemClass}
+						contentClass={menuContentClass}
+					/>
+					{#if !ownedSpaceIds.has(guild.id)}
+						<ContextMenu.Separator class="border-duvet-line mx-1 my-1 border-t" />
+						<ContextMenu.Item class="{menuItemClass} text-duvet-danger" onSelect={() => handleLeave(guild)}>
+							<LogOutIcon class="size-4" />
+							Leave space
+						</ContextMenu.Item>
+					{/if}
 				</ContextMenu.Content>
 			</ContextMenu.Portal>
 		</ContextMenu.Root>
@@ -375,7 +383,7 @@
 			{#if rooms.length > 0}
 				<ul class="border-duvet-line mb-1 ml-[19px] flex flex-col gap-px border-l-2 py-0.5 pl-2.5">
 					{#each rooms as room (room.id)}
-						{@const mentions = $mentionCounts[room.id] ?? 0}
+						{@const mentions = $shownMentionCounts[room.id] ?? 0}
 						{@const typers = room.type === "text" ? $typingNow[room.id] : undefined}
 						{@const typing = typingSentence(typers)}
 						<li>
@@ -441,7 +449,7 @@
 					<ul class="flex flex-col gap-px" aria-label="Open chats">
 						{#each openChats.tabs as tab (tab.channelId)}
 							{@const isActive = tab.channelId === openChats.activeChannelId}
-							{@const news = tabNews(tab, $unreadChannels, $unreadConversations, $mentionCounts)}
+							{@const news = tabNews(tab, $shownUnreadRooms, $shownUnreadConversations, $shownMentionCounts)}
 							{@const mentions = news.mentions}
 							{@const unread = !isActive && news.unread}
 							{@const title = tabTitle(tab, $conversations, $currentUser?.id)}

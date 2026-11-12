@@ -32,14 +32,10 @@
 	import UserStatusBar from "$lib/components/UserStatusBar.svelte";
 	import SpaceBanner from "$lib/components/SpaceBanner.svelte";
 	import SpaceIcon from "$lib/components/SpaceIcon.svelte";
-	import {
-		speakingUsers,
-		activeVoiceRoomId,
-		gatewaySpaces,
-		typingNow,
-		unreadChannels,
-		mentionCounts,
-	} from "$lib/stores.svelte";
+	import { speakingUsers, activeVoiceRoomId, gatewaySpaces, typingNow } from "$lib/stores.svelte";
+	import { shownMentionCounts, shownUnreadRooms } from "$lib/notification-marks";
+	import { notificationLevels, spaceLevel } from "$lib/notification-levels";
+	import NotificationSubmenu from "$lib/components/NotificationSubmenu.svelte";
 	import { typingSentence } from "$lib/typing";
 	import TypingMark from "$lib/components/TypingMark.svelte";
 
@@ -538,7 +534,7 @@
 						{@const canJoin =
 							channel.type !== "voice" || (space && room && hasPermission(space, room, Permission.JoinVoice))}
 						{@const isUnread =
-							channel.type === "text" && ($unreadChannels.has(channel.id) || !!$mentionCounts[channel.id])}
+							channel.type === "text" && ($shownUnreadRooms.has(channel.id) || !!$shownMentionCounts[channel.id])}
 						{@const voiceCount = channel.voiceUsers?.length ?? 0}
 						{@const typers = channel.type === "text" ? $typingNow[channel.id] : undefined}
 						{@const typing = typingSentence(typers)}
@@ -601,10 +597,10 @@
 										</span>
 										<span class="min-w-0 flex-1 truncate">{channel.name}</span>
 										{#if typing}<span class="sr-only">{typing}</span>{/if}
-										{#if channel.type === "text" && $mentionCounts[channel.id]}
+										{#if channel.type === "text" && $shownMentionCounts[channel.id]}
 											<span
 												class="bg-duvet-accent text-duvet-on-accent ml-1 flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full px-1 text-[11px] font-bold"
-												aria-label="{$mentionCounts[channel.id]} mentions">{$mentionCounts[channel.id]}</span
+												aria-label="{$shownMentionCounts[channel.id]} mentions">{$shownMentionCounts[channel.id]}</span
 											>
 										{:else if voiceCount > 0}
 											<span class="text-duvet-ink2 ml-1 shrink-0 text-xs font-normal">{voiceCount} in voice</span>
@@ -635,6 +631,14 @@
 													Invite People
 												</div>
 											</ContextMenu.Item>
+										{/if}
+										<!-- Only text rooms hold messages to notify of; their default is their space's level. -->
+										{#if channel.type === "text"}
+											<NotificationSubmenu
+												targetId={channel.id}
+												target={1}
+												inherited={spaceLevel($notificationLevels, guild.id, space?.default_notifications)}
+											/>
 										{/if}
 										{#if canManage}
 											<div class="my-1 border-t border-zinc-700"></div>

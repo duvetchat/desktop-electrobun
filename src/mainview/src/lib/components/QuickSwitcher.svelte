@@ -6,15 +6,8 @@
 	import { friendUser } from "$lib/friends";
 	import { canViewRoom, shownRooms } from "$lib/permissions";
 	import { rankByQuery } from "$lib/nav";
-	import {
-		conversations,
-		currentUser,
-		friends,
-		gatewaySpaces,
-		mentionCounts,
-		unreadChannels,
-		unreadConversations,
-	} from "$lib/stores.svelte";
+	import { conversations, currentUser, friends, gatewaySpaces } from "$lib/stores.svelte";
+	import { shownMentionCounts, shownUnreadConversations, shownUnreadRooms } from "$lib/notification-marks";
 	import SpaceIcon from "$lib/components/SpaceIcon.svelte";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
 
@@ -87,8 +80,8 @@
 					name: room.name,
 					spaceName: space.name,
 					voice: room.type === 2,
-					mentions: $mentionCounts[room.id] ?? 0,
-					unread: $unreadChannels.has(room.id) || !!$mentionCounts[room.id],
+					mentions: $shownMentionCounts[room.id] ?? 0,
+					unread: $shownUnreadRooms.has(room.id) || !!$shownMentionCounts[room.id],
 				});
 			}
 		}
@@ -103,8 +96,8 @@
 				name: conv.type === 2 ? (conv.name ?? "Group") : (other?.user?.alias ?? other?.user?.username ?? "DM"),
 				sub: conv.type === 2 ? `${conv.members.length} members` : "Direct message",
 				avatar: conv.type === 2 ? null : (getAvatarURL(other?.user_id ?? "", other?.user?.avatar) ?? null),
-				mentions: $mentionCounts[conv.id] ?? 0,
-				unread: $unreadConversations.has(conv.id) || !!$mentionCounts[conv.id],
+				mentions: $shownMentionCounts[conv.id] ?? 0,
+				unread: $shownUnreadConversations.has(conv.id) || !!$shownMentionCounts[conv.id],
 			});
 		}
 		// Friends without a conversation yet: picking one starts it.
