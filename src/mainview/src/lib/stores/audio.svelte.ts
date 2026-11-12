@@ -68,7 +68,7 @@ class AudioSettingsStore {
 		save(this.settings);
 	}
 
-	private effectiveVolume(event: SoundEvent): number {
+	effectiveVolume(event: SoundEvent): number {
 		return Math.min((this.settings.master / 200) * (this.settings[event] / 200), 1);
 	}
 

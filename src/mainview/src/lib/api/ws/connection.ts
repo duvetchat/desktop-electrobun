@@ -40,10 +40,16 @@ import {
 	allSpacesReady,
 } from "$lib/stores.svelte";
 import { getFriends, getPendingRequests, getSentRequests, type Friend } from "$lib/api/friends";
-import { getConversations, getDirectMessageById, type Conversation } from "$lib/api/conversations";
+import { getConversations, getDirectMessageById, type Conversation, type DirectMessage } from "$lib/api/conversations";
 import { listMyTeamInvites } from "$lib/api/developer";
 import { getMyBuckets, me as fetchMe } from "$lib/api/user";
 import { getMentionCounts, getMessageById } from "$lib/api/messages";
+import { getNotificationSettings } from "$lib/api/notifications";
+import { applyNotificationUpdate, notificationLevels } from "$lib/notification-levels";
+import { conversationLevelNow, roomLevelNow } from "$lib/notification-marks";
+import { notificationKind } from "$lib/notifications";
+import { tabActs } from "$lib/tab-notifications";
+import { chatsOnScreen } from "$lib/on-screen";
 import { getWSHostURL, getAvatarURL, isUuid, route } from "$lib/common/common";
 import { derived, get, type Writable } from "svelte/store";
 import { getSpaceMembers, spacesLeftHere, type SpaceMemberWithUser } from "$lib/api/spaces";
@@ -54,6 +60,7 @@ import type {
 	DMTypingEvent,
 	GatewayEvent,
 	GatewaySpace,
+	Message,
 	MessageReaction,
 	Presence,
 	ReactionEvent,
@@ -65,6 +72,7 @@ import type {
 
 import {
 	gatewayMessageToMessage,
+	isNotice,
 	isEphemeral,
 	MessageType,
 	readySpacesArrived,
@@ -90,7 +98,6 @@ import {
 	forgetMemberStatus,
 	forgetSpaceStatuses,
 	isMobileOnly,
-	mentionSound,
 	noteConversationMemberStatus,
 	noteMemberStatus,
 	rememberConversationPresences,
@@ -122,12 +129,14 @@ import { banAdded, banLifted, forgetBans } from "$lib/bans";
 import { callNoticeCame, callNoticeDeleted, conversationCallsGone, forgetCalls } from "$lib/call-history";
 import { customEmojiMapOf } from "$lib/markdown";
 import {
+	claimNotice,
 	conversationPlace,
 	directMessageAuthor,
 	dropMentionNotice,
 	mentionNoticeOf,
 	roomPlace,
 	showMentionNotice,
+	type MentionNotice,
 } from "$lib/mention-notices";
 import { storageTransfers } from "$lib/stores/storage-transfers.svelte";
 import { toast } from "$lib/stores/toast.svelte";
@@ -539,9 +548,67 @@ function applyReaction<T extends { id: string; reactions?: MessageReaction[] | n
 	reactionChanged(change);
 }
 
-// Whether a room or a conversation is on screen: open in the focused pane, in a window that's visible and focused.
-const roomOnScreen = (roomId: string) => roomId === get(activeTextRoomId) && get(pageVisible);
-const conversationOnScreen = (conversationId: string) => conversationId === get(activeDMConvId) && get(pageVisible);
+// Whether a room or a conversation is on screen: shown by a pane (lib/on-screen.ts), in a window that's visible and
+// focused.
+const onScreen = (chatId: string) => get(chatsOnScreen).has(chatId) && get(pageVisible);
+
+// How a message that notifies without the focus shows: the system's notification, which lib/system-notifications.ts
+// sets where there is one (the app on Windows, the web with the browser's permission). Without it, Duvet's notice.
+export interface SystemNotifier {
+	/** Whether it can show one now: the web's only while the browser allows it, which can change at any time. */
+	available(): boolean;
+	/** Shows a message's notification; one that isn't silent makes the system's sound, as Duvet plays none. */
+	show(notice: MentionNotice, place: string | null, silent: boolean): void;
+}
+let systemNotifier: SystemNotifier | null = null;
+export function setSystemNotifier(notifier: SystemNotifier | null) {
+	systemNotifier = notifier;
+}
+
+// The messages that notified, each once: a mention's MESSAGE_CREATE and MENTION_CREATE come over two subscriptions, in
+// no set order. The newest few hundred are kept, as the notices' are (lib/mention-notices.ts).
+const notified: string[] = [];
+const NOTIFIED_KEPT = 500;
+
+// Where a message that may notify is, with the message when its event brought it (a mention's brings only its ID).
+type NotifyTarget = { roomId: string; message?: Message } | { conversationId: string; message?: DirectMessage };
+const chatOf = (target: NotifyTarget) => ("roomId" in target ? target.roomId : target.conversationId);
+
+/**
+ * A message that may notify (DISENO-NOTIFICACIONES.md, objectives 3 to 5): MESSAGE_CREATE and DM_MESSAGE_CREATE hand it
+ * whole, MENTION_CREATE and DM_MENTION_CREATE its ID. What it notifies is decided at once, from what the event says
+ * (lib/notifications.ts), and its sound plays then, once per message; its notice, or its system notification, follows
+ * with the message.
+ */
+function notifyMessage(target: NotifyTarget, authorId: string | null, messageId: string, mention: boolean) {
+	if (notified.includes(messageId)) return;
+	const known = target.message;
+	const kind = notificationKind({
+		own: authorId === get(currentUser)?.id,
+		notice: known !== undefined && (isNotice(known) || ("flags" in known && isEphemeral(known))),
+		level: "roomId" in target ? roomLevelNow(target.roomId) : conversationLevelNow(target.conversationId),
+		mention,
+		dnd: get(currentUser)?.status === 2,
+		focused: get(pageVisible),
+		onScreen: get(chatsOnScreen).has(chatOf(target)),
+		system: systemNotifier?.available() ?? false,
+	});
+	// One browser tab shows it and plays its sound (lib/tab-notifications.ts).
+	if (kind === "none" || !tabActs()) return;
+	notified.push(messageId);
+	if (notified.length > NOTIFIED_KEPT) notified.shift();
+	// Before the page's first click or key, Chromium (WebView2 too) refuses Duvet's sound: a system notification makes
+	// it then, unless Duvet's is turned off.
+	const systemSound = kind === "system" && !soundAllowed() && audioStore.effectiveVolume("notification") > 0;
+	if (!systemSound) audioStore.play("notification");
+	void showNotification(target, messageId, kind, !systemSound);
+}
+
+// Whether the page may play a sound: Chromium's autoplay policy lets it once the user clicked or typed in it, which
+// navigator.userActivation says; a browser without it is taken to allow it.
+// ponytail: a page Chromium lets play without a click (its media engagement) gets the system's sound instead of
+// Duvet's, still one; navigator.getAutoplayPolicy would tell, once Chromium has it.
+const soundAllowed = () => !("userActivation" in navigator) || navigator.userActivation.hasBeenActive;
 
 // The people a mention's text can name, by the names the app knows, as a bio's mentions are: the spaces' members, the
 // conversations', and the user.
@@ -555,45 +622,58 @@ function knownPeople() {
 }
 
 /**
- * A mention in a room that isn't on screen shows a notice (lib/mention-notices.ts) with its message. The room's
- * MESSAGE_CREATE has usually brought it already, but it comes over another subscription, in no set order: one that isn't
- * there yet is fetched, by its IDs alone (isUuid), which go into the request's path. A message deleted first, which
- * the API no longer has, or one that can't be fetched, shows nothing, and so does one whose room came on screen
- * meanwhile, or whose reader chose do not disturb.
+ * Shows a message's notice (lib/mention-notices.ts), or its system notification, once the message is here. The event
+ * that decided it (notifyMessage) brought it, or the room's MESSAGE_CREATE usually has, but a mention comes over another
+ * subscription, in no set order: one that isn't there yet is fetched, by its IDs alone (isUuid), which go into the
+ * request's path. A message deleted first, which the API no longer has, or one that can't be fetched, shows nothing, and
+ * so does one whose reader chose do not disturb meanwhile, or whose notice's chat came on screen.
  */
-async function noticeRoomMention(roomId: string, messageId: string) {
-	let message = get(channelMessages)[roomId]?.find((m) => m.id === messageId);
+async function showNotification(target: NotifyTarget, messageId: string, kind: "notice" | "system", silent: boolean) {
+	const shown =
+		"roomId" in target
+			? await roomNotice(target.roomId, messageId, target.message)
+			: await conversationNotice(target.conversationId, messageId, target.message);
+	if (!shown || get(currentUser)?.status === 2) return;
+	if (kind === "system" && systemNotifier) {
+		if (claimNotice(messageId)) systemNotifier.show(shown.notice, shown.place, silent);
+	} else if (!onScreen(chatOf(target))) {
+		showMentionNotice(shown.notice);
+	}
+}
+
+/** A room's message as its notice shows it, and the place a system notification names; null for one there's none of. */
+async function roomNotice(roomId: string, messageId: string, known: Message | undefined) {
+	let message = known ?? get(channelMessages)[roomId]?.find((m) => m.id === messageId);
 	if (!message) {
-		if (!isUuid(roomId) || !isUuid(messageId)) return;
+		if (!isUuid(roomId) || !isUuid(messageId)) return null;
 		try {
 			message = gatewayMessageToMessage(await getMessageById(roomId, messageId), get(gatewaySpaces));
 		} catch {
-			return;
+			return null;
 		}
 	}
 	const place = roomPlace(get(gatewaySpaces), roomId, messageId);
-	if (!place || !mentionSound(get(currentUser)?.status, roomOnScreen(roomId))) return;
+	if (!place) return null;
 	const emojis = get(spaceEmojis)[place.link.spaceId] ?? [];
-	showMentionNotice(mentionNoticeOf(message, place, knownPeople(), customEmojiMapOf(emojis)));
+	return { notice: mentionNoticeOf(message, place, knownPeople(), customEmojiMapOf(emojis)), place: place.name };
 }
 
-/** A mention in a conversation that isn't on screen, as one in a room (noticeRoomMention). */
-async function noticeConversationMention(conversationId: string, messageId: string) {
-	let message = get(dmMessages)[conversationId]?.find((m) => m.id === messageId);
+/** A conversation's message as its notice shows it, as a room's (roomNotice). */
+async function conversationNotice(conversationId: string, messageId: string, known: DirectMessage | undefined) {
+	let message = known ?? get(dmMessages)[conversationId]?.find((m) => m.id === messageId);
 	if (!message) {
-		if (!isUuid(conversationId) || !isUuid(messageId)) return;
+		if (!isUuid(conversationId) || !isUuid(messageId)) return null;
 		try {
 			message = await getDirectMessageById(conversationId, messageId);
 		} catch {
-			return;
+			return null;
 		}
 	}
-	if (!mentionSound(get(currentUser)?.status, conversationOnScreen(conversationId))) return;
 	const conversation = get(conversations).find((c) => c.id === conversationId);
 	const author = directMessageAuthor(message, conversation);
 	const place = conversationPlace(conversation, conversationId, messageId, get(currentUser)?.id);
 	const shown = { ...message, author_name: author.name, author_avatar_url: author.avatar };
-	showMentionNotice(mentionNoticeOf(shown, place, knownPeople(), {}));
+	return { notice: mentionNoticeOf(shown, place, knownPeople(), {}), place: place.name };
 }
 
 /** Someone typing (TYPING, DM_TYPING) or recording a voice message (RECORDING, DM_RECORDING) in a room or a
@@ -666,6 +746,11 @@ function handleEvent(event: GatewayEvent) {
 				});
 			getMentionCounts()
 				.then((counts) => mentionCounts.set(counts))
+				.catch(() => {});
+			// The user's notification levels, which NOTIFICATION_SETTINGS_UPDATE keeps current. A fetch that fails keeps
+			// the ones the app had: they rarely change, and none at all would make every place notify by its default.
+			getNotificationSettings()
+				.then((settings) => notificationLevels.set(Object.fromEntries(settings.map((s) => [s.target_id, s.level]))))
 				.catch(() => {});
 			// The calls going on in the user's conversations, and who is in each, as the new session has them.
 			const activeCalls = payload.data.active_calls ?? [];
@@ -846,6 +931,7 @@ function handleEvent(event: GatewayEvent) {
 						icon: updated.icon !== undefined ? updated.icon : s.icon,
 						banner: updated.banner !== undefined ? updated.banner : s.banner,
 						locale: updated.locale !== undefined ? updated.locale : s.locale,
+						default_notifications: updated.default_notifications ?? s.default_notifications,
 						owner_id: updated.owner_id ?? s.owner_id,
 						updated_at: updated.updated_at ?? s.updated_at,
 					};
@@ -931,6 +1017,7 @@ function handleEvent(event: GatewayEvent) {
 			// A message this window cancelled, which the API posted all the same: what the Cancel put back in the room's
 			// draft leaves it, and a notice says so.
 			if (raw.nonce && raw.author_id === get(currentUser)?.id && takeBack(roomId, raw.nonce)) toast(SENT_BEFORE_CANCEL);
+			notifyMessage({ roomId, message }, raw.author_id, message.id, false);
 			break;
 		}
 		case "MESSAGE_UPDATE": {
@@ -1007,21 +1094,15 @@ function handleEvent(event: GatewayEvent) {
 			break;
 		}
 		case "MENTION_CREATE": {
-			const { room_id, message_id } = payload.data;
+			const { room_id, message_id, author_id } = payload.data;
 			mentionCounts.update((all) => ({ ...all, [room_id]: (all[room_id] ?? 0) + 1 }));
-			if (mentionSound(get(currentUser)?.status, roomOnScreen(room_id))) {
-				audioStore.play("notification");
-				void noticeRoomMention(room_id, message_id);
-			}
+			notifyMessage({ roomId: room_id }, author_id, message_id, true);
 			break;
 		}
 		case "DM_MENTION_CREATE": {
-			const { conversation_id, message_id } = payload.data;
+			const { conversation_id, message_id, author_id } = payload.data;
 			mentionCounts.update((all) => ({ ...all, [conversation_id]: (all[conversation_id] ?? 0) + 1 }));
-			if (mentionSound(get(currentUser)?.status, conversationOnScreen(conversation_id))) {
-				audioStore.play("notification");
-				void noticeConversationMention(conversation_id, message_id);
-			}
+			notifyMessage({ conversationId: conversation_id }, author_id, message_id, true);
 			break;
 		}
 		case "USER_UPDATE": {
@@ -1130,6 +1211,11 @@ function handleEvent(event: GatewayEvent) {
 			friends.update((all) =>
 				all.map((f) => (f.sender_id === raw.user_id || f.recipient_id === raw.user_id ? { ...f } : f)),
 			);
+			break;
+		}
+		case "NOTIFICATION_SETTINGS_UPDATE": {
+			const update = payload.data;
+			notificationLevels.update((levels) => applyNotificationUpdate(levels, update));
 			break;
 		}
 		case "USER_ACTIVITY_UPDATE": {
@@ -1679,6 +1765,7 @@ function handleEvent(event: GatewayEvent) {
 					.map((c) => (c.id === conversationId ? { ...c, updated_at: msg.created_at } : c))
 					.sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()),
 			);
+			notifyMessage({ conversationId, message: msg }, msg.author_id, msg.id, false);
 			break;
 		}
 		case "DM_MESSAGE_UPDATE": {

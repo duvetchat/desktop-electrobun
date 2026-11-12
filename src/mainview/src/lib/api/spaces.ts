@@ -64,6 +64,8 @@ export async function updateSpace(
 		icon?: File | null;
 		remove_banner?: boolean;
 		remove_icon?: boolean;
+		/** What its members are notified of until they choose: every message (0) or only mentions (1). */
+		default_notifications?: 0 | 1;
 	},
 	upload?: UploadOptions,
 ): Promise<any> {
@@ -77,6 +79,9 @@ export async function updateSpace(
 		if (data.icon instanceof File) form.append("icon", data.icon);
 		if (data.remove_banner) form.append("remove_banner", "true");
 		if (data.remove_icon) form.append("remove_icon", "true");
+		if (data.default_notifications !== undefined) {
+			form.append("default_notifications", String(data.default_notifications));
+		}
 		const res = await api.patch(`/api/spaces/${spaceId}`, form, upload);
 		return res.data;
 	}
@@ -84,6 +89,7 @@ export async function updateSpace(
 		name: data.name,
 		description: data.description,
 		locale: data.locale,
+		default_notifications: data.default_notifications,
 	});
 	return res.data;
 }

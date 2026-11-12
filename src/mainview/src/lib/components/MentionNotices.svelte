@@ -24,7 +24,7 @@
 	<div
 		class="pointer-events-none fixed {top} left-1/2 z-9990 flex w-[min(24rem,calc(100vw-2rem))] -translate-x-1/2 flex-col gap-2"
 		role="region"
-		aria-label="Mentions"
+		aria-label="Notifications"
 	>
 		{#each $mentionNotices as notice (notice.id)}
 			<div

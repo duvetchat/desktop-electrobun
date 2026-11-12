@@ -1,14 +1,8 @@
 <script lang="ts">
 	import { AtSign as AtSignIcon } from "@lucide/svelte";
 	import mascot from "$lib/assets/icon.svg";
-	import {
-		conversations,
-		currentUser,
-		mentionCounts,
-		pendingFriendRequests,
-		unreadChannels,
-		unreadConversations,
-	} from "$lib/stores.svelte";
+	import { conversations, currentUser, pendingFriendRequests } from "$lib/stores.svelte";
+	import { shownMentionCounts, shownUnreadConversations, shownUnreadRooms } from "$lib/notification-marks";
 	import { groupSpaces, spaceNews, type OpenChats } from "$lib/nav";
 	import { tabNews, tabTitle } from "$lib/pane";
 	import { navPrefs } from "$lib/nav-prefs.svelte";
@@ -36,7 +30,7 @@
 	} = $props();
 
 	const newsBySpace = $derived(
-		new Map(guilds.map((g) => [g.id, spaceNews(g.channels, $unreadChannels, $mentionCounts)])),
+		new Map(guilds.map((g) => [g.id, spaceNews(g.channels, $shownUnreadRooms, $shownMentionCounts)])),
 	);
 	const shownSpaces = $derived.by(() => {
 		const groups = groupSpaces(
@@ -49,7 +43,7 @@
 		if (selectedSpaceId && !ids.includes(selectedSpaceId)) ids.push(selectedSpaceId);
 		return ids.map((id) => guilds.find((g) => g.id === id)).filter((g): g is Guild => !!g);
 	});
-	const dmNews = $derived($pendingFriendRequests.length + $unreadConversations.size > 0);
+	const dmNews = $derived($pendingFriendRequests.length + $shownUnreadConversations.size > 0);
 
 	const iconFocus = "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-duvet-accent";
 </script>
@@ -81,7 +75,8 @@
 			<div class="bg-duvet-line h-0.5 w-6 shrink-0 rounded-full"></div>
 			{#each openChats.tabs as tab (tab.channelId)}
 				{@const isActive = tab.channelId === openChats.activeChannelId && !isFriendsActive}
-				{@const unread = !isActive && tabNews(tab, $unreadChannels, $unreadConversations, $mentionCounts).unread}
+				{@const unread =
+					!isActive && tabNews(tab, $shownUnreadRooms, $shownUnreadConversations, $shownMentionCounts).unread}
 				{@const title = tabTitle(tab, $conversations, $currentUser?.id)}
 				<button
 					type="button"

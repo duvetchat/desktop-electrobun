@@ -40,9 +40,8 @@
 		botInviteRequest,
 		spaceInviteRequest,
 		allSpacesReady,
-		unreadChannels,
-		unreadConversations,
 	} from "$lib/stores.svelte";
+	import { shownUnreadConversations, shownUnreadRooms } from "$lib/notification-marks";
 	import { toast } from "$lib/stores/toast.svelte";
 	import CallModal from "$lib/components/CallModal.svelte";
 	import BotInviteModal from "$lib/components/BotInviteModal.svelte";
@@ -50,6 +49,8 @@
 	import ReactionsDialog from "$lib/components/ReactionsDialog.svelte";
 	import BanDialog from "$lib/components/BanDialog.svelte";
 	import MentionNotices from "$lib/components/MentionNotices.svelte";
+	import { startSystemNotifications } from "$lib/system-notifications";
+	import NotificationPermissionBar from "$lib/components/NotificationPermissionBar.svelte";
 	import type { PaneNode, Tab } from "$lib/types";
 	import { gatewaySpaceToGuild, gatewaySpaceToMembers } from "$lib/types";
 	import { userStatusCache } from "$lib/api/ws/connection";
@@ -107,6 +108,10 @@
 			// Clean URL
 			history.replaceState(null, "", window.location.pathname);
 		}
+
+		// What notifies without the focus shows as the system's notification where there is one, and a click on it opens
+		// its message as a notice's does (lib/system-notifications.ts).
+		void startSystemNotifications(openMentioned);
 
 		const session = keepSessionFresh();
 		let conn: ReturnType<typeof createWebSocketConnection> | null = null;
@@ -364,7 +369,7 @@
 		...$conversations.map((c) => c.id),
 		...guilds.flatMap((g) => g.channels.map((c) => c.id)),
 	]);
-	const unreadChats = $derived(new Set([...$unreadConversations, ...$unreadChannels]));
+	const unreadChats = $derived(new Set([...$shownUnreadConversations, ...$shownUnreadRooms]));
 
 	function openChat(id: string) {
 		if ($conversations.some((c) => c.id === id)) {
@@ -766,4 +771,5 @@
 <BanDialog />
 {#if $currentUser && $friendsReady}
 	<MentionNotices onOpen={openMentioned} />
+	<NotificationPermissionBar />
 {/if}

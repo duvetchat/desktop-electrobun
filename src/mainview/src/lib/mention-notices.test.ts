@@ -37,6 +37,7 @@ describe("where a mention is", () => {
 		expect(roomPlace(spaces, ROOM, message(1))).toEqual({
 			link: { spaceId: SPACE, roomId: ROOM, messageId: message(1) },
 			where: "in #general · Alpha",
+			name: "#general · Alpha",
 		});
 		expect(roomPlace(spaces, "0190a3b2-0000-7000-8000-0000000005ff", message(1))).toBeNull();
 	});
@@ -49,12 +50,18 @@ describe("where a mention is", () => {
 			name: "Weekend",
 			members: [member(ME, null, "me"), member(ANA, "Ana", "ana")],
 		};
-		expect(conversationPlace(group, DM, message(1), ME)).toEqual({ link, where: "in Weekend" });
+		expect(conversationPlace(group, DM, message(1), ME)).toEqual({ link, where: "in Weekend", name: "Weekend" });
+		// A DM's system notification names no place: its author says who (DISENO-NOTIFICACIONES.md, objective 7).
 		expect(conversationPlace({ ...group, type: 1 }, DM, message(1), ME)).toEqual({
 			link,
 			where: "in a direct message",
+			name: null,
 		});
-		expect(conversationPlace(undefined, DM, message(1), ME)).toEqual({ link, where: "in a direct message" });
+		expect(conversationPlace(undefined, DM, message(1), ME)).toEqual({
+			link,
+			where: "in a direct message",
+			name: null,
+		});
 	});
 });
 

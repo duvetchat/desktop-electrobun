@@ -7,9 +7,9 @@ import { messageText, type Message } from "$lib/types";
 import type { MessageLink } from "$lib/urls";
 
 /**
- * A notice at the top of the window that someone mentioned the user in a room or a conversation that isn't on screen:
- * who, where, and what they wrote, which opens the message when clicked. It shows when the mention's sound plays
- * (mentionSound, lib/status.ts): not for the chat on screen, and not in do not disturb.
+ * A notice at the top of the window of a message that notifies (lib/notifications.ts): someone mentioned the user, or
+ * wrote in a place at every message, in a room or a conversation that isn't on screen. Who, where, and what they wrote,
+ * which opens the message when clicked; it shows as the notification sound plays.
  */
 export interface MentionNotice {
 	/** The message's ID. */
@@ -30,6 +30,8 @@ export interface MentionNotice {
 export interface MentionPlace {
 	link: MessageLink;
 	where: string;
+	/** The place as a system notification names it: "#room · Space", a group's name, none in a DM. */
+	name: string | null;
 }
 
 /** Where a mention in a room is, by the spaces the user is in; null for a room none of them has. */
@@ -41,7 +43,8 @@ export function roomPlace(
 	const space = spaces.find((s) => s.rooms.some((r) => r.id === roomId));
 	const room = space?.rooms.find((r) => r.id === roomId);
 	if (!space || !room) return null;
-	return { link: { spaceId: space.id, roomId, messageId }, where: `in #${room.name} · ${space.name}` };
+	const name = `#${room.name} · ${space.name}`;
+	return { link: { spaceId: space.id, roomId, messageId }, where: `in ${name}`, name };
 }
 
 /** Where a mention in a conversation is: a group by its name, a DM as a direct message, whose author says who. */
@@ -52,8 +55,9 @@ export function conversationPlace(
 	me: string | undefined,
 ): MentionPlace {
 	const link = { spaceId: "", roomId: "", messageId, conversationId };
-	if (conversation?.type !== 2) return { link, where: "in a direct message" };
-	return { link, where: `in ${conversationTitle(conversation, me)}` };
+	if (conversation?.type !== 2) return { link, where: "in a direct message", name: null };
+	const name = conversationTitle(conversation, me);
+	return { link, where: `in ${name}`, name };
 }
 
 /** A conversation's message as a notice names its author: as the message has them, else as the conversation does. */
@@ -109,10 +113,17 @@ function settle(messageId: string) {
 	if (settled.length > SETTLED_KEPT) settled.shift();
 }
 
+/** Takes a message's one notice for the system's notification instead, unless it has had one, or was deleted. Returns
+ * whether it's taken. */
+export function claimNotice(messageId: string): boolean {
+	if (settled.includes(messageId)) return false;
+	settle(messageId);
+	return true;
+}
+
 /** Shows a mention's notice, unless its message has had one, or was deleted. Returns whether it shows. */
 export function showMentionNotice(notice: MentionNotice): boolean {
-	if (settled.includes(notice.id)) return false;
-	settle(notice.id);
+	if (!claimNotice(notice.id)) return false;
 	mentionNotices.update((shown) => [notice, ...shown].slice(0, NOTICES_SHOWN));
 	setTimeout(() => dismissMentionNotice(notice.id), NOTICE_TIME);
 	return true;

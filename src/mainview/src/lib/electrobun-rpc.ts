@@ -1,4 +1,18 @@
 import { activityThumbnail, base64Bytes } from "$lib/activity-thumbnail";
+import type { MessageLink } from "$lib/urls";
+
+/** A message's notification on Windows, as the Bun process shows it (src/bun/index.ts): who, what and where, the
+ * author's photo by URL, the message a click opens, and whether it's silent, as Duvet plays its own sound. */
+export interface NotificationRequest {
+	id: string;
+	chatId: string;
+	title: string;
+	text: string;
+	place: string | null;
+	avatarUrl: string | null;
+	link: MessageLink;
+	silent: boolean;
+}
 
 export interface ActivityPayload {
 	// 0 (or none) playing, 2 listening.
@@ -24,6 +38,7 @@ export type AppRPCSchema = {
 			maximizeWindow: void;
 			openExternal: { url: string };
 			setSpotifyActivity: { enabled: boolean };
+			showNotification: NotificationRequest;
 		};
 	};
 	webview: {
@@ -33,6 +48,8 @@ export type AppRPCSchema = {
 		};
 		messages: {
 			activityUpdate: ActivityPayload[] | null;
+			// A click on a notification: the message it opens.
+			openMessage: MessageLink;
 		};
 	};
 };
@@ -44,9 +61,11 @@ export type AppRPCClient = {
 		maximizeWindow: () => void;
 		openExternal: (params: { url: string }) => void;
 		setSpotifyActivity: (params: { enabled: boolean }) => void;
+		showNotification: (params: NotificationRequest) => void;
 	};
 	on: {
 		activityUpdate: (handler: (data: ActivityPayload[] | null) => void) => void;
+		openMessage: (handler: (link: MessageLink) => void) => void;
 	};
 };
 
@@ -57,6 +76,7 @@ export function isElectrobunWindow() {
 }
 
 const activityListeners: ((data: ActivityPayload[] | null) => void)[] = [];
+const openMessageListeners: ((link: MessageLink) => void)[] = [];
 
 async function createRpcClient(): Promise<AppRPCClient | null> {
 	// Only the top frame. Electrobun injects its preload into subframes on some platforms (macOS WKUserScript
@@ -78,6 +98,9 @@ async function createRpcClient(): Promise<AppRPCClient | null> {
 						listener(data);
 					}
 				},
+				openMessage: (link: MessageLink) => {
+					for (const listener of openMessageListeners) listener(link);
+				},
 			},
 		},
 	});
@@ -90,6 +113,9 @@ async function createRpcClient(): Promise<AppRPCClient | null> {
 		on: {
 			activityUpdate: (handler) => {
 				activityListeners.push(handler);
+			},
+			openMessage: (handler) => {
+				openMessageListeners.push(handler);
 			},
 		},
 	};

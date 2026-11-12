@@ -1,12 +1,25 @@
 import { afterAll, beforeAll, describe, expect, jest, spyOn, test } from "bun:test";
 import { get } from "svelte/store";
+import type { Conversation } from "$lib/api/conversations";
 import { openGateway, type TestGateway } from "$lib/api/ws/test-gateway";
 import { callHistory } from "$lib/call-history";
 import { changeDraft, chatDrafts, draftOf, putBack } from "$lib/drafts";
 import { onReactionChange, type ReactionChange } from "$lib/reactions";
-import { MessageType, type Message } from "$lib/types";
+import { notificationLevels } from "$lib/notification-levels";
+import { MessageType, type GatewaySpace, type Message } from "$lib/types";
 import { TYPING_TIMEOUT } from "$lib/typing";
 import { SENT_BEFORE_CANCEL } from "$lib/uploads";
+
+// A message that notifies plays its sound through an <audio>, which Bun has none of.
+Object.assign(globalThis, {
+	Audio: class {
+		volume = 1;
+		currentTime = 0;
+		play() {
+			return Promise.resolve();
+		}
+	},
+});
 
 const stores = await import("$lib/stores.svelte");
 const { toastStore } = await import("$lib/stores/toast.svelte");
@@ -406,5 +419,83 @@ describe("the call history", () => {
 		expect(get(callHistory)).toBeNull();
 		callNotice(message(40), conversation(24));
 		expect(get(callHistory)).toBeNull();
+	});
+});
+
+describe("notification levels", () => {
+	const SPACE = "01a15f8c-0000-7000-8000-0000000000aa";
+	const ROOM = "01a15f8c-0000-7000-8000-0000000000bb";
+	async function eventually(check: () => boolean) {
+		for (let i = 0; i < 200 && !check(); i++) await Bun.sleep(5);
+		return check();
+	}
+
+	test("READY fetches the user's levels, and NOTIFICATION_SETTINGS_UPDATE keeps them current", async () => {
+		fetchSpy.mockImplementation((async (input: string | URL | Request) => {
+			const url = input instanceof Request ? input.url : String(input);
+			return Response.json(
+				url.endsWith("/api/users/@me/notification-settings") ? [{ target_id: ROOM, target_type: 1, level: 2 }] : [],
+			);
+		}) as typeof fetch);
+		try {
+			ready({});
+			expect(await eventually(() => get(notificationLevels)[ROOM] === 2)).toBe(true);
+			deliver("NOTIFICATION_SETTINGS_UPDATE", { target_id: SPACE, target_type: 0, level: 0 });
+			deliver("NOTIFICATION_SETTINGS_UPDATE", { target_id: ROOM, target_type: 1, level: null });
+			expect(get(notificationLevels)).toEqual({ [SPACE]: 0 });
+		} finally {
+			fetchSpy.mockImplementation((async (_input: string | URL | Request) => Response.json([])) as typeof fetch);
+		}
+	});
+
+	test("SPACE_UPDATE brings a Space's new default", () => {
+		const space: GatewaySpace = {
+			id: SPACE,
+			name: "S",
+			description: null,
+			banner: null,
+			owner_id: ALICE,
+			locale: null,
+			default_notifications: 1,
+			member_roles: {},
+			room_overwrites: [],
+			rooms: [],
+			members: [],
+			roles: [],
+			users: [],
+			created_at: "",
+			updated_at: "",
+		};
+		stores.gatewaySpaces.set([space]);
+		deliver("SPACE_UPDATE", { id: SPACE, name: "S", default_notifications: 0 });
+		expect(get(stores.gatewaySpaces)[0].default_notifications).toBe(0);
+	});
+});
+
+// A message moves its conversation up the list, as the API orders it, whatever it notifies.
+describe("a conversation's message", () => {
+	test("moves its conversation to the top of the list", () => {
+		const older = conversation(50);
+		const newer = conversation(51);
+		const listed = (id: string, updatedAt: string): Conversation => ({
+			id,
+			type: 1,
+			name: null,
+			owner_id: ME,
+			created_at: updatedAt,
+			updated_at: updatedAt,
+			deleted_at: null,
+			members: [],
+		});
+		stores.conversations.set([listed(newer, "2026-11-02T00:00:00Z"), listed(older, "2026-11-01T00:00:00Z")]);
+		deliver("DM_MESSAGE_CREATE", {
+			id: message(90),
+			conversation_id: older,
+			author_id: ALICE,
+			content: "hi",
+			created_at: "2026-11-03T00:00:00Z",
+			updated_at: "2026-11-03T00:00:00Z",
+		});
+		expect(get(stores.conversations).map((c) => c.id)).toEqual([older, newer]);
 	});
 });

@@ -4,9 +4,12 @@ import { openGateway, type TestGateway } from "$lib/api/ws/test-gateway";
 
 // A mention plays the notification sound through an <audio>, which Bun has none of.
 class FakeAudio {
+	// Each sound played, counted: a message plays its sound once.
+	static plays = 0;
 	volume = 1;
 	currentTime = 0;
 	play() {
+		FakeAudio.plays++;
 		return Promise.resolve();
 	}
 }
@@ -14,6 +17,11 @@ Object.assign(globalThis, { Audio: FakeAudio });
 
 const stores = await import("$lib/stores.svelte");
 const { mentionNotices } = await import("$lib/mention-notices");
+const { notificationLevels } = await import("$lib/notification-levels");
+const { showChat } = await import("$lib/on-screen");
+const { setSystemNotifier } = await import("$lib/api/ws/connection");
+const { startTabCoordination } = await import("$lib/tab-notifications");
+const { audioStore } = await import("$lib/stores/audio.svelte");
 
 const ME = "01920000-0000-7000-8000-00000000b0b0";
 const ANA = "01920000-0000-7000-8000-00000000a11c";
@@ -125,10 +133,10 @@ describe("a mention's notice", () => {
 	});
 
 	test("shows nothing for the room on screen, nor in do not disturb", async () => {
-		stores.activeTextRoomId.set(ROOM);
+		const hide = showChat(ROOM);
 		roomMessage(3);
 		mention(3);
-		stores.activeTextRoomId.set(null);
+		hide();
 		stores.currentUser.update((user) => user && { ...user, status: 2 });
 		roomMessage(4);
 		mention(4);
@@ -192,11 +200,252 @@ describe("a mention's notice", () => {
 	});
 
 	test("shows nothing for the conversation on screen", async () => {
-		stores.activeDMConvId.set(GROUP);
+		const hide = showChat(GROUP);
 		deliver("DM_MESSAGE_CREATE", { id: message(21), conversation_id: GROUP, author_id: ANA, content: "hi", user: ana });
 		deliver("DM_MENTION_CREATE", { message_id: message(21), conversation_id: GROUP, author_id: ANA });
-		stores.activeDMConvId.set(null);
+		hide();
 		await settle();
 		expect(noticeOf(message(21))).toBeUndefined();
+	});
+
+	// Every pane's chat is on screen, not only the one whose effect last wrote activeTextRoomId (a split's second pane).
+	test("shows nothing for a room a second pane shows", async () => {
+		stores.activeTextRoomId.set(OTHER_ROOM);
+		const hide = showChat(ROOM);
+		roomMessage(8);
+		mention(8);
+		hide();
+		stores.activeTextRoomId.set(null);
+		await settle();
+		expect(noticeOf(message(8))).toBeUndefined();
+	});
+});
+
+// A level of nothing silences a place: no notice and no sound for its mentions. A room's own level wins over its
+// Space's, and a Space's default of every message still notifies mentions.
+describe("a level of nothing", () => {
+	test("silences a Space's rooms, but not a room of it with a level of its own", async () => {
+		notificationLevels.set({ [SPACE]: 2 });
+		roomMessage(70);
+		mention(70);
+		notificationLevels.set({ [SPACE]: 2, [ROOM]: 1 });
+		roomMessage(71);
+		mention(71);
+		await settle();
+		notificationLevels.set({});
+		expect(noticeOf(message(70))).toBeUndefined();
+		expect(noticeOf(message(71))).toBeDefined();
+	});
+
+	test("silences a conversation", async () => {
+		notificationLevels.set({ [GROUP]: 2 });
+		deliver("DM_MESSAGE_CREATE", {
+			id: message(72),
+			conversation_id: GROUP,
+			author_id: ANA,
+			content: `In the group, <@${ME}>`,
+			user: ana,
+			created_at: T,
+			updated_at: T,
+		});
+		deliver("DM_MENTION_CREATE", { message_id: message(72), conversation_id: GROUP, author_id: ANA });
+		await settle();
+		notificationLevels.set({});
+		expect(noticeOf(message(72))).toBeUndefined();
+	});
+
+	test("a Space whose default is every message still notifies its mentions", async () => {
+		deliver("SPACE_UPDATE", { id: SPACE, name: "Alpha", default_notifications: 0 });
+		roomMessage(73);
+		mention(73);
+		await settle();
+		expect(noticeOf(message(73))).toBeDefined();
+	});
+});
+
+// An ordinary message notifies in a place at every message, as a mention does anywhere but at nothing: one notice and
+// one sound per message, whichever of its two events comes first (DISENO-NOTIFICACIONES.md, objectives 3 and 5).
+describe("ordinary messages", () => {
+	// A Space on its default of only mentions, and no level of the user's own.
+	function onDefaults() {
+		notificationLevels.set({});
+		deliver("SPACE_UPDATE", { id: SPACE, name: "Alpha", default_notifications: 1 });
+	}
+	const others = { room_id: ROOM, author_id: ANA, user: ana, created_at: T, updated_at: T };
+
+	test("in a room at every message, someone's message shows a notice and plays the sound once", async () => {
+		onDefaults();
+		notificationLevels.set({ [ROOM]: 0 });
+		const before = FakeAudio.plays;
+		roomMessage(80, ROOM, "Plain words");
+		await settle();
+		expect(noticeOf(message(80))).toMatchObject({ where: "in #general · Alpha", text: "Plain words" });
+		expect(FakeAudio.plays - before).toBe(1);
+	});
+
+	test("at only mentions, a message that mentions nobody notifies nothing", async () => {
+		onDefaults();
+		const before = FakeAudio.plays;
+		roomMessage(81, ROOM, "Plain words");
+		await settle();
+		expect(noticeOf(message(81))).toBeUndefined();
+		expect(FakeAudio.plays).toBe(before);
+	});
+
+	test("the user's own messages, Duvet's notices and ephemeral messages notify nothing", async () => {
+		onDefaults();
+		notificationLevels.set({ [ROOM]: 0 });
+		const before = FakeAudio.plays;
+		const me = { id: ME, username: "me", alias: null, avatar: null, banner: null };
+		deliver("MESSAGE_CREATE", { ...others, id: message(82), author_id: ME, user: me, content: "Mine" });
+		deliver("MESSAGE_CREATE", { ...others, id: message(83), type: 2, content: "" });
+		deliver("MESSAGE_CREATE", { ...others, id: message(84), flags: 1 << 6, content: "Just for you" });
+		await settle();
+		for (const n of [82, 83, 84]) expect(noticeOf(message(n))).toBeUndefined();
+		expect(FakeAudio.plays).toBe(before);
+	});
+
+	test("a mention at every message notifies once, whichever of its events comes first", async () => {
+		onDefaults();
+		notificationLevels.set({ [ROOM]: 0 });
+		const before = FakeAudio.plays;
+		roomMessage(85);
+		mention(85);
+		apiMessages.set(message(86), { id: message(86), room_id: ROOM, author_id: ANA, content: "Again", user: ana });
+		mention(86);
+		roomMessage(86, ROOM, "Again");
+		await settle();
+		expect(get(mentionNotices).filter((n) => n.id === message(85) || n.id === message(86))).toHaveLength(2);
+		expect(FakeAudio.plays - before).toBe(2);
+	});
+
+	test("do not disturb notifies nothing", async () => {
+		onDefaults();
+		notificationLevels.set({ [ROOM]: 0 });
+		stores.currentUser.update((user) => user && { ...user, status: 2 });
+		const before = FakeAudio.plays;
+		roomMessage(87, ROOM, "Plain words");
+		stores.currentUser.update((user) => user && { ...user, status: 1 });
+		await settle();
+		expect(noticeOf(message(87))).toBeUndefined();
+		expect(FakeAudio.plays).toBe(before);
+	});
+
+	test("without the focus, the system's notification shows instead of Duvet's notice; without one, the notice", async () => {
+		onDefaults();
+		notificationLevels.set({ [ROOM]: 0 });
+		const system: [string, string | null][] = [];
+		setSystemNotifier({ available: () => true, show: (notice, place) => system.push([notice.id, place]) });
+		stores.pageVisible.set(false);
+		const before = FakeAudio.plays;
+		roomMessage(88, ROOM, "Plain words");
+		await settle();
+		expect(system).toEqual([[message(88), "#general · Alpha"]]);
+		expect(noticeOf(message(88))).toBeUndefined();
+		expect(FakeAudio.plays - before).toBe(1);
+
+		setSystemNotifier(null);
+		roomMessage(89, ROOM, "Plain words");
+		await settle();
+		stores.pageVisible.set(true);
+		expect(noticeOf(message(89))).toBeDefined();
+	});
+
+	test("a DM notifies every message by default, and its system notification names no place", async () => {
+		onDefaults();
+		const system: [string, string | null][] = [];
+		setSystemNotifier({ available: () => true, show: (notice, place) => system.push([notice.id, place]) });
+		stores.pageVisible.set(false);
+		deliver("DM_MESSAGE_CREATE", {
+			id: message(90),
+			conversation_id: DM,
+			author_id: ANA,
+			content: "Hi there",
+			user: ana,
+			created_at: T,
+			updated_at: T,
+		});
+		await settle();
+		setSystemNotifier(null);
+		stores.pageVisible.set(true);
+		expect(system).toEqual([[message(90), null]]);
+	});
+
+	// Chromium (WebView2 too) lets a page play a sound only once it's been clicked or typed in: Duvet opened and
+	// minimized without a click had its sound refused, and its toasts came silent.
+	test("before the page's first click, the system notification makes the sound, and Duvet's plays none", async () => {
+		onDefaults();
+		notificationLevels.set({ [ROOM]: 0 });
+		const system: [string, boolean][] = [];
+		setSystemNotifier({ available: () => true, show: (notice, _, silent) => system.push([notice.id, silent]) });
+		stores.pageVisible.set(false);
+		const before = FakeAudio.plays;
+		Object.defineProperty(navigator, "userActivation", { value: { hasBeenActive: false }, configurable: true });
+		roomMessage(92, ROOM, "Plain words");
+		await settle();
+		Object.defineProperty(navigator, "userActivation", { value: { hasBeenActive: true }, configurable: true });
+		roomMessage(93, ROOM, "Plain words");
+		await settle();
+		Reflect.deleteProperty(navigator, "userActivation");
+		setSystemNotifier(null);
+		stores.pageVisible.set(true);
+		expect(system).toEqual([
+			[message(92), false],
+			[message(93), true],
+		]);
+		expect(FakeAudio.plays - before).toBe(1);
+	});
+
+	test("with the notifications' sound turned off, the system notification stays silent before the first click too", async () => {
+		onDefaults();
+		notificationLevels.set({ [ROOM]: 0 });
+		const silent: boolean[] = [];
+		setSystemNotifier({ available: () => true, show: (_notice, _place, quiet) => silent.push(quiet) });
+		stores.pageVisible.set(false);
+		const volume = audioStore.get("notification");
+		audioStore.set("notification", 0);
+		Object.defineProperty(navigator, "userActivation", { value: { hasBeenActive: false }, configurable: true });
+		roomMessage(94, ROOM, "Plain words");
+		await settle();
+		Reflect.deleteProperty(navigator, "userActivation");
+		audioStore.set("notification", volume);
+		setSystemNotifier(null);
+		stores.pageVisible.set(true);
+		expect(silent).toEqual([true]);
+	});
+
+	// The web's notifier can show one only while the browser lets it, which can change in another tab or in the site's
+	// settings: it's asked as each message notifies.
+	test("a system notification that can't show now, a browser's without its permission, leaves Duvet's notice", async () => {
+		onDefaults();
+		notificationLevels.set({ [ROOM]: 0 });
+		const system: string[] = [];
+		setSystemNotifier({ available: () => false, show: (notice) => system.push(notice.id) });
+		stores.pageVisible.set(false);
+		roomMessage(95, ROOM, "Plain words");
+		await settle();
+		setSystemNotifier(null);
+		stores.pageVisible.set(true);
+		expect(system).toEqual([]);
+		expect(noticeOf(message(95))).toBeDefined();
+	});
+
+	// One browser tab notifies (lib/tab-notifications.ts): this one, without the focus, while another holds the lock.
+	test("a tab that doesn't act neither shows nor plays", async () => {
+		onDefaults();
+		notificationLevels.set({ [ROOM]: 0 });
+		stores.pageVisible.set(false);
+		const stop = startTabCoordination({
+			locks: { request: () => new Promise(() => {}) },
+			channel: { onmessage: null, postMessage() {}, close() {} },
+			id: "this tab",
+		});
+		const before = FakeAudio.plays;
+		roomMessage(91, ROOM, "Plain words");
+		await settle();
+		stop();
+		stores.pageVisible.set(true);
+		expect(noticeOf(message(91))).toBeUndefined();
+		expect(FakeAudio.plays).toBe(before);
 	});
 });

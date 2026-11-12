@@ -22,6 +22,7 @@
 		spaceEmojis,
 	} from "$lib/stores.svelte";
 	import { get } from "svelte/store";
+	import { showChat } from "$lib/on-screen";
 	import {
 		closeTabsIn,
 		isConversationTab,
@@ -305,6 +306,13 @@
 		} else {
 			activeTextRoomId.set(null);
 		}
+	});
+
+	// The room this pane shows is on screen while the panes show (lib/on-screen.ts): every pane's, a split's included,
+	// which activeTextRoomId, written by each pane's effect in turn, can't tell.
+	$effect(() => {
+		if (isActive && node.kind === "leaf" && node.activeChannelId && activeChannel?.type === "text")
+			return showChat(node.activeChannelId);
 	});
 
 	// A room read up to the newest message its list has from elsewhere (the space's Mark all as read moves its read
@@ -1042,6 +1050,8 @@
 		membersColumnOpen,
 		onMembersColumn,
 		showTabs,
+		// A split's panes are hidden with it (the Friends view), as the root pane is.
+		isActive,
 	});
 
 	// ── Leaf: the bar's actions ──────────────────────────────────────────────
