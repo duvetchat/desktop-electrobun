@@ -1,5 +1,5 @@
-import { describe, expect, test } from "bun:test";
-import { notificationIdentity, registryCommands } from "./notification-setup";
+import { describe, expect, spyOn, test } from "bun:test";
+import { listenAndSetUp, notificationIdentity, registryCommands } from "./notification-setup";
 
 // Each channel's notifications have their own sender, link and pipe, so the dev build never takes the installed app's.
 describe("a channel's notification identity", () => {
@@ -57,5 +57,24 @@ describe("the registry's keys", () => {
 			expect(c.slice(0, 2)).toEqual(["reg", "add"]);
 			expect(c.at(-1)).toBe("/f");
 		}
+	});
+});
+
+// A click while the registry was being written found no pipe, and the forwarder started a second Duvet.
+describe("starting a channel's notifications", () => {
+	test("listens for clicks before it writes the registry, and also when that fails", async () => {
+		const steps: string[] = [];
+		const listen = async () => void steps.push("listen");
+		const errors = spyOn(console, "error").mockImplementation(() => {});
+		const started = await listenAndSetUp(listen, async () => void steps.push("set up"));
+		const failed = await listenAndSetUp(listen, async () => {
+			steps.push("set up");
+			throw new Error("the data folder can't be written");
+		});
+		const logged = errors.mock.calls.length;
+		errors.mockRestore();
+		expect(steps).toEqual(["listen", "set up", "listen", "set up"]);
+		expect([started, failed]).toEqual([true, false]);
+		expect(logged).toBe(1);
 	});
 });

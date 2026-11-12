@@ -54,6 +54,22 @@ export function registryCommands(
 }
 
 /**
+ * Starts a channel's notifications: it listens for clicks first, so one that comes while the registry is written
+ * reaches this Duvet, where the forwarder, finding no pipe, would start another, then sets them up. False when the
+ * set-up failed, which is logged: no toasts show then, and earlier toasts' clicks still open their message.
+ */
+export async function listenAndSetUp(listen: () => Promise<void>, setUp: () => Promise<unknown>): Promise<boolean> {
+	await listen();
+	try {
+		await setUp();
+		return true;
+	} catch (err) {
+		console.error("[Notifications] Can't set them up:", err);
+		return false;
+	}
+}
+
+/**
  * Windows: registers this channel's notifications, and writes into the app's data folder (userData) what the registry
  * names: the icon, as the app's package (app.asar) isn't a folder Windows reads a file from, and the forwarder's script.
  * It runs at every start, as an update or a move changes the paths, and never blocks it: a failed command is logged.

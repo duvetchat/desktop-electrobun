@@ -5,7 +5,12 @@ import { ActivityImages, IpcActivities, PAGE_WAIT_MS, within } from "./activity-
 import { avatarForToast } from "./notification-avatars";
 import { forwarderScript } from "./notification-forwarder";
 import { openUrl, parseOpenUrl, type NotificationLink } from "./notification-links";
-import { notificationIdentity, setUpNotifications, type NotificationIdentity } from "./notification-setup";
+import {
+	listenAndSetUp,
+	notificationIdentity,
+	setUpNotifications,
+	type NotificationIdentity,
+} from "./notification-setup";
 import { Toasts } from "./toasts";
 import { startSpotifyReader, type SpotifyActivity } from "./spotify";
 import { ipcHeld, ipcPath, LineReader } from "./ipc";
@@ -276,14 +281,11 @@ async function startNotifications() {
 	const identity = notificationIdentity(channel);
 	// The installed app's launcher, which the forwarder starts detached, so it outlives it (notification-forwarder.ts).
 	const launcher = [join(dirname(process.execPath), "launcher.exe")];
-	try {
-		await setUpNotifications(channel, Utils.paths.userData, forwarderScript(identity.pipe, launcher));
-	} catch (err) {
-		console.error("[Notifications] Can't set them up:", err);
-		return;
-	}
-	notifications = { toasts: new Toasts(identity.aumid), scheme: identity.scheme };
-	await listenForClicks(identity);
+	const ready = await listenAndSetUp(
+		() => listenForClicks(identity),
+		() => setUpNotifications(channel, Utils.paths.userData, forwarderScript(identity.pipe, launcher)),
+	);
+	if (ready) notifications = { toasts: new Toasts(identity.aumid), scheme: identity.scheme };
 }
 
 // The channel's pipe, where the forwarder hands a click's link. Another Duvet of this channel that runs keeps it, as
