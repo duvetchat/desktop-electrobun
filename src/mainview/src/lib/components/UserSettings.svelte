@@ -1430,7 +1430,7 @@
 							{:else if activeSection === "audio"}
 								{@const sliders: { key: SoundEvent | "master"; label: string }[] = [
 								{ key: "master", label: "Master Volume" },
-								{ key: "notification", label: "Mentions" },
+								{ key: "notification", label: "Notifications" },
 								{ key: "join_vc", label: "Join Voice" },
 								{ key: "leave_vc", label: "Leave Voice" },
 								{ key: "voice_calling", label: "Incoming Call" },

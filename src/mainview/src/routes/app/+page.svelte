@@ -49,6 +49,8 @@
 	import ReactionsDialog from "$lib/components/ReactionsDialog.svelte";
 	import BanDialog from "$lib/components/BanDialog.svelte";
 	import MentionNotices from "$lib/components/MentionNotices.svelte";
+	import { startSystemNotifications } from "$lib/system-notifications";
+	import NotificationPermissionBar from "$lib/components/NotificationPermissionBar.svelte";
 	import type { PaneNode, Tab } from "$lib/types";
 	import { gatewaySpaceToGuild, gatewaySpaceToMembers } from "$lib/types";
 	import { userStatusCache } from "$lib/api/ws/connection";
@@ -106,6 +108,10 @@
 			// Clean URL
 			history.replaceState(null, "", window.location.pathname);
 		}
+
+		// What notifies without the focus shows as the system's notification where there is one, and a click on it opens
+		// its message as a notice's does (lib/system-notifications.ts).
+		void startSystemNotifications(openMentioned);
 
 		const session = keepSessionFresh();
 		let conn: ReturnType<typeof createWebSocketConnection> | null = null;
@@ -765,4 +771,5 @@
 <BanDialog />
 {#if $currentUser && $friendsReady}
 	<MentionNotices onOpen={openMentioned} />
+	<NotificationPermissionBar />
 {/if}

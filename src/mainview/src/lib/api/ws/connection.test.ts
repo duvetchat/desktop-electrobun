@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, jest, spyOn, test } from "bun:test";
 import { get } from "svelte/store";
+import type { Conversation } from "$lib/api/conversations";
 import { openGateway, type TestGateway } from "$lib/api/ws/test-gateway";
 import { callHistory } from "$lib/call-history";
 import { changeDraft, chatDrafts, draftOf, putBack } from "$lib/drafts";
@@ -8,6 +9,17 @@ import { notificationLevels } from "$lib/notification-levels";
 import { MessageType, type GatewaySpace, type Message } from "$lib/types";
 import { TYPING_TIMEOUT } from "$lib/typing";
 import { SENT_BEFORE_CANCEL } from "$lib/uploads";
+
+// A message that notifies plays its sound through an <audio>, which Bun has none of.
+Object.assign(globalThis, {
+	Audio: class {
+		volume = 1;
+		currentTime = 0;
+		play() {
+			return Promise.resolve();
+		}
+	},
+});
 
 const stores = await import("$lib/stores.svelte");
 const { toastStore } = await import("$lib/stores/toast.svelte");
@@ -457,5 +469,33 @@ describe("notification levels", () => {
 		stores.gatewaySpaces.set([space]);
 		deliver("SPACE_UPDATE", { id: SPACE, name: "S", default_notifications: 0 });
 		expect(get(stores.gatewaySpaces)[0].default_notifications).toBe(0);
+	});
+});
+
+// A message moves its conversation up the list, as the API orders it, whatever it notifies.
+describe("a conversation's message", () => {
+	test("moves its conversation to the top of the list", () => {
+		const older = conversation(50);
+		const newer = conversation(51);
+		const listed = (id: string, updatedAt: string): Conversation => ({
+			id,
+			type: 1,
+			name: null,
+			owner_id: ME,
+			created_at: updatedAt,
+			updated_at: updatedAt,
+			deleted_at: null,
+			members: [],
+		});
+		stores.conversations.set([listed(newer, "2026-11-02T00:00:00Z"), listed(older, "2026-11-01T00:00:00Z")]);
+		deliver("DM_MESSAGE_CREATE", {
+			id: message(90),
+			conversation_id: older,
+			author_id: ALICE,
+			content: "hi",
+			created_at: "2026-11-03T00:00:00Z",
+			updated_at: "2026-11-03T00:00:00Z",
+		});
+		expect(get(stores.conversations).map((c) => c.id)).toEqual([older, newer]);
 	});
 });
