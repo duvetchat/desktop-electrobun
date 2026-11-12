@@ -23,6 +23,7 @@
 <script lang="ts">
 	import { onMount, untrack, type Snippet } from "svelte";
 	import { get } from "svelte/store";
+	import { showChat } from "$lib/on-screen";
 	import { DropdownMenu } from "bits-ui";
 	import {
 		conversations,
@@ -833,6 +834,8 @@
 	onMount(() => {
 		const convId = conversation.id;
 		activeDMConvId.set(convId);
+		// On screen while this view is (lib/on-screen.ts), as a pane's room is.
+		const hide = showChat(convId);
 		hadUnread = get(unreadConversations).has(convId);
 		unreadConversations.update((s) => {
 			s.delete(convId);
@@ -857,6 +860,7 @@
 			callOffBelow();
 			keepJump(convId, hasMoreBelow ? { hasMore, loadedBelowTo } : null);
 			activeDMConvId.update((cur) => (cur === convId ? null : cur));
+			hide();
 		};
 	});
 </script>

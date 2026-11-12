@@ -8,7 +8,6 @@ import {
 	isMobileOnly,
 	memberMobileOnly,
 	memberStatus,
-	mentionSound,
 	noteConversationMemberStatus,
 	noteMemberStatus,
 	rememberConversationPresences,
@@ -65,18 +64,6 @@ describe("isMobileOnly", () => {
 		// None: offline, or from a server from before client statuses.
 		expect(isMobileOnly({})).toBe(false);
 		expect(isMobileOnly(undefined)).toBe(false);
-	});
-});
-
-describe("mentionSound", () => {
-	test("plays for a mention off screen, unless the user is in do not disturb", () => {
-		expect(mentionSound(1, false)).toBe(true);
-		expect(mentionSound(undefined, false)).toBe(true);
-		expect(mentionSound(2, false)).toBe(false);
-	});
-	test("never plays for a mention on screen", () => {
-		expect(mentionSound(1, true)).toBe(false);
-		expect(mentionSound(2, true)).toBe(false);
 	});
 });
 

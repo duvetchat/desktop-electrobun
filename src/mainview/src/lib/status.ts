@@ -45,12 +45,6 @@ export function isMobileOnly(clientStatus: ClientStatus | undefined): boolean {
 	return platforms.length === 1 && platforms[0] === "mobile";
 }
 
-/** Whether a mention plays the notification sound: not while its room or conversation is on screen, and never in do
- * not disturb. */
-export function mentionSound(status: ChosenStatus | undefined, onScreen: boolean): boolean {
-	return !onScreen && status !== 2;
-}
-
 /** Whether a call plays its sound: a call coming in rings unless the user is in do not disturb, where it shows
  * without a sound; the one the user places always rings back. */
 export function callRings(state: CallState, status: ChosenStatus | undefined): boolean {

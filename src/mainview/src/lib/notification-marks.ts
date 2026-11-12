@@ -1,5 +1,5 @@
-import { derived, readable, type Readable } from "svelte/store";
-import { notificationLevels, roomLevel } from "$lib/notification-levels";
+import { derived, get, readable, type Readable } from "svelte/store";
+import { conversationLevel, notificationLevels, roomLevel } from "$lib/notification-levels";
 import { gatewaySpaces, mentionCounts, unreadChannels, unreadConversations } from "$lib/stores.svelte";
 import type { NotificationLevel } from "$lib/types";
 
@@ -39,6 +39,18 @@ export const quietPlaces: Readable<Set<string>> = derived([notificationLevels, r
 	for (const [id, level] of Object.entries(levels)) if (level === 2 && !places.has(id)) quiet.add(id);
 	return quiet;
 });
+
+/** A room's level now: its own, else its Space's, else that Space's default; a room of a Space not loaded yet, its own,
+ * else only mentions. */
+export function roomLevelNow(roomId: string): NotificationLevel {
+	const levels = get(notificationLevels);
+	const place = get(roomPlaces).get(roomId);
+	return place ? roomLevel(levels, roomId, place.spaceId, place.spaceDefault) : (levels[roomId] ?? 1);
+}
+
+/** A conversation's level now: its own, else every message. */
+export const conversationLevelNow = (conversationId: string): NotificationLevel =>
+	conversationLevel(get(notificationLevels), conversationId);
 
 function without(ids: Set<string>, quiet: Set<string>): Set<string> {
 	if (quiet.size === 0) return ids;
