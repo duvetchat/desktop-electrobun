@@ -50,7 +50,7 @@ import { conversationLevelNow, roomLevelNow } from "$lib/notification-marks";
 import { notificationKind } from "$lib/notifications";
 import { tabActs } from "$lib/tab-notifications";
 import { chatsOnScreen } from "$lib/on-screen";
-import { getWSHostURL, getAvatarURL, isUuid, route } from "$lib/common/common";
+import { getHostURL, getWSHostURL, getAvatarURL, isUuid, route } from "$lib/common/common";
 import { derived, get, type Writable } from "svelte/store";
 import { getSpaceMembers, spacesLeftHere, type SpaceMemberWithUser } from "$lib/api/spaces";
 import { forgetSpaceCommands } from "$lib/api/interactions";
@@ -199,6 +199,23 @@ function askForLists() {
 // What a socket that identified for a new session asked for, while its READY comes: the lists need the session alone,
 // and asked for only on READY they came two round trips after it (#282). None for a resume, which keeps them.
 let listsAhead: ReturnType<typeof askForLists> | null = null;
+
+// The gateway's and the API's addresses as a connection last used them, which the next start's head script (app.html)
+// opens before the app's JavaScript runs (#291).
+const START_KEY = "duvet.start.v1";
+
+/** The socket app.html's head script started as the page loaded, for `url`, taken once: one for another address (an
+ * earlier target's) is closed, and one closing or closed isn't taken (#291). */
+function takeEarlySocket(url: string): WebSocket | null {
+	const early: unknown = Reflect.get(globalThis, "__duvetEarlySocket");
+	Reflect.deleteProperty(globalThis, "__duvetEarlySocket");
+	if (!(early instanceof WebSocket)) return null;
+	if (early.url !== url || early.readyState > WebSocket.OPEN) {
+		early.close();
+		return null;
+	}
+	return early;
+}
 
 // Counts the connections to the gateway that opened, so what was sent can be matched to the session it reached.
 let connectionCount = 0;
@@ -2037,8 +2054,13 @@ export function createWebSocketConnection(): GatewayConnection {
 		}
 
 		let socket: WebSocket;
+		let early: WebSocket | null = null;
 		try {
-			socket = new WebSocket(getStreamURL());
+			const url = getStreamURL();
+			// The addresses the next start's head script (app.html) opens before the app's JavaScript runs (#291).
+			localStorage.setItem(START_KEY, JSON.stringify({ gateway: `${getWSHostURL()}/gateway`, api: getHostURL() }));
+			early = takeEarlySocket(url);
+			socket = early ?? new WebSocket(url);
 		} catch (error) {
 			console.error("[WS] Failed to create WebSocket:", error);
 
@@ -2058,8 +2080,10 @@ export function createWebSocketConnection(): GatewayConnection {
 		// Set while this connection asked to resume and doesn't know yet whether it did.
 		let resumeProbe = false;
 
-		socket.onopen = () => {
-			markStartup("socket");
+		const opened = () => {
+			// The head script's socket may have opened before this connection listened: it noted when.
+			const openedAt: unknown = Reflect.get(globalThis, "__duvetEarlySocketOpenedAt");
+			markStartup("socket", typeof openedAt === "number" ? openedAt : Date.now());
 			if (import.meta.env.DEV) console.log("[WS] Connected");
 			reconnectAttempts = 0;
 			const identify = identifyData(
@@ -2077,6 +2101,7 @@ export function createWebSocketConnection(): GatewayConnection {
 			}
 			startHeartbeat(socket);
 		};
+		socket.onopen = opened;
 
 		socket.onmessage = (rawEvent) => {
 			try {
@@ -2160,6 +2185,9 @@ export function createWebSocketConnection(): GatewayConnection {
 				reconnectTimer = setTimeout(connect, baseDelay + jitter);
 			}
 		};
+
+		// Taken on open (takeEarlySocket): its open event came before this connection listened.
+		if (early?.readyState === WebSocket.OPEN) opened();
 	}
 
 	connect();

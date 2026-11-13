@@ -53,6 +53,22 @@
       if (path === "/app.html" && !localStorage.getItem("duvet_session_token")) {
         window.location.replace(r("/sign-in.html"));
       }
+
+      // The gateway's socket starts here, as the page loads, rather than once the app's JavaScript has run: the
+      // connection takes it on (takeEarlySocket, lib/api/ws/connection.ts). At the address the app last used
+      // (duvet.start.v1), and not with tokens in their last hour (renewalFirst, lib/session.ts), which renew first.
+      if ((path === "/app.html" || path === "/app") && !isDev) {
+        try {
+          const token = localStorage.getItem("duvet_session_token");
+          const refreshedAt = Number(localStorage.getItem("duvet_session_refreshed_at")) || 0;
+          const start = JSON.parse(localStorage.getItem("duvet.start.v1") || "null");
+          if (token && start && typeof start.gateway === "string" && Date.now() - refreshedAt < 23 * 60 * 60 * 1000) {
+            const socket = new WebSocket(start.gateway + "?token=" + token);
+            socket.addEventListener("open", () => (window.__duvetEarlySocketOpenedAt = Date.now()));
+            window.__duvetEarlySocket = socket;
+          }
+        } catch {}
+      }
     })();
   </script>
 

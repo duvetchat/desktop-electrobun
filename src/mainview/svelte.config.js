@@ -86,8 +86,8 @@ const csp = {
     "script-src": [
       "self",
       "wasm-unsafe-eval", // Shiki (Oniguruma) + rnnoise compile WebAssembly
-      "sha256-lKoNpVV43RoySnZzaFo8HDEm/zIZpNpVNWms5T1TIjM=", // app.html bootstrap, LF-normalised (what browsers hash)
-      "sha256-Sp0yASy/3IRNYhI5DtFSH91r0S1yz6r/zyiGtKkphYk=", // app.html bootstrap, CRLF fallback
+      "sha256-O39H8qmrt8vj84Sp6LLANlF/v3EWOzAeNtm+M1QurEI=", // app.html bootstrap, LF-normalised (what browsers hash)
+      "sha256-CCtLIji6C5dLZaJtJuJUy58LMWEi8jbYvQRFgP89gks=", // app.html bootstrap, CRLF fallback
     ],
     // No inline event handler: the app renders none.
     "script-src-attr": ["none"],
