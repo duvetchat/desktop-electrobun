@@ -233,4 +233,10 @@ describe("the views", () => {
 			/activeChannel\?\.type === "voice"\)\s*\)?\s*return showChat\(node\.activeChannelId\)/,
 		);
 	});
+
+	test("the app page mounts the stream window and keeps what the user watches", () => {
+		const page = source("../routes/app/+page.svelte");
+		expect(page).toContain("<StreamWindow");
+		expect(page).toContain("keepWatchedStreams(");
+	});
 });

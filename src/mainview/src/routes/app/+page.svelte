@@ -49,6 +49,9 @@
 	import { shownUnreadConversations, shownUnreadRooms } from "$lib/notification-marks";
 	import { toast } from "$lib/stores/toast.svelte";
 	import CallModal from "$lib/components/CallModal.svelte";
+	import StreamWindow from "$lib/components/StreamWindow.svelte";
+	import type { VoicePlace } from "$lib/voice-place";
+	import { keepWatchedStreams } from "$lib/watching";
 	import BotInviteModal from "$lib/components/BotInviteModal.svelte";
 	import SpaceInviteModal from "$lib/components/SpaceInviteModal.svelte";
 	import ReactionsDialog from "$lib/components/ReactionsDialog.svelte";
@@ -150,11 +153,14 @@
 			markStartup("session");
 			conn = createWebSocketConnection();
 		});
+		// The streams the user watches, through reconnects, for the stream window and the voice view (desktop#299).
+		const stopWatched = keepWatchedStreams();
 		onDestroy(() => {
 			destroyed = true;
 			stopConnected();
 			stopShown();
 			stopSpaces();
+			stopWatched();
 			session.stop();
 			conn?.destroy();
 		});
@@ -261,6 +267,12 @@
 		const holder = leafWithTab(rootPane, conversationId);
 		if (holder) focusedPaneId = holder.id;
 		openInFocusedPane(conversationTab(conv, $currentUser?.id));
+	}
+
+	// The stream window's click: back to the view of its voice room or call (desktop#299).
+	function openVoicePlace(place: VoicePlace) {
+		if (place.spaceId) onSidebarSelect(place.id, place.spaceId);
+		else openConversationTab(place.id);
 	}
 
 	function leafWithTab(node: PaneNode, channelId: string): import("$lib/types").PaneLeaf | null {
@@ -778,6 +790,9 @@
 {#if $activeCall}
 	<CallModal />
 {/if}
+
+<!-- A stream shared or watched, while its room's or call's view isn't on screen -->
+<StreamWindow onOpen={openVoicePlace} />
 
 {#if $currentUser && $friendsReady}
 	<KeyboardLayer
