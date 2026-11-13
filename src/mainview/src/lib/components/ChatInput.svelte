@@ -16,7 +16,7 @@
 	import EmojiPicker from "$lib/components/EmojiPicker.svelte";
 	import StickerPicker from "$lib/components/StickerPicker.svelte";
 	import GifPicker from "$lib/components/GifPicker.svelte";
-	import { searchEmojis, toTwemojiUrl, EMOJI_REGEX, type EmojiEntry } from "$lib/emoji";
+	import { emojiDataNow, loadEmojiData, toTwemojiUrl, EMOJI_REGEX, type EmojiEntry } from "$lib/emoji";
 	import {
 		commandOnceListed,
 		commandQuery as commandQueryOf,
@@ -622,7 +622,11 @@
 							customAttachmentId: s.ce.attachment_id,
 						}) as EmojiEntry & { customEmojiId: string; customAttachmentId: string },
 				);
-			const defaultMatches = searchEmojis(m[1]);
+			// The emoji dataset, once the app has it (it loads after the first screen, #292); asked for now otherwise,
+			// which the next keys find.
+			const emojiData = emojiDataNow();
+			if (!emojiData) void loadEmojiData();
+			const defaultMatches = emojiData?.searchEmojis(m[1]) ?? [];
 			suggestions = [...customScored, ...defaultMatches].slice(0, 10);
 			selectedIdx = 0;
 		} else {

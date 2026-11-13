@@ -27,6 +27,8 @@ test("loading markdown.ts makes no highlighter", () => {
 
 test("a code block drawn before the highlighter is made shows plain, and has it made, once", async () => {
 	expect(renderMarkdown(block)).toContain("const a = 1");
+	// Shiki loads as the highlighter is made (#292), so it's made once that import is in.
+	await Bun.sleep(0);
 	expect(made).toBe(1);
 	startCodeHighlighting();
 	expect(made).toBe(1);
