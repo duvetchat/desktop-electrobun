@@ -20,6 +20,7 @@
 		voiceLocalCameraStream,
 		voiceRemoteCameraStreams,
 		watchedStreams,
+		watchingNow,
 	} from "$lib/stores.svelte";
 	import { toggleDeafen, toggleMute as toggleMic } from "$lib/voice";
 	import type { VoicePerson } from "$lib/voice-place";
@@ -157,9 +158,9 @@
 	});
 
 	// Who watches a screen share here, as its eye lists them (desktop#299); the user too, while they watch it in the
-	// voice they're in, before the gateway's echo of it.
+	// voice they're in, before the gateway's echo of it (and not while their incoming video is off).
 	function viewersOfScreen(sharerId: string): VoicePerson[] {
-		const me = isConnected && $currentUser ? { id: $currentUser.id, watching: $watchedStreams } : null;
+		const me = isConnected && $currentUser ? { id: $currentUser.id, watching: $watchingNow } : null;
 		const states = voiceUsers.map((u) => ({ user_id: u.id, watching: u.watching }));
 		return viewersOf(sharerId, states, me).map((id) => {
 			const user = voiceUsers.find((u) => u.id === id);
@@ -400,6 +401,8 @@
 						aria-label={tile.kind === "screen" ? `${user.username}'s screen` : user.username}
 						onclick={() => toggleFocus(tile.key)}
 						onkeydown={(e) => {
+							// A button in the tile (Watch stream, Stop, the eye) takes its own keys.
+							if (e.target !== e.currentTarget) return;
 							if (e.key === "Enter" || e.key === " ") {
 								e.preventDefault();
 								toggleFocus(tile.key);

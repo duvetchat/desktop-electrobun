@@ -11,6 +11,7 @@ const {
 	activeVoiceRoomId,
 	conversationsWithCalls,
 	currentUser,
+	incomingVideo,
 	isDeafened,
 	isMuted,
 	isScreenSharing,
@@ -55,6 +56,21 @@ test("VOICE_SYNC says which streams this client watches", () => {
 	watchedStreams.set([]);
 	sendVoiceSync();
 	expect(told()).toMatchObject({ watching: [] });
+});
+
+// With incoming video off the gateway sends this client no screen, so it watches none; the list stays for when video
+// comes back on.
+test("VOICE_SYNC says this client watches nothing while incoming video is off, and keeps the list", () => {
+	const A = "01920000-0000-7000-8000-0000000000a1";
+	watchedStreams.set([A]);
+	incomingVideo.set(false);
+	sendVoiceSync();
+	expect(told()).toMatchObject({ video_off: true, watching: [] });
+	expect(get(watchedStreams)).toEqual([A]);
+	incomingVideo.set(true);
+	sendVoiceSync();
+	expect(told()).toMatchObject({ video_off: false, watching: [A] });
+	watchedStreams.set([]);
 });
 
 // The request toggles the share: one made while nothing is shared would open the screen picker.

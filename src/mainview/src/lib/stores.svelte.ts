@@ -1,5 +1,5 @@
 import { SvelteSet } from "svelte/reactivity";
-import { get, readable, writable, type Readable, type Writable } from "svelte/store";
+import { derived, get, readable, writable, type Readable, type Writable } from "svelte/store";
 
 import { canViewRoom, roomNamesOf } from "$lib/permissions";
 import { TYPING_TIMEOUT, typersAt } from "$lib/typing";
@@ -375,8 +375,8 @@ export const voiceRemoteVideoStreams = writable<Record<string, MediaStream>>({})
 /** The screen this client shares. */
 export const voiceLocalVideoStream = writable<MediaStream | null>(null);
 export const isScreenSharing = writable<boolean>(false);
-/** The screen shares this client watches in its voice room or call, by user ID, in the order it opened them: what
- * every VOICE_SYNC says it watches (lib/watching.ts). */
+/** The screen shares this client watches in its voice room or call, by user ID, in the order it opened them
+ * (lib/watching.ts). VOICE_SYNC says watchingNow. */
 export const watchedStreams = writable<string[]>([]);
 /** This client's camera is on: its track goes out on the camera transceiver. */
 export const isCameraOn = writable<boolean>(false);
@@ -386,6 +386,11 @@ export const isCameraOn = writable<boolean>(false);
 export const cameraRequested = writable<{ roomId: string; on: boolean } | null>(null);
 /** Whether to receive others' video (cameras and screens). Off, the gateway sends none (`video_off`). */
 export const incomingVideo = writable<boolean>(true);
+/** The screen shares this client watches as the others see it, VOICE_SYNC's `watching`: none while incoming video is
+ * off, as the gateway sends it no screen then. The list stays for when video comes back on (desktop#299). */
+export const watchingNow: Readable<string[]> = derived([watchedStreams, incomingVideo], ([$watched, $incoming]) =>
+	$incoming ? $watched : [],
+);
 /** The camera this client captures. */
 export const voiceLocalCameraStream = writable<MediaStream | null>(null);
 /** Others' cameras, by user ID: the `<user_id>.camera` streams. */

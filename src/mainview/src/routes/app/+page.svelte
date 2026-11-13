@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onDestroy, onMount, untrack } from "svelte";
-	import { createWebSocketConnection } from "$lib/api/ws/connection";
+	import { createWebSocketConnection, loadSpaceMembers } from "$lib/api/ws/connection";
 	import { startCodeHighlighting } from "$lib/markdown";
 	import { loadEmojiData } from "$lib/emoji";
 	import { markStartup, reportStartup } from "$lib/startup-timing";
@@ -50,7 +50,7 @@
 	import { toast } from "$lib/stores/toast.svelte";
 	import CallModal from "$lib/components/CallModal.svelte";
 	import StreamWindow from "$lib/components/StreamWindow.svelte";
-	import type { VoicePlace } from "$lib/voice-place";
+	import { keepVoicePeopleKnown, type VoicePlace } from "$lib/voice-place";
 	import { keepWatchedStreams } from "$lib/watching";
 	import BotInviteModal from "$lib/components/BotInviteModal.svelte";
 	import SpaceInviteModal from "$lib/components/SpaceInviteModal.svelte";
@@ -153,14 +153,17 @@
 			markStartup("session");
 			conn = createWebSocketConnection();
 		});
-		// The streams the user watches, through reconnects, for the stream window and the voice view (desktop#299).
+		// The streams the user watches, through reconnects, for the stream window and the voice view (desktop#299), and the
+		// names and avatars of the people in their voice.
 		const stopWatched = keepWatchedStreams();
+		const stopPeople = keepVoicePeopleKnown(loadSpaceMembers);
 		onDestroy(() => {
 			destroyed = true;
 			stopConnected();
 			stopShown();
 			stopSpaces();
 			stopWatched();
+			stopPeople();
 			session.stop();
 			conn?.destroy();
 		});
@@ -791,8 +794,11 @@
 	<CallModal />
 {/if}
 
-<!-- A stream shared or watched, while its room's or call's view isn't on screen -->
-<StreamWindow onOpen={openVoicePlace} />
+<!-- A stream shared or watched, while its room's or call's view isn't on screen. Only once the app is up: a READY
+     empties the panes, and it would show over the loading screen until they're back. -->
+{#if $currentUser && $friendsReady}
+	<StreamWindow onOpen={openVoicePlace} />
+{/if}
 
 {#if $currentUser && $friendsReady}
 	<KeyboardLayer

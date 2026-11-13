@@ -1,6 +1,7 @@
-import { derived, type Readable } from "svelte/store";
+import { derived, get, type Readable } from "svelte/store";
 import type { Conversation } from "$lib/api/conversations";
 import { getAvatarURL } from "$lib/common/common";
+import { listSession } from "$lib/jumps";
 import { callName } from "$lib/now";
 import {
 	activeCall,
@@ -118,3 +119,29 @@ export const currentVoicePlace: Readable<VoicePlace | null> = derived(
 	([$id, $spaces, $call, $conversations, $callStates, $me]) =>
 		voicePlace($id, $spaces, $call, $conversations, $callStates, $me?.id),
 );
+
+/** The people of a Space's voice room whom the Space's users don't have yet: a READY brings each Space with the user
+ * alone among them, and the rest come with its member list. None for a call, whose conversation has its members. */
+export function unknownPeople(place: VoicePlace | null, spaces: readonly GatewaySpace[]): string[] {
+	if (!place?.spaceId) return [];
+	const known = new Set(spaces.find((s) => s.id === place.spaceId)?.users.map((u) => u.id));
+	return place.states.map((s) => s.user_id).filter((id) => !known.has(id));
+}
+
+/**
+ * Loads the members of the Space whose voice room the user is in, once a gateway session, while that voice has people
+ * its users don't have: their names and avatars in the dock, the stream window and its eye (desktop#299), which read
+ * «Unknown» after every READY until a member list loaded them. Returns its stop.
+ */
+// ponytail: load asks for the members' first page; in a Space bigger than a page, someone past it stays unknown until a
+// member list reaches them.
+export function keepVoicePeopleKnown(load: (spaceId: string) => void): () => void {
+	const asked = new Set<string>();
+	return currentVoicePlace.subscribe((place) => {
+		if (!place?.spaceId || unknownPeople(place, get(gatewaySpaces)).length === 0) return;
+		const ask = `${listSession()}:${place.spaceId}`;
+		if (asked.has(ask)) return;
+		asked.add(ask);
+		load(place.spaceId);
+	});
+}

@@ -8,7 +8,8 @@ import type { GatewaySpace } from "$lib/types";
 // What this client watches, kept through reconnects, and who watches each stream (desktop#299, gateway#152).
 const { WATCH_GRACE_MS, keepWatchedStreams, nextWatched, startWatching, stopWatching, streamToShow, viewersOf } =
 	await import("$lib/watching");
-const { activeVoiceRoomId, gatewaySpaces, watchedStreams } = await import("$lib/stores.svelte");
+const { activeVoiceRoomId, gatewaySpaces, incomingVideo, watchedStreams, watchingNow } =
+	await import("$lib/stores.svelte");
 
 const ME = "01920000-0000-7000-8000-00000000b0b0";
 const ANA = "01920000-0000-7000-8000-00000000a11c";
@@ -80,6 +81,18 @@ describe("viewersOf", () => {
 		expect(viewersOf(BO, states, { id: ME, watching: [BO] })).toEqual([ANA, ME]);
 		expect(viewersOf(BO, [{ user_id: ANA, watching: [BO] }], { id: ME, watching: [BO] })).toEqual([ANA, ME]);
 		expect(viewersOf(ANA, [{ user_id: ME, watching: [ANA] }], { id: ME, watching: [] })).toEqual([]);
+	});
+});
+
+describe("watchingNow", () => {
+	test("is the list while incoming video is on, and nothing while it's off", () => {
+		watchedStreams.set([ANA, BO]);
+		expect(get(watchingNow)).toEqual([ANA, BO]);
+		incomingVideo.set(false);
+		expect(get(watchingNow)).toEqual([]);
+		incomingVideo.set(true);
+		expect(get(watchingNow)).toEqual([ANA, BO]);
+		watchedStreams.set([]);
 	});
 });
 
@@ -238,5 +251,31 @@ describe("the views", () => {
 		const page = source("../routes/app/+page.svelte");
 		expect(page).toContain("<StreamWindow");
 		expect(page).toContain("keepWatchedStreams(");
+	});
+
+	// A READY empties the panes, and the window would show over the loading screen until they're back.
+	test("the app page shows the stream window only once the app is up", () => {
+		expect(source("../routes/app/+page.svelte")).toMatch(
+			/\{#if \$currentUser && \$friendsReady\}\s*<StreamWindow onOpen=\{openVoicePlace\} \/>\s*\{\/if\}/,
+		);
+	});
+
+	test("the views count the user as watching as the gateway hears it: nothing while incoming video is off", () => {
+		for (const file of ["components/VoiceChannelView.svelte", "components/StreamWindow.svelte"]) {
+			const view = source(file);
+			expect(view).toContain("watching: $watchingNow");
+			expect(view).not.toContain("watching: $watchedStreams");
+		}
+	});
+
+	// Enter and Space on a button in a tile (Watch stream, Stop, the eye) press that button, not the tile.
+	test("a tile's keys are its own", () => {
+		expect(source("components/VoiceChannelView.svelte")).toMatch(
+			/onkeydown=\{\(e\) => \{[^}]*?if \(e\.target !== e\.currentTarget\) return;/,
+		);
+	});
+
+	test("the app page keeps the voice's people known", () => {
+		expect(source("../routes/app/+page.svelte")).toContain("keepVoicePeopleKnown(loadSpaceMembers)");
 	});
 });

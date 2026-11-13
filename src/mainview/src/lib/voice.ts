@@ -16,7 +16,7 @@ import {
 	isScreenSharing,
 	ownCallsRinging,
 	screenShareRequested,
-	watchedStreams,
+	watchingNow,
 } from "$lib/stores.svelte";
 
 /** Sends this client's whole voice state in a room (the active one by default) as VOICE_SYNC. The gateway
@@ -31,7 +31,7 @@ export function sendVoiceSync(roomId: string | null = get(activeVoiceRoomId)) {
 		screen_sharing: get(isScreenSharing),
 		camera: get(isCameraOn),
 		video_off: !get(incomingVideo),
-		watching: get(watchedStreams),
+		watching: get(watchingNow),
 	});
 }
 

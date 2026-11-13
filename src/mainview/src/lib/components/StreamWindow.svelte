@@ -15,6 +15,7 @@
 		voiceLocalVideoStream,
 		voiceRemoteVideoStreams,
 		watchedStreams,
+		watchingNow,
 	} from "$lib/stores.svelte";
 	import { stopScreenShare } from "$lib/voice";
 	import { currentVoicePlace, type VoicePlace } from "$lib/voice-place";
@@ -48,7 +49,7 @@
 	);
 	const viewers = $derived.by(() => {
 		if (!place || !sharerId) return [];
-		const me = $currentUser ? { id: $currentUser.id, watching: $watchedStreams } : null;
+		const me = $currentUser ? { id: $currentUser.id, watching: $watchingNow } : null;
 		return viewersOf(sharerId, place.states, me).map((id) => place.person(id));
 	});
 

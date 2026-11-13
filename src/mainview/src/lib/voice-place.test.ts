@@ -7,7 +7,9 @@ import type { GatewaySpace, GatewayUser } from "$lib/types";
 
 // The stores' .svelte.ts modules use $state, which only Svelte's compiler knows: here it's the value itself.
 Object.assign(globalThis, { $state: <T>(value: T) => value });
-const { voicePlace } = await import("$lib/voice-place");
+const { keepVoicePeopleKnown, unknownPeople, voicePlace } = await import("$lib/voice-place");
+const { activeVoiceRoomId, gatewaySpaces } = await import("$lib/stores.svelte");
+const { forgetLists } = await import("$lib/jumps");
 
 // The voice the user is in, a Space's voice room or a call, as the dock and the stream window read it.
 const ME = "01920000-0000-7000-8000-00000000b0b0";
@@ -141,5 +143,42 @@ describe("voicePlace", () => {
 	test("nothing outside voice, or for a call that isn't connected", () => {
 		expect(voicePlace(null, [space], call, [group], [], ME)).toBeNull();
 		expect(voicePlace(GROUP, [space], { ...call, state: "ringing" }, [group], [], ME)).toBeNull();
+	});
+});
+
+// After a READY a Space has the user alone among its users, until a member list loads the rest.
+const bare: GatewaySpace = { ...space, users: [user(ME, "me", null, null)] };
+
+describe("unknownPeople", () => {
+	test("the people of a Space's voice room its users don't have yet", () => {
+		expect(unknownPeople(voicePlace(LOUNGE, [bare], null, [], [], ME), [bare])).toEqual([ANA]);
+		expect(unknownPeople(voicePlace(LOUNGE, [space], null, [], [], ME), [space])).toEqual([]);
+	});
+
+	test("none for a call, whose members the conversation has, nor outside voice", () => {
+		const states: CallVoiceState[] = [{ room_id: GROUP, user_id: ANA, muted: false }];
+		expect(unknownPeople(voicePlace(GROUP, [bare], call, [group], states, ME), [bare])).toEqual([]);
+		expect(unknownPeople(null, [bare])).toEqual([]);
+	});
+});
+
+describe("keepVoicePeopleKnown", () => {
+	test("loads the Space's members once a gateway session, while its voice has people it doesn't know", () => {
+		gatewaySpaces.set([bare]);
+		activeVoiceRoomId.set(LOUNGE);
+		const loads: string[] = [];
+		const stop = keepVoicePeopleKnown((spaceId) => loads.push(spaceId));
+		gatewaySpaces.set([{ ...bare }]);
+		expect(loads).toEqual([SPACE]);
+		// A READY: a new gateway session, whose spaces come with the user alone again.
+		forgetLists();
+		gatewaySpaces.set([{ ...bare }]);
+		expect(loads).toEqual([SPACE, SPACE]);
+		forgetLists();
+		gatewaySpaces.set([space]);
+		expect(loads).toEqual([SPACE, SPACE]);
+		stop();
+		gatewaySpaces.set([]);
+		activeVoiceRoomId.set(null);
 	});
 });
