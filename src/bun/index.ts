@@ -16,6 +16,13 @@ import { startSpotifyReader, type SpotifyActivity } from "./spotify";
 import { ipcHeld, ipcPath, LineReader } from "./ipc";
 import { navigationRules } from "./navigation";
 import { Maximizer } from "./window-frame";
+import { startupSummary } from "./startup";
+
+// When Bun started, and its own steps of the app's start, which the page's join in the app's log (startupTimings, #280):
+// its code running (what loads before it, Electrobun's API, comes first) and the window made.
+const processStart = Date.now() - process.uptime() * 1000;
+const bunMarks: Record<string, number> = {};
+bunMarks.code = Date.now();
 
 const DEV_SERVER_PORT = 5173;
 const DEV_SERVER_URL = `http://localhost:${DEV_SERVER_PORT}`;
@@ -76,6 +83,8 @@ type AppRPCSchema = {
 			stopWindowResize: void;
 			// The webview's "Share what I listen to on Spotify" setting, sent at start and on each change.
 			setSpotifyActivity: { enabled: boolean };
+			// The page's steps of the app's start, each when it happened (Date.now()), for the app's log (#280).
+			startupTimings: { marks: Record<string, number> };
 		};
 	};
 	webview: {
@@ -170,6 +179,7 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 				markWebviewReady();
 				setSpotifyActivity(enabled);
 			},
+			startupTimings: ({ marks }) => console.log(startupSummary(processStart, { ...bunMarks, ...marks })),
 		},
 	},
 });
@@ -192,6 +202,7 @@ const win = new BrowserWindow({
 	url,
 	rpc,
 });
+bunMarks.window = Date.now();
 
 // Through the webview: BrowserWindow stores a navigationRules option of its own, and never hands it to the native side.
 // As each page loads, not right after new BrowserWindow: macOS reads them later on its main queue, from an address

@@ -124,6 +124,7 @@ import { sendAgain } from "$lib/resend";
 import { dropReplyTo, takeBack } from "$lib/drafts";
 import { SENT_BEFORE_CANCEL } from "$lib/uploads";
 import { forgetLists, knowMessage, newestKnownIn } from "$lib/jumps";
+import { markStartup } from "$lib/startup-timing";
 import { reactionChanged, withReaction, type ReactionChange } from "$lib/reactions";
 import { banAdded, banLifted, forgetBans } from "$lib/bans";
 import { callNoticeCame, callNoticeDeleted, conversationCallsGone, forgetCalls } from "$lib/call-history";
@@ -723,6 +724,7 @@ function handleEvent(event: GatewayEvent) {
 	const payload = event.d;
 	switch (payload.type) {
 		case "READY": {
+			markStartup("ready");
 			const { user, sessionToken, unread_rooms } = payload.data;
 			lastSeq = 0;
 			freshSessionWanted = false;
@@ -2057,6 +2059,7 @@ export function createWebSocketConnection(): GatewayConnection {
 		let resumeProbe = false;
 
 		socket.onopen = () => {
+			markStartup("socket");
 			if (import.meta.env.DEV) console.log("[WS] Connected");
 			reconnectAttempts = 0;
 			const identify = identifyData(

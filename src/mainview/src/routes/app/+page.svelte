@@ -2,6 +2,9 @@
 	import { onDestroy, onMount, untrack } from "svelte";
 	import { createWebSocketConnection } from "$lib/api/ws/connection";
 	import { startCodeHighlighting } from "$lib/markdown";
+	import { markStartup, reportStartup } from "$lib/startup-timing";
+	import { getElectrobunRpc } from "$lib/electrobun-rpc";
+	import { get } from "svelte/store";
 	import { keepSessionFresh } from "$lib/api/api";
 	import FriendsView from "$lib/components/FriendsView.svelte";
 	import GuildMemberSidebar from "$lib/components/GuildMemberSidebar.svelte";
@@ -92,6 +95,7 @@
 	});
 
 	onMount(() => {
+		markStartup("app");
 		// Check for ?bot= query param (from /invite?bot=xxx redirect)
 		const urlParams = new URLSearchParams(window.location.search);
 		const botParam = urlParams.get("bot");
@@ -119,10 +123,26 @@
 		const stopConnected = friendsReady.subscribe((ready) => {
 			if (ready) session.connected();
 		});
+		// The start's last steps, the first screen and the spaces, after which it's reported, to Bun too (#280).
+		const reportWhenUp = () => {
+			if (!get(friendsReady) || !get(allSpacesReady)) return;
+			reportStartup((marks) => void getElectrobunRpc().then((rpc) => rpc?.send.startupTimings({ marks })));
+		};
+		const stopShown = friendsReady.subscribe((ready) => {
+			if (!ready) return;
+			markStartup("shown");
+			reportWhenUp();
+		});
+		const stopSpaces = allSpacesReady.subscribe((ready) => {
+			if (!ready) return;
+			markStartup("spaces");
+			reportWhenUp();
+		});
 		let conn: ReturnType<typeof createWebSocketConnection> | null = null;
 		let destroyed = false;
 		void session.ready.then(() => {
 			if (destroyed) return;
+			markStartup("session");
 			conn = createWebSocketConnection();
 			// Shiki's highlighter (code blocks) is made now, while the socket waits on the network, rather than as the page
 			// loaded, before it could open (#285).
@@ -131,6 +151,8 @@
 		onDestroy(() => {
 			destroyed = true;
 			stopConnected();
+			stopShown();
+			stopSpaces();
 			session.stop();
 			conn?.destroy();
 		});
