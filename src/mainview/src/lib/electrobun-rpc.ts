@@ -43,7 +43,7 @@ export type AppRPCSchema = {
 			maximizeWindow: void;
 			openExternal: { url: string };
 			setSpotifyActivity: { enabled: boolean };
-			// The page's steps of the app's start, each when it happened (Date.now()), for the app's log (#280).
+			// The page's steps of the app's start, each when it happened (Date.now()), for startup.log (#280, #288).
 			startupTimings: { marks: Record<string, number> };
 		};
 	};

@@ -46,5 +46,7 @@ describe("where the steps are marked", () => {
 		expect(bun).toContain("bunMarks.code = Date.now();");
 		expect(bun).toContain("bunMarks.window = Date.now();");
 		expect(bun).toContain("startupTimings: ({ marks }) =>");
+		// In a file of the app's data: the packaged app keeps no output of Bun's (#288).
+		expect(bun).toContain('writeStartupLine(join(Utils.paths.userData, "startup.log")');
 	});
 });

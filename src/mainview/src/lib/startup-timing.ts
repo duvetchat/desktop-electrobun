@@ -1,6 +1,6 @@
 // The steps of the app's start the page sees, each as it first happened (Date.now()): the app page mounted, its session
 // ready, its socket open, READY, the first screen and the spaces. They're reported once those last two are in: to the
-// console, and to Bun, whose output (the app's log) has them with its own steps (#280).
+// console, and to Bun, which keeps them with its own steps in startup.log, in the app's data (#280, #288).
 const marks: Record<string, number> = {};
 let reported = false;
 

@@ -16,9 +16,9 @@ import { startSpotifyReader, type SpotifyActivity } from "./spotify";
 import { ipcHeld, ipcPath, LineReader } from "./ipc";
 import { navigationRules } from "./navigation";
 import { Maximizer } from "./window-frame";
-import { startupSummary } from "./startup";
+import { startupSummary, writeStartupLine } from "./startup";
 
-// When Bun started, and its own steps of the app's start, which the page's join in the app's log (startupTimings, #280):
+// When Bun started, and its own steps of the app's start, which the page's join in startup.log (startupTimings, #280):
 // its code running (what loads before it, Electrobun's API, comes first) and the window made.
 const processStart = Date.now() - process.uptime() * 1000;
 const bunMarks: Record<string, number> = {};
@@ -83,7 +83,7 @@ type AppRPCSchema = {
 			stopWindowResize: void;
 			// The webview's "Share what I listen to on Spotify" setting, sent at start and on each change.
 			setSpotifyActivity: { enabled: boolean };
-			// The page's steps of the app's start, each when it happened (Date.now()), for the app's log (#280).
+			// The page's steps of the app's start, each when it happened (Date.now()), for startup.log (#280, #288).
 			startupTimings: { marks: Record<string, number> };
 		};
 	};
@@ -179,7 +179,14 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 				markWebviewReady();
 				setSpotifyActivity(enabled);
 			},
-			startupTimings: ({ marks }) => console.log(startupSummary(processStart, { ...bunMarks, ...marks })),
+			startupTimings: ({ marks }) => {
+				const line = `${new Date().toISOString()} ${startupSummary(processStart, { ...bunMarks, ...marks })}`;
+				console.log(line);
+				// In a file of the app's data: the packaged app keeps no output of Bun's (#288).
+				writeStartupLine(join(Utils.paths.userData, "startup.log"), line).catch((err: unknown) =>
+					console.error("[startup] couldn't keep the start's line:", err),
+				);
+			},
 		},
 	},
 });
