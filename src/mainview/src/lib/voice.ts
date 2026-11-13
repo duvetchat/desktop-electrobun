@@ -15,6 +15,8 @@ import {
 	isMuted,
 	isScreenSharing,
 	ownCallsRinging,
+	screenShareRequested,
+	watchedStreams,
 } from "$lib/stores.svelte";
 
 /** Sends this client's whole voice state in a room (the active one by default) as VOICE_SYNC. The gateway
@@ -29,7 +31,14 @@ export function sendVoiceSync(roomId: string | null = get(activeVoiceRoomId)) {
 		screen_sharing: get(isScreenSharing),
 		camera: get(isCameraOn),
 		video_off: !get(incomingVideo),
+		watching: get(watchedStreams),
 	});
+}
+
+/** Stops this client's screen share in a room or call, as the Stream menu's Stop does. The request toggles the share
+ * (VoiceChat's toggleScreenShare), so with nothing shared it asks for nothing: it would open the screen picker. */
+export function stopScreenShare(roomId: string) {
+	if (get(isScreenSharing)) screenShareRequested.set({ roomId, withAudio: false });
 }
 
 // How the voice room or call this client is in asks for a microphone it doesn't have (the browser refused it): VoiceChat

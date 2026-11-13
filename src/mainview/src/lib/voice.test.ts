@@ -4,9 +4,20 @@ import { join } from "node:path";
 import { get } from "svelte/store";
 import { openGateway, type TestGateway } from "$lib/api/ws/test-gateway";
 
-const { askForMicWith, startConversationCall, toggleDeafen, toggleMute } = await import("$lib/voice");
-const { activeCall, activeVoiceRoomId, conversationsWithCalls, currentUser, isDeafened, isMuted, ownCallsRinging } =
-	await import("$lib/stores.svelte");
+const { askForMicWith, sendVoiceSync, startConversationCall, stopScreenShare, toggleDeafen, toggleMute } =
+	await import("$lib/voice");
+const {
+	activeCall,
+	activeVoiceRoomId,
+	conversationsWithCalls,
+	currentUser,
+	isDeafened,
+	isMuted,
+	isScreenSharing,
+	ownCallsRinging,
+	screenShareRequested,
+	watchedStreams,
+} = await import("$lib/stores.svelte");
 const { toastStore } = await import("$lib/stores/toast.svelte");
 
 const ROOM = "01920000-0000-7000-8000-0000000000c1";
@@ -32,6 +43,31 @@ test("unmuting while deafened undeafens too, and the others see both", () => {
 	toggleMute();
 	expect(state()).toEqual({ muted: false, deafened: false });
 	expect(told()).toMatchObject({ room_id: ROOM, muted: false, deafened: false });
+});
+
+// gateway#152: VOICE_SYNC carries the whole state, the screen shares this client shows included.
+test("VOICE_SYNC says which streams this client watches", () => {
+	const A = "01920000-0000-7000-8000-0000000000a1";
+	const B = "01920000-0000-7000-8000-0000000000a2";
+	watchedStreams.set([A, B]);
+	sendVoiceSync();
+	expect(told()).toMatchObject({ room_id: ROOM, watching: [A, B] });
+	watchedStreams.set([]);
+	sendVoiceSync();
+	expect(told()).toMatchObject({ watching: [] });
+});
+
+// The request toggles the share: one made while nothing is shared would open the screen picker.
+test("stopping a share asks for nothing when there's none", () => {
+	isScreenSharing.set(false);
+	screenShareRequested.set(null);
+	stopScreenShare(ROOM);
+	expect(get(screenShareRequested)).toBeNull();
+	isScreenSharing.set(true);
+	stopScreenShare(ROOM);
+	expect(get(screenShareRequested)).toEqual({ roomId: ROOM, withAudio: false });
+	isScreenSharing.set(false);
+	screenShareRequested.set(null);
 });
 
 test("muting only mutes", () => {

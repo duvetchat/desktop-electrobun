@@ -355,6 +355,8 @@ export interface CallVoiceState {
 	deafened?: boolean;
 	screen_sharing?: boolean;
 	camera?: boolean;
+	/** Whose screen share they're watching in the call (gateway#152). */
+	watching?: string[];
 }
 /** Who is in the voice of each call going on that this client knows of (conversationsWithCalls), whether or not it's
  * in it, by room_id, the call's conversation: from READY and CALL_ONGOING, kept up with VOICE_STATE_UPDATE, and
@@ -373,6 +375,9 @@ export const voiceRemoteVideoStreams = writable<Record<string, MediaStream>>({})
 /** The screen this client shares. */
 export const voiceLocalVideoStream = writable<MediaStream | null>(null);
 export const isScreenSharing = writable<boolean>(false);
+/** The screen shares this client watches in its voice room or call, by user ID, in the order it opened them: what
+ * every VOICE_SYNC says it watches (lib/watching.ts). */
+export const watchedStreams = writable<string[]>([]);
 /** This client's camera is on: its track goes out on the camera transceiver. */
 export const isCameraOn = writable<boolean>(false);
 /** Asks VoiceChat to turn the camera on or off in a room or call (its ID), as screenShareRequested does for the

@@ -1305,6 +1305,7 @@ function handleEvent(event: GatewayEvent) {
 								screen_sharing: raw.screen_sharing,
 								camera: raw.camera,
 								version: raw.version,
+								watching: raw.watching ?? [],
 							});
 						} else {
 							nextStates[existingIdx] = {
@@ -1314,6 +1315,7 @@ function handleEvent(event: GatewayEvent) {
 								screen_sharing: raw.screen_sharing,
 								camera: raw.camera,
 								version: raw.version,
+								watching: raw.watching ?? [],
 							};
 						}
 					} else {
