@@ -82,11 +82,14 @@
 		dividerPastWindow,
 		inWindow,
 		keepJump,
+		keepList,
 		knowMessage,
 		leaving,
+		listSession,
 		loadedTo,
 		newestKnownIn,
 		takeJump,
+		takeList,
 		withPresent,
 	} from "$lib/jumps";
 	import { Ellipsis, LogOut, MessageSquare, Pencil, Phone, UserPlus, Users } from "@lucide/svelte";
@@ -313,6 +316,8 @@
 				const newMsgs = fetched.filter((m) => !existingIds.has(m.id));
 				return { ...all, [convId]: [...newMsgs, ...existing] };
 			});
+			// The newest page: the list reaches the present.
+			if (!before) listFetched = true;
 			return true;
 		} catch (err) {
 			console.error("[DM] Failed to load messages:", err);
@@ -324,6 +329,9 @@
 	let hadUnread = false;
 	// Whether the view has gone (another tab shows).
 	let gone = false;
+	// Whether the list holds pages a view of this gateway session fetched (this one's, or those of the view that left it
+	// its list or its jump), rather than only what the store had: only such a list is kept for the next view (keepList).
+	let listFetched = false;
 
 	// The newest page, which the conversation opens on. One that fails leaves nothing of it loaded, which the list says
 	// (loadFailed): Try again calls this again.
@@ -414,6 +422,7 @@
 			belowFailedAt = 0;
 			loadFailed = false;
 			dmMessages.update((all) => ({ ...all, [convId]: combined }));
+			listFetched = true;
 			highlightedMessageId = messageId;
 			setTimeout(() => {
 				highlightedMessageId = null;
@@ -479,6 +488,7 @@
 			loadedBelowTo = "";
 			belowFailedAt = 0;
 			dmMessages.update((all) => ({ ...all, [convId]: withPresent(all[convId] ?? [], fetched) }));
+			listFetched = true;
 			return true;
 		} catch (err) {
 			console.error("[DM] Failed to load the newest messages:", err);
@@ -833,6 +843,8 @@
 
 	onMount(() => {
 		const convId = conversation.id;
+		// The gateway session this view comes in, which the list it leaves is of.
+		const session = listSession();
 		activeDMConvId.set(convId);
 		// On screen while this view is (lib/on-screen.ts), as a pane's room is.
 		const hide = showChat(convId);
@@ -842,12 +854,21 @@
 			return s;
 		});
 		// Back from another tab in the middle of a jump's pages: the list goes on from them, as a room's does, rather than
-		// putting the newest page beside them with the messages between left out.
-		const kept = takeJump(convId, get(dmMessages)[convId]);
+		// putting the newest page beside them with the messages between left out. Or back to the list a view of this
+		// gateway session left at the present, which the gateway's events kept current: it shows as it is, as a room's
+		// does in its pane, with no page asked for.
+		const list = get(dmMessages)[convId];
+		const kept = takeJump(convId, list);
+		const keptList = takeList(convId, list);
 		if (kept) {
 			hasMore = kept.hasMore;
 			hasMoreBelow = true;
 			loadedBelowTo = kept.loadedBelowTo;
+		} else if (keptList) {
+			hasMore = keptList.hasMore;
+		}
+		if (kept || keptList) {
+			listFetched = true;
 			if (hadUnread) convUnreadAfter = unreadAfterOf(convId);
 			isLoading = false;
 		} else {
@@ -859,6 +880,10 @@
 			jumps++;
 			callOffBelow();
 			keepJump(convId, hasMoreBelow ? { hasMore, loadedBelowTo } : null);
+			// Not for a conversation the user left (or was removed from), whose messages stop reaching them: its view goes
+			// after conversationLeft forgot its list.
+			const stillIn = get(conversations).some((c) => c.id === convId);
+			keepList(convId, listFetched && !hasMoreBelow && stillIn ? get(dmMessages)[convId] : null, hasMore, session);
 			activeDMConvId.update((cur) => (cur === convId ? null : cur));
 			hide();
 		};

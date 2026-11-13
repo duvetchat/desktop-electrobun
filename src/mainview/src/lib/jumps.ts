@@ -117,6 +117,55 @@ export function takeJump(listId: string, list: { id: string }[] | undefined): Ke
 	return kept;
 }
 
+// The lists conversations' views left at the present (keepList): whether older messages are left to load, and the
+// list's oldest message the API has, by which the next view knows the store still holds that list.
+const keptLists = new Map<string, { hasMore: boolean; oldest: string }>();
+// The gateway session the kept lists are of. Each READY starts another, whose events of the time between never came.
+let session = 0;
+
+/** The gateway session a view comes in, which the list it leaves is of (keepList). */
+export function listSession(): number {
+	return session;
+}
+
+/**
+ * Keeps a conversation's list as its view goes (another tab shows, or the friends view), while the list reaches the
+ * present with pages fetched in this gateway session (since: the session its view came in), so that the next view shows
+ * it as it is, with no page asked for, as a room's pane does with the rooms it loaded: the gateway's events keep it
+ * current meanwhile. Null keeps nothing, and so does a list of an earlier session (a READY takes the views down after
+ * it) or one without a message the API has: the next view asks for the newest page.
+ */
+export function keepList(listId: string, list: Listed[] | null, hasMore: boolean, since: number) {
+	let oldest = "";
+	for (const m of list ?? []) if (m.id !== m.nonce && (!oldest || m.id < oldest)) oldest = m.id;
+	if (oldest && since === session) keptLists.set(listId, { hasMore, oldest });
+	else keptLists.delete(listId);
+}
+
+/**
+ * The list kept for a conversation, which only its next view gets, and only while the store still holds it: a list
+ * dropped meanwhile (the stores keep a few dozen), or started again by a message that came after, lacks its oldest one.
+ */
+export function takeList(listId: string, list: { id: string }[] | undefined): { hasMore: boolean } | null {
+	const kept = keptLists.get(listId);
+	keptLists.delete(listId);
+	if (!kept || !list?.some((m) => m.id === kept.oldest)) return null;
+	return { hasMore: kept.hasMore };
+}
+
+/**
+ * Forgets the list kept for a conversation the user is no longer in, whose messages stop reaching them, or, without one,
+ * every list kept: a new gateway session (READY), whose events of the time between never came.
+ */
+export function forgetLists(listId?: string) {
+	if (listId !== undefined) {
+		keptLists.delete(listId);
+		return;
+	}
+	keptLists.clear();
+	session++;
+}
+
 /**
  * What a list shows while newer messages are still to load below a jump's pages: its messages up to the newest of
  * those pages (loadedBelowTo), and the ones being sent (their ID is their nonce), which take the reader to the

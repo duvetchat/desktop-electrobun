@@ -123,7 +123,7 @@ import { withUserUpdate } from "$lib/friends";
 import { sendAgain } from "$lib/resend";
 import { dropReplyTo, takeBack } from "$lib/drafts";
 import { SENT_BEFORE_CANCEL } from "$lib/uploads";
-import { knowMessage, newestKnownIn } from "$lib/jumps";
+import { forgetLists, knowMessage, newestKnownIn } from "$lib/jumps";
 import { reactionChanged, withReaction, type ReactionChange } from "$lib/reactions";
 import { banAdded, banLifted, forgetBans } from "$lib/bans";
 import { callNoticeCame, callNoticeDeleted, conversationCallsGone, forgetCalls } from "$lib/call-history";
@@ -447,6 +447,8 @@ export function conversationLeft(conversationId: string) {
 	callAnswers.drop(conversationId);
 	conversationCallsGone(conversationId);
 	callOver(conversationId);
+	// Its list, which its messages stop reaching: a view of it if they come back asks for its newest page.
+	forgetLists(conversationId);
 }
 
 // The space a room is in, as this client has it.
@@ -816,9 +818,10 @@ function handleEvent(event: GatewayEvent) {
 			// included): one the user is no longer in doesn't come back.
 			gatewaySpaces.set([]);
 			// And the bans loaded, whose events of the time away never came: a space's list loads anew as it's shown. So
-			// does the call history.
+			// does the call history, and each conversation's newest page as its view comes.
 			forgetBans();
 			forgetCalls();
+			forgetLists();
 			friendsReady.set(false);
 			allSpacesReady.set(false);
 			const guildIds = payload.data.guild_ids ?? [];
