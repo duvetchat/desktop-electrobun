@@ -66,6 +66,7 @@
 	import { answerTeamInvite } from "$lib/team-invites";
 	import { userStatusToString, type Guild } from "$lib/types";
 	import { disconnectVoice, joinConversationCall } from "$lib/voice";
+	import { currentVoicePlace } from "$lib/voice-place";
 	import FaceStack from "$lib/components/FaceStack.svelte";
 	import SpaceIcon from "$lib/components/SpaceIcon.svelte";
 	import StatusDot from "$lib/components/StatusDot.svelte";
@@ -110,50 +111,18 @@
 	type Person = Face & { muted: boolean };
 
 	const dock = $derived.by(() => {
-		const id = $activeVoiceRoomId;
-		if (!id) return null;
+		const place = $currentVoicePlace;
+		if (!place) return null;
 		const self: Person | null = myFace ? { ...myFace, muted: $isMuted } : null;
-		const space = $gatewaySpaces.find((s) => s.rooms.some((r) => r.id === id));
-		const room = space?.rooms.find((r) => r.id === id);
-		if (space && room) {
-			const states = (space.voice_states ?? []).filter((vs) => vs.room_id === id);
-			const people = states.map((vs): Person => {
-				const user = space.users.find((u) => u.id === vs.user_id);
-				return {
-					id: vs.user_id,
-					src: user ? getAvatarURL(user.id, user.avatar) : null,
-					name: user?.alias ?? user?.username ?? "Unknown",
-					muted: vs.user_id === me?.id ? $isMuted : vs.muted,
-				};
-			});
-			return {
-				kind: "room" as const,
-				name: room.name,
-				place: space.name,
-				live: liveIn(states),
-				open: () => onRoomSelect(space.id, room.id),
-				people: withSelf(people, self),
-			};
-		}
-		const call = $activeCall;
-		if (call?.state !== "connected" || call.conversationId !== id) return null;
-		const conv = $conversations.find((c) => c.id === id);
-		const states = $callVoiceStates.filter((vs) => vs.room_id === id);
-		const people = states.map((vs): Person => {
-			const member = conv?.members.find((m) => m.user_id === vs.user_id);
-			return {
-				id: vs.user_id,
-				src: getAvatarURL(vs.user_id, member?.user?.avatar),
-				name: member?.user?.alias ?? member?.user?.username ?? vs.user_id.slice(0, 8),
-				muted: vs.user_id === me?.id ? $isMuted : (vs.muted ?? false),
-			};
-		});
+		const people = place.states.map(
+			(vs): Person => ({ ...place.person(vs.user_id), muted: vs.user_id === me?.id ? $isMuted : vs.muted }),
+		);
 		return {
-			kind: "call" as const,
-			name: callName(conv, me?.id),
-			place: conv?.type === 2 ? "Group call" : "Call",
-			live: liveIn(states),
-			open: () => onConversationSelect(id),
+			kind: place.kind,
+			name: place.name,
+			place: place.place,
+			live: liveIn(place.states),
+			open: () => (place.spaceId ? onRoomSelect(place.spaceId, place.id) : onConversationSelect(place.id)),
 			people: withSelf(people, self),
 		};
 	});

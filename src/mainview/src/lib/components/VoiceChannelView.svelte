@@ -19,8 +19,12 @@
 		selectedCameraId,
 		voiceLocalCameraStream,
 		voiceRemoteCameraStreams,
+		watchedStreams,
+		watchingNow,
 	} from "$lib/stores.svelte";
 	import { toggleDeafen, toggleMute as toggleMic } from "$lib/voice";
+	import type { VoicePerson } from "$lib/voice-place";
+	import { startWatching, stopWatching, viewersOf } from "$lib/watching";
 	import { getAvatarURL } from "$lib/common/common";
 	import {
 		Check,
@@ -38,6 +42,7 @@
 		Volume2,
 	} from "@lucide/svelte";
 	import { DropdownMenu } from "bits-ui";
+	import StreamViewers from "$lib/components/StreamViewers.svelte";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
 	import { hasPermission, Permission } from "$lib/permissions";
 
@@ -105,6 +110,7 @@
 					deafened: isMe ? $isDeafened : (vs.deafened ?? false),
 					screen_sharing: isMe ? mine.screen_sharing : (vs.screen_sharing ?? false),
 					camera: isMe ? mine.camera : (vs.camera ?? false),
+					watching: vs.watching ?? [],
 				};
 			});
 			if (me && isConnected && !list.some((u) => u.id === me.id)) {
@@ -115,6 +121,7 @@
 					muted: $isMuted,
 					deafened: $isDeafened,
 					...mine,
+					watching: [],
 				});
 			}
 			return list;
@@ -133,6 +140,7 @@
 				deafened: vs.deafened ?? false,
 				screen_sharing: isMine ? mine.screen_sharing : (vs.screen_sharing ?? false),
 				camera: isMine ? mine.camera : (vs.camera ?? false),
+				watching: vs.watching ?? [],
 			};
 		});
 		if (me && isConnected && !list.some((u) => u.id === me.id)) {
@@ -143,10 +151,22 @@
 				muted: $isMuted,
 				deafened: $isDeafened,
 				...mine,
+				watching: [],
 			});
 		}
 		return list;
 	});
+
+	// Who watches a screen share here, as its eye lists them (desktop#299); the user too, while they watch it in the
+	// voice they're in, before the gateway's echo of it (and not while their incoming video is off).
+	function viewersOfScreen(sharerId: string): VoicePerson[] {
+		const me = isConnected && $currentUser ? { id: $currentUser.id, watching: $watchingNow } : null;
+		const states = voiceUsers.map((u) => ({ user_id: u.id, watching: u.watching }));
+		return viewersOf(sharerId, states, me).map((id) => {
+			const user = voiceUsers.find((u) => u.id === id);
+			return { id, name: user?.username ?? "Unknown", src: user?.avatar_url ?? null };
+		});
+	}
 
 	type VoiceUser = (typeof voiceUsers)[number];
 	type Tile = { key: string; kind: "person" | "screen"; user: VoiceUser };
@@ -161,7 +181,6 @@
 
 	// Videos that have shown a frame, by tile: until then the tile shows the face or a loader.
 	let playing = $state<Record<string, boolean>>({});
-	let videoAccepted = $state<Record<string, boolean>>({});
 	let focusedKey = $state<string | null>(null);
 	// A focused tile that's gone (its person left, or stopped sharing) leaves the grid as it was.
 	const focused = $derived(focusedKey && tiles.some((t) => t.key === focusedKey) ? focusedKey : null);
@@ -382,6 +401,8 @@
 						aria-label={tile.kind === "screen" ? `${user.username}'s screen` : user.username}
 						onclick={() => toggleFocus(tile.key)}
 						onkeydown={(e) => {
+							// A button in the tile (Watch stream, Stop, the eye) takes its own keys.
+							if (e.target !== e.currentTarget) return;
 							if (e.key === "Enter" || e.key === " ") {
 								e.preventDefault();
 								toggleFocus(tile.key);
@@ -437,7 +458,7 @@
 									<VideoOff class="size-6" />
 									<span class="text-xs">Incoming video is off</span>
 								</div>
-							{:else if isLocal || videoAccepted[user.id]}
+							{:else if isLocal || (isConnected && $watchedStreams.includes(user.id))}
 								{#if screenStream}
 									<video
 										use:srcObject={screenStream}
@@ -458,7 +479,7 @@
 										class="hover:text-fixed-white absolute top-2 right-2 z-10 flex items-center gap-1.5 rounded-md bg-black/70 px-2.5 py-1.5 text-xs text-zinc-300 opacity-0 backdrop-blur-sm transition-all group-hover:opacity-100 hover:bg-red-600/80"
 										onclick={(e) => {
 											e.stopPropagation();
-											videoAccepted = { ...videoAccepted, [user.id]: false };
+											stopWatching(user.id);
 										}}
 									>
 										<PhoneOff class="size-3" />
@@ -466,7 +487,7 @@
 									</button>
 								{/if}
 							{:else}
-								<!-- Remote user is sharing but viewer hasn't accepted -->
+								<!-- Someone else shares and the user isn't watching: Watch only from the voice they're in -->
 								<div class="flex flex-col items-center justify-center gap-3">
 									<UserAvatar
 										src={$voiceFaces ? null : user.avatar_url}
@@ -475,18 +496,23 @@
 										mouthOpen={$userAmplitudes[user.id] ?? 0}
 										eyeOffset={eyeOffsets[user.id] ?? { x: 0, y: 0 }}
 									/>
-									<button
-										class="bg-fill-600 text-fixed-white hover:bg-fill-500 flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors"
-										onclick={(e) => {
-											e.stopPropagation();
-											videoAccepted = { ...videoAccepted, [user.id]: true };
-										}}
-									>
-										<MonitorUp class="size-4" />
-										Watch stream
-									</button>
+									{#if isConnected}
+										<button
+											class="bg-fill-600 text-fixed-white hover:bg-fill-500 flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors"
+											onclick={(e) => {
+												e.stopPropagation();
+												startWatching(channelId, user.id);
+											}}
+										>
+											<MonitorUp class="size-4" />
+											Watch stream
+										</button>
+									{/if}
 								</div>
 							{/if}
+							<div class="absolute top-2 left-2 z-10">
+								<StreamViewers viewers={viewersOfScreen(user.id)} meId={$currentUser?.id} />
+							</div>
 						{/if}
 
 						<!-- Name label -->

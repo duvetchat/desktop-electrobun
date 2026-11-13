@@ -605,6 +605,8 @@ export interface GatewayVoiceState {
 	/** Their camera is on. A gateway from before cameras leaves it out: read it with `?? false`. */
 	camera: boolean;
 	version: number;
+	/** Whose screen share they're watching in the room (gateway#152); left out when nobody's. */
+	watching?: string[];
 }
 
 export interface GatewaySpace {
@@ -733,6 +735,8 @@ export interface GatewayCallVoiceState {
 	screen_sharing: boolean;
 	camera: boolean;
 	version: number;
+	/** Whose screen share they're watching in the call (gateway#152); left out when nobody's. */
+	watching?: string[];
 }
 
 /** A call goes on in one of the user's conversations without ringing them: its ring window ended before they
@@ -768,6 +772,8 @@ export interface VoiceStateUpdateEvent {
 	camera: boolean;
 	/** Grows with every change: an update not newer than the last one seen for this user and room is stale. */
 	version: number;
+	/** Whose screen share they're watching in the room or call (gateway#152); left out when nobody's. */
+	watching?: string[];
 }
 
 export interface VoiceSessionReplacedEvent {

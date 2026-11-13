@@ -178,6 +178,7 @@ export function callVoiceStatesOf(conversationId: string, states: GatewayCallVoi
 		deafened: vs.deafened,
 		screen_sharing: vs.screen_sharing,
 		camera: vs.camera,
+		watching: vs.watching ?? [],
 	}));
 }
 
@@ -192,6 +193,7 @@ export function withCallVoiceState(states: CallVoiceState[], update: VoiceStateU
 		deafened: update.deafened,
 		screen_sharing: update.screen_sharing,
 		camera: update.camera,
+		watching: update.watching ?? [],
 	};
 	return idx === -1 ? [...states, state] : states.map((s, i) => (i === idx ? state : s));
 }

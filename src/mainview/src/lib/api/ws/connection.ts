@@ -529,6 +529,14 @@ function addMembersToSpace(spaceId: string, rows: SpaceMemberWithUser[]) {
 	);
 }
 
+/** Loads a Space's first page of members, with their users: after someone joins it, and for the people of the voice
+ * room the user is in (keepVoicePeopleKnown, lib/voice-place.ts). */
+export function loadSpaceMembers(spaceId: string) {
+	getSpaceMembers(spaceId)
+		.then((rows) => addMembersToSpace(spaceId, rows))
+		.catch((err) => console.error("[WS] Failed to load a space's members:", err));
+}
+
 /** The newest message the client has of a room, but one still being sent, which has its nonce for an id until its
  * MESSAGE_CREATE. */
 function newestLoaded(roomId: string): string | undefined {
@@ -1305,6 +1313,7 @@ function handleEvent(event: GatewayEvent) {
 								screen_sharing: raw.screen_sharing,
 								camera: raw.camera,
 								version: raw.version,
+								watching: raw.watching ?? [],
 							});
 						} else {
 							nextStates[existingIdx] = {
@@ -1314,6 +1323,7 @@ function handleEvent(event: GatewayEvent) {
 								screen_sharing: raw.screen_sharing,
 								camera: raw.camera,
 								version: raw.version,
+								watching: raw.watching ?? [],
 							};
 						}
 					} else {
@@ -1463,9 +1473,7 @@ function handleEvent(event: GatewayEvent) {
 			noteMemberStatus(userStatusCache, raw.user_id, raw.space_id, raw, raw.user?.is_bot);
 			// The member may be a bot, whose commands the space's list doesn't have yet.
 			forgetSpaceCommands(raw.space_id);
-			getSpaceMembers(raw.space_id)
-				.then((rows) => addMembersToSpace(raw.space_id, rows))
-				.catch((err) => console.error("[WS] Failed to refresh members after join:", err));
+			loadSpaceMembers(raw.space_id);
 			break;
 		}
 		case "SPACE_MEMBER_REMOVE": {

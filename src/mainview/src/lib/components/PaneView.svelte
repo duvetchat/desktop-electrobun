@@ -309,9 +309,15 @@
 	});
 
 	// The room this pane shows is on screen while the panes show (lib/on-screen.ts): every pane's, a split's included,
-	// which activeTextRoomId, written by each pane's effect in turn, can't tell.
+	// which activeTextRoomId, written by each pane's effect in turn, can't tell. A voice room's view counts too: its
+	// tiles show the streams, so the floating window stays away while it shows (desktop#299).
 	$effect(() => {
-		if (isActive && node.kind === "leaf" && node.activeChannelId && activeChannel?.type === "text")
+		if (
+			isActive &&
+			node.kind === "leaf" &&
+			node.activeChannelId &&
+			(activeChannel?.type === "text" || activeChannel?.type === "voice")
+		)
 			return showChat(node.activeChannelId);
 	});
 
