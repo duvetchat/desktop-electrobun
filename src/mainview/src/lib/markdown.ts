@@ -361,16 +361,21 @@ function highlightCode(code: string, lang: string): string {
 const withoutMarks = (text: string) => text.replace(/[\x00\x01]/g, "");
 
 // What the renderer takes out of a text before anything else, in this order: code blocks, inline code (never across a
-// block's placeholder), and markdown links, [text](url), whose URL holds no code.
-const CODE_BLOCK = /```([\w+#-]*)\n?([\s\S]*?)```/g;
-const INLINE_CODE = /`([^`\n\x00\x01]+)`/g;
+// block's placeholder), backslash escapes, and markdown links, [text](url), whose URL holds no code and no escape. A `
+// after an odd number of backslashes is escaped, and opens no code.
+const CODE_BLOCK = /(?<!(?:^|[^\\])\\(?:\\\\)*)```([\w+#-]*)\n?([\s\S]*?)```/g;
+const INLINE_CODE = /(?<!(?:^|[^\\])\\(?:\\\\)*)`([^`\n\x00\x01]+)`/g;
+// A backslash before ASCII punctuation (!"#$%&'()*+,-./:;=>?@[\]^_`{|}~), CommonMark's escape, makes it text, which opens
+// and closes nothing, and the backslash goes; in code it's the code's. Not before <: the API reads <@id> after it as a
+// mention, and notifies them, so the text shows it as one.
+const ESCAPE = /\\([\x21-\x2f\x3a\x3b\x3d-\x40\x5b-\x60\x7b-\x7e])/g;
 const MARKDOWN_LINK = /\[([^\]\n]+)\]\((https?:\/\/[^)\x00\x01\n]+)\)/g;
 
-// The text with what the renderer takes out first (code and markdown links) filled with \x00, a character for each, so
-// that a place in it is the same place in the text.
+// The text with what the renderer takes out first (code, escapes and markdown links) filled with \x00, a character for
+// each, so that a place in it is the same place in the text.
 function masked(text: string): string {
 	const fill = (taken: string) => "\x00".repeat(taken.length);
-	return text.replace(CODE_BLOCK, fill).replace(INLINE_CODE, fill).replace(MARKDOWN_LINK, fill);
+	return text.replace(CODE_BLOCK, fill).replace(INLINE_CODE, fill).replace(ESCAPE, fill).replace(MARKDOWN_LINK, fill);
 }
 
 // A bare link, as the mobile app reads one (its lib/data/markdown.dart): up to a space, a < or a >, with a (…) in it
@@ -517,6 +522,14 @@ function render(
 		return `\x00I${inlineCodes.length - 1}\x01`;
 	});
 
+	// ── 2½. Extract backslash escapes ──────────────────────────────────────────
+	// After code, whose backslashes are its own, and before anything reads markers: the character is text.
+	const escapes: string[] = [];
+	s = s.replace(ESCAPE, (_, character: string) => {
+		escapes.push(escapeHtml(character));
+		return `\x00E${escapes.length - 1}\x01`;
+	});
+
 	const inline = (t: string) => applyInline(renderEmoji(t), false, mentionMap, customEmojiMap, roomNames);
 
 	// ── 3. Extract links ───────────────────────────────────────────────────────
@@ -606,6 +619,8 @@ function render(
 	result = result.replace(/\x00B(\d+)\x01/g, (_, n) => codeBlocks[+n]);
 	result = result.replace(/\x00I(\d+)\x01/g, (_, n) => inlineCodes[+n]);
 	result = result.replace(/\x00U(\d+)\x01/g, (_, n) => bare[+n]);
+	// Escapes last: a link's text can hold one.
+	result = result.replace(/\x00E(\d+)\x01/g, (_, n) => escapes[+n]);
 
 	return result;
 }
@@ -620,7 +635,7 @@ export function renderMarkdownLine(
 ): string {
 	const codes: string[] = [];
 	const line = withoutMarks(input)
-		.replace(/```[\w+#-]*\n?([\s\S]*?)```/g, (_, code: string) => {
+		.replace(CODE_BLOCK, (_, _lang: string, code: string) => {
 			codes.push(code.trim().replace(/\s+/g, " "));
 			return `\x00P${codes.length - 1}\x01`;
 		})
