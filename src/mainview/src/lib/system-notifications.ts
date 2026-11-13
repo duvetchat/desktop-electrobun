@@ -15,14 +15,29 @@ const ENTITIES: Record<string, string> = { amp: "&", lt: "<", gt: ">", quot: '"'
  * and "Click to see message" for a message without text, as the notice says.
  */
 export function noticeText(notice: MentionNotice, rooms: Record<string, string>): string {
-	const spoilersHidden = notice.text.replace(/\|\|(.+?)\|\|/gs, "▮▮▮");
-	const text = renderMarkdownLine(spoilersHidden, notice.mentionMap, notice.customEmojiMap, rooms)
+	const text = hideSpoilers(renderMarkdownLine(notice.text, notice.mentionMap, notice.customEmojiMap, rooms))
 		.replace(/<img\b[^>]*\btitle="([^"]*)"[^>]*>/g, "$1")
 		.replace(/<[^>]*>/g, "")
 		.replace(/&(amp|lt|gt|quot);/g, (_, name: string) => ENTITIES[name] ?? "")
 		.replace(/\s+/g, " ")
 		.trim();
 	return text || "Click to see message";
+}
+
+// Each spoiler of renderMarkdownLine's HTML as ▮▮▮, with all it holds, spans too (a mention, a room): the spoilers as
+// the message draws them, its code and escapes read, so the notification hides what the message hides.
+function hideSpoilers(html: string): string {
+	let out = "";
+	let at = 0;
+	let depth = 0;
+	for (const tag of html.matchAll(/<span\b[^>]*>|<\/span>/g)) {
+		if (depth === 0) {
+			if (!tag[0].startsWith('<span class="msg-spoiler"')) continue;
+			out += `${html.slice(at, tag.index)}▮▮▮`;
+			depth = 1;
+		} else if ((depth += tag[0] === "</span>" ? -1 : 1) === 0) at = tag.index + tag[0].length;
+	}
+	return depth === 0 ? out + html.slice(at) : out;
 }
 
 /** The desktop app's notifier (Windows): each notification goes to the Bun process as a toast (src/bun/toasts.ts),

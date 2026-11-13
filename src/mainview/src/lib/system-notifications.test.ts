@@ -65,6 +65,14 @@ describe("a notification's text", () => {
 		expect(noticeText(notice("the end: ||he was the ghost|| !"), {})).toBe("the end: ▮▮▮ !");
 	});
 
+	// As the message draws it: what it hides is hidden, a mention in it too, and what it shows is shown.
+	test("hides each spoiler the message hides, and only those", () => {
+		expect(noticeText(notice(String.raw`||a\||b|| shown`), {})).toBe("▮▮▮ shown");
+		expect(noticeText(notice("||a `x||y` b|| shown"), {})).toBe("▮▮▮ shown");
+		expect(noticeText(notice(`||<@${ME}> did it|| shown`), {})).toBe("▮▮▮ shown");
+		expect(noticeText(notice(String.raw`\||not a spoiler||`), {})).toBe("||not a spoiler||");
+	});
+
 	test("says to click to see a message without text, as the notice does", () => {
 		expect(noticeText(notice(""), {})).toBe("Click to see message");
 	});

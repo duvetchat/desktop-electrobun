@@ -114,7 +114,7 @@ describe("a message's own \\x00 can't pass for a placeholder", () => {
 
 	test("text between two placeholders doesn't read as a third", () => {
 		const code = (c: string) => `<code class="msg-inline-code">${c}</code>`;
-		for (const between of ["B0", "I0", "I5", "L0", "L5", "P0"]) {
+		for (const between of ["B0", "E0", "E5", "I0", "I5", "L0", "L5", "P0"]) {
 			expect(renderMarkdown(`\`a\`${between}\`b\``)).toBe(`${code("a")}${between}${code("b")}`);
 			expect(renderMarkdownLine(`\`a\`${between}\`b\``)).toBe(`${code("a")}${between}${code("b")}`);
 			expect(renderMarkdownLine(`\`\`\` a\`\`\`${between}\`b\``)).toBe(`${code("a")}${between}${code("b")}`);
@@ -130,6 +130,83 @@ describe("a message's own \\x00 can't pass for a placeholder", () => {
 			expect(html.endsWith("y`")).toBe(true);
 		}
 		expect(renderMarkdownLine("`x``` b```y`")).toBe('`x<code class="msg-inline-code">b</code>y`');
+	});
+});
+
+// The texts as typed: in String.raw, each \ is one backslash.
+describe("a backslash before punctuation makes it text", () => {
+	test("an escaped marker opens and closes nothing, and the backslash goes", () => {
+		expect(renderMarkdown(String.raw`\*xd*`)).toBe("*xd*");
+		expect(renderMarkdown(String.raw`\*\*bold\*\*`)).toBe("**bold**");
+		expect(renderMarkdown(String.raw`\_x_`)).toBe("_x_");
+		expect(renderMarkdown(String.raw`\_\_init\_\_`)).toBe("__init__");
+		expect(renderMarkdown(String.raw`\~~struck~~`)).toBe("~~struck~~");
+		expect(renderMarkdown(String.raw`\|\|shown\|\|`)).toBe("||shown||");
+	});
+
+	test("inside emphasis, it's the emphasis's text", () => {
+		expect(renderMarkdown(String.raw`*a\*b*`)).toBe("<em>a*b</em>");
+		expect(renderMarkdown(String.raw`**2\*3**`)).toBe("<strong>2*3</strong>");
+	});
+
+	test("an escaped backslash is one, and what follows it reads as written", () => {
+		expect(renderMarkdown(String.raw`\\*xd*`)).toBe(String.raw`\<em>xd</em>`);
+	});
+
+	test("a line's own marker starts no block", () => {
+		expect(renderMarkdown(String.raw`\# not a heading`)).toBe("# not a heading");
+		expect(renderMarkdown(String.raw`\> not a quote`)).toBe("&gt; not a quote");
+		expect(renderMarkdown(String.raw`\- not a list`)).toBe("- not a list");
+		expect(renderMarkdown(String.raw`1\. not a list`)).toBe("1. not a list");
+		expect(renderMarkdown(String.raw`\-# not subtext`)).toBe("-# not subtext");
+	});
+
+	test("an escaped ` opens no code, and in code a backslash is the code's", () => {
+		expect(renderMarkdown("\\`not code\\`")).toBe("`not code`");
+		expect(renderMarkdown("\\`\\`\\`not a block\\`\\`\\`")).toBe("```not a block```");
+		expect(renderMarkdown("\\\\`code`")).toBe('\\<code class="msg-inline-code">code</code>');
+		expect(renderMarkdown("`\\*x*`")).toBe('<code class="msg-inline-code">\\*x*</code>');
+		expect(renderMarkdown("```\n\\*x*\n```")).toContain("\\*x*");
+	});
+
+	test("an escaped [ starts no link, and a link's text takes escapes", () => {
+		expect(renderMarkdown(String.raw`\[x](https://a.example)`)).toBe("[x](https://a.example)");
+		expect(renderMarkdown(String.raw`[a\*b*](https://a.example)`)).toBe(
+			'<a href="https://a.example" target="_blank" rel="noopener noreferrer" class="msg-link">a*b*</a>',
+		);
+	});
+
+	test("an escaped | is a table cell's text, not its edge", () => {
+		expect(renderMarkdown("a | b \\| c\n--|--\nd | e")).toContain("<th>b | c</th>");
+	});
+
+	test("a backslash before anything else stays, as in a path", () => {
+		expect(renderMarkdown(String.raw`C:\Users\Admin`)).toBe(String.raw`C:\Users\Admin`);
+		expect(renderMarkdown("ends with \\")).toBe("ends with \\");
+	});
+
+	// The API reads <@id> after a backslash as a mention, and notifies them: the text shows it as one.
+	test("a mention after a backslash is still one", () => {
+		const id = "0190a3b2-0000-7000-8000-000000000001";
+		expect(renderMarkdown(`\\<@${id}>`, false, { [id]: "ana" })).toBe(
+			`\\<span class="msg-mention" data-user-id="${id}">@ana</span>`,
+		);
+	});
+
+	test("a reply's one-line quote reads them too", () => {
+		expect(renderMarkdownLine(String.raw`\*xd*`)).toBe("*xd*");
+		expect(renderMarkdownLine(String.raw`\# not a heading`)).toBe("# not a heading");
+		expect(renderMarkdownLine("\\`\\`\\`a\\`\\`\\`")).toBe("```a```");
+	});
+
+	// The escaped * opens nothing, so the link's own * stays its own, as drawn and as its card reads it.
+	test("an escaped marker before a bare link opens nothing the link would end before", () => {
+		const text = String.raw`\*https://a.example/x*`;
+		expect(renderMarkdown(text, false, undefined, undefined, undefined, {})).toBe(`*${LINK("https://a.example/x*")}`);
+		expect(parseTextSegments(text)).toEqual([
+			{ type: "text", content: String.raw`\*` },
+			{ type: "link", content: "https://a.example/x*" },
+		]);
 	});
 });
 
@@ -775,7 +852,9 @@ describe("the HTML it makes", () => {
 		"\x01",
 		"\x00I0\x01",
 		"\x00L0\x01",
+		"\x00E0\x01",
 		"B0",
+		"E0",
 		"I0",
 		"L0",
 		"P0",
