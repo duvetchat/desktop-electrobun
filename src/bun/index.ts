@@ -45,7 +45,8 @@ async function getMainViewUrl(): Promise<string> {
 		}
 	}
 
-	return "views://mainview/index.html";
+	// app.html itself, which sends a page with no session to sign in: index.html loaded it as a second page (#285).
+	return "views://mainview/app.html";
 }
 
 const url = await getMainViewUrl();

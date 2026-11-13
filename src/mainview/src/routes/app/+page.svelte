@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onDestroy, onMount, untrack } from "svelte";
 	import { createWebSocketConnection } from "$lib/api/ws/connection";
+	import { startCodeHighlighting } from "$lib/markdown";
 	import { keepSessionFresh } from "$lib/api/api";
 	import FriendsView from "$lib/components/FriendsView.svelte";
 	import GuildMemberSidebar from "$lib/components/GuildMemberSidebar.svelte";
@@ -117,7 +118,11 @@
 		let conn: ReturnType<typeof createWebSocketConnection> | null = null;
 		let destroyed = false;
 		void session.ready.then(() => {
-			if (!destroyed) conn = createWebSocketConnection();
+			if (destroyed) return;
+			conn = createWebSocketConnection();
+			// Shiki's highlighter (code blocks) is made now, while the socket waits on the network, rather than as the page
+			// loaded, before it could open (#285).
+			startCodeHighlighting();
 		});
 		onDestroy(() => {
 			destroyed = true;
