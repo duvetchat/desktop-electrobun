@@ -115,6 +115,10 @@
 		void startSystemNotifications(openMentioned);
 
 		const session = keepSessionFresh();
+		// A renewal due as the app started runs once the app is up: the socket doesn't wait for it (#281).
+		const stopConnected = friendsReady.subscribe((ready) => {
+			if (ready) session.connected();
+		});
 		let conn: ReturnType<typeof createWebSocketConnection> | null = null;
 		let destroyed = false;
 		void session.ready.then(() => {
@@ -126,6 +130,7 @@
 		});
 		onDestroy(() => {
 			destroyed = true;
+			stopConnected();
 			session.stop();
 			conn?.destroy();
 		});
