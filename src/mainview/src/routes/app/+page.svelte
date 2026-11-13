@@ -2,6 +2,7 @@
 	import { onDestroy, onMount, untrack } from "svelte";
 	import { createWebSocketConnection } from "$lib/api/ws/connection";
 	import { startCodeHighlighting } from "$lib/markdown";
+	import { loadEmojiData } from "$lib/emoji";
 	import { markStartup, reportStartup } from "$lib/startup-timing";
 	import { getElectrobunRpc } from "$lib/electrobun-rpc";
 	import { get } from "svelte/store";
@@ -127,6 +128,10 @@
 		const reportWhenUp = () => {
 			if (!get(friendsReady) || !get(allSpacesReady)) return;
 			reportStartup((marks) => void getElectrobunRpc().then((rpc) => rpc?.send.startupTimings({ marks })));
+			// What the first screen doesn't need loads now: Shiki's highlighter (code blocks) and the emoji dataset (the
+			// picker, the : suggestions), each from a chunk of its own (#292).
+			startCodeHighlighting();
+			void loadEmojiData();
 		};
 		const stopShown = friendsReady.subscribe((ready) => {
 			if (!ready) return;
@@ -144,9 +149,6 @@
 			if (destroyed) return;
 			markStartup("session");
 			conn = createWebSocketConnection();
-			// Shiki's highlighter (code blocks) is made now, while the socket waits on the network, rather than as the page
-			// loaded, before it could open (#285).
-			startCodeHighlighting();
 		});
 		onDestroy(() => {
 			destroyed = true;

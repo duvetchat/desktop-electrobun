@@ -42,9 +42,3 @@ test("the noise suppression, 4.8 MB of WASM as base64, loads when voice needs it
 	expect(voice).not.toMatch(/import \{[^}]*\} from "\$lib\/audio\/noise-suppression";/);
 	expect(voice).toContain('await import("$lib/audio/noise-suppression")');
 });
-
-test("Shiki's highlighter is made once the socket is opening, while it waits on the network", () => {
-	expect(source("../routes/app/+page.svelte")).toMatch(
-		/conn = createWebSocketConnection\(\);\s*(\/\/[^\n]*\n\s*)*startCodeHighlighting\(\);/,
-	);
-});
