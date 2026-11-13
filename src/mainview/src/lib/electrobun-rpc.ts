@@ -43,6 +43,8 @@ export type AppRPCSchema = {
 			maximizeWindow: void;
 			openExternal: { url: string };
 			setSpotifyActivity: { enabled: boolean };
+			// The page's steps of the app's start, each when it happened (Date.now()), for the app's log (#280).
+			startupTimings: { marks: Record<string, number> };
 		};
 	};
 	webview: {
@@ -65,6 +67,7 @@ export type AppRPCClient = {
 		maximizeWindow: () => void;
 		openExternal: (params: { url: string }) => void;
 		setSpotifyActivity: (params: { enabled: boolean }) => void;
+		startupTimings: (params: { marks: Record<string, number> }) => void;
 	};
 	request: {
 		showNotification: (params: NotificationRequest) => Promise<boolean>;

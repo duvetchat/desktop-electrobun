@@ -14,6 +14,16 @@ export function renewalDue(check: SessionCheck, refreshedAt: number, now: number
 }
 
 /**
+ * Whether the renewal due as the app starts goes before its gateway connection: only for tokens in their last hour, or
+ * past it, which the gateway would refuse. Younger ones open the connection at once, and the renewal follows it: the
+ * gateway follows a connection through a renewal (duvet:access_next), and waiting for one cost the connection a new
+ * connection to the API, a preflight and the refresh itself (#281).
+ */
+export function renewalFirst(refreshedAt: number, now: number): boolean {
+	return now - refreshedAt >= RENEW_ON_TICK_MS;
+}
+
+/**
  * Runs a renewal, and runs it once more after `wait` when it failed without an answer: a network error, not the API's
  * refusal (`answered`). The API may have rotated the session and its answer been lost; for 30 s it gives a refresh with
  * the old session token the same new tokens, where a later check would get a 401 and sign the user out.

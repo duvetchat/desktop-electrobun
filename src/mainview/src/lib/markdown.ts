@@ -102,8 +102,14 @@ function getHighlighter(): Promise<Highlighter> {
 	return highlighterPromise;
 }
 
-// Eagerly init on module load
-getHighlighter();
+/**
+ * Has Shiki's highlighter made, which compiles its WASM and parses its grammars on the main thread: the app page asks
+ * for it once its socket is opening, so that work runs while the socket waits on the network rather than before it
+ * opens (#285). A code block drawn before it's made shows plain, and has it made.
+ */
+export function startCodeHighlighting() {
+	void getHighlighter();
+}
 
 function stripJsonc(text: string): string {
 	// Remove single-line comments (// ...) and multi-line comments (/* ... */)
@@ -321,6 +327,7 @@ function applyInline(
 function highlightCode(code: string, lang: string): string {
 	const resolved = LANG_ALIASES[lang] ?? lang;
 	if (!highlighter) {
+		startCodeHighlighting();
 		return escapeHtml(code);
 	}
 	try {

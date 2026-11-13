@@ -1,5 +1,5 @@
 import { getHostURL, route } from "$lib/common/common";
-import { renewalDue, renewOnceMore, type SessionCheck } from "$lib/session";
+import { renewalDue, renewalFirst, renewOnceMore, type SessionCheck } from "$lib/session";
 import { accessToken } from "$lib/stores/auth";
 import { formatFileSize } from "$lib/utils/format";
 import { get } from "svelte/store";
@@ -379,11 +379,13 @@ async function requestRefresh(): Promise<string> {
 	}
 }
 
-/** Renews the session before it expires: checked now, every 10 minutes and whenever the app comes
- * back into view (timers don't run while the computer sleeps), each with its own age (renewalDue).
- * `ready` settles once a renewal due right away is done: open the gateway connection after it,
- * since a refresh revokes the old access token mid-identify otherwise. */
-export function keepSessionFresh(): { ready: Promise<void>; stop: () => void } {
+/** Renews the session before it expires: checked as the app starts, every 10 minutes and whenever
+ * the app comes back into view (timers don't run while the computer sleeps), each with its own age
+ * (renewalDue). Open the gateway connection once `ready` settles: at once, unless the tokens are in
+ * their last hour (renewalFirst), which the gateway would refuse; then once they're renewed. A
+ * renewal due otherwise as the app starts waits for `connected` (the app is up), as the gateway
+ * follows a connection through a renewal, where a renewal mid-identify would fail it (#281). */
+export function keepSessionFresh(): { ready: Promise<void>; connected: () => void; stop: () => void } {
 	const check = async (when: SessionCheck) => {
 		if (!localStorage.getItem("duvet_refresh_token")) return;
 		const refreshedAt = Number(localStorage.getItem(REFRESHED_AT_KEY)) || 0;
@@ -393,11 +395,19 @@ export function keepSessionFresh(): { ready: Promise<void>; stop: () => void } {
 	const onVisible = () => {
 		if (!document.hidden) void check("visible");
 	};
-	const ready = check("start");
+	const refreshedAt = Number(localStorage.getItem(REFRESHED_AT_KEY)) || 0;
+	const first = renewalFirst(refreshedAt, Date.now());
+	const ready = first ? check("start") : Promise.resolve();
+	let startChecked = first;
 	const timer = setInterval(() => void check("tick"), 10 * 60 * 1000);
 	document.addEventListener("visibilitychange", onVisible);
 	return {
 		ready,
+		connected: () => {
+			if (startChecked) return;
+			startChecked = true;
+			void check("start");
+		},
 		stop: () => {
 			clearInterval(timer);
 			document.removeEventListener("visibilitychange", onVisible);

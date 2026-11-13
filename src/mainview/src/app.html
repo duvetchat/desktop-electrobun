@@ -47,6 +47,12 @@
           window.location.replace(r("/app.html"));
         }
       }
+
+      // The packaged app opens app.html itself (src/bun/index.ts), rather than index.html, which loaded it as a second
+      // page: without a session, the page is sign-in's.
+      if (path === "/app.html" && !localStorage.getItem("duvet_session_token")) {
+        window.location.replace(r("/sign-in.html"));
+      }
     })();
   </script>
 
