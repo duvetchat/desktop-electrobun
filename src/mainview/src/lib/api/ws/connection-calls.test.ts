@@ -82,6 +82,46 @@ beforeEach(async () => {
 
 afterEach(() => gateway.close());
 
+// gateway#152: a voice state says whose screen share each user watches; a gateway or client without it, none.
+describe("who watches a screen share in a room", () => {
+	const SPACE = "01920000-0000-7000-8000-0000000005b1";
+	const LOUNGE = "01920000-0000-7000-8000-0000000005b3";
+	const update = (version: number, watching?: string[]) => ({
+		room_id: LOUNGE,
+		user_id: ANA,
+		joined: true,
+		muted: false,
+		deafened: false,
+		screen_sharing: false,
+		camera: false,
+		version,
+		...(watching ? { watching } : {}),
+	});
+	const anas = () =>
+		get(gatewaySpaces)
+			.find((s) => s.id === SPACE)
+			?.voice_states?.find((vs) => vs.user_id === ANA);
+
+	beforeEach(() => {
+		gatewaySpaces.set([]);
+		gateway.receive("SPACE_CREATE", {
+			space: { id: SPACE, name: "Beta", owner_id: ANA, created_at: "", updated_at: "" },
+			rooms: { [LOUNGE]: { id: LOUNGE, space_id: SPACE, name: "lounge", type: 2, position: 0 } },
+			roles_permissions: {},
+			member_roles: {},
+			overwrites: {},
+			voice_states: [],
+		});
+	});
+
+	test("a room's VOICE_STATE_UPDATE keeps who the person watches, and none once it's left out", () => {
+		gateway.receive("VOICE_STATE_UPDATE", update(1, [ME]));
+		expect(anas()?.watching).toEqual([ME]);
+		gateway.receive("VOICE_STATE_UPDATE", update(2));
+		expect(anas()?.watching).toEqual([]);
+	});
+});
+
 const listed = () => get(conversations).map((c) => c.id);
 
 describe("a group the user left, or was removed from", () => {

@@ -329,6 +329,7 @@ describe("call voice states", () => {
 		deafened: false,
 		screen_sharing: false,
 		camera: false,
+		watching: [],
 	});
 	const update = (user_id: string, joined: boolean, muted = false, room_id = CONV): VoiceStateUpdateEvent => ({
 		room_id,
@@ -344,6 +345,19 @@ describe("call voice states", () => {
 	test("who is in a call, from READY or CALL_ONGOING, in the conversation's room", () => {
 		expect(callVoiceStatesOf(CONV, [voice(THEM), voice(ME)])).toEqual([state(THEM), state(ME)]);
 		expect(callVoiceStatesOf(CONV, null)).toEqual([]);
+	});
+
+	// gateway#152: a voice state says whose screen share each user watches; a gateway or client without it, none.
+	test("call voice states carry who each one watches, none when the gateway leaves it out", () => {
+		expect(callVoiceStatesOf(CONV, [{ ...voice(THEM), watching: [ME] }, voice(ME)])).toEqual([
+			{ ...state(THEM), watching: [ME] },
+			state(ME),
+		]);
+		expect(withCallVoiceState([state(ME)], { ...update(THEM, true), watching: [ME] })).toEqual([
+			state(ME),
+			{ ...state(THEM), watching: [ME] },
+		]);
+		expect(withCallVoiceState([{ ...state(THEM), watching: [ME] }], update(THEM, true))).toEqual([state(THEM)]);
 	});
 
 	test("someone joining a call is added; a change of theirs replaces their state", () => {
