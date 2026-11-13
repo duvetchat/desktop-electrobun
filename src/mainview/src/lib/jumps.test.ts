@@ -2,16 +2,20 @@ import { describe, expect, test } from "bun:test";
 import {
 	belowIndicator,
 	dividerPastWindow,
+	forgetLists,
 	inWindow,
 	keepJump,
+	keepList,
 	keepRoomJumps,
 	knowMessage,
 	leaving,
+	listSession,
 	loadedTo,
 	newestKnownIn,
 	quoteJump,
 	readWhenLeft,
 	takeJump,
+	takeList,
 	withPresent,
 } from "$lib/jumps";
 
@@ -301,6 +305,60 @@ describe("keepJump and takeJump", () => {
 		keepRoomJumps({ jumped: true, present: false }, { jumped: true }, { jumped: m(220), present: m(40) });
 		expect(takeJump("jumped", list)).toEqual({ hasMore: true, loadedBelowTo: m(220) });
 		expect(takeJump("present", list)).toBeNull();
+	});
+});
+
+describe("keepList and takeList", () => {
+	// A conversation's list as its view went: its newest page and an older one.
+	const m = (n: number) => `01930000-0000-7000-8000-${String(n).padStart(12, "0")}`;
+	const list = Array.from({ length: 150 }, (_, i) => ({ id: m(i + 1) }));
+	// A message being sent: its ID is its nonce, a random UUID, which can sort before every message's.
+	const sending = { id: "0a1b2c3d-0000-4000-8000-000000000000", nonce: "0a1b2c3d-0000-4000-8000-000000000000" };
+
+	test("the view shown again shows the list as it went, with whether older messages are left to load, once", () => {
+		keepList("a", list, true, listSession());
+		expect(takeList("a", list)).toEqual({ hasMore: true });
+		expect(takeList("a", list)).toBeNull();
+	});
+
+	test("a list the store dropped, or that a message coming after it started again, takes the newest page again", () => {
+		keepList("b", list, false, listSession());
+		expect(takeList("b", undefined)).toBeNull();
+		keepList("b", list, false, listSession());
+		expect(takeList("b", [{ id: m(151) }])).toBeNull();
+	});
+
+	test("a message being sent isn't what tells the list: it goes once its copy comes", () => {
+		keepList("c", [sending, ...list], false, listSession());
+		expect(takeList("c", [...list, { id: m(151) }])).toEqual({ hasMore: false });
+	});
+
+	test("a list without a message the API has keeps nothing: an empty one, or one with a message being sent", () => {
+		keepList("d", [], false, listSession());
+		expect(takeList("d", [])).toBeNull();
+		keepList("d", [sending], false, listSession());
+		expect(takeList("d", [sending])).toBeNull();
+	});
+
+	test("none, or a list of a gateway session before this one, keeps nothing", () => {
+		keepList("e", list, true, listSession());
+		keepList("e", null, true, listSession());
+		expect(takeList("e", list)).toBeNull();
+		const before = listSession();
+		forgetLists();
+		keepList("e", list, true, before);
+		expect(takeList("e", list)).toBeNull();
+	});
+
+	test("a new gateway session forgets every list kept, a conversation left only its own", () => {
+		keepList("f", list, true, listSession());
+		keepList("g", list, true, listSession());
+		forgetLists("f");
+		expect(takeList("f", list)).toBeNull();
+		expect(takeList("g", list)).toEqual({ hasMore: true });
+		keepList("g", list, true, listSession());
+		forgetLists();
+		expect(takeList("g", list)).toBeNull();
 	});
 });
 

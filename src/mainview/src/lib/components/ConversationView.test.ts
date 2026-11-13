@@ -33,6 +33,24 @@ test("a conversation the user is no longer in acks nothing as its view goes, and
 	);
 });
 
+test("a conversation shown again shows the list a view of this gateway session left, as it is, with no page asked for", () => {
+	const view = source("ConversationView.svelte");
+	expect(view).toContain("const session = listSession();");
+	expect(view).toMatch(/const kept = takeJump\(convId, list\);\s*const keptList = takeList\(convId, list\);/);
+	expect(view).toMatch(/\} else if \(keptList\) \{\s*hasMore = keptList\.hasMore;\s*\}/);
+	expect(view).toMatch(/if \(kept \|\| keptList\) \{[^}]*isLoading = false;\s*\} else \{\s*loadFirstPage\(\);\s*\}/);
+	expect(view).toMatch(
+		/const stillIn = get\(conversations\)\.some\(\(c\) => c\.id === convId\);\s*keepList\(convId, listFetched && !hasMoreBelow && stillIn \? get\(dmMessages\)\[convId\] : null, hasMore, session\);/,
+	);
+});
+
+test("only pages a view fetched make its list worth keeping: the newest page, a jump's, the present's", () => {
+	const view = source("ConversationView.svelte");
+	expect(view).toContain("if (!before) listFetched = true;");
+	expect(view).toMatch(/\[convId\]: combined \}\)\);\s*listFetched = true;/);
+	expect(view).toMatch(/withPresent\(all\[convId\] \?\? \[\], fetched\) \}\)\);\s*listFetched = true;/);
+});
+
 test("the new group dialog goes by what's picked: one friend's DM, or a group", () => {
 	const friends = source("FriendsView.svelte");
 	expect(friends).toContain("const plan = newConversation(selectedFriendIds, groupName);");
