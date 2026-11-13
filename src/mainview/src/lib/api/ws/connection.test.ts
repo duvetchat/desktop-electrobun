@@ -4,6 +4,7 @@ import type { Conversation } from "$lib/api/conversations";
 import { openGateway, type TestGateway } from "$lib/api/ws/test-gateway";
 import { callHistory } from "$lib/call-history";
 import { changeDraft, chatDrafts, draftOf, putBack } from "$lib/drafts";
+import { keepList, listSession, takeList } from "$lib/jumps";
 import { onReactionChange, type ReactionChange } from "$lib/reactions";
 import { notificationLevels } from "$lib/notification-levels";
 import { MessageType, type GatewaySpace, type Message } from "$lib/types";
@@ -419,6 +420,25 @@ describe("the call history", () => {
 		expect(get(callHistory)).toBeNull();
 		callNotice(message(40), conversation(24));
 		expect(get(callHistory)).toBeNull();
+	});
+});
+
+describe("a conversation's list kept for its next view", () => {
+	const list = [{ id: message(1) }, { id: message(2) }];
+
+	test("is forgotten by a new session, whose events of the time away never came", () => {
+		keepList(conversation(30), list, true, listSession());
+		ready({});
+		expect(takeList(conversation(30), list)).toBeNull();
+	});
+
+	test("is forgotten for a conversation the user is no longer in, whose messages no longer reach them", () => {
+		ready({});
+		keepList(conversation(31), list, true, listSession());
+		keepList(conversation(32), list, true, listSession());
+		deliver("CONVERSATION_MEMBER_REMOVE", { conversation_id: conversation(31), user_id: ME });
+		expect(takeList(conversation(31), list)).toBeNull();
+		expect(takeList(conversation(32), list)).toEqual({ hasMore: true });
 	});
 });
 
