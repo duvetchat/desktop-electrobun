@@ -6,7 +6,6 @@
 	import { audioStore } from "$lib/stores/audio.svelte";
 	import { toast } from "$lib/stores/toast.svelte";
 	import { hasPermission, Permission } from "$lib/permissions";
-	import { createDenoisedStream } from "$lib/audio/noise-suppression";
 	import { askForMicWith, sendVoiceSync } from "$lib/voice";
 	import {
 		CAMERA_MAX_BITRATE,
@@ -43,6 +42,13 @@
 		voiceRemoteCameraStreams,
 		voiceRemoteVideoStreams,
 	} from "$lib/stores.svelte";
+
+	// The noise suppression loads when the mic needs it: its RNNoise WASM, 4.8 MB of base64, rode in the app page's chunk
+	// and was parsed at every start (#285). A load that fails falls back to the raw mic, as a suppression that fails does.
+	const createDenoisedStream: typeof import("$lib/audio/noise-suppression").createDenoisedStream = async (
+		stream,
+		ctx,
+	) => (await import("$lib/audio/noise-suppression")).createDenoisedStream(stream, ctx);
 
 	// Mounted hidden (routes/app/+page.svelte) while this client is in a voice room or a call: it carries the
 	// WebRTC connection, captures the mic, the camera and the screen, and plays everyone's audio. What's seen of

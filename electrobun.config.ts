@@ -3,6 +3,16 @@ import type { ElectrobunConfig } from "electrobun";
 
 import pkg from "./package.json";
 
+// Electrobun's Bun API (electrobun/bun) imports three.js and Babylon.js onto its default export, which the app never uses:
+// bundled, they took about 200 ms of every start before the window opened (#283). The Bun bundle gets empty modules.
+const noUnusedEngines = {
+	name: "no-unused-engines",
+	setup(build) {
+		build.onResolve({ filter: /^(three|@babylonjs\/core)$/ }, (args) => ({ path: args.path, namespace: "unused" }));
+		build.onLoad({ filter: /.*/, namespace: "unused" }, () => ({ contents: "export {};", loader: "js" }));
+	},
+};
+
 export default {
 	app: {
 		// The shortcut, the bundle (`Duvet-<channel>`) and the installer are named after it. The install folder, the
@@ -14,6 +24,7 @@ export default {
 	build: {
 		bun: {
 			entrypoint: "src/bun/index.ts",
+			plugins: [noUnusedEngines],
 		},
 		mac: {
 			icon: "icon.iconset",

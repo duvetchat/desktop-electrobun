@@ -124,6 +124,7 @@ import { sendAgain } from "$lib/resend";
 import { dropReplyTo, takeBack } from "$lib/drafts";
 import { SENT_BEFORE_CANCEL } from "$lib/uploads";
 import { forgetLists, knowMessage, newestKnownIn } from "$lib/jumps";
+import { markStartup } from "$lib/startup-timing";
 import { reactionChanged, withReaction, type ReactionChange } from "$lib/reactions";
 import { banAdded, banLifted, forgetBans } from "$lib/bans";
 import { callNoticeCame, callNoticeDeleted, conversationCallsGone, forgetCalls } from "$lib/call-history";
@@ -180,6 +181,24 @@ let lastSeq = 0;
 
 // Set by wantFreshSession until a READY comes: identify starts a new session instead of resuming this one.
 let freshSessionWanted = false;
+
+/** The lists a session shows, asked for together. Each has a handler already: one that fails before READY reports
+ * nothing then, and READY's own handlers say why. */
+function askForLists() {
+	const lists = {
+		pending: getPendingRequests(),
+		sent: getSentRequests(),
+		friends: getFriends(),
+		conversations: getConversations(),
+		teamInvites: listMyTeamInvites(),
+		buckets: getMyBuckets(),
+	};
+	for (const list of Object.values(lists)) void list.catch(() => {});
+	return lists;
+}
+// What a socket that identified for a new session asked for, while its READY comes: the lists need the session alone,
+// and asked for only on READY they came two round trips after it (#282). None for a resume, which keeps them.
+let listsAhead: ReturnType<typeof askForLists> | null = null;
 
 // Counts the connections to the gateway that opened, so what was sent can be matched to the session it reached.
 let connectionCount = 0;
@@ -705,6 +724,7 @@ function handleEvent(event: GatewayEvent) {
 	const payload = event.d;
 	switch (payload.type) {
 		case "READY": {
+			markStartup("ready");
 			const { user, sessionToken, unread_rooms } = payload.data;
 			lastSeq = 0;
 			freshSessionWanted = false;
@@ -726,31 +746,27 @@ function handleEvent(event: GatewayEvent) {
 			// Each room's and conversation's newest message, which a message being sent records (withPresent).
 			for (const [roomId, id] of Object.entries(payload.data.last_msg_rooms ?? {})) knowMessage(roomId, id);
 			for (const [convId, id] of Object.entries(payload.data.last_msg_convs ?? {})) knowMessage(convId, id);
-			// Fetch friends, pending/sent requests, and conversations eagerly
-			// so they are available before FriendsView mounts.
-			Promise.all([
-				getPendingRequests(),
-				getSentRequests(),
-				getFriends(),
-				getConversations(),
-				listMyTeamInvites(),
-				getMyBuckets(),
-			])
-				.then(([pending, sent, friendList, convList, teamInvites, bucketList]) => {
-					pendingFriendRequests.set(pending);
-					sentFriendRequests.set(sent);
+			// The session's lists, asked for as it identified (listsAhead) or now: each is stored as it comes, after READY,
+			// which names the user and empties the statuses they bring. The app shows once the friends, the requests and
+			// the conversations are in, failed or not; the team invites and the buckets come when they come (#282).
+			const lists = listsAhead ?? askForLists();
+			listsAhead = null;
+			const store = <T>(list: Promise<T>, what: string, keep: (value: T) => void) =>
+				list.then(keep, (err: unknown) => console.error(`[WS] Failed to load ${what} on READY:`, err));
+			void Promise.all([
+				store(lists.pending, "friend requests", (pending) => pendingFriendRequests.set(pending)),
+				store(lists.sent, "sent friend requests", (sent) => sentFriendRequests.set(sent)),
+				store(lists.friends, "friends", (friendList) => {
 					rememberFriendStatuses(friendList);
 					friends.set(friendList);
+				}),
+				store(lists.conversations, "conversations", (convList) => {
 					rememberConversationStatuses(convList);
 					conversations.set(convList);
-					pendingTeamInvites.set(teamInvites);
-					myBuckets.set(bucketList);
-					friendsReady.set(true);
-				})
-				.catch((err) => {
-					console.error("[WS] Failed to load friends/conversations on READY:", err);
-					friendsReady.set(true); // show the app even on error
-				});
+				}),
+			]).then(() => friendsReady.set(true));
+			void store(lists.teamInvites, "team invites", (teamInvites) => pendingTeamInvites.set(teamInvites));
+			void store(lists.buckets, "buckets", (bucketList) => myBuckets.set(bucketList));
 			getMentionCounts()
 				.then((counts) => mentionCounts.set(counts))
 				.catch(() => {});
@@ -2043,6 +2059,7 @@ export function createWebSocketConnection(): GatewayConnection {
 		let resumeProbe = false;
 
 		socket.onopen = () => {
+			markStartup("socket");
 			if (import.meta.env.DEV) console.log("[WS] Connected");
 			reconnectAttempts = 0;
 			const identify = identifyData(
@@ -2051,6 +2068,7 @@ export function createWebSocketConnection(): GatewayConnection {
 			);
 			connectionCount++;
 			socket.send(JSON.stringify({ type: "identify", data: identify }));
+			listsAhead = identify.session_token ? null : askForLists();
 			// Asking to resume, the client learns that it did from this heartbeat's answer, which the gateway queues
 			// behind the session's replay; a session that can't resume sends READY before it.
 			if (identify.session_token) {

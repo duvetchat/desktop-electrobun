@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { renewalDue, renewOnceMore } from "$lib/session";
+import { renewalDue, renewalFirst, renewOnceMore } from "$lib/session";
 
 const HOUR = 60 * 60 * 1000;
 const now = Date.UTC(2026, 9, 24, 12);
@@ -22,6 +22,24 @@ describe("renewalDue", () => {
 	test("tokens whose time was never noted renew at any check", () => {
 		expect(renewalDue("tick", 0, now)).toBe(true);
 		expect(renewalDue("start", 0, now)).toBe(true);
+	});
+});
+
+// As the app starts, a renewal due goes before the gateway connection only when the tokens are about to run out, which
+// the gateway would refuse: otherwise the connection opens at once, and the renewal follows it (#281).
+describe("renewalFirst", () => {
+	test("tokens in their last hour, or past it, renew before the connection opens", () => {
+		expect(renewalFirst(now - 23 * HOUR, now)).toBe(true);
+		expect(renewalFirst(now - 30 * HOUR, now)).toBe(true);
+	});
+
+	test("younger ones don't: the connection opens with them", () => {
+		expect(renewalFirst(now - 23 * HOUR + 1000, now)).toBe(false);
+		expect(renewalFirst(now - 2 * HOUR, now)).toBe(false);
+	});
+
+	test("tokens whose time was never noted renew first", () => {
+		expect(renewalFirst(0, now)).toBe(true);
 	});
 });
 
