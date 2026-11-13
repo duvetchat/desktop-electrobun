@@ -1,5 +1,5 @@
 import { renderEmoji } from "./emoji";
-import { createHighlighter, type Highlighter } from "shiki";
+import type { Highlighter } from "shiki";
 import { getHostURL, isUuid } from "$lib/common/common";
 import { CUSTOM_EMOJI_CLASS, retryEmojis } from "$lib/emoji-retry";
 import { cardLink, parseDuvetLink, type DuvetLink } from "$lib/urls";
@@ -89,23 +89,28 @@ const DEFAULT_THEME = "github-dark-default";
 const LIGHT_THEME = "github-light-default";
 let currentThemeName = DEFAULT_THEME;
 
+// Shiki loads with the highlighter, from a chunk of its own: imported here, it rode every start in the layout's (#292).
 function getHighlighter(): Promise<Highlighter> {
 	if (!highlighterPromise) {
-		highlighterPromise = createHighlighter({
-			themes: [DEFAULT_THEME, LIGHT_THEME],
-			langs: [...LANGS],
-		}).then((h) => {
-			highlighter = h;
-			return h;
-		});
+		highlighterPromise = import("shiki")
+			.then(({ createHighlighter }) =>
+				createHighlighter({
+					themes: [DEFAULT_THEME, LIGHT_THEME],
+					langs: [...LANGS],
+				}),
+			)
+			.then((h) => {
+				highlighter = h;
+				return h;
+			});
 	}
 	return highlighterPromise;
 }
 
 /**
- * Has Shiki's highlighter made, which compiles its WASM and parses its grammars on the main thread: the app page asks
- * for it once its socket is opening, so that work runs while the socket waits on the network rather than before it
- * opens (#285). A code block drawn before it's made shows plain, and has it made.
+ * Has Shiki's highlighter made, which loads Shiki, compiles its WASM and parses its grammars on the main thread: the app
+ * page asks for it once its first screen is up, so that work takes no time from the start (#285, #292). A code block
+ * drawn before it's made shows plain, and has it made.
  */
 export function startCodeHighlighting() {
 	void getHighlighter();

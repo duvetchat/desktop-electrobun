@@ -1,11 +1,16 @@
 <script lang="ts">
-	import { emojiCategories, searchEmojis, toTwemojiUrl, type EmojiEntry } from "$lib/emoji";
+	import { emojiDataNow, loadEmojiData, toTwemojiUrl, type EmojiEntry } from "$lib/emoji";
 	import type { SpaceEmoji } from "$lib/types";
 	import { getHostURL } from "$lib/common/common";
 
 	const ceHost = getHostURL();
 
 	let { onSelect, customEmojis = [] }: { onSelect: (emoji: string) => void; customEmojis?: SpaceEmoji[] } = $props();
+
+	// The emoji dataset, loaded as the picker first opens if the app hadn't loaded it yet (#292).
+	let emojiData = $state.raw(emojiDataNow());
+	void loadEmojiData().then((data) => (emojiData = data));
+	const emojiCategories = $derived(emojiData?.emojiCategories ?? []);
 
 	const hasCustom = $derived(customEmojis.length > 0);
 	// Category 0 is custom emojis when available, otherwise shift
@@ -24,7 +29,7 @@
 						customAttachmentId: string;
 					},
 			);
-		return [...customMatches, ...searchEmojis(searchQuery)];
+		return [...customMatches, ...(emojiData?.searchEmojis(searchQuery) ?? [])];
 	});
 	let isSearching = $derived(searchQuery.trim().length > 0);
 

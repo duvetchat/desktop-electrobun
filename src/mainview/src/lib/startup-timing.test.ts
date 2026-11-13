@@ -31,7 +31,9 @@ describe("the page's marks", () => {
 describe("where the steps are marked", () => {
 	test("the connection marks its socket's opening and READY", () => {
 		const connection = source("api/ws/connection.ts");
-		expect(connection).toMatch(/socket\.onopen = \(\) => \{[^}]*markStartup\("socket"\);/);
+		// When the head script's socket opened, if it did before the connection listened (#291).
+		expect(connection).toMatch(/const opened = \(\) => \{[^}]*markStartup\("socket", /);
+		expect(connection).toContain("socket.onopen = opened;");
 		expect(connection).toMatch(/case "READY": \{\s*markStartup\("ready"\);/);
 	});
 
