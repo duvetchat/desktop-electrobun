@@ -1,4 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { get } from "svelte/store";
 import { openGateway, type TestGateway } from "$lib/api/ws/test-gateway";
 import type { GatewaySpace } from "$lib/types";
@@ -211,5 +213,24 @@ describe("keepWatchedStreams", () => {
 		gatewaySpaces.set([space([{ user_id: BO, screen_sharing: false }])]);
 		expect(get(watchedStreams)).toEqual([]);
 		expect(gateway.sent("VOICE_SYNC").at(-1)).toMatchObject({ room_id: ROOM, watching: [] });
+	});
+});
+
+// Where the list is read: the views go through it, so a stream stays watched when its view goes and comes back.
+describe("the views", () => {
+	const source = (file: string) => readFileSync(join(import.meta.dir, file), "utf8");
+
+	test("the room's view watches through the global list", () => {
+		const view = source("components/VoiceChannelView.svelte");
+		expect(view).not.toContain("videoAccepted");
+		expect(view).toContain("startWatching(channelId, user.id)");
+		expect(view).toContain("stopWatching(user.id)");
+		expect(view).toContain("<StreamViewers");
+	});
+
+	test("a voice room on screen counts as on screen", () => {
+		expect(source("components/PaneView.svelte")).toMatch(
+			/activeChannel\?\.type === "voice"\)\s*\)?\s*return showChat\(node\.activeChannelId\)/,
+		);
 	});
 });
