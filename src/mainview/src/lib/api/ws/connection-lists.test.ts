@@ -2,8 +2,9 @@ import { afterAll, beforeAll, describe, expect, spyOn, test } from "bun:test";
 import { get } from "svelte/store";
 import { openGateway, type TestGateway } from "$lib/api/ws/test-gateway";
 
-// The lists a new session shows (friends, friend requests, conversations), and the team invites and buckets: READY asked
-// for them only once it came, two round trips after it, and showed the app only once all six answered (#282).
+// The lists a new session shows (friends, friend requests, conversations, the notification levels), and the team
+// invites and buckets: READY asked for them only once it came, two round trips after it, and showed the app only once all
+// six answered (#282).
 const stores = await import("$lib/stores.svelte");
 const { userStatusCache } = await import("$lib/api/ws/connection");
 
@@ -14,6 +15,7 @@ const LISTS = [
 	"/api/users/@me/friends/requests/sent",
 	"/api/users/@me/friends",
 	"/api/users/@me/conversations",
+	"/api/users/@me/notification-settings",
 	"/api/users/@me/team-invites",
 	"/api/users/@me/buckets",
 ];
