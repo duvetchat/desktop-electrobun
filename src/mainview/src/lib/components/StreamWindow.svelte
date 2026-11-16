@@ -6,7 +6,9 @@
 
 <script lang="ts">
 	import { X } from "@lucide/svelte";
+	import { onDestroy } from "svelte";
 	import StreamViewers from "$lib/components/StreamViewers.svelte";
+	import { streamWindowBox } from "$lib/corner";
 	import { chatsOnScreen } from "$lib/on-screen";
 	import {
 		currentUser,
@@ -63,6 +65,12 @@
 	function clamp(value: number, max: number): number {
 		return Math.min(Math.max(value, 0), Math.max(max, 0));
 	}
+
+	// Where it is while it shows, so a call card goes right above it when it covers the card's place (lib/corner.ts).
+	$effect(() => {
+		streamWindowBox.set(shown && place ? { right, bottom, width: WIDTH, height: HEIGHT } : null);
+	});
+	onDestroy(() => streamWindowBox.set(null));
 
 	let video = $state<HTMLVideoElement | null>(null);
 	$effect(() => {

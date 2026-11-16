@@ -1,5 +1,6 @@
 import type { ActiveCallInfo, CallVoiceState } from "$lib/stores.svelte";
-import type { ConversationMember } from "$lib/api/conversations";
+import type { Conversation, ConversationMember } from "$lib/api/conversations";
+import { conversationTitle, otherMember } from "$lib/pane";
 import type {
 	CallAcceptedEvent,
 	CallDeclinedEvent,
@@ -227,4 +228,50 @@ export function placeAgain(
 	if (!placed) return null;
 	if (call?.conversationId !== placed.conversationId || call.state !== "calling") return "drop";
 	return sendAgain(placed, connection) ? "again" : null;
+}
+
+/** A conversation as the call card reads it. */
+export type CallCardConversation = Pick<Conversation, "id" | "type" | "name" | "members">;
+
+/** Who the call card shows: whose photo it is (null for a group's initials), the photo, the name, and the group a call
+ * comes in from, after "Incoming call" (null in a DM). */
+export interface CallCardFace {
+	userId: string | null;
+	avatar: string | null;
+	name: string;
+	place: string | null;
+}
+
+/**
+ * What the call card (CallCard.svelte) shows of a call. One ringing here shows who calls, with the group it comes from.
+ * One the user places shows whom they call: a DM's other member, or a group by its name, with its initials as the DM
+ * list draws it. One of a conversation this client doesn't know is "Conversation", as in the Calls tab.
+ */
+export function callCardFace(
+	call: Pick<ActiveCallInfo, "state" | "initiatorId" | "initiatorName" | "initiatorAvatar">,
+	conversation: CallCardConversation | undefined,
+	meId: string | undefined,
+): CallCardFace {
+	if (call.state === "ringing") {
+		const place = conversation?.type === 2 ? conversationTitle(conversation, meId) : null;
+		return { userId: call.initiatorId, avatar: call.initiatorAvatar, name: call.initiatorName, place };
+	}
+	if (!conversation) return { userId: null, avatar: null, name: "Conversation", place: null };
+	const other = otherMember(conversation, meId);
+	return {
+		userId: other?.user_id ?? null,
+		avatar: other?.user?.avatar ?? null,
+		name: conversationTitle(conversation, meId),
+		place: null,
+	};
+}
+
+/**
+ * Whether a conversation's view offers to join the call going on there (its banner's Join). Not for the call this
+ * client shows: once it's in it, nor while the call card has it, ringing here or placed from here, where Accept and
+ * Cancel answer it. Joining a call one placed and that still rings would show it connected, and join its voice, before
+ * anyone answered. The column's calls to join leave it out too (joinableCalls).
+ */
+export function offersJoin(conversationId: string, ongoing: boolean, call: ShownCall | null): boolean {
+	return ongoing && call?.conversationId !== conversationId;
 }
