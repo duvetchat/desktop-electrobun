@@ -190,6 +190,7 @@ function askForLists() {
 		sent: getSentRequests(),
 		friends: getFriends(),
 		conversations: getConversations(),
+		levels: getNotificationSettings(),
 		teamInvites: listMyTeamInvites(),
 		buckets: getMyBuckets(),
 	};
@@ -199,6 +200,12 @@ function askForLists() {
 // What a socket that identified for a new session asked for, while its READY comes: the lists need the session alone,
 // and asked for only on READY they came two round trips after it (#282). None for a resume, which keeps them.
 let listsAhead: ReturnType<typeof askForLists> | null = null;
+
+// The first READY's notification levels while they're on their way: a message that may notify meanwhile waits for them
+// (notifyMessage), or a muted place would notify by its default. Null before that READY and once they came, or failed
+// to: a later READY goes by the levels the app has.
+let levelsComing: Promise<void> | null = null;
+let levelsKnown = false;
 
 // The gateway's and the API's addresses as a connection last used them, which the next start's head script (app.html)
 // opens before the app's JavaScript runs (#291).
@@ -630,6 +637,10 @@ const chatOf = (target: NotifyTarget) => ("roomId" in target ? target.roomId : t
  */
 function notifyMessage(target: NotifyTarget, authorId: string | null, messageId: string, mention: boolean) {
 	if (notified.includes(messageId)) return;
+	if (levelsComing) {
+		void levelsComing.then(() => notifyMessage(target, authorId, messageId, mention));
+		return;
+	}
 	const known = target.message;
 	const kind = notificationKind({
 		own: authorId === get(currentUser)?.id,
@@ -772,13 +783,26 @@ function handleEvent(event: GatewayEvent) {
 			for (const [roomId, id] of Object.entries(payload.data.last_msg_rooms ?? {})) knowMessage(roomId, id);
 			for (const [convId, id] of Object.entries(payload.data.last_msg_convs ?? {})) knowMessage(convId, id);
 			// The session's lists, asked for as it identified (listsAhead) or now: each is stored as it comes, after READY,
-			// which names the user and empties the statuses they bring. The app shows once the friends, the requests and
-			// the conversations are in, failed or not; the team invites and the buckets come when they come (#282).
+			// which names the user and empties the statuses they bring. The app shows once the friends, the requests, the
+			// conversations and the notification levels are in, failed or not, so a muted place never shows its marks
+			// first; the team invites and the buckets come when they come (#282).
 			const lists = listsAhead ?? askForLists();
 			listsAhead = null;
 			const store = <T>(list: Promise<T>, what: string, keep: (value: T) => void) =>
 				list.then(keep, (err: unknown) => console.error(`[WS] Failed to load ${what} on READY:`, err));
+			// The user's notification levels, which NOTIFICATION_SETTINGS_UPDATE keeps current. A fetch that fails keeps
+			// the ones the app had: they rarely change, and none at all would make every place notify by its default.
+			const levels = store(lists.levels, "notification levels", (settings) =>
+				notificationLevels.set(Object.fromEntries(settings.map((s) => [s.target_id, s.level]))),
+			);
+			if (!levelsKnown) {
+				levelsComing = levels.then(() => {
+					levelsKnown = true;
+					levelsComing = null;
+				});
+			}
 			void Promise.all([
+				levels,
 				store(lists.pending, "friend requests", (pending) => pendingFriendRequests.set(pending)),
 				store(lists.sent, "sent friend requests", (sent) => sentFriendRequests.set(sent)),
 				store(lists.friends, "friends", (friendList) => {
@@ -794,11 +818,6 @@ function handleEvent(event: GatewayEvent) {
 			void store(lists.buckets, "buckets", (bucketList) => myBuckets.set(bucketList));
 			getMentionCounts()
 				.then((counts) => mentionCounts.set(counts))
-				.catch(() => {});
-			// The user's notification levels, which NOTIFICATION_SETTINGS_UPDATE keeps current. A fetch that fails keeps
-			// the ones the app had: they rarely change, and none at all would make every place notify by its default.
-			getNotificationSettings()
-				.then((settings) => notificationLevels.set(Object.fromEntries(settings.map((s) => [s.target_id, s.level]))))
 				.catch(() => {});
 			// The calls going on in the user's conversations, and who is in each, as the new session has them.
 			const activeCalls = payload.data.active_calls ?? [];

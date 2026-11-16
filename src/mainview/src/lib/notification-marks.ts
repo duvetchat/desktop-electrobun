@@ -9,7 +9,8 @@ type RoomPlace = { spaceId: string; spaceDefault: NotificationLevel | undefined 
 // ponytail: gatewaySpaces changes with every presence, and the signature walks every room each time; a store of the
 // rooms alone would skip that if it ever shows up in a profile.
 const roomPlaces: Readable<Map<string, RoomPlace>> = readable(new Map<string, RoomPlace>(), (set) => {
-	let signature = "";
+	// None until the first list: started again with no Spaces, the store must still drop the rooms it had.
+	let signature: string | null = null;
 	return gatewaySpaces.subscribe((spaces) => {
 		const next = spaces
 			.map((s) => `${s.id}:${s.default_notifications ?? ""}:${s.rooms.map((r) => r.id).join(",")}`)
