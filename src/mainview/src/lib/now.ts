@@ -16,7 +16,7 @@ export type Face = { id: string; src: string | null; name: string; dim?: boolean
 
 /**
  * The calls going on in the user's conversations that the column offers to join: not the one this client shows
- * already (the voice dock has it connected, and the call dialog has it ringing or being placed), nor one in the
+ * already (the voice dock has it connected, and the call card has it ringing or being placed), nor one in the
  * conversation the focused pane shows, whose banner has Join.
  */
 export function joinableCalls(

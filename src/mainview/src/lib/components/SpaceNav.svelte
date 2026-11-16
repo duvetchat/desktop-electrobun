@@ -436,10 +436,11 @@
 		</button>
 	</div>
 
-	<!-- The Now section follows the rows, and what's left of the column stays under it. When both don't fit, it takes
-	     the room the rows don't need, and half of it at least; what doesn't fit scrolls in each. -->
+	<!-- The Now section sits at the column's foot, right above the user's panel, and what's left of the column stays
+	     between it and the rows, whose scroller grows into it. When both don't fit, the Now section takes the room the
+	     rows don't need, and half of it at least; what doesn't fit scrolls in each. -->
 	<div class="flex min-h-0 flex-1 flex-col" style="--rows-height: {rowsHeight}px">
-		<div class="min-h-0 shrink overflow-y-auto">
+		<div class="min-h-0 flex-1 overflow-y-auto">
 			<div class="flex flex-col px-2.5 pb-2" bind:offsetHeight={rowsHeight}>
 				{#if openChats}
 					{@render sectionHeader("Open")}
