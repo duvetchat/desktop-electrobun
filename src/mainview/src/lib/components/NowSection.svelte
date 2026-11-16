@@ -312,7 +312,7 @@
 {/snippet}
 
 {#if anything}
-	<!-- Right under the rows. What doesn't fit scrolls in it; the voice dock stays. -->
+	<!-- At the column's foot, right above the user's panel. What doesn't fit scrolls in it; the voice dock stays. -->
 	<section class="flex min-h-0 flex-col px-2.5 pb-1" aria-label="Now">
 		<div class="-mx-2.5 flex min-h-0 flex-col overflow-y-auto px-2.5">
 			{#if asks > 0}
