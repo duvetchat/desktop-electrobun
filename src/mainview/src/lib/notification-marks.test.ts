@@ -97,4 +97,14 @@ describe("what a level of nothing hides", () => {
 		aSpace(undefined);
 		expect(get(quietPlaces).size).toBe(0);
 	});
+
+	// A READY remounts the app, which leaves the marks unwatched, and empties the Spaces until they come again.
+	test("Spaces gone while nothing watched the marks take their rooms with them", () => {
+		notificationLevels.set({ [SPACE]: 2 });
+		const stop = quietPlaces.subscribe(() => {});
+		expect(get(quietPlaces).has(ROOM)).toBe(true);
+		stop();
+		stores.gatewaySpaces.set([]);
+		expect(get(quietPlaces).has(ROOM)).toBe(false);
+	});
 });
