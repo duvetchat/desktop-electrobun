@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import {
 	callAcceptedAction,
+	callCardFace,
+	type CallCardConversation,
 	callDeclinedAction,
 	callDeclinedNotice,
 	callingFromAnotherDevice,
@@ -9,12 +11,14 @@ import {
 	callToRingOnReady,
 	callVoiceStatesOf,
 	missedCallNotice,
+	offersJoin,
 	ownCallsRingingOnReady,
 	placeAgain,
 	voiceEndedNotice,
 	withCallVoiceState,
 	withoutCallVoiceOf,
 } from "$lib/calls";
+import type { ConversationMember } from "$lib/api/conversations";
 import { REJOIN_WINDOW_MS } from "$lib/resend";
 import type { CallState, CallVoiceState } from "$lib/stores.svelte";
 import type { GatewayReadyActiveCall, VoiceStateUpdateEvent } from "$lib/types";
@@ -412,5 +416,71 @@ describe("placeAgain", () => {
 
 	test("nothing placed, nothing to send", () => {
 		expect(placeAgain(null, call("calling"), 4)).toBeNull();
+	});
+});
+
+// The call card (CallCard.svelte): who calls the user, with the group they call from, or whom the user calls.
+describe("the call card's face", () => {
+	const member = (user_id: string, alias: string, avatar: string | null): ConversationMember => ({
+		id: `m-${user_id}`,
+		conversation_id: CONV,
+		user_id,
+		created_at: "",
+		updated_at: "",
+		user: { id: user_id, username: alias.toLowerCase(), alias, avatar, banner: null },
+	});
+	const dm: CallCardConversation = {
+		id: CONV,
+		type: 1,
+		name: null,
+		members: [member(ME, "Me", "avme"), member(THEM, "Ana Torres", "av1")],
+	};
+	const group: CallCardConversation = {
+		...dm,
+		type: 2,
+		name: "Squad",
+		members: [...dm.members, member(OTHER, "Leo", null)],
+	};
+	const ringing = { state: "ringing", initiatorId: THEM, initiatorName: "Ana Torres", initiatorAvatar: "av1" } as const;
+	const calling = { state: "calling", initiatorId: ME, initiatorName: "Me", initiatorAvatar: "avme" } as const;
+
+	test("a call ringing here shows who calls", () => {
+		expect(callCardFace(ringing, dm, ME)).toEqual({ userId: THEM, avatar: "av1", name: "Ana Torres", place: null });
+	});
+
+	test("a group's call says the group", () => {
+		expect(callCardFace(ringing, group, ME).place).toBe("Squad");
+		expect(callCardFace(ringing, { ...group, name: null }, ME).place).toBe("Group");
+		expect(callCardFace(ringing, undefined, ME).place).toBeNull();
+	});
+
+	test("a call placed from here shows whom it calls, not the user", () => {
+		expect(callCardFace(calling, dm, ME)).toEqual({ userId: THEM, avatar: "av1", name: "Ana Torres", place: null });
+		expect(callCardFace(calling, group, ME)).toEqual({ userId: null, avatar: null, name: "Squad", place: null });
+		expect(callCardFace(calling, undefined, ME)).toEqual({
+			userId: null,
+			avatar: null,
+			name: "Conversation",
+			place: null,
+		});
+	});
+});
+
+// A conversation's banner offers to join its call going on, but not the call this client shows: in it, or on the call
+// card, ringing here or placed from here, whose own buttons answer or cancel it.
+describe("the conversation's Join", () => {
+	test("offered for a call going on that this client shows nothing of", () => {
+		expect(offersJoin(CONV, true, null)).toBe(true);
+		expect(offersJoin(CONV, true, call("connected", OTHER_CONV))).toBe(true);
+	});
+
+	test("not while the call rings here or is placed from here", () => {
+		expect(offersJoin(CONV, true, call("ringing"))).toBe(false);
+		expect(offersJoin(CONV, true, call("calling"))).toBe(false);
+	});
+
+	test("not once this client is in it, nor without a call", () => {
+		expect(offersJoin(CONV, true, call("connected"))).toBe(false);
+		expect(offersJoin(CONV, false, null)).toBe(false);
 	});
 });

@@ -48,7 +48,7 @@
 	} from "$lib/stores.svelte";
 	import { shownUnreadConversations, shownUnreadRooms } from "$lib/notification-marks";
 	import { toast } from "$lib/stores/toast.svelte";
-	import CallModal from "$lib/components/CallModal.svelte";
+	import CallCard from "$lib/components/CallCard.svelte";
 	import StreamWindow from "$lib/components/StreamWindow.svelte";
 	import { keepVoicePeopleKnown, type VoicePlace } from "$lib/voice-place";
 	import { keepWatchedStreams } from "$lib/watching";
@@ -789,9 +789,9 @@
 	{/key}
 {/if}
 
-<!-- Global call UI: ringing/calling overlay -->
+<!-- Global call UI: the card of a call ringing here or placed from here, in the bottom right corner -->
 {#if $activeCall}
-	<CallModal />
+	<CallCard onOpen={openConversationTab} />
 {/if}
 
 <!-- A stream shared or watched, while its room's or call's view isn't on screen. Only once the app is up: a READY

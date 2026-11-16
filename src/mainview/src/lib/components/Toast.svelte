@@ -1,9 +1,14 @@
 <script lang="ts">
 	import { toastStore } from "$lib/stores/toast.svelte";
+	import { callCardBox, toastsBottom } from "$lib/corner";
 </script>
 
+<!-- In the app's bottom right corner, right above the call card while it shows (lib/corner.ts). -->
 {#if toastStore.items.length > 0}
-	<div class="pointer-events-none fixed right-4 bottom-4 z-9999 flex flex-col gap-2">
+	<div
+		class="pointer-events-none fixed right-4 z-9999 flex flex-col gap-2"
+		style="bottom: {toastsBottom($callCardBox)}px"
+	>
 		{#each toastStore.items as t (t.id)}
 			<div
 				class="animate-slide-in pointer-events-auto flex items-center gap-2 rounded-lg border px-4 py-2.5 text-sm shadow-lg backdrop-blur-sm
