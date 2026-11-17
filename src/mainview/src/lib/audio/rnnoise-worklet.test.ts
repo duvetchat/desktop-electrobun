@@ -1,6 +1,9 @@
 import { beforeAll, describe, expect, it } from "bun:test";
 import { Rnnoise } from "@shiguredo/rnnoise-wasm";
-import { readRnnoiseWasm, rnnoiseWasmBase64 } from "../../../rnnoise-wasm";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { readRnnoiseWasm, rnnoiseWasmBase64, writeRnnoiseWasm } from "../../../rnnoise-wasm";
 
 type Frames = { frame: Float32Array; filled: number; ready: Float32Array; queued: number };
 type Processor = {
@@ -200,5 +203,23 @@ describe("reading RNNoise's WebAssembly out of the package", () => {
 		expect(rnnoiseWasmBase64(`x = FA("AGFzbQEAAAA=");`)).toBe("AGFzbQEAAAA=");
 		expect(() => rnnoiseWasmBase64(`x = 1;`)).toThrow();
 		expect(() => rnnoiseWasmBase64(`a("AGFzbQEAAAA="); b("AGFzbQEAAAA=");`)).toThrow();
+	});
+});
+
+// #330: the WebAssembly came as a 4.8 MB base64 string in its chunk, which stayed in memory from the first call on.
+// It's a file of its own now, which Vite serves in development and emits as an asset in a build.
+describe("the WebAssembly as a file", () => {
+	it("is written to Vite's cache folder, and the virtual module is its URL", async () => {
+		const cacheDir = mkdtempSync(join(tmpdir(), "rnnoise-"));
+		try {
+			const { code } = await writeRnnoiseWasm(cacheDir);
+			const wasm = join(cacheDir, "rnnoise.wasm");
+			expect(existsSync(wasm)).toBe(true);
+			expect([...readFileSync(wasm).subarray(0, 4)]).toEqual([0, 0x61, 0x73, 0x6d]);
+			expect(code).toBe(`export { default } from ${JSON.stringify(wasm.replaceAll("\\", "/") + "?url")};`);
+			expect(code).not.toContain("AGFzbQ");
+		} finally {
+			rmSync(cacheDir, { recursive: true, force: true });
+		}
 	});
 });
