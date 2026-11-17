@@ -1,8 +1,6 @@
 <script lang="ts">
 	import { onDestroy, onMount, untrack } from "svelte";
 	import { createWebSocketConnection, loadSpaceMembers } from "$lib/api/ws/connection";
-	import { startCodeHighlighting } from "$lib/markdown";
-	import { loadEmojiData } from "$lib/emoji";
 	import { markStartup, reportStartup } from "$lib/startup-timing";
 	import { getElectrobunRpc } from "$lib/electrobun-rpc";
 	import { get } from "svelte/store";
@@ -131,10 +129,6 @@
 		const reportWhenUp = () => {
 			if (!get(friendsReady) || !get(allSpacesReady)) return;
 			reportStartup((marks) => void getElectrobunRpc().then((rpc) => rpc?.send.startupTimings({ marks })));
-			// What the first screen doesn't need loads now: Shiki's highlighter (code blocks) and the emoji dataset (the
-			// picker, the : suggestions), each from a chunk of its own (#292).
-			startCodeHighlighting();
-			void loadEmojiData();
 		};
 		const stopShown = friendsReady.subscribe((ready) => {
 			if (!ready) return;

@@ -200,3 +200,30 @@ describe("a group's call notices", () => {
 		}
 	});
 });
+
+// #319: bits-ui's Portal mounts what it holds as it's created, open or not: every message row mounted its reaction
+// picker's portal under <body>, with its popover's state, for a picker nobody opened. A row's mounts only while open.
+test("a row's reaction picker mounts its portal only while it's open", () => {
+	const list = readFileSync(join(import.meta.dir, "MessageList.svelte"), "utf8");
+	const guarded = list.match(/\{#if reactingMessageId === message\.id\}\s*<Popover\.Portal>/g) ?? [];
+	expect(guarded).toHaveLength(2);
+	expect(list.match(/<Popover\.Portal>/g)).toHaveLength(2);
+});
+
+// #322: these lists kept their messages in $state, which Svelte 5 makes deep proxies (a signal for each property read,
+// a proxy for each nested object), for lists only ever replaced whole.
+test("pins, a thread's messages and search results are kept as they are, not as deep proxies", () => {
+	expect(source("PinnedMessages.svelte")).toContain("let pins = $state.raw<Message[]>([]);");
+	const list = source("MessageList.svelte");
+	expect(list).toContain("let threadMessages = $state.raw<Message[]>([]);");
+	expect(list).toContain("let threadRootMessage = $state.raw<Message | null>(null);");
+	expect(source("MessageSearch.svelte")).toContain("let results = $state.raw<Result[]>([]);");
+});
+
+// #324: the list's sort made two Dates per comparison, every time the list changed.
+test("the list's sort reads each message's date once", () => {
+	const list = readFileSync(join(import.meta.dir, "MessageList.svelte"), "utf8");
+	expect(list).toContain(".map((m, i) => ({ m, i, at: Date.parse(m.created_at) }))");
+	expect(list).toContain("return b.at - a.at;");
+	expect(list).not.toContain("new Date(b.m.created_at)");
+});

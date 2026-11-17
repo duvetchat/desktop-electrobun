@@ -17,7 +17,7 @@
 		waveformCache,
 		analyzeWaveform,
 		fallbackBars,
-		fileWavUrl,
+		makeWav,
 		holdWav,
 		keepWaveform,
 		releaseWav,
@@ -41,9 +41,11 @@
 
 	let bars = $state<number[]>([]);
 	let localDuration = $state(0);
-	// The WAV it plays from, when this browser can't play the file as it is (fileWavUrl).
+	// The WAV it plays from, when this browser can't play the file as it is (wav()).
 	let wavSrc = $state<string | null>(null);
 	let analysis: Promise<void> | undefined;
+	let releaseProbe: (() => void) | undefined;
+	onDestroy(() => releaseProbe?.());
 	let destroyed = false;
 	onDestroy(() => {
 		destroyed = true;
@@ -79,44 +81,72 @@
 	const duration = $derived(isActive && $voiceNote!.duration > 0 ? $voiceNote!.duration : localDuration);
 	const progress = $derived(duration > 0 ? currentTime / duration : 0);
 
-	async function togglePlay() {
-		if (isActive) {
-			toggleVoiceNote();
-			return;
-		}
-		// What it plays from is known once the analysis is done, as a voice note's is: then it plays, if no other note was
-		// asked to play meanwhile, and while this player is still there.
-		const requests = voiceNotePlayRequests();
-		await analysis;
-		if (destroyed || voiceNotePlayRequests() !== requests) return;
-		playVoiceNote(wavSrc ?? src, attachmentId, authorName, channelName, filename);
+	function togglePlay() {
+		if (isActive) toggleVoiceNote();
+		else void play();
 	}
 
 	function handleSeek(e: MouseEvent) {
 		if (!duration) return;
 		const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
 		const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-		if (isActive) {
-			seekVoiceNote(ratio * duration);
-		} else {
-			playVoiceNote(wavSrc ?? src, attachmentId, authorName, channelName, filename);
-			seekVoiceNote(ratio * duration);
-		}
+		if (isActive) seekVoiceNote(ratio * duration);
+		else void play(ratio * duration);
 	}
 
+	// Plays the file, from `at` seconds when it's given: as it is, or from a WAV when this browser can't play it as it is,
+	// which the analysis says, the WAV made then (#316); if no other note was asked to play meanwhile, and while this
+	// player is still there.
+	async function play(at?: number) {
+		const requests = voiceNotePlayRequests();
+		await analysis;
+		const from = (repaired ? await wav() : null) ?? src;
+		if (destroyed || voiceNotePlayRequests() !== requests) return;
+		playVoiceNote(from, attachmentId, authorName, channelName, filename);
+		if (at !== undefined) seekVoiceNote(at);
+	}
+
+	const streamOf = (url: string) => (url.includes("?") ? `${url}&stream=1` : `${url}?stream=1`);
+	// Whether this browser could decode it only once repaired (an Android recording, in Firefox: lib/audio/ogg.ts), and
+	// so can't play it as it is either.
+	let repaired = false;
+
+	// Its bars, its duration and whether it needed the repair, kept for the next player of it (#316).
 	async function loadAndAnalyze(url: string) {
 		try {
-			const streamUrl = url.includes("?") ? `${url}&stream=1` : `${url}?stream=1`;
+			const streamUrl = streamOf(url);
 			const result = await analyzeWaveform(streamUrl, BAR_COUNT);
-			// A player that's gone makes no WAV: nothing would let go of it (#167).
 			if (destroyed) return;
 			bars = result.bars;
 			localDuration = result.duration;
-			wavSrc = fileWavUrl(result) ?? null;
-			keepWaveform(attachmentId, { bars, duration: localDuration, wavUrl: wavSrc ?? undefined });
+			repaired = result.repaired;
+			keepWaveform(attachmentId, { bars, duration: localDuration, repaired });
 		} catch (e) {
 			if (import.meta.env.DEV) console.error("[AudioFilePlayer] waveform analysis failed:", e);
 		}
+	}
+
+	// The WAV it plays from when it needs one, made as it first plays and held while the player's there; one made once
+	// the player's gone is let go of at once: nothing else would (#167).
+	let wavMaking: Promise<string | null> | null = null;
+	function wav(): Promise<string | null> {
+		if (wavSrc) return Promise.resolve(wavSrc);
+		wavMaking ??= makeWav(streamOf(src))
+			.then((url) => {
+				if (destroyed) {
+					releaseWav(url);
+					return null;
+				}
+				wavSrc = url;
+				keepWaveform(attachmentId, { bars, duration: localDuration, repaired, wavUrl: url });
+				return url;
+			})
+			.catch((e) => {
+				if (import.meta.env.DEV) console.error("[AudioFilePlayer] its WAV failed:", e);
+				wavMaking = null;
+				return null;
+			});
+		return wavMaking;
 	}
 
 	onMount(() => {
@@ -128,17 +158,25 @@
 			localDuration = cached.duration;
 			wavSrc = cached.wavUrl ?? null;
 			holdWav(wavSrc);
+			repaired = cached.repaired ?? false;
 			return;
 		}
 
 		analysis = loadAndAnalyze(src);
 
-		// Probe duration via metadata if waveform analysis is slow
-		const audio = new Audio(src);
-		audio.preload = "metadata";
-		audio.addEventListener("loadedmetadata", () => {
-			if (isFinite(audio.duration) && localDuration === 0) localDuration = audio.duration;
+		// Its duration from the file's metadata, in case the analysis takes a while: the probe lets go of the file once it
+		// has it, or as the player goes (#325).
+		const probe = new Audio(src);
+		probe.preload = "metadata";
+		const release = () => {
+			probe.removeAttribute("src");
+			probe.load();
+		};
+		probe.addEventListener("loadedmetadata", () => {
+			if (isFinite(probe.duration) && localDuration === 0) localDuration = probe.duration;
+			release();
 		});
+		releaseProbe = release;
 	});
 </script>
 

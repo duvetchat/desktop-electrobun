@@ -519,3 +519,35 @@ describe("a conversation's message", () => {
 		expect(get(stores.conversations).map((c) => c.id)).toEqual([older, newer]);
 	});
 });
+
+// #324: an edit rebuilt the list of every room kept, where only its own room holds the message and the replies that
+// quote it, as a reply quotes a message of its own room.
+describe("a message's edit", () => {
+	test("changes its own room's list, and leaves the others' as they were", () => {
+		const room = conversation(60);
+		const other = conversation(61);
+		stores.channelMessages.update((all) => ({
+			...all,
+			[room]: [
+				roomMessage(message(60)),
+				{
+					...roomMessage(message(61)),
+					referenced_message: {
+						type: 0,
+						message_id: message(60),
+						room_id: room,
+						space_id: null,
+						content: "the message",
+					},
+				},
+			],
+			[other]: [roomMessage(message(62))],
+		}));
+		const before = get(stores.channelMessages);
+		deliver("MESSAGE_UPDATE", { id: message(60), room_id: room, author_id: ALICE, content: "edited" });
+		const after = get(stores.channelMessages);
+		expect(after[room][0].content).toBe("edited");
+		expect(after[room][1].referenced_message?.content).toBe("edited");
+		expect(after[other]).toBe(before[other]);
+	});
+});

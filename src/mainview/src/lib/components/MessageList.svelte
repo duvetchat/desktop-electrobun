@@ -44,7 +44,7 @@
 	import { threadNow } from "$lib/threads";
 	import { keepPlace, takePlace } from "$lib/kept-places";
 	import { largeEmojis } from "$lib/emoji";
-	import { customEmojiMapOf, mentionMapOf } from "$lib/markdown";
+	import { customEmojiMapOf, mentionMapOf, sameNames } from "$lib/markdown";
 	import { nameColors } from "$lib/name-colors";
 
 	import {
@@ -256,8 +256,8 @@
 	let threadModalOpen = $state(false);
 	let threadLoading = $state(false);
 	let threadError = $state("");
-	let threadMessages = $state<Message[]>([]);
-	let threadRootMessage = $state<Message | null>(null);
+	let threadMessages = $state.raw<Message[]>([]);
+	let threadRootMessage = $state.raw<Message | null>(null);
 	// The thread as it is now, with the replies the list has since it loaded, the user's own being sent among them.
 	const threadShown = $derived(threadNow(threadMessages, messages));
 	// A reply that comes while the thread shows goes at its end, which scrolls into view.
@@ -382,9 +382,10 @@
 	});
 
 	// ── Sorting ────────────────────────────────────────────────────────────────
+	// Each message's date read once, not twice per comparison (#324).
 	const sortedMessages = $derived(
 		messages
-			.map((m, i) => ({ m, i }))
+			.map((m, i) => ({ m, i, at: Date.parse(m.created_at) }))
 			.sort((a, b) => {
 				const aPending = a.m.id === a.m.nonce;
 				const bPending = b.m.id === b.m.nonce;
@@ -394,7 +395,7 @@
 				if (aPending && bPending) {
 					return b.i - a.i;
 				}
-				return new Date(b.m.created_at).getTime() - new Date(a.m.created_at).getTime();
+				return b.at - a.at;
 			})
 			.map(({ m }) => m),
 	);
@@ -412,7 +413,14 @@
 		),
 	);
 	const authorColors = $derived(nameColors(members));
-	const mentionMap = $derived(mentionMapOf(members));
+	// The names mentions show: a new map only when one of them changes, not with every change of the members (a
+	// presence, a voice state), which drew every message's text again (#324).
+	let mentionNames: Record<string, string> = {};
+	const mentionMap = $derived.by(() => {
+		const next = mentionMapOf(members);
+		if (!sameNames(next, mentionNames)) mentionNames = next;
+		return mentionNames;
+	});
 	const customEmojiMap = $derived(customEmojiMapOf(customEmojis));
 	// The rooms "#" suggests while a message is edited.
 	const mentionRooms = $derived(space ? mentionableRooms(space) : []);
@@ -1275,11 +1283,14 @@
 										/><line x1="15" x2="15.01" y1="9" y2="9" /></svg
 									>
 								</Popover.Trigger>
-								<Popover.Portal>
-									<Popover.Content side="top" align="end" sideOffset={8} class="z-100">
-										<EmojiPicker onSelect={(emoji) => handleReactionPick(message.id, emoji)} {customEmojis} />
-									</Popover.Content>
-								</Popover.Portal>
+								<!-- Mounted only while open: bits-ui's Portal mounts what it holds as it's created, open or not (#319). -->
+								{#if reactingMessageId === message.id}
+									<Popover.Portal>
+										<Popover.Content side="top" align="end" sideOffset={8} class="z-100">
+											<EmojiPicker onSelect={(emoji) => handleReactionPick(message.id, emoji)} {customEmojis} />
+										</Popover.Content>
+									</Popover.Portal>
+								{/if}
 							</Popover.Root>
 							{@render reactionsButton(message)}
 							<div class="w-px bg-zinc-800"></div>
@@ -1425,11 +1436,14 @@
 										/><line x1="15" x2="15.01" y1="9" y2="9" /></svg
 									>
 								</Popover.Trigger>
-								<Popover.Portal>
-									<Popover.Content side="top" align="end" sideOffset={8} class="z-100">
-										<EmojiPicker onSelect={(emoji) => handleReactionPick(message.id, emoji)} {customEmojis} />
-									</Popover.Content>
-								</Popover.Portal>
+								<!-- Mounted only while open: bits-ui's Portal mounts what it holds as it's created, open or not (#319). -->
+								{#if reactingMessageId === message.id}
+									<Popover.Portal>
+										<Popover.Content side="top" align="end" sideOffset={8} class="z-100">
+											<EmojiPicker onSelect={(emoji) => handleReactionPick(message.id, emoji)} {customEmojis} />
+										</Popover.Content>
+									</Popover.Portal>
+								{/if}
 							</Popover.Root>
 							{@render reactionsButton(message)}
 							<div class="w-px bg-zinc-800"></div>

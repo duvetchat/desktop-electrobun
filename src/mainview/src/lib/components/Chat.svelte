@@ -1,4 +1,6 @@
 <script lang="ts" module>
+	import { channelMessages } from "$lib/stores.svelte";
+	import { forgetUnlisted } from "$lib/uploads";
 	import type { AllowedMentions, MessageReference } from "$lib/types";
 	import type { SentNotice } from "$lib/typing";
 
@@ -21,6 +23,8 @@
 			draft?: string;
 		}
 	>();
+	// A send's retry data goes once its message is in no list any more: nothing could retry or dismiss it (#323).
+	channelMessages.subscribe((all) => forgetUnlisted(retryData, all));
 </script>
 
 <script lang="ts">
@@ -42,14 +46,7 @@
 	import { gatewayMessageToMessage, isEphemeral, isNotice, MessageReferenceType } from "$lib/types";
 	import { sendMessage, sendVoiceNote, sendTypingIndicator, sendRecordingIndicator } from "$lib/api/messages";
 	import { MessageType } from "$lib/types";
-	import {
-		currentUser,
-		channelMessages,
-		gatewaySpaces,
-		noteOwnTyping,
-		spaceEmojis,
-		spaceStickers,
-	} from "$lib/stores.svelte";
+	import { currentUser, gatewaySpaces, noteOwnTyping, spaceEmojis, spaceStickers } from "$lib/stores.svelte";
 	import { toast } from "$lib/stores/toast.svelte";
 	import TypingIndicator from "$lib/components/TypingIndicator.svelte";
 	import { noticeDue } from "$lib/typing";

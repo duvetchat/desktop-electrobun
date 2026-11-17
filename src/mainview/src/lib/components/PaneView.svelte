@@ -321,6 +321,12 @@
 			return showChat(node.activeChannelId);
 	});
 
+	// The room's list stays in the store while this pane has the room, shown or under the Friends view, whose panes keep
+	// their chats mounted (#320).
+	$effect(() => {
+		if (node.kind === "leaf" && node.activeChannelId) return channelMessages.keep(node.activeChannelId);
+	});
+
 	// A room read up to the newest message its list has from elsewhere (the space's Mark all as read moves its read
 	// position there) has nothing new after its unread divider: the divider goes, shown or kept from an earlier visit.
 	$effect(() => {

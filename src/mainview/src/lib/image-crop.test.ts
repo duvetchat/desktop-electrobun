@@ -1,4 +1,6 @@
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import {
 	coverCrop,
 	cropView,
@@ -164,4 +166,13 @@ describe("the zoom slider", () => {
 		expect(zoomSlider(1, 1)).toBe(0);
 		expect(sliderZoom(0.7, 1)).toBe(1);
 	});
+});
+
+// #325: the crop read the chosen file as a data URL, a third larger than the file, and kept it once dismissed: only
+// Apply and Change image let go of it.
+test("the image crop lets go of its image as it closes", () => {
+	const crop = readFileSync(join(import.meta.dir, "components/ImageCropModal.svelte"), "utf8");
+	expect(crop).toMatch(
+		/<Dialog\.Root\s+bind:open\s+onOpenChange=\{\(o\) => \{\s*if \(!o\) \{\s*file = null;\s*imgSrc = "";/,
+	);
 });

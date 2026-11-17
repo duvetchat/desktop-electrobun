@@ -1,4 +1,6 @@
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { isUuid } from "$lib/common/common";
 import { renderEmoji, toTwemojiUrl } from "$lib/emoji";
 import {
@@ -8,6 +10,7 @@ import {
 	parseTextSegments,
 	renderMarkdown,
 	renderMarkdownLine,
+	sameNames,
 } from "$lib/markdown";
 import { cardLink, parseDuvetLink } from "$lib/urls";
 
@@ -938,7 +941,8 @@ describe("the HTML it makes", () => {
 		pre: new Set(["class", "style", "tabindex"]),
 		code: new Set(["class"]),
 	};
-	const twemoji = toTwemojiUrl("😀").replace(/[^/]+$/, "");
+	// Twemoji's PNGs, and its SVGs for large emojis (#331).
+	const twemoji = [toTwemojiUrl("😀"), toTwemojiUrl("😀", true)].map((url) => url.replace(/[^/]+$/, ""));
 
 	function violation(tag: string, attributes: Iterable<[string, string]>): string | null {
 		if (!TAGS.has(tag)) return `<${tag}>`;
@@ -946,7 +950,11 @@ describe("the HTML it makes", () => {
 		for (const [name, value] of attributes) {
 			if (!allowed.has(name)) return `${name} on <${tag}>`;
 			if (name === "href" && !/^https?:\/\//.test(value)) return `href ${value}`;
-			if (name === "src" && !value.startsWith(twemoji) && !value.startsWith("https://api.test/attachments/"))
+			if (
+				name === "src" &&
+				!twemoji.some((base) => value.startsWith(base)) &&
+				!value.startsWith("https://api.test/attachments/")
+			)
 				return `src ${value}`;
 			if (
 				name === "style" &&
@@ -1015,5 +1023,44 @@ describe("the HTML it makes", () => {
 			}
 		}
 		expect(found).toEqual([]);
+	});
+});
+
+// #324: a member's presence or voice change gave the lists a new mention map, with the same names, and every message's
+// text was drawn again. The lists keep their map while every name stays the same.
+describe("sameNames", () => {
+	test("says whether two maps give every ID the same name, in any order", () => {
+		expect(sameNames({ a: "ana", b: "bea" }, { b: "bea", a: "ana" })).toBe(true);
+		expect(sameNames({}, {})).toBe(true);
+		expect(sameNames({ a: "ana" }, { a: "ana", b: "bea" })).toBe(false);
+		expect(sameNames({ a: "ana", b: "bea" }, { a: "ana" })).toBe(false);
+		expect(sameNames({ a: "ana" }, { a: "anabel" })).toBe(false);
+		expect(sameNames({ a: "ana" }, { b: "ana" })).toBe(false);
+	});
+
+	test("the lists keep their mention map while its names stay", () => {
+		for (const file of ["MessageList.svelte", "MessageSearch.svelte", "PinnedMessages.svelte"]) {
+			const source = readFileSync(join(import.meta.dir, "components", file), "utf8");
+			expect(source).toMatch(
+				/const next = mentionMapOf\(members\);\s*if \(!sameNames\(next, mentionNames\)\) mentionNames = next;\s*return mentionNames;/,
+			);
+		}
+	});
+});
+
+// #331: every Unicode emoji came from Twemoji's SVG, which Chromium loads as a document of its own: 300 distinct ones
+// took 19.3 MB, against 1.9 MB as the 72×72 PNGs. The SVG stays for the large emojis of an emoji-only message (3rem).
+describe("Twemoji's images", () => {
+	const base = "https://cdn.jsdelivr.net/gh/jdecked/twemoji@16.0.1/assets";
+	test("are the 72×72 PNGs, and the SVGs only for large emojis", () => {
+		expect(toTwemojiUrl("😀")).toBe(`${base}/72x72/1f600.png`);
+		expect(toTwemojiUrl("😀", true)).toBe(`${base}/svg/1f600.svg`);
+		expect(toTwemojiUrl("❤️‍🔥")).toBe(`${base}/72x72/2764-fe0f-200d-1f525.png`);
+		expect(toTwemojiUrl("\u{1F441}\uFE0F\u200D\u{1F5E8}\uFE0F")).toBe(`${base}/72x72/1f441-200d-1f5e8.png`);
+	});
+
+	test("a message's inline emojis draw from the PNGs, a large one from its SVG", () => {
+		expect(renderEmoji("hi 😀")).toContain(`src="${base}/72x72/1f600.png"`);
+		expect(renderEmoji("😀", true)).toContain(`src="${base}/svg/1f600.svg"`);
 	});
 });

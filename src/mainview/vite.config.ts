@@ -1,6 +1,7 @@
 import { sveltekit } from "@sveltejs/kit/vite";
 import tailwindcss from "@tailwindcss/vite";
 import { defineConfig, loadEnv } from "vite";
+import { slimEmojiData } from "./emoji-data-slim";
 import { rnnoiseWasm } from "./rnnoise-wasm";
 import { DEV_CONNECT_ENV } from "./svelte.config.js";
 
@@ -14,7 +15,7 @@ export default defineConfig(({ mode }) => {
 	// below. Always set, so a value from the shell never reaches another mode's build.
 	process.env[DEV_CONNECT_ENV] = [apiURL, wsURL].filter(Boolean).join(" ");
 	return {
-		plugins: [rnnoiseWasm(), tailwindcss(), sveltekit()],
+		plugins: [rnnoiseWasm(), slimEmojiData(), tailwindcss(), sveltekit()],
 		// The desktop app (src/bun/index.ts) and app.html look for the dev server on 5173: if it's taken,
 		// fail instead of moving to another port, where neither would find it.
 		server: { port: 5173, strictPort: true },

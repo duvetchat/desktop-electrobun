@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onDestroy, onMount, untrack } from "svelte";
+	import { get } from "svelte/store";
 	import { SvelteSet } from "svelte/reactivity";
 	import { gatewayConnection, onWebRTCEvent, sendEventMessage, wantFreshSession } from "$lib/api/ws/connection";
 	import { REJOIN_WINDOW_MS, sendAgain } from "$lib/resend";
@@ -350,16 +351,19 @@
 		}
 	}
 
-	/** A user's speaking ring and their face's mouth, from the average level of their audio. */
+	/** A user's speaking ring and their face's mouth, from the average level of their audio: the stores change only as
+	 * what they show does, not every frame for every user in voice (#324). */
 	function showLevel(userId: string, average: number) {
 		const speaking = average > 10;
-		speakingUsers.update((set) => {
-			const next = new SvelteSet(set);
-			if (speaking) next.add(userId);
-			else next.delete(userId);
-			return next;
-		});
-		userAmplitudes.update((a) => ({ ...a, [userId]: speaking ? Math.min(1, average / 50) : 0 }));
+		if (get(speakingUsers).has(userId) !== speaking)
+			speakingUsers.update((set) => {
+				const next = new SvelteSet(set);
+				if (speaking) next.add(userId);
+				else next.delete(userId);
+				return next;
+			});
+		const amplitude = speaking ? Math.min(1, average / 50) : 0;
+		if (get(userAmplitudes)[userId] !== amplitude) userAmplitudes.update((a) => ({ ...a, [userId]: amplitude }));
 	}
 
 	function averageLevel(data: Uint8Array): number {
