@@ -200,3 +200,12 @@ describe("a group's call notices", () => {
 		}
 	});
 });
+
+// #319: bits-ui's Portal mounts what it holds as it's created, open or not: every message row mounted its reaction
+// picker's portal under <body>, with its popover's state, for a picker nobody opened. A row's mounts only while open.
+test("a row's reaction picker mounts its portal only while it's open", () => {
+	const list = readFileSync(join(import.meta.dir, "MessageList.svelte"), "utf8");
+	const guarded = list.match(/\{#if reactingMessageId === message\.id\}\s*<Popover\.Portal>/g) ?? [];
+	expect(guarded).toHaveLength(2);
+	expect(list.match(/<Popover\.Portal>/g)).toHaveLength(2);
+});

@@ -1275,11 +1275,14 @@
 										/><line x1="15" x2="15.01" y1="9" y2="9" /></svg
 									>
 								</Popover.Trigger>
-								<Popover.Portal>
-									<Popover.Content side="top" align="end" sideOffset={8} class="z-100">
-										<EmojiPicker onSelect={(emoji) => handleReactionPick(message.id, emoji)} {customEmojis} />
-									</Popover.Content>
-								</Popover.Portal>
+								<!-- Mounted only while open: bits-ui's Portal mounts what it holds as it's created, open or not (#319). -->
+								{#if reactingMessageId === message.id}
+									<Popover.Portal>
+										<Popover.Content side="top" align="end" sideOffset={8} class="z-100">
+											<EmojiPicker onSelect={(emoji) => handleReactionPick(message.id, emoji)} {customEmojis} />
+										</Popover.Content>
+									</Popover.Portal>
+								{/if}
 							</Popover.Root>
 							{@render reactionsButton(message)}
 							<div class="w-px bg-zinc-800"></div>
@@ -1425,11 +1428,14 @@
 										/><line x1="15" x2="15.01" y1="9" y2="9" /></svg
 									>
 								</Popover.Trigger>
-								<Popover.Portal>
-									<Popover.Content side="top" align="end" sideOffset={8} class="z-100">
-										<EmojiPicker onSelect={(emoji) => handleReactionPick(message.id, emoji)} {customEmojis} />
-									</Popover.Content>
-								</Popover.Portal>
+								<!-- Mounted only while open: bits-ui's Portal mounts what it holds as it's created, open or not (#319). -->
+								{#if reactingMessageId === message.id}
+									<Popover.Portal>
+										<Popover.Content side="top" align="end" sideOffset={8} class="z-100">
+											<EmojiPicker onSelect={(emoji) => handleReactionPick(message.id, emoji)} {customEmojis} />
+										</Popover.Content>
+									</Popover.Portal>
+								{/if}
 							</Popover.Root>
 							{@render reactionsButton(message)}
 							<div class="w-px bg-zinc-800"></div>
