@@ -143,9 +143,14 @@
 				ctx.imageSmoothingQuality = "high";
 				ctx.drawImage(imgEl, area.x, area.y, area.width, area.height, 0, 0, targetWidth, targetHeight);
 
-				const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/png"));
+				// WebP where the browser writes it: a 256×256 photo takes about 15 KB, against about 100 KB as PNG (#328). WebKit's
+				// canvas writes no WebP and falls back to PNG, so the file is named and typed as what came out.
+				const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/webp", 0.9));
 				if (!blob) return;
-				outputFile = new File([blob], renamed(file.name, "png"), { type: "image/png" });
+				const webp = blob.type === "image/webp";
+				outputFile = new File([blob], renamed(file.name, webp ? "webp" : "png"), {
+					type: webp ? "image/webp" : "image/png",
+				});
 			}
 
 			onConfirm(outputFile);

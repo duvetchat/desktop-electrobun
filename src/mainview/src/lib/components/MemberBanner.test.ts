@@ -85,3 +85,24 @@ test("the member list draws the same banner", () => {
 		'<MemberBanner src={member.banner_url} offline={member.status === "offline"} />',
 	);
 });
+
+// #328: avatars, banners and Space icons loaded at once, every row of a list with its images, banners behind member
+// rows included; and the crop saved them as PNG, about 100 KB for a 256×256 photo where WebP takes about 15 KB.
+describe("profile images", () => {
+	test("load as they come near the view", () => {
+		for (const file of ["UserAvatar.svelte", "MemberBanner.svelte", "SpaceIcon.svelte", "SpaceBanner.svelte"]) {
+			const images = source(file).match(/<img\b[\s\S]*?\/>/g) ?? [];
+			expect(images.length).toBeGreaterThan(0);
+			for (const image of images) expect(image).toContain('loading="lazy"');
+		}
+	});
+
+	// WebKit's canvas writes no WebP and falls back to PNG: the file is named and typed as what came out.
+	test("are cropped to WebP where the browser writes it, else PNG", () => {
+		const crop = source("ImageCropModal.svelte");
+		expect(crop).toContain('canvas.toBlob(resolve, "image/webp", 0.9)');
+		expect(crop).toMatch(/const webp = blob\.type === "image\/webp";/);
+		expect(crop).toContain('renamed(file.name, webp ? "webp" : "png")');
+		expect(crop).not.toContain('canvas.toBlob(resolve, "image/png")');
+	});
+});

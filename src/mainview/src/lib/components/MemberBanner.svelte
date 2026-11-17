@@ -27,5 +27,6 @@
 			: 'opacity-25'}"
 		onerror={() => retryLater(src)}
 		draggable="false"
+		loading="lazy"
 	/>
 {/if}
