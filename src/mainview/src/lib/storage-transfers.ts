@@ -28,7 +28,7 @@ function isToken(s: string): boolean {
  * `type/subtype`, and "other" for anything else. The API also sorts a type with malformed parameters
  * as "other"; parameters aren't checked here. */
 export function fileKind(contentType: string): FileKind {
-	const [type, subtype, ...rest] = contentType.split(";", 1)[0].trim().toLowerCase().split("/");
+	const [type = "", subtype, ...rest] = contentType.split(";", 1)[0]!.trim().toLowerCase().split("/");
 	if (subtype === undefined || rest.length > 0 || !isToken(type) || !isToken(subtype)) return "other";
 	return type === "image" || type === "video" || type === "audio" ? type : "other";
 }

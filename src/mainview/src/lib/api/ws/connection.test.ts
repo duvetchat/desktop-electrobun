@@ -209,7 +209,7 @@ describe("a reaction that comes", () => {
 		deliver("REACTION_ADD", { message_id: message(40), user_id: ME, emoji_name: "👍", emoji_id: null });
 		deliver("REACTION_REMOVE", { message_id: message(40), user_id: ALICE, emoji_name: "👍" });
 		stop();
-		expect(get(stores.channelMessages)[room][0].reactions).toEqual([thumbs([ME])]);
+		expect(get(stores.channelMessages)[room]![0]!.reactions).toEqual([thumbs([ME])]);
 		expect(heard.map((c) => [c.message_id, c.user_id, c.emoji_name, c.added])).toEqual([
 			[message(40), ME, "👍", true],
 			[message(40), ALICE, "👍", false],
@@ -237,7 +237,7 @@ describe("a reaction that comes", () => {
 		deliver("DM_REACTION_ADD", { message_id: message(41), user_id: ALICE, emoji_name: "👍" });
 		deliver("DM_REACTION_ADD", { message_id: message(42), user_id: ALICE, emoji_name: "🎉" });
 		stop();
-		expect(get(stores.dmMessages)[conv][0].reactions).toEqual([thumbs([ALICE])]);
+		expect(get(stores.dmMessages)[conv]![0]!.reactions).toEqual([thumbs([ALICE])]);
 		expect(heard.map((c) => c.message_id)).toEqual([message(41), message(42)]);
 	});
 });
@@ -284,7 +284,7 @@ describe("a cancelled message that the API posts all the same", () => {
 		});
 		expect(draftOf(get(chatDrafts), room)).toEqual(emptied);
 		expect(notices()).toBe(before + 1);
-		expect(get(stores.channelMessages)[room].map((m) => m.id)).toEqual([message(60)]);
+		expect(get(stores.channelMessages)[room]!.map((m) => m.id)).toEqual([message(60)]);
 		release();
 	});
 
@@ -491,7 +491,7 @@ describe("notification levels", () => {
 		};
 		stores.gatewaySpaces.set([space]);
 		deliver("SPACE_UPDATE", { id: SPACE, name: "S", default_notifications: 0 });
-		expect(get(stores.gatewaySpaces)[0].default_notifications).toBe(0);
+		expect(get(stores.gatewaySpaces)[0]!.default_notifications).toBe(0);
 	});
 });
 
@@ -549,8 +549,8 @@ describe("a message's edit", () => {
 		const before = get(stores.channelMessages);
 		deliver("MESSAGE_UPDATE", { id: message(60), room_id: room, author_id: ALICE, content: "edited" });
 		const after = get(stores.channelMessages);
-		expect(after[room][0].content).toBe("edited");
-		expect(after[room][1].referenced_message?.content).toBe("edited");
+		expect(after[room]![0]!.content).toBe("edited");
+		expect(after[room]![1]!.referenced_message?.content).toBe("edited");
 		expect(after[other]).toBe(before[other]);
 	});
 });

@@ -166,12 +166,12 @@
 
 	$effect(() => {
 		// auto-select first overwrite if none selected
-		if (!selectedTargetId && pendingOverwrites.length > 0) {
+		if (!selectedTargetId && pendingOverwrites[0]) {
 			selectedTargetId = pendingOverwrites[0].target_id;
 		}
 		// deselect if the selected target was removed
 		if (selectedTargetId && !pendingOverwrites.find((o) => o.target_id === selectedTargetId)) {
-			selectedTargetId = pendingOverwrites.length > 0 ? pendingOverwrites[0].target_id : null;
+			selectedTargetId = pendingOverwrites[0]?.target_id ?? null;
 		}
 	});
 
@@ -207,11 +207,11 @@
 	// update local pending state only — no API call
 	function setPermState(flag: number, state: 1 | 0 | -1) {
 		if (!selectedTargetId) return;
-		const idx = pendingOverwrites.findIndex((o) => o.target_id === selectedTargetId);
-		if (idx === -1) return;
+		const overwrite = pendingOverwrites.find((o) => o.target_id === selectedTargetId);
+		if (!overwrite) return;
 
-		let allow = pendingOverwrites[idx].allow_flags;
-		let deny = pendingOverwrites[idx].deny_flags;
+		let allow = overwrite.allow_flags;
+		let deny = overwrite.deny_flags;
 
 		allow &= ~flag;
 		deny &= ~flag;
@@ -219,8 +219,8 @@
 		if (state === 1) allow |= flag;
 		else if (state === -1) deny |= flag;
 
-		pendingOverwrites[idx].allow_flags = allow;
-		pendingOverwrites[idx].deny_flags = deny;
+		overwrite.allow_flags = allow;
+		overwrite.deny_flags = deny;
 	}
 
 	// add a new overwrite to pending (no API call)
@@ -294,7 +294,7 @@
 			deny_flags: ow.deny_flags,
 		}));
 		if (selectedTargetId && !pendingOverwrites.find((o) => o.target_id === selectedTargetId)) {
-			selectedTargetId = pendingOverwrites.length > 0 ? pendingOverwrites[0].target_id : null;
+			selectedTargetId = pendingOverwrites[0]?.target_id ?? null;
 		}
 	}
 

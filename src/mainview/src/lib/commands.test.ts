@@ -37,7 +37,7 @@ describe("usedOptions", () => {
 			{ type: T.User, name: "for", description: "d" },
 		);
 		expect(
-			usedOptions(entryOf(cmd), fields({ for: "u1", note: "", sides: " 20 ", bonus: "1.5", secret: true })),
+			usedOptions(entryOf(cmd)!, fields({ for: "u1", note: "", sides: " 20 ", bonus: "1.5", secret: true })),
 		).toEqual({
 			options: [
 				{ name: "sides", type: T.Integer, value: 20 },
@@ -50,49 +50,51 @@ describe("usedOptions", () => {
 
 	test("asks for the required ones", () => {
 		const cmd = command({ type: T.String, name: "text", description: "d", required: true });
-		expect(usedOptions(entryOf(cmd), fields({}))).toEqual({ problem: "text is required" });
-		expect(usedOptions(entryOf(cmd), fields({ text: "" }))).toEqual({ problem: "text is required" });
+		expect(usedOptions(entryOf(cmd)!, fields({}))).toEqual({ problem: "text is required" });
+		expect(usedOptions(entryOf(cmd)!, fields({ text: "" }))).toEqual({ problem: "text is required" });
 	});
 
 	test("a required switch is false until it's turned on", () => {
 		const cmd = command({ type: T.Boolean, name: "on", description: "d", required: true });
-		expect(usedOptions(entryOf(cmd), fields({}))).toEqual({ options: [{ name: "on", type: T.Boolean, value: false }] });
+		expect(usedOptions(entryOf(cmd)!, fields({}))).toEqual({
+			options: [{ name: "on", type: T.Boolean, value: false }],
+		});
 	});
 
 	test("checks integers", () => {
 		const cmd = command({ type: T.Integer, name: "n", description: "d", min_value: 2, max_value: 100 });
-		expect(usedOptions(entryOf(cmd), fields({ n: "2.5" }))).toEqual({ problem: "n must be an integer" });
-		expect(usedOptions(entryOf(cmd), fields({ n: "1e3" }))).toEqual({ problem: "n must be an integer" });
-		expect(usedOptions(entryOf(cmd), fields({ n: "1" }))).toEqual({ problem: "n must be at least 2" });
-		expect(usedOptions(entryOf(cmd), fields({ n: "101" }))).toEqual({ problem: "n must be at most 100" });
+		expect(usedOptions(entryOf(cmd)!, fields({ n: "2.5" }))).toEqual({ problem: "n must be an integer" });
+		expect(usedOptions(entryOf(cmd)!, fields({ n: "1e3" }))).toEqual({ problem: "n must be an integer" });
+		expect(usedOptions(entryOf(cmd)!, fields({ n: "1" }))).toEqual({ problem: "n must be at least 2" });
+		expect(usedOptions(entryOf(cmd)!, fields({ n: "101" }))).toEqual({ problem: "n must be at most 100" });
 		const unbounded = command({ type: T.Integer, name: "n", description: "d" });
-		expect(usedOptions(entryOf(unbounded), fields({ n: "9007199254740992" }))).toEqual({
+		expect(usedOptions(entryOf(unbounded)!, fields({ n: "9007199254740992" }))).toEqual({
 			problem: "n must be an integer",
 		});
-		expect(usedOptions(entryOf(unbounded), fields({ n: "-9007199254740991" }))).toEqual({
+		expect(usedOptions(entryOf(unbounded)!, fields({ n: "-9007199254740991" }))).toEqual({
 			options: [{ name: "n", type: T.Integer, value: -9007199254740991 }],
 		});
 	});
 
 	test("checks numbers", () => {
 		const cmd = command({ type: T.Number, name: "x", description: "d", min_value: -1.5 });
-		expect(usedOptions(entryOf(cmd), fields({ x: "abc" }))).toEqual({ problem: "x must be a number" });
-		expect(usedOptions(entryOf(cmd), fields({ x: "-2" }))).toEqual({ problem: "x must be at least -1.5" });
-		expect(usedOptions(entryOf(cmd), fields({ x: "1e3" }))).toEqual({
+		expect(usedOptions(entryOf(cmd)!, fields({ x: "abc" }))).toEqual({ problem: "x must be a number" });
+		expect(usedOptions(entryOf(cmd)!, fields({ x: "-2" }))).toEqual({ problem: "x must be at least -1.5" });
+		expect(usedOptions(entryOf(cmd)!, fields({ x: "1e3" }))).toEqual({
 			options: [{ name: "x", type: T.Number, value: 1000 }],
 		});
-		expect(usedOptions(entryOf(cmd), fields({ x: "1e300" }))).toEqual({ problem: "x must be a number" });
+		expect(usedOptions(entryOf(cmd)!, fields({ x: "1e300" }))).toEqual({ problem: "x must be a number" });
 	});
 
 	test("counts a text's characters, not its UTF-16 units", () => {
 		const cmd = command({ type: T.String, name: "t", description: "d", min_length: 2, max_length: 3 });
-		expect(usedOptions(entryOf(cmd), fields({ t: "😀😀😀" }))).toEqual({
+		expect(usedOptions(entryOf(cmd)!, fields({ t: "😀😀😀" }))).toEqual({
 			options: [{ name: "t", type: T.String, value: "😀😀😀" }],
 		});
-		expect(usedOptions(entryOf(cmd), fields({ t: "😀" }))).toEqual({ problem: "t takes 2 characters at least" });
-		expect(usedOptions(entryOf(cmd), fields({ t: "abcd" }))).toEqual({ problem: "t takes 3 characters at most" });
+		expect(usedOptions(entryOf(cmd)!, fields({ t: "😀" }))).toEqual({ problem: "t takes 2 characters at least" });
+		expect(usedOptions(entryOf(cmd)!, fields({ t: "abcd" }))).toEqual({ problem: "t takes 3 characters at most" });
 		const unbounded = command({ type: T.String, name: "t", description: "d" });
-		expect(usedOptions(entryOf(unbounded), fields({ t: "a".repeat(6001) }))).toEqual({
+		expect(usedOptions(entryOf(unbounded)!, fields({ t: "a".repeat(6001) }))).toEqual({
 			problem: "t takes 6000 characters at most",
 		});
 	});
@@ -108,10 +110,10 @@ describe("usedOptions", () => {
 				{ name: "A", value: "a" },
 			],
 		});
-		expect(usedOptions(entryOf(cmd), fields({ pick: "" }))).toEqual({
+		expect(usedOptions(entryOf(cmd)!, fields({ pick: "" }))).toEqual({
 			options: [{ name: "pick", type: T.String, value: "" }],
 		});
-		expect(usedOptions(entryOf(cmd), fields({}))).toEqual({ problem: "pick is required" });
+		expect(usedOptions(entryOf(cmd)!, fields({}))).toEqual({ problem: "pick is required" });
 	});
 
 	test("sends a choice's value as the command has it", () => {
@@ -124,7 +126,7 @@ describe("usedOptions", () => {
 				{ name: "Twice", value: 2 },
 			],
 		});
-		expect(usedOptions(entryOf(cmd), fields({ times: 2 }))).toEqual({
+		expect(usedOptions(entryOf(cmd)!, fields({ times: 2 }))).toEqual({
 			options: [{ name: "times", type: T.Integer, value: 2 }],
 		});
 	});
@@ -134,10 +136,10 @@ describe("usedOptions", () => {
 			{ type: T.String, name: "constructor", description: "d", required: true },
 			{ type: T.String, name: "__proto__", description: "d" },
 		);
-		expect(usedOptions(entryOf(cmd), new Map())).toEqual({ problem: "constructor is required" });
+		expect(usedOptions(entryOf(cmd)!, new Map())).toEqual({ problem: "constructor is required" });
 		expect(
 			usedOptions(
-				entryOf(cmd),
+				entryOf(cmd)!,
 				new Map([
 					["constructor", "a"],
 					["__proto__", "b"],
@@ -259,9 +261,9 @@ describe("commandEntries", () => {
 			["perms user reset", "Resets a member's", []],
 			["perms list", "Lists them", ["page"]],
 		]);
-		expect(entries[0].group?.name).toBe("user");
-		expect(entries[0].subcommand?.name).toBe("get");
-		expect(entries[2].group).toBeUndefined();
+		expect(entries[0]!.group?.name).toBe("user");
+		expect(entries[0]!.subcommand?.name).toBe("get");
+		expect(entries[2]!.group).toBeUndefined();
 	});
 
 	test("offers the subcommands of a command whose options are only groups, and nothing else a group holds", () => {
@@ -316,8 +318,8 @@ describe("commandQuery", () => {
 describe("commandUse", () => {
 	test("sends a command without subcommands as before: its options at the top", () => {
 		const roll = command({ type: T.Integer, name: "sides", description: "d", required: true });
-		const used = usedOptions(entryOf(roll), fields({ sides: "20" }));
-		expect("options" in used && commandUse(entryOf(roll), used.options)).toEqual({
+		const used = usedOptions(entryOf(roll)!, fields({ sides: "20" }));
+		expect("options" in used && commandUse(entryOf(roll)!, used.options)).toEqual({
 			id: "c1",
 			name: "roll",
 			type: 1,
@@ -327,8 +329,8 @@ describe("commandUse", () => {
 
 	test("sends a subcommand's options under it, in its group", () => {
 		const [get, reset, list] = commandEntries(perms);
-		const used = usedOptions(get, fields({ who: "u1" }));
-		expect("options" in used && commandUse(get, used.options)).toEqual({
+		const used = usedOptions(get!, fields({ who: "u1" }));
+		expect("options" in used && commandUse(get!, used.options)).toEqual({
 			id: "perms",
 			name: "perms",
 			type: 1,
@@ -340,7 +342,7 @@ describe("commandUse", () => {
 				},
 			],
 		});
-		expect(commandUse(reset, [])).toEqual({
+		expect(commandUse(reset!, [])).toEqual({
 			id: "perms",
 			name: "perms",
 			type: 1,
@@ -348,15 +350,15 @@ describe("commandUse", () => {
 				{ name: "user", type: T.SubcommandGroup, options: [{ name: "reset", type: T.Subcommand, options: [] }] },
 			],
 		});
-		expect(commandUse(list, [{ name: "page", type: T.Integer, value: 2 }]).options).toEqual([
+		expect(commandUse(list!, [{ name: "page", type: T.Integer, value: 2 }]).options).toEqual([
 			{ name: "list", type: T.Subcommand, options: [{ name: "page", type: T.Integer, value: 2 }] },
 		]);
 	});
 
 	test("checks the subcommand's options, not the command's", () => {
 		const [get, , list] = commandEntries(perms);
-		expect(usedOptions(get, fields({}))).toEqual({ problem: "who is required" });
-		expect(usedOptions(list, fields({ page: "0" }))).toEqual({ problem: "page must be at least 1" });
-		expect(usedOptions(list, fields({}))).toEqual({ options: [] });
+		expect(usedOptions(get!, fields({}))).toEqual({ problem: "who is required" });
+		expect(usedOptions(list!, fields({ page: "0" }))).toEqual({ problem: "page must be at least 1" });
+		expect(usedOptions(list!, fields({}))).toEqual({ options: [] });
 	});
 });

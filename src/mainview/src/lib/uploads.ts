@@ -29,7 +29,7 @@ export function fileShare(sizes: number[], index: number, sent: number, total: n
 	const w = weights(sizes);
 	// In whole numbers, so a file is exactly full when its last byte is: a form's 32 MiB at most keeps them exact.
 	const up = Math.min(sent, total) * sum(w) - sum(w.slice(0, index)) * total;
-	return Math.min(1, Math.max(0, up / (w[index] * total)));
+	return Math.min(1, Math.max(0, up / (w[index]! * total)));
 }
 
 /** Which of a message's files is going up: the first one not all up, or the last once they all are. */

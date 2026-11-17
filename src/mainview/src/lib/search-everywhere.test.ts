@@ -116,7 +116,7 @@ describe("the search everywhere", () => {
 		};
 		const { found } = await searchEverywhere({ query: "hi" }, SPACES, []);
 		expect(found).toHaveLength(EVERYWHERE_RESULTS);
-		expect(found[0].message.id).toBe("beta-29");
+		expect(found[0]!.message.id).toBe("beta-29");
 		expect(found.at(-1)?.message.id).toBe("alpha-10");
 	});
 

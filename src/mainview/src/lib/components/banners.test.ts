@@ -4,7 +4,7 @@ import { join } from "node:path";
 
 const source = (file: string) => readFileSync(join(import.meta.dir, file), "utf8");
 // The class lists of the elements in a piece of a component.
-const classLists = (piece: string) => [...piece.matchAll(/\sclass="([^"]*)"/g)].map((m) => m[1].split(/\s+/));
+const classLists = (piece: string) => [...piece.matchAll(/\sclass="([^"]*)"/g)].map((m) => m[1]!.split(/\s+/));
 
 // Profile banners, a user's and a bot's, are cropped at 5:2 (600×240) and show at 5:2, as a space's do: shown at 10:3,
 // they lost 12.5% of what was chosen at the top and at the bottom (#85).
@@ -40,7 +40,7 @@ test("the profile card draws only what Settings' preview shows", () => {
 
 test("the profile popover shows the banner at 5:2", () => {
 	const popover = source("MemberProfilePopover.svelte");
-	const frame = /<div\s+class="([^"]*)"\s+style=\{member\.banner_url/.exec(popover)?.[1].split(/\s+/);
+	const frame = /<div\s+class="([^"]*)"\s+style=\{member\.banner_url/.exec(popover)?.[1]?.split(/\s+/);
 	expect(frame).toEqual(expect.arrayContaining(["aspect-[5/2]", "w-full"]));
 });
 
@@ -66,7 +66,7 @@ describe("a profile's banner on hover", () => {
 
 	test("grows on the popover, and nothing clips it", () => {
 		const popover = source("MemberProfilePopover.svelte");
-		const frame = /<div\s+class="([^"]*)"\s+style=\{member\.banner_url/.exec(popover)?.[1].split(/\s+/);
+		const frame = /<div\s+class="([^"]*)"\s+style=\{member\.banner_url/.exec(popover)?.[1]?.split(/\s+/);
 		expect(frame).toEqual(expect.arrayContaining(GROWS));
 		const root = classLists(popover).find((list) => list.includes("w-80"));
 		expect(root).toContain("rounded-xl");
@@ -96,19 +96,19 @@ describe("a profile's avatar while its banner is hovered", () => {
 		expect(frames[0]).toContain("peer/banner");
 		// The section right after the banner's frame, and the avatar's box first in it.
 		const avatar = /<\/div>\s*<div class="relative px-4 pb-4">\s*(?:<!--[^]*?-->\s*)?<div\s+class="([^"]*)"/.exec(card);
-		fadesAsMeant(avatar?.[1].split(/\s+/));
+		fadesAsMeant(avatar?.[1]?.split(/\s+/));
 		expect(avatar?.[1]).toContain("-top-12");
 	});
 
 	test("fades on the popover", () => {
 		const popover = source("MemberProfilePopover.svelte");
-		const frame = /<div\s+class="([^"]*)"\s+style=\{member\.banner_url/.exec(popover)?.[1].split(/\s+/);
+		const frame = /<div\s+class="([^"]*)"\s+style=\{member\.banner_url/.exec(popover)?.[1]?.split(/\s+/);
 		expect(frame).toContain("peer/banner");
 		const avatar =
 			/style=\{member\.banner_url[^]*?><\/div>\s*<div class="relative px-4 pb-4">\s*(?:<!--[^]*?-->\s*)?<div\s+class="([^"]*)"/.exec(
 				popover,
 			);
-		fadesAsMeant(avatar?.[1].split(/\s+/));
+		fadesAsMeant(avatar?.[1]?.split(/\s+/));
 		expect(avatar?.[1]).toContain("-top-12");
 	});
 

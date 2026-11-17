@@ -1258,7 +1258,7 @@ export function readySpacesArrived(listed: ReadonlySet<string>, arrived: Readonl
 export function withSpaceCreate(spaces: GatewaySpace[], space: GatewaySpace): GatewaySpace[] {
 	const at = spaces.findIndex((s) => s.id === space.id);
 	if (at === -1) return [...spaces, space];
-	const { member, members, users } = spaces[at];
+	const { member, members, users } = spaces[at]!;
 	return spaces.map((s, i) => (i === at ? { ...space, member, members, users } : s));
 }
 

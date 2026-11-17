@@ -192,7 +192,7 @@ describe("a group the user left, or was removed from", () => {
 		inGroupCall();
 		gateway.receive("CONVERSATION_MEMBER_REMOVE", { conversation_id: GROUP, user_id: ANA });
 		expect(listed()).toEqual([GROUP, DM]);
-		expect(get(conversations)[0].members.map((m) => m.user_id)).toEqual([ME]);
+		expect(get(conversations)[0]!.members.map((m) => m.user_id)).toEqual([ME]);
 		expect(get(activeCall)?.conversationId).toBe(GROUP);
 	});
 });

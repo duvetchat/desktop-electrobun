@@ -74,7 +74,7 @@ export function fuzzyScore(query: string, text: string): number | null {
 	if (t === q) return 1000;
 	if (t.startsWith(q)) return 800 - t.length;
 	const at = t.indexOf(q);
-	if (at > 0 && /[\s\-_./#@]/.test(t[at - 1])) return 600 - at;
+	if (at > 0 && /[\s\-_./#@]/.test(t[at - 1]!)) return 600 - at;
 	if (at > 0) return 400 - at;
 	// Its letters in order: fewer gaps between them score higher.
 	let ti = 0;

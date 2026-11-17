@@ -142,7 +142,7 @@ describe("a message's preview", () => {
 		expect(html(rich)).toContain("Example page");
 		const images = named(await drawn(rich), "img").filter((i) => i.attributes.src === "https://media.test/big.png");
 		expect(images).toHaveLength(1);
-		expect(images[0].attributes.class.split(/\s+/)).toEqual(expect.arrayContaining(["max-h-60", "max-w-80"]));
+		expect(images[0]!.attributes.class!.split(/\s+/)).toEqual(expect.arrayContaining(["max-h-60", "max-w-80"]));
 	});
 
 	test("shows its reactions, the user's own picked out, as buttons", async () => {
@@ -150,8 +150,8 @@ describe("a message's preview", () => {
 			(b) => b.attributes.title === "👍" || b.attributes.title === "🎉",
 		);
 		expect(reactions.map((b) => b.attributes.title)).toEqual(["👍", "🎉"]);
-		expect(reactions[0].attributes.class).toContain("bg-indigo-500/20");
-		expect(reactions[1].attributes.class).not.toContain("bg-indigo-500/20");
+		expect(reactions[0]!.attributes.class).toContain("bg-indigo-500/20");
+		expect(reactions[1]!.attributes.class).not.toContain("bg-indigo-500/20");
 	});
 
 	test("shows the reply's quote, that it was edited, and its code block's copy button", () => {
@@ -169,7 +169,7 @@ describe("a message's preview", () => {
 	test("shows a message of only emojis large", async () => {
 		const emojis = named(await drawn(message({ content: "😀😀😀" })), "img");
 		expect(emojis).toHaveLength(3);
-		for (const emoji of emojis) expect(emoji.attributes.class.split(/\s+/)).toContain("emoji-large");
+		for (const emoji of emojis) expect(emoji.attributes.class!.split(/\s+/)).toContain("emoji-large");
 	});
 
 	test("says who used a bot's command, and tags a bot's and a webhook's messages", () => {
@@ -234,7 +234,7 @@ describe("a call notice's preview", () => {
 	const AFTER = "0190a3c3-0000-7000-8000-00000000ca12";
 	const inGroup = [
 		...members,
-		{ ...members[0], id: ME, member_id: JOINED, username: "me", raw_username: "me", roles: [] },
+		{ ...members[0]!, id: ME, member_id: JOINED, username: "me", raw_username: "me", roles: [] },
 	];
 	const notice = (id: string, participants: string[]) =>
 		message({
@@ -255,7 +255,7 @@ describe("a call notice's preview", () => {
 		const phone = named(await tags(MessagePreview, groupProps(m)), "svg").find((svg) =>
 			svg.attributes.class?.includes("lucide-phone"),
 		);
-		return { text, red: phone?.attributes.class.split(/\s+/).includes("text-red-400") };
+		return { text, red: phone?.attributes.class?.split(/\s+/).includes("text-red-400") };
 	}
 
 	test("of a call from before the user joined says who started it, without a red phone", async () => {

@@ -24,7 +24,7 @@ describe("a test file's environment", () => {
 		try {
 			const { default: api } = await import("$lib/api/api");
 			await api.get("/api/users/@me");
-			const [url, init] = fetched.mock.calls[0];
+			const [url, init] = fetched.mock.calls[0]!;
 			expect(url).toBe("https://api.test/api/users/@me");
 			expect(new Headers(init?.headers).has("Authorization")).toBe(false);
 		} finally {

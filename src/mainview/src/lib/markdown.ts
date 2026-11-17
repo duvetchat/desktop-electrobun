@@ -233,15 +233,16 @@ function parseList(
 	inline: (s: string) => string,
 ): { html: string; consumed: number } {
 	const items: string[] = [];
-	const firstMatch = UL_RE.exec(lines[startIdx]) ?? OL_RE.exec(lines[startIdx]);
+	const first = lines[startIdx] ?? "";
+	const firstMatch = UL_RE.exec(first) ?? OL_RE.exec(first);
 	if (!firstMatch) return { html: "", consumed: 0 };
-	const ordered = OL_RE.test(lines[startIdx]);
+	const ordered = OL_RE.test(first);
 	let i = startIdx;
 	const re = ordered ? OL_RE : UL_RE;
 	while (i < lines.length) {
-		const m = re.exec(lines[i]);
+		const m = re.exec(lines[i]!);
 		if (!m) break;
-		items.push(inline(m[2]));
+		items.push(inline(m[2]!));
 		i++;
 	}
 	const tag = ordered ? "ol" : "ul";
@@ -260,7 +261,7 @@ function parseTable(
 	if (startIdx + 2 > lines.length) return { html: "", consumed: 0 };
 	const headerLine = lines[startIdx];
 	const sepLine = lines[startIdx + 1];
-	if (!headerLine.includes("|") || !sepLine.includes("|")) return { html: "", consumed: 0 };
+	if (!headerLine?.includes("|") || !sepLine?.includes("|")) return { html: "", consumed: 0 };
 	// Separator must be like |---|---|
 	if (!/^[\s|:-]+$/.test(sepLine)) return { html: "", consumed: 0 };
 
@@ -285,8 +286,8 @@ function parseTable(
 
 	const rows: string[][] = [];
 	let i = startIdx + 2;
-	while (i < lines.length && lines[i].includes("|")) {
-		rows.push(parseCells(lines[i]));
+	while (i < lines.length && lines[i]!.includes("|")) {
+		rows.push(parseCells(lines[i]!));
 		i++;
 	}
 
@@ -367,7 +368,7 @@ function highlightCode(code: string, lang: string): string {
 		// shiki returns <pre class="shiki ..."><code>...</code></pre>
 		// Extract just the inner content of <code>
 		const match = html.match(/<code[^>]*>([\s\S]*)<\/code>/);
-		return match ? match[1] : escapeHtml(code);
+		return match?.[1] ?? escapeHtml(code);
 	} catch {
 		return escapeHtml(code);
 	}
@@ -585,7 +586,7 @@ function render(
 
 	let i = 0;
 	while (i < lines.length) {
-		const line = lines[i];
+		const line = lines[i]!;
 		let m: RegExpExecArray | null;
 
 		// Lists
@@ -599,7 +600,7 @@ function render(
 		}
 
 		// Tables
-		if (line.includes("|") && i + 1 < lines.length && lines[i + 1].includes("|")) {
+		if (line.includes("|") && lines[i + 1]?.includes("|")) {
 			const { html, consumed } = parseTable(lines, i, inline);
 			if (consumed > 0) {
 				out.push(html);
@@ -608,12 +609,12 @@ function render(
 			}
 		}
 
-		if ((m = /^### (.*)/.exec(line))) out.push(`<h3 class="msg-h3">${inline(m[1])}</h3>`);
-		else if ((m = /^## (.*)/.exec(line))) out.push(`<h2 class="msg-h2">${inline(m[1])}</h2>`);
-		else if ((m = /^# (.*)/.exec(line))) out.push(`<h1 class="msg-h1">${inline(m[1])}</h1>`);
-		else if ((m = /^-# (.*)/.exec(line))) out.push(`<span class="msg-subtext">${inline(m[1])}</span>`);
-		else if ((m = /^>>> (.*)/.exec(line))) out.push(`<blockquote class="msg-blockquote">${inline(m[1])}</blockquote>`);
-		else if ((m = /^> (.*)/.exec(line))) out.push(`<blockquote class="msg-blockquote">${inline(m[1])}</blockquote>`);
+		if ((m = /^### (.*)/.exec(line))) out.push(`<h3 class="msg-h3">${inline(m[1]!)}</h3>`);
+		else if ((m = /^## (.*)/.exec(line))) out.push(`<h2 class="msg-h2">${inline(m[1]!)}</h2>`);
+		else if ((m = /^# (.*)/.exec(line))) out.push(`<h1 class="msg-h1">${inline(m[1]!)}</h1>`);
+		else if ((m = /^-# (.*)/.exec(line))) out.push(`<span class="msg-subtext">${inline(m[1]!)}</span>`);
+		else if ((m = /^>>> (.*)/.exec(line))) out.push(`<blockquote class="msg-blockquote">${inline(m[1]!)}</blockquote>`);
+		else if ((m = /^> (.*)/.exec(line))) out.push(`<blockquote class="msg-blockquote">${inline(m[1]!)}</blockquote>`);
 		else out.push(applyInline(renderEmoji(line, large), large, mentionMap, customEmojiMap, roomNames));
 
 		i++;
@@ -621,11 +622,12 @@ function render(
 
 	// ── 5. Join with <br> except around block elements ─────────────────────────
 	let result = "";
-	for (let j = 0; j < out.length; j++) {
-		result += out[j];
-		if (j < out.length - 1) {
-			const currIsBlock = isBlockHtml(out[j]) || /^\x00B\d+\x01$/.test(out[j].trim());
-			const nextIsBlock = isBlockHtml(out[j + 1]) || /^\x00B\d+\x01$/.test(out[j + 1].trim());
+	for (const [j, curr] of out.entries()) {
+		result += curr;
+		const next = out[j + 1];
+		if (next !== undefined) {
+			const currIsBlock = isBlockHtml(curr) || /^\x00B\d+\x01$/.test(curr.trim());
+			const nextIsBlock = isBlockHtml(next) || /^\x00B\d+\x01$/.test(next.trim());
 			if (!currIsBlock && !nextIsBlock) {
 				result += "<br>";
 			}
@@ -634,12 +636,12 @@ function render(
 
 	// ── 6. Restore placeholders ────────────────────────────────────────────────
 	// Links first: their text can hold a code's placeholder.
-	result = result.replace(/\x00L(\d+)\x01/g, (_, n) => links[+n]);
-	result = result.replace(/\x00B(\d+)\x01/g, (_, n) => codeBlocks[+n]);
-	result = result.replace(/\x00I(\d+)\x01/g, (_, n) => inlineCodes[+n]);
-	result = result.replace(/\x00U(\d+)\x01/g, (_, n) => bare[+n]);
+	result = result.replace(/\x00L(\d+)\x01/g, (_, n) => links[+n] ?? "");
+	result = result.replace(/\x00B(\d+)\x01/g, (_, n) => codeBlocks[+n] ?? "");
+	result = result.replace(/\x00I(\d+)\x01/g, (_, n) => inlineCodes[+n] ?? "");
+	result = result.replace(/\x00U(\d+)\x01/g, (_, n) => bare[+n] ?? "");
 	// Escapes last: a link's text can hold one.
-	result = result.replace(/\x00E(\d+)\x01/g, (_, n) => escapes[+n]);
+	result = result.replace(/\x00E(\d+)\x01/g, (_, n) => escapes[+n] ?? "");
 
 	return result;
 }
@@ -663,7 +665,7 @@ export function renderMarkdownLine(
 		.join(" ");
 	return render(line, false, mentionMap, customEmojiMap, roomNames).replace(
 		/\x00P(\d+)\x01/g,
-		(_, i) => `<code class="msg-inline-code">${escapeHtml(codes[+i])}</code>`,
+		(_, i) => `<code class="msg-inline-code">${escapeHtml(codes[+i] ?? "")}</code>`,
 	);
 }
 

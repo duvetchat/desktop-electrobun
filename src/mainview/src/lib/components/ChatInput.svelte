@@ -504,7 +504,9 @@
 	function undo() {
 		if (undoIndex <= 0) return;
 		undoIndex--;
-		const { raw, cursor } = undoStack[undoIndex];
+		const entry = undoStack[undoIndex];
+		if (!entry) return;
+		const { raw, cursor } = entry;
 		rerender(raw, cursor);
 		isEmpty = hasNoText(raw);
 		changed(raw);
@@ -513,7 +515,9 @@
 	function redo() {
 		if (undoIndex >= undoStack.length - 1) return;
 		undoIndex++;
-		const { raw, cursor } = undoStack[undoIndex];
+		const entry = undoStack[undoIndex];
+		if (!entry) return;
+		const { raw, cursor } = entry;
 		rerender(raw, cursor);
 		isEmpty = hasNoText(raw);
 		changed(raw);
@@ -564,7 +568,7 @@
 		const mentionMatch = /(?<=^|\s)@([\p{L}\p{N}_]*)$/u.exec(before);
 		if (mentionMatch && members.length > 0) {
 			mentionQueryStart = before.length - mentionMatch[0].length;
-			const query = mentionMatch[1].toLowerCase();
+			const query = mentionMatch[1]!.toLowerCase();
 			mentionSuggestions = members
 				.filter((m) => m.raw_username.toLowerCase().startsWith(query) || m.username.toLowerCase().startsWith(query))
 				.slice(0, 10);
@@ -584,7 +588,7 @@
 		const roomMatch = rooms.length > 0 ? /(?<=^|\s)#([\p{L}\p{N}_-]*)$/u.exec(before) : null;
 		if (roomMatch) {
 			roomQueryStart = before.length - roomMatch[0].length;
-			const query = roomMatch[1].toLowerCase();
+			const query = roomMatch[1]!.toLowerCase();
 			const named = [...rooms].sort((a, b) => a.name.localeCompare(b.name));
 			const starts = named.filter((r) => r.name.toLowerCase().startsWith(query));
 			const contains = named.filter((r) => !starts.includes(r) && r.name.toLowerCase().includes(query));
@@ -601,7 +605,7 @@
 		const m = /(?<=^|\s):([\w\d_]{2,})$/.exec(before);
 		if (m) {
 			emojiQueryStart = before.length - m[0].length;
-			const query = m[1].toLowerCase();
+			const query = m[1]!.toLowerCase();
 			const customScored = customEmojis
 				.map((ce) => {
 					const n = ce.name.toLowerCase();
@@ -629,7 +633,7 @@
 				void loadEmojiData().then(() => {
 					if (!destroyed && emojiQueryStart !== -1) checkAutocomplete(getRaw(inputEl), getOffset());
 				});
-			const defaultMatches = emojiData?.searchEmojis(m[1]) ?? [];
+			const defaultMatches = emojiData?.searchEmojis(m[1]!) ?? [];
 			suggestions = [...customScored, ...defaultMatches].slice(0, 10);
 			selectedIdx = 0;
 		} else {
@@ -775,7 +779,8 @@
 			}
 			if (e.key === "Enter" || e.key === "Tab") {
 				e.preventDefault();
-				insertMentionSuggestion(mentionSuggestions[mentionSelectedIdx]);
+				const member = mentionSuggestions[mentionSelectedIdx];
+				if (member) insertMentionSuggestion(member);
 				return;
 			}
 			if (e.key === "Escape") {
@@ -799,7 +804,8 @@
 			}
 			if (e.key === "Enter" || e.key === "Tab") {
 				e.preventDefault();
-				insertRoomSuggestion(roomSuggestions[roomSelectedIdx]);
+				const room = roomSuggestions[roomSelectedIdx];
+				if (room) insertRoomSuggestion(room);
 				return;
 			}
 			if (e.key === "Escape") {
@@ -823,7 +829,8 @@
 			}
 			if (e.key === "Enter" || e.key === "Tab") {
 				e.preventDefault();
-				insertSuggestion(suggestions[selectedIdx]);
+				const entry = suggestions[selectedIdx];
+				if (entry) insertSuggestion(entry);
 				return;
 			}
 			if (e.key === "Escape") {
@@ -959,11 +966,11 @@
 					// offset is child index
 					const children = Array.from(n.childNodes);
 					for (let i = 0; i < offset && i < children.length; i++) {
-						const len = nodeLen(children[i]);
+						const len = nodeLen(children[i]!);
 						if (len >= 0) {
 							count += len;
 						} else {
-							walkAll(children[i]);
+							walkAll(children[i]!);
 						}
 					}
 				}

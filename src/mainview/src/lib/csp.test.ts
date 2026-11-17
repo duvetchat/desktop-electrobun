@@ -46,7 +46,7 @@ describe("CSP locks down the dangerous directives", () => {
 		expect(scriptSrc).not.toContain("https:");
 		expect(scriptSrc).not.toContain("http:");
 		// only 'self', wasm-unsafe-eval and hash sources
-		for (const src of scriptSrc) {
+		for (const src of scriptSrc!) {
 			expect(src === "self" || src === "wasm-unsafe-eval" || src.startsWith("sha256-")).toBe(true);
 		}
 	});

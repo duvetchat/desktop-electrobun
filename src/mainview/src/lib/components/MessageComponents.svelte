@@ -97,7 +97,7 @@
 	// A file sent with the message comes as a signed path on the API's host; any other media is a full url.
 	const mediaSrc = (m: ComponentMedia) => (m.url.startsWith("/") ? host + m.url : (webUrl(m.url) ?? ""));
 	const isVideo = (m: ComponentMedia) =>
-		m.content_type ? m.content_type.startsWith("video/") : /\.(mp4|webm|mov)$/i.test(m.url.split("?")[0]);
+		m.content_type ? m.content_type.startsWith("video/") : /\.(mp4|webm|mov)$/i.test(m.url.split("?")[0]!);
 	const hex = (color: number) => "#" + color.toString(16).padStart(6, "0");
 
 	// A lone gallery item fits in maxWidth × maxHeight like an attachment, when its size is known.
@@ -303,13 +303,13 @@
 {#snippet gallery(items: GalleryItem[])}
 	{#if items.length === 1}
 		<div data-attachments class="flex">
-			{@render galleryItem(items[0], true)}
+			{@render galleryItem(items[0]!, true)}
 		</div>
 	{:else if items.length === 3}
 		<div data-attachments class="grid aspect-3/2 w-full grid-cols-3 grid-rows-2 gap-1" style="max-width: {maxWidth}px;">
-			<div class="col-span-2 row-span-2">{@render galleryItem(items[0])}</div>
-			{@render galleryItem(items[1])}
-			{@render galleryItem(items[2])}
+			<div class="col-span-2 row-span-2">{@render galleryItem(items[0]!)}</div>
+			{@render galleryItem(items[1]!)}
+			{@render galleryItem(items[2]!)}
 		</div>
 	{:else if items.length > 1}
 		{@const rows = mosaicRows(items.length)}

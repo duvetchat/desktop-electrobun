@@ -25,7 +25,7 @@ export type NewConversation =
 export function newConversation(picked: Iterable<string>, typedName: string): NewConversation {
 	const userIds = [...picked];
 	if (userIds.length === 0) return { kind: "refused", why: "Add at least one friend to the group" };
-	if (userIds.length === 1) return { kind: "dm", userId: userIds[0] };
+	if (userIds.length === 1) return { kind: "dm", userId: userIds[0]! };
 	const name = typedName.trim();
 	if (!name) return { kind: "refused", why: "Enter a group name" };
 	return { kind: "group", name, userIds };

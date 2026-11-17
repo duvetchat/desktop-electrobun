@@ -40,11 +40,11 @@ function pagesOf(buffer: ArrayBuffer) {
 	const pages: { flags: number; granule: bigint; crcOk: boolean }[] = [];
 	for (let pos = 0; pos < data.length; ) {
 		const segments = data[pos + 26];
-		const length = 27 + segments + data.subarray(pos + 27, pos + 27 + segments).reduce((n, s) => n + s, 0);
+		const length = 27 + segments! + data.subarray(pos + 27, pos + 27 + segments!).reduce((n, s) => n + s, 0);
 		const copy = data.slice(pos, pos + length);
 		new DataView(copy.buffer).setUint32(22, 0, true);
 		pages.push({
-			flags: data[pos + 5],
+			flags: data[pos + 5]!,
 			granule: view.getBigInt64(pos + 6, true),
 			crcOk: oggCrc(copy) === view.getUint32(pos + 22, true),
 		});
@@ -143,7 +143,7 @@ describe("analyzeWaveform", () => {
 	// takes the buffer it's given, which can't be read again. The analysis decodes in an OfflineAudioContext (#316).
 	class StrictAudioContext {
 		async decodeAudioData(buffer: ArrayBuffer) {
-			const first = pagesOf(structuredClone(buffer, { transfer: [buffer] }))[2].granule;
+			const first = pagesOf(structuredClone(buffer, { transfer: [buffer] }))[2]!.granule;
 			decoded.push(first);
 			if (first === 0n) throw new DOMException("invalid content", "EncodingError");
 			const length = 2880;
@@ -183,8 +183,8 @@ describe("analyzeWaveform", () => {
 		try {
 			const url = await makeWav("/attachments/a?stream=1");
 			expect(decoded).toEqual([0n, 960n]);
-			expect(created.mock.results[0].value).toBe(url);
-			const [blob] = created.mock.calls[0];
+			expect(created.mock.results[0]!.value).toBe(url);
+			const [blob] = created.mock.calls[0]!;
 			if (!(blob instanceof Blob)) throw new Error("the WAV's URL isn't a Blob's");
 			expect(blob.type).toBe("audio/wav");
 			expect(new TextDecoder().decode((await blob.arrayBuffer()).slice(0, 4))).toBe("RIFF");

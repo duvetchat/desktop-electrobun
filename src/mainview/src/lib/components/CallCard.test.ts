@@ -74,7 +74,7 @@ test("a call ringing here is a card in the corner, with nothing over the rest of
 	callIn(DM, "ringing");
 	const all = await shown();
 	const card = all.find((t) => t.name === "section");
-	expect(card?.attributes.class.split(/\s+/)).toEqual(expect.arrayContaining(["fixed", "right-4", "w-80", "h-18"]));
+	expect(card?.attributes.class?.split(/\s+/)).toEqual(expect.arrayContaining(["fixed", "right-4", "w-80", "h-18"]));
 	expect(card?.attributes.style).toContain("bottom: 16px");
 	expect(all.some((t) => /\binset-0\b|backdrop-blur|bg-black\//.test(t.attributes.class ?? ""))).toBe(false);
 	// It takes no focus: the user goes on typing where they were.
@@ -121,5 +121,5 @@ test("no open dialog covers a ringing call: the card sits above every dialog's l
 	const layer = Number(/\bz-(\d+)\b/.exec(card?.attributes.class ?? "")?.[1] ?? 0);
 	expect(layer).toBeGreaterThan(Math.max(...dialogLayers()));
 	// A modal dialog turns pointer events off on the body, so the card turns them back on, as a toast does.
-	expect(card?.attributes.class.split(/\s+/)).toContain("pointer-events-auto");
+	expect(card?.attributes.class?.split(/\s+/)).toContain("pointer-events-auto");
 });

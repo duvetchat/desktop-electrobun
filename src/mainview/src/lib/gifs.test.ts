@@ -50,14 +50,14 @@ describe("parseGifs", () => {
 	});
 
 	test("sends the large GIF when there's no medium one", () => {
-		expect(parseGifs(answer(item(1, without(allSizes(1), "md"))))[0].url).toBe(gifUrl("1-hd"));
+		expect(parseGifs(answer(item(1, without(allSizes(1), "md"))))[0]!.url).toBe(gifUrl("1-hd"));
 		// A medium size without a GIF counts as none.
 		const mediumWithoutGif = { ...allSizes(1), md: without(size("1-md", 640, 640), "gif") };
-		expect(parseGifs(answer(item(1, mediumWithoutGif)))[0].url).toBe(gifUrl("1-hd"));
+		expect(parseGifs(answer(item(1, mediumWithoutGif)))[0]!.url).toBe(gifUrl("1-hd"));
 	});
 
 	test("shows the extra-small GIF without a small one, and the medium one without either", () => {
-		expect(parseGifs(answer(item(1, without(allSizes(1), "sm"))))[0].preview).toEqual({
+		expect(parseGifs(answer(item(1, without(allSizes(1), "sm"))))[0]!.preview).toEqual({
 			url: gifUrl("1-xs"),
 			width: 90,
 			height: 90,
@@ -76,7 +76,7 @@ describe("parseGifs", () => {
 
 	test("describes a GIF by its title only when that's text", () => {
 		for (const title of [42, null, true, { text: "GIF" }, ["GIF"]]) {
-			expect(parseGifs(answer({ ...item(1, allSizes(1)), title }))[0].description).toBe("");
+			expect(parseGifs(answer({ ...item(1, allSizes(1)), title }))[0]!.description).toBe("");
 		}
 	});
 
@@ -90,7 +90,7 @@ describe("parseGifs", () => {
 			const spaced = { gif: { url, width: 640, height: 640 } };
 			expect(parseGifs(answer(item(1, { ...allSizes(1), md: spaced, hd: spaced })))).toEqual([]);
 			// A large GIF without it is sent instead, as for a medium GIF without a URL.
-			expect(parseGifs(answer(item(2, { ...allSizes(2), md: spaced })))[0].url).toBe(gifUrl("2-hd"));
+			expect(parseGifs(answer(item(2, { ...allSizes(2), md: spaced })))[0]!.url).toBe(gifUrl("2-hd"));
 		}
 	});
 

@@ -78,7 +78,7 @@ export async function activityThumbnail(bytes: Uint8Array<ArrayBuffer>): Promise
 			context.drawImage(bitmap, (bitmap.width - crop) / 2, (bitmap.height - crop) / 2, crop, crop, 0, 0, size, size);
 			return size;
 		};
-		const size = draw(OPAQUE_STEPS[0].side);
+		const size = draw(OPAQUE_STEPS[0]!.side);
 		const steps = isOpaque(context.getImageData(0, 0, size, size).data) ? OPAQUE_STEPS : TRANSPARENT_STEPS;
 		return fittingImage(steps, (step) => {
 			draw(step.side);

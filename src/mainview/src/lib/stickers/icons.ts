@@ -1,5 +1,7 @@
+// @ts-nocheck
 // Vendored from fun-isometric by Kelvin Adithya (MIT): https://github.com/kelvinkn17/skills/tree/main/skills/fun-isometric
 // Keep it as the kit ships it; Duvet's palette and the Svelte player live beside it (duvet.ts, Sticker.svelte).
+// Not type-checked: noUncheckedIndexedAccess (#342) would have its index reads changed.
 
 // The fun-isometric set: everyday product icons drawn as slabs, each moving on one preset.
 import { VIEWS, arc, ellipse, line, onFace, pill, poly, rect, ring, spark, star, view } from "./fun";

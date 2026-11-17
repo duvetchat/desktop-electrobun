@@ -175,14 +175,14 @@ export function parseDuvetLink(url: string, ownOrigin: string): DuvetLink | null
 		// No client draws a card for invite.html?code=.
 		return page === "invite" ? inviteCode(parsed.searchParams.get("code")) : null;
 	}
-	if (page === "invite") return rest.length === 1 ? inviteCode(rest[0]) : null;
+	if (page === "invite") return rest.length === 1 ? inviteCode(rest[0]!) : null;
 	if (!rest.every(isUuid)) return null;
 	if (page === "channels" && rest.length === 3) {
-		const [spaceId, roomId, messageId] = rest;
+		const [spaceId = "", roomId = "", messageId = ""] = rest;
 		return { message: { spaceId, roomId, messageId } };
 	}
 	if (page === "conversations" && rest.length === 2) {
-		const [conversationId, messageId] = rest;
+		const [conversationId = "", messageId = ""] = rest;
 		return { message: { spaceId: "", roomId: "", messageId, conversationId } };
 	}
 	return null;

@@ -32,7 +32,7 @@ type Listed = { id: string; nonce?: string | null };
 export function newestPage<T extends Listed>(list: T[]): T[] {
 	const sent = list.flatMap((m) => (m.id === m.nonce ? [] : [m.id])).sort();
 	if (sent.length <= MESSAGE_PAGE) return list;
-	const oldestKept = sent[sent.length - MESSAGE_PAGE];
+	const oldestKept = sent[sent.length - MESSAGE_PAGE]!;
 	return list.filter((m) => m.id === m.nonce || m.id >= oldestKept);
 }
 
@@ -75,7 +75,7 @@ function createEvictingMessageStore<T extends Listed>(): MessageListsStore<T> {
 	// The lists next added or changed from before are used now, and those it dropped are forgotten.
 	function note(before: Record<string, T[]>, next: Record<string, T[]>) {
 		for (const chat of Object.keys(next)) if (next[chat] !== before[chat]) use(chat);
-		for (let i = used.length - 1; i >= 0; i--) if (!Object.hasOwn(next, used[i])) used.splice(i, 1);
+		for (let i = used.length - 1; i >= 0; i--) if (!Object.hasOwn(next, used[i]!)) used.splice(i, 1);
 		for (const chat of released.keys()) if (!Object.hasOwn(next, chat)) released.delete(chat);
 	}
 

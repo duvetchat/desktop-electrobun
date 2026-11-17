@@ -52,7 +52,10 @@ describe("conversation tabs", () => {
 
 	test("a conversation's tab takes its name as it is now; a room's keeps the one it opened with", () => {
 		const tab = conversationTab(dm, ME);
-		const renamed = { ...dm, members: [dm.members[0], { user_id: "u2", user: { username: "maya", alias: "Maya R" } }] };
+		const renamed = {
+			...dm,
+			members: [dm.members[0]!, { user_id: "u2", user: { username: "maya", alias: "Maya R" } }],
+		};
 		expect(tabTitle(tab, [renamed], ME)).toBe("Maya R");
 		expect(tabTitle(tab, [], ME)).toBe("Maya");
 		expect(tabTitle(room("r1"), [renamed], ME)).toBe("r1");

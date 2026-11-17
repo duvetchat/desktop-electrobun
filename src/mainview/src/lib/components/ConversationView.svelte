@@ -363,7 +363,7 @@
 		const all = get(dmMessages)[conversation.id] ?? [];
 		let oldest: string | undefined = undefined;
 		if (all.length > 0) {
-			oldest = all[0].id;
+			oldest = all[0]!.id;
 			for (const m of all) {
 				if (m.id < oldest) oldest = m.id;
 			}
@@ -901,7 +901,12 @@
 			// Left at the present, the list goes back to its newest page, which is all the next view opens on, as a room's
 			// does (#326). Not as a READY takes the views down, as the reader's place is kept for the next ones.
 			if (!hasMoreBelow && get(friendsReady)) dmMessages.trim(convId, MESSAGE_PAGE);
-			keepList(convId, listFetched && !hasMoreBelow && stillIn ? get(dmMessages)[convId] : null, hasMore, session);
+			keepList(
+				convId,
+				listFetched && !hasMoreBelow && stillIn ? (get(dmMessages)[convId] ?? null) : null,
+				hasMore,
+				session,
+			);
 			activeDMConvId.update((cur) => (cur === convId ? null : cur));
 			hide();
 			release();

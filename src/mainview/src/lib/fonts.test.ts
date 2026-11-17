@@ -16,7 +16,7 @@ test("each font face names a file the app has, Fira Sans' and Fira Mono's", () =
 	const fonts = readFileSync(join(fontsDir, "fonts.css"), "utf8");
 	const files = [...fonts.matchAll(/url\("\.\/([^"]+)"\)/g)].map((m) => m[1]);
 	expect(files.length).toBeGreaterThan(0);
-	expect(files.filter((file) => !existsSync(join(fontsDir, file)))).toEqual([]);
+	expect(files.filter((file) => !existsSync(join(fontsDir, file!)))).toEqual([]);
 	expect(fonts).toContain('font-family: "Fira Sans";');
 	expect(fonts).toContain('font-family: "Fira Mono";');
 	expect(fonts).not.toContain("https:");
