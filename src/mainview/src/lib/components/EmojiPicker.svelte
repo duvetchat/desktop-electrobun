@@ -18,6 +18,8 @@
 
 	let searchQuery = $state("");
 	let activeCategory = $state(0);
+	// The dataset's category the grid shows: none before the dataset is in.
+	const shownCategory = $derived(emojiCategories[activeCategory - categoryOffset]);
 	let searchResults = $derived.by(() => {
 		const query = searchQuery.trim().toLowerCase();
 		if (!query) return [];
@@ -204,13 +206,12 @@
 					</button>
 				{/each}
 			</div>
-		{:else}
-			{@const cat = emojiCategories[activeCategory - categoryOffset]}
+		{:else if shownCategory}
 			<div class="text-xxs text-night-52 px-0.5 pt-1.5 pb-2 font-bold tracking-[0.06em] uppercase">
-				{cat.label}
+				{shownCategory.label}
 			</div>
 			<div class="grid grid-cols-8 gap-0.5">
-				{#each cat.emojis as entry (entry.emoji)}
+				{#each shownCategory.emojis as entry (entry.emoji)}
 					<button
 						class="hover:bg-night-30 flex cursor-pointer items-center justify-center rounded-md border-none bg-none p-1.25 transition-[background,transform] duration-100 hover:scale-[1.18] active:scale-100"
 						onclick={() => pick(entry.emoji)}
