@@ -1,4 +1,6 @@
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { tags, type Tag } from "./server-render";
 
 const { default: EmbedPlayer } = await import("./EmbedPlayer.svelte");
@@ -55,4 +57,19 @@ describe("EmbedPlayer", () => {
 			[PAGE, "allow-scripts"],
 		]);
 	});
+});
+
+// #329: a played player stayed framed until its message unmounted, so several could run at once, each a cross-site page
+// with its scripts and media, likely a renderer process of its own. One plays at a time across the app: starting one
+// sends the one before back to its poster.
+test("starting a player sends the one playing back to its poster", () => {
+	const source = readFileSync(join(import.meta.dir, "EmbedPlayer.svelte"), "utf8");
+	expect(source).toMatch(
+		/<script module lang="ts">[\s\S]*const nowPlaying = writable<symbol \| null>\(null\);[\s\S]*<\/script>/,
+	);
+	expect(source).toMatch(/function play\(\) \{\s*played = url;\s*nowPlaying\.set\(me\);\s*\}/);
+	expect(source).toMatch(
+		/\$effect\(\(\) => \{\s*if \(\$nowPlaying !== null && \$nowPlaying !== me\) played = undefined;\s*\}\);/,
+	);
+	expect(source).toContain("onclick={play}");
 });

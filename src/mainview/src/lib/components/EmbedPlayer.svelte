@@ -1,3 +1,11 @@
+<script module lang="ts">
+	import { writable } from "svelte/store";
+
+	// The player playing, across the app: one at a time, as each is a cross-site page with its scripts and media, likely a
+	// renderer process of its own. Starting one sends the one before back to its poster (#329).
+	const nowPlaying = writable<symbol | null>(null);
+</script>
+
 <script lang="ts">
 	import { Play as PlayIcon } from "@lucide/svelte";
 	import { isElectrobunWindow } from "$lib/electrobun-rpc";
@@ -28,6 +36,16 @@
 		played?: string;
 	} = $props();
 
+	const me = Symbol("embed player");
+	function play() {
+		played = url;
+		nowPlaying.set(me);
+	}
+	// Another player started: this one goes back to its poster.
+	$effect(() => {
+		if ($nowPlaying !== null && $nowPlaying !== me) played = undefined;
+	});
+
 	const frame = $derived(playerFrame(url, ownHosts));
 	const label = $derived(title ? `Play ${title}` : "Play");
 	const coverClass = "group absolute inset-0 flex items-center justify-center bg-zinc-900";
@@ -42,7 +60,7 @@
 				{@render cover()}
 			</a>
 		{:else}
-			<button type="button" class={coverClass} aria-label={label} onclick={() => (played = url)}>
+			<button type="button" class={coverClass} aria-label={label} onclick={play}>
 				{@render cover()}
 			</button>
 		{/if}
