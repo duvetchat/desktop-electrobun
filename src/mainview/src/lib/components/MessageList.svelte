@@ -44,7 +44,7 @@
 	import { threadNow } from "$lib/threads";
 	import { keepPlace, takePlace } from "$lib/kept-places";
 	import { largeEmojis } from "$lib/emoji";
-	import { customEmojiMapOf, mentionMapOf } from "$lib/markdown";
+	import { customEmojiMapOf, mentionMapOf, sameNames } from "$lib/markdown";
 	import { nameColors } from "$lib/name-colors";
 
 	import {
@@ -382,9 +382,10 @@
 	});
 
 	// ── Sorting ────────────────────────────────────────────────────────────────
+	// Each message's date read once, not twice per comparison (#324).
 	const sortedMessages = $derived(
 		messages
-			.map((m, i) => ({ m, i }))
+			.map((m, i) => ({ m, i, at: Date.parse(m.created_at) }))
 			.sort((a, b) => {
 				const aPending = a.m.id === a.m.nonce;
 				const bPending = b.m.id === b.m.nonce;
@@ -394,7 +395,7 @@
 				if (aPending && bPending) {
 					return b.i - a.i;
 				}
-				return new Date(b.m.created_at).getTime() - new Date(a.m.created_at).getTime();
+				return b.at - a.at;
 			})
 			.map(({ m }) => m),
 	);
@@ -412,7 +413,14 @@
 		),
 	);
 	const authorColors = $derived(nameColors(members));
-	const mentionMap = $derived(mentionMapOf(members));
+	// The names mentions show: a new map only when one of them changes, not with every change of the members (a
+	// presence, a voice state), which drew every message's text again (#324).
+	let mentionNames: Record<string, string> = {};
+	const mentionMap = $derived.by(() => {
+		const next = mentionMapOf(members);
+		if (!sameNames(next, mentionNames)) mentionNames = next;
+		return mentionNames;
+	});
 	const customEmojiMap = $derived(customEmojiMapOf(customEmojis));
 	// The rooms "#" suggests while a message is edited.
 	const mentionRooms = $derived(space ? mentionableRooms(space) : []);

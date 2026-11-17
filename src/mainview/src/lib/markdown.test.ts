@@ -8,6 +8,7 @@ import {
 	parseTextSegments,
 	renderMarkdown,
 	renderMarkdownLine,
+	sameNames,
 } from "$lib/markdown";
 import { cardLink, parseDuvetLink } from "$lib/urls";
 
@@ -1015,5 +1016,27 @@ describe("the HTML it makes", () => {
 			}
 		}
 		expect(found).toEqual([]);
+	});
+});
+
+// #324: a member's presence or voice change gave the lists a new mention map, with the same names, and every message's
+// text was drawn again. The lists keep their map while every name stays the same.
+describe("sameNames", () => {
+	test("says whether two maps give every ID the same name, in any order", () => {
+		expect(sameNames({ a: "ana", b: "bea" }, { b: "bea", a: "ana" })).toBe(true);
+		expect(sameNames({}, {})).toBe(true);
+		expect(sameNames({ a: "ana" }, { a: "ana", b: "bea" })).toBe(false);
+		expect(sameNames({ a: "ana", b: "bea" }, { a: "ana" })).toBe(false);
+		expect(sameNames({ a: "ana" }, { a: "anabel" })).toBe(false);
+		expect(sameNames({ a: "ana" }, { b: "ana" })).toBe(false);
+	});
+
+	test("the lists keep their mention map while its names stay", async () => {
+		const { readFileSync } = await import("node:fs");
+		const { join } = await import("node:path");
+		for (const file of ["MessageList.svelte", "MessageSearch.svelte", "PinnedMessages.svelte"]) {
+			const source = readFileSync(join(import.meta.dir, "components", file), "utf8");
+			expect(source).toMatch(/const next = mentionMapOf\(members\);\s*if \(!sameNames\(next, mentionNames\)\) mentionNames = next;\s*return mentionNames;/);
+		}
 	});
 });

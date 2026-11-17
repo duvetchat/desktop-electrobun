@@ -19,7 +19,7 @@
 	import { gatewayMessageToMessage } from "$lib/types";
 	import type { GatewaySpace, MemberOnSidebar, Message, SpaceEmoji } from "$lib/types";
 	import { hasPermission, Permission } from "$lib/permissions";
-	import { customEmojiMapOf, mentionMapOf } from "$lib/markdown";
+	import { customEmojiMapOf, mentionMapOf, sameNames } from "$lib/markdown";
 
 	// The pin button of a pane's bar (or a conversation's header), and the list of its pinned messages, the
 	// last pinned first. A message jumps to itself; who can pin unpins it from here too.
@@ -56,7 +56,14 @@
 		const room = s?.rooms.find((r) => r.id === channelId);
 		return !!s && !!room && hasPermission(s, room, Permission.PinMessages);
 	});
-	const mentionMap = $derived(mentionMapOf(members));
+	// The names mentions show: a new map only when one of them changes, not with every change of the members (a
+	// presence, a voice state), which drew every message's text again (#324).
+	let mentionNames: Record<string, string> = {};
+	const mentionMap = $derived.by(() => {
+		const next = mentionMapOf(members);
+		if (!sameNames(next, mentionNames)) mentionNames = next;
+		return mentionNames;
+	});
 	const customEmojiMap = $derived(customEmojiMapOf(customEmojis));
 	let mentionProfile: MentionProfile;
 

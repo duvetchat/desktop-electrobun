@@ -27,7 +27,7 @@
 	import type { GatewaySpace, MemberOnSidebar, Message, SpaceEmoji } from "$lib/types";
 	import type { MessageLink } from "$lib/urls";
 	import { canViewRoom } from "$lib/permissions";
-	import { customEmojiMapOf, escapeHtml, mentionMapOf, mentionNamesIn } from "$lib/markdown";
+	import { customEmojiMapOf, escapeHtml, mentionMapOf, mentionNamesIn, sameNames } from "$lib/markdown";
 	import { afterPress } from "$lib/press";
 	import {
 		isoDay,
@@ -92,7 +92,14 @@
 		const s = space;
 		return s ? s.rooms.filter((r) => r.type === 1 && canViewRoom(s, r)) : [];
 	});
-	const mentionMap = $derived(mentionMapOf(members));
+	// The names mentions show: a new map only when one of them changes, not with every change of the members (a
+	// presence, a voice state), which drew every message's text again (#324).
+	let mentionNames: Record<string, string> = {};
+	const mentionMap = $derived.by(() => {
+		const next = mentionMapOf(members);
+		if (!sameNames(next, mentionNames)) mentionNames = next;
+		return mentionNames;
+	});
 	const customEmojiMap = $derived(customEmojiMapOf(customEmojis));
 	let mentionProfile: MentionProfile;
 
