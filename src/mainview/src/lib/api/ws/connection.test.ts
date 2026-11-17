@@ -532,7 +532,13 @@ describe("a message's edit", () => {
 				roomMessage(message(60)),
 				{
 					...roomMessage(message(61)),
-					referenced_message: { message_id: message(60), content: "the message" } as Message["referenced_message"],
+					referenced_message: {
+						type: 0,
+						message_id: message(60),
+						room_id: room,
+						space_id: null,
+						content: "the message",
+					},
 				},
 			],
 			[other]: [roomMessage(message(62))],

@@ -21,8 +21,8 @@ void mock.module("shiki", () => ({
 						loads.push(...langs);
 						for (const lang of langs) loaded.add(lang);
 					},
-					codeToHtml: (_code: string, options: { lang: string }) =>
-						`<pre class="shiki"><code>HIGHLIGHTED ${options.lang}</code></pre>`,
+					codeToHtml: (_code: string, { lang }: { lang: string }) =>
+						`<pre class="shiki"><code>HIGHLIGHTED ${lang}</code></pre>`,
 					loadTheme: async () => {},
 				});
 		});

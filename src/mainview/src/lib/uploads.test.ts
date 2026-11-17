@@ -206,12 +206,19 @@ describe("forgetUnlisted", () => {
 			["shown", { files: [] }],
 			["evicted", { files: [new File(["x"], "big.bin")] }],
 		]);
-		forgetUnlisted(retries, { room: [{ id: "a" }, { id: "shown", nonce: "shown" }], other: [] });
+		forgetUnlisted(retries, { room: [{ nonce: null }, { nonce: "shown" }], other: [] });
 		expect([...retries.keys()]).toEqual(["shown"]);
 	});
 
 	test("reads no list while it holds nothing", () => {
-		const lists = new Proxy({}, { ownKeys: () => { throw new Error("read"); } });
+		const lists = new Proxy(
+			{},
+			{
+				ownKeys: () => {
+					throw new Error("read");
+				},
+			},
+		);
 		expect(() => forgetUnlisted(new Map(), lists)).not.toThrow();
 	});
 });
@@ -220,5 +227,7 @@ describe("forgetUnlisted", () => {
 test("both kinds of send forget their retry data as their message leaves the lists", () => {
 	const source = (file: string) => readFileSync(join(import.meta.dir, "components", file), "utf8");
 	expect(source("Chat.svelte")).toContain("channelMessages.subscribe((all) => forgetUnlisted(retryData, all));");
-	expect(source("ConversationView.svelte")).toContain("dmMessages.subscribe((all) => forgetUnlisted(dmRetryData, all));");
+	expect(source("ConversationView.svelte")).toContain(
+		"dmMessages.subscribe((all) => forgetUnlisted(dmRetryData, all));",
+	);
 });

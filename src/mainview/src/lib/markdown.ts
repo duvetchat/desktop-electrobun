@@ -1,6 +1,6 @@
 import { createSubscriber } from "svelte/reactivity";
 import { renderEmoji } from "./emoji";
-import type { BundledLanguage, Highlighter } from "shiki";
+import type { Highlighter } from "shiki";
 import { getHostURL, isUuid } from "$lib/common/common";
 import { CUSTOM_EMOJI_CLASS, retryEmojis } from "$lib/emoji-retry";
 import { cardLink, parseDuvetLink, type DuvetLink } from "$lib/urls";
@@ -102,6 +102,8 @@ const LANGS = [
 	"dockerfile",
 	"graphql",
 ] as const;
+type Lang = (typeof LANGS)[number];
+const isHighlighted = (lang: string): lang is Lang => (LANGS as readonly string[]).includes(lang);
 
 const DEFAULT_THEME = "github-dark-default";
 // The light theme's: code blocks carry both themes' colors, and app.css shows the one of the theme the app is in. A
@@ -128,11 +130,11 @@ function getHighlighter(): Promise<Highlighter> {
 }
 
 // Loads a language into the highlighter, making it first if need be, once; then what drew its blocks plain draws again.
-function loadLanguage(lang: string) {
+function loadLanguage(lang: Lang) {
 	if (languagesAsked.has(lang)) return;
 	languagesAsked.add(lang);
 	getHighlighter()
-		.then((h) => h.loadLanguage(lang as BundledLanguage))
+		.then((h) => h.loadLanguage(lang))
 		.then(() => redrawCode?.())
 		.catch((err) => console.error(`[Shiki] Couldn't load ${lang}:`, err));
 }
@@ -350,7 +352,7 @@ function applyInline(
 function highlightCode(code: string, lang: string): string {
 	const resolved = LANG_ALIASES[lang] ?? lang;
 	// A block without a language, or in one Duvet doesn't highlight, shows plain and loads nothing.
-	if (!(LANGS as readonly string[]).includes(resolved)) return escapeHtml(code);
+	if (!isHighlighted(resolved)) return escapeHtml(code);
 	if (!highlighter?.getLoadedLanguages().includes(resolved)) {
 		drawsCode();
 		loadLanguage(resolved);

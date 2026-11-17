@@ -142,19 +142,19 @@ describe("analyzeWaveform", () => {
 	// A browser that, like Firefox, rejects an Ogg Opus stream whose first audio page ends at 0. Like any browser, it
 	// takes the buffer it's given, which can't be read again. The analysis decodes in an OfflineAudioContext (#316).
 	class StrictAudioContext {
-			async decodeAudioData(buffer: ArrayBuffer) {
-				const first = pagesOf(structuredClone(buffer, { transfer: [buffer] }))[2].granule;
-				decoded.push(first);
-				if (first === 0n) throw new DOMException("invalid content", "EncodingError");
-				const length = 2880;
-				return {
-					duration: length / 48000,
-					numberOfChannels: 1,
-					sampleRate: 48000,
-					length,
-					getChannelData: () => new Float32Array(length).fill(0.5),
-				};
-			}
+		async decodeAudioData(buffer: ArrayBuffer) {
+			const first = pagesOf(structuredClone(buffer, { transfer: [buffer] }))[2].granule;
+			decoded.push(first);
+			if (first === 0n) throw new DOMException("invalid content", "EncodingError");
+			const length = 2880;
+			return {
+				duration: length / 48000,
+				numberOfChannels: 1,
+				sampleRate: 48000,
+				length,
+				getChannelData: () => new Float32Array(length).fill(0.5),
+			};
+		}
 	}
 
 	test("decodes an Android voice note that the browser can't decode as it is, once repaired", async () => {

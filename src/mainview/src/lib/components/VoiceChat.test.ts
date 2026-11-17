@@ -55,7 +55,10 @@ test("the notices that were there stay: a join unanswered, and a mic that fails 
 // #324: every frame in voice, each user's level made a new set of who speaks and a new amplitudes object, even when
 // nothing they show changed (a user who doesn't speak).
 test("a user's level changes the stores only when what they show changes", () => {
-	const showLevel = voiceChat.slice(voiceChat.indexOf("function showLevel"), voiceChat.indexOf("function averageLevel"));
+	const showLevel = voiceChat.slice(
+		voiceChat.indexOf("function showLevel"),
+		voiceChat.indexOf("function averageLevel"),
+	);
 	expect(showLevel).toMatch(/if \(get\(speakingUsers\)\.has\(userId\) !== speaking\)/);
 	expect(showLevel).toMatch(/if \(get\(userAmplitudes\)\[userId\] !== amplitude\)/);
 });

@@ -3,7 +3,7 @@
 // cross-platform rendering. We mirror that by swapping every Unicode emoji
 // for an <img> tag pointing to the Twemoji CDN.
 
-const TWEMOJI_BASE = "https://cdn.jsdelivr.net/gh/jdecked/twemoji@16.0.1/assets/svg";
+const TWEMOJI_ASSETS = "https://cdn.jsdelivr.net/gh/jdecked/twemoji@16.0.1/assets";
 
 // Some non-standard ZWJ sequences (not in the Unicode RGI list) are stored
 // by Twemoji using their non-qualified form (FE0F stripped entirely).
@@ -13,19 +13,22 @@ const TWEMOJI_OVERRIDES: Record<string, string> = {
 	"\u{1F441}\uFE0F\u200D\u{1F5E8}\uFE0F": "1f441-200d-1f5e8", // 👁️‍🗨️
 };
 
-/** Convert a Unicode emoji to its Twemoji CDN URL. */
-export function toTwemojiUrl(emoji: string): string {
-	if (TWEMOJI_OVERRIDES[emoji]) {
-		return `${TWEMOJI_BASE}/${TWEMOJI_OVERRIDES[emoji]}.svg`;
-	}
-	// Twemoji SVG filenames = lowercase hex codepoints joined by "-".
+/**
+ * A Unicode emoji's Twemoji image on the CDN: its 72×72 PNG, sharp up to 3× at the inline size (1.375em), or, for a
+ * large one (3rem, an emoji-only message's), its SVG. Chromium loads each distinct SVG as a document of its own: 300
+ * emojis took 19.3 MB as SVGs, 1.9 MB as PNGs (#331).
+ */
+export function toTwemojiUrl(emoji: string, large = false): string {
+	const file = (name: string) => (large ? `${TWEMOJI_ASSETS}/svg/${name}.svg` : `${TWEMOJI_ASSETS}/72x72/${name}.png`);
+	if (TWEMOJI_OVERRIDES[emoji]) return file(TWEMOJI_OVERRIDES[emoji]);
+	// Twemoji's file names = lowercase hex codepoints joined by "-".
 	// FE0F (variation selector-16) rules:
 	//  • ZWJ sequences (contain 200d): keep FE0F — e.g. ❤️‍🔥 = 2764-fe0f-200d-1f525
 	//  • Simple emojis: strip FE0F — e.g. 🗣️ = 1f5e3 (NOT 1f5e3-fe0f)
 	const raw = [...emoji].map((c) => c.codePointAt(0)!.toString(16));
 	const hasZwj = raw.includes("200d");
 	const codepoints = hasZwj ? raw : raw.filter((cp) => cp !== "fe0f");
-	return `${TWEMOJI_BASE}/${codepoints.join("-")}.svg`;
+	return file(codepoints.join("-"));
 }
 
 // Regex that matches one "grapheme cluster" worth of emoji — covers most
@@ -46,7 +49,7 @@ export function renderEmoji(text: string, large = false): string {
 	const escaped = text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
 	return escaped.replace(EMOJI_REGEX, (emoji) => {
-		const url = toTwemojiUrl(emoji);
+		const url = toTwemojiUrl(emoji, large);
 		return `<img class="${cls}" src="${url}" alt="${emoji}" draggable="false" loading="lazy">`;
 	});
 }

@@ -46,13 +46,7 @@
 	import { gatewayMessageToMessage, isEphemeral, isNotice, MessageReferenceType } from "$lib/types";
 	import { sendMessage, sendVoiceNote, sendTypingIndicator, sendRecordingIndicator } from "$lib/api/messages";
 	import { MessageType } from "$lib/types";
-	import {
-		currentUser,
-		gatewaySpaces,
-		noteOwnTyping,
-		spaceEmojis,
-		spaceStickers,
-	} from "$lib/stores.svelte";
+	import { currentUser, gatewaySpaces, noteOwnTyping, spaceEmojis, spaceStickers } from "$lib/stores.svelte";
 	import { toast } from "$lib/stores/toast.svelte";
 	import TypingIndicator from "$lib/components/TypingIndicator.svelte";
 	import { noticeDue } from "$lib/typing";

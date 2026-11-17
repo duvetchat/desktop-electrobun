@@ -115,26 +115,32 @@ describe("an analysis and a WAV", () => {
 		) {
 			rates.push(sampleRate);
 		}
-		decodeAudioData(_data: ArrayBuffer): Promise<AudioBuffer> {
+		decodeAudioData(_data: ArrayBuffer) {
 			decoding++;
 			most = Math.max(most, decoding);
 			const rate = this.sampleRate;
-			return new Promise((resolve) =>
+			const samples = new Float32Array(2 * rate).fill(0.25);
+			const buffer = {
+				duration: 2,
+				length: 2 * rate,
+				sampleRate: rate,
+				numberOfChannels: 1,
+				getChannelData: () => samples,
+			};
+			return new Promise<typeof buffer>((resolve) =>
 				pending.push(() => {
 					decoding--;
-					const samples = new Float32Array(2 * rate).fill(0.25);
-					resolve({
-						duration: 2,
-						length: 2 * rate,
-						sampleRate: rate,
-						numberOfChannels: 1,
-						getChannelData: () => samples,
-					} as unknown as AudioBuffer);
+					resolve(buffer);
 				}),
 			);
 		}
 	}
 	const realFetch = globalThis.fetch;
+	let fetched: { mockRestore(): void } | undefined;
+	// Opening an audio device is what the analysis must not do.
+	function NoAudioDevice() {
+		throw new Error("an audio device opened");
+	}
 	const settle = () => Bun.sleep(0);
 
 	beforeEach(() => {
@@ -143,19 +149,17 @@ describe("an analysis and a WAV", () => {
 		decoding = most = 0;
 		Object.assign(globalThis, {
 			OfflineAudioContext: FakeOfflineContext,
-			AudioContext: class {
-				constructor() {
-					throw new Error("an audio device opened");
-				}
-			},
+			AudioContext: NoAudioDevice,
 		});
-		spyOn(globalThis, "fetch").mockImplementation(((input: RequestInfo | URL, init?: RequestInit) =>
-			String(input).startsWith("blob:")
+		const url = (input: RequestInfo | URL) =>
+			typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+		fetched = spyOn(globalThis, "fetch").mockImplementation(((input: RequestInfo | URL, init?: RequestInit) =>
+			url(input).startsWith("blob:")
 				? realFetch(input, init)
 				: Promise.resolve(new Response(new Uint8Array(32)))) as typeof fetch);
 	});
 	afterEach(() => {
-		(globalThis.fetch as unknown as { mockRestore(): void }).mockRestore();
+		fetched?.mockRestore();
 		Reflect.deleteProperty(globalThis, "OfflineAudioContext");
 		Reflect.deleteProperty(globalThis, "AudioContext");
 		waveformCache.clear();
