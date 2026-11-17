@@ -20,23 +20,50 @@ import type { StorageBucket } from "$lib/api/user";
 
 const MAX_CACHED_CHANNELS = 50;
 
+/** The messages of a page the API gives, which a list is cut back to (#326). */
+export const MESSAGE_PAGE = 100;
+/** How many messages a list keeps on screen while its reader is at its bottom, before it's cut back to its newest page. */
+export const LIST_ON_SCREEN_MAX = 200;
+
+type Listed = { id: string; nonce?: string | null };
+
+/** A list cut to its newest page: its newest MESSAGE_PAGE messages by ID, in its order, and those being sent (their ID is
+ * their nonce). One of a page or less is returned as it is. */
+export function newestPage<T extends Listed>(list: T[]): T[] {
+	const sent = list.flatMap((m) => (m.id === m.nonce ? [] : [m.id])).sort();
+	if (sent.length <= MESSAGE_PAGE) return list;
+	const oldestKept = sent[sent.length - MESSAGE_PAGE];
+	return list.filter((m) => m.id === m.nonce || m.id >= oldestKept);
+}
+
 /** The message lists of chats, by chat. Their views hold the lists they show (keep). */
 export interface MessageListsStore<T> extends Writable<Record<string, T[]>> {
 	/** Holds a chat's list until the function it returns is called: the store never drops a list a view holds, and the
 	 * view's letting go of it counts as its last use. */
 	keep(chat: string): () => void;
+	/** Whether a view holds a chat's list: a live message goes only into those and the lists the store has (#326). */
+	holds(chat: string): boolean;
+	/** Cuts a chat's list back to its newest page when it holds more than `past` messages and no view holds it but the
+	 * one asking: the older ones load again from the API. Tells onTrim's listeners, and says whether it cut. */
+	trim(chat: string, past: number): boolean;
+	/** Hears each list cut back, by its chat: a view that had that chat's start loaded has older messages to load again. */
+	onTrim(listener: (chat: string) => void): () => void;
 }
 
 /**
  * Message lists that keep those of MAX_CACHED_CHANNELS chats at most: past that, the lists used least recently go, a
  * list's use being its last change or the last view that let go of it, never a list a view holds. A change marks only
  * the lists it changed (#320: every change marked every list, in the order the chats came in, so the store dropped
- * the lists it had seen first, the one on screen among them).
+ * the lists it had seen first, the one on screen among them). A list no view holds goes too once a page of messages
+ * came after its last view let go of it (#326): nobody reads them, and the next view loads its newest page.
  */
-function createEvictingMessageStore<T>(): MessageListsStore<T> {
+function createEvictingMessageStore<T extends Listed>(): MessageListsStore<T> {
 	// The chats with a list, least recently used first.
 	const used: string[] = [];
 	const held = new Map<string, number>();
+	// The lists no view holds, by their length as their last view let go of them.
+	const released = new Map<string, number>();
+	const trimListeners = new Set<(chat: string) => void>();
 	const inner = writable<Record<string, T[]>>({});
 
 	function use(chat: string) {
@@ -49,17 +76,26 @@ function createEvictingMessageStore<T>(): MessageListsStore<T> {
 	function note(before: Record<string, T[]>, next: Record<string, T[]>) {
 		for (const chat of Object.keys(next)) if (next[chat] !== before[chat]) use(chat);
 		for (let i = used.length - 1; i >= 0; i--) if (!Object.hasOwn(next, used[i])) used.splice(i, 1);
+		for (const chat of released.keys()) if (!Object.hasOwn(next, chat)) released.delete(chat);
+	}
+
+	function drop(data: Record<string, T[]>, chat: string) {
+		delete data[chat];
+		const at = used.indexOf(chat);
+		if (at > -1) used.splice(at, 1);
+		released.delete(chat);
 	}
 
 	function evict(data: Record<string, T[]>): Record<string, T[]> {
-		let over = used.length - MAX_CACHED_CHANNELS;
-		if (over <= 0) return data;
+		const grown = [...released].filter(([chat, length]) => (data[chat]?.length ?? 0) > length + MESSAGE_PAGE);
+		let over = used.length - grown.length - MAX_CACHED_CHANNELS;
+		if (over <= 0 && grown.length === 0) return data;
 		const result = { ...data };
+		for (const [chat] of grown) drop(result, chat);
 		for (const chat of [...used]) {
-			if (over === 0) break;
+			if (over <= 0) break;
 			if (held.has(chat)) continue;
-			delete result[chat];
-			used.splice(used.indexOf(chat), 1);
+			drop(result, chat);
 			over--;
 		}
 		return result;
@@ -80,15 +116,39 @@ function createEvictingMessageStore<T>(): MessageListsStore<T> {
 		},
 		keep(chat: string) {
 			held.set(chat, (held.get(chat) ?? 0) + 1);
+			released.delete(chat);
 			let holding = true;
 			return () => {
 				if (!holding) return;
 				holding = false;
 				const left = (held.get(chat) ?? 1) - 1;
-				if (left > 0) held.set(chat, left);
-				else held.delete(chat);
-				if (used.includes(chat)) use(chat);
+				if (left > 0) {
+					held.set(chat, left);
+					return;
+				}
+				held.delete(chat);
+				const list = get(inner)[chat];
+				if (list) {
+					released.set(chat, list.length);
+					use(chat);
+				}
 			};
+		},
+		holds(chat: string) {
+			return held.has(chat);
+		},
+		trim(chat: string, past: number) {
+			const list = get(inner)[chat];
+			if (!list || (held.get(chat) ?? 0) > 1 || list.filter((m) => m.id !== m.nonce).length <= past) return false;
+			const kept = newestPage(list);
+			inner.update((all) => ({ ...all, [chat]: kept }));
+			if (released.has(chat)) released.set(chat, kept.length);
+			for (const listener of trimListeners) listener(chat);
+			return true;
+		},
+		onTrim(listener: (chat: string) => void) {
+			trimListeners.add(listener);
+			return () => trimListeners.delete(listener);
 		},
 	};
 }

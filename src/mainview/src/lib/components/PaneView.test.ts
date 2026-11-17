@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
@@ -26,4 +26,48 @@ test("a room's older page that fails is asked for again after a wait, never take
 	expect(failed).toContain("aboveFailedAt.set(channelId, Date.now());");
 	expect(failed).not.toContain("channelHasMore[channelId]");
 	expect(pane).toContain("const RETRY_WAIT = 2_000;");
+});
+
+// #326: a room's list only grew, its older pages and the messages that came, and a room shown again mounted all of it.
+// What a browser checked against a running app, kept here; the store's part is in message-stores.test.ts.
+describe("a room's list cut back to its newest page", () => {
+	const pane = source("PaneView.svelte");
+	const effectWith = (line: string) => {
+		const at = pane.indexOf(line);
+		return pane.slice(pane.lastIndexOf("$effect(", at), pane.indexOf("\n\t});", at));
+	};
+
+	test("as its pane leaves it at the present, and not as a READY takes the panes down", () => {
+		// Only when the room shown changes, or the pane goes: not each time the pane's node is made anew.
+		expect(pane).toContain('const heldRoom = $derived(node.kind === "leaf" ? node.activeChannelId : null);');
+		const held = effectWith("const release = channelMessages.keep(room);");
+		expect(held).toContain("const room = heldRoom;");
+		expect(held).toMatch(
+			/if \(!channelHasMoreBelow\[room\] && get\(friendsReady\)\) channelMessages\.trim\(room, MESSAGE_PAGE\);\s*release\(\);/,
+		);
+	});
+
+	test("while its reader is at its bottom, once it holds more than LIST_ON_SCREEN_MAX", () => {
+		const atBottom = effectWith("channelMessages.trim(room, LIST_ON_SCREEN_MAX)");
+		expect(atBottom).toContain("if (!room || !paneIsAtBottom || channelHasMoreBelow[room]) return;");
+		expect(atBottom).toContain("($channelMessages[room]?.length ?? 0) > LIST_ON_SCREEN_MAX");
+		// After the update that brought the message: cut in the same one, the list didn't see it come (lib/arrivals.ts).
+		expect(atBottom).toContain("void tick().then(() => channelMessages.trim(room, LIST_ON_SCREEN_MAX));");
+	});
+
+	test("leaves older messages to load again, in every pane that had the room", () => {
+		expect(pane).toMatch(/channelMessages\.onTrim\(\(room\) => \{\s*channelHasMore\[room\] = true;\s*\}\)/);
+	});
+
+	test("drops an older page that comes once its cursor is cut away", () => {
+		const loadMore = pane.slice(pane.indexOf("async function loadMoreMessages()"), pane.indexOf("function startJump("));
+		expect(loadMore).toMatch(
+			/clearTimeout\(timeoutId\);\s*\/\/[^\n]*\n(\s*\/\/[^\n]*\n)*\s*if \(!get\(channelMessages\)\[channelId\]\?\.some\(\(m\) => m\.id === oldest\)\) return;/,
+		);
+	});
+
+	test("loads a room's newest page again once the store dropped its list", () => {
+		expect(pane).toContain("const list = get(channelMessages)[channelId];");
+		expect(pane).toContain("if (list && (list.length > 0 || !hasServerMsgs)) return;");
+	});
 });

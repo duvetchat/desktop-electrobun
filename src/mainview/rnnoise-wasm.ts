@@ -1,4 +1,5 @@
-import { readFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Plugin } from "vite";
 
@@ -31,20 +32,36 @@ export async function readRnnoiseWasm(): Promise<{ file: string; base64: string 
 }
 
 /**
- * Serves "virtual:rnnoise-wasm", RNNoise's WebAssembly as a base64 string read out of the package at build time.
- * The noise-suppression worklet can't fetch it, and compiling it there would hold up the audio thread, so the main
- * thread compiles this and hands the module over; the package's own loader compiles and instantiates in one step and
- * gives the module to nobody.
+ * Serves "virtual:rnnoise-wasm" as the URL of RNNoise's WebAssembly, read out of the package and written to a file of
+ * its own in Vite's cache folder, which Vite serves in development and emits as an asset in a build
+ * (_app/immutable/assets, which the packaged app copies with _app). The noise-suppression worklet can't fetch it, and
+ * compiling it there would hold up the audio thread, so the main thread fetches and compiles it and hands the module
+ * over; the package's own loader compiles and instantiates in one step and gives the module to nobody. As a base64
+ * string in its chunk, its 4.8 MB stayed in memory from the first call on (#330).
  */
 export function rnnoiseWasm(): Plugin {
+	let cacheDir = "";
 	return {
 		name: "rnnoise-wasm",
+		configResolved(config) {
+			cacheDir = config.cacheDir;
+		},
 		resolveId: (source) => (source === ID ? RESOLVED : undefined),
 		async load(id) {
 			if (id !== RESOLVED) return;
-			const { file, base64 } = await readRnnoiseWasm();
-			this.addWatchFile(file);
-			return `export default ${JSON.stringify(base64)};`;
+			const { bundle, code } = await writeRnnoiseWasm(cacheDir);
+			this.addWatchFile(bundle);
+			return code;
 		},
 	};
+}
+
+/** Writes the WebAssembly to a file of its own in a folder (Vite's cache), and gives the virtual module that's its URL,
+ * with the package's bundle it came from, for Vite to watch. */
+export async function writeRnnoiseWasm(dir: string): Promise<{ bundle: string; code: string }> {
+	const { file, base64 } = await readRnnoiseWasm();
+	const wasm = join(dir, "rnnoise.wasm");
+	await mkdir(dir, { recursive: true });
+	await writeFile(wasm, new Uint8Array(Buffer.from(base64, "base64")));
+	return { bundle: file, code: `export { default } from ${JSON.stringify(wasm.replaceAll("\\", "/") + "?url")};` };
 }

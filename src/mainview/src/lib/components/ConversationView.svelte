@@ -25,7 +25,7 @@
 </script>
 
 <script lang="ts">
-	import { onMount, untrack, type Snippet } from "svelte";
+	import { onMount, tick, untrack, type Snippet } from "svelte";
 	import { get } from "svelte/store";
 	import { showChat } from "$lib/on-screen";
 	import { DropdownMenu } from "bits-ui";
@@ -47,6 +47,9 @@
 		jumpToMessageRequest,
 		gatewaySpaces,
 		userActivities,
+		friendsReady,
+		LIST_ON_SCREEN_MAX,
+		MESSAGE_PAGE,
 	} from "$lib/stores.svelte";
 	import { conversationLeft, sendEventMessage, getUserMobileOnly, getUserOnlineStatus } from "$lib/api/ws/connection";
 	import { joinConversationCall, startConversationCall } from "$lib/voice";
@@ -313,6 +316,8 @@
 			const fetched = await getDirectMessages(convId, before);
 			// A page that comes once the view is gone, or a jump has started (its pages are what the list shows), is dropped.
 			if (jump !== jumps) return true;
+			// And so is an older page once its cursor was cut away (#326): the next scroll up asks from the list's oldest.
+			if (before && !get(dmMessages)[convId]?.some((m) => m.id === before)) return true;
 			hasMore = fetched.length === 100;
 			dmMessages.update((all) => {
 				const existing = all[convId] ?? [];
@@ -854,6 +859,10 @@
 		const hide = showChat(convId);
 		// Its list stays in the store while this view shows it (#320).
 		const release = dmMessages.keep(convId);
+		// A list cut back has older messages to load again (#326).
+		const unhear = dmMessages.onTrim((chat) => {
+			if (chat === convId) hasMore = true;
+		});
 		hadUnread = get(unreadConversations).has(convId);
 		unreadConversations.update((s) => {
 			s.delete(convId);
@@ -889,11 +898,25 @@
 			// Not for a conversation the user left (or was removed from), whose messages stop reaching them: its view goes
 			// after conversationLeft forgot its list.
 			const stillIn = get(conversations).some((c) => c.id === convId);
+			// Left at the present, the list goes back to its newest page, which is all the next view opens on, as a room's
+			// does (#326). Not as a READY takes the views down, as the reader's place is kept for the next ones.
+			if (!hasMoreBelow && get(friendsReady)) dmMessages.trim(convId, MESSAGE_PAGE);
 			keepList(convId, listFetched && !hasMoreBelow && stillIn ? get(dmMessages)[convId] : null, hasMore, session);
 			activeDMConvId.update((cur) => (cur === convId ? null : cur));
 			hide();
 			release();
+			unhear();
 		};
+	});
+
+	// On screen, the list is cut back to its newest page once its reader is at its bottom with more than
+	// LIST_ON_SCREEN_MAX messages in it, as a room's is (#326), after the update that brought the message.
+	$effect(() => {
+		const convId = conversation?.id;
+		if (!convId || !isAtBottom || hasMoreBelow) return;
+		if (($dmMessages[convId]?.length ?? 0) > LIST_ON_SCREEN_MAX) {
+			void tick().then(() => dmMessages.trim(convId, LIST_ON_SCREEN_MAX));
+		}
 	});
 </script>
 

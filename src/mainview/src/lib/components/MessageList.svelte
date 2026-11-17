@@ -448,6 +448,13 @@
 
 	// ── Reaction helpers ──────────────────────────────────────────────────────
 	let reactingMessageId = $state<string | null>(null);
+	// The row the pointer is on, the one whose action toolbar is mounted, followed by one handler on the list: every row
+	// mounted its own toolbar, hidden until hovered (#326).
+	let hoveredMessageId = $state<string | null>(null);
+	function hoverRow(e: MouseEvent) {
+		const row = e.target instanceof Element ? e.target.closest<HTMLElement>("[data-message-id]") : null;
+		hoveredMessageId = row?.dataset.messageId ?? null;
+	}
 
 	const isConversation = $derived(!spaceId);
 
@@ -867,11 +874,16 @@
 
 <!-- The space under the newest message is the list's padding (pb-4), not that message's margin: a margin that changes
      when another message comes below it stops the browser from keeping the reader's place (scroll anchoring). -->
+<!-- Its mouse handlers only follow the pointer's row, for that row's action toolbar (hoverRow), as :hover did. -->
+<!-- svelte-ignore a11y_no_static_element_interactions -->
+<!-- svelte-ignore a11y_mouse_events_have_key_events -->
 <div
 	bind:this={scrollEl}
 	class="flex flex-1 flex-col-reverse overflow-x-clip overflow-y-auto px-4 pt-2 pb-4"
 	onscroll={handleScroll}
 	oncopy={handleCopy}
+	onmouseover={hoverRow}
+	onmouseleave={() => (hoveredMessageId = null)}
 >
 	{#if isInitialLoading}
 		<div class="flex flex-col-reverse gap-4 pb-2">
@@ -999,9 +1011,9 @@
 						{/if}
 						<span class="ml-1 text-xs text-zinc-500">{formatTimestamp(message.created_at, now)}</span>
 					</p>
-					{#if canDeleteNotices}
+					{#if canDeleteNotices && hoveredMessageId === message.id}
 						<div
-							class="absolute -top-3 right-2 z-10 hidden overflow-hidden rounded border border-zinc-800 bg-zinc-700 shadow-sm group-hover:flex"
+							class="absolute -top-3 right-2 z-10 flex overflow-hidden rounded border border-zinc-800 bg-zinc-700 shadow-sm"
 						>
 							{@render deleteButton(message)}
 						</div>
@@ -1250,12 +1262,9 @@
 								onclick={() => onDismiss(message.nonce!)}>Dismiss</button
 							>
 						</div>
-					{:else if !isPending && !ephemeral && $currentUser && message.author_id === $currentUser.id && editingMessageId !== message.id}
+					{:else if (hoveredMessageId === message.id || reactingMessageId === message.id) && !isPending && !ephemeral && $currentUser && message.author_id === $currentUser.id && editingMessageId !== message.id}
 						<div
-							class="absolute -top-3 right-2 z-10 overflow-hidden rounded border border-zinc-800 bg-zinc-700 shadow-sm transition-opacity {reactingMessageId ===
-							message.id
-								? 'flex'
-								: 'hidden group-hover:flex'}"
+							class="absolute -top-3 right-2 z-10 flex overflow-hidden rounded border border-zinc-800 bg-zinc-700 shadow-sm"
 						>
 							<Popover.Root
 								bind:open={() => reactingMessageId === message.id, (v) => (reactingMessageId = v ? message.id : null)}
@@ -1403,12 +1412,9 @@
 							<div class="w-px bg-zinc-800"></div>
 							{@render deleteButton(message)}
 						</div>
-					{:else if !isPending && !ephemeral && $currentUser && message.author_id !== $currentUser.id && editingMessageId !== message.id}
+					{:else if (hoveredMessageId === message.id || reactingMessageId === message.id) && !isPending && !ephemeral && $currentUser && message.author_id !== $currentUser.id && editingMessageId !== message.id}
 						<div
-							class="absolute -top-3 right-2 z-10 overflow-hidden rounded border border-zinc-800 bg-zinc-700 shadow-sm transition-opacity {reactingMessageId ===
-							message.id
-								? 'flex'
-								: 'hidden group-hover:flex'}"
+							class="absolute -top-3 right-2 z-10 flex overflow-hidden rounded border border-zinc-800 bg-zinc-700 shadow-sm"
 						>
 							<Popover.Root
 								bind:open={() => reactingMessageId === message.id, (v) => (reactingMessageId = v ? message.id : null)}
