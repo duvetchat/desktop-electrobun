@@ -1556,11 +1556,14 @@ export function gatewaySpaceToMembers(
 	space: GatewaySpace,
 	statusLookup?: ReadonlyMap<string, Presence>,
 ): MemberOnSidebar[] {
-	const memberUserIds = new Set(space.members.map((m) => m.user_id));
+	// By user and by ID, looked up once each: with a find per user (and per role), every presence or voice change cost
+	// the square of the members loaded, for the app page and each pane (#327).
+	const memberOf = new Map(space.members.map((m) => [m.user_id, m]));
+	const roleOf = new Map(space.roles.map((r) => [r.id, r]));
 	return space.users
-		.filter((u) => memberUserIds.has(u.id))
+		.filter((u) => memberOf.has(u.id))
 		.map((u) => {
-			const member = space.members.find((m) => m.user_id === u.id);
+			const member = memberOf.get(u.id);
 			return {
 				id: u.id,
 				member_id: member?.id ?? "",
@@ -1575,7 +1578,7 @@ export function gatewaySpaceToMembers(
 				is_owner: u.id === space.owner_id,
 				bio: u.custom ?? "",
 				roles: (space.member_roles[u.id] ?? [])
-					.map((roleId) => space.roles.find((r) => r.id === roleId))
+					.map((roleId) => roleOf.get(roleId))
 					.filter(Boolean)
 					.map((r) => ({
 						id: r!.id,

@@ -64,12 +64,8 @@ describe("EmbedPlayer", () => {
 // sends the one before back to its poster.
 test("starting a player sends the one playing back to its poster", () => {
 	const source = readFileSync(join(import.meta.dir, "EmbedPlayer.svelte"), "utf8");
-	expect(source).toMatch(
-		/<script module lang="ts">[\s\S]*const nowPlaying = writable<symbol \| null>\(null\);[\s\S]*<\/script>/,
-	);
+	expect(source).toMatch(/<script module lang="ts">[\s\S]*const nowPlaying = writable<symbol \| null>\(null\);[\s\S]*<\/script>/);
 	expect(source).toMatch(/function play\(\) \{\s*played = url;\s*nowPlaying\.set\(me\);\s*\}/);
-	expect(source).toMatch(
-		/\$effect\(\(\) => \{\s*if \(\$nowPlaying !== null && \$nowPlaying !== me\) played = undefined;\s*\}\);/,
-	);
+	expect(source).toMatch(/\$effect\(\(\) => \{\s*if \(\$nowPlaying !== null && \$nowPlaying !== me\) played = undefined;\s*\}\);/);
 	expect(source).toContain("onclick={play}");
 });
