@@ -2,41 +2,58 @@ import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-const source = (file: string) => readFileSync(join(import.meta.dir, file), "utf8");
+const source = (file: string) => readFileSync(join(import.meta.dir, file), "utf8").replaceAll("\r\n", "\n");
+const players = ["VoiceNotePlayer.svelte", "AudioFilePlayer.svelte"];
 
-// An audio file plays from the WAV its analysis made when the browser can't play it as it is (fileWavUrl), once that
-// analysis is done, as a voice note does; and what it keeps for the next player of it (a voice note's, in Settings →
-// Attachments) holds a WAV under wavUrl or nothing, never the file's own URL (#118).
-test("an audio file's player plays from the WAV there is, and keeps nothing else as one", () => {
-	const player = source("AudioFilePlayer.svelte");
-	expect(player).toContain("wavSrc = fileWavUrl(result) ?? null;");
-	expect(player).toContain(
-		"keepWaveform(attachmentId, { bars, duration: localDuration, wavUrl: wavSrc ?? undefined });",
-	);
-	expect(player).toContain("wavSrc = cached.wavUrl ?? null;");
-	expect(player).toContain("await analysis;");
-	expect(player.match(/playVoiceNote\(wavSrc \?\? src,/g)).toHaveLength(2);
-	expect(player).not.toMatch(/playVoiceNote\(src,/);
-	expect(player).not.toContain("wavUrl: url");
+// #316: a player's analysis gives its bars and duration only, and keeps them for the next player of its audio; the WAV
+// to play from, which holds every sample, is made as the audio is played, where every player made one as it mounted.
+test("a player's analysis makes no WAV, and keeps only what it found", () => {
+	for (const file of players) {
+		const player = source(file);
+		const analysis = player.slice(
+			player.indexOf("async function loadAndAnalyze"),
+			player.indexOf("\n\t}\n", player.indexOf("async function loadAndAnalyze")),
+		);
+		expect(analysis).toContain("await analyzeWaveform(streamUrl, BAR_COUNT);");
+		expect(analysis).not.toMatch(/wavUrlOf|makeWav|wavSrc =/);
+		expect(player).not.toContain("wavBuf");
+	}
+	// Whether the audio needed the repair goes with them: an audio file's next player plays from a WAV only then.
+	for (const file of players) {
+		const player = source(file);
+		expect(player).toContain("keepWaveform(attachmentId, { bars, duration: localDuration, repaired });");
+		expect(player).toContain("keepWaveform(attachmentId, { bars, duration: localDuration, repaired, wavUrl: url });");
+		expect(player).toMatch(/repaired = cached\.repaired \?\? false;/);
+	}
 });
 
-test("a voice note's player plays what it was kept with, a WAV or, without one, the file", () => {
-	const player = source("VoiceNotePlayer.svelte");
-	expect(player).toContain("wavSrc = cached.wavUrl ?? null;");
-	expect(player).toContain("keepWaveform(attachmentId, { bars, duration: localDuration, wavUrl: wavSrc });");
+// A voice note always plays from a WAV: an Android voice note doesn't play as it is in Firefox (#118). An audio file
+// plays as it is, from its WAV only when this browser could decode it only once repaired.
+test("the WAV is made as the audio plays, once, and only when a file needs one", () => {
+	for (const file of players) {
+		const player = source(file);
+		expect(player.match(/makeWav\(/g)).toHaveLength(1);
+		expect(player).toMatch(/wavMaking \?\?= makeWav\(/);
+	}
+	const note = source("VoiceNotePlayer.svelte");
+	expect(note).toContain("const from = (await wav()) ?? src;");
+	const audioFile = source("AudioFilePlayer.svelte");
+	expect(audioFile).toContain("await analysis;");
+	expect(audioFile).toContain("const from = (repaired ? await wav() : null) ?? src;");
+	for (const player of [note, audioFile]) {
+		// Played or sought, it plays from there, once it has it, if no other note was asked to play meanwhile.
+		expect(player.match(/playVoiceNote\(/g)).toHaveLength(1);
+		expect(player).toMatch(/if \(destroyed \|\| voiceNotePlayRequests\(\) !== requests\) return;\s*playVoiceNote\(from,/);
+	}
 });
 
 // Each player holds the WAV it plays from while it's there, the one kept for it as the one it made (lib/audio/
-// waveform.ts), and lets go of it when it goes; one that's gone before its analysis ends makes none (#167).
-test("a player holds its WAV while it's there, and makes none once it's gone", () => {
-	for (const file of ["VoiceNotePlayer.svelte", "AudioFilePlayer.svelte"]) {
+// waveform.ts), and lets go of it when it goes; one made after it's gone is let go of at once (#167).
+test("a player holds its WAV while it's there, and lets go of one made once it's gone", () => {
+	for (const file of players) {
 		const player = source(file);
 		expect(player).toMatch(/onDestroy\(\(\) => \{\s*destroyed = true;\s*\/\/[^\n]*\n\s*releaseWav\(wavSrc\);\s*\}\);/);
 		expect(player).toMatch(/wavSrc = cached\.wavUrl \?\? null;\s*holdWav\(wavSrc\);/);
-		const analyzed = player.indexOf("await analyzeWaveform(streamUrl, BAR_COUNT);");
-		const gone = player.indexOf("if (destroyed) return;", analyzed);
-		expect(analyzed).toBeGreaterThan(-1);
-		expect(gone).toBeGreaterThan(analyzed);
-		expect(player.indexOf("wavSrc = ", analyzed)).toBeGreaterThan(gone);
+		expect(player).toMatch(/if \(destroyed\) \{\s*releaseWav\(url\);\s*return null;\s*\}/);
 	}
 });

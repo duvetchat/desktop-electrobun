@@ -1,12 +1,14 @@
 import { repairOggOpus } from "$lib/audio/ogg";
 
 /** What the players of an attachment's audio know of it from its analysis (analyzeWaveform), for its next player: its
- * bars, its duration, and, when it's to play from one, a WAV of it. A voice note always plays from its WAV; an audio
- * file only when this browser couldn't decode it as it is (fileWavUrl). wavUrl holds nothing but a WAV (#118), and only
- * while something holds it (holdWav): a WAV let go of is forgotten here with it (releaseWav, #167). */
+ * bars, its duration, whether this browser could decode it only once repaired, and the WAV a player made of it as it
+ * played it, if one still holds it (makeWav, #316). A voice note always plays from a WAV; an audio file only when it
+ * needed the repair. wavUrl holds nothing but a WAV (#118), and only while something holds it (holdWav): a WAV let go
+ * of is forgotten here (releaseWav, #167). */
 export interface Waveform {
 	bars: number[];
 	duration: number;
+	repaired?: boolean;
 	wavUrl?: string;
 }
 
@@ -55,17 +57,9 @@ export function releaseWav(url: string | null | undefined) {
 	}
 	wavHolds.delete(url);
 	URL.revokeObjectURL(url);
-	for (const [attachmentId, waveform] of waveformCache) {
-		if (waveform.wavUrl === url) waveformCache.delete(attachmentId);
+	for (const [attachmentId, { wavUrl, ...rest }] of waveformCache) {
+		if (wavUrl === url) waveformCache.set(attachmentId, rest);
 	}
-}
-
-/** The WAV an audio file plays from, if any: none for one this browser decoded as it is, which plays as it is (a file
- * can be long, and its WAV holds every sample); for one it could decode only once repaired, which it can't play as it
- * is either (an Android voice recording, in Firefox: lib/audio/ogg.ts), the WAV its analysis made, as a voice note plays
- * from (#118), held for the caller (wavUrlOf). */
-export function fileWavUrl(result: { repaired: boolean; wavBuf: ArrayBuffer }): string | undefined {
-	return result.repaired ? wavUrlOf(result.wavBuf) : undefined;
 }
 
 export function fallbackBars(seed: string, barCount: number): number[] {
@@ -81,37 +75,74 @@ export function fallbackBars(seed: string, barCount: number): number[] {
 	return result;
 }
 
-/** The bars of some audio's waveform, its duration and a WAV of it, from what this browser decodes of it; repaired says
- * it could decode it only once repaired, and so can't play it as it is either. */
-export async function analyzeWaveform(
-	url: string,
-	barCount: number,
-): Promise<{ bars: number[]; duration: number; wavBuf: ArrayBuffer; repaired: boolean }> {
+// The rate bars are decoded at: plenty for 80 bars, and a sixth of the samples of a decode at 48 kHz. A browser that
+// refuses it (an older WebKit) decodes at 44.1 kHz.
+const BARS_RATE = 8000;
+// The rate a WAV to play from is made at, Opus's own.
+const WAV_RATE = 48000;
+
+// Two decodes for bars run at most at once: a chat that opened with many notes decoded them all together (#316). A
+// note's WAV, made as it's played, waits for none of them.
+const MAX_DECODES = 2;
+let decodes = 0;
+const turns: (() => void)[] = [];
+async function inTurn<T>(work: () => Promise<T>): Promise<T> {
+	if (decodes < MAX_DECODES) decodes++;
+	else await new Promise<void>((go) => turns.push(go));
+	try {
+		return await work();
+	} finally {
+		// The place goes to the next one waiting, or frees up.
+		const next = turns.shift();
+		if (next) next();
+		else decodes--;
+	}
+}
+
+function decodingContext(rate: number): OfflineAudioContext {
+	try {
+		return new OfflineAudioContext(1, 1, rate);
+	} catch {
+		return new OfflineAudioContext(1, 1, 44100);
+	}
+}
+
+// What this browser decodes of some audio, at a rate, in an OfflineAudioContext, which opens no audio device; repaired
+// says it could decode it only once repaired, and so can't play it as it is either.
+async function decode(url: string, rate: number): Promise<{ decoded: AudioBuffer; repaired: boolean }> {
 	const res = await fetch(url);
 	const buf = await res.arrayBuffer();
-
-	const ctx = new AudioContext();
-	let decoded: AudioBuffer;
-	let repaired = false;
+	const ctx = decodingContext(rate);
 	try {
 		// decodeAudioData detaches the buffer it gets: the original stays for the repair.
-		decoded = await ctx.decodeAudioData(buf.slice(0));
+		return { decoded: await ctx.decodeAudioData(buf.slice(0)), repaired: false };
 	} catch (e) {
 		// An Ogg Opus voice note recorded on Android, which Firefox can't decode as it is (lib/audio/ogg.ts).
 		const fixed = repairOggOpus(buf);
 		if (!fixed) throw e;
-		decoded = await ctx.decodeAudioData(fixed);
-		repaired = true;
-	} finally {
-		ctx.close();
+		return { decoded: await ctx.decodeAudioData(fixed), repaired: true };
 	}
+}
+
+/** A WAV of some audio, held once for the caller (wavUrlOf), to play from: made as it's played, since it holds every
+ * sample (96 KB a second of a mono note), where the players made one as they mounted and kept it (#316). */
+export async function makeWav(url: string): Promise<string> {
+	const { decoded } = await decode(url, WAV_RATE);
+	return wavUrlOf(audioBufferToWav(decoded));
+}
+
+/** The bars of some audio's waveform and its duration, from what this browser decodes of it at a low rate, two at a
+ * time; repaired says it could decode it only once repaired, and so can't play it as it is either. */
+export async function analyzeWaveform(
+	url: string,
+	barCount: number,
+): Promise<{ bars: number[]; duration: number; repaired: boolean }> {
+	const { decoded, repaired } = await inTurn(() => decode(url, BARS_RATE));
 	const duration = decoded.duration;
 	const raw = decoded.getChannelData(0);
 
-	const wavBuf = audioBufferToWav(decoded);
-
 	const blockSize = Math.floor(raw.length / barCount);
-	if (blockSize === 0) return { bars: fallbackBars(url, barCount), duration, wavBuf, repaired };
+	if (blockSize === 0) return { bars: fallbackBars(url, barCount), duration, repaired };
 
 	const result: number[] = [];
 	for (let i = 0; i < barCount; i++) {
@@ -126,7 +157,7 @@ export async function analyzeWaveform(
 	const max = Math.max(...result, 0.001);
 	const bars = result.map((v) => 0.08 + (v / max) * 0.92);
 
-	return { bars, duration, wavBuf, repaired };
+	return { bars, duration, repaired };
 }
 
 function audioBufferToWav(buffer: AudioBuffer): ArrayBuffer {

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import { oggCrc, opusSamples, repairOggOpus } from "$lib/audio/ogg";
-import { analyzeWaveform, fileWavUrl, keepWaveform, MAX_WAVEFORM_CACHE, waveformCache } from "$lib/audio/waveform";
+import { analyzeWaveform, keepWaveform, makeWav, MAX_WAVEFORM_CACHE, waveformCache } from "$lib/audio/waveform";
 
 const SERIAL = 0x4244293a;
 
@@ -130,47 +130,68 @@ describe("opusSamples", () => {
 });
 
 describe("analyzeWaveform", () => {
-	test("decodes an Android voice note that the browser can't decode as it is, once repaired", async () => {
-		const android = file(
+	const android = () =>
+		file(
 			page(2, 0n, 0, [head]),
 			page(0, 0n, 1, [tags]),
 			page(0, 0n, 2, [frame]),
 			page(0, 960n, 3, [frame]),
 			page(0, 1920n, 4, [frame]),
 		);
-		const decoded: bigint[] = [];
-		// A browser that, like Firefox, rejects an Ogg Opus stream whose first audio page ends at 0. Like any browser, it
-		// takes the buffer it's given, which can't be read again.
-		class StrictAudioContext {
-			async decodeAudioData(buffer: ArrayBuffer) {
-				const first = pagesOf(structuredClone(buffer, { transfer: [buffer] }))[2].granule;
-				decoded.push(first);
-				if (first === 0n) throw new DOMException("invalid content", "EncodingError");
-				const length = 2880;
-				return {
-					duration: length / 48000,
-					numberOfChannels: 1,
-					sampleRate: 48000,
-					length,
-					getChannelData: () => new Float32Array(length).fill(0.5),
-				};
-			}
-			close() {}
+	const decoded: bigint[] = [];
+	// A browser that, like Firefox, rejects an Ogg Opus stream whose first audio page ends at 0. Like any browser, it
+	// takes the buffer it's given, which can't be read again. The analysis decodes in an OfflineAudioContext (#316).
+	class StrictAudioContext {
+		async decodeAudioData(buffer: ArrayBuffer) {
+			const first = pagesOf(structuredClone(buffer, { transfer: [buffer] }))[2].granule;
+			decoded.push(first);
+			if (first === 0n) throw new DOMException("invalid content", "EncodingError");
+			const length = 2880;
+			return {
+				duration: length / 48000,
+				numberOfChannels: 1,
+				sampleRate: 48000,
+				length,
+				getChannelData: () => new Float32Array(length).fill(0.5),
+			};
 		}
-		const fetched = spyOn(globalThis, "fetch").mockResolvedValue(new Response(android));
-		const saved = (globalThis as Record<string, unknown>).AudioContext;
-		(globalThis as Record<string, unknown>).AudioContext = StrictAudioContext;
+	}
+
+	test("decodes an Android voice note that the browser can't decode as it is, once repaired", async () => {
+		decoded.length = 0;
+		const fetched = spyOn(globalThis, "fetch").mockResolvedValue(new Response(android()));
+		(globalThis as Record<string, unknown>).OfflineAudioContext = StrictAudioContext;
 		try {
 			const result = await analyzeWaveform("/attachments/a?stream=1", 4);
 			expect(decoded).toEqual([0n, 960n]);
 			expect(result.duration).toBe(0.06);
 			expect(result.bars).toHaveLength(4);
-			expect(new TextDecoder().decode(result.wavBuf.slice(0, 4))).toBe("RIFF");
 			// So it doesn't play as it is either (#118).
 			expect(result.repaired).toBe(true);
 		} finally {
 			fetched.mockRestore();
-			(globalThis as Record<string, unknown>).AudioContext = saved;
+			Reflect.deleteProperty(globalThis, "OfflineAudioContext");
+		}
+	});
+
+	// It plays from its WAV, made as it's played (#316).
+	test("makes the WAV of an Android voice note from its repair", async () => {
+		decoded.length = 0;
+		const fetched = spyOn(globalThis, "fetch").mockResolvedValue(new Response(android()));
+		const created = spyOn(URL, "createObjectURL");
+		(globalThis as Record<string, unknown>).OfflineAudioContext = StrictAudioContext;
+		try {
+			const url = await makeWav("/attachments/a?stream=1");
+			expect(decoded).toEqual([0n, 960n]);
+			expect(created.mock.results[0].value).toBe(url);
+			const [blob] = created.mock.calls[0];
+			if (!(blob instanceof Blob)) throw new Error("the WAV's URL isn't a Blob's");
+			expect(blob.type).toBe("audio/wav");
+			expect(new TextDecoder().decode((await blob.arrayBuffer()).slice(0, 4))).toBe("RIFF");
+		} finally {
+			fetched.mockRestore();
+			created.mockRestore();
+			Reflect.deleteProperty(globalThis, "OfflineAudioContext");
 		}
 	});
 
@@ -189,43 +210,16 @@ describe("analyzeWaveform", () => {
 					getChannelData: () => new Float32Array(length).fill(0.5),
 				};
 			}
-			close() {}
 		}
 		const fetched = spyOn(globalThis, "fetch").mockResolvedValue(new Response(valid));
-		const saved = (globalThis as Record<string, unknown>).AudioContext;
-		(globalThis as Record<string, unknown>).AudioContext = AudioContextAsChromium;
+		(globalThis as Record<string, unknown>).OfflineAudioContext = AudioContextAsChromium;
 		try {
 			const result = await analyzeWaveform("/attachments/a?stream=1", 4);
 			expect(decodes).toBe(1);
 			expect(result.repaired).toBe(false);
 		} finally {
 			fetched.mockRestore();
-			(globalThis as Record<string, unknown>).AudioContext = saved;
-		}
-	});
-});
-
-// An audio file plays as it is where the browser decodes it as it is, and from the WAV its analysis made where it could
-// decode it only once repaired: Firefox and an Android voice recording sent as a file (#118).
-describe("fileWavUrl", () => {
-	const wav = new TextEncoder().encode("RIFF....WAVE").buffer;
-
-	test("gives no WAV for a file the browser decoded as it is, which plays as it is", () => {
-		expect(fileWavUrl({ repaired: false, wavBuf: wav })).toBeUndefined();
-	});
-
-	test("gives the WAV for one it decoded only once repaired", async () => {
-		const created = spyOn(URL, "createObjectURL");
-		try {
-			const url = fileWavUrl({ repaired: true, wavBuf: wav });
-			expect(created).toHaveBeenCalledTimes(1);
-			const [blob] = created.mock.calls[0];
-			expect(created.mock.results[0].value).toBe(url);
-			if (!(blob instanceof Blob)) throw new Error("the WAV's URL isn't a Blob's");
-			expect(blob.type).toBe("audio/wav");
-			expect(await blob.text()).toBe("RIFF....WAVE");
-		} finally {
-			created.mockRestore();
+			Reflect.deleteProperty(globalThis, "OfflineAudioContext");
 		}
 	});
 });
