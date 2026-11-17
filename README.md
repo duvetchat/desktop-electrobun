@@ -76,15 +76,23 @@ desktop/
 ### Prerequisites
 
 - [Bun](https://bun.sh/) >= 1.3
-- [Electrobun CLI](https://electrobun.dev/) (installed via `electrobun` dependency)
+- [Electrobun](https://electrobun.dev/) 2, through the `electrobun` dependency: on its first run it downloads its build
+  tool, Hutch, which keeps Electrobun's runtime, Bun and the other tools it needs in `~/.hutch`, and writes the
+  Electrobun SDK to `.hutch/devkit` (ignored by git), where the app's `electrobun/*` imports come from
 
 ### Install
 
 ```bash
 cd desktop
 bun install
+bun run devkit   # electrobun prepare: the Electrobun SDK, in .hutch/devkit
 cd src/mainview && bun install && cd ../..
 ```
+
+`bun start`, `bun run hmr` and `bun run build:canary` prepare the SDK themselves. `bun run lint` and `bun run check`
+need it, so a fresh checkout runs `bun run devkit` before `src/mainview`'s install, whose `svelte-kit sync` points
+`electrobun/view` at it. The web build (`bun run build` in `src/mainview`, what duvet.chat serves) doesn't need it:
+the SDK's only import runs in the app's window.
 
 ### Development
 
@@ -108,11 +116,27 @@ bun run dev:hmr
 bun run dev
 ```
 
+It rebuilds when a file changes. On Windows, Electrobun 2 waits for the running app to close before it rebuilds.
+
 ### Production Build
 
 ```bash
 bun run build:canary
 ```
+
+### Signing the Windows build
+
+A Windows build is signed when `DUVET_SIGN_ARGS` holds signtool's sign options as a JSON array. Hutch runs
+`scripts/sign-app.ts` once the app is built, before it packs it, and `scripts/sign-installer.ts` once the installer is
+made. With a certificate in the Windows certificate store:
+
+```powershell
+$env:DUVET_SIGN_ARGS = '["/sha1", "<thumbprint>", "/fd", "SHA256", "/tr", "http://timestamp.digicert.com", "/td", "SHA256"]'
+bun run build:canary
+```
+
+It takes the newest Windows SDK's `signtool.exe`, or the one `SIGNTOOL` names. Without `DUVET_SIGN_ARGS` the build
+isn't signed. A self-signed certificate is only good for testing: other computers don't trust it.
 
 ### Formatting
 
@@ -120,34 +144,6 @@ bun run build:canary
 bun run format          # auto-fix
 bun run format:check    # check only
 ```
-
-### Nix
-
-**Development shell** ([devenv](https://devenv.sh/)): `devenv shell` (or `direnv allow`) installs the
-dependencies and swaps Electrobun's downloaded binaries (CLI, bun, CEF) for Nix-patched ones
-(`nix/electrobun.nix`), including the audio (ALSA/PulseAudio/PipeWire), video (VA-API, Vulkan, GL)
-and GTK libraries the call UI needs. Then `bun start` etc. work as above.
-
-**Run or install the app** (x86_64-linux):
-
-```bash
-nix run github:<owner>/desktop-electrobun        # or `nix run .` in a checkout
-nix profile install .                            # or add `overlays.default` to your NixOS config
-```
-
-The package is built with `electrobun build --env=dev`, which yields a plain app directory; the
-other environments produce a self-extracting installer that unpacks into `$HOME` at first run.
-
-Maintenance:
-
-- Bumping `electrobun` in `package.json` also needs `version` and `hashes` in `nix/electrobun.nix`
-  (the build asserts they match).
-- Changing either `bun.lock` needs a new `outputHash` for `nodeModules` in `nix/package.nix`: set it
-  to `lib.fakeHash`, build, copy the hash from the error.
-- Screen capture on Wayland goes through PipeWire and the desktop portal, so `pipewire` and an
-  `xdg-desktop-portal` backend must run on the host (they do on a standard NixOS desktop).
-- GPU drivers come from the host (`/run/opengl-driver/lib` on NixOS); on other distros use
-  [nixGL](https://github.com/nix-community/nixGL), else CEF falls back to software rendering.
 
 ## API Service (`api/`)
 

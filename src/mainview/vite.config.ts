@@ -3,7 +3,7 @@ import tailwindcss from "@tailwindcss/vite";
 import { defineConfig, loadEnv } from "vite";
 import { slimEmojiData } from "./emoji-data-slim";
 import { rnnoiseWasm } from "./rnnoise-wasm";
-import { DEV_CONNECT_ENV } from "./svelte.config.js";
+import { DEV_CONNECT_ENV, ELECTROBUN_DEVKIT } from "./svelte.config.js";
 
 export default defineConfig(({ mode }) => {
 	const env = loadEnv(mode, process.cwd(), "");
@@ -17,8 +17,9 @@ export default defineConfig(({ mode }) => {
 	return {
 		plugins: [rnnoiseWasm(), slimEmojiData(), tailwindcss(), sveltekit()],
 		// The desktop app (src/bun/index.ts) and app.html look for the dev server on 5173: if it's taken,
-		// fail instead of moving to another port, where neither would find it.
-		server: { port: 5173, strictPort: true },
+		// fail instead of moving to another port, where neither would find it. It serves only what's under
+		// fs.allow, which SvelteKit fills: the Electrobun SDK the app imports (svelte.config.js) is outside it.
+		server: { port: 5173, strictPort: true, fs: { allow: [ELECTROBUN_DEVKIT] } },
 		define: {
 			VITE_APP_ENV: JSON.stringify(mode),
 			VITE_DOMAIN_TARGET_ENV: JSON.stringify(env.VITE_DOMAIN_TARGET_ENV || "duvet"),

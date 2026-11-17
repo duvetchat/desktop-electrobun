@@ -5,16 +5,7 @@ src/mainview/build
 build
 .claude
 artifacts
-# Devenv
-.devenv*
-devenv.local.nix
-devenv.local.yaml
-
-# direnv
-.direnv
-
-# pre-commit
-.pre-commit-config.yaml
-
-# nix
-result
+# The Electrobun SDK and build state that `electrobun prepare` writes (Hutch's).
+.hutch/
+# Where Hutch writes the runner of a build hook (scripts/sign-*.ts) while it runs.
+.cottontail-tmp/

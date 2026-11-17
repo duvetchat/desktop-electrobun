@@ -34,6 +34,8 @@
     "src/mainview/src/lib/stickers/icons.ts",
 		"node_modules",
 		".svelte-kit",
+		".hutch",
+		".cottontail-tmp",
 		"build",
 		"dist",
 		"**/node_modules/**",

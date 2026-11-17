@@ -22,6 +22,9 @@ export default {
 		identifier: "com.duvet.desktop",
 	},
 	build: {
+		// Electrobun 2 can run the main process on another runtime (Cottontail, Zig, Rust, Go, Odin): ours is Bun's,
+		// the one Electrobun ships (1.4.4 with 2.0.6).
+		mainProcess: "bun",
 		bun: {
 			entrypoint: "src/bun/index.ts",
 			plugins: [noUnusedEngines],
@@ -64,6 +67,12 @@ export default {
 			"src/mainview/build/invite.html": "views/mainview/invite.html",
 		},
 		watchIgnore: ["dist/**"],
+	},
+	// Windows signing, when DUVET_SIGN_ARGS says how (README's "Signing the Windows build"): the app's executables and
+	// libraries once it's built, before Hutch packs them, then the installer.
+	scripts: {
+		postBuild: "scripts/sign-app.ts",
+		postPackage: "scripts/sign-installer.ts",
 	},
 	runtime: {
 		dragRegions: true,
