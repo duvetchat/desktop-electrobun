@@ -40,7 +40,7 @@ test("a conversation shown again shows the list a view of this gateway session l
 	expect(view).toMatch(/\} else if \(keptList\) \{\s*hasMore = keptList\.hasMore;\s*\}/);
 	expect(view).toMatch(/if \(kept \|\| keptList\) \{[^}]*isLoading = false;\s*\} else \{\s*loadFirstPage\(\);\s*\}/);
 	expect(view).toMatch(
-		/const stillIn = get\(conversations\)\.some\(\(c\) => c\.id === convId\);\s*keepList\(convId, listFetched && !hasMoreBelow && stillIn \? get\(dmMessages\)\[convId\] : null, hasMore, session\);/,
+		/const stillIn = get\(conversations\)\.some\(\(c\) => c\.id === convId\);[\s\S]*?\s*keepList\(convId, listFetched && !hasMoreBelow && stillIn \? get\(dmMessages\)\[convId\] : null, hasMore, session\);/,
 	);
 });
 
@@ -69,4 +69,22 @@ test("the prompt is ready to type, and Enter doesn't go on to press what opened 
 		/onOpenAutoFocus=\{\(e\) => \{\s*e\.preventDefault\(\);\s*inputEl\?\.focus\(\);\s*inputEl\?\.select\(\);\s*\}\}/,
 	);
 	expect(prompt).toMatch(/if \(e\.key !== "Enter"\) return;\s*\/\/ [^\n]*\n\s*e\.preventDefault\(\);\s*submit\(\);/);
+});
+
+// #326: as a room's (PaneView.test.ts), a conversation's list only grew, and its view shown again mounted all of it.
+test("a conversation's list goes back to its newest page as its view leaves it at the present, and at its bottom", () => {
+	const view = source("ConversationView.svelte");
+	// Before it's kept for the next view, which then has older messages to load again; not as a READY takes it down.
+	expect(view).toMatch(
+		/if \(!hasMoreBelow && get\(friendsReady\)\) dmMessages\.trim\(convId, MESSAGE_PAGE\);\s*keepList\(/,
+	);
+	expect(view).toMatch(
+		/const unhear = dmMessages\.onTrim\(\(chat\) => \{\s*if \(chat === convId\) hasMore = true;\s*\}\);/,
+	);
+	expect(view).toMatch(/release\(\);\s*unhear\(\);/);
+	expect(view).toContain("if (!convId || !isAtBottom || hasMoreBelow) return;");
+	expect(view).toContain("if (($dmMessages[convId]?.length ?? 0) > LIST_ON_SCREEN_MAX) {");
+	expect(view).toContain("void tick().then(() => dmMessages.trim(convId, LIST_ON_SCREEN_MAX));");
+	// An older page that comes once its cursor was cut away is dropped.
+	expect(view).toContain("if (before && !get(dmMessages)[convId]?.some((m) => m.id === before)) return true;");
 });

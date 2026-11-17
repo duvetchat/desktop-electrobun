@@ -3,7 +3,7 @@ import { Rnnoise } from "@shiguredo/rnnoise-wasm";
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { readRnnoiseWasm, rnnoiseWasmBase64, writeRnnoiseWasm } from "../../../rnnoise-wasm";
+import { readRnnoiseWasm, rnnoiseWasm, rnnoiseWasmBase64 } from "../../../rnnoise-wasm";
 
 type Frames = { frame: Float32Array; filled: number; ready: Float32Array; queued: number };
 type Processor = {
@@ -212,7 +212,13 @@ describe("the WebAssembly as a file", () => {
 	it("is written to Vite's cache folder, and the virtual module is its URL", async () => {
 		const cacheDir = mkdtempSync(join(tmpdir(), "rnnoise-"));
 		try {
-			const { code } = await writeRnnoiseWasm(cacheDir);
+			const plugin = rnnoiseWasm();
+			const hooks = plugin as unknown as {
+				configResolved(config: { cacheDir: string }): void;
+				load(this: { addWatchFile(file: string): void }, id: string): Promise<string | undefined>;
+			};
+			hooks.configResolved({ cacheDir });
+			const code = await hooks.load.call({ addWatchFile() {} }, "\0virtual:rnnoise-wasm");
 			const wasm = join(cacheDir, "rnnoise.wasm");
 			expect(existsSync(wasm)).toBe(true);
 			expect([...readFileSync(wasm).subarray(0, 4)]).toEqual([0, 0x61, 0x73, 0x6d]);

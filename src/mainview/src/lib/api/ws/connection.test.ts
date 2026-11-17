@@ -273,6 +273,8 @@ describe("a cancelled message that the API posts all the same", () => {
 		const room = conversation(40);
 		const before = notices();
 		putBack(room, "nonce-40", sent);
+		// The room's pane shows it, as it did the Cancel.
+		const release = stores.channelMessages.keep(room);
 		deliver("MESSAGE_CREATE", {
 			id: message(60),
 			room_id: room,
@@ -283,6 +285,7 @@ describe("a cancelled message that the API posts all the same", () => {
 		expect(draftOf(get(chatDrafts), room)).toEqual(emptied);
 		expect(notices()).toBe(before + 1);
 		expect(get(stores.channelMessages)[room].map((m) => m.id)).toEqual([message(60)]);
+		release();
 	});
 
 	test("in a conversation too", () => {
@@ -549,5 +552,34 @@ describe("a message's edit", () => {
 		expect(after[room][0].content).toBe("edited");
 		expect(after[room][1].referenced_message?.content).toBe("edited");
 		expect(after[other]).toBe(before[other]);
+	});
+});
+
+// #326: every room's and conversation's live messages went into a list, whether anyone had loaded the chat or not, and
+// nothing ever cut those lists back.
+describe("a live message of a chat nobody loaded", () => {
+	test("makes no list of it, and neither do an edit or a deletion there", () => {
+		const room = conversation(70);
+		const conv = conversation(71);
+		deliver("MESSAGE_CREATE", { id: message(80), room_id: room, author_id: ALICE, content: "hi" });
+		deliver("MESSAGE_DELETE", { id: message(81), room_id: room });
+		deliver("DM_MESSAGE_CREATE", { id: message(82), conversation_id: conv, author_id: ALICE, content: "hi" });
+		deliver("DM_MESSAGE_UPDATE", { id: message(83), conversation_id: conv, author_id: ALICE, content: "edited" });
+		deliver("DM_MESSAGE_DELETE", { id: message(84), conversation_id: conv });
+		expect(get(stores.channelMessages)[room]).toBeUndefined();
+		expect(get(stores.dmMessages)[conv]).toBeUndefined();
+	});
+
+	test("goes into the list of a chat a view holds, whose first page is still on its way", () => {
+		const room = conversation(72);
+		const conv = conversation(73);
+		const releaseRoom = stores.channelMessages.keep(room);
+		const releaseConv = stores.dmMessages.keep(conv);
+		deliver("MESSAGE_CREATE", { id: message(85), room_id: room, author_id: ALICE, content: "hi" });
+		deliver("DM_MESSAGE_CREATE", { id: message(86), conversation_id: conv, author_id: ALICE, content: "hi" });
+		releaseRoom();
+		releaseConv();
+		expect(get(stores.channelMessages)[room]?.map((m) => m.id)).toEqual([message(85)]);
+		expect(get(stores.dmMessages)[conv]?.map((m) => m.id)).toEqual([message(86)]);
 	});
 });

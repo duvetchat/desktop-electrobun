@@ -49,19 +49,12 @@ export function rnnoiseWasm(): Plugin {
 		resolveId: (source) => (source === ID ? RESOLVED : undefined),
 		async load(id) {
 			if (id !== RESOLVED) return;
-			const { bundle, code } = await writeRnnoiseWasm(cacheDir);
-			this.addWatchFile(bundle);
-			return code;
+			const { file, base64 } = await readRnnoiseWasm();
+			this.addWatchFile(file);
+			const wasm = join(cacheDir, "rnnoise.wasm");
+			await mkdir(cacheDir, { recursive: true });
+			await writeFile(wasm, Buffer.from(base64, "base64"));
+			return `export { default } from ${JSON.stringify(wasm.replaceAll("\\", "/") + "?url")};`;
 		},
 	};
-}
-
-/** Writes the WebAssembly to a file of its own in a folder (Vite's cache), and gives the virtual module that's its URL,
- * with the package's bundle it came from, for Vite to watch. */
-export async function writeRnnoiseWasm(dir: string): Promise<{ bundle: string; code: string }> {
-	const { file, base64 } = await readRnnoiseWasm();
-	const wasm = join(dir, "rnnoise.wasm");
-	await mkdir(dir, { recursive: true });
-	await writeFile(wasm, new Uint8Array(Buffer.from(base64, "base64")));
-	return { bundle: file, code: `export { default } from ${JSON.stringify(wasm.replaceAll("\\", "/") + "?url")};` };
 }

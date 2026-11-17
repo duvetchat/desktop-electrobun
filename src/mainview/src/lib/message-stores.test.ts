@@ -1,4 +1,4 @@
-import { beforeEach, expect, test } from "bun:test";
+import { beforeEach, describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { get } from "svelte/store";
@@ -7,7 +7,8 @@ import { MessageType, type Message } from "$lib/types";
 
 // The stores' module uses $state, which only Svelte's compiler knows: here it's the value itself (as test-gateway.ts).
 Object.assign(globalThis, { $state: <T>(value: T) => value });
-const { channelMessages, dmMessages, ephemeralMessages, keepEphemeral } = await import("$lib/stores.svelte");
+const { channelMessages, dmMessages, ephemeralMessages, keepEphemeral, newestPage, MESSAGE_PAGE } =
+	await import("$lib/stores.svelte");
 
 // #320: the stores of chats' messages keep the lists of 50 chats at most. They dropped the lists they had seen first,
 // whatever their use: every change marked every list as used, in the order the chats came in, so the chat on screen
@@ -86,7 +87,7 @@ test("the views hold the lists they show", () => {
 	const source = (file: string) => readFileSync(join(import.meta.dir, "components", file), "utf8");
 	// A pane holds its room's list, shown or under the Friends view, which keeps the panes' chats mounted.
 	expect(source("PaneView.svelte")).toMatch(
-		/\$effect\(\(\) => \{\s*if \(node\.kind === "leaf" && node\.activeChannelId\) return channelMessages\.keep\(node\.activeChannelId\);\s*\}\);/,
+		/const room = heldRoom;\s*if \(!room\) return;\s*const release = channelMessages\.keep\(room\);/,
 	);
 	// A conversation's view holds its list from its mount to its end.
 	const conversation = source("ConversationView.svelte");
@@ -106,4 +107,86 @@ test("a room keeps its newest 50 ephemeral messages", () => {
 	keepEphemeral("room", { ...message("e30"), content: "edited" });
 	expect(get(ephemeralMessages).room).toHaveLength(50);
 	expect(get(ephemeralMessages).room[0].id).toBe("e10");
+});
+
+// #326: a chat's list only grew, older pages as its reader scrolled up and live messages as they came, for every chat
+// whether a view showed it or not, and a chat shown again mounted all of it.
+describe("a chat's list cut back to its newest page", () => {
+	const page = (room: string, from: number, n: number) =>
+		Array.from({ length: n }, (_, i) => message(`${room}-${String(from + i).padStart(4, "0")}`));
+	const ids = (list: Message[] | undefined) => list?.map((m) => m.id);
+
+	test("keeps the newest page by ID, in the list's order, and every message being sent", () => {
+		const sending = { ...message("nonce-1"), nonce: "nonce-1" };
+		// Older pages go after the newer ones, as a room's list gets them.
+		const list = [...page("r", 200, 50), sending, ...page("r", 100, 100), ...page("r", 0, 100)];
+		const kept = newestPage(list);
+		expect(kept).toHaveLength(MESSAGE_PAGE + 1);
+		expect(ids(kept)).toEqual([...ids(page("r", 200, 50))!, "nonce-1", ...ids(page("r", 150, 50))!]);
+		// A page or less stays as it is.
+		const short = page("r", 0, MESSAGE_PAGE);
+		expect(newestPage(short)).toBe(short);
+	});
+
+	test("is cut once it holds more than its caller allows, and every view hears of it", () => {
+		channelMessages.set({ r: page("r", 0, 250) });
+		const heard: string[] = [];
+		const stop = channelMessages.onTrim((chat) => heard.push(chat));
+		expect(channelMessages.trim("r", 300)).toBe(false);
+		expect(channelMessages.trim("r", 200)).toBe(true);
+		stop();
+		expect(ids(get(channelMessages).r)).toEqual(ids(page("r", 150, 100)));
+		expect(heard).toEqual(["r"]);
+		// Nothing to cut: no list.
+		expect(channelMessages.trim("nowhere", 0)).toBe(false);
+	});
+
+	test("isn't cut while a view other than the asking one holds it", () => {
+		channelMessages.set({ r: page("r", 0, 250) });
+		const mine = channelMessages.keep("r");
+		const other = channelMessages.keep("r");
+		expect(channelMessages.trim("r", MESSAGE_PAGE)).toBe(false);
+		other();
+		expect(channelMessages.trim("r", MESSAGE_PAGE)).toBe(true);
+		mine();
+	});
+
+	test("says whether a view holds a chat, before its list is there too", () => {
+		expect(channelMessages.holds("r")).toBe(false);
+		const release = channelMessages.keep("r");
+		expect(channelMessages.holds("r")).toBe(true);
+		release();
+		expect(channelMessages.holds("r")).toBe(false);
+	});
+
+	test("one no view holds goes once a page of messages came after its view let go of it", () => {
+		channelMessages.set({ r: page("r", 0, 50), held: page("held", 0, 50) });
+		channelMessages.keep("r")();
+		const stillHeld = channelMessages.keep("held");
+		const arrive = (chat: string, n: number) =>
+			channelMessages.update((all) => ({ ...all, [chat]: [...all[chat], ...page(chat, 1000 + all[chat].length, n)] }));
+		arrive("r", MESSAGE_PAGE);
+		expect(get(channelMessages).r).toHaveLength(50 + MESSAGE_PAGE);
+		arrive("r", 1);
+		expect(get(channelMessages).r).toBeUndefined();
+		// One a view holds keeps them, as its view shows them.
+		arrive("held", 3 * MESSAGE_PAGE);
+		expect(get(channelMessages).held).toHaveLength(50 + 3 * MESSAGE_PAGE);
+		stillHeld();
+	});
+
+	test("the conversations' lists the same way", () => {
+		const dm = (id: string): DirectMessage => ({
+			id,
+			conversation_id: "dm",
+			author_id: "alice",
+			content: "",
+			type: MessageType.Text,
+			created_at: "",
+			updated_at: "",
+		});
+		dmMessages.set({ dm: Array.from({ length: 150 }, (_, i) => dm(`dm-${String(i).padStart(4, "0")}`)) });
+		expect(dmMessages.trim("dm", MESSAGE_PAGE)).toBe(true);
+		expect(get(dmMessages).dm[0].id).toBe("dm-0050");
+	});
 });

@@ -625,6 +625,21 @@ export function setSystemNotifier(notifier: SystemNotifier | null) {
 const notified: string[] = [];
 const NOTIFIED_KEPT = 500;
 
+// The messages that came last, rooms' and conversations', for their mentions' notices: a mention comes over another
+// subscription than its message, in no set order, and a message no longer goes into the list of a chat nobody loaded
+// (#326). The newest hundred are kept.
+const arrivedRoomMessages = new Map<string, Message>();
+const arrivedDMs = new Map<string, DirectMessage>();
+const ARRIVED_KEPT = 100;
+function noteArrival<T extends { id: string }>(kept: Map<string, T>, message: T) {
+	kept.delete(message.id);
+	kept.set(message.id, message);
+	for (const id of kept.keys()) {
+		if (kept.size <= ARRIVED_KEPT) break;
+		kept.delete(id);
+	}
+}
+
 // Where a message that may notify is, with the message when its event brought it (a mention's brings only its ID).
 type NotifyTarget = { roomId: string; message?: Message } | { conversationId: string; message?: DirectMessage };
 const chatOf = (target: NotifyTarget) => ("roomId" in target ? target.roomId : target.conversationId);
@@ -705,7 +720,8 @@ async function showNotification(target: NotifyTarget, messageId: string, kind: "
 
 /** A room's message as its notice shows it, and the place a system notification names; null for one there's none of. */
 async function roomNotice(roomId: string, messageId: string, known: Message | undefined) {
-	let message = known ?? get(channelMessages)[roomId]?.find((m) => m.id === messageId);
+	let message =
+		known ?? get(channelMessages)[roomId]?.find((m) => m.id === messageId) ?? arrivedRoomMessages.get(messageId);
 	if (!message) {
 		if (!isUuid(roomId) || !isUuid(messageId)) return null;
 		try {
@@ -722,7 +738,7 @@ async function roomNotice(roomId: string, messageId: string, known: Message | un
 
 /** A conversation's message as its notice shows it, as a room's (roomNotice). */
 async function conversationNotice(conversationId: string, messageId: string, known: DirectMessage | undefined) {
-	let message = known ?? get(dmMessages)[conversationId]?.find((m) => m.id === messageId);
+	let message = known ?? get(dmMessages)[conversationId]?.find((m) => m.id === messageId) ?? arrivedDMs.get(messageId);
 	if (!message) {
 		if (!isUuid(conversationId) || !isUuid(messageId)) return null;
 		try {
@@ -1052,6 +1068,9 @@ function handleEvent(event: GatewayEvent) {
 				break;
 			}
 			channelMessages.update((all) => {
+				// Only into a list the store has, or one a view holds while its first page is on its way: a room nobody loaded
+				// gets its newest page, this message among them, as it's shown (#326).
+				if (!all[roomId] && !channelMessages.holds(roomId)) return all;
 				const existing = all[roomId] ?? [];
 
 				// If it matches a pending message by nonce, replace it. A page that listed the message meanwhile (the newest
@@ -1085,6 +1104,7 @@ function handleEvent(event: GatewayEvent) {
 			// A message this window cancelled, which the API posted all the same: what the Cancel put back in the room's
 			// draft leaves it, and a notice says so.
 			if (raw.nonce && raw.author_id === get(currentUser)?.id && takeBack(roomId, raw.nonce)) toast(SENT_BEFORE_CANCEL);
+			noteArrival(arrivedRoomMessages, message);
 			notifyMessage({ roomId, message }, raw.author_id, message.id, false);
 			break;
 		}
@@ -1149,11 +1169,13 @@ function handleEvent(event: GatewayEvent) {
 		}
 		case "MESSAGE_DELETE": {
 			const raw = payload.data;
+			arrivedRoomMessages.delete(raw.id);
 			dropEphemeral(raw.room_id, raw.id);
 			dropReplyTo(raw.room_id, raw.id);
 			dropMentionNotice(raw.id);
 			channelMessages.update((all) => {
-				const existing = all[raw.room_id] ?? [];
+				const existing = all[raw.room_id];
+				if (!existing) return all;
 				return {
 					...all,
 					[raw.room_id]: existing
@@ -1811,6 +1833,8 @@ function handleEvent(event: GatewayEvent) {
 			});
 			if (msg.author_id === get(currentUser)?.id) endOwnTyping(conversationId);
 			dmMessages.update((all) => {
+				// As a room's (MESSAGE_CREATE): only into a list there is, or one a view holds.
+				if (!all[conversationId] && !dmMessages.holds(conversationId)) return all;
 				const existing = all[conversationId] ?? [];
 				if (msg.nonce) {
 					const pendingIdx = existing.findIndex((m) => m.nonce === msg.nonce);
@@ -1839,6 +1863,7 @@ function handleEvent(event: GatewayEvent) {
 					.map((c) => (c.id === conversationId ? { ...c, updated_at: msg.created_at } : c))
 					.sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()),
 			);
+			noteArrival(arrivedDMs, msg);
 			notifyMessage({ conversationId, message: msg }, msg.author_id, msg.id, false);
 			break;
 		}
@@ -1849,7 +1874,8 @@ function handleEvent(event: GatewayEvent) {
 			}
 			const conversationId = msg.conversation_id;
 			dmMessages.update((all) => {
-				const existing = all[conversationId] ?? [];
+				const existing = all[conversationId];
+				if (!existing) return all;
 				return {
 					...all,
 					// The update payload carries what an edit changes, not attachments, reactions or reply data.
@@ -1883,11 +1909,13 @@ function handleEvent(event: GatewayEvent) {
 		}
 		case "DM_MESSAGE_DELETE": {
 			const raw = payload.data;
+			arrivedDMs.delete(raw.id);
 			dropReplyTo(raw.conversation_id, raw.id);
 			dropMentionNotice(raw.id);
 			callNoticeDeleted(raw.id);
 			dmMessages.update((all) => {
-				const existing = all[raw.conversation_id] ?? [];
+				const existing = all[raw.conversation_id];
+				if (!existing) return all;
 				return {
 					...all,
 					[raw.conversation_id]: existing
