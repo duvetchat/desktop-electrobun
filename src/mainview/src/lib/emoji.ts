@@ -72,8 +72,9 @@ export function largeEmojis(text: string): boolean {
 }
 
 // ── Emoji data ────────────────────────────────────────────────────────────
-// The dataset (emoji-data.ts: emoji-datasource, 1.3 MB, built and sorted as it loads) is a chunk of its own, loaded the
-// first time it is asked for: only the picker and the : suggestions use it, and in this module it rode every start (#292).
+// The dataset (emoji-data.ts: emoji-datasource, built and sorted as it loads, about 0.25 MB once the build keeps only
+// the fields it reads, emoji-data-slim.ts) is a chunk of its own, loaded the first time it is asked for: only the picker
+// and the : suggestions use it, and in this module it rode every start (#292), and later every session (#318).
 
 export interface EmojiEntry {
 	emoji: string;
