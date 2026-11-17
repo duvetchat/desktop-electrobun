@@ -1,4 +1,6 @@
 <script lang="ts" module>
+	import { dmMessages } from "$lib/stores.svelte";
+	import { forgetUnlisted } from "$lib/uploads";
 	import type { AllowedMentions, MessageReference } from "$lib/types";
 
 	// Which sends failed, and what each message being sent was sent with besides its text (its files, reply, sticker,
@@ -18,6 +20,8 @@
 			draft?: string;
 		}
 	>();
+	// A send's retry data goes once its message is in no list any more: nothing could retry or dismiss it (#323).
+	dmMessages.subscribe((all) => forgetUnlisted(dmRetryData, all));
 </script>
 
 <script lang="ts">
@@ -28,7 +32,6 @@
 	import {
 		conversations,
 		currentUser,
-		dmMessages,
 		friends,
 		unreadConversations,
 		lastReadConvs,
