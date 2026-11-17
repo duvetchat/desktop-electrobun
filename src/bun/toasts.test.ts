@@ -152,6 +152,42 @@ describe("the toast helper", () => {
 		expect(logged.some((line) => line.includes("ended") && line.includes("1"))).toBe(true);
 	});
 
+	// #314: the helper is a Windows PowerShell of about 70 MB, which stayed from the first toast to the app's end.
+	test("its helper stops once no toast came for a while, quietly, and the next toast starts another", async () => {
+		const fakes: ReturnType<typeof fakeHelper>[] = [];
+		const toasts = new Toasts(
+			"com.duvet.test",
+			() => {
+				const fake = fakeHelper();
+				fakes.push(fake);
+				return fake.helper;
+			},
+			1000,
+			100,
+		);
+		const errors = spyOn(console, "error").mockImplementation(() => {});
+		const first = toasts.show({ ...base, tag: "a" });
+		fakes[0].answer({ tag: "a" });
+		expect(await first).toBe(true);
+		await Bun.sleep(50);
+		// A toast within the wait keeps the helper, and starts the wait over.
+		const second = toasts.show({ ...base, tag: "b" });
+		fakes[0].answer({ tag: "b" });
+		expect(await second).toBe(true);
+		await Bun.sleep(70);
+		expect(fakes[0].helper.exitCode).toBeNull();
+		await Bun.sleep(150);
+		expect(fakes[0].helper.exitCode).not.toBeNull();
+		const third = toasts.show({ ...base, tag: "c" });
+		fakes[1]?.answer({ tag: "c" });
+		expect(await third).toBe(true);
+		toasts.stop();
+		const logged = errors.mock.calls.map((call) => call.join(" "));
+		errors.mockRestore();
+		expect(fakes).toHaveLength(2);
+		expect(logged.filter((line) => line.includes("ended"))).toEqual([]);
+	});
+
 	test("a helper that can't start shows nothing", async () => {
 		const errors = spyOn(console, "error").mockImplementation(() => {});
 		const toasts = new Toasts("com.duvet.test", () => {
