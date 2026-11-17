@@ -31,24 +31,25 @@ export function withReaction(
 ): MessageReaction[] {
 	const list = [...(reactions ?? [])];
 	const at = list.findIndex((r) => r.emoji_name === change.emoji_name);
+	const current = list[at];
 	if (change.added) {
-		if (at < 0) {
+		if (!current) {
 			list.push({
 				emoji_name: change.emoji_name,
 				emoji_id: change.emoji_id ?? null,
 				count: 1,
 				users: [change.user_id],
 			});
-		} else if (!list[at].users.includes(change.user_id)) {
-			const users = [...list[at].users, change.user_id];
-			list[at] = { ...list[at], users, count: users.length };
+		} else if (!current.users.includes(change.user_id)) {
+			const users = [...current.users, change.user_id];
+			list[at] = { ...current, users, count: users.length };
 		}
 		return list;
 	}
-	if (at < 0) return list;
-	const users = list[at].users.filter((u) => u !== change.user_id);
+	if (!current) return list;
+	const users = current.users.filter((u) => u !== change.user_id);
 	if (users.length === 0) return list.filter((_, i) => i !== at);
-	list[at] = { ...list[at], users, count: users.length };
+	list[at] = { ...current, users, count: users.length };
 	return list;
 }
 

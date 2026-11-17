@@ -46,7 +46,7 @@ export function getAttachmentRate(attachmentId: string): number {
 export function cyclePlaybackRate(attachmentId: string) {
 	const curRate = rateByAttachment.get(attachmentId) ?? 1;
 	const idx = PLAYBACK_RATES.indexOf(curRate);
-	const next = PLAYBACK_RATES[(idx + 1) % PLAYBACK_RATES.length];
+	const next = PLAYBACK_RATES[(idx + 1) % PLAYBACK_RATES.length]!;
 	rateByAttachment.set(attachmentId, next);
 	if (audio) {
 		const current = get(voiceNote);
@@ -89,7 +89,7 @@ function isUrlExpiringSoon(url: string): boolean {
 	try {
 		const match = url.match(/[?&]exp=(\d+)/);
 		if (!match) return false;
-		const exp = parseInt(match[1], 10) * 1000;
+		const exp = parseInt(match[1]!, 10) * 1000;
 		return exp - Date.now() < RESIGN_THRESHOLD_MS;
 	} catch {
 		return false;

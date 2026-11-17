@@ -93,7 +93,7 @@ describe("who's typing", () => {
 		const phrases = [...indicator.matchAll(/<span\s+class="([^"]*)"[^>]*>\s*\{(?:typingPhrase|recordingPhrase)\(/g)];
 		expect(phrases).toHaveLength(2);
 		for (const [, classes] of phrases)
-			expect(classes.split(/\s+/)).toEqual(expect.arrayContaining(["min-w-0", "truncate"]));
+			expect(classes!.split(/\s+/)).toEqual(expect.arrayContaining(["min-w-0", "truncate"]));
 	});
 
 	test("hides the messages that pass under it as the list scrolls, with what shows there when it doesn't", () => {

@@ -71,7 +71,7 @@
 			const mime = parsed.searchParams.get("mime_type");
 			return mime === "video_mp4" || mime === "video_webm";
 		} catch {
-			const p = url.split("?")[0].toLowerCase();
+			const p = url.split("?")[0]!.toLowerCase();
 			return p.endsWith(".mp4") || p.endsWith(".webm") || p.endsWith(".mov");
 		}
 	}

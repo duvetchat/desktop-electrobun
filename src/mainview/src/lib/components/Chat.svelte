@@ -265,11 +265,11 @@
 	}
 
 	function tryEditAtIndex(index: number) {
-		const msgs = getOwnMessages();
-		if (index < 0 || index >= msgs.length) return false;
+		const msg = getOwnMessages()[index];
+		if (!msg) return false;
 		editMessageIndex = index;
-		editingMessageId = msgs[index].id;
-		editContent = msgs[index].content ?? "";
+		editingMessageId = msg.id;
+		editContent = msg.content ?? "";
 		return true;
 	}
 
@@ -286,10 +286,10 @@
 	}
 
 	function tryReplyAtIndex(index: number) {
-		const msgs = getAllMessages();
-		if (index < 0 || index >= msgs.length) return false;
+		const msg = getAllMessages()[index];
+		if (!msg) return false;
 		replyMessageIndex = index;
-		setReply(msgs[index]);
+		setReply(msg);
 		return true;
 	}
 

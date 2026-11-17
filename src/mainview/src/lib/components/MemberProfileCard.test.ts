@@ -14,7 +14,7 @@ test("the profile card's status dot is a StatusDot of the member's status, at it
 	expect(card).not.toMatch(/member\.status === ["']online["']/);
 	// What it draws for a member who is online.
 	const [drawn] = await tags(StatusDot, { status: "online", class: /\sclass="([^"]*)"/.exec(dot)?.[1] ?? "" });
-	expect(drawn.attributes.class.split(/\s+/)).toEqual(
+	expect(drawn!.attributes.class!.split(/\s+/)).toEqual(
 		expect.arrayContaining([
 			"bg-[var(--status-online,var(--color-stone-300))]",
 			"rounded-full",
@@ -36,7 +36,7 @@ test("the profile card draws a phone for a member only on mobile", async () => {
 		mobileOnly: true,
 		class: /\sclass="([^"]*)"/.exec(dot)?.[1] ?? "",
 	});
-	expect(drawn.attributes.class.split(/\s+/)).toEqual(
+	expect(drawn!.attributes.class!.split(/\s+/)).toEqual(
 		expect.arrayContaining(["aspect-[2/3]", "w-6", "border-4", "border-current", "bg-current", "text-zinc-800"]),
 	);
 });

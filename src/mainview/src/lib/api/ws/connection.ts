@@ -593,8 +593,9 @@ function applyReaction<T extends { id: string; reactions?: MessageReaction[] | n
 	messages.update((all) => {
 		for (const [chatId, list] of Object.entries(all)) {
 			const at = list.findIndex((m) => m.id === change.message_id);
-			if (at < 0) continue;
-			const message = { ...list[at], reactions: withReaction(list[at].reactions, change) };
+			const current = list[at];
+			if (!current) continue;
+			const message = { ...current, reactions: withReaction(current.reactions, change) };
 			return { ...all, [chatId]: [...list.slice(0, at), message, ...list.slice(at + 1)] };
 		}
 		return all;
@@ -1364,7 +1365,7 @@ function handleEvent(event: GatewayEvent) {
 							});
 						} else {
 							nextStates[existingIdx] = {
-								...nextStates[existingIdx],
+								...nextStates[existingIdx]!,
 								muted: raw.muted,
 								deafened: raw.deafened,
 								screen_sharing: raw.screen_sharing,
@@ -1581,7 +1582,7 @@ function handleEvent(event: GatewayEvent) {
 		case "ROOM_REORDER": {
 			const { rooms } = payload.data;
 			if (!rooms || rooms.length === 0) break;
-			const spaceId = rooms[0].space_id;
+			const spaceId = rooms[0]!.space_id;
 			gatewaySpaces.update((spaces) =>
 				spaces.map((s) => {
 					if (s.id !== spaceId) return s;

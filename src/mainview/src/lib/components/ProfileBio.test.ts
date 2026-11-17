@@ -74,7 +74,7 @@ describe("a bio", () => {
 		for (const bio of ["[md](https://a.example/x)", "bare https://a.example/x and more"]) {
 			const [link, ...others] = await links(bio);
 			expect(others).toEqual([]);
-			expect(link.attributes).toMatchObject({
+			expect(link!.attributes).toMatchObject({
 				href: "https://a.example/x",
 				target: "_blank",
 				rel: "noopener noreferrer",
@@ -92,8 +92,8 @@ describe("a bio", () => {
 
 	test("can't end a link's href with a quote of its own", async () => {
 		const [link] = (await inside('[x](https://a.example/"onmouseover="alert(1))')).filter((tag) => tag.name === "a");
-		expect(link.attributes.href).toBe('https://a.example/"onmouseover="alert(1');
-		expect(Object.keys(link.attributes)).not.toContain("onmouseover");
+		expect(link!.attributes.href).toBe('https://a.example/"onmouseover="alert(1');
+		expect(Object.keys(link!.attributes)).not.toContain("onmouseover");
 	});
 
 	test("names who it mentions as the app knows them, from a space, a conversation, a friend or the user", () => {
@@ -122,7 +122,7 @@ describe("a bio", () => {
 	// ending in one, in the font the app falls back to, got a scrollbar 10 px wide for the 1 px it could scroll.
 	test("scrolls sideways alone, however its last line sits in its font", async () => {
 		const [root] = await tags(ProfileBio, { bio: "# Hi" });
-		expect(root.attributes.class.split(/\s+/)).toEqual(
+		expect(root!.attributes.class!.split(/\s+/)).toEqual(
 			expect.arrayContaining(["overflow-x-auto", "overflow-y-hidden"]),
 		);
 	});

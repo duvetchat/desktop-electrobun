@@ -1200,7 +1200,7 @@
 			e.key === "ArrowRight" || e.key === "ArrowDown" ? 1 : e.key === "ArrowLeft" || e.key === "ArrowUp" ? -1 : 0;
 		if (!step) return;
 		e.preventDefault();
-		const next = values[(values.indexOf(current) + step + values.length) % values.length];
+		const next = values[(values.indexOf(current) + step + values.length) % values.length]!;
 		set(next);
 		const group = (e.currentTarget as HTMLElement).closest('[role="radiogroup"]');
 		group?.querySelector<HTMLElement>(`[data-value="${next}"]`)?.focus();

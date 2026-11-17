@@ -155,5 +155,5 @@ test("a Space's members are built without a scan per member", () => {
 		["user-1", "member-1", true],
 		["user-2", "member-2", false],
 	]);
-	expect(members[1].roles.map((r) => r.id)).toEqual(["admins", "mods", "space"]);
+	expect(members[1]!.roles.map((r) => r.id)).toEqual(["admins", "mods", "space"]);
 });

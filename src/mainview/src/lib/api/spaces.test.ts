@@ -57,5 +57,5 @@ test("a Space's default notifications go in its JSON", async () => {
 test("and in the form that carries a new icon", async () => {
 	await updateSpace(SPACE, { icon: new File([new Uint8Array(4)], "icon.png"), default_notifications: 0 });
 	expect(forms).toHaveLength(1);
-	expect(forms[0].get("default_notifications")).toBe("0");
+	expect(forms[0]!.get("default_notifications")).toBe("0");
 });

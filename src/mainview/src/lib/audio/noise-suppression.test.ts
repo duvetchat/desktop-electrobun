@@ -23,7 +23,7 @@ test("compiles the file once while streams use it, and fetches it again once non
 	const second = await useRnnoise();
 	expect(second).toBe(first);
 	expect(calls).toHaveBeenCalledTimes(1);
-	expect(String(calls.mock.calls[0][0])).toBe(WASM_URL);
+	expect(String(calls.mock.calls[0]![0])).toBe(WASM_URL);
 	doneWithRnnoise();
 	await useRnnoise();
 	expect(calls).toHaveBeenCalledTimes(1);

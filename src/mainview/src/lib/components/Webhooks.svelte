@@ -224,7 +224,7 @@
 				<div class="space-y-1">
 					<h3 class="text-sm font-semibold tracking-wide text-white">Create Webhook</h3>
 					<p class="text-xs text-zinc-400">
-						Webhooks allow external services to send messages to {several ? "a room" : `#${rooms[0].name}`}.
+						Webhooks allow external services to send messages to {several ? "a room" : `#${rooms[0]!.name}`}.
 					</p>
 				</div>
 

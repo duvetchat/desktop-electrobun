@@ -14,7 +14,11 @@
 	function retryLater(url: string) {
 		const tries = (failures[url]?.tries ?? 0) + 1;
 		failures[url] = { tries, waiting: true };
-		if (tries < MAX_TRIES) setTimeout(() => (failures[url].waiting = false), RETRY_DELAY * tries);
+		if (tries < MAX_TRIES)
+			setTimeout(() => {
+				const kept = failures[url];
+				if (kept) kept.waiting = false;
+			}, RETRY_DELAY * tries);
 	}
 </script>
 

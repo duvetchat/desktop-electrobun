@@ -15,10 +15,12 @@ const RESOLVED = "\0" + ID;
 export function rnnoiseWasmBase64(bundle: string): string {
 	// "AGFzbQ" is the base64 of WebAssembly's magic number, "\0asm".
 	const found = [...bundle.matchAll(/"(AGFzbQ[A-Za-z0-9+/]*={0,2})"/g)];
-	if (found.length !== 1) {
+	// at() reads its group as possibly missing whatever the tsconfig: oxlint types this file outside src/'s.
+	const base64 = found.length === 1 ? found.at(0)?.at(1) : undefined;
+	if (base64 === undefined) {
 		throw new Error(`@shiguredo/rnnoise-wasm: expected one inline WebAssembly module, found ${found.length}`);
 	}
-	return found[0][1];
+	return base64;
 }
 
 /** The package's bundle on disk, and the WebAssembly in it. */

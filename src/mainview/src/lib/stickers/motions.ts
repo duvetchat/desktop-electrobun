@@ -1,5 +1,7 @@
+// @ts-nocheck
 // Vendored from fun-isometric by Kelvin Adithya (MIT): https://github.com/kelvinkn17/skills/tree/main/skills/fun-isometric
 // Keep it as the kit ships it; Duvet's palette and the Svelte player live beside it (duvet.ts, Sticker.svelte).
+// Not type-checked: noUncheckedIndexedAccess (#342) would have its index reads changed.
 
 // The sticker motion presets, as After Effects keys. Deltas over a rest pose, px on a 500 canvas, 60fps.
 import { shift } from "./fun";

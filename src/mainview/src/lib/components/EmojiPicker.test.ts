@@ -19,7 +19,7 @@ test("once the dataset is in, a picker without Space emojis draws its first cate
 	await loadEmojiData();
 	const drawn = await tags(EmojiPicker, props);
 	const tabs = drawn.filter((t) => t.attributes.role === "tab");
-	expect(tabs[0].attributes["aria-label"]).toBe("Smileys & Emotion");
-	expect(tabs[0].attributes["aria-selected"]).toBe("true");
+	expect(tabs[0]!.attributes["aria-label"]).toBe("Smileys & Emotion");
+	expect(tabs[0]!.attributes["aria-selected"]).toBe("true");
 	expect(drawn.some((t) => t.name === "button" && t.attributes.title === "grinning")).toBe(true);
 });

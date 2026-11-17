@@ -101,12 +101,12 @@ test("a room keeps its newest 50 ephemeral messages", () => {
 	for (let i = 0; i < 60; i++) keepEphemeral("room", message(`e${i}`));
 	const kept = get(ephemeralMessages).room;
 	expect(kept).toHaveLength(50);
-	expect(kept[0].id).toBe("e10");
-	expect(kept.at(-1)?.id).toBe("e59");
+	expect(kept![0]!.id).toBe("e10");
+	expect(kept!.at(-1)?.id).toBe("e59");
 	// One replaced (edited by its bot) is still one.
 	keepEphemeral("room", { ...message("e30"), content: "edited" });
 	expect(get(ephemeralMessages).room).toHaveLength(50);
-	expect(get(ephemeralMessages).room[0].id).toBe("e10");
+	expect(get(ephemeralMessages).room![0]!.id).toBe("e10");
 });
 
 // #326: a chat's list only grew, older pages as its reader scrolled up and live messages as they came, for every chat
@@ -164,7 +164,10 @@ describe("a chat's list cut back to its newest page", () => {
 		channelMessages.keep("r")();
 		const stillHeld = channelMessages.keep("held");
 		const arrive = (chat: string, n: number) =>
-			channelMessages.update((all) => ({ ...all, [chat]: [...all[chat], ...page(chat, 1000 + all[chat].length, n)] }));
+			channelMessages.update((all) => ({
+				...all,
+				[chat]: [...all[chat]!, ...page(chat, 1000 + all[chat]!.length, n)],
+			}));
 		arrive("r", MESSAGE_PAGE);
 		expect(get(channelMessages).r).toHaveLength(50 + MESSAGE_PAGE);
 		arrive("r", 1);
@@ -187,6 +190,6 @@ describe("a chat's list cut back to its newest page", () => {
 		});
 		dmMessages.set({ dm: Array.from({ length: 150 }, (_, i) => dm(`dm-${String(i).padStart(4, "0")}`)) });
 		expect(dmMessages.trim("dm", MESSAGE_PAGE)).toBe(true);
-		expect(get(dmMessages).dm[0].id).toBe("dm-0050");
+		expect(get(dmMessages).dm![0]!.id).toBe("dm-0050");
 	});
 });

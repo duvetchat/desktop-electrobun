@@ -199,7 +199,10 @@
 		});
 		if (shown.length === 0) return;
 		const labels = markLabels(shown.length);
-		marks = shown.map((m, i) => ({ ...m, label: labels[i] }));
+		marks = shown.flatMap((m, i) => {
+			const label = labels[i];
+			return label ? [{ ...m, label }] : [];
+		});
 		typed = "";
 	}
 

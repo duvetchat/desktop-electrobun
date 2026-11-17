@@ -56,10 +56,10 @@ export function matchingCommands(list: SpaceCommands, query: string): CommandEnt
  */
 export function commandQuery(raw: string, list: SpaceCommands | null): string | null {
 	const name = /^\/(\S*)\n?$/u.exec(raw);
-	if (name) return name[1];
+	if (name) return name[1]!;
 	const path = /^\/(\S+)((?: \S*){1,2})\n?$/u.exec(raw);
-	const command = path && list?.commands.find((c) => c.name === path[1].toLowerCase());
-	return command && command.options.some((o) => isSubcommand(o) || isGroup(o)) ? path[1] + path[2] : null;
+	const command = path && list?.commands.find((c) => c.name === path[1]!.toLowerCase());
+	return command && command.options.some((o) => isSubcommand(o) || isGroup(o)) ? path[1]! + path[2]! : null;
 }
 
 /**

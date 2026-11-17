@@ -69,7 +69,7 @@
 
 	// Whether the list's end is on screen: the row that says the next page is loading.
 	function watchEnd(node: HTMLElement) {
-		const observer = new IntersectionObserver(([entry]) => (endInView = entry.isIntersecting));
+		const observer = new IntersectionObserver(([entry]) => (endInView = entry!.isIntersecting));
 		observer.observe(node);
 		return {
 			destroy() {

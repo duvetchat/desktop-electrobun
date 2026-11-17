@@ -273,7 +273,7 @@
 			newPosition = topLevelEnd(channels, srcId);
 		} else {
 			const targetItem = sidebarItems[targetIdx];
-			if (srcId === targetItem.channel.id) return;
+			if (!targetItem || srcId === targetItem.channel.id) return;
 
 			if (targetItem.kind === "category" && pos === "into" && !isDraggingCategory) {
 				// Drop into category → first position inside (categories can't nest)
@@ -359,7 +359,8 @@
 			buttons[prev]?.focus();
 		} else if (key === "Enter" || key === " ") {
 			e.preventDefault();
-			selectChannel(clickableChannels[i]);
+			const channel = clickableChannels[i];
+			if (channel) selectChannel(channel);
 		}
 	}
 

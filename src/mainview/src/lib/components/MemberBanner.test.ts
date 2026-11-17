@@ -12,10 +12,10 @@ describe("a member's banner", () => {
 	test("draws faintly behind the row, covering it, from the row's middle to its right edge", async () => {
 		const [image, ...others] = await tags(MemberBanner, { src: BANNER });
 		expect(others).toEqual([]);
-		expect(image.name).toBe("img");
-		expect(image.attributes.src).toBe(BANNER);
-		expect(image.attributes.alt).toBe("");
-		expect(image.attributes.class.split(/\s+/)).toEqual(
+		expect(image!.name).toBe("img");
+		expect(image!.attributes.src).toBe(BANNER);
+		expect(image!.attributes.alt).toBe("");
+		expect(image!.attributes.class!.split(/\s+/)).toEqual(
 			expect.arrayContaining([
 				"pointer-events-none",
 				"absolute",
@@ -32,8 +32,8 @@ describe("a member's banner", () => {
 
 	test("is fainter for someone offline", async () => {
 		const [image] = await tags(MemberBanner, { src: BANNER, offline: true });
-		expect(image.attributes.class.split(/\s+/)).toContain("opacity-15");
-		expect(image.attributes.class.split(/\s+/)).not.toContain("opacity-25");
+		expect(image!.attributes.class!.split(/\s+/)).toContain("opacity-15");
+		expect(image!.attributes.class!.split(/\s+/)).not.toContain("opacity-25");
 	});
 
 	test("draws nothing for someone without one", async () => {

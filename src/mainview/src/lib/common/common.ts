@@ -16,7 +16,7 @@ const routes: Record<string, string> = {
 
 export function route(path: string): string {
 	if (!isDevServer) return path;
-	const [base, query] = path.split("?");
+	const [base = "", query] = path.split("?");
 	const clean = routes[base] ?? base;
 	return query ? `${clean}?${query}` : clean;
 }

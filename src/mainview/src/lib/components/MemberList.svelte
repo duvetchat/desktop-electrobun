@@ -273,7 +273,7 @@
 									{/if}
 								</span>
 								{#if shownActivities($userActivities[member.id]).length}
-									{@const activity = shownActivities($userActivities[member.id])[0]}
+									{@const activity = shownActivities($userActivities[member.id])[0]!}
 									<p class="truncate text-xs text-zinc-500">
 										{isSpotify(activity)
 											? "Listening to Spotify"
