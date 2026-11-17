@@ -791,13 +791,11 @@
 			class="pointer-events-none absolute bottom-0 z-10 h-5 w-full bg-linear-to-t from-stone-950/45 to-transparent"
 		></div>
 	</div>
-	<!-- Typing indicator -->
-	<TypingIndicator {channelId} />
 	<!-- Bottom input bar -->
 	<div
 		class="relative flex max-h-48 min-h-16 flex-row items-end gap-2 border-t border-stone-800 bg-stone-950/45 px-3 py-2"
 	>
-		{@render draftBars(channelId, () => chatInputRef?.focus())}
+		{@render draftBars(channelId, () => chatInputRef?.focus(), true)}
 		{#if command}
 			{@const active = command}
 			<CommandOptions
@@ -843,15 +841,20 @@
 	</div>
 </div>
 
-<!-- A draft's reply bar and files, over its message box: the chat's, or a thread's (key). focus gives its box the
-     focus back. -->
-{#snippet draftBars(key: string, focus: () => void)}
+<!-- Over a message box, the chat's or a thread's (key): who's typing in the chat (typing), or else the draft's reply bar
+     and files, which already cover the list's bottom, where who's typing above them would hide the newest message. It
+     all hangs over the list, which never changes size for it, so no message moves. focus gives the box the focus back. -->
+{#snippet draftBars(key: string, focus: () => void, typing = false)}
 	{@const pending = draftOf($chatDrafts, key)}
-	{#if pending.replyTo || pending.files.length > 0}
-		<div class="absolute right-0 bottom-full left-0 flex flex-col">
+	{@const bars = !!pending.replyTo || pending.files.length > 0}
+	{#if typing || bars}
+		<div class="pointer-events-none absolute right-0 bottom-full left-0 flex flex-col">
+			{#if typing && !bars}
+				<TypingIndicator channelId={key} />
+			{/if}
 			{#if pending.replyTo}
 				<div
-					class="flex items-center justify-between border-t border-stone-800 bg-stone-900/90 px-3 py-1.5 text-xs text-zinc-400"
+					class="pointer-events-auto flex items-center justify-between border-t border-stone-800 bg-stone-900/90 px-3 py-1.5 text-xs text-zinc-400"
 				>
 					<span>Replying to <span class="font-semibold text-zinc-200">{pending.replyTo.author_name}</span></span>
 					<div class="flex items-center gap-3">
@@ -894,7 +897,7 @@
 				</div>
 			{/if}
 			{#if pending.files.length > 0}
-				<div class="flex flex-wrap gap-1.5 border-t border-stone-800 bg-stone-900/90 px-3 py-1.5">
+				<div class="pointer-events-auto flex flex-wrap gap-1.5 border-t border-stone-800 bg-stone-900/90 px-3 py-1.5">
 					{#each pending.files as file, i}
 						{@const name = displayName(file.name)}
 						{@const spoiler = isSpoiler(file.name)}
