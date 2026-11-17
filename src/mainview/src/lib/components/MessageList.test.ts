@@ -227,3 +227,48 @@ test("the list's sort reads each message's date once", () => {
 	expect(list).toContain("return b.at - a.at;");
 	expect(list).not.toContain("new Date(b.m.created_at)");
 });
+
+// #326: every row mounted its action toolbar, hidden until hovered: the reaction popover's state, six or seven buttons and
+// their icons, for each message of the list.
+describe("a row's action toolbar", () => {
+	test("isn't mounted until its row is hovered", () => {
+		const me = "0190a3b2-0000-7000-8000-000000000001";
+		currentUser.set({
+			id: me,
+			username: "me",
+			email_verified: true,
+			alias: null,
+			avatar: null,
+			banner: null,
+			custom: "",
+			flags: 0,
+			badges: 0,
+			is_bot: false,
+			created_at: "",
+			updated_at: "",
+		});
+		const mine = {
+			...message,
+			id: "0190a3b2-0000-7000-8000-00000000bbbb",
+			author_id: me,
+		};
+		const html = shown({ messages: [message, mine] });
+		currentUser.set(null);
+		expect(html).toContain("Welcome to Alpha.");
+		expect(html).not.toContain('aria-label="Reply"');
+		expect(html).not.toContain('aria-label="Edit message"');
+		expect(html).not.toContain('aria-label="Add reaction"');
+	});
+
+	test("shows on the row the pointer is on, followed from the list by one handler, and while its picker is open", () => {
+		const list = source("MessageList.svelte");
+		expect(list).toContain("onmouseover={hoverRow}");
+		expect(list).toContain("hoveredMessageId = row?.dataset.messageId ?? null;");
+		const shownFor =
+			list.match(
+				/\{:else if \(hoveredMessageId === message\.id \|\| reactingMessageId === message\.id\) && !isPending/g,
+			) ?? [];
+		expect(shownFor).toHaveLength(2);
+		expect(list).not.toContain("hidden group-hover:flex");
+	});
+});

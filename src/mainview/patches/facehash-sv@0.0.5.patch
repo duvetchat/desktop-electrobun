@@ -1,5 +1,5 @@
 diff --git a/dist/Facehash.svelte b/dist/Facehash.svelte
-index 51b3ac356ea10233417d4b77e84a2eacaecd3c0b..c0f230aba567ab85975d2fb48d09ed591633cff4 100644
+index 51b3ac356ea10233417d4b77e84a2eacaecd3c0b..a803c6049a6e0ae257b1c3b94380009494c44488 100644
 --- a/dist/Facehash.svelte
 +++ b/dist/Facehash.svelte
 @@ -67,6 +67,19 @@
@@ -31,7 +31,7 @@ index 51b3ac356ea10233417d4b77e84a2eacaecd3c0b..c0f230aba567ab85975d2fb48d09ed59
  		class: className,
  		style,
  		...restProps
-@@ -127,8 +142,46 @@
+@@ -127,8 +142,49 @@
  
  	let isHovered = $state(false);
  
@@ -46,25 +46,28 @@ index 51b3ac356ea10233417d4b77e84a2eacaecd3c0b..c0f230aba567ab85975d2fb48d09ed59
 +		const interval = 3000 + (h % 3000);
 +		const delay = ((h >> 12) % 500);
 +
-+		const timeout = setTimeout(() => {
-+			const id = setInterval(() => {
-+				isBlinking = true;
-+				setTimeout(() => (isBlinking = false), 150);
-+			}, interval);
-+			// first blink
++		// Every timer goes with the face: an interval left running holds the face, its props and what holds them (a
++		// whole message row) for good.
++		let delayed: ReturnType<typeof setInterval> | undefined;
++		let open: ReturnType<typeof setTimeout> | undefined;
++		const blink = () => {
 +			isBlinking = true;
-+			setTimeout(() => (isBlinking = false), 150);
-+			return () => clearInterval(id);
++			clearTimeout(open);
++			open = setTimeout(() => (isBlinking = false), 150);
++		};
++		const timeout = setTimeout(() => {
++			delayed = setInterval(blink, interval);
++			// first blink
++			blink();
 +		}, delay);
 +
-+		const id = setInterval(() => {
-+			isBlinking = true;
-+			setTimeout(() => (isBlinking = false), 150);
-+		}, interval);
++		const id = setInterval(blink, interval);
 +
 +		return () => {
 +			clearTimeout(timeout);
++			clearInterval(delayed);
 +			clearInterval(id);
++			clearTimeout(open);
 +		};
 +	});
 +
@@ -78,7 +81,7 @@ index 51b3ac356ea10233417d4b77e84a2eacaecd3c0b..c0f230aba567ab85975d2fb48d09ed59
  	// deterministic values from name
  	let faceData = $derived.by(() => {
  		const hash = stringHash(name);
-@@ -229,21 +282,53 @@
+@@ -229,21 +285,53 @@
  		style:transition={interactive ? 'transform 0.3s cubic-bezier(0.4, 0, 0.2, 1)' : undefined}
  		style:color="#000000"
  	>
@@ -146,7 +149,7 @@ index 51b3ac356ea10233417d4b77e84a2eacaecd3c0b..c0f230aba567ab85975d2fb48d09ed59
  	</div>
  </div>
 diff --git a/dist/Facehash.svelte.d.ts b/dist/Facehash.svelte.d.ts
-index 4784c748879836800e22a7748224f3172b090ad5..9949e76e0eae1811632f3a0a21edab4ec0b00a03 100644
+index 4784c748879836800e22a7748224f3172b090ad5..78f78f52c9778cf180ced9efda18401839b5a14e 100644
 --- a/dist/Facehash.svelte.d.ts
 +++ b/dist/Facehash.svelte.d.ts
 @@ -52,6 +52,17 @@ export interface FacehashProps extends Omit<HTMLAttributes<HTMLDivElement>, 'chi
@@ -168,7 +171,7 @@ index 4784c748879836800e22a7748224f3172b090ad5..9949e76e0eae1811632f3a0a21edab4e
  declare const Facehash: import("svelte").Component<FacehashProps, {}, "">;
  type Facehash = ReturnType<typeof Facehash>;
 diff --git a/dist/avatar/AvatarFallback.svelte b/dist/avatar/AvatarFallback.svelte
-index 3bdb75e3d0d833100d136286e23b93fdea2743f0..41f1823d460e89c573908e86575b7c0e45c534c9 100644
+index 3bdb75e3d0d833100d136286e23b93fdea2743f0..38a5ca69d5b8c2a352ca3ee86a10f646e918575b 100644
 --- a/dist/avatar/AvatarFallback.svelte
 +++ b/dist/avatar/AvatarFallback.svelte
 @@ -19,6 +19,8 @@
@@ -181,7 +184,7 @@ index 3bdb75e3d0d833100d136286e23b93fdea2743f0..41f1823d460e89c573908e86575b7c0e
  
  	interface Props extends Omit<HTMLAttributes<HTMLSpanElement>, 'children'> {
 diff --git a/dist/avatar/AvatarFallback.svelte.d.ts b/dist/avatar/AvatarFallback.svelte.d.ts
-index 73eae5ef1a047e179061ca01c1bccf3eec831642..433a51bed8a838370612ecdafe8d640949274e43 100644
+index 73eae5ef1a047e179061ca01c1bccf3eec831642..fa0dfd477368df9ad25d13b7bd14b7d8d3d9096d 100644
 --- a/dist/avatar/AvatarFallback.svelte.d.ts
 +++ b/dist/avatar/AvatarFallback.svelte.d.ts
 @@ -10,6 +10,8 @@ interface FacehashProps {

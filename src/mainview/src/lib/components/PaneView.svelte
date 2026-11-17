@@ -20,6 +20,9 @@
 		conversations,
 		currentUser,
 		spaceEmojis,
+		friendsReady,
+		LIST_ON_SCREEN_MAX,
+		MESSAGE_PAGE,
 	} from "$lib/stores.svelte";
 	import { get } from "svelte/store";
 	import { showChat } from "$lib/on-screen";
@@ -43,7 +46,7 @@
 		takeJump,
 		withPresent,
 	} from "$lib/jumps";
-	import { onMount, onDestroy, untrack, type Snippet } from "svelte";
+	import { onMount, onDestroy, tick, untrack, type Snippet } from "svelte";
 
 	import type { MemberOnSidebar, GatewaySpace, PaneNode, Guild, Tab } from "$lib/types";
 
@@ -323,9 +326,38 @@
 
 	// The room's list stays in the store while this pane has the room, shown or under the Friends view, whose panes keep
 	// their chats mounted (#320).
+	// Only when the room shown changes, or the pane goes: not each time the pane's node is made anew.
+	const heldRoom = $derived(node.kind === "leaf" ? node.activeChannelId : null);
 	$effect(() => {
-		if (node.kind === "leaf" && node.activeChannelId) return channelMessages.keep(node.activeChannelId);
+		const room = heldRoom;
+		if (!room) return;
+		const release = channelMessages.keep(room);
+		return () => {
+			// Left at the present, its list goes back to its newest page, which is all the next visit opens on (at its bottom
+			// or its divider): older ones load again on a scroll up (#326). Not as a READY takes the panes down, as the
+			// reader's place is kept for the next ones (lib/kept-places.ts).
+			if (!channelHasMoreBelow[room] && get(friendsReady)) channelMessages.trim(room, MESSAGE_PAGE);
+			release();
+		};
 	});
+
+	// On screen, a list is cut back to its newest page once its reader is at its bottom with more than LIST_ON_SCREEN_MAX
+	// messages in it, from a long read up there or from what came since: the rows above, out of sight, unmount (#326).
+	// After the update that brought the message, which the list reads first to follow its bottom (lib/arrivals.ts).
+	$effect(() => {
+		const room = heldRoom;
+		if (!room || !paneIsAtBottom || channelHasMoreBelow[room]) return;
+		if (($channelMessages[room]?.length ?? 0) > LIST_ON_SCREEN_MAX) {
+			void tick().then(() => channelMessages.trim(room, LIST_ON_SCREEN_MAX));
+		}
+	});
+
+	// A list cut back here or in another pane has older messages to load again.
+	onMount(() =>
+		channelMessages.onTrim((room) => {
+			channelHasMore[room] = true;
+		}),
+	);
 
 	// A room read up to the newest message its list has from elsewhere (the space's Mark all as read moves its read
 	// position there) has nothing new after its unread divider: the divider goes, shown or kept from an earlier visit.
@@ -424,10 +456,11 @@
 		if (loadedChannels.has(channelId)) {
 			// Self-heal: if marked loaded but store is empty and server knows
 			// the channel has messages, the original fetch silently failed (or the room was taken away and given
-			// back) — load it again.
+			// back) — load it again. So is a list the store dropped: it keeps 50, and lets go of one a page of messages
+			// came to while no pane showed it (#326).
 			const hasServerMsgs = !!get(lastMsgRooms)[channelId];
-			const hasClientMsgs = (get(channelMessages)[channelId]?.length ?? 0) > 0;
-			if (hasClientMsgs || !hasServerMsgs) return;
+			const list = get(channelMessages)[channelId];
+			if (list && (list.length > 0 || !hasServerMsgs)) return;
 		}
 		// Shown again in the middle of a jump's pages (after a READY, or in another pane): the list goes on from them, as a
 		// conversation's does, rather than putting the newest page beside them with the messages between left out.
@@ -558,6 +591,9 @@
 		try {
 			const raw = await getMessages(channelId, oldest, controller.signal);
 			clearTimeout(timeoutId);
+			// A list cut back meanwhile (#326) no longer goes on from this page's cursor: the page is dropped, and the next
+			// scroll up asks from its oldest message.
+			if (!get(channelMessages)[channelId]?.some((m) => m.id === oldest)) return;
 			if (raw.length === 0) {
 				channelHasMore[channelId] = false;
 			} else {

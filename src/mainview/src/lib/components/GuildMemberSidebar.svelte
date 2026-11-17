@@ -111,7 +111,11 @@
 		<span class="text-duvet-ink2 text-xs">{onlineCount(pagedMembers)} online</span>
 	</div>
 	<div class="flex-1 overflow-y-auto" bind:this={listEl} onscroll={handleScroll}>
-		<MemberList members={pagedMembers} {spaceId} {space} {channelId} {onRemoveMember} />
+		<!-- Folded, the column is 0 px wide: it mounts no rows, with their avatars, banners and popovers, until it opens. Its
+		     first page still loads, for the faces in the panes' bars (#327). -->
+		{#if !collapsed}
+			<MemberList members={pagedMembers} {spaceId} {space} {channelId} {onRemoveMember} />
+		{/if}
 
 		{#if loading}
 			<div class="flex justify-center py-3">

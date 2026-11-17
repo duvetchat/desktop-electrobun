@@ -66,6 +66,7 @@
 			onload={() => (imgLoaded = true)}
 			onerror={handleError}
 			draggable="false"
+			loading="lazy"
 		/>
 	{/if}
 	{#if !showImg || !imgLoaded}
