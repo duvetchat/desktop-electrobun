@@ -2,7 +2,13 @@ import { describe, expect, test } from "bun:test";
 import { canManageRoleAt, Permission } from "$lib/permissions";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { gatewaySpaceToMembers, withCreatedRole, type GatewayRole, type GatewaySpace, type GatewayUser } from "$lib/types";
+import {
+	gatewaySpaceToMembers,
+	withCreatedRole,
+	type GatewayRole,
+	type GatewaySpace,
+	type GatewayUser,
+} from "$lib/types";
 
 // @everyone's role has the space's ID, at position 0.
 const SPACE = "01920000-0000-7000-8000-0000000005a0";

@@ -10,7 +10,8 @@ const { doneWithRnnoise, useRnnoise } = await import("$lib/audio/noise-suppressi
 const EMPTY_MODULE = new Uint8Array([0, 0x61, 0x73, 0x6d, 1, 0, 0, 0]);
 let fetched: { mockRestore(): void } | undefined;
 const fetchesOf = (answer: () => Response) => {
-	const spy = spyOn(globalThis, "fetch").mockImplementation((async () => answer()) as unknown as typeof fetch);
+	const spy = spyOn(globalThis, "fetch").mockImplementation((async (_input: string | URL | Request) =>
+		answer()) as typeof fetch);
 	fetched = spy;
 	return spy;
 };
