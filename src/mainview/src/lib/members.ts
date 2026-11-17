@@ -8,6 +8,25 @@ export const BUSY_ROOM_ONLINE = 8;
 /** The faces the pane's bar shows for a room's members; the rest are a "+N". */
 export const MEMBER_FACES = 4;
 
+/** A members list's row and its groups' headings, in px (MemberList's h-10 and h-9). */
+export const MEMBER_ROW = 40;
+export const GROUP_HEADING = 36;
+
+/**
+ * The rows of each group a view of the members list shows, from `top` to `bottom` px of the list, with `overscan` rows
+ * more on each side: [start, end) for each group, in the list's order, whose sizes are `sizes` (#327).
+ */
+export function shownRows(sizes: readonly number[], top: number, bottom: number, overscan = 10): [number, number][] {
+	let at = 0;
+	return sizes.map((n) => {
+		const rows = at + GROUP_HEADING;
+		at = rows + n * MEMBER_ROW;
+		const start = Math.min(n, Math.max(0, Math.floor((top - rows) / MEMBER_ROW) - overscan));
+		const end = Math.min(n, Math.max(0, Math.ceil((bottom - rows) / MEMBER_ROW) + overscan));
+		return [start, Math.max(start, end)];
+	});
+}
+
 /** Online, idle and do not disturb are all there: only offline isn't. */
 export function isOnline(member: Pick<MemberOnSidebar, "status">): boolean {
 	return member.status !== "offline";

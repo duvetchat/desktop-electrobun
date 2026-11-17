@@ -1,11 +1,14 @@
 import { describe, expect, test } from "bun:test";
 import {
 	BUSY_ROOM_ONLINE,
+	GROUP_HEADING,
+	MEMBER_ROW,
 	memberFaces,
 	memberGroups,
 	membersColumnOpen,
 	membersLabel,
 	onlineCount,
+	shownRows,
 } from "$lib/members";
 import type { MemberOnSidebar, Role } from "$lib/types";
 
@@ -114,4 +117,40 @@ test("idle and do not disturb count as online, and the label says how many", () 
 	const online = onlineCount([member("a", "online"), member("b", "idle"), member("c", "dnd"), member("d", "offline")]);
 	expect(online).toBe(3);
 	expect(membersLabel(online)).toBe("Members, 3 online");
+});
+
+// #327: the members list mounted every row it had loaded, a whole Space's once scrolled through. It mounts the rows in
+// view now, with some more on each side: rows are MEMBER_ROW px, each group under a GROUP_HEADING px heading.
+describe("shownRows", () => {
+	test("the rows in view and the overscan on each side, for one group", () => {
+		expect(shownRows([1000], 0, 600, 10)).toEqual([[0, Math.ceil((600 - GROUP_HEADING) / MEMBER_ROW) + 10]]);
+		const top = GROUP_HEADING + 500 * MEMBER_ROW;
+		expect(shownRows([1000], top, top + 400, 10)).toEqual([[490, 520]]);
+		// The end of the list.
+		expect(shownRows([1000], GROUP_HEADING + 995 * MEMBER_ROW, GROUP_HEADING + 1000 * MEMBER_ROW, 10)).toEqual([
+			[985, 1000],
+		]);
+	});
+
+	test("each group by its own place, a group out of view showing none", () => {
+		const second = GROUP_HEADING + 100 * MEMBER_ROW;
+		const [first, rest] = shownRows(
+			[100, 100],
+			second + GROUP_HEADING + 50 * MEMBER_ROW,
+			second + GROUP_HEADING + 60 * MEMBER_ROW,
+			5,
+		);
+		expect(first).toEqual([100, 100]);
+		expect(rest).toEqual([45, 65]);
+		// A view above the second group shows none of it.
+		expect(shownRows([100, 100], 0, 400, 5)[1]).toEqual([0, 0]);
+	});
+
+	test("an empty group, and a view of nothing", () => {
+		expect(shownRows([0, 3], 0, 1000)).toEqual([
+			[0, 0],
+			[0, 3],
+		]);
+		expect(shownRows([], 0, 1000)).toEqual([]);
+	});
 });
