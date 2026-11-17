@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { onDestroy } from "svelte";
 	import {
 		User as UserIcon,
 		Paperclip as PaperclipIcon,
@@ -643,6 +644,12 @@
 	let botCropTargetApp = $state<Application | null>(null);
 	let botAvatarPreview = $state<string | null>(null);
 	let botBannerPreview = $state<string | null>(null);
+	// Unsaved, the pending images' previews go with Settings: nothing else lets go of them (#325).
+	onDestroy(() => {
+		for (const url of [pendingAvatarPreview, pendingBannerPreview, botAvatarPreview, botBannerPreview])
+			if (url) URL.revokeObjectURL(url);
+	});
+
 	let pendingBotAvatar = $state<File | "remove" | null>(null);
 	let pendingBotBanner = $state<File | "remove" | null>(null);
 	let savingBotProfile = $state(false);

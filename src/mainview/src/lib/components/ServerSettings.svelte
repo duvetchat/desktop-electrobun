@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { untrack } from "svelte";
+	import { onDestroy, untrack } from "svelte";
 	import { toast } from "$lib/stores/toast.svelte";
 	import { confirmAction } from "$lib/stores/confirm.svelte";
 	import { getApiError } from "$lib/api/api";
@@ -124,6 +124,10 @@
 	let pendingBanner = $state<File | "remove" | null>(null);
 	let pendingIconPreview = $state<string | null>(null);
 	let pendingBannerPreview = $state<string | null>(null);
+	// Unsaved, the pending images' previews go with Settings: nothing else lets go of them (#325).
+	onDestroy(() => {
+		for (const url of [pendingIconPreview, pendingBannerPreview]) if (url) URL.revokeObjectURL(url);
+	});
 
 	function onSpaceIconCrop(file: File) {
 		pendingIcon = file;

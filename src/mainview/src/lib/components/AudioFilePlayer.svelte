@@ -44,6 +44,8 @@
 	// The WAV it plays from, when this browser can't play the file as it is (wav()).
 	let wavSrc = $state<string | null>(null);
 	let analysis: Promise<void> | undefined;
+	let releaseProbe: (() => void) | undefined;
+	onDestroy(() => releaseProbe?.());
 	let destroyed = false;
 	onDestroy(() => {
 		destroyed = true;
@@ -162,12 +164,19 @@
 
 		analysis = loadAndAnalyze(src);
 
-		// Probe duration via metadata if waveform analysis is slow
-		const audio = new Audio(src);
-		audio.preload = "metadata";
-		audio.addEventListener("loadedmetadata", () => {
-			if (isFinite(audio.duration) && localDuration === 0) localDuration = audio.duration;
+		// Its duration from the file's metadata, in case the analysis takes a while: the probe lets go of the file once it
+		// has it, or as the player goes (#325).
+		const probe = new Audio(src);
+		probe.preload = "metadata";
+		const release = () => {
+			probe.removeAttribute("src");
+			probe.load();
+		};
+		probe.addEventListener("loadedmetadata", () => {
+			if (isFinite(probe.duration) && localDuration === 0) localDuration = probe.duration;
+			release();
 		});
+		releaseProbe = release;
 	});
 </script>
 

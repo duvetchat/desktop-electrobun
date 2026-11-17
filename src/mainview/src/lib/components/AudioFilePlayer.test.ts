@@ -43,7 +43,9 @@ test("the WAV is made as the audio plays, once, and only when a file needs one",
 	for (const player of [note, audioFile]) {
 		// Played or sought, it plays from there, once it has it, if no other note was asked to play meanwhile.
 		expect(player.match(/playVoiceNote\(/g)).toHaveLength(1);
-		expect(player).toMatch(/if \(destroyed \|\| voiceNotePlayRequests\(\) !== requests\) return;\s*playVoiceNote\(from,/);
+		expect(player).toMatch(
+			/if \(destroyed \|\| voiceNotePlayRequests\(\) !== requests\) return;\s*playVoiceNote\(from,/,
+		);
 	}
 });
 
@@ -56,4 +58,13 @@ test("a player holds its WAV while it's there, and lets go of one made once it's
 		expect(player).toMatch(/wavSrc = cached\.wavUrl \?\? null;\s*holdWav\(wavSrc\);/);
 		expect(player).toMatch(/if \(destroyed\) \{\s*releaseWav\(url\);\s*return null;\s*\}/);
 	}
+});
+
+// #325: the player read the file's duration through a second Audio of it, which nothing let go of.
+test("an audio file's duration probe lets go of the file once it has its duration, or as the player goes", () => {
+	const player = source("AudioFilePlayer.svelte");
+	expect(player).toMatch(/const release = \(\) => \{\s*probe\.removeAttribute\("src"\);\s*probe\.load\(\);\s*\};/);
+	expect(player).toMatch(/probe\.addEventListener\("loadedmetadata", \(\) => \{[^}]*release\(\);\s*\}\);/);
+	expect(player).toMatch(/releaseProbe = release;/);
+	expect(player).toContain("onDestroy(() => releaseProbe?.());");
 });

@@ -18,3 +18,14 @@ test("the overview's form is filled as it opens or as the Space changes, not on 
 	expect(source).toContain("const formSpaceId = $derived(open ? (space?.id ?? null) : null);");
 	expect(source).toMatch(/\$effect\(\(\) => \{\s*if \(!formSpaceId\) return;\s*untrack\(\(\) => \{/);
 });
+
+// #325: a profile's or a Space's pending images are object URLs, which stayed once Settings closed with them unsaved.
+test("Settings let go of their pending images' previews as they go", () => {
+	const settings = (file: string) => readFileSync(join(import.meta.dir, file), "utf8");
+	expect(settings("UserSettings.svelte")).toMatch(
+		/onDestroy\(\(\) => \{\s*for \(const url of \[pendingAvatarPreview, pendingBannerPreview, botAvatarPreview, botBannerPreview\]\)\s*if \(url\) URL\.revokeObjectURL\(url\);\s*\}\);/,
+	);
+	expect(settings("ServerSettings.svelte")).toMatch(
+		/onDestroy\(\(\) => \{\s*for \(const url of \[pendingIconPreview, pendingBannerPreview\]\) if \(url\) URL\.revokeObjectURL\(url\);\s*\}\);/,
+	);
+});
