@@ -236,7 +236,7 @@
 	let open = $state(false);
 	let loading = $state(false);
 	let failure = $state<string | null>(null);
-	let results = $state<Result[]>([]);
+	let results = $state.raw<Result[]>([]);
 	let total = $state(0);
 	// The search the panel shows, and its words for the highlights.
 	let shown: MessageSearch | null = null;

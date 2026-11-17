@@ -209,3 +209,14 @@ test("a row's reaction picker mounts its portal only while it's open", () => {
 	expect(guarded).toHaveLength(2);
 	expect(list.match(/<Popover\.Portal>/g)).toHaveLength(2);
 });
+
+// #322: these lists kept their messages in $state, which Svelte 5 makes deep proxies (a signal for each property read,
+// a proxy for each nested object), for lists only ever replaced whole.
+test("pins, a thread's messages and search results are kept as they are, not as deep proxies", () => {
+	const source = (file: string) => readFileSync(join(import.meta.dir, file), "utf8");
+	expect(source("PinnedMessages.svelte")).toContain("let pins = $state.raw<Message[]>([]);");
+	const list = source("MessageList.svelte");
+	expect(list).toContain("let threadMessages = $state.raw<Message[]>([]);");
+	expect(list).toContain("let threadRootMessage = $state.raw<Message | null>(null);");
+	expect(source("MessageSearch.svelte")).toContain("let results = $state.raw<Result[]>([]);");
+});

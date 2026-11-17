@@ -256,8 +256,8 @@
 	let threadModalOpen = $state(false);
 	let threadLoading = $state(false);
 	let threadError = $state("");
-	let threadMessages = $state<Message[]>([]);
-	let threadRootMessage = $state<Message | null>(null);
+	let threadMessages = $state.raw<Message[]>([]);
+	let threadRootMessage = $state.raw<Message | null>(null);
 	// The thread as it is now, with the replies the list has since it loaded, the user's own being sent among them.
 	const threadShown = $derived(threadNow(threadMessages, messages));
 	// A reply that comes while the thread shows goes at its end, which scrolls into view.

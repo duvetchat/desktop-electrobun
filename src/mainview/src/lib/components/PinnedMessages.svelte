@@ -45,7 +45,7 @@
 	let open = $state(false);
 	let loading = $state(false);
 	let failure = $state<string | null>(null);
-	let pins = $state<Message[]>([]);
+	let pins = $state.raw<Message[]>([]);
 	let controller: AbortController | null = null;
 
 	// In a space, those with PinMessages in the room (its owner and Administrators have it); in a
