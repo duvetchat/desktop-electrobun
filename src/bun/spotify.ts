@@ -151,12 +151,7 @@ export function startSpotifyReader(onChange: (activity: SpotifyActivity | null) 
 	};
 	const stop =
 		process.platform === "win32"
-			? readWhileRunning(
-					spotifyRuns,
-					() => readWindows(report),
-					() => report(null),
-					SPOTIFY_CHECK_MS,
-				)
+			? readWhileRunning(spotifyRuns, () => readWindows(report), () => report(null), SPOTIFY_CHECK_MS)
 			: process.platform === "darwin"
 				? poll(readAppleScript, report)
 				: poll(readPlayerctl(), report);

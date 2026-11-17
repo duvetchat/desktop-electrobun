@@ -1,5 +1,6 @@
+import { createSubscriber } from "svelte/reactivity";
 import { renderEmoji } from "./emoji";
-import type { Highlighter } from "shiki";
+import type { BundledLanguage, Highlighter } from "shiki";
 import { getHostURL, isUuid } from "$lib/common/common";
 import { CUSTOM_EMOJI_CLASS, retryEmojis } from "$lib/emoji-retry";
 import { cardLink, parseDuvetLink, type DuvetLink } from "$lib/urls";
@@ -50,6 +51,18 @@ if (typeof document !== "undefined") {
 
 let highlighterPromise: Promise<Highlighter> | null = null;
 let highlighter: Highlighter | null = null;
+// The languages asked of the highlighter, loaded or on their way.
+const languagesAsked = new Set<string>();
+
+// What drew a code block plain, before the highlighter or the block's language was in, draws again once it is: the
+// template (or derived) that drew it re-runs.
+let redrawCode: (() => void) | undefined;
+const drawsCode = createSubscriber((update) => {
+	redrawCode = update;
+	return () => {
+		redrawCode = undefined;
+	};
+});
 
 const LANGS = [
 	"javascript",
@@ -90,16 +103,16 @@ const LIGHT_THEME = "github-light-default";
 let currentThemeName = DEFAULT_THEME;
 
 // Shiki loads with the highlighter, from a chunk of its own: imported here, it rode every start in the layout's (#292).
+// The highlighter, which compiles Shiki's WASM, is made for the first code block in one of LANGS, with no grammar:
+// each loads as a block first needs it (#317; made after the first screen with all 29, it took about 10 MB and the
+// WASM's 16 MiB in every session). A custom theme saved in Appearance loads with it.
 function getHighlighter(): Promise<Highlighter> {
 	if (!highlighterPromise) {
 		highlighterPromise = import("shiki")
-			.then(({ createHighlighter }) =>
-				createHighlighter({
-					themes: [DEFAULT_THEME, LIGHT_THEME],
-					langs: [...LANGS],
-				}),
-			)
-			.then((h) => {
+			.then(({ createHighlighter }) => createHighlighter({ themes: [DEFAULT_THEME, LIGHT_THEME], langs: [] }))
+			.then(async (h) => {
+				const saved = getThemeUrl();
+				if (saved) await applyCustomTheme(h, saved).catch(() => {});
 				highlighter = h;
 				return h;
 			});
@@ -107,13 +120,14 @@ function getHighlighter(): Promise<Highlighter> {
 	return highlighterPromise;
 }
 
-/**
- * Has Shiki's highlighter made, which loads Shiki, compiles its WASM and parses its grammars on the main thread: the app
- * page asks for it once its first screen is up, so that work takes no time from the start (#285, #292). A code block
- * drawn before it's made shows plain, and has it made.
- */
-export function startCodeHighlighting() {
-	void getHighlighter();
+// Loads a language into the highlighter, making it first if need be, once; then what drew its blocks plain draws again.
+function loadLanguage(lang: string) {
+	if (languagesAsked.has(lang)) return;
+	languagesAsked.add(lang);
+	getHighlighter()
+		.then((h) => h.loadLanguage(lang as BundledLanguage))
+		.then(() => redrawCode?.())
+		.catch((err) => console.error(`[Shiki] Couldn't load ${lang}:`, err));
 }
 
 function stripJsonc(text: string): string {
@@ -146,8 +160,7 @@ function stripJsonc(text: string): string {
 	return result.replace(/,\s*([}\]])/g, "$1");
 }
 
-export async function loadCustomTheme(url: string): Promise<void> {
-	const h = await getHighlighter();
+async function applyCustomTheme(h: Highlighter, url: string): Promise<void> {
 	try {
 		const res = await fetch(url);
 		if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -156,11 +169,15 @@ export async function loadCustomTheme(url: string): Promise<void> {
 		const name = themeData.name || "custom-theme";
 		await h.loadTheme(themeData);
 		currentThemeName = name;
-		if (typeof window !== "undefined") localStorage.setItem("duvet.code_theme_url", url);
 	} catch (e) {
 		console.error("[Shiki] Failed to load custom theme:", e);
 		throw e;
 	}
+}
+
+export async function loadCustomTheme(url: string): Promise<void> {
+	await applyCustomTheme(await getHighlighter(), url);
+	if (typeof window !== "undefined") localStorage.setItem("duvet.code_theme_url", url);
 }
 
 export async function resetTheme(): Promise<void> {
@@ -171,12 +188,6 @@ export async function resetTheme(): Promise<void> {
 export function getThemeUrl(): string {
 	if (typeof localStorage === "undefined") return "";
 	return localStorage.getItem("duvet.code_theme_url") ?? "";
-}
-
-// Auto-load saved custom theme on init
-if (typeof window !== "undefined") {
-	const savedThemeUrl = localStorage.getItem("duvet.code_theme_url");
-	if (savedThemeUrl) loadCustomTheme(savedThemeUrl).catch(() => {});
 }
 
 const LANG_ALIASES: Record<string, string> = {
@@ -331,15 +342,14 @@ function applyInline(
 
 function highlightCode(code: string, lang: string): string {
 	const resolved = LANG_ALIASES[lang] ?? lang;
-	if (!highlighter) {
-		startCodeHighlighting();
+	// A block without a language, or in one Duvet doesn't highlight, shows plain and loads nothing.
+	if (!(LANGS as readonly string[]).includes(resolved)) return escapeHtml(code);
+	if (!highlighter?.getLoadedLanguages().includes(resolved)) {
+		drawsCode();
+		loadLanguage(resolved);
 		return escapeHtml(code);
 	}
 	try {
-		const loaded = highlighter.getLoadedLanguages();
-		if (!loaded.includes(resolved)) {
-			return escapeHtml(code);
-		}
 		const html = highlighter.codeToHtml(code, {
 			lang: resolved,
 			themes: { dark: currentThemeName, light: LIGHT_THEME },

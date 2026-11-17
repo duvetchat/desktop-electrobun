@@ -37,10 +37,8 @@ test("markdown.ts imports Shiki only as it makes the highlighter", () => {
 	expect(markdown).toContain('import("shiki")');
 });
 
-test("the app page loads Shiki and the emoji dataset once the first screen is up, not as the socket opens", () => {
+test("the app page loads the emoji dataset once the first screen is up, not as the socket opens", () => {
 	const page = source("../routes/app/+page.svelte");
-	expect(page).toMatch(
-		/reportStartup\([^\n]*\n(\s*\/\/[^\n]*\n)*\s*startCodeHighlighting\(\);\s*void loadEmojiData\(\);/,
-	);
-	expect(page).not.toMatch(/conn = createWebSocketConnection\(\);\s*(\/\/[^\n]*\n\s*)*startCodeHighlighting\(\);/);
+	expect(page).toMatch(/reportStartup\([^\n]*\n(\s*\/\/[^\n]*\n)*\s*void loadEmojiData\(\);/);
+	expect(page).not.toMatch(/conn = createWebSocketConnection\(\);\s*(\/\/[^\n]*\n\s*)*void loadEmojiData\(\);/);
 });
