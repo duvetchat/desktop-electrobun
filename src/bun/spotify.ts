@@ -1,11 +1,12 @@
 // Reads what Spotify plays on this computer, for the "Listening to Spotify" activity. It doesn't talk to Spotify's
 // servers or need an account:
 // - Windows: the System Media Transport Controls (what the volume flyout shows), through spotify-smtc.ps1, a
-//   Windows PowerShell that runs while the reader does;
+//   Windows PowerShell that runs while Spotify does (about 90 MB, #313), which Bun looks for every 10 s;
 // - macOS: Spotify's AppleScript, asked every few seconds (macOS asks once whether Duvet may control Spotify);
 // - Linux: playerctl, over Spotify's MPRIS, when it's installed.
 // Windows gives no track ID or cover URL, so the activity carries neither on any system: clients show Spotify's
 // logo and link a search for the song.
+import { dlopen, FFIType } from "bun:ffi";
 import { clip } from "./activities";
 import { readLines } from "./lines";
 import smtcScript from "./spotify-smtc.ps1" with { type: "text" };
@@ -150,7 +151,12 @@ export function startSpotifyReader(onChange: (activity: SpotifyActivity | null) 
 	};
 	const stop =
 		process.platform === "win32"
-			? readWindows(report)
+			? readWhileRunning(
+					spotifyRuns,
+					() => readWindows(report),
+					() => report(null),
+					SPOTIFY_CHECK_MS,
+				)
 			: process.platform === "darwin"
 				? poll(readAppleScript, report)
 				: poll(readPlayerctl(), report);
@@ -158,6 +164,92 @@ export function startSpotifyReader(onChange: (activity: SpotifyActivity | null) 
 		stopped = true;
 		stop();
 	};
+}
+
+/** How often the Windows reader looks whether Spotify runs. */
+const SPOTIFY_CHECK_MS = 10_000;
+
+/**
+ * Runs a reader while a program runs, as isRunning says every everyMs: started as the program starts, and stopped as
+ * it quits, when quit tells that nothing plays. The returned function stops it all.
+ */
+export function readWhileRunning(
+	isRunning: () => boolean,
+	start: () => () => void,
+	quit: () => void,
+	everyMs: number,
+): () => void {
+	let stop: (() => void) | null = null;
+	const look = () => {
+		const running = isRunning();
+		if (running && !stop) {
+			stop = start();
+		} else if (!running && stop) {
+			stop();
+			stop = null;
+			quit();
+		}
+	};
+	look();
+	const timer = setInterval(look, everyMs);
+	return () => {
+		clearInterval(timer);
+		stop?.();
+		stop = null;
+	};
+}
+
+// Spotify's desktop app, or the Microsoft Store's, whose executable has the same name. A look that fails counts as
+// Spotify running, so the reader runs as it did before it looked (logged once).
+let spotifyLookFailed = false;
+function spotifyRuns(): boolean {
+	try {
+		return processRunning("Spotify.exe");
+	} catch (err) {
+		if (!spotifyLookFailed) console.error("[Spotify] Can't list the running programs:", err);
+		spotifyLookFailed = true;
+		return true;
+	}
+}
+
+// Windows' process list (Toolhelp32), from kernel32, opened at the first look.
+let toolhelp: ReturnType<typeof openToolhelp> | null = null;
+function openToolhelp() {
+	return dlopen("kernel32.dll", {
+		CreateToolhelp32Snapshot: { args: [FFIType.u32, FFIType.u32], returns: FFIType.i64 },
+		Process32FirstW: { args: [FFIType.i64, FFIType.ptr], returns: FFIType.i32 },
+		Process32NextW: { args: [FFIType.i64, FFIType.ptr], returns: FFIType.i32 },
+		CloseHandle: { args: [FFIType.i64], returns: FFIType.i32 },
+	}).symbols;
+}
+const TH32CS_SNAPPROCESS = 0x2;
+const INVALID_HANDLE_VALUE = -1n;
+// PROCESSENTRY32W on 64-bit Windows: dwSize at 0, the executable's name (MAX_PATH UTF-16 code units, ending with a
+// NUL) at 44, 568 bytes in all.
+const ENTRY_SIZE = 568;
+const EXE_NAME_AT = 44;
+const EXE_NAME_BYTES = 520;
+
+/** Whether a program whose executable is named exe (in any case) runs, from Windows' process list, without starting
+ * anything. Windows only. */
+export function processRunning(exe: string): boolean {
+	toolhelp ??= openToolhelp();
+	const snapshot = toolhelp.CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+	if (snapshot === INVALID_HANDLE_VALUE) throw new Error("CreateToolhelp32Snapshot failed");
+	try {
+		const entry = new Uint8Array(ENTRY_SIZE);
+		new DataView(entry.buffer).setUint32(0, ENTRY_SIZE, true);
+		const names = new TextDecoder("utf-16le");
+		const wanted = exe.toLowerCase();
+		for (let more = toolhelp.Process32FirstW(snapshot, entry); more; more = toolhelp.Process32NextW(snapshot, entry)) {
+			const name = names.decode(entry.subarray(EXE_NAME_AT, EXE_NAME_AT + EXE_NAME_BYTES));
+			const end = name.indexOf("\0");
+			if ((end === -1 ? name : name.slice(0, end)).toLowerCase() === wanted) return true;
+		}
+		return false;
+	} finally {
+		toolhelp.CloseHandle(snapshot);
+	}
 }
 
 // The script goes on PowerShell's command line, in the form it takes there (UTF-16LE in base64), so no file holds it

@@ -242,7 +242,16 @@
 	}
 </script>
 
-<Dialog.Root bind:open>
+<!-- Closed without Apply, it lets go of the image it read as a data URL, a third larger than the file (#325). -->
+<Dialog.Root
+	bind:open
+	onOpenChange={(o) => {
+		if (!o) {
+			file = null;
+			imgSrc = "";
+		}
+	}}
+>
 	<Dialog.Portal>
 		<Dialog.Overlay class="fixed inset-0 z-500 bg-black/70 backdrop-blur-sm" />
 		<Dialog.Content class="fixed inset-0 z-501 flex items-center justify-center p-4">

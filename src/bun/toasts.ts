@@ -74,6 +74,9 @@ export function toastXml(t: ToastContent): string {
 const RESTART_WAIT = 60_000;
 /** How long a toast waits for the helper's answer: the first one waits for PowerShell to start, a second or so. */
 const ANSWER_MS = 10_000;
+/** How long the helper stays once no toast comes: a Windows PowerShell takes about 70 MB, and starting it again costs
+ * the next toast about a second (#314). */
+const IDLE_MS = 10 * 60_000;
 
 /** What Toasts needs of the helper's process, as Bun.spawn gives it; tests hand it their own. */
 export interface ToastHelper {
@@ -95,27 +98,32 @@ interface Running {
 }
 
 /**
- * Shows toasts through a Windows PowerShell that stays open (toast.ps1), as the Spotify reader runs one: the first toast
- * takes about a second, as PowerShell starts, and the next a few milliseconds. One that ended starts again with the
- * next toast, once a minute at most. What it writes to stderr, and its end, are logged.
+ * Shows toasts through a Windows PowerShell (toast.ps1) that stays open while toasts come, as the Spotify reader runs
+ * one: the first toast takes about a second, as PowerShell starts, and the next a few milliseconds. It stops once no
+ * toast came for IDLE_MS, and the next toast starts it again. One that ended starts again with the next toast, once a
+ * minute at most. What it writes to stderr, and its end but an idle one's, are logged.
  */
 export class Toasts {
 	#helper: Running | null = null;
 	#started = 0;
+	#idle: ReturnType<typeof setTimeout> | undefined;
 	readonly #aumid: string;
 	readonly #start: (argv: string[]) => ToastHelper;
 	readonly #answerMs: number;
+	readonly #idleMs: number;
 
-	constructor(aumid: string, start = spawnHelper, answerMs = ANSWER_MS) {
+	constructor(aumid: string, start = spawnHelper, answerMs = ANSWER_MS, idleMs = IDLE_MS) {
 		this.#aumid = aumid;
 		this.#start = start;
 		this.#answerMs = answerMs;
+		this.#idleMs = idleMs;
 	}
 
 	/** Shows a toast, and answers whether it showed, as the helper says within its time: false without an answer. */
 	show(t: ToastContent): Promise<boolean> {
 		const helper = this.#running();
 		if (!helper) return Promise.resolve(false);
+		this.#stopWhenIdle(helper);
 		return new Promise((resolve) => {
 			const done = (shown: boolean) => {
 				clearTimeout(timer);
@@ -134,8 +142,20 @@ export class Toasts {
 	}
 
 	stop() {
+		clearTimeout(this.#idle);
 		this.#helper?.proc.kill();
 		this.#helper = null;
+	}
+
+	// Stops the helper once no toast came for #idleMs, after it answered the toasts still waiting.
+	#stopWhenIdle(helper: Running) {
+		clearTimeout(this.#idle);
+		this.#idle = setTimeout(() => {
+			if (this.#helper !== helper) return;
+			if (helper.waiting.size > 0) this.#stopWhenIdle(helper);
+			else this.stop();
+		}, this.#idleMs);
+		this.#idle.unref();
 	}
 
 	#running(): Running | null {

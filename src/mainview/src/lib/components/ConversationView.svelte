@@ -1,4 +1,6 @@
 <script lang="ts" module>
+	import { dmMessages } from "$lib/stores.svelte";
+	import { forgetUnlisted } from "$lib/uploads";
 	import type { AllowedMentions, MessageReference } from "$lib/types";
 
 	// Which sends failed, and what each message being sent was sent with besides its text (its files, reply, sticker,
@@ -18,6 +20,8 @@
 			draft?: string;
 		}
 	>();
+	// A send's retry data goes once its message is in no list any more: nothing could retry or dismiss it (#323).
+	dmMessages.subscribe((all) => forgetUnlisted(dmRetryData, all));
 </script>
 
 <script lang="ts">
@@ -28,7 +32,6 @@
 	import {
 		conversations,
 		currentUser,
-		dmMessages,
 		friends,
 		unreadConversations,
 		lastReadConvs,
@@ -849,6 +852,8 @@
 		activeDMConvId.set(convId);
 		// On screen while this view is (lib/on-screen.ts), as a pane's room is.
 		const hide = showChat(convId);
+		// Its list stays in the store while this view shows it (#320).
+		const release = dmMessages.keep(convId);
 		hadUnread = get(unreadConversations).has(convId);
 		unreadConversations.update((s) => {
 			s.delete(convId);
@@ -887,6 +892,7 @@
 			keepList(convId, listFetched && !hasMoreBelow && stillIn ? get(dmMessages)[convId] : null, hasMore, session);
 			activeDMConvId.update((cur) => (cur === convId ? null : cur));
 			hide();
+			release();
 		};
 	});
 </script>

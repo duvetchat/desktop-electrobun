@@ -37,10 +37,11 @@ test("markdown.ts imports Shiki only as it makes the highlighter", () => {
 	expect(markdown).toContain('import("shiki")');
 });
 
-test("the app page loads Shiki and the emoji dataset once the first screen is up, not as the socket opens", () => {
-	const page = source("../routes/app/+page.svelte");
-	expect(page).toMatch(
-		/reportStartup\([^\n]*\n(\s*\/\/[^\n]*\n)*\s*startCodeHighlighting\(\);\s*void loadEmojiData\(\);/,
+// #318: loaded once the first screen was up, it stayed in memory in every session, picker opened or not.
+test("the app's start doesn't load the emoji dataset: the picker and the : suggestions do, at their first use", () => {
+	expect(source("../routes/app/+page.svelte")).not.toContain("loadEmojiData");
+	// The : suggestions shown before it came in show again with it.
+	expect(source("components/ChatInput.svelte")).toMatch(
+		/if \(!emojiData\)\s*void loadEmojiData\(\)\.then\(\(\) => \{\s*if \(!destroyed && emojiQueryStart !== -1\) checkAutocomplete\(getRaw\(inputEl\), getOffset\(\)\);\s*\}\);/,
 	);
-	expect(page).not.toMatch(/conn = createWebSocketConnection\(\);\s*(\/\/[^\n]*\n\s*)*startCodeHighlighting\(\);/);
 });

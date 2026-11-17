@@ -87,7 +87,6 @@
 	let micContextOpen = $state(false);
 	let availableMics = $state<MediaDeviceInfo[]>([]);
 	let ping = $state<number | null>(null);
-	let pingIntervalId = $state<ReturnType<typeof setInterval> | null>(null);
 
 	const connectionLabel: Record<RTCPeerConnectionState, string> = {
 		new: "Connecting...",
@@ -98,19 +97,16 @@
 		closed: "Disconnected",
 	};
 
+	// The ping, every 3 s while in voice. Its interval ends with this effect, so with the bar too: a READY remounts the
+	// app's UI while voice stays, and a bar left running its interval would fetch for the rest of the session (#315).
 	$effect(() => {
-		if ($activeVoiceRoomId) {
-			if (!pingIntervalId) {
-				measurePing();
-				pingIntervalId = setInterval(measurePing, 3000);
-			}
-		} else {
-			if (pingIntervalId) {
-				clearInterval(pingIntervalId);
-				pingIntervalId = null;
-				ping = null;
-			}
+		if (!$activeVoiceRoomId) {
+			ping = null;
+			return;
 		}
+		void measurePing();
+		const pinging = setInterval(measurePing, 3000);
+		return () => clearInterval(pinging);
 	});
 
 	$effect(() => {

@@ -40,3 +40,11 @@ test("the profile popover draws a phone for a member only on mobile", async () =
 		expect.arrayContaining(["aspect-[2/3]", "w-6", "border-4", "border-current", "bg-current", "text-zinc-800"]),
 	);
 });
+
+// #319: bits-ui's Portal mounts what it holds as it's created, open or not, so every message's author and every member
+// row mounted a closed profile under <body>. It mounts only while open, whether its owner opens it or its trigger does.
+test("mounts its portal only while it's open", () => {
+	expect(popover).toContain("let shown = $derived(open);");
+	expect(popover).toMatch(/onOpenChange=\{\(o\) => \{\s*shown = o;/);
+	expect(popover).toMatch(/\{#if shown\}\s*<Popover\.Portal>/);
+});

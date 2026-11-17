@@ -622,10 +622,13 @@
 							customAttachmentId: s.ce.attachment_id,
 						}) as EmojiEntry & { customEmojiId: string; customAttachmentId: string },
 				);
-			// The emoji dataset, once the app has it (it loads after the first screen, #292); asked for now otherwise,
-			// which the next keys find.
+			// The emoji dataset, once the app has it; asked for now otherwise, as the picker does (#318), and these
+			// suggestions show again with it.
 			const emojiData = emojiDataNow();
-			if (!emojiData) void loadEmojiData();
+			if (!emojiData)
+				void loadEmojiData().then(() => {
+					if (!destroyed && emojiQueryStart !== -1) checkAutocomplete(getRaw(inputEl), getOffset());
+				});
 			const defaultMatches = emojiData?.searchEmojis(m[1]) ?? [];
 			suggestions = [...customScored, ...defaultMatches].slice(0, 10);
 			selectedIdx = 0;

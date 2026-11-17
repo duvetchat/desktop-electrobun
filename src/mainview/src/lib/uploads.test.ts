@@ -1,4 +1,6 @@
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { get } from "svelte/store";
 import type { UploadOptions } from "$lib/api/api";
 import {
@@ -7,6 +9,7 @@ import {
 	cancelUpload,
 	fileGoingUp,
 	fileShare,
+	forgetUnlisted,
 	messageUploadNote,
 	messageUploads,
 	sendFollowed,
@@ -193,4 +196,38 @@ describe("a message sent with files", () => {
 		expect(await sendFollowed("n8", [], async () => "posted")).toBe("posted");
 		expect(upload("n8")).toBeUndefined();
 	});
+});
+
+// #323: a failed send's retry data (its files and voice note among them) stayed once its message had left every list,
+// its chat's evicted or its room gone, where nothing could retry or dismiss it any more.
+describe("forgetUnlisted", () => {
+	test("forgets the retry data of the sends whose message no list has, and keeps the others", () => {
+		const retries = new Map<string, { files: File[] }>([
+			["shown", { files: [] }],
+			["evicted", { files: [new File(["x"], "big.bin")] }],
+		]);
+		forgetUnlisted(retries, { room: [{ nonce: null }, { nonce: "shown" }], other: [] });
+		expect([...retries.keys()]).toEqual(["shown"]);
+	});
+
+	test("reads no list while it holds nothing", () => {
+		const lists = new Proxy(
+			{},
+			{
+				ownKeys: () => {
+					throw new Error("read");
+				},
+			},
+		);
+		expect(() => forgetUnlisted(new Map(), lists)).not.toThrow();
+	});
+});
+
+// The rooms' and the conversations' sends both forget theirs as the lists change.
+test("both kinds of send forget their retry data as their message leaves the lists", () => {
+	const source = (file: string) => readFileSync(join(import.meta.dir, "components", file), "utf8");
+	expect(source("Chat.svelte")).toContain("channelMessages.subscribe((all) => forgetUnlisted(retryData, all));");
+	expect(source("ConversationView.svelte")).toContain(
+		"dmMessages.subscribe((all) => forgetUnlisted(dmRetryData, all));",
+	);
 });

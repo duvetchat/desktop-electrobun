@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import {
+	processRunning,
 	readerRestartDelay,
+	readWhileRunning,
 	sameSpotifyActivity,
 	spotifyActivity,
 	trackFromAppleScript,
@@ -140,5 +142,45 @@ describe("readerRestartDelay", () => {
 
 	test("waits 30 s again once a reader that had worked fails", () => {
 		expect(readerRestartDelay(false, readerRestartDelay(true, 300_000))).toBe(30_000);
+	});
+});
+
+// #313: on Windows the reader is a Windows PowerShell of about 90 MB, which ran from the app's start to its end, with
+// Spotify open or not.
+describe("readWhileRunning", () => {
+	test("runs the reader only while the program runs, and says nothing plays once it quits", async () => {
+		let running = false;
+		const events: string[] = [];
+		const stop = readWhileRunning(
+			() => running,
+			() => {
+				events.push("start");
+				return () => events.push("stop");
+			},
+			() => events.push("nothing plays"),
+			10,
+		);
+		await Bun.sleep(30);
+		expect(events).toEqual([]);
+		running = true;
+		await Bun.sleep(30);
+		expect(events).toEqual(["start"]);
+		running = false;
+		await Bun.sleep(30);
+		expect(events).toEqual(["start", "stop", "nothing plays"]);
+		running = true;
+		await Bun.sleep(30);
+		stop();
+		expect(events).toEqual(["start", "stop", "nothing plays", "start", "stop"]);
+		running = false;
+		await Bun.sleep(30);
+		expect(events).toHaveLength(5);
+	});
+});
+
+describe("processRunning", () => {
+	test.skipIf(process.platform !== "win32")("finds a program by its executable's name, in any case", () => {
+		expect(processRunning("BUN.exe")).toBe(true);
+		expect(processRunning("no-such-program-duvet.exe")).toBe(false);
 	});
 });

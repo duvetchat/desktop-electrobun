@@ -18,7 +18,7 @@
 		holdWav,
 		keepWaveform,
 		releaseWav,
-		wavUrlOf,
+		makeWav,
 	} from "$lib/audio/waveform";
 
 	let {
@@ -38,7 +38,6 @@
 	let bars = $state<number[]>([]);
 	let localDuration = $state(0);
 	let wavSrc = $state<string | null>(null);
-	let analysis: Promise<void> | undefined;
 	let destroyed = false;
 	onDestroy(() => {
 		destroyed = true;
@@ -62,60 +61,86 @@
 		cyclePlaybackRate(attachmentId);
 	}
 
+	const streamOf = (url: string) => (url.includes("?") ? `${url}&stream=1` : `${url}?stream=1`);
+	// Whether this browser could decode it only once repaired, kept with its bars for an audio file's player of it.
+	let repaired = false;
+
+	// Its bars and its duration, kept for the next player of the note: no WAV, which holds every sample, until it plays
+	// (#316).
 	async function loadAndAnalyze(url: string) {
 		try {
-			const streamUrl = url.includes("?") ? `${url}&stream=1` : `${url}?stream=1`;
+			const streamUrl = streamOf(url);
 			const result = await analyzeWaveform(streamUrl, BAR_COUNT);
-			// A player that's gone makes no WAV: nothing would let go of it (#167).
 			if (destroyed) return;
 			bars = result.bars;
 			localDuration = result.duration;
-			wavSrc = wavUrlOf(result.wavBuf);
-			keepWaveform(attachmentId, { bars, duration: localDuration, wavUrl: wavSrc });
+			repaired = result.repaired;
+			keepWaveform(attachmentId, { bars, duration: localDuration, repaired });
 		} catch (e) {
 			if (import.meta.env.DEV) console.error("[VoiceNotePlayer] loadAndAnalyze failed:", e);
-			if (!wavSrc) wavSrc = url;
 		}
 	}
 
-	async function togglePlay() {
-		if (isActive) {
-			toggleVoiceNote();
-			return;
-		}
-		// The WAV the analysis makes is what plays: an Android voice note doesn't play as it is in Firefox, and its
-		// failed player would stay the note's until another note plays. Once the analysis is done, the note plays only if
-		// no other was asked to play meanwhile, and while this player is still there.
+	// The WAV it plays from, made as it first plays and held while the player's there: an Android voice note doesn't
+	// play as it is in Firefox, and its failed player would stay the note's until another note plays. One made once the
+	// player's gone is let go of at once: nothing else would (#167). Without one, it plays from its file.
+	let wavMaking: Promise<string | null> | null = null;
+	function wav(): Promise<string | null> {
+		if (wavSrc) return Promise.resolve(wavSrc);
+		wavMaking ??= makeWav(streamOf(src))
+			.then((url) => {
+				if (destroyed) {
+					releaseWav(url);
+					return null;
+				}
+				wavSrc = url;
+				keepWaveform(attachmentId, { bars, duration: localDuration, repaired, wavUrl: url });
+				return url;
+			})
+			.catch((e) => {
+				if (import.meta.env.DEV) console.error("[VoiceNotePlayer] its WAV failed:", e);
+				wavMaking = null;
+				return null;
+			});
+		return wavMaking;
+	}
+
+	// Plays the note, from `at` seconds when it's given, once its WAV is there: if no other note was asked to play
+	// meanwhile, and while this player is still there.
+	async function play(at?: number) {
 		const requests = voiceNotePlayRequests();
-		await analysis;
+		const from = (await wav()) ?? src;
 		if (destroyed || voiceNotePlayRequests() !== requests) return;
-		playVoiceNote(wavSrc || src, attachmentId, authorName, channelName);
+		playVoiceNote(from, attachmentId, authorName, channelName);
+		if (at !== undefined) seekVoiceNote(at);
+	}
+
+	function togglePlay() {
+		if (isActive) toggleVoiceNote();
+		else void play();
 	}
 
 	function handleSeek(e: MouseEvent) {
 		if (!duration) return;
 		const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
 		const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-		if (isActive) {
-			seekVoiceNote(ratio * duration);
-		} else {
-			playVoiceNote(wavSrc || src, attachmentId, authorName, channelName);
-			seekVoiceNote(ratio * duration);
-		}
+		if (isActive) seekVoiceNote(ratio * duration);
+		else void play(ratio * duration);
 	}
 
 	onMount(() => {
 		const cached = waveformCache.get(attachmentId);
 		if (cached) {
 			bars = cached.bars;
-			// None when an audio file's player kept it, of a file this browser plays as it is.
+			// None until a player of it plays it (#316): this one makes its own then.
 			wavSrc = cached.wavUrl ?? null;
 			holdWav(wavSrc);
+			repaired = cached.repaired ?? false;
 			localDuration = cached.duration;
 			return;
 		}
 		bars = fallbackBars(src, BAR_COUNT);
-		analysis = loadAndAnalyze(src);
+		void loadAndAnalyze(src);
 	});
 </script>
 

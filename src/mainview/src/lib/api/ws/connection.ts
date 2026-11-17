@@ -1104,30 +1104,36 @@ function handleEvent(event: GatewayEvent) {
 				}
 				break;
 			}
+			// Only its room's list holds it, and the replies quoting it, as a reply quotes a message of its own room: the
+			// others stay as they are, not rebuilt for every edit (#324).
 			channelMessages.update((all) => {
-				const result: typeof all = {};
-				for (const [roomId, msgs] of Object.entries(all)) {
-					result[roomId] = msgs.map((m) => {
-						// The update payload carries no attachments, reactions or pin: keep the existing ones.
-						if (m.id === updatedMessage.id)
-							return {
-								...updatedMessage,
-								attachments: updatedMessage.attachments ?? m.attachments,
-								reactions: updatedMessage.reactions ?? m.reactions,
-								referenced_message: updatedMessage.referenced_message ?? m.referenced_message,
-								interaction_metadata: updatedMessage.interaction_metadata ?? m.interaction_metadata,
-								pinned_at: m.pinned_at,
-							};
-						if (m.referenced_message?.message_id === updatedMessage.id) {
-							return {
-								...m,
-								referenced_message: { ...m.referenced_message, content: updatedMessage.content },
-							};
-						}
-						return m;
-					});
-				}
-				return result;
+				const roomId = raw.room_id;
+				const msgs = roomId ? all[roomId] : undefined;
+				if (!roomId || !msgs) return all;
+				let changed = false;
+				const edited = msgs.map((m) => {
+					// The update payload carries no attachments, reactions or pin: keep the existing ones.
+					if (m.id === updatedMessage.id) {
+						changed = true;
+						return {
+							...updatedMessage,
+							attachments: updatedMessage.attachments ?? m.attachments,
+							reactions: updatedMessage.reactions ?? m.reactions,
+							referenced_message: updatedMessage.referenced_message ?? m.referenced_message,
+							interaction_metadata: updatedMessage.interaction_metadata ?? m.interaction_metadata,
+							pinned_at: m.pinned_at,
+						};
+					}
+					if (m.referenced_message?.message_id === updatedMessage.id) {
+						changed = true;
+						return {
+							...m,
+							referenced_message: { ...m.referenced_message, content: updatedMessage.content },
+						};
+					}
+					return m;
+				});
+				return changed ? { ...all, [roomId]: edited } : all;
 			});
 			break;
 		}

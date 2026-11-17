@@ -52,6 +52,18 @@ export function withoutSending<T extends { id: string }>(messages: T[], nonce: s
 	return messages.some((m) => m.id === nonce) ? messages.filter((m) => m.id !== nonce) : null;
 }
 
+/** Forgets the retry data, by nonce, of the sends whose message no list holds any more (its chat's list evicted, its
+ * room gone): nothing could retry or dismiss them, and their files would stay for the session (#323). */
+export function forgetUnlisted(
+	retries: Map<string, unknown>,
+	lists: Record<string, readonly { nonce?: string | null }[]>,
+) {
+	if (retries.size === 0) return;
+	const listed = new Set<string>();
+	for (const list of Object.values(lists)) for (const message of list) if (message.nonce) listed.add(message.nonce);
+	for (const nonce of retries.keys()) if (!listed.has(nonce)) retries.delete(nonce);
+}
+
 /** A message's upload: the bytes of its form sent, and their total (0 until the webview says). */
 export interface MessageUpload {
 	sent: number;
