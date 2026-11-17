@@ -10,8 +10,13 @@
 	import { memberMobileOnly, memberStatus } from "$lib/status";
 	import { getAvatarURL } from "$lib/common/common";
 
-	function convertMember(member: GatewayMember, sp: GatewaySpace): MemberOnSidebar | null {
-		const u = sp.users.find((usr) => usr.id === member.user_id);
+	function convertMember(
+		member: GatewayMember,
+		sp: GatewaySpace,
+		users: Map<string, GatewaySpace["users"][number]>,
+		roles: Map<string, GatewaySpace["roles"][number]>,
+	): MemberOnSidebar | null {
+		const u = users.get(member.user_id);
 		if (!u) return null;
 		const status = userStatusToString(memberStatus(userStatusCache, u, sp.id));
 		return {
@@ -28,7 +33,7 @@
 			is_owner: u.id === sp.owner_id,
 			bio: u.custom ?? "",
 			roles: (sp.member_roles[u.id] ?? [])
-				.map((rid) => sp.roles.find((r) => r.id === rid))
+				.map((rid) => roles.get(rid))
 				.filter(Boolean)
 				.map(
 					(r): Role => ({
@@ -47,11 +52,15 @@
 	}
 
 	/** A space's members as its member list shows them: the ones loaded so far, with their statuses. The members column
-	 * and the faces in a pane's bar both list these, so they agree. */
+	 * and the faces in a pane's bar both list these, so they agree. Each user and role is looked up in a map: a scan per
+	 * member was quadratic in the members loaded, at every presence (#327). */
 	export function spaceMembers(space: GatewaySpace | null): MemberOnSidebar[] {
-		return space
-			? space.members.map((m) => convertMember(m, space)).filter((m): m is MemberOnSidebar => m !== null)
-			: [];
+		if (!space) return [];
+		const users = new Map(space.users.map((u) => [u.id, u]));
+		const roles = new Map(space.roles.map((r) => [r.id, r]));
+		return space.members
+			.map((m) => convertMember(m, space, users, roles))
+			.filter((m): m is MemberOnSidebar => m !== null);
 	}
 </script>
 
@@ -63,7 +72,7 @@
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
 	import StatusDot from "$lib/components/StatusDot.svelte";
 	import MemberProfilePopover from "$lib/components/MemberProfilePopover.svelte";
-	import { memberGroups } from "$lib/members";
+	import { MEMBER_ROW, memberGroups, shownRows } from "$lib/members";
 
 	// The members, in the groups memberGroups (lib/members.ts) makes, each opening their profile. The members column and
 	// the members popover of a pane's bar both show it; the one around it scrolls it.
@@ -131,83 +140,154 @@
 
 	// A space's list has its roles; a conversation's (no space) has none.
 	const groupedMembers = $derived(memberGroups(members, spaceId !== null));
+
+	// ── The rows in view ───────────────────────────────────────────────────────
+	// Only the rows in view are mounted, with some more on each side, between spacers that keep the list's height: a
+	// list scrolled through mounted a whole Space's rows, each with its avatar, banner and popover (#327). The view is
+	// the part of the list the element around it that scrolls shows; until it's measured, the list's top.
+	let root = $state<HTMLElement>();
+	let view = $state({ top: 0, bottom: 1200 });
+	const windows = $derived(
+		shownRows(
+			groupedMembers.map((g) => g.members.length),
+			view.top,
+			view.bottom,
+		),
+	);
+
+	// The nearest element around the list that scrolls: the members column's, or the members popover's.
+	function scrollerOf(el: HTMLElement): HTMLElement | null {
+		for (let at = el.parentElement; at; at = at.parentElement) {
+			if (/auto|scroll/.test(getComputedStyle(at).overflowY)) return at;
+		}
+		return null;
+	}
+
+	// A profile whose row left the view closes with it, rather than open again as the row comes back.
+	$effect(() => {
+		const open = activePopoverMemberId;
+		if (
+			open &&
+			!groupedMembers.some((group, g) => group.members.slice(...(windows[g] ?? [0, 0])).some((m) => m.id === open))
+		) {
+			activePopoverMemberId = null;
+		}
+	});
+
+	$effect(() => {
+		const el = root;
+		const scroller = el && scrollerOf(el);
+		if (!el || !scroller) return;
+		let frame = 0;
+		const read = () => {
+			frame = 0;
+			// How far the list's top is above the scroller's: the list's part in view starts there.
+			const top = scroller.getBoundingClientRect().top - el.getBoundingClientRect().top;
+			view = { top, bottom: top + scroller.clientHeight };
+		};
+		// One read a frame, however many scroll events come in it.
+		const measure = () => {
+			frame ||= requestAnimationFrame(read);
+		};
+		read();
+		scroller.addEventListener("scroll", measure, { passive: true });
+		const resized = new ResizeObserver(measure);
+		resized.observe(scroller);
+		return () => {
+			scroller.removeEventListener("scroll", measure);
+			resized.disconnect();
+			cancelAnimationFrame(frame);
+		};
+	});
 </script>
 
-{#each groupedMembers as group}
-	<div>
-		<div
-			class="bg-duvet-bg text-duvet-ink2 sticky top-0 z-10 flex h-9 items-end px-4 pb-1.5 text-[13px] font-bold select-none"
-		>
-			{group.title} — {group.members.length}
-		</div>
-
-		{#each group.members as member}
-			<MemberProfilePopover
-				{member}
-				{spaceId}
-				{space}
-				side={profileSide}
-				open={activePopoverMemberId === member.id}
-				onOpenChange={(o) => {
-					activePopoverMemberId = o ? member.id : null;
-				}}
-				triggerClass="group relative mx-2 flex h-10 w-[calc(100%-1rem)] items-center overflow-hidden rounded-row px-2 text-duvet-ink hover:bg-duvet-card focus-visible:outline-2 focus-visible:outline-duvet-accent"
-				{onRemoveMember}
+<div bind:this={root}>
+	{#each groupedMembers as group, g}
+		{@const [start, end] = windows[g] ?? [0, 0]}
+		<div>
+			<div
+				class="bg-duvet-bg text-duvet-ink2 sticky top-0 z-10 flex h-9 items-end px-4 pb-1.5 text-[13px] font-bold select-none"
 			>
-				{#snippet children()}
-					<MemberBanner src={member.banner_url} offline={member.status === "offline"} />
-					<div class="relative flex min-w-0 items-center gap-2.5">
-						<div class="relative shrink-0 {member.status === 'offline' ? 'opacity-60' : ''}">
-							<UserAvatar src={member.avatar_url} name={member.username} size={30} />
-							{#if isTyping(member.id)}
+				{group.title} — {group.members.length}
+			</div>
+
+			{#if start > 0}
+				<div style="height: {start * MEMBER_ROW}px"></div>
+			{/if}
+			{#each group.members.slice(start, end) as member (member.id)}
+				<MemberProfilePopover
+					{member}
+					{spaceId}
+					{space}
+					side={profileSide}
+					open={activePopoverMemberId === member.id}
+					onOpenChange={(o) => {
+						activePopoverMemberId = o ? member.id : null;
+					}}
+					triggerClass="group relative mx-2 flex h-10 w-[calc(100%-1rem)] items-center overflow-hidden rounded-row px-2 text-duvet-ink hover:bg-duvet-card focus-visible:outline-2 focus-visible:outline-duvet-accent"
+					{onRemoveMember}
+				>
+					{#snippet children()}
+						<MemberBanner src={member.banner_url} offline={member.status === "offline"} />
+						<div class="relative flex min-w-0 items-center gap-2.5">
+							<div class="relative shrink-0 {member.status === 'offline' ? 'opacity-60' : ''}">
+								<UserAvatar src={member.avatar_url} name={member.username} size={30} />
+								{#if isTyping(member.id)}
+									<span
+										class="border-duvet-bg absolute -right-0.5 -bottom-0.5 flex h-3 w-4 items-center justify-center gap-0.5 rounded-full border-2 bg-zinc-700"
+									>
+										{#if isRecording(member.id)}
+											<MicIcon class="size-2 animate-pulse text-red-400" />
+										{:else}
+											<span class="bg-night-75 animate-member-typing-bounce block size-0.5 rounded-full"></span>
+											<span
+												class="bg-night-75 animate-member-typing-bounce block size-0.5 rounded-full"
+												style="animation-delay:0.2s"
+											></span>
+											<span
+												class="bg-night-75 animate-member-typing-bounce block size-0.5 rounded-full"
+												style="animation-delay:0.4s"
+											></span>
+										{/if}
+									</span>
+								{:else}
+									<StatusDot
+										status={member.status}
+										mobileOnly={member.mobile_only}
+										class="text-duvet-bg absolute -right-0.5 -bottom-0.5 w-2.5 border-2"
+									/>
+								{/if}
+							</div>
+
+							<div class="min-w-0 text-left">
 								<span
-									class="border-duvet-bg absolute -right-0.5 -bottom-0.5 flex h-3 w-4 items-center justify-center gap-0.5 rounded-full border-2 bg-zinc-700"
+									class="flex items-center gap-1 truncate leading-5 font-medium"
+									style={getMemberColorStyle(member)}
 								>
-									{#if isRecording(member.id)}
-										<MicIcon class="size-2 animate-pulse text-red-400" />
-									{:else}
-										<span class="bg-night-75 animate-member-typing-bounce block size-0.5 rounded-full"></span>
-										<span
-											class="bg-night-75 animate-member-typing-bounce block size-0.5 rounded-full"
-											style="animation-delay:0.2s"
-										></span>
-										<span
-											class="bg-night-75 animate-member-typing-bounce block size-0.5 rounded-full"
-											style="animation-delay:0.4s"
-										></span>
+									<span class="truncate">{member.username}</span>
+									{#if member.is_bot}
+										<span class="text-xxs text-zinc-400 {member.status === 'offline' ? 'opacity-60' : ''}">BOT</span>
+									{/if}
+									{#if member.is_owner}
+										<CrownSimpleIcon class="size-3 text-amber-500 {member.status === 'offline' ? 'opacity-60' : ''}" />
 									{/if}
 								</span>
-							{:else}
-								<StatusDot
-									status={member.status}
-									mobileOnly={member.mobile_only}
-									class="text-duvet-bg absolute -right-0.5 -bottom-0.5 w-2.5 border-2"
-								/>
-							{/if}
-						</div>
-
-						<div class="min-w-0 text-left">
-							<span class="flex items-center gap-1 truncate leading-5 font-medium" style={getMemberColorStyle(member)}>
-								<span class="truncate">{member.username}</span>
-								{#if member.is_bot}
-									<span class="text-xxs text-zinc-400 {member.status === 'offline' ? 'opacity-60' : ''}">BOT</span>
+								{#if shownActivities($userActivities[member.id]).length}
+									{@const activity = shownActivities($userActivities[member.id])[0]}
+									<p class="truncate text-xs text-zinc-500">
+										{isSpotify(activity)
+											? "Listening to Spotify"
+											: `${activity.name}${activity.state ? ` — ${activity.state}` : ""}`}
+									</p>
 								{/if}
-								{#if member.is_owner}
-									<CrownSimpleIcon class="size-3 text-amber-500 {member.status === 'offline' ? 'opacity-60' : ''}" />
-								{/if}
-							</span>
-							{#if shownActivities($userActivities[member.id]).length}
-								{@const activity = shownActivities($userActivities[member.id])[0]}
-								<p class="truncate text-xs text-zinc-500">
-									{isSpotify(activity)
-										? "Listening to Spotify"
-										: `${activity.name}${activity.state ? ` — ${activity.state}` : ""}`}
-								</p>
-							{/if}
+							</div>
 						</div>
-					</div>
-				{/snippet}
-			</MemberProfilePopover>
-		{/each}
-	</div>
-{/each}
+					{/snippet}
+				</MemberProfilePopover>
+			{/each}
+			{#if end < group.members.length}
+				<div style="height: {(group.members.length - end) * MEMBER_ROW}px"></div>
+			{/if}
+		</div>
+	{/each}
+</div>
