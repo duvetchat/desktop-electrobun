@@ -20,24 +20,47 @@ import type { StorageBucket } from "$lib/api/user";
 
 const MAX_CACHED_CHANNELS = 50;
 
-function createEvictingMessageStore<T>(): Writable<Record<string, T[]>> {
-	const channelAccess: string[] = [];
+/** The message lists of chats, by chat. Their views hold the lists they show (keep). */
+export interface MessageListsStore<T> extends Writable<Record<string, T[]>> {
+	/** Holds a chat's list until the function it returns is called: the store never drops a list a view holds, and the
+	 * view's letting go of it counts as its last use. */
+	keep(chat: string): () => void;
+}
+
+/**
+ * Message lists that keep those of MAX_CACHED_CHANNELS chats at most: past that, the lists used least recently go, a
+ * list's use being its last change or the last view that let go of it, never a list a view holds. A change marks only
+ * the lists it changed (#320: every change marked every list, in the order the chats came in, so the store dropped
+ * the lists it had seen first, the one on screen among them).
+ */
+function createEvictingMessageStore<T>(): MessageListsStore<T> {
+	// The chats with a list, least recently used first.
+	const used: string[] = [];
+	const held = new Map<string, number>();
 	const inner = writable<Record<string, T[]>>({});
 
-	function touchChannels(data: Record<string, T[]>) {
-		for (const key of Object.keys(data)) {
-			const idx = channelAccess.indexOf(key);
-			if (idx > -1) channelAccess.splice(idx, 1);
-			channelAccess.push(key);
-		}
+	function use(chat: string) {
+		const at = used.indexOf(chat);
+		if (at > -1) used.splice(at, 1);
+		used.push(chat);
+	}
+
+	// The lists next added or changed from before are used now, and those it dropped are forgotten.
+	function note(before: Record<string, T[]>, next: Record<string, T[]>) {
+		for (const chat of Object.keys(next)) if (next[chat] !== before[chat]) use(chat);
+		for (let i = used.length - 1; i >= 0; i--) if (!Object.hasOwn(next, used[i])) used.splice(i, 1);
 	}
 
 	function evict(data: Record<string, T[]>): Record<string, T[]> {
-		if (channelAccess.length <= MAX_CACHED_CHANNELS) return data;
-		const toEvict = channelAccess.splice(0, channelAccess.length - MAX_CACHED_CHANNELS);
+		let over = used.length - MAX_CACHED_CHANNELS;
+		if (over <= 0) return data;
 		const result = { ...data };
-		for (const key of toEvict) {
-			delete result[key];
+		for (const chat of [...used]) {
+			if (over === 0) break;
+			if (held.has(chat)) continue;
+			delete result[chat];
+			used.splice(used.indexOf(chat), 1);
+			over--;
 		}
 		return result;
 	}
@@ -45,15 +68,27 @@ function createEvictingMessageStore<T>(): Writable<Record<string, T[]>> {
 	return {
 		subscribe: inner.subscribe,
 		set(value: Record<string, T[]>) {
-			touchChannels(value);
+			note(get(inner), value);
 			inner.set(evict(value));
 		},
 		update(fn: (value: Record<string, T[]>) => Record<string, T[]>) {
 			inner.update((current) => {
 				const next = fn(current);
-				touchChannels(next);
+				note(current, next);
 				return evict(next);
 			});
+		},
+		keep(chat: string) {
+			held.set(chat, (held.get(chat) ?? 0) + 1);
+			let holding = true;
+			return () => {
+				if (!holding) return;
+				holding = false;
+				const left = (held.get(chat) ?? 1) - 1;
+				if (left > 0) held.set(chat, left);
+				else held.delete(chat);
+				if (used.includes(chat)) use(chat);
+			};
 		},
 	};
 }

@@ -849,6 +849,8 @@
 		activeDMConvId.set(convId);
 		// On screen while this view is (lib/on-screen.ts), as a pane's room is.
 		const hide = showChat(convId);
+		// Its list stays in the store while this view shows it (#320).
+		const release = dmMessages.keep(convId);
 		hadUnread = get(unreadConversations).has(convId);
 		unreadConversations.update((s) => {
 			s.delete(convId);
@@ -887,6 +889,7 @@
 			keepList(convId, listFetched && !hasMoreBelow && stillIn ? get(dmMessages)[convId] : null, hasMore, session);
 			activeDMConvId.update((cur) => (cur === convId ? null : cur));
 			hide();
+			release();
 		};
 	});
 </script>
