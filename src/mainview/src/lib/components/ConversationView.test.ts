@@ -40,7 +40,7 @@ test("a conversation shown again shows the list a view of this gateway session l
 	expect(view).toMatch(/\} else if \(keptList\) \{\s*hasMore = keptList\.hasMore;\s*\}/);
 	expect(view).toMatch(/if \(kept \|\| keptList\) \{[^}]*isLoading = false;\s*\} else \{\s*loadFirstPage\(\);\s*\}/);
 	expect(view).toMatch(
-		/const stillIn = get\(conversations\)\.some\(\(c\) => c\.id === convId\);[\s\S]*?\s*keepList\(convId, listFetched && !hasMoreBelow && stillIn \? get\(dmMessages\)\[convId\] : null, hasMore, session\);/,
+		/const stillIn = get\(conversations\)\.some\(\(c\) => c\.id === convId\);[\s\S]*?\s*keepList\(\s*convId,\s*listFetched && !hasMoreBelow && stillIn \? \(get\(dmMessages\)\[convId\] \?\? null\) : null,\s*hasMore,\s*session,\s*\);/,
 	);
 });
 

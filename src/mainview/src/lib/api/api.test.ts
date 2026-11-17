@@ -270,8 +270,8 @@ describe("an upload", () => {
 			"https://api.test/api/rooms/r/messages",
 		]);
 		expect(xhrs).toHaveLength(2);
-		expect(xhrs[1].headers).toMatchObject({ authorization: "Bearer access-2", "x-session-token": "session-2" });
-		expect(xhrs[1].body).toBe(form);
+		expect(xhrs[1]!.headers).toMatchObject({ authorization: "Bearer access-2", "x-session-token": "session-2" });
+		expect(xhrs[1]!.body).toBe(form);
 	});
 
 	// A 204 holds no body: a browser's Response refuses one for it, even empty, where Bun's takes it.
@@ -429,7 +429,7 @@ describe("an upload", () => {
 		const removed = spyOn(kept.signal, "removeEventListener");
 		expect((await api.post("/api/rooms/r/messages", form, { signal: kept.signal })).status).toBe(201);
 		expect(added).toHaveBeenCalledTimes(1);
-		expect(removed).toHaveBeenCalledWith("abort", added.mock.calls[0][1]);
+		expect(removed).toHaveBeenCalledWith("abort", added.mock.calls[0]![1]);
 	});
 
 	test("cut by the network fails as a fetch does", async () => {

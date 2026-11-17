@@ -31,7 +31,7 @@ test("every animate-* class a component names is an animation of app.css's theme
 	expect(used).toContain("member-typing-bounce");
 	expect(used).toContain("auth-drift");
 	for (const name of used) {
-		if (builtIn.has(name)) continue;
+		if (builtIn.has(name!)) continue;
 		const keyframes = new RegExp(`--animate-${name}:\\s*([a-z-]+)\\s`).exec(css)?.[1];
 		expect(keyframes, `--animate-${name}`).toBeDefined();
 		expect(css).toContain(`@keyframes ${keyframes} {`);

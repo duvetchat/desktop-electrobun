@@ -160,7 +160,7 @@ describe("withUserUpdate", () => {
 		const withBob = friendship("bob", me, other(bob));
 		const [updated, untouched] = withUserUpdate([withAna, withBob], anaUpdate(), me);
 		const profile = { username: "ana2", alias: "Ana B.", avatar: "ana-avatar-2", banner: "ana-banner-2" };
-		expect(updated.user).toEqual({ ...ana, ...profile, custom: "Hello", flags: 4, badges: 3 });
+		expect(updated!.user).toEqual({ ...ana, ...profile, custom: "Hello", flags: 4, badges: 3 });
 		expect(updated).toMatchObject({
 			id: withAna.id,
 			user_username: "ana2",
@@ -168,7 +168,7 @@ describe("withUserUpdate", () => {
 			user_avatar: "ana-avatar-2",
 			user_banner: "ana-banner-2",
 		});
-		expect(friendUser(updated, me)).toMatchObject(profile);
+		expect(friendUser(updated!, me)).toMatchObject(profile);
 		expect(untouched).toBe(withBob);
 	});
 
@@ -183,14 +183,14 @@ describe("withUserUpdate", () => {
 
 	test("keeps the bio when the update has none, as an API from before bios sends it", () => {
 		const [updated] = withUserUpdate([friendship(me, "ana", other(ana))], anaUpdate({ custom: undefined }), me);
-		expect(updated.user?.custom).toBe("Hi");
-		expect(updated.user?.alias).toBe("Ana B.");
+		expect(updated!.user?.custom).toBe("Hi");
+		expect(updated!.user?.alias).toBe("Ana B.");
 	});
 
 	test("from an API from before user: updates the user_* fields of the side that isn't the user", () => {
 		const [updated] = withUserUpdate([friendship("ana", me, otherBefore(ana))], anaUpdate(), me);
-		expect(updated.user).toBeUndefined();
-		expect(friendUser(updated, me)).toEqual({
+		expect(updated!.user).toBeUndefined();
+		expect(friendUser(updated!, me)).toEqual({
 			id: "ana",
 			username: "ana2",
 			alias: "Ana B.",

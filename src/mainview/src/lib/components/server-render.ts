@@ -26,7 +26,7 @@ export interface Tag {
 
 // An attribute's value as Svelte escapes it (escape_html), read back.
 const ESCAPED: Record<string, string> = { "&amp;": "&", "&quot;": '"', "&lt;": "<" };
-const unescaped = (value: string) => value.replace(/&(?:amp|quot|lt);/g, (entity) => ESCAPED[entity]);
+const unescaped = (value: string) => value.replace(/&(?:amp|quot|lt);/g, (entity) => ESCAPED[entity] ?? entity);
 
 /** The elements of the HTML component makes with props, in order, each with its attributes. */
 export async function tags<Props extends Record<string, unknown>>(

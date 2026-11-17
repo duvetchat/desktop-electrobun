@@ -146,8 +146,8 @@
 				.filter((f) => f.key.startsWith(typed))
 				.map((f) => ({ key: f.key, label: `${f.key}:`, detail: f.description, insert: `${f.key}:` }));
 		}
-		const key = m[1].toLowerCase();
-		const value = m[2].toLowerCase();
+		const key = m[1]!.toLowerCase();
+		const value = m[2]!.toLowerCase();
 		if (key === "from" || key === "mentions") {
 			return members
 				.filter((u) => u.raw_username.toLowerCase().startsWith(value) || u.username.toLowerCase().startsWith(value))
@@ -224,7 +224,8 @@
 			selected = e.key === "ArrowDown" ? (selected + 1) % n : (selected - 1 + n) % n;
 		} else if (n && (e.key === "Tab" || (e.key === "Enter" && selected >= 0))) {
 			e.preventDefault();
-			void apply(suggestions[Math.max(selected, 0)]);
+			const pick = suggestions[Math.max(selected, 0)];
+			if (pick) void apply(pick);
 		} else if (e.key === "Enter") {
 			e.preventDefault();
 			dismissed = true;
@@ -369,7 +370,7 @@
 	// so a match's offsets are the text's.
 	function fold(s: string): string {
 		return Array.from(s, (ch) => {
-			const base = ch.normalize("NFD")[0].toLowerCase();
+			const base = ch.normalize("NFD")[0]!.toLowerCase();
 			return base.length === ch.length ? base : ch;
 		}).join("");
 	}

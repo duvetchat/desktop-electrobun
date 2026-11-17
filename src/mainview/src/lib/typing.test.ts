@@ -24,7 +24,7 @@ const user = (name: string, ago = 0, recording = false, alias: string | null = n
 describe("typersAt", () => {
 	test("shows everyone but the user", () => {
 		const { typers } = typersAt({ room: [user("me"), user("ana")] }, "id-me", NOW);
-		expect(typers.room.map((u) => u.username)).toEqual(["ana"]);
+		expect(typers.room!.map((u) => u.username)).toEqual(["ana"]);
 	});
 
 	test("a chat where only the user types has nobody to show", () => {

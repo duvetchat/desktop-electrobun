@@ -432,7 +432,7 @@
 	// One they can't open (another space's settings, or a permission gone) gives way to the first they can, before it
 	// shows.
 	$effect.pre(() => {
-		if (!sections.includes(activeSection)) activeSection = sections[0];
+		if (!sections.includes(activeSection)) activeSection = sections[0]!;
 	});
 
 	const canManageRoles = $derived(hasSpacePermission(Permission.ManageRoles));

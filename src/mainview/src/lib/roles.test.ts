@@ -120,7 +120,7 @@ describe("gatewaySpaceToMembers", () => {
 			["user-1", "member-1", true],
 			["user-2", "member-2", false],
 		]);
-		expect(members[1].roles.map((r) => r.id)).toEqual(["admins", "mods", SPACE]);
+		expect(members[1]!.roles.map((r) => r.id)).toEqual(["admins", "mods", SPACE]);
 	});
 });
 

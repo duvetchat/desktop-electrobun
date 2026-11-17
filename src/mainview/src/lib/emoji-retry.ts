@@ -113,7 +113,7 @@ export class EmojiRetries {
 	async failed(img: EmojiImage): Promise<void> {
 		// Bytes a try again fetched, that aren't an image after all.
 		if (img.src.startsWith("blob:")) return img.showName();
-		const url = img.src.split("?")[0];
+		const url = img.src.split("?")[0]!;
 		let file = this.files.get(url);
 		if (file?.gone) return img.showName();
 		if (file?.loaded) return this.showBytes(img, file.loaded);

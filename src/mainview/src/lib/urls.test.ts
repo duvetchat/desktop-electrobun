@@ -344,7 +344,7 @@ describe("pathSegment", () => {
 		]) {
 			// Resolved as fetch resolves it.
 			const path = new URL(`https://api.test/api/invites/${pathSegment(value)}/join`).pathname;
-			expect(path.split("/")).toEqual(["", "api", "invites", path.split("/")[3], "join"]);
+			expect(path.split("/")).toEqual(["", "api", "invites", path.split("/")[3]!, "join"]);
 		}
 	});
 });
@@ -354,15 +354,15 @@ describe("playerFrame", () => {
 
 	test("the players the API frames itself wait for a click too, then keep their origin and start at once", () => {
 		const [youtube, tiktok] = PLAYER_URLS;
-		expect(playerFrame(youtube, own)).toEqual({
+		expect(playerFrame(youtube!, own)).toEqual({
 			sandbox: "allow-scripts allow-same-origin",
 			player: true,
 			src: `${youtube}?autoplay=1`,
 		});
-		expect(playerFrame(tiktok, own)).toEqual({
+		expect(playerFrame(tiktok!, own)).toEqual({
 			sandbox: "allow-scripts allow-same-origin",
 			player: true,
-			src: tiktok.replace(/autoplay=0$/, "autoplay=1"),
+			src: tiktok!.replace(/autoplay=0$/, "autoplay=1"),
 		});
 		for (const url of PLAYER_URLS) {
 			// The same player of the same video, told to start.

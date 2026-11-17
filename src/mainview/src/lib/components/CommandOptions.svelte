@@ -235,7 +235,7 @@
 							{space}
 							{members}
 							{emoji}
-							onSubmit={async (picked) => choose(o, picked[0])}
+							onSubmit={async (picked) => choose(o, picked[0]!)}
 						/>
 					</div>
 				{/if}

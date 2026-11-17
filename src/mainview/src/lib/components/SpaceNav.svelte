@@ -238,7 +238,7 @@
 		const to = tabs.findIndex((t) => t.channelId === targetId);
 		if (from === -1 || to === -1) return;
 		const [moved] = tabs.splice(from, 1);
-		tabs.splice(to, 0, moved);
+		tabs.splice(to, 0, moved!);
 		openChats.onReorder(tabs);
 	}
 

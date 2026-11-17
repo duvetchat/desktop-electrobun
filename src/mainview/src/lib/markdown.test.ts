@@ -635,7 +635,7 @@ describe("a bare link", () => {
 			`[https://duvet.chat/conversations/${ID}/${ID}]`,
 		]) {
 			const [link] = linksIn(text);
-			const card = parseDuvetLink(cardLink(link), "views://mainview");
+			const card = parseDuvetLink(cardLink(link!), "views://mainview");
 			expect(card).not.toBeNull();
 			expect([card]).toEqual(duvetLinksIn(text, "views://mainview"));
 		}

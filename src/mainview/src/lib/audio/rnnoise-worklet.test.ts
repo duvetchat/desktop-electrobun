@@ -71,14 +71,14 @@ function passAll(input: Float32Array, quantum: number, delay: number, processFra
 /** Where `output` first differs from `input` processed by `f` and delayed by `delay` samples; -1 if nowhere. */
 function firstMismatch(input: Float32Array, output: Float32Array, delay: number, f: (x: number) => number) {
 	for (let i = 0; i < output.length; i++) {
-		const expected = i < delay ? 0 : f(input[i - delay]);
+		const expected = i < delay ? 0 : f(input[i - delay]!);
 		if (output[i] !== expected) return i;
 	}
 	return -1;
 }
 
 const negate = (frame: Float32Array) => {
-	for (let i = 0; i < frame.length; i++) frame[i] = -frame[i];
+	for (let i = 0; i < frame.length; i++) frame[i] = -frame[i]!;
 };
 
 describe("128-sample quanta meeting 480-sample frames", () => {
@@ -164,9 +164,9 @@ describe("the worklet's processor, running RNNoise", () => {
 		const expected = new Float32Array(input.length);
 		for (let k = 0; 448 + k * FRAME < input.length; k++) {
 			const frame = input.slice(k * FRAME, (k + 1) * FRAME);
-			for (let i = 0; i < FRAME; i++) frame[i] *= 32768;
+			for (let i = 0; i < FRAME; i++) frame[i]! *= 32768;
 			state.processFrame(frame);
-			for (let i = 0; i < FRAME; i++) frame[i] /= 32768;
+			for (let i = 0; i < FRAME; i++) frame[i]! /= 32768;
 			const at = 448 + k * FRAME;
 			expected.set(frame.subarray(0, input.length - at), at);
 		}

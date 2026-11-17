@@ -490,7 +490,7 @@
 	const unreadDividerIdx = $derived.by(() => {
 		if (!unreadAfterMessageId) return null;
 		for (let i = 0; i < sortedMessages.length; i++) {
-			if (sortedMessages[i].id <= unreadAfterMessageId) {
+			if (sortedMessages[i]!.id <= unreadAfterMessageId) {
 				return i;
 			}
 		}

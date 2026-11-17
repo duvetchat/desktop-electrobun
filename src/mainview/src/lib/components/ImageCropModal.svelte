@@ -218,7 +218,7 @@
 			// A GIF's pixels are opaque or clear: one under half opacity turns clear, and any other opaque.
 			let firstClear = -1;
 			for (let p = 0; p < data.length; p += 4) {
-				if (data[p + 3] < 128) {
+				if (data[p + 3]! < 128) {
 					data[p] = data[p + 1] = data[p + 2] = data[p + 3] = 0;
 					if (firstClear < 0) firstClear = p / 4;
 				} else {

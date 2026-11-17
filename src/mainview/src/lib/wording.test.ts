@@ -38,14 +38,14 @@ test("the UI says Space and room, not server and channel", () => {
 			if (/console\.|^\s*(\/\/|\*|\/\*)/.test(line)) continue;
 			for (const m of line.matchAll(/"([^"\n]*)"|'([^'\n]*)'|`([^`\n]*)`/g)) {
 				const s = m[1] ?? m[2] ?? m[3];
-				if (s.includes(" ") && !ABOUT_THE_API.has(s) && WORD.test(shown(s))) found.push(`${name}: "${s}"`);
+				if (s!.includes(" ") && !ABOUT_THE_API.has(s!) && WORD.test(shown(s!))) found.push(`${name}: "${s}"`);
 			}
 			for (const m of line.matchAll(/\b(?:title|aria-label|placeholder|alt)="([^"]*)"/g))
-				if (WORD.test(shown(m[1]))) found.push(`${name}: ${m[0]}`);
+				if (WORD.test(shown(m[1]!))) found.push(`${name}: ${m[0]}`);
 		}
 		if (!file.endsWith(".svelte")) continue;
 		const markup = text.replace(/<script[\s\S]*?<\/script>/g, "").replace(/<!--[\s\S]*?-->/g, "");
-		for (const m of markup.matchAll(/>([^<>{}]+)</g)) if (WORD.test(m[1])) found.push(`${name}: ${m[1].trim()}`);
+		for (const m of markup.matchAll(/>([^<>{}]+)</g)) if (WORD.test(m[1]!)) found.push(`${name}: ${m[1]!.trim()}`);
 	}
 	expect(found).toEqual([]);
 });

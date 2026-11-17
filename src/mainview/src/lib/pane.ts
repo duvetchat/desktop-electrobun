@@ -124,7 +124,7 @@ export function filterPaneTree(node: PaneNode, keep: (tab: Tab) => boolean): Pan
 			tabs,
 			activeChannelId: tabs.some((t) => t.channelId === node.activeChannelId)
 				? node.activeChannelId
-				: tabs[0].channelId,
+				: tabs[0]!.channelId,
 		};
 	}
 	const a = filterPaneTree(node.a, keep);

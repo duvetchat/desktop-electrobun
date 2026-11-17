@@ -45,12 +45,11 @@
 	}
 
 	function handleTabDragStart(e: DragEvent, origIndex: number) {
+		const tab = tabs[origIndex];
+		if (!tab) return;
 		dragSrcIndex = origIndex;
 		e.dataTransfer!.effectAllowed = "move";
-		e.dataTransfer!.setData(
-			"text/plain",
-			tabDragData(tabs[origIndex], { type: "tab", index: origIndex, sourceLeafId: leafId }),
-		);
+		e.dataTransfer!.setData("text/plain", tabDragData(tab, { type: "tab", index: origIndex, sourceLeafId: leafId }));
 	}
 
 	function handleBarDragOver(e: DragEvent) {
@@ -102,10 +101,12 @@
 		} else if (data.type === "tab" && dragSrcIndex !== null && dropIndex !== null) {
 			const arr = [...tabs];
 			const [moved] = arr.splice(dragSrcIndex, 1);
-			let insertAt = dropIndex > dragSrcIndex ? dropIndex - 1 : dropIndex;
-			insertAt = Math.max(0, Math.min(insertAt, arr.length));
-			arr.splice(insertAt, 0, moved);
-			onReorder(arr);
+			if (moved) {
+				let insertAt = dropIndex > dragSrcIndex ? dropIndex - 1 : dropIndex;
+				insertAt = Math.max(0, Math.min(insertAt, arr.length));
+				arr.splice(insertAt, 0, moved);
+				onReorder(arr);
+			}
 		}
 
 		dragSrcIndex = null;
@@ -145,6 +146,7 @@
 			if (dragSrcIndex === null || dropIndex === null) return all;
 			const arr = [...all];
 			const [moved] = arr.splice(dragSrcIndex, 1);
+			if (!moved) return all;
 			let insertAt = dropIndex > dragSrcIndex ? dropIndex - 1 : dropIndex;
 			insertAt = Math.max(0, Math.min(insertAt, arr.length));
 			arr.splice(insertAt, 0, moved);

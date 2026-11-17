@@ -208,11 +208,7 @@
 
 	$effect(() => {
 		const speaking = voiceUsers.filter((u) => $speakingUsers.has(u.id));
-		if (speaking.length > 0) {
-			lastSpeakerId = speaking[speaking.length - 1].id;
-		} else {
-			lastSpeakerId = null;
-		}
+		lastSpeakerId = speaking.at(-1)?.id ?? null;
 	});
 
 	// Reactive eye offsets: each face looks toward the speaker's tile, by where the tiles sit in the grid.
@@ -328,7 +324,7 @@
 		try {
 			const list = async () => (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === "videoinput");
 			cameras = await list();
-			if (cameras.length > 0 && !cameras[0].label) {
+			if (cameras.length > 0 && !cameras[0]?.label) {
 				const stream = await navigator.mediaDevices.getUserMedia({ video: true });
 				stream.getTracks().forEach((t) => t.stop());
 				cameras = await list();

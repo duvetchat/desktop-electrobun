@@ -149,7 +149,7 @@ export async function analyzeWaveform(
 		let sum = 0;
 		const start = i * blockSize;
 		for (let j = start; j < start + blockSize && j < raw.length; j++) {
-			sum += Math.abs(raw[j]);
+			sum += Math.abs(raw[j]!);
 		}
 		result.push(sum / blockSize);
 	}
@@ -192,7 +192,7 @@ function audioBufferToWav(buffer: AudioBuffer): ArrayBuffer {
 	let offset = 44;
 	for (let i = 0; i < numSamples; i++) {
 		for (let ch = 0; ch < numChannels; ch++) {
-			const s = Math.max(-1, Math.min(1, channels[ch][i]));
+			const s = Math.max(-1, Math.min(1, channels[ch]![i]!));
 			view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7fff, true);
 			offset += 2;
 		}

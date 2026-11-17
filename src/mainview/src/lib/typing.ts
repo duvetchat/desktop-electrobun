@@ -47,14 +47,14 @@ export function typersAt(
 const nameOf = (u: Pick<TypingUser, "alias" | "username">) => u.alias ?? u.username;
 
 export function typingPhrase(users: TypingUser[]): string {
-	if (users.length === 1) return `${nameOf(users[0])} is typing`;
-	if (users.length === 2) return `${nameOf(users[0])} and ${nameOf(users[1])} are typing`;
+	if (users.length === 1) return `${nameOf(users[0]!)} is typing`;
+	if (users.length === 2) return `${nameOf(users[0]!)} and ${nameOf(users[1]!)} are typing`;
 	return "Several people are typing";
 }
 
 export function recordingPhrase(users: TypingUser[]): string {
-	if (users.length === 1) return `${nameOf(users[0])} is recording a voice message`;
-	if (users.length === 2) return `${nameOf(users[0])} and ${nameOf(users[1])} are recording voice messages`;
+	if (users.length === 1) return `${nameOf(users[0]!)} is recording a voice message`;
+	if (users.length === 2) return `${nameOf(users[0]!)} and ${nameOf(users[1]!)} are recording voice messages`;
 	return "Several people are recording voice messages";
 }
 

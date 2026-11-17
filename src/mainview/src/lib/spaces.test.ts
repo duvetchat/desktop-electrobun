@@ -95,9 +95,9 @@ describe("withSpaceCreate", () => {
 		const later = space("A", ["general"], { name: "New", member_roles: { ana: ["mods"] } });
 		const spaces = withSpaceCreate([earlier, space("B", [])], later);
 		expect(spaces.map((s) => s.id)).toEqual(["A", "B"]);
-		expect(spaces[0].rooms.map((r) => r.id)).toEqual(["general"]);
-		expect(spaces[0].name).toBe("New");
-		expect(spaces[0].member_roles).toEqual({ ana: ["mods"] });
+		expect(spaces[0]!.rooms.map((r) => r.id)).toEqual(["general"]);
+		expect(spaces[0]!.name).toBe("New");
+		expect(spaces[0]!.member_roles).toEqual({ ana: ["mods"] });
 	});
 
 	test("keeps what the client loaded that a SPACE_CREATE doesn't carry: the members, their users, the user's member", () => {
@@ -108,8 +108,8 @@ describe("withSpaceCreate", () => {
 		});
 		const later = space("A", ["general"], { member: member("me"), members: [member("me")], users: [user("me")] });
 		const [replaced] = withSpaceCreate([loaded], later);
-		expect(replaced.members).toBe(loaded.members);
-		expect(replaced.users).toBe(loaded.users);
-		expect(replaced.member).toBe(loaded.member);
+		expect(replaced!.members).toBe(loaded.members);
+		expect(replaced!.users).toBe(loaded.users);
+		expect(replaced!.member).toBe(loaded.member);
 	});
 });

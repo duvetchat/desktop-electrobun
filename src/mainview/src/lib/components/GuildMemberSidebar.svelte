@@ -59,7 +59,7 @@
 			if (page.length < MEMBERS_PAGE_SIZE) {
 				hasMore = false;
 			} else {
-				const last = page[page.length - 1];
+				const last = page[page.length - 1]!;
 				cursor = {
 					id: last.id,
 					pos: last.max_pos === -1 ? null : last.max_pos,

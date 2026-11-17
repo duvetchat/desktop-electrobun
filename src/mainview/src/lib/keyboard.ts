@@ -103,7 +103,7 @@ export function nextUnread(
 ): string | null {
 	const start = shownId ? order.indexOf(shownId) : -1;
 	for (let i = 1; i <= order.length; i++) {
-		const id = order[(start + i + order.length) % order.length];
+		const id = order[(start + i + order.length) % order.length]!;
 		if (id !== shownId && unread.has(id)) return id;
 	}
 	return null;

@@ -76,7 +76,7 @@ beforeAll(async () => {
 	fetchSpy.mockImplementation((async (input: string | URL | Request) => {
 		const url = new URL(input instanceof Request ? input.url : input.toString());
 		const bans = /^\/api\/spaces\/([^/]+)\/bans$/.exec(url.pathname);
-		if (bans) return Response.json(apiBans[bans[1]] ?? []);
+		if (bans) return Response.json(apiBans[bans[1]!] ?? []);
 		return Response.json([]);
 	}) as typeof fetch);
 	localStorage.setItem("duvet_session_token", "access");
@@ -96,7 +96,7 @@ describe("a space's bans", () => {
 		expect(listed()).toEqual([banned(1), banned(3)]);
 		deliver("SPACE_BAN_ADD", ban(2));
 		expect(listed()).toEqual([banned(1), banned(2), banned(3)]);
-		expect(get(spaceBans)[SPACE].bans[1]).toEqual(ban(2));
+		expect(get(spaceBans)[SPACE]!.bans[1]).toEqual(ban(2));
 		deliver("SPACE_BAN_REMOVE", { space_id: SPACE, user_id: banned(1) });
 		expect(listed()).toEqual([banned(2), banned(3)]);
 	});

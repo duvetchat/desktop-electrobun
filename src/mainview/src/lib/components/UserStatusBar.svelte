@@ -129,7 +129,7 @@
 			let mics = devices.filter((d) => d.kind === "audioinput");
 
 			// If labels are empty, request mic permission first to unlock device labels
-			if (mics.length > 0 && !mics[0].label) {
+			if (mics.length > 0 && !mics[0]?.label) {
 				const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
 				stream.getTracks().forEach((t) => t.stop());
 				devices = await navigator.mediaDevices.enumerateDevices();
