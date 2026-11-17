@@ -164,11 +164,14 @@ export const channelMessages = createEvictingMessageStore<Message>();
 // history, so they stay apart from it, in this window, until dismissed or the app reloads.
 export const ephemeralMessages = writable<Record<string, Message[]>>({});
 
-/** Adds an ephemeral message, or replaces the one with its ID. */
+// The ephemeral messages a room keeps, the newest: the API keeps 50 per person and bot, for 15 minutes (#321).
+const MAX_EPHEMERAL = 50;
+
+/** Adds an ephemeral message, or replaces the one with its ID, keeping the room's newest MAX_EPHEMERAL. */
 export function keepEphemeral(roomId: string, message: Message) {
 	ephemeralMessages.update((all) => ({
 		...all,
-		[roomId]: [...(all[roomId] ?? []).filter((m) => m.id !== message.id), message],
+		[roomId]: [...(all[roomId] ?? []).filter((m) => m.id !== message.id), message].slice(-MAX_EPHEMERAL),
 	}));
 }
 

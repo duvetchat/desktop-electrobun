@@ -3,21 +3,32 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { get } from "svelte/store";
 import type { DirectMessage } from "$lib/api/conversations";
-import type { Message } from "$lib/types";
+import { MessageType, type Message } from "$lib/types";
 
 // The stores' module uses $state, which only Svelte's compiler knows: here it's the value itself (as test-gateway.ts).
 Object.assign(globalThis, { $state: <T>(value: T) => value });
-const { channelMessages, dmMessages } = await import("$lib/stores.svelte");
+const { channelMessages, dmMessages, ephemeralMessages, keepEphemeral } = await import("$lib/stores.svelte");
 
 // #320: the stores of chats' messages keep the lists of 50 chats at most. They dropped the lists they had seen first,
 // whatever their use: every change marked every list as used, in the order the chats came in, so the chat on screen
 // could lose its list.
+const message = (id: string): Message => ({
+	id,
+	content: "",
+	type: MessageType.Text,
+	author_id: "alice",
+	author_name: "alice",
+	author_avatar_url: null,
+	author_is_bot: false,
+	created_at: "",
+	updated_at: "",
+});
 const lists = () => Object.keys(get(channelMessages));
 /** A message more in a room's list, adding the list when the room has none. */
 const add = (room: string) =>
 	channelMessages.update((all) => ({
 		...all,
-		[room]: [...(all[room] ?? []), { id: `${room}-${all[room]?.length ?? 0}` } as Message],
+		[room]: [...(all[room] ?? []), message(`${room}-${all[room]?.length ?? 0}`)],
 	}));
 const fill = () => {
 	for (let i = 0; i < 50; i++) add(`room${i}`);
@@ -81,4 +92,18 @@ test("the views hold the lists they show", () => {
 	const conversation = source("ConversationView.svelte");
 	expect(conversation).toContain("const release = dmMessages.keep(convId);");
 	expect(conversation).toMatch(/hide\(\);\s*release\(\);/);
+});
+
+// #321: the ephemeral messages bots send were kept without a limit, where the API keeps the newest 50 per person and
+// bot, for 15 minutes.
+test("a room keeps its newest 50 ephemeral messages", () => {
+	for (let i = 0; i < 60; i++) keepEphemeral("room", message(`e${i}`));
+	const kept = get(ephemeralMessages).room;
+	expect(kept).toHaveLength(50);
+	expect(kept[0].id).toBe("e10");
+	expect(kept.at(-1)?.id).toBe("e59");
+	// One replaced (edited by its bot) is still one.
+	keepEphemeral("room", { ...message("e30"), content: "edited" });
+	expect(get(ephemeralMessages).room).toHaveLength(50);
+	expect(get(ephemeralMessages).room[0].id).toBe("e10");
 });
