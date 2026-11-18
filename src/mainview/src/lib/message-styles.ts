@@ -21,8 +21,11 @@ export const MESSAGE_TEXT = [
 	"[&_.msg-spoiler]:[background:radial-gradient(circle,var(--speck)_0.7px,transparent_1.1px)_0_0/4px_4px,radial-gradient(circle,var(--speck)_0.6px,transparent_1px)_2px_2px/5px_5px,var(--spoiler-fill)]",
 	"[&_.msg-spoiler:is(:hover,:focus-visible)]:animate-none [&_.msg-spoiler:is(:hover,:focus-visible)]:text-inherit [&_.msg-spoiler:is(:hover,:focus-visible)]:[background:var(--spoiler-fill)]",
 	"[&_.msg-spoiler:not(:hover,:focus-visible)_*]:invisible",
-	// a person's mention: their name in bold, in their role's colour where it has one (markdown.ts), and no chip
-	"[&_.msg-mention]:bg-transparent [&_.msg-mention]:p-0 [&_.msg-mention]:font-bold [&_.msg-mention]:text-inherit",
+	// a person's mention: their name in bold, in their role's colour where it has one (markdown.ts: an inline style,
+	// which wins), violet where it has none, as mobile writes it; and no chip. The violet comes through --mention-ink,
+	// so a lit bubble (lib/prism.ts) and one's own bubble name another ink without racing this rule's place in the sheet.
+	"[&_.msg-mention]:bg-transparent [&_.msg-mention]:p-0 [&_.msg-mention]:font-bold",
+	"[&_.msg-mention]:[color:var(--mention-ink,var(--duvet-chosen-ink))]",
 	"[&_.msg-mention[data-user-id]:hover]:bg-transparent [&_.msg-mention[data-user-id]:hover]:underline",
 	// a room's mention: a chip
 	"[&_.msg-room-mention]:rounded-md [&_.msg-room-mention]:px-[5px]",
@@ -40,7 +43,7 @@ export const MESSAGE_TEXT_PLAIN = [
 
 /** In one's own bubble, which is azure: the fills are washes of white, and links and chips take the bubble's ink. */
 export const MESSAGE_TEXT_OWN = [
-	"[--speck:rgba(255,255,255,0.85)] [--spoiler-fill:rgba(255,255,255,0.16)]",
+	"[--speck:rgba(255,255,255,0.85)] [--spoiler-fill:rgba(255,255,255,0.16)] [--mention-ink:currentColor]",
 	"[&_.msg-inline-code]:bg-fixed-white/18 [&_.msg-blockquote]:bg-fixed-white/16",
 	"[&_.msg-table_th]:bg-fixed-white/16 [&_.msg-table_th]:text-inherit [&_.msg-table_td]:border-fixed-white/25 [&_.msg-table_th]:border-fixed-white/25",
 	"[&_.msg-table_tr:nth-child(even)_td]:bg-fixed-white/8",

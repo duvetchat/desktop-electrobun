@@ -129,6 +129,8 @@ describe("text contrast", () => {
 					["danger", ["danger/15>card", "danger/10>card", "danger/10>bg", "danger/10>glass-strong>bg"]],
 					["warn", ["bg", "card", "sb-bg", "glass>bg"]],
 					["chosen-ink", ["chosen", "card", "bg"]],
+					// A mention's violet in a bubble Prism lights: on the card, and on the light where it is strongest.
+					["mention-lit", ["card", "prism-gem>card", "prism-gem>bg"]],
 					["tip-ink", ["tip-bg"]],
 					["media-ink", ["stage", "media-scrim>black"]],
 					["call-red-ink", ["call-red-tint>stage"]],

@@ -58,9 +58,10 @@ export function placePrism(bubble: HTMLElement, list: HTMLElement, userId: strin
 // The classes that draw it. Tailwind reads them here, so each class is whole in one string. The bubble holds the light
 // and the rim as its first children, under its text.
 
-/** A Prism bubble's own classes, over a bubble's: the card's fill, with the violet shadow under it. */
+/** A Prism bubble's own classes, over a bubble's: the card's fill, with the violet shadow under it. The names in it
+ * are read on the light where it is strongest, so they take the violet that holds there (--duvet-mention-lit). */
 export const PRISM_BUBBLE =
-	"bg-duvet-card text-duvet-ink isolate shadow-[var(--duvet-shadow-raised),var(--duvet-prism-shadow)]";
+	"bg-duvet-card text-duvet-ink isolate shadow-[var(--duvet-shadow-raised),var(--duvet-prism-shadow)] [--mention-ink:var(--duvet-mention-lit)]";
 
 /** The three lights, which fade in after the bubble. */
 export const PRISM_LIGHT = [
@@ -68,13 +69,15 @@ export const PRISM_LIGHT = [
 	"bg-[radial-gradient(calc(170px*var(--ps,1))_calc(80px*var(--ps,1))_at_var(--mx,40px)_var(--my,20px),var(--duvet-prism-gem),transparent),radial-gradient(calc(120px*var(--ps,1))_calc(50px*var(--ps,1))_at_var(--cx,140px)_70%,var(--duvet-prism-cool),transparent),radial-gradient(calc(90px*var(--ps,1))_calc(40px*var(--ps,1))_at_var(--wx,70px)_100%,var(--duvet-prism-warm),transparent)]",
 ].join(" ");
 
-/** The rim: a 1 px edge that runs from violet to blue, cut out of a gradient with a mask. */
+/** The rim: a 1 px edge that runs from violet to blue, cut out of a gradient with a mask. The cut ("exclude") is part
+ * of the mask shorthand itself: as a class of its own it came before the shorthand in the stylesheet, which reset it,
+ * and the whole gradient showed across the bubble instead of its edge. */
 export const PRISM_RIM = [
 	"pointer-events-none absolute inset-0 -z-10 rounded-[inherit] p-px",
 	"bg-[linear-gradient(135deg,var(--duvet-rim-0)_0%,var(--duvet-rim-1)_42%,var(--duvet-rim-2)_70%,var(--duvet-rim-3)_100%)]",
-	"[mask:linear-gradient(#000_0_0)_content-box,linear-gradient(#000_0_0)] [mask-composite:exclude]",
+	"[mask:linear-gradient(#000_0_0)_content-box_exclude,linear-gradient(#000_0_0)]",
 ].join(" ");
 
 /** A flat row that mentions the user: the light as a wash behind the row, with no rim and nothing that moves. */
 export const PRISM_WASH =
-	"bg-[radial-gradient(420px_80px_at_60px_50%,var(--duvet-prism-gem),transparent),radial-gradient(260px_60px_at_220px_80%,var(--duvet-prism-cool),transparent)]";
+	"[--mention-ink:var(--duvet-mention-lit)] bg-[radial-gradient(420px_80px_at_60px_50%,var(--duvet-prism-gem),transparent),radial-gradient(260px_60px_at_220px_80%,var(--duvet-prism-cool),transparent)]";

@@ -30,6 +30,8 @@
 	/* The prototype's --selected-fill and, on it, --violet: a picked pill, your reaction, a mention chip. */
 	--duvet-chosen: #231e3d;
 	--duvet-chosen-ink: #b3a6ff;
+	/* A mention's violet inside a bubble Prism lights: read on the light at its strongest (mobile's behindName). */
+	--duvet-mention-lit: #b3a6ff;
 	--duvet-secondary-fill: #1c1e2e;
 	/* What is live (the prototype's --live): online, a call, speaking. */
 	--duvet-alive: #4cc38a;
@@ -142,6 +144,7 @@
 	--duvet-azure-tint: rgba(28, 140, 255, 0.122);
 	--duvet-chosen: #f0edff;
 	--duvet-chosen-ink: #6a58d6;
+	--duvet-mention-lit: #4f3fc0;
 	--duvet-secondary-fill: #e3e9ff;
 	--duvet-alive: #2f9e62;
 	--duvet-alive-text: #1c6c41;
@@ -223,6 +226,7 @@
 	--color-duvet-azure-tint: var(--duvet-azure-tint);
 	--color-duvet-chosen: var(--duvet-chosen);
 	--color-duvet-chosen-ink: var(--duvet-chosen-ink);
+	--color-duvet-mention-lit: var(--duvet-mention-lit);
 	--color-duvet-secondary-fill: var(--duvet-secondary-fill);
 	--color-duvet-alive: var(--duvet-alive);
 	--color-duvet-alive-text: var(--duvet-alive-text);

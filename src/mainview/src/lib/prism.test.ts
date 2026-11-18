@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mentionCentre, prismScale, prismSides, prismSlide } from "./prism";
+import { mentionCentre, PRISM_BUBBLE, PRISM_RIM, PRISM_WASH, prismScale, prismSides, prismSlide } from "./prism";
 
 describe("Prism's lights", () => {
 	test("scale with the bubble's width, full size from 270 px and never under four tenths", () => {
@@ -33,5 +33,23 @@ describe("Prism's lights", () => {
 
 	test("with no mention in the text (a reply that pinged the user), it sits near the text's start", () => {
 		expect(mentionCentre({ left: 200, top: 300, width: 270, height: 60 }, null)).toEqual({ mx: 40, my: 20 });
+	});
+});
+
+// The rim is a gradient with all but its 1 px edge masked away. The cut-out has to be part of the mask shorthand: as a
+// class of its own it sat before the shorthand in the stylesheet, which reset it, and the gradient filled the bubble.
+describe("Prism's classes", () => {
+	test("the rim's mask carries its own cut-out, with no class a shorthand can reset", () => {
+		expect(PRISM_RIM).toContain("_content-box_exclude,");
+		expect(PRISM_RIM).not.toContain("[mask-composite:");
+		expect(PRISM_RIM.match(/\[mask:/g)).toHaveLength(1);
+		expect(PRISM_RIM).toContain("p-px");
+	});
+
+	test("a lit bubble and a lit row write their mentions in the violet that holds on the light", () => {
+		for (const classes of [PRISM_BUBBLE, PRISM_WASH])
+			expect(classes).toContain("[--mention-ink:var(--duvet-mention-lit)]");
+		// The bubble itself stays the card: the light is the layer under its text, not its fill.
+		expect(PRISM_BUBBLE.split(" ")).toContain("bg-duvet-card");
 	});
 });

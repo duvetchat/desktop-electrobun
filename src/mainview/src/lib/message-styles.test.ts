@@ -35,3 +35,13 @@ test("a closed spoiler's specks take each tone's own colours", () => {
 		expect(tone).toContain("[--spoiler-fill:");
 	}
 });
+
+// A mention is the member's name in bold: in their role's colour where it has one (an inline style from markdown.ts),
+// violet where it has none, as mobile writes it. The violet comes through a variable, so a lit bubble and one's own
+// bubble can name another ink without depending on where each rule lands in the stylesheet.
+test("a mention is violet through --mention-ink, and one's own bubble writes it in the bubble's ink", () => {
+	expect(MESSAGE_TEXT).toContain("[&_.msg-mention]:[color:var(--mention-ink,var(--duvet-chosen-ink))]");
+	expect(MESSAGE_TEXT).not.toContain("[&_.msg-mention]:text-");
+	expect(MESSAGE_TEXT_OWN).toContain("[--mention-ink:currentColor]");
+	expect(MESSAGE_TEXT_PLAIN).not.toContain("--mention-ink");
+});
