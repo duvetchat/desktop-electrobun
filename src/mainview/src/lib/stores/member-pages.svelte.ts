@@ -11,6 +11,8 @@ type Pager = {
 	cursor: Cursor | null;
 	hasMore: boolean;
 	loading: boolean;
+	/** The last page failed (#388): the lists say so, with Try again, and nothing asks for it again by itself. */
+	failed: boolean;
 	/** How many of the Space's users the app held after the last page: fewer since means the Space was loaded anew. */
 	held: number;
 	abort: AbortController | null;
@@ -40,8 +42,12 @@ export function cursorAfter(page: SpaceMemberWithUser[], pageSize = MEMBERS_PAGE
 
 const pagers = $state<Record<string, Pager>>({});
 
+// The Space's pager, as the store reads it: the proxy $state made of it (#388). `??=` gives back the object assigned,
+// not that proxy, and what a page wrote there never reached what the lists read: the popover's spinner spun on after
+// a Space's first page, and no page after it was asked for.
 function pagerOf(spaceId: string): Pager {
-	return (pagers[spaceId] ??= { cursor: null, hasMore: true, loading: false, held: 0, abort: null });
+	pagers[spaceId] ??= { cursor: null, hasMore: true, loading: false, failed: false, held: 0, abort: null };
+	return pagers[spaceId];
 }
 
 /** Whether a page of the Space's members is on its way, for a spinner under the list. */
@@ -49,11 +55,18 @@ export function membersLoading(spaceId: string | null | undefined): boolean {
 	return !!spaceId && !!pagers[spaceId]?.loading;
 }
 
-/** Loads the Space's next page of members into the app's Spaces, unless one is loading or none is left. */
+/** Whether the Space's last page of members failed, for the lists to say so: loadMoreMembers tries it again. */
+export function membersFailed(spaceId: string | null | undefined): boolean {
+	return !!spaceId && !!pagers[spaceId]?.failed;
+}
+
+/** Loads the Space's next page of members into the app's Spaces, unless one is loading or none is left. A page that
+ * failed is the next one still: this asks for it again. */
 export async function loadMoreMembers(spaceId: string): Promise<void> {
 	const pager = pagerOf(spaceId);
 	if (pager.loading || !pager.hasMore) return;
 	pager.loading = true;
+	pager.failed = false;
 	const abort = (pager.abort = new AbortController());
 	try {
 		const page = await getSpaceMembers(spaceId, pager.cursor ?? undefined, abort.signal);
@@ -72,9 +85,11 @@ export async function loadMoreMembers(spaceId: string): Promise<void> {
 		if (cursor) pager.cursor = cursor;
 		else pager.hasMore = false;
 	} catch (e: unknown) {
-		if (e instanceof Error && e.name !== "AbortError" && !abort.signal.aborted) {
-			console.error("[members] pagination error:", e);
-		}
+		// A page dropped for a newer one (restartMembers) or for a new session (forgetMemberPages) failed nothing. One
+		// the API refused, or that got no answer in its time (lib/api/api.ts), did.
+		if (abort.signal.aborted) return;
+		console.error("[members] pagination error:", e);
+		pager.failed = true;
 	} finally {
 		if (pager.abort === abort) pager.loading = false;
 	}
@@ -88,14 +103,16 @@ export function restartMembers(spaceId: string): Promise<void> {
 	pager.cursor = null;
 	pager.hasMore = true;
 	pager.loading = false;
+	pager.failed = false;
 	pager.held = 0;
 	return loadMoreMembers(spaceId);
 }
 
 /**
  * Makes sure the Space's first page of members is loaded or on its way: the first time it's asked for, and again once
- * the app holds fewer of the Space's users than after its last page (`heldNow`), which is the Space loaded anew by a
- * new gateway session, without its pages.
+ * the app holds fewer of the Space's users than after its last page (`heldNow`), which is the Space loaded anew, as
+ * after the user left it and joined again. A page that failed isn't asked for again here, where whatever shows the
+ * Space asks as it changes, and would ask in a loop while the API refuses: the lists' Try again does (loadMoreMembers).
  */
 export function ensureMembers(spaceId: string, heldNow: number): Promise<void> {
 	const pager = pagers[spaceId];
@@ -104,7 +121,8 @@ export function ensureMembers(spaceId: string, heldNow: number): Promise<void> {
 	return Promise.resolve();
 }
 
-/** Forgets every pager: a test's, or a sign-out's. */
+/** Forgets every pager, dropping the pages on their way: a new gateway session's, whose Spaces come back without their
+ * pages (a Space whose page failed is asked again then), or a test's. */
 export function forgetMemberPages(): void {
 	for (const id of Object.keys(pagers)) {
 		pagers[id]?.abort?.abort();

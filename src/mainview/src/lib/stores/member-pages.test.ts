@@ -3,8 +3,8 @@ import { get } from "svelte/store";
 import type { SpaceMemberWithUser } from "$lib/api/spaces";
 import type { GatewayMember, GatewaySpace, GatewayUser } from "$lib/types";
 
-// The pages the API hands out, in order, and what it was asked for each.
-let pages: (SpaceMemberWithUser[] | "fails")[] = [];
+// The pages the API hands out, in order, and what it was asked for each. A promise is a page still on its way.
+let pages: (SpaceMemberWithUser[] | "fails" | Promise<SpaceMemberWithUser[]>)[] = [];
 let asked: { spaceId: string; after: string | undefined }[] = [];
 mock.module("$lib/api/spaces", () => ({
 	MEMBERS_PAGE_SIZE: 2,
@@ -23,6 +23,7 @@ const {
 	ensureMembers,
 	forgetMemberPages,
 	loadMoreMembers,
+	membersFailed,
 	membersLoading,
 	restartMembers,
 	withMemberPage,
@@ -171,4 +172,74 @@ test("starting over drops the page on its way", async () => {
 	const fresh = restartMembers("harbour");
 	await Promise.all([stale, fresh]);
 	expect(held().members.map((m) => m.id)).toEqual(["member-1", "member-2"]);
+});
+
+// Runs a test whose pages fail without their errors' lines in its output.
+async function quietly(run: () => Promise<void>) {
+	const logged = console.error;
+	console.error = () => {};
+	try {
+		await run();
+	} finally {
+		console.error = logged;
+	}
+}
+
+// #388: a page that failed was only logged. The spinner went and the list stayed as it was, with nothing to say so, and
+// nothing asked for it again but a scroll to the list's end, which a list of a few members can't have: a Space whose
+// first page failed showed its user alone until the app closed.
+test("a page that fails says so, and is asked for again when it's tried again, not before", async () => {
+	await quietly(async () => {
+		pages = ["fails", [row(1), row(2)]];
+		await ensureMembers("harbour", 1);
+		expect(membersFailed("harbour")).toBe(true);
+		expect(membersLoading("harbour")).toBe(false);
+		// The faces in a pane's bar ask as the Space changes, and the list as it shows: neither asks again by itself, which
+		// would ask in a loop while the API refuses.
+		await ensureMembers("harbour", held().users.length);
+		expect(asked).toHaveLength(1);
+		// Try again: the same page, which clears the failure as it comes.
+		await loadMoreMembers("harbour");
+		expect(membersFailed("harbour")).toBe(false);
+		expect(asked.map((a) => a.after)).toEqual([undefined, undefined]);
+		expect(held().members.map((m) => m.id)).toEqual(["member-1", "member-2"]);
+		expect(membersFailed(null)).toBe(false);
+	});
+});
+
+test("a new session starts the members over, those of a Space whose page failed too", async () => {
+	await quietly(async () => {
+		pages = ["fails", [row(1), row(2)]];
+		await ensureMembers("harbour", 1);
+		expect(membersFailed("harbour")).toBe(true);
+		// READY: the Spaces come back without their pages.
+		forgetMemberPages();
+		expect(membersFailed("harbour")).toBe(false);
+		await ensureMembers("harbour", 1);
+		expect(asked).toHaveLength(2);
+		expect(held().members.map((m) => m.id)).toEqual(["member-1", "member-2"]);
+	});
+});
+
+// #388 also had a Space switch race the page on its way: since #357 each Space has its own pages, which this keeps.
+test("two Spaces' pages on their way at once land each in its own Space, each ending only its own spinner", async () => {
+	gatewaySpaces.set([space([1]), { ...space([1]), id: "cove", name: "Cove" }]);
+	let harbourPage!: (page: SpaceMemberWithUser[]) => void;
+	let covePage!: (page: SpaceMemberWithUser[]) => void;
+	pages = [new Promise((resolve) => (harbourPage = resolve)), new Promise((resolve) => (covePage = resolve))];
+	const harbour = loadMoreMembers("harbour");
+	const cove = loadMoreMembers("cove");
+	covePage([row(7)]);
+	await cove;
+	expect(membersLoading("cove")).toBe(false);
+	expect(membersLoading("harbour")).toBe(true);
+	harbourPage([row(1), row(2)]);
+	await harbour;
+	expect(membersLoading("harbour")).toBe(false);
+	const of = (id: string) =>
+		get(gatewaySpaces)
+			.find((s) => s.id === id)!
+			.members.map((m) => m.id);
+	expect(of("harbour")).toEqual(["member-1", "member-2"]);
+	expect(of("cove")).toEqual(["placeholder-1", "member-7"]);
 });

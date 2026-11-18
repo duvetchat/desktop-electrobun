@@ -144,6 +144,7 @@ import {
 	type MentionNotice,
 } from "$lib/mention-notices";
 import { storageTransfers } from "$lib/stores/storage-transfers.svelte";
+import { forgetMemberPages } from "$lib/stores/member-pages.svelte";
 import { toast } from "$lib/stores/toast.svelte";
 import { getElectrobunRpc, type ActivityPayload } from "$lib/electrobun-rpc";
 import { identifyData } from "$lib/api/ws/identify";
@@ -920,10 +921,12 @@ function handleEvent(event: GatewayEvent) {
 			// included): one the user is no longer in doesn't come back.
 			gatewaySpaces.set([]);
 			// And the bans loaded, whose events of the time away never came: a space's list loads anew as it's shown. So
-			// does the call history, and each conversation's newest page as its view comes.
+			// does the call history, and each conversation's newest page as its view comes, and each Space's members
+			// from their first page, a Space's whose page failed too (#388).
 			forgetBans();
 			forgetCalls();
 			forgetLists();
+			forgetMemberPages();
 			friendsReady.set(false);
 			allSpacesReady.set(false);
 			const guildIds = payload.data.guild_ids ?? [];
