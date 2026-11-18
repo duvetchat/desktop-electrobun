@@ -1,19 +1,17 @@
 <script lang="ts">
-	import { Play, Pause, X, Volume1, Volume2, VolumeX } from "@lucide/svelte";
+	import { Play, Pause, X } from "@lucide/svelte";
 	import { fly } from "svelte/transition";
 	import {
 		voiceNote,
 		toggleVoiceNote,
 		seekVoiceNote,
 		stopVoiceNote,
-		audioVolume,
 		getAttachmentRate,
 		cyclePlaybackRate,
 	} from "$lib/stores/voiceNotePlayer.svelte";
 	import { formatDuration } from "$lib/utils/time";
+	import VolumeControl from "$lib/components/VolumeControl.svelte";
 
-	let showVolume = $state(false);
-	let volumeTimeout: ReturnType<typeof setTimeout> | null = null;
 	let rate = $state(1);
 
 	// Sync rate when active attachment changes
@@ -35,102 +33,66 @@
 		seekVoiceNote(ratio * note.duration);
 	}
 
-	function showVolumeSlider() {
-		if (volumeTimeout) clearTimeout(volumeTimeout);
-		showVolume = true;
-	}
-
-	function hideVolumeSlider() {
-		volumeTimeout = setTimeout(() => (showVolume = false), 250);
-	}
-
 	const progress = $derived($voiceNote && $voiceNote.duration > 0 ? $voiceNote.currentTime / $voiceNote.duration : 0);
 </script>
 
 {#if $voiceNote}
-	<div
-		class="border-duvet-line shrink-0 border-t"
+	<!-- Mobile's playback bar (widgets/playback_bar.dart): a line of progress on top, what plays and how far, play or
+	     pause, and Stop; with the app's speed and volume. A press on the line seeks. -->
+	<section
+		aria-label="Now playing"
+		class="bg-duvet-sb-card shadow-duvet-raised mx-2.5 mb-2 shrink-0 rounded-[14px] select-none"
 		in:fly={{ y: 20, duration: 200, opacity: 1 }}
 		out:fly={{ y: 20, duration: 200, opacity: 1 }}
 	>
-		<div class="flex items-center gap-2 px-2 py-1.5 select-none">
+		<!-- svelte-ignore a11y_click_events_have_key_events -->
+		<!-- svelte-ignore a11y_no_static_element_interactions -->
+		<div class="group relative h-2 cursor-pointer overflow-hidden rounded-t-[14px]" onclick={handleSeek}>
+			<div class="bg-duvet-hover-strong absolute inset-x-0 top-0 h-0.5 group-hover:h-1"></div>
+			<div class="bg-duvet-accent absolute top-0 left-0 h-0.5 group-hover:h-1" style="width: {progress * 100}%;"></div>
+		</div>
+		<div class="flex items-center gap-1.5 pr-1.5 pb-2 pl-2">
 			<button
-				class="text-duvet-on-accent bg-duvet-accent hover:bg-duvet-accent/85 flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-full transition-colors"
+				type="button"
+				aria-label={$voiceNote.playing ? "Pause" : "Play"}
+				class="bg-duvet-accent text-duvet-on-accent shadow-duvet-control grid size-[30px] shrink-0 cursor-pointer place-items-center rounded-[10px] transition-[filter] hover:brightness-[1.06] motion-reduce:transition-none"
 				onclick={toggleVoiceNote}
 			>
 				{#if $voiceNote.playing}
-					<Pause class="size-3.5" fill="currentColor" stroke="none" />
+					<Pause size={14} fill="currentColor" stroke="none" />
 				{:else}
-					<Play class="size-3.5" fill="currentColor" stroke="none" />
+					<Play size={14} fill="currentColor" stroke="none" />
 				{/if}
 			</button>
 
-			<div class="flex min-w-0 flex-1 flex-col gap-0.5">
-				<div class="flex min-w-0 items-center gap-1.5">
-					<span class="text-duvet-ink truncate text-xs font-medium">{$voiceNote.filename ?? $voiceNote.authorName}</span
-					>
-					<span class="text-xxs text-duvet-ink2 shrink-0">{$voiceNote.channelName}</span>
-				</div>
-				<!-- svelte-ignore a11y_click_events_have_key_events -->
-				<!-- svelte-ignore a11y_no_static_element_interactions -->
-				<div class="bg-duvet-ink/10 relative h-1 cursor-pointer rounded-full" onclick={handleSeek}>
-					<div class="bg-duvet-accent absolute inset-y-0 left-0 rounded-full" style="width: {progress * 100}%;"></div>
-				</div>
-				<div class="flex items-center gap-1">
-					<span class="text-xxs text-duvet-ink2 tabular-nums">
-						{formatDuration(
-							$voiceNote.playing || $voiceNote.currentTime > 0 ? $voiceNote.currentTime : $voiceNote.duration,
-						)}
-						/ {formatDuration($voiceNote.duration)}
-					</span>
-					<button
-						class="text-duvet-ink2 hover:bg-duvet-ink/10 hover:text-duvet-ink cursor-pointer rounded px-0.5 text-[9px] font-semibold tabular-nums transition-colors"
-						onclick={handleCycleRate}>{rate}x</button
-					>
-				</div>
-			</div>
-
-			<!-- svelte-ignore a11y_no_static_element_interactions -->
-			<div class="relative shrink-0" onmouseenter={showVolumeSlider} onmouseleave={hideVolumeSlider}>
-				<button
-					class="text-duvet-ink2 hover:text-duvet-ink flex size-6 cursor-pointer items-center justify-center transition-colors"
+			<div class="flex min-w-0 flex-1 flex-col gap-px">
+				<span class="text-duvet-ink truncate text-[13px] leading-[1.25] font-semibold"
+					>{$voiceNote.filename ?? $voiceNote.authorName}</span
 				>
-					{#if $audioVolume === 0}
-						<VolumeX class="size-3" />
-					{:else if $audioVolume < 0.5}
-						<Volume1 class="size-3" />
-					{:else}
-						<Volume2 class="size-3" />
-					{/if}
-				</button>
-
-				{#if showVolume}
-					<!-- svelte-ignore a11y_no_static_element_interactions -->
-					<!-- svelte-ignore a11y_click_events_have_key_events -->
-					<div
-						class="rounded-card border-duvet-line bg-duvet-card shadow-duvet-float absolute bottom-full left-1/2 z-50 mb-0 flex -translate-x-1/2 flex-col items-center gap-1 border p-2 pb-3"
-					>
-						<input
-							type="range"
-							min="0"
-							max="1"
-							step="0.01"
-							bind:value={$audioVolume}
-							class="volume-slider h-20 w-1.5"
-							style="writing-mode: vertical-lr; direction: rtl;"
-						/>
-						<span class="text-xxs text-duvet-ink2 tabular-nums">{Math.round($audioVolume * 100)}%</span>
-					</div>
-				{/if}
+				<span class="text-duvet-ink2 truncate text-[11.5px] leading-[1.25] tabular-nums">
+					{#if $voiceNote.channelName}{$voiceNote.channelName} ·
+					{/if}{formatDuration(
+						$voiceNote.playing || $voiceNote.currentTime > 0 ? $voiceNote.currentTime : $voiceNote.duration,
+					)} / {formatDuration($voiceNote.duration)}
+				</span>
 			</div>
 
 			<button
-				class="text-duvet-ink2 hover:bg-duvet-ink/10 hover:text-duvet-ink shrink-0 rounded-full p-1 transition-colors"
+				type="button"
+				aria-label="Playback speed: {rate}x"
+				class="text-duvet-ink2 hover:bg-duvet-hover hover:text-duvet-ink h-[22px] shrink-0 cursor-pointer rounded-[7px] px-1.5 text-[11px] font-semibold tabular-nums transition-colors motion-reduce:transition-none"
+				onclick={handleCycleRate}>{rate}x</button
+			>
+			<VolumeControl height="h-20" />
+
+			<button
+				type="button"
+				class="text-duvet-ink2 hover:bg-duvet-hover hover:text-duvet-ink grid size-[26px] shrink-0 cursor-pointer place-items-center rounded-lg transition-colors motion-reduce:transition-none"
 				aria-label="Stop"
 				onclick={stopVoiceNote}
 			>
-				<X class="size-3.5" />
+				<X size={14} />
 			</button>
 		</div>
-	</div>
+	</section>
 {/if}

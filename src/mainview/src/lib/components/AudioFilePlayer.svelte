@@ -1,17 +1,17 @@
 <script lang="ts">
 	import { onDestroy, onMount } from "svelte";
-	import { Play, Pause, Music, Volume1, Volume2, VolumeX } from "@lucide/svelte";
+	import { Play, Pause, Music } from "@lucide/svelte";
 	import {
 		voiceNote,
 		playVoiceNote,
 		toggleVoiceNote,
 		seekVoiceNote,
-		audioVolume,
 		getAttachmentRate,
 		cyclePlaybackRate,
 		voiceNotePlayRequests,
 	} from "$lib/stores/voiceNotePlayer.svelte";
 	import { formatDuration } from "$lib/utils/time";
+	import VolumeControl from "$lib/components/VolumeControl.svelte";
 	import { formatFileSize } from "$lib/utils/format";
 	import {
 		waveformCache,
@@ -52,8 +52,6 @@
 		// Its WAV goes once nothing else holds it: another player of the file, or the voice note player (#167).
 		releaseWav(wavSrc);
 	});
-	let showVolume = $state(false);
-	let volumeTimeout: ReturnType<typeof setTimeout> | null = null;
 
 	const rate = $derived.by(() => {
 		void $voiceNote;
@@ -62,15 +60,6 @@
 
 	function handleCycleRate() {
 		cyclePlaybackRate(attachmentId);
-	}
-
-	function showVolumeSlider() {
-		if (volumeTimeout) clearTimeout(volumeTimeout);
-		showVolume = true;
-	}
-
-	function hideVolumeSlider() {
-		volumeTimeout = setTimeout(() => (showVolume = false), 250);
 	}
 
 	const BAR_COUNT = 80;
@@ -180,90 +169,69 @@
 	});
 </script>
 
-<div
-	class="rounded-card border-duvet-line bg-duvet-card/70 flex max-w-87.5 min-w-62.5 flex-col gap-1 border px-3 py-2.5"
->
-	<div class="flex min-w-0 items-center gap-2">
-		<Music class="text-duvet-ink2 size-4 shrink-0" />
-		<div class="flex min-w-0 flex-col">
+<div class="bg-duvet-card shadow-duvet-raised flex w-[340px] max-w-full flex-col gap-2 rounded-[18px] p-2.5">
+	<div class="flex min-w-0 items-center gap-2.5">
+		<span
+			class="bg-duvet-secondary-fill text-duvet-accent-text grid size-[34px] shrink-0 place-items-center rounded-[10px]"
+		>
+			<Music size={16} />
+		</span>
+		<div class="flex min-w-0 flex-col gap-px">
 			<a
 				href={src}
 				target="_blank"
 				rel="noopener noreferrer"
-				class="text-duvet-accent-text truncate text-sm font-medium hover:underline"
+				class="text-duvet-ink truncate text-[13.5px] leading-[1.25] font-semibold hover:underline"
 				download={filename}>{filename}</a
 			>
-			<span class="text-xxs text-duvet-ink2">{formatFileSize(sizeBytes)}</span>
+			<span class="text-duvet-ink2 text-[11.5px] leading-[1.25]">{formatFileSize(sizeBytes)}</span>
 		</div>
 	</div>
 
 	<div class="flex items-center gap-2">
 		<button
-			class="text-duvet-ink hover:text-duvet-ink flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-full transition-colors"
+			type="button"
+			aria-label={playing ? "Pause" : "Play"}
+			class="bg-duvet-accent text-duvet-on-accent shadow-duvet-control grid size-[30px] shrink-0 cursor-pointer place-items-center rounded-full transition-[filter] hover:brightness-[1.06] motion-reduce:transition-none"
 			onclick={togglePlay}
 		>
 			{#if playing}
-				<Pause class="size-4" fill="currentColor" stroke="none" />
+				<Pause size={14} fill="currentColor" stroke="none" />
 			{:else}
-				<Play class="size-4" fill="currentColor" stroke="none" />
+				<Play size={14} fill="currentColor" stroke="none" />
 			{/if}
 		</button>
 
-		<span class="text-xxs text-duvet-ink2 shrink-0 tabular-nums">
-			{formatDuration(playing || currentTime > 0 ? currentTime : 0)}/{formatDuration(duration)}
-		</span>
-
-		<button
-			class="text-xxs text-duvet-ink2 hover:bg-duvet-ink/10 hover:text-duvet-ink cursor-pointer rounded px-1 font-semibold tabular-nums transition-colors"
-			onclick={handleCycleRate}>{rate}x</button
-		>
-
 		<!-- svelte-ignore a11y_click_events_have_key_events -->
 		<!-- svelte-ignore a11y_no_static_element_interactions -->
-		<div class="relative flex h-6 min-w-0 flex-1 cursor-pointer items-end gap-px" onclick={handleSeek}>
+		<div
+			class="text-duvet-accent-text relative flex h-6 min-w-0 flex-1 cursor-pointer items-center gap-px"
+			onclick={handleSeek}
+		>
 			{#each bars as height, i}
-				{@const barProgress = i / bars.length}
 				<div
-					class="rounded-px min-h-0.5 flex-1 transition-[background] duration-100"
-					style="height: {height * 100}%; {barProgress <= progress
-						? 'background: var(--duvet-accent);'
-						: 'background: color-mix(in oklab, var(--duvet-ink) 20%, transparent);'}"
+					class="min-h-0.5 flex-1 rounded-full bg-current transition-opacity duration-100 motion-reduce:transition-none {i /
+						bars.length <=
+						progress &&
+					(playing || currentTime > 0)
+						? 'opacity-100'
+						: 'opacity-30'}"
+					style="height: {height * 100}%;"
 				></div>
 			{/each}
 		</div>
 
-		<!-- svelte-ignore a11y_no_static_element_interactions -->
-		<div class="relative shrink-0" onmouseenter={showVolumeSlider} onmouseleave={hideVolumeSlider}>
-			<button
-				class="text-duvet-ink2 hover:text-duvet-ink flex size-6 cursor-pointer items-center justify-center transition-colors"
-			>
-				{#if $audioVolume === 0}
-					<VolumeX class="size-3.5" />
-				{:else if $audioVolume < 0.5}
-					<Volume1 class="size-3.5" />
-				{:else}
-					<Volume2 class="size-3.5" />
-				{/if}
-			</button>
+		<span class="text-duvet-ink2 shrink-0 text-[11.5px] font-medium tabular-nums">
+			{formatDuration(playing || currentTime > 0 ? currentTime : 0)}/{formatDuration(duration)}
+		</span>
 
-			{#if showVolume}
-				<!-- svelte-ignore a11y_no_static_element_interactions -->
-				<!-- svelte-ignore a11y_click_events_have_key_events -->
-				<div
-					class="rounded-card border-duvet-line bg-duvet-card shadow-duvet-float absolute bottom-full left-1/2 z-50 mb-0 flex -translate-x-1/2 flex-col items-center gap-1 border p-2 pb-3"
-				>
-					<input
-						type="range"
-						min="0"
-						max="1"
-						step="0.01"
-						bind:value={$audioVolume}
-						class="volume-slider h-24 w-1.5"
-						style="writing-mode: vertical-lr; direction: rtl;"
-					/>
-					<span class="text-xxs text-duvet-ink2 tabular-nums">{Math.round($audioVolume * 100)}%</span>
-				</div>
-			{/if}
-		</div>
+		<button
+			type="button"
+			aria-label="Playback speed: {rate}x"
+			class="text-duvet-ink2 hover:bg-duvet-hover hover:text-duvet-ink h-[22px] shrink-0 cursor-pointer rounded-[7px] px-1.5 text-[11px] font-semibold tabular-nums transition-colors motion-reduce:transition-none"
+			onclick={handleCycleRate}>{rate}x</button
+		>
+
+		<VolumeControl height="h-24" />
 	</div>
 </div>
