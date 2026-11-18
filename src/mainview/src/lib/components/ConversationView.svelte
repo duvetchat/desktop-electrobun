@@ -98,12 +98,12 @@
 		takeList,
 		withPresent,
 	} from "$lib/jumps";
-	import { Ellipsis, LogOut, MessageSquare, Pencil, Phone, UserPlus, Users } from "@lucide/svelte";
+	import { Ellipsis, LogOut, MessageSquare, Pencil, Phone, UserPlus } from "@lucide/svelte";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
 	import Chat from "$lib/components/Chat.svelte";
 	import MessageSearch from "$lib/components/MessageSearch.svelte";
 	import PinnedMessages from "$lib/components/PinnedMessages.svelte";
-	import GuildMemberSidebar from "$lib/components/GuildMemberSidebar.svelte";
+	import MembersButton from "$lib/components/MembersButton.svelte";
 	import VoiceChannelView from "$lib/components/VoiceChannelView.svelte";
 	import type { MemberOnSidebar } from "$lib/types";
 	import { getAvatarURL } from "$lib/common/common";
@@ -137,7 +137,6 @@
 	let isAtBottom = $state(false);
 	let convUnreadAfter = $state<string | null>(null);
 	const ackedConvMsgId = new Map<string, string>();
-	let showMemberList = $state(true);
 	let showAddMemberModal = $state(false);
 	let addMemberLoading = $state(false);
 	let addMemberError = $state("");
@@ -1031,22 +1030,13 @@
 			Add
 		</button>
 	{/if}
-	<!-- A group says how many it has here, where its members open. -->
-	<button
-		type="button"
-		class="{buttonClass} {showMemberList ? 'bg-duvet-card text-duvet-ink' : ''}"
-		onclick={() => {
-			showMemberList = !showMemberList;
-		}}
-		title="Members"
-		aria-label={conversation.type === 2 ? `Members, ${conversation.members.length}` : "Members"}
-		aria-pressed={showMemberList}
-	>
-		<Users class="size-4" />
-		{#if conversation.type === 2}
-			<span class="tabular-nums">{conversation.members.length}</span>
-		{/if}
-	</button>
+	<!-- The chat's members open from their faces, in a popover, as a room's do: nothing is docked beside the chat, and
+	     nothing floats over it until asked (#357). -->
+	<MembersButton
+		members={convMembers}
+		channelId={conversation.id}
+		onRemoveMember={conversation.type === 2 && isOwner ? handleRemoveMember : undefined}
+	/>
 	{#key conversation.id}
 		<PinnedMessages channelId={conversation.id} conversation members={convMembers} toDirectMessage={toMessage} />
 		<MessageSearch conversationId={conversation.id} members={convMembers} toDirectMessage={toMessage} />
@@ -1169,15 +1159,6 @@
 			}}
 			{paneFocused}
 		/>
-
-		<!-- Member list sidebar -->
-		{#if showMemberList}
-			<GuildMemberSidebar
-				overrideMembers={convMembers}
-				channelId={conversation.id}
-				onRemoveMember={conversation.type === 2 && isOwner ? handleRemoveMember : undefined}
-			/>
-		{/if}
 	</div>
 </div>
 
