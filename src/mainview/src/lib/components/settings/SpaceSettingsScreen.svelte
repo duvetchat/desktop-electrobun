@@ -328,7 +328,7 @@
 			// It goes from the app at once, which says so (lib/settings-host.ts).
 			host.spaceDeleted(id, name);
 		} catch (e) {
-			deleteError = getApiError(e, "Failed to delete the space");
+			deleteError = getApiError(e, "Couldn't delete the Space");
 		} finally {
 			deletingSpace = false;
 		}
@@ -1017,7 +1017,7 @@
 		if (!spaceId) return;
 		const sid = spaceId;
 		await confirmAction(
-			"Delete all attachments in this space? Its emojis and stickers go with them. This cannot be undone.",
+			"Delete all attachments in this Space? Its emojis and stickers go with them. This cannot be undone.",
 			"Delete",
 			async () => {
 				await deleteAllSpaceAttachments(sid);

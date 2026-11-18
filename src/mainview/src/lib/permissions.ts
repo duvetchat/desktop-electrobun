@@ -49,7 +49,7 @@ export const ALL_PERMISSIONS: ReadonlyArray<{ flag: PermissionFlag; name: string
 	{
 		flag: Permission.ChangeNickname,
 		name: "Change Nickname",
-		description: "Allows members to change their nickname in this space.",
+		description: "Allows members to change their nickname in this Space.",
 	},
 	{ flag: Permission.JoinVoice, name: "Join Voice", description: "Allows members to join voice rooms." },
 	{ flag: Permission.SpeakInVoice, name: "Speak in Voice", description: "Allows members to speak in voice rooms." },
@@ -61,29 +61,29 @@ export const ALL_PERMISSIONS: ReadonlyArray<{ flag: PermissionFlag; name: string
 	{
 		flag: Permission.ManageInvites,
 		name: "Manage Invites",
-		description: "Allows members to see the space's invites and revoke them.",
+		description: "Allows members to see the Space's invites and revoke them.",
 	},
 	{ flag: Permission.CreateInvites, name: "Create Invites", description: "Allows members to create invite links." },
 	{
 		flag: Permission.ManageSpaceEmojis,
 		name: "Manage Emojis",
-		description: "Allows members to upload, rename and delete the space's emojis.",
+		description: "Allows members to upload, rename and delete the Space's emojis.",
 	},
 	{
 		flag: Permission.ManageSpaceBuckets,
 		name: "Manage Buckets",
-		description: "Allows members to manage the storage buckets the space's files go to.",
+		description: "Allows members to manage the storage buckets the Space's files go to.",
 	},
 	{
 		flag: Permission.ManageSpaceStickers,
 		name: "Manage Stickers",
-		description: "Allows members to upload, rename and delete the space's stickers.",
+		description: "Allows members to upload, rename and delete the Space's stickers.",
 	},
 	{ flag: Permission.ManageBots, name: "Manage Bots", description: "Allows members to add bots and remove them." },
 	{
 		flag: Permission.ManageSpaceAttachments,
 		name: "Manage Attachments",
-		description: "Allows members to manage and delete the space's files.",
+		description: "Allows members to manage and delete the Space's files.",
 	},
 	{
 		flag: Permission.ManageSpaceWebhooks,

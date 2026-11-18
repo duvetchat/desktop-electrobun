@@ -104,7 +104,7 @@
 	});
 </script>
 
-<p class={NOTE}>Banned users can't join the Space until they're unbanned.</p>
+<p class={NOTE}>Banned people can't join the Space until they're unbanned.</p>
 {#if !list || (list.bans.length === 0 && loading > 0)}
 	<div class="flex flex-col gap-2">
 		{#each Array(3) as _, index (index)}

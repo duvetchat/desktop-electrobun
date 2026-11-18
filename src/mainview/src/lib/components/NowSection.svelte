@@ -156,7 +156,7 @@
 				t,
 				target: storageTransfers.storageName(t.target_bucket_id),
 				owner:
-					t.owner_id === t.started_by ? null : ($gatewaySpaces.find((s) => s.id === t.owner_id)?.name ?? "A space"),
+					t.owner_id === t.started_by ? null : ($gatewaySpaces.find((s) => s.id === t.owner_id)?.name ?? "A Space"),
 				progress: transferProgress(t),
 			})),
 	);

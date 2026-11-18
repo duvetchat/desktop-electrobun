@@ -51,7 +51,7 @@
 		adding = true;
 		try {
 			await addBotToSpace(spaceId, botUserId);
-			const spaceName = $gatewaySpaces.find((s) => s.id === spaceId)?.name ?? "the space";
+			const spaceName = $gatewaySpaces.find((s) => s.id === spaceId)?.name ?? "the Space";
 			toast(`Bot added to ${spaceName}!`, "success");
 			open = false;
 		} catch (err) {

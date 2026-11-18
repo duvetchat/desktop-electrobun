@@ -1037,7 +1037,7 @@
 	async function handleDeleteBot(app: Application) {
 		if (!devSelectedTeam) return;
 		const teamId = devSelectedTeam.id;
-		await confirmAction("Delete this bot? It will be removed from all spaces.", "Delete", async () => {
+		await confirmAction("Delete this bot? It will be removed from all Spaces.", "Delete", async () => {
 			await deleteBot(teamId, app.id);
 			devApps = devApps.map((a) => (a.id === app.id ? { ...a, bot_user_id: null, bot_token_hash: null } : a));
 			devBotToken = null;

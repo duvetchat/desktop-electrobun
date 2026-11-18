@@ -37,7 +37,7 @@
 	</div>
 {:else if !error && bot}
 	<div class="border-duvet-line bg-duvet-card shadow-duvet-raised rounded-card mt-2 max-w-xs border p-4">
-		<p class="text-duvet-ink2 mb-3 text-[13px] font-bold">Add a bot to your space</p>
+		<p class="text-duvet-ink2 mb-3 text-[13px] font-bold">Add a bot to your Space</p>
 		<div class="mb-4 flex items-center gap-3">
 			<div class="shrink-0">
 				<UserAvatar src={getAvatarURL(bot.id, bot.avatar)} name={bot.username} size={48} />
