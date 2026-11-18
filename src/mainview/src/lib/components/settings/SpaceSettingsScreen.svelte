@@ -292,7 +292,7 @@
 			});
 			toast("Space updated", "success");
 		} catch (e) {
-			toast(getApiError(e, "Failed to update"), "error");
+			toast(getApiError(e, "Couldn't update"), "error");
 		} finally {
 			ovSaving = false;
 			ovUploadPercent = null;
@@ -490,7 +490,7 @@
 		try {
 			await updateRole(spaceId, role.id, { position: newPos });
 		} catch (err) {
-			console.error("Failed to reorder role:", err);
+			console.error("Couldn't reorder role:", err);
 		}
 	}
 
@@ -573,8 +573,8 @@
 			newRoleColorTo = "";
 			newRoleUseGradient = false;
 		} catch (err) {
-			console.error("Failed to create role:", err);
-			toast(getApiError(err, "Failed to create role"), "error");
+			console.error("Couldn't create role:", err);
+			toast(getApiError(err, "Couldn't create role"), "error");
 		} finally {
 			isCreating = false;
 		}
@@ -605,8 +605,8 @@
 			});
 			editingRoleId = null;
 		} catch (err) {
-			console.error("Failed to update role:", err);
-			toast(getApiError(err, "Failed to update role"), "error");
+			console.error("Couldn't update role:", err);
+			toast(getApiError(err, "Couldn't update role"), "error");
 		} finally {
 			isCreating = false;
 		}
@@ -667,8 +667,8 @@
 		try {
 			spaceEmojis = await listEmojis(spaceId);
 		} catch (err) {
-			console.error("Failed to load emojis:", err);
-			toast(getApiError(err, "Failed to load emojis"), "error");
+			console.error("Couldn't load emojis:", err);
+			toast(getApiError(err, "Couldn't load emojis"), "error");
 		} finally {
 			emojisLoading = false;
 		}
@@ -702,8 +702,8 @@
 			setNewEmojiFile(null);
 			await loadEmojis();
 		} catch (err) {
-			console.error("Failed to upload emoji:", err);
-			toast(getApiError(err, "Failed to upload emoji"), "error");
+			console.error("Couldn't upload emoji:", err);
+			toast(getApiError(err, "Couldn't upload emoji"), "error");
 		} finally {
 			isUploadingEmoji = false;
 			emojiUploadPercent = null;
@@ -728,8 +728,8 @@
 			editingEmojiName = "";
 			await loadEmojis();
 		} catch (err) {
-			console.error("Failed to update emoji:", err);
-			toast(getApiError(err, "Failed to update emoji"), "error");
+			console.error("Couldn't update emoji:", err);
+			toast(getApiError(err, "Couldn't update emoji"), "error");
 		}
 	}
 
@@ -759,8 +759,8 @@
 		try {
 			spaceStickers = await listStickers(spaceId);
 		} catch (err) {
-			console.error("Failed to load stickers:", err);
-			toast(getApiError(err, "Failed to load stickers"), "error");
+			console.error("Couldn't load stickers:", err);
+			toast(getApiError(err, "Couldn't load stickers"), "error");
 		} finally {
 			stickersLoading = false;
 		}
@@ -792,8 +792,8 @@
 			setNewStickerFile(null);
 			await loadStickers();
 		} catch (err) {
-			console.error("Failed to upload sticker:", err);
-			toast(getApiError(err, "Failed to upload sticker"), "error");
+			console.error("Couldn't upload sticker:", err);
+			toast(getApiError(err, "Couldn't upload sticker"), "error");
 		} finally {
 			isUploadingSticker = false;
 			stickerUploadPercent = null;
@@ -818,8 +818,8 @@
 			editingStickerName = "";
 			await loadStickers();
 		} catch (err) {
-			console.error("Failed to update sticker:", err);
-			toast(getApiError(err, "Failed to update sticker"), "error");
+			console.error("Couldn't update sticker:", err);
+			toast(getApiError(err, "Couldn't update sticker"), "error");
 		}
 	}
 
@@ -847,7 +847,7 @@
 			spaceBuckets = await getSpaceBuckets(spaceId);
 			storageTransfers.nameBuckets(spaceBuckets);
 		} catch (e) {
-			spaceBucketsError = getApiError(e, "Failed to load");
+			spaceBucketsError = getApiError(e, "Couldn't load");
 		} finally {
 			spaceBucketsLoading = false;
 		}
@@ -900,7 +900,7 @@
 			spaceStorageUsed = used.total_size;
 			spacePicker.prune();
 		} catch (e) {
-			if (loadId === spaceAttachmentsLoadId) toast(getApiError(e, "Failed to load attachments"), "error");
+			if (loadId === spaceAttachmentsLoadId) toast(getApiError(e, "Couldn't load attachments"), "error");
 		} finally {
 			if (loadId === spaceAttachmentsLoadId) spaceAttachmentsLoading = false;
 		}
@@ -967,7 +967,7 @@
 			spaceMoveFilter = {};
 			spaceMoveOpen = true;
 		} catch (err) {
-			toast(getApiError(err, "Failed to load the bucket's files"), "error");
+			toast(getApiError(err, "Couldn't load the bucket's files"), "error");
 		} finally {
 			movingSpaceBucketId = null;
 		}
@@ -1044,7 +1044,7 @@
 		try {
 			spaceInvites = await listSpaceInvites(spaceId);
 		} catch (e) {
-			toast(getApiError(e, "Failed to load invites"), "error");
+			toast(getApiError(e, "Couldn't load invites"), "error");
 		} finally {
 			spaceInvitesLoading = false;
 		}
@@ -1128,7 +1128,7 @@
 				resetSpaceBucketForm();
 				await loadSpaceBuckets();
 			} catch (e) {
-				spaceBucketsError = getApiError(e, "Failed to save");
+				spaceBucketsError = getApiError(e, "Couldn't save");
 			} finally {
 				spaceBucketSaving = false;
 			}
@@ -1195,7 +1195,7 @@
 			}
 			await loadSpaceBuckets();
 		} catch (e) {
-			toast(getApiError(e, "Failed to toggle bucket"), "error");
+			toast(getApiError(e, "Couldn't toggle bucket"), "error");
 		} finally {
 			togglingSpaceBucketId = null;
 		}

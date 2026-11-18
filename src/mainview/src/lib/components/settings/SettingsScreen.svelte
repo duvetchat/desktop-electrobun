@@ -252,7 +252,7 @@
 			storageTransfers.nameBuckets(bucketList);
 			picker.prune();
 		} catch (err) {
-			if (loadId === attachmentsLoadId) attachmentsError = getApiError(err, "Failed to load");
+			if (loadId === attachmentsLoadId) attachmentsError = getApiError(err, "Couldn't load");
 		} finally {
 			if (loadId === attachmentsLoadId) attachmentsLoading = false;
 		}
@@ -315,7 +315,7 @@
 			buckets = await getMyBuckets();
 			myBuckets.set(buckets);
 		} catch (e) {
-			bucketsError = getApiError(e, "Failed to load");
+			bucketsError = getApiError(e, "Couldn't load");
 		} finally {
 			bucketsLoading = false;
 		}
@@ -377,7 +377,7 @@
 				resetBucketForm();
 				await loadBuckets();
 			} catch (e) {
-				bucketsError = getApiError(e, "Failed to save");
+				bucketsError = getApiError(e, "Couldn't save");
 			} finally {
 				bucketSaving = false;
 			}
@@ -434,7 +434,7 @@
 			}
 			await loadBuckets();
 		} catch (e) {
-			toast(getApiError(e, "Failed to toggle bucket"), "error");
+			toast(getApiError(e, "Couldn't toggle bucket"), "error");
 		} finally {
 			togglingBucketId = null;
 		}
@@ -492,7 +492,7 @@
 			moveFilter = {};
 			moveOpen = true;
 		} catch (err) {
-			toast(getApiError(err, "Failed to load the bucket's files"), "error");
+			toast(getApiError(err, "Couldn't load the bucket's files"), "error");
 		} finally {
 			movingBucketId = null;
 		}
@@ -527,7 +527,7 @@
 			await sendVerificationEmail();
 			toast("Verification email sent! Check your inbox.", "success");
 		} catch (err) {
-			toast(getApiError(err, "Failed to send verification email"), "error");
+			toast(getApiError(err, "Couldn't send verification email"), "error");
 		} finally {
 			sendingVerification = false;
 		}
@@ -542,7 +542,7 @@
 			await sendResetPasswordEmail();
 			toast("Reset password email sent! Check your inbox.", "success");
 		} catch (err) {
-			toast(getApiError(err, "Failed to send reset password email"), "error");
+			toast(getApiError(err, "Couldn't send reset password email"), "error");
 		} finally {
 			sendingReset = false;
 		}
@@ -594,7 +594,7 @@
 			themeVersion++;
 			host.codeThemeChanged(url);
 		} catch (e) {
-			toast(getApiError(e, "Failed to load theme"), "error");
+			toast(getApiError(e, "Couldn't load theme"), "error");
 		} finally {
 			savingTheme = false;
 		}
@@ -612,7 +612,7 @@
 			toast("Verification email sent to your new address. Check your inbox.", "success");
 			newEmail = "";
 		} catch (err) {
-			toast(getApiError(err, "Failed to send email change request"), "error");
+			toast(getApiError(err, "Couldn't send email change request"), "error");
 		} finally {
 			sendingEmailChange = false;
 		}
@@ -860,7 +860,7 @@
 				if (fresh) botUsers = { ...botUsers, [app.bot_user_id]: fresh };
 			}
 		} catch (e) {
-			toast(getApiError(e, "Failed to update bot"), "error");
+			toast(getApiError(e, "Couldn't update bot"), "error");
 		} finally {
 			savingBotProfile = false;
 			botUploadPercent = null;
@@ -872,7 +872,7 @@
 		try {
 			devTeams = await listTeams();
 		} catch (e) {
-			toast(getApiError(e, "Failed to load teams"), "error");
+			toast(getApiError(e, "Couldn't load teams"), "error");
 		} finally {
 			devLoading = false;
 		}
@@ -894,7 +894,7 @@
 			});
 			botUsers = map;
 		} catch (e) {
-			toast(getApiError(e, "Failed to load team details"), "error");
+			toast(getApiError(e, "Couldn't load team details"), "error");
 		} finally {
 			devAppsLoading = false;
 		}
@@ -909,7 +909,7 @@
 			devNewTeamName = "";
 			await selectTeam(team);
 		} catch (e) {
-			toast(getApiError(e, "Failed to create team"), "error");
+			toast(getApiError(e, "Couldn't create team"), "error");
 		} finally {
 			devCreatingTeam = false;
 		}
@@ -935,7 +935,7 @@
 			if (devSelectedTeam?.id === updated.id) devSelectedTeam = updated;
 			devEditingTeam = null;
 		} catch (e) {
-			toast(getApiError(e, "Failed to update team"), "error");
+			toast(getApiError(e, "Couldn't update team"), "error");
 		}
 	}
 
@@ -947,7 +947,7 @@
 			toast("Invite sent", "success");
 			devInviteEmail = "";
 		} catch (e) {
-			toast(getApiError(e, "Failed to invite"), "error");
+			toast(getApiError(e, "Couldn't invite"), "error");
 		} finally {
 			devInviting = false;
 		}
@@ -971,7 +971,7 @@
 			devNewAppName = "";
 			devNewAppDesc = "";
 		} catch (e) {
-			toast(getApiError(e, "Failed to create application"), "error");
+			toast(getApiError(e, "Couldn't create application"), "error");
 		} finally {
 			devCreatingApp = false;
 		}
@@ -987,7 +987,7 @@
 			devApps = devApps.map((a) => (a.id === updated.id ? updated : a));
 			devEditingApp = null;
 		} catch (e) {
-			toast(getApiError(e, "Failed to update application"), "error");
+			toast(getApiError(e, "Couldn't update application"), "error");
 		}
 	}
 
@@ -997,7 +997,7 @@
 			const updated = await updateApplication(devSelectedTeam.id, app.id, { public: !app.public });
 			devApps = devApps.map((a) => (a.id === updated.id ? updated : a));
 		} catch (e) {
-			toast(getApiError(e, "Failed to update visibility"), "error");
+			toast(getApiError(e, "Couldn't update visibility"), "error");
 		}
 	}
 
@@ -1019,7 +1019,7 @@
 			devApps = devApps.map((a) => (a.id === app.id ? { ...a, bot_user_id: "created" } : a));
 			toast("Bot created! Copy the token — it won't be shown again.", "success");
 		} catch (e) {
-			toast(getApiError(e, "Failed to create bot"), "error");
+			toast(getApiError(e, "Couldn't create bot"), "error");
 		}
 	}
 
@@ -1066,7 +1066,7 @@
 			toast("Invite accepted", "success");
 			void loadDevTeams();
 		} catch (e) {
-			toast(getApiError(e, "Failed to accept invite"), "error");
+			toast(getApiError(e, "Couldn't accept invite"), "error");
 		}
 	}
 
@@ -1075,7 +1075,7 @@
 			await answerTeamInvite(inviteId, false);
 			toast("Invite declined", "success");
 		} catch (e) {
-			toast(getApiError(e, "Failed to decline invite"), "error");
+			toast(getApiError(e, "Couldn't decline invite"), "error");
 		}
 	}
 
@@ -1183,7 +1183,7 @@
 			saveSuccess = true;
 			setTimeout(() => (saveSuccess = false), 2000);
 		} catch (err) {
-			saveError = getApiError(err, "Failed to save changes");
+			saveError = getApiError(err, "Couldn't save changes");
 		} finally {
 			saving = false;
 			profileUploadPercent = null;
