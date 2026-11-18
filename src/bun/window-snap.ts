@@ -61,7 +61,7 @@ function compile(dir: string, kernel32: ReturnType<typeof openWin32>["kernel32"]
 			source: compilablePath(source, kernel32),
 			symbols: {
 				windowSnapSetUp: {
-					args: [FFIType.ptr, FFIType.ptr, FFIType.ptr, FFIType.ptr],
+					args: [FFIType.ptr, FFIType.ptr, FFIType.ptr, FFIType.ptr, FFIType.ptr, FFIType.ptr, FFIType.ptr],
 					returns: FFIType.void,
 				},
 				windowSnapProcedure: { args: [], returns: FFIType.ptr },
@@ -107,6 +107,9 @@ export function letWindowsArrange(window: Pointer, dir = tmpdir()): boolean {
 		user32Function(`CallWindowProc${charset}`),
 		user32Function("IsZoomed"),
 		user32Function("ReleaseCapture"),
+		user32Function("GetFocus"),
+		user32Function("SetFocus"),
+		user32Function("IsChild"),
 		previous,
 	);
 	// The procedure first, so the frame and caption the styles would add never show.

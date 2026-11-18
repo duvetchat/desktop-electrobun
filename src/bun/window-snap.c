@@ -15,14 +15,22 @@ typedef LRESULT_ (*WNDPROC_)(HWND_, unsigned int, WPARAM_, LPARAM_);
 typedef LRESULT_ (*CALLWINDOWPROC_)(WNDPROC_, HWND_, unsigned int, WPARAM_, LPARAM_);
 typedef int (*ISZOOMED_)(HWND_);
 typedef int (*RELEASECAPTURE_)(void);
+typedef HWND_ (*GETFOCUS_)(void);
+typedef HWND_ (*SETFOCUS_)(HWND_);
+typedef int (*ISCHILD_)(HWND_, HWND_);
 
 typedef struct {
 	int left, top, right, bottom;
 } RECT_;
 
+#define WM_ACTIVATE 0x0006
+#define WA_INACTIVE 0
+#define WM_SETFOCUS 0x0007
 #define WM_NCCALCSIZE 0x0083
 #define WM_NCLBUTTONDOWN 0x00A1
 #define HTCAPTION 2
+#define WM_SYSCOMMAND 0x0112
+#define SC_KEYMENU 0xF100
 // WM_APP + 0x0D07, as window-snap.ts posts it: a press on the title bar that turned into a drag, at the point (in its
 // lParam, as WM_NCLBUTTONDOWN has it) where it began.
 #define WINDOW_SNAP_DRAG 0x8D07
@@ -31,8 +39,29 @@ static WNDPROC_ electrobunProcedure;
 static CALLWINDOWPROC_ callWindowProc;
 static ISZOOMED_ isZoomed;
 static RELEASECAPTURE_ releaseCapture;
+static GETFOCUS_ getFocus;
+static SETFOCUS_ setFocus;
+static ISCHILD_ isChild;
+// The window in the page (the webview's) that had the keyboard as the window was last deactivated.
+static HWND_ pageFocus;
 
 static LRESULT_ procedure(HWND_ window, unsigned int message, WPARAM_ wParam, LPARAM_ lParam) {
+	// Electrobun gives the webview no focus as Windows activates the window (an Alt+Tab, win.focus()): Windows' default
+	// gives the window itself the keyboard, where no key reaches the page. As Windows' dialogs do, the window keeps what
+	// in it had the keyboard as it's deactivated, and gives it back as it gets the keyboard.
+	if (message == WM_ACTIVATE && (wParam & 0xFFFF) == WA_INACTIVE) {
+		HWND_ focus = getFocus();
+		if (focus && isChild(window, focus)) pageFocus = focus;
+	}
+	if (message == WM_SETFOCUS) {
+		LRESULT_ result = callWindowProc(electrobunProcedure, window, message, wParam, lParam);
+		// A page's window that's gone is no child any more.
+		if (pageFocus && isChild(window, pageFocus)) setFocus(pageFocus);
+		return result;
+	}
+	// The system menu the window takes for Win+Up and Win+Down has no caption to show in: Alt alone or F10 would open it
+	// unseen, and its loop would take the next keys. Alt+Space, which shows it, still opens it.
+	if (message == WM_SYSCOMMAND && (wParam & 0xFFF0) == SC_KEYMENU && lParam == 0) return 0;
 	if (message == WM_NCCALCSIZE && wParam) {
 		// Restored, the client area is the whole window, as before the frame and caption: 0 keeps the rectangle Windows
 		// proposes.
@@ -54,10 +83,14 @@ static LRESULT_ procedure(HWND_ window, unsigned int message, WPARAM_ wParam, LP
 	return callWindowProc(electrobunProcedure, window, message, wParam, lParam);
 }
 
-void windowSnapSetUp(void *callWindowProcFunction, void *isZoomedFunction, void *releaseCaptureFunction, void *previous) {
+void windowSnapSetUp(void *callWindowProcFunction, void *isZoomedFunction, void *releaseCaptureFunction,
+		void *getFocusFunction, void *setFocusFunction, void *isChildFunction, void *previous) {
 	callWindowProc = (CALLWINDOWPROC_)callWindowProcFunction;
 	isZoomed = (ISZOOMED_)isZoomedFunction;
 	releaseCapture = (RELEASECAPTURE_)releaseCaptureFunction;
+	getFocus = (GETFOCUS_)getFocusFunction;
+	setFocus = (SETFOCUS_)setFocusFunction;
+	isChild = (ISCHILD_)isChildFunction;
 	electrobunProcedure = (WNDPROC_)previous;
 }
 
