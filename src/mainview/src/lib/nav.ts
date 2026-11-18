@@ -1,4 +1,4 @@
-import type { Tab } from "$lib/types";
+import type { Channel, Tab } from "$lib/types";
 
 /** The spaces the user pinned to the top of the spaces column, by ID, in the order they pinned them. */
 export const PINNED_SPACES_KEY = "duvet.nav.pinned.v1";
@@ -176,3 +176,34 @@ export type OpenChats = {
 	onClose: (channelId: string) => void;
 	onReorder: (tabs: OpenChats["tabs"]) => void;
 };
+
+/** A Space's rooms as its column lists them: those in no category, then each category with its rooms, each by position
+ * (a tie keeps the order given). A room whose category isn't among them shows nowhere, so it's left out. */
+export type RoomColumn = { topLevel: Channel[]; categories: { category: Channel; rooms: Channel[] }[] };
+
+const byPosition = (a: Channel, b: Channel) => a.position - b.position;
+
+export function roomColumn(channels: Channel[]): RoomColumn {
+	const rooms = channels.filter((c) => c.type !== "category");
+	return {
+		topLevel: rooms.filter((c) => !c.categoryId).sort(byPosition),
+		categories: channels
+			.filter((c) => c.type === "category")
+			.sort(byPosition)
+			.map((category) => ({ category, rooms: rooms.filter((c) => c.categoryId === category.id).sort(byPosition) })),
+	};
+}
+
+/** A Space's first text room in its column's order (roomColumn), which a click on the Space opens when none of its tabs
+ * is open; null when it has none. */
+export function firstTextRoom(channels: Channel[]): Channel | null {
+	const { topLevel, categories } = roomColumn(channels);
+	return [...topLevel, ...categories.flatMap((c) => c.rooms)].find((c) => c.type === "text") ?? null;
+}
+
+/** Whether a click on the Space whose rooms the column has open folds them: only while the focused pane shows one of
+ * its rooms (activeChannelId). With anything else there (a conversation, another Space's room, nothing), the click
+ * takes the user to the Space instead (spaceLanding). */
+export function clickFoldsSpace(channels: Channel[], activeChannelId: string | null): boolean {
+	return !!activeChannelId && channels.some((c) => c.id === activeChannelId);
+}

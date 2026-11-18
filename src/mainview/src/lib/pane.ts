@@ -72,6 +72,48 @@ export function closeTabsIn(leaf: PaneLeaf, channelIds: string[]): Pick<PaneLeaf
 	return { tabs, activeChannelId };
 }
 
+/** Where a click on a Space takes the user: a tab of it, to show in its pane, or else a room of it to open in the
+ * focused pane; null for nothing more than its rooms in the column. */
+export type SpaceLanding =
+	| { kind: "tab"; leafId: string; channelId: string }
+	| { kind: "room"; channelId: string }
+	| null;
+
+function leavesOf(node: PaneNode): PaneLeaf[] {
+	return node.kind === "leaf" ? [node] : [...leavesOf(node.a), ...leavesOf(node.b)];
+}
+
+/**
+ * Where a click on a Space takes the user (DISENO-CLIC-EN-SPACE.md): the tab of the Space's room used last
+ * (lastRoomId), where it is now, the focused pane's copy first; or else the Space's first tab in the focused pane,
+ * then in the others, in the tree's order; or else its first room (firstRoomId), which opens in the focused pane.
+ * A conversation's tab never counts.
+ */
+export function spaceLanding(
+	root: PaneNode,
+	focusedPaneId: string,
+	spaceId: string,
+	lastRoomId: string | undefined,
+	firstRoomId: string | null,
+): SpaceLanding {
+	const leaves = leavesOf(root);
+	const focused = leaves.find((l) => l.id === focusedPaneId);
+	const panes = focused ? [focused, ...leaves.filter((l) => l !== focused)] : leaves;
+	const isSpaceRoom = (t: Tab) => !isConversationTab(t) && t.spaceId === spaceId;
+	const pick = (match: (t: Tab) => boolean): SpaceLanding => {
+		for (const leaf of panes) {
+			const tab = leaf.tabs.find(match);
+			if (tab) return { kind: "tab", leafId: leaf.id, channelId: tab.channelId };
+		}
+		return null;
+	};
+	return (
+		(lastRoomId ? pick((t) => isSpaceRoom(t) && t.channelId === lastRoomId) : null) ??
+		pick(isSpaceRoom) ??
+		(firstRoomId ? { kind: "room", channelId: firstRoomId } : null)
+	);
+}
+
 /** Whether a tab shows a conversation (a DM or a group) rather than a room. */
 export function isConversationTab(tab: Pick<Tab, "kind">): boolean {
 	return tab.kind === "conversation";

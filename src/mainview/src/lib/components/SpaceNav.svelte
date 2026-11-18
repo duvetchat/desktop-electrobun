@@ -35,7 +35,7 @@
 	import { typingSentence } from "$lib/typing";
 	import TypingMark from "$lib/components/TypingMark.svelte";
 	import { newestKnownIn } from "$lib/jumps";
-	import { groupSpaces, spaceNews, spaceReadAll, type OpenChats, type SpaceNews } from "$lib/nav";
+	import { clickFoldsSpace, groupSpaces, spaceNews, spaceReadAll, type OpenChats, type SpaceNews } from "$lib/nav";
 	import { navPrefs, togglePinned } from "$lib/nav-prefs.svelte";
 	import { isConversationTab, tabDragData, tabNews, tabTitle } from "$lib/pane";
 	import type { Guild } from "$lib/types";
@@ -131,11 +131,14 @@
 		new Set($gatewaySpaces.filter((s) => s.owner_id === $currentUser?.id).map((s) => s.id)),
 	);
 
+	// A click on the selected Space folds or unfolds its tree while the focused pane shows one of its rooms. With anything
+	// else there (a conversation, nothing), it takes the user to the Space instead, as a click on another Space does.
 	function selectSpace(id: string) {
-		if (id === expandedSpaceId) {
+		if (id === expandedSpaceId && clickFoldsSpace(guildById.get(id)?.channels ?? [], activeChannelId)) {
 			treeFolded = !treeFolded;
 			return;
 		}
+		treeFolded = false;
 		onSpaceSelect(id);
 	}
 
