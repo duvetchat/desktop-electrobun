@@ -91,7 +91,7 @@
 </script>
 
 {#if loading}
-	<div class="border-duvet-line bg-duvet-card/60 mt-1 flex max-w-sm items-center gap-2 rounded-md border-l-4 px-3 py-2">
+	<div class="bg-duvet-card shadow-duvet-raised flex w-[380px] max-w-full items-center gap-2 rounded-2xl px-3.5 py-3">
 		<div class="border-duvet-ink2/40 h-3 w-3 shrink-0 animate-spin rounded-full border-2 border-t-transparent"></div>
 		<span class="text-duvet-ink2 text-xs">Loading message...</span>
 	</div>
@@ -99,10 +99,10 @@
 	<button
 		type="button"
 		onclick={jump}
-		class="border-duvet-ink2/40 bg-duvet-card/60 hover:bg-duvet-card mt-1 flex w-full max-w-sm cursor-pointer flex-col overflow-hidden rounded-md border-l-4 text-left transition-colors"
+		class="bg-duvet-card shadow-duvet-raised hover:shadow-duvet-lifted flex w-[380px] max-w-full cursor-pointer flex-col overflow-hidden rounded-2xl text-left transition-shadow motion-reduce:transition-none"
 	>
 		<!-- Breadcrumb header -->
-		<div class="border-duvet-line flex min-w-0 items-center gap-1.5 border-b px-3 pt-2 pb-1.5">
+		<div class="border-duvet-line flex min-w-0 items-center gap-1.5 border-b px-3.5 pt-2.5 pb-2">
 			{#if isConv}
 				<svg
 					xmlns="http://www.w3.org/2000/svg"
@@ -138,7 +138,7 @@
 		</div>
 
 		<!-- Message preview -->
-		<div class="flex items-start gap-2.5 px-3 py-2">
+		<div class="flex items-start gap-2.5 px-3.5 py-2.5">
 			<div class="mt-0.5 shrink-0">
 				<UserAvatar src={message.author_avatar_url} name={message.author_name} size={28} />
 			</div>
@@ -147,7 +147,7 @@
 					<span class="text-duvet-ink truncate text-sm font-semibold">{message.author_name}</span>
 					<span class="text-xxs text-duvet-ink2 shrink-0">{formatTime(message.created_at)}</span>
 				</div>
-				<p class="text-duvet-ink line-clamp-3 text-sm wrap-break-word whitespace-pre-wrap">
+				<p class="font-content text-duvet-ink line-clamp-3 text-sm wrap-break-word whitespace-pre-wrap">
 					{@html renderMarkdown(messageText(message), false, undefined, undefined, $roomNames)}
 				</p>
 			</div>

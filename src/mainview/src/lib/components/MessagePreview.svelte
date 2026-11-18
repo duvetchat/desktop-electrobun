@@ -122,7 +122,7 @@
 					>{message.author_name}</span
 				>
 				<AuthorTag {message} />
-				<span class="text-xxs text-duvet-ink2 shrink-0">{formatShortDateTime(message.created_at)}</span>
+				<span class="text-duvet-ink2 shrink-0 text-[11px] tabular-nums">{formatShortDateTime(message.created_at)}</span>
 			</div>
 			{#if callLine}
 				<p class="text-duvet-ink2 flex items-center gap-1.5 text-sm">
@@ -142,7 +142,9 @@
 					<div
 						bind:this={contentEl}
 						data-search-content
-						class="text-duvet-ink text-sm wrap-break-word whitespace-pre-wrap {expanded ? '' : 'line-clamp-6'}"
+						class="font-content text-duvet-ink text-sm wrap-break-word whitespace-pre-wrap {expanded
+							? ''
+							: 'line-clamp-6'}"
 					>
 						<MessageText
 							content={text}

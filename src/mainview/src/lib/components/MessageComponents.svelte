@@ -8,6 +8,7 @@
 	import type { ComponentUse } from "$lib/api/interactions";
 	import { getHostURL } from "$lib/common/common";
 	import { renderEmoji } from "$lib/emoji";
+	import { messageTextClass } from "$lib/message-styles";
 	import { renderMarkdown, type CustomEmojiMap } from "$lib/markdown";
 	import { roomNames } from "$lib/stores.svelte";
 	import { formatFileSize } from "$lib/utils/format";
@@ -86,11 +87,11 @@
 
 	const buttonColors: Record<number, string> = {
 		// The colored ones keep white text in light too; the gray ones' text turns over with their gray.
-		[ButtonStyle.Primary]: "bg-duvet-accent text-duvet-on-accent hover:bg-duvet-accent/85",
-		[ButtonStyle.Secondary]: "bg-duvet-ink/10 text-duvet-ink hover:bg-duvet-ink/15",
-		[ButtonStyle.Success]: "bg-duvet-alive text-duvet-on-accent hover:bg-duvet-alive/15",
-		[ButtonStyle.Danger]: "bg-duvet-danger text-duvet-on-accent hover:bg-duvet-danger/85",
-		[ButtonStyle.Link]: "bg-duvet-ink/10 text-duvet-ink hover:bg-duvet-ink/15",
+		[ButtonStyle.Primary]: "bg-duvet-accent text-duvet-on-accent shadow-duvet-control hover:brightness-[1.06]",
+		[ButtonStyle.Secondary]: "bg-duvet-secondary-fill text-duvet-accent-text hover:brightness-[1.06]",
+		[ButtonStyle.Success]: "bg-duvet-alive text-duvet-on-danger shadow-duvet-control hover:brightness-[1.06]",
+		[ButtonStyle.Danger]: "bg-duvet-danger text-duvet-on-danger shadow-duvet-control hover:brightness-[1.06]",
+		[ButtonStyle.Link]: "bg-duvet-secondary-fill text-duvet-accent-text hover:brightness-[1.06]",
 	};
 
 	// Only http(s) urls become links and media, whatever a bot sends (the API checks them too).
@@ -115,7 +116,7 @@
 	}
 </script>
 
-<div class="flex max-w-150 min-w-0 flex-col gap-2 pt-1">
+<div class="flex max-w-150 min-w-0 flex-col gap-2">
 	{#each components as component}
 		{@render node(component)}
 	{/each}
@@ -131,12 +132,13 @@
 	{#if c.type === ComponentType.Container}
 		{@const hidden = !!c.spoiler && !revealed.has(c)}
 		<div
-			class="border-duvet-line bg-duvet-card/40 relative flex w-full min-w-0 flex-col overflow-hidden rounded-lg border p-4 {c.accent_color !=
-			null
-				? 'border-l-4'
-				: ''}"
-			style={c.accent_color != null ? `border-left-color: ${hex(c.accent_color)}` : ""}
+			class="bg-duvet-card shadow-duvet-raised relative flex w-full min-w-0 flex-col overflow-hidden rounded-2xl px-3.5 py-3"
 		>
+			{#if c.accent_color != null}
+				<!-- Its accent colour, as a bar down its left edge, inside its round corners -->
+				<span class="absolute inset-y-0 left-0 w-[3px]" style="background: {hex(c.accent_color)}" aria-hidden="true"
+				></span>
+			{/if}
 			<div class="flex min-w-0 flex-col gap-2 {hidden ? 'pointer-events-none blur-lg select-none' : ''}" inert={hidden}>
 				{#each c.components ?? [] as child}
 					{@render node(child)}
@@ -168,7 +170,7 @@
 			{/if}
 		</div>
 	{:else if c.type === ComponentType.TextDisplay}
-		<div class="text-duvet-ink min-w-0 wrap-break-word select-text">
+		<div class="font-content min-w-0 text-[15px] leading-[1.4] wrap-break-word select-text {messageTextClass()}">
 			{@html renderMarkdown(c.content ?? "", false, mentionMap, customEmojiMap, $roomNames, {})}
 		</div>
 	{:else if c.type === ComponentType.Thumbnail}
@@ -177,18 +179,20 @@
 		{@render gallery(c.items ?? [])}
 	{:else if c.type === ComponentType.File && c.file}
 		{@const hidden = !!c.spoiler && !revealed.has(c)}
-		<div data-attachments class="relative w-full max-w-108 overflow-hidden rounded-lg">
+		<div data-attachments class="relative w-[300px] max-w-full overflow-hidden rounded-2xl">
 			<a
 				href={mediaSrc(c.file)}
 				target="_blank"
 				rel="noopener noreferrer"
-				class="group border-duvet-line bg-duvet-card/60 hover:bg-duvet-card flex items-center gap-3 rounded-lg border px-4 py-3 no-underline transition-colors {hidden
+				class="group bg-duvet-secondary-fill text-duvet-ink flex items-center gap-2.5 rounded-2xl p-2.5 no-underline {hidden
 					? 'blur-md'
 					: ''}"
 			>
-				<FileIcon class="text-duvet-ink2 size-8 shrink-0" />
+				<FileIcon class="text-duvet-accent-text size-6 shrink-0" />
 				<span class="flex min-w-0 flex-col">
-					<span class="text-duvet-ink truncate text-sm group-hover:underline">{c.name ?? "file"}</span>
+					<span class="text-duvet-ink truncate text-[13.5px] font-semibold group-hover:underline"
+						>{c.name ?? "file"}</span
+					>
 					{#if c.size != null}
 						<span class="text-duvet-ink2 text-xs">{formatFileSize(c.size)}</span>
 					{/if}
@@ -219,7 +223,7 @@
 {/snippet}
 
 {#snippet button(c: Component)}
-	{@const cls = `inline-flex h-8 max-w-full min-w-15 items-center justify-center gap-1.5 rounded-lg px-4 text-sm font-medium no-underline transition-colors disabled:pointer-events-none disabled:opacity-50 ${buttonColors[c.style ?? ButtonStyle.Secondary] ?? buttonColors[ButtonStyle.Secondary]}`}
+	{@const cls = `inline-flex h-[34px] max-w-full min-w-15 items-center justify-center gap-1.5 rounded-[11px] px-3.5 text-[13px] font-medium no-underline transition-[filter,background-color] disabled:pointer-events-none disabled:opacity-45 motion-reduce:transition-none ${buttonColors[c.style ?? ButtonStyle.Secondary] ?? buttonColors[ButtonStyle.Secondary]}`}
 	{@const href = webUrl(c.url)}
 	{#if c.style === ButtonStyle.Link && href && !c.disabled}
 		<a {href} target="_blank" rel="noopener noreferrer" class={cls}>
@@ -278,7 +282,7 @@
 		{@const hidden = !!c.spoiler && !revealed.has(c)}
 		<div
 			data-attachments
-			class="relative shrink-0 self-start overflow-hidden rounded-lg {compact ? 'size-16' : 'size-21'}"
+			class="relative shrink-0 self-start overflow-hidden rounded-xl {compact ? 'size-16' : 'size-21'}"
 		>
 			<button
 				type="button"
@@ -336,7 +340,7 @@
 	{@const size = alone ? fit(item.media) : null}
 	{@const bounds = alone && !size ? `max-width: min(${maxWidth}px, 100%); max-height: ${maxHeight}px;` : ""}
 	<div
-		class="relative overflow-hidden rounded-md {alone ? '' : 'size-full'}"
+		class="relative overflow-hidden rounded-xl {alone ? '' : 'size-full'}"
 		style={size ? `width: ${size.w}px; aspect-ratio: ${size.w} / ${size.h}; max-width: 100%;` : ""}
 	>
 		{#if isVideo(item.media)}
