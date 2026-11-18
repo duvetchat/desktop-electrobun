@@ -2,18 +2,21 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
+	clickFoldsSpace,
 	defaultNowPrefs,
+	firstTextRoom,
 	fuzzyScore,
 	groupSpaces,
 	parseNowPrefs,
 	parsePinned,
 	rankByQuery,
+	roomColumn,
 	spaceNews,
 	spaceReadAll,
 } from "$lib/nav";
 import { parseLayoutPrefs } from "$lib/layout-prefs";
 import { closeTabsIn, makeLeaf } from "$lib/pane";
-import type { Tab } from "$lib/types";
+import type { Channel, Tab } from "$lib/types";
 
 describe("groupSpaces", () => {
 	test("pinned first, in pin order, then news and quiet", () => {
@@ -201,5 +204,77 @@ describe("closeTabsIn", () => {
 		expect(closeTabsIn({ ...leaf, activeChannelId: "c" }, ["c"]).activeChannelId).toBe("b");
 		expect(closeTabsIn(leaf, ["a"])).toEqual({ tabs: [tab("b"), tab("c")], activeChannelId: "b" });
 		expect(closeTabsIn(leaf, ["a", "b", "c"])).toEqual({ tabs: [], activeChannelId: null });
+	});
+});
+
+// A click on a Space opens its first text room in the column's order (DISENO-CLIC-EN-SPACE.md), which the column
+// itself shows its rooms in.
+const channel = (id: string, type: Channel["type"], position: number, categoryId?: string): Channel => ({
+	id,
+	name: id,
+	type,
+	position,
+	categoryId,
+});
+
+describe("the rooms' column order", () => {
+	test("rooms without a category first, then each category, each by position", () => {
+		const column = roomColumn([
+			channel("c2", "category", 1),
+			channel("b", "text", 1, "c1"),
+			channel("t2", "text", 2),
+			channel("c1", "category", 0),
+			channel("a", "voice", 0, "c1"),
+			channel("t1", "text", 0),
+			channel("d", "text", 0, "c2"),
+		]);
+		expect(column.topLevel.map((r) => r.id)).toEqual(["t1", "t2"]);
+		expect(column.categories.map((c) => [c.category.id, c.rooms.map((r) => r.id)])).toEqual([
+			["c1", ["a", "b"]],
+			["c2", ["d"]],
+		]);
+	});
+
+	test("a room whose category isn't listed is left out, as the column leaves it out", () => {
+		const column = roomColumn([channel("x", "text", 0, "gone"), channel("t", "text", 1)]);
+		expect(column.topLevel.map((r) => r.id)).toEqual(["t"]);
+		expect(column.categories).toEqual([]);
+	});
+});
+
+describe("firstTextRoom", () => {
+	test("the first text room in the column's order, past voice rooms and categories", () => {
+		const rooms = [
+			channel("v", "voice", 0),
+			channel("c1", "category", 0),
+			channel("b", "text", 1, "c1"),
+			channel("a", "voice", 0, "c1"),
+		];
+		expect(firstTextRoom(rooms)?.id).toBe("b");
+	});
+
+	test("a room without a category comes before a category's, whatever their positions", () => {
+		const rooms = [channel("c1", "category", 0), channel("in", "text", 0, "c1"), channel("top", "text", 5)];
+		expect(firstTextRoom(rooms)?.id).toBe("top");
+	});
+
+	test("none in a Space without text rooms, nor a room whose category isn't listed", () => {
+		expect(firstTextRoom([channel("v", "voice", 0), channel("c1", "category", 0)])).toBeNull();
+		expect(firstTextRoom([channel("x", "text", 0, "gone")])).toBeNull();
+	});
+});
+
+describe("clickFoldsSpace", () => {
+	const rooms = [channel("r1", "text", 0), channel("r2", "voice", 1)];
+
+	test("a click on the open Space folds it while the focused pane shows one of its rooms", () => {
+		expect(clickFoldsSpace(rooms, "r1")).toBe(true);
+		expect(clickFoldsSpace(rooms, "r2")).toBe(true);
+	});
+
+	test("with a conversation, another Space's room or nothing there, it takes the user to the Space instead", () => {
+		expect(clickFoldsSpace(rooms, "conversation-1")).toBe(false);
+		expect(clickFoldsSpace(rooms, "other-space-room")).toBe(false);
+		expect(clickFoldsSpace(rooms, null)).toBe(false);
 	});
 });

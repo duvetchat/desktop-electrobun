@@ -24,6 +24,7 @@
 	import { onMount } from "svelte";
 	import { categoryDropPosition, topLevelEnd, type Guild, type Channel, type RoomType } from "$lib/types";
 	import { hasPermission, hasSpacePermission, Permission } from "$lib/permissions";
+	import { roomColumn } from "$lib/nav";
 	import ServerSettings from "$lib/components/ServerSettings.svelte";
 	import ChannelSettings from "$lib/components/ChannelSettings.svelte";
 	import { createRoom, deleteRoom, updateRoom } from "$lib/api/rooms";
@@ -144,15 +145,10 @@
 		buttons = new Array(clickableChannels.length).fill(null);
 	});
 
-	// Group channels: top-level (no categoryId) and by category
-	const topLevelChannels = $derived(
-		channels
-			.filter((c) => c.type !== "category" && !c.categoryId)
-			.sort((a, b) => (a.position ?? 0) - (b.position ?? 0)),
-	);
-	const categories = $derived(
-		channels.filter((c) => c.type === "category").sort((a, b) => (a.position ?? 0) - (b.position ?? 0)),
-	);
+	// The rooms in the column's order (roomColumn), which a click on the Space follows too: those in no category, then
+	// each category with its rooms.
+	const column = $derived(roomColumn(channels));
+	const categories = $derived(column.categories.map((c) => c.category));
 	$effect(() => {
 		categories.forEach((cat) => {
 			if (expanded[cat.id] === undefined) expanded[cat.id] = true;
@@ -162,17 +158,17 @@
 	type SidebarItem = { kind: "channel"; channel: Channel; indent: boolean } | { kind: "category"; channel: Channel };
 
 	const sidebarItems = $derived([
-		...topLevelChannels.map(
+		...column.topLevel.map(
 			(ch): SidebarItem => ({
 				kind: "channel",
 				channel: ch,
 				indent: false,
 			}),
 		),
-		...categories.flatMap((cat): SidebarItem[] => [
+		...column.categories.flatMap(({ category: cat, rooms }): SidebarItem[] => [
 			{ kind: "category", channel: cat },
 			...(expanded[cat.id]
-				? getSubChannels(cat.id).map(
+				? rooms.map(
 						(ch): SidebarItem => ({
 							kind: "channel",
 							channel: ch,
@@ -182,10 +178,6 @@
 				: []),
 		]),
 	] as SidebarItem[]);
-
-	function getSubChannels(categoryId: string) {
-		return channels.filter((c) => c.categoryId === categoryId).sort((a, b) => (a.position ?? 0) - (b.position ?? 0));
-	}
 
 	// ── Drag & Drop reorder ───────────────────────────────────────────────────
 	let draggedChannelId = $state<string | null>(null);
