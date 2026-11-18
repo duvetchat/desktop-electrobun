@@ -44,6 +44,8 @@ export const requestLimits = {
 	/** In a window that doesn't renew the session (lib/session.ts): how long a request waits for the main window's
 	 * renewal, a refresh's own limit and its second try. */
 	mainWindowRenewalMs: 30_000,
+	/** How often a window waiting for that renewal looks at storage itself, should no storage event tell it. */
+	renewalLookMs: 1000,
 };
 
 /** A request whose answer didn't come in time (requestLimits): it fails as a network error does, a TypeError. */
@@ -357,7 +359,13 @@ async function takeMainWindowsRenewal(refused: string | null): Promise<string> {
 				if (event.key === null || event.key === "duvet_session_token") changed();
 			};
 			window.addEventListener("storage", onStorage);
-			return () => window.removeEventListener("storage", onStorage);
+			// And looked at once a second: that one window's write raises the storage event in another was only ever
+			// seen on macOS, and the token is there to read either way.
+			const looking = setInterval(changed, requestLimits.renewalLookMs);
+			return () => {
+				window.removeEventListener("storage", onStorage);
+				clearInterval(looking);
+			};
 		},
 		stale: refused ?? get(accessToken),
 		timeoutMs: requestLimits.mainWindowRenewalMs,

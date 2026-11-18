@@ -141,6 +141,16 @@ describe("a Settings window's chrome", () => {
 	});
 });
 
+// The pop-out has one button of the window's own, its close, wherever the system draws none (C-21).
+test("the pop-out draws its close where the system draws none, and it puts the controls back", () => {
+	const page = read("routes/voice-controls/+page.svelte").replace(/\s+/g, " ");
+	expect(page).toMatch(
+		/\{#if shell\.ownWindowControls\} <IconButton size="sm" label="Close window" onclick=\{putBack\}> .*? <\/IconButton> \{\/if\}/,
+	);
+	// Put back asks Bun, which closes the window; if Bun doesn't take it, the window is closed all the same.
+	expect(page).toContain('aboutWindow("putBack").catch(() => rpc?.send.closeWindow())');
+});
+
 // Electrobun's preload starts a window move on a press anywhere inside an element with its drag class
 // (node_modules/electrobun: preload/dragRegions.ts reads target.closest), and knows no class that takes a control back
 // out. A button inside such an element moves the window as it is pressed, so the class is DragRegion's alone, which

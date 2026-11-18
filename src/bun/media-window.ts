@@ -9,6 +9,7 @@
 // or when that window leaves the app's page (signing out). Electrobun is handed in (media-window-open.ts makes the real
 // window), so this runs in tests.
 import { isAppPage } from "./navigation";
+import { windowChrome, type WindowChrome } from "./shell";
 import { displayOf, type DisplayArea, type Rect } from "./window-frame";
 import type { MirroredChannels, WindowAnswer, WindowCommand, WindowStateMessage } from "./window-relay";
 
@@ -16,6 +17,13 @@ import type { MirroredChannels, WindowAnswer, WindowCommand, WindowStateMessage 
 export const MEDIA_WINDOW_CHANNEL = "media-window";
 /** The channel of the media controls: their state, and the commands the pop-out sends the main page. */
 export const MEDIA_CHANNEL = "media";
+/** The window's title bar, which is every window's of the app (shell.ts): on macOS the system's own lights over a
+ * transparent bar, which also lets the window take the keyboard (window-keys.ts); elsewhere none, the page drawing
+ * its close button (routes/voice-controls). */
+export function mediaWindowTitleBar(platform: string): WindowChrome {
+	return windowChrome(platform);
+}
+
 /** What the pop-out's page mirrors: the media controls' state, and nothing else the main window publishes. */
 export const mediaWindowMirrors: MirroredChannels = (channel) => channel === MEDIA_CHANNEL;
 /** The media commands that need the main window in front: the system's screen picker opens over it, and the voice room

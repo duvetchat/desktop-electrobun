@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { runInNewContext } from "node:vm";
-import { shellPreload } from "../../../bun/shell";
+import { shellPreload, windowChrome } from "../../../bun/shell";
 import {
 	currentShell,
 	osFromUserAgent,
@@ -226,6 +226,34 @@ describe("which window a page is", () => {
 			ownWindowControls: true,
 		});
 	});
+});
+
+// C-21 of the redesign's review: off macOS no window has the system's buttons, and C-01 was a window whose page drew
+// none that worked. Bun's chrome for a system (src/bun/shell.ts) and the page's reading of it must agree, in every
+// window: where Bun shows no system buttons, the page says it draws its own.
+describe("the window's buttons, by system and window", () => {
+	for (const os of ["darwin", "win32", "linux"] as const) {
+		for (const window of ["main", "media", "settings", "space-settings"] as const) {
+			test(`${os}, ${window}: the page draws the buttons exactly where the system doesn't`, () => {
+				const chrome = windowChrome(os);
+				const page: { top?: unknown; __duvetShell?: unknown } = {};
+				page.top = page;
+				runInNewContext(shellPreload(window, chrome, os), { window: page });
+				const shell = shellFor({
+					inElectrobun: true,
+					injected: parseInjectedShell(page.__duvetShell),
+					userAgent: "",
+					preview: null,
+				});
+				expect(shell.window).toBe(window);
+				expect(shell.ownWindowControls).toBe(!chrome.nativeButtons);
+				expect(shell.nativeTrafficLights).toBe(chrome.nativeButtons);
+				expect(shell.chrome).toBe(os === "darwin" ? "mac" : os === "win32" ? "windows" : "linux");
+				// One of the two always: no window is left without a way to close it.
+				expect(shell.ownWindowControls || shell.nativeTrafficLights).toBe(true);
+			});
+		}
+	}
 });
 
 describe("reading the page", () => {

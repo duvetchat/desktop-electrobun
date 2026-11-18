@@ -19,8 +19,8 @@ import { isAppPage, isOwnPage, navigatedTo, navigationRules } from "./navigation
 import { Maximizer } from "./window-frame";
 import { dragWithWindows, letWindowsArrange } from "./window-snap";
 import { startupSummary, writeStartupLine } from "./startup";
-import { shellPreload } from "./shell";
-import { keepKeysReachingThePage, mainWindowTitleBar, type AppKit } from "./window-keys";
+import { rendererFor, shellPreload, windowChrome } from "./shell";
+import { keepKeysReachingThePage, type AppKit } from "./window-keys";
 import { WindowRelay, type WindowAnswer, type WindowCommand, type WindowStateMessage } from "./window-relay";
 import { MediaWindows } from "./media-window";
 import { mediaWindowOpener } from "./media-window-open";
@@ -246,14 +246,13 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 
 const currentOS = process.platform;
 
-const rendererType = currentOS === "linux" ? "cef" : "native";
+const rendererType = rendererFor(currentOS);
 
 // The main window's title bar: none, with the page drawing its own title line (the sidebar's header and the tab
 // strip). On macOS it is there, transparent and empty, as a window without one can't take keys there (window-keys.ts),
 // and it shows the system's traffic lights, whose corner the page keeps free (lib/platform.ts: nativeTrafficLights).
 // Windows and Linux have no system buttons: the page draws theirs (WindowControls.svelte, #357).
-const titleBarStyle = mainWindowTitleBar(currentOS);
-const nativeButtons = currentOS === "darwin";
+const { titleBarStyle, nativeButtons } = windowChrome(currentOS);
 
 const win = new BrowserWindow({
 	titleBarStyle,
@@ -313,6 +312,12 @@ win.webview.on("dom-ready", () => win.webview.setNavigationRules(rules));
 // the main window: this one mirrors its state through the relay and sends its commands back. It closes with the main
 // window, and when that window leaves the app's page (signing out). Its place and its pin are kept in the app's data.
 const mediaWindowPrefs = join(Utils.paths.userData, "media-window.json");
+// Brings the main window forward, out of the Dock or the taskbar if it was there: for the pop-out's commands that need
+// it in front, and as a Settings window closes.
+function focusMain() {
+	if (win.isMinimized()) win.unminimize();
+	win.focus();
+}
 const mediaWindows: MediaWindows = new MediaWindows({
 	create: mediaWindowOpener({
 		url: url === DEV_SERVER_URL ? `${DEV_SERVER_URL}/voice-controls` : (secondWindowUrl("media") ?? ""),
@@ -324,10 +329,7 @@ const mediaWindows: MediaWindows = new MediaWindows({
 	}),
 	displays: () => Screen.getAllDisplays(),
 	mainFrame: () => win.getFrame(),
-	focusMain: () => {
-		if (win.isMinimized()) win.unminimize();
-		win.focus();
-	},
+	focusMain,
 	relay,
 	readPrefs: () => {
 		try {
@@ -361,7 +363,7 @@ const settingsWindows = new SettingsWindows({
 	displays: () => Screen.getAllDisplays(),
 	relay,
 	tellMain: (command) => void rpc.request.windowCommand(command).catch(() => undefined),
-	focusMain: () => win.focus(),
+	focusMain,
 });
 // ── end of the Windows workstream's hook ─────────────────────────────────────────────────────────────────────────────
 

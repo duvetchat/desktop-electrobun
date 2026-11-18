@@ -2,22 +2,14 @@
 // with its own RPC (an RPC object has one transport), whose page is views://mainview/voice-controls.html. What decides
 // when it opens and closes, where, and what its commands do is media-window.ts, which this hands the window to.
 import { BrowserView, BrowserWindow } from "electrobun/bun";
-import type { MediaWindowHandle } from "./media-window";
-import { shellPreload, type TitleBarStyle } from "./shell";
+import { mediaWindowTitleBar, type MediaWindowHandle } from "./media-window";
+import { shellPreload } from "./shell";
 import type { Rect } from "./window-frame";
 import { keepKeysReachingThePage, type AppKit } from "./window-keys";
 import type { WindowAnswer, WindowCommand, WindowStateMessage } from "./window-relay";
 
 /** The window's title, which the system shows in Mission Control, the taskbar and Alt-Tab (COPY.md §4.2). */
 export const MEDIA_WINDOW_TITLE = "Voice controls";
-
-/** The window's title bar: on macOS the system's own lights over a transparent bar, which also lets the window take
- * the keyboard (window-keys.ts); elsewhere none, the page drawing its close button. */
-export function mediaWindowTitleBar(platform: string): { titleBarStyle: TitleBarStyle; nativeButtons: boolean } {
-	return platform === "darwin"
-		? { titleBarStyle: "hiddenInset", nativeButtons: true }
-		: { titleBarStyle: "hidden", nativeButtons: false };
-}
 
 // What the pop-out's page and Bun say to each other: the part of the app's RPC (lib/electrobun-rpc.ts) its page uses.
 type MediaWindowRPC = {
@@ -80,7 +72,7 @@ export function mediaWindowOpener(
 			titleBarStyle,
 			renderer: options.renderer,
 			// Which window this is, for its page's platform switch (shell.ts), before any of its scripts run.
-			preload: shellPreload("media", { titleBarStyle, nativeButtons }),
+			preload: shellPreload("media", { titleBarStyle, nativeButtons }, options.platform),
 			sandbox: false,
 			frame,
 			url: options.url,

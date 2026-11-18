@@ -6,7 +6,7 @@
 // What makes a window is the caller's (settings-window-native.ts, which needs Electrobun): this file decides which
 // windows there are, where each opens and what it is told, so it can be tested.
 import { isAppPage } from "./navigation";
-import { shellPreload, type TitleBarStyle, type WindowKind } from "./shell";
+import { shellPreload, windowChrome, type TitleBarStyle, type WindowChrome, type WindowKind } from "./shell";
 import { displayOf, type DisplayArea, type Rect } from "./window-frame";
 import type { MirroredChannels, WindowCommand, WindowStateMessage } from "./window-relay";
 
@@ -80,10 +80,8 @@ export function settingsFrame(kind: OpenAppWindow["window"], main: Rect, display
 
 /** A Settings window's chrome: on macOS a transparent title bar with the system's traffic lights over the page's
  * side panel (a window with none can't take keys there: window-keys.ts); elsewhere none, the page drawing its own. */
-export function settingsChrome(platform: string): { titleBarStyle: TitleBarStyle; nativeButtons: boolean } {
-	return platform === "darwin"
-		? { titleBarStyle: "hiddenInset", nativeButtons: true }
-		: { titleBarStyle: "hidden", nativeButtons: false };
+export function settingsChrome(platform: string): WindowChrome {
+	return windowChrome(platform);
 }
 
 /** The window's preload: its shell (shell.ts), and which Space and section its page shows (window.__duvetSettings). */

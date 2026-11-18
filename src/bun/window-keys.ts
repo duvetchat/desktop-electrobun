@@ -8,11 +8,11 @@
 // under it), with the system's three buttons hidden while the page draws its own (the look "hidden" had), and the web
 // view is made first responder whenever the window becomes key or a page loads. Elsewhere nothing changes.
 import type { Pointer } from "bun:ffi";
-import type { TitleBarStyle } from "./shell";
+import { windowChrome, type TitleBarStyle } from "./shell";
 
 /** The main window's title-bar style: on macOS one the window can be key with; elsewhere none, as before. */
 export function mainWindowTitleBar(platform: string): TitleBarStyle {
-	return platform === "darwin" ? "hiddenInset" : "hidden";
+	return windowChrome(platform).titleBarStyle;
 }
 
 /** What this needs of AppKit (appkit.ts on macOS). */

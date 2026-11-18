@@ -73,6 +73,28 @@ describe("a window that isn't the main one", () => {
 		expect(storageListeners.size).toBe(0);
 	});
 
+	// C-21: that a write in one window raises the storage event in another was only ever seen on macOS.
+	test("takes a renewal no storage event told it of, by looking", async () => {
+		const look = requestLimits.renewalLookMs;
+		requestLimits.renewalLookMs = 10;
+		try {
+			const renewed = refreshSession();
+			await Bun.sleep(0);
+			// The main window writes, and no event reaches this window.
+			localStorage.setItem("duvet_session_token", "access-2");
+			expect(await renewed).toBe("access-2");
+			expect(get(accessToken)).toBe("access-2");
+		} finally {
+			requestLimits.renewalLookMs = look;
+		}
+		expect(refreshes()).toEqual([]);
+		// It stops looking once it has the token: nothing reads storage after.
+		const read = spyOn(localStorage, "getItem");
+		await Bun.sleep(40);
+		expect(read).not.toHaveBeenCalled();
+		read.mockRestore();
+	});
+
 	test("takes at once a renewal that happened while it wasn't looking", async () => {
 		localStorage.setItem("duvet_session_token", "access-2");
 		expect(await refreshSession()).toBe("access-2");

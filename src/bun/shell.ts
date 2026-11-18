@@ -31,3 +31,28 @@ export function shellPreload(
 	const shell: InjectedShell = { os, titleBarStyle, nativeButtons, window };
 	return `if (window.top === window) window.__duvetShell = Object.freeze(${JSON.stringify(shell)});`;
 }
+
+/** A window's chrome: its title bar's style, and whether the system's own buttons show. */
+export interface WindowChrome {
+	titleBarStyle: TitleBarStyle;
+	nativeButtons: boolean;
+}
+
+/**
+ * The chrome of every window of the app, the main one, Settings, a Space's settings and the media controls' pop-out,
+ * by the system it runs on. On macOS a transparent title bar with the system's traffic lights: a window with no title
+ * bar can't take keys there (window-keys.ts), and the lights are the window's buttons. On Windows and Linux none, and
+ * no system buttons either: the page draws minimize, maximize and close itself (lib/platform.ts: ownWindowControls,
+ * WindowControls.svelte), in every one of those windows.
+ */
+export function windowChrome(platform: string): WindowChrome {
+	return platform === "darwin"
+		? { titleBarStyle: "hiddenInset", nativeButtons: true }
+		: { titleBarStyle: "hidden", nativeButtons: false };
+}
+
+/** What draws the app's pages: the system's own web view (WKWebView, WebView2), and CEF on Linux, whose system web
+ * view (WebKitGTK) the app doesn't use. Every window of the app takes the same one. */
+export function rendererFor(platform: string): "native" | "cef" {
+	return platform === "linux" ? "cef" : "native";
+}
