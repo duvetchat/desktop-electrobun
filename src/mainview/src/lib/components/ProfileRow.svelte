@@ -59,7 +59,7 @@
 			/>
 		</StatusMenu>
 		<MediaControls collapsed />
-		<button class={iconButtonClass()} aria-label="User Settings" onclick={() => (showUserSettings = true)}>
+		<button class={iconButtonClass()} aria-label="Settings" title="Settings" onclick={() => (showUserSettings = true)}>
 			<GearSixIcon class="size-4" />
 		</button>
 	</div>
@@ -94,12 +94,7 @@
 			</span>
 			<ChevronsUpDownIcon class="text-duvet-ink2 size-3.5 shrink-0" aria-hidden="true" />
 		</StatusMenu>
-		<button
-			class={iconButtonClass()}
-			aria-label="User Settings"
-			title="Settings"
-			onclick={() => (showUserSettings = true)}
-		>
+		<button class={iconButtonClass()} aria-label="Settings" title="Settings" onclick={() => (showUserSettings = true)}>
 			<GearSixIcon class="size-4" />
 		</button>
 	</div>

@@ -40,7 +40,7 @@ describe("the split of the user's panel", () => {
 			"<UserSettings",
 		])
 			expect(row).toContain(part);
-		expect(row.split('aria-label="User Settings"')).toHaveLength(3);
+		expect(row.split('aria-label="Settings"')).toHaveLength(3);
 		// Docked, the media controls are the sidebar's to mount, as one block above the row (BRIEF.md "Media controls");
 		// only the folded column has them here. The call panel is theirs in voice, so the row mounts no voice status.
 		expect(row).not.toContain("<MediaControls />");

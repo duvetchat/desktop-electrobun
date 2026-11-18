@@ -44,7 +44,7 @@
 </script>
 
 <DropdownMenu.Root bind:open>
-	<DropdownMenu.Trigger class={className} aria-label="Status: {currentLabel}">
+	<DropdownMenu.Trigger class={className} aria-label="{$currentUser?.alias || $currentUser?.username}, {currentLabel}">
 		{@render children()}
 	</DropdownMenu.Trigger>
 	<DropdownMenu.Portal>

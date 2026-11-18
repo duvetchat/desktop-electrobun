@@ -1534,7 +1534,7 @@
 			title="Messages"
 			plain
 			class="p-0!"
-			note="Flat rows fit more on screen; bubbles are easier to follow. You can change it any time."
+			note="Flat rows fit more on screen; bubbles are easier to follow."
 		>
 			<ChoiceCards
 				label="Messages"

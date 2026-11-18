@@ -959,7 +959,7 @@
 						{status === "online"
 							? "Online"
 							: status === "dnd"
-								? "Do Not Disturb"
+								? "Do not disturb"
 								: status === "idle"
 									? "Away"
 									: "Offline"}
@@ -1043,7 +1043,7 @@
 	{/key}
 	{#if actionsOnGroup.leave}
 		<DropdownMenu.Root>
-			<DropdownMenu.Trigger class={buttonClass} title="Group options" aria-label="Group options">
+			<DropdownMenu.Trigger class={buttonClass} title="More" aria-label="More">
 				<Ellipsis class="size-4" />
 			</DropdownMenu.Trigger>
 			<DropdownMenu.Portal>
