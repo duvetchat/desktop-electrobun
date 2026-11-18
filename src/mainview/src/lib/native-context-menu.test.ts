@@ -10,6 +10,7 @@ class FakeElement {
 
 afterEach(() => Reflect.deleteProperty(globalThis, "Element"));
 
+// oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the test has no DOM: a stand-in takes an Element's place.
 const el = (editable: boolean) => new FakeElement(editable) as unknown as Element;
 const selecting = (inside: Element) => ({ isCollapsed: false, containsNode: (node: Node) => node === inside });
 
