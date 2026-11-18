@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { seekTo } from "$lib/seek-keys";
 	import { onDestroy, onMount } from "svelte";
 	import { Play, Pause } from "@lucide/svelte";
 	import {
@@ -120,6 +121,14 @@
 		else void play();
 	}
 
+	function handleSeekKey(e: KeyboardEvent) {
+		const to = seekTo(e.key, currentTime, duration);
+		if (to === null) return;
+		e.preventDefault();
+		if (isActive) seekVoiceNote(to);
+		else void play(to);
+	}
+
 	function handleSeek(e: MouseEvent) {
 		if (!duration) return;
 		const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
@@ -164,11 +173,20 @@
 		{/if}
 	</button>
 
-	<!-- svelte-ignore a11y_click_events_have_key_events -->
-	<!-- svelte-ignore a11y_no_static_element_interactions -->
+	<!-- The line seeks: by a press on it, and from the keyboard by the arrows, Home and End (lib/seek-keys.ts). -->
 	<div
-		class="text-duvet-accent-text flex min-w-0 flex-1 cursor-pointer items-center gap-[2px] {compact ? 'h-5' : 'h-6'}"
+		class="text-duvet-accent-text flex min-w-0 flex-1 cursor-pointer items-center gap-[2px] rounded-md {compact
+			? 'h-5'
+			: 'h-6'}"
+		role="slider"
+		tabindex="0"
+		aria-label="Seek"
+		aria-valuemin={0}
+		aria-valuemax={Math.round(duration)}
+		aria-valuenow={Math.round(currentTime)}
+		aria-valuetext="{formatDuration(currentTime)} of {formatDuration(duration)}"
 		onclick={handleSeek}
+		onkeydown={handleSeekKey}
 	>
 		{#each bars as height, i}
 			<div

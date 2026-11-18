@@ -957,7 +957,8 @@
 			newTabKeys={desktopApp ? keysFor(isMac, SHELL_KEYS.newTab) : undefined}
 		/>
 
-		<div class="border-duvet-line col-start-2 row-start-2 flex min-h-0 min-w-0 border-l">
+		<!-- The page's main landmark: the chats, or the Friends view. -->
+		<main class="border-duvet-line col-start-2 row-start-2 flex min-h-0 min-w-0 border-l">
 			<div class="bg-duvet-bg relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
 				{#if friendsViewEverShown}
 					<div class="flex min-h-0 flex-1 flex-col {showFriendsView ? '' : 'hidden'}">
@@ -987,7 +988,7 @@
 			</div>
 			<!-- Nothing is docked beside the chat (#357): a room's members open from the faces in its pane's bar
 			     (MembersButton), which load the Space's first page of members themselves; a conversation's from its own. -->
-		</div>
+		</main>
 	</div>
 {/if}
 

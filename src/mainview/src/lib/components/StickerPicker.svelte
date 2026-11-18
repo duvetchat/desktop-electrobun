@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { gridKeys } from "$lib/grid-keys";
 	import type { SpaceSticker } from "$lib/types";
 	import { Sticker as StickerIcon } from "@lucide/svelte";
 	import { getHostURL } from "$lib/common/common";
@@ -18,9 +19,10 @@
 	});
 </script>
 
+<!-- A named group: the popover that holds it is the dialog (the message box's, or a message's Add reaction). -->
 <div
 	class="{GLASS} text-duvet-ink flex h-[440px] max-h-[calc(100vh-20px)] w-[372px] max-w-[calc(100vw-20px)] flex-col overflow-hidden rounded-[20px]"
-	role="dialog"
+	role="group"
 	aria-label="Sticker picker"
 >
 	<PickerSearch bind:value={searchQuery} placeholder="Search stickers" label="Search stickers" />
@@ -35,7 +37,8 @@
 		{:else if filtered.length === 0}
 			<div class="text-duvet-ink2 py-8 text-center text-[13px]">No results for "{searchQuery}"</div>
 		{:else}
-			<div class="grid grid-cols-3 gap-1">
+			<!-- svelte-ignore a11y_no_static_element_interactions -->
+			<div class="grid grid-cols-3 gap-1" onkeydown={gridKeys}>
 				{#each filtered as sticker (sticker.id)}
 					<button
 						class="hover:bg-duvet-hover focus-visible:bg-duvet-hover flex aspect-square cursor-pointer items-center justify-center rounded-xl p-1.5 transition-[background-color,transform] duration-100 hover:scale-105 active:scale-100 motion-reduce:transition-none motion-reduce:hover:scale-100"

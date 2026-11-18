@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { seekTo } from "$lib/seek-keys";
 	import { Play, Pause, X } from "@lucide/svelte";
 	import { fly } from "svelte/transition";
 	import { motionMs } from "$lib/motion";
@@ -26,6 +27,14 @@
 		rate = getAttachmentRate($voiceNote.attachmentId);
 	}
 
+	function handleSeekKey(e: KeyboardEvent) {
+		const note = $voiceNote;
+		const to = note ? seekTo(e.key, note.currentTime, note.duration) : null;
+		if (to === null) return;
+		e.preventDefault();
+		seekVoiceNote(to);
+	}
+
 	function handleSeek(e: MouseEvent) {
 		const note = $voiceNote;
 		if (!note || !note.duration) return;
@@ -46,9 +55,18 @@
 		in:fly={{ y: 20, duration: motionMs(200), opacity: 1 }}
 		out:fly={{ y: 20, duration: motionMs(200), opacity: 1 }}
 	>
-		<!-- svelte-ignore a11y_click_events_have_key_events -->
-		<!-- svelte-ignore a11y_no_static_element_interactions -->
-		<div class="group relative h-2 cursor-pointer overflow-hidden rounded-t-[14px]" onclick={handleSeek}>
+		<!-- The line seeks: by a press on it, and from the keyboard by the arrows, Home and End (lib/seek-keys.ts). -->
+		<div
+			class="group relative h-2 cursor-pointer overflow-hidden rounded-t-[14px] -outline-offset-2"
+			role="slider"
+			tabindex="0"
+			aria-label="Seek"
+			aria-valuemin={0}
+			aria-valuemax={Math.round($voiceNote.duration)}
+			aria-valuenow={Math.round($voiceNote.currentTime)}
+			onclick={handleSeek}
+			onkeydown={handleSeekKey}
+		>
 			<div class="bg-duvet-hover-strong absolute inset-x-0 top-0 h-0.5 group-hover:h-1"></div>
 			<div class="bg-duvet-accent absolute top-0 left-0 h-0.5 group-hover:h-1" style="width: {progress * 100}%;"></div>
 		</div>

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { gridKeys } from "$lib/grid-keys";
 	import { emojiDataNow, loadEmojiData, toTwemojiUrl, type EmojiEntry } from "$lib/emoji";
 	import type { SpaceEmoji } from "$lib/types";
 	import { getHostURL } from "$lib/common/common";
@@ -43,9 +44,10 @@
 	}
 </script>
 
+<!-- A named group: the popover that holds it is the dialog (the message box's, or a message's Add reaction). -->
 <div
 	class="{GLASS} text-duvet-ink flex h-[440px] max-h-[calc(100vh-20px)] w-[372px] max-w-[calc(100vw-20px)] flex-col overflow-hidden rounded-[20px]"
-	role="dialog"
+	role="group"
 	aria-label="Emoji picker"
 >
 	<PickerSearch bind:value={searchQuery} placeholder="Search emoji" label="Search emoji" />
@@ -91,7 +93,8 @@
 	{/if}
 
 	<!-- Emoji grid -->
-	<div class="min-h-0 flex-1 overflow-y-auto px-2 pt-0.5 pb-2" role="tabpanel">
+	<!-- The arrows move through its emoji, a row at a time up and down (lib/grid-keys.ts). -->
+	<div class="min-h-0 flex-1 overflow-y-auto px-2 pt-0.5 pb-2" role="tabpanel" tabindex="-1" onkeydown={gridKeys}>
 		{#if isSearching}
 			{#if searchResults.length === 0}
 				<div class="text-duvet-ink2 py-8 text-center text-[13px]">No results for "{searchQuery}"</div>

@@ -15,11 +15,12 @@ export const MESSAGE_TEXT = [
 	"[&_.msg-ln]:border-r-0 [&_.msg-code-block_code]:pr-14",
 	// a quote: a filled block, no bar
 	"[&_.msg-blockquote]:my-0.5 [&_.msg-blockquote]:rounded-[10px] [&_.msg-blockquote]:border-l-0 [&_.msg-blockquote]:px-2.5 [&_.msg-blockquote]:py-1.5 [&_.msg-blockquote]:text-inherit",
-	// hidden text: a drift of specks until the pointer is on it, and nothing of it shows through (an emoji is a picture)
+	// hidden text: a drift of specks until the pointer is on it or the keyboard's focus is in it, and nothing of it shows
+	// through (an emoji is a picture)
 	"[&_.msg-spoiler]:animate-specks [&_.msg-spoiler]:rounded-[5px] [&_.msg-spoiler]:px-0.5",
 	"[&_.msg-spoiler]:[background:radial-gradient(circle,var(--speck)_0.7px,transparent_1.1px)_0_0/4px_4px,radial-gradient(circle,var(--speck)_0.6px,transparent_1px)_2px_2px/5px_5px,var(--spoiler-fill)]",
-	"[&_.msg-spoiler:hover]:animate-none [&_.msg-spoiler:hover]:text-inherit [&_.msg-spoiler:hover]:[background:var(--spoiler-fill)]",
-	"[&_.msg-spoiler:not(:hover)_*]:invisible",
+	"[&_.msg-spoiler:is(:hover,:focus-visible)]:animate-none [&_.msg-spoiler:is(:hover,:focus-visible)]:text-inherit [&_.msg-spoiler:is(:hover,:focus-visible)]:[background:var(--spoiler-fill)]",
+	"[&_.msg-spoiler:not(:hover,:focus-visible)_*]:invisible",
 	// a person's mention: their name in bold, in their role's colour where it has one (markdown.ts), and no chip
 	"[&_.msg-mention]:bg-transparent [&_.msg-mention]:p-0 [&_.msg-mention]:font-bold [&_.msg-mention]:text-inherit",
 	"[&_.msg-mention[data-user-id]:hover]:bg-transparent [&_.msg-mention[data-user-id]:hover]:underline",

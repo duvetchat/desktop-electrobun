@@ -307,7 +307,8 @@ const EMPHASIS: [RegExp, string, string][] = [
 	[/__(.+?)__/gs, "<u>", "</u>"],
 	[/(?<!\w)_([^\s_](?:[^_]*[^\s_])?)_(?!\w)/gs, "<em>", "</em>"],
 	[/~~(.+?)~~/gs, "<del>", "</del>"],
-	[/\|\|(.+?)\|\|/gs, '<span class="msg-spoiler">', "</span>"],
+	// Focusable: the keyboard reveals hidden text by the focus, as the pointer does by resting on it.
+	[/\|\|(.+?)\|\|/gs, '<span class="msg-spoiler" tabindex="0">', "</span>"],
 ];
 
 const emphasized = (s: string) =>

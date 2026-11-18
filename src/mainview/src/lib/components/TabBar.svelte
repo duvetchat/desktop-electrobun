@@ -7,6 +7,7 @@
 		X as XIcon,
 	} from "@lucide/svelte";
 	import type { Tab } from "$lib/types";
+	import { listStep } from "$lib/focus-wrap";
 	import { getAvatarURL } from "$lib/common/common";
 	import { isConversationTab, tabDragData, tabFromDragData, tabNews, tabTitle, tabTooltip } from "$lib/pane";
 	import { chipCount, mentionsLabel, tabDropSide, type StripHalf } from "$lib/shell-layout";
@@ -213,6 +214,26 @@
 		"text-duvet-ink2 hover:bg-duvet-hover-strong hover:text-duvet-ink focus-visible:outline-duvet-accent grid size-5 shrink-0 place-items-center rounded-md focus-visible:opacity-100 focus-visible:outline-2";
 	const halfButton =
 		"focus-visible:outline-duvet-accent flex h-[26px] min-w-0 flex-1 items-center gap-[7px] rounded-[7px] px-1.5 text-left focus-visible:outline-2";
+
+	// The strip is one tab stop, as a tab list is: the open tab (or the first, when the open one is a split, whose
+	// halves are buttons). Arrow Left and Right, Home and End move the focus between tabs; Enter or Space opens one.
+	const noTabStop = $derived(!friendsActive && !previewTabs.some((t) => t.channelId === activeTabId && !paired));
+	function tabKeys(e: KeyboardEvent, select?: () => void) {
+		// A key on the tab's Close button is that button's.
+		if (e.target !== e.currentTarget) return;
+		if (e.key === "Enter" || e.key === " ") {
+			e.preventDefault();
+			select?.();
+			return;
+		}
+		const key = e.key === "ArrowRight" ? "ArrowDown" : e.key === "ArrowLeft" ? "ArrowUp" : e.key;
+		if (e.key === "ArrowDown" || e.key === "ArrowUp") return;
+		const all = [...(barEl?.querySelectorAll<HTMLElement>('[role="tab"]') ?? [])];
+		const to = listStep(all.length, all.indexOf(e.currentTarget as HTMLElement), key);
+		if (to === null) return;
+		e.preventDefault();
+		all[to]?.focus();
+	}
 </script>
 
 {#snippet roomMark(tab: Tab)}
@@ -265,7 +286,13 @@
 	ondrop={handleBarDrop}
 >
 	{#if friendsActive}
-		<div class="{tabBase} {tabActive} w-36 pr-2.5 pl-2.5" role="tab" aria-selected="true" tabindex="0">
+		<div
+			class="{tabBase} {tabActive} w-36 pr-2.5 pl-2.5"
+			role="tab"
+			aria-selected="true"
+			tabindex="0"
+			onkeydown={(e) => tabKeys(e)}
+		>
 			<span class="grid size-[18px] shrink-0 place-items-center"><UsersIcon class="size-3.5" /></span>
 			<span class="min-w-0 flex-1 truncate">Friends</span>
 		</div>
@@ -324,7 +351,7 @@
 							: ''}"
 						title={tabTooltip(tab, title, $gatewaySpaces, typing)}
 						role="tab"
-						tabindex="0"
+						tabindex={isActive || (noTabStop && i === 0) ? 0 : -1}
 						aria-selected={isActive}
 						data-tab-id={tab.channelId}
 						draggable="true"
@@ -332,7 +359,7 @@
 						ondragend={() => clearDrag()}
 						onclick={() => onSelect(tab.channelId)}
 						onauxclick={(e) => e.button === 1 && onClose([tab.channelId])}
-						onkeydown={(e) => (e.key === "Enter" || e.key === " ") && onSelect(tab.channelId)}
+						onkeydown={(e) => tabKeys(e, () => onSelect(tab.channelId))}
 						bind:this={tabEls[i]}
 					>
 						<!-- Drop insertion indicator -->
@@ -350,10 +377,11 @@
 						{#if mentions > 0 && !isActive}
 							<span
 								class="bg-duvet-accent text-duvet-on-accent flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full px-1 text-[10.5px] font-bold"
+								role="img"
 								aria-label={mentionsLabel(mentions)}>{chipCount(mentions)}</span
 							>
 						{:else if unread}
-							<span class="bg-duvet-accent size-1.5 shrink-0 rounded-full" aria-label="Unread"></span>
+							<span class="bg-duvet-accent size-1.5 shrink-0 rounded-full" role="img" aria-label="Unread"></span>
 						{/if}
 						<button
 							type="button"

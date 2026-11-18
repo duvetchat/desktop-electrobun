@@ -1613,7 +1613,15 @@
 			<!-- Mounted only while open: bits-ui's Portal mounts what it holds as it's created, open or not (#319). -->
 			{#if reactingMessageId === message.id}
 				<Popover.Portal>
-					<Popover.Content side="top" align={mine ? "start" : "end"} sideOffset={8} collisionPadding={10} class="z-100">
+					<Popover.Content
+						side="top"
+						align={mine ? "start" : "end"}
+						sideOffset={8}
+						collisionPadding={10}
+						class="z-100"
+						role="dialog"
+						aria-label="Add reaction"
+					>
 						<EmojiPicker onSelect={(emoji) => handleReactionPick(message.id, emoji)} {customEmojis} />
 					</Popover.Content>
 				</Popover.Portal>

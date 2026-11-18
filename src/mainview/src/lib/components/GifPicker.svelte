@@ -76,9 +76,10 @@
 	});
 </script>
 
+<!-- A named group: the popover that holds it is the dialog (the message box's, or a message's Add reaction). -->
 <div
 	class="{GLASS} text-duvet-ink flex h-[440px] max-h-[calc(100vh-20px)] w-[372px] max-w-[calc(100vw-20px)] flex-col overflow-hidden rounded-[20px]"
-	role="dialog"
+	role="group"
 	aria-label="GIF picker"
 >
 	<p class="text-duvet-ink shrink-0 px-4 pt-3.5 text-[13.5px] font-semibold">GIF Picker</p>

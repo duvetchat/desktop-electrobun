@@ -1330,7 +1330,7 @@
 					onmouseenter={() => (roomSelectedIdx = i)}
 				>
 					{#if room.type === 2}
-						<VoiceIcon class="text-duvet-ink2 size-4 shrink-0" aria-label="Voice room" />
+						<VoiceIcon class="text-duvet-ink2 size-4 shrink-0" role="img" aria-label="Voice room" />
 					{:else}
 						<HashIcon class="text-duvet-ink2 size-4 shrink-0" />
 					{/if}
@@ -1503,7 +1503,15 @@
 					<SmilePlusIcon size={18} />
 				</Popover.Trigger>
 				<Popover.Portal>
-					<Popover.Content side="top" align="end" sideOffset={10} collisionPadding={10} class="z-80 outline-none">
+					<Popover.Content
+						side="top"
+						align="end"
+						sideOffset={10}
+						collisionPadding={10}
+						class="z-80 outline-none"
+						role="dialog"
+						aria-label={editing ? "Emoji" : "Emoji, GIFs and stickers"}
+					>
 						<div class="flex flex-col gap-2">
 							{#if pickerTabs.length > 1}
 								<Segmented options={pickerTabs} bind:value={pickerTab} label="What to pick" size="sm" />

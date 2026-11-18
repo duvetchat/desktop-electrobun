@@ -1104,7 +1104,8 @@
 			background 0.1s;
 	}
 
-	.msg-spoiler:hover {
+	.msg-spoiler:hover,
+	.msg-spoiler:focus-visible {
 		background: color-mix(in oklab, var(--duvet-ink2) 20%, transparent);
 		color: var(--duvet-ink);
 	}
