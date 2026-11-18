@@ -177,5 +177,5 @@ Real-time WebSocket server + WebRTC SFU for voice.
 ## Notes
 
 - Scripts are now fully Bun-native (`bun --cwd ...`) and no longer depend on `.sh` wrappers.
-- The `icon.iconset/` folder contains all macOS icon sizes + a `.ico` for Windows/Linux. Icons are generated from `src/mainview/src/lib/assets/icon.svg` using Sharp.
+- The `icon.iconset/` folder contains all macOS icon sizes + a `.ico` for Windows (Linux uses its 256 px PNG). Every icon is drawn from Duvet's logo, `src/mainview/src/lib/assets/icon.svg` (the same file as `mobile/assets/logo/app-icon-colored.svg`): the macOS sizes on Apple's icon grid (the rounded square at 824 of 1024, with the template's shadow), the `.ico`, `lib/assets/icon.png`, the favicon and the Windows toast icon (`src/bun/notification-icon.png`) edge to edge.
 - The app uses `@sveltejs/adapter-static` to pre-render pages as static HTML that Electrobun loads via `views://` protocol. In HMR mode, it loads directly from the Vite dev server instead.
