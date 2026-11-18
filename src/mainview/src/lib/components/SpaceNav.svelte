@@ -7,11 +7,14 @@
 		Ellipsis as EllipsisIcon,
 		Hash as HashIcon,
 		LogOut as LogOutIcon,
+		PanelLeft as PanelLeftIcon,
+		Phone as PhoneIcon,
 		Pin as PinIcon,
 		PinOff as PinOffIcon,
 		Plus as PlusIcon,
 		Search as SearchIcon,
 		Settings as GearSixIcon,
+		SquarePen as SquarePenIcon,
 		Volume2 as SpeakerSimpleHighIcon,
 		X as XIcon,
 	} from "@lucide/svelte";
@@ -47,6 +50,16 @@
 	import SpaceIcon from "$lib/components/SpaceIcon.svelte";
 	import TabIcon from "$lib/components/TabIcon.svelte";
 	import ProfileRow from "$lib/components/ProfileRow.svelte";
+	import CallHistory from "$lib/components/CallHistory.svelte";
+	import DragRegion from "$lib/components/DragRegion.svelte";
+	import WindowControls from "$lib/components/WindowControls.svelte";
+	import IconButton from "$lib/components/ui/IconButton.svelte";
+	import Popover from "$lib/components/ui/Popover.svelte";
+	import Tooltip from "$lib/components/ui/Tooltip.svelte";
+	import logoOnLight from "$lib/assets/logo/app-icon-rounded.svg";
+	import logoOnDark from "$lib/assets/logo/app-icon-colored.svg";
+	import { currentShell } from "$lib/platform";
+	import type { MessageLink } from "$lib/urls";
 
 	let {
 		guilds,
@@ -57,6 +70,9 @@
 		openChats = null,
 		shortcutLabel = "Ctrl K",
 		showUser = true,
+		onHideSidebar = null,
+		sidebarKeys = undefined,
+		onOpenMessage = undefined,
 		onSpaceSelect,
 		onRoomSelect,
 		onFriendsSelect,
@@ -76,6 +92,11 @@
 		shortcutLabel?: string;
 		/** Off when the column shows beside the folded edge, which already has the user's controls. */
 		showUser?: boolean;
+		/** Hides the sidebar (its header's button); null where it shows over the chat, beside the folded edge. */
+		onHideSidebar?: (() => void) | null;
+		sidebarKeys?: string;
+		/** Opens a call's notice in its conversation, from the call history. */
+		onOpenMessage?: (link: MessageLink) => void;
 		onSpaceSelect: (spaceId: string) => void;
 		onRoomSelect: (spaceId: string, roomId: string) => void;
 		onFriendsSelect: () => void;
@@ -85,6 +106,9 @@
 		/** Opens the direct message with a friend, as the quick switcher's friends do. */
 		onFriend: (userId: string) => void;
 	} = $props();
+
+	const shell = currentShell();
+	let callsOpen = $state(false);
 
 	const newsBySpace = $derived(
 		Object.fromEntries(
@@ -421,8 +445,69 @@
 	</li>
 {/snippet}
 
-<nav class="bg-duvet-sunk text-duvet-ink flex h-full w-[280px] flex-col" aria-label="Spaces and chats">
-	<div class="shrink-0 px-2.5 pt-3 pb-1">
+<nav class="bg-duvet-sb-bg text-duvet-ink flex h-full w-full min-w-0 flex-col" aria-label="Spaces and chats">
+	<!-- The sidebar's half of the window's title line (S-03): the corner macOS's traffic lights keep, or the logo
+	     elsewhere; room that drags the window; then Call history, New chat and Hide sidebar. Shown over the chat, beside
+	     the folded edge, the line above is the tab strip's: only the actions stay. -->
+	<div class="flex h-[52px] shrink-0 items-center gap-px pr-2">
+		{#if showUser}
+			{#if shell.chrome === "mac"}
+				<WindowControls side="start" />
+			{:else}
+				<span class="ml-[18px] shrink-0" aria-hidden="true">
+					<img
+						src={logoOnLight}
+						alt=""
+						class="hidden size-[22px] rounded-md in-[.duvet-light]:block"
+						draggable="false"
+					/>
+					<img src={logoOnDark} alt="" class="size-[22px] rounded-md in-[.duvet-light]:hidden" draggable="false" />
+				</span>
+			{/if}
+		{/if}
+		<DragRegion class="h-full flex-1" />
+		<div class="titlebar-actions flex shrink-0 items-center gap-px">
+			<Popover bind:open={callsOpen} label="Call history" class="w-[360px] rounded-[20px]">
+				{#snippet trigger(props)}
+					<IconButton {...props} label="Call history" title="Call history" active={callsOpen}>
+						<PhoneIcon size={16} />
+					</IconButton>
+				{/snippet}
+				<div class="flex max-h-[min(70vh,560px)] flex-col">
+					<h2 class="text-duvet-ink shrink-0 px-4 pt-3.5 pb-2 font-serif text-[17px] leading-[1.2] font-medium">
+						Call history
+					</h2>
+					<!-- MOUNT POINT (Calls & media): the call history's list, as that workstream draws it. -->
+					<div class="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
+						<CallHistory
+							onOpen={(link) => {
+								callsOpen = false;
+								if (onOpenMessage) onOpenMessage(link);
+							}}
+						/>
+					</div>
+				</div>
+			</Popover>
+			<Tooltip text="New chat">
+				{#snippet trigger(props)}
+					<IconButton {...props} label="New chat" onclick={onNewGroup}>
+						<SquarePenIcon size={16} />
+					</IconButton>
+				{/snippet}
+			</Tooltip>
+			{#if onHideSidebar}
+				<Tooltip text="Hide sidebar" keys={sidebarKeys}>
+					{#snippet trigger(props)}
+						<IconButton {...props} label="Hide sidebar" onclick={onHideSidebar}>
+							<PanelLeftIcon size={16} />
+						</IconButton>
+					{/snippet}
+				</Tooltip>
+			{/if}
+		</div>
+	</div>
+
+	<div class="shrink-0 px-2.5 pb-2">
 		<button
 			type="button"
 			class="rounded-row bg-duvet-bg text-duvet-ink2 shadow-duvet-press hover:text-duvet-ink flex h-9 w-full items-center gap-2.5 px-3 text-left text-[13.5px] transition-colors {rowFocus}"

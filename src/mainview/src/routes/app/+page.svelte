@@ -7,8 +7,8 @@
 	import { keepSessionFresh } from "$lib/api/api";
 	import FriendsView from "$lib/components/FriendsView.svelte";
 	import GuildMemberSidebar from "$lib/components/GuildMemberSidebar.svelte";
-	import { spaceMembers } from "$lib/components/MemberList.svelte";
 	import PaneView from "$lib/components/PaneView.svelte";
+	import TitleStrip from "$lib/components/TitleStrip.svelte";
 	import KeyboardLayer from "$lib/components/KeyboardLayer.svelte";
 	import QuickSwitcher from "$lib/components/QuickSwitcher.svelte";
 	import SpaceEdge from "$lib/components/SpaceEdge.svelte";
@@ -17,8 +17,25 @@
 	import { createDM } from "$lib/api/conversations";
 	import { getApiError } from "$lib/api/api";
 	import { layoutPrefs } from "$lib/layout-prefs.svelte";
-	import { membersColumnOpen, onlineCount } from "$lib/members";
 	import { firstTextRoom, type OpenChats } from "$lib/nav";
+	import { currentShell } from "$lib/platform";
+	import {
+		clampSidebarWidth,
+		keysFor,
+		SIDEBAR_MAX,
+		SIDEBAR_MIN,
+		mergedLeaf,
+		openBeside,
+		openInLeaf,
+		shellShortcut,
+		SHELL_KEYS,
+		SIDEBAR_EDGE,
+		steppedTab,
+		stripHalves,
+		type OpenHow,
+	} from "$lib/shell-layout";
+	import { appChrome } from "$lib/stores/chrome.svelte";
+	import { sidebar } from "$lib/stores/sidebar.svelte";
 	import {
 		closeTabsIn,
 		conversationTab,
@@ -223,9 +240,10 @@
 		}
 	});
 
-	// Sidebar selection → open in focused pane. The room can be of any space (an unread room under another space's
-	// row, the quick switcher): the sidebar follows it to that space, and a room picked from the friends view leaves it.
-	function onSidebarSelect(channelId: string, spaceId: string | null = sidebarSpaceId) {
+	// Sidebar selection → open in focused pane. The room can be of any space (a room of another Space's tree, the quick
+	// switcher): the sidebar follows it to that space, and a room picked from the friends view leaves it. `how` is the
+	// press: a click opens it in the current tab, ⌘-click in a new one, ⌥-click beside (lib/shell-layout.ts).
+	function onSidebarSelect(channelId: string, spaceId: string | null = sidebarSpaceId, how: OpenHow = "here") {
 		const guild = spaceId ? guilds.find((g) => g.id === spaceId) : sidebarGuild;
 		const ch = guild?.channels.find((c) => c.id === channelId);
 		if (!guild || !ch || ch.type === "category") return;
@@ -236,35 +254,49 @@
 			if (!space || !room || !hasPermission(space, room, Permission.JoinVoice)) return;
 		}
 		activeSpaceId = guild.id;
-		openInFocusedPane({
-			channelId: ch.id,
-			channelName: ch.name,
-			channelType: ch.type,
-			spaceId: guild.id,
-		});
+		openTab(
+			{
+				channelId: ch.id,
+				channelName: ch.name,
+				channelType: ch.type,
+				spaceId: guild.id,
+			},
+			how,
+		);
 	}
 
-	// Opens a tab in the focused pane, or shows it when it's open there already, and leaves the friends view.
-	function openInFocusedPane(tab: Tab) {
+	// Opens a chat in the focused pane, or shows it when it's open there already (never a duplicate), and leaves the
+	// friends view. A click puts it in the current tab, ⌘-click or a middle click in a new tab after it, and ⌥-click in
+	// the pane beside, which a lone pane gets for it (BRIEF, "Tabs and panes"). From the Friends page, which stands in
+	// the strip as a tab of its own, a click opens a tab rather than take over the one the page was hiding.
+	function openTab(tab: Tab, how: OpenHow = "here") {
+		const fromFriends = showFriendsView;
 		if (showFriendsView) {
 			showFriendsView = false;
 			activeDMId = null;
 		}
-		rootPane = updateLeaf(rootPane, focusedPaneId, (leaf) => {
-			const tabs = leaf.tabs.some((t) => t.channelId === tab.channelId) ? leaf.tabs : [...leaf.tabs, tab];
-			return { ...leaf, tabs, activeChannelId: tab.channelId };
-		});
+		if (how === "beside") {
+			const next = openBeside(rootPane, focusedPaneId, tab);
+			rootPane = next.root;
+			focusedPaneId = next.focusedId;
+		} else {
+			const into = fromFriends ? "tab" : how;
+			rootPane = updateLeaf(rootPane, focusedPaneId, (leaf) => openInLeaf(leaf, tab, into));
+		}
 		syncSidebarToLeaf(rootPane, focusedPaneId);
 	}
 
 	// A conversation (a DM or a group) opens as a tab, as a room does: in the pane that has it open already, or else
 	// in the focused one.
-	function openConversationTab(conversationId: string) {
+	function openConversationTab(conversationId: string, how: OpenHow = "here") {
 		const conv = $conversations.find((c) => c.id === conversationId);
 		if (!conv) return;
 		const holder = leafWithTab(rootPane, conversationId);
-		if (holder) focusedPaneId = holder.id;
-		openInFocusedPane(conversationTab(conv, $currentUser?.id));
+		if (holder) {
+			focusedPaneId = holder.id;
+			how = "here";
+		}
+		openTab(conversationTab(conv, $currentUser?.id), how);
 	}
 
 	// The stream window's click: back to the view of its voice room or call (desktop#299).
@@ -327,11 +359,12 @@
 		handlePaneUpdate(updateLeaf(rootPane, focusedPaneId, (leaf) => ({ ...leaf, activeChannelId: channelId })));
 	}
 
-	// As a tab's close button in a pane: a pane of a split that loses its last tab goes, a lone one stays empty.
-	function closeTab(channelId: string) {
+	// A tab's close button, and its menu's Close others, to the left, to the right and all: a pane of a split that
+	// loses its last tab goes, a lone one stays empty.
+	function closeTabs(channelIds: string[]) {
 		const leaf = findLeaf(rootPane, focusedPaneId);
 		if (!leaf) return;
-		const { tabs, activeChannelId } = closeTabsIn(leaf, [channelId]);
+		const { tabs, activeChannelId } = closeTabsIn(leaf, channelIds);
 		if (tabs.length === 0 && rootPane.kind === "split") {
 			handlePaneUpdate(removeLeaf(rootPane, leaf.id) ?? makeLeaf());
 			return;
@@ -339,8 +372,43 @@
 		handlePaneUpdate(updateLeaf(rootPane, leaf.id, (l) => ({ ...l, tabs, activeChannelId })));
 	}
 
+	const closeTab = (channelId: string) => closeTabs([channelId]);
+
 	function reorderTabs(tabs: Tab[]) {
 		rootPane = updateLeaf(rootPane, focusedPaneId, (leaf) => ({ ...leaf, tabs }));
+	}
+
+	// A room or a conversation dropped between two of the strip's tabs: a tab there, or the one it has already.
+	function dropInStrip(tab: Tab, at: number | null) {
+		if (showFriendsView) {
+			showFriendsView = false;
+			activeDMId = null;
+		}
+		handlePaneUpdate(
+			updateLeaf(rootPane, focusedPaneId, (leaf) => {
+				if (leaf.tabs.some((t) => t.channelId === tab.channelId)) return { ...leaf, activeChannelId: tab.channelId };
+				const tabs = [...leaf.tabs];
+				tabs.splice(at ?? tabs.length, 0, tab);
+				return { ...leaf, tabs, activeChannelId: tab.channelId };
+			}),
+		);
+	}
+
+	// Two of the focused pane's tabs side by side (a tab's Split with, or one dropped on another's middle): the first
+	// stays where it is, shown, and the second moves to a new pane on its right.
+	function splitTabs(keepId: string, moveId: string) {
+		const moved = focusedLeaf?.tabs.find((t) => t.channelId === moveId);
+		if (!moved || keepId === moveId) return;
+		rootPane = updateLeaf(rootPane, focusedPaneId, (leaf) => ({ ...leaf, activeChannelId: keepId }));
+		moveTabBetweenLeaves(moved, focusedPaneId, focusedPaneId, "right");
+	}
+
+	// Separate split view: the split's panes become tabs of the focused one.
+	function separateSplit() {
+		const merged = mergedLeaf(rootPane, focusedPaneId);
+		rootPane = merged;
+		focusedPaneId = merged.id;
+		syncSidebarToLeaf(merged, merged.id);
 	}
 
 	const focusedChats: OpenChats = $derived({
@@ -354,6 +422,42 @@
 	// ── The spaces column: fixed, or folded to an edge it shows from on hover ──
 	// Collapsing it (the panes' toggle) folds it to the edge too.
 	const navDocked = $derived(layoutPrefs.spacesColumn === "fixed" && layoutPrefs.showChannelsSidebar);
+	// Hide sidebar and Show sidebar: only while the column is Fixed. One set to Auto-hide stays folded to its edge.
+	const canToggleSidebar = $derived(layoutPrefs.spacesColumn === "fixed");
+	function toggleSidebar() {
+		layoutPrefs.showChannelsSidebar = !layoutPrefs.showChannelsSidebar;
+	}
+
+	// Its width, dragged by its right edge between 232 and 380 px, and remembered (S-09). While it's dragged the width
+	// is the drag's; it is saved as the drag ends.
+	let dragWidth = $state<number | null>(null);
+	const sidebarWidth = $derived(dragWidth ?? sidebar.width);
+	let resizeFrom: { x: number; width: number } | null = null;
+
+	function startSidebarResize(e: PointerEvent) {
+		if (e.button !== 0) return;
+		e.preventDefault();
+		resizeFrom = { x: e.clientX, width: sidebar.width };
+		dragWidth = sidebar.width;
+		(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+	}
+
+	function moveSidebarResize(e: PointerEvent) {
+		if (resizeFrom) dragWidth = clampSidebarWidth(resizeFrom.width + e.clientX - resizeFrom.x);
+	}
+
+	function endSidebarResize() {
+		if (dragWidth !== null) sidebar.width = dragWidth;
+		resizeFrom = null;
+		dragWidth = null;
+	}
+
+	// The same edge from the keyboard: the arrows move it 16 px at a time.
+	function keySidebarResize(e: KeyboardEvent) {
+		if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+		e.preventDefault();
+		sidebar.width = clampSidebarWidth(sidebar.width + (e.key === "ArrowRight" ? 16 : -16));
+	}
 	let navRevealed = $state(false);
 	let navHovered = false;
 	let navWrapEl = $state<HTMLElement | null>(null);
@@ -393,10 +497,48 @@
 
 	// ── Quick switcher: Cmd+K on macOS, Ctrl+K elsewhere ─────────────────────
 	let switcherOpen = $state(false);
-	const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
-	const switcherShortcut = isMac ? "⌘K" : "Ctrl K";
+	// How the switcher's pick opens: in the current tab, or in a new one (the strip's New tab), or beside (a tab's
+	// Split with a chat). It goes back to the current tab as the switcher closes.
+	let switcherHow = $state<OpenHow>("here");
+	function openSwitcher(how: OpenHow = "here") {
+		switcherHow = how;
+		switcherOpen = true;
+	}
+	$effect(() => {
+		if (!switcherOpen) switcherHow = "here";
+	});
+
+	// Which system's keys and chrome: the platform switch's answer (lib/platform.ts), in the app and in a browser.
+	const shell = currentShell();
+	const isMac = shell.os === "mac";
+	const desktopApp = shell.chrome !== "web";
+	const switcherShortcut = keysFor(isMac, SHELL_KEYS.switcher);
+
+	// The shell's own shortcuts (lib/shell-layout.ts: shellShortcut), not over a dialog or a menu, as the others.
+	function runShellShortcut(e: KeyboardEvent): boolean {
+		const command = shellShortcut(e, { mac: isMac, desktop: desktopApp });
+		if (!command || !$currentUser || !$friendsReady) return false;
+		if (document.querySelector('[role="dialog"], [role="alertdialog"], [role="menu"]')) return false;
+		e.preventDefault();
+		if (command === "toggle-sidebar") {
+			if (canToggleSidebar) toggleSidebar();
+		} else if (command === "new-tab") {
+			openSwitcher("tab");
+		} else if (command === "close-tab") {
+			if (!showFriendsView && sidebarActiveChannelId) closeTab(sidebarActiveChannelId);
+		} else {
+			const next = steppedTab(
+				focusedTabIds,
+				showFriendsView ? null : sidebarActiveChannelId,
+				command === "next-tab" ? 1 : -1,
+			);
+			if (next) activateTab(next);
+		}
+		return true;
+	}
 
 	function handleWindowKeydown(e: KeyboardEvent) {
+		if (runShellShortcut(e)) return;
 		if (e.key.toLowerCase() !== "k" || e.altKey || e.shiftKey) return;
 		if (isMac ? !e.metaKey || e.ctrlKey : !e.ctrlKey || e.metaKey) return;
 		if (!$currentUser || !$friendsReady) return;
@@ -426,11 +568,11 @@
 
 	// A friend picked in the switcher, or in the spaces column's online friends, without a conversation yet: one starts,
 	// as the friends list's message button does.
-	async function openFriendDM(userId: string) {
+	async function openFriendDM(userId: string, how: OpenHow = "here") {
 		try {
 			const conv = await createDM(userId);
 			conversations.update((list) => (list.some((c) => c.id === conv.id) ? list : [conv, ...list]));
-			openConversationTab(conv.id);
+			openConversationTab(conv.id, how);
 		} catch (err) {
 			toast(getApiError(err, "Failed to open the conversation"), "error");
 		}
@@ -449,10 +591,6 @@
 	const sidebarGuild = $derived(guilds.find((g) => g.id === sidebarSpaceId) ?? activeGuild);
 	const memberSidebarSpaceId = $derived(sidebarSpaceId);
 	const memberSidebarSpace = $derived($gatewaySpaces.find((s) => s.id === memberSidebarSpaceId) ?? null);
-	// The members column opens by itself in a busy room, unless the user opened or closed it.
-	const membersColumnIsOpen = $derived(
-		membersColumnOpen(layoutPrefs.membersColumn, onlineCount(spaceMembers(memberSidebarSpace))),
-	);
 
 	// Each Space's room whose tab the focused pane showed last, which a click on the Space goes back to (spaceLanding).
 	// Only that click reads it, so it isn't state, and it lasts while the app is open.
@@ -523,7 +661,7 @@
 	// A click on a Space (its row in the column, its icon on the folded edge, Ctrl+K) takes the user to it: its tab used
 	// last or another of its tabs, focusing the pane that has it, or else its first text room, opened in the focused
 	// pane (spaceLanding). A Space without a text room only shows its rooms in the column.
-	function handleGuildSelect(id: string) {
+	function handleGuildSelect(id: string, how: OpenHow = "here") {
 		activeSpaceId = id;
 		sidebarSpaceId = id;
 		showFriendsView = false;
@@ -536,7 +674,7 @@
 			focusedPaneId = landing.leafId;
 			activateTab(landing.channelId);
 		} else if (landing?.kind === "room") {
-			onSidebarSelect(landing.channelId, id);
+			onSidebarSelect(landing.channelId, id, how);
 		}
 	}
 
@@ -633,6 +771,39 @@
 		syncSidebarToLeaf(next, focusedPaneId);
 	}
 
+	// The app's shell has its own title line (the sidebar's header and the tab strip): the layout's slim title bar
+	// stays away while it is up (Header.svelte).
+	$effect(() => {
+		appChrome.shellUp = !!$currentUser && $friendsReady;
+		return () => {
+			appChrome.shellUp = false;
+		};
+	});
+
+	// What the title bar's strip shows: the focused pane's tabs, and in a split each pane's chat as one joined tab.
+	// Nothing when the open chats are listed in the sidebar instead (layoutPrefs.openChats).
+	const stripTabs = $derived(
+		layoutPrefs.openChats === "tabs"
+			? {
+					tabs: focusedChats.tabs,
+					activeTabId: sidebarActiveChannelId,
+					leafId: focusedPaneId,
+					halves: stripHalves(rootPane, focusedPaneId),
+					friendsActive: showFriendsView,
+					closeKeys: desktopApp ? keysFor(isMac, SHELL_KEYS.closeTab) : "Ctrl W",
+					onSelect: activateTab,
+					onClose: closeTabs,
+					onReorder: reorderTabs,
+					onChannelDrop: dropInStrip,
+					onJoin: (tab: Tab) => openTab(tab, "beside"),
+					onFocusHalf: handleFocusChange,
+					onSeparate: rootPane.kind === "split" ? separateSplit : null,
+					onSplitWith: splitTabs,
+					onSplitWithChat: () => openSwitcher("beside"),
+				}
+			: null,
+	);
+
 	let friendsViewEverShown = $state(true);
 	$effect(() => {
 		if (showFriendsView) friendsViewEverShown = true;
@@ -686,13 +857,20 @@
 		</div>
 	</div>
 {:else}
-	<div class="bg-duvet-bg text-duvet-ink flex h-full overflow-hidden">
-		<!-- The spaces column. Folded, its edge stays in the row and the column shows over the chat, so the chat
-			 doesn't move. The same column is kept either way, with what's open in it. -->
+	<!-- The shell (#357): one grid. Its top row is the window's title line, shared by the sidebar's header and the tab
+	     strip; the sidebar takes the first column, top to bottom, and the chat the rest. With the sidebar folded, the
+	     strip is the whole title line and the folded edge sits under it; the column then shows over the chat, so the
+	     chat doesn't move. The same column is kept either way, with what's open in it. -->
+	<div
+		class="bg-duvet-bg text-duvet-ink grid h-full grid-rows-[52px_minmax(0,1fr)] overflow-hidden {dragWidth !== null
+			? 'cursor-col-resize select-none'
+			: ''}"
+		style="grid-template-columns: {navDocked ? sidebarWidth : SIDEBAR_EDGE}px minmax(0, 1fr)"
+	>
 		<!-- svelte-ignore a11y_no_static_element_interactions -->
 		<div
 			bind:this={navWrapEl}
-			class="relative z-40 flex h-full shrink-0 {navDocked ? 'w-[280px]' : 'w-[60px]'}"
+			class="relative z-40 col-start-1 flex min-h-0 min-w-0 {navDocked ? 'row-span-2 row-start-1' : 'row-start-2'}"
 			onpointerenter={() => {
 				if (navDocked) return;
 				navHovered = true;
@@ -720,8 +898,9 @@
 				 goes; its visibility flips at the start of the reveal and the end of the hide. -->
 			<div
 				class={navDocked
-					? "h-full"
+					? "h-full w-full min-w-0"
 					: `shadow-duvet-float absolute top-0 left-full h-full overflow-hidden rounded-r-[18px] transition-[opacity,translate,visibility] duration-200 motion-reduce:transition-none ${navRevealed ? "visible translate-x-0 opacity-100 ease-out" : "invisible -translate-x-full opacity-0 ease-in"}`}
+				style={navDocked ? undefined : `width: ${sidebar.width}px`}
 				inert={!navDocked && !navRevealed}
 			>
 				<SpaceNav
@@ -733,6 +912,9 @@
 					openChats={layoutPrefs.openChats === "vertical" ? focusedChats : null}
 					shortcutLabel={switcherShortcut}
 					showUser={navDocked}
+					onHideSidebar={navDocked && canToggleSidebar ? toggleSidebar : null}
+					sidebarKeys={keysFor(isMac, SHELL_KEYS.sidebar)}
+					onOpenMessage={openMentioned}
 					onSpaceSelect={handleGuildSelect}
 					onRoomSelect={(spaceId, roomId) => onSidebarSelect(roomId, spaceId)}
 					onFriendsSelect={handleFriendsSelect}
@@ -740,55 +922,84 @@
 					onNewGroup={() => {
 						showGroupModal = true;
 					}}
-					onOpenSwitcher={() => (switcherOpen = true)}
+					onOpenSwitcher={() => openSwitcher()}
 					onFriend={(userId) => void openFriendDM(userId)}
 				/>
 			</div>
+			{#if navDocked}
+				<!-- The sidebar's right edge resizes it. -->
+				<!-- svelte-ignore a11y_no_noninteractive_tabindex, a11y_no_noninteractive_element_interactions -->
+				<div
+					class="hover:bg-duvet-accent-tint focus-visible:bg-duvet-accent-tint absolute inset-y-0 -right-[3px] z-10 w-1.5 cursor-col-resize touch-none transition-colors duration-150 outline-none motion-reduce:transition-none {dragWidth !==
+					null
+						? 'bg-duvet-accent-tint'
+						: ''}"
+					role="separator"
+					aria-orientation="vertical"
+					aria-label="Resize the sidebar"
+					aria-valuemin={SIDEBAR_MIN}
+					aria-valuemax={SIDEBAR_MAX}
+					aria-valuenow={sidebarWidth}
+					tabindex="0"
+					onpointerdown={startSidebarResize}
+					onpointermove={moveSidebarResize}
+					onpointerup={endSidebarResize}
+					onpointercancel={endSidebarResize}
+					onkeydown={keySidebarResize}
+				></div>
+			{/if}
 		</div>
 
-		<div class="bg-duvet-bg relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-			{#if friendsViewEverShown}
-				<div class="flex min-h-0 flex-1 flex-col {showFriendsView ? '' : 'hidden'}">
-					<FriendsView
-						bind:activeConversationId={activeDMId}
-						bind:showGroupModal
-						onOpenConversation={openConversationTab}
-						onOpenMessage={openMentioned}
+		<TitleStrip
+			class="row-start-1 {navDocked ? 'border-duvet-line col-start-2 border-l' : 'col-span-2 col-start-1'}"
+			lead={!navDocked}
+			onShowSidebar={!navDocked && canToggleSidebar ? toggleSidebar : null}
+			sidebarKeys={keysFor(isMac, SHELL_KEYS.sidebar)}
+			tabBar={stripTabs}
+			onNewTab={() => openSwitcher("tab")}
+			newTabKeys={desktopApp ? keysFor(isMac, SHELL_KEYS.newTab) : undefined}
+		/>
+
+		<div class="border-duvet-line col-start-2 row-start-2 flex min-h-0 min-w-0 border-l">
+			<div class="bg-duvet-bg relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+				{#if friendsViewEverShown}
+					<div class="flex min-h-0 flex-1 flex-col {showFriendsView ? '' : 'hidden'}">
+						<FriendsView
+							bind:activeConversationId={activeDMId}
+							bind:showGroupModal
+							onOpenConversation={openConversationTab}
+							onOpenMessage={openMentioned}
+						/>
+					</div>
+				{/if}
+				<div class="flex min-h-0 flex-1 flex-col {showFriendsView ? 'hidden' : ''}">
+					<PaneView
+						node={rootPane}
+						onUpdate={handlePaneUpdate}
+						onMoveTab={moveTabBetweenLeaves}
+						onClose={null}
+						guild={activeGuild}
+						spaceId={activeSpaceId}
+						space={activeSpace}
+						members={activeMembers}
+						{focusedPaneId}
+						onFocus={handleFocusChange}
+						isActive={!showFriendsView}
 					/>
 				</div>
-			{/if}
-			<div class="flex min-h-0 flex-1 flex-col {showFriendsView ? 'hidden' : ''}">
-				<PaneView
-					node={rootPane}
-					onUpdate={handlePaneUpdate}
-					onMoveTab={moveTabBetweenLeaves}
-					onClose={null}
-					guild={activeGuild}
-					spaceId={activeSpaceId}
-					space={activeSpace}
-					members={activeMembers}
-					showChannelsSidebar={navDocked}
-					onToggleChannels={layoutPrefs.spacesColumn === "fixed"
-						? () => (layoutPrefs.showChannelsSidebar = !layoutPrefs.showChannelsSidebar)
-						: null}
-					membersColumnOpen={membersColumnIsOpen}
-					onMembersColumn={(open) => (layoutPrefs.membersColumn = open ? "shown" : "hidden")}
-					{focusedPaneId}
-					onFocus={handleFocusChange}
-					isActive={!showFriendsView}
-					showTabs={layoutPrefs.openChats === "tabs"}
-				/>
 			</div>
+			<!-- Nothing is docked beside the chat (#357): a room's members open from its pane's header, in a popover. What
+			     was the members column stays mounted, shut, as it keeps the focused Space's first page of members loaded
+			     for the faces in that header (#327). A conversation has its own members in its view. -->
+			{#if !showFriendsView && !focusedConversationId}
+				<GuildMemberSidebar
+					spaceId={memberSidebarSpaceId}
+					space={memberSidebarSpace}
+					channelId={sidebarActiveChannelId}
+					collapsed
+				/>
+			{/if}
 		</div>
-		<!-- A conversation has its own members in its view: the space's show beside rooms only. -->
-		{#if !showFriendsView && !focusedConversationId}
-			<GuildMemberSidebar
-				spaceId={memberSidebarSpaceId}
-				space={memberSidebarSpace}
-				channelId={sidebarActiveChannelId}
-				collapsed={!membersColumnIsOpen}
-			/>
-		{/if}
 	</div>
 {/if}
 
@@ -825,12 +1036,13 @@
 	/>
 {/if}
 
+<!-- Its pick opens in the current tab; from the strip's New tab in a new one, from Split with a chat beside. -->
 <QuickSwitcher
 	bind:open={switcherOpen}
-	onSpace={handleGuildSelect}
-	onRoom={(spaceId, roomId) => onSidebarSelect(roomId, spaceId)}
-	onConversation={openConversationTab}
-	onFriend={(userId) => void openFriendDM(userId)}
+	onSpace={(spaceId) => handleGuildSelect(spaceId, switcherHow)}
+	onRoom={(spaceId, roomId) => onSidebarSelect(roomId, spaceId, switcherHow)}
+	onConversation={(conversationId) => openConversationTab(conversationId, switcherHow)}
+	onFriend={(userId) => void openFriendDM(userId, switcherHow)}
 />
 
 <BotInviteModal bind:open={botInviteOpen} bind:botUserId={botInviteId} />

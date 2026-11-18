@@ -57,13 +57,29 @@
 	import PaneView from "$lib/components/PaneView.svelte";
 	import ConversationView from "$lib/components/ConversationView.svelte";
 	import TabIcon from "$lib/components/TabIcon.svelte";
-	import TabBar from "$lib/components/TabBar.svelte";
 	import Chat from "$lib/components/Chat.svelte";
 	import VoiceChannelView from "$lib/components/VoiceChannelView.svelte";
 	import MembersButton from "$lib/components/MembersButton.svelte";
 	import MessageSearch from "$lib/components/MessageSearch.svelte";
 	import PinnedMessages from "$lib/components/PinnedMessages.svelte";
-	import { Hash, PanelRightClose, PanelRightOpen, PanelLeftClose, PanelLeftOpen, UserPlus } from "@lucide/svelte";
+	import {
+		AppWindow as AppWindowIcon,
+		Columns2 as ColumnsIcon,
+		Ellipsis as EllipsisIcon,
+		Hash,
+		Rows2 as RowsIcon,
+		UserPlus,
+		Volume2 as SpeakerIcon,
+		X as XIcon,
+	} from "@lucide/svelte";
+	import { getAvatarURL } from "$lib/common/common";
+	import { typingNow } from "$lib/stores.svelte";
+	import { typingSentence } from "$lib/typing";
+	import IconButton from "$lib/components/ui/IconButton.svelte";
+	import Menu from "$lib/components/ui/Menu.svelte";
+	import MenuItem from "$lib/components/ui/MenuItem.svelte";
+	import MenuSeparator from "$lib/components/ui/MenuSeparator.svelte";
+	import { iconButtonClass } from "$lib/components/ui/recipes";
 	import ChatIntro from "$lib/components/ChatIntro.svelte";
 	import InviteModal from "$lib/components/InviteModal.svelte";
 	import { hasPermission, Permission } from "$lib/permissions";
@@ -80,12 +96,7 @@
 		members,
 		focusedPaneId,
 		onFocus,
-		showChannelsSidebar = true,
-		onToggleChannels = null,
-		membersColumnOpen = false,
-		onMembersColumn = null,
 		isActive = true,
-		showTabs = true,
 	}: {
 		node: PaneNode;
 		onUpdate: (n: PaneNode) => void;
@@ -104,15 +115,7 @@
 		members: MemberOnSidebar[];
 		focusedPaneId: string | null;
 		onFocus: (id: string) => void;
-		showChannelsSidebar?: boolean;
-		onToggleChannels?: (() => void) | null;
-		/** Whether the members column beside the panes is open; it shows the focused pane's room's members. */
-		membersColumnOpen?: boolean;
-		/** Opens or closes the members column, as the user's choice. */
-		onMembersColumn?: ((open: boolean) => void) | null;
 		isActive?: boolean;
-		/** Off when the spaces column lists the open chats: each pane then only names its active one. */
-		showTabs?: boolean;
 	} = $props();
 
 	// ── Leaf: message loading ─────────────────────────────────────────────────
@@ -852,17 +855,6 @@
 		onFocus(leafId);
 	}
 
-	function handleTabReorder(newTabs: Tab[]) {
-		if (node.kind !== "leaf") {
-			return;
-		}
-		onUpdate({ ...node, tabs: newTabs });
-	}
-
-	function handleChannelDrop(tab: Tab) {
-		openTab(tab);
-	}
-
 	// ── Leaf: split actions ───────────────────────────────────────────────────
 	function splitH() {
 		if (node.kind !== "leaf") {
@@ -1093,11 +1085,6 @@
 		focusedPaneId,
 		onFocus,
 		onMoveTab,
-		showChannelsSidebar,
-		onToggleChannels,
-		membersColumnOpen,
-		onMembersColumn,
-		showTabs,
 		// A split's panes are hidden with it (the Friends view), as the root pane is.
 		isActive,
 	});
@@ -1112,6 +1099,30 @@
 		if (actions) conversationActions = { conversationId, actions };
 		else if (conversationActions?.conversationId === conversationId) conversationActions = null;
 	}
+
+	// ── Leaf: the header's title ─────────────────────────────────────────────
+	// A room's mark is its Space's icon, with the # or the speaker written before its name.
+	const activeTabSpaceIcon = $derived(
+		activeTabSpace
+			? {
+					name: activeTabSpace.name,
+					icon: activeTabSpace.icon ? (getAvatarURL(activeTabSpace.id, activeTabSpace.icon) ?? null) : null,
+				}
+			: null,
+	);
+	// The line under the name: who's typing there, else a room's Space and what the room is for, or a conversation's
+	// kind.
+	const activeTabLine = $derived.by(() => {
+		if (!activeTab) return null;
+		const typing = typingSentence($typingNow[activeTab.channelId]);
+		if (typing) return typing;
+		if (activeConversation) {
+			if (activeConversation.type !== 2) return "Direct message";
+			const count = activeConversation.members.length;
+			return count === 1 ? "1 member" : `${count} members`;
+		}
+		return [activeTabSpace?.name, activeRoomDescription].filter(Boolean).join(" · ") || null;
+	});
 </script>
 
 {#if node.kind === "split"}
@@ -1137,17 +1148,26 @@
 			/>
 		</div>
 
-		<!-- Resize handle -->
+		<!-- Resize handle: a wider area to press than the hairline it draws, which thickens under the pointer and
+		     turns accent while dragged. A double click evens the two sides. -->
 		<button
 			type="button"
-			class="shrink-0 {node.direction === 'h'
-				? 'w-1 cursor-col-resize'
-				: 'h-1 cursor-row-resize'} bg-duvet-line hover:bg-duvet-accent active:bg-duvet-accent transition-colors {isDragging
-				? 'bg-duvet-accent'
-				: ''}"
+			class="group/gutter relative z-[7] shrink-0 {node.direction === 'h'
+				? '-mx-1 w-[9px] cursor-col-resize'
+				: '-my-1 h-[9px] cursor-row-resize'}"
 			onmousedown={startResize}
+			ondblclick={() => node.kind === "split" && onUpdate({ ...node, ratio: 0.5 })}
 			aria-label="Resize split"
-		></button>
+		>
+			<span
+				class="absolute transition-[background-color,inset] duration-150 motion-reduce:transition-none {node.direction ===
+				'h'
+					? 'inset-y-0 right-1 left-1 group-hover/gutter:right-[3px] group-hover/gutter:left-[3px]'
+					: 'inset-x-0 top-1 bottom-1 group-hover/gutter:top-[3px] group-hover/gutter:bottom-[3px]'} {isDragging
+					? 'bg-duvet-accent'
+					: 'bg-duvet-line group-hover/gutter:bg-duvet-accent-tint'}"
+			></span>
+		</button>
 
 		<!-- Child B -->
 		<div class="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
@@ -1180,51 +1200,43 @@
 		data-pane-focused={isFocused ? "true" : undefined}
 		onclick={() => onFocus(node.id)}
 	>
-		<!-- The pane's one bar: its tabs, or the name of the chat it shows, then the chat's actions and the pane's. The
-		     tabs scroll before the actions get squeezed. -->
-		<div class="border-duvet-line bg-duvet-bg flex min-w-0 shrink-0 items-stretch border-b">
-			<div class="min-w-0 flex-1 overflow-hidden">
-				{#if showTabs}
-					<TabBar
-						tabs={node.tabs}
-						activeTabId={node.activeChannelId}
-						leafId={node.id}
-						onSelect={handleTabSelect}
-						onClose={handleTabClose}
-						onReorder={handleTabReorder}
-						onChannelDrop={handleChannelDrop}
-						description={activeRoomDescription}
-					/>
-				{:else}
-					<!-- The spaces column lists the tabs: the pane names the one it shows. -->
-					<div class="flex h-12 min-w-0 items-center gap-1.5 px-4 text-sm">
-						{#if activeTab}
-							<TabIcon tab={activeTab} size={16} />
-							<div class="flex min-w-0 flex-col">
-								<div class="flex min-w-0 items-center gap-1.5">
-									<span class="text-duvet-ink truncate font-bold"
-										>{tabTitle(activeTab, $conversations, $currentUser?.id)}</span
-									>
-									{#if activeTabSpace}
-										<span class="text-duvet-ink2 truncate text-xs">{activeTabSpace.name}</span>
-									{/if}
-								</div>
-								<!-- What the room is for, under its name: one line -->
-								{#if activeRoomDescription}
-									<span class="text-duvet-ink2 truncate text-xs" title={activeRoomDescription}
-										>{activeRoomDescription}</span
-									>
-								{/if}
-							</div>
-						{:else}
-							<span class="text-duvet-ink2">No chat open</span>
+		<!-- The pane's header (S-11): the chat it shows, then the chat's actions and the pane's own. The open chats are
+		     the title bar's tabs (TitleStrip), or the sidebar's list. In a split, the pane that isn't focused fades its
+		     title. -->
+		<div class="border-duvet-line bg-duvet-bg flex h-[52px] min-w-0 shrink-0 items-center gap-2.5 border-b pr-2.5 pl-3">
+			<div
+				class="flex min-w-0 flex-1 items-center gap-2.5 transition-opacity duration-150 motion-reduce:transition-none {onClose &&
+				!isFocused
+					? 'opacity-55'
+					: ''}"
+			>
+				{#if activeTab}
+					<span class="grid size-7 shrink-0 place-items-center">
+						<TabIcon tab={activeTab} size={24} space={activeTabSpaceIcon} />
+					</span>
+					<div class="flex min-w-0 flex-col">
+						<h2
+							class="text-duvet-ink flex min-w-0 items-center gap-1 font-serif text-[16.5px] leading-[1.15] font-medium tracking-[-0.012em]"
+						>
+							{#if activeChannel?.type === "voice"}
+								<SpeakerIcon class="text-duvet-ink2 size-[15px] shrink-0" aria-hidden="true" />
+							{:else if activeChannel?.type === "text"}
+								<Hash class="text-duvet-ink2 size-[15px] shrink-0" aria-hidden="true" />
+							{/if}
+							<span class="truncate">{tabTitle(activeTab, $conversations, $currentUser?.id)}</span>
+						</h2>
+						<!-- What the room is for, under its name: one line, whole on hover -->
+						{#if activeTabLine}
+							<span class="text-duvet-ink2 truncate text-[11.5px] leading-[1.3]" title={activeRoomDescription}
+								>{activeTabLine}</span
+							>
 						{/if}
 					</div>
 				{/if}
 			</div>
 
 			<!-- The active chat's actions -->
-			<div class="flex shrink-0 items-center gap-1 pl-1.5">
+			<div class="flex shrink-0 items-center gap-0.5">
 				{#if activeChannel?.type === "text"}
 					{#key node.activeChannelId}
 						<PinnedMessages
@@ -1244,105 +1256,35 @@
 				{:else if conversationActions && conversationActions.conversationId === activeConversation?.id}
 					{@render conversationActions.actions()}
 				{/if}
-				{#if activeTabSpace && activeTab && !isConversationTab(activeTab) && onMembersColumn}
+				<!-- A room's members open from their faces, in a popover: nothing is docked beside the chat (#357). The
+				     members column these two props opened and closed is gone. -->
+				{#if activeTabSpace && activeTab && !isConversationTab(activeTab)}
 					<MembersButton
 						space={activeTabSpace}
 						channelId={activeTab.channelId}
-						columnOpen={membersColumnOpen}
-						onColumn={onMembersColumn}
+						columnOpen={false}
+						onColumn={() => {}}
 					/>
 				{/if}
-			</div>
 
-			<!-- Pane action buttons -->
-			<div class="flex shrink-0 items-center gap-0.5 px-1.5">
-				{#if onToggleChannels}
-					<button
-						type="button"
-						class="text-duvet-ink2 hover:bg-duvet-card hover:text-duvet-ink focus-visible:outline-duvet-accent rounded-lg p-1.5 focus-visible:outline-2"
-						onclick={onToggleChannels}
-						aria-label={showChannelsSidebar ? "Collapse rooms panel" : "Expand rooms panel"}
-						title={showChannelsSidebar ? "Hide rooms" : "Show rooms"}
-					>
-						{#if showChannelsSidebar}
-							<PanelLeftClose class="size-4" />
-						{:else}
-							<PanelLeftOpen class="size-4" />
-						{/if}
-					</button>
-				{/if}
-
-				<!-- The members column is the focused pane's room's: a conversation has its own members. -->
-				{#if onMembersColumn && activeTabSpace}
-					<button
-						type="button"
-						class="text-duvet-ink2 hover:bg-duvet-card hover:text-duvet-ink focus-visible:outline-duvet-accent rounded-lg p-1.5 focus-visible:outline-2"
-						onclick={() => onMembersColumn(!membersColumnOpen)}
-						aria-label={membersColumnOpen ? "Collapse members panel" : "Expand members panel"}
-						title={membersColumnOpen ? "Hide members" : "Show members"}
-					>
-						{#if membersColumnOpen}
-							<PanelRightClose class="size-4" />
-						{:else}
-							<PanelRightOpen class="size-4" />
-						{/if}
-					</button>
-				{/if}
-
-				{#if onToggleChannels || (onMembersColumn && activeTabSpace)}
-					<div class="bg-duvet-line mx-1 h-4 w-px"></div>
-				{/if}
-
-				<!-- Split horizontal -->
-				<button
-					type="button"
-					class="text-duvet-ink2 hover:bg-duvet-card hover:text-duvet-ink focus-visible:outline-duvet-accent rounded-lg p-1.5 transition-colors focus-visible:outline-2"
-					title="Split horizontally"
-					aria-label="Split horizontally"
-					onclick={splitH}
-				>
-					<svg
-						xmlns="http://www.w3.org/2000/svg"
-						width="14"
-						height="14"
-						viewBox="0 0 24 24"
-						fill="none"
-						stroke="currentColor"
-						stroke-width="2"
-						stroke-linecap="round"
-						stroke-linejoin="round"
-					>
-						<rect x="3" y="3" width="18" height="18" rx="2" /><line x1="12" y1="3" x2="12" y2="21" />
-					</svg>
-				</button>
-				<!-- Split vertical -->
-				<button
-					type="button"
-					class="text-duvet-ink2 hover:bg-duvet-card hover:text-duvet-ink focus-visible:outline-duvet-accent rounded-lg p-1.5 transition-colors focus-visible:outline-2"
-					title="Split vertically"
-					aria-label="Split vertically"
-					onclick={splitV}
-				>
-					<svg
-						xmlns="http://www.w3.org/2000/svg"
-						width="14"
-						height="14"
-						viewBox="0 0 24 24"
-						fill="none"
-						stroke="currentColor"
-						stroke-width="2"
-						stroke-linecap="round"
-						stroke-linejoin="round"
-					>
-						<rect x="3" y="3" width="18" height="18" rx="2" /><line x1="3" y1="12" x2="21" y2="12" />
-					</svg>
-				</button>
+				<!-- The pane's own actions: the app's splits, to the right or below, at any depth. -->
+				<Menu align="end" label="Pane">
+					{#snippet trigger(props)}
+						<IconButton {...props} label="More"><EllipsisIcon size={16} /></IconButton>
+					{/snippet}
+					<MenuItem icon={ColumnsIcon} onSelect={splitH}>Split horizontally</MenuItem>
+					<MenuItem icon={RowsIcon} onSelect={splitV}>Split vertically</MenuItem>
+					{#if onClose}
+						<MenuSeparator />
+						<MenuItem icon={XIcon} onSelect={() => onClose?.()}>Close pane</MenuItem>
+					{/if}
+				</Menu>
 				<!-- Close pane. The click stops here: the pane is gone once onClose has run, and its own click (which focuses
 				     it) would read a pane that isn't there. -->
 				{#if onClose}
 					<button
 						type="button"
-						class="text-duvet-ink2 hover:bg-duvet-card hover:text-duvet-danger focus-visible:outline-duvet-accent rounded-lg p-1.5 transition-colors focus-visible:outline-2"
+						class={iconButtonClass()}
 						title="Close pane"
 						aria-label="Close pane"
 						onclick={(e) => {
@@ -1350,19 +1292,7 @@
 							onClose?.();
 						}}
 					>
-						<svg
-							xmlns="http://www.w3.org/2000/svg"
-							width="14"
-							height="14"
-							viewBox="0 0 24 24"
-							fill="none"
-							stroke="currentColor"
-							stroke-width="2"
-							stroke-linecap="round"
-							stroke-linejoin="round"
-						>
-							<path d="M18 6 6 18" /><path d="m6 6 12 12" />
-						</svg>
+						<XIcon size={16} />
 					</button>
 				{/if}
 			</div>
@@ -1377,44 +1307,43 @@
 			role="group"
 			aria-label="Pane content area"
 		>
-			<!-- Drag-to-split overlay -->
+			<!-- Drag-to-split overlay: the zone under the pointer, and what a drop there does. The middle opens the chat
+			     in this pane; an edge puts it in a new pane on that side. -->
 			{#if contentDragOver}
-				<div class="pointer-events-none absolute inset-0 z-30">
+				<div class="bg-duvet-accent-tint/40 pointer-events-none absolute inset-0 z-30">
 					<div
-						class="absolute top-0 left-0 h-full w-1/4 transition-colors {splitZone === 'left'
-							? 'border-duvet-accent bg-duvet-accent/30 border-2'
-							: 'bg-duvet-accent/5 border-2 border-transparent'}"
-					></div>
-					<div
-						class="absolute top-0 right-0 h-full w-1/4 transition-colors {splitZone === 'right'
-							? 'border-duvet-accent bg-duvet-accent/30 border-2'
-							: 'bg-duvet-accent/5 border-2 border-transparent'}"
-					></div>
-					<div
-						class="absolute top-0 right-0 left-0 h-1/4 transition-colors {splitZone === 'top'
-							? 'border-duvet-accent bg-duvet-accent/30 border-2'
-							: 'bg-duvet-accent/5 border-2 border-transparent'}"
-					></div>
-					<div
-						class="absolute right-0 bottom-0 left-0 h-1/4 transition-colors {splitZone === 'bottom'
-							? 'border-duvet-accent bg-duvet-accent/30 border-2'
-							: 'bg-duvet-accent/5 border-2 border-transparent'}"
-					></div>
-					{#if splitZone}
-						<div class="absolute inset-0 flex items-center justify-center">
-							<span
-								class="border-duvet-accent/50 bg-duvet-bg/90 text-duvet-accent-text rounded border px-2 py-1 text-xs font-medium"
-							>
-								{splitZone === "left"
-									? "← Split left"
-									: splitZone === "right"
-										? "Split right →"
-										: splitZone === "top"
-											? "↑ Split up"
-											: "Split down ↓"}
-							</span>
-						</div>
-					{/if}
+						class="bg-duvet-accent-tint ring-duvet-accent absolute grid place-items-center rounded-[18px] ring-2 transition-[inset] duration-100 ring-inset motion-reduce:transition-none {splitZone ===
+						'left'
+							? 'inset-y-2.5 right-3/4 left-2.5'
+							: splitZone === 'right'
+								? 'inset-y-2.5 right-2.5 left-3/4'
+								: splitZone === 'top'
+									? 'inset-x-2.5 top-2.5 bottom-3/4'
+									: splitZone === 'bottom'
+										? 'inset-x-2.5 top-3/4 bottom-2.5'
+										: 'inset-2.5'}"
+					>
+						<span
+							class="bg-duvet-card text-duvet-accent-text shadow-duvet-float flex items-center gap-2 rounded-xl px-3 py-2 text-[13px] font-semibold whitespace-nowrap"
+						>
+							{#if splitZone === "top" || splitZone === "bottom"}
+								<RowsIcon size={16} />
+							{:else if splitZone}
+								<ColumnsIcon size={16} />
+							{:else}
+								<AppWindowIcon size={16} />
+							{/if}
+							{splitZone === "left"
+								? "Split left"
+								: splitZone === "right"
+									? "Split right"
+									: splitZone === "top"
+										? "Split up"
+										: splitZone === "bottom"
+											? "Split down"
+											: "Open here"}
+						</span>
+					</div>
 				</div>
 			{/if}
 
