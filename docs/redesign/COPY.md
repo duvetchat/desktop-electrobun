@@ -127,7 +127,7 @@ Duvet isn't end-to-end encrypted. Nothing in the app may say or hint that it is:
 
 ### The searches, to run again
 
-From the repository's root, then with the paths swapped for `/Users/yuzu/Desktop/duvet/desktop-prototype` (leave out `assets/vendor`, `assets/emoji.js`, `assets/icons.js`) and `/Users/yuzu/Desktop/duvet/mobile/lib`:
+From the repository's root, then with the paths swapped for the prototype's folder, `../desktop-prototype` (leave out `assets/vendor`, `assets/emoji.js`, `assets/icons.js`), and `../mobile/lib`:
 
 ```bash
 # 1. encryption words
@@ -226,9 +226,9 @@ It can't see:
 `wording.test.ts` passes at `c6e514a`. To see past it, every quoted string and every run of markup text in `src/mainview/src` and `src/bun` was listed, one-word strings, text beside `{…}` and `guild` included, then read by hand:
 
 ```bash
-bun /Users/yuzu/Desktop/duvet/redesign-work/notes/p0-copy/scan-words.ts src/mainview/src src/bun src/mainview/static
+bun ../redesign-work/notes/p0-copy/scan-words.ts src/mainview/src src/bun src/mainview/static
 # the same, for a lowercase space:
-bun /Users/yuzu/Desktop/duvet/redesign-work/notes/p0-copy/scan-words.ts src/mainview/src src/bun '--word=\bspaces?\b' \
+bun ../redesign-work/notes/p0-copy/scan-words.ts src/mainview/src src/bun '--word=\bspaces?\b' \
   | grep -E '(STR|TXT) "[^"]* [^"]*"' | grep -E '[^A-Za-z_.$/-]spaces?([^A-Za-z_/-]|$)'
 ```
 
