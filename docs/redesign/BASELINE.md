@@ -78,3 +78,28 @@ Recorded so the reviewers don't report them as regressions of the redesign:
 Could not be produced: on this macOS the dev build could not be driven far enough for `startup.log` to
 be written under the sandbox home. The desktop-app startup measurement stays open; the foundation
 re-measures once typing works (the QA socket can sign in without typing).
+
+## Phase 3: where the redesign's first paint went, and the order of a page's head
+
+The merged redesign painted about 4 ms later than `dev` (first paint 24 against 20 ms cold). A Chromium
+trace of both builds (8 cold loads each, interleaved, medians, ms since the navigation started) put
+all of it in one place: the wait for the stylesheet's answer.
+
+| | `dev` | redesign | redesign, 16 preloads | redesign, stylesheet first |
+|---|---|---|---|---|
+| module preloads in `app.html` | 16 | 32 | 16 | 32 |
+| stylesheet asked for | 3.5 | 3.9 | 3.4 | 3.1 |
+| stylesheet's answer starts | 12.0 | 14.9 | 9.8 | 5.7 |
+| stylesheet parsed (time spent) | 0.6 | 0.8 | 0.8 | 0.8 |
+| first layout ends | 17.6 | 21.2 | 15.6 | 12.0 |
+| first paint | 19.9 | 23.5 | 17.7 | 15.0 |
+
+SvelteKit writes a page's `modulepreload` links ahead of its stylesheet, and the browser asks in that
+order, so the one file the first paint waits for queued behind every preload: 32 of them after the
+redesign, 16 before. The stylesheet's extra 45 kB cost 0.2 ms to parse; main-thread work up to the
+paint was otherwise the same in both builds. `src/hooks.server.ts` now moves the stylesheet's link in
+front of the preloads as each page is prerendered (`lib/head-order.ts`).
+
+Not done: joining the small chunks (13 of the 32 preloads are under 3 kB). Rollup's
+`experimentalMinChunkSize` joins the server build's chunks too, and the prerender then fails
+(`window is not defined`).
