@@ -28,6 +28,7 @@
 	import { showChat } from "$lib/on-screen";
 	import {
 		closeTabsIn,
+		conversationTab,
 		isConversationTab,
 		makeSplit,
 		makeLeaf,
@@ -81,6 +82,7 @@
 	import MenuSeparator from "$lib/components/ui/MenuSeparator.svelte";
 	import { iconButtonClass } from "$lib/components/ui/recipes";
 	import ChatIntro from "$lib/components/ChatIntro.svelte";
+	import EmptyPane from "$lib/components/EmptyPane.svelte";
 	import InviteModal from "$lib/components/InviteModal.svelte";
 	import { hasPermission, Permission } from "$lib/permissions";
 
@@ -1435,23 +1437,7 @@
 					spaceId={activeTab?.spaceId ?? ""}
 				/>
 			{:else}
-				<div class="text-duvet-ink2 flex flex-1 flex-col items-center justify-center gap-2">
-					<svg
-						xmlns="http://www.w3.org/2000/svg"
-						width="32"
-						height="32"
-						viewBox="0 0 24 24"
-						fill="none"
-						stroke="currentColor"
-						stroke-width="1.5"
-						stroke-linecap="round"
-						stroke-linejoin="round"
-						class="opacity-40"
-					>
-						<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-					</svg>
-					<p class="text-sm opacity-50">Drag a room here</p>
-				</div>
+				<EmptyPane onOpen={(conversation) => openTab(conversationTab(conversation, $currentUser?.id))} />
 			{/if}
 		</div>
 	</div>

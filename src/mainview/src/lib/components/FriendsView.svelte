@@ -43,7 +43,7 @@
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
 	import StatusDot from "$lib/components/StatusDot.svelte";
 	import ConversationView from "$lib/components/ConversationView.svelte";
-	import CallHistory from "$lib/components/CallHistory.svelte";
+	import { buttonClass } from "$lib/components/ui/recipes";
 	import MessageSearch from "$lib/components/MessageSearch.svelte";
 	import type { MessageLink } from "$lib/urls";
 	import MemberProfilePopover from "$lib/components/MemberProfilePopover.svelte";
@@ -78,15 +78,15 @@
 		else activeConversationId = id;
 	}
 
-	type Tab = "friends" | "pending" | "sent" | "calls" | "add";
+	type Tab = "friends" | "pending" | "sent" | "add";
 	let activeTab = $state<Tab>("friends");
-	// The lists in the bar's segmented control, the call history last; adding a friend is the bar's own button. Requests
-	// waiting on the user are counted in the accent.
+	// The lists in the bar's segmented control; adding a friend is the bar's own button. Requests waiting on the user
+	// are counted in the accent. The call history, a list here until the redesign (#357), opens from the sidebar's
+	// header.
 	const tabs = $derived<{ id: Tab; label: string; count: number; alert?: boolean }[]>([
 		{ id: "friends", label: "All", count: $friends.length },
 		{ id: "pending", label: "Pending", count: $pendingFriendRequests.length, alert: true },
 		{ id: "sent", label: "Sent", count: $sentFriendRequests.length },
-		{ id: "calls", label: "Calls", count: 0 },
 	]);
 	const focusRing =
 		"focus-override focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-duvet-accent";
@@ -120,6 +120,8 @@
 		];
 		return groups.some((g) => g.friends.length > 0) ? groups : [];
 	});
+	// The friends online now (idle and do not disturb are there too), for the line under the page's title.
+	const onlineFriends = $derived($friends.filter((friend) => friendStatus(friend) !== "offline").length);
 	const activeConversation = $derived($conversations.find((c) => c.id === activeConversationId) ?? null);
 	// An open conversation that leaves the list (the user left its group, or was removed from it) closes, and stays
 	// closed should it come back.
@@ -394,15 +396,26 @@
 			{/key}
 		</div>
 	{:else}
-		<!-- The bar, as a pane's: the title, the lists as a segmented control, the search everywhere, as the mobile app
-		     has on its home, and adding a friend. -->
-		<div class="border-duvet-line flex h-12 shrink-0 items-center gap-3 border-b px-4">
-			<Users class="text-duvet-ink2 size-4 shrink-0" />
-			<h2 class="text-sm font-bold">Friends</h2>
+		<!-- The bar, as a pane's header (S-11, S-34): the title with how many friends are online, the lists as a segmented
+		     control, the search everywhere, as the mobile app has on its home, and adding a friend. -->
+		<div class="border-duvet-line flex h-[52px] shrink-0 items-center gap-3 border-b pr-2.5 pl-3">
+			<div class="flex shrink-0 items-center gap-2.5">
+				<span
+					class="bg-duvet-secondary-fill text-duvet-accent-text grid size-7 shrink-0 place-items-center rounded-full"
+				>
+					<Users class="size-4" />
+				</span>
+				<div class="flex flex-col">
+					<h2 class="text-duvet-ink font-serif text-[16.5px] leading-[1.15] font-medium tracking-[-0.012em]">
+						Friends
+					</h2>
+					<span class="text-duvet-ink2 text-[11.5px] leading-[1.3]">{onlineFriends} online</span>
+				</div>
+			</div>
 			<div
-				class="bg-duvet-sunk shadow-duvet-press flex items-center gap-0.5 rounded-xl p-0.5"
+				class="bg-duvet-seg-track flex shrink-0 items-center rounded-[11px] p-[3px]"
 				role="tablist"
-				aria-label="Friends and calls"
+				aria-label="Friends"
 			>
 				{#each tabs as tab (tab.id)}
 					{@const chosen = activeTab === tab.id}
@@ -410,17 +423,17 @@
 						type="button"
 						role="tab"
 						aria-selected={chosen}
-						class="flex h-7 items-center gap-1.5 rounded-[10px] px-3 text-[13px] font-semibold transition-colors motion-reduce:transition-none {focusRing} {chosen
-							? 'bg-duvet-card text-duvet-ink shadow-duvet-raised'
+						class="flex h-7 items-center gap-1.5 rounded-lg px-3 text-[12.5px] font-medium transition-colors duration-[120ms] motion-reduce:transition-none {focusRing} {chosen
+							? 'bg-duvet-seg-thumb text-duvet-ink shadow-duvet-control'
 							: 'text-duvet-ink2 hover:text-duvet-ink'}"
 						onclick={() => (activeTab = tab.id)}
 					>
 						{tab.label}
 						{#if tab.count}
 							<span
-								class="flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[11px] font-bold tabular-nums {tab.alert
+								class="flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10.5px] font-bold tabular-nums {tab.alert
 									? 'bg-duvet-accent text-duvet-on-accent'
-									: 'bg-duvet-bg text-duvet-ink2'}">{tab.count}</span
+									: 'bg-duvet-secondary-fill text-duvet-ink2'}">{tab.count}</span
 							>
 						{/if}
 					</button>
@@ -430,10 +443,8 @@
 			<MessageSearch everywhere onJump={onOpenMessage} />
 			<button
 				type="button"
-				class="flex h-8 items-center gap-1.5 rounded-xl px-3 text-[13px] font-bold transition motion-reduce:transition-none {focusRing} {activeTab ===
-				'add'
-					? 'bg-duvet-sunk text-duvet-ink2 shadow-duvet-press'
-					: 'bg-duvet-accent text-duvet-on-accent shadow-duvet-raised hover:brightness-110'}"
+				class="{buttonClass(activeTab === 'add' ? 'secondary' : 'primary')} {focusRing}"
+				aria-pressed={activeTab === "add"}
 				onclick={() => (activeTab = "add")}
 			>
 				<UserPlus class="size-4" />
@@ -626,8 +637,6 @@
 							{/each}
 						</ul>
 					{/if}
-				{:else if activeTab === "calls"}
-					<CallHistory onOpen={onOpenMessage} />
 				{:else if activeTab === "add"}
 					<div class="rounded-card bg-duvet-card shadow-duvet-raised relative mx-auto mt-10 max-w-lg px-6 pt-14 pb-6">
 						<MascotPeek
