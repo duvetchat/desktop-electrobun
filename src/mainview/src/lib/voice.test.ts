@@ -256,7 +256,14 @@ test("the voice room's controls go through the same functions as the user panel'
 	expect(view).toContain('import { toggleDeafen, toggleMute as toggleMic } from "$lib/voice";');
 	expect(view).not.toContain("isMuted.update");
 	expect(view).not.toContain("isDeafened.update");
-	// The user panel's controls: MediaControls, split from UserStatusBar (#357).
-	const panel = readFileSync(join(import.meta.dir, "components/MediaControls.svelte"), "utf8");
-	expect(panel).toContain("toggleDeafen, toggleMute as toggleMic");
+	// The user panel's controls: MediaControls, split from UserStatusBar (#357), whose actions are media-source.ts's,
+	// the pop-out's too. They change neither store themselves.
+	const panel = readFileSync(join(import.meta.dir, "media-source.ts"), "utf8");
+	expect(panel).toContain('import { disconnectVoice, stopScreenShare, toggleDeafen, toggleMute } from "$lib/voice";');
+	expect(panel).not.toContain("isMuted.update");
+	expect(panel).not.toContain("isDeafened.update");
+	for (const name of ["MediaPanel", "VoiceStatus", "MediaButton"]) {
+		const part = readFileSync(join(import.meta.dir, `components/${name}.svelte`), "utf8");
+		expect(part, name).not.toMatch(/isMuted|isDeafened/);
+	}
 });

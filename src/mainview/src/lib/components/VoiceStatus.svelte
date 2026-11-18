@@ -1,164 +1,92 @@
 <script lang="ts">
+	import type { Snippet } from "svelte";
+	import { PhoneCall, PhoneOff, SignalHigh, SignalLow, SignalMedium } from "@lucide/svelte";
+	import FaceStack from "$lib/components/FaceStack.svelte";
+	import MediaButton from "$lib/components/MediaButton.svelte";
+	import Tooltip from "$lib/components/ui/Tooltip.svelte";
 	import {
-		SignalHigh as CellSignalFullIcon,
-		SignalMedium as CellSignalMediumIcon,
-		SignalLow as CellSignalLowIcon,
-		PhoneOff as PhoneDisconnectIcon,
-	} from "@lucide/svelte";
-	import {
-		currentUser,
-		activeVoiceRoomId,
-		gatewaySpaces,
-		voiceConnectionState,
-		activeCall,
-		conversations,
-	} from "$lib/stores.svelte";
-	import { callName } from "$lib/now";
-	import { disconnectVoice } from "$lib/voice";
-	import { fly } from "svelte/transition";
-	import { getHostURL } from "$lib/common/common";
+		isLive,
+		leaveLabel,
+		mediaTitle,
+		pingLabel,
+		pingLevel,
+		type MediaActions,
+		type MediaState,
+	} from "$lib/media-state";
 
-	// The voice the user is in, in the user's panel (ProfileRow): where they're connected, the ping to the API, and
-	// Disconnect. Above the profile row it is a pill; in the folded column, the ping's mark and a Disconnect button over
-	// the avatar. With UserStatusBar's profile row and media controls, it was one component until the redesign (#357).
+	// The voice the user is in, as the call panel's first row (MediaPanel.svelte): the signal's mark, whose tooltip is
+	// the ping; where they're connected, which opens that voice room or call; who is there; and Disconnect. It draws the
+	// state it's given, the stores' in the main window and the mirrored one in the pop-out. It was UserStatusBar's voice
+	// pill and the Now section's voice dock until the redesign (#357).
 	let {
-		collapsed = false,
-		showVoice = true,
+		state: media,
+		actions,
+		trailing = undefined,
 	}: {
-		collapsed?: boolean;
-		/** Off where the voice the user is in shows on its own, as the spaces column's Now section does. */
-		showVoice?: boolean;
+		state: MediaState;
+		actions: MediaActions;
+		/** What sits before Disconnect: the pop-out's button in the sidebar. */
+		trailing?: Snippet;
 	} = $props();
 
-	const activeVoiceSpace = $derived(
-		$activeVoiceRoomId ? $gatewaySpaces.find((s) => s.rooms.some((r) => r.id === $activeVoiceRoomId)) : null,
-	);
-	const activeVoiceRoom = $derived(activeVoiceSpace?.rooms.find((r) => r.id === $activeVoiceRoomId));
-	const isInConversationCall = $derived(
-		$activeCall?.state === "connected" && $activeVoiceRoomId === $activeCall?.conversationId,
-	);
-	const callConversationName = $derived.by(() => {
-		if (!isInConversationCall || !$activeCall) return "";
-		return callName(
-			$conversations.find((c) => c.id === $activeCall!.conversationId),
-			$currentUser?.id,
-		);
-	});
-
-	let ping = $state<number | null>(null);
-
-	const connectionLabel: Record<RTCPeerConnectionState, string> = {
-		new: "Connecting...",
-		connecting: "Connecting...",
-		connected: "Voice Connected",
-		disconnected: "Reconnecting...",
-		failed: "Connection Failed",
-		closed: "Disconnected",
+	const inCall = $derived(media.place?.kind === "call");
+	const level = $derived(inCall ? "fine" : pingLevel(media.ping));
+	// The mark's colours: live under 100 ms, the warning colour under 250 ms, the destructive one beyond.
+	const TILE = {
+		fine: "bg-duvet-alive/14 text-duvet-alive",
+		slow: "bg-duvet-warn/15 text-duvet-warn",
+		poor: "bg-duvet-danger/15 text-duvet-danger",
 	};
-
-	// The ping, every 3 s while in voice. Its interval ends with this effect, so with the panel too: a READY remounts the
-	// app's UI while voice stays, and a panel left running its interval would fetch for the rest of the session (#315).
-	$effect(() => {
-		if (!$activeVoiceRoomId) {
-			ping = null;
-			return;
-		}
-		void measurePing();
-		const pinging = setInterval(measurePing, 3000);
-		return () => clearInterval(pinging);
-	});
-
-	async function measurePing() {
-		try {
-			const start = performance.now();
-			await fetch(`${getHostURL()}/health`, { method: "GET", cache: "no-store" });
-			ping = Math.round(performance.now() - start);
-		} catch {
-			ping = null;
-		}
-	}
-
-	function pingIconColor(ms: number | null): string {
-		if (ms === null || ms < 100) return "text-duvet-ink2";
-		if (ms < 250) return "text-duvet-warn";
-		return "text-duvet-danger";
-	}
-
-	function pingBgColor(ms: number | null): string {
-		if (ms === null || ms < 100) return "bg-duvet-bg";
-		if (ms < 250) return "bg-duvet-warn/15";
-		return "bg-duvet-danger/15";
-	}
+	const leave = $derived(leaveLabel(media));
 </script>
 
-{#if collapsed}
-	{#if $activeVoiceRoomId}
-		<div
-			class="size-8 rounded-lg {isInConversationCall
-				? 'bg-duvet-alive/20'
-				: pingBgColor(ping)} mb-0.5 flex items-center justify-center"
-			title={isInConversationCall ? "In call" : ping !== null ? `Ping: ${ping}ms` : "Measuring ping..."}
-		>
-			{#if isInConversationCall}
-				<PhoneDisconnectIcon class="text-duvet-alive size-4" />
-			{:else if ping !== null && ping >= 250}
-				<CellSignalLowIcon class="size-4 {pingIconColor(ping)}" />
-			{:else if ping !== null && ping >= 100}
-				<CellSignalMediumIcon class="size-4 {pingIconColor(ping)}" />
-			{:else}
-				<CellSignalFullIcon class="size-4 {pingIconColor(ping)}" />
-			{/if}
-		</div>
-		<button
-			class="text-duvet-ink2 hover:bg-duvet-card hover:text-duvet-danger flex size-8 items-center justify-center rounded-lg transition-colors"
-			aria-label="Disconnect"
-			onclick={disconnectVoice}
-		>
-			<PhoneDisconnectIcon class="size-4" />
-		</button>
-		<div class="border-duvet-line my-0.5 w-6 border-t"></div>
-	{/if}
-{:else if showVoice && $activeVoiceRoomId && (activeVoiceRoom || isInConversationCall)}
-	<!-- Voice status pill -->
-	<div
-		class="border-duvet-line shrink-0 border-b"
-		in:fly={{ y: 20, duration: 200, opacity: 1 }}
-		out:fly={{ y: 20, duration: 200, opacity: 1 }}
-	>
-		<div class="flex items-center gap-2 px-2 py-1.5 select-none">
-			<div
-				class="relative flex shrink-0 items-center justify-center rounded-full p-1.5 {isInConversationCall
-					? 'bg-duvet-alive/10'
-					: pingBgColor(ping)}"
-				title={isInConversationCall ? "In call" : ping !== null ? `Ping: ${ping}ms` : "Measuring ping..."}
+<div class="flex items-center gap-2">
+	<Tooltip text={pingLabel(media)} side="top">
+		{#snippet trigger(props)}
+			<span
+				{...props}
+				class="grid size-[30px] shrink-0 place-items-center rounded-[10px] {isLive(media)
+					? TILE[level]
+					: 'bg-duvet-secondary-fill text-duvet-ink2'}"
 			>
-				{#if isInConversationCall}
-					<PhoneDisconnectIcon class="text-duvet-alive size-3.5" />
-				{:else if ping !== null && ping >= 250}
-					<CellSignalLowIcon class="size-3.5 {pingIconColor(ping)}" />
-				{:else if ping !== null && ping >= 100}
-					<CellSignalMediumIcon class="size-3.5 {pingIconColor(ping)}" />
+				{#if inCall}
+					<PhoneCall size={16} />
+				{:else if level === "poor"}
+					<SignalLow size={16} />
+				{:else if level === "slow"}
+					<SignalMedium size={16} />
 				{:else}
-					<CellSignalFullIcon class="size-3.5 {pingIconColor(ping)}" />
+					<SignalHigh size={16} />
 				{/if}
-			</div>
-			<div class="flex min-w-0 flex-1 flex-col truncate">
-				<span class="truncate text-xs font-semibold {isInConversationCall ? 'text-duvet-alive' : 'text-duvet-ink'}">
-					{isInConversationCall ? "In Call" : connectionLabel[$voiceConnectionState]}
-				</span>
-				<span class="text-xxs text-duvet-ink2 truncate">
-					{isInConversationCall
-						? callConversationName
-						: `${activeVoiceSpace?.name || ""} / ${activeVoiceRoom?.name || ""}`}
-				</span>
-			</div>
-			<button
-				class="text-duvet-ink2 hover:bg-duvet-ink/10 hover:text-duvet-ink shrink-0 rounded-full p-1.5 transition-colors"
-				aria-label="Disconnect"
-				onclick={disconnectVoice}
+			</span>
+		{/snippet}
+	</Tooltip>
+	<button
+		type="button"
+		class="group focus-visible:outline-duvet-accent flex min-w-0 flex-1 items-center gap-2 rounded-lg text-left outline-none focus-visible:outline-2 focus-visible:outline-offset-2"
+		aria-label="Open {media.place?.where ?? ''}{media.facesLabel ? `, ${media.facesLabel}` : ''}"
+		onclick={actions.openPlace}
+	>
+		<span class="flex min-w-0 flex-1 flex-col gap-px">
+			<span
+				class="truncate text-[12.5px] leading-[1.25] font-semibold {isLive(media)
+					? 'text-duvet-alive'
+					: 'text-duvet-ink2'}"
+				role="status">{mediaTitle(media)}</span
 			>
-				<PhoneDisconnectIcon class="size-3.5" />
-			</button>
-		</div>
-	</div>
-{/if}
+			<span
+				class="text-duvet-ink2 group-hover:text-duvet-ink truncate text-[11.5px] leading-[1.25] group-hover:underline"
+				>{media.place?.where ?? ""}</span
+			>
+		</span>
+		{#if media.faces.length > 0}
+			<span class="hidden shrink-0 @[13rem]:flex">
+				<FaceStack faces={media.faces} more={media.more} size={18} ring="ring-duvet-sb-ring" />
+			</span>
+		{/if}
+	</button>
+	{@render trailing?.()}
+	<MediaButton label={leave} tone="leave" shape="square" onclick={actions.disconnect}>
+		<PhoneOff size={15} />
+	</MediaButton>
+</div>

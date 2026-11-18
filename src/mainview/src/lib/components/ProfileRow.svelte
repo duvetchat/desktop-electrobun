@@ -7,7 +7,6 @@
 	import StatusMenu from "$lib/components/StatusMenu.svelte";
 	import StatusDot from "$lib/components/StatusDot.svelte";
 	import MediaControls from "$lib/components/MediaControls.svelte";
-	import VoiceStatus from "$lib/components/VoiceStatus.svelte";
 	import Avatar from "$lib/components/ui/Avatar.svelte";
 	import { iconButtonClass } from "$lib/components/ui/recipes";
 	import { ownMobileOnly } from "$lib/api/ws/connection";
@@ -19,8 +18,8 @@
 	// The profile row at the sidebar's foot (#357, S-07): who the user is (their avatar with its status, their name
 	// and the status they chose), which opens the status menu, and the way into Settings. The sidebar mounts the
 	// playback bar and the media controls above it, as blocks of their own (SpaceNav.svelte). Folded (`collapsed`), it
-	// is the edge's narrow column instead, which still stacks the voice status and the media controls around the
-	// avatar: the edge has no room for them elsewhere. It was UserStatusBar until the redesign split it.
+	// is the edge's narrow column instead, which still stacks the media controls (with the voice the user is in and
+	// its Leave) under the avatar: the edge has no room for them elsewhere. It was UserStatusBar until the redesign split it.
 	let { collapsed = false }: { collapsed?: boolean } = $props();
 
 	// The status the user chose, which everyone sees while they're connected.
@@ -44,7 +43,6 @@
 
 {#if collapsed && $currentUser}
 	<div class="border-duvet-sb-edge flex shrink-0 flex-col items-center gap-1 border-t px-1 py-2">
-		<VoiceStatus collapsed />
 		<StatusMenu class="relative cursor-pointer rounded-full">
 			<UserAvatar
 				src={getAvatarURL($currentUser.id, $currentUser.avatar)}

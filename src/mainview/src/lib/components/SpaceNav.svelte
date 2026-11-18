@@ -67,7 +67,6 @@
 	import ProfileRow from "$lib/components/ProfileRow.svelte";
 	import TabIcon from "$lib/components/TabIcon.svelte";
 	import VoiceNoteBar from "$lib/components/VoiceNoteBar.svelte";
-	import VoiceStatus from "$lib/components/VoiceStatus.svelte";
 	import WindowControls from "$lib/components/WindowControls.svelte";
 	import ContextMenu from "$lib/components/ui/ContextMenu.svelte";
 	import IconButton from "$lib/components/ui/IconButton.svelte";
@@ -748,15 +747,11 @@
 			<!-- MOUNT POINT (Calls & media): the playback bar of a voice note or an audio file. It draws nothing while
 			     nothing plays. -->
 			<VoiceNoteBar />
-			<!-- MOUNT POINT (Calls & media): the media controls. Outside a call, the row of the microphone (with its
-			     picker), deafen and noise suppression; in a call they grow into the call panel, whose top (where the user
-			     is, the ping, Disconnect) is VoiceStatus. Until that workstream draws the panel, the voice the user is in
-			     shows in the Now section above, as it did, so VoiceStatus stays quiet here (showVoice off). -->
-			<div class="flex shrink-0 flex-col" data-mount="media-controls">
-				<VoiceStatus showVoice={false} />
-				<div class="text-duvet-ink2 flex items-center gap-1">
-					<MediaControls />
-				</div>
+			<!-- The media controls, Calls & media's (#357): outside a call, the row of the microphone (with its picker),
+			     deafen and noise suppression; in a call they grow into the call panel, whose first row says where the user
+			     is, with the ping and Disconnect. One block, above the profile row. -->
+			<div class="shrink-0" data-mount="media-controls">
+				<MediaControls />
 			</div>
 			<ProfileRow />
 		{/if}
