@@ -3,7 +3,7 @@ import { dlopen, FFIType, ptr, type Pointer } from "bun:ffi";
 import { mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { ARRANGEABLE, letWindowsArrange } from "./window-snap";
+import { ARRANGEABLE, followPress, letWindowsArrange } from "./window-snap";
 
 // Opened in the test: CI runs these files on Linux.
 function win32() {
@@ -29,10 +29,6 @@ function win32() {
 		SetLayeredWindowAttributes: { args: [FFIType.ptr, FFIType.u32, FFIType.u8, FFIType.u32], returns: FFIType.i32 },
 		DestroyWindow: { args: [FFIType.ptr], returns: FFIType.i32 },
 		ShowWindow: { args: [FFIType.ptr, FFIType.i32], returns: FFIType.i32 },
-		SetWindowPos: {
-			args: [FFIType.ptr, FFIType.ptr, FFIType.i32, FFIType.i32, FFIType.i32, FFIType.i32, FFIType.u32],
-			returns: FFIType.i32,
-		},
 		IsWindowUnicode: { args: [FFIType.ptr], returns: FFIType.i32 },
 		IsZoomed: { args: [FFIType.ptr], returns: FFIType.i32 },
 		GetWindowLongW: { args: [FFIType.ptr, FFIType.i32], returns: FFIType.i32 },
@@ -133,11 +129,6 @@ test.skipIf(process.platform !== "win32")(
 			const workArea = rect(monitor.subarray(5, 9));
 			expect(clientRect(user32, window)).toEqual(workArea);
 
-			// Electrobun's title-bar drag (SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE) leaves a maximized window in place.
-			const maximized = windowRect(user32, window);
-			user32.SetWindowPos(window, null, maximized.x + 60, maximized.y + 40, 0, 0, 0x1 | 0x4 | 0x10);
-			expect(windowRect(user32, window)).toEqual(maximized);
-
 			user32.ShowWindow(window, 9);
 			expect(user32.IsZoomed(window)).toBe(0);
 			expect(clientRect(user32, window)).toEqual(before);
@@ -147,3 +138,53 @@ test.skipIf(process.platform !== "win32")(
 		}
 	},
 );
+
+// A press as Bun reads it, one read after another: where the cursor is, and whether the primary button is still down.
+function press(positions: [number, number][], downs: boolean[]) {
+	let position = 0;
+	let down = 0;
+	return {
+		cursor: () => {
+			const [x, y] = positions[Math.min(position++, positions.length - 1)];
+			return { x, y };
+		},
+		pressed: () => downs[Math.min(down++, downs.length - 1)],
+		distance: { x: 4, y: 4 },
+	};
+}
+
+// #348: the title bar's drag is Windows' move loop, started once the press moves past the system's drag distance, so a
+// click and a double click stay the page's.
+test("a press released where it started drags nothing", async () => {
+	const drags: unknown[] = [];
+	expect(await followPress(press([[100, 10]], [false]), (from) => drags.push(from), 0)).toBe(false);
+	expect(drags).toEqual([]);
+});
+
+test("a press that moves past the drag distance drags once, from where it started", async () => {
+	const drags: unknown[] = [];
+	const moved = press(
+		[
+			[100, 10],
+			[102, 11],
+			[110, 12],
+		],
+		[true, true, true],
+	);
+	expect(await followPress(moved, (from) => drags.push(from), 0)).toBe(true);
+	expect(drags).toEqual([{ x: 100, y: 10 }]);
+});
+
+test("a press that moves within the drag distance, then ends, drags nothing", async () => {
+	const drags: unknown[] = [];
+	const nudged = press(
+		[
+			[100, 10],
+			[103, 12],
+			[104, 14],
+		],
+		[true, true, false],
+	);
+	expect(await followPress(nudged, (from) => drags.push(from), 0)).toBe(false);
+	expect(drags).toEqual([]);
+});

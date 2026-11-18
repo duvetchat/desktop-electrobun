@@ -1,5 +1,10 @@
 import { getElectrobunRpc } from "$lib/electrobun-rpc";
 
+/** Whether a press on the title bar drags the window: the primary button's, off the window's buttons. */
+export function pressDrags(button: number, target: { closest(selector: string): unknown } | null): boolean {
+	return button === 0 && target !== null && !target.closest(".titlebar-actions");
+}
+
 function bindControl(id: string, handler: () => void) {
 	const element = document.getElementById(id);
 	if (!element) return;
@@ -37,6 +42,18 @@ export async function setupWindowControls() {
 				if (event.target instanceof Element && event.target.closest(".titlebar-actions")) return;
 				sendMaximize();
 			});
+			// Where Bun says Windows drags the window (on Windows, once src/bun/window-snap.ts is in), Windows' move loop
+			// does, from a press Bun follows until it moves past the system's drag distance: a maximized window restores as
+			// it's dragged, the display's edges snap it, and a click and this double click stay the page's. Elsewhere, and
+			// if Bun can't say, Electrobun drags it, by the title bar's class (Header.svelte).
+			if (titlebar && (await rpc.request.nativeWindowDrag().catch(() => false))) {
+				titlebar.classList.remove("electrobun-webkit-app-region-drag");
+				titlebar.addEventListener("mousedown", (event) => {
+					if (pressDrags(event.button, event.target instanceof Element ? event.target : null)) {
+						rpc.send.startWindowDrag();
+					}
+				});
+			}
 			return;
 		}
 	} catch {

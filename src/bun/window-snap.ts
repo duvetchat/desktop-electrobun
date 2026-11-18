@@ -60,7 +60,10 @@ function compile(dir: string, kernel32: ReturnType<typeof openWin32>["kernel32"]
 		return cc({
 			source: compilablePath(source, kernel32),
 			symbols: {
-				windowSnapSetUp: { args: [FFIType.ptr, FFIType.ptr, FFIType.ptr], returns: FFIType.void },
+				windowSnapSetUp: {
+					args: [FFIType.ptr, FFIType.ptr, FFIType.ptr, FFIType.ptr],
+					returns: FFIType.void,
+				},
 				windowSnapProcedure: { args: [], returns: FFIType.ptr },
 			},
 		});
@@ -100,11 +103,98 @@ export function letWindowsArrange(window: Pointer, dir = tmpdir()): boolean {
 	const charset = user32.IsWindowUnicode(window) ? "W" : "A";
 	const previous = user32[`GetWindowLongPtr${charset}`](window, GWLP_WNDPROC);
 	if (!previous) return false;
-	procedure.symbols.windowSnapSetUp(user32Function(`CallWindowProc${charset}`), user32Function("IsZoomed"), previous);
+	procedure.symbols.windowSnapSetUp(
+		user32Function(`CallWindowProc${charset}`),
+		user32Function("IsZoomed"),
+		user32Function("ReleaseCapture"),
+		previous,
+	);
 	// The procedure first, so the frame and caption the styles would add never show.
 	if (!user32[`SetWindowLongPtr${charset}`](window, GWLP_WNDPROC, procedure.symbols.windowSnapProcedure()))
 		return false;
 	user32.SetWindowLongW(window, GWL_STYLE, user32.GetWindowLongW(window, GWL_STYLE) | ARRANGEABLE);
 	user32.SetWindowPos(window, null, 0, 0, 0, 0, FRAME_CHANGED);
 	return true;
+}
+
+interface Point {
+	x: number;
+	y: number;
+}
+
+/** A press as Bun reads it: where the cursor is, whether the primary button is still down, and how far the cursor may
+ * move before the press is a drag. */
+export interface PressInput {
+	cursor(): Point;
+	pressed(): boolean;
+	distance: Point;
+}
+
+/** Follows a press that began at the cursor until it ends, a click (false), or moves past input.distance, a drag: drag
+ * then gets the point it began at (true). */
+export async function followPress(input: PressInput, drag: (from: Point) => void, pause = 8): Promise<boolean> {
+	const from = input.cursor();
+	while (input.pressed()) {
+		const at = input.cursor();
+		if (Math.abs(at.x - from.x) > input.distance.x || Math.abs(at.y - from.y) > input.distance.y) {
+			drag(from);
+			return true;
+		}
+		await Bun.sleep(pause);
+	}
+	return false;
+}
+
+// window-snap.c's WINDOW_SNAP_DRAG (WM_APP + 0x0D07): a press that turned into a drag, at the point it began.
+const WINDOW_SNAP_DRAG = 0x8d07;
+const SM_SWAPBUTTON = 23;
+const SM_CXDRAG = 68;
+const SM_CYDRAG = 69;
+const VK_LBUTTON = 1;
+const VK_RBUTTON = 2;
+
+// The press's reads and the move loop's message, from user32, opened at the first press.
+let pressUser32: ReturnType<typeof openPressUser32> | null = null;
+function openPressUser32() {
+	return dlopen("user32.dll", {
+		GetCursorPos: { args: [FFIType.ptr], returns: FFIType.i32 },
+		GetAsyncKeyState: { args: [FFIType.i32], returns: FFIType.i16 },
+		GetSystemMetrics: { args: [FFIType.i32], returns: FFIType.i32 },
+		PostMessageW: { args: [FFIType.ptr, FFIType.u32, FFIType.u64, FFIType.i64], returns: FFIType.i32 },
+	}).symbols;
+}
+let following = false;
+
+/** The title bar's drag on Windows (#348), for a press the page reports (startWindowDrag) on the window letWindowsArrange
+ * took, whose procedure starts the move loop (WINDOW_SNAP_DRAG): once the press moves past the system's drag distance,
+ * Windows' own move loop takes the window, as it does a caption's. A maximized window then restores as it's dragged,
+ * and a display's edges and Snap layouts snap it. A click or a double click moves no further and stays the page's. One
+ * press at a time. */
+export async function dragWithWindows(window: Pointer): Promise<void> {
+	if (following) return;
+	following = true;
+	try {
+		pressUser32 ??= openPressUser32();
+		const user32 = pressUser32;
+		// GetAsyncKeyState reads the physical buttons: swapped, the primary one is the right.
+		const primary = user32.GetSystemMetrics(SM_SWAPBUTTON) ? VK_RBUTTON : VK_LBUTTON;
+		const point = new Int32Array(2);
+		const input: PressInput = {
+			cursor: () => {
+				user32.GetCursorPos(point);
+				return { x: point[0], y: point[1] };
+			},
+			pressed: () => (user32.GetAsyncKeyState(primary) & 0x8000) !== 0,
+			distance: { x: user32.GetSystemMetrics(SM_CXDRAG), y: user32.GetSystemMetrics(SM_CYDRAG) },
+		};
+		// To the window's thread, which shares the webview's input: there the procedure releases the webview's hold on the
+		// mouse, and Windows' move loop runs. The point's 16-bit halves, as Windows packs them.
+		await followPress(input, ({ x, y }) => {
+			user32.PostMessageW(window, WINDOW_SNAP_DRAG, 0n, BigInt((((y & 0xffff) << 16) | (x & 0xffff)) >>> 0));
+		});
+	} catch (err) {
+		console.error("[window] Windows' move loop didn't take the title bar's drag:", err);
+	} finally {
+		following = false;
+	}
 }
