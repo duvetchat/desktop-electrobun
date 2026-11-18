@@ -48,8 +48,10 @@ function onto(rect: Rect, from: Rect, to: Rect): Rect {
 
 /** The title bar's maximize. A press fills the work area of the display the window is on, and the next one puts back
  * the frame it had before, on that display. The window is a popup (titleBarStyle "hidden"), which Windows' own
- * maximize would let cover the taskbar. The display is found from the window's own frame, never from the webview's
- * window.screen: WebView2 doesn't update that when the window is only moved, as a drag moves it (#187). */
+ * maximize would let cover the taskbar: on Windows the title bar uses that maximize once window-snap.ts keeps it to the
+ * work area, and this is for macOS, Linux and a Windows window that couldn't take window-snap's procedure. The display
+ * is found from the window's own frame, never from the webview's window.screen: WebView2 doesn't update that when the
+ * window is only moved, as a drag moves it (#187). */
 export class Maximizer {
 	private before: Rect | null = null;
 	private filled: Rect | null = null;
