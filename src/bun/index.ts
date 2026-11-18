@@ -16,6 +16,7 @@ import { startSpotifyReader, type SpotifyActivity } from "./spotify";
 import { ipcHeld, ipcPath, LineReader } from "./ipc";
 import { navigationRules } from "./navigation";
 import { Maximizer } from "./window-frame";
+import { letWindowsArrange } from "./window-snap";
 import { startupSummary, writeStartupLine } from "./startup";
 
 // When Bun started, and its own steps of the app's start, which the page's join in startup.log (startupTimings, #280):
@@ -171,6 +172,13 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 			closeWindow: () => win.close(),
 			minimizeWindow: () => win.minimize(),
 			maximizeWindow: () => {
+				// Windows' own once it keeps the taskbar (window-snap.ts): the title bar's maximize is then Win+Up's, which
+				// Win+Down restores.
+				if (arrangedByWindows) {
+					if (win.isMaximized()) win.unmaximize();
+					else win.maximize();
+					return;
+				}
 				const frame = maximizer.press(win.getFrame(), Screen.getAllDisplays());
 				if (frame) win.setFrame(frame.x, frame.y, frame.width, frame.height);
 			},
@@ -210,6 +218,20 @@ const win = new BrowserWindow({
 	rpc,
 });
 bunMarks.window = Date.now();
+
+// Win+Left and Win+Right snap the window, and Win+Up and Win+Down maximize, restore and minimize it, once it takes what
+// Windows asks of a window for that (window-snap.ts, #345).
+const arrangedByWindows = currentOS === "win32" && arrangeByWindows();
+
+function arrangeByWindows(): boolean {
+	try {
+		if (letWindowsArrange(win.ptr)) return true;
+		console.error("[window] Windows' keys won't snap or maximize the window: it didn't take window-snap's procedure");
+	} catch (err) {
+		console.error("[window] Windows' keys won't snap or maximize the window:", err);
+	}
+	return false;
+}
 
 // Through the webview: BrowserWindow stores a navigationRules option of its own, and never hands it to the native side.
 // As each page loads, not right after new BrowserWindow: macOS reads them later on its main queue, from an address
