@@ -86,7 +86,7 @@
 	</div>
 {:else if mediaPopOut.available && mediaPopOut.out}
 	<!-- The controls are in their own window: a press here brings it forward, and Put back docks them again. -->
-	<div class="bg-duvet-sb-card flex h-[38px] items-center gap-1 rounded-xl pr-1 pl-1">
+	<div class="bg-duvet-sb-card flex min-h-[38px] items-center gap-1 rounded-xl py-1 pr-1 pl-1">
 		<button
 			type="button"
 			class="text-duvet-ink2 hover:text-duvet-ink flex h-full min-w-0 flex-1 items-center gap-2 rounded-lg pl-1.5 text-left text-xs transition-colors motion-reduce:transition-none"
@@ -94,7 +94,7 @@
 			onclick={showMediaWindow}
 		>
 			<PictureInPicture2 class="shrink-0" size={15} />
-			<span class="truncate">Voice controls are in their own window</span>
+			<span class="leading-[1.25]">Voice controls are in their own window</span>
 		</button>
 		<Button
 			variant="secondary"

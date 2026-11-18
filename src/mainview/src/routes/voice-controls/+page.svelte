@@ -85,6 +85,10 @@
 			location.replace("/");
 			return;
 		}
+		// The layout draws the app's title bar for every page. This window has its own strip: the app's bar is taken
+		// out, so its buttons are neither under this page nor in the tab order.
+		const appBar = document.getElementById("window-titlebar");
+		if (appBar) appBar.style.display = "none";
 		const mirror = new StateMirror<unknown>(MEDIA_CHANNEL);
 		const stop = mirror.subscribe((value) => {
 			const parsed = parseMediaState(value);
