@@ -109,6 +109,7 @@
 	import { getAvatarURL } from "$lib/common/common";
 	import { activityLine, shownActivities } from "$lib/activity";
 	import ChatIntro from "$lib/components/ChatIntro.svelte";
+	import { buttonClass, pillClass } from "$lib/components/ui/recipes";
 	import StatusDot from "$lib/components/StatusDot.svelte";
 	import SpaceIcon from "$lib/components/SpaceIcon.svelte";
 
@@ -937,7 +938,7 @@
 			{#if other}
 				<UserAvatar src={getAvatarURL(other.user_id, other.user?.avatar)} name={conversationTitle()} size={64} />
 			{:else}
-				<div class="flex -space-x-3">
+				<div class="flex justify-center -space-x-3">
 					{#each convMembers.filter((m) => m.id !== me?.id).slice(0, 4) as member (member.id)}
 						<UserAvatar
 							src={member.avatar_url}
@@ -950,7 +951,7 @@
 			{/if}
 		{/snippet}
 		{#if other}
-			<p class="flex flex-wrap items-center gap-x-3 gap-y-1">
+			<p class="flex flex-wrap items-center justify-center gap-x-3 gap-y-1">
 				{#if other.user?.username}<span>@{other.user.username}</span>{/if}
 				{#if status}
 					<span class="flex items-center gap-1.5">
@@ -970,20 +971,18 @@
 					<span>{line.kind === "listening" ? "Listening to" : "Playing"} {line.text}</span>
 				{/if}
 			</p>
-			<p class="mt-1">This is the start of your conversation with {conversationTitle()}.</p>
+			<p>This is the start of your conversation with {conversationTitle()}.</p>
 		{:else}
 			<p>
 				{new Intl.ListFormat("en", { type: "conjunction" }).format(
 					convMembers.filter((m) => m.id !== me?.id).map((m) => m.username),
 				)}
 			</p>
-			<p class="mt-1">This is the start of the group.</p>
+			<p>This is the start of the group.</p>
 		{/if}
-		<div class="mt-3 flex flex-wrap items-center gap-2">
+		<div class="mt-2 flex flex-wrap items-center justify-center gap-2">
 			{#each shared as space (space.id)}
-				<span
-					class="bg-duvet-card text-duvet-ink shadow-duvet-raised flex h-7 items-center gap-1.5 rounded-full pr-2.5 pl-1 text-xs font-semibold"
-				>
+				<span class="{pillClass()} pl-1">
 					<SpaceIcon
 						src={space.icon ? getAvatarURL(space.id, space.icon) : null}
 						name={space.name}
@@ -994,23 +993,14 @@
 				</span>
 			{/each}
 			{#if conversation.type === 2 && isOwner}
-				<button
-					type="button"
-					class="bg-duvet-card text-duvet-ink2 shadow-duvet-raised hover:text-duvet-ink flex h-8 items-center gap-1.5 rounded-xl px-3 text-[13px] font-bold transition-colors motion-reduce:transition-none"
-					onclick={openAddMemberModal}
-				>
+				<button type="button" class={buttonClass("secondary")} onclick={openAddMemberModal}>
 					<UserPlus class="size-4" />
 					Add people
 				</button>
 			{/if}
 			<!-- A call going on has Join in its banner -->
 			{#if !hasOngoingCall}
-				<button
-					type="button"
-					class="bg-duvet-accent text-duvet-on-accent shadow-duvet-raised flex h-8 items-center gap-1.5 rounded-xl px-3 text-[13px] font-bold transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40 motion-reduce:transition-none"
-					onclick={startCall}
-					disabled={!!$activeCall || joinWaits}
-				>
+				<button type="button" class={buttonClass("primary")} onclick={startCall} disabled={!!$activeCall || joinWaits}>
 					<Phone class="size-4" />
 					Call
 				</button>
@@ -1088,7 +1078,7 @@
 	{/if}
 {/snippet}
 
-<div class="from-duvet-card to-duvet-bg relative flex flex-1 flex-col overflow-hidden bg-linear-to-b">
+<div class="bg-duvet-bg relative flex flex-1 flex-col overflow-hidden">
 	{#if !onBarActions}
 		<div class="border-duvet-line flex h-12 shrink-0 items-center gap-2 border-b px-3 font-semibold">
 			<MessageSquare class="text-duvet-ink2 size-4" />
@@ -1114,7 +1104,7 @@
 	{/snippet}
 	{#if canJoinCall && joinWaits}
 		<div
-			class="border-duvet-alive/50 bg-duvet-alive/10 text-duvet-alive flex shrink-0 items-center justify-center gap-2 border-b px-4 py-2 text-sm"
+			class="bg-duvet-sunk text-duvet-alive mx-(--duvet-pad-x) mt-2 flex h-9 shrink-0 items-center justify-center gap-2 rounded-xl px-4 text-[13px]"
 		>
 			<Phone class="size-4" />
 			<span class="font-medium">Calling from another device</span>
@@ -1122,7 +1112,7 @@
 		</div>
 	{:else if canJoinCall}
 		<button
-			class="border-duvet-alive/50 bg-duvet-alive/10 text-duvet-alive hover:bg-duvet-alive/10 flex shrink-0 items-center justify-center gap-2 border-b px-4 py-2 text-sm transition-colors"
+			class="bg-duvet-sunk text-duvet-alive hover:bg-duvet-hover mx-(--duvet-pad-x) mt-2 flex h-9 shrink-0 items-center justify-center gap-2 rounded-xl px-4 text-[13px] transition-colors motion-reduce:transition-none"
 			onclick={joinCall}
 		>
 			<Phone class="size-4" />

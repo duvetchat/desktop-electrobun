@@ -274,6 +274,24 @@ describe("user mentions", () => {
 		expect(renderMarkdown(short, false, { [ANA.slice(0, -1)]: "Ana" })).toBe(`<span class="msg-mention">@Ana</span>`);
 	});
 
+	// In a Space a mention takes its member's role colour, as their name has above their messages (#357).
+	test("a known member's mention takes their name's style, and nobody else's does", () => {
+		const styles = { [ANA]: "color: #e5484d" };
+		expect(renderMarkdown(`<@${ANA}>`, false, { [ANA]: "Ana" }, undefined, undefined, undefined, styles)).toBe(
+			`<span class="msg-mention" data-user-id="${ANA}" style="color: #e5484d">@Ana</span>`,
+		);
+		// Someone the map doesn't know has no profile and no colour, whatever the styles hold.
+		expect(renderMarkdown(`<@${ANA}>`, false, {}, undefined, undefined, undefined, styles)).toBe(
+			`<span class="msg-mention">@${ANA.slice(0, 8)}</span>`,
+		);
+		// A style is written as text, never as markup.
+		const html = renderMarkdown(`<@${ANA}>`, false, { [ANA]: "Ana" }, undefined, undefined, undefined, {
+			[ANA]: 'color: red" onclick="x',
+		});
+		expect(html).not.toContain('" onclick="');
+		expect(html).toContain("&quot;");
+	});
+
 	test("in code, it stays as written", () => {
 		expect(renderMarkdown(`\`<@${ANA}>\``, false, names)).toBe(`<code class="msg-inline-code">&lt;@${ANA}&gt;</code>`);
 	});
