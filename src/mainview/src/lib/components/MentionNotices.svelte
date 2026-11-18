@@ -3,21 +3,29 @@
 	import { X as XIcon } from "@lucide/svelte";
 	import Notice from "$lib/components/Notice.svelte";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
-	import { isElectrobunWindow } from "$lib/electrobun-rpc";
 	import { renderMarkdownLine } from "$lib/markdown";
 	import { dismissMentionNotice, mentionNotices, type MentionNotice } from "$lib/mention-notices";
+	import { placeStyle, underCall } from "$lib/notice-place";
+	import { noticeArea, watchNoticePlace } from "$lib/stores/notice-place.svelte";
 	import { roomNames } from "$lib/stores.svelte";
 	import type { MessageLink } from "$lib/urls";
 
 	// The notices of mentions in rooms and conversations that aren't on screen (lib/mention-notices.ts), at the top
-	// centre of the window, under the desktop app's title bar: who, where, and their message's text on a line or two,
+	// centre of the main column, under the window's title line, the same distance on every system and on the web
+	// (lib/notice-place.ts), and under a call's notice while one is up: who, where, and their message's text on a line or two,
 	// drawn as a reply's quote draws it. A click opens the message (onOpen); × takes the notice away. They stack: the
 	// newest in front, the others behind it, each a little lower, smaller and fainter, and the stack fans out under the
 	// pointer or the keyboard's focus so each can be read and pressed. What else notifies up there (an incoming call)
 	// comes as `children`, above the stack, in a Notice of its own.
 	let { onOpen, children = undefined }: { onOpen: (link: MessageLink) => void; children?: Snippet } = $props();
 
-	const top = isElectrobunWindow() ? "top-14" : "top-3";
+	// The place is read from the title line while there is something to show. Until it is, the classes hold the
+	// notices where the shell's line puts them: 62 px down, in the window's middle.
+	const showing = $derived($mentionNotices.length > 0 || !!children);
+	$effect(() => {
+		if (showing) return watchNoticePlace();
+	});
+	const place = $derived(noticeArea.place ? placeStyle(underCall(noticeArea.place, noticeArea.callHeight)) : undefined);
 
 	function open(notice: MentionNotice) {
 		dismissMentionNotice(notice.id);
@@ -25,9 +33,10 @@
 	}
 </script>
 
-{#if $mentionNotices.length > 0 || children}
+{#if showing}
 	<div
-		class="pointer-events-none fixed {top} left-1/2 z-9990 flex w-[min(420px,calc(100vw-32px))] -translate-x-1/2 flex-col gap-2"
+		class="pointer-events-none fixed inset-x-0 top-[62px] z-9990 mx-auto flex w-[min(420px,calc(100vw-32px))] flex-col gap-2"
+		style={place}
 		role="region"
 		aria-label="Notifications"
 	>

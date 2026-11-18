@@ -9,6 +9,8 @@
 	import { callCardFace } from "$lib/calls";
 	import { GLASS } from "$lib/components/ui/recipes";
 	import { openCallChatWith } from "$lib/media-source";
+	import { placeStyle } from "$lib/notice-place";
+	import { noticeArea, watchNoticePlace } from "$lib/stores/notice-place.svelte";
 	import { onDestroy, onMount } from "svelte";
 
 	// A call ringing here, or one the user places, as a notice at the top centre of the app (#357: the redesign moves
@@ -34,6 +36,21 @@
 				)
 			: null,
 	);
+
+	// Its place is read from the window's title line while it shows (lib/notice-place.ts): the same distance under it
+	// on every system and on the web. Until it is, the classes hold it where the shell's line puts it. The mentions'
+	// notices are told how tall it is, and start under it.
+	let height = $state(0);
+	$effect(() => {
+		if (shown) return watchNoticePlace();
+	});
+	$effect(() => {
+		noticeArea.callHeight = shown ? height : 0;
+		return () => {
+			noticeArea.callHeight = 0;
+		};
+	});
+	const place = $derived(noticeArea.place ? placeStyle(noticeArea.place) : undefined);
 
 	let ringAudio: HTMLAudioElement | null = null;
 
@@ -90,6 +107,8 @@
 	<section
 		aria-label={ringing ? "Incoming call" : "Calling"}
 		class="{GLASS} text-duvet-ink animate-notice-in pointer-events-auto fixed inset-x-0 top-[62px] z-10000 mx-auto flex w-[min(420px,calc(100vw-32px))] items-center gap-3 rounded-[18px] py-3 pr-3 pl-3.5"
+		style={place}
+		bind:offsetHeight={height}
 	>
 		<button
 			type="button"
