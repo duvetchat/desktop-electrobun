@@ -1,4 +1,9 @@
 <script lang="ts">
+	import AuthScene from "$lib/components/AuthScene.svelte";
+	import AuthNote from "$lib/components/auth/AuthNote.svelte";
+	import AuthResult from "$lib/components/auth/AuthResult.svelte";
+	import AuthSubmit from "$lib/components/auth/AuthSubmit.svelte";
+	import SpaceIcon from "$lib/components/ui/SpaceIcon.svelte";
 	import { onMount } from "svelte";
 	import { getApiError } from "$lib/api/api";
 	import { page } from "$app/state";
@@ -96,89 +101,53 @@
 	}
 </script>
 
-<section class="bg-duvet-sunk flex min-h-screen items-center justify-center p-6">
-	<div class="border-duvet-line bg-duvet-card shadow-duvet-float rounded-card w-full max-w-md border p-10">
-		{#if loading}
-			<div class="text-duvet-ink flex flex-col items-center gap-4">
-				<div class="border-duvet-ink2/40 h-10 w-10 animate-spin rounded-full border-4 border-t-transparent"></div>
-				<p>Loading…</p>
-			</div>
-		{:else if error && !invite}
-			<div class="text-center">
-				<div class="bg-duvet-card mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full">
-					<svg viewBox="0 0 24 24" class="text-duvet-ink h-7 w-7" fill="none" stroke="currentColor" stroke-width="1.5">
-						<path
-							stroke-linecap="round"
-							stroke-linejoin="round"
-							d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z"
-						/>
-					</svg>
-				</div>
-				<h1 class="text-duvet-ink mb-2 text-xl font-semibold">Invite not available</h1>
-				<p class="text-duvet-ink text-sm">{error}</p>
-				<button
-					class="bg-duvet-card text-duvet-ink hover:bg-duvet-ink/10 mt-6 rounded-lg px-6 py-2.5 text-sm font-medium transition"
-					onclick={() => (window.location.href = route("/index.html"))}
+<!-- The sign-in pages' frame, with the invite as a card: mobile's InviteCard, at a page's size. -->
+<AuthScene>
+	{#if loading}
+		<AuthResult state="loading" text="Loading…" />
+	{:else if error && !invite}
+		<AuthResult state="warning" title="Invite not available" text={error}>
+			<AuthSubmit variant="secondary" onclick={() => (window.location.href = route("/index.html"))}>Go back</AuthSubmit>
+		</AuthResult>
+	{:else if invite}
+		<div class="bg-duvet-card shadow-duvet-raised rounded-[20px] p-6 text-center" data-invite-card>
+			<SpaceIcon name={invite.space_name} size={64} class="shadow-duvet-raised select-none" />
+
+			<p class="text-duvet-ink2 mt-4 text-[13px] leading-[1.2] font-medium">You've been invited to join</p>
+			<h1 class="text-duvet-ink font-serif-lg mt-1 text-[28px] leading-[1.15] font-medium wrap-break-word">
+				{invite.space_name}
+			</h1>
+
+			{#if invite.description}
+				<p class="text-duvet-ink2 font-content mt-2 text-[14px] leading-[1.4] wrap-break-word">
+					{invite.description}
+				</p>
+			{/if}
+
+			<div class="mt-3 flex items-center justify-center gap-2">
+				<span class="bg-duvet-alive inline-block size-2 rounded-full" aria-hidden="true"></span>
+				<span class="text-duvet-ink text-[13.5px]"
+					>{formatCount(invite.member_count)}
+					{invite.member_count === 1 ? "Member" : "Members"}</span
 				>
-					Go back
-				</button>
 			</div>
-		{:else if invite}
-			<div class="text-center">
-				<div
-					class="bg-duvet-chosen text-duvet-chosen-ink rounded-card shadow-duvet-float mx-auto mb-5 flex h-20 w-20 items-center justify-center text-3xl font-bold select-none"
-				>
-					{invite.space_name.charAt(0).toUpperCase()}
-				</div>
 
-				<p class="text-duvet-ink2 mb-1 text-[13px] font-bold">You've been invited to join</p>
-				<h1 class="text-duvet-ink mb-1 text-2xl font-bold wrap-break-word">
-					{invite.space_name}
-				</h1>
-
-				{#if invite.description}
-					<p class="text-duvet-ink mt-1 mb-3 text-sm wrap-break-word">
-						{invite.description}
-					</p>
-				{/if}
-
-				<div class="mb-6 flex items-center justify-center gap-2">
-					<span class="bg-duvet-alive inline-block h-2 w-2 rounded-full"></span>
-					<span class="text-duvet-ink text-sm"
-						>{formatCount(invite.member_count)}
-						{invite.member_count === 1 ? "Member" : "Members"}</span
-					>
-				</div>
-
+			<div class="mt-6 flex flex-col gap-2 text-left">
 				{#if error}
-					<p class="text-duvet-danger mb-4 text-sm">{error}</p>
+					<AuthNote>{error}</AuthNote>
 				{/if}
 
 				{#if userSession.token}
-					<button
-						class="bg-duvet-accent text-duvet-on-accent shadow-duvet-raised w-full rounded-xl py-3 text-base font-bold transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
-						onclick={handleJoin}
-						disabled={joining}
-					>
+					<AuthSubmit busy={joining} onclick={handleJoin}>
 						{joining ? "Joining…" : "Join Space"}
-					</button>
+					</AuthSubmit>
 				{:else}
-					<p class="text-duvet-ink mb-4 text-sm">Sign in to join this Space.</p>
-					<button
-						class="bg-duvet-accent text-duvet-on-accent shadow-duvet-raised w-full rounded-xl py-3 text-base font-bold transition hover:brightness-110"
-						onclick={() => (window.location.href = signInUrl(inviteUrl(code)))}
-					>
-						Sign in to join
-					</button>
+					<p class="text-duvet-ink2 font-content text-center text-[14px]">Sign in to join this Space.</p>
+					<AuthSubmit onclick={() => (window.location.href = signInUrl(inviteUrl(code)))}>Sign in to join</AuthSubmit>
 				{/if}
 
-				<button
-					class="text-duvet-ink hover:text-duvet-ink mt-3 w-full rounded-xl bg-transparent py-2.5 text-sm font-medium transition"
-					onclick={() => (window.location.href = route("/index.html"))}
-				>
-					Not now
-				</button>
+				<AuthSubmit variant="quiet" onclick={() => (window.location.href = route("/index.html"))}>Not now</AuthSubmit>
 			</div>
-		{/if}
-	</div>
-</section>
+		</div>
+	{/if}
+</AuthScene>
