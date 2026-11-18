@@ -15,6 +15,7 @@ import {
 	syncKey,
 	type SettingsWindowArgs,
 } from "$lib/settings-windows";
+import { tellsTransferEnd } from "$lib/storage-transfers";
 import { sharedBans, sharedSettings } from "$lib/stores/settings-shared.svelte";
 import { storageTransfers } from "$lib/stores/storage-transfers.svelte";
 import { currentUser, gatewaySpaces } from "$lib/stores.svelte";
@@ -70,7 +71,9 @@ export function startSettingsGuest(): SettingsGuest {
 		{ get: () => mobileOnly, set: (value) => (mobileOnly = value), watch: () => () => {} },
 		{ readOnly: true },
 	);
-	// Each state is taken unless the one known is later (storageTransfers.set): an end first seen here is told.
+	// Each state is taken unless the one known is later (storageTransfers.set): an end first seen here is told, if
+	// it is of a transfer this window shows. Any other is the main window's to tell.
+	storageTransfers.tellsEnd = (transfer) => tellsTransferEnd({ window: "settings", spaceId }, transfer);
 	guest.mirror<StorageTransfer[]>(
 		"transfers",
 		{

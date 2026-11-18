@@ -101,6 +101,9 @@ class StorageTransferStore {
 	private seenAt = new Map<string, number>();
 	private bucketNames = new Map<string, string>();
 	private endListeners = new Set<(t: StorageTransfer) => void>();
+	/** Whether this page tells a transfer's end: every one, unless the app's windows share them, where one window
+	 * tells each (lib/storage-transfers.ts: tellsTransferEnd; the settings links set it). */
+	tellsEnd: (t: StorageTransfer) => boolean = () => true;
 
 	/** The queued or moving transfer of an owner (a user or a space), if any: there's one at most. */
 	active(ownerId: string | null | undefined): StorageTransfer | null {
@@ -195,8 +198,9 @@ class StorageTransferStore {
 						},
 					}
 				: undefined;
-		// A notice with failures stays longer, for its Show button.
-		toast(notice.text, notice.type, show ? 12000 : 6000, show);
+		// A notice with failures stays longer, for its Show button. Another window tells it when this one doesn't;
+		// whoever listens here still hears of the end.
+		if (this.tellsEnd(t)) toast(notice.text, notice.type, show ? 12000 : 6000, show);
 		for (const listener of this.endListeners) listener(t);
 	}
 }

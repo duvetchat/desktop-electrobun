@@ -16,6 +16,7 @@ import {
 	type OpenAppWindow,
 } from "$lib/settings-windows";
 import { reading, runes, sharedBans, sharedSettings } from "$lib/stores/settings-shared.svelte";
+import { tellsTransferEnd } from "$lib/storage-transfers";
 import { storageTransfers } from "$lib/stores/storage-transfers.svelte";
 import { currentUser, gatewaySpaces } from "$lib/stores.svelte";
 import { answerWindows, publishToWindows } from "$lib/window-hub";
@@ -24,6 +25,9 @@ import { SyncHost } from "$lib/window-sync";
 let host: SyncHost | null = null;
 // What stops sharing each Space whose settings window is open.
 const sharedSpaces = new Map<string, () => void>();
+// The settings windows whose pages listen, each by its Space (null for Settings' own): each tells the end of the
+// transfers it shows, and this window the rest (lib/storage-transfers.ts).
+const listening = new Set<string | null>();
 
 function shareSpace(spaceId: string) {
 	if (!host || sharedSpaces.has(spaceId)) return;
@@ -72,6 +76,8 @@ export function startSettingsHost(mobileOnly: Readable<boolean>): void {
 		),
 	);
 
+	storageTransfers.tellsEnd = (transfer) => tellsTransferEnd({ window: "main", open: listening }, transfer);
+
 	answerWindows(SETTINGS_CHANNEL, {
 		set: (args) => {
 			const write = parseWrite(args);
@@ -81,11 +87,13 @@ export function startSettingsHost(mobileOnly: Readable<boolean>): void {
 		hello: (args) => {
 			const spaceId = textOf(args, "spaceId");
 			if (spaceId) shareSpace(spaceId);
+			listening.add(spaceId);
 			return true;
 		},
 		// From Bun, as a Settings window closes.
 		closed: (args) => {
 			const spaceId = textOf(args, "spaceId");
+			listening.delete(spaceId);
 			if (spaceId) {
 				sharedSpaces.get(spaceId)?.();
 				sharedSpaces.delete(spaceId);
