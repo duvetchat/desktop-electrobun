@@ -319,10 +319,21 @@
 	--animate-call-pulse: call-pulse 1.5s ease-out infinite;
 	--animate-auth-drift: auth-drift 18s ease-in-out infinite alternate;
 
-	--font-sans: "Fira Sans", system-ui, -apple-system, "Open Sans", Arial, sans-serif;
+	/* The four faces and their jobs (theme.dart): Inter is the interface, Roboto what people write (font-content),
+	   Fraunces the small titles (font-serif), Fira Mono code. Twemoji follows each for the emoji in its text, by its
+	   unicode-range (lib/fonts/fonts.css); where text is only emoji, font-emoji puts it first. */
+	--font-sans: "Inter", "Twemoji", system-ui, -apple-system, sans-serif;
+	--font-content: "Roboto", "Twemoji", system-ui, -apple-system, sans-serif;
 	--font-mono: "Fira Mono", ui-monospace, Menlo, Consolas, monospace;
-	--font-alt: "Courier", "sans-serif";
-	--font-display: "Cal Sans", "sans-serif";
+	--font-emoji: "Twemoji", "Inter", system-ui, sans-serif;
+	/* Fraunces' file starts black and wonky (wght 900, WONK 1): every use sets its axes, the optical size by the
+	   text's: 24 for the smallest titles (font-serif-sm), 36 for most, 72 for sheets and intros (font-serif-lg). */
+	--font-serif: "Fraunces", Georgia, serif;
+	--font-serif--font-variation-settings: "opsz" 36, "SOFT" 50, "WONK" 0;
+	--font-serif-sm: "Fraunces", Georgia, serif;
+	--font-serif-sm--font-variation-settings: "opsz" 24, "SOFT" 50, "WONK" 0;
+	--font-serif-lg: "Fraunces", Georgia, serif;
+	--font-serif-lg--font-variation-settings: "opsz" 72, "SOFT" 50, "WONK" 0;
 
 	@keyframes accordion-down {
 		from {
