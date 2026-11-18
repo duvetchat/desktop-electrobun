@@ -11,9 +11,14 @@
 
 	import { setupExternalLinks } from "$lib/external-links";
 	import { followSystemTheme } from "$lib/theme.svelte";
+	import { currentShell } from "$lib/platform";
 	import { onMount } from "svelte";
 
 	let { children } = $props();
+
+	// Whether this page has window chrome to draw is the platform switch's call (lib/platform.ts): none on the web,
+	// where the browser has its own; the app's title bar in the desktop app, on every page, the sign-in ones included.
+	const chrome = currentShell().chrome;
 
 	onMount(() => {
 		setupExternalLinks();
@@ -27,7 +32,9 @@
 </svelte:head>
 
 <div class="bg-duvet-sunk text-duvet-ink flex h-(--app-height) w-(--app-width) flex-col overflow-hidden">
-	<Header />
+	{#if chrome !== "web"}
+		<Header />
+	{/if}
 	<div class="min-h-0 flex-1 overflow-hidden">
 		{@render children()}
 	</div>

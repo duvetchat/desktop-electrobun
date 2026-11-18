@@ -1118,56 +1118,17 @@
 	}
 }
 
-/* The sign-in, sign-up and account pages' fields, primary button and links (AuthScene draws the rest). */
+/* The sign-in pages' links. Their fields and buttons are components now (lib/components/auth, #357). */
 @layer components {
-	.auth-field {
-		width: 100%;
-		border-radius: 12px;
-		border: 1px solid transparent;
-		background: var(--duvet-sunk);
-		box-shadow: var(--duvet-shadow-press);
-		padding: 0.75rem 1rem;
-		color: var(--duvet-ink);
-		transition: border-color 120ms ease;
-	}
-	.auth-field::placeholder {
-		color: var(--duvet-ink2);
-	}
-	.auth-field:focus {
-		outline: none;
-		border-color: var(--duvet-accent);
-	}
-	.auth-primary {
-		display: flex;
-		width: 100%;
-		align-items: center;
-		justify-content: center;
-		border-radius: 14px;
-		background: var(--duvet-accent);
-		color: var(--duvet-on-accent);
-		padding: 0.8rem 1rem;
-		font-weight: 700;
-		box-shadow:
-			inset 0 1px 0 rgba(255, 255, 255, 0.3),
-			0 6px 16px color-mix(in oklab, var(--duvet-accent) 35%, transparent);
-		transition: filter 120ms ease;
-	}
-	.auth-primary:hover {
-		filter: brightness(1.07);
-	}
-	.auth-primary:active {
-		box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.25);
-	}
-	.auth-primary:focus-visible,
-	.auth-link:focus-visible {
-		outline: 2px solid var(--duvet-accent-text);
-		outline-offset: 2px;
-	}
 	.auth-link {
 		color: var(--duvet-accent-text);
 		font-weight: 600;
 	}
 	.auth-link:hover {
 		text-decoration: underline;
+	}
+	.auth-link:focus-visible {
+		outline: 2px solid var(--duvet-accent-text);
+		outline-offset: 2px;
 	}
 }
