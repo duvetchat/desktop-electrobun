@@ -729,7 +729,6 @@
 		<div class="flex max-h-[max(50%,calc(100%-var(--rows-height)))] shrink-0 flex-col">
 			<NowSection
 				{guilds}
-				controls={showUser}
 				{isFriendsActive}
 				{activeConversationId}
 				onRoomSelect={(spaceId, roomId) => onRoomSelect(spaceId, roomId, "here")}

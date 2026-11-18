@@ -4,7 +4,6 @@ import {
 	busiestRooms,
 	callName,
 	capFaces,
-	connectionNote,
 	fitFaces,
 	NOW_ROOMS,
 	joinableCalls,
@@ -12,7 +11,6 @@ import {
 	friendsNow,
 	peopleCount,
 	voiceRoomLabel,
-	withSelf,
 } from "$lib/now";
 
 describe("joinableCalls", () => {
@@ -94,33 +92,6 @@ describe("fitFaces", () => {
 
 	test("one place fewer shows faces when they don't fit, and the last place counts the rest", () => {
 		expect(fitFaces(["a", "b", "c", "d", "e"], 3)).toEqual({ faces: ["a", "b"], more: 3 });
-	});
-});
-
-describe("connectionNote", () => {
-	test("says nothing once the voice is up", () => {
-		expect(connectionNote("connected")).toBeNull();
-	});
-
-	test("says how the connection is while it isn't", () => {
-		expect(connectionNote("new")).toBe("Connecting…");
-		expect(connectionNote("connecting")).toBe("Connecting…");
-		expect(connectionNote("disconnected")).toBe("Reconnecting…");
-		expect(connectionNote("failed")).toBe("Connection failed");
-		expect(connectionNote("closed")).toBe("Disconnected");
-	});
-});
-
-describe("withSelf", () => {
-	const me = { id: "me" };
-
-	test("adds the user when the gateway doesn't list them yet", () => {
-		expect(withSelf([{ id: "a" }], me).map((p) => p.id)).toEqual(["a", "me"]);
-	});
-
-	test("keeps the list as it is when the user is in it, or unknown", () => {
-		expect(withSelf([me, { id: "a" }], me).map((p) => p.id)).toEqual(["me", "a"]);
-		expect(withSelf([{ id: "a" }], null).map((p) => p.id)).toEqual(["a"]);
 	});
 });
 

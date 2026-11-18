@@ -1,13 +1,15 @@
 <script lang="ts">
 	import type { Snippet } from "svelte";
-	import { PhoneCall, PhoneOff, SignalHigh, SignalLow, SignalMedium } from "@lucide/svelte";
+	import { MonitorUp, PhoneCall, PhoneOff, SignalHigh, SignalLow, SignalMedium, Video } from "@lucide/svelte";
 	import FaceStack from "$lib/components/FaceStack.svelte";
 	import MediaButton from "$lib/components/MediaButton.svelte";
 	import Tooltip from "$lib/components/ui/Tooltip.svelte";
 	import {
 		isLive,
 		leaveLabel,
+		liveLabel,
 		mediaTitle,
+		openPlaceLabel,
 		pingLabel,
 		pingLevel,
 		type MediaActions,
@@ -15,7 +17,8 @@
 	} from "$lib/media-state";
 
 	// The voice the user is in, as the call panel's first row (MediaPanel.svelte): the signal's mark, whose tooltip is
-	// the ping; where they're connected, which opens that voice room or call; who is there; and Disconnect. It draws the
+	// the ping; where they're connected, which opens that voice room or call, with a mark while someone's screen or
+	// camera is on there; who is there, ringed while they speak; and Disconnect. It draws the
 	// state it's given, the stores' in the main window and the mirrored one in the pop-out. It was UserStatusBar's voice
 	// pill and the Now section's voice dock until the redesign (#357).
 	let {
@@ -64,16 +67,26 @@
 	<button
 		type="button"
 		class="group flex min-w-0 flex-1 items-center gap-2 rounded-lg text-left"
-		aria-label="Open {media.place?.where ?? ''}{media.facesLabel ? `, ${media.facesLabel}` : ''}"
+		aria-label={openPlaceLabel(media)}
 		onclick={actions.openPlace}
 	>
 		<span class="flex min-w-0 flex-1 flex-col gap-px">
 			<span
-				class="truncate text-[12.5px] leading-[1.25] font-semibold {isLive(media)
+				class="flex min-w-0 items-center gap-1 text-[12.5px] leading-[1.25] font-semibold {isLive(media)
 					? 'text-duvet-alive'
 					: 'text-duvet-ink2'}"
-				role="status">{mediaTitle(media)}</span
 			>
+				<span class="truncate" role="status">{mediaTitle(media)}</span>
+				{#if media.live}
+					<span class="shrink-0" title={liveLabel(media.live)} data-live={media.live}>
+						{#if media.live === "screen"}<MonitorUp size={13} aria-hidden="true" />{:else}<Video
+								size={13}
+								aria-hidden="true"
+							/>{/if}
+						<span class="sr-only">{liveLabel(media.live)}</span>
+					</span>
+				{/if}
+			</span>
 			<span
 				class="text-duvet-ink2 group-hover:text-duvet-ink truncate text-[11.5px] leading-[1.25] group-hover:underline"
 				>{media.place?.where ?? ""}</span

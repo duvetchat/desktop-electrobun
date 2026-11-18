@@ -47,7 +47,12 @@ export interface MediaState {
 	more: number;
 	/** The faces, for a screen reader: "3 people in voice, Ana speaking". */
 	facesLabel: string;
+	/** What the voice shows live: someone's screen, else someone's camera (the user's own count). */
+	live: MediaLive;
 }
+
+/** What a voice room or a call shows live. */
+export type MediaLive = "screen" | "camera" | null;
 
 /** The controls before anything is known: out of voice, nothing on. */
 export const IDLE_MEDIA: MediaState = {
@@ -65,6 +70,7 @@ export const IDLE_MEDIA: MediaState = {
 	faces: [],
 	more: 0,
 	facesLabel: "",
+	live: null,
 };
 
 /** A microphone of the picker's list. */
@@ -153,6 +159,24 @@ export function leaveLabel(state: Pick<MediaState, "place" | "phase">): string {
 	return state.place?.kind === "call" ? "Leave call" : "Disconnect";
 }
 
+/** What the control that opens the voice the user is in is called: where it goes, and who is there. */
+export function openPlaceLabel(state: Pick<MediaState, "place" | "facesLabel">): string {
+	return `Open ${state.place?.where ?? ""}${state.facesLabel ? `, ${state.facesLabel}` : ""}`;
+}
+
+/** The folded edge's one line for the voice the user is in, as a tooltip: how the connection is, where, and what is
+ * live there. The edge has no room for the call panel's first row. */
+export function placeTip(state: Pick<MediaState, "place" | "phase" | "live">): string {
+	const parts = [mediaTitle(state), state.place?.where ?? ""];
+	if (state.live) parts.push(liveLabel(state.live));
+	return parts.filter(Boolean).join(" · ");
+}
+
+/** The live mark's words, its tooltip and what a screen reader hears. */
+export function liveLabel(live: "screen" | "camera"): string {
+	return live === "screen" ? "Sharing their screen" : "Camera on";
+}
+
 /** The camera's and the screen share's tooltip when they can't be used. */
 export function videoBlockLabel(block: VideoBlock, kind: "room" | "call" | undefined): string | null {
 	if (block === "not-connected") return "You're not connected to voice";
@@ -184,7 +208,15 @@ export interface MediaPerson {
 /** What the main window knows, from its stores, that the controls show. */
 export interface MediaInputs {
 	/** The voice room or the call the user is in: its name, its Space's (a room's), and who is there. */
-	place: { kind: "room" | "call"; id: string; name: string; space: string | null; people: MediaPerson[] } | null;
+	place: {
+		kind: "room" | "call";
+		id: string;
+		name: string;
+		space: string | null;
+		people: MediaPerson[];
+		/** Someone's screen or camera is on there (lib/now.ts: liveIn). */
+		live: MediaLive;
+	} | null;
 	/** The call the user places from here, which rings the others: its chat's ID and name. */
 	calling: { id: string; name: string } | null;
 	/** The user, whom the gateway may not list in the place yet, having just joined. */
@@ -226,6 +258,7 @@ export function mediaStateOf(inputs: MediaInputs): MediaState {
 			faces: [],
 			more: 0,
 			facesLabel: "",
+			live: null,
 		};
 	}
 	// The user's own mute is theirs at once, before the gateway echoes it.
@@ -247,6 +280,7 @@ export function mediaStateOf(inputs: MediaInputs): MediaState {
 		faces: shown.map((person) => ({ id: person.id, name: person.name, src: person.src, speaking: speaks(person) })),
 		more: people.length - shown.length,
 		facesLabel: speakers.length ? `${count}, ${speakers.join(", ")} speaking` : count,
+		live: place.live,
 	};
 }
 
@@ -346,6 +380,7 @@ export function parseMediaState(value: unknown): MediaState | null {
 	if (v.ping !== null && typeof v.ping !== "number") return null;
 	if (v.video !== null && v.video !== "not-connected" && v.video !== "no-permission") return null;
 	if (typeof v.micId !== "string" || typeof v.more !== "number" || typeof v.facesLabel !== "string") return null;
+	if (v.live !== null && v.live !== "screen" && v.live !== "camera") return null;
 	const place = parsePlace(v.place);
 	if (place === undefined || !Array.isArray(v.faces)) return null;
 	const faces = v.faces.flatMap((face: unknown): MediaFace[] => {
@@ -369,6 +404,7 @@ export function parseMediaState(value: unknown): MediaState | null {
 		faces,
 		more: v.more,
 		facesLabel: v.facesLabel,
+		live: v.live,
 	};
 }
 

@@ -2,7 +2,7 @@ import { derived, get, readable, type Readable } from "svelte/store";
 import { cancelCall } from "$lib/api/ws/connection";
 import { getAvatarURL, getHostURL } from "$lib/common/common";
 import { mediaStateOf, type MediaActions, type MediaState, type MicChoice } from "$lib/media-state";
-import { callName } from "$lib/now";
+import { callName, liveIn } from "$lib/now";
 import { hasPermission, Permission } from "$lib/permissions";
 import {
 	activeCall,
@@ -144,6 +144,7 @@ export const liveMedia: Readable<MediaState> = derived(
 				name: $place.name,
 				space: $place.kind === "room" ? $place.place : null,
 				people: $place.states.map((vs) => ({ ...$place.person(vs.user_id), muted: vs.muted })),
+				live: liveIn($place.states),
 			},
 			calling: $calling,
 			me: $me

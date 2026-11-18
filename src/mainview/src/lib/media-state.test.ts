@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
 	IDLE_MEDIA,
+	liveLabel,
 	isLive,
 	isMicInUse,
 	leaveLabel,
@@ -8,6 +9,8 @@ import {
 	mediaCommandHandlers,
 	mediaStateOf,
 	mediaTitle,
+	openPlaceLabel,
+	placeTip,
 	micChoices,
 	micName,
 	parseMediaState,
@@ -18,6 +21,7 @@ import {
 	videoBlockLabel,
 	type MediaActions,
 	type MediaInputs,
+	type MediaLive,
 	type MediaPerson,
 	type MediaState,
 } from "$lib/media-state";
@@ -50,6 +54,7 @@ const lounge = (people: MediaPerson[] = [ME]) => ({
 	name: "Lounge",
 	space: "Harbour Lights",
 	people,
+	live: null as MediaLive,
 });
 const dm = (people: MediaPerson[] = [ME, ANA]) => ({
 	kind: "call" as const,
@@ -57,6 +62,7 @@ const dm = (people: MediaPerson[] = [ME, ANA]) => ({
 	name: "Ana",
 	space: null,
 	people,
+	live: null as MediaLive,
 });
 
 describe("out of voice", () => {
@@ -272,6 +278,38 @@ describe("the pop-out's commands", () => {
 	});
 });
 
+describe("what the voice shows live", () => {
+	test("a screen or a camera someone has on there is the state's, and nothing out of voice", () => {
+		expect(mediaStateOf(inputs({ place: { ...lounge([ME, ANA]), live: "screen" } })).live).toBe("screen");
+		expect(mediaStateOf(inputs({ place: { ...dm(), live: "camera" } })).live).toBe("camera");
+		expect(mediaStateOf(inputs({ place: lounge() })).live).toBeNull();
+		expect(mediaStateOf(inputs()).live).toBeNull();
+		expect(mediaStateOf(inputs({ calling: { id: "dm-1", name: "Ana" } })).live).toBeNull();
+	});
+
+	test("the folded edge says it in one line, with how the connection is and where", () => {
+		const room = mediaStateOf(inputs({ place: { ...lounge([ME, ANA]), live: "screen" } }));
+		expect(placeTip(room)).toBe("Voice connected · Lounge · Harbour Lights · Sharing their screen");
+		expect(placeTip(mediaStateOf(inputs({ place: lounge(), connection: "disconnected" })))).toBe(
+			"Reconnecting… · Lounge · Harbour Lights",
+		);
+		expect(placeTip(mediaStateOf(inputs({ place: dm() })))).toBe("In a call · Ana");
+		expect(placeTip(mediaStateOf(inputs({ calling: { id: "dm-1", name: "Ana" } })))).toBe("Calling… · Ana");
+	});
+
+	test("the control that opens it says where it goes and who is there", () => {
+		expect(openPlaceLabel(mediaStateOf(inputs({ place: lounge([ME, ANA]), speaking: new Set(["ana"]) })))).toBe(
+			"Open Lounge · Harbour Lights, 2 people in voice, Ana speaking",
+		);
+		expect(openPlaceLabel(mediaStateOf(inputs({ calling: { id: "dm-1", name: "Ana" } })))).toBe("Open Ana");
+	});
+
+	test("its mark says which", () => {
+		expect(liveLabel("screen")).toBe("Sharing their screen");
+		expect(liveLabel("camera")).toBe("Camera on");
+	});
+});
+
 describe("a mirrored state", () => {
 	const state: MediaState = mediaStateOf(
 		inputs({ place: lounge([ME, ANA]), muted: true, camera: true, speaking: new Set(["ana"]), micId: "usb" }),
@@ -280,6 +318,8 @@ describe("a mirrored state", () => {
 	test("comes back as it was sent, through JSON", () => {
 		expect(parseMediaState(JSON.parse(JSON.stringify(state)))).toEqual(state);
 		expect(parseMediaState(JSON.parse(JSON.stringify(IDLE_MEDIA)))).toEqual(IDLE_MEDIA);
+		const shared = { ...state, live: "screen" as const };
+		expect(parseMediaState(JSON.parse(JSON.stringify(shared)))).toEqual(shared);
 	});
 
 	test("anything else isn't a state: the pop-out draws nothing it can't read", () => {
@@ -291,6 +331,7 @@ describe("a mirrored state", () => {
 		expect(parseMediaState({ ...state, video: "off" })).toBeNull();
 		expect(parseMediaState({ ...state, ping: "24" })).toBeNull();
 		expect(parseMediaState({ ...state, faces: "ana" })).toBeNull();
+		expect(parseMediaState({ ...state, live: "audio" })).toBeNull();
 	});
 
 	test("a face that isn't one is left out, and the rest stays", () => {

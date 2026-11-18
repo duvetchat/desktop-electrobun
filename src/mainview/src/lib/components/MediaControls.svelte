@@ -1,5 +1,15 @@
 <script lang="ts">
-	import { AudioLines, HeadphoneOff, Headphones, Mic, MicOff, PhoneOff, PictureInPicture2 } from "@lucide/svelte";
+	import {
+		AudioLines,
+		HeadphoneOff,
+		Headphones,
+		Mic,
+		MicOff,
+		PhoneCall,
+		PhoneOff,
+		PictureInPicture2,
+		SignalHigh,
+	} from "@lucide/svelte";
 	import { get } from "svelte/store";
 	import MediaButton from "$lib/components/MediaButton.svelte";
 	import MediaPanel from "$lib/components/MediaPanel.svelte";
@@ -9,7 +19,7 @@
 	import { mediaPopOut, popOutMedia, putBackMedia, showMediaWindow } from "$lib/media-popout.svelte";
 	import { currentShell } from "$lib/platform";
 	import { voiceKeyLabels } from "$lib/voice-keys";
-	import { leaveLabel, pingLabel } from "$lib/media-state";
+	import { isLive, leaveLabel, openPlaceLabel, pingLabel, placeTip } from "$lib/media-state";
 	import { canSpeakInVoice, liveMedia, liveMediaActions } from "$lib/media-source";
 	import { isMuted } from "$lib/stores.svelte";
 	import { sendVoiceSync } from "$lib/voice";
@@ -18,7 +28,9 @@
 	// voice one row (the microphone with its picker, deafen, noise suppression); in a voice room or a call, the call
 	// panel (where the user is, the ping on hover, the camera, the screen share and Disconnect). MediaPanel draws them
 	// from the stores' state (lib/media-source.ts). In a folded column (`collapsed`) they stack, and the microphone has
-	// no picker. It was part of UserStatusBar until the redesign.
+	// no picker; the voice the user is in is then one button, which opens it and says where it is and how its
+	// connection is (the Now section's voice dock said it there until the call panel took the dock's place). It was
+	// part of UserStatusBar until the redesign.
 	//
 	// In the desktop app the block can pop out into a window of its own (lib/media-popout.svelte.ts); while it is out,
 	// a slim row stands here in its place. The web has neither: `mediaPopOut.available` is the desktop app's alone.
@@ -42,6 +54,17 @@
 {#if collapsed}
 	<div class="flex flex-col items-center gap-1" role="group" aria-label="Voice controls">
 		{#if media.place}
+			<MediaButton
+				label={openPlaceLabel(media)}
+				tip={placeTip(media)}
+				shape="square"
+				side="right"
+				onclick={actions.openPlace}
+			>
+				<span class={isLive(media) ? "text-duvet-alive" : "text-duvet-ink2"} data-place={media.phase}>
+					{#if media.place.kind === "call"}<PhoneCall size={15} />{:else}<SignalHigh size={15} />{/if}
+				</span>
+			</MediaButton>
 			<MediaButton
 				label={leaveLabel(media)}
 				tip="{leaveLabel(media)} · {pingLabel(media)}"

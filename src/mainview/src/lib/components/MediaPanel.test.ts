@@ -121,6 +121,14 @@ describe("in a voice room", () => {
 		expect(words({ ...inRoom, phase: "closed" })).toContain("Disconnected");
 	});
 
+	test("marks a screen or a camera someone has on there, beside how the connection is", async () => {
+		expect((await drawn(inRoom)).some((tag) => "data-live" in tag.attributes)).toBe(false);
+		const shared = await drawn({ ...inRoom, live: "screen" });
+		expect(shared.find((tag) => "data-live" in tag.attributes)?.attributes.title).toBe("Sharing their screen");
+		expect(words({ ...inRoom, live: "screen" })).toContain("Sharing their screen");
+		expect(words({ ...inCall, live: "camera" })).toContain("Camera on");
+	});
+
 	test("has no settings gear: Settings is the profile menu's", async () => {
 		const all = await drawn(inRoom);
 		expect(named(all).some((name) => /settings/i.test(name ?? ""))).toBe(false);
