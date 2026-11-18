@@ -62,7 +62,7 @@
 	}
 </script>
 
-<Sheet bind:open title="Add Bot to Space" class="max-w-[420px]">
+<Sheet bind:open title="Add a bot to a Space" class="max-w-[420px]">
 	{#if loading}
 		<div class="text-duvet-ink2 flex items-center justify-center py-8">
 			<div class={spinnerClass("lg")} role="status" aria-label="Loading the bot"></div>

@@ -87,7 +87,7 @@
 	}
 </script>
 
-<Sheet bind:open title="Invite People" description={channel ? `#${channel.name}` : undefined} class="max-w-[460px]">
+<Sheet bind:open title="Invite people" description={channel ? `#${channel.name}` : undefined} class="max-w-[460px]">
 	<p class="text-duvet-ink text-[13px]">Share this invite link. Anyone with this link can join the Space.</p>
 
 	{#if isLoading}

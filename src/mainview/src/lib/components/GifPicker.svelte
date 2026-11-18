@@ -82,7 +82,7 @@
 	role="group"
 	aria-label="GIF picker"
 >
-	<p class="text-duvet-ink shrink-0 px-4 pt-3.5 text-[13.5px] font-semibold">GIF Picker</p>
+	<p class="text-duvet-ink shrink-0 px-4 pt-3.5 text-[13.5px] font-semibold">GIF picker</p>
 	<!-- KLIPY's attribution guidelines require "Search KLIPY" as the search box's placeholder. -->
 	<PickerSearch
 		bind:value={query}

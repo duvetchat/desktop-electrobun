@@ -57,7 +57,7 @@
 	}
 </script>
 
-<Sheet bind:open title="Space Invite" class="max-w-[420px]">
+<Sheet bind:open title="Space invite" class="max-w-[420px]">
 	{#if loading}
 		<div class="text-duvet-ink2 flex items-center justify-center py-8">
 			<div class={spinnerClass("lg")} role="status" aria-label="Loading the invite"></div>

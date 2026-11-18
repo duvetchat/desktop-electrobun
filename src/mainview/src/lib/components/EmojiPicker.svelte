@@ -63,13 +63,13 @@
 				<button
 					role="tab"
 					aria-selected={activeCategory === 0}
-					aria-label="Space Emojis"
+					aria-label="Space emojis"
 					class="text-duvet-ink2 grid h-7 w-[30px] shrink-0 cursor-pointer place-items-center rounded-lg transition-[opacity,background-color,filter] duration-[120ms] motion-reduce:transition-none {activeCategory ===
 					0
 						? 'bg-duvet-accent-tint opacity-100'
 						: 'hover:bg-duvet-hover opacity-70 grayscale hover:opacity-100 hover:grayscale-0'}"
 					onclick={() => (activeCategory = 0)}
-					title="Space Emojis"
+					title="Space emojis"
 				>
 					<Smile size={18} />
 				</button>
@@ -131,7 +131,7 @@
 			{/if}
 		{:else if hasCustom && activeCategory === 0}
 			<div class="text-duvet-ink2 px-1 pt-3 pb-1.5 text-[10.5px] font-semibold tracking-[0.06em] uppercase">
-				Space Emojis
+				Space emojis
 			</div>
 			<div class="grid grid-cols-8 gap-0.5">
 				{#each customEmojis as ce (ce.id)}

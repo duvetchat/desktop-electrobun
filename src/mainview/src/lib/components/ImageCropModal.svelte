@@ -19,7 +19,7 @@
 
 	let {
 		open = $bindable(false),
-		title = "Upload Image",
+		title = "Upload image",
 		aspect = 1,
 		round = false,
 		targetWidth = 256,

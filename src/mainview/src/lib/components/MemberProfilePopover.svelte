@@ -273,7 +273,7 @@
 								<!-- Permissions are a space's (its roles): a DM or a group has none, so there's nothing to view there. -->
 								{#if spaceId}
 									<button class={buttonClass("secondary", "sm")} onclick={() => (showPermissions = !showPermissions)}>
-										{showPermissions ? "Hide" : "View"} Permissions
+										{showPermissions ? "Hide" : "View"} permissions
 									</button>
 								{/if}
 							</div>
@@ -346,7 +346,7 @@
 								{#if currentUserCanManageRoles() && space && assignableRoles.length > 0}
 									<div class="bg-duvet-line my-3 h-px w-full"></div>
 									<h3 class="text-duvet-ink2 mb-1.5 text-left text-[10.5px] font-semibold tracking-[0.06em] uppercase">
-										Assign Roles
+										Assign roles
 									</h3>
 									<div class="max-h-32 space-y-1.5 overflow-y-auto">
 										{#each assignableRoles as role}

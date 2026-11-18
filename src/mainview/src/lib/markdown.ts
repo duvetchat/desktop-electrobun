@@ -489,7 +489,7 @@ function duvetLinkHtml(
 ): string {
 	if ("message" in link) {
 		const { spaceId, roomId, messageId, conversationId } = link.message;
-		const room = conversationId ? "Direct Message" : (roomNames?.[roomId] ?? "unknown");
+		const room = conversationId ? "Direct message" : (roomNames?.[roomId] ?? "unknown");
 		const space = conversationId ? "" : (spaceName(spaceId) ?? "Unknown Space");
 		const data = conversationId
 			? `data-conversation="${conversationId}" data-message="${messageId}"`

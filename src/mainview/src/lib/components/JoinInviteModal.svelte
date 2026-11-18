@@ -108,7 +108,7 @@
 		<div class="mt-1 flex items-center justify-end gap-2">
 			<Button variant="quiet" onclick={() => (open = false)}>Cancel</Button>
 			<Button onclick={handleJoin} disabled={joining}>
-				{joining ? "Joining…" : "Accept Invite"}
+				{joining ? "Joining…" : "Accept invite"}
 			</Button>
 		</div>
 	{/if}

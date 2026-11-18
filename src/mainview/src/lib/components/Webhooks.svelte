@@ -197,7 +197,7 @@
 	async function handleResetWebhookToken(wh: Webhook) {
 		await confirmAction(
 			"Reset this webhook's token? The old token will stop working immediately.",
-			"Reset Token",
+			"Reset token",
 			async () => {
 				try {
 					const newToken = await resetWebhookToken(space.id, wh.room_id, wh.id);
@@ -312,7 +312,7 @@
 						variant="secondary"
 						size="sm"
 						onclick={() => copyWebhookUrl(urls.url, "Webhook URL")}
-						title="Copy Webhook URL"
+						title="Copy webhook URL"
 					>
 						<CopyIcon size={13} />
 						Copy URL

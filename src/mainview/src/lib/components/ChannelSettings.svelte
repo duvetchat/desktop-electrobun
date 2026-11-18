@@ -81,7 +81,7 @@
 	// an overwrite that carries it keeps it, as an edit changes only the bit it toggles.
 	const PERMISSION_GROUPS = [
 		{
-			label: "General Room Permissions",
+			label: "General room permissions",
 			perms: [
 				{ flag: Permission.ViewChannels, name: "View Room", description: "Allows members to view this room." },
 				{
@@ -97,7 +97,7 @@
 			],
 		},
 		{
-			label: "Text Room Permissions",
+			label: "Text room permissions",
 			perms: [
 				{
 					flag: Permission.SendMessages,
@@ -117,7 +117,7 @@
 			],
 		},
 		{
-			label: "Voice Room Permissions",
+			label: "Voice room permissions",
 			perms: [
 				{ flag: Permission.JoinVoice, name: "Join Voice", description: "Allows members to join voice rooms." },
 				{

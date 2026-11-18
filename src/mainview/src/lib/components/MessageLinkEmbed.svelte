@@ -32,7 +32,7 @@
 	const space = $derived(!isConv ? ($gatewaySpaces.find((s) => s.id === spaceId) ?? null) : null);
 	const room = $derived(space?.rooms.find((r) => r.id === roomId) ?? null);
 	const conv = $derived(isConv ? ($conversations.find((c) => c.id === conversationId) ?? null) : null);
-	const convName = $derived(conv?.name ?? "Direct Message");
+	const convName = $derived(conv?.name ?? "Direct message");
 
 	function formatTime(dateStr: string): string {
 		return new Date(dateStr).toLocaleTimeString(locale, {

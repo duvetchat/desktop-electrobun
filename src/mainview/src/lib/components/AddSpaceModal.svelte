@@ -92,7 +92,7 @@
 
 	{#if modalTab === "create"}
 		<div class="flex flex-col gap-1.5">
-			<label for="server-name" class={FIELD_LABEL}>Space Name <span class="text-duvet-danger">*</span></label>
+			<label for="server-name" class={FIELD_LABEL}>Space name <span class="text-duvet-danger">*</span></label>
 			<input
 				id="server-name"
 				type="text"
@@ -118,7 +118,7 @@
 		{/if}
 	{:else}
 		<div class="flex flex-col gap-1.5">
-			<label for="join-code" class={FIELD_LABEL}>Invite Code or Link</label>
+			<label for="join-code" class={FIELD_LABEL}>Invite code or link</label>
 			<input
 				id="join-code"
 				type="text"
