@@ -14,7 +14,12 @@ import type { WindowKind } from "$lib/platform";
 export type SecondWindow = Exclude<WindowKind, "main">;
 
 /** Each window's page, by its route's name: the folder under src/routes, and <name>.html in the build. */
-export const SECOND_WINDOW_PAGES: Partial<Record<SecondWindow, string>> = { media: "voice-controls" };
+export const SECOND_WINDOW_PAGES: Partial<Record<SecondWindow, string>> = {
+	// The media controls' pop-out (routes/voice-controls, #357).
+	media: "voice-controls",
+	// Settings' own window (routes/settings, #357).
+	settings: "settings",
+};
 
 /** Electrobun's `copy` rules for pages: each prerendered page, from the UI's build into the app's views. */
 export function pageCopyRules(pages: readonly string[]): Record<string, string> {

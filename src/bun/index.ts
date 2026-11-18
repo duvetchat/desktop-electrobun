@@ -24,7 +24,10 @@ import { keepKeysReachingThePage, mainWindowTitleBar, type AppKit } from "./wind
 import { WindowRelay, type WindowAnswer, type WindowCommand, type WindowStateMessage } from "./window-relay";
 import { MediaWindows } from "./media-window";
 import { mediaWindowOpener } from "./media-window-open";
-import { secondWindowUrl } from "../mainview/src/lib/app-windows";
+// #357, the Windows workstream: Settings and a Space's settings in windows of their own.
+import { SettingsWindows, type OpenAppWindow } from "./settings-windows";
+import { createSettingsWindow } from "./settings-window-native";
+import { SECOND_WINDOW_PAGES, secondWindowUrl } from "../mainview/src/lib/app-windows";
 
 // When Bun started, and its own steps of the app's start, which the page's join in startup.log (startupTimings, #280):
 // its code running (what loads before it, Electrobun's API, comes first) and the window made.
@@ -103,6 +106,8 @@ type AppRPCSchema = {
 			startupTimings: { marks: Record<string, number> };
 			// From the main window: a state its other windows mirror, sent on to each of them.
 			windowState: WindowStateMessage;
+			// #357, the Windows workstream: open Settings or a Space's settings in its own window, or bring it forward.
+			openAppWindow: OpenAppWindow;
 		};
 	};
 	webview: {
@@ -224,6 +229,7 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 				// The media controls' pop-out opens and closes on the main page's wish, one of these states (#357).
 				mediaWindows.stateFromMain(message);
 			},
+			openAppWindow: (request) => void settingsWindows.open(request),
 			startupTimings: ({ marks }) => {
 				const line = `${new Date().toISOString()} ${startupSummary(processStart, { ...bunMarks, ...marks })}`;
 				console.log(line);
@@ -339,6 +345,30 @@ win.webview.on("did-navigate", (event: { data?: { detail?: unknown } }) => {
 	if (typeof to === "string") mediaWindows.mainNavigated(to);
 });
 // ── end of the media controls' pop-out ──────────────────────────────────────────────────────────────────────────────
+// ── #357, the Windows workstream's hook: the Settings windows (settings-windows.ts) ──────────────────────────────────
+const settingsWindows = new SettingsWindows({
+	platform: currentOS,
+	pages: SECOND_WINDOW_PAGES,
+	create: (spec) =>
+		createSettingsWindow(spec, {
+			renderer: rendererType,
+			pageUrl: (page) => (url === DEV_SERVER_URL ? `${DEV_SERVER_URL}/${page}` : `views://mainview/${page}.html`),
+			rules,
+			appkit,
+			openExternal: openExternalUrl,
+			command: (command) => relay.commandFromWindow(command),
+		}),
+	mainFrame: () => win.getFrame(),
+	displays: () => Screen.getAllDisplays(),
+	relay,
+	tellMain: (command) => void rpc.request.windowCommand(command).catch(() => undefined),
+	focusMain: () => win.focus(),
+});
+// They show what the main window's page shares: they go with the main window, and when its page loads again (a
+// sign-out, a reload).
+win.on("close", () => settingsWindows.closeAll());
+win.webview.on("dom-ready", () => settingsWindows.closeAll());
+// ── end of the Windows workstream's hook ─────────────────────────────────────────────────────────────────────────────
 
 // What Electrobun reports as a new window goes to the system browser: a Ctrl or Cmd click. The webview sends every
 // other click on a link over RPC (openExternal, lib/external-links.ts). On Windows and Linux Electrobun has no hook for

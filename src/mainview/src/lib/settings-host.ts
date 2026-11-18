@@ -4,6 +4,7 @@
 import { logout } from "$lib/api/auth";
 import { applyOwnProfile, type SavedProfile } from "$lib/own-profile";
 import { gatewaySpaces } from "$lib/stores.svelte";
+import { toast } from "$lib/stores/toast.svelte";
 
 /** How chats draw their messages: the conversation's own preference, kept under this key (lib/message-layout.ts). */
 export const MESSAGE_LAYOUT_KEY = "duvet.messages.layout.v1";
@@ -30,11 +31,13 @@ export interface SettingsHost {
 	profileSaved(saved: SavedProfile): void;
 	/** A Space's overview was saved: its new name, icon and the rest show at once. */
 	spaceSaved(spaceId: string, saved: SavedSpace): void;
-	/** A Space was deleted: it goes from the app at once. */
-	spaceDeleted(spaceId: string): void;
+	/** A Space was deleted: it goes from the app at once, and the app says so. */
+	spaceDeleted(spaceId: string, name: string): void;
 	/** Bubbles or flat rows. */
 	messageLayout(): MessageLayout;
 	setMessageLayout(layout: MessageLayout): void;
+	/** The code theme was loaded from a URL, or reset (an empty one): every window's code blocks take it. */
+	codeThemeChanged(url: string): void;
 }
 
 /** A Space with what its Overview saved; a gateway from before the default leaves it as it was. */
@@ -88,7 +91,13 @@ export const pageSettingsHost: SettingsHost = {
 	logout,
 	profileSaved: applyOwnProfile,
 	spaceSaved: (spaceId, saved) => gatewaySpaces.update((spaces) => withSavedSpace(spaces, spaceId, saved)),
-	spaceDeleted: (spaceId) => gatewaySpaces.update((spaces) => spaces.filter((space) => space.id !== spaceId)),
+	spaceDeleted: (spaceId, name) => {
+		// SPACE_DELETE follows; the Space goes at once, and with it its panes and its voice room.
+		gatewaySpaces.update((spaces) => spaces.filter((space) => space.id !== spaceId));
+		toast(`${name} was deleted`, "success");
+	},
 	messageLayout: readMessageLayout,
 	setMessageLayout: writeMessageLayout,
+	// The page that loaded the theme is the one whose code blocks show it.
+	codeThemeChanged: () => {},
 };

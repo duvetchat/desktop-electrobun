@@ -1,0 +1,322 @@
+import { describe, expect, test } from "bun:test";
+import {
+	parseOpenAppWindow,
+	settingsChrome,
+	settingsFrame,
+	settingsPreload,
+	SettingsWindows,
+	windowKey,
+	windowTitle,
+	type AppWindow,
+	type AppWindowSpec,
+	type SettingsWindowsDeps,
+} from "./settings-windows";
+import type { DisplayArea } from "./window-frame";
+import type { WindowCommand, WindowStateMessage } from "./window-relay";
+
+const display = (x: number, y: number, width: number, height: number, isPrimary = false): DisplayArea => ({
+	bounds: { x, y, width, height },
+	workArea: { x, y: y + 25, width, height: height - 25 },
+	isPrimary,
+});
+const laptop = display(0, 0, 1512, 982, true);
+
+describe("where a Settings window opens", () => {
+	test("at the design's size, centred over the main window", () => {
+		const main = { x: 100, y: 60, width: 1300, height: 860 };
+		expect(settingsFrame("settings", main, [laptop])).toEqual({ x: 320, y: 180, width: 860, height: 620 });
+		expect(settingsFrame("space-settings", main, [laptop])).toEqual({ x: 280, y: 160, width: 940, height: 660 });
+	});
+
+	test("each further window a step down and right", () => {
+		const main = { x: 100, y: 60, width: 1300, height: 860 };
+		expect(settingsFrame("settings", main, [laptop], 1)).toEqual({ x: 348, y: 208, width: 860, height: 620 });
+		expect(settingsFrame("settings", main, [laptop], 2)).toEqual({ x: 376, y: 236, width: 860, height: 620 });
+	});
+
+	test("never past the edges of the display the main window is on", () => {
+		// The main window hangs off the right and the bottom.
+		const main = { x: 1100, y: 600, width: 1300, height: 860 };
+		const frame = settingsFrame("settings", main, [laptop]);
+		expect(frame).toEqual({ x: 1512 - 860, y: 982 - 620, width: 860, height: 620 });
+		// And off the top left.
+		expect(settingsFrame("settings", { x: -900, y: -700, width: 1300, height: 860 }, [laptop])).toEqual({
+			x: 0,
+			y: 25,
+			width: 860,
+			height: 620,
+		});
+	});
+
+	test("smaller on a display too small for it: the work area less 80 each way", () => {
+		const small = display(0, 0, 800, 600, true);
+		expect(settingsFrame("space-settings", { x: 0, y: 25, width: 800, height: 575 }, [small])).toEqual({
+			x: 40,
+			y: 65,
+			width: 720,
+			height: 495,
+		});
+	});
+
+	test("on the main window's display, not the primary one", () => {
+		const second = display(1512, 0, 1920, 1080);
+		const frame = settingsFrame("settings", { x: 1700, y: 100, width: 1400, height: 900 }, [laptop, second]);
+		expect(frame.x).toBeGreaterThanOrEqual(1512);
+		expect(frame).toEqual({ x: 1970, y: 240, width: 860, height: 620 });
+	});
+
+	test("over the main window itself when no display is known", () => {
+		expect(settingsFrame("settings", { x: 10, y: 10, width: 1000, height: 700 }, [])).toEqual({
+			x: 80,
+			y: 50,
+			width: 860,
+			height: 620,
+		});
+	});
+});
+
+describe("what the page asks for", () => {
+	test("Settings, with or without a section", () => {
+		expect(parseOpenAppWindow({ window: "settings" })).toEqual({ window: "settings" });
+		expect(parseOpenAppWindow({ window: "settings", section: "appearance" })).toEqual({
+			window: "settings",
+			section: "appearance",
+		});
+	});
+
+	test("a Space's settings, by its ID and name", () => {
+		expect(parseOpenAppWindow({ window: "space-settings", spaceId: "s1", name: "Harbour Lights" })).toEqual({
+			window: "space-settings",
+			spaceId: "s1",
+			name: "Harbour Lights",
+		});
+	});
+
+	test("nothing else", () => {
+		for (const value of [null, "settings", {}, { window: "media" }, { window: "space-settings" }, { window: 1 }]) {
+			expect(parseOpenAppWindow(value)).toBeNull();
+		}
+	});
+
+	test("one window for Settings and one for each Space", () => {
+		expect(windowKey({ window: "settings", section: "audio" })).toBe("settings");
+		expect(windowKey({ window: "space-settings", spaceId: "s1", name: "A" })).toBe("space:s1");
+		expect(windowKey({ window: "space-settings", spaceId: "s2", name: "A" })).toBe("space:s2");
+	});
+
+	test("the title the system shows", () => {
+		expect(windowTitle({ window: "settings" })).toBe("Duvet settings");
+		expect(windowTitle({ window: "space-settings", spaceId: "s1", name: "Harbour Lights" })).toBe(
+			"Harbour Lights · Space settings",
+		);
+		expect(windowTitle({ window: "space-settings", spaceId: "s1", name: "" })).toBe("Space · Space settings");
+	});
+});
+
+/** Runs a preload as the page would, with `window` the page given. */
+function preloaded(script: string, page: Record<string, unknown>): Record<string, unknown> {
+	// oxlint-disable-next-line typescript/no-implied-eval, typescript/no-unsafe-call -- a preload is a script: the test runs it
+	new Function("window", script)(page);
+	return page;
+}
+const topPage = (): Record<string, unknown> => {
+	const page: Record<string, unknown> = {};
+	page.top = page;
+	return page;
+};
+
+describe("the window's chrome and what its page is told", () => {
+	test("macOS draws its traffic lights over a title bar that takes keys; elsewhere the page draws the buttons", () => {
+		expect(settingsChrome("darwin")).toEqual({ titleBarStyle: "hiddenInset", nativeButtons: true });
+		expect(settingsChrome("win32")).toEqual({ titleBarStyle: "hidden", nativeButtons: false });
+		expect(settingsChrome("linux")).toEqual({ titleBarStyle: "hidden", nativeButtons: false });
+	});
+
+	test("the preload says which window this is, and its Space and section", () => {
+		const page = preloaded(
+			settingsPreload({ window: "space-settings", spaceId: "s1", name: "A" }, "darwin"),
+			topPage(),
+		);
+		expect(page.__duvetShell).toEqual({
+			os: "darwin",
+			titleBarStyle: "hiddenInset",
+			nativeButtons: true,
+			window: "space-settings",
+		});
+		expect(page.__duvetSettings).toEqual({ spaceId: "s1", section: null });
+		expect(Object.isFrozen(page.__duvetSettings)).toBe(true);
+
+		const settings = preloaded(settingsPreload({ window: "settings", section: "audio" }, "win32"), topPage());
+		expect(settings.__duvetSettings).toEqual({ spaceId: null, section: "audio" });
+		expect(settings.__duvetShell).toMatchObject({ window: "settings", nativeButtons: false });
+	});
+
+	// Electrobun injects preloads into subframes on some platforms: an embedded page is told nothing.
+	test("a frame inside the page is told nothing", () => {
+		const frame = preloaded(settingsPreload({ window: "settings" }, "darwin"), { top: {} });
+		expect(frame.__duvetSettings).toBeUndefined();
+	});
+
+	// What the page sent goes into a script: it stays data there.
+	test("a value can't break out of the preload", () => {
+		const spaceId = 's1"});window.hacked=true;({"a":"';
+		const page = preloaded(
+			settingsPreload({ window: "space-settings", spaceId, name: "x", section: "</script>" }, "linux"),
+			topPage(),
+		);
+		expect(page.hacked).toBeUndefined();
+		expect(page.__duvetSettings).toEqual({ spaceId, section: "</script>" });
+	});
+});
+
+/** The manager with windows that only record what's done to them. */
+function manager(pages: SettingsWindowsDeps["pages"] = { settings: "settings", "space-settings": "space-settings" }) {
+	const log: string[] = [];
+	const made: (AppWindowSpec & {
+		id: number;
+		sent: WindowStateMessage[];
+		ready: () => void;
+		closed: () => void;
+	})[] = [];
+	const told: WindowCommand[] = [];
+	const mirrors = new Set<number>();
+	const windows = new SettingsWindows({
+		platform: "darwin",
+		pages,
+		mainFrame: () => ({ x: 100, y: 60, width: 1300, height: 860 }),
+		displays: () => [laptop],
+		create(spec) {
+			const id = made.length + 2;
+			const handlers: { ready: (() => void)[]; close: (() => void)[] } = { ready: [], close: [] };
+			const record = {
+				...spec,
+				id,
+				sent: [] as WindowStateMessage[],
+				ready: () => handlers.ready.forEach((handler) => handler()),
+				closed: () => handlers.close.forEach((handler) => handler()),
+			};
+			made.push(record);
+			const window: AppWindow = {
+				id,
+				focus: () => log.push(`focus ${id}`),
+				// A window closes a moment after it's asked to, as Electrobun's do.
+				close: () => log.push(`close ${id}`),
+				send: (message) => record.sent.push(message),
+				onReady: (handler) => handlers.ready.push(handler),
+				onClose: (handler) => handlers.close.push(handler),
+			};
+			return window;
+		},
+		relay: {
+			add: (id, send) => {
+				mirrors.add(id);
+				send({ channel: "sync:user", epoch: 1, seq: 1, sentAt: 0, value: { id: "u1" } });
+			},
+			remove: (id) => mirrors.delete(id),
+		},
+		tellMain: (command) => told.push(command),
+		focusMain: () => log.push("focus main"),
+		now: () => 1000,
+	});
+	return { windows, made, log, told, mirrors };
+}
+
+describe("the Settings windows", () => {
+	test("Settings opens in a window of its own, with its page, title, size and chrome", () => {
+		const { windows, made } = manager();
+		expect(windows.open({ window: "settings" })).toBe(true);
+		expect(made).toHaveLength(1);
+		expect(made[0]).toMatchObject({
+			kind: "settings",
+			page: "settings",
+			title: "Duvet settings",
+			frame: { x: 320, y: 180, width: 860, height: 620 },
+			titleBarStyle: "hiddenInset",
+			nativeButtons: true,
+		});
+		expect(windows.count).toBe(1);
+	});
+
+	test("asking for the open one brings it forward instead of making another", () => {
+		const { windows, made, log } = manager();
+		windows.open({ window: "settings" });
+		windows.open({ window: "settings" });
+		expect(made).toHaveLength(1);
+		expect(log).toEqual(["focus 2"]);
+	});
+
+	test("an open window asked for a section is told to show it", () => {
+		const { windows, made } = manager();
+		windows.open({ window: "settings" });
+		windows.open({ window: "settings", section: "appearance" });
+		windows.open({ window: "settings", section: "audio" });
+		const goto = (seq: number, section: string) => ({
+			channel: "settings:goto",
+			epoch: 1000,
+			seq,
+			sentAt: 1000,
+			value: { spaceId: null, section },
+		});
+		expect(made[0].sent).toEqual([goto(1, "appearance"), goto(2, "audio")]);
+	});
+
+	test("each Space has its own window, a step down and right of the last", () => {
+		const { windows, made } = manager();
+		windows.open({ window: "settings" });
+		windows.open({ window: "space-settings", spaceId: "s1", name: "Harbour Lights" });
+		windows.open({ window: "space-settings", spaceId: "s2", name: "Kiln & Clay" });
+		windows.open({ window: "space-settings", spaceId: "s1", name: "Harbour Lights" });
+		expect(made.map((spec) => spec.title)).toEqual([
+			"Duvet settings",
+			"Harbour Lights · Space settings",
+			"Kiln & Clay · Space settings",
+		]);
+		expect(made[1].frame).toEqual({ x: 308, y: 188, width: 940, height: 660 });
+		expect(made[2].frame).toEqual({ x: 336, y: 216, width: 940, height: 660 });
+	});
+
+	test("a window mirrors the main one once its page can take messages, and again after a reload", () => {
+		const { windows, made, mirrors } = manager();
+		windows.open({ window: "settings" });
+		expect(mirrors.size).toBe(0);
+		made[0].ready();
+		expect([...mirrors]).toEqual([2]);
+		expect(made[0].sent.map((message) => message.channel)).toEqual(["sync:user"]);
+		made[0].ready();
+		expect(made[0].sent).toHaveLength(2);
+	});
+
+	test("closing one gives the main window the focus back, leaves the relay and tells the main window", () => {
+		const { windows, made, log, told, mirrors } = manager();
+		windows.open({ window: "space-settings", spaceId: "s1", name: "Harbour Lights" });
+		made[0].ready();
+		made[0].closed();
+		expect(log).toEqual(["focus main"]);
+		expect(mirrors.size).toBe(0);
+		expect(told).toEqual([{ channel: "settings", name: "closed", args: { window: "space-settings", spaceId: "s1" } }]);
+		expect(windows.count).toBe(0);
+		// The next request makes a new one.
+		windows.open({ window: "space-settings", spaceId: "s1", name: "Harbour Lights" });
+		expect(made).toHaveLength(2);
+	});
+
+	test("closing them all, with the main window, gives no focus back, however late each one closes", () => {
+		const { windows, made, log } = manager();
+		windows.open({ window: "settings" });
+		windows.open({ window: "space-settings", spaceId: "s1", name: "A" });
+		windows.closeAll();
+		expect(log).toEqual(["close 2", "close 3"]);
+		made[0].closed();
+		made[1].closed();
+		expect(log).toEqual(["close 2", "close 3"]);
+		expect(windows.count).toBe(0);
+	});
+
+	test("opens nothing for a request that names no window, or a window whose page isn't built", () => {
+		const { windows, made } = manager({ settings: "settings" });
+		expect(windows.open({ window: "media" })).toBe(false);
+		expect(windows.open(null)).toBe(false);
+		expect(windows.open({ window: "space-settings", spaceId: "s1", name: "A" })).toBe(false);
+		expect(made).toHaveLength(0);
+	});
+});

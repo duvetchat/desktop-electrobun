@@ -1,5 +1,6 @@
 import { activityThumbnail, base64Bytes } from "$lib/activity-thumbnail";
 import type { MessageLink } from "$lib/urls";
+import type { OpenAppWindow } from "$lib/settings-windows";
 import type { WindowAnswer, WindowCommand, WindowStateMessage } from "$lib/window-link";
 
 /** A message's notification on Windows, as the Bun process shows it (src/bun/index.ts): who, what and where, the
@@ -55,6 +56,9 @@ export type AppRPCSchema = {
 			startupTimings: { marks: Record<string, number> };
 			// From the main window: a state its other windows mirror, which Bun sends on to each of them.
 			windowState: WindowStateMessage;
+			// From the main window: open Settings, or a Space's settings, in a window of its own, or bring the open one
+			// forward (src/bun/settings-windows.ts, #357).
+			openAppWindow: OpenAppWindow;
 		};
 	};
 	webview: {
@@ -84,6 +88,7 @@ export type AppRPCClient = {
 		setSpotifyActivity: (params: { enabled: boolean }) => void;
 		startupTimings: (params: { marks: Record<string, number> }) => void;
 		windowState: (message: WindowStateMessage) => void;
+		openAppWindow: (request: OpenAppWindow) => void;
 	};
 	request: {
 		showNotification: (params: NotificationRequest) => Promise<boolean>;

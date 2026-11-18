@@ -158,6 +158,7 @@
 		mobileOnly = false,
 		host = pageSettingsHost,
 		section = undefined,
+		asked = null,
 	}: {
 		mode?: "sheet" | "window";
 		chrome?: Shell["chrome"];
@@ -167,6 +168,8 @@
 		host?: SettingsHost;
 		/** The section to open on; the one viewed last without it. */
 		section?: Section;
+		/** A section asked of the open window, each time it is: `at` tells one asking from the next. */
+		asked?: { section?: Section; at: number } | null;
 	} = $props();
 
 	// Only the desktop app reads what this computer plays.
@@ -180,6 +183,10 @@
 		}
 	}
 	let activeSection = $state<Section>(untrack(() => section ?? (mode === "window" ? savedSection() : "account")));
+	$effect(() => {
+		const next = asked?.section;
+		if (next) untrack(() => (activeSection = next));
+	});
 	$effect(() => {
 		if (mode !== "window") return;
 		try {
@@ -582,6 +589,7 @@
 				toast("Code theme applied!", "success");
 			}
 			themeVersion++;
+			host.codeThemeChanged(url);
 		} catch (e) {
 			toast(getApiError(e, "Failed to load theme"), "error");
 		} finally {

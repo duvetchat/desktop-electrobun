@@ -18,7 +18,10 @@
 
 	// Whether this page has window chrome to draw is the platform switch's call (lib/platform.ts): none on the web,
 	// where the browser has its own; the app's title bar in the desktop app, on every page, the sign-in ones included.
-	const chrome = currentShell().chrome;
+	// The app's other windows (the media controls' pop-out, Settings, a Space's settings: lib/app-windows.ts) draw their
+	// own chrome: the title bar here is the main window's.
+	const shell = currentShell();
+	const titleBar = shell.window === "main" && shell.chrome !== "web";
 
 	onMount(() => {
 		setupExternalLinks();
@@ -32,7 +35,7 @@
 </svelte:head>
 
 <div class="bg-duvet-sunk text-duvet-ink flex h-(--app-height) w-(--app-width) flex-col overflow-hidden">
-	{#if chrome !== "web"}
+	{#if titleBar}
 		<Header />
 	{/if}
 	<div class="min-h-0 flex-1 overflow-hidden">
