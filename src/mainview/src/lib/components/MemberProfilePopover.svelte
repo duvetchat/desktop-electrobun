@@ -25,7 +25,6 @@
 		open = false,
 		onOpenChange = () => {},
 		triggerClass = "",
-		triggerStyle = "",
 		onRemoveMember = undefined,
 		anchor = null,
 		children,
@@ -37,7 +36,6 @@
 		open?: boolean;
 		onOpenChange?: (open: boolean) => void;
 		triggerClass?: string;
-		triggerStyle?: string;
 		onRemoveMember?: (userId: string) => void;
 		/** What it opens beside, for one that opens by other means than a click on its children, and then has none. */
 		anchor?: HTMLElement | null;
@@ -174,7 +172,7 @@
 	}}
 >
 	{#if children}
-		<Popover.Trigger class={triggerClass} style={triggerStyle}>
+		<Popover.Trigger class={triggerClass}>
 			{@render children()}
 		</Popover.Trigger>
 	{/if}

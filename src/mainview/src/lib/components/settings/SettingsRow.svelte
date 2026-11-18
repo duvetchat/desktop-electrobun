@@ -7,7 +7,6 @@
 		label,
 		line = undefined,
 		icon = undefined,
-		danger = false,
 		stacked = false,
 		labelFor = undefined,
 		class: className = "",
@@ -16,7 +15,6 @@
 		label: string;
 		line?: string;
 		icon?: Component<{ size?: number | string }>;
-		danger?: boolean;
 		stacked?: boolean;
 		/** The ID of the control the label names. */
 		labelFor?: string;
@@ -42,13 +40,9 @@
 		{/if}
 		<div class="min-w-0 flex-1">
 			{#if labelFor}
-				<label
-					for={labelFor}
-					class="block text-[13.5px] leading-[1.3] font-medium {danger ? 'text-duvet-danger' : 'text-duvet-ink'}"
-					>{label}</label
-				>
+				<label for={labelFor} class="text-duvet-ink block text-[13.5px] leading-[1.3] font-medium">{label}</label>
 			{:else}
-				<p class="text-[13.5px] leading-[1.3] font-medium {danger ? 'text-duvet-danger' : 'text-duvet-ink'}">
+				<p class="text-duvet-ink text-[13.5px] leading-[1.3] font-medium">
 					{label}
 				</p>
 			{/if}

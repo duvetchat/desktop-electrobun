@@ -1,6 +1,6 @@
 // What a settings screen asks of the page it is in (#357). The screens are the same on the web, where they are sheets
 // of the app's own page, and in the desktop app, where each fills a window of its own that has none of the app's
-// stores: there the host sends these on to the main window (lib/stores/settings-link.svelte.ts).
+// stores: there the host sends these on to the main window (lib/stores/settings-guest-link.svelte.ts).
 import { logout } from "$lib/api/auth";
 import { applyOwnProfile, type SavedProfile } from "$lib/own-profile";
 import { MESSAGE_LAYOUT_KEY, type MessageLayout } from "$lib/message-layout";

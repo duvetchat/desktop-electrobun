@@ -5,7 +5,6 @@
 		value,
 		min = 0,
 		max = 100,
-		step = 1,
 		label,
 		oninput,
 		class: className = "",
@@ -13,7 +12,6 @@
 		value: number;
 		min?: number;
 		max?: number;
-		step?: number;
 		/** What it sets, for a screen reader. */
 		label: string;
 		oninput: (value: number) => void;
@@ -30,7 +28,7 @@
 	type="range"
 	{min}
 	{max}
-	{step}
+	step={1}
 	{value}
 	aria-label={label}
 	oninput={(event) => oninput(Number(event.currentTarget.value))}
