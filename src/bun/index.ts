@@ -16,7 +16,7 @@ import { startSpotifyReader, type SpotifyActivity } from "./spotify";
 import { ipcHeld, ipcPath, LineReader } from "./ipc";
 import { navigationRules } from "./navigation";
 import { Maximizer } from "./window-frame";
-import { letWindowsArrange } from "./window-snap";
+import { dragWithWindows, letWindowsArrange } from "./window-snap";
 import { startupSummary, writeStartupLine } from "./startup";
 
 // When Bun started, and its own steps of the app's start, which the page's join in startup.log (startupTimings, #280):
@@ -68,11 +68,16 @@ type AppRPCSchema = {
 			// The message of the toast clicked last, kept until a page takes it: a click can come before any page listens
 			// (a Duvet the click started, its sign-in page, a reload). null for none.
 			takeClickedMessage: { params: void; response: NotificationLink | null };
+			// Whether Windows' move loop drags the window: on Windows, once window-snap.ts is in (#348). The page then
+			// reports the title bar's presses (startWindowDrag) instead of leaving them to Electrobun's drag.
+			nativeWindowDrag: { params: void; response: boolean };
 		};
 		messages: {
 			closeWindow: void;
 			minimizeWindow: void;
 			maximizeWindow: void;
+			// A press on the title bar: Windows' move loop takes it if it turns into a drag (window-snap.ts).
+			startWindowDrag: void;
 			openExternal: { url: string };
 			setWindowFrame: {
 				x: number;
@@ -167,6 +172,7 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 				clicked = null;
 				return link;
 			},
+			nativeWindowDrag: () => arrangedByWindows,
 		},
 		messages: {
 			closeWindow: () => win.close(),
@@ -181,6 +187,9 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 				}
 				const frame = maximizer.press(win.getFrame(), Screen.getAllDisplays());
 				if (frame) win.setFrame(frame.x, frame.y, frame.width, frame.height);
+			},
+			startWindowDrag: () => {
+				if (arrangedByWindows) void dragWithWindows(win.ptr);
 			},
 			openExternal: ({ url: externalUrl }) => openExternalUrl(externalUrl),
 			setSpotifyActivity: ({ enabled }) => {
