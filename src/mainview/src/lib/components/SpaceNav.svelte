@@ -320,7 +320,9 @@
 </script>
 
 {#snippet mentionChip(count: number)}
-	<span class="{chip} bg-duvet-accent text-duvet-on-accent" aria-label={mentionsLabel(count)}>{chipCount(count)}</span>
+	<span class="{chip} bg-duvet-accent text-duvet-on-accent" role="img" aria-label={mentionsLabel(count)}
+		>{chipCount(count)}</span
+	>
 {/snippet}
 
 {#snippet sectionHead(title: string)}
@@ -386,11 +388,12 @@
 								: 'font-medium'}">{guild.name}</span
 						>
 						{#if pinned}
-							<PinIcon class="text-duvet-ink2 size-[11px] shrink-0" aria-label="Pinned" />
+							<PinIcon class="text-duvet-ink2 size-[11px] shrink-0" role="img" aria-label="Pinned" />
 						{/if}
 						{#if news?.inVoice}
 							<span
 								class="text-duvet-ink2 flex shrink-0 items-center gap-1 text-[11.5px]"
+								role="img"
 								aria-label="{news.inVoice} in voice"
 							>
 								<span class="bg-duvet-alive size-[7px] rounded-full"></span>{news.inVoice}
@@ -399,7 +402,7 @@
 						{#if news?.mentions}
 							{@render mentionChip(news.mentions)}
 						{:else if news?.unread && !open}
-							<span class="bg-duvet-ink size-[7px] shrink-0 rounded-full" aria-label="Unread"></span>
+							<span class="bg-duvet-ink size-[7px] shrink-0 rounded-full" role="img" aria-label="Unread"></span>
 						{/if}
 					</button>
 					<Menu align="start" label="Space menu">
@@ -542,7 +545,7 @@
 						{#if openChats.tabs.length === 0}
 							<p class="text-duvet-ink2 px-2.5 py-1 text-[13px]">Pick a room to open it here</p>
 						{/if}
-						<ul class="flex flex-col gap-px" aria-label="Open chats">
+						<ul class="flex flex-col gap-px">
 							{#each openChats.tabs as tab (tab.channelId)}
 								{@const isActive = tab.channelId === openChats.activeChannelId && !isFriendsActive}
 								{@const news = tabNews(tab, $shownUnreadRooms, $shownUnreadConversations, $shownMentionCounts)}
@@ -639,6 +642,7 @@
 							{#if friendRequests}
 								<span
 									class="{chip} bg-duvet-secondary-fill text-duvet-ink"
+									role="img"
 									aria-label={friendRequestsLabel(friendRequests)}
 									title={friendRequestsLabel(friendRequests)}>{chipCount(friendRequests)}</span
 								>
@@ -760,11 +764,13 @@
 			{#if sidebar.filter === "spaces" && unreadChats}
 				<span
 					class="bg-duvet-accent pointer-events-none absolute top-1.5 left-[calc(66.666%-12px)] size-[5px] rounded-full"
+					role="img"
 					aria-label="Unread chats"
 				></span>
 			{:else if sidebar.filter === "chats" && unreadRooms}
 				<span
 					class="bg-duvet-accent pointer-events-none absolute top-1.5 right-[9px] size-[5px] rounded-full"
+					role="img"
 					aria-label="Unread rooms"
 				></span>
 			{/if}

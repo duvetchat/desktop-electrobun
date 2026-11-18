@@ -145,7 +145,7 @@
 										: 'text-duvet-ink font-medium'}">{convTitle(conv)}</span
 							>
 							{#if muted}
-								<BellOffIcon class="text-duvet-ink2 size-[11px] shrink-0" aria-label="Notifications off" />
+								<BellOffIcon class="text-duvet-ink2 size-[11px] shrink-0" role="img" aria-label="Notifications off" />
 							{/if}
 						</span>
 						{#if inCall}
@@ -169,10 +169,11 @@
 						<!-- Its mentions, as a room's row counts them -->
 						<span
 							class="bg-duvet-accent text-duvet-on-accent flex h-[18px] min-w-[18px] shrink-0 items-center justify-center rounded-full px-1.5 text-[10.5px] font-bold"
+							role="img"
 							aria-label={mentionsLabel(news.mentions)}>{chipCount(news.mentions)}</span
 						>
 					{:else if unread}
-						<span class="bg-duvet-accent size-2 shrink-0 rounded-full" aria-label="Unread"></span>
+						<span class="bg-duvet-accent size-2 shrink-0 rounded-full" role="img" aria-label="Unread"></span>
 					{/if}
 				</button>
 			{/snippet}

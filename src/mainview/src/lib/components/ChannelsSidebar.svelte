@@ -515,6 +515,7 @@
 							{#if channel.type === "text" && $shownMentionCounts[channel.id]}
 								<span
 									class="bg-duvet-accent text-duvet-on-accent ml-1 flex h-[18px] min-w-[18px] shrink-0 items-center justify-center rounded-full px-1.5 text-[10.5px] font-bold"
+									role="img"
 									aria-label={mentionsLabel($shownMentionCounts[channel.id] ?? 0)}
 									>{chipCount($shownMentionCounts[channel.id] ?? 0)}</span
 								>
@@ -585,17 +586,18 @@
 									{#if isSharing}
 										<span
 											class="bg-duvet-call-red text-duvet-on-call-red rounded-[5px] px-[5px] py-[3px] text-[9px] leading-none font-bold tracking-wide uppercase"
+											role="img"
 											aria-label="Sharing their screen">Live</span
 										>
 									{/if}
 									{#if user.camera}
-										<VideoIcon class="size-3" aria-label="Camera on" />
+										<VideoIcon class="size-3" role="img" aria-label="Camera on" />
 									{/if}
 									{#if user.muted}
-										<MicrophoneSlashIcon class="text-duvet-danger size-3" aria-label="Muted" />
+										<MicrophoneSlashIcon class="text-duvet-danger size-3" role="img" aria-label="Muted" />
 									{/if}
 									{#if user.deafened}
-										<HeadphonesIcon class="text-duvet-danger size-3" aria-label="Deafened" />
+										<HeadphonesIcon class="text-duvet-danger size-3" role="img" aria-label="Deafened" />
 									{/if}
 								</div>
 							</div>

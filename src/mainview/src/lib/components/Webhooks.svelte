@@ -221,7 +221,7 @@
 {#snippet avatarSlot(preview: string | null, size: string, pick: () => void, remove: () => void)}
 	<div class="group/avatar bg-duvet-secondary-fill relative shrink-0 overflow-hidden rounded-[28%] {size}">
 		{#if preview}
-			<img src={preview} alt="Preview" class="size-full object-cover" />
+			<img src={preview} alt="" class="size-full object-cover" />
 		{:else}
 			<div class="text-duvet-ink2 flex size-full items-center justify-center">
 				<WebhookIcon class="size-1/2" />

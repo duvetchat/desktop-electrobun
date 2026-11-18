@@ -395,7 +395,9 @@
 
 	async function handleDeleteBucket(id: string) {
 		const b = buckets.find((x) => x.id === id);
-		await confirmAction(`Delete bucket "${b?.name}"?`, "Delete", async () => {
+		// Gone already (deleted elsewhere): there is nothing to name, or to delete.
+		if (!b) return;
+		await confirmAction(`Delete bucket "${b.name}"?`, "Delete", async () => {
 			try {
 				await deleteMyBucket(id);
 			} catch (err) {
@@ -1433,7 +1435,7 @@
 					{sendingReset ? "Sending..." : "Reset password"}
 				</Button>
 			</SettingsRow>
-			<SettingsRow label="Email" line="Current: —" icon={MailIcon} labelFor="new-email" stacked>
+			<SettingsRow label="Email" icon={MailIcon} labelFor="new-email" stacked>
 				<input
 					id="new-email"
 					type="email"
@@ -2342,7 +2344,7 @@
 															<!-- Avatar -->
 															<div class="group relative">
 																{#if botAvatarPreview}
-																	<img src={botAvatarPreview} alt="avatar" class="size-12 rounded-[28%] object-cover" />
+																	<img src={botAvatarPreview} alt="" class="size-12 rounded-[28%] object-cover" />
 																	<button
 																		class="bg-duvet-media-scrim absolute inset-0 flex items-center justify-center rounded-[28%] opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 motion-reduce:transition-none"
 																		onclick={clearBotAvatar}
@@ -2368,7 +2370,7 @@
 																{:else if botU?.avatar}
 																	<img
 																		src={getAvatarURL(botU.id, botU.avatar)}
-																		alt="avatar"
+																		alt=""
 																		class="size-12 rounded-[28%] object-cover"
 																	/>
 																	<div
@@ -2406,7 +2408,7 @@
 																{#if botBannerPreview}
 																	<img
 																		src={botBannerPreview}
-																		alt="banner"
+																		alt=""
 																		class="aspect-[5/2] h-12 rounded-[9px] object-cover"
 																	/>
 																	<button
@@ -2434,7 +2436,7 @@
 																{:else if botU?.banner}
 																	<img
 																		src={getAvatarURL(botU.id, botU.banner)}
-																		alt="banner"
+																		alt=""
 																		class="aspect-[5/2] h-12 rounded-[9px] object-cover"
 																	/>
 																	<div

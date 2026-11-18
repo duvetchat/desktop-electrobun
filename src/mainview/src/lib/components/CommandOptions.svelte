@@ -243,7 +243,7 @@
 		{/each}
 		{#if sending}
 			<!-- Waiting on the bot, as the typing indicator's dots -->
-			<span class="text-duvet-ink2 flex items-center gap-1" aria-label="Waiting for the application">
+			<span class="text-duvet-ink2 flex items-center gap-1" role="img" aria-label="Waiting for the application">
 				<span class="animate-typing-bounce block size-1.5 rounded-full bg-current"></span>
 				<span class="animate-typing-bounce block size-1.5 rounded-full bg-current [animation-delay:0.2s]"></span>
 				<span class="animate-typing-bounce block size-1.5 rounded-full bg-current [animation-delay:0.4s]"></span>

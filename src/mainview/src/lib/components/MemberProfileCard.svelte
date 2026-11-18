@@ -92,7 +92,7 @@
 		{#if member.banner_url && !bannerError}
 			<img
 				src="{member.banner_url}{bannerRetryCount ? `?r=${bannerRetryCount}` : ''}"
-				alt="banner"
+				alt=""
 				class="h-full w-full object-cover"
 				onerror={handleBannerError}
 				draggable="false"

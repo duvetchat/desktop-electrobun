@@ -272,6 +272,7 @@
 						{#if (item.kind === "room" || item.kind === "conversation") && item.mentions}
 							<span
 								class="bg-duvet-accent text-duvet-on-accent flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full px-1 text-[11px] font-bold"
+								role="img"
 								aria-label="{item.mentions} mentions">{item.mentions}</span
 							>
 						{/if}

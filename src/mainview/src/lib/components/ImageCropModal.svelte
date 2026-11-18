@@ -284,7 +284,7 @@
 			<img
 				bind:this={imgEl}
 				src={imgSrc}
-				alt="Preview"
+				alt=""
 				class="absolute block max-w-none {naturalW ? '' : 'invisible'}"
 				style="
 					left: {frameLeft + view.x}px;

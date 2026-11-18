@@ -1115,7 +1115,9 @@
 		if (!spaceId) return;
 		const sid = spaceId;
 		const b = spaceBuckets.find((x) => x.id === id);
-		await confirmAction(`Delete bucket "${b?.name}"?`, "Delete", async () => {
+		// Gone already (deleted elsewhere): there is nothing to name, or to delete.
+		if (!b) return;
+		await confirmAction(`Delete bucket "${b.name}"?`, "Delete", async () => {
 			try {
 				await deleteSpaceBucket(sid, id);
 			} catch (err) {

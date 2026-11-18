@@ -38,6 +38,6 @@
 
 {#if src && !imgError}
 	<div class="w-full overflow-hidden {className}" style="height: {height};">
-		<img {src} alt="banner" class="h-full w-full object-cover" onerror={handleError} draggable="false" loading="lazy" />
+		<img {src} alt="" class="h-full w-full object-cover" onerror={handleError} draggable="false" loading="lazy" />
 	</div>
 {/if}
