@@ -927,7 +927,7 @@
 				<!-- The sidebar's right edge resizes it. -->
 				<!-- svelte-ignore a11y_no_noninteractive_tabindex, a11y_no_noninteractive_element_interactions -->
 				<div
-					class="hover:bg-duvet-accent-tint focus-visible:bg-duvet-accent-tint absolute inset-y-0 -right-[3px] z-10 w-1.5 cursor-col-resize touch-none transition-colors duration-150 outline-none motion-reduce:transition-none {dragWidth !==
+					class="hover:bg-duvet-accent-tint focus-visible:bg-duvet-accent absolute inset-y-0 -right-[3px] z-10 w-1.5 cursor-col-resize touch-none transition-colors duration-150 outline-none motion-reduce:transition-none {dragWidth !==
 					null
 						? 'bg-duvet-accent-tint'
 						: ''}"

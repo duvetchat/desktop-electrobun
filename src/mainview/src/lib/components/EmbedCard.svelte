@@ -111,6 +111,7 @@
 		<button
 			type="button"
 			class="shadow-duvet-raised block cursor-zoom-in self-start overflow-hidden rounded-2xl {mediaWidth}"
+			aria-label="Open image"
 			onclick={() => onImageClick?.(card.image!.url)}
 		>
 			<img src={card.image.url} alt="" class={mediaFit} loading="lazy" />
@@ -257,7 +258,12 @@
 				/>
 			{/if}
 		{:else if card.image}
-			<button type="button" class="block w-full cursor-zoom-in" onclick={() => onImageClick?.(card.image!.url)}>
+			<button
+				type="button"
+				class="block w-full cursor-zoom-in"
+				aria-label="Open image"
+				onclick={() => onImageClick?.(card.image!.url)}
+			>
 				<img src={card.image.url} alt="" class="max-h-64 w-full max-w-full object-cover" loading="lazy" />
 			</button>
 		{/if}

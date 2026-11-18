@@ -226,7 +226,7 @@
 							: o.type === CommandOptionType.Number
 								? "decimal"
 								: undefined}
-						class="text-duvet-ink placeholder:text-duvet-ink2 bg-duvet-field focus-override h-8 w-44 rounded-[9px] px-2.5 text-[13px] outline-none read-only:opacity-45 focus:shadow-[0_0_0_3px_var(--duvet-accent-tint)]"
+						class="text-duvet-ink placeholder:text-duvet-ink2 bg-duvet-field focus-override h-8 w-44 rounded-[9px] px-2.5 text-[13px] outline-none read-only:opacity-45 focus:shadow-[0_0_0_3px_var(--duvet-accent-tint),0_0_0_1px_var(--duvet-accent)]"
 					/>
 				{:else}
 					<div class="w-52">

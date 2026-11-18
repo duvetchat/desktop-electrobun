@@ -23,7 +23,7 @@
 </script>
 
 <div
-	class="bg-duvet-field mx-3 mt-3 mb-2 flex h-[34px] shrink-0 items-center gap-2 rounded-[11px] px-2.5 transition-shadow duration-[120ms] focus-within:shadow-[0_0_0_3px_var(--duvet-accent-tint)] motion-reduce:transition-none"
+	class="bg-duvet-field mx-3 mt-3 mb-2 flex h-[34px] shrink-0 items-center gap-2 rounded-[11px] px-2.5 transition-shadow duration-[120ms] focus-within:shadow-[0_0_0_3px_var(--duvet-accent-tint),0_0_0_1px_var(--duvet-accent)] motion-reduce:transition-none"
 >
 	<Search size={14} class="text-duvet-ink2 shrink-0" aria-hidden="true" />
 	<input

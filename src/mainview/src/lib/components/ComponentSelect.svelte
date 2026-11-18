@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { claimLayer, layerStyle, releaseLayer } from "$lib/overlay-layers";
+	import { listStep } from "$lib/focus-wrap";
 	import { GLASS } from "$lib/components/ui/recipes";
 	import type { Snippet } from "svelte";
 	import { Popover } from "bits-ui";
@@ -130,6 +131,16 @@
 
 	const sameChoice = (a: string[], b: string[]) => a.length === b.length && a.every((key) => b.includes(key));
 
+	// The arrows, Home and End move the focus through the options, as in any list of them.
+	let optionsEl = $state<HTMLElement>();
+	function optionKeys(e: KeyboardEvent) {
+		const options = [...(optionsEl?.querySelectorAll<HTMLElement>('[role="option"]:not(:disabled)') ?? [])];
+		const to = listStep(options.length, options.indexOf(document.activeElement as HTMLElement), e.key);
+		if (to === null) return;
+		e.preventDefault();
+		options[to]?.focus();
+	}
+
 	// What opens last is in front, whatever opened it (lib/overlay-layers.ts).
 	const layer = $derived(open ? claimLayer() : 0);
 	$effect(() => {
@@ -193,15 +204,31 @@
 						<input
 							bind:value={query}
 							placeholder="Search"
-							class="bg-duvet-field text-duvet-ink placeholder:text-duvet-ink2 focus-override m-1.5 mb-0 h-8 shrink-0 rounded-[9px] px-2.5 text-[13px] outline-none focus:shadow-[0_0_0_3px_var(--duvet-accent-tint)]"
+							aria-label="Search"
+							onkeydown={(e) => {
+								if (e.key !== "ArrowDown") return;
+								e.preventDefault();
+								optionsEl?.querySelector<HTMLElement>('[role="option"]:not(:disabled)')?.focus();
+							}}
+							class="bg-duvet-field text-duvet-ink placeholder:text-duvet-ink2 focus-override m-1.5 mb-0 h-8 shrink-0 rounded-[9px] px-2.5 text-[13px] outline-none focus:shadow-[0_0_0_3px_var(--duvet-accent-tint),0_0_0_1px_var(--duvet-accent)]"
 						/>
 					{/if}
-					<div class="overflow-y-auto p-1.5">
+					<div
+						bind:this={optionsEl}
+						class="overflow-y-auto p-1.5"
+						role="listbox"
+						aria-label={c.placeholder || "Options"}
+						aria-multiselectable={max > 1}
+						tabindex="-1"
+						onkeydown={optionKeys}
+					>
 						{#each shown as ch (ch.key)}
 							{@const isChosen = chosen.includes(ch.key)}
 							<button
 								type="button"
-								class="hover:bg-duvet-accent-tint focus-visible:bg-duvet-accent-tint flex min-h-8 w-full items-center gap-2.5 rounded-[9px] py-1.5 pr-2.5 pl-2 text-left outline-none disabled:pointer-events-none disabled:opacity-45"
+								role="option"
+								aria-selected={isChosen}
+								class="hover:bg-duvet-accent-tint focus-visible:bg-duvet-accent-tint flex min-h-8 w-full items-center gap-2.5 rounded-[9px] py-1.5 pr-2.5 pl-2 text-left -outline-offset-2 disabled:pointer-events-none disabled:opacity-45"
 								disabled={max > 1 && !isChosen && chosen.length >= max}
 								onclick={() => pick(ch.key)}
 							>

@@ -33,13 +33,16 @@
 	}
 </script>
 
-{#if showing}
-	<div
-		class="pointer-events-none fixed inset-x-0 top-[62px] z-9990 mx-auto flex w-[min(420px,calc(100vw-32px))] flex-col gap-2"
-		style={place}
-		role="region"
-		aria-label="Notifications"
-	>
+<!-- Always there, empty or not: a screen reader announces what arrives in a live region it already knows, not a region
+     that arrives with its first notice. -->
+<div
+	class="pointer-events-none fixed inset-x-0 top-[62px] z-9990 mx-auto flex w-[min(420px,calc(100vw-32px))] flex-col gap-2"
+	style={place}
+	role="region"
+	aria-label="Notifications"
+	aria-live="polite"
+>
+	{#if showing}
 		{@render children?.()}
 		{#if $mentionNotices.length > 0}
 			<div class="group/notices grid">
@@ -93,5 +96,5 @@
 				{/each}
 			</div>
 		{/if}
-	</div>
-{/if}
+	{/if}
+</div>

@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { X as XIcon, ZoomIn, ZoomOut, RotateCcw, RotateCw } from "@lucide/svelte";
+	import { TABBABLE, wrapTab } from "$lib/focus-wrap";
 
 	let {
 		src,
@@ -79,7 +80,15 @@
 	}
 
 	function handleKeyDown(e: KeyboardEvent) {
-		if (e.key === "Escape") {
+		if (e.key === "Tab") {
+			// The viewer covers the app: Tab stays among its own buttons.
+			const overlay = e.currentTarget as HTMLElement;
+			const controls = [...overlay.querySelectorAll<HTMLElement>(TABBABLE)];
+			const to = wrapTab(controls.length, controls.indexOf(document.activeElement as HTMLElement), e.shiftKey);
+			if (to === null) return;
+			e.preventDefault();
+			(controls[to] ?? overlay).focus();
+		} else if (e.key === "Escape") {
 			open = false;
 		} else if (e.key === "+" || e.key === "=") {
 			zoomIn();
@@ -124,6 +133,7 @@
 		class="bg-duvet-viewer animate-scrim-in fixed inset-0 z-200 flex items-center justify-center backdrop-blur-sm"
 		role="dialog"
 		aria-modal="true"
+		aria-label={alt ? `Image: ${alt}` : "Image"}
 		tabindex="-1"
 		use:focusWhileOpen
 		onclick={handleBackdropClick}

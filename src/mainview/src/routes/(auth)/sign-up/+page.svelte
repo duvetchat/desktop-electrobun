@@ -203,10 +203,11 @@
 
 			<div class="flex flex-col gap-4 {step} {shown < 4 ? hiddenPart : ''}" inert={shown < 4}>
 				<label class="text-duvet-ink2 inline-flex items-center gap-2.5 text-[14px]">
-					<!-- Its ring is its focus mark, so it takes no global outline (focus-override). -->
+					<!-- Its ring is its focus mark, so it takes no global outline (focus-override): the accent's line around it, and
+					     around the accent's own fill when checked, a gap first. -->
 					<Checkbox.Root
 						bind:checked={acceptTerms}
-						class="focus-override bg-duvet-card text-duvet-on-accent data-[state=checked]:bg-duvet-accent flex size-5 shrink-0 items-center justify-center rounded-[6px] shadow-[var(--duvet-shadow-well),0_0_0_1px_var(--duvet-line)] focus-visible:shadow-[var(--duvet-shadow-well),0_0_0_1px_var(--duvet-line),0_0_0_4px_var(--duvet-accent-tint)] data-[state=checked]:shadow-none data-[state=checked]:focus-visible:shadow-[0_0_0_4px_var(--duvet-accent-tint)]"
+						class="focus-override bg-duvet-card text-duvet-on-accent data-[state=checked]:bg-duvet-accent flex size-5 shrink-0 items-center justify-center rounded-[6px] shadow-[var(--duvet-shadow-well),0_0_0_1px_var(--duvet-line)] focus-visible:shadow-[var(--duvet-shadow-well),0_0_0_1px_var(--duvet-accent),0_0_0_4px_var(--duvet-accent-tint)] data-[state=checked]:shadow-none data-[state=checked]:focus-visible:shadow-[0_0_0_2px_var(--duvet-card),0_0_0_4px_var(--duvet-accent)]"
 					>
 						{#if acceptTerms}
 							<Check size={14} strokeWidth={3} aria-hidden="true" />

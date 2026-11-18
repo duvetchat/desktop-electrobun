@@ -287,6 +287,7 @@
 			<button
 				type="button"
 				class="block size-full cursor-zoom-in"
+				aria-label={c.description ? undefined : "Open image"}
 				onclick={() => onPreview(mediaSrc(media), c.description)}
 			>
 				<img
@@ -360,6 +361,7 @@
 			<button
 				type="button"
 				class="block cursor-zoom-in {size || !alone ? 'size-full' : ''}"
+				aria-label={item.description ? undefined : "Open image"}
 				onclick={() => onPreview(src, item.description)}
 			>
 				<img

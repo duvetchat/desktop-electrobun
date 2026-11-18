@@ -72,6 +72,11 @@
 		onJump?: (link: MessageLink) => void;
 	} = $props();
 
+	// Names the suggestions' list and its rows, which the box points a screen reader at: the focus stays in the box
+	// while the arrows move through them. The box stays a text box (not a combobox): its results aren't a list to pick
+	// from, and Enter searches.
+	const uid = $props.id();
+
 	const locale = typeof navigator !== "undefined" ? navigator.language : "en-US";
 	const today = isoDay(new Date());
 
@@ -439,7 +444,7 @@
 
 <div
 	bind:this={box}
-	class="bg-duvet-field focus-within:bg-duvet-card relative mx-1 flex h-[30px] shrink-0 items-center rounded-[9px] transition-[width,background-color,box-shadow] duration-[220ms] focus-within:shadow-[0_0_0_3px_var(--duvet-accent-tint),0_0_0_1px_var(--duvet-line)] motion-reduce:transition-none {open
+	class="bg-duvet-field focus-within:bg-duvet-card relative mx-1 flex h-[30px] shrink-0 items-center rounded-[9px] transition-[width,background-color,box-shadow] duration-[220ms] focus-within:shadow-[0_0_0_3px_var(--duvet-accent-tint),0_0_0_1px_var(--duvet-accent)] motion-reduce:transition-none {open
 		? 'w-64'
 		: text
 			? 'w-48'
@@ -462,6 +467,9 @@
 		bind:value={text}
 		placeholder={everywhere ? "Search everywhere" : "Search"}
 		aria-label={everywhere ? "Search messages everywhere" : "Search messages"}
+		aria-autocomplete="list"
+		aria-controls={suggestions.length > 0 ? `${uid}-suggestions` : undefined}
+		aria-activedescendant={suggestions.length > 0 && selected >= 0 ? `${uid}-suggestion-${selected}` : undefined}
 		spellcheck="false"
 		class="caret-duvet-ink placeholder:text-duvet-ink2 focus-override relative z-10 h-full w-full border-none bg-transparent pr-7 pl-8 text-[12.5px] font-medium text-transparent focus:ring-0 focus:outline-none"
 		onscroll={syncScroll}
@@ -535,6 +543,7 @@
 						{#if suggestions.length > 0}
 							<!-- mousedown would blur the box before the click picks a suggestion -->
 							<div
+								id="{uid}-suggestions"
 								role="listbox"
 								tabindex="-1"
 								aria-label="Search suggestions"
@@ -543,6 +552,7 @@
 							>
 								{#each suggestions as s, i (s.key)}
 									<button
+										id="{uid}-suggestion-{i}"
 										role="option"
 										aria-selected={i === selected}
 										class="flex min-h-8 w-full items-center gap-2 rounded-[9px] px-2 py-1.5 text-left text-[12.5px] {i ===

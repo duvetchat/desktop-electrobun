@@ -99,6 +99,9 @@
 		onCommand?: (entry: CommandEntry, app: SpaceCommandApplication) => void;
 	} = $props();
 
+	// Names the suggestion lists and their rows, for the box to point a screen reader at (suggesting, below).
+	const uid = $props.id();
+
 	let inputEl = $state<HTMLDivElement>(null!);
 	let fileInputEl = $state<HTMLInputElement>(null!);
 	// The one picker of the box, behind its emoji button: emoji, GIFs, and the Space's stickers when it has some. The +
@@ -1171,6 +1174,20 @@
 		isEmpty = false;
 		changed(newRaw);
 	}
+
+	// The suggestions' list that is open over the box (commands, mentions, rooms or emoji) and its chosen row, which the
+	// box names for a screen reader: the focus stays in the box while the arrows move through them.
+	const suggesting = $derived(
+		commandSuggestions.length > 0
+			? { list: `${uid}-commands`, at: commandSelectedIdx }
+			: mentionSuggestions.length > 0
+				? { list: `${uid}-mentions`, at: mentionSelectedIdx }
+				: roomSuggestions.length > 0
+					? { list: `${uid}-rooms`, at: roomSelectedIdx }
+					: suggestions.length > 0
+						? { list: `${uid}-emoji`, at: selectedIdx }
+						: null,
+	);
 </script>
 
 <!-- The message box: its suggestions over it, and the field that holds +, the text, the pickers' button and send -->
@@ -1179,6 +1196,7 @@
 	{#if commandSuggestions.length > 0}
 		<div
 			class="{GLASS} absolute bottom-[calc(100%+6px)] left-0 z-90 max-h-75 w-[min(100%,560px)] overflow-hidden overflow-y-auto rounded-[14px] p-1.5"
+			id="{uid}-commands"
 			role="listbox"
 			aria-label="Commands"
 			bind:this={commandMenuEl}
@@ -1196,6 +1214,7 @@
 				{@const bot = commandApp(entry)?.bot}
 				{@const botMember = bot && members.find((m) => m.id === bot.id)}
 				<button
+					id="{uid}-commands-{i}"
 					role="option"
 					aria-selected={i === commandSelectedIdx}
 					class="relative flex min-h-[34px] w-full cursor-pointer items-center gap-2 overflow-hidden rounded-[9px] px-2 py-1.5 text-left {i ===
@@ -1235,6 +1254,7 @@
 	{#if mentionSuggestions.length > 0}
 		<div
 			class="{GLASS} absolute bottom-[calc(100%+6px)] left-0 z-90 max-h-75 w-80 max-w-full overflow-hidden overflow-y-auto rounded-[14px] p-1.5"
+			id="{uid}-mentions"
 			role="listbox"
 			aria-label="Mention suggestions"
 		>
@@ -1249,6 +1269,7 @@
 			</div>
 			{#each mentionSuggestions as member, i}
 				<button
+					id="{uid}-mentions-{i}"
 					role="option"
 					aria-selected={i === mentionSelectedIdx}
 					class="relative flex h-[34px] w-full cursor-pointer items-center gap-2 overflow-hidden rounded-[9px] px-2 text-left {i ===
@@ -1280,6 +1301,7 @@
 	{#if roomSuggestions.length > 0}
 		<div
 			class="{GLASS} absolute bottom-[calc(100%+6px)] left-0 z-90 max-h-75 w-80 max-w-full overflow-hidden overflow-y-auto rounded-[14px] p-1.5"
+			id="{uid}-rooms"
 			role="listbox"
 			aria-label="Room suggestions"
 		>
@@ -1294,6 +1316,7 @@
 			</div>
 			{#each roomSuggestions as room, i (room.id)}
 				<button
+					id="{uid}-rooms-{i}"
 					role="option"
 					aria-selected={i === roomSelectedIdx}
 					class="flex h-[34px] w-full cursor-pointer items-center gap-2 rounded-[9px] px-2 text-left {i ===
@@ -1321,6 +1344,7 @@
 	{#if suggestions.length > 0}
 		<div
 			class="{GLASS} absolute bottom-[calc(100%+6px)] left-0 z-90 max-h-75 w-80 max-w-full overflow-hidden overflow-y-auto rounded-[14px] p-1.5"
+			id="{uid}-emoji"
 			role="listbox"
 			aria-label="Emoji suggestions"
 		>
@@ -1335,6 +1359,7 @@
 			</div>
 			{#each suggestions as entry, i}
 				<button
+					id="{uid}-emoji-{i}"
 					role="option"
 					aria-selected={i === selectedIdx}
 					class="flex h-[34px] w-full cursor-pointer items-center gap-2 rounded-[9px] px-2 text-left {i === selectedIdx
@@ -1367,7 +1392,7 @@
 
 	<!-- The field. Its ring shows the focus, as the text inside it has no outline of its own. -->
 	<div
-		class="bg-duvet-card pointer-events-auto flex min-h-[42px] rounded-[20px] px-1 shadow-[var(--duvet-shadow-well),0_0_0_1px_var(--duvet-line)] transition-shadow duration-150 focus-within:shadow-[var(--duvet-shadow-well),0_0_0_1px_var(--duvet-line),0_0_0_4px_var(--duvet-accent-tint)] motion-reduce:transition-none {recording
+		class="bg-duvet-card pointer-events-auto flex min-h-[42px] rounded-[20px] px-1 shadow-[var(--duvet-shadow-well),0_0_0_1px_var(--duvet-line)] transition-shadow duration-150 focus-within:shadow-[var(--duvet-shadow-well),0_0_0_1px_var(--duvet-accent),0_0_0_4px_var(--duvet-accent-tint)] motion-reduce:transition-none {recording
 			? 'items-center gap-2'
 			: 'items-end'}"
 	>
@@ -1452,6 +1477,9 @@
 				tabindex="0"
 				aria-multiline="false"
 				aria-label={placeholder}
+				aria-autocomplete="list"
+				aria-controls={suggesting?.list}
+				aria-activedescendant={suggesting ? `${suggesting.list}-${suggesting.at}` : undefined}
 				class="focus-override font-content text-duvet-ink caret-duvet-ink block max-h-[132px] min-h-5 min-w-0 flex-1 overflow-y-auto px-1.5 py-2.5 text-[15px] leading-[1.4] wrap-break-word whitespace-pre-wrap outline-none select-text {isEmpty
 					? 'before:text-duvet-ink2 before:pointer-events-none before:absolute before:content-[attr(data-placeholder)]'
 					: ''}"
