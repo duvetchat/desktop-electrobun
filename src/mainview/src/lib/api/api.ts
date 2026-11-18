@@ -1,4 +1,5 @@
 import { getHostURL, route } from "$lib/common/common";
+import { inAppWords } from "$lib/api/error-wording";
 import { currentShell } from "$lib/platform";
 import {
 	renewalDue,
@@ -554,7 +555,9 @@ export default api;
 
 export function getApiError(err: unknown, fallback: string): string {
 	if (err instanceof FetchError && err.response?.data?.error) {
-		return err.response.data.error;
+		const reason: unknown = err.response.data.error;
+		// The API's own words, but for the few texts that say what the app never does (error-wording.ts).
+		return typeof reason === "string" ? inAppWords(reason, fallback) : err.response.data.error;
 	}
 	if (err instanceof Error) return err.message;
 	return fallback;
