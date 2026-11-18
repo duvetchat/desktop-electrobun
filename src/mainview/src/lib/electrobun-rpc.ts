@@ -1,4 +1,5 @@
 import { activityThumbnail, base64Bytes } from "$lib/activity-thumbnail";
+import { secondWindowOfPath } from "$lib/app-windows";
 import type { MessageLink } from "$lib/urls";
 import type { OpenAppWindow } from "$lib/settings-windows";
 import type { WindowAnswer, WindowCommand, WindowStateMessage } from "$lib/window-link";
@@ -174,7 +175,9 @@ async function createRpcClient(): Promise<AppRPCClient | null> {
 				stateListeners.push(handler);
 			},
 			windowCommand: (handler) => {
-				commandAnswerer = handler;
+				// Never in a page of another window, whatever asks: only the main window's page answers (Bun asks
+				// no other, either: src/bun/window-relay.ts).
+				if (secondWindowOfPath(location.pathname) === null) commandAnswerer = handler;
 			},
 		},
 	};

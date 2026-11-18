@@ -5,6 +5,8 @@ import {
 	renewalFirst,
 	renewedByMainWindow,
 	renewOnceMore,
+	keepTokenWithStorage,
+	SESSION_CHANNEL,
 	windowRenewsSession,
 } from "$lib/session";
 
@@ -155,10 +157,107 @@ describe("a window that doesn't renew takes the main window's renewal", () => {
 		expect(await renewed).toBe("access-2");
 	});
 
+	// C-13: a second window could only wait for a renewal the main window had no reason to make yet.
+	test("asks the main window to renew when storage holds nothing newer, once it watches", async () => {
+		const shared = storage("access-1");
+		const asked: number[] = [];
+		const renewed = renewedByMainWindow({
+			...shared,
+			stale: "access-1",
+			timeoutMs: 1000,
+			ask: () => void asked.push(shared.watching()),
+		});
+		// Asked once, with the watch already on: the answer is the token the main window writes.
+		expect(asked).toEqual([1]);
+		shared.write("access-2");
+		expect(await renewed).toBe("access-2");
+	});
+
+	test("asks nothing when the renewal is already there", async () => {
+		const shared = storage("access-2");
+		let asked = 0;
+		await renewedByMainWindow({ ...shared, stale: "access-1", timeoutMs: 50, ask: () => void asked++ });
+		expect(asked).toBe(0);
+	});
+
 	test("fails after its wait when no renewal comes, without watching on", async () => {
 		const shared = storage("access-1");
 		const renewed = renewedByMainWindow({ ...shared, stale: "access-1", timeoutMs: 20 });
 		await expect(renewed).rejects.toBeInstanceOf(NoRenewalError);
 		expect(shared.watching()).toBe(0);
+	});
+});
+
+// C-13: every window wrote the shared token as its page loaded, and whenever its own copy changed.
+describe("a window's copy of the access token", () => {
+	function page(stored: string | null) {
+		const items = new Map<string, string>(stored ? [["duvet_session_token", stored]] : []);
+		const writes: string[] = [];
+		const storage = {
+			getItem: (key: string) => items.get(key) ?? null,
+			setItem: (key: string, value: string) => {
+				writes.push(`set ${value}`);
+				items.set(key, value);
+			},
+			removeItem: (key: string) => {
+				writes.push("remove");
+				items.delete(key);
+			},
+		};
+		let copy = stored;
+		const subscribers: ((token: string | null) => void)[] = [];
+		const token = {
+			subscribe: (run: (token: string | null) => void) => {
+				subscribers.push(run);
+				run(copy);
+			},
+			set: (next: string | null) => {
+				copy = next;
+				for (const run of subscribers) run(next);
+			},
+		};
+		const listeners: ((key: string | null) => void)[] = [];
+		/** Another window writes storage: the storage event here. */
+		const otherWindowWrites = (key: string | null, value: string | null) => {
+			if (key && value) items.set(key, value);
+			else if (key) items.delete(key);
+			else items.clear();
+			for (const listener of listeners) listener(key);
+		};
+		return { storage, token, writes, copy: () => copy, listeners, otherWindowWrites };
+	}
+
+	test("the main window's is written to storage: a sign-in, a renewal, a sign-out", () => {
+		const { storage, token, writes, listeners } = page("access-1");
+		keepTokenWithStorage(true, token, storage, (changed) => void listeners.push(changed));
+		token.set("access-2");
+		token.set(null);
+		expect(writes).toEqual(["set access-1", "set access-2", "remove"]);
+		expect(listeners).toHaveLength(0);
+	});
+
+	test("another window's is never written: not as its page loads, nor when it changes", () => {
+		const { storage, token, writes } = page("access-1");
+		keepTokenWithStorage(false, token, storage, () => {});
+		token.set("access-0");
+		token.set(null);
+		expect(writes).toEqual([]);
+		expect(storage.getItem("duvet_session_token")).toBe("access-1");
+	});
+
+	test("another window's follows what the main window writes, a sign-out included", () => {
+		const { storage, token, copy, listeners, otherWindowWrites, writes } = page("access-1");
+		keepTokenWithStorage(false, token, storage, (changed) => void listeners.push(changed));
+		otherWindowWrites("duvet_session_token", "access-2");
+		expect(copy()).toBe("access-2");
+		otherWindowWrites("duvet.theme", "dark");
+		expect(copy()).toBe("access-2");
+		otherWindowWrites(null, null);
+		expect(copy()).toBeNull();
+		expect(writes).toEqual([]);
+	});
+
+	test("the session's channel has a name", () => {
+		expect(SESSION_CHANNEL).toBe("session");
 	});
 });

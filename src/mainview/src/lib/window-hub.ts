@@ -4,6 +4,7 @@
 // The commands of every part are kept in one place, lib/window-commands.ts, and whichever part starts first hands the
 // RPC that one answerer: two answerers would leave the earlier part's windows unanswered.
 import { getElectrobunRpc } from "$lib/electrobun-rpc";
+import { currentShell } from "$lib/platform";
 import { answerWindowCommand, joinWindowCommands } from "$lib/window-commands";
 import { isNewer, StatePublisher, type WindowAnswer, type WindowStateMessage } from "$lib/window-link";
 
@@ -14,6 +15,8 @@ let answering = false;
 /** In the main window: answers the other windows' commands of a channel, by name. A channel's later commands join
  * its earlier ones. */
 export function answerWindows(channel: string, commands: Record<string, (args: unknown) => unknown>): void {
+	// Another window's page answers nothing, whoever calls this in it.
+	if (currentShell().window !== "main") return;
 	joinWindowCommands(channel, commands);
 	if (answering) return;
 	answering = true;
@@ -30,6 +33,8 @@ const waiting = new Map<string, WindowStateMessage>();
 
 /** In the main window: publishes a state of a channel to every other window, and to those that open later. */
 export function publishToWindows(channel: string, value: unknown): void {
+	// Nor does another window's page publish: the states are the main window's.
+	if (currentShell().window !== "main") return;
 	if (!publisher) {
 		publisher = new StatePublisher((message) => {
 			if (send) send(message);

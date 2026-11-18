@@ -1,4 +1,4 @@
-import type { WindowKind } from "$lib/app-windows";
+import { secondWindowOfPath, type WindowKind } from "$lib/app-windows";
 import { isElectrobunWindow } from "$lib/electrobun-rpc";
 
 // The platform switch (#357, docs/redesign/PLATFORM.md §11): every decision of the shell that depends on where the
@@ -7,6 +7,8 @@ import { isElectrobunWindow } from "$lib/electrobun-rpc";
 //   - the shell Bun hands this window in its preload (src/bun/shell.ts: window.__duvetShell), at document start: the
 //     system from process.platform, the title bar's style Bun chose, whether the system's window buttons show, and
 //     which window this is. Only Bun knows these;
+//   - the page's own address, which says which window it is when it is not the main one (lib/app-windows.ts), whatever
+//     the preload did;
 //   - the user agent, as a fallback, and in a browser;
 //   - under the dev server only, a preview override (?shell=mac|windows|linux|web, or localStorage duvet.dev.shell),
 //     so a browser can draw another system's chrome for review. A build has none of it (import.meta.env.DEV).
@@ -30,6 +32,8 @@ export interface ShellInputs {
 	userAgent: string;
 	/** Only ever non-null under the dev server. */
 	preview: string | null;
+	/** The page's path (location.pathname): a page of another window is that window's, with or without the preload. */
+	path?: string;
 }
 
 export interface Shell {
@@ -81,7 +85,7 @@ export function parseInjectedShell(value: unknown): InjectedShell | null {
 	return { os, titleBarStyle, nativeButtons, window };
 }
 
-export function shellFor({ inElectrobun, injected, userAgent, preview }: ShellInputs): Shell {
+export function shellFor({ inElectrobun, injected, userAgent, preview, path = "" }: ShellInputs): Shell {
 	const previewed = PREVIEWS.find((name) => name === preview) ?? null;
 	const desktop = previewed ? previewed !== "web" : inElectrobun;
 	const os: Os =
@@ -94,7 +98,10 @@ export function shellFor({ inElectrobun, injected, userAgent, preview }: ShellIn
 	return {
 		chrome,
 		os,
-		window: injected?.window ?? "main",
+		// The page's address first: a Settings or pop-out page whose preload didn't run would otherwise take itself
+		// for the main window, renew the session and draw the main title bar. Then Bun's word, which also says "not
+		// main" for any page it loaded in another window.
+		window: secondWindowOfPath(path) ?? injected?.window ?? "main",
 		nativeTrafficLights,
 		ownWindowControls: desktop && !nativeTrafficLights,
 		draggableTitleBar: desktop,
@@ -121,6 +128,7 @@ export function readShellInputs(): ShellInputs {
 		injected: parseInjectedShell("__duvetShell" in globalThis ? globalThis.__duvetShell : null),
 		userAgent: typeof navigator === "undefined" ? "" : navigator.userAgent,
 		preview,
+		path: typeof location === "undefined" ? "" : location.pathname,
 	};
 }
 

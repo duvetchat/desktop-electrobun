@@ -187,11 +187,61 @@ describe("what Bun's preload hands the page", () => {
 	});
 });
 
+// C-13 of the redesign's review: a window whose preload did not run believed it was the main window, which alone
+// renews the session, opens the gateway and answers the other windows. That the preload runs before the page's scripts
+// was measured on macOS only.
+describe("which window a page is", () => {
+	const bare = { inElectrobun: true, injected: null, userAgent: WIN_UA, preview: null };
+
+	test("a page of another window is that window's with no preload at all", () => {
+		expect(shellFor({ ...bare, path: "/settings.html" }).window).toBe("settings");
+		expect(shellFor({ ...bare, path: "/space-settings.html" }).window).toBe("space-settings");
+		expect(shellFor({ ...bare, path: "/voice-controls.html" }).window).toBe("media");
+		expect(shellFor({ ...bare, path: "/settings" }).window).toBe("settings");
+	});
+
+	test("and stays so whatever the preload claims", () => {
+		const claimsMain = { ...bare, injected: injected("win32", "main") };
+		expect(shellFor({ ...claimsMain, path: "/settings.html" }).window).toBe("settings");
+		expect(shellFor({ ...claimsMain, path: "/voice-controls.html" }).window).toBe("media");
+	});
+
+	test("a page Bun loaded in another window is not the main one, whatever its address", () => {
+		expect(shellFor({ ...bare, injected: injected("win32", "settings"), path: "/app.html" }).window).toBe("settings");
+	});
+
+	test("the app's own pages are the main window's, in the app and in a browser", () => {
+		for (const path of ["/app.html", "/sign-in.html", "/", ""]) {
+			expect(shellFor({ ...bare, injected: injected("win32"), path }).window).toBe("main");
+			expect(shellFor({ ...bare, inElectrobun: false, path }).window).toBe("main");
+		}
+	});
+
+	// Without the preload the page still draws a window's chrome: its system from the user agent, and its own buttons.
+	test("a Settings page with no preload still draws its system's chrome and its own window buttons", () => {
+		expect(shellFor({ ...bare, path: "/settings.html" })).toMatchObject({
+			chrome: "windows",
+			window: "settings",
+			nativeTrafficLights: false,
+			ownWindowControls: true,
+		});
+	});
+});
+
 describe("reading the page", () => {
-	const globals = globalThis as { window?: unknown; __duvetShell?: unknown };
+	const globals = globalThis as { window?: unknown; __duvetShell?: unknown; location?: unknown };
 	afterEach(() => {
 		delete globals.window;
 		delete globals.__duvetShell;
+		delete globals.location;
+	});
+
+	test("the page's address is read, and decides the window with nothing from Bun", () => {
+		globals.window = { __electrobunWindowId: 3 };
+		globals.location = { pathname: "/space-settings.html", href: "views://mainview/space-settings.html" };
+		const inputs = readShellInputs();
+		expect(inputs).toMatchObject({ inElectrobun: true, injected: null, path: "/space-settings.html" });
+		expect(shellFor(inputs).window).toBe("space-settings");
 	});
 
 	// isElectrobunWindow() is the one place that says whether the page runs in the app.

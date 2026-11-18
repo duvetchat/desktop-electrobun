@@ -6,10 +6,12 @@ import {
 	renewalFirst,
 	renewedByMainWindow,
 	renewOnceMore,
+	SESSION_CHANNEL,
 	windowRenewsSession,
 	type SessionCheck,
 } from "$lib/session";
 import { accessToken } from "$lib/stores/auth";
+import { answerWindows, askMainWindow } from "$lib/window-hub";
 import { formatFileSize } from "$lib/utils/format";
 import { get } from "svelte/store";
 
@@ -359,6 +361,9 @@ async function takeMainWindowsRenewal(refused: string | null): Promise<string> {
 		},
 		stale: refused ?? get(accessToken),
 		timeoutMs: requestLimits.mainWindowRenewalMs,
+		// The main window renews by the tokens' age, and a sleeping one hasn't yet: it is asked to now. Its answer is
+		// the token it writes, so a main window that doesn't hear this is only waited for, as before.
+		ask: () => void askMainWindow(SESSION_CHANNEL, "renew").catch(() => undefined),
 	});
 	accessToken.set(token);
 	return token;
@@ -424,6 +429,8 @@ export function keepSessionFresh(): { ready: Promise<void>; connected: () => voi
 	if (!windowRenewsSession(currentShell().window)) {
 		return { ready: Promise.resolve(), connected: () => {}, stop: () => {} };
 	}
+	// And renews when another window asks: one whose request the API refused, while this one saw no reason to yet.
+	answerWindows(SESSION_CHANNEL, { renew: () => refreshSession().then(() => true) });
 	const check = async (when: SessionCheck) => {
 		if (!localStorage.getItem("duvet_refresh_token")) return;
 		const refreshedAt = Number(localStorage.getItem(REFRESHED_AT_KEY)) || 0;

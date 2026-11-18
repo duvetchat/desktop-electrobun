@@ -27,6 +27,19 @@ export const SECOND_WINDOW_PAGES: Partial<Record<SecondWindow, string>> = {
 	"space-settings": "space-settings",
 };
 
+const SECOND_WINDOWS: readonly SecondWindow[] = ["media", "settings", "space-settings"];
+
+/**
+ * The window a page belongs to by its address alone, or null for a page of the main window: /settings and
+ * settings.html are Settings' own window's, wherever the build is served from. What Bun's preload says about a window
+ * (lib/platform.ts) can fail to arrive; a page's own address can't, so a page of one of these windows never takes
+ * itself for the main one, which alone opens the gateway, renews the session and answers the other windows.
+ */
+export function secondWindowOfPath(pathname: string): SecondWindow | null {
+	const page = /(?:^|\/)([^/]+?)(?:\.html)?\/?$/.exec(pathname)?.[1];
+	return SECOND_WINDOWS.find((window) => SECOND_WINDOW_PAGES[window] === page) ?? null;
+}
+
 /** Electrobun's `copy` rules for pages: each prerendered page, from the UI's build into the app's views. */
 export function pageCopyRules(pages: readonly string[]): Record<string, string> {
 	return Object.fromEntries(pages.map((page) => [`src/mainview/build/${page}.html`, `views/mainview/${page}.html`]));

@@ -2,7 +2,13 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { pageCopyRules, SECOND_WINDOW_PAGES, secondWindowCopyRules, secondWindowUrl } from "$lib/app-windows";
+import {
+	pageCopyRules,
+	SECOND_WINDOW_PAGES,
+	secondWindowCopyRules,
+	secondWindowOfPath,
+	secondWindowUrl,
+} from "$lib/app-windows";
 import { importsOf, layoutsOf, reaches } from "$lib/module-graph";
 
 const src = join(import.meta.dir, "..");
@@ -25,6 +31,33 @@ describe("the pages of the app's other windows", () => {
 			.filter(({ chain }) => chain !== null)
 			.map(({ window, chain }) => `${window}: ${chain!.join(" → ")}`);
 		expect(reaching).toEqual([]);
+	});
+
+	// C-13 of the redesign's review: which window a page is came from Bun's preload alone, and a page it didn't reach
+	// took itself for the main window.
+	test("each is known by its address alone, in the app, under the dev server and behind a base path", () => {
+		for (const [window, route] of pages) {
+			for (const path of [`/${route}.html`, `/${route}`, `/${route}/`, `/base/${route}.html`]) {
+				expect(String(secondWindowOfPath(path))).toBe(window);
+			}
+		}
+	});
+
+	test("the main window's pages are nobody else's, nor is a page that only starts or ends like one", () => {
+		for (const path of [
+			"",
+			"/",
+			"/app.html",
+			"/app",
+			"/sign-in.html",
+			"/invite/abc",
+			"/settings-old.html",
+			"/my-settings",
+			"/settings.html/app.html",
+			"/voice-controls.htm",
+		]) {
+			expect(secondWindowOfPath(path)).toBeNull();
+		}
 	});
 
 	test("each has an address in the app, and a window without a page has none", () => {

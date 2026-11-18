@@ -51,14 +51,16 @@ export interface RenewalWatch {
 	/** The token this window holds, which the API refused or is about to. */
 	stale: string | null;
 	timeoutMs: number;
+	/** Asks the main window to renew now, when storage holds nothing newer: it may be asleep, or see no reason to. */
+	ask?: () => void;
 }
 
 /**
  * In a window that doesn't renew: the access token of the main window's renewal, once storage holds one that isn't
- * `stale`. At once when it's there already (this window's copy was behind); else when the main window writes it;
- * NoRenewalError after `timeoutMs`. It asks the API for nothing.
+ * `stale`. At once when it's there already (this window's copy was behind); else the main window is asked to renew
+ * (`ask`), and this resolves when it writes the token; NoRenewalError after `timeoutMs`. It asks the API for nothing.
  */
-export function renewedByMainWindow({ read, watch, stale, timeoutMs }: RenewalWatch): Promise<string> {
+export function renewedByMainWindow({ read, watch, stale, timeoutMs, ask }: RenewalWatch): Promise<string> {
 	const renewed = () => {
 		const token = read();
 		return token && token !== stale ? token : null;
@@ -77,6 +79,47 @@ export function renewedByMainWindow({ read, watch, stale, timeoutMs }: RenewalWa
 			stop();
 			reject(new NoRenewalError());
 		}, timeoutMs);
+		// After the watch is on: the main window's answer is the token it writes.
+		ask?.();
+	});
+}
+
+/** The channel of what the app's other windows ask the main one about the session (lib/window-hub.ts). */
+export const SESSION_CHANNEL = "session";
+
+/** A window's copy of the access token, as lib/stores/auth.ts keeps it. */
+export interface TokenCopy {
+	subscribe(run: (token: string | null) => void): unknown;
+	set(token: string | null): void;
+}
+
+/**
+ * Keeps a window's copy of the access token and the storage the windows share together. The main window owns the
+ * token: what it sets (a sign-in, a renewal, a sign-out) is written to storage. Any other window only reads: its copy
+ * follows what the main window writes, and nothing it sets reaches storage, so a page that loaded with an older token
+ * can never put it back over a renewed one.
+ */
+export function keepTokenWithStorage(
+	mainWindow: boolean,
+	token: TokenCopy,
+	storage: {
+		getItem(key: string): string | null;
+		setItem(key: string, value: string): void;
+		removeItem(key: string): void;
+	},
+	onStorage: (changed: (key: string | null) => void) => void,
+	key = "duvet_session_token",
+): void {
+	if (mainWindow) {
+		token.subscribe((value) => {
+			if (value) storage.setItem(key, value);
+			else storage.removeItem(key);
+		});
+		return;
+	}
+	// A null key is storage cleared whole.
+	onStorage((changed) => {
+		if (changed === null || changed === key) token.set(storage.getItem(key));
 	});
 }
 
