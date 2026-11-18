@@ -1,7 +1,10 @@
 <script lang="ts">
 	import AuthScene from "$lib/components/AuthScene.svelte";
-	import { Button, Label } from "bits-ui";
+	import AuthField from "$lib/components/auth/AuthField.svelte";
+	import AuthNote from "$lib/components/auth/AuthNote.svelte";
+	import AuthSubmit from "$lib/components/auth/AuthSubmit.svelte";
 	import { forgotPassword } from "$lib/api/auth";
+	import { mascotLook, type FocusedField } from "$lib/auth-form";
 
 	let email = $state("");
 	let doingRequest = $state(false);
@@ -22,21 +25,15 @@
 		}
 	}
 
-	// What the mascot does: it follows what's typed, and shuts its eyes on a password.
-	let focusedField = $state<"text" | "secret" | null>(null);
+	// What the mascot does: it follows what's typed. There is no password here for it to shut its eyes on.
+	let focusedField = $state<FocusedField>(null);
 	let typed = $state(0);
-	const mood = "awake";
-	const look = $derived(focusedField === "text" ? Math.min(typed, 28) / 14 - 1 : 0);
+	const look = $derived(mascotLook(focusedField, typed));
 </script>
 
-<AuthScene {mood} {look}>
-	<header class="mb-6 text-center">
-		<h1 class="text-duvet-ink text-2xl font-bold sm:text-3xl">Forgot password?</h1>
-		<p class="text-duvet-ink2 mt-1 text-sm sm:text-base">Enter your email and we will send reset instructions.</p>
-	</header>
-
+<AuthScene mood="awake" {look} title="Forgot password?" lead="Enter your email and we will send reset instructions.">
 	<form
-		class="space-y-5"
+		class="flex flex-col gap-4"
 		onsubmit={(e) => {
 			e.preventDefault();
 			handleSubmit();
@@ -44,53 +41,41 @@
 		novalidate
 		aria-busy={doingRequest}
 	>
-		<div>
-			<Label.Root for="email" class="text-duvet-ink2 mb-2 block text-sm font-medium">Email</Label.Root>
-			<input
-				id="email"
-				onfocus={(e) => ((focusedField = "text"), (typed = e.currentTarget.value.length))}
-				oninput={(e) => (typed = e.currentTarget.value.length)}
-				onblur={() => (focusedField = null)}
-				name="email"
-				type="email"
-				autocomplete="email"
-				inputmode="email"
-				autocapitalize="off"
-				autocorrect="off"
-				spellcheck="false"
-				maxlength={254}
-				required
-				bind:value={email}
-				disabled={doingRequest}
-				class="auth-field"
-				placeholder="you@example.com"
-			/>
-		</div>
+		<AuthField
+			id="email"
+			label="Email"
+			name="email"
+			type="email"
+			autocomplete="email"
+			inputmode="email"
+			autocapitalize="off"
+			autocorrect="off"
+			spellcheck="false"
+			maxlength={254}
+			required
+			bind:value={email}
+			disabled={doingRequest}
+			placeholder="you@example.com"
+			onfocus={(e) => ((focusedField = "text"), (typed = e.currentTarget.value.length))}
+			oninput={(e) => (typed = e.currentTarget.value.length)}
+			onblur={() => (focusedField = null)}
+		/>
 
 		{#if errorMessage}
-			<p class="border-duvet-danger/40 bg-duvet-danger/10 text-duvet-danger rounded-md border px-3 py-2 text-sm">
-				{errorMessage}
-			</p>
+			<AuthNote>{errorMessage}</AuthNote>
 		{/if}
 
 		{#if successMessage}
-			<p class="border-duvet-ink2/40 bg-duvet-ink2/10 text-duvet-ink rounded-md border px-3 py-2 text-sm">
-				{successMessage}
-			</p>
+			<AuthNote tone="sent">{successMessage}</AuthNote>
 		{/if}
 
-		<Button.Root
-			type="submit"
-			disabled={doingRequest || !email.trim()}
-			class={`auth-primary ${doingRequest ? "cursor-not-allowed opacity-60" : ""}`}
-		>
+		<AuthSubmit busy={doingRequest} disabled={!email.trim()} class="mt-2">
 			{doingRequest ? "Sending reset email..." : "Send reset email"}
-		</Button.Root>
+		</AuthSubmit>
 	</form>
 
-	<footer class="text-duvet-ink2 mt-6 text-center text-sm">
+	<footer class="text-duvet-ink2 mt-6 text-center text-[14px]">
 		Remembered your password?
-
-		<a href="/sign-in" class="auth-link ml-1"> Back to sign in </a>
+		<a href="/sign-in" class="auth-link ml-1">Back to sign in</a>
 	</footer>
 </AuthScene>

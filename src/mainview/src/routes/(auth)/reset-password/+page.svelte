@@ -1,7 +1,12 @@
 <script lang="ts">
 	import AuthScene from "$lib/components/AuthScene.svelte";
+	import AuthField from "$lib/components/auth/AuthField.svelte";
+	import AuthResult from "$lib/components/auth/AuthResult.svelte";
+	import AuthSubmit from "$lib/components/auth/AuthSubmit.svelte";
+	import PasswordEye from "$lib/components/auth/PasswordEye.svelte";
 	import { onMount } from "svelte";
 	import { resetPassword } from "$lib/api/auth";
+	import { canResetPassword, mascotMood, type FocusedField } from "$lib/auth-form";
 	import { route } from "$lib/common/common";
 
 	let status = $state<"form" | "loading" | "success" | "error">("form");
@@ -12,7 +17,7 @@
 	let showPassword = $state(false);
 
 	const passwordsMatch = $derived(password === confirmPassword);
-	const canSubmit = $derived(password.length >= 8 && passwordsMatch);
+	const canSubmit = $derived(canResetPassword(password, confirmPassword));
 
 	onMount(() => {
 		const t = new URLSearchParams(window.location.search).get("token");
@@ -36,120 +41,69 @@
 		}
 	}
 
-	// What the mascot does: it follows what's typed, and shuts its eyes on a password.
-	let focusedField = $state<"text" | "secret" | null>(null);
-	let typed = $state(0);
-	const mood = $derived(focusedField === "secret" ? (showPassword ? "peek" : "shy") : "awake");
-	const look = $derived(focusedField === "text" ? Math.min(typed, 28) / 14 - 1 : 0);
+	// What the mascot does: it shuts its eyes on a password, and peeks while it's shown.
+	let focusedField = $state<FocusedField>(null);
+	const mood = $derived(mascotMood(focusedField, showPassword));
+	const onSecret = { onfocus: () => (focusedField = "secret" as const), onblur: () => (focusedField = null) };
 </script>
 
-<AuthScene {mood} {look}>
+<!-- One scene for the form and for how it turned out: the stickers don't start over between them. -->
+<AuthScene
+	{mood}
+	title={status === "form" ? "Reset your password" : undefined}
+	lead={status === "form" ? "Enter your new password below." : undefined}
+>
 	{#if status === "form"}
-		<header class="mb-6 text-center">
-			<h1 class="text-duvet-ink text-2xl font-bold">Reset your password</h1>
-			<p class="text-duvet-ink2 mt-1 text-sm">Enter your new password below.</p>
-		</header>
-
 		<form
-			class="space-y-4"
+			class="flex flex-col gap-4"
 			onsubmit={(e) => {
 				e.preventDefault();
 				handleSubmit();
 			}}
 			novalidate
 		>
-			<div>
-				<label for="password" class="text-duvet-ink2 mb-2 block text-sm font-medium">New password</label>
-				<div class="relative">
-					<input
-						id="password"
-						onfocus={() => (focusedField = "secret")}
-						onblur={() => (focusedField = null)}
-						type={showPassword ? "text" : "password"}
-						autocomplete="new-password"
-						minlength={8}
-						maxlength={128}
-						required
-						bind:value={password}
-						class="auth-field pr-11"
-						placeholder="Minimum 8 characters"
-					/>
-					<button
-						type="button"
-						class="text-duvet-ink2 hover:text-duvet-ink absolute top-1/2 right-2 -translate-y-1/2 rounded p-1"
-						aria-label={showPassword ? "Hide password" : "Show password"}
-						onclick={() => (showPassword = !showPassword)}
-					>
-						<svg
-							xmlns="http://www.w3.org/2000/svg"
-							class="h-5 w-5"
-							fill="none"
-							viewBox="0 0 24 24"
-							stroke="currentColor"
-							stroke-width="1.5"
-						>
-							<path
-								stroke-linecap="round"
-								stroke-linejoin="round"
-								d="M2.5 12s3.5-7 9.5-7 9.5 7 9.5 7-3.5 7-9.5 7S2.5 12 2.5 12z"
-							/>
-							<circle cx="12" cy="12" r="3" />
-						</svg>
-					</button>
-				</div>
-			</div>
+			<AuthField
+				id="password"
+				label="New password"
+				type={showPassword ? "text" : "password"}
+				autocomplete="new-password"
+				minlength={8}
+				maxlength={128}
+				required
+				bind:value={password}
+				placeholder="Minimum 8 characters"
+				{...onSecret}
+			>
+				{#snippet trailing()}
+					<PasswordEye bind:shown={showPassword} />
+				{/snippet}
+			</AuthField>
 
-			<div>
-				<label for="confirmPassword" class="text-duvet-ink2 mb-2 block text-sm font-medium">Confirm password</label>
-				<input
-					id="confirmPassword"
-					onfocus={() => (focusedField = "secret")}
-					onblur={() => (focusedField = null)}
-					type={showPassword ? "text" : "password"}
-					autocomplete="new-password"
-					minlength={8}
-					maxlength={128}
-					required
-					bind:value={confirmPassword}
-					class="auth-field"
-					placeholder="Re-enter your password"
-				/>
-				{#if confirmPassword && !passwordsMatch}
-					<p class="text-duvet-danger mt-2 text-xs">Passwords don't match.</p>
-				{/if}
-			</div>
+			<AuthField
+				id="confirmPassword"
+				label="Confirm password"
+				type={showPassword ? "text" : "password"}
+				autocomplete="new-password"
+				minlength={8}
+				maxlength={128}
+				required
+				bind:value={confirmPassword}
+				placeholder="Re-enter your password"
+				error={confirmPassword && !passwordsMatch ? "Passwords don't match." : undefined}
+				{...onSecret}
+			/>
 
-			<button type="submit" class="auth-primary disabled:cursor-not-allowed disabled:opacity-50" disabled={!canSubmit}>
-				Reset password
-			</button>
+			<AuthSubmit disabled={!canSubmit} class="mt-2">Reset password</AuthSubmit>
 		</form>
 	{:else if status === "loading"}
-		<div class="flex flex-col items-center gap-4 py-8">
-			<div class="border-duvet-line border-t-duvet-ink2/40 size-10 animate-spin rounded-full border-4"></div>
-			<p class="text-duvet-ink2 text-sm">Resetting your password...</p>
-		</div>
+		<AuthResult state="loading" text="Resetting your password..." />
 	{:else if status === "success"}
-		<div class="flex flex-col items-center gap-4 py-8 text-center">
-			<div class="bg-duvet-alive/20 text-duvet-alive flex h-14 w-14 items-center justify-center rounded-full">
-				<svg viewBox="0 0 24 24" class="h-7 w-7" fill="none" stroke="currentColor" stroke-width="2">
-					<polyline points="20 6 9 17 4 12" />
-				</svg>
-			</div>
-			<h1 class="text-duvet-ink text-xl font-bold">Password reset!</h1>
-			<p class="text-duvet-ink2 text-sm">Your password has been changed successfully.</p>
-			<a href={route("/sign-in.html")} class="auth-primary mt-2 text-sm"> Sign in </a>
-		</div>
+		<AuthResult state="success" title="Password reset!" text="Your password has been changed successfully.">
+			<AuthSubmit href={route("/sign-in.html")}>Sign in</AuthSubmit>
+		</AuthResult>
 	{:else}
-		<div class="flex flex-col items-center gap-4 py-8 text-center">
-			<div class="bg-duvet-danger/20 text-duvet-danger flex h-14 w-14 items-center justify-center rounded-full">
-				<svg viewBox="0 0 24 24" class="h-7 w-7" fill="none" stroke="currentColor" stroke-width="2">
-					<line x1="18" y1="6" x2="6" y2="18" />
-					<line x1="6" y1="6" x2="18" y2="18" />
-				</svg>
-			</div>
-			<h1 class="text-duvet-ink text-xl font-bold">Reset failed</h1>
-			<p class="text-duvet-ink2 text-sm">{errorMessage}</p>
-			<a href={route("/sign-in.html")} class="auth-primary mt-2 text-sm"> Go to Sign In </a>
-		</div>
+		<AuthResult state="error" title="Reset failed" text={errorMessage}>
+			<AuthSubmit href={route("/sign-in.html")}>Go to Sign In</AuthSubmit>
+		</AuthResult>
 	{/if}
 </AuthScene>
