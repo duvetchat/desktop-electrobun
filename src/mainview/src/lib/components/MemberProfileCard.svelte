@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { GLASS } from "$lib/components/ui/recipes";
 	import type { MemberOnSidebar, Role } from "$lib/types";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
 	import ProfileBio from "$lib/components/ProfileBio.svelte";
@@ -80,7 +81,7 @@
 	);
 </script>
 
-<div class="rounded-card border-duvet-line bg-duvet-bg shadow-duvet-float w-80 border">
+<div class="{GLASS} rounded-card text-duvet-ink w-80">
 	<!-- Banner: 5:2, as it's cropped (600×240), and as a space's is. Without one, a block of the same size. It grows a
 	     little past the card on hover; nothing clips it, so its corners are its own, and what's below clips itself. The
 	     avatar comes later and covers its lower left, so it fades out while the banner (peer/banner) is hovered. -->
@@ -128,7 +129,7 @@
 		     150 ms, and with less motion asked too, as a fade moves nothing. It still takes the pointer: on it, the banner
 		     isn't hovered, so it shows, and its buttons are its own. -->
 		<div
-			class="border-duvet-line bg-duvet-sunk absolute -top-12 left-4 rounded-full border-[6px] transition-opacity duration-150 in-peer-hover/banner:opacity-0"
+			class="border-duvet-pop-ring bg-duvet-pop-ring absolute -top-12 left-4 rounded-full border-4 transition-opacity duration-150 in-peer-hover/banner:opacity-0"
 		>
 			<div class="group/avatar relative overflow-hidden rounded-full">
 				<UserAvatar src={member.avatar_url} name={member.username} size={80} />
@@ -167,43 +168,46 @@
 
 		<div class="h-14"></div>
 
-		<div class="bg-duvet-sunk mt-4 overflow-hidden rounded-lg p-3">
-			<h2 class="text-duvet-ink flex items-center gap-1.5 text-lg leading-tight font-bold break-all">
+		<div class="bg-duvet-sunk mt-4 overflow-hidden rounded-[14px] p-3">
+			<h2
+				class="font-serif-lg text-duvet-ink flex items-center gap-1.5 text-[21px] leading-[1.15] font-medium tracking-[-0.012em] break-all"
+			>
 				{member.username}
 				{#if member.is_bot}
-					<span class="text-xxs bg-duvet-accent text-duvet-on-accent rounded px-1.5 py-0.5 font-bold">BOT</span>
+					<span
+						class="bg-duvet-secondary-fill text-duvet-ink2 rounded-[5px] px-1.5 py-0.5 font-sans text-[9.5px] leading-none font-bold tracking-[0.04em]"
+						>BOT</span
+					>
 				{/if}
 			</h2>
-			<p class="text-duvet-ink2 text-sm font-medium break-all">
+			<p class="text-duvet-ink2 mt-0.5 text-[12.5px] break-all">
 				@{member.raw_username}
 			</p>
 
 			{#if BADGES.some((b) => member.badges & b.flag)}
 				<div class="mt-2 flex gap-1">
 					{#each BADGES.filter((b) => member.badges & b.flag) as badge}
-						<img src={badge.icon} alt={badge.name} title={badge.name} class="h-6 w-6 rounded" />
+						<img src={badge.icon} alt={badge.name} title={badge.name} class="size-6 rounded-md" />
 					{/each}
 				</div>
 			{/if}
 
 			{#if member.bio}
-				<div class="bg-duvet-card my-3 h-px w-full"></div>
-				<h3 class="text-duvet-ink2 mb-1 text-left text-[13px] font-bold">About</h3>
+				<div class="bg-duvet-line my-3 h-px w-full"></div>
+				<h3 class="text-duvet-ink2 mb-1.5 text-left text-[10.5px] font-semibold tracking-[0.06em] uppercase">About</h3>
 				<ProfileBio bio={member.bio} />
 			{/if}
 
 			<ActivityList activities={$userActivities[member.id]} />
 
 			{#if visibleRoles.length > 0}
-				<div class="bg-duvet-card my-3 h-px w-full"></div>
-				<h3 class="text-duvet-ink2 mb-2 text-left text-[13px] font-bold">Roles</h3>
+				<div class="bg-duvet-line my-3 h-px w-full"></div>
+				<h3 class="text-duvet-ink2 mb-1.5 text-left text-[10.5px] font-semibold tracking-[0.06em] uppercase">Roles</h3>
 				<div class="flex flex-wrap gap-1">
 					{#each visibleRoles as role}
-						<div
-							class="border-duvet-line bg-duvet-bg shadow-duvet-raised flex w-min items-center gap-1.5 rounded border px-2 py-1"
-						>
-							<div class="h-3 w-3 rounded-full" style={roleBadgeStyle(role)}></div>
-							<span class="text-duvet-ink text-xs font-medium">{role.name}</span>
+						<div class="bg-duvet-secondary-fill flex h-[22px] w-max items-center gap-1.5 rounded-[7px] px-2">
+							<div class="size-[9px] rounded-full" style={roleBadgeStyle(role)}></div>
+							<span class="text-duvet-ink text-[11.5px] font-medium">{role.name}</span>
 						</div>
 					{/each}
 				</div>

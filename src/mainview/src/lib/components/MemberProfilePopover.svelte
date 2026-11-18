@@ -14,6 +14,7 @@
 	import ActivityList from "$lib/components/ActivityList.svelte";
 	import ProfileBio from "$lib/components/ProfileBio.svelte";
 	import StatusDot from "$lib/components/StatusDot.svelte";
+	import { GLASS, buttonClass, menuItemClass } from "$lib/components/ui/recipes";
 
 	let {
 		member,
@@ -188,7 +189,10 @@
 				{side}
 				align="start"
 				sideOffset={10}
-				class="rounded-card border-duvet-line bg-duvet-bg shadow-duvet-float z-301 w-80 border"
+				collisionPadding={10}
+				role="dialog"
+				aria-label="{member.username}'s profile"
+				class="{GLASS} animate-float-in rounded-card text-duvet-ink z-[1001] w-80 origin-(--bits-floating-transform-origin) outline-none"
 			>
 				{@const visibleRoles = member.roles.filter((role) => role.id !== spaceId)}
 				<!-- The banner, 5:2 as it's cropped (600×240). It grows a little past the card on hover; nothing clips it, so its
@@ -206,7 +210,7 @@
 					     banner's 150 ms, and with less motion asked too, as a fade moves nothing. It still takes the pointer: on it,
 					     the banner isn't hovered, so it shows. -->
 					<div
-						class="border-duvet-line bg-duvet-sunk absolute -top-12 left-4 rounded-full border-[6px] transition-opacity duration-150 in-peer-hover/banner:opacity-0"
+						class="border-duvet-pop-ring bg-duvet-pop-ring absolute -top-12 left-4 rounded-full border-4 transition-opacity duration-150 in-peer-hover/banner:opacity-0"
 					>
 						<UserAvatar src={member.avatar_url} name={member.username} size={80} />
 						<!-- Coloured as every status dot (statusDotClass, lib/status.ts): online in the theme's colour -->
@@ -222,7 +226,7 @@
 							{@const reqState = friendRequestState[member.id] ?? "idle"}
 							{#if isFriend(member.id)}
 								<button
-									class="bg-duvet-alive/20 text-duvet-alive flex cursor-default items-center justify-center rounded-lg px-2.5 py-1.5"
+									class="bg-duvet-alive/15 text-duvet-alive grid h-7 w-8 cursor-default place-items-center rounded-[9px]"
 									title="Friends"
 									disabled
 								>
@@ -230,7 +234,7 @@
 								</button>
 							{:else if hasPendingRequest(member.id)}
 								<button
-									class="bg-duvet-ink/10 hover:bg-duvet-ink/20 flex items-center justify-center rounded-lg px-2.5 py-1.5 transition-colors disabled:opacity-50"
+									class="{buttonClass('secondary', 'sm')} w-8 px-0!"
 									title="Accept request"
 									onclick={() => handleAcceptFriendRequest(member.id)}
 									disabled={reqState === "loading" || reqState === "sent"}
@@ -239,7 +243,7 @@
 								</button>
 							{:else if reqState === "sent"}
 								<button
-									class="bg-duvet-alive/20 text-duvet-alive flex cursor-default items-center justify-center rounded-lg px-2.5 py-1.5"
+									class="bg-duvet-alive/15 text-duvet-alive grid h-7 w-8 cursor-default place-items-center rounded-[9px]"
 									title="Request sent"
 									disabled
 								>
@@ -247,7 +251,7 @@
 								</button>
 							{:else}
 								<button
-									class="bg-duvet-ink/10 hover:bg-duvet-ink/20 flex items-center justify-center rounded-lg px-2.5 py-1.5 transition-colors disabled:opacity-50"
+									class="{buttonClass('secondary', 'sm')} w-8 px-0!"
 									title={reqState === "error" ? "Retry" : "Add friend"}
 									onclick={() => handleSendFriendRequest(member.id)}
 									disabled={reqState === "loading"}
@@ -264,63 +268,68 @@
 						{/if}
 						<!-- Permissions are a space's (its roles): a DM or a group has none, so there's nothing to view there. -->
 						{#if spaceId}
-							<button
-								class="bg-duvet-ink/10 text-duvet-ink hover:bg-duvet-ink/20 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors"
-								onclick={() => (showPermissions = !showPermissions)}
-							>
+							<button class={buttonClass("secondary", "sm")} onclick={() => (showPermissions = !showPermissions)}>
 								{showPermissions ? "Hide" : "View"} Permissions
 							</button>
 						{/if}
 					</div>
 
-					<div class="bg-duvet-sunk mt-4 overflow-hidden rounded-lg p-3">
-						<h2 class="text-duvet-ink text-lg leading-tight font-bold select-text">
+					<div
+						class="bg-duvet-sunk mt-4 max-h-[max(160px,calc(100vh-330px))] overflow-hidden overflow-y-auto rounded-[14px] p-3"
+					>
+						<h2
+							class="font-serif-lg text-duvet-ink text-[21px] leading-[1.15] font-medium tracking-[-0.012em] break-words select-text"
+						>
 							{member.username}
 						</h2>
-						<p class="text-duvet-ink2 text-sm font-medium select-text">
+						<p class="text-duvet-ink2 mt-0.5 text-[12.5px] select-text">
 							@{member.raw_username}
 						</p>
 
 						{#if BADGES.some((b) => member.badges & b.flag)}
 							<div class="mt-2 flex gap-1">
 								{#each BADGES.filter((b) => member.badges & b.flag) as badge}
-									<img src={badge.icon} alt={badge.name} title={badge.name} class="h-6 w-6 rounded" />
+									<img src={badge.icon} alt={badge.name} title={badge.name} class="size-6 rounded-md" />
 								{/each}
 							</div>
 						{/if}
 
 						{#if member.bio}
-							<div class="bg-duvet-card my-3 h-px w-full"></div>
-							<h3 class="text-duvet-ink2 mb-1 text-left text-[13px] font-bold">About</h3>
+							<div class="bg-duvet-line my-3 h-px w-full"></div>
+							<h3 class="text-duvet-ink2 mb-1.5 text-left text-[10.5px] font-semibold tracking-[0.06em] uppercase">
+								About
+							</h3>
 							<ProfileBio bio={member.bio} />
 						{/if}
 
 						<ActivityList activities={$userActivities[member.id]} />
 
 						{#if visibleRoles.length > 0}
-							<div class="bg-duvet-card my-3 h-px w-full"></div>
-							<h3 class="text-duvet-ink2 mb-2 text-left text-[13px] font-bold">Roles</h3>
+							<div class="bg-duvet-line my-3 h-px w-full"></div>
+							<h3 class="text-duvet-ink2 mb-1.5 text-left text-[10.5px] font-semibold tracking-[0.06em] uppercase">
+								Roles
+							</h3>
 							<div class="flex flex-wrap gap-1">
 								{#each visibleRoles as role}
-									<div
-										class="border-duvet-line bg-duvet-bg shadow-duvet-raised flex w-min items-center gap-1.5 rounded border px-2 py-1"
-									>
-										<div class="h-3 w-3 rounded-full" style={roleBadgeStyle(role)}></div>
-										<span class="text-duvet-ink text-xs font-medium">{role.name}</span>
+									<div class="bg-duvet-secondary-fill flex h-[22px] w-max items-center gap-1.5 rounded-[7px] px-2">
+										<div class="size-[9px] rounded-full" style={roleBadgeStyle(role)}></div>
+										<span class="text-duvet-ink text-[11.5px] font-medium">{role.name}</span>
 									</div>
 								{/each}
 							</div>
 						{/if}
 
 						{#if showPermissions}
-							<div class="bg-duvet-card my-3 h-px w-full"></div>
-							<h3 class="text-duvet-ink2 mb-2 text-left text-[13px] font-bold">Permissions</h3>
+							<div class="bg-duvet-line my-3 h-px w-full"></div>
+							<h3 class="text-duvet-ink2 mb-1.5 text-left text-[10.5px] font-semibold tracking-[0.06em] uppercase">
+								Permissions
+							</h3>
 							{@const memberPermissions = getMemberPermissions(member)}
 							{#if memberPermissions.length > 0}
 								<div class="flex flex-col gap-1.5">
 									{#each memberPermissions as permission}
 										<div class="text-duvet-ink flex items-center text-xs">
-											<span class="bg-duvet-ink2 mr-2 h-1.5 w-1.5 rounded-full"></span>
+											<span class="bg-duvet-ink2 mr-2 size-1 rounded-full"></span>
 											{permission}
 										</div>
 									{/each}
@@ -331,23 +340,25 @@
 						{/if}
 
 						{#if currentUserCanManageRoles() && space && assignableRoles.length > 0}
-							<div class="bg-duvet-card my-3 h-px w-full"></div>
-							<h3 class="text-duvet-ink2 mb-2 text-left text-[13px] font-bold">Assign Roles</h3>
+							<div class="bg-duvet-line my-3 h-px w-full"></div>
+							<h3 class="text-duvet-ink2 mb-1.5 text-left text-[10.5px] font-semibold tracking-[0.06em] uppercase">
+								Assign Roles
+							</h3>
 							<div class="max-h-32 space-y-1.5 overflow-y-auto">
 								{#each assignableRoles as role}
 									{@const memberHasRole = member.roles.some((mr) => mr.id === role.id)}
 									{@const toggleKey = `${member.id}-${role.id}`}
 									{@const manageable = canManageRoleAt(space, role.position)}
 									<button
-										class="w-fit rounded-full px-2 py-0.5 text-xs transition-colors disabled:cursor-not-allowed disabled:opacity-50 {memberHasRole
-											? 'bg-duvet-accent text-duvet-on-accent hover:brightness-110'
-											: 'bg-duvet-card text-duvet-ink hover:bg-duvet-ink/10'}"
+										class="flex h-[22px] w-fit items-center rounded-[7px] px-2 text-[11.5px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-45 motion-reduce:transition-none {memberHasRole
+											? 'bg-duvet-chosen text-duvet-chosen-ink'
+											: 'bg-duvet-secondary-fill text-duvet-ink hover:bg-duvet-hover-strong'}"
 										onclick={() => toggleMemberRole(member, role.id)}
 										disabled={togglingRoles[toggleKey] || !manageable}
 										title={manageable ? undefined : "Only roles below your highest role can be assigned or removed"}
 									>
-										<div class="flex items-center gap-1">
-											<div class="h-2.5 w-2.5 rounded-full" style={roleBadgeStyle(role)}></div>
+										<div class="flex items-center gap-1.5">
+											<div class="size-[9px] rounded-full" style={roleBadgeStyle(role)}></div>
 											<span class="flex-1 text-left">{role.name}</span>
 											{#if memberHasRole}
 												<span class="text-xxs">✓</span>
@@ -360,29 +371,29 @@
 					</div>
 
 					{#if moderation}
-						<div class="border-duvet-line mt-3 flex flex-col gap-0.5 border-t pt-3">
+						<div class="border-duvet-line mt-3 flex flex-col gap-0.5 border-t pt-2">
 							{#if moderation.kick}
 								<button
-									class="text-duvet-danger hover:bg-duvet-danger/10 flex w-full items-center gap-2 rounded-lg px-3 py-1.5 text-left text-xs font-medium transition-colors"
+									class="{menuItemClass(true)} hover:bg-duvet-accent-tint"
 									onclick={() => {
 										const { target } = moderation;
 										onOpenChange(false);
 										void kickFromSpace(target);
 									}}
 								>
-									<UserMinus class="size-3.5 shrink-0" />
+									<UserMinus size={16} class="shrink-0" />
 									<span class="truncate">Kick {member.username}</span>
 								</button>
 							{/if}
 							{#if moderation.ban}
 								<button
-									class="text-duvet-danger hover:bg-duvet-danger/10 flex w-full items-center gap-2 rounded-lg px-3 py-1.5 text-left text-xs font-medium transition-colors"
+									class="{menuItemClass(true)} hover:bg-duvet-accent-tint"
 									onclick={() => {
 										banRequest.set(moderation.target);
 										onOpenChange(false);
 									}}
 								>
-									<Ban class="size-3.5 shrink-0" />
+									<Ban size={16} class="shrink-0" />
 									<span class="truncate">Ban {member.username}</span>
 								</button>
 							{/if}
@@ -390,9 +401,9 @@
 					{/if}
 
 					{#if onRemoveMember && $currentUser && member.id !== $currentUser.id}
-						<div class="border-duvet-line mt-3 border-t pt-3">
+						<div class="border-duvet-line mt-3 border-t pt-2">
 							<button
-								class="text-duvet-danger hover:bg-duvet-danger/10 w-full rounded-lg px-3 py-1.5 text-left text-xs font-medium transition-colors"
+								class="{menuItemClass(true)} hover:bg-duvet-accent-tint"
 								onclick={() => {
 									onRemoveMember!(member.id);
 									onOpenChange(false);
