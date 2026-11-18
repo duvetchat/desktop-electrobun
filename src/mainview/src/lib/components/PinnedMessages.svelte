@@ -20,6 +20,7 @@
 	import type { GatewaySpace, MemberOnSidebar, Message, SpaceEmoji } from "$lib/types";
 	import { hasPermission, Permission } from "$lib/permissions";
 	import { customEmojiMapOf, mentionMapOf, sameNames } from "$lib/markdown";
+	import { GLASS, iconButtonClass } from "$lib/components/ui/recipes";
 
 	// The pin button of a pane's bar (or a conversation's header), and the list of its pinned messages, the
 	// last pinned first. A message jumps to itself; who can pin unpins it from here too.
@@ -140,14 +141,8 @@
 </script>
 
 <Popover.Root bind:open>
-	<Popover.Trigger
-		class="hover:bg-duvet-card hover:text-duvet-ink focus-visible:outline-duvet-accent flex items-center justify-center rounded-lg p-1.5 transition-colors focus-visible:outline-2 motion-reduce:transition-none {open
-			? 'bg-duvet-card text-duvet-ink'
-			: 'text-duvet-ink2'}"
-		title="Pinned messages"
-		aria-label="Pinned messages"
-	>
-		<PinIcon class="size-4" />
+	<Popover.Trigger class={iconButtonClass("md", open)} title="Pinned messages" aria-label="Pinned messages">
+		<PinIcon size={16} />
 	</Popover.Trigger>
 	<Popover.Portal>
 		<!-- It follows its button on every frame: opened from a focused search box, which then shrinks back and moves the
@@ -156,24 +151,29 @@
 			side="bottom"
 			align="end"
 			sideOffset={8}
+			collisionPadding={10}
 			updatePositionStrategy="always"
-			class="rounded-card border-duvet-line bg-duvet-sunk shadow-duvet-float z-50 flex max-h-[70vh] w-104 flex-col overflow-hidden border font-normal"
+			role="dialog"
+			aria-label="Pinned messages"
+			class="{GLASS} animate-float-in text-duvet-ink z-[1000] flex max-h-[min(560px,72vh)] w-[min(360px,calc(100vw-20px))] origin-(--bits-floating-transform-origin) flex-col overflow-hidden rounded-[20px] font-normal outline-none"
 		>
-			<div class="border-duvet-line flex h-10 shrink-0 items-center gap-2 border-b px-3">
-				<PinIcon class="text-duvet-ink2 size-4" />
-				<span class="text-duvet-ink text-sm font-semibold">Pinned messages</span>
+			<div class="flex shrink-0 items-baseline gap-2 px-4 pt-3.5 pb-1.5">
+				<span class="text-duvet-ink text-[13.5px] font-semibold">Pinned messages</span>
+				{#if pins.length > 0}
+					<span class="text-duvet-ink2 text-xs">{pins.length}</span>
+				{/if}
 			</div>
-			<div class="flex flex-col gap-1.5 overflow-y-auto p-2" onclickcapture={(e) => mentionProfile.open(e)}>
+			<div class="flex flex-col gap-0.5 overflow-y-auto px-1.5 pb-2" onclickcapture={(e) => mentionProfile.open(e)}>
 				{#if failure}
 					<p class="text-duvet-danger px-2 py-8 text-center text-xs">{failure}</p>
 				{:else if pins.length === 0}
 					<p class="text-duvet-ink2 px-2 py-8 text-center text-xs">
-						{loading ? "Loading…" : `This ${conversation ? "conversation" : "room"} has no pinned messages yet`}
+						{loading ? "Loading…" : `This ${conversation ? "chat" : "room"} has no pinned messages yet`}
 					</p>
 				{/if}
 				{#each pins as m (m.id)}
 					<div
-						class="group border-duvet-line bg-duvet-bg/60 relative flex shrink-0 flex-col gap-1 rounded-md border px-3 py-2"
+						class="group hover:bg-duvet-hover focus-within:bg-duvet-hover relative flex shrink-0 flex-col gap-1 rounded-xl p-2 transition-colors motion-reduce:transition-none"
 					>
 						<MessagePreview
 							message={m}
@@ -186,19 +186,19 @@
 						/>
 						<div class="absolute top-1.5 right-1.5 hidden items-center gap-1 group-focus-within:flex group-hover:flex">
 							<button
-								class="bg-duvet-card text-duvet-ink hover:bg-duvet-ink/10 rounded px-2 py-0.5 text-xs font-medium"
+								class="bg-duvet-card text-duvet-accent-text shadow-duvet-raised hover:shadow-duvet-lifted h-[22px] rounded-[7px] px-2 text-[11.5px] font-medium"
 								onclick={() => jump(m)}
 							>
 								Jump
 							</button>
 							{#if canPin}
 								<button
-									class="bg-duvet-card text-duvet-ink hover:bg-duvet-ink/10 hover:text-duvet-danger flex size-5.5 items-center justify-center rounded"
+									class="bg-duvet-card text-duvet-ink2 shadow-duvet-raised hover:text-duvet-danger grid size-[22px] place-items-center rounded-[7px]"
 									title="Unpin message"
 									aria-label="Unpin message"
 									onclick={() => unpin(m)}
 								>
-									<XIcon class="size-3.5" />
+									<XIcon size={14} />
 								</button>
 							{/if}
 						</div>
