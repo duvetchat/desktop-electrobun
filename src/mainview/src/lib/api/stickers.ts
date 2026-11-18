@@ -6,6 +6,12 @@ export async function listStickers(spaceId: string): Promise<SpaceSticker[]> {
 	return response.data;
 }
 
+/** The stickers of every Space the user is in, by Space then name, which they may send anywhere. */
+export async function listMyStickers(): Promise<SpaceSticker[]> {
+	const response = await api.get("/api/users/@me/stickers");
+	return response.data;
+}
+
 export async function createSticker(
 	spaceId: string,
 	name: string,

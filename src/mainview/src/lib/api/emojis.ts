@@ -6,6 +6,12 @@ export async function listEmojis(spaceId: string): Promise<SpaceEmoji[]> {
 	return response.data;
 }
 
+/** The emojis of every Space the user is in, by Space then name, which they may use anywhere. */
+export async function listMyEmojis(): Promise<SpaceEmoji[]> {
+	const response = await api.get("/api/users/@me/emojis");
+	return response.data;
+}
+
 export async function createEmoji(
 	spaceId: string,
 	name: string,

@@ -15,9 +15,9 @@ describe("who reacted", () => {
 		expect(source("MessageReactions.svelte")).toMatch(
 			/oncontextmenu=\{\(e\) => \{\s*e\.preventDefault\(\);\s*onShowReactors\(reaction\);\s*\}\}/,
 		);
-		expect(source("MessageList.svelte")).toContain("onShowReactors={(r) => showReactors(message, r.emoji_name)}");
+		expect(source("MessageList.svelte")).toContain("onShowReactors={(r) => showReactors(message, reactionKey(r))}");
 		expect(source("MessagePreview.svelte")).toMatch(
-			/onShowReactors=\{\(r\) =>\s*reactorsRequest\.set\(\{ messageId: message\.id, reactions, picked: r\.emoji_name, members, customEmojiMap \}\)\}/,
+			/onShowReactors=\{\(r\) =>\s*reactorsRequest\.set\(\{ messageId: message\.id, reactions, picked: reactionKey\(r\), members, customEmojiMap \}\)\}/,
 		);
 	});
 
@@ -27,7 +27,7 @@ describe("who reacted", () => {
 		expect(list.match(/\{@render reactionsButton\(message\)\}/g)).toHaveLength(2);
 		expect(list).toMatch(/\{#snippet reactionsButton\(message: Message\)\}\s*\{#if message\.reactions\?\.length\}/);
 		expect(list).toContain(
-			'function showReactors(message: Message, picked = message.reactions?.[0]?.emoji_name ?? "")',
+			'function showReactors(message: Message, picked = message.reactions?.[0] ? reactionKey(message.reactions[0]) : "")',
 		);
 	});
 

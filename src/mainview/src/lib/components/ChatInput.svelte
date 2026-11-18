@@ -17,6 +17,7 @@
 	import StickerPicker from "$lib/components/StickerPicker.svelte";
 	import GifPicker from "$lib/components/GifPicker.svelte";
 	import { emojiDataNow, loadEmojiData, toTwemojiUrl, EMOJI_REGEX, type EmojiEntry } from "$lib/emoji";
+	import { emojiSuggestions, type PickerGroup } from "$lib/space-emojis";
 	import {
 		commandOnceListed,
 		commandQuery as commandQueryOf,
@@ -57,8 +58,9 @@
 		autofocus = false,
 		members = [],
 		rooms = [],
-		customEmojis = [],
-		spaceStickers = [],
+		emojiGroups = [],
+		stickerGroups = [],
+		spaceId = null,
 		pendingFiles = $bindable<File[]>([]),
 		loadCommands,
 		onCommand,
@@ -81,8 +83,12 @@
 		members?: MemberOnSidebar[];
 		/** The rooms "#" suggests: those of the space the user can view. */
 		rooms?: GatewayRoom[];
-		customEmojis?: SpaceEmoji[];
-		spaceStickers?: SpaceSticker[];
+		/** The custom emojis of every Space the user is in, by Space, as the emoji picker shows them. */
+		emojiGroups?: PickerGroup<SpaceEmoji>[];
+		/** The stickers of every Space the user is in, by Space: the sticker picker shows wherever there is one. */
+		stickerGroups?: PickerGroup<SpaceSticker>[];
+		/** The Space the box writes in, whose emojis ":" suggests first; none in a conversation. */
+		spaceId?: string | null;
 		pendingFiles?: File[];
 		/** The commands "/" offers at the start of the message, where the user can use them (a room they can write in). */
 		loadCommands?: () => Promise<SpaceCommands>;
@@ -245,6 +251,9 @@
 			});
 		}
 	});
+
+	// Every emoji of the user's Spaces, whatever chat this is: the chips' names and what ":" suggests.
+	const customEmojis = $derived(emojiGroups.flatMap((g) => g.items));
 
 	// Re-render when customEmojis arrives (edit input may mount before emojis load)
 	let hadCustomEmojis = $state(false);
@@ -605,27 +614,16 @@
 		const m = /(?<=^|\s):([\w\d_]{2,})$/.exec(before);
 		if (m) {
 			emojiQueryStart = before.length - m[0].length;
-			const query = m[1]!.toLowerCase();
-			const customScored = customEmojis
-				.map((ce) => {
-					const n = ce.name.toLowerCase();
-					let score = 0;
-					if (n === query) score = 100;
-					else if (n.startsWith(query)) score = 80;
-					else if (n.includes(query)) score = 50;
-					return { ce, score };
-				})
-				.filter((s) => s.score > 0)
-				.sort((a, b) => b.score - a.score || a.ce.name.length - b.ce.name.length)
-				.map(
-					(s) =>
-						({
-							emoji: `<:${s.ce.id}:>`,
-							name: s.ce.name,
-							customEmojiId: s.ce.id,
-							customAttachmentId: s.ce.attachment_id,
-						}) as EmojiEntry & { customEmojiId: string; customAttachmentId: string },
-				);
+			// Every Space's emojis, the current Space's first (emojiSuggestions).
+			const customScored = emojiSuggestions(m[1]!, customEmojis, spaceId).map(
+				(ce) =>
+					({
+						emoji: `<:${ce.id}:>`,
+						name: ce.name,
+						customEmojiId: ce.id,
+						customAttachmentId: ce.attachment_id,
+					}) as EmojiEntry & { customEmojiId: string; customAttachmentId: string },
+			);
 			// The emoji dataset, once the app has it; asked for now otherwise, as the picker does (#318), and these
 			// suggestions show again with it.
 			const emojiData = emojiDataNow();
@@ -1443,13 +1441,13 @@
 					</Popover.Trigger>
 					<Popover.Portal>
 						<Popover.Content side="top" align="end" sideOffset={10} class="z-80">
-							<EmojiPicker onSelect={handleEmojiPick} {customEmojis} />
+							<EmojiPicker onSelect={handleEmojiPick} groups={emojiGroups} />
 						</Popover.Content>
 					</Popover.Portal>
 				</Popover.Root>
 
 				<!-- Sticker picker button -->
-				{#if spaceStickers.length > 0}
+				{#if stickerGroups.length > 0}
 					<Popover.Root bind:open={showStickerPicker}>
 						<Popover.Trigger
 							class="ce-action-btn border-duvet-line bg-duvet-card/70 text-duvet-ink2 hover:bg-duvet-card hover:text-duvet-ink flex size-10 shrink-0 cursor-pointer items-center justify-center rounded-xl border transition-colors duration-150 outline-none"
@@ -1460,7 +1458,7 @@
 						</Popover.Trigger>
 						<Popover.Portal>
 							<Popover.Content side="top" align="end" sideOffset={10} class="z-80">
-								<StickerPicker stickers={spaceStickers} onSelect={handleStickerPick} />
+								<StickerPicker groups={stickerGroups} onSelect={handleStickerPick} />
 							</Popover.Content>
 						</Popover.Portal>
 					</Popover.Root>

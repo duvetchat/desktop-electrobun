@@ -35,6 +35,7 @@
 		onOpenElsewhere,
 		reactorsRequest,
 		lastReadConvs,
+		everyEmoji,
 	} from "$lib/stores.svelte";
 	import { toggleReaction } from "$lib/api/reactions";
 	import { arrival, arrivalAction, listEnd } from "$lib/arrivals";
@@ -44,7 +45,8 @@
 	import { threadNow } from "$lib/threads";
 	import { keepPlace, takePlace } from "$lib/kept-places";
 	import { largeEmojis } from "$lib/emoji";
-	import { customEmojiMapOf, mentionMapOf, sameNames } from "$lib/markdown";
+	import { mentionMapOf, sameNames } from "$lib/markdown";
+	import { reactionKey } from "$lib/reactions";
 	import { nameColors } from "$lib/name-colors";
 
 	import {
@@ -58,6 +60,7 @@
 		previewReplacesText,
 	} from "$lib/types";
 	import { MessageType, type MemberOnSidebar, type GatewaySpace, type Message, type SpaceEmoji } from "$lib/types";
+	import type { PickerGroup } from "$lib/space-emojis";
 	import { DUVET_DOMAIN } from "$lib/common/common";
 
 	import AuthorTag from "$lib/components/AuthorTag.svelte";
@@ -110,7 +113,7 @@
 		editContent = $bindable(""),
 		isAtBottom = $bindable(true),
 		onUnreadMark = undefined,
-		customEmojis = [],
+		emojiGroups = [],
 		intro = undefined,
 		retryFirstPage = null,
 		threadComposer = undefined,
@@ -142,7 +145,8 @@
 		editContent?: string;
 		isAtBottom?: boolean;
 		onUnreadMark?: (messageId: string) => void;
-		customEmojis?: SpaceEmoji[];
+		/** The custom emojis of every Space the user is in, by Space, as the reaction pickers show them. */
+		emojiGroups?: PickerGroup<SpaceEmoji>[];
 		/** Shown above the oldest message once there's nothing older to load, and alone in a chat with no messages. */
 		intro?: Snippet;
 		/**
@@ -421,7 +425,8 @@
 		if (!sameNames(next, mentionNames)) mentionNames = next;
 		return mentionNames;
 	});
-	const customEmojiMap = $derived(customEmojiMapOf(customEmojis));
+	// Every emoji of the user's Spaces, whatever room or chat this is: one they don't have draws from the API's /emojis.
+	const customEmojiMap = $derived($everyEmoji);
 	// The rooms "#" suggests while a message is edited.
 	const mentionRooms = $derived(space ? mentionableRooms(space) : []);
 
@@ -464,7 +469,7 @@
 	}
 
 	// Who reacted to a message: from its menu, on its first reaction, or from a reaction's right click, on that one.
-	function showReactors(message: Message, picked = message.reactions?.[0]?.emoji_name ?? "") {
+	function showReactors(message: Message, picked = message.reactions?.[0] ? reactionKey(message.reactions[0]) : "") {
 		reactorsRequest.set({ messageId: message.id, reactions: message.reactions ?? [], picked, members, customEmojiMap });
 	}
 
@@ -475,8 +480,8 @@
 		// Custom emoji: <:id:>
 		if (emoji.startsWith("<:") && emoji.endsWith(":>")) {
 			const id = emoji.slice(2, -2);
-			const ce = customEmojis.find((e) => e.id === id);
-			handleReactionToggle(message, ce?.name ?? id, id);
+			// Named as the user's Spaces name it: the reaction keeps it for those who don't know the emoji.
+			handleReactionToggle(message, $everyEmoji[id]?.name ?? id, id);
 		} else {
 			// Unicode emoji
 			handleReactionToggle(message, emoji);
@@ -1136,7 +1141,8 @@
 										showActions={false}
 										autofocus
 										{members}
-										{customEmojis}
+										{emojiGroups}
+										spaceId={spaceId || null}
 										rooms={mentionRooms}
 									/>
 									<div class="text-xxs text-duvet-ink2">
@@ -1227,7 +1233,7 @@
 								reactions={message.reactions ?? []}
 								{customEmojiMap}
 								onToggle={(r) => handleReactionToggle(message, r.emoji_name, r.emoji_id)}
-								onShowReactors={(r) => showReactors(message, r.emoji_name)}
+								onShowReactors={(r) => showReactors(message, reactionKey(r))}
 							/>
 							{#if ephemeral}
 								<!-- A bot's to this user alone, and not the room's: it lasts until dismissed or the app reloads.
@@ -1296,7 +1302,7 @@
 								{#if reactingMessageId === message.id}
 									<Popover.Portal>
 										<Popover.Content side="top" align="end" sideOffset={8} class="z-100">
-											<EmojiPicker onSelect={(emoji) => handleReactionPick(message.id, emoji)} {customEmojis} />
+											<EmojiPicker onSelect={(emoji) => handleReactionPick(message.id, emoji)} groups={emojiGroups} />
 										</Popover.Content>
 									</Popover.Portal>
 								{/if}
@@ -1446,7 +1452,7 @@
 								{#if reactingMessageId === message.id}
 									<Popover.Portal>
 										<Popover.Content side="top" align="end" sideOffset={8} class="z-100">
-											<EmojiPicker onSelect={(emoji) => handleReactionPick(message.id, emoji)} {customEmojis} />
+											<EmojiPicker onSelect={(emoji) => handleReactionPick(message.id, emoji)} groups={emojiGroups} />
 										</Popover.Content>
 									</Popover.Portal>
 								{/if}

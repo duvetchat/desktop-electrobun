@@ -583,3 +583,127 @@ describe("a live message of a chat nobody loaded", () => {
 		expect(get(stores.dmMessages)[conv]?.map((m) => m.id)).toEqual([message(86)]);
 	});
 });
+
+// The emojis and stickers of every Space the user is in, which the pickers offer and the messages draw: one call each,
+// with the session's other lists, never one per Space; a Space joined later brings its own, and one left takes them.
+describe("the user's custom emojis and stickers", () => {
+	const A = "01a15f8c-0000-7000-8000-0000000000c1";
+	const B = "01a15f8c-0000-7000-8000-0000000000c2";
+	const JOINED = "01a15f8c-0000-7000-8000-0000000000c3";
+	const asset = (space_id: string, id: string, name: string) => ({
+		id,
+		name,
+		space_id,
+		attachment_id: `file-${name}`,
+		created_at: "",
+		updated_at: "",
+	});
+	const wave = asset(A, "01a15f8c-0000-7000-8000-0000000000e1", "wave");
+	const party = asset(B, "01a15f8c-0000-7000-8000-0000000000e2", "party");
+	const emojis = [wave, party];
+	const stickers = [asset(A, "01a15f8c-0000-7000-8000-0000000000f1", "cat")];
+	const joinedEmojis = [asset(JOINED, "01a15f8c-0000-7000-8000-0000000000e3", "hello")];
+	const joinedStickers = [asset(JOINED, "01a15f8c-0000-7000-8000-0000000000f3", "dog")];
+	const spaceCreate = (id: string) => ({
+		space: { id, name: "S", owner_id: ALICE, created_at: "", updated_at: "" },
+		rooms: {},
+		roles_permissions: {},
+		member_roles: {},
+		overwrites: {},
+		voice_states: [],
+	});
+	async function eventually(check: () => boolean) {
+		for (let i = 0; i < 200 && !check(); i++) await Bun.sleep(5);
+		return check();
+	}
+	// What the API answers each list with, and the paths asked for.
+	function answering(): string[] {
+		const asked: string[] = [];
+		fetchSpy.mockImplementation((async (input: string | URL | Request) => {
+			const path = new URL(input instanceof Request ? input.url : String(input)).pathname;
+			asked.push(path);
+			const lists: Record<string, unknown> = {
+				"/api/users/@me/emojis": emojis,
+				"/api/users/@me/stickers": stickers,
+				[`/api/spaces/${JOINED}/emojis`]: joinedEmojis,
+				[`/api/spaces/${JOINED}/stickers`]: joinedStickers,
+				[`/api/spaces/${A}/emojis`]: [wave],
+				[`/api/spaces/${A}/stickers`]: stickers,
+			};
+			return Response.json(lists[path] ?? []);
+		}) as typeof fetch);
+		return asked;
+	}
+	const answerNothing = () =>
+		fetchSpy.mockImplementation((async (_input: string | URL | Request) => Response.json([])) as typeof fetch);
+	const loaded = () => Object.keys(get(stores.spaceEmojis)).length === 2 && !!get(stores.spaceStickers)[A];
+
+	test("READY fetches every Space's emojis and stickers in one call each, kept by Space", async () => {
+		const asked = answering();
+		try {
+			ready({ guild_ids: [A, B] });
+			deliver("SPACE_CREATE", spaceCreate(A));
+			deliver("SPACE_CREATE", spaceCreate(B));
+			expect(await eventually(loaded)).toBe(true);
+			expect(get(stores.spaceEmojis)).toEqual({ [A]: [wave], [B]: [party] });
+			expect(get(stores.spaceStickers)).toEqual({ [A]: stickers });
+			expect(Object.keys(get(stores.everyEmoji)).sort()).toEqual(emojis.map((e) => e.id).sort());
+			expect(asked.filter((p) => p.startsWith("/api/spaces/"))).toEqual([]);
+		} finally {
+			answerNothing();
+		}
+	});
+
+	test("a SPACE_CREATE READY didn't list loads that Space's own", async () => {
+		const asked = answering();
+		try {
+			ready({ guild_ids: [A, B] });
+			deliver("SPACE_CREATE", spaceCreate(A));
+			deliver("SPACE_CREATE", spaceCreate(B));
+			expect(await eventually(loaded)).toBe(true);
+			deliver("SPACE_CREATE", spaceCreate(JOINED));
+			expect(await eventually(() => !!get(stores.spaceStickers)[JOINED])).toBe(true);
+			expect(get(stores.spaceEmojis)[JOINED]).toEqual(joinedEmojis);
+			expect(get(stores.spaceStickers)[JOINED]).toEqual(joinedStickers);
+			expect(asked.filter((p) => p.startsWith("/api/spaces/")).sort()).toEqual(
+				[`/api/spaces/${JOINED}/emojis`, `/api/spaces/${JOINED}/stickers`].sort(),
+			);
+		} finally {
+			answerNothing();
+		}
+	});
+
+	test("READY's own SPACE_CREATEs ask for nothing, but one of a Space come back to after leaving does", async () => {
+		const asked = answering();
+		try {
+			ready({ guild_ids: [A, B] });
+			deliver("SPACE_CREATE", spaceCreate(A));
+			deliver("SPACE_CREATE", spaceCreate(B));
+			expect(await eventually(loaded)).toBe(true);
+			expect(asked.filter((p) => p.startsWith("/api/spaces/"))).toEqual([]);
+			deliver("SPACE_DELETE", { id: A });
+			deliver("SPACE_CREATE", spaceCreate(A));
+			expect(await eventually(() => asked.filter((p) => p.startsWith(`/api/spaces/${A}/`)).length === 2)).toBe(true);
+			expect(await eventually(() => get(stores.spaceStickers)[A]?.length === 1)).toBe(true);
+		} finally {
+			answerNothing();
+		}
+	});
+
+	test("SPACE_DELETE drops the Space's emojis and stickers", async () => {
+		answering();
+		try {
+			ready({ guild_ids: [A, B] });
+			deliver("SPACE_CREATE", spaceCreate(A));
+			deliver("SPACE_CREATE", spaceCreate(B));
+			expect(await eventually(loaded)).toBe(true);
+			deliver("SPACE_DELETE", { id: A });
+			expect(A in get(stores.spaceEmojis)).toBe(false);
+			expect(A in get(stores.spaceStickers)).toBe(false);
+			expect(get(stores.spaceEmojis)[B]).toEqual([party]);
+			expect(Object.keys(get(stores.everyEmoji))).toEqual([party.id]);
+		} finally {
+			answerNothing();
+		}
+	});
+});

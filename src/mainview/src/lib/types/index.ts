@@ -1,4 +1,5 @@
 import { getAvatarURL } from "$lib/common/common";
+import { mergedByKey } from "$lib/reactions";
 import { memberMobileOnly, memberStatus } from "$lib/status";
 import type { Conversation, DirectMessage } from "$lib/api/conversations";
 import type { UserActivity } from "$lib/stores.svelte";
@@ -691,6 +692,8 @@ export interface ReactionRemoveEvent {
 	message_id: string;
 	user_id: string;
 	emoji_name: string;
+	/** The custom emoji's ID, which tells it apart from another of the same name; none for a Unicode emoji. */
+	emoji_id?: string | null;
 }
 
 export interface TypingEvent {
@@ -1341,7 +1344,7 @@ export function gatewayMessageToMessage(msg: GatewayMessage, spaces: GatewaySpac
 			("ref_message_id" in msg && typeof msg.ref_message_id === "string" ? msg.ref_message_id : null),
 		embeds: msg.embeds ?? null,
 		attachments: msg.attachments ?? null,
-		reactions: msg.reactions ?? null,
+		reactions: mergedByKey(msg.reactions),
 		sticker_attachment_id: msg.sticker_attachment_id ?? null,
 		pinned_at: msg.pinned_at ?? null,
 		flags: msg.flags ?? 0,
@@ -1401,7 +1404,7 @@ export function directMessageToMessage(msg: DirectMessage, members: Conversation
 		ref_message_id: msg.referenced_message?.message_id ?? null,
 		referenced_message: msg.referenced_message ?? null,
 		attachments: msg.attachments ?? null,
-		reactions: msg.reactions ?? null,
+		reactions: mergedByKey(msg.reactions),
 		embeds: msg.embeds ?? null,
 		sticker_attachment_id: msg.sticker_attachment_id ?? null,
 		pinned_at: msg.pinned_at ?? null,

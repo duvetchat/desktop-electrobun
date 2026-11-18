@@ -1,29 +1,36 @@
 <script lang="ts">
 	import { emojiDataNow, loadEmojiData, toTwemojiUrl, type EmojiEntry } from "$lib/emoji";
 	import type { SpaceEmoji } from "$lib/types";
-	import { getHostURL } from "$lib/common/common";
+	import { getAvatarURL, getHostURL } from "$lib/common/common";
+	import SpaceIcon from "$lib/components/SpaceIcon.svelte";
+	import type { PickerGroup } from "$lib/space-emojis";
+	import { scrollSideways } from "$lib/sideways-scroll";
 
 	const ceHost = getHostURL();
 
-	let { onSelect, customEmojis = [] }: { onSelect: (emoji: string) => void; customEmojis?: SpaceEmoji[] } = $props();
+	// The custom emojis of every Space the user is in, wherever they write: a tab for each Space with emojis, in the order
+	// pickerGroups gives, then the emoji dataset's categories.
+	let { onSelect, groups = [] }: { onSelect: (emoji: string) => void; groups?: PickerGroup<SpaceEmoji>[] } = $props();
 
 	// The emoji dataset, loaded as the picker first opens if the app hadn't loaded it yet (#292).
 	let emojiData = $state.raw(emojiDataNow());
 	void loadEmojiData().then((data) => (emojiData = data));
 	const emojiCategories = $derived(emojiData?.emojiCategories ?? []);
 
-	const hasCustom = $derived(customEmojis.length > 0);
-	// Category 0 is custom emojis when available, otherwise shift
-	const categoryOffset = $derived(hasCustom ? 1 : 0);
+	// The Spaces' tabs come first, the dataset's categories after them.
+	const categoryOffset = $derived(groups.length);
 
 	let searchQuery = $state("");
 	let activeCategory = $state(0);
+	// The Space whose tab is chosen, if one is.
+	const shownGroup = $derived(groups[activeCategory]);
 	// The dataset's category the grid shows: none before the dataset is in.
 	const shownCategory = $derived(emojiCategories[activeCategory - categoryOffset]);
 	let searchResults = $derived.by(() => {
 		const query = searchQuery.trim().toLowerCase();
 		if (!query) return [];
-		const customMatches = customEmojis
+		const customMatches = groups
+			.flatMap((g) => g.items)
 			.filter((ce) => ce.name.toLowerCase().includes(query))
 			.map(
 				(ce) =>
@@ -92,44 +99,28 @@
 	</div>
 
 	{#if !isSearching}
-		<!-- Category tabs -->
+		<!-- Category tabs: each Space's, then the dataset's -->
 		<div
 			class="border-duvet-line flex shrink-0 items-center gap-0.5 overflow-x-auto border-b px-2.5 pt-1.5 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
 			role="tablist"
 			aria-label="Emoji categories"
+			onwheel={(e) => scrollSideways(e, e.currentTarget)}
 		>
-			{#if hasCustom}
+			{#each groups as group, i (group.space.id)}
 				<button
 					role="tab"
-					aria-selected={activeCategory === 0}
-					aria-label="Space Emojis"
+					aria-selected={activeCategory === i}
+					aria-label={group.space.name}
 					class="flex shrink-0 cursor-pointer items-center justify-center rounded-md border-none bg-none px-1.25 py-1 transition-[opacity,background] duration-120 {activeCategory ===
-					0
+					i
 						? 'bg-duvet-ink/10 opacity-100'
 						: 'hover:bg-duvet-ink/10 opacity-55 hover:opacity-85'}"
-					onclick={() => (activeCategory = 0)}
-					title="Space Emojis"
+					onclick={() => (activeCategory = i)}
+					title={group.space.name}
 				>
-					<svg
-						xmlns="http://www.w3.org/2000/svg"
-						width="20"
-						height="20"
-						viewBox="0 0 24 24"
-						fill="none"
-						stroke="currentColor"
-						stroke-width="2"
-						stroke-linecap="round"
-						stroke-linejoin="round"
-						class="text-duvet-ink2"
-						><circle cx="12" cy="12" r="10" /><path d="M8 14s1.5 2 4 2 4-2 4-2" /><line
-							x1="9"
-							x2="9.01"
-							y1="9"
-							y2="9"
-						/><line x1="15" x2="15.01" y1="9" y2="9" /></svg
-					>
+					<SpaceIcon src={getAvatarURL(group.space.id, group.space.icon)} name={group.space.name} size={20} />
 				</button>
-			{/if}
+			{/each}
 			{#each emojiCategories as cat, i}
 				<button
 					role="tab"
@@ -185,10 +176,10 @@
 					{/each}
 				</div>
 			{/if}
-		{:else if hasCustom && activeCategory === 0}
-			<div class="text-duvet-ink2 px-0.5 pt-1.5 pb-2 text-xs font-bold">Space Emojis</div>
+		{:else if shownGroup}
+			<div class="text-duvet-ink2 truncate px-0.5 pt-1.5 pb-2 text-xs font-bold">{shownGroup.space.name}</div>
 			<div class="grid grid-cols-8 gap-0.5">
-				{#each customEmojis as ce (ce.id)}
+				{#each shownGroup.items as ce (ce.id)}
 					<button
 						class="hover:bg-duvet-ink/10 flex cursor-pointer items-center justify-center rounded-md border-none bg-none p-1.25 transition-[background,transform] duration-100 hover:scale-[1.18] active:scale-100"
 						onclick={() => pick(`<:${ce.id}:>`)}
