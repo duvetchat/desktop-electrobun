@@ -52,6 +52,8 @@ export type AppRPCSchema = {
 			// A press on the title bar, where Windows drags the window: Bun starts the move loop if it turns into a drag.
 			startWindowDrag: void;
 			openExternal: { url: string };
+			// F12 and the other DevTools keys, on Linux, where Chromium's own handling kills the app (lib/native-context-menu.ts).
+			openDevTools: void;
 			setSpotifyActivity: { enabled: boolean };
 			// The page's steps of the app's start, each when it happened (Date.now()), for startup.log (#280, #288).
 			startupTimings: { marks: Record<string, number> };
@@ -86,6 +88,7 @@ export type AppRPCClient = {
 		maximizeWindow: () => void;
 		startWindowDrag: () => void;
 		openExternal: (params: { url: string }) => void;
+		openDevTools: () => void;
 		setSpotifyActivity: (params: { enabled: boolean }) => void;
 		startupTimings: (params: { marks: Record<string, number> }) => void;
 		windowState: (message: WindowStateMessage) => void;

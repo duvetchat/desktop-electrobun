@@ -1,4 +1,5 @@
-import { readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { dirname } from "node:path";
 
 // How many starts startup.log keeps, the newest last.
 const KEPT_STARTS = 50;
@@ -21,5 +22,6 @@ export function startupSummary(processStart: number, marks: Record<string, numbe
 export async function writeStartupLine(path: string, line: string): Promise<void> {
 	const before = await readFile(path, "utf8").catch(() => "");
 	const lines = [...before.split("\n").filter(Boolean), line].slice(-KEPT_STARTS);
+	await mkdir(dirname(path), { recursive: true });
 	await writeFile(path, lines.join("\n") + "\n");
 }
