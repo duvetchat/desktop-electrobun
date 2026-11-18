@@ -1,5 +1,5 @@
 import { afterEach, expect, it } from "bun:test";
-import { keepsNativeMenu } from "./native-context-menu";
+import { isDevToolsKey, keepsNativeMenu } from "./native-context-menu";
 
 class FakeElement {
 	constructor(private editable: boolean) {}
@@ -21,4 +21,15 @@ it("shows the webview's menu over text fields and on the selected text, and nowh
 	expect(keepsNativeMenu(el(false), selecting(word))).toBe(false);
 	expect(keepsNativeMenu(word, { isCollapsed: true, containsNode: () => true })).toBe(false);
 	expect(keepsNativeMenu(null, null)).toBe(false);
+});
+
+it("takes F12 and Ctrl+Shift+I, J and C for DevTools, and no other key", () => {
+	const key = (k: string, mods: Partial<Parameters<typeof isDevToolsKey>[0]> = {}) =>
+		isDevToolsKey({ key: k, ctrlKey: false, shiftKey: false, altKey: false, metaKey: false, ...mods });
+	expect(key("F12")).toBe(true);
+	expect(key("I", { ctrlKey: true, shiftKey: true })).toBe(true);
+	expect(key("j", { ctrlKey: true, shiftKey: true })).toBe(true);
+	expect(key("F12", { shiftKey: true })).toBe(false);
+	expect(key("I", { ctrlKey: true })).toBe(false);
+	expect(key("F11")).toBe(false);
 });

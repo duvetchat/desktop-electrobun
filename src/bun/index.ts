@@ -93,6 +93,7 @@ type AppRPCSchema = {
 			// A press on the title bar: Windows' move loop takes it if it turns into a drag (window-snap.ts).
 			startWindowDrag: void;
 			openExternal: { url: string };
+			openDevTools: void;
 			setWindowFrame: {
 				x: number;
 				y: number;
@@ -221,6 +222,7 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 				if (arrangedByWindows) void dragWithWindows(win.ptr);
 			},
 			openExternal: ({ url: externalUrl }) => openExternalUrl(externalUrl),
+			openDevTools: () => win.webview.openDevTools(),
 			setSpotifyActivity: ({ enabled }) => {
 				markWebviewReady();
 				setSpotifyActivity(enabled);
