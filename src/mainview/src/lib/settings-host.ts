@@ -1,0 +1,94 @@
+// What a settings screen asks of the page it is in (#357). The screens are the same on the web, where they are sheets
+// of the app's own page, and in the desktop app, where each fills a window of its own that has none of the app's
+// stores: there the host sends these on to the main window (lib/stores/settings-link.svelte.ts).
+import { logout } from "$lib/api/auth";
+import { applyOwnProfile, type SavedProfile } from "$lib/own-profile";
+import { gatewaySpaces } from "$lib/stores.svelte";
+
+/** How chats draw their messages: the conversation's own preference, kept under this key (lib/message-layout.ts). */
+export const MESSAGE_LAYOUT_KEY = "duvet.messages.layout.v1";
+export type MessageLayout = "bubbles" | "flat";
+
+export function parseMessageLayout(raw: unknown): MessageLayout {
+	return raw === "flat" ? "flat" : "bubbles";
+}
+
+/** A Space's fields its Overview saves. */
+export interface SavedSpace {
+	name: string;
+	description: string | null;
+	locale: string | null;
+	banner: string | null;
+	icon?: string | null;
+	default_notifications?: 0 | 1;
+}
+
+export interface SettingsHost {
+	/** Signs the user out of the app. */
+	logout(): void | Promise<void>;
+	/** The user's profile was saved: it shows everywhere at once. */
+	profileSaved(saved: SavedProfile): void;
+	/** A Space's overview was saved: its new name, icon and the rest show at once. */
+	spaceSaved(spaceId: string, saved: SavedSpace): void;
+	/** A Space was deleted: it goes from the app at once. */
+	spaceDeleted(spaceId: string): void;
+	/** Bubbles or flat rows. */
+	messageLayout(): MessageLayout;
+	setMessageLayout(layout: MessageLayout): void;
+}
+
+/** A Space with what its Overview saved; a gateway from before the default leaves it as it was. */
+export function withSavedSpace<Space extends { id: string }>(
+	spaces: readonly Space[],
+	spaceId: string,
+	saved: SavedSpace,
+): Space[] {
+	return spaces.map((space) => {
+		if (space.id !== spaceId) return space;
+		const { default_notifications: level, ...fields } = saved;
+		return { ...space, ...fields, ...(level === undefined ? {} : { default_notifications: level }) };
+	});
+}
+
+/** What crossed the windows as a Space's saved overview, or null for anything else. */
+export function parseSavedSpace(value: unknown): SavedSpace | null {
+	if (typeof value !== "object" || value === null) return null;
+	const fields: Record<string, unknown> = { ...value };
+	if (typeof fields.name !== "string") return null;
+	const text = (field: unknown) => (typeof field === "string" ? field : null);
+	const level = fields.default_notifications;
+	return {
+		name: fields.name,
+		description: text(fields.description),
+		locale: text(fields.locale),
+		banner: text(fields.banner),
+		icon: text(fields.icon),
+		...(level === 0 || level === 1 ? { default_notifications: level } : {}),
+	};
+}
+
+function readMessageLayout(): MessageLayout {
+	try {
+		return parseMessageLayout(localStorage.getItem(MESSAGE_LAYOUT_KEY));
+	} catch {
+		return "bubbles";
+	}
+}
+
+function writeMessageLayout(layout: MessageLayout) {
+	try {
+		localStorage.setItem(MESSAGE_LAYOUT_KEY, layout);
+	} catch {
+		// no storage: the choice lasts until the app closes
+	}
+}
+
+/** The host of a page that has the app's stores: the web's sheets, and the main window. */
+export const pageSettingsHost: SettingsHost = {
+	logout,
+	profileSaved: applyOwnProfile,
+	spaceSaved: (spaceId, saved) => gatewaySpaces.update((spaces) => withSavedSpace(spaces, spaceId, saved)),
+	spaceDeleted: (spaceId) => gatewaySpaces.update((spaces) => spaces.filter((space) => space.id !== spaceId)),
+	messageLayout: readMessageLayout,
+	setMessageLayout: writeMessageLayout,
+};
