@@ -19,6 +19,7 @@ import { Maximizer } from "./window-frame";
 import { dragWithWindows, letWindowsArrange } from "./window-snap";
 import { startupSummary, writeStartupLine } from "./startup";
 import { shellPreload, type TitleBarStyle } from "./shell";
+import { WindowRelay, type WindowAnswer, type WindowCommand, type WindowStateMessage } from "./window-relay";
 
 // When Bun started, and its own steps of the app's start, which the page's join in startup.log (startupTimings, #280):
 // its code running (what loads before it, Electrobun's API, comes first) and the window made.
@@ -72,6 +73,9 @@ type AppRPCSchema = {
 			// Whether Windows' move loop drags the window: on Windows, once window-snap.ts is in (#348). The page then
 			// reports the title bar's presses (startWindowDrag) instead of leaving them to Electrobun's drag.
 			nativeWindowDrag: { params: void; response: boolean };
+			// From a window that isn't the main one: a command for the main window's page, forwarded to it
+			// (webview.requests.windowCommand), whose answer comes back (window-relay.ts).
+			windowCommand: { params: WindowCommand; response: WindowAnswer };
 		};
 		messages: {
 			closeWindow: void;
@@ -92,6 +96,8 @@ type AppRPCSchema = {
 			setSpotifyActivity: { enabled: boolean };
 			// The page's steps of the app's start, each when it happened (Date.now()), for startup.log (#280, #288).
 			startupTimings: { marks: Record<string, number> };
+			// From the main window: a state its other windows mirror, sent on to each of them.
+			windowState: WindowStateMessage;
 		};
 	};
 	webview: {
@@ -99,11 +105,15 @@ type AppRPCSchema = {
 			// An IPC app's activity image, fetched here: the webview makes it a small inline image (it has a canvas,
 			// Bun has no image decoder), or answers null. Its bytes go in base64.
 			activityImage: { params: { bytes: string }; response: string | null };
+			// To the main window: a command another window sent, to answer.
+			windowCommand: { params: WindowCommand; response: WindowAnswer };
 		};
 		messages: {
 			activityUpdate: ActivityPayload[] | null;
 			// A toast was clicked: its message is the page's to take (takeClickedMessage).
 			messageClicked: void;
+			// To a window that isn't the main one: a state of the main window's, to mirror.
+			windowState: WindowStateMessage;
 		};
 	};
 };
@@ -122,6 +132,11 @@ type NotificationRequest = {
 };
 
 const maximizer = new Maximizer();
+
+// What crosses between the main window and the app's other windows (the media controls' pop-out, Settings): the main
+// page's states out to them, their commands in to it. No other window exists yet: each one, as its phase builds it,
+// gets an RPC instance of its own whose windowCommand is relay.commandFromWindow, and joins with relay.add.
+const relay = new WindowRelay();
 
 // The webview makes the IPC apps' images by URL inline once its page has loaded, which its first setSpotifyActivity
 // says: a request sent before then would find no page to answer it. An image waits for it PAGE_WAIT_MS at most, then
@@ -174,6 +189,8 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 				return link;
 			},
 			nativeWindowDrag: () => arrangedByWindows,
+			// The main window's page answers commands, and sends none.
+			windowCommand: () => ({ ok: false, error: "The main window sends no commands" }),
 		},
 		messages: {
 			closeWindow: () => win.close(),
@@ -197,6 +214,7 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 				markWebviewReady();
 				setSpotifyActivity(enabled);
 			},
+			windowState: (message) => relay.stateFromMain(message),
 			startupTimings: ({ marks }) => {
 				const line = `${new Date().toISOString()} ${startupSummary(processStart, { ...bunMarks, ...marks })}`;
 				console.log(line);
@@ -234,6 +252,7 @@ const win = new BrowserWindow({
 	rpc,
 });
 bunMarks.window = Date.now();
+relay.setMain((command) => rpc.request.windowCommand(command));
 
 // Win+Left and Win+Right snap the window, and Win+Up and Win+Down maximize, restore and minimize it, once it takes what
 // Windows asks of a window for that (window-snap.ts, #345).
