@@ -18,7 +18,7 @@
 	import { getApiError } from "$lib/api/api";
 	import { layoutPrefs } from "$lib/layout-prefs.svelte";
 	import { membersColumnOpen, onlineCount } from "$lib/members";
-	import type { OpenChats } from "$lib/nav";
+	import { firstTextRoom, type OpenChats } from "$lib/nav";
 	import {
 		closeTabsIn,
 		conversationTab,
@@ -28,6 +28,7 @@
 		makeLeaf,
 		makeSplit,
 		removeLeaf,
+		spaceLanding,
 		spacesAndRooms,
 		updateLeaf,
 	} from "$lib/pane";
@@ -453,12 +454,17 @@
 		membersColumnOpen(layoutPrefs.membersColumn, onlineCount(spaceMembers(memberSidebarSpace))),
 	);
 
+	// Each Space's room whose tab the focused pane showed last, which a click on the Space goes back to (spaceLanding).
+	// Only that click reads it, so it isn't state, and it lasts while the app is open.
+	const lastRoomBySpace = new Map<string, string>();
+
 	function syncSidebarToLeaf(node: PaneNode, leafId: string) {
 		const leaf = findLeaf(node, leafId);
 		const tab = leaf?.tabs.find((t) => t.channelId === leaf?.activeChannelId);
 		// Fall back to activeSpaceId when no tab is active (e.g. all tabs closed). A conversation's tab has no space:
 		// the sidebar stays where it is.
 		if (tab && isConversationTab(tab)) return;
+		if (tab) lastRoomBySpace.set(tab.spaceId, tab.channelId);
 		sidebarSpaceId = tab?.spaceId ?? activeSpaceId ?? sidebarSpaceId;
 	}
 
@@ -514,11 +520,24 @@
 		});
 	});
 
+	// A click on a Space (its row in the column, its icon on the folded edge, Ctrl+K) takes the user to it: its tab used
+	// last or another of its tabs, focusing the pane that has it, or else its first text room, opened in the focused
+	// pane (spaceLanding). A Space without a text room only shows its rooms in the column.
 	function handleGuildSelect(id: string) {
 		activeSpaceId = id;
 		sidebarSpaceId = id;
 		showFriendsView = false;
 		activeDMId = null;
+		const guild = guilds.find((g) => g.id === id);
+		if (!guild) return;
+		const firstRoom = firstTextRoom(guild.channels)?.id ?? null;
+		const landing = spaceLanding(rootPane, focusedPaneId, id, lastRoomBySpace.get(id), firstRoom);
+		if (landing?.kind === "tab") {
+			focusedPaneId = landing.leafId;
+			activateTab(landing.channelId);
+		} else if (landing?.kind === "room") {
+			onSidebarSelect(landing.channelId, id);
+		}
 	}
 
 	// The Friends button always opens the friends list, from an open DM or group too.

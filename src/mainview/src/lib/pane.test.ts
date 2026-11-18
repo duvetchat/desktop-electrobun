@@ -8,6 +8,7 @@ import {
 	isConversationTab,
 	makeLeaf,
 	makeSplit,
+	spaceLanding,
 	spacesAndRooms,
 	tabDescription,
 	tabDragData,
@@ -288,6 +289,56 @@ describe("restoring saved panes", () => {
 			kind: "leaf",
 			tabs: [room("r1")],
 			activeChannelId: "r1",
+		});
+	});
+});
+
+// A click on a Space shows its tab used last, or else another tab of it, or else opens its first room
+// (DISENO-CLIC-EN-SPACE.md).
+describe("spaceLanding", () => {
+	test("a Space with no tab open lands on its first room, which opens in the focused pane", () => {
+		const leaf = makeLeaf([room("x", "s2"), conversationTab(dm, ME)], "x");
+		expect(spaceLanding(leaf, leaf.id, "s1", undefined, "r1")).toEqual({ kind: "room", channelId: "r1" });
+	});
+
+	test("nothing when the Space has no tab open and no room to open", () => {
+		const leaf = makeLeaf([room("x", "s2")], "x");
+		expect(spaceLanding(leaf, leaf.id, "s1", undefined, null)).toBeNull();
+	});
+
+	test("the Space's tab used last, in the pane it's in now, though another pane is focused", () => {
+		const focused = makeLeaf([room("x", "s2")], "x");
+		const other = makeLeaf([room("r1"), room("r2")], "r1");
+		expect(spaceLanding(makeSplit(other, focused, "h"), focused.id, "s1", "r2", "r9")).toEqual({
+			kind: "tab",
+			leafId: other.id,
+			channelId: "r2",
+		});
+	});
+
+	test("the focused pane's copy of the tab used last wins over another pane's", () => {
+		const a = makeLeaf([room("r2")], "r2");
+		const b = makeLeaf([room("r2")], "r2");
+		expect(spaceLanding(makeSplit(a, b, "h"), b.id, "s1", "r2", "r9")).toEqual({
+			kind: "tab",
+			leafId: b.id,
+			channelId: "r2",
+		});
+	});
+
+	test("with the tab used last closed, the Space's first tab in the focused pane, then in another pane", () => {
+		const focused = makeLeaf([room("x", "s2"), room("r3"), room("r4")], "x");
+		const other = makeLeaf([room("r5")], "r5");
+		expect(spaceLanding(makeSplit(other, focused, "h"), focused.id, "s1", "gone", "r9")).toEqual({
+			kind: "tab",
+			leafId: focused.id,
+			channelId: "r3",
+		});
+		const bare = makeLeaf([room("x", "s2")], "x");
+		expect(spaceLanding(makeSplit(bare, other, "v"), bare.id, "s1", undefined, "r9")).toEqual({
+			kind: "tab",
+			leafId: other.id,
+			channelId: "r5",
 		});
 	});
 });
