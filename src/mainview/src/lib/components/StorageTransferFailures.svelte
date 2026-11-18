@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { buttonClass, GLASS_STRONG, iconButtonClass } from "$lib/components/ui/recipes";
+	import { calloutClass, SKELETON } from "$lib/components/settings/recipes";
 	import { Dialog } from "bits-ui";
 	import { untrack } from "svelte";
 	import { X as XIcon } from "@lucide/svelte";
@@ -56,35 +58,34 @@
 	}
 >
 	<Dialog.Portal>
-		<Dialog.Overlay class="fixed inset-0 z-600 bg-black/60 backdrop-blur-sm" />
+		<Dialog.Overlay class="bg-duvet-scrim animate-scrim-in fixed inset-0 z-600" />
 		<Dialog.Content class="fixed inset-0 z-601 flex items-center justify-center p-4">
 			<div
-				class="rounded-card border-duvet-line bg-duvet-bg text-duvet-ink shadow-duvet-float flex max-h-[70vh] w-full max-w-lg flex-col border"
+				class="{GLASS_STRONG} animate-sheet-in text-duvet-ink flex max-h-[70vh] w-full max-w-lg flex-col gap-3 rounded-3xl p-4"
 			>
-				<div class="border-duvet-line flex shrink-0 items-start justify-between gap-4 border-b px-5 py-4">
+				<div class="flex shrink-0 items-start justify-between gap-4">
 					<div class="min-w-0">
-						<Dialog.Title class="text-duvet-ink text-sm font-semibold">Files that didn't move</Dialog.Title>
+						<Dialog.Title class="font-serif-lg text-[21px] leading-[1.2] font-normal tracking-[-0.01em]"
+							>Files that didn't move</Dialog.Title
+						>
 						{#if transfer}
-							<Dialog.Description class="text-duvet-ink2 mt-0.5 text-xs">
+							<Dialog.Description class="text-duvet-ink2 mt-1 text-[13px]">
 								{countFiles(transfer.failed_files)}
 								{transfer.failed_files === 1 ? "stays" : "stay"}
 								{sourceName ? `in ${sourceName}` : "where they were"}.
 							</Dialog.Description>
 						{/if}
 					</div>
-					<Dialog.Close
-						class="text-duvet-ink2 hover:bg-duvet-card hover:text-duvet-ink flex h-7 w-7 shrink-0 items-center justify-center rounded-md transition-colors"
-						aria-label="Close"
-					>
+					<Dialog.Close class={iconButtonClass()} aria-label="Close">
 						<XIcon class="size-4" />
 					</Dialog.Close>
 				</div>
 
-				<div class="min-h-0 flex-1 space-y-1 overflow-y-auto px-5 py-4">
+				<div class="flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto">
 					{#each files as file (file.attachment_id)}
-						<div class="border-duvet-line bg-duvet-card/30 rounded-md border px-3 py-2">
+						<div class="bg-duvet-card shadow-duvet-raised rounded-xl px-3 py-2">
 							<div class="flex items-center justify-between gap-3">
-								<p class="text-duvet-ink truncate text-sm">{file.filename}</p>
+								<p class="truncate text-[13.5px] font-medium">{file.filename}</p>
 								<span class="text-duvet-ink2 shrink-0 text-xs">{formatFileSize(file.size_bytes)}</span>
 							</div>
 							{#if file.error}
@@ -95,18 +96,18 @@
 
 					{#if loading}
 						<div class="space-y-1">
-							{#each Array(3) as _}
-								<div class="bg-duvet-card/40 h-12 animate-pulse rounded-md"></div>
+							{#each Array(3) as _, index (index)}
+								<div class="{SKELETON} h-12"></div>
 							{/each}
 						</div>
 					{:else if error}
-						<p class="bg-duvet-danger/10 text-duvet-danger rounded-md px-3 py-2 text-sm">{error}</p>
+						<p class={calloutClass("danger")} role="alert">{error}</p>
 					{:else if files.length === 0}
 						<p class="text-duvet-ink2 py-6 text-center text-sm">No failed files.</p>
 					{:else if hasMore && transfer}
 						{@const t = transfer}
 						<button
-							class="bg-duvet-card text-duvet-ink hover:bg-duvet-ink/10 mt-2 w-full rounded-md px-3 py-1.5 text-xs font-medium transition-colors"
+							class="{buttonClass('secondary')} mt-1 w-full"
 							onclick={() => loadPage(t, files.at(-1)?.attachment_id)}
 						>
 							Load more

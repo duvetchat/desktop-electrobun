@@ -12,14 +12,17 @@
 		Link2 as WebhookIcon,
 		Upload as UploadIcon,
 	} from "@lucide/svelte";
-	import { fly } from "svelte/transition";
-	import { cubicOut } from "svelte/easing";
+	import { slide } from "svelte/transition";
 	import { untrack } from "svelte";
-	import { Dialog } from "bits-ui";
 	import { Permission, canSetPermission, computeRoomPermissions, hasSpacePermission } from "$lib/permissions";
 	import { getApiError } from "$lib/api/api";
 	import { updateRoom, upsertRoomOverwrite, deleteRoomOverwrite } from "$lib/api/rooms";
 	import Webhooks from "$lib/components/Webhooks.svelte";
+	import Button from "$lib/components/ui/Button.svelte";
+	import IconButton from "$lib/components/ui/IconButton.svelte";
+	import SettingsFrame from "$lib/components/settings/SettingsFrame.svelte";
+	import SettingsGroup from "$lib/components/settings/SettingsGroup.svelte";
+	import { CARD, FIELD, FIELD_AREA, GROUP_TITLE, LABEL, type SettingsNavGroup } from "$lib/components/settings/recipes";
 	import type { GatewaySpace, GatewayRoom, GatewayRoomOverwrite } from "$lib/types";
 
 	let {
@@ -312,350 +315,308 @@
 		activeSection = "overview";
 		open = false;
 	}
+
+	// Closed, the settings come back on Overview next time.
+	$effect(() => {
+		if (!open) {
+			activeSection = "overview";
+			confirmDelete = false;
+		}
+	});
+
+	// A room's sections: Permissions for rooms (not categories), Webhooks for text rooms whose webhooks the user manages.
+	const sectionGroups = $derived<SettingsNavGroup<Section>[]>([
+		{
+			items: [
+				{ id: "overview", label: "Overview", icon: GearSixIcon, tile: "#5e6380" },
+				...(room.type !== 3
+					? [{ id: "permissions" as const, label: "Permissions", icon: ShieldIcon, tile: "#7c5cff" }]
+					: []),
+				...(room.type === 1 && canManageWebhooks
+					? [{ id: "webhooks" as const, label: "Webhooks", icon: WebhookIcon, tile: "#e44fcb" }]
+					: []),
+			],
+		},
+	]);
+	const kind = $derived(room.type === 3 ? "category" : "room");
 </script>
 
-<Dialog.Root bind:open>
-	<Dialog.Portal>
-		<Dialog.Overlay class="fixed inset-0 z-500 bg-black/70 backdrop-blur-sm" />
-		<Dialog.Content class="fixed inset-0 z-501 flex items-center justify-center p-4">
-			<div
-				class="rounded-card border-duvet-line bg-duvet-bg text-duvet-ink shadow-duvet-float flex h-[85vh] max-h-[85vh] w-full max-w-4xl overflow-hidden border"
+<!-- One of a permission's three states: Deny, Inherit or Allow. -->
+{#snippet stateButton(
+	on: boolean,
+	tone: string,
+	title: string,
+	disabled: boolean,
+	press: () => void,
+	icon: typeof XIcon,
+)}
+	{@const Icon = icon}
+	<button
+		type="button"
+		class="relative z-1 flex h-7 w-9 items-center justify-center rounded-lg transition-colors duration-[120ms] motion-reduce:transition-none {on
+			? `bg-duvet-seg-thumb shadow-duvet-control ${tone}`
+			: 'text-duvet-ink2 hover:text-duvet-ink'} {disabled ? 'cursor-not-allowed opacity-40' : ''}"
+		aria-pressed={on}
+		aria-label={title}
+		{title}
+		{disabled}
+		onclick={press}
+	>
+		<Icon class="size-3.5" />
+	</button>
+{/snippet}
+
+<SettingsFrame
+	mode="sheet"
+	bind:open
+	name="{room.type === 3 ? '' : '#'}{room.name} · {room.type === 3 ? 'Category' : 'Room'} settings"
+	groups={sectionGroups}
+	bind:active={activeSection}
+	wide={activeSection === "permissions"}
+>
+	{#snippet head()}
+		<div class="flex shrink-0 items-center gap-2.5 p-2">
+			<span
+				class="bg-duvet-secondary-fill text-duvet-accent-text grid size-[34px] shrink-0 place-items-center rounded-[10px]"
 			>
-				<!-- Left sidebar -->
-				<aside class="border-duvet-line bg-duvet-sunk flex w-56 shrink-0 flex-col border-r py-6">
-					<div class="mb-4 px-4">
-						<div class="mb-1 flex items-center gap-1.5 px-2">
-							{#if room.type === 3}
-								<GearSixIcon class="text-duvet-ink2 size-3.5 shrink-0" />
-							{:else if room.type === 1}
-								<HashIcon class="text-duvet-ink2 size-3.5 shrink-0" />
-							{:else}
-								<SpeakerIcon class="text-duvet-ink2 size-3.5 shrink-0" />
-							{/if}
-							<p class="text-duvet-ink2 truncate text-xs font-bold">
-								{room.name}
-							</p>
-						</div>
-					</div>
+				{#if room.type === 3}
+					<GearSixIcon class="size-4" />
+				{:else if room.type === 1}
+					<HashIcon class="size-4" />
+				{:else}
+					<SpeakerIcon class="size-4" />
+				{/if}
+			</span>
+			<span class="min-w-0 flex-1">
+				<span class="font-serif-sm block truncate text-[15px] font-medium">{room.name}</span>
+				<span class="text-duvet-ink2 block truncate text-[11.5px]">
+					{room.type === 3 ? "Category settings" : "Room settings"}
+				</span>
+			</span>
+		</div>
+	{/snippet}
 
-					<nav class="flex flex-1 flex-col gap-0.5 px-2">
-						<button
-							class="flex items-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium transition-colors duration-100
-								{activeSection === 'overview'
-								? 'bg-duvet-card text-duvet-ink'
-								: 'text-duvet-ink2 hover:bg-duvet-card/60 hover:text-duvet-ink'}"
-							onclick={() => (activeSection = "overview")}
+	{#snippet foot()}
+		{#if !confirmDelete}
+			<button
+				type="button"
+				class="text-duvet-danger hover:bg-duvet-danger/10 flex h-8 w-full items-center gap-[9px] rounded-[9px] px-2 text-left text-[13px] font-medium transition-colors duration-[120ms] motion-reduce:transition-none"
+				onclick={() => (confirmDelete = true)}
+			>
+				<span class="grid size-[22px] shrink-0 place-items-center"><TrashIcon class="size-[15px]" /></span>
+				Delete {kind}
+			</button>
+		{:else}
+			<div class="px-2 py-1 text-xs">
+				<p class="text-duvet-danger mb-2 font-medium">Delete this {kind}?</p>
+				<div class="flex gap-2">
+					<Button
+						variant="danger"
+						size="sm"
+						class="flex-1"
+						onclick={() => {
+							onDelete?.();
+							handleClose();
+						}}
+					>
+						Delete
+					</Button>
+					<Button variant="secondary" size="sm" class="flex-1" onclick={() => (confirmDelete = false)}>Cancel</Button>
+				</div>
+			</div>
+		{/if}
+	{/snippet}
+
+	{#snippet bars()}
+		<!-- Bulk save bar: slides in when there are unsaved changes -->
+		{#if activeSection === "permissions" && hasChanges}
+			<div
+				transition:slide={{ duration: 200 }}
+				class="bg-duvet-card shadow-duvet-lifted mx-[26px] mb-3 flex items-center justify-between gap-4 rounded-2xl py-2.5 pr-2.5 pl-4 text-[13px] font-medium"
+			>
+				<span class={saveError ? "text-duvet-danger" : "text-duvet-ink2"} role={saveError ? "alert" : undefined}>
+					{saveError || "You have unsaved changes"}
+				</span>
+				<div class="flex items-center gap-2">
+					<Button variant="quiet" onclick={resetPending} disabled={isSaving}>Reset</Button>
+					<Button onclick={saveAll} disabled={isSaving}>{isSaving ? "Saving…" : "Save changes"}</Button>
+				</div>
+			</div>
+		{/if}
+	{/snippet}
+
+	{#if activeSection === "overview"}
+		<SettingsGroup title="About" plain class="flex flex-col gap-4">
+			<div>
+				<label for="ch-name" class={LABEL}>{room.type === 3 ? "Category name" : "Room name"}</label>
+				<input
+					id="ch-name"
+					type="text"
+					bind:value={editName}
+					class={FIELD}
+					placeholder={room.type === 3 ? "category-name" : "room-name"}
+					maxlength="64"
+				/>
+			</div>
+
+			{#if room.type !== 3}
+				<div>
+					<label for="ch-desc" class={LABEL}>Description</label>
+					<textarea
+						id="ch-desc"
+						bind:value={editDescription}
+						rows="3"
+						class={FIELD_AREA}
+						placeholder="Optional description…"
+						maxlength="256"
+					></textarea>
+				</div>
+			{/if}
+
+			{#if overviewError}
+				<p class="text-duvet-danger text-[13px]" role="alert">{overviewError}</p>
+			{/if}
+
+			<div class="flex gap-2 pt-1">
+				<Button disabled={overviewSaving || !editName.trim()} onclick={saveOverview}>
+					{overviewSaving ? "Saving…" : "Save changes"}
+				</Button>
+				<Button
+					variant="secondary"
+					onclick={() => {
+						editName = room.name;
+						editDescription = room.description ?? "";
+						overviewError = "";
+					}}
+				>
+					Reset
+				</Button>
+			</div>
+		</SettingsGroup>
+	{:else if activeSection === "permissions"}
+		<div class="grid grid-cols-[200px_minmax(0,1fr)] items-start gap-5">
+			<!-- Roles/Members list -->
+			<div class="flex flex-col gap-2">
+				<div class="flex items-center justify-between">
+					<span class={GROUP_TITLE}>Roles / Members</span>
+					<div class="relative">
+						<IconButton
+							label="Add overwrite"
+							title="Add overwrite"
+							size="sm"
+							aria-expanded={showAddMenu}
+							onclick={() => (showAddMenu = !showAddMenu)}
 						>
-							<GearSixIcon class="size-4" />
-							Overview
-						</button>
-
-						{#if room.type !== 3}
-							<button
-								class="flex items-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium transition-colors duration-100
-									{activeSection === 'permissions'
-									? 'bg-duvet-card text-duvet-ink'
-									: 'text-duvet-ink2 hover:bg-duvet-card/60 hover:text-duvet-ink'}"
-								onclick={() => (activeSection = "permissions")}
+							<PlusIcon class="size-3.5" />
+						</IconButton>
+						{#if showAddMenu}
+							<div
+								class="bg-duvet-glass shadow-duvet-glass animate-float-in absolute top-full right-0 z-10 mt-1 max-h-48 w-48 overflow-y-auto rounded-[14px] p-1.5 backdrop-blur-[32px]"
 							>
-								<ShieldIcon class="size-4" />
-								Permissions
-							</button>
-						{/if}
-
-						{#if room.type === 1 && canManageWebhooks}
-							<button
-								class="flex items-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium transition-colors duration-100
-									{activeSection === 'webhooks'
-									? 'bg-duvet-card text-duvet-ink'
-									: 'text-duvet-ink2 hover:bg-duvet-card/60 hover:text-duvet-ink'}"
-								onclick={() => (activeSection = "webhooks")}
-							>
-								<WebhookIcon class="size-4" />
-								Webhooks
-							</button>
-						{/if}
-
-						<div class="border-duvet-line mx-1 mt-auto border-t pt-4">
-							{#if !confirmDelete}
-								<button
-									class="text-duvet-danger hover:bg-duvet-card/60 hover:text-duvet-danger flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium transition-colors duration-100"
-									onclick={() => (confirmDelete = true)}
-								>
-									<TrashIcon class="size-4" />
-									Delete {room.type === 3 ? "Category" : "Room"}
-								</button>
-							{:else}
-								<div class="text-duvet-ink2 px-3 py-2 text-xs">
-									<p class="text-duvet-danger mb-2 font-medium">Delete this {room.type === 3 ? "category" : "room"}?</p>
-									<div class="flex gap-2">
+								{#if availableRoles.length === 0}
+									<p class="text-duvet-ink2 px-2 py-1.5 text-xs">All roles added</p>
+								{:else}
+									{#each availableRoles as role (role.id)}
 										<button
-											class="text-duvet-on-accent bg-duvet-danger hover:bg-duvet-danger/85 flex-1 rounded px-2 py-1 text-xs transition-colors"
-											onclick={() => {
-												onDelete?.();
-												handleClose();
-											}}
+											class="hover:bg-duvet-accent-tint w-full rounded-[9px] px-2 py-1.5 text-left text-[13px] font-medium transition-colors"
+											onclick={() => addRoleOverwrite(role.id)}
 										>
-											Delete
+											{role.name}
 										</button>
-										<button
-											class="bg-duvet-ink/10 text-duvet-ink hover:bg-duvet-ink/15 flex-1 rounded px-2 py-1 text-xs transition-colors"
-											onclick={() => (confirmDelete = false)}
-										>
-											Cancel
-										</button>
-									</div>
-								</div>
-							{/if}
-						</div>
-					</nav>
-				</aside>
+									{/each}
+								{/if}
+							</div>
+						{/if}
+					</div>
+				</div>
 
-				<!-- Content area -->
-				<div class="relative flex min-w-0 flex-1 flex-col">
-					<!-- Header -->
-					<div class="border-duvet-line flex shrink-0 items-center justify-between border-b px-6 py-4">
-						<h2 class="text-duvet-ink text-base font-semibold capitalize">
-							{activeSection === "overview" ? "Overview" : activeSection === "permissions" ? "Permissions" : "Webhooks"}
-						</h2>
+				<div class="flex flex-col gap-px">
+					{#each pendingOverwrites as ow (ow.target_id)}
 						<button
-							class="text-duvet-ink2 hover:bg-duvet-card hover:text-duvet-ink rounded-lg p-1.5 transition-colors duration-150"
-							onclick={handleClose}
-							aria-label="Close"
+							class="h-[34px] w-full truncate rounded-[10px] px-2.5 text-left text-[13px] font-medium transition-colors motion-reduce:transition-none {selectedTargetId ===
+							ow.target_id
+								? 'bg-duvet-accent-tint'
+								: 'hover:bg-duvet-hover'}"
+							aria-pressed={selectedTargetId === ow.target_id}
+							onclick={() => (selectedTargetId = ow.target_id)}
 						>
-							<XIcon class="size-5" />
+							{getTargetLabel(ow)}
 						</button>
-					</div>
+					{/each}
 
-					<!-- Scrollable body -->
-					<div class="flex-1 overflow-y-auto" class:pb-14={activeSection === "permissions" && hasChanges}>
-						{#if activeSection === "overview"}
-							<div class="max-w-xl space-y-5 px-6 py-6">
-								<div class="space-y-1.5">
-									<label for="ch-name" class="text-duvet-ink2 block text-[13px] font-bold">
-										{room.type === 3 ? "Category Name" : "Room Name"}
-									</label>
-									<input
-										id="ch-name"
-										type="text"
-										bind:value={editName}
-										class="text-duvet-ink placeholder:text-duvet-ink2 bg-duvet-sunk shadow-duvet-press focus-visible:outline-duvet-accent w-full rounded-xl px-3 py-2 text-sm focus-visible:outline-2"
-										placeholder={room.type === 3 ? "category-name" : "room-name"}
-										maxlength="64"
-									/>
-								</div>
-
-								{#if room.type !== 3}
-									<div class="space-y-1.5">
-										<label for="ch-desc" class="text-duvet-ink2 block text-[13px] font-bold"> Description </label>
-										<textarea
-											id="ch-desc"
-											bind:value={editDescription}
-											rows="3"
-											class="text-duvet-ink placeholder:text-duvet-ink2 bg-duvet-sunk shadow-duvet-press focus-visible:outline-duvet-accent w-full resize-none rounded-xl px-3 py-2 text-sm focus-visible:outline-2"
-											placeholder="Optional description…"
-											maxlength="256"
-										></textarea>
-									</div>
-								{/if}
-
-								{#if overviewError}
-									<p class="text-duvet-danger text-sm">{overviewError}</p>
-								{/if}
-
-								<div class="flex gap-3 pt-1">
-									<button
-										class="text-duvet-on-accent rounded-row bg-duvet-accent hover:bg-duvet-accent/85 px-4 py-2 text-sm font-medium transition-colors disabled:opacity-50"
-										disabled={overviewSaving || !editName.trim()}
-										onclick={saveOverview}
-									>
-										{overviewSaving ? "Saving…" : "Save Changes"}
-									</button>
-									<button
-										class="rounded-row bg-duvet-ink/10 text-duvet-ink hover:bg-duvet-ink/15 px-4 py-2 text-sm font-medium transition-colors"
-										onclick={() => {
-											editName = room.name;
-											editDescription = room.description ?? "";
-											overviewError = "";
-										}}
-									>
-										Reset
-									</button>
-								</div>
-							</div>
-						{:else if activeSection === "permissions"}
-							<div class="flex h-full">
-								<!-- Roles/Members list -->
-								<div class="border-duvet-line flex w-52 shrink-0 flex-col border-r py-4">
-									<div class="flex items-center justify-between px-3 pb-2">
-										<span class="text-duvet-ink2 text-xs font-bold"> Roles / Members </span>
-										<div class="relative">
-											<button
-												class="text-duvet-ink2 hover:bg-duvet-card hover:text-duvet-ink rounded p-1 transition-colors"
-												onclick={() => (showAddMenu = !showAddMenu)}
-												title="Add overwrite"
-											>
-												<PlusIcon class="size-3.5" />
-											</button>
-											{#if showAddMenu}
-												<div
-													class="rounded-card border-duvet-line bg-duvet-card shadow-duvet-float absolute top-full right-0 z-10 mt-1 max-h-48 w-48 overflow-y-auto border py-1"
-												>
-													{#if availableRoles.length === 0}
-														<p class="text-duvet-ink2 px-3 py-2 text-xs">All roles added</p>
-													{:else}
-														{#each availableRoles as role (role.id)}
-															<button
-																class="text-duvet-ink hover:bg-duvet-ink/10 w-full px-3 py-2 text-left text-sm transition-colors"
-																onclick={() => addRoleOverwrite(role.id)}
-															>
-																{role.name}
-															</button>
-														{/each}
-													{/if}
-												</div>
-											{/if}
-										</div>
-									</div>
-
-									<div class="flex-1 overflow-y-auto">
-										{#each pendingOverwrites as ow (ow.target_id)}
-											<button
-												class="w-full px-3 py-2 text-left text-sm transition-colors
-													{selectedTargetId === ow.target_id
-													? 'bg-duvet-ink/10 text-duvet-ink'
-													: 'text-duvet-ink hover:bg-duvet-card hover:text-duvet-ink'}"
-												onclick={() => (selectedTargetId = ow.target_id)}
-											>
-												{getTargetLabel(ow)}
-											</button>
-										{/each}
-
-										{#if pendingOverwrites.length === 0}
-											<p class="text-duvet-ink2 px-3 py-3 text-xs">No overwrites yet. Add a role with the + button.</p>
-										{/if}
-									</div>
-								</div>
-
-								<!-- Permission toggles -->
-								<div class="flex-1 overflow-y-auto px-6 py-4">
-									{#if !selectedTargetId || !selectedPending}
-										<p class="text-duvet-ink2 mt-8 text-center text-sm">Select a role or member to edit permissions.</p>
-									{:else}
-										<div class="mb-5 flex items-center justify-between">
-											<h3 class="text-duvet-ink text-sm font-semibold">
-												{getTargetLabel(selectedPending)}
-											</h3>
-											<button
-												class="text-duvet-danger hover:bg-duvet-card hover:text-duvet-danger rounded px-2 py-1 text-xs transition-colors"
-												onclick={removeOverwrite}
-											>
-												Remove
-											</button>
-										</div>
-
-										{#each PERMISSION_GROUPS as group (group.label)}
-											<div class="mb-6">
-												<p class="text-duvet-ink2 mb-3 text-[13px] font-bold">
-													{group.label}
-												</p>
-												<div class="space-y-3">
-													{#each group.perms as perm (perm.flag)}
-														{@const state = getPermState(perm.flag)}
-														{@const canDeny =
-															state === -1 || canSetPermission(roomGranted, selectedSaved?.deny_flags ?? 0, perm.flag)}
-														{@const canAllow =
-															state === 1 || canSetPermission(roomGranted, selectedSaved?.allow_flags ?? 0, perm.flag)}
-														<div class="flex items-start justify-between gap-4 py-2">
-															<div class="min-w-0 flex-1">
-																<p class="text-duvet-ink text-sm font-medium">{perm.name}</p>
-																<p class="text-duvet-ink2 mt-0.5 text-xs">{perm.description}</p>
-															</div>
-															<div class="flex shrink-0 items-center gap-1">
-																<!-- Deny -->
-																<button
-																	class="flex size-7 items-center justify-center rounded transition-colors
-																		{state === -1
-																		? 'text-duvet-on-accent bg-duvet-danger'
-																		: 'bg-duvet-card text-duvet-ink2 hover:bg-duvet-ink/10 hover:text-duvet-ink'}"
-																	class:opacity-40={!canDeny}
-																	class:cursor-not-allowed={!canDeny}
-																	disabled={!canDeny}
-																	onclick={() => setPermState(perm.flag, state === -1 ? 0 : -1)}
-																	title={canDeny ? "Deny" : "You can only deny permissions you have in this room"}
-																>
-																	<XIcon class="size-3.5" />
-																</button>
-																<!-- Inherit -->
-																<button
-																	class="flex size-7 items-center justify-center rounded transition-colors
-																		{state === 0
-																		? 'bg-duvet-ink/15 text-duvet-ink'
-																		: 'bg-duvet-card text-duvet-ink2 hover:bg-duvet-ink/10 hover:text-duvet-ink'}"
-																	onclick={() => setPermState(perm.flag, 0)}
-																	title="Inherit"
-																>
-																	<MinusIcon class="size-3.5" />
-																</button>
-																<!-- Allow -->
-																<button
-																	class="flex size-7 items-center justify-center rounded transition-colors
-																		{state === 1
-																		? 'text-duvet-on-accent bg-duvet-alive'
-																		: 'bg-duvet-card text-duvet-ink2 hover:bg-duvet-ink/10 hover:text-duvet-ink'}"
-																	class:opacity-40={!canAllow}
-																	class:cursor-not-allowed={!canAllow}
-																	disabled={!canAllow}
-																	onclick={() => setPermState(perm.flag, state === 1 ? 0 : 1)}
-																	title={canAllow ? "Allow" : "You can only allow permissions you have in this room"}
-																>
-																	<CheckIcon class="size-3.5" />
-																</button>
-															</div>
-														</div>
-													{/each}
-												</div>
-											</div>
-										{/each}
-									{/if}
-								</div>
-							</div>
-						{:else if activeSection === "webhooks"}
-							<div class="px-6 py-6">
-								<Webhooks {space} rooms={[room]} />
-							</div>
-						{/if}
-					</div>
-
-					<!-- Bulk save bar — slides in from bottom when there are unsaved changes -->
-					{#if activeSection === "permissions" && hasChanges}
-						<div
-							transition:fly={{ y: 60, duration: 250, easing: cubicOut }}
-							class="border-duvet-line bg-duvet-card/95 absolute right-0 bottom-0 left-0 flex items-center justify-between border-t px-6 py-3 backdrop-blur-sm"
-						>
-							<span class="text-sm {saveError ? 'text-duvet-danger' : 'text-duvet-ink2'}">
-								{saveError || "You have unsaved changes"}
-							</span>
-							<div class="flex items-center gap-2">
-								<button
-									class="text-duvet-ink2 hover:bg-duvet-ink/10 hover:text-duvet-ink rounded px-3 py-1.5 text-sm transition-colors disabled:opacity-50"
-									onclick={resetPending}
-									disabled={isSaving}
-								>
-									Reset
-								</button>
-								<button
-									class="text-duvet-on-accent rounded-row bg-duvet-accent hover:bg-duvet-accent/85 px-4 py-1.5 text-sm font-medium transition-colors disabled:opacity-50"
-									onclick={saveAll}
-									disabled={isSaving}
-								>
-									{isSaving ? "Saving…" : "Save Changes"}
-								</button>
-							</div>
-						</div>
+					{#if pendingOverwrites.length === 0}
+						<p class="text-duvet-ink2 px-1.5 py-2 text-xs">No overwrites yet. Add a role with the + button.</p>
 					{/if}
 				</div>
 			</div>
-		</Dialog.Content>
-	</Dialog.Portal>
-</Dialog.Root>
+
+			<!-- Permission toggles -->
+			<div class="flex min-w-0 flex-col gap-4">
+				{#if !selectedTargetId || !selectedPending}
+					<p class="text-duvet-ink2 mt-8 text-center text-sm">Select a role or member to edit permissions.</p>
+				{:else}
+					<div class="flex items-center justify-between gap-3">
+						<h3 class="min-w-0 truncate font-serif text-lg font-medium">{getTargetLabel(selectedPending)}</h3>
+						<Button
+							variant="quiet"
+							size="sm"
+							class="text-duvet-danger! hover:bg-duvet-danger/15!"
+							onclick={removeOverwrite}
+						>
+							Remove
+						</Button>
+					</div>
+
+					{#each PERMISSION_GROUPS as group (group.label)}
+						<section class="flex flex-col gap-2">
+							<h4 class={GROUP_TITLE}>{group.label}</h4>
+							<div class="{CARD} divide-duvet-line divide-y">
+								{#each group.perms as perm (perm.flag)}
+									{@const state = getPermState(perm.flag)}
+									{@const canDeny =
+										state === -1 || canSetPermission(roomGranted, selectedSaved?.deny_flags ?? 0, perm.flag)}
+									{@const canAllow =
+										state === 1 || canSetPermission(roomGranted, selectedSaved?.allow_flags ?? 0, perm.flag)}
+									<div class="flex min-h-[50px] items-center justify-between gap-4 px-3.5 py-2">
+										<div class="min-w-0 flex-1">
+											<p class="text-[13.5px] leading-[1.3] font-medium">{perm.name}</p>
+											<p class="text-duvet-ink2 mt-0.5 text-xs">{perm.description}</p>
+										</div>
+										<div class="bg-duvet-seg-track flex shrink-0 items-center rounded-[11px] p-[3px]" role="group">
+											{@render stateButton(
+												state === -1,
+												"text-duvet-danger",
+												canDeny ? "Deny" : "You can only deny permissions you have in this room",
+												!canDeny,
+												() => setPermState(perm.flag, state === -1 ? 0 : -1),
+												XIcon,
+											)}
+											{@render stateButton(
+												state === 0,
+												"text-duvet-ink",
+												"Inherit",
+												false,
+												() => setPermState(perm.flag, 0),
+												MinusIcon,
+											)}
+											{@render stateButton(
+												state === 1,
+												"text-duvet-alive",
+												canAllow ? "Allow" : "You can only allow permissions you have in this room",
+												!canAllow,
+												() => setPermState(perm.flag, state === 1 ? 0 : 1),
+												CheckIcon,
+											)}
+										</div>
+									</div>
+								{/each}
+							</div>
+						</section>
+					{/each}
+				{/if}
+			</div>
+		</div>
+	{:else if activeSection === "webhooks"}
+		<Webhooks {space} rooms={[room]} />
+	{/if}
+</SettingsFrame>
