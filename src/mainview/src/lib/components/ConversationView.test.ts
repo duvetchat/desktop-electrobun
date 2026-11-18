@@ -23,6 +23,27 @@ test("a group's bar offers what the user can do to it in the pane's one More, a 
 	);
 });
 
+// #370: a DM's or a group's call button started a voice call only, and the camera could only be turned on in the call.
+// Its chevron offers a voice call or a video call: one control, not a second button beside it.
+test("the call button calls with one press, and its chevron offers a voice call or a video call", () => {
+	const view = source("ConversationView.svelte");
+	const start = view.indexOf("{#snippet actions()}");
+	const actions = view.slice(start, view.indexOf("\n{/snippet}", start));
+	// The phone itself places a voice call, as before; the chevron beside it opens the menu. Both wait while a call
+	// shows, or the user's own rings from another device.
+	expect(actions).toMatch(/onclick=\{startCall\}\s*disabled=\{!!\$activeCall \|\| joinWaits\}\s*title="Start call"/);
+	expect(actions).toMatch(
+		/<Menu align="end" label="Start a call">\s*\{#snippet trigger\(props\)\}\s*<button\s*\{\.\.\.props\}[^>]*disabled=\{!!\$activeCall \|\| joinWaits\}\s*title="Voice or video call"\s*aria-label="Voice or video call"\s*>\s*<ChevronDown/,
+	);
+	expect(actions).toContain("<MenuItem icon={Phone} onSelect={startCall}>Voice call</MenuItem>");
+	expect(actions).toContain("<MenuItem icon={Video} onSelect={startVideoCall}>Video call</MenuItem>");
+	expect(view).toMatch(
+		/function startVideoCall\(\) \{\s*startConversationCall\(conversation, \{ video: true \}\);\s*\}/,
+	);
+	// No second button: the bar's one phone is the call's.
+	expect(actions.match(/<Phone class=/g)).toHaveLength(1);
+});
+
 test("renaming starts from the name, asks nothing for the same one or none, and shows a refusal", () => {
 	const view = source("ConversationView.svelte");
 	expect(view).toContain('await promptDialog("Rename group", "Group name", current);');

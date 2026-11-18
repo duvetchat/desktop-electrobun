@@ -107,8 +107,9 @@ export function joinConversationCall(conversation: Pick<Conversation, "id" | "me
 
 /** Calls a conversation, from its view or a row of the call history: CALL_INITIATE, and "Calling…" until someone answers.
  * Nothing while the user is in a call, places one or one rings them, nor while their own call there still rings the
- * others from another device, which has nothing to join until someone answers it. */
-export function startConversationCall(conversation: Pick<Conversation, "id" | "members">) {
+ * others from another device, which has nothing to join until someone answers it. A video call is placed as any call,
+ * the gateway having no other, and rings the others as one: the camera turns on as its voice joins (takeVideoCall). */
+export function startConversationCall(conversation: Pick<Conversation, "id" | "members">, { video = false } = {}) {
 	const user = get(currentUser);
 	const call = get(activeCall);
 	if (!user || call || callingFromAnotherDevice(conversation.id, get(ownCallsRinging), call)) return;
@@ -121,11 +122,21 @@ export function startConversationCall(conversation: Pick<Conversation, "id" | "m
 		initiatorAvatar: user.avatar ?? null,
 		state: "calling",
 		memberIds,
+		video,
 	});
 	conversationsWithCalls.update((s) => {
 		s.add(conversation.id);
 		return new Set(s);
 	});
+}
+
+/** Whether the voice of a room or call (its ID) joins a video call this client placed, whose camera is to turn on as
+ * it joins (#370). True once: the camera is the user's from then on, whatever joins that voice again. */
+export function takeVideoCall(roomId: string): boolean {
+	const call = get(activeCall);
+	if (call?.conversationId !== roomId || !call.video) return false;
+	activeCall.set({ ...call, video: false });
+	return true;
 }
 
 /** Leaves the voice room or the call the user is in. A call's others stay in it, as its conversation's banner shows. */

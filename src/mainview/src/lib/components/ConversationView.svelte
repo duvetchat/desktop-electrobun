@@ -97,7 +97,7 @@
 		takeList,
 		withPresent,
 	} from "$lib/jumps";
-	import { Ellipsis, LogOut, MessageSquare, Pencil, Phone, UserPlus } from "@lucide/svelte";
+	import { ChevronDown, Ellipsis, LogOut, MessageSquare, Pencil, Phone, UserPlus, Video } from "@lucide/svelte";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
 	import Chat from "$lib/components/Chat.svelte";
 	import MessageSearch from "$lib/components/MessageSearch.svelte";
@@ -729,6 +729,11 @@
 		startConversationCall(conversation);
 	}
 
+	// The others see a call as any other: the camera turns on once this client is in it (#370).
+	function startVideoCall() {
+		startConversationCall(conversation, { video: true });
+	}
+
 	// The newest message the server has: not one still being sent.
 	function newestConfirmedId(msgs: { id: string; nonce?: string }[]): string {
 		let newestId = "";
@@ -1019,16 +1024,36 @@
 {#snippet actions()}
 	{@const buttonClass =
 		"text-duvet-ink2 hover:bg-duvet-card hover:text-duvet-ink focus-visible:outline-duvet-accent flex items-center gap-1 rounded-lg p-1.5 text-xs font-semibold transition-colors focus-visible:outline-2 disabled:cursor-not-allowed disabled:opacity-40 motion-reduce:transition-none"}
-	<button
-		type="button"
-		class={buttonClass}
-		onclick={startCall}
-		disabled={!!$activeCall || joinWaits}
-		title="Start call"
-		aria-label="Start call"
-	>
-		<Phone class="size-4" />
-	</button>
+	<!-- One press on the phone places a voice call, as before; the chevron beside it opens Voice call and Video call
+	     (#370): one control, not a second button beside it. -->
+	<div class="flex gap-px">
+		<button
+			type="button"
+			class="{buttonClass} rounded-r-[3px]"
+			onclick={startCall}
+			disabled={!!$activeCall || joinWaits}
+			title="Start call"
+			aria-label="Start call"
+		>
+			<Phone class="size-4" />
+		</button>
+		<Menu align="end" label="Start a call">
+			{#snippet trigger(props)}
+				<button
+					{...props}
+					type="button"
+					class="{buttonClass} w-[18px] justify-center rounded-l-[3px] px-0"
+					disabled={!!$activeCall || joinWaits}
+					title="Voice or video call"
+					aria-label="Voice or video call"
+				>
+					<ChevronDown size={12} strokeWidth={2.5} />
+				</button>
+			{/snippet}
+			<MenuItem icon={Phone} onSelect={startCall}>Voice call</MenuItem>
+			<MenuItem icon={Video} onSelect={startVideoCall}>Video call</MenuItem>
+		</Menu>
+	</div>
 	{#if conversation.type === 2 && isOwner}
 		<button type="button" class={buttonClass} onclick={openAddMemberModal} title="Add people" aria-label="Add people">
 			<UserPlus class="size-4" />
