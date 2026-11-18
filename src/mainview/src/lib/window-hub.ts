@@ -1,29 +1,23 @@
 // The page's end of what crosses between the app's windows (#357): lib/window-link.ts's states and commands, over the
 // app's RPC (lib/electrobun-rpc.ts), which the Bun process relays (src/bun/window-relay.ts). The RPC takes one answerer
-// of commands and one stream of states, and more than one part of the app has windows (Settings, the media controls):
-// each registers its channel here.
+// of commands and one stream of states, and more than one part of the app has windows (Settings, the media controls).
+// The commands of every part are kept in one place, lib/window-commands.ts, and whichever part starts first hands the
+// RPC that one answerer: two answerers would leave the earlier part's windows unanswered.
 import { getElectrobunRpc } from "$lib/electrobun-rpc";
-import {
-	answerCommand,
-	isNewer,
-	StatePublisher,
-	type CommandHandlers,
-	type WindowAnswer,
-	type WindowStateMessage,
-} from "$lib/window-link";
+import { answerWindowCommand, joinWindowCommands } from "$lib/window-commands";
+import { isNewer, StatePublisher, type WindowAnswer, type WindowStateMessage } from "$lib/window-link";
 
 // ── the main window's side ───────────────────────────────────────────────────
 
-const handlers: CommandHandlers = {};
 let answering = false;
 
 /** In the main window: answers the other windows' commands of a channel, by name. A channel's later commands join
  * its earlier ones. */
 export function answerWindows(channel: string, commands: Record<string, (args: unknown) => unknown>): void {
-	handlers[channel] = { ...handlers[channel], ...commands };
+	joinWindowCommands(channel, commands);
 	if (answering) return;
 	answering = true;
-	void getElectrobunRpc().then((rpc) => rpc?.on.windowCommand((command) => answerCommand(handlers, command)));
+	void getElectrobunRpc().then((rpc) => rpc?.on.windowCommand(answerWindowCommand));
 }
 
 let publisher: StatePublisher | null = null;

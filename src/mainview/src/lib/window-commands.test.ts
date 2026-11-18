@@ -1,5 +1,7 @@
 import { expect, test } from "bun:test";
-import { addWindowCommands, answerWindowCommand } from "$lib/window-commands";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { addWindowCommands, answerWindowCommand, joinWindowCommands } from "$lib/window-commands";
 
 // #357: the main window answers its other windows' commands, each part of the app adding its own channel.
 test("each channel's commands are answered by whoever added them", async () => {
@@ -44,4 +46,27 @@ test("a command that throws answers why, and one nobody has answers so", async (
 		error: "No command nobody.x",
 	});
 	stop();
+});
+
+// The media controls' pop-out and the Settings windows each start on their own, and the RPC keeps one answerer: both
+// register here, so whichever hands it over, every channel is answered (#357).
+test("commands joined to a channel sit beside its earlier ones, and beside other channels'", async () => {
+	const stop = addWindowCommands("media", { toggleMute: () => "muted" });
+	joinWindowCommands("settings-test", { open: () => "opened" });
+	joinWindowCommands("settings-test", { close: () => "closed" });
+	expect(await answerWindowCommand({ channel: "settings-test", name: "open" })).toEqual({ ok: true, result: "opened" });
+	expect(await answerWindowCommand({ channel: "settings-test", name: "close" })).toEqual({
+		ok: true,
+		result: "closed",
+	});
+	expect(await answerWindowCommand({ channel: "media", name: "toggleMute" })).toEqual({ ok: true, result: "muted" });
+	stop();
+});
+
+test("the Settings windows' hub and the media pop-out hand the RPC the same answerer", () => {
+	const hub = readFileSync(join(import.meta.dir, "window-hub.ts"), "utf8");
+	const popOut = readFileSync(join(import.meta.dir, "media-popout.svelte.ts"), "utf8");
+	expect(hub).toContain("on.windowCommand(answerWindowCommand)");
+	expect(popOut).toContain("on.windowCommand(answerWindowCommand)");
+	expect(hub).not.toContain("answerCommand(handlers");
 });

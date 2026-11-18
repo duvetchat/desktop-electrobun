@@ -15,6 +15,12 @@ export function addWindowCommands(channel: string, commands: Record<string, (arg
 	};
 }
 
+/** Adds commands to a channel, beside the ones it has: for a part of the app whose pieces each add their own
+ * (lib/window-hub.ts: the Settings windows). */
+export function joinWindowCommands(channel: string, commands: Record<string, (args: unknown) => unknown>): void {
+	handlers[channel] = { ...handlers[channel], ...commands };
+}
+
 /** The main window's answer to any channel's command. */
 export function answerWindowCommand(command: WindowCommand): Promise<WindowAnswer> {
 	return answerCommand(handlers, command);
