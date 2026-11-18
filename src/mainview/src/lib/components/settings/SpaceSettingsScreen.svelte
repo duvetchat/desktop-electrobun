@@ -123,6 +123,7 @@
 	} from "./recipes";
 	import type { Shell } from "$lib/platform";
 	import { pageSettingsHost, type SettingsHost } from "$lib/settings-host";
+	import { spaceScope } from "$lib/staged-images";
 
 	// A Space's settings (#357, DESIGN-MAP.md S-58 to S-67): the app's own sections, each shown to those whose
 	// permissions its controls need. On the web it is a sheet of the app's page; in the desktop app it fills a window
@@ -189,6 +190,36 @@
 		if (pendingBannerPreview) URL.revokeObjectURL(pendingBannerPreview);
 		pendingBannerPreview = URL.createObjectURL(file);
 	}
+
+	// In a window of its own this screen ends with the window, and what was picked with it: the host keeps each pick
+	// for the next time, as the web's sheet does by staying mounted (lib/staged-images.ts). What was kept for the
+	// Space is read as its window opens; from then on the host is told each pick, and that it is gone once saved or
+	// dropped. `stagesOf` is the Space whose picks are known.
+	let stagesOf = $state<string | null>(null);
+	$effect(() => {
+		const of = mode === "window" ? spaceId : null;
+		if (!of || untrack(() => stagesOf) === of) return;
+		void host.stagedImages(spaceScope(of)).then((kept) => {
+			// What was picked while this was read stands.
+			if (pendingIcon === null && kept.icon) {
+				if (kept.icon === "remove") pendingIcon = "remove";
+				else onSpaceIconCrop(kept.icon);
+			}
+			if (pendingBanner === null && kept.banner) {
+				if (kept.banner === "remove") pendingBanner = "remove";
+				else onSpaceBannerCrop(kept.banner);
+			}
+			stagesOf = of;
+		});
+	});
+	$effect(() => {
+		const picked = pendingIcon;
+		if (stagesOf) host.stageImage(spaceScope(stagesOf), "icon", picked);
+	});
+	$effect(() => {
+		const picked = pendingBanner;
+		if (stagesOf) host.stageImage(spaceScope(stagesOf), "banner", picked);
+	});
 
 	let ovHasChanges = $derived(
 		space !== null &&

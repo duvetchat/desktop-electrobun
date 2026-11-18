@@ -4,6 +4,7 @@
 import { logout } from "$lib/api/auth";
 import { applyOwnProfile, type SavedProfile } from "$lib/own-profile";
 import { MESSAGE_LAYOUT_KEY, type MessageLayout } from "$lib/message-layout";
+import type { StagedImage, StagedSlot } from "$lib/staged-images";
 import { gatewaySpaces } from "$lib/stores.svelte";
 import { messageLayout } from "$lib/stores/message-layout.svelte";
 import { toast } from "$lib/stores/toast.svelte";
@@ -39,6 +40,11 @@ export interface SettingsHost {
 	setMessageLayout(layout: MessageLayout): void;
 	/** The code theme was loaded from a URL, or reset (an empty one): every window's code blocks take it. */
 	codeThemeChanged(url: string): void;
+	/** The images picked and not saved yet that were kept from this screen's last time, for whose they are
+	 * (lib/staged-images.ts): none on a page whose screen stays mounted while closed, which keeps its own. */
+	stagedImages(scope: string): Promise<Partial<Record<StagedSlot, StagedImage>>>;
+	/** An image was picked, or isn't any more (null): kept for the screen's next time where the screen can't. */
+	stageImage(scope: string, slot: StagedSlot, staged: StagedImage | null): void;
 }
 
 /** A Space with what its Overview saved; a gateway from before the default leaves it as it was. */
@@ -95,4 +101,7 @@ export const pageSettingsHost: SettingsHost = {
 	setMessageLayout: writeMessageLayout,
 	// The page that loaded the theme is the one whose code blocks show it.
 	codeThemeChanged: () => {},
+	// A sheet stays mounted while closed, with what was picked in it.
+	stagedImages: () => Promise.resolve({}),
+	stageImage: () => {},
 };

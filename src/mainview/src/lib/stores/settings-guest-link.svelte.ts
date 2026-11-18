@@ -15,6 +15,7 @@ import {
 	syncKey,
 	type SettingsWindowArgs,
 } from "$lib/settings-windows";
+import { stagedLink } from "$lib/staged-images";
 import { tellsTransferEnd } from "$lib/storage-transfers";
 import { sharedBans, sharedSettings } from "$lib/stores/settings-shared.svelte";
 import { storageTransfers } from "$lib/stores/storage-transfers.svelte";
@@ -59,6 +60,7 @@ export function startSettingsGuest(): SettingsGuest {
 		void getElectrobunRpc().then((rpc) => rpc?.send.closeWindow());
 	}
 
+	const staged = stagedLink(ask);
 	const guest = new SyncGuest((key, value) => ask("set", { key, value }));
 	// currentUser is the screen's to read: the main window's word sets it, here alone.
 	guest.mirror(
@@ -146,6 +148,9 @@ export function startSettingsGuest(): SettingsGuest {
 			tell("messageLayout", { layout });
 		},
 		codeThemeChanged: (url) => tell("codeTheme", { url }),
+		// This window's page ends with the window: the main window keeps what is picked and not saved.
+		stagedImages: (scope) => staged.kept(scope),
+		stageImage: (scope, slot, picked) => staged.stage(scope, slot, picked),
 	};
 
 	return {

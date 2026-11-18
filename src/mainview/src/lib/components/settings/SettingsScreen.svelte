@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onDestroy, untrack } from "svelte";
+	import { onDestroy, onMount, untrack } from "svelte";
 	import {
 		User as UserIcon,
 		Paperclip as PaperclipIcon,
@@ -146,6 +146,7 @@
 		type SettingsNavGroup,
 	} from "./recipes";
 	import { pageSettingsHost, type MessageLayout, type SettingsHost } from "$lib/settings-host";
+	import { USER_SCOPE, type StagedImage } from "$lib/staged-images";
 	import { parseSettingsSection, SETTINGS_SECTION_KEY, type SettingsSection as Section } from "$lib/settings-sections";
 
 	// Settings (#357, DESIGN-MAP.md S-47 to S-57): the user's own account, files, sounds, looks and developer teams. On
@@ -664,6 +665,31 @@
 	}
 
 	const hasImageChanges = $derived(pendingAvatar !== null || pendingBanner !== null);
+
+	// In a window of its own this screen ends with the window, and what was picked with it: the host keeps each pick
+	// for the next time, as the web's sheet does by staying mounted (lib/staged-images.ts). What was kept is read as
+	// the screen opens; from then on the host is told each pick, and that it is gone once saved or dropped.
+	let stagesKnown = $state(false);
+	onMount(() => {
+		const restore = (kind: "avatar" | "banner", kept: StagedImage | undefined) => {
+			if (kept === "remove") handleRemoveImageStage(kind);
+			else if (kept) handleImageCropStage(kind, kept);
+		};
+		void host.stagedImages(USER_SCOPE).then((kept) => {
+			// What was picked while this was read stands.
+			if (pendingAvatar === null) restore("avatar", kept.avatar);
+			if (pendingBanner === null) restore("banner", kept.banner);
+			stagesKnown = true;
+		});
+	});
+	$effect(() => {
+		const picked = pendingAvatar;
+		if (stagesKnown) host.stageImage(USER_SCOPE, "avatar", picked);
+	});
+	$effect(() => {
+		const picked = pendingBanner;
+		if (stagesKnown) host.stageImage(USER_SCOPE, "banner", picked);
+	});
 
 	// Form state
 	let username = $state("");

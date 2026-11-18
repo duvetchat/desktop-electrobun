@@ -16,6 +16,7 @@ import {
 	type OpenAppWindow,
 } from "$lib/settings-windows";
 import { reading, runes, sharedBans, sharedSettings } from "$lib/stores/settings-shared.svelte";
+import { parseStage, StagedImages } from "$lib/staged-images";
 import { tellsTransferEnd } from "$lib/storage-transfers";
 import { storageTransfers } from "$lib/stores/storage-transfers.svelte";
 import { currentUser, gatewaySpaces } from "$lib/stores.svelte";
@@ -28,6 +29,8 @@ const sharedSpaces = new Map<string, () => void>();
 // The settings windows whose pages listen, each by its Space (null for Settings' own): each tells the end of the
 // transfers it shows, and this window the rest (lib/storage-transfers.ts).
 const listening = new Set<string | null>();
+// What was picked in a settings window and not saved: kept here for the window opened next (lib/staged-images.ts).
+const stagedImages = new StagedImages();
 
 function shareSpace(spaceId: string) {
 	if (!host || sharedSpaces.has(spaceId)) return;
@@ -131,6 +134,12 @@ export function startSettingsHost(mobileOnly: Readable<boolean>): void {
 			void pageSettingsHost.logout();
 			return true;
 		},
+		stage: (args) => {
+			const stage = parseStage(args);
+			if (stage) stagedImages.take(stage.scope, stage.slot, stage.staged);
+			return stage !== null;
+		},
+		staged: (args) => stagedImages.of(textOf(args, "scope") ?? ""),
 	});
 }
 
