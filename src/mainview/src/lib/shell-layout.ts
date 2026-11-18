@@ -128,6 +128,21 @@ export function openInLeaf(leaf: PaneLeaf, tab: Tab, how: "here" | "tab"): PaneL
 	return { ...leaf, tabs, activeChannelId: tab.channelId };
 }
 
+/**
+ * A pane that shows a voice room once the user leaves the room (#367): the first of `choices` it can go to (the chat
+ * it showed before, then rooms of the voice room's Space), its tab shown, or opened after the voice room's, which stays
+ * for joining again. Never the voice room itself. A pane that shows another chat, or has nowhere to go, stays as it is.
+ */
+export function afterLeavingVoice(
+	leaf: PaneLeaf,
+	roomId: string,
+	choices: readonly (Tab | null | undefined)[],
+): PaneLeaf {
+	if (leaf.activeChannelId !== roomId) return leaf;
+	const next = choices.find((tab): tab is Tab => !!tab && tab.channelId !== roomId);
+	return next ? openInLeaf(leaf, next, "tab") : leaf;
+}
+
 /** The tree's panes, in its order: left to right, top to bottom. */
 export function leavesOf(node: PaneNode): PaneLeaf[] {
 	return node.kind === "leaf" ? [node] : [...leavesOf(node.a), ...leavesOf(node.b)];
