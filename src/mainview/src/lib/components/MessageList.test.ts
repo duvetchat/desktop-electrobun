@@ -209,6 +209,9 @@ test("a row's reaction picker mounts its portal only while it's open", () => {
 	const guarded = list.match(/\{#if reactingMessageId === message\.id\}\s*<Popover\.Portal>/g) ?? [];
 	expect(guarded).toHaveLength(1);
 	expect(list.match(/<Popover\.Portal>/g)).toHaveLength(1);
+	// And so does its More menu's: left mounted, scrolling a long chat with the pointer over it kept 75 MB of menus (#357).
+	expect(list.match(/\{#if moreMenuFor === message\.id\}\s*<DropdownMenu\.Portal>/g)).toHaveLength(1);
+	expect(list.match(/<DropdownMenu\.Portal>/g)).toHaveLength(1);
 });
 
 // #322: these lists kept their messages in $state, which Svelte 5 makes deep proxies (a signal for each property read,

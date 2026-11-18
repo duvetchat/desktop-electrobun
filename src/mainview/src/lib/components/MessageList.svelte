@@ -92,11 +92,10 @@
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
 	import ContextMenu from "$lib/components/ui/ContextMenu.svelte";
 	import IconButton from "$lib/components/ui/IconButton.svelte";
-	import Menu from "$lib/components/ui/Menu.svelte";
 	import MenuItem from "$lib/components/ui/MenuItem.svelte";
 	import MenuSeparator from "$lib/components/ui/MenuSeparator.svelte";
 	import MenuSub from "$lib/components/ui/MenuSub.svelte";
-	import { buttonClass, GLASS, GLASS_STRONG } from "$lib/components/ui/recipes";
+	import { buttonClass, GLASS, GLASS_STRONG, MENU_PANEL } from "$lib/components/ui/recipes";
 	import EmojiPicker from "$lib/components/EmojiPicker.svelte";
 	import ImagePreview from "$lib/components/ImagePreview.svelte";
 	import MemberProfilePopover from "$lib/components/MemberProfilePopover.svelte";
@@ -1562,19 +1561,31 @@
 				<PencilIcon size={15} />
 			</IconButton>
 		{/if}
-		<Menu
-			bind:open={() => moreMenuFor === message.id, (v) => (moreMenuFor = v ? message.id : null)}
-			side="bottom"
-			align={mine ? "start" : "end"}
-			label="Message"
-		>
-			{#snippet trigger(props)}
-				<IconButton {...props} label="More" title="More" size="sm" active={moreMenuFor === message.id}>
-					<EllipsisIcon size={15} />
-				</IconButton>
-			{/snippet}
-			{@render messageItems(message)}
-		</Menu>
+		<!-- The menu's own root and portal, as Menu.svelte draws them, but mounted only while open: a portal mounts what
+		     it holds as it's created, and every row the pointer passes would leave its menu's behind (#319). -->
+		<DropdownMenu.Root bind:open={() => moreMenuFor === message.id, (v) => (moreMenuFor = v ? message.id : null)}>
+			<DropdownMenu.Trigger>
+				{#snippet child({ props })}
+					<IconButton {...props} label="More" title="More" size="sm" active={moreMenuFor === message.id}>
+						<EllipsisIcon size={15} />
+					</IconButton>
+				{/snippet}
+			</DropdownMenu.Trigger>
+			{#if moreMenuFor === message.id}
+				<DropdownMenu.Portal>
+					<DropdownMenu.Content
+						side="bottom"
+						align={mine ? "start" : "end"}
+						sideOffset={6}
+						collisionPadding={10}
+						aria-label="Message"
+						class="{MENU_PANEL} origin-(--bits-floating-transform-origin)"
+					>
+						{@render messageItems(message)}
+					</DropdownMenu.Content>
+				</DropdownMenu.Portal>
+			{/if}
+		</DropdownMenu.Root>
 	</div>
 {/snippet}
 
