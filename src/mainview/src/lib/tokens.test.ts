@@ -94,7 +94,7 @@ describe("the Tailwind theme", () => {
 	});
 
 	test("every color token has its class", () => {
-		const notColors = /^--duvet-(shadow-|prism-shadow$|sb-filter|sb-bg-|sb-ring-|pad-x$|alive-rgb$|danger-rgb$)/;
+		const notColors = /^--duvet-(shadow-|prism-shadow$|sb-filter|sb-bg-|sb-ring-|pad-x$)/;
 		const classless = [...dark.keys()]
 			.filter((name) => name.startsWith("--duvet-") && !notColors.test(name))
 			.filter((name) => theme.get(name.replace("--duvet-", "--color-duvet-")) !== `var(${name})`);
