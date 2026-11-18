@@ -1,8 +1,8 @@
 <script lang="ts">
 	import { onDestroy, onMount, untrack } from "svelte";
 	import { Popover } from "bits-ui";
+	import SmileIcon from "$lib/components/ui/icons/Smile.svelte";
 	import {
-		Smile as SmileIcon,
 		Sticker as StickerIcon,
 		Image as GifIcon,
 		Plus,

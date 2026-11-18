@@ -3,12 +3,12 @@
 	import { toast } from "$lib/stores/toast.svelte";
 	import { confirmAction } from "$lib/stores/confirm.svelte";
 	import { getApiError } from "$lib/api/api";
+	import SmileIcon from "$lib/components/ui/icons/Smile.svelte";
 	import {
 		GripVertical as DotsSixVerticalIcon,
 		Shield as ShieldStarIcon,
 		Users as UsersThreeIcon,
 		Settings as GearSixIcon,
-		Smile as SmileIcon,
 		Sticker as StickerIcon,
 		Database as DatabaseIcon,
 		Paperclip as PaperclipIcon,
