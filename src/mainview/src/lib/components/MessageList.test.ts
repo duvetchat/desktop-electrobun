@@ -205,9 +205,10 @@ describe("a group's call notices", () => {
 // picker's portal under <body>, with its popover's state, for a picker nobody opened. A row's mounts only while open.
 test("a row's reaction picker mounts its portal only while it's open", () => {
 	const list = readFileSync(join(import.meta.dir, "MessageList.svelte"), "utf8");
+	// One hover bar for the user's messages and the others' (#357): one picker.
 	const guarded = list.match(/\{#if reactingMessageId === message\.id\}\s*<Popover\.Portal>/g) ?? [];
-	expect(guarded).toHaveLength(2);
-	expect(list.match(/<Popover\.Portal>/g)).toHaveLength(2);
+	expect(guarded).toHaveLength(1);
+	expect(list.match(/<Popover\.Portal>/g)).toHaveLength(1);
 });
 
 // #322: these lists kept their messages in $state, which Svelte 5 makes deep proxies (a signal for each property read,
@@ -264,11 +265,12 @@ describe("a row's action toolbar", () => {
 		const list = source("MessageList.svelte");
 		expect(list).toContain("onmouseover={hoverRow}");
 		expect(list).toContain("hoveredMessageId = row?.dataset.messageId ?? null;");
-		const shownFor =
-			list.match(
-				/\{:else if \(hoveredMessageId === message\.id \|\| reactingMessageId === message\.id\) && !isPending/g,
-			) ?? [];
-		expect(shownFor).toHaveLength(2);
+		// Also while its More menu is open. One condition (barShown), which each layout's row asks: bubbles and flat rows.
+		expect(list).toMatch(
+			/\{@const barShown =\s*\(hoveredMessageId === message\.id \|\| reactingMessageId === message\.id \|\| moreMenuFor === message\.id\) &&\s*!isPending &&/,
+		);
+		expect(list.match(/\{:else if barShown\}\s*\{@render hoverBar\(/g)).toHaveLength(2);
 		expect(list).not.toContain("hidden group-hover:flex");
+		expect(list).not.toContain("group-hover/row:flex");
 	});
 });

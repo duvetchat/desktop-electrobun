@@ -18,7 +18,7 @@
 </script>
 
 {#if custom}
-	<img src="{host}/attachments/{custom.attachment_id}" alt=":{custom.name}:" class="size-5 object-contain" />
+	<img src="{host}/attachments/{custom.attachment_id}" alt=":{custom.name}:" class="size-4 object-contain" />
 {:else}
 	{@html renderEmoji(reaction.emoji_name)}
 {/if}

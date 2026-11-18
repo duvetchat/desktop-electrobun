@@ -7,11 +7,14 @@
 
 <button
 	type="button"
-	class="bg-duvet-bg/30 hover:bg-duvet-bg/20 absolute inset-0 flex items-center justify-center transition-colors"
+	class="bg-duvet-media-scrim/40 hover:bg-duvet-media-scrim/30 absolute inset-0 flex items-center justify-center rounded-[inherit] transition-colors motion-reduce:transition-none"
 	onclick={(e) => {
 		e.stopPropagation();
 		onReveal();
 	}}
 >
-	<span class="text-fixed-white rounded-full bg-black/70 px-3 py-1 text-xs font-bold tracking-wide">SPOILER</span>
+	<span
+		class="bg-duvet-media-scrim text-duvet-media-ink rounded-lg px-2.5 py-1 text-[11px] font-semibold tracking-[0.06em] backdrop-blur-md"
+		>SPOILER</span
+	>
 </button>

@@ -28,7 +28,15 @@
 </script>
 
 <script lang="ts">
-	import { Eye as EyeIcon, EyeOff as EyeOffIcon } from "@lucide/svelte";
+	import {
+		AtSign as AtIcon,
+		Eye as EyeIcon,
+		EyeOff as EyeOffIcon,
+		Pencil as PencilIcon,
+		Reply as ReplyIcon,
+		Upload as UploadIcon,
+		X as CloseIcon,
+	} from "@lucide/svelte";
 
 	import { onMount, onDestroy, untrack, type Snippet } from "svelte";
 	import ChatInput from "$lib/components/ChatInput.svelte";
@@ -44,7 +52,13 @@
 		SpaceCommandApplication,
 	} from "$lib/types";
 	import { gatewayMessageToMessage, isEphemeral, isNotice, MessageReferenceType } from "$lib/types";
-	import { sendMessage, sendVoiceNote, sendTypingIndicator, sendRecordingIndicator } from "$lib/api/messages";
+	import {
+		sendMessage,
+		sendVoiceNote,
+		sendTypingIndicator,
+		sendRecordingIndicator,
+		updateMessage,
+	} from "$lib/api/messages";
 	import { MessageType } from "$lib/types";
 	import { currentUser, gatewaySpaces, noteOwnTyping, spaceEmojis, spaceStickers } from "$lib/stores.svelte";
 	import { toast } from "$lib/stores/toast.svelte";
@@ -73,6 +87,7 @@
 	import { chatRequest, keyboard, leaveMessageBox } from "$lib/keyboard.svelte";
 	import { takesChatShortcut } from "$lib/keyboard";
 	import { layoutPrefs } from "$lib/layout-prefs.svelte";
+	import IconButton from "$lib/components/ui/IconButton.svelte";
 
 	let {
 		messages,
@@ -508,9 +523,43 @@
 	}
 
 	function handleReply(message: Message) {
+		// The box holds one thing at a time: a reply picked while a message is edited ends the edit.
+		if (editingMessageId !== null) cancelEdit();
 		setReply(message);
 		chatInputRef?.focus();
 	}
+
+	// An edit is made in the message box (DECISIONS.md): it holds the message's text, under a strip that says so, in
+	// place of the chat's draft, which shows again as the edit ends. Enter saves, Esc cancels; an unchanged or empty
+	// edit saves nothing.
+	function cancelEdit() {
+		editingMessageId = null;
+		editContent = "";
+	}
+
+	function saveEdit(content: string) {
+		const messageId = editingMessageId;
+		if (messageId === null) return;
+		const original = messages.find((m) => m.id === messageId)?.content;
+		const trimmed = content.trim();
+		if (trimmed && trimmed !== original) {
+			if (onSaveEdit) Promise.resolve(onSaveEdit(messageId, trimmed)).catch(console.error);
+			else updateMessage(messageId, trimmed, channelId).catch(console.error);
+		}
+		cancelEdit();
+	}
+
+	// The message box's height, for the list above it and the jump button (--composer-h): the list's newest message
+	// clears the box however tall it grows, with a reply, files or several lines of text.
+	let composerEl = $state<HTMLElement>();
+	$effect(() => {
+		const bar = composerEl;
+		const root = rootEl;
+		if (!bar || !root || typeof ResizeObserver === "undefined") return;
+		const observer = new ResizeObserver(() => root.style.setProperty("--composer-h", `${bar.offsetHeight}px`));
+		observer.observe(bar);
+		return () => observer.disconnect();
+	});
 
 	// Esc in the message box drops the reply being written; with nothing to drop, keyboard navigation leaves the box
 	// for the messages.
@@ -714,7 +763,7 @@
 <div
 	bind:this={rootEl}
 	data-chat
-	class="from-duvet-card to-duvet-bg relative flex flex-1 flex-col overflow-hidden bg-linear-to-b"
+	class="bg-duvet-bg relative flex flex-1 flex-col overflow-hidden"
 	ondragover={handleFileDragOver}
 	ondragleave={handleFileDragLeave}
 	ondrop={handleFileDrop}
@@ -723,30 +772,13 @@
 >
 	{#if fileDragOver}
 		<div
-			class="pointer-events-none absolute inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
+			class="bg-duvet-scrim pointer-events-none absolute inset-0 z-50 flex items-center justify-center backdrop-blur-sm"
 		>
 			<div
-				class="border-duvet-accent bg-duvet-bg/80 flex flex-col items-center gap-2 rounded-xl border-2 border-dashed px-10 py-8"
+				class="border-duvet-accent bg-duvet-glass-strong text-duvet-accent-text flex flex-col items-center gap-2 rounded-[20px] border-2 border-dashed px-10 py-8"
 			>
-				<svg
-					xmlns="http://www.w3.org/2000/svg"
-					width="40"
-					height="40"
-					viewBox="0 0 24 24"
-					fill="none"
-					stroke="currentColor"
-					stroke-width="1.5"
-					stroke-linecap="round"
-					stroke-linejoin="round"
-					class="text-duvet-accent-text"
-					><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line
-						x1="12"
-						x2="12"
-						y1="3"
-						y2="15"
-					/></svg
-				>
-				<span class="text-duvet-accent-text text-sm font-medium">Drop files to upload</span>
+				<UploadIcon size={36} strokeWidth={1.5} />
+				<span class="text-sm font-medium">Drop files to upload</span>
 			</div>
 		</div>
 	{/if}
@@ -768,7 +800,6 @@
 		{onJumpToPresent}
 		{failedNonces}
 		bind:isAtBottom
-		{onSaveEdit}
 		{onDeleteMsg}
 		bind:editingMessageId
 		bind:editContent
@@ -783,14 +814,11 @@
 		onThreadReply={replyInThread}
 	/>
 
-	<div class="relative w-full">
-		<div
-			class="from-duvet-sunk/45 pointer-events-none absolute bottom-0 z-10 h-5 w-full bg-linear-to-t to-transparent"
-		></div>
-	</div>
-	<!-- Bottom input bar -->
+	<!-- The message box: a glass bar docked over the list's foot, which scrolls under it. Its height is the list's
+	     bottom padding (--composer-h), so no message hides behind it. -->
 	<div
-		class="border-duvet-line bg-duvet-sunk/45 relative flex max-h-48 min-h-16 flex-row items-end gap-2 border-t px-3 py-2"
+		bind:this={composerEl}
+		class="bg-duvet-glass absolute inset-x-0 bottom-0 z-4 flex flex-col px-(--duvet-pad-x) pt-2 pb-3.5 shadow-[0_-1px_0_var(--duvet-line)] backdrop-blur-[20px] backdrop-saturate-[1.8]"
 	>
 		{@render draftBars(channelId, () => chatInputRef?.focus(), true)}
 		{#if command}
@@ -811,6 +839,32 @@
 					})}
 				onExit={() => (command = null)}
 			/>
+		{:else if editingMessageId !== null}
+			<!-- The edit of one message, in the box: its own text and undo steps, apart from the chat's draft -->
+			<div class="text-duvet-accent-text flex items-center gap-2 px-1.5 pb-2 text-[12.5px] leading-[1.2]">
+				<PencilIcon size={14} class="shrink-0" />
+				<span class="font-semibold">Editing your message</span>
+				<span class="text-duvet-ink2 min-w-0 flex-1 truncate">Esc to cancel · Enter to save</span>
+				<IconButton label="Cancel edit" title="Cancel edit" size="sm" onclick={cancelEdit}>
+					<CloseIcon size={14} />
+				</IconButton>
+			</div>
+			{#key editingMessageId}
+				<ChatInput
+					initialValue={editContent}
+					placeholder="Edit your message"
+					onValueChange={(text) => {
+						editContent = text;
+					}}
+					onSubmit={saveEdit}
+					onCancel={cancelEdit}
+					editing
+					autofocus
+					{members}
+					rooms={mentionRooms}
+					{customEmojis}
+				/>
+			{/key}
 		{:else}
 			<!-- A box of its own for each chat: its text, undo steps, suggestions, pickers and recording are that chat's. -->
 			{#key channelId}
@@ -838,105 +892,82 @@
 	</div>
 </div>
 
-<!-- Over a message box, the chat's or a thread's (key): who's typing in the chat (typing), or else the draft's reply bar
-     and files, which already cover the list's bottom, where who's typing above them would hide the newest message. It
-     all hangs over the list, which never changes size for it, so no message moves. focus gives the box the focus back. -->
+<!-- Over a message box, the chat's or a thread's (key). Who's typing in the chat (typing) hangs over the list's bottom,
+     out of the box's own height: it shows in the 24 px the list leaves under its newest message, so it covers none and
+     moves none as it comes and goes. The draft's strips are the box's own: the message it replies to, and its files.
+     focus gives the box the focus back. -->
 {#snippet draftBars(key: string, focus: () => void, typing = false)}
 	{@const pending = draftOf($chatDrafts, key)}
-	{@const bars = !!pending.replyTo || pending.files.length > 0}
-	{#if typing || bars}
-		<div class="pointer-events-none absolute right-0 bottom-full left-0 flex flex-col">
-			{#if typing && !bars}
-				<TypingIndicator channelId={key} />
-			{/if}
-			{#if pending.replyTo}
-				<div
-					class="border-duvet-line bg-duvet-bg/90 text-duvet-ink2 pointer-events-auto flex items-center justify-between border-t px-3 py-1.5 text-xs"
+	{#if typing}
+		<div class="pointer-events-none absolute right-0 bottom-full left-0 flex flex-col px-(--duvet-pad-x)">
+			<TypingIndicator channelId={key} />
+		</div>
+	{/if}
+	{#if pending.replyTo}
+		{@const own = pending.replyTo.author_id === $currentUser?.id}
+		<div class="text-duvet-ink2 flex items-center gap-2 px-1.5 pb-2 text-[12.5px] leading-[1.2]">
+			<ReplyIcon size={14} class="shrink-0" />
+			<span class="shrink-0"
+				>Replying to <span class="text-duvet-ink font-semibold">{own ? "yourself" : pending.replyTo.author_name}</span
+				></span
+			>
+			<span class="font-content min-w-0 flex-1 truncate">{pending.replyTo.content ?? ""}</span>
+			{#if canMention(pending.replyTo)}
+				<!-- Whether the reply mentions the author of the message it replies to -->
+				<button
+					type="button"
+					class="flex h-[26px] shrink-0 items-center gap-0.5 rounded-lg px-1.5 text-[11.5px] font-semibold transition-colors motion-reduce:transition-none {pending.replyMention
+						? 'bg-duvet-accent-tint text-duvet-accent-text'
+						: 'text-duvet-ink2 hover:bg-duvet-hover hover:text-duvet-ink'}"
+					onclick={() => {
+						changeDraft(key, { replyMention: !pending.replyMention });
+						focus();
+					}}
+					aria-pressed={pending.replyMention}
+					aria-label="Mention {pending.replyTo.author_name}"
+					title={pending.replyMention
+						? `Click to not mention ${pending.replyTo.author_name}`
+						: `Click to mention ${pending.replyTo.author_name}`}
+					><AtIcon size={13} />{pending.replyMention ? "ON" : "OFF"}</button
 				>
-					<span>Replying to <span class="text-duvet-ink font-semibold">{pending.replyTo.author_name}</span></span>
-					<div class="flex items-center gap-3">
-						{#if canMention(pending.replyTo)}
-							<!-- Whether the reply mentions the author of the message it replies to -->
-							<button
-								type="button"
-								class="font-semibold transition-colors {pending.replyMention
-									? 'text-duvet-accent-text hover:text-duvet-accent-text'
-									: 'text-duvet-ink2 hover:text-duvet-ink'}"
-								onclick={() => {
-									changeDraft(key, { replyMention: !pending.replyMention });
-									focus();
-								}}
-								aria-pressed={pending.replyMention}
-								aria-label="Mention {pending.replyTo.author_name}"
-								title={pending.replyMention
-									? `Click to not mention ${pending.replyTo.author_name}`
-									: `Click to mention ${pending.replyTo.author_name}`}>@ {pending.replyMention ? "ON" : "OFF"}</button
-							>
+			{/if}
+			<IconButton label="Cancel reply" title="Cancel reply" size="sm" onclick={() => setReplyIn(key, null)}>
+				<CloseIcon size={14} />
+			</IconButton>
+		</div>
+	{/if}
+	{#if pending.files.length > 0}
+		<div class="flex flex-wrap gap-1.5 px-0.5 pb-2">
+			{#each pending.files as file, i}
+				{@const name = displayName(file.name)}
+				{@const spoiler = isSpoiler(file.name)}
+				<div class="bg-duvet-card shadow-duvet-raised flex h-8 max-w-60 items-center gap-1.5 rounded-xl pr-1 pl-2.5">
+					<span class="text-duvet-ink truncate text-xs font-medium">{name}</span>
+					<span class="text-duvet-ink2 shrink-0 text-[11px] tabular-nums">{formatFileSize(file.size)}</span>
+					<button
+						class="grid size-6 shrink-0 place-items-center rounded-md transition-colors motion-reduce:transition-none {spoiler
+							? 'bg-duvet-accent-tint text-duvet-accent-text'
+							: 'text-duvet-ink2 hover:bg-duvet-hover hover:text-duvet-ink'}"
+						onclick={() => toggleSpoiler(key, i)}
+						aria-pressed={spoiler}
+						aria-label="Mark {name} as spoiler"
+						title={spoiler ? "Remove spoiler" : "Mark as spoiler"}
+					>
+						{#if spoiler}
+							<EyeOffIcon class="size-3.5" />
+						{:else}
+							<EyeIcon class="size-3.5" />
 						{/if}
-						<button
-							class="text-duvet-ink2 hover:text-duvet-ink transition-colors"
-							onclick={() => setReplyIn(key, null)}
-							aria-label="Cancel reply"
-						>
-							<svg
-								xmlns="http://www.w3.org/2000/svg"
-								width="14"
-								height="14"
-								viewBox="0 0 24 24"
-								fill="none"
-								stroke="currentColor"
-								stroke-width="2.5"
-								stroke-linecap="round"
-								stroke-linejoin="round"><path d="M18 6 6 18" /><path d="m6 6 12 12" /></svg
-							>
-						</button>
-					</div>
+					</button>
+					<button
+						class="text-duvet-ink2 hover:bg-duvet-hover hover:text-duvet-ink grid size-6 shrink-0 place-items-center rounded-md transition-colors motion-reduce:transition-none"
+						onclick={() => removePendingFile(key, i)}
+						aria-label="Remove {name}"
+					>
+						<CloseIcon class="size-3.5" />
+					</button>
 				</div>
-			{/if}
-			{#if pending.files.length > 0}
-				<div class="border-duvet-line bg-duvet-bg/90 pointer-events-auto flex flex-wrap gap-1.5 border-t px-3 py-1.5">
-					{#each pending.files as file, i}
-						{@const name = displayName(file.name)}
-						{@const spoiler = isSpoiler(file.name)}
-						<div class="border-duvet-line bg-duvet-card flex max-w-56 items-center gap-1.5 rounded border px-2 py-1">
-							<span class="text-duvet-ink truncate text-xs">{name}</span>
-							<span class="text-xxs text-duvet-ink2 shrink-0">{formatFileSize(file.size)}</span>
-							<button
-								class="shrink-0 transition-colors {spoiler
-									? 'text-duvet-accent-text hover:text-duvet-accent-text'
-									: 'text-duvet-ink2 hover:text-duvet-ink'}"
-								onclick={() => toggleSpoiler(key, i)}
-								aria-pressed={spoiler}
-								aria-label="Mark {name} as spoiler"
-								title={spoiler ? "Remove spoiler" : "Mark as spoiler"}
-							>
-								{#if spoiler}
-									<EyeOffIcon class="size-3" />
-								{:else}
-									<EyeIcon class="size-3" />
-								{/if}
-							</button>
-							<button
-								class="text-duvet-ink2 hover:text-duvet-ink shrink-0 transition-colors"
-								onclick={() => removePendingFile(key, i)}
-								aria-label="Remove {name}"
-							>
-								<svg
-									xmlns="http://www.w3.org/2000/svg"
-									width="12"
-									height="12"
-									viewBox="0 0 24 24"
-									fill="none"
-									stroke="currentColor"
-									stroke-width="2.5"
-									stroke-linecap="round"
-									stroke-linejoin="round"><path d="M18 6 6 18" /><path d="m6 6 12 12" /></svg
-								>
-							</button>
-						</div>
-					{/each}
-				</div>
-			{/if}
+			{/each}
 		</div>
 	{/if}
 {/snippet}
@@ -946,9 +977,7 @@
      note, which replies to nothing, nor a command. -->
 {#snippet threadComposer(root: Message)}
 	{@const key = threadDraft(root.id)}
-	<div
-		class="border-duvet-line bg-duvet-sunk/45 relative flex max-h-48 min-h-16 shrink-0 flex-row items-end gap-2 border-t px-3 py-2"
-	>
+	<div class="border-duvet-line relative flex shrink-0 flex-col border-t px-4 pt-2 pb-3">
 		{@render draftBars(key, () => threadInputRef?.focus())}
 		{#key key}
 			<ChatInput

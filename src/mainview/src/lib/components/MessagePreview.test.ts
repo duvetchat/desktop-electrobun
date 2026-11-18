@@ -152,8 +152,8 @@ describe("a message's preview", () => {
 			(b) => b.attributes.title === "👍" || b.attributes.title === "🎉",
 		);
 		expect(reactions.map((b) => b.attributes.title)).toEqual(["👍", "🎉"]);
-		expect(reactions[0]!.attributes.class).toContain("bg-duvet-accent/20");
-		expect(reactions[1]!.attributes.class).not.toContain("bg-duvet-accent/20");
+		expect(reactions[0]!.attributes.class).toContain("bg-duvet-chosen");
+		expect(reactions[1]!.attributes.class).not.toContain("bg-duvet-chosen");
 	});
 
 	test("shows the reply's quote, that it was edited, and its code block's copy button", () => {
