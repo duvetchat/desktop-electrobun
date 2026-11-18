@@ -36,7 +36,7 @@ describe("shellFor", () => {
 			nativeTrafficLights: true,
 			ownWindowControls: false,
 			draggableTitleBar: true,
-			settingsInWindows: true,
+			settingsInWindows: false,
 			popOut: true,
 		});
 	});

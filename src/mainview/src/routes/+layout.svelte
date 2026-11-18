@@ -10,6 +10,8 @@
 	import StorageTransferFailures from "$lib/components/StorageTransferFailures.svelte";
 
 	import { setupExternalLinks } from "$lib/external-links";
+	import { setupDevToolsKeys, setupNativeContextMenu } from "$lib/native-context-menu";
+	import { getElectrobunRpc } from "$lib/electrobun-rpc";
 	import { driftSpecksOnScreen } from "$lib/spoiler-specks";
 	import { followSystemTheme } from "$lib/theme.svelte";
 	import { currentShell } from "$lib/platform";
@@ -26,6 +28,13 @@
 
 	onMount(() => {
 		setupExternalLinks();
+		if (shell.os === "linux") {
+			setupNativeContextMenu();
+			// Only the main window's Bun side opens DevTools; in the others the keys just do nothing.
+			setupDevToolsKeys(
+				shell.window === "main" ? () => void getElectrobunRpc().then((rpc) => rpc?.send.openDevTools()) : () => {},
+			);
+		}
 		const stopSpecks = driftSpecksOnScreen(document);
 		// app.html set the theme before the first paint; this keeps it with the system's while it's System.
 		const stopTheme = followSystemTheme();

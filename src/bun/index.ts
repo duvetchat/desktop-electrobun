@@ -1,4 +1,5 @@
 import Electrobun, { BrowserView, BrowserWindow, Screen, Updater, Utils } from "electrobun/bun";
+import { internalRpcHandlers } from "../../node_modules/electrobun/dist/api/bun/proc/native";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fitActivity, MAX_ACTIVITIES, type ActivityPayload } from "./activities";
@@ -92,6 +93,7 @@ type AppRPCSchema = {
 			// A press on the title bar: Windows' move loop takes it if it turns into a drag (window-snap.ts).
 			startWindowDrag: void;
 			openExternal: { url: string };
+			openDevTools: void;
 			setWindowFrame: {
 				x: number;
 				y: number;
@@ -220,6 +222,7 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 				if (arrangedByWindows) void dragWithWindows(win.ptr);
 			},
 			openExternal: ({ url: externalUrl }) => openExternalUrl(externalUrl),
+			openDevTools: () => win.webview.openDevTools(),
 			setSpotifyActivity: ({ enabled }) => {
 				markWebviewReady();
 				setSpotifyActivity(enabled);
@@ -309,6 +312,21 @@ win.webview.on("dom-ready", () => win.webview.setNavigationRules(rules));
 
 // On Windows Electrobun gives the webview no keyboard: as Duvet opens, the page takes it once it has loaded (#361).
 if (arrangedByWindows) win.webview.on("dom-ready", () => pageLoaded(win.ptr));
+
+// On Linux a window manager that resizes the window as it opens does so before the browser exists, and the webview
+// keeps the size it was made at: the page fills 1400x900 and the rest of the window is white. A tiling one refuses a
+// resize of the window to make it notice, so once the page has loaded the webview gets the window's size straight from
+// the native side, by the call Electrobun's own webview tags make. Its package exports no way to do that, hence the path.
+if (currentOS === "linux") {
+	let sized = false;
+	win.webview.on("dom-ready", () => {
+		if (sized) return;
+		sized = true;
+		const { width, height } = win.getFrame();
+		const frame = { x: 0, y: 0, width, height };
+		internalRpcHandlers.message.webviewTagResize({ id: win.webview.id, frame, masks: "[]" });
+	});
+}
 
 // ── The media controls' pop-out (#357, calls and media) ─────────────────────────────────────────────────────────────
 // A small window of its own for the media controls, which the main page asks for (media-window.ts). The call stays in

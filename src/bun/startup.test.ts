@@ -11,6 +11,18 @@ test("one line, each step from Bun's start, in the order they came, in whole mil
 	);
 });
 
+// A first start has no app data folder yet: the log makes its own.
+test("the file's folder is made when the app's data has none yet", async () => {
+	const dir = mkdtempSync(join(tmpdir(), "duvet-startup-"));
+	try {
+		const file = join(dir, "not", "yet", "startup.log");
+		await writeStartupLine(file, "first");
+		expect(readFileSync(file, "utf8")).toBe("first\n");
+	} finally {
+		rmSync(dir, { recursive: true, force: true });
+	}
+});
+
 // Bun's output goes nowhere in the packaged app, so each start's line goes into a file of the app's data (#288).
 test("each start's line goes into the file after the ones before, which keeps the last 50", async () => {
 	const dir = mkdtempSync(join(tmpdir(), "duvet-startup-"));
