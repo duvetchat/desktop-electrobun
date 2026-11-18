@@ -6,7 +6,7 @@
 
 <script lang="ts">
 	import { X } from "@lucide/svelte";
-	import { onDestroy } from "svelte";
+	import { onDestroy, onMount } from "svelte";
 	import StreamViewers from "$lib/components/StreamViewers.svelte";
 	import { streamWindowBox } from "$lib/corner";
 	import { chatsOnScreen } from "$lib/on-screen";
@@ -19,6 +19,7 @@
 		watchedStreams,
 		watchingNow,
 	} from "$lib/stores.svelte";
+	import { openVoicePlaceWith } from "$lib/media-source";
 	import { stopScreenShare } from "$lib/voice";
 	import { currentVoicePlace, type VoicePlace } from "$lib/voice-place";
 	import { stopWatching, streamToShow, viewersOf } from "$lib/watching";
@@ -26,6 +27,13 @@
 	// A stream the user shares or watches, while the view of its room or call isn't on screen (desktop#299): their own
 	// screen first, else the last one they opened. A click goes back to the view, a drag moves it, and its ✕ stops it.
 	let { onOpen }: { onOpen: (place: VoicePlace) => void } = $props();
+
+	// The app page's way of opening a voice room's view or a call's chat is given to this window, which is there as long
+	// as the app is: it hands it on to the call panel's first line, and to the pop-out's (lib/media-source.ts).
+	onMount(() => {
+		openVoicePlaceWith(onOpen);
+		return () => openVoicePlaceWith(null);
+	});
 
 	const WIDTH = 320;
 	const HEIGHT = 180;
@@ -129,7 +137,7 @@
 		role="button"
 		tabindex="0"
 		aria-label={`${title} in ${place.name}`}
-		class="group shadow-duvet-float focus-visible:outline-duvet-accent rounded-card border-duvet-line fixed z-40 h-45 w-80 cursor-pointer touch-none overflow-hidden border bg-black select-none focus-visible:outline-2"
+		class="group bg-duvet-stage shadow-duvet-float inset-ring-fixed-white/8 fixed z-40 h-45 w-80 cursor-pointer touch-none overflow-hidden rounded-2xl inset-ring-1 select-none"
 		style="right: {right}px; bottom: {bottom}px;"
 		{onpointerdown}
 		{onpointermove}
@@ -139,18 +147,22 @@
 	>
 		<video bind:this={video} autoplay muted playsinline class="pointer-events-none size-full object-contain"></video>
 		<div
-			class="absolute inset-x-0 top-0 flex items-center gap-2 bg-linear-to-b from-black/70 to-transparent p-2 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100"
+			class="absolute inset-x-0 top-0 flex items-center gap-1.5 p-2 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 motion-reduce:transition-none"
 		>
 			<StreamViewers {viewers} meId={$currentUser?.id} />
-			<span class="text-fixed-white min-w-0 flex-1 truncate text-xs font-medium">{title}</span>
+			<span
+				class="bg-duvet-media-scrim text-duvet-media-ink min-w-0 truncate rounded-[10px] px-2.5 py-[5px] text-xs leading-[1.2] font-semibold backdrop-blur-[14px]"
+				>{title}</span
+			>
+			<span class="flex-1"></span>
 			<button
 				type="button"
 				aria-label={shown.own ? "Stop sharing" : "Stop watching"}
 				title={shown.own ? "Stop sharing" : "Stop watching"}
-				class="text-fixed-white hover:text-duvet-on-accent focus-visible:outline-duvet-accent hover:bg-duvet-danger/80 flex size-6 shrink-0 items-center justify-center rounded-md bg-black/60 backdrop-blur-md transition-colors focus-visible:outline-2"
+				class="bg-duvet-media-scrim text-duvet-media-ink hover:bg-duvet-call-red hover:text-fixed-white grid size-[26px] shrink-0 place-items-center rounded-[9px] backdrop-blur-[14px] transition-colors motion-reduce:transition-none"
 				onclick={stop}
 			>
-				<X class="size-3.5" />
+				<X size={14} />
 			</button>
 		</div>
 	</div>
