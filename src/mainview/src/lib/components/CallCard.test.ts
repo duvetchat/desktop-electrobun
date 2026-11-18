@@ -70,13 +70,17 @@ const text = () => render(CallCard, { props: { onOpen } }).body;
 const labels = (all: Tag[]) =>
 	all.filter((t) => t.name === "button" && t.attributes["aria-label"]).map((t) => t.attributes["aria-label"]);
 
-test("a call ringing here is a card in the corner, with nothing over the rest of the app", async () => {
+// The redesign (#357) moves the call from a card in the bottom right corner to a notice at the top centre, in glass
+// (DECISIONS.md, "The incoming call"). It still covers nothing and takes no focus.
+test("a call ringing here is a notice at the top centre, with nothing over the rest of the app", async () => {
 	callIn(DM, "ringing");
 	const all = await shown();
 	const card = all.find((t) => t.name === "section");
-	expect(card?.attributes.class?.split(/\s+/)).toEqual(expect.arrayContaining(["fixed", "right-4", "w-80", "h-18"]));
-	expect(card?.attributes.style).toContain("bottom: 16px");
-	expect(all.some((t) => /\binset-0\b|backdrop-blur|bg-black\//.test(t.attributes.class ?? ""))).toBe(false);
+	expect(card?.attributes.class?.split(/\s+/)).toEqual(
+		expect.arrayContaining(["fixed", "top-[62px]", "inset-x-0", "mx-auto", "w-[min(420px,calc(100vw-32px))]"]),
+	);
+	// No scrim: nothing fills the window behind it.
+	expect(all.some((t) => /\binset-0\b|bg-black\/|bg-duvet-scrim/.test(t.attributes.class ?? ""))).toBe(false);
 	// It takes no focus: the user goes on typing where they were.
 	expect(all.some((t) => "autofocus" in t.attributes)).toBe(false);
 });
@@ -88,7 +92,8 @@ test("it says who calls and, in a group, from where, with Accept and Decline", a
 	expect(words).toContain("Ana Torres");
 	expect(words).toContain("Incoming call · Squad");
 	const all = await shown();
-	expect(labels(all)).toEqual(["Accept call", "Decline call"]);
+	// Decline, then Accept, as the notice draws them.
+	expect(labels(all)).toEqual(["Decline call", "Accept call"]);
 	expect(all.find((t) => t.attributes.role === "alert")).toBeDefined();
 });
 

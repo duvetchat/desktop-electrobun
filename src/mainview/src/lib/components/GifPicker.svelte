@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { onMount } from "svelte";
-	import { LoaderCircle as CircleNotchIcon, Search as MagnifyingGlassIcon } from "@lucide/svelte";
+	import { LoaderCircle as CircleNotchIcon } from "@lucide/svelte";
+	import PickerSearch from "$lib/components/PickerSearch.svelte";
+	import { GLASS, buttonClass } from "$lib/components/ui/recipes";
 	import { gifsUrl, parseGifs, type Gif } from "$lib/gifs";
 
 	const { onSelect } = $props<{ onSelect: (url: string) => void }>();
@@ -74,41 +76,35 @@
 	});
 </script>
 
+<!-- A named group: the popover that holds it is the dialog (the message box's, or a message's Add reaction). -->
 <div
-	class="rounded-card border-duvet-line bg-duvet-card text-duvet-ink shadow-duvet-float flex h-96 w-88 flex-col overflow-hidden border"
+	class="{GLASS} text-duvet-ink flex h-[440px] max-h-[calc(100vh-20px)] w-[372px] max-w-[calc(100vw-20px)] flex-col overflow-hidden rounded-[20px]"
+	role="group"
+	aria-label="GIF picker"
 >
-	<div class="border-duvet-line border-b px-3 py-2">
-		<p class="text-duvet-ink2 mb-2 text-[13px] font-bold">GIF Picker</p>
-		<div class="relative">
-			<div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
-				<MagnifyingGlassIcon class="text-duvet-ink2 size-4" />
-			</div>
-			<!-- KLIPY's attribution guidelines require "Search KLIPY" as the search box's placeholder. -->
-			<input
-				type="text"
-				bind:value={query}
-				oninput={handleInput}
-				placeholder="Search KLIPY"
-				maxlength={120}
-				aria-label="Search GIFs"
-				class="text-duvet-ink placeholder:text-duvet-ink2 bg-duvet-sunk shadow-duvet-press focus-visible:outline-duvet-accent block w-full rounded-xl py-2 pr-3 pl-9 text-sm focus-visible:outline-2"
-			/>
-		</div>
-	</div>
+	<p class="text-duvet-ink shrink-0 px-4 pt-3.5 text-[13.5px] font-semibold">GIF picker</p>
+	<!-- KLIPY's attribution guidelines require "Search KLIPY" as the search box's placeholder. -->
+	<PickerSearch
+		bind:value={query}
+		oninput={handleInput}
+		placeholder="Search KLIPY"
+		label="Search KLIPY"
+		maxlength={120}
+	/>
 
 	<div
-		class="flex-1 overflow-y-auto p-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+		class="min-h-0 flex-1 overflow-y-auto px-2.5 pt-0.5 pb-2.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
 	>
 		{#if loading && gifs.length === 0}
 			<div class="flex h-full items-center justify-center">
-				<CircleNotchIcon class="text-duvet-ink2 h-6 w-6 animate-spin" />
+				<CircleNotchIcon class="text-duvet-ink2 size-6 animate-spin" />
 			</div>
 		{:else if error}
-			<div class="text-duvet-danger mt-4 px-2 text-center text-sm" role="status" aria-live="polite">
+			<div class="text-duvet-danger mt-6 px-3 text-center text-[13px]" role="status" aria-live="polite">
 				<p>{error}</p>
 				<button
 					type="button"
-					class="border-duvet-line bg-duvet-card text-duvet-ink hover:bg-duvet-ink/10 mt-2 rounded-md border px-3 py-1.5 text-xs"
+					class="{buttonClass('secondary', 'sm')} mt-3"
 					onclick={() => {
 						searchAbortController?.abort();
 						searchAbortController = new AbortController();
@@ -119,13 +115,13 @@
 				</button>
 			</div>
 		{:else if gifs.length === 0}
-			<div class="text-duvet-ink2 mt-4 text-center text-sm">No GIFs found</div>
+			<div class="text-duvet-ink2 mt-6 text-center text-[13px]">No GIFs found</div>
 		{:else}
-			<div class="columns-2 gap-2 space-y-2">
+			<div class="columns-2 gap-1.5 space-y-1.5">
 				{#each gifs as gif}
 					<button
 						type="button"
-						class="group border-duvet-line bg-duvet-card relative w-full cursor-pointer break-inside-avoid overflow-hidden rounded-lg border text-left"
+						class="bg-duvet-secondary-fill hover:outline-duvet-accent focus-visible:outline-duvet-accent relative block w-full cursor-pointer break-inside-avoid overflow-hidden rounded-xl text-left outline-2 -outline-offset-2 outline-transparent transition-[outline-color] duration-[120ms] motion-reduce:transition-none"
 						onclick={() => onSelect(gif.url)}
 						aria-label={`Send GIF ${gif.description || "result"}`}
 					>
@@ -134,13 +130,13 @@
 							width={gif.preview.width}
 							height={gif.preview.height}
 							alt={gif.description}
-							class="h-auto w-full object-cover transition-opacity group-hover:opacity-85"
+							class="h-auto w-full object-cover"
 							loading="lazy"
 						/>
 					</button>
 				{/each}
 			</div>
-			<p class="text-duvet-ink2 pt-2 pb-1 text-center text-xs">GIFs from KLIPY</p>
+			<p class="text-duvet-ink2 pt-2.5 pb-0.5 text-center text-xs">GIFs from KLIPY</p>
 		{/if}
 	</div>
 </div>

@@ -186,3 +186,27 @@ describe("the bans store", () => {
 		expect(ids()).toEqual([user(1)]);
 	});
 });
+
+describe("who banned someone, as the Space names them", () => {
+	test("by their nickname in the Space, else their display name, else their username", async () => {
+		const { banModerators } = await import("$lib/bans");
+		const person = (id: string, username: string, alias: string | null) => ({ id, username, alias, avatar: null });
+		const space = {
+			users: [person("u1", "ana", "Ana"), person("u2", "bo", null), person("u3", "cy", "Cy")],
+			members: [
+				{ user_id: "u1", alias: "Captain" },
+				{ user_id: "u2", alias: null },
+				{ user_id: "u3", alias: null },
+				// A member whose user the Space hasn't loaded is left out.
+				{ user_id: "gone", alias: null },
+			],
+		};
+		// oxlint-disable-next-line typescript/no-unsafe-type-assertion -- only the fields the function reads
+		const named = banModerators(space as unknown as Parameters<typeof banModerators>[0]);
+		expect(named.map((m) => [m.id, m.username, m.raw_username])).toEqual([
+			["u1", "Captain", "ana"],
+			["u2", "bo", "bo"],
+			["u3", "Cy", "cy"],
+		]);
+	});
+});

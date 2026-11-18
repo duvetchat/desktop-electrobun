@@ -21,7 +21,8 @@ import adapter from "@sveltejs/adapter-static";
 //    writes no handler into its HTML.
 //  - style-src keeps 'unsafe-inline': Svelte transitions and component style="" attributes are inline,
 //    and hashing them is not feasible; this is the standard CSP trade-off and does not weaken script
-//    protection. https: covers the Google Fonts stylesheet (@import in app.css).
+//    protection. https: dates from when the fonts' stylesheet came from Google Fonts: the fonts are bundled now
+//    (fonts.test.ts) and no stylesheet is known to load over https:, so it could go once that is checked in the app.
 //  - img-/media-src are deliberately broad (http(s)/data/blob): link embeds, avatars and GIFs come from
 //    arbitrary origins and are inert (the GIF picker's from KLIPY, static*.klipy.com).
 //  - frame-src allows http(s): EmbedCard frames player pages (YouTube, TikTok, others) each under an

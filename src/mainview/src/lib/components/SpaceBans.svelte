@@ -3,11 +3,12 @@
 	import { SvelteMap, SvelteSet } from "svelte/reactivity";
 	import { Ban as BanIcon } from "@lucide/svelte";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
-	import { spaceMembers } from "$lib/components/MemberList.svelte";
+	import Button from "$lib/components/ui/Button.svelte";
+	import { CARD, NOTE, SKELETON } from "$lib/components/settings/recipes";
 	import { FetchError, getApiError } from "$lib/api/api";
 	import { getBotUser } from "$lib/api/developer";
 	import { unbanUser } from "$lib/api/moderation";
-	import { banLifted, loadBans, spaceBans } from "$lib/bans";
+	import { banLifted, banModerators, loadBans, spaceBans } from "$lib/bans";
 	import { getAvatarURL } from "$lib/common/common";
 	import { reactorOf, reactorsToAsk, type ReactorProfile } from "$lib/reactors";
 	import { confirmAction } from "$lib/stores/confirm.svelte";
@@ -65,7 +66,9 @@
 
 	// Who banned each of them: a member the space has loaded, or else as the API says (someone who left), asked about
 	// each once, a few at a time, as the reactions dialog asks about who reacted.
-	const members = $derived(spaceMembers(space));
+	// The Space's own people, as reactorOf reads them, without the members list's module: it loads the gateway
+	// connection, which a Space settings window must not (lib/app-windows.ts).
+	const members = $derived(banModerators(space));
 	const profiles = new SvelteMap<string, ReactorProfile | null>();
 	const requested = new Set<string>();
 	const waiting: string[] = [];
@@ -101,58 +104,48 @@
 	});
 </script>
 
-<p class="text-duvet-ink2 mb-3 text-sm">Banned users can't join the space until they're unbanned.</p>
+<p class={NOTE}>Banned people can't join the Space until they're unbanned.</p>
 {#if !list || (list.bans.length === 0 && loading > 0)}
-	<div class="space-y-2">
-		{#each Array(3) as _}
-			<div class="bg-duvet-card/40 h-16 animate-pulse rounded-lg"></div>
+	<div class="flex flex-col gap-2">
+		{#each Array(3) as _, index (index)}
+			<div class="{SKELETON} h-16"></div>
 		{/each}
 	</div>
 {:else if list.bans.length === 0 && !list.more}
-	<div class="text-duvet-ink2 flex flex-col items-center justify-center py-16">
-		<BanIcon class="mb-3 size-10" />
+	<div class="text-duvet-ink2 flex flex-col items-center justify-center py-14">
+		<BanIcon class="mb-3 size-9" />
 		<p class="text-sm">No bans</p>
 	</div>
 {:else}
-	<ul class="space-y-1">
+	<ul class="{CARD} divide-duvet-line divide-y">
 		{#each list.bans as ban (ban.user_id)}
-			<li class="rounded-card border-duvet-line bg-duvet-card/30 flex items-start gap-3 border px-3 py-2.5">
-				<UserAvatar src={getAvatarURL(ban.user_id, ban.user.avatar)} name={ban.user.username} size={36} />
+			<li class="flex items-start gap-3 px-3.5 py-2.5">
+				<UserAvatar src={getAvatarURL(ban.user_id, ban.user.avatar)} name={ban.user.username} size={32} />
 				<div class="min-w-0 flex-1">
 					<p class="flex min-w-0 items-baseline gap-1.5">
-						<span class="text-duvet-ink truncate text-sm font-medium">{nameOf(ban)}</span>
+						<span class="truncate text-[13.5px] font-medium">{nameOf(ban)}</span>
 						<span class="text-duvet-ink2 truncate text-xs">@{ban.user.username}</span>
 					</p>
 					{#if ban.reason}
-						<p class="text-duvet-ink mt-0.5 text-xs wrap-break-word whitespace-pre-wrap select-text">{ban.reason}</p>
+						<p class="font-content mt-0.5 text-xs wrap-break-word whitespace-pre-wrap select-text">{ban.reason}</p>
 					{:else}
 						<p class="text-duvet-ink2 mt-0.5 text-xs italic">No reason given</p>
 					{/if}
-					<p class="text-xxs text-duvet-ink2 mt-1">
+					<p class="text-duvet-ink2 mt-1 text-[11px]">
 						Banned by {reactorOf(ban.banned_by, members, profiles).name}
-						<span class="text-duvet-ink2/60 mx-1">&middot;</span>
+						<span class="mx-1 opacity-60">&middot;</span>
 						{new Date(ban.created_at).toLocaleString()}
 					</p>
 				</div>
-				<button
-					type="button"
-					class="bg-duvet-card text-duvet-ink hover:bg-duvet-danger/20 hover:text-duvet-danger flex h-8 shrink-0 items-center rounded-md px-2.5 text-xs font-medium transition-colors disabled:opacity-50"
-					disabled={unbanning.has(ban.user_id)}
-					onclick={() => unban(ban)}
-				>
+				<Button variant="secondary" size="sm" disabled={unbanning.has(ban.user_id)} onclick={() => unban(ban)}>
 					Unban
-				</button>
+				</Button>
 			</li>
 		{/each}
 	</ul>
 	{#if list.more}
-		<button
-			type="button"
-			class="bg-duvet-card text-duvet-ink hover:bg-duvet-ink/10 mt-3 flex h-9 w-full items-center justify-center rounded-md text-xs font-medium transition-colors disabled:opacity-50"
-			disabled={loading > 0}
-			onclick={() => load(spaceId, false)}
-		>
+		<Button variant="secondary" class="w-full" disabled={loading > 0} onclick={() => load(spaceId, false)}>
 			{loading > 0 ? "Loading…" : failed ? "Try again" : "Load more"}
-		</button>
+		</Button>
 	{/if}
 {/if}

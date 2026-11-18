@@ -1,8 +1,11 @@
 <script lang="ts">
 	import { untrack } from "svelte";
-	import { X as XIcon, Link2 as LinkSimpleIcon, Copy as CopySimpleIcon, Check as CheckIcon } from "@lucide/svelte";
+	import { Copy as CopySimpleIcon, Check as CheckIcon } from "@lucide/svelte";
 	import { getApiError } from "$lib/api/api";
-	import { Dialog } from "bits-ui";
+	import Sheet from "$lib/components/ui/Sheet.svelte";
+	import Button from "$lib/components/ui/Button.svelte";
+	import { pillClass } from "$lib/components/ui/recipes";
+	import { spinnerClass } from "$lib/overlay-forms";
 	import { createRoomInvite } from "$lib/api/rooms";
 	import type { Channel } from "$lib/types";
 	import { route, DUVET_DOMAIN } from "$lib/common/common";
@@ -84,92 +87,59 @@
 	}
 </script>
 
-<Dialog.Root bind:open>
-	<Dialog.Portal>
-		<Dialog.Overlay class="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm" />
-		<Dialog.Content class="fixed inset-0 z-51 flex items-center justify-center p-4">
-			<div
-				class="rounded-card border-duvet-line bg-duvet-bg text-duvet-ink shadow-duvet-float w-full max-w-md overflow-hidden border"
-			>
-				<!-- Header -->
-				<div class="border-duvet-line flex items-center justify-between border-b px-6 py-4">
-					<div class="flex items-center gap-2.5">
-						<LinkSimpleIcon class="text-duvet-ink size-4" />
-						<div>
-							<h2 class="text-duvet-ink text-base leading-tight font-semibold">Invite People</h2>
-							{#if channel}
-								<p class="text-duvet-ink2 text-xs">#{channel.name}</p>
-							{/if}
-						</div>
-					</div>
-					<button
-						class="text-duvet-ink2 hover:bg-duvet-card hover:text-duvet-ink rounded-lg p-1.5 transition-colors"
-						onclick={() => (open = false)}
-						aria-label="Close"
-					>
-						<XIcon class="size-5" />
-					</button>
-				</div>
+<Sheet bind:open title="Invite people" description={channel ? `#${channel.name}` : undefined} class="max-w-[460px]">
+	<p class="text-duvet-ink text-[13px]">Share this invite link. Anyone with this link can join the Space.</p>
 
-				<!-- Body -->
-				<div class="space-y-4 px-6 py-5">
-					<p class="text-duvet-ink text-sm">Share this invite link. Anyone with this link can join the Space.</p>
-
-					{#if isLoading}
-						<div class="flex items-center justify-center py-8">
-							<div class="border-duvet-ink2/40 h-6 w-6 animate-spin rounded-full border-2 border-t-transparent"></div>
-						</div>
-					{:else if genError}
-						<p class="text-duvet-danger py-4 text-center text-sm">
-							{genError}
-						</p>
-						<button
-							class="bg-duvet-card text-duvet-ink hover:bg-duvet-ink/10 w-full rounded-lg py-2 text-sm transition-colors"
-							onclick={generate}
-						>
-							Try again
-						</button>
-					{:else if inviteLink}
-						<div class="flex items-center gap-2">
-							<input
-								bind:this={linkInput}
-								type="text"
-								readonly
-								value={inviteLink}
-								class="text-duvet-ink bg-duvet-sunk shadow-duvet-press focus-visible:outline-duvet-accent min-w-0 flex-1 rounded-xl px-3 py-2.5 font-mono text-sm focus-visible:outline-2"
-								onclick={() => linkInput?.select()}
-							/>
-							<button
-								class="text-duvet-on-accent bg-duvet-accent shadow-duvet-raised flex shrink-0 items-center gap-1.5 rounded-xl px-3 py-2.5 text-sm font-bold transition hover:brightness-110"
-								onclick={copyLink}
-								aria-label="Copy link"
-							>
-								{#if copied}
-									<CheckIcon class="size-4" />
-									Copied!
-								{:else}
-									<CopySimpleIcon class="size-4" />
-									Copy
-								{/if}
-							</button>
-						</div>
-						<p class="text-duvet-ink2 text-xs">
-							{linkAge === 0 ? "This link never expires." : `This link expires in ${expiryLabel}.`}
-						</p>
-					{/if}
-					<label class="text-duvet-ink2 flex items-center justify-end gap-2 text-xs">
-						Expire after
-						<select
-							bind:value={maxAge}
-							class="text-duvet-ink bg-duvet-sunk shadow-duvet-press focus-visible:outline-duvet-accent rounded-xl px-2 py-1 text-xs focus-visible:outline-2"
-						>
-							{#each EXPIRY_OPTIONS as option (option.seconds)}
-								<option value={option.seconds}>{option.label}</option>
-							{/each}
-						</select>
-					</label>
-				</div>
-			</div>
-		</Dialog.Content>
-	</Dialog.Portal>
-</Dialog.Root>
+	{#if isLoading}
+		<div class="text-duvet-ink2 flex items-center justify-center py-6">
+			<div class={spinnerClass("lg")} role="status" aria-label="Making the link"></div>
+		</div>
+	{:else if genError}
+		<p class="text-duvet-danger py-2 text-center text-[13px]">
+			{genError}
+		</p>
+		<Button variant="secondary" class="w-full" onclick={generate}>Try again</Button>
+	{:else if inviteLink}
+		<div
+			class="bg-duvet-card shadow-duvet-well flex items-center gap-2 rounded-xl py-[5px] pr-[5px] pl-3 focus-within:shadow-[0_0_0_4px_var(--duvet-accent-tint),0_0_0_1px_var(--duvet-accent)]"
+		>
+			<input
+				bind:this={linkInput}
+				type="text"
+				readonly
+				value={inviteLink}
+				aria-label="Invite link"
+				class="text-duvet-ink focus-override min-w-0 flex-1 bg-transparent font-mono text-[13px] outline-none"
+				onclick={() => linkInput?.select()}
+			/>
+			<Button size="sm" onclick={copyLink} aria-label="Copy link">
+				{#if copied}
+					<CheckIcon size={14} />
+					Copied
+				{:else}
+					<CopySimpleIcon size={14} />
+					Copy
+				{/if}
+			</Button>
+		</div>
+		<p class="text-duvet-ink2 text-xs">
+			{linkAge === 0 ? "This link never expires." : `This link expires in ${expiryLabel}.`}
+		</p>
+	{/if}
+	<div class="flex flex-col gap-2" role="radiogroup" aria-label="Expire after">
+		<span class="text-duvet-ink2 text-xs font-medium" aria-hidden="true">Expire after</span>
+		<div class="flex flex-wrap gap-1.5">
+			{#each EXPIRY_OPTIONS as option (option.seconds)}
+				<button
+					type="button"
+					role="radio"
+					aria-checked={maxAge === option.seconds}
+					class={pillClass(maxAge === option.seconds)}
+					onclick={() => (maxAge = option.seconds)}
+				>
+					{option.label}
+				</button>
+			{/each}
+		</div>
+	</div>
+</Sheet>

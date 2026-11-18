@@ -145,7 +145,7 @@ export interface CallRow {
 	/** The call's notice. */
 	id: string;
 	conversationId: string;
-	/** A DM's other person, or a group's name, as the DM list names them; "Conversation" for one this client doesn't know. */
+	/** A DM's other person, or a group's name, as the DM list names them; "Chat" for one this client doesn't know. */
 	title: string;
 	/** A DM's other person's avatar; a group, or a conversation this client doesn't know, has its face from its name. */
 	avatar: string | null;
@@ -169,7 +169,7 @@ export function callRow(
 	return {
 		id: notice.id,
 		conversationId: notice.conversation_id,
-		title: conversation ? conversationTitle(conversation, me) : "Conversation",
+		title: conversation ? conversationTitle(conversation, me) : "Chat",
 		avatar: other ? getAvatarURL(other.user_id, other.user?.avatar) : null,
 		line,
 		at: notice.call.started_at,

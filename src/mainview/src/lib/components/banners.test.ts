@@ -9,7 +9,7 @@ const classLists = (piece: string) => [...piece.matchAll(/\sclass="([^"]*)"/g)].
 // Profile banners, a user's and a bot's, are cropped at 5:2 (600×240) and show at 5:2, as a space's do: shown at 10:3,
 // they lost 12.5% of what was chosen at the top and at the bottom (#85).
 test("profile banners are cropped at 5:2", () => {
-	const settings = source("UserSettings.svelte");
+	const settings = source("settings/SettingsScreen.svelte");
 	expect(settings.match(/aspect=\{5 \/ 2\}\s+targetWidth=\{600\}\s+targetHeight=\{240\}/g)).toHaveLength(2);
 });
 
@@ -30,7 +30,7 @@ test("the profile card draws only what Settings' preview shows", () => {
 	const card = source("MemberProfileCard.svelte");
 	for (const gone of ["editable", "previewSrc", "previewOpen", "ImagePreview", "{:else if member.avatar_url}"])
 		expect(card).not.toContain(gone);
-	const settings = source("UserSettings.svelte");
+	const settings = source("settings/SettingsScreen.svelte");
 	const use = /<MemberProfileCard\s[^]*?\/>/.exec(settings)?.[0] ?? "";
 	expect(use).toContain("member={previewMember}");
 	expect(use).not.toContain("editable");
@@ -153,7 +153,7 @@ describe("the profile card's avatar on hover", () => {
 });
 
 test("a bot's banner thumbnail in Developer settings is 5:2, as 48 px tall as its avatar's", () => {
-	const settings = source("UserSettings.svelte");
+	const settings = source("settings/SettingsScreen.svelte");
 	const thumbnail = settings.slice(settings.indexOf("<!-- Banner"), settings.indexOf("{#if hasBotProfileChanges}"));
 	const frames = classLists(thumbnail).filter((list) => list.includes("h-12"));
 	// The new one, the one to remove, the one there is and the button to set one.

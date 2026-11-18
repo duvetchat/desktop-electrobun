@@ -1,4 +1,5 @@
 import Electrobun, { BrowserView, BrowserWindow, Screen, Updater, Utils } from "electrobun/bun";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fitActivity, MAX_ACTIVITIES, type ActivityPayload } from "./activities";
 import { ActivityImages, IpcActivities, PAGE_WAIT_MS, within } from "./activity-images";
@@ -14,10 +15,19 @@ import {
 import { Toasts } from "./toasts";
 import { startSpotifyReader, type SpotifyActivity } from "./spotify";
 import { ipcHeld, ipcPath, LineReader } from "./ipc";
-import { navigationRules } from "./navigation";
+import { isAppPage, isOwnPage, navigatedTo, navigationRules } from "./navigation";
 import { Maximizer } from "./window-frame";
 import { dragWithWindows, letWindowsArrange, pageLoaded } from "./window-snap";
 import { startupSummary, writeStartupLine } from "./startup";
+import { rendererFor, shellPreload, windowChrome } from "./shell";
+import { keepKeysReachingThePage, type AppKit } from "./window-keys";
+import { WindowRelay, type WindowAnswer, type WindowCommand, type WindowStateMessage } from "./window-relay";
+import { MediaWindows } from "./media-window";
+import { mediaWindowOpener } from "./media-window-open";
+// #357, the Windows workstream: Settings and a Space's settings in windows of their own.
+import { SettingsWindows, type OpenAppWindow } from "./settings-windows";
+import { createSettingsWindow } from "./settings-window-native";
+import { SECOND_WINDOW_PAGES, secondWindowUrl } from "../mainview/src/lib/app-windows";
 
 // When Bun started, and its own steps of the app's start, which the page's join in startup.log (startupTimings, #280):
 // its code running (what loads before it, Electrobun's API, comes first) and the window made.
@@ -71,6 +81,9 @@ type AppRPCSchema = {
 			// Whether Windows' move loop drags the window: on Windows, once window-snap.ts is in (#348). The page then
 			// reports the title bar's presses (startWindowDrag) instead of leaving them to Electrobun's drag.
 			nativeWindowDrag: { params: void; response: boolean };
+			// From a window that isn't the main one: a command for the main window's page, forwarded to it
+			// (webview.requests.windowCommand), whose answer comes back (window-relay.ts).
+			windowCommand: { params: WindowCommand; response: WindowAnswer };
 		};
 		messages: {
 			closeWindow: void;
@@ -91,6 +104,10 @@ type AppRPCSchema = {
 			setSpotifyActivity: { enabled: boolean };
 			// The page's steps of the app's start, each when it happened (Date.now()), for startup.log (#280, #288).
 			startupTimings: { marks: Record<string, number> };
+			// From the main window: a state its other windows mirror, sent on to each of them.
+			windowState: WindowStateMessage;
+			// #357, the Windows workstream: open Settings or a Space's settings in its own window, or bring it forward.
+			openAppWindow: OpenAppWindow;
 		};
 	};
 	webview: {
@@ -98,11 +115,15 @@ type AppRPCSchema = {
 			// An IPC app's activity image, fetched here: the webview makes it a small inline image (it has a canvas,
 			// Bun has no image decoder), or answers null. Its bytes go in base64.
 			activityImage: { params: { bytes: string }; response: string | null };
+			// To the main window: a command another window sent, to answer.
+			windowCommand: { params: WindowCommand; response: WindowAnswer };
 		};
 		messages: {
 			activityUpdate: ActivityPayload[] | null;
 			// A toast was clicked: its message is the page's to take (takeClickedMessage).
 			messageClicked: void;
+			// To a window that isn't the main one: a state of the main window's, to mirror.
+			windowState: WindowStateMessage;
 		};
 	};
 };
@@ -121,6 +142,11 @@ type NotificationRequest = {
 };
 
 const maximizer = new Maximizer();
+
+// What crosses between the main window and the app's other windows (the media controls' pop-out, Settings): the main
+// page's states out to them, their commands in to it. Each of those windows has an RPC instance of its own whose
+// windowCommand reaches relay.commandFromWindow, and joins with relay.add, naming the channels it mirrors.
+const relay = new WindowRelay();
 
 // The webview makes the IPC apps' images by URL inline once its page has loaded, which its first setSpotifyActivity
 // says: a request sent before then would find no page to answer it. An image waits for it PAGE_WAIT_MS at most, then
@@ -173,6 +199,8 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 				return link;
 			},
 			nativeWindowDrag: () => arrangedByWindows,
+			// The main window's page answers commands, and sends none.
+			windowCommand: () => ({ ok: false, error: "The main window sends no commands" }),
 		},
 		messages: {
 			closeWindow: () => win.close(),
@@ -196,6 +224,14 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 				markWebviewReady();
 				setSpotifyActivity(enabled);
 			},
+			windowState: (message) => {
+				relay.stateFromMain(message);
+				// The media controls' pop-out opens and closes on the main page's wish, one of these states (#357).
+				mediaWindows.stateFromMain(message);
+				// The Settings windows of the page before this one close as this one's first state says it started.
+				settingsWindows.stateFromMain(message);
+			},
+			openAppWindow: (request) => void settingsWindows.open(request),
 			startupTimings: ({ marks }) => {
 				const line = `${new Date().toISOString()} ${startupSummary(processStart, { ...bunMarks, ...marks })}`;
 				console.log(line);
@@ -210,11 +246,20 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 
 const currentOS = process.platform;
 
-const rendererType = currentOS === "linux" ? "cef" : "native";
+const rendererType = rendererFor(currentOS);
+
+// The main window's title bar: none, with the page drawing its own title line (the sidebar's header and the tab
+// strip). On macOS it is there, transparent and empty, as a window without one can't take keys there (window-keys.ts),
+// and it shows the system's traffic lights, whose corner the page keeps free (lib/platform.ts: nativeTrafficLights).
+// Windows and Linux have no system buttons: the page draws theirs (WindowControls.svelte, #357).
+const { titleBarStyle, nativeButtons } = windowChrome(currentOS);
 
 const win = new BrowserWindow({
-	titleBarStyle: "hidden",
+	titleBarStyle,
 	renderer: rendererType,
+	// What only Bun knows about this window, for the page's platform switch (shell.ts, lib/platform.ts), set before
+	// any of the page's scripts run.
+	preload: shellPreload("main", { titleBarStyle, nativeButtons }),
 	sandbox: false,
 	frame: {
 		height: 900,
@@ -227,6 +272,7 @@ const win = new BrowserWindow({
 	rpc,
 });
 bunMarks.window = Date.now();
+relay.setMain((command) => rpc.request.windowCommand(command));
 
 // Win+Left and Win+Right snap the window, and Win+Up and Win+Down maximize, restore and minimize it, once it takes what
 // Windows asks of a window for that (window-snap.ts, #345).
@@ -242,15 +288,110 @@ function arrangeByWindows(): boolean {
 	return false;
 }
 
+// On macOS, keys reach the page once its web view is the window's first responder (window-keys.ts). AppKit's bridge is
+// loaded there only; if it can't be, the app runs as it did, and a click in the page gives it the keyboard.
+const appkit: AppKit | null =
+	currentOS === "darwin"
+		? await import("./appkit").catch((err: unknown) => {
+				console.error("[window] AppKit's bridge didn't load:", err);
+				return null;
+			})
+		: null;
+keepKeysReachingThePage(win, appkit, { nativeButtons });
+
 // Through the webview: BrowserWindow stores a navigationRules option of its own, and never hands it to the native side.
 // As each page loads, not right after new BrowserWindow: macOS reads them later on its main queue, from an address
 // nothing keeps, and right after new BrowserWindow that queue still has the webview's creation ahead of them, so a GC in
 // that gap could leave no rules, with no sign. Only the app's own first page can load before they apply.
-const rules = navigationRules(currentOS, url === DEV_SERVER_URL ? url : null);
+const devServer = url === DEV_SERVER_URL ? url : null;
+const rules = navigationRules(currentOS, devServer);
 win.webview.on("dom-ready", () => win.webview.setNavigationRules(rules));
 
 // On Windows Electrobun gives the webview no keyboard: as Duvet opens, the page takes it once it has loaded (#361).
 if (arrangedByWindows) win.webview.on("dom-ready", () => pageLoaded(win.ptr));
+
+// ── The media controls' pop-out (#357, calls and media) ─────────────────────────────────────────────────────────────
+// A small window of its own for the media controls, which the main page asks for (media-window.ts). The call stays in
+// the main window: this one mirrors its state through the relay and sends its commands back. It closes with the main
+// window, and when that window leaves the app's page (signing out). Its place and its pin are kept in the app's data.
+const mediaWindowPrefs = join(Utils.paths.userData, "media-window.json");
+// Brings the main window forward, out of the Dock or the taskbar if it was there: for the pop-out's commands that need
+// it in front, and as a Settings window closes.
+function focusMain() {
+	if (win.isMinimized()) win.unminimize();
+	win.focus();
+}
+const mediaWindows: MediaWindows = new MediaWindows({
+	create: mediaWindowOpener({
+		url: url === DEV_SERVER_URL ? `${DEV_SERVER_URL}/voice-controls` : (secondWindowUrl("media") ?? ""),
+		renderer: rendererType,
+		platform: currentOS,
+		appkit,
+		rules,
+		command: (command) => mediaWindows.commandFromWindow(command),
+	}),
+	displays: () => Screen.getAllDisplays(),
+	mainFrame: () => win.getFrame(),
+	focusMain,
+	relay,
+	readPrefs: () => {
+		try {
+			return readFileSync(mediaWindowPrefs, "utf8");
+		} catch {
+			return null;
+		}
+	},
+	writePrefs: (text) => {
+		mkdirSync(dirname(mediaWindowPrefs), { recursive: true });
+		writeFileSync(mediaWindowPrefs, text);
+	},
+	log: (line) => console.log(`[media-window] ${line}`),
+});
+win.on("close", () => mediaWindows.mainClosed());
+// ── end of the media controls' pop-out ──────────────────────────────────────────────────────────────────────────────
+// ── #357, the Windows workstream's hook: the Settings windows (settings-windows.ts) ──────────────────────────────────
+const settingsWindows = new SettingsWindows({
+	platform: currentOS,
+	pages: SECOND_WINDOW_PAGES,
+	create: (spec) =>
+		createSettingsWindow(spec, {
+			renderer: rendererType,
+			pageUrl: (page) => (url === DEV_SERVER_URL ? `${DEV_SERVER_URL}/${page}` : `views://mainview/${page}.html`),
+			rules,
+			appkit,
+			openExternal: openExternalUrl,
+			command: (command) => relay.commandFromWindow(command),
+		}),
+	mainFrame: () => win.getFrame(),
+	displays: () => Screen.getAllDisplays(),
+	relay,
+	tellMain: (command) => void rpc.request.windowCommand(command).catch(() => undefined),
+	focusMain,
+});
+// ── end of the Windows workstream's hook ─────────────────────────────────────────────────────────────────────────────
+
+// The app's other windows show what the main window's page shares, and go with it.
+win.on("close", () => {
+	settingsWindows.closeAll();
+	// Nobody answers a command now, and nothing of the page that was is kept for a window to come.
+	relay.setMain(null);
+	relay.reset();
+});
+// Where the main window's page is: Electrobun says so as a navigation commits (did-navigate, each system's own) and
+// again once the page has loaded (dom-ready, which the page itself sends on every system, with its address). Off the
+// app's page, which is signing out, the pop-out and the Settings windows go, and the relay lets go of what the app's
+// page published: the next account's windows are handed none of it. The app's page loading again (a reload) is told
+// apart by its states' epoch instead (settingsWindows.stateFromMain, the relay's own): `load` comes after the app is
+// in use, and a Settings window opened in between was closed by it.
+const mainPageAt = (event: unknown) => {
+	const to = navigatedTo(event);
+	if (to === null || !isOwnPage(to, devServer)) return;
+	mediaWindows.mainNavigated(to);
+	settingsWindows.mainNavigated(to);
+	if (!isAppPage(to)) relay.reset();
+};
+win.webview.on("did-navigate", mainPageAt);
+win.webview.on("dom-ready", mainPageAt);
 
 // What Electrobun reports as a new window goes to the system browser: a Ctrl or Cmd click. The webview sends every
 // other click on a link over RPC (openExternal, lib/external-links.ts). On Windows and Linux Electrobun has no hook for

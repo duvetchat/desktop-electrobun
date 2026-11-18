@@ -139,7 +139,7 @@ export function otherMember<C extends ConversationLike>(
 export function conversationTitle(conv: ConversationLike, meId: string | undefined): string {
 	if (conv.type === 2) return conv.name ?? "Group";
 	const other = otherMember(conv, meId);
-	return other?.user?.alias ?? other?.user?.username ?? "DM";
+	return other?.user?.alias ?? other?.user?.username ?? "Direct message";
 }
 
 /** The tab a conversation opens in. */

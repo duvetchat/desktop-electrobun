@@ -7,19 +7,22 @@
 	import { audioStore } from "$lib/stores/audio.svelte";
 	import { callRings } from "$lib/status";
 	import { callCardFace } from "$lib/calls";
-	import {
-		CALL_CARD_HEIGHT,
-		CALL_CARD_WIDTH,
-		CORNER_MARGIN,
-		callCardBottom,
-		callCardBox,
-		streamWindowBox,
-	} from "$lib/corner";
-	import { onDestroy } from "svelte";
+	import { GLASS } from "$lib/components/ui/recipes";
+	import { openCallChatWith } from "$lib/media-source";
+	import { placeStyle } from "$lib/notice-place";
+	import { noticeArea, watchNoticePlace } from "$lib/stores/notice-place.svelte";
+	import { onDestroy, onMount } from "svelte";
 
-	// A call ringing here, or one the user places, as a card in the app's bottom right corner: it covers nothing else and
-	// takes no focus, so the user goes on with what they were doing. A click on its name opens the call's conversation.
+	// A call ringing here, or one the user places, as a notice at the top centre of the app (#357: the redesign moves
+	// it there from the bottom right corner, DECISIONS.md): it covers nothing else and takes no focus, so the user goes
+	// on with what they were doing. A click on its name opens the call's chat.
 	let { onOpen }: { onOpen: (conversationId: string) => void } = $props();
+
+	// The call panel's first line opens a call's chat too, while the call still rings (lib/media-source.ts).
+	onMount(() => {
+		openCallChatWith(onOpen);
+		return () => openCallChatWith(null);
+	});
 
 	const call = $derived($activeCall);
 	const ringing = $derived(call?.state === "ringing");
@@ -34,13 +37,20 @@
 			: null,
 	);
 
-	// Right above the stream window when that window covers the card's place (lib/corner.ts), and the toasts right above
-	// the card while it shows.
-	let viewHeight = $state(globalThis.innerHeight ?? 0);
-	const bottom = $derived(callCardBottom($streamWindowBox, viewHeight));
+	// Its place is read from the window's title line while it shows (lib/notice-place.ts): the same distance under it
+	// on every system and on the web. Until it is, the classes hold it where the shell's line puts it. The mentions'
+	// notices are told how tall it is, and start under it.
+	let height = $state(0);
 	$effect(() => {
-		callCardBox.set(shown ? { right: CORNER_MARGIN, bottom, width: CALL_CARD_WIDTH, height: CALL_CARD_HEIGHT } : null);
+		if (shown) return watchNoticePlace();
 	});
+	$effect(() => {
+		noticeArea.callHeight = shown ? height : 0;
+		return () => {
+			noticeArea.callHeight = 0;
+		};
+	});
+	const place = $derived(noticeArea.place ? placeStyle(noticeArea.place) : undefined);
 
 	let ringAudio: HTMLAudioElement | null = null;
 
@@ -59,7 +69,6 @@
 
 	onDestroy(() => {
 		ringAudio?.pause();
-		callCardBox.set(null);
 	});
 
 	function open() {
@@ -92,20 +101,19 @@
 	}
 </script>
 
-<svelte:window bind:innerHeight={viewHeight} />
-
 {#if call && face && shown}
 	<!-- Above every dialog's layer, so none covers a ringing call (CallCard.test.ts checks them all), and taking clicks
-	     while a modal dialog turns them off on the body, as a toast does. -->
+	     while a modal dialog turns them off on the body, as a toast does. Under the title bar, where the notices are. -->
 	<section
 		aria-label={ringing ? "Incoming call" : "Calling"}
-		class="rounded-card border-duvet-line bg-duvet-card text-duvet-ink shadow-duvet-float motion-safe:animate-slide-in pointer-events-auto fixed right-4 z-10000 flex h-18 w-80 items-center gap-3 border py-3 pr-3 pl-3.5"
-		style="bottom: {bottom}px"
+		class="{GLASS} text-duvet-ink animate-notice-in pointer-events-auto fixed inset-x-0 top-[62px] z-10000 mx-auto flex w-[min(420px,calc(100vw-32px))] items-center gap-3 rounded-[18px] py-3 pr-3 pl-3.5"
+		style={place}
+		bind:offsetHeight={height}
 	>
 		<button
 			type="button"
-			title="Open the conversation"
-			class="focus-visible:outline-duvet-accent flex min-w-0 flex-1 items-center gap-3 rounded-lg text-left focus-visible:outline-2"
+			title="Open the chat"
+			class=" flex min-w-0 flex-1 items-center gap-3 rounded-xl text-left"
 			onclick={open}
 		>
 			<span class="relative shrink-0">
@@ -114,13 +122,13 @@
 						? 'border-duvet-alive/50'
 						: 'border-duvet-ink2/45'}"
 				></span>
-				<UserAvatar src={face.userId ? getAvatarURL(face.userId, face.avatar) : null} name={face.name} size={40} />
+				<UserAvatar src={face.userId ? getAvatarURL(face.userId, face.avatar) : null} name={face.name} size={36} />
 			</span>
-			<span class="flex min-w-0 flex-col">
-				<span class="truncate text-sm font-semibold">{face.name}</span>
+			<span class="flex min-w-0 flex-col gap-0.5">
+				<span class="truncate text-[13.5px] leading-[1.25] font-semibold">{face.name}</span>
 				{#if ringing}
-					<span class="text-duvet-alive flex min-w-0 items-center gap-1 text-xs">
-						<PhoneIncoming class="size-3 shrink-0" />
+					<span class="font-content flex min-w-0 items-center gap-1.5 text-[13.5px] leading-[1.35]">
+						<PhoneIncoming class="text-duvet-alive-text shrink-0" size={13} />
 						<span class="truncate"
 							>Incoming call{#if face.place}<!-- An expression keeps the space Svelte trims from a tag's start. --><span
 									class="text-duvet-ink2">{` · ${face.place}`}</span
@@ -128,8 +136,8 @@
 						>
 					</span>
 				{:else}
-					<span class="text-duvet-ink2 flex items-center gap-1 text-xs">
-						<PhoneOutgoing class="size-3 shrink-0" />
+					<span class="text-duvet-ink2 font-content flex items-center gap-1.5 text-[13.5px] leading-[1.35]">
+						<PhoneOutgoing class="shrink-0" size={13} />
 						<span>Calling…</span>
 					</span>
 				{/if}
@@ -139,31 +147,31 @@
 			{#if ringing}
 				<button
 					type="button"
-					aria-label="Accept call"
-					title="Accept"
-					class="text-fixed-white focus-visible:outline-duvet-accent flex size-9 items-center justify-center rounded-full bg-emerald-600 transition hover:bg-emerald-500 focus-visible:outline-2 active:scale-95"
-					onclick={accept}
+					aria-label="Decline call"
+					title="Decline"
+					class="bg-duvet-call-red text-fixed-white grid h-9 w-10 place-items-center rounded-xl transition-[filter] hover:brightness-[1.08] motion-reduce:transition-none"
+					onclick={decline}
 				>
-					<Phone class="size-4.5" />
+					<PhoneOff size={16} />
 				</button>
 				<button
 					type="button"
-					aria-label="Decline call"
-					title="Decline"
-					class="text-fixed-white focus-visible:outline-duvet-accent flex size-9 items-center justify-center rounded-full bg-red-600 transition hover:bg-red-500 focus-visible:outline-2 active:scale-95"
-					onclick={decline}
+					aria-label="Accept call"
+					title="Accept"
+					class="bg-duvet-alive text-duvet-on-alive animate-ring grid h-9 w-10 place-items-center rounded-xl transition-[filter] hover:brightness-[1.08] motion-reduce:transition-none"
+					onclick={accept}
 				>
-					<PhoneOff class="size-4.5" />
+					<Phone size={16} />
 				</button>
 			{:else}
 				<button
 					type="button"
 					aria-label="Cancel call"
 					title="Cancel"
-					class="text-fixed-white focus-visible:outline-duvet-accent flex size-9 items-center justify-center rounded-full bg-red-600 transition hover:bg-red-500 focus-visible:outline-2 active:scale-95"
+					class="bg-duvet-call-red text-fixed-white grid h-9 w-10 place-items-center rounded-xl transition-[filter] hover:brightness-[1.08] motion-reduce:transition-none"
 					onclick={cancel}
 				>
-					<PhoneOff class="size-4.5" />
+					<PhoneOff size={16} />
 				</button>
 			{/if}
 		</div>

@@ -3,13 +3,11 @@
 		ArrowRightLeft as TransferIcon,
 		Check as CheckIcon,
 		ChevronDown as ChevronDownIcon,
-		ChevronRight as ChevronRightIcon,
 		ChevronUp as ChevronUpIcon,
 		Gamepad2 as GameIcon,
 		MonitorUp as ScreenIcon,
 		Music as MusicIcon,
 		Phone as PhoneIcon,
-		PhoneOff as PhoneDisconnectIcon,
 		Users as TeamIcon,
 		Video as CameraIcon,
 		X as XIcon,
@@ -23,22 +21,20 @@
 	import { getAvatarURL } from "$lib/common/common";
 	import { acceptRequest, declineRequest } from "$lib/friend-requests";
 	import { friendUser } from "$lib/friends";
+	import { liveLabel } from "$lib/media-state";
 	import {
 		capFaces,
 		callName,
-		connectionNote,
 		fitFaces,
 		friendsNow,
 		joinableCalls,
 		liveIn,
-		NOW_DOCK_FACES,
 		NOW_FRIENDS,
 		NOW_ROOMS,
 		NOW_ROOM_FACES,
 		busiestRooms,
 		peopleCount,
 		voiceRoomLabel,
-		withSelf,
 		type Face,
 	} from "$lib/now";
 	import { navPrefs, toggleNow } from "$lib/nav-prefs.svelte";
@@ -53,33 +49,32 @@
 		currentUser,
 		friends,
 		gatewaySpaces,
-		isMuted,
 		ownCallsRinging,
 		pendingFriendRequests,
 		pendingTeamInvites,
-		speakingUsers,
 		userActivities,
-		voiceConnectionState,
 	} from "$lib/stores.svelte";
 	import { storageTransfers } from "$lib/stores/storage-transfers.svelte";
 	import { toast } from "$lib/stores/toast.svelte";
 	import { answerTeamInvite } from "$lib/team-invites";
 	import { userStatusToString, type Guild } from "$lib/types";
-	import { disconnectVoice, joinConversationCall } from "$lib/voice";
-	import { currentVoicePlace } from "$lib/voice-place";
+	import { joinConversationCall } from "$lib/voice";
 	import FaceStack from "$lib/components/FaceStack.svelte";
-	import SpaceIcon from "$lib/components/SpaceIcon.svelte";
-	import StatusDot from "$lib/components/StatusDot.svelte";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
+	import Avatar from "$lib/components/ui/Avatar.svelte";
+	import Button from "$lib/components/ui/Button.svelte";
+	import IconButton from "$lib/components/ui/IconButton.svelte";
+	import SpaceIcon from "$lib/components/ui/SpaceIcon.svelte";
 
-	// The foot of the spaces column: what's going on now, stacked. What asks the user something (a call they can join,
-	// a friend request, a team invite), the files they're moving, the voice rooms with people in them, and their
-	// online friends with what they're doing; under it all, the voice they're in. Nothing when there's none of those.
-	// Nothing here repeats a control in sight: mute and deafen are the user bar's, a call the pane shows has its
-	// banner's Join, and the friends view has its own requests.
+	// What's going on now, in the sidebar between its rows and its bottom block (#357): what asks the user something
+	// (a call they can join, a friend request, a team invite), the files they're moving, the voice rooms with people in
+	// them, and their online friends with what they're doing. Nothing when there's none of those. It is drawn with the
+	// sidebar's own rows, headings and cards, on its tokens, so it reads as part of the column.
+	// Nothing here repeats a control in sight: the voice the user is in is the call panel's (MediaControls, which took
+	// the place of this section's voice dock: DECISIONS.md, "The prototype's unanswered questions", 3), a call the pane
+	// shows has its banner's Join, and the friends view has its own requests.
 	let {
 		guilds,
-		controls = true,
 		isFriendsActive = false,
 		activeConversationId = null,
 		onRoomSelect,
@@ -88,9 +83,6 @@
 		onFriendsSelect,
 	}: {
 		guilds: Guild[];
-		/** Off beside the folded edge, which has its own Leave: the dock then only says where the user is. Mute and
-		 * deafen are always the user bar's. */
-		controls?: boolean;
 		/** The friends view is in the focused pane, with the friend requests. */
 		isFriendsActive?: boolean;
 		/** The conversation the focused pane shows, whose call has a banner there. */
@@ -103,40 +95,6 @@
 	} = $props();
 
 	const me = $derived($currentUser);
-	const myFace = $derived<Face | null>(
-		me ? { id: me.id, src: getAvatarURL(me.id, me.avatar), name: me.alias || me.username } : null,
-	);
-
-	// ── The voice the user is in: a space's voice room, or a call, as the user bar's voice pill has it ──
-	type Person = Face & { muted: boolean };
-
-	const dock = $derived.by(() => {
-		const place = $currentVoicePlace;
-		if (!place) return null;
-		const self: Person | null = myFace ? { ...myFace, muted: $isMuted } : null;
-		const people = place.states.map(
-			(vs): Person => ({ ...place.person(vs.user_id), muted: vs.user_id === me?.id ? $isMuted : vs.muted }),
-		);
-		return {
-			kind: place.kind,
-			name: place.name,
-			place: place.place,
-			live: liveIn(place.states),
-			open: () => (place.spaceId ? onRoomSelect(place.spaceId, place.id) : onConversationSelect(place.id)),
-			people: withSelf(people, self),
-		};
-	});
-
-	const dockFaces = $derived.by(() => {
-		const people = (dock?.people ?? []).map((p) => ({ ...p, speaking: $speakingUsers.has(p.id) && !p.muted }));
-		return capFaces(people, NOW_DOCK_FACES);
-	});
-	const dockFacesLabel = $derived.by(() => {
-		const speaking = (dock?.people ?? []).filter((p) => $speakingUsers.has(p.id) && !p.muted).map((p) => p.name);
-		const count = `${peopleCount(dock?.people.length ?? 0)} in voice`;
-		return speaking.length ? `${count}, ${speaking.join(", ")} speaking` : count;
-	});
-	const dockNote = $derived(connectionNote($voiceConnectionState));
 
 	// ── The calls going on in the user's conversations that they can join from here ──
 	const calls = $derived(
@@ -182,7 +140,7 @@
 		answering.add(inviteId);
 		try {
 			await answerTeamInvite(inviteId, accept);
-			if (accept) toast("Invite accepted!", "success");
+			if (accept) toast("Invite accepted", "success");
 		} catch (err) {
 			toast(getApiError(err, accept ? "Failed to accept invite" : "Failed to decline invite"), "error");
 		} finally {
@@ -198,7 +156,7 @@
 				t,
 				target: storageTransfers.storageName(t.target_bucket_id),
 				owner:
-					t.owner_id === t.started_by ? null : ($gatewaySpaces.find((s) => s.id === t.owner_id)?.name ?? "A space"),
+					t.owner_id === t.started_by ? null : ($gatewaySpaces.find((s) => s.id === t.owner_id)?.name ?? "A Space"),
 				progress: transferProgress(t),
 			})),
 	);
@@ -248,113 +206,102 @@
 	const friendFaces = $derived(fitFaces(friendsSplit.rest, NOW_FRIENDS));
 
 	const asks = $derived(calls.length + requests.length + $pendingTeamInvites.length + transfers.length);
-	const anything = $derived(!!dock || asks > 0 || liveRooms.length > 0 || onlineFriends.length > 0);
+	const anything = $derived(asks > 0 || liveRooms.length > 0 || onlineFriends.length > 0);
 
-	const liveLabel = { screen: "Sharing their screen", camera: "Camera on" } as const;
-
-	const rowFocus = "focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-duvet-accent";
+	const rowFocus = "focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-duvet-accent";
 	const roundFocus = "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-duvet-accent";
-	const control = `hover:bg-duvet-bg flex size-8 shrink-0 items-center justify-center rounded-lg transition-colors motion-reduce:transition-none disabled:opacity-50 ${rowFocus}`;
+	// The sidebar's recipes (SpaceNav.svelte, DMSidebar.svelte; DESIGN-MAP.md S-05 to S-07): a row lights on hover, a
+	// card is the call panel's, and an icon that isn't a person sits on a rounded square.
+	const row = `hover:bg-duvet-sb-hover flex w-full items-center rounded-[10px] text-left transition-colors duration-[120ms] motion-reduce:transition-none ${rowFocus}`;
+	const card = "bg-duvet-sb-card shadow-duvet-raised flex items-center gap-1 rounded-[14px] p-1.5";
+	const tile = "bg-duvet-secondary-fill text-duvet-accent-text grid size-8 shrink-0 place-items-center rounded-[10px]";
+	const cardName = "text-duvet-ink truncate text-[13.5px] leading-tight font-semibold";
+	const cardNote = "text-duvet-ink2 truncate text-[12.5px] leading-[1.3]";
 </script>
 
 {#snippet liveMark(live: "screen" | "camera" | null)}
 	{#if live}
-		<span class="text-duvet-alive shrink-0" title={liveLabel[live]}>
+		<span class="text-duvet-alive-text shrink-0" title={liveLabel(live)}>
 			{#if live === "screen"}<ScreenIcon class="size-3.5" aria-hidden="true" />{:else}<CameraIcon
 					class="size-3.5"
 					aria-hidden="true"
 				/>{/if}
-			<span class="sr-only">{liveLabel[live]}</span>
+			<span class="sr-only">{liveLabel(live)}</span>
 		</span>
 	{/if}
 {/snippet}
 
+<!-- A group's heading, the sidebar's section head as a button: it folds the group to its heading and a count. -->
 {#snippet groupHeading(title: string, count: number, folded: boolean, onToggle: () => void)}
-	<h3 class="mt-2 mb-1">
+	<h3>
 		<button
 			type="button"
-			class="rounded-row text-duvet-ink2 hover:text-duvet-ink flex w-full items-center gap-1.5 px-1.5 text-left text-[13px] font-bold transition-colors select-none motion-reduce:transition-none {rowFocus}"
+			class="text-duvet-ink2 hover:text-duvet-ink flex h-[30px] w-full items-end gap-1.5 rounded-lg px-2.5 pb-0.5 text-left text-[11.5px] font-semibold transition-colors duration-[120ms] select-none motion-reduce:transition-none {rowFocus}"
 			aria-expanded={!folded}
 			onclick={onToggle}
 		>
 			<span class="min-w-0 truncate">{title}</span>
 			{#if folded}<span class="tabular-nums">{count}</span>{/if}
 			<span class="flex-1"></span>
-			{#if folded}<ChevronRightIcon class="size-3.5 shrink-0" aria-hidden="true" />{:else}<ChevronDownIcon
-					class="size-3.5 shrink-0"
-					aria-hidden="true"
-				/>{/if}
+			<ChevronDownIcon
+				class="mb-px size-3 shrink-0 transition-transform duration-150 motion-reduce:transition-none {folded
+					? '-rotate-90'
+					: ''}"
+				aria-hidden="true"
+			/>
 		</button>
 	</h3>
 {/snippet}
 
 {#snippet answer(id: string, what: string, onAnswer: (accept: boolean) => void)}
-	<button
-		type="button"
-		class="{control} text-duvet-ink2 hover:text-duvet-alive"
-		aria-label="Accept {what}"
-		title="Accept"
-		disabled={answering.has(id)}
-		onclick={() => onAnswer(true)}
-	>
-		<CheckIcon class="size-4" />
-	</button>
-	<button
-		type="button"
-		class="{control} text-duvet-ink2 hover:text-duvet-danger"
-		aria-label="Decline {what}"
-		title="Decline"
-		disabled={answering.has(id)}
-		onclick={() => onAnswer(false)}
-	>
-		<XIcon class="size-4" />
-	</button>
+	<IconButton label="Accept {what}" title="Accept" disabled={answering.has(id)} onclick={() => onAnswer(true)}>
+		<CheckIcon size={16} />
+	</IconButton>
+	<IconButton label="Decline {what}" title="Decline" disabled={answering.has(id)} onclick={() => onAnswer(false)}>
+		<XIcon size={16} />
+	</IconButton>
 {/snippet}
 
 {#if anything}
-	<!-- At the column's foot, right above the user's panel. What doesn't fit scrolls in it; the voice dock stays. -->
-	<section class="flex min-h-0 flex-col px-2.5 pb-1" aria-label="Now">
-		<div class="-mx-2.5 flex min-h-0 flex-col overflow-y-auto px-2.5">
+	<!-- Between the sidebar's rows and its bottom block, under a hairline. What doesn't fit scrolls in it. -->
+	<section class="flex min-h-0 flex-col shadow-[0_-1px_0_var(--duvet-sb-edge)]" aria-label="Now">
+		<div class="flex min-h-0 flex-col overflow-y-auto px-2 pb-2">
 			{#if asks > 0}
-				<ul class="flex flex-col gap-1 pt-2" aria-label="Asking you">
+				<ul class="flex flex-col gap-1.5 px-0.5 pt-2" aria-label="Asking you">
 					{#each calls as call (call.conv.id)}
-						<li
-							class="rounded-card bg-duvet-card shadow-duvet-raised animate-fade-in flex items-center gap-1 p-1 motion-reduce:animate-none"
-						>
+						<li class="{card} animate-fade-in motion-reduce:animate-none">
 							<button
 								type="button"
-								class="rounded-row hover:bg-duvet-bg/60 flex min-w-0 flex-1 items-center gap-2.5 p-1 text-left transition-colors motion-reduce:transition-none {rowFocus}"
+								class="{row} min-w-0 flex-1 gap-2.5 p-0.5"
 								aria-label="Open {call.name}"
 								data-jump
 								onclick={() => onConversationSelect(call.conv.id)}
 							>
 								<span
-									class="bg-duvet-bg text-duvet-alive shadow-duvet-press flex size-8 shrink-0 items-center justify-center rounded-xl"
+									class="bg-duvet-alive/14 text-duvet-alive-text grid size-8 shrink-0 place-items-center rounded-[10px]"
 								>
 									<PhoneIcon class="size-4" />
 								</span>
-								<span class="flex min-w-0 flex-1 flex-col leading-tight">
-									<span class="text-duvet-ink truncate text-sm font-bold">{call.name}</span>
-									<span class="text-duvet-ink2 truncate text-xs"
-										>{call.waits ? "Calling from another device" : "Call going on"}</span
-									>
+								<span class="flex min-w-0 flex-1 flex-col">
+									<span class={cardName}>{call.name}</span>
+									<span class={cardNote}>{call.waits ? "Calling from another device" : "Call going on"}</span>
 								</span>
 								<FaceStack
 									faces={call.faces.faces}
 									more={call.faces.more}
-									ring="ring-duvet-card"
+									size={18}
+									ring="ring-duvet-sb-ring"
 									label="{peopleCount(call.faces.faces.length + call.faces.more)} in the call"
 								/>
 							</button>
 							{#if !call.waits}
-								<button
-									type="button"
-									class="bg-duvet-alive text-duvet-on-accent h-8 shrink-0 rounded-lg px-3 text-xs font-bold transition hover:brightness-110 motion-reduce:transition-none {roundFocus}"
+								<Button
+									size="sm"
 									aria-label="Join the call in {call.name}"
 									onclick={() => joinConversationCall(call.conv)}
 								>
 									Join
-								</button>
+								</Button>
 							{/if}
 						</li>
 					{/each}
@@ -362,12 +309,12 @@
 					{#each requests as request (request.id)}
 						{@const other = friendUser(request, me?.id)}
 						{@const name = other.alias ?? other.username}
-						<li class="rounded-card bg-duvet-card shadow-duvet-raised flex items-center gap-1 p-1">
-							<div class="flex min-w-0 flex-1 items-center gap-2.5 p-1">
+						<li class={card}>
+							<div class="flex min-w-0 flex-1 items-center gap-2.5 p-0.5">
 								<UserAvatar src={getAvatarURL(other.id, other.avatar)} {name} size={32} />
-								<span class="flex min-w-0 flex-1 flex-col leading-tight">
-									<span class="text-duvet-ink truncate text-sm font-bold">{name}</span>
-									<span class="text-duvet-ink2 truncate text-xs">Wants to be friends</span>
+								<span class="flex min-w-0 flex-1 flex-col">
+									<span class={cardName}>{name}</span>
+									<span class={cardNote}>Wants to be friends</span>
 								</span>
 							</div>
 							{@render answer(request.id, `${name}'s friend request`, (accept) => answerRequest(request, accept))}
@@ -375,16 +322,14 @@
 					{/each}
 
 					{#each $pendingTeamInvites as invite (invite.id)}
-						<li class="rounded-card bg-duvet-card shadow-duvet-raised flex items-center gap-1 p-1">
-							<div class="flex min-w-0 flex-1 items-center gap-2.5 p-1">
-								<span
-									class="bg-duvet-bg text-duvet-accent-text shadow-duvet-press flex size-8 shrink-0 items-center justify-center rounded-xl"
-								>
+						<li class={card}>
+							<div class="flex min-w-0 flex-1 items-center gap-2.5 p-0.5">
+								<span class={tile}>
 									<TeamIcon class="size-4" />
 								</span>
-								<span class="flex min-w-0 flex-1 flex-col leading-tight">
-									<span class="text-duvet-ink truncate text-sm font-bold">{invite.team_name}</span>
-									<span class="text-duvet-ink2 truncate text-xs">Team invite from {invite.invited_by_username}</span>
+								<span class="flex min-w-0 flex-1 flex-col">
+									<span class={cardName}>{invite.team_name}</span>
+									<span class={cardNote}>Team invite from {invite.invited_by_username}</span>
 								</span>
 							</div>
 							{@render answer(invite.id, `the invite to ${invite.team_name}`, (accept) =>
@@ -394,25 +339,21 @@
 					{/each}
 
 					{#each transfers as { t, target, owner, progress } (t.id)}
-						<li class="rounded-card bg-duvet-card shadow-duvet-raised flex flex-col gap-1.5 p-2">
+						<li class="bg-duvet-sb-card shadow-duvet-raised flex flex-col gap-2 rounded-[14px] p-2">
 							<div class="flex min-w-0 items-center gap-2.5">
-								<span
-									class="bg-duvet-bg text-duvet-accent-text shadow-duvet-press flex size-8 shrink-0 items-center justify-center rounded-xl"
-								>
+								<span class={tile}>
 									<TransferIcon class="size-4" />
 								</span>
-								<span class="flex min-w-0 flex-1 flex-col leading-tight">
-									<span class="text-duvet-ink truncate text-sm font-bold"
-										>Moving {owner ? `${owner}'s files` : "your files"}</span
-									>
-									<span class="text-duvet-ink2 truncate text-xs"
-										>{target ? `To ${target}, ` : ""}{progress.done} of {progress.total}</span
-									>
+								<span class="flex min-w-0 flex-1 flex-col">
+									<span class={cardName}>Moving {owner ? `${owner}'s files` : "your files"}</span>
+									<span class={cardNote}>{target ? `To ${target}, ` : ""}{progress.done} of {progress.total}</span>
 								</span>
-								<span class="text-duvet-ink2 shrink-0 text-xs font-bold tabular-nums">{progress.percent}%</span>
+								<span class="text-duvet-ink2 shrink-0 text-[11.5px] font-semibold tabular-nums"
+									>{progress.percent}%</span
+								>
 							</div>
 							<div
-								class="bg-duvet-bg shadow-duvet-press h-1.5 overflow-hidden rounded-full"
+								class="bg-duvet-secondary-fill h-1.5 overflow-hidden rounded-full"
 								role="progressbar"
 								aria-label="Moving {owner ? `${owner}'s files` : 'your files'}"
 								aria-valuemin={0}
@@ -435,30 +376,31 @@
 				)}
 			{/if}
 			{#if liveRooms.length > 0 && !navPrefs.now.roomsFolded}
-				<ul class="flex flex-col gap-px">
+				<ul class="flex flex-col">
 					{#each shownRooms as { guild, channel, people, live } (channel.id)}
 						{@const stack = capFaces(people, NOW_ROOM_FACES)}
 						<li>
 							<button
 								type="button"
-								class="rounded-row hover:bg-duvet-card/70 flex h-10 w-full items-center gap-2 px-1.5 text-left transition-colors motion-reduce:transition-none {rowFocus}"
+								class="{row} h-[34px] gap-[7px] pr-2 pl-1.5"
 								aria-label="{voiceRoomLabel(channel.name, guild.name, people.length)}{live
-									? `, ${liveLabel[live].toLowerCase()}`
+									? `, ${liveLabel(live).toLowerCase()}`
 									: ''}"
 								title="{channel.name} in {guild.name}"
 								data-jump
 								onclick={() => onRoomSelect(guild.id, channel.id)}
 							>
 								<span class="contents" aria-hidden="true"
-									><SpaceIcon src={guild.icon_url || null} name={guild.name} size={28} /></span
+									><SpaceIcon src={guild.icon_url || null} name={guild.name} size={22} /></span
 								>
-								<span class="bg-duvet-alive size-2 shrink-0 rounded-full"></span>
-								<span class="text-duvet-ink min-w-0 flex-1 truncate text-sm font-semibold">{channel.name}</span>
+								<span class="bg-duvet-alive size-[7px] shrink-0 rounded-full"></span>
+								<span class="text-duvet-ink min-w-0 flex-1 truncate text-[13.5px] font-medium">{channel.name}</span>
 								{@render liveMark(live)}
 								<FaceStack
 									faces={stack.faces.map((u) => ({ id: u.id, src: u.avatar_url, name: u.username }))}
 									more={stack.more}
-									ring="ring-duvet-sunk"
+									size={18}
+									ring="ring-duvet-sb-ring"
 								/>
 							</button>
 						</li>
@@ -467,15 +409,14 @@
 				{#if moreRooms > 0}
 					<button
 						type="button"
-						class="rounded-row text-duvet-ink2 hover:bg-duvet-card/70 hover:text-duvet-ink flex h-8 w-full items-center gap-2 px-1.5 text-left text-xs font-semibold transition-colors motion-reduce:transition-none {rowFocus}"
+						class="text-duvet-ink2 hover:text-duvet-ink flex h-7 w-full shrink-0 items-center gap-2 rounded-lg pr-2.5 pl-[11px] text-left text-xs font-medium transition-colors duration-[120ms] motion-reduce:transition-none {rowFocus}"
 						aria-expanded={navPrefs.now.allRooms}
 						onclick={() => toggleNow("allRooms")}
 					>
-						<span class="flex w-7 shrink-0 justify-center" aria-hidden="true">
-							{#if navPrefs.now.allRooms}<ChevronUpIcon class="size-3.5" />{:else}<ChevronDownIcon
-									class="size-3.5"
-								/>{/if}
-						</span>
+						{#if navPrefs.now.allRooms}<ChevronUpIcon
+								class="size-[13px] shrink-0"
+								aria-hidden="true"
+							/>{:else}<ChevronDownIcon class="size-[13px] shrink-0" aria-hidden="true" />{/if}
 						{navPrefs.now.allRooms
 							? "Show the busiest only"
 							: `${moreRooms} more ${moreRooms === 1 ? "room" : "rooms"}`}
@@ -490,29 +431,24 @@
 			{/if}
 			{#if onlineFriends.length > 0 && !navPrefs.now.friendsFolded}
 				{#if friendsSplit.busy.length > 0}
-					<ul class="flex flex-col gap-px">
+					<ul class="flex flex-col">
 						{#each friendsSplit.busy as { friend, activity } (friend.id)}
 							<li>
 								<button
 									type="button"
-									class="rounded-row hover:bg-duvet-card/70 flex h-11 w-full items-center gap-2.5 px-1.5 text-left transition-colors motion-reduce:transition-none {rowFocus}"
+									class="{row} h-11 gap-2.5 pr-2.5 pl-2"
 									aria-label="Message {friend.name}, {activity.kind === 'playing'
 										? 'playing'
 										: 'listening to'} {activity.text}"
 									data-jump
 									onclick={() => onFriend(friend.id)}
 								>
-									<span class="relative shrink-0">
-										<UserAvatar src={friend.src} name={friend.name} size={28} />
-										<StatusDot
-											status={friend.status}
-											mobileOnly={friend.mobileOnly}
-											class="text-duvet-sunk absolute -right-0.5 -bottom-0.5 w-2.5 border-2"
-										/>
-									</span>
-									<span class="flex min-w-0 flex-1 flex-col leading-tight">
-										<span class="text-duvet-ink truncate text-sm font-semibold">{friend.name}</span>
-										<span class="text-duvet-ink2 flex min-w-0 items-center gap-1 text-xs">
+									<Avatar size={32} status={friend.status} mobileOnly={friend.mobileOnly} ring="var(--duvet-sb-ring)">
+										<UserAvatar src={friend.src} name={friend.name} size={32} />
+									</Avatar>
+									<span class="flex min-w-0 flex-1 flex-col gap-px">
+										<span class="text-duvet-ink truncate text-[13.5px] leading-tight font-medium">{friend.name}</span>
+										<span class="text-duvet-ink2 flex min-w-0 items-center gap-1 text-[12.5px] leading-[1.3]">
 											{#if activity.kind === "playing"}<GameIcon
 													class="size-3 shrink-0"
 													aria-hidden="true"
@@ -526,31 +462,28 @@
 					</ul>
 				{/if}
 				{#if friendFaces.faces.length > 0 || friendFaces.more > 0}
-					<ul class="flex items-center gap-1 px-1.5 pt-0.5 pb-1">
+					<ul class="flex shrink-0 items-center gap-1.5 px-2 pt-1 pb-0.5">
 						{#each friendFaces.faces as friend (friend.id)}
-							<li class="shrink-0">
+							<li class="flex shrink-0">
 								<button
 									type="button"
-									class="relative block rounded-full {roundFocus}"
+									class="flex rounded-full {roundFocus}"
 									aria-label="Message {friend.name}"
 									title={friend.name}
 									data-jump
 									onclick={() => onFriend(friend.id)}
 								>
-									<UserAvatar src={friend.src} name={friend.name} size={26} />
-									<StatusDot
-										status={friend.status}
-										mobileOnly={friend.mobileOnly}
-										class="text-duvet-sunk absolute -right-0.5 -bottom-0.5 w-2.5 border-2"
-									/>
+									<Avatar size={26} status={friend.status} mobileOnly={friend.mobileOnly} ring="var(--duvet-sb-ring)">
+										<UserAvatar src={friend.src} name={friend.name} size={26} />
+									</Avatar>
 								</button>
 							</li>
 						{/each}
 						{#if friendFaces.more > 0}
-							<li class="shrink-0">
+							<li class="flex shrink-0">
 								<button
 									type="button"
-									class="bg-duvet-card text-duvet-ink2 shadow-duvet-raised hover:text-duvet-ink flex size-[26px] items-center justify-center rounded-full text-[11px] font-bold tabular-nums transition-colors motion-reduce:transition-none {roundFocus}"
+									class="bg-duvet-secondary-fill text-duvet-ink2 hover:text-duvet-ink flex size-[26px] items-center justify-center rounded-full text-[10.5px] font-bold tabular-nums transition-colors duration-[120ms] motion-reduce:transition-none {roundFocus}"
 									aria-label="{friendFaces.more} more online friends"
 									title="{friendFaces.more} more online"
 									onclick={onFriendsSelect}
@@ -563,49 +496,5 @@
 				{/if}
 			{/if}
 		</div>
-
-		{#if dock}
-			<!-- One row, as Discord has it: where the user is and who's there; Leave when docked. -->
-			<div
-				class="rounded-card bg-duvet-card shadow-duvet-raised mt-2 flex shrink-0 items-center gap-1 p-1"
-				aria-label={dock.kind === "call" ? "Your call" : "Your voice"}
-				role="group"
-			>
-				<button
-					type="button"
-					class="rounded-row hover:bg-duvet-bg/60 flex min-w-0 flex-1 items-center gap-2 px-1.5 py-1 text-left transition-colors motion-reduce:transition-none {rowFocus}"
-					aria-label="Open {dock.name}{dock.kind === 'room' ? ` in ${dock.place}` : ''}, {dockFacesLabel}"
-					data-jump
-					onclick={dock.open}
-				>
-					<span class="flex min-w-0 flex-1 flex-col leading-tight">
-						<span
-							class="flex min-w-0 items-center gap-1.5 text-[13px] font-bold {dockNote
-								? 'text-duvet-ink2'
-								: 'text-duvet-alive'}"
-						>
-							<span class="size-2 shrink-0 rounded-full {dockNote ? 'bg-duvet-ink2' : 'bg-duvet-alive'}"></span>
-							<span class="truncate">{dockNote ?? (dock.kind === "call" ? "Call connected" : "Voice connected")}</span>
-							{@render liveMark(dock.live)}
-						</span>
-						<span class="text-duvet-ink2 truncate text-xs"
-							>{dock.kind === "room" ? `${dock.name} / ${dock.place}` : dock.name}</span
-						>
-					</span>
-					<FaceStack faces={dockFaces.faces} more={dockFaces.more} size={18} ring="ring-duvet-card" />
-				</button>
-				{#if controls}
-					<button
-						type="button"
-						class="{control} text-duvet-ink2 hover:text-duvet-danger"
-						aria-label={dock.kind === "call" ? "Leave call" : "Leave voice"}
-						title={dock.kind === "call" ? "Leave call" : "Leave voice"}
-						onclick={disconnectVoice}
-					>
-						<PhoneDisconnectIcon class="size-4" />
-					</button>
-				{/if}
-			</div>
-		{/if}
 	</section>
 {/if}

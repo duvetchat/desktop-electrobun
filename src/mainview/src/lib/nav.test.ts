@@ -14,7 +14,7 @@ import {
 	spaceNews,
 	spaceReadAll,
 } from "$lib/nav";
-import { parseLayoutPrefs } from "$lib/layout-prefs";
+import { defaultLayoutPrefs, parseLayoutPrefs } from "$lib/layout-prefs";
 import { closeTabsIn, makeLeaf } from "$lib/pane";
 import type { Channel, Tab } from "$lib/types";
 
@@ -73,7 +73,6 @@ describe("saved values", () => {
 
 	test("layout prefs from before the modes keep their panels and get the default modes", () => {
 		expect(parseLayoutPrefs('{"showMembersSidebar":false,"showChannelsSidebar":true}')).toEqual({
-			membersColumn: "hidden",
 			showChannelsSidebar: true,
 			spacesColumn: "fixed",
 			openChats: "tabs",
@@ -89,22 +88,30 @@ describe("saved values", () => {
 			spacesColumn: "fixed",
 			openChats: "tabs",
 		});
-		expect(parseLayoutPrefs("[]").membersColumn).toBe("auto");
+		expect(parseLayoutPrefs("[]")).toEqual(defaultLayoutPrefs);
 	});
 
-	test("the members column's old switch becomes its mode: shown, the old default, is auto", () => {
-		expect(parseLayoutPrefs('{"showMembersSidebar":true}').membersColumn).toBe("auto");
-		expect(parseLayoutPrefs('{"showMembersSidebar":false}').membersColumn).toBe("hidden");
-		expect(parseLayoutPrefs("{}").membersColumn).toBe("auto");
-		expect(parseLayoutPrefs(null).membersColumn).toBe("auto");
-	});
-
-	test("a saved members mode wins over the switch older builds read, and an unknown one is ignored", () => {
-		expect(parseLayoutPrefs('{"membersColumn":"shown","showMembersSidebar":true}').membersColumn).toBe("shown");
-		expect(parseLayoutPrefs('{"membersColumn":"hidden","showMembersSidebar":false}').membersColumn).toBe("hidden");
-		expect(parseLayoutPrefs('{"membersColumn":"auto","showMembersSidebar":true}').membersColumn).toBe("auto");
-		expect(parseLayoutPrefs('{"membersColumn":"sometimes","showMembersSidebar":false}').membersColumn).toBe("hidden");
-		expect(parseLayoutPrefs('{"membersColumn":true}').membersColumn).toBe("auto");
+	// Nothing is docked beside a chat since the redesign (#357, DECISIONS.md): the members column's mode, and the
+	// switch before it, are in values saved by earlier builds, and are read past.
+	test("a saved members column, as a mode or as the old switch, is read without error and left out", () => {
+		for (const saved of [
+			'{"membersColumn":"shown","showMembersSidebar":true}',
+			'{"membersColumn":"hidden","showMembersSidebar":false}',
+			'{"membersColumn":"auto","showMembersSidebar":true}',
+			'{"membersColumn":"sometimes"}',
+			'{"membersColumn":true}',
+			'{"showMembersSidebar":false}',
+		]) {
+			const prefs = parseLayoutPrefs(saved);
+			expect(prefs, saved).toEqual(defaultLayoutPrefs);
+			expect(Object.keys(prefs), saved).not.toContain("membersColumn");
+		}
+		// What was saved beside it keeps its value.
+		expect(
+			parseLayoutPrefs(
+				'{"membersColumn":"shown","showMembersSidebar":true,"spacesColumn":"auto-hide","openChats":"vertical"}',
+			),
+		).toEqual({ ...defaultLayoutPrefs, spacesColumn: "auto-hide", openChats: "vertical" });
 	});
 });
 

@@ -1,4 +1,7 @@
 <script lang="ts">
+	import { claimLayer, layerStyle, releaseLayer } from "$lib/overlay-layers";
+	import { buttonClass, GLASS_STRONG, iconButtonClass } from "$lib/components/ui/recipes";
+	import { calloutClass, CHECKBOX, SELECT } from "$lib/components/settings/recipes";
 	import { Dialog } from "bits-ui";
 	import { untrack } from "svelte";
 	import { X as XIcon } from "@lucide/svelte";
@@ -102,6 +105,13 @@
 			starting = false;
 		}
 	}
+
+	// What opens last is in front, whatever opened it (lib/overlay-layers.ts): this can open over a sheet.
+	const layer = $derived(open ? claimLayer() : 0);
+	$effect(() => {
+		const mine = layer;
+		if (mine) return () => releaseLayer(mine);
+	});
 </script>
 
 <Dialog.Root
@@ -113,36 +123,34 @@
 	}
 >
 	<Dialog.Portal>
-		<Dialog.Overlay class="fixed inset-0 z-600 bg-black/60 backdrop-blur-sm" />
-		<Dialog.Content class="fixed inset-0 z-601 flex items-center justify-center p-4">
-			<div class="rounded-card border-duvet-line bg-duvet-bg text-duvet-ink shadow-duvet-float w-full max-w-md border">
-				<div class="border-duvet-line flex items-start justify-between gap-4 border-b px-5 py-4">
+		<Dialog.Overlay style={layerStyle(layer)} class="bg-duvet-scrim animate-scrim-in fixed inset-0 z-[900]" />
+		<Dialog.Content style={layerStyle(layer)} class="fixed inset-0 z-[900] flex items-center justify-center p-4">
+			<div class="{GLASS_STRONG} animate-sheet-in text-duvet-ink flex w-full max-w-md flex-col gap-3 rounded-3xl p-4">
+				<div class="flex items-start justify-between gap-4">
 					<div class="min-w-0">
-						<Dialog.Title class="text-duvet-ink text-sm font-semibold">Move {countFiles(files.length)}</Dialog.Title>
-						<Dialog.Description class="text-duvet-ink2 mt-0.5 truncate text-xs">
+						<Dialog.Title class="font-serif-lg text-[21px] leading-[1.2] font-normal tracking-[-0.01em]"
+							>Move {countFiles(files.length)}</Dialog.Title
+						>
+						<Dialog.Description class="text-duvet-ink2 mt-1 truncate text-[13px]">
 							From {source?.name ?? "this storage"} · {formatFileSize(totalBytes)}
 						</Dialog.Description>
 					</div>
-					<Dialog.Close
-						class="text-duvet-ink2 hover:bg-duvet-card hover:text-duvet-ink flex h-7 w-7 shrink-0 items-center justify-center rounded-md transition-colors"
-						aria-label="Close"
-						disabled={starting}
-					>
+					<Dialog.Close class={iconButtonClass()} aria-label="Close" disabled={starting}>
 						<XIcon class="size-4" />
 					</Dialog.Close>
 				</div>
 
-				<div class="space-y-4 px-5 py-4">
+				<div class="flex flex-col gap-4">
 					{#if targets.length === 0}
 						<p class="text-duvet-ink2 text-sm">There's no other storage to move these files to. Add a bucket first.</p>
 					{:else}
 						<div>
-							<label for="move-target" class="text-duvet-ink2 mb-1 block text-[13px] font-bold">To</label>
+							<label for="move-target" class="text-duvet-ink2 mb-1.5 block text-[13px] font-medium">To</label>
 							<select
 								id="move-target"
 								bind:value={targetId}
 								disabled={starting}
-								class="bg-duvet-sunk text-duvet-ink shadow-duvet-press focus-visible:outline-duvet-accent h-10 w-full rounded-xl px-3 text-sm focus-visible:outline-2"
+								class="{SELECT} h-[38px]! w-full max-w-none!"
 							>
 								{#each targets as choice (choice.id)}
 									<option value={choice.id}>{choice.name}{choice.active ? " (active)" : ""}</option>
@@ -179,12 +187,7 @@
 
 						{#if source?.isBucket}
 							<label class="flex cursor-pointer items-start gap-2">
-								<input
-									type="checkbox"
-									bind:checked={keepSource}
-									disabled={starting}
-									class="border-duvet-line bg-duvet-card accent-duvet-accent mt-0.5 size-4 shrink-0 rounded"
-								/>
+								<input type="checkbox" bind:checked={keepSource} disabled={starting} class="{CHECKBOX} mt-0.5" />
 								<span class="text-duvet-ink text-xs">
 									Keep the originals in {source.name}
 									<span class="text-duvet-ink2 block"
@@ -196,12 +199,7 @@
 
 						{#if target && !target.active}
 							<label class="flex cursor-pointer items-start gap-2">
-								<input
-									type="checkbox"
-									bind:checked={makeActive}
-									disabled={starting}
-									class="border-duvet-line bg-duvet-card accent-duvet-accent mt-0.5 size-4 shrink-0 rounded"
-								/>
+								<input type="checkbox" bind:checked={makeActive} disabled={starting} class="{CHECKBOX} mt-0.5" />
 								<span class="text-duvet-ink text-xs">
 									Make {target.name} active
 									<span class="text-duvet-ink2 block">New uploads go there.</span>
@@ -210,34 +208,23 @@
 						{/if}
 
 						{#if source?.isBucket}
-							<p class="text-xxs text-duvet-ink2">
+							<p class="text-duvet-ink2 text-[11px]">
 								Each byte leaves {source.name} once: providers other than R2 may charge for that egress.
 							</p>
 						{/if}
 					{/if}
 
 					{#if error}
-						<p class="bg-duvet-danger/10 text-duvet-danger rounded-md px-3 py-2 text-sm">{error}</p>
+						<p class={calloutClass("danger")} role="alert">{error}</p>
 					{/if}
 				</div>
 
-				<div class="border-duvet-line flex justify-end gap-2 border-t px-5 py-3">
-					<Dialog.Close
-						class="text-duvet-ink hover:bg-duvet-card rounded-md px-3 py-1.5 text-sm font-medium transition-colors disabled:opacity-50"
-						disabled={starting}
-					>
-						Cancel
-					</Dialog.Close>
+				<div class="mt-1 flex justify-end gap-2">
+					<Dialog.Close class={buttonClass("quiet")} disabled={starting}>Cancel</Dialog.Close>
 					{#if targets.length > 0}
-						<button
-							class="bg-duvet-accent text-duvet-on-accent shadow-duvet-raised flex min-w-24 items-center justify-center gap-1.5 rounded-xl px-4 py-1.5 text-sm font-bold transition-colors hover:brightness-110 disabled:opacity-50"
-							disabled={!canStart || starting}
-							onclick={start}
-						>
+						<button class="{buttonClass()} min-w-24" disabled={!canStart || starting} onclick={start}>
 							{#if starting}
-								<div
-									class="border-fixed-white/30 border-t-fixed-white size-3.5 animate-spin rounded-full border-2"
-								></div>
+								<span class="size-3.5 animate-spin rounded-full border-2 border-current/30 border-t-current"></span>
 								Starting…
 							{:else}
 								Move {countFiles(room?.files ?? 0)}

@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { SvelteSet } from "svelte/reactivity";
+	import { Download as DownloadIcon, FileText as FileIcon, Trash2 as TrashIcon } from "@lucide/svelte";
 	import AudioFilePlayer from "$lib/components/AudioFilePlayer.svelte";
 	import SpoilerCover from "$lib/components/SpoilerCover.svelte";
 	import VoiceNotePlayer from "$lib/components/VoiceNotePlayer.svelte";
@@ -10,15 +11,17 @@
 
 	// A message's voice note, sticker or files as the chat shows them, for the message list and the message
 	// previews (pins, search results). Images and videos fit in maxWidth × maxHeight; a click on an image or
-	// a sticker calls onPreview. data-attachments marks all of it, so a click on a file can be told from a
-	// click on its message. A spoiler file (lib/spoilers) is blurred under a cover until a click reveals it,
-	// for as long as this view shows the message, and its name shows without the prefix.
+	// a sticker calls onPreview. Two pictures or more show as one grid of tiles, each cropped to its tile (a
+	// click shows it whole); one alone keeps its own shape. data-attachments marks all of it, so a click on a
+	// file can be told from a click on its message. A spoiler file (lib/spoilers) is blurred under a cover
+	// until a click reveals it, for as long as this view shows the message, and its name shows without the
+	// prefix.
 	let {
 		message,
 		channelName,
 		onPreview,
-		maxWidth = 550,
-		maxHeight = 350,
+		maxWidth = 360,
+		maxHeight = 380,
 	}: {
 		message: Message;
 		channelName: string;
@@ -34,6 +37,42 @@
 	const upload = $derived(message.nonce ? $messageUploads[message.nonce] : undefined);
 	const sizes = $derived(message.attachments?.map((a) => a.size_bytes) ?? []);
 
+	// The pictures that tile: those that are up and still there, when there are two or more.
+	const tiled = $derived.by(() => {
+		const pictures = (message.attachments ?? []).filter(
+			(a) => a.content_type.startsWith("image/") && !a.pending && !a.deleted_at,
+		);
+		return pictures.length >= 2 ? pictures : [];
+	});
+
+	// A file's kind, as its card says it after its size: its name's extension.
+	function fileKind(name: string): string {
+		const dot = name.lastIndexOf(".");
+		return dot > 0 && dot < name.length - 1 ? name.slice(dot + 1).toUpperCase() : "";
+	}
+
+	// A picture or a video that fails to load is asked for again every second, ten times, then says so.
+	function loadAgain(e: Event) {
+		const media = e.currentTarget as HTMLImageElement | HTMLVideoElement;
+		const retries = parseInt(media.dataset.retries ?? "0");
+		if (retries < 10) {
+			media.dataset.retries = String(retries + 1);
+			setTimeout(() => {
+				const base = media.src.replace(/[&?]r=\d+/, "");
+				media.src = base + (base.includes("?") ? "&" : "?") + "r=" + Date.now();
+			}, 1000);
+		} else {
+			const parent = media.parentElement!;
+			parent.querySelector(".media-skeleton")?.remove();
+			media.remove();
+			parent.innerHTML = `<div class="flex flex-col items-center justify-center w-full h-full bg-duvet-secondary-fill gap-1"><span class="text-2xl">💩</span><span class="text-xs text-duvet-ink2">Failed to load</span></div>`;
+		}
+	}
+
+	function loaded(e: Event) {
+		(e.currentTarget as HTMLElement).parentElement?.querySelector(".media-skeleton")?.remove();
+	}
+
 	function formatFileSize(bytes: number): string {
 		if (bytes < 1024) return `${bytes} B`;
 		if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
@@ -47,13 +86,12 @@
 		{@const voiceAtt = message.attachments?.find((a) => a.content_type.startsWith("audio/"))}
 		{#if voiceAtt?.pending}
 			<div
-				class="flex max-w-64 min-w-48 items-center gap-2.5 rounded-2xl px-3.5 py-1"
-				style="background: color-mix(in oklab, var(--duvet-card) 80%, transparent); border: 1px solid var(--duvet-line);"
+				class="bg-duvet-card shadow-duvet-raised flex w-[300px] max-w-full items-center gap-2.5 rounded-[18px] py-[7px] pr-2.5 pl-[7px]"
 			>
-				<div class="bg-duvet-ink/10 size-9 shrink-0 animate-pulse rounded-full"></div>
+				<div class="bg-duvet-secondary-fill size-[34px] shrink-0 animate-pulse rounded-full"></div>
 				<div class="flex flex-1 flex-col gap-1.5">
-					<div class="bg-duvet-ink/6 h-7 animate-pulse rounded"></div>
-					<span class="text-duvet-ink2 text-[11px]">Sending...</span>
+					<div class="bg-duvet-secondary-fill h-5 animate-pulse rounded"></div>
+					<span class="text-duvet-ink2 text-[11px]">Sending…</span>
 				</div>
 			</div>
 		{:else if voiceAtt && !voiceAtt.deleted_at}
@@ -65,37 +103,22 @@
 			/>
 		{:else}
 			<div
-				class="border-duvet-line flex h-12 items-center gap-2 rounded-2xl border border-dashed px-4"
-				style="background: color-mix(in oklab, var(--duvet-bg) 50%, transparent);"
+				class="border-duvet-line text-duvet-ink2 flex h-12 items-center gap-2 rounded-[18px] border border-dashed px-4"
 			>
-				<svg
-					xmlns="http://www.w3.org/2000/svg"
-					width="16"
-					height="16"
-					viewBox="0 0 24 24"
-					fill="none"
-					stroke="currentColor"
-					stroke-width="1.5"
-					stroke-linecap="round"
-					stroke-linejoin="round"
-					class="text-duvet-ink2/60"
-					><path d="M3 6h18" /><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" /><path
-						d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"
-					/></svg
-				>
-				<span class="text-duvet-ink2 text-xs italic">Voice note deleted</span>
+				<TrashIcon size={16} class="shrink-0 opacity-60" />
+				<span class="text-xs italic">Voice note deleted</span>
 			</div>
 		{/if}
 	{:else if message.sticker_attachment_id}
 		<button
 			type="button"
-			class="mt-1 h-40 w-40 cursor-zoom-in"
+			class="size-[136px] cursor-zoom-in"
 			onclick={() => onPreview(`${attachmentHost}/attachments/${message.sticker_attachment_id}`)}
 		>
 			<img
 				src="{attachmentHost}/attachments/{message.sticker_attachment_id}"
 				alt="Sticker"
-				class="h-40 w-40 object-contain"
+				class="size-[136px] object-contain"
 				loading="lazy"
 				onerror={(e) => {
 					const img = e.currentTarget as HTMLImageElement;
@@ -103,33 +126,67 @@
 					img.remove();
 					parent.onclick = null;
 					parent.style.cursor = "default";
-					parent.innerHTML = `<div class="flex flex-col items-center justify-center w-40 h-40 rounded-md border border-dashed border-duvet-line bg-duvet-card/30 gap-1"><span class="text-2xl">💩</span><span class="text-xs text-duvet-ink2">Sticker deleted</span></div>`;
+					parent.innerHTML = `<div class="flex flex-col items-center justify-center w-full h-full rounded-2xl border border-dashed border-duvet-line gap-1"><span class="text-2xl">💩</span><span class="text-xs text-duvet-ink2">Sticker deleted</span></div>`;
 				}}
 			/>
 		</button>
 	{:else if message.attachments && message.attachments.length > 0}
-		<div class="mt-1 flex flex-col gap-1">
+		<div class="flex max-w-full flex-col gap-1">
+			{#if tiled.length > 0}
+				<!-- Two side by side; three as one large and two small; more in two columns of squares -->
+				<div
+					class="shadow-duvet-raised grid max-w-full gap-[3px] overflow-hidden rounded-2xl {tiled.length === 2
+						? 'aspect-[2/1.15] grid-cols-2'
+						: tiled.length === 3
+							? 'aspect-[3/2.1] grid-cols-[2fr_1fr] grid-rows-2'
+							: 'grid-cols-2'}"
+					style="width: {Math.min(360, maxWidth)}px;"
+				>
+					{#each tiled as att, i (att.id)}
+						{@const name = displayName(att.filename)}
+						{@const hidden = isSpoiler(att.filename) && !revealed.has(att.id)}
+						<div
+							class="bg-duvet-sunk relative min-h-0 overflow-hidden {tiled.length === 3 && i === 0
+								? 'row-span-2'
+								: ''} {tiled.length > 3 ? 'aspect-square' : ''}"
+						>
+							{@render picture(att, name, hidden, "object-cover")}
+							{#if hidden}
+								<SpoilerCover onReveal={() => revealed.add(att.id)} />
+							{/if}
+						</div>
+					{/each}
+				</div>
+			{/if}
 			{#each message.attachments as att, i}
 				{@const name = displayName(att.filename)}
 				{@const hidden = isSpoiler(att.filename) && !revealed.has(att.id)}
-				{#if att.pending}
+				{#if tiled.includes(att)}
+					<!-- In the grid above -->
+				{:else if att.pending}
 					{@const share = upload ? fileShare(sizes, i, upload.sent, upload.total) : null}
 					{@const pulse = share === null ? "animate-pulse" : ""}
 					<!-- While its upload is followed, its share of it shows as a bar along its bottom, which takes the pulse's place -->
 					{#if att.content_type.startsWith("image/")}
-						<div class="bg-duvet-ink/6 relative flex h-40 w-64 items-center justify-center rounded-md {pulse}">
-							<span class="text-duvet-ink2 text-xs">Uploading {name}...</span>
+						<div
+							class="bg-duvet-secondary-fill relative flex h-40 w-64 max-w-full items-center justify-center rounded-2xl {pulse}"
+						>
+							<span class="text-duvet-ink2 px-3 text-center text-xs">Uploading {name}…</span>
 							{@render fileBar(share)}
 						</div>
 					{:else if att.content_type.startsWith("video/")}
-						<div class="bg-duvet-ink/6 relative flex h-44 w-80 items-center justify-center rounded-md {pulse}">
-							<span class="text-duvet-ink2 text-xs">Uploading {name}...</span>
+						<div
+							class="bg-duvet-secondary-fill relative flex h-44 w-80 max-w-full items-center justify-center rounded-2xl {pulse}"
+						>
+							<span class="text-duvet-ink2 px-3 text-center text-xs">Uploading {name}…</span>
 							{@render fileBar(share)}
 						</div>
 					{:else}
-						<div class="bg-duvet-card/60 relative inline-flex max-w-xs items-center gap-2 rounded-md px-3 py-2 {pulse}">
-							<span class="text-duvet-ink2 text-xs">Uploading {name}...</span>
-							<span class="text-duvet-ink2/60 shrink-0 text-xs">{formatFileSize(att.size_bytes)}</span>
+						<div
+							class="bg-duvet-card shadow-duvet-raised relative inline-flex w-[300px] max-w-full items-center gap-2 rounded-2xl px-3 py-3 {pulse}"
+						>
+							<span class="text-duvet-ink2 min-w-0 truncate text-xs">Uploading {name}…</span>
+							<span class="text-duvet-ink2 shrink-0 text-xs opacity-60">{formatFileSize(att.size_bytes)}</span>
 							{@render fileBar(share)}
 						</div>
 					{/if}
@@ -137,25 +194,11 @@
 					{@const dw = Math.min(att.width ?? 200, maxWidth)}
 					{@const dh = Math.min(att.height ?? 48, maxHeight)}
 					<div
-						class="border-duvet-line bg-duvet-card/30 flex flex-col items-center justify-center gap-1 rounded-md border border-dashed"
+						class="border-duvet-line text-duvet-ink2 flex flex-col items-center justify-center gap-1 rounded-2xl border border-dashed"
 						style="width: {dw}px; height: {dh}px; max-width: 100%;"
 					>
-						<svg
-							xmlns="http://www.w3.org/2000/svg"
-							width="20"
-							height="20"
-							viewBox="0 0 24 24"
-							fill="none"
-							stroke="currentColor"
-							stroke-width="1.5"
-							stroke-linecap="round"
-							stroke-linejoin="round"
-							class="text-duvet-ink2/60"
-							><path d="M3 6h18" /><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" /><path
-								d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"
-							/><line x1="10" x2="10" y1="11" y2="17" /><line x1="14" x2="14" y1="11" y2="17" /></svg
-						>
-						<span class="text-duvet-ink2 text-xs">Attachment deleted</span>
+						<TrashIcon size={18} class="opacity-60" />
+						<span class="text-xs">Attachment deleted</span>
 					</div>
 				{:else if att.content_type.startsWith("image/")}
 					{@const rawW = att.width ?? maxWidth}
@@ -163,40 +206,11 @@
 					{@const imgScale = Math.min(maxWidth / rawW, maxHeight / rawH, 1)}
 					{@const iw = Math.round(rawW * imgScale)}
 					{@const ih = Math.round(rawH * imgScale)}
-					<div class="relative overflow-hidden rounded-md" style="width: {iw}px; height: {ih}px; max-width: 100%;">
-						<button
-							type="button"
-							class="relative block size-full cursor-zoom-in"
-							inert={hidden}
-							onclick={() => onPreview(`${attachmentHost}${att.url ?? `/attachments/${att.id}`}`, name)}
-						>
-							<div class="img-skeleton bg-duvet-ink/6 absolute inset-0 animate-pulse"></div>
-							<img
-								src="{attachmentHost}{att.url ?? `/attachments/${att.id}`}"
-								alt={name}
-								class="relative h-full w-full rounded-md object-contain text-transparent {hidden ? 'blur-xl' : ''}"
-								loading="lazy"
-								onload={(e) => {
-									(e.currentTarget as HTMLElement).parentElement?.querySelector(".img-skeleton")?.remove();
-								}}
-								onerror={(e) => {
-									const img = e.currentTarget as HTMLImageElement;
-									const retries = parseInt(img.dataset.retries ?? "0");
-									if (retries < 10) {
-										img.dataset.retries = String(retries + 1);
-										setTimeout(() => {
-											const base = img.src.replace(/[&?]r=\d+/, "");
-											img.src = base + (base.includes("?") ? "&" : "?") + "r=" + Date.now();
-										}, 1000);
-									} else {
-										const parent = img.parentElement!;
-										parent.querySelector(".img-skeleton")?.remove();
-										img.remove();
-										parent.innerHTML = `<div class="flex flex-col items-center justify-center w-full h-full bg-duvet-card/60 rounded-md gap-1"><span class="text-2xl">💩</span><span class="text-xs text-duvet-ink2">Failed to load</span></div>`;
-									}
-								}}
-							/>
-						</button>
+					<div
+						class="bg-duvet-sunk shadow-duvet-raised relative overflow-hidden rounded-2xl"
+						style="width: {iw}px; height: {ih}px; max-width: 100%;"
+					>
+						{@render picture(att, name, hidden, "object-contain")}
 						{#if hidden}
 							<SpoilerCover onReveal={() => revealed.add(att.id)} />
 						{/if}
@@ -207,36 +221,23 @@
 					{@const vidScale = Math.min(maxWidth / rawVW, maxHeight / rawVH, 1)}
 					{@const vw = Math.round(rawVW * vidScale)}
 					{@const vh = Math.round(rawVH * vidScale)}
-					<div class="relative overflow-hidden rounded-md" style="width: {vw}px; height: {vh}px; max-width: 100%;">
-						<div class="video-skeleton bg-duvet-ink/6 absolute inset-0 flex animate-pulse items-center justify-center">
-							<span class="text-duvet-ink2 text-xs">Loading video...</span>
+					<div
+						class="bg-duvet-sunk shadow-duvet-raised relative overflow-hidden rounded-2xl"
+						style="width: {vw}px; height: {vh}px; max-width: 100%;"
+					>
+						<div
+							class="media-skeleton bg-duvet-secondary-fill absolute inset-0 flex animate-pulse items-center justify-center"
+						>
+							<span class="text-duvet-ink2 text-xs">Loading video…</span>
 						</div>
 						<!-- svelte-ignore a11y_media_has_caption -->
 						<video
 							src="{attachmentHost}{att.url ?? `/attachments/${att.id}`}"
 							controls
-							class="relative h-full w-full rounded-md {hidden ? 'blur-xl' : ''}"
+							class="relative h-full w-full {hidden ? 'blur-xl' : ''}"
 							inert={hidden}
-							onloadeddata={(e) => {
-								const el = e.currentTarget as HTMLVideoElement;
-								el.parentElement?.querySelector(".video-skeleton")?.remove();
-							}}
-							onerror={(e) => {
-								const vid = e.currentTarget as HTMLVideoElement;
-								const retries = parseInt(vid.dataset.retries ?? "0");
-								if (retries < 10) {
-									vid.dataset.retries = String(retries + 1);
-									setTimeout(() => {
-										const base = vid.src.replace(/[&?]r=\d+/, "");
-										vid.src = base + (base.includes("?") ? "&" : "?") + "r=" + Date.now();
-									}, 1000);
-								} else {
-									const parent = vid.parentElement!;
-									parent.querySelector(".video-skeleton")?.remove();
-									vid.remove();
-									parent.innerHTML = `<div class="flex flex-col items-center justify-center w-full h-full bg-duvet-card/60 rounded-md gap-1"><span class="text-2xl">💩</span><span class="text-xs text-duvet-ink2">Failed to load</span></div>`;
-								}
-							}}
+							onloadeddata={loaded}
+							onerror={loadAgain}
 						></video>
 						{#if hidden}
 							<SpoilerCover onReveal={() => revealed.add(att.id)} />
@@ -244,7 +245,7 @@
 					</div>
 				{:else if att.content_type.startsWith("audio/")}
 					<!-- As wide as the player. It clips only while hidden: the volume slider pops out above it. -->
-					<div class="relative max-w-87.5 rounded-lg {hidden ? 'overflow-hidden' : ''}">
+					<div class="relative max-w-87.5 rounded-2xl {hidden ? 'overflow-hidden' : ''}">
 						<div class={hidden ? "blur-md" : ""} inert={hidden}>
 							<AudioFilePlayer
 								src="{attachmentHost}{att.url ?? `/attachments/${att.id}`}"
@@ -260,18 +261,29 @@
 						{/if}
 					</div>
 				{:else}
-					<div class="relative mt-1 max-w-xs overflow-hidden rounded-md">
+					{@const kind = fileKind(name)}
+					<div class="relative w-[300px] max-w-full overflow-hidden rounded-2xl">
 						<a
 							href="{attachmentHost}{att.url ?? `/attachments/${att.id}`}"
 							target="_blank"
 							rel="noopener noreferrer"
-							class="bg-duvet-card/60 text-duvet-ink hover:bg-duvet-ink/8 flex items-center gap-2 rounded-md px-3 py-2 text-sm {hidden
+							class="bg-duvet-card text-duvet-ink shadow-duvet-raised hover:shadow-duvet-lifted flex items-center gap-2.5 rounded-2xl p-2.5 no-underline transition-shadow motion-reduce:transition-none {hidden
 								? 'blur-md'
 								: ''}"
 							inert={hidden}
 						>
-							<span class="truncate">{name}</span>
-							<span class="text-duvet-ink2 shrink-0 text-xs">{formatFileSize(att.size_bytes)}</span>
+							<span
+								class="bg-duvet-secondary-fill text-duvet-accent-text grid size-10 shrink-0 place-items-center rounded-xl"
+							>
+								<FileIcon size={20} />
+							</span>
+							<span class="flex min-w-0 flex-1 flex-col gap-0.5">
+								<span class="truncate text-[13.5px] leading-tight font-semibold">{name}</span>
+								<span class="text-duvet-ink2 text-[11.5px] leading-tight"
+									>{formatFileSize(att.size_bytes)}{kind ? ` · ${kind}` : ""}</span
+								>
+							</span>
+							<DownloadIcon size={16} class="text-duvet-ink2 mr-1 shrink-0" />
 						</a>
 						{#if hidden}
 							<SpoilerCover onReveal={() => revealed.add(att.id)} />
@@ -280,7 +292,7 @@
 				{/if}
 			{/each}
 			{#if upload && message.attachments.some((a) => a.pending)}
-				<p class="text-duvet-ink2 flex items-center gap-2 text-xs">
+				<p class="text-duvet-ink2 flex items-center gap-2 px-1 text-xs">
 					<span class="tabular-nums">{messageUploadNote(sizes, upload.sent, upload.total)}</span>
 					{#if !allUp(upload.sent, upload.total)}
 						<!-- Only while its bytes go up: once they're all up, the API may post the message whatever happens here. It
@@ -298,10 +310,32 @@
 	{/if}
 </div>
 
+<!-- A picture in its box, which a click shows whole: pulsing until it loads, blurred while it's a spoiler -->
+{#snippet picture(att: NonNullable<Message["attachments"]>[number], name: string, hidden: boolean, fit: string)}
+	<button
+		type="button"
+		class="group/tile relative block size-full cursor-zoom-in overflow-hidden"
+		inert={hidden}
+		onclick={() => onPreview(`${attachmentHost}${att.url ?? `/attachments/${att.id}`}`, name)}
+	>
+		<div class="media-skeleton bg-duvet-secondary-fill absolute inset-0 animate-pulse"></div>
+		<img
+			src="{attachmentHost}{att.url ?? `/attachments/${att.id}`}"
+			alt={name}
+			class="relative size-full text-transparent transition-transform duration-[350ms] group-hover/tile:scale-[1.03] motion-reduce:transition-none {fit} {hidden
+				? 'blur-xl'
+				: ''}"
+			loading="lazy"
+			onload={loaded}
+			onerror={loadAgain}
+		/>
+	</button>
+{/snippet}
+
 {#snippet fileBar(share: number | null)}
 	{#if share !== null}
-		<span class="bg-duvet-ink/6 absolute inset-x-2 bottom-1 h-1 overflow-hidden rounded-full" aria-hidden="true">
-			<span class="bg-duvet-ink block h-full rounded-full" style="width: {share * 100}%"></span>
+		<span class="bg-duvet-ink/10 absolute inset-x-3 bottom-1.5 h-1 overflow-hidden rounded-full" aria-hidden="true">
+			<span class="bg-duvet-accent block h-full rounded-full" style="width: {share * 100}%"></span>
 		</span>
 	{/if}
 {/snippet}

@@ -1,11 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import {
-	BUSY_ROOM_ONLINE,
 	GROUP_HEADING,
 	MEMBER_ROW,
 	memberFaces,
 	memberGroups,
-	membersColumnOpen,
 	membersLabel,
 	onlineCount,
 	shownRows,
@@ -73,20 +71,6 @@ describe("memberGroups", () => {
 		expect(shape(memberGroups([someone("bob", "offline", [helpers])], true))).toEqual(["Offline: bob"]);
 		expect(shape(memberGroups([someone("ana", "online")], false))).toEqual(["Online: ana"]);
 		expect(memberGroups([], true)).toEqual([]);
-	});
-});
-
-describe("membersColumnOpen", () => {
-	test("auto opens the column only once more than the busy room's count are online", () => {
-		expect(membersColumnOpen("auto", 0)).toBe(false);
-		expect(membersColumnOpen("auto", 1)).toBe(false);
-		expect(membersColumnOpen("auto", BUSY_ROOM_ONLINE)).toBe(false);
-		expect(membersColumnOpen("auto", BUSY_ROOM_ONLINE + 1)).toBe(true);
-	});
-
-	test("the user's choice wins over the room's size", () => {
-		expect(membersColumnOpen("shown", 0)).toBe(true);
-		expect(membersColumnOpen("hidden", BUSY_ROOM_ONLINE + 50)).toBe(false);
 	});
 });
 

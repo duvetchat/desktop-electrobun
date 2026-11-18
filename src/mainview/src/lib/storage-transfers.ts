@@ -157,6 +157,23 @@ export function transferSpaceId(t: Pick<StorageTransfer, "owner_id" | "started_b
 	return t.owner_id === t.started_by ? null : t.owner_id;
 }
 
+/** Where a page is, for who tells a transfer's end: the main window, with the settings windows open beside it (each
+ * by its Space, null for Settings' own), or one of those windows. */
+export type TransferTeller =
+	| { window: "main"; open: ReadonlySet<string | null> }
+	| { window: "settings"; spaceId: string | null };
+
+/**
+ * Whether this window tells a transfer's end (its toast, with Show for the files that failed). In the desktop app the
+ * main window and the settings windows all hear of it, and each told it: one does. The window whose screen shows the
+ * transfer, Settings for the user's own files and a Space's settings for that Space's, tells it while it is open;
+ * with it closed, the main window does.
+ */
+export function tellsTransferEnd(here: TransferTeller, t: Pick<StorageTransfer, "owner_id" | "started_by">): boolean {
+	const spaceId = transferSpaceId(t);
+	return here.window === "main" ? !here.open.has(spaceId) : here.spaceId === spaceId;
+}
+
 function filesDone(t: StorageTransfer): number {
 	return t.moved_files + t.skipped_files + t.failed_files;
 }

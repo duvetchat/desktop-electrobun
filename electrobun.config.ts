@@ -2,6 +2,7 @@
 import type { ElectrobunConfig } from "electrobun";
 
 import pkg from "./package.json";
+import { secondWindowCopyRules } from "./src/mainview/src/lib/app-windows";
 
 // Electrobun's Bun API (electrobun/bun) imports three.js and Babylon.js onto its default export, which the app never uses:
 // bundled, they took about 200 ms of every start before the window opened (#283). The Bun bundle gets empty modules.
@@ -62,6 +63,11 @@ export default {
 			"src/mainview/build/reset-password.html": "views/mainview/reset-password.html",
 			"src/mainview/build/change-email.html": "views/mainview/change-email.html",
 			"src/mainview/build/invite.html": "views/mainview/invite.html",
+
+			// The pages of the app's other windows (the media controls' pop-out, Settings): one rule each, from their one
+			// list (src/mainview/src/lib/app-windows.ts). Without its rule a page loads in the dev build and answers 404 in
+			// the packaged app (#357, docs/redesign/PLATFORM.md §3); src/bun/pages.test.ts checks every page has one.
+			...secondWindowCopyRules(),
 		},
 		watchIgnore: ["dist/**"],
 	},

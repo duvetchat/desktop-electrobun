@@ -61,18 +61,14 @@ describe("what a chat's row says", () => {
 	});
 
 	test("says who's recording, and both when both", () => {
-		expect(typingSentence([user("ana", 0, true)])).toBe("ana is recording a voice message");
-		expect(typingSentence([user("ana"), user("bob", 0, true)])).toBe(
-			"ana is typing… · bob is recording a voice message",
-		);
+		expect(typingSentence([user("ana", 0, true)])).toBe("ana is recording a voice note");
+		expect(typingSentence([user("ana"), user("bob", 0, true)])).toBe("ana is typing… · bob is recording a voice note");
 	});
 
 	test("the open chat's indicator reads the same words", () => {
 		expect(typingPhrase([user("ana")])).toBe("ana is typing");
-		expect(recordingPhrase([user("ana"), user("bob")])).toBe("ana and bob are recording voice messages");
-		expect(recordingPhrase([user("ana"), user("bob"), user("eve")])).toBe(
-			"Several people are recording voice messages",
-		);
+		expect(recordingPhrase([user("ana"), user("bob")])).toBe("ana and bob are recording voice notes");
+		expect(recordingPhrase([user("ana"), user("bob"), user("eve")])).toBe("Several people are recording voice notes");
 	});
 });
 

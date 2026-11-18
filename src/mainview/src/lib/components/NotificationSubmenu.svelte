@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { claimLayer, layerStyle, releaseLayer } from "$lib/overlay-layers";
 	import { DropdownMenu } from "bits-ui";
 	import { Bell as BellIcon, Check as CheckIcon, ChevronRight as ChevronRightIcon } from "@lucide/svelte";
 	import { getApiError } from "$lib/api/api";
@@ -6,18 +7,19 @@
 	import { notificationLevels } from "$lib/notification-levels";
 	import { toast } from "$lib/stores/toast.svelte";
 	import type { NotificationLevel, NotificationTarget } from "$lib/types";
+	import { MENU_PANEL, menuItemClass } from "$lib/components/ui/recipes";
 
 	// The Notifications submenu of a Space's, a room's or a chat's menu, a context menu's or a dropdown's alike: bits-ui
 	// builds both from the same menu parts. A Space or a room also offers its default, which clears the user's own level
 	// and falls back to `inherited` (lib/notification-levels.ts); a chat's default is every message, chosen as such. The
-	// levels change once the API's NOTIFICATION_SETTINGS_UPDATE comes back. Its classes default to the rooms' and the
-	// chats' context menus'.
+	// levels change once the API's NOTIFICATION_SETTINGS_UPDATE comes back. It is drawn as every menu is (the design
+	// system's panel and items, components/ui/recipes.ts): a menu that still passes classes of its own keeps them.
 	let {
 		targetId,
 		target,
 		inherited = 0,
-		itemClass = "flex w-full cursor-pointer items-center gap-2 px-3 py-2 text-left text-sm text-duvet-ink outline-none transition-colors hover:bg-duvet-ink/10 data-highlighted:bg-duvet-ink/10",
-		contentClass = "z-200 min-w-44 rounded-card border border-duvet-line bg-duvet-card py-1 shadow-duvet-float",
+		itemClass = menuItemClass(),
+		contentClass = `${MENU_PANEL} z-[1001] min-w-48`,
 	}: {
 		targetId: string;
 		target: NotificationTarget;
@@ -40,31 +42,59 @@
 			toast(getApiError(err, "Couldn't change the notifications"), "error");
 		}
 	}
+
+	let open = $state(false);
+
+	// What opens last is in front, whatever opened it (lib/overlay-layers.ts).
+	const layer = $derived(open ? claimLayer() : 0);
+	$effect(() => {
+		const mine = layer;
+		if (mine) return () => releaseLayer(mine);
+	});
 </script>
 
 {#snippet choice(value: string, label: string)}
 	<DropdownMenu.RadioItem {value} class={itemClass}>
 		{#snippet children({ checked })}
-			<span class="min-w-0 flex-1">{label}</span>
-			{#if checked}<CheckIcon class="text-duvet-accent-text size-4 shrink-0" />{/if}
+			<span class="text-duvet-accent-text grid w-[18px] shrink-0 place-items-center">
+				{#if checked}<CheckIcon size={15} />{/if}
+			</span>
+			<span class="min-w-0 flex-1 truncate">{label}</span>
 		{/snippet}
 	</DropdownMenu.RadioItem>
 {/snippet}
 
-<DropdownMenu.Sub>
+<DropdownMenu.Sub bind:open>
 	<DropdownMenu.SubTrigger class={itemClass}>
-		<BellIcon class="text-duvet-ink2 size-4 shrink-0" />
-		<span class="min-w-0 flex-1">Notifications</span>
-		<ChevronRightIcon class="text-duvet-ink2 size-4 shrink-0" />
+		<span class="text-duvet-ink2 grid w-[18px] shrink-0 place-items-center"><BellIcon size={16} /></span>
+		<span class="min-w-0 flex-1 truncate">Notifications</span>
+		<ChevronRightIcon size={14} class="text-duvet-ink2 shrink-0" />
 	</DropdownMenu.SubTrigger>
-	<DropdownMenu.SubContent class={contentClass} sideOffset={4}>
-		<DropdownMenu.RadioGroup value={chosen} onValueChange={choose}>
-			{#if withDefault}
-				{@render choice("default", `Default (${LEVELS[inherited]})`)}
-			{/if}
-			{#each LEVELS as label, level (label)}
-				{@render choice(String(level), label)}
-			{/each}
-		</DropdownMenu.RadioGroup>
-	</DropdownMenu.SubContent>
+	<!-- In the page's root, as MenuSub's panel is: a glass menu's backdrop filter would otherwise be what this panel's
+	     fixed position is measured from. It opens to the right, or the left at the window's edge, 2 px from the menu,
+	     its first item level with Notifications. -->
+	<DropdownMenu.Portal>
+		{#if layer}
+			<!-- The panel's positioner takes no layer of its own: this holds it, at the overlay's (lib/overlay-layers.ts). -->
+			<div class="fixed top-0 left-0" style={layerStyle(layer)}>
+				<DropdownMenu.SubContent
+					class="{contentClass} origin-(--bits-floating-transform-origin)"
+					side="right"
+					align="start"
+					sideOffset={8}
+					alignOffset={-6}
+					collisionPadding={10}
+				>
+					<DropdownMenu.RadioGroup value={chosen} onValueChange={choose}>
+						{#if withDefault}
+							{@render choice("default", `Default (${LEVELS[inherited]})`)}
+						{/if}
+						{#each LEVELS as label, level (label)}
+							{@render choice(String(level), label)}
+						{/each}
+					</DropdownMenu.RadioGroup>
+				</DropdownMenu.SubContent>
+			</div>
+		{/if}
+	</DropdownMenu.Portal>
 </DropdownMenu.Sub>

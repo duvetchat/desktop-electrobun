@@ -48,3 +48,22 @@ export function webhookRooms(space: GatewaySpace): GatewayRoom[] {
 		.filter((r) => r.type === 1 && !r.deleted_at && canViewRoom(space, r))
 		.sort((a, b) => a.position - b.position || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
 }
+
+const SECTIONS: readonly SettingsSection[] = [
+	"overview",
+	"roles",
+	"members",
+	"invites",
+	"bans",
+	"emojis",
+	"stickers",
+	"webhooks",
+	"storage",
+	"attachments",
+];
+
+/** The section a value that crossed the windows names, or undefined for anything else. The settings themselves move
+ * off one the user may not see. */
+export function spaceSection(raw: unknown): SettingsSection | undefined {
+	return SECTIONS.find((section) => section === raw);
+}

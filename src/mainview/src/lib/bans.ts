@@ -1,6 +1,7 @@
 import { get, writable } from "svelte/store";
 import { BANS_PAGE_SIZE, getSpaceBans } from "$lib/api/moderation";
-import type { SpaceBan, SpaceBanRemoveEvent } from "$lib/types";
+import { getAvatarURL } from "$lib/common/common";
+import type { GatewaySpace, SpaceBan, SpaceBanRemoveEvent } from "$lib/types";
 
 /** A space's bans as far as they're loaded, in the order of the banned users' IDs, as the API lists them. */
 export interface LoadedBans {
@@ -115,5 +116,25 @@ export function forgetBans(spaceId?: string) {
 		const rest = { ...all };
 		delete rest[spaceId];
 		return rest;
+	});
+}
+
+/** The people a Space has loaded, as the bans list names who banned someone: by the name the Space shows them under
+ * (their nickname there, else their display name, else their username), with their username and picture. */
+export function banModerators(
+	space: Pick<GatewaySpace, "members" | "users">,
+): { id: string; username: string; raw_username: string; avatar_url: string | null }[] {
+	const users = new Map(space.users.map((user) => [user.id, user]));
+	return space.members.flatMap((member) => {
+		const user = users.get(member.user_id);
+		if (!user) return [];
+		return [
+			{
+				id: user.id,
+				username: member.alias ?? user.alias ?? user.username,
+				raw_username: user.username,
+				avatar_url: getAvatarURL(user.id, user.avatar),
+			},
+		];
 	});
 }

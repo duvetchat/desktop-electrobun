@@ -21,7 +21,7 @@
 		The application did not respond
 	</p>
 {:else}
-	<p class="text-duvet-ink2 flex items-center gap-1.5 text-sm italic">
+	<p class="text-duvet-ink2 flex items-center gap-1.5 text-sm">
 		{message.author_name} is thinking
 		<span class="flex items-center gap-0.75" aria-hidden="true">
 			<span class="animate-typing-bounce block size-1 rounded-full bg-current"></span>

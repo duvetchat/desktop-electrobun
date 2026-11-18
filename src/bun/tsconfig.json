@@ -1,0 +1,18 @@
+{
+	// The Bun process's own type check (`bun run check` at the root, and CI): svelte-check reads src/mainview only.
+	// Electrobun ships its sources, not declarations, so they are checked with these options too: the DOM libraries
+	// are for its view half, which the Bun half's entry reaches.
+	"compilerOptions": {
+		"target": "ESNext",
+		"module": "Preserve",
+		"moduleResolution": "bundler",
+		"moduleDetection": "force",
+		"lib": ["ESNext", "DOM", "DOM.Iterable", "DOM.AsyncIterable"],
+		"types": ["bun"],
+		"strict": true,
+		"noEmit": true,
+		"skipLibCheck": true,
+		"allowImportingTsExtensions": true
+	},
+	"include": ["./**/*.ts"]
+}

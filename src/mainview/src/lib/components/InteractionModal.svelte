@@ -1,6 +1,8 @@
 <script lang="ts">
-	import { Dialog } from "bits-ui";
-	import { CircleAlert as AlertIcon, X as XIcon } from "@lucide/svelte";
+	import { CircleAlert as AlertIcon } from "@lucide/svelte";
+	import Sheet from "$lib/components/ui/Sheet.svelte";
+	import Button from "$lib/components/ui/Button.svelte";
+	import { FIELD_ERROR, fieldClass } from "$lib/overlay-forms";
 	import ComponentSelect from "$lib/components/ComponentSelect.svelte";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
 	import { FetchError, getApiError } from "$lib/api/api";
@@ -127,98 +129,69 @@
 	const fieldId = (input: Component) => `modal-field-${input.id}`;
 </script>
 
-<Dialog.Root
-	open={!!opened}
-	onOpenChange={(o) => {
-		if (!o) interactionModal.close();
+<!-- A click outside it doesn't close it: what was entered would be lost. Its fields are as wide as a select gets. -->
+<Sheet
+	bind:open={
+		() => !!opened,
+		(next) => {
+			if (!next) interactionModal.close();
+		}
+	}
+	title={opened?.modal.title ?? ""}
+	description={opened?.from.name}
+	class="max-w-[448px]"
+	interactOutsideBehavior="ignore"
+	onOpenAutoFocus={(e) => {
+		e.preventDefault();
+		focusField();
 	}}
 >
-	<Dialog.Portal>
-		<Dialog.Overlay class="fixed inset-0 z-50 bg-black/60" />
-		<!-- Its fields are 400px wide, as wide as a select gets. A click outside it doesn't close it: what was entered
-		     would be lost. -->
-		<Dialog.Content
-			interactOutsideBehavior="ignore"
-			onOpenAutoFocus={(e) => {
-				e.preventDefault();
-				focusField();
-			}}
-			class="rounded-card border-duvet-line bg-duvet-bg shadow-duvet-float fixed top-1/2 left-1/2 z-50 flex max-h-[85vh] w-[calc(100%-2rem)] max-w-110.5 -translate-x-1/2 -translate-y-1/2 flex-col border outline-none"
-		>
-			{#if opened}
-				<div class="flex items-start gap-3 px-5 pt-5 pb-3">
-					<div class="flex min-w-0 flex-1 flex-col gap-1.5">
-						<span class="text-duvet-ink2 flex items-center gap-1.5 text-xs">
-							<UserAvatar src={opened.from.avatarUrl} name={opened.from.name} size={16} />
-							<span class="truncate">{opened.from.name}</span>
-						</span>
-						<Dialog.Title class="text-duvet-ink text-base font-semibold wrap-break-word"
-							>{opened.modal.title}</Dialog.Title
-						>
-					</div>
-					<Dialog.Close
-						class="text-duvet-ink2 hover:bg-duvet-card hover:text-duvet-ink rounded-md p-1 transition-colors"
-						aria-label="Close"
-					>
-						<XIcon class="size-5" />
-					</Dialog.Close>
-				</div>
-				<form bind:this={formEl} onsubmit={submit} novalidate class="flex min-h-0 flex-1 flex-col">
-					<div class="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-5 py-2">
-						{#each opened.modal.components as c, i (c.id ?? i)}
-							{#if c.type === ComponentType.TextDisplay}
-								<div class="text-duvet-ink min-w-0 text-sm wrap-break-word select-text">
-									{@html renderMarkdown(c.content ?? "", false, mentionMap, $everyEmoji, $roomNames, {})}
-								</div>
-							{:else if c.type === ComponentType.Label && c.component?.custom_id}
-								{@render field(c, c.component)}
-							{/if}
-						{/each}
-					</div>
-					<div class="flex flex-col gap-3 px-5 pt-3 pb-5">
-						{#if failure}
-							<div role="alert" class="text-duvet-danger flex flex-col gap-0.5 text-sm">
-								<p class="flex items-center gap-1.5">
-									<AlertIcon class="size-4 shrink-0" />
-									{failure.text}
-								</p>
-								{#if failure.detail !== failure.text}
-									<p class="text-duvet-danger/80 pl-5.5 text-xs wrap-break-word">{failure.detail}</p>
-								{/if}
-							</div>
-						{/if}
-						<div class="flex justify-end gap-2">
-							<Dialog.Close
-								type="button"
-								class="text-duvet-ink hover:bg-duvet-card rounded-md px-3 py-1.5 text-sm font-medium transition-colors"
-							>
-								Cancel
-							</Dialog.Close>
-							<button
-								type="submit"
-								disabled={sending}
-								aria-busy={sending}
-								class="text-duvet-on-accent rounded-row bg-duvet-accent hover:bg-duvet-accent/85 relative inline-flex min-w-20 items-center justify-center px-4 py-1.5 text-sm font-semibold transition-colors disabled:opacity-70"
-							>
-								<span class={sending ? "invisible" : ""}>Submit</span>
-								{#if sending}
-									<!-- Waiting on the bot, as the typing indicator's dots -->
-									<span class="absolute inset-0 flex items-center justify-center gap-1" aria-hidden="true">
-										<span class="animate-typing-bounce block size-1.5 rounded-full bg-current"></span>
-										<span class="animate-typing-bounce block size-1.5 rounded-full bg-current [animation-delay:0.2s]"
-										></span>
-										<span class="animate-typing-bounce block size-1.5 rounded-full bg-current [animation-delay:0.4s]"
-										></span>
-									</span>
-								{/if}
-							</button>
+	{#snippet lead()}
+		{#if opened}
+			<UserAvatar src={opened.from.avatarUrl} name={opened.from.name} size={28} />
+		{/if}
+	{/snippet}
+	{#if opened}
+		<form bind:this={formEl} onsubmit={submit} novalidate class="flex min-h-0 flex-1 flex-col gap-3">
+			<div class="-mx-1.5 flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-1.5 py-1">
+				{#each opened.modal.components as c, i (c.id ?? i)}
+					{#if c.type === ComponentType.TextDisplay}
+						<div class="text-duvet-ink font-content min-w-0 text-[13.5px] wrap-break-word select-text">
+							{@html renderMarkdown(c.content ?? "", false, mentionMap, $everyEmoji, $roomNames, {})}
 						</div>
-					</div>
-				</form>
+					{:else if c.type === ComponentType.Label && c.component?.custom_id}
+						{@render field(c, c.component)}
+					{/if}
+				{/each}
+			</div>
+			{#if failure}
+				<div role="alert" class="text-duvet-danger flex flex-col gap-0.5 text-[13px]">
+					<p class="flex items-center gap-1.5">
+						<AlertIcon size={16} class="shrink-0" />
+						{failure.text}
+					</p>
+					{#if failure.detail !== failure.text}
+						<p class="text-duvet-danger/80 pl-5.5 text-xs wrap-break-word">{failure.detail}</p>
+					{/if}
+				</div>
 			{/if}
-		</Dialog.Content>
-	</Dialog.Portal>
-</Dialog.Root>
+			<div class="flex justify-end gap-2">
+				<Button variant="quiet" onclick={() => interactionModal.close()}>Cancel</Button>
+				<Button type="submit" disabled={sending} aria-busy={sending} class="relative min-w-20">
+					<span class={sending ? "invisible" : ""}>Submit</span>
+					{#if sending}
+						<!-- Waiting on the bot, as the typing indicator's dots -->
+						<span class="absolute inset-0 flex items-center justify-center gap-1" aria-hidden="true">
+							<span class="animate-typing-bounce block size-1.5 rounded-full bg-current"></span>
+							<span class="animate-typing-bounce block size-1.5 rounded-full bg-current [animation-delay:0.2s]"></span>
+							<span class="animate-typing-bounce block size-1.5 rounded-full bg-current [animation-delay:0.4s]"></span>
+						</span>
+					{/if}
+				</Button>
+			</div>
+		</form>
+	{/if}
+</Sheet>
 
 <!-- A label and its input, with the label's description and the field's problem under it. -->
 {#snippet field(label: Component, input: Component)}
@@ -231,7 +204,7 @@
 			: undefined}
 	<div data-field={id} class="flex flex-col gap-1.5">
 		{#if input.type === ComponentType.Checkbox}
-			<label class="text-duvet-ink flex items-start gap-2.5 text-sm">
+			<label class="text-duvet-ink flex items-start gap-2.5 text-[13.5px]">
 				<input
 					type="checkbox"
 					checked={values[id] === true}
@@ -243,7 +216,7 @@
 				<span class="font-semibold">{label.label}</span>
 			</label>
 		{:else}
-			<span id="{fieldId(input)}-label" class="text-duvet-ink text-sm font-semibold">
+			<span id="{fieldId(input)}-label" class="text-duvet-ink text-[13px] font-semibold">
 				{#if input.type === ComponentType.TextInput}
 					<label for={fieldId(input)}>{label.label}</label>
 				{:else}
@@ -257,9 +230,7 @@
 		{/if}
 
 		{#if input.type === ComponentType.TextInput}
-			{@const cls =
-				"w-full rounded-xl bg-duvet-sunk px-3 py-2 text-sm text-duvet-ink placeholder:text-duvet-ink2 read-only:opacity-60 shadow-duvet-press focus-visible:outline-2 focus-visible:outline-duvet-accent" +
-				(problem ? "border-duvet-danger/70" : "border-duvet-line")}
+			{@const invalid = problem ? " shadow-[0_0_0_1px_var(--duvet-danger)]" : ""}
 			{#if input.style === 2}
 				<textarea
 					id={fieldId(input)}
@@ -272,7 +243,7 @@
 					aria-required={isRequired(input)}
 					aria-invalid={!!problem}
 					aria-describedby={describedBy}
-					class="{cls} resize-y"
+					class="{fieldClass('area')} resize-y! read-only:opacity-60{invalid}"
 				></textarea>
 			{:else}
 				<input
@@ -286,7 +257,7 @@
 					aria-required={isRequired(input)}
 					aria-invalid={!!problem}
 					aria-describedby={describedBy}
-					class="h-9 {cls}"
+					class="{fieldClass()} read-only:opacity-60{invalid}"
 				/>
 			{/if}
 		{:else if selectTypes.includes(input.type)}
@@ -306,17 +277,17 @@
 				aria-labelledby="{fieldId(input)}-label"
 				aria-describedby={describedBy}
 				aria-required={radio ? isRequired(input) : undefined}
-				class="bg-duvet-card/40 flex flex-col gap-1 rounded-lg border p-1 {problem
-					? 'border-duvet-danger/70'
-					: 'border-duvet-line'}"
+				class="bg-duvet-card shadow-duvet-well flex flex-col gap-0.5 rounded-[13px] p-1 {problem
+					? 'shadow-[0_0_0_1px_var(--duvet-danger)]'
+					: ''}"
 			>
 				{#each input.options ?? [] as o (o.value)}
 					{@const checked = radio
 						? values[id] === o.value
 						: ((values[id] as string[] | undefined) ?? []).includes(o.value)}
 					<label
-						class="hover:bg-duvet-card flex cursor-pointer items-start gap-2.5 rounded-md px-2.5 py-2 transition-colors {checked
-							? 'bg-duvet-card'
+						class="hover:bg-duvet-hover flex cursor-pointer items-start gap-2.5 rounded-[9px] px-2.5 py-2 transition-colors motion-reduce:transition-none {checked
+							? 'bg-duvet-accent-tint'
 							: ''}"
 					>
 						<input
@@ -329,7 +300,7 @@
 							class="accent-duvet-accent mt-0.5 size-4 shrink-0"
 						/>
 						<span class="flex min-w-0 flex-col">
-							<span class="text-duvet-ink text-sm wrap-break-word">{o.label}</span>
+							<span class="text-duvet-ink text-[13.5px] wrap-break-word">{o.label}</span>
 							{#if o.description}
 								<span class="text-duvet-ink2 text-xs wrap-break-word">{o.description}</span>
 							{/if}
@@ -339,7 +310,7 @@
 			</div>
 		{/if}
 		{#if problem}
-			<p id="{fieldId(input)}-problem" class="text-duvet-danger text-xs">{problem}</p>
+			<p id="{fieldId(input)}-problem" class={FIELD_ERROR}>{problem}</p>
 		{/if}
 	</div>
 {/snippet}

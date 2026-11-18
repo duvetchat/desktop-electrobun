@@ -1,6 +1,17 @@
 import { getHostURL, route } from "$lib/common/common";
-import { renewalDue, renewalFirst, renewOnceMore, type SessionCheck } from "$lib/session";
+import { inAppWords } from "$lib/api/error-wording";
+import { currentShell } from "$lib/platform";
+import {
+	renewalDue,
+	renewalFirst,
+	renewedByMainWindow,
+	renewOnceMore,
+	SESSION_CHANNEL,
+	windowRenewsSession,
+	type SessionCheck,
+} from "$lib/session";
 import { accessToken } from "$lib/stores/auth";
+import { answerWindows, askMainWindow } from "$lib/window-hub";
 import { formatFileSize } from "$lib/utils/format";
 import { get } from "svelte/store";
 
@@ -30,6 +41,11 @@ export const requestLimits = {
 	 * edited, a transfer's probe of its buckets and a file's deletion from its storage (30 s each), and an email it
 	 * sends (40 s: 10 s to connect, then 30 s). */
 	slowAnswerMs: 60_000,
+	/** In a window that doesn't renew the session (lib/session.ts): how long a request waits for the main window's
+	 * renewal, a refresh's own limit and its second try. */
+	mainWindowRenewalMs: 30_000,
+	/** How often a window waiting for that renewal looks at storage itself, should no storage event tell it. */
+	renewalLookMs: 1000,
 };
 
 /** A request whose answer didn't come in time (requestLimits): it fails as a network error does, a TypeError. */
@@ -322,12 +338,43 @@ let refreshing: Promise<string> | null = null;
 
 /** Rotates the session's tokens and resolves to the new access token. Concurrent callers share one
  * request, its retry included. A rejected session (401/403) signs out; rate limits, server and network
- * errors don't, and a network error goes once more first. */
-export function refreshSession(): Promise<string> {
-	refreshing ??= requestRefresh().finally(() => {
+ * errors don't, and a network error goes once more first. Only the main window does it: any other of
+ * the app's windows takes the main window's renewal instead (windowRenewsSession, lib/session.ts). */
+export function refreshSession(refused: string | null = null): Promise<string> {
+	const renew = windowRenewsSession(currentShell().window) ? requestRefresh : () => takeMainWindowsRenewal(refused);
+	refreshing ??= renew().finally(() => {
 		refreshing = null;
 	});
 	return refreshing;
+}
+
+/** In a window that doesn't renew: the token the main window's renewal leaves in localStorage, which the
+ * windows share, in place of `refused` (the one a request was just refused with, else this page's copy).
+ * This page's own copy of it follows. No request is made, and nobody is signed out. */
+async function takeMainWindowsRenewal(refused: string | null): Promise<string> {
+	const token = await renewedByMainWindow({
+		read: () => localStorage.getItem("duvet_session_token"),
+		watch: (changed) => {
+			const onStorage = (event: StorageEvent) => {
+				if (event.key === null || event.key === "duvet_session_token") changed();
+			};
+			window.addEventListener("storage", onStorage);
+			// And looked at once a second: that one window's write raises the storage event in another was only ever
+			// seen on macOS, and the token is there to read either way.
+			const looking = setInterval(changed, requestLimits.renewalLookMs);
+			return () => {
+				window.removeEventListener("storage", onStorage);
+				clearInterval(looking);
+			};
+		},
+		stale: refused ?? get(accessToken),
+		timeoutMs: requestLimits.mainWindowRenewalMs,
+		// The main window renews by the tokens' age, and a sleeping one hasn't yet: it is asked to now. Its answer is
+		// the token it writes, so a main window that doesn't hear this is only waited for, as before.
+		ask: () => void askMainWindow(SESSION_CHANNEL, "renew").catch(() => undefined),
+	});
+	accessToken.set(token);
+	return token;
 }
 
 async function requestRefresh(): Promise<string> {
@@ -386,6 +433,12 @@ async function requestRefresh(): Promise<string> {
  * renewal due otherwise as the app starts waits for `connected` (the app is up), as the gateway
  * follows a connection through a renewal, where a renewal mid-identify would fail it (#281). */
 export function keepSessionFresh(): { ready: Promise<void>; connected: () => void; stop: () => void } {
+	// The main window keeps the session fresh for every window: another one checks nothing.
+	if (!windowRenewsSession(currentShell().window)) {
+		return { ready: Promise.resolve(), connected: () => {}, stop: () => {} };
+	}
+	// And renews when another window asks: one whose request the API refused, while this one saw no reason to yet.
+	answerWindows(SESSION_CHANNEL, { renew: () => refreshSession().then(() => true) });
 	const check = async (when: SessionCheck) => {
 		if (!localStorage.getItem("duvet_refresh_token")) return;
 		const refreshedAt = Number(localStorage.getItem(REFRESHED_AT_KEY)) || 0;
@@ -485,7 +538,7 @@ const coreFetch = async <T = any>(endpoint: string, options: FetchRequestConfig 
 			// Sent before a refresh that has finished since: retry with its tokens. Refreshing again
 			// would revoke them under the requests already retrying with them.
 			const current = get(accessToken) || localStorage.getItem("duvet_session_token");
-			const newToken = current && current !== token ? current : await refreshSession();
+			const newToken = current && current !== token ? current : await refreshSession(token);
 			headers.set("Authorization", `Bearer ${newToken}`);
 			const newSessionToken = localStorage.getItem("duvet_refresh_token");
 			if (newSessionToken) headers.set("X-Session-Token", newSessionToken);
@@ -517,7 +570,9 @@ export default api;
 
 export function getApiError(err: unknown, fallback: string): string {
 	if (err instanceof FetchError && err.response?.data?.error) {
-		return err.response.data.error;
+		const reason: unknown = err.response.data.error;
+		// The API's own words, but for the few texts that say what the app never does (error-wording.ts).
+		return typeof reason === "string" ? inAppWords(reason, fallback) : err.response.data.error;
 	}
 	if (err instanceof Error) return err.message;
 	return fallback;

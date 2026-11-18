@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { claimLayer, layerStyle, releaseLayer } from "$lib/overlay-layers";
 	import { Hash as HashIcon, Search as SearchIcon, Volume2 as SpeakerSimpleHighIcon } from "@lucide/svelte";
 	import { Dialog } from "bits-ui";
 	import { tick } from "svelte";
@@ -6,10 +7,13 @@
 	import { friendUser } from "$lib/friends";
 	import { canViewRoom, shownRooms } from "$lib/permissions";
 	import { rankByQuery } from "$lib/nav";
+	import { mentionsLabel } from "$lib/shell-layout";
 	import { conversations, currentUser, friends, gatewaySpaces } from "$lib/stores.svelte";
 	import { shownMentionCounts, shownUnreadConversations, shownUnreadRooms } from "$lib/notification-marks";
-	import SpaceIcon from "$lib/components/SpaceIcon.svelte";
+	import SpaceIcon from "$lib/components/ui/SpaceIcon.svelte";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
+	import Kbd from "$lib/components/ui/Kbd.svelte";
+	import { countBadgeClass, GLASS_STRONG } from "$lib/components/ui/recipes";
 
 	/** Jumping to a space, a room of any space, a conversation or a friend by typing part of its name. */
 	let {
@@ -93,8 +97,14 @@
 				kind: "conversation",
 				key: `conv:${conv.id}`,
 				id: conv.id,
-				name: conv.type === 2 ? (conv.name ?? "Group") : (other?.user?.alias ?? other?.user?.username ?? "DM"),
-				sub: conv.type === 2 ? `${conv.members.length} members` : "Direct message",
+				name:
+					conv.type === 2 ? (conv.name ?? "Group") : (other?.user?.alias ?? other?.user?.username ?? "Direct message"),
+				sub:
+					conv.type === 2
+						? conv.members.length === 1
+							? "1 member"
+							: `${conv.members.length} members`
+						: "Direct message",
 				avatar: conv.type === 2 ? null : (getAvatarURL(other?.user_id ?? "", other?.user?.avatar) ?? null),
 				mentions: $shownMentionCounts[conv.id] ?? 0,
 				unread: $shownUnreadConversations.has(conv.id) || !!$shownMentionCounts[conv.id],
@@ -176,29 +186,37 @@
 	}
 
 	const optionId = (index: number) => `quick-switcher-option-${index}`;
+
+	// What opens last is in front, whatever opened it (lib/overlay-layers.ts).
+	const layer = $derived(open ? claimLayer() : 0);
+	$effect(() => {
+		const mine = layer;
+		if (mine) return () => releaseLayer(mine);
+	});
 </script>
 
 <Dialog.Root bind:open>
 	<Dialog.Portal>
-		<Dialog.Overlay class="fixed inset-0 z-300 bg-black/50" />
+		<Dialog.Overlay style={layerStyle(layer)} class="bg-duvet-scrim animate-scrim-in fixed inset-0 z-[900]" />
 		<Dialog.Content
-			class="rounded-card bg-duvet-card text-duvet-ink shadow-duvet-float fixed top-[14vh] left-1/2 z-300 flex max-h-[70vh] w-[min(560px,calc(100vw-2rem))] -translate-x-1/2 flex-col overflow-hidden"
+			style={layerStyle(layer)}
+			class="{GLASS_STRONG} animate-pop text-duvet-ink fixed top-[11vh] left-1/2 z-[900] flex max-h-[66vh] w-[min(640px,calc(100%-48px))] origin-top -translate-x-1/2 flex-col overflow-hidden rounded-[20px] outline-none"
 			onOpenAutoFocus={(e) => {
 				e.preventDefault();
 				inputEl?.focus();
 			}}
 		>
-			<Dialog.Title class="sr-only">Jump to a space, room or conversation</Dialog.Title>
-			<div class="border-duvet-line flex shrink-0 items-center gap-2.5 border-b px-4">
-				<SearchIcon class="text-duvet-ink2 size-4 shrink-0" />
+			<Dialog.Title class="sr-only">Jump to a Space, room or chat</Dialog.Title>
+			<div class="border-duvet-line flex shrink-0 items-center gap-3 border-b px-4 py-3.5">
+				<SearchIcon size={18} class="text-duvet-ink2 shrink-0" />
 				<input
 					bind:this={inputEl}
 					bind:value={query}
 					type="text"
-					class="text-duvet-ink placeholder:text-duvet-ink2 focus-override h-12 min-w-0 flex-1 bg-transparent text-[15px] outline-none"
+					class="text-duvet-ink placeholder:text-duvet-ink2 focus-override min-w-0 flex-1 bg-transparent text-[17px] leading-[1.2] outline-none"
 					placeholder="Where to?"
 					role="combobox"
-					aria-label="Search spaces, rooms and conversations"
+					aria-label="Search Spaces, rooms and chats"
 					aria-expanded="true"
 					aria-controls="quick-switcher-list"
 					aria-autocomplete="list"
@@ -207,13 +225,14 @@
 					spellcheck="false"
 					onkeydown={handleKeydown}
 				/>
+				<Kbd>Esc</Kbd>
 			</div>
 			<ul
 				bind:this={listEl}
 				id="quick-switcher-list"
 				role="listbox"
 				aria-label="Results"
-				class="min-h-0 flex-1 overflow-y-auto p-2"
+				class="min-h-0 flex-1 overflow-y-auto px-2 pt-1 pb-2"
 			>
 				{#each results as item, index (item.key)}
 					{@const isActive = index === activeIndex}
@@ -222,8 +241,8 @@
 						id={optionId(index)}
 						role="option"
 						aria-selected={isActive}
-						class="rounded-row flex cursor-pointer items-center gap-3 px-2.5 py-2 {isActive
-							? 'bg-duvet-chosen text-duvet-chosen-ink'
+						class="flex h-10 cursor-pointer items-center gap-2.5 rounded-[11px] px-2.5 {isActive
+							? 'bg-duvet-accent-tint'
 							: ''}"
 						onmousemove={() => (activeIndex = index)}
 						onmousedown={(e) => e.preventDefault()}
@@ -231,46 +250,47 @@
 						onkeydown={() => {}}
 					>
 						{#if item.kind === "space"}
-							<span class="contents" aria-hidden="true"
-								><SpaceIcon src={item.icon} name={item.name} size={24} class="rounded-lg" /></span
-							>
+							<span class="contents" aria-hidden="true"><SpaceIcon src={item.icon} name={item.name} size={24} /></span>
 						{:else if item.kind === "room"}
 							<span
-								class="flex size-6 shrink-0 items-center justify-center {item.voice
-									? 'text-duvet-alive'
+								class="bg-duvet-secondary-fill grid size-6 shrink-0 place-items-center rounded-[7px] {item.voice
+									? 'text-duvet-alive-text'
 									: 'text-duvet-ink2'}"
 							>
-								{#if item.voice}<SpeakerSimpleHighIcon class="size-4" />{:else}<HashIcon class="size-4" />{/if}
+								{#if item.voice}<SpeakerSimpleHighIcon size={15} />{:else}<HashIcon size={15} />{/if}
 							</span>
 						{:else}
 							<UserAvatar src={item.avatar} name={item.name} size={24} />
 						{/if}
 						<span
-							class="min-w-0 flex-1 truncate text-sm {item.kind !== 'space' && 'unread' in item && item.unread
+							class="max-w-[60%] min-w-0 truncate text-[13.5px] {item.kind !== 'space' &&
+							'unread' in item &&
+							item.unread
 								? 'font-bold'
 								: 'font-medium'}"
 						>
 							{item.name}
 						</span>
-						<span class="shrink-0 truncate text-xs {isActive ? 'text-duvet-chosen-ink/70' : 'text-duvet-ink2'}">
+						<span class="text-duvet-ink2 min-w-0 flex-1 truncate text-xs">
 							{#if item.kind === "space"}Space{:else if item.kind === "room"}{item.spaceName}{:else if item.kind === "conversation"}{item.sub}{:else}Friend{/if}
 						</span>
 						{#if (item.kind === "room" || item.kind === "conversation") && item.mentions}
-							<span
-								class="bg-duvet-accent text-duvet-on-accent flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full px-1 text-[11px] font-bold"
-								aria-label="{item.mentions} mentions">{item.mentions}</span
+							<span class={countBadgeClass("sm")} role="img" aria-label={mentionsLabel(item.mentions)}
+								>{item.mentions}</span
 							>
+						{/if}
+						{#if isActive}
+							<span class="text-duvet-accent-text shrink-0 text-[11.5px] font-medium" aria-hidden="true">Open</span>
 						{/if}
 					</li>
 				{:else}
-					<li class="px-3 py-6 text-center text-sm text-duvet-ink2" role="presentation">
-						{query.trim() ? `Nothing matches “${query.trim()}”` : "No spaces or conversations yet"}
+					<li class="px-3 py-8 text-center text-[13px] text-duvet-ink2" role="presentation">
+						{query.trim() ? `Nothing matches “${query.trim()}”` : "No Spaces or chats yet"}
 					</li>
 				{/each}
 			</ul>
-			<p class="border-duvet-line text-duvet-ink2 shrink-0 border-t px-4 py-2 text-xs">
-				<kbd class="font-mono">↑</kbd> <kbd class="font-mono">↓</kbd> to move · <kbd class="font-mono">Enter</kbd> to
-				open · <kbd class="font-mono">Esc</kbd> to close
+			<p class="border-duvet-line text-duvet-ink2 shrink-0 border-t px-4 py-[9px] text-[11.5px]">
+				↑ ↓ to move · Enter to open · Esc to close
 			</p>
 		</Dialog.Content>
 	</Dialog.Portal>

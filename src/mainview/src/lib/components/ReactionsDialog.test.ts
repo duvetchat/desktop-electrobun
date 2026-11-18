@@ -23,9 +23,9 @@ describe("who reacted", () => {
 
 	test("opens from the menu of a message that has reactions, on its first one", () => {
 		const list = source("MessageList.svelte");
-		// The menus of the user's messages and of others'.
-		expect(list.match(/\{@render reactionsButton\(message\)\}/g)).toHaveLength(2);
-		expect(list).toMatch(/\{#snippet reactionsButton\(message: Message\)\}\s*\{#if message\.reactions\?\.length\}/);
+		// The one menu of a message, the user's own or another's, from its More button and from a right-click.
+		expect(list.match(/\{@render reactionsItem\(message\)\}/g)).toHaveLength(1);
+		expect(list).toMatch(/\{#snippet reactionsItem\(message: Message\)\}\s*\{#if message\.reactions\?\.length\}/);
 		expect(list).toContain(
 			'function showReactors(message: Message, picked = message.reactions?.[0] ? reactionKey(message.reactions[0]) : "")',
 		);

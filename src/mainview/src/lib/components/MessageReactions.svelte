@@ -1,6 +1,7 @@
 <script lang="ts">
 	import ReactionCount from "$lib/components/ReactionCount.svelte";
 	import ReactionEmoji from "$lib/components/ReactionEmoji.svelte";
+	import SmilePlusIcon from "$lib/components/ui/icons/SmilePlus.svelte";
 	import type { CustomEmojiMap } from "$lib/markdown";
 	import { reactionKey } from "$lib/reactions";
 	import { currentUser } from "$lib/stores.svelte";
@@ -13,24 +14,31 @@
 	let {
 		reactions,
 		customEmojiMap = {},
+		end = false,
 		onToggle,
 		onShowReactors,
+		onAdd = undefined,
 	}: {
 		reactions: MessageReaction[];
 		customEmojiMap?: CustomEmojiMap;
+		/** Whether the chips line up from the right: under one's own bubble. */
+		end?: boolean;
 		onToggle: (reaction: MessageReaction) => void;
 		onShowReactors: (reaction: MessageReaction) => void;
+		/** Opens the emoji picker for the message. Given, an Add reaction chip follows the reactions while their row is
+		 * hovered (the row is a `group/row`). */
+		onAdd?: () => void;
 	} = $props();
 </script>
 
 {#if reactions.length > 0}
-	<div class="mt-1 flex flex-wrap gap-1">
+	<div class="flex flex-wrap gap-1 {end ? 'justify-end' : ''}">
 		{#each reactions as reaction (reactionKey(reaction))}
 			{@const mine = $currentUser ? reaction.users.includes($currentUser.id) : false}
 			<button
-				class="inline-flex items-center gap-1.5 rounded-lg border px-2 py-1 text-sm transition-colors {mine
-					? 'border-duvet-accent/40 bg-duvet-accent/20 text-duvet-accent-text'
-					: 'border-duvet-line bg-duvet-card/60 text-duvet-ink2 hover:bg-duvet-ink/8'}"
+				class="inline-flex h-6 items-center gap-1 rounded-xl px-2 text-[11.5px] leading-none font-semibold transition-transform duration-[120ms] hover:-translate-y-px active:scale-[0.96] motion-reduce:transition-none {mine
+					? 'bg-duvet-chosen text-duvet-chosen-ink'
+					: 'bg-duvet-secondary-fill text-duvet-ink2'}"
 				onclick={() => onToggle(reaction)}
 				oncontextmenu={(e) => {
 					e.preventDefault();
@@ -42,5 +50,16 @@
 				<ReactionCount count={reaction.count} />
 			</button>
 		{/each}
+		{#if onAdd}
+			<button
+				type="button"
+				class="text-duvet-ink2 hover:text-duvet-ink inline-flex h-6 items-center rounded-xl px-1.5 opacity-0 transition-opacity group-hover/row:opacity-100 focus-visible:opacity-100 motion-reduce:transition-none"
+				title="Add reaction"
+				aria-label="Add reaction"
+				onclick={onAdd}
+			>
+				<SmilePlusIcon size={14} />
+			</button>
+		{/if}
 	</div>
 {/if}
