@@ -4,51 +4,195 @@
 @import "tailwindcss";
 @plugin "tailwindcss-animate";
 
+/* Duvet's palette (docs/redesign/DESIGN-MAP.md §1, from mobile's theme.dart): dark here, the light values in
+   .duvet-light, which app.html's script puts on <html> before anything paints (lib/theme.ts). The names are the app's
+   own where it had one; the prototype's name is noted where it differs. */
 :root {
 	--app-height: 100vh;
 	--app-width: 100vw;
+	color-scheme: dark;
 
-	/* Duvet's palette, dark; .duvet-light holds the light values. */
-	--duvet-bg: #14151d;
-	--duvet-sunk: #0f1017;
-	--duvet-card: #1e2030;
-	--duvet-line: rgba(255, 255, 255, 0.08);
-	--duvet-ink: #ecedf5;
-	--duvet-ink2: #9b9eb5;
-	--duvet-accent: #7b83f5;
-	--duvet-on-accent: #14151d;
-	--duvet-accent-text: #a6abff;
-	--duvet-accent-tint: rgba(123, 131, 245, 0.16);
-	--duvet-chosen: #3a3d52;
-	--duvet-chosen-ink: #f2f3f9;
-	--duvet-alive: #a8dff0;
-	--duvet-danger: #f08c84;
-	/* A warning: an email not verified, storage nearly full, an idle status. */
+	/* Base */
+	--duvet-bg: #07070a;
+	--duvet-sunk: #000000;
+	--duvet-card: #111116;
+	--duvet-line: rgba(255, 255, 255, 0.07);
+	--duvet-ink: #f1f1f6;
+	--duvet-ink2: #9396a8;
+
+	/* Accent (cobalt), azure (your bubbles) and the small accents */
+	--duvet-accent: #2f4cff;
+	--duvet-on-accent: #ffffff;
+	--duvet-accent-text: #8c9bff;
+	--duvet-accent-tint: rgba(140, 155, 255, 0.141);
+	--duvet-azure: #0b6fe8;
+	--duvet-azure-tint: rgba(92, 178, 255, 0.141);
+	/* The prototype's --selected-fill and, on it, --violet: a picked pill, your reaction, a mention chip. */
+	--duvet-chosen: #231e3d;
+	--duvet-chosen-ink: #b3a6ff;
+	--duvet-secondary-fill: #1c1e2e;
+	/* What is live (the prototype's --live): online, a call, speaking. */
+	--duvet-alive: #4cc38a;
+	--duvet-alive-rgb: 76, 195, 138;
+	/* The prototype's --destructive. */
+	--duvet-danger: #e07a70;
+	--duvet-danger-rgb: 224, 122, 112;
+	--duvet-crown: #fbbf24;
+	/* A warning: an email not verified, storage nearly full, an idle status. The app's own: the design has none. */
 	--duvet-warn: #f0c47a;
-	--duvet-shadow-raised: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 1px 2px rgba(0, 0, 0, 0.45);
-	--duvet-shadow-press: inset 0 2px 4px rgba(0, 0, 0, 0.5);
-	--duvet-shadow-float: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 18px 48px rgba(0, 0, 0, 0.55);
+
+	/* Glass: popovers, menus, notices, sheets */
+	--duvet-glass: rgba(17, 17, 22, 0.8);
+	--duvet-glass-strong: rgba(17, 17, 22, 0.92);
+	--duvet-glass-edge: rgba(255, 255, 255, 0.078);
+	--duvet-scrim: rgba(0, 0, 0, 0.5);
+
+	/* Shadows. raised is the resting card's (the prototype's --shadow-rest); lifted is its --shadow-raised, a hovered
+	   card's; press its --shadow-pressed. */
+	--duvet-shadow-raised: 0 1px 2px rgba(0, 0, 0, 0.3), 0 4px 12px rgba(0, 0, 0, 0.25);
+	--duvet-shadow-float: 0 4px 8px rgba(0, 0, 0, 0.4), 0 24px 56px rgba(0, 0, 0, 0.55);
+	--duvet-shadow-control: 0 1px 2px rgba(0, 0, 0, 0.35), 0 6px 16px rgba(0, 0, 0, 0.35);
+	--duvet-shadow-lifted: 0 2px 4px rgba(0, 0, 0, 0.35), 0 12px 32px rgba(0, 0, 0, 0.4);
+	--duvet-shadow-press: inset 0 2px 6px rgba(0, 0, 0, 0.45), inset 0 1px 2px rgba(0, 0, 0, 0.3);
+	--duvet-shadow-well: inset 0 1px 3px rgba(0, 0, 0, 0.4);
+
+	/* Prism: the light a mention of you throws on its bubble */
+	--duvet-prism-gem: rgba(139, 108, 255, 0.252);
+	--duvet-prism-cool: rgba(123, 157, 255, 0.098);
+	--duvet-prism-warm: rgba(191, 124, 239, 0.084);
+	--duvet-prism-shadow: 0 8px 26px -14px rgba(139, 108, 255, 0.45);
+	--duvet-rim-0: rgba(139, 108, 255, 0.8);
+	--duvet-rim-1: rgba(255, 255, 255, 0.08);
+	--duvet-rim-2: rgba(255, 255, 255, 0.08);
+	--duvet-rim-3: rgba(123, 157, 255, 0.35);
+
+	/* Interaction fills */
+	--duvet-hover: rgba(255, 255, 255, 0.06);
+	--duvet-hover-soft: rgba(255, 255, 255, 0.03);
+	--duvet-hover-strong: rgba(255, 255, 255, 0.1);
+	--duvet-field: rgba(255, 255, 255, 0.06);
+	--duvet-seg-track: #16161d;
+	--duvet-seg-thumb: #262633;
+	--duvet-pill: #1a1a22;
+	--duvet-toggle-off: #2a2c3c;
+	--duvet-kbd: rgba(255, 255, 255, 0.08);
+
+	/* The sidebar, and the Settings windows' side panel. Its material is the solid tint everywhere until vibrancy is
+	   approved (DECISIONS.md): the -vibrant and -mica values wait in their own tokens for the shell to pick. */
+	--duvet-sb-bg: #0d0d12;
+	--duvet-sb-filter: none;
+	--duvet-sb-ring: #0d0d12;
+	--duvet-sb-bg-vibrant: rgba(26, 26, 34, 0.76);
+	--duvet-sb-bg-mica: rgba(20, 20, 27, 0.84);
+	--duvet-sb-filter-vibrant: blur(48px) saturate(1.4);
+	--duvet-sb-ring-vibrant: #16161e;
+	--duvet-sb-field: rgba(255, 255, 255, 0.07);
+	--duvet-sb-hover: rgba(255, 255, 255, 0.06);
+	--duvet-sb-card: rgba(255, 255, 255, 0.055);
+	--duvet-sb-edge: rgba(255, 255, 255, 0.06);
+
+	/* Smaller pieces */
+	--duvet-pop-ring: #16161c;
+	--duvet-tip-bg: #2b2c3a;
+	--duvet-tip-ink: #ffffff;
+	--duvet-tip-dim: rgba(255, 255, 255, 0.5);
+	--duvet-mark: rgba(255, 210, 60, 0.3);
+	--duvet-scroll-thumb: rgba(255, 255, 255, 0.16);
+	--duvet-code-bg: #0b0b11;
+	--duvet-tl-inactive: #3d3e48;
+	--duvet-card-soft: rgba(255, 255, 255, 0.04);
+
+	/* The same in both themes */
+	--duvet-media-ink: #f2f1ee;
+	--duvet-media-scrim: rgba(17, 17, 19, 0.55);
+	/* The second red: the Live pill, a recording, Decline, Hang up and Leave; its ink on a call button that's off. */
+	--duvet-call-red: #e5484d;
+	--duvet-call-red-ink: #ff9592;
+	--duvet-call-red-tint: rgba(229, 72, 77, 0.25);
+	--duvet-stage: #0d0d14;
+	--duvet-viewer: rgba(8, 8, 12, 0.94);
+	/* The windows' own controls: the traffic lights, and Windows' Close on hover. */
+	--duvet-tl-close: #ff5f57;
+	--duvet-tl-minimize: #febc2e;
+	--duvet-tl-zoom: #28c840;
+	--duvet-win-close: #c42b1c;
+	/* The message list's and the composer's side padding. */
+	--duvet-pad-x: clamp(16px, 3.2%, 40px);
 }
 
 .duvet-light {
-	--duvet-bg: #f3f4f9;
-	--duvet-sunk: #e7e8f0;
+	color-scheme: light;
+
+	--duvet-bg: #f5f7ff;
+	--duvet-sunk: #eaefff;
 	--duvet-card: #ffffff;
-	--duvet-line: rgba(34, 36, 58, 0.09);
-	--duvet-ink: #22243a;
-	--duvet-ink2: #62657c;
-	--duvet-accent: #5a62de;
-	--duvet-on-accent: #ffffff;
-	--duvet-accent-text: #4c54d2;
-	--duvet-accent-tint: rgba(90, 98, 222, 0.12);
-	--duvet-chosen: #22243a;
-	--duvet-chosen-ink: #ffffff;
-	--duvet-alive: #2a86ab;
-	--duvet-danger: #c2413b;
+	--duvet-line: rgba(21, 23, 43, 0.078);
+	--duvet-ink: #15172b;
+	--duvet-ink2: #5e6380;
+
+	--duvet-accent-text: #2f4cff;
+	--duvet-accent-tint: rgba(47, 76, 255, 0.1);
+	--duvet-azure-tint: rgba(28, 140, 255, 0.122);
+	--duvet-chosen: #f0edff;
+	--duvet-chosen-ink: #6a58d6;
+	--duvet-secondary-fill: #e3e9ff;
+	--duvet-alive: #2f9e62;
+	--duvet-alive-rgb: 47, 158, 98;
+	--duvet-danger: #b0443b;
+	--duvet-danger-rgb: 176, 68, 59;
+	--duvet-crown: #b7791f;
 	--duvet-warn: #9a5f0a;
-	--duvet-shadow-raised: inset 0 1px 0 #ffffff, 0 1px 2px rgba(34, 36, 58, 0.12);
-	--duvet-shadow-press: inset 0 2px 4px rgba(34, 36, 58, 0.18);
-	--duvet-shadow-float: inset 0 1px 0 #ffffff, 0 18px 48px rgba(34, 36, 58, 0.18);
+
+	--duvet-glass: rgba(245, 247, 255, 0.78);
+	--duvet-glass-strong: rgba(246, 248, 255, 0.9);
+	--duvet-glass-edge: rgba(21, 23, 43, 0.059);
+	--duvet-scrim: rgba(7, 7, 10, 0.3);
+
+	--duvet-shadow-raised: 0 1px 2px rgba(21, 23, 43, 0.039), 0 4px 12px rgba(47, 76, 255, 0.059);
+	--duvet-shadow-float: 0 4px 8px rgba(21, 23, 43, 0.039), 0 24px 56px rgba(47, 76, 255, 0.122);
+	--duvet-shadow-control: 0 1px 2px rgba(21, 23, 43, 0.059), 0 6px 16px rgba(47, 76, 255, 0.078);
+	--duvet-shadow-lifted: 0 2px 4px rgba(21, 23, 43, 0.039), 0 12px 32px rgba(47, 76, 255, 0.078);
+	--duvet-shadow-press: inset 0 2px 6px rgba(21, 23, 43, 0.141), inset 0 1px 2px rgba(21, 23, 43, 0.078);
+	--duvet-shadow-well: inset 0 1px 3px rgba(21, 23, 43, 0.059);
+
+	--duvet-prism-gem: rgba(122, 104, 232, 0.182);
+	--duvet-prism-cool: rgba(47, 140, 255, 0.112);
+	--duvet-prism-warm: rgba(228, 79, 203, 0.098);
+	--duvet-prism-shadow: 0 8px 24px -8px rgba(122, 104, 232, 0.45);
+	--duvet-rim-0: rgba(122, 104, 232, 0.7);
+	--duvet-rim-1: rgba(122, 104, 232, 0.2);
+	--duvet-rim-2: rgba(47, 140, 255, 0.2);
+	--duvet-rim-3: rgba(47, 140, 255, 0.5);
+
+	--duvet-hover: rgba(21, 23, 43, 0.05);
+	--duvet-hover-soft: rgba(21, 23, 43, 0.028);
+	--duvet-hover-strong: rgba(21, 23, 43, 0.08);
+	--duvet-field: rgba(21, 23, 43, 0.045);
+	--duvet-seg-track: #e6ebff;
+	--duvet-seg-thumb: #ffffff;
+	--duvet-pill: #ffffff;
+	--duvet-toggle-off: #d3d9f0;
+	--duvet-kbd: rgba(21, 23, 43, 0.06);
+
+	--duvet-sb-bg: #edf1ff;
+	--duvet-sb-ring: #edf1ff;
+	--duvet-sb-bg-vibrant: rgba(236, 240, 253, 0.8);
+	--duvet-sb-bg-mica: rgba(238, 241, 254, 0.82);
+	--duvet-sb-filter-vibrant: blur(48px) saturate(1.5);
+	--duvet-sb-ring-vibrant: #e8ecfb;
+	--duvet-sb-field: rgba(255, 255, 255, 0.58);
+	--duvet-sb-hover: rgba(21, 23, 43, 0.05);
+	--duvet-sb-card: rgba(255, 255, 255, 0.78);
+	--duvet-sb-edge: rgba(21, 23, 43, 0.07);
+
+	--duvet-pop-ring: #f3f5fe;
+	--duvet-tip-bg: #15172b;
+	--duvet-tip-dim: rgba(255, 255, 255, 0.55);
+	--duvet-mark: rgba(255, 210, 60, 0.5);
+	--duvet-scroll-thumb: rgba(21, 23, 43, 0.18);
+	--duvet-code-bg: #eef2ff;
+	--duvet-tl-inactive: #d7d9e1;
+	--duvet-card-soft: rgba(255, 255, 255, 0.7);
 }
 
 /* Static: each one is in the CSS whether a class names it or not, as style attributes and app.css use them too. */
@@ -68,15 +212,71 @@
 	--color-duvet-on-accent: var(--duvet-on-accent);
 	--color-duvet-accent-text: var(--duvet-accent-text);
 	--color-duvet-accent-tint: var(--duvet-accent-tint);
+	--color-duvet-azure: var(--duvet-azure);
+	--color-duvet-azure-tint: var(--duvet-azure-tint);
 	--color-duvet-chosen: var(--duvet-chosen);
 	--color-duvet-chosen-ink: var(--duvet-chosen-ink);
+	--color-duvet-secondary-fill: var(--duvet-secondary-fill);
 	--color-duvet-alive: var(--duvet-alive);
 	--color-duvet-danger: var(--duvet-danger);
+	--color-duvet-crown: var(--duvet-crown);
 	--color-duvet-warn: var(--duvet-warn);
+	--color-duvet-glass: var(--duvet-glass);
+	--color-duvet-glass-strong: var(--duvet-glass-strong);
+	--color-duvet-glass-edge: var(--duvet-glass-edge);
+	--color-duvet-scrim: var(--duvet-scrim);
+	--color-duvet-prism-gem: var(--duvet-prism-gem);
+	--color-duvet-prism-cool: var(--duvet-prism-cool);
+	--color-duvet-prism-warm: var(--duvet-prism-warm);
+	--color-duvet-rim-0: var(--duvet-rim-0);
+	--color-duvet-rim-1: var(--duvet-rim-1);
+	--color-duvet-rim-2: var(--duvet-rim-2);
+	--color-duvet-rim-3: var(--duvet-rim-3);
+	--color-duvet-hover: var(--duvet-hover);
+	--color-duvet-hover-soft: var(--duvet-hover-soft);
+	--color-duvet-hover-strong: var(--duvet-hover-strong);
+	--color-duvet-field: var(--duvet-field);
+	--color-duvet-seg-track: var(--duvet-seg-track);
+	--color-duvet-seg-thumb: var(--duvet-seg-thumb);
+	--color-duvet-pill: var(--duvet-pill);
+	--color-duvet-toggle-off: var(--duvet-toggle-off);
+	--color-duvet-kbd: var(--duvet-kbd);
+	--color-duvet-sb-bg: var(--duvet-sb-bg);
+	--color-duvet-sb-ring: var(--duvet-sb-ring);
+	--color-duvet-sb-field: var(--duvet-sb-field);
+	--color-duvet-sb-hover: var(--duvet-sb-hover);
+	--color-duvet-sb-card: var(--duvet-sb-card);
+	--color-duvet-sb-edge: var(--duvet-sb-edge);
+	--color-duvet-pop-ring: var(--duvet-pop-ring);
+	--color-duvet-tip-bg: var(--duvet-tip-bg);
+	--color-duvet-tip-ink: var(--duvet-tip-ink);
+	--color-duvet-tip-dim: var(--duvet-tip-dim);
+	--color-duvet-mark: var(--duvet-mark);
+	--color-duvet-scroll-thumb: var(--duvet-scroll-thumb);
+	--color-duvet-code-bg: var(--duvet-code-bg);
+	--color-duvet-tl-inactive: var(--duvet-tl-inactive);
+	--color-duvet-card-soft: var(--duvet-card-soft);
+	--color-duvet-media-ink: var(--duvet-media-ink);
+	--color-duvet-media-scrim: var(--duvet-media-scrim);
+	--color-duvet-call-red: var(--duvet-call-red);
+	--color-duvet-call-red-ink: var(--duvet-call-red-ink);
+	--color-duvet-call-red-tint: var(--duvet-call-red-tint);
+	--color-duvet-stage: var(--duvet-stage);
+	--color-duvet-viewer: var(--duvet-viewer);
+	--color-duvet-tl-close: var(--duvet-tl-close);
+	--color-duvet-tl-minimize: var(--duvet-tl-minimize);
+	--color-duvet-tl-zoom: var(--duvet-tl-zoom);
+	--color-duvet-win-close: var(--duvet-win-close);
 
 	--shadow-duvet-raised: var(--duvet-shadow-raised);
-	--shadow-duvet-press: var(--duvet-shadow-press);
 	--shadow-duvet-float: var(--duvet-shadow-float);
+	--shadow-duvet-control: var(--duvet-shadow-control);
+	--shadow-duvet-lifted: var(--duvet-shadow-lifted);
+	--shadow-duvet-press: var(--duvet-shadow-press);
+	--shadow-duvet-well: var(--duvet-shadow-well);
+	--shadow-duvet-prism: var(--duvet-prism-shadow);
+	/* A glass surface's: its float and its 1 px inner edge. */
+	--shadow-duvet-glass: var(--duvet-shadow-float), inset 0 0 0 1px var(--duvet-glass-edge);
 
 	--text-xxs: 10px;
 
@@ -95,6 +295,12 @@
 	--spacing-input-sm: 2.5rem;
 
 	--breakpoint-desktop: 1440px;
+
+	/* Motion's curves (theme.dart): the spring slides pills and thumbs, the overshoot is for what arrives, the
+	   decelerate for what moves or settles. */
+	--ease-spring: cubic-bezier(0.3, 1.18, 0.5, 1);
+	--ease-overshoot: cubic-bezier(0.34, 1.12, 0.64, 1);
+	--ease-decelerate: cubic-bezier(0.2, 0.9, 0.3, 1);
 
 	--animate-accordion-down: accordion-down 0.2s ease-out;
 	--animate-accordion-up: accordion-up 0.2s ease-out;
@@ -313,8 +519,13 @@
 		border-color: var(--duvet-line);
 	}
 
-	* {
-		font-family: var(--font-sans);
+	/* The interface's face comes down from <html> (Tailwind's base sets --font-sans there), so a message's text, a
+	   title or a code block changes it for all it holds with one class. Only what asks for the mono face gets it. */
+	code,
+	kbd,
+	samp,
+	pre {
+		font-family: inherit;
 	}
 
 	input,
@@ -337,6 +548,9 @@
 		font-feature-settings:
 			"rlig" 1,
 			"calt" 1;
+		letter-spacing: -0.003em;
+		-webkit-font-smoothing: antialiased;
+		-moz-osx-font-smoothing: grayscale;
 		margin: 0;
 		height: var(--app-height);
 		width: var(--app-width);
@@ -356,7 +570,7 @@
 
 	/* The words a message search found, in its results (MessageSearch.svelte). */
 	::highlight(search-hit) {
-		background: color-mix(in oklab, var(--duvet-warn) 40%, transparent);
+		background: var(--duvet-mark);
 		color: var(--duvet-ink);
 	}
 
@@ -387,36 +601,34 @@
 	@supports not selector(::-webkit-scrollbar) {
 		* {
 			scrollbar-width: thin;
-			scrollbar-color: color-mix(in oklab, var(--duvet-ink2) 50%, transparent)
-				color-mix(in oklab, var(--duvet-sunk) 45%, transparent);
+			scrollbar-color: var(--duvet-scroll-thumb) transparent;
 		}
 	}
 
 	*::-webkit-scrollbar {
-		width: 10px;
-		height: 10px;
+		width: 11px;
+		height: 11px;
 	}
 
 	*::-webkit-scrollbar-button {
 		display: none;
 	}
 
+	*::-webkit-scrollbar-track,
 	*::-webkit-scrollbar-corner {
 		background: transparent;
 	}
 
-	*::-webkit-scrollbar-track {
-		background: color-mix(in oklab, var(--duvet-sunk) 45%, transparent);
-	}
-
+	/* A thumb 5 px wide inside its 11: the border is the track showing through. */
 	*::-webkit-scrollbar-thumb {
-		background: color-mix(in oklab, var(--duvet-ink2) 50%, transparent);
-		border-radius: 999px;
-		border: 2px solid color-mix(in oklab, var(--duvet-sunk) 45%, transparent);
+		background: var(--duvet-scroll-thumb);
+		background-clip: content-box;
+		border-radius: 10px;
+		border: 3px solid transparent;
 	}
 
 	*::-webkit-scrollbar-thumb:hover {
-		background: color-mix(in oklab, var(--duvet-ink2) 65%, transparent);
+		background-color: var(--duvet-ink2);
 	}
 
 	*:not(body):not(.focus-override) {
@@ -473,7 +685,7 @@
 	/* ── Message markdown ───────────────────────────────────────────────── */
 	.msg-code-block {
 		position: relative;
-		background: var(--duvet-sunk);
+		background: var(--duvet-code-bg);
 		border: 1px solid var(--duvet-line);
 		border-radius: 5px;
 		margin: 4px 0;
