@@ -35,7 +35,7 @@ export interface NativeWindowDeps {
 	/** A page's address: the app's own views, or the dev server's. */
 	pageUrl(page: string): string;
 	/** The links the window's page may follow (navigation.ts). */
-	rules: string;
+	rules: string[];
 	/** AppKit's bridge on macOS, where the page's web view must be made the window's first responder to take keys. */
 	appkit: AppKit | null;
 	openExternal(url: unknown): void;

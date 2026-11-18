@@ -33,3 +33,12 @@ export function navigationRules(platform: NodeJS.Platform, devServer: string | n
 			: ["about:*", "devtools://*", "https://www.youtube.com/embed/*", "https://www.tiktok.com/player/v1/*"]),
 	];
 }
+
+/** The address a webview's navigation event names (did-navigate, dom-ready: Electrobun puts it in the event's
+ * data.detail), or null for an event that names none. */
+export function navigatedTo(event: unknown): string | null {
+	if (typeof event !== "object" || event === null || !("data" in event)) return null;
+	const { data } = event;
+	if (typeof data !== "object" || data === null || !("detail" in data)) return null;
+	return typeof data.detail === "string" ? data.detail : null;
+}

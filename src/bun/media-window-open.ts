@@ -46,7 +46,8 @@ export interface MediaWindowOpenOptions {
 	renderer: "native" | "cef";
 	platform: string;
 	appkit: AppKit | null;
-	rules: string;
+	/** The links the window's page may follow (navigation.ts). */
+	rules: string[];
 	/** The pop-out's commands, which media-window.ts answers or relays. */
 	command(command: WindowCommand): Promise<WindowAnswer>;
 }

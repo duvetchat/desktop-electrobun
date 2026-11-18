@@ -1,5 +1,3 @@
-import type { WindowKind } from "$lib/platform";
-
 // The app's windows other than the main one (#357, docs/redesign/PLATFORM.md §3 to §5): the media controls' pop-out,
 // Settings and a Space's settings. Each is a BrowserWindow of the desktop app that loads a prerendered page of its
 // own, views://mainview/<page>.html. This is the one list of those pages. A page named here gets, from the list:
@@ -9,6 +7,12 @@ import type { WindowKind } from "$lib/platform";
 //     window opens the gateway's socket, renews the session (lib/session.ts) and listens to the gateway; the others
 //     mirror its state and send it commands (lib/window-link.ts).
 // The media controls' pop-out is routes/voice-controls; each other window's phase adds its own here, with its route.
+
+// Nothing is imported here: the Bun process reads this list too (src/bun/index.ts), and its type check (src/bun's
+// tsconfig) would follow an import into the whole UI.
+
+/** Which of the app's windows a page is in (src/bun/shell.ts has Bun's own copy). */
+export type WindowKind = "main" | "media" | "settings" | "space-settings";
 
 /** A window that isn't the main one. */
 export type SecondWindow = Exclude<WindowKind, "main">;

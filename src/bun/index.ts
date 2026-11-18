@@ -15,7 +15,7 @@ import {
 import { Toasts } from "./toasts";
 import { startSpotifyReader, type SpotifyActivity } from "./spotify";
 import { ipcHeld, ipcPath, LineReader } from "./ipc";
-import { navigationRules } from "./navigation";
+import { navigatedTo, navigationRules } from "./navigation";
 import { Maximizer } from "./window-frame";
 import { dragWithWindows, letWindowsArrange } from "./window-snap";
 import { startupSummary, writeStartupLine } from "./startup";
@@ -340,9 +340,9 @@ const mediaWindows: MediaWindows = new MediaWindows({
 	log: (line) => console.log(`[media-window] ${line}`),
 });
 win.on("close", () => mediaWindows.mainClosed());
-win.webview.on("did-navigate", (event: { data?: { detail?: unknown } }) => {
-	const to = event?.data?.detail;
-	if (typeof to === "string") mediaWindows.mainNavigated(to);
+win.webview.on("did-navigate", (event) => {
+	const to = navigatedTo(event);
+	if (to !== null) mediaWindows.mainNavigated(to);
 });
 // ── end of the media controls' pop-out ──────────────────────────────────────────────────────────────────────────────
 // ── #357, the Windows workstream's hook: the Settings windows (settings-windows.ts) ──────────────────────────────────

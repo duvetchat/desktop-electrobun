@@ -1,3 +1,4 @@
+import type { WindowKind } from "$lib/app-windows";
 import { isElectrobunWindow } from "$lib/electrobun-rpc";
 
 // The platform switch (#357, docs/redesign/PLATFORM.md §11): every decision of the shell that depends on where the
@@ -11,7 +12,7 @@ import { isElectrobunWindow } from "$lib/electrobun-rpc";
 //     so a browser can draw another system's chrome for review. A build has none of it (import.meta.env.DEV).
 
 export type Os = "mac" | "windows" | "linux" | "other";
-export type WindowKind = "main" | "media" | "settings" | "space-settings";
+export type { WindowKind };
 export type TitleBarStyle = "hidden" | "hiddenInset" | "default";
 
 /** What Bun tells a window about itself (src/bun/shell.ts). */

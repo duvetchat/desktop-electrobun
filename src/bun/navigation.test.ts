@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { navigationRules } from "./navigation";
+import { navigatedTo, navigationRules } from "./navigation";
 
 // Electrobun's check, as its native side has it on every platform (shouldAllowNavigationToURL over shared/glob_match.h):
 // any case, "*" matches anything, the last rule that matches decides, and a URL none matches goes through.
@@ -107,5 +107,18 @@ describe("the main window", () => {
 	test("gets them once a page has loaded, not as it's created", () => {
 		expect(main).toContain('win.webview.on("dom-ready", () => win.webview.setNavigationRules(rules));');
 		expect(main.match(/setNavigationRules\(/g)).toHaveLength(1);
+	});
+});
+
+describe("navigatedTo", () => {
+	test("is the address Electrobun's event carries", () => {
+		expect(navigatedTo({ data: { detail: "views://mainview/app.html" } })).toBe("views://mainview/app.html");
+	});
+
+	test("is null for an event that names none", () => {
+		for (const event of [undefined, null, "views://mainview/app.html", {}, { data: null }, { data: {} }]) {
+			expect(navigatedTo(event)).toBeNull();
+		}
+		expect(navigatedTo({ data: { detail: { url: "views://mainview/app.html" } } })).toBeNull();
 	});
 });
