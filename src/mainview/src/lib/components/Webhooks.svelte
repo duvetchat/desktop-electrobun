@@ -253,7 +253,7 @@
 {/snippet}
 
 {#if webhooksLoading}
-	<p class="text-duvet-ink2 px-1.5 text-sm">Loading webhooks...</p>
+	<p class="text-duvet-ink2 px-1.5 text-sm">Loading webhooks…</p>
 {:else}
 	<div class="flex flex-col gap-5">
 		<!-- Create new webhook -->
@@ -291,7 +291,7 @@
 				<div>
 					<Button onclick={handleCreateWebhook} disabled={isCreatingWebhook || !newWebhookName.trim()}>
 						<PlusIcon size={15} />
-						{isCreatingWebhook ? "Creating..." : "Create"}
+						{isCreatingWebhook ? "Creating…" : "Create"}
 					</Button>
 				</div>
 			</SettingsGroup>

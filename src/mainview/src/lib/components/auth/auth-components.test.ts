@@ -130,7 +130,7 @@ describe("AuthNote", () => {
 
 describe("AuthResult", () => {
 	test("while it loads it is busy, and its one line is a status", async () => {
-		const found = await tags(AuthResult, { state: "loading", text: "Verifying your email..." });
+		const found = await tags(AuthResult, { state: "loading", text: "Verifying your email…" });
 		expect(found[0]!.attributes).toMatchObject({ "data-auth-result": "loading", "aria-busy": "true" });
 		expect(named(found, "h1")).toHaveLength(0);
 		expect(named(found, "p")[0]!.attributes.role).toBe("status");
@@ -162,7 +162,7 @@ describe("AuthSubmit", () => {
 	});
 
 	test("busy, it can't be pressed again and says so", async () => {
-		const found = await tags(AuthSubmit, { busy: true, children: text("Signing in...") });
+		const found = await tags(AuthSubmit, { busy: true, children: text("Signing in…") });
 		expect(found[0]!.attributes.disabled).toBeDefined();
 		expect(found[0]!.attributes["aria-busy"]).toBe("true");
 		// The spinner, before its words.

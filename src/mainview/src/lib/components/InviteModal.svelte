@@ -115,7 +115,7 @@
 			<Button size="sm" onclick={copyLink} aria-label="Copy link">
 				{#if copied}
 					<CheckIcon size={14} />
-					Copied!
+					Copied
 				{:else}
 					<CopySimpleIcon size={14} />
 					Copy

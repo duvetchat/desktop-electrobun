@@ -123,7 +123,7 @@ describe("a message's preview", () => {
 		const shown = html(rich);
 		expect(shown).toContain(">https://duvet.chat/invite/abc123</button>");
 		// The cards as they load: the message's, and the invite's skeleton.
-		expect(shown).toContain("Loading message...");
+		expect(shown).toContain("Loading message…");
 		expect(shown).toMatch(
 			/rounded-card mt-2 max-w-xs border p-4"><div class="bg-duvet-ink\/10 mb-3 h-3 w-44 animate-pulse rounded"/,
 		);

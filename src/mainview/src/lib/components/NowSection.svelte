@@ -140,7 +140,7 @@
 		answering.add(inviteId);
 		try {
 			await answerTeamInvite(inviteId, accept);
-			if (accept) toast("Invite accepted!", "success");
+			if (accept) toast("Invite accepted", "success");
 		} catch (err) {
 			toast(getApiError(err, accept ? "Failed to accept invite" : "Failed to decline invite"), "error");
 		} finally {

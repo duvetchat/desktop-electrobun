@@ -133,7 +133,7 @@
 		{/if}
 
 		<AuthSubmit busy={doingRequest} class="mt-2">
-			{doingRequest ? "Signing in..." : "Sign in"}
+			{doingRequest ? "Signing in…" : "Sign in"}
 		</AuthSubmit>
 	</form>
 

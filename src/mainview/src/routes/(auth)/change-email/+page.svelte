@@ -32,9 +32,9 @@
 
 <AuthScene>
 	{#if status === "loading"}
-		<AuthResult state="loading" text="Changing your email..." />
+		<AuthResult state="loading" text="Changing your email…" />
 	{:else if status === "success"}
-		<AuthResult state="success" title="Email changed!" text="Your email has been updated successfully.">
+		<AuthResult state="success" title="Email changed" text="Your email has been updated successfully.">
 			<AuthSubmit href={route("/app.html")}>Go to Duvet</AuthSubmit>
 		</AuthResult>
 	{:else}

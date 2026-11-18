@@ -48,7 +48,7 @@
 		try {
 			await joinInvite(inviteCode);
 			joined = true;
-			toast("Joined!", "success");
+			toast("Joined", "success");
 		} catch (err) {
 			error = getApiError(err, "Failed to join.");
 		} finally {
@@ -94,7 +94,7 @@
 			<div
 				class="bg-duvet-chosen text-duvet-chosen-ink flex h-[34px] w-full items-center justify-center rounded-[11px] text-[13px] font-medium"
 			>
-				You're in!
+				You're in.
 			</div>
 		{:else}
 			<Button class="w-full" onclick={handleJoin} disabled={joining}>

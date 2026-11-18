@@ -70,7 +70,7 @@
 		{/if}
 
 		<AuthSubmit busy={doingRequest} disabled={!email.trim()} class="mt-2">
-			{doingRequest ? "Sending reset email..." : "Send reset email"}
+			{doingRequest ? "Sending reset email…" : "Send reset email"}
 		</AuthSubmit>
 	</form>
 

@@ -198,7 +198,7 @@
 		loading = true;
 		try {
 			await sendFriendRequest(addUserId.trim());
-			addSuccess = "Friend request sent!";
+			addSuccess = "Friend request sent";
 			addUserId = "";
 			const sent = await getSentRequests();
 			sentFriendRequests.set(sent);

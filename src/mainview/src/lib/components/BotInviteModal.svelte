@@ -52,7 +52,7 @@
 		try {
 			await addBotToSpace(spaceId, botUserId);
 			const spaceName = $gatewaySpaces.find((s) => s.id === spaceId)?.name ?? "the Space";
-			toast(`Bot added to ${spaceName}!`, "success");
+			toast(`Bot added to ${spaceName}`, "success");
 			open = false;
 		} catch (err) {
 			toast(getApiError(err, "Failed to add bot"), "error");

@@ -30,14 +30,14 @@
 
 <AuthScene>
 	{#if status === "loading"}
-		<AuthResult state="loading" text="Verifying your email..." />
+		<AuthResult state="loading" text="Verifying your email…" />
 	{:else if status === "success"}
-		<AuthResult state="success" title="Email verified!" text="Your email has been verified successfully.">
+		<AuthResult state="success" title="Email verified" text="Your email has been verified successfully.">
 			<AuthSubmit href={route("/app.html")}>Go to Duvet</AuthSubmit>
 		</AuthResult>
 	{:else}
 		<AuthResult state="error" title="Verification failed" text={errorMessage}>
-			<AuthSubmit href={route("/sign-in.html")}>Go to Sign In</AuthSubmit>
+			<AuthSubmit href={route("/sign-in.html")}>Go to sign in</AuthSubmit>
 		</AuthResult>
 	{/if}
 </AuthScene>

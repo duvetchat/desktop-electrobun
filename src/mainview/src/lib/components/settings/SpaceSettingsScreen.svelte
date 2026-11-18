@@ -290,7 +290,7 @@
 				icon: updated.icon,
 				default_notifications: updated.default_notifications,
 			});
-			toast("Space updated!", "success");
+			toast("Space updated", "success");
 		} catch (e) {
 			toast(getApiError(e, "Failed to update"), "error");
 		} finally {
@@ -1412,7 +1412,7 @@
 		<div class="flex justify-end gap-2 pt-1">
 			<Button variant="quiet" onclick={resetSpaceBucketForm}>Cancel</Button>
 			<Button disabled={spaceBucketSaving} onclick={handleSaveSpaceBucket}>
-				{spaceBucketSaving ? "Saving..." : editingSpaceBucket ? "Update" : "Create"}
+				{spaceBucketSaving ? "Saving…" : editingSpaceBucket ? "Update" : "Create"}
 			</Button>
 		</div>
 	</SettingsGroup>
@@ -1605,7 +1605,7 @@
 		{#if ovHasChanges}
 			<div>
 				<Button onclick={handleSaveOverview} disabled={ovSaving} class="tabular-nums">
-					{ovSaving ? (ovUploadPercent === null ? "Saving..." : uploadNote(ovUploadPercent)) : "Save changes"}
+					{ovSaving ? (ovUploadPercent === null ? "Saving…" : uploadNote(ovUploadPercent)) : "Save changes"}
 				</Button>
 			</div>
 		{/if}
@@ -1953,7 +1953,7 @@
 		{@const loading = emojis ? emojisLoading : stickersLoading}
 		{@const canManage = emojis ? canManageEmojis : canManageStickers}
 		{#if loading}
-			<p class="text-duvet-ink2 px-1.5 text-sm">{emojis ? "Loading emojis..." : "Loading stickers..."}</p>
+			<p class="text-duvet-ink2 px-1.5 text-sm">{emojis ? "Loading emojis…" : "Loading stickers…"}</p>
 		{:else}
 			{#if canManage}
 				{@const preview = emojis ? newEmojiPreview : newStickerPreview}
@@ -1999,7 +1999,7 @@
 								: isUploadingSticker || !newStickerName.trim() || !newStickerFile}
 						>
 							<UploadIcon size={15} />
-							{uploading ? (percent === null ? "Uploading..." : uploadNote(percent)) : "Upload"}
+							{uploading ? (percent === null ? "Uploading…" : uploadNote(percent)) : "Upload"}
 						</Button>
 					</div>
 				</SettingsGroup>

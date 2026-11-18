@@ -220,7 +220,7 @@
 					>
 				</label>
 				<AuthSubmit busy={doingRequest} disabled={!canSubmit}>
-					{doingRequest ? "Creating account..." : "Create my account"}
+					{doingRequest ? "Creating account…" : "Create my account"}
 				</AuthSubmit>
 			</div>
 		</fieldset>

@@ -93,7 +93,7 @@
 {#if loading}
 	<div class="bg-duvet-card shadow-duvet-raised flex w-[380px] max-w-full items-center gap-2 rounded-2xl px-3.5 py-3">
 		<div class="border-duvet-ink2/40 h-3 w-3 shrink-0 animate-spin rounded-full border-2 border-t-transparent"></div>
-		<span class="text-duvet-ink2 text-xs">Loading message...</span>
+		<span class="text-duvet-ink2 text-xs">Loading message…</span>
 	</div>
 {:else if !error && message}
 	<button

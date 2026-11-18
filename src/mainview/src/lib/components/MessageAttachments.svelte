@@ -91,7 +91,7 @@
 				<div class="bg-duvet-secondary-fill size-[34px] shrink-0 animate-pulse rounded-full"></div>
 				<div class="flex flex-1 flex-col gap-1.5">
 					<div class="bg-duvet-secondary-fill h-5 animate-pulse rounded"></div>
-					<span class="text-duvet-ink2 text-[11px]">Sending...</span>
+					<span class="text-duvet-ink2 text-[11px]">Sending…</span>
 				</div>
 			</div>
 		{:else if voiceAtt && !voiceAtt.deleted_at}
@@ -171,21 +171,21 @@
 						<div
 							class="bg-duvet-secondary-fill relative flex h-40 w-64 max-w-full items-center justify-center rounded-2xl {pulse}"
 						>
-							<span class="text-duvet-ink2 px-3 text-center text-xs">Uploading {name}...</span>
+							<span class="text-duvet-ink2 px-3 text-center text-xs">Uploading {name}…</span>
 							{@render fileBar(share)}
 						</div>
 					{:else if att.content_type.startsWith("video/")}
 						<div
 							class="bg-duvet-secondary-fill relative flex h-44 w-80 max-w-full items-center justify-center rounded-2xl {pulse}"
 						>
-							<span class="text-duvet-ink2 px-3 text-center text-xs">Uploading {name}...</span>
+							<span class="text-duvet-ink2 px-3 text-center text-xs">Uploading {name}…</span>
 							{@render fileBar(share)}
 						</div>
 					{:else}
 						<div
 							class="bg-duvet-card shadow-duvet-raised relative inline-flex w-[300px] max-w-full items-center gap-2 rounded-2xl px-3 py-3 {pulse}"
 						>
-							<span class="text-duvet-ink2 min-w-0 truncate text-xs">Uploading {name}...</span>
+							<span class="text-duvet-ink2 min-w-0 truncate text-xs">Uploading {name}…</span>
 							<span class="text-duvet-ink2 shrink-0 text-xs opacity-60">{formatFileSize(att.size_bytes)}</span>
 							{@render fileBar(share)}
 						</div>
@@ -228,7 +228,7 @@
 						<div
 							class="media-skeleton bg-duvet-secondary-fill absolute inset-0 flex animate-pulse items-center justify-center"
 						>
-							<span class="text-duvet-ink2 text-xs">Loading video...</span>
+							<span class="text-duvet-ink2 text-xs">Loading video…</span>
 						</div>
 						<!-- svelte-ignore a11y_media_has_caption -->
 						<video

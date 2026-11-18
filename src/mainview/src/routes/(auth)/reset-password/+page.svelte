@@ -96,14 +96,14 @@
 			<AuthSubmit disabled={!canSubmit} class="mt-2">Reset password</AuthSubmit>
 		</form>
 	{:else if status === "loading"}
-		<AuthResult state="loading" text="Resetting your password..." />
+		<AuthResult state="loading" text="Resetting your password…" />
 	{:else if status === "success"}
-		<AuthResult state="success" title="Password reset!" text="Your password has been changed successfully.">
+		<AuthResult state="success" title="Password reset" text="Your password has been changed successfully.">
 			<AuthSubmit href={route("/sign-in.html")}>Sign in</AuthSubmit>
 		</AuthResult>
 	{:else}
 		<AuthResult state="error" title="Reset failed" text={errorMessage}>
-			<AuthSubmit href={route("/sign-in.html")}>Go to Sign In</AuthSubmit>
+			<AuthSubmit href={route("/sign-in.html")}>Go to sign in</AuthSubmit>
 		</AuthResult>
 	{/if}
 </AuthScene>

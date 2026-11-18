@@ -589,7 +589,7 @@
 				toast("Theme reset to default", "success");
 			} else {
 				await loadCustomTheme(url);
-				toast("Code theme applied!", "success");
+				toast("Code theme applied", "success");
 			}
 			themeVersion++;
 			host.codeThemeChanged(url);
@@ -853,7 +853,7 @@
 			clearBotBanner();
 			pendingBotAvatar = null;
 			pendingBotBanner = null;
-			toast("Bot profile updated!", "success");
+			toast("Bot profile updated", "success");
 			// Refresh bot user data
 			if (app.bot_user_id) {
 				const fresh = await getBotUser(app.bot_user_id).catch(() => null);
@@ -944,7 +944,7 @@
 		devInviting = true;
 		try {
 			await inviteToTeam(devSelectedTeam.id, devInviteEmail.trim());
-			toast("Invite sent!", "success");
+			toast("Invite sent", "success");
 			devInviteEmail = "";
 		} catch (e) {
 			toast(getApiError(e, "Failed to invite"), "error");
@@ -1057,13 +1057,13 @@
 
 	function copyBotInviteLink(botUserId: string) {
 		navigator.clipboard.writeText(getBotInviteLink(botUserId));
-		toast("Link copied!", "success");
+		toast("Link copied", "success");
 	}
 
 	async function handleAcceptTeamInvite(inviteId: string) {
 		try {
 			await answerTeamInvite(inviteId, true);
-			toast("Invite accepted!", "success");
+			toast("Invite accepted", "success");
 			void loadDevTeams();
 		} catch (e) {
 			toast(getApiError(e, "Failed to accept invite"), "error");
@@ -1448,7 +1448,7 @@
 					<p class="opacity-80">Verify your email to secure your account.</p>
 				</div>
 				<Button variant="secondary" size="sm" onclick={handleSendVerification} disabled={sendingVerification}>
-					{sendingVerification ? "Sending..." : "Send verification"}
+					{sendingVerification ? "Sending…" : "Send verification"}
 				</Button>
 			</div>
 		{:else if $currentUser?.email_verified}
@@ -1461,7 +1461,7 @@
 		<SettingsGroup title="Sign-in">
 			<SettingsRow label="Password" line="Send a reset link to your email to change your password." icon={KeyIcon}>
 				<Button variant="secondary" size="sm" onclick={handleSendResetPassword} disabled={sendingReset}>
-					{sendingReset ? "Sending..." : "Reset password"}
+					{sendingReset ? "Sending…" : "Reset password"}
 				</Button>
 			</SettingsRow>
 			<SettingsRow label="Email" icon={MailIcon} labelFor="new-email" stacked>
@@ -1473,7 +1473,7 @@
 					class="{FIELD} flex-1"
 				/>
 				<Button variant="secondary" onclick={handleSendChangeEmail} disabled={sendingEmailChange || !newEmail.trim()}>
-					{sendingEmailChange ? "Sending..." : "Send verification"}
+					{sendingEmailChange ? "Sending…" : "Send verification"}
 				</Button>
 			</SettingsRow>
 		</SettingsGroup>
@@ -1599,7 +1599,7 @@
 						onkeydown={(e) => e.key === "Enter" && handleSaveTheme()}
 					/>
 					<Button onclick={handleSaveTheme} disabled={savingTheme}>
-						{savingTheme ? "Loading..." : "Apply"}
+						{savingTheme ? "Loading…" : "Apply"}
 					</Button>
 					{#if codeThemeUrl}
 						<Button
@@ -1930,7 +1930,7 @@
 				<div class="flex justify-end gap-2 pt-1">
 					<Button variant="quiet" onclick={resetBucketForm}>Cancel</Button>
 					<Button disabled={bucketSaving} onclick={handleSaveBucket}>
-						{bucketSaving ? "Saving..." : editingBucket ? "Update" : "Create"}
+						{bucketSaving ? "Saving…" : editingBucket ? "Update" : "Create"}
 					</Button>
 				</div>
 			</SettingsGroup>
@@ -2074,7 +2074,7 @@
 			</div>
 
 			{#if devLoading}
-				<p class="text-duvet-ink2 px-1.5 text-sm">Loading...</p>
+				<p class="text-duvet-ink2 px-1.5 text-sm">Loading…</p>
 			{:else if devTeams.length === 0}
 				<p class="text-duvet-ink2 px-1.5 text-sm">No teams yet. Create one to get started.</p>
 			{:else}
@@ -2201,7 +2201,7 @@
 			<section class="flex flex-col gap-2">
 				<h3 class={GROUP_TITLE}>Applications</h3>
 				{#if devAppsLoading}
-					<p class="text-duvet-ink2 px-1.5 text-sm">Loading...</p>
+					<p class="text-duvet-ink2 px-1.5 text-sm">Loading…</p>
 				{:else}
 					<div class="flex gap-2">
 						<input
@@ -2508,7 +2508,7 @@
 															>
 																{savingBotProfile
 																	? botUploadPercent === null
-																		? "Saving..."
+																		? "Saving…"
 																		: uploadNote(botUploadPercent)
 																	: "Save changes"}
 															</Button>
