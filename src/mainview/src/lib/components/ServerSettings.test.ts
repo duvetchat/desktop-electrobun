@@ -29,3 +29,28 @@ test("Settings let go of their pending images' previews as they go", () => {
 		/onDestroy\(\(\) => \{\s*for \(const url of \[pendingIconPreview, pendingBannerPreview\]\) if \(url\) URL\.revokeObjectURL\(url\);\s*\}\);/,
 	);
 });
+
+// #357: in the desktop app each screen mounts open, in a window of its own. Its form was filled by an effect, after the
+// first render, so for that render it differed from what it edits: the save bar was drawn, then slid away, every time a
+// settings window opened. A screen that mounts open starts with the values; a sheet, mounted closed, as it did.
+test("a screen that mounts open starts with what it edits, so nothing reads as changed", () => {
+	const settings = (file: string) => readFileSync(join(import.meta.dir, file), "utf8");
+	const user = settings("settings/SettingsScreen.svelte");
+	expect(user).toContain("const opensAs = untrack(() => (open ? $currentUser : null));");
+	for (const field of [
+		'username = $state(opensAs?.username ?? "")',
+		'alias = $state(opensAs?.alias ?? "")',
+		'bio = $state(opensAs?.custom ?? "")',
+	]) {
+		expect(user).toContain(`let ${field};`);
+	}
+	expect(source).toContain("const opensOn = untrack(() => (open ? space : null));");
+	for (const field of [
+		'ovName = $state(opensOn?.name ?? "")',
+		'ovDescription = $state(opensOn?.description ?? "")',
+		'ovLocale = $state(opensOn?.locale ?? "")',
+		"ovDefaultNotifications = $state<0 | 1>(opensOn?.default_notifications === 0 ? 0 : 1)",
+	]) {
+		expect(source).toContain(`let ${field};`);
+	}
+});

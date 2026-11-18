@@ -158,12 +158,15 @@
 
 	const PERMISSIONS = ALL_PERMISSIONS;
 
-	// Overview form state
-	let ovName = $state("");
-	let ovDescription = $state("");
-	let ovLocale = $state("");
+	// Overview form state. A screen that mounts open, a window of its own, starts with the Space's values: filled only
+	// by the effect below, after the first render, the form differed from the Space for that render, and the save bar
+	// was drawn and slid away each time the window opened.
+	const opensOn = untrack(() => (open ? space : null));
+	let ovName = $state(opensOn?.name ?? "");
+	let ovDescription = $state(opensOn?.description ?? "");
+	let ovLocale = $state(opensOn?.locale ?? "");
 	// What members are notified of until they choose: every message (0) or only mentions (1), the API's default.
-	let ovDefaultNotifications = $state<0 | 1>(1);
+	let ovDefaultNotifications = $state<0 | 1>(opensOn?.default_notifications === 0 ? 0 : 1);
 	let ovSaving = $state(false);
 	// How far a new icon or banner has gone up while the overview saves, in percent, which Save says: null until its
 	// first progress, and while nothing new goes up.

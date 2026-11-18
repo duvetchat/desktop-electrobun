@@ -691,10 +691,13 @@
 		if (stagesKnown) host.stageImage(USER_SCOPE, "banner", picked);
 	});
 
-	// Form state
-	let username = $state("");
-	let alias = $state("");
-	let bio = $state("");
+	// Form state. A screen that mounts open, a window of its own, starts with the account's values: filled only by the
+	// effect below, after the first render, the form differed from the account for that render, and the save bar was
+	// drawn and slid away each time the window opened.
+	const opensAs = untrack(() => (open ? $currentUser : null));
+	let username = $state(opensAs?.username ?? "");
+	let alias = $state(opensAs?.alias ?? "");
+	let bio = $state(opensAs?.custom ?? "");
 	let saving = $state(false);
 	// How far a new avatar or banner has gone up while the profile saves, in percent, which Save says: null until its
 	// first progress, and while nothing new goes up.
