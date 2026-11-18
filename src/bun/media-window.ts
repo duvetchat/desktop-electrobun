@@ -8,6 +8,7 @@
 // main page when it opened or closed, keeps its frame and its pin on this device, and closes it with the main window,
 // or when that window leaves the app's page (signing out). Electrobun is handed in (media-window-open.ts makes the real
 // window), so this runs in tests.
+import { isAppPage } from "./navigation";
 import { displayOf, type DisplayArea, type Rect } from "./window-frame";
 import type { MirroredChannels, WindowAnswer, WindowCommand, WindowStateMessage } from "./window-relay";
 
@@ -95,15 +96,6 @@ function parseWish(value: unknown): { open: boolean; shown: number } | null {
 	if (typeof value !== "object" || value === null || !("open" in value) || !("shown" in value)) return null;
 	const { open, shown } = value;
 	return typeof open === "boolean" && typeof shown === "number" ? { open, shown } : null;
-}
-
-/** Whether an address is the app's own page: app.html in the app, /app under the dev server. */
-export function isAppPage(url: string): boolean {
-	try {
-		return /(^|\/)app(\.html)?\/?$/.test(new URL(url).pathname);
-	} catch {
-		return false;
-	}
 }
 
 /** The parts of the pop-out's window this drives (media-window-open.ts wraps Electrobun's BrowserWindow). */
@@ -324,3 +316,5 @@ export class MediaWindows {
 		}
 	}
 }
+
+export { isAppPage };

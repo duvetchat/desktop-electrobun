@@ -42,3 +42,26 @@ export function navigatedTo(event: unknown): string | null {
 	if (typeof data !== "object" || data === null || !("detail" in data)) return null;
 	return typeof data.detail === "string" ? data.detail : null;
 }
+
+/** Whether an address is the app's own page: app.html in the app, /app under the dev server. Any other page of the
+ * main window (sign-in and its neighbours) is the app signed out, where no other window of the app stays open
+ * (lib/media-window.ts has the page's twin). */
+export function isAppPage(url: string): boolean {
+	try {
+		return /(^|\/)app(\.html)?\/?$/.test(new URL(url).pathname);
+	} catch {
+		return false;
+	}
+}
+
+/** Whether an address is one of the app's own pages: its views, or the dev server's. A navigation event that names
+ * anything else is not the window's page moving: where a system reports a frame's navigations with its page's (an
+ * embedded player's), they must not read as the app signing out. */
+export function isOwnPage(url: string, devServer: string | null): boolean {
+	try {
+		const { protocol, origin } = new URL(url);
+		return protocol === "views:" || (devServer !== null && origin === new URL(devServer).origin);
+	} catch {
+		return false;
+	}
+}

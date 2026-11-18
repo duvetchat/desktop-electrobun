@@ -216,6 +216,8 @@ function manager(pages: SettingsWindowsDeps["pages"] = { settings: "settings", "
 		sent: WindowStateMessage[];
 		ready: () => void;
 		closed: () => void;
+		/** Set for a window that closed without telling: Electrobun throws for one. */
+		gone: boolean;
 	})[] = [];
 	const told: WindowCommand[] = [];
 	const mirrors = new Set<number>();
@@ -232,15 +234,22 @@ function manager(pages: SettingsWindowsDeps["pages"] = { settings: "settings", "
 				...spec,
 				id,
 				sent: [] as WindowStateMessage[],
+				gone: false,
 				ready: () => handlers.ready.forEach((handler) => handler()),
 				closed: () => handlers.close.forEach((handler) => handler()),
 			};
 			made.push(record);
 			const window: AppWindow = {
 				id,
-				focus: () => log.push(`focus ${id}`),
+				focus: () => {
+					if (record.gone) throw new Error(`No window ${id}`);
+					log.push(`focus ${id}`);
+				},
 				// A window closes a moment after it's asked to, as Electrobun's do.
-				close: () => log.push(`close ${id}`),
+				close: () => {
+					if (record.gone) throw new Error(`No window ${id}`);
+					log.push(`close ${id}`);
+				},
 				send: (message) => record.sent.push(message),
 				onReady: (handler) => handlers.ready.push(handler),
 				onClose: (handler) => handlers.close.push(handler),
@@ -353,11 +362,135 @@ describe("the Settings windows", () => {
 		expect(windows.count).toBe(0);
 	});
 
+	// C-12 of the redesign's review, (b): Electrobun throws for a window that is already gone, and the manager trusted
+	// both the handle and the close event.
+	test("closing them all leaves the relay at once, and a window already gone stops none of it", () => {
+		const { windows, made, log, mirrors } = manager();
+		windows.open({ window: "settings" });
+		windows.open({ window: "space-settings", spaceId: "s1", name: "A" });
+		windows.open({ window: "space-settings", spaceId: "s2", name: "B" });
+		for (const window of made) window.ready();
+		expect(mirrors.size).toBe(3);
+		made[1].gone = true;
+		expect(() => windows.closeAll()).not.toThrow();
+		expect(log).toEqual(["close 2", "close 4"]);
+		// No close event has come, and none is waited for.
+		expect(mirrors.size).toBe(0);
+		expect(windows.count).toBe(0);
+	});
+
+	test("asking for a window that turns out to be gone makes a new one", () => {
+		const { windows, made, log, mirrors, told } = manager();
+		windows.open({ window: "settings" });
+		made[0].ready();
+		made[0].gone = true;
+		expect(windows.open({ window: "settings", section: "audio" })).toBe(true);
+		expect(made).toHaveLength(2);
+		expect(windows.count).toBe(1);
+		expect([...mirrors]).toEqual([]);
+		// The old one's close event, should it still come, is not the new window's.
+		made[0].closed();
+		expect(windows.count).toBe(1);
+		expect(told).toEqual([]);
+		expect(log).toEqual([]);
+	});
+
+	// C-20: a section asked for before the window's page listened reached nobody.
+	test("a section asked for while the page loads is told again once it listens", () => {
+		const { windows, made } = manager();
+		windows.open({ window: "settings" });
+		windows.open({ window: "settings", section: "appearance" });
+		windows.open({ window: "settings", section: "audio" });
+		made[0].ready();
+		const sections = made[0].sent
+			.filter((message) => message.channel === "settings:goto")
+			.map((message) => message.value);
+		expect(sections.at(-1)).toEqual({ spaceId: null, section: "audio" });
+		const seqs = made[0].sent.filter((message) => message.channel === "settings:goto").map((message) => message.seq);
+		expect(seqs).toEqual([1, 2, 3]);
+		// Once, not with every later load.
+		made[0].ready();
+		expect(made[0].sent.filter((message) => message.channel === "settings:goto")).toHaveLength(3);
+	});
+
 	test("opens nothing for a request that names no window, or a window whose page isn't built", () => {
 		const { windows, made } = manager({ settings: "settings" });
 		expect(windows.open({ window: "media" })).toBe(false);
 		expect(windows.open(null)).toBe(false);
 		expect(windows.open({ window: "space-settings", spaceId: "s1", name: "A" })).toBe(false);
 		expect(made).toHaveLength(0);
+	});
+});
+
+// C-12 of the redesign's review, (a): the windows closed on the main page's dom-ready, which is its `load` event. The
+// app is in use before that fires, and Settings opened in between closed a moment later.
+describe("when the main window's page changes", () => {
+	const published = (epoch: number, seq = 1): WindowStateMessage => ({
+		channel: "sync:user",
+		epoch,
+		seq,
+		sentAt: epoch + seq,
+		value: { id: "u1" },
+	});
+	const APP = "views://mainview/app.html";
+
+	test("the app's page finishing its load closes nothing", () => {
+		const { windows, log } = manager();
+		windows.stateFromMain(published(1000));
+		windows.open({ window: "settings" });
+		// did-navigate came as the page started; dom-ready comes with its `load`, after Settings was opened.
+		windows.mainNavigated(APP);
+		windows.mainNavigated("http://localhost:5173/app");
+		windows.stateFromMain(published(1000, 2));
+		expect(log).toEqual([]);
+		expect(windows.count).toBe(1);
+	});
+
+	test("leaving the app's page, which is signing out, closes them all", () => {
+		const { windows, log, mirrors } = manager();
+		windows.stateFromMain(published(1000));
+		windows.open({ window: "settings" });
+		windows.open({ window: "space-settings", spaceId: "s1", name: "A" });
+		windows.mainNavigated("views://mainview/sign-in.html");
+		expect(log).toEqual(["close 2", "close 3"]);
+		expect(windows.count).toBe(0);
+		expect(mirrors.size).toBe(0);
+	});
+
+	test("the app's page loading again closes the windows of the page before, as its first state arrives", () => {
+		const { windows, made, log } = manager();
+		windows.stateFromMain(published(1000));
+		windows.open({ window: "settings" });
+		made[0].ready();
+		// A reload: the new page publishes as it starts.
+		windows.stateFromMain(published(2000));
+		expect(log).toEqual(["close 2"]);
+		expect(windows.count).toBe(0);
+		// Settings opened on the new page stays, through the rest of its states and its `load`.
+		windows.open({ window: "settings" });
+		windows.stateFromMain(published(2000, 2));
+		windows.mainNavigated(APP);
+		expect(log).toEqual(["close 2"]);
+		expect(windows.count).toBe(1);
+	});
+
+	test("a window opened before its page published anything is that page's", () => {
+		const { windows, log } = manager();
+		windows.open({ window: "settings" });
+		windows.stateFromMain(published(1000));
+		windows.stateFromMain(published(1000, 2));
+		expect(log).toEqual([]);
+		windows.stateFromMain(published(2000));
+		expect(log).toEqual(["close 2"]);
+	});
+
+	test("a window closed for the page gives no focus back, and its close event tells nobody", () => {
+		const { windows, made, log, told } = manager();
+		windows.stateFromMain(published(1000));
+		windows.open({ window: "space-settings", spaceId: "s1", name: "A" });
+		windows.stateFromMain(published(2000));
+		made[0].closed();
+		expect(log).toEqual(["close 2"]);
+		expect(told).toEqual([]);
 	});
 });

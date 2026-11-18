@@ -5,6 +5,7 @@
 //
 // What makes a window is the caller's (settings-window-native.ts, which needs Electrobun): this file decides which
 // windows there are, where each opens and what it is told, so it can be tested.
+import { isAppPage } from "./navigation";
 import { shellPreload, type TitleBarStyle, type WindowKind } from "./shell";
 import { displayOf, type DisplayArea, type Rect } from "./window-frame";
 import type { MirroredChannels, WindowCommand, WindowStateMessage } from "./window-relay";
@@ -147,13 +148,24 @@ export const GOTO_CHANNEL = "settings:goto";
 /** The channel of what the main window is told (lib/settings-windows.ts: SETTINGS_CHANNEL). */
 export const SETTINGS_CHANNEL = "settings";
 
+/** A window the manager has open. */
+interface OpenWindow {
+	window: AppWindow;
+	/** The main window's page it was opened for, by its epoch; null before that page published anything. */
+	epoch: number | null;
+	/** Whether its page listens yet. */
+	ready: boolean;
+	/** The section asked for last while it didn't: sent again once it does. */
+	goto: OpenAppWindow | null;
+}
+
 export class SettingsWindows {
 	readonly #deps: SettingsWindowsDeps;
-	readonly #open = new Map<string, AppWindow>();
+	readonly #open = new Map<string, OpenWindow>();
 	readonly #epoch: number;
 	#seq = 0;
-	// The windows closeAll closes: none of them gives the focus back, as the main window is closing or its page left.
-	readonly #closedWithMain = new Set<AppWindow>();
+	/** The epoch of the main window's page, as its states carry it (lib/window-link.ts). */
+	#mainEpoch: number | null = null;
 
 	constructor(deps: SettingsWindowsDeps) {
 		this.#deps = deps;
@@ -174,11 +186,7 @@ export class SettingsWindows {
 		if (!page) return false;
 		const key = windowKey(request);
 		const existing = this.#open.get(key);
-		if (existing) {
-			existing.focus();
-			if (request.section) existing.send(this.#goto(request));
-			return true;
-		}
+		if (existing && this.#bringForward(key, existing, request)) return true;
 		const window = this.#deps.create({
 			kind: request.window,
 			page,
@@ -187,30 +195,88 @@ export class SettingsWindows {
 			...settingsChrome(this.#deps.platform),
 			preload: settingsPreload(request, this.#deps.platform),
 		});
-		this.#open.set(key, window);
+		const opened: OpenWindow = { window, epoch: this.#mainEpoch, ready: false, goto: null };
+		this.#open.set(key, opened);
 		const mirrors = settingsMirrors(request);
-		window.onReady(() => this.#deps.relay.add(window.id, (message) => window.send(message), mirrors));
+		window.onReady(() => {
+			if (this.#open.get(key) !== opened) return;
+			this.#deps.relay.add(window.id, (message) => window.send(message), mirrors);
+			opened.ready = true;
+			// A section asked for while the page loaded reached nobody: the page opened on the one it was made with.
+			if (opened.goto) window.send(this.#goto(opened.goto));
+			opened.goto = null;
+		});
 		window.onClose(() => {
-			if (this.#open.get(key) !== window) return;
-			this.#open.delete(key);
-			this.#deps.relay.remove(window.id);
+			// One this closed itself was let go of as it was asked to close: only a window the person closed is here.
+			if (this.#open.get(key) !== opened) return;
+			this.#forget(key, opened);
 			this.#deps.tellMain({
 				channel: SETTINGS_CHANNEL,
 				name: "closed",
 				args: { window: request.window, spaceId: request.window === "space-settings" ? request.spaceId : null },
 			});
-			if (!this.#closedWithMain.delete(window)) this.#deps.focusMain();
+			this.#deps.focusMain();
 		});
 		return true;
 	}
 
-	/** Closes every Settings window: the main window is closing, or its page went elsewhere (a sign-out, a reload), and
-	 * they show what it shares. */
-	closeAll(): void {
-		for (const window of [...this.#open.values()]) {
-			this.#closedWithMain.add(window);
-			window.close();
+	/** Every state the main window's page publishes passes here, for its epoch: a state of another epoch is another
+	 * page's, the main window loaded again (a reload, a sign-in). The windows opened for the page before show what
+	 * that one shared, and close. The page's first states come as it starts, long before its `load` event, which a
+	 * window opened in between would not survive. */
+	stateFromMain(message: WindowStateMessage) {
+		if (message.epoch === this.#mainEpoch) return;
+		this.#mainEpoch = message.epoch;
+		for (const [key, opened] of [...this.#open]) {
+			// One opened before its page had published anything is that page's.
+			if (opened.epoch === null) opened.epoch = message.epoch;
+			else if (opened.epoch !== message.epoch) this.#close(key, opened);
 		}
+	}
+
+	/** The main window's page is at another address: off the app's page (signed out), every Settings window goes. */
+	mainNavigated(url: string) {
+		if (!isAppPage(url)) this.closeAll();
+	}
+
+	/** Closes every Settings window: the main window is closing, or its page left the app. None of them gives the
+	 * focus back, nor is the main window's page told. */
+	closeAll(): void {
+		for (const [key, opened] of [...this.#open]) this.#close(key, opened);
+	}
+
+	// Brings an open window forward, at the section asked for. False when it turns out to be gone: Electrobun throws
+	// for a window that closed without its close event reaching here, and the caller makes a new one.
+	#bringForward(key: string, opened: OpenWindow, request: OpenAppWindow): boolean {
+		try {
+			opened.window.focus();
+			if (request.section) {
+				opened.window.send(this.#goto(request));
+				// A page that doesn't listen yet takes nothing: it is told again once it does.
+				if (!opened.ready) opened.goto = request;
+			}
+			return true;
+		} catch {
+			this.#forget(key, opened);
+			return false;
+		}
+	}
+
+	// Closes a window from here. It is let go of first, so nothing waits for its close event (which may not come for a
+	// close asked from Bun, or come late) and a window that is already gone, for which Electrobun throws, stops
+	// nothing: not the other windows' closing, nor the main window's own.
+	#close(key: string, opened: OpenWindow) {
+		this.#forget(key, opened);
+		try {
+			opened.window.close();
+		} catch {
+			// Already gone.
+		}
+	}
+
+	#forget(key: string, opened: OpenWindow) {
+		if (this.#open.get(key) === opened) this.#open.delete(key);
+		this.#deps.relay.remove(opened.window.id);
 	}
 
 	#goto(request: OpenAppWindow): WindowStateMessage {

@@ -15,14 +15,14 @@ import {
 import { Toasts } from "./toasts";
 import { startSpotifyReader, type SpotifyActivity } from "./spotify";
 import { ipcHeld, ipcPath, LineReader } from "./ipc";
-import { navigatedTo, navigationRules } from "./navigation";
+import { isAppPage, isOwnPage, navigatedTo, navigationRules } from "./navigation";
 import { Maximizer } from "./window-frame";
 import { dragWithWindows, letWindowsArrange } from "./window-snap";
 import { startupSummary, writeStartupLine } from "./startup";
 import { shellPreload } from "./shell";
 import { keepKeysReachingThePage, mainWindowTitleBar, type AppKit } from "./window-keys";
 import { WindowRelay, type WindowAnswer, type WindowCommand, type WindowStateMessage } from "./window-relay";
-import { isAppPage, MediaWindows } from "./media-window";
+import { MediaWindows } from "./media-window";
 import { mediaWindowOpener } from "./media-window-open";
 // #357, the Windows workstream: Settings and a Space's settings in windows of their own.
 import { SettingsWindows, type OpenAppWindow } from "./settings-windows";
@@ -228,6 +228,8 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 				relay.stateFromMain(message);
 				// The media controls' pop-out opens and closes on the main page's wish, one of these states (#357).
 				mediaWindows.stateFromMain(message);
+				// The Settings windows of the page before this one close as this one's first state says it started.
+				settingsWindows.stateFromMain(message);
 			},
 			openAppWindow: (request) => void settingsWindows.open(request),
 			startupTimings: ({ marks }) => {
@@ -302,7 +304,8 @@ keepKeysReachingThePage(win, appkit, { nativeButtons });
 // As each page loads, not right after new BrowserWindow: macOS reads them later on its main queue, from an address
 // nothing keeps, and right after new BrowserWindow that queue still has the webview's creation ahead of them, so a GC in
 // that gap could leave no rules, with no sign. Only the app's own first page can load before they apply.
-const rules = navigationRules(currentOS, url === DEV_SERVER_URL ? url : null);
+const devServer = url === DEV_SERVER_URL ? url : null;
+const rules = navigationRules(currentOS, devServer);
 win.webview.on("dom-ready", () => win.webview.setNavigationRules(rules));
 
 // ── The media controls' pop-out (#357, calls and media) ─────────────────────────────────────────────────────────────
@@ -339,24 +342,7 @@ const mediaWindows: MediaWindows = new MediaWindows({
 	},
 	log: (line) => console.log(`[media-window] ${line}`),
 });
-win.on("close", () => {
-	mediaWindows.mainClosed();
-	// Nobody answers a command now, and nothing of the page that was is kept for a window to come.
-	relay.setMain(null);
-	relay.reset();
-});
-// Where the main window's page is: Electrobun says so as a navigation commits (did-navigate, each system's own) and
-// again once the page has loaded (dom-ready, which the page itself sends on every system). Off the app's page, which
-// is signing out, the pop-out goes, and the relay lets go of what the app's page published: the next account's windows
-// are handed none of it.
-const mainPageAt = (event: unknown) => {
-	const to = navigatedTo(event);
-	if (to === null) return;
-	mediaWindows.mainNavigated(to);
-	if (!isAppPage(to)) relay.reset();
-};
-win.webview.on("did-navigate", mainPageAt);
-win.webview.on("dom-ready", mainPageAt);
+win.on("close", () => mediaWindows.mainClosed());
 // ── end of the media controls' pop-out ──────────────────────────────────────────────────────────────────────────────
 // ── #357, the Windows workstream's hook: the Settings windows (settings-windows.ts) ──────────────────────────────────
 const settingsWindows = new SettingsWindows({
@@ -377,11 +363,30 @@ const settingsWindows = new SettingsWindows({
 	tellMain: (command) => void rpc.request.windowCommand(command).catch(() => undefined),
 	focusMain: () => win.focus(),
 });
-// They show what the main window's page shares: they go with the main window, and when its page loads again (a
-// sign-out, a reload).
-win.on("close", () => settingsWindows.closeAll());
-win.webview.on("dom-ready", () => settingsWindows.closeAll());
 // ── end of the Windows workstream's hook ─────────────────────────────────────────────────────────────────────────────
+
+// The app's other windows show what the main window's page shares, and go with it.
+win.on("close", () => {
+	settingsWindows.closeAll();
+	// Nobody answers a command now, and nothing of the page that was is kept for a window to come.
+	relay.setMain(null);
+	relay.reset();
+});
+// Where the main window's page is: Electrobun says so as a navigation commits (did-navigate, each system's own) and
+// again once the page has loaded (dom-ready, which the page itself sends on every system, with its address). Off the
+// app's page, which is signing out, the pop-out and the Settings windows go, and the relay lets go of what the app's
+// page published: the next account's windows are handed none of it. The app's page loading again (a reload) is told
+// apart by its states' epoch instead (settingsWindows.stateFromMain, the relay's own): `load` comes after the app is
+// in use, and a Settings window opened in between was closed by it.
+const mainPageAt = (event: unknown) => {
+	const to = navigatedTo(event);
+	if (to === null || !isOwnPage(to, devServer)) return;
+	mediaWindows.mainNavigated(to);
+	settingsWindows.mainNavigated(to);
+	if (!isAppPage(to)) relay.reset();
+};
+win.webview.on("did-navigate", mainPageAt);
+win.webview.on("dom-ready", mainPageAt);
 
 // What Electrobun reports as a new window goes to the system browser: a Ctrl or Cmd click. The webview sends every
 // other click on a link over RPC (openExternal, lib/external-links.ts). On Windows and Linux Electrobun has no hook for
