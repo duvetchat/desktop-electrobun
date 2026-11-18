@@ -600,16 +600,18 @@
 											</span>
 										{/if}
 									</button>
-									<button
-										type="button"
-										class="{iconButtonClass(
-											'sm',
-										)} absolute top-1/2 right-1.5 -translate-y-1/2 opacity-0 group-focus-within/open:opacity-100 group-hover/open:opacity-100"
-										aria-label="Close {title}"
-										onclick={() => openChats.onClose(tab.channelId)}
+									<span
+										class="absolute top-1/2 right-1.5 flex -translate-y-1/2 opacity-0 group-focus-within/open:opacity-100 group-hover/open:opacity-100"
 									>
-										<XIcon class="size-3.5" />
-									</button>
+										<button
+											type="button"
+											class={iconButtonClass("sm")}
+											aria-label="Close {title}"
+											onclick={() => openChats.onClose(tab.channelId)}
+										>
+											<XIcon class="size-3.5" />
+										</button>
+									</span>
 								</li>
 							{/each}
 						</ul>
