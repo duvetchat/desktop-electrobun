@@ -124,8 +124,12 @@ describe("gatewaySpaceToMembers", () => {
 	});
 });
 
-// The members column folded is 0 px wide: it mounts no rows, avatars, banners or popovers then (#327).
-test("the members column mounts its list only while it's open", () => {
+// What was the members column mounts no rows, avatars, banners or popovers for a Space (#327): it has no column any
+// more (#357), and a Space's members open from the faces in a pane's bar. Its one list is a group's panel, which its
+// header's button mounts.
+test("a Space's members mount no list beside the panes", () => {
 	const column = readFileSync(join(import.meta.dir, "components/GuildMemberSidebar.svelte"), "utf8");
-	expect(column).toMatch(/\{#if !collapsed\}\s*<MemberList /);
+	expect(column.match(/<MemberList /g)).toHaveLength(1);
+	expect(column).toMatch(/\{#if overrideMembers !== undefined\}[^]*<MemberList [^]*\{\/if\}\s*$/);
+	expect(column).not.toMatch(/\{:else\}/);
 });

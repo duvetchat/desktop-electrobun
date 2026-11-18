@@ -74,8 +74,8 @@
 	import MemberProfilePopover from "$lib/components/MemberProfilePopover.svelte";
 	import { MEMBER_ROW, memberGroups, shownRows } from "$lib/members";
 
-	// The members, in the groups memberGroups (lib/members.ts) makes, each opening their profile. The members column and
-	// the members popover of a pane's bar both show it; the one around it scrolls it.
+	// The members, in the groups memberGroups (lib/members.ts) makes, each opening their profile. The members popover of a
+	// pane's bar and a group's members panel both show it; the one around it scrolls it.
 	let {
 		members,
 		spaceId = null,
@@ -121,7 +121,7 @@
 	// opacity: text under an opacity loses ClearType and looks thinner than the online names.
 	function getMemberColorStyle(member: MemberOnSidebar): string {
 		const dim = (color: string) =>
-			member.status === "offline" ? `color-mix(in oklab, ${color} 60%, var(--duvet-bg))` : color;
+			member.status === "offline" ? `color-mix(in oklab, ${color} 60%, var(--duvet-pop-ring))` : color;
 		const highest = [...member.roles]
 			.filter((r) => r.color_from !== null && r.color_from !== undefined)
 			.sort((a, b) => b.position - a.position)
@@ -205,8 +205,9 @@
 	{#each groupedMembers as group, g}
 		{@const [start, end] = windows[g] ?? [0, 0]}
 		<div>
+			<!-- The heading stays at the top while its rows scroll under it, on the colour a popover has behind it. -->
 			<div
-				class="bg-duvet-bg text-duvet-ink2 sticky top-0 z-10 flex h-9 items-end px-4 pb-1.5 text-[13px] font-bold select-none"
+				class="text-duvet-ink2 bg-duvet-pop-ring/80 sticky top-0 z-10 flex h-9 items-end px-4 pb-1.5 text-[10.5px] font-semibold tracking-[0.06em] uppercase backdrop-blur-md select-none"
 			>
 				{group.title} — {group.members.length}
 			</div>
@@ -224,7 +225,7 @@
 					onOpenChange={(o) => {
 						activePopoverMemberId = o ? member.id : null;
 					}}
-					triggerClass="group relative mx-2 flex h-10 w-[calc(100%-1rem)] items-center overflow-hidden rounded-row px-2 text-duvet-ink hover:bg-duvet-card focus-visible:outline-2 focus-visible:outline-duvet-accent"
+					triggerClass="group relative mx-2 flex h-10 w-[calc(100%-1rem)] items-center overflow-hidden rounded-xl px-2 text-duvet-ink hover:bg-duvet-hover data-[state=open]:bg-duvet-hover"
 					{onRemoveMember}
 				>
 					{#snippet children()}
@@ -234,7 +235,7 @@
 								<UserAvatar src={member.avatar_url} name={member.username} size={30} />
 								{#if isTyping(member.id)}
 									<span
-										class="border-duvet-bg bg-duvet-ink/10 absolute -right-0.5 -bottom-0.5 flex h-3 w-4 items-center justify-center gap-0.5 rounded-full border-2"
+										class="border-duvet-pop-ring bg-duvet-secondary-fill absolute -right-0.5 -bottom-0.5 flex h-3 w-4 items-center justify-center gap-0.5 rounded-full border-2"
 									>
 										{#if isRecording(member.id)}
 											<MicIcon class="text-duvet-danger size-2 animate-pulse" />
@@ -254,27 +255,34 @@
 									<StatusDot
 										status={member.status}
 										mobileOnly={member.mobile_only}
-										class="text-duvet-bg absolute -right-0.5 -bottom-0.5 w-2.5 border-2"
+										class="text-duvet-pop-ring absolute -right-0.5 -bottom-0.5 w-2.5 border-2"
 									/>
 								{/if}
 							</div>
 
 							<div class="min-w-0 text-left">
 								<span
-									class="flex items-center gap-1 truncate leading-5 font-medium"
+									class="flex items-center gap-1 truncate text-[13.5px] leading-5 font-semibold"
 									style={getMemberColorStyle(member)}
 								>
 									<span class="truncate">{member.username}</span>
 									{#if member.is_bot}
-										<span class="text-xxs text-duvet-ink2 {member.status === 'offline' ? 'opacity-60' : ''}">BOT</span>
+										<span
+											class="bg-duvet-secondary-fill text-duvet-ink2 rounded-[5px] px-1 text-[9.5px] leading-[14px] font-bold tracking-[0.04em] [-webkit-text-fill-color:currentColor] {member.status ===
+											'offline'
+												? 'opacity-60'
+												: ''}">BOT</span
+										>
 									{/if}
 									{#if member.is_owner}
-										<CrownSimpleIcon class="text-duvet-warn size-3 {member.status === 'offline' ? 'opacity-60' : ''}" />
+										<CrownSimpleIcon
+											class="text-duvet-crown size-[13px] shrink-0 {member.status === 'offline' ? 'opacity-60' : ''}"
+										/>
 									{/if}
 								</span>
 								{#if shownActivities($userActivities[member.id]).length}
 									{@const activity = shownActivities($userActivities[member.id])[0]!}
-									<p class="text-duvet-ink2 truncate text-xs">
+									<p class="text-duvet-ink2 truncate text-[11.5px] leading-4">
 										{isSpotify(activity)
 											? "Listening to Spotify"
 											: `${activity.name}${activity.state ? ` — ${activity.state}` : ""}`}
