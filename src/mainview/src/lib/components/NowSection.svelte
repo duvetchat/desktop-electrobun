@@ -277,7 +277,9 @@
 								data-jump
 								onclick={() => onConversationSelect(call.conv.id)}
 							>
-								<span class="bg-duvet-alive/14 text-duvet-alive-text grid size-8 shrink-0 place-items-center rounded-[10px]">
+								<span
+									class="bg-duvet-alive/14 text-duvet-alive-text grid size-8 shrink-0 place-items-center rounded-[10px]"
+								>
 									<PhoneIcon class="size-4" />
 								</span>
 								<span class="flex min-w-0 flex-1 flex-col">

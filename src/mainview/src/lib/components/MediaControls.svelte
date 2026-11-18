@@ -61,7 +61,7 @@
 				side="right"
 				onclick={actions.openPlace}
 			>
-				<span class={isLive(media) ? "text-duvet-alive" : "text-duvet-ink2"} data-place={media.phase}>
+				<span class={isLive(media) ? "text-duvet-alive-text" : "text-duvet-ink2"} data-place={media.phase}>
 					{#if media.place.kind === "call"}<PhoneCall size={15} />{:else}<SignalHigh size={15} />{/if}
 				</span>
 			</MediaButton>
