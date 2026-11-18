@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Toggle from "$lib/components/ui/Toggle.svelte";
 	import { onDestroy, onMount } from "svelte";
 	import { SvelteMap } from "svelte/reactivity";
 	import { CircleAlert as AlertIcon, X as XIcon } from "@lucide/svelte";
@@ -197,23 +198,7 @@
 				{#if o.type === CommandOptionType.Boolean && o.required}
 					<!-- A required one always has a value: off until it's turned on -->
 					{@const on = fields.get(o.name) === true}
-					<button
-						type="button"
-						role="switch"
-						aria-checked={on}
-						aria-label={o.name}
-						disabled={sending}
-						onclick={() => fields.set(o.name, !on)}
-						class="relative h-5 w-9 shrink-0 rounded-full transition-colors disabled:opacity-45 motion-reduce:transition-none {on
-							? 'bg-duvet-accent'
-							: 'bg-duvet-toggle-off'}"
-					>
-						<span
-							class="bg-fixed-white shadow-duvet-raised absolute top-0.5 left-0.5 size-4 rounded-full transition-transform motion-reduce:transition-none {on
-								? 'translate-x-4'
-								: ''}"
-						></span>
-					</button>
+					<Toggle checked={on} onCheckedChange={(next) => fields.set(o.name, next)} disabled={sending} label={o.name} />
 				{:else if isText(o)}
 					<input
 						value={String(fields.get(o.name) ?? "")}

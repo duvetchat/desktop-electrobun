@@ -114,7 +114,7 @@
 	import Sheet from "$lib/components/ui/Sheet.svelte";
 	import { ERROR_NOTE } from "$lib/overlay-forms";
 	import StatusDot from "$lib/components/StatusDot.svelte";
-	import SpaceIcon from "$lib/components/SpaceIcon.svelte";
+	import SpaceIcon from "$lib/components/ui/SpaceIcon.svelte";
 
 	let {
 		conversation,
@@ -985,12 +985,7 @@
 		<div class="mt-2 flex flex-wrap items-center justify-center gap-2">
 			{#each shared as space (space.id)}
 				<span class="{pillClass()} pl-1">
-					<SpaceIcon
-						src={space.icon ? getAvatarURL(space.id, space.icon) : null}
-						name={space.name}
-						size={20}
-						class="rounded-md"
-					/>
+					<SpaceIcon src={space.icon ? getAvatarURL(space.id, space.icon) : null} name={space.name} size={20} />
 					{space.name}
 				</span>
 			{/each}

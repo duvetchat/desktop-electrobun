@@ -62,8 +62,6 @@ describe("the focus outline", () => {
 			// highlighted under it.
 			"lib/components/QuickSwitcher.svelte": 2,
 			// Recipes written over two lines: the ring is on the next.
-			"lib/components/settings/recipes.ts": 1,
-			"lib/overlay-forms.ts": 1,
 		});
 	});
 

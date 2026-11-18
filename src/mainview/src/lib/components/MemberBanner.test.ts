@@ -89,7 +89,7 @@ test("the member list draws the same banner", () => {
 // rows included; and the crop saved them as PNG, about 100 KB for a 256×256 photo where WebP takes about 15 KB.
 describe("profile images", () => {
 	test("load as they come near the view", () => {
-		for (const file of ["UserAvatar.svelte", "MemberBanner.svelte", "SpaceIcon.svelte", "SpaceBanner.svelte"]) {
+		for (const file of ["UserAvatar.svelte", "MemberBanner.svelte", "ui/SpaceIcon.svelte"]) {
 			const images = source(file).match(/<img\b[\s\S]*?\/>/g) ?? [];
 			expect(images.length).toBeGreaterThan(0);
 			for (const image of images) expect(image).toContain('loading="lazy"');

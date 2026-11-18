@@ -1,6 +1,7 @@
 // The Settings screens' recipes (#357, docs/redesign/DESIGN-MAP.md S-47): the classes and the small sums Settings, a
 // Space's settings and a room's share. The primitives' own are in components/ui/recipes.ts.
 import type { Component } from "svelte";
+import { fieldClass } from "$lib/components/ui/recipes";
 
 /** A section of a settings screen, as its side panel lists it. */
 export interface SettingsNavItem<Section extends string = string> {
@@ -43,17 +44,12 @@ export function navLabel<Section extends string>(
 	return undefined;
 }
 
-const FIELD_BASE =
-	"bg-duvet-card text-duvet-ink placeholder:text-duvet-ink2 shadow-duvet-well ring-duvet-line w-full rounded-[11px] " +
-	"text-[13.5px] ring-1 transition-shadow duration-[120ms] outline-none motion-reduce:transition-none " +
-	"focus-visible:ring-duvet-accent focus-visible:ring-2 disabled:opacity-50 focus-override";
-
-/** A text field: 38 tall, on the card's fill with a well and a hairline; focused, the accent's ring. */
-export const FIELD = `${FIELD_BASE} h-[38px] px-3`;
+/** A text field: the app's one (lib/components/ui/recipes.ts), 38 tall. */
+export const FIELD = fieldClass("line");
 /** A smaller field, for a row's own input (a name edited in place). */
-export const FIELD_SM = `${FIELD_BASE} h-8 px-2.5`;
+export const FIELD_SM = fieldClass("sm");
 /** A text area: at least 84 tall, in the face people write in. */
-export const FIELD_AREA = `${FIELD_BASE} font-content min-h-[84px] resize-none px-3 py-2 leading-[1.45]`;
+export const FIELD_AREA = `${fieldClass("area")} font-content min-h-[84px] leading-[1.45]`;
 /** A field that is wrong: the danger ring, focused or not. */
 export const FIELD_WRONG = "ring-duvet-danger ring-2 focus-visible:ring-duvet-danger";
 

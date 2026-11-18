@@ -32,7 +32,7 @@
 	import ContextMenu from "$lib/components/ui/ContextMenu.svelte";
 	import MenuItem from "$lib/components/ui/MenuItem.svelte";
 	import MenuSeparator from "$lib/components/ui/MenuSeparator.svelte";
-	import { MENU_PANEL, menuItemClass } from "$lib/components/ui/recipes";
+	import { countBadgeClass, MENU_PANEL, menuItemClass } from "$lib/components/ui/recipes";
 
 	// The sidebar's chats (#357, S-05): the user's direct messages and groups, the one with the latest message first.
 	// Under All (`folded`) the six latest show, with any unread one and the open one, then a row for the rest; under
@@ -167,10 +167,8 @@
 					</span>
 					{#if news.mentions}
 						<!-- Its mentions, as a room's row counts them -->
-						<span
-							class="bg-duvet-accent text-duvet-on-accent flex h-[18px] min-w-[18px] shrink-0 items-center justify-center rounded-full px-1.5 text-[10.5px] font-bold"
-							role="img"
-							aria-label={mentionsLabel(news.mentions)}>{chipCount(news.mentions)}</span
+						<span class={countBadgeClass()} role="img" aria-label={mentionsLabel(news.mentions)}
+							>{chipCount(news.mentions)}</span
 						>
 					{:else if unread}
 						<span class="bg-duvet-accent size-2 shrink-0 rounded-full" role="img" aria-label="Unread"></span>

@@ -78,7 +78,7 @@
 	import Segmented from "$lib/components/ui/Segmented.svelte";
 	import SpaceIcon from "$lib/components/ui/SpaceIcon.svelte";
 	import Tooltip from "$lib/components/ui/Tooltip.svelte";
-	import { iconButtonClass, MENU_PANEL, menuItemClass } from "$lib/components/ui/recipes";
+	import { countBadgeClass, iconButtonClass, MENU_PANEL, menuItemClass } from "$lib/components/ui/recipes";
 
 	// The sidebar (#357, S-03 to S-07, S-09): one column. Its header is half of the window's title line; under it the
 	// field that opens the quick switcher; then Chats and Spaces as two sections of one list, or one of them alone
@@ -315,8 +315,7 @@
 	];
 
 	const rowFocus = "focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-duvet-accent";
-	const chip =
-		"flex h-[18px] min-w-[18px] shrink-0 items-center justify-center rounded-full px-1.5 text-[10.5px] font-bold";
+	const chip = countBadgeClass("md", false);
 </script>
 
 {#snippet mentionChip(count: number)}

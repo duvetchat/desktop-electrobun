@@ -5,10 +5,15 @@ const classes = (list: string) => list.split(/\s+/);
 
 test("a field is 38 px tall on the card's fill, and draws its own focus ring", () => {
 	const line = classes(fieldClass());
-	expect(line).toEqual(expect.arrayContaining(["h-[38px]", "rounded-[11px]", "bg-duvet-card", "shadow-duvet-well"]));
-	// The app's outline for a focused element stays off it (app.css), and its ring is the accent's.
+	expect(line).toEqual(expect.arrayContaining(["h-[38px]", "rounded-[11px]", "bg-duvet-card"]));
+	// Recessed inside a hairline. The app's outline for a focused element stays off it (app.css): its own mark is
+	// the accent's line inside a tint, and danger's line while it reads wrong.
+	expect(line).toContain("shadow-[var(--duvet-shadow-well),0_0_0_1px_var(--duvet-line)]");
 	expect(line).toContain("focus-override");
-	expect(line).toContain("focus:shadow-[0_0_0_4px_var(--duvet-accent-tint),0_0_0_1px_var(--duvet-accent)]");
+	expect(line).toContain(
+		"focus:shadow-[var(--duvet-shadow-well),0_0_0_1px_var(--duvet-accent),0_0_0_4px_var(--duvet-accent-tint)]",
+	);
+	expect(line).toContain("aria-invalid:shadow-[var(--duvet-shadow-well),0_0_0_1px_var(--duvet-danger)]");
 	expect(line).toContain("motion-reduce:transition-none");
 });
 
@@ -34,4 +39,14 @@ test("a busy button's label ends in one ellipsis character", () => {
 	expect(busyLabel("Delete")).toBe("Delete…");
 	expect(busyLabel("Delete...")).toBe("Delete…");
 	expect(busyLabel("Joining…")).toBe("Joining…");
+});
+
+test("sheets, Settings and the sign-in pages draw one field", async () => {
+	const { fieldClass: one } = await import("$lib/components/ui/recipes");
+	const settings = await import("$lib/components/settings/recipes");
+	expect(fieldClass()).toBe(one("line"));
+	expect(settings.FIELD).toBe(one("line"));
+	expect(settings.FIELD_SM).toBe(one("sm"));
+	expect(classes(settings.FIELD_SM)).toContain("h-8");
+	expect(classes(settings.FIELD_AREA)).toEqual(expect.arrayContaining(classes(one("area"))));
 });

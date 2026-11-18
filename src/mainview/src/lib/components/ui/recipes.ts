@@ -51,6 +51,34 @@ export const GLASS = "bg-duvet-glass shadow-duvet-glass backdrop-blur-[32px] bac
 /** The stronger glass of sheets and ⌘K. */
 export const GLASS_STRONG = "bg-duvet-glass-strong shadow-duvet-glass backdrop-blur-[32px] backdrop-saturate-[1.8]";
 
+// One text field for the whole app (#357, the prototype's `.field > input`): on the card's fill, recessed (the well)
+// inside a hairline, 11 px corners, 13.5 px text. Focused, the hairline turns to the accent inside a 4 px tint; a
+// field marked wrong (aria-invalid) has the danger's line. Its ring is its focus mark, so it takes no global outline.
+const FIELD_BASE =
+	"bg-duvet-card text-duvet-ink placeholder:text-duvet-ink2 focus-override w-full rounded-[11px] text-[13.5px] " +
+	"shadow-[var(--duvet-shadow-well),0_0_0_1px_var(--duvet-line)] " +
+	"transition-shadow duration-[120ms] motion-reduce:transition-none " +
+	"outline-none focus:shadow-[var(--duvet-shadow-well),0_0_0_1px_var(--duvet-accent),0_0_0_4px_var(--duvet-accent-tint)] " +
+	"aria-invalid:shadow-[var(--duvet-shadow-well),0_0_0_1px_var(--duvet-danger)] disabled:opacity-50";
+
+/** A text field's classes: one line (38 px), a smaller line for a row's own input (32 px), or `area` for several
+ *  lines, which the user can't resize unless the caller says so. Sheets, dialogs, Settings and the sign-in pages all
+ *  draw this one. */
+export function fieldClass(kind: "line" | "sm" | "area" = "line"): string {
+	if (kind === "line") return `${FIELD_BASE} h-[38px] px-3`;
+	if (kind === "sm") return `${FIELD_BASE} h-8 px-2.5`;
+	return `${FIELD_BASE} resize-none px-3 py-2 leading-[1.4]`;
+}
+
+/** A count on a row, a tab or a button (unread mentions, requests waiting): a small round badge, 18 px, or 16 px
+ *  (`sm`) where the row is tight (a tab, a result, a section of Settings). On the accent unless the caller draws its
+ *  own fill (`filled` false). */
+export function countBadgeClass(size: "md" | "sm" = "md", filled = true): string {
+	const shape = size === "md" ? "h-[18px] min-w-[18px] px-1.5" : "h-4 min-w-4 px-1";
+	const fill = filled ? " bg-duvet-accent text-duvet-on-accent" : "";
+	return `flex shrink-0 items-center justify-center rounded-full text-[10.5px] font-bold tabular-nums ${shape}${fill}`;
+}
+
 /** A pill's classes: a small raised chip; picked, it takes the chosen fill and ink. */
 export function pillClass(picked = false): string {
 	const state = picked

@@ -97,7 +97,7 @@
 	import MenuItem from "$lib/components/ui/MenuItem.svelte";
 	import MenuSeparator from "$lib/components/ui/MenuSeparator.svelte";
 	import MenuSub from "$lib/components/ui/MenuSub.svelte";
-	import { buttonClass, GLASS, MENU_PANEL } from "$lib/components/ui/recipes";
+	import { buttonClass, countBadgeClass, GLASS, MENU_PANEL } from "$lib/components/ui/recipes";
 	import EmojiPicker from "$lib/components/EmojiPicker.svelte";
 	import ImagePreview from "$lib/components/ImagePreview.svelte";
 	import MemberProfilePopover from "$lib/components/MemberProfilePopover.svelte";
@@ -1401,10 +1401,7 @@
 	>
 		<ArrowDownIcon size={16} />
 		{#if unreadCount > 0}
-			<span
-				class="bg-duvet-accent text-duvet-on-accent absolute -top-1 -right-1 h-[18px] min-w-[18px] rounded-full px-[5px] text-center text-[10.5px] leading-[18px] font-bold tabular-nums"
-				aria-hidden="true">{unreadCount}</span
-			>
+			<span class="{countBadgeClass()} absolute -top-1 -right-1" aria-hidden="true">{unreadCount}</span>
 		{/if}
 	</button>
 {/if}

@@ -4,7 +4,7 @@
 	import { Search as SearchIcon, X as XIcon } from "@lucide/svelte";
 	import DragRegion from "$lib/components/DragRegion.svelte";
 	import WindowControls from "$lib/components/WindowControls.svelte";
-	import { iconButtonClass } from "$lib/components/ui/recipes";
+	import { countBadgeClass, iconButtonClass } from "$lib/components/ui/recipes";
 	import { filterNav, navLabel, type SettingsNavGroup } from "./recipes";
 
 	// The chassis of Settings and of a Space's settings (#357, DESIGN-MAP.md S-47, S-58): a side panel that lists the
@@ -102,10 +102,7 @@
 							</span>
 							<span class="min-w-0 flex-1 truncate">{item.label}</span>
 							{#if item.count}
-								<span
-									class="bg-duvet-accent text-duvet-on-accent flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[11px] font-semibold tabular-nums"
-									>{item.count}</span
-								>
+								<span class={countBadgeClass("sm")}>{item.count}</span>
 							{/if}
 						</button>
 					{/each}

@@ -1,17 +1,11 @@
-// What the fields of a sheet or a dialog share (#357, docs/redesign/DESIGN-MAP.md S-44 to S-46): a field on the card's
-// fill, recessed, 38 px tall with 11 px corners, ringed in the accent while it has the focus; its label over it; the
-// line under it that says what's wrong; and the spinner of a button whose action is on its way.
+import { fieldClass } from "$lib/components/ui/recipes";
 
-const FIELD_BASE =
-	"bg-duvet-card text-duvet-ink placeholder:text-duvet-ink2 shadow-duvet-well focus-override w-full rounded-[11px] " +
-	"px-3 text-[13.5px] outline-none transition-shadow duration-[120ms] motion-reduce:transition-none " +
-	"focus:shadow-[0_0_0_4px_var(--duvet-accent-tint),0_0_0_1px_var(--duvet-accent)] disabled:opacity-45";
+// What the fields of a sheet or a dialog share (#357, docs/redesign/DESIGN-MAP.md S-44 to S-46): the app's text field
+// (lib/components/ui/recipes.ts); its label over it; the line under it that says what's wrong; and the spinner of a
+// button whose action is on its way.
 
-/** A field's classes: one line (38 px), or `area` for several lines, which the user can't resize unless the caller
- *  says so. */
-export function fieldClass(kind: "line" | "area" = "line"): string {
-	return kind === "line" ? `${FIELD_BASE} h-[38px]` : `${FIELD_BASE} resize-none py-2 leading-[1.4]`;
-}
+/** A field's classes: the app's one text field (lib/components/ui/recipes.ts). */
+export { fieldClass };
 
 /** A field's label, over it. */
 export const FIELD_LABEL = "text-duvet-ink2 text-xs font-medium";

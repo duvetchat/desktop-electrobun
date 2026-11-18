@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { countBadgeClass } from "$lib/components/ui/recipes";
 	import {
 		Columns2 as ColumnsIcon,
 		Search as SearchIcon,
@@ -364,10 +365,8 @@
 							{@render roomMark(tab)}<span class="truncate">{title}</span>
 						</span>
 						{#if mentions > 0 && !isActive}
-							<span
-								class="bg-duvet-accent text-duvet-on-accent flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full px-1 text-[10.5px] font-bold"
-								role="img"
-								aria-label={mentionsLabel(mentions)}>{chipCount(mentions)}</span
+							<span class={countBadgeClass("sm")} role="img" aria-label={mentionsLabel(mentions)}
+								>{chipCount(mentions)}</span
 							>
 						{:else if unread}
 							<span class="bg-duvet-accent size-1.5 shrink-0 rounded-full" role="img" aria-label="Unread"></span>

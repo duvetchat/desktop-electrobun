@@ -10,10 +10,10 @@
 	import { mentionsLabel } from "$lib/shell-layout";
 	import { conversations, currentUser, friends, gatewaySpaces } from "$lib/stores.svelte";
 	import { shownMentionCounts, shownUnreadConversations, shownUnreadRooms } from "$lib/notification-marks";
-	import SpaceIcon from "$lib/components/SpaceIcon.svelte";
+	import SpaceIcon from "$lib/components/ui/SpaceIcon.svelte";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
 	import Kbd from "$lib/components/ui/Kbd.svelte";
-	import { GLASS_STRONG } from "$lib/components/ui/recipes";
+	import { countBadgeClass, GLASS_STRONG } from "$lib/components/ui/recipes";
 
 	/** Jumping to a space, a room of any space, a conversation or a friend by typing part of its name. */
 	let {
@@ -250,9 +250,7 @@
 						onkeydown={() => {}}
 					>
 						{#if item.kind === "space"}
-							<span class="contents" aria-hidden="true"
-								><SpaceIcon src={item.icon} name={item.name} size={24} class="rounded-[7px]" /></span
-							>
+							<span class="contents" aria-hidden="true"><SpaceIcon src={item.icon} name={item.name} size={24} /></span>
 						{:else if item.kind === "room"}
 							<span
 								class="bg-duvet-secondary-fill grid size-6 shrink-0 place-items-center rounded-[7px] {item.voice
@@ -277,10 +275,8 @@
 							{#if item.kind === "space"}Space{:else if item.kind === "room"}{item.spaceName}{:else if item.kind === "conversation"}{item.sub}{:else}Friend{/if}
 						</span>
 						{#if (item.kind === "room" || item.kind === "conversation") && item.mentions}
-							<span
-								class="bg-duvet-accent text-duvet-on-accent flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full px-1 text-[11px] font-bold"
-								role="img"
-								aria-label={mentionsLabel(item.mentions)}>{item.mentions}</span
+							<span class={countBadgeClass("sm")} role="img" aria-label={mentionsLabel(item.mentions)}
+								>{item.mentions}</span
 							>
 						{/if}
 						{#if isActive}

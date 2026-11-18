@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { Snippet } from "svelte";
 	import type { HTMLInputAttributes } from "svelte/elements";
+	import { fieldClass } from "$lib/components/ui/recipes";
 
 	// A field of the sign-in pages, as mobile's DuvetTextField at the desktop's density: its label over a recessed
 	// card 38 tall (the well and a hairline; the accent's ring while focused, danger's edge while it reads wrong), with
@@ -47,16 +48,14 @@
 		{@render aside?.()}
 	</div>
 	<div class="relative">
-		<!-- Its ring is its focus mark, so it takes no global outline (focus-override). -->
+		<!-- The app's one text field (ui/recipes.ts): its ring is its focus mark, its edge turns to danger while wrong. -->
 		<input
 			{...rest}
 			{id}
 			bind:value
 			aria-invalid={wrong ? true : undefined}
 			aria-describedby={described}
-			class="focus-override bg-duvet-card text-duvet-ink placeholder:text-duvet-ink2 block h-[38px] w-full rounded-xl px-3 text-[14px] shadow-[var(--duvet-shadow-well),0_0_0_1px_var(--duvet-line)] transition-shadow duration-[120ms] outline-none focus:shadow-[var(--duvet-shadow-well),0_0_0_1px_var(--duvet-accent),0_0_0_4px_var(--duvet-accent-tint)] disabled:opacity-60 aria-invalid:shadow-[var(--duvet-shadow-well),0_0_0_1px_var(--duvet-danger)] motion-reduce:transition-none {trailing
-				? 'pr-11'
-				: ''}"
+			class="{fieldClass()} block {trailing ? 'pr-11' : ''}"
 		/>
 		{#if trailing}
 			<div class="absolute inset-y-0 right-1 flex items-center">{@render trailing()}</div>

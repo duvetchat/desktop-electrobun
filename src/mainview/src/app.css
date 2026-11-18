@@ -561,8 +561,6 @@
 	--animate-notice-in: notice-in 0.45s cubic-bezier(0.34, 1.12, 0.64, 1);
 	/* a message after a jump to it: a ring, held, then gone */
 	--animate-flash: flash 1.6s cubic-bezier(0.2, 0.9, 0.3, 1);
-	/* the same on a flat row: its background */
-	--animate-flash-row: flash-row 1.6s cubic-bezier(0.2, 0.9, 0.3, 1);
 	/* typing and ringing dots (delay each 0.15s after the last) */
 	--animate-dot: dot 1.2s infinite;
 	/* the recording dot */
@@ -632,13 +630,6 @@
 			box-shadow:
 				0 0 0 0 transparent,
 				var(--duvet-shadow-raised);
-		}
-	}
-
-	@keyframes flash-row {
-		0%,
-		35% {
-			background: var(--duvet-accent-tint);
 		}
 	}
 
@@ -738,7 +729,6 @@
 		--animate-tip-in: none;
 		--animate-notice-in: none;
 		--animate-flash: none;
-		--animate-flash-row: none;
 		--animate-dot: none;
 		--animate-rec-pulse: none;
 		--animate-rec-bar: none;

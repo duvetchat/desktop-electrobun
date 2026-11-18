@@ -42,7 +42,7 @@
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
 	import StatusDot from "$lib/components/StatusDot.svelte";
 	import ConversationView from "$lib/components/ConversationView.svelte";
-	import { buttonClass } from "$lib/components/ui/recipes";
+	import { buttonClass, countBadgeClass } from "$lib/components/ui/recipes";
 	import Sheet from "$lib/components/ui/Sheet.svelte";
 	import { ERROR_NOTE, FIELD_LABEL, fieldClass } from "$lib/overlay-forms";
 	import MessageSearch from "$lib/components/MessageSearch.svelte";
@@ -426,7 +426,7 @@
 						{tab.label}
 						{#if tab.count}
 							<span
-								class="flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10.5px] font-bold tabular-nums {tab.alert
+								class="{countBadgeClass('sm', false)} {tab.alert
 									? 'bg-duvet-accent text-duvet-on-accent'
 									: 'bg-duvet-secondary-fill text-duvet-ink2'}">{tab.count}</span
 							>
@@ -649,7 +649,7 @@
 							}}
 						>
 							<input
-								class="bg-duvet-sunk shadow-duvet-press text-duvet-ink placeholder:text-duvet-ink2 focus-override focus-visible:outline-duvet-accent h-10 min-w-0 flex-1 rounded-xl px-3 text-sm focus-visible:outline-2"
+								class="{fieldClass()} min-w-0 flex-1"
 								type="text"
 								placeholder="User ID"
 								aria-label="User ID"

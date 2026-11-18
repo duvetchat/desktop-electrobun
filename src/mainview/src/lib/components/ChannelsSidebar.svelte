@@ -35,7 +35,7 @@
 	import { FIELD_LABEL, fieldClass } from "$lib/overlay-forms";
 	import MenuItem from "$lib/components/ui/MenuItem.svelte";
 	import MenuSeparator from "$lib/components/ui/MenuSeparator.svelte";
-	import { MENU_PANEL, menuItemClass } from "$lib/components/ui/recipes";
+	import { countBadgeClass, MENU_PANEL, menuItemClass } from "$lib/components/ui/recipes";
 	import { chipCount, keysFor, mentionsLabel, openHow, SHELL_KEYS, type OpenHow } from "$lib/shell-layout";
 	import { speakingUsers, activeVoiceRoomId, gatewaySpaces, typingNow } from "$lib/stores.svelte";
 	import { shownMentionCounts, shownUnreadRooms } from "$lib/notification-marks";
@@ -515,7 +515,7 @@
 							{#if typing}<span class="sr-only">{typing}</span>{/if}
 							{#if channel.type === "text" && $shownMentionCounts[channel.id]}
 								<span
-									class="bg-duvet-accent text-duvet-on-accent ml-1 flex h-[18px] min-w-[18px] shrink-0 items-center justify-center rounded-full px-1.5 text-[10.5px] font-bold"
+									class="{countBadgeClass()} ml-1"
 									role="img"
 									aria-label={mentionsLabel($shownMentionCounts[channel.id] ?? 0)}
 									>{chipCount($shownMentionCounts[channel.id] ?? 0)}</span
