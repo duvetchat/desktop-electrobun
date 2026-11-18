@@ -1,4 +1,5 @@
 import Electrobun, { BrowserView, BrowserWindow, Screen, Updater, Utils } from "electrobun/bun";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fitActivity, MAX_ACTIVITIES, type ActivityPayload } from "./activities";
 import { ActivityImages, IpcActivities, PAGE_WAIT_MS, within } from "./activity-images";
@@ -21,6 +22,9 @@ import { startupSummary, writeStartupLine } from "./startup";
 import { shellPreload } from "./shell";
 import { keepKeysReachingThePage, mainWindowTitleBar, type AppKit } from "./window-keys";
 import { WindowRelay, type WindowAnswer, type WindowCommand, type WindowStateMessage } from "./window-relay";
+import { MediaWindows } from "./media-window";
+import { mediaWindowOpener } from "./media-window-open";
+import { secondWindowUrl } from "../mainview/src/lib/app-windows";
 
 // When Bun started, and its own steps of the app's start, which the page's join in startup.log (startupTimings, #280):
 // its code running (what loads before it, Electrobun's API, comes first) and the window made.
@@ -215,7 +219,11 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 				markWebviewReady();
 				setSpotifyActivity(enabled);
 			},
-			windowState: (message) => relay.stateFromMain(message),
+			windowState: (message) => {
+				relay.stateFromMain(message);
+				// The media controls' pop-out opens and closes on the main page's wish, one of these states (#357).
+				mediaWindows.stateFromMain(message);
+			},
 			startupTimings: ({ marks }) => {
 				const line = `${new Date().toISOString()} ${startupSummary(processStart, { ...bunMarks, ...marks })}`;
 				console.log(line);
@@ -290,6 +298,47 @@ keepKeysReachingThePage(win, appkit, { nativeButtons });
 // that gap could leave no rules, with no sign. Only the app's own first page can load before they apply.
 const rules = navigationRules(currentOS, url === DEV_SERVER_URL ? url : null);
 win.webview.on("dom-ready", () => win.webview.setNavigationRules(rules));
+
+// ── The media controls' pop-out (#357, calls and media) ─────────────────────────────────────────────────────────────
+// A small window of its own for the media controls, which the main page asks for (media-window.ts). The call stays in
+// the main window: this one mirrors its state through the relay and sends its commands back. It closes with the main
+// window, and when that window leaves the app's page (signing out). Its place and its pin are kept in the app's data.
+const mediaWindowPrefs = join(Utils.paths.userData, "media-window.json");
+const mediaWindows: MediaWindows = new MediaWindows({
+	create: mediaWindowOpener({
+		url: url === DEV_SERVER_URL ? `${DEV_SERVER_URL}/voice-controls` : (secondWindowUrl("media") ?? ""),
+		renderer: rendererType,
+		platform: currentOS,
+		appkit,
+		rules,
+		command: (command) => mediaWindows.commandFromWindow(command),
+	}),
+	displays: () => Screen.getAllDisplays(),
+	mainFrame: () => win.getFrame(),
+	focusMain: () => {
+		if (win.isMinimized()) win.unminimize();
+		win.focus();
+	},
+	relay,
+	readPrefs: () => {
+		try {
+			return readFileSync(mediaWindowPrefs, "utf8");
+		} catch {
+			return null;
+		}
+	},
+	writePrefs: (text) => {
+		mkdirSync(dirname(mediaWindowPrefs), { recursive: true });
+		writeFileSync(mediaWindowPrefs, text);
+	},
+	log: (line) => console.log(`[media-window] ${line}`),
+});
+win.on("close", () => mediaWindows.mainClosed());
+win.webview.on("did-navigate", (event: { data?: { detail?: unknown } }) => {
+	const to = event?.data?.detail;
+	if (typeof to === "string") mediaWindows.mainNavigated(to);
+});
+// ── end of the media controls' pop-out ──────────────────────────────────────────────────────────────────────────────
 
 // What Electrobun reports as a new window goes to the system browser: a Ctrl or Cmd click. The webview sends every
 // other click on a link over RPC (openExternal, lib/external-links.ts). On Windows and Linux Electrobun has no hook for
