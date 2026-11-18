@@ -2,6 +2,7 @@
 	import ReactionCount from "$lib/components/ReactionCount.svelte";
 	import ReactionEmoji from "$lib/components/ReactionEmoji.svelte";
 	import type { CustomEmojiMap } from "$lib/markdown";
+	import { reactionKey } from "$lib/reactions";
 	import { currentUser } from "$lib/stores.svelte";
 	import type { MessageReaction } from "$lib/types";
 
@@ -24,7 +25,7 @@
 
 {#if reactions.length > 0}
 	<div class="mt-1 flex flex-wrap gap-1">
-		{#each reactions as reaction (reaction.emoji_name)}
+		{#each reactions as reaction (reactionKey(reaction))}
 			{@const mine = $currentUser ? reaction.users.includes($currentUser.id) : false}
 			<button
 				class="inline-flex items-center gap-1.5 rounded-lg border px-2 py-1 text-sm transition-colors {mine

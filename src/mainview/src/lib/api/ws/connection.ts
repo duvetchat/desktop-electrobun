@@ -33,12 +33,16 @@ import {
 	dropVoiceRequests,
 	spaceEmojis,
 	spaceStickers,
+	everyEmoji,
 	userActivities,
 	shareSpotify,
 	pendingTeamInvites,
 	myBuckets,
 	allSpacesReady,
 } from "$lib/stores.svelte";
+import { listEmojis, listMyEmojis } from "$lib/api/emojis";
+import { listMyStickers, listStickers } from "$lib/api/stickers";
+import { bySpace } from "$lib/space-emojis";
 import { getFriends, getPendingRequests, getSentRequests, type Friend } from "$lib/api/friends";
 import { getConversations, getDirectMessageById, type Conversation, type DirectMessage } from "$lib/api/conversations";
 import { listMyTeamInvites } from "$lib/api/developer";
@@ -128,7 +132,6 @@ import { markStartup } from "$lib/startup-timing";
 import { reactionChanged, withReaction, type ReactionChange } from "$lib/reactions";
 import { banAdded, banLifted, forgetBans } from "$lib/bans";
 import { callNoticeCame, callNoticeDeleted, conversationCallsGone, forgetCalls } from "$lib/call-history";
-import { customEmojiMapOf } from "$lib/markdown";
 import {
 	claimNotice,
 	conversationPlace,
@@ -193,10 +196,31 @@ function askForLists() {
 		levels: getNotificationSettings(),
 		teamInvites: listMyTeamInvites(),
 		buckets: getMyBuckets(),
+		// Every emoji and sticker of the user's Spaces, in one call each: never one per Space, which a user in 50
+		// Spaces would make past the API's limit.
+		emojis: listMyEmojis(),
+		stickers: listMyStickers(),
 	};
 	for (const list of Object.values(lists)) void list.catch(() => {});
 	return lists;
 }
+/**
+ * The emojis and stickers of a Space that comes after READY (joined, or come back to after leaving), which the session's
+ * lists didn't have.
+ * ponytail: a Space joined while READY's lists are still on their way is left out of them, which replace every Space's,
+ * until the next session; keep the Spaces loaded alone across that replace if it ever matters.
+ */
+function loadSpaceAssets(spaceId: string) {
+	void listEmojis(spaceId).then(
+		(emojis) => spaceEmojis.update((m) => ({ ...m, [spaceId]: emojis })),
+		(err: unknown) => console.error(`[WS] Failed to load the emojis of Space ${spaceId}:`, err),
+	);
+	void listStickers(spaceId).then(
+		(stickers) => spaceStickers.update((m) => ({ ...m, [spaceId]: stickers })),
+		(err: unknown) => console.error(`[WS] Failed to load the stickers of Space ${spaceId}:`, err),
+	);
+}
+
 // What a socket that identified for a new session asked for, while its READY comes: the lists need the session alone,
 // and asked for only on READY they came two round trips after it (#282). None for a resume, which keeps them.
 let listsAhead: ReturnType<typeof askForLists> | null = null;
@@ -733,8 +757,7 @@ async function roomNotice(roomId: string, messageId: string, known: Message | un
 	}
 	const place = roomPlace(get(gatewaySpaces), roomId, messageId);
 	if (!place) return null;
-	const emojis = get(spaceEmojis)[place.link.spaceId] ?? [];
-	return { notice: mentionNoticeOf(message, place, knownPeople(), customEmojiMapOf(emojis)), place: place.name };
+	return { notice: mentionNoticeOf(message, place, knownPeople(), get(everyEmoji)), place: place.name };
 }
 
 /** A conversation's message as its notice shows it, as a room's (roomNotice). */
@@ -752,7 +775,7 @@ async function conversationNotice(conversationId: string, messageId: string, kno
 	const author = directMessageAuthor(message, conversation);
 	const place = conversationPlace(conversation, conversationId, messageId, get(currentUser)?.id);
 	const shown = { ...message, author_name: author.name, author_avatar_url: author.avatar };
-	return { notice: mentionNoticeOf(shown, place, knownPeople(), {}), place: place.name };
+	return { notice: mentionNoticeOf(shown, place, knownPeople(), get(everyEmoji)), place: place.name };
 }
 
 /** Someone typing (TYPING, DM_TYPING) or recording a voice message (RECORDING, DM_RECORDING) in a room or a
@@ -833,6 +856,8 @@ function handleEvent(event: GatewayEvent) {
 			]).then(() => friendsReady.set(true));
 			void store(lists.teamInvites, "team invites", (teamInvites) => pendingTeamInvites.set(teamInvites));
 			void store(lists.buckets, "buckets", (bucketList) => myBuckets.set(bucketList));
+			void store(lists.emojis, "emojis", (all) => spaceEmojis.set(bySpace(all)));
+			void store(lists.stickers, "stickers", (all) => spaceStickers.set(bySpace(all)));
 			getMentionCounts()
 				.then((counts) => mentionCounts.set(counts))
 				.catch(() => {});
@@ -982,6 +1007,10 @@ function handleEvent(event: GatewayEvent) {
 			// The read states of its rooms, in one sent after READY: the unread marks of a space the user just joined.
 			if (spaceCreateData.read_states) applyRoomReadStates(spaceCreateData.read_states);
 
+			// READY's own first SPACE_CREATE of a Space brings nothing of its emojis and stickers, which the session's lists
+			// have. Any other, of a Space joined or come back to after leaving, loads the Space's own.
+			if (!expectedGuildIds?.has(space.id) || receivedGuildIds.has(space.id)) loadSpaceAssets(space.id);
+
 			// Only READY's spaces count: one it didn't list, or a second of one, mustn't pass for one still to come.
 			receivedGuildIds.add(space.id);
 			if (expectedGuildIds && readySpacesArrived(expectedGuildIds, receivedGuildIds)) {
@@ -997,9 +1026,12 @@ function handleEvent(event: GatewayEvent) {
 				voiceRoomTaken(leftHere);
 			}
 			gatewaySpaces.update((spaces) => spaces.filter((s) => s.id !== id));
-			// Its members' statuses there go with it: a bot's would outlive it otherwise. So do its bans.
+			// Its members' statuses there go with it: a bot's would outlive it otherwise. So do its bans, and its emojis and
+			// stickers, which the pickers offer only of Spaces the user is in.
 			forgetSpaceStatuses(userStatusCache, id);
 			forgetBans(id);
+			spaceEmojis.update((m) => Object.fromEntries(Object.entries(m).filter(([spaceId]) => spaceId !== id)));
+			spaceStickers.update((m) => Object.fromEntries(Object.entries(m).filter(([spaceId]) => spaceId !== id)));
 			break;
 		}
 		case "SPACE_UPDATE": {

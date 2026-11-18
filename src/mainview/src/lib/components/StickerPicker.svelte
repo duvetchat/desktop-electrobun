@@ -1,17 +1,24 @@
 <script lang="ts">
 	import type { SpaceSticker } from "$lib/types";
-	import { getHostURL } from "$lib/common/common";
+	import { getAvatarURL, getHostURL } from "$lib/common/common";
+	import SpaceIcon from "$lib/components/SpaceIcon.svelte";
+	import type { PickerGroup } from "$lib/space-emojis";
 
 	const host = getHostURL();
 
-	let { stickers = [], onSelect }: { stickers?: SpaceSticker[]; onSelect: (sticker: SpaceSticker) => void } = $props();
+	// The stickers of every Space the user is in, wherever they write: a section for each Space with stickers, in the
+	// order pickerGroups gives; a search looks in all of them.
+	let { groups = [], onSelect }: { groups?: PickerGroup<SpaceSticker>[]; onSelect: (sticker: SpaceSticker) => void } =
+		$props();
 
 	let searchQuery = $state("");
 
 	const filtered = $derived.by(() => {
 		const q = searchQuery.trim().toLowerCase();
-		if (!q) return stickers;
-		return stickers.filter((s) => s.name.toLowerCase().includes(q));
+		if (!q) return groups;
+		return groups
+			.map((g) => ({ ...g, items: g.items.filter((s) => s.name.toLowerCase().includes(q)) }))
+			.filter((g) => g.items.length > 0);
 	});
 </script>
 
@@ -67,7 +74,7 @@
 	<div
 		class="[&::-webkit-scrollbar-thumb]:bg-duvet-ink/20 flex-1 overflow-y-auto px-3 py-3 [&::-webkit-scrollbar]:w-1.25 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-track]:bg-transparent"
 	>
-		{#if stickers.length === 0}
+		{#if groups.length === 0}
 			<div class="flex h-full flex-col items-center justify-center text-center">
 				<svg
 					xmlns="http://www.w3.org/2000/svg"
@@ -89,23 +96,29 @@
 		{:else if filtered.length === 0}
 			<div class="text-duvet-ink2 py-7.5 text-center text-[13px]">No results for "{searchQuery}"</div>
 		{:else}
-			<div class="grid grid-cols-3 gap-2">
-				{#each filtered as sticker (sticker.id)}
-					<button
-						class="hover:bg-duvet-ink/10 flex cursor-pointer items-center justify-center rounded-lg border-none bg-none p-2 transition-[background,transform] duration-100 hover:scale-105 active:scale-100"
-						onclick={() => onSelect(sticker)}
-						title={sticker.name}
-						aria-label={sticker.name}
-					>
-						<img
-							src="{host}/attachments/{sticker.attachment_id}"
-							alt={sticker.name}
-							class="pointer-events-none h-25 w-25 object-contain select-none"
-							loading="lazy"
-						/>
-					</button>
-				{/each}
-			</div>
+			{#each filtered as group (group.space.id)}
+				<div class="text-duvet-ink2 flex items-center gap-1.5 px-0.5 pb-2 text-xs font-bold not-first:pt-3">
+					<SpaceIcon src={getAvatarURL(group.space.id, group.space.icon)} name={group.space.name} size={16} />
+					<span class="truncate">{group.space.name}</span>
+				</div>
+				<div class="grid grid-cols-3 gap-2">
+					{#each group.items as sticker (sticker.id)}
+						<button
+							class="hover:bg-duvet-ink/10 flex cursor-pointer items-center justify-center rounded-lg border-none bg-none p-2 transition-[background,transform] duration-100 hover:scale-105 active:scale-100"
+							onclick={() => onSelect(sticker)}
+							title={sticker.name}
+							aria-label={sticker.name}
+						>
+							<img
+								src="{host}/attachments/{sticker.attachment_id}"
+								alt={sticker.name}
+								class="pointer-events-none h-25 w-25 object-contain select-none"
+								loading="lazy"
+							/>
+						</button>
+					{/each}
+				</div>
+			{/each}
 		{/if}
 	</div>
 </div>
