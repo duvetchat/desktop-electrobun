@@ -18,22 +18,22 @@
 
 {#if asking}
 	<div
-		class="fixed bottom-4 left-1/2 z-9990 flex w-[min(28rem,calc(100vw-2rem))] -translate-x-1/2 items-center gap-3 rounded-lg border border-zinc-700 bg-zinc-900/95 py-2 pr-2 pl-3 text-sm text-zinc-300 shadow-lg backdrop-blur-sm"
+		class="rounded-card border-duvet-line bg-duvet-bg/95 text-duvet-ink shadow-duvet-float fixed bottom-4 left-1/2 z-9990 flex w-[min(28rem,calc(100vw-2rem))] -translate-x-1/2 items-center gap-3 border py-2 pr-2 pl-3 text-sm backdrop-blur-sm"
 		role="region"
 		aria-label="Notifications permission"
 	>
-		<Bell class="size-4 shrink-0 text-zinc-400" />
+		<Bell class="text-duvet-ink2 size-4 shrink-0" />
 		<span class="min-w-0 flex-1">Turn on desktop notifications for new messages</span>
 		<button
 			type="button"
-			class="shrink-0 rounded-md bg-zinc-100 px-2.5 py-1 text-xs font-semibold text-zinc-900 transition-colors hover:bg-white"
+			class="bg-duvet-ink text-duvet-bg hover:bg-duvet-ink shrink-0 rounded-md px-2.5 py-1 text-xs font-semibold transition-colors"
 			onclick={turnOn}
 		>
 			Turn on
 		</button>
 		<button
 			type="button"
-			class="shrink-0 rounded p-1 text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-100"
+			class="text-duvet-ink2 hover:bg-duvet-card hover:text-duvet-ink shrink-0 rounded p-1 transition-colors"
 			aria-label="Dismiss"
 			onclick={() => (asking = false)}
 		>

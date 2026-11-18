@@ -27,15 +27,15 @@
 				inputEl?.select();
 			}}
 		>
-			<div class="w-full max-w-sm rounded-xl border border-zinc-700 bg-zinc-900 p-5 shadow-2xl">
+			<div class="rounded-card border-duvet-line bg-duvet-bg shadow-duvet-float w-full max-w-sm border p-5">
 				{#if promptStore.pending}
-					<AlertDialog.Title class="mb-3 text-sm font-semibold text-white"
+					<AlertDialog.Title class="text-duvet-ink mb-3 text-sm font-semibold"
 						>{promptStore.pending.message}</AlertDialog.Title
 					>
 					<input
 						bind:this={inputEl}
 						type="text"
-						class="mb-4 h-9 w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 text-sm text-white placeholder-zinc-500 outline-none focus:border-stone-500"
+						class="bg-duvet-sunk text-duvet-ink placeholder:text-duvet-ink2 shadow-duvet-press focus-visible:outline-duvet-accent mb-4 h-9 w-full rounded-xl px-3 text-sm focus-visible:outline-2"
 						placeholder={promptStore.pending.placeholder}
 						bind:value={promptStore.value}
 						onkeydown={(e) => {
@@ -47,12 +47,12 @@
 					/>
 					<div class="flex justify-end gap-2">
 						<AlertDialog.Cancel
-							class="rounded-md px-3 py-1.5 text-sm font-medium text-zinc-300 transition-colors hover:bg-zinc-800"
+							class="text-duvet-ink hover:bg-duvet-card rounded-md px-3 py-1.5 text-sm font-medium transition-colors"
 						>
 							Cancel
 						</AlertDialog.Cancel>
 						<AlertDialog.Action
-							class="bg-fill-600 text-fixed-white hover:bg-fill-500 rounded-md px-4 py-1.5 text-sm font-semibold transition-colors"
+							class="bg-duvet-accent text-duvet-on-accent shadow-duvet-raised rounded-xl px-4 py-1.5 text-sm font-bold transition-colors hover:brightness-110"
 							onclick={submit}
 						>
 							OK

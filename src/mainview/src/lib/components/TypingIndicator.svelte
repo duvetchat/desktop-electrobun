@@ -36,30 +36,30 @@
      scrolls. -->
 {#if active.length > 0}
 	<div
-		class="text-night-65 bg-night-19 z-10 flex h-5 items-center gap-1.5 bg-linear-to-t from-stone-950/45 to-transparent px-3 text-xs"
+		class="text-duvet-ink2 bg-duvet-bg from-duvet-sunk/45 z-10 flex h-5 items-center gap-1.5 bg-linear-to-t to-transparent px-3 text-xs"
 	>
 		<div class="flex items-center">
 			{#each active.slice(0, 3) as user, i (user.user_id)}
-				<div class="border-night-19 rounded-full border-[1.5px] {i === 0 ? '' : '-ml-1'}">
+				<div class="border-duvet-line rounded-full border-[1.5px] {i === 0 ? '' : '-ml-1'}">
 					<UserAvatar src={getAvatarURL(user.user_id, user.avatar)} name={displayName(user)} size={16} />
 				</div>
 			{/each}
 		</div>
 		{#if typers.length > 0}
-			<span class="text-night-65 [&_strong]:text-night-85 min-w-0 truncate text-xs [&_strong]:font-semibold"
+			<span class="text-duvet-ink2 [&_strong]:text-duvet-ink min-w-0 truncate text-xs [&_strong]:font-semibold"
 				>{typingPhrase(typers)}</span
 			>
 			<div class="ml-0.5 flex items-center gap-0.75" aria-hidden="true">
-				<span class="animate-typing-bounce bg-night-55 block size-1 rounded-full"></span>
-				<span class="animate-typing-bounce bg-night-55 block size-1 rounded-full [animation-delay:0.2s]"></span>
-				<span class="animate-typing-bounce bg-night-55 block size-1 rounded-full [animation-delay:0.4s]"></span>
+				<span class="animate-typing-bounce bg-duvet-ink2 block size-1 rounded-full"></span>
+				<span class="animate-typing-bounce bg-duvet-ink2 block size-1 rounded-full [animation-delay:0.2s]"></span>
+				<span class="animate-typing-bounce bg-duvet-ink2 block size-1 rounded-full [animation-delay:0.4s]"></span>
 			</div>
 		{/if}
 		{#if recorders.length > 0}
-			<span class="text-night-65 min-w-0 truncate text-xs {typers.length > 0 ? 'ml-1.5' : ''}"
+			<span class="text-duvet-ink2 min-w-0 truncate text-xs {typers.length > 0 ? 'ml-1.5' : ''}"
 				>{recordingPhrase(recorders)}</span
 			>
-			<MicIcon class="size-3 animate-pulse text-red-400" aria-hidden="true" />
+			<MicIcon class="text-duvet-danger size-3 animate-pulse" aria-hidden="true" />
 		{/if}
 	</div>
 {/if}

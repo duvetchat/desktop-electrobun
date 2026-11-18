@@ -16,7 +16,10 @@
 	aria-hidden="true"
 >
 	{#if onlyRecording}
-		<MicIcon class="animate-pulse text-red-400 motion-reduce:animate-none" style="width: {size}px; height: {size}px;" />
+		<MicIcon
+			class="text-duvet-danger animate-pulse motion-reduce:animate-none"
+			style="width: {size}px; height: {size}px;"
+		/>
 	{:else}
 		<span class="animate-typing-bounce block size-1 rounded-full bg-current motion-reduce:animate-none"></span>
 		<span

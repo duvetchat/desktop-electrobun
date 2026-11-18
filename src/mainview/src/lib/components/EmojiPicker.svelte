@@ -43,12 +43,12 @@
 </script>
 
 <div
-	class="rounded-10px border-night-30 bg-night-19 flex h-105 w-90 flex-col overflow-hidden border font-[inherit] shadow-[0_8px_32px_rgba(0,0,0,0.55)]"
+	class="rounded-card border-duvet-line bg-duvet-card shadow-duvet-float flex h-105 w-90 flex-col overflow-hidden border font-[inherit]"
 	role="dialog"
 	aria-label="Emoji picker"
 >
 	<!-- Search bar -->
-	<div class="border-night-25 flex shrink-0 items-center gap-2 border-b px-3 pt-2.5 pb-2">
+	<div class="border-duvet-line flex shrink-0 items-center gap-2 border-b px-3 pt-2.5 pb-2">
 		<svg
 			width="14"
 			height="14"
@@ -58,7 +58,7 @@
 			stroke-width="2"
 			stroke-linecap="round"
 			stroke-linejoin="round"
-			class="text-night-55 shrink-0"
+			class="text-duvet-ink2 shrink-0"
 			aria-hidden="true"
 		>
 			<circle cx="11" cy="11" r="8" /><path d="m21 21-4.35-4.35" />
@@ -68,13 +68,13 @@
 			bind:value={searchQuery}
 			type="text"
 			placeholder="Search emoji..."
-			class="text-night-92 placeholder:text-night-50 min-w-0 flex-1 border-none bg-transparent text-[13px] outline-none"
+			class="text-duvet-ink placeholder:text-duvet-ink2/60 min-w-0 flex-1 border-none bg-transparent text-[13px] outline-none"
 			aria-label="Search emoji"
 			autocomplete="off"
 		/>
 		{#if searchQuery}
 			<button
-				class="text-night-55 hover:text-night-80 flex shrink-0 cursor-pointer items-center rounded-[3px] border-none bg-none p-0.5"
+				class="text-duvet-ink2 hover:text-duvet-ink flex shrink-0 cursor-pointer items-center rounded-[3px] border-none bg-none p-0.5"
 				onclick={() => (searchQuery = "")}
 				aria-label="Clear search"
 			>
@@ -94,7 +94,7 @@
 	{#if !isSearching}
 		<!-- Category tabs -->
 		<div
-			class="border-night-25 flex shrink-0 items-center gap-0.5 overflow-x-auto border-b px-2.5 pt-1.5 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+			class="border-duvet-line flex shrink-0 items-center gap-0.5 overflow-x-auto border-b px-2.5 pt-1.5 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
 			role="tablist"
 			aria-label="Emoji categories"
 		>
@@ -105,8 +105,8 @@
 					aria-label="Space Emojis"
 					class="flex shrink-0 cursor-pointer items-center justify-center rounded-md border-none bg-none px-1.25 py-1 transition-[opacity,background] duration-120 {activeCategory ===
 					0
-						? 'bg-night-30t opacity-100'
-						: 'hover:bg-night-28 opacity-55 hover:opacity-85'}"
+						? 'bg-duvet-ink/10 opacity-100'
+						: 'hover:bg-duvet-ink/10 opacity-55 hover:opacity-85'}"
 					onclick={() => (activeCategory = 0)}
 					title="Space Emojis"
 				>
@@ -120,7 +120,7 @@
 						stroke-width="2"
 						stroke-linecap="round"
 						stroke-linejoin="round"
-						class="text-night-75"
+						class="text-duvet-ink2"
 						><circle cx="12" cy="12" r="10" /><path d="M8 14s1.5 2 4 2 4-2 4-2" /><line
 							x1="9"
 							x2="9.01"
@@ -137,8 +137,8 @@
 					aria-label={cat.label}
 					class="flex shrink-0 cursor-pointer items-center justify-center rounded-md border-none bg-none px-1.25 py-1 transition-[opacity,background] duration-120 {activeCategory ===
 					i + categoryOffset
-						? 'bg-night-30t opacity-100'
-						: 'hover:bg-night-28 opacity-55 hover:opacity-85'}"
+						? 'bg-duvet-ink/10 opacity-100'
+						: 'hover:bg-duvet-ink/10 opacity-55 hover:opacity-85'}"
 					onclick={() => (activeCategory = i + categoryOffset)}
 					title={cat.label}
 				>
@@ -150,20 +150,18 @@
 
 	<!-- Emoji grid -->
 	<div
-		class="[&::-webkit-scrollbar-thumb]:bg-night-35 flex-1 overflow-y-auto px-2.5 pt-1.5 pb-2.5 [&::-webkit-scrollbar]:w-1.25 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-track]:bg-transparent"
+		class="[&::-webkit-scrollbar-thumb]:bg-duvet-ink/20 flex-1 overflow-y-auto px-2.5 pt-1.5 pb-2.5 [&::-webkit-scrollbar]:w-1.25 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-track]:bg-transparent"
 		role="tabpanel"
 	>
 		{#if isSearching}
 			{#if searchResults.length === 0}
-				<div class="text-night-52 py-7.5 text-center text-[13px]">No results for "{searchQuery}"</div>
+				<div class="text-duvet-ink2 py-7.5 text-center text-[13px]">No results for "{searchQuery}"</div>
 			{:else}
-				<div class="text-xxs text-night-52 px-0.5 pt-1.5 pb-2 font-bold tracking-[0.06em] uppercase">
-					Search results
-				</div>
+				<div class="text-duvet-ink2 px-0.5 pt-1.5 pb-2 text-xs font-bold">Search results</div>
 				<div class="grid grid-cols-8 gap-0.5">
 					{#each searchResults as entry (entry.emoji + entry.name)}
 						<button
-							class="hover:bg-night-30 flex cursor-pointer items-center justify-center rounded-md border-none bg-none p-1.25 transition-[background,transform] duration-100 hover:scale-[1.18] active:scale-100"
+							class="hover:bg-duvet-ink/10 flex cursor-pointer items-center justify-center rounded-md border-none bg-none p-1.25 transition-[background,transform] duration-100 hover:scale-[1.18] active:scale-100"
 							onclick={() => pick(entry.emoji)}
 							title={entry.name}
 							aria-label={entry.name}
@@ -188,11 +186,11 @@
 				</div>
 			{/if}
 		{:else if hasCustom && activeCategory === 0}
-			<div class="text-xxs text-night-52 px-0.5 pt-1.5 pb-2 font-bold tracking-[0.06em] uppercase">Space Emojis</div>
+			<div class="text-duvet-ink2 px-0.5 pt-1.5 pb-2 text-xs font-bold">Space Emojis</div>
 			<div class="grid grid-cols-8 gap-0.5">
 				{#each customEmojis as ce (ce.id)}
 					<button
-						class="hover:bg-night-30 flex cursor-pointer items-center justify-center rounded-md border-none bg-none p-1.25 transition-[background,transform] duration-100 hover:scale-[1.18] active:scale-100"
+						class="hover:bg-duvet-ink/10 flex cursor-pointer items-center justify-center rounded-md border-none bg-none p-1.25 transition-[background,transform] duration-100 hover:scale-[1.18] active:scale-100"
 						onclick={() => pick(`<:${ce.id}:>`)}
 						title=":{ce.name}:"
 						aria-label=":{ce.name}:"
@@ -207,13 +205,13 @@
 				{/each}
 			</div>
 		{:else if shownCategory}
-			<div class="text-xxs text-night-52 px-0.5 pt-1.5 pb-2 font-bold tracking-[0.06em] uppercase">
+			<div class="text-duvet-ink2 px-0.5 pt-1.5 pb-2 text-xs font-bold">
 				{shownCategory.label}
 			</div>
 			<div class="grid grid-cols-8 gap-0.5">
 				{#each shownCategory.emojis as entry (entry.emoji)}
 					<button
-						class="hover:bg-night-30 flex cursor-pointer items-center justify-center rounded-md border-none bg-none p-1.25 transition-[background,transform] duration-100 hover:scale-[1.18] active:scale-100"
+						class="hover:bg-duvet-ink/10 flex cursor-pointer items-center justify-center rounded-md border-none bg-none p-1.25 transition-[background,transform] duration-100 hover:scale-[1.18] active:scale-100"
 						onclick={() => pick(entry.emoji)}
 						title={entry.name}
 						aria-label={entry.name}

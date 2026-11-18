@@ -143,19 +143,21 @@
 				e.preventDefault();
 				focusField();
 			}}
-			class="fixed top-1/2 left-1/2 z-50 flex max-h-[85vh] w-[calc(100%-2rem)] max-w-110.5 -translate-x-1/2 -translate-y-1/2 flex-col rounded-2xl border border-zinc-700 bg-zinc-900 shadow-2xl outline-none"
+			class="rounded-card border-duvet-line bg-duvet-bg shadow-duvet-float fixed top-1/2 left-1/2 z-50 flex max-h-[85vh] w-[calc(100%-2rem)] max-w-110.5 -translate-x-1/2 -translate-y-1/2 flex-col border outline-none"
 		>
 			{#if opened}
 				<div class="flex items-start gap-3 px-5 pt-5 pb-3">
 					<div class="flex min-w-0 flex-1 flex-col gap-1.5">
-						<span class="flex items-center gap-1.5 text-xs text-zinc-400">
+						<span class="text-duvet-ink2 flex items-center gap-1.5 text-xs">
 							<UserAvatar src={opened.from.avatarUrl} name={opened.from.name} size={16} />
 							<span class="truncate">{opened.from.name}</span>
 						</span>
-						<Dialog.Title class="text-base font-semibold wrap-break-word text-white">{opened.modal.title}</Dialog.Title>
+						<Dialog.Title class="text-duvet-ink text-base font-semibold wrap-break-word"
+							>{opened.modal.title}</Dialog.Title
+						>
 					</div>
 					<Dialog.Close
-						class="rounded-md p-1 text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-white"
+						class="text-duvet-ink2 hover:bg-duvet-card hover:text-duvet-ink rounded-md p-1 transition-colors"
 						aria-label="Close"
 					>
 						<XIcon class="size-5" />
@@ -165,7 +167,7 @@
 					<div class="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-5 py-2">
 						{#each opened.modal.components as c, i (c.id ?? i)}
 							{#if c.type === ComponentType.TextDisplay}
-								<div class="min-w-0 text-sm wrap-break-word text-zinc-300 select-text">
+								<div class="text-duvet-ink min-w-0 text-sm wrap-break-word select-text">
 									{@html renderMarkdown(c.content ?? "", false, mentionMap, customEmojiMap, $roomNames, {})}
 								</div>
 							{:else if c.type === ComponentType.Label && c.component?.custom_id}
@@ -175,20 +177,20 @@
 					</div>
 					<div class="flex flex-col gap-3 px-5 pt-3 pb-5">
 						{#if failure}
-							<div role="alert" class="flex flex-col gap-0.5 text-sm text-red-400">
+							<div role="alert" class="text-duvet-danger flex flex-col gap-0.5 text-sm">
 								<p class="flex items-center gap-1.5">
 									<AlertIcon class="size-4 shrink-0" />
 									{failure.text}
 								</p>
 								{#if failure.detail !== failure.text}
-									<p class="pl-5.5 text-xs wrap-break-word text-red-300/80">{failure.detail}</p>
+									<p class="text-duvet-danger/80 pl-5.5 text-xs wrap-break-word">{failure.detail}</p>
 								{/if}
 							</div>
 						{/if}
 						<div class="flex justify-end gap-2">
 							<Dialog.Close
 								type="button"
-								class="rounded-md px-3 py-1.5 text-sm font-medium text-zinc-300 transition-colors hover:bg-zinc-800"
+								class="text-duvet-ink hover:bg-duvet-card rounded-md px-3 py-1.5 text-sm font-medium transition-colors"
 							>
 								Cancel
 							</Dialog.Close>
@@ -196,7 +198,7 @@
 								type="submit"
 								disabled={sending}
 								aria-busy={sending}
-								class="text-fixed-white relative inline-flex min-w-20 items-center justify-center rounded-md bg-indigo-500 px-4 py-1.5 text-sm font-semibold transition-colors hover:bg-indigo-600 disabled:opacity-70"
+								class="text-duvet-on-accent rounded-row bg-duvet-accent hover:bg-duvet-accent/85 relative inline-flex min-w-20 items-center justify-center px-4 py-1.5 text-sm font-semibold transition-colors disabled:opacity-70"
 							>
 								<span class={sending ? "invisible" : ""}>Submit</span>
 								{#if sending}
@@ -229,35 +231,35 @@
 			: undefined}
 	<div data-field={id} class="flex flex-col gap-1.5">
 		{#if input.type === ComponentType.Checkbox}
-			<label class="flex items-start gap-2.5 text-sm text-zinc-200">
+			<label class="text-duvet-ink flex items-start gap-2.5 text-sm">
 				<input
 					type="checkbox"
 					checked={values[id] === true}
 					disabled={sending}
 					aria-describedby={describedBy}
 					onchange={(e) => set(id, e.currentTarget.checked)}
-					class="mt-0.5 size-4 shrink-0 accent-indigo-500"
+					class="accent-duvet-accent mt-0.5 size-4 shrink-0"
 				/>
 				<span class="font-semibold">{label.label}</span>
 			</label>
 		{:else}
-			<span id="{fieldId(input)}-label" class="text-sm font-semibold text-zinc-200">
+			<span id="{fieldId(input)}-label" class="text-duvet-ink text-sm font-semibold">
 				{#if input.type === ComponentType.TextInput}
 					<label for={fieldId(input)}>{label.label}</label>
 				{:else}
 					{label.label}
 				{/if}
-				{#if isRequired(input)}<span class="text-red-400" aria-hidden="true">*</span>{/if}
+				{#if isRequired(input)}<span class="text-duvet-danger" aria-hidden="true">*</span>{/if}
 			</span>
 		{/if}
 		{#if label.description}
-			<p id="{fieldId(input)}-description" class="text-xs text-zinc-400">{label.description}</p>
+			<p id="{fieldId(input)}-description" class="text-duvet-ink2 text-xs">{label.description}</p>
 		{/if}
 
 		{#if input.type === ComponentType.TextInput}
 			{@const cls =
-				"w-full rounded-md border bg-zinc-800 px-3 py-2 text-sm text-white placeholder-zinc-500 outline-none read-only:opacity-60 focus:border-stone-500 " +
-				(problem ? "border-red-500/70" : "border-zinc-700")}
+				"w-full rounded-xl bg-duvet-sunk px-3 py-2 text-sm text-duvet-ink placeholder:text-duvet-ink2 read-only:opacity-60 shadow-duvet-press focus-visible:outline-2 focus-visible:outline-duvet-accent" +
+				(problem ? "border-duvet-danger/70" : "border-duvet-line")}
 			{#if input.style === 2}
 				<textarea
 					id={fieldId(input)}
@@ -304,17 +306,17 @@
 				aria-labelledby="{fieldId(input)}-label"
 				aria-describedby={describedBy}
 				aria-required={radio ? isRequired(input) : undefined}
-				class="flex flex-col gap-1 rounded-lg border bg-zinc-800/40 p-1 {problem
-					? 'border-red-500/70'
-					: 'border-zinc-700/60'}"
+				class="bg-duvet-card/40 flex flex-col gap-1 rounded-lg border p-1 {problem
+					? 'border-duvet-danger/70'
+					: 'border-duvet-line'}"
 			>
 				{#each input.options ?? [] as o (o.value)}
 					{@const checked = radio
 						? values[id] === o.value
 						: ((values[id] as string[] | undefined) ?? []).includes(o.value)}
 					<label
-						class="flex cursor-pointer items-start gap-2.5 rounded-md px-2.5 py-2 transition-colors hover:bg-zinc-800 {checked
-							? 'bg-zinc-800'
+						class="hover:bg-duvet-card flex cursor-pointer items-start gap-2.5 rounded-md px-2.5 py-2 transition-colors {checked
+							? 'bg-duvet-card'
 							: ''}"
 					>
 						<input
@@ -324,12 +326,12 @@
 							{checked}
 							disabled={sending}
 							onchange={(e) => (radio ? set(id, o.value) : toggle(id, o.value, e.currentTarget.checked))}
-							class="mt-0.5 size-4 shrink-0 accent-indigo-500"
+							class="accent-duvet-accent mt-0.5 size-4 shrink-0"
 						/>
 						<span class="flex min-w-0 flex-col">
-							<span class="text-sm wrap-break-word text-zinc-200">{o.label}</span>
+							<span class="text-duvet-ink text-sm wrap-break-word">{o.label}</span>
 							{#if o.description}
-								<span class="text-xs wrap-break-word text-zinc-400">{o.description}</span>
+								<span class="text-duvet-ink2 text-xs wrap-break-word">{o.description}</span>
 							{/if}
 						</span>
 					</label>
@@ -337,7 +339,7 @@
 			</div>
 		{/if}
 		{#if problem}
-			<p id="{fieldId(input)}-problem" class="text-xs text-red-400">{problem}</p>
+			<p id="{fieldId(input)}-problem" class="text-duvet-danger text-xs">{problem}</p>
 		{/if}
 	</div>
 {/snippet}

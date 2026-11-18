@@ -119,7 +119,7 @@
 
 		{#if loading}
 			<div class="flex justify-center py-3">
-				<div class="size-4 animate-spin rounded-full border-2 border-zinc-500 border-t-zinc-300"></div>
+				<div class="border-duvet-ink2/40 border-t-duvet-ink/40 size-4 animate-spin rounded-full border-2"></div>
 			</div>
 		{/if}
 	</div>

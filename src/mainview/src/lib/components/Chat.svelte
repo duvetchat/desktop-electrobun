@@ -714,7 +714,7 @@
 <div
 	bind:this={rootEl}
 	data-chat
-	class="from-night-22 to-night-19 relative flex flex-1 flex-col overflow-hidden bg-linear-to-b"
+	class="from-duvet-card to-duvet-bg relative flex flex-1 flex-col overflow-hidden bg-linear-to-b"
 	ondragover={handleFileDragOver}
 	ondragleave={handleFileDragLeave}
 	ondrop={handleFileDrop}
@@ -726,7 +726,7 @@
 			class="pointer-events-none absolute inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
 		>
 			<div
-				class="flex flex-col items-center gap-2 rounded-xl border-2 border-dashed border-indigo-400 bg-zinc-900/80 px-10 py-8"
+				class="border-duvet-accent bg-duvet-bg/80 flex flex-col items-center gap-2 rounded-xl border-2 border-dashed px-10 py-8"
 			>
 				<svg
 					xmlns="http://www.w3.org/2000/svg"
@@ -738,7 +738,7 @@
 					stroke-width="1.5"
 					stroke-linecap="round"
 					stroke-linejoin="round"
-					class="text-indigo-400"
+					class="text-duvet-accent-text"
 					><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line
 						x1="12"
 						x2="12"
@@ -746,7 +746,7 @@
 						y2="15"
 					/></svg
 				>
-				<span class="text-sm font-medium text-indigo-300">Drop files to upload</span>
+				<span class="text-duvet-accent-text text-sm font-medium">Drop files to upload</span>
 			</div>
 		</div>
 	{/if}
@@ -785,12 +785,12 @@
 
 	<div class="relative w-full">
 		<div
-			class="pointer-events-none absolute bottom-0 z-10 h-5 w-full bg-linear-to-t from-stone-950/45 to-transparent"
+			class="from-duvet-sunk/45 pointer-events-none absolute bottom-0 z-10 h-5 w-full bg-linear-to-t to-transparent"
 		></div>
 	</div>
 	<!-- Bottom input bar -->
 	<div
-		class="relative flex max-h-48 min-h-16 flex-row items-end gap-2 border-t border-stone-800 bg-stone-950/45 px-3 py-2"
+		class="border-duvet-line bg-duvet-sunk/45 relative flex max-h-48 min-h-16 flex-row items-end gap-2 border-t px-3 py-2"
 	>
 		{@render draftBars(channelId, () => chatInputRef?.focus(), true)}
 		{#if command}
@@ -851,17 +851,17 @@
 			{/if}
 			{#if pending.replyTo}
 				<div
-					class="pointer-events-auto flex items-center justify-between border-t border-stone-800 bg-stone-900/90 px-3 py-1.5 text-xs text-zinc-400"
+					class="border-duvet-line bg-duvet-bg/90 text-duvet-ink2 pointer-events-auto flex items-center justify-between border-t px-3 py-1.5 text-xs"
 				>
-					<span>Replying to <span class="font-semibold text-zinc-200">{pending.replyTo.author_name}</span></span>
+					<span>Replying to <span class="text-duvet-ink font-semibold">{pending.replyTo.author_name}</span></span>
 					<div class="flex items-center gap-3">
 						{#if canMention(pending.replyTo)}
 							<!-- Whether the reply mentions the author of the message it replies to -->
 							<button
 								type="button"
 								class="font-semibold transition-colors {pending.replyMention
-									? 'text-indigo-400 hover:text-indigo-300'
-									: 'text-zinc-500 hover:text-zinc-300'}"
+									? 'text-duvet-accent-text hover:text-duvet-accent-text'
+									: 'text-duvet-ink2 hover:text-duvet-ink'}"
 								onclick={() => {
 									changeDraft(key, { replyMention: !pending.replyMention });
 									focus();
@@ -874,7 +874,7 @@
 							>
 						{/if}
 						<button
-							class="text-zinc-500 transition-colors hover:text-zinc-300"
+							class="text-duvet-ink2 hover:text-duvet-ink transition-colors"
 							onclick={() => setReplyIn(key, null)}
 							aria-label="Cancel reply"
 						>
@@ -894,17 +894,17 @@
 				</div>
 			{/if}
 			{#if pending.files.length > 0}
-				<div class="pointer-events-auto flex flex-wrap gap-1.5 border-t border-stone-800 bg-stone-900/90 px-3 py-1.5">
+				<div class="border-duvet-line bg-duvet-bg/90 pointer-events-auto flex flex-wrap gap-1.5 border-t px-3 py-1.5">
 					{#each pending.files as file, i}
 						{@const name = displayName(file.name)}
 						{@const spoiler = isSpoiler(file.name)}
-						<div class="flex max-w-56 items-center gap-1.5 rounded border border-stone-700 bg-stone-800 px-2 py-1">
-							<span class="truncate text-xs text-zinc-300">{name}</span>
-							<span class="text-xxs shrink-0 text-zinc-500">{formatFileSize(file.size)}</span>
+						<div class="border-duvet-line bg-duvet-card flex max-w-56 items-center gap-1.5 rounded border px-2 py-1">
+							<span class="text-duvet-ink truncate text-xs">{name}</span>
+							<span class="text-xxs text-duvet-ink2 shrink-0">{formatFileSize(file.size)}</span>
 							<button
 								class="shrink-0 transition-colors {spoiler
-									? 'text-indigo-300 hover:text-indigo-200'
-									: 'text-zinc-500 hover:text-zinc-300'}"
+									? 'text-duvet-accent-text hover:text-duvet-accent-text'
+									: 'text-duvet-ink2 hover:text-duvet-ink'}"
 								onclick={() => toggleSpoiler(key, i)}
 								aria-pressed={spoiler}
 								aria-label="Mark {name} as spoiler"
@@ -917,7 +917,7 @@
 								{/if}
 							</button>
 							<button
-								class="shrink-0 text-zinc-500 transition-colors hover:text-zinc-300"
+								class="text-duvet-ink2 hover:text-duvet-ink shrink-0 transition-colors"
 								onclick={() => removePendingFile(key, i)}
 								aria-label="Remove {name}"
 							>
@@ -947,7 +947,7 @@
 {#snippet threadComposer(root: Message)}
 	{@const key = threadDraft(root.id)}
 	<div
-		class="relative flex max-h-48 min-h-16 shrink-0 flex-row items-end gap-2 border-t border-stone-800 bg-stone-950/45 px-3 py-2"
+		class="border-duvet-line bg-duvet-sunk/45 relative flex max-h-48 min-h-16 shrink-0 flex-row items-end gap-2 border-t px-3 py-2"
 	>
 		{@render draftBars(key, () => threadInputRef?.focus())}
 		{#key key}

@@ -48,12 +48,12 @@
 		{#if voiceAtt?.pending}
 			<div
 				class="flex max-w-64 min-w-48 items-center gap-2.5 rounded-2xl px-3.5 py-1"
-				style="background: color-mix(in oklab, var(--color-night-22) 80%, transparent); border: 1px solid color-mix(in oklab, var(--color-night-30) 60%, transparent);"
+				style="background: color-mix(in oklab, var(--duvet-card) 80%, transparent); border: 1px solid var(--duvet-line);"
 			>
-				<div class="size-9 shrink-0 animate-pulse rounded-full bg-zinc-700"></div>
+				<div class="bg-duvet-ink/10 size-9 shrink-0 animate-pulse rounded-full"></div>
 				<div class="flex flex-1 flex-col gap-1.5">
-					<div class="h-7 animate-pulse rounded bg-zinc-700/40"></div>
-					<span class="text-[11px] text-zinc-500">Sending...</span>
+					<div class="bg-duvet-ink/6 h-7 animate-pulse rounded"></div>
+					<span class="text-duvet-ink2 text-[11px]">Sending...</span>
 				</div>
 			</div>
 		{:else if voiceAtt && !voiceAtt.deleted_at}
@@ -65,8 +65,8 @@
 			/>
 		{:else}
 			<div
-				class="flex h-12 items-center gap-2 rounded-2xl border border-dashed border-zinc-700/50 px-4"
-				style="background: color-mix(in oklab, var(--color-night-20) 50%, transparent);"
+				class="border-duvet-line flex h-12 items-center gap-2 rounded-2xl border border-dashed px-4"
+				style="background: color-mix(in oklab, var(--duvet-bg) 50%, transparent);"
 			>
 				<svg
 					xmlns="http://www.w3.org/2000/svg"
@@ -78,12 +78,12 @@
 					stroke-width="1.5"
 					stroke-linecap="round"
 					stroke-linejoin="round"
-					class="text-zinc-600"
+					class="text-duvet-ink2/60"
 					><path d="M3 6h18" /><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" /><path
 						d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"
 					/></svg
 				>
-				<span class="text-xs text-zinc-500 italic">Voice note deleted</span>
+				<span class="text-duvet-ink2 text-xs italic">Voice note deleted</span>
 			</div>
 		{/if}
 	{:else if message.sticker_attachment_id}
@@ -103,7 +103,7 @@
 					img.remove();
 					parent.onclick = null;
 					parent.style.cursor = "default";
-					parent.innerHTML = `<div class="flex flex-col items-center justify-center w-40 h-40 rounded-md border border-dashed border-zinc-700 bg-zinc-800/30 gap-1"><span class="text-2xl">💩</span><span class="text-xs text-zinc-500">Sticker deleted</span></div>`;
+					parent.innerHTML = `<div class="flex flex-col items-center justify-center w-40 h-40 rounded-md border border-dashed border-duvet-line bg-duvet-card/30 gap-1"><span class="text-2xl">💩</span><span class="text-xs text-duvet-ink2">Sticker deleted</span></div>`;
 				}}
 			/>
 		</button>
@@ -117,19 +117,19 @@
 					{@const pulse = share === null ? "animate-pulse" : ""}
 					<!-- While its upload is followed, its share of it shows as a bar along its bottom, which takes the pulse's place -->
 					{#if att.content_type.startsWith("image/")}
-						<div class="relative flex h-40 w-64 items-center justify-center rounded-md bg-zinc-700/40 {pulse}">
-							<span class="text-xs text-zinc-500">Uploading {name}...</span>
+						<div class="bg-duvet-ink/6 relative flex h-40 w-64 items-center justify-center rounded-md {pulse}">
+							<span class="text-duvet-ink2 text-xs">Uploading {name}...</span>
 							{@render fileBar(share)}
 						</div>
 					{:else if att.content_type.startsWith("video/")}
-						<div class="relative flex h-44 w-80 items-center justify-center rounded-md bg-zinc-700/40 {pulse}">
-							<span class="text-xs text-zinc-500">Uploading {name}...</span>
+						<div class="bg-duvet-ink/6 relative flex h-44 w-80 items-center justify-center rounded-md {pulse}">
+							<span class="text-duvet-ink2 text-xs">Uploading {name}...</span>
 							{@render fileBar(share)}
 						</div>
 					{:else}
-						<div class="relative inline-flex max-w-xs items-center gap-2 rounded-md bg-zinc-800/60 px-3 py-2 {pulse}">
-							<span class="text-xs text-zinc-500">Uploading {name}...</span>
-							<span class="shrink-0 text-xs text-zinc-600">{formatFileSize(att.size_bytes)}</span>
+						<div class="bg-duvet-card/60 relative inline-flex max-w-xs items-center gap-2 rounded-md px-3 py-2 {pulse}">
+							<span class="text-duvet-ink2 text-xs">Uploading {name}...</span>
+							<span class="text-duvet-ink2/60 shrink-0 text-xs">{formatFileSize(att.size_bytes)}</span>
 							{@render fileBar(share)}
 						</div>
 					{/if}
@@ -137,7 +137,7 @@
 					{@const dw = Math.min(att.width ?? 200, maxWidth)}
 					{@const dh = Math.min(att.height ?? 48, maxHeight)}
 					<div
-						class="flex flex-col items-center justify-center gap-1 rounded-md border border-dashed border-zinc-700 bg-zinc-800/30"
+						class="border-duvet-line bg-duvet-card/30 flex flex-col items-center justify-center gap-1 rounded-md border border-dashed"
 						style="width: {dw}px; height: {dh}px; max-width: 100%;"
 					>
 						<svg
@@ -150,12 +150,12 @@
 							stroke-width="1.5"
 							stroke-linecap="round"
 							stroke-linejoin="round"
-							class="text-zinc-600"
+							class="text-duvet-ink2/60"
 							><path d="M3 6h18" /><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" /><path
 								d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"
 							/><line x1="10" x2="10" y1="11" y2="17" /><line x1="14" x2="14" y1="11" y2="17" /></svg
 						>
-						<span class="text-xs text-zinc-500">Attachment deleted</span>
+						<span class="text-duvet-ink2 text-xs">Attachment deleted</span>
 					</div>
 				{:else if att.content_type.startsWith("image/")}
 					{@const rawW = att.width ?? maxWidth}
@@ -170,7 +170,7 @@
 							inert={hidden}
 							onclick={() => onPreview(`${attachmentHost}${att.url ?? `/attachments/${att.id}`}`, name)}
 						>
-							<div class="img-skeleton absolute inset-0 animate-pulse bg-zinc-700/40"></div>
+							<div class="img-skeleton bg-duvet-ink/6 absolute inset-0 animate-pulse"></div>
 							<img
 								src="{attachmentHost}{att.url ?? `/attachments/${att.id}`}"
 								alt={name}
@@ -192,7 +192,7 @@
 										const parent = img.parentElement!;
 										parent.querySelector(".img-skeleton")?.remove();
 										img.remove();
-										parent.innerHTML = `<div class="flex flex-col items-center justify-center w-full h-full bg-zinc-800/60 rounded-md gap-1"><span class="text-2xl">💩</span><span class="text-xs text-zinc-500">Failed to load</span></div>`;
+										parent.innerHTML = `<div class="flex flex-col items-center justify-center w-full h-full bg-duvet-card/60 rounded-md gap-1"><span class="text-2xl">💩</span><span class="text-xs text-duvet-ink2">Failed to load</span></div>`;
 									}
 								}}
 							/>
@@ -208,8 +208,8 @@
 					{@const vw = Math.round(rawVW * vidScale)}
 					{@const vh = Math.round(rawVH * vidScale)}
 					<div class="relative overflow-hidden rounded-md" style="width: {vw}px; height: {vh}px; max-width: 100%;">
-						<div class="video-skeleton absolute inset-0 flex animate-pulse items-center justify-center bg-zinc-700/40">
-							<span class="text-xs text-zinc-500">Loading video...</span>
+						<div class="video-skeleton bg-duvet-ink/6 absolute inset-0 flex animate-pulse items-center justify-center">
+							<span class="text-duvet-ink2 text-xs">Loading video...</span>
 						</div>
 						<!-- svelte-ignore a11y_media_has_caption -->
 						<video
@@ -234,7 +234,7 @@
 									const parent = vid.parentElement!;
 									parent.querySelector(".video-skeleton")?.remove();
 									vid.remove();
-									parent.innerHTML = `<div class="flex flex-col items-center justify-center w-full h-full bg-zinc-800/60 rounded-md gap-1"><span class="text-2xl">💩</span><span class="text-xs text-zinc-500">Failed to load</span></div>`;
+									parent.innerHTML = `<div class="flex flex-col items-center justify-center w-full h-full bg-duvet-card/60 rounded-md gap-1"><span class="text-2xl">💩</span><span class="text-xs text-duvet-ink2">Failed to load</span></div>`;
 								}
 							}}
 						></video>
@@ -265,13 +265,13 @@
 							href="{attachmentHost}{att.url ?? `/attachments/${att.id}`}"
 							target="_blank"
 							rel="noopener noreferrer"
-							class="flex items-center gap-2 rounded-md bg-zinc-800/60 px-3 py-2 text-sm text-zinc-300 hover:bg-zinc-700/60 {hidden
+							class="bg-duvet-card/60 text-duvet-ink hover:bg-duvet-ink/8 flex items-center gap-2 rounded-md px-3 py-2 text-sm {hidden
 								? 'blur-md'
 								: ''}"
 							inert={hidden}
 						>
 							<span class="truncate">{name}</span>
-							<span class="shrink-0 text-xs text-zinc-500">{formatFileSize(att.size_bytes)}</span>
+							<span class="text-duvet-ink2 shrink-0 text-xs">{formatFileSize(att.size_bytes)}</span>
 						</a>
 						{#if hidden}
 							<SpoilerCover onReveal={() => revealed.add(att.id)} />
@@ -280,14 +280,14 @@
 				{/if}
 			{/each}
 			{#if upload && message.attachments.some((a) => a.pending)}
-				<p class="flex items-center gap-2 text-xs text-zinc-400">
+				<p class="text-duvet-ink2 flex items-center gap-2 text-xs">
 					<span class="tabular-nums">{messageUploadNote(sizes, upload.sent, upload.total)}</span>
 					{#if !allUp(upload.sent, upload.total)}
 						<!-- Only while its bytes go up: once they're all up, the API may post the message whatever happens here. It
 						     takes the pointer the message being sent doesn't. -->
 						<button
 							type="button"
-							class="pointer-events-auto cursor-pointer text-stone-300 hover:underline"
+							class="text-duvet-ink pointer-events-auto cursor-pointer hover:underline"
 							aria-label="Cancel upload"
 							onclick={() => cancelUpload(message.nonce!)}>Cancel</button
 						>
@@ -300,8 +300,8 @@
 
 {#snippet fileBar(share: number | null)}
 	{#if share !== null}
-		<span class="absolute inset-x-2 bottom-1 h-1 overflow-hidden rounded-full bg-zinc-600/40" aria-hidden="true">
-			<span class="block h-full rounded-full bg-zinc-300" style="width: {share * 100}%"></span>
+		<span class="bg-duvet-ink/6 absolute inset-x-2 bottom-1 h-1 overflow-hidden rounded-full" aria-hidden="true">
+			<span class="bg-duvet-ink block h-full rounded-full" style="width: {share * 100}%"></span>
 		</span>
 	{/if}
 {/snippet}

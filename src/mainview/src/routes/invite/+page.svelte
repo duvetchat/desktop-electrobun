@@ -96,17 +96,17 @@
 	}
 </script>
 
-<section class="flex min-h-screen items-center justify-center bg-zinc-950 p-6">
-	<div class="w-full max-w-md rounded-3xl border border-zinc-700 bg-zinc-900/90 p-10 shadow-2xl backdrop-blur-xl">
+<section class="bg-duvet-sunk flex min-h-screen items-center justify-center p-6">
+	<div class="border-duvet-line bg-duvet-card shadow-duvet-float rounded-card w-full max-w-md border p-10">
 		{#if loading}
-			<div class="flex flex-col items-center gap-4 text-zinc-300">
-				<div class="h-10 w-10 animate-spin rounded-full border-4 border-stone-500 border-t-transparent"></div>
+			<div class="text-duvet-ink flex flex-col items-center gap-4">
+				<div class="border-duvet-ink2/40 h-10 w-10 animate-spin rounded-full border-4 border-t-transparent"></div>
 				<p>Loading…</p>
 			</div>
 		{:else if error && !invite}
 			<div class="text-center">
-				<div class="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-zinc-800">
-					<svg viewBox="0 0 24 24" class="h-7 w-7 text-zinc-300" fill="none" stroke="currentColor" stroke-width="1.5">
+				<div class="bg-duvet-card mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full">
+					<svg viewBox="0 0 24 24" class="text-duvet-ink h-7 w-7" fill="none" stroke="currentColor" stroke-width="1.5">
 						<path
 							stroke-linecap="round"
 							stroke-linejoin="round"
@@ -114,10 +114,10 @@
 						/>
 					</svg>
 				</div>
-				<h1 class="mb-2 text-xl font-semibold text-white">Invite not available</h1>
-				<p class="text-sm text-zinc-300">{error}</p>
+				<h1 class="text-duvet-ink mb-2 text-xl font-semibold">Invite not available</h1>
+				<p class="text-duvet-ink text-sm">{error}</p>
 				<button
-					class="mt-6 rounded-lg bg-zinc-800 px-6 py-2.5 text-sm font-medium text-white transition hover:bg-zinc-700"
+					class="bg-duvet-card text-duvet-ink hover:bg-duvet-ink/10 mt-6 rounded-lg px-6 py-2.5 text-sm font-medium transition"
 					onclick={() => (window.location.href = route("/index.html"))}
 				>
 					Go back
@@ -126,46 +126,46 @@
 		{:else if invite}
 			<div class="text-center">
 				<div
-					class="from-fill-500 to-fill-700 text-fixed-white mx-auto mb-5 flex h-20 w-20 items-center justify-center rounded-2xl bg-linear-to-br text-3xl font-bold shadow-lg select-none"
+					class="bg-duvet-chosen text-duvet-chosen-ink rounded-card shadow-duvet-float mx-auto mb-5 flex h-20 w-20 items-center justify-center text-3xl font-bold select-none"
 				>
 					{invite.space_name.charAt(0).toUpperCase()}
 				</div>
 
-				<p class="mb-1 text-sm font-medium tracking-widest text-zinc-300 uppercase">You've been invited to join</p>
-				<h1 class="mb-1 text-2xl font-bold wrap-break-word text-white">
+				<p class="text-duvet-ink2 mb-1 text-[13px] font-bold">You've been invited to join</p>
+				<h1 class="text-duvet-ink mb-1 text-2xl font-bold wrap-break-word">
 					{invite.space_name}
 				</h1>
 
 				{#if invite.description}
-					<p class="mt-1 mb-3 text-sm wrap-break-word text-zinc-300">
+					<p class="text-duvet-ink mt-1 mb-3 text-sm wrap-break-word">
 						{invite.description}
 					</p>
 				{/if}
 
 				<div class="mb-6 flex items-center justify-center gap-2">
-					<span class="inline-block h-2 w-2 rounded-full bg-[var(--status-online,var(--color-stone-300))]"></span>
-					<span class="text-sm text-zinc-300"
+					<span class="bg-duvet-alive inline-block h-2 w-2 rounded-full"></span>
+					<span class="text-duvet-ink text-sm"
 						>{formatCount(invite.member_count)}
 						{invite.member_count === 1 ? "Member" : "Members"}</span
 					>
 				</div>
 
 				{#if error}
-					<p class="mb-4 text-sm text-red-400">{error}</p>
+					<p class="text-duvet-danger mb-4 text-sm">{error}</p>
 				{/if}
 
 				{#if userSession.token}
 					<button
-						class="bg-fill-600 text-fixed-white hover:bg-fill-500 w-full rounded-xl py-3 text-base font-semibold transition disabled:cursor-not-allowed disabled:opacity-60"
+						class="bg-duvet-accent text-duvet-on-accent shadow-duvet-raised w-full rounded-xl py-3 text-base font-bold transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
 						onclick={handleJoin}
 						disabled={joining}
 					>
 						{joining ? "Joining…" : "Join Space"}
 					</button>
 				{:else}
-					<p class="mb-4 text-sm text-zinc-300">Sign in to join this Space.</p>
+					<p class="text-duvet-ink mb-4 text-sm">Sign in to join this Space.</p>
 					<button
-						class="bg-fill-600 text-fixed-white hover:bg-fill-500 w-full rounded-xl py-3 text-base font-semibold transition"
+						class="bg-duvet-accent text-duvet-on-accent shadow-duvet-raised w-full rounded-xl py-3 text-base font-bold transition hover:brightness-110"
 						onclick={() => (window.location.href = signInUrl(inviteUrl(code)))}
 					>
 						Sign in to join
@@ -173,7 +173,7 @@
 				{/if}
 
 				<button
-					class="mt-3 w-full rounded-xl bg-transparent py-2.5 text-sm font-medium text-zinc-300 transition hover:text-white"
+					class="text-duvet-ink hover:text-duvet-ink mt-3 w-full rounded-xl bg-transparent py-2.5 text-sm font-medium transition"
 					onclick={() => (window.location.href = route("/index.html"))}
 				>
 					Not now

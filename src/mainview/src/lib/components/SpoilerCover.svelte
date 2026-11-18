@@ -7,7 +7,7 @@
 
 <button
 	type="button"
-	class="absolute inset-0 flex items-center justify-center bg-zinc-900/30 transition-colors hover:bg-zinc-900/20"
+	class="bg-duvet-bg/30 hover:bg-duvet-bg/20 absolute inset-0 flex items-center justify-center transition-colors"
 	onclick={(e) => {
 		e.stopPropagation();
 		onReveal();

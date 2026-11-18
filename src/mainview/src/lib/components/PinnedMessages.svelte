@@ -157,23 +157,23 @@
 			align="end"
 			sideOffset={8}
 			updatePositionStrategy="always"
-			class="z-50 flex max-h-[70vh] w-104 flex-col overflow-hidden rounded-lg border border-stone-800 bg-stone-950 font-normal shadow-2xl"
+			class="rounded-card border-duvet-line bg-duvet-sunk shadow-duvet-float z-50 flex max-h-[70vh] w-104 flex-col overflow-hidden border font-normal"
 		>
-			<div class="flex h-10 shrink-0 items-center gap-2 border-b border-stone-800 px-3">
-				<PinIcon class="size-4 text-stone-400" />
-				<span class="text-sm font-semibold text-stone-100">Pinned messages</span>
+			<div class="border-duvet-line flex h-10 shrink-0 items-center gap-2 border-b px-3">
+				<PinIcon class="text-duvet-ink2 size-4" />
+				<span class="text-duvet-ink text-sm font-semibold">Pinned messages</span>
 			</div>
 			<div class="flex flex-col gap-1.5 overflow-y-auto p-2" onclickcapture={(e) => mentionProfile.open(e)}>
 				{#if failure}
-					<p class="px-2 py-8 text-center text-xs text-red-400">{failure}</p>
+					<p class="text-duvet-danger px-2 py-8 text-center text-xs">{failure}</p>
 				{:else if pins.length === 0}
-					<p class="px-2 py-8 text-center text-xs text-stone-500">
+					<p class="text-duvet-ink2 px-2 py-8 text-center text-xs">
 						{loading ? "Loading…" : `This ${conversation ? "conversation" : "room"} has no pinned messages yet`}
 					</p>
 				{/if}
 				{#each pins as m (m.id)}
 					<div
-						class="group relative flex shrink-0 flex-col gap-1 rounded-md border border-stone-800/80 bg-stone-900/60 px-3 py-2"
+						class="group border-duvet-line bg-duvet-bg/60 relative flex shrink-0 flex-col gap-1 rounded-md border px-3 py-2"
 					>
 						<MessagePreview
 							message={m}
@@ -186,14 +186,14 @@
 						/>
 						<div class="absolute top-1.5 right-1.5 hidden items-center gap-1 group-focus-within:flex group-hover:flex">
 							<button
-								class="rounded bg-stone-800 px-2 py-0.5 text-xs font-medium text-stone-200 hover:bg-stone-700"
+								class="bg-duvet-card text-duvet-ink hover:bg-duvet-ink/10 rounded px-2 py-0.5 text-xs font-medium"
 								onclick={() => jump(m)}
 							>
 								Jump
 							</button>
 							{#if canPin}
 								<button
-									class="flex size-5.5 items-center justify-center rounded bg-stone-800 text-stone-300 hover:bg-stone-700 hover:text-red-400"
+									class="bg-duvet-card text-duvet-ink hover:bg-duvet-ink/10 hover:text-duvet-danger flex size-5.5 items-center justify-center rounded"
 									title="Unpin message"
 									aria-label="Unpin message"
 									onclick={() => unpin(m)}

@@ -47,15 +47,14 @@ describe("the @ suggestions", () => {
 
 	test("draw each member's banner behind their row, and their text above it", () => {
 		expect(rows).toContain('<MemberBanner src={member.banner_url} offline={member.status === "offline"} />');
-		expect(rows).toMatch(/role="option"[^>]*class="relative /);
+		expect(rows).toMatch(/role="option"[^>]*class="[^"]*\brelative\b/);
 		expect(rows).toMatch(/<MemberBanner [^>]*\/>\s*<span class="relative /);
 	});
 
 	// A banner's image can be anything. Over a white one (dark theme) or a black one (light), at the banner's 25%, only the
-	// name's color reads: 5.2:1 and 7:1 on a row, and 4.1:1 and 6:1 on the keyboard's, against 1.5:1 and 2.9:1 for the
-	// dim one a username has without a banner.
+	// ink reads: about 6:1 and 8:1 on a row, against about 3:1 for the second ink a username has without a banner.
 	test("draw all of a row's text with a banner in the name's color", () => {
-		expect(rows).toContain("{member.banner_url ? 'text-night-85' : 'text-night-52'}");
+		expect(rows).toContain("{member.banner_url ? 'text-duvet-ink' : 'text-duvet-ink2'}");
 	});
 });
 
@@ -71,12 +70,12 @@ describe("a command's row", () => {
 		expect(rows).toContain(
 			'<MemberBanner src={botMember?.banner_url ?? null} offline={botMember?.status === "offline"} />',
 		);
-		expect(rows).toMatch(/role="option"[^>]*class="relative /);
+		expect(rows).toMatch(/role="option"[^>]*class="[^"]*\brelative\b/);
 		expect(rows).toMatch(/<MemberBanner [^>]*\/>\s*<span class="relative /);
 	});
 
 	test("with all of its text in the name's color then", () => {
-		expect(rows.match(/botMember\?\.banner_url\s*\?\s*'text-night-85'/g)).toHaveLength(2);
+		expect(rows.match(/botMember\?\.banner_url\s*\?\s*'text-duvet-ink'/g)).toHaveLength(2);
 	});
 });
 

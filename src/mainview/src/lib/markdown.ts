@@ -470,7 +470,7 @@ function linkHtml(url: string, drawing: LinkDrawing, roomNames?: Record<string, 
 	// What follows the card's link in the bare link is text, as the card reads the link without it.
 	if (own && duvet) return duvetLinkHtml(duvet, card, own.spaceName, roomNames) + escapeHtml(url.slice(card.length));
 	if (!/^https?:\/\//.test(url)) return escapeHtml(url);
-	return `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer" class="msg-bare-link text-stone-300 hover:underline">${escapeHtml(url)}</a>`;
+	return `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer" class="msg-bare-link text-duvet-ink hover:underline">${escapeHtml(url)}</a>`;
 }
 
 // One of Duvet's own links: a message's as a chip of its room, an invite's as a button with the link. What it opens is
@@ -488,10 +488,10 @@ function duvetLinkHtml(
 		const data = conversationId
 			? `data-conversation="${conversationId}" data-message="${messageId}"`
 			: `data-space="${spaceId}" data-room="${roomId}" data-message="${messageId}"`;
-		return `<button type="button" class="msg-duvet-link mx-0.5 inline-flex cursor-pointer items-center gap-1 rounded border border-zinc-600/50 bg-zinc-700/70 px-1.5 py-0.5 align-middle text-zinc-300 transition-colors hover:bg-zinc-600/80 hover:text-white" ${data} title="${escapeHtml(`${space} › #${room}`)}"><span class="text-xs text-zinc-400">#</span><span class="text-xs font-medium">${escapeHtml(room)}</span><svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="shrink-0 text-zinc-400"><path d="m9 18 6-6-6-6"/></svg></button>`;
+		return `<button type="button" class="msg-duvet-link mx-0.5 inline-flex cursor-pointer items-center gap-1 rounded border border-duvet-line bg-duvet-ink/10 px-1.5 py-0.5 align-middle text-duvet-ink transition-colors hover:bg-duvet-ink/15 hover:text-duvet-ink" ${data} title="${escapeHtml(`${space} › #${room}`)}"><span class="text-xs text-duvet-ink2">#</span><span class="text-xs font-medium">${escapeHtml(room)}</span><svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="shrink-0 text-duvet-ink2"><path d="m9 18 6-6-6-6"/></svg></button>`;
 	}
 	const data = "bot" in link ? `data-bot="${link.bot}"` : `data-invite="${escapeHtml(link.code)}"`;
-	return `<button type="button" class="msg-duvet-link cursor-pointer text-stone-300 hover:underline" ${data}>${escapeHtml(text)}</button>`;
+	return `<button type="button" class="msg-duvet-link cursor-pointer text-duvet-ink hover:underline" ${data}>${escapeHtml(text)}</button>`;
 }
 
 /**

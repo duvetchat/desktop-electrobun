@@ -86,11 +86,11 @@
 
 	const buttonColors: Record<number, string> = {
 		// The colored ones keep white text in light too; the gray ones' text turns over with their gray.
-		[ButtonStyle.Primary]: "bg-indigo-500 text-fixed-white hover:bg-indigo-600",
-		[ButtonStyle.Secondary]: "bg-zinc-700 text-white hover:bg-zinc-600",
-		[ButtonStyle.Success]: "bg-green-700 text-fixed-white hover:bg-green-800",
-		[ButtonStyle.Danger]: "bg-red-600 text-fixed-white hover:bg-red-700",
-		[ButtonStyle.Link]: "bg-zinc-700 text-white hover:bg-zinc-600",
+		[ButtonStyle.Primary]: "bg-duvet-accent text-duvet-on-accent hover:bg-duvet-accent/85",
+		[ButtonStyle.Secondary]: "bg-duvet-ink/10 text-duvet-ink hover:bg-duvet-ink/15",
+		[ButtonStyle.Success]: "bg-duvet-alive text-duvet-on-accent hover:bg-duvet-alive/15",
+		[ButtonStyle.Danger]: "bg-duvet-danger text-duvet-on-accent hover:bg-duvet-danger/85",
+		[ButtonStyle.Link]: "bg-duvet-ink/10 text-duvet-ink hover:bg-duvet-ink/15",
 	};
 
 	// Only http(s) urls become links and media, whatever a bot sends (the API checks them too).
@@ -120,7 +120,7 @@
 		{@render node(component)}
 	{/each}
 	{#if failure}
-		<p role="alert" class="flex items-center gap-1.5 text-sm text-red-400" title={failure.detail}>
+		<p role="alert" class="text-duvet-danger flex items-center gap-1.5 text-sm" title={failure.detail}>
 			<AlertIcon class="size-4 shrink-0" />
 			{failure.text}
 		</p>
@@ -131,7 +131,7 @@
 	{#if c.type === ComponentType.Container}
 		{@const hidden = !!c.spoiler && !revealed.has(c)}
 		<div
-			class="relative flex w-full min-w-0 flex-col overflow-hidden rounded-lg border border-zinc-700/60 bg-zinc-800/40 p-4 {c.accent_color !=
+			class="border-duvet-line bg-duvet-card/40 relative flex w-full min-w-0 flex-col overflow-hidden rounded-lg border p-4 {c.accent_color !=
 			null
 				? 'border-l-4'
 				: ''}"
@@ -168,7 +168,7 @@
 			{/if}
 		</div>
 	{:else if c.type === ComponentType.TextDisplay}
-		<div class="min-w-0 wrap-break-word text-zinc-200 select-text">
+		<div class="text-duvet-ink min-w-0 wrap-break-word select-text">
 			{@html renderMarkdown(c.content ?? "", false, mentionMap, customEmojiMap, $roomNames, {})}
 		</div>
 	{:else if c.type === ComponentType.Thumbnail}
@@ -182,15 +182,15 @@
 				href={mediaSrc(c.file)}
 				target="_blank"
 				rel="noopener noreferrer"
-				class="group flex items-center gap-3 rounded-lg border border-zinc-700/60 bg-zinc-800/60 px-4 py-3 no-underline transition-colors hover:bg-zinc-800 {hidden
+				class="group border-duvet-line bg-duvet-card/60 hover:bg-duvet-card flex items-center gap-3 rounded-lg border px-4 py-3 no-underline transition-colors {hidden
 					? 'blur-md'
 					: ''}"
 			>
-				<FileIcon class="size-8 shrink-0 text-zinc-400" />
+				<FileIcon class="text-duvet-ink2 size-8 shrink-0" />
 				<span class="flex min-w-0 flex-col">
-					<span class="truncate text-sm text-stone-300 group-hover:underline">{c.name ?? "file"}</span>
+					<span class="text-duvet-ink truncate text-sm group-hover:underline">{c.name ?? "file"}</span>
 					{#if c.size != null}
-						<span class="text-xs text-zinc-500">{formatFileSize(c.size)}</span>
+						<span class="text-duvet-ink2 text-xs">{formatFileSize(c.size)}</span>
 					{/if}
 				</span>
 			</a>
@@ -201,7 +201,7 @@
 	{:else if c.type === ComponentType.Separator}
 		<div role="separator" class={c.spacing === 2 ? "py-2" : ""}>
 			{#if c.divider !== false}
-				<div class="h-px w-full bg-zinc-700/60"></div>
+				<div class="bg-duvet-line h-px w-full"></div>
 			{/if}
 		</div>
 	{:else if c.type === ComponentType.Button}

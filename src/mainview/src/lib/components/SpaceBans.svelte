@@ -101,42 +101,42 @@
 	});
 </script>
 
-<p class="mb-3 text-sm text-zinc-400">Banned users can't join the space until they're unbanned.</p>
+<p class="text-duvet-ink2 mb-3 text-sm">Banned users can't join the space until they're unbanned.</p>
 {#if !list || (list.bans.length === 0 && loading > 0)}
 	<div class="space-y-2">
 		{#each Array(3) as _}
-			<div class="h-16 animate-pulse rounded-lg bg-zinc-800/40"></div>
+			<div class="bg-duvet-card/40 h-16 animate-pulse rounded-lg"></div>
 		{/each}
 	</div>
 {:else if list.bans.length === 0 && !list.more}
-	<div class="flex flex-col items-center justify-center py-16 text-zinc-500">
+	<div class="text-duvet-ink2 flex flex-col items-center justify-center py-16">
 		<BanIcon class="mb-3 size-10" />
 		<p class="text-sm">No bans</p>
 	</div>
 {:else}
 	<ul class="space-y-1">
 		{#each list.bans as ban (ban.user_id)}
-			<li class="flex items-start gap-3 rounded-lg border border-zinc-800 bg-zinc-800/30 px-3 py-2.5">
+			<li class="rounded-card border-duvet-line bg-duvet-card/30 flex items-start gap-3 border px-3 py-2.5">
 				<UserAvatar src={getAvatarURL(ban.user_id, ban.user.avatar)} name={ban.user.username} size={36} />
 				<div class="min-w-0 flex-1">
 					<p class="flex min-w-0 items-baseline gap-1.5">
-						<span class="truncate text-sm font-medium text-zinc-200">{nameOf(ban)}</span>
-						<span class="truncate text-xs text-zinc-500">@{ban.user.username}</span>
+						<span class="text-duvet-ink truncate text-sm font-medium">{nameOf(ban)}</span>
+						<span class="text-duvet-ink2 truncate text-xs">@{ban.user.username}</span>
 					</p>
 					{#if ban.reason}
-						<p class="mt-0.5 text-xs wrap-break-word whitespace-pre-wrap text-zinc-300 select-text">{ban.reason}</p>
+						<p class="text-duvet-ink mt-0.5 text-xs wrap-break-word whitespace-pre-wrap select-text">{ban.reason}</p>
 					{:else}
-						<p class="mt-0.5 text-xs text-zinc-500 italic">No reason given</p>
+						<p class="text-duvet-ink2 mt-0.5 text-xs italic">No reason given</p>
 					{/if}
-					<p class="text-xxs mt-1 text-zinc-500">
+					<p class="text-xxs text-duvet-ink2 mt-1">
 						Banned by {reactorOf(ban.banned_by, members, profiles).name}
-						<span class="mx-1 text-zinc-600">&middot;</span>
+						<span class="text-duvet-ink2/60 mx-1">&middot;</span>
 						{new Date(ban.created_at).toLocaleString()}
 					</p>
 				</div>
 				<button
 					type="button"
-					class="flex h-8 shrink-0 items-center rounded-md bg-zinc-800 px-2.5 text-xs font-medium text-zinc-300 transition-colors hover:bg-red-600/20 hover:text-red-400 disabled:opacity-50"
+					class="bg-duvet-card text-duvet-ink hover:bg-duvet-danger/20 hover:text-duvet-danger flex h-8 shrink-0 items-center rounded-md px-2.5 text-xs font-medium transition-colors disabled:opacity-50"
 					disabled={unbanning.has(ban.user_id)}
 					onclick={() => unban(ban)}
 				>
@@ -148,7 +148,7 @@
 	{#if list.more}
 		<button
 			type="button"
-			class="mt-3 flex h-9 w-full items-center justify-center rounded-md bg-zinc-800 text-xs font-medium text-zinc-200 transition-colors hover:bg-zinc-700 disabled:opacity-50"
+			class="bg-duvet-card text-duvet-ink hover:bg-duvet-ink/10 mt-3 flex h-9 w-full items-center justify-center rounded-md text-xs font-medium transition-colors disabled:opacity-50"
 			disabled={loading > 0}
 			onclick={() => load(spaceId, false)}
 		>

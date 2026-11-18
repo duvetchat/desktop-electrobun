@@ -102,7 +102,7 @@
 </script>
 
 {#if roomName !== null}
-	<div class="text-xxs flex items-center gap-0.5 font-semibold text-stone-500">
+	<div class="text-xxs text-duvet-ink2 flex items-center gap-0.5 font-semibold">
 		<HashIcon class="size-3" />
 		{roomName}
 	</div>
@@ -118,15 +118,15 @@
 		</div>
 		<div class="flex min-w-0 flex-1 flex-col">
 			<div class="flex items-baseline gap-1.5">
-				<span class="truncate text-sm font-semibold text-stone-100" style={author ? nameColor(author) : ""}
+				<span class="text-duvet-ink truncate text-sm font-semibold" style={author ? nameColor(author) : ""}
 					>{message.author_name}</span
 				>
 				<AuthorTag {message} />
-				<span class="text-xxs shrink-0 text-stone-500">{formatShortDateTime(message.created_at)}</span>
+				<span class="text-xxs text-duvet-ink2 shrink-0">{formatShortDateTime(message.created_at)}</span>
 			</div>
 			{#if callLine}
-				<p class="flex items-center gap-1.5 text-sm text-stone-400">
-					<PhoneIcon class="size-4 shrink-0 {callLine.missed ? 'text-red-400' : 'text-stone-500'}" />
+				<p class="text-duvet-ink2 flex items-center gap-1.5 text-sm">
+					<PhoneIcon class="size-4 shrink-0 {callLine.missed ? 'text-duvet-danger' : 'text-duvet-ink2'}" />
 					{callNoticeText(callLine)}
 				</p>
 			{/if}
@@ -142,7 +142,7 @@
 					<div
 						bind:this={contentEl}
 						data-search-content
-						class="text-sm wrap-break-word whitespace-pre-wrap text-stone-300 {expanded ? '' : 'line-clamp-6'}"
+						class="text-duvet-ink text-sm wrap-break-word whitespace-pre-wrap {expanded ? '' : 'line-clamp-6'}"
 					>
 						<MessageText
 							content={text}
@@ -155,7 +155,7 @@
 					{#if clamped}
 						<button
 							type="button"
-							class="mt-0.5 self-start text-xs font-medium text-stone-400 hover:text-stone-200 hover:underline"
+							class="text-duvet-ink2 hover:text-duvet-ink mt-0.5 self-start text-xs font-medium hover:underline"
 							onclick={() => (expanded = !expanded)}
 						>
 							{expanded ? "Show less" : "Show more"}

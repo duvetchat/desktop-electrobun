@@ -44,7 +44,7 @@
 {#snippet connector()}
 	<!-- An L from the middle of the avatar's column -->
 	<div class="flex shrink-0 items-center justify-end {gutter}">
-		<div class="rounded-tl-5px h-3.5 w-[calc(50%+1px)] border-t-2 border-l-2 border-zinc-500/60"></div>
+		<div class="rounded-tl-5px border-duvet-ink2/40 h-3.5 w-[calc(50%+1px)] border-t-2 border-l-2"></div>
 	</div>
 {/snippet}
 
@@ -54,17 +54,17 @@
 		{@render connector()}
 		{#if !ref.created_at}
 			<!-- The referenced message is gone: the API sends only the reference then -->
-			<span class="-translate-y-1.25 text-xs text-zinc-500 italic">Original message was deleted</span>
+			<span class="text-duvet-ink2 -translate-y-1.25 text-xs italic">Original message was deleted</span>
 		{:else}
 			<!-- Reply preview -->
 			<button
 				type="button"
-				class="flex min-w-0 -translate-y-1.25 cursor-pointer items-start gap-1.5 text-xs text-zinc-400 transition-colors hover:text-zinc-100"
+				class="text-duvet-ink2 hover:text-duvet-ink flex min-w-0 -translate-y-1.25 cursor-pointer items-start gap-1.5 text-xs transition-colors"
 				onclick={jumpToQuoted}
 			>
 				{#if quotedCall}
 					<!-- A call notice has no text: what its row says, which names its caller -->
-					<PhoneIcon class="size-4 shrink-0 {quotedCall.missed ? 'text-red-400' : 'text-zinc-500'}" />
+					<PhoneIcon class="size-4 shrink-0 {quotedCall.missed ? 'text-duvet-danger' : 'text-duvet-ink2'}" />
 					<span class="truncate opacity-80">{callNoticeText(quotedCall)}</span>
 				{:else}
 					<UserAvatar
@@ -72,7 +72,7 @@
 						name={ref.author_name ?? "?"}
 						size={16}
 					/>
-					<span class="shrink-0 font-medium text-zinc-300">{quotedAuthorName(ref.author_name, ref)}</span>
+					<span class="text-duvet-ink shrink-0 font-medium">{quotedAuthorName(ref.author_name, ref)}</span>
 					{#if ref.content}
 						<span class="msg-content truncate opacity-80"
 							>{@html renderMarkdownLine(ref.content, mentionMap, customEmojiMap, $roomNames)}</span
@@ -99,8 +99,8 @@
 		{@render connector()}
 		<button
 			type="button"
-			class="flex min-w-0 -translate-y-1.25 items-center gap-1.5 text-xs text-zinc-400 transition-colors {used.interacted_message_id
-				? 'cursor-pointer hover:text-zinc-100'
+			class="text-duvet-ink2 flex min-w-0 -translate-y-1.25 items-center gap-1.5 text-xs transition-colors {used.interacted_message_id
+				? 'hover:text-duvet-ink cursor-pointer'
 				: 'cursor-default'}"
 			onclick={() => {
 				if (!used.interacted_message_id) return;
@@ -113,9 +113,9 @@
 			}}
 		>
 			<UserAvatar src={getAvatarURL(used.user.id, used.user.avatar)} name={usedBy} size={16} />
-			<span class="shrink-0 font-medium text-zinc-300">{usedBy}</span>
+			<span class="text-duvet-ink shrink-0 font-medium">{usedBy}</span>
 			<span class="truncate"
-				>used <span class="font-medium text-zinc-300">{used.name ? `/${used.name}` : message.author_name}</span></span
+				>used <span class="text-duvet-ink font-medium">{used.name ? `/${used.name}` : message.author_name}</span></span
 			>
 		</button>
 	</div>

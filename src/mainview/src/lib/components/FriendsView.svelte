@@ -645,7 +645,7 @@
 							}}
 						>
 							<input
-								class="bg-duvet-sunk shadow-duvet-press text-duvet-ink placeholder:text-duvet-ink2 focus-override focus-visible:outline-duvet-accent h-10 min-w-0 flex-1 rounded-xl px-3 text-sm outline-none focus-visible:outline-2"
+								class="bg-duvet-sunk shadow-duvet-press text-duvet-ink placeholder:text-duvet-ink2 focus-override focus-visible:outline-duvet-accent h-10 min-w-0 flex-1 rounded-xl px-3 text-sm focus-visible:outline-2"
 								type="text"
 								placeholder="User ID"
 								aria-label="User ID"
@@ -744,7 +744,7 @@
 						<label for="group-name" class="text-duvet-ink2 text-[13px] font-bold">Name</label>
 						<input
 							id="group-name"
-							class="bg-duvet-sunk shadow-duvet-press text-duvet-ink placeholder:text-duvet-ink2 focus-override focus-visible:outline-duvet-accent h-10 rounded-xl px-3 text-sm outline-none focus-visible:outline-2"
+							class="bg-duvet-sunk shadow-duvet-press text-duvet-ink placeholder:text-duvet-ink2 focus-override focus-visible:outline-duvet-accent h-10 rounded-xl px-3 text-sm focus-visible:outline-2"
 							type="text"
 							placeholder="Best friends"
 							bind:value={groupName}
