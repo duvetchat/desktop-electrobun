@@ -18,6 +18,7 @@ import { navigationRules } from "./navigation";
 import { Maximizer } from "./window-frame";
 import { dragWithWindows, letWindowsArrange } from "./window-snap";
 import { startupSummary, writeStartupLine } from "./startup";
+import { shellPreload, type TitleBarStyle } from "./shell";
 
 // When Bun started, and its own steps of the app's start, which the page's join in startup.log (startupTimings, #280):
 // its code running (what loads before it, Electrobun's API, comes first) and the window made.
@@ -212,9 +213,15 @@ const currentOS = process.platform;
 
 const rendererType = currentOS === "linux" ? "cef" : "native";
 
+// The main window's title bar: none, with the page drawing its own (Header.svelte).
+const titleBarStyle: TitleBarStyle = "hidden";
+
 const win = new BrowserWindow({
-	titleBarStyle: "hidden",
+	titleBarStyle,
 	renderer: rendererType,
+	// What only Bun knows about this window, for the page's platform switch (shell.ts, lib/platform.ts), set before
+	// any of the page's scripts run.
+	preload: shellPreload("main", titleBarStyle),
 	sandbox: false,
 	frame: {
 		height: 900,
