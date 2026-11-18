@@ -2,6 +2,7 @@
 	import { activeCall, activeVoiceRoomId, conversations, currentUser } from "$lib/stores.svelte";
 	import { acceptCall, cancelCall, sendEventMessage } from "$lib/api/ws/connection";
 	import { Phone, PhoneIncoming, PhoneOff, PhoneOutgoing } from "@lucide/svelte";
+	import GroupMark from "$lib/components/GroupMark.svelte";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
 	import { getAvatarURL } from "$lib/common/common";
 	import { audioStore } from "$lib/stores/audio.svelte";
@@ -122,7 +123,11 @@
 						? 'border-duvet-alive/50'
 						: 'border-duvet-ink2/45'}"
 				></span>
-				<UserAvatar src={face.userId ? getAvatarURL(face.userId, face.avatar) : null} name={face.name} size={36} />
+				{#if face.userId}
+					<UserAvatar src={getAvatarURL(face.userId, face.avatar)} name={face.name} size={36} />
+				{:else}
+					<GroupMark size={36} />
+				{/if}
 			</span>
 			<span class="flex min-w-0 flex-col gap-0.5">
 				<span class="truncate text-[13.5px] leading-[1.25] font-semibold">{face.name}</span>

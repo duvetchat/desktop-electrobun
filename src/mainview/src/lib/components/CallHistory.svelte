@@ -2,6 +2,7 @@
 	import { untrack } from "svelte";
 	import { get } from "svelte/store";
 	import { Phone as PhoneIcon, PhoneMissed } from "@lucide/svelte";
+	import GroupMark from "$lib/components/GroupMark.svelte";
 	import MascotPeek from "$lib/components/MascotPeek.svelte";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
 	import Button from "$lib/components/ui/Button.svelte";
@@ -131,7 +132,11 @@
 					class="flex min-w-0 flex-1 cursor-pointer items-center gap-2.5 rounded-lg text-left"
 					onclick={() => onOpen({ spaceId: "", roomId: "", messageId: row.id, conversationId: row.conversationId })}
 				>
-					<UserAvatar src={row.avatar} name={row.title} size={32} />
+					{#if row.group}
+						<GroupMark size={32} />
+					{:else}
+						<UserAvatar src={row.avatar} name={row.title} size={32} />
+					{/if}
 					<span class="flex min-w-0 flex-1 flex-col gap-px">
 						<!-- A missed call reads in the destructive colour, name and line, as its notice in the conversation -->
 						<span
