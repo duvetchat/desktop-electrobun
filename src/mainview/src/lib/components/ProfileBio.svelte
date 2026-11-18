@@ -3,7 +3,7 @@
 	import { countEmojis, isOnlyEmojis } from "$lib/emoji";
 	import { friendUser } from "$lib/friends";
 	import { mentionNamesIn, renderMarkdown } from "$lib/markdown";
-	import { conversations, currentUser, friends, gatewaySpaces } from "$lib/stores.svelte";
+	import { conversations, currentUser, everyEmoji, friends, gatewaySpaces } from "$lib/stores.svelte";
 
 	// A bio on a profile, with the messages' markdown, as anyone's text goes through it. It's nobody's space's: the people
 	// it mentions show by the names the app knows, its rooms as #unknown, and its custom emojis as the ones the reader
@@ -33,5 +33,5 @@
 		: ''}"
 	onclick={copyCode}
 >
-	{@html renderMarkdown(bio, emojiOnly, mentionMap, undefined, undefined, {})}
+	{@html renderMarkdown(bio, emojiOnly, mentionMap, $everyEmoji, undefined, {})}
 </div>

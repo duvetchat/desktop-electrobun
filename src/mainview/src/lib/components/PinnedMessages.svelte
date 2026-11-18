@@ -15,11 +15,12 @@
 		onOpenElsewhere,
 		pinUpdates,
 		pinsPanelRequest,
+		everyEmoji,
 	} from "$lib/stores.svelte";
 	import { gatewayMessageToMessage } from "$lib/types";
-	import type { GatewaySpace, MemberOnSidebar, Message, SpaceEmoji } from "$lib/types";
+	import type { GatewaySpace, MemberOnSidebar, Message } from "$lib/types";
 	import { hasPermission, Permission } from "$lib/permissions";
-	import { customEmojiMapOf, mentionMapOf, sameNames } from "$lib/markdown";
+	import { mentionMapOf, sameNames } from "$lib/markdown";
 
 	// The pin button of a pane's bar (or a conversation's header), and the list of its pinned messages, the
 	// last pinned first. A message jumps to itself; who can pin unpins it from here too.
@@ -28,7 +29,6 @@
 		channelId,
 		conversation = false,
 		members = [],
-		customEmojis = [],
 		toDirectMessage,
 	}: {
 		/** The channel's space. A conversation's list passes conversation instead. */
@@ -37,7 +37,6 @@
 		channelId: string;
 		conversation?: boolean;
 		members?: MemberOnSidebar[];
-		customEmojis?: SpaceEmoji[];
 		/** How a conversation's pins become messages. */
 		toDirectMessage?: (m: DirectMessage) => Message;
 	} = $props();
@@ -64,7 +63,8 @@
 		if (!sameNames(next, mentionNames)) mentionNames = next;
 		return mentionNames;
 	});
-	const customEmojiMap = $derived(customEmojiMapOf(customEmojis));
+	// Every emoji of the user's Spaces: one they don't have draws from the API's /emojis.
+	const customEmojiMap = $derived($everyEmoji);
 	let mentionProfile: MentionProfile;
 
 	// A pinned image opens over the app; the list closes first, as a click outside it would close it.

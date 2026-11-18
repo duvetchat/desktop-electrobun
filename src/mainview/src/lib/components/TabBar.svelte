@@ -5,6 +5,7 @@
 	import { conversations, currentUser, gatewaySpaces, typingNow } from "$lib/stores.svelte";
 	import { shownMentionCounts, shownUnreadConversations, shownUnreadRooms } from "$lib/notification-marks";
 	import { typingSentence } from "$lib/typing";
+	import { scrollSideways } from "$lib/sideways-scroll";
 	import TabIcon from "$lib/components/TabIcon.svelte";
 
 	let {
@@ -122,7 +123,7 @@
 	// The tabs stay on one row, which scrolls sideways once they don't fit: a mouse's wheel scrolls it
 	// too, and the active tab is kept in view.
 	function handleBarWheel(e: WheelEvent) {
-		if (e.deltaY && !e.deltaX) barEl.scrollLeft += e.deltaY;
+		scrollSideways(e, barEl);
 	}
 
 	$effect(() => {

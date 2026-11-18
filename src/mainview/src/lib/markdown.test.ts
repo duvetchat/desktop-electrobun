@@ -1,11 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { isUuid } from "$lib/common/common";
+import { getHostURL, isUuid } from "$lib/common/common";
 import { renderEmoji, toTwemojiUrl } from "$lib/emoji";
 import {
 	clickedMention,
 	duvetLinksIn,
+	emojiImageUrl,
 	mentionNamesIn,
 	parseTextSegments,
 	renderMarkdown,
@@ -292,23 +293,37 @@ describe("user mentions", () => {
 	});
 });
 
-// The text holds only a custom emoji's ID, so one that's gone (or of a space the reader isn't in) has no name to show.
-describe("a custom emoji with no name to show", () => {
+// The text holds only a custom emoji's ID. One the map doesn't have (of a Space the reader isn't in, or gone) shows its
+// image all the same, from the API's /emojis/{id}, which anyone may load: with no name to show, it reads :emoji:. One
+// that's gone is a 404 there, and the image's retry (lib/emoji-retry.ts) then shows its title, :emoji:.
+describe("a custom emoji the map doesn't have", () => {
 	const GONE = "0190a3b2-0000-7000-8000-0000000000e2";
+	const image = (large: boolean) =>
+		`<img class="emoji-img ${large ? "emoji-large " : ""}custom-emoji" src="${getHostURL()}/emojis/${GONE}" alt=":emoji:" title=":emoji:" draggable="false" loading="lazy">`;
 
-	test("reads :emoji:, as text", () => {
-		expect(renderMarkdown(`Before <:${GONE}:> after`)).toBe("Before :emoji: after");
-		expect(renderMarkdownLine(`Before <:${GONE}:> after`)).toBe("Before :emoji: after");
+	test("draws its image from /emojis, named :emoji:", () => {
+		expect(renderMarkdown(`Before <:${GONE}:> after`)).toBe(`Before ${image(false)} after`);
 	});
 
-	test("reads the same alone, where a live one would be large", () => {
-		expect(renderMarkdown(`<:${GONE}:>`, true)).toBe(":emoji:");
+	test("alone, large", () => {
+		expect(renderMarkdown(`<:${GONE}:>`, true)).toBe(image(true));
 	});
 
-	test("a live one beside it is still its image", () => {
+	test("renderMarkdownLine the same", () => {
+		expect(renderMarkdownLine(`Before <:${GONE}:> after`)).toBe(`Before ${image(false)} after`);
+	});
+
+	test("an ID that isn't a UUID reads :emoji:, with no request", () => {
+		expect(renderMarkdown("Before <:abc-123:> after")).toBe("Before :emoji: after");
+		expect(emojiImageUrl("abc")).toBeNull();
+		expect(emojiImageUrl(GONE)).toBe(`${getHostURL()}/emojis/${GONE}`);
+	});
+
+	test("a live one beside it is still its own image", () => {
 		const emojis = { "0190a3b2-0000-7000-8000-0000000000e3": { name: "party", attachment_id: "file" } };
 		const html = renderMarkdown(`<:${GONE}:> <:0190a3b2-0000-7000-8000-0000000000e3:>`, false, undefined, emojis);
-		expect(html).toStartWith(":emoji: <img ");
+		expect(html).toStartWith(`${image(false)} <img `);
+		expect(html).toContain(`src="${getHostURL()}/attachments/file"`);
 		expect(html).toContain('alt="party"');
 	});
 });

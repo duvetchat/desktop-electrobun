@@ -10,6 +10,39 @@ export function countRoll(previous: number, next: number): { enter: number; leav
 	return next > previous ? { enter: 100, leave: -100 } : { enter: -100, leave: 100 };
 }
 
+/**
+ * What a reaction is, among a message's: a custom emoji's ID, as two Spaces can each have an emoji of one name, or a
+ * Unicode emoji's character. The list's {#each} keys, the toggle and the reaction events go by it.
+ */
+export function reactionKey(r: { emoji_name: string; emoji_id?: string | null }): string {
+	return r.emoji_id ?? r.emoji_name;
+}
+
+/**
+ * A message's reactions with one per reactionKey. An API from before reactions by ID groups them by name, so one custom
+ * emoji under two names (renamed between two people's reactions) comes as two, whose one key a keyed {#each} can't take:
+ * each_key_duplicate would stop the page updating. They become one, at the first's place and with its name, with both's
+ * people. A list that has no two of one key is given back as it is.
+ */
+export function mergedByKey(reactions: MessageReaction[] | null | undefined): MessageReaction[] | null {
+	if (!reactions) return null;
+	const at = new Map<string, number>();
+	const merged: MessageReaction[] = [];
+	for (const reaction of reactions) {
+		const key = reactionKey(reaction);
+		const i = at.get(key);
+		const first = i === undefined ? undefined : merged[i];
+		if (i === undefined || !first) {
+			at.set(key, merged.length);
+			merged.push(reaction);
+			continue;
+		}
+		const users = [...first.users, ...reaction.users.filter((u) => !first.users.includes(u))];
+		merged[i] = { ...first, users, count: users.length };
+	}
+	return merged.length === reactions.length ? reactions : merged;
+}
+
 /** One user's reaction added to a message or taken back, as the gateway tells it (REACTION_ADD, REACTION_REMOVE and
  * their DM_ ones). */
 export interface ReactionChange {
@@ -30,7 +63,7 @@ export function withReaction(
 	change: ReactionChange,
 ): MessageReaction[] {
 	const list = [...(reactions ?? [])];
-	const at = list.findIndex((r) => r.emoji_name === change.emoji_name);
+	const at = list.findIndex((r) => reactionKey(r) === reactionKey(change));
 	const current = list[at];
 	if (change.added) {
 		if (!current) {

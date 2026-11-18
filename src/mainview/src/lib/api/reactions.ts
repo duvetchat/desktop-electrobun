@@ -1,4 +1,5 @@
 import api from "$lib/api/api";
+import { reactionKey } from "$lib/reactions";
 import type { Message } from "$lib/types";
 import { pathSegment } from "$lib/urls";
 
@@ -17,8 +18,9 @@ export async function addRoomReaction(
 	});
 }
 
-export async function removeRoomReaction(roomId: string, messageId: string, emojiName: string): Promise<void> {
-	await api.delete(`/api/rooms/${roomId}/messages/${messageId}/reactions/${pathSegment(emojiName)}`);
+/** Takes back the user's reaction with emoji: a custom emoji's ID (that reaction alone), or a Unicode emoji. */
+export async function removeRoomReaction(roomId: string, messageId: string, emoji: string): Promise<void> {
+	await api.delete(`/api/rooms/${roomId}/messages/${messageId}/reactions/${pathSegment(emoji)}`);
 }
 
 export async function addConversationReaction(
@@ -33,8 +35,9 @@ export async function addConversationReaction(
 	});
 }
 
-export async function removeConversationReaction(convId: string, messageId: string, emojiName: string): Promise<void> {
-	await api.delete(`/api/users/@me/conversations/${convId}/messages/${messageId}/reactions/${pathSegment(emojiName)}`);
+/** A conversation's removeRoomReaction: emoji is a custom emoji's ID or a Unicode emoji. */
+export async function removeConversationReaction(convId: string, messageId: string, emoji: string): Promise<void> {
+	await api.delete(`/api/users/@me/conversations/${convId}/messages/${messageId}/reactions/${pathSegment(emoji)}`);
 }
 
 /**
@@ -49,14 +52,16 @@ export async function toggleReaction(
 	emojiName: string,
 	emojiId?: string | null,
 ): Promise<void> {
-	const reacted = message.reactions?.find((r) => r.emoji_name === emojiName)?.users.includes(me) ?? false;
+	// A custom emoji's reaction is its ID's, as two Spaces can each have one of that name: it's found and taken back by it.
+	const emoji = reactionKey({ emoji_name: emojiName, emoji_id: emojiId });
+	const reacted = message.reactions?.find((r) => reactionKey(r) === emoji)?.users.includes(me) ?? false;
 	const { spaceId, channelId } = where;
 	try {
 		if (!spaceId) {
-			if (reacted) await removeConversationReaction(channelId, message.id, emojiName);
+			if (reacted) await removeConversationReaction(channelId, message.id, emoji);
 			else await addConversationReaction(channelId, message.id, emojiName, emojiId);
 		} else if (reacted) {
-			await removeRoomReaction(channelId, message.id, emojiName);
+			await removeRoomReaction(channelId, message.id, emoji);
 		} else {
 			await addRoomReaction(channelId, message.id, emojiName, emojiId);
 		}

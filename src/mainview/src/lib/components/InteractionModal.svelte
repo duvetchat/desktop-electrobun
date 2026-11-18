@@ -7,9 +7,10 @@
 	import { sendModalSubmit } from "$lib/api/interactions";
 	import { getHostURL } from "$lib/common/common";
 	import { renderEmoji } from "$lib/emoji";
-	import { customEmojiMapOf, mentionMapOf, renderMarkdown } from "$lib/markdown";
+	import { CUSTOM_EMOJI_CLASS } from "$lib/emoji-retry";
+	import { emojiImageUrl, mentionMapOf, renderMarkdown } from "$lib/markdown";
 	import { initialValues, isRequired, modalAnswers, modalInputs, type ModalValue } from "$lib/modals";
-	import { roomNames, spaceEmojis } from "$lib/stores.svelte";
+	import { everyEmoji, roomNames } from "$lib/stores.svelte";
 	import { interactionModal, type OpenedModal } from "$lib/stores/interactionModal.svelte";
 	import { ComponentType, type Component, type ComponentEmoji } from "$lib/types";
 
@@ -41,7 +42,6 @@
 	const opened = $derived(interactionModal.current);
 	const inputs = $derived(opened ? modalInputs(opened.modal) : []);
 	const mentionMap = $derived(mentionMapOf(opened?.members ?? []));
-	const customEmojiMap = $derived(customEmojiMapOf(opened?.space ? ($spaceEmojis[opened.space.id] ?? []) : []));
 
 	const selectTypes: number[] = [
 		ComponentType.StringSelect,
@@ -168,7 +168,7 @@
 						{#each opened.modal.components as c, i (c.id ?? i)}
 							{#if c.type === ComponentType.TextDisplay}
 								<div class="text-duvet-ink min-w-0 text-sm wrap-break-word select-text">
-									{@html renderMarkdown(c.content ?? "", false, mentionMap, customEmojiMap, $roomNames, {})}
+									{@html renderMarkdown(c.content ?? "", false, mentionMap, $everyEmoji, $roomNames, {})}
 								</div>
 							{:else if c.type === ComponentType.Label && c.component?.custom_id}
 								{@render field(c, c.component)}
@@ -344,16 +344,25 @@
 	</div>
 {/snippet}
 
-<!-- An option's emoji: a space emoji by id, or a Unicode one by name. -->
+<!-- An option's emoji: a custom one by id, of any Space, or a Unicode one by name. -->
 {#snippet emoji(e: ComponentEmoji | undefined)}
 	{#if e?.id}
-		{@const custom = customEmojiMap[e.id]}
+		{@const custom = $everyEmoji[e.id]}
+		{@const elsewhere = custom ? null : emojiImageUrl(e.id)}
 		{#if custom}
 			<img
 				src="{host}/attachments/{custom.attachment_id}"
 				alt=":{custom.name}:"
 				title=":{custom.name}:"
 				class="size-5 shrink-0 object-contain"
+				draggable="false"
+			/>
+		{:else if elsewhere}
+			<img
+				src={elsewhere}
+				alt=":{e.name ?? 'emoji'}:"
+				title=":{e.name ?? 'emoji'}:"
+				class="size-5 shrink-0 object-contain {CUSTOM_EMOJI_CLASS}"
 				draggable="false"
 			/>
 		{/if}
