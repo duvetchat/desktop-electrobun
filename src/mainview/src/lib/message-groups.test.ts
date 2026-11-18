@@ -163,6 +163,17 @@ describe("a message's time", () => {
 		expect(clockTime(at(10, 21, 14), "en-GB")).toBe("21:14");
 	});
 
+	test("is the same asked again, and each locale keeps its own format", () => {
+		for (let i = 0; i < 3; i++) {
+			expect(clockTime(at(10, 9, 14), "en-US")).toBe("9:14 AM");
+			expect(clockTime(at(10, 21, 14), "en-GB")).toBe("21:14");
+			expect(shortClockTime(at(10, 9, 14), "en-US")).toBe("9:14");
+		}
+		// The system's format is what the browser's own gives.
+		const iso = at(10, 21, 14);
+		expect(clockTime(iso)).toBe(new Date(iso).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" }));
+	});
+
 	test("has no AM or PM in a flat row's gutter", () => {
 		expect(shortClockTime(at(10, 9, 14), "en-US")).toBe("9:14");
 		expect(shortClockTime(at(10, 21, 14), "en-US")).toBe("9:14");

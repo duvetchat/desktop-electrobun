@@ -207,7 +207,7 @@
 		<div>
 			<!-- The heading stays at the top while its rows scroll under it, on the colour a popover has behind it. -->
 			<div
-				class="text-duvet-ink2 bg-duvet-pop-ring/80 sticky top-0 z-10 flex h-9 items-end px-4 pb-1.5 text-[10.5px] font-semibold tracking-[0.06em] uppercase backdrop-blur-md select-none"
+				class="text-duvet-ink2 bg-duvet-pop-ring sticky top-0 z-10 flex h-9 items-end px-4 pb-1.5 text-[10.5px] font-semibold tracking-[0.06em] uppercase select-none"
 			>
 				{group.title} — {group.members.length}
 			</div>

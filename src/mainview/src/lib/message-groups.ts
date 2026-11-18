@@ -90,12 +90,25 @@ export function dayLabel(iso: string, now: number | Date = Date.now()): string {
 
 /** A message's time of day in the system's clock format: "9:14 AM", or "09:14". */
 export function clockTime(iso: string, locale?: string): string {
-	return new Date(iso).toLocaleTimeString(locale, { hour: "numeric", minute: "2-digit" });
+	return clock(locale).format(new Date(iso));
+}
+
+// One formatter for each locale asked for (the system's is ""): building one costs about 70 times a format, and
+// every row and every group's head asks.
+const clocks = new Map<string, Intl.DateTimeFormat>();
+function clock(locale?: string): Intl.DateTimeFormat {
+	const key = locale ?? "";
+	let format = clocks.get(key);
+	if (!format) {
+		format = new Intl.DateTimeFormat(locale, { hour: "numeric", minute: "2-digit" });
+		clocks.set(key, format);
+	}
+	return format;
 }
 
 /** The same without AM or PM, for a narrow gutter: "9:14". */
 export function shortClockTime(iso: string, locale?: string): string {
-	const parts = new Intl.DateTimeFormat(locale, { hour: "numeric", minute: "2-digit" }).formatToParts(new Date(iso));
+	const parts = clock(locale).formatToParts(new Date(iso));
 	return parts
 		.filter((p) => p.type === "hour" || p.type === "minute" || (p.type === "literal" && p.value.trim() !== ""))
 		.map((p) => p.value.trim())

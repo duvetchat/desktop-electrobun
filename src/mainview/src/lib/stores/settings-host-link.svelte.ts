@@ -21,7 +21,7 @@ import { tellsTransferEnd } from "$lib/storage-transfers";
 import { storageTransfers } from "$lib/stores/storage-transfers.svelte";
 import { currentUser, gatewaySpaces } from "$lib/stores.svelte";
 import { answerWindows, publishToWindows } from "$lib/window-hub";
-import { SyncHost } from "$lib/window-sync";
+import { SyncHost, watchSpace } from "$lib/window-sync";
 
 let host: SyncHost | null = null;
 // What stops sharing each Space whose settings window is open.
@@ -40,7 +40,7 @@ function shareSpace(spaceId: string) {
 		{
 			get: () => get(gatewaySpaces).find((space) => space.id === spaceId) ?? null,
 			set: () => {},
-			watch: (changed) => gatewaySpaces.subscribe(() => changed()),
+			watch: (changed) => watchSpace(gatewaySpaces, spaceId, changed),
 		},
 		{ throttleMs: 150 },
 	);

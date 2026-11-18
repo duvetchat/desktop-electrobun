@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { SyncGuest, SyncHost, type Shared } from "$lib/window-sync";
+import { writable } from "svelte/store";
+import { SyncGuest, SyncHost, watchSpace, type Shared } from "$lib/window-sync";
 
 /** A value with listeners, as a store is. */
 function cell<Value>(initial: Value): Shared<Value> & { value: Value; sets: number } {
@@ -222,4 +223,29 @@ test("two windows and the main one end up agreeing", async () => {
 	expect([main.value, first.value, second.value]).toEqual(["light", "light", "light"]);
 	main.set("system");
 	expect([first.value, second.value]).toEqual(["system", "system"]);
+});
+
+describe("watching one Space of the store", () => {
+	test("calls back for that Space's changes, its coming and its going, and for no other Space's", () => {
+		const a = { id: "a", name: "A" };
+		const b = { id: "b", name: "B" };
+		const spaces = writable([a, b]);
+		let calls = 0;
+		const stop = watchSpace(spaces, "a", () => calls++);
+		expect(calls).toBe(1); // as it starts, like a store's own subscribe
+		spaces.set([a, { ...b, name: "B2" }]);
+		spaces.set([a, { ...b, name: "B3" }, { id: "c", name: "C" }]);
+		expect(calls).toBe(1);
+		spaces.set([{ ...a, name: "A2" }, b]);
+		expect(calls).toBe(2);
+		spaces.set([b]);
+		expect(calls).toBe(3);
+		spaces.set([]);
+		expect(calls).toBe(3);
+		spaces.set([a]);
+		expect(calls).toBe(4);
+		stop();
+		spaces.set([{ ...a }]);
+		expect(calls).toBe(4);
+	});
 });

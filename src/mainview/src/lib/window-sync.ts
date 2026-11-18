@@ -12,6 +12,25 @@ export interface Shared<Value = unknown> {
 	watch(changed: () => void): () => void;
 }
 
+/**
+ * Watches one Space in a store of Spaces, for a `Shared`'s `watch`: calls back when that Space's object is another
+ * one, comes or goes, and not when any other Space changes. The stores give a Space a new object with each change to
+ * it and keep the others', so a busy Space elsewhere costs the watched one nothing (no copy, no comparison).
+ */
+export function watchSpace<Space extends { id: string }>(
+	spaces: { subscribe(run: (value: Space[]) => void): () => void },
+	spaceId: string,
+	changed: () => void,
+): () => void {
+	let last: Space | null | undefined;
+	return spaces.subscribe((all) => {
+		const space = all.find((one) => one.id === spaceId) ?? null;
+		if (space === last) return;
+		last = space;
+		changed();
+	});
+}
+
 const jsonOf = (value: unknown) => JSON.stringify(value ?? null);
 // The value as it crosses: a plain copy, never a store's own object or a proxy of one.
 const plain = (json: string): unknown => JSON.parse(json);
