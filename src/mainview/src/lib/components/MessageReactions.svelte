@@ -3,6 +3,7 @@
 	import ReactionEmoji from "$lib/components/ReactionEmoji.svelte";
 	import SmilePlusIcon from "$lib/components/ui/icons/SmilePlus.svelte";
 	import type { CustomEmojiMap } from "$lib/markdown";
+	import { reactionKey } from "$lib/reactions";
 	import { currentUser } from "$lib/stores.svelte";
 	import type { MessageReaction } from "$lib/types";
 
@@ -32,7 +33,7 @@
 
 {#if reactions.length > 0}
 	<div class="flex flex-wrap gap-1 {end ? 'justify-end' : ''}">
-		{#each reactions as reaction (reaction.emoji_name)}
+		{#each reactions as reaction (reactionKey(reaction))}
 			{@const mine = $currentUser ? reaction.users.includes($currentUser.id) : false}
 			<button
 				class="inline-flex h-6 items-center gap-1 rounded-xl px-2 text-[11.5px] leading-none font-semibold transition-transform duration-[120ms] hover:-translate-y-px active:scale-[0.96] motion-reduce:transition-none {mine

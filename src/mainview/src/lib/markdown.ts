@@ -47,6 +47,16 @@ export function mentionNamesIn(
 }
 
 const emojiHost = getHostURL();
+
+/**
+ * The image of a custom emoji of any Space, which the API sends anyone on to with no session (/emojis/{id}): how a
+ * message, a reaction or a button draws one the user's Spaces don't have. Null for an ID that isn't one, which asks
+ * for nothing. One that's gone is a 404, and the image's retry then shows its title.
+ */
+export function emojiImageUrl(id: string): string | null {
+	return isUuid(id) ? `${emojiHost}/emojis/${id}` : null;
+}
+
 // A custom emoji's image that fails to load is tried again after a wait, by the document (lib/emoji-retry.ts): the
 // image carries no handler of its own, so the page needs no inline script. A hot update of this module, in
 // development, runs it again: the old listener goes first. (Not import.meta.hot?.dispose(retryEmojis(document)):
@@ -340,11 +350,15 @@ function applyInline(
 				const style = colour ? ` style="${escapeHtml(colour)}"` : "";
 				return `<span class="msg-mention"${user}${style}>@${escapeHtml(name ?? userId.slice(0, 8))}</span>`;
 			}
-			// <:id:> is an inline image. The text holds only its ID, so one that's gone, or of a space the reader isn't in,
-			// has no name to show.
+			// <:id:> is an inline image. The text holds only its ID: one the map doesn't have (of a Space the reader isn't
+			// in, or gone) shows its image from the API all the same, with no name to show.
 			if (emojiId !== undefined) {
 				const ce = customEmojiMap?.[emojiId];
-				if (!ce) return ":emoji:";
+				if (!ce) {
+					const src = emojiImageUrl(emojiId);
+					if (!src) return ":emoji:";
+					return `<img class="${ceCls}" src="${src}" alt=":emoji:" title=":emoji:" draggable="false" loading="lazy">`;
+				}
 				return `<img class="${ceCls}" src="${emojiHost}/attachments/${ce.attachment_id}" alt="${escapeHtml(ce.name)}" title=":${escapeHtml(ce.name)}:" draggable="false" loading="lazy">`;
 			}
 			// <#id> reads #name, for the rooms the reader can view (roomNames). Any other one, or one that's gone, reads

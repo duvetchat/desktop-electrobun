@@ -24,13 +24,13 @@
 		friends,
 		gatewaySpaces,
 		jumpToMessageRequest,
-		spaceEmojis,
+		everyEmoji,
 	} from "$lib/stores.svelte";
 	import { gatewayMessageToMessage } from "$lib/types";
-	import type { GatewaySpace, MemberOnSidebar, Message, SpaceEmoji } from "$lib/types";
+	import type { GatewaySpace, MemberOnSidebar, Message } from "$lib/types";
 	import type { MessageLink } from "$lib/urls";
 	import { canViewRoom } from "$lib/permissions";
-	import { customEmojiMapOf, escapeHtml, mentionMapOf, mentionNamesIn, sameNames } from "$lib/markdown";
+	import { escapeHtml, mentionMapOf, mentionNamesIn, sameNames } from "$lib/markdown";
 	import { afterPress } from "$lib/press";
 	import {
 		isoDay,
@@ -49,7 +49,6 @@
 		space = null,
 		conversationId = "",
 		members = [],
-		customEmojis = [],
 		toDirectMessage,
 		everywhere = false,
 		onJump = (link) => jumpToMessageRequest.set({ id: crypto.randomUUID(), ...link }),
@@ -59,7 +58,6 @@
 		conversationId?: string;
 		/** Whom from: and mentions: suggest, and the names mentions show in the results. */
 		members?: MemberOnSidebar[];
-		customEmojis?: SpaceEmoji[];
 		/** How a conversation's results become messages. */
 		toDirectMessage?: (m: DirectMessage) => Message;
 		/**
@@ -108,7 +106,6 @@
 		if (!sameNames(next, mentionNames)) mentionNames = next;
 		return mentionNames;
 	});
-	const customEmojiMap = $derived(customEmojiMapOf(customEmojis));
 	let mentionProfile: MentionProfile;
 
 	// ── The box and its suggestions ──────────────────────────────────────────
@@ -381,7 +378,6 @@
 				]
 			: [],
 	);
-	const everyEmoji = $derived(everywhere ? customEmojiMapOf(Object.values($spaceEmojis).flat()) : {});
 
 	// ── Highlights ───────────────────────────────────────────────────────────
 	// Each character folded about as the API's search_fold does (lower case, no accents), one for one
@@ -628,7 +624,7 @@
 											roomName={!everywhere && r.roomId ? roomName(r.roomId) : null}
 											members={everywhere ? [] : members}
 											mentionMap={everywhere ? mentionNamesIn(r.message.content ?? "", everyone) : mentionMap}
-											customEmojiMap={everywhere ? everyEmoji : customEmojiMap}
+											customEmojiMap={$everyEmoji}
 											onPreview={openPreview}
 										/>
 									</div>

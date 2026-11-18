@@ -25,6 +25,7 @@
 	import StickerPicker from "$lib/components/StickerPicker.svelte";
 	import GifPicker from "$lib/components/GifPicker.svelte";
 	import { emojiDataNow, loadEmojiData, toTwemojiUrl, EMOJI_REGEX, type EmojiEntry } from "$lib/emoji";
+	import { emojiSuggestions, type PickerGroup } from "$lib/space-emojis";
 	import {
 		commandOnceListed,
 		commandQuery as commandQueryOf,
@@ -65,8 +66,9 @@
 		autofocus = false,
 		members = [],
 		rooms = [],
-		customEmojis = [],
-		spaceStickers = [],
+		emojiGroups = [],
+		stickerGroups = [],
+		spaceId = null,
 		pendingFiles = $bindable<File[]>([]),
 		loadCommands,
 		onCommand,
@@ -91,8 +93,12 @@
 		members?: MemberOnSidebar[];
 		/** The rooms "#" suggests: those of the space the user can view. */
 		rooms?: GatewayRoom[];
-		customEmojis?: SpaceEmoji[];
-		spaceStickers?: SpaceSticker[];
+		/** The custom emojis of every Space the user is in, by Space, as the emoji picker shows them. */
+		emojiGroups?: PickerGroup<SpaceEmoji>[];
+		/** The stickers of every Space the user is in, by Space: the sticker picker shows wherever there is one. */
+		stickerGroups?: PickerGroup<SpaceSticker>[];
+		/** The Space the box writes in, whose emojis ":" suggests first; none in a conversation. */
+		spaceId?: string | null;
 		pendingFiles?: File[];
 		/** The commands "/" offers at the start of the message, where the user can use them (a room they can write in). */
 		loadCommands?: () => Promise<SpaceCommands>;
@@ -105,8 +111,8 @@
 
 	let inputEl = $state<HTMLDivElement>(null!);
 	let fileInputEl = $state<HTMLInputElement>(null!);
-	// The one picker of the box, behind its emoji button: emoji, GIFs, and the Space's stickers when it has some. The +
-	// menu opens it on GIFs or on stickers.
+	// The one picker of the box, behind its emoji button: emoji, GIFs, and the stickers of the user's Spaces when one has
+	// some. The + menu opens it on GIFs or on stickers.
 	type PickerTab = "emoji" | "gif" | "sticker";
 	let showPicker = $state(false);
 	// The pickers' layer, claimed as they open (lib/overlay-layers.ts): the thread's message box is in a sheet, and
@@ -124,7 +130,7 @@
 			: [
 					{ value: "emoji", label: "Emoji" },
 					{ value: "gif", label: "GIFs" },
-					...(spaceStickers.length > 0 ? [{ value: "sticker" as const, label: "Stickers" }] : []),
+					...(stickerGroups.length > 0 ? [{ value: "sticker" as const, label: "Stickers" }] : []),
 				],
 	);
 	// Once the + menu has closed and given the focus back: the picker opening under it would close with it.
@@ -284,6 +290,9 @@
 			});
 		}
 	});
+
+	// Every emoji of the user's Spaces, whatever chat this is: the chips' names and what ":" suggests.
+	const customEmojis = $derived(emojiGroups.flatMap((g) => g.items));
 
 	// Re-render when customEmojis arrives (edit input may mount before emojis load)
 	let hadCustomEmojis = $state(false);
@@ -644,27 +653,16 @@
 		const m = /(?<=^|\s):([\w\d_]{2,})$/.exec(before);
 		if (m) {
 			emojiQueryStart = before.length - m[0].length;
-			const query = m[1]!.toLowerCase();
-			const customScored = customEmojis
-				.map((ce) => {
-					const n = ce.name.toLowerCase();
-					let score = 0;
-					if (n === query) score = 100;
-					else if (n.startsWith(query)) score = 80;
-					else if (n.includes(query)) score = 50;
-					return { ce, score };
-				})
-				.filter((s) => s.score > 0)
-				.sort((a, b) => b.score - a.score || a.ce.name.length - b.ce.name.length)
-				.map(
-					(s) =>
-						({
-							emoji: `<:${s.ce.id}:>`,
-							name: s.ce.name,
-							customEmojiId: s.ce.id,
-							customAttachmentId: s.ce.attachment_id,
-						}) as EmojiEntry & { customEmojiId: string; customAttachmentId: string },
-				);
+			// Every Space's emojis, the current Space's first (emojiSuggestions).
+			const customScored = emojiSuggestions(m[1]!, customEmojis, spaceId).map(
+				(ce) =>
+					({
+						emoji: `<:${ce.id}:>`,
+						name: ce.name,
+						customEmojiId: ce.id,
+						customAttachmentId: ce.attachment_id,
+					}) as EmojiEntry & { customEmojiId: string; customAttachmentId: string },
+			);
 			// The emoji dataset, once the app has it; asked for now otherwise, as the picker does (#318), and these
 			// suggestions show again with it.
 			const emojiData = emojiDataNow();
@@ -1472,7 +1470,7 @@
 						</button>
 					{/snippet}
 					<MenuItem icon={AttachIcon} onSelect={() => fileInputEl?.click()}>Attach files</MenuItem>
-					{#if spaceStickers.length > 0}
+					{#if stickerGroups.length > 0}
 						<MenuItem icon={StickerIcon} onSelect={() => openPicker("sticker")}>Sticker</MenuItem>
 					{/if}
 					<MenuItem icon={GifIcon} onSelect={() => openPicker("gif")}>GIF</MenuItem>
@@ -1527,10 +1525,10 @@
 								{/if}
 								{#if pickerTab === "gif" && !editing}
 									<GifPicker onSelect={handleGifPick} />
-								{:else if pickerTab === "sticker" && !editing && spaceStickers.length > 0}
-									<StickerPicker stickers={spaceStickers} onSelect={handleStickerPick} />
+								{:else if pickerTab === "sticker" && !editing && stickerGroups.length > 0}
+									<StickerPicker groups={stickerGroups} onSelect={handleStickerPick} />
 								{:else}
-									<EmojiPicker onSelect={handleEmojiPick} {customEmojis} />
+									<EmojiPicker onSelect={handleEmojiPick} groups={emojiGroups} />
 								{/if}
 							</div>
 						</Popover.Content>

@@ -10,12 +10,15 @@ const BOB = "0190a3b2-0000-7000-8000-000000000002";
 const CARL = "0190a3b2-0000-7000-8000-000000000003";
 const ME = "0190a3b2-0000-7000-8000-000000000004";
 const GONE = "0190a3b2-0000-7000-8000-00000000dead";
+const PARTY = "0190a3b2-0000-7000-8000-0000000000e3";
 
 mock.module("$lib/stores.svelte", () => ({
 	gatewaySpaces: readable([{ users: [{ id: ANA, username: "ana", alias: "Ana" }] }]),
 	conversations: readable([{ members: [{ user: { id: BOB, username: "bob", alias: null } }, { user: undefined }] }]),
 	friends: readable([{ sender_id: CARL, recipient_id: ME, user: { id: CARL, username: "carl", alias: null } }]),
 	currentUser: readable({ id: ME, username: "me", alias: "Myself" }),
+	// The emojis of the user's Spaces.
+	everyEmoji: readable({ [PARTY]: { name: "party", attachment_id: "file" } }),
 }));
 const { default: ProfileBio } = await import("./ProfileBio.svelte");
 
@@ -105,11 +108,20 @@ describe("a bio", () => {
 		expect(html(`<@${GONE}>`)).toContain(`>@${GONE.slice(0, 8)}<`);
 	});
 
-	test("has no room or custom emoji of anyone's: a room reads #unknown, and a custom emoji draws no image", async () => {
+	test("has no room of anyone's: a room reads #unknown", () => {
 		const room = html(`<#${ANA}>`);
 		expect(room).toContain("#unknown");
 		expect(room).not.toContain("data-room-id");
-		expect((await inside(`<:${ANA}:>`)).filter((tag) => tag.name === "img")).toEqual([]);
+	});
+
+	// Custom emojis are usable anywhere: one of the user's Spaces shows by its name, any other from the API's /emojis.
+	test("draws any custom emoji: one of the user's Spaces by its name, any other from /emojis", async () => {
+		const [own] = (await inside(`<:${PARTY}:>`)).filter((tag) => tag.name === "img");
+		expect(own!.attributes.src).toEndWith("/attachments/file");
+		expect(own!.attributes.title).toBe(":party:");
+		const [elsewhere] = (await inside(`<:${GONE}:>`)).filter((tag) => tag.name === "img");
+		expect(elsewhere!.attributes.src).toEndWith(`/emojis/${GONE}`);
+		expect(elsewhere!.attributes.alt).toBe(":emoji:");
 	});
 
 	test("of emojis alone is large, as such a message is", () => {

@@ -19,7 +19,6 @@
 		mentionCounts,
 		conversations,
 		currentUser,
-		spaceEmojis,
 		friendsReady,
 		LIST_ON_SCREEN_MAX,
 		MESSAGE_PAGE,
@@ -1094,7 +1093,6 @@
 	// ── Leaf: the bar's actions ──────────────────────────────────────────────
 	// The pane's one bar has the active chat's actions after its tabs (or its name). A room's are the pane's own; a
 	// conversation's are its view's, which hands them here while it shows.
-	const roomEmojis = $derived(activeTab?.spaceId ? ($spaceEmojis[activeTab.spaceId] ?? []) : []);
 	let conversationActions = $state<{ conversationId: string; actions: Snippet } | null>(null);
 
 	function showConversationActions(conversationId: string, actions: Snippet | null) {
@@ -1241,15 +1239,10 @@
 			<div class="flex shrink-0 items-center gap-0.5">
 				{#if activeChannel?.type === "text"}
 					{#key node.activeChannelId}
-						<PinnedMessages
-							space={activeTabSpace}
-							channelId={node.activeChannelId ?? ""}
-							members={activeTabMembers}
-							customEmojis={roomEmojis}
-						/>
+						<PinnedMessages space={activeTabSpace} channelId={node.activeChannelId ?? ""} members={activeTabMembers} />
 					{/key}
 					{#key activeTab?.spaceId}
-						<MessageSearch space={activeTabSpace} members={activeTabMembers} customEmojis={roomEmojis} />
+						<MessageSearch space={activeTabSpace} members={activeTabMembers} />
 					{/key}
 				{:else if activeChannel?.type === "voice" && $activeVoiceRoomId === node.activeChannelId}
 					<span class="bg-duvet-accent-tint text-duvet-accent-text rounded-full px-2 py-0.5 text-xs font-medium"

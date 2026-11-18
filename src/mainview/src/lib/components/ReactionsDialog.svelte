@@ -5,7 +5,7 @@
 	import ReactionEmoji from "$lib/components/ReactionEmoji.svelte";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
 	import { getBotUser } from "$lib/api/developer";
-	import { onReactionChange, withReaction } from "$lib/reactions";
+	import { onReactionChange, reactionKey, withReaction } from "$lib/reactions";
 	import { reactorOf, reactorsToAsk, type ReactorProfile } from "$lib/reactors";
 	import { reactorsRequest, type ReactorsRequest } from "$lib/stores.svelte";
 	import type { MessageReaction } from "$lib/types";
@@ -19,7 +19,8 @@
 	let request = $state.raw<ReactorsRequest | null>(null);
 	let reactions = $state.raw<MessageReaction[]>([]);
 	let picked = $state("");
-	const current = $derived(reactions.find((r) => r.emoji_name === picked) ?? reactions[0]);
+	// The picked reaction, by its key (reactionKey): two custom emojis can share a name.
+	const current = $derived(reactions.find((r) => reactionKey(r) === picked) ?? reactions[0]);
 
 	// What the API said of each person it was asked about since the dialog opened: their profile, or null when it couldn't
 	// say (a deleted user). An answer for an earlier opening goes nowhere.
@@ -97,7 +98,7 @@
 			aria-orientation="vertical"
 			aria-label="Reactions"
 		>
-			{#each reactions as reaction (reaction.emoji_name)}
+			{#each reactions as reaction (reactionKey(reaction))}
 				{@const selected = reaction === current}
 				<button
 					type="button"
@@ -107,7 +108,7 @@
 					class="flex h-8 shrink-0 items-center gap-2 rounded-[9px] px-2 text-[13px] transition-colors motion-reduce:transition-none {selected
 						? 'bg-duvet-accent-tint text-duvet-ink'
 						: 'text-duvet-ink2 hover:bg-duvet-hover hover:text-duvet-ink'}"
-					onclick={() => (picked = reaction.emoji_name)}
+					onclick={() => (picked = reactionKey(reaction))}
 				>
 					<ReactionEmoji {reaction} customEmojiMap={request?.customEmojiMap} />
 					<span class="font-medium tabular-nums">{reaction.count}</span>

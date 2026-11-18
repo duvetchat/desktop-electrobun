@@ -61,7 +61,18 @@ function compile(dir: string, kernel32: ReturnType<typeof openWin32>["kernel32"]
 			source: compilablePath(source, kernel32),
 			symbols: {
 				windowSnapSetUp: {
-					args: [FFIType.ptr, FFIType.ptr, FFIType.ptr, FFIType.ptr],
+					args: [
+						FFIType.ptr,
+						FFIType.ptr,
+						FFIType.ptr,
+						FFIType.ptr,
+						FFIType.ptr,
+						FFIType.ptr,
+						FFIType.ptr,
+						FFIType.ptr,
+						FFIType.ptr,
+						FFIType.ptr,
+					],
 					returns: FFIType.void,
 				},
 				windowSnapProcedure: { args: [], returns: FFIType.ptr },
@@ -107,6 +118,12 @@ export function letWindowsArrange(window: Pointer, dir = tmpdir()): boolean {
 		user32Function(`CallWindowProc${charset}`),
 		user32Function("IsZoomed"),
 		user32Function("ReleaseCapture"),
+		user32Function("GetFocus"),
+		user32Function("SetFocus"),
+		user32Function("IsChild"),
+		user32Function("EnumChildWindows"),
+		user32Function("GetClassNameA"),
+		user32Function("IsWindowVisible"),
 		previous,
 	);
 	// The procedure first, so the frame and caption the styles would add never show.
@@ -147,13 +164,15 @@ export async function followPress(input: PressInput, drag: (from: Point) => void
 
 // window-snap.c's WINDOW_SNAP_DRAG (WM_APP + 0x0D07): a press that turned into a drag, at the point it began.
 const WINDOW_SNAP_DRAG = 0x8d07;
+// window-snap.c's WINDOW_SNAP_PAGE_READY (WM_APP + 0x0D08): the page has loaded.
+const WINDOW_SNAP_PAGE_READY = 0x8d08;
 const SM_SWAPBUTTON = 23;
 const SM_CXDRAG = 68;
 const SM_CYDRAG = 69;
 const VK_LBUTTON = 1;
 const VK_RBUTTON = 2;
 
-// The press's reads and the move loop's message, from user32, opened at the first press.
+// The press's reads and the messages to the window's procedure, from user32, opened at their first use.
 let pressUser32: ReturnType<typeof openPressUser32> | null = null;
 function openPressUser32() {
 	return dlopen("user32.dll", {
@@ -197,4 +216,11 @@ export async function dragWithWindows(window: Pointer): Promise<void> {
 	} finally {
 		following = false;
 	}
+}
+
+/** Tells the procedure of the window letWindowsArrange arranged that the page has loaded (WINDOW_SNAP_PAGE_READY):
+ * while the window itself has the keyboard, as it does when Duvet opens, the page's window takes it (#361). */
+export function pageLoaded(window: Pointer): void {
+	pressUser32 ??= openPressUser32();
+	pressUser32.PostMessageW(window, WINDOW_SNAP_PAGE_READY, 0n, 0n);
 }

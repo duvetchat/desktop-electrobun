@@ -61,12 +61,12 @@
 	} from "$lib/api/messages";
 	import { MessageType } from "$lib/types";
 	import { currentUser, gatewaySpaces, noteOwnTyping, spaceEmojis, spaceStickers } from "$lib/stores.svelte";
+	import { navPrefs } from "$lib/nav-prefs.svelte";
+	import { pickerGroups } from "$lib/space-emojis";
 	import { toast } from "$lib/stores/toast.svelte";
 	import TypingIndicator from "$lib/components/TypingIndicator.svelte";
 	import { noticeDue } from "$lib/typing";
-	import { listEmojis } from "$lib/api/emojis";
 	import { getAvatarURL } from "$lib/common/common";
-	import { listStickers } from "$lib/api/stickers";
 	import { getApiError } from "$lib/api/api";
 	import { getSpaceCommands, sendCommandInteraction } from "$lib/api/interactions";
 	import { hasPermission, mentionableRooms, Permission } from "$lib/permissions";
@@ -202,24 +202,12 @@
 	// The rooms "#" suggests; a conversation has none.
 	const mentionRooms = $derived(space ? mentionableRooms(space) : []);
 
-	// Load emojis and stickers into global stores on space change
-	$effect(() => {
-		if (spaceId) {
-			listEmojis(spaceId)
-				.then((e) => {
-					spaceEmojis.update((m) => ({ ...m, [spaceId]: e }));
-				})
-				.catch(() => {});
-			listStickers(spaceId)
-				.then((s) => {
-					spaceStickers.update((m) => ({ ...m, [spaceId]: s }));
-				})
-				.catch(() => {});
-		}
-	});
-
-	const customEmojis = $derived(spaceId ? ($spaceEmojis[spaceId] ?? []) : []);
-	const spaceStickersArr = $derived(spaceId ? ($spaceStickers[spaceId] ?? []) : []);
+	// The emojis and stickers of every Space the user is in come with the session's lists (connection.ts): none is asked
+	// for as a room opens.
+	// Wherever the user writes, the emojis and stickers of every Space they're in, by Space: this one's first (a
+	// conversation has none), then the column's pinned Spaces, then the rest.
+	const emojiGroups = $derived(pickerGroups($spaceEmojis, $gatewaySpaces, navPrefs.pinned, spaceId || null));
+	const stickerGroups = $derived(pickerGroups($spaceStickers, $gatewaySpaces, navPrefs.pinned, spaceId || null));
 
 	// A command and an edit are of the chat they started in: they end on leaving it, as neither is a draft. Focus input
 	// when switching channels, unless keyboard navigation switched them and goes on
@@ -809,7 +797,7 @@
 		onDismiss={dismissFailedMessage}
 		onReply={handleReply}
 		{onUnreadMark}
-		{customEmojis}
+		{emojiGroups}
 		{intro}
 		{retryFirstPage}
 		{threadComposer}
@@ -864,7 +852,8 @@
 					autofocus
 					{members}
 					rooms={mentionRooms}
-					{customEmojis}
+					{emojiGroups}
+					spaceId={spaceId || null}
 				/>
 			{/key}
 		{:else}
@@ -883,8 +872,9 @@
 					onValueChange={handleTyping}
 					{members}
 					rooms={mentionRooms}
-					{customEmojis}
-					spaceStickers={spaceStickersArr}
+					{emojiGroups}
+					{stickerGroups}
+					spaceId={spaceId || null}
 					loadCommands={canUseCommands ? () => getSpaceCommands(spaceId) : undefined}
 					onCommand={(entry, app) => (command = { entry, app })}
 					autofocus={!keyboard.keepNavigating}
@@ -991,8 +981,9 @@
 				onValueChange={handleTyping}
 				{members}
 				rooms={mentionRooms}
-				{customEmojis}
-				spaceStickers={spaceStickersArr}
+				{emojiGroups}
+				{stickerGroups}
+				spaceId={spaceId || null}
 				autofocus
 			/>
 		{/key}

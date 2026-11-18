@@ -3,7 +3,7 @@ import { derived, get, readable, writable, type Readable, type Writable } from "
 
 import { canViewRoom, roomNamesOf } from "$lib/permissions";
 import { TYPING_TIMEOUT, typersAt } from "$lib/typing";
-import type { CustomEmojiMap } from "$lib/markdown";
+import { customEmojiMapOf, type CustomEmojiMap } from "$lib/markdown";
 import type {
 	GatewaySpace,
 	GatewayUser,
@@ -260,8 +260,15 @@ export interface UserActivity {
 	};
 }
 export const userActivities = writable<Record<string, UserActivity[]>>({});
+/** The emojis and stickers of each of the user's Spaces, which they may use anywhere: the session's lists bring them
+ * all at once, and SPACE_EMOJI_* and SPACE_STICKER_* keep them current. */
 export const spaceEmojis = writable<Record<string, SpaceEmoji[]>>({});
 export const spaceStickers = writable<Record<string, SpaceSticker[]>>({});
+/** Every emoji of the user's Spaces by ID: what messages, reactions and buttons draw by name, whatever room or chat
+ * they're in. One it doesn't have is drawn from the API's /emojis/{id}. */
+export const everyEmoji: Readable<CustomEmojiMap> = derived(spaceEmojis, ($emojis) =>
+	customEmojiMapOf(Object.values($emojis).flat()),
+);
 
 export const pendingFriendRequests = writable<FriendRequest[]>([]);
 export const sentFriendRequests = writable<FriendRequest[]>([]);
@@ -397,6 +404,7 @@ export function openRoomMention(e: MouseEvent) {
 export interface ReactorsRequest {
 	messageId: string;
 	reactions: MessageReaction[];
+	/** The picked reaction's key (reactionKey): its custom emoji's ID, or its Unicode emoji. */
 	picked: string;
 	members: MemberOnSidebar[];
 	customEmojiMap: CustomEmojiMap;

@@ -17,7 +17,7 @@ import { startSpotifyReader, type SpotifyActivity } from "./spotify";
 import { ipcHeld, ipcPath, LineReader } from "./ipc";
 import { isAppPage, isOwnPage, navigatedTo, navigationRules } from "./navigation";
 import { Maximizer } from "./window-frame";
-import { dragWithWindows, letWindowsArrange } from "./window-snap";
+import { dragWithWindows, letWindowsArrange, pageLoaded } from "./window-snap";
 import { startupSummary, writeStartupLine } from "./startup";
 import { rendererFor, shellPreload, windowChrome } from "./shell";
 import { keepKeysReachingThePage, type AppKit } from "./window-keys";
@@ -306,6 +306,9 @@ keepKeysReachingThePage(win, appkit, { nativeButtons });
 const devServer = url === DEV_SERVER_URL ? url : null;
 const rules = navigationRules(currentOS, devServer);
 win.webview.on("dom-ready", () => win.webview.setNavigationRules(rules));
+
+// On Windows Electrobun gives the webview no keyboard: as Duvet opens, the page takes it once it has loaded (#361).
+if (arrangedByWindows) win.webview.on("dom-ready", () => pageLoaded(win.ptr));
 
 // ── The media controls' pop-out (#357, calls and media) ─────────────────────────────────────────────────────────────
 // A small window of its own for the media controls, which the main page asks for (media-window.ts). The call stays in

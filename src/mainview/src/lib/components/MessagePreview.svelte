@@ -16,7 +16,7 @@
 	import { largeEmojis } from "$lib/emoji";
 	import type { CustomEmojiMap } from "$lib/markdown";
 	import { nameColor } from "$lib/name-colors";
-	import { onReactionChange, withReaction } from "$lib/reactions";
+	import { onReactionChange, reactionKey, withReaction } from "$lib/reactions";
 	import { currentUser, openRoomMention, reactorsRequest } from "$lib/stores.svelte";
 	import {
 		isComponentsV2,
@@ -175,7 +175,7 @@
 				{customEmojiMap}
 				onToggle={toggle}
 				onShowReactors={(r) =>
-					reactorsRequest.set({ messageId: message.id, reactions, picked: r.emoji_name, members, customEmojiMap })}
+					reactorsRequest.set({ messageId: message.id, reactions, picked: reactionKey(r), members, customEmojiMap })}
 			/>
 		</div>
 	</div>

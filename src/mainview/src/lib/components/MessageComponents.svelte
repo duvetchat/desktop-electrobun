@@ -9,7 +9,8 @@
 	import { getHostURL } from "$lib/common/common";
 	import { renderEmoji } from "$lib/emoji";
 	import { messageTextClass } from "$lib/message-styles";
-	import { renderMarkdown, type CustomEmojiMap } from "$lib/markdown";
+	import { CUSTOM_EMOJI_CLASS } from "$lib/emoji-retry";
+	import { emojiImageUrl, renderMarkdown, type CustomEmojiMap } from "$lib/markdown";
 	import { roomNames } from "$lib/stores.svelte";
 	import { formatFileSize } from "$lib/utils/format";
 	import {
@@ -262,12 +263,22 @@
 {#snippet emoji(e: ComponentEmoji | undefined)}
 	{#if e?.id}
 		{@const custom = customEmojiMap[e.id]}
+		{@const elsewhere = custom ? null : emojiImageUrl(e.id)}
 		{#if custom}
 			<img
 				src="{host}/attachments/{custom.attachment_id}"
 				alt=":{custom.name}:"
 				title=":{custom.name}:"
 				class="size-5 shrink-0 object-contain"
+				draggable="false"
+			/>
+		{:else if elsewhere}
+			<!-- A custom emoji of a Space the user isn't in: its image from the API, named as the bot named it. -->
+			<img
+				src={elsewhere}
+				alt=":{e.name ?? 'emoji'}:"
+				title=":{e.name ?? 'emoji'}:"
+				class="size-5 shrink-0 object-contain {CUSTOM_EMOJI_CLASS}"
 				draggable="false"
 			/>
 		{/if}
