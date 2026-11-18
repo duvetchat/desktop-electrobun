@@ -19,6 +19,8 @@ export const SECOND_WINDOW_PAGES: Partial<Record<SecondWindow, string>> = {
 	media: "voice-controls",
 	// Settings' own window (routes/settings, #357).
 	settings: "settings",
+	// A Space's settings, one window per Space (routes/space-settings, #357).
+	"space-settings": "space-settings",
 };
 
 /** Electrobun's `copy` rules for pages: each prerendered page, from the UI's build into the app's views. */

@@ -10,6 +10,10 @@
 		Camera as CameraIcon,
 	} from "@lucide/svelte";
 	import { untrack } from "svelte";
+	import Button from "$lib/components/ui/Button.svelte";
+	import IconButton from "$lib/components/ui/IconButton.svelte";
+	import SettingsGroup from "$lib/components/settings/SettingsGroup.svelte";
+	import { calloutClass, CARD, FIELD, FIELD_SM, LABEL, SELECT } from "$lib/components/settings/recipes";
 	import { getApiError } from "$lib/api/api";
 	import {
 		listWebhooks,
@@ -214,148 +218,143 @@
 	}
 </script>
 
+{#snippet avatarSlot(preview: string | null, size: string, pick: () => void, remove: () => void)}
+	<div class="group/avatar bg-duvet-secondary-fill relative shrink-0 overflow-hidden rounded-[28%] {size}">
+		{#if preview}
+			<img src={preview} alt="Preview" class="size-full object-cover" />
+		{:else}
+			<div class="text-duvet-ink2 flex size-full items-center justify-center">
+				<WebhookIcon class="size-1/2" />
+			</div>
+		{/if}
+		<div
+			class="group-hover/avatar:bg-duvet-media-scrim absolute inset-0 flex items-center justify-center gap-1 opacity-0 transition-opacity group-focus-within/avatar:opacity-100 group-hover/avatar:opacity-100"
+		>
+			<button
+				type="button"
+				class="text-fixed-white hover:bg-fixed-white/20 flex size-6 items-center justify-center rounded-md"
+				title="Change avatar"
+				onclick={pick}
+			>
+				<CameraIcon class="size-3" />
+			</button>
+			{#if preview}
+				<button
+					type="button"
+					class="text-duvet-call-red-ink hover:bg-fixed-white/20 flex size-6 items-center justify-center rounded-md"
+					title="Remove avatar"
+					onclick={remove}
+				>
+					<TrashIcon class="size-3" />
+				</button>
+			{/if}
+		</div>
+	</div>
+{/snippet}
+
 {#if webhooksLoading}
-	<p class="text-duvet-ink2 text-sm">Loading webhooks...</p>
+	<p class="text-duvet-ink2 px-1.5 text-sm">Loading webhooks...</p>
 {:else}
-	<div class="max-w-xl space-y-5">
+	<div class="flex flex-col gap-5">
 		<!-- Create new webhook -->
 		{#if rooms.length > 0}
-			<div class="border-duvet-line bg-duvet-bg space-y-4 rounded-xl border p-5">
-				<div class="space-y-1">
-					<h3 class="text-duvet-ink text-sm font-bold">Create Webhook</h3>
-					<p class="text-duvet-ink2 text-xs">
-						Webhooks allow external services to send messages to {several ? "a room" : `#${rooms[0]!.name}`}.
-					</p>
-				</div>
+			<SettingsGroup
+				title="Create webhook"
+				plain
+				class="flex flex-col gap-3"
+				note={`Webhooks allow external services to send messages to ${several ? "a room" : `#${rooms[0]!.name}`}.`}
+			>
+				<label class="block">
+					<span class={LABEL}>Username</span>
+					<input type="text" class={FIELD} placeholder="Webhook Bot" bind:value={newWebhookName} />
+				</label>
 
-				<div class="space-y-3">
-					<label class="block space-y-1.5">
-						<span class="text-duvet-ink2 text-[13px] font-bold">Username</span>
-						<input
-							type="text"
-							class="bg-duvet-sunk text-duvet-ink placeholder:text-duvet-ink2 shadow-duvet-press focus-visible:outline-duvet-accent w-full rounded-xl px-3 py-2 text-sm focus-visible:outline-2"
-							placeholder="Webhook Bot"
-							bind:value={newWebhookName}
-						/>
+				{#if several}
+					<label class="block">
+						<span class={LABEL}>Room</span>
+						<select class="{SELECT} h-[38px]! w-full max-w-none!" bind:value={newWebhookRoomId}>
+							{#each rooms as r (r.id)}
+								<option value={r.id}>#{r.name}</option>
+							{/each}
+						</select>
 					</label>
+				{/if}
 
-					{#if several}
-						<label class="block space-y-1.5">
-							<span class="text-duvet-ink2 text-[13px] font-bold">Room</span>
-							<select
-								class="bg-duvet-sunk text-duvet-ink shadow-duvet-press focus-visible:outline-duvet-accent h-9 w-full rounded-xl px-3 text-sm focus-visible:outline-2"
-								bind:value={newWebhookRoomId}
-							>
-								{#each rooms as r (r.id)}
-									<option value={r.id}>#{r.name}</option>
-								{/each}
-							</select>
-						</label>
-					{/if}
-
-					<div class="space-y-1.5">
-						<span class="text-duvet-ink2 text-[13px] font-bold">Avatar (optional)</span>
-						<div class="flex items-center gap-3">
-							<div class="group bg-duvet-ink/10 relative size-14 shrink-0 overflow-hidden rounded-full">
-								{#if newWebhookAvatarPreview}
-									<img src={newWebhookAvatarPreview} alt="Preview" class="size-full object-cover" />
-								{:else}
-									<div class="flex size-full items-center justify-center">
-										<WebhookIcon class="text-duvet-ink2 size-6" />
-									</div>
-								{/if}
-								<div
-									class="absolute inset-0 flex items-center justify-center gap-1 bg-black/0 transition-colors group-hover:bg-black/50"
-								>
-									<button
-										type="button"
-										class="text-fixed-white flex size-6 cursor-pointer items-center justify-center rounded-full bg-black/60 opacity-0 transition-opacity group-hover:opacity-100 hover:bg-black/80"
-										title="Change avatar"
-										onclick={pickNewWebhookAvatar}
-									>
-										<CameraIcon class="size-3" />
-									</button>
-									{#if newWebhookAvatarPreview}
-										<button
-											type="button"
-											class="text-duvet-danger flex size-6 cursor-pointer items-center justify-center rounded-full bg-black/60 opacity-0 transition-opacity group-hover:opacity-100 hover:bg-black/80"
-											title="Remove avatar"
-											onclick={clearNewWebhookAvatar}
-										>
-											<TrashIcon class="size-3" />
-										</button>
-									{/if}
-								</div>
-							</div>
-							<p class="text-duvet-ink2 text-xs">Click to upload an avatar</p>
-						</div>
+				<div>
+					<span class={LABEL}>Avatar (optional)</span>
+					<div class="flex items-center gap-3">
+						{@render avatarSlot(newWebhookAvatarPreview, "size-14", pickNewWebhookAvatar, clearNewWebhookAvatar)}
+						<p class="text-duvet-ink2 text-xs">Click to upload an avatar</p>
 					</div>
-
-					<button
-						class="text-duvet-on-accent rounded-row bg-duvet-accent hover:bg-duvet-accent/85 flex items-center gap-2 px-4 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50"
-						onclick={handleCreateWebhook}
-						disabled={isCreatingWebhook || !newWebhookName.trim()}
-					>
-						<PlusIcon class="size-4" />
-						{isCreatingWebhook ? "Creating..." : "Create"}
-					</button>
 				</div>
-			</div>
+
+				<div>
+					<Button onclick={handleCreateWebhook} disabled={isCreatingWebhook || !newWebhookName.trim()}>
+						<PlusIcon size={15} />
+						{isCreatingWebhook ? "Creating..." : "Create"}
+					</Button>
+				</div>
+			</SettingsGroup>
 		{/if}
 
 		<!-- Token reveal box -->
 		{#if createdWebhookToken && createdWebhookId}
 			{@const urls = webhookUrls(attachmentHost, createdWebhookId, createdWebhookToken)}
-			<div class="border-duvet-warn/30 bg-duvet-warn/10 overflow-hidden rounded-xl border p-4">
-				<p class="text-duvet-warn mb-2 text-xs font-semibold">Webhook Token (shown only once)</p>
+			<div class="{calloutClass('warn')} flex-col gap-2! overflow-hidden">
+				<p class="font-semibold">Webhook token (shown only once)</p>
 				<div class="flex items-center gap-2">
-					<code class="bg-duvet-card text-duvet-ink min-w-0 flex-1 truncate rounded-md px-3 py-2 text-xs select-text">
+					<code
+						class="bg-duvet-code-bg text-duvet-ink min-w-0 flex-1 truncate rounded-md px-3 py-2 font-mono text-xs select-text"
+					>
 						{createdWebhookToken}
 					</code>
-					<button
-						class="rounded-row bg-duvet-ink/10 text-duvet-ink hover:bg-duvet-ink/15 flex shrink-0 items-center gap-1.5 px-3 py-2 text-xs font-medium transition-colors"
+					<Button
+						variant="secondary"
+						size="sm"
 						onclick={() => copyWebhookUrl(urls.url, "Webhook URL")}
 						title="Copy Webhook URL"
 					>
-						<CopyIcon class="size-3.5" />
+						<CopyIcon size={13} />
 						Copy URL
-					</button>
-					<button
-						class="rounded-row bg-duvet-ink/10 text-duvet-ink hover:bg-duvet-ink/15 flex shrink-0 items-center gap-1.5 px-3 py-2 text-xs font-medium transition-colors"
+					</Button>
+					<Button
+						variant="secondary"
+						size="sm"
 						onclick={() => copyWebhookUrl(urls.github, "GitHub URL")}
 						title="Copy the URL with /github"
 					>
-						<CopyIcon class="size-3.5" />
+						<CopyIcon size={13} />
 						Copy GitHub URL
-					</button>
+					</Button>
 				</div>
-				<p class="text-duvet-warn/70 mt-2 truncate text-[11px]" title={urls.url}>
-					Webhook URL: {urls.url}
-				</p>
-				<p class="text-duvet-ink2 mt-1 text-[11px]">
+				<p class="truncate text-[11px] opacity-80" title={urls.url}>Webhook URL: {urls.url}</p>
+				<p class="text-duvet-ink2 text-[11px]">
 					Paste the GitHub URL as a GitHub repository's webhook: its pushes, issues and pull requests post here.
 				</p>
-				<button
-					class="text-duvet-ink2 hover:text-duvet-ink mt-2 text-xs transition-colors"
-					onclick={() => {
-						createdWebhookToken = null;
-						createdWebhookId = null;
-					}}
-				>
-					Dismiss
-				</button>
+				<div>
+					<Button
+						variant="quiet"
+						size="sm"
+						onclick={() => {
+							createdWebhookToken = null;
+							createdWebhookId = null;
+						}}
+					>
+						Dismiss
+					</Button>
+				</div>
 			</div>
 		{/if}
 
 		<!-- Webhook list -->
 		{#if loadFailed}
 			<div class="flex flex-col items-center justify-center py-12 text-center">
-				<WebhookIcon class="text-duvet-ink2/60 mb-3 size-10" />
+				<WebhookIcon class="text-duvet-ink2 mb-3 size-9" />
 				<p class="text-duvet-ink2 text-sm">Couldn't load the webhooks.</p>
 			</div>
 		{:else if roomWebhooks.length === 0}
 			<div class="flex flex-col items-center justify-center py-12 text-center">
-				<WebhookIcon class="text-duvet-ink2/60 mb-3 size-10" />
+				<WebhookIcon class="text-duvet-ink2 mb-3 size-9" />
 				<p class="text-duvet-ink2 text-sm">No webhooks yet.</p>
 				<p class="text-duvet-ink2 mt-1 text-xs">
 					{rooms.length > 0
@@ -364,110 +363,82 @@
 				</p>
 			</div>
 		{:else}
-			<div class="space-y-1">
+			<div class="{CARD} divide-duvet-line divide-y">
 				{#each roomWebhooks as wh (wh.id)}
-					<div class="group rounded-card border-duvet-line bg-duvet-card flex items-center gap-3 border px-3 py-2.5">
-						<!-- Avatar -->
-						{#if wh.avatar}
-							<img
-								src="{attachmentHost}/attachments/{wh.avatar}"
-								alt={wh.username}
-								class="size-8 shrink-0 rounded-full object-cover"
-							/>
-						{:else}
-							<div class="bg-duvet-ink/10 flex size-8 shrink-0 items-center justify-center rounded-full">
-								<WebhookIcon class="text-duvet-ink2 size-4" />
-							</div>
-						{/if}
-
+					<div class="group flex min-h-[52px] items-center gap-3 px-3.5 py-2">
 						{#if editingWebhookId === wh.id}
-							<div class="group/edit bg-duvet-ink/10 relative size-10 shrink-0 overflow-hidden rounded-full">
-								{#if editingWebhookAvatarPreview}
-									<img src={editingWebhookAvatarPreview} alt="Preview" class="size-full object-cover" />
-								{:else}
-									<div class="flex size-full items-center justify-center">
-										<WebhookIcon class="text-duvet-ink2 size-4" />
-									</div>
-								{/if}
-								<div
-									class="absolute inset-0 flex items-center justify-center gap-0.5 bg-black/0 transition-colors group-hover/edit:bg-black/50"
-								>
-									<button
-										type="button"
-										class="text-fixed-white flex size-5 cursor-pointer items-center justify-center rounded-full bg-black/60 opacity-0 transition-opacity group-hover/edit:opacity-100 hover:bg-black/80"
-										title="Change avatar"
-										onclick={pickEditWebhookAvatar}
-									>
-										<CameraIcon class="size-2.5" />
-									</button>
-									{#if editingWebhookAvatarPreview}
-										<button
-											type="button"
-											class="text-duvet-danger flex size-5 cursor-pointer items-center justify-center rounded-full bg-black/60 opacity-0 transition-opacity group-hover/edit:opacity-100 hover:bg-black/80"
-											title="Remove avatar"
-											onclick={removeEditWebhookAvatar}
-										>
-											<TrashIcon class="size-2.5" />
-										</button>
-									{/if}
-								</div>
-							</div>
-							<div class="flex min-w-0 flex-1 flex-col gap-2">
-								<input
-									type="text"
-									class="text-duvet-ink bg-duvet-sunk shadow-duvet-press focus-visible:outline-duvet-accent w-full rounded-xl px-2 py-1 text-sm focus-visible:outline-2"
-									bind:value={editingWebhookName}
-									onkeydown={(e) => {
-										if (e.key === "Enter") handleUpdateWebhook(wh);
-										if (e.key === "Escape") cancelWebhookEdit();
-									}}
-								/>
-							</div>
-							<button
-								class="text-duvet-alive hover:bg-duvet-ink/10 rounded p-1.5 transition-colors"
-								onclick={() => handleUpdateWebhook(wh)}
-								title="Save"
-							>
-								<CheckIcon class="size-4" />
-							</button>
-							<button
-								class="text-duvet-ink2 hover:bg-duvet-ink/10 rounded p-1.5 transition-colors"
-								onclick={cancelWebhookEdit}
-								title="Cancel"
-							>
-								<XIcon class="size-4" />
-							</button>
+							{@render avatarSlot(
+								editingWebhookAvatarPreview,
+								"size-10",
+								pickEditWebhookAvatar,
+								removeEditWebhookAvatar,
+							)}
+							<input
+								type="text"
+								aria-label="Webhook name"
+								class="{FIELD_SM} min-w-0 flex-1"
+								bind:value={editingWebhookName}
+								onkeydown={(e) => {
+									if (e.key === "Enter") handleUpdateWebhook(wh);
+									if (e.key === "Escape") {
+										e.stopPropagation();
+										cancelWebhookEdit();
+									}
+								}}
+							/>
+							<IconButton label="Save" title="Save" class="text-duvet-alive!" onclick={() => handleUpdateWebhook(wh)}>
+								<CheckIcon size={16} />
+							</IconButton>
+							<IconButton label="Cancel" title="Cancel" onclick={cancelWebhookEdit}>
+								<XIcon size={16} />
+							</IconButton>
 						{:else}
+							<!-- Avatar -->
+							{#if wh.avatar}
+								<img
+									src="{attachmentHost}/attachments/{wh.avatar}"
+									alt={wh.username}
+									class="size-8 shrink-0 rounded-[28%] object-cover"
+								/>
+							{:else}
+								<div
+									class="bg-duvet-secondary-fill text-duvet-ink2 flex size-8 shrink-0 items-center justify-center rounded-[28%]"
+								>
+									<WebhookIcon class="size-4" />
+								</div>
+							{/if}
 							<div class="min-w-0 flex-1">
-								<p class="text-duvet-ink truncate text-sm font-medium">{wh.username}</p>
+								<p class="truncate text-[13.5px] font-medium">{wh.username}</p>
 								<p class="text-duvet-ink2 truncate text-xs">
-									{#if several}Posts in #{roomName(wh.room_id)}<span class="text-duvet-ink2/60 mx-1">&middot;</span
-										>{/if}Created {new Date(wh.created_at).toLocaleDateString()}
+									{#if several}Posts in #{roomName(wh.room_id)}<span class="mx-1 opacity-60">&middot;</span>{/if}Created {new Date(
+										wh.created_at,
+									).toLocaleDateString()}
 								</p>
 							</div>
-
-							<button
-								class="text-duvet-ink2 hover:bg-duvet-ink/10 hover:text-duvet-ink rounded p-1.5 opacity-0 transition-all group-hover:opacity-100"
-								onclick={() => startWebhookEdit(wh)}
-								title="Rename"
+							<div
+								class="flex gap-1 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100"
 							>
-								<PencilIcon class="size-4" />
-							</button>
-							<button
-								class="text-duvet-ink2 hover:bg-duvet-ink/10 hover:text-duvet-warn rounded p-1.5 opacity-0 transition-all group-hover:opacity-100"
-								onclick={() => handleResetWebhookToken(wh)}
-								title="Reset Token"
-							>
-								<WebhookIcon class="size-4" />
-							</button>
-							<button
-								class="text-duvet-ink2 hover:bg-duvet-ink/10 hover:text-duvet-danger rounded p-1.5 opacity-0 transition-all group-hover:opacity-100"
-								onclick={() => handleDeleteWebhook(wh)}
-								disabled={isDeletingWebhook[wh.id]}
-								title="Delete"
-							>
-								<TrashIcon class="size-4" />
-							</button>
+								<IconButton label="Rename" title="Rename" onclick={() => startWebhookEdit(wh)}>
+									<PencilIcon size={16} />
+								</IconButton>
+								<IconButton
+									label="Reset token"
+									title="Reset token"
+									class="hover:text-duvet-warn!"
+									onclick={() => handleResetWebhookToken(wh)}
+								>
+									<WebhookIcon size={16} />
+								</IconButton>
+								<IconButton
+									label="Delete"
+									title="Delete"
+									class="hover:bg-duvet-danger/15! hover:text-duvet-danger!"
+									onclick={() => handleDeleteWebhook(wh)}
+									disabled={isDeletingWebhook[wh.id]}
+								>
+									<TrashIcon size={16} />
+								</IconButton>
+							</div>
 						{/if}
 					</div>
 				{/each}
