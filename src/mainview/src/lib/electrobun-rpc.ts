@@ -36,11 +36,15 @@ export type AppRPCSchema = {
 			showNotification: { params: NotificationRequest; response: boolean };
 			// The message of the toast clicked last, which Bun keeps until a page takes it; null for none.
 			takeClickedMessage: { params: void; response: MessageLink | null };
+			// Whether Windows' move loop drags the window (src/bun/window-snap.ts): then the title bar reports its presses.
+			nativeWindowDrag: { params: void; response: boolean };
 		};
 		messages: {
 			closeWindow: void;
 			minimizeWindow: void;
 			maximizeWindow: void;
+			// A press on the title bar, where Windows drags the window: Bun starts the move loop if it turns into a drag.
+			startWindowDrag: void;
 			openExternal: { url: string };
 			setSpotifyActivity: { enabled: boolean };
 			// The page's steps of the app's start, each when it happened (Date.now()), for startup.log (#280, #288).
@@ -65,6 +69,7 @@ export type AppRPCClient = {
 		closeWindow: () => void;
 		minimizeWindow: () => void;
 		maximizeWindow: () => void;
+		startWindowDrag: () => void;
 		openExternal: (params: { url: string }) => void;
 		setSpotifyActivity: (params: { enabled: boolean }) => void;
 		startupTimings: (params: { marks: Record<string, number> }) => void;
@@ -72,6 +77,7 @@ export type AppRPCClient = {
 	request: {
 		showNotification: (params: NotificationRequest) => Promise<boolean>;
 		takeClickedMessage: () => Promise<MessageLink | null>;
+		nativeWindowDrag: () => Promise<boolean>;
 	};
 	on: {
 		activityUpdate: (handler: (data: ActivityPayload[] | null) => void) => void;
@@ -125,6 +131,7 @@ async function createRpcClient(): Promise<AppRPCClient | null> {
 		request: {
 			showNotification: (params) => rpc.request.showNotification(params),
 			takeClickedMessage: () => rpc.request.takeClickedMessage(),
+			nativeWindowDrag: () => rpc.request.nativeWindowDrag(),
 		},
 		on: {
 			activityUpdate: (handler) => {
