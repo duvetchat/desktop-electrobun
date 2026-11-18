@@ -63,7 +63,7 @@
 	</Tooltip>
 	<button
 		type="button"
-		class="group focus-visible:outline-duvet-accent flex min-w-0 flex-1 items-center gap-2 rounded-lg text-left outline-none focus-visible:outline-2 focus-visible:outline-offset-2"
+		class="group flex min-w-0 flex-1 items-center gap-2 rounded-lg text-left"
 		aria-label="Open {media.place?.where ?? ''}{media.facesLabel ? `, ${media.facesLabel}` : ''}"
 		onclick={actions.openPlace}
 	>

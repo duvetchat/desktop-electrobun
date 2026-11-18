@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { untrack } from "svelte";
 	import {
 		activeVoiceRoomId,
 		speakingUsers,
@@ -21,30 +22,47 @@
 		voiceRemoteCameraStreams,
 		watchedStreams,
 		watchingNow,
+		voiceConnectionState,
 	} from "$lib/stores.svelte";
-	import { toggleDeafen, toggleMute as toggleMic } from "$lib/voice";
+	import { stopScreenShare, toggleDeafen, toggleMute as toggleMic } from "$lib/voice";
 	import type { VoicePerson } from "$lib/voice-place";
 	import { startWatching, stopWatching, viewersOf } from "$lib/watching";
 	import { getAvatarURL } from "$lib/common/common";
 	import {
-		Check,
+		ChevronDown,
 		ChevronUp,
+		EyeOff,
+		HeadphoneOff,
+		Headphones,
 		LoaderCircle,
+		Lock,
 		Mic,
 		MicOff,
-		Headphones,
-		Lock,
 		Phone,
+		PhoneCall,
 		PhoneOff,
-		MonitorUp,
+		ScreenShare,
+		ScreenShareOff,
 		Video,
 		VideoOff,
 		Volume2,
 	} from "@lucide/svelte";
-	import { DropdownMenu } from "bits-ui";
+	import { mergeProps } from "bits-ui";
+	import FaceStack from "$lib/components/FaceStack.svelte";
+	import MascotPeek from "$lib/components/MascotPeek.svelte";
+	import MediaButton from "$lib/components/MediaButton.svelte";
 	import StreamViewers from "$lib/components/StreamViewers.svelte";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
+	import Button from "$lib/components/ui/Button.svelte";
+	import Menu from "$lib/components/ui/Menu.svelte";
+	import MenuItem from "$lib/components/ui/MenuItem.svelte";
+	import MenuSeparator from "$lib/components/ui/MenuSeparator.svelte";
+	import Tooltip from "$lib/components/ui/Tooltip.svelte";
+	import { GLASS } from "$lib/components/ui/recipes";
+	import { phaseOf, mediaTitle } from "$lib/media-state";
+	import { capFaces, peopleCount } from "$lib/now";
 	import { hasPermission, Permission } from "$lib/permissions";
+	import { afterTiles, AUTO, gridColumns, pressTile, stagedKey, type StageChoice } from "$lib/voice-stage";
 
 	let {
 		channelId,
@@ -181,27 +199,28 @@
 
 	// Videos that have shown a frame, by tile: until then the tile shows the face or a loader.
 	let playing = $state<Record<string, boolean>>({});
-	let focusedKey = $state<string | null>(null);
-	// A focused tile that's gone (its person left, or stopped sharing) leaves the grid as it was.
-	const focused = $derived(focusedKey && tiles.some((t) => t.key === focusedKey) ? focusedKey : null);
-	let showStreamMenu = $state(false);
 	let cameras = $state<MediaDeviceInfo[]>([]);
 
-	// Track grid columns for eye gaze direction
-	let gridEl = $state<HTMLDivElement | null>(null);
-	let gridCols = $state(2);
-
-	$effect(() => {
-		if (!gridEl) return;
-		const observer = new ResizeObserver(() => {
-			if (!gridEl) return;
-			const computed = getComputedStyle(gridEl);
-			const cols = computed.gridTemplateColumns.split(" ").filter((s) => s !== "").length;
-			gridCols = Math.max(1, cols);
-		});
-		observer.observe(gridEl);
-		return () => observer.disconnect();
+	// The stage (lib/voice-stage.ts): a screen share takes it, with everyone in a strip under it; a press on a tile puts
+	// it there (the app's "focus"), and a press on the tile that is there gives the grid back.
+	let choice = $state<StageChoice>(AUTO);
+	let tilesBefore: Tile[] = [];
+	$effect.pre(() => {
+		const now = tiles;
+		const next = afterTiles(
+			untrack(() => choice),
+			tilesBefore,
+			now,
+		);
+		tilesBefore = now;
+		if (next !== untrack(() => choice)) choice = next;
 	});
+	const staged = $derived(stagedKey(tiles, choice));
+	const stagedTile = $derived(tiles.find((tile) => tile.key === staged) ?? null);
+	// Under a staged tile, everyone: the people, and the other screens.
+	const stripTiles = $derived(staged ? tiles.filter((tile) => tile.key !== staged) : []);
+	// A room's grid fills the pane: one column alone, two up to four, three for more. A call's tiles are a row.
+	const columns = $derived(callMode ? Math.max(1, tiles.length) : gridColumns(tiles.length));
 
 	// Track the last speaking user for eye gaze
 	let lastSpeakerId = $state<string | null>(null);
@@ -211,59 +230,52 @@
 		lastSpeakerId = speaking.at(-1)?.id ?? null;
 	});
 
-	// Reactive eye offsets: each face looks toward the speaker's tile, by where the tiles sit in the grid.
+	// Where each tile sits: the staged one above the strip's middle, the others in the strip's row or the grid's cells.
+	const places = $derived.by(() => {
+		const at: Record<string, { x: number; y: number }> = {};
+		if (staged) {
+			at[staged] = { x: (stripTiles.length - 1) / 2, y: -1 };
+			stripTiles.forEach((tile, i) => (at[tile.key] = { x: i, y: 0 }));
+		} else {
+			tiles.forEach((tile, i) => (at[tile.key] = { x: i % columns, y: Math.floor(i / columns) }));
+		}
+		return at;
+	});
+
+	// Reactive eye offsets: each face looks toward the speaker's tile, by where the tiles sit.
 	const eyeOffsets = $derived.by(() => {
 		const offsets: Record<string, { x: number; y: number }> = {};
-		const cols = gridCols;
-		const speakerIndex = lastSpeakerId
-			? tiles.findIndex((t) => t.kind === "person" && t.user.id === lastSpeakerId)
-			: -1;
-
-		tiles.forEach((tile, i) => {
-			if (tile.kind !== "person") return;
+		const speaker = lastSpeakerId ? places[lastSpeakerId] : undefined;
+		for (const tile of tiles) {
+			if (tile.kind !== "person") continue;
 			const id = tile.user.id;
-			if (speakerIndex === -1 || lastSpeakerId === id) {
+			const mine = places[id];
+			if (!speaker || !mine || lastSpeakerId === id) {
 				offsets[id] = { x: 0, y: 0 };
-				return;
+				continue;
 			}
-
-			const myCol = i % cols;
-			const myRow = Math.floor(i / cols);
-			const spCol = speakerIndex % cols;
-			const spRow = Math.floor(speakerIndex / cols);
-
-			const dx = spCol - myCol;
-			const dy = spRow - myRow;
+			const dx = speaker.x - mine.x;
+			const dy = speaker.y - mine.y;
 			const dist = Math.sqrt(dx * dx + dy * dy);
-			if (dist === 0) {
-				offsets[id] = { x: 0, y: 0 };
-			} else {
-				offsets[id] = { x: Math.max(-1, Math.min(1, dx / dist)), y: Math.max(-1, Math.min(1, dy / dist)) };
-			}
-		});
+			offsets[id] =
+				dist === 0
+					? { x: 0, y: 0 }
+					: { x: Math.max(-1, Math.min(1, dx / dist)), y: Math.max(-1, Math.min(1, dy / dist)) };
+		}
 		return offsets;
 	});
 
-	// Alone in a room, a tile fills the view. A call has no height of its own to fill (half the conversation at
-	// most): its tiles are a grid of small 16:9 ones, even alone.
-	const fills = $derived(!callMode && tiles.length === 1);
-
-	// Focused, a tile is big above the others; else they're a grid of 16:9 tiles.
-	function tileSize(key: string): string {
-		if (fills) return "min-h-0 w-full flex-1";
-		if (focused === key) return "order-first h-[60vh] w-full";
-		if (focused) return "aspect-video w-64 shrink-0";
-		return "aspect-video";
-	}
-
-	// A camera fills its 16:9 tile; a big one shows whole.
+	// A camera fills its tile; on the stage, or alone in the room, it shows whole.
 	function cameraFit(key: string): string {
-		return fills || focused === key ? "object-contain" : "object-cover";
+		return staged === key || (!callMode && tiles.length === 1) ? "object-contain" : "object-cover";
 	}
 
 	function toggleFocus(key: string) {
-		focusedKey = focused === key ? null : key;
+		choice = pressTile(tiles, choice, key);
 	}
+
+	// A call's stage folds to its bar alone, and back.
+	let folded = $state(false);
 
 	function srcObject(node: HTMLVideoElement, stream: MediaStream) {
 		node.srcObject = stream;
@@ -341,375 +353,460 @@
 			cameras.at(0)?.deviceId ||
 			"",
 	);
+
+	function share(withAudio: boolean) {
+		screenShareRequested.set({ roomId: channelId, withAudio });
+	}
+
+	// The faces of who is in the room, for the bar of someone who isn't: four, and a count of the rest.
+	const roomFaces = $derived(
+		capFaces(
+			voiceUsers.map((u) => ({ id: u.id, name: u.username, src: u.avatar_url })),
+			4,
+		),
+	);
+	// How the call's connection is, in its bar.
+	const callStatus = $derived(
+		voiceLive
+			? mediaTitle({
+					place: { kind: "call", id: channelId, where: channelName },
+					phase: phaseOf($voiceConnectionState),
+				})
+			: "Connecting…",
+	);
+	const micTip = $derived(!canSpeak ? "You can't speak in this room" : $isMuted ? "Unmute" : "Mute");
+	const tone = $derived(callMode ? "stage" : "plain");
+	const shape = $derived(callMode ? "stage" : "bar");
 </script>
 
-<div class="from-duvet-bg to-duvet-sunk flex min-h-0 flex-1 flex-col bg-linear-to-b">
-	<!-- Header -->
-	{#if showHeader}
-		<div class="border-duvet-line flex shrink-0 items-center gap-2 border-b px-4 py-3">
-			{#if callMode}
-				<Phone class="text-duvet-alive size-4 shrink-0" />
-			{:else}
-				<Volume2 class="text-duvet-ink2 size-4 shrink-0" />
+<!-- A tile: someone's camera or face, or the screen they share. `size` is where it sits: a cell of the room's grid, the
+     stage, the strip under it, or a call's row. -->
+{#snippet tileView(tile: Tile, size: "grid" | "stage" | "strip" | "call")}
+	{@const user = tile.user}
+	<!-- This client's own tiles show its own capture; another session of the same user's is remote. -->
+	{@const isLocal = isConnected && user.id === $currentUser?.id}
+	{@const isSpeaking = $speakingUsers.has(user.id) && !user.muted}
+	{@const small = size === "strip"}
+	{@const face = size === "strip" ? 44 : size === "call" ? 64 : size === "stage" ? 96 : 84}
+	<div
+		class="group relative flex min-h-0 min-w-0 cursor-pointer items-center justify-center overflow-hidden transition-shadow duration-200 motion-reduce:transition-none {size ===
+		'strip'
+			? 'h-full max-w-[150px] flex-1 rounded-2xl'
+			: size === 'call'
+				? 'h-[136px] w-[180px] shrink-0 rounded-[18px]'
+				: 'size-full rounded-[20px]'} {callMode
+			? 'bg-fixed-white/8 inset-ring-fixed-white/8 inset-ring-1'
+			: 'bg-duvet-card shadow-duvet-raised'} {isSpeaking
+			? 'shadow-[0_0_0_2px_var(--duvet-alive),0_0_32px_-6px_color-mix(in_srgb,var(--duvet-alive)_60%,transparent)]'
+			: ''}"
+		role="button"
+		tabindex="0"
+		aria-label={tile.kind === "screen" ? `${user.username}'s screen` : user.username}
+		aria-pressed={staged === tile.key}
+		onclick={() => toggleFocus(tile.key)}
+		onkeydown={(e) => {
+			// A button in the tile (Watch stream, Stop, the eye) takes its own keys.
+			if (e.target !== e.currentTarget) return;
+			if (e.key === "Enter" || e.key === " ") {
+				e.preventDefault();
+				toggleFocus(tile.key);
+			}
+		}}
+	>
+		{#if tile.kind === "person"}
+			{@const cameraStream = !user.camera
+				? null
+				: isLocal
+					? $voiceLocalCameraStream
+					: $incomingVideo
+						? ($voiceRemoteCameraStreams[user.id] ?? null)
+						: null}
+			<!-- Videos are always muted: VoiceChat's <audio> plays everyone's sound. Only yours is mirrored. -->
+			{#if cameraStream}
+				<video
+					use:srcObject={cameraStream}
+					use:trackPlaying={tile.key}
+					autoplay
+					muted
+					playsinline
+					class="absolute inset-0 size-full {cameraFit(tile.key)} {isLocal ? '-scale-x-100' : ''}"
+				></video>
 			{/if}
-			<h2 class="text-duvet-ink truncate font-semibold">{channelName}</h2>
-			{#if isConnected}
-				<span class="bg-duvet-ink2/10 text-duvet-ink2 ml-auto shrink-0 rounded-full px-2 py-0.5 text-xs font-medium">
-					Connected
-				</span>
+			{#if !cameraStream || !playing[tile.key]}
+				<div class="relative flex items-center justify-center">
+					<!-- Whoever speaks gets the live ring, breathing, around their face. -->
+					<span
+						class="rounded-full shadow-[0_8px_24px_rgba(0,0,0,0.18)] {isSpeaking
+							? 'animate-speak ring-duvet-alive ring-[3px]'
+							: ''}"
+					>
+						<UserAvatar
+							src={$voiceFaces ? null : user.avatar_url}
+							name={user.username}
+							size={face}
+							mouthOpen={$userAmplitudes[user.id] ?? 0}
+							eyeOffset={eyeOffsets[user.id] ?? { x: 0, y: 0 }}
+						/>
+					</span>
+					{#if user.camera && !isLocal && !$incomingVideo}
+						<span
+							class="bg-duvet-media-scrim text-duvet-media-ink absolute -right-1 -bottom-1 rounded-lg p-1.5 backdrop-blur-[14px]"
+							title="Camera on. Incoming video is off."
+						>
+							<VideoOff size={small ? 11 : 14} />
+						</span>
+					{/if}
+				</div>
 			{/if}
-		</div>
-	{/if}
-
-	<!-- Video / Users grid -->
-	<div class="min-h-0 flex-1 overflow-y-auto p-4">
-		{#if voiceUsers.length === 0}
-			<div class="text-duvet-ink2 flex h-full flex-col items-center justify-center gap-3 select-none">
-				<Volume2 class="size-12 opacity-20" />
-				<p class="text-sm">No one connected</p>
-				{#if !isConnected}
-					<p class="text-xs opacity-60">Join to start</p>
-				{/if}
-			</div>
 		{:else}
-			<div
-				bind:this={gridEl}
-				class={fills
-					? "flex h-full flex-col"
-					: focused
-						? "flex flex-row flex-wrap content-start gap-4"
-						: callMode
-							? "grid grid-cols-[repeat(auto-fit,minmax(200px,300px))] content-start justify-center gap-4"
-							: "grid grid-cols-[repeat(auto-fit,minmax(240px,1fr))] content-start gap-4"}
-			>
-				{#each tiles as tile (tile.key)}
-					{@const user = tile.user}
-					<!-- This client's own tiles show its own capture; another session of the same user's is remote. -->
-					{@const isLocal = isConnected && user.id === $currentUser?.id}
-					{@const isSpeaking = $speakingUsers.has(user.id) && !user.muted}
-
-					<div
-						class="group bg-duvet-card/70 rounded-card shadow-duvet-raised relative flex cursor-pointer items-center justify-center overflow-hidden border transition-all {tileSize(
-							tile.key,
-						)} {isSpeaking ? 'border-transparent' : 'border-duvet-line hover:border-duvet-ink2/40'}"
-						role="button"
-						tabindex="0"
-						aria-label={tile.kind === "screen" ? `${user.username}'s screen` : user.username}
-						onclick={() => toggleFocus(tile.key)}
-						onkeydown={(e) => {
-							// A button in the tile (Watch stream, Stop, the eye) takes its own keys.
-							if (e.target !== e.currentTarget) return;
-							if (e.key === "Enter" || e.key === " ") {
-								e.preventDefault();
-								toggleFocus(tile.key);
-							}
+			{@const screenStream = isLocal
+				? $voiceLocalVideoStream
+				: $incomingVideo
+					? ($voiceRemoteVideoStreams[user.id] ?? null)
+					: null}
+			{#if !isLocal && !$incomingVideo}
+				<div class="flex flex-col items-center gap-2 {callMode ? 'text-duvet-media-ink/70' : 'text-duvet-ink2'}">
+					<EyeOff size={small ? 16 : 24} />
+					{#if !small}<span class="text-xs">Incoming video is off</span>{/if}
+				</div>
+			{:else if isLocal || (isConnected && $watchedStreams.includes(user.id))}
+				{#if screenStream}
+					<video
+						use:srcObject={screenStream}
+						use:trackPlaying={tile.key}
+						autoplay
+						muted
+						playsinline
+						class="bg-duvet-stage absolute inset-0 size-full object-contain"
+					></video>
+				{/if}
+				{#if !screenStream || !playing[tile.key]}
+					<div class="bg-duvet-stage/80 absolute inset-0 flex items-center justify-center">
+						<LoaderCircle class="text-duvet-media-ink animate-spin motion-reduce:animate-none" size={small ? 18 : 32} />
+					</div>
+				{/if}
+				{#if !isLocal && !small}
+					<button
+						type="button"
+						class="bg-duvet-media-scrim text-duvet-media-ink hover:bg-duvet-call-red hover:text-fixed-white absolute top-2.5 right-2.5 z-10 flex items-center gap-1.5 rounded-[10px] px-2.5 py-[5px] text-xs font-semibold opacity-0 backdrop-blur-[14px] transition-[opacity,background-color] group-hover:opacity-100 focus-visible:opacity-100"
+						onclick={(e) => {
+							e.stopPropagation();
+							stopWatching(user.id);
 						}}
 					>
-						{#if tile.kind === "person"}
-							{@const cameraStream = !user.camera
-								? null
-								: isLocal
-									? $voiceLocalCameraStream
-									: $incomingVideo
-										? ($voiceRemoteCameraStreams[user.id] ?? null)
-										: null}
-							<!-- Videos are always muted: VoiceChat's <audio> plays everyone's sound. Only yours is mirrored. -->
-							{#if cameraStream}
-								<video
-									use:srcObject={cameraStream}
-									use:trackPlaying={tile.key}
-									autoplay
-									muted
-									playsinline
-									class="absolute inset-0 size-full {cameraFit(tile.key)} {isLocal ? '-scale-x-100' : ''}"
-								></video>
-							{/if}
-							{#if !cameraStream || !playing[tile.key]}
-								<div class="relative flex items-center justify-center">
-									<UserAvatar
-										src={$voiceFaces ? null : user.avatar_url}
-										name={user.username}
-										size={80}
-										mouthOpen={$userAmplitudes[user.id] ?? 0}
-										eyeOffset={eyeOffsets[user.id] ?? { x: 0, y: 0 }}
-									/>
-									{#if user.camera && !isLocal && !$incomingVideo}
-										<span
-											class="border-duvet-line bg-duvet-bg absolute -right-1 -bottom-1 rounded-full border p-1.5"
-											title="Camera on. Incoming video is off."
-										>
-											<VideoOff class="text-duvet-ink2 size-3.5" />
-										</span>
-									{/if}
-								</div>
-							{/if}
-						{:else}
-							{@const screenStream = isLocal
-								? $voiceLocalVideoStream
-								: $incomingVideo
-									? ($voiceRemoteVideoStreams[user.id] ?? null)
-									: null}
-							{#if !isLocal && !$incomingVideo}
-								<div class="text-duvet-ink2 flex flex-col items-center gap-2">
-									<VideoOff class="size-6" />
-									<span class="text-xs">Incoming video is off</span>
-								</div>
-							{:else if isLocal || (isConnected && $watchedStreams.includes(user.id))}
-								{#if screenStream}
-									<video
-										use:srcObject={screenStream}
-										use:trackPlaying={tile.key}
-										autoplay
-										muted
-										playsinline
-										class="absolute inset-0 size-full object-contain"
-									></video>
-								{/if}
-								{#if !screenStream || !playing[tile.key]}
-									<div class="absolute inset-0 flex items-center justify-center bg-black/60">
-										<LoaderCircle class="text-duvet-ink size-8 animate-spin" />
-									</div>
-								{/if}
-								{#if !isLocal}
-									<button
-										class="text-fixed-white/80 hover:text-duvet-on-accent hover:bg-duvet-danger/80 absolute top-2 right-2 z-10 flex items-center gap-1.5 rounded-md bg-black/70 px-2.5 py-1.5 text-xs opacity-0 backdrop-blur-sm transition-all group-hover:opacity-100"
-										onclick={(e) => {
-											e.stopPropagation();
-											stopWatching(user.id);
-										}}
-									>
-										<PhoneOff class="size-3" />
-										Stop
-									</button>
-								{/if}
-							{:else}
-								<!-- Someone else shares and the user isn't watching: Watch only from the voice they're in -->
-								<div class="flex flex-col items-center justify-center gap-3">
-									<UserAvatar
-										src={$voiceFaces ? null : user.avatar_url}
-										name={user.username}
-										size={64}
-										mouthOpen={$userAmplitudes[user.id] ?? 0}
-										eyeOffset={eyeOffsets[user.id] ?? { x: 0, y: 0 }}
-									/>
-									{#if isConnected}
-										<button
-											class="bg-duvet-accent text-duvet-on-accent shadow-duvet-raised flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-bold transition-colors hover:brightness-110"
-											onclick={(e) => {
-												e.stopPropagation();
-												startWatching(channelId, user.id);
-											}}
-										>
-											<MonitorUp class="size-4" />
-											Watch stream
-										</button>
-									{/if}
-								</div>
-							{/if}
-							<div class="absolute top-2 left-2 z-10">
-								<StreamViewers viewers={viewersOfScreen(user.id)} meId={$currentUser?.id} />
-							</div>
-						{/if}
-
-						<!-- Name label -->
-						<div
-							class="text-fixed-white absolute bottom-2 left-2 z-10 flex max-w-[calc(100%-1rem)] items-center gap-1.5 rounded-md bg-black/60 px-2 py-1 backdrop-blur-md"
+						<ScreenShareOff size={13} />
+						Stop
+					</button>
+				{/if}
+			{:else}
+				<!-- Someone else shares and the user isn't watching: Watch only from the voice they're in -->
+				<div class="flex flex-col items-center justify-center gap-3">
+					<UserAvatar
+						src={$voiceFaces ? null : user.avatar_url}
+						name={user.username}
+						size={small ? 36 : 64}
+						mouthOpen={$userAmplitudes[user.id] ?? 0}
+						eyeOffset={eyeOffsets[user.id] ?? { x: 0, y: 0 }}
+					/>
+					{#if isConnected}
+						<Button
+							size={small ? "sm" : "md"}
+							onclick={(e: MouseEvent) => {
+								e.stopPropagation();
+								startWatching(channelId, user.id);
+							}}
 						>
-							{#if tile.kind === "screen"}
-								<MonitorUp class="text-duvet-accent-text size-3.5 shrink-0" />
-								<span class="truncate text-xs font-medium">{user.username}'s screen</span>
-							{:else}
-								{#if user.deafened}
-									<Headphones class="text-duvet-danger size-3.5 shrink-0" />
-								{:else if user.muted}
-									<MicOff class="text-duvet-danger size-3.5 shrink-0" />
-								{/if}
-								<span class="truncate text-xs font-medium">{user.username}</span>
-							{/if}
-						</div>
+							<ScreenShare size={small ? 13 : 15} />
+							{small ? "Watch" : "Watch stream"}
+						</Button>
+					{/if}
+				</div>
+			{/if}
+			{#if !small}
+				<div class="absolute top-2.5 left-2.5 z-10">
+					<StreamViewers viewers={viewersOfScreen(user.id)} meId={$currentUser?.id} />
+				</div>
+			{/if}
+		{/if}
 
-						<!-- Speaking ring, above any video -->
-						{#if isSpeaking}
-							<div
-								class="ring-duvet-ink2/40 pointer-events-none absolute inset-0 z-20 rounded-lg ring-2 ring-inset"
-							></div>
-						{/if}
-					</div>
+		<!-- Name label -->
+		<div
+			class="bg-duvet-media-scrim text-duvet-media-ink absolute z-10 flex items-center font-semibold backdrop-blur-[14px] {small
+				? 'bottom-1.5 left-1.5 max-w-[calc(100%-12px)] gap-1 rounded-lg px-[7px] py-1 text-[11.5px]'
+				: 'bottom-2.5 left-2.5 max-w-[calc(100%-20px)] gap-1.5 rounded-[10px] px-2.5 py-[5px] text-[12.5px]'} leading-[1.2]"
+		>
+			{#if tile.kind === "screen"}
+				<ScreenShare class="shrink-0" size={small ? 12 : 13} />
+				<span class="truncate">{user.username}'s screen</span>
+			{:else}
+				{#if user.deafened}
+					<HeadphoneOff class="text-duvet-call-red-ink shrink-0" size={small ? 12 : 13} />
+				{:else if user.muted}
+					<MicOff class="text-duvet-call-red-ink shrink-0" size={small ? 12 : 13} />
+				{/if}
+				<span class="truncate">{user.username}</span>
+			{/if}
+		</div>
+	</div>
+{/snippet}
+
+<!-- The camera's options: which camera, and whether to receive anyone's video. -->
+{#snippet cameraOptions()}
+	<Menu
+		side="top"
+		align="center"
+		label="Camera options"
+		onOpenChange={(open) => {
+			if (open) void loadCameras();
+		}}
+	>
+		{#snippet trigger(menuProps)}
+			<Tooltip text="Camera options" side="top">
+				{#snippet trigger(props)}
+					<button
+						{...mergeProps(menuProps, props)}
+						type="button"
+						aria-label="Camera options"
+						class=" grid w-[18px] shrink-0 place-items-center rounded-l-[3px] rounded-r-xl transition-[box-shadow,background-color] duration-[120ms] motion-reduce:transition-none {callMode
+							? 'bg-fixed-white/14 text-duvet-media-ink hover:bg-fixed-white/22 h-9'
+							: 'bg-duvet-secondary-fill text-duvet-ink h-[38px] hover:shadow-[inset_0_0_0_100px_var(--duvet-hover)]'}"
+					>
+						<ChevronUp size={12} strokeWidth={2.5} />
+					</button>
+				{/snippet}
+			</Tooltip>
+		{/snippet}
+		<div class="text-duvet-ink2 px-2 pt-1 pb-1.5 text-[11.5px] leading-none font-semibold">Camera</div>
+		{#if cameras.length === 0}
+			<div class="text-duvet-ink2 px-2 py-1.5 text-[13px]">No cameras found</div>
+		{:else}
+			{#each cameras as camera, i (camera.deviceId || i)}
+				<MenuItem
+					checked={camera.deviceId !== "" && camera.deviceId === activeCameraId}
+					onSelect={() => selectedCameraId.set(camera.deviceId)}
+				>
+					{camera.label || `Camera ${i + 1}`}
+				</MenuItem>
+			{/each}
+		{/if}
+		<MenuSeparator />
+		<MenuItem
+			checked={$incomingVideo}
+			closeOnSelect={false}
+			hint="Off, you receive no one's camera or screen"
+			onSelect={() => incomingVideo.update((on) => !on)}
+		>
+			Incoming video
+		</MenuItem>
+	</Menu>
+{/snippet}
+
+<!-- The view's own controls, the same in a room's bar and a call's: the microphone, the sound, the camera with its
+     options, the screen share, and Leave. -->
+{#snippet controls()}
+	<MediaButton
+		label={$isMuted ? "Unmute" : "Mute"}
+		tip={micTip}
+		pressed={$isMuted}
+		disabled={!canSpeak}
+		{tone}
+		{shape}
+		onclick={toggleMute}
+	>
+		{#if $isMuted}<MicOff size={18} />{:else}<Mic size={18} />{/if}
+	</MediaButton>
+	<MediaButton label={$isDeafened ? "Undeafen" : "Deafen"} pressed={$isDeafened} {tone} {shape} onclick={toggleDeafen}>
+		{#if $isDeafened}<HeadphoneOff size={18} />{:else}<Headphones size={18} />{/if}
+	</MediaButton>
+	<div class="flex gap-px">
+		<MediaButton
+			label={$isCameraOn ? "Turn off camera" : "Turn on camera"}
+			tip={videoTitle ?? ($isCameraOn ? "Turn off camera" : "Turn on camera")}
+			pressed={$isCameraOn}
+			disabled={!videoReady}
+			{tone}
+			{shape}
+			class="rounded-r-[3px]"
+			onclick={toggleCamera}
+		>
+			{#if $isCameraOn}<Video size={18} />{:else}<VideoOff size={18} />{/if}
+		</MediaButton>
+		{@render cameraOptions()}
+	</div>
+	{#if $isScreenSharing && videoReady}
+		<MediaButton label="Stop sharing" pressed {tone} {shape} onclick={() => stopScreenShare(channelId)}>
+			<ScreenShareOff size={18} />
+		</MediaButton>
+	{:else}
+		<!-- The system's (or the browser's) own picker follows: Duvet draws none. -->
+		<Menu side="top" align="center" label="Share screen">
+			{#snippet trigger(props)}
+				<MediaButton
+					label="Share screen"
+					tip={videoTitle ?? "Share screen"}
+					pressed={false}
+					disabled={!videoReady}
+					triggerProps={props}
+					{tone}
+					{shape}
+				>
+					<ScreenShare size={18} />
+				</MediaButton>
+			{/snippet}
+			<MenuItem icon={ScreenShare} onSelect={() => share(false)}>Screen only</MenuItem>
+			<MenuItem icon={Volume2} onSelect={() => share(true)}>Screen and audio</MenuItem>
+		</Menu>
+	{/if}
+	<span class="mx-0.5 h-[22px] w-px shrink-0 {callMode ? 'bg-fixed-white/14' : 'bg-duvet-line'}" aria-hidden="true"
+	></span>
+	<MediaButton
+		label={callMode ? "Leave call" : "Leave voice room"}
+		tone={callMode ? "stage-leave" : "leave"}
+		{shape}
+		onclick={leave}
+	>
+		<PhoneOff size={18} />
+	</MediaButton>
+{/snippet}
+
+{#snippet tilesArea()}
+	{#if stagedTile}
+		<div class="min-h-0 flex-1">
+			{@render tileView(stagedTile, "stage")}
+		</div>
+		{#if stripTiles.length > 0}
+			<div class="flex h-[104px] shrink-0 justify-center gap-2" role="group" aria-label="Everyone here">
+				{#each stripTiles as tile (tile.key)}
+					{@render tileView(tile, "strip")}
 				{/each}
 			</div>
 		{/if}
-	</div>
+	{:else if callMode}
+		<div class="flex min-h-0 flex-1 items-center justify-center gap-3.5 overflow-x-auto">
+			{#each tiles as tile (tile.key)}
+				{@render tileView(tile, "call")}
+			{/each}
+		</div>
+	{:else}
+		<div
+			class="grid min-h-0 flex-1 auto-rows-fr gap-2.5"
+			style="grid-template-columns: repeat({columns}, minmax(0, 1fr));"
+		>
+			{#each tiles as tile (tile.key)}
+				{@render tileView(tile, "grid")}
+			{/each}
+		</div>
+	{/if}
+{/snippet}
 
-	<!-- Controls -->
-	<div class="border-duvet-line flex shrink-0 items-center justify-center gap-2 border-t px-4 py-4">
-		{#if isConnected}
-			<div class="flex items-stretch">
-				<button
-					class="flex flex-col items-center gap-1 rounded-l-xl py-2.5 pr-2 pl-4 transition-colors {$isCameraOn
-						? 'bg-duvet-ink2/20 text-duvet-ink hover:bg-duvet-ink2/30'
-						: 'text-duvet-ink hover:bg-duvet-card'}"
-					class:opacity-50={!videoReady}
-					class:cursor-not-allowed={!videoReady}
-					disabled={!videoReady}
-					onclick={toggleCamera}
-					title={videoTitle ?? ($isCameraOn ? "Turn off camera" : "Turn on camera")}
-				>
-					{#if $isCameraOn}
-						<Video class="size-5" />
-					{:else}
-						<VideoOff class="size-5" />
-					{/if}
-					<span class="text-xxs {$isCameraOn ? 'text-duvet-ink' : 'text-duvet-ink2'}">Camera</span>
-				</button>
-				<DropdownMenu.Root
-					onOpenChange={(open) => {
-						if (open) void loadCameras();
-					}}
-				>
-					<DropdownMenu.Trigger
-						class="text-duvet-ink2 hover:bg-duvet-card hover:text-duvet-ink flex items-center rounded-r-xl px-1.5 transition-colors"
-						aria-label="Camera options"
-						title="Camera options"
-					>
-						<ChevronUp class="size-4" />
-					</DropdownMenu.Trigger>
-					<DropdownMenu.Portal>
-						<DropdownMenu.Content
-							class="rounded-card border-duvet-line bg-duvet-card shadow-duvet-float z-200 w-64 overflow-hidden border py-1"
-							side="top"
-							sideOffset={8}
-						>
-							<div class="border-duvet-line text-duvet-ink2 mb-1 border-b px-3 py-1.5 text-[13px] font-bold">
-								Camera
-							</div>
-							{#if cameras.length === 0}
-								<div class="text-duvet-ink2 px-3 py-2 text-sm">No cameras found</div>
-							{:else}
-								{#each cameras as camera, i (camera.deviceId || i)}
-									<DropdownMenu.Item
-										class="text-duvet-ink hover:bg-duvet-ink/10 data-highlighted:bg-duvet-ink/10 flex w-full cursor-pointer items-center justify-between gap-2 px-3 py-2 text-left text-sm transition-colors outline-none"
-										onSelect={() => selectedCameraId.set(camera.deviceId)}
-									>
-										<span class="truncate">{camera.label || `Camera ${i + 1}`}</span>
-										{#if camera.deviceId && camera.deviceId === activeCameraId}
-											<Check class="text-duvet-ink size-4 shrink-0" />
-										{/if}
-									</DropdownMenu.Item>
-								{/each}
-							{/if}
-							<DropdownMenu.Separator class="bg-duvet-line my-1 h-px" />
-							<DropdownMenu.CheckboxItem
-								class="text-duvet-ink hover:bg-duvet-ink/10 data-highlighted:bg-duvet-ink/10 flex w-full cursor-pointer items-center justify-between gap-2 px-3 py-2 text-left text-sm transition-colors outline-none"
-								checked={$incomingVideo}
-								onCheckedChange={(checked) => incomingVideo.set(checked)}
-								title="Off, you receive no one's camera or screen"
-							>
-								{#snippet children({ checked })}
-									<span>Incoming video</span>
-									{#if checked}
-										<Check class="text-duvet-ink size-4 shrink-0" />
-									{/if}
-								{/snippet}
-							</DropdownMenu.CheckboxItem>
-						</DropdownMenu.Content>
-					</DropdownMenu.Portal>
-				</DropdownMenu.Root>
+{#if callMode}
+	<!-- A call in a DM or group, in place above the conversation: a dark stage, whatever the theme, which folds to its
+	     bar alone. -->
+	<section
+		aria-label="Call in {channelName}"
+		class="bg-duvet-stage text-duvet-media-ink shadow-duvet-lifted m-3 flex min-h-0 flex-col overflow-hidden rounded-[20px]"
+	>
+		{#if !folded}
+			<div class="flex min-h-0 flex-col gap-2.5 px-3.5 pt-3.5 {stagedTile ? 'h-[min(46vh,420px)]' : 'h-[184px]'}">
+				{@render tilesArea()}
 			</div>
-			<div class="relative">
-				<button
-					class="text-duvet-ink hover:bg-duvet-card flex flex-col items-center gap-1 rounded-xl px-4 py-2.5 transition-colors"
-					class:opacity-50={!videoReady}
-					class:cursor-not-allowed={!videoReady}
-					disabled={!videoReady}
-					onclick={() => (showStreamMenu = !showStreamMenu)}
-					title={videoTitle ?? "Share screen"}
-				>
-					<MonitorUp class="size-5" />
-					<span class="text-xxs text-duvet-ink2">Stream</span>
-				</button>
-				{#if showStreamMenu && videoReady}
-					<!-- svelte-ignore a11y_no_static_element_interactions -->
-					<!-- svelte-ignore a11y_click_events_have_key_events -->
-					<div
-						class="rounded-card border-duvet-line bg-duvet-card shadow-duvet-float absolute bottom-full left-1/2 z-50 mb-2 flex -translate-x-1/2 flex-col overflow-hidden border"
-						onmouseleave={() => (showStreamMenu = false)}
-					>
-						<button
-							class="text-duvet-ink hover:bg-duvet-ink/10 flex items-center gap-2 px-3 py-2 text-sm whitespace-nowrap transition-colors"
-							onclick={() => {
-								showStreamMenu = false;
-								screenShareRequested.set({ roomId: channelId, withAudio: false });
-							}}
-						>
-							<MonitorUp class="size-4" />
-							Screen only
-						</button>
-						<button
-							class="text-duvet-ink hover:bg-duvet-ink/10 flex items-center gap-2 px-3 py-2 text-sm whitespace-nowrap transition-colors"
-							onclick={() => {
-								showStreamMenu = false;
-								screenShareRequested.set({ roomId: channelId, withAudio: true });
-							}}
-						>
-							<Volume2 class="size-4" />
-							Screen + Audio
-						</button>
-					</div>
-				{/if}
-			</div>
-			<button
-				class="flex flex-col items-center gap-1 rounded-xl px-4 py-2.5 transition-colors {$isMuted
-					? 'bg-duvet-danger/10 text-duvet-danger hover:bg-duvet-danger/20'
-					: 'text-duvet-ink hover:bg-duvet-card'}"
-				class:opacity-50={!canSpeak}
-				class:cursor-not-allowed={!canSpeak}
-				disabled={!canSpeak}
-				onclick={toggleMute}
-				title={!canSpeak ? "You can't speak in this room" : $isMuted ? "Unmute" : "Mute"}
-			>
-				{#if $isMuted}
-					<MicOff class="size-5" />
-				{:else}
-					<Mic class="size-5" />
-				{/if}
-				<span class="text-xxs {$isMuted ? 'text-duvet-danger' : 'text-duvet-ink2'}">{$isMuted ? "Muted" : "Mic"}</span>
-			</button>
-			<button
-				class="flex flex-col items-center gap-1 rounded-xl px-4 py-2.5 transition-colors {$isDeafened
-					? 'bg-duvet-danger/10 text-duvet-danger hover:bg-duvet-danger/20'
-					: 'text-duvet-ink hover:bg-duvet-card'}"
-				onclick={toggleDeafen}
-				title={$isDeafened ? "Undeafen" : "Deafen"}
-			>
-				<Headphones class="size-5" />
-				<span class="text-xxs {$isDeafened ? 'text-duvet-danger' : 'text-duvet-ink2'}"
-					>{$isDeafened ? "Deafened" : "Audio"}</span
-				>
-			</button>
-			<button
-				class="bg-duvet-danger/10 text-duvet-danger hover:bg-duvet-danger/20 flex flex-col items-center gap-1 rounded-xl px-4 py-2.5 transition-colors"
-				onclick={leave}
-				title="Leave voice room"
-			>
-				<PhoneOff class="size-5" />
-				<span class="text-xxs text-duvet-danger">Leave</span>
-			</button>
-		{:else}
-			<button
-				class="bg-duvet-accent text-duvet-on-accent shadow-duvet-raised flex items-center gap-2 rounded-xl px-6 py-3 font-bold transition-colors hover:brightness-110"
-				class:opacity-50={!canJoin}
-				class:cursor-not-allowed={!canJoin}
-				disabled={!canJoin}
-				onclick={join}
-				title={canJoin ? undefined : "You can't join this voice room"}
-			>
-				{#if canJoin}
-					<Volume2 class="size-5" />
-				{:else}
-					<Lock class="size-5" />
-				{/if}
-				Join room
-			</button>
 		{/if}
+		<div class="flex h-[52px] shrink-0 items-center gap-2 pr-3 pl-4">
+			<div class="flex min-w-0 flex-1 items-center gap-2 text-[12.5px] font-semibold" role="status">
+				{#if voiceLive && $voiceConnectionState === "connected"}
+					<span class="bg-duvet-alive size-2 shrink-0 rounded-full"></span>
+				{:else}
+					<PhoneCall class="text-duvet-media-ink/70 shrink-0" size={14} />
+				{/if}
+				<span class="truncate">{callStatus}</span>
+			</div>
+			<div class="flex shrink-0 items-center gap-2">
+				{@render controls()}
+			</div>
+			<div class="flex min-w-0 flex-1 justify-end">
+				<Tooltip text={folded ? "Show the call" : "Hide the call"} side="top">
+					{#snippet trigger(props)}
+						<button
+							{...props}
+							type="button"
+							aria-label={folded ? "Show the call" : "Hide the call"}
+							aria-expanded={!folded}
+							class="text-duvet-media-ink hover:bg-fixed-white/14 grid size-8 shrink-0 place-items-center rounded-[10px] transition-colors motion-reduce:transition-none"
+							onclick={() => (folded = !folded)}
+						>
+							{#if folded}<ChevronDown size={15} />{:else}<ChevronUp size={15} />{/if}
+						</button>
+					{/snippet}
+				</Tooltip>
+			</div>
+		</div>
+	</section>
+{:else}
+	<div class="bg-duvet-bg relative flex min-h-0 flex-1 flex-col">
+		{#if showHeader}
+			<div class="border-duvet-line flex shrink-0 items-center gap-2 border-b px-4 py-3">
+				<Volume2 class="text-duvet-ink2 size-4 shrink-0" />
+				<h2 class="text-duvet-ink truncate font-serif text-[16px] font-medium">{channelName}</h2>
+				{#if isConnected}
+					<span
+						class="bg-duvet-alive/14 text-duvet-alive ml-auto shrink-0 rounded-[9px] px-2 py-0.5 text-xs font-semibold"
+					>
+						Connected
+					</span>
+				{/if}
+			</div>
+		{/if}
+
+		<!-- The tiles fill the pane, down to the bar that floats over its foot. -->
+		<div class="flex min-h-0 flex-1 flex-col gap-2.5 px-3.5 pt-3.5 pb-[78px]">
+			{#if voiceUsers.length === 0}
+				<div class="text-duvet-ink2 flex h-full flex-col items-center justify-center gap-1 text-center select-none">
+					<MascotPeek class="mb-3 w-[120px]" mood="shy" />
+					<p class="text-duvet-ink font-serif text-[19px] font-medium">No one connected</p>
+					{#if !isConnected}
+						<p class="text-[13px]">Join to start</p>
+					{/if}
+				</div>
+			{:else}
+				{@render tilesArea()}
+			{/if}
+		</div>
+
+		<!-- The room's own bar: its controls once joined, else who is there and Join. -->
+		<div class="pointer-events-none absolute inset-x-0 bottom-4 z-3 flex justify-center px-3.5">
+			{#if isConnected}
+				<div
+					class="{GLASS} pointer-events-auto flex items-center gap-1.5 rounded-[18px] p-1.5"
+					role="toolbar"
+					aria-label="Voice room controls"
+				>
+					{@render controls()}
+				</div>
+			{:else}
+				<div class="{GLASS} pointer-events-auto flex max-w-full items-center gap-4 rounded-[18px] py-2 pr-2 pl-4">
+					<div class="flex min-w-0 flex-col gap-0.5">
+						<span class="text-duvet-ink truncate font-serif text-[16px] leading-[1.2] font-medium">{channelName}</span>
+						<span class="text-duvet-ink2 flex items-center gap-1.5 text-xs leading-[1.2]">
+							{#if voiceUsers.length === 0}
+								Empty
+							{:else}
+								<span class="truncate">{peopleCount(voiceUsers.length)} in the room</span>
+								<FaceStack faces={roomFaces.faces} more={roomFaces.more} size={18} ring="ring-duvet-card" />
+							{/if}
+						</span>
+					</div>
+					<Tooltip text={canJoin ? "Join this voice room" : "You can't join this voice room"} side="top">
+						{#snippet trigger(props)}
+							<span {...props} class="shrink-0">
+								<Button disabled={!canJoin} onclick={join}>
+									{#if canJoin}<Phone size={15} />{:else}<Lock size={15} />{/if}
+									Join room
+								</Button>
+							</span>
+						{/snippet}
+					</Tooltip>
+				</div>
+			{/if}
+		</div>
 	</div>
-</div>
+{/if}

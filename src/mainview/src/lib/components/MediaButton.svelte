@@ -86,7 +86,7 @@
 			aria-label={label}
 			aria-pressed={pressed}
 			aria-disabled={disabled || undefined}
-			class="focus-visible:outline-duvet-accent inline-grid place-items-center transition-[box-shadow,background-color,color,filter] duration-[120ms] outline-none focus-visible:outline-2 focus-visible:outline-offset-2 motion-reduce:transition-none {SHAPES[
+			class=" inline-grid place-items-center transition-[box-shadow,background-color,color,filter] duration-[120ms] motion-reduce:transition-none {SHAPES[
 				shape
 			]} {wide} {look} {disabled ? 'cursor-not-allowed opacity-45' : ''} {className}"
 		>

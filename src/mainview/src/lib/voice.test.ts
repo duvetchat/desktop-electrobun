@@ -253,7 +253,7 @@ describe("calling a conversation", () => {
 
 test("the voice room's controls go through the same functions as the user panel's", () => {
 	const view = readFileSync(join(import.meta.dir, "components/VoiceChannelView.svelte"), "utf8");
-	expect(view).toContain('import { toggleDeafen, toggleMute as toggleMic } from "$lib/voice";');
+	expect(view).toContain('import { stopScreenShare, toggleDeafen, toggleMute as toggleMic } from "$lib/voice";');
 	expect(view).not.toContain("isMuted.update");
 	expect(view).not.toContain("isDeafened.update");
 	// The user panel's controls: MediaControls, split from UserStatusBar (#357), whose actions are media-source.ts's,

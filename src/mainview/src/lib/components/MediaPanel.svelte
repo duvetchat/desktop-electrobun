@@ -110,7 +110,7 @@
 							{...mergeProps(menuProps, props)}
 							type="button"
 							aria-label="Choose a microphone"
-							class="bg-duvet-secondary-fill text-duvet-ink focus-visible:outline-duvet-accent grid h-[30px] w-[18px] shrink-0 place-items-center rounded-l-[3px] rounded-r-[10px] transition-[box-shadow,color] duration-[120ms] outline-none hover:shadow-[inset_0_0_0_100px_var(--duvet-hover)] focus-visible:outline-2 focus-visible:outline-offset-2 motion-reduce:transition-none"
+							class="bg-duvet-secondary-fill text-duvet-ink grid h-[30px] w-[18px] shrink-0 place-items-center rounded-l-[3px] rounded-r-[10px] transition-[box-shadow,color] duration-[120ms] hover:shadow-[inset_0_0_0_100px_var(--duvet-hover)] motion-reduce:transition-none"
 						>
 							<ChevronDown size={12} strokeWidth={2.5} />
 						</button>
