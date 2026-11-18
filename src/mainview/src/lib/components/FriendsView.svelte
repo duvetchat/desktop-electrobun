@@ -677,7 +677,7 @@
 							<p class="text-duvet-danger mt-3 text-sm" role="alert">{addError}</p>
 						{/if}
 						{#if addSuccess}
-							<p class="text-duvet-alive mt-3 text-sm font-semibold" role="status">{addSuccess}</p>
+							<p class="text-duvet-alive-text mt-3 text-sm font-semibold" role="status">{addSuccess}</p>
 						{/if}
 					</div>
 				{/if}

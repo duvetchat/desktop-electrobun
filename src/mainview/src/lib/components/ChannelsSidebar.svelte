@@ -454,7 +454,7 @@
 							class="focus-visible:outline-duvet-accent flex h-[30px] w-full items-center gap-[7px] rounded-[9px] pr-2 pl-3 text-left text-[13.5px] transition-colors duration-[120ms] focus-visible:outline-2 focus-visible:-outline-offset-2 motion-reduce:transition-none
 							{isActive ? 'bg-duvet-accent-tint text-duvet-ink' : 'hover:bg-duvet-sb-hover'}
 							{connected
-								? 'text-duvet-alive font-semibold'
+								? 'text-duvet-alive-text font-semibold'
 								: isUnread
 									? 'text-duvet-ink font-semibold'
 									: isActive
@@ -492,7 +492,7 @@
 						>
 							<span
 								class="relative shrink-0 {channel.type === 'voice' && voiceCount > 0
-									? 'text-duvet-alive'
+									? 'text-duvet-alive-text'
 									: isUnread || isActive || connected
 										? ''
 										: 'opacity-75'}"
@@ -584,7 +584,7 @@
 								<div class="flex shrink-0 items-center gap-1">
 									{#if isSharing}
 										<span
-											class="bg-duvet-call-red text-fixed-white rounded-[5px] px-[5px] py-[3px] text-[9px] leading-none font-bold tracking-wide uppercase"
+											class="bg-duvet-call-red text-duvet-on-call-red rounded-[5px] px-[5px] py-[3px] text-[9px] leading-none font-bold tracking-wide uppercase"
 											aria-label="Sharing their screen">Live</span
 										>
 									{/if}
@@ -708,7 +708,7 @@
 				<div class="flex justify-end gap-3">
 					<Dialog.Close class="text-duvet-ink px-4 py-2 hover:underline">Cancel</Dialog.Close>
 					<button
-						class="text-duvet-on-accent bg-duvet-danger hover:bg-duvet-danger/85 rounded px-4 py-2 transition-colors disabled:opacity-50"
+						class="text-duvet-on-danger bg-duvet-danger hover:bg-duvet-danger/85 rounded px-4 py-2 transition-colors disabled:opacity-50"
 						onclick={handleDeleteChannel}
 						disabled={isDeletingChannel}
 					>

@@ -1938,7 +1938,7 @@
 							<div class="flex items-center gap-2">
 								<span class="truncate text-[13.5px] font-medium">{bucket.name}</span>
 								{#if bucket.is_active}
-									<span class="{TAG} bg-duvet-alive/20 text-duvet-alive uppercase">Active</span>
+									<span class="{TAG} bg-duvet-alive/20 text-duvet-alive-text uppercase">Active</span>
 								{:else}
 									<span class="{TAG} bg-duvet-secondary-fill text-duvet-ink2 uppercase">Inactive</span>
 								{/if}
@@ -2230,7 +2230,7 @@
 													title={app.public
 														? "Public — anyone can add this bot"
 														: "Private — only team members can add"}
-													class={app.public ? "text-duvet-alive!" : ""}
+													class={app.public ? "text-duvet-alive-text!" : ""}
 													onclick={() => handleTogglePublic(app)}
 												>
 													{#if app.public}

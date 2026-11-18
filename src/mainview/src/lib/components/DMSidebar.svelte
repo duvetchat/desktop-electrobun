@@ -149,7 +149,9 @@
 							{/if}
 						</span>
 						{#if inCall}
-							<span class="text-duvet-alive flex min-w-0 items-center gap-1 text-[12.5px] leading-[1.3] font-semibold">
+							<span
+								class="text-duvet-alive-text flex min-w-0 items-center gap-1 text-[12.5px] leading-[1.3] font-semibold"
+							>
 								<PhoneCallIcon class="size-3 shrink-0" aria-hidden="true" />
 								<span class="truncate">In a call</span>
 							</span>

@@ -89,7 +89,7 @@
 		// The colored ones keep white text in light too; the gray ones' text turns over with their gray.
 		[ButtonStyle.Primary]: "bg-duvet-accent text-duvet-on-accent shadow-duvet-control hover:brightness-[1.06]",
 		[ButtonStyle.Secondary]: "bg-duvet-secondary-fill text-duvet-accent-text hover:brightness-[1.06]",
-		[ButtonStyle.Success]: "bg-duvet-alive text-duvet-on-danger shadow-duvet-control hover:brightness-[1.06]",
+		[ButtonStyle.Success]: "bg-duvet-alive text-duvet-on-alive shadow-duvet-control hover:brightness-[1.06]",
 		[ButtonStyle.Danger]: "bg-duvet-danger text-duvet-on-danger shadow-duvet-control hover:brightness-[1.06]",
 		[ButtonStyle.Link]: "bg-duvet-secondary-fill text-duvet-accent-text hover:brightness-[1.06]",
 	};

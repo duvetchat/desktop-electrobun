@@ -230,7 +230,7 @@
 									{@const reqState = friendRequestState[member.id] ?? "idle"}
 									{#if isFriend(member.id)}
 										<button
-											class="bg-duvet-alive/15 text-duvet-alive grid h-7 w-8 cursor-default place-items-center rounded-[9px]"
+											class="bg-duvet-alive/15 text-duvet-alive-text grid h-7 w-8 cursor-default place-items-center rounded-[9px]"
 											title="Friends"
 											disabled
 										>
@@ -247,7 +247,7 @@
 										</button>
 									{:else if reqState === "sent"}
 										<button
-											class="bg-duvet-alive/15 text-duvet-alive grid h-7 w-8 cursor-default place-items-center rounded-[9px]"
+											class="bg-duvet-alive/15 text-duvet-alive-text grid h-7 w-8 cursor-default place-items-center rounded-[9px]"
 											title="Request sent"
 											disabled
 										>

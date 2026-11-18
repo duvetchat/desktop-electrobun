@@ -386,7 +386,12 @@
 									}
 								}}
 							/>
-							<IconButton label="Save" title="Save" class="text-duvet-alive!" onclick={() => handleUpdateWebhook(wh)}>
+							<IconButton
+								label="Save"
+								title="Save"
+								class="text-duvet-alive-text!"
+								onclick={() => handleUpdateWebhook(wh)}
+							>
 								<CheckIcon size={16} />
 							</IconButton>
 							<IconButton label="Cancel" title="Cancel" onclick={cancelWebhookEdit}>

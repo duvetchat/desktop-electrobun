@@ -488,7 +488,7 @@
 				{#if !isLocal && !small}
 					<button
 						type="button"
-						class="bg-duvet-media-scrim text-duvet-media-ink hover:bg-duvet-call-red hover:text-fixed-white absolute top-2.5 right-2.5 z-10 flex items-center gap-1.5 rounded-[10px] px-2.5 py-[5px] text-xs font-semibold opacity-0 backdrop-blur-[14px] transition-[opacity,background-color] group-hover:opacity-100 focus-visible:opacity-100"
+						class="bg-duvet-media-scrim text-duvet-media-ink hover:bg-duvet-call-red hover:text-duvet-on-call-red absolute top-2.5 right-2.5 z-10 flex items-center gap-1.5 rounded-[10px] px-2.5 py-[5px] text-xs font-semibold opacity-0 backdrop-blur-[14px] transition-[opacity,background-color] group-hover:opacity-100 focus-visible:opacity-100"
 						onclick={(e) => {
 							e.stopPropagation();
 							stopWatching(user.id);
@@ -749,7 +749,7 @@
 				<h2 class="text-duvet-ink truncate font-serif text-[16px] font-medium">{channelName}</h2>
 				{#if isConnected}
 					<span
-						class="bg-duvet-alive/14 text-duvet-alive ml-auto shrink-0 rounded-[9px] px-2 py-0.5 text-xs font-semibold"
+						class="bg-duvet-alive/14 text-duvet-alive-text ml-auto shrink-0 rounded-[9px] px-2 py-0.5 text-xs font-semibold"
 					>
 						Connected
 					</span>

@@ -138,7 +138,7 @@ describe("AuthResult", () => {
 
 	test("once it's known it has a heading, in the colour of how it went, and the way on", async () => {
 		for (const [state, ink] of [
-			["success", "text-duvet-alive"],
+			["success", "text-duvet-alive-text"],
 			["error", "text-duvet-danger"],
 			["warning", "text-duvet-warn"],
 		] as const) {

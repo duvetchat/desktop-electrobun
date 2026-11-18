@@ -218,7 +218,7 @@
 {#snippet roomMark(tab: Tab)}
 	{#if !isConversationTab(tab)}
 		{#if tab.channelType === "voice"}
-			<SpeakerIcon class="text-duvet-alive size-3.5 shrink-0" aria-hidden="true" />
+			<SpeakerIcon class="text-duvet-alive-text size-3.5 shrink-0" aria-hidden="true" />
 		{:else}
 			<span class="text-duvet-ink2" aria-hidden="true">#</span>
 		{/if}

@@ -36,7 +36,7 @@
 	const level = $derived(inCall ? "fine" : pingLevel(media.ping));
 	// The mark's colours: live under 100 ms, the warning colour under 250 ms, the destructive one beyond.
 	const TILE = {
-		fine: "bg-duvet-alive/14 text-duvet-alive",
+		fine: "bg-duvet-alive/14 text-duvet-alive-text",
 		slow: "bg-duvet-warn/15 text-duvet-warn",
 		poor: "bg-duvet-danger/15 text-duvet-danger",
 	};
@@ -73,7 +73,7 @@
 		<span class="flex min-w-0 flex-1 flex-col gap-px">
 			<span
 				class="flex min-w-0 items-center gap-1 text-[12.5px] leading-[1.25] font-semibold {isLive(media)
-					? 'text-duvet-alive'
+					? 'text-duvet-alive-text'
 					: 'text-duvet-ink2'}"
 			>
 				<span class="truncate" role="status">{mediaTitle(media)}</span>

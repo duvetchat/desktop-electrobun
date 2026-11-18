@@ -126,7 +126,7 @@
 						{space.name.charAt(0).toUpperCase()}
 					</div>
 					<span class="text-duvet-ink2 max-w-25 truncate text-xs font-medium">{space.name}</span>
-					<span class="text-duvet-ink2/60 shrink-0 text-xs">></span>
+					<span class="text-duvet-ink2 shrink-0 text-xs">></span>
 				{/if}
 				{#if room}
 					<span class="text-duvet-ink2 shrink-0 text-xs">#</span>

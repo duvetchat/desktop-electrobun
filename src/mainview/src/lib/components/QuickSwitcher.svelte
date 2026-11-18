@@ -249,7 +249,7 @@
 						{:else if item.kind === "room"}
 							<span
 								class="bg-duvet-secondary-fill grid size-6 shrink-0 place-items-center rounded-[7px] {item.voice
-									? 'text-duvet-alive'
+									? 'text-duvet-alive-text'
 									: 'text-duvet-ink2'}"
 							>
 								{#if item.voice}<SpeakerSimpleHighIcon size={15} />{:else}<HashIcon size={15} />{/if}

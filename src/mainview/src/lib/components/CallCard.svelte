@@ -128,7 +128,7 @@
 				<span class="truncate text-[13.5px] leading-[1.25] font-semibold">{face.name}</span>
 				{#if ringing}
 					<span class="font-content flex min-w-0 items-center gap-1.5 text-[13.5px] leading-[1.35]">
-						<PhoneIncoming class="text-duvet-alive shrink-0" size={13} />
+						<PhoneIncoming class="text-duvet-alive-text shrink-0" size={13} />
 						<span class="truncate"
 							>Incoming call{#if face.place}<!-- An expression keeps the space Svelte trims from a tag's start. --><span
 									class="text-duvet-ink2">{` · ${face.place}`}</span
@@ -158,7 +158,7 @@
 					type="button"
 					aria-label="Accept call"
 					title="Accept"
-					class="bg-duvet-alive text-fixed-white animate-ring grid h-9 w-10 place-items-center rounded-xl transition-[filter] hover:brightness-[1.08] motion-reduce:transition-none"
+					class="bg-duvet-alive text-duvet-on-alive animate-ring grid h-9 w-10 place-items-center rounded-xl transition-[filter] hover:brightness-[1.08] motion-reduce:transition-none"
 					onclick={accept}
 				>
 					<Phone size={16} />

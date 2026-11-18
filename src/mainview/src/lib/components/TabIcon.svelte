@@ -54,7 +54,10 @@
 		<SpaceIcon src={space.icon} name={space.name} size={size + 4} />
 	</span>
 {:else if tab.channelType === "voice"}
-	<SpeakerSimpleHighIcon class="text-duvet-alive shrink-0 {className}" style="width: {size}px; height: {size}px;" />
+	<SpeakerSimpleHighIcon
+		class="text-duvet-alive-text shrink-0 {className}"
+		style="width: {size}px; height: {size}px;"
+	/>
 {:else}
 	<HashIcon class="text-duvet-ink2 shrink-0 {className}" style="width: {size}px; height: {size}px;" />
 {/if}

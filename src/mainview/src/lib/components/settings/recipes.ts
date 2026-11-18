@@ -82,7 +82,7 @@ export type CalloutTone = "info" | "warn" | "good" | "danger";
 const CALLOUT_TONE: Record<CalloutTone, string> = {
 	info: "bg-duvet-secondary-fill text-duvet-ink",
 	warn: "bg-duvet-warn/10 text-duvet-warn",
-	good: "bg-duvet-alive/10 text-duvet-alive",
+	good: "bg-duvet-alive/10 text-duvet-alive-text",
 	danger: "bg-duvet-danger/10 text-duvet-danger",
 };
 

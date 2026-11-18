@@ -2004,7 +2004,7 @@
 										}
 									}}
 								/>
-								<IconButton label="Save" title="Save" class="text-duvet-alive!" onclick={handleUpdateEmoji}>
+								<IconButton label="Save" title="Save" class="text-duvet-alive-text!" onclick={handleUpdateEmoji}>
 									<CheckIcon size={16} />
 								</IconButton>
 								<IconButton label="Cancel" title="Cancel" onclick={cancelEmojiEdit}>
@@ -2057,7 +2057,7 @@
 										}
 									}}
 								/>
-								<IconButton label="Save" title="Save" class="text-duvet-alive!" onclick={handleUpdateSticker}>
+								<IconButton label="Save" title="Save" class="text-duvet-alive-text!" onclick={handleUpdateSticker}>
 									<CheckIcon size={16} />
 								</IconButton>
 								<IconButton label="Cancel" title="Cancel" onclick={cancelStickerEdit}>
@@ -2164,7 +2164,7 @@
 								<div class="flex items-center gap-2">
 									<span class="truncate text-[13.5px] font-medium">{bucket.name}</span>
 									{#if bucket.is_active}
-										<span class="{TAG} bg-duvet-alive/20 text-duvet-alive uppercase">Active</span>
+										<span class="{TAG} bg-duvet-alive/20 text-duvet-alive-text uppercase">Active</span>
 									{:else}
 										<span class="{TAG} bg-duvet-secondary-fill text-duvet-ink2 uppercase">Inactive</span>
 									{/if}

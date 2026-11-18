@@ -1088,13 +1088,13 @@
 				{/each}
 			</span>
 			{#if inCallNow.length > 4}
-				<span class="text-duvet-alive text-xs">+{inCallNow.length - 4}</span>
+				<span class="text-duvet-alive-text text-xs">+{inCallNow.length - 4}</span>
 			{/if}
 		{/if}
 	{/snippet}
 	{#if canJoinCall && joinWaits}
 		<div
-			class="bg-duvet-sunk text-duvet-alive mx-(--duvet-pad-x) mt-2 flex h-9 shrink-0 items-center justify-center gap-2 rounded-xl px-4 text-[13px]"
+			class="bg-duvet-sunk text-duvet-alive-text mx-(--duvet-pad-x) mt-2 flex h-9 shrink-0 items-center justify-center gap-2 rounded-xl px-4 text-[13px]"
 		>
 			<Phone class="size-4" />
 			<span class="font-medium">Calling from another device</span>
@@ -1102,7 +1102,7 @@
 		</div>
 	{:else if canJoinCall}
 		<button
-			class="bg-duvet-sunk text-duvet-alive hover:bg-duvet-hover mx-(--duvet-pad-x) mt-2 flex h-9 shrink-0 items-center justify-center gap-2 rounded-xl px-4 text-[13px] transition-colors motion-reduce:transition-none"
+			class="bg-duvet-sunk text-duvet-alive-text hover:bg-duvet-hover mx-(--duvet-pad-x) mt-2 flex h-9 shrink-0 items-center justify-center gap-2 rounded-xl px-4 text-[13px] transition-colors motion-reduce:transition-none"
 			onclick={joinCall}
 		>
 			<Phone class="size-4" />

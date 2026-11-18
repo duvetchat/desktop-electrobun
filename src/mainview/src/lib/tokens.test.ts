@@ -48,6 +48,9 @@ describe("the palette", () => {
 			"--app-width",
 			"--duvet-accent",
 			"--duvet-on-accent",
+			// One dark ink on the green and on the call red, in both themes (contrast.test.ts).
+			"--duvet-on-alive",
+			"--duvet-on-call-red",
 			"--duvet-azure",
 			"--duvet-tip-ink",
 			"--duvet-sb-filter",

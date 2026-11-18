@@ -54,7 +54,7 @@
 			bind:value
 			aria-invalid={wrong ? true : undefined}
 			aria-describedby={described}
-			class="focus-override bg-duvet-card text-duvet-ink placeholder:text-duvet-ink2/70 block h-[38px] w-full rounded-xl px-3 text-[14px] shadow-[var(--duvet-shadow-well),0_0_0_1px_var(--duvet-line)] transition-shadow duration-[120ms] outline-none focus:shadow-[var(--duvet-shadow-well),0_0_0_1px_var(--duvet-line),0_0_0_4px_var(--duvet-accent-tint)] disabled:opacity-60 aria-invalid:shadow-[var(--duvet-shadow-well),0_0_0_1px_var(--duvet-danger)] motion-reduce:transition-none {trailing
+			class="focus-override bg-duvet-card text-duvet-ink placeholder:text-duvet-ink2 block h-[38px] w-full rounded-xl px-3 text-[14px] shadow-[var(--duvet-shadow-well),0_0_0_1px_var(--duvet-line)] transition-shadow duration-[120ms] outline-none focus:shadow-[var(--duvet-shadow-well),0_0_0_1px_var(--duvet-line),0_0_0_4px_var(--duvet-accent-tint)] disabled:opacity-60 aria-invalid:shadow-[var(--duvet-shadow-well),0_0_0_1px_var(--duvet-danger)] motion-reduce:transition-none {trailing
 				? 'pr-11'
 				: ''}"
 		/>

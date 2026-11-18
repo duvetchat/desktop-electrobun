@@ -21,7 +21,7 @@
 				'error'
 					? 'text-duvet-danger'
 					: t.type === 'success'
-						? 'text-duvet-alive'
+						? 'text-duvet-alive-text'
 						: 'text-duvet-ink'}"
 			>
 				{#if t.type === "error"}

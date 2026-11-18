@@ -601,7 +601,7 @@
 											)}
 											{@render stateButton(
 												state === 1,
-												"text-duvet-alive",
+												"text-duvet-alive-text",
 												canAllow ? "Allow" : "You can only allow permissions you have in this room",
 												!canAllow,
 												() => setPermState(perm.flag, state === 1 ? 0 : 1),

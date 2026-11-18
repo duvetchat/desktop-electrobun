@@ -22,7 +22,7 @@
 <div class="flex flex-col items-center text-center" data-auth-result={state} aria-busy={state === "loading"}>
 	<div
 		class="bg-duvet-card shadow-duvet-raised grid size-16 place-items-center rounded-2xl {state === 'success'
-			? 'text-duvet-alive'
+			? 'text-duvet-alive-text'
 			: state === 'error'
 				? 'text-duvet-danger'
 				: state === 'warning'
