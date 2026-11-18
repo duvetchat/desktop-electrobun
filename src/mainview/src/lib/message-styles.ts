@@ -1,0 +1,57 @@
+// How a message's markdown looks in the redesign (#357, docs/redesign/DESIGN-MAP.md S-15). markdown.ts writes the
+// HTML with its own classes (msg-inline-code, msg-blockquote, …), which app.css gives their base look; these are the
+// redesign's, as Tailwind classes on what holds that HTML, so they reach it wherever a message's text shows (the list,
+// a reply's strip, the pins, search and thread previews, a profile's bio). Each class is whole in one string: Tailwind
+// reads them here.
+
+/** What every message text has, whatever it sits on. */
+export const MESSAGE_TEXT = [
+	// inline code: a small filled box, no edge
+	"[&_.msg-inline-code]:rounded-[5px] [&_.msg-inline-code]:border-0 [&_.msg-inline-code]:px-[5px] [&_.msg-inline-code]:py-0.5 [&_.msg-inline-code]:text-[0.86em] [&_.msg-inline-code]:text-inherit",
+	// a code block: the code's own fill, radius 10, its language in small capitals in the corner
+	"[&_.msg-code-block]:mt-1 [&_.msg-code-block]:mb-0.5 [&_.msg-code-block]:max-w-full [&_.msg-code-block]:rounded-[10px] [&_.msg-code-block]:border-0 [&_.msg-code-block]:text-[12.5px] [&_.msg-code-block]:leading-normal",
+	"[&_.msg-code-lang]:font-sans [&_.msg-code-lang]:text-[10px] [&_.msg-code-lang]:font-medium [&_.msg-code-lang]:tracking-[0.06em] [&_.msg-code-lang]:uppercase",
+	"[&_.msg-code-copy]:rounded-lg [&_.msg-code-copy]:border-0 [&_.msg-code-copy]:shadow-duvet-raised",
+	"[&_.msg-ln]:border-r-0 [&_.msg-code-block_code]:pr-14",
+	// a quote: a filled block, no bar
+	"[&_.msg-blockquote]:my-0.5 [&_.msg-blockquote]:rounded-[10px] [&_.msg-blockquote]:border-l-0 [&_.msg-blockquote]:px-2.5 [&_.msg-blockquote]:py-1.5 [&_.msg-blockquote]:text-inherit",
+	// hidden text: a drift of specks until the pointer is on it, and nothing of it shows through (an emoji is a picture)
+	"[&_.msg-spoiler]:animate-specks [&_.msg-spoiler]:rounded-[5px] [&_.msg-spoiler]:px-0.5",
+	"[&_.msg-spoiler]:[background:radial-gradient(circle,var(--speck)_0.7px,transparent_1.1px)_0_0/4px_4px,radial-gradient(circle,var(--speck)_0.6px,transparent_1px)_2px_2px/5px_5px,var(--spoiler-fill)]",
+	"[&_.msg-spoiler:hover]:animate-none [&_.msg-spoiler:hover]:text-inherit [&_.msg-spoiler:hover]:[background:var(--spoiler-fill)]",
+	"[&_.msg-spoiler:not(:hover)_*]:invisible",
+	// a person's mention: their name in bold, in their role's colour where it has one (markdown.ts), and no chip
+	"[&_.msg-mention]:bg-transparent [&_.msg-mention]:p-0 [&_.msg-mention]:font-bold [&_.msg-mention]:text-inherit",
+	"[&_.msg-mention[data-user-id]:hover]:bg-transparent [&_.msg-mention[data-user-id]:hover]:underline",
+	// a room's mention: a chip
+	"[&_.msg-room-mention]:rounded-md [&_.msg-room-mention]:px-[5px]",
+].join(" ");
+
+/** On the page, a card or someone else's bubble. */
+export const MESSAGE_TEXT_PLAIN = [
+	"[--speck:var(--duvet-ink2)] [--spoiler-fill:var(--duvet-field)]",
+	"[&_.msg-inline-code]:bg-duvet-field [&_.msg-blockquote]:bg-duvet-field",
+	"[&_.msg-table_th]:bg-duvet-field [&_.msg-table_th]:text-inherit",
+	// links: in the accent's ink, underlined under the pointer only
+	"[&_.msg-bare-link]:text-duvet-accent-text [&_.msg-bare-link]:no-underline [&_.msg-bare-link:hover]:underline",
+	"[&_.msg-link]:no-underline [&_.msg-link:hover]:underline",
+].join(" ");
+
+/** In one's own bubble, which is azure: the fills are washes of white, and links and chips take the bubble's ink. */
+export const MESSAGE_TEXT_OWN = [
+	"[--speck:rgba(255,255,255,0.85)] [--spoiler-fill:rgba(255,255,255,0.16)]",
+	"[&_.msg-inline-code]:bg-fixed-white/18 [&_.msg-blockquote]:bg-fixed-white/16",
+	"[&_.msg-table_th]:bg-fixed-white/16 [&_.msg-table_th]:text-inherit [&_.msg-table_td]:border-fixed-white/25 [&_.msg-table_th]:border-fixed-white/25",
+	"[&_.msg-table_tr:nth-child(even)_td]:bg-fixed-white/8",
+	"[&_.msg-link]:text-inherit [&_.msg-link]:underline [&_.msg-bare-link]:text-inherit [&_.msg-bare-link]:underline [&_.msg-duvet-link]:text-inherit",
+	"[&_.msg-room-mention]:bg-fixed-white/20 [&_.msg-room-mention]:text-inherit",
+	"[&_.msg-subtext]:text-inherit [&_.msg-subtext]:opacity-75",
+].join(" ");
+
+/** A message of only emoji shows them at 40 px, on what holds it (the app's own large size is 48). */
+export const JUMBO_EMOJI = "[&_.emoji-img]:size-10";
+
+/** The classes for a message's text on a tone: one's own bubble, or anything else. */
+export function messageTextClass(own = false): string {
+	return `${MESSAGE_TEXT} ${own ? MESSAGE_TEXT_OWN : MESSAGE_TEXT_PLAIN}`;
+}

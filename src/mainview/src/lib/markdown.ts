@@ -319,6 +319,7 @@ function applyInline(
 	mentionMap?: Record<string, string>,
 	customEmojiMap?: CustomEmojiMap,
 	roomNames?: Record<string, string>,
+	mentionStyles?: Record<string, string>,
 ): string {
 	s = emphasized(s);
 	const ceCls = large ? `emoji-img emoji-large ${CUSTOM_EMOJI_CLASS}` : `emoji-img ${CUSTOM_EMOJI_CLASS}`;
@@ -328,11 +329,15 @@ function applyInline(
 		/&lt;(?:@([a-f0-9-]+)|:([a-f0-9-]+):|#([a-f0-9-]+))&gt;/g,
 		(_, userId: string | undefined, emojiId: string | undefined, roomId: string | undefined) => {
 			// <@id> reads @username. One of someone the map knows carries their ID, to open their profile (clickedMention); any
-			// other one, of someone who left or isn't loaded, is only a name, as their name on a message is.
+			// other one, of someone who left or isn't loaded, is only a name, as their name on a message is. In a Space, the
+			// name takes the colour of the member's role (mentionStyles, lib/name-colors.ts), as it has above their messages.
 			if (userId !== undefined) {
 				const name = mentionMap?.[userId];
-				const user = name !== undefined && isUuid(userId) ? ` data-user-id="${userId}"` : "";
-				return `<span class="msg-mention"${user}>@${escapeHtml(name ?? userId.slice(0, 8))}</span>`;
+				const known = name !== undefined && isUuid(userId);
+				const user = known ? ` data-user-id="${userId}"` : "";
+				const colour = known && mentionStyles && Object.hasOwn(mentionStyles, userId) ? mentionStyles[userId] : "";
+				const style = colour ? ` style="${escapeHtml(colour)}"` : "";
+				return `<span class="msg-mention"${user}${style}>@${escapeHtml(name ?? userId.slice(0, 8))}</span>`;
 			}
 			// <:id:> is an inline image. The text holds only its ID, so one that's gone, or of a space the reader isn't in,
 			// has no name to show.
@@ -505,8 +510,10 @@ export function renderMarkdown(
 	customEmojiMap?: CustomEmojiMap,
 	roomNames?: Record<string, string>,
 	links?: LinkDrawing,
+	/** Each mentioned member's name style, by user ID (nameColors): none outside a Space, or for a role with no colour. */
+	mentionStyles?: Record<string, string>,
 ): string {
-	return render(withoutMarks(input), large, mentionMap, customEmojiMap, roomNames, links);
+	return render(withoutMarks(input), large, mentionMap, customEmojiMap, roomNames, links, mentionStyles);
 }
 
 function render(
@@ -516,6 +523,7 @@ function render(
 	customEmojiMap?: CustomEmojiMap,
 	roomNames?: Record<string, string>,
 	drawing?: LinkDrawing,
+	mentionStyles?: Record<string, string>,
 ): string {
 	// ── 1. Extract fenced code blocks ─────────────────────────────────────────
 	const codeBlocks: string[] = [];
@@ -550,7 +558,8 @@ function render(
 		return `\x00E${escapes.length - 1}\x01`;
 	});
 
-	const inline = (t: string) => applyInline(renderEmoji(t), false, mentionMap, customEmojiMap, roomNames);
+	const inline = (t: string) =>
+		applyInline(renderEmoji(t), false, mentionMap, customEmojiMap, roomNames, mentionStyles);
 
 	// ── 3. Extract links ───────────────────────────────────────────────────────
 	// Markdown links [text](url), taken out before the inline rules as code is, so that the URL stays as it was
@@ -615,7 +624,7 @@ function render(
 		else if ((m = /^-# (.*)/.exec(line))) out.push(`<span class="msg-subtext">${inline(m[1]!)}</span>`);
 		else if ((m = /^>>> (.*)/.exec(line))) out.push(`<blockquote class="msg-blockquote">${inline(m[1]!)}</blockquote>`);
 		else if ((m = /^> (.*)/.exec(line))) out.push(`<blockquote class="msg-blockquote">${inline(m[1]!)}</blockquote>`);
-		else out.push(applyInline(renderEmoji(line, large), large, mentionMap, customEmojiMap, roomNames));
+		else out.push(applyInline(renderEmoji(line, large), large, mentionMap, customEmojiMap, roomNames, mentionStyles));
 
 		i++;
 	}
