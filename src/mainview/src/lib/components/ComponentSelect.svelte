@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { GLASS } from "$lib/components/ui/recipes";
 	import type { Snippet } from "svelte";
 	import { Popover } from "bits-ui";
 	import {
@@ -142,7 +143,7 @@
 >
 	<Popover.Trigger
 		disabled={c.disabled || waiting}
-		class="border-duvet-line bg-duvet-bg/60 hover:border-duvet-line flex min-h-10 w-full max-w-100 items-center gap-2 rounded-lg border px-3 py-2 text-left text-sm transition-colors outline-none disabled:pointer-events-none disabled:opacity-50"
+		class="bg-duvet-card shadow-duvet-well flex min-h-[38px] w-full max-w-100 items-center gap-2 rounded-[11px] px-3 py-1.5 text-left text-[13px] transition-shadow duration-[120ms] outline-none focus-visible:shadow-[0_0_0_4px_var(--duvet-accent-tint),0_0_0_1px_var(--duvet-accent)] disabled:pointer-events-none disabled:opacity-45 data-[state=open]:shadow-[0_0_0_4px_var(--duvet-accent-tint),0_0_0_1px_var(--duvet-accent)] motion-reduce:transition-none"
 	>
 		<span class="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden">
 			{#if chosenChoices.length === 0}
@@ -169,48 +170,49 @@
 		<Popover.Content
 			side="bottom"
 			align="start"
-			sideOffset={4}
-			class="rounded-card border-duvet-line bg-duvet-bg shadow-duvet-float z-80 flex max-h-80 w-(--bits-popover-anchor-width) flex-col overflow-hidden border"
+			sideOffset={6}
+			collisionPadding={10}
+			class="{GLASS} animate-float-in text-duvet-ink z-[1000] flex max-h-80 w-(--bits-popover-anchor-width) min-w-56 origin-(--bits-floating-transform-origin) flex-col overflow-hidden rounded-[14px] outline-none"
 		>
 			{#if searchable}
 				<input
 					bind:value={query}
 					placeholder="Search"
-					class="bg-duvet-card text-duvet-ink placeholder:text-duvet-ink2 m-2 rounded-md px-2 py-1.5 text-sm outline-none"
+					class="bg-duvet-field text-duvet-ink placeholder:text-duvet-ink2 focus-override m-1.5 mb-0 h-8 shrink-0 rounded-[9px] px-2.5 text-[13px] outline-none focus:shadow-[0_0_0_3px_var(--duvet-accent-tint)]"
 				/>
 			{/if}
-			<div class="overflow-y-auto py-1">
+			<div class="overflow-y-auto p-1.5">
 				{#each shown as ch (ch.key)}
 					{@const isChosen = chosen.includes(ch.key)}
 					<button
 						type="button"
-						class="hover:bg-duvet-card flex w-full items-center gap-2.5 px-3 py-2 text-left transition-colors disabled:pointer-events-none disabled:opacity-50"
+						class="hover:bg-duvet-accent-tint focus-visible:bg-duvet-accent-tint flex min-h-8 w-full items-center gap-2.5 rounded-[9px] py-1.5 pr-2.5 pl-2 text-left outline-none disabled:pointer-events-none disabled:opacity-45"
 						disabled={max > 1 && !isChosen && chosen.length >= max}
 						onclick={() => pick(ch.key)}
 					>
 						{@render choiceIcon(ch, 20)}
 						<span class="flex min-w-0 flex-1 flex-col">
-							<span class="truncate text-sm {isChosen ? 'text-duvet-ink' : 'text-duvet-ink'}">{ch.label}</span>
+							<span class="text-duvet-ink truncate text-[13px] font-medium">{ch.label}</span>
 							{#if ch.description}
-								<span class="text-duvet-ink2 truncate text-xs">{ch.description}</span>
+								<span class="text-duvet-ink2 truncate text-[11px]">{ch.description}</span>
 							{/if}
 						</span>
 						{#if max > 1}
 							<span
-								class="flex size-4 shrink-0 items-center justify-center rounded border {isChosen
-									? 'border-duvet-accent bg-duvet-accent'
-									: 'border-duvet-ink2/40'}"
+								class="grid size-4 shrink-0 place-items-center rounded-[5px] {isChosen
+									? 'bg-duvet-accent'
+									: 'bg-duvet-secondary-fill shadow-[inset_0_0_0_1px_var(--duvet-line)]'}"
 							>
 								{#if isChosen}
 									<CheckIcon class="text-duvet-on-accent size-3" />
 								{/if}
 							</span>
 						{:else if isChosen}
-							<CheckIcon class="text-duvet-accent-text size-4 shrink-0" />
+							<CheckIcon class="text-duvet-accent-text shrink-0" size={15} />
 						{/if}
 					</button>
 				{:else}
-					<p class="px-3 py-2 text-sm text-duvet-ink2">No results</p>
+					<p class="px-2 py-2 text-[13px] text-duvet-ink2">No results</p>
 				{/each}
 			</div>
 		</Popover.Content>

@@ -171,17 +171,17 @@
 		aria-label="/{entry.name}"
 		tabindex="-1"
 		onkeydown={handleKeyDown}
-		class="bg-duvet-card shadow-duvet-raised flex flex-wrap items-center gap-2 rounded-xl px-3 py-2 outline-none"
+		class="bg-duvet-card shadow-duvet-raised flex flex-wrap items-center gap-2 rounded-2xl px-3 py-2 outline-none"
 	>
 		<span
-			class="bg-duvet-accent/15 text-duvet-accent-text flex h-8 shrink-0 items-center gap-1.5 rounded-md pr-1 pl-2 text-sm font-semibold"
+			class="bg-duvet-chosen text-duvet-chosen-ink flex h-7 shrink-0 items-center gap-1.5 rounded-[9px] pr-1 pl-2 text-[12.5px] font-semibold"
 			title={entry.description}
 		>
 			<UserAvatar src={getAvatarURL(app.bot.id, app.bot.avatar)} name={botName} size={16} />
 			/{entry.name}
 			<button
 				type="button"
-				class="text-duvet-accent-text hover:bg-duvet-accent/20 hover:text-duvet-ink rounded p-0.5 transition-colors"
+				class="hover:bg-duvet-hover-strong grid size-[18px] place-items-center rounded-md transition-colors motion-reduce:transition-none"
 				aria-label="Cancel command"
 				onclick={onExit}
 			>
@@ -204,9 +204,9 @@
 						aria-label={o.name}
 						disabled={sending}
 						onclick={() => fields.set(o.name, !on)}
-						class="relative h-5 w-9 shrink-0 rounded-full transition-colors disabled:opacity-50 {on
+						class="relative h-5 w-9 shrink-0 rounded-full transition-colors disabled:opacity-45 motion-reduce:transition-none {on
 							? 'bg-duvet-accent'
-							: 'bg-duvet-ink/15'}"
+							: 'bg-duvet-toggle-off'}"
 					>
 						<span
 							class="bg-fixed-white shadow-duvet-raised absolute top-0.5 left-0.5 size-4 rounded-full transition-transform {on
@@ -226,7 +226,7 @@
 							: o.type === CommandOptionType.Number
 								? "decimal"
 								: undefined}
-						class="text-duvet-ink placeholder:text-duvet-ink2 bg-duvet-sunk shadow-duvet-press focus-visible:outline-duvet-accent h-8 w-44 rounded-xl px-2 text-sm read-only:opacity-50 focus-visible:outline-2"
+						class="text-duvet-ink placeholder:text-duvet-ink2 bg-duvet-field focus-override h-8 w-44 rounded-[9px] px-2.5 text-[13px] outline-none read-only:opacity-45 focus:shadow-[0_0_0_3px_var(--duvet-accent-tint)]"
 					/>
 				{:else}
 					<div class="w-52">
@@ -251,7 +251,7 @@
 		{/if}
 	</div>
 	{#if notice}
-		<p role="alert" class="text-duvet-danger flex items-center gap-1.5 px-1 text-sm" title={notice.detail}>
+		<p role="alert" class="text-duvet-danger flex items-center gap-1.5 px-1 text-[13px]" title={notice.detail}>
 			<AlertIcon class="size-4 shrink-0" />
 			{notice.text}
 		</p>
