@@ -15,6 +15,24 @@ test("Close pane's click stops at the button, before the pane it closed would ta
 	expect(pane).toContain("onclick={() => onFocus(node.id)}");
 });
 
+// #368: a group's pane bar had two ⋯ side by side: the pane's More, with the splits, and the group's own, with Rename
+// and Leave. The pane's More holds the chat's own actions too, after its own, in a section of their own.
+test("the pane's bar has one More, which holds its chat's own actions in a section of their own", () => {
+	const pane = source("PaneView.svelte");
+	expect(pane).toContain("function showConversationActions(conversationId: string, actions: Snippet | null, menu");
+	const start = pane.indexOf('<Menu align="end" label="More">');
+	const more = pane.slice(start, pane.indexOf("</Menu>", start));
+	expect(more).toContain('<IconButton {...props} label="More"><EllipsisIcon size={16} /></IconButton>');
+	expect(more).toMatch(/<MenuItem icon=\{ColumnsIcon\} onSelect=\{splitH\}>Split horizontally<\/MenuItem>/);
+	expect(more).toMatch(
+		/\{#if conversationMenu\}\s*<MenuSeparator \/>\s*\{@render conversationMenu\(\)\}\s*\{\/if\}\s*$/,
+	);
+	// The active conversation's, as its actions are.
+	expect(pane).toMatch(
+		/const conversationMenu = \$derived\(\s*conversationActions && conversationActions\.conversationId === activeConversation\?\.id\s*\?\s*conversationActions\.menu\s*:\s*null,?\s*\);/,
+	);
+});
+
 // #243: a room's older page that failed, or hadn't come in its 10 s, set the room's channelHasMore to false: the list
 // showed the room's start above the loaded messages, as if the room began there, and asked for no older page again.
 // What a browser checked against a running app, kept here.

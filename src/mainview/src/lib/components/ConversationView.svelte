@@ -125,8 +125,9 @@
 		conversation: Conversation;
 		onMemberAdded?: (member: ConversationMember) => void;
 		/** A pane's bar, which names the conversation in its tab, shows its actions while it shows (null once it's
-		 * gone). Without one, the view has its own header with them. */
-		onBarActions?: (conversationId: string, actions: Snippet | null) => void;
+		 * gone), and a group's Rename and Leave (`menu`) in the pane's own More. Without one, the view has its own
+		 * header with them. */
+		onBarActions?: (conversationId: string, actions: Snippet | null, menu?: Snippet | null) => void;
 		/** Whether its pane is the focused one, as its Chat takes it; true outside the panes (the friends view's). */
 		paneFocused?: boolean;
 	} = $props();
@@ -849,7 +850,7 @@
 		if (!onBarActions) return;
 		const show = onBarActions;
 		const convId = conversation.id;
-		show(convId, actions);
+		show(convId, actions, actionsOnGroup.leave ? groupMenu : null);
 		return () => show(convId, null);
 	});
 
@@ -1006,6 +1007,14 @@
 	</ChatIntro>
 {/snippet}
 
+<!-- What the user can do to a group: in the pane's own More, after the pane's splits, or else in a menu of its own -->
+{#snippet groupMenu()}
+	{#if actionsOnGroup.rename}
+		<MenuItem icon={Pencil} onSelect={renameGroup}>Rename group</MenuItem>
+	{/if}
+	<MenuItem icon={LogOut} danger onSelect={leaveGroup}>Leave group</MenuItem>
+{/snippet}
+
 <!-- The call, the group's members and its pins and search: in the pane's bar, or else in a header of its own -->
 {#snippet actions()}
 	{@const buttonClass =
@@ -1037,8 +1046,9 @@
 		<PinnedMessages channelId={conversation.id} conversation members={convMembers} toDirectMessage={toMessage} />
 		<MessageSearch conversationId={conversation.id} members={convMembers} toDirectMessage={toMessage} />
 	{/key}
-	{#if actionsOnGroup.leave}
-		<!-- The group's own menu. The pane has a More of its own beside it, so this one says whose it is. -->
+	<!-- The group's own menu, only in the view's own header: a pane's bar has one More, the pane's, which holds these
+	     too (#368). -->
+	{#if actionsOnGroup.leave && !onBarActions}
 		<Menu align="end" label="More for this group">
 			{#snippet trigger(props)}
 				<button
@@ -1051,10 +1061,7 @@
 					<Ellipsis class="size-4" />
 				</button>
 			{/snippet}
-			{#if actionsOnGroup.rename}
-				<MenuItem icon={Pencil} onSelect={renameGroup}>Rename group</MenuItem>
-			{/if}
-			<MenuItem icon={LogOut} danger onSelect={leaveGroup}>Leave group</MenuItem>
+			{@render groupMenu()}
 		</Menu>
 	{/if}
 {/snippet}

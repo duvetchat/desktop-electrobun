@@ -4,14 +4,23 @@ import { join } from "node:path";
 
 const source = (file: string) => readFileSync(join(import.meta.dir, file), "utf8");
 
-test("a group's bar offers what the user can do to it, a DM's nothing", () => {
+// #368: a group's pane bar had two ⋯ side by side, the pane's More and the group's own. The group's Rename and Leave
+// go to the pane's More (PaneView.test.ts), and only a view with no pane's bar keeps a menu of its own for them.
+test("a group's bar offers what the user can do to it in the pane's one More, a DM's nothing", () => {
 	const view = source("ConversationView.svelte");
 	expect(view).toContain("const actionsOnGroup = $derived(groupActions(conversation, me?.id));");
-	expect(view).toMatch(
-		/\{#if actionsOnGroup\.leave\}\s*(?:<!--[^]*?-->\s*)?<Menu align="end" label="More for this group">/,
+	const groupMenu = view.slice(view.indexOf("{#snippet groupMenu()}"), view.indexOf("{#snippet actions()}"));
+	expect(groupMenu).toMatch(/\{#if actionsOnGroup\.rename\}\s*<MenuItem icon=\{Pencil\} onSelect=\{renameGroup\}>/);
+	expect(groupMenu).toContain("<MenuItem icon={LogOut} danger onSelect={leaveGroup}>Leave group</MenuItem>");
+	// The bar gets them with the actions, a group's alone.
+	expect(view).toContain("show(convId, actions, actionsOnGroup.leave ? groupMenu : null);");
+	// The actions draw a ⋯ of their own only without a bar.
+	const start = view.indexOf("{#snippet actions()}");
+	const actions = view.slice(start, view.indexOf("\n{/snippet}", start));
+	expect(actions.match(/<Ellipsis\b/g)).toHaveLength(1);
+	expect(actions).toMatch(
+		/\{#if actionsOnGroup\.leave && !onBarActions\}\s*<Menu align="end" label="More for this group">[\s\S]*?\{@render groupMenu\(\)\}\s*<\/Menu>/,
 	);
-	expect(view).toMatch(/\{#if actionsOnGroup\.rename\}\s*<MenuItem icon=\{Pencil\} onSelect=\{renameGroup\}>/);
-	expect(view).toContain("<MenuItem icon={LogOut} danger onSelect={leaveGroup}>Leave group</MenuItem>");
 });
 
 test("renaming starts from the name, asks nothing for the same one or none, and shows a refusal", () => {
