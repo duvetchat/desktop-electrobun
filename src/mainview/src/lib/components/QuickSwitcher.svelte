@@ -7,6 +7,7 @@
 	import { friendUser } from "$lib/friends";
 	import { canViewRoom, shownRooms } from "$lib/permissions";
 	import { rankByQuery } from "$lib/nav";
+	import { mentionsLabel } from "$lib/shell-layout";
 	import { conversations, currentUser, friends, gatewaySpaces } from "$lib/stores.svelte";
 	import { shownMentionCounts, shownUnreadConversations, shownUnreadRooms } from "$lib/notification-marks";
 	import SpaceIcon from "$lib/components/SpaceIcon.svelte";
@@ -98,7 +99,12 @@
 				id: conv.id,
 				name:
 					conv.type === 2 ? (conv.name ?? "Group") : (other?.user?.alias ?? other?.user?.username ?? "Direct message"),
-				sub: conv.type === 2 ? `${conv.members.length} members` : "Direct message",
+				sub:
+					conv.type === 2
+						? conv.members.length === 1
+							? "1 member"
+							: `${conv.members.length} members`
+						: "Direct message",
 				avatar: conv.type === 2 ? null : (getAvatarURL(other?.user_id ?? "", other?.user?.avatar) ?? null),
 				mentions: $shownMentionCounts[conv.id] ?? 0,
 				unread: $shownUnreadConversations.has(conv.id) || !!$shownMentionCounts[conv.id],
@@ -219,7 +225,7 @@
 					spellcheck="false"
 					onkeydown={handleKeydown}
 				/>
-				<Kbd>esc</Kbd>
+				<Kbd>Esc</Kbd>
 			</div>
 			<ul
 				bind:this={listEl}
@@ -274,11 +280,11 @@
 							<span
 								class="bg-duvet-accent text-duvet-on-accent flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full px-1 text-[11px] font-bold"
 								role="img"
-								aria-label="{item.mentions} mentions">{item.mentions}</span
+								aria-label={mentionsLabel(item.mentions)}>{item.mentions}</span
 							>
 						{/if}
 						{#if isActive}
-							<span class="text-duvet-accent-text shrink-0 text-[11.5px] font-medium" aria-hidden="true">Open ↵</span>
+							<span class="text-duvet-accent-text shrink-0 text-[11.5px] font-medium" aria-hidden="true">Open</span>
 						{/if}
 					</li>
 				{:else}

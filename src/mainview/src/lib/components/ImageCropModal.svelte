@@ -264,7 +264,7 @@
 			class="border-duvet-line hover:bg-duvet-hover-soft focus-within:bg-duvet-hover-soft flex h-48 cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed transition-colors motion-reduce:transition-none"
 		>
 			<span class="text-duvet-ink text-[13.5px] font-medium">Click to choose an image</span>
-			<span class="text-duvet-ink2 mt-1 text-xs">PNG, JPG, GIF — max 10MB</span>
+			<span class="text-duvet-ink2 mt-1 text-xs">PNG, JPG or GIF, 10 MB at most</span>
 			<input type="file" accept="image/*" class="sr-only" onchange={handleFileChange} />
 		</label>
 	{:else}

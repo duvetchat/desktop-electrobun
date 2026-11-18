@@ -787,7 +787,7 @@
 					leafId: focusedPaneId,
 					halves: stripHalves(rootPane, focusedPaneId),
 					friendsActive: showFriendsView,
-					closeKeys: desktopApp ? keysFor(isMac, SHELL_KEYS.closeTab) : "Ctrl W",
+					closeKeys: desktopApp ? keysFor(isMac, SHELL_KEYS.closeTab) : isMac ? "⌃W" : undefined,
 					onSelect: activateTab,
 					onClose: closeTabs,
 					onReorder: reorderTabs,

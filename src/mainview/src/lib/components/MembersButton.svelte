@@ -62,7 +62,7 @@
 			? 'bg-duvet-accent-tint'
 			: ''}"
 		aria-label={membersLabel(online)}
-		title={membersLabel(online)}
+		title="Members"
 	>
 		{#if stack.faces.length > 0}
 			<FaceStack

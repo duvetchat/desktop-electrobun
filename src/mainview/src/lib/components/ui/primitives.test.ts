@@ -176,16 +176,16 @@ describe("Segmented", () => {
 	];
 
 	test("is a named radio group with a radio per option, the pick checked", async () => {
-		const found = await tags(Segmented, { options, value: "chats", label: "What the sidebar lists" });
+		const found = await tags(Segmented, { options, value: "chats", label: "Show in the sidebar" });
 		const [group] = found;
 		expect(group!.attributes.role).toBe("radiogroup");
-		expect(group!.attributes["aria-label"]).toBe("What the sidebar lists");
+		expect(group!.attributes["aria-label"]).toBe("Show in the sidebar");
 		const radios = found.filter((tag) => tag.attributes.role === "radio");
 		expect(radios.map((radio) => radio.attributes["aria-checked"])).toEqual(["false", "true", "false"]);
 	});
 
 	test("tells its thumb how many options there are and which is picked", async () => {
-		const [group, thumb] = await tags(Segmented, { options, value: "spaces", label: "What the sidebar lists" });
+		const [group, thumb] = await tags(Segmented, { options, value: "spaces", label: "Show in the sidebar" });
 		expect(styles(group!)).toMatchObject({ "--n": "3", "--i": "2" });
 		expect(thumb!.attributes["aria-hidden"]).toBe("true");
 		// A third of the track wide, moved by its own width per place, on the spring.

@@ -14,7 +14,13 @@
 		disabled = false,
 		class: className = "",
 	}: {
-		options: readonly { value: Value; label: string; icon?: Component<{ size?: number | string }> }[];
+		options: readonly {
+			value: Value;
+			label: string;
+			/** The option's tooltip, where its label alone doesn't say what it picks. */
+			title?: string;
+			icon?: Component<{ size?: number | string }>;
+		}[];
 		value: Value;
 		onValueChange?: (value: Value) => void;
 		/** What the options choose between, for a screen reader. */
@@ -48,6 +54,7 @@
 	{#each options as option (option.value)}
 		<RadioGroup.Item
 			value={option.value}
+			title={option.title}
 			class="text-duvet-ink2 hover:text-duvet-ink data-[state=checked]:text-duvet-ink relative z-1 flex items-center justify-center gap-[5px] leading-none font-medium whitespace-nowrap {size ===
 			'sm'
 				? 'h-6 px-2.5 text-xs'

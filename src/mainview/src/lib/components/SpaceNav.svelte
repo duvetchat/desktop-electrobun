@@ -308,10 +308,10 @@
 		openChats.onReorder(tabs);
 	}
 
-	const FILTERS: { value: SidebarFilter; label: string; icon: typeof LayersIcon }[] = [
-		{ value: "all", label: "All", icon: LayersIcon },
-		{ value: "chats", label: "Chats", icon: MessageCircleIcon },
-		{ value: "spaces", label: "Spaces", icon: LayoutGridIcon },
+	const FILTERS: { value: SidebarFilter; label: string; title: string; icon: typeof LayersIcon }[] = [
+		{ value: "all", label: "All", title: "Chats and Spaces", icon: LayersIcon },
+		{ value: "chats", label: "Chats", title: "Chats only", icon: MessageCircleIcon },
+		{ value: "spaces", label: "Spaces", title: "Spaces only", icon: LayoutGridIcon },
 	];
 
 	const rowFocus = "focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-duvet-accent";
@@ -543,7 +543,7 @@
 					<section class="flex flex-col" aria-label="Open chats">
 						{@render sectionHead("Open")}
 						{#if openChats.tabs.length === 0}
-							<p class="text-duvet-ink2 px-2.5 py-1 text-[13px]">Pick a room to open it here</p>
+							<p class="text-duvet-ink2 px-2.5 py-1 text-[13px]">Pick a chat or a room to open it here</p>
 						{/if}
 						<ul class="flex flex-col gap-px">
 							{#each openChats.tabs as tab (tab.channelId)}
@@ -759,7 +759,7 @@
 			<ProfileRow />
 		{/if}
 		<div class="relative">
-			<Segmented options={FILTERS} bind:value={sidebar.filter} label="What the sidebar lists" class="w-full" />
+			<Segmented options={FILTERS} bind:value={sidebar.filter} label="Show in the sidebar" class="w-full" />
 			<!-- A dot marks the side that isn't listed while something there is unread. -->
 			{#if sidebar.filter === "spaces" && unreadChats}
 				<span
