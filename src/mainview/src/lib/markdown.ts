@@ -317,7 +317,8 @@ const EMPHASIS: [RegExp, string, string][] = [
 	[/__(.+?)__/gs, "<u>", "</u>"],
 	[/(?<!\w)_([^\s_](?:[^_]*[^\s_])?)_(?!\w)/gs, "<em>", "</em>"],
 	[/~~(.+?)~~/gs, "<del>", "</del>"],
-	[/\|\|(.+?)\|\|/gs, '<span class="msg-spoiler">', "</span>"],
+	// Focusable: the keyboard reveals hidden text by the focus, as the pointer does by resting on it.
+	[/\|\|(.+?)\|\|/gs, '<span class="msg-spoiler" tabindex="0">', "</span>"],
 ];
 
 const emphasized = (s: string) =>
@@ -329,6 +330,7 @@ function applyInline(
 	mentionMap?: Record<string, string>,
 	customEmojiMap?: CustomEmojiMap,
 	roomNames?: Record<string, string>,
+	mentionStyles?: Record<string, string>,
 ): string {
 	s = emphasized(s);
 	const ceCls = large ? `emoji-img emoji-large ${CUSTOM_EMOJI_CLASS}` : `emoji-img ${CUSTOM_EMOJI_CLASS}`;
@@ -338,11 +340,15 @@ function applyInline(
 		/&lt;(?:@([a-f0-9-]+)|:([a-f0-9-]+):|#([a-f0-9-]+))&gt;/g,
 		(_, userId: string | undefined, emojiId: string | undefined, roomId: string | undefined) => {
 			// <@id> reads @username. One of someone the map knows carries their ID, to open their profile (clickedMention); any
-			// other one, of someone who left or isn't loaded, is only a name, as their name on a message is.
+			// other one, of someone who left or isn't loaded, is only a name, as their name on a message is. In a Space, the
+			// name takes the colour of the member's role (mentionStyles, lib/name-colors.ts), as it has above their messages.
 			if (userId !== undefined) {
 				const name = mentionMap?.[userId];
-				const user = name !== undefined && isUuid(userId) ? ` data-user-id="${userId}"` : "";
-				return `<span class="msg-mention"${user}>@${escapeHtml(name ?? userId.slice(0, 8))}</span>`;
+				const known = name !== undefined && isUuid(userId);
+				const user = known ? ` data-user-id="${userId}"` : "";
+				const colour = known && mentionStyles && Object.hasOwn(mentionStyles, userId) ? mentionStyles[userId] : "";
+				const style = colour ? ` style="${escapeHtml(colour)}"` : "";
+				return `<span class="msg-mention"${user}${style}>@${escapeHtml(name ?? userId.slice(0, 8))}</span>`;
 			}
 			// <:id:> is an inline image. The text holds only its ID: one the map doesn't have (of a Space the reader isn't
 			// in, or gone) shows its image from the API all the same, with no name to show.
@@ -497,12 +503,12 @@ function duvetLinkHtml(
 ): string {
 	if ("message" in link) {
 		const { spaceId, roomId, messageId, conversationId } = link.message;
-		const room = conversationId ? "Direct Message" : (roomNames?.[roomId] ?? "unknown");
+		const room = conversationId ? "Direct message" : (roomNames?.[roomId] ?? "unknown");
 		const space = conversationId ? "" : (spaceName(spaceId) ?? "Unknown Space");
 		const data = conversationId
 			? `data-conversation="${conversationId}" data-message="${messageId}"`
 			: `data-space="${spaceId}" data-room="${roomId}" data-message="${messageId}"`;
-		return `<button type="button" class="msg-duvet-link mx-0.5 inline-flex cursor-pointer items-center gap-1 rounded border border-duvet-line bg-duvet-ink/10 px-1.5 py-0.5 align-middle text-duvet-ink transition-colors hover:bg-duvet-ink/15 hover:text-duvet-ink" ${data} title="${escapeHtml(`${space} › #${room}`)}"><span class="text-xs text-duvet-ink2">#</span><span class="text-xs font-medium">${escapeHtml(room)}</span><svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="shrink-0 text-duvet-ink2"><path d="m9 18 6-6-6-6"/></svg></button>`;
+		return `<button type="button" class="msg-duvet-link mx-0.5 inline-flex cursor-pointer items-center gap-1 rounded border border-duvet-line bg-duvet-ink/10 px-1.5 py-0.5 align-middle text-duvet-ink transition-colors motion-reduce:transition-none hover:bg-duvet-ink/15 hover:text-duvet-ink" ${data} title="${escapeHtml(`${space} › #${room}`)}"><span class="text-xs text-duvet-ink2">#</span><span class="text-xs font-medium">${escapeHtml(room)}</span><svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="shrink-0 text-duvet-ink2"><path d="m9 18 6-6-6-6"/></svg></button>`;
 	}
 	const data = "bot" in link ? `data-bot="${link.bot}"` : `data-invite="${escapeHtml(link.code)}"`;
 	return `<button type="button" class="msg-duvet-link cursor-pointer text-duvet-ink hover:underline" ${data}>${escapeHtml(text)}</button>`;
@@ -519,8 +525,10 @@ export function renderMarkdown(
 	customEmojiMap?: CustomEmojiMap,
 	roomNames?: Record<string, string>,
 	links?: LinkDrawing,
+	/** Each mentioned member's name style, by user ID (nameColors): none outside a Space, or for a role with no colour. */
+	mentionStyles?: Record<string, string>,
 ): string {
-	return render(withoutMarks(input), large, mentionMap, customEmojiMap, roomNames, links);
+	return render(withoutMarks(input), large, mentionMap, customEmojiMap, roomNames, links, mentionStyles);
 }
 
 function render(
@@ -530,6 +538,7 @@ function render(
 	customEmojiMap?: CustomEmojiMap,
 	roomNames?: Record<string, string>,
 	drawing?: LinkDrawing,
+	mentionStyles?: Record<string, string>,
 ): string {
 	// ── 1. Extract fenced code blocks ─────────────────────────────────────────
 	const codeBlocks: string[] = [];
@@ -564,7 +573,8 @@ function render(
 		return `\x00E${escapes.length - 1}\x01`;
 	});
 
-	const inline = (t: string) => applyInline(renderEmoji(t), false, mentionMap, customEmojiMap, roomNames);
+	const inline = (t: string) =>
+		applyInline(renderEmoji(t), false, mentionMap, customEmojiMap, roomNames, mentionStyles);
 
 	// ── 3. Extract links ───────────────────────────────────────────────────────
 	// Markdown links [text](url), taken out before the inline rules as code is, so that the URL stays as it was
@@ -629,7 +639,7 @@ function render(
 		else if ((m = /^-# (.*)/.exec(line))) out.push(`<span class="msg-subtext">${inline(m[1]!)}</span>`);
 		else if ((m = /^>>> (.*)/.exec(line))) out.push(`<blockquote class="msg-blockquote">${inline(m[1]!)}</blockquote>`);
 		else if ((m = /^> (.*)/.exec(line))) out.push(`<blockquote class="msg-blockquote">${inline(m[1]!)}</blockquote>`);
-		else out.push(applyInline(renderEmoji(line, large), large, mentionMap, customEmojiMap, roomNames));
+		else out.push(applyInline(renderEmoji(line, large), large, mentionMap, customEmojiMap, roomNames, mentionStyles));
 
 		i++;
 	}

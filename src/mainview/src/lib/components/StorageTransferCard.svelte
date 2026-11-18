@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { buttonClass } from "$lib/components/ui/recipes";
 	import { ArrowRightLeft as MoveIcon } from "@lucide/svelte";
 	import { getApiError } from "$lib/api/api";
 	import { storageTransfers } from "$lib/stores/storage-transfers.svelte";
@@ -40,11 +41,14 @@
 	}
 </script>
 
-<div class="border-duvet-line bg-duvet-bg/30 space-y-2.5 rounded-lg border px-4 py-3">
+<div class="bg-duvet-card shadow-duvet-raised flex flex-col gap-2.5 rounded-2xl px-3.5 py-3">
 	<div class="flex items-center gap-3">
-		<MoveIcon class="text-duvet-ink2 size-5 shrink-0" />
+		<span
+			class="bg-duvet-secondary-fill text-duvet-accent-text grid size-[30px] shrink-0 place-items-center rounded-[9px]"
+			><MoveIcon class="size-4" /></span
+		>
 		<div class="min-w-0 flex-1">
-			<p class="text-duvet-ink truncate text-sm font-medium">
+			<p class="truncate text-[13.5px] font-medium">
 				{queued ? "Waiting to move" : "Moving"} to {target}
 				<span class="text-duvet-ink2">·</span>
 				{progress.done}/{progress.total} files
@@ -60,15 +64,14 @@
 				{/if}
 			</p>
 		</div>
-		<button
-			onclick={cancel}
-			disabled={cancelling}
-			class="rounded-row bg-duvet-ink/10 text-duvet-ink hover:bg-duvet-ink/15 shrink-0 px-3 py-1.5 text-xs font-semibold transition-colors disabled:opacity-50"
-		>
+		<button onclick={cancel} disabled={cancelling} class={buttonClass("secondary", "sm")}>
 			{cancelling ? "Cancelling…" : "Cancel"}
 		</button>
 	</div>
-	<div class="bg-duvet-ink/10 h-1.5 w-full overflow-hidden rounded-full">
-		<div class="bg-duvet-ink2 h-full rounded-full transition-all duration-300" style="width: {progress.percent}%"></div>
+	<div class="bg-duvet-toggle-off h-1.5 w-full overflow-hidden rounded-full">
+		<div
+			class="bg-duvet-alive h-full rounded-full transition-[width] duration-300 motion-reduce:transition-none"
+			style="width: {progress.percent}%"
+		></div>
 	</div>
 </div>

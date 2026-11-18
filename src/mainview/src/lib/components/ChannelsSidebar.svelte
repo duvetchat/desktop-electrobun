@@ -2,37 +2,41 @@
 	import { toast } from "$lib/stores/toast.svelte";
 	import { getApiError } from "$lib/api/api";
 	import {
-		EllipsisVertical as DotsThreeVerticalIcon,
+		AppWindow as AppWindowIcon,
+		Columns2 as ColumnsIcon,
 		Hash as HashIcon,
 		Volume2 as SpeakerSimpleHighIcon,
 		Lock as LockSimpleIcon,
-		Plus as PlusIcon,
 		Settings as GearSixIcon,
 		Trash2 as TrashSimpleIcon,
 		Copy as CopySimpleIcon,
 		Link2 as LinkSimpleIcon,
 		ChevronDown as ChevronDownIcon,
-		ChevronRight as ChevronRightIcon,
 		MicOff as MicrophoneSlashIcon,
 		Headphones as HeadphonesIcon,
-		MonitorUp as MonitorUpIcon,
 		Video as VideoIcon,
 		Pencil as PencilIcon,
 	} from "@lucide/svelte";
 
-	import { ContextMenu, Dialog, DropdownMenu } from "bits-ui";
 	import { onMount } from "svelte";
 	import { categoryDropPosition, topLevelEnd, type Guild, type Channel, type RoomType } from "$lib/types";
-	import { hasPermission, hasSpacePermission, Permission } from "$lib/permissions";
+	import { hasPermission, Permission } from "$lib/permissions";
 	import { roomColumn } from "$lib/nav";
 	import ServerSettings from "$lib/components/ServerSettings.svelte";
 	import ChannelSettings from "$lib/components/ChannelSettings.svelte";
 	import { createRoom, deleteRoom, updateRoom } from "$lib/api/rooms";
 	import InviteModal from "$lib/components/InviteModal.svelte";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
-	import UserStatusBar from "$lib/components/UserStatusBar.svelte";
-	import SpaceBanner from "$lib/components/SpaceBanner.svelte";
-	import SpaceIcon from "$lib/components/SpaceIcon.svelte";
+	import Button from "$lib/components/ui/Button.svelte";
+	import ContextMenu from "$lib/components/ui/ContextMenu.svelte";
+	import Dialog from "$lib/components/ui/Dialog.svelte";
+	import Sheet from "$lib/components/ui/Sheet.svelte";
+	import { SELECT } from "$lib/components/settings/recipes";
+	import { FIELD_LABEL, fieldClass } from "$lib/overlay-forms";
+	import MenuItem from "$lib/components/ui/MenuItem.svelte";
+	import MenuSeparator from "$lib/components/ui/MenuSeparator.svelte";
+	import { countBadgeClass, MENU_PANEL, menuItemClass } from "$lib/components/ui/recipes";
+	import { chipCount, keysFor, mentionsLabel, openHow, SHELL_KEYS, type OpenHow } from "$lib/shell-layout";
 	import { speakingUsers, activeVoiceRoomId, gatewaySpaces, typingNow } from "$lib/stores.svelte";
 	import { shownMentionCounts, shownUnreadRooms } from "$lib/notification-marks";
 	import { notificationLevels, spaceLevel } from "$lib/notification-levels";
@@ -46,18 +50,20 @@
 		channels,
 		activeChannelId = null,
 		onSelect = () => {},
-		showChannels = true,
-		embedded = false,
+		mac = false,
 	}: {
 		guild: Guild;
 		channels: Channel[];
 		activeChannelId?: string | null;
-		onSelect?: (channelId: string) => void;
-		showChannels?: boolean;
-		/** Drawn as a tree under the space's row in the spaces column, which has the space's name, menu and the user's
-		 * bar: only the rooms show, without a column of their own. */
-		embedded?: boolean;
+		/** A room picked, and how: a click opens it in the current tab, ⌘-click or a middle click in a new one, ⌥-click
+		 * beside (lib/shell-layout.ts: openHow). */
+		onSelect?: (channelId: string, how: OpenHow) => void;
+		/** Whose keys the menu's hints name: ⌘-click on macOS, Ctrl-click elsewhere. */
+		mac?: boolean;
 	} = $props();
+
+	// The rooms of a Space, drawn as a tree under its row in the sidebar (#357, S-06), which has the Space's name and
+	// menu: the rooms in no category, then each category with its rooms, each voice room with who's in it.
 
 	let buttons = $state<(HTMLElement | null)[]>([]);
 	let expanded = $state<{ [key: string]: boolean }>({});
@@ -68,6 +74,7 @@
 	let newChannelType = $state<RoomType>(1);
 	let newChannelCategory = $state<string | null>(null);
 	let isCreating = $state(false);
+	let roomNameField = $state<HTMLInputElement | null>(null);
 
 	let confirmDeleteChannel = $state<Channel | null>(null);
 	let isDeletingChannel = $state(false);
@@ -167,15 +174,14 @@
 		),
 		...column.categories.flatMap(({ category: cat, rooms }): SidebarItem[] => [
 			{ kind: "category", channel: cat },
-			...(expanded[cat.id]
-				? rooms.map(
-						(ch): SidebarItem => ({
-							kind: "channel",
-							channel: ch,
-							indent: true,
-						}),
-					)
-				: []),
+			// A folded category still shows the room the focused pane is in.
+			...(expanded[cat.id] ? rooms : rooms.filter((ch) => ch.id === activeChannelId)).map(
+				(ch): SidebarItem => ({
+					kind: "channel",
+					channel: ch,
+					indent: true,
+				}),
+			),
 		]),
 	] as SidebarItem[]);
 
@@ -323,9 +329,9 @@
 		return "";
 	}
 
-	function selectChannel(channel: Channel) {
+	function selectChannel(channel: Channel, how: OpenHow = "here") {
 		if (channel.type !== "category") {
-			onSelect(channel.id);
+			onSelect(channel.id, how);
 		}
 	}
 
@@ -372,10 +378,6 @@
 		};
 	}
 
-	function focusOnMount(node: HTMLElement) {
-		node.focus();
-	}
-
 	onMount(() => {
 		// ensure first button is focusable for keyboard users
 		const firstBtn = buttons.at(0);
@@ -383,438 +385,324 @@
 	});
 </script>
 
-<div
-	class={embedded
-		? "text-duvet-ink flex flex-col"
-		: `border-duvet-line bg-duvet-sunk text-duvet-ink flex h-full flex-col overflow-hidden border-r transition-[width] duration-200 ${showChannels ? "w-60" : "w-14"}`}
->
-	{#if !showChannels && !embedded}
-		<!-- Collapsed: guild avatar + vertical user controls -->
-		<div class="flex flex-1 flex-col items-center gap-2 pt-3">
-			<SpaceIcon src={guild.icon_url || null} name={guild.name} size={40} />
-		</div>
-		<UserStatusBar collapsed />
-	{:else}
-		<!-- Scrollable content area — flex-1 so user bar is always pinned to bottom -->
-		<div class={embedded ? "flex flex-col" : "flex min-h-0 flex-1 flex-col overflow-hidden"}>
-			{#if !embedded}
-				<SpaceBanner src={guild.banner_url || null} height="6rem" class="shrink-0 rounded-none" />
-				<div
-					class="border-duvet-line text-duvet-ink relative flex h-10 shrink-0 items-center justify-between border-b px-3 font-semibold"
-				>
-					<span class="truncate">{guild.name}</span>
-					<DropdownMenu.Root>
-						<DropdownMenu.Trigger class="text-duvet-ink2 hover:text-duvet-ink ml-auto shrink-0" aria-label="Space menu">
-							<DotsThreeVerticalIcon class="size-4" />
-						</DropdownMenu.Trigger>
-						<DropdownMenu.Portal>
-							<DropdownMenu.Content
-								class="rounded-card border-duvet-line bg-duvet-card shadow-duvet-float z-50 w-52 overflow-hidden border py-1"
-								sideOffset={6}
-								align="end"
-							>
-								<DropdownMenu.Item
-									class="text-duvet-ink hover:bg-duvet-ink/10 flex w-full items-center gap-2.5 px-3 py-2 text-sm transition-colors"
-									onSelect={openServerSettings}
-								>
-									<GearSixIcon class="text-duvet-ink2 size-4" />
-									Space Settings
-								</DropdownMenu.Item>
-								<!-- The API creates a room for ManageChannels in the space -->
-								{#if space && hasSpacePermission(space, Permission.ManageChannels)}
-									<DropdownMenu.Item
-										class="text-duvet-ink hover:bg-duvet-ink/10 flex w-full items-center gap-2.5 px-3 py-2 text-sm transition-colors"
-										onSelect={openCreateChannel}
-									>
-										<PlusIcon class="text-duvet-ink2 size-4" />
-										Create Room
-									</DropdownMenu.Item>
-								{/if}
-							</DropdownMenu.Content>
-						</DropdownMenu.Portal>
-					</DropdownMenu.Root>
-				</div>
-			{/if}
-			<!-- Embedded, the rooms hang from the space's row on a guide line, and the spaces column scrolls them. -->
-			<div
-				class={embedded
-					? "border-duvet-line mb-1 ml-[19px] flex flex-col gap-px border-l-2 py-0.5 pl-2.5"
-					: "flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto p-2"}
-				role="list"
-			>
-				{#if !embedded}
-					<!-- A sticky bar sticks inside the list's padding: -top-2 takes its 8 px back, so the bar meets the list's
-					     top edge and no row shows above it. -->
-					<div
-						class="border-duvet-line bg-duvet-sunk text-duvet-ink2 sticky -top-2 z-10 flex h-10 items-center border-b px-3 text-[13px] font-bold select-none"
+<!-- The rooms hang from the Space's row on a guide line, and the sidebar scrolls them. -->
+<div class="border-duvet-sb-edge text-duvet-ink mb-1 ml-[9px] flex flex-col border-l pb-1 pl-[3px]" role="list">
+	{#if sidebarItems.length === 0}
+		<p class="text-duvet-ink2 px-3 py-1.5 text-[13px]">No rooms you can see yet</p>
+	{/if}
+	{#each sidebarItems as item, itemIdx}
+		{#if item.kind === "category"}
+			{@const categoryRoom = space?.rooms.find((r) => r.id === item.channel.id)}
+			{@const canManageCategory =
+				space && categoryRoom ? hasPermission(space, categoryRoom, Permission.ManageChannels) : false}
+			<ContextMenu>
+				{#snippet target(props)}
+					<button
+						{...props}
+						type="button"
+						class="text-duvet-ink2 hover:text-duvet-ink focus-visible:outline-duvet-accent flex h-[26px] w-full shrink-0 items-end gap-1 rounded-md border-0 bg-transparent pr-2 pl-3 text-left text-[10.5px] leading-[18px] font-semibold tracking-[0.06em] uppercase focus-visible:outline-2 focus-visible:-outline-offset-2 {dropIndicatorClass(
+							itemIdx,
+						)}"
+						onclick={() => toggleCategory(item.channel.id)}
+						aria-expanded={expanded[item.channel.id]}
+						draggable={canManageCategory}
+						ondragstart={(e) => handleDragStartReorder(e, item.channel.id)}
+						ondragover={(e) => handleDragOver(e, itemIdx)}
+						ondrop={(e) => handleDrop(e, itemIdx)}
+						ondragend={handleDragEnd}
 					>
-						Rooms
+						<span class="truncate">{item.channel.name}</span>
+						<ChevronDownIcon
+							class="mb-1 size-2.5 shrink-0 transition-transform duration-150 motion-reduce:transition-none {expanded[
+								item.channel.id
+							]
+								? ''
+								: '-rotate-90'}"
+							aria-hidden="true"
+						/>
+					</button>
+				{/snippet}
+				<MenuItem icon={CopySimpleIcon} onSelect={() => navigator.clipboard.writeText(item.channel.id)}>
+					Copy room ID
+				</MenuItem>
+				{#if canManageCategory}
+					<MenuItem icon={PencilIcon} onSelect={() => openChannelSettings(item.channel)}>Edit category</MenuItem>
+					<MenuSeparator />
+					<MenuItem icon={TrashSimpleIcon} danger onSelect={() => (confirmDeleteChannel = item.channel)}>
+						Delete category
+					</MenuItem>
+				{/if}
+			</ContextMenu>
+		{:else}
+			{@const channel = item.channel}
+			{@const buttonIndex = clickableChannels.findIndex((c) => c.id === channel.id)}
+			{@const room = space?.rooms.find((r) => r.id === channel.id)}
+			{@const canManage = space && room ? hasPermission(space, room, Permission.ManageChannels) : false}
+			{@const canJoin = channel.type !== "voice" || (space && room && hasPermission(space, room, Permission.JoinVoice))}
+			{@const isUnread =
+				channel.type === "text" && ($shownUnreadRooms.has(channel.id) || !!$shownMentionCounts[channel.id])}
+			{@const voiceCount = channel.voiceUsers?.length ?? 0}
+			{@const typers = channel.type === "text" ? $typingNow[channel.id] : undefined}
+			{@const typing = typingSentence(typers)}
+			{@const isActive = channel.id === activeChannelId}
+			<!-- The voice room the user is in reads as live. -->
+			{@const connected = channel.type === "voice" && $activeVoiceRoomId === channel.id}
+			<div role="listitem" class="group/channel {roomDropIndicatorClass(itemIdx)}">
+				<ContextMenu>
+					{#snippet target(props)}
+						<button
+							{...props}
+							class="focus-visible:outline-duvet-accent flex h-[30px] w-full items-center gap-[7px] rounded-[9px] pr-2 pl-3 text-left text-[13.5px] transition-colors duration-[120ms] focus-visible:outline-2 focus-visible:-outline-offset-2 motion-reduce:transition-none
+							{isActive ? 'bg-duvet-accent-tint text-duvet-ink' : 'hover:bg-duvet-sb-hover'}
+							{connected
+								? 'text-duvet-alive-text font-semibold'
+								: isUnread
+									? 'text-duvet-ink font-semibold'
+									: isActive
+										? 'font-medium'
+										: 'text-duvet-ink2 hover:text-duvet-ink font-medium'}
+							{!canJoin ? 'cursor-not-allowed opacity-50' : ''}"
+							aria-pressed={isActive}
+							title={typing ? `${channel.name} · ${typing}` : channel.name}
+							draggable="true"
+							ondragstart={(e) => {
+								// Anyone drags a room into a pane; it's reordered here only with ManageChannels in it,
+								// which the API checks.
+								if (canManage) handleDragStartReorder(e, channel.id);
+								e.dataTransfer!.effectAllowed = "move";
+								e.dataTransfer!.setData(
+									"text/plain",
+									JSON.stringify({
+										type: "channel",
+										channelId: channel.id,
+										channelName: channel.name,
+										channelType: channel.type,
+										spaceId: guild.id,
+									}),
+								);
+							}}
+							ondragover={(e) => handleDragOver(e, itemIdx)}
+							ondrop={(e) => handleDrop(e, itemIdx)}
+							ondragend={handleDragEnd}
+							data-jump
+							onclick={(e) => canJoin && selectChannel(channel, openHow(e, mac))}
+							onauxclick={(e) => e.button === 1 && canJoin && selectChannel(channel, "tab")}
+							ondblclick={() => canJoin && channel.type === "voice" && joinVoiceChannel(channel)}
+							onkeydown={(e) => canJoin && onKeyDown(e, buttonIndex)}
+							use:register={buttonIndex}
+						>
+							<span
+								class="relative shrink-0 {channel.type === 'voice' && voiceCount > 0
+									? 'text-duvet-alive-text'
+									: isUnread || isActive || connected
+										? ''
+										: 'opacity-75'}"
+							>
+								{#if typers}
+									<TypingMark users={typers} />
+								{:else if channel.type === "text"}
+									<HashIcon class="size-[15px]" />
+								{:else if channel.type === "voice"}
+									<SpeakerSimpleHighIcon class="size-[15px]" />
+									{#if !canJoin}
+										<LockSimpleIcon
+											class="bg-duvet-sb-bg text-duvet-danger absolute -right-2 -bottom-1 size-3.5 rounded-full"
+										/>
+									{/if}
+								{/if}
+							</span>
+							<span class="min-w-0 flex-1 truncate">{channel.name}</span>
+							{#if typing}<span class="sr-only">{typing}</span>{/if}
+							{#if channel.type === "text" && $shownMentionCounts[channel.id]}
+								<span
+									class="{countBadgeClass()} ml-1"
+									role="img"
+									aria-label={mentionsLabel($shownMentionCounts[channel.id] ?? 0)}
+									>{chipCount($shownMentionCounts[channel.id] ?? 0)}</span
+								>
+							{:else if voiceCount > 0}
+								<span class="text-duvet-ink2 ml-1 shrink-0 text-[11.5px] font-normal">{voiceCount} in voice</span>
+							{/if}
+						</button>
+					{/snippet}
+					<MenuItem
+						icon={AppWindowIcon}
+						keys={keysFor(mac, SHELL_KEYS.openInTab)}
+						disabled={!canJoin}
+						onSelect={() => selectChannel(channel, "tab")}>Open in new tab</MenuItem
+					>
+					<MenuItem
+						icon={ColumnsIcon}
+						keys={keysFor(mac, SHELL_KEYS.openBeside)}
+						disabled={!canJoin}
+						onSelect={() => selectChannel(channel, "beside")}>Open beside</MenuItem
+					>
+					<MenuSeparator />
+					<MenuItem icon={CopySimpleIcon} onSelect={() => navigator.clipboard.writeText(channel.id)}>
+						Copy room ID
+					</MenuItem>
+					<!-- The API creates an invite for CreateInvites in the room, overwrites included -->
+					{#if channel.type !== "category" && space && room && hasPermission(space, room, Permission.CreateInvites)}
+						<MenuItem icon={LinkSimpleIcon} onSelect={() => openInviteModal(channel)}>Invite people</MenuItem>
+					{/if}
+					<!-- Only text rooms hold messages to notify of; their default is their space's level. -->
+					{#if channel.type === "text"}
+						<NotificationSubmenu
+							targetId={channel.id}
+							target={1}
+							inherited={spaceLevel($notificationLevels, guild.id, space?.default_notifications)}
+							itemClass={menuItemClass()}
+							contentClass={MENU_PANEL}
+						/>
+					{/if}
+					{#if canManage}
+						<MenuSeparator />
+						<MenuItem icon={GearSixIcon} onSelect={() => openChannelSettings(channel)}>Room settings</MenuItem>
+						<MenuItem icon={TrashSimpleIcon} danger onSelect={() => (confirmDeleteChannel = channel)}>
+							Delete room
+						</MenuItem>
+					{/if}
+				</ContextMenu>
+				<!-- Who's in the voice room, under its row -->
+				{#if channel.type === "voice" && channel.voiceUsers && channel.voiceUsers.length > 0}
+					<div class="flex flex-col pb-0.5 pl-[30px]">
+						{#each channel.voiceUsers as user (user.id)}
+							{@const isSharing = user.screen_sharing ?? false}
+							{@const isSpeaking = $speakingUsers.has(user.id) && !user.muted}
+							<div
+								class="flex h-[26px] items-center gap-[7px] rounded-lg px-1.5 text-[12.5px] font-medium {isSpeaking
+									? 'text-duvet-ink'
+									: 'text-duvet-ink2'}"
+							>
+								<UserAvatar
+									src={user.avatar_url}
+									name={user.username}
+									size={20}
+									class="box-border shrink-0 rounded-full transition-shadow duration-200 motion-reduce:transition-none {isSpeaking
+										? 'ring-duvet-alive ring-2'
+										: ''}"
+								/>
+								<span class="min-w-0 flex-1 truncate">{user.username}</span>
+								<div class="flex shrink-0 items-center gap-1">
+									{#if isSharing}
+										<span
+											class="bg-duvet-call-red text-duvet-on-call-red rounded-[5px] px-[5px] py-[3px] text-[9px] leading-none font-bold tracking-wide uppercase"
+											role="img"
+											aria-label="Sharing their screen">Live</span
+										>
+									{/if}
+									{#if user.camera}
+										<VideoIcon class="size-3" role="img" aria-label="Camera on" />
+									{/if}
+									{#if user.muted}
+										<MicrophoneSlashIcon class="text-duvet-danger size-3" role="img" aria-label="Muted" />
+									{/if}
+									{#if user.deafened}
+										<HeadphonesIcon class="text-duvet-danger size-3" role="img" aria-label="Deafened" />
+									{/if}
+								</div>
+							</div>
+						{/each}
 					</div>
 				{/if}
-				{#if sidebarItems.length === 0}
-					<p class="text-duvet-ink2 px-2 py-1.5 text-[13px]">No rooms you can see yet</p>
-				{/if}
-				{#each sidebarItems as item, itemIdx}
-					{#if item.kind === "category"}
-						{@const categoryRoom = space?.rooms.find((r) => r.id === item.channel.id)}
-						{@const canManageCategory =
-							space && categoryRoom ? hasPermission(space, categoryRoom, Permission.ManageChannels) : false}
-						<ContextMenu.Root>
-							<ContextMenu.Trigger>
-								<button
-									type="button"
-									class="rounded-row text-duvet-ink2 hover:text-duvet-ink focus-visible:outline-duvet-accent mt-1 flex h-7 w-full items-center gap-1 border-0 bg-transparent px-1.5 text-left text-[13px] font-bold focus-visible:outline-2 {dropIndicatorClass(
-										itemIdx,
-									)}"
-									onclick={() => toggleCategory(item.channel.id)}
-									aria-expanded={expanded[item.channel.id]}
-									draggable={canManageCategory}
-									ondragstart={(e) => handleDragStartReorder(e, item.channel.id)}
-									ondragover={(e) => handleDragOver(e, itemIdx)}
-									ondrop={(e) => handleDrop(e, itemIdx)}
-									ondragend={handleDragEnd}
-								>
-									{#if expanded[item.channel.id]}
-										<ChevronDownIcon class="size-3.5 shrink-0" aria-hidden="true" />
-									{:else}
-										<ChevronRightIcon class="size-3.5 shrink-0" aria-hidden="true" />
-									{/if}
-									<span class="truncate">{item.channel.name}</span>
-								</button>
-							</ContextMenu.Trigger>
-							<ContextMenu.Portal>
-								<ContextMenu.Content
-									class="rounded-card border-duvet-line bg-duvet-card shadow-duvet-float z-200 min-w-44 border py-1"
-								>
-									<ContextMenu.Item
-										class="text-duvet-ink hover:bg-duvet-ink/10 w-full px-3 py-2 text-left text-sm transition-colors"
-										onSelect={() => navigator.clipboard.writeText(item.channel.id)}
-									>
-										<div class="flex items-center gap-2">
-											<CopySimpleIcon class="text-duvet-ink2 size-4" />
-											Copy Room ID
-										</div>
-									</ContextMenu.Item>
-									{#if canManageCategory}
-										<ContextMenu.Item
-											class="text-duvet-ink hover:bg-duvet-ink/10 w-full px-3 py-2 text-left text-sm transition-colors"
-											onSelect={() => openChannelSettings(item.channel)}
-										>
-											<div class="flex items-center gap-2">
-												<PencilIcon class="text-duvet-ink2 size-4" />
-												Edit Category
-											</div>
-										</ContextMenu.Item>
-										<div class="border-duvet-line my-1 border-t"></div>
-										<ContextMenu.Item
-											class="text-duvet-danger hover:bg-duvet-ink/10 w-full px-3 py-2 text-left text-sm transition-colors"
-											onSelect={() => (confirmDeleteChannel = item.channel)}
-										>
-											<div class="flex items-center gap-2">
-												<TrashSimpleIcon class="size-4" />
-												Delete Category
-											</div>
-										</ContextMenu.Item>
-									{/if}
-								</ContextMenu.Content>
-							</ContextMenu.Portal>
-						</ContextMenu.Root>
-					{:else}
-						{@const channel = item.channel}
-						{@const buttonIndex = clickableChannels.findIndex((c) => c.id === channel.id)}
-						{@const room = space?.rooms.find((r) => r.id === channel.id)}
-						{@const canManage = space && room ? hasPermission(space, room, Permission.ManageChannels) : false}
-						{@const canJoin =
-							channel.type !== "voice" || (space && room && hasPermission(space, room, Permission.JoinVoice))}
-						{@const isUnread =
-							channel.type === "text" && ($shownUnreadRooms.has(channel.id) || !!$shownMentionCounts[channel.id])}
-						{@const voiceCount = channel.voiceUsers?.length ?? 0}
-						{@const typers = channel.type === "text" ? $typingNow[channel.id] : undefined}
-						{@const typing = typingSentence(typers)}
-						<div role="listitem" class="group/channel {roomDropIndicatorClass(itemIdx)}">
-							<ContextMenu.Root>
-								<ContextMenu.Trigger>
-									<button
-										class="focus-visible:outline-duvet-accent flex h-8 w-full items-center gap-1.5 rounded-[10px] px-2 text-left text-sm focus-visible:outline-2
-						{channel.id === activeChannelId
-											? 'bg-duvet-accent-tint text-duvet-accent-text font-semibold'
-											: isUnread
-												? 'text-duvet-ink hover:bg-duvet-card font-bold'
-												: 'text-duvet-ink2 hover:bg-duvet-card hover:text-duvet-ink'}
-						{!canJoin ? 'cursor-not-allowed opacity-50' : ''}"
-										aria-pressed={channel.id === activeChannelId}
-										title={typing ? `${channel.name} · ${typing}` : channel.name}
-										draggable="true"
-										ondragstart={(e) => {
-											// Anyone drags a room into a pane; it's reordered here only with ManageChannels in it,
-											// which the API checks.
-											if (canManage) handleDragStartReorder(e, channel.id);
-											e.dataTransfer!.effectAllowed = "move";
-											e.dataTransfer!.setData(
-												"text/plain",
-												JSON.stringify({
-													type: "channel",
-													channelId: channel.id,
-													channelName: channel.name,
-													channelType: channel.type,
-													spaceId: guild.id,
-												}),
-											);
-										}}
-										ondragover={(e) => handleDragOver(e, itemIdx)}
-										ondrop={(e) => handleDrop(e, itemIdx)}
-										ondragend={handleDragEnd}
-										data-jump
-										onclick={() => canJoin && selectChannel(channel)}
-										ondblclick={() => canJoin && channel.type === "voice" && joinVoiceChannel(channel)}
-										onkeydown={(e) => canJoin && onKeyDown(e, buttonIndex)}
-										use:register={buttonIndex}
-									>
-										<span
-											class="relative shrink-0 {channel.type === 'voice' && voiceCount > 0
-												? 'text-duvet-alive'
-												: 'text-duvet-ink2'}"
-										>
-											{#if typers}
-												<TypingMark users={typers} />
-											{:else if channel.type === "text"}
-												<HashIcon class="size-4" />
-											{:else if channel.type === "voice"}
-												<SpeakerSimpleHighIcon class="size-4" />
-												{#if !canJoin}
-													<LockSimpleIcon
-														class="bg-duvet-sunk text-duvet-danger absolute -right-2 -bottom-1 size-3.5 rounded-full"
-													/>
-												{/if}
-											{/if}
-										</span>
-										<span class="min-w-0 flex-1 truncate">{channel.name}</span>
-										{#if typing}<span class="sr-only">{typing}</span>{/if}
-										{#if channel.type === "text" && $shownMentionCounts[channel.id]}
-											<span
-												class="bg-duvet-accent text-duvet-on-accent ml-1 flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full px-1 text-[11px] font-bold"
-												aria-label="{$shownMentionCounts[channel.id]} mentions">{$shownMentionCounts[channel.id]}</span
-											>
-										{:else if voiceCount > 0}
-											<span class="text-duvet-ink2 ml-1 shrink-0 text-xs font-normal">{voiceCount} in voice</span>
-										{/if}
-									</button>
-								</ContextMenu.Trigger>
-								<ContextMenu.Portal>
-									<ContextMenu.Content
-										class="rounded-card border-duvet-line bg-duvet-card shadow-duvet-float z-200 min-w-44 border py-1"
-									>
-										<ContextMenu.Item
-											class="text-duvet-ink hover:bg-duvet-ink/10 w-full px-3 py-2 text-left text-sm transition-colors"
-											onSelect={() => navigator.clipboard.writeText(channel.id)}
-										>
-											<div class="flex items-center gap-2">
-												<CopySimpleIcon class="text-duvet-ink2 size-4" />
-												Copy Room ID
-											</div>
-										</ContextMenu.Item>
-										<!-- The API creates an invite for CreateInvites in the room, overwrites included -->
-										{#if channel.type !== "category" && space && room && hasPermission(space, room, Permission.CreateInvites)}
-											<ContextMenu.Item
-												class="text-duvet-ink hover:bg-duvet-ink/10 w-full px-3 py-2 text-left text-sm transition-colors"
-												onSelect={() => openInviteModal(channel)}
-											>
-												<div class="flex items-center gap-2">
-													<LinkSimpleIcon class="text-duvet-ink2 size-4" />
-													Invite People
-												</div>
-											</ContextMenu.Item>
-										{/if}
-										<!-- Only text rooms hold messages to notify of; their default is their space's level. -->
-										{#if channel.type === "text"}
-											<NotificationSubmenu
-												targetId={channel.id}
-												target={1}
-												inherited={spaceLevel($notificationLevels, guild.id, space?.default_notifications)}
-											/>
-										{/if}
-										{#if canManage}
-											<div class="border-duvet-line my-1 border-t"></div>
-											<ContextMenu.Item
-												class="text-duvet-ink hover:bg-duvet-ink/10 w-full px-3 py-2 text-left text-sm transition-colors"
-												onSelect={() => openChannelSettings(channel)}
-											>
-												<div class="flex items-center gap-2">
-													<GearSixIcon class="text-duvet-ink2 size-4" />
-													Settings
-												</div>
-											</ContextMenu.Item>
-											<ContextMenu.Item
-												class="text-duvet-danger hover:bg-duvet-ink/10 w-full px-3 py-2 text-left text-sm transition-colors"
-												onSelect={() => (confirmDeleteChannel = channel)}
-											>
-												<div class="flex items-center gap-2">
-													<TrashSimpleIcon class="size-4" />
-													Delete Room
-												</div>
-											</ContextMenu.Item>
-										{/if}
-									</ContextMenu.Content>
-								</ContextMenu.Portal>
-							</ContextMenu.Root>
-							{#if channel.type === "voice" && channel.voiceUsers && channel.voiceUsers.length > 0}
-								<div class="space-y-1 py-1 pl-7">
-									{#each channel.voiceUsers as user (user.id)}
-										{@const isSharing = user.screen_sharing ?? false}
-										{@const isSpeaking = $speakingUsers.has(user.id) && !user.muted}
-										<div class="text-duvet-ink2 flex items-center gap-2 text-[13px]">
-											<UserAvatar
-												src={user.avatar_url}
-												name={user.username}
-												size={24}
-												class="box-border shrink-0 transition-colors duration-200 {isSpeaking
-													? 'border-duvet-alive border-2'
-													: 'border-2 border-transparent'}"
-											/>
-											<span class="flex-1 truncate {isSpeaking ? 'text-duvet-ink' : ''}">{user.username}</span>
-											<div class="flex shrink-0 items-center gap-0.5">
-												{#if user.camera}
-													<VideoIcon class="text-duvet-accent-text size-3.5" />
-												{/if}
-												{#if isSharing}
-													<MonitorUpIcon class="text-duvet-accent-text size-3.5" />
-												{/if}
-												{#if user.muted}
-													<MicrophoneSlashIcon class="text-duvet-ink2 size-3.5" />
-												{/if}
-												{#if user.deafened}
-													<HeadphonesIcon class="text-duvet-ink2 size-3.5" />
-												{/if}
-											</div>
-										</div>
-									{/each}
-								</div>
-							{/if}
-						</div>
-					{/if}
-				{/each}
-				<!-- Drop zone at the end -->
-				{#if draggedChannelId}
-					<!-- Only a target for mouse drags, which have no keyboard equivalent yet. -->
-					<!-- svelte-ignore a11y_no_static_element_interactions -->
-					<div
-						class="h-6 rounded {dropTargetIdx === sidebarItems.length ? 'bg-duvet-accent-tint' : ''}"
-						ondragover={handleDragOverEnd}
-						ondrop={(e) => handleDrop(e, sidebarItems.length)}
-					></div>
-				{/if}
 			</div>
-		</div>
-		<!-- end scrollable content area -->
-
-		{#if !embedded}
-			<UserStatusBar />
 		{/if}
+	{/each}
+	<!-- Drop zone at the end -->
+	{#if draggedChannelId}
+		<!-- Only a target for mouse drags, which have no keyboard equivalent yet. -->
+		<!-- svelte-ignore a11y_no_static_element_interactions -->
+		<div
+			class="h-6 rounded {dropTargetIdx === sidebarItems.length ? 'bg-duvet-accent-tint' : ''}"
+			ondragover={handleDragOverEnd}
+			ondrop={(e) => handleDrop(e, sidebarItems.length)}
+		></div>
 	{/if}
 </div>
 
 <ServerSettings bind:open={showServerSettings} space={space ?? null} spaceId={guild.id} />
 
-<Dialog.Root bind:open={showCreateModal}>
-	<Dialog.Portal>
-		<Dialog.Overlay class="fixed inset-0 z-50 bg-black/60" />
-		<Dialog.Content class="text-duvet-ink fixed inset-0 z-50 flex items-center justify-center p-4">
-			<div class="rounded-card border-duvet-line bg-duvet-bg shadow-duvet-float w-full max-w-sm border p-5">
-				<h2 class="text-duvet-ink mb-4 text-lg font-semibold">Create Room</h2>
+<!-- Create room: its kind, its category (a category has none) and its name. Enter in the name creates it. -->
+<Sheet
+	bind:open={showCreateModal}
+	title="Create room"
+	class="max-w-[400px]"
+	onOpenAutoFocus={(e) => {
+		e.preventDefault();
+		roomNameField?.focus();
+	}}
+>
+	<div class="flex flex-col gap-1.5">
+		<label for="channelType" class={FIELD_LABEL}>Room type</label>
+		<select id="channelType" bind:value={newChannelType} class="{SELECT} h-[38px]! w-full max-w-none!">
+			<option value={1}>Text room</option>
+			<option value={2}>Voice room</option>
+			<option value={3}>Category</option>
+		</select>
+	</div>
 
-				<div class="mb-4">
-					<label for="channelType" class="text-duvet-ink2 mb-1 block text-[13px] font-bold">Room Type</label>
-					<select
-						id="channelType"
-						bind:value={newChannelType}
-						class="bg-duvet-sunk text-duvet-ink shadow-duvet-press focus-visible:outline-duvet-accent h-10 w-full rounded-xl px-3 text-sm focus-visible:outline-2"
-					>
-						<option value={1}>Text Room</option>
-						<option value={2}>Voice Room</option>
-						<option value={3}>Category</option>
-					</select>
-				</div>
+	{#if newChannelType !== 3}
+		<div class="flex flex-col gap-1.5">
+			<label for="channelCategory" class={FIELD_LABEL}>Category</label>
+			<select id="channelCategory" bind:value={newChannelCategory} class="{SELECT} h-[38px]! w-full max-w-none!">
+				<option value={null}>None</option>
+				{#each categories as category}
+					<option value={category.id}>{category.name}</option>
+				{/each}
+			</select>
+		</div>
+	{/if}
 
-				{#if newChannelType !== 3}
-					<div class="mb-4">
-						<label for="channelCategory" class="text-duvet-ink2 mb-1 block text-[13px] font-bold">Category</label>
-						<select
-							id="channelCategory"
-							bind:value={newChannelCategory}
-							class="bg-duvet-sunk text-duvet-ink shadow-duvet-press focus-visible:outline-duvet-accent h-10 w-full rounded-xl px-3 text-sm focus-visible:outline-2"
-						>
-							<option value={null}>None</option>
-							{#each categories as category}
-								<option value={category.id}>{category.name}</option>
-							{/each}
-						</select>
-					</div>
+	<div class="flex flex-col gap-1.5">
+		<label for="channelName" class={FIELD_LABEL}>Room name</label>
+		<div class="relative">
+			<span
+				class="text-duvet-ink2 pointer-events-none absolute top-1/2 left-3 grid -translate-y-1/2"
+				aria-hidden="true"
+			>
+				{#if newChannelType === 1}
+					<HashIcon size={15} />
+				{:else}
+					<SpeakerSimpleHighIcon size={15} />
 				{/if}
+			</span>
+			<input
+				id="channelName"
+				type="text"
+				bind:this={roomNameField}
+				bind:value={newChannelName}
+				class="{fieldClass()} pl-9"
+				placeholder="new-room"
+				maxlength={64}
+				onkeydown={(e) => e.key === "Enter" && handleCreateChannel()}
+			/>
+		</div>
+	</div>
 
-				<div class="mb-5">
-					<label for="channelName" class="text-duvet-ink2 mb-1 block text-[13px] font-bold">Room Name</label>
-					<div class="relative">
-						<span class="text-duvet-ink2 absolute top-2.5 left-3">
-							{#if newChannelType === 1}
-								#
-							{:else}
-								🔊
-							{/if}
-						</span>
-						<input
-							id="channelName"
-							type="text"
-							bind:value={newChannelName}
-							class="text-duvet-ink placeholder:text-duvet-ink2 bg-duvet-sunk shadow-duvet-press focus-visible:outline-duvet-accent h-10 w-full rounded-xl pr-3 pl-8 text-sm focus-visible:outline-2"
-							placeholder="new-room"
-							maxlength={64}
-							onkeydown={(e) => e.key === "Enter" && handleCreateChannel()}
-							use:focusOnMount
-						/>
-					</div>
-				</div>
+	{#snippet foot()}
+		<span></span>
+		<Button variant="quiet" onclick={() => (showCreateModal = false)}>Cancel</Button>
+		<Button onclick={handleCreateChannel} disabled={!newChannelName.trim() || isCreating}>Create room</Button>
+	{/snippet}
+</Sheet>
 
-				<div class="flex justify-end gap-2">
-					<Dialog.Close class="text-duvet-ink hover:bg-duvet-card hover:text-duvet-ink rounded-md px-3 py-2 text-sm"
-						>Cancel</Dialog.Close
-					>
-					<button
-						class="bg-duvet-accent text-duvet-on-accent shadow-duvet-raised rounded-xl px-4 py-2 text-sm font-bold transition-colors hover:brightness-110 disabled:opacity-50"
-						onclick={handleCreateChannel}
-						disabled={!newChannelName.trim() || isCreating}
-					>
-						Create Room
-					</button>
-				</div>
-			</div>
-		</Dialog.Content>
-	</Dialog.Portal>
-</Dialog.Root>
-
-<Dialog.Root open={!!confirmDeleteChannel} onOpenChange={(v) => !v && (confirmDeleteChannel = null)}>
-	<Dialog.Portal>
-		<Dialog.Overlay class="fixed inset-0 z-50 bg-black/50" />
-		<Dialog.Content class="text-duvet-ink fixed inset-0 z-50 flex items-center justify-center p-4">
-			<div class="rounded-card border-duvet-line bg-duvet-card shadow-duvet-float w-96 border p-6">
-				<h2 class="text-duvet-ink mb-2 text-xl font-bold">Delete Room</h2>
-				<p class="text-duvet-ink2 mb-6">
-					Are you sure you want to delete
-					<span class="text-duvet-ink font-semibold">#{confirmDeleteChannel?.name}</span>? This action cannot be undone.
-				</p>
-				<div class="flex justify-end gap-3">
-					<Dialog.Close class="text-duvet-ink px-4 py-2 hover:underline">Cancel</Dialog.Close>
-					<button
-						class="text-duvet-on-accent bg-duvet-danger hover:bg-duvet-danger/85 rounded px-4 py-2 transition-colors disabled:opacity-50"
-						onclick={handleDeleteChannel}
-						disabled={isDeletingChannel}
-					>
-						Delete Room
-					</button>
-				</div>
-			</div>
-		</Dialog.Content>
-	</Dialog.Portal>
-</Dialog.Root>
+<!-- Delete room: asked first. While it's being deleted the question stays, and can't be dismissed. -->
+<Dialog
+	bind:open={
+		() => !!confirmDeleteChannel,
+		(v) => {
+			if (!v && !isDeletingChannel) confirmDeleteChannel = null;
+		}
+	}
+	title="Delete room"
+	escapeKeydownBehavior={isDeletingChannel ? "ignore" : "close"}
+>
+	Delete <span class="text-duvet-ink font-semibold">#{confirmDeleteChannel?.name}</span>? This can't be undone.
+	{#snippet actions()}
+		<Button variant="quiet" disabled={isDeletingChannel} onclick={() => (confirmDeleteChannel = null)}>Cancel</Button>
+		<Button variant="danger" disabled={isDeletingChannel} onclick={handleDeleteChannel}>Delete</Button>
+	{/snippet}
+</Dialog>
 
 <InviteModal bind:open={showInviteModal} channel={inviteModalChannel} spaceId={guild.id} />
 

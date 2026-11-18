@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { navigationRules } from "./navigation";
+import { isAppPage, isOwnPage, navigatedTo, navigationRules } from "./navigation";
 
 // Electrobun's check, as its native side has it on every platform (shouldAllowNavigationToURL over shared/glob_match.h):
 // any case, "*" matches anything, the last rule that matches decides, and a URL none matches goes through.
@@ -107,5 +107,59 @@ describe("the main window", () => {
 	test("gets them once a page has loaded, not as it's created", () => {
 		expect(main).toContain('win.webview.on("dom-ready", () => win.webview.setNavigationRules(rules));');
 		expect(main.match(/setNavigationRules\(/g)).toHaveLength(1);
+	});
+});
+
+describe("navigatedTo", () => {
+	test("is the address Electrobun's event carries", () => {
+		expect(navigatedTo({ data: { detail: "views://mainview/app.html" } })).toBe("views://mainview/app.html");
+	});
+
+	test("is null for an event that names none", () => {
+		for (const event of [undefined, null, "views://mainview/app.html", {}, { data: null }, { data: {} }]) {
+			expect(navigatedTo(event)).toBeNull();
+		}
+		expect(navigatedTo({ data: { detail: { url: "views://mainview/app.html" } } })).toBeNull();
+	});
+});
+
+describe("isAppPage", () => {
+	test("is the app's page, packaged or under the dev server, and no other", () => {
+		expect(
+			["views://mainview/app.html", "http://localhost:5173/app", "http://localhost:5173/app/"].map(isAppPage),
+		).toEqual([true, true, true]);
+		for (const url of [
+			"views://mainview/sign-in.html",
+			"views://mainview/settings.html",
+			"views://mainview/voice-controls.html",
+			"http://localhost:5173/sign-in",
+			"http://localhost:5173/apps",
+			"not a url",
+			"",
+		]) {
+			expect(isAppPage(url)).toBe(false);
+		}
+	});
+});
+
+describe("isOwnPage", () => {
+	test("is the app's views, and the dev server's pages while it serves them", () => {
+		expect(isOwnPage("views://mainview/app.html", null)).toBe(true);
+		expect(isOwnPage("views://mainview/sign-in.html", null)).toBe(true);
+		expect(isOwnPage("http://localhost:5173/sign-in", "http://localhost:5173")).toBe(true);
+		expect(isOwnPage("http://localhost:5173/sign-in", null)).toBe(false);
+	});
+
+	// A player's frame navigating is not the app's page leaving: no window closes for it.
+	test("is no frame's page, nor anything that only looks like the dev server", () => {
+		for (const url of [
+			"https://www.youtube.com/embed/abc",
+			"about:blank",
+			"http://localhost:5173.example.com/sign-in",
+			"http://localhost:51730/sign-in",
+			"not a url",
+		]) {
+			expect(isOwnPage(url, "http://localhost:5173")).toBe(false);
+		}
 	});
 });

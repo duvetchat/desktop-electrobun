@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { canManageRoleAt, Permission } from "$lib/permissions";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
 	gatewaySpaceToMembers,
@@ -124,8 +124,21 @@ describe("gatewaySpaceToMembers", () => {
 	});
 });
 
-// The members column folded is 0 px wide: it mounts no rows, avatars, banners or popovers then (#327).
-test("the members column mounts its list only while it's open", () => {
-	const column = readFileSync(join(import.meta.dir, "components/GuildMemberSidebar.svelte"), "utf8");
-	expect(column).toMatch(/\{#if !collapsed\}\s*<MemberList /);
+// Nothing is docked beside the panes (#357, DECISIONS.md): the members column is gone, component and all, with the
+// rows, avatars, banners and popovers it once mounted for a Space (#327). A Space's members, and a group's, open from
+// the faces in a pane's bar, whose button mounts the one list, in its popover, and loads the Space's first page of
+// members for its faces itself.
+test("a Space's members mount no list beside the panes", () => {
+	const source = (path: string) => readFileSync(join(import.meta.dir, path), "utf8");
+	expect(existsSync(join(import.meta.dir, "components/GuildMemberSidebar.svelte"))).toBe(false);
+	const page = source("../routes/app/+page.svelte");
+	expect(page).not.toMatch(/GuildMemberSidebar|<MemberList\b|<MembersButton\b/);
+	const button = source("components/MembersButton.svelte");
+	expect(button.match(/<MemberList /g)).toHaveLength(1);
+	expect(button).toMatch(/<Popover\.Content[^]*<MemberList [^]*<\/Popover\.Content>/);
+	expect(button).toContain("void ensureMembers(pagedSpaceId, space?.users.length ?? 0)");
+	expect(button).not.toMatch(/columnOpen|onColumn/);
+	// Both of its users: a room's pane and a chat's view.
+	expect(source("components/PaneView.svelte")).toContain("<MembersButton space={activeTabSpace}");
+	expect(source("components/ConversationView.svelte")).toMatch(/<MembersButton\b/);
 });

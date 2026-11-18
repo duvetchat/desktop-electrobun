@@ -12,7 +12,8 @@ test("a conversation's row in the DM list shows its mentions, from its news as i
 	expect(dmList).toMatch(
 		/tabNews\(\s*conversationTab\(conv, [^)]*\),\s*\$shownUnreadRooms,\s*\$shownUnreadConversations,\s*\$shownMentionCounts,?\s*\)/,
 	);
-	expect(dmList).toContain('aria-label="{news.mentions} mentions"');
+	// The count's name agrees with it: "1 mention", "3 mentions" (shell-layout.ts: mentionsLabel).
+	expect(dmList).toContain("aria-label={mentionsLabel(news.mentions)}");
 });
 
 test("a conversation in the quick switcher shows its mentions, as a room there does", () => {
@@ -42,9 +43,11 @@ describe("who's typing, outside the open chat", () => {
 		expect(source("TabBar.svelte")).toContain("{@const typing = typingSentence($typingNow[tab.channelId])}");
 	});
 
-	test("the rooms with news under a space, and the open chats in the column, show it too", () => {
+	// The redesign (#357) draws every unfolded Space as its rooms' tree (ChannelsSidebar, above) in place of the short
+	// list of rooms with news a Space that wasn't selected had: the mark shows on the room's own row there.
+	test("a Space's rooms in the sidebar, and the open chats in the column, show it too", () => {
 		const nav = source("SpaceNav.svelte");
-		expect(nav).toMatch(/\{#if typers\}\s*<TypingMark users=\{typers\} class="text-duvet-ink2" \/>/);
+		expect(nav).toMatch(/\{#if open\}\s*<ChannelsSidebar/);
 		expect(nav).toMatch(/typingSentence\(\$typingNow\[tab\.channelId\]\) \?\?\s*\(isConversationTab\(tab\)/);
 	});
 });

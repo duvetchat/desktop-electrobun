@@ -172,7 +172,5 @@ describe("the zoom slider", () => {
 // Apply and Change image let go of it.
 test("the image crop lets go of its image as it closes", () => {
 	const crop = readFileSync(join(import.meta.dir, "components/ImageCropModal.svelte"), "utf8");
-	expect(crop).toMatch(
-		/<Dialog\.Root\s+bind:open\s+onOpenChange=\{\(o\) => \{\s*if \(!o\) \{\s*file = null;\s*imgSrc = "";/,
-	);
+	expect(crop).toMatch(/<Sheet\s+bind:open\s+onOpenChange=\{\(o\) => \{\s*if \(!o\) \{\s*file = null;\s*imgSrc = "";/);
 });

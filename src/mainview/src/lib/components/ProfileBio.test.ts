@@ -38,7 +38,7 @@ describe("a bio", () => {
 			"<u>under</u>",
 			"<del>gone</del>",
 			'<code class="msg-inline-code">code</code>',
-			'<span class="msg-spoiler">secret</span>',
+			'<span class="msg-spoiler" tabindex="0">secret</span>',
 			'<ul class="msg-ul"><li>one</li><li>two</li></ul>',
 			'<blockquote class="msg-blockquote">quote</blockquote>',
 		])

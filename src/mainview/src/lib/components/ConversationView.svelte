@@ -28,7 +28,6 @@
 	import { onMount, tick, untrack, type Snippet } from "svelte";
 	import { get } from "svelte/store";
 	import { showChat } from "$lib/on-screen";
-	import { DropdownMenu } from "bits-ui";
 	import {
 		conversations,
 		currentUser,
@@ -98,19 +97,24 @@
 		takeList,
 		withPresent,
 	} from "$lib/jumps";
-	import { Ellipsis, LogOut, MessageSquare, Pencil, Phone, UserPlus, Users } from "@lucide/svelte";
+	import { Ellipsis, LogOut, MessageSquare, Pencil, Phone, UserPlus } from "@lucide/svelte";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
 	import Chat from "$lib/components/Chat.svelte";
 	import MessageSearch from "$lib/components/MessageSearch.svelte";
 	import PinnedMessages from "$lib/components/PinnedMessages.svelte";
-	import GuildMemberSidebar from "$lib/components/GuildMemberSidebar.svelte";
+	import MembersButton from "$lib/components/MembersButton.svelte";
 	import VoiceChannelView from "$lib/components/VoiceChannelView.svelte";
 	import type { MemberOnSidebar } from "$lib/types";
 	import { getAvatarURL } from "$lib/common/common";
 	import { activityLine, shownActivities } from "$lib/activity";
 	import ChatIntro from "$lib/components/ChatIntro.svelte";
+	import { buttonClass, pillClass } from "$lib/components/ui/recipes";
+	import Menu from "$lib/components/ui/Menu.svelte";
+	import MenuItem from "$lib/components/ui/MenuItem.svelte";
+	import Sheet from "$lib/components/ui/Sheet.svelte";
+	import { ERROR_NOTE } from "$lib/overlay-forms";
 	import StatusDot from "$lib/components/StatusDot.svelte";
-	import SpaceIcon from "$lib/components/SpaceIcon.svelte";
+	import SpaceIcon from "$lib/components/ui/SpaceIcon.svelte";
 
 	let {
 		conversation,
@@ -136,7 +140,6 @@
 	let isAtBottom = $state(false);
 	let convUnreadAfter = $state<string | null>(null);
 	const ackedConvMsgId = new Map<string, string>();
-	let showMemberList = $state(true);
 	let showAddMemberModal = $state(false);
 	let addMemberLoading = $state(false);
 	let addMemberError = $state("");
@@ -304,7 +307,7 @@
 	function conversationTitle(): string {
 		if (conversation.type === 2) return conversation.name ?? "Group";
 		const other = conversation.members.find((m) => m.user_id !== me?.id);
-		return other?.user?.alias ?? other?.user?.username ?? "DM";
+		return other?.user?.alias ?? other?.user?.username ?? "Direct message";
 	}
 
 	// What comes after an await is read with the conversation's ID taken before it: once the view is gone (another tab
@@ -937,7 +940,7 @@
 			{#if other}
 				<UserAvatar src={getAvatarURL(other.user_id, other.user?.avatar)} name={conversationTitle()} size={64} />
 			{:else}
-				<div class="flex -space-x-3">
+				<div class="flex justify-center -space-x-3">
 					{#each convMembers.filter((m) => m.id !== me?.id).slice(0, 4) as member (member.id)}
 						<UserAvatar
 							src={member.avatar_url}
@@ -950,7 +953,7 @@
 			{/if}
 		{/snippet}
 		{#if other}
-			<p class="flex flex-wrap items-center gap-x-3 gap-y-1">
+			<p class="flex flex-wrap items-center justify-center gap-x-3 gap-y-1">
 				{#if other.user?.username}<span>@{other.user.username}</span>{/if}
 				{#if status}
 					<span class="flex items-center gap-1.5">
@@ -959,7 +962,7 @@
 						{status === "online"
 							? "Online"
 							: status === "dnd"
-								? "Do Not Disturb"
+								? "Do not disturb"
 								: status === "idle"
 									? "Away"
 									: "Offline"}
@@ -970,47 +973,31 @@
 					<span>{line.kind === "listening" ? "Listening to" : "Playing"} {line.text}</span>
 				{/if}
 			</p>
-			<p class="mt-1">This is the start of your conversation with {conversationTitle()}.</p>
+			<p>This is the start of your conversation with {conversationTitle()}.</p>
 		{:else}
 			<p>
 				{new Intl.ListFormat("en", { type: "conjunction" }).format(
 					convMembers.filter((m) => m.id !== me?.id).map((m) => m.username),
 				)}
 			</p>
-			<p class="mt-1">This is the start of the group.</p>
+			<p>This is the start of the group.</p>
 		{/if}
-		<div class="mt-3 flex flex-wrap items-center gap-2">
+		<div class="mt-2 flex flex-wrap items-center justify-center gap-2">
 			{#each shared as space (space.id)}
-				<span
-					class="bg-duvet-card text-duvet-ink shadow-duvet-raised flex h-7 items-center gap-1.5 rounded-full pr-2.5 pl-1 text-xs font-semibold"
-				>
-					<SpaceIcon
-						src={space.icon ? getAvatarURL(space.id, space.icon) : null}
-						name={space.name}
-						size={20}
-						class="rounded-md"
-					/>
+				<span class="{pillClass()} pl-1">
+					<SpaceIcon src={space.icon ? getAvatarURL(space.id, space.icon) : null} name={space.name} size={20} />
 					{space.name}
 				</span>
 			{/each}
 			{#if conversation.type === 2 && isOwner}
-				<button
-					type="button"
-					class="bg-duvet-card text-duvet-ink2 shadow-duvet-raised hover:text-duvet-ink flex h-8 items-center gap-1.5 rounded-xl px-3 text-[13px] font-bold transition-colors motion-reduce:transition-none"
-					onclick={openAddMemberModal}
-				>
+				<button type="button" class={buttonClass("secondary")} onclick={openAddMemberModal}>
 					<UserPlus class="size-4" />
 					Add people
 				</button>
 			{/if}
 			<!-- A call going on has Join in its banner -->
 			{#if !hasOngoingCall}
-				<button
-					type="button"
-					class="bg-duvet-accent text-duvet-on-accent shadow-duvet-raised flex h-8 items-center gap-1.5 rounded-xl px-3 text-[13px] font-bold transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40 motion-reduce:transition-none"
-					onclick={startCall}
-					disabled={!!$activeCall || joinWaits}
-				>
+				<button type="button" class={buttonClass("primary")} onclick={startCall} disabled={!!$activeCall || joinWaits}>
 					<Phone class="size-4" />
 					Call
 				</button>
@@ -1023,8 +1010,6 @@
 {#snippet actions()}
 	{@const buttonClass =
 		"text-duvet-ink2 hover:bg-duvet-card hover:text-duvet-ink focus-visible:outline-duvet-accent flex items-center gap-1 rounded-lg p-1.5 text-xs font-semibold transition-colors focus-visible:outline-2 disabled:cursor-not-allowed disabled:opacity-40 motion-reduce:transition-none"}
-	{@const groupMenuItem =
-		"rounded-row flex w-full cursor-pointer items-center gap-2.5 px-2.5 py-2 text-left text-sm font-medium transition-colors data-highlighted:bg-duvet-bg/60 motion-reduce:transition-none"}
 	<button
 		type="button"
 		class={buttonClass}
@@ -1036,59 +1021,45 @@
 		<Phone class="size-4" />
 	</button>
 	{#if conversation.type === 2 && isOwner}
-		<button type="button" class={buttonClass} onclick={openAddMemberModal} title="Add member">
+		<button type="button" class={buttonClass} onclick={openAddMemberModal} title="Add people" aria-label="Add people">
 			<UserPlus class="size-4" />
 			Add
 		</button>
 	{/if}
-	<!-- A group says how many it has here, where its members open. -->
-	<button
-		type="button"
-		class="{buttonClass} {showMemberList ? 'bg-duvet-card text-duvet-ink' : ''}"
-		onclick={() => {
-			showMemberList = !showMemberList;
-		}}
-		title="Members"
-		aria-label={conversation.type === 2 ? `Members, ${conversation.members.length}` : "Members"}
-		aria-pressed={showMemberList}
-	>
-		<Users class="size-4" />
-		{#if conversation.type === 2}
-			<span class="tabular-nums">{conversation.members.length}</span>
-		{/if}
-	</button>
+	<!-- The chat's members open from their faces, in a popover, as a room's do: nothing is docked beside the chat, and
+	     nothing floats over it until asked (#357). -->
+	<MembersButton
+		members={convMembers}
+		channelId={conversation.id}
+		onRemoveMember={conversation.type === 2 && isOwner ? handleRemoveMember : undefined}
+	/>
 	{#key conversation.id}
 		<PinnedMessages channelId={conversation.id} conversation members={convMembers} toDirectMessage={toMessage} />
 		<MessageSearch conversationId={conversation.id} members={convMembers} toDirectMessage={toMessage} />
 	{/key}
 	{#if actionsOnGroup.leave}
-		<DropdownMenu.Root>
-			<DropdownMenu.Trigger class={buttonClass} title="Group options" aria-label="Group options">
-				<Ellipsis class="size-4" />
-			</DropdownMenu.Trigger>
-			<DropdownMenu.Portal>
-				<DropdownMenu.Content
-					class="rounded-card border-duvet-line bg-duvet-card text-duvet-ink shadow-duvet-float focus-override z-200 min-w-44 border p-1.5 outline-none"
-					sideOffset={4}
-					align="end"
+		<!-- The group's own menu. The pane has a More of its own beside it, so this one says whose it is. -->
+		<Menu align="end" label="More for this group">
+			{#snippet trigger(props)}
+				<button
+					{...props}
+					type="button"
+					class={buttonClass}
+					title="More for this group"
+					aria-label="More for this group"
 				>
-					{#if actionsOnGroup.rename}
-						<DropdownMenu.Item class={groupMenuItem} onSelect={renameGroup}>
-							<Pencil class="text-duvet-ink2 size-4" />
-							Rename group
-						</DropdownMenu.Item>
-					{/if}
-					<DropdownMenu.Item class="{groupMenuItem} text-duvet-danger" onSelect={leaveGroup}>
-						<LogOut class="size-4" />
-						Leave group
-					</DropdownMenu.Item>
-				</DropdownMenu.Content>
-			</DropdownMenu.Portal>
-		</DropdownMenu.Root>
+					<Ellipsis class="size-4" />
+				</button>
+			{/snippet}
+			{#if actionsOnGroup.rename}
+				<MenuItem icon={Pencil} onSelect={renameGroup}>Rename group</MenuItem>
+			{/if}
+			<MenuItem icon={LogOut} danger onSelect={leaveGroup}>Leave group</MenuItem>
+		</Menu>
 	{/if}
 {/snippet}
 
-<div class="from-duvet-card to-duvet-bg relative flex flex-1 flex-col overflow-hidden bg-linear-to-b">
+<div class="bg-duvet-bg relative flex flex-1 flex-col overflow-hidden">
 	{#if !onBarActions}
 		<div class="border-duvet-line flex h-12 shrink-0 items-center gap-2 border-b px-3 font-semibold">
 			<MessageSquare class="text-duvet-ink2 size-4" />
@@ -1108,13 +1079,13 @@
 				{/each}
 			</span>
 			{#if inCallNow.length > 4}
-				<span class="text-duvet-alive text-xs">+{inCallNow.length - 4}</span>
+				<span class="text-duvet-alive-text text-xs">+{inCallNow.length - 4}</span>
 			{/if}
 		{/if}
 	{/snippet}
 	{#if canJoinCall && joinWaits}
 		<div
-			class="border-duvet-alive/50 bg-duvet-alive/10 text-duvet-alive flex shrink-0 items-center justify-center gap-2 border-b px-4 py-2 text-sm"
+			class="bg-duvet-sunk text-duvet-alive-text mx-(--duvet-pad-x) mt-2 flex h-9 shrink-0 items-center justify-center gap-2 rounded-xl px-4 text-[13px]"
 		>
 			<Phone class="size-4" />
 			<span class="font-medium">Calling from another device</span>
@@ -1122,7 +1093,7 @@
 		</div>
 	{:else if canJoinCall}
 		<button
-			class="border-duvet-alive/50 bg-duvet-alive/10 text-duvet-alive hover:bg-duvet-alive/10 flex shrink-0 items-center justify-center gap-2 border-b px-4 py-2 text-sm transition-colors"
+			class="bg-duvet-sunk text-duvet-alive-text hover:bg-duvet-hover mx-(--duvet-pad-x) mt-2 flex h-9 shrink-0 items-center justify-center gap-2 rounded-xl px-4 text-[13px] transition-colors motion-reduce:transition-none"
 			onclick={joinCall}
 		>
 			<Phone class="size-4" />
@@ -1179,68 +1150,38 @@
 			}}
 			{paneFocused}
 		/>
-
-		<!-- Member list sidebar -->
-		{#if showMemberList}
-			<GuildMemberSidebar
-				overrideMembers={convMembers}
-				channelId={conversation.id}
-				onRemoveMember={conversation.type === 2 && isOwner ? handleRemoveMember : undefined}
-			/>
-		{/if}
 	</div>
 </div>
 
-{#if showAddMemberModal}
-	<div
-		class="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
-		role="button"
-		tabindex="-1"
-		onclick={() => {
-			showAddMemberModal = false;
-		}}
-		onkeydown={() => {}}
-	>
-		<!-- svelte-ignore a11y_interactive_supports_focus -->
-		<div
-			class="border-duvet-line bg-duvet-bg flex w-80 flex-col gap-3 rounded-lg border p-6"
-			role="dialog"
-			onclick={(e) => e.stopPropagation()}
-			onkeydown={() => {}}
-		>
-			<h3 class="text-duvet-ink text-sm font-semibold">Add member</h3>
-			{#if eligibleFriends.length === 0}
-				<p class="text-duvet-ink2 py-4 text-center text-xs">No friends available to add</p>
-			{:else}
-				<div class="flex max-h-48 flex-col gap-0.5 overflow-y-auto">
-					{#each eligibleFriends as friend (friend.id)}
-						{@const uid = getFriendOtherId(friend)}
-						{@const other = friendUser(friend, $currentUser?.id)}
-						<button
-							class="hover:bg-duvet-card flex items-center gap-2 rounded px-3 py-2 text-left disabled:opacity-50"
-							onclick={() => handleAddMember(uid)}
-							disabled={addMemberLoading}
-						>
-							<UserAvatar src={getAvatarURL(other.id, other.avatar)} name={other.alias ?? other.username} size={32} />
-							<div class="flex min-w-0 flex-col">
-								<span class="text-duvet-ink text-sm">{other.alias ?? other.username}</span>
-								<span class="text-duvet-ink2 text-xs">@{other.username}</span>
-							</div>
-						</button>
-					{/each}
-				</div>
-			{/if}
-			{#if addMemberError}
-				<p class="bg-duvet-danger/10 text-duvet-danger rounded px-3 py-2 text-xs">{addMemberError}</p>
-			{/if}
-			<button
-				class="text-duvet-ink2 hover:text-duvet-ink self-end text-xs"
-				onclick={() => {
-					showAddMemberModal = false;
-				}}
-			>
-				Cancel
-			</button>
+<!-- Add people to the group: the friends who aren't in it yet, each a button that adds them. -->
+<Sheet bind:open={showAddMemberModal} title="Add people" class="max-w-[400px]">
+	{#if eligibleFriends.length === 0}
+		<p class="text-duvet-ink2 py-4 text-center text-[13px]">No friends left to add</p>
+	{:else}
+		<div class="-mx-1 flex max-h-64 flex-col gap-0.5 overflow-y-auto px-1 py-1">
+			{#each eligibleFriends as friend (friend.id)}
+				{@const uid = getFriendOtherId(friend)}
+				{@const other = friendUser(friend, $currentUser?.id)}
+				<button
+					type="button"
+					class="hover:bg-duvet-hover focus-visible:outline-duvet-accent flex items-center gap-2.5 rounded-[11px] px-2.5 py-2 text-left transition-colors focus-visible:outline-2 disabled:opacity-45 motion-reduce:transition-none"
+					onclick={() => handleAddMember(uid)}
+					disabled={addMemberLoading}
+				>
+					<UserAvatar src={getAvatarURL(other.id, other.avatar)} name={other.alias ?? other.username} size={32} />
+					<span class="flex min-w-0 flex-col">
+						<span class="text-duvet-ink truncate text-[13.5px] font-medium">{other.alias ?? other.username}</span>
+						<span class="text-duvet-ink2 truncate text-xs">@{other.username}</span>
+					</span>
+				</button>
+			{/each}
 		</div>
-	</div>
-{/if}
+	{/if}
+	{#if addMemberError}
+		<p class={ERROR_NOTE} role="alert">{addMemberError}</p>
+	{/if}
+	{#snippet foot()}
+		<span></span>
+		<button type="button" class={buttonClass("quiet")} onclick={() => (showAddMemberModal = false)}>Cancel</button>
+	{/snippet}
+</Sheet>

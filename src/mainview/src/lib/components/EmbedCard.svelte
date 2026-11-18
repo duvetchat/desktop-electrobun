@@ -4,6 +4,7 @@
 	import { EmbedType, type Embed, type EmbedMedia } from "$lib/types";
 	import { getHostURL } from "$lib/common/common";
 	import { renderMarkdown } from "$lib/markdown";
+	import { messageTextClass } from "$lib/message-styles";
 	import { roomNames } from "$lib/stores.svelte";
 	import { formatShortDateTime } from "$lib/utils/time";
 	import { webEmbed } from "$lib/urls";
@@ -41,17 +42,19 @@
 		return "#" + (n >>> 0).toString(16).padStart(6, "0");
 	}
 
+	// The embed's colour, as the bar down the card's left edge: one colour, or a gradient of two or three. None for an
+	// embed without a colour.
 	function embedBorderStyle(cardEmbed: Embed): string {
 		const c = cardEmbed.color;
-		if (!c || c.color_from == null) return "border-color: color-mix(in oklab, var(--duvet-ink) 20%, transparent)";
+		if (!c || c.color_from == null) return "";
 		const from = intToHex(c.color_from);
-		if (c.color_to == null) return `border-color: ${from}`;
+		if (c.color_to == null) return `background: ${from}`;
 		const to = intToHex(c.color_to);
 		if (c.color_via != null) {
 			const via = intToHex(c.color_via);
-			return `border-image: linear-gradient(180deg, ${from}, ${via}, ${to}) 1`;
+			return `background: linear-gradient(180deg, ${from}, ${via}, ${to})`;
 		}
-		return `border-image: linear-gradient(180deg, ${from}, ${to}) 1`;
+		return `background: linear-gradient(180deg, ${from}, ${to})`;
 	}
 
 	function isTikTokEmbed(cardEmbed: Embed): boolean {
@@ -83,11 +86,11 @@
 		<MessageComponents components={card.components} onPreview={(src) => onImageClick?.(src)} {compact} />
 	</div>
 {:else if card.type === EmbedType.Sticker && card.image}
-	<button type="button" class="mt-1 block cursor-zoom-in" onclick={() => onImageClick?.(card.image!.url)}>
+	<button type="button" class="block cursor-zoom-in" onclick={() => onImageClick?.(card.image!.url)}>
 		<img
 			src={card.image.url}
 			alt={card.title ?? "Sticker"}
-			class="h-40 w-40 object-contain"
+			class="size-[136px] object-contain"
 			loading="lazy"
 			title={card.title ?? ""}
 		/>
@@ -102,25 +105,26 @@
 			muted={card.type === EmbedType.Gifv}
 			playsinline
 			controls
-			class="mt-1 self-start rounded {mediaFit}"
+			class="shadow-duvet-raised self-start rounded-2xl {mediaFit}"
 		></video>
 	{:else if card.image}
 		<button
 			type="button"
-			class="mt-1 block cursor-zoom-in self-start rounded {mediaWidth}"
+			class="shadow-duvet-raised block cursor-zoom-in self-start overflow-hidden rounded-2xl {mediaWidth}"
+			aria-label="Open image"
 			onclick={() => onImageClick?.(card.image!.url)}
 		>
-			<img src={card.image.url} alt="" class="rounded {mediaFit}" loading="lazy" />
+			<img src={card.image.url} alt="" class={mediaFit} loading="lazy" />
 		</button>
 	{/if}
 {:else if isTikTokEmbed(card)}
 	<div
-		class="bg-duvet-card/60 mt-1 flex w-[320px] flex-col overflow-hidden rounded-md border-l-4"
-		style="border-color: #fe2c55;"
+		class="bg-duvet-card shadow-duvet-raised relative flex w-[320px] max-w-full flex-col overflow-hidden rounded-2xl"
 	>
-		<div class="px-3 py-2.5 select-text">
+		<span class="absolute inset-y-0 left-0 z-1 w-[3px] bg-[#fe2c55]" aria-hidden="true"></span>
+		<div class="flex flex-col gap-1 px-3.5 pt-3 pb-2.5 select-text">
 			{#if card.provider}
-				<span class="text-xxs text-duvet-ink2 font-semibold">{card.provider}</span>
+				<span class="text-duvet-ink2 text-[11.5px] font-medium">{card.provider}</span>
 			{/if}
 			{#if card.title}
 				{#if card.url}
@@ -128,10 +132,11 @@
 						href={card.url}
 						target="_blank"
 						rel="noopener noreferrer"
-						class="text-duvet-ink line-clamp-2 text-sm font-semibold hover:underline">{card.title}</a
+						class="text-duvet-ink line-clamp-2 text-[14.5px] leading-[1.3] font-semibold no-underline hover:underline"
+						>{card.title}</a
 					>
 				{:else}
-					<span class="text-duvet-ink line-clamp-2 text-sm font-semibold">{card.title}</span>
+					<span class="text-duvet-ink line-clamp-2 text-[14.5px] leading-[1.3] font-semibold">{card.title}</span>
 				{/if}
 			{/if}
 		</div>
@@ -147,12 +152,17 @@
 		{/if}
 	</div>
 {:else if card.title || card.description || card.video || card.image}
+	{@const bar = embedBorderStyle(card)}
 	<div
-		class="bg-duvet-card/60 mt-1 flex max-w-sm flex-col overflow-hidden rounded-md border-l-4"
-		style={embedBorderStyle(card)}
+		class="bg-duvet-card shadow-duvet-raised relative flex max-w-full flex-col overflow-hidden rounded-2xl {compact
+			? 'w-80'
+			: 'w-[380px]'}"
 	>
+		{#if bar}
+			<span class="absolute inset-y-0 left-0 z-1 w-[3px]" style={bar} aria-hidden="true"></span>
+		{/if}
 		{#if card.author || card.title || card.description || card.fields?.length || footerText || card.thumbnail}
-			<div class="flex gap-3 px-3 py-2.5">
+			<div class="flex gap-3 px-3.5 pt-3 pb-3">
 				<div class="flex min-w-0 flex-1 flex-col gap-1 select-text">
 					{#if card.author}
 						<div class="flex items-center gap-1.5">
@@ -164,10 +174,11 @@
 									href={card.author.url}
 									target="_blank"
 									rel="noopener noreferrer"
-									class="text-duvet-ink2 truncate text-xs hover:underline">{card.author.name}</a
+									class="text-duvet-ink2 truncate text-[11.5px] font-medium no-underline hover:underline"
+									>{card.author.name}</a
 								>
 							{:else}
-								<span class="text-duvet-ink2 truncate text-xs">{card.author.name}</span>
+								<span class="text-duvet-ink2 truncate text-[11.5px] font-medium">{card.author.name}</span>
 							{/if}
 						</div>
 					{/if}
@@ -178,15 +189,18 @@
 								href={card.url}
 								target="_blank"
 								rel="noopener noreferrer"
-								class="text-duvet-ink line-clamp-2 text-sm font-semibold hover:underline">{card.title}</a
+								class="text-duvet-ink line-clamp-2 text-[14.5px] leading-[1.3] font-semibold no-underline hover:underline"
+								>{card.title}</a
 							>
 						{:else}
-							<span class="text-duvet-ink line-clamp-2 text-sm font-semibold">{card.title}</span>
+							<span class="text-duvet-ink line-clamp-2 text-[14.5px] leading-[1.3] font-semibold">{card.title}</span>
 						{/if}
 					{/if}
 
 					{#if card.description}
-						<p class="text-duvet-ink2 line-clamp-3 text-xs wrap-break-word">
+						<p
+							class="font-content text-duvet-ink2 line-clamp-3 text-[13px] leading-[1.45] wrap-break-word {messageTextClass()}"
+						>
 							{@html renderMarkdown(card.description, false, undefined, undefined, $roomNames)}
 						</p>
 					{/if}
@@ -195,8 +209,10 @@
 						<div class="mt-0.5 flex flex-wrap gap-x-4 gap-y-1">
 							{#each card.fields as field}
 								<div class="flex min-w-0 flex-col {field.inline ? '' : 'w-full'}">
-									<span class="text-duvet-ink2 text-xs font-bold">{field.name}</span>
-									<span class="text-duvet-ink text-xs"
+									<span class="text-duvet-ink2 text-[10.5px] font-semibold tracking-[0.05em] uppercase"
+										>{field.name}</span
+									>
+									<span class="font-content text-duvet-ink text-[13px] {messageTextClass()}"
 										>{@html renderMarkdown(field.value, false, undefined, undefined, $roomNames)}</span
 									>
 								</div>
@@ -205,7 +221,7 @@
 					{/if}
 
 					{#if footerText}
-						<span class="text-xxs text-duvet-ink2 mt-0.5">{footerText}</span>
+						<span class="text-duvet-ink2 mt-0.5 text-[11px]">{footerText}</span>
 					{/if}
 				</div>
 
@@ -213,7 +229,7 @@
 					<img
 						src={card.thumbnail.url}
 						alt=""
-						class="h-16 w-16 shrink-0 self-start rounded object-cover"
+						class="size-16 shrink-0 self-start rounded-xl object-cover"
 						loading="lazy"
 					/>
 				{/if}
@@ -242,7 +258,12 @@
 				/>
 			{/if}
 		{:else if card.image}
-			<button type="button" class="block w-full cursor-zoom-in" onclick={() => onImageClick?.(card.image!.url)}>
+			<button
+				type="button"
+				class="block w-full cursor-zoom-in"
+				aria-label="Open image"
+				onclick={() => onImageClick?.(card.image!.url)}
+			>
 				<img src={card.image.url} alt="" class="max-h-64 w-full max-w-full object-cover" loading="lazy" />
 			</button>
 		{/if}

@@ -138,3 +138,12 @@ describe("webhookRooms", () => {
 		expect(ids(webhookRooms(space(rooms)))).toEqual(["a", "b", "c"]);
 	});
 });
+
+test("a section named across the windows is one of the Space's, or none", async () => {
+	const { spaceSection } = await import("$lib/space-settings");
+	expect(spaceSection("roles")).toBe("roles");
+	expect(spaceSection("attachments")).toBe("attachments");
+	expect(spaceSection("rooms")).toBeUndefined();
+	expect(spaceSection(null)).toBeUndefined();
+	expect(spaceSection(3)).toBeUndefined();
+});

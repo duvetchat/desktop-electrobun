@@ -91,7 +91,7 @@ describe("a link's URL is kept as written", () => {
 		);
 		expect(renderMarkdown("**[x](https://a.example/a*b)** ||[y](https://a.example/||)||")).toBe(
 			'<strong><a href="https://a.example/a*b" target="_blank" rel="noopener noreferrer" class="msg-link">x</a></strong> ' +
-				'<span class="msg-spoiler"><a href="https://a.example/||" target="_blank" rel="noopener noreferrer" class="msg-link">y</a></span>',
+				'<span class="msg-spoiler" tabindex="0"><a href="https://a.example/||" target="_blank" rel="noopener noreferrer" class="msg-link">y</a></span>',
 		);
 	});
 
@@ -273,6 +273,24 @@ describe("user mentions", () => {
 		expect(renderMarkdown("<@abc>")).toBe(`<span class="msg-mention">@abc</span>`);
 		const short = `<@${ANA.slice(0, -1)}>`;
 		expect(renderMarkdown(short, false, { [ANA.slice(0, -1)]: "Ana" })).toBe(`<span class="msg-mention">@Ana</span>`);
+	});
+
+	// In a Space a mention takes its member's role colour, as their name has above their messages (#357).
+	test("a known member's mention takes their name's style, and nobody else's does", () => {
+		const styles = { [ANA]: "color: #e5484d" };
+		expect(renderMarkdown(`<@${ANA}>`, false, { [ANA]: "Ana" }, undefined, undefined, undefined, styles)).toBe(
+			`<span class="msg-mention" data-user-id="${ANA}" style="color: #e5484d">@Ana</span>`,
+		);
+		// Someone the map doesn't know has no profile and no colour, whatever the styles hold.
+		expect(renderMarkdown(`<@${ANA}>`, false, {}, undefined, undefined, undefined, styles)).toBe(
+			`<span class="msg-mention">@${ANA.slice(0, 8)}</span>`,
+		);
+		// A style is written as text, never as markup.
+		const html = renderMarkdown(`<@${ANA}>`, false, { [ANA]: "Ana" }, undefined, undefined, undefined, {
+			[ANA]: 'color: red" onclick="x',
+		});
+		expect(html).not.toContain('" onclick="');
+		expect(html).toContain("&quot;");
 	});
 
 	test("in code, it stays as written", () => {
@@ -601,8 +619,10 @@ describe("a bare link", () => {
 			expect(drawn("*see https://a.example/x*, _see https://a.example/x_")).toBe(
 				`<em>see ${x}</em>, <em>see ${x}</em>`,
 			);
-			expect(drawn("||https://a.example/x||")).toBe(`<span class="msg-spoiler">${x}</span>`);
-			expect(drawn("||see https://a.example/x|| now")).toBe(`<span class="msg-spoiler">see ${x}</span> now`);
+			expect(drawn("||https://a.example/x||")).toBe(`<span class="msg-spoiler" tabindex="0">${x}</span>`);
+			expect(drawn("||see https://a.example/x|| now")).toBe(
+				`<span class="msg-spoiler" tabindex="0">see ${x}</span> now`,
+			);
 			expect(drawn("~~old: https://a.example/x and https://a.example/y~~")).toBe(
 				`<del>old: ${x} and ${LINK("https://a.example/y")}</del>`,
 			);
@@ -922,7 +942,8 @@ describe("the HTML it makes", () => {
 		a: new Set(["href", "target", "rel", "class"]),
 		// No handler: a custom emoji's image that fails is tried again by the document (lib/emoji-retry.ts).
 		img: new Set(["class", "src", "alt", "title", "draggable", "loading"]),
-		span: new Set(["class", "title", "style", "data-room-id", "data-user-id"]),
+		// tabindex: a spoiler's, which the keyboard reveals by the focus (only ever "0", checked below).
+		span: new Set(["class", "title", "style", "data-room-id", "data-user-id", "tabindex"]),
 		// A code block's copy button, and one of Duvet's own links: a message's chip, an invite's button.
 		button: new Set([
 			"class",
@@ -980,6 +1001,7 @@ describe("the HTML it makes", () => {
 			if (name === "data-user-id" && !isUuid(value)) return `data-user-id ${value}`;
 			if (/^data-(space|room|message|conversation|bot)$/.test(name) && !isUuid(value)) return `${name} ${value}`;
 			if (name === "type" && value !== "button") return `type ${value}`;
+			if (name === "tabindex" && value !== "0") return `tabindex ${value}`;
 			if (name === "target" && value !== "_blank") return `target ${value}`;
 			if (name === "rel" && value !== "noopener noreferrer") return `rel ${value}`;
 		}

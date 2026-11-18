@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
-import api from "$lib/api/api";
-import { logout } from "$lib/api/auth";
+import api, { FetchError } from "$lib/api/api";
+import { logIn, logout, resetPassword, signIn, verifyEmail } from "$lib/api/auth";
 
 // Where the page goes: there's no window outside a browser.
 const location = { href: "views://mainview/app.html" };
@@ -17,6 +17,51 @@ beforeEach(() => {
 afterEach(() => {
 	posted.mockRestore();
 	Reflect.deleteProperty(globalThis, "window");
+});
+
+// What the sign-in pages show is these errors' messages, as they come.
+describe("a refusal", () => {
+	const refused = (error: string, status = 400) =>
+		new FetchError(
+			`Request failed with status ${status}`,
+			{},
+			{ data: { error }, status, statusText: "", headers: new Headers() },
+		);
+	const message = (call: Promise<unknown>) =>
+		call.then(
+			() => "no error",
+			(err: unknown) => (err instanceof Error ? err.message : String(err)),
+		);
+
+	test("says the API's reason in the app's words, never its validator's", async () => {
+		posted.mockRejectedValue(
+			refused(
+				"Key: 'AuthLogInPayload.Email' Error:Field validation for 'Email' failed on the 'required' tag\n" +
+					"Key: 'AuthLogInPayload.Password' Error:Field validation for 'Password' failed on the 'required' tag",
+			),
+		);
+		expect(await message(logIn({ email: "", password: "" }))).toBe("Enter your email and password");
+		posted.mockRejectedValue(refused("invalid email or password", 401));
+		expect(await message(logIn({ email: "a@b.c", password: "wrong" }))).toBe("Wrong email or password");
+		posted.mockRejectedValue(refused("that username is taken", 409));
+		expect(await message(signIn({ username: "u", alias: null, password: "p", email: "e@x.test" }))).toBe(
+			"That username is taken",
+		);
+		posted.mockRejectedValue(refused("invalid or expired token"));
+		expect(await message(verifyEmail("t"))).toBe("This link is invalid or has expired");
+		expect(await message(resetPassword("t", "12345678"))).toBe("This link is invalid or has expired");
+	});
+
+	test("says what the page was doing when the API gave no reason", async () => {
+		posted.mockRejectedValue(new Error("Failed to fetch"));
+		expect(await message(logIn({ email: "a@b.c", password: "p" }))).toBe("Couldn't sign you in. Try again.");
+		expect(await message(verifyEmail("t"))).toBe("Verification failed");
+		expect(await message(signIn({ username: "u", alias: null, password: "p", email: "e@x.test" }))).toBe(
+			"Couldn't create your account: Failed to fetch",
+		);
+		posted.mockRejectedValue(refused("internal server error", 500));
+		expect(await message(logIn({ email: "a@b.c", password: "p" }))).toBe("Couldn't sign you in. Try again.");
+	});
 });
 
 describe("logout", () => {

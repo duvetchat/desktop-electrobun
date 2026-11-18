@@ -1,5 +1,8 @@
 import { activityThumbnail, base64Bytes } from "$lib/activity-thumbnail";
+import { secondWindowOfPath } from "$lib/app-windows";
 import type { MessageLink } from "$lib/urls";
+import type { OpenAppWindow } from "$lib/settings-windows";
+import type { WindowAnswer, WindowCommand, WindowStateMessage } from "$lib/window-link";
 
 /** A message's notification on Windows, as the Bun process shows it (src/bun/index.ts): who, what and where, the
  * author's photo by URL, the message a click opens, and whether it's silent, as Duvet plays its own sound. */
@@ -38,6 +41,9 @@ export type AppRPCSchema = {
 			takeClickedMessage: { params: void; response: MessageLink | null };
 			// Whether Windows' move loop drags the window (src/bun/window-snap.ts): then the title bar reports its presses.
 			nativeWindowDrag: { params: void; response: boolean };
+			// From a window that isn't the main one: a command for the main window's page, which Bun forwards to it
+			// (webview.requests.windowCommand) and whose answer it hands back (lib/window-link.ts, src/bun/window-relay.ts).
+			windowCommand: { params: WindowCommand; response: WindowAnswer };
 		};
 		messages: {
 			closeWindow: void;
@@ -49,17 +55,26 @@ export type AppRPCSchema = {
 			setSpotifyActivity: { enabled: boolean };
 			// The page's steps of the app's start, each when it happened (Date.now()), for startup.log (#280, #288).
 			startupTimings: { marks: Record<string, number> };
+			// From the main window: a state its other windows mirror, which Bun sends on to each of them.
+			windowState: WindowStateMessage;
+			// From the main window: open Settings, or a Space's settings, in a window of its own, or bring the open one
+			// forward (src/bun/settings-windows.ts, #357).
+			openAppWindow: OpenAppWindow;
 		};
 	};
 	webview: {
 		requests: {
 			// An IPC app's activity image, which the Bun process fetched (in base64), made a small inline image.
 			activityImage: { params: { bytes: string }; response: string | null };
+			// To the main window: a command another window sent, to answer.
+			windowCommand: { params: WindowCommand; response: WindowAnswer };
 		};
 		messages: {
 			activityUpdate: ActivityPayload[] | null;
 			// A toast was clicked: its message is Bun's to take (takeClickedMessage).
 			messageClicked: void;
+			// To a window that isn't the main one: a state of the main window's, to mirror.
+			windowState: WindowStateMessage;
 		};
 	};
 };
@@ -73,15 +88,22 @@ export type AppRPCClient = {
 		openExternal: (params: { url: string }) => void;
 		setSpotifyActivity: (params: { enabled: boolean }) => void;
 		startupTimings: (params: { marks: Record<string, number> }) => void;
+		windowState: (message: WindowStateMessage) => void;
+		openAppWindow: (request: OpenAppWindow) => void;
 	};
 	request: {
 		showNotification: (params: NotificationRequest) => Promise<boolean>;
 		takeClickedMessage: () => Promise<MessageLink | null>;
 		nativeWindowDrag: () => Promise<boolean>;
+		windowCommand: (command: WindowCommand) => Promise<WindowAnswer>;
 	};
 	on: {
 		activityUpdate: (handler: (data: ActivityPayload[] | null) => void) => void;
 		messageClicked: (handler: () => void) => void;
+		/** In a window that isn't the main one: each state the main window publishes. */
+		windowState: (handler: (message: WindowStateMessage) => void) => void;
+		/** In the main window: what answers the other windows' commands. One answerer: a later one replaces it. */
+		windowCommand: (handler: (command: WindowCommand) => WindowAnswer | Promise<WindowAnswer>) => void;
 	};
 };
 
@@ -93,6 +115,8 @@ export function isElectrobunWindow() {
 
 const activityListeners: ((data: ActivityPayload[] | null) => void)[] = [];
 const clickListeners: (() => void)[] = [];
+const stateListeners: ((message: WindowStateMessage) => void)[] = [];
+let commandAnswerer: ((command: WindowCommand) => WindowAnswer | Promise<WindowAnswer>) | null = null;
 
 async function createRpcClient(): Promise<AppRPCClient | null> {
 	// Only the top frame. Electrobun injects its preload into subframes on some platforms (macOS WKUserScript
@@ -109,6 +133,9 @@ async function createRpcClient(): Promise<AppRPCClient | null> {
 			requests: {
 				// Bun has no image decoder; this page has a canvas (lib/activity-thumbnail.ts).
 				activityImage: ({ bytes }) => activityThumbnail(base64Bytes(bytes)),
+				// Only the main window's page sets an answerer: any other says so, rather than leave Bun waiting.
+				windowCommand: (command) =>
+					commandAnswerer ? commandAnswerer(command) : { ok: false, error: "This window answers no commands" },
 			},
 			messages: {
 				activityUpdate: (data: ActivityPayload[] | null) => {
@@ -118,6 +145,9 @@ async function createRpcClient(): Promise<AppRPCClient | null> {
 				},
 				messageClicked: () => {
 					for (const listener of clickListeners) listener();
+				},
+				windowState: (message: WindowStateMessage) => {
+					for (const listener of stateListeners) listener(message);
 				},
 			},
 		},
@@ -132,6 +162,7 @@ async function createRpcClient(): Promise<AppRPCClient | null> {
 			showNotification: (params) => rpc.request.showNotification(params),
 			takeClickedMessage: () => rpc.request.takeClickedMessage(),
 			nativeWindowDrag: () => rpc.request.nativeWindowDrag(),
+			windowCommand: (command) => rpc.request.windowCommand(command),
 		},
 		on: {
 			activityUpdate: (handler) => {
@@ -139,6 +170,14 @@ async function createRpcClient(): Promise<AppRPCClient | null> {
 			},
 			messageClicked: (handler) => {
 				clickListeners.push(handler);
+			},
+			windowState: (handler) => {
+				stateListeners.push(handler);
+			},
+			windowCommand: (handler) => {
+				// Never in a page of another window, whatever asks: only the main window's page answers (Bun asks
+				// no other, either: src/bun/window-relay.ts).
+				if (secondWindowOfPath(location.pathname) === null) commandAnswerer = handler;
 			},
 		},
 	};

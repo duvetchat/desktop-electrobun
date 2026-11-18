@@ -1,8 +1,11 @@
 <script lang="ts">
+	import { gridKeys } from "$lib/grid-keys";
 	import { emojiDataNow, loadEmojiData, toTwemojiUrl, type EmojiEntry } from "$lib/emoji";
 	import type { SpaceEmoji } from "$lib/types";
 	import { getAvatarURL, getHostURL } from "$lib/common/common";
-	import SpaceIcon from "$lib/components/SpaceIcon.svelte";
+	import PickerSearch from "$lib/components/PickerSearch.svelte";
+	import SpaceIcon from "$lib/components/ui/SpaceIcon.svelte";
+	import { GLASS } from "$lib/components/ui/recipes";
 	import type { PickerGroup } from "$lib/space-emojis";
 	import { scrollSideways } from "$lib/sideways-scroll";
 
@@ -45,63 +48,20 @@
 	function pick(emoji: string) {
 		onSelect(emoji);
 	}
-
-	let searchEl: HTMLInputElement;
 </script>
 
+<!-- A named group: the popover that holds it is the dialog (the message box's, or a message's Add reaction). -->
 <div
-	class="rounded-card border-duvet-line bg-duvet-card shadow-duvet-float flex h-105 w-90 flex-col overflow-hidden border font-[inherit]"
-	role="dialog"
+	class="{GLASS} text-duvet-ink flex h-[440px] max-h-[calc(100vh-20px)] w-[372px] max-w-[calc(100vw-20px)] flex-col overflow-hidden rounded-[20px]"
+	role="group"
 	aria-label="Emoji picker"
 >
-	<!-- Search bar -->
-	<div class="border-duvet-line flex shrink-0 items-center gap-2 border-b px-3 pt-2.5 pb-2">
-		<svg
-			width="14"
-			height="14"
-			viewBox="0 0 24 24"
-			fill="none"
-			stroke="currentColor"
-			stroke-width="2"
-			stroke-linecap="round"
-			stroke-linejoin="round"
-			class="text-duvet-ink2 shrink-0"
-			aria-hidden="true"
-		>
-			<circle cx="11" cy="11" r="8" /><path d="m21 21-4.35-4.35" />
-		</svg>
-		<input
-			bind:this={searchEl}
-			bind:value={searchQuery}
-			type="text"
-			placeholder="Search emoji..."
-			class="text-duvet-ink placeholder:text-duvet-ink2/60 min-w-0 flex-1 border-none bg-transparent text-[13px] outline-none"
-			aria-label="Search emoji"
-			autocomplete="off"
-		/>
-		{#if searchQuery}
-			<button
-				class="text-duvet-ink2 hover:text-duvet-ink flex shrink-0 cursor-pointer items-center rounded-[3px] border-none bg-none p-0.5"
-				onclick={() => (searchQuery = "")}
-				aria-label="Clear search"
-			>
-				<svg
-					width="12"
-					height="12"
-					viewBox="0 0 24 24"
-					fill="none"
-					stroke="currentColor"
-					stroke-width="2.5"
-					stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg
-				>
-			</button>
-		{/if}
-	</div>
+	<PickerSearch bind:value={searchQuery} placeholder="Search emoji" label="Search emoji" />
 
 	{#if !isSearching}
 		<!-- Category tabs: each Space's, then the dataset's -->
 		<div
-			class="border-duvet-line flex shrink-0 items-center gap-0.5 overflow-x-auto border-b px-2.5 pt-1.5 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+			class="border-duvet-line flex shrink-0 items-center gap-0.5 overflow-x-auto border-b px-2.5 pb-1.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
 			role="tablist"
 			aria-label="Emoji categories"
 			onwheel={(e) => scrollSideways(e, e.currentTarget)}
@@ -111,14 +71,20 @@
 					role="tab"
 					aria-selected={activeCategory === i}
 					aria-label={group.space.name}
-					class="flex shrink-0 cursor-pointer items-center justify-center rounded-md border-none bg-none px-1.25 py-1 transition-[opacity,background] duration-120 {activeCategory ===
+					class="grid h-7 w-[30px] shrink-0 cursor-pointer place-items-center rounded-lg transition-[opacity,background-color,filter] duration-[120ms] motion-reduce:transition-none {activeCategory ===
 					i
-						? 'bg-duvet-ink/10 opacity-100'
-						: 'hover:bg-duvet-ink/10 opacity-55 hover:opacity-85'}"
+						? 'bg-duvet-accent-tint opacity-100'
+						: 'hover:bg-duvet-hover opacity-70 grayscale hover:opacity-100 hover:grayscale-0'}"
 					onclick={() => (activeCategory = i)}
 					title={group.space.name}
 				>
-					<SpaceIcon src={getAvatarURL(group.space.id, group.space.icon)} name={group.space.name} size={20} />
+					<span class="contents" aria-hidden="true">
+						<SpaceIcon
+							src={group.space.icon ? getAvatarURL(group.space.id, group.space.icon) : null}
+							name={group.space.name}
+							size={18}
+						/>
+					</span>
 				</button>
 			{/each}
 			{#each emojiCategories as cat, i}
@@ -126,33 +92,33 @@
 					role="tab"
 					aria-selected={activeCategory === i + categoryOffset}
 					aria-label={cat.label}
-					class="flex shrink-0 cursor-pointer items-center justify-center rounded-md border-none bg-none px-1.25 py-1 transition-[opacity,background] duration-120 {activeCategory ===
+					class="grid h-7 w-[30px] shrink-0 cursor-pointer place-items-center rounded-lg transition-[opacity,background-color,filter] duration-[120ms] motion-reduce:transition-none {activeCategory ===
 					i + categoryOffset
-						? 'bg-duvet-ink/10 opacity-100'
-						: 'hover:bg-duvet-ink/10 opacity-55 hover:opacity-85'}"
+						? 'bg-duvet-accent-tint opacity-100'
+						: 'hover:bg-duvet-hover opacity-70 grayscale hover:opacity-100 hover:grayscale-0'}"
 					onclick={() => (activeCategory = i + categoryOffset)}
 					title={cat.label}
 				>
-					<img src={toTwemojiUrl(cat.icon)} alt={cat.label} class="block size-5" loading="lazy" />
+					<img src={toTwemojiUrl(cat.icon)} alt={cat.label} class="block size-[18px]" loading="lazy" />
 				</button>
 			{/each}
 		</div>
 	{/if}
 
 	<!-- Emoji grid -->
-	<div
-		class="[&::-webkit-scrollbar-thumb]:bg-duvet-ink/20 flex-1 overflow-y-auto px-2.5 pt-1.5 pb-2.5 [&::-webkit-scrollbar]:w-1.25 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-track]:bg-transparent"
-		role="tabpanel"
-	>
+	<!-- The arrows move through its emoji, a row at a time up and down (lib/grid-keys.ts). -->
+	<div class="min-h-0 flex-1 overflow-y-auto px-2 pt-0.5 pb-2" role="tabpanel" tabindex="-1" onkeydown={gridKeys}>
 		{#if isSearching}
 			{#if searchResults.length === 0}
-				<div class="text-duvet-ink2 py-7.5 text-center text-[13px]">No results for "{searchQuery}"</div>
+				<div class="text-duvet-ink2 py-8 text-center text-[13px]">No results for "{searchQuery}"</div>
 			{:else}
-				<div class="text-duvet-ink2 px-0.5 pt-1.5 pb-2 text-xs font-bold">Search results</div>
+				<div class="text-duvet-ink2 px-1 pt-3 pb-1.5 text-[10.5px] font-semibold tracking-[0.06em] uppercase">
+					Search results
+				</div>
 				<div class="grid grid-cols-8 gap-0.5">
 					{#each searchResults as entry (entry.emoji + entry.name)}
 						<button
-							class="hover:bg-duvet-ink/10 flex cursor-pointer items-center justify-center rounded-md border-none bg-none p-1.25 transition-[background,transform] duration-100 hover:scale-[1.18] active:scale-100"
+							class="hover:bg-duvet-hover focus-visible:bg-duvet-hover grid h-9 cursor-pointer place-items-center rounded-[9px] transition-[background-color,transform] duration-100 hover:scale-[1.12] active:scale-100 motion-reduce:transition-none motion-reduce:hover:scale-100"
 							onclick={() => pick(entry.emoji)}
 							title={entry.name}
 							aria-label={entry.name}
@@ -161,14 +127,14 @@
 								<img
 									src="{ceHost}/attachments/{entry.customAttachmentId}"
 									alt=":{entry.name}:"
-									class="pointer-events-none block size-6 object-contain select-none"
+									class="pointer-events-none block size-[22px] object-contain select-none"
 									loading="lazy"
 								/>
 							{:else}
 								<img
 									src={toTwemojiUrl(entry.emoji)}
 									alt={entry.emoji}
-									class="pointer-events-none block size-6 select-none"
+									class="pointer-events-none block size-[22px] select-none"
 									loading="lazy"
 								/>
 							{/if}
@@ -177,11 +143,13 @@
 				</div>
 			{/if}
 		{:else if shownGroup}
-			<div class="text-duvet-ink2 truncate px-0.5 pt-1.5 pb-2 text-xs font-bold">{shownGroup.space.name}</div>
+			<div class="text-duvet-ink2 truncate px-1 pt-3 pb-1.5 text-[10.5px] font-semibold tracking-[0.06em] uppercase">
+				{shownGroup.space.name}
+			</div>
 			<div class="grid grid-cols-8 gap-0.5">
 				{#each shownGroup.items as ce (ce.id)}
 					<button
-						class="hover:bg-duvet-ink/10 flex cursor-pointer items-center justify-center rounded-md border-none bg-none p-1.25 transition-[background,transform] duration-100 hover:scale-[1.18] active:scale-100"
+						class="hover:bg-duvet-hover focus-visible:bg-duvet-hover grid h-9 cursor-pointer place-items-center rounded-[9px] transition-[background-color,transform] duration-100 hover:scale-[1.12] active:scale-100 motion-reduce:transition-none motion-reduce:hover:scale-100"
 						onclick={() => pick(`<:${ce.id}:>`)}
 						title=":{ce.name}:"
 						aria-label=":{ce.name}:"
@@ -189,20 +157,20 @@
 						<img
 							src="{ceHost}/attachments/{ce.attachment_id}"
 							alt=":{ce.name}:"
-							class="pointer-events-none block size-6 object-contain select-none"
+							class="pointer-events-none block size-[22px] object-contain select-none"
 							loading="lazy"
 						/>
 					</button>
 				{/each}
 			</div>
 		{:else if shownCategory}
-			<div class="text-duvet-ink2 px-0.5 pt-1.5 pb-2 text-xs font-bold">
+			<div class="text-duvet-ink2 px-1 pt-3 pb-1.5 text-[10.5px] font-semibold tracking-[0.06em] uppercase">
 				{shownCategory.label}
 			</div>
 			<div class="grid grid-cols-8 gap-0.5">
 				{#each shownCategory.emojis as entry (entry.emoji)}
 					<button
-						class="hover:bg-duvet-ink/10 flex cursor-pointer items-center justify-center rounded-md border-none bg-none p-1.25 transition-[background,transform] duration-100 hover:scale-[1.18] active:scale-100"
+						class="hover:bg-duvet-hover focus-visible:bg-duvet-hover grid h-9 cursor-pointer place-items-center rounded-[9px] transition-[background-color,transform] duration-100 hover:scale-[1.12] active:scale-100 motion-reduce:transition-none motion-reduce:hover:scale-100"
 						onclick={() => pick(entry.emoji)}
 						title={entry.name}
 						aria-label={entry.name}
@@ -210,7 +178,7 @@
 						<img
 							src={toTwemojiUrl(entry.emoji)}
 							alt={entry.emoji}
-							class="pointer-events-none block size-6 select-none"
+							class="pointer-events-none block size-[22px] select-none"
 							loading="lazy"
 						/>
 					</button>

@@ -123,7 +123,7 @@ describe("a message's preview", () => {
 		const shown = html(rich);
 		expect(shown).toContain(">https://duvet.chat/invite/abc123</button>");
 		// The cards as they load: the message's, and the invite's skeleton.
-		expect(shown).toContain("Loading message...");
+		expect(shown).toContain("Loading message…");
 		expect(shown).toMatch(
 			/rounded-card mt-2 max-w-xs border p-4"><div class="bg-duvet-ink\/10 mb-3 h-3 w-44 animate-pulse rounded"/,
 		);
@@ -152,8 +152,8 @@ describe("a message's preview", () => {
 			(b) => b.attributes.title === "👍" || b.attributes.title === "🎉",
 		);
 		expect(reactions.map((b) => b.attributes.title)).toEqual(["👍", "🎉"]);
-		expect(reactions[0]!.attributes.class).toContain("bg-duvet-accent/20");
-		expect(reactions[1]!.attributes.class).not.toContain("bg-duvet-accent/20");
+		expect(reactions[0]!.attributes.class).toContain("bg-duvet-chosen");
+		expect(reactions[1]!.attributes.class).not.toContain("bg-duvet-chosen");
 	});
 
 	test("shows the reply's quote, that it was edited, and its code block's copy button", () => {

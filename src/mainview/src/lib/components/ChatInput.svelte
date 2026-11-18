@@ -1,18 +1,26 @@
 <script lang="ts">
 	import { onDestroy, onMount, untrack } from "svelte";
 	import { Popover } from "bits-ui";
+	import SmilePlusIcon from "$lib/components/ui/icons/SmilePlus.svelte";
 	import {
-		Smile as SmileIcon,
+		ArrowUp as SendIcon,
+		Check as SaveIcon,
 		Sticker as StickerIcon,
-		Image as GifIcon,
+		ImagePlay as GifIcon,
+		Paperclip as AttachIcon,
 		Plus,
 		Mic,
-		Square,
 		Pause,
 		Play,
+		Trash2 as DiscardIcon,
 		Hash as HashIcon,
 		Volume2 as VoiceIcon,
 	} from "@lucide/svelte";
+	import Menu from "$lib/components/ui/Menu.svelte";
+	import MenuItem from "$lib/components/ui/MenuItem.svelte";
+	import Segmented from "$lib/components/ui/Segmented.svelte";
+	import { GLASS } from "$lib/components/ui/recipes";
+	import { claimLayer, layerStyle, releaseLayer } from "$lib/overlay-layers";
 	import EmojiPicker from "$lib/components/EmojiPicker.svelte";
 	import StickerPicker from "$lib/components/StickerPicker.svelte";
 	import GifPicker from "$lib/components/GifPicker.svelte";
@@ -54,7 +62,7 @@
 		onCancel,
 		onValueChange,
 		onArrowUpWhenEmpty,
-		showActions = true,
+		editing = false,
 		autofocus = false,
 		members = [],
 		rooms = [],
@@ -78,7 +86,9 @@
 		onValueChange?: (text: string) => void;
 		/** Arrow Up in the empty box: starts editing the user's last message, and says whether it did. */
 		onArrowUpWhenEmpty?: () => boolean;
-		showActions?: boolean;
+		/** The box edits a message rather than writing one: it has no + menu, sends no GIF, sticker or voice note, and
+		 * its send button saves. */
+		editing?: boolean;
 		autofocus?: boolean;
 		members?: MemberOnSidebar[];
 		/** The rooms "#" suggests: those of the space the user can view. */
@@ -96,11 +106,40 @@
 		onCommand?: (entry: CommandEntry, app: SpaceCommandApplication) => void;
 	} = $props();
 
+	// Names the suggestion lists and their rows, for the box to point a screen reader at (suggesting, below).
+	const uid = $props.id();
+
 	let inputEl = $state<HTMLDivElement>(null!);
 	let fileInputEl = $state<HTMLInputElement>(null!);
-	let showEmojiPicker = $state(false);
-	let showStickerPicker = $state(false);
-	let showGifPicker = $state(false);
+	// The one picker of the box, behind its emoji button: emoji, GIFs, and the stickers of the user's Spaces when one has
+	// some. The + menu opens it on GIFs or on stickers.
+	type PickerTab = "emoji" | "gif" | "sticker";
+	let showPicker = $state(false);
+	// The pickers' layer, claimed as they open (lib/overlay-layers.ts): the thread's message box is in a sheet, and
+	// its pickers open in front of it.
+	const pickerLayer = $derived(showPicker ? claimLayer() : 0);
+	$effect(() => {
+		const mine = pickerLayer;
+		if (mine) return () => releaseLayer(mine);
+	});
+	let pickerTab = $state<PickerTab>("emoji");
+	let showPlusMenu = $state(false);
+	const pickerTabs = $derived<{ value: PickerTab; label: string }[]>(
+		editing
+			? [{ value: "emoji", label: "Emoji" }]
+			: [
+					{ value: "emoji", label: "Emoji" },
+					{ value: "gif", label: "GIFs" },
+					...(stickerGroups.length > 0 ? [{ value: "sticker" as const, label: "Stickers" }] : []),
+				],
+	);
+	// Once the + menu has closed and given the focus back: the picker opening under it would close with it.
+	function openPicker(tab: PickerTab) {
+		pickerTab = tab;
+		setTimeout(() => {
+			if (!destroyed) showPicker = true;
+		});
+	}
 	let isEmpty = $state(true);
 	// Empty means no characters at all, so a space hides the placeholder too (sending trims on its own). An
 	// emptied contenteditable can still hold a phantom newline.
@@ -1079,18 +1118,18 @@
 	}
 
 	function handleStickerPick(sticker: SpaceSticker) {
-		showStickerPicker = false;
+		showPicker = false;
 		onSubmit("", undefined, sticker.attachment_id);
 	}
 
 	function handleGifPick(url: string) {
-		showGifPicker = false;
+		showPicker = false;
 		onSubmit(url);
 	}
 
 	// Called externally by the emoji picker popover (in this component)
 	function handleEmojiPick(emoji: string) {
-		showEmojiPicker = false;
+		showPicker = false;
 		if (!inputEl) return;
 		const raw = getRaw(inputEl);
 		// The picker's search box has the focus by now: the emoji goes where the caret was when the input lost it.
@@ -1141,19 +1180,36 @@
 		isEmpty = false;
 		changed(newRaw);
 	}
+
+	// The suggestions' list that is open over the box (commands, mentions, rooms or emoji) and its chosen row, which the
+	// box names for a screen reader: the focus stays in the box while the arrows move through them.
+	const suggesting = $derived(
+		commandSuggestions.length > 0
+			? { list: `${uid}-commands`, at: commandSelectedIdx }
+			: mentionSuggestions.length > 0
+				? { list: `${uid}-mentions`, at: mentionSelectedIdx }
+				: roomSuggestions.length > 0
+					? { list: `${uid}-rooms`, at: roomSelectedIdx }
+					: suggestions.length > 0
+						? { list: `${uid}-emoji`, at: selectedIdx }
+						: null,
+	);
 </script>
 
-<!-- Wrapper with display:contents so children participate in parent flex -->
-<div class="contents">
+<!-- The message box: its suggestions over it, and the field that holds +, the text, the pickers' button and send -->
+<div class="relative min-w-0 flex-1">
 	<!-- Command menu -->
 	{#if commandSuggestions.length > 0}
 		<div
-			class="border-duvet-line bg-duvet-card shadow-duvet-float rounded-card absolute right-0 bottom-[calc(100%+6px)] left-0 z-90 max-h-75 overflow-hidden overflow-y-auto border p-1.5"
+			class="{GLASS} absolute bottom-[calc(100%+6px)] left-0 z-90 max-h-75 w-[min(100%,560px)] overflow-hidden overflow-y-auto rounded-[14px] p-1.5"
+			id="{uid}-commands"
 			role="listbox"
 			aria-label="Commands"
 			bind:this={commandMenuEl}
 		>
-			<div class="text-duvet-ink2 px-3 pt-1.5 pb-1 text-xs font-bold">
+			<div
+				class="text-duvet-ink2 px-2 pt-1.5 pb-1.5 text-[10.5px] leading-none font-semibold tracking-[0.06em] uppercase"
+			>
 				{#if commandQuery}
 					Commands matching <strong>/{commandQuery}</strong>
 				{:else}
@@ -1164,12 +1220,13 @@
 				{@const bot = commandApp(entry)?.bot}
 				{@const botMember = bot && members.find((m) => m.id === bot.id)}
 				<button
+					id="{uid}-commands-{i}"
 					role="option"
 					aria-selected={i === commandSelectedIdx}
-					class="rounded-row relative flex w-full cursor-pointer items-center gap-2.5 border-none bg-none px-3 py-1.5 text-left transition-[background] duration-100 {i ===
+					class="relative flex min-h-[34px] w-full cursor-pointer items-center gap-2 overflow-hidden rounded-[9px] px-2 py-1.5 text-left {i ===
 					commandSelectedIdx
-						? 'bg-duvet-bg/60'
-						: 'hover:bg-duvet-bg/60'}"
+						? 'bg-duvet-accent-tint'
+						: ''}"
 					onmousedown={(e) => {
 						e.preventDefault();
 						pickCommand(entry);
@@ -1202,11 +1259,14 @@
 	<!-- Mention autocomplete dropdown -->
 	{#if mentionSuggestions.length > 0}
 		<div
-			class="border-duvet-line bg-duvet-card shadow-duvet-float rounded-card absolute right-0 bottom-[calc(100%+6px)] left-0 z-90 max-h-75 overflow-hidden overflow-y-auto border p-1.5"
+			class="{GLASS} absolute bottom-[calc(100%+6px)] left-0 z-90 max-h-75 w-80 max-w-full overflow-hidden overflow-y-auto rounded-[14px] p-1.5"
+			id="{uid}-mentions"
 			role="listbox"
 			aria-label="Mention suggestions"
 		>
-			<div class="text-duvet-ink2 px-3 pt-1.5 pb-1 text-xs font-bold">
+			<div
+				class="text-duvet-ink2 px-2 pt-1.5 pb-1.5 text-[10.5px] leading-none font-semibold tracking-[0.06em] uppercase"
+			>
 				Members matching <strong
 					>@{getRaw(inputEl)
 						.slice(0, getOffset())
@@ -1215,12 +1275,13 @@
 			</div>
 			{#each mentionSuggestions as member, i}
 				<button
+					id="{uid}-mentions-{i}"
 					role="option"
 					aria-selected={i === mentionSelectedIdx}
-					class="rounded-row relative flex w-full cursor-pointer items-center gap-2.5 border-none bg-none px-3 py-1.5 text-left transition-[background] duration-100 {i ===
+					class="relative flex h-[34px] w-full cursor-pointer items-center gap-2 overflow-hidden rounded-[9px] px-2 text-left {i ===
 					mentionSelectedIdx
-						? 'bg-duvet-bg/60'
-						: 'hover:bg-duvet-bg/60'}"
+						? 'bg-duvet-accent-tint'
+						: ''}"
 					onmousedown={(e) => {
 						e.preventDefault();
 						insertMentionSuggestion(member);
@@ -1228,11 +1289,11 @@
 					onmouseenter={() => (mentionSelectedIdx = i)}
 				>
 					<MemberBanner src={member.banner_url} offline={member.status === "offline"} />
-					<span class="relative flex min-w-0 items-center gap-2.5">
+					<span class="relative flex min-w-0 flex-1 items-center gap-2">
 						<UserAvatar src={member.avatar_url} name={member.username} size={22} />
-						<span class="text-duvet-ink text-[13px]">{member.username}</span>
+						<span class="text-duvet-ink truncate text-[13px] font-semibold">{member.username}</span>
 						{#if member.raw_username !== member.username}
-							<span class="{member.banner_url ? 'text-duvet-ink' : 'text-duvet-ink2'} text-[11px]"
+							<span class="{member.banner_url ? 'text-duvet-ink' : 'text-duvet-ink2'} ml-auto shrink-0 text-xs"
 								>@{member.raw_username}</span
 							>
 						{/if}
@@ -1245,11 +1306,14 @@
 	<!-- Room mention autocomplete dropdown -->
 	{#if roomSuggestions.length > 0}
 		<div
-			class="border-duvet-line bg-duvet-card shadow-duvet-float rounded-card absolute right-0 bottom-[calc(100%+6px)] left-0 z-90 max-h-75 overflow-hidden overflow-y-auto border p-1.5"
+			class="{GLASS} absolute bottom-[calc(100%+6px)] left-0 z-90 max-h-75 w-80 max-w-full overflow-hidden overflow-y-auto rounded-[14px] p-1.5"
+			id="{uid}-rooms"
 			role="listbox"
 			aria-label="Room suggestions"
 		>
-			<div class="text-duvet-ink2 px-3 pt-1.5 pb-1 text-xs font-bold">
+			<div
+				class="text-duvet-ink2 px-2 pt-1.5 pb-1.5 text-[10.5px] leading-none font-semibold tracking-[0.06em] uppercase"
+			>
 				Rooms matching <strong
 					>#{getRaw(inputEl)
 						.slice(0, getOffset())
@@ -1258,12 +1322,13 @@
 			</div>
 			{#each roomSuggestions as room, i (room.id)}
 				<button
+					id="{uid}-rooms-{i}"
 					role="option"
 					aria-selected={i === roomSelectedIdx}
-					class="rounded-row flex w-full cursor-pointer items-center gap-2.5 border-none bg-none px-3 py-1.5 text-left transition-[background] duration-100 {i ===
+					class="flex h-[34px] w-full cursor-pointer items-center gap-2 rounded-[9px] px-2 text-left {i ===
 					roomSelectedIdx
-						? 'bg-duvet-bg/60'
-						: 'hover:bg-duvet-bg/60'}"
+						? 'bg-duvet-accent-tint'
+						: ''}"
 					onmousedown={(e) => {
 						e.preventDefault();
 						insertRoomSuggestion(room);
@@ -1271,11 +1336,11 @@
 					onmouseenter={() => (roomSelectedIdx = i)}
 				>
 					{#if room.type === 2}
-						<VoiceIcon class="text-duvet-ink2 size-4 shrink-0" aria-label="Voice room" />
+						<VoiceIcon class="text-duvet-ink2 size-4 shrink-0" role="img" aria-label="Voice room" />
 					{:else}
 						<HashIcon class="text-duvet-ink2 size-4 shrink-0" />
 					{/if}
-					<span class="text-duvet-ink truncate text-[13px]">{room.name}</span>
+					<span class="text-duvet-ink truncate text-[13px] font-semibold">{room.name}</span>
 				</button>
 			{/each}
 		</div>
@@ -1284,11 +1349,14 @@
 	<!-- Emoji autocomplete dropdown -->
 	{#if suggestions.length > 0}
 		<div
-			class="border-duvet-line bg-duvet-card shadow-duvet-float rounded-card absolute right-0 bottom-[calc(100%+6px)] left-0 z-90 max-h-75 overflow-hidden overflow-y-auto border p-1.5"
+			class="{GLASS} absolute bottom-[calc(100%+6px)] left-0 z-90 max-h-75 w-80 max-w-full overflow-hidden overflow-y-auto rounded-[14px] p-1.5"
+			id="{uid}-emoji"
 			role="listbox"
 			aria-label="Emoji suggestions"
 		>
-			<div class="text-duvet-ink2 px-3 pt-1.5 pb-1 text-xs font-bold">
+			<div
+				class="text-duvet-ink2 px-2 pt-1.5 pb-1.5 text-[10.5px] leading-none font-semibold tracking-[0.06em] uppercase"
+			>
 				Emoji matching <strong
 					>:{getRaw(inputEl)
 						.slice(0, getOffset())
@@ -1297,12 +1365,12 @@
 			</div>
 			{#each suggestions as entry, i}
 				<button
+					id="{uid}-emoji-{i}"
 					role="option"
 					aria-selected={i === selectedIdx}
-					class="rounded-row flex w-full cursor-pointer items-center gap-2.5 border-none bg-none px-3 py-1.5 text-left transition-[background] duration-100 {i ===
-					selectedIdx
-						? 'bg-duvet-bg/60'
-						: 'hover:bg-duvet-bg/60'}"
+					class="flex h-[34px] w-full cursor-pointer items-center gap-2 rounded-[9px] px-2 text-left {i === selectedIdx
+						? 'bg-duvet-accent-tint'
+						: ''}"
 					onmousedown={(e) => {
 						e.preventDefault();
 						insertSuggestion(entry);
@@ -1319,7 +1387,7 @@
 					{:else}
 						<img src={toTwemojiUrl(entry.emoji)} alt={entry.emoji} class="size-5.5 shrink-0" loading="lazy" />
 					{/if}
-					<span class="text-duvet-ink text-[13px]">:{entry.name.replace(/ /g, "_")}:</span>
+					<span class="text-duvet-ink truncate font-mono text-[12.5px]">:{entry.name.replace(/ /g, "_")}:</span>
 				</button>
 			{/each}
 		</div>
@@ -1328,157 +1396,182 @@
 	<!-- Hidden file input -->
 	<input bind:this={fileInputEl} type="file" multiple class="hidden" onchange={handleFileSelect} />
 
-	<!-- The contenteditable chat input -->
-	<div class="contents">
+	<!-- The field. Its ring shows the focus, as the text inside it has no outline of its own. -->
+	<div
+		class="bg-duvet-card pointer-events-auto flex min-h-[42px] rounded-[20px] px-1 shadow-[var(--duvet-shadow-well),0_0_0_1px_var(--duvet-line)] transition-shadow duration-150 focus-within:shadow-[var(--duvet-shadow-well),0_0_0_1px_var(--duvet-accent),0_0_0_4px_var(--duvet-accent-tint)] motion-reduce:transition-none {recording
+			? 'items-center gap-2'
+			: 'items-end'}"
+	>
 		{#if recording}
-			<div
-				class="border-duvet-danger/35 bg-duvet-danger/10 shadow-duvet-raised pointer-events-auto flex-1 rounded-xl border px-3 py-2.5"
-			>
-				<div class="flex h-5 items-center gap-3">
-					<div class="size-2.5 rounded-full {paused ? 'bg-duvet-ink2' : 'bg-duvet-danger animate-pulse'}"></div>
-					<span class="text-duvet-ink text-sm font-medium tabular-nums">{formatDuration(recordingDuration)}</span>
-					<span class="text-duvet-ink2 text-xs">{paused ? "Paused" : "Recording..."}</span>
-				</div>
-			</div>
+			<!-- A voice note being recorded: discard it, how long it is, pause it, or send it -->
 			<button
 				type="button"
-				class="ce-action-btn border-duvet-line bg-duvet-card/70 text-duvet-ink2 hover:bg-duvet-card hover:text-duvet-ink flex size-10 shrink-0 cursor-pointer items-center justify-center rounded-xl border transition-colors duration-150 outline-none"
+				class="text-duvet-danger hover:bg-duvet-hover my-1 grid size-[34px] shrink-0 place-items-center rounded-xl transition-colors motion-reduce:transition-none"
+				title="Cancel recording"
+				aria-label="Cancel recording"
+				onclick={cancelRecording}
+			>
+				<DiscardIcon size={18} />
+			</button>
+			<span
+				class="size-[9px] shrink-0 rounded-full {paused ? 'bg-duvet-ink2' : 'bg-duvet-call-red animate-rec-pulse'}"
+				aria-hidden="true"
+			></span>
+			<span class="text-duvet-ink shrink-0 text-[12.5px] font-semibold tabular-nums"
+				>{formatDuration(recordingDuration)}</span
+			>
+			<span
+				class="text-duvet-accent-text flex h-[22px] min-w-0 flex-1 items-center gap-0.5 overflow-hidden"
+				aria-hidden="true"
+			>
+				{#each { length: 36 } as _, i}
+					<span
+						class="h-1.5 w-[2.5px] shrink-0 rounded-full bg-current {paused ? '' : 'animate-rec-bar'}"
+						style="animation-delay: {(i % 9) * -80}ms"
+					></span>
+				{/each}
+			</span>
+			<span class="text-duvet-ink2 shrink-0 text-xs max-sm:hidden">{paused ? "Paused" : "Recording a voice note"}</span>
+			<button
+				type="button"
+				class="text-duvet-ink2 hover:bg-duvet-hover hover:text-duvet-ink my-1 grid size-[34px] shrink-0 place-items-center rounded-xl transition-colors motion-reduce:transition-none"
 				title={paused ? "Resume recording" : "Pause recording"}
 				aria-label={paused ? "Resume recording" : "Pause recording"}
 				onclick={togglePause}
 			>
 				{#if paused}
-					<Play class="size-4" fill="currentColor" />
+					<Play size={16} fill="currentColor" />
 				{:else}
-					<Pause class="size-4" fill="currentColor" />
+					<Pause size={16} fill="currentColor" />
 				{/if}
 			</button>
 			<button
 				type="button"
-				class="ce-action-btn border-duvet-line bg-duvet-card/70 text-duvet-ink2 hover:bg-duvet-card hover:text-duvet-ink flex size-10 shrink-0 cursor-pointer items-center justify-center rounded-xl border transition-colors duration-150 outline-none"
-				title="Cancel recording"
-				onclick={cancelRecording}
-			>
-				<svg
-					xmlns="http://www.w3.org/2000/svg"
-					width="20"
-					height="20"
-					viewBox="0 0 24 24"
-					fill="none"
-					stroke="currentColor"
-					stroke-width="2"
-					stroke-linecap="round"
-					stroke-linejoin="round"><path d="M18 6 6 18" /><path d="m6 6 12 12" /></svg
-				>
-			</button>
-			<button
-				type="button"
-				class="ce-action-btn border-duvet-line bg-duvet-card/70 text-duvet-danger hover:bg-duvet-danger/15 flex size-10 shrink-0 cursor-pointer items-center justify-center rounded-xl border transition-colors duration-150 outline-none"
+				class="bg-duvet-accent text-duvet-on-accent shadow-duvet-control active:shadow-duvet-press my-1 grid size-[34px] shrink-0 place-items-center rounded-xl transition-transform active:scale-[0.94] motion-reduce:transition-none"
 				title="Send voice note"
+				aria-label="Send voice note"
 				onclick={stopRecording}
 			>
-				<Square class="size-4" fill="currentColor" />
+				<SendIcon size={18} />
 			</button>
 		{:else}
-			<div
-				class="bg-duvet-card shadow-duvet-raised pointer-events-auto flex flex-1 items-start gap-3 rounded-xl border-none px-3 py-2.5"
-			>
-				{#if showActions}
-					<!-- File picker button, inside the box before the text as in Discord -->
-					<button
-						type="button"
-						class="text-duvet-ink2 hover:text-duvet-ink flex size-5 shrink-0 cursor-pointer items-center justify-center transition-colors duration-150 outline-none"
-						title="Attach files"
-						aria-label="Attach files"
-						onclick={() => fileInputEl?.click()}
-					>
-						<Plus class="size-5" />
-					</button>
-				{/if}
-				<div
-					bind:this={inputEl}
-					contenteditable="true"
-					role="textbox"
-					tabindex="0"
-					aria-multiline="false"
-					aria-label={placeholder}
-					class="focus-override text-duvet-ink caret-duvet-ink block max-h-36 min-h-5 min-w-0 flex-1 overflow-y-auto text-sm leading-5 wrap-break-word whitespace-pre-wrap outline-none select-text {isEmpty
-						? 'before:text-duvet-ink2 before:pointer-events-none before:absolute before:content-[attr(data-placeholder)]'
-						: ''}"
-					data-placeholder={placeholder}
-					onkeydown={handleKeyDown}
-					oninput={handleInput}
-					oncompositionend={handleInput}
-					onblur={rememberCaret}
-					onpaste={handlePaste}
-					oncopy={handleCopy}
-					oncut={handleCut}
-				></div>
-			</div>
-
-			{#if showActions}
-				<!-- Voice note button -->
-				{#if onVoiceNote}
-					<button
-						type="button"
-						class="ce-action-btn border-duvet-line bg-duvet-card/70 text-duvet-ink2 hover:bg-duvet-card hover:text-duvet-ink flex size-10 shrink-0 cursor-pointer items-center justify-center rounded-xl border transition-colors duration-150 outline-none"
-						title="Record voice note"
-						aria-label="Record voice note"
-						onclick={startRecording}
-					>
-						<Mic class="size-5" />
-					</button>
-				{/if}
-
-				<!-- Emoji picker button -->
-				<Popover.Root bind:open={showEmojiPicker}>
-					<Popover.Trigger
-						class="ce-action-btn border-duvet-line bg-duvet-card/70 text-duvet-ink2 hover:bg-duvet-card hover:text-duvet-ink flex size-10 shrink-0 cursor-pointer items-center justify-center rounded-xl border transition-colors duration-150 outline-none"
-						title="Open emoji picker"
-						aria-label="Open emoji picker"
-					>
-						<SmileIcon class="size-5" />
-					</Popover.Trigger>
-					<Popover.Portal>
-						<Popover.Content side="top" align="end" sideOffset={10} class="z-80">
-							<EmojiPicker onSelect={handleEmojiPick} groups={emojiGroups} />
-						</Popover.Content>
-					</Popover.Portal>
-				</Popover.Root>
-
-				<!-- Sticker picker button -->
-				{#if stickerGroups.length > 0}
-					<Popover.Root bind:open={showStickerPicker}>
-						<Popover.Trigger
-							class="ce-action-btn border-duvet-line bg-duvet-card/70 text-duvet-ink2 hover:bg-duvet-card hover:text-duvet-ink flex size-10 shrink-0 cursor-pointer items-center justify-center rounded-xl border transition-colors duration-150 outline-none"
-							title="Open sticker picker"
-							aria-label="Open sticker picker"
+			{#if !editing}
+				<!-- Files, and the pickers for a sticker or a GIF, which send at once -->
+				<Menu bind:open={showPlusMenu} side="top" align="start" label="Add files and more">
+					{#snippet trigger(props)}
+						<button
+							{...props}
+							type="button"
+							class="text-duvet-ink2 hover:bg-duvet-hover hover:text-duvet-ink my-1 grid size-[34px] shrink-0 place-items-center rounded-xl transition-colors motion-reduce:transition-none"
+							title="Add files and more"
+							aria-label="Add files and more"
 						>
-							<StickerIcon class="size-5" />
-						</Popover.Trigger>
-						<Popover.Portal>
-							<Popover.Content side="top" align="end" sideOffset={10} class="z-80">
-								<StickerPicker groups={stickerGroups} onSelect={handleStickerPick} />
-							</Popover.Content>
-						</Popover.Portal>
-					</Popover.Root>
-				{/if}
+							<Plus size={18} />
+						</button>
+					{/snippet}
+					<MenuItem icon={AttachIcon} onSelect={() => fileInputEl?.click()}>Attach files</MenuItem>
+					{#if stickerGroups.length > 0}
+						<MenuItem icon={StickerIcon} onSelect={() => openPicker("sticker")}>Sticker</MenuItem>
+					{/if}
+					<MenuItem icon={GifIcon} onSelect={() => openPicker("gif")}>GIF</MenuItem>
+				</Menu>
+			{/if}
+			<div
+				bind:this={inputEl}
+				contenteditable="true"
+				role="textbox"
+				tabindex="0"
+				aria-multiline="false"
+				aria-label={placeholder}
+				aria-autocomplete="list"
+				aria-controls={suggesting?.list}
+				aria-activedescendant={suggesting ? `${suggesting.list}-${suggesting.at}` : undefined}
+				class="focus-override font-content text-duvet-ink caret-duvet-ink block max-h-[132px] min-h-5 min-w-0 flex-1 overflow-y-auto px-1.5 py-2.5 text-[15px] leading-[1.4] wrap-break-word whitespace-pre-wrap outline-none select-text {isEmpty
+					? 'before:text-duvet-ink2 before:pointer-events-none before:absolute before:content-[attr(data-placeholder)]'
+					: ''}"
+				data-placeholder={placeholder}
+				onkeydown={handleKeyDown}
+				oninput={handleInput}
+				oncompositionend={handleInput}
+				onblur={rememberCaret}
+				onpaste={handlePaste}
+				oncopy={handleCopy}
+				oncut={handleCut}
+			></div>
 
-				<!-- GIF picker button -->
-				<Popover.Root bind:open={showGifPicker}>
-					<Popover.Trigger
-						class="ce-action-btn border-duvet-line bg-duvet-card/70 text-duvet-ink2 hover:bg-duvet-card hover:text-duvet-ink flex size-10 shrink-0 cursor-pointer items-center justify-center rounded-xl border transition-colors duration-150 outline-none"
-						title="Open GIF picker"
-						aria-label="Open GIF picker"
-					>
-						<GifIcon class="size-5" />
-					</Popover.Trigger>
-					<Popover.Portal>
-						<Popover.Content side="top" align="end" sideOffset={10} class="z-80">
-							<GifPicker onSelect={handleGifPick} />
+			<!-- The pickers, behind one button: an emoji goes into the text; a GIF and a sticker send at once -->
+			<Popover.Root bind:open={showPicker} onOpenChange={(open) => !open && (pickerTab = "emoji")}>
+				<Popover.Trigger
+					class="text-duvet-ink2 hover:bg-duvet-hover hover:text-duvet-ink data-[state=open]:bg-duvet-accent-tint data-[state=open]:text-duvet-accent-text my-1 grid size-[34px] shrink-0 place-items-center rounded-xl transition-colors motion-reduce:transition-none"
+					title={editing ? "Emoji" : "Emoji, GIFs and stickers"}
+					aria-label={editing ? "Emoji" : "Emoji, GIFs and stickers"}
+				>
+					<SmilePlusIcon size={18} />
+				</Popover.Trigger>
+				<Popover.Portal>
+					<div class="fixed top-0 left-0" style={layerStyle(pickerLayer)}>
+						<Popover.Content
+							side="top"
+							align="end"
+							sideOffset={10}
+							collisionPadding={10}
+							class="outline-none"
+							role="dialog"
+							aria-label={editing ? "Emoji" : "Emoji, GIFs and stickers"}
+						>
+							<div class="flex flex-col gap-2">
+								{#if pickerTabs.length > 1}
+									<Segmented options={pickerTabs} bind:value={pickerTab} label="What to pick" size="sm" />
+								{/if}
+								{#if pickerTab === "gif" && !editing}
+									<GifPicker onSelect={handleGifPick} />
+								{:else if pickerTab === "sticker" && !editing && stickerGroups.length > 0}
+									<StickerPicker groups={stickerGroups} onSelect={handleStickerPick} />
+								{:else}
+									<EmojiPicker onSelect={handleEmojiPick} groups={emojiGroups} />
+								{/if}
+							</div>
 						</Popover.Content>
-					</Popover.Portal>
-				</Popover.Root>
+					</div>
+				</Popover.Portal>
+			</Popover.Root>
+
+			<!-- Send. An empty box records a voice note instead, where the chat takes one; an edit saves. -->
+			{#if editing}
+				<button
+					type="button"
+					class="bg-duvet-accent text-duvet-on-accent shadow-duvet-control active:shadow-duvet-press my-1 grid size-[34px] shrink-0 place-items-center rounded-xl transition-transform active:scale-[0.94] motion-reduce:transition-none"
+					title="Save"
+					aria-label="Save"
+					onclick={sendMessage}
+				>
+					<SaveIcon size={18} />
+				</button>
+			{:else if isEmpty && pendingFiles.length === 0 && onVoiceNote}
+				<button
+					type="button"
+					class="text-duvet-ink2 hover:bg-duvet-hover hover:text-duvet-ink my-1 grid size-[34px] shrink-0 place-items-center rounded-xl transition-colors motion-reduce:transition-none"
+					title="Record voice note"
+					aria-label="Record voice note"
+					onclick={startRecording}
+				>
+					<Mic size={18} />
+				</button>
+			{:else}
+				{@const ready = !isEmpty || pendingFiles.length > 0}
+				<button
+					type="button"
+					class="my-1 grid size-[34px] shrink-0 place-items-center rounded-xl transition-[background-color,color,transform] motion-reduce:transition-none {ready
+						? 'bg-duvet-accent text-duvet-on-accent shadow-duvet-control active:shadow-duvet-press active:scale-[0.94]'
+						: 'text-duvet-ink2'}"
+					title="Send"
+					aria-label="Send"
+					disabled={!ready}
+					onmousedown={(e) => e.preventDefault()}
+					onclick={sendMessage}
+				>
+					<SendIcon size={18} />
+				</button>
 			{/if}
 		{/if}
 	</div>

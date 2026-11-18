@@ -7,7 +7,13 @@
 </script>
 
 {#if message.webhook_id}
-	<span class="text-xxs bg-duvet-accent text-duvet-on-accent rounded px-1 py-0.5 font-bold {className}">WEBHOOK</span>
+	<span
+		class="bg-duvet-accent text-duvet-on-accent shrink-0 rounded px-1 py-[3px] text-[9px] leading-none font-bold tracking-[0.04em] [-webkit-text-fill-color:var(--duvet-on-accent)] {className}"
+		>WEBHOOK</span
+	>
 {:else if message.author_is_bot}
-	<span class="text-xxs bg-duvet-accent text-duvet-on-accent rounded px-1 py-0.5 font-bold {className}">BOT</span>
+	<span
+		class="bg-duvet-accent text-duvet-on-accent shrink-0 rounded px-1 py-[3px] text-[9px] leading-none font-bold tracking-[0.04em] [-webkit-text-fill-color:var(--duvet-on-accent)] {className}"
+		>BOT</span
+	>
 {/if}

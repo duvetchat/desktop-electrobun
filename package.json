@@ -7,6 +7,7 @@
     "dev:hmr": "concurrently \"bun run hmr\" \"bun run dev\"",
     "hmr": "bun run --cwd ./src/mainview dev",
     "build:canary": "bun run --cwd ./src/mainview build && electrobun build --env=canary",
+    "check": "tsc --noEmit -p src/bun",
     "lint": "oxlint --deny-warnings .",
     "lint:fix": "oxlint --fix .",
     "format": "prettier --write \"src/**/*.{ts,svelte,css,json}\"",

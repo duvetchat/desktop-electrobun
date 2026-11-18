@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { seekTo } from "$lib/seek-keys";
 	import { onDestroy, onMount } from "svelte";
 	import { Play, Pause } from "@lucide/svelte";
 	import {
@@ -120,6 +121,14 @@
 		else void play();
 	}
 
+	function handleSeekKey(e: KeyboardEvent) {
+		const to = seekTo(e.key, currentTime, duration);
+		if (to === null) return;
+		e.preventDefault();
+		if (isActive) seekVoiceNote(to);
+		else void play(to);
+	}
+
 	function handleSeek(e: MouseEvent) {
 		if (!duration) return;
 		const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
@@ -145,53 +154,61 @@
 </script>
 
 <div
-	class="flex items-center gap-2.5 {compact
-		? 'max-w-none min-w-0 rounded-xl px-2.5 py-1.5'
-		: 'max-w-[320px] min-w-60 rounded-[18px] py-2 pr-3.5 pl-2.5'} border-duvet-line bg-duvet-card/80 border"
+	class="bg-duvet-card shadow-duvet-raised flex items-center {compact
+		? 'max-w-none min-w-0 gap-2 rounded-xl px-2 py-1.5'
+		: 'w-[300px] max-w-full gap-2.5 rounded-[18px] py-[7px] pr-2.5 pl-[7px]'}"
 >
 	<button
-		class="flex items-center justify-center {compact
+		type="button"
+		aria-label={playing ? "Pause" : "Play"}
+		class="bg-duvet-accent text-duvet-on-accent shadow-duvet-control grid shrink-0 cursor-pointer place-items-center rounded-full transition-[filter] hover:brightness-[1.06] motion-reduce:transition-none {compact
 			? 'size-7'
-			: 'size-9'} text-duvet-on-accent bg-duvet-accent hover:bg-duvet-accent/85 shrink-0 cursor-pointer rounded-full border-none transition-[background] duration-150"
+			: 'size-[34px]'}"
 		onclick={togglePlay}
 	>
 		{#if playing}
-			<Pause class={compact ? "size-3.5" : "size-5"} fill="currentColor" stroke="none" />
+			<Pause size={compact ? 13 : 16} fill="currentColor" stroke="none" />
 		{:else}
-			<Play class={compact ? "size-3.5" : "size-5"} fill="currentColor" stroke="none" />
+			<Play size={compact ? 13 : 16} fill="currentColor" stroke="none" />
 		{/if}
 	</button>
 
-	<div class="flex min-w-0 flex-1 flex-col gap-1">
-		<!-- svelte-ignore a11y_click_events_have_key_events -->
-		<!-- svelte-ignore a11y_no_static_element_interactions -->
-		<div class="relative flex items-center gap-[1.5px] {compact ? 'h-5' : 'h-7'} cursor-pointer" onclick={handleSeek}>
-			{#each bars as height, i}
-				{@const barProgress = i / bars.length}
-				<div
-					class="min-h-0.75 flex-1 rounded-xs transition-[background] duration-100"
-					style="height: {height * 100}%; {barProgress <= progress
-						? 'background: var(--duvet-accent);'
-						: 'background: color-mix(in oklab, var(--duvet-ink) 20%, transparent);'}"
-				></div>
-			{/each}
+	<!-- The line seeks: by a press on it, and from the keyboard by the arrows, Home and End (lib/seek-keys.ts). -->
+	<div
+		class="text-duvet-accent-text flex min-w-0 flex-1 cursor-pointer items-center gap-[2px] rounded-md {compact
+			? 'h-5'
+			: 'h-6'}"
+		role="slider"
+		tabindex="0"
+		aria-label="Seek"
+		aria-valuemin={0}
+		aria-valuemax={Math.round(duration)}
+		aria-valuenow={Math.round(currentTime)}
+		aria-valuetext="{formatDuration(currentTime)} of {formatDuration(duration)}"
+		onclick={handleSeek}
+		onkeydown={handleSeekKey}
+	>
+		{#each bars as height, i}
 			<div
-				class="absolute top-1/2 {compact
-					? 'size-2'
-					: 'size-2.5'} bg-duvet-accent pointer-events-none -translate-x-1/2 -translate-y-1/2 rounded-full shadow-[0_0_4px_var(--duvet-accent)]"
-				style="left: {progress * 100}%;"
+				class="min-h-1 flex-1 rounded-full bg-current transition-opacity duration-100 motion-reduce:transition-none {i /
+					bars.length <=
+					progress &&
+				(playing || currentTime > 0)
+					? 'opacity-100'
+					: 'opacity-30'}"
+				style="height: {height * 100}%;"
 			></div>
-		</div>
-		<div class="flex items-center gap-1.5">
-			<span class="text-duvet-ink2 tabular-nums {compact ? 'text-xxs' : 'text-[11px]'}"
-				>{formatDuration(playing || currentTime > 0 ? currentTime : duration)}</span
-			>
-			{#if !compact}
-				<button
-					class="text-xxs text-duvet-ink2 hover:bg-duvet-ink/10 hover:text-duvet-ink cursor-pointer rounded px-1 font-semibold tabular-nums transition-colors"
-					onclick={handleCycleRate}>{rate}x</button
-				>
-			{/if}
-		</div>
+		{/each}
 	</div>
+	<span class="text-duvet-ink2 shrink-0 text-[11.5px] font-medium tabular-nums"
+		>{formatDuration(playing || currentTime > 0 ? currentTime : duration)}</span
+	>
+	{#if !compact}
+		<button
+			type="button"
+			aria-label="Playback speed: {rate}x"
+			class="text-duvet-ink2 hover:bg-duvet-hover hover:text-duvet-ink h-[22px] shrink-0 cursor-pointer rounded-[7px] px-1.5 text-[11px] font-semibold tabular-nums transition-colors motion-reduce:transition-none"
+			onclick={handleCycleRate}>{rate}x</button
+		>
+	{/if}
 </div>

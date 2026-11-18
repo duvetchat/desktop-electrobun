@@ -48,7 +48,7 @@
 
 	const frame = $derived(playerFrame(url, ownHosts));
 	const label = $derived(title ? `Play ${title}` : "Play");
-	const coverClass = "group absolute inset-0 flex items-center justify-center bg-duvet-bg";
+	const coverClass = "group absolute inset-0 flex items-center justify-center overflow-hidden bg-duvet-stage";
 </script>
 
 {#if frame}
@@ -72,8 +72,8 @@
 		<img src={poster} alt="" class="absolute inset-0 size-full object-cover" loading="lazy" />
 	{/if}
 	<span
-		class="text-fixed-white relative flex size-14 items-center justify-center rounded-full bg-black/60 transition-colors group-hover:bg-black/80"
+		class="bg-duvet-media-scrim text-duvet-media-ink inset-ring-fixed-white/12 relative grid size-[52px] place-items-center rounded-full inset-ring-1 backdrop-blur-[12px] transition-transform duration-200 group-hover:scale-[1.06] motion-reduce:transition-none"
 	>
-		<PlayIcon class="size-6 translate-x-0.5" fill="currentColor" stroke="none" />
+		<PlayIcon class="translate-x-0.5" size={22} fill="currentColor" stroke="none" />
 	</span>
 {/snippet}

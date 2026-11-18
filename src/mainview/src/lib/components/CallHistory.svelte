@@ -1,9 +1,12 @@
 <script lang="ts">
 	import { untrack } from "svelte";
 	import { get } from "svelte/store";
-	import { Phone as PhoneIcon } from "@lucide/svelte";
+	import { Phone as PhoneIcon, PhoneMissed } from "@lucide/svelte";
 	import MascotPeek from "$lib/components/MascotPeek.svelte";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
+	import Button from "$lib/components/ui/Button.svelte";
+	import IconButton from "$lib/components/ui/IconButton.svelte";
+	import Tooltip from "$lib/components/ui/Tooltip.svelte";
 	import type { Conversation } from "$lib/api/conversations";
 	import { callBackAction, callHistory, callRow, callTime, loadCalls } from "$lib/call-history";
 	import { callNoticeText } from "$lib/call-notices";
@@ -20,16 +23,14 @@
 	import { joinConversationCall, startConversationCall } from "$lib/voice";
 
 	// The user's calls, the newest first: the call notices of the conversations they're in (lib/call-history.ts), a page at
-	// a time, the next one as the list's end comes into view.
+	// a time, the next one as the list's end comes into view. It is the list of the call history's popover
+	// (CallHistoryPopover.svelte), and of the Friends page's Calls tab while that page has one.
 	let {
 		onOpen = (link) => jumpToMessageRequest.set({ id: crypto.randomUUID(), ...link }),
 	}: {
 		/** Opens a call's notice in its conversation, as a result of the search everywhere opens its message. */
 		onOpen?: (link: MessageLink) => void;
 	} = $props();
-
-	const focusRing =
-		"focus-override focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-duvet-accent";
 
 	const list = $derived($callHistory);
 	const rows = $derived.by(() => {
@@ -87,18 +88,12 @@
 </script>
 
 {#snippet placeholder(mood: "awake" | "shy" | "peek", title: string, line: string)}
-	<div class="flex flex-col items-center px-6 py-16 text-center" role="status">
-		<MascotPeek class="w-24" {mood} />
-		<p class="text-duvet-ink mt-4 text-base font-bold">{title}</p>
-		<p class="text-duvet-ink2 mt-1 max-w-80 text-sm">{line}</p>
+	<div class="flex flex-col items-center px-6 py-10 text-center" role="status">
+		<MascotPeek class="w-[88px]" {mood} />
+		<p class="text-duvet-ink mt-3 font-serif text-[17px] font-medium">{title}</p>
+		<p class="text-duvet-ink2 mt-1 max-w-72 text-[13px]">{line}</p>
 		{#if failed}
-			<button
-				type="button"
-				class="bg-duvet-card text-duvet-ink2 shadow-duvet-raised hover:text-duvet-ink mt-5 flex h-8 items-center rounded-xl px-3 text-[13px] font-bold transition-colors motion-reduce:transition-none {focusRing}"
-				onclick={load}
-			>
-				Try again
-			</button>
+			<Button variant="secondary" size="sm" class="mt-4" onclick={load}>Try again</Button>
 		{/if}
 	</div>
 {/snippet}
@@ -106,13 +101,15 @@
 {#if failed && rows.length === 0}
 	{@render placeholder("shy", "Couldn't load your calls", "Your calls show here once they load.")}
 {:else if !list || (rows.length === 0 && list.more)}
-	<ul use:watchEnd class="flex flex-col gap-px" aria-busy="true" aria-label="Loading your calls">
+	<ul use:watchEnd class="flex flex-col" aria-busy="true" aria-label="Loading your calls">
 		{#each [0, 1, 2, 3] as i (i)}
-			<li class="flex items-center gap-3 px-2 py-2">
-				<div class="bg-duvet-card size-10 shrink-0 animate-pulse rounded-full"></div>
-				<div class="flex flex-1 flex-col gap-2">
-					<div class="bg-duvet-card h-3 w-32 animate-pulse rounded"></div>
-					<div class="bg-duvet-card h-3 w-56 animate-pulse rounded"></div>
+			<li class="flex items-center gap-2.5 py-1.5 pr-1.5 pl-2">
+				<div
+					class="bg-duvet-secondary-fill size-8 shrink-0 animate-pulse rounded-full motion-reduce:animate-none"
+				></div>
+				<div class="flex flex-1 flex-col gap-1.5">
+					<div class="bg-duvet-secondary-fill h-3 w-28 animate-pulse rounded motion-reduce:animate-none"></div>
+					<div class="bg-duvet-secondary-fill h-2.5 w-48 animate-pulse rounded motion-reduce:animate-none"></div>
 				</div>
 			</li>
 		{/each}
@@ -120,63 +117,70 @@
 {:else if rows.length === 0}
 	{@render placeholder("peek", "No calls yet", "Calls in your direct messages and groups show here.")}
 {:else}
-	<ul class="flex flex-col gap-px" aria-label="Calls">
+	<ul class="flex flex-col" aria-label="Calls">
 		{#each rows as row (row.id)}
 			{@const action = row.conversation
 				? callBackAction(row.conversationId, $conversationsWithCalls, $ownCallsRinging, $activeCall)
 				: null}
 			<li
-				class="rounded-row hover:bg-duvet-card/70 flex items-center gap-3 px-2 py-2 transition-colors motion-reduce:transition-none"
+				class="hover:bg-duvet-hover flex items-center gap-1 rounded-xl py-1.5 pr-1.5 pl-2 transition-colors motion-reduce:transition-none"
 			>
 				<!-- Opens the conversation at the call's notice, as a result of the search everywhere does -->
 				<button
 					type="button"
-					class="rounded-row flex min-w-0 flex-1 cursor-pointer items-center gap-3 text-left {focusRing}"
+					class="flex min-w-0 flex-1 cursor-pointer items-center gap-2.5 rounded-lg text-left"
 					onclick={() => onOpen({ spaceId: "", roomId: "", messageId: row.id, conversationId: row.conversationId })}
 				>
-					<UserAvatar src={row.avatar} name={row.title} size={40} />
-					<span class="flex min-w-0 flex-1 flex-col leading-tight">
-						<!-- A missed call reads as an unread chat does: by its weight -->
-						<span class="text-duvet-ink truncate text-sm {row.line.missed ? 'font-bold' : 'font-medium'}"
-							>{row.title}</span
+					<UserAvatar src={row.avatar} name={row.title} size={32} />
+					<span class="flex min-w-0 flex-1 flex-col gap-px">
+						<!-- A missed call reads in the destructive colour, name and line, as its notice in the conversation -->
+						<span
+							class="truncate text-[13.5px] leading-[1.25] font-semibold {row.line.missed
+								? 'text-duvet-danger'
+								: 'text-duvet-ink'}">{row.title}</span
 						>
-						<span class="text-duvet-ink2 flex min-w-0 items-center gap-1 text-xs">
-							<!-- Red for a call the user missed, as its notice in the conversation -->
-							<PhoneIcon class="size-3 shrink-0 {row.line.missed ? 'text-duvet-danger' : ''}" aria-hidden="true" />
+						<span
+							class="flex min-w-0 items-center gap-1 text-[11.5px] leading-[1.25] {row.line.missed
+								? 'text-duvet-danger'
+								: 'text-duvet-ink2'}"
+						>
+							{#if row.line.missed}
+								<PhoneMissed class="shrink-0" size={12} aria-hidden="true" />
+							{:else}
+								<PhoneIcon class="shrink-0" size={12} aria-hidden="true" />
+							{/if}
 							<span class="truncate">{callNoticeText(row.line)}</span>
 						</span>
 					</span>
-					<time class="text-duvet-ink2 shrink-0 text-xs" datetime={row.at} title={formatShortDateTime(row.at)}
-						>{callTime(row.at)}</time
+					<time
+						class="text-duvet-ink2 shrink-0 text-[11.5px] tabular-nums"
+						datetime={row.at}
+						title={formatShortDateTime(row.at)}>{callTime(row.at)}</time
 					>
 				</button>
-				<button
-					type="button"
-					class="bg-duvet-card text-duvet-ink2 shadow-duvet-raised hover:text-duvet-ink flex size-9 shrink-0 items-center justify-center rounded-xl transition-colors disabled:cursor-not-allowed disabled:opacity-40 motion-reduce:transition-none {focusRing}"
-					aria-label={action === "join" ? `Join the call in ${row.title}` : `Call ${row.title}`}
-					title={action === "join" ? "Join the call" : "Call"}
-					disabled={!action}
-					onclick={() => row.conversation && callBack(row.conversation)}
-				>
-					<PhoneIcon class="size-4" />
-				</button>
+				<Tooltip text={action === "join" ? "Join the call" : "Call"} side="left">
+					{#snippet trigger(props)}
+						<IconButton
+							{...props}
+							label={action === "join" ? `Join the call in ${row.title}` : `Call ${row.title}`}
+							disabled={!action}
+							onclick={() => row.conversation && callBack(row.conversation)}
+						>
+							<PhoneIcon size={16} />
+						</IconButton>
+					{/snippet}
+				</Tooltip>
 			</li>
 		{/each}
 	</ul>
 	{#if list.more}
 		{#if failed}
-			<div class="flex items-center justify-center gap-3 py-4" role="status">
-				<span class="text-duvet-ink2 text-sm">Couldn't load more calls</span>
-				<button
-					type="button"
-					class="bg-duvet-card text-duvet-ink2 shadow-duvet-raised hover:text-duvet-ink flex h-8 items-center rounded-xl px-3 text-[13px] font-bold transition-colors motion-reduce:transition-none {focusRing}"
-					onclick={load}
-				>
-					Try again
-				</button>
+			<div class="flex items-center justify-center gap-3 py-3" role="status">
+				<span class="text-duvet-ink2 text-[13px]">Couldn't load more calls</span>
+				<Button variant="secondary" size="sm" onclick={load}>Try again</Button>
 			</div>
 		{:else}
-			<p use:watchEnd class="text-duvet-ink2 py-4 text-center text-xs" role="status">Loading…</p>
+			<p use:watchEnd class="text-duvet-ink2 py-3 text-center text-xs" role="status">Loading…</p>
 		{/if}
 	{/if}
 {/if}

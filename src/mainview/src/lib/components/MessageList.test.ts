@@ -205,9 +205,13 @@ describe("a group's call notices", () => {
 // picker's portal under <body>, with its popover's state, for a picker nobody opened. A row's mounts only while open.
 test("a row's reaction picker mounts its portal only while it's open", () => {
 	const list = readFileSync(join(import.meta.dir, "MessageList.svelte"), "utf8");
+	// One hover bar for the user's messages and the others' (#357): one picker.
 	const guarded = list.match(/\{#if reactingMessageId === message\.id\}\s*<Popover\.Portal>/g) ?? [];
-	expect(guarded).toHaveLength(2);
-	expect(list.match(/<Popover\.Portal>/g)).toHaveLength(2);
+	expect(guarded).toHaveLength(1);
+	expect(list.match(/<Popover\.Portal>/g)).toHaveLength(1);
+	// And so does its More menu's: left mounted, scrolling a long chat with the pointer over it kept 75 MB of menus (#357).
+	expect(list.match(/\{#if moreMenuFor === message\.id\}\s*<DropdownMenu\.Portal>/g)).toHaveLength(1);
+	expect(list.match(/<DropdownMenu\.Portal>/g)).toHaveLength(1);
 });
 
 // #322: these lists kept their messages in $state, which Svelte 5 makes deep proxies (a signal for each property read,
@@ -264,11 +268,123 @@ describe("a row's action toolbar", () => {
 		const list = source("MessageList.svelte");
 		expect(list).toContain("onmouseover={hoverRow}");
 		expect(list).toContain("hoveredMessageId = row?.dataset.messageId ?? null;");
-		const shownFor =
-			list.match(
-				/\{:else if \(hoveredMessageId === message\.id \|\| reactingMessageId === message\.id\) && !isPending/g,
-			) ?? [];
-		expect(shownFor).toHaveLength(2);
+		// Also while its More menu is open, and on the row the keyboard's focus is in. One condition (barShown), which each
+		// layout's row asks: bubbles and flat rows.
+		expect(list).toMatch(
+			/\{@const barShown =\s*\(hoveredMessageId === message\.id \|\|\s*focusedMessageId === message\.id \|\|\s*reactingMessageId === message\.id \|\|\s*moreMenuFor === message\.id\) &&\s*!isPending &&/,
+		);
+		expect(list.match(/\{:else if barShown\}\s*\{@render hoverBar\(/g)).toHaveLength(2);
 		expect(list).not.toContain("hidden group-hover:flex");
+		expect(list).not.toContain("group-hover/row:flex");
+	});
+
+	// #357: the keyboard reaches the bar too (lib/message-focus.ts), by one tab stop for the whole list.
+	test("shows on the message the keyboard's focus is in, and the list has one tab stop", () => {
+		const list = source("MessageList.svelte");
+		for (const handler of ["onfocusin={focusRow}", "onfocusout={blurRow}", "onkeydown={rowKeys}"])
+			expect(list).toContain(handler);
+		// Every layout's row is the stop or is reached from it: a notice, a flat row, a bubble's row.
+		expect(
+			list.match(/data-message-id=\{message\.id\}\s*tabindex=\{tabStopId === message\.id \? 0 : -1\}/g),
+		).toHaveLength(3);
+		// A click's focus mounts nothing: only the keyboard's.
+		expect(list).toContain('e.target.matches(":focus-visible")');
+	});
+});
+
+// #357: bubbles by default, flat rows as a setting; groups show their author once and their time once.
+describe("the two layouts", () => {
+	const ME = "0190a3b2-0000-7000-8000-000000000001";
+	const ANA = message.author_id;
+	const ROOM = "0190a3b2-0000-7000-8000-00000000c001";
+	const DM = "0190a3b2-0000-7000-8000-00000000d001";
+	const at = (minute: number) => new Date(2026, 10, 1, 10, minute).toISOString();
+	const from = (id: string, author: string, name: string, minute: number, content: string): Message => ({
+		...message,
+		id: `0190a3b2-0000-7000-8000-0000000000${id}`,
+		author_id: author,
+		author_name: name,
+		content,
+		created_at: at(minute),
+		updated_at: at(minute),
+	});
+	const talk = [
+		from("01", ANA, "Ana", 0, "first of two"),
+		from("02", ANA, "Ana", 1, "second of two"),
+		from("03", ME, "me", 2, "my own words"),
+		from("04", ANA, "Ana", 3, `look <@${ME}>`),
+	];
+	const list = (p: Record<string, unknown>) =>
+		render(MessageList, { props: { messages: talk, channelId: ROOM, spaceId: "space", intro, ...p } }).body;
+	const count = (html: string, text: string) => html.split(text).length - 1;
+
+	beforeEach(() =>
+		currentUser.set({
+			id: ME,
+			username: "me",
+			email_verified: true,
+			alias: null,
+			avatar: null,
+			banner: null,
+			custom: "",
+			flags: 0,
+			badges: 0,
+			is_bot: false,
+			created_at: "",
+			updated_at: "",
+		}),
+	);
+	afterEach(async () => {
+		currentUser.set(null);
+		(await import("$lib/stores/message-layout.svelte")).messageLayout.value = "bubbles";
+	});
+
+	test("bubbles are the default: the user's own in azure, the others' on the card", () => {
+		const html = list({});
+		expect(html).toMatch(/class="[^"]*\bmsg-own bg-duvet-azure\b[^"]*"[^>]*>(?:(?!<\/div>)[\s\S])*my own words/);
+		expect(html).toMatch(/class="[^"]*\bbg-duvet-card\b[^"]*"[^>]*>(?:(?!<\/div>)[\s\S])*first of two/);
+		expect(html).not.toContain("grid-cols-[52px_minmax(0,1fr)]");
+	});
+
+	test("a group names its author once, over its first bubble, and never the user", () => {
+		const html = list({});
+		// Ana's two messages a minute apart are one group; her third, after the user's, is another.
+		expect(count(html, ">Ana</")).toBe(2);
+		expect(html).not.toContain(">me</");
+	});
+
+	test("a mention of the user lights its bubble, and nobody else's", () => {
+		const html = list({});
+		expect(count(html, "animate-prism-arrive")).toBe(1);
+		expect(html).toMatch(/animate-prism-arrive[\s\S]*?look /);
+	});
+
+	test("a direct conversation's bubbles name nobody; a group's do", async () => {
+		const { conversations } = await import("$lib/stores.svelte");
+		const conversation = (type: 1 | 2) => [
+			{ id: DM, type, name: null, owner_id: ANA, created_at: "", updated_at: "", deleted_at: null, members: [] },
+		];
+		conversations.set(conversation(1));
+		expect(list({ channelId: DM, spaceId: "" })).not.toContain(">Ana</");
+		conversations.set(conversation(2));
+		expect(count(list({ channelId: DM, spaceId: "" }), ">Ana</")).toBe(2);
+		conversations.set([]);
+	});
+
+	test("flat rows are the other choice: every author named, the user too, and a mention washes its row", async () => {
+		(await import("$lib/stores/message-layout.svelte")).messageLayout.value = "flat";
+		const html = list({});
+		expect(count(html, "grid-cols-[52px_minmax(0,1fr)]")).toBe(4);
+		expect(count(html, ">Ana</")).toBe(2);
+		expect(count(html, ">me</")).toBe(1);
+		expect(html).not.toContain("bg-duvet-azure");
+		expect(html).not.toContain("animate-prism-arrive");
+		expect(html).toContain("radial-gradient(420px_80px_at_60px_50%");
+	});
+
+	test("the list reads the saved layout and the groups from their modules", () => {
+		const component = source("MessageList.svelte");
+		expect(component).toContain('const flat = $derived(messageLayout.value === "flat");');
+		expect(component).toContain("const shapes = $derived(groupShapes(sortedMessages, unreadDividerIdx));");
 	});
 });

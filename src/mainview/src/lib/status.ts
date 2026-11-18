@@ -14,7 +14,7 @@ import type {
  * one chosen while the user is connected. */
 export const STATUS_CHOICES: { status: ChosenStatus; label: string; description?: string }[] = [
 	{ status: 1, label: "Online", description: "Sounds and calls as usual" },
-	{ status: 2, label: "Do Not Disturb", description: "No sounds, and calls don't ring" },
+	{ status: 2, label: "Do not disturb", description: "No sounds, and calls don't ring" },
 ];
 
 /** The status a user chose, from what their READY or /users/@me says: do not disturb, or else online (a gateway from

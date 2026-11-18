@@ -1,0 +1,375 @@
+Tweaks
+Prototype controls
+not part of the design
+Reset the prototype
+duvet-desktop-prototype
+layout prototype
+(not really)
+Duvet keeps running in the menu bar
+Opens in a new window
+wp-thumb-
+wp-dusk
+wp-sky
+wp-peaks
+wp-sunset
+mb-apple
+picsum
+assets/img/
+setHours(12, 41
+Wren Ivers
+Ivers
+Mara Okafor
+Okafor
+Teo Valdés
+Valdés
+Teo Valdes
+Ines Kuroda
+Kuroda
+Juno Park
+Felix Brandt
+Sol Ahumada
+Ahumada
+Priya Raman
+Kit Moreau
+Moreau
+Ren Takahashi
+Takahashi
+Ana Lucía Ferro
+Ana Lucia Ferro
+Bram de Vries
+Otto Lindqvist
+Lindqvist
+Nadia Haddad
+Haddad
+Lior Ben-Ami
+Ben-Ami
+Mara
+Teo
+Ines
+Juno
+Felix
+Priya
+Bram
+Otto
+Nadia
+Lior
+@wren
+@mara
+@teovaldes
+teovaldes
+@ines
+@junopark
+junopark
+@felix
+@sol
+@priya
+@kitmoreau
+kitmoreau
+@analu
+@bram
+@otto
+@nadia
+@lior
+@nightshift
+lantern-ci
+Night Shift Radio
+Night Shift
+Lantern Games
+Lantern CI
+Sourdough Society
+Trail Runners
+Film Lab
+Vinyl Diggers
+Sunday Soup Club
+Lisbon in March
+Duvet Ghost
+Playtester
+Green Room
+art-dump
+crumb-shots
+photo-walks
+sunday-long-run
+playtest-voice
+tracklist
+analu
+nightshift
+github-logs
+off-topic
+darkroom
+turntables
+Teardrop
+On Air
+Start here. Show times, house rules, the request line.
+Live Tuesdays and Fridays at 9
+Guests wait here
+rain on the window
+Rain on the window
+One song each, be nice to Kit
+Every song we played, every night
+Posters, sketches, ghosts
+Best bits from the shows
+Lantern CI posts here
+Lighthouses, mostly
+Be honest, be kind
+Every release, every fix
+Tell us what to make better
+Commits as they land
+A late-night radio show for people who can
+A tiny studio making games about lighthouses
+where to tell us
+Analog photography, monthly photo walks
+a darkroom in
+Valparaíso
+drawing ghosts for the radio
+I draw the posters for Night Shift Radio
+Host of Night Shift Radio
+Slow songs, long intros
+on air at 9
+deadline mode
+Hago juegos raros en Lantern
+Perro: Tinta
+Sound design, field recordings, cats
+Night owl, day sleeper
+the cow is mine
+Producer at Night Shift
+Run sheets, cue cards, coffee
+I press the buttons so Mara
+mostly of the city at 3am
+Requests line regular
+Sad songs only
+did you finish the poster for friday
+fighting with the kerning
+two directions, tell me which
+left. the lights. obviously
+this made me think of us
+adding it to the run sheet
+this is literally our tagline now
+intro idea, tell me if it
+too slow is the point
+also this for the warmup
+they do a photo walk every month
+sorry, was in the shower
+from last night
+see you at 9
+hosting sunday
+my kitchen is currently 40% cow
+yo puedo! tengo la olla grande
+ingredientes de prueba
+the raspberries??
+postre, obvio
+recipe, do not leak
+sopa-de-mani
+host: teo
+soup: peanut
+dessert: raspberries
+playlist: wren
+on playlist duty
+three hours of Cocteau Twins
+a qué hora llegan
+7 works
+probaste el build nuevo
+the lighthouse beam is SO pretty now
+me costó 3 días
+te paso el build en un rato
+arreglar el faro
+field recording from the harbour
+this is unreal, the gulls
+Missed call from Ines
+found a place in Alfama
+flights went up again
+can you send me the poster in 4:5
+the cow says hi
+mañana a las 7
+thanks for the invite! the rain episode was perfect
+tonight’s theme is
+tonight's theme is
+can we get the 3am slow set again
+yes!! closing with it
+the new poster is up on the site
+the ghost in the corner
+sunrise after last week
+pls tell me there
+recording of the 2am bit
+for the rain set
+ten minutes of this, yes
+so crisp tonight
+with a field recording from the harbour
+cue card 4 is up next
+Welcome to Night Shift Radio
+live Tuesdays and Fridays at 9
+Sleep is optional
+ya sé, ya sé, lo arreglo
+Voice notes on desktop
+Sticker packs in every Space
+Calls reconnect when your wifi blips
+Split view: two chats side by side
+Faster scrolling in long chats
+haha ok ok
+perfect, adding it
+see you on air
+ahí va el build
+I’ll bring bread
+I'll bring bread
+41:20 in
+the 2am bit is my favourite
+ok what’s the plan for friday
+ok what's the plan for friday
+poster first, then soup
+could you post the poster here too
+people keep asking
+bringing bread
+lowlight.fm
+Lowlight
+designing-for-the-quiet-hours
+Designing for the quiet hours
+feels like a blanket
+leaving room for silence
+cherry-coloured-funk
+Cherry-coloured Funk
+Cocteau Twins
+Heaven or Las Vegas
+Massive Attack
+Mezzanine
+Svefn-g-englar
+Sigur Rós
+Ágætis byrjun
+Night drive · 2 hour slow mix
+slow mix for the quiet hours
+Going live tonight at 9:00 PM
+episode 112
+Episode 112
+run-sheet-ep112
+Kit, Sol, Wren
+Cold open, rain sounds
+harbour recording
+Requests: Teardrop
+The 3am slow set
+Build #482
+Build #483
+lighthouse beam: soften the falloff
+fog-shader
+Duvet 1.18
+Duvet 1.19
+has:link from:mara
+New message from Mara
+cat stare
+duck nap
+MacBook Pro Microphone
+MacBook Pro Speakers
+FaceTime HD Camera
+iPhone Camera
+Shure MV7
+AirPods Pro
+iPhone 17
+Firefox on Linux
+Active 2 hours ago
+w•••@duvet.chat
+duvet.chat/@wren
+Changed 3 months ago
+3 members · 1 app
+slash commands
+Night Shift archive
+connected by Kit
+the owner has Premium
+1 GB, free
+sp4m_radio
+nightcrawler99
+Links to a fake stream
+Harassed a guest
+Tracklist updater
+Show reminders
+Posts to #tracklist
+Posts to #welcome
+nightshift-rain
+friday-guests
+duvet.chat/i/
+al-158.
+al-185.
+al-267.
+al-39.
+al-56.
+al-82.
+av-152.
+av-177.
+av-200.
+av-219.
+av-237.
+av-244.
+av-25.
+av-306.
+av-40.
+av-64.
+av-65.
+av-91.
+bn-122.
+bn-128.
+bn-158.
+bn-184.
+bn-185.
+bn-195.
+bn-213.
+bn-223.
+bn-249.
+bn-267.
+bn-274.
+bn-296.
+bn-301.
+bn-54.
+bn-56.
+bn-82.
+gif-124.
+gif-133.
+gif-158.
+gif-174.
+gif-175.
+gif-183.
+gif-200.
+gif-223.
+gif-237.
+gif-244.
+gif-248.
+gif-31.
+gif-40.
+gif-56.
+gif-85.
+gif-99.
+ic-158.
+ic-225.
+ic-237.
+ic-250.
+ic-287.
+ic-296.
+ic-39.
+ic-82.
+ph-102.
+ph-128.
+ph-164.
+ph-174.
+ph-177.
+ph-195.
+ph-213.
+ph-225.
+ph-234.
+ph-292.
+ph-49.
+ph-63.
+pt-177.
+pt-234.
+pt-65.
+th-0.
+th-1.
+th-119.
+th-158.
+th-179.
+th-223.
+th-267.
+th-274.
+th-39.
+th-45.
+th-56.
+th-64.
+th-91.
+wp-213.
+wp-267.
+wp-296.
+wp-54.

@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { X as XIcon, ZoomIn, ZoomOut, RotateCcw, RotateCw } from "@lucide/svelte";
+	import { TABBABLE, wrapTab } from "$lib/focus-wrap";
 
 	let {
 		src,
@@ -79,7 +80,15 @@
 	}
 
 	function handleKeyDown(e: KeyboardEvent) {
-		if (e.key === "Escape") {
+		if (e.key === "Tab") {
+			// The viewer covers the app: Tab stays among its own buttons.
+			const overlay = e.currentTarget as HTMLElement;
+			const controls = [...overlay.querySelectorAll<HTMLElement>(TABBABLE)];
+			const to = wrapTab(controls.length, controls.indexOf(document.activeElement as HTMLElement), e.shiftKey);
+			if (to === null) return;
+			e.preventDefault();
+			(controls[to] ?? overlay).focus();
+		} else if (e.key === "Escape") {
 			open = false;
 		} else if (e.key === "+" || e.key === "=") {
 			zoomIn();
@@ -121,9 +130,10 @@
 {#if open}
 	<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 	<div
-		class="fixed inset-0 z-200 flex items-center justify-center bg-black/85 backdrop-blur-sm"
+		class="bg-duvet-viewer animate-scrim-in fixed inset-0 z-200 flex items-center justify-center backdrop-blur-sm"
 		role="dialog"
 		aria-modal="true"
+		aria-label={alt ? `Image: ${alt}` : "Image"}
 		tabindex="-1"
 		use:focusWhileOpen
 		onclick={handleBackdropClick}
@@ -132,38 +142,38 @@
 	>
 		<!-- Toolbar -->
 		<div
-			class="border-duvet-line bg-duvet-bg/80 absolute top-4 right-4 z-10 flex items-center gap-1 rounded-lg border p-1"
+			class="bg-duvet-media-scrim absolute top-4 right-4 z-10 flex items-center gap-0.5 rounded-xl p-1 backdrop-blur-md"
 		>
 			<button
-				class="text-duvet-ink2 hover:bg-duvet-ink/10 hover:text-duvet-ink rounded p-1.5 transition-colors"
+				class="text-duvet-media-ink/80 hover:text-duvet-media-ink hover:bg-fixed-white/12 rounded-lg p-1.5 transition-colors motion-reduce:transition-none"
 				onclick={zoomIn}
 				title="Zoom in (+)"
 			>
 				<ZoomIn class="size-4" />
 			</button>
 			<button
-				class="text-duvet-ink2 hover:bg-duvet-ink/10 hover:text-duvet-ink rounded p-1.5 transition-colors"
+				class="text-duvet-media-ink/80 hover:text-duvet-media-ink hover:bg-fixed-white/12 rounded-lg p-1.5 transition-colors motion-reduce:transition-none"
 				onclick={zoomOut}
 				title="Zoom out (-)"
 			>
 				<ZoomOut class="size-4" />
 			</button>
 			<button
-				class="text-duvet-ink2 hover:bg-duvet-ink/10 hover:text-duvet-ink rounded p-1.5 transition-colors"
+				class="text-duvet-media-ink/80 hover:text-duvet-media-ink hover:bg-fixed-white/12 rounded-lg p-1.5 transition-colors motion-reduce:transition-none"
 				onclick={() => rotateLeft(90)}
 				title="Rotate left 90° ([)"
 			>
 				<RotateCcw class="size-4" />
 			</button>
 			<button
-				class="text-duvet-ink2 hover:bg-duvet-ink/10 hover:text-duvet-ink rounded p-1.5 transition-colors"
+				class="text-duvet-media-ink/80 hover:text-duvet-media-ink hover:bg-fixed-white/12 rounded-lg p-1.5 transition-colors motion-reduce:transition-none"
 				onclick={() => rotateRight(90)}
 				title="Rotate right 90° (])"
 			>
 				<RotateCw class="size-4" />
 			</button>
 			<button
-				class="text-duvet-ink2 hover:bg-duvet-ink/10 hover:text-duvet-ink rounded p-1.5 transition-colors"
+				class="text-duvet-media-ink/80 hover:text-duvet-media-ink hover:bg-fixed-white/12 rounded-lg p-1.5 transition-colors motion-reduce:transition-none"
 				onclick={reset}
 				title="Reset (0)"
 			>
@@ -179,9 +189,9 @@
 					stroke-linejoin="round"><path d="M3 7v6h6" /><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13" /></svg
 				>
 			</button>
-			<div class="bg-duvet-line h-5 w-px"></div>
+			<div class="bg-fixed-white/15 mx-0.5 h-5 w-px"></div>
 			<button
-				class="text-duvet-ink2 hover:bg-duvet-ink/10 hover:text-duvet-ink rounded p-1.5 transition-colors"
+				class="text-duvet-media-ink/80 hover:text-duvet-media-ink hover:bg-fixed-white/12 rounded-lg p-1.5 transition-colors motion-reduce:transition-none"
 				onclick={() => (open = false)}
 				title="Close (Esc)"
 			>
@@ -192,7 +202,7 @@
 		<!-- Zoom label -->
 		{#if scale !== 1}
 			<div
-				class="border-duvet-line bg-duvet-bg/80 text-duvet-ink absolute bottom-4 left-1/2 z-10 -translate-x-1/2 rounded-full border px-3 py-1 text-xs select-none"
+				class="bg-duvet-media-scrim text-duvet-media-ink absolute bottom-4 left-1/2 z-10 -translate-x-1/2 rounded-lg px-2.5 py-1 text-[11px] font-semibold tabular-nums backdrop-blur-md select-none"
 			>
 				{Math.round(scale * 100)}%
 			</div>

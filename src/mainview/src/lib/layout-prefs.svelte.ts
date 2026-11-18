@@ -16,8 +16,6 @@ export const layoutPrefs: LayoutPrefs = $state(readSaved());
 $effect.root(() => {
 	$effect(() => {
 		const value = JSON.stringify({
-			membersColumn: layoutPrefs.membersColumn,
-			showMembersSidebar: layoutPrefs.membersColumn !== "hidden",
 			showChannelsSidebar: layoutPrefs.showChannelsSidebar,
 			spacesColumn: layoutPrefs.spacesColumn,
 			openChats: layoutPrefs.openChats,

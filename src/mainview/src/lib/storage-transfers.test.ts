@@ -1,4 +1,6 @@
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import {
 	bucketChoice,
 	defaultStorageChoice,
@@ -8,6 +10,7 @@ import {
 	shownFiles,
 	takesAll,
 	targetRoom,
+	tellsTransferEnd,
 	transferEndNotice,
 	transferFilter,
 	transferProgress,
@@ -258,5 +261,58 @@ describe("transferEndNotice", () => {
 			text: "Moving files to My R2 was cancelled. 37 of 120 files moved.",
 			type: "info",
 		});
+	});
+});
+
+// From the Windows builder's hand-back: with a settings window open, the end of a transfer showed its toast in both
+// windows. Each window hears of the end (the main one from the gateway, the others from the main one): one tells it.
+describe("which window tells a transfer's end", () => {
+	const own = { owner_id: "u1", started_by: "u1" };
+	const ofSpace = (spaceId: string) => ({ owner_id: spaceId, started_by: "u1" });
+	const main = (...open: (string | null)[]) => ({ window: "main" as const, open: new Set(open) });
+	const settings = (spaceId: string | null) => ({ window: "settings" as const, spaceId });
+
+	test("with no settings window open, the main window tells every end", () => {
+		expect(tellsTransferEnd(main(), own)).toBe(true);
+		expect(tellsTransferEnd(main(), ofSpace("s1"))).toBe(true);
+	});
+
+	test("Settings, open, tells the end of the user's own transfers, and the main window doesn't", () => {
+		expect(tellsTransferEnd(settings(null), own)).toBe(true);
+		expect(tellsTransferEnd(main(null), own)).toBe(false);
+		// A Space's transfer isn't on its screen: the main window still tells it.
+		expect(tellsTransferEnd(settings(null), ofSpace("s1"))).toBe(false);
+		expect(tellsTransferEnd(main(null), ofSpace("s1"))).toBe(true);
+	});
+
+	test("a Space's settings, open, tell that Space's, and no other's", () => {
+		expect(tellsTransferEnd(settings("s1"), ofSpace("s1"))).toBe(true);
+		expect(tellsTransferEnd(main("s1"), ofSpace("s1"))).toBe(false);
+		expect(tellsTransferEnd(settings("s1"), ofSpace("s2"))).toBe(false);
+		expect(tellsTransferEnd(settings("s1"), own)).toBe(false);
+		expect(tellsTransferEnd(main("s1"), ofSpace("s2"))).toBe(true);
+		expect(tellsTransferEnd(main("s1"), own)).toBe(true);
+	});
+
+	test("exactly one window tells each end, whichever windows are open", () => {
+		const transfers = [own, ofSpace("s1"), ofSpace("s2")];
+		for (const open of [[], [null], ["s1"], [null, "s1"], [null, "s1", "s2"]] as (string | null)[][]) {
+			for (const moved of transfers) {
+				const tellers = [main(...open), ...open.map(settings)].filter((here) => tellsTransferEnd(here, moved));
+				expect(tellers).toHaveLength(1);
+			}
+		}
+	});
+
+	// The store asks before its toast, and each end of the windows' link says where it is.
+	test("the store asks before it tells, and both links answer", () => {
+		const read = (path: string) => readFileSync(join(import.meta.dir, path), "utf8");
+		expect(read("stores/storage-transfers.svelte.ts")).toContain("if (this.tellsEnd(t)) toast(");
+		expect(read("stores/settings-guest-link.svelte.ts")).toContain(
+			'storageTransfers.tellsEnd = (transfer) => tellsTransferEnd({ window: "settings", spaceId }, transfer);',
+		);
+		expect(read("stores/settings-host-link.svelte.ts")).toContain(
+			'storageTransfers.tellsEnd = (transfer) => tellsTransferEnd({ window: "main", open: listening }, transfer);',
+		);
 	});
 });

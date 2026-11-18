@@ -7,10 +7,11 @@ const source = (file: string) => readFileSync(join(import.meta.dir, file), "utf8
 test("a group's bar offers what the user can do to it, a DM's nothing", () => {
 	const view = source("ConversationView.svelte");
 	expect(view).toContain("const actionsOnGroup = $derived(groupActions(conversation, me?.id));");
-	expect(view).toMatch(/\{#if actionsOnGroup\.leave\}\s*<DropdownMenu\.Root>/);
 	expect(view).toMatch(
-		/\{#if actionsOnGroup\.rename\}\s*<DropdownMenu\.Item class=\{groupMenuItem\} onSelect=\{renameGroup\}>/,
+		/\{#if actionsOnGroup\.leave\}\s*(?:<!--[^]*?-->\s*)?<Menu align="end" label="More for this group">/,
 	);
+	expect(view).toMatch(/\{#if actionsOnGroup\.rename\}\s*<MenuItem icon=\{Pencil\} onSelect=\{renameGroup\}>/);
+	expect(view).toContain("<MenuItem icon={LogOut} danger onSelect={leaveGroup}>Leave group</MenuItem>");
 });
 
 test("renaming starts from the name, asks nothing for the same one or none, and shows a refusal", () => {
@@ -57,8 +58,12 @@ test("the new group dialog goes by what's picked: one friend's DM, or a group", 
 	expect(friends).toContain(
 		'plan.kind === "dm" ? await createDM(plan.userId) : await createGroup(plan.name, plan.userIds)',
 	);
-	expect(friends).toMatch(/\{#if selectedFriendIds\.size > 1\}\s*<div[^>]*>\s*<label for="group-name"/);
-	expect(friends).toContain('selectedFriendIds.size === 1 ? "Start conversation" : "Create group"');
+	// The name is a group's alone: out of sight and out of reach until two friends are picked (its place is kept).
+	expect(friends).toMatch(
+		/<div class="[^"]*\{selectedFriendIds\.size > 1 \? '' : 'invisible'\}">\s*<label for="group-name"/,
+	);
+	expect(friends).toContain("disabled={selectedFriendIds.size <= 1}");
+	expect(friends).toContain('selectedFriendIds.size === 1 ? "Start chat" : "Create group"');
 	// What it refused is about the picks before this one.
 	expect(friends).toMatch(/selectedFriendIds = next;\s*groupError = "";/);
 });

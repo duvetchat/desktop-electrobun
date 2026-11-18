@@ -1,4 +1,4 @@
-# Lint (oxlint), formatting (Prettier) and type checks (svelte-check) on every pull request.
+# Lint (oxlint), formatting (Prettier) and type checks (tsc, svelte-check) on every pull request.
 name: CI
 
 # Only on pull requests into dev. The dev to main promotion does not re-run it, since those pull
@@ -37,6 +37,8 @@ jobs:
         working-directory: src/mainview
       - run: bun run lint
       - run: bun run format:check
+      # The Bun process's types (src/bun/tsconfig.json): svelte-check below reads the UI's only.
+      - run: bun run check
       - run: bun run check
         working-directory: src/mainview
       # Each test file in a global object and module registry of its own: what one leaves can't reach another (#176).

@@ -1,15 +1,30 @@
 <script lang="ts">
-	import { hasPermission, mentionableRooms, Permission } from "$lib/permissions";
+	import { hasPermission, Permission } from "$lib/permissions";
 	import { onDestroy, onMount, tick, type Snippet } from "svelte";
 	import {
+		ArrowDown as ArrowDownIcon,
+		BadgeCheck as BadgeCheckIcon,
+		Ban as BanIcon,
+		Copy as CopyIcon,
+		Ellipsis as EllipsisIcon,
 		Eye as EyeIcon,
+		Link as LinkIcon,
+		LoaderCircle as SpinnerIcon,
+		MessagesSquare as ThreadIcon,
+		Pencil as PencilIcon,
 		Phone as PhoneIcon,
+		PhoneMissed as PhoneMissedIcon,
 		Pin as PinIcon,
 		PinOff as PinOffIcon,
 		Reply as ReplyIcon,
+		Trash2 as TrashIcon,
+		User as UserIcon,
+		UserMinus as KickIcon,
+		UserPlus as UserPlusIcon,
 		Users as UsersIcon,
 	} from "@lucide/svelte";
-	import { updateMessage, deleteMessage, getMessageThread, pinRoomMessage, unpinRoomMessage } from "$lib/api/messages";
+	import SmilePlusIcon from "$lib/components/ui/icons/SmilePlus.svelte";
+	import { deleteMessage, getMessageThread, pinRoomMessage, unpinRoomMessage } from "$lib/api/messages";
 	import { sendComponentInteraction, type ComponentUse } from "$lib/api/interactions";
 	import {
 		getConversationMessageThread,
@@ -18,7 +33,9 @@
 	} from "$lib/api/conversations";
 	import { confirmAction } from "$lib/stores/confirm.svelte";
 	import { keyboard } from "$lib/keyboard.svelte";
-	import { Dialog, Popover } from "bits-ui";
+	import { rowKey, rowToward, staysWithRow, tabStop } from "$lib/message-focus";
+	import { DropdownMenu, Popover } from "bits-ui";
+	import { claimLayer, layerStyle, releaseLayer } from "$lib/overlay-layers";
 	import {
 		currentUser,
 		jumpToMessageRequest,
@@ -44,10 +61,13 @@
 	import { belowIndicator } from "$lib/jumps";
 	import { threadNow } from "$lib/threads";
 	import { keepPlace, takePlace } from "$lib/kept-places";
-	import { largeEmojis } from "$lib/emoji";
+	import { largeEmojis, renderEmoji } from "$lib/emoji";
 	import { mentionMapOf, sameNames } from "$lib/markdown";
 	import { reactionKey } from "$lib/reactions";
 	import { nameColors } from "$lib/name-colors";
+	import { clockTime, dayLabel, groupShapes, headTime, shortClockTime } from "$lib/message-groups";
+	import { messageLayout } from "$lib/stores/message-layout.svelte";
+	import { PRISM_BUBBLE, PRISM_LIGHT, PRISM_RIM, PRISM_WASH, placePrismsIn, slidePrismsIn } from "$lib/prism";
 
 	import {
 		gatewayMessageToMessage,
@@ -74,7 +94,13 @@
 	import MessagePreview from "$lib/components/MessagePreview.svelte";
 	import MascotPeek from "$lib/components/MascotPeek.svelte";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
-	import ChatInput from "$lib/components/ChatInput.svelte";
+	import ContextMenu from "$lib/components/ui/ContextMenu.svelte";
+	import IconButton from "$lib/components/ui/IconButton.svelte";
+	import Sheet from "$lib/components/ui/Sheet.svelte";
+	import MenuItem from "$lib/components/ui/MenuItem.svelte";
+	import MenuSeparator from "$lib/components/ui/MenuSeparator.svelte";
+	import MenuSub from "$lib/components/ui/MenuSub.svelte";
+	import { buttonClass, countBadgeClass, GLASS, MENU_PANEL } from "$lib/components/ui/recipes";
 	import EmojiPicker from "$lib/components/EmojiPicker.svelte";
 	import ImagePreview from "$lib/components/ImagePreview.svelte";
 	import MemberProfilePopover from "$lib/components/MemberProfilePopover.svelte";
@@ -103,10 +129,10 @@
 		onLoadMore = () => {},
 		onLoadMoreBelow = () => {},
 		onJumpToPresent = undefined,
+		composerHeight = 0,
 		onRetry = () => {},
 		onDismiss = () => {},
 		onReply = undefined,
-		onSaveEdit = undefined,
 		onDeleteMsg = undefined,
 		failedNonces = new Set<string>(),
 		editingMessageId = $bindable<string | null>(null),
@@ -135,12 +161,15 @@
 		onLoadMoreBelow?: () => Promise<void> | void;
 		/** Takes the list from a jump's pages to the present (the newest messages); true once it's there. */
 		onJumpToPresent?: () => Promise<boolean>;
+		/** The message box's height in px, which the list's foot and the jump button clear (--composer-h); 0 while unknown. */
+		composerHeight?: number;
 		onRetry?: (message: Message) => void;
 		onDismiss?: (nonce: string) => void;
 		onReply?: (message: Message) => void;
-		onSaveEdit?: (messageId: string, content: string) => Promise<void> | void;
 		onDeleteMsg?: (messageId: string) => Promise<void> | void;
 		failedNonces?: Set<string>;
+		/** The message being edited, which the chat's message box holds (Chat.svelte): its bubble is ringed, and it has no
+		 * hover bar. An edit starts here (the hover bar, the menu, three clicks on one's own text) by setting both. */
 		editingMessageId?: string | null;
 		editContent?: string;
 		isAtBottom?: boolean;
@@ -174,24 +203,69 @@
 	// Newest confirmed message ID the user has seen (updated only while at bottom & visible).
 	let lastSeenMsgId = "";
 	let deletingMessageId = $state<string | null>(null);
-	let activePopoverMsgId = $state<string | null>(null);
-	let avatarPopoverWasOpen = false;
+	// The profile a click on an author's name or avatar opens, beside what was clicked: one popover for the list. A second
+	// click on the same one closes it, whichever comes first: the click, with the profile still open, or the popover's own
+	// closing on that press outside it (profileClosed), after which the click doesn't open it again.
+	let profileFor = $state.raw<{ member: MemberOnSidebar; anchor: HTMLElement } | null>(null);
+	let profileClosed: { anchor: HTMLElement; at: number } | null = null;
+	function openProfile(member: MemberOnSidebar | undefined, anchor: HTMLElement) {
+		if (!member) return;
+		if (profileFor?.anchor === anchor) {
+			profileFor = null;
+			profileClosed = null;
+			return;
+		}
+		const justClosed = profileClosed?.anchor === anchor && performance.now() - profileClosed.at < 500;
+		profileClosed = null;
+		if (!justClosed) profileFor = { member, anchor };
+	}
+	function closeProfile() {
+		if (profileFor) profileClosed = { anchor: profileFor.anchor, at: performance.now() };
+		profileFor = null;
+	}
 	let mentionProfile: MentionProfile;
 	const openMention = (e: MouseEvent) => mentionProfile.open(e);
 
-	// User context menu
-	let userMenuPos = $state<{ x: number; y: number } | null>(null);
-	let userMenuTargetId = $state<string | null>(null);
+	// The menu a right-click opens, one for the whole list: a message's, or its author's from their avatar. A message's
+	// More button opens the same items from the hover bar (moreMenuFor: its bar stays while its menu is open).
+	type MenuTarget = { kind: "message"; id: string } | { kind: "author"; userId: string };
+	let menuTarget = $state<MenuTarget | null>(null);
+	let menuOpen = $state(false);
+	let moreMenuFor = $state<string | null>(null);
+	// The More menu's layer, claimed as it opens as ui/Menu.svelte's is: its author submenu, which claims the next,
+	// is then in front of it wherever it lands (lib/overlay-layers.ts).
+	const moreMenuLayer = $derived(moreMenuFor ? claimLayer() : 0);
+	$effect(() => {
+		const mine = moreMenuLayer;
+		if (mine) return () => releaseLayer(mine);
+	});
+	const menuMessage = $derived.by(() => {
+		const target = menuTarget;
+		return target?.kind === "message" ? messages.find((m) => m.id === target.id) : undefined;
+	});
 
-	function openUserMenu(e: MouseEvent, userId: string) {
-		e.preventDefault();
-		userMenuPos = { x: e.clientX, y: e.clientY };
-		userMenuTargetId = userId;
-	}
-
-	function closeUserMenu() {
-		userMenuPos = null;
-		userMenuTargetId = null;
+	// What a right-click is on, and whether the list's menu is for it. A link, a picture, a video and selected text
+	// keep the system's own menu (open the link, save the picture, copy the selection); a message being sent and a bot's
+	// ephemeral one have no menu, and a notice only for those who can delete it. A webhook's avatar has none.
+	function pickMenu(e: MouseEvent): boolean {
+		const el = e.target instanceof Element ? e.target : null;
+		if (!el) return false;
+		const author = el.closest<HTMLElement>("[data-author-menu]")?.dataset.authorMenu;
+		if (author !== undefined) {
+			if (author === "") return false;
+			menuTarget = { kind: "author", userId: author };
+			return true;
+		}
+		if (el.closest("a[href], img:not(.emoji-img), video, audio, input, textarea")) return false;
+		const selection = window.getSelection();
+		if (selection && !selection.isCollapsed && selection.anchorNode && scrollEl.contains(selection.anchorNode))
+			return false;
+		const id = el.closest<HTMLElement>("[data-message-id]")?.dataset.messageId;
+		const message = id ? messages.find((m) => m.id === id) : undefined;
+		if (!message || message.id === message.nonce || isEphemeral(message)) return false;
+		if (isNotice(message) && !canDeleteNotices) return false;
+		menuTarget = { kind: "message", id: message.id };
+		return true;
 	}
 
 	function isFriend(userId: string): boolean {
@@ -206,7 +280,6 @@
 	}
 
 	async function handleSendFriendRequest(userId: string) {
-		closeUserMenu();
 		try {
 			await sendFriendRequest(userId);
 			const sent = await getSentRequests();
@@ -227,7 +300,6 @@
 	const isStaff = $derived(checkStaff($currentUser?.flags ?? 0));
 
 	function openFlagsBadgesEditor(userId: string) {
-		closeUserMenu();
 		const user = space?.users.find((u) => u.id === userId);
 		if (!user) return;
 		flagsBadgesTarget = { id: user.id, flags: user.flags ?? 0, badges: user.badges ?? 0 };
@@ -285,11 +357,6 @@
 	const locale = typeof navigator !== "undefined" ? navigator.language : "en-US";
 	// Words are English, as next to them ("Today", "just now") and in the rest of the UI; clock times keep
 	// the system's format.
-	const dateFormatter = new Intl.DateTimeFormat("en", {
-		month: "long",
-		day: "numeric",
-		year: "numeric",
-	});
 	const relativeFormatter = new Intl.RelativeTimeFormat("en", {
 		numeric: "auto",
 	});
@@ -308,6 +375,10 @@
 			isAtBottom = val;
 			wasAtBottom = val;
 		}
+		// The jump button shows from 320 px above the bottom; told only when it changes, not with every scroll event.
+		const far = scrollEl.scrollTop < -JUMP_BUTTON_FROM;
+		if (far !== farFromBottom) farFromBottom = far;
+		if (prisms.size > 0) slidePrisms();
 
 		const scrollRect = scrollEl.getBoundingClientRect();
 
@@ -380,6 +451,8 @@
 		if (intervalId) {
 			window.clearInterval(intervalId);
 		}
+		if (prismFrame) cancelAnimationFrame(prismFrame);
+		prismObserver?.disconnect();
 		scrollEl?.removeEventListener("click", copyCode);
 		scrollEl?.removeEventListener("click", openRoomMention, true);
 		scrollEl?.removeEventListener("click", openMention, true);
@@ -427,8 +500,14 @@
 	});
 	// Every emoji of the user's Spaces, whatever room or chat this is: one they don't have draws from the API's /emojis.
 	const customEmojiMap = $derived($everyEmoji);
-	// The rooms "#" suggests while a message is edited.
-	const mentionRooms = $derived(space ? mentionableRooms(space) : []);
+	// The colour of each member's name where a message mentions them: their role's, as above their own messages. Kept
+	// while every style stays, as the names are (#324).
+	let mentionColours: Record<string, string> = {};
+	const mentionStyles = $derived.by(() => {
+		const next = Object.fromEntries(Object.entries(authorColors).filter(([, style]) => style !== ""));
+		if (!sameNames(next, mentionColours)) mentionColours = next;
+		return mentionColours;
+	});
 
 	// Uses a component of a bot's message. A modal the bot answers with opens with this room's members, roles
 	// and rooms for its selects, under the bot's name.
@@ -461,7 +540,153 @@
 		hoveredMessageId = row?.dataset.messageId ?? null;
 	}
 
+	// The keyboard's way to the same bar (lib/message-focus.ts): one message of the list is a tab stop, the arrows move
+	// the focus between messages, and the one the keyboard put the focus in mounts its bar, which Tab then enters.
+	// Enter, the menu key or Shift+F10 opens its menu. A click's focus mounts nothing: the pointer has its own way.
+	let focusedMessageId = $state<string | null>(null);
+	let lastFocusedId = $state<string | null>(null);
+	const rowIds = $derived(sortedMessages.map((m) => m.id));
+	const tabStopId = $derived(tabStop(rowIds, lastFocusedId));
+	const rowOf = (target: EventTarget | null) =>
+		target instanceof Element ? target.closest<HTMLElement>("[data-message-id]") : null;
+	function focusRow(e: FocusEvent) {
+		const id = rowOf(e.target)?.dataset.messageId ?? null;
+		if (id) lastFocusedId = id;
+		focusedMessageId = id && e.target instanceof Element && e.target.matches(":focus-visible") ? id : null;
+	}
+	function blurRow(e: FocusEvent) {
+		const to = e.relatedTarget instanceof Element ? e.relatedTarget : null;
+		const inList = !!to && scrollEl.contains(to);
+		// Within the same message (its text, its bar), the next focusin says so.
+		if (inList && rowOf(to)?.dataset.messageId === focusedMessageId) return;
+		const layerOpen = moreMenuFor === focusedMessageId || reactingMessageId === focusedMessageId;
+		if (!staysWithRow(to, inList, layerOpen)) focusedMessageId = null;
+	}
+	function rowKeys(e: KeyboardEvent) {
+		// A key in a message's text, a link or a button of its bar is that element's.
+		const row = e.target instanceof HTMLElement && e.target.matches("[data-message-id]") ? e.target : null;
+		const id = row?.dataset.messageId;
+		const key = id && !e.defaultPrevented ? rowKey(e) : null;
+		if (!id || !key) return;
+		if (key === "menu") {
+			const message = messages.find((m) => m.id === id);
+			// What has no bar has no menu to open: a notice, a message still sending, one only the user sees.
+			if (!message || isNotice(message) || message.id === message.nonce || isEphemeral(message) || !$currentUser)
+				return;
+			e.preventDefault();
+			focusedMessageId = id;
+			moreMenuFor = id;
+			return;
+		}
+		e.preventDefault();
+		const to = rowToward(rowIds, id, key);
+		if (to) scrollEl.querySelector<HTMLElement>(`[data-message-id="${CSS.escape(to)}"]`)?.focus();
+	}
+
 	const isConversation = $derived(!spaceId);
+
+	// ── Layout ─────────────────────────────────────────────────────────────────
+	// Bubbles, or flat rows (the user's choice, lib/message-layout.ts). In bubbles, a direct conversation shows no
+	// names and no avatars: the two sides say who wrote what. A group, a room and every flat row show both.
+	const flat = $derived(messageLayout.value === "flat");
+	const isDirect = $derived.by(() => {
+		if (!isConversation) return false;
+		const conversation = $conversations.find((c) => c.id === channelId);
+		return !!conversation && conversation.type !== 2;
+	});
+	const showAuthors = $derived(flat || !isDirect);
+
+	// What the hover bar and the menu's first row react with at one click.
+	const QUICK_REACTIONS = ["😂", "❤️", "👍"];
+	const MENU_REACTIONS = ["😀", "🙂", "🤭", "👍", "❤️"];
+
+	function copyLink(message: Message) {
+		const link = isConversation
+			? `${DUVET_DOMAIN}/conversations/${channelId}/${message.id}`
+			: `${DUVET_DOMAIN}/channels/${spaceId}/${channelId}/${message.id}`;
+		navigator.clipboard.writeText(link).catch(console.error);
+	}
+
+	// A hover bar sits beside its bubble; where there's no room for it there (a wide bubble in a narrow pane), it sits
+	// along the bubble's top edge instead, as on a flat row. Measured once, as the bar mounts.
+	function fitBar(node: HTMLElement) {
+		if (!scrollEl || flat) return;
+		const bar = node.getBoundingClientRect();
+		const view = scrollEl.getBoundingClientRect();
+		if (bar.left < view.left + 4 || bar.right > view.right - 4) node.dataset.above = "";
+	}
+
+	// ── Jump to the newest ─────────────────────────────────────────────────────
+	const JUMP_BUTTON_FROM = 320;
+	let farFromBottom = $state(false);
+
+	// Down to the newest message: from a jump's pages, the list goes to the present first. A short way is scrolled
+	// smoothly; a long one, or with reduced motion, at once.
+	async function jumpToNewest() {
+		const chId = channelId;
+		if (hasMoreMessagesBelow && onJumpToPresent) {
+			await onJumpToPresent().catch(() => false);
+			await tick();
+		}
+		if (gone || channelId !== chId || !scrollEl) return;
+		const near = -scrollEl.scrollTop < scrollEl.clientHeight * 3;
+		const smooth = near && !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+		scrollEl.scrollTo({ top: 0, behavior: smooth ? "smooth" : "instant" });
+	}
+
+	// The message box's height on the two things that read it, the list and the jump button, and on nothing above them:
+	// app.css registers --composer-h as a property that doesn't inherit, so a taller box restyles no row.
+	const composerH = $derived(composerHeight > 0 ? `${composerHeight}px` : null);
+
+	// ── Prism ──────────────────────────────────────────────────────────────────
+	// The bubbles that mention the user (lib/prism.ts), each placed as it mounts and when its size changes; their side
+	// lights follow the scroll, once a frame.
+	// Each bubble with the id of the user it mentions; one observer watches the size of them all.
+	const prisms = new Map<HTMLElement, string>();
+	let prismObserver: ResizeObserver | null = null;
+	let prismFrame = 0;
+	function slidePrisms() {
+		if (prismFrame) return;
+		prismFrame = requestAnimationFrame(() => {
+			prismFrame = 0;
+			if (gone || !scrollEl) return;
+			slidePrismsIn(prisms.keys(), scrollEl);
+		});
+	}
+	function placePrisms(entries: ResizeObserverEntry[]) {
+		if (!scrollEl) return;
+		const sized: [HTMLElement, string][] = [];
+		for (const { target } of entries) {
+			const id = target instanceof HTMLElement ? prisms.get(target) : undefined;
+			if (id && target instanceof HTMLElement) sized.push([target, id]);
+		}
+		placePrismsIn(sized, scrollEl);
+	}
+	// On a message's text; userId is the user's while the text is a bubble that mentions them, else null.
+	function prism(node: HTMLElement, userId: string | null) {
+		function light(id: string | null) {
+			prismObserver?.unobserve(node);
+			prisms.delete(node);
+			if (!id || typeof ResizeObserver === "undefined") return;
+			prisms.set(node, id);
+			// Its first call comes as it starts to observe: the bubble is laid out by then.
+			prismObserver ??= new ResizeObserver(placePrisms);
+			prismObserver.observe(node);
+		}
+		light(userId);
+		return { update: light, destroy: () => light(null) };
+	}
+
+	// Whether a message's text shows in a bubble: it has text, which isn't only emoji (those show large, with no bubble),
+	// nor a lone link whose preview takes its place. A voice note, a sticker, a bot's pending answer and a message made of
+	// components have no text of their own.
+	function bubbled(message: Message): boolean {
+		if (message.type === MessageType.Voice || message.sticker_attachment_id) return false;
+		if (isLoading(message) || isComponentsV2(message) || previewReplacesText(message)) return false;
+		const text = message.content ?? "";
+		return text !== "" && !largeEmojis(text);
+	}
+	const LONE = { first: true, last: true, newDay: false };
 
 	function handleReactionToggle(message: Message, emojiName: string, emojiId?: string | null) {
 		if (!$currentUser || !channelId) return;
@@ -502,6 +727,8 @@
 		return sortedMessages.length; // all loaded messages are unread
 	});
 	const unreadCount = $derived(unreadDividerIdx ?? 0);
+	// Each message's place in its group and its day (lib/message-groups.ts), in the list's order.
+	const shapes = $derived(groupShapes(sortedMessages, unreadDividerIdx));
 
 	// ── Where a visit opens ────────────────────────────────────────────────────
 	// The list stays mounted across channels and while hidden (the friends view hides it), and a hidden
@@ -516,6 +743,7 @@
 	let scrolledUnreadIds = new Set<string>();
 
 	function startVisit() {
+		farFromBottom = false;
 		placedFor = "";
 		scrolledUnreadIds = new Set();
 		scrollUnlocked = false;
@@ -706,26 +934,6 @@
 	});
 
 	// ── Formatting ─────────────────────────────────────────────────────────────
-	function isSameCalendarDay(a: string, b: string): boolean {
-		const da = new Date(a);
-		const db = new Date(b);
-		return da.getFullYear() === db.getFullYear() && da.getMonth() === db.getMonth() && da.getDate() === db.getDate();
-	}
-
-	function formatDateSeparator(dateStr: string): string {
-		const date = new Date(dateStr);
-		const today = new Date();
-		const yesterday = new Date(today);
-		yesterday.setDate(today.getDate() - 1);
-		if (isSameCalendarDay(dateStr, today.toISOString())) {
-			return "Today";
-		}
-		if (isSameCalendarDay(dateStr, yesterday.toISOString())) {
-			return "Yesterday";
-		}
-		return dateFormatter.format(date);
-	}
-
 	function formatTimestamp(dateStr: string, _now: number) {
 		const then = new Date(dateStr).getTime();
 		if (Number.isNaN(then)) {
@@ -751,27 +959,10 @@
 	}
 
 	// ── Message actions ────────────────────────────────────────────────────────
+	// The chat's message box takes the edit (Chat.svelte): it saves, or cancels, and clears both.
 	function startEdit(message: Message) {
 		editingMessageId = message.id;
 		editContent = message.content ?? "";
-	}
-
-	function cancelEdit() {
-		editingMessageId = null;
-		editContent = "";
-	}
-
-	function saveEdit(messageId: string, content: string) {
-		const original = messages.find((m) => m.id === messageId)?.content;
-		const trimmed = content.trim();
-		if (trimmed && trimmed !== original) {
-			if (onSaveEdit) {
-				Promise.resolve(onSaveEdit(messageId, trimmed)).catch(console.error);
-			} else {
-				updateMessage(messageId, trimmed, channelId).catch(console.error);
-			}
-		}
-		cancelEdit();
 	}
 
 	function handleCopy(e: ClipboardEvent) {
@@ -877,1018 +1068,875 @@
 	}
 </script>
 
-<!-- The space under the newest message is the list's padding (pb-4), not that message's margin: a margin that changes
-     when another message comes below it stops the browser from keeping the reader's place (scroll anchoring). -->
-<!-- Its mouse handlers only follow the pointer's row, for that row's action toolbar (hoverRow), as :hover did. -->
-<!-- svelte-ignore a11y_no_static_element_interactions -->
-<!-- svelte-ignore a11y_mouse_events_have_key_events -->
-<div
-	bind:this={scrollEl}
-	class="flex flex-1 flex-col-reverse overflow-x-clip overflow-y-auto px-4 pt-2 pb-4"
-	onscroll={handleScroll}
-	oncopy={handleCopy}
-	onmouseover={hoverRow}
-	onmouseleave={() => (hoveredMessageId = null)}
->
-	{#if isInitialLoading}
-		<div class="flex flex-col-reverse gap-4 pb-2">
-			{#each { length: 6 } as _, i}
-				{@const wide = i % 3 === 0}
-				<div class="-mx-4 mt-4 flex items-start gap-3 px-4">
-					<div class="bg-duvet-ink/10 size-10 shrink-0 animate-pulse rounded-full"></div>
-					<div class="flex flex-1 flex-col gap-2">
-						<div class="bg-duvet-ink/10 h-3 w-24 animate-pulse rounded"></div>
-						<div class="h-3 {wide ? 'w-4/5' : 'w-2/5'} bg-duvet-ink/10 animate-pulse rounded"></div>
-						{#if wide}
-							<div class="bg-duvet-ink/10 h-3 w-3/5 animate-pulse rounded"></div>
-						{/if}
-					</div>
-				</div>
-			{/each}
-		</div>
-	{:else if messages.length === 0}
-		{#if retryFirstPage}
-			<div class="my-auto flex flex-col items-center px-6 py-16 text-center" role="status">
-				<MascotPeek class="w-24" mood="shy" />
-				<p class="text-duvet-ink mt-4 text-base font-bold">Couldn't load messages</p>
-				<button
-					type="button"
-					class="bg-duvet-card text-duvet-ink2 shadow-duvet-raised hover:text-duvet-ink mt-5 flex h-8 items-center rounded-xl px-3 text-[13px] font-bold transition-colors motion-reduce:transition-none"
-					onclick={() => retryFirstPage?.()}
-				>
-					Try again
-				</button>
-			</div>
-		{:else if intro}
-			{@render intro()}
-		{:else}
-			<div class="text-duvet-ink2 mb-5 py-4 text-center italic">No messages yet. Send the first message.</div>
-		{/if}
-	{:else}
-		<!-- Bottom sentinel: first in DOM → appears at visual bottom in flex-col-reverse.
-             Visible when user scrolls to the bottom (newest messages area). One height whether it spins or not, and
-             shrink-0, as the list's flex column would shrink it to its content: a change would move the list (scroll
-             anchoring), whose scroll asks for the page below again. Never the node the browser keeps in view as a page
-             goes in (overflow-anchor none): Firefox picked it, and so took the reader to each new page's end. -->
-		{#if hasMoreMessagesBelow}
-			<div
-				data-sentinel-bottom
-				class="flex h-11 w-full shrink-0 flex-col items-center justify-center gap-1 [overflow-anchor:none]"
-			>
-				{#if isLoadingMoreBelow}
-					<svg
-						class="text-duvet-ink2 h-5 w-5 animate-spin"
-						xmlns="http://www.w3.org/2000/svg"
-						fill="none"
-						viewBox="0 0 24 24"
-					>
-						<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-						<path
-							class="opacity-75"
-							fill="currentColor"
-							d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-						></path>
-					</svg>
-				{:else}
-					<span class="text-duvet-ink2 text-xs">Newer messages below</span>
-				{/if}
-			</div>
-		{/if}
-
-		{#each sortedMessages as message, i (message.id)}
-			{@const chronoPrev = sortedMessages.at(i + 1)}
-			{@const isConsecutive =
-				chronoPrev &&
-				!isNotice(chronoPrev) &&
-				chronoPrev.author_id === message.author_id &&
-				chronoPrev.author_name === message.author_name &&
-				isEphemeral(chronoPrev) === isEphemeral(message) &&
-				new Date(message.created_at).getTime() - new Date(chronoPrev.created_at).getTime() <= 5 * 60 * 1_000}
-			{@const showHeader = !isConsecutive || !!message.referenced_message || !!message.interaction_metadata}
-			{@const isDifferentDay = !chronoPrev || !isSameCalendarDay(message.created_at, chronoPrev.created_at)}
-			{@const isPending = message.id === message.nonce}
-			{@const isFailed = isPending && failedNonces.has(message.nonce ?? "")}
-			{@const ephemeral = isEphemeral(message)}
-			{@const emojiOnly = largeEmojis(message.content ?? "")}
-
-			{@const isHighlighted = highlightedMessageId === message.id}
-			{@const isMention =
-				!!$currentUser &&
-				message.author_id !== $currentUser.id &&
-				(messageText(message).includes(`<@${$currentUser.id}>`) || mentionsByReply(message, $currentUser.id))}
-			{@const msgMember = members.find((m) => m.id === message.author_id)}
-			{@const callLine = callNoticeLines.get(message.id)}
-			{#if message.type === MessageType.PinNotice || callLine}
-				<!-- A notice: who pinned which message, as Discord shows it, or a call of the conversation that ended -->
-				<div
-					data-message-id={message.id}
-					class="group relative -mx-3 mb-1 flex items-center rounded-md px-3 py-1 {showHeader
-						? 'mt-4'
-						: 'mt-1'} {isHighlighted ? 'bg-duvet-warn/15' : 'hover:bg-duvet-card/55'} {keyboard.cursor === message.id
-						? 'outline-duvet-accent outline-2 -outline-offset-2'
-						: ''}"
-				>
-					<div class="mr-3 flex w-10 shrink-0 justify-end">
-						{#if callLine}
-							<!-- Red for a call the user missed -->
-							<PhoneIcon class="size-4 {callLine.missed ? 'text-duvet-danger' : 'text-duvet-ink2'}" />
-						{:else}
-							<PinIcon class="text-duvet-ink2 size-4" />
-						{/if}
-					</div>
-					<p class="text-duvet-ink2 min-w-0 text-sm">
-						{#if callLine}
-							{callLine.before}<span class="text-duvet-ink font-medium">{callLine.name}</span>{callLine.after}
-						{:else}
-							<span class="text-duvet-ink font-medium">{message.author_name}</span>
-							pinned
-							<button
-								type="button"
-								class="text-duvet-ink font-medium hover:underline"
-								onclick={() => jumpToPinned(message)}>a message</button
-							>
-							to this {isConversation ? "conversation" : "room"}. See all
-							<button
-								type="button"
-								class="text-duvet-ink font-medium hover:underline"
-								onclick={() => pinsPanelRequest.set({ id: crypto.randomUUID(), channelId })}>pinned messages</button
-							>.
-						{/if}
-						<span class="text-duvet-ink2 ml-1 text-xs">{formatTimestamp(message.created_at, now)}</span>
-					</p>
-					{#if canDeleteNotices && hoveredMessageId === message.id}
-						<div
-							class="rounded-row border-duvet-line bg-duvet-card shadow-duvet-raised absolute -top-3 right-2 z-10 flex overflow-hidden border"
-						>
-							{@render deleteButton(message)}
-						</div>
-					{/if}
-				</div>
-			{:else}
-				<div
-					data-message-id={message.id}
-					class="group relative mb-1 flex flex-col rounded-md px-3 {message.referenced_message ||
-					message.interaction_metadata
-						? 'mt-2 pt-2'
-						: showHeader
-							? 'mt-3'
-							: 'mt-0'} {isFailed
-						? 'bg-duvet-danger/10 hover:bg-duvet-danger/15'
-						: isHighlighted
-							? 'bg-duvet-warn/15 hover:bg-duvet-warn/20'
-							: isMention
-								? 'border-duvet-warn/60 bg-duvet-warn/10 hover:bg-duvet-warn/15 border-l-2'
-								: 'hover:bg-duvet-card/55'} -mx-3 {keyboard.cursor === message.id
-						? 'outline-duvet-accent outline-2 -outline-offset-2'
-						: ''}"
-					style={isFailed ? "" : isPending ? "opacity: 0.5; pointer-events: none;" : ""}
-				>
-					{#if keyboard.cursor === message.id && !isPending && !ephemeral}
-						<!-- What the keys do here, while keyboard navigation's cursor is on this message. -->
-						<span
-							class="bg-duvet-card text-duvet-ink2 shadow-duvet-raised pointer-events-none absolute right-3 -bottom-3 z-10 flex items-center gap-2 rounded-lg px-2 py-0.5 text-[11px] font-medium"
-							aria-hidden="true"
-						>
-							<span><kbd class="text-duvet-ink font-bold">r</kbd> reply</span>
-							{#if $currentUser && message.author_id === $currentUser.id}
-								<span><kbd class="text-duvet-ink font-bold">e</kbd> edit</span>
+<!-- The list runs bottom to top (flex-col-reverse): it keeps to its bottom while pictures, fonts and the message box
+     settle, and its newest message clears the glass message box over its foot by the box's height (--composer-h, which
+     Chat sets), plus the 24 px where who's typing shows. A pane's header that floats over the list says how tall it is
+     (--pane-header-h). The space under the newest message is the list's padding, not that message's margin: a margin
+     that changes when another message comes below it stops the browser from keeping the reader's place (scroll
+     anchoring). -->
+<!-- Its mouse handlers only follow the pointer's row, for that row's hover bar (hoverRow), as :hover did, and its
+     focus and key handlers the keyboard's (focusRow, rowKeys); its
+     right-click opens the one menu of the list, for the message or the avatar under the pointer (pickMenu). -->
+<ContextMenu bind:open={menuOpen} label={menuTarget?.kind === "author" ? "Member" : "Message"}>
+	{#snippet target(props)}
+		<!-- svelte-ignore a11y_no_static_element_interactions -->
+		<!-- svelte-ignore a11y_mouse_events_have_key_events -->
+		<div
+			{...props}
+			bind:this={scrollEl}
+			style:--composer-h={composerH}
+			class="@container flex flex-1 flex-col-reverse overflow-x-clip overflow-y-auto overscroll-contain pt-[calc(var(--pane-header-h,0px)+16px)] pb-[calc(var(--composer-h,64px)+24px)] {flat
+				? 'px-[calc(var(--duvet-pad-x)-8px)]'
+				: 'px-(--duvet-pad-x)'}"
+			onscroll={handleScroll}
+			oncopy={handleCopy}
+			onmouseover={hoverRow}
+			onmouseleave={() => (hoveredMessageId = null)}
+			onfocusin={focusRow}
+			onfocusout={blurRow}
+			onkeydown={rowKeys}
+			oncontextmenu={(e) => {
+				// Shift+F10 opened the message's own menu already (rowKeys); where the system sends its menu event too,
+				// that one isn't a second menu.
+				if (moreMenuFor) {
+					e.preventDefault();
+					return;
+				}
+				if (pickMenu(e)) (props.oncontextmenu as ((e: MouseEvent) => void) | undefined)?.(e);
+			}}
+		>
+			{#if isInitialLoading}
+				<div class="flex flex-col-reverse gap-3 pb-2">
+					{#each { length: 6 } as _, i}
+						{@const wide = i % 3 === 0}
+						{@const right = !flat && i % 4 === 1}
+						<div class="flex items-end gap-2 {right ? 'flex-row-reverse' : ''}">
+							{#if flat}
+								<div class="bg-duvet-secondary-fill size-9 shrink-0 animate-pulse rounded-full"></div>
 							{/if}
-						</span>
-					{/if}
-					<MessageReference
-						{message}
-						quotedCall={callNoticeLines.get(message.referenced_message?.message_id ?? "")}
-						{mentionMap}
-						{customEmojiMap}
-						{spaceId}
-						{channelId}
-					/>
-					<div class="flex items-start">
-						{#if showHeader}
-							{#key message.author_avatar_url}
-								<button
-									type="button"
-									class="mt-0.5 mr-3 shrink-0 rounded-full {msgMember ? 'cursor-pointer' : 'cursor-default'}"
-									onmousedown={() => {
-										avatarPopoverWasOpen = activePopoverMsgId === message.id;
-									}}
-									onclick={() => {
-										if (!msgMember) return;
-										if (avatarPopoverWasOpen) return;
-										activePopoverMsgId = message.id;
-									}}
-								>
-									<UserAvatar
-										src={message.author_avatar_url}
-										name={message.author_name}
-										size={40}
-										oncontextmenu={(e) => openUserMenu(e, message.webhook_id ? "" : message.author_id)}
-									/>
-								</button>
-							{/key}
-						{:else}
-							<div class="mr-3 w-10 shrink-0 text-right">
-								<span
-									class="text-xxs text-duvet-ink2 leading-5 whitespace-nowrap opacity-0 select-none group-hover:opacity-100"
-								>
-									{new Date(message.created_at).toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" })}
-								</span>
+							<div class="flex flex-1 flex-col gap-1.5 {right ? 'items-end' : 'items-start'}">
+								<div class="bg-duvet-secondary-fill h-9 animate-pulse rounded-2xl {wide ? 'w-3/5' : 'w-2/5'}"></div>
+								{#if wide}
+									<div class="bg-duvet-secondary-fill h-9 w-1/4 animate-pulse rounded-2xl"></div>
+								{/if}
 							</div>
+						</div>
+					{/each}
+				</div>
+			{:else if messages.length === 0}
+				{#if retryFirstPage}
+					<div class="my-auto flex flex-col items-center px-6 py-16 text-center" role="status">
+						<MascotPeek class="w-24" mood="shy" />
+						<p class="text-duvet-ink mt-4 font-serif text-[22px] leading-tight">Couldn't load messages</p>
+						<button type="button" class="{buttonClass('secondary')} mt-5" onclick={() => retryFirstPage?.()}>
+							Try again
+						</button>
+					</div>
+				{:else if intro}
+					{@render intro()}
+				{:else}
+					<div class="text-duvet-ink2 mb-5 py-4 text-center text-[12.5px]">
+						No messages yet. Send the first message.
+					</div>
+				{/if}
+			{:else}
+				<!-- Bottom sentinel: first in DOM → appears at visual bottom in flex-col-reverse.
+				     Visible when user scrolls to the bottom (newest messages area). One height whether it spins or not, and
+				     shrink-0, as the list's flex column would shrink it to its content: a change would move the list (scroll
+				     anchoring), whose scroll asks for the page below again. Never the node the browser keeps in view as a page
+				     goes in (overflow-anchor none): Firefox picked it, and so took the reader to each new page's end. -->
+				{#if hasMoreMessagesBelow}
+					<div
+						data-sentinel-bottom
+						class="flex h-11 w-full shrink-0 flex-col items-center justify-center gap-1 [overflow-anchor:none]"
+					>
+						{#if isLoadingMoreBelow}
+							<SpinnerIcon class="text-duvet-ink2 size-5 animate-spin" />
+						{:else}
+							<span class="text-duvet-ink2 text-xs">Newer messages below</span>
 						{/if}
+					</div>
+				{/if}
 
-						<div class="flex min-w-0 flex-1 flex-col">
-							{#if showHeader}
-								<div class="flex items-center leading-5">
-									{#if msgMember}
-										<MemberProfilePopover
-											member={msgMember}
-											{spaceId}
-											{space}
-											side="right"
-											open={activePopoverMsgId === message.id}
-											onOpenChange={(o) => {
-												activePopoverMsgId = o ? message.id : null;
-											}}
-											triggerClass="font-semibold mr-2 hover:underline cursor-pointer"
-											triggerStyle={authorColors[message.author_id] || "color: var(--duvet-ink)"}
-										>
-											{#snippet children()}
-												{message.author_name}
-											{/snippet}
-										</MemberProfilePopover>
-									{:else}
-										<span
-											class="mr-2 cursor-default font-semibold"
-											style={authorColors[message.author_id] || "color: var(--duvet-ink)"}
-										>
-											{message.author_name}
-										</span>
-									{/if}
-									<AuthorTag {message} class="mr-1.5" />
-									<span class="text-duvet-ink2 text-xs font-medium">{formatTimestamp(message.created_at, now)}</span>
-								</div>
-							{/if}
-
-							{#if editingMessageId === message.id}
-								<div class="relative flex w-full flex-col gap-1">
-									<ChatInput
-										initialValue={editContent}
-										onValueChange={(text) => {
-											editContent = text;
-										}}
-										onSubmit={(text) => saveEdit(message.id, text)}
-										onCancel={cancelEdit}
-										showActions={false}
-										autofocus
-										{members}
-										{emojiGroups}
-										spaceId={spaceId || null}
-										rooms={mentionRooms}
-									/>
-									<div class="text-xxs text-duvet-ink2">
-										escape to <button
-											type="button"
-											class="text-duvet-ink cursor-pointer hover:underline"
-											onclick={cancelEdit}>cancel</button
-										>
-										• enter to
-										<button
-											type="button"
-											class="text-duvet-ink cursor-pointer hover:underline"
-											onclick={() => saveEdit(message.id, editContent)}>save</button
-										>
-									</div>
-								</div>
-							{:else if message.type === MessageType.Voice || message.sticker_attachment_id}
-								<MessageAttachments {message} {channelName} onPreview={openPreview} />
-							{:else if isLoading(message)}
-								<!-- A bot's deferred response: it has 15 minutes to complete it -->
-								<DeferredResponse {message} />
-							{:else if isComponentsV2(message)}
-								<!-- The components are all of it: its files show where they place them -->
-								<MessageComponents
-									components={message.components ?? []}
-									{space}
-									{members}
-									{mentionMap}
-									{customEmojiMap}
-									onPreview={openPreview}
-									onInteract={isConversation ? undefined : (use) => interact(message, use)}
-								/>
+				{#each sortedMessages as message, i (message.id)}
+					{@const shape = shapes[i] ?? LONE}
+					{@const isPending = message.id === message.nonce}
+					{@const isFailed = isPending && failedNonces.has(message.nonce ?? "")}
+					{@const ephemeral = isEphemeral(message)}
+					{@const isHighlighted = highlightedMessageId === message.id}
+					{@const mine = !!$currentUser && message.author_id === $currentUser.id}
+					{@const isMention =
+						!!$currentUser &&
+						!mine &&
+						(messageText(message).includes(`<@${$currentUser.id}>`) || mentionsByReply(message, $currentUser.id))}
+					{@const callLine = callNoticeLines.get(message.id)}
+					{@const barShown =
+						(hoveredMessageId === message.id ||
+							focusedMessageId === message.id ||
+							reactingMessageId === message.id ||
+							moreMenuFor === message.id) &&
+						!isPending &&
+						!ephemeral &&
+						!!$currentUser &&
+						editingMessageId !== message.id}
+					{@const cursorOn = keyboard.cursor === message.id}
+					{#if message.type === MessageType.PinNotice || callLine}
+						<!-- A notice: who pinned which message, or a call of the conversation that ended -->
+						<!-- The list's tab stop, or reached from it by the arrows (lib/message-focus.ts). -->
+						<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+						<div
+							data-message-id={message.id}
+							tabindex={tabStopId === message.id ? 0 : -1}
+							class="group/row text-duvet-ink2 relative my-3 flex flex-wrap items-center justify-center gap-1.5 rounded-xl px-10 py-1 text-[12.5px] leading-[1.3] {isHighlighted
+								? 'bg-duvet-accent-tint'
+								: ''} {cursorOn ? 'outline-duvet-accent outline-2 -outline-offset-2' : ''}"
+						>
+							{#if callLine?.missed}
+								<!-- Red for a call the user missed -->
+								<PhoneMissedIcon class="text-duvet-danger size-3.5 shrink-0" />
+							{:else if callLine}
+								<PhoneIcon class="text-duvet-ink2 size-3.5 shrink-0" />
 							{:else}
-								{#if !previewReplacesText(message)}
-									<div
-										role="textbox"
-										aria-readonly="true"
-										tabindex="-1"
-										class="{isFailed ? 'text-duvet-danger' : 'text-duvet-ink'} {emojiOnly
-											? ''
-											: showHeader
-												? ''
-												: 'leading-5'} cursor-text pr-12 text-left wrap-break-word select-text"
-										style={emojiOnly ? "line-height: 3rem" : ""}
-										onclick={(e) => {
-											if (e.detail === 3 && $currentUser && message.author_id === $currentUser.id) {
-												startEdit(message);
-											}
-										}}
-										onkeydown={(e) => {
-											if (e.key === "Enter" && $currentUser && message.author_id === $currentUser.id) {
-												startEdit(message);
-											}
-										}}
-									>
-										<MessageText
-											content={message.content ?? ""}
-											large={emojiOnly}
-											{mentionMap}
-											{customEmojiMap}
-											edited={message.updated_at !== message.created_at
-												? `edited ${formatTimestamp(message.updated_at, now)}`
-												: null}
-										/>
-									</div>
-								{/if}
-								<MessageCards
-									content={message.content ?? ""}
-									embeds={message.embeds}
-									onPreview={(src) => openPreview(src)}
-								/>
-								<MessageAttachments {message} {channelName} onPreview={openPreview} />
-								{#if message.components?.length}
-									<!-- Rows of buttons and selects below the content -->
-									<MessageComponents
-										components={message.components}
-										{space}
-										{members}
-										{mentionMap}
-										{customEmojiMap}
-										onPreview={openPreview}
-										onInteract={isConversation ? undefined : (use) => interact(message, use)}
-									/>
-								{/if}
+								<PinIcon class="text-duvet-ink2 size-3.5 shrink-0" />
 							{/if}
-
-							<MessageReactions
-								reactions={message.reactions ?? []}
-								{customEmojiMap}
-								onToggle={(r) => handleReactionToggle(message, r.emoji_name, r.emoji_id)}
-								onShowReactors={(r) => showReactors(message, reactionKey(r))}
-							/>
-							{#if ephemeral}
-								<!-- A bot's to this user alone, and not the room's: it lasts until dismissed or the app reloads.
-								     Nothing of the room's (reactions, replies, pins, links) applies to it, so it has no toolbar. -->
-								<p class="text-duvet-ink2 mt-1 flex items-center gap-1 text-xs">
-									<EyeIcon class="size-4 shrink-0" />
-									<span>Only you can see this</span>
-									<span aria-hidden="true">·</span>
+							<p class="min-w-0 text-center">
+								{#if callLine}
+									{callLine.before}<span class="text-duvet-ink font-medium">{callLine.name}</span>{callLine.after}
+								{:else}
+									<span class="text-duvet-ink font-medium">{message.author_name}</span>
+									pinned
 									<button
 										type="button"
-										class="text-duvet-ink cursor-pointer hover:underline"
-										onclick={() => dropEphemeral(channelId, message.id)}>Dismiss message</button
+										class="text-duvet-ink font-medium hover:underline"
+										onclick={() => jumpToPinned(message)}>a message</button
 									>
-								</p>
-							{/if}
-						</div>
-					</div>
-					<!-- end inner row -->
-
-					<!-- Action toolbar -->
-					{#if isFailed}
-						<div
-							class="rounded-row border-duvet-line bg-duvet-card shadow-duvet-raised absolute -top-3 right-4 z-10 flex overflow-hidden border"
-						>
-							<button
-								class="text-duvet-ink hover:bg-duvet-ink/15 px-2 py-1.5 text-xs transition-colors"
-								onclick={() => onRetry(message)}>Retry</button
-							>
-							<div class="bg-duvet-card w-px"></div>
-							<button
-								class="text-duvet-ink2 hover:bg-duvet-ink/15 hover:text-duvet-ink px-2 py-1.5 text-xs transition-colors"
-								onclick={() => onDismiss(message.nonce!)}>Dismiss</button
-							>
-						</div>
-					{:else if (hoveredMessageId === message.id || reactingMessageId === message.id) && !isPending && !ephemeral && $currentUser && message.author_id === $currentUser.id && editingMessageId !== message.id}
-						<div
-							class="rounded-row border-duvet-line bg-duvet-card shadow-duvet-raised absolute -top-3 right-2 z-10 flex overflow-hidden border"
-						>
-							<Popover.Root
-								bind:open={() => reactingMessageId === message.id, (v) => (reactingMessageId = v ? message.id : null)}
-							>
-								<Popover.Trigger
-									class="text-duvet-ink2 hover:bg-duvet-ink/15 hover:text-duvet-ink p-1.5 transition-colors"
-									title="Add reaction"
-									aria-label="Add reaction"
-								>
-									<svg
-										xmlns="http://www.w3.org/2000/svg"
-										width="16"
-										height="16"
-										viewBox="0 0 24 24"
-										fill="none"
-										stroke="currentColor"
-										stroke-width="2"
-										stroke-linecap="round"
-										stroke-linejoin="round"
-										><circle cx="12" cy="12" r="10" /><path d="M8 14s1.5 2 4 2 4-2 4-2" /><line
-											x1="9"
-											x2="9.01"
-											y1="9"
-											y2="9"
-										/><line x1="15" x2="15.01" y1="9" y2="9" /></svg
-									>
-								</Popover.Trigger>
-								<!-- Mounted only while open: bits-ui's Portal mounts what it holds as it's created, open or not (#319). -->
-								{#if reactingMessageId === message.id}
-									<Popover.Portal>
-										<Popover.Content side="top" align="end" sideOffset={8} class="z-100">
-											<EmojiPicker onSelect={(emoji) => handleReactionPick(message.id, emoji)} groups={emojiGroups} />
-										</Popover.Content>
-									</Popover.Portal>
+									to this {isConversation ? "chat" : "room"}. See all
+									<button
+										type="button"
+										class="text-duvet-accent-text font-medium hover:underline"
+										onclick={() => pinsPanelRequest.set({ id: crypto.randomUUID(), channelId })}>pinned messages</button
+									>.
 								{/if}
-							</Popover.Root>
-							{@render reactionsButton(message)}
-							<div class="bg-duvet-card w-px"></div>
-							<button
-								class="text-duvet-ink2 hover:bg-duvet-ink/15 hover:text-duvet-ink p-1.5 transition-colors"
-								onclick={() => onReply?.(message)}
-								title="Reply"
-								aria-label="Reply"
-							>
-								<svg
-									xmlns="http://www.w3.org/2000/svg"
-									width="16"
-									height="16"
-									viewBox="0 0 24 24"
-									fill="none"
-									stroke="currentColor"
-									stroke-width="2"
-									stroke-linecap="round"
-									stroke-linejoin="round"><polyline points="9 17 4 12 9 7" /><path d="M20 18v-2a4 4 0 0 0-4-4H4" /></svg
-								>
-							</button>
-							<div class="bg-duvet-card w-px"></div>
-							<button
-								class="text-duvet-ink2 hover:bg-duvet-ink/15 hover:text-duvet-ink p-1.5 transition-colors"
-								onclick={() => {
-									navigator.clipboard
-										.writeText(
-											`${isConversation ? `${DUVET_DOMAIN}/conversations/${channelId}/${message.id}` : `${DUVET_DOMAIN}/channels/${spaceId}/${channelId}/${message.id}`}`,
-										)
-										.catch(console.error);
-								}}
-								title="Copy message link"
-								aria-label="Copy message link"
-							>
-								<svg
-									xmlns="http://www.w3.org/2000/svg"
-									width="16"
-									height="16"
-									viewBox="0 0 24 24"
-									fill="none"
-									stroke="currentColor"
-									stroke-width="2"
-									stroke-linecap="round"
-									stroke-linejoin="round"
-									><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" /><path
-										d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"
-									/></svg
-								>
-							</button>
-							<div class="bg-duvet-card w-px"></div>
-							<button
-								class="text-duvet-ink2 hover:bg-duvet-ink/15 hover:text-duvet-ink p-1.5 transition-colors"
-								onclick={() => openThreadModal(message)}
-								title="View thread"
-								aria-label="View thread"
-							>
-								<svg
-									xmlns="http://www.w3.org/2000/svg"
-									width="16"
-									height="16"
-									viewBox="0 0 24 24"
-									fill="none"
-									stroke="currentColor"
-									stroke-width="2"
-									stroke-linecap="round"
-									stroke-linejoin="round"
-									><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></svg
-								>
-							</button>
-							{#if canPin}
-								<div class="bg-duvet-card w-px"></div>
-								<button
-									class="text-duvet-ink2 hover:bg-duvet-ink/15 hover:text-duvet-ink p-1.5 transition-colors disabled:cursor-not-allowed disabled:opacity-50"
-									onclick={() => togglePin(message)}
-									disabled={pinningMessageId === message.id}
-									title={message.pinned_at ? "Unpin message" : "Pin message"}
-									aria-label={message.pinned_at ? "Unpin message" : "Pin message"}
-								>
-									{#if message.pinned_at}
-										<PinOffIcon class="size-4" />
-									{:else}
-										<PinIcon class="size-4" />
-									{/if}
-								</button>
+								<span class="ml-1 text-[11px] tabular-nums opacity-75">{clockTime(message.created_at, locale)}</span>
+							</p>
+							{#if canDeleteNotices && (hoveredMessageId === message.id || focusedMessageId === message.id)}
+								<div class="{GLASS} absolute top-1/2 right-1 z-10 flex -translate-y-1/2 rounded-xl p-[3px]">
+									{@render deleteButton(message)}
+								</div>
 							{/if}
-							<div class="bg-duvet-card w-px"></div>
-							<button
-								class="text-duvet-ink2 hover:bg-duvet-ink/15 hover:text-duvet-ink p-1.5 transition-colors"
-								onclick={() => {
-									startEdit(message);
-								}}
-								title="Edit message"
-								aria-label="Edit message"
-							>
-								<svg
-									xmlns="http://www.w3.org/2000/svg"
-									width="16"
-									height="16"
-									viewBox="0 0 24 24"
-									fill="none"
-									stroke="currentColor"
-									stroke-width="2"
-									stroke-linecap="round"
-									stroke-linejoin="round"
-									><path
-										d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"
-									/><path d="m15 5 4 4" /></svg
-								>
-							</button>
-							<div class="bg-duvet-card w-px"></div>
-							{@render deleteButton(message)}
 						</div>
-					{:else if (hoveredMessageId === message.id || reactingMessageId === message.id) && !isPending && !ephemeral && $currentUser && message.author_id !== $currentUser.id && editingMessageId !== message.id}
+					{:else if flat}
+						<!-- A flat row: the avatar's gutter, then the author's line on a group's first row, and the message -->
+						<!-- The list's tab stop, or reached from it by the arrows (lib/message-focus.ts). -->
+						<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 						<div
-							class="rounded-row border-duvet-line bg-duvet-card shadow-duvet-raised absolute -top-3 right-2 z-10 flex overflow-hidden border"
+							data-message-id={message.id}
+							tabindex={tabStopId === message.id ? 0 : -1}
+							class="group/row relative grid grid-cols-[52px_minmax(0,1fr)] rounded-xl px-2 py-[3px] {shape.first
+								? 'mt-3 pt-1.5'
+								: ''} {isFailed
+								? 'bg-duvet-danger/10'
+								: isHighlighted
+									? 'bg-duvet-accent-tint'
+									: isMention
+										? PRISM_WASH
+										: 'hover:bg-duvet-hover-soft'} {isPending && !isFailed
+								? 'pointer-events-none opacity-50'
+								: ''} {cursorOn ? 'outline-duvet-accent outline-2 -outline-offset-2' : ''}"
 						>
-							<Popover.Root
-								bind:open={() => reactingMessageId === message.id, (v) => (reactingMessageId = v ? message.id : null)}
-							>
-								<Popover.Trigger
-									class="text-duvet-ink2 hover:bg-duvet-ink/15 hover:text-duvet-ink p-1.5 transition-colors"
-									title="Add reaction"
-									aria-label="Add reaction"
-								>
-									<svg
-										xmlns="http://www.w3.org/2000/svg"
-										width="16"
-										height="16"
-										viewBox="0 0 24 24"
-										fill="none"
-										stroke="currentColor"
-										stroke-width="2"
-										stroke-linecap="round"
-										stroke-linejoin="round"
-										><circle cx="12" cy="12" r="10" /><path d="M8 14s1.5 2 4 2 4-2 4-2" /><line
-											x1="9"
-											x2="9.01"
-											y1="9"
-											y2="9"
-										/><line x1="15" x2="15.01" y1="9" y2="9" /></svg
+							{@render cursorHint(message, mine, isPending || ephemeral)}
+							<div class="min-w-0">
+								{#if shape.first}
+									{@render avatar(message, 36)}
+								{:else}
+									<span
+										class="text-duvet-ink2 block pt-[5px] text-[10.5px] leading-none tabular-nums opacity-0 select-none group-hover/row:opacity-100"
 									>
-								</Popover.Trigger>
-								<!-- Mounted only while open: bits-ui's Portal mounts what it holds as it's created, open or not (#319). -->
-								{#if reactingMessageId === message.id}
-									<Popover.Portal>
-										<Popover.Content side="top" align="end" sideOffset={8} class="z-100">
-											<EmojiPicker onSelect={(emoji) => handleReactionPick(message.id, emoji)} groups={emojiGroups} />
-										</Popover.Content>
-									</Popover.Portal>
+										{shortClockTime(message.created_at, locale)}
+									</span>
 								{/if}
-							</Popover.Root>
-							{@render reactionsButton(message)}
-							<div class="bg-duvet-card w-px"></div>
-							<button
-								class="text-duvet-ink2 hover:bg-duvet-ink/15 hover:text-duvet-ink p-1.5 transition-colors"
-								onclick={() => onReply?.(message)}
-								title="Reply"
-								aria-label="Reply"
-							>
-								<svg
-									xmlns="http://www.w3.org/2000/svg"
-									width="16"
-									height="16"
-									viewBox="0 0 24 24"
-									fill="none"
-									stroke="currentColor"
-									stroke-width="2"
-									stroke-linecap="round"
-									stroke-linejoin="round"><polyline points="9 17 4 12 9 7" /><path d="M20 18v-2a4 4 0 0 0-4-4H4" /></svg
-								>
-							</button>
-							<div class="bg-duvet-card w-px"></div>
-							<button
-								class="text-duvet-ink2 hover:bg-duvet-ink/15 hover:text-duvet-ink p-1.5 transition-colors"
-								onclick={() => {
-									navigator.clipboard
-										.writeText(
-											`${isConversation ? `${DUVET_DOMAIN}/conversations/${channelId}/${message.id}` : `${DUVET_DOMAIN}/channels/${spaceId}/${channelId}/${message.id}`}`,
-										)
-										.catch(console.error);
-								}}
-								title="Copy message link"
-								aria-label="Copy message link"
-							>
-								<svg
-									xmlns="http://www.w3.org/2000/svg"
-									width="16"
-									height="16"
-									viewBox="0 0 24 24"
-									fill="none"
-									stroke="currentColor"
-									stroke-width="2"
-									stroke-linecap="round"
-									stroke-linejoin="round"
-									><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" /><path
-										d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"
-									/></svg
-								>
-							</button>
-							<div class="bg-duvet-card w-px"></div>
-							<button
-								class="text-duvet-ink2 hover:bg-duvet-ink/15 hover:text-duvet-ink p-1.5 transition-colors"
-								onclick={() => openThreadModal(message)}
-								title="View thread"
-								aria-label="View thread"
-							>
-								<svg
-									xmlns="http://www.w3.org/2000/svg"
-									width="16"
-									height="16"
-									viewBox="0 0 24 24"
-									fill="none"
-									stroke="currentColor"
-									stroke-width="2"
-									stroke-linecap="round"
-									stroke-linejoin="round"
-									><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></svg
-								>
-							</button>
-							{#if canPin}
-								<div class="bg-duvet-card w-px"></div>
-								<button
-									class="text-duvet-ink2 hover:bg-duvet-ink/15 hover:text-duvet-ink p-1.5 transition-colors disabled:cursor-not-allowed disabled:opacity-50"
-									onclick={() => togglePin(message)}
-									disabled={pinningMessageId === message.id}
-									title={message.pinned_at ? "Unpin message" : "Pin message"}
-									aria-label={message.pinned_at ? "Unpin message" : "Pin message"}
-								>
-									{#if message.pinned_at}
-										<PinOffIcon class="size-4" />
-									{:else}
-										<PinIcon class="size-4" />
-									{/if}
-								</button>
-							{/if}
-							{#if currentUserCan(Permission.ManageMessages)}
-								<div class="bg-duvet-card w-px"></div>
-								{@render deleteButton(message)}
+							</div>
+							<div class="flex min-w-0 flex-col items-start gap-1">
+								<MessageReference
+									{message}
+									quotedCall={callNoticeLines.get(message.referenced_message?.message_id ?? "")}
+									{mentionMap}
+									{customEmojiMap}
+									{spaceId}
+									{channelId}
+								/>
+								{#if shape.first}
+									<div class="flex max-w-full items-baseline gap-2 text-sm leading-[1.2] font-semibold">
+										{@render authorName(message, "var(--duvet-ink)")}
+										<AuthorTag {message} class="self-center" />
+										<span class="text-duvet-ink2 shrink-0 text-[11.5px] font-normal tabular-nums"
+											>{headTime(message.created_at, now, locale)}</span
+										>
+									</div>
+								{/if}
+								{@render content(message, mine, isFailed, isMention, isHighlighted)}
+								<MessageReactions
+									reactions={message.reactions ?? []}
+									{customEmojiMap}
+									onToggle={(r) => handleReactionToggle(message, r.emoji_name, r.emoji_id)}
+									onShowReactors={(r) => showReactors(message, reactionKey(r))}
+									onAdd={ephemeral || isPending ? undefined : () => (reactingMessageId = message.id)}
+								/>
+								{#if ephemeral}
+									{@render ephemeralNote(message)}
+								{/if}
+							</div>
+							{#if isFailed}
+								{@render failedBar(message, mine)}
+							{:else if barShown}
+								{@render hoverBar(message, mine, null)}
 							{/if}
 						</div>
-					{/if}
-				</div>
-			{/if}
-
-			{#if isDifferentDay}
-				<div class="my-3 flex items-center gap-3 px-2 select-none">
-					<div class="bg-duvet-line h-px flex-1"></div>
-					<span class="text-duvet-ink2 text-xs font-medium whitespace-nowrap">
-						{formatDateSeparator(message.created_at)}
-					</span>
-					<div class="bg-duvet-line h-px flex-1"></div>
-				</div>
-			{/if}
-
-			{#if unreadDividerIdx !== null && unreadCount > 0 && i === unreadDividerIdx - 1}
-				<div data-unread-divider class="my-2 flex items-center gap-3 px-2 select-none">
-					<div class="bg-duvet-danger/50 h-px flex-1"></div>
-					<span class="text-duvet-danger shrink-0 text-xs font-semibold whitespace-nowrap">
-						{unreadCount === 1 ? "1 new message" : `${unreadCount} new messages`}
-					</span>
-					<div class="bg-duvet-danger/50 h-px flex-1"></div>
-				</div>
-			{/if}
-		{/each}
-
-		{#if hasMoreMessages}
-			<div data-sentinel-top use:topObserverAction class="flex w-full justify-center py-4">
-				{#if isLoadingMore}
-					<svg
-						class="text-duvet-ink2 h-5 w-5 animate-spin"
-						xmlns="http://www.w3.org/2000/svg"
-						fill="none"
-						viewBox="0 0 24 24"
-					>
-						<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-						<path
-							class="opacity-75"
-							fill="currentColor"
-							d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-						></path>
-					</svg>
-				{/if}
-			</div>
-		{:else if intro}
-			{@render intro()}
-		{/if}
-	{/if}
-</div>
-
-<Dialog.Root bind:open={threadModalOpen}>
-	<Dialog.Portal>
-		<Dialog.Overlay class="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm" />
-		<Dialog.Content class="fixed inset-0 z-51 flex items-center justify-center p-4">
-			<div
-				class="rounded-card border-duvet-line bg-duvet-bg text-duvet-ink shadow-duvet-float flex max-h-[75vh] w-full max-w-2xl flex-col overflow-hidden border"
-			>
-				<div class="border-duvet-line flex shrink-0 items-center justify-between border-b px-5 py-4">
-					<div>
-						<h2 class="text-duvet-ink text-base font-semibold">Message thread</h2>
-						{#if threadRootMessage}
-							<p class="text-duvet-ink2 text-xs">From {threadRootMessage.author_name}</p>
-						{/if}
-					</div>
-					<button
-						class="text-duvet-ink2 hover:bg-duvet-card hover:text-duvet-ink rounded-lg p-1.5 transition-colors"
-						onclick={() => (threadModalOpen = false)}
-						aria-label="Close"
-					>
-						<svg
-							xmlns="http://www.w3.org/2000/svg"
-							width="16"
-							height="16"
-							viewBox="0 0 24 24"
-							fill="none"
-							stroke="currentColor"
-							stroke-width="2.5"
-							stroke-linecap="round"
-							stroke-linejoin="round"><path d="M18 6 6 18" /><path d="m6 6 12 12" /></svg
-						>
-					</button>
-				</div>
-				<div bind:this={threadScrollEl} class="min-h-0 flex-1 overflow-y-auto px-5 py-4">
-					{#if threadLoading}
-						<div class="flex items-center justify-center py-8">
-							<div class="border-duvet-ink2/40 h-6 w-6 animate-spin rounded-full border-2 border-t-transparent"></div>
-						</div>
-					{:else if threadError}
-						<p class="text-duvet-danger text-sm">{threadError}</p>
-					{:else if threadShown.length === 0}
-						<p class="text-duvet-ink2 text-sm">No thread messages found.</p>
 					{:else}
-						{@const threadMsgMap = new Map(threadShown.map((m) => [m.id, m]))}
-						<div class="flex flex-col gap-2" onclickcapture={openMention}>
-							{#each threadShown as threadMsg (threadMsg.id)}
-								{@const parentMsg = threadMsg.ref_message_id ? threadMsgMap.get(threadMsg.ref_message_id) : null}
-								{@const parentCall = parentMsg ? callNoticeLine(parentMsg, $currentUser?.id, joined) : null}
-								{@const root = threadRootMessage}
-								<div class="group border-duvet-line bg-duvet-card/30 relative rounded-md border px-3 py-2">
-									<!-- As the pins and the search show a message, a reply's quote above it: its quote of a call notice
-									     says what the call's row does -->
-									<MessagePreview
-										message={threadMsg}
-										{spaceId}
-										{channelId}
-										{members}
+						<!-- A bubble's row: yours to the right. In a group or a room, the others' avatar sits beside their
+						     group's last bubble and their name over its first; the time is under the last. -->
+						<!-- The list's tab stop, or reached from it by the arrows (lib/message-focus.ts). -->
+						<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+						<div
+							data-message-id={message.id}
+							tabindex={tabStopId === message.id ? 0 : -1}
+							class="group/row relative flex flex-col rounded-2xl py-px {mine
+								? 'items-end'
+								: 'items-start'} {shape.first ? 'mt-2.5' : ''} {isPending && !isFailed
+								? 'pointer-events-none opacity-50'
+								: ''} {cursorOn ? 'outline-duvet-accent outline-2 outline-offset-2' : ''}"
+						>
+							{@render cursorHint(message, mine, isPending || ephemeral)}
+							<div class="flex w-full items-end gap-2 {mine ? 'flex-row-reverse' : ''}">
+								{#if showAuthors && !mine}
+									<div class="w-7 shrink-0">
+										{#if shape.last}{@render avatar(message, 28)}{/if}
+									</div>
+								{/if}
+								<div
+									class="relative flex max-w-[65%] min-w-0 flex-col gap-1 @max-xl:max-w-[86%] {mine
+										? 'items-end'
+										: 'items-start'} {isHighlighted && !bubbled(message)
+										? 'outline-duvet-accent rounded-2xl outline-[3px] outline-offset-2'
+										: ''}"
+								>
+									{#if showAuthors && !mine && shape.first}
+										<div class="flex max-w-full items-center gap-1.5 px-1 text-[12.5px] leading-[1.2] font-semibold">
+											{@render authorName(message, "var(--duvet-ink2)")}
+											<AuthorTag {message} />
+										</div>
+									{/if}
+									<MessageReference
+										{message}
+										quotedCall={callNoticeLines.get(message.referenced_message?.message_id ?? "")}
 										{mentionMap}
 										{customEmojiMap}
-										quotedCall={parentCall}
-										onPreview={previewFromThread}
+										{spaceId}
+										{channelId}
 									/>
-									<!-- A message of the thread is replied to from here, as from the chat; not a notice, an ephemeral
-									     message, nor one still being sent (its ID is its nonce) -->
-									{#if onThreadReply && root && !isNotice(threadMsg) && !isEphemeral(threadMsg) && threadMsg.id !== threadMsg.nonce}
-										<button
-											type="button"
-											class="text-duvet-ink2 hover:bg-duvet-ink/10 hover:text-duvet-ink absolute top-1.5 right-1.5 flex size-6 items-center justify-center rounded opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 focus-visible:opacity-100"
-											title="Reply"
-											aria-label="Reply to {threadMsg.author_name}"
-											onclick={() => onThreadReply(threadMsg, root)}
-										>
-											<ReplyIcon class="size-3.5" />
-										</button>
+									{@render content(message, mine, isFailed, isMention, isHighlighted)}
+									{#if isFailed}
+										{@render failedBar(message, mine)}
+									{:else if barShown}
+										{@render hoverBar(message, mine, shape.last ? null : clockTime(message.created_at, locale))}
 									{/if}
 								</div>
-							{/each}
+							</div>
+							{#if shape.last || ephemeral || message.reactions?.length}
+								<div
+									class="mt-1 flex max-w-[65%] flex-col gap-1 @max-xl:max-w-[86%] {mine
+										? 'items-end'
+										: 'items-start'} {showAuthors && !mine ? 'ml-9' : ''}"
+								>
+									<MessageReactions
+										reactions={message.reactions ?? []}
+										{customEmojiMap}
+										end={mine}
+										onToggle={(r) => handleReactionToggle(message, r.emoji_name, r.emoji_id)}
+										onShowReactors={(r) => showReactors(message, reactionKey(r))}
+										onAdd={ephemeral || isPending ? undefined : () => (reactingMessageId = message.id)}
+									/>
+									{#if ephemeral}
+										{@render ephemeralNote(message)}
+									{/if}
+									{#if shape.last}
+										<span class="text-duvet-ink2 px-1 text-[11px] leading-[1.3] tabular-nums select-none"
+											>{clockTime(message.created_at, locale)}</span
+										>
+									{/if}
+								</div>
+							{/if}
 						</div>
 					{/if}
-				</div>
-				<!-- The thread's own message box, which replies in it -->
-				{#if threadComposer && threadRootMessage && !threadLoading && !threadError}
-					{@render threadComposer(threadRootMessage)}
+
+					{#if shape.newDay}
+						<!-- In its place in the list: it doesn't stick to the top -->
+						<div
+							class="text-duvet-ink2 pointer-events-none mt-[18px] mb-2 flex justify-center text-[11.5px] leading-none font-semibold tracking-[0.01em] select-none"
+						>
+							{dayLabel(message.created_at, now)}
+						</div>
+					{/if}
+
+					{#if unreadDividerIdx !== null && unreadCount > 0 && i === unreadDividerIdx - 1}
+						<div
+							data-unread-divider
+							class="text-duvet-ink mt-4 mb-2 flex items-center gap-3 text-[11.5px] leading-none font-medium select-none"
+						>
+							<div class="bg-duvet-line h-px flex-1"></div>
+							<span class="shrink-0 whitespace-nowrap">
+								{unreadCount === 1 ? "1 new message" : `${unreadCount} new messages`}
+							</span>
+							<div class="bg-duvet-line h-px flex-1"></div>
+						</div>
+					{/if}
+				{/each}
+
+				{#if hasMoreMessages}
+					<div data-sentinel-top use:topObserverAction class="flex w-full justify-center py-4">
+						{#if isLoadingMore}
+							<SpinnerIcon class="text-duvet-ink2 size-5 animate-spin" />
+						{/if}
+					</div>
+				{:else if intro}
+					{@render intro()}
 				{/if}
+			{/if}
+		</div>
+	{/snippet}
+	{#if menuTarget?.kind === "author"}
+		{@render authorItems(menuTarget.userId)}
+	{:else if menuMessage}
+		{@render messageItems(menuMessage)}
+	{/if}
+</ContextMenu>
+
+<!-- Down to the newest message, once the list is well above its bottom or on a jump's pages, with how many are new -->
+{#if (farFromBottom || hasMoreMessagesBelow) && messages.length > 0 && !isInitialLoading}
+	<button
+		type="button"
+		style:--composer-h={composerH}
+		class="{GLASS} animate-pop text-duvet-ink absolute right-[calc(var(--duvet-pad-x)+2px)] bottom-[calc(var(--composer-h,64px)+12px)] z-5 grid size-10 place-items-center rounded-full"
+		title="Jump to the newest"
+		aria-label={unreadCount > 0 ? `Jump to the newest, ${unreadCount} new` : "Jump to the newest"}
+		onclick={jumpToNewest}
+	>
+		<ArrowDownIcon size={16} />
+		{#if unreadCount > 0}
+			<span class="{countBadgeClass()} absolute -top-1 -right-1" aria-hidden="true">{unreadCount}</span>
+		{/if}
+	</button>
+{/if}
+
+<!-- An author's picture: a click opens their profile beside it (a second one closes it), a right-click their menu.
+     A webhook has neither. -->
+{#snippet avatar(message: Message, size: number)}
+	{@const member = members.find((m) => m.id === message.author_id)}
+	{#key message.author_avatar_url}
+		<button
+			type="button"
+			class="block rounded-full {member ? 'cursor-pointer' : 'cursor-default'}"
+			data-author-menu={message.webhook_id ? "" : message.author_id}
+			aria-label={message.author_name}
+			onclick={(e) => openProfile(member, e.currentTarget)}
+		>
+			<UserAvatar src={message.author_avatar_url} name={message.author_name} {size} />
+		</button>
+	{/key}
+{/snippet}
+
+<!-- An author's name, in their role's colour (or its gradient), or else in ink: a click opens their profile -->
+{#snippet authorName(message: Message, ink: string)}
+	{@const member = members.find((m) => m.id === message.author_id)}
+	{@const style = authorColors[message.author_id] || `color: ${ink}`}
+	{#if member}
+		<button
+			type="button"
+			class="min-w-0 cursor-pointer truncate font-semibold hover:underline"
+			{style}
+			onclick={(e) => openProfile(member, e.currentTarget)}>{message.author_name}</button
+		>
+	{:else}
+		<span class="min-w-0 cursor-default truncate font-semibold" {style}>{message.author_name}</span>
+	{/if}
+{/snippet}
+
+<!-- What a message holds: its text (a bubble, unless the rows are flat or it's only emoji), its cards, its files and
+     its components, each a piece of its own in the column -->
+{#snippet content(message: Message, mine: boolean, isFailed: boolean, isMention: boolean, isHighlighted: boolean)}
+	{@const own = mine && !flat}
+	{#if message.type === MessageType.Voice || message.sticker_attachment_id}
+		<MessageAttachments {message} {channelName} onPreview={openPreview} />
+	{:else if isLoading(message)}
+		<!-- A bot's deferred response: it has 15 minutes to complete it -->
+		<div class={flat ? "" : "bg-duvet-card shadow-duvet-raised rounded-2xl px-3 py-2"}>
+			<DeferredResponse {message} />
+		</div>
+	{:else if isComponentsV2(message)}
+		<!-- The components are all of it: its files show where they place them -->
+		<MessageComponents
+			components={message.components ?? []}
+			{space}
+			{members}
+			{mentionMap}
+			{customEmojiMap}
+			onPreview={openPreview}
+			onInteract={isConversation ? undefined : (use) => interact(message, use)}
+		/>
+	{:else}
+		{#if bubbled(message) || largeEmojis(message.content ?? "")}
+			{@const emojiOnly = largeEmojis(message.content ?? "")}
+			{@const lit = isMention && !flat && !emojiOnly}
+			<div
+				role="textbox"
+				aria-readonly="true"
+				tabindex="-1"
+				use:prism={lit ? ($currentUser?.id ?? null) : null}
+				class="font-content relative max-w-full cursor-text text-left text-[15px] wrap-anywhere select-text {emojiOnly
+					? 'px-0.5 leading-[1.15]'
+					: flat
+						? `max-w-[760px] leading-[1.45] ${isFailed ? 'text-duvet-danger' : 'text-duvet-ink'}`
+						: `rounded-2xl px-3 py-2 leading-[1.4] transition-shadow duration-200 motion-reduce:transition-none ${
+								isFailed
+									? 'bg-duvet-danger/15 text-duvet-danger'
+									: lit
+										? PRISM_BUBBLE
+										: own
+											? 'msg-own bg-duvet-azure text-fixed-white'
+											: 'bg-duvet-card text-duvet-ink'
+							} ${
+								editingMessageId === message.id
+									? 'shadow-[0_0_0_2px_var(--duvet-accent)]'
+									: isHighlighted
+										? 'shadow-[0_0_0_3px_var(--duvet-accent),var(--duvet-shadow-raised)]'
+										: lit
+											? ''
+											: 'shadow-duvet-raised'
+							}`}"
+				onclick={(e) => {
+					if (e.detail === 3 && mine) startEdit(message);
+				}}
+				onkeydown={(e) => {
+					if (e.key === "Enter" && mine) startEdit(message);
+				}}
+			>
+				{#if lit}
+					<span class={PRISM_LIGHT} aria-hidden="true"></span>
+					<span class={PRISM_RIM} aria-hidden="true"></span>
+				{/if}
+				<MessageText
+					content={message.content ?? ""}
+					large={emojiOnly}
+					{mentionMap}
+					mentionStyles={own ? undefined : mentionStyles}
+					{customEmojiMap}
+					{own}
+					edited={message.updated_at !== message.created_at
+						? `edited ${formatTimestamp(message.updated_at, now)}`
+						: null}
+				/>
 			</div>
-		</Dialog.Content>
-	</Dialog.Portal>
-</Dialog.Root>
+		{/if}
+		<MessageCards content={message.content ?? ""} embeds={message.embeds} onPreview={(src) => openPreview(src)} />
+		<MessageAttachments {message} {channelName} onPreview={openPreview} />
+		{#if message.components?.length}
+			<!-- Rows of buttons and selects below the content -->
+			<MessageComponents
+				components={message.components}
+				{space}
+				{members}
+				{mentionMap}
+				{customEmojiMap}
+				onPreview={openPreview}
+				onInteract={isConversation ? undefined : (use) => interact(message, use)}
+			/>
+		{/if}
+	{/if}
+{/snippet}
+
+<!-- A bot's to this user alone, and not the room's: it lasts until dismissed or the app reloads. Nothing of the room's
+     (reactions, replies, pins, links) applies to it, so it has no hover bar and no menu. -->
+{#snippet ephemeralNote(message: Message)}
+	<p class="text-duvet-ink2 flex items-center gap-1 px-1 text-xs">
+		<EyeIcon class="size-3.5 shrink-0" />
+		<span>Only you can see this</span>
+		<span aria-hidden="true">·</span>
+		<button
+			type="button"
+			class="text-duvet-ink cursor-pointer hover:underline"
+			onclick={() => dropEphemeral(channelId, message.id)}>Dismiss message</button
+		>
+	</p>
+{/snippet}
+
+<!-- What the keys do here, while keyboard navigation's cursor is on this message. -->
+{#snippet cursorHint(message: Message, mine: boolean, bare: boolean)}
+	{#if keyboard.cursor === message.id && !bare}
+		<span
+			class="{GLASS} text-duvet-ink2 pointer-events-none absolute right-3 -bottom-3 z-10 flex items-center gap-2 rounded-lg px-2 py-0.5 text-[11px] font-medium"
+			aria-hidden="true"
+		>
+			<span><kbd class="text-duvet-ink font-bold">r</kbd> reply</span>
+			{#if mine}
+				<span><kbd class="text-duvet-ink font-bold">e</kbd> edit</span>
+			{/if}
+		</span>
+	{/if}
+{/snippet}
+
+<!-- A message that didn't send: its bar stays, with Retry and Dismiss -->
+{#snippet failedBar(message: Message, mine: boolean)}
+	<div
+		use:fitBar
+		class="{GLASS} pointer-events-auto absolute z-10 flex items-center gap-px rounded-xl p-[3px] whitespace-nowrap {flat
+			? '-top-4 right-3.5'
+			: mine
+				? 'top-1/2 right-full mr-2 -translate-y-1/2 data-above:top-auto data-above:right-0 data-above:bottom-full data-above:mr-0 data-above:-mb-1 data-above:translate-y-0'
+				: 'top-1/2 left-full ml-2 -translate-y-1/2 data-above:top-auto data-above:bottom-full data-above:left-0 data-above:-mb-1 data-above:ml-0 data-above:translate-y-0'}"
+	>
+		<button type="button" class={buttonClass("quiet", "sm")} onclick={() => onRetry(message)}>Retry</button>
+		<button type="button" class={buttonClass("quiet", "sm")} onclick={() => onDismiss(message.nonce!)}>Dismiss</button>
+	</div>
+{/snippet}
+
+<!-- The hover bar: the time of a bubble that isn't its group's last (that one has it under it), three reactions at
+     one click, the emoji picker, Reply, Edit on one's own, and More, which opens the message's menu. Mounted for the
+     row under the pointer only, and while its picker or its menu is open (#326). -->
+{#snippet hoverBar(message: Message, mine: boolean, time: string | null)}
+	<div
+		use:fitBar
+		class="{GLASS} animate-tip-in absolute z-10 flex items-center gap-px rounded-xl p-[3px] whitespace-nowrap {flat
+			? '-top-4 right-3.5'
+			: mine
+				? 'top-1/2 right-full mr-2 -translate-y-1/2 flex-row-reverse data-above:top-auto data-above:right-0 data-above:bottom-full data-above:mr-0 data-above:-mb-1 data-above:translate-y-0'
+				: 'top-1/2 left-full ml-2 -translate-y-1/2 data-above:top-auto data-above:bottom-full data-above:left-0 data-above:-mb-1 data-above:ml-0 data-above:translate-y-0'}"
+	>
+		{#if time}
+			<span class="text-duvet-ink2 px-1.5 text-[11px] leading-none font-medium tabular-nums select-none">{time}</span>
+			<span class="bg-duvet-line mx-[3px] h-[18px] w-px" aria-hidden="true"></span>
+		{/if}
+		{#each QUICK_REACTIONS as emoji (emoji)}
+			<button
+				type="button"
+				class="hover:bg-duvet-hover grid size-7 place-items-center rounded-lg text-[13px] transition-transform duration-[120ms] hover:scale-[1.12] motion-reduce:transition-none"
+				title="React {emoji}"
+				aria-label="React {emoji}"
+				onclick={() => handleReactionToggle(message, emoji)}
+			>
+				{@html renderEmoji(emoji)}
+			</button>
+		{/each}
+		<span class="bg-duvet-line mx-[3px] h-[18px] w-px" aria-hidden="true"></span>
+		<Popover.Root
+			bind:open={() => reactingMessageId === message.id, (v) => (reactingMessageId = v ? message.id : null)}
+		>
+			<Popover.Trigger>
+				{#snippet child({ props })}
+					<IconButton {...props} label="Add reaction" title="Add reaction" size="sm">
+						<SmilePlusIcon size={15} />
+					</IconButton>
+				{/snippet}
+			</Popover.Trigger>
+			<!-- Mounted only while open: bits-ui's Portal mounts what it holds as it's created, open or not (#319). -->
+			{#if reactingMessageId === message.id}
+				<Popover.Portal>
+					<Popover.Content
+						side="top"
+						align={mine ? "start" : "end"}
+						sideOffset={8}
+						collisionPadding={10}
+						class="z-100"
+						role="dialog"
+						aria-label="Add reaction"
+					>
+						<EmojiPicker onSelect={(emoji) => handleReactionPick(message.id, emoji)} groups={emojiGroups} />
+					</Popover.Content>
+				</Popover.Portal>
+			{/if}
+		</Popover.Root>
+		<IconButton label="Reply" title="Reply" size="sm" onclick={() => onReply?.(message)}>
+			<ReplyIcon size={15} />
+		</IconButton>
+		{#if mine}
+			<IconButton label="Edit message" title="Edit message" size="sm" onclick={() => startEdit(message)}>
+				<PencilIcon size={15} />
+			</IconButton>
+		{/if}
+		<!-- The menu's own root and portal, as Menu.svelte draws them, but mounted only while open: a portal mounts what
+		     it holds as it's created, and every row the pointer passes would leave its menu's behind (#319). -->
+		<DropdownMenu.Root bind:open={() => moreMenuFor === message.id, (v) => (moreMenuFor = v ? message.id : null)}>
+			<DropdownMenu.Trigger>
+				{#snippet child({ props })}
+					<IconButton {...props} label="More" title="More" size="sm" active={moreMenuFor === message.id}>
+						<EllipsisIcon size={15} />
+					</IconButton>
+				{/snippet}
+			</DropdownMenu.Trigger>
+			{#if moreMenuFor === message.id}
+				<DropdownMenu.Portal>
+					<!-- The panel's positioner takes no layer of its own: this holds it, at the menu's. -->
+					<div class="fixed top-0 left-0" style={layerStyle(moreMenuLayer)}>
+						<DropdownMenu.Content
+							side="bottom"
+							align={mine ? "start" : "end"}
+							sideOffset={6}
+							collisionPadding={10}
+							aria-label="Message"
+							class="{MENU_PANEL} origin-(--bits-floating-transform-origin)"
+						>
+							{@render messageItems(message)}
+						</DropdownMenu.Content>
+					</div>
+				</DropdownMenu.Portal>
+			{/if}
+		</DropdownMenu.Root>
+	</div>
+{/snippet}
+
+<!-- A message's menu, from its More button and from a right-click: a row of reactions, then what the hover bar has and
+     the rest: its thread, its link, who reacted, its pin, its author's menu, and Delete for those who may. A notice
+     has Delete alone. -->
+{#snippet messageItems(message: Message)}
+	{@const mine = !!$currentUser && message.author_id === $currentUser.id}
+	{#if isNotice(message)}
+		<MenuItem icon={TrashIcon} danger onSelect={() => void handleDelete(message.id)}>Delete message</MenuItem>
+	{:else}
+		<div class="border-duvet-line mb-1.5 flex items-center gap-0.5 border-b px-0.5 pt-0.5 pb-1.5">
+			{#each MENU_REACTIONS as emoji (emoji)}
+				<DropdownMenu.Item
+					class="data-highlighted:bg-duvet-hover grid size-9 cursor-pointer place-items-center rounded-[10px] text-base transition-transform duration-[120ms] outline-none hover:scale-[1.15] motion-reduce:transition-none"
+					aria-label="React {emoji}"
+					onSelect={() => handleReactionToggle(message, emoji)}
+				>
+					{@html renderEmoji(emoji)}
+				</DropdownMenu.Item>
+			{/each}
+			<DropdownMenu.Item
+				class="text-duvet-ink2 data-highlighted:bg-duvet-hover data-highlighted:text-duvet-ink ml-auto grid size-9 cursor-pointer place-items-center rounded-[10px] outline-none"
+				aria-label="More reactions"
+				title="More reactions"
+				onSelect={() => (reactingMessageId = message.id)}
+			>
+				<SmilePlusIcon size={18} />
+			</DropdownMenu.Item>
+		</div>
+		<MenuItem icon={ReplyIcon} onSelect={() => onReply?.(message)}>Reply</MenuItem>
+		<MenuItem icon={ThreadIcon} onSelect={() => void openThreadModal(message)}>View thread</MenuItem>
+		<MenuItem icon={LinkIcon} onSelect={() => copyLink(message)}>Copy message link</MenuItem>
+		{@render reactionsItem(message)}
+		{#if mine}
+			<MenuItem icon={PencilIcon} onSelect={() => startEdit(message)}>Edit message</MenuItem>
+		{/if}
+		{#if canPin}
+			<MenuItem
+				icon={message.pinned_at ? PinOffIcon : PinIcon}
+				disabled={pinningMessageId === message.id}
+				onSelect={() => void togglePin(message)}
+			>
+				{message.pinned_at ? "Unpin message" : "Pin message"}
+			</MenuItem>
+		{/if}
+		{#if !message.webhook_id}
+			<MenuSub label={message.author_name} icon={UserIcon}>
+				{@render authorItems(message.author_id)}
+			</MenuSub>
+		{/if}
+		{#if mine || currentUserCan(Permission.ManageMessages)}
+			<MenuSeparator />
+			<MenuItem icon={TrashIcon} danger onSelect={() => void handleDelete(message.id)}>Delete message</MenuItem>
+		{/if}
+	{/if}
+{/snippet}
 
 <!-- Who reacted, in the menu of a message that has reactions -->
-{#snippet reactionsButton(message: Message)}
+{#snippet reactionsItem(message: Message)}
 	{#if message.reactions?.length}
-		<div class="bg-duvet-card w-px"></div>
-		<button
-			class="text-duvet-ink2 hover:bg-duvet-ink/15 hover:text-duvet-ink p-1.5 transition-colors"
-			onclick={() => showReactors(message)}
-			title="Reactions"
-			aria-label="Reactions"
+		<MenuItem icon={UsersIcon} onSelect={() => showReactors(message)}>Reactions</MenuItem>
+	{/if}
+{/snippet}
+
+<!-- A member's menu: from a right-click on their avatar, and under their name in their message's menu (in a direct
+     conversation's bubbles there's no avatar to click). Kick and Ban are for a member of the room's Space whom the API
+     would let the user act on; the last one is Duvet staff's. -->
+{#snippet authorItems(userId: string)}
+	{@const isSelf = userId === $currentUser?.id}
+	{@const alreadyFriend = !isSelf && isFriend(userId)}
+	{@const pending = !isSelf && !alreadyFriend && hasPendingRequest(userId)}
+	{@const moderation = moderationOf(
+		space,
+		members.find((m) => m.id === userId),
+	)}
+	{#if !isSelf}
+		<MenuItem
+			icon={UserPlusIcon}
+			disabled={alreadyFriend || pending}
+			onSelect={() => void handleSendFriendRequest(userId)}
 		>
-			<UsersIcon class="size-4" />
-		</button>
+			{alreadyFriend ? "Already friends" : pending ? "Request pending" : "Send friend request"}
+		</MenuItem>
+	{/if}
+	<MenuItem icon={CopyIcon} onSelect={() => void navigator.clipboard.writeText(userId)}>Copy user ID</MenuItem>
+	{#if moderation}
+		<MenuSeparator />
+		{#if moderation.kick}
+			<MenuItem icon={KickIcon} danger onSelect={() => void kickFromSpace(moderation.target)}>
+				Kick {moderation.target.name}
+			</MenuItem>
+		{/if}
+		{#if moderation.ban}
+			<MenuItem icon={BanIcon} danger onSelect={() => banRequest.set(moderation.target)}>
+				Ban {moderation.target.name}
+			</MenuItem>
+		{/if}
+	{/if}
+	{#if isStaff}
+		<MenuSeparator />
+		<MenuItem icon={BadgeCheckIcon} onSelect={() => openFlagsBadgesEditor(userId)}>Edit flags and badges</MenuItem>
 	{/if}
 {/snippet}
 
 {#snippet deleteButton(message: Message)}
-	<button
-		class="text-duvet-ink2 hover:bg-duvet-ink/15 hover:text-duvet-danger p-1.5 transition-colors disabled:cursor-not-allowed disabled:opacity-50"
-		onclick={() => handleDelete(message.id)}
-		disabled={deletingMessageId === message.id}
+	<IconButton
+		label="Delete message"
 		title="Delete message"
-		aria-label="Delete message"
+		size="sm"
+		class="hover:text-duvet-danger"
+		disabled={deletingMessageId === message.id}
+		onclick={() => handleDelete(message.id)}
 	>
 		{#if deletingMessageId === message.id}
-			<svg
-				xmlns="http://www.w3.org/2000/svg"
-				width="16"
-				height="16"
-				viewBox="0 0 24 24"
-				fill="none"
-				stroke="currentColor"
-				stroke-width="2"
-				stroke-linecap="round"
-				stroke-linejoin="round"
-				class="animate-spin"><path d="M21 12a9 9 0 1 1-6.219-8.56" /></svg
-			>
+			<SpinnerIcon size={15} class="animate-spin" />
 		{:else}
-			<svg
-				xmlns="http://www.w3.org/2000/svg"
-				width="16"
-				height="16"
-				viewBox="0 0 24 24"
-				fill="none"
-				stroke="currentColor"
-				stroke-width="2"
-				stroke-linecap="round"
-				stroke-linejoin="round"
-				><path d="M3 6h18" /><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" /><path
-					d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"
-				/><line x1="10" x2="10" y1="11" y2="17" /><line x1="14" x2="14" y1="11" y2="17" /></svg
-			>
+			<TrashIcon size={15} />
 		{/if}
-	</button>
+	</IconButton>
 {/snippet}
+
+<!-- A message's thread: its messages, each replied to from here, over the thread's own message box. -->
+<Sheet
+	bind:open={threadModalOpen}
+	title="Message thread"
+	description={threadRootMessage ? `From ${threadRootMessage.author_name}` : undefined}
+	class="min-w-[min(672px,calc(100%-48px))]"
+>
+	<div bind:this={threadScrollEl} class="-mx-1 min-h-0 flex-1 overflow-y-auto px-1 py-1">
+		{#if threadLoading}
+			<div class="flex items-center justify-center py-8">
+				<SpinnerIcon class="text-duvet-ink2 size-6 animate-spin" />
+			</div>
+		{:else if threadError}
+			<p class="text-duvet-danger text-sm">{threadError}</p>
+		{:else if threadShown.length === 0}
+			<p class="text-duvet-ink2 text-sm">No thread messages found.</p>
+		{:else}
+			{@const threadMsgMap = new Map(threadShown.map((m) => [m.id, m]))}
+			<div class="flex flex-col gap-2" onclickcapture={openMention}>
+				{#each threadShown as threadMsg (threadMsg.id)}
+					{@const parentMsg = threadMsg.ref_message_id ? threadMsgMap.get(threadMsg.ref_message_id) : null}
+					{@const parentCall = parentMsg ? callNoticeLine(parentMsg, $currentUser?.id, joined) : null}
+					{@const root = threadRootMessage}
+					<div class="group bg-duvet-card shadow-duvet-raised relative rounded-2xl px-3 py-2.5">
+						<!-- As the pins and the search show a message, a reply's quote above it: its quote of a call notice
+						     says what the call's row does -->
+						<MessagePreview
+							message={threadMsg}
+							{spaceId}
+							{channelId}
+							{members}
+							{mentionMap}
+							{customEmojiMap}
+							quotedCall={parentCall}
+							onPreview={previewFromThread}
+						/>
+						<!-- A message of the thread is replied to from here, as from the chat; not a notice, an ephemeral
+						     message, nor one still being sent (its ID is its nonce) -->
+						{#if onThreadReply && root && !isNotice(threadMsg) && !isEphemeral(threadMsg) && threadMsg.id !== threadMsg.nonce}
+							<IconButton
+								label="Reply to {threadMsg.author_name}"
+								title="Reply"
+								size="sm"
+								class="absolute top-1.5 right-1.5 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 focus-visible:opacity-100 motion-reduce:transition-none"
+								onclick={() => onThreadReply(threadMsg, root)}
+							>
+								<ReplyIcon size={14} />
+							</IconButton>
+						{/if}
+					</div>
+				{/each}
+			</div>
+		{/if}
+	</div>
+	<!-- The thread's own message box, which replies in it -->
+	{#if threadComposer && threadRootMessage && !threadLoading && !threadError}
+		<div class="-mx-4 -mb-4">
+			{@render threadComposer(threadRootMessage)}
+		</div>
+	{/if}
+</Sheet>
 
 <ImagePreview src={previewSrc} alt={previewAlt} bind:open={previewOpen} />
 
 <MentionProfile bind:this={mentionProfile} {members} {space} />
 
-<!-- User context menu (right-click avatar) -->
-<svelte:window
-	onkeydown={(e) => {
-		if (userMenuPos && e.key === "Escape") closeUserMenu();
-	}}
-/>
-{#if userMenuPos && userMenuTargetId}
-	<!-- Escape closes it too (svelte:window above), so the backdrop's click is mouse-only on purpose. -->
-	<!-- svelte-ignore a11y_no_static_element_interactions, a11y_click_events_have_key_events -->
-	<div
-		class="fixed inset-0 z-200"
-		onclick={closeUserMenu}
-		oncontextmenu={(e) => {
-			e.preventDefault();
-			closeUserMenu();
+<!-- The profile a click on an author's name or avatar opens, beside it: one for the list, not one for each row -->
+{#if profileFor}
+	<MemberProfilePopover
+		member={profileFor.member}
+		{spaceId}
+		{space}
+		side="right"
+		open
+		anchor={profileFor.anchor}
+		onOpenChange={(isOpen) => {
+			if (!isOpen) closeProfile();
 		}}
-	></div>
-	{@const isSelf = userMenuTargetId === $currentUser?.id}
-	{@const alreadyFriend = !isSelf && isFriend(userMenuTargetId)}
-	{@const pending = !isSelf && !alreadyFriend && hasPendingRequest(userMenuTargetId)}
-	{@const canSendRequest = !isSelf && !alreadyFriend && !pending}
-	<!-- Kick and Ban, for a member of the room's space whom the API would let the user act on. -->
-	{@const moderation = moderationOf(
-		space,
-		members.find((m) => m.id === userMenuTargetId),
-	)}
-	<div
-		class="rounded-card border-duvet-line bg-duvet-card shadow-duvet-float fixed z-201 min-w-44 border py-1"
-		style="left: {userMenuPos.x}px; top: {userMenuPos.y}px;"
-	>
-		{#if !isSelf}
-			<button
-				class="w-full px-3 py-2 text-left text-sm transition-colors {canSendRequest
-					? 'text-duvet-ink hover:bg-duvet-ink/10'
-					: 'text-duvet-ink2 cursor-not-allowed'}"
-				disabled={!canSendRequest}
-				onclick={() => handleSendFriendRequest(userMenuTargetId!)}
-			>
-				{alreadyFriend ? "Already Friends" : pending ? "Request Pending" : "Send Friend Request"}
-			</button>
-		{/if}
-		<button
-			class="text-duvet-ink hover:bg-duvet-ink/10 w-full px-3 py-2 text-left text-sm transition-colors"
-			onclick={() => {
-				navigator.clipboard.writeText(userMenuTargetId!);
-				closeUserMenu();
-			}}
-		>
-			Copy User ID
-		</button>
-		{#if moderation}
-			<div class="border-duvet-line my-1 border-t"></div>
-			{#if moderation.kick}
-				<button
-					class="text-duvet-danger hover:bg-duvet-ink/10 w-full px-3 py-2 text-left text-sm transition-colors"
-					onclick={() => {
-						const { target } = moderation;
-						closeUserMenu();
-						void kickFromSpace(target);
-					}}
-				>
-					Kick {moderation.target.name}
-				</button>
-			{/if}
-			{#if moderation.ban}
-				<button
-					class="text-duvet-danger hover:bg-duvet-ink/10 w-full px-3 py-2 text-left text-sm transition-colors"
-					onclick={() => {
-						banRequest.set(moderation.target);
-						closeUserMenu();
-					}}
-				>
-					Ban {moderation.target.name}
-				</button>
-			{/if}
-		{/if}
-		{#if isStaff}
-			<div class="border-duvet-line my-1 border-t"></div>
-			<button
-				class="text-duvet-warn hover:bg-duvet-ink/10 w-full px-3 py-2 text-left text-sm transition-colors"
-				onclick={() => openFlagsBadgesEditor(userMenuTargetId!)}
-			>
-				Edit Flags & Badges
-			</button>
-		{/if}
-	</div>
+	/>
 {/if}
 
 <!-- Staff: Flags & Badges Editor -->
 {#if flagsBadgesTarget}
-	<Dialog.Root bind:open={flagsBadgesOpen}>
-		<Dialog.Portal>
-			<Dialog.Overlay class="fixed inset-0 z-500 bg-black/70 backdrop-blur-sm" />
-			<Dialog.Content class="fixed inset-0 z-501 flex items-center justify-center p-4">
-				<div
-					class="rounded-card border-duvet-line bg-duvet-bg text-duvet-ink shadow-duvet-float w-full max-w-sm border p-6"
-				>
-					<h2 class="mb-4 text-lg font-semibold">Edit Flags & Badges</h2>
-					<p class="text-duvet-ink2 mb-4 text-xs">User: {flagsBadgesTarget.id}</p>
+	<Sheet
+		bind:open={flagsBadgesOpen}
+		title="Edit flags and badges"
+		description="User: {flagsBadgesTarget.id}"
+		class="max-w-[384px]"
+	>
+		<fieldset class="flex flex-col gap-2">
+			<legend class="text-duvet-ink2 mb-2 text-[13px] font-semibold">Flags</legend>
+			{#each FLAGS as f}
+				<label class="flex items-center gap-2 text-sm">
+					<input
+						type="checkbox"
+						checked={!!(editFlags & f.flag)}
+						onchange={() => toggleFlag(f.flag)}
+						class="accent-duvet-accent"
+					/>
+					{f.name}
+				</label>
+			{/each}
+		</fieldset>
 
-					<div class="mb-4 space-y-2">
-						<h3 class="text-duvet-ink2 text-[13px] font-bold">Flags</h3>
-						{#each FLAGS as f}
-							<label class="flex items-center gap-2 text-sm">
-								<input
-									type="checkbox"
-									checked={!!(editFlags & f.flag)}
-									onchange={() => toggleFlag(f.flag)}
-									class="accent-duvet-warn"
-								/>
-								{f.name}
-							</label>
-						{/each}
-					</div>
+		<fieldset class="flex flex-col gap-2">
+			<legend class="text-duvet-ink2 mb-2 text-[13px] font-semibold">Badges</legend>
+			{#each BADGES as b}
+				<label class="flex items-center gap-2 text-sm">
+					<input
+						type="checkbox"
+						checked={!!(editBadges & b.flag)}
+						onchange={() => toggleBadge(b.flag)}
+						class="accent-duvet-accent"
+					/>
+					{b.name}
+				</label>
+			{/each}
+		</fieldset>
 
-					<div class="mb-6 space-y-2">
-						<h3 class="text-duvet-ink2 text-[13px] font-bold">Badges</h3>
-						{#each BADGES as b}
-							<label class="flex items-center gap-2 text-sm">
-								<input
-									type="checkbox"
-									checked={!!(editBadges & b.flag)}
-									onchange={() => toggleBadge(b.flag)}
-									class="accent-duvet-warn"
-								/>
-								{b.name}
-							</label>
-						{/each}
-					</div>
-
-					<div class="flex gap-3">
-						<button
-							class="text-duvet-on-accent rounded-row bg-duvet-warn hover:bg-duvet-warn/85 px-4 py-2 text-sm font-medium transition-colors disabled:opacity-50"
-							disabled={flagsBadgesSaving}
-							onclick={saveFlagsBadges}
-						>
-							{flagsBadgesSaving ? "Saving…" : "Save"}
-						</button>
-						<button
-							class="rounded-row bg-duvet-ink/10 text-duvet-ink hover:bg-duvet-ink/15 px-4 py-2 text-sm font-medium transition-colors"
-							onclick={() => (flagsBadgesOpen = false)}
-						>
-							Cancel
-						</button>
-					</div>
-				</div>
-			</Dialog.Content>
-		</Dialog.Portal>
-	</Dialog.Root>
+		{#snippet foot()}
+			<span></span>
+			<button type="button" class={buttonClass("quiet")} onclick={() => (flagsBadgesOpen = false)}>Cancel</button>
+			<button type="button" class={buttonClass("primary")} disabled={flagsBadgesSaving} onclick={saveFlagsBadges}>
+				{flagsBadgesSaving ? "Saving…" : "Save"}
+			</button>
+		{/snippet}
+	</Sheet>
 {/if}

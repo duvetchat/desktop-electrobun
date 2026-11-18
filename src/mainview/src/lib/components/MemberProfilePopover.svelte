@@ -14,6 +14,8 @@
 	import ActivityList from "$lib/components/ActivityList.svelte";
 	import ProfileBio from "$lib/components/ProfileBio.svelte";
 	import StatusDot from "$lib/components/StatusDot.svelte";
+	import OverlayLayer from "$lib/components/OverlayLayer.svelte";
+	import { GLASS, buttonClass, menuItemClass } from "$lib/components/ui/recipes";
 
 	let {
 		member,
@@ -23,7 +25,6 @@
 		open = false,
 		onOpenChange = () => {},
 		triggerClass = "",
-		triggerStyle = "",
 		onRemoveMember = undefined,
 		anchor = null,
 		children,
@@ -35,7 +36,6 @@
 		open?: boolean;
 		onOpenChange?: (open: boolean) => void;
 		triggerClass?: string;
-		triggerStyle?: string;
 		onRemoveMember?: (userId: string) => void;
 		/** What it opens beside, for one that opens by other means than a click on its children, and then has none. */
 		anchor?: HTMLElement | null;
@@ -172,7 +172,7 @@
 	}}
 >
 	{#if children}
-		<Popover.Trigger class={triggerClass} style={triggerStyle}>
+		<Popover.Trigger class={triggerClass}>
 			{@render children()}
 		</Popover.Trigger>
 	{/if}
@@ -180,230 +180,245 @@
 		<Popover.Portal>
 			<!-- Beside an anchor the focus isn't handed back as it closes: a press on a mention's chip focused the text around it,
 			     a whole message or search result, and a focus there would scroll it into view, ring it, and have Enter edit it. -->
-			<Popover.Content
-				customAnchor={anchor}
-				onCloseAutoFocus={(e) => {
-					if (anchor) e.preventDefault();
-				}}
-				{side}
-				align="start"
-				sideOffset={10}
-				class="rounded-card border-duvet-line bg-duvet-bg shadow-duvet-float z-301 w-80 border"
-			>
-				{@const visibleRoles = member.roles.filter((role) => role.id !== spaceId)}
-				<!-- The banner, 5:2 as it's cropped (600×240). It grows a little past the card on hover; nothing clips it, so its
-				     corners are its own, and what's below clips itself. The avatar comes later and covers its lower left, so it
-				     fades out while the banner (peer/banner) is hovered. -->
-				<div
-					class="peer/banner aspect-[5/2] w-full rounded-t-[15px] transition-transform duration-150 motion-safe:hover:scale-105"
-					style={member.banner_url
-						? `background-image: url('${member.banner_url}'); background-size: cover; background-position: center;`
-						: getMemberBannerStyle(member)}
-				></div>
-
-				<div class="relative px-4 pb-4">
-					<!-- The avatar, with its status dot: it fades out while the banner before this section is hovered, over the
-					     banner's 150 ms, and with less motion asked too, as a fade moves nothing. It still takes the pointer: on it,
-					     the banner isn't hovered, so it shows. -->
-					<div
-						class="border-duvet-line bg-duvet-sunk absolute -top-12 left-4 rounded-full border-[6px] transition-opacity duration-150 in-peer-hover/banner:opacity-0"
+			<!-- In front of what it opened from, the members popover too (lib/overlay-layers.ts). -->
+			<OverlayLayer>
+				{#snippet children()}
+					<Popover.Content
+						customAnchor={anchor}
+						onCloseAutoFocus={(e) => {
+							if (anchor) e.preventDefault();
+						}}
+						{side}
+						align="start"
+						sideOffset={10}
+						collisionPadding={10}
+						role="dialog"
+						aria-label="{member.username}'s profile"
+						class="{GLASS} animate-float-in rounded-card text-duvet-ink z-[1001] w-80 origin-(--bits-floating-transform-origin) outline-none"
 					>
-						<UserAvatar src={member.avatar_url} name={member.username} size={80} />
-						<!-- Coloured as every status dot (statusDotClass, lib/status.ts): online in the theme's colour -->
-						<StatusDot
-							status={member.status}
-							mobileOnly={member.mobile_only}
-							class="text-duvet-bg absolute right-0 bottom-0 w-6 border-4"
-						/>
-					</div>
+						{@const visibleRoles = member.roles.filter((role) => role.id !== spaceId)}
+						<!-- The banner, 5:2 as it's cropped (600×240). It grows a little past the card on hover; nothing clips it, so its
+						     corners are its own, and what's below clips itself. The avatar comes later and covers its lower left, so it
+						     fades out while the banner (peer/banner) is hovered. -->
+						<div
+							class="peer/banner aspect-[5/2] w-full rounded-t-[15px] transition-transform duration-150 motion-safe:hover:scale-105 motion-reduce:transition-none"
+							style={member.banner_url
+								? `background-image: url('${member.banner_url}'); background-size: cover; background-position: center;`
+								: getMemberBannerStyle(member)}
+						></div>
 
-					<div class="relative z-10 mt-2 flex h-10 w-full items-center justify-end gap-2">
-						{#if $currentUser && member.id !== $currentUser.id}
-							{@const reqState = friendRequestState[member.id] ?? "idle"}
-							{#if isFriend(member.id)}
-								<button
-									class="bg-duvet-alive/20 text-duvet-alive flex cursor-default items-center justify-center rounded-lg px-2.5 py-1.5"
-									title="Friends"
-									disabled
-								>
-									<UserCheck class="size-4" />
-								</button>
-							{:else if hasPendingRequest(member.id)}
-								<button
-									class="bg-duvet-ink/10 hover:bg-duvet-ink/20 flex items-center justify-center rounded-lg px-2.5 py-1.5 transition-colors disabled:opacity-50"
-									title="Accept request"
-									onclick={() => handleAcceptFriendRequest(member.id)}
-									disabled={reqState === "loading" || reqState === "sent"}
-								>
-									<UserPlus class="size-4" />
-								</button>
-							{:else if reqState === "sent"}
-								<button
-									class="bg-duvet-alive/20 text-duvet-alive flex cursor-default items-center justify-center rounded-lg px-2.5 py-1.5"
-									title="Request sent"
-									disabled
-								>
-									<UserCheck class="size-4" />
-								</button>
-							{:else}
-								<button
-									class="bg-duvet-ink/10 hover:bg-duvet-ink/20 flex items-center justify-center rounded-lg px-2.5 py-1.5 transition-colors disabled:opacity-50"
-									title={reqState === "error" ? "Retry" : "Add friend"}
-									onclick={() => handleSendFriendRequest(member.id)}
-									disabled={reqState === "loading"}
-								>
-									{#if reqState === "loading"}
-										<Loader2 class="size-4 animate-spin" />
-									{:else if reqState === "error"}
-										<RotateCcw class="size-4" />
+						<div class="relative px-4 pb-4">
+							<!-- The avatar, with its status dot: it fades out while the banner before this section is hovered, over the
+							     banner's 150 ms, and with less motion asked too, as a fade moves nothing. It still takes the pointer: on it,
+							     the banner isn't hovered, so it shows. -->
+							<div
+								class="border-duvet-pop-ring bg-duvet-pop-ring absolute -top-12 left-4 rounded-full border-4 transition-opacity duration-150 in-peer-hover/banner:opacity-0 motion-reduce:transition-none"
+							>
+								<UserAvatar src={member.avatar_url} name={member.username} size={80} />
+								<!-- Coloured as every status dot (statusDotClass, lib/status.ts): online in the theme's colour -->
+								<StatusDot
+									status={member.status}
+									mobileOnly={member.mobile_only}
+									class="text-duvet-bg absolute right-0 bottom-0 w-6 border-4"
+								/>
+							</div>
+
+							<div class="relative z-10 mt-2 flex h-10 w-full items-center justify-end gap-2">
+								{#if $currentUser && member.id !== $currentUser.id}
+									{@const reqState = friendRequestState[member.id] ?? "idle"}
+									{#if isFriend(member.id)}
+										<button
+											class="bg-duvet-alive/15 text-duvet-alive-text grid h-7 w-8 cursor-default place-items-center rounded-[9px]"
+											title="Friends"
+											disabled
+										>
+											<UserCheck class="size-4" />
+										</button>
+									{:else if hasPendingRequest(member.id)}
+										<button
+											class="{buttonClass('secondary', 'sm')} w-8 px-0!"
+											title="Accept request"
+											onclick={() => handleAcceptFriendRequest(member.id)}
+											disabled={reqState === "loading" || reqState === "sent"}
+										>
+											<UserPlus class="size-4" />
+										</button>
+									{:else if reqState === "sent"}
+										<button
+											class="bg-duvet-alive/15 text-duvet-alive-text grid h-7 w-8 cursor-default place-items-center rounded-[9px]"
+											title="Request sent"
+											disabled
+										>
+											<UserCheck class="size-4" />
+										</button>
 									{:else}
-										<UserPlus class="size-4" />
-									{/if}
-								</button>
-							{/if}
-						{/if}
-						<!-- Permissions are a space's (its roles): a DM or a group has none, so there's nothing to view there. -->
-						{#if spaceId}
-							<button
-								class="bg-duvet-ink/10 text-duvet-ink hover:bg-duvet-ink/20 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors"
-								onclick={() => (showPermissions = !showPermissions)}
-							>
-								{showPermissions ? "Hide" : "View"} Permissions
-							</button>
-						{/if}
-					</div>
-
-					<div class="bg-duvet-sunk mt-4 overflow-hidden rounded-lg p-3">
-						<h2 class="text-duvet-ink text-lg leading-tight font-bold select-text">
-							{member.username}
-						</h2>
-						<p class="text-duvet-ink2 text-sm font-medium select-text">
-							@{member.raw_username}
-						</p>
-
-						{#if BADGES.some((b) => member.badges & b.flag)}
-							<div class="mt-2 flex gap-1">
-								{#each BADGES.filter((b) => member.badges & b.flag) as badge}
-									<img src={badge.icon} alt={badge.name} title={badge.name} class="h-6 w-6 rounded" />
-								{/each}
-							</div>
-						{/if}
-
-						{#if member.bio}
-							<div class="bg-duvet-card my-3 h-px w-full"></div>
-							<h3 class="text-duvet-ink2 mb-1 text-left text-[13px] font-bold">About</h3>
-							<ProfileBio bio={member.bio} />
-						{/if}
-
-						<ActivityList activities={$userActivities[member.id]} />
-
-						{#if visibleRoles.length > 0}
-							<div class="bg-duvet-card my-3 h-px w-full"></div>
-							<h3 class="text-duvet-ink2 mb-2 text-left text-[13px] font-bold">Roles</h3>
-							<div class="flex flex-wrap gap-1">
-								{#each visibleRoles as role}
-									<div
-										class="border-duvet-line bg-duvet-bg shadow-duvet-raised flex w-min items-center gap-1.5 rounded border px-2 py-1"
-									>
-										<div class="h-3 w-3 rounded-full" style={roleBadgeStyle(role)}></div>
-										<span class="text-duvet-ink text-xs font-medium">{role.name}</span>
-									</div>
-								{/each}
-							</div>
-						{/if}
-
-						{#if showPermissions}
-							<div class="bg-duvet-card my-3 h-px w-full"></div>
-							<h3 class="text-duvet-ink2 mb-2 text-left text-[13px] font-bold">Permissions</h3>
-							{@const memberPermissions = getMemberPermissions(member)}
-							{#if memberPermissions.length > 0}
-								<div class="flex flex-col gap-1.5">
-									{#each memberPermissions as permission}
-										<div class="text-duvet-ink flex items-center text-xs">
-											<span class="bg-duvet-ink2 mr-2 h-1.5 w-1.5 rounded-full"></span>
-											{permission}
-										</div>
-									{/each}
-								</div>
-							{:else}
-								<span class="text-duvet-ink2 text-xs italic">No permissions</span>
-							{/if}
-						{/if}
-
-						{#if currentUserCanManageRoles() && space && assignableRoles.length > 0}
-							<div class="bg-duvet-card my-3 h-px w-full"></div>
-							<h3 class="text-duvet-ink2 mb-2 text-left text-[13px] font-bold">Assign Roles</h3>
-							<div class="max-h-32 space-y-1.5 overflow-y-auto">
-								{#each assignableRoles as role}
-									{@const memberHasRole = member.roles.some((mr) => mr.id === role.id)}
-									{@const toggleKey = `${member.id}-${role.id}`}
-									{@const manageable = canManageRoleAt(space, role.position)}
-									<button
-										class="w-fit rounded-full px-2 py-0.5 text-xs transition-colors disabled:cursor-not-allowed disabled:opacity-50 {memberHasRole
-											? 'bg-duvet-accent text-duvet-on-accent hover:brightness-110'
-											: 'bg-duvet-card text-duvet-ink hover:bg-duvet-ink/10'}"
-										onclick={() => toggleMemberRole(member, role.id)}
-										disabled={togglingRoles[toggleKey] || !manageable}
-										title={manageable ? undefined : "Only roles below your highest role can be assigned or removed"}
-									>
-										<div class="flex items-center gap-1">
-											<div class="h-2.5 w-2.5 rounded-full" style={roleBadgeStyle(role)}></div>
-											<span class="flex-1 text-left">{role.name}</span>
-											{#if memberHasRole}
-												<span class="text-xxs">✓</span>
+										<button
+											class="{buttonClass('secondary', 'sm')} w-8 px-0!"
+											title={reqState === "error" ? "Retry" : "Add friend"}
+											onclick={() => handleSendFriendRequest(member.id)}
+											disabled={reqState === "loading"}
+										>
+											{#if reqState === "loading"}
+												<Loader2 class="size-4 animate-spin" />
+											{:else if reqState === "error"}
+												<RotateCcw class="size-4" />
+											{:else}
+												<UserPlus class="size-4" />
 											{/if}
-										</div>
+										</button>
+									{/if}
+								{/if}
+								<!-- Permissions are a space's (its roles): a DM or a group has none, so there's nothing to view there. -->
+								{#if spaceId}
+									<button class={buttonClass("secondary", "sm")} onclick={() => (showPermissions = !showPermissions)}>
+										{showPermissions ? "Hide" : "View"} permissions
 									</button>
-								{/each}
+								{/if}
 							</div>
-						{/if}
-					</div>
 
-					{#if moderation}
-						<div class="border-duvet-line mt-3 flex flex-col gap-0.5 border-t pt-3">
-							{#if moderation.kick}
-								<button
-									class="text-duvet-danger hover:bg-duvet-danger/10 flex w-full items-center gap-2 rounded-lg px-3 py-1.5 text-left text-xs font-medium transition-colors"
-									onclick={() => {
-										const { target } = moderation;
-										onOpenChange(false);
-										void kickFromSpace(target);
-									}}
-								>
-									<UserMinus class="size-3.5 shrink-0" />
-									<span class="truncate">Kick {member.username}</span>
-								</button>
-							{/if}
-							{#if moderation.ban}
-								<button
-									class="text-duvet-danger hover:bg-duvet-danger/10 flex w-full items-center gap-2 rounded-lg px-3 py-1.5 text-left text-xs font-medium transition-colors"
-									onclick={() => {
-										banRequest.set(moderation.target);
-										onOpenChange(false);
-									}}
-								>
-									<Ban class="size-3.5 shrink-0" />
-									<span class="truncate">Ban {member.username}</span>
-								</button>
-							{/if}
-						</div>
-					{/if}
-
-					{#if onRemoveMember && $currentUser && member.id !== $currentUser.id}
-						<div class="border-duvet-line mt-3 border-t pt-3">
-							<button
-								class="text-duvet-danger hover:bg-duvet-danger/10 w-full rounded-lg px-3 py-1.5 text-left text-xs font-medium transition-colors"
-								onclick={() => {
-									onRemoveMember!(member.id);
-									onOpenChange(false);
-								}}
+							<div
+								class="bg-duvet-sunk mt-4 max-h-[max(160px,calc(100vh-330px))] overflow-hidden overflow-y-auto rounded-[14px] p-3"
 							>
-								Remove from group
-							</button>
+								<h2
+									class="font-serif-lg text-duvet-ink text-[21px] leading-[1.15] font-medium tracking-[-0.012em] break-words select-text"
+								>
+									{member.username}
+								</h2>
+								<p class="text-duvet-ink2 mt-0.5 text-[12.5px] select-text">
+									@{member.raw_username}
+								</p>
+
+								{#if BADGES.some((b) => member.badges & b.flag)}
+									<div class="mt-2 flex gap-1">
+										{#each BADGES.filter((b) => member.badges & b.flag) as badge}
+											<img src={badge.icon} alt={badge.name} title={badge.name} class="size-6 rounded-md" />
+										{/each}
+									</div>
+								{/if}
+
+								{#if member.bio}
+									<div class="bg-duvet-line my-3 h-px w-full"></div>
+									<h3 class="text-duvet-ink2 mb-1.5 text-left text-[10.5px] font-semibold tracking-[0.06em] uppercase">
+										About
+									</h3>
+									<ProfileBio bio={member.bio} />
+								{/if}
+
+								<ActivityList activities={$userActivities[member.id]} />
+
+								{#if visibleRoles.length > 0}
+									<div class="bg-duvet-line my-3 h-px w-full"></div>
+									<h3 class="text-duvet-ink2 mb-1.5 text-left text-[10.5px] font-semibold tracking-[0.06em] uppercase">
+										Roles
+									</h3>
+									<div class="flex flex-wrap gap-1">
+										{#each visibleRoles as role}
+											<div class="bg-duvet-secondary-fill flex h-[22px] w-max items-center gap-1.5 rounded-[7px] px-2">
+												<div class="size-[9px] rounded-full" style={roleBadgeStyle(role)}></div>
+												<span class="text-duvet-ink text-[11.5px] font-medium">{role.name}</span>
+											</div>
+										{/each}
+									</div>
+								{/if}
+
+								{#if showPermissions}
+									<div class="bg-duvet-line my-3 h-px w-full"></div>
+									<h3 class="text-duvet-ink2 mb-1.5 text-left text-[10.5px] font-semibold tracking-[0.06em] uppercase">
+										Permissions
+									</h3>
+									{@const memberPermissions = getMemberPermissions(member)}
+									{#if memberPermissions.length > 0}
+										<div class="flex flex-col gap-1.5">
+											{#each memberPermissions as permission}
+												<div class="text-duvet-ink flex items-center text-xs">
+													<span class="bg-duvet-ink2 mr-2 size-1 rounded-full"></span>
+													{permission}
+												</div>
+											{/each}
+										</div>
+									{:else}
+										<span class="text-duvet-ink2 text-xs italic">No permissions</span>
+									{/if}
+								{/if}
+
+								{#if currentUserCanManageRoles() && space && assignableRoles.length > 0}
+									<div class="bg-duvet-line my-3 h-px w-full"></div>
+									<h3 class="text-duvet-ink2 mb-1.5 text-left text-[10.5px] font-semibold tracking-[0.06em] uppercase">
+										Assign roles
+									</h3>
+									<div class="max-h-32 space-y-1.5 overflow-y-auto">
+										{#each assignableRoles as role}
+											{@const memberHasRole = member.roles.some((mr) => mr.id === role.id)}
+											{@const toggleKey = `${member.id}-${role.id}`}
+											{@const manageable = canManageRoleAt(space, role.position)}
+											<button
+												class="flex h-[22px] w-fit items-center rounded-[7px] px-2 text-[11.5px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-45 motion-reduce:transition-none {memberHasRole
+													? 'bg-duvet-chosen text-duvet-chosen-ink'
+													: 'bg-duvet-secondary-fill text-duvet-ink hover:bg-duvet-hover-strong'}"
+												onclick={() => toggleMemberRole(member, role.id)}
+												disabled={togglingRoles[toggleKey] || !manageable}
+												title={manageable ? undefined : "Only roles below your highest role can be assigned or removed"}
+											>
+												<div class="flex items-center gap-1.5">
+													<div class="size-[9px] rounded-full" style={roleBadgeStyle(role)}></div>
+													<span class="flex-1 text-left">{role.name}</span>
+													{#if memberHasRole}
+														<span class="text-xxs">✓</span>
+													{/if}
+												</div>
+											</button>
+										{/each}
+									</div>
+								{/if}
+							</div>
+
+							{#if moderation}
+								<div class="border-duvet-line mt-3 flex flex-col gap-0.5 border-t pt-2">
+									{#if moderation.kick}
+										<button
+											class="{menuItemClass(true)} hover:bg-duvet-accent-tint"
+											onclick={() => {
+												const { target } = moderation;
+												onOpenChange(false);
+												void kickFromSpace(target);
+											}}
+										>
+											<UserMinus size={16} class="shrink-0" />
+											<span class="truncate">Kick {member.username}</span>
+										</button>
+									{/if}
+									{#if moderation.ban}
+										<button
+											class="{menuItemClass(true)} hover:bg-duvet-accent-tint"
+											onclick={() => {
+												banRequest.set(moderation.target);
+												onOpenChange(false);
+											}}
+										>
+											<Ban size={16} class="shrink-0" />
+											<span class="truncate">Ban {member.username}</span>
+										</button>
+									{/if}
+								</div>
+							{/if}
+
+							{#if onRemoveMember && $currentUser && member.id !== $currentUser.id}
+								<div class="border-duvet-line mt-3 border-t pt-2">
+									<button
+										class="{menuItemClass(true)} hover:bg-duvet-accent-tint"
+										onclick={() => {
+											onRemoveMember!(member.id);
+											onOpenChange(false);
+										}}
+									>
+										Remove from group
+									</button>
+								</div>
+							{/if}
 						</div>
-					{/if}
-				</div>
-			</Popover.Content>
+					</Popover.Content>
+				{/snippet}
+			</OverlayLayer>
 		</Popover.Portal>
 	{/if}
 </Popover.Root>

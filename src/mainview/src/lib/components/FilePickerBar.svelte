@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { pillClass } from "$lib/components/ui/recipes";
+	import { CHECKBOX } from "$lib/components/settings/recipes";
 	import type { FilePicker } from "$lib/file-picker.svelte";
 	import { FILE_KINDS, FILE_KIND_LABELS, type PickableFile } from "$lib/storage-transfers";
 
@@ -6,7 +8,7 @@
 </script>
 
 <!-- "Select all" over a storage's file list, and its kind filters: those of the kinds it has. -->
-<div class="flex flex-wrap items-center gap-2 px-3">
+<div class="flex flex-wrap items-center gap-2 px-1.5">
 	<label class="text-duvet-ink flex cursor-pointer items-center gap-2 text-xs font-medium select-none">
 		<input
 			type="checkbox"
@@ -14,7 +16,7 @@
 			indeterminate={picker.someShownPicked}
 			disabled={picker.shown.length === 0}
 			onchange={() => picker.toggleAll()}
-			class="border-duvet-line bg-duvet-card accent-duvet-accent size-4 rounded"
+			class={CHECKBOX}
 		/>
 		Select all
 	</label>
@@ -22,18 +24,9 @@
 		{#each FILE_KINDS as kind (kind)}
 			{#if picker.kindCounts[kind] > 0}
 				{@const on = picker.kinds.includes(kind)}
-				<button
-					type="button"
-					aria-pressed={on}
-					onclick={() => picker.toggleKind(kind)}
-					class="rounded-full px-2.5 py-1 text-xs font-medium transition-colors {on
-						? 'bg-duvet-accent text-duvet-on-accent'
-						: 'bg-duvet-card text-duvet-ink2 hover:bg-duvet-ink/10 hover:text-duvet-ink'}"
-				>
+				<button type="button" aria-pressed={on} onclick={() => picker.toggleKind(kind)} class={pillClass(on)}>
 					{FILE_KIND_LABELS[kind]}
-					<span class="ml-0.5 tabular-nums {on ? 'text-duvet-on-accent/70' : 'text-duvet-ink2'}"
-						>{picker.kindCounts[kind]}</span
-					>
+					<span class="tabular-nums opacity-70">{picker.kindCounts[kind]}</span>
 				</button>
 			{/if}
 		{/each}

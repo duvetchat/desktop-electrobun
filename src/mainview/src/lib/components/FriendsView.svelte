@@ -1,6 +1,5 @@
 <script lang="ts">
 	import { onMount } from "svelte";
-	import { Portal } from "bits-ui";
 	import { getApiError } from "$lib/api/api";
 	import { get } from "svelte/store";
 	import {
@@ -43,7 +42,9 @@
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
 	import StatusDot from "$lib/components/StatusDot.svelte";
 	import ConversationView from "$lib/components/ConversationView.svelte";
-	import CallHistory from "$lib/components/CallHistory.svelte";
+	import { buttonClass, countBadgeClass } from "$lib/components/ui/recipes";
+	import Sheet from "$lib/components/ui/Sheet.svelte";
+	import { ERROR_NOTE, FIELD_LABEL, fieldClass } from "$lib/overlay-forms";
 	import MessageSearch from "$lib/components/MessageSearch.svelte";
 	import type { MessageLink } from "$lib/urls";
 	import MemberProfilePopover from "$lib/components/MemberProfilePopover.svelte";
@@ -78,15 +79,15 @@
 		else activeConversationId = id;
 	}
 
-	type Tab = "friends" | "pending" | "sent" | "calls" | "add";
+	type Tab = "friends" | "pending" | "sent" | "add";
 	let activeTab = $state<Tab>("friends");
-	// The lists in the bar's segmented control, the call history last; adding a friend is the bar's own button. Requests
-	// waiting on the user are counted in the accent.
+	// The lists in the bar's segmented control; adding a friend is the bar's own button. Requests waiting on the user
+	// are counted in the accent. The call history, a list here until the redesign (#357), opens from the sidebar's
+	// header.
 	const tabs = $derived<{ id: Tab; label: string; count: number; alert?: boolean }[]>([
 		{ id: "friends", label: "All", count: $friends.length },
 		{ id: "pending", label: "Pending", count: $pendingFriendRequests.length, alert: true },
 		{ id: "sent", label: "Sent", count: $sentFriendRequests.length },
-		{ id: "calls", label: "Calls", count: 0 },
 	]);
 	const focusRing =
 		"focus-override focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-duvet-accent";
@@ -120,6 +121,8 @@
 		];
 		return groups.some((g) => g.friends.length > 0) ? groups : [];
 	});
+	// The friends online now (idle and do not disturb are there too), for the line under the page's title.
+	const onlineFriends = $derived($friends.filter((friend) => friendStatus(friend) !== "offline").length);
 	const activeConversation = $derived($conversations.find((c) => c.id === activeConversationId) ?? null);
 	// An open conversation that leaves the list (the user left its group, or was removed from it) closes, and stays
 	// closed should it come back.
@@ -150,12 +153,6 @@
 		groupName = "";
 		selectedFriendIds = new Set();
 		groupError = "";
-	}
-
-	// The dialog takes the focus as it opens: over a chat, a key typed with the focus left on New group would go into the
-	// chat's message box behind it (Chat leaves a dialog's keys alone).
-	function takeFocus(node: HTMLElement) {
-		node.focus();
 	}
 
 	onMount(async () => {
@@ -196,7 +193,7 @@
 		loading = true;
 		try {
 			await sendFriendRequest(addUserId.trim());
-			addSuccess = "Friend request sent!";
+			addSuccess = "Friend request sent";
 			addUserId = "";
 			const sent = await getSentRequests();
 			sentFriendRequests.set(sent);
@@ -322,7 +319,7 @@
 			closeGroupModal();
 			openConversation(conv.id);
 		} catch (err) {
-			groupError = getApiError(err, plan.kind === "dm" ? "Failed to open the conversation" : "Failed to create group");
+			groupError = getApiError(err, plan.kind === "dm" ? "Couldn't open the chat" : "Failed to create group");
 		}
 	}
 </script>
@@ -394,15 +391,26 @@
 			{/key}
 		</div>
 	{:else}
-		<!-- The bar, as a pane's: the title, the lists as a segmented control, the search everywhere, as the mobile app
-		     has on its home, and adding a friend. -->
-		<div class="border-duvet-line flex h-12 shrink-0 items-center gap-3 border-b px-4">
-			<Users class="text-duvet-ink2 size-4 shrink-0" />
-			<h2 class="text-sm font-bold">Friends</h2>
+		<!-- The bar, as a pane's header (S-11, S-34): the title with how many friends are online, the lists as a segmented
+		     control, the search everywhere, as the mobile app has on its home, and adding a friend. -->
+		<div class="border-duvet-line flex h-[52px] shrink-0 items-center gap-3 border-b pr-2.5 pl-3">
+			<div class="flex shrink-0 items-center gap-2.5">
+				<span
+					class="bg-duvet-secondary-fill text-duvet-accent-text grid size-7 shrink-0 place-items-center rounded-full"
+				>
+					<Users class="size-4" />
+				</span>
+				<div class="flex flex-col">
+					<h2 class="text-duvet-ink font-serif text-[16.5px] leading-[1.15] font-medium tracking-[-0.012em]">
+						Friends
+					</h2>
+					<span class="text-duvet-ink2 text-[11.5px] leading-[1.3]">{onlineFriends} online</span>
+				</div>
+			</div>
 			<div
-				class="bg-duvet-sunk shadow-duvet-press flex items-center gap-0.5 rounded-xl p-0.5"
+				class="bg-duvet-seg-track flex shrink-0 items-center rounded-[11px] p-[3px]"
 				role="tablist"
-				aria-label="Friends and calls"
+				aria-label="Friends"
 			>
 				{#each tabs as tab (tab.id)}
 					{@const chosen = activeTab === tab.id}
@@ -410,17 +418,17 @@
 						type="button"
 						role="tab"
 						aria-selected={chosen}
-						class="flex h-7 items-center gap-1.5 rounded-[10px] px-3 text-[13px] font-semibold transition-colors motion-reduce:transition-none {focusRing} {chosen
-							? 'bg-duvet-card text-duvet-ink shadow-duvet-raised'
+						class="flex h-7 items-center gap-1.5 rounded-lg px-3 text-[12.5px] font-medium transition-colors duration-[120ms] motion-reduce:transition-none {focusRing} {chosen
+							? 'bg-duvet-seg-thumb text-duvet-ink shadow-duvet-control'
 							: 'text-duvet-ink2 hover:text-duvet-ink'}"
 						onclick={() => (activeTab = tab.id)}
 					>
 						{tab.label}
 						{#if tab.count}
 							<span
-								class="flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[11px] font-bold tabular-nums {tab.alert
+								class="{countBadgeClass('sm', false)} {tab.alert
 									? 'bg-duvet-accent text-duvet-on-accent'
-									: 'bg-duvet-bg text-duvet-ink2'}">{tab.count}</span
+									: 'bg-duvet-secondary-fill text-duvet-ink2'}">{tab.count}</span
 							>
 						{/if}
 					</button>
@@ -430,10 +438,8 @@
 			<MessageSearch everywhere onJump={onOpenMessage} />
 			<button
 				type="button"
-				class="flex h-8 items-center gap-1.5 rounded-xl px-3 text-[13px] font-bold transition motion-reduce:transition-none {focusRing} {activeTab ===
-				'add'
-					? 'bg-duvet-sunk text-duvet-ink2 shadow-duvet-press'
-					: 'bg-duvet-accent text-duvet-on-accent shadow-duvet-raised hover:brightness-110'}"
+				class="{buttonClass(activeTab === 'add' ? 'secondary' : 'primary')} {focusRing}"
+				aria-pressed={activeTab === "add"}
 				onclick={() => (activeTab = "add")}
 			>
 				<UserPlus class="size-4" />
@@ -626,8 +632,6 @@
 							{/each}
 						</ul>
 					{/if}
-				{:else if activeTab === "calls"}
-					<CallHistory onOpen={onOpenMessage} />
 				{:else if activeTab === "add"}
 					<div class="rounded-card bg-duvet-card shadow-duvet-raised relative mx-auto mt-10 max-w-lg px-6 pt-14 pb-6">
 						<MascotPeek
@@ -645,7 +649,7 @@
 							}}
 						>
 							<input
-								class="bg-duvet-sunk shadow-duvet-press text-duvet-ink placeholder:text-duvet-ink2 focus-override focus-visible:outline-duvet-accent h-10 min-w-0 flex-1 rounded-xl px-3 text-sm focus-visible:outline-2"
+								class="{fieldClass()} min-w-0 flex-1"
 								type="text"
 								placeholder="User ID"
 								aria-label="User ID"
@@ -668,7 +672,7 @@
 							<p class="text-duvet-danger mt-3 text-sm" role="alert">{addError}</p>
 						{/if}
 						{#if addSuccess}
-							<p class="text-duvet-alive mt-3 text-sm font-semibold" role="status">{addSuccess}</p>
+							<p class="text-duvet-alive-text mt-3 text-sm font-semibold" role="status">{addSuccess}</p>
 						{/if}
 					</div>
 				{/if}
@@ -677,94 +681,72 @@
 	{/if}
 </div>
 
-<!-- New group opens over whatever is on screen: in the page's body, as the friends list that holds it is hidden while a
-     chat shows (#206). -->
-{#if showGroupModal}
-	<Portal>
-		<div
-			class="fixed inset-0 z-100 flex items-start justify-center bg-black/60 pt-[12vh]"
-			onclick={closeGroupModal}
-			role="button"
-			tabindex="-1"
-			onkeydown={() => {}}
-		>
-			<div
-				class="rounded-card bg-duvet-card text-duvet-ink shadow-duvet-float focus-override flex w-100 max-w-[90vw] flex-col gap-4 p-6 outline-none"
-				onclick={(e) => e.stopPropagation()}
-				role="dialog"
-				aria-labelledby="group-title"
-				tabindex="-1"
-				use:takeFocus
-				onkeydown={() => {}}
-			>
-				<h3 id="group-title" class="text-base font-bold">
-					{selectedFriendIds.size === 1 ? "New conversation" : "Create a group"}
-				</h3>
-				<div class="flex flex-col gap-1.5">
-					<p class="text-duvet-ink2 text-[13px] font-bold">
-						Friends
-						{#if selectedFriendIds.size > 0}
-							<span class="text-duvet-accent-text ml-1">{selectedFriendIds.size} chosen</span>
-						{/if}
-					</p>
-					<div class="bg-duvet-sunk shadow-duvet-press max-h-60 overflow-y-auto rounded-xl p-1">
-						{#if $friends.length === 0}
-							<p class="text-duvet-ink2 p-4 text-center text-[13px]">No friends to add yet</p>
-						{:else}
-							{#each $friends as f (f.id)}
-								{@const uid = getFriendUserId(f)}
-								{@const selected = selectedFriendIds.has(uid)}
-								{@const other = friendUser(f, $currentUser?.id)}
-								<button
-									type="button"
-									aria-pressed={selected}
-									class="rounded-row flex w-full items-center gap-2.5 px-2 py-1.5 text-left transition-colors motion-reduce:transition-none {focusRing} {selected
-										? 'bg-duvet-card shadow-duvet-raised'
-										: 'hover:bg-duvet-card/60'}"
-									onclick={() => toggleFriend(uid)}
-								>
-									<UserAvatar
-										src={getAvatarURL(other.id, other.avatar)}
-										name={other.alias ?? other.username}
-										size={32}
-									/>
-									<span class="min-w-0 flex-1 truncate text-sm font-semibold">{other.alias ?? other.username}</span>
-									{#if selected}
-										<Check class="text-duvet-accent-text size-4 shrink-0" />
-									{/if}
-								</button>
-							{/each}
-						{/if}
-					</div>
-				</div>
-				<!-- A name only for a group: one friend picked opens the DM with them. Under the friends, and with the dialog held
-			     at the top of the window, so that it showing doesn't move the row the pointer is about to click. -->
-				{#if selectedFriendIds.size > 1}
-					<div class="flex flex-col gap-1.5">
-						<label for="group-name" class="text-duvet-ink2 text-[13px] font-bold">Name</label>
-						<input
-							id="group-name"
-							class="bg-duvet-sunk shadow-duvet-press text-duvet-ink placeholder:text-duvet-ink2 focus-override focus-visible:outline-duvet-accent h-10 rounded-xl px-3 text-sm focus-visible:outline-2"
-							type="text"
-							placeholder="Best friends"
-							bind:value={groupName}
-						/>
-					</div>
-				{/if}
-				{#if groupError}
-					<p class="text-duvet-danger text-sm" role="alert">{groupError}</p>
-				{/if}
-				<div class="flex justify-end gap-2">
+<!-- New chat opens over whatever is on screen: a sheet, in the page's body, as the friends list that holds it is
+     hidden while a chat shows (#206). -->
+<Sheet
+	bind:open={
+		() => showGroupModal,
+		(v) => {
+			if (!v) closeGroupModal();
+		}
+	}
+	title={selectedFriendIds.size === 1 ? "New chat" : "Create a group"}
+	class="max-w-[420px]"
+>
+	<div class="flex min-h-0 flex-col gap-1.5">
+		<p class={FIELD_LABEL}>
+			Friends
+			{#if selectedFriendIds.size > 0}
+				<span class="text-duvet-accent-text ml-1">{selectedFriendIds.size} chosen</span>
+			{/if}
+		</p>
+		<div class="bg-duvet-card shadow-duvet-well max-h-60 overflow-y-auto rounded-[11px] p-1">
+			{#if $friends.length === 0}
+				<p class="text-duvet-ink2 p-4 text-center text-[13px]">No friends to add yet</p>
+			{:else}
+				{#each $friends as f (f.id)}
+					{@const uid = getFriendUserId(f)}
+					{@const selected = selectedFriendIds.has(uid)}
+					{@const other = friendUser(f, $currentUser?.id)}
 					<button
-						class="text-duvet-ink2 hover:bg-duvet-bg hover:text-duvet-ink h-9 rounded-xl px-4 text-[13px] font-semibold transition-colors motion-reduce:transition-none {focusRing}"
-						onclick={closeGroupModal}>Cancel</button
+						type="button"
+						aria-pressed={selected}
+						class="flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left transition-colors motion-reduce:transition-none {focusRing} {selected
+							? 'bg-duvet-accent-tint'
+							: 'hover:bg-duvet-hover'}"
+						onclick={() => toggleFriend(uid)}
 					>
-					<button
-						class="bg-duvet-accent text-duvet-on-accent shadow-duvet-raised h-9 rounded-xl px-4 text-[13px] font-bold transition hover:brightness-110 motion-reduce:transition-none {focusRing}"
-						onclick={handleCreateGroup}>{selectedFriendIds.size === 1 ? "Start conversation" : "Create group"}</button
-					>
-				</div>
-			</div>
+						<UserAvatar src={getAvatarURL(other.id, other.avatar)} name={other.alias ?? other.username} size={32} />
+						<span class="min-w-0 flex-1 truncate text-[13.5px] font-medium">{other.alias ?? other.username}</span>
+						{#if selected}
+							<Check class="text-duvet-accent-text size-4 shrink-0" />
+						{/if}
+					</button>
+				{/each}
+			{/if}
 		</div>
-	</Portal>
-{/if}
+	</div>
+	<!-- A name only for a group: one friend picked opens the DM with them. Its place is kept while it's hidden, so that
+	     it showing doesn't move the row the pointer is about to click. -->
+	<div class="flex flex-col gap-1.5 {selectedFriendIds.size > 1 ? '' : 'invisible'}">
+		<label for="group-name" class={FIELD_LABEL}>Name</label>
+		<input
+			id="group-name"
+			class={fieldClass()}
+			type="text"
+			placeholder="Best friends"
+			disabled={selectedFriendIds.size <= 1}
+			bind:value={groupName}
+		/>
+	</div>
+	{#if groupError}
+		<p class={ERROR_NOTE} role="alert">{groupError}</p>
+	{/if}
+	{#snippet foot()}
+		<span></span>
+		<button type="button" class={buttonClass("quiet")} onclick={closeGroupModal}>Cancel</button>
+		<button type="button" class={buttonClass("primary")} onclick={handleCreateGroup}>
+			{selectedFriendIds.size === 1 ? "Start chat" : "Create group"}
+		</button>
+	{/snippet}
+</Sheet>

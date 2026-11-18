@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { claimLayer, layerStyle, releaseLayer } from "$lib/overlay-layers";
 	import { DropdownMenu } from "bits-ui";
 	import type { Snippet } from "svelte";
 	import { Check } from "@lucide/svelte";
@@ -9,6 +10,7 @@
 	import { STATUS_CHOICES, chosenStatus } from "$lib/status";
 	import { userStatusToString, type ChosenStatus } from "$lib/types";
 	import StatusDot from "$lib/components/StatusDot.svelte";
+	import { MENU_PANEL, menuItemClass } from "$lib/components/ui/recipes";
 
 	// The user panel's status menu: its trigger is the children, and it lists the statuses the user can choose.
 	let { children, class: className = "" }: { children: Snippet; class?: string } = $props();
@@ -30,47 +32,57 @@
 			saving = false;
 		}
 	}
+
+	let open = $state(false);
+
+	// What opens last is in front, whatever opened it (lib/overlay-layers.ts).
+	const layer = $derived(open ? claimLayer() : 0);
+	$effect(() => {
+		const mine = layer;
+		if (mine) return () => releaseLayer(mine);
+	});
 </script>
 
-<DropdownMenu.Root>
-	<DropdownMenu.Trigger class={className} aria-label="Status: {currentLabel}">
+<DropdownMenu.Root bind:open>
+	<DropdownMenu.Trigger class={className} aria-label="{$currentUser?.alias || $currentUser?.username}, {currentLabel}">
 		{@render children()}
 	</DropdownMenu.Trigger>
 	<DropdownMenu.Portal>
-		<DropdownMenu.Content
-			class="rounded-card border-duvet-line bg-duvet-card text-duvet-ink shadow-duvet-float focus-override z-200 flex w-72 flex-col gap-1 border p-1.5 outline-none"
-			side="top"
-			align="start"
-			sideOffset={8}
-		>
-			{#each STATUS_CHOICES as choice (choice.status)}
-				{@const chosen = current === choice.status}
-				<!-- The chosen status sits pressed in, as a chosen thing does in Duvet. -->
-				<DropdownMenu.Item
-					class="rounded-row flex w-full cursor-pointer items-center gap-3 p-2 text-left transition-colors data-disabled:cursor-default data-disabled:opacity-50 motion-reduce:transition-none {chosen
-						? 'bg-duvet-bg shadow-duvet-press'
-						: 'data-highlighted:bg-duvet-bg/60'}"
-					disabled={saving}
-					onSelect={() => choose(choice.status)}
+		{#if layer}
+			<!-- The panel's positioner takes no layer of its own: this holds it, at the overlay's (lib/overlay-layers.ts). -->
+			<div class="fixed top-0 left-0" style={layerStyle(layer)}>
+				<DropdownMenu.Content
+					class="{MENU_PANEL} focus-override w-72 origin-(--bits-floating-transform-origin)"
+					side="top"
+					align="start"
+					sideOffset={6}
+					collisionPadding={10}
 				>
-					<span
-						class="flex size-9 shrink-0 items-center justify-center rounded-xl {chosen
-							? 'bg-duvet-card shadow-duvet-raised'
-							: 'bg-duvet-bg shadow-duvet-press'}"
-					>
-						<StatusDot status={userStatusToString(choice.status)} class="w-3" />
-					</span>
-					<span class="flex min-w-0 flex-1 flex-col leading-tight">
-						<span class="text-sm font-bold">{choice.label}</span>
-						{#if choice.description}
-							<span class="text-duvet-ink2 mt-0.5 text-xs">{choice.description}</span>
-						{/if}
-					</span>
-					{#if chosen}
-						<Check class="text-duvet-accent-text size-4 shrink-0" />
-					{/if}
-				</DropdownMenu.Item>
-			{/each}
-		</DropdownMenu.Content>
+					{#each STATUS_CHOICES as choice (choice.status)}
+						{@const chosen = current === choice.status}
+						<!-- The chosen status carries the check; choosing it again does nothing. -->
+						<DropdownMenu.Item
+							class="{menuItemClass()} cursor-pointer data-disabled:cursor-default"
+							disabled={saving}
+							aria-current={chosen ? "true" : undefined}
+							onSelect={() => choose(choice.status)}
+						>
+							<span class="grid w-[18px] shrink-0 place-items-center">
+								<StatusDot status={userStatusToString(choice.status)} class="w-2.5" />
+							</span>
+							<span class="flex min-w-0 flex-1 flex-col gap-px">
+								<span class="truncate">{choice.label}</span>
+								{#if choice.description}
+									<span class="text-duvet-ink2 text-[11px] leading-[1.2] font-normal">{choice.description}</span>
+								{/if}
+							</span>
+							{#if chosen}
+								<Check size={15} class="text-duvet-accent-text shrink-0" />
+							{/if}
+						</DropdownMenu.Item>
+					{/each}
+				</DropdownMenu.Content>
+			</div>
+		{/if}
 	</DropdownMenu.Portal>
 </DropdownMenu.Root>

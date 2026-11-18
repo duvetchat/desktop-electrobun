@@ -1,43 +1,66 @@
 <script lang="ts">
-	import { conversations, currentUser, typingNow } from "$lib/stores.svelte";
-	import { shownMentionCounts, shownUnreadConversations, shownUnreadRooms } from "$lib/notification-marks";
+	import { activeCall, conversations, currentUser, typingNow } from "$lib/stores.svelte";
+	import { quietPlaces, shownMentionCounts, shownUnreadConversations, shownUnreadRooms } from "$lib/notification-marks";
 	import { get } from "svelte/store";
-	import { UsersRound } from "@lucide/svelte";
-	import { ContextMenu } from "bits-ui";
+	import {
+		AppWindow as AppWindowIcon,
+		BellOff as BellOffIcon,
+		ChevronDown as ChevronDownIcon,
+		ChevronUp as ChevronUpIcon,
+		Columns2 as ColumnsIcon,
+		PhoneCall as PhoneCallIcon,
+	} from "@lucide/svelte";
 	import NotificationSubmenu from "$lib/components/NotificationSubmenu.svelte";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
-	import UserStatusBar from "$lib/components/UserStatusBar.svelte";
 	import type { Conversation } from "$lib/api/conversations";
 	import { getAvatarURL } from "$lib/common/common";
-	import StatusDot from "$lib/components/StatusDot.svelte";
 	import { getUserMobileOnly, getUserOnlineStatus } from "$lib/api/ws/connection";
 	import { userStatusToString, type MemberOnSidebar } from "$lib/types";
 	import { conversationTab, tabDragData, tabNews } from "$lib/pane";
+	import {
+		chatsUnderAll,
+		chipCount,
+		keysFor,
+		mentionsLabel,
+		moreChatsLabel,
+		openHow,
+		SHELL_KEYS,
+		type OpenHow,
+	} from "$lib/shell-layout";
 	import { typingSentence } from "$lib/typing";
+	import Avatar from "$lib/components/ui/Avatar.svelte";
+	import ContextMenu from "$lib/components/ui/ContextMenu.svelte";
+	import MenuItem from "$lib/components/ui/MenuItem.svelte";
+	import MenuSeparator from "$lib/components/ui/MenuSeparator.svelte";
+	import { countBadgeClass, MENU_PANEL, menuItemClass } from "$lib/components/ui/recipes";
 
+	// The sidebar's chats (#357, S-05): the user's direct messages and groups, the one with the latest message first.
+	// Under All (`folded`) the six latest show, with any unread one and the open one, then a row for the rest; under
+	// Chats they all do. A click opens a chat in the current tab, ⌘-click or a middle click in a new one, ⌥-click beside;
+	// its right click has the same, and its notifications.
 	let {
 		activeConversationId = null,
 		onSelect,
-		onNewGroup,
-		embedded = false,
+		folded = false,
+		mac = false,
 	}: {
 		activeConversationId?: string | null;
-		onSelect: (id: string) => void;
-		onNewGroup?: () => void;
-		/** Drawn as a tree under the Direct messages row of the spaces column, which has the user's bar: only the
-		 * conversations show, without a column of their own. */
-		embedded?: boolean;
+		onSelect: (id: string, how: OpenHow) => void;
+		/** Lists the six latest with the unread and the open ones, and folds the rest behind "N more chats". */
+		folded?: boolean;
+		/** Whose keys the menu's hints name: ⌘-click on macOS, Ctrl-click elsewhere. */
+		mac?: boolean;
 	} = $props();
 
 	function convTitle(conv: Conversation): string {
 		const me = get(currentUser);
 		if (conv.type === 2) return conv.name ?? "Group";
 		const other = conv.members.find((m) => m.user_id !== me?.id);
-		return other?.user?.alias ?? other?.user?.username ?? "DM";
+		return other?.user?.alias ?? other?.user?.username ?? "Direct message";
 	}
 
 	function convSubtitle(conv: Conversation): string {
-		if (conv.type === 2) return `${conv.members.length} members`;
+		if (conv.type === 2) return conv.members.length === 1 ? "1 member" : `${conv.members.length} members`;
 		return "Direct message";
 	}
 
@@ -60,10 +83,24 @@
 			mobileOnly: getUserMobileOnly(other.user_id),
 		};
 	}
+
+	// Under All: the six latest, and whatever else must stay in sight; "N more chats" shows them all.
+	let expanded = $state(false);
+	const unreadIds = $derived(
+		new Set([
+			...$shownUnreadConversations,
+			...Object.keys($shownMentionCounts).filter((id) => $shownMentionCounts[id]),
+		]),
+	);
+	const listed = $derived(
+		folded
+			? chatsUnderAll($conversations, (id) => unreadIds.has(id) || id === activeConversationId, expanded)
+			: { shown: $conversations, more: 0 },
+	);
 </script>
 
-{#snippet conversationList()}
-	{#each $conversations as conv (conv.id)}
+<div class="flex flex-col" role="group" aria-label="Chats">
+	{#each listed.shown as conv (conv.id)}
 		{@const shown = convStatus(conv)}
 		<!-- Its unread state and the mentions waiting in it, as its tab shows them: a mention leaves it unread. -->
 		{@const news = tabNews(
@@ -73,106 +110,101 @@
 			$shownMentionCounts,
 		)}
 		{@const unread = news.unread}
-		<!-- Its right click chooses its notifications. -->
-		<ContextMenu.Root>
-			<ContextMenu.Trigger>
+		{@const isActive = activeConversationId === conv.id}
+		{@const muted = $quietPlaces.has(conv.id)}
+		{@const typing = typingSentence($typingNow[conv.id])}
+		{@const inCall = $activeCall?.state === "connected" && $activeCall.conversationId === conv.id}
+		<!-- Its right click opens it elsewhere, and chooses its notifications. -->
+		<ContextMenu>
+			{#snippet target(props)}
 				<button
-					class="focus-visible:outline-duvet-accent flex w-full items-center gap-2.5 rounded-[10px] px-2 py-1.5 text-left transition-colors focus-visible:outline-2
-				{activeConversationId === conv.id
-						? 'bg-duvet-accent-tint text-duvet-accent-text'
-						: unread
-							? 'text-duvet-ink hover:bg-duvet-card'
-							: 'text-duvet-ink2 hover:bg-duvet-card hover:text-duvet-ink'}"
-					aria-current={activeConversationId === conv.id ? "true" : undefined}
+					{...props}
+					class="focus-visible:outline-duvet-accent flex h-[50px] w-full shrink-0 items-center gap-2.5 rounded-xl pr-2.5 pl-2 text-left transition-colors duration-[120ms] focus-visible:outline-2 focus-visible:-outline-offset-2 motion-reduce:transition-none
+				{isActive ? 'bg-duvet-accent-tint' : 'hover:bg-duvet-sb-hover'}"
+					aria-current={isActive ? "true" : undefined}
 					data-jump
-					onclick={() => onSelect(conv.id)}
+					onclick={(e) => onSelect(conv.id, openHow(e, mac))}
+					onauxclick={(e) => e.button === 1 && onSelect(conv.id, "tab")}
 					draggable="true"
 					ondragstart={(e) => {
-						// Dragged onto a pane, it opens there as a tab, or splits it, as a room does.
+						// Dragged onto a pane or a tab, it opens there as a tab, or splits it, as a room does.
 						e.dataTransfer!.effectAllowed = "copyMove";
 						e.dataTransfer!.setData("text/plain", tabDragData(conversationTab(conv, get(currentUser)?.id)));
 					}}
 				>
-					<div class="relative shrink-0">
-						<UserAvatar src={convAvatarSrc(conv)} name={convTitle(conv)} size={embedded ? 26 : 32} />
-						{#if shown}
-							<StatusDot
-								status={shown.status}
-								mobileOnly={shown.mobileOnly}
-								class="text-duvet-sunk absolute -right-0.5 -bottom-0.5 w-3 border-2"
-							/>
+					<Avatar size={32} status={shown?.status} mobileOnly={shown?.mobileOnly} ring="var(--duvet-sb-ring)">
+						<UserAvatar src={convAvatarSrc(conv)} name={convTitle(conv)} size={32} />
+					</Avatar>
+					<span class="flex min-w-0 flex-1 flex-col gap-px">
+						<span class="flex min-w-0 items-center gap-1.5">
+							<span
+								class="truncate text-[13.5px] leading-tight {unread
+									? 'text-duvet-ink font-bold'
+									: muted
+										? 'text-duvet-ink2 font-medium'
+										: 'text-duvet-ink font-medium'}">{convTitle(conv)}</span
+							>
+							{#if muted}
+								<BellOffIcon class="text-duvet-ink2 size-[11px] shrink-0" role="img" aria-label="Notifications off" />
+							{/if}
+						</span>
+						{#if inCall}
+							<span
+								class="text-duvet-alive-text flex min-w-0 items-center gap-1 text-[12.5px] leading-[1.3] font-semibold"
+							>
+								<PhoneCallIcon class="size-3 shrink-0" aria-hidden="true" />
+								<span class="truncate">In a call</span>
+							</span>
+						{:else}
+							<span
+								class="truncate text-[12.5px] leading-[1.3] {typing
+									? 'text-duvet-chosen-ink font-medium'
+									: unread
+										? 'text-duvet-ink'
+										: 'text-duvet-ink2'}">{typingSentence($typingNow[conv.id]) ?? convSubtitle(conv)}</span
+							>
 						{/if}
-					</div>
-					<div class="flex min-w-0 flex-1 flex-col">
-						<span class="truncate text-sm leading-tight {unread ? 'font-bold' : 'font-medium'}">{convTitle(conv)}</span>
-						<span class="text-duvet-ink2 truncate text-xs"
-							>{typingSentence($typingNow[conv.id]) ?? convSubtitle(conv)}</span
-						>
-					</div>
+					</span>
 					{#if news.mentions}
 						<!-- Its mentions, as a room's row counts them -->
-						<span
-							class="bg-duvet-accent text-duvet-on-accent ml-1 flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full px-1 text-[11px] font-bold"
-							aria-label="{news.mentions} mentions">{news.mentions > 99 ? "99+" : news.mentions}</span
+						<span class={countBadgeClass()} role="img" aria-label={mentionsLabel(news.mentions)}
+							>{chipCount(news.mentions)}</span
 						>
 					{:else if unread}
-						<span class="bg-duvet-accent ml-1 size-2 shrink-0 rounded-full" aria-label="Unread"></span>
+						<span class="bg-duvet-accent size-2 shrink-0 rounded-full" role="img" aria-label="Unread"></span>
 					{/if}
 				</button>
-			</ContextMenu.Trigger>
-			<ContextMenu.Portal>
-				<ContextMenu.Content
-					class="rounded-card border-duvet-line bg-duvet-card shadow-duvet-float z-200 min-w-44 border py-1"
-				>
-					<NotificationSubmenu targetId={conv.id} target={2} />
-				</ContextMenu.Content>
-			</ContextMenu.Portal>
-		</ContextMenu.Root>
-	{/each}
-{/snippet}
-
-{#if embedded}
-	<div
-		class="border-duvet-line mb-1 ml-[19px] flex flex-col gap-px border-l-2 py-0.5 pl-2.5"
-		role="group"
-		aria-label="Conversations"
-	>
-		{#if onNewGroup}
-			<button
-				class="text-duvet-ink2 hover:bg-duvet-card hover:text-duvet-ink focus-visible:outline-duvet-accent flex h-8 w-full items-center gap-1.5 rounded-[10px] px-2 text-left text-sm transition-colors focus-visible:outline-2"
-				onclick={onNewGroup}
+			{/snippet}
+			<MenuItem icon={AppWindowIcon} keys={keysFor(mac, SHELL_KEYS.openInTab)} onSelect={() => onSelect(conv.id, "tab")}
+				>Open in new tab</MenuItem
 			>
-				<UsersRound class="size-4" />
-				New group
-			</button>
-		{/if}
-		{@render conversationList()}
-		{#if $conversations.length === 0}
-			<p class="text-duvet-ink2 px-2 py-1.5 text-[13px]">No conversations yet</p>
-		{/if}
-	</div>
-{:else}
-	<div
-		class="border-duvet-line bg-duvet-sunk text-duvet-ink flex h-full w-60 shrink-0 flex-col overflow-hidden border-r"
-	>
-		<div class="border-duvet-line flex h-10 shrink-0 items-center justify-between border-b px-3">
-			<span class="text-duvet-ink2 text-[13px] font-bold">Direct messages</span>
-			{#if onNewGroup}
-				<button
-					class="text-duvet-ink2 hover:bg-duvet-card hover:text-duvet-ink flex items-center gap-1 rounded px-1.5 py-1 text-xs transition-colors"
-					onclick={onNewGroup}
-					title="New group"
-					aria-label="New group"
-				>
-					<UsersRound class="size-3.5" />
-				</button>
+			<MenuItem
+				icon={ColumnsIcon}
+				keys={keysFor(mac, SHELL_KEYS.openBeside)}
+				onSelect={() => onSelect(conv.id, "beside")}>Open beside</MenuItem
+			>
+			<MenuSeparator />
+			<NotificationSubmenu targetId={conv.id} target={2} itemClass={menuItemClass()} contentClass={MENU_PANEL} />
+		</ContextMenu>
+	{/each}
+
+	{#if $conversations.length === 0}
+		<p class="text-duvet-ink2 px-2.5 py-2 text-[13px]">No chats yet</p>
+	{/if}
+
+	{#if folded && listed.more > 0}
+		<button
+			type="button"
+			class="text-duvet-ink2 hover:text-duvet-ink focus-visible:outline-duvet-accent flex h-7 w-full items-center gap-2 rounded-lg pr-2.5 pl-[17px] text-left text-xs font-medium focus-visible:outline-2 focus-visible:-outline-offset-2"
+			aria-expanded={expanded}
+			data-jump
+			onclick={() => (expanded = !expanded)}
+		>
+			{#if expanded}
+				<ChevronUpIcon class="size-[13px] shrink-0" aria-hidden="true" />Show fewer
+			{:else}
+				<ChevronDownIcon class="size-[13px] shrink-0" aria-hidden="true" />{moreChatsLabel(listed.more)}
 			{/if}
-		</div>
-
-		<div class="flex flex-1 flex-col gap-px overflow-y-auto p-1">
-			{@render conversationList()}
-		</div>
-
-		<UserStatusBar />
-	</div>
-{/if}
+		</button>
+	{/if}
+</div>

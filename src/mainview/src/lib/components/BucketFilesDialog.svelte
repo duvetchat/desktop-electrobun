@@ -1,4 +1,7 @@
 <script lang="ts">
+	import { claimLayer, layerStyle, releaseLayer } from "$lib/overlay-layers";
+	import { buttonClass, GLASS_STRONG } from "$lib/components/ui/recipes";
+	import { calloutClass } from "$lib/components/settings/recipes";
 	import { AlertDialog } from "bits-ui";
 	import { getApiError } from "$lib/api/api";
 	import { countFiles } from "$lib/storage-transfers";
@@ -47,6 +50,13 @@
 		deleting = false;
 		close();
 	}
+
+	// What opens last is in front, whatever opened it (lib/overlay-layers.ts): this can open over a sheet.
+	const layer = $derived(request !== null ? claimLayer() : 0);
+	$effect(() => {
+		const mine = layer;
+		if (mine) return () => releaseLayer(mine);
+	});
 </script>
 
 <!-- Open while there's a request: closing it (Esc, Cancel) is refused during the delete. -->
@@ -59,47 +69,32 @@
 	}
 >
 	<AlertDialog.Portal>
-		<AlertDialog.Overlay class="fixed inset-0 z-600 bg-black/60 backdrop-blur-sm" />
-		<AlertDialog.Content class="fixed inset-0 z-601 flex items-center justify-center p-4">
-			<div class="rounded-card border-duvet-line bg-duvet-bg shadow-duvet-float w-full max-w-md border p-5">
+		<AlertDialog.Overlay style={layerStyle(layer)} class="bg-duvet-scrim animate-scrim-in fixed inset-0 z-[900]" />
+		<AlertDialog.Content style={layerStyle(layer)} class="fixed inset-0 z-[900] flex items-center justify-center p-4">
+			<div class="{GLASS_STRONG} animate-sheet-in text-duvet-ink flex w-full max-w-md flex-col gap-3 rounded-3xl p-4">
 				{#if request}
 					{@const bucket = request.bucket}
 					{@const them = request.files === 1 ? "it" : "them"}
-					<AlertDialog.Title class="text-duvet-ink mb-1 text-sm font-semibold">
+					<AlertDialog.Title class="font-serif-lg text-[21px] leading-[1.2] font-normal tracking-[-0.01em]">
 						This bucket has {countFiles(request.files)}
 					</AlertDialog.Title>
-					<AlertDialog.Description class="text-duvet-ink mb-4 text-sm">
+					<AlertDialog.Description class="text-duvet-ink2 font-content text-[13.5px] leading-[1.4]">
 						Move {them} to another storage before deleting "{bucket.name}", or delete {them} with the bucket. Deleted files
 						disappear wherever they're shown{inSpace ? ", and the emojis and stickers made from them are deleted" : ""}.
 					</AlertDialog.Description>
 
 					{#if error}
-						<p class="bg-duvet-danger/10 text-duvet-danger mb-4 rounded-md px-3 py-2 text-sm">{error}</p>
+						<p class={calloutClass("danger")} role="alert">{error}</p>
 					{/if}
 
-					<div class="flex justify-end gap-2">
-						<AlertDialog.Cancel
-							class="text-duvet-ink hover:bg-duvet-card rounded-md px-3 py-1.5 text-sm font-medium transition-colors disabled:opacity-50"
-							disabled={deleting}
-						>
-							Cancel
-						</AlertDialog.Cancel>
-						<button
-							class="bg-duvet-accent text-duvet-on-accent shadow-duvet-raised rounded-xl px-3 py-1.5 text-sm font-bold transition-colors hover:brightness-110 disabled:opacity-50"
-							disabled={deleting}
-							onclick={() => move(bucket)}
-						>
+					<div class="mt-2 flex justify-end gap-2">
+						<AlertDialog.Cancel class={buttonClass("quiet")} disabled={deleting}>Cancel</AlertDialog.Cancel>
+						<button class={buttonClass("secondary")} disabled={deleting} onclick={() => move(bucket)}>
 							Move them to…
 						</button>
-						<button
-							class="text-duvet-on-accent rounded-row bg-duvet-danger hover:bg-duvet-danger/85 flex min-w-24 items-center justify-center gap-1.5 px-3 py-1.5 text-sm font-semibold transition-colors disabled:opacity-50"
-							disabled={deleting}
-							onclick={() => deleteThem(bucket)}
-						>
+						<button class="{buttonClass('danger')} min-w-24" disabled={deleting} onclick={() => deleteThem(bucket)}>
 							{#if deleting}
-								<div
-									class="border-fixed-white/30 border-t-fixed-white size-3.5 animate-spin rounded-full border-2"
-								></div>
+								<span class="size-3.5 animate-spin rounded-full border-2 border-current/30 border-t-current"></span>
 								Deleting…
 							{:else}
 								Delete them

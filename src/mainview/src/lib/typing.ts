@@ -53,9 +53,9 @@ export function typingPhrase(users: TypingUser[]): string {
 }
 
 export function recordingPhrase(users: TypingUser[]): string {
-	if (users.length === 1) return `${nameOf(users[0]!)} is recording a voice message`;
-	if (users.length === 2) return `${nameOf(users[0]!)} and ${nameOf(users[1]!)} are recording voice messages`;
-	return "Several people are recording voice messages";
+	if (users.length === 1) return `${nameOf(users[0]!)} is recording a voice note`;
+	if (users.length === 2) return `${nameOf(users[0]!)} and ${nameOf(users[1]!)} are recording voice notes`;
+	return "Several people are recording voice notes";
 }
 
 /** What a chat's row says of those typing and recording there, as the mobile app has it; null with nobody. */

@@ -42,7 +42,7 @@
 	}
 </script>
 
-<span bind:this={box} class="relative grid overflow-hidden font-medium tabular-nums">
+<span bind:this={box} class="relative grid overflow-hidden tabular-nums">
 	{#key roll}
 		<span class="w-max" in:enter out:leave>{count}</span>
 	{/key}

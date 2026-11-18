@@ -111,7 +111,7 @@
      button copies its code, which the keyboard reaches as a button. -->
 <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
 <div class="flex flex-col" onclickcapture={openRoomMention} onclick={copyCode}>
-	<MessageReference {message} {quotedCall} {mentionMap} {customEmojiMap} {spaceId} {channelId} gutter="mr-2.5 w-8" />
+	<MessageReference {message} {quotedCall} {mentionMap} {customEmojiMap} {spaceId} {channelId} />
 	<div class="flex items-start gap-2.5">
 		<div class="mt-0.5 shrink-0">
 			<UserAvatar src={message.author_avatar_url} name={message.author_name} size={32} />
@@ -122,7 +122,7 @@
 					>{message.author_name}</span
 				>
 				<AuthorTag {message} />
-				<span class="text-xxs text-duvet-ink2 shrink-0">{formatShortDateTime(message.created_at)}</span>
+				<span class="text-duvet-ink2 shrink-0 text-[11px] tabular-nums">{formatShortDateTime(message.created_at)}</span>
 			</div>
 			{#if callLine}
 				<p class="text-duvet-ink2 flex items-center gap-1.5 text-sm">
@@ -142,7 +142,9 @@
 					<div
 						bind:this={contentEl}
 						data-search-content
-						class="text-duvet-ink text-sm wrap-break-word whitespace-pre-wrap {expanded ? '' : 'line-clamp-6'}"
+						class="font-content text-duvet-ink text-sm wrap-break-word whitespace-pre-wrap {expanded
+							? ''
+							: 'line-clamp-6'}"
 					>
 						<MessageText
 							content={text}
