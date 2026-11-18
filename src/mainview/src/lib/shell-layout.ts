@@ -154,6 +154,45 @@ export function openBeside(root: PaneNode, focusedId: string, tab: Tab): { root:
 	return { root: updateLeaf(root, other.id, (leaf) => openInLeaf(leaf, tab, "here")), focusedId: other.id };
 }
 
+/** The pane that has a chat among its tabs, shown or not; null when none has. */
+export function leafWithTab(node: PaneNode, channelId: string): PaneLeaf | null {
+	if (node.kind === "leaf") return node.tabs.some((t) => t.channelId === channelId) ? node : null;
+	return leafWithTab(node.a, channelId) ?? leafWithTab(node.b, channelId);
+}
+
+/**
+ * A chat opened from the sidebar, the switcher or a notice: in the focused pane, or shown there when it's open in it
+ * already (never a duplicate). A click puts it in the current tab, ⌘-click or a middle click in a new tab after it,
+ * and ⌥-click in the pane beside, which a lone pane gets for it (BRIEF, "Tabs and panes"). From the Friends page,
+ * which stands in the strip as a tab of its own, a click opens a tab rather than take over the one the page was
+ * hiding. Returns the tree and the pane to focus.
+ */
+export function openTabIn(
+	root: PaneNode,
+	focusedId: string,
+	tab: Tab,
+	how: OpenHow = "here",
+	fromFriends = false,
+): { root: PaneNode; focusedId: string } {
+	if (how === "beside") return openBeside(root, focusedId, tab);
+	const into = fromFriends ? "tab" : how;
+	return { root: updateLeaf(root, focusedId, (leaf) => openInLeaf(leaf, tab, into)), focusedId };
+}
+
+/**
+ * Where a conversation (a DM or a group) opens: in the pane that has it open already, shown there whatever the press
+ * was, or else in the focused pane as the press asks.
+ */
+export function conversationTarget(
+	root: PaneNode,
+	focusedId: string,
+	conversationId: string,
+	how: OpenHow = "here",
+): { focusedId: string; how: OpenHow } {
+	const holder = leafWithTab(root, conversationId);
+	return holder ? { focusedId: holder.id, how: "here" } : { focusedId, how };
+}
+
 /**
  * A split put back into one pane ("Separate split view"): the focused pane keeps its tabs and its active one, and
  * takes the other panes' tabs after them, each once. Two chats side by side become two tabs.
@@ -193,6 +232,78 @@ export function tabDropSide(offsetX: number, width: number): "before" | "join" |
 	if (width <= 0) return "after";
 	const at = offsetX / width;
 	return at < 0.25 ? "before" : at > 0.75 ? "after" : "join";
+}
+
+/** A tab's place in the strip, as the pointer sees it. */
+export interface TabRect {
+	id: string | null;
+	left: number;
+	right: number;
+	width: number;
+}
+
+/**
+ * Where something dragged over the strip would land: on a tab's middle it joins that tab (`joinId`), elsewhere it
+ * goes between two tabs, at `index`: before the first tab the pointer hasn't passed, or after the last one.
+ * A tab that isn't drawn (null) is passed over.
+ */
+export function tabDropTarget(
+	rects: readonly (TabRect | null)[],
+	clientX: number,
+): { index: number; joinId: string | null } {
+	for (let i = 0; i < rects.length; i++) {
+		const rect = rects[i];
+		if (!rect) continue;
+		if (clientX > rect.right) continue;
+		const side = clientX < rect.left ? "before" : tabDropSide(clientX - rect.left, rect.width);
+		if (side === "join") return { index: i, joinId: rect.id };
+		return { index: side === "before" ? i : i + 1, joinId: null };
+	}
+	return { index: rects.length, joinId: null };
+}
+
+/** The tabs after one of them is dragged to a gap (`at`, counted before it left): to the right of where it was, the
+ * gap is one place nearer once it's out. Null when there is no such tab. */
+export function movedTabs(tabs: readonly Tab[], from: number, at: number): Tab[] | null {
+	const arr = [...tabs];
+	const [moved] = arr.splice(from, 1);
+	if (!moved) return null;
+	const insertAt = Math.max(0, Math.min(at > from ? at - 1 : at, arr.length));
+	arr.splice(insertAt, 0, moved);
+	return arr;
+}
+
+/** What a drop on the strip does. */
+export type StripDrop =
+	/** A tab of the strip dropped on another's middle: the two side by side. */
+	| { kind: "split"; keepId: string; moveId: string }
+	/** A tab of the strip dropped between two: the strip's new order. */
+	| { kind: "reorder"; tabs: Tab[] }
+	/** A room or a conversation from the sidebar dropped on a tab's middle: it opens beside. */
+	| { kind: "join"; tab: Tab }
+	/** One dropped between two tabs: it opens as a tab there, or at the end (null). */
+	| { kind: "open"; tab: Tab; at: number | null };
+
+/**
+ * What a drop on the strip does: `dropped` is what the drag carried, `from` the index of the strip's own tab being
+ * dragged (null for something from the sidebar), `at` the gap and `joinId` the tab under the pointer as the drag last
+ * showed them. Null when it does nothing: a tab of the strip dropped where no gap was shown.
+ */
+export function stripDrop(
+	tabs: readonly Tab[],
+	dropped: Tab,
+	isTab: boolean,
+	from: number | null,
+	at: number | null,
+	joinId: string | null,
+): StripDrop | null {
+	if (isTab && from !== null) {
+		if (joinId) return { kind: "split", keepId: joinId, moveId: dropped.channelId };
+		if (at === null) return null;
+		const moved = movedTabs(tabs, from, at);
+		return moved ? { kind: "reorder", tabs: moved } : null;
+	}
+	return joinId ? { kind: "join", tab: dropped } : { kind: "open", tab: dropped, at };
 }
 
 /** A chat's kind, for a line under its name: a conversation is a group or a direct message; a room has none. */

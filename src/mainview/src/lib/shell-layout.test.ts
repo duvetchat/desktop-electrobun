@@ -4,17 +4,21 @@ import {
 	chatsUnderAll,
 	chipCount,
 	clampSidebarWidth,
+	conversationTarget,
 	defaultSidebarPrefs,
 	friendRequestsLabel,
 	isSettingsShortcut,
 	keysFor,
+	leafWithTab,
 	leavesOf,
 	mentionsLabel,
+	movedTabs,
 	mergedLeaf,
 	moreChatsLabel,
 	openBeside,
 	openHow,
 	openInLeaf,
+	openTabIn,
 	parseSidebarPrefs,
 	quietSpacesLabel,
 	shellShortcut,
@@ -24,8 +28,10 @@ import {
 	SIDEBAR_MIN,
 	spaceUnfolded,
 	steppedTab,
+	stripDrop,
 	stripHalves,
 	tabDropSide,
+	tabDropTarget,
 	tabKind,
 } from "$lib/shell-layout";
 import type { PaneLeaf, PaneNode, Tab } from "$lib/types";
@@ -321,5 +327,136 @@ describe("the shell's shortcuts", () => {
 		expect(keysFor(true, SHELL_KEYS.sidebar)).toBe("⌃⌘S");
 		expect(keysFor(false, SHELL_KEYS.sidebar)).toBe("Ctrl Shift S");
 		expect(keysFor(false, SHELL_KEYS.switcher)).toBe("Ctrl K");
+	});
+});
+
+// What the app page does with a press on a room or a chat (routes/app/+page.svelte: openTab, openConversationTab).
+describe("a chat opened from the sidebar", () => {
+	const lone = makeLeaf([room("a"), room("b")], "a");
+	const left = makeLeaf([room("a"), room("b")], "a");
+	const right = makeLeaf([room("c")], "c");
+	const pair = makeSplit(left, right, "h");
+	const shown = (root: PaneNode) => leavesOf(root).map((pane) => `${ids(pane).join(",")}@${pane.activeChannelId}`);
+
+	test("a click puts it in the focused pane's current tab, and the focus stays", () => {
+		const next = openTabIn(lone, lone.id, room("x"));
+		expect(shown(next.root)).toEqual(["x,b@x"]);
+		expect(next.focusedId).toBe(lone.id);
+		const inPair = openTabIn(pair, right.id, room("x"), "here");
+		expect(shown(inPair.root)).toEqual(["a,b@a", "x@x"]);
+		expect(inPair.focusedId).toBe(right.id);
+	});
+
+	test("a ⌘-click opens a new tab after the current one", () => {
+		const next = openTabIn(lone, lone.id, room("x"), "tab");
+		expect(shown(next.root)).toEqual(["a,x,b@x"]);
+		expect(next.focusedId).toBe(lone.id);
+	});
+
+	test("one that is open in the pane already is shown, never opened twice", () => {
+		for (const how of ["here", "tab"] as const) {
+			const next = openTabIn(lone, lone.id, room("b"), how);
+			expect(shown(next.root)).toEqual(["a,b@b"]);
+		}
+	});
+
+	test("an ⌥-click opens it beside: a lone pane gets a pane for it, a pair's other pane takes it", () => {
+		const split = openTabIn(lone, lone.id, room("x"), "beside");
+		expect(shown(split.root)).toEqual(["a,b@a", "x@x"]);
+		expect(split.focusedId).not.toBe(lone.id);
+		const other = openTabIn(pair, left.id, room("x"), "beside");
+		expect(shown(other.root)).toEqual(["a,b@a", "x@x"]);
+		expect(other.focusedId).toBe(right.id);
+	});
+
+	test("from the Friends page a click opens a tab, rather than take over the one the page was hiding", () => {
+		const next = openTabIn(lone, lone.id, room("x"), "here", true);
+		expect(shown(next.root)).toEqual(["a,x,b@x"]);
+		// Beside is beside, from there too.
+		const beside = openTabIn(lone, lone.id, room("x"), "beside", true);
+		expect(shown(beside.root)).toEqual(["a,b@a", "x@x"]);
+	});
+
+	test("a pane is found by a tab it holds, shown or not", () => {
+		expect(leafWithTab(pair, "b")?.id).toBe(left.id);
+		expect(leafWithTab(pair, "c")?.id).toBe(right.id);
+		expect(leafWithTab(pair, "nowhere")).toBeNull();
+	});
+
+	test("a conversation open in another pane is shown there, whatever the press was", () => {
+		expect(conversationTarget(pair, left.id, "c", "tab")).toEqual({ focusedId: right.id, how: "here" });
+		expect(conversationTarget(pair, left.id, "c", "beside")).toEqual({ focusedId: right.id, how: "here" });
+		// Open in the focused pane behind another tab: shown there.
+		expect(conversationTarget(pair, left.id, "b", "tab")).toEqual({ focusedId: left.id, how: "here" });
+		const target = conversationTarget(pair, left.id, "c", "beside");
+		expect(shown(openTabIn(pair, target.focusedId, room("c"), target.how).root)).toEqual(["a,b@a", "c@c"]);
+	});
+
+	test("one that is open nowhere opens in the focused pane, as the press asks", () => {
+		expect(conversationTarget(pair, left.id, "dm", "tab")).toEqual({ focusedId: left.id, how: "tab" });
+		expect(conversationTarget(lone, lone.id, "dm")).toEqual({ focusedId: lone.id, how: "here" });
+	});
+});
+
+// What TabBar does with a drag over its strip and a drop on it.
+describe("a drop on the tab strip", () => {
+	// Three tabs, each 100 wide, with a gap of 4 between them: a at 0–100, b at 104–204, c at 208–308.
+	const rects = ["a", "b", "c"].map((id, i) => ({ id, left: i * 104, right: i * 104 + 100, width: 100 }));
+	const tabs = [room("a"), room("b"), room("c"), room("d")];
+	const order = (drop: ReturnType<typeof stripDrop>) =>
+		drop?.kind === "reorder" ? drop.tabs.map((t) => t.channelId).join("") : drop;
+
+	test("lands before a tab on its left quarter, after it on its right quarter, and joins it on its middle", () => {
+		expect(tabDropTarget(rects, 10)).toEqual({ index: 0, joinId: null });
+		expect(tabDropTarget(rects, 50)).toEqual({ index: 0, joinId: "a" });
+		expect(tabDropTarget(rects, 90)).toEqual({ index: 1, joinId: null });
+		expect(tabDropTarget(rects, 104 + 50)).toEqual({ index: 1, joinId: "b" });
+		expect(tabDropTarget(rects, 208 + 90)).toEqual({ index: 3, joinId: null });
+	});
+
+	test("lands before the next tab from the gap between two, and at the end past the last", () => {
+		expect(tabDropTarget(rects, 102)).toEqual({ index: 1, joinId: null });
+		expect(tabDropTarget(rects, -20)).toEqual({ index: 0, joinId: null });
+		expect(tabDropTarget(rects, 900)).toEqual({ index: 3, joinId: null });
+		expect(tabDropTarget([], 50)).toEqual({ index: 0, joinId: null });
+	});
+
+	test("passes over a tab that isn't drawn", () => {
+		expect(tabDropTarget([null, rects[1]!, rects[2]!], 104 + 10)).toEqual({ index: 1, joinId: null });
+		expect(tabDropTarget([rects[0]!, null], 900)).toEqual({ index: 2, joinId: null });
+	});
+
+	test("a tab moved to the right lands one place nearer: the gap was counted with it still there", () => {
+		const moved = (from: number, at: number) =>
+			movedTabs(tabs, from, at)
+				?.map((t) => t.channelId)
+				.join("");
+		expect(moved(0, 2)).toBe("bacd");
+		expect(moved(0, 4)).toBe("bcda");
+		expect(moved(1, 3)).toBe("acbd");
+		// To the left the gap is where it lands.
+		expect(moved(3, 0)).toBe("dabc");
+		expect(moved(2, 1)).toBe("acbd");
+		// Onto either gap beside itself: where it was.
+		expect(moved(1, 1)).toBe("abcd");
+		expect(moved(1, 2)).toBe("abcd");
+		expect(movedTabs(tabs, 9, 0)).toBeNull();
+		expect(tabs.map((t) => t.channelId).join("")).toBe("abcd");
+	});
+
+	test("a tab of the strip moves between two tabs, or joins the tab it is dropped on the middle of", () => {
+		expect(order(stripDrop(tabs, room("a"), true, 0, 3, null))).toBe("bcad");
+		expect(stripDrop(tabs, room("a"), true, 0, null, "c")).toEqual({ kind: "split", keepId: "c", moveId: "a" });
+		// No gap was shown (the drag left the strip): nothing.
+		expect(stripDrop(tabs, room("a"), true, 0, null, null)).toBeNull();
+	});
+
+	test("a room or a chat from the sidebar opens as a tab in the gap, or beside the tab it is dropped on", () => {
+		const x = room("x");
+		expect(stripDrop(tabs, x, false, null, 2, null)).toEqual({ kind: "open", tab: x, at: 2 });
+		expect(stripDrop(tabs, x, false, null, null, null)).toEqual({ kind: "open", tab: x, at: null });
+		expect(stripDrop(tabs, x, false, null, null, "b")).toEqual({ kind: "join", tab: x });
+		// A tab dragged in from another pane's strip is no tab of this one: it opens here.
+		expect(stripDrop(tabs, x, true, null, 1, null)).toEqual({ kind: "open", tab: x, at: 1 });
 	});
 });

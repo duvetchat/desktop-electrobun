@@ -10,7 +10,7 @@
 	import { listStep } from "$lib/focus-wrap";
 	import { getAvatarURL } from "$lib/common/common";
 	import { isConversationTab, tabDragData, tabFromDragData, tabNews, tabTitle, tabTooltip } from "$lib/pane";
-	import { chipCount, mentionsLabel, tabDropSide, type StripHalf } from "$lib/shell-layout";
+	import { chipCount, mentionsLabel, stripDrop, tabDropTarget, type StripHalf } from "$lib/shell-layout";
 	import { conversations, currentUser, gatewaySpaces, typingNow } from "$lib/stores.svelte";
 	import { shownMentionCounts, shownUnreadConversations, shownUnreadRooms } from "$lib/notification-marks";
 	import { typingSentence } from "$lib/typing";
@@ -74,17 +74,16 @@
 	let joinTargetId = $state<string | null>(null);
 	let sidebarDragOver = $state(false);
 
+	// Where the pointer is over the strip (lib/shell-layout.ts: tabDropTarget), from where its tabs are drawn now.
 	function dropTarget(clientX: number): { index: number; joinId: string | null } {
-		for (let i = 0; i < tabEls.length; i++) {
-			const el = tabEls[i];
-			if (!el) continue;
-			const rect = el.getBoundingClientRect();
-			if (clientX > rect.right) continue;
-			const side = clientX < rect.left ? "before" : tabDropSide(clientX - rect.left, rect.width);
-			if (side === "join") return { index: i, joinId: el.dataset.tabId ?? null };
-			return { index: side === "before" ? i : i + 1, joinId: null };
-		}
-		return { index: tabEls.length, joinId: null };
+		return tabDropTarget(
+			tabEls.map((el) => {
+				if (!el) return null;
+				const rect = el.getBoundingClientRect();
+				return { id: el.dataset.tabId ?? null, left: rect.left, right: rect.right, width: rect.width };
+			}),
+			clientX,
+		);
 	}
 
 	function handleTabDragStart(e: DragEvent, origIndex: number) {
@@ -149,24 +148,14 @@
 		const dropped = tabFromDragData(data);
 		if (!dropped) return;
 
-		// A tab of this strip: onto another's middle it joins it, side by side; between two it moves there.
-		if (data.type === "tab" && from !== null) {
-			if (joinId) {
-				onSplitWith?.(joinId, dropped.channelId);
-				return;
-			}
-			if (at === null) return;
-			const arr = [...tabs];
-			const [moved] = arr.splice(from, 1);
-			if (!moved) return;
-			const insertAt = Math.max(0, Math.min(at > from ? at - 1 : at, arr.length));
-			arr.splice(insertAt, 0, moved);
-			onReorder(arr);
-			return;
-		}
-		// A room or a conversation from the sidebar: on a tab's middle it opens beside, between two as a tab there.
-		if (joinId) onJoin(dropped);
-		else onChannelDrop(dropped, at);
+		// A tab of this strip: onto another's middle it joins it, side by side; between two it moves there. A room or a
+		// conversation from the sidebar: on a tab's middle it opens beside, between two as a tab there.
+		const drop = stripDrop(tabs, dropped, data.type === "tab", from, at, joinId);
+		if (!drop) return;
+		if (drop.kind === "split") onSplitWith?.(drop.keepId, drop.moveId);
+		else if (drop.kind === "reorder") onReorder(drop.tabs);
+		else if (drop.kind === "join") onJoin(drop.tab);
+		else onChannelDrop(drop.tab, drop.at);
 	}
 
 	// The tabs stay on one row, which scrolls sideways once they don't fit: a mouse's wheel scrolls it

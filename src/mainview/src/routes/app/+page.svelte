@@ -24,8 +24,8 @@
 		SIDEBAR_MAX,
 		SIDEBAR_MIN,
 		mergedLeaf,
-		openBeside,
-		openInLeaf,
+		conversationTarget,
+		openTabIn,
 		shellShortcut,
 		SHELL_KEYS,
 		SIDEBAR_EDGE,
@@ -274,14 +274,9 @@
 			showFriendsView = false;
 			activeDMId = null;
 		}
-		if (how === "beside") {
-			const next = openBeside(rootPane, focusedPaneId, tab);
-			rootPane = next.root;
-			focusedPaneId = next.focusedId;
-		} else {
-			const into = fromFriends ? "tab" : how;
-			rootPane = updateLeaf(rootPane, focusedPaneId, (leaf) => openInLeaf(leaf, tab, into));
-		}
+		const next = openTabIn(rootPane, focusedPaneId, tab, how, fromFriends);
+		rootPane = next.root;
+		focusedPaneId = next.focusedId;
 		syncSidebarToLeaf(rootPane, focusedPaneId);
 	}
 
@@ -290,23 +285,15 @@
 	function openConversationTab(conversationId: string, how: OpenHow = "here") {
 		const conv = $conversations.find((c) => c.id === conversationId);
 		if (!conv) return;
-		const holder = leafWithTab(rootPane, conversationId);
-		if (holder) {
-			focusedPaneId = holder.id;
-			how = "here";
-		}
-		openTab(conversationTab(conv, $currentUser?.id), how);
+		const target = conversationTarget(rootPane, focusedPaneId, conversationId, how);
+		focusedPaneId = target.focusedId;
+		openTab(conversationTab(conv, $currentUser?.id), target.how);
 	}
 
 	// The stream window's click: back to the view of its voice room or call (desktop#299).
 	function openVoicePlace(place: VoicePlace) {
 		if (place.spaceId) onSidebarSelect(place.id, place.spaceId);
 		else openConversationTab(place.id);
-	}
-
-	function leafWithTab(node: PaneNode, channelId: string): import("$lib/types").PaneLeaf | null {
-		if (node.kind === "leaf") return node.tabs.some((t) => t.channelId === channelId) ? node : null;
-		return leafWithTab(node.a, channelId) ?? leafWithTab(node.b, channelId);
 	}
 
 	// A jump to a conversation's message (its pins, a search, a link to it) shows its tab; the request stays for its
