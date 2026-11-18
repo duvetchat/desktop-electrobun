@@ -144,7 +144,7 @@ import {
 	type MentionNotice,
 } from "$lib/mention-notices";
 import { storageTransfers } from "$lib/stores/storage-transfers.svelte";
-import { forgetMemberPages } from "$lib/stores/member-pages.svelte";
+import { forgetMemberPages, memberJoined } from "$lib/stores/member-pages.svelte";
 import { toast } from "$lib/stores/toast.svelte";
 import { getElectrobunRpc, type ActivityPayload } from "$lib/electrobun-rpc";
 import { identifyData } from "$lib/api/ws/identify";
@@ -1557,6 +1557,8 @@ function handleEvent(event: GatewayEvent) {
 			// The member may be a bot, whose commands the space's list doesn't have yet.
 			forgetSpaceCommands(raw.space_id);
 			loadSpaceMembers(raw.space_id);
+			// They come after everyone its pages loaded: a list of every member asks for them (#380).
+			memberJoined(raw.space_id);
 			break;
 		}
 		case "SPACE_MEMBER_REMOVE": {

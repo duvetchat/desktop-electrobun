@@ -1,6 +1,7 @@
 import { beforeEach, expect, mock, test } from "bun:test";
 // @ts-expect-error: Svelte ships no types for its internals, and this needs the one `$state` compiles to.
 import { proxy } from "svelte/internal/client";
+import { get } from "svelte/store";
 import type { SpaceMemberWithUser } from "$lib/api/spaces";
 import type { GatewayMember, GatewaySpace, GatewayUser } from "$lib/types";
 
@@ -20,8 +21,15 @@ mock.module("$lib/api/spaces", () => ({
 	},
 }));
 const { gatewaySpaces } = await import("$lib/stores.svelte");
-const { ensureMembers, forgetMemberPages, loadMoreMembers, membersLoading } =
-	await import("$lib/stores/member-pages.svelte");
+const {
+	ensureMembers,
+	forgetMemberPages,
+	loadEveryMember,
+	loadMoreMembers,
+	memberJoined,
+	membersLoading,
+	moreMembers,
+} = await import("$lib/stores/member-pages.svelte");
 
 const user = (n: number): GatewayUser => ({
 	id: `user-${n}`,
@@ -84,5 +92,21 @@ test("a Space's first page ends its spinner as it lands, and the page after it c
 	answer = async () => [row(3)];
 	await loadMoreMembers("harbour");
 	expect(asked).toBe(2);
+	expect(membersLoading("harbour")).toBe(false);
+});
+
+// #380: the Members section of a Space's settings asks for the next page each time one lands, as its effect reads the
+// pager: through the proxy, it gets them all, and someone who joins after them.
+test("a list of every member gets the Space's pages one after another, and one who joins after them", async () => {
+	const pages = [[row(1), row(2)], [row(3), row(4)], [row(5)], [row(5), row(6)]];
+	answer = async () => pages.shift() ?? [];
+	const held = () => get(gatewaySpaces).find((s) => s.id === "harbour")!.users.length;
+	for (let i = 0; i < 6; i++) await loadEveryMember("harbour", held(), 100);
+	expect(asked).toBe(3);
+	expect(held()).toBe(5);
+	expect(moreMembers("harbour")).toBe(false);
+	memberJoined("harbour");
+	await loadEveryMember("harbour", held(), 100);
+	expect(held()).toBe(6);
 	expect(membersLoading("harbour")).toBe(false);
 });

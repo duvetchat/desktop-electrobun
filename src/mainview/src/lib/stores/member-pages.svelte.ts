@@ -15,6 +15,8 @@ type Pager = {
 	failed: boolean;
 	/** How many of the Space's users the app held after the last page: fewer since means the Space was loaded anew. */
 	held: number;
+	/** How many have joined the Space while its pages were followed (memberJoined), which a page on its way may lack. */
+	joins: number;
 	abort: AbortController | null;
 };
 
@@ -46,7 +48,15 @@ const pagers = $state<Record<string, Pager>>({});
 // not that proxy, and what a page wrote there never reached what the lists read: the popover's spinner spun on after
 // a Space's first page, and no page after it was asked for.
 function pagerOf(spaceId: string): Pager {
-	pagers[spaceId] ??= { cursor: null, hasMore: true, loading: false, failed: false, held: 0, abort: null };
+	pagers[spaceId] ??= {
+		cursor: null,
+		hasMore: true,
+		loading: false,
+		failed: false,
+		held: 0,
+		joins: 0,
+		abort: null,
+	};
 	return pagers[spaceId];
 }
 
@@ -67,6 +77,7 @@ export async function loadMoreMembers(spaceId: string): Promise<void> {
 	if (pager.loading || !pager.hasMore) return;
 	pager.loading = true;
 	pager.failed = false;
+	const joins = pager.joins;
 	const abort = (pager.abort = new AbortController());
 	try {
 		const page = await getSpaceMembers(spaceId, pager.cursor ?? undefined, abort.signal);
@@ -83,7 +94,8 @@ export async function loadMoreMembers(spaceId: string): Promise<void> {
 		pager.held = held;
 		const cursor = cursorAfter(page);
 		if (cursor) pager.cursor = cursor;
-		else pager.hasMore = false;
+		// A page that came short is the last, but for whoever joined while it was on its way (memberJoined).
+		else if (pager.joins === joins) pager.hasMore = false;
 	} catch (e: unknown) {
 		// A page dropped for a newer one (restartMembers) or for a new session (forgetMemberPages) failed nothing. One
 		// the API refused, or that got no answer in its time (lib/api/api.ts), did.
@@ -119,6 +131,37 @@ export function ensureMembers(spaceId: string, heldNow: number): Promise<void> {
 	if (!pager) return loadMoreMembers(spaceId);
 	if (!pager.loading && heldNow < pager.held) return restartMembers(spaceId);
 	return Promise.resolve();
+}
+
+/** Whether the Space may have members left to load, as far as its pages tell. */
+export function moreMembers(spaceId: string): boolean {
+	return pagers[spaceId]?.hasMore ?? true;
+}
+
+/**
+ * Loads the Space's next page for a list of all its members, the Members section of its settings (#380): one when none
+ * is on its way, the last didn't fail and more are left, while the app holds fewer than `upTo` of the Space's users
+ * (`heldNow`). The list asks again as each page lands, so they come one after another; a Space loaded anew starts over.
+ * A page that failed waits for the list's Try again (loadMoreMembers), as in ensureMembers.
+ */
+export function loadEveryMember(spaceId: string, heldNow: number, upTo: number): Promise<void> {
+	const pager = pagers[spaceId];
+	if (!pager) return loadMoreMembers(spaceId);
+	if (pager.loading || pager.failed) return Promise.resolve();
+	if (heldNow < pager.held) return restartMembers(spaceId);
+	return heldNow < upTo ? loadMoreMembers(spaceId) : Promise.resolve();
+}
+
+/**
+ * Someone joined the Space (SPACE_MEMBER_ADD). A new member holds no role yet, so the API lists them after everyone
+ * loaded so far: a Space whose pages all came has more again, from where its last full page ended, for whichever list
+ * wants them. A Space whose members nothing loaded has nothing to ask again for.
+ */
+export function memberJoined(spaceId: string): void {
+	const pager = pagers[spaceId];
+	if (!pager) return;
+	pager.joins++;
+	pager.hasMore = true;
 }
 
 /** Forgets every pager, dropping the pages on their way: a new gateway session's, whose Spaces come back without their

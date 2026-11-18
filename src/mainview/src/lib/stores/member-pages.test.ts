@@ -1,4 +1,4 @@
-import { beforeEach, expect, mock, test } from "bun:test";
+import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { get } from "svelte/store";
 import type { SpaceMemberWithUser } from "$lib/api/spaces";
 import type { GatewayMember, GatewaySpace, GatewayUser } from "$lib/types";
@@ -22,9 +22,12 @@ const {
 	cursorAfter,
 	ensureMembers,
 	forgetMemberPages,
+	loadEveryMember,
 	loadMoreMembers,
+	memberJoined,
 	membersFailed,
 	membersLoading,
+	moreMembers,
 	restartMembers,
 	withMemberPage,
 } = await import("$lib/stores/member-pages.svelte");
@@ -242,4 +245,83 @@ test("two Spaces' pages on their way at once land each in its own Space, each en
 			.members.map((m) => m.id);
 	expect(of("harbour")).toEqual(["member-1", "member-2"]);
 	expect(of("cove")).toEqual(["placeholder-1", "member-7"]);
+});
+
+// #380: the Members section of a Space's settings lists every member, which the API finds no one among, so it loads
+// the Space's pages one after another, as its effect asks again each time one lands.
+describe("a list of every member", () => {
+	const step = (upTo = 100) => loadEveryMember("harbour", held().users.length, upTo);
+
+	test("loads page after page, until one comes short", async () => {
+		pages = [[row(1), row(2)], [row(3), row(4)], [row(5)]];
+		for (let i = 0; i < 5; i++) await step();
+		expect(asked.map((a) => a.after)).toEqual([undefined, "member-2", "member-4"]);
+		expect(held().members.map((m) => m.id)).toEqual(["member-1", "member-2", "member-3", "member-4", "member-5"]);
+		expect(moreMembers("harbour")).toBe(false);
+	});
+
+	test("stops at its limit, with more left", async () => {
+		pages = [
+			[row(1), row(2)],
+			[row(3), row(4)],
+			[row(5), row(6)],
+		];
+		for (let i = 0; i < 5; i++) await step(3);
+		expect(asked).toHaveLength(2);
+		expect(moreMembers("harbour")).toBe(true);
+	});
+
+	test("stops at a page that fails, until it's tried again", async () => {
+		await quietly(async () => {
+			pages = [[row(1), row(2)], "fails", [row(3)]];
+			for (let i = 0; i < 5; i++) await step();
+			expect(asked).toHaveLength(2);
+			expect(membersFailed("harbour")).toBe(true);
+			await loadMoreMembers("harbour");
+			await step();
+			expect(asked.map((a) => a.after)).toEqual([undefined, "member-2", "member-2"]);
+			expect(held().members.map((m) => m.id)).toEqual(["member-1", "member-2", "member-3"]);
+		});
+	});
+
+	test("starts over in a Space loaded anew", async () => {
+		pages = [[row(1), row(2)], [row(3)], [row(1), row(2)]];
+		await step();
+		await step();
+		gatewaySpaces.set([space([1])]);
+		await step();
+		expect(asked.map((a) => a.after)).toEqual([undefined, "member-2", undefined]);
+	});
+
+	// Someone who joins holds no role, so the API lists them after everyone loaded: the last page, which came short, is
+	// asked for again from where the full one before it ended.
+	test("asks again for the last page once someone joined", async () => {
+		pages = [[row(1), row(2)], [row(3)], [row(3), row(9)]];
+		for (let i = 0; i < 3; i++) await step();
+		expect(moreMembers("harbour")).toBe(false);
+		memberJoined("harbour");
+		expect(moreMembers("harbour")).toBe(true);
+		await step();
+		expect(asked.map((a) => a.after)).toEqual([undefined, "member-2", "member-2"]);
+		expect(held().members.map((m) => m.id)).toContain("member-9");
+	});
+
+	test("asks again for the last page when someone joined while it was on its way", async () => {
+		let last!: (page: SpaceMemberWithUser[]) => void;
+		pages = [[row(1), row(2)], new Promise((resolve) => (last = resolve)), [row(3), row(9)]];
+		await step();
+		const lastPage = step();
+		memberJoined("harbour");
+		last([row(3)]);
+		await lastPage;
+		expect(moreMembers("harbour")).toBe(true);
+		await step();
+		expect(held().members.map((m) => m.id)).toContain("member-9");
+	});
+
+	test("a Space whose members no list loaded has nothing to ask again for", () => {
+		memberJoined("cove");
+		expect(membersLoading("cove")).toBe(false);
+		expect(asked).toEqual([]);
+	});
 });

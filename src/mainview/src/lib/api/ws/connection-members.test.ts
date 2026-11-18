@@ -3,7 +3,8 @@ import { openGateway, type TestGateway } from "$lib/api/ws/test-gateway";
 
 // What the gateway's events do to the pages of a Space's members (lib/stores/member-pages.svelte.ts), which the members
 // popover of a pane's bar and the Members section of a Space's settings share.
-const { ensureMembers, forgetMemberPages, membersFailed } = await import("$lib/stores/member-pages.svelte");
+const { ensureMembers, forgetMemberPages, membersFailed, moreMembers } =
+	await import("$lib/stores/member-pages.svelte");
 
 const ME = "01920000-0000-7000-8000-00000000b0b0";
 const SPACE = "01920000-0000-7000-8000-0000000000a1";
@@ -53,4 +54,19 @@ test("a new session asks again for the members of a Space whose page failed", as
 	} finally {
 		console.error = logged;
 	}
+});
+
+// #380: the Members section of a Space's settings lists every member. One who joined after its last page came was
+// never asked for, as the pages had ended.
+test("someone joining a Space whose pages all came leaves more to load, from after the last full page", async () => {
+	answer = async () => Response.json([]);
+	await ensureMembers(SPACE, 1);
+	expect(moreMembers(SPACE)).toBe(false);
+	gateway.receive("SPACE_MEMBER_ADD", {
+		space_id: SPACE,
+		user_id: "01920000-0000-7000-8000-00000000a11c",
+		member_id: "01920000-0000-7000-8000-0000000000e1",
+		status_id: 1,
+	});
+	expect(moreMembers(SPACE)).toBe(true);
 });

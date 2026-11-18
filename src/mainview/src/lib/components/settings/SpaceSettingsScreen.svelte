@@ -22,7 +22,6 @@
 		ImagePlus as ImagePlusIcon,
 		ArrowRightLeft as MoveIcon,
 		Ban as BanIcon,
-		UserMinus as UserMinusIcon,
 		Webhook as WebhookIcon,
 		Mic as MicIcon,
 		Download as DownloadIcon,
@@ -44,10 +43,9 @@
 		type PickableFile,
 		type TransferFilter,
 	} from "$lib/storage-transfers";
-	import UserAvatar from "$lib/components/UserAvatar.svelte";
 	import SpaceBans from "$lib/components/SpaceBans.svelte";
+	import SpaceMembers from "$lib/components/SpaceMembers.svelte";
 	import Webhooks from "$lib/components/Webhooks.svelte";
-	import { banRequest, kickFromSpace, moderationOf } from "$lib/moderation";
 	import { createRole, updateRole, deleteRole } from "$lib/api/roles";
 	import { listEmojis, createEmoji, updateEmoji, deleteEmoji } from "$lib/api/emojis";
 	import { listStickers, createSticker, updateSticker, deleteSticker } from "$lib/api/stickers";
@@ -386,7 +384,6 @@
 
 	let isCreating = $state(false);
 	let isDeleting = $state<Record<string, boolean>>({});
-	let selectedMemberUserId = $state<string | null>(null);
 
 	// ── emoji state ─────────────────────────────────────────────
 	let spaceEmojis = $state<SpaceEmoji[]>([]);
@@ -433,12 +430,6 @@
 	let sbMaxBytesMB = $state("");
 	let sbUploadLimitMB = $state("");
 	let togglingSpaceBucketId = $state<string | null>(null);
-
-	const numberFormatter = new Intl.NumberFormat(typeof navigator !== "undefined" ? navigator.language : "en-US");
-
-	function formatCount(value: number) {
-		return numberFormatter.format(value);
-	}
 
 	// ── drag-and-drop ────────────────────────────────────────────
 	let sortedRoles = $state<any[]>([]);
@@ -651,14 +642,7 @@
 	function close() {
 		open = false;
 		cancelEdit();
-		selectedMemberUserId = null;
 	}
-
-	$effect(() => {
-		if (activeSection !== "members") {
-			selectedMemberUserId = null;
-		}
-	});
 
 	// ── emoji handlers ──────────────────────────────────────────
 	async function loadEmojis() {
@@ -1200,35 +1184,6 @@
 			togglingSpaceBucketId = null;
 		}
 	}
-
-	const selectedSettingsMember = $derived(
-		space && selectedMemberUserId
-			? ((space.members ?? []).find((m) => m.user_id === selectedMemberUserId) ?? null)
-			: null,
-	);
-
-	const selectedSettingsUser = $derived(
-		space && selectedMemberUserId ? (space.users.find((u) => u.id === selectedMemberUserId) ?? null) : null,
-	);
-
-	// Kick and Ban for the member picked, when the API would let the user act on them (moderationOf).
-	const selectedSettingsModeration = $derived(
-		selectedSettingsMember && selectedSettingsUser
-			? moderationOf(space, {
-					id: selectedSettingsUser.id,
-					member_id: selectedSettingsMember.id,
-					username: selectedSettingsMember.alias ?? selectedSettingsUser.alias ?? selectedSettingsUser.username,
-				})
-			: null,
-	);
-
-	const selectedSettingsRoles = $derived(
-		space && selectedMemberUserId
-			? (space.member_roles[selectedMemberUserId] ?? [])
-					.map((rid) => space.roles.find((r) => r.id === rid))
-					.filter((role): role is NonNullable<typeof role> => Boolean(role))
-			: [],
-	);
 </script>
 
 {#snippet spinner()}
@@ -1855,98 +1810,8 @@
 		{/if}
 	{:else if activeSection === "members"}
 		{#if space}
-			<SettingsGroup title="Members ({formatCount(space.members?.length ?? 0)})">
-				{#each space.members ?? [] as member (member.user_id)}
-					{@const user = space.users.find((u) => u.id === member.user_id)}
-					<button
-						type="button"
-						class="flex w-full items-center gap-3 px-3.5 py-2.5 text-left transition-colors motion-reduce:transition-none {selectedMemberUserId ===
-						member.user_id
-							? 'bg-duvet-accent-tint'
-							: 'hover:bg-duvet-hover-soft'}"
-						aria-pressed={selectedMemberUserId === member.user_id}
-						onclick={() => (selectedMemberUserId = member.user_id)}
-					>
-						<UserAvatar src={getAvatarURL(member.user_id, user?.avatar)} name={user?.username ?? "Unknown"} size={32} />
-						<div class="min-w-0 flex-1">
-							<p class="truncate text-[13.5px] font-medium">
-								{member.alias ?? user?.username ?? "Unknown member"}
-							</p>
-							<p class="text-duvet-ink2 truncate text-xs">
-								{(space.member_roles[member.user_id] ?? [])
-									.map((rid) => space.roles.find((r) => r.id === rid)?.name)
-									.filter(Boolean)
-									.join(", ") || "No roles assigned"}
-							</p>
-						</div>
-					</button>
-				{/each}
-			</SettingsGroup>
-
-			{#if selectedSettingsMember && selectedSettingsUser}
-				<SettingsGroup title="Member details" plain>
-					{#snippet actions()}
-						<Button variant="quiet" size="sm" onclick={() => (selectedMemberUserId = null)}>Close</Button>
-					{/snippet}
-					<div class="flex items-center gap-3">
-						<UserAvatar
-							src={getAvatarURL(selectedSettingsUser.id, selectedSettingsUser.avatar)}
-							name={selectedSettingsUser.username}
-							size={40}
-						/>
-						<div class="min-w-0">
-							<p class="truncate text-sm font-semibold">
-								{selectedSettingsMember.alias ?? selectedSettingsUser.username}
-							</p>
-							<p class="text-duvet-ink2 truncate text-xs">@{selectedSettingsUser.username}</p>
-							<p class="text-duvet-ink2 truncate text-[11px] select-text">User ID: {selectedSettingsUser.id}</p>
-						</div>
-					</div>
-					<div class="mt-3">
-						<p class={LABEL}>Roles</p>
-						{#if selectedSettingsRoles.length > 0}
-							<div class="flex flex-wrap gap-1.5">
-								{#each selectedSettingsRoles as role (role.id)}
-									<span
-										class="bg-duvet-secondary-fill flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs font-medium"
-									>
-										<span class="size-2 rounded-full" style={roleGradientStyle(role)}></span>
-										{role.name}
-									</span>
-								{/each}
-							</div>
-						{:else}
-							<p class="text-duvet-ink2 text-xs">No roles assigned</p>
-						{/if}
-					</div>
-					{#if selectedSettingsModeration}
-						<div class="border-duvet-line mt-4 flex gap-2 border-t pt-3">
-							{#if selectedSettingsModeration.kick}
-								<Button
-									variant="quiet"
-									size="sm"
-									class="text-duvet-danger! bg-duvet-danger/10 hover:bg-duvet-danger/20!"
-									onclick={() => void kickFromSpace(selectedSettingsModeration.target)}
-								>
-									<UserMinusIcon size={14} />
-									Kick
-								</Button>
-							{/if}
-							{#if selectedSettingsModeration.ban}
-								<Button
-									variant="quiet"
-									size="sm"
-									class="text-duvet-danger! bg-duvet-danger/10 hover:bg-duvet-danger/20!"
-									onclick={() => banRequest.set(selectedSettingsModeration.target)}
-								>
-									<BanIcon size={14} />
-									Ban
-								</Button>
-							{/if}
-						</div>
-					{/if}
-				</SettingsGroup>
-			{/if}
+			<!-- A window's Space is the main window's, which it replaces at each change: it lists what the main window has. -->
+			<SpaceMembers {space} paging={mode === "sheet"} />
 		{/if}
 	{:else if activeSection === "emojis" || activeSection === "stickers"}
 		{@const emojis = activeSection === "emojis"}
