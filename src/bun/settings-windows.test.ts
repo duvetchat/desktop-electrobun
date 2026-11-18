@@ -250,6 +250,10 @@ function manager(pages: SettingsWindowsDeps["pages"] = { settings: "settings", "
 					if (record.gone) throw new Error(`No window ${id}`);
 					log.push(`close ${id}`);
 				},
+				setTitle: (title) => {
+					if (record.gone) throw new Error(`No window ${id}`);
+					log.push(`title ${id}: ${title}`);
+				},
 				send: (message) => record.sent.push(message),
 				onReady: (handler) => handlers.ready.push(handler),
 				onClose: (handler) => handlers.close.push(handler),
@@ -492,5 +496,62 @@ describe("when the main window's page changes", () => {
 		made[0].closed();
 		expect(log).toEqual(["close 2"]);
 		expect(told).toEqual([]);
+	});
+});
+
+// From the Windows builder's hand-back: a Space renamed while its settings were open kept the old name in the
+// window's title (Mission Control, the taskbar, Alt-Tab) until the window was closed and opened again.
+describe("a Space's settings window's title", () => {
+	const space = (spaceId: string, name: string, seq: number, more: object = {}): WindowStateMessage => ({
+		channel: `sync:space:${spaceId}`,
+		epoch: 1000,
+		seq,
+		sentAt: 1000 + seq,
+		value: { id: spaceId, name, ...more },
+	});
+
+	test("follows the Space's name as the main window shares it", () => {
+		const { windows, made, log } = manager();
+		windows.open({ window: "space-settings", spaceId: "s1", name: "Harbour Lights" });
+		expect(made[0].title).toBe("Harbour Lights · Space settings");
+		windows.stateFromMain(space("s1", "Harbour Lights", 1));
+		expect(log).toEqual([]);
+		windows.stateFromMain(space("s1", "Harbour Lanterns", 2));
+		expect(log).toEqual(["title 2: Harbour Lanterns · Space settings"]);
+	});
+
+	test("is set once for a name, however often the Space is shared again", () => {
+		const { windows, log } = manager();
+		windows.open({ window: "space-settings", spaceId: "s1", name: "Harbour Lights" });
+		// The Space is published with every presence update of its members.
+		for (let seq = 1; seq <= 20; seq++) windows.stateFromMain(space("s1", "Harbour Lanterns", seq, { online: seq }));
+		expect(log).toEqual(["title 2: Harbour Lanterns · Space settings"]);
+	});
+
+	test("is only that Space's window's: not another Space's, nor Settings' own", () => {
+		const { windows, log } = manager();
+		windows.open({ window: "settings" });
+		windows.open({ window: "space-settings", spaceId: "s1", name: "Harbour Lights" });
+		windows.open({ window: "space-settings", spaceId: "s2", name: "Kiln & Clay" });
+		windows.stateFromMain(space("s2", "Kiln, Clay & Glaze", 1));
+		windows.stateFromMain(space("s3", "Elsewhere", 1));
+		expect(log).toEqual(["title 4: Kiln, Clay & Glaze · Space settings"]);
+	});
+
+	test("a Space with no name left is called Space, and a state that isn't a Space changes nothing", () => {
+		const { windows, log } = manager();
+		windows.open({ window: "space-settings", spaceId: "s1", name: "Harbour Lights" });
+		windows.stateFromMain({ channel: "sync:space:s1", epoch: 1000, seq: 1, sentAt: 0, value: null });
+		windows.stateFromMain({ channel: "sync:bans:s1", epoch: 1000, seq: 1, sentAt: 0, value: { name: "x" } });
+		expect(log).toEqual([]);
+		windows.stateFromMain(space("s1", "", 2));
+		expect(log).toEqual(["title 2: Space · Space settings"]);
+	});
+
+	test("a window that is going keeps its title, and nothing breaks", () => {
+		const { windows, made } = manager();
+		windows.open({ window: "space-settings", spaceId: "s1", name: "Harbour Lights" });
+		made[0].gone = true;
+		expect(() => windows.stateFromMain(space("s1", "Harbour Lanterns", 1))).not.toThrow();
 	});
 });

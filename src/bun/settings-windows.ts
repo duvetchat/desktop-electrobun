@@ -115,6 +115,8 @@ export interface AppWindow {
 	/** Brings it forward, out of the dock or the taskbar if it was there. */
 	focus(): void;
 	close(): void;
+	/** Names the window anew, where the system shows its name. */
+	setTitle(title: string): void;
 	/** Sends its page a state. */
 	send(message: WindowStateMessage): void;
 	/** Calls back each time its page says it listens: as it loads, and again if it loads again. */
@@ -155,6 +157,18 @@ interface OpenWindow {
 	ready: boolean;
 	/** The section asked for last while it didn't: sent again once it does. */
 	goto: OpenAppWindow | null;
+	/** What it was asked for, and the title the window has now. */
+	request: OpenAppWindow;
+	title: string;
+}
+
+/** The Space a state of the main window's is, when it is one: the Space as its settings window mirrors it
+ * (lib/settings-windows.ts: spaceKey), with its name. */
+function sharedSpace(message: WindowStateMessage): { spaceId: string; name: string } | null {
+	const spaceId = /^sync:space:(.+)$/.exec(message.channel)?.[1];
+	const value = message.value;
+	if (!spaceId || typeof value !== "object" || value === null || !("name" in value)) return null;
+	return typeof value.name === "string" ? { spaceId, name: value.name } : null;
 }
 
 export class SettingsWindows {
@@ -185,15 +199,16 @@ export class SettingsWindows {
 		const key = windowKey(request);
 		const existing = this.#open.get(key);
 		if (existing && this.#bringForward(key, existing, request)) return true;
+		const title = windowTitle(request);
 		const window = this.#deps.create({
 			kind: request.window,
 			page,
-			title: windowTitle(request),
+			title,
 			frame: settingsFrame(request.window, this.#deps.mainFrame(), this.#deps.displays(), this.#open.size),
 			...settingsChrome(this.#deps.platform),
 			preload: settingsPreload(request, this.#deps.platform),
 		});
-		const opened: OpenWindow = { window, epoch: this.#mainEpoch, ready: false, goto: null };
+		const opened: OpenWindow = { window, epoch: this.#mainEpoch, ready: false, goto: null, request, title };
 		this.#open.set(key, opened);
 		const mirrors = settingsMirrors(request);
 		window.onReady(() => {
@@ -223,12 +238,32 @@ export class SettingsWindows {
 	 * that one shared, and close. The page's first states come as it starts, long before its `load` event, which a
 	 * window opened in between would not survive. */
 	stateFromMain(message: WindowStateMessage) {
-		if (message.epoch === this.#mainEpoch) return;
-		this.#mainEpoch = message.epoch;
-		for (const [key, opened] of [...this.#open]) {
-			// One opened before its page had published anything is that page's.
-			if (opened.epoch === null) opened.epoch = message.epoch;
-			else if (opened.epoch !== message.epoch) this.#close(key, opened);
+		if (message.epoch !== this.#mainEpoch) {
+			this.#mainEpoch = message.epoch;
+			for (const [key, opened] of [...this.#open]) {
+				// One opened before its page had published anything is that page's.
+				if (opened.epoch === null) opened.epoch = message.epoch;
+				else if (opened.epoch !== message.epoch) this.#close(key, opened);
+			}
+		}
+		this.#retitle(message);
+	}
+
+	// A Space renamed while its settings are open: the window takes the new name at once, as its page's own title
+	// does. The title was the name the Space had as the window opened, until it was closed and opened again.
+	#retitle(message: WindowStateMessage) {
+		const space = sharedSpace(message);
+		if (!space) return;
+		const opened = this.#open.get(windowKey({ window: "space-settings", spaceId: space.spaceId, name: space.name }));
+		if (!opened || opened.request.window !== "space-settings") return;
+		const title = windowTitle({ ...opened.request, name: space.name });
+		// The Space is published with every change of it, its members' presence among them: only a new name is one.
+		if (title === opened.title) return;
+		try {
+			opened.window.setTitle(title);
+			opened.title = title;
+		} catch {
+			// A window that is going keeps the title it had.
 		}
 	}
 

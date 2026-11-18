@@ -93,6 +93,7 @@ export function createSettingsWindow(spec: AppWindowSpec, deps: NativeWindowDeps
 			window.focus();
 		},
 		close: () => window.close(),
+		setTitle: (title) => window.setTitle(title),
 		send: (message) => rpc.send.windowState(message),
 		onReady: (handler) => void readyHandlers.push(handler),
 		onClose: (handler) => window.on("close", handler),
