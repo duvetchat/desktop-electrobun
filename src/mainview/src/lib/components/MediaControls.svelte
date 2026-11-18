@@ -80,6 +80,7 @@
 			label={media.muted ? "Unmute" : "Mute"}
 			tip={media.canSpeak ? (media.muted ? "Unmute" : "Mute") : "You can't speak in this room"}
 			pressed={media.muted}
+			stateInName
 			disabled={!media.canSpeak}
 			shape="square"
 			side="right"
@@ -90,6 +91,7 @@
 		<MediaButton
 			label={media.deafened ? "Undeafen" : "Deafen"}
 			pressed={media.deafened}
+			stateInName
 			shape="square"
 			side="right"
 			onclick={actions.toggleDeafen}

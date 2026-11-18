@@ -12,6 +12,7 @@
 		tip = label,
 		keys = undefined,
 		pressed = undefined,
+		stateInName = false,
 		tone = "plain",
 		shape = "panel",
 		disabled = false,
@@ -29,6 +30,9 @@
 		keys?: string;
 		/** For a switch: whether it is on. Left out for a plain button. */
 		pressed?: boolean;
+		/** The label already says the state, as it changes with it ("Mute" then "Unmute"): the button is then drawn
+		 * pressed but not announced as pressed, which would say the state twice ("Unmute, pressed"). */
+		stateInName?: boolean;
 		/** leave is the destructive fill; the stage tones are for the dark call stage, whatever the theme. */
 		tone?: "plain" | "leave" | "stage" | "stage-leave";
 		/** panel: 30 tall, as wide as its place (the sidebar's block). square: 30 × 30. bar: 44 × 38 (a voice room's
@@ -84,7 +88,7 @@
 			{...mergeProps({ onclick: press }, triggerProps, props)}
 			type="button"
 			aria-label={label}
-			aria-pressed={pressed}
+			aria-pressed={stateInName ? undefined : pressed}
 			aria-disabled={disabled || undefined}
 			class=" inline-grid place-items-center transition-[box-shadow,background-color,color,filter] duration-[120ms] motion-reduce:transition-none {SHAPES[
 				shape

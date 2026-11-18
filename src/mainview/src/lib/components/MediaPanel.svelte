@@ -92,6 +92,7 @@
 					tip={micTip}
 					keys={media.canSpeak ? keys.mute : undefined}
 					pressed={media.muted}
+					stateInName
 					disabled={!media.canSpeak}
 					triggerProps={props}
 					class="rounded-r-[3px]"
@@ -127,6 +128,7 @@
 		label={media.deafened ? "Undeafen" : "Deafen"}
 		keys={keys.deafen}
 		pressed={media.deafened}
+		stateInName
 		onclick={actions.toggleDeafen}
 	>
 		{#if media.deafened}<HeadphoneOff size={16} />{:else}<Headphones size={16} />{/if}
@@ -158,13 +160,14 @@
 				label={media.camera ? "Turn off camera" : "Turn on camera"}
 				tip={blocked ?? (media.camera ? "Turn off camera" : "Turn on camera")}
 				pressed={media.camera}
+				stateInName
 				disabled={blocked !== null}
 				onclick={actions.toggleCamera}
 			>
 				{#if media.camera}<Video size={16} />{:else}<VideoOff size={16} />{/if}
 			</MediaButton>
 			{#if media.sharing}
-				<MediaButton label="Stop sharing" pressed onclick={actions.stopSharing}>
+				<MediaButton label="Stop sharing" pressed stateInName onclick={actions.stopSharing}>
 					<ScreenShareOff size={16} />
 				</MediaButton>
 			{:else}
@@ -175,6 +178,7 @@
 							label="Share screen"
 							tip={blocked ?? "Share screen"}
 							pressed={false}
+							stateInName
 							disabled={blocked !== null}
 							triggerProps={props}
 						>

@@ -185,13 +185,12 @@ describe("AuthSubmit", () => {
 describe("PasswordEye", () => {
 	test("says what a press will do, and whether the password shows", async () => {
 		const [hidden] = await tags(PasswordEye, {});
-		expect(hidden!.attributes).toMatchObject({
-			type: "button",
-			"aria-label": "Show password",
-			"aria-pressed": "false",
-		});
+		expect(hidden!.attributes).toMatchObject({ type: "button", "aria-label": "Show password" });
 		const [shown] = await tags(PasswordEye, { shown: true });
-		expect(shown!.attributes).toMatchObject({ "aria-label": "Hide password", "aria-pressed": "true" });
+		expect(shown!.attributes).toMatchObject({ "aria-label": "Hide password" });
+		// The name says the state: "Hide password, pressed" would say it twice.
+		expect(hidden!.attributes["aria-pressed"]).toBeUndefined();
+		expect(shown!.attributes["aria-pressed"]).toBeUndefined();
 		expect((await tags(PasswordEye, { disabled: true }))[0]!.attributes.disabled).toBeDefined();
 	});
 });

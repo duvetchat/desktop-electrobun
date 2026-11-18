@@ -608,6 +608,7 @@
 		label={$isMuted ? "Unmute" : "Mute"}
 		tip={micTip}
 		pressed={$isMuted}
+		stateInName
 		disabled={!canSpeak}
 		{tone}
 		{shape}
@@ -615,7 +616,14 @@
 	>
 		{#if $isMuted}<MicOff size={18} />{:else}<Mic size={18} />{/if}
 	</MediaButton>
-	<MediaButton label={$isDeafened ? "Undeafen" : "Deafen"} pressed={$isDeafened} {tone} {shape} onclick={toggleDeafen}>
+	<MediaButton
+		label={$isDeafened ? "Undeafen" : "Deafen"}
+		pressed={$isDeafened}
+		stateInName
+		{tone}
+		{shape}
+		onclick={toggleDeafen}
+	>
 		{#if $isDeafened}<HeadphoneOff size={18} />{:else}<Headphones size={18} />{/if}
 	</MediaButton>
 	<div class="flex gap-px">
@@ -623,6 +631,7 @@
 			label={$isCameraOn ? "Turn off camera" : "Turn on camera"}
 			tip={videoTitle ?? ($isCameraOn ? "Turn off camera" : "Turn on camera")}
 			pressed={$isCameraOn}
+			stateInName
 			disabled={!videoReady}
 			{tone}
 			{shape}
@@ -634,7 +643,7 @@
 		{@render cameraOptions()}
 	</div>
 	{#if $isScreenSharing && videoReady}
-		<MediaButton label="Stop sharing" pressed {tone} {shape} onclick={() => stopScreenShare(channelId)}>
+		<MediaButton label="Stop sharing" pressed stateInName {tone} {shape} onclick={() => stopScreenShare(channelId)}>
 			<ScreenShareOff size={18} />
 		</MediaButton>
 	{:else}
@@ -645,6 +654,7 @@
 					label="Share screen"
 					tip={videoTitle ?? "Share screen"}
 					pressed={false}
+					stateInName
 					disabled={!videoReady}
 					triggerProps={props}
 					{tone}

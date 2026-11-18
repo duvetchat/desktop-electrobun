@@ -39,7 +39,8 @@ const inCall: MediaState = { ...inRoom, place: { kind: "call", id: "dm-1", where
 const drawn = (state: MediaState) => tags(MediaPanel, { state, actions });
 const words = (state: MediaState) => render(MediaPanel, { props: { state, actions } }).body.replace(/<[^>]*>/g, " ");
 const buttons = (all: Tag[]) => all.filter((tag) => tag.name === "button");
-/** Each button as "Name" or "Name=pressed", in order. */
+/** Each button as "Name" or "Name=pressed", in order. A button whose name changes with its state ("Mute" then
+ * "Unmute") says it once: it has no aria-pressed. One whose name stays ("Noise suppression") has. */
 const named = (all: Tag[]) =>
 	buttons(all).map((tag) =>
 		"aria-pressed" in tag.attributes
@@ -52,7 +53,7 @@ const classes = (tag: Tag | undefined) => (tag?.attributes.class ?? "").split(/\
 describe("out of voice", () => {
 	test("is one row: the microphone with its picker, deafen and noise suppression", async () => {
 		const all = await drawn(IDLE_MEDIA);
-		expect(named(all)).toEqual(["Mute=false", "Choose a microphone", "Deafen=false", "Noise suppression=true"]);
+		expect(named(all)).toEqual(["Mute", "Choose a microphone", "Deafen", "Noise suppression=true"]);
 		const row = all.find((tag) => tag.attributes.role === "group");
 		expect(row?.attributes["aria-label"]).toBe("Voice controls");
 		// No call panel, and nothing of it: no place, no Disconnect, no camera, no share.
@@ -61,7 +62,7 @@ describe("out of voice", () => {
 
 	test("a switch that is on says what a press does, and is sunk into ink", async () => {
 		const all = await drawn({ ...IDLE_MEDIA, muted: true, deafened: true, noiseSuppression: false });
-		expect(named(all)).toEqual(["Unmute=true", "Choose a microphone", "Undeafen=true", "Noise suppression=false"]);
+		expect(named(all)).toEqual(["Unmute", "Choose a microphone", "Undeafen", "Noise suppression=false"]);
 		expect(classes(button(all, "Unmute"))).toEqual(expect.arrayContaining(["bg-duvet-ink", "text-duvet-bg"]));
 		expect(classes(button(all, "Noise suppression"))).toContain("bg-duvet-secondary-fill");
 	});
@@ -80,12 +81,12 @@ describe("in a voice room", () => {
 		expect(named(all)).toEqual([
 			"Open Lounge · Harbour Lights, 2 people in voice, Ana speaking",
 			"Disconnect",
-			"Mute=false",
+			"Mute",
 			"Choose a microphone",
-			"Deafen=false",
+			"Deafen",
 			"Noise suppression=true",
-			"Turn on camera=false",
-			"Share screen=false",
+			"Turn on camera",
+			"Share screen",
 		]);
 		expect(words(inRoom)).toContain("Voice connected");
 		expect(words(inRoom)).toContain("Lounge · Harbour Lights");
@@ -99,7 +100,7 @@ describe("in a voice room", () => {
 
 	test("the camera and a share that are on say what a press does", async () => {
 		const all = await drawn({ ...inRoom, camera: true, sharing: true });
-		expect(named(all)).toEqual(expect.arrayContaining(["Turn off camera=true", "Stop sharing=true"]));
+		expect(named(all)).toEqual(expect.arrayContaining(["Turn off camera", "Stop sharing"]));
 		expect(button(all, "Share screen")).toBeUndefined();
 	});
 

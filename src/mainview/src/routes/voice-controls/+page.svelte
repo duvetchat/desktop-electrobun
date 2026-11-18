@@ -125,7 +125,6 @@
 						size="sm"
 						label={pinned ? "Stop keeping on top" : "Keep on top"}
 						active={pinned}
-						aria-pressed={pinned}
 						onclick={togglePin}
 					>
 						{#if pinned}<PinOff size={14} />{:else}<Pin size={14} />{/if}
