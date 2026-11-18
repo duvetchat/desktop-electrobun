@@ -10,6 +10,7 @@
 	import StorageTransferFailures from "$lib/components/StorageTransferFailures.svelte";
 
 	import { setupExternalLinks } from "$lib/external-links";
+	import { driftSpecksOnScreen } from "$lib/spoiler-specks";
 	import { followSystemTheme } from "$lib/theme.svelte";
 	import { currentShell } from "$lib/platform";
 	import { onMount } from "svelte";
@@ -25,8 +26,13 @@
 
 	onMount(() => {
 		setupExternalLinks();
+		const stopSpecks = driftSpecksOnScreen(document);
 		// app.html set the theme before the first paint; this keeps it with the system's while it's System.
-		return followSystemTheme();
+		const stopTheme = followSystemTheme();
+		return () => {
+			stopSpecks();
+			stopTheme();
+		};
 	});
 </script>
 

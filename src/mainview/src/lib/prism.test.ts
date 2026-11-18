@@ -1,5 +1,15 @@
 import { describe, expect, test } from "bun:test";
-import { mentionCentre, PRISM_BUBBLE, PRISM_RIM, PRISM_WASH, prismScale, prismSides, prismSlide } from "./prism";
+import {
+	mentionCentre,
+	PRISM_BUBBLE,
+	PRISM_RIM,
+	PRISM_WASH,
+	placePrismsIn,
+	prismScale,
+	prismSides,
+	prismSlide,
+	slidePrismsIn,
+} from "./prism";
 
 describe("Prism's lights", () => {
 	test("scale with the bubble's width, full size from 270 px and never under four tenths", () => {
@@ -51,5 +61,69 @@ describe("Prism's classes", () => {
 			expect(classes).toContain("[--mention-ink:var(--duvet-mention-lit)]");
 		// The bubble itself stays the card: the light is the layer under its text, not its fill.
 		expect(PRISM_BUBBLE.split(" ")).toContain("bg-duvet-card");
+	});
+});
+
+// The test runs without a page: what escapes a selector's value stands in for the browser's.
+if (typeof CSS === "undefined") Object.assign(globalThis, { CSS: { escape: (value: string) => value } });
+
+// A stand-in for an element: its box, and a log of every read and write in the order they came.
+function fake(log: string[], name: string, box: { left: number; top: number; width: number; height: number }) {
+	const set: Record<string, string> = {};
+	const mention = { getBoundingClientRect: () => ({ left: box.left + 60, top: box.top + 30, width: 40, height: 20 }) };
+	const element = {
+		getBoundingClientRect: () => (log.push(`read ${name}`), box),
+		querySelector: (selector: string) => (log.push(`find ${name} ${selector}`), mention),
+		style: { setProperty: (key: string, value: string) => (log.push(`write ${name}`), (set[key] = value)) },
+	};
+	return { element, set };
+}
+
+describe("the lights of a list's bubbles", () => {
+	const view = { left: 0, top: 100, width: 800, height: 600 };
+
+	test("slide for the bubbles in view only, every box read before anything is written", () => {
+		const log: string[] = [];
+		const list = fake(log, "list", view).element;
+		const top = fake(log, "top", { left: 200, top: 100, width: 270, height: 60 });
+		const above = fake(log, "above", { left: 200, top: -400, width: 270, height: 60 });
+		const bottom = fake(log, "bottom", { left: 200, top: 640, width: 135, height: 60 });
+		const below = fake(log, "below", { left: 200, top: 900, width: 270, height: 60 });
+		slidePrismsIn([top.element, above.element, bottom.element, below.element], list);
+
+		expect(log.filter((line) => line === "read list")).toHaveLength(1);
+		const firstWrite = log.findIndex((line) => line.startsWith("write"));
+		expect(log.slice(firstWrite).every((line) => line.startsWith("write"))).toBe(true);
+		expect(log.slice(0, firstWrite).filter((line) => line.startsWith("read"))).toHaveLength(5);
+		// Out of view: untouched.
+		expect(above.set).toEqual({});
+		expect(below.set).toEqual({});
+		// In view: where prismSides puts them for the bubble's place and width.
+		const at = (centre: number, scale: number) => prismSides(prismSlide(centre, view.top, view.height), scale);
+		expect(at(130, 1)).toEqual({ cx: 212.5, wx: 115.5 });
+		expect(top.set).toEqual({ "--cx": "212.5px", "--wx": "115.5px" });
+		// Half as wide: half the scale, to a tenth of a pixel.
+		expect(at(670, 0.5)).toEqual({ cx: 38.75, wx: 17.25 });
+		expect(bottom.set).toEqual({ "--cx": "38.8px", "--wx": "17.3px" });
+	});
+
+	test("are all placed for each bubble given, in view or not, the reads first", () => {
+		const log: string[] = [];
+		const list = fake(log, "list", view).element;
+		const one = fake(log, "one", { left: 200, top: 300, width: 270, height: 60 });
+		const far = fake(log, "far", { left: 200, top: -900, width: 135, height: 60 });
+		placePrismsIn(
+			[
+				[one.element, "42"],
+				[far.element, "42"],
+			],
+			list,
+		);
+		expect(log).toContain('find one .msg-mention[data-user-id="42"]');
+		const firstWrite = log.findIndex((line) => line.startsWith("write"));
+		expect(log.slice(firstWrite).every((line) => line.startsWith("write"))).toBe(true);
+		expect(one.set).toMatchObject({ "--mx": "80px", "--my": "40px", "--ps": "1" });
+		expect(Object.keys(one.set).sort()).toEqual(["--cx", "--mx", "--my", "--ps", "--wx"]);
+		expect(far.set).toMatchObject({ "--mx": "80px", "--my": "40px", "--ps": "0.5", "--cx": "110px", "--wx": "60px" });
 	});
 });

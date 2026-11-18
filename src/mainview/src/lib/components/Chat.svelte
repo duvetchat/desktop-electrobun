@@ -552,11 +552,12 @@
 	// The message box's height, for the list above it and the jump button (--composer-h): the list's newest message
 	// clears the box however tall it grows, with a reply, files or several lines of text.
 	let composerEl = $state<HTMLElement>();
+	let composerHeight = $state(0);
 	$effect(() => {
 		const bar = composerEl;
-		const root = rootEl;
-		if (!bar || !root || typeof ResizeObserver === "undefined") return;
-		const observer = new ResizeObserver(() => root.style.setProperty("--composer-h", `${bar.offsetHeight}px`));
+		if (!bar || typeof ResizeObserver === "undefined") return;
+		// Handed to the list, which sets it where it is read: on this root it would restyle every row with each change.
+		const observer = new ResizeObserver(() => (composerHeight = bar.offsetHeight));
 		observer.observe(bar);
 		return () => observer.disconnect();
 	});
@@ -798,6 +799,7 @@
 		{onLoadMore}
 		{onLoadMoreBelow}
 		{onJumpToPresent}
+		{composerHeight}
 		{failedNonces}
 		bind:isAtBottom
 		{onDeleteMsg}

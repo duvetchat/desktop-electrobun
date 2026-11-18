@@ -34,25 +34,63 @@ export function mentionCentre(bubble: Box, mention: Box | null): { mx: number; m
 
 const px = (value: number) => `${Math.round(value * 10) / 10}px`;
 
-/** Sets a Prism bubble's side lights for where it is in its list. Called as the bubble is placed and as the list scrolls. */
-export function slidePrism(bubble: HTMLElement, list: HTMLElement): void {
-	const box = bubble.getBoundingClientRect();
-	const view = list.getBoundingClientRect();
-	const scale = prismScale(box.width);
-	const { cx, wx } = prismSides(prismSlide(box.top + box.height / 2, view.top, view.height), scale);
-	bubble.style.setProperty("--cx", px(cx));
-	bubble.style.setProperty("--wx", px(wx));
+/** What the lights need of a bubble, and of the list it is in. */
+export interface Boxed {
+	getBoundingClientRect(): Box;
+}
+export interface Lit extends Boxed {
+	querySelector(selector: string): Boxed | null;
+	style: { setProperty(name: string, value: string): unknown };
 }
 
-/** Places all of a Prism bubble's lights: the main one on the mention of userId, and the side lights (slidePrism). */
-export function placePrism(bubble: HTMLElement, list: HTMLElement, userId: string): void {
-	const box = bubble.getBoundingClientRect();
-	const mention = bubble.querySelector<HTMLElement>(`.msg-mention[data-user-id="${CSS.escape(userId)}"]`);
-	const { mx, my } = mentionCentre(box, mention?.getBoundingClientRect() ?? null);
-	bubble.style.setProperty("--mx", px(mx));
-	bubble.style.setProperty("--my", px(my));
-	bubble.style.setProperty("--ps", String(Math.round(prismScale(box.width) * 100) / 100));
-	slidePrism(bubble, list);
+const sidesIn = (box: Box, view: Box) =>
+	prismSides(prismSlide(box.top + box.height / 2, view.top, view.height), prismScale(box.width));
+
+// Both of these read every box first and write afterwards: a write between two reads makes the browser work the
+// page's styles and layout out again for each bubble.
+
+/**
+ * Sets the side lights of the Prism bubbles in the list's view for where each is in it. Called as the list scrolls,
+ * once a frame. A bubble outside the view is left alone: its lights are set as it scrolls in.
+ */
+export function slidePrismsIn(bubbles: Iterable<Lit>, list: Boxed): void {
+	const view = list.getBoundingClientRect();
+	const moves: { bubble: Lit; cx: number; wx: number }[] = [];
+	for (const bubble of bubbles) {
+		const box = bubble.getBoundingClientRect();
+		if (box.top + box.height < view.top || box.top > view.top + view.height) continue;
+		moves.push({ bubble, ...sidesIn(box, view) });
+	}
+	for (const { bubble, cx, wx } of moves) {
+		bubble.style.setProperty("--cx", px(cx));
+		bubble.style.setProperty("--wx", px(wx));
+	}
+}
+
+/**
+ * Places all the lights of each Prism bubble, given with the id of the user its text mentions: the main one on that
+ * mention, and the side lights. Called as a bubble is laid out and when its size changes, in view or not.
+ */
+export function placePrismsIn(bubbles: Iterable<readonly [Lit, string]>, list: Boxed): void {
+	const view = list.getBoundingClientRect();
+	const places: { bubble: Lit; mx: number; my: number; ps: number; cx: number; wx: number }[] = [];
+	for (const [bubble, userId] of bubbles) {
+		const box = bubble.getBoundingClientRect();
+		const mention = bubble.querySelector(`.msg-mention[data-user-id="${CSS.escape(userId)}"]`);
+		places.push({
+			bubble,
+			...mentionCentre(box, mention?.getBoundingClientRect() ?? null),
+			ps: Math.round(prismScale(box.width) * 100) / 100,
+			...sidesIn(box, view),
+		});
+	}
+	for (const { bubble, mx, my, ps, cx, wx } of places) {
+		bubble.style.setProperty("--mx", px(mx));
+		bubble.style.setProperty("--my", px(my));
+		bubble.style.setProperty("--ps", String(ps));
+		bubble.style.setProperty("--cx", px(cx));
+		bubble.style.setProperty("--wx", px(wx));
+	}
 }
 
 // The classes that draw it. Tailwind reads them here, so each class is whole in one string. The bubble holds the light

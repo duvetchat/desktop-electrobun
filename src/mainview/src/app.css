@@ -749,6 +749,14 @@
 	}
 }
 
+/* The message box's height, which a chat's list and its jump button clear (MessageList.svelte sets it on those two).
+   It doesn't inherit: the list's rows would otherwise be restyled each time the box grows or shrinks. */
+@property --composer-h {
+	syntax: "<length>";
+	inherits: false;
+	initial-value: 64px;
+}
+
 @layer base {
 	*,
 	::after,

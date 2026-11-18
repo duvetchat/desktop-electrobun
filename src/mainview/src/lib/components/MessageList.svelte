@@ -65,7 +65,7 @@
 	import { nameColors } from "$lib/name-colors";
 	import { clockTime, dayLabel, groupShapes, headTime, shortClockTime } from "$lib/message-groups";
 	import { messageLayout } from "$lib/stores/message-layout.svelte";
-	import { PRISM_BUBBLE, PRISM_LIGHT, PRISM_RIM, PRISM_WASH, placePrism, slidePrism } from "$lib/prism";
+	import { PRISM_BUBBLE, PRISM_LIGHT, PRISM_RIM, PRISM_WASH, placePrismsIn, slidePrismsIn } from "$lib/prism";
 
 	import {
 		gatewayMessageToMessage,
@@ -126,6 +126,7 @@
 		onLoadMore = () => {},
 		onLoadMoreBelow = () => {},
 		onJumpToPresent = undefined,
+		composerHeight = 0,
 		onRetry = () => {},
 		onDismiss = () => {},
 		onReply = undefined,
@@ -157,6 +158,8 @@
 		onLoadMoreBelow?: () => Promise<void> | void;
 		/** Takes the list from a jump's pages to the present (the newest messages); true once it's there. */
 		onJumpToPresent?: () => Promise<boolean>;
+		/** The message box's height in px, which the list's foot and the jump button clear (--composer-h); 0 while unknown. */
+		composerHeight?: number;
 		onRetry?: (message: Message) => void;
 		onDismiss?: (nonce: string) => void;
 		onReply?: (message: Message) => void;
@@ -445,6 +448,7 @@
 			window.clearInterval(intervalId);
 		}
 		if (prismFrame) cancelAnimationFrame(prismFrame);
+		prismObserver?.disconnect();
 		scrollEl?.removeEventListener("click", copyCode);
 		scrollEl?.removeEventListener("click", openRoomMention, true);
 		scrollEl?.removeEventListener("click", openMention, true);
@@ -625,33 +629,44 @@
 		scrollEl.scrollTo({ top: 0, behavior: smooth ? "smooth" : "instant" });
 	}
 
+	// The message box's height on the two things that read it, the list and the jump button, and on nothing above them:
+	// app.css registers --composer-h as a property that doesn't inherit, so a taller box restyles no row.
+	const composerH = $derived(composerHeight > 0 ? `${composerHeight}px` : null);
+
 	// ── Prism ──────────────────────────────────────────────────────────────────
 	// The bubbles that mention the user (lib/prism.ts), each placed as it mounts and when its size changes; their side
 	// lights follow the scroll, once a frame.
-	const prisms = new Set<HTMLElement>();
+	// Each bubble with the id of the user it mentions; one observer watches the size of them all.
+	const prisms = new Map<HTMLElement, string>();
+	let prismObserver: ResizeObserver | null = null;
 	let prismFrame = 0;
 	function slidePrisms() {
 		if (prismFrame) return;
 		prismFrame = requestAnimationFrame(() => {
 			prismFrame = 0;
 			if (gone || !scrollEl) return;
-			for (const bubble of prisms) slidePrism(bubble, scrollEl);
+			slidePrismsIn(prisms.keys(), scrollEl);
 		});
+	}
+	function placePrisms(entries: ResizeObserverEntry[]) {
+		if (!scrollEl) return;
+		const sized: [HTMLElement, string][] = [];
+		for (const { target } of entries) {
+			const id = target instanceof HTMLElement ? prisms.get(target) : undefined;
+			if (id && target instanceof HTMLElement) sized.push([target, id]);
+		}
+		placePrismsIn(sized, scrollEl);
 	}
 	// On a message's text; userId is the user's while the text is a bubble that mentions them, else null.
 	function prism(node: HTMLElement, userId: string | null) {
-		let observer: ResizeObserver | null = null;
 		function light(id: string | null) {
-			observer?.disconnect();
-			observer = null;
+			prismObserver?.unobserve(node);
 			prisms.delete(node);
 			if (!id || typeof ResizeObserver === "undefined") return;
-			prisms.add(node);
+			prisms.set(node, id);
 			// Its first call comes as it starts to observe: the bubble is laid out by then.
-			observer = new ResizeObserver(() => {
-				if (scrollEl) placePrism(node, scrollEl, id);
-			});
-			observer.observe(node);
+			prismObserver ??= new ResizeObserver(placePrisms);
+			prismObserver.observe(node);
 		}
 		light(userId);
 		return { update: light, destroy: () => light(null) };
@@ -1064,6 +1079,7 @@
 		<div
 			{...props}
 			bind:this={scrollEl}
+			style:--composer-h={composerH}
 			class="@container flex flex-1 flex-col-reverse overflow-x-clip overflow-y-auto overscroll-contain pt-[calc(var(--pane-header-h,0px)+16px)] pb-[calc(var(--composer-h,64px)+24px)] {flat
 				? 'px-[calc(var(--duvet-pad-x)-8px)]'
 				: 'px-(--duvet-pad-x)'}"
@@ -1394,6 +1410,7 @@
 {#if (farFromBottom || hasMoreMessagesBelow) && messages.length > 0 && !isInitialLoading}
 	<button
 		type="button"
+		style:--composer-h={composerH}
 		class="{GLASS} animate-pop text-duvet-ink absolute right-[calc(var(--duvet-pad-x)+2px)] bottom-[calc(var(--composer-h,64px)+12px)] z-5 grid size-10 place-items-center rounded-full"
 		title="Jump to the newest"
 		aria-label={unreadCount > 0 ? `Jump to the newest, ${unreadCount} new` : "Jump to the newest"}

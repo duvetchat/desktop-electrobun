@@ -82,7 +82,14 @@ describe("who's typing", () => {
 	test("fits the 24 px the list leaves under its newest message, over the message box, which it doesn't cover", () => {
 		// The list's bottom padding: the box's height, which the chat measures, and 24 px.
 		expect(source("MessageList.svelte")).toContain("pb-[calc(var(--composer-h,64px)+24px)]");
-		expect(chat).toContain('root.style.setProperty("--composer-h", `${bar.offsetHeight}px`)');
+		// The chat measures the box and hands the height to the list, which sets it on the two things that read it. The
+		// property doesn't inherit, so a box that grows restyles no row.
+		expect(chat).toContain("composerHeight = bar.offsetHeight");
+		expect(chat).not.toContain('style.setProperty("--composer-h"');
+		expect(source("MessageList.svelte").match(/style:--composer-h=\{composerH\}/g)).toHaveLength(2);
+		expect(readFileSync(join(import.meta.dir, "..", "..", "app.css"), "utf8")).toMatch(
+			/@property --composer-h \{\s*syntax: "<length>";\s*inherits: false;\s*initial-value: 64px;\s*\}/,
+		);
 		// 20 px tall and 2 px off the box, with nothing that makes it taller: 16 px avatars in their 1.5 px rings.
 		const pill = /\{#if active\.length > 0\}\s*<div\s+class="([^"]*)"/.exec(indicator)?.[1]?.split(/\s+/) ?? [];
 		expect(pill).toEqual(expect.arrayContaining(["h-5", "mb-0.5"]));
