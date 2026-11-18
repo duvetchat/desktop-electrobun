@@ -21,7 +21,7 @@ Object.assign(globalThis, {
 			storageListeners.delete(listener);
 		},
 	},
-	__duvetShell: { os: "darwin", titleBarStyle: "hiddenInset", window: "media" },
+	__duvetShell: { os: "darwin", titleBarStyle: "hiddenInset", nativeButtons: true, window: "media" },
 	document: { hidden: false, addEventListener() {}, removeEventListener() {} },
 });
 

@@ -4,7 +4,8 @@ import { isElectrobunWindow } from "$lib/electrobun-rpc";
 // app runs reads from `shellFor`, a pure function of what the page can know before it paints:
 //   - whether it runs in the desktop app: isElectrobunWindow() (lib/electrobun-rpc.ts), the one place that says so;
 //   - the shell Bun hands this window in its preload (src/bun/shell.ts: window.__duvetShell), at document start: the
-//     system from process.platform, the title bar's style Bun chose, which window this is. Only Bun knows these;
+//     system from process.platform, the title bar's style Bun chose, whether the system's window buttons show, and
+//     which window this is. Only Bun knows these;
 //   - the user agent, as a fallback, and in a browser;
 //   - under the dev server only, a preview override (?shell=mac|windows|linux|web, or localStorage duvet.dev.shell),
 //     so a browser can draw another system's chrome for review. A build has none of it (import.meta.env.DEV).
@@ -17,6 +18,8 @@ export type TitleBarStyle = "hidden" | "hiddenInset" | "default";
 export interface InjectedShell {
 	os: string;
 	titleBarStyle: TitleBarStyle;
+	/** Whether the system's own window buttons show (macOS's traffic lights). */
+	nativeButtons: boolean;
 	window: WindowKind;
 }
 
@@ -33,10 +36,10 @@ export interface Shell {
 	chrome: "mac" | "windows" | "linux" | "web";
 	os: Os;
 	window: WindowKind;
-	/** macOS draws the traffic lights itself: leave them their corner (PLATFORM.md §1). Not with a hidden title bar,
-	 * which has no native buttons. */
+	/** macOS draws the traffic lights itself: leave them their corner (PLATFORM.md §1). Only when Bun says the
+	 * window's own buttons show: it hides them while the page still draws its own. */
 	nativeTrafficLights: boolean;
-	/** The page draws minimize, maximize and close itself: Windows and Linux, and macOS while its title bar is hidden. */
+	/** The page draws minimize, maximize and close itself: Windows and Linux, and macOS while its lights are hidden. */
 	ownWindowControls: boolean;
 	/** The title bar's strip drags the window (Electrobun's drag class); never on the web. */
 	draggableTitleBar: boolean;
@@ -69,10 +72,12 @@ const isTitleBarStyle = (value: unknown): value is TitleBarStyle =>
 /** window.__duvetShell as Bun wrote it, or null for anything else: a page in a browser has none. */
 export function parseInjectedShell(value: unknown): InjectedShell | null {
 	if (typeof value !== "object" || value === null) return null;
-	if (!("os" in value) || !("titleBarStyle" in value) || !("window" in value)) return null;
-	const { os, titleBarStyle, window } = value;
+	if (!("os" in value) || !("titleBarStyle" in value) || !("nativeButtons" in value) || !("window" in value))
+		return null;
+	const { os, titleBarStyle, nativeButtons, window } = value;
 	if (typeof os !== "string" || !isTitleBarStyle(titleBarStyle) || !isWindowKind(window)) return null;
-	return { os, titleBarStyle, window };
+	if (typeof nativeButtons !== "boolean") return null;
+	return { os, titleBarStyle, nativeButtons, window };
 }
 
 export function shellFor({ inElectrobun, injected, userAgent, preview }: ShellInputs): Shell {
@@ -83,8 +88,8 @@ export function shellFor({ inElectrobun, injected, userAgent, preview }: ShellIn
 			? previewed
 			: ((injected ? OS_OF[injected.os] : undefined) ?? osFromUserAgent(userAgent));
 	const chrome: Shell["chrome"] = !desktop ? "web" : os === "mac" ? "mac" : os === "windows" ? "windows" : "linux";
-	// A preview draws the design, where macOS has its lights; the app has them unless Bun made the window without.
-	const nativeTrafficLights = chrome === "mac" && (previewed !== null || injected?.titleBarStyle !== "hidden");
+	// A preview draws the design, where macOS has its lights; the app has them when Bun says the window shows them.
+	const nativeTrafficLights = chrome === "mac" && (previewed !== null || injected?.nativeButtons === true);
 	return {
 		chrome,
 		os,

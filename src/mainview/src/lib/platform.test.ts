@@ -18,6 +18,7 @@ const LINUX_UA = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, lik
 const injected = (os: string, window: InjectedShell["window"] = "main"): InjectedShell => ({
 	os,
 	titleBarStyle: os === "darwin" ? "hiddenInset" : "hidden",
+	nativeButtons: os === "darwin",
 	window,
 });
 const inApp = (os: string, userAgent = MAC_UA) =>
@@ -40,15 +41,24 @@ describe("shellFor", () => {
 		});
 	});
 
-	// A hidden title bar has no native buttons (Electrobun hides them): the page still draws its own, as it does today.
-	test("on macOS with a hidden title bar there are no native lights, and the page draws the controls", () => {
+	// Until the shell's phase the page draws its own controls on macOS too, and Bun hides the system's (its title
+	// bar is there for the window to take keys, window-keys.ts): the switch says what shows, not what the style is.
+	test("on macOS with the system's buttons hidden there are no native lights, and the page draws the controls", () => {
 		const shell = shellFor({
 			inElectrobun: true,
-			injected: { os: "darwin", titleBarStyle: "hidden", window: "main" },
+			injected: { os: "darwin", titleBarStyle: "hiddenInset", nativeButtons: false, window: "main" },
 			userAgent: MAC_UA,
 			preview: null,
 		});
 		expect(shell).toMatchObject({ chrome: "mac", nativeTrafficLights: false, ownWindowControls: true });
+	});
+
+	test("in the app without Bun's word, macOS draws its own controls: nothing says the lights are there", () => {
+		expect(shellFor({ inElectrobun: true, injected: null, userAgent: MAC_UA, preview: null })).toMatchObject({
+			chrome: "mac",
+			nativeTrafficLights: false,
+			ownWindowControls: true,
+		});
 	});
 
 	test("on Windows and Linux the page draws its own controls", () => {
@@ -142,15 +152,17 @@ describe("what Bun's preload hands the page", () => {
 	};
 
 	test("is a shell the switch reads as it is", () => {
-		expect(parseInjectedShell(handed(shellPreload("media", "hiddenInset", "darwin")))).toEqual({
-			os: "darwin",
-			titleBarStyle: "hiddenInset",
-			window: "media",
-		});
+		expect(
+			parseInjectedShell(
+				handed(shellPreload("media", { titleBarStyle: "hiddenInset", nativeButtons: true }, "darwin")),
+			),
+		).toEqual({ os: "darwin", titleBarStyle: "hiddenInset", nativeButtons: true, window: "media" });
 		expect(
 			shellFor({
 				inElectrobun: true,
-				injected: parseInjectedShell(handed(shellPreload("main", "hidden", "win32"))),
+				injected: parseInjectedShell(
+					handed(shellPreload("main", { titleBarStyle: "hidden", nativeButtons: false }, "win32")),
+				),
 				userAgent: MAC_UA,
 				preview: null,
 			}),
@@ -163,10 +175,12 @@ describe("what Bun's preload hands the page", () => {
 			null,
 			"main",
 			{},
-			{ os: "darwin", titleBarStyle: "hiddenInset" },
-			{ os: "darwin", titleBarStyle: "frameless", window: "main" },
-			{ os: "darwin", titleBarStyle: "hidden", window: "about" },
-			{ os: 1, titleBarStyle: "hidden", window: "main" },
+			{ os: "darwin", titleBarStyle: "hiddenInset", nativeButtons: true },
+			{ os: "darwin", titleBarStyle: "hiddenInset", window: "main" },
+			{ os: "darwin", titleBarStyle: "frameless", nativeButtons: true, window: "main" },
+			{ os: "darwin", titleBarStyle: "hidden", nativeButtons: false, window: "about" },
+			{ os: "darwin", titleBarStyle: "hidden", nativeButtons: "no", window: "main" },
+			{ os: 1, titleBarStyle: "hidden", nativeButtons: false, window: "main" },
 		]) {
 			expect(parseInjectedShell(value)).toBeNull();
 		}
@@ -182,7 +196,7 @@ describe("reading the page", () => {
 
 	// isElectrobunWindow() is the one place that says whether the page runs in the app.
 	test("a page outside Electrobun is the web, whatever it claims about its shell", () => {
-		globals.__duvetShell = { os: "darwin", titleBarStyle: "hiddenInset", window: "main" };
+		globals.__duvetShell = { os: "darwin", titleBarStyle: "hiddenInset", nativeButtons: true, window: "main" };
 		const inputs = readShellInputs();
 		expect(inputs.inElectrobun).toBe(false);
 		expect(shellFor(inputs).chrome).toBe("web");
@@ -190,11 +204,11 @@ describe("reading the page", () => {
 
 	test("a page in Electrobun reads the shell Bun handed it", () => {
 		globals.window = { __electrobunWindowId: 1 };
-		globals.__duvetShell = { os: "win32", titleBarStyle: "hidden", window: "settings" };
+		globals.__duvetShell = { os: "win32", titleBarStyle: "hidden", nativeButtons: false, window: "settings" };
 		const inputs = readShellInputs();
 		expect(inputs).toMatchObject({
 			inElectrobun: true,
-			injected: { os: "win32", titleBarStyle: "hidden", window: "settings" },
+			injected: { os: "win32", titleBarStyle: "hidden", nativeButtons: false, window: "settings" },
 		});
 		expect(shellFor(inputs)).toMatchObject({ chrome: "windows", window: "settings" });
 	});

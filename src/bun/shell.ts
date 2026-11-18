@@ -13,6 +13,8 @@ export interface InjectedShell {
 	/** process.platform: darwin, win32 or linux. */
 	os: string;
 	titleBarStyle: TitleBarStyle;
+	/** Whether the system's own window buttons show (macOS's traffic lights): else the page draws its own. */
+	nativeButtons: boolean;
 	window: WindowKind;
 }
 
@@ -21,7 +23,11 @@ export interface InjectedShell {
  * run before any of the page's scripts. It sets window.__duvetShell, frozen, in the top frame only: Electrobun injects
  * preloads into subframes too on some platforms, and an embedded player's page is told nothing.
  */
-export function shellPreload(window: WindowKind, titleBarStyle: TitleBarStyle, os: string = process.platform): string {
-	const shell: InjectedShell = { os, titleBarStyle, window };
+export function shellPreload(
+	window: WindowKind,
+	{ titleBarStyle, nativeButtons }: { titleBarStyle: TitleBarStyle; nativeButtons: boolean },
+	os: string = process.platform,
+): string {
+	const shell: InjectedShell = { os, titleBarStyle, nativeButtons, window };
 	return `if (window.top === window) window.__duvetShell = Object.freeze(${JSON.stringify(shell)});`;
 }

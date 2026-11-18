@@ -18,7 +18,8 @@ import { navigationRules } from "./navigation";
 import { Maximizer } from "./window-frame";
 import { dragWithWindows, letWindowsArrange } from "./window-snap";
 import { startupSummary, writeStartupLine } from "./startup";
-import { shellPreload, type TitleBarStyle } from "./shell";
+import { shellPreload } from "./shell";
+import { keepKeysReachingThePage, mainWindowTitleBar, type AppKit } from "./window-keys";
 import { WindowRelay, type WindowAnswer, type WindowCommand, type WindowStateMessage } from "./window-relay";
 
 // When Bun started, and its own steps of the app's start, which the page's join in startup.log (startupTimings, #280):
@@ -231,15 +232,18 @@ const currentOS = process.platform;
 
 const rendererType = currentOS === "linux" ? "cef" : "native";
 
-// The main window's title bar: none, with the page drawing its own (Header.svelte).
-const titleBarStyle: TitleBarStyle = "hidden";
+// The main window's title bar: none, with the page drawing its own (Header.svelte). On macOS it is there, transparent
+// and empty, as a window without one can't take keys there; the system's buttons are hidden until the shell's phase
+// gives macOS its traffic lights (window-keys.ts, #357).
+const titleBarStyle = mainWindowTitleBar(currentOS);
+const nativeButtons = false;
 
 const win = new BrowserWindow({
 	titleBarStyle,
 	renderer: rendererType,
 	// What only Bun knows about this window, for the page's platform switch (shell.ts, lib/platform.ts), set before
 	// any of the page's scripts run.
-	preload: shellPreload("main", titleBarStyle),
+	preload: shellPreload("main", { titleBarStyle, nativeButtons }),
 	sandbox: false,
 	frame: {
 		height: 900,
@@ -267,6 +271,17 @@ function arrangeByWindows(): boolean {
 	}
 	return false;
 }
+
+// On macOS, keys reach the page once its web view is the window's first responder (window-keys.ts). AppKit's bridge is
+// loaded there only; if it can't be, the app runs as it did, and a click in the page gives it the keyboard.
+const appkit: AppKit | null =
+	currentOS === "darwin"
+		? await import("./appkit").catch((err: unknown) => {
+				console.error("[window] AppKit's bridge didn't load:", err);
+				return null;
+			})
+		: null;
+keepKeysReachingThePage(win, appkit, { nativeButtons });
 
 // Through the webview: BrowserWindow stores a navigationRules option of its own, and never hands it to the native side.
 // As each page loads, not right after new BrowserWindow: macOS reads them later on its main queue, from an address
