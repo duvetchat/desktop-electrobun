@@ -1,15 +1,19 @@
 <script lang="ts" generics="Section extends string">
 	import type { Snippet } from "svelte";
 	import { Dialog } from "bits-ui";
-	import { Minus as MinusIcon, Search as SearchIcon, Square as SquareIcon, X as XIcon } from "@lucide/svelte";
+	import { Search as SearchIcon, X as XIcon } from "@lucide/svelte";
+	import DragRegion from "$lib/components/DragRegion.svelte";
+	import WindowControls from "$lib/components/WindowControls.svelte";
 	import { iconButtonClass } from "$lib/components/ui/recipes";
 	import { filterNav, navLabel, type SettingsNavGroup } from "./recipes";
 
 	// The chassis of Settings and of a Space's settings (#357, DESIGN-MAP.md S-47, S-58): a side panel that lists the
 	// sections, and the page of the one picked under a toolbar that names it. On the web it is a sheet over the app; in
 	// the desktop app it fills a window of its own, whose chrome it draws: on macOS a strip at the top of the side
-	// panel for the system's traffic lights, on Windows and Linux a title bar with the window's name and buttons
-	// (lib/window-controls.ts binds them by their IDs).
+	// panel for the system's traffic lights, on Windows and Linux a title bar with the window's name and the window's
+	// buttons, which are the shell's own (WindowControls.svelte). What drags the window is a DragRegion beside or under
+	// what it shares a line with, never around it: Electrobun starts a move on any press inside a drag element, so a
+	// button in one would move the window as it is pressed.
 	let {
 		mode,
 		chrome = "web",
@@ -45,10 +49,6 @@
 	let query = $state("");
 	const shown = $derived(filterNav(groups, query));
 	const title = $derived(navLabel(groups, active) ?? "");
-	const DRAG = "electrobun-webkit-app-region-drag";
-	const NO_DRAG = "electrobun-webkit-app-region-no-drag";
-	const windowButton =
-		"text-duvet-ink2 hover:bg-duvet-hover hover:text-duvet-ink flex h-full w-[46px] items-center justify-center transition-colors motion-reduce:transition-none";
 </script>
 
 {#snippet side()}
@@ -62,7 +62,7 @@
 	>
 		{#if mode === "window" && chrome === "mac"}
 			<!-- Where macOS draws the window's traffic lights; the strip drags the window. -->
-			<div class="{DRAG} h-[52px] shrink-0"></div>
+			<DragRegion class="h-[52px] shrink-0" />
 		{/if}
 		{@render head()}
 		<label
@@ -122,11 +122,7 @@
 
 {#snippet page()}
 	<div class="bg-duvet-bg flex min-w-0 flex-1 flex-col">
-		<div
-			class="border-duvet-line flex h-[52px] shrink-0 items-center gap-2 border-b pr-4 pl-6 {mode === 'window'
-				? DRAG
-				: ''}"
-		>
+		<div class="border-duvet-line relative flex h-[52px] shrink-0 items-center gap-2 border-b pr-4 pl-6">
 			{#if mode === "sheet"}
 				<Dialog.Title level={2} class="min-w-0 flex-1 truncate font-serif text-[17px] font-medium">{title}</Dialog.Title
 				>
@@ -134,7 +130,11 @@
 					<XIcon size={16} />
 				</Dialog.Close>
 			{:else}
-				<h2 class="min-w-0 flex-1 truncate font-serif text-[17px] font-medium">{title}</h2>
+				<!-- The toolbar drags the window, through its title: the region lies under it. -->
+				<DragRegion class="absolute inset-0" />
+				<h2 class="pointer-events-none relative min-w-0 flex-1 truncate font-serif text-[17px] font-medium">
+					{title}
+				</h2>
 			{/if}
 		</div>
 		<div class="min-h-0 flex-1 overflow-y-auto px-[26px] pt-5 pb-10">
@@ -169,26 +169,14 @@
 {:else}
 	<main class="text-duvet-ink flex size-full flex-col overflow-hidden" aria-label={name}>
 		{#if chrome === "windows" || chrome === "linux"}
-			<header
-				id="window-titlebar"
-				class="{DRAG} bg-duvet-bg border-duvet-line flex h-10 shrink-0 items-center border-b pl-3.5"
-			>
-				<span class="text-duvet-ink2 min-w-0 flex-1 truncate text-[12.5px] font-medium">{name}</span>
-				<div class="titlebar-actions {NO_DRAG} flex h-full items-stretch">
-					<button id="window-minimize" type="button" class={windowButton} aria-label="Minimize window">
-						<MinusIcon size={14} />
-					</button>
-					<button id="window-maximize" type="button" class={windowButton} aria-label="Maximize window">
-						<SquareIcon size={12} />
-					</button>
-					<button
-						id="window-close"
-						type="button"
-						class="text-duvet-ink2 hover:bg-duvet-win-close hover:text-fixed-white flex h-full w-[46px] items-center justify-center transition-colors motion-reduce:transition-none"
-						aria-label="Close window"
-					>
-						<XIcon size={15} />
-					</button>
+			<header class="bg-duvet-bg border-duvet-line relative flex h-10 shrink-0 items-stretch border-b" data-title-bar>
+				<DragRegion class="absolute inset-0" />
+				<span
+					class="text-duvet-ink2 pointer-events-none relative min-w-0 flex-1 self-center truncate pl-3.5 text-[12.5px] font-medium"
+					>{name}</span
+				>
+				<div class="relative flex h-full shrink-0">
+					<WindowControls side="end" />
 				</div>
 			</header>
 		{/if}

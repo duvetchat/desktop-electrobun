@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from "svelte";
 	import { Pin, PinOff, X } from "@lucide/svelte";
+	import DragRegion from "$lib/components/DragRegion.svelte";
 	import MediaPanel from "$lib/components/MediaPanel.svelte";
 	import Button from "$lib/components/ui/Button.svelte";
 	import IconButton from "$lib/components/ui/IconButton.svelte";
@@ -112,12 +113,15 @@
 <div class="bg-duvet-sb-bg text-duvet-ink flex h-full flex-col select-none">
 	<!-- The strip drags the window. On macOS the system's lights sit at its left; elsewhere the page closes it. -->
 	<header
-		class="electrobun-webkit-app-region-drag flex h-9 shrink-0 items-center gap-1 pr-1.5 {shell.nativeTrafficLights
-			? 'pl-[75px]'
-			: 'pl-3'}"
+		class="relative flex h-9 shrink-0 items-center gap-1 pr-1.5 {shell.nativeTrafficLights ? 'pl-[75px]' : 'pl-3'}"
 	>
-		<h1 class="text-duvet-ink2 min-w-0 flex-1 truncate text-xs font-semibold">Voice controls</h1>
-		<div class="electrobun-webkit-app-region-no-drag flex shrink-0 items-center gap-0.5">
+		<!-- Under the strip's name and beside its buttons, never around them: Electrobun starts a move on any press
+		     inside a drag element, so a button in one would move the window as it is pressed. -->
+		<DragRegion class="absolute inset-0" />
+		<h1 class="text-duvet-ink2 pointer-events-none relative min-w-0 flex-1 truncate text-xs font-semibold">
+			Voice controls
+		</h1>
+		<div class="relative flex shrink-0 items-center gap-0.5">
 			<Tooltip text={pinned ? "Stop keeping on top" : "Keep on top"}>
 				{#snippet trigger(props)}
 					<IconButton
