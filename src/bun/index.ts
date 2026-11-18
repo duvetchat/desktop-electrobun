@@ -232,11 +232,12 @@ const currentOS = process.platform;
 
 const rendererType = currentOS === "linux" ? "cef" : "native";
 
-// The main window's title bar: none, with the page drawing its own (Header.svelte). On macOS it is there, transparent
-// and empty, as a window without one can't take keys there; the system's buttons are hidden until the shell's phase
-// gives macOS its traffic lights (window-keys.ts, #357).
+// The main window's title bar: none, with the page drawing its own title line (the sidebar's header and the tab
+// strip). On macOS it is there, transparent and empty, as a window without one can't take keys there (window-keys.ts),
+// and it shows the system's traffic lights, whose corner the page keeps free (lib/platform.ts: nativeTrafficLights).
+// Windows and Linux have no system buttons: the page draws theirs (WindowControls.svelte, #357).
 const titleBarStyle = mainWindowTitleBar(currentOS);
-const nativeButtons = false;
+const nativeButtons = currentOS === "darwin";
 
 const win = new BrowserWindow({
 	titleBarStyle,

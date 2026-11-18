@@ -9,7 +9,6 @@
 	import PromptDialog from "$lib/components/PromptDialog.svelte";
 	import StorageTransferFailures from "$lib/components/StorageTransferFailures.svelte";
 
-	import { setupWindowControls } from "$lib/window-controls";
 	import { setupExternalLinks } from "$lib/external-links";
 	import { followSystemTheme } from "$lib/theme.svelte";
 	import { onMount } from "svelte";
@@ -17,7 +16,6 @@
 	let { children } = $props();
 
 	onMount(() => {
-		setupWindowControls();
 		setupExternalLinks();
 		// app.html set the theme before the first paint; this keeps it with the system's while it's System.
 		return followSystemTheme();
