@@ -9,7 +9,7 @@
 	import type { Guild } from "$lib/types";
 	import SpaceIcon from "$lib/components/SpaceIcon.svelte";
 	import TabIcon from "$lib/components/TabIcon.svelte";
-	import UserStatusBar from "$lib/components/UserStatusBar.svelte";
+	import ProfileRow from "$lib/components/ProfileRow.svelte";
 
 	/** The spaces column folded to an edge: Direct messages, the focused pane's open chats, the pinned spaces and those
 	 * with news, and the user. Hovering it, or moving the keyboard's focus into it, shows the whole column over the chat. */
@@ -117,5 +117,5 @@
 		{/if}
 	</div>
 
-	<UserStatusBar collapsed />
+	<ProfileRow collapsed />
 </div>

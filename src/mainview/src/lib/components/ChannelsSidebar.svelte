@@ -30,7 +30,7 @@
 	import { createRoom, deleteRoom, updateRoom } from "$lib/api/rooms";
 	import InviteModal from "$lib/components/InviteModal.svelte";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
-	import UserStatusBar from "$lib/components/UserStatusBar.svelte";
+	import ProfileRow from "$lib/components/ProfileRow.svelte";
 	import SpaceBanner from "$lib/components/SpaceBanner.svelte";
 	import SpaceIcon from "$lib/components/SpaceIcon.svelte";
 	import { speakingUsers, activeVoiceRoomId, gatewaySpaces, typingNow } from "$lib/stores.svelte";
@@ -393,7 +393,7 @@
 		<div class="flex flex-1 flex-col items-center gap-2 pt-3">
 			<SpaceIcon src={guild.icon_url || null} name={guild.name} size={40} />
 		</div>
-		<UserStatusBar collapsed />
+		<ProfileRow collapsed />
 	{:else}
 		<!-- Scrollable content area — flex-1 so user bar is always pinned to bottom -->
 		<div class={embedded ? "flex flex-col" : "flex min-h-0 flex-1 flex-col overflow-hidden"}>
@@ -708,7 +708,7 @@
 		<!-- end scrollable content area -->
 
 		{#if !embedded}
-			<UserStatusBar />
+			<ProfileRow />
 		{/if}
 	{/if}
 </div>

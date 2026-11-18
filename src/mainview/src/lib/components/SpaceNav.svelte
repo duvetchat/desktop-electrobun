@@ -46,7 +46,7 @@
 	import NowSection from "$lib/components/NowSection.svelte";
 	import SpaceIcon from "$lib/components/SpaceIcon.svelte";
 	import TabIcon from "$lib/components/TabIcon.svelte";
-	import UserStatusBar from "$lib/components/UserStatusBar.svelte";
+	import ProfileRow from "$lib/components/ProfileRow.svelte";
 
 	let {
 		guilds,
@@ -644,7 +644,7 @@
 		<div class="shrink-0 px-2.5 pb-2.5">
 			<div class="rounded-card bg-duvet-card shadow-duvet-raised overflow-hidden">
 				<!-- The Now section above has the voice the user is in. -->
-				<UserStatusBar showVoice={false} />
+				<ProfileRow showVoice={false} />
 			</div>
 		</div>
 	{/if}

@@ -6,7 +6,7 @@
 	import { ContextMenu } from "bits-ui";
 	import NotificationSubmenu from "$lib/components/NotificationSubmenu.svelte";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
-	import UserStatusBar from "$lib/components/UserStatusBar.svelte";
+	import ProfileRow from "$lib/components/ProfileRow.svelte";
 	import type { Conversation } from "$lib/api/conversations";
 	import { getAvatarURL } from "$lib/common/common";
 	import StatusDot from "$lib/components/StatusDot.svelte";
@@ -173,6 +173,6 @@
 			{@render conversationList()}
 		</div>
 
-		<UserStatusBar />
+		<ProfileRow />
 	</div>
 {/if}

@@ -86,7 +86,7 @@
 	const canJoin = $derived(
 		!voiceRoom || hasPermission(voiceRoom.space, voiceRoom.room, Permission.ViewChannels | Permission.JoinVoice),
 	);
-	// Without SpeakInVoice the mic stays muted: UserStatusBar mutes it when the permission goes.
+	// Without SpeakInVoice the mic stays muted: MediaControls mutes it when the permission goes.
 	const canSpeak = $derived(!voiceRoom || hasPermission(voiceRoom.space, voiceRoom.room, Permission.SpeakInVoice));
 	// Video is the camera and the screen.
 	const canVideo = $derived(!voiceRoom || hasPermission(voiceRoom.space, voiceRoom.room, Permission.Video));

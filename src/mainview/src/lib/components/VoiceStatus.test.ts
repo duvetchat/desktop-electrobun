@@ -2,7 +2,8 @@ import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-const bar = readFileSync(join(import.meta.dir, "UserStatusBar.svelte"), "utf8");
+// The voice status of the user's panel: UserStatusBar's, until the redesign split it (#357).
+const bar = readFileSync(join(import.meta.dir, "VoiceStatus.svelte"), "utf8");
 
 // #315: the ping's interval was the bar's state, started by an effect with no cleanup, so a bar destroyed during a call
 // (every READY remounts the app's UI, voice staying) left its interval fetching /health every 3 s for the session, one

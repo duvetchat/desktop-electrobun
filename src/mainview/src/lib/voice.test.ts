@@ -256,6 +256,7 @@ test("the voice room's controls go through the same functions as the user panel'
 	expect(view).toContain('import { toggleDeafen, toggleMute as toggleMic } from "$lib/voice";');
 	expect(view).not.toContain("isMuted.update");
 	expect(view).not.toContain("isDeafened.update");
-	const panel = readFileSync(join(import.meta.dir, "components/UserStatusBar.svelte"), "utf8");
+	// The user panel's controls: MediaControls, split from UserStatusBar (#357).
+	const panel = readFileSync(join(import.meta.dir, "components/MediaControls.svelte"), "utf8");
 	expect(panel).toContain("toggleDeafen, toggleMute as toggleMic");
 });
