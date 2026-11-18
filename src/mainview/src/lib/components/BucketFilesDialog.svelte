@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { claimLayer, layerStyle, releaseLayer } from "$lib/overlay-layers";
 	import { buttonClass, GLASS_STRONG } from "$lib/components/ui/recipes";
 	import { calloutClass } from "$lib/components/settings/recipes";
 	import { AlertDialog } from "bits-ui";
@@ -49,6 +50,13 @@
 		deleting = false;
 		close();
 	}
+
+	// What opens last is in front, whatever opened it (lib/overlay-layers.ts): this can open over a sheet.
+	const layer = $derived(request !== null ? claimLayer() : 0);
+	$effect(() => {
+		const mine = layer;
+		if (mine) return () => releaseLayer(mine);
+	});
 </script>
 
 <!-- Open while there's a request: closing it (Esc, Cancel) is refused during the delete. -->
@@ -61,8 +69,8 @@
 	}
 >
 	<AlertDialog.Portal>
-		<AlertDialog.Overlay class="bg-duvet-scrim animate-scrim-in fixed inset-0 z-600" />
-		<AlertDialog.Content class="fixed inset-0 z-601 flex items-center justify-center p-4">
+		<AlertDialog.Overlay style={layerStyle(layer)} class="bg-duvet-scrim animate-scrim-in fixed inset-0 z-[900]" />
+		<AlertDialog.Content style={layerStyle(layer)} class="fixed inset-0 z-[900] flex items-center justify-center p-4">
 			<div class="{GLASS_STRONG} animate-sheet-in text-duvet-ink flex w-full max-w-md flex-col gap-3 rounded-3xl p-4">
 				{#if request}
 					{@const bucket = request.bucket}

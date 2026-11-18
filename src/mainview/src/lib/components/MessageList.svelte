@@ -36,6 +36,7 @@
 	import { keyboard } from "$lib/keyboard.svelte";
 	import { rowKey, rowToward, staysWithRow, tabStop } from "$lib/message-focus";
 	import { Dialog, DropdownMenu, Popover } from "bits-ui";
+	import { claimLayer, layerStyle, releaseLayer } from "$lib/overlay-layers";
 	import {
 		currentUser,
 		jumpToMessageRequest,
@@ -224,6 +225,13 @@
 	let menuTarget = $state<MenuTarget | null>(null);
 	let menuOpen = $state(false);
 	let moreMenuFor = $state<string | null>(null);
+	// The More menu's layer, claimed as it opens as ui/Menu.svelte's is: its author submenu, which claims the next,
+	// is then in front of it wherever it lands (lib/overlay-layers.ts).
+	const moreMenuLayer = $derived(moreMenuFor ? claimLayer() : 0);
+	$effect(() => {
+		const mine = moreMenuLayer;
+		if (mine) return () => releaseLayer(mine);
+	});
 	const menuMessage = $derived.by(() => {
 		const target = menuTarget;
 		return target?.kind === "message" ? messages.find((m) => m.id === target.id) : undefined;
@@ -1647,16 +1655,19 @@
 			</DropdownMenu.Trigger>
 			{#if moreMenuFor === message.id}
 				<DropdownMenu.Portal>
-					<DropdownMenu.Content
-						side="bottom"
-						align={mine ? "start" : "end"}
-						sideOffset={6}
-						collisionPadding={10}
-						aria-label="Message"
-						class="{MENU_PANEL} origin-(--bits-floating-transform-origin)"
-					>
-						{@render messageItems(message)}
-					</DropdownMenu.Content>
+					<!-- The panel's positioner takes no layer of its own: this holds it, at the menu's. -->
+					<div class="fixed top-0 left-0" style={layerStyle(moreMenuLayer)}>
+						<DropdownMenu.Content
+							side="bottom"
+							align={mine ? "start" : "end"}
+							sideOffset={6}
+							collisionPadding={10}
+							aria-label="Message"
+							class="{MENU_PANEL} origin-(--bits-floating-transform-origin)"
+						>
+							{@render messageItems(message)}
+						</DropdownMenu.Content>
+					</div>
 				</DropdownMenu.Portal>
 			{/if}
 		</DropdownMenu.Root>

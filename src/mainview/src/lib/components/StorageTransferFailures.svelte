@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { claimLayer, layerStyle, releaseLayer } from "$lib/overlay-layers";
 	import { buttonClass, GLASS_STRONG, iconButtonClass } from "$lib/components/ui/recipes";
 	import { calloutClass, SKELETON } from "$lib/components/settings/recipes";
 	import { Dialog } from "bits-ui";
@@ -47,6 +48,13 @@
 			void loadPage(t);
 		});
 	});
+
+	// What opens last is in front, whatever opened it (lib/overlay-layers.ts): this can open over a sheet.
+	const layer = $derived(transfer !== null ? claimLayer() : 0);
+	$effect(() => {
+		const mine = layer;
+		if (mine) return () => releaseLayer(mine);
+	});
 </script>
 
 <Dialog.Root
@@ -58,8 +66,8 @@
 	}
 >
 	<Dialog.Portal>
-		<Dialog.Overlay class="bg-duvet-scrim animate-scrim-in fixed inset-0 z-600" />
-		<Dialog.Content class="fixed inset-0 z-601 flex items-center justify-center p-4">
+		<Dialog.Overlay style={layerStyle(layer)} class="bg-duvet-scrim animate-scrim-in fixed inset-0 z-[900]" />
+		<Dialog.Content style={layerStyle(layer)} class="fixed inset-0 z-[900] flex items-center justify-center p-4">
 			<div
 				class="{GLASS_STRONG} animate-sheet-in text-duvet-ink flex max-h-[70vh] w-full max-w-lg flex-col gap-3 rounded-3xl p-4"
 			>
