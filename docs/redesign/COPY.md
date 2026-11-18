@@ -90,7 +90,7 @@ Never in the UI: server, channel, guild ([§3](#3-space-and-room-wording)), and 
 ### Errors
 
 - New errors say **"Couldn't …"**: "Couldn't load your calls" (`components/CallHistory.svelte:107`), "Couldn't rename the group", "Couldn't open your microphone", "Couldn't connect to voice". 86 older strings (in 103 toasts) say "Failed to …" ("Failed to delete room"); leave them unless their surface is redrawn.
-- When the API says why, the toast shows the API's text instead (`getApiError`, `lib/api/api.ts:518-524`); the app's own string is the fallback.
+- When the API says why, the toast shows the API's text instead (`getApiError`, `lib/api/api.ts:518-524`); the app's own string is the fallback. Every API reason shown starts with a capital letter, whether `lib/api/error-wording.ts` knows the text or not (the lead's ruling, Phase 3): the module's last step capitalises what it doesn't reword.
 - What to do next goes after a colon or into a button: "Try again" (`components/CallHistory.svelte:99`, `components/MessageList.svelte:913`).
 
 ### Empty states

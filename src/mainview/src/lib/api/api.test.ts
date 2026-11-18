@@ -300,7 +300,7 @@ describe("an upload", () => {
 		const failure = await api.post("/api/rooms/r/messages", messageForm(file(1024))).catch((e: unknown) => e);
 		if (!(failure instanceof FetchError)) throw new Error(`not the API's error: ${String(failure)}`);
 		expect(failure.response?.status).toBe(413);
-		expect(getApiError(failure, "")).toBe("failed to upload attachment: file is too large");
+		expect(getApiError(failure, "")).toBe("Failed to upload attachment: file is too large");
 	});
 
 	test("that stops sending once it started is aborted after its idle time, and fails", async () => {

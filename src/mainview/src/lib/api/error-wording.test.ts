@@ -158,19 +158,23 @@ describe("the API's known error texts, in the app's words", () => {
 		expect(inAppWords("invalid user id", "Couldn't send the request")).toBe("That isn't a valid user ID");
 	});
 
-	test("any other text is the API's own, untouched", () => {
-		for (const text of [
-			"failed to upload attachment: file is too large",
-			"room not found",
-			"message not found",
+	test("any other text keeps the API's own words, and starts with a capital letter as the app's do", () => {
+		for (const [text, shown] of [
+			["failed to upload attachment: file is too large", "Failed to upload attachment: file is too large"],
+			["room not found", "Room not found"],
+			["message not found", "Message not found"],
 			// The app reads this one to send the user back to sign-in (routes/invite): it stays as it comes.
-			"Session invalid or expired",
-			"you are being rate limited",
+			["Session invalid or expired", "Session invalid or expired"],
+			["you are being rate limited", "You are being rate limited"],
 			// Not one of the known texts, though it has the word: only what was checked against the API is rewritten.
-			"this channel is archived",
-			"",
-		])
-			expect(inAppWords(text, "Failed")).toBe(text);
+			["this channel is archived", "This channel is archived"],
+			// A field's name stays the API's but for its first letter, and a text that starts with no letter is as it came.
+			["max_bytes must be a non-zero positive number", "Max_bytes must be a non-zero positive number"],
+			["2 files are still uploading", "2 files are still uploading"],
+			["  room not found ", "Room not found"],
+			["", ""],
+		] as const)
+			expect(inAppWords(text, "Failed"), text).toBe(shown);
 	});
 });
 
@@ -180,8 +184,8 @@ describe("getApiError", () => {
 		expect(getApiError(refused("internal server error", 500), "Failed to create room")).toBe("Failed to create room");
 	});
 
-	test("still shows every other reason as the API gave it, and its own errors and fallback as before", () => {
-		expect(getApiError(refused("room not found", 404), "Failed to open room")).toBe("room not found");
+	test("still shows every other reason in the API's words, capital first, and its own errors and fallback as before", () => {
+		expect(getApiError(refused("room not found", 404), "Failed to open room")).toBe("Room not found");
 		expect(getApiError(new Error("No answer from the server in time"), "Failed")).toBe(
 			"No answer from the server in time",
 		);

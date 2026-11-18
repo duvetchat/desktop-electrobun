@@ -5,7 +5,8 @@
 // meet are put in the app's words here, on their way to the screen. Nothing sent or received changes.
 //
 // Only texts checked against the API are rewritten (api/internal/services/errors.go and the handlers in
-// api/internal/http; the gateway has the first three permission texts too): any other text comes back as it came.
+// api/internal/http; the gateway has the first three permission texts too): any other text keeps its words, and
+// takes only a capital first letter.
 //   - "internal server error" gives way to what the app was doing;
 //   - a field the API's validator refused ("Key: 'AuthLogInPayload.Email' Error:Field validation for 'Email' failed on
 //     the 'required' tag") becomes a sentence about that field, and a body its decoder couldn't read gives way too;
@@ -147,7 +148,7 @@ function validationWords(refused: { field: string; rule: string }[]): string {
 /**
  * An API error's text in the app's words. A text the app knows is put in its words; one that tells the user nothing
  * ("internal server error", a decoder's complaint) gives way to the caller's own message (`fallback`) when there is
- * one. Any other text comes back unchanged.
+ * one. Any other text comes back in the API's words, with a capital first letter: Go's start in lower case.
  */
 export function inAppWords(text: string, fallback: string): string {
 	const trimmed = text.trim();
@@ -166,5 +167,6 @@ export function inAppWords(text: string, fallback: string): string {
 	const badId = BAD_ID.exec(trimmed);
 	if (badId)
 		return badId[1]!.toLowerCase() === "user" ? "That isn't a valid user ID" : fallback || "That ID isn't valid";
-	return text;
+	// A text the app doesn't know keeps the API's words, but starts as every sentence on screen does (COPY.md, Errors).
+	return capital(trimmed);
 }
