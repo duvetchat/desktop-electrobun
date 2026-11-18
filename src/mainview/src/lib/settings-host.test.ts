@@ -106,3 +106,18 @@ describe("the section Settings opens on", () => {
 		]);
 	});
 });
+
+// The control in Settings and the chats share one value (#357): the host reads and writes the chats' own store, so a
+// change shows in every chat on screen at once, and is saved under the chats' key.
+test("the page's host sets the chats' message layout, which saves it", async () => {
+	const { pageSettingsHost, MESSAGE_LAYOUT_KEY } = await import("$lib/settings-host");
+	const { messageLayout } = await import("$lib/stores/message-layout.svelte");
+	const before = messageLayout.value;
+	pageSettingsHost.setMessageLayout("flat");
+	expect(messageLayout.value).toBe("flat");
+	expect(pageSettingsHost.messageLayout()).toBe("flat");
+	if (typeof localStorage !== "undefined") expect(localStorage.getItem(MESSAGE_LAYOUT_KEY)).toBe("flat");
+	pageSettingsHost.setMessageLayout("bubbles");
+	expect(messageLayout.value).toBe("bubbles");
+	messageLayout.value = before;
+});

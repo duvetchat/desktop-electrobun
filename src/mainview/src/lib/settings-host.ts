@@ -3,12 +3,13 @@
 // stores: there the host sends these on to the main window (lib/stores/settings-link.svelte.ts).
 import { logout } from "$lib/api/auth";
 import { applyOwnProfile, type SavedProfile } from "$lib/own-profile";
+import { MESSAGE_LAYOUT_KEY, type MessageLayout } from "$lib/message-layout";
 import { gatewaySpaces } from "$lib/stores.svelte";
+import { messageLayout } from "$lib/stores/message-layout.svelte";
 import { toast } from "$lib/stores/toast.svelte";
 
-/** How chats draw their messages: the conversation's own preference, kept under this key (lib/message-layout.ts). */
-export const MESSAGE_LAYOUT_KEY = "duvet.messages.layout.v1";
-export type MessageLayout = "bubbles" | "flat";
+/** How chats draw their messages: the conversation's own preference, kept under its own key (lib/message-layout.ts). */
+export { MESSAGE_LAYOUT_KEY, type MessageLayout };
 
 export function parseMessageLayout(raw: unknown): MessageLayout {
 	return raw === "flat" ? "flat" : "bubbles";
@@ -70,20 +71,14 @@ export function parseSavedSpace(value: unknown): SavedSpace | null {
 	};
 }
 
+// The chats' own store has the layout (lib/stores/message-layout.svelte.ts): setting it there saves it and redraws
+// every chat on screen at once.
 function readMessageLayout(): MessageLayout {
-	try {
-		return parseMessageLayout(localStorage.getItem(MESSAGE_LAYOUT_KEY));
-	} catch {
-		return "bubbles";
-	}
+	return messageLayout.value;
 }
 
 function writeMessageLayout(layout: MessageLayout) {
-	try {
-		localStorage.setItem(MESSAGE_LAYOUT_KEY, layout);
-	} catch {
-		// no storage: the choice lasts until the app closes
-	}
+	messageLayout.value = layout;
 }
 
 /** The host of a page that has the app's stores: the web's sheets, and the main window. */
