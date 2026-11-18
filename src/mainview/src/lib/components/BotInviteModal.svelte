@@ -1,6 +1,6 @@
 <script lang="ts">
-	import { Dialog } from "bits-ui";
-	import { X as XIcon } from "@lucide/svelte";
+	import Sheet from "$lib/components/ui/Sheet.svelte";
+	import { spinnerClass } from "$lib/overlay-forms";
 	import { getBotUser, addBotToSpace, type BotUser } from "$lib/api/developer";
 	import { gatewaySpaces } from "$lib/stores.svelte";
 	import { getAvatarURL } from "$lib/common/common";
@@ -62,60 +62,47 @@
 	}
 </script>
 
-<Dialog.Root bind:open>
-	<Dialog.Portal>
-		<Dialog.Overlay class="fixed inset-0 z-50 bg-black/60" />
-		<Dialog.Content
-			class="rounded-card border-duvet-line bg-duvet-bg shadow-duvet-float fixed top-1/2 left-1/2 z-50 w-full max-w-sm -translate-x-1/2 -translate-y-1/2 border p-6"
-		>
-			<div class="mb-4 flex items-center justify-between">
-				<h2 class="text-duvet-ink text-base font-semibold">Add Bot to Space</h2>
-				<Dialog.Close class="text-duvet-ink2 hover:bg-duvet-card hover:text-duvet-ink rounded-md p-1 transition-colors">
-					<XIcon class="size-5" />
-				</Dialog.Close>
+<Sheet bind:open title="Add Bot to Space" class="max-w-[420px]">
+	{#if loading}
+		<div class="text-duvet-ink2 flex items-center justify-center py-8">
+			<div class={spinnerClass("lg")} role="status" aria-label="Loading the bot"></div>
+		</div>
+	{:else if error}
+		<p class="text-duvet-danger py-4 text-center text-[13px]">{error}</p>
+	{:else if bot}
+		<div class="flex items-center gap-3">
+			<UserAvatar src={getAvatarURL(bot.id, bot.avatar)} name={bot.username} size={40} />
+			<div class="flex min-w-0 items-center gap-1.5">
+				<span class="text-duvet-ink truncate text-[14px] font-semibold">{bot.username}</span>
+				<span
+					class="bg-duvet-secondary-fill text-duvet-ink2 rounded-[5px] px-1.5 py-0.5 text-[9.5px] leading-none font-bold tracking-[0.04em]"
+					>BOT</span
+				>
 			</div>
+		</div>
 
-			{#if loading}
-				<div class="flex items-center justify-center py-8">
-					<div class="border-duvet-ink2/40 h-8 w-8 animate-spin rounded-full border-3 border-t-transparent"></div>
-				</div>
-			{:else if error}
-				<p class="text-duvet-danger py-4 text-center text-sm">{error}</p>
-			{:else if bot}
-				<div class="mb-4 flex items-center gap-3">
-					<UserAvatar src={getAvatarURL(bot.id, bot.avatar)} name={bot.username} size={40} />
-					<div>
-						<div class="flex items-center gap-1.5">
-							<span class="text-duvet-ink text-sm font-semibold">{bot.username}</span>
-							<span class="text-xxs bg-duvet-accent text-duvet-on-accent rounded px-1 py-0.5 font-bold">BOT</span>
-						</div>
+		<p class="text-duvet-ink2 text-xs">Pick a Space</p>
+		<div class="-mx-1 flex max-h-48 flex-col gap-0.5 overflow-y-auto px-1">
+			{#each botSpaces as space (space.id)}
+				<button
+					class="hover:bg-duvet-hover flex shrink-0 items-center gap-2.5 rounded-xl px-2 py-1.5 text-left transition-colors disabled:opacity-45 motion-reduce:transition-none"
+					onclick={() => handleAdd(space.id)}
+					disabled={adding}
+				>
+					<div
+						class="bg-duvet-chosen text-duvet-chosen-ink grid size-8 shrink-0 place-items-center rounded-[9px] text-sm font-bold select-none"
+					>
+						{space.name.charAt(0).toUpperCase()}
 					</div>
-				</div>
+					<span class="text-duvet-ink truncate text-[13.5px] font-medium">{space.name}</span>
+				</button>
+			{/each}
+		</div>
 
-				<p class="text-duvet-ink2 mb-3 text-xs">Select a space:</p>
-				<div class="flex max-h-48 flex-col gap-1 overflow-y-auto">
-					{#each botSpaces as space (space.id)}
-						<button
-							class="bg-duvet-card hover:bg-duvet-ink/10 flex items-center gap-3 rounded-lg px-3 py-2.5 text-left transition-colors disabled:opacity-50"
-							onclick={() => handleAdd(space.id)}
-							disabled={adding}
-						>
-							<div
-								class="bg-duvet-chosen text-duvet-chosen-ink shadow-duvet-raised flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-sm font-bold select-none"
-							>
-								{space.name.charAt(0).toUpperCase()}
-							</div>
-							<span class="text-duvet-ink truncate text-sm">{space.name}</span>
-						</button>
-					{/each}
-				</div>
-
-				{#if $gatewaySpaces.length === 0}
-					<p class="text-duvet-ink2 py-4 text-center text-sm">You're not in any spaces yet.</p>
-				{:else if botSpaces.length === 0}
-					<p class="text-duvet-ink2 py-4 text-center text-sm">Adding a bot to a space takes Manage Bots in it.</p>
-				{/if}
-			{/if}
-		</Dialog.Content>
-	</Dialog.Portal>
-</Dialog.Root>
+		{#if $gatewaySpaces.length === 0}
+			<p class="text-duvet-ink2 py-4 text-center text-[13px]">You're not in any Spaces yet.</p>
+		{:else if botSpaces.length === 0}
+			<p class="text-duvet-ink2 py-4 text-center text-[13px]">Adding a bot to a Space takes Manage Bots in it.</p>
+		{/if}
+	{/if}
+</Sheet>

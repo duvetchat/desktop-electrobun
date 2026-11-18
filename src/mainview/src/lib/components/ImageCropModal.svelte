@@ -1,6 +1,7 @@
 <script lang="ts">
-	import { Dialog } from "bits-ui";
-	import { X as XIcon, ZoomIn as ZoomInIcon, ZoomOut as ZoomOutIcon } from "@lucide/svelte";
+	import { ZoomIn as ZoomInIcon, ZoomOut as ZoomOutIcon } from "@lucide/svelte";
+	import Sheet from "$lib/components/ui/Sheet.svelte";
+	import Button from "$lib/components/ui/Button.svelte";
 	import {
 		coverCrop,
 		cropView,
@@ -248,7 +249,7 @@
 </script>
 
 <!-- Closed without Apply, it lets go of the image it read as a data URL, a third larger than the file (#325). -->
-<Dialog.Root
+<Sheet
 	bind:open
 	onOpenChange={(o) => {
 		if (!o) {
@@ -256,101 +257,79 @@
 			imgSrc = "";
 		}
 	}}
+	{title}
 >
-	<Dialog.Portal>
-		<Dialog.Overlay class="fixed inset-0 z-500 bg-black/70 backdrop-blur-sm" />
-		<Dialog.Content class="fixed inset-0 z-501 flex items-center justify-center p-4">
+	{#if !imgSrc}
+		<label
+			class="border-duvet-line hover:bg-duvet-hover-soft focus-within:bg-duvet-hover-soft flex h-48 cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed transition-colors motion-reduce:transition-none"
+		>
+			<span class="text-duvet-ink text-[13.5px] font-medium">Click to choose an image</span>
+			<span class="text-duvet-ink2 mt-1 text-xs">PNG, JPG, GIF — max 10MB</span>
+			<input type="file" accept="image/*" class="sr-only" onchange={handleFileChange} />
+		</label>
+	{:else}
+		<p class="text-duvet-ink2 -mt-1.5 text-[13px]">Drag to reposition. Scroll to zoom.</p>
+		<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+		<div
+			class="bg-duvet-sunk relative mx-auto max-w-full cursor-grab touch-none overflow-hidden rounded-2xl select-none active:cursor-grabbing"
+			style="width: {VIEW_WIDTH}px; height: {frameBox.height + 2 * FRAME_MARGIN}px;"
+			role="application"
+			tabindex="-1"
+			onpointerdown={handlePointerDown}
+			onpointermove={handlePointerMove}
+			onpointerup={handlePointerUp}
+			onpointercancel={handlePointerUp}
+			onwheel={handleWheel}
+		>
+			<img
+				bind:this={imgEl}
+				src={imgSrc}
+				alt="Preview"
+				class="absolute block max-w-none {naturalW ? '' : 'invisible'}"
+				style="
+					left: {frameLeft + view.x}px;
+					top: {FRAME_MARGIN + view.y}px;
+					width: {naturalW * view.scale}px;
+					height: {naturalH * view.scale}px;
+				"
+				onload={onImageLoad}
+				draggable="false"
+			/>
+			<!-- The frame shows the result; its shadow dims the rest of the image. -->
 			<div
-				class="rounded-card border-duvet-line bg-duvet-bg text-duvet-ink shadow-duvet-float w-full max-w-lg overflow-hidden border"
+				class="ring-fixed-white/40 pointer-events-none absolute shadow-[0_0_0_9999px_rgb(0_0_0/0.6)] ring-2 {round
+					? 'rounded-full'
+					: 'rounded-md'}"
+				style="left: {frameLeft}px; top: {FRAME_MARGIN}px; width: {frameBox.width}px; height: {frameBox.height}px;"
+			></div>
+		</div>
+
+		<div class="mx-auto flex max-w-full items-center gap-3" style="width: {VIEW_WIDTH}px;">
+			<ZoomOutIcon size={16} class="text-duvet-ink2 shrink-0" />
+			<input
+				type="range"
+				min="0"
+				max="1"
+				step="0.01"
+				value={zoomSlider(zoom, zoomLimit)}
+				oninput={handleZoomSlider}
+				disabled={zoomLimit <= 1}
+				aria-label="Zoom"
+				class="bg-duvet-toggle-off accent-duvet-accent [&::-webkit-slider-thumb]:bg-duvet-accent h-1.5 w-full cursor-pointer appearance-none rounded-full disabled:cursor-default disabled:opacity-45 [&::-webkit-slider-thumb]:size-3.5 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full"
+			/>
+			<ZoomInIcon size={16} class="text-duvet-ink2 shrink-0" />
+		</div>
+	{/if}
+	{#snippet foot()}
+		{#if imgSrc}
+			<Button
+				variant="quiet"
+				onclick={() => {
+					file = null;
+					imgSrc = "";
+				}}>Change image</Button
 			>
-				<div class="border-duvet-line flex items-center justify-between border-b px-5 py-3">
-					<h2 class="text-duvet-ink text-sm font-semibold">{title}</h2>
-					<Dialog.Close
-						class="text-duvet-ink2 hover:bg-duvet-card hover:text-duvet-ink flex h-7 w-7 items-center justify-center rounded-lg transition-colors"
-					>
-						<XIcon class="size-4" />
-					</Dialog.Close>
-				</div>
-
-				<div class="p-5">
-					{#if !imgSrc}
-						<label
-							class="border-duvet-line hover:border-duvet-ink2/40 hover:bg-duvet-card/30 flex h-48 cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed transition-colors"
-						>
-							<span class="text-duvet-ink2 text-sm">Click to choose an image</span>
-							<span class="text-duvet-ink2/60 mt-1 text-xs">PNG, JPG, GIF — max 10MB</span>
-							<input type="file" accept="image/*" class="hidden" onchange={handleFileChange} />
-						</label>
-					{:else}
-						<p class="text-duvet-ink2 mb-2 text-xs">Drag to reposition. Scroll to zoom.</p>
-						<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-						<div
-							class="bg-duvet-sunk relative mx-auto cursor-grab touch-none overflow-hidden rounded-lg select-none active:cursor-grabbing"
-							style="width: {VIEW_WIDTH}px; height: {frameBox.height + 2 * FRAME_MARGIN}px;"
-							role="application"
-							tabindex="-1"
-							onpointerdown={handlePointerDown}
-							onpointermove={handlePointerMove}
-							onpointerup={handlePointerUp}
-							onpointercancel={handlePointerUp}
-							onwheel={handleWheel}
-						>
-							<img
-								bind:this={imgEl}
-								src={imgSrc}
-								alt="Preview"
-								class="absolute block max-w-none {naturalW ? '' : 'invisible'}"
-								style="
-									left: {frameLeft + view.x}px;
-									top: {FRAME_MARGIN + view.y}px;
-									width: {naturalW * view.scale}px;
-									height: {naturalH * view.scale}px;
-								"
-								onload={onImageLoad}
-								draggable="false"
-							/>
-							<!-- The frame shows the result; its shadow dims the rest of the image. -->
-							<div
-								class="ring-fixed-white/40 pointer-events-none absolute shadow-[0_0_0_9999px_rgb(0_0_0/0.6)] ring-2 {round
-									? 'rounded-full'
-									: 'rounded-md'}"
-								style="left: {frameLeft}px; top: {FRAME_MARGIN}px; width: {frameBox.width}px; height: {frameBox.height}px;"
-							></div>
-						</div>
-
-						<div class="mx-auto mt-3 flex items-center gap-3" style="width: {VIEW_WIDTH}px;">
-							<ZoomOutIcon class="text-duvet-ink2 size-4 shrink-0" />
-							<input
-								type="range"
-								min="0"
-								max="1"
-								step="0.01"
-								value={zoomSlider(zoom, zoomLimit)}
-								oninput={handleZoomSlider}
-								disabled={zoomLimit <= 1}
-								aria-label="Zoom"
-								class="bg-duvet-ink/10 accent-duvet-accent [&::-webkit-slider-thumb]:bg-duvet-accent h-1.5 w-full cursor-pointer appearance-none rounded-full disabled:cursor-default disabled:opacity-40 [&::-webkit-slider-thumb]:h-3.5 [&::-webkit-slider-thumb]:w-3.5 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full"
-							/>
-							<ZoomInIcon class="text-duvet-ink2 size-4 shrink-0" />
-						</div>
-
-						<div class="mt-4 flex justify-between gap-3">
-							<button
-								class="text-duvet-ink hover:bg-duvet-card rounded-md px-3 py-1.5 text-sm transition-colors"
-								onclick={() => {
-									file = null;
-									imgSrc = "";
-								}}>Change image</button
-							>
-							<button
-								class="bg-duvet-accent text-duvet-on-accent shadow-duvet-raised rounded-xl px-5 py-1.5 text-sm font-bold transition-colors hover:brightness-110"
-								onclick={handleConfirm}
-								disabled={processing}>{processing ? "Processing..." : "Apply"}</button
-							>
-						</div>
-					{/if}
-				</div>
-			</div>
-		</Dialog.Content>
-	</Dialog.Portal>
-</Dialog.Root>
+			<Button onclick={handleConfirm} disabled={processing}>{processing ? "Processing…" : "Apply"}</Button>
+		{/if}
+	{/snippet}
+</Sheet>

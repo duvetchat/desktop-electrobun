@@ -1,8 +1,11 @@
 <script lang="ts">
 	import { getApiError } from "$lib/api/api";
-	import { Dialog, Tabs } from "bits-ui";
 	import { createSpace } from "$lib/api/spaces";
 	import JoinInviteModal from "$lib/components/JoinInviteModal.svelte";
+	import Sheet from "$lib/components/ui/Sheet.svelte";
+	import Button from "$lib/components/ui/Button.svelte";
+	import Segmented from "$lib/components/ui/Segmented.svelte";
+	import { FIELD_ERROR, FIELD_LABEL, fieldClass } from "$lib/overlay-forms";
 
 	/** Creating a space, or joining one with an invite code or link, which shows the invite's preview first. */
 	let { open = $bindable(false) }: { open?: boolean } = $props();
@@ -71,103 +74,72 @@
 	}
 </script>
 
-<Dialog.Root bind:open>
-	<Dialog.Portal>
-		<Dialog.Overlay class="fixed inset-0 z-50 bg-black/60" />
-		<Dialog.Content class="fixed inset-0 z-50 flex items-center justify-center p-4">
-			<div
-				class="rounded-card border-duvet-line bg-duvet-bg text-duvet-ink shadow-duvet-float flex w-full max-w-sm flex-col gap-4 border p-6"
-			>
-				<Dialog.Title class="text-duvet-ink text-center text-lg font-bold">Add a Space</Dialog.Title>
-				<p class="text-duvet-ink -mt-2 text-center text-sm">Create your own or join one with an invite code.</p>
+<Sheet
+	bind:open
+	title="Add a Space"
+	description="Create your own or join one with an invite code."
+	closeLabel="Cancel"
+	class="max-w-[440px]"
+>
+	<Segmented
+		bind:value={modalTab}
+		label="Create a Space or join one"
+		options={[
+			{ value: "create", label: "Create" },
+			{ value: "join", label: "Join" },
+		]}
+	/>
 
-				<Tabs.Root bind:value={modalTab}>
-					<Tabs.List class="bg-duvet-card/80 grid grid-cols-2 gap-2 rounded-lg p-1">
-						<Tabs.Trigger
-							value="create"
-							class="data-[state=active]:bg-duvet-chosen data-[state=active]:text-duvet-chosen-ink rounded-row text-duvet-ink px-3 py-2 text-sm font-semibold"
-						>
-							Create
-						</Tabs.Trigger>
-						<Tabs.Trigger
-							value="join"
-							class="data-[state=active]:bg-duvet-chosen data-[state=active]:text-duvet-chosen-ink rounded-row text-duvet-ink px-3 py-2 text-sm font-semibold"
-						>
-							Join
-						</Tabs.Trigger>
-					</Tabs.List>
+	{#if modalTab === "create"}
+		<div class="flex flex-col gap-1.5">
+			<label for="server-name" class={FIELD_LABEL}>Space Name <span class="text-duvet-danger">*</span></label>
+			<input
+				id="server-name"
+				type="text"
+				bind:value={serverName}
+				placeholder="My awesome Space"
+				class={fieldClass()}
+				maxlength={64}
+			/>
+		</div>
+		<div class="flex flex-col gap-1.5">
+			<label for="server-desc" class={FIELD_LABEL}>Description <span class="font-normal">(optional)</span></label>
+			<input
+				id="server-desc"
+				type="text"
+				bind:value={serverDescription}
+				placeholder="What's this Space about?"
+				class={fieldClass()}
+				maxlength={256}
+			/>
+		</div>
+		{#if createError}
+			<p class={FIELD_ERROR}>{createError}</p>
+		{/if}
+	{:else}
+		<div class="flex flex-col gap-1.5">
+			<label for="join-code" class={FIELD_LABEL}>Invite Code or Link</label>
+			<input
+				id="join-code"
+				type="text"
+				bind:value={joinInputValue}
+				placeholder="abc123 or invite?code=abc123"
+				class="{fieldClass()} font-mono text-[13px]"
+			/>
+		</div>
+	{/if}
 
-					<Tabs.Content value="create" class="mt-4 space-y-3">
-						<div class="flex flex-col gap-1">
-							<label for="server-name" class="text-duvet-ink2 text-[13px] font-bold"
-								>Space Name <span class="text-duvet-danger">*</span></label
-							>
-							<input
-								id="server-name"
-								type="text"
-								bind:value={serverName}
-								placeholder="My awesome Space"
-								class="text-duvet-ink placeholder:text-duvet-ink2 bg-duvet-sunk shadow-duvet-press focus-visible:outline-duvet-accent rounded-xl px-3 py-2 text-sm focus-visible:outline-2"
-								maxlength={64}
-							/>
-						</div>
-						<div class="flex flex-col gap-1">
-							<label for="server-desc" class="text-duvet-ink2 text-[13px] font-bold"
-								>Description <span class="text-duvet-ink2">(optional)</span></label
-							>
-							<input
-								id="server-desc"
-								type="text"
-								bind:value={serverDescription}
-								placeholder="What's this Space about?"
-								class="text-duvet-ink placeholder:text-duvet-ink2 bg-duvet-sunk shadow-duvet-press focus-visible:outline-duvet-accent rounded-xl px-3 py-2 text-sm focus-visible:outline-2"
-								maxlength={256}
-							/>
-						</div>
-						{#if createError}
-							<p class="text-duvet-danger text-xs">{createError}</p>
-						{/if}
-						<div class="flex justify-end">
-							<button
-								onclick={handleCreate}
-								disabled={creating || !serverName.trim()}
-								class="bg-duvet-accent text-duvet-on-accent shadow-duvet-raised rounded-xl px-4 py-2 text-sm font-bold transition-colors hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
-								>{creating ? "Creating…" : "Create"}</button
-							>
-						</div>
-					</Tabs.Content>
-
-					<Tabs.Content value="join" class="mt-4 space-y-3">
-						<div class="flex flex-col gap-1">
-							<label for="join-code" class="text-duvet-ink2 text-[13px] font-bold">Invite Code or Link</label>
-							<input
-								id="join-code"
-								type="text"
-								bind:value={joinInputValue}
-								placeholder="abc123 or invite?code=abc123"
-								class="text-duvet-ink placeholder:text-duvet-ink2 bg-duvet-sunk shadow-duvet-press focus-visible:outline-duvet-accent rounded-xl px-3 py-2 font-mono text-sm focus-visible:outline-2"
-							/>
-						</div>
-						<div class="flex justify-end">
-							<button
-								onclick={handleJoinSubmit}
-								disabled={!joinInputValue.trim()}
-								class="bg-duvet-accent text-duvet-on-accent shadow-duvet-raised rounded-xl px-4 py-2 text-sm font-bold transition-colors hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
-								>Preview</button
-							>
-						</div>
-					</Tabs.Content>
-				</Tabs.Root>
-
-				<div class="mt-1 flex justify-center">
-					<Dialog.Close
-						class="text-duvet-ink2 hover:bg-duvet-card hover:text-duvet-ink rounded-md px-4 py-2 text-sm transition-colors"
-						>Cancel</Dialog.Close
-					>
-				</div>
-			</div>
-		</Dialog.Content>
-	</Dialog.Portal>
-</Dialog.Root>
+	{#snippet foot()}
+		<span></span>
+		<Button variant="quiet" onclick={() => (open = false)}>Cancel</Button>
+		{#if modalTab === "create"}
+			<Button onclick={handleCreate} disabled={creating || !serverName.trim()}>
+				{creating ? "Creating…" : "Create"}
+			</Button>
+		{:else}
+			<Button onclick={handleJoinSubmit} disabled={!joinInputValue.trim()}>Preview</Button>
+		{/if}
+	{/snippet}
+</Sheet>
 
 <JoinInviteModal bind:open={showJoinPreview} code={joinCode} />
