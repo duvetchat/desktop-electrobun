@@ -105,7 +105,7 @@ export interface AppWindow {
 	close(): void;
 	/** Sends its page a state. */
 	send(message: WindowStateMessage): void;
-	/** Calls back each time its page can take messages. */
+	/** Calls back each time its page says it listens: as it loads, and again if it loads again. */
 	onReady(handler: () => void): void;
 	/** Calls back once it has closed. */
 	onClose(handler: () => void): void;
