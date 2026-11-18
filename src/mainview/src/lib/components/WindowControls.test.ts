@@ -31,7 +31,7 @@ const shellOf = (chrome: Shell["chrome"], nativeTrafficLights = chrome === "mac"
 	nativeTrafficLights,
 	ownWindowControls: chrome !== "web" && !nativeTrafficLights,
 	draggableTitleBar: chrome !== "web",
-	settingsInWindows: chrome !== "web",
+	settingsInWindows: false,
 	popOut: chrome !== "web",
 	vibrancy: false,
 	preview: false,

@@ -48,7 +48,7 @@ export interface Shell {
 	ownWindowControls: boolean;
 	/** The title bar's strip drags the window (Electrobun's drag class); never on the web. */
 	draggableTitleBar: boolean;
-	/** Settings and Space settings open in windows of their own; on the web they are sheets. */
+	/** Settings and Space settings open in windows of their own instead of sheets of the main window: off everywhere. */
 	settingsInWindows: boolean;
 	/** The media controls can pop out into their own window: the desktop app only. */
 	popOut: boolean;
@@ -105,7 +105,8 @@ export function shellFor({ inElectrobun, injected, userAgent, preview, path = ""
 		nativeTrafficLights,
 		ownWindowControls: desktop && !nativeTrafficLights,
 		draggableTitleBar: desktop,
-		settingsInWindows: desktop,
+		// Sheets of the main window in the app as on the web: a window of their own opened beside it, outside its place.
+		settingsInWindows: false,
 		popOut: desktop,
 		vibrancy: false,
 		preview: previewed !== null,
