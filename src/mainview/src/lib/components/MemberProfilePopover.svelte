@@ -203,7 +203,7 @@
 						     corners are its own, and what's below clips itself. The avatar comes later and covers its lower left, so it
 						     fades out while the banner (peer/banner) is hovered. -->
 						<div
-							class="peer/banner aspect-[5/2] w-full rounded-t-[15px] transition-transform duration-150 motion-safe:hover:scale-105"
+							class="peer/banner aspect-[5/2] w-full rounded-t-[15px] transition-transform duration-150 motion-safe:hover:scale-105 motion-reduce:transition-none"
 							style={member.banner_url
 								? `background-image: url('${member.banner_url}'); background-size: cover; background-position: center;`
 								: getMemberBannerStyle(member)}
@@ -214,7 +214,7 @@
 							     banner's 150 ms, and with less motion asked too, as a fade moves nothing. It still takes the pointer: on it,
 							     the banner isn't hovered, so it shows. -->
 							<div
-								class="border-duvet-pop-ring bg-duvet-pop-ring absolute -top-12 left-4 rounded-full border-4 transition-opacity duration-150 in-peer-hover/banner:opacity-0"
+								class="border-duvet-pop-ring bg-duvet-pop-ring absolute -top-12 left-4 rounded-full border-4 transition-opacity duration-150 in-peer-hover/banner:opacity-0 motion-reduce:transition-none"
 							>
 								<UserAvatar src={member.avatar_url} name={member.username} size={80} />
 								<!-- Coloured as every status dot (statusDotClass, lib/status.ts): online in the theme's colour -->

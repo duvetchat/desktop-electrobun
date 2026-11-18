@@ -209,7 +209,7 @@
 							: 'bg-duvet-toggle-off'}"
 					>
 						<span
-							class="bg-fixed-white shadow-duvet-raised absolute top-0.5 left-0.5 size-4 rounded-full transition-transform {on
+							class="bg-fixed-white shadow-duvet-raised absolute top-0.5 left-0.5 size-4 rounded-full transition-transform motion-reduce:transition-none {on
 								? 'translate-x-4'
 								: ''}"
 						></span>

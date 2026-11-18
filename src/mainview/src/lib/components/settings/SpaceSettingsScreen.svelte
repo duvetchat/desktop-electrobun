@@ -29,6 +29,7 @@
 		TriangleAlert as WarningIcon,
 	} from "@lucide/svelte";
 	import { slide } from "svelte/transition";
+	import { motionMs } from "$lib/motion";
 	import ImageCropModal from "$lib/components/ImageCropModal.svelte";
 	import StorageTransferCard from "$lib/components/StorageTransferCard.svelte";
 	import MoveFilesDialog from "$lib/components/MoveFilesDialog.svelte";
@@ -1397,7 +1398,7 @@
 		{#if preview}
 			<img src={preview} alt={kind} class="size-full object-cover" />
 			<div
-				class="bg-duvet-media-scrim absolute inset-0 flex items-center justify-center gap-2 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100"
+				class="bg-duvet-media-scrim absolute inset-0 flex items-center justify-center gap-2 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 motion-reduce:transition-none"
 			>
 				<button class="text-fixed-white hover:bg-fixed-white/20 rounded-md p-1.5" title="Edit" onclick={edit}
 					><PencilIcon class="size-4" /></button
@@ -1413,14 +1414,14 @@
 				{#if kind === "banner"}No banner{:else}<XIcon class="size-5" />{/if}
 			</div>
 			<div
-				class="bg-duvet-media-scrim absolute inset-0 flex items-center justify-center opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100"
+				class="bg-duvet-media-scrim absolute inset-0 flex items-center justify-center opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 motion-reduce:transition-none"
 			>
 				<button class="text-fixed-white text-xs font-medium" onclick={undo}>Undo</button>
 			</div>
 		{:else if saved}
 			<img src={saved} alt={kind} class="size-full object-cover" />
 			<div
-				class="bg-duvet-media-scrim absolute inset-0 flex items-center justify-center gap-2 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100"
+				class="bg-duvet-media-scrim absolute inset-0 flex items-center justify-center gap-2 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 motion-reduce:transition-none"
 			>
 				<button class="text-fixed-white hover:bg-fixed-white/20 rounded-md p-1.5" title="Edit" onclick={edit}
 					><PencilIcon class="size-4" /></button
@@ -1431,7 +1432,7 @@
 			</div>
 		{:else}
 			<button
-				class="text-duvet-accent-text hover:bg-duvet-hover-strong flex size-full items-center justify-center gap-1.5 text-[13px] font-medium transition-colors"
+				class="text-duvet-accent-text hover:bg-duvet-hover-strong flex size-full items-center justify-center gap-1.5 text-[13px] font-medium transition-colors motion-reduce:transition-none"
 				title={kind === "banner" ? "Set banner" : "Set icon"}
 				onclick={edit}
 			>
@@ -1467,7 +1468,7 @@
 			{@const pickedCount = spacePicker.pickedFiles.length}
 			{@const tooMany = (spacePicker.filter.attachment_ids?.length ?? 0) > MAX_PICKED_FILES}
 			<div
-				transition:slide={{ duration: 200 }}
+				transition:slide={{ duration: motionMs(200) }}
 				class="bg-duvet-card shadow-duvet-lifted mx-[26px] mb-3 flex items-center justify-between gap-4 rounded-2xl py-2.5 pr-2.5 pl-4 text-[13px] font-medium"
 			>
 				<p class="text-duvet-ink2 min-w-0 truncate">
@@ -1676,7 +1677,7 @@
 					{#each sortedRoles as role, i (role.id)}
 						{@const manageable = canManageRoleAt(space, role.position)}
 						<div
-							class="{CARD} transition-opacity duration-100"
+							class="{CARD} transition-opacity duration-100 motion-reduce:transition-none"
 							class:opacity-40={isDragging && dragIndex !== i}
 							class:ring-2={isDragging && dragIndex === i}
 							class:ring-duvet-accent={isDragging && dragIndex === i}
@@ -1715,7 +1716,7 @@
 														onclick={() => {
 															editingRoleClearColors = !editingRoleClearColors;
 														}}
-														class="{TAG} py-1! transition-colors {editingRoleClearColors
+														class="{TAG} py-1! transition-colors motion-reduce:transition-none {editingRoleClearColors
 															? 'bg-duvet-danger text-duvet-on-danger'
 															: 'bg-duvet-secondary-fill text-duvet-ink'}">Clear color</button
 													>
@@ -1942,7 +1943,7 @@
 							<span class={LABEL}>Image</span>
 							<button
 								type="button"
-								class="bg-duvet-secondary-fill text-duvet-accent-text hover:bg-duvet-hover-strong flex size-[38px] items-center justify-center overflow-hidden rounded-[11px] transition-colors"
+								class="bg-duvet-secondary-fill text-duvet-accent-text hover:bg-duvet-hover-strong flex size-[38px] items-center justify-center overflow-hidden rounded-[11px] transition-colors motion-reduce:transition-none"
 								title={preview ? "Change image" : "Choose image"}
 								aria-label={preview ? "Change image" : "Choose image"}
 								onclick={() => (emojis ? (showEmojiCrop = true) : (showStickerCrop = true))}
@@ -2014,7 +2015,7 @@
 								<p class="min-w-0 flex-1 truncate text-[13.5px] font-medium">:{emoji.name}:</p>
 								{#if canManageEmojis}
 									<div
-										class="flex gap-1 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100"
+										class="flex gap-1 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 motion-reduce:transition-none"
 									>
 										<IconButton label="Rename" title="Rename" onclick={() => startEmojiEdit(emoji)}>
 											<PencilIcon size={16} />
@@ -2067,7 +2068,7 @@
 								<p class="min-w-0 flex-1 truncate text-[13.5px] font-medium">{sticker.name}</p>
 								{#if canManageStickers}
 									<div
-										class="flex gap-1 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100"
+										class="flex gap-1 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 motion-reduce:transition-none"
 									>
 										<IconButton label="Rename" title="Rename" onclick={() => startStickerEdit(sticker)}>
 											<PencilIcon size={16} />

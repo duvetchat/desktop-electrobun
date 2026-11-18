@@ -228,7 +228,7 @@
 			</div>
 		{/if}
 		<div
-			class="group-hover/avatar:bg-duvet-media-scrim absolute inset-0 flex items-center justify-center gap-1 opacity-0 transition-opacity group-focus-within/avatar:opacity-100 group-hover/avatar:opacity-100"
+			class="group-hover/avatar:bg-duvet-media-scrim absolute inset-0 flex items-center justify-center gap-1 opacity-0 transition-opacity group-focus-within/avatar:opacity-100 group-hover/avatar:opacity-100 motion-reduce:transition-none"
 		>
 			<button
 				type="button"
@@ -421,7 +421,7 @@
 								</p>
 							</div>
 							<div
-								class="flex gap-1 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100"
+								class="flex gap-1 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 motion-reduce:transition-none"
 							>
 								<IconButton label="Rename" title="Rename" onclick={() => startWebhookEdit(wh)}>
 									<PencilIcon size={16} />

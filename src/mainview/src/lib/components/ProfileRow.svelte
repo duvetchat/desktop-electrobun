@@ -48,7 +48,7 @@
 				src={getAvatarURL($currentUser.id, $currentUser.avatar)}
 				name={$currentUser.alias || $currentUser.username}
 				size={28}
-				class="box-border transition-all duration-200 {$speakingUsers.has($currentUser.id)
+				class="box-border transition-all duration-200 motion-reduce:transition-none {$speakingUsers.has($currentUser.id)
 					? 'ring-duvet-alive ring-2'
 					: ''}"
 			/>

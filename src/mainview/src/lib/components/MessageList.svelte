@@ -1762,7 +1762,7 @@
 											label="Reply to {threadMsg.author_name}"
 											title="Reply"
 											size="sm"
-											class="absolute top-1.5 right-1.5 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 focus-visible:opacity-100"
+											class="absolute top-1.5 right-1.5 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 focus-visible:opacity-100 motion-reduce:transition-none"
 											onclick={() => onThreadReply(threadMsg, root)}
 										>
 											<ReplyIcon size={14} />

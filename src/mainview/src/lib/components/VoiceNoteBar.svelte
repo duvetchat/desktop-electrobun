@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { Play, Pause, X } from "@lucide/svelte";
 	import { fly } from "svelte/transition";
+	import { motionMs } from "$lib/motion";
 	import {
 		voiceNote,
 		toggleVoiceNote,
@@ -42,8 +43,8 @@
 	<section
 		aria-label="Now playing"
 		class="bg-duvet-sb-card shadow-duvet-raised mx-2.5 mb-2 shrink-0 rounded-[14px] select-none"
-		in:fly={{ y: 20, duration: 200, opacity: 1 }}
-		out:fly={{ y: 20, duration: 200, opacity: 1 }}
+		in:fly={{ y: 20, duration: motionMs(200), opacity: 1 }}
+		out:fly={{ y: 20, duration: motionMs(200), opacity: 1 }}
 	>
 		<!-- svelte-ignore a11y_click_events_have_key_events -->
 		<!-- svelte-ignore a11y_no_static_element_interactions -->

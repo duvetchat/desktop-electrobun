@@ -23,11 +23,39 @@ test("no component has a <style> block", () => {
 	expect(components.filter((c) => /<style[\s>]/.test(c.source)).map((c) => c.file)).toEqual([]);
 });
 
-test("every animate-* class a component names is an animation of app.css's theme, with its keyframes", () => {
+// The recipes are plain modules whose classes reach the components (ui/recipes.ts, lib/prism.ts,
+// lib/message-styles.ts): they name animations too.
+const tsFiles = (dir: string): string[] =>
+	readdirSync(dir, { withFileTypes: true }).flatMap((entry) =>
+		entry.isDirectory()
+			? tsFiles(join(dir, entry.name))
+			: entry.name.endsWith(".ts") && !entry.name.endsWith(".test.ts") && !entry.name.endsWith(".d.ts")
+				? [join(dir, entry.name)]
+				: [],
+	);
+const modules = tsFiles(src)
+	.map((file) => ({ file: relative(src, file).split(sep).join("/"), source: readFileSync(file, "utf8") }))
+	.filter((m) => !m.file.startsWith("lib/stickers/"));
+
+// An arbitrary animation names keyframes no theme entry declares, so nothing can check them, or turn them off for
+// reduced motion.
+test("no component or recipe writes an arbitrary animate-[…]", () => {
+	expect([...components, ...modules].filter((c) => /(?<![\w-])animate-\[/.test(c.source)).map((c) => c.file)).toEqual(
+		[],
+	);
+});
+
+test("every animate-* class a component or a recipe names is an animation of app.css's theme, with its keyframes", () => {
 	const css = readFileSync(join(src, "app.css"), "utf8");
 	// Tailwind's own, which need no theme entry.
 	const builtIn = new Set(["spin", "ping", "pulse", "bounce", "none"]);
-	const used = new Set(components.flatMap((c) => [...c.source.matchAll(/\banimate-([a-z][a-z-]*)/g)].map((m) => m[1])));
+	const used = new Set(
+		[...components, ...modules].flatMap((c) =>
+			[...c.source.matchAll(/(?<![\w-])animate-([a-z][a-z-]*)(?=[\s"'`}]|$)/gm)].map((m) => m[1]),
+		),
+	);
+	// A recipe's too.
+	expect(used).toContain("prism-arrive");
 	expect(used).toContain("member-typing-bounce");
 	expect(used).toContain("auth-drift");
 	for (const name of used) {

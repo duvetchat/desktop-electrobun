@@ -86,7 +86,7 @@
 	     little past the card on hover; nothing clips it, so its corners are its own, and what's below clips itself. The
 	     avatar comes later and covers its lower left, so it fades out while the banner (peer/banner) is hovered. -->
 	<div
-		class="group peer/banner relative aspect-[5/2] w-full overflow-hidden rounded-t-[15px] transition-transform duration-150 motion-safe:hover:scale-105"
+		class="group peer/banner relative aspect-[5/2] w-full overflow-hidden rounded-t-[15px] transition-transform duration-150 motion-safe:hover:scale-105 motion-reduce:transition-none"
 		style={member.banner_url && !bannerError ? undefined : getBannerStyle(member)}
 	>
 		{#if member.banner_url && !bannerError}
@@ -99,12 +99,12 @@
 			/>
 		{/if}
 		<div
-			class="absolute inset-0 flex items-center justify-center gap-2 bg-black/0 transition-colors group-hover:bg-black/40"
+			class="absolute inset-0 flex items-center justify-center gap-2 bg-black/0 transition-colors group-hover:bg-black/40 motion-reduce:transition-none"
 		>
 			{#if onBannerClick}
 				<button
 					type="button"
-					class="text-fixed-white flex h-8 w-8 cursor-pointer items-center justify-center rounded-full bg-black/60 opacity-0 transition-opacity group-hover:opacity-100 hover:bg-black/80"
+					class="text-fixed-white flex h-8 w-8 cursor-pointer items-center justify-center rounded-full bg-black/60 opacity-0 transition-opacity group-hover:opacity-100 hover:bg-black/80 motion-reduce:transition-none"
 					title="Change banner"
 					onclick={onBannerClick}
 				>
@@ -114,7 +114,7 @@
 			{#if onBannerRemove && member.banner_url}
 				<button
 					type="button"
-					class="text-duvet-danger flex h-8 w-8 cursor-pointer items-center justify-center rounded-full bg-black/60 opacity-0 transition-opacity group-hover:opacity-100 hover:bg-black/80"
+					class="text-duvet-danger flex h-8 w-8 cursor-pointer items-center justify-center rounded-full bg-black/60 opacity-0 transition-opacity group-hover:opacity-100 hover:bg-black/80 motion-reduce:transition-none"
 					title="Remove banner"
 					onclick={onBannerRemove}
 				>
@@ -129,17 +129,17 @@
 		     150 ms, and with less motion asked too, as a fade moves nothing. It still takes the pointer: on it, the banner
 		     isn't hovered, so it shows, and its buttons are its own. -->
 		<div
-			class="border-duvet-pop-ring bg-duvet-pop-ring absolute -top-12 left-4 rounded-full border-4 transition-opacity duration-150 in-peer-hover/banner:opacity-0"
+			class="border-duvet-pop-ring bg-duvet-pop-ring absolute -top-12 left-4 rounded-full border-4 transition-opacity duration-150 in-peer-hover/banner:opacity-0 motion-reduce:transition-none"
 		>
 			<div class="group/avatar relative overflow-hidden rounded-full">
 				<UserAvatar src={member.avatar_url} name={member.username} size={80} />
 				<div
-					class="absolute inset-0 flex items-center justify-center gap-1 rounded-full bg-black/0 transition-colors group-hover/avatar:bg-black/40"
+					class="absolute inset-0 flex items-center justify-center gap-1 rounded-full bg-black/0 transition-colors group-hover/avatar:bg-black/40 motion-reduce:transition-none"
 				>
 					{#if onAvatarClick}
 						<button
 							type="button"
-							class="text-fixed-white flex h-7 w-7 cursor-pointer items-center justify-center rounded-full bg-black/60 opacity-0 transition-opacity group-hover/avatar:opacity-100 hover:bg-black/80"
+							class="text-fixed-white flex h-7 w-7 cursor-pointer items-center justify-center rounded-full bg-black/60 opacity-0 transition-opacity group-hover/avatar:opacity-100 hover:bg-black/80 motion-reduce:transition-none"
 							title="Change avatar"
 							onclick={onAvatarClick}
 						>
@@ -149,7 +149,7 @@
 					{#if onAvatarRemove && member.avatar_url}
 						<button
 							type="button"
-							class="text-duvet-danger flex h-7 w-7 cursor-pointer items-center justify-center rounded-full bg-black/60 opacity-0 transition-opacity group-hover/avatar:opacity-100 hover:bg-black/80"
+							class="text-duvet-danger flex h-7 w-7 cursor-pointer items-center justify-center rounded-full bg-black/60 opacity-0 transition-opacity group-hover/avatar:opacity-100 hover:bg-black/80 motion-reduce:transition-none"
 							title="Remove avatar"
 							onclick={onAvatarRemove}
 						>

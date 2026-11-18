@@ -41,8 +41,8 @@ export function iconButtonClass(size: ControlSize = "md", active = false): strin
 		? "bg-duvet-accent-tint text-duvet-accent-text"
 		: "text-duvet-ink2 hover:bg-duvet-hover hover:text-duvet-ink active:bg-duvet-hover-strong";
 	return (
-		`relative inline-grid shrink-0 place-items-center transition-colors duration-[120ms] ` +
-		`motion-reduce:transition-none disabled:pointer-events-none disabled:opacity-45 ${box} ${ink}`
+		`relative inline-grid shrink-0 place-items-center transition-colors motion-reduce:transition-none duration-[120ms] ` +
+		`disabled:pointer-events-none disabled:opacity-45 ${box} ${ink}`
 	);
 }
 

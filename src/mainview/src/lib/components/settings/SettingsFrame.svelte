@@ -48,7 +48,7 @@
 	const DRAG = "electrobun-webkit-app-region-drag";
 	const NO_DRAG = "electrobun-webkit-app-region-no-drag";
 	const windowButton =
-		"text-duvet-ink2 hover:bg-duvet-hover hover:text-duvet-ink flex h-full w-[46px] items-center justify-center transition-colors";
+		"text-duvet-ink2 hover:bg-duvet-hover hover:text-duvet-ink flex h-full w-[46px] items-center justify-center transition-colors motion-reduce:transition-none";
 </script>
 
 {#snippet side()}
@@ -184,7 +184,7 @@
 					<button
 						id="window-close"
 						type="button"
-						class="text-duvet-ink2 hover:bg-duvet-win-close hover:text-fixed-white flex h-full w-[46px] items-center justify-center transition-colors"
+						class="text-duvet-ink2 hover:bg-duvet-win-close hover:text-fixed-white flex h-full w-[46px] items-center justify-center transition-colors motion-reduce:transition-none"
 						aria-label="Close window"
 					>
 						<XIcon size={15} />

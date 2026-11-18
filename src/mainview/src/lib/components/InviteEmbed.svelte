@@ -104,7 +104,7 @@
 			</div>
 		{:else}
 			<button
-				class="bg-duvet-accent text-duvet-on-accent shadow-duvet-raised w-full rounded-xl py-2 text-sm font-bold transition-colors hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
+				class="bg-duvet-accent text-duvet-on-accent shadow-duvet-raised w-full rounded-xl py-2 text-sm font-bold transition-colors hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50 motion-reduce:transition-none"
 				onclick={handleJoin}
 				disabled={joining}
 			>

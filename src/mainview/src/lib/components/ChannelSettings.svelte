@@ -13,6 +13,7 @@
 		Upload as UploadIcon,
 	} from "@lucide/svelte";
 	import { slide } from "svelte/transition";
+	import { motionMs } from "$lib/motion";
 	import { untrack } from "svelte";
 	import { Permission, canSetPermission, computeRoomPermissions, hasSpacePermission } from "$lib/permissions";
 	import { getApiError } from "$lib/api/api";
@@ -431,7 +432,7 @@
 		<!-- Bulk save bar: slides in when there are unsaved changes -->
 		{#if activeSection === "permissions" && hasChanges}
 			<div
-				transition:slide={{ duration: 200 }}
+				transition:slide={{ duration: motionMs(200) }}
 				class="bg-duvet-card shadow-duvet-lifted mx-[26px] mb-3 flex items-center justify-between gap-4 rounded-2xl py-2.5 pr-2.5 pl-4 text-[13px] font-medium"
 			>
 				<span class={saveError ? "text-duvet-danger" : "text-duvet-ink2"} role={saveError ? "alert" : undefined}>
@@ -518,7 +519,7 @@
 								{:else}
 									{#each availableRoles as role (role.id)}
 										<button
-											class="hover:bg-duvet-accent-tint w-full rounded-[9px] px-2 py-1.5 text-left text-[13px] font-medium transition-colors"
+											class="hover:bg-duvet-accent-tint w-full rounded-[9px] px-2 py-1.5 text-left text-[13px] font-medium transition-colors motion-reduce:transition-none"
 											onclick={() => addRoleOverwrite(role.id)}
 										>
 											{role.name}

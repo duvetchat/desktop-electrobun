@@ -51,7 +51,7 @@
 		</div>
 
 		<button
-			class="bg-duvet-accent text-duvet-on-accent shadow-duvet-raised w-full rounded-xl py-2 text-sm font-bold transition-colors hover:brightness-110"
+			class="bg-duvet-accent text-duvet-on-accent shadow-duvet-raised w-full rounded-xl py-2 text-sm font-bold transition-colors hover:brightness-110 motion-reduce:transition-none"
 			onclick={() => botInviteRequest.set(botUserId)}
 		>
 			Add to Space

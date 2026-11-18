@@ -171,7 +171,11 @@
 				<span class="animate-typing-bounce block size-1.5 rounded-full bg-current [animation-delay:0.4s]"></span>
 			</span>
 		{:else}
-			<ChevronDownIcon class="text-duvet-ink2 size-4 shrink-0 transition-transform {open ? 'rotate-180' : ''}" />
+			<ChevronDownIcon
+				class="text-duvet-ink2 size-4 shrink-0 transition-transform motion-reduce:transition-none {open
+					? 'rotate-180'
+					: ''}"
+			/>
 		{/if}
 	</Popover.Trigger>
 	<Popover.Portal>

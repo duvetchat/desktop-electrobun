@@ -50,12 +50,14 @@
 	const showImg = $derived(!!src && !imgError);
 </script>
 
+<!-- The face drawn for who has no picture blinks on a timer of its own (facehash-sv), and leans back under the pointer:
+     with reduced motion its eyes stay open and it turns at once. -->
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div
 	style="width: {typeof size === 'number' ? size + 'px' : size}; height: {typeof size === 'number'
 		? size + 'px'
 		: size}; border-radius: 50%; overflow: hidden; position: relative;"
-	class={className}
+	class="motion-reduce:[&_[data-facehash-face]]:transition-none! motion-reduce:[&_[data-facehash-face]>div]:transform-none! motion-reduce:[&_[data-facehash-face]>div]:transition-none! {className}"
 	{oncontextmenu}
 >
 	{#if showImg}

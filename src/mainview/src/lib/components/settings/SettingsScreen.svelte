@@ -35,6 +35,7 @@
 		ChevronRight as ChevronRightIcon,
 	} from "@lucide/svelte";
 	import { slide } from "svelte/transition";
+	import { motionMs } from "$lib/motion";
 	import { currentUser } from "$lib/stores.svelte";
 	import MemberProfileCard from "$lib/components/MemberProfileCard.svelte";
 	import ImageCropModal from "$lib/components/ImageCropModal.svelte";
@@ -1309,7 +1310,7 @@
 			{@const pickedCount = picker.pickedFiles.length}
 			{@const tooMany = (picker.filter.attachment_ids?.length ?? 0) > MAX_PICKED_FILES}
 			<div
-				transition:slide={{ duration: 200 }}
+				transition:slide={{ duration: motionMs(200) }}
 				class="bg-duvet-card shadow-duvet-lifted mx-[26px] mb-3 flex items-center justify-between gap-4 rounded-2xl py-2.5 pr-2.5 pl-4 text-[13px] font-medium"
 			>
 				<p class="text-duvet-ink2 min-w-0 truncate">
@@ -1334,7 +1335,7 @@
 		<!-- Save bar (appears when there are unsaved changes) -->
 		{#if hasChanges || saveError}
 			<div
-				transition:slide={{ duration: 200 }}
+				transition:slide={{ duration: motionMs(200) }}
 				class="bg-duvet-card shadow-duvet-lifted mx-[26px] mb-3 flex items-center justify-between gap-4 rounded-2xl py-2.5 pr-2.5 pl-4 text-[13px] font-medium"
 			>
 				<div class="flex min-w-0 items-center gap-2">
@@ -2343,7 +2344,7 @@
 																{#if botAvatarPreview}
 																	<img src={botAvatarPreview} alt="avatar" class="size-12 rounded-[28%] object-cover" />
 																	<button
-																		class="bg-duvet-media-scrim absolute inset-0 flex items-center justify-center rounded-[28%] opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
+																		class="bg-duvet-media-scrim absolute inset-0 flex items-center justify-center rounded-[28%] opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 motion-reduce:transition-none"
 																		onclick={clearBotAvatar}
 																		title="Undo"
 																	>
@@ -2356,7 +2357,7 @@
 																		<XIcon class="size-4" />
 																	</div>
 																	<button
-																		class="bg-duvet-media-scrim absolute inset-0 flex items-center justify-center rounded-[28%] opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
+																		class="bg-duvet-media-scrim absolute inset-0 flex items-center justify-center rounded-[28%] opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 motion-reduce:transition-none"
 																		onclick={() => {
 																			pendingBotAvatar = null;
 																		}}
@@ -2371,7 +2372,7 @@
 																		class="size-12 rounded-[28%] object-cover"
 																	/>
 																	<div
-																		class="bg-duvet-media-scrim absolute inset-0 flex items-center justify-center gap-1 rounded-[28%] opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100"
+																		class="bg-duvet-media-scrim absolute inset-0 flex items-center justify-center gap-1 rounded-[28%] opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 motion-reduce:transition-none"
 																	>
 																		<button
 																			class="text-fixed-white hover:bg-fixed-white/20 rounded p-0.5"
@@ -2389,7 +2390,7 @@
 																	</div>
 																{:else}
 																	<button
-																		class="bg-duvet-secondary-fill text-duvet-accent-text hover:bg-duvet-hover-strong flex size-12 items-center justify-center rounded-[28%] transition-colors"
+																		class="bg-duvet-secondary-fill text-duvet-accent-text hover:bg-duvet-hover-strong flex size-12 items-center justify-center rounded-[28%] transition-colors motion-reduce:transition-none"
 																		onclick={() => {
 																			botCropTargetApp = app;
 																			showBotAvatarCrop = true;
@@ -2409,7 +2410,7 @@
 																		class="aspect-[5/2] h-12 rounded-[9px] object-cover"
 																	/>
 																	<button
-																		class="bg-duvet-media-scrim absolute inset-0 flex items-center justify-center rounded-[9px] opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
+																		class="bg-duvet-media-scrim absolute inset-0 flex items-center justify-center rounded-[9px] opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 motion-reduce:transition-none"
 																		onclick={clearBotBanner}
 																		title="Undo"
 																	>
@@ -2422,7 +2423,7 @@
 																		<XIcon class="size-4" />
 																	</div>
 																	<button
-																		class="bg-duvet-media-scrim absolute inset-0 flex items-center justify-center rounded-[9px] opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
+																		class="bg-duvet-media-scrim absolute inset-0 flex items-center justify-center rounded-[9px] opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 motion-reduce:transition-none"
 																		onclick={() => {
 																			pendingBotBanner = null;
 																		}}
@@ -2437,7 +2438,7 @@
 																		class="aspect-[5/2] h-12 rounded-[9px] object-cover"
 																	/>
 																	<div
-																		class="bg-duvet-media-scrim absolute inset-0 flex items-center justify-center gap-1 rounded-[9px] opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100"
+																		class="bg-duvet-media-scrim absolute inset-0 flex items-center justify-center gap-1 rounded-[9px] opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 motion-reduce:transition-none"
 																	>
 																		<button
 																			class="text-fixed-white hover:bg-fixed-white/20 rounded p-0.5"
@@ -2455,7 +2456,7 @@
 																	</div>
 																{:else}
 																	<button
-																		class="bg-duvet-secondary-fill text-duvet-accent-text hover:bg-duvet-hover-strong flex aspect-[5/2] h-12 items-center justify-center rounded-[9px] transition-colors"
+																		class="bg-duvet-secondary-fill text-duvet-accent-text hover:bg-duvet-hover-strong flex aspect-[5/2] h-12 items-center justify-center rounded-[9px] transition-colors motion-reduce:transition-none"
 																		onclick={() => {
 																			botCropTargetApp = app;
 																			showBotBannerCrop = true;

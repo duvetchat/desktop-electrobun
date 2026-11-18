@@ -683,7 +683,7 @@
 						>Cancel</Dialog.Close
 					>
 					<button
-						class="bg-duvet-accent text-duvet-on-accent shadow-duvet-raised rounded-xl px-4 py-2 text-sm font-bold transition-colors hover:brightness-110 disabled:opacity-50"
+						class="bg-duvet-accent text-duvet-on-accent shadow-duvet-raised rounded-xl px-4 py-2 text-sm font-bold transition-colors hover:brightness-110 disabled:opacity-50 motion-reduce:transition-none"
 						onclick={handleCreateChannel}
 						disabled={!newChannelName.trim() || isCreating}
 					>
@@ -708,7 +708,7 @@
 				<div class="flex justify-end gap-3">
 					<Dialog.Close class="text-duvet-ink px-4 py-2 hover:underline">Cancel</Dialog.Close>
 					<button
-						class="text-duvet-on-danger bg-duvet-danger hover:bg-duvet-danger/85 rounded px-4 py-2 transition-colors disabled:opacity-50"
+						class="text-duvet-on-danger bg-duvet-danger hover:bg-duvet-danger/85 rounded px-4 py-2 transition-colors disabled:opacity-50 motion-reduce:transition-none"
 						onclick={handleDeleteChannel}
 						disabled={isDeletingChannel}
 					>
