@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { claimLayer, layerStyle, releaseLayer } from "$lib/overlay-layers";
 	import type { Snippet } from "svelte";
 	import { DropdownMenu } from "bits-ui";
 	import { MENU_PANEL } from "./recipes";
@@ -26,6 +27,13 @@
 		trigger: Snippet<[Record<string, unknown>]>;
 		children: Snippet;
 	} = $props();
+
+	// What opens last is in front, whatever opened it (lib/overlay-layers.ts).
+	const layer = $derived(open ? claimLayer() : 0);
+	$effect(() => {
+		const mine = layer;
+		if (mine) return () => releaseLayer(mine);
+	});
 </script>
 
 <DropdownMenu.Root bind:open {onOpenChange}>
@@ -35,15 +43,20 @@
 		{/snippet}
 	</DropdownMenu.Trigger>
 	<DropdownMenu.Portal>
-		<DropdownMenu.Content
-			{side}
-			{align}
-			sideOffset={6}
-			collisionPadding={10}
-			aria-label={label}
-			class="{MENU_PANEL} origin-(--bits-floating-transform-origin) {className}"
-		>
-			{@render children()}
-		</DropdownMenu.Content>
+		{#if layer}
+			<!-- The panel's positioner takes no layer of its own: this holds it, at the overlay's (lib/overlay-layers.ts). -->
+			<div class="fixed top-0 left-0" style={layerStyle(layer)}>
+				<DropdownMenu.Content
+					{side}
+					{align}
+					sideOffset={6}
+					collisionPadding={10}
+					aria-label={label}
+					class="{MENU_PANEL} origin-(--bits-floating-transform-origin) {className}"
+				>
+					{@render children()}
+				</DropdownMenu.Content>
+			</div>
+		{/if}
 	</DropdownMenu.Portal>
 </DropdownMenu.Root>

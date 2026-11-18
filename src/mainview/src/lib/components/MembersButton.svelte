@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { claimLayer, layerStyle, releaseLayer } from "$lib/overlay-layers";
 	import { Users } from "@lucide/svelte";
 	import { Popover } from "bits-ui";
 	import type { GatewaySpace, MemberOnSidebar } from "$lib/types";
@@ -49,6 +50,13 @@
 		const el = e.currentTarget as HTMLElement;
 		if (pagedSpaceId && el.scrollHeight - el.scrollTop - el.clientHeight < 150) void loadMoreMembers(pagedSpaceId);
 	}
+
+	// What opens last is in front, whatever opened it (lib/overlay-layers.ts).
+	const layer = $derived(open ? claimLayer() : 0);
+	$effect(() => {
+		const mine = layer;
+		if (mine) return () => releaseLayer(mine);
+	});
 </script>
 
 <Popover.Root bind:open>
@@ -75,28 +83,33 @@
 		{/if}
 	</Popover.Trigger>
 	<Popover.Portal>
-		<Popover.Content
-			side="bottom"
-			align="end"
-			sideOffset={8}
-			collisionPadding={10}
-			updatePositionStrategy="always"
-			role="dialog"
-			aria-label={title}
-			class="{GLASS} animate-float-in text-duvet-ink z-[1000] flex max-h-[min(560px,72vh)] w-[min(340px,calc(100vw-20px))] origin-(--bits-floating-transform-origin) flex-col overflow-hidden rounded-[20px] outline-none"
-		>
-			<div class="flex shrink-0 items-baseline gap-2 px-4 pt-3.5 pb-1">
-				<p class="min-w-0 truncate text-[13.5px] font-semibold">{title}</p>
-				<span class="text-duvet-ink2 shrink-0 text-xs">{online} online</span>
-			</div>
-			<div class="min-h-0 flex-1 overflow-y-auto pb-2" {onscroll}>
-				<MemberList {members} spaceId={pagedSpaceId} {space} {channelId} {onRemoveMember} />
-				{#if membersLoading(pagedSpaceId)}
-					<div class="flex justify-center py-3" role="status" aria-label="Loading more members">
-						<div class="border-duvet-line border-t-duvet-ink2 size-4 animate-spin rounded-full border-2"></div>
+		{#if layer}
+			<!-- The panel's positioner takes no layer of its own: this holds it, at the overlay's (lib/overlay-layers.ts). -->
+			<div class="fixed top-0 left-0" style={layerStyle(layer)}>
+				<Popover.Content
+					side="bottom"
+					align="end"
+					sideOffset={8}
+					collisionPadding={10}
+					updatePositionStrategy="always"
+					role="dialog"
+					aria-label={title}
+					class="{GLASS} animate-float-in text-duvet-ink z-[1000] flex max-h-[min(560px,72vh)] w-[min(340px,calc(100vw-20px))] origin-(--bits-floating-transform-origin) flex-col overflow-hidden rounded-[20px] outline-none"
+				>
+					<div class="flex shrink-0 items-baseline gap-2 px-4 pt-3.5 pb-1">
+						<p class="min-w-0 truncate text-[13.5px] font-semibold">{title}</p>
+						<span class="text-duvet-ink2 shrink-0 text-xs">{online} online</span>
 					</div>
-				{/if}
+					<div class="min-h-0 flex-1 overflow-y-auto pb-2" {onscroll}>
+						<MemberList {members} spaceId={pagedSpaceId} {space} {channelId} {onRemoveMember} />
+						{#if membersLoading(pagedSpaceId)}
+							<div class="flex justify-center py-3" role="status" aria-label="Loading more members">
+								<div class="border-duvet-line border-t-duvet-ink2 size-4 animate-spin rounded-full border-2"></div>
+							</div>
+						{/if}
+					</div>
+				</Popover.Content>
 			</div>
-		</Popover.Content>
+		{/if}
 	</Popover.Portal>
 </Popover.Root>

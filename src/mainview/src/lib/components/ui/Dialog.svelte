@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { claimLayer, layerStyle, releaseLayer } from "$lib/overlay-layers";
 	import type { Snippet } from "svelte";
 	import { AlertDialog } from "bits-ui";
 	import { GLASS_STRONG } from "./recipes";
@@ -27,12 +28,20 @@
 		children?: Snippet;
 		actions: Snippet;
 	} = $props();
+
+	// What opens last is in front, whatever opened it (lib/overlay-layers.ts).
+	const layer = $derived(open ? claimLayer() : 0);
+	$effect(() => {
+		const mine = layer;
+		if (mine) return () => releaseLayer(mine);
+	});
 </script>
 
 <AlertDialog.Root bind:open {onOpenChange}>
 	<AlertDialog.Portal>
-		<AlertDialog.Overlay class="bg-duvet-scrim animate-scrim-in fixed inset-0 z-[900]" />
+		<AlertDialog.Overlay style={layerStyle(layer)} class="bg-duvet-scrim animate-scrim-in fixed inset-0 z-[900]" />
 		<AlertDialog.Content
+			style={layerStyle(layer)}
 			{escapeKeydownBehavior}
 			{onOpenAutoFocus}
 			class="{GLASS_STRONG} animate-sheet-in text-duvet-ink fixed top-1/2 left-1/2 z-[900] flex max-h-[84%] w-[min(400px,calc(100%-48px))] -translate-x-1/2 -translate-y-1/2 flex-col gap-3 rounded-3xl p-4 outline-none {className}"

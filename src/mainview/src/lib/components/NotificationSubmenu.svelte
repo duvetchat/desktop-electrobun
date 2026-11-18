@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { claimLayer, layerStyle, releaseLayer } from "$lib/overlay-layers";
 	import { DropdownMenu } from "bits-ui";
 	import { Bell as BellIcon, Check as CheckIcon, ChevronRight as ChevronRightIcon } from "@lucide/svelte";
 	import { getApiError } from "$lib/api/api";
@@ -41,6 +42,15 @@
 			toast(getApiError(err, "Couldn't change the notifications"), "error");
 		}
 	}
+
+	let open = $state(false);
+
+	// What opens last is in front, whatever opened it (lib/overlay-layers.ts).
+	const layer = $derived(open ? claimLayer() : 0);
+	$effect(() => {
+		const mine = layer;
+		if (mine) return () => releaseLayer(mine);
+	});
 </script>
 
 {#snippet choice(value: string, label: string)}
@@ -54,7 +64,7 @@
 	</DropdownMenu.RadioItem>
 {/snippet}
 
-<DropdownMenu.Sub>
+<DropdownMenu.Sub bind:open>
 	<DropdownMenu.SubTrigger class={itemClass}>
 		<span class="text-duvet-ink2 grid w-[18px] shrink-0 place-items-center"><BellIcon size={16} /></span>
 		<span class="min-w-0 flex-1 truncate">Notifications</span>
@@ -64,22 +74,27 @@
 	     fixed position is measured from. It opens to the right, or the left at the window's edge, 2 px from the menu,
 	     its first item level with Notifications. -->
 	<DropdownMenu.Portal>
-		<DropdownMenu.SubContent
-			class="{contentClass} origin-(--bits-floating-transform-origin)"
-			side="right"
-			align="start"
-			sideOffset={8}
-			alignOffset={-6}
-			collisionPadding={10}
-		>
-			<DropdownMenu.RadioGroup value={chosen} onValueChange={choose}>
-				{#if withDefault}
-					{@render choice("default", `Default (${LEVELS[inherited]})`)}
-				{/if}
-				{#each LEVELS as label, level (label)}
-					{@render choice(String(level), label)}
-				{/each}
-			</DropdownMenu.RadioGroup>
-		</DropdownMenu.SubContent>
+		{#if layer}
+			<!-- The panel's positioner takes no layer of its own: this holds it, at the overlay's (lib/overlay-layers.ts). -->
+			<div class="fixed top-0 left-0" style={layerStyle(layer)}>
+				<DropdownMenu.SubContent
+					class="{contentClass} origin-(--bits-floating-transform-origin)"
+					side="right"
+					align="start"
+					sideOffset={8}
+					alignOffset={-6}
+					collisionPadding={10}
+				>
+					<DropdownMenu.RadioGroup value={chosen} onValueChange={choose}>
+						{#if withDefault}
+							{@render choice("default", `Default (${LEVELS[inherited]})`)}
+						{/if}
+						{#each LEVELS as label, level (label)}
+							{@render choice(String(level), label)}
+						{/each}
+					</DropdownMenu.RadioGroup>
+				</DropdownMenu.SubContent>
+			</div>
+		{/if}
 	</DropdownMenu.Portal>
 </DropdownMenu.Sub>

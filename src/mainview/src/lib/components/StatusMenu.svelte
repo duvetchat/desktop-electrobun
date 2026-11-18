@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { claimLayer, layerStyle, releaseLayer } from "$lib/overlay-layers";
 	import { DropdownMenu } from "bits-ui";
 	import type { Snippet } from "svelte";
 	import { Check } from "@lucide/svelte";
@@ -31,43 +32,57 @@
 			saving = false;
 		}
 	}
+
+	let open = $state(false);
+
+	// What opens last is in front, whatever opened it (lib/overlay-layers.ts).
+	const layer = $derived(open ? claimLayer() : 0);
+	$effect(() => {
+		const mine = layer;
+		if (mine) return () => releaseLayer(mine);
+	});
 </script>
 
-<DropdownMenu.Root>
+<DropdownMenu.Root bind:open>
 	<DropdownMenu.Trigger class={className} aria-label="Status: {currentLabel}">
 		{@render children()}
 	</DropdownMenu.Trigger>
 	<DropdownMenu.Portal>
-		<DropdownMenu.Content
-			class="{MENU_PANEL} focus-override w-72 origin-(--bits-floating-transform-origin)"
-			side="top"
-			align="start"
-			sideOffset={6}
-			collisionPadding={10}
-		>
-			{#each STATUS_CHOICES as choice (choice.status)}
-				{@const chosen = current === choice.status}
-				<!-- The chosen status carries the check; choosing it again does nothing. -->
-				<DropdownMenu.Item
-					class="{menuItemClass()} cursor-pointer data-disabled:cursor-default"
-					disabled={saving}
-					aria-current={chosen ? "true" : undefined}
-					onSelect={() => choose(choice.status)}
+		{#if layer}
+			<!-- The panel's positioner takes no layer of its own: this holds it, at the overlay's (lib/overlay-layers.ts). -->
+			<div class="fixed top-0 left-0" style={layerStyle(layer)}>
+				<DropdownMenu.Content
+					class="{MENU_PANEL} focus-override w-72 origin-(--bits-floating-transform-origin)"
+					side="top"
+					align="start"
+					sideOffset={6}
+					collisionPadding={10}
 				>
-					<span class="grid w-[18px] shrink-0 place-items-center">
-						<StatusDot status={userStatusToString(choice.status)} class="w-2.5" />
-					</span>
-					<span class="flex min-w-0 flex-1 flex-col gap-px">
-						<span class="truncate">{choice.label}</span>
-						{#if choice.description}
-							<span class="text-duvet-ink2 text-[11px] leading-[1.2] font-normal">{choice.description}</span>
-						{/if}
-					</span>
-					{#if chosen}
-						<Check size={15} class="text-duvet-accent-text shrink-0" />
-					{/if}
-				</DropdownMenu.Item>
-			{/each}
-		</DropdownMenu.Content>
+					{#each STATUS_CHOICES as choice (choice.status)}
+						{@const chosen = current === choice.status}
+						<!-- The chosen status carries the check; choosing it again does nothing. -->
+						<DropdownMenu.Item
+							class="{menuItemClass()} cursor-pointer data-disabled:cursor-default"
+							disabled={saving}
+							aria-current={chosen ? "true" : undefined}
+							onSelect={() => choose(choice.status)}
+						>
+							<span class="grid w-[18px] shrink-0 place-items-center">
+								<StatusDot status={userStatusToString(choice.status)} class="w-2.5" />
+							</span>
+							<span class="flex min-w-0 flex-1 flex-col gap-px">
+								<span class="truncate">{choice.label}</span>
+								{#if choice.description}
+									<span class="text-duvet-ink2 text-[11px] leading-[1.2] font-normal">{choice.description}</span>
+								{/if}
+							</span>
+							{#if chosen}
+								<Check size={15} class="text-duvet-accent-text shrink-0" />
+							{/if}
+						</DropdownMenu.Item>
+					{/each}
+				</DropdownMenu.Content>
+			</div>
+		{/if}
 	</DropdownMenu.Portal>
 </DropdownMenu.Root>

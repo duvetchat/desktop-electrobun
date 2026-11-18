@@ -338,9 +338,16 @@ describe("the floating panels' recipes", () => {
 		expect(source("Menu")).toContain("sideOffset={6}");
 		expect(source("Popover")).toContain("sideOffset = 8");
 		expect(source("Popover")).toContain("animate-float-in");
-		// A submenu is a layer above its menu, and in the page's root as the menu is.
+		// A submenu is a layer above its menu, and in the page's root as the menu is: its panel is in the portal, in the
+		// holder that carries the layer it claimed as it opened (lib/overlay-layers.ts).
 		expect(source("MenuSub")).toContain("z-[1001]");
-		expect(source("MenuSub")).toMatch(/<DropdownMenu\.Portal>\s*<DropdownMenu\.SubContent/);
+		expect(source("MenuSub")).toMatch(
+			/<DropdownMenu\.Portal>(?:(?!<\/DropdownMenu\.Portal>)[^])*<DropdownMenu\.SubContent[^]*<\/DropdownMenu\.Portal>/,
+		);
+		for (const name of ["Menu", "ContextMenu", "MenuSub", "Popover"]) {
+			expect(source(name), name).toContain("style={layerStyle(layer)}");
+			expect(source(name), name).toMatch(/const layer = \$derived\(open \? claimLayer\(\) : 0\);/);
+		}
 	});
 
 	test("the sheet and the dialog are strong glass over the scrim, on the sheets' layer, with a Fraunces title", () => {

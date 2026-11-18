@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { claimLayer, layerStyle, releaseLayer } from "$lib/overlay-layers";
 	import {
 		Hash as HashIcon,
 		MessageCircle as MessageCircleIcon,
@@ -333,6 +334,8 @@
 	let previewAlt = $state("");
 	let previewOpen = $state(false);
 	function openPreview(src: string, alt = "") {
+		// The viewer isn't one of the layered overlays: the results step aside for it, as the pins close for theirs.
+		hidden = true;
 		previewSrc = src;
 		previewAlt = alt;
 		previewOpen = true;
@@ -423,6 +426,15 @@
 			for (const r of ranges) highlight.delete(r);
 		};
 	});
+
+	// What opens last is in front, whatever opened it (lib/overlay-layers.ts).
+	// Whether the popover shows, as one value: the layer is claimed as that turns true, not at each suggestion.
+	const popoverOpen = $derived(suggestions.length > 0 || (open && !hidden));
+	const layer = $derived(popoverOpen ? claimLayer() : 0);
+	$effect(() => {
+		const mine = layer;
+		if (mine) return () => releaseLayer(mine);
+	});
 </script>
 
 <div
@@ -494,133 +506,138 @@
 	}
 >
 	<Popover.Portal>
-		<Popover.Content
-			customAnchor={box}
-			side="bottom"
-			align="end"
-			sideOffset={8}
-			collisionPadding={10}
-			updatePositionStrategy="always"
-			trapFocus={false}
-			onOpenAutoFocus={(e) => e.preventDefault()}
-			onCloseAutoFocus={(e) => e.preventDefault()}
-			onInteractOutside={(e) => {
-				if (e.target instanceof Node && box?.contains(e.target)) e.preventDefault();
-			}}
-			onFocusOutside={(e) => e.preventDefault()}
-			onEscapeKeydown={(e) => {
-				if (document.activeElement === input) e.preventDefault();
-				else if (panel?.contains(document.activeElement)) close();
-			}}
-			role="dialog"
-			aria-label={open && !hidden ? "Search results" : "Search suggestions"}
-			class="{GLASS} animate-float-in text-duvet-ink z-[1000] flex max-h-[min(560px,72vh)] w-[min(420px,calc(100vw-20px))] origin-(--bits-floating-transform-origin) flex-col overflow-hidden rounded-[18px] font-normal outline-none"
-		>
-			<div bind:this={panel} class="contents">
-				{#if suggestions.length > 0}
-					<!-- mousedown would blur the box before the click picks a suggestion -->
-					<div
-						role="listbox"
-						tabindex="-1"
-						aria-label="Search suggestions"
-						class="flex shrink-0 flex-col gap-0.5 p-1.5 {open && !hidden ? 'border-duvet-line border-b' : ''}"
-						onmousedown={(e) => e.preventDefault()}
-					>
-						{#each suggestions as s, i (s.key)}
-							<button
-								role="option"
-								aria-selected={i === selected}
-								class="flex min-h-8 w-full items-center gap-2 rounded-[9px] px-2 py-1.5 text-left text-[12.5px] {i ===
-								selected
-									? 'bg-duvet-accent-tint'
-									: 'hover:bg-duvet-hover'}"
-								onclick={() => apply(s)}
-							>
-								{#if s.avatar !== undefined}
-									<UserAvatar src={s.avatar} name={s.label} size={22} />
-								{/if}
-								<span class="text-duvet-ink shrink-0 font-semibold">{s.label}</span>
-								{#if s.detail}
-									<span class="text-duvet-ink2 truncate">{s.detail}</span>
-								{/if}
-							</button>
-						{/each}
-					</div>
-				{/if}
-				{#if open && !hidden}
-					<div class="flex shrink-0 items-center justify-between pt-2.5 pr-2 pb-1 pl-3.5">
-						<span class="text-duvet-ink2 text-xs font-medium">
-							{#if failure}
-								Search
-							{:else if loading && results.length === 0}
-								Searching…
-							{:else}
-								<!-- Everywhere, the newest found of them all -->
-								{#if everywhere && results.length < total}{results.length} of{/if}
-								{total >= 1000 ? "1,000+" : total.toLocaleString(locale)}
-								{total === 1 ? "result" : "results"}
-							{/if}
-						</span>
-						<button class={iconButtonClass("sm")} aria-label="Close the search" onclick={close}>
-							<XIcon size={14} />
-						</button>
-					</div>
-					<div
-						bind:this={resultsEl}
-						class="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-1.5 pb-2"
-						onclickcapture={(e) => mentionProfile.open(e)}
-					>
-						{#if failure}
-							<p class="text-duvet-danger px-2 py-8 text-center text-xs">{failure}</p>
-						{:else if !loading && results.length === 0}
-							<p class="text-duvet-ink2 px-2 py-8 text-center text-xs">No messages match this search</p>
-						{/if}
-						{#each results as r (r.message.id)}
+		{#if layer}
+			<!-- The panel's positioner takes no layer of its own: this holds it, at the overlay's (lib/overlay-layers.ts). -->
+			<div class="fixed top-0 left-0" style={layerStyle(layer)}>
+				<Popover.Content
+					customAnchor={box}
+					side="bottom"
+					align="end"
+					sideOffset={8}
+					collisionPadding={10}
+					updatePositionStrategy="always"
+					trapFocus={false}
+					onOpenAutoFocus={(e) => e.preventDefault()}
+					onCloseAutoFocus={(e) => e.preventDefault()}
+					onInteractOutside={(e) => {
+						if (e.target instanceof Node && box?.contains(e.target)) e.preventDefault();
+					}}
+					onFocusOutside={(e) => e.preventDefault()}
+					onEscapeKeydown={(e) => {
+						if (document.activeElement === input) e.preventDefault();
+						else if (panel?.contains(document.activeElement)) close();
+					}}
+					role="dialog"
+					aria-label={open && !hidden ? "Search results" : "Search suggestions"}
+					class="{GLASS} animate-float-in text-duvet-ink z-[1000] flex max-h-[min(560px,72vh)] w-[min(420px,calc(100vw-20px))] origin-(--bits-floating-transform-origin) flex-col overflow-hidden rounded-[18px] font-normal outline-none"
+				>
+					<div bind:this={panel} class="contents">
+						{#if suggestions.length > 0}
+							<!-- mousedown would blur the box before the click picks a suggestion -->
 							<div
-								role="button"
-								tabindex="0"
-								class="hover:bg-duvet-hover focus-visible:bg-duvet-hover flex shrink-0 cursor-pointer flex-col gap-1 rounded-xl p-2 text-left transition-colors motion-reduce:transition-none"
-								onclick={(e) => jump(e, r)}
-								onkeydown={(e) => {
-									if (e.key === "Enter") jump(e, r);
-								}}
+								role="listbox"
+								tabindex="-1"
+								aria-label="Search suggestions"
+								class="flex shrink-0 flex-col gap-0.5 p-1.5 {open && !hidden ? 'border-duvet-line border-b' : ''}"
+								onmousedown={(e) => e.preventDefault()}
 							>
-								{#if everywhere}
-									<!-- As a room's result names its room: here its Space too, or its conversation -->
-									<div class="text-duvet-ink2 flex items-center gap-0.5 text-[11.5px] font-semibold">
-										{#if r.conversationId}
-											<MessageCircleIcon size={12} />
-										{:else}
-											<HashIcon size={12} />
+								{#each suggestions as s, i (s.key)}
+									<button
+										role="option"
+										aria-selected={i === selected}
+										class="flex min-h-8 w-full items-center gap-2 rounded-[9px] px-2 py-1.5 text-left text-[12.5px] {i ===
+										selected
+											? 'bg-duvet-accent-tint'
+											: 'hover:bg-duvet-hover'}"
+										onclick={() => apply(s)}
+									>
+										{#if s.avatar !== undefined}
+											<UserAvatar src={s.avatar} name={s.label} size={22} />
 										{/if}
-										{whereOf(r)}
-									</div>
-								{/if}
-								<MessagePreview
-									message={r.message}
-									spaceId={r.spaceId ?? space?.id ?? ""}
-									channelId={r.roomId ?? r.conversationId ?? conversationId}
-									roomName={!everywhere && r.roomId ? roomName(r.roomId) : null}
-									members={everywhere ? [] : members}
-									mentionMap={everywhere ? mentionNamesIn(r.message.content ?? "", everyone) : mentionMap}
-									customEmojiMap={everywhere ? everyEmoji : customEmojiMap}
-									onPreview={openPreview}
-								/>
+										<span class="text-duvet-ink shrink-0 font-semibold">{s.label}</span>
+										{#if s.detail}
+											<span class="text-duvet-ink2 truncate">{s.detail}</span>
+										{/if}
+									</button>
+								{/each}
 							</div>
-						{/each}
-						{#if !everywhere && !failure && results.length > 0 && results.length < total}
-							<button
-								class="text-duvet-accent-text hover:bg-duvet-hover shrink-0 rounded-xl py-2 text-xs font-medium disabled:opacity-45"
-								disabled={loading}
-								onclick={() => run(true)}
+						{/if}
+						{#if open && !hidden}
+							<div class="flex shrink-0 items-center justify-between pt-2.5 pr-2 pb-1 pl-3.5">
+								<span class="text-duvet-ink2 text-xs font-medium">
+									{#if failure}
+										Search
+									{:else if loading && results.length === 0}
+										Searching…
+									{:else}
+										<!-- Everywhere, the newest found of them all -->
+										{#if everywhere && results.length < total}{results.length} of{/if}
+										{total >= 1000 ? "1,000+" : total.toLocaleString(locale)}
+										{total === 1 ? "result" : "results"}
+									{/if}
+								</span>
+								<button class={iconButtonClass("sm")} aria-label="Close the search" onclick={close}>
+									<XIcon size={14} />
+								</button>
+							</div>
+							<div
+								bind:this={resultsEl}
+								class="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-1.5 pb-2"
+								onclickcapture={(e) => mentionProfile.open(e)}
 							>
-								{loading ? "Loading…" : "More results"}
-							</button>
+								{#if failure}
+									<p class="text-duvet-danger px-2 py-8 text-center text-xs">{failure}</p>
+								{:else if !loading && results.length === 0}
+									<p class="text-duvet-ink2 px-2 py-8 text-center text-xs">No messages match this search</p>
+								{/if}
+								{#each results as r (r.message.id)}
+									<div
+										role="button"
+										tabindex="0"
+										class="hover:bg-duvet-hover focus-visible:bg-duvet-hover flex shrink-0 cursor-pointer flex-col gap-1 rounded-xl p-2 text-left transition-colors motion-reduce:transition-none"
+										onclick={(e) => jump(e, r)}
+										onkeydown={(e) => {
+											if (e.key === "Enter") jump(e, r);
+										}}
+									>
+										{#if everywhere}
+											<!-- As a room's result names its room: here its Space too, or its conversation -->
+											<div class="text-duvet-ink2 flex items-center gap-0.5 text-[11.5px] font-semibold">
+												{#if r.conversationId}
+													<MessageCircleIcon size={12} />
+												{:else}
+													<HashIcon size={12} />
+												{/if}
+												{whereOf(r)}
+											</div>
+										{/if}
+										<MessagePreview
+											message={r.message}
+											spaceId={r.spaceId ?? space?.id ?? ""}
+											channelId={r.roomId ?? r.conversationId ?? conversationId}
+											roomName={!everywhere && r.roomId ? roomName(r.roomId) : null}
+											members={everywhere ? [] : members}
+											mentionMap={everywhere ? mentionNamesIn(r.message.content ?? "", everyone) : mentionMap}
+											customEmojiMap={everywhere ? everyEmoji : customEmojiMap}
+											onPreview={openPreview}
+										/>
+									</div>
+								{/each}
+								{#if !everywhere && !failure && results.length > 0 && results.length < total}
+									<button
+										class="text-duvet-accent-text hover:bg-duvet-hover shrink-0 rounded-xl py-2 text-xs font-medium disabled:opacity-45"
+										disabled={loading}
+										onclick={() => run(true)}
+									>
+										{loading ? "Loading…" : "More results"}
+									</button>
+								{/if}
+							</div>
 						{/if}
 					</div>
-				{/if}
+				</Popover.Content>
 			</div>
-		</Popover.Content>
+		{/if}
 	</Popover.Portal>
 </Popover.Root>
 

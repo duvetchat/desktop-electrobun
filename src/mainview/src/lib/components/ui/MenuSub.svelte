@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { claimLayer, layerStyle, releaseLayer } from "$lib/overlay-layers";
 	import type { Component, Snippet } from "svelte";
 	import { DropdownMenu } from "bits-ui";
 	import { ChevronRight } from "@lucide/svelte";
@@ -21,9 +22,18 @@
 		class?: string;
 		children: Snippet;
 	} = $props();
+
+	let open = $state(false);
+
+	// What opens last is in front, whatever opened it (lib/overlay-layers.ts).
+	const layer = $derived(open ? claimLayer() : 0);
+	$effect(() => {
+		const mine = layer;
+		if (mine) return () => releaseLayer(mine);
+	});
 </script>
 
-<DropdownMenu.Sub>
+<DropdownMenu.Sub bind:open>
 	<DropdownMenu.SubTrigger {disabled} class={menuItemClass()}>
 		{#if Glyph}
 			<span class="text-duvet-ink2 grid w-[18px] shrink-0 place-items-center"><Glyph size={16} /></span>
@@ -34,15 +44,20 @@
 	<!-- In the page's root, as the menu is: the menu's glass (its backdrop-filter) would otherwise be what this
 	     panel's fixed position is measured from, and it would land beside the wrong item. -->
 	<DropdownMenu.Portal>
-		<DropdownMenu.SubContent
-			side="right"
-			align="start"
-			sideOffset={8}
-			alignOffset={-6}
-			collisionPadding={10}
-			class="{MENU_PANEL} z-[1001] origin-(--bits-floating-transform-origin) {className}"
-		>
-			{@render children()}
-		</DropdownMenu.SubContent>
+		{#if layer}
+			<!-- The panel's positioner takes no layer of its own: this holds it, at the overlay's (lib/overlay-layers.ts). -->
+			<div class="fixed top-0 left-0" style={layerStyle(layer)}>
+				<DropdownMenu.SubContent
+					side="right"
+					align="start"
+					sideOffset={8}
+					alignOffset={-6}
+					collisionPadding={10}
+					class="{MENU_PANEL} z-[1001] origin-(--bits-floating-transform-origin) {className}"
+				>
+					{@render children()}
+				</DropdownMenu.SubContent>
+			</div>
+		{/if}
 	</DropdownMenu.Portal>
 </DropdownMenu.Sub>

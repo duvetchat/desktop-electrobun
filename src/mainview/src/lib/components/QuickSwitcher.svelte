@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { claimLayer, layerStyle, releaseLayer } from "$lib/overlay-layers";
 	import { Hash as HashIcon, Search as SearchIcon, Volume2 as SpeakerSimpleHighIcon } from "@lucide/svelte";
 	import { Dialog } from "bits-ui";
 	import { tick } from "svelte";
@@ -178,12 +179,20 @@
 	}
 
 	const optionId = (index: number) => `quick-switcher-option-${index}`;
+
+	// What opens last is in front, whatever opened it (lib/overlay-layers.ts).
+	const layer = $derived(open ? claimLayer() : 0);
+	$effect(() => {
+		const mine = layer;
+		if (mine) return () => releaseLayer(mine);
+	});
 </script>
 
 <Dialog.Root bind:open>
 	<Dialog.Portal>
-		<Dialog.Overlay class="bg-duvet-scrim animate-scrim-in fixed inset-0 z-[900]" />
+		<Dialog.Overlay style={layerStyle(layer)} class="bg-duvet-scrim animate-scrim-in fixed inset-0 z-[900]" />
 		<Dialog.Content
+			style={layerStyle(layer)}
 			class="{GLASS_STRONG} animate-pop text-duvet-ink fixed top-[11vh] left-1/2 z-[900] flex max-h-[66vh] w-[min(640px,calc(100%-48px))] origin-top -translate-x-1/2 flex-col overflow-hidden rounded-[20px] outline-none"
 			onOpenAutoFocus={(e) => {
 				e.preventDefault();

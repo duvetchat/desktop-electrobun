@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { claimLayer, layerStyle, releaseLayer } from "$lib/overlay-layers";
 	import type { Snippet } from "svelte";
 	import { Popover } from "bits-ui";
 	import { GLASS } from "./recipes";
@@ -28,6 +29,13 @@
 		trigger: Snippet<[Record<string, unknown>]>;
 		children: Snippet;
 	} = $props();
+
+	// What opens last is in front, whatever opened it (lib/overlay-layers.ts).
+	const layer = $derived(open ? claimLayer() : 0);
+	$effect(() => {
+		const mine = layer;
+		if (mine) return () => releaseLayer(mine);
+	});
 </script>
 
 <Popover.Root bind:open {onOpenChange}>
@@ -37,16 +45,21 @@
 		{/snippet}
 	</Popover.Trigger>
 	<Popover.Portal>
-		<Popover.Content
-			{side}
-			{align}
-			{sideOffset}
-			collisionPadding={10}
-			role="dialog"
-			aria-label={label}
-			class="{GLASS} animate-float-in z-[1000] origin-(--bits-floating-transform-origin) overflow-hidden outline-none {className}"
-		>
-			{@render children()}
-		</Popover.Content>
+		{#if layer}
+			<!-- The panel's positioner takes no layer of its own: this holds it, at the overlay's (lib/overlay-layers.ts). -->
+			<div class="fixed top-0 left-0" style={layerStyle(layer)}>
+				<Popover.Content
+					{side}
+					{align}
+					{sideOffset}
+					collisionPadding={10}
+					role="dialog"
+					aria-label={label}
+					class="{GLASS} animate-float-in z-[1000] origin-(--bits-floating-transform-origin) overflow-hidden outline-none {className}"
+				>
+					{@render children()}
+				</Popover.Content>
+			</div>
+		{/if}
 	</Popover.Portal>
 </Popover.Root>

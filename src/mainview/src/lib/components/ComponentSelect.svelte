@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { claimLayer, layerStyle, releaseLayer } from "$lib/overlay-layers";
 	import { GLASS } from "$lib/components/ui/recipes";
 	import type { Snippet } from "svelte";
 	import { Popover } from "bits-ui";
@@ -128,6 +129,13 @@
 	}
 
 	const sameChoice = (a: string[], b: string[]) => a.length === b.length && a.every((key) => b.includes(key));
+
+	// What opens last is in front, whatever opened it (lib/overlay-layers.ts).
+	const layer = $derived(open ? claimLayer() : 0);
+	$effect(() => {
+		const mine = layer;
+		if (mine) return () => releaseLayer(mine);
+	});
 </script>
 
 <Popover.Root
@@ -167,55 +175,60 @@
 		{/if}
 	</Popover.Trigger>
 	<Popover.Portal>
-		<Popover.Content
-			side="bottom"
-			align="start"
-			sideOffset={6}
-			collisionPadding={10}
-			class="{GLASS} animate-float-in text-duvet-ink z-[1000] flex max-h-80 w-(--bits-popover-anchor-width) min-w-56 origin-(--bits-floating-transform-origin) flex-col overflow-hidden rounded-[14px] outline-none"
-		>
-			{#if searchable}
-				<input
-					bind:value={query}
-					placeholder="Search"
-					class="bg-duvet-field text-duvet-ink placeholder:text-duvet-ink2 focus-override m-1.5 mb-0 h-8 shrink-0 rounded-[9px] px-2.5 text-[13px] outline-none focus:shadow-[0_0_0_3px_var(--duvet-accent-tint)]"
-				/>
-			{/if}
-			<div class="overflow-y-auto p-1.5">
-				{#each shown as ch (ch.key)}
-					{@const isChosen = chosen.includes(ch.key)}
-					<button
-						type="button"
-						class="hover:bg-duvet-accent-tint focus-visible:bg-duvet-accent-tint flex min-h-8 w-full items-center gap-2.5 rounded-[9px] py-1.5 pr-2.5 pl-2 text-left outline-none disabled:pointer-events-none disabled:opacity-45"
-						disabled={max > 1 && !isChosen && chosen.length >= max}
-						onclick={() => pick(ch.key)}
-					>
-						{@render choiceIcon(ch, 20)}
-						<span class="flex min-w-0 flex-1 flex-col">
-							<span class="text-duvet-ink truncate text-[13px] font-medium">{ch.label}</span>
-							{#if ch.description}
-								<span class="text-duvet-ink2 truncate text-[11px]">{ch.description}</span>
-							{/if}
-						</span>
-						{#if max > 1}
-							<span
-								class="grid size-4 shrink-0 place-items-center rounded-[5px] {isChosen
-									? 'bg-duvet-accent'
-									: 'bg-duvet-secondary-fill shadow-[inset_0_0_0_1px_var(--duvet-line)]'}"
+		{#if layer}
+			<!-- The panel's positioner takes no layer of its own: this holds it, at the overlay's (lib/overlay-layers.ts). -->
+			<div class="fixed top-0 left-0" style={layerStyle(layer)}>
+				<Popover.Content
+					side="bottom"
+					align="start"
+					sideOffset={6}
+					collisionPadding={10}
+					class="{GLASS} animate-float-in text-duvet-ink z-[1000] flex max-h-80 w-(--bits-popover-anchor-width) min-w-56 origin-(--bits-floating-transform-origin) flex-col overflow-hidden rounded-[14px] outline-none"
+				>
+					{#if searchable}
+						<input
+							bind:value={query}
+							placeholder="Search"
+							class="bg-duvet-field text-duvet-ink placeholder:text-duvet-ink2 focus-override m-1.5 mb-0 h-8 shrink-0 rounded-[9px] px-2.5 text-[13px] outline-none focus:shadow-[0_0_0_3px_var(--duvet-accent-tint)]"
+						/>
+					{/if}
+					<div class="overflow-y-auto p-1.5">
+						{#each shown as ch (ch.key)}
+							{@const isChosen = chosen.includes(ch.key)}
+							<button
+								type="button"
+								class="hover:bg-duvet-accent-tint focus-visible:bg-duvet-accent-tint flex min-h-8 w-full items-center gap-2.5 rounded-[9px] py-1.5 pr-2.5 pl-2 text-left outline-none disabled:pointer-events-none disabled:opacity-45"
+								disabled={max > 1 && !isChosen && chosen.length >= max}
+								onclick={() => pick(ch.key)}
 							>
-								{#if isChosen}
-									<CheckIcon class="text-duvet-on-accent size-3" />
+								{@render choiceIcon(ch, 20)}
+								<span class="flex min-w-0 flex-1 flex-col">
+									<span class="text-duvet-ink truncate text-[13px] font-medium">{ch.label}</span>
+									{#if ch.description}
+										<span class="text-duvet-ink2 truncate text-[11px]">{ch.description}</span>
+									{/if}
+								</span>
+								{#if max > 1}
+									<span
+										class="grid size-4 shrink-0 place-items-center rounded-[5px] {isChosen
+											? 'bg-duvet-accent'
+											: 'bg-duvet-secondary-fill shadow-[inset_0_0_0_1px_var(--duvet-line)]'}"
+									>
+										{#if isChosen}
+											<CheckIcon class="text-duvet-on-accent size-3" />
+										{/if}
+									</span>
+								{:else if isChosen}
+									<CheckIcon class="text-duvet-accent-text shrink-0" size={15} />
 								{/if}
-							</span>
-						{:else if isChosen}
-							<CheckIcon class="text-duvet-accent-text shrink-0" size={15} />
-						{/if}
-					</button>
-				{:else}
-					<p class="px-2 py-2 text-[13px] text-duvet-ink2">No results</p>
-				{/each}
+							</button>
+						{:else}
+							<p class="px-2 py-2 text-[13px] text-duvet-ink2">No results</p>
+						{/each}
+					</div>
+				</Popover.Content>
 			</div>
-		</Popover.Content>
+		{/if}
 	</Popover.Portal>
 </Popover.Root>
 

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { claimLayer, layerStyle, releaseLayer } from "$lib/overlay-layers";
 	import type { Snippet } from "svelte";
 	import { ContextMenu } from "bits-ui";
 	import { MENU_PANEL } from "./recipes";
@@ -23,6 +24,13 @@
 		target: Snippet<[Record<string, unknown>]>;
 		children: Snippet;
 	} = $props();
+
+	// What opens last is in front, whatever opened it (lib/overlay-layers.ts).
+	const layer = $derived(open ? claimLayer() : 0);
+	$effect(() => {
+		const mine = layer;
+		if (mine) return () => releaseLayer(mine);
+	});
 </script>
 
 <ContextMenu.Root bind:open {onOpenChange}>
@@ -32,12 +40,17 @@
 		{/snippet}
 	</ContextMenu.Trigger>
 	<ContextMenu.Portal>
-		<ContextMenu.Content
-			collisionPadding={10}
-			aria-label={label}
-			class="{MENU_PANEL} origin-(--bits-floating-transform-origin) {className}"
-		>
-			{@render children()}
-		</ContextMenu.Content>
+		{#if layer}
+			<!-- The panel's positioner takes no layer of its own: this holds it, at the overlay's (lib/overlay-layers.ts). -->
+			<div class="fixed top-0 left-0" style={layerStyle(layer)}>
+				<ContextMenu.Content
+					collisionPadding={10}
+					aria-label={label}
+					class="{MENU_PANEL} origin-(--bits-floating-transform-origin) {className}"
+				>
+					{@render children()}
+				</ContextMenu.Content>
+			</div>
+		{/if}
 	</ContextMenu.Portal>
 </ContextMenu.Root>

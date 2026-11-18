@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { claimLayer, layerStyle, releaseLayer } from "$lib/overlay-layers";
 	import type { Snippet } from "svelte";
 	import { Dialog } from "bits-ui";
 	import { X } from "@lucide/svelte";
@@ -38,12 +39,20 @@
 		children: Snippet;
 		foot?: Snippet;
 	} = $props();
+
+	// What opens last is in front, whatever opened it (lib/overlay-layers.ts).
+	const layer = $derived(open ? claimLayer() : 0);
+	$effect(() => {
+		const mine = layer;
+		if (mine) return () => releaseLayer(mine);
+	});
 </script>
 
 <Dialog.Root bind:open {onOpenChange}>
 	<Dialog.Portal>
-		<Dialog.Overlay class="bg-duvet-scrim animate-scrim-in fixed inset-0 z-[900]" />
+		<Dialog.Overlay style={layerStyle(layer)} class="bg-duvet-scrim animate-scrim-in fixed inset-0 z-[900]" />
 		<Dialog.Content
+			style={layerStyle(layer)}
 			{interactOutsideBehavior}
 			{escapeKeydownBehavior}
 			{onOpenAutoFocus}
