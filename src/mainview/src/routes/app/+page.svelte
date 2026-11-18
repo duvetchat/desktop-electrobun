@@ -573,7 +573,7 @@
 			conversations.update((list) => (list.some((c) => c.id === conv.id) ? list : [conv, ...list]));
 			openConversationTab(conv.id, how);
 		} catch (err) {
-			toast(getApiError(err, "Failed to open the conversation"), "error");
+			toast(getApiError(err, "Couldn't open the chat"), "error");
 		}
 	}
 

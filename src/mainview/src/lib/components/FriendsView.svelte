@@ -324,7 +324,7 @@
 			closeGroupModal();
 			openConversation(conv.id);
 		} catch (err) {
-			groupError = getApiError(err, plan.kind === "dm" ? "Failed to open the conversation" : "Failed to create group");
+			groupError = getApiError(err, plan.kind === "dm" ? "Couldn't open the chat" : "Failed to create group");
 		}
 	}
 </script>

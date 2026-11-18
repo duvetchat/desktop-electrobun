@@ -56,7 +56,7 @@
 		const me = get(currentUser);
 		if (conv.type === 2) return conv.name ?? "Group";
 		const other = conv.members.find((m) => m.user_id !== me?.id);
-		return other?.user?.alias ?? other?.user?.username ?? "DM";
+		return other?.user?.alias ?? other?.user?.username ?? "Direct message";
 	}
 
 	function convSubtitle(conv: Conversation): string {

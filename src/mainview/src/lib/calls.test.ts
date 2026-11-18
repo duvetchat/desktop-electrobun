@@ -460,7 +460,7 @@ describe("the call card's face", () => {
 		expect(callCardFace(calling, undefined, ME)).toEqual({
 			userId: null,
 			avatar: null,
-			name: "Conversation",
+			name: "Chat",
 			place: null,
 		});
 	});

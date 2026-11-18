@@ -266,7 +266,7 @@ describe("a call's row", () => {
 	});
 
 	test("a conversation this client doesn't know is named as one, and anything but a call notice has none", () => {
-		expect(callRow(notice(9), undefined, ME)).toMatchObject({ title: "Conversation", avatar: null });
+		expect(callRow(notice(9), undefined, ME)).toMatchObject({ title: "Chat", avatar: null });
 		expect(callRow(text(9), dm, ME)).toBeNull();
 	});
 

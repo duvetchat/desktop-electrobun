@@ -304,7 +304,7 @@
 	function conversationTitle(): string {
 		if (conversation.type === 2) return conversation.name ?? "Group";
 		const other = conversation.members.find((m) => m.user_id !== me?.id);
-		return other?.user?.alias ?? other?.user?.username ?? "DM";
+		return other?.user?.alias ?? other?.user?.username ?? "Direct message";
 	}
 
 	// What comes after an await is read with the conversation's ID taken before it: once the view is gone (another tab

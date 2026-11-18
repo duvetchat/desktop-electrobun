@@ -96,7 +96,8 @@
 				kind: "conversation",
 				key: `conv:${conv.id}`,
 				id: conv.id,
-				name: conv.type === 2 ? (conv.name ?? "Group") : (other?.user?.alias ?? other?.user?.username ?? "DM"),
+				name:
+					conv.type === 2 ? (conv.name ?? "Group") : (other?.user?.alias ?? other?.user?.username ?? "Direct message"),
 				sub: conv.type === 2 ? `${conv.members.length} members` : "Direct message",
 				avatar: conv.type === 2 ? null : (getAvatarURL(other?.user_id ?? "", other?.user?.avatar) ?? null),
 				mentions: $shownMentionCounts[conv.id] ?? 0,

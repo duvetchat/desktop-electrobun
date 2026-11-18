@@ -268,7 +268,7 @@
 			if (!text.trim()) return close();
 			const parsed =
 				everywhere && /(?:^|\s)(?:from|mentions|in):\S/i.test(text)
-					? { error: "from:, mentions: and in: search a Space or a conversation" }
+					? { error: "from:, mentions: and in: search a Space or a chat" }
 					: parseSearch(text, members, rooms);
 			open = true;
 			hidden = false;

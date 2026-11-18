@@ -1181,7 +1181,7 @@
 										class="text-duvet-ink font-medium hover:underline"
 										onclick={() => jumpToPinned(message)}>a message</button
 									>
-									to this {isConversation ? "conversation" : "room"}. See all
+									to this {isConversation ? "chat" : "room"}. See all
 									<button
 										type="button"
 										class="text-duvet-accent-text font-medium hover:underline"

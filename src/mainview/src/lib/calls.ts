@@ -245,7 +245,7 @@ export interface CallCardFace {
 /**
  * What the call card (CallCard.svelte) shows of a call. One ringing here shows who calls, with the group it comes from.
  * One the user places shows whom they call: a DM's other member, or a group by its name, with its initials as the DM
- * list draws it. One of a conversation this client doesn't know is "Conversation", as in the Calls tab.
+ * list draws it. One of a conversation this client doesn't know is "Chat", as in the Calls tab.
  */
 export function callCardFace(
 	call: Pick<ActiveCallInfo, "state" | "initiatorId" | "initiatorName" | "initiatorAvatar">,
@@ -256,7 +256,7 @@ export function callCardFace(
 		const place = conversation?.type === 2 ? conversationTitle(conversation, meId) : null;
 		return { userId: call.initiatorId, avatar: call.initiatorAvatar, name: call.initiatorName, place };
 	}
-	if (!conversation) return { userId: null, avatar: null, name: "Conversation", place: null };
+	if (!conversation) return { userId: null, avatar: null, name: "Chat", place: null };
 	const other = otherMember(conversation, meId);
 	return {
 		userId: other?.user_id ?? null,
