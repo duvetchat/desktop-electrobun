@@ -304,7 +304,9 @@
 
 	function ensureAudioContext(): AudioContext {
 		if (!audioContext) {
-			audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+			// RNNoise (static/rnnoise-worklet-processor.js) takes 10 ms frames of 480 samples, which is 48 kHz. A context takes
+			// the device's rate otherwise, 96 kHz on a PipeWire set to it, where the frames are 5 ms and the voice goes for noise.
+			audioContext = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 48_000 });
 		}
 		return audioContext;
 	}
