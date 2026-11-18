@@ -124,7 +124,9 @@ describe("a message's preview", () => {
 		expect(shown).toContain(">https://duvet.chat/invite/abc123</button>");
 		// The cards as they load: the message's, and the invite's skeleton.
 		expect(shown).toContain("Loading message...");
-		expect(shown).toMatch(/rounded-lg border border-zinc-700 bg-zinc-900 p-4/);
+		expect(shown).toMatch(
+			/rounded-card mt-2 max-w-xs border p-4"><div class="bg-duvet-ink\/10 mb-3 h-3 w-44 animate-pulse rounded"/,
+		);
 	});
 
 	// #250: each piece of a text between its bare links rendered on its own, so one that started with " - " was a list,
@@ -150,8 +152,8 @@ describe("a message's preview", () => {
 			(b) => b.attributes.title === "👍" || b.attributes.title === "🎉",
 		);
 		expect(reactions.map((b) => b.attributes.title)).toEqual(["👍", "🎉"]);
-		expect(reactions[0]!.attributes.class).toContain("bg-indigo-500/20");
-		expect(reactions[1]!.attributes.class).not.toContain("bg-indigo-500/20");
+		expect(reactions[0]!.attributes.class).toContain("bg-duvet-accent/20");
+		expect(reactions[1]!.attributes.class).not.toContain("bg-duvet-accent/20");
 	});
 
 	test("shows the reply's quote, that it was edited, and its code block's copy button", () => {
@@ -255,7 +257,7 @@ describe("a call notice's preview", () => {
 		const phone = named(await tags(MessagePreview, groupProps(m)), "svg").find((svg) =>
 			svg.attributes.class?.includes("lucide-phone"),
 		);
-		return { text, red: phone?.attributes.class?.split(/\s+/).includes("text-red-400") };
+		return { text, red: phone?.attributes.class?.split(/\s+/).includes("text-duvet-danger") };
 	}
 
 	test("of a call from before the user joined says who started it, without a red phone", async () => {

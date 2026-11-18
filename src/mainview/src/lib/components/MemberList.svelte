@@ -126,7 +126,7 @@
 			.filter((r) => r.color_from !== null && r.color_from !== undefined)
 			.sort((a, b) => b.position - a.position)
 			.at(0);
-		if (!highest) return `color: ${dim("var(--color-zinc-100)")}`;
+		if (!highest) return `color: ${dim("var(--duvet-ink)")}`;
 		const from = dim(intToHex(highest.color_from));
 		if (highest.color_to === null || highest.color_to === undefined) return `color: ${from}`;
 		const to = dim(intToHex(highest.color_to));
@@ -234,18 +234,18 @@
 								<UserAvatar src={member.avatar_url} name={member.username} size={30} />
 								{#if isTyping(member.id)}
 									<span
-										class="border-duvet-bg absolute -right-0.5 -bottom-0.5 flex h-3 w-4 items-center justify-center gap-0.5 rounded-full border-2 bg-zinc-700"
+										class="border-duvet-bg bg-duvet-ink/10 absolute -right-0.5 -bottom-0.5 flex h-3 w-4 items-center justify-center gap-0.5 rounded-full border-2"
 									>
 										{#if isRecording(member.id)}
-											<MicIcon class="size-2 animate-pulse text-red-400" />
+											<MicIcon class="text-duvet-danger size-2 animate-pulse" />
 										{:else}
-											<span class="bg-night-75 animate-member-typing-bounce block size-0.5 rounded-full"></span>
+											<span class="bg-duvet-ink2 animate-member-typing-bounce block size-0.5 rounded-full"></span>
 											<span
-												class="bg-night-75 animate-member-typing-bounce block size-0.5 rounded-full"
+												class="bg-duvet-ink2 animate-member-typing-bounce block size-0.5 rounded-full"
 												style="animation-delay:0.2s"
 											></span>
 											<span
-												class="bg-night-75 animate-member-typing-bounce block size-0.5 rounded-full"
+												class="bg-duvet-ink2 animate-member-typing-bounce block size-0.5 rounded-full"
 												style="animation-delay:0.4s"
 											></span>
 										{/if}
@@ -266,15 +266,15 @@
 								>
 									<span class="truncate">{member.username}</span>
 									{#if member.is_bot}
-										<span class="text-xxs text-zinc-400 {member.status === 'offline' ? 'opacity-60' : ''}">BOT</span>
+										<span class="text-xxs text-duvet-ink2 {member.status === 'offline' ? 'opacity-60' : ''}">BOT</span>
 									{/if}
 									{#if member.is_owner}
-										<CrownSimpleIcon class="size-3 text-amber-500 {member.status === 'offline' ? 'opacity-60' : ''}" />
+										<CrownSimpleIcon class="text-duvet-warn size-3 {member.status === 'offline' ? 'opacity-60' : ''}" />
 									{/if}
 								</span>
 								{#if shownActivities($userActivities[member.id]).length}
 									{@const activity = shownActivities($userActivities[member.id])[0]!}
-									<p class="truncate text-xs text-zinc-500">
+									<p class="text-duvet-ink2 truncate text-xs">
 										{isSpotify(activity)
 											? "Listening to Spotify"
 											: `${activity.name}${activity.state ? ` — ${activity.state}` : ""}`}

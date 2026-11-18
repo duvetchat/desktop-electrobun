@@ -256,7 +256,7 @@
 	<span class="flex items-center gap-1 {dim ? 'opacity-40' : ''}">
 		{#each keys as k, i (i)}
 			<kbd
-				class="bg-duvet-card text-duvet-ink shadow-duvet-raised border-duvet-line inline-flex h-6 min-w-6 items-center justify-center rounded-md border border-b-[3px] border-b-black/30 px-1.5 font-sans text-xs leading-none font-bold"
+				class="bg-duvet-card text-duvet-ink shadow-duvet-raised border-duvet-line border-b-duvet-line inline-flex h-6 min-w-6 items-center justify-center rounded-md border border-b-[3px] px-1.5 font-sans text-xs leading-none font-bold"
 				>{k}</kbd
 			>
 		{/each}

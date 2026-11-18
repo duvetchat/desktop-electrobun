@@ -196,7 +196,7 @@
 				const key = FILTER_KEY.exec(part)?.[0];
 				if (!key) return escapeHtml(part);
 				const value = escapeHtml(part.slice(key.length));
-				return `<span class="rounded-sm bg-stone-700 shadow-[0_0_0_2px_var(--color-stone-700)]"><span class="text-stone-400">${escapeHtml(key)}</span>${value}</span>`;
+				return `<span class="rounded-sm bg-duvet-ink/10 shadow-[0_0_0_2px_color-mix(in_oklab,var(--duvet-ink)_10%,transparent)]"><span class="text-duvet-ink2">${escapeHtml(key)}</span>${value}</span>`;
 			})
 			.join(""),
 	);
@@ -462,7 +462,7 @@
 	/>
 	{#if text}
 		<button
-			class="absolute right-1.5 flex size-5 items-center justify-center rounded text-stone-500 hover:text-stone-200"
+			class="text-duvet-ink2 hover:text-duvet-ink absolute right-1.5 flex size-5 items-center justify-center rounded"
 			aria-label="Clear the search"
 			onclick={clear}
 		>
@@ -475,7 +475,7 @@
 		<div
 			role="listbox"
 			tabindex="-1"
-			class="absolute top-full right-0 z-40 mt-1 flex w-80 flex-col gap-0.5 rounded-lg border border-stone-800 bg-stone-950 p-1.5 font-normal shadow-xl @max-3xl/pane:right-auto @max-3xl/pane:left-0 @max-3xl/pane:w-64"
+			class="rounded-card border-duvet-line bg-duvet-sunk shadow-duvet-float absolute top-full right-0 z-40 mt-1 flex w-80 flex-col gap-0.5 border p-1.5 font-normal @max-3xl/pane:right-auto @max-3xl/pane:left-0 @max-3xl/pane:w-64"
 			onmousedown={(e) => e.preventDefault()}
 		>
 			{#each suggestions as s, i (s.key)}
@@ -483,16 +483,16 @@
 					role="option"
 					aria-selected={i === selected}
 					class="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-xs {i === selected
-						? 'bg-stone-800'
-						: 'hover:bg-stone-800/60'}"
+						? 'bg-duvet-card'
+						: 'hover:bg-duvet-card/60'}"
 					onclick={() => apply(s)}
 				>
 					{#if s.avatar !== undefined}
 						<UserAvatar src={s.avatar} name={s.label} size={20} />
 					{/if}
-					<span class="shrink-0 font-semibold text-stone-100">{s.label}</span>
+					<span class="text-duvet-ink shrink-0 font-semibold">{s.label}</span>
 					{#if s.detail}
-						<span class="truncate text-stone-500">{s.detail}</span>
+						<span class="text-duvet-ink2 truncate">{s.detail}</span>
 					{/if}
 				</button>
 			{/each}
@@ -502,11 +502,11 @@
 
 {#if open}
 	<aside
-		class="absolute top-12 right-0 bottom-0 z-30 flex w-104 max-w-full flex-col border-l border-stone-800 bg-stone-950 font-normal shadow-2xl"
+		class="border-duvet-line bg-duvet-sunk shadow-duvet-float absolute top-12 right-0 bottom-0 z-30 flex w-104 max-w-full flex-col border-l font-normal"
 		aria-label="Search results"
 	>
-		<div class="flex h-10 shrink-0 items-center justify-between border-b border-stone-800 px-3">
-			<span class="text-sm font-semibold text-stone-100">
+		<div class="border-duvet-line flex h-10 shrink-0 items-center justify-between border-b px-3">
+			<span class="text-duvet-ink text-sm font-semibold">
 				{#if failure}
 					Search
 				{:else if loading && results.length === 0}
@@ -519,7 +519,7 @@
 				{/if}
 			</span>
 			<button
-				class="flex size-6 items-center justify-center rounded text-stone-400 hover:bg-stone-800 hover:text-stone-200"
+				class="text-duvet-ink2 hover:bg-duvet-card hover:text-duvet-ink flex size-6 items-center justify-center rounded"
 				aria-label="Close the search"
 				onclick={close}
 			>
@@ -532,15 +532,15 @@
 			onclickcapture={(e) => mentionProfile.open(e)}
 		>
 			{#if failure}
-				<p class="px-2 py-8 text-center text-xs text-red-400">{failure}</p>
+				<p class="text-duvet-danger px-2 py-8 text-center text-xs">{failure}</p>
 			{:else if !loading && results.length === 0}
-				<p class="px-2 py-8 text-center text-xs text-stone-500">No messages match this search</p>
+				<p class="text-duvet-ink2 px-2 py-8 text-center text-xs">No messages match this search</p>
 			{/if}
 			{#each results as r (r.message.id)}
 				<div
 					role="button"
 					tabindex="0"
-					class="flex shrink-0 cursor-pointer flex-col gap-1 rounded-md border border-stone-800/80 bg-stone-900/60 px-3 py-2 text-left transition-colors hover:border-stone-700 hover:bg-stone-900"
+					class="border-duvet-line bg-duvet-bg/60 hover:border-duvet-line hover:bg-duvet-bg flex shrink-0 cursor-pointer flex-col gap-1 rounded-md border px-3 py-2 text-left transition-colors"
 					onclick={(e) => jump(e, r)}
 					onkeydown={(e) => {
 						if (e.key === "Enter") jump(e, r);
@@ -548,7 +548,7 @@
 				>
 					{#if everywhere}
 						<!-- As a room's result names its room: here its Space too, or its conversation -->
-						<div class="text-xxs flex items-center gap-0.5 font-semibold text-stone-500">
+						<div class="text-xxs text-duvet-ink2 flex items-center gap-0.5 font-semibold">
 							{#if r.conversationId}
 								<MessageCircleIcon class="size-3" />
 							{:else}
@@ -571,7 +571,7 @@
 			{/each}
 			{#if !everywhere && !failure && results.length > 0 && results.length < total}
 				<button
-					class="shrink-0 rounded-md py-2 text-xs font-medium text-stone-400 hover:bg-stone-900 hover:text-stone-200 disabled:opacity-50"
+					class="text-duvet-ink2 hover:bg-duvet-bg hover:text-duvet-ink shrink-0 rounded-md py-2 text-xs font-medium disabled:opacity-50"
 					disabled={loading}
 					onclick={() => run(true)}
 				>

@@ -319,20 +319,20 @@
 		<Dialog.Overlay class="fixed inset-0 z-500 bg-black/70 backdrop-blur-sm" />
 		<Dialog.Content class="fixed inset-0 z-501 flex items-center justify-center p-4">
 			<div
-				class="flex h-[85vh] max-h-[85vh] w-full max-w-4xl overflow-hidden rounded-xl border border-zinc-700 bg-zinc-900 text-zinc-100 shadow-2xl"
+				class="rounded-card border-duvet-line bg-duvet-bg text-duvet-ink shadow-duvet-float flex h-[85vh] max-h-[85vh] w-full max-w-4xl overflow-hidden border"
 			>
 				<!-- Left sidebar -->
-				<aside class="flex w-56 shrink-0 flex-col border-r border-zinc-800 bg-zinc-950 py-6">
+				<aside class="border-duvet-line bg-duvet-sunk flex w-56 shrink-0 flex-col border-r py-6">
 					<div class="mb-4 px-4">
 						<div class="mb-1 flex items-center gap-1.5 px-2">
 							{#if room.type === 3}
-								<GearSixIcon class="size-3.5 shrink-0 text-zinc-400" />
+								<GearSixIcon class="text-duvet-ink2 size-3.5 shrink-0" />
 							{:else if room.type === 1}
-								<HashIcon class="size-3.5 shrink-0 text-zinc-400" />
+								<HashIcon class="text-duvet-ink2 size-3.5 shrink-0" />
 							{:else}
-								<SpeakerIcon class="size-3.5 shrink-0 text-zinc-400" />
+								<SpeakerIcon class="text-duvet-ink2 size-3.5 shrink-0" />
 							{/if}
-							<p class="text-xxs truncate font-bold tracking-widest text-zinc-400 uppercase">
+							<p class="text-duvet-ink2 truncate text-xs font-bold">
 								{room.name}
 							</p>
 						</div>
@@ -341,7 +341,9 @@
 					<nav class="flex flex-1 flex-col gap-0.5 px-2">
 						<button
 							class="flex items-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium transition-colors duration-100
-								{activeSection === 'overview' ? 'bg-zinc-800 text-white' : 'text-zinc-400 hover:bg-zinc-800/60 hover:text-zinc-200'}"
+								{activeSection === 'overview'
+								? 'bg-duvet-card text-duvet-ink'
+								: 'text-duvet-ink2 hover:bg-duvet-card/60 hover:text-duvet-ink'}"
 							onclick={() => (activeSection = "overview")}
 						>
 							<GearSixIcon class="size-4" />
@@ -351,7 +353,9 @@
 						{#if room.type !== 3}
 							<button
 								class="flex items-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium transition-colors duration-100
-									{activeSection === 'permissions' ? 'bg-zinc-800 text-white' : 'text-zinc-400 hover:bg-zinc-800/60 hover:text-zinc-200'}"
+									{activeSection === 'permissions'
+									? 'bg-duvet-card text-duvet-ink'
+									: 'text-duvet-ink2 hover:bg-duvet-card/60 hover:text-duvet-ink'}"
 								onclick={() => (activeSection = "permissions")}
 							>
 								<ShieldIcon class="size-4" />
@@ -362,7 +366,9 @@
 						{#if room.type === 1 && canManageWebhooks}
 							<button
 								class="flex items-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium transition-colors duration-100
-									{activeSection === 'webhooks' ? 'bg-zinc-800 text-white' : 'text-zinc-400 hover:bg-zinc-800/60 hover:text-zinc-200'}"
+									{activeSection === 'webhooks'
+									? 'bg-duvet-card text-duvet-ink'
+									: 'text-duvet-ink2 hover:bg-duvet-card/60 hover:text-duvet-ink'}"
 								onclick={() => (activeSection = "webhooks")}
 							>
 								<WebhookIcon class="size-4" />
@@ -370,21 +376,21 @@
 							</button>
 						{/if}
 
-						<div class="mx-1 mt-auto border-t border-zinc-800 pt-4">
+						<div class="border-duvet-line mx-1 mt-auto border-t pt-4">
 							{#if !confirmDelete}
 								<button
-									class="flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium text-red-400 transition-colors duration-100 hover:bg-zinc-800/60 hover:text-red-300"
+									class="text-duvet-danger hover:bg-duvet-card/60 hover:text-duvet-danger flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium transition-colors duration-100"
 									onclick={() => (confirmDelete = true)}
 								>
 									<TrashIcon class="size-4" />
 									Delete {room.type === 3 ? "Category" : "Room"}
 								</button>
 							{:else}
-								<div class="px-3 py-2 text-xs text-zinc-400">
-									<p class="mb-2 font-medium text-red-400">Delete this {room.type === 3 ? "category" : "room"}?</p>
+								<div class="text-duvet-ink2 px-3 py-2 text-xs">
+									<p class="text-duvet-danger mb-2 font-medium">Delete this {room.type === 3 ? "category" : "room"}?</p>
 									<div class="flex gap-2">
 										<button
-											class="text-fixed-white flex-1 rounded bg-red-600 px-2 py-1 text-xs transition-colors hover:bg-red-500"
+											class="text-duvet-on-accent bg-duvet-danger hover:bg-duvet-danger/85 flex-1 rounded px-2 py-1 text-xs transition-colors"
 											onclick={() => {
 												onDelete?.();
 												handleClose();
@@ -393,7 +399,7 @@
 											Delete
 										</button>
 										<button
-											class="flex-1 rounded bg-zinc-700 px-2 py-1 text-xs text-zinc-100 transition-colors hover:bg-zinc-600"
+											class="bg-duvet-ink/10 text-duvet-ink hover:bg-duvet-ink/15 flex-1 rounded px-2 py-1 text-xs transition-colors"
 											onclick={() => (confirmDelete = false)}
 										>
 											Cancel
@@ -408,12 +414,12 @@
 				<!-- Content area -->
 				<div class="relative flex min-w-0 flex-1 flex-col">
 					<!-- Header -->
-					<div class="flex shrink-0 items-center justify-between border-b border-zinc-800 px-6 py-4">
-						<h2 class="text-base font-semibold text-white capitalize">
+					<div class="border-duvet-line flex shrink-0 items-center justify-between border-b px-6 py-4">
+						<h2 class="text-duvet-ink text-base font-semibold capitalize">
 							{activeSection === "overview" ? "Overview" : activeSection === "permissions" ? "Permissions" : "Webhooks"}
 						</h2>
 						<button
-							class="rounded-lg p-1.5 text-zinc-400 transition-colors duration-150 hover:bg-zinc-800 hover:text-white"
+							class="text-duvet-ink2 hover:bg-duvet-card hover:text-duvet-ink rounded-lg p-1.5 transition-colors duration-150"
 							onclick={handleClose}
 							aria-label="Close"
 						>
@@ -426,14 +432,14 @@
 						{#if activeSection === "overview"}
 							<div class="max-w-xl space-y-5 px-6 py-6">
 								<div class="space-y-1.5">
-									<label for="ch-name" class="block text-xs font-semibold tracking-wide text-zinc-400 uppercase">
+									<label for="ch-name" class="text-duvet-ink2 block text-[13px] font-bold">
 										{room.type === 3 ? "Category Name" : "Room Name"}
 									</label>
 									<input
 										id="ch-name"
 										type="text"
 										bind:value={editName}
-										class="w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500 focus:ring-2 focus:ring-indigo-500/60 focus:outline-none"
+										class="text-duvet-ink placeholder:text-duvet-ink2 bg-duvet-sunk shadow-duvet-press focus-visible:outline-duvet-accent w-full rounded-xl px-3 py-2 text-sm focus-visible:outline-2"
 										placeholder={room.type === 3 ? "category-name" : "room-name"}
 										maxlength="64"
 									/>
@@ -441,14 +447,12 @@
 
 								{#if room.type !== 3}
 									<div class="space-y-1.5">
-										<label for="ch-desc" class="block text-xs font-semibold tracking-wide text-zinc-400 uppercase">
-											Description
-										</label>
+										<label for="ch-desc" class="text-duvet-ink2 block text-[13px] font-bold"> Description </label>
 										<textarea
 											id="ch-desc"
 											bind:value={editDescription}
 											rows="3"
-											class="w-full resize-none rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500 focus:ring-2 focus:ring-indigo-500/60 focus:outline-none"
+											class="text-duvet-ink placeholder:text-duvet-ink2 bg-duvet-sunk shadow-duvet-press focus-visible:outline-duvet-accent w-full resize-none rounded-xl px-3 py-2 text-sm focus-visible:outline-2"
 											placeholder="Optional description…"
 											maxlength="256"
 										></textarea>
@@ -456,19 +460,19 @@
 								{/if}
 
 								{#if overviewError}
-									<p class="text-sm text-red-400">{overviewError}</p>
+									<p class="text-duvet-danger text-sm">{overviewError}</p>
 								{/if}
 
 								<div class="flex gap-3 pt-1">
 									<button
-										class="text-fixed-white rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium transition-colors hover:bg-indigo-500 disabled:opacity-50"
+										class="text-duvet-on-accent rounded-row bg-duvet-accent hover:bg-duvet-accent/85 px-4 py-2 text-sm font-medium transition-colors disabled:opacity-50"
 										disabled={overviewSaving || !editName.trim()}
 										onclick={saveOverview}
 									>
 										{overviewSaving ? "Saving…" : "Save Changes"}
 									</button>
 									<button
-										class="rounded-lg bg-zinc-700 px-4 py-2 text-sm font-medium text-zinc-100 transition-colors hover:bg-zinc-600"
+										class="rounded-row bg-duvet-ink/10 text-duvet-ink hover:bg-duvet-ink/15 px-4 py-2 text-sm font-medium transition-colors"
 										onclick={() => {
 											editName = room.name;
 											editDescription = room.description ?? "";
@@ -482,12 +486,12 @@
 						{:else if activeSection === "permissions"}
 							<div class="flex h-full">
 								<!-- Roles/Members list -->
-								<div class="flex w-52 shrink-0 flex-col border-r border-zinc-800 py-4">
+								<div class="border-duvet-line flex w-52 shrink-0 flex-col border-r py-4">
 									<div class="flex items-center justify-between px-3 pb-2">
-										<span class="text-xxs font-bold tracking-widest text-zinc-500 uppercase"> Roles / Members </span>
+										<span class="text-duvet-ink2 text-xs font-bold"> Roles / Members </span>
 										<div class="relative">
 											<button
-												class="rounded p-1 text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-white"
+												class="text-duvet-ink2 hover:bg-duvet-card hover:text-duvet-ink rounded p-1 transition-colors"
 												onclick={() => (showAddMenu = !showAddMenu)}
 												title="Add overwrite"
 											>
@@ -495,14 +499,14 @@
 											</button>
 											{#if showAddMenu}
 												<div
-													class="absolute top-full right-0 z-10 mt-1 max-h-48 w-48 overflow-y-auto rounded-lg border border-zinc-700 bg-zinc-800 py-1 shadow-2xl"
+													class="rounded-card border-duvet-line bg-duvet-card shadow-duvet-float absolute top-full right-0 z-10 mt-1 max-h-48 w-48 overflow-y-auto border py-1"
 												>
 													{#if availableRoles.length === 0}
-														<p class="px-3 py-2 text-xs text-zinc-500">All roles added</p>
+														<p class="text-duvet-ink2 px-3 py-2 text-xs">All roles added</p>
 													{:else}
 														{#each availableRoles as role (role.id)}
 															<button
-																class="w-full px-3 py-2 text-left text-sm text-zinc-200 transition-colors hover:bg-zinc-700"
+																class="text-duvet-ink hover:bg-duvet-ink/10 w-full px-3 py-2 text-left text-sm transition-colors"
 																onclick={() => addRoleOverwrite(role.id)}
 															>
 																{role.name}
@@ -518,7 +522,9 @@
 										{#each pendingOverwrites as ow (ow.target_id)}
 											<button
 												class="w-full px-3 py-2 text-left text-sm transition-colors
-													{selectedTargetId === ow.target_id ? 'bg-zinc-700 text-white' : 'text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100'}"
+													{selectedTargetId === ow.target_id
+													? 'bg-duvet-ink/10 text-duvet-ink'
+													: 'text-duvet-ink hover:bg-duvet-card hover:text-duvet-ink'}"
 												onclick={() => (selectedTargetId = ow.target_id)}
 											>
 												{getTargetLabel(ow)}
@@ -526,7 +532,7 @@
 										{/each}
 
 										{#if pendingOverwrites.length === 0}
-											<p class="px-3 py-3 text-xs text-zinc-500">No overwrites yet. Add a role with the + button.</p>
+											<p class="text-duvet-ink2 px-3 py-3 text-xs">No overwrites yet. Add a role with the + button.</p>
 										{/if}
 									</div>
 								</div>
@@ -534,14 +540,14 @@
 								<!-- Permission toggles -->
 								<div class="flex-1 overflow-y-auto px-6 py-4">
 									{#if !selectedTargetId || !selectedPending}
-										<p class="mt-8 text-center text-sm text-zinc-500">Select a role or member to edit permissions.</p>
+										<p class="text-duvet-ink2 mt-8 text-center text-sm">Select a role or member to edit permissions.</p>
 									{:else}
 										<div class="mb-5 flex items-center justify-between">
-											<h3 class="text-sm font-semibold text-zinc-200">
+											<h3 class="text-duvet-ink text-sm font-semibold">
 												{getTargetLabel(selectedPending)}
 											</h3>
 											<button
-												class="rounded px-2 py-1 text-xs text-red-400 transition-colors hover:bg-zinc-800 hover:text-red-300"
+												class="text-duvet-danger hover:bg-duvet-card hover:text-duvet-danger rounded px-2 py-1 text-xs transition-colors"
 												onclick={removeOverwrite}
 											>
 												Remove
@@ -550,7 +556,7 @@
 
 										{#each PERMISSION_GROUPS as group (group.label)}
 											<div class="mb-6">
-												<p class="mb-3 text-xs font-bold tracking-widest text-zinc-500 uppercase">
+												<p class="text-duvet-ink2 mb-3 text-[13px] font-bold">
 													{group.label}
 												</p>
 												<div class="space-y-3">
@@ -562,14 +568,16 @@
 															state === 1 || canSetPermission(roomGranted, selectedSaved?.allow_flags ?? 0, perm.flag)}
 														<div class="flex items-start justify-between gap-4 py-2">
 															<div class="min-w-0 flex-1">
-																<p class="text-sm font-medium text-zinc-200">{perm.name}</p>
-																<p class="mt-0.5 text-xs text-zinc-500">{perm.description}</p>
+																<p class="text-duvet-ink text-sm font-medium">{perm.name}</p>
+																<p class="text-duvet-ink2 mt-0.5 text-xs">{perm.description}</p>
 															</div>
 															<div class="flex shrink-0 items-center gap-1">
 																<!-- Deny -->
 																<button
 																	class="flex size-7 items-center justify-center rounded transition-colors
-																		{state === -1 ? 'text-fixed-white bg-red-600' : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200'}"
+																		{state === -1
+																		? 'text-duvet-on-accent bg-duvet-danger'
+																		: 'bg-duvet-card text-duvet-ink2 hover:bg-duvet-ink/10 hover:text-duvet-ink'}"
 																	class:opacity-40={!canDeny}
 																	class:cursor-not-allowed={!canDeny}
 																	disabled={!canDeny}
@@ -581,7 +589,9 @@
 																<!-- Inherit -->
 																<button
 																	class="flex size-7 items-center justify-center rounded transition-colors
-																		{state === 0 ? 'bg-zinc-600 text-white' : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200'}"
+																		{state === 0
+																		? 'bg-duvet-ink/15 text-duvet-ink'
+																		: 'bg-duvet-card text-duvet-ink2 hover:bg-duvet-ink/10 hover:text-duvet-ink'}"
 																	onclick={() => setPermState(perm.flag, 0)}
 																	title="Inherit"
 																>
@@ -590,7 +600,9 @@
 																<!-- Allow -->
 																<button
 																	class="flex size-7 items-center justify-center rounded transition-colors
-																		{state === 1 ? 'text-fixed-white bg-green-600' : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200'}"
+																		{state === 1
+																		? 'text-duvet-on-accent bg-duvet-alive'
+																		: 'bg-duvet-card text-duvet-ink2 hover:bg-duvet-ink/10 hover:text-duvet-ink'}"
 																	class:opacity-40={!canAllow}
 																	class:cursor-not-allowed={!canAllow}
 																	disabled={!canAllow}
@@ -619,21 +631,21 @@
 					{#if activeSection === "permissions" && hasChanges}
 						<div
 							transition:fly={{ y: 60, duration: 250, easing: cubicOut }}
-							class="absolute right-0 bottom-0 left-0 flex items-center justify-between border-t border-zinc-700 bg-zinc-800/95 px-6 py-3 backdrop-blur-sm"
+							class="border-duvet-line bg-duvet-card/95 absolute right-0 bottom-0 left-0 flex items-center justify-between border-t px-6 py-3 backdrop-blur-sm"
 						>
-							<span class="text-sm {saveError ? 'text-red-400' : 'text-zinc-400'}">
+							<span class="text-sm {saveError ? 'text-duvet-danger' : 'text-duvet-ink2'}">
 								{saveError || "You have unsaved changes"}
 							</span>
 							<div class="flex items-center gap-2">
 								<button
-									class="rounded px-3 py-1.5 text-sm text-zinc-400 transition-colors hover:bg-zinc-700 hover:text-zinc-200 disabled:opacity-50"
+									class="text-duvet-ink2 hover:bg-duvet-ink/10 hover:text-duvet-ink rounded px-3 py-1.5 text-sm transition-colors disabled:opacity-50"
 									onclick={resetPending}
 									disabled={isSaving}
 								>
 									Reset
 								</button>
 								<button
-									class="text-fixed-white rounded-lg bg-indigo-600 px-4 py-1.5 text-sm font-medium transition-colors hover:bg-indigo-500 disabled:opacity-50"
+									class="text-duvet-on-accent rounded-row bg-duvet-accent hover:bg-duvet-accent/85 px-4 py-1.5 text-sm font-medium transition-colors disabled:opacity-50"
 									onclick={saveAll}
 									disabled={isSaving}
 								>

@@ -46,7 +46,7 @@
 	});
 
 	// The pillow is the mascot's own body, in both themes, and the form lives inside it. Its tokens are the night's, so
-	// what's written on it reads on its slate, and so are the palettes the forms use, which light mode turns over.
+	// what's written on it reads on its slate.
 	const night = [
 		"[--duvet-ink:#f2f3f9]",
 		"[--duvet-ink2:#b7bad0]",
@@ -57,21 +57,7 @@
 		"[--duvet-accent-text:#c3c6ff]",
 		"[--duvet-shadow-press:inset_0_2px_5px_rgba(0,0,0,0.45)]",
 		"[--duvet-danger:#f08c84]",
-		"[--color-stone-200:oklch(0.923_0.008_278)]",
-		"[--color-stone-500:oklch(0.553_0.02_278)]",
-		"[--color-stone-600:oklch(0.444_0.02_278)]",
-		"[--color-stone-700:oklch(0.374_0.02_278)]",
-		"[--color-stone-900:oklch(0.216_0.016_278)]",
-		"[--color-zinc-400:oklch(70.5%_0.015_286.067)]",
-		"[--color-zinc-600:oklch(44.2%_0.017_285.786)]",
-		"[--color-rose-300:oklch(81%_0.117_11.638)]",
-		"[--color-rose-400:oklch(71.2%_0.194_13.428)]",
-		"[--color-rose-500:oklch(64.5%_0.246_16.439)]",
-		"[--color-red-400:oklch(70.4%_0.191_22.216)]",
-		"[--color-red-600:oklch(57.7%_0.245_27.325)]",
-		"[--color-emerald-400:oklch(76.5%_0.177_163.223)]",
-		"[--color-emerald-600:oklch(59.6%_0.145_163.225)]",
-		"[--color-white:#fff]",
+		"[--duvet-alive:#a8dff0]",
 	].join(" ");
 
 	// An eye with its lash, open and looking toward --look; shut (a lid where it was) while shy.

@@ -129,7 +129,7 @@
 		role="button"
 		tabindex="0"
 		aria-label={`${title} in ${place.name}`}
-		class="group shadow-duvet-float focus-visible:outline-duvet-accent fixed z-40 h-45 w-80 cursor-pointer touch-none overflow-hidden rounded-lg border border-zinc-700 bg-black select-none focus-visible:outline-2"
+		class="group shadow-duvet-float focus-visible:outline-duvet-accent rounded-card border-duvet-line fixed z-40 h-45 w-80 cursor-pointer touch-none overflow-hidden border bg-black select-none focus-visible:outline-2"
 		style="right: {right}px; bottom: {bottom}px;"
 		{onpointerdown}
 		{onpointermove}
@@ -147,7 +147,7 @@
 				type="button"
 				aria-label={shown.own ? "Stop sharing" : "Stop watching"}
 				title={shown.own ? "Stop sharing" : "Stop watching"}
-				class="text-fixed-white focus-visible:outline-duvet-accent flex size-6 shrink-0 items-center justify-center rounded-md bg-black/60 backdrop-blur-md transition-colors hover:bg-red-600/80 focus-visible:outline-2"
+				class="text-fixed-white hover:text-duvet-on-accent focus-visible:outline-duvet-accent hover:bg-duvet-danger/80 flex size-6 shrink-0 items-center justify-center rounded-md bg-black/60 backdrop-blur-md transition-colors focus-visible:outline-2"
 				onclick={stop}
 			>
 				<X class="size-3.5" />

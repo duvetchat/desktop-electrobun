@@ -59,13 +59,13 @@
 		<Dialog.Overlay class="fixed inset-0 z-600 bg-black/60 backdrop-blur-sm" />
 		<Dialog.Content class="fixed inset-0 z-601 flex items-center justify-center p-4">
 			<div
-				class="flex max-h-[70vh] w-full max-w-lg flex-col rounded-xl border border-zinc-700 bg-zinc-900 text-zinc-100 shadow-2xl"
+				class="rounded-card border-duvet-line bg-duvet-bg text-duvet-ink shadow-duvet-float flex max-h-[70vh] w-full max-w-lg flex-col border"
 			>
-				<div class="flex shrink-0 items-start justify-between gap-4 border-b border-zinc-800 px-5 py-4">
+				<div class="border-duvet-line flex shrink-0 items-start justify-between gap-4 border-b px-5 py-4">
 					<div class="min-w-0">
-						<Dialog.Title class="text-sm font-semibold text-white">Files that didn't move</Dialog.Title>
+						<Dialog.Title class="text-duvet-ink text-sm font-semibold">Files that didn't move</Dialog.Title>
 						{#if transfer}
-							<Dialog.Description class="mt-0.5 text-xs text-zinc-400">
+							<Dialog.Description class="text-duvet-ink2 mt-0.5 text-xs">
 								{countFiles(transfer.failed_files)}
 								{transfer.failed_files === 1 ? "stays" : "stay"}
 								{sourceName ? `in ${sourceName}` : "where they were"}.
@@ -73,7 +73,7 @@
 						{/if}
 					</div>
 					<Dialog.Close
-						class="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-200"
+						class="text-duvet-ink2 hover:bg-duvet-card hover:text-duvet-ink flex h-7 w-7 shrink-0 items-center justify-center rounded-md transition-colors"
 						aria-label="Close"
 					>
 						<XIcon class="size-4" />
@@ -82,13 +82,13 @@
 
 				<div class="min-h-0 flex-1 space-y-1 overflow-y-auto px-5 py-4">
 					{#each files as file (file.attachment_id)}
-						<div class="rounded-md border border-zinc-800 bg-zinc-800/30 px-3 py-2">
+						<div class="border-duvet-line bg-duvet-card/30 rounded-md border px-3 py-2">
 							<div class="flex items-center justify-between gap-3">
-								<p class="truncate text-sm text-zinc-200">{file.filename}</p>
-								<span class="shrink-0 text-xs text-zinc-500">{formatFileSize(file.size_bytes)}</span>
+								<p class="text-duvet-ink truncate text-sm">{file.filename}</p>
+								<span class="text-duvet-ink2 shrink-0 text-xs">{formatFileSize(file.size_bytes)}</span>
 							</div>
 							{#if file.error}
-								<p class="mt-0.5 text-xs text-red-400">{file.error}</p>
+								<p class="text-duvet-danger mt-0.5 text-xs">{file.error}</p>
 							{/if}
 						</div>
 					{/each}
@@ -96,17 +96,17 @@
 					{#if loading}
 						<div class="space-y-1">
 							{#each Array(3) as _}
-								<div class="h-12 animate-pulse rounded-md bg-zinc-800/40"></div>
+								<div class="bg-duvet-card/40 h-12 animate-pulse rounded-md"></div>
 							{/each}
 						</div>
 					{:else if error}
-						<p class="rounded-md bg-red-400/10 px-3 py-2 text-sm text-red-400">{error}</p>
+						<p class="bg-duvet-danger/10 text-duvet-danger rounded-md px-3 py-2 text-sm">{error}</p>
 					{:else if files.length === 0}
-						<p class="py-6 text-center text-sm text-zinc-500">No failed files.</p>
+						<p class="text-duvet-ink2 py-6 text-center text-sm">No failed files.</p>
 					{:else if hasMore && transfer}
 						{@const t = transfer}
 						<button
-							class="mt-2 w-full rounded-md bg-zinc-800 px-3 py-1.5 text-xs font-medium text-zinc-300 transition-colors hover:bg-zinc-700"
+							class="bg-duvet-card text-duvet-ink hover:bg-duvet-ink/10 mt-2 w-full rounded-md px-3 py-1.5 text-xs font-medium transition-colors"
 							onclick={() => loadPage(t, files.at(-1)?.attachment_id)}
 						>
 							Load more

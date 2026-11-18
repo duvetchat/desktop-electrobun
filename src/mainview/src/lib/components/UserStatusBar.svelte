@@ -153,15 +153,15 @@
 	}
 
 	function pingIconColor(ms: number | null): string {
-		if (ms === null || ms < 100) return "text-stone-500";
-		if (ms < 250) return "text-orange-400";
-		return "text-red-400";
+		if (ms === null || ms < 100) return "text-duvet-ink2";
+		if (ms < 250) return "text-duvet-warn";
+		return "text-duvet-danger";
 	}
 
 	function pingBgColor(ms: number | null): string {
-		if (ms === null || ms < 100) return "bg-stone-900";
-		if (ms < 250) return "bg-orange-950";
-		return "bg-red-950";
+		if (ms === null || ms < 100) return "bg-duvet-bg";
+		if (ms < 250) return "bg-duvet-warn/15";
+		return "bg-duvet-danger/15";
 	}
 </script>
 
@@ -179,12 +179,12 @@
 		<div class="flex items-center gap-2 px-2 py-1.5 select-none">
 			<div
 				class="relative flex shrink-0 items-center justify-center rounded-full p-1.5 {isInConversationCall
-					? 'bg-emerald-500/10'
+					? 'bg-duvet-alive/10'
 					: pingBgColor(ping)}"
 				title={isInConversationCall ? "In call" : ping !== null ? `Ping: ${ping}ms` : "Measuring ping..."}
 			>
 				{#if isInConversationCall}
-					<PhoneDisconnectIcon class="size-3.5 text-emerald-400" />
+					<PhoneDisconnectIcon class="text-duvet-alive size-3.5" />
 				{:else if ping !== null && ping >= 250}
 					<CellSignalLowIcon class="size-3.5 {pingIconColor(ping)}" />
 				{:else if ping !== null && ping >= 100}
@@ -194,17 +194,17 @@
 				{/if}
 			</div>
 			<div class="flex min-w-0 flex-1 flex-col truncate">
-				<span class="truncate text-xs font-semibold {isInConversationCall ? 'text-emerald-300' : 'text-stone-300'}">
+				<span class="truncate text-xs font-semibold {isInConversationCall ? 'text-duvet-alive' : 'text-duvet-ink'}">
 					{isInConversationCall ? "In Call" : connectionLabel[$voiceConnectionState]}
 				</span>
-				<span class="text-xxs truncate text-zinc-400">
+				<span class="text-xxs text-duvet-ink2 truncate">
 					{isInConversationCall
 						? callConversationName
 						: `${activeVoiceSpace?.name || ""} / ${activeVoiceRoom?.name || ""}`}
 				</span>
 			</div>
 			<button
-				class="shrink-0 rounded-full p-1.5 text-zinc-400 transition-colors hover:bg-zinc-700 hover:text-zinc-200"
+				class="text-duvet-ink2 hover:bg-duvet-ink/10 hover:text-duvet-ink shrink-0 rounded-full p-1.5 transition-colors"
 				aria-label="Disconnect"
 				onclick={disconnectVoice}
 			>
@@ -219,12 +219,12 @@
 		{#if $activeVoiceRoomId}
 			<div
 				class="size-8 rounded-lg {isInConversationCall
-					? 'bg-emerald-600/20'
+					? 'bg-duvet-alive/20'
 					: pingBgColor(ping)} mb-0.5 flex items-center justify-center"
 				title={isInConversationCall ? "In call" : ping !== null ? `Ping: ${ping}ms` : "Measuring ping..."}
 			>
 				{#if isInConversationCall}
-					<PhoneDisconnectIcon class="size-4 text-emerald-400" />
+					<PhoneDisconnectIcon class="text-duvet-alive size-4" />
 				{:else if ping !== null && ping >= 250}
 					<CellSignalLowIcon class="size-4 {pingIconColor(ping)}" />
 				{:else if ping !== null && ping >= 100}
@@ -234,13 +234,13 @@
 				{/if}
 			</div>
 			<button
-				class="flex size-8 items-center justify-center rounded-lg text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-red-400"
+				class="text-duvet-ink2 hover:bg-duvet-card hover:text-duvet-danger flex size-8 items-center justify-center rounded-lg transition-colors"
 				aria-label="Disconnect"
 				onclick={disconnectVoice}
 			>
 				<PhoneDisconnectIcon class="size-4" />
 			</button>
-			<div class="my-0.5 w-6 border-t border-zinc-700"></div>
+			<div class="border-duvet-line my-0.5 w-6 border-t"></div>
 		{/if}
 		<StatusMenu class="relative cursor-pointer rounded-full">
 			<UserAvatar
@@ -248,7 +248,7 @@
 				name={$currentUser.alias || $currentUser.username}
 				size={28}
 				class="box-border transition-all duration-200 {$speakingUsers.has($currentUser.id)
-					? 'ring-[3px] ring-stone-500'
+					? 'ring-duvet-ink2/40 ring-[3px]'
 					: ''}"
 			/>
 			<StatusDot
@@ -258,9 +258,9 @@
 			/>
 		</StatusMenu>
 		<button
-			class="flex size-8 items-center justify-center rounded-lg transition-colors hover:bg-zinc-800 {$isMuted
-				? 'text-red-400'
-				: 'text-zinc-400'}"
+			class="hover:bg-duvet-card flex size-8 items-center justify-center rounded-lg transition-colors {$isMuted
+				? 'text-duvet-danger'
+				: 'text-duvet-ink2'}"
 			aria-label="Toggle Mute"
 			onclick={() => canSpeak && toggleMute()}
 		>
@@ -271,18 +271,18 @@
 			{/if}
 		</button>
 		<button
-			class="flex size-8 items-center justify-center rounded-lg transition-colors hover:bg-zinc-800 {$isDeafened
-				? 'text-red-400'
-				: 'text-zinc-400'}"
+			class="hover:bg-duvet-card flex size-8 items-center justify-center rounded-lg transition-colors {$isDeafened
+				? 'text-duvet-danger'
+				: 'text-duvet-ink2'}"
 			aria-label="Deafen"
 			onclick={toggleDeafen}
 		>
 			<HeadphonesIcon class="size-4" />
 		</button>
 		<button
-			class="flex size-8 items-center justify-center rounded-lg transition-colors hover:bg-zinc-800"
-			class:text-emerald-400={$noiseSuppression}
-			class:text-zinc-400={!$noiseSuppression}
+			class="hover:bg-duvet-card flex size-8 items-center justify-center rounded-lg transition-colors"
+			class:text-duvet-alive={$noiseSuppression}
+			class:text-duvet-ink2={!$noiseSuppression}
 			aria-label="Toggle Noise Suppression"
 			title={$noiseSuppression ? "Noise suppression on" : "Noise suppression off"}
 			onclick={() => noiseSuppression.update((v) => !v)}
@@ -290,7 +290,7 @@
 			<AudioLines class="size-4" />
 		</button>
 		<button
-			class="flex size-8 items-center justify-center rounded-lg text-zinc-400 transition-colors hover:bg-zinc-800"
+			class="text-duvet-ink2 hover:bg-duvet-card flex size-8 items-center justify-center rounded-lg transition-colors"
 			aria-label="User Settings"
 			onclick={() => (showUserSettings = true)}
 		>
@@ -303,7 +303,7 @@
 {#if !collapsed && $currentUser}
 	<div class="bg-duvet-card z-100 flex h-14 shrink-0 items-center gap-1 px-1.5">
 		<StatusMenu
-			class="group flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-full p-1 text-left transition-colors hover:bg-zinc-800"
+			class="group hover:bg-duvet-card flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-full p-1 text-left transition-colors"
 		>
 			<div class="relative shrink-0">
 				<UserAvatar
@@ -311,7 +311,7 @@
 					name={$currentUser.alias || $currentUser.username}
 					size={28}
 					class="box-border transition-all duration-200 {$speakingUsers.has($currentUser.id)
-						? 'ring-4 ring-stone-500'
+						? 'ring-duvet-ink2/40 ring-4'
 						: ''}"
 				/>
 				<StatusDot
@@ -322,17 +322,16 @@
 			</div>
 			<div class="flex flex-col truncate">
 				<span class="text-duvet-ink truncate text-sm font-semibold">{$currentUser.alias || $currentUser.username}</span>
-				<span class="text-xxs truncate text-zinc-400">{myStatusLabel}</span>
+				<span class="text-xxs text-duvet-ink2 truncate">{myStatusLabel}</span>
 			</div>
 		</StatusMenu>
 
-		<div class="relative flex shrink-0 items-center text-zinc-400">
+		<div class="text-duvet-ink2 relative flex shrink-0 items-center">
 			<ContextMenu.Root bind:open={micContextOpen}>
 				<ContextMenu.Trigger>
 					<button
-						class="flex h-10 w-10 items-center justify-center rounded-lg transition-colors hover:bg-zinc-800"
-						class:text-red-400={$isMuted}
-						class:hover:bg-zinc-700={canSpeak}
+						class="hover:bg-duvet-card flex h-10 w-10 items-center justify-center rounded-lg transition-colors"
+						class:text-duvet-danger={$isMuted}
 						class:opacity-50={!canSpeak}
 						class:cursor-not-allowed={!canSpeak}
 						aria-label="Toggle Mute"
@@ -346,24 +345,24 @@
 					</button>
 				</ContextMenu.Trigger>
 				<ContextMenu.Portal>
-					<ContextMenu.Content class="z-200 min-w-56 rounded-lg border border-zinc-700 bg-zinc-800 py-1 shadow-2xl">
-						<div
-							class="mb-1 border-b border-zinc-700 px-3 py-1.5 text-xs font-semibold tracking-wider text-zinc-400 uppercase"
-						>
+					<ContextMenu.Content
+						class="rounded-card border-duvet-line bg-duvet-card shadow-duvet-float z-200 min-w-56 border py-1"
+					>
+						<div class="border-duvet-line text-duvet-ink2 mb-1 border-b px-3 py-1.5 text-[13px] font-bold">
 							Input Device
 						</div>
 						{#if availableMics.length === 0}
-							<div class="px-3 py-2 text-sm text-zinc-400">No microphones found</div>
+							<div class="text-duvet-ink2 px-3 py-2 text-sm">No microphones found</div>
 						{:else}
 							{#each availableMics as mic, micIndex}
 								<ContextMenu.Item
-									class="w-full px-3 py-2 text-left text-sm text-zinc-100 transition-colors hover:bg-zinc-700"
+									class="text-duvet-ink hover:bg-duvet-ink/10 w-full px-3 py-2 text-left text-sm transition-colors"
 									onSelect={() => selectMic(mic.deviceId)}
 								>
 									<div class="flex items-center justify-between gap-2">
 										<span class="truncate pr-2">{mic.label || `Microphone ${micIndex + 1}`}</span>
 										{#if $selectedMicId === mic.deviceId || ($selectedMicId === "" && mic.deviceId === "default")}
-											<span class="h-1.5 w-1.5 shrink-0 rounded-full bg-stone-400"></span>
+											<span class="bg-duvet-ink2 h-1.5 w-1.5 shrink-0 rounded-full"></span>
 										{/if}
 									</div>
 								</ContextMenu.Item>
@@ -373,17 +372,17 @@
 				</ContextMenu.Portal>
 			</ContextMenu.Root>
 			<button
-				class="flex h-10 w-10 items-center justify-center rounded-lg transition-colors hover:bg-zinc-800"
-				class:text-red-400={$isDeafened}
+				class="hover:bg-duvet-card flex h-10 w-10 items-center justify-center rounded-lg transition-colors"
+				class:text-duvet-danger={$isDeafened}
 				aria-label="Deafen"
 				onclick={toggleDeafen}
 			>
 				<HeadphonesIcon class="size-5" />
 			</button>
 			<button
-				class="flex h-10 w-10 items-center justify-center rounded-lg transition-colors hover:bg-zinc-800"
-				class:text-emerald-400={$noiseSuppression}
-				class:text-zinc-400={!$noiseSuppression}
+				class="hover:bg-duvet-card flex h-10 w-10 items-center justify-center rounded-lg transition-colors"
+				class:text-duvet-alive={$noiseSuppression}
+				class:text-duvet-ink2={!$noiseSuppression}
 				aria-label="Toggle Noise Suppression"
 				title={$noiseSuppression ? "Noise suppression on" : "Noise suppression off"}
 				onclick={() => noiseSuppression.update((v) => !v)}
@@ -391,7 +390,7 @@
 				<AudioLines class="size-5" />
 			</button>
 			<button
-				class="flex h-10 w-10 items-center justify-center rounded-lg transition-colors hover:bg-zinc-800"
+				class="hover:bg-duvet-card flex h-10 w-10 items-center justify-center rounded-lg transition-colors"
 				aria-label="User Settings"
 				onclick={() => (showUserSettings = true)}
 			>

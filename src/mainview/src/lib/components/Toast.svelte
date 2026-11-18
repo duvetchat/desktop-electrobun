@@ -11,12 +11,12 @@
 	>
 		{#each toastStore.items as t (t.id)}
 			<div
-				class="animate-slide-in pointer-events-auto flex items-center gap-2 rounded-lg border px-4 py-2.5 text-sm shadow-lg backdrop-blur-sm
+				class="animate-slide-in bg-duvet-card shadow-duvet-float rounded-card pointer-events-auto flex items-center gap-2 border px-4 py-2.5 text-sm
                 {t.type === 'error'
-					? 'border-red-800 bg-red-950/90 text-red-200'
+					? 'border-duvet-danger/40 text-duvet-danger'
 					: t.type === 'success'
-						? 'border-green-800 bg-green-950/90 text-green-200'
-						: 'border-zinc-700 bg-zinc-900/90 text-zinc-200'}"
+						? 'border-duvet-alive/40 text-duvet-alive'
+						: 'border-duvet-line text-duvet-ink'}"
 			>
 				<span class="flex-1">{t.message}</span>
 				{#if t.action}

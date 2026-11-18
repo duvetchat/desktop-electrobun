@@ -94,12 +94,12 @@
 		<Dialog.Overlay class="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm" />
 		<Dialog.Content class="fixed inset-0 z-51 flex items-center justify-center p-4">
 			<div
-				class="flex h-[min(28rem,80vh)] w-full max-w-md flex-col overflow-hidden rounded-xl border border-zinc-700 bg-zinc-900 text-zinc-100 shadow-2xl"
+				class="rounded-card border-duvet-line bg-duvet-bg text-duvet-ink shadow-duvet-float flex h-[min(28rem,80vh)] w-full max-w-md flex-col overflow-hidden border"
 			>
-				<div class="flex items-center justify-between border-b border-zinc-700 px-5 py-4">
-					<Dialog.Title class="text-base font-semibold text-white">Reactions</Dialog.Title>
+				<div class="border-duvet-line flex items-center justify-between border-b px-5 py-4">
+					<Dialog.Title class="text-duvet-ink text-base font-semibold">Reactions</Dialog.Title>
 					<Dialog.Close
-						class="rounded-lg p-1.5 text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-white"
+						class="text-duvet-ink2 hover:bg-duvet-card hover:text-duvet-ink rounded-lg p-1.5 transition-colors"
 						aria-label="Close"
 					>
 						<svg
@@ -117,7 +117,7 @@
 				</div>
 				<div class="flex min-h-0 flex-1">
 					<div
-						class="flex w-24 shrink-0 flex-col gap-1 overflow-y-auto border-r border-zinc-800 p-2"
+						class="border-duvet-line flex w-24 shrink-0 flex-col gap-1 overflow-y-auto border-r p-2"
 						role="tablist"
 						aria-orientation="vertical"
 						aria-label="Reactions"
@@ -130,8 +130,8 @@
 								aria-selected={selected}
 								title={reaction.emoji_name}
 								class="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors {selected
-									? 'bg-zinc-700/70 text-zinc-100'
-									: 'text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200'}"
+									? 'bg-duvet-ink/10 text-duvet-ink'
+									: 'text-duvet-ink2 hover:bg-duvet-card hover:text-duvet-ink'}"
 								onclick={() => (picked = reaction.emoji_name)}
 							>
 								<ReactionEmoji {reaction} customEmojiMap={request?.customEmojiMap} />
@@ -145,9 +145,9 @@
 								<li class="flex items-center gap-3 rounded-md px-2 py-1.5">
 									<UserAvatar src={person.avatar} name={person.name} size={32} />
 									<div class="flex min-w-0 flex-col">
-										<span class="truncate text-sm font-semibold text-zinc-100">{person.name}</span>
+										<span class="text-duvet-ink truncate text-sm font-semibold">{person.name}</span>
 										{#if person.username}
-											<span class="truncate text-xs text-zinc-400">@{person.username}</span>
+											<span class="text-duvet-ink2 truncate text-xs">@{person.username}</span>
 										{/if}
 									</div>
 								</li>

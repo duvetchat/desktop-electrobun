@@ -140,7 +140,7 @@
 		</div>
 
 		{#if errorMessage}
-			<p class="rounded-md border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-sm text-rose-300">
+			<p class="border-duvet-danger/40 bg-duvet-danger/10 text-duvet-danger rounded-md border px-3 py-2 text-sm">
 				{errorMessage}
 			</p>
 		{/if}

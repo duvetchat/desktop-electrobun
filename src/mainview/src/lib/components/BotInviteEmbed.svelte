@@ -25,35 +25,33 @@
 </script>
 
 {#if loading}
-	<div class="mt-2 max-w-xs rounded-lg border border-zinc-700 bg-zinc-900 p-4">
-		<div class="mb-3 h-3 w-36 animate-pulse rounded bg-zinc-800"></div>
+	<div class="border-duvet-line bg-duvet-card shadow-duvet-raised rounded-card mt-2 max-w-xs border p-4">
+		<div class="bg-duvet-ink/10 mb-3 h-3 w-36 animate-pulse rounded"></div>
 		<div class="mb-4 flex items-center gap-3">
-			<div class="h-12 w-12 shrink-0 animate-pulse rounded-full bg-zinc-800"></div>
+			<div class="bg-duvet-ink/10 h-12 w-12 shrink-0 animate-pulse rounded-full"></div>
 			<div class="flex flex-col gap-1.5">
-				<div class="h-4 w-24 animate-pulse rounded bg-zinc-800"></div>
+				<div class="bg-duvet-ink/10 h-4 w-24 animate-pulse rounded"></div>
 			</div>
 		</div>
-		<div class="h-9 w-full animate-pulse rounded-md bg-zinc-800"></div>
+		<div class="bg-duvet-ink/10 h-9 w-full animate-pulse rounded-md"></div>
 	</div>
 {:else if !error && bot}
-	<div
-		class="mt-2 max-w-xs rounded-lg border border-zinc-700 bg-zinc-900 p-4 transition-colors duration-150 hover:bg-zinc-800/90"
-	>
-		<p class="mb-3 text-xs font-semibold tracking-wider text-zinc-400 uppercase">Add a bot to your space</p>
+	<div class="border-duvet-line bg-duvet-card shadow-duvet-raised rounded-card mt-2 max-w-xs border p-4">
+		<p class="text-duvet-ink2 mb-3 text-[13px] font-bold">Add a bot to your space</p>
 		<div class="mb-4 flex items-center gap-3">
 			<div class="shrink-0">
 				<UserAvatar src={getAvatarURL(bot.id, bot.avatar)} name={bot.username} size={48} />
 			</div>
 			<div class="min-w-0">
 				<div class="flex items-center gap-1.5">
-					<p class="truncate text-sm font-semibold text-white">{bot.username}</p>
-					<span class="text-xxs bg-fill-600 text-fixed-white rounded px-1 py-0.5 font-semibold">BOT</span>
+					<p class="text-duvet-ink truncate text-sm font-semibold">{bot.username}</p>
+					<span class="text-xxs bg-duvet-accent text-duvet-on-accent rounded px-1 py-0.5 font-bold">BOT</span>
 				</div>
 			</div>
 		</div>
 
 		<button
-			class="bg-fill-600 text-fixed-white hover:bg-fill-500 w-full rounded-md py-2 text-sm font-semibold transition-colors"
+			class="bg-duvet-accent text-duvet-on-accent shadow-duvet-raised w-full rounded-xl py-2 text-sm font-bold transition-colors hover:brightness-110"
 			onclick={() => botInviteRequest.set(botUserId)}
 		>
 			Add to Space

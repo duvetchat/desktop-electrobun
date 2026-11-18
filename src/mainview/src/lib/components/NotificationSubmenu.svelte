@@ -16,8 +16,8 @@
 		targetId,
 		target,
 		inherited = 0,
-		itemClass = "flex w-full cursor-pointer items-center gap-2 px-3 py-2 text-left text-sm text-zinc-100 outline-none transition-colors hover:bg-zinc-700 data-highlighted:bg-zinc-700",
-		contentClass = "z-200 min-w-44 rounded-lg border border-zinc-700 bg-zinc-800 py-1 shadow-2xl",
+		itemClass = "flex w-full cursor-pointer items-center gap-2 px-3 py-2 text-left text-sm text-duvet-ink outline-none transition-colors hover:bg-duvet-ink/10 data-highlighted:bg-duvet-ink/10",
+		contentClass = "z-200 min-w-44 rounded-card border border-duvet-line bg-duvet-card py-1 shadow-duvet-float",
 	}: {
 		targetId: string;
 		target: NotificationTarget;
@@ -53,9 +53,9 @@
 
 <DropdownMenu.Sub>
 	<DropdownMenu.SubTrigger class={itemClass}>
-		<BellIcon class="size-4 shrink-0 text-zinc-400" />
+		<BellIcon class="text-duvet-ink2 size-4 shrink-0" />
 		<span class="min-w-0 flex-1">Notifications</span>
-		<ChevronRightIcon class="size-4 shrink-0 text-zinc-400" />
+		<ChevronRightIcon class="text-duvet-ink2 size-4 shrink-0" />
 	</DropdownMenu.SubTrigger>
 	<DropdownMenu.SubContent class={contentClass} sideOffset={4}>
 		<DropdownMenu.RadioGroup value={chosen} onValueChange={choose}>

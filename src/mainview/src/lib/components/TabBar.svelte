@@ -131,7 +131,7 @@
 	});
 
 	const menuItemClass =
-		"w-full px-3 py-2 text-left text-sm text-zinc-100 transition-colors hover:bg-zinc-700 data-disabled:cursor-default data-disabled:opacity-40 data-disabled:hover:bg-transparent";
+		"w-full px-3 py-2 text-left text-sm text-duvet-ink transition-colors hover:bg-duvet-ink/10 data-disabled:cursor-default data-disabled:opacity-40 data-disabled:hover:bg-transparent";
 
 	// The active tab names its space after the room; the others only in their tooltip, to keep the row short.
 	const showServerNames = true;
@@ -244,7 +244,9 @@
 				{/snippet}
 			</ContextMenu.Trigger>
 			<ContextMenu.Portal>
-				<ContextMenu.Content class="z-200 min-w-44 rounded-lg border border-zinc-700 bg-zinc-800 py-1 shadow-2xl">
+				<ContextMenu.Content
+					class="rounded-card border-duvet-line bg-duvet-card shadow-duvet-float z-200 min-w-44 border py-1"
+				>
 					<ContextMenu.Item class={menuItemClass} onSelect={() => onClose([tab.channelId])}>Close</ContextMenu.Item>
 					<ContextMenu.Item
 						class={menuItemClass}
@@ -267,7 +269,7 @@
 					>
 						Close to the Right
 					</ContextMenu.Item>
-					<div class="my-1 border-t border-zinc-700"></div>
+					<div class="border-duvet-line my-1 border-t"></div>
 					<ContextMenu.Item class={menuItemClass} onSelect={() => onClose(tabs.map((t) => t.channelId))}>
 						Close All
 					</ContextMenu.Item>

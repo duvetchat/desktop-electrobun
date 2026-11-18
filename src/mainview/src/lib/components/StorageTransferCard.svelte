@@ -40,20 +40,20 @@
 	}
 </script>
 
-<div class="space-y-2.5 rounded-lg border border-stone-700/50 bg-stone-900/30 px-4 py-3">
+<div class="border-duvet-line bg-duvet-bg/30 space-y-2.5 rounded-lg border px-4 py-3">
 	<div class="flex items-center gap-3">
-		<MoveIcon class="size-5 shrink-0 text-stone-400" />
+		<MoveIcon class="text-duvet-ink2 size-5 shrink-0" />
 		<div class="min-w-0 flex-1">
-			<p class="truncate text-sm font-medium text-zinc-100">
+			<p class="text-duvet-ink truncate text-sm font-medium">
 				{queued ? "Waiting to move" : "Moving"} to {target}
-				<span class="text-zinc-500">·</span>
+				<span class="text-duvet-ink2">·</span>
 				{progress.done}/{progress.total} files
 				{#if !queued}
-					<span class="text-zinc-500">·</span>
+					<span class="text-duvet-ink2">·</span>
 					{progress.percent}%
 				{/if}
 			</p>
-			<p class="truncate text-xs text-zinc-500">
+			<p class="text-duvet-ink2 truncate text-xs">
 				From {source} · {formatFileSize(transfer.moved_bytes)} of {formatFileSize(transfer.total_bytes)} moved
 				{#if startedBy}
 					· started by {startedBy}
@@ -63,12 +63,12 @@
 		<button
 			onclick={cancel}
 			disabled={cancelling}
-			class="shrink-0 rounded-md bg-zinc-700 px-3 py-1.5 text-xs font-semibold text-zinc-200 transition-colors hover:bg-zinc-600 disabled:opacity-50"
+			class="rounded-row bg-duvet-ink/10 text-duvet-ink hover:bg-duvet-ink/15 shrink-0 px-3 py-1.5 text-xs font-semibold transition-colors disabled:opacity-50"
 		>
 			{cancelling ? "Cancelling…" : "Cancel"}
 		</button>
 	</div>
-	<div class="h-1.5 w-full overflow-hidden rounded-full bg-zinc-700">
-		<div class="h-full rounded-full bg-stone-500 transition-all duration-300" style="width: {progress.percent}%"></div>
+	<div class="bg-duvet-ink/10 h-1.5 w-full overflow-hidden rounded-full">
+		<div class="bg-duvet-ink2 h-full rounded-full transition-all duration-300" style="width: {progress.percent}%"></div>
 	</div>
 </div>

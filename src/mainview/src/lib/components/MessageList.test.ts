@@ -166,7 +166,7 @@ describe("a group's call notices", () => {
 		const phones = (await tags(MessageList, p)).filter(
 			(t) => t.name === "svg" && !!t.attributes.class?.includes("lucide-phone"),
 		);
-		const red = phones.filter((t) => t.attributes.class!.split(/\s+/).includes("text-red-400"));
+		const red = phones.filter((t) => t.attributes.class!.split(/\s+/).includes("text-duvet-danger"));
 		return { text, phones: phones.length, red: red.length };
 	}
 	const BEFORE_SAYS = "Ana started a call that lasted 20 minutes.";

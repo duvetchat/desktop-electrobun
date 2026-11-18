@@ -323,13 +323,18 @@
 	<Dialog.Portal>
 		<Dialog.Overlay class="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm" />
 		<Dialog.Content class="fixed inset-0 z-50 flex items-center justify-center p-4">
-			<div class="w-full max-w-lg rounded-2xl border border-stone-700/70 bg-stone-950/95 p-6 text-white">
+			<div
+				class="border-duvet-line bg-duvet-card shadow-duvet-float rounded-card text-duvet-ink w-full max-w-lg border p-6"
+			>
 				<Dialog.Title class="mb-3 text-xl font-semibold">Terms of use</Dialog.Title>
 				<Dialog.Description class="text-duvet-ink2 text-sm leading-6">
 					By creating an account, you agree to follow community guidelines and use Duvet respectfully.
 				</Dialog.Description>
 				<div class="mt-6 flex justify-end">
-					<Dialog.Close class="bg-fill-600 text-fixed-white hover:bg-fill-500 rounded-md px-4 py-2">Close</Dialog.Close>
+					<Dialog.Close
+						class="bg-duvet-accent text-duvet-on-accent shadow-duvet-raised rounded-xl px-4 py-2 hover:brightness-110"
+						>Close</Dialog.Close
+					>
 				</div>
 			</div>
 		</Dialog.Content>

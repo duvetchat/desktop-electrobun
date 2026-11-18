@@ -17,4 +17,4 @@
 	});
 </script>
 
-<span class="text-xs text-zinc-500">{elapsed()}</span>
+<span class="text-duvet-ink2 text-xs">{elapsed()}</span>

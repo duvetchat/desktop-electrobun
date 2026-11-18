@@ -115,16 +115,16 @@
 	<Dialog.Portal>
 		<Dialog.Overlay class="fixed inset-0 z-600 bg-black/60 backdrop-blur-sm" />
 		<Dialog.Content class="fixed inset-0 z-601 flex items-center justify-center p-4">
-			<div class="w-full max-w-md rounded-xl border border-zinc-700 bg-zinc-900 text-zinc-100 shadow-2xl">
-				<div class="flex items-start justify-between gap-4 border-b border-zinc-800 px-5 py-4">
+			<div class="rounded-card border-duvet-line bg-duvet-bg text-duvet-ink shadow-duvet-float w-full max-w-md border">
+				<div class="border-duvet-line flex items-start justify-between gap-4 border-b px-5 py-4">
 					<div class="min-w-0">
-						<Dialog.Title class="text-sm font-semibold text-white">Move {countFiles(files.length)}</Dialog.Title>
-						<Dialog.Description class="mt-0.5 truncate text-xs text-zinc-400">
+						<Dialog.Title class="text-duvet-ink text-sm font-semibold">Move {countFiles(files.length)}</Dialog.Title>
+						<Dialog.Description class="text-duvet-ink2 mt-0.5 truncate text-xs">
 							From {source?.name ?? "this storage"} · {formatFileSize(totalBytes)}
 						</Dialog.Description>
 					</div>
 					<Dialog.Close
-						class="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-200"
+						class="text-duvet-ink2 hover:bg-duvet-card hover:text-duvet-ink flex h-7 w-7 shrink-0 items-center justify-center rounded-md transition-colors"
 						aria-label="Close"
 						disabled={starting}
 					>
@@ -134,17 +134,15 @@
 
 				<div class="space-y-4 px-5 py-4">
 					{#if targets.length === 0}
-						<p class="text-sm text-zinc-400">There's no other storage to move these files to. Add a bucket first.</p>
+						<p class="text-duvet-ink2 text-sm">There's no other storage to move these files to. Add a bucket first.</p>
 					{:else}
 						<div>
-							<label for="move-target" class="mb-1 block text-xs font-semibold tracking-wide text-zinc-400 uppercase"
-								>To</label
-							>
+							<label for="move-target" class="text-duvet-ink2 mb-1 block text-[13px] font-bold">To</label>
 							<select
 								id="move-target"
 								bind:value={targetId}
 								disabled={starting}
-								class="h-10 w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 text-sm text-white outline-none focus:ring-1 focus:ring-stone-500"
+								class="bg-duvet-sunk text-duvet-ink shadow-duvet-press focus-visible:outline-duvet-accent h-10 w-full rounded-xl px-3 text-sm focus-visible:outline-2"
 							>
 								{#each targets as choice (choice.id)}
 									<option value={choice.id}>{choice.name}{choice.active ? " (active)" : ""}</option>
@@ -153,24 +151,24 @@
 							{#if target && room}
 								<div class="mt-1.5 space-y-1 text-xs">
 									{#if room.files === 0}
-										<p class="text-red-400">
+										<p class="text-duvet-danger">
 											None of these files is within {target.name}'s per-file limit of {formatFileSize(
 												target.fileLimit ?? 0,
 											)}.
 										</p>
 									{:else if room.free === null}
-										<p class="text-zinc-500">{formatFileSize(room.bytes)} to move · no size limit</p>
+										<p class="text-duvet-ink2">{formatFileSize(room.bytes)} to move · no size limit</p>
 									{:else if room.fits}
-										<p class="text-zinc-500">
+										<p class="text-duvet-ink2">
 											{formatFileSize(room.bytes)} to move · {formatFileSize(room.free)} free
 										</p>
 									{:else}
-										<p class="text-red-400">
+										<p class="text-duvet-danger">
 											Doesn't fit: {formatFileSize(room.bytes)} to move, {formatFileSize(room.free)} free
 										</p>
 									{/if}
 									{#if room.skipped > 0 && room.files > 0}
-										<p class="text-amber-400/90">
+										<p class="text-duvet-warn/90">
 											{countFiles(room.skipped)} over its per-file limit of {formatFileSize(target.fileLimit ?? 0)}
 											{room.skipped === 1 ? "stays" : "stay"} in {source?.name ?? "the source"}.
 										</p>
@@ -185,11 +183,12 @@
 									type="checkbox"
 									bind:checked={keepSource}
 									disabled={starting}
-									class="mt-0.5 size-4 shrink-0 rounded border-zinc-600 bg-zinc-800 accent-stone-500"
+									class="border-duvet-line bg-duvet-card accent-duvet-accent mt-0.5 size-4 shrink-0 rounded"
 								/>
-								<span class="text-xs text-zinc-300">
+								<span class="text-duvet-ink text-xs">
 									Keep the originals in {source.name}
-									<span class="block text-zinc-500">Duvet stops using them; they stay there until you delete them.</span
+									<span class="text-duvet-ink2 block"
+										>Duvet stops using them; they stay there until you delete them.</span
 									>
 								</span>
 							</label>
@@ -201,37 +200,37 @@
 									type="checkbox"
 									bind:checked={makeActive}
 									disabled={starting}
-									class="mt-0.5 size-4 shrink-0 rounded border-zinc-600 bg-zinc-800 accent-stone-500"
+									class="border-duvet-line bg-duvet-card accent-duvet-accent mt-0.5 size-4 shrink-0 rounded"
 								/>
-								<span class="text-xs text-zinc-300">
+								<span class="text-duvet-ink text-xs">
 									Make {target.name} active
-									<span class="block text-zinc-500">New uploads go there.</span>
+									<span class="text-duvet-ink2 block">New uploads go there.</span>
 								</span>
 							</label>
 						{/if}
 
 						{#if source?.isBucket}
-							<p class="text-xxs text-zinc-500">
+							<p class="text-xxs text-duvet-ink2">
 								Each byte leaves {source.name} once: providers other than R2 may charge for that egress.
 							</p>
 						{/if}
 					{/if}
 
 					{#if error}
-						<p class="rounded-md bg-red-400/10 px-3 py-2 text-sm text-red-400">{error}</p>
+						<p class="bg-duvet-danger/10 text-duvet-danger rounded-md px-3 py-2 text-sm">{error}</p>
 					{/if}
 				</div>
 
-				<div class="flex justify-end gap-2 border-t border-zinc-800 px-5 py-3">
+				<div class="border-duvet-line flex justify-end gap-2 border-t px-5 py-3">
 					<Dialog.Close
-						class="rounded-md px-3 py-1.5 text-sm font-medium text-zinc-300 transition-colors hover:bg-zinc-800 disabled:opacity-50"
+						class="text-duvet-ink hover:bg-duvet-card rounded-md px-3 py-1.5 text-sm font-medium transition-colors disabled:opacity-50"
 						disabled={starting}
 					>
 						Cancel
 					</Dialog.Close>
 					{#if targets.length > 0}
 						<button
-							class="bg-fill-600 text-fixed-white hover:bg-fill-500 flex min-w-24 items-center justify-center gap-1.5 rounded-md px-4 py-1.5 text-sm font-semibold transition-colors disabled:opacity-50"
+							class="bg-duvet-accent text-duvet-on-accent shadow-duvet-raised flex min-w-24 items-center justify-center gap-1.5 rounded-xl px-4 py-1.5 text-sm font-bold transition-colors hover:brightness-110 disabled:opacity-50"
 							disabled={!canStart || starting}
 							onclick={start}
 						>

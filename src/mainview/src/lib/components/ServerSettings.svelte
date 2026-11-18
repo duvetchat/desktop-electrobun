@@ -88,11 +88,11 @@
 
 	// The settings' own thin scrollbars, where they scroll: a section's content and the description.
 	const thinScrollbar =
-		"[&::-webkit-scrollbar]:w-[5px] [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-[3px] [&::-webkit-scrollbar-thumb]:bg-zinc-600 [&::-webkit-scrollbar-thumb:hover]:bg-zinc-500";
+		"[&::-webkit-scrollbar]:w-[5px] [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-[3px] [&::-webkit-scrollbar-thumb]:bg-duvet-ink/25 [&::-webkit-scrollbar-thumb:hover]:bg-duvet-ink2";
 	// A role colour's input: the browser's colour well, its swatch filling it with no padding, border or corners but
 	// its own.
 	const colorSwatch =
-		"[&::-webkit-color-swatch-wrapper]:p-0 [&::-webkit-color-swatch]:rounded-[4px] [&::-webkit-color-swatch]:border-none size-7 cursor-pointer rounded-md border-2 border-zinc-600 bg-none p-0";
+		"[&::-webkit-color-swatch-wrapper]:p-0 [&::-webkit-color-swatch]:rounded-[4px] [&::-webkit-color-swatch]:border-none size-7 cursor-pointer rounded-md border-2 border-duvet-line bg-none p-0";
 
 	let {
 		space = null,
@@ -262,7 +262,7 @@
 	// ── color helpers ────────────────────────────────────────────
 	function intToHex(n: undefined | number | null): string {
 		if (n === null || n === undefined) {
-			return "#6366f1";
+			return "#7b83f5";
 		}
 		return `#${(n >>> 0).toString(16).padStart(6, "0")}`;
 	}
@@ -275,7 +275,7 @@
 		color_to: number | null;
 	}): string {
 		if (role.color_from === null || role.color_from === undefined) {
-			return "background: var(--color-zinc-600)";
+			return "background: var(--duvet-ink2)";
 		}
 		const from = intToHex(role.color_from);
 		if (role.color_to === null || role.color_to === undefined) {
@@ -293,7 +293,7 @@
 	let newRoleName = $state("");
 	let newRolePermissions = $state<number[]>([]);
 	let newRoleHoisted = $state(false);
-	let newRoleColorFrom = $state("#6366f1");
+	let newRoleColorFrom = $state("#7b83f5");
 	let newRoleColorVia = $state("");
 	let newRoleColorTo = $state("");
 	let newRoleUseGradient = $state(false);
@@ -303,7 +303,7 @@
 	let editingRoleName = $state("");
 	let editingRolePermissions = $state(0);
 	let editingRoleHoisted = $state(false);
-	let editingRoleColorFrom = $state("#6366f1");
+	let editingRoleColorFrom = $state("#7b83f5");
 	let editingRoleColorVia = $state("");
 	let editingRoleColorTo = $state("");
 	let editingRoleUseGradient = $state(false);
@@ -477,7 +477,7 @@
 			newRoleName = "";
 			newRolePermissions = [];
 			newRoleHoisted = false;
-			newRoleColorFrom = "#6366f1";
+			newRoleColorFrom = "#7b83f5";
 			newRoleColorVia = "";
 			newRoleColorTo = "";
 			newRoleUseGradient = false;
@@ -550,7 +550,7 @@
 		editingRoleName = "";
 		editingRolePermissions = 0;
 		editingRoleHoisted = false;
-		editingRoleColorFrom = "#6366f1";
+		editingRoleColorFrom = "#7b83f5";
 		editingRoleColorVia = "";
 		editingRoleColorTo = "";
 		editingRoleUseGradient = false;
@@ -1147,12 +1147,12 @@
 		<Dialog.Overlay class="fixed inset-0 z-500 bg-black/70 backdrop-blur-sm" />
 		<Dialog.Content class="fixed inset-0 z-501 flex items-center justify-center p-4">
 			<div
-				class="flex h-[85vh] max-h-[85vh] w-full max-w-4xl overflow-hidden rounded-xl border border-zinc-700 bg-zinc-900 text-zinc-100 shadow-2xl"
+				class="rounded-card border-duvet-line bg-duvet-bg text-duvet-ink shadow-duvet-float flex h-[85vh] max-h-[85vh] w-full max-w-4xl overflow-hidden border"
 			>
 				<!-- Left sidebar -->
-				<aside class="flex w-56 shrink-0 flex-col border-r border-zinc-800 bg-zinc-950 py-6">
+				<aside class="border-duvet-line bg-duvet-sunk flex w-56 shrink-0 flex-col border-r py-6">
 					<div class="mb-4 px-4">
-						<p class="text-xxs mb-1 px-2 font-bold tracking-widest text-zinc-400 uppercase">
+						<p class="text-duvet-ink2 mb-1 px-2 text-xs font-bold">
 							{space?.name ?? "Space"} Settings
 						</p>
 					</div>
@@ -1162,8 +1162,8 @@
 							<button
 								class="flex items-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium transition-colors duration-100
                             {activeSection === 'overview'
-									? 'bg-zinc-800 text-white'
-									: 'text-zinc-400 hover:bg-zinc-800/60 hover:text-zinc-200'}"
+									? 'bg-duvet-card text-duvet-ink'
+									: 'text-duvet-ink2 hover:bg-duvet-card/60 hover:text-duvet-ink'}"
 								onclick={() => (activeSection = "overview")}
 							>
 								<GearSixIcon class="size-4" />
@@ -1175,8 +1175,8 @@
 							<button
 								class="flex items-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium transition-colors duration-100
                             {activeSection === 'roles'
-									? 'bg-zinc-800 text-white'
-									: 'text-zinc-400 hover:bg-zinc-800/60 hover:text-zinc-200'}"
+									? 'bg-duvet-card text-duvet-ink'
+									: 'text-duvet-ink2 hover:bg-duvet-card/60 hover:text-duvet-ink'}"
 								onclick={() => (activeSection = "roles")}
 							>
 								<ShieldStarIcon class="size-4" />
@@ -1188,8 +1188,8 @@
 							<button
 								class="flex items-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium transition-colors duration-100
                             {activeSection === 'members'
-									? 'bg-zinc-800 text-white'
-									: 'text-zinc-400 hover:bg-zinc-800/60 hover:text-zinc-200'}"
+									? 'bg-duvet-card text-duvet-ink'
+									: 'text-duvet-ink2 hover:bg-duvet-card/60 hover:text-duvet-ink'}"
 								onclick={() => (activeSection = "members")}
 							>
 								<UsersThreeIcon class="size-4" />
@@ -1201,8 +1201,8 @@
 							<button
 								class="flex items-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium transition-colors duration-100
                             {activeSection === 'invites'
-									? 'bg-zinc-800 text-white'
-									: 'text-zinc-400 hover:bg-zinc-800/60 hover:text-zinc-200'}"
+									? 'bg-duvet-card text-duvet-ink'
+									: 'text-duvet-ink2 hover:bg-duvet-card/60 hover:text-duvet-ink'}"
 								onclick={() => (activeSection = "invites")}
 							>
 								<LinkIcon class="size-4" />
@@ -1214,8 +1214,8 @@
 							<button
 								class="flex items-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium transition-colors duration-100
                             {activeSection === 'bans'
-									? 'bg-zinc-800 text-white'
-									: 'text-zinc-400 hover:bg-zinc-800/60 hover:text-zinc-200'}"
+									? 'bg-duvet-card text-duvet-ink'
+									: 'text-duvet-ink2 hover:bg-duvet-card/60 hover:text-duvet-ink'}"
 								onclick={() => (activeSection = "bans")}
 							>
 								<BanIcon class="size-4" />
@@ -1226,8 +1226,8 @@
 						<button
 							class="flex items-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium transition-colors duration-100
                             {activeSection === 'emojis'
-								? 'bg-zinc-800 text-white'
-								: 'text-zinc-400 hover:bg-zinc-800/60 hover:text-zinc-200'}"
+								? 'bg-duvet-card text-duvet-ink'
+								: 'text-duvet-ink2 hover:bg-duvet-card/60 hover:text-duvet-ink'}"
 							onclick={() => (activeSection = "emojis")}
 						>
 							<SmileIcon class="size-4" />
@@ -1237,8 +1237,8 @@
 						<button
 							class="flex items-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium transition-colors duration-100
                             {activeSection === 'stickers'
-								? 'bg-zinc-800 text-white'
-								: 'text-zinc-400 hover:bg-zinc-800/60 hover:text-zinc-200'}"
+								? 'bg-duvet-card text-duvet-ink'
+								: 'text-duvet-ink2 hover:bg-duvet-card/60 hover:text-duvet-ink'}"
 							onclick={() => (activeSection = "stickers")}
 						>
 							<StickerIcon class="size-4" />
@@ -1249,8 +1249,8 @@
 							<button
 								class="flex items-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium transition-colors duration-100
                             {activeSection === 'webhooks'
-									? 'bg-zinc-800 text-white'
-									: 'text-zinc-400 hover:bg-zinc-800/60 hover:text-zinc-200'}"
+									? 'bg-duvet-card text-duvet-ink'
+									: 'text-duvet-ink2 hover:bg-duvet-card/60 hover:text-duvet-ink'}"
 								onclick={() => (activeSection = "webhooks")}
 							>
 								<WebhookIcon class="size-4" />
@@ -1262,8 +1262,8 @@
 							<button
 								class="flex items-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium transition-colors duration-100
                             {activeSection === 'storage'
-									? 'bg-zinc-800 text-white'
-									: 'text-zinc-400 hover:bg-zinc-800/60 hover:text-zinc-200'}"
+									? 'bg-duvet-card text-duvet-ink'
+									: 'text-duvet-ink2 hover:bg-duvet-card/60 hover:text-duvet-ink'}"
 								onclick={() => (activeSection = "storage")}
 							>
 								<DatabaseIcon class="size-4" />
@@ -1274,8 +1274,8 @@
 							<button
 								class="flex items-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium transition-colors duration-100
                             {activeSection === 'attachments'
-									? 'bg-zinc-800 text-white'
-									: 'text-zinc-400 hover:bg-zinc-800/60 hover:text-zinc-200'}"
+									? 'bg-duvet-card text-duvet-ink'
+									: 'text-duvet-ink2 hover:bg-duvet-card/60 hover:text-duvet-ink'}"
 								onclick={() => (activeSection = "attachments")}
 							>
 								<PaperclipIcon class="size-4" />
@@ -1288,8 +1288,8 @@
 				<!-- Content area -->
 				<div class="flex min-w-0 flex-1 flex-col">
 					<!-- Header -->
-					<div class="flex shrink-0 items-center justify-between border-b border-zinc-800 px-6 py-4">
-						<h2 class="text-base font-semibold text-white capitalize">
+					<div class="border-duvet-line flex shrink-0 items-center justify-between border-b px-6 py-4">
+						<h2 class="text-duvet-ink text-base font-semibold capitalize">
 							{activeSection === "overview"
 								? "Overview"
 								: activeSection === "roles"
@@ -1311,7 +1311,7 @@
 																: "Members"}
 						</h2>
 						<Dialog.Close
-							class="rounded-lg p-1.5 text-zinc-400 transition-colors duration-150 hover:bg-zinc-800 hover:text-white"
+							class="text-duvet-ink2 hover:bg-duvet-card hover:text-duvet-ink rounded-lg p-1.5 transition-colors duration-150"
 							aria-label="Close"
 						>
 							<XIcon class="size-5" />
@@ -1324,8 +1324,8 @@
 							<div class="space-y-5">
 								<!-- Banner -->
 								<div>
-									<span class="mb-1.5 block text-xs font-semibold tracking-wide text-zinc-400 uppercase">Banner</span>
-									<div class="group relative h-24 w-60 overflow-hidden rounded-lg bg-zinc-800">
+									<span class="text-duvet-ink2 mb-1.5 block text-[13px] font-bold">Banner</span>
+									<div class="group bg-duvet-card relative h-24 w-60 overflow-hidden rounded-lg">
 										{#if pendingBannerPreview}
 											<img src={pendingBannerPreview} alt="banner" class="h-full w-full object-cover" />
 											<div
@@ -1336,7 +1336,7 @@
 													onclick={() => (showSpaceBannerCrop = true)}><PencilIcon class="size-4" /></button
 												>
 												<button
-													class="hover:bg-fixed-white/20 rounded p-1.5 text-red-400"
+													class="hover:bg-fixed-white/20 text-duvet-danger rounded p-1.5"
 													onclick={() => {
 														if (pendingBannerPreview) URL.revokeObjectURL(pendingBannerPreview);
 														pendingBanner = null;
@@ -1345,7 +1345,7 @@
 												>
 											</div>
 										{:else if pendingBanner === "remove"}
-											<div class="flex h-full items-center justify-center text-zinc-600">No banner</div>
+											<div class="text-duvet-ink2/60 flex h-full items-center justify-center">No banner</div>
 											<div
 												class="absolute inset-0 flex items-center justify-center bg-black/60 opacity-0 transition-opacity group-hover:opacity-100"
 											>
@@ -1366,7 +1366,7 @@
 													onclick={() => (showSpaceBannerCrop = true)}><PencilIcon class="size-4" /></button
 												>
 												<button
-													class="hover:bg-fixed-white/20 rounded p-1.5 text-red-400"
+													class="hover:bg-fixed-white/20 text-duvet-danger rounded p-1.5"
 													onclick={() => {
 														pendingBanner = "remove";
 													}}><TrashIcon class="size-4" /></button
@@ -1374,7 +1374,7 @@
 											</div>
 										{:else}
 											<button
-												class="flex h-full w-full items-center justify-center text-zinc-500 transition-colors hover:bg-zinc-700 hover:text-zinc-300"
+												class="text-duvet-ink2 hover:bg-duvet-ink/10 hover:text-duvet-ink flex h-full w-full items-center justify-center transition-colors"
 												onclick={() => (showSpaceBannerCrop = true)}
 											>
 												<PlusIcon class="mr-1.5 size-4" /> Set banner
@@ -1385,7 +1385,7 @@
 
 								<!-- Icon -->
 								<div>
-									<span class="mb-1.5 block text-xs font-semibold tracking-wide text-zinc-400 uppercase">Icon</span>
+									<span class="text-duvet-ink2 mb-1.5 block text-[13px] font-bold">Icon</span>
 									<div class="group relative h-20 w-20">
 										{#if pendingIconPreview}
 											<img src={pendingIconPreview} alt="icon" class="h-full w-full rounded-2xl object-cover" />
@@ -1397,7 +1397,7 @@
 													onclick={() => (showSpaceIconCrop = true)}><PencilIcon class="size-3.5" /></button
 												>
 												<button
-													class="hover:bg-fixed-white/20 rounded p-1 text-red-400"
+													class="hover:bg-fixed-white/20 text-duvet-danger rounded p-1"
 													onclick={() => {
 														if (pendingIconPreview) URL.revokeObjectURL(pendingIconPreview);
 														pendingIcon = null;
@@ -1406,7 +1406,9 @@
 												>
 											</div>
 										{:else if pendingIcon === "remove"}
-											<div class="flex h-full w-full items-center justify-center rounded-2xl bg-zinc-800 text-zinc-600">
+											<div
+												class="bg-duvet-card text-duvet-ink2/60 flex h-full w-full items-center justify-center rounded-2xl"
+											>
 												<XIcon class="size-5" />
 											</div>
 											<div
@@ -1433,7 +1435,7 @@
 													onclick={() => (showSpaceIconCrop = true)}><PencilIcon class="size-3.5" /></button
 												>
 												<button
-													class="hover:bg-fixed-white/20 rounded p-1 text-red-400"
+													class="hover:bg-fixed-white/20 text-duvet-danger rounded p-1"
 													onclick={() => {
 														pendingIcon = "remove";
 													}}><TrashIcon class="size-3.5" /></button
@@ -1441,7 +1443,7 @@
 											</div>
 										{:else}
 											<button
-												class="flex h-full w-full items-center justify-center rounded-2xl bg-zinc-800 text-zinc-500 transition-colors hover:bg-zinc-700 hover:text-zinc-300"
+												class="bg-duvet-card text-duvet-ink2 hover:bg-duvet-ink/10 hover:text-duvet-ink flex h-full w-full items-center justify-center rounded-2xl transition-colors"
 												onclick={() => (showSpaceIconCrop = true)}
 											>
 												<PlusIcon class="size-5" />
@@ -1450,55 +1452,55 @@
 									</div>
 								</div>
 
-								<p class="text-xxs text-zinc-500">Space ID: {spaceId}</p>
+								<p class="text-xxs text-duvet-ink2">Space ID: {spaceId}</p>
 
 								<!-- Name -->
 								<label class="block space-y-1.5">
-									<span class="text-xs font-semibold tracking-wide text-zinc-400 uppercase">Space Name</span>
+									<span class="text-duvet-ink2 text-[13px] font-bold">Space Name</span>
 									<input
 										type="text"
 										bind:value={ovName}
 										placeholder="Space name"
 										maxlength={64}
-										class="h-10 w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 text-sm text-zinc-100 outline-none focus:ring-1 focus:ring-stone-500"
+										class="bg-duvet-sunk text-duvet-ink shadow-duvet-press focus-visible:outline-duvet-accent h-10 w-full rounded-xl px-3 text-sm focus-visible:outline-2"
 									/>
 								</label>
 
 								<!-- Description -->
 								<label class="block space-y-1.5">
-									<span class="text-xs font-semibold tracking-wide text-zinc-400 uppercase">Description</span>
+									<span class="text-duvet-ink2 text-[13px] font-bold">Description</span>
 									<textarea
 										bind:value={ovDescription}
 										placeholder="What is this Space about?"
 										rows="3"
 										maxlength={256}
-										class="w-full resize-none rounded-md border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 outline-none focus:ring-1 focus:ring-stone-500 {thinScrollbar}"
+										class="text-duvet-ink w-full resize-none px-3 py-2 text-sm {thinScrollbar} bg-duvet-sunk shadow-duvet-press focus-visible:outline-duvet-accent rounded-xl focus-visible:outline-2"
 									></textarea>
 								</label>
 
 								<!-- Locale -->
 								<label class="block space-y-1.5">
-									<span class="text-xs font-semibold tracking-wide text-zinc-400 uppercase">Locale</span>
+									<span class="text-duvet-ink2 text-[13px] font-bold">Locale</span>
 									<input
 										type="text"
 										bind:value={ovLocale}
 										placeholder="en"
 										maxlength={4}
-										class="h-10 w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 text-sm text-zinc-100 outline-none focus:ring-1 focus:ring-stone-500"
+										class="bg-duvet-sunk text-duvet-ink shadow-duvet-press focus-visible:outline-duvet-accent h-10 w-full rounded-xl px-3 text-sm focus-visible:outline-2"
 									/>
 								</label>
 
 								<!-- What members are notified of until they choose, in the Space's menu -->
 								<label class="block space-y-1.5">
-									<span class="text-xs font-semibold tracking-wide text-zinc-400 uppercase">Default Notifications</span>
+									<span class="text-duvet-ink2 text-[13px] font-bold">Default Notifications</span>
 									<select
 										bind:value={ovDefaultNotifications}
-										class="h-10 w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 text-sm text-zinc-100 outline-none focus:ring-1 focus:ring-stone-500"
+										class="bg-duvet-sunk text-duvet-ink shadow-duvet-press focus-visible:outline-duvet-accent h-10 w-full rounded-xl px-3 text-sm focus-visible:outline-2"
 									>
 										<option value={0}>All messages</option>
 										<option value={1}>Only mentions</option>
 									</select>
-									<span class="block text-xs text-zinc-500"
+									<span class="text-duvet-ink2 block text-xs"
 										>Members are notified of this until they choose for themselves.</span
 									>
 								</label>
@@ -1508,7 +1510,7 @@
 									<button
 										onclick={handleSaveOverview}
 										disabled={ovSaving}
-										class="bg-fill-600 text-fixed-white hover:bg-fill-500 rounded-md px-4 py-2 text-sm font-medium tabular-nums transition-colors disabled:opacity-50"
+										class="bg-duvet-accent text-duvet-on-accent shadow-duvet-raised rounded-xl px-4 py-2 text-sm font-bold tabular-nums transition-colors hover:brightness-110 disabled:opacity-50"
 									>
 										{ovSaving ? (ovUploadPercent === null ? "Saving..." : uploadNote(ovUploadPercent)) : "Save Changes"}
 									</button>
@@ -1516,22 +1518,22 @@
 
 								<!-- Delete: the owner's alone, confirmed by typing the space's name -->
 								{#if isOwner && space}
-									<div class="mt-8 rounded-lg border border-red-900/60 bg-red-950/20 p-4">
-										<h3 class="text-sm font-semibold text-red-300">Delete Space</h3>
-										<p class="mt-1 text-xs text-zinc-400">
+									<div class="border-duvet-danger/60 bg-duvet-danger/10 mt-8 rounded-lg border p-4">
+										<h3 class="text-duvet-danger text-sm font-semibold">Delete Space</h3>
+										<p class="text-duvet-ink2 mt-1 text-xs">
 											It goes for everyone in it, with its rooms and messages. This can't be undone.
 										</p>
 										{#if !confirmingDelete}
 											<button
 												onclick={() => (confirmingDelete = true)}
-												class="text-fixed-white mt-3 rounded-md bg-red-600 px-3 py-1.5 text-sm font-semibold transition-colors hover:bg-red-500"
+												class="text-duvet-on-accent rounded-row bg-duvet-danger hover:bg-duvet-danger/85 mt-3 px-3 py-1.5 text-sm font-semibold transition-colors"
 											>
 												Delete Space
 											</button>
 										{:else}
 											<label class="mt-3 block space-y-1.5">
-												<span class="text-xs text-zinc-300">
-													Type <strong class="font-semibold text-zinc-100">{space.name}</strong> to delete it.
+												<span class="text-duvet-ink text-xs">
+													Type <strong class="text-duvet-ink font-semibold">{space.name}</strong> to delete it.
 												</span>
 												<input
 													type="text"
@@ -1541,17 +1543,17 @@
 													onkeydown={(e) => {
 														if (e.key === "Enter") void handleDeleteSpace();
 													}}
-													class="h-10 w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 text-sm text-zinc-100 outline-none focus:ring-1 focus:ring-red-500 disabled:opacity-50"
+													class="bg-duvet-sunk text-duvet-ink shadow-duvet-press focus-visible:outline-duvet-accent h-10 w-full rounded-xl px-3 text-sm focus-visible:outline-2 disabled:opacity-50"
 												/>
 											</label>
 											{#if deleteError}
-												<p class="mt-2 text-sm text-red-400">{deleteError}</p>
+												<p class="text-duvet-danger mt-2 text-sm">{deleteError}</p>
 											{/if}
 											<div class="mt-3 flex gap-2">
 												<button
 													onclick={handleDeleteSpace}
 													disabled={!deleteNameMatches || deletingSpace}
-													class="text-fixed-white rounded-md bg-red-600 px-3 py-1.5 text-sm font-semibold transition-colors hover:bg-red-500 disabled:cursor-not-allowed disabled:opacity-50"
+													class="text-duvet-on-accent rounded-row bg-duvet-danger hover:bg-duvet-danger/85 px-3 py-1.5 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50"
 												>
 													{deletingSpace ? "Deleting…" : "Delete Space"}
 												</button>
@@ -1562,7 +1564,7 @@
 														deleteError = null;
 													}}
 													disabled={deletingSpace}
-													class="rounded-md px-3 py-1.5 text-sm font-medium text-zinc-300 transition-colors hover:text-white disabled:opacity-50"
+													class="text-duvet-ink hover:text-duvet-ink rounded-md px-3 py-1.5 text-sm font-medium transition-colors disabled:opacity-50"
 												>
 													Cancel
 												</button>
@@ -1574,33 +1576,33 @@
 						{:else if activeSection === "roles"}
 							{#if canManageRoles && space}
 								<!-- Create new role -->
-								<div class="space-y-4 rounded-xl border border-zinc-700 bg-zinc-900 p-5">
+								<div class="border-duvet-line bg-duvet-bg space-y-4 rounded-xl border p-5">
 									<div class="space-y-1">
-										<h3 class="text-sm font-semibold tracking-wide text-white">Create New Role</h3>
-										<p class="text-xs text-zinc-400">Set role identity, color, and permissions.</p>
+										<h3 class="text-duvet-ink text-sm font-bold">Create New Role</h3>
+										<p class="text-duvet-ink2 text-xs">Set role identity, color, and permissions.</p>
 									</div>
 
 									<!-- Name -->
 									<label class="block space-y-1.5">
-										<span class="text-[11px] font-semibold tracking-wide text-zinc-400 uppercase">Role name</span>
+										<span class="text-duvet-ink2 text-[13px] font-bold">Role name</span>
 										<input
 											type="text"
 											placeholder="Role name"
 											bind:value={newRoleName}
 											maxlength={64}
-											class="h-10 w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 text-sm text-zinc-100 outline-none focus:ring-1 focus:ring-stone-500"
+											class="bg-duvet-sunk text-duvet-ink shadow-duvet-press focus-visible:outline-duvet-accent h-10 w-full rounded-xl px-3 text-sm focus-visible:outline-2"
 										/>
 									</label>
 
 									<!-- Color -->
-									<div class="space-y-2 rounded-lg border border-zinc-800 bg-zinc-800/40 p-3">
+									<div class="rounded-card border-duvet-line bg-duvet-card/40 space-y-2 border p-3">
 										<div class="flex items-center justify-between">
-											<span class="text-xs font-medium text-zinc-400">Color</span>
-											<label class="flex cursor-pointer items-center gap-1.5 text-xs text-zinc-400">
+											<span class="text-duvet-ink2 text-xs font-medium">Color</span>
+											<label class="text-duvet-ink2 flex cursor-pointer items-center gap-1.5 text-xs">
 												<input
 													type="checkbox"
 													bind:checked={newRoleUseGradient}
-													class="cursor-pointer accent-stone-500"
+													class="accent-duvet-accent cursor-pointer"
 												/>
 												Gradient
 											</label>
@@ -1608,7 +1610,7 @@
 										<div class="flex flex-wrap items-center gap-3">
 											<div class="flex items-center gap-1.5">
 												<input type="color" bind:value={newRoleColorFrom} class={colorSwatch} title="Color from" />
-												<span class="text-xxs text-zinc-500">From</span>
+												<span class="text-xxs text-duvet-ink2">From</span>
 											</div>
 											{#if newRoleUseGradient}
 												<div class="flex items-center gap-1.5">
@@ -1618,16 +1620,16 @@
 														class={colorSwatch}
 														title="Color via (middle)"
 													/>
-													<span class="text-xxs text-zinc-500">Via</span>
+													<span class="text-xxs text-duvet-ink2">Via</span>
 												</div>
 												<div class="flex items-center gap-1.5">
 													<input type="color" bind:value={newRoleColorTo} class={colorSwatch} title="Color to" />
-													<span class="text-xxs text-zinc-500">To</span>
+													<span class="text-xxs text-duvet-ink2">To</span>
 												</div>
 											{/if}
 											<!-- Preview swatch -->
 											<div
-												class="ml-auto h-7 w-16 rounded-md border border-zinc-700"
+												class="border-duvet-line ml-auto h-7 w-16 rounded-md border"
 												style={roleGradientStyle({
 													color_from: hexToInt(newRoleColorFrom),
 													color_via: newRoleUseGradient && newRoleColorVia ? hexToInt(newRoleColorVia) : null,
@@ -1639,11 +1641,11 @@
 
 									<!-- Hoisted -->
 									<label
-										class="flex cursor-pointer items-center gap-2 rounded-md border border-zinc-800 bg-zinc-800/40 px-2.5 py-2 text-xs text-zinc-200 hover:text-white"
+										class="border-duvet-line bg-duvet-card/40 text-duvet-ink hover:text-duvet-ink flex cursor-pointer items-center gap-2 rounded-md border px-2.5 py-2 text-xs"
 									>
 										<Checkbox.Root
 											bind:checked={newRoleHoisted}
-											class="text-xxs data-[state=checked]:bg-fill-600 data-[state=checked]:text-fixed-white flex size-4 items-center justify-center rounded border border-zinc-600 bg-zinc-900 text-transparent data-[state=checked]:border-stone-600"
+											class="text-xxs data-[state=checked]:bg-duvet-accent data-[state=checked]:text-duvet-on-accent border-duvet-line bg-duvet-bg data-[state=checked]:border-duvet-accent flex size-4 items-center justify-center rounded border text-transparent"
 											>✓</Checkbox.Root
 										>
 										Display role members separately in sidebar
@@ -1651,13 +1653,13 @@
 
 									<!-- Permissions -->
 									<div>
-										<p class="mb-1.5 text-xs font-medium text-zinc-400">Permissions</p>
+										<p class="text-duvet-ink2 mb-1.5 text-xs font-medium">Permissions</p>
 										<div class="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
 											{#each PERMISSIONS as perm}
 												{@const settable = canSetPermission(spacePermissions, 0, perm.flag)}
 												<label
-													class="flex items-start gap-2 rounded-md border border-zinc-800 bg-zinc-800/70 px-2.5 py-2 text-xs text-zinc-200 {settable
-														? 'cursor-pointer hover:text-white'
+													class="border-duvet-line bg-duvet-card/70 text-duvet-ink flex items-start gap-2 rounded-md border px-2.5 py-2 text-xs {settable
+														? 'hover:text-duvet-ink cursor-pointer'
 														: 'cursor-not-allowed opacity-50'}"
 													title={settable ? undefined : "You can only grant permissions you have"}
 												>
@@ -1667,12 +1669,12 @@
 														onCheckedChange={() => {
 															togglePermission(perm.flag, false);
 														}}
-														class="text-xxs data-[state=checked]:bg-fill-600 data-[state=checked]:text-fixed-white flex size-4 shrink-0 items-center justify-center rounded border border-zinc-600 bg-zinc-900 text-transparent data-[state=checked]:border-stone-600"
+														class="text-xxs data-[state=checked]:bg-duvet-accent data-[state=checked]:text-duvet-on-accent border-duvet-line bg-duvet-bg data-[state=checked]:border-duvet-accent flex size-4 shrink-0 items-center justify-center rounded border text-transparent"
 														>✓</Checkbox.Root
 													>
 													<span class="min-w-0">
 														<span class="block leading-4">{perm.name}</span>
-														<span class="text-xxs mt-0.5 block leading-snug text-zinc-500">{perm.description}</span>
+														<span class="text-xxs text-duvet-ink2 mt-0.5 block leading-snug">{perm.description}</span>
 													</span>
 												</label>
 											{/each}
@@ -1680,7 +1682,7 @@
 									</div>
 
 									<button
-										class="bg-fill-600 text-fixed-white hover:bg-fill-500 h-10 w-full rounded-md px-3 text-sm font-medium transition-colors disabled:opacity-50"
+										class="bg-duvet-accent text-duvet-on-accent shadow-duvet-raised h-10 w-full rounded-xl px-3 text-sm font-bold transition-colors hover:brightness-110 disabled:opacity-50"
 										onclick={handleCreateRole}
 										disabled={isCreating || !newRoleName.trim()}
 									>
@@ -1690,15 +1692,15 @@
 
 								<!-- Existing roles -->
 								<div class="space-y-2">
-									<h3 class="text-sm font-semibold text-white">Existing Roles</h3>
-									<p class="text-xs text-zinc-400">Drag to reorder. Edit or delete using actions on the right.</p>
+									<h3 class="text-duvet-ink text-sm font-semibold">Existing Roles</h3>
+									<p class="text-duvet-ink2 text-xs">Drag to reorder. Edit or delete using actions on the right.</p>
 									{#each sortedRoles as role, i}
 										{@const manageable = canManageRoleAt(space, role.position)}
 										<div
-											class="overflow-hidden rounded-xl border border-zinc-700 bg-zinc-900 transition-opacity duration-100"
+											class="border-duvet-line bg-duvet-bg overflow-hidden rounded-xl border transition-opacity duration-100"
 											class:opacity-40={isDragging && dragIndex !== i}
 											class:ring-2={isDragging && dragIndex === i}
-											class:ring-stone-500={isDragging && dragIndex === i}
+											class:ring-duvet-accent={isDragging && dragIndex === i}
 											draggable={editingRoleId !== role.id && manageable}
 											ondragstart={() => {
 												onDragStart(i);
@@ -1719,13 +1721,13 @@
 															bind:value={editingRoleName}
 															placeholder="Role name"
 															maxlength={64}
-															class="w-full rounded-md border border-zinc-700 bg-zinc-900 p-2 text-sm text-zinc-100 outline-none focus:ring-1 focus:ring-stone-500"
+															class="text-duvet-ink bg-duvet-sunk shadow-duvet-press focus-visible:outline-duvet-accent w-full rounded-xl p-2 text-sm focus-visible:outline-2"
 														/>
 
 														<!-- Color -->
 														<div class="space-y-1.5">
 															<div class="flex items-center justify-between">
-																<span class="text-xs font-medium text-zinc-400">Color</span>
+																<span class="text-duvet-ink2 text-xs font-medium">Color</span>
 																<div class="flex items-center gap-2">
 																	<button
 																		type="button"
@@ -1733,15 +1735,15 @@
 																			editingRoleClearColors = !editingRoleClearColors;
 																		}}
 																		class="text-xxs rounded px-1.5 py-0.5 transition-colors {editingRoleClearColors
-																			? 'text-fixed-white bg-red-500'
-																			: 'bg-zinc-700 text-zinc-300 hover:text-zinc-100'}">Clear color</button
+																			? 'text-duvet-on-accent bg-duvet-danger'
+																			: 'bg-duvet-ink/10 text-duvet-ink hover:text-duvet-ink'}">Clear color</button
 																	>
 																	{#if !editingRoleClearColors}
-																		<label class="flex cursor-pointer items-center gap-1.5 text-xs text-zinc-400">
+																		<label class="text-duvet-ink2 flex cursor-pointer items-center gap-1.5 text-xs">
 																			<input
 																				type="checkbox"
 																				bind:checked={editingRoleUseGradient}
-																				class="cursor-pointer accent-stone-500"
+																				class="accent-duvet-accent cursor-pointer"
 																			/>
 																			Gradient
 																		</label>
@@ -1757,7 +1759,7 @@
 																			class={colorSwatch}
 																			title="Color from"
 																		/>
-																		<span class="text-xxs text-zinc-500">From</span>
+																		<span class="text-xxs text-duvet-ink2">From</span>
 																	</div>
 																	{#if editingRoleUseGradient}
 																		<div class="flex items-center gap-1.5">
@@ -1767,7 +1769,7 @@
 																				class={colorSwatch}
 																				title="Via"
 																			/>
-																			<span class="text-xxs text-zinc-500">Via</span>
+																			<span class="text-xxs text-duvet-ink2">Via</span>
 																		</div>
 																		<div class="flex items-center gap-1.5">
 																			<input
@@ -1776,7 +1778,7 @@
 																				class={colorSwatch}
 																				title="To"
 																			/>
-																			<span class="text-xxs text-zinc-500">To</span>
+																			<span class="text-xxs text-duvet-ink2">To</span>
 																		</div>
 																	{/if}
 																	<div
@@ -1799,11 +1801,11 @@
 
 														<!-- Hoisted -->
 														<label
-															class="flex cursor-pointer items-center gap-2 text-xs text-zinc-200 hover:text-white"
+															class="text-duvet-ink hover:text-duvet-ink flex cursor-pointer items-center gap-2 text-xs"
 														>
 															<Checkbox.Root
 																bind:checked={editingRoleHoisted}
-																class="text-xxs data-[state=checked]:bg-fill-600 data-[state=checked]:text-fixed-white flex size-4 items-center justify-center rounded border border-zinc-600 bg-zinc-900 text-transparent data-[state=checked]:border-stone-600"
+																class="text-xxs data-[state=checked]:bg-duvet-accent data-[state=checked]:text-duvet-on-accent border-duvet-line bg-duvet-bg data-[state=checked]:border-duvet-accent flex size-4 items-center justify-center rounded border text-transparent"
 																>✓</Checkbox.Root
 															>
 															Display role members separately in sidebar
@@ -1811,13 +1813,13 @@
 
 														<!-- Permissions -->
 														<div>
-															<p class="mb-1.5 text-xs font-medium text-zinc-400">Permissions</p>
+															<p class="text-duvet-ink2 mb-1.5 text-xs font-medium">Permissions</p>
 															<div class="grid grid-cols-2 gap-x-3 gap-y-2.5">
 																{#each PERMISSIONS as perm}
 																	{@const settable = canSetPermission(spacePermissions, editingRoleSaved, perm.flag)}
 																	<label
-																		class="flex items-start gap-2 text-xs text-zinc-200 {settable
-																			? 'cursor-pointer hover:text-white'
+																		class="text-duvet-ink flex items-start gap-2 text-xs {settable
+																			? 'hover:text-duvet-ink cursor-pointer'
 																			: 'cursor-not-allowed opacity-50'}"
 																		title={settable ? undefined : "You can only grant permissions you have"}
 																	>
@@ -1827,12 +1829,12 @@
 																			onCheckedChange={() => {
 																				togglePermission(perm.flag, true);
 																			}}
-																			class="text-xxs data-[state=checked]:bg-fill-600 data-[state=checked]:text-fixed-white flex size-4 shrink-0 items-center justify-center rounded border border-zinc-600 bg-zinc-900 text-transparent data-[state=checked]:border-stone-600"
+																			class="text-xxs data-[state=checked]:bg-duvet-accent data-[state=checked]:text-duvet-on-accent border-duvet-line bg-duvet-bg data-[state=checked]:border-duvet-accent flex size-4 shrink-0 items-center justify-center rounded border text-transparent"
 																			>✓</Checkbox.Root
 																		>
 																		<span class="min-w-0">
 																			<span class="block leading-4">{perm.name}</span>
-																			<span class="text-xxs mt-0.5 block leading-snug text-zinc-500"
+																			<span class="text-xxs text-duvet-ink2 mt-0.5 block leading-snug"
 																				>{perm.description}</span
 																			>
 																		</span>
@@ -1843,12 +1845,12 @@
 
 														<div class="flex gap-2">
 															<button
-																class="bg-fill-600 text-fixed-white hover:bg-fill-500 flex-1 rounded-md px-2 py-1.5 text-xs font-medium transition-colors disabled:opacity-50"
+																class="bg-duvet-accent text-duvet-on-accent shadow-duvet-raised flex-1 rounded-xl px-2 py-1.5 text-xs font-bold transition-colors hover:brightness-110 disabled:opacity-50"
 																onclick={handleUpdateRole}
 																disabled={isCreating}>Save</button
 															>
 															<button
-																class="flex-1 rounded-md bg-zinc-700 px-2 py-1.5 text-xs text-white transition-colors hover:bg-zinc-600"
+																class="rounded-row bg-duvet-ink/10 text-duvet-ink hover:bg-duvet-ink/15 flex-1 px-2 py-1.5 text-xs transition-colors"
 																onclick={cancelEdit}>Cancel</button
 															>
 														</div>
@@ -1856,16 +1858,18 @@
 												{:else}
 													<div class="flex items-center gap-2">
 														<DotsSixVerticalIcon
-															class="size-4 shrink-0 cursor-grab text-zinc-500 active:cursor-grabbing"
+															class="text-duvet-ink2 size-4 shrink-0 cursor-grab active:cursor-grabbing"
 														/>
 														<div class="min-w-0 flex-1">
 															<div class="mb-0.5 flex items-center gap-2">
-																<span class="text-sm font-medium text-zinc-200">{role.name}</span>
+																<span class="text-duvet-ink text-sm font-medium">{role.name}</span>
 																{#if role.hoisted}
-																	<span class="text-xxs rounded bg-zinc-700 px-1.5 py-0.5 text-zinc-300">hoisted</span>
+																	<span class="text-xxs bg-duvet-ink/10 text-duvet-ink rounded px-1.5 py-0.5"
+																		>hoisted</span
+																	>
 																{/if}
 															</div>
-															<p class="truncate text-xs text-zinc-500">
+															<p class="text-duvet-ink2 truncate text-xs">
 																{getPermissionNames(role.permissions)}
 															</p>
 														</div>
@@ -1875,7 +1879,7 @@
 															title={manageable ? undefined : "Only roles below your highest role can be managed"}
 														>
 															<button
-																class="h-7 rounded-md bg-zinc-700 px-2.5 text-xs text-zinc-100 transition-colors hover:bg-zinc-600 disabled:cursor-not-allowed disabled:opacity-50"
+																class="rounded-row bg-duvet-ink/10 text-duvet-ink hover:bg-duvet-ink/15 h-7 px-2.5 text-xs transition-colors disabled:cursor-not-allowed disabled:opacity-50"
 																disabled={!manageable}
 																onclick={() => {
 																	startEdit(role);
@@ -1884,7 +1888,7 @@
 															<!-- everyone (its ID is the space's) can be edited, not deleted -->
 															{#if role.id !== spaceId}
 																<button
-																	class="text-fixed-white h-7 rounded-md bg-red-800/70 px-2.5 text-xs transition-colors hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+																	class="text-duvet-danger bg-duvet-danger/10 hover:bg-duvet-danger/20 h-7 rounded-md px-2.5 text-xs transition-colors disabled:cursor-not-allowed disabled:opacity-50"
 																	disabled={!manageable}
 																	onclick={() => handleDeleteRole(role.id)}>Delete</button
 																>
@@ -1896,18 +1900,18 @@
 										</div>
 									{/each}
 									{#if space.roles.length === 0}
-										<p class="py-4 text-center text-sm text-zinc-400">
+										<p class="text-duvet-ink2 py-4 text-center text-sm">
 											No roles yet. Create one to start assigning permissions.
 										</p>
 									{/if}
 								</div>
 							{:else}
-								<p class="text-sm text-zinc-400">You don't have permission to manage roles.</p>
+								<p class="text-duvet-ink2 text-sm">You don't have permission to manage roles.</p>
 							{/if}
 						{:else if activeSection === "members"}
 							{#if space}
 								<div class="space-y-3">
-									<h3 class="text-sm font-semibold text-white">
+									<h3 class="text-duvet-ink text-sm font-semibold">
 										Members ({formatCount(space.members?.length ?? 0)})
 									</h3>
 									{#each space.members ?? [] as member}
@@ -1916,8 +1920,8 @@
 											type="button"
 											class="flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition-colors {selectedMemberUserId ===
 											member.user_id
-												? 'border-stone-500/50 bg-zinc-700/60'
-												: 'hover:bg-zinc-750 border-zinc-700 bg-zinc-800'}"
+												? 'border-duvet-ink2/40 bg-duvet-ink/8'
+												: 'hover:bg-duvet-card border-duvet-line bg-duvet-card'}"
 											onclick={() => (selectedMemberUserId = member.user_id)}
 										>
 											<UserAvatar
@@ -1926,10 +1930,10 @@
 												size={32}
 											/>
 											<div class="min-w-0 flex-1">
-												<p class="truncate text-sm font-medium text-zinc-200">
+												<p class="text-duvet-ink truncate text-sm font-medium">
 													{member.alias ?? user?.username ?? "Unknown member"}
 												</p>
-												<p class="truncate text-xs text-zinc-400">
+												<p class="text-duvet-ink2 truncate text-xs">
 													{(space.member_roles[member.user_id] ?? [])
 														.map((rid) => space.roles.find((r) => r.id === rid)?.name)
 														.filter(Boolean)
@@ -1940,12 +1944,12 @@
 									{/each}
 
 									{#if selectedSettingsMember && selectedSettingsUser}
-										<div class="bg-zinc-850 rounded-xl border border-zinc-700 p-4">
+										<div class="bg-duvet-bg border-duvet-line rounded-xl border p-4">
 											<div class="mb-3 flex items-center justify-between">
-												<h4 class="text-xs font-semibold tracking-wide text-zinc-400 uppercase">Member Details</h4>
+												<h4 class="text-duvet-ink2 text-[13px] font-bold">Member Details</h4>
 												<button
 													type="button"
-													class="rounded px-2 py-1 text-xs text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-200"
+													class="text-duvet-ink2 hover:bg-duvet-card hover:text-duvet-ink rounded px-2 py-1 text-xs transition-colors"
 													onclick={() => (selectedMemberUserId = null)}>Close</button
 												>
 											</div>
@@ -1956,34 +1960,34 @@
 													size={40}
 												/>
 												<div class="min-w-0">
-													<p class="truncate text-sm font-semibold text-zinc-100">
+													<p class="text-duvet-ink truncate text-sm font-semibold">
 														{selectedSettingsMember.alias ?? selectedSettingsUser.username}
 													</p>
-													<p class="truncate text-xs text-zinc-400">@{selectedSettingsUser.username}</p>
-													<p class="truncate text-[11px] text-zinc-500">User ID: {selectedSettingsUser.id}</p>
+													<p class="text-duvet-ink2 truncate text-xs">@{selectedSettingsUser.username}</p>
+													<p class="text-duvet-ink2 truncate text-[11px]">User ID: {selectedSettingsUser.id}</p>
 												</div>
 											</div>
 											<div class="mt-3">
-												<p class="mb-2 text-[11px] font-semibold tracking-wide text-zinc-400 uppercase">Roles</p>
+												<p class="text-duvet-ink2 mb-2 text-[13px] font-bold">Roles</p>
 												{#if selectedSettingsRoles.length > 0}
 													<div class="flex flex-wrap gap-1.5">
 														{#each selectedSettingsRoles as role}
 															<span
-																class="rounded-md border border-zinc-700 bg-zinc-800 px-2 py-1 text-xs text-zinc-200"
+																class="border-duvet-line bg-duvet-card text-duvet-ink rounded-md border px-2 py-1 text-xs"
 																>{role.name}</span
 															>
 														{/each}
 													</div>
 												{:else}
-													<p class="text-xs text-zinc-500">No roles assigned</p>
+													<p class="text-duvet-ink2 text-xs">No roles assigned</p>
 												{/if}
 											</div>
 											{#if selectedSettingsModeration}
-												<div class="mt-4 flex gap-2 border-t border-zinc-700 pt-3">
+												<div class="border-duvet-line mt-4 flex gap-2 border-t pt-3">
 													{#if selectedSettingsModeration.kick}
 														<button
 															type="button"
-															class="flex h-8 items-center gap-1.5 rounded-md bg-red-600/15 px-3 text-xs font-medium text-red-400 transition-colors hover:bg-red-600/25"
+															class="bg-duvet-danger/15 text-duvet-danger hover:bg-duvet-danger/25 flex h-8 items-center gap-1.5 rounded-md px-3 text-xs font-medium transition-colors"
 															onclick={() => void kickFromSpace(selectedSettingsModeration.target)}
 														>
 															<UserMinusIcon class="size-3.5" />
@@ -1993,7 +1997,7 @@
 													{#if selectedSettingsModeration.ban}
 														<button
 															type="button"
-															class="flex h-8 items-center gap-1.5 rounded-md bg-red-600/15 px-3 text-xs font-medium text-red-400 transition-colors hover:bg-red-600/25"
+															class="bg-duvet-danger/15 text-duvet-danger hover:bg-duvet-danger/25 flex h-8 items-center gap-1.5 rounded-md px-3 text-xs font-medium transition-colors"
 															onclick={() => banRequest.set(selectedSettingsModeration.target)}
 														>
 															<BanIcon class="size-3.5" />
@@ -2008,34 +2012,34 @@
 							{/if}
 						{:else if activeSection === "emojis"}
 							{#if emojisLoading}
-								<p class="text-sm text-zinc-400">Loading emojis...</p>
+								<p class="text-duvet-ink2 text-sm">Loading emojis...</p>
 							{:else}
 								{#if canManageEmojis}
 									<!-- Upload new emoji -->
-									<div class="space-y-4 rounded-xl border border-zinc-700 bg-zinc-900 p-5">
+									<div class="border-duvet-line bg-duvet-bg space-y-4 rounded-xl border p-5">
 										<div class="space-y-1">
-											<h3 class="text-sm font-semibold tracking-wide text-white">Upload Emoji</h3>
-											<p class="text-xs text-zinc-400">
+											<h3 class="text-duvet-ink text-sm font-bold">Upload Emoji</h3>
+											<p class="text-duvet-ink2 text-xs">
 												Custom emojis require a storage bucket configured for this Space.
 											</p>
 										</div>
 
 										<div class="flex flex-wrap items-end gap-3">
 											<label class="block min-w-40 flex-1 space-y-1.5">
-												<span class="text-[11px] font-semibold tracking-wide text-zinc-400 uppercase">Name</span>
+												<span class="text-duvet-ink2 text-[13px] font-bold">Name</span>
 												<input
 													type="text"
-													class="w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 placeholder-zinc-500 outline-none focus:border-zinc-500"
+													class="bg-duvet-sunk text-duvet-ink placeholder:text-duvet-ink2 shadow-duvet-press focus-visible:outline-duvet-accent w-full rounded-xl px-3 py-2 text-sm focus-visible:outline-2"
 													placeholder="emoji_name"
 													bind:value={newEmojiName}
 												/>
 											</label>
 
 											<label class="block space-y-1.5">
-												<span class="text-[11px] font-semibold tracking-wide text-zinc-400 uppercase">Image</span>
+												<span class="text-duvet-ink2 text-[13px] font-bold">Image</span>
 												<button
 													type="button"
-													class="flex size-9.5 items-center justify-center overflow-hidden rounded-lg border border-dashed border-zinc-600 bg-zinc-800 text-zinc-400 transition-colors hover:border-zinc-400 hover:text-zinc-200"
+													class="border-duvet-line bg-duvet-card text-duvet-ink2 hover:border-duvet-ink2/40 hover:text-duvet-ink flex size-9.5 items-center justify-center overflow-hidden rounded-lg border border-dashed transition-colors"
 													title={newEmojiPreview ? "Change image" : "Choose image"}
 													onclick={() => (showEmojiCrop = true)}
 												>
@@ -2048,7 +2052,7 @@
 											</label>
 
 											<button
-												class="text-fixed-white flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium tabular-nums transition-colors hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
+												class="text-duvet-on-accent rounded-row bg-duvet-accent hover:bg-duvet-accent/85 flex items-center gap-2 px-4 py-2 text-sm font-medium tabular-nums transition-colors disabled:cursor-not-allowed disabled:opacity-50"
 												onclick={handleUploadEmoji}
 												disabled={isUploadingEmoji || !newEmojiName.trim() || !newEmojiFile}
 											>
@@ -2066,17 +2070,17 @@
 								<!-- Emoji list -->
 								{#if spaceEmojis.length === 0}
 									<div class="flex flex-col items-center justify-center py-12 text-center">
-										<SmileIcon class="mb-3 size-10 text-zinc-600" />
-										<p class="text-sm text-zinc-400">No custom emojis yet.</p>
+										<SmileIcon class="text-duvet-ink2/60 mb-3 size-10" />
+										<p class="text-duvet-ink2 text-sm">No custom emojis yet.</p>
 										{#if canManageEmojis}
-											<p class="mt-1 text-xs text-zinc-500">Upload one above to get started.</p>
+											<p class="text-duvet-ink2 mt-1 text-xs">Upload one above to get started.</p>
 										{/if}
 									</div>
 								{:else}
 									<div class="space-y-1">
 										{#each spaceEmojis as emoji (emoji.id)}
 											<div
-												class="group flex items-center gap-3 rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2.5"
+												class="group rounded-card border-duvet-line bg-duvet-card flex items-center gap-3 border px-3 py-2.5"
 											>
 												<img
 													src="{attachmentHost}/attachments/{emoji.attachment_id}"
@@ -2087,7 +2091,7 @@
 												{#if editingEmojiId === emoji.id}
 													<input
 														type="text"
-														class="flex-1 rounded-md border border-zinc-600 bg-zinc-700 px-2 py-1 text-sm text-zinc-100 outline-none focus:border-zinc-500"
+														class="text-duvet-ink bg-duvet-sunk shadow-duvet-press focus-visible:outline-duvet-accent flex-1 rounded-xl px-2 py-1 text-sm focus-visible:outline-2"
 														bind:value={editingEmojiName}
 														onkeydown={(e) => {
 															if (e.key === "Enter") handleUpdateEmoji();
@@ -2095,14 +2099,14 @@
 														}}
 													/>
 													<button
-														class="rounded p-1.5 text-green-400 transition-colors hover:bg-zinc-700"
+														class="text-duvet-alive hover:bg-duvet-ink/10 rounded p-1.5 transition-colors"
 														onclick={handleUpdateEmoji}
 														title="Save"
 													>
 														<CheckIcon class="size-4" />
 													</button>
 													<button
-														class="rounded p-1.5 text-zinc-400 transition-colors hover:bg-zinc-700"
+														class="text-duvet-ink2 hover:bg-duvet-ink/10 rounded p-1.5 transition-colors"
 														onclick={cancelEmojiEdit}
 														title="Cancel"
 													>
@@ -2110,19 +2114,19 @@
 													</button>
 												{:else}
 													<div class="min-w-0 flex-1">
-														<p class="truncate text-sm font-medium text-zinc-200">:{emoji.name}:</p>
+														<p class="text-duvet-ink truncate text-sm font-medium">:{emoji.name}:</p>
 													</div>
 
 													{#if canManageEmojis}
 														<button
-															class="rounded p-1.5 text-zinc-400 opacity-0 transition-all group-hover:opacity-100 hover:bg-zinc-700 hover:text-zinc-200"
+															class="text-duvet-ink2 hover:bg-duvet-ink/10 hover:text-duvet-ink rounded p-1.5 opacity-0 transition-all group-hover:opacity-100"
 															onclick={() => startEmojiEdit(emoji)}
 															title="Rename"
 														>
 															<PencilIcon class="size-4" />
 														</button>
 														<button
-															class="rounded p-1.5 text-zinc-400 opacity-0 transition-all group-hover:opacity-100 hover:bg-zinc-700 hover:text-red-400"
+															class="text-duvet-ink2 hover:bg-duvet-ink/10 hover:text-duvet-danger rounded p-1.5 opacity-0 transition-all group-hover:opacity-100"
 															onclick={() => handleDeleteEmoji(emoji.id)}
 															disabled={isDeletingEmoji[emoji.id]}
 															title="Delete"
@@ -2138,34 +2142,34 @@
 							{/if}
 						{:else if activeSection === "stickers"}
 							{#if stickersLoading}
-								<p class="text-sm text-zinc-400">Loading stickers...</p>
+								<p class="text-duvet-ink2 text-sm">Loading stickers...</p>
 							{:else}
 								{#if canManageStickers}
 									<!-- Upload new sticker -->
-									<div class="space-y-4 rounded-xl border border-zinc-700 bg-zinc-900 p-5">
+									<div class="border-duvet-line bg-duvet-bg space-y-4 rounded-xl border p-5">
 										<div class="space-y-1">
-											<h3 class="text-sm font-semibold tracking-wide text-white">Upload Sticker</h3>
-											<p class="text-xs text-zinc-400">
+											<h3 class="text-duvet-ink text-sm font-bold">Upload Sticker</h3>
+											<p class="text-duvet-ink2 text-xs">
 												Custom stickers require a storage bucket configured for this Space.
 											</p>
 										</div>
 
 										<div class="flex flex-wrap items-end gap-3">
 											<label class="block min-w-40 flex-1 space-y-1.5">
-												<span class="text-[11px] font-semibold tracking-wide text-zinc-400 uppercase">Name</span>
+												<span class="text-duvet-ink2 text-[13px] font-bold">Name</span>
 												<input
 													type="text"
-													class="w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 placeholder-zinc-500 outline-none focus:border-zinc-500"
+													class="bg-duvet-sunk text-duvet-ink placeholder:text-duvet-ink2 shadow-duvet-press focus-visible:outline-duvet-accent w-full rounded-xl px-3 py-2 text-sm focus-visible:outline-2"
 													placeholder="sticker_name"
 													bind:value={newStickerName}
 												/>
 											</label>
 
 											<label class="block space-y-1.5">
-												<span class="text-[11px] font-semibold tracking-wide text-zinc-400 uppercase">Image</span>
+												<span class="text-duvet-ink2 text-[13px] font-bold">Image</span>
 												<button
 													type="button"
-													class="flex size-9.5 items-center justify-center overflow-hidden rounded-lg border border-dashed border-zinc-600 bg-zinc-800 text-zinc-400 transition-colors hover:border-zinc-400 hover:text-zinc-200"
+													class="border-duvet-line bg-duvet-card text-duvet-ink2 hover:border-duvet-ink2/40 hover:text-duvet-ink flex size-9.5 items-center justify-center overflow-hidden rounded-lg border border-dashed transition-colors"
 													title={newStickerPreview ? "Change image" : "Choose image"}
 													onclick={() => (showStickerCrop = true)}
 												>
@@ -2178,7 +2182,7 @@
 											</label>
 
 											<button
-												class="text-fixed-white flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium tabular-nums transition-colors hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
+												class="text-duvet-on-accent rounded-row bg-duvet-accent hover:bg-duvet-accent/85 flex items-center gap-2 px-4 py-2 text-sm font-medium tabular-nums transition-colors disabled:cursor-not-allowed disabled:opacity-50"
 												onclick={handleUploadSticker}
 												disabled={isUploadingSticker || !newStickerName.trim() || !newStickerFile}
 											>
@@ -2196,17 +2200,17 @@
 								<!-- Sticker list -->
 								{#if spaceStickers.length === 0}
 									<div class="flex flex-col items-center justify-center py-12 text-center">
-										<StickerIcon class="mb-3 size-10 text-zinc-600" />
-										<p class="text-sm text-zinc-400">No custom stickers yet.</p>
+										<StickerIcon class="text-duvet-ink2/60 mb-3 size-10" />
+										<p class="text-duvet-ink2 text-sm">No custom stickers yet.</p>
 										{#if canManageStickers}
-											<p class="mt-1 text-xs text-zinc-500">Upload one above to get started.</p>
+											<p class="text-duvet-ink2 mt-1 text-xs">Upload one above to get started.</p>
 										{/if}
 									</div>
 								{:else}
 									<div class="space-y-1">
 										{#each spaceStickers as sticker (sticker.id)}
 											<div
-												class="group flex items-center gap-3 rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2.5"
+												class="group rounded-card border-duvet-line bg-duvet-card flex items-center gap-3 border px-3 py-2.5"
 											>
 												<img
 													src="{attachmentHost}/attachments/{sticker.attachment_id}"
@@ -2217,7 +2221,7 @@
 												{#if editingStickerReact === sticker.id}
 													<input
 														type="text"
-														class="flex-1 rounded-md border border-zinc-600 bg-zinc-700 px-2 py-1 text-sm text-zinc-100 outline-none focus:border-zinc-500"
+														class="text-duvet-ink bg-duvet-sunk shadow-duvet-press focus-visible:outline-duvet-accent flex-1 rounded-xl px-2 py-1 text-sm focus-visible:outline-2"
 														bind:value={editingStickerName}
 														onkeydown={(e) => {
 															if (e.key === "Enter") handleUpdateSticker();
@@ -2225,14 +2229,14 @@
 														}}
 													/>
 													<button
-														class="rounded p-1.5 text-green-400 transition-colors hover:bg-zinc-700"
+														class="text-duvet-alive hover:bg-duvet-ink/10 rounded p-1.5 transition-colors"
 														onclick={handleUpdateSticker}
 														title="Save"
 													>
 														<CheckIcon class="size-4" />
 													</button>
 													<button
-														class="rounded p-1.5 text-zinc-400 transition-colors hover:bg-zinc-700"
+														class="text-duvet-ink2 hover:bg-duvet-ink/10 rounded p-1.5 transition-colors"
 														onclick={cancelStickerEdit}
 														title="Cancel"
 													>
@@ -2240,19 +2244,19 @@
 													</button>
 												{:else}
 													<div class="min-w-0 flex-1">
-														<p class="truncate text-sm font-medium text-zinc-200">{sticker.name}</p>
+														<p class="text-duvet-ink truncate text-sm font-medium">{sticker.name}</p>
 													</div>
 
 													{#if canManageStickers}
 														<button
-															class="rounded p-1.5 text-zinc-400 opacity-0 transition-all group-hover:opacity-100 hover:bg-zinc-700 hover:text-zinc-200"
+															class="text-duvet-ink2 hover:bg-duvet-ink/10 hover:text-duvet-ink rounded p-1.5 opacity-0 transition-all group-hover:opacity-100"
 															onclick={() => startStickerEdit(sticker)}
 															title="Rename"
 														>
 															<PencilIcon class="size-4" />
 														</button>
 														<button
-															class="rounded p-1.5 text-zinc-400 opacity-0 transition-all group-hover:opacity-100 hover:bg-zinc-700 hover:text-red-400"
+															class="text-duvet-ink2 hover:bg-duvet-ink/10 hover:text-duvet-danger rounded p-1.5 opacity-0 transition-all group-hover:opacity-100"
 															onclick={() => handleDeleteSticker(sticker.id)}
 															disabled={isDeletingSticker[sticker.id]}
 															title="Delete"
@@ -2278,13 +2282,13 @@
 											: inviteCreator(spaceTransfer.started_by)}
 									/>
 								{/if}
-								<p class="mb-4 text-xs text-zinc-500">
+								<p class="text-duvet-ink2 mb-4 text-xs">
 									Connect an S3-compatible bucket for this Space's storage. When a bucket is active, uploads go to your
 									bucket.
 								</p>
 
 								{#if !spaceBucketsLoading}
-									<div class="mb-4 flex gap-3 rounded-lg border border-amber-600/30 bg-amber-950/20 px-4 py-3">
+									<div class="border-duvet-warn/30 bg-duvet-warn/10 mb-4 flex gap-3 rounded-lg border px-4 py-3">
 										<svg
 											xmlns="http://www.w3.org/2000/svg"
 											width="20"
@@ -2295,13 +2299,13 @@
 											stroke-width="2"
 											stroke-linecap="round"
 											stroke-linejoin="round"
-											class="mt-0.5 shrink-0 text-amber-500"
+											class="text-duvet-warn mt-0.5 shrink-0"
 											><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3" /><path
 												d="M12 9v4"
 											/><path d="M12 17h.01" /></svg
 										>
-										<div class="space-y-1 text-xs text-amber-300/80">
-											<p class="font-semibold text-amber-300">Before adding a bucket</p>
+										<div class="text-duvet-warn/80 space-y-1 text-xs">
+											<p class="text-duvet-warn font-semibold">Before adding a bucket</p>
 											<p>
 												Only enter credentials that <strong>you own and control</strong>. If someone shared credentials
 												with you, be aware that:
@@ -2323,55 +2327,51 @@
 								{/if}
 
 								{#if spaceBucketsError}
-									<p class="mb-4 rounded-md bg-red-400/10 px-3 py-2 text-sm text-red-400">{spaceBucketsError}</p>
+									<p class="bg-duvet-danger/10 text-duvet-danger mb-4 rounded-md px-3 py-2 text-sm">
+										{spaceBucketsError}
+									</p>
 								{/if}
 
 								<!-- Create / Edit form -->
 								{#if showSpaceBucketForm}
-									<div class="mb-4 space-y-3 rounded-lg border border-zinc-800 bg-zinc-800/40 p-4">
-										<h3 class="text-sm font-semibold text-white">
+									<div class="rounded-card border-duvet-line bg-duvet-card/40 mb-4 space-y-3 border p-4">
+										<h3 class="text-duvet-ink text-sm font-semibold">
 											{editingSpaceBucket ? "Edit Bucket" : "New Bucket"}
 										</h3>
 										<div class="grid grid-cols-2 gap-3">
 											<div>
-												<label for="sb-name" class="mb-1 block text-xs font-semibold text-zinc-400 uppercase"
-													>Name</label
-												>
+												<label for="sb-name" class="text-duvet-ink2 mb-1 block text-[13px] font-bold">Name</label>
 												<input
 													id="sb-name"
 													type="text"
 													bind:value={sbName}
 													placeholder="My R2"
-													class="h-9 w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 text-sm text-white placeholder-zinc-500 outline-none focus:border-stone-500"
+													class="bg-duvet-sunk text-duvet-ink placeholder:text-duvet-ink2 shadow-duvet-press focus-visible:outline-duvet-accent h-9 w-full rounded-xl px-3 text-sm focus-visible:outline-2"
 												/>
 											</div>
 											<div>
-												<label for="sb-region" class="mb-1 block text-xs font-semibold text-zinc-400 uppercase"
-													>Region</label
-												>
+												<label for="sb-region" class="text-duvet-ink2 mb-1 block text-[13px] font-bold">Region</label>
 												<input
 													id="sb-region"
 													type="text"
 													bind:value={sbRegion}
 													placeholder="auto"
-													class="h-9 w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 text-sm text-white placeholder-zinc-500 outline-none focus:border-stone-500"
+													class="bg-duvet-sunk text-duvet-ink placeholder:text-duvet-ink2 shadow-duvet-press focus-visible:outline-duvet-accent h-9 w-full rounded-xl px-3 text-sm focus-visible:outline-2"
 												/>
 											</div>
 										</div>
 										<div>
-											<label for="sb-endpoint" class="mb-1 block text-xs font-semibold text-zinc-400 uppercase"
-												>Endpoint</label
-											>
+											<label for="sb-endpoint" class="text-duvet-ink2 mb-1 block text-[13px] font-bold">Endpoint</label>
 											<input
 												id="sb-endpoint"
 												type="text"
 												bind:value={sbEndpoint}
 												placeholder="https://account-id.r2.cloudflarestorage.com"
-												class="h-9 w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 text-sm text-white placeholder-zinc-500 outline-none focus:border-stone-500"
+												class="bg-duvet-sunk text-duvet-ink placeholder:text-duvet-ink2 shadow-duvet-press focus-visible:outline-duvet-accent h-9 w-full rounded-xl px-3 text-sm focus-visible:outline-2"
 											/>
 										</div>
 										<div>
-											<label for="sb-bucket-name" class="mb-1 block text-xs font-semibold text-zinc-400 uppercase"
+											<label for="sb-bucket-name" class="text-duvet-ink2 mb-1 block text-[13px] font-bold"
 												>Bucket Name</label
 											>
 											<input
@@ -2379,12 +2379,12 @@
 												type="text"
 												bind:value={sbBucketName}
 												placeholder="my-bucket"
-												class="h-9 w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 text-sm text-white placeholder-zinc-500 outline-none focus:border-stone-500"
+												class="bg-duvet-sunk text-duvet-ink placeholder:text-duvet-ink2 shadow-duvet-press focus-visible:outline-duvet-accent h-9 w-full rounded-xl px-3 text-sm focus-visible:outline-2"
 											/>
 										</div>
 										<div class="grid grid-cols-2 gap-3">
 											<div>
-												<label for="sb-access-key" class="mb-1 block text-xs font-semibold text-zinc-400 uppercase"
+												<label for="sb-access-key" class="text-duvet-ink2 mb-1 block text-[13px] font-bold"
 													>Access Key ID</label
 												>
 												<input
@@ -2392,11 +2392,11 @@
 													type="text"
 													bind:value={sbAccessKey}
 													placeholder="access key"
-													class="h-9 w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 text-sm text-white placeholder-zinc-500 outline-none focus:border-stone-500"
+													class="bg-duvet-sunk text-duvet-ink placeholder:text-duvet-ink2 shadow-duvet-press focus-visible:outline-duvet-accent h-9 w-full rounded-xl px-3 text-sm focus-visible:outline-2"
 												/>
 											</div>
 											<div>
-												<label for="sb-secret-key" class="mb-1 block text-xs font-semibold text-zinc-400 uppercase"
+												<label for="sb-secret-key" class="text-duvet-ink2 mb-1 block text-[13px] font-bold"
 													>Secret Access Key</label
 												>
 												<input
@@ -2404,7 +2404,7 @@
 													type="password"
 													bind:value={sbSecretKey}
 													placeholder={editingSpaceBucket ? "leave empty to keep current" : "secret key"}
-													class="h-9 w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 text-sm text-white placeholder-zinc-500 outline-none focus:border-stone-500"
+													class="bg-duvet-sunk text-duvet-ink placeholder:text-duvet-ink2 shadow-duvet-press focus-visible:outline-duvet-accent h-9 w-full rounded-xl px-3 text-sm focus-visible:outline-2"
 												/>
 											</div>
 										</div>
@@ -2412,16 +2412,17 @@
 											<input
 												type="checkbox"
 												bind:checked={sbUsePathStyle}
-												class="size-4 rounded border-zinc-600 bg-zinc-800 accent-stone-500"
+												class="border-duvet-line bg-duvet-card accent-duvet-accent size-4 rounded"
 											/>
-											<span class="text-xs text-zinc-400"
-												>Use path-style addressing <span class="text-zinc-600">(required for MinIO, RustFS, etc.)</span
+											<span class="text-duvet-ink2 text-xs"
+												>Use path-style addressing <span class="text-duvet-ink2/60"
+													>(required for MinIO, RustFS, etc.)</span
 												></span
 											>
 										</label>
 										<div class="grid grid-cols-2 gap-3">
 											<div>
-												<label for="sb-max-bytes" class="mb-1 block text-xs font-semibold text-zinc-400 uppercase"
+												<label for="sb-max-bytes" class="text-duvet-ink2 mb-1 block text-[13px] font-bold"
 													>Total Limit (MB)</label
 												>
 												<input
@@ -2431,11 +2432,11 @@
 													step="1"
 													bind:value={sbMaxBytesMB}
 													placeholder="No limit"
-													class="h-9 w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 text-sm text-white placeholder-zinc-500 outline-none focus:border-stone-500"
+													class="bg-duvet-sunk text-duvet-ink placeholder:text-duvet-ink2 shadow-duvet-press focus-visible:outline-duvet-accent h-9 w-full rounded-xl px-3 text-sm focus-visible:outline-2"
 												/>
 											</div>
 											<div>
-												<label for="sb-upload-limit" class="mb-1 block text-xs font-semibold text-zinc-400 uppercase"
+												<label for="sb-upload-limit" class="text-duvet-ink2 mb-1 block text-[13px] font-bold"
 													>Per-file Limit (MB)</label
 												>
 												<input
@@ -2445,21 +2446,21 @@
 													step="1"
 													bind:value={sbUploadLimitMB}
 													placeholder="No limit"
-													class="h-9 w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 text-sm text-white placeholder-zinc-500 outline-none focus:border-stone-500"
+													class="bg-duvet-sunk text-duvet-ink placeholder:text-duvet-ink2 shadow-duvet-press focus-visible:outline-duvet-accent h-9 w-full rounded-xl px-3 text-sm focus-visible:outline-2"
 												/>
 											</div>
 										</div>
-										<p class="text-xxs text-zinc-600">
+										<p class="text-xxs text-duvet-ink2/60">
 											Leave empty to remove limits. When a total limit is set, oldest files are recycled automatically
 											when full.
 										</p>
 										<div class="flex justify-end gap-2 pt-1">
 											<button
-												class="rounded-md px-3 py-1.5 text-sm text-zinc-300 transition-colors hover:bg-zinc-800"
+												class="text-duvet-ink hover:bg-duvet-card rounded-md px-3 py-1.5 text-sm transition-colors"
 												onclick={resetSpaceBucketForm}>Cancel</button
 											>
 											<button
-												class="bg-fill-600 text-fixed-white hover:bg-fill-500 rounded-md px-4 py-1.5 text-sm font-semibold transition-colors disabled:opacity-50"
+												class="bg-duvet-accent text-duvet-on-accent shadow-duvet-raised rounded-xl px-4 py-1.5 text-sm font-bold transition-colors hover:brightness-110 disabled:opacity-50"
 												disabled={spaceBucketSaving}
 												onclick={handleSaveSpaceBucket}
 											>
@@ -2469,7 +2470,7 @@
 									</div>
 								{:else}
 									<button
-										class="mb-4 flex items-center gap-2 rounded-md bg-stone-600/20 px-3 py-2 text-sm font-medium text-stone-300 transition-colors hover:bg-stone-600/30"
+										class="bg-duvet-ink/5 text-duvet-ink hover:bg-duvet-ink/6 mb-4 flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors"
 										onclick={() => {
 											resetSpaceBucketForm();
 											showSpaceBucketForm = true;
@@ -2483,40 +2484,42 @@
 								{#if spaceBucketsLoading}
 									<div class="space-y-2">
 										{#each Array(3) as _}
-											<div class="h-16 animate-pulse rounded-lg bg-zinc-800/40"></div>
+											<div class="bg-duvet-card/40 h-16 animate-pulse rounded-lg"></div>
 										{/each}
 									</div>
 								{:else if spaceBuckets.length === 0}
-									<div class="flex flex-col items-center justify-center py-12 text-zinc-500">
+									<div class="text-duvet-ink2 flex flex-col items-center justify-center py-12">
 										<DatabaseIcon class="mb-3 size-10" />
 										<p class="text-sm">No buckets configured</p>
-										<p class="mt-1 text-xs text-zinc-600">Add a bucket to enable custom emoji uploads.</p>
+										<p class="text-duvet-ink2/60 mt-1 text-xs">Add a bucket to enable custom emoji uploads.</p>
 									</div>
 								{:else}
 									<div class="space-y-2">
 										{#each spaceBuckets as bucket (bucket.id)}
 											<div
-												class="group flex items-center gap-3 rounded-lg border border-zinc-800 bg-zinc-800/30 px-4 py-3 transition-colors hover:bg-zinc-800/50"
+												class="group rounded-card border-duvet-line bg-duvet-card/30 hover:bg-duvet-card/50 flex items-center gap-3 border px-4 py-3 transition-colors"
 											>
 												<div class="min-w-0 flex-1">
 													<div class="flex items-center gap-2">
-														<span class="text-sm font-medium text-zinc-200">{bucket.name}</span>
+														<span class="text-duvet-ink text-sm font-medium">{bucket.name}</span>
 														{#if bucket.is_active}
 															<span
-																class="text-xxs rounded bg-emerald-600/20 px-1.5 py-0.5 font-semibold text-emerald-400"
+																class="text-xxs bg-duvet-alive/20 text-duvet-alive rounded px-1.5 py-0.5 font-semibold"
 																>ACTIVE</span
 															>
 														{:else}
-															<span class="text-xxs rounded bg-zinc-600/20 px-1.5 py-0.5 font-semibold text-zinc-400"
+															<span class="text-xxs bg-duvet-ink/5 text-duvet-ink2 rounded px-1.5 py-0.5 font-semibold"
 																>INACTIVE</span
 															>
 														{/if}
 													</div>
-													<p class="mt-0.5 truncate text-xs text-zinc-500">{bucket.bucket_name} · {bucket.endpoint}</p>
+													<p class="text-duvet-ink2 mt-0.5 truncate text-xs">
+														{bucket.bucket_name} · {bucket.endpoint}
+													</p>
 													{#if bucket.max_bytes}
 														{@const pct = Math.min(Math.round((bucket.used_bytes / bucket.max_bytes) * 100), 100)}
 														<div class="mt-1.5 space-y-1">
-															<div class="text-xxs flex items-center justify-between text-zinc-500">
+															<div class="text-xxs text-duvet-ink2 flex items-center justify-between">
 																<span
 																	>{(bucket.used_bytes / 1024 / 1024).toFixed(1)} MB / {(
 																		bucket.max_bytes /
@@ -2526,24 +2529,24 @@
 																>
 																<span>{pct}%</span>
 															</div>
-															<div class="h-1.5 w-full overflow-hidden rounded-full bg-zinc-700">
+															<div class="bg-duvet-ink/10 h-1.5 w-full overflow-hidden rounded-full">
 																<div
 																	class="h-full rounded-full transition-all duration-300 {pct > 90
-																		? 'bg-red-500'
+																		? 'bg-duvet-danger'
 																		: pct > 70
-																			? 'bg-yellow-500'
-																			: 'bg-stone-500'}"
+																			? 'bg-duvet-warn'
+																			: 'bg-duvet-ink2'}"
 																	style="width: {pct}%"
 																></div>
 															</div>
 															{#if bucket.upload_limit_bytes}
-																<p class="text-xxs text-zinc-600">
+																<p class="text-xxs text-duvet-ink2/60">
 																	Per-file: {(bucket.upload_limit_bytes / 1024 / 1024).toFixed(0)} MB
 																</p>
 															{/if}
 														</div>
 													{:else if bucket.upload_limit_bytes}
-														<p class="text-xxs mt-0.5 text-zinc-600">
+														<p class="text-xxs text-duvet-ink2/60 mt-0.5">
 															Per-file: {(bucket.upload_limit_bytes / 1024 / 1024).toFixed(0)} MB
 														</p>
 													{/if}
@@ -2552,14 +2555,14 @@
 													class="flex shrink-0 items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100"
 												>
 													<button
-														class="flex h-8 w-8 items-center justify-center rounded-md text-zinc-500 transition-all hover:bg-zinc-700 hover:text-zinc-200 disabled:opacity-50"
+														class="text-duvet-ink2 hover:bg-duvet-ink/10 hover:text-duvet-ink flex h-8 w-8 items-center justify-center rounded-md transition-all disabled:opacity-50"
 														title={bucket.is_active ? "Deactivate" : "Activate"}
 														onclick={() => handleToggleSpaceBucket(bucket)}
 														disabled={togglingSpaceBucketId === bucket.id}
 													>
 														{#if togglingSpaceBucketId === bucket.id}
 															<div
-																class="size-4 animate-spin rounded-full border-2 border-zinc-500 border-t-transparent"
+																class="border-duvet-ink2/40 size-4 animate-spin rounded-full border-2 border-t-transparent"
 															></div>
 														{:else if bucket.is_active}
 															<XIcon class="size-4" />
@@ -2569,14 +2572,14 @@
 													</button>
 													{#if canMoveSpaceFiles}
 														<button
-															class="flex h-8 w-8 items-center justify-center rounded-md text-zinc-500 transition-all hover:bg-zinc-700 hover:text-zinc-200 disabled:opacity-50"
+															class="text-duvet-ink2 hover:bg-duvet-ink/10 hover:text-duvet-ink flex h-8 w-8 items-center justify-center rounded-md transition-all disabled:opacity-50"
 															title={spaceTransfer ? "Wait for the transfer under way to end" : "Move files…"}
 															onclick={() => openMoveSpaceBucket(bucket)}
 															disabled={movingSpaceBucketId === bucket.id || spaceTransfer !== null}
 														>
 															{#if movingSpaceBucketId === bucket.id}
 																<div
-																	class="size-4 animate-spin rounded-full border-2 border-zinc-500 border-t-transparent"
+																	class="border-duvet-ink2/40 size-4 animate-spin rounded-full border-2 border-t-transparent"
 																></div>
 															{:else}
 																<MoveIcon class="size-4" />
@@ -2584,14 +2587,14 @@
 														</button>
 													{/if}
 													<button
-														class="flex h-8 w-8 items-center justify-center rounded-md text-zinc-500 transition-all hover:bg-zinc-700 hover:text-zinc-200"
+														class="text-duvet-ink2 hover:bg-duvet-ink/10 hover:text-duvet-ink flex h-8 w-8 items-center justify-center rounded-md transition-all"
 														title="Edit"
 														onclick={() => startEditSpaceBucket(bucket)}
 													>
 														<PencilIcon class="size-4" />
 													</button>
 													<button
-														class="flex h-8 w-8 items-center justify-center rounded-md text-zinc-500 transition-all hover:bg-red-600/20 hover:text-red-400"
+														class="text-duvet-ink2 hover:bg-duvet-danger/20 hover:text-duvet-danger flex h-8 w-8 items-center justify-center rounded-md transition-all"
 														title="Delete"
 														onclick={() => handleDeleteSpaceBucket(bucket.id)}
 													>
@@ -2603,20 +2606,20 @@
 									</div>
 								{/if}
 							{:else}
-								<p class="text-sm text-zinc-400">You don't have permission to manage storage for this Space.</p>
+								<p class="text-duvet-ink2 text-sm">You don't have permission to manage storage for this Space.</p>
 							{/if}
 						{:else if activeSection === "invites"}
-							<p class="mb-3 text-sm text-zinc-400">
+							<p class="text-duvet-ink2 mb-3 text-sm">
 								The invite links that still work. Revoking one makes it stop working for everyone.
 							</p>
 							{#if spaceInvitesLoading}
 								<div class="space-y-2">
 									{#each Array(3) as _}
-										<div class="h-14 animate-pulse rounded-lg bg-zinc-800/40"></div>
+										<div class="bg-duvet-card/40 h-14 animate-pulse rounded-lg"></div>
 									{/each}
 								</div>
 							{:else if spaceInvites.length === 0}
-								<div class="flex flex-col items-center justify-center py-16 text-zinc-500">
+								<div class="text-duvet-ink2 flex flex-col items-center justify-center py-16">
 									<LinkIcon class="mb-3 size-10" />
 									<p class="text-sm">No invites</p>
 								</div>
@@ -2625,15 +2628,15 @@
 									{#each spaceInvites as invite (invite.id)}
 										{@const room = space?.rooms.find((r) => r.id === invite.room_id)}
 										<div
-											class="group flex items-center gap-3 rounded-lg border border-zinc-800 bg-zinc-800/30 px-3 py-2.5 transition-colors hover:bg-zinc-800/50"
+											class="group rounded-card border-duvet-line bg-duvet-card/30 hover:bg-duvet-card/50 flex items-center gap-3 border px-3 py-2.5 transition-colors"
 										>
 											<div class="min-w-0 flex-1">
-												<p class="truncate font-mono text-sm text-zinc-200 select-text">{invite.code}</p>
-												<p class="text-xs text-zinc-500">
+												<p class="text-duvet-ink truncate font-mono text-sm select-text">{invite.code}</p>
+												<p class="text-duvet-ink2 text-xs">
 													#{room?.name ?? "deleted room"}
-													<span class="mx-1 text-zinc-600">&middot;</span>
+													<span class="text-duvet-ink2/60 mx-1">&middot;</span>
 													{inviteCreator(invite.created_by)}
-													<span class="mx-1 text-zinc-600">&middot;</span>
+													<span class="text-duvet-ink2/60 mx-1">&middot;</span>
 													{invite.expires_at
 														? `Expires ${new Date(invite.expires_at).toLocaleString()}`
 														: "Never expires"}
@@ -2641,7 +2644,7 @@
 											</div>
 											<button
 												onclick={() => handleRevokeInvite(invite)}
-												class="flex h-8 shrink-0 items-center gap-1.5 rounded-md px-2 text-xs font-medium text-zinc-500 opacity-0 transition-all group-hover:opacity-100 hover:bg-red-600/20 hover:text-red-400"
+												class="text-duvet-ink2 hover:bg-duvet-danger/20 hover:text-duvet-danger flex h-8 shrink-0 items-center gap-1.5 rounded-md px-2 text-xs font-medium opacity-0 transition-all group-hover:opacity-100"
 												title="Revoke"
 											>
 												<TrashIcon class="size-4" />
@@ -2671,24 +2674,24 @@
 								/>
 							{/if}
 							<div
-								class="flex items-center justify-between gap-3 rounded-lg border border-zinc-800 bg-zinc-800/40 px-4 py-3"
+								class="rounded-card border-duvet-line bg-duvet-card/40 flex items-center justify-between gap-3 border px-4 py-3"
 							>
-								<div class="text-sm text-zinc-300">
+								<div class="text-duvet-ink text-sm">
 									{#if spaceListedHere}
-										<span class="font-semibold text-white">{spaceAttachments.length}</span>
+										<span class="text-duvet-ink font-semibold">{spaceAttachments.length}</span>
 										file{spaceAttachments.length !== 1 ? "s" : ""}
-										<span class="mx-1 text-zinc-600">&middot;</span>
+										<span class="text-duvet-ink2/60 mx-1">&middot;</span>
 										{formatFileSize(spaceAttachmentsLocation === "all" ? spaceStorageUsed : spaceLocationBytes)}
 									{/if}
 								</div>
 								<div class="flex items-center gap-2">
 									{#if canManageBuckets && (spaceBuckets.length > 0 || spaceAttachmentsLocation !== "all")}
-										<label class="flex items-center gap-2 text-xs text-zinc-400">
+										<label class="text-duvet-ink2 flex items-center gap-2 text-xs">
 											Location
 											<select
 												value={spaceAttachmentsLocation}
 												onchange={(e) => setSpaceAttachmentsLocation(e.currentTarget.value)}
-												class="max-w-40 rounded-md border border-zinc-700 bg-zinc-800 px-2 py-1 text-xs text-zinc-200 focus:ring-1 focus:ring-stone-500 focus:outline-none"
+												class="text-duvet-ink bg-duvet-sunk shadow-duvet-press focus-visible:outline-duvet-accent max-w-40 rounded-xl px-2 py-1 text-xs focus-visible:outline-2"
 											>
 												<option value="all">All</option>
 												{#each spaceBuckets as b (b.id)}
@@ -2700,7 +2703,7 @@
 									{#if spaceAttachments.length > 0 && canManageAttachments && spaceAttachmentsLocation === "all"}
 										<button
 											onclick={handleDeleteAllSpaceAttachments}
-											class="flex items-center gap-1.5 rounded-md bg-red-600/20 px-3 py-1.5 text-xs font-semibold text-red-400 transition-colors hover:bg-red-600/30"
+											class="bg-duvet-danger/20 text-duvet-danger hover:bg-duvet-danger/30 flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold transition-colors"
 										>
 											<TrashIcon class="size-3.5" />
 											Delete All
@@ -2712,16 +2715,16 @@
 							{#if spaceAttachmentsLoading}
 								<div class="space-y-2">
 									{#each Array(5) as _}
-										<div class="h-14 animate-pulse rounded-lg bg-zinc-800/40"></div>
+										<div class="bg-duvet-card/40 h-14 animate-pulse rounded-lg"></div>
 									{/each}
 								</div>
 							{:else if !spaceListedHere}
 								<!-- The location's files didn't load (a toast said why): the list is another's. -->
-								<div class="flex flex-col items-center justify-center py-16 text-zinc-500">
+								<div class="text-duvet-ink2 flex flex-col items-center justify-center py-16">
 									<p class="text-sm">Couldn't load the files here</p>
 								</div>
 							{:else if spaceAttachments.length === 0}
-								<div class="flex flex-col items-center justify-center py-16 text-zinc-500">
+								<div class="text-duvet-ink2 flex flex-col items-center justify-center py-16">
 									<PaperclipIcon class="mb-3 size-10" />
 									<p class="text-sm">
 										{spaceAttachmentsLocation === "all" ? "No attachments in this space" : "No files here"}
@@ -2736,7 +2739,7 @@
 										{@const isImage = att.content_type.startsWith("image/")}
 										{@const isAudio = att.content_type.startsWith("audio/")}
 										<div
-											class="group rounded-lg border border-zinc-800 bg-zinc-800/30 transition-colors hover:bg-zinc-800/50"
+											class="group border-duvet-line bg-duvet-card/30 hover:bg-duvet-card/50 rounded-lg border transition-colors"
 										>
 											<div class="flex items-center gap-3 px-3 py-2.5">
 												{#if spacePicking}
@@ -2745,17 +2748,17 @@
 														checked={spacePicker.picked.has(att.id)}
 														onchange={() => spacePicker.toggle(att.id)}
 														aria-label="Select {att.filename}"
-														class="size-4 shrink-0 rounded border-zinc-600 bg-zinc-800 accent-stone-500"
+														class="border-duvet-line bg-duvet-card accent-duvet-accent size-4 shrink-0 rounded"
 													/>
 												{/if}
 												{#if isImage}
 													<img
 														src="{attachmentHost}{att.url ?? `/attachments/${att.id}`}"
 														alt=""
-														class="h-10 w-10 shrink-0 rounded bg-zinc-700 object-cover"
+														class="bg-duvet-ink/10 h-10 w-10 shrink-0 rounded object-cover"
 													/>
 												{:else if isAudio}
-													<div class="flex h-10 w-10 shrink-0 items-center justify-center rounded bg-zinc-700">
+													<div class="bg-duvet-ink/10 flex h-10 w-10 shrink-0 items-center justify-center rounded">
 														<svg
 															xmlns="http://www.w3.org/2000/svg"
 															width="16"
@@ -2766,29 +2769,29 @@
 															stroke-width="2"
 															stroke-linecap="round"
 															stroke-linejoin="round"
-															class="text-zinc-400"
+															class="text-duvet-ink2"
 															><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" /><path
 																d="M19 10v2a7 7 0 0 1-14 0v-2"
 															/><line x1="12" x2="12" y1="19" y2="22" /></svg
 														>
 													</div>
 												{:else}
-													<div class="flex h-10 w-10 shrink-0 items-center justify-center rounded bg-zinc-700">
-														<PaperclipIcon class="size-4 text-zinc-400" />
+													<div class="bg-duvet-ink/10 flex h-10 w-10 shrink-0 items-center justify-center rounded">
+														<PaperclipIcon class="text-duvet-ink2 size-4" />
 													</div>
 												{/if}
 												<div class="min-w-0 flex-1">
-													<p class="truncate text-sm text-zinc-200">{att.filename}</p>
-													<p class="text-xs text-zinc-500">
+													<p class="text-duvet-ink truncate text-sm">{att.filename}</p>
+													<p class="text-duvet-ink2 text-xs">
 														{formatFileSize(att.size_bytes)}
-														<span class="mx-1 text-zinc-600">&middot;</span>
+														<span class="text-duvet-ink2/60 mx-1">&middot;</span>
 														{new Date(att.created_at).toLocaleDateString()}
 													</p>
 												</div>
 												<a
 													href="{attachmentHost}{att.url ?? `/attachments/${att.id}`}"
 													download={att.filename}
-													class="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-zinc-500 opacity-0 transition-all group-hover:opacity-100 hover:bg-zinc-700 hover:text-zinc-200"
+													class="text-duvet-ink2 hover:bg-duvet-ink/10 hover:text-duvet-ink flex h-8 w-8 shrink-0 items-center justify-center rounded-md opacity-0 transition-all group-hover:opacity-100"
 													title="Download"
 												>
 													<svg
@@ -2809,7 +2812,7 @@
 												{#if canManageAttachments}
 													<button
 														onclick={() => handleDeleteSpaceAttachment(att)}
-														class="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-zinc-500 opacity-0 transition-all group-hover:opacity-100 hover:bg-red-600/20 hover:text-red-400"
+														class="text-duvet-ink2 hover:bg-duvet-danger/20 hover:text-duvet-danger flex h-8 w-8 shrink-0 items-center justify-center rounded-md opacity-0 transition-all group-hover:opacity-100"
 														title="Delete"
 													>
 														<TrashIcon class="size-4" />
@@ -2829,9 +2832,9 @@
 						{@const tooMany = (spacePicker.filter.attachment_ids?.length ?? 0) > MAX_PICKED_FILES}
 						<div
 							transition:slide={{ duration: 200 }}
-							class="flex shrink-0 items-center justify-between gap-4 border-t border-zinc-800 bg-zinc-900/80 px-6 py-3"
+							class="border-duvet-line bg-duvet-bg/80 flex shrink-0 items-center justify-between gap-4 border-t px-6 py-3"
 						>
-							<p class="min-w-0 truncate text-sm text-zinc-400">
+							<p class="text-duvet-ink2 min-w-0 truncate text-sm">
 								{#if spaceTransfer}
 									Wait for the transfer under way to end.
 								{:else if tooMany}
@@ -2843,14 +2846,14 @@
 							<div class="flex shrink-0 items-center gap-2">
 								<button
 									onclick={() => spacePicker.picked.clear()}
-									class="rounded-md px-3 py-1.5 text-sm font-medium text-zinc-300 transition-colors hover:text-white"
+									class="text-duvet-ink hover:text-duvet-ink rounded-md px-3 py-1.5 text-sm font-medium transition-colors"
 								>
 									Clear
 								</button>
 								<button
 									onclick={openMoveSpacePicked}
 									disabled={spaceTransfer !== null || tooMany}
-									class="bg-fill-600 text-fixed-white hover:bg-fill-500 flex items-center gap-1.5 rounded-md px-4 py-1.5 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+									class="bg-duvet-accent text-duvet-on-accent shadow-duvet-raised flex items-center gap-1.5 rounded-xl px-4 py-1.5 text-sm font-bold transition-colors hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
 								>
 									<MoveIcon class="size-4" />
 									Move {countFiles(pickedCount)} ({formatFileSize(spacePicker.pickedBytes)}) to…

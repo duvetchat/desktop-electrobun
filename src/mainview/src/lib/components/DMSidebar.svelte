@@ -121,7 +121,9 @@
 				</button>
 			</ContextMenu.Trigger>
 			<ContextMenu.Portal>
-				<ContextMenu.Content class="z-200 min-w-44 rounded-lg border border-zinc-700 bg-zinc-800 py-1 shadow-2xl">
+				<ContextMenu.Content
+					class="rounded-card border-duvet-line bg-duvet-card shadow-duvet-float z-200 min-w-44 border py-1"
+				>
 					<NotificationSubmenu targetId={conv.id} target={2} />
 				</ContextMenu.Content>
 			</ContextMenu.Portal>

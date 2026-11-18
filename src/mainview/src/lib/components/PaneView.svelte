@@ -1382,28 +1382,28 @@
 				<div class="pointer-events-none absolute inset-0 z-30">
 					<div
 						class="absolute top-0 left-0 h-full w-1/4 transition-colors {splitZone === 'left'
-							? 'border-2 border-blue-500 bg-blue-500/30'
-							: 'border-2 border-transparent bg-blue-500/5'}"
+							? 'border-duvet-accent bg-duvet-accent/30 border-2'
+							: 'bg-duvet-accent/5 border-2 border-transparent'}"
 					></div>
 					<div
 						class="absolute top-0 right-0 h-full w-1/4 transition-colors {splitZone === 'right'
-							? 'border-2 border-blue-500 bg-blue-500/30'
-							: 'border-2 border-transparent bg-blue-500/5'}"
+							? 'border-duvet-accent bg-duvet-accent/30 border-2'
+							: 'bg-duvet-accent/5 border-2 border-transparent'}"
 					></div>
 					<div
 						class="absolute top-0 right-0 left-0 h-1/4 transition-colors {splitZone === 'top'
-							? 'border-2 border-blue-500 bg-blue-500/30'
-							: 'border-2 border-transparent bg-blue-500/5'}"
+							? 'border-duvet-accent bg-duvet-accent/30 border-2'
+							: 'bg-duvet-accent/5 border-2 border-transparent'}"
 					></div>
 					<div
 						class="absolute right-0 bottom-0 left-0 h-1/4 transition-colors {splitZone === 'bottom'
-							? 'border-2 border-blue-500 bg-blue-500/30'
-							: 'border-2 border-transparent bg-blue-500/5'}"
+							? 'border-duvet-accent bg-duvet-accent/30 border-2'
+							: 'bg-duvet-accent/5 border-2 border-transparent'}"
 					></div>
 					{#if splitZone}
 						<div class="absolute inset-0 flex items-center justify-center">
 							<span
-								class="rounded border border-blue-500/50 bg-zinc-900/90 px-2 py-1 text-xs font-medium text-blue-400"
+								class="border-duvet-accent/50 bg-duvet-bg/90 text-duvet-accent-text rounded border px-2 py-1 text-xs font-medium"
 							>
 								{splitZone === "left"
 									? "← Split left"

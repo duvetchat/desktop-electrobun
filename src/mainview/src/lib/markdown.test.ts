@@ -22,7 +22,7 @@ const hrefOf = (html: string) => /href="([^"]*)"/.exec(html)?.[1];
 
 // A bare link as renderMarkdown draws one, given links to draw.
 const LINK = (url: string) =>
-	`<a href="${url}" target="_blank" rel="noopener noreferrer" class="msg-bare-link text-stone-300 hover:underline">${url}</a>`;
+	`<a href="${url}" target="_blank" rel="noopener noreferrer" class="msg-bare-link text-duvet-ink hover:underline">${url}</a>`;
 
 describe("text stays text", () => {
 	test("a quote in a text is escaped", () => {

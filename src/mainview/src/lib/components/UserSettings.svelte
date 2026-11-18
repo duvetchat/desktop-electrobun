@@ -1285,95 +1285,57 @@
 								<div class="space-y-5">
 									<!-- Display name -->
 									<div>
-										<label for="alias" class="mb-1.5 block text-xs font-semibold tracking-wide text-zinc-400 uppercase">
-											Display Name
-										</label>
+										<label for="alias" class="text-duvet-ink2 mb-1.5 block text-[13px] font-bold"> Display Name </label>
 										<input
 											id="alias"
 											type="text"
 											bind:value={alias}
 											maxlength={32}
 											placeholder={$currentUser?.username ?? ""}
-											class="focus-override h-10 w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 text-sm text-white placeholder-zinc-500 transition-colors outline-none focus:border-stone-500 focus:ring-1 focus:ring-stone-500"
+											class="focus-override bg-duvet-sunk text-duvet-ink placeholder:text-duvet-ink2 shadow-duvet-press focus-visible:outline-duvet-accent h-10 w-full rounded-xl px-3 text-sm transition-colors focus-visible:outline-2"
 										/>
-										<p class="mt-1 text-xs text-zinc-500">
+										<p class="text-duvet-ink2 mt-1 text-xs">
 											This is how others see you. Leave empty to use your username.
 										</p>
 									</div>
 
 									<!-- Bio -->
 									<div>
-										<label for="bio" class="mb-1.5 block text-xs font-semibold tracking-wide text-zinc-400 uppercase">
-											About Me
-										</label>
+										<label for="bio" class="text-duvet-ink2 mb-1.5 block text-[13px] font-bold"> About Me </label>
 										<textarea
 											id="bio"
 											bind:value={bio}
 											rows="3"
 											placeholder="A few words about you"
 											aria-invalid={bioTooLong}
-											class="focus-override w-full resize-none rounded-md border bg-zinc-800 px-3 py-2 text-sm text-white placeholder-zinc-500 transition-colors outline-none focus:ring-1 {bioTooLong
-												? 'border-red-500 focus:border-red-500 focus:ring-red-500'
-												: 'border-zinc-700 focus:border-stone-500 focus:ring-stone-500'}"
+											class="focus-override bg-duvet-sunk shadow-duvet-press text-duvet-ink placeholder:text-duvet-ink2 w-full resize-none rounded-xl px-3 py-2 text-sm focus-visible:outline-2 {bioTooLong
+												? 'outline-duvet-danger outline-2'
+												: 'focus-visible:outline-duvet-accent'}"
 										></textarea>
-										<p class="mt-1 flex justify-between gap-2 text-xs text-zinc-500">
+										<p class="text-duvet-ink2 mt-1 flex justify-between gap-2 text-xs">
 											<span>Shown on your profile. Leave empty for none.</span>
-											<span class={bioTooLong ? "text-red-400" : ""}>{bioLength}/{BIO_MAX_LENGTH}</span>
+											<span class={bioTooLong ? "text-duvet-danger" : ""}>{bioLength}/{BIO_MAX_LENGTH}</span>
 										</p>
 									</div>
 
 									<!-- Username -->
 									<div>
-										<label
-											for="username"
-											class="mb-1.5 block text-xs font-semibold tracking-wide text-zinc-400 uppercase"
-										>
-											Username
-										</label>
+										<label for="username" class="text-duvet-ink2 mb-1.5 block text-[13px] font-bold"> Username </label>
 										<input
 											id="username"
 											type="text"
 											bind:value={username}
 											maxlength={32}
 											placeholder="username"
-											class="focus-override h-10 w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 text-sm text-white placeholder-zinc-500 transition-colors outline-none focus:border-stone-500 focus:ring-1 focus:ring-stone-500"
+											class="focus-override bg-duvet-sunk text-duvet-ink placeholder:text-duvet-ink2 shadow-duvet-press focus-visible:outline-duvet-accent h-10 w-full rounded-xl px-3 text-sm transition-colors focus-visible:outline-2"
 										/>
 									</div>
 								</div>
 							{:else if activeSection === "security"}
 								<!-- Email verification -->
 								{#if $currentUser && !$currentUser.email_verified}
-									<div class="flex items-center gap-3 rounded-lg border border-amber-600/30 bg-amber-950/20 px-4 py-3">
-										<svg
-											xmlns="http://www.w3.org/2000/svg"
-											width="20"
-											height="20"
-											viewBox="0 0 24 24"
-											fill="none"
-											stroke="currentColor"
-											stroke-width="2"
-											stroke-linecap="round"
-											stroke-linejoin="round"
-											class="shrink-0 text-amber-500"
-										>
-											<rect width="20" height="16" x="2" y="4" rx="2" />
-											<path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" />
-										</svg>
-										<div class="min-w-0 flex-1">
-											<p class="text-sm font-medium text-amber-300">Email not verified</p>
-											<p class="text-xs text-amber-400/60">Verify your email to secure your account.</p>
-										</div>
-										<button
-											onclick={handleSendVerification}
-											disabled={sendingVerification}
-											class="shrink-0 rounded-md bg-amber-600/20 px-3 py-1.5 text-xs font-semibold text-amber-300 transition-colors hover:bg-amber-600/30 disabled:opacity-50"
-										>
-											{sendingVerification ? "Sending..." : "Send verification"}
-										</button>
-									</div>
-								{:else if $currentUser?.email_verified}
 									<div
-										class="flex items-center gap-3 rounded-lg border border-emerald-800/50 bg-emerald-900/20 px-4 py-3"
+										class="border-duvet-warn/30 bg-duvet-warn/10 flex items-center gap-3 rounded-lg border px-4 py-3"
 									>
 										<svg
 											xmlns="http://www.w3.org/2000/svg"
@@ -1385,26 +1347,59 @@
 											stroke-width="2"
 											stroke-linecap="round"
 											stroke-linejoin="round"
-											class="shrink-0 text-emerald-400"
+											class="text-duvet-warn shrink-0"
 										>
 											<rect width="20" height="16" x="2" y="4" rx="2" />
 											<path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" />
 										</svg>
-										<p class="text-sm font-medium text-emerald-300">Email verified</p>
+										<div class="min-w-0 flex-1">
+											<p class="text-duvet-warn text-sm font-medium">Email not verified</p>
+											<p class="text-duvet-warn/60 text-xs">Verify your email to secure your account.</p>
+										</div>
+										<button
+											onclick={handleSendVerification}
+											disabled={sendingVerification}
+											class="bg-duvet-warn/20 text-duvet-warn hover:bg-duvet-warn/30 shrink-0 rounded-md px-3 py-1.5 text-xs font-semibold transition-colors disabled:opacity-50"
+										>
+											{sendingVerification ? "Sending..." : "Send verification"}
+										</button>
+									</div>
+								{:else if $currentUser?.email_verified}
+									<div
+										class="border-duvet-alive/50 bg-duvet-alive/10 flex items-center gap-3 rounded-lg border px-4 py-3"
+									>
+										<svg
+											xmlns="http://www.w3.org/2000/svg"
+											width="20"
+											height="20"
+											viewBox="0 0 24 24"
+											fill="none"
+											stroke="currentColor"
+											stroke-width="2"
+											stroke-linecap="round"
+											stroke-linejoin="round"
+											class="text-duvet-alive shrink-0"
+										>
+											<rect width="20" height="16" x="2" y="4" rx="2" />
+											<path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" />
+										</svg>
+										<p class="text-duvet-alive text-sm font-medium">Email verified</p>
 									</div>
 								{/if}
 
 								<!-- Password -->
-								<div class="rounded-lg border border-zinc-800 bg-zinc-800/40 px-4 py-4">
+								<div class="rounded-card border-duvet-line bg-duvet-card/40 border px-4 py-4">
 									<div class="flex items-center justify-between">
 										<div>
-											<p class="text-xs font-semibold tracking-wide text-zinc-400 uppercase">Password</p>
-											<p class="mt-1 text-xs text-zinc-500">Send a reset link to your email to change your password.</p>
+											<p class="text-duvet-ink2 text-[13px] font-bold">Password</p>
+											<p class="text-duvet-ink2 mt-1 text-xs">
+												Send a reset link to your email to change your password.
+											</p>
 										</div>
 										<button
 											onclick={handleSendResetPassword}
 											disabled={sendingReset}
-											class="shrink-0 rounded-md bg-zinc-700 px-3 py-1.5 text-xs font-semibold text-zinc-200 transition-colors hover:bg-zinc-600 disabled:opacity-50"
+											class="rounded-row bg-duvet-ink/10 text-duvet-ink hover:bg-duvet-ink/15 shrink-0 px-3 py-1.5 text-xs font-semibold transition-colors disabled:opacity-50"
 										>
 											{sendingReset ? "Sending..." : "Reset password"}
 										</button>
@@ -1412,27 +1407,27 @@
 								</div>
 
 								<!-- Change email -->
-								<div class="rounded-lg border border-zinc-800 bg-zinc-800/40 px-4 py-4">
-									<p class="text-xs font-semibold tracking-wide text-zinc-400 uppercase">Email</p>
-									<p class="mt-1 text-xs text-zinc-500">
-										Current: <span class="text-zinc-300">{"—"}</span>
+								<div class="rounded-card border-duvet-line bg-duvet-card/40 border px-4 py-4">
+									<p class="text-duvet-ink2 text-[13px] font-bold">Email</p>
+									<p class="text-duvet-ink2 mt-1 text-xs">
+										Current: <span class="text-duvet-ink">{"—"}</span>
 									</p>
 									<div class="mt-3 flex items-center gap-2">
 										<input
 											type="email"
 											bind:value={newEmail}
 											placeholder="New email address"
-											class="h-9 flex-1 rounded-md border border-zinc-700 bg-zinc-800 px-3 text-sm text-white placeholder-zinc-500 outline-none focus:border-stone-500 focus:ring-1 focus:ring-stone-500"
+											class="bg-duvet-sunk text-duvet-ink placeholder:text-duvet-ink2 shadow-duvet-press focus-visible:outline-duvet-accent h-9 flex-1 rounded-xl px-3 text-sm focus-visible:outline-2"
 										/>
 										<button
 											onclick={handleSendChangeEmail}
 											disabled={sendingEmailChange || !newEmail.trim()}
-											class="shrink-0 rounded-md bg-zinc-700 px-3 py-1.5 text-xs font-semibold text-zinc-200 transition-colors hover:bg-zinc-600 disabled:opacity-50"
+											class="rounded-row bg-duvet-ink/10 text-duvet-ink hover:bg-duvet-ink/15 shrink-0 px-3 py-1.5 text-xs font-semibold transition-colors disabled:opacity-50"
 										>
 											{sendingEmailChange ? "Sending..." : "Send verification"}
 										</button>
 									</div>
-									<p class="mt-2 text-xs text-zinc-600">A verification link will be sent to the new address.</p>
+									<p class="text-duvet-ink2/60 mt-2 text-xs">A verification link will be sent to the new address.</p>
 								</div>
 							{:else if activeSection === "audio"}
 								{@const sliders: { key: SoundEvent | "master"; label: string }[] = [
@@ -1447,10 +1442,10 @@
 								<div class="space-y-4">
 									{#each sliders as { key, label } (key)}
 										{@const value = key === "master" ? audioStore.settings.master : audioStore.settings[key]}
-										<div class="rounded-lg border border-zinc-800 bg-zinc-800/40 px-4 py-3">
+										<div class="rounded-card border-duvet-line bg-duvet-card/40 border px-4 py-3">
 											<div class="mb-2 flex items-center justify-between">
-												<span class="text-sm font-medium text-zinc-200">{label}</span>
-												<span class="text-xs text-zinc-500 tabular-nums">{value}%</span>
+												<span class="text-duvet-ink text-sm font-medium">{label}</span>
+												<span class="text-duvet-ink2 text-xs tabular-nums">{value}%</span>
 											</div>
 											<div class="flex items-center gap-3">
 												<input
@@ -1467,13 +1462,13 @@
 															audioStore.set(key, v);
 														}
 													}}
-													class="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-zinc-700 accent-stone-500 [&::-webkit-slider-thumb]:h-3.5 [&::-webkit-slider-thumb]:w-3.5 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-stone-400"
+													class="bg-duvet-ink/10 accent-duvet-accent [&::-webkit-slider-thumb]:bg-duvet-accent h-1.5 w-full cursor-pointer appearance-none rounded-full [&::-webkit-slider-thumb]:h-3.5 [&::-webkit-slider-thumb]:w-3.5 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full"
 												/>
 												{#if key !== "master"}
 													<button
-														class="shrink-0 rounded p-1 transition-colors hover:bg-zinc-700 {previewingSound === key
-															? 'text-stone-400'
-															: 'text-zinc-500 hover:text-zinc-200'}"
+														class="hover:bg-duvet-ink/10 shrink-0 rounded p-1 transition-colors {previewingSound === key
+															? 'text-duvet-ink2'
+															: 'text-duvet-ink2 hover:text-duvet-ink'}"
 														title={previewingSound === key ? "Stop" : "Preview"}
 														onclick={() => togglePreview(key)}
 													>
@@ -1498,8 +1493,8 @@
 								)}
 									<div class="flex items-center justify-between gap-4">
 										<div>
-											<p class="text-sm font-semibold text-zinc-200">{label}</p>
-											<p class="mt-1 text-xs text-zinc-500">{description}</p>
+											<p class="text-duvet-ink text-sm font-semibold">{label}</p>
+											<p class="text-duvet-ink2 mt-1 text-xs">{description}</p>
 										</div>
 										<div
 											role="radiogroup"
@@ -1534,7 +1529,7 @@
 								{/snippet}
 
 								<!-- Layout -->
-								<div class="mb-6 space-y-4 rounded-lg border border-zinc-800 bg-zinc-800/40 px-4 py-4">
+								<div class="rounded-card border-duvet-line bg-duvet-card/40 mb-6 space-y-4 border px-4 py-4">
 									{@render segmented(
 										"Theme",
 										"System follows your computer's light or dark appearance. Saved on this device.",
@@ -1572,13 +1567,13 @@
 									)}
 								</div>
 
-								<p class="mb-4 text-xs text-zinc-500">
+								<p class="text-duvet-ink2 mb-4 text-xs">
 									Customize how code blocks look in messages. Paste a URL to a VS Code theme JSON file.
 								</p>
 
 								<div class="space-y-3">
 									<div>
-										<label for="code-theme-url" class="mb-1 block text-xs font-medium text-zinc-400"
+										<label for="code-theme-url" class="text-duvet-ink2 mb-1 block text-xs font-medium"
 											>Code Theme URL</label
 										>
 										<input
@@ -1586,13 +1581,13 @@
 											type="text"
 											bind:value={codeThemeUrl}
 											placeholder="https://raw.githubusercontent.com/.../theme.json"
-											class="w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-white placeholder-zinc-500 outline-none focus:border-zinc-500"
+											class="bg-duvet-sunk text-duvet-ink placeholder:text-duvet-ink2 shadow-duvet-press focus-visible:outline-duvet-accent w-full rounded-xl px-3 py-2 text-sm focus-visible:outline-2"
 											onkeydown={(e) => e.key === "Enter" && handleSaveTheme()}
 										/>
 									</div>
 									<div class="flex items-center gap-2">
 										<button
-											class="bg-fill-600 text-fixed-white hover:bg-fill-500 rounded-md px-4 py-2 text-sm font-medium transition-colors disabled:opacity-50"
+											class="bg-duvet-accent text-duvet-on-accent shadow-duvet-raised rounded-xl px-4 py-2 text-sm font-bold transition-colors hover:brightness-110 disabled:opacity-50"
 											onclick={handleSaveTheme}
 											disabled={savingTheme}
 										>
@@ -1600,7 +1595,7 @@
 										</button>
 										{#if codeThemeUrl}
 											<button
-												class="rounded-md px-4 py-2 text-sm font-medium text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-white"
+												class="text-duvet-ink2 hover:bg-duvet-card hover:text-duvet-ink rounded-md px-4 py-2 text-sm font-medium transition-colors"
 												onclick={() => {
 													codeThemeUrl = "";
 													handleSaveTheme();
@@ -1614,9 +1609,9 @@
 
 								<!-- Preview -->
 								<div class="mt-6">
-									<p class="mb-2 text-xs font-medium text-zinc-400">Preview</p>
+									<p class="text-duvet-ink2 mb-2 text-xs font-medium">Preview</p>
 									{#key themeVersion}
-										<p class="msg-content text-sm text-zinc-200">
+										<p class="msg-content text-duvet-ink text-sm">
 											{@html renderMarkdown(
 												'```go\npackage main\n\nimport "fmt"\n\nfunc main() {\n\tnames := []string{"Alice", "Bob"}\n\tfor _, name := range names {\n\t\tfmt.Printf("Hello, %s!\\n", name)\n\t}\n}\n```',
 											)}
@@ -1625,11 +1620,11 @@
 								</div>
 
 								<!-- Faces in voice -->
-								<div class="rounded-lg border border-zinc-800 bg-zinc-800/40 px-4 py-4">
+								<div class="rounded-card border-duvet-line bg-duvet-card/40 border px-4 py-4">
 									<div class="flex items-center justify-between gap-4">
 										<div>
-											<p class="text-xs font-semibold tracking-wide text-zinc-400 uppercase">Faces in voice</p>
-											<p class="mt-1 text-xs text-zinc-500">
+											<p class="text-duvet-ink2 text-[13px] font-bold">Faces in voice</p>
+											<p class="text-duvet-ink2 mt-1 text-xs">
 												Voice room tiles show everyone's animated face instead of their avatar. Saved on this device.
 											</p>
 										</div>
@@ -1640,11 +1635,11 @@
 											aria-label="Faces in voice"
 											onclick={() => voiceFaces.update((v) => !v)}
 											class="relative h-5 w-9 shrink-0 rounded-full transition-colors {$voiceFaces
-												? 'bg-indigo-500'
-												: 'bg-zinc-600'}"
+												? 'bg-duvet-accent'
+												: 'bg-duvet-ink/15'}"
 										>
 											<span
-												class="bg-fixed-white absolute top-0.5 left-0.5 size-4 rounded-full transition-transform {$voiceFaces
+												class="bg-fixed-white shadow-duvet-raised absolute top-0.5 left-0.5 size-4 rounded-full transition-transform {$voiceFaces
 													? 'translate-x-4'
 													: ''}"
 											></span>
@@ -1652,13 +1647,11 @@
 									</div>
 								</div>
 							{:else if activeSection === "activity"}
-								<div class="rounded-lg border border-zinc-800 bg-zinc-800/40 px-4 py-4">
+								<div class="rounded-card border-duvet-line bg-duvet-card/40 border px-4 py-4">
 									<div class="flex items-center justify-between gap-4">
 										<div>
-											<p class="text-xs font-semibold tracking-wide text-zinc-400 uppercase">
-												Share what I listen to on Spotify
-											</p>
-											<p class="mt-1 text-xs text-zinc-500">
+											<p class="text-duvet-ink2 text-[13px] font-bold">Share what I listen to on Spotify</p>
+											<p class="text-duvet-ink2 mt-1 text-xs">
 												While Spotify plays on this computer, the people in your spaces see the song, its artist and how
 												far along it is. Saved on this device.
 											</p>
@@ -1670,11 +1663,11 @@
 											aria-label="Share what I listen to on Spotify"
 											onclick={() => shareSpotify.update((v) => !v)}
 											class="relative h-5 w-9 shrink-0 rounded-full transition-colors {$shareSpotify
-												? 'bg-indigo-500'
-												: 'bg-zinc-600'}"
+												? 'bg-duvet-accent'
+												: 'bg-duvet-ink/15'}"
 										>
 											<span
-												class="bg-fixed-white absolute top-0.5 left-0.5 size-4 rounded-full transition-transform {$shareSpotify
+												class="bg-fixed-white shadow-duvet-raised absolute top-0.5 left-0.5 size-4 rounded-full transition-transform {$shareSpotify
 													? 'translate-x-4'
 													: ''}"
 											></span>
@@ -1693,42 +1686,42 @@
 								{#if hasActiveBucket}
 									{@const activeBucket = buckets.find((b) => b.is_active)}
 									<div
-										class="flex items-center gap-3 rounded-lg border border-emerald-800/50 bg-emerald-900/20 px-4 py-3"
+										class="border-duvet-alive/50 bg-duvet-alive/10 flex items-center gap-3 rounded-lg border px-4 py-3"
 									>
-										<DatabaseIcon class="size-5 shrink-0 text-emerald-400" />
+										<DatabaseIcon class="text-duvet-alive size-5 shrink-0" />
 										<div class="min-w-0 flex-1">
-											<p class="text-sm font-medium text-emerald-300">Using your own storage</p>
-											<p class="truncate text-xs text-emerald-400/60">
+											<p class="text-duvet-alive text-sm font-medium">Using your own storage</p>
+											<p class="text-duvet-alive/60 truncate text-xs">
 												{activeBucket?.name} · {activeBucket?.bucket_name}
 											</p>
 										</div>
 										<span
-											class="text-xxs shrink-0 rounded bg-emerald-600/20 px-1.5 py-0.5 font-semibold text-emerald-400"
+											class="text-xxs bg-duvet-alive/20 text-duvet-alive shrink-0 rounded px-1.5 py-0.5 font-semibold"
 											>NO QUOTA</span
 										>
 									</div>
 								{/if}
 								<!-- Default storage quota (always shown) -->
 								{#if storageStatus}
-									<div class="space-y-3 rounded-lg border border-zinc-800 bg-zinc-800/40 px-4 py-4">
+									<div class="rounded-card border-duvet-line bg-duvet-card/40 space-y-3 border px-4 py-4">
 										<div class="flex items-center justify-between">
-											<p class="text-sm font-semibold text-white">Default Storage</p>
-											<p class="text-xs text-zinc-400">
+											<p class="text-duvet-ink text-sm font-semibold">Default Storage</p>
+											<p class="text-duvet-ink2 text-xs">
 												{formatFileSize(storageStatus.used_bytes)} / {formatFileSize(storageStatus.max_bytes)}
 											</p>
 										</div>
 										<!-- Progress bar -->
-										<div class="h-2 w-full overflow-hidden rounded-full bg-zinc-700">
+										<div class="bg-duvet-ink/10 h-2 w-full overflow-hidden rounded-full">
 											<div
 												class="h-full rounded-full transition-all duration-300 {storageStatus.percentage_used > 90
-													? 'bg-red-500'
+													? 'bg-duvet-danger'
 													: storageStatus.percentage_used > 70
-														? 'bg-yellow-500'
-														: 'bg-stone-500'}"
+														? 'bg-duvet-warn'
+														: 'bg-duvet-ink2'}"
 												style="width: {Math.min(storageStatus.percentage_used, 100)}%"
 											></div>
 										</div>
-										<div class="flex gap-4 text-xs text-zinc-500">
+										<div class="text-duvet-ink2 flex gap-4 text-xs">
 											<span>{storageStatus.percentage_used}% used</span>
 											<span>Upload limit: {formatFileSize(storageStatus.upload_limit_bytes)} per file</span>
 										</div>
@@ -1737,26 +1730,26 @@
 
 								<!-- Summary bar -->
 								<div
-									class="flex items-center justify-between gap-3 rounded-lg border border-zinc-800 bg-zinc-800/40 px-4 py-3"
+									class="rounded-card border-duvet-line bg-duvet-card/40 flex items-center justify-between gap-3 border px-4 py-3"
 								>
-									<div class="text-sm text-zinc-300">
+									<div class="text-duvet-ink text-sm">
 										{#if listedHere}
-											<span class="font-semibold text-white">{attachments.length}</span>
+											<span class="text-duvet-ink font-semibold">{attachments.length}</span>
 											file{attachments.length !== 1 ? "s" : ""}
 											{#if attachmentsLocation !== "all"}
-												<span class="mx-1 text-zinc-600">·</span>
+												<span class="text-duvet-ink2/60 mx-1">·</span>
 												{formatFileSize(locationBytes)}
 											{/if}
 										{/if}
 									</div>
 									<div class="flex items-center gap-2">
 										{#if buckets.length > 0 || attachmentsLocation !== "all"}
-											<label class="flex items-center gap-2 text-xs text-zinc-400">
+											<label class="text-duvet-ink2 flex items-center gap-2 text-xs">
 												Location
 												<select
 													value={attachmentsLocation}
 													onchange={(e) => setAttachmentsLocation(e.currentTarget.value)}
-													class="max-w-40 rounded-md border border-zinc-700 bg-zinc-800 px-2 py-1 text-xs text-zinc-200 focus:ring-1 focus:ring-stone-500 focus:outline-none"
+													class="text-duvet-ink bg-duvet-sunk shadow-duvet-press focus-visible:outline-duvet-accent max-w-40 rounded-xl px-2 py-1 text-xs focus-visible:outline-2"
 												>
 													<option value="all">All</option>
 													<option value={DEFAULT_STORAGE}>Default storage</option>
@@ -1769,7 +1762,7 @@
 										{#if attachments.length > 0 && attachmentsLocation === "all"}
 											<button
 												onclick={handleDeleteAll}
-												class="flex items-center gap-1.5 rounded-md bg-red-600/20 px-3 py-1.5 text-xs font-semibold text-red-400 transition-colors hover:bg-red-600/30"
+												class="bg-duvet-danger/20 text-duvet-danger hover:bg-duvet-danger/30 flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold transition-colors"
 											>
 												<TrashIcon class="size-3.5" />
 												Delete All
@@ -1779,7 +1772,7 @@
 								</div>
 
 								{#if attachmentsError}
-									<p class="rounded-md bg-red-400/10 px-3 py-2 text-sm text-red-400">
+									<p class="bg-duvet-danger/10 text-duvet-danger rounded-md px-3 py-2 text-sm">
 										{attachmentsError}
 									</p>
 								{/if}
@@ -1787,13 +1780,13 @@
 								{#if attachmentsLoading}
 									<div class="space-y-2">
 										{#each Array(5) as _}
-											<div class="h-14 animate-pulse rounded-lg bg-zinc-800/40"></div>
+											<div class="bg-duvet-card/40 h-14 animate-pulse rounded-lg"></div>
 										{/each}
 									</div>
 								{:else if !listedHere}
 									<!-- The location's files didn't load (the error above says why): the list is another's. -->
 								{:else if attachments.length === 0}
-									<div class="flex flex-col items-center justify-center py-16 text-zinc-500">
+									<div class="text-duvet-ink2 flex flex-col items-center justify-center py-16">
 										<PaperclipIcon class="mb-3 size-10" />
 										<p class="text-sm">{attachmentsLocation === "all" ? "No attachments yet" : "No files here"}</p>
 									</div>
@@ -1806,7 +1799,7 @@
 											{@const isImage = att.content_type.startsWith("image/")}
 											{@const isAudio = att.content_type.startsWith("audio/")}
 											<div
-												class="group rounded-lg border border-zinc-800 bg-zinc-800/30 transition-colors hover:bg-zinc-800/50"
+												class="group border-duvet-line bg-duvet-card/30 hover:bg-duvet-card/50 rounded-lg border transition-colors"
 											>
 												<div class="flex items-center gap-3 px-3 py-2.5">
 													{#if picking}
@@ -1815,7 +1808,7 @@
 															checked={picker.picked.has(att.id)}
 															onchange={() => picker.toggle(att.id)}
 															aria-label="Select {att.filename}"
-															class="size-4 shrink-0 rounded border-zinc-600 bg-zinc-800 accent-stone-500"
+															class="border-duvet-line bg-duvet-card accent-duvet-accent size-4 shrink-0 rounded"
 														/>
 													{/if}
 													<!-- Thumbnail -->
@@ -1823,10 +1816,10 @@
 														<img
 															src="{attachmentHost}{att.url ?? `/attachments/${att.id}`}"
 															alt=""
-															class="h-10 w-10 shrink-0 rounded bg-zinc-700 object-cover"
+															class="bg-duvet-ink/10 h-10 w-10 shrink-0 rounded object-cover"
 														/>
 													{:else if isAudio}
-														<div class="flex h-10 w-10 shrink-0 items-center justify-center rounded bg-zinc-700">
+														<div class="bg-duvet-ink/10 flex h-10 w-10 shrink-0 items-center justify-center rounded">
 															<svg
 																xmlns="http://www.w3.org/2000/svg"
 																width="16"
@@ -1837,25 +1830,25 @@
 																stroke-width="2"
 																stroke-linecap="round"
 																stroke-linejoin="round"
-																class="text-zinc-400"
+																class="text-duvet-ink2"
 																><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" /><path
 																	d="M19 10v2a7 7 0 0 1-14 0v-2"
 																/><line x1="12" x2="12" y1="19" y2="22" /></svg
 															>
 														</div>
 													{:else}
-														<div class="flex h-10 w-10 shrink-0 items-center justify-center rounded bg-zinc-700">
-															<PaperclipIcon class="size-4 text-zinc-400" />
+														<div class="bg-duvet-ink/10 flex h-10 w-10 shrink-0 items-center justify-center rounded">
+															<PaperclipIcon class="text-duvet-ink2 size-4" />
 														</div>
 													{/if}
 													<!-- Info -->
 													<div class="min-w-0 flex-1">
-														<p class="truncate text-sm text-zinc-200">
+														<p class="text-duvet-ink truncate text-sm">
 															{att.filename}
 														</p>
-														<p class="text-xs text-zinc-500">
+														<p class="text-duvet-ink2 text-xs">
 															{formatFileSize(att.size_bytes)}
-															<span class="mx-1 text-zinc-600">·</span>
+															<span class="text-duvet-ink2/60 mx-1">·</span>
 															{new Date(att.created_at).toLocaleDateString()}
 														</p>
 													</div>
@@ -1863,7 +1856,7 @@
 													<a
 														href="{attachmentHost}{att.url ?? `/attachments/${att.id}`}"
 														download={att.filename}
-														class="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-zinc-500 opacity-0 transition-all group-hover:opacity-100 hover:bg-zinc-700 hover:text-zinc-200"
+														class="text-duvet-ink2 hover:bg-duvet-ink/10 hover:text-duvet-ink flex h-8 w-8 shrink-0 items-center justify-center rounded-md opacity-0 transition-all group-hover:opacity-100"
 														title="Download"
 													>
 														<svg
@@ -1884,7 +1877,7 @@
 													<!-- Delete -->
 													<button
 														onclick={() => handleDeleteAttachment(att.id)}
-														class="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-zinc-500 opacity-0 transition-all group-hover:opacity-100 hover:bg-red-600/20 hover:text-red-400"
+														class="text-duvet-ink2 hover:bg-duvet-danger/20 hover:text-duvet-danger flex h-8 w-8 shrink-0 items-center justify-center rounded-md opacity-0 transition-all group-hover:opacity-100"
 														title="Delete attachment"
 													>
 														<TrashIcon class="size-4" />
@@ -1911,13 +1904,13 @@
 										target={storageLabel(myTransfer.target_bucket_id)}
 									/>
 								{/if}
-								<p class="mb-4 text-xs text-zinc-500">
+								<p class="text-duvet-ink2 mb-4 text-xs">
 									Connect your own S3/R2 buckets for unlimited storage. When a bucket is active, uploads go to your
 									bucket instead of the default and quota limits don't apply.
 								</p>
 
 								{#if !bucketsLoading}
-									<div class="mb-4 flex gap-3 rounded-lg border border-amber-600/30 bg-amber-950/20 px-4 py-3">
+									<div class="border-duvet-warn/30 bg-duvet-warn/10 mb-4 flex gap-3 rounded-lg border px-4 py-3">
 										<svg
 											xmlns="http://www.w3.org/2000/svg"
 											width="20"
@@ -1928,13 +1921,13 @@
 											stroke-width="2"
 											stroke-linecap="round"
 											stroke-linejoin="round"
-											class="mt-0.5 shrink-0 text-amber-500"
+											class="text-duvet-warn mt-0.5 shrink-0"
 											><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3" /><path
 												d="M12 9v4"
 											/><path d="M12 17h.01" /></svg
 										>
-										<div class="space-y-1 text-xs text-amber-300/80">
-											<p class="font-semibold text-amber-300">Before adding a bucket</p>
+										<div class="text-duvet-warn/80 space-y-1 text-xs">
+											<p class="text-duvet-warn font-semibold">Before adding a bucket</p>
 											<p>
 												Only enter credentials that <strong>you own and control</strong>. If someone shared credentials
 												with you, be aware that:
@@ -1955,32 +1948,30 @@
 								{/if}
 
 								{#if bucketsError}
-									<p class="mb-4 rounded-md bg-red-400/10 px-3 py-2 text-sm text-red-400">
+									<p class="bg-duvet-danger/10 text-duvet-danger mb-4 rounded-md px-3 py-2 text-sm">
 										{bucketsError}
 									</p>
 								{/if}
 
 								<!-- Create / Edit form -->
 								{#if showBucketForm}
-									<div class="mb-4 space-y-3 rounded-lg border border-zinc-800 bg-zinc-800/40 p-4">
-										<h3 class="text-sm font-semibold text-white">
+									<div class="rounded-card border-duvet-line bg-duvet-card/40 mb-4 space-y-3 border p-4">
+										<h3 class="text-duvet-ink text-sm font-semibold">
 											{editingBucket ? "Edit Bucket" : "New Bucket"}
 										</h3>
 										<div class="grid grid-cols-2 gap-3">
 											<div>
-												<label for="bucket-name" class="mb-1 block text-xs font-semibold text-zinc-400 uppercase"
-													>Name</label
-												>
+												<label for="bucket-name" class="text-duvet-ink2 mb-1 block text-[13px] font-bold">Name</label>
 												<input
 													id="bucket-name"
 													type="text"
 													bind:value={bName}
 													placeholder="My R2"
-													class="h-9 w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 text-sm text-white placeholder-zinc-500 outline-none focus:border-stone-500"
+													class="bg-duvet-sunk text-duvet-ink placeholder:text-duvet-ink2 shadow-duvet-press focus-visible:outline-duvet-accent h-9 w-full rounded-xl px-3 text-sm focus-visible:outline-2"
 												/>
 											</div>
 											<div>
-												<label for="bucket-region" class="mb-1 block text-xs font-semibold text-zinc-400 uppercase"
+												<label for="bucket-region" class="text-duvet-ink2 mb-1 block text-[13px] font-bold"
 													>Region</label
 												>
 												<input
@@ -1988,12 +1979,12 @@
 													type="text"
 													bind:value={bRegion}
 													placeholder="auto"
-													class="h-9 w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 text-sm text-white placeholder-zinc-500 outline-none focus:border-stone-500"
+													class="bg-duvet-sunk text-duvet-ink placeholder:text-duvet-ink2 shadow-duvet-press focus-visible:outline-duvet-accent h-9 w-full rounded-xl px-3 text-sm focus-visible:outline-2"
 												/>
 											</div>
 										</div>
 										<div>
-											<label for="bucket-endpoint" class="mb-1 block text-xs font-semibold text-zinc-400 uppercase"
+											<label for="bucket-endpoint" class="text-duvet-ink2 mb-1 block text-[13px] font-bold"
 												>Endpoint</label
 											>
 											<input
@@ -2001,11 +1992,11 @@
 												type="text"
 												bind:value={bEndpoint}
 												placeholder="https://account-id.r2.cloudflarestorage.com"
-												class="h-9 w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 text-sm text-white placeholder-zinc-500 outline-none focus:border-stone-500"
+												class="bg-duvet-sunk text-duvet-ink placeholder:text-duvet-ink2 shadow-duvet-press focus-visible:outline-duvet-accent h-9 w-full rounded-xl px-3 text-sm focus-visible:outline-2"
 											/>
 										</div>
 										<div>
-											<label for="bucket-bucket-name" class="mb-1 block text-xs font-semibold text-zinc-400 uppercase"
+											<label for="bucket-bucket-name" class="text-duvet-ink2 mb-1 block text-[13px] font-bold"
 												>Bucket Name</label
 											>
 											<input
@@ -2013,12 +2004,12 @@
 												type="text"
 												bind:value={bBucketName}
 												placeholder="my-bucket"
-												class="h-9 w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 text-sm text-white placeholder-zinc-500 outline-none focus:border-stone-500"
+												class="bg-duvet-sunk text-duvet-ink placeholder:text-duvet-ink2 shadow-duvet-press focus-visible:outline-duvet-accent h-9 w-full rounded-xl px-3 text-sm focus-visible:outline-2"
 											/>
 										</div>
 										<div class="grid grid-cols-2 gap-3">
 											<div>
-												<label for="bucket-access-key" class="mb-1 block text-xs font-semibold text-zinc-400 uppercase"
+												<label for="bucket-access-key" class="text-duvet-ink2 mb-1 block text-[13px] font-bold"
 													>Access Key ID</label
 												>
 												<input
@@ -2026,11 +2017,11 @@
 													type="text"
 													bind:value={bAccessKey}
 													placeholder="access key"
-													class="h-9 w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 text-sm text-white placeholder-zinc-500 outline-none focus:border-stone-500"
+													class="bg-duvet-sunk text-duvet-ink placeholder:text-duvet-ink2 shadow-duvet-press focus-visible:outline-duvet-accent h-9 w-full rounded-xl px-3 text-sm focus-visible:outline-2"
 												/>
 											</div>
 											<div>
-												<label for="bucket-secret-key" class="mb-1 block text-xs font-semibold text-zinc-400 uppercase"
+												<label for="bucket-secret-key" class="text-duvet-ink2 mb-1 block text-[13px] font-bold"
 													>Secret Access Key</label
 												>
 												<input
@@ -2038,7 +2029,7 @@
 													type="password"
 													bind:value={bSecretKey}
 													placeholder={editingBucket ? "leave empty to keep current" : "secret key"}
-													class="h-9 w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 text-sm text-white placeholder-zinc-500 outline-none focus:border-stone-500"
+													class="bg-duvet-sunk text-duvet-ink placeholder:text-duvet-ink2 shadow-duvet-press focus-visible:outline-duvet-accent h-9 w-full rounded-xl px-3 text-sm focus-visible:outline-2"
 												/>
 											</div>
 										</div>
@@ -2046,16 +2037,17 @@
 											<input
 												type="checkbox"
 												bind:checked={bUsePathStyle}
-												class="size-4 rounded border-zinc-600 bg-zinc-800 accent-stone-500"
+												class="border-duvet-line bg-duvet-card accent-duvet-accent size-4 rounded"
 											/>
-											<span class="text-xs text-zinc-400"
-												>Use path-style addressing <span class="text-zinc-600">(required for MinIO, RustFS, etc.)</span
+											<span class="text-duvet-ink2 text-xs"
+												>Use path-style addressing <span class="text-duvet-ink2/60"
+													>(required for MinIO, RustFS, etc.)</span
 												></span
 											>
 										</label>
 										<div class="grid grid-cols-2 gap-3">
 											<div>
-												<label for="b-max-bytes" class="mb-1 block text-xs font-semibold text-zinc-400 uppercase"
+												<label for="b-max-bytes" class="text-duvet-ink2 mb-1 block text-[13px] font-bold"
 													>Total Limit (MB)</label
 												>
 												<input
@@ -2065,11 +2057,11 @@
 													step="1"
 													bind:value={bMaxBytesMB}
 													placeholder="No limit"
-													class="h-9 w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 text-sm text-white placeholder-zinc-500 outline-none focus:border-stone-500"
+													class="bg-duvet-sunk text-duvet-ink placeholder:text-duvet-ink2 shadow-duvet-press focus-visible:outline-duvet-accent h-9 w-full rounded-xl px-3 text-sm focus-visible:outline-2"
 												/>
 											</div>
 											<div>
-												<label for="b-upload-limit" class="mb-1 block text-xs font-semibold text-zinc-400 uppercase"
+												<label for="b-upload-limit" class="text-duvet-ink2 mb-1 block text-[13px] font-bold"
 													>Per-file Limit (MB)</label
 												>
 												<input
@@ -2079,21 +2071,21 @@
 													step="1"
 													bind:value={bUploadLimitMB}
 													placeholder="No limit"
-													class="h-9 w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 text-sm text-white placeholder-zinc-500 outline-none focus:border-stone-500"
+													class="bg-duvet-sunk text-duvet-ink placeholder:text-duvet-ink2 shadow-duvet-press focus-visible:outline-duvet-accent h-9 w-full rounded-xl px-3 text-sm focus-visible:outline-2"
 												/>
 											</div>
 										</div>
-										<p class="text-xxs text-zinc-600">
+										<p class="text-xxs text-duvet-ink2/60">
 											Leave empty to remove limits. When a total limit is set, oldest files are recycled automatically
 											when full.
 										</p>
 										<div class="flex justify-end gap-2 pt-1">
 											<button
-												class="rounded-md px-3 py-1.5 text-sm text-zinc-300 transition-colors hover:bg-zinc-800"
+												class="text-duvet-ink hover:bg-duvet-card rounded-md px-3 py-1.5 text-sm transition-colors"
 												onclick={resetBucketForm}>Cancel</button
 											>
 											<button
-												class="bg-fill-600 text-fixed-white hover:bg-fill-500 rounded-md px-4 py-1.5 text-sm font-semibold transition-colors disabled:opacity-50"
+												class="bg-duvet-accent text-duvet-on-accent shadow-duvet-raised rounded-xl px-4 py-1.5 text-sm font-bold transition-colors hover:brightness-110 disabled:opacity-50"
 												disabled={bucketSaving}
 												onclick={handleSaveBucket}
 											>
@@ -2103,7 +2095,7 @@
 									</div>
 								{:else}
 									<button
-										class="mb-4 flex items-center gap-2 rounded-md bg-stone-600/20 px-3 py-2 text-sm font-medium text-stone-300 transition-colors hover:bg-stone-600/30"
+										class="bg-duvet-ink/5 text-duvet-ink hover:bg-duvet-ink/6 mb-4 flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors"
 										onclick={() => {
 											resetBucketForm();
 											showBucketForm = true;
@@ -2117,11 +2109,11 @@
 								{#if bucketsLoading}
 									<div class="space-y-2">
 										{#each Array(3) as _}
-											<div class="h-16 animate-pulse rounded-lg bg-zinc-800/40"></div>
+											<div class="bg-duvet-card/40 h-16 animate-pulse rounded-lg"></div>
 										{/each}
 									</div>
 								{:else if buckets.length === 0}
-									<div class="flex flex-col items-center justify-center py-12 text-zinc-500">
+									<div class="text-duvet-ink2 flex flex-col items-center justify-center py-12">
 										<DatabaseIcon class="mb-3 size-10" />
 										<p class="text-sm">No buckets configured</p>
 									</div>
@@ -2129,29 +2121,29 @@
 									<div class="space-y-2">
 										{#each buckets as bucket (bucket.id)}
 											<div
-												class="group flex items-center gap-3 rounded-lg border border-zinc-800 bg-zinc-800/30 px-4 py-3 transition-colors hover:bg-zinc-800/50"
+												class="group rounded-card border-duvet-line bg-duvet-card/30 hover:bg-duvet-card/50 flex items-center gap-3 border px-4 py-3 transition-colors"
 											>
 												<div class="min-w-0 flex-1">
 													<div class="flex items-center gap-2">
-														<span class="text-sm font-medium text-zinc-200">{bucket.name}</span>
+														<span class="text-duvet-ink text-sm font-medium">{bucket.name}</span>
 														{#if bucket.is_active}
 															<span
-																class="text-xxs rounded bg-emerald-600/20 px-1.5 py-0.5 font-semibold text-emerald-400"
+																class="text-xxs bg-duvet-alive/20 text-duvet-alive rounded px-1.5 py-0.5 font-semibold"
 																>ACTIVE</span
 															>
 														{:else}
-															<span class="text-xxs rounded bg-zinc-600/20 px-1.5 py-0.5 font-semibold text-zinc-400"
+															<span class="text-xxs bg-duvet-ink/5 text-duvet-ink2 rounded px-1.5 py-0.5 font-semibold"
 																>INACTIVE</span
 															>
 														{/if}
 													</div>
-													<p class="mt-0.5 truncate text-xs text-zinc-500">
+													<p class="text-duvet-ink2 mt-0.5 truncate text-xs">
 														{bucket.bucket_name} · {bucket.endpoint}
 													</p>
 													{#if bucket.max_bytes}
 														{@const pct = Math.min(Math.round((bucket.used_bytes / bucket.max_bytes) * 100), 100)}
 														<div class="mt-1.5 space-y-1">
-															<div class="text-xxs flex items-center justify-between text-zinc-500">
+															<div class="text-xxs text-duvet-ink2 flex items-center justify-between">
 																<span
 																	>{(bucket.used_bytes / 1024 / 1024).toFixed(1)} MB / {(
 																		bucket.max_bytes /
@@ -2161,24 +2153,24 @@
 																>
 																<span>{pct}%</span>
 															</div>
-															<div class="h-1.5 w-full overflow-hidden rounded-full bg-zinc-700">
+															<div class="bg-duvet-ink/10 h-1.5 w-full overflow-hidden rounded-full">
 																<div
 																	class="h-full rounded-full transition-all duration-300 {pct > 90
-																		? 'bg-red-500'
+																		? 'bg-duvet-danger'
 																		: pct > 70
-																			? 'bg-yellow-500'
-																			: 'bg-stone-500'}"
+																			? 'bg-duvet-warn'
+																			: 'bg-duvet-ink2'}"
 																	style="width: {pct}%"
 																></div>
 															</div>
 															{#if bucket.upload_limit_bytes}
-																<p class="text-xxs text-zinc-600">
+																<p class="text-xxs text-duvet-ink2/60">
 																	Per-file: {(bucket.upload_limit_bytes / 1024 / 1024).toFixed(0)} MB
 																</p>
 															{/if}
 														</div>
 													{:else if bucket.upload_limit_bytes}
-														<p class="text-xxs mt-0.5 text-zinc-600">
+														<p class="text-xxs text-duvet-ink2/60 mt-0.5">
 															Per-file: {(bucket.upload_limit_bytes / 1024 / 1024).toFixed(0)} MB
 														</p>
 													{/if}
@@ -2187,14 +2179,14 @@
 													class="flex shrink-0 items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100"
 												>
 													<button
-														class="flex h-8 w-8 items-center justify-center rounded-md text-zinc-500 transition-all hover:bg-zinc-700 hover:text-zinc-200 disabled:opacity-50"
+														class="text-duvet-ink2 hover:bg-duvet-ink/10 hover:text-duvet-ink flex h-8 w-8 items-center justify-center rounded-md transition-all disabled:opacity-50"
 														title={bucket.is_active ? "Deactivate" : "Activate"}
 														onclick={() => handleToggleActive(bucket)}
 														disabled={togglingBucketId === bucket.id}
 													>
 														{#if togglingBucketId === bucket.id}
 															<div
-																class="size-4 animate-spin rounded-full border-2 border-zinc-500 border-t-transparent"
+																class="border-duvet-ink2/40 size-4 animate-spin rounded-full border-2 border-t-transparent"
 															></div>
 														{:else if bucket.is_active}
 															<XIcon class="size-4" />
@@ -2203,28 +2195,28 @@
 														{/if}
 													</button>
 													<button
-														class="flex h-8 w-8 items-center justify-center rounded-md text-zinc-500 transition-all hover:bg-zinc-700 hover:text-zinc-200 disabled:opacity-50"
+														class="text-duvet-ink2 hover:bg-duvet-ink/10 hover:text-duvet-ink flex h-8 w-8 items-center justify-center rounded-md transition-all disabled:opacity-50"
 														title={myTransfer ? "Wait for the transfer under way to end" : "Move files…"}
 														onclick={() => openMoveBucket(bucket)}
 														disabled={movingBucketId === bucket.id || myTransfer !== null}
 													>
 														{#if movingBucketId === bucket.id}
 															<div
-																class="size-4 animate-spin rounded-full border-2 border-zinc-500 border-t-transparent"
+																class="border-duvet-ink2/40 size-4 animate-spin rounded-full border-2 border-t-transparent"
 															></div>
 														{:else}
 															<MoveIcon class="size-4" />
 														{/if}
 													</button>
 													<button
-														class="flex h-8 w-8 items-center justify-center rounded-md text-zinc-500 transition-all hover:bg-zinc-700 hover:text-zinc-200"
+														class="text-duvet-ink2 hover:bg-duvet-ink/10 hover:text-duvet-ink flex h-8 w-8 items-center justify-center rounded-md transition-all"
 														title="Edit"
 														onclick={() => startEditBucket(bucket)}
 													>
 														<PencilIcon class="size-4" />
 													</button>
 													<button
-														class="flex h-8 w-8 items-center justify-center rounded-md text-zinc-500 transition-all hover:bg-red-600/20 hover:text-red-400"
+														class="text-duvet-ink2 hover:bg-duvet-danger/20 hover:text-duvet-danger flex h-8 w-8 items-center justify-center rounded-md transition-all"
 														title="Delete"
 														onclick={() => handleDeleteBucket(bucket.id)}
 													>
@@ -2238,25 +2230,25 @@
 							{:else if activeSection === "developer"}
 								{#if $pendingTeamInvites.length > 0}
 									<div class="mb-6">
-										<h4 class="mb-2 text-xs font-bold tracking-widest text-zinc-400 uppercase">Pending Team Invites</h4>
+										<h4 class="text-duvet-ink2 mb-2 text-[13px] font-bold">Pending Team Invites</h4>
 										<div class="space-y-2">
 											{#each $pendingTeamInvites as invite (invite.id)}
 												<div
-													class="flex items-center justify-between rounded-md border border-stone-700/50 bg-stone-900/30 px-4 py-3"
+													class="border-duvet-line bg-duvet-bg/30 flex items-center justify-between rounded-md border px-4 py-3"
 												>
 													<div>
-														<p class="text-sm font-medium text-white">{invite.team_name}</p>
-														<p class="text-xxs text-zinc-500">Invited by {invite.invited_by_username}</p>
+														<p class="text-duvet-ink text-sm font-medium">{invite.team_name}</p>
+														<p class="text-xxs text-duvet-ink2">Invited by {invite.invited_by_username}</p>
 													</div>
 													<div class="flex items-center gap-2">
 														<button
-															class="bg-fill-600 text-fixed-white hover:bg-fill-500 rounded-md px-3 py-1.5 text-xs font-medium transition-colors"
+															class="bg-duvet-accent text-duvet-on-accent shadow-duvet-raised rounded-xl px-3 py-1.5 text-xs font-bold transition-colors hover:brightness-110"
 															onclick={() => handleAcceptTeamInvite(invite.id)}
 														>
 															Accept
 														</button>
 														<button
-															class="rounded-md px-3 py-1.5 text-xs font-medium text-zinc-400 transition-colors hover:bg-zinc-700 hover:text-white"
+															class="text-duvet-ink2 hover:bg-duvet-ink/10 hover:text-duvet-ink rounded-md px-3 py-1.5 text-xs font-medium transition-colors"
 															onclick={() => handleDeclineTeamInvite(invite.id)}
 														>
 															Decline
@@ -2269,7 +2261,7 @@
 								{/if}
 
 								{#if !devSelectedTeam}
-									<p class="mb-4 text-xs text-zinc-500">
+									<p class="text-duvet-ink2 mb-4 text-xs">
 										Create a team to manage applications and bots. Team members can collaborate on your apps.
 									</p>
 
@@ -2278,11 +2270,11 @@
 											type="text"
 											bind:value={devNewTeamName}
 											placeholder="Team name"
-											class="flex-1 rounded-md border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-white placeholder-zinc-500 outline-none focus:border-zinc-500"
+											class="bg-duvet-sunk text-duvet-ink placeholder:text-duvet-ink2 shadow-duvet-press focus-visible:outline-duvet-accent flex-1 rounded-xl px-3 py-2 text-sm focus-visible:outline-2"
 											onkeydown={(e) => e.key === "Enter" && handleCreateTeam()}
 										/>
 										<button
-											class="bg-fill-600 text-fixed-white hover:bg-fill-500 flex items-center gap-1.5 rounded-md px-3 py-2 text-sm font-medium transition-colors disabled:opacity-50"
+											class="bg-duvet-accent text-duvet-on-accent shadow-duvet-raised flex items-center gap-1.5 rounded-xl px-3 py-2 text-sm font-bold transition-colors hover:brightness-110 disabled:opacity-50"
 											onclick={handleCreateTeam}
 											disabled={devCreatingTeam || !devNewTeamName.trim()}
 										>
@@ -2292,28 +2284,28 @@
 									</div>
 
 									{#if devLoading}
-										<p class="text-sm text-zinc-500">Loading...</p>
+										<p class="text-duvet-ink2 text-sm">Loading...</p>
 									{:else if devTeams.length === 0}
-										<p class="text-sm text-zinc-500">No teams yet. Create one to get started.</p>
+										<p class="text-duvet-ink2 text-sm">No teams yet. Create one to get started.</p>
 									{:else}
 										<div class="space-y-2">
 											{#each devTeams as team (team.id)}
 												<button
-													class="group flex w-full items-center justify-between rounded-md border border-zinc-700 bg-zinc-800/50 px-4 py-3 text-left transition-colors hover:border-zinc-600 hover:bg-zinc-800"
+													class="group border-duvet-line bg-duvet-card/50 hover:border-duvet-line hover:bg-duvet-card flex w-full items-center justify-between rounded-md border px-4 py-3 text-left transition-colors"
 													onclick={() => selectTeam(team)}
 												>
 													<div>
-														<p class="text-sm font-medium text-white">{team.name}</p>
-														<p class="text-xxs text-zinc-500">ID: {team.id}</p>
+														<p class="text-duvet-ink text-sm font-medium">{team.name}</p>
+														<p class="text-xxs text-duvet-ink2">ID: {team.id}</p>
 													</div>
-													<ChevronLeftIcon class="size-4 rotate-180 text-zinc-500 group-hover:text-zinc-300" />
+													<ChevronLeftIcon class="text-duvet-ink2 group-hover:text-duvet-ink size-4 rotate-180" />
 												</button>
 											{/each}
 										</div>
 									{/if}
 								{:else}
 									<button
-										class="mb-4 flex items-center gap-1 text-sm text-zinc-400 transition-colors hover:text-white"
+										class="text-duvet-ink2 hover:text-duvet-ink mb-4 flex items-center gap-1 text-sm transition-colors"
 										onclick={() => {
 											devSelectedTeam = null;
 											devApps = [];
@@ -2331,24 +2323,24 @@
 												<input
 													type="text"
 													bind:value={devEditTeamName}
-													class="flex-1 rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-white outline-none focus:border-zinc-500"
+													class="bg-duvet-sunk text-duvet-ink shadow-duvet-press focus-visible:outline-duvet-accent flex-1 rounded-xl px-3 py-1.5 text-sm focus-visible:outline-2"
 													onkeydown={(e) => e.key === "Enter" && handleSaveTeamEdit()}
 												/>
 												<button
-													class="bg-fill-600 text-fixed-white hover:bg-fill-500 rounded-md px-2 py-1.5 text-xs"
+													class="bg-duvet-accent text-duvet-on-accent shadow-duvet-raised rounded-xl px-2 py-1.5 text-xs hover:brightness-110"
 													onclick={handleSaveTeamEdit}>Save</button
 												>
 												<button
-													class="rounded-md px-2 py-1.5 text-xs text-zinc-400 hover:text-white"
+													class="text-duvet-ink2 hover:text-duvet-ink rounded-md px-2 py-1.5 text-xs"
 													onclick={() => (devEditingTeam = null)}>Cancel</button
 												>
 											</div>
 										{:else}
-											<h3 class="text-lg font-semibold text-white">{devSelectedTeam.name}</h3>
+											<h3 class="text-duvet-ink text-lg font-semibold">{devSelectedTeam.name}</h3>
 											<div class="flex items-center gap-1">
 												{#if devSelectedTeam.owner_id === $currentUser?.id}
 													<button
-														class="rounded-md p-1.5 text-zinc-500 hover:bg-zinc-700 hover:text-zinc-200"
+														class="text-duvet-ink2 hover:bg-duvet-ink/10 hover:text-duvet-ink rounded-md p-1.5"
 														title="Edit"
 														onclick={() => {
 															devEditingTeam = devSelectedTeam;
@@ -2358,7 +2350,7 @@
 														<PencilIcon class="size-4" />
 													</button>
 													<button
-														class="rounded-md p-1.5 text-zinc-500 hover:bg-red-600/20 hover:text-red-400"
+														class="text-duvet-ink2 hover:bg-duvet-danger/20 hover:text-duvet-danger rounded-md p-1.5"
 														title="Delete"
 														onclick={() => devSelectedTeam && handleDeleteTeam(devSelectedTeam)}
 													>
@@ -2371,21 +2363,21 @@
 
 									<!-- Members -->
 									<div class="mb-6">
-										<h4 class="mb-2 text-xs font-bold tracking-widest text-zinc-400 uppercase">Members</h4>
+										<h4 class="text-duvet-ink2 mb-2 text-[13px] font-bold">Members</h4>
 										<div class="space-y-1">
 											{#each devMembers as member (member.user_id)}
-												<div class="flex items-center justify-between rounded-md bg-zinc-800/50 px-3 py-2">
+												<div class="bg-duvet-card/50 flex items-center justify-between rounded-md px-3 py-2">
 													<div class="flex items-center gap-2">
-														<span class="text-sm text-white">{member.username}</span>
+														<span class="text-duvet-ink text-sm">{member.username}</span>
 														{#if member.role === TeamRole.Admin}
-															<span class="text-xxs rounded bg-stone-700 px-1.5 py-0.5 font-medium text-stone-300"
+															<span class="text-xxs bg-duvet-ink/10 text-duvet-ink rounded px-1.5 py-0.5 font-medium"
 																>Admin</span
 															>
 														{/if}
 													</div>
 													{#if devSelectedTeam.owner_id === $currentUser?.id && member.user_id !== $currentUser?.id}
 														<button
-															class="text-zinc-500 hover:text-red-400"
+															class="text-duvet-ink2 hover:text-duvet-danger"
 															title="Remove"
 															onclick={() => handleRemoveMember(member.user_id, member.username)}
 														>
@@ -2401,11 +2393,11 @@
 													type="text"
 													bind:value={devInviteEmail}
 													placeholder="Email to invite"
-													class="flex-1 rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-xs text-white placeholder-zinc-500 outline-none focus:border-zinc-500"
+													class="bg-duvet-sunk text-duvet-ink placeholder:text-duvet-ink2 shadow-duvet-press focus-visible:outline-duvet-accent flex-1 rounded-xl px-3 py-1.5 text-xs focus-visible:outline-2"
 													onkeydown={(e) => e.key === "Enter" && handleInviteMember()}
 												/>
 												<button
-													class="bg-fill-600 text-fixed-white hover:bg-fill-500 flex items-center gap-1 rounded-md px-2 py-1.5 text-xs disabled:opacity-50"
+													class="bg-duvet-accent text-duvet-on-accent shadow-duvet-raised flex items-center gap-1 rounded-xl px-2 py-1.5 text-xs hover:brightness-110 disabled:opacity-50"
 													onclick={handleInviteMember}
 													disabled={devInviting || !devInviteEmail.trim()}
 												>
@@ -2418,20 +2410,20 @@
 
 									<!-- Applications -->
 									<div>
-										<h4 class="mb-2 text-xs font-bold tracking-widest text-zinc-400 uppercase">Applications</h4>
+										<h4 class="text-duvet-ink2 mb-2 text-[13px] font-bold">Applications</h4>
 										{#if devAppsLoading}
-											<p class="text-sm text-zinc-500">Loading...</p>
+											<p class="text-duvet-ink2 text-sm">Loading...</p>
 										{:else}
 											<div class="mb-3 flex gap-2">
 												<input
 													type="text"
 													bind:value={devNewAppName}
 													placeholder="App name"
-													class="flex-1 rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-xs text-white placeholder-zinc-500 outline-none focus:border-zinc-500"
+													class="bg-duvet-sunk text-duvet-ink placeholder:text-duvet-ink2 shadow-duvet-press focus-visible:outline-duvet-accent flex-1 rounded-xl px-3 py-1.5 text-xs focus-visible:outline-2"
 													onkeydown={(e) => e.key === "Enter" && handleCreateApp()}
 												/>
 												<button
-													class="bg-fill-600 text-fixed-white hover:bg-fill-500 flex items-center gap-1 rounded-md px-2 py-1.5 text-xs disabled:opacity-50"
+													class="bg-duvet-accent text-duvet-on-accent shadow-duvet-raised flex items-center gap-1 rounded-xl px-2 py-1.5 text-xs hover:brightness-110 disabled:opacity-50"
 													onclick={handleCreateApp}
 													disabled={devCreatingApp || !devNewAppName.trim()}
 												>
@@ -2441,32 +2433,32 @@
 											</div>
 
 											{#if devApps.length === 0}
-												<p class="text-sm text-zinc-500">No applications yet.</p>
+												<p class="text-duvet-ink2 text-sm">No applications yet.</p>
 											{:else}
 												<div class="space-y-3">
 													{#each devApps as app (app.id)}
-														<div class="rounded-md border border-zinc-700 bg-zinc-800/50 p-4">
+														<div class="border-duvet-line bg-duvet-card/50 rounded-md border p-4">
 															{#if devEditingApp?.id === app.id}
 																<div class="space-y-2">
 																	<input
 																		type="text"
 																		bind:value={devEditAppName}
 																		placeholder="App name"
-																		class="w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-white outline-none focus:border-zinc-500"
+																		class="bg-duvet-sunk text-duvet-ink shadow-duvet-press focus-visible:outline-duvet-accent w-full rounded-xl px-3 py-1.5 text-sm focus-visible:outline-2"
 																	/>
 																	<input
 																		type="text"
 																		bind:value={devEditAppDesc}
 																		placeholder="Description (optional)"
-																		class="w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-white outline-none focus:border-zinc-500"
+																		class="bg-duvet-sunk text-duvet-ink shadow-duvet-press focus-visible:outline-duvet-accent w-full rounded-xl px-3 py-1.5 text-sm focus-visible:outline-2"
 																	/>
 																	<div class="flex gap-2">
 																		<button
-																			class="bg-fill-600 text-fixed-white hover:bg-fill-500 rounded-md px-3 py-1.5 text-xs"
+																			class="bg-duvet-accent text-duvet-on-accent shadow-duvet-raised rounded-xl px-3 py-1.5 text-xs hover:brightness-110"
 																			onclick={handleSaveAppEdit}>Save</button
 																		>
 																		<button
-																			class="rounded-md px-3 py-1.5 text-xs text-zinc-400 hover:text-white"
+																			class="text-duvet-ink2 hover:text-duvet-ink rounded-md px-3 py-1.5 text-xs"
 																			onclick={() => (devEditingApp = null)}>Cancel</button
 																		>
 																	</div>
@@ -2474,17 +2466,17 @@
 															{:else}
 																<div class="mb-2 flex items-start justify-between">
 																	<div>
-																		<p class="text-sm font-medium text-white">{app.name}</p>
+																		<p class="text-duvet-ink text-sm font-medium">{app.name}</p>
 																		{#if app.description}
-																			<p class="text-xs text-zinc-500">{app.description}</p>
+																			<p class="text-duvet-ink2 text-xs">{app.description}</p>
 																		{/if}
-																		<p class="text-xxs mt-1 text-zinc-600 select-text">ID: {app.id}</p>
+																		<p class="text-xxs text-duvet-ink2/60 mt-1 select-text">ID: {app.id}</p>
 																	</div>
 																	<div class="flex items-center gap-1">
 																		<button
 																			class="flex items-center gap-1 rounded-md px-2 py-1 text-xs transition-colors {app.public
-																				? 'text-green-400 hover:bg-green-600/20'
-																				: 'text-zinc-500 hover:bg-zinc-700 hover:text-zinc-200'}"
+																				? 'text-duvet-alive hover:bg-duvet-alive/20'
+																				: 'text-duvet-ink2 hover:bg-duvet-ink/10 hover:text-duvet-ink'}"
 																			title={app.public
 																				? "Public — anyone can add this bot"
 																				: "Private — only team members can add"}
@@ -2497,7 +2489,7 @@
 																			{/if}
 																		</button>
 																		<button
-																			class="rounded-md p-1.5 text-zinc-500 hover:bg-zinc-700 hover:text-zinc-200"
+																			class="text-duvet-ink2 hover:bg-duvet-ink/10 hover:text-duvet-ink rounded-md p-1.5"
 																			title="Edit"
 																			onclick={() => {
 																				devEditingApp = app;
@@ -2508,7 +2500,7 @@
 																			<PencilIcon class="size-4" />
 																		</button>
 																		<button
-																			class="rounded-md p-1.5 text-zinc-500 hover:bg-red-600/20 hover:text-red-400"
+																			class="text-duvet-ink2 hover:bg-duvet-danger/20 hover:text-duvet-danger rounded-md p-1.5"
 																			title="Delete"
 																			onclick={() => handleDeleteApp(app)}
 																		>
@@ -2516,23 +2508,23 @@
 																		</button>
 																	</div>
 																</div>
-																<div class="mt-3 border-t border-zinc-700 pt-3">
+																<div class="border-duvet-line mt-3 border-t pt-3">
 																	{#if app.bot_user_id}
 																		<div class="flex items-center justify-between">
 																			<div class="flex items-center gap-2">
-																				<BotIcon class="size-4 text-stone-400" />
-																				<span class="text-xs text-zinc-300">Bot active</span>
+																				<BotIcon class="text-duvet-ink2 size-4" />
+																				<span class="text-duvet-ink text-xs">Bot active</span>
 																			</div>
 																			<div class="flex items-center gap-1">
 																				<button
-																					class="flex items-center gap-1 rounded-md px-2 py-1 text-xs text-zinc-400 hover:bg-zinc-700 hover:text-white"
+																					class="text-duvet-ink2 hover:bg-duvet-ink/10 hover:text-duvet-ink flex items-center gap-1 rounded-md px-2 py-1 text-xs"
 																					onclick={() => handleResetBotToken(app)}
 																				>
 																					<RotateIcon class="size-3.5" />
 																					Reset Token
 																				</button>
 																				<button
-																					class="flex items-center gap-1 rounded-md px-2 py-1 text-xs text-red-400 hover:bg-red-600/20"
+																					class="text-duvet-danger hover:bg-duvet-danger/20 flex items-center gap-1 rounded-md px-2 py-1 text-xs"
 																					onclick={() => handleDeleteBot(app)}
 																				>
 																					<TrashIcon class="size-3.5" />
@@ -2548,7 +2540,7 @@
 																					? botEditUsername
 																					: (botUsers[app.bot_user_id ?? ""]?.username ?? "")}
 																				placeholder="Username"
-																				class="w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-xs text-white placeholder-zinc-500 outline-none focus:border-zinc-500"
+																				class="bg-duvet-sunk text-duvet-ink placeholder:text-duvet-ink2 shadow-duvet-press focus-visible:outline-duvet-accent w-full rounded-xl px-3 py-1.5 text-xs focus-visible:outline-2"
 																				onfocus={() => {
 																					if (botEditingAppId !== app.id) startBotEdit(app);
 																				}}
@@ -2563,7 +2555,7 @@
 																					? botEditAlias
 																					: (botUsers[app.bot_user_id ?? ""]?.alias ?? "")}
 																				placeholder="Display name (optional)"
-																				class="w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-xs text-white placeholder-zinc-500 outline-none focus:border-zinc-500"
+																				class="bg-duvet-sunk text-duvet-ink placeholder:text-duvet-ink2 shadow-duvet-press focus-visible:outline-duvet-accent w-full rounded-xl px-3 py-1.5 text-xs focus-visible:outline-2"
 																				onfocus={() => {
 																					if (botEditingAppId !== app.id) startBotEdit(app);
 																				}}
@@ -2574,13 +2566,13 @@
 																			/>
 																		</div>
 																		<div class="mt-2 flex items-center gap-2">
-																			<span class="text-xxs text-zinc-500">Invite link:</span>
+																			<span class="text-xxs text-duvet-ink2">Invite link:</span>
 																			<code
-																				class="text-xxs flex-1 truncate rounded bg-zinc-900 px-2 py-1 text-zinc-400 select-text"
+																				class="text-xxs bg-duvet-bg text-duvet-ink2 flex-1 truncate rounded px-2 py-1 select-text"
 																				>{getBotInviteLink(app.bot_user_id ?? "")}</code
 																			>
 																			<button
-																				class="shrink-0 rounded p-1 text-zinc-500 hover:bg-zinc-700 hover:text-white"
+																				class="text-duvet-ink2 hover:bg-duvet-ink/10 hover:text-duvet-ink shrink-0 rounded p-1"
 																				title="Copy"
 																				onclick={() => copyBotInviteLink(app.bot_user_id ?? "")}
 																			>
@@ -2589,8 +2581,8 @@
 																		</div>
 																		{#if hasActiveBucket}
 																			{@const botU = app.bot_user_id ? botUsers[app.bot_user_id] : null}
-																			<div class="mt-3 border-t border-zinc-700 pt-3">
-																				<p class="text-xxs mb-2 text-zinc-500">Bot appearance</p>
+																			<div class="border-duvet-line mt-3 border-t pt-3">
+																				<p class="text-xxs text-duvet-ink2 mb-2">Bot appearance</p>
 																				<div class="flex items-center gap-3">
 																					<!-- Avatar -->
 																					<div class="group relative">
@@ -2609,7 +2601,7 @@
 																							</button>
 																						{:else if pendingBotAvatar === "remove"}
 																							<div
-																								class="flex h-12 w-12 items-center justify-center rounded-full bg-zinc-800 text-zinc-600"
+																								class="bg-duvet-card text-duvet-ink2/60 flex h-12 w-12 items-center justify-center rounded-full"
 																							>
 																								<XIcon class="size-4" />
 																							</div>
@@ -2640,14 +2632,14 @@
 																									title="Change"><PencilIcon class="size-3.5" /></button
 																								>
 																								<button
-																									class="hover:bg-fixed-white/20 rounded p-0.5 text-red-400"
+																									class="hover:bg-fixed-white/20 text-duvet-danger rounded p-0.5"
 																									onclick={removeBotAvatar}
 																									title="Remove"><TrashIcon class="size-3.5" /></button
 																								>
 																							</div>
 																						{:else}
 																							<button
-																								class="flex h-12 w-12 items-center justify-center rounded-full bg-zinc-800 text-zinc-500 transition-colors hover:bg-zinc-700 hover:text-zinc-300"
+																								class="bg-duvet-card text-duvet-ink2 hover:bg-duvet-ink/10 hover:text-duvet-ink flex h-12 w-12 items-center justify-center rounded-full transition-colors"
 																								onclick={() => {
 																									botCropTargetApp = app;
 																									showBotAvatarCrop = true;
@@ -2675,7 +2667,7 @@
 																							</button>
 																						{:else if pendingBotBanner === "remove"}
 																							<div
-																								class="flex aspect-[5/2] h-12 items-center justify-center rounded bg-zinc-800 text-zinc-600"
+																								class="bg-duvet-card text-duvet-ink2/60 flex aspect-[5/2] h-12 items-center justify-center rounded"
 																							>
 																								<XIcon class="size-4" />
 																							</div>
@@ -2706,14 +2698,14 @@
 																									title="Change"><PencilIcon class="size-3.5" /></button
 																								>
 																								<button
-																									class="hover:bg-fixed-white/20 rounded p-0.5 text-red-400"
+																									class="hover:bg-fixed-white/20 text-duvet-danger rounded p-0.5"
 																									onclick={removeBotBanner}
 																									title="Remove"><TrashIcon class="size-3.5" /></button
 																								>
 																							</div>
 																						{:else}
 																							<button
-																								class="flex aspect-[5/2] h-12 items-center justify-center rounded bg-zinc-800 text-zinc-500 transition-colors hover:bg-zinc-700 hover:text-zinc-300"
+																								class="bg-duvet-card text-duvet-ink2 hover:bg-duvet-ink/10 hover:text-duvet-ink flex aspect-[5/2] h-12 items-center justify-center rounded transition-colors"
 																								onclick={() => {
 																									botCropTargetApp = app;
 																									showBotBannerCrop = true;
@@ -2727,7 +2719,7 @@
 																				</div>
 																				{#if hasBotProfileChanges}
 																					<button
-																						class="bg-fill-600 text-fixed-white hover:bg-fill-500 mt-2 rounded-md px-3 py-1.5 text-xs font-medium tabular-nums transition-colors disabled:opacity-50"
+																						class="bg-duvet-accent text-duvet-on-accent shadow-duvet-raised mt-2 rounded-xl px-3 py-1.5 text-xs font-bold tabular-nums transition-colors hover:brightness-110 disabled:opacity-50"
 																						onclick={() => handleSaveBotProfile(app)}
 																						disabled={savingBotProfile}
 																					>
@@ -2742,7 +2734,7 @@
 																		{/if}
 																	{:else}
 																		<button
-																			class="bg-fill-700 text-fixed-white hover:bg-fill-600 flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors"
+																			class="bg-duvet-accent text-duvet-on-accent shadow-duvet-raised flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-bold transition-colors hover:brightness-110"
 																			onclick={() => handleCreateBot(app)}
 																		>
 																			<BotIcon class="size-3.5" />
@@ -2757,24 +2749,24 @@
 											{/if}
 
 											{#if devBotToken}
-												<div class="mt-4 rounded-md border border-yellow-700/50 bg-yellow-900/20 p-4">
-													<p class="mb-2 text-xs font-medium text-yellow-300">
+												<div class="border-duvet-warn/50 bg-duvet-warn/10 mt-4 rounded-md border p-4">
+													<p class="text-duvet-warn mb-2 text-xs font-medium">
 														Bot Token — copy it now, it won't be shown again!
 													</p>
 													<div class="flex items-center gap-2">
 														<code
-															class="flex-1 rounded bg-zinc-900 px-3 py-2 font-mono text-xs break-all text-zinc-300 select-text"
+															class="bg-duvet-bg text-duvet-ink flex-1 rounded px-3 py-2 font-mono text-xs break-all select-text"
 															>{devShowToken ? devBotToken : "\u2022".repeat(40)}</code
 														>
 														<button
-															class="rounded-md p-1.5 text-zinc-400 hover:text-white"
+															class="text-duvet-ink2 hover:text-duvet-ink rounded-md p-1.5"
 															title={devShowToken ? "Hide" : "Show"}
 															onclick={() => (devShowToken = !devShowToken)}
 														>
 															{#if devShowToken}<EyeOffIcon class="size-4" />{:else}<EyeIcon class="size-4" />{/if}
 														</button>
 														<button
-															class="rounded-md p-1.5 text-zinc-400 hover:text-white"
+															class="text-duvet-ink2 hover:text-duvet-ink rounded-md p-1.5"
 															title="Copy"
 															onclick={copyToken}
 														>
@@ -2796,9 +2788,9 @@
 						{@const tooMany = (picker.filter.attachment_ids?.length ?? 0) > MAX_PICKED_FILES}
 						<div
 							transition:slide={{ duration: 200 }}
-							class="flex shrink-0 items-center justify-between gap-4 border-t border-zinc-800 bg-zinc-900/80 px-6 py-3"
+							class="border-duvet-line bg-duvet-bg/80 flex shrink-0 items-center justify-between gap-4 border-t px-6 py-3"
 						>
-							<p class="min-w-0 truncate text-sm text-zinc-400">
+							<p class="text-duvet-ink2 min-w-0 truncate text-sm">
 								{#if myTransfer}
 									Wait for the transfer under way to end.
 								{:else if tooMany}
@@ -2810,14 +2802,14 @@
 							<div class="flex shrink-0 items-center gap-2">
 								<button
 									onclick={() => picker.picked.clear()}
-									class="rounded-md px-3 py-1.5 text-sm font-medium text-zinc-300 transition-colors hover:text-white"
+									class="text-duvet-ink hover:text-duvet-ink rounded-md px-3 py-1.5 text-sm font-medium transition-colors"
 								>
 									Clear
 								</button>
 								<button
 									onclick={openMovePicked}
 									disabled={myTransfer !== null || tooMany}
-									class="bg-fill-600 text-fixed-white hover:bg-fill-500 flex items-center gap-1.5 rounded-md px-4 py-1.5 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+									class="bg-duvet-accent text-duvet-on-accent shadow-duvet-raised flex items-center gap-1.5 rounded-xl px-4 py-1.5 text-sm font-bold transition-colors hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
 								>
 									<MoveIcon class="size-4" />
 									Move {countFiles(pickedCount)} ({formatFileSize(picker.pickedBytes)}) to…
@@ -2830,29 +2822,29 @@
 					{#if hasChanges || saveError}
 						<div
 							transition:slide={{ duration: 200 }}
-							class="flex shrink-0 items-center justify-between gap-4 border-t border-zinc-800 bg-zinc-900/80 px-6 py-3"
+							class="border-duvet-line bg-duvet-bg/80 flex shrink-0 items-center justify-between gap-4 border-t px-6 py-3"
 						>
 							<div class="flex min-w-0 items-center gap-2">
 								{#if saveError}
-									<p class="truncate text-sm text-red-400">
+									<p class="text-duvet-danger truncate text-sm">
 										{saveError}
 									</p>
 								{:else}
-									<p class="text-sm text-zinc-400">You have unsaved changes.</p>
+									<p class="text-duvet-ink2 text-sm">You have unsaved changes.</p>
 								{/if}
 							</div>
 							<div class="flex shrink-0 items-center gap-2">
 								<button
 									onclick={handleReset}
 									disabled={saving}
-									class="rounded-md px-3 py-1.5 text-sm font-medium text-zinc-300 transition-colors hover:text-white disabled:opacity-50"
+									class="text-duvet-ink hover:text-duvet-ink rounded-md px-3 py-1.5 text-sm font-medium transition-colors disabled:opacity-50"
 								>
 									Reset
 								</button>
 								<button
 									onclick={handleSave}
 									disabled={saving || bioTooLong}
-									class="bg-fill-600 text-fixed-white hover:bg-fill-500 flex items-center gap-1.5 rounded-md px-4 py-1.5 text-sm font-semibold tabular-nums transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+									class="bg-duvet-accent text-duvet-on-accent shadow-duvet-raised flex items-center gap-1.5 rounded-xl px-4 py-1.5 text-sm font-bold tabular-nums transition-colors hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
 								>
 									{#if saveSuccess}
 										<CheckIcon class="size-4" />

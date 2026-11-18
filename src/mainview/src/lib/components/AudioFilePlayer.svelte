@@ -180,24 +180,26 @@
 	});
 </script>
 
-<div class="flex max-w-87.5 min-w-62.5 flex-col gap-1 rounded-lg border border-zinc-700/60 bg-zinc-800/70 px-3 py-2.5">
+<div
+	class="rounded-card border-duvet-line bg-duvet-card/70 flex max-w-87.5 min-w-62.5 flex-col gap-1 border px-3 py-2.5"
+>
 	<div class="flex min-w-0 items-center gap-2">
-		<Music class="size-4 shrink-0 text-zinc-500" />
+		<Music class="text-duvet-ink2 size-4 shrink-0" />
 		<div class="flex min-w-0 flex-col">
 			<a
 				href={src}
 				target="_blank"
 				rel="noopener noreferrer"
-				class="truncate text-sm font-medium text-blue-400 hover:underline"
+				class="text-duvet-accent-text truncate text-sm font-medium hover:underline"
 				download={filename}>{filename}</a
 			>
-			<span class="text-xxs text-zinc-500">{formatFileSize(sizeBytes)}</span>
+			<span class="text-xxs text-duvet-ink2">{formatFileSize(sizeBytes)}</span>
 		</div>
 	</div>
 
 	<div class="flex items-center gap-2">
 		<button
-			class="flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-full text-zinc-300 transition-colors hover:text-white"
+			class="text-duvet-ink hover:text-duvet-ink flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-full transition-colors"
 			onclick={togglePlay}
 		>
 			{#if playing}
@@ -207,12 +209,12 @@
 			{/if}
 		</button>
 
-		<span class="text-xxs shrink-0 text-zinc-400 tabular-nums">
+		<span class="text-xxs text-duvet-ink2 shrink-0 tabular-nums">
 			{formatDuration(playing || currentTime > 0 ? currentTime : 0)}/{formatDuration(duration)}
 		</span>
 
 		<button
-			class="text-xxs cursor-pointer rounded px-1 font-semibold text-zinc-500 tabular-nums transition-colors hover:bg-zinc-700 hover:text-zinc-300"
+			class="text-xxs text-duvet-ink2 hover:bg-duvet-ink/10 hover:text-duvet-ink cursor-pointer rounded px-1 font-semibold tabular-nums transition-colors"
 			onclick={handleCycleRate}>{rate}x</button
 		>
 
@@ -224,8 +226,8 @@
 				<div
 					class="rounded-px min-h-0.5 flex-1 transition-[background] duration-100"
 					style="height: {height * 100}%; {barProgress <= progress
-						? 'background: oklch(0.65 0.15 250);'
-						: 'background: var(--color-night-35);'}"
+						? 'background: var(--duvet-accent);'
+						: 'background: color-mix(in oklab, var(--duvet-ink) 20%, transparent);'}"
 				></div>
 			{/each}
 		</div>
@@ -233,7 +235,7 @@
 		<!-- svelte-ignore a11y_no_static_element_interactions -->
 		<div class="relative shrink-0" onmouseenter={showVolumeSlider} onmouseleave={hideVolumeSlider}>
 			<button
-				class="flex size-6 cursor-pointer items-center justify-center text-zinc-500 transition-colors hover:text-zinc-300"
+				class="text-duvet-ink2 hover:text-duvet-ink flex size-6 cursor-pointer items-center justify-center transition-colors"
 			>
 				{#if $audioVolume === 0}
 					<VolumeX class="size-3.5" />
@@ -248,7 +250,7 @@
 				<!-- svelte-ignore a11y_no_static_element_interactions -->
 				<!-- svelte-ignore a11y_click_events_have_key_events -->
 				<div
-					class="absolute bottom-full left-1/2 z-50 mb-0 flex -translate-x-1/2 flex-col items-center gap-1 rounded-lg border border-zinc-700 bg-zinc-800 p-2 pb-3 shadow-xl"
+					class="rounded-card border-duvet-line bg-duvet-card shadow-duvet-float absolute bottom-full left-1/2 z-50 mb-0 flex -translate-x-1/2 flex-col items-center gap-1 border p-2 pb-3"
 				>
 					<input
 						type="range"
@@ -259,7 +261,7 @@
 						class="volume-slider h-24 w-1.5"
 						style="writing-mode: vertical-lr; direction: rtl;"
 					/>
-					<span class="text-xxs text-zinc-400 tabular-nums">{Math.round($audioVolume * 100)}%</span>
+					<span class="text-xxs text-duvet-ink2 tabular-nums">{Math.round($audioVolume * 100)}%</span>
 				</div>
 			{/if}
 		</div>
