@@ -237,3 +237,46 @@ test("the preview override is read only inside the dev-only block", () => {
 	expect(outside).not.toContain("duvet.dev.shell");
 	expect(outside).not.toContain("searchParams");
 });
+
+// The app's title bar (Header.svelte) is the main window's: the layout, which every page renders in, draws it there
+// alone (#357). The other windows have chrome of their own, the pop-out a strip and the Settings windows a bar, so
+// none of their pages hides or covers a title bar the layout drew, as the pop-out's once did.
+describe("the app's title bar", () => {
+	const source = (path: string) => readFileSync(join(import.meta.dir, "..", path), "utf8");
+	const layout = source("routes/+layout.svelte");
+	// The layout's rule, as it writes it.
+	const draws = (shell: ReturnType<typeof shellFor>) => shell.window === "main" && shell.chrome !== "web";
+
+	test("the layout draws it by the platform switch: in the main window, in the desktop app", () => {
+		expect(layout).toContain('const titleBar = shell.window === "main" && shell.chrome !== "web";');
+		expect(layout).toMatch(/\{#if titleBar\}\s*<Header \/>\s*\{\/if\}/);
+		expect(layout.match(/<Header\b/g)).toHaveLength(1);
+	});
+
+	test("the main window has it on every system, and the web has none", () => {
+		for (const os of ["darwin", "win32", "linux"]) expect(draws(inApp(os)), os).toBe(true);
+		expect(draws(shellFor({ inElectrobun: false, injected: null, userAgent: MAC_UA, preview: null }))).toBe(false);
+	});
+
+	test("the pop-out, the Settings window and a Space's settings window have none, on any system", () => {
+		for (const os of ["darwin", "win32", "linux"])
+			for (const window of ["media", "settings", "space-settings"] as const) {
+				const shell = shellFor({
+					inElectrobun: true,
+					injected: injected(os, window),
+					userAgent: MAC_UA,
+					preview: null,
+				});
+				expect(shell.window, `${window} on ${os}`).toBe(window);
+				expect(draws(shell), `${window} on ${os}`).toBe(false);
+			}
+	});
+
+	test("none of their pages hides or covers a title bar", () => {
+		for (const route of ["voice-controls", "settings", "space-settings"]) {
+			const page = source(`routes/${route}/+page.svelte`);
+			expect(page, route).not.toMatch(/window-titlebar|data-title-bar|style\.display|<Header\b/);
+			expect(page, route).not.toMatch(/\bfixed inset-0\b/);
+		}
+	});
+});

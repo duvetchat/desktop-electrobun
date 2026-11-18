@@ -85,10 +85,6 @@
 			location.replace("/");
 			return;
 		}
-		// The layout draws the app's title bar for every page. This window has its own strip: the app's bar is taken
-		// out, so its buttons are neither under this page nor in the tab order.
-		const appBar = document.getElementById("window-titlebar");
-		if (appBar) appBar.style.display = "none";
 		const mirror = new StateMirror<unknown>(MEDIA_CHANNEL);
 		const stop = mirror.subscribe((value) => {
 			const parsed = parseMediaState(value);
@@ -111,8 +107,9 @@
 
 <svelte:window {onkeydown} {onstorage} />
 
-<!-- Over the app's title bar, which the layout draws for every page: this window has its own strip. -->
-<div class="bg-duvet-sb-bg text-duvet-ink fixed inset-0 z-60 flex flex-col select-none">
+<!-- The whole window: the layout draws the app's title bar in the main window only (routes/+layout.svelte), and this
+     one has its own strip. -->
+<div class="bg-duvet-sb-bg text-duvet-ink flex h-full flex-col select-none">
 	<!-- The strip drags the window. On macOS the system's lights sit at its left; elsewhere the page closes it. -->
 	<header
 		class="electrobun-webkit-app-region-drag flex h-9 shrink-0 items-center gap-1 pr-1.5 {shell.nativeTrafficLights
