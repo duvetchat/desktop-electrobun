@@ -226,6 +226,75 @@ test.skipIf(process.platform !== "win32")("Alt alone or F10 opens no menu nobody
 	expect(commands).toEqual([{ command: SC_KEYMENU, key: 0x20n }]);
 });
 
+// window-snap.c's WINDOW_SNAP_PAGE_READY (WM_APP + 0x0D08), which Bun posts as the page loads (dom-ready).
+const WINDOW_SNAP_PAGE_READY = 0x8d08;
+
+// The webview's own window, a child of Chromium's class: where a click in the page puts the keyboard.
+const pageClassName = ansi("Chrome_WidgetWin_1");
+function pageWindow({ user32, kernel32 }: ReturnType<typeof win32>, window: Pointer): Pointer {
+	const windowClass = Buffer.alloc(80);
+	windowClass.writeUInt32LE(80, 0);
+	const defWindowProc = kernel32.GetProcAddress(kernel32.GetModuleHandleA(ansi("user32.dll")), ansi("DefWindowProcA"));
+	windowClass.writeBigUInt64LE(BigInt(defWindowProc ?? 0), 8);
+	windowClass.writeBigUInt64LE(BigInt(kernel32.GetModuleHandleA(null) ?? 0), 24);
+	windowClass.writeBigUInt64LE(BigInt(ptr(pageClassName)), 64);
+	user32.RegisterClassExA(windowClass);
+	const page = user32.CreateWindowExA(
+		0,
+		pageClassName,
+		ansi(""),
+		WS_CHILD | WS_VISIBLE,
+		0,
+		0,
+		100,
+		100,
+		window,
+		null,
+		null,
+		null,
+	);
+	if (!page) throw new Error("CreateWindowExA failed");
+	return page;
+}
+
+// As Duvet opens, Electrobun gives the webview no focus either: nothing in the page had the keyboard yet for the
+// window to give back, and typing did nothing until a first click.
+test.skipIf(process.platform !== "win32")("as the page loads, its window takes the keyboard the window has", () => {
+	if (!snapped) throw new Error("the window wasn't arranged");
+	const { user32, window } = snapped;
+	// The window opens before the webview has made its window: the window keeps the keyboard.
+	user32.SetFocus(window);
+	expect(user32.GetFocus()).toBe(window);
+	const page = pageWindow(win32(), window);
+	try {
+		// Bun's dom-ready: the page's window takes the keyboard.
+		user32.SendMessageA(window, WINDOW_SNAP_PAGE_READY, 0n, 0n);
+		expect(user32.GetFocus()).toBe(page);
+	} finally {
+		user32.DestroyWindow(page);
+	}
+});
+
+test.skipIf(process.platform !== "win32")(
+	"a window activated with nothing kept from its page gives the keyboard to the page's window",
+	() => {
+		if (!snapped) throw new Error("the window wasn't arranged");
+		const { user32, window } = snapped;
+		const page = pageWindow(win32(), window);
+		try {
+			// The page loaded while Duvet was behind another window: nothing had the keyboard to take.
+			user32.SetFocus(null);
+			user32.SendMessageA(window, WINDOW_SNAP_PAGE_READY, 0n, 0n);
+			expect(user32.GetFocus()).toBe(null);
+			// Brought to the front before any click in the page.
+			user32.SetFocus(window);
+			expect(user32.GetFocus()).toBe(page);
+		} finally {
+			user32.DestroyWindow(page);
+		}
+	},
+);
+
 // A press as Bun reads it, one read after another: where the cursor is, and whether the primary button is still down.
 function press(positions: [number, number][], downs: boolean[]) {
 	let position = 0;

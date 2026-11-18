@@ -16,7 +16,7 @@ import { startSpotifyReader, type SpotifyActivity } from "./spotify";
 import { ipcHeld, ipcPath, LineReader } from "./ipc";
 import { navigationRules } from "./navigation";
 import { Maximizer } from "./window-frame";
-import { dragWithWindows, letWindowsArrange } from "./window-snap";
+import { dragWithWindows, letWindowsArrange, pageLoaded } from "./window-snap";
 import { startupSummary, writeStartupLine } from "./startup";
 
 // When Bun started, and its own steps of the app's start, which the page's join in startup.log (startupTimings, #280):
@@ -248,6 +248,9 @@ function arrangeByWindows(): boolean {
 // that gap could leave no rules, with no sign. Only the app's own first page can load before they apply.
 const rules = navigationRules(currentOS, url === DEV_SERVER_URL ? url : null);
 win.webview.on("dom-ready", () => win.webview.setNavigationRules(rules));
+
+// On Windows Electrobun gives the webview no keyboard: as Duvet opens, the page takes it once it has loaded (#361).
+if (arrangedByWindows) win.webview.on("dom-ready", () => pageLoaded(win.ptr));
 
 // What Electrobun reports as a new window goes to the system browser: a Ctrl or Cmd click. The webview sends every
 // other click on a link over RPC (openExternal, lib/external-links.ts). On Windows and Linux Electrobun has no hook for
