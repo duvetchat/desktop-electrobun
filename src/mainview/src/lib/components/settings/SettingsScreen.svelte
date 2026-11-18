@@ -90,7 +90,6 @@
 	} from "$lib/api/developer";
 	import { pendingTeamInvites, myBuckets, voiceFaces, shareSpotify } from "$lib/stores.svelte";
 	import { layoutPrefs } from "$lib/layout-prefs.svelte";
-	import { BUSY_ROOM_ONLINE } from "$lib/members";
 	import { setThemePref, theme } from "$lib/theme.svelte";
 	import { parseThemePref, type ThemePref } from "$lib/theme";
 	import { isElectrobunWindow } from "$lib/electrobun-rpc";
@@ -1186,11 +1185,6 @@
 		{ value: "tabs", label: "Tabs on top" },
 		{ value: "vertical", label: "Vertical list" },
 	] as const;
-	const membersColumnChoices = [
-		{ value: "auto", label: "Auto" },
-		{ value: "shown", label: "Shown" },
-		{ value: "hidden", label: "Hidden" },
-	] as const;
 	const keyboardChoices = [
 		{ value: "off", label: "Off" },
 		{ value: "on", label: "On" },
@@ -1540,17 +1534,6 @@
 					options={openChatsChoices}
 					value={layoutPrefs.openChats}
 					onValueChange={(picked) => (layoutPrefs.openChats = picked)}
-				/>
-			</SettingsRow>
-			<SettingsRow
-				label="Members column"
-				line={`Auto opens it in rooms with more than ${BUSY_ROOM_ONLINE} people online. The faces in the bar list the members either way.`}
-			>
-				<Segmented
-					label="Members column"
-					options={membersColumnChoices}
-					value={layoutPrefs.membersColumn}
-					onValueChange={(picked) => (layoutPrefs.membersColumn = picked)}
 				/>
 			</SettingsRow>
 			<SettingsRow

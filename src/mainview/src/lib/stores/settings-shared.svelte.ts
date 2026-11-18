@@ -75,7 +75,6 @@ function setLayout(value: unknown) {
 	const prefs = parseLayoutPrefs(JSON.stringify(value ?? null));
 	layoutPrefs.spacesColumn = prefs.spacesColumn;
 	layoutPrefs.openChats = prefs.openChats;
-	layoutPrefs.membersColumn = prefs.membersColumn;
 	layoutPrefs.keyboardNavigation = prefs.keyboardNavigation;
 }
 
@@ -95,7 +94,6 @@ export function sharedSettings(): Record<string, Shared> {
 			() => ({
 				spacesColumn: layoutPrefs.spacesColumn,
 				openChats: layoutPrefs.openChats,
-				membersColumn: layoutPrefs.membersColumn,
 				keyboardNavigation: layoutPrefs.keyboardNavigation,
 			}),
 			setLayout,

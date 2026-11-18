@@ -32,9 +32,6 @@
 		/** Removes a member from a group, for its owner. */
 		onRemoveMember?: (userId: string) => void;
 		open?: boolean;
-		/** The members column these opened and closed. It is gone (docs/redesign/DECISIONS.md): both are ignored. */
-		columnOpen?: boolean;
-		onColumn?: (open: boolean) => void;
 	} = $props();
 
 	const members = $derived(given ?? spaceMembers(space));

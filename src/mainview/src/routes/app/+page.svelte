@@ -6,7 +6,6 @@
 	import { get } from "svelte/store";
 	import { keepSessionFresh } from "$lib/api/api";
 	import FriendsView from "$lib/components/FriendsView.svelte";
-	import GuildMemberSidebar from "$lib/components/GuildMemberSidebar.svelte";
 	import PaneView from "$lib/components/PaneView.svelte";
 	import TitleStrip from "$lib/components/TitleStrip.svelte";
 	import KeyboardLayer from "$lib/components/KeyboardLayer.svelte";
@@ -589,8 +588,6 @@
 	});
 
 	const sidebarGuild = $derived(guilds.find((g) => g.id === sidebarSpaceId) ?? activeGuild);
-	const memberSidebarSpaceId = $derived(sidebarSpaceId);
-	const memberSidebarSpace = $derived($gatewaySpaces.find((s) => s.id === memberSidebarSpaceId) ?? null);
 
 	// Each Space's room whose tab the focused pane showed last, which a click on the Space goes back to (spaceLanding).
 	// Only that click reads it, so it isn't state, and it lasts while the app is open.
@@ -988,17 +985,8 @@
 					/>
 				</div>
 			</div>
-			<!-- Nothing is docked beside the chat (#357): a room's members open from its pane's header, in a popover. What
-			     was the members column stays mounted, shut, as it keeps the focused Space's first page of members loaded
-			     for the faces in that header (#327). A conversation has its own members in its view. -->
-			{#if !showFriendsView && !focusedConversationId}
-				<GuildMemberSidebar
-					spaceId={memberSidebarSpaceId}
-					space={memberSidebarSpace}
-					channelId={sidebarActiveChannelId}
-					collapsed
-				/>
-			{/if}
+			<!-- Nothing is docked beside the chat (#357): a room's members open from the faces in its pane's bar
+			     (MembersButton), which load the Space's first page of members themselves; a conversation's from its own. -->
 		</div>
 	</div>
 {/if}

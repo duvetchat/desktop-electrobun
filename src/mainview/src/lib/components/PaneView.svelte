@@ -1258,15 +1258,9 @@
 				{:else if conversationActions && conversationActions.conversationId === activeConversation?.id}
 					{@render conversationActions.actions()}
 				{/if}
-				<!-- A room's members open from their faces, in a popover: nothing is docked beside the chat (#357). The
-				     members column these two props opened and closed is gone. -->
+				<!-- A room's members open from their faces, in a popover: nothing is docked beside the chat (#357). -->
 				{#if activeTabSpace && activeTab && !isConversationTab(activeTab)}
-					<MembersButton
-						space={activeTabSpace}
-						channelId={activeTab.channelId}
-						columnOpen={false}
-						onColumn={() => {}}
-					/>
+					<MembersButton space={activeTabSpace} channelId={activeTab.channelId} />
 				{/if}
 
 				<!-- The pane's own actions: the app's splits, to the right or below, at any depth. -->
