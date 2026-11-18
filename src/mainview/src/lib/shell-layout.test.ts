@@ -100,8 +100,9 @@ test("counts agree with their nouns, and chips stop at 99+", () => {
 	expect(mentionsLabel(3)).toBe("3 mentions");
 	expect(friendRequestsLabel(1)).toBe("1 friend request");
 	expect(friendRequestsLabel(2)).toBe("2 friend requests");
-	expect(quietSpacesLabel(1)).toBe("1 quiet Space");
-	expect(quietSpacesLabel(5)).toBe("5 quiet Spaces");
+	// The quiet Spaces' row reads the same folded and unfolded (#382).
+	expect(quietSpacesLabel(1)).toBe("Quiet · 1");
+	expect(quietSpacesLabel(5)).toBe("Quiet · 5");
 	expect(chipCount(99)).toBe("99");
 	expect(chipCount(100)).toBe("99+");
 });

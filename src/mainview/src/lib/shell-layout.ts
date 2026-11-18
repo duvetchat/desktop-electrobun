@@ -76,7 +76,8 @@ const counted = (count: number, one: string, many: string) => (count === 1 ? `1 
 export const moreChatsLabel = (count: number) => counted(count, "more chat", "more chats");
 export const mentionsLabel = (count: number) => counted(count, "mention", "mentions");
 export const friendRequestsLabel = (count: number) => counted(count, "friend request", "friend requests");
-export const quietSpacesLabel = (count: number) => counted(count, "quiet Space", "quiet Spaces");
+/** The quiet Spaces' row (#382): the same folded and unfolded, whichever Space is open. */
+export const quietSpacesLabel = (count: number) => `Quiet · ${count}`;
 
 /** A count as a chip writes it: 99+ past 99. */
 export const chipCount = (count: number) => (count > 99 ? "99+" : String(count));
