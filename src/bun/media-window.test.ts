@@ -120,7 +120,7 @@ function fakeWindow(id: number, frame: Rect, pinned: boolean) {
 	const handlers = new Map<string, () => void>();
 	const got: WindowStateMessage[] = [];
 	const asked: string[] = [];
-	const state = { frame, pinned, closed: false };
+	const state = { frame, pinned, closed: false, readsAfterClose: 0, frameThrows: false, pinThrows: false };
 	const handle: MediaWindowHandle = {
 		id,
 		focus: () => void asked.push("focus"),
@@ -130,8 +130,17 @@ function fakeWindow(id: number, frame: Rect, pinned: boolean) {
 			asked.push("close");
 			handlers.get("close")?.();
 		},
-		getFrame: () => state.frame,
+		getFrame: () => {
+			if (state.frameThrows) throw new Error("No frame");
+			// A closed window answers with nothing a frame could be, as a destroyed one may.
+			if (state.closed) {
+				state.readsAfterClose++;
+				return { x: 0, y: 0, width: 0, height: 0 };
+			}
+			return state.frame;
+		},
 		setAlwaysOnTop: (on) => {
+			if (state.pinThrows) throw new Error("No level");
 			state.pinned = on;
 			asked.push(`onTop ${on}`);
 		},
@@ -155,8 +164,11 @@ function fixture(kept: string | null = null) {
 	const timers: (() => void)[] = [];
 	let mainFocused = 0;
 	let clock = 0;
+	/** Set for an Electrobun that can't make the window. */
+	const opening = { fails: false };
 	const deps: MediaWindowDeps = {
 		create: (frame, pinned) => {
+			if (opening.fails) throw new Error("No window could be made");
 			const made = fakeWindow(windows.length + 2, frame, pinned);
 			windows.push(made);
 			return made.handle;
@@ -188,6 +200,7 @@ function fixture(kept: string | null = null) {
 	return {
 		media,
 		relay,
+		opening,
 		windows,
 		toMain,
 		log,
@@ -346,6 +359,23 @@ describe("the pin", () => {
 		expect(prefs().pinned).toBe(false);
 	});
 
+	// C-21: setAlwaysOnTop only ever ran on macOS. Where it throws, the pin is refused whole.
+	test("a pin the window can't take changes nothing, and its page is told why", async () => {
+		const { media, windows, wish, prefs, log } = fixture();
+		wish(true);
+		windows[0].state.pinThrows = true;
+		expect(await media.commandFromWindow({ channel: "media-window", name: "pin", args: true })).toEqual({
+			ok: false,
+			error: "The window's level couldn't be set: No level",
+		});
+		expect(prefs().pinned).toBe(false);
+		expect(await media.commandFromWindow({ channel: "media-window", name: "info" })).toEqual({
+			ok: true,
+			result: { pinned: false },
+		});
+		expect(log).toContain("the pin wasn't taken: No level");
+	});
+
 	test("a window opened again is pinned as it was left", () => {
 		const { windows, wish } = fixture(JSON.stringify({ frame: null, pinned: true }));
 		wish(true);
@@ -388,7 +418,50 @@ describe("its size and position", () => {
 		const { windows, wish, prefs } = fixture();
 		wish(true);
 		windows[0].state.frame = { x: 300, y: 500, width: 320, height: 168 };
+		// The move that put it there: its frame is read then, while the window is there to ask (C-15).
+		windows[0].fire("move");
 		windows[0].handle.close();
+		expect(prefs().frame).toEqual({ x: 300, y: 500, width: 320, height: 168 });
+	});
+
+	// C-15 of the redesign's review: the frame was read after close(). That works on macOS, where the pointer outlives
+	// the close; behind a destroyed HWND or GTK window there may be nothing, or anything.
+	test("a closed window is never asked where it is, however it closed", async () => {
+		for (const close of ["own button", "main page's wish", "Put back inside it", "main window closing"] as const) {
+			const { media, windows, wish, prefs } = fixture();
+			wish(true);
+			const popOut = windows[0];
+			popOut.state.frame = { x: 300, y: 500, width: 320, height: 168 };
+			popOut.fire("resize");
+			popOut.state.readsAfterClose = 0;
+			if (close === "own button") popOut.handle.close();
+			else if (close === "main page's wish") wish(false);
+			else if (close === "Put back inside it")
+				await media.commandFromWindow({ channel: "media-window", name: "putBack" });
+			else media.mainClosed();
+			expect(popOut.state.closed).toBe(true);
+			expect(popOut.state.readsAfterClose).toBe(0);
+			expect(prefs().frame).toEqual({ x: 300, y: 500, width: 320, height: 168 });
+		}
+	});
+
+	test("closed from here, it is asked where it is just before, so a move that hasn't rested is kept", () => {
+		const { windows, wish, prefs } = fixture();
+		wish(true);
+		// Moved by something that sent no event (a display unplugged): the close still reads it first.
+		windows[0].state.frame = { x: 80, y: 90, width: 320, height: 168 };
+		wish(false);
+		expect(prefs().frame).toEqual({ x: 80, y: 90, width: 320, height: 168 });
+	});
+
+	test("a window that throws for its frame keeps the last one read", () => {
+		const { windows, wish, prefs } = fixture();
+		wish(true);
+		windows[0].state.frame = { x: 300, y: 500, width: 320, height: 168 };
+		windows[0].fire("move");
+		windows[0].state.frameThrows = true;
+		windows[0].fire("move");
+		wish(false);
 		expect(prefs().frame).toEqual({ x: 300, y: 500, width: 320, height: 168 });
 	});
 
@@ -411,6 +484,36 @@ describe("its size and position", () => {
 		media.stateFromMain({ channel: "media-window", epoch: 1, seq: 1, sentAt: 1, value: { open: true, shown: 0 } });
 		expect(() => made.handle.close()).not.toThrow();
 		expect(log).toContain("couldn't keep the window's place: ENOENT");
+	});
+});
+
+// C-15 of the redesign's review: the main page shows the controls as out from the moment it asks, and nothing told it
+// when no window came.
+describe("a window that can't be made", () => {
+	test("tells the main page it is gone, which docks the controls again", async () => {
+		const { media, relay, opening, windows, toMain, wish, settle, log } = fixture();
+		opening.fails = true;
+		expect(() => wish(true)).not.toThrow();
+		await settle();
+		expect(windows).toHaveLength(0);
+		expect(media.open).toBe(false);
+		expect(relay.mirrors).toBe(0);
+		expect(toMain).toEqual([{ channel: "media-window", name: "closed" }]);
+		expect(log).toContain("couldn't open: No window could be made");
+	});
+
+	test("the next ask tries again", async () => {
+		const { media, opening, windows, toMain, wish, settle } = fixture();
+		opening.fails = true;
+		wish(true);
+		// The main page docked the controls: its wish is closed again, then the person pops them out once more.
+		wish(false);
+		opening.fails = false;
+		wish(true, 1);
+		await settle();
+		expect(windows).toHaveLength(1);
+		expect(media.open).toBe(true);
+		expect(toMain.map((command) => command.name)).toEqual(["closed", "opened"]);
 	});
 });
 

@@ -216,8 +216,15 @@ export class MediaWindows {
 			}
 			case "pin": {
 				if (typeof command.args !== "boolean") return { ok: false, error: "pin takes on or off" };
+				try {
+					this.#window?.setAlwaysOnTop(command.args);
+				} catch (err) {
+					// The window stays as it was, and so does what is kept and what its page shows.
+					const why = err instanceof Error ? err.message : String(err);
+					this.#log(`the pin wasn't taken: ${why}`);
+					return { ok: false, error: `The window's level couldn't be set: ${why}` };
+				}
 				this.#prefs = { ...this.#prefs, pinned: command.args };
-				this.#window?.setAlwaysOnTop(command.args);
 				this.#keep();
 				this.#log(command.args ? "pinned above other windows" : "no longer pinned");
 				return { ok: true, result: { pinned: command.args } };
@@ -225,8 +232,14 @@ export class MediaWindows {
 			case "putBack": {
 				// Closed as its own button closes it: the main page is told, and docks the controls.
 				const window = this.#window;
-				window?.close();
-				if (window && this.#window === window) this.#closed(window);
+				if (!window) return { ok: true, result: null };
+				// Its frame while it has one, then the close: a closed window's is not read (#closed).
+				this.#frameOf(window);
+				try {
+					window.close();
+				} finally {
+					if (this.#window === window) this.#closed(window);
+				}
 				return { ok: true, result: null };
 			}
 			default:
@@ -237,7 +250,16 @@ export class MediaWindows {
 	#open() {
 		const frame = placeMediaWindow(this.#prefs.frame, this.#deps.displays(), this.#deps.mainFrame());
 		const started = this.#now();
-		const window = this.#deps.create(frame, this.#prefs.pinned);
+		let window: MediaWindowHandle;
+		try {
+			window = this.#deps.create(frame, this.#prefs.pinned);
+		} catch (err) {
+			// No window was made: the main page, whose sidebar already shows the controls as out, is told it is gone,
+			// and docks them again.
+			this.#log(`couldn't open: ${err instanceof Error ? err.message : String(err)}`);
+			void this.#tellMain("closed");
+			return;
+		}
 		this.#window = window;
 		this.#log(
 			`opened (window ${window.id}) in ${(this.#now() - started).toFixed(1)} ms at ${JSON.stringify(frame)}` +
@@ -249,8 +271,15 @@ export class MediaWindows {
 			this.#deps.relay.add(window.id, (message) => window.send(message), mediaWindowMirrors);
 			this.#log(`its page mirrors the main window (window ${window.id})`);
 		});
-		window.on("move", () => this.#keepSoon());
-		window.on("resize", () => this.#keepSoon());
+		// Its frame is read as it moves, while the window is there to ask: once it has closed there may be nothing
+		// behind the handle (a destroyed HWND or GTK window), so the frame kept is the last one read here.
+		const moved = () => {
+			if (this.#window !== window) return;
+			this.#frameOf(window);
+			this.#keepSoon();
+		};
+		window.on("move", moved);
+		window.on("resize", moved);
 		window.on("close", () => this.#closed(window));
 		void this.#tellMain("opened");
 	}
@@ -260,6 +289,7 @@ export class MediaWindows {
 		if (!window) return;
 		this.#log(`closing: ${why}`);
 		this.#closing = true;
+		this.#frameOf(window);
 		try {
 			window.close();
 		} finally {
@@ -274,7 +304,8 @@ export class MediaWindows {
 		if (this.#window !== window) return;
 		this.#stopKeeping?.();
 		this.#stopKeeping = null;
-		this.#frameOf(window);
+		// Its frame is not read here: the window is gone. What is kept is the frame read as it last moved, or just
+		// before this closed it.
 		this.#window = null;
 		this.#deps.relay.remove(window.id);
 		this.#keep();
@@ -293,7 +324,7 @@ export class MediaWindows {
 			const frame = rectOf(window.getFrame());
 			if (frame) this.#prefs = { ...this.#prefs, frame };
 		} catch {
-			// A window already gone has no frame to read: the last one kept stands.
+			// A window that can't say where it is: the last frame read stands.
 		}
 	}
 
@@ -302,7 +333,6 @@ export class MediaWindows {
 		const later = this.#deps.later ?? laterByTimeout;
 		this.#stopKeeping = later(() => {
 			this.#stopKeeping = null;
-			if (this.#window) this.#frameOf(this.#window);
 			this.#keep();
 		}, KEEP_AFTER_MS);
 	}

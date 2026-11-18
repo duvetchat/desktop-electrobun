@@ -87,10 +87,27 @@ export function mediaWindowOpener(
 			rpc,
 		});
 		window = made;
-		if (pinned) made.setAlwaysOnTop(true);
-		// The mute and deafen shortcuts are the page's own key handler: on macOS its web view must have the keyboard.
-		keepKeysReachingThePage(made, options.appkit, { nativeButtons });
-		made.webview.on("dom-ready", () => made.webview.setNavigationRules(options.rules));
+		// A window that can't be kept on top still opens: the pin is a preference, not the window.
+		if (pinned) {
+			try {
+				made.setAlwaysOnTop(true);
+			} catch (err) {
+				console.error("[media-window] the window couldn't be kept on top:", err);
+			}
+		}
+		try {
+			// The mute and deafen shortcuts are the page's own key handler: on macOS its web view must have the keyboard.
+			keepKeysReachingThePage(made, options.appkit, { nativeButtons });
+			made.webview.on("dom-ready", () => made.webview.setNavigationRules(options.rules));
+		} catch (err) {
+			// Whoever asked is told no window opened (media-window.ts): none is left behind that nobody drives.
+			try {
+				made.close();
+			} catch {
+				// It never got as far as a window to close.
+			}
+			throw err;
+		}
 		return {
 			id: made.id,
 			focus: () => {
