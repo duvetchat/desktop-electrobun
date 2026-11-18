@@ -22,7 +22,6 @@
 		UserMinus as KickIcon,
 		UserPlus as UserPlusIcon,
 		Users as UsersIcon,
-		X as CloseIcon,
 	} from "@lucide/svelte";
 	import SmilePlusIcon from "$lib/components/ui/icons/SmilePlus.svelte";
 	import { deleteMessage, getMessageThread, pinRoomMessage, unpinRoomMessage } from "$lib/api/messages";
@@ -35,7 +34,7 @@
 	import { confirmAction } from "$lib/stores/confirm.svelte";
 	import { keyboard } from "$lib/keyboard.svelte";
 	import { rowKey, rowToward, staysWithRow, tabStop } from "$lib/message-focus";
-	import { Dialog, DropdownMenu, Popover } from "bits-ui";
+	import { DropdownMenu, Popover } from "bits-ui";
 	import { claimLayer, layerStyle, releaseLayer } from "$lib/overlay-layers";
 	import {
 		currentUser,
@@ -94,10 +93,11 @@
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
 	import ContextMenu from "$lib/components/ui/ContextMenu.svelte";
 	import IconButton from "$lib/components/ui/IconButton.svelte";
+	import Sheet from "$lib/components/ui/Sheet.svelte";
 	import MenuItem from "$lib/components/ui/MenuItem.svelte";
 	import MenuSeparator from "$lib/components/ui/MenuSeparator.svelte";
 	import MenuSub from "$lib/components/ui/MenuSub.svelte";
-	import { buttonClass, GLASS, GLASS_STRONG, MENU_PANEL } from "$lib/components/ui/recipes";
+	import { buttonClass, GLASS, MENU_PANEL } from "$lib/components/ui/recipes";
 	import EmojiPicker from "$lib/components/EmojiPicker.svelte";
 	import ImagePreview from "$lib/components/ImagePreview.svelte";
 	import MemberProfilePopover from "$lib/components/MemberProfilePopover.svelte";
@@ -1793,79 +1793,67 @@
 	</IconButton>
 {/snippet}
 
-<Dialog.Root bind:open={threadModalOpen}>
-	<Dialog.Portal>
-		<Dialog.Overlay class="bg-duvet-scrim animate-scrim-in fixed inset-0 z-50" />
-		<Dialog.Content class="fixed inset-0 z-51 flex items-center justify-center p-4">
-			<div
-				class="{GLASS_STRONG} animate-sheet-in text-duvet-ink flex max-h-[75vh] w-full max-w-2xl flex-col overflow-hidden rounded-[20px]"
-			>
-				<div class="border-duvet-line flex shrink-0 items-center justify-between border-b px-5 py-4">
-					<div>
-						<h2 class="text-duvet-ink font-serif text-[22px] leading-tight">Message thread</h2>
-						{#if threadRootMessage}
-							<p class="text-duvet-ink2 text-xs">From {threadRootMessage.author_name}</p>
+<!-- A message's thread: its messages, each replied to from here, over the thread's own message box. -->
+<Sheet
+	bind:open={threadModalOpen}
+	title="Message thread"
+	description={threadRootMessage ? `From ${threadRootMessage.author_name}` : undefined}
+	class="min-w-[min(672px,calc(100%-48px))]"
+>
+	<div bind:this={threadScrollEl} class="-mx-1 min-h-0 flex-1 overflow-y-auto px-1 py-1">
+		{#if threadLoading}
+			<div class="flex items-center justify-center py-8">
+				<SpinnerIcon class="text-duvet-ink2 size-6 animate-spin" />
+			</div>
+		{:else if threadError}
+			<p class="text-duvet-danger text-sm">{threadError}</p>
+		{:else if threadShown.length === 0}
+			<p class="text-duvet-ink2 text-sm">No thread messages found.</p>
+		{:else}
+			{@const threadMsgMap = new Map(threadShown.map((m) => [m.id, m]))}
+			<div class="flex flex-col gap-2" onclickcapture={openMention}>
+				{#each threadShown as threadMsg (threadMsg.id)}
+					{@const parentMsg = threadMsg.ref_message_id ? threadMsgMap.get(threadMsg.ref_message_id) : null}
+					{@const parentCall = parentMsg ? callNoticeLine(parentMsg, $currentUser?.id, joined) : null}
+					{@const root = threadRootMessage}
+					<div class="group bg-duvet-card shadow-duvet-raised relative rounded-2xl px-3 py-2.5">
+						<!-- As the pins and the search show a message, a reply's quote above it: its quote of a call notice
+						     says what the call's row does -->
+						<MessagePreview
+							message={threadMsg}
+							{spaceId}
+							{channelId}
+							{members}
+							{mentionMap}
+							{customEmojiMap}
+							quotedCall={parentCall}
+							onPreview={previewFromThread}
+						/>
+						<!-- A message of the thread is replied to from here, as from the chat; not a notice, an ephemeral
+						     message, nor one still being sent (its ID is its nonce) -->
+						{#if onThreadReply && root && !isNotice(threadMsg) && !isEphemeral(threadMsg) && threadMsg.id !== threadMsg.nonce}
+							<IconButton
+								label="Reply to {threadMsg.author_name}"
+								title="Reply"
+								size="sm"
+								class="absolute top-1.5 right-1.5 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 focus-visible:opacity-100 motion-reduce:transition-none"
+								onclick={() => onThreadReply(threadMsg, root)}
+							>
+								<ReplyIcon size={14} />
+							</IconButton>
 						{/if}
 					</div>
-					<IconButton label="Close" onclick={() => (threadModalOpen = false)}>
-						<CloseIcon size={16} />
-					</IconButton>
-				</div>
-				<div bind:this={threadScrollEl} class="min-h-0 flex-1 overflow-y-auto px-5 py-4">
-					{#if threadLoading}
-						<div class="flex items-center justify-center py-8">
-							<SpinnerIcon class="text-duvet-ink2 size-6 animate-spin" />
-						</div>
-					{:else if threadError}
-						<p class="text-duvet-danger text-sm">{threadError}</p>
-					{:else if threadShown.length === 0}
-						<p class="text-duvet-ink2 text-sm">No thread messages found.</p>
-					{:else}
-						{@const threadMsgMap = new Map(threadShown.map((m) => [m.id, m]))}
-						<div class="flex flex-col gap-2" onclickcapture={openMention}>
-							{#each threadShown as threadMsg (threadMsg.id)}
-								{@const parentMsg = threadMsg.ref_message_id ? threadMsgMap.get(threadMsg.ref_message_id) : null}
-								{@const parentCall = parentMsg ? callNoticeLine(parentMsg, $currentUser?.id, joined) : null}
-								{@const root = threadRootMessage}
-								<div class="group bg-duvet-card shadow-duvet-raised relative rounded-2xl px-3 py-2.5">
-									<!-- As the pins and the search show a message, a reply's quote above it: its quote of a call notice
-									     says what the call's row does -->
-									<MessagePreview
-										message={threadMsg}
-										{spaceId}
-										{channelId}
-										{members}
-										{mentionMap}
-										{customEmojiMap}
-										quotedCall={parentCall}
-										onPreview={previewFromThread}
-									/>
-									<!-- A message of the thread is replied to from here, as from the chat; not a notice, an ephemeral
-									     message, nor one still being sent (its ID is its nonce) -->
-									{#if onThreadReply && root && !isNotice(threadMsg) && !isEphemeral(threadMsg) && threadMsg.id !== threadMsg.nonce}
-										<IconButton
-											label="Reply to {threadMsg.author_name}"
-											title="Reply"
-											size="sm"
-											class="absolute top-1.5 right-1.5 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 focus-visible:opacity-100 motion-reduce:transition-none"
-											onclick={() => onThreadReply(threadMsg, root)}
-										>
-											<ReplyIcon size={14} />
-										</IconButton>
-									{/if}
-								</div>
-							{/each}
-						</div>
-					{/if}
-				</div>
-				<!-- The thread's own message box, which replies in it -->
-				{#if threadComposer && threadRootMessage && !threadLoading && !threadError}
-					{@render threadComposer(threadRootMessage)}
-				{/if}
+				{/each}
 			</div>
-		</Dialog.Content>
-	</Dialog.Portal>
-</Dialog.Root>
+		{/if}
+	</div>
+	<!-- The thread's own message box, which replies in it -->
+	{#if threadComposer && threadRootMessage && !threadLoading && !threadError}
+		<div class="-mx-4 -mb-4">
+			{@render threadComposer(threadRootMessage)}
+		</div>
+	{/if}
+</Sheet>
 
 <ImagePreview src={previewSrc} alt={previewAlt} bind:open={previewOpen} />
 
@@ -1888,54 +1876,48 @@
 
 <!-- Staff: Flags & Badges Editor -->
 {#if flagsBadgesTarget}
-	<Dialog.Root bind:open={flagsBadgesOpen}>
-		<Dialog.Portal>
-			<Dialog.Overlay class="bg-duvet-scrim animate-scrim-in fixed inset-0 z-500" />
-			<Dialog.Content class="fixed inset-0 z-501 flex items-center justify-center p-4">
-				<div class="{GLASS_STRONG} animate-sheet-in text-duvet-ink w-full max-w-sm rounded-[20px] p-6">
-					<h2 class="mb-3 font-serif text-[22px] leading-tight">Edit flags and badges</h2>
-					<p class="text-duvet-ink2 mb-4 text-xs">User: {flagsBadgesTarget.id}</p>
+	<Sheet
+		bind:open={flagsBadgesOpen}
+		title="Edit flags and badges"
+		description="User: {flagsBadgesTarget.id}"
+		class="max-w-[384px]"
+	>
+		<fieldset class="flex flex-col gap-2">
+			<legend class="text-duvet-ink2 mb-2 text-[13px] font-semibold">Flags</legend>
+			{#each FLAGS as f}
+				<label class="flex items-center gap-2 text-sm">
+					<input
+						type="checkbox"
+						checked={!!(editFlags & f.flag)}
+						onchange={() => toggleFlag(f.flag)}
+						class="accent-duvet-accent"
+					/>
+					{f.name}
+				</label>
+			{/each}
+		</fieldset>
 
-					<div class="mb-4 space-y-2">
-						<h3 class="text-duvet-ink2 text-[13px] font-semibold">Flags</h3>
-						{#each FLAGS as f}
-							<label class="flex items-center gap-2 text-sm">
-								<input
-									type="checkbox"
-									checked={!!(editFlags & f.flag)}
-									onchange={() => toggleFlag(f.flag)}
-									class="accent-duvet-accent"
-								/>
-								{f.name}
-							</label>
-						{/each}
-					</div>
+		<fieldset class="flex flex-col gap-2">
+			<legend class="text-duvet-ink2 mb-2 text-[13px] font-semibold">Badges</legend>
+			{#each BADGES as b}
+				<label class="flex items-center gap-2 text-sm">
+					<input
+						type="checkbox"
+						checked={!!(editBadges & b.flag)}
+						onchange={() => toggleBadge(b.flag)}
+						class="accent-duvet-accent"
+					/>
+					{b.name}
+				</label>
+			{/each}
+		</fieldset>
 
-					<div class="mb-6 space-y-2">
-						<h3 class="text-duvet-ink2 text-[13px] font-semibold">Badges</h3>
-						{#each BADGES as b}
-							<label class="flex items-center gap-2 text-sm">
-								<input
-									type="checkbox"
-									checked={!!(editBadges & b.flag)}
-									onchange={() => toggleBadge(b.flag)}
-									class="accent-duvet-accent"
-								/>
-								{b.name}
-							</label>
-						{/each}
-					</div>
-
-					<div class="flex gap-2">
-						<button type="button" class={buttonClass("primary")} disabled={flagsBadgesSaving} onclick={saveFlagsBadges}>
-							{flagsBadgesSaving ? "Saving…" : "Save"}
-						</button>
-						<button type="button" class={buttonClass("secondary")} onclick={() => (flagsBadgesOpen = false)}>
-							Cancel
-						</button>
-					</div>
-				</div>
-			</Dialog.Content>
-		</Dialog.Portal>
-	</Dialog.Root>
+		{#snippet foot()}
+			<span></span>
+			<button type="button" class={buttonClass("quiet")} onclick={() => (flagsBadgesOpen = false)}>Cancel</button>
+			<button type="button" class={buttonClass("primary")} disabled={flagsBadgesSaving} onclick={saveFlagsBadges}>
+				{flagsBadgesSaving ? "Saving…" : "Save"}
+			</button>
+		{/snippet}
+	</Sheet>
 {/if}

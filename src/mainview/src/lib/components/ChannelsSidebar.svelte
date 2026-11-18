@@ -18,7 +18,6 @@
 		Pencil as PencilIcon,
 	} from "@lucide/svelte";
 
-	import { Dialog } from "bits-ui";
 	import { onMount } from "svelte";
 	import { categoryDropPosition, topLevelEnd, type Guild, type Channel, type RoomType } from "$lib/types";
 	import { hasPermission, Permission } from "$lib/permissions";
@@ -28,7 +27,12 @@
 	import { createRoom, deleteRoom, updateRoom } from "$lib/api/rooms";
 	import InviteModal from "$lib/components/InviteModal.svelte";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
+	import Button from "$lib/components/ui/Button.svelte";
 	import ContextMenu from "$lib/components/ui/ContextMenu.svelte";
+	import Dialog from "$lib/components/ui/Dialog.svelte";
+	import Sheet from "$lib/components/ui/Sheet.svelte";
+	import { SELECT } from "$lib/components/settings/recipes";
+	import { FIELD_LABEL, fieldClass } from "$lib/overlay-forms";
 	import MenuItem from "$lib/components/ui/MenuItem.svelte";
 	import MenuSeparator from "$lib/components/ui/MenuSeparator.svelte";
 	import { MENU_PANEL, menuItemClass } from "$lib/components/ui/recipes";
@@ -70,6 +74,7 @@
 	let newChannelType = $state<RoomType>(1);
 	let newChannelCategory = $state<string | null>(null);
 	let isCreating = $state(false);
+	let roomNameField = $state<HTMLInputElement | null>(null);
 
 	let confirmDeleteChannel = $state<Channel | null>(null);
 	let isDeletingChannel = $state(false);
@@ -373,10 +378,6 @@
 		};
 	}
 
-	function focusOnMount(node: HTMLElement) {
-		node.focus();
-	}
-
 	onMount(() => {
 		// ensure first button is focusable for keyboard users
 		const firstBtn = buttons.at(0);
@@ -621,106 +622,87 @@
 
 <ServerSettings bind:open={showServerSettings} space={space ?? null} spaceId={guild.id} />
 
-<Dialog.Root bind:open={showCreateModal}>
-	<Dialog.Portal>
-		<Dialog.Overlay class="fixed inset-0 z-50 bg-black/60" />
-		<Dialog.Content class="text-duvet-ink fixed inset-0 z-50 flex items-center justify-center p-4">
-			<div class="rounded-card border-duvet-line bg-duvet-bg shadow-duvet-float w-full max-w-sm border p-5">
-				<h2 class="text-duvet-ink mb-4 text-lg font-semibold">Create Room</h2>
+<!-- Create room: its kind, its category (a category has none) and its name. Enter in the name creates it. -->
+<Sheet
+	bind:open={showCreateModal}
+	title="Create room"
+	class="max-w-[400px]"
+	onOpenAutoFocus={(e) => {
+		e.preventDefault();
+		roomNameField?.focus();
+	}}
+>
+	<div class="flex flex-col gap-1.5">
+		<label for="channelType" class={FIELD_LABEL}>Room type</label>
+		<select id="channelType" bind:value={newChannelType} class="{SELECT} h-[38px]! w-full max-w-none!">
+			<option value={1}>Text room</option>
+			<option value={2}>Voice room</option>
+			<option value={3}>Category</option>
+		</select>
+	</div>
 
-				<div class="mb-4">
-					<label for="channelType" class="text-duvet-ink2 mb-1 block text-[13px] font-bold">Room Type</label>
-					<select
-						id="channelType"
-						bind:value={newChannelType}
-						class="bg-duvet-sunk text-duvet-ink shadow-duvet-press focus-visible:outline-duvet-accent h-10 w-full rounded-xl px-3 text-sm focus-visible:outline-2"
-					>
-						<option value={1}>Text Room</option>
-						<option value={2}>Voice Room</option>
-						<option value={3}>Category</option>
-					</select>
-				</div>
+	{#if newChannelType !== 3}
+		<div class="flex flex-col gap-1.5">
+			<label for="channelCategory" class={FIELD_LABEL}>Category</label>
+			<select id="channelCategory" bind:value={newChannelCategory} class="{SELECT} h-[38px]! w-full max-w-none!">
+				<option value={null}>None</option>
+				{#each categories as category}
+					<option value={category.id}>{category.name}</option>
+				{/each}
+			</select>
+		</div>
+	{/if}
 
-				{#if newChannelType !== 3}
-					<div class="mb-4">
-						<label for="channelCategory" class="text-duvet-ink2 mb-1 block text-[13px] font-bold">Category</label>
-						<select
-							id="channelCategory"
-							bind:value={newChannelCategory}
-							class="bg-duvet-sunk text-duvet-ink shadow-duvet-press focus-visible:outline-duvet-accent h-10 w-full rounded-xl px-3 text-sm focus-visible:outline-2"
-						>
-							<option value={null}>None</option>
-							{#each categories as category}
-								<option value={category.id}>{category.name}</option>
-							{/each}
-						</select>
-					</div>
+	<div class="flex flex-col gap-1.5">
+		<label for="channelName" class={FIELD_LABEL}>Room name</label>
+		<div class="relative">
+			<span
+				class="text-duvet-ink2 pointer-events-none absolute top-1/2 left-3 grid -translate-y-1/2"
+				aria-hidden="true"
+			>
+				{#if newChannelType === 1}
+					<HashIcon size={15} />
+				{:else}
+					<SpeakerSimpleHighIcon size={15} />
 				{/if}
+			</span>
+			<input
+				id="channelName"
+				type="text"
+				bind:this={roomNameField}
+				bind:value={newChannelName}
+				class="{fieldClass()} pl-9"
+				placeholder="new-room"
+				maxlength={64}
+				onkeydown={(e) => e.key === "Enter" && handleCreateChannel()}
+			/>
+		</div>
+	</div>
 
-				<div class="mb-5">
-					<label for="channelName" class="text-duvet-ink2 mb-1 block text-[13px] font-bold">Room Name</label>
-					<div class="relative">
-						<span class="text-duvet-ink2 absolute top-2.5 left-3">
-							{#if newChannelType === 1}
-								#
-							{:else}
-								🔊
-							{/if}
-						</span>
-						<input
-							id="channelName"
-							type="text"
-							bind:value={newChannelName}
-							class="text-duvet-ink placeholder:text-duvet-ink2 bg-duvet-sunk shadow-duvet-press focus-visible:outline-duvet-accent h-10 w-full rounded-xl pr-3 pl-8 text-sm focus-visible:outline-2"
-							placeholder="new-room"
-							maxlength={64}
-							onkeydown={(e) => e.key === "Enter" && handleCreateChannel()}
-							use:focusOnMount
-						/>
-					</div>
-				</div>
+	{#snippet foot()}
+		<span></span>
+		<Button variant="quiet" onclick={() => (showCreateModal = false)}>Cancel</Button>
+		<Button onclick={handleCreateChannel} disabled={!newChannelName.trim() || isCreating}>Create room</Button>
+	{/snippet}
+</Sheet>
 
-				<div class="flex justify-end gap-2">
-					<Dialog.Close class="text-duvet-ink hover:bg-duvet-card hover:text-duvet-ink rounded-md px-3 py-2 text-sm"
-						>Cancel</Dialog.Close
-					>
-					<button
-						class="bg-duvet-accent text-duvet-on-accent shadow-duvet-raised rounded-xl px-4 py-2 text-sm font-bold transition-colors hover:brightness-110 disabled:opacity-50 motion-reduce:transition-none"
-						onclick={handleCreateChannel}
-						disabled={!newChannelName.trim() || isCreating}
-					>
-						Create Room
-					</button>
-				</div>
-			</div>
-		</Dialog.Content>
-	</Dialog.Portal>
-</Dialog.Root>
-
-<Dialog.Root open={!!confirmDeleteChannel} onOpenChange={(v) => !v && (confirmDeleteChannel = null)}>
-	<Dialog.Portal>
-		<Dialog.Overlay class="fixed inset-0 z-50 bg-black/50" />
-		<Dialog.Content class="text-duvet-ink fixed inset-0 z-50 flex items-center justify-center p-4">
-			<div class="rounded-card border-duvet-line bg-duvet-card shadow-duvet-float w-96 border p-6">
-				<h2 class="text-duvet-ink mb-2 text-xl font-bold">Delete Room</h2>
-				<p class="text-duvet-ink2 mb-6">
-					Are you sure you want to delete
-					<span class="text-duvet-ink font-semibold">#{confirmDeleteChannel?.name}</span>? This action cannot be undone.
-				</p>
-				<div class="flex justify-end gap-3">
-					<Dialog.Close class="text-duvet-ink px-4 py-2 hover:underline">Cancel</Dialog.Close>
-					<button
-						class="text-duvet-on-danger bg-duvet-danger hover:bg-duvet-danger/85 rounded px-4 py-2 transition-colors disabled:opacity-50 motion-reduce:transition-none"
-						onclick={handleDeleteChannel}
-						disabled={isDeletingChannel}
-					>
-						Delete Room
-					</button>
-				</div>
-			</div>
-		</Dialog.Content>
-	</Dialog.Portal>
-</Dialog.Root>
+<!-- Delete room: asked first. While it's being deleted the question stays, and can't be dismissed. -->
+<Dialog
+	bind:open={
+		() => !!confirmDeleteChannel,
+		(v) => {
+			if (!v && !isDeletingChannel) confirmDeleteChannel = null;
+		}
+	}
+	title="Delete room"
+	escapeKeydownBehavior={isDeletingChannel ? "ignore" : "close"}
+>
+	Delete <span class="text-duvet-ink font-semibold">#{confirmDeleteChannel?.name}</span>? This can't be undone.
+	{#snippet actions()}
+		<Button variant="quiet" disabled={isDeletingChannel} onclick={() => (confirmDeleteChannel = null)}>Cancel</Button>
+		<Button variant="danger" disabled={isDeletingChannel} onclick={handleDeleteChannel}>Delete</Button>
+	{/snippet}
+</Dialog>
 
 <InviteModal bind:open={showInviteModal} channel={inviteModalChannel} spaceId={guild.id} />
 

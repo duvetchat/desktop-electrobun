@@ -443,7 +443,7 @@ Every other string in the window is the media controls' own, above.
 | Search | the search field's placeholder | change: "Search messages" (`components/MessageSearch.svelte:441`) | same: the field is narrow |
 | Search messages | its `aria-label` | keep (`components/MessageSearch.svelte:442`) | none |
 | Search this chat | its tooltip; ⌘F / Ctrl F if adopted | new | same |
-| More | the **…** button: tooltip and `aria-label` | change: "Group options" (`components/ConversationView.svelte:1066`) | same |
+| More · More for this group | the pane's **…** button, and a group's own beside it: tooltip and `aria-label`. A group's pane has both, so the group's says whose it is (the lead's ruling, Phase 3) | change: "Group options" (`components/ConversationView.svelte`) | same |
 | Notifications · Invite people · Split with a chat · Copy link · Room settings · Space settings · Add people · Rename group · Leave group | the More menu, as each applies | keep (`components/PaneView.svelte:1442`, `components/ConversationView.svelte:1002, 1077, 1082`) | "Mark as read", "Open in new window": proposal |
 
 ### 4.7 Messages
@@ -585,7 +585,7 @@ Because their surface changes. Each is in [§4](#4-strings-the-new-layout-needs)
 | Status: {status} | `components/StatusMenu.svelte:36` | the profile row's label |
 | Do Not Disturb | `lib/status.ts:17` | Do not disturb |
 | Open the conversation | `components/CallCard.svelte:107` | Open the chat |
-| Group options | `components/ConversationView.svelte:1066` | More |
+| Group options | `components/ConversationView.svelte` | More for this group |
 | Open emoji picker · Open sticker picker · Open GIF picker | `components/ChatInput.svelte:1439-1474` | one button and a picker with tabs |
 | escape to cancel • enter to save | `components/MessageList.svelte:1142-1147` | the edit strip |
 | Close · Close Others · Close to the Left · Close to the Right · Close All | `components/TabBar.svelte:250-273` | sentence case, "tab" named |

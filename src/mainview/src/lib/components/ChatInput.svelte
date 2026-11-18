@@ -20,6 +20,7 @@
 	import MenuItem from "$lib/components/ui/MenuItem.svelte";
 	import Segmented from "$lib/components/ui/Segmented.svelte";
 	import { GLASS } from "$lib/components/ui/recipes";
+	import { claimLayer, layerStyle, releaseLayer } from "$lib/overlay-layers";
 	import EmojiPicker from "$lib/components/EmojiPicker.svelte";
 	import StickerPicker from "$lib/components/StickerPicker.svelte";
 	import GifPicker from "$lib/components/GifPicker.svelte";
@@ -108,6 +109,13 @@
 	// menu opens it on GIFs or on stickers.
 	type PickerTab = "emoji" | "gif" | "sticker";
 	let showPicker = $state(false);
+	// The pickers' layer, claimed as they open (lib/overlay-layers.ts): the thread's message box is in a sheet, and
+	// its pickers open in front of it.
+	const pickerLayer = $derived(showPicker ? claimLayer() : 0);
+	$effect(() => {
+		const mine = pickerLayer;
+		if (mine) return () => releaseLayer(mine);
+	});
 	let pickerTab = $state<PickerTab>("emoji");
 	let showPlusMenu = $state(false);
 	const pickerTabs = $derived<{ value: PickerTab; label: string }[]>(
@@ -1503,28 +1511,30 @@
 					<SmilePlusIcon size={18} />
 				</Popover.Trigger>
 				<Popover.Portal>
-					<Popover.Content
-						side="top"
-						align="end"
-						sideOffset={10}
-						collisionPadding={10}
-						class="z-80 outline-none"
-						role="dialog"
-						aria-label={editing ? "Emoji" : "Emoji, GIFs and stickers"}
-					>
-						<div class="flex flex-col gap-2">
-							{#if pickerTabs.length > 1}
-								<Segmented options={pickerTabs} bind:value={pickerTab} label="What to pick" size="sm" />
-							{/if}
-							{#if pickerTab === "gif" && !editing}
-								<GifPicker onSelect={handleGifPick} />
-							{:else if pickerTab === "sticker" && !editing && spaceStickers.length > 0}
-								<StickerPicker stickers={spaceStickers} onSelect={handleStickerPick} />
-							{:else}
-								<EmojiPicker onSelect={handleEmojiPick} {customEmojis} />
-							{/if}
-						</div>
-					</Popover.Content>
+					<div class="fixed top-0 left-0" style={layerStyle(pickerLayer)}>
+						<Popover.Content
+							side="top"
+							align="end"
+							sideOffset={10}
+							collisionPadding={10}
+							class="outline-none"
+							role="dialog"
+							aria-label={editing ? "Emoji" : "Emoji, GIFs and stickers"}
+						>
+							<div class="flex flex-col gap-2">
+								{#if pickerTabs.length > 1}
+									<Segmented options={pickerTabs} bind:value={pickerTab} label="What to pick" size="sm" />
+								{/if}
+								{#if pickerTab === "gif" && !editing}
+									<GifPicker onSelect={handleGifPick} />
+								{:else if pickerTab === "sticker" && !editing && spaceStickers.length > 0}
+									<StickerPicker stickers={spaceStickers} onSelect={handleStickerPick} />
+								{:else}
+									<EmojiPicker onSelect={handleEmojiPick} {customEmojis} />
+								{/if}
+							</div>
+						</Popover.Content>
+					</div>
 				</Popover.Portal>
 			</Popover.Root>
 

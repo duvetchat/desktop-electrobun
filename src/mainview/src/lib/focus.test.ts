@@ -44,7 +44,6 @@ describe("the focus outline", () => {
 			// The panels of popovers, menus, dialogs and sheets: they take the focus as they open, to hand it to what
 			// they hold, and a ring around a whole panel marks nothing.
 			"lib/components/ComponentSelect.svelte": 1,
-			"lib/components/ConversationView.svelte": 1,
 			"lib/components/MemberProfilePopover.svelte": 1,
 			"lib/components/MembersButton.svelte": 1,
 			"lib/components/MessageSearch.svelte": 1,
@@ -54,7 +53,7 @@ describe("the focus outline", () => {
 			"lib/components/ui/Sheet.svelte": 1,
 			"lib/components/ui/recipes.ts": 1,
 			// A panel, and a field whose wrapper draws the ring.
-			"lib/components/FriendsView.svelte": 2,
+			"lib/components/FriendsView.svelte": 1,
 			"lib/components/settings/SettingsFrame.svelte": 2,
 			// Fields whose wrapper draws the ring (focus-within).
 			"lib/components/InviteModal.svelte": 1,

@@ -28,7 +28,6 @@
 	import { onMount, tick, untrack, type Snippet } from "svelte";
 	import { get } from "svelte/store";
 	import { showChat } from "$lib/on-screen";
-	import { DropdownMenu } from "bits-ui";
 	import {
 		conversations,
 		currentUser,
@@ -110,6 +109,10 @@
 	import { activityLine, shownActivities } from "$lib/activity";
 	import ChatIntro from "$lib/components/ChatIntro.svelte";
 	import { buttonClass, pillClass } from "$lib/components/ui/recipes";
+	import Menu from "$lib/components/ui/Menu.svelte";
+	import MenuItem from "$lib/components/ui/MenuItem.svelte";
+	import Sheet from "$lib/components/ui/Sheet.svelte";
+	import { ERROR_NOTE } from "$lib/overlay-forms";
 	import StatusDot from "$lib/components/StatusDot.svelte";
 	import SpaceIcon from "$lib/components/SpaceIcon.svelte";
 
@@ -1012,8 +1015,6 @@
 {#snippet actions()}
 	{@const buttonClass =
 		"text-duvet-ink2 hover:bg-duvet-card hover:text-duvet-ink focus-visible:outline-duvet-accent flex items-center gap-1 rounded-lg p-1.5 text-xs font-semibold transition-colors focus-visible:outline-2 disabled:cursor-not-allowed disabled:opacity-40 motion-reduce:transition-none"}
-	{@const groupMenuItem =
-		"rounded-row flex w-full cursor-pointer items-center gap-2.5 px-2.5 py-2 text-left text-sm font-medium transition-colors data-highlighted:bg-duvet-bg/60 motion-reduce:transition-none"}
 	<button
 		type="button"
 		class={buttonClass}
@@ -1025,7 +1026,7 @@
 		<Phone class="size-4" />
 	</button>
 	{#if conversation.type === 2 && isOwner}
-		<button type="button" class={buttonClass} onclick={openAddMemberModal} title="Add member">
+		<button type="button" class={buttonClass} onclick={openAddMemberModal} title="Add people" aria-label="Add people">
 			<UserPlus class="size-4" />
 			Add
 		</button>
@@ -1042,29 +1043,24 @@
 		<MessageSearch conversationId={conversation.id} members={convMembers} toDirectMessage={toMessage} />
 	{/key}
 	{#if actionsOnGroup.leave}
-		<DropdownMenu.Root>
-			<DropdownMenu.Trigger class={buttonClass} title="More" aria-label="More">
-				<Ellipsis class="size-4" />
-			</DropdownMenu.Trigger>
-			<DropdownMenu.Portal>
-				<DropdownMenu.Content
-					class="rounded-card border-duvet-line bg-duvet-card text-duvet-ink shadow-duvet-float focus-override z-200 min-w-44 border p-1.5 outline-none"
-					sideOffset={4}
-					align="end"
+		<!-- The group's own menu. The pane has a More of its own beside it, so this one says whose it is. -->
+		<Menu align="end" label="More for this group">
+			{#snippet trigger(props)}
+				<button
+					{...props}
+					type="button"
+					class={buttonClass}
+					title="More for this group"
+					aria-label="More for this group"
 				>
-					{#if actionsOnGroup.rename}
-						<DropdownMenu.Item class={groupMenuItem} onSelect={renameGroup}>
-							<Pencil class="text-duvet-ink2 size-4" />
-							Rename group
-						</DropdownMenu.Item>
-					{/if}
-					<DropdownMenu.Item class="{groupMenuItem} text-duvet-danger" onSelect={leaveGroup}>
-						<LogOut class="size-4" />
-						Leave group
-					</DropdownMenu.Item>
-				</DropdownMenu.Content>
-			</DropdownMenu.Portal>
-		</DropdownMenu.Root>
+					<Ellipsis class="size-4" />
+				</button>
+			{/snippet}
+			{#if actionsOnGroup.rename}
+				<MenuItem icon={Pencil} onSelect={renameGroup}>Rename group</MenuItem>
+			{/if}
+			<MenuItem icon={LogOut} danger onSelect={leaveGroup}>Leave group</MenuItem>
+		</Menu>
 	{/if}
 {/snippet}
 
@@ -1162,56 +1158,35 @@
 	</div>
 </div>
 
-{#if showAddMemberModal}
-	<div
-		class="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
-		role="button"
-		tabindex="-1"
-		onclick={() => {
-			showAddMemberModal = false;
-		}}
-		onkeydown={() => {}}
-	>
-		<!-- svelte-ignore a11y_interactive_supports_focus -->
-		<div
-			class="border-duvet-line bg-duvet-bg flex w-80 flex-col gap-3 rounded-lg border p-6"
-			role="dialog"
-			onclick={(e) => e.stopPropagation()}
-			onkeydown={() => {}}
-		>
-			<h3 class="text-duvet-ink text-sm font-semibold">Add member</h3>
-			{#if eligibleFriends.length === 0}
-				<p class="text-duvet-ink2 py-4 text-center text-xs">No friends available to add</p>
-			{:else}
-				<div class="flex max-h-48 flex-col gap-0.5 overflow-y-auto">
-					{#each eligibleFriends as friend (friend.id)}
-						{@const uid = getFriendOtherId(friend)}
-						{@const other = friendUser(friend, $currentUser?.id)}
-						<button
-							class="hover:bg-duvet-card flex items-center gap-2 rounded px-3 py-2 text-left disabled:opacity-50"
-							onclick={() => handleAddMember(uid)}
-							disabled={addMemberLoading}
-						>
-							<UserAvatar src={getAvatarURL(other.id, other.avatar)} name={other.alias ?? other.username} size={32} />
-							<div class="flex min-w-0 flex-col">
-								<span class="text-duvet-ink text-sm">{other.alias ?? other.username}</span>
-								<span class="text-duvet-ink2 text-xs">@{other.username}</span>
-							</div>
-						</button>
-					{/each}
-				</div>
-			{/if}
-			{#if addMemberError}
-				<p class="bg-duvet-danger/10 text-duvet-danger rounded px-3 py-2 text-xs">{addMemberError}</p>
-			{/if}
-			<button
-				class="text-duvet-ink2 hover:text-duvet-ink self-end text-xs"
-				onclick={() => {
-					showAddMemberModal = false;
-				}}
-			>
-				Cancel
-			</button>
+<!-- Add people to the group: the friends who aren't in it yet, each a button that adds them. -->
+<Sheet bind:open={showAddMemberModal} title="Add people" class="max-w-[400px]">
+	{#if eligibleFriends.length === 0}
+		<p class="text-duvet-ink2 py-4 text-center text-[13px]">No friends left to add</p>
+	{:else}
+		<div class="-mx-1 flex max-h-64 flex-col gap-0.5 overflow-y-auto px-1 py-1">
+			{#each eligibleFriends as friend (friend.id)}
+				{@const uid = getFriendOtherId(friend)}
+				{@const other = friendUser(friend, $currentUser?.id)}
+				<button
+					type="button"
+					class="hover:bg-duvet-hover focus-visible:outline-duvet-accent flex items-center gap-2.5 rounded-[11px] px-2.5 py-2 text-left transition-colors focus-visible:outline-2 disabled:opacity-45 motion-reduce:transition-none"
+					onclick={() => handleAddMember(uid)}
+					disabled={addMemberLoading}
+				>
+					<UserAvatar src={getAvatarURL(other.id, other.avatar)} name={other.alias ?? other.username} size={32} />
+					<span class="flex min-w-0 flex-col">
+						<span class="text-duvet-ink truncate text-[13.5px] font-medium">{other.alias ?? other.username}</span>
+						<span class="text-duvet-ink2 truncate text-xs">@{other.username}</span>
+					</span>
+				</button>
+			{/each}
 		</div>
-	</div>
-{/if}
+	{/if}
+	{#if addMemberError}
+		<p class={ERROR_NOTE} role="alert">{addMemberError}</p>
+	{/if}
+	{#snippet foot()}
+		<span></span>
+		<button type="button" class={buttonClass("quiet")} onclick={() => (showAddMemberModal = false)}>Cancel</button>
+	{/snippet}
+</Sheet>
