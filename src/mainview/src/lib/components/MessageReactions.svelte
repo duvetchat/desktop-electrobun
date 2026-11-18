@@ -28,8 +28,8 @@
 			{@const mine = $currentUser ? reaction.users.includes($currentUser.id) : false}
 			<button
 				class="inline-flex items-center gap-1.5 rounded-lg border px-2 py-1 text-sm transition-colors {mine
-					? 'border-indigo-500/40 bg-indigo-500/20 text-indigo-300'
-					: 'border-zinc-700 bg-zinc-800/60 text-zinc-400 hover:bg-zinc-700/60'}"
+					? 'border-duvet-accent/40 bg-duvet-accent/20 text-duvet-accent-text'
+					: 'border-duvet-line bg-duvet-card/60 text-duvet-ink2 hover:bg-duvet-ink/8'}"
 				onclick={() => onToggle(reaction)}
 				oncontextmenu={(e) => {
 					e.preventDefault();

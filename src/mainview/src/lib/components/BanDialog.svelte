@@ -62,18 +62,18 @@
 				reasonEl?.focus();
 			}}
 		>
-			<div class="w-full max-w-md rounded-xl border border-zinc-700 bg-zinc-900 p-5 shadow-2xl">
+			<div class="rounded-card border-duvet-line bg-duvet-bg shadow-duvet-float w-full max-w-md border p-5">
 				{#if target}
-					<AlertDialog.Title class="mb-1 text-sm font-semibold text-white">Ban {target.name}?</AlertDialog.Title>
-					<AlertDialog.Description class="mb-4 text-sm text-zinc-300">
+					<AlertDialog.Title class="text-duvet-ink mb-1 text-sm font-semibold">Ban {target.name}?</AlertDialog.Title>
+					<AlertDialog.Description class="text-duvet-ink mb-4 text-sm">
 						They're removed from {target.spaceName}, and can't join it again until they're unbanned.
 					</AlertDialog.Description>
 					<label
 						for="ban-reason"
-						class="mb-1.5 flex items-baseline justify-between gap-2 text-xs font-medium text-zinc-400"
+						class="text-duvet-ink2 mb-1.5 flex items-baseline justify-between gap-2 text-xs font-medium"
 					>
-						<span>Reason <span class="font-normal text-zinc-500">(optional)</span></span>
-						<span class="tabular-nums {tooLong ? 'text-red-400' : 'text-zinc-500'}">{length}/{REASON_MAX}</span>
+						<span>Reason <span class="text-duvet-ink2 font-normal">(optional)</span></span>
+						<span class="tabular-nums {tooLong ? 'text-duvet-danger' : 'text-duvet-ink2'}">{length}/{REASON_MAX}</span>
 					</label>
 					<textarea
 						id="ban-reason"
@@ -82,7 +82,7 @@
 						rows="3"
 						disabled={banning}
 						placeholder="Why they're banned, for whoever manages the bans"
-						class="w-full resize-none rounded-md border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-white placeholder-zinc-500 outline-none focus:border-stone-500 disabled:opacity-60"
+						class="bg-duvet-sunk text-duvet-ink placeholder:text-duvet-ink2 shadow-duvet-press focus-visible:outline-duvet-accent w-full resize-none rounded-xl px-3 py-2 text-sm focus-visible:outline-2 disabled:opacity-60"
 						onkeydown={(e) => {
 							if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
 								e.preventDefault();
@@ -91,17 +91,17 @@
 						}}
 					></textarea>
 					{#if tooLong}
-						<p class="mt-1 text-xs text-red-400">A reason takes {REASON_MAX} characters at most.</p>
+						<p class="text-duvet-danger mt-1 text-xs">A reason takes {REASON_MAX} characters at most.</p>
 					{/if}
 					<div class="mt-4 flex justify-end gap-2">
 						<AlertDialog.Cancel
-							class="rounded-md px-3 py-1.5 text-sm font-medium text-zinc-300 transition-colors hover:bg-zinc-800 disabled:opacity-50"
+							class="text-duvet-ink hover:bg-duvet-card rounded-md px-3 py-1.5 text-sm font-medium transition-colors disabled:opacity-50"
 							disabled={banning}
 						>
 							Cancel
 						</AlertDialog.Cancel>
 						<button
-							class="text-fixed-white flex min-w-20 items-center justify-center gap-1.5 rounded-md bg-red-600 px-4 py-1.5 text-sm font-semibold transition-colors hover:bg-red-500 disabled:opacity-50"
+							class="text-duvet-on-accent rounded-row bg-duvet-danger hover:bg-duvet-danger/85 flex min-w-20 items-center justify-center gap-1.5 px-4 py-1.5 text-sm font-semibold transition-colors disabled:opacity-50"
 							disabled={banning || tooLong}
 							onclick={ban}
 						>

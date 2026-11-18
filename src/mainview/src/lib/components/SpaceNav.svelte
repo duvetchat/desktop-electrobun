@@ -320,7 +320,7 @@
 								<DropdownMenu.Content class={menuContentClass} sideOffset={4} align="start">
 									{#each actions as action (action.label)}
 										<DropdownMenu.Item class={menuItemClass} onSelect={action.onSelect}>
-											<action.icon class="size-4 text-zinc-400" />
+											<action.icon class="text-duvet-ink2 size-4" />
 											{action.label}
 										</DropdownMenu.Item>
 									{/each}
@@ -348,7 +348,7 @@
 				<ContextMenu.Content class={menuContentClass}>
 					{#each actions as action (action.label)}
 						<ContextMenu.Item class={menuItemClass} onSelect={action.onSelect}>
-							<action.icon class="size-4 text-zinc-400" />
+							<action.icon class="text-duvet-ink2 size-4" />
 							{action.label}
 						</ContextMenu.Item>
 					{/each}

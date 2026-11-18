@@ -58,7 +58,7 @@
 			.filter((r) => r.color_from !== null && r.color_from !== undefined)
 			.sort((a, b) => b.position - a.position)
 			.at(0);
-		if (!highest) return "background-color: var(--color-stone-600)";
+		if (!highest) return "background-color: color-mix(in oklab, var(--duvet-ink2) 50%, var(--duvet-card))";
 		const from = intToHex(highest.color_from);
 		if (highest.color_to === null || highest.color_to === undefined) return `background-color: ${from}`;
 		const to = intToHex(highest.color_to);
@@ -67,7 +67,7 @@
 	}
 
 	function roleBadgeStyle(role: Role): string {
-		if (role.color_from === null || role.color_from === undefined) return "background-color: var(--color-zinc-600)";
+		if (role.color_from === null || role.color_from === undefined) return "background-color: var(--duvet-ink2)";
 		const from = intToHex(role.color_from);
 		if (role.color_to === null || role.color_to === undefined) return `background-color: ${from}`;
 		const to = intToHex(role.color_to);
@@ -80,12 +80,12 @@
 	);
 </script>
 
-<div class="w-80 rounded-xl border border-zinc-700 bg-zinc-900 shadow-2xl">
+<div class="rounded-card border-duvet-line bg-duvet-bg shadow-duvet-float w-80 border">
 	<!-- Banner: 5:2, as it's cropped (600×240), and as a space's is. Without one, a block of the same size. It grows a
 	     little past the card on hover; nothing clips it, so its corners are its own, and what's below clips itself. The
 	     avatar comes later and covers its lower left, so it fades out while the banner (peer/banner) is hovered. -->
 	<div
-		class="group peer/banner relative aspect-[5/2] w-full overflow-hidden rounded-t-[11px] transition-transform duration-150 motion-safe:hover:scale-105"
+		class="group peer/banner relative aspect-[5/2] w-full overflow-hidden rounded-t-[15px] transition-transform duration-150 motion-safe:hover:scale-105"
 		style={member.banner_url && !bannerError ? undefined : getBannerStyle(member)}
 	>
 		{#if member.banner_url && !bannerError}
@@ -113,7 +113,7 @@
 			{#if onBannerRemove && member.banner_url}
 				<button
 					type="button"
-					class="flex h-8 w-8 cursor-pointer items-center justify-center rounded-full bg-black/60 text-red-400 opacity-0 transition-opacity group-hover:opacity-100 hover:bg-black/80"
+					class="text-duvet-danger flex h-8 w-8 cursor-pointer items-center justify-center rounded-full bg-black/60 opacity-0 transition-opacity group-hover:opacity-100 hover:bg-black/80"
 					title="Remove banner"
 					onclick={onBannerRemove}
 				>
@@ -128,7 +128,7 @@
 		     150 ms, and with less motion asked too, as a fade moves nothing. It still takes the pointer: on it, the banner
 		     isn't hovered, so it shows, and its buttons are its own. -->
 		<div
-			class="absolute -top-12 left-4 rounded-full border-[6px] border-zinc-800 bg-zinc-950 transition-opacity duration-150 in-peer-hover/banner:opacity-0"
+			class="border-duvet-line bg-duvet-sunk absolute -top-12 left-4 rounded-full border-[6px] transition-opacity duration-150 in-peer-hover/banner:opacity-0"
 		>
 			<div class="group/avatar relative overflow-hidden rounded-full">
 				<UserAvatar src={member.avatar_url} name={member.username} size={80} />
@@ -148,7 +148,7 @@
 					{#if onAvatarRemove && member.avatar_url}
 						<button
 							type="button"
-							class="flex h-7 w-7 cursor-pointer items-center justify-center rounded-full bg-black/60 text-red-400 opacity-0 transition-opacity group-hover/avatar:opacity-100 hover:bg-black/80"
+							class="text-duvet-danger flex h-7 w-7 cursor-pointer items-center justify-center rounded-full bg-black/60 opacity-0 transition-opacity group-hover/avatar:opacity-100 hover:bg-black/80"
 							title="Remove avatar"
 							onclick={onAvatarRemove}
 						>
@@ -161,20 +161,20 @@
 			<StatusDot
 				status={member.status}
 				mobileOnly={member.mobile_only}
-				class="absolute right-0 bottom-0 w-6 border-4 text-zinc-800"
+				class="text-duvet-bg absolute right-0 bottom-0 w-6 border-4"
 			/>
 		</div>
 
 		<div class="h-14"></div>
 
-		<div class="mt-4 overflow-hidden rounded-lg bg-zinc-950 p-3">
-			<h2 class="flex items-center gap-1.5 text-lg leading-tight font-bold break-all text-zinc-100">
+		<div class="bg-duvet-sunk mt-4 overflow-hidden rounded-lg p-3">
+			<h2 class="text-duvet-ink flex items-center gap-1.5 text-lg leading-tight font-bold break-all">
 				{member.username}
 				{#if member.is_bot}
-					<span class="text-xxs bg-fill-600 text-fixed-white rounded px-1.5 py-0.5 font-semibold">BOT</span>
+					<span class="text-xxs bg-duvet-accent text-duvet-on-accent rounded px-1.5 py-0.5 font-bold">BOT</span>
 				{/if}
 			</h2>
-			<p class="text-sm font-medium break-all text-zinc-400">
+			<p class="text-duvet-ink2 text-sm font-medium break-all">
 				@{member.raw_username}
 			</p>
 
@@ -187,21 +187,23 @@
 			{/if}
 
 			{#if member.bio}
-				<div class="my-3 h-px w-full bg-zinc-800"></div>
-				<h3 class="mb-1 text-left text-[11px] font-bold tracking-wide text-zinc-400 uppercase">About</h3>
+				<div class="bg-duvet-card my-3 h-px w-full"></div>
+				<h3 class="text-duvet-ink2 mb-1 text-left text-[13px] font-bold">About</h3>
 				<ProfileBio bio={member.bio} />
 			{/if}
 
 			<ActivityList activities={$userActivities[member.id]} />
 
 			{#if visibleRoles.length > 0}
-				<div class="my-3 h-px w-full bg-zinc-800"></div>
-				<h3 class="mb-2 text-left text-[11px] font-bold tracking-wide text-zinc-400 uppercase">Roles</h3>
+				<div class="bg-duvet-card my-3 h-px w-full"></div>
+				<h3 class="text-duvet-ink2 mb-2 text-left text-[13px] font-bold">Roles</h3>
 				<div class="flex flex-wrap gap-1">
 					{#each visibleRoles as role}
-						<div class="flex w-min items-center gap-1.5 rounded border border-zinc-800 bg-zinc-900 px-2 py-1 shadow-sm">
+						<div
+							class="border-duvet-line bg-duvet-bg shadow-duvet-raised flex w-min items-center gap-1.5 rounded border px-2 py-1"
+						>
 							<div class="h-3 w-3 rounded-full" style={roleBadgeStyle(role)}></div>
-							<span class="text-xs font-medium text-zinc-300">{role.name}</span>
+							<span class="text-duvet-ink text-xs font-medium">{role.name}</span>
 						</div>
 					{/each}
 				</div>

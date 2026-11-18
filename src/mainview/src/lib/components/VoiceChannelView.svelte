@@ -343,18 +343,18 @@
 	);
 </script>
 
-<div class="from-night-205 to-night-18 flex min-h-0 flex-1 flex-col bg-linear-to-b">
+<div class="from-duvet-bg to-duvet-sunk flex min-h-0 flex-1 flex-col bg-linear-to-b">
 	<!-- Header -->
 	{#if showHeader}
-		<div class="flex shrink-0 items-center gap-2 border-b border-zinc-800 px-4 py-3">
+		<div class="border-duvet-line flex shrink-0 items-center gap-2 border-b px-4 py-3">
 			{#if callMode}
-				<Phone class="size-4 shrink-0 text-emerald-400" />
+				<Phone class="text-duvet-alive size-4 shrink-0" />
 			{:else}
-				<Volume2 class="size-4 shrink-0 text-zinc-400" />
+				<Volume2 class="text-duvet-ink2 size-4 shrink-0" />
 			{/if}
-			<h2 class="truncate font-semibold text-zinc-100">{channelName}</h2>
+			<h2 class="text-duvet-ink truncate font-semibold">{channelName}</h2>
 			{#if isConnected}
-				<span class="ml-auto shrink-0 rounded-full bg-stone-500/10 px-2 py-0.5 text-xs font-medium text-stone-400">
+				<span class="bg-duvet-ink2/10 text-duvet-ink2 ml-auto shrink-0 rounded-full px-2 py-0.5 text-xs font-medium">
 					Connected
 				</span>
 			{/if}
@@ -364,7 +364,7 @@
 	<!-- Video / Users grid -->
 	<div class="min-h-0 flex-1 overflow-y-auto p-4">
 		{#if voiceUsers.length === 0}
-			<div class="flex h-full flex-col items-center justify-center gap-3 text-zinc-500 select-none">
+			<div class="text-duvet-ink2 flex h-full flex-col items-center justify-center gap-3 select-none">
 				<Volume2 class="size-12 opacity-20" />
 				<p class="text-sm">No one connected</p>
 				{#if !isConnected}
@@ -389,9 +389,9 @@
 					{@const isSpeaking = $speakingUsers.has(user.id) && !user.muted}
 
 					<div
-						class="group relative flex cursor-pointer items-center justify-center overflow-hidden rounded-lg border bg-zinc-800/70 shadow-lg transition-all {tileSize(
+						class="group bg-duvet-card/70 rounded-card shadow-duvet-raised relative flex cursor-pointer items-center justify-center overflow-hidden border transition-all {tileSize(
 							tile.key,
-						)} {isSpeaking ? 'border-transparent' : 'border-zinc-700 hover:border-zinc-500'}"
+						)} {isSpeaking ? 'border-transparent' : 'border-duvet-line hover:border-duvet-ink2/40'}"
 						role="button"
 						tabindex="0"
 						aria-label={tile.kind === "screen" ? `${user.username}'s screen` : user.username}
@@ -435,10 +435,10 @@
 									/>
 									{#if user.camera && !isLocal && !$incomingVideo}
 										<span
-											class="absolute -right-1 -bottom-1 rounded-full border border-zinc-700 bg-zinc-900 p-1.5"
+											class="border-duvet-line bg-duvet-bg absolute -right-1 -bottom-1 rounded-full border p-1.5"
 											title="Camera on. Incoming video is off."
 										>
-											<VideoOff class="size-3.5 text-zinc-400" />
+											<VideoOff class="text-duvet-ink2 size-3.5" />
 										</span>
 									{/if}
 								</div>
@@ -450,7 +450,7 @@
 									? ($voiceRemoteVideoStreams[user.id] ?? null)
 									: null}
 							{#if !isLocal && !$incomingVideo}
-								<div class="flex flex-col items-center gap-2 text-zinc-400">
+								<div class="text-duvet-ink2 flex flex-col items-center gap-2">
 									<VideoOff class="size-6" />
 									<span class="text-xs">Incoming video is off</span>
 								</div>
@@ -467,12 +467,12 @@
 								{/if}
 								{#if !screenStream || !playing[tile.key]}
 									<div class="absolute inset-0 flex items-center justify-center bg-black/60">
-										<LoaderCircle class="size-8 animate-spin text-zinc-300" />
+										<LoaderCircle class="text-duvet-ink size-8 animate-spin" />
 									</div>
 								{/if}
 								{#if !isLocal}
 									<button
-										class="hover:text-fixed-white absolute top-2 right-2 z-10 flex items-center gap-1.5 rounded-md bg-black/70 px-2.5 py-1.5 text-xs text-zinc-300 opacity-0 backdrop-blur-sm transition-all group-hover:opacity-100 hover:bg-red-600/80"
+										class="text-fixed-white/80 hover:text-duvet-on-accent hover:bg-duvet-danger/80 absolute top-2 right-2 z-10 flex items-center gap-1.5 rounded-md bg-black/70 px-2.5 py-1.5 text-xs opacity-0 backdrop-blur-sm transition-all group-hover:opacity-100"
 										onclick={(e) => {
 											e.stopPropagation();
 											stopWatching(user.id);
@@ -494,7 +494,7 @@
 									/>
 									{#if isConnected}
 										<button
-											class="bg-fill-600 text-fixed-white hover:bg-fill-500 flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors"
+											class="bg-duvet-accent text-duvet-on-accent shadow-duvet-raised flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-bold transition-colors hover:brightness-110"
 											onclick={(e) => {
 												e.stopPropagation();
 												startWatching(channelId, user.id);
@@ -516,13 +516,13 @@
 							class="text-fixed-white absolute bottom-2 left-2 z-10 flex max-w-[calc(100%-1rem)] items-center gap-1.5 rounded-md bg-black/60 px-2 py-1 backdrop-blur-md"
 						>
 							{#if tile.kind === "screen"}
-								<MonitorUp class="size-3.5 shrink-0 text-blue-400" />
+								<MonitorUp class="text-duvet-accent-text size-3.5 shrink-0" />
 								<span class="truncate text-xs font-medium">{user.username}'s screen</span>
 							{:else}
 								{#if user.deafened}
-									<Headphones class="size-3.5 shrink-0 text-red-400" />
+									<Headphones class="text-duvet-danger size-3.5 shrink-0" />
 								{:else if user.muted}
-									<MicOff class="size-3.5 shrink-0 text-red-400" />
+									<MicOff class="text-duvet-danger size-3.5 shrink-0" />
 								{/if}
 								<span class="truncate text-xs font-medium">{user.username}</span>
 							{/if}
@@ -530,7 +530,9 @@
 
 						<!-- Speaking ring, above any video -->
 						{#if isSpeaking}
-							<div class="pointer-events-none absolute inset-0 z-20 rounded-lg ring-2 ring-stone-400 ring-inset"></div>
+							<div
+								class="ring-duvet-ink2/40 pointer-events-none absolute inset-0 z-20 rounded-lg ring-2 ring-inset"
+							></div>
 						{/if}
 					</div>
 				{/each}
@@ -539,13 +541,13 @@
 	</div>
 
 	<!-- Controls -->
-	<div class="flex shrink-0 items-center justify-center gap-2 border-t border-zinc-800 px-4 py-4">
+	<div class="border-duvet-line flex shrink-0 items-center justify-center gap-2 border-t px-4 py-4">
 		{#if isConnected}
 			<div class="flex items-stretch">
 				<button
 					class="flex flex-col items-center gap-1 rounded-l-xl py-2.5 pr-2 pl-4 transition-colors {$isCameraOn
-						? 'bg-stone-400/20 text-stone-200 hover:bg-stone-400/30'
-						: 'text-zinc-300 hover:bg-zinc-800'}"
+						? 'bg-duvet-ink2/20 text-duvet-ink hover:bg-duvet-ink2/30'
+						: 'text-duvet-ink hover:bg-duvet-card'}"
 					class:opacity-50={!videoReady}
 					class:cursor-not-allowed={!videoReady}
 					disabled={!videoReady}
@@ -557,7 +559,7 @@
 					{:else}
 						<VideoOff class="size-5" />
 					{/if}
-					<span class="text-xxs {$isCameraOn ? 'text-stone-200' : 'text-zinc-400'}">Camera</span>
+					<span class="text-xxs {$isCameraOn ? 'text-duvet-ink' : 'text-duvet-ink2'}">Camera</span>
 				</button>
 				<DropdownMenu.Root
 					onOpenChange={(open) => {
@@ -565,7 +567,7 @@
 					}}
 				>
 					<DropdownMenu.Trigger
-						class="flex items-center rounded-r-xl px-1.5 text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-200"
+						class="text-duvet-ink2 hover:bg-duvet-card hover:text-duvet-ink flex items-center rounded-r-xl px-1.5 transition-colors"
 						aria-label="Camera options"
 						title="Camera options"
 					>
@@ -573,33 +575,31 @@
 					</DropdownMenu.Trigger>
 					<DropdownMenu.Portal>
 						<DropdownMenu.Content
-							class="z-200 w-64 overflow-hidden rounded-lg border border-zinc-700 bg-zinc-800 py-1 shadow-2xl"
+							class="rounded-card border-duvet-line bg-duvet-card shadow-duvet-float z-200 w-64 overflow-hidden border py-1"
 							side="top"
 							sideOffset={8}
 						>
-							<div
-								class="mb-1 border-b border-zinc-700 px-3 py-1.5 text-xs font-semibold tracking-wider text-zinc-400 uppercase"
-							>
+							<div class="border-duvet-line text-duvet-ink2 mb-1 border-b px-3 py-1.5 text-[13px] font-bold">
 								Camera
 							</div>
 							{#if cameras.length === 0}
-								<div class="px-3 py-2 text-sm text-zinc-400">No cameras found</div>
+								<div class="text-duvet-ink2 px-3 py-2 text-sm">No cameras found</div>
 							{:else}
 								{#each cameras as camera, i (camera.deviceId || i)}
 									<DropdownMenu.Item
-										class="flex w-full cursor-pointer items-center justify-between gap-2 px-3 py-2 text-left text-sm text-zinc-100 transition-colors outline-none hover:bg-zinc-700 data-highlighted:bg-zinc-700"
+										class="text-duvet-ink hover:bg-duvet-ink/10 data-highlighted:bg-duvet-ink/10 flex w-full cursor-pointer items-center justify-between gap-2 px-3 py-2 text-left text-sm transition-colors outline-none"
 										onSelect={() => selectedCameraId.set(camera.deviceId)}
 									>
 										<span class="truncate">{camera.label || `Camera ${i + 1}`}</span>
 										{#if camera.deviceId && camera.deviceId === activeCameraId}
-											<Check class="size-4 shrink-0 text-stone-300" />
+											<Check class="text-duvet-ink size-4 shrink-0" />
 										{/if}
 									</DropdownMenu.Item>
 								{/each}
 							{/if}
-							<DropdownMenu.Separator class="my-1 h-px bg-zinc-700" />
+							<DropdownMenu.Separator class="bg-duvet-line my-1 h-px" />
 							<DropdownMenu.CheckboxItem
-								class="flex w-full cursor-pointer items-center justify-between gap-2 px-3 py-2 text-left text-sm text-zinc-100 transition-colors outline-none hover:bg-zinc-700 data-highlighted:bg-zinc-700"
+								class="text-duvet-ink hover:bg-duvet-ink/10 data-highlighted:bg-duvet-ink/10 flex w-full cursor-pointer items-center justify-between gap-2 px-3 py-2 text-left text-sm transition-colors outline-none"
 								checked={$incomingVideo}
 								onCheckedChange={(checked) => incomingVideo.set(checked)}
 								title="Off, you receive no one's camera or screen"
@@ -607,7 +607,7 @@
 								{#snippet children({ checked })}
 									<span>Incoming video</span>
 									{#if checked}
-										<Check class="size-4 shrink-0 text-stone-300" />
+										<Check class="text-duvet-ink size-4 shrink-0" />
 									{/if}
 								{/snippet}
 							</DropdownMenu.CheckboxItem>
@@ -617,7 +617,7 @@
 			</div>
 			<div class="relative">
 				<button
-					class="flex flex-col items-center gap-1 rounded-xl px-4 py-2.5 text-zinc-300 transition-colors hover:bg-zinc-800"
+					class="text-duvet-ink hover:bg-duvet-card flex flex-col items-center gap-1 rounded-xl px-4 py-2.5 transition-colors"
 					class:opacity-50={!videoReady}
 					class:cursor-not-allowed={!videoReady}
 					disabled={!videoReady}
@@ -625,17 +625,17 @@
 					title={videoTitle ?? "Share screen"}
 				>
 					<MonitorUp class="size-5" />
-					<span class="text-xxs text-zinc-400">Stream</span>
+					<span class="text-xxs text-duvet-ink2">Stream</span>
 				</button>
 				{#if showStreamMenu && videoReady}
 					<!-- svelte-ignore a11y_no_static_element_interactions -->
 					<!-- svelte-ignore a11y_click_events_have_key_events -->
 					<div
-						class="absolute bottom-full left-1/2 z-50 mb-2 flex -translate-x-1/2 flex-col overflow-hidden rounded-lg border border-zinc-700 bg-zinc-800 shadow-xl"
+						class="rounded-card border-duvet-line bg-duvet-card shadow-duvet-float absolute bottom-full left-1/2 z-50 mb-2 flex -translate-x-1/2 flex-col overflow-hidden border"
 						onmouseleave={() => (showStreamMenu = false)}
 					>
 						<button
-							class="flex items-center gap-2 px-3 py-2 text-sm whitespace-nowrap text-zinc-200 transition-colors hover:bg-zinc-700"
+							class="text-duvet-ink hover:bg-duvet-ink/10 flex items-center gap-2 px-3 py-2 text-sm whitespace-nowrap transition-colors"
 							onclick={() => {
 								showStreamMenu = false;
 								screenShareRequested.set({ roomId: channelId, withAudio: false });
@@ -645,7 +645,7 @@
 							Screen only
 						</button>
 						<button
-							class="flex items-center gap-2 px-3 py-2 text-sm whitespace-nowrap text-zinc-200 transition-colors hover:bg-zinc-700"
+							class="text-duvet-ink hover:bg-duvet-ink/10 flex items-center gap-2 px-3 py-2 text-sm whitespace-nowrap transition-colors"
 							onclick={() => {
 								showStreamMenu = false;
 								screenShareRequested.set({ roomId: channelId, withAudio: true });
@@ -659,8 +659,8 @@
 			</div>
 			<button
 				class="flex flex-col items-center gap-1 rounded-xl px-4 py-2.5 transition-colors {$isMuted
-					? 'bg-red-500/10 text-red-400 hover:bg-red-500/20'
-					: 'text-zinc-300 hover:bg-zinc-800'}"
+					? 'bg-duvet-danger/10 text-duvet-danger hover:bg-duvet-danger/20'
+					: 'text-duvet-ink hover:bg-duvet-card'}"
 				class:opacity-50={!canSpeak}
 				class:cursor-not-allowed={!canSpeak}
 				disabled={!canSpeak}
@@ -672,31 +672,31 @@
 				{:else}
 					<Mic class="size-5" />
 				{/if}
-				<span class="text-xxs {$isMuted ? 'text-red-400' : 'text-zinc-400'}">{$isMuted ? "Muted" : "Mic"}</span>
+				<span class="text-xxs {$isMuted ? 'text-duvet-danger' : 'text-duvet-ink2'}">{$isMuted ? "Muted" : "Mic"}</span>
 			</button>
 			<button
 				class="flex flex-col items-center gap-1 rounded-xl px-4 py-2.5 transition-colors {$isDeafened
-					? 'bg-red-500/10 text-red-400 hover:bg-red-500/20'
-					: 'text-zinc-300 hover:bg-zinc-800'}"
+					? 'bg-duvet-danger/10 text-duvet-danger hover:bg-duvet-danger/20'
+					: 'text-duvet-ink hover:bg-duvet-card'}"
 				onclick={toggleDeafen}
 				title={$isDeafened ? "Undeafen" : "Deafen"}
 			>
 				<Headphones class="size-5" />
-				<span class="text-xxs {$isDeafened ? 'text-red-400' : 'text-zinc-400'}"
+				<span class="text-xxs {$isDeafened ? 'text-duvet-danger' : 'text-duvet-ink2'}"
 					>{$isDeafened ? "Deafened" : "Audio"}</span
 				>
 			</button>
 			<button
-				class="flex flex-col items-center gap-1 rounded-xl bg-red-500/10 px-4 py-2.5 text-red-400 transition-colors hover:bg-red-500/20"
+				class="bg-duvet-danger/10 text-duvet-danger hover:bg-duvet-danger/20 flex flex-col items-center gap-1 rounded-xl px-4 py-2.5 transition-colors"
 				onclick={leave}
 				title="Leave voice room"
 			>
 				<PhoneOff class="size-5" />
-				<span class="text-xxs text-red-400">Leave</span>
+				<span class="text-xxs text-duvet-danger">Leave</span>
 			</button>
 		{:else}
 			<button
-				class="bg-fill-600 text-fixed-white hover:bg-fill-500 flex items-center gap-2 rounded-xl px-6 py-3 font-semibold transition-colors"
+				class="bg-duvet-accent text-duvet-on-accent shadow-duvet-raised flex items-center gap-2 rounded-xl px-6 py-3 font-bold transition-colors hover:brightness-110"
 				class:opacity-50={!canJoin}
 				class:cursor-not-allowed={!canJoin}
 				disabled={!canJoin}

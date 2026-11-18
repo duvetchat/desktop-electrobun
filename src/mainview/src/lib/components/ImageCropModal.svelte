@@ -261,12 +261,12 @@
 		<Dialog.Overlay class="fixed inset-0 z-500 bg-black/70 backdrop-blur-sm" />
 		<Dialog.Content class="fixed inset-0 z-501 flex items-center justify-center p-4">
 			<div
-				class="w-full max-w-lg overflow-hidden rounded-xl border border-zinc-700 bg-zinc-900 text-zinc-100 shadow-2xl"
+				class="rounded-card border-duvet-line bg-duvet-bg text-duvet-ink shadow-duvet-float w-full max-w-lg overflow-hidden border"
 			>
-				<div class="flex items-center justify-between border-b border-zinc-800 px-5 py-3">
-					<h2 class="text-sm font-semibold text-white">{title}</h2>
+				<div class="border-duvet-line flex items-center justify-between border-b px-5 py-3">
+					<h2 class="text-duvet-ink text-sm font-semibold">{title}</h2>
 					<Dialog.Close
-						class="flex h-7 w-7 items-center justify-center rounded-lg text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-200"
+						class="text-duvet-ink2 hover:bg-duvet-card hover:text-duvet-ink flex h-7 w-7 items-center justify-center rounded-lg transition-colors"
 					>
 						<XIcon class="size-4" />
 					</Dialog.Close>
@@ -275,17 +275,17 @@
 				<div class="p-5">
 					{#if !imgSrc}
 						<label
-							class="flex h-48 cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-zinc-700 transition-colors hover:border-zinc-500 hover:bg-zinc-800/30"
+							class="border-duvet-line hover:border-duvet-ink2/40 hover:bg-duvet-card/30 flex h-48 cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed transition-colors"
 						>
-							<span class="text-sm text-zinc-400">Click to choose an image</span>
-							<span class="mt-1 text-xs text-zinc-600">PNG, JPG, GIF — max 10MB</span>
+							<span class="text-duvet-ink2 text-sm">Click to choose an image</span>
+							<span class="text-duvet-ink2/60 mt-1 text-xs">PNG, JPG, GIF — max 10MB</span>
 							<input type="file" accept="image/*" class="hidden" onchange={handleFileChange} />
 						</label>
 					{:else}
-						<p class="mb-2 text-xs text-zinc-500">Drag to reposition. Scroll to zoom.</p>
+						<p class="text-duvet-ink2 mb-2 text-xs">Drag to reposition. Scroll to zoom.</p>
 						<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 						<div
-							class="relative mx-auto cursor-grab touch-none overflow-hidden rounded-lg bg-zinc-950 select-none active:cursor-grabbing"
+							class="bg-duvet-sunk relative mx-auto cursor-grab touch-none overflow-hidden rounded-lg select-none active:cursor-grabbing"
 							style="width: {VIEW_WIDTH}px; height: {frameBox.height + 2 * FRAME_MARGIN}px;"
 							role="application"
 							tabindex="-1"
@@ -319,7 +319,7 @@
 						</div>
 
 						<div class="mx-auto mt-3 flex items-center gap-3" style="width: {VIEW_WIDTH}px;">
-							<ZoomOutIcon class="size-4 shrink-0 text-zinc-500" />
+							<ZoomOutIcon class="text-duvet-ink2 size-4 shrink-0" />
 							<input
 								type="range"
 								min="0"
@@ -329,21 +329,21 @@
 								oninput={handleZoomSlider}
 								disabled={zoomLimit <= 1}
 								aria-label="Zoom"
-								class="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-zinc-700 accent-stone-500 disabled:cursor-default disabled:opacity-40 [&::-webkit-slider-thumb]:h-3.5 [&::-webkit-slider-thumb]:w-3.5 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-stone-400"
+								class="bg-duvet-ink/10 accent-duvet-accent [&::-webkit-slider-thumb]:bg-duvet-accent h-1.5 w-full cursor-pointer appearance-none rounded-full disabled:cursor-default disabled:opacity-40 [&::-webkit-slider-thumb]:h-3.5 [&::-webkit-slider-thumb]:w-3.5 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full"
 							/>
-							<ZoomInIcon class="size-4 shrink-0 text-zinc-500" />
+							<ZoomInIcon class="text-duvet-ink2 size-4 shrink-0" />
 						</div>
 
 						<div class="mt-4 flex justify-between gap-3">
 							<button
-								class="rounded-md px-3 py-1.5 text-sm text-zinc-300 transition-colors hover:bg-zinc-800"
+								class="text-duvet-ink hover:bg-duvet-card rounded-md px-3 py-1.5 text-sm transition-colors"
 								onclick={() => {
 									file = null;
 									imgSrc = "";
 								}}>Change image</button
 							>
 							<button
-								class="bg-fill-600 text-fixed-white hover:bg-fill-500 rounded-md px-5 py-1.5 text-sm font-semibold transition-colors"
+								class="bg-duvet-accent text-duvet-on-accent shadow-duvet-raised rounded-xl px-5 py-1.5 text-sm font-bold transition-colors hover:brightness-110"
 								onclick={handleConfirm}
 								disabled={processing}>{processing ? "Processing..." : "Apply"}</button
 							>

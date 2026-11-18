@@ -315,7 +315,7 @@
 	}
 
 	// A room's line is drawn on its wrapper, which holds its voice users under the button, so it sits under them too.
-	// It's a shadow in the gap between rooms: a border would add its width to the wrapper's height and shift the rows.
+	// It's a shadow-duvet-raised in the gap between rooms: a border would add its width to the wrapper's height and shift the rows.
 	function roomDropIndicatorClass(idx: number): string {
 		if (dropTargetIdx !== idx || !draggedChannelId) return "";
 		if (dropPosition === "above") return "rounded-lg shadow-[0_-2px_0_0_var(--duvet-accent)]";
@@ -404,29 +404,29 @@
 				>
 					<span class="truncate">{guild.name}</span>
 					<DropdownMenu.Root>
-						<DropdownMenu.Trigger class="ml-auto shrink-0 text-zinc-400 hover:text-white" aria-label="Space menu">
+						<DropdownMenu.Trigger class="text-duvet-ink2 hover:text-duvet-ink ml-auto shrink-0" aria-label="Space menu">
 							<DotsThreeVerticalIcon class="size-4" />
 						</DropdownMenu.Trigger>
 						<DropdownMenu.Portal>
 							<DropdownMenu.Content
-								class="z-50 w-52 overflow-hidden rounded-lg border border-zinc-700 bg-zinc-800 py-1 shadow-2xl"
+								class="rounded-card border-duvet-line bg-duvet-card shadow-duvet-float z-50 w-52 overflow-hidden border py-1"
 								sideOffset={6}
 								align="end"
 							>
 								<DropdownMenu.Item
-									class="flex w-full items-center gap-2.5 px-3 py-2 text-sm text-zinc-100 transition-colors hover:bg-zinc-700"
+									class="text-duvet-ink hover:bg-duvet-ink/10 flex w-full items-center gap-2.5 px-3 py-2 text-sm transition-colors"
 									onSelect={openServerSettings}
 								>
-									<GearSixIcon class="size-4 text-zinc-400" />
+									<GearSixIcon class="text-duvet-ink2 size-4" />
 									Space Settings
 								</DropdownMenu.Item>
 								<!-- The API creates a room for ManageChannels in the space -->
 								{#if space && hasSpacePermission(space, Permission.ManageChannels)}
 									<DropdownMenu.Item
-										class="flex w-full items-center gap-2.5 px-3 py-2 text-sm text-zinc-100 transition-colors hover:bg-zinc-700"
+										class="text-duvet-ink hover:bg-duvet-ink/10 flex w-full items-center gap-2.5 px-3 py-2 text-sm transition-colors"
 										onSelect={openCreateChannel}
 									>
-										<PlusIcon class="size-4 text-zinc-400" />
+										<PlusIcon class="text-duvet-ink2 size-4" />
 										Create Room
 									</DropdownMenu.Item>
 								{/if}
@@ -484,30 +484,30 @@
 							</ContextMenu.Trigger>
 							<ContextMenu.Portal>
 								<ContextMenu.Content
-									class="z-200 min-w-44 rounded-lg border border-zinc-700 bg-zinc-800 py-1 shadow-2xl"
+									class="rounded-card border-duvet-line bg-duvet-card shadow-duvet-float z-200 min-w-44 border py-1"
 								>
 									<ContextMenu.Item
-										class="w-full px-3 py-2 text-left text-sm text-zinc-100 transition-colors hover:bg-zinc-700"
+										class="text-duvet-ink hover:bg-duvet-ink/10 w-full px-3 py-2 text-left text-sm transition-colors"
 										onSelect={() => navigator.clipboard.writeText(item.channel.id)}
 									>
 										<div class="flex items-center gap-2">
-											<CopySimpleIcon class="size-4 text-zinc-400" />
+											<CopySimpleIcon class="text-duvet-ink2 size-4" />
 											Copy Room ID
 										</div>
 									</ContextMenu.Item>
 									{#if canManageCategory}
 										<ContextMenu.Item
-											class="w-full px-3 py-2 text-left text-sm text-zinc-100 transition-colors hover:bg-zinc-700"
+											class="text-duvet-ink hover:bg-duvet-ink/10 w-full px-3 py-2 text-left text-sm transition-colors"
 											onSelect={() => openChannelSettings(item.channel)}
 										>
 											<div class="flex items-center gap-2">
-												<PencilIcon class="size-4 text-zinc-400" />
+												<PencilIcon class="text-duvet-ink2 size-4" />
 												Edit Category
 											</div>
 										</ContextMenu.Item>
-										<div class="my-1 border-t border-zinc-700"></div>
+										<div class="border-duvet-line my-1 border-t"></div>
 										<ContextMenu.Item
-											class="w-full px-3 py-2 text-left text-sm text-red-400 transition-colors hover:bg-zinc-700"
+											class="text-duvet-danger hover:bg-duvet-ink/10 w-full px-3 py-2 text-left text-sm transition-colors"
 											onSelect={() => (confirmDeleteChannel = item.channel)}
 										>
 											<div class="flex items-center gap-2">
@@ -602,25 +602,25 @@
 								</ContextMenu.Trigger>
 								<ContextMenu.Portal>
 									<ContextMenu.Content
-										class="z-200 min-w-44 rounded-lg border border-zinc-700 bg-zinc-800 py-1 shadow-2xl"
+										class="rounded-card border-duvet-line bg-duvet-card shadow-duvet-float z-200 min-w-44 border py-1"
 									>
 										<ContextMenu.Item
-											class="w-full px-3 py-2 text-left text-sm text-zinc-100 transition-colors hover:bg-zinc-700"
+											class="text-duvet-ink hover:bg-duvet-ink/10 w-full px-3 py-2 text-left text-sm transition-colors"
 											onSelect={() => navigator.clipboard.writeText(channel.id)}
 										>
 											<div class="flex items-center gap-2">
-												<CopySimpleIcon class="size-4 text-zinc-400" />
+												<CopySimpleIcon class="text-duvet-ink2 size-4" />
 												Copy Room ID
 											</div>
 										</ContextMenu.Item>
 										<!-- The API creates an invite for CreateInvites in the room, overwrites included -->
 										{#if channel.type !== "category" && space && room && hasPermission(space, room, Permission.CreateInvites)}
 											<ContextMenu.Item
-												class="w-full px-3 py-2 text-left text-sm text-zinc-100 transition-colors hover:bg-zinc-700"
+												class="text-duvet-ink hover:bg-duvet-ink/10 w-full px-3 py-2 text-left text-sm transition-colors"
 												onSelect={() => openInviteModal(channel)}
 											>
 												<div class="flex items-center gap-2">
-													<LinkSimpleIcon class="size-4 text-zinc-400" />
+													<LinkSimpleIcon class="text-duvet-ink2 size-4" />
 													Invite People
 												</div>
 											</ContextMenu.Item>
@@ -634,18 +634,18 @@
 											/>
 										{/if}
 										{#if canManage}
-											<div class="my-1 border-t border-zinc-700"></div>
+											<div class="border-duvet-line my-1 border-t"></div>
 											<ContextMenu.Item
-												class="w-full px-3 py-2 text-left text-sm text-zinc-100 transition-colors hover:bg-zinc-700"
+												class="text-duvet-ink hover:bg-duvet-ink/10 w-full px-3 py-2 text-left text-sm transition-colors"
 												onSelect={() => openChannelSettings(channel)}
 											>
 												<div class="flex items-center gap-2">
-													<GearSixIcon class="size-4 text-zinc-400" />
+													<GearSixIcon class="text-duvet-ink2 size-4" />
 													Settings
 												</div>
 											</ContextMenu.Item>
 											<ContextMenu.Item
-												class="w-full px-3 py-2 text-left text-sm text-red-400 transition-colors hover:bg-zinc-700"
+												class="text-duvet-danger hover:bg-duvet-ink/10 w-full px-3 py-2 text-left text-sm transition-colors"
 												onSelect={() => (confirmDeleteChannel = channel)}
 											>
 												<div class="flex items-center gap-2">
@@ -674,16 +674,16 @@
 											<span class="flex-1 truncate {isSpeaking ? 'text-duvet-ink' : ''}">{user.username}</span>
 											<div class="flex shrink-0 items-center gap-0.5">
 												{#if user.camera}
-													<VideoIcon class="size-3.5 text-blue-400" />
+													<VideoIcon class="text-duvet-accent-text size-3.5" />
 												{/if}
 												{#if isSharing}
-													<MonitorUpIcon class="size-3.5 text-blue-400" />
+													<MonitorUpIcon class="text-duvet-accent-text size-3.5" />
 												{/if}
 												{#if user.muted}
-													<MicrophoneSlashIcon class="size-3.5 text-zinc-500" />
+													<MicrophoneSlashIcon class="text-duvet-ink2 size-3.5" />
 												{/if}
 												{#if user.deafened}
-													<HeadphonesIcon class="size-3.5 text-zinc-500" />
+													<HeadphonesIcon class="text-duvet-ink2 size-3.5" />
 												{/if}
 											</div>
 										</div>
@@ -718,18 +718,16 @@
 <Dialog.Root bind:open={showCreateModal}>
 	<Dialog.Portal>
 		<Dialog.Overlay class="fixed inset-0 z-50 bg-black/60" />
-		<Dialog.Content class="fixed inset-0 z-50 flex items-center justify-center p-4 text-zinc-200">
-			<div class="w-full max-w-sm rounded-xl border border-zinc-700 bg-zinc-900 p-5 shadow-2xl">
-				<h2 class="mb-4 text-lg font-semibold text-white">Create Room</h2>
+		<Dialog.Content class="text-duvet-ink fixed inset-0 z-50 flex items-center justify-center p-4">
+			<div class="rounded-card border-duvet-line bg-duvet-bg shadow-duvet-float w-full max-w-sm border p-5">
+				<h2 class="text-duvet-ink mb-4 text-lg font-semibold">Create Room</h2>
 
 				<div class="mb-4">
-					<label for="channelType" class="mb-1 block text-xs font-semibold tracking-wide text-zinc-400 uppercase"
-						>Room Type</label
-					>
+					<label for="channelType" class="text-duvet-ink2 mb-1 block text-[13px] font-bold">Room Type</label>
 					<select
 						id="channelType"
 						bind:value={newChannelType}
-						class="h-10 w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 text-sm text-white outline-none focus:ring-1 focus:ring-stone-500"
+						class="bg-duvet-sunk text-duvet-ink shadow-duvet-press focus-visible:outline-duvet-accent h-10 w-full rounded-xl px-3 text-sm focus-visible:outline-2"
 					>
 						<option value={1}>Text Room</option>
 						<option value={2}>Voice Room</option>
@@ -739,13 +737,11 @@
 
 				{#if newChannelType !== 3}
 					<div class="mb-4">
-						<label for="channelCategory" class="mb-1 block text-xs font-semibold tracking-wide text-zinc-400 uppercase"
-							>Category</label
-						>
+						<label for="channelCategory" class="text-duvet-ink2 mb-1 block text-[13px] font-bold">Category</label>
 						<select
 							id="channelCategory"
 							bind:value={newChannelCategory}
-							class="h-10 w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 text-sm text-white outline-none focus:ring-1 focus:ring-stone-500"
+							class="bg-duvet-sunk text-duvet-ink shadow-duvet-press focus-visible:outline-duvet-accent h-10 w-full rounded-xl px-3 text-sm focus-visible:outline-2"
 						>
 							<option value={null}>None</option>
 							{#each categories as category}
@@ -756,11 +752,9 @@
 				{/if}
 
 				<div class="mb-5">
-					<label for="channelName" class="mb-1 block text-xs font-semibold tracking-wide text-zinc-400 uppercase"
-						>Room Name</label
-					>
+					<label for="channelName" class="text-duvet-ink2 mb-1 block text-[13px] font-bold">Room Name</label>
 					<div class="relative">
-						<span class="absolute top-2.5 left-3 text-zinc-500">
+						<span class="text-duvet-ink2 absolute top-2.5 left-3">
 							{#if newChannelType === 1}
 								#
 							{:else}
@@ -771,7 +765,7 @@
 							id="channelName"
 							type="text"
 							bind:value={newChannelName}
-							class="h-10 w-full rounded-md border border-zinc-700 bg-zinc-800 pr-3 pl-8 text-sm text-white placeholder-zinc-500 outline-none focus:ring-1 focus:ring-stone-500"
+							class="text-duvet-ink placeholder:text-duvet-ink2 bg-duvet-sunk shadow-duvet-press focus-visible:outline-duvet-accent h-10 w-full rounded-xl pr-3 pl-8 text-sm focus-visible:outline-2"
 							placeholder="new-room"
 							maxlength={64}
 							onkeydown={(e) => e.key === "Enter" && handleCreateChannel()}
@@ -781,11 +775,11 @@
 				</div>
 
 				<div class="flex justify-end gap-2">
-					<Dialog.Close class="rounded-md px-3 py-2 text-sm text-zinc-300 hover:bg-zinc-800 hover:text-white"
+					<Dialog.Close class="text-duvet-ink hover:bg-duvet-card hover:text-duvet-ink rounded-md px-3 py-2 text-sm"
 						>Cancel</Dialog.Close
 					>
 					<button
-						class="bg-fill-600 text-fixed-white hover:bg-fill-500 rounded-md px-4 py-2 text-sm font-medium transition-colors disabled:opacity-50"
+						class="bg-duvet-accent text-duvet-on-accent shadow-duvet-raised rounded-xl px-4 py-2 text-sm font-bold transition-colors hover:brightness-110 disabled:opacity-50"
 						onclick={handleCreateChannel}
 						disabled={!newChannelName.trim() || isCreating}
 					>
@@ -800,17 +794,17 @@
 <Dialog.Root open={!!confirmDeleteChannel} onOpenChange={(v) => !v && (confirmDeleteChannel = null)}>
 	<Dialog.Portal>
 		<Dialog.Overlay class="fixed inset-0 z-50 bg-black/50" />
-		<Dialog.Content class="fixed inset-0 z-50 flex items-center justify-center p-4 text-zinc-200">
-			<div class="w-96 rounded-lg border border-zinc-700 bg-zinc-800 p-6 shadow-lg">
-				<h2 class="mb-2 text-xl font-bold text-white">Delete Room</h2>
-				<p class="mb-6 text-zinc-400">
+		<Dialog.Content class="text-duvet-ink fixed inset-0 z-50 flex items-center justify-center p-4">
+			<div class="rounded-card border-duvet-line bg-duvet-card shadow-duvet-float w-96 border p-6">
+				<h2 class="text-duvet-ink mb-2 text-xl font-bold">Delete Room</h2>
+				<p class="text-duvet-ink2 mb-6">
 					Are you sure you want to delete
-					<span class="font-semibold text-white">#{confirmDeleteChannel?.name}</span>? This action cannot be undone.
+					<span class="text-duvet-ink font-semibold">#{confirmDeleteChannel?.name}</span>? This action cannot be undone.
 				</p>
 				<div class="flex justify-end gap-3">
-					<Dialog.Close class="px-4 py-2 text-zinc-300 hover:underline">Cancel</Dialog.Close>
+					<Dialog.Close class="text-duvet-ink px-4 py-2 hover:underline">Cancel</Dialog.Close>
 					<button
-						class="text-fixed-white rounded bg-red-600 px-4 py-2 transition-colors hover:bg-red-700 disabled:opacity-50"
+						class="text-duvet-on-accent bg-duvet-danger hover:bg-duvet-danger/85 rounded px-4 py-2 transition-colors disabled:opacity-50"
 						onclick={handleDeleteChannel}
 						disabled={isDeletingChannel}
 					>

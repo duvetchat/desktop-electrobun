@@ -14,26 +14,26 @@
 	<AlertDialog.Portal>
 		<AlertDialog.Overlay class="fixed inset-0 z-9998 bg-black/60 backdrop-blur-sm" />
 		<AlertDialog.Content class="fixed inset-0 z-9999 flex items-center justify-center p-4">
-			<div class="w-full max-w-sm rounded-xl border border-zinc-700 bg-zinc-900 p-5 shadow-2xl">
+			<div class="rounded-card border-duvet-line bg-duvet-bg shadow-duvet-float w-full max-w-sm border p-5">
 				{#if confirmStore.pending}
-					<AlertDialog.Title class="mb-1 text-sm font-semibold text-white">Confirm</AlertDialog.Title>
-					<AlertDialog.Description class="mb-4 text-sm text-zinc-300"
+					<AlertDialog.Title class="text-duvet-ink mb-1 text-sm font-semibold">Confirm</AlertDialog.Title>
+					<AlertDialog.Description class="text-duvet-ink mb-4 text-sm"
 						>{confirmStore.pending.message}</AlertDialog.Description
 					>
 
 					{#if confirmStore.error}
-						<p class="mb-4 rounded-md bg-red-400/10 px-3 py-2 text-sm text-red-400">{confirmStore.error}</p>
+						<p class="bg-duvet-danger/10 text-duvet-danger mb-4 rounded-md px-3 py-2 text-sm">{confirmStore.error}</p>
 					{/if}
 
 					<div class="flex justify-end gap-2">
 						<AlertDialog.Cancel
-							class="rounded-md px-3 py-1.5 text-sm font-medium text-zinc-300 transition-colors hover:bg-zinc-800 disabled:opacity-50"
+							class="text-duvet-ink hover:bg-duvet-card rounded-md px-3 py-1.5 text-sm font-medium transition-colors disabled:opacity-50"
 							disabled={confirmStore.loading}
 						>
 							Cancel
 						</AlertDialog.Cancel>
 						<button
-							class="text-fixed-white flex min-w-20 items-center justify-center gap-1.5 rounded-md bg-red-600 px-4 py-1.5 text-sm font-semibold transition-colors hover:bg-red-500 disabled:opacity-50"
+							class="text-duvet-on-accent rounded-row bg-duvet-danger hover:bg-duvet-danger/85 flex min-w-20 items-center justify-center gap-1.5 px-4 py-1.5 text-sm font-semibold transition-colors disabled:opacity-50"
 							disabled={confirmStore.loading}
 							onclick={() => confirmStore.execute()}
 						>

@@ -47,7 +47,7 @@ describe("statusDotClass", () => {
 	test("gives each status its own color", () => {
 		const classes = (["online", "idle", "dnd", "offline"] as const).map(statusDotClass);
 		expect(new Set(classes).size).toBe(4);
-		expect(statusDotClass("dnd")).toBe("bg-red-500");
+		expect(statusDotClass("dnd")).toBe("bg-duvet-danger");
 	});
 });
 

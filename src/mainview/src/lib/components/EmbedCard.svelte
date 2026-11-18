@@ -43,7 +43,7 @@
 
 	function embedBorderStyle(cardEmbed: Embed): string {
 		const c = cardEmbed.color;
-		if (!c || c.color_from == null) return "border-color: var(--color-zinc-700)";
+		if (!c || c.color_from == null) return "border-color: color-mix(in oklab, var(--duvet-ink) 20%, transparent)";
 		const from = intToHex(c.color_from);
 		if (c.color_to == null) return `border-color: ${from}`;
 		const to = intToHex(c.color_to);
@@ -115,12 +115,12 @@
 	{/if}
 {:else if isTikTokEmbed(card)}
 	<div
-		class="mt-1 flex w-[320px] flex-col overflow-hidden rounded-md border-l-4 bg-zinc-800/60"
+		class="bg-duvet-card/60 mt-1 flex w-[320px] flex-col overflow-hidden rounded-md border-l-4"
 		style="border-color: #fe2c55;"
 	>
 		<div class="px-3 py-2.5 select-text">
 			{#if card.provider}
-				<span class="text-xxs font-semibold text-zinc-400">{card.provider}</span>
+				<span class="text-xxs text-duvet-ink2 font-semibold">{card.provider}</span>
 			{/if}
 			{#if card.title}
 				{#if card.url}
@@ -128,10 +128,10 @@
 						href={card.url}
 						target="_blank"
 						rel="noopener noreferrer"
-						class="line-clamp-2 text-sm font-semibold text-stone-300 hover:underline">{card.title}</a
+						class="text-duvet-ink line-clamp-2 text-sm font-semibold hover:underline">{card.title}</a
 					>
 				{:else}
-					<span class="line-clamp-2 text-sm font-semibold text-zinc-100">{card.title}</span>
+					<span class="text-duvet-ink line-clamp-2 text-sm font-semibold">{card.title}</span>
 				{/if}
 			{/if}
 		</div>
@@ -148,7 +148,7 @@
 	</div>
 {:else if card.title || card.description || card.video || card.image}
 	<div
-		class="mt-1 flex max-w-sm flex-col overflow-hidden rounded-md border-l-4 bg-zinc-800/60"
+		class="bg-duvet-card/60 mt-1 flex max-w-sm flex-col overflow-hidden rounded-md border-l-4"
 		style={embedBorderStyle(card)}
 	>
 		{#if card.author || card.title || card.description || card.fields?.length || footerText || card.thumbnail}
@@ -164,10 +164,10 @@
 									href={card.author.url}
 									target="_blank"
 									rel="noopener noreferrer"
-									class="truncate text-xs text-zinc-400 hover:underline">{card.author.name}</a
+									class="text-duvet-ink2 truncate text-xs hover:underline">{card.author.name}</a
 								>
 							{:else}
-								<span class="truncate text-xs text-zinc-400">{card.author.name}</span>
+								<span class="text-duvet-ink2 truncate text-xs">{card.author.name}</span>
 							{/if}
 						</div>
 					{/if}
@@ -178,15 +178,15 @@
 								href={card.url}
 								target="_blank"
 								rel="noopener noreferrer"
-								class="line-clamp-2 text-sm font-semibold text-stone-300 hover:underline">{card.title}</a
+								class="text-duvet-ink line-clamp-2 text-sm font-semibold hover:underline">{card.title}</a
 							>
 						{:else}
-							<span class="line-clamp-2 text-sm font-semibold text-zinc-100">{card.title}</span>
+							<span class="text-duvet-ink line-clamp-2 text-sm font-semibold">{card.title}</span>
 						{/if}
 					{/if}
 
 					{#if card.description}
-						<p class="line-clamp-3 text-xs wrap-break-word text-zinc-400">
+						<p class="text-duvet-ink2 line-clamp-3 text-xs wrap-break-word">
 							{@html renderMarkdown(card.description, false, undefined, undefined, $roomNames)}
 						</p>
 					{/if}
@@ -195,8 +195,8 @@
 						<div class="mt-0.5 flex flex-wrap gap-x-4 gap-y-1">
 							{#each card.fields as field}
 								<div class="flex min-w-0 flex-col {field.inline ? '' : 'w-full'}">
-									<span class="text-xxs font-semibold tracking-wide text-zinc-400 uppercase">{field.name}</span>
-									<span class="text-xs text-zinc-300"
+									<span class="text-duvet-ink2 text-xs font-bold">{field.name}</span>
+									<span class="text-duvet-ink text-xs"
 										>{@html renderMarkdown(field.value, false, undefined, undefined, $roomNames)}</span
 									>
 								</div>
@@ -205,7 +205,7 @@
 					{/if}
 
 					{#if footerText}
-						<span class="text-xxs mt-0.5 text-zinc-500">{footerText}</span>
+						<span class="text-xxs text-duvet-ink2 mt-0.5">{footerText}</span>
 					{/if}
 				</div>
 

@@ -111,7 +111,7 @@
 			<span class="relative shrink-0">
 				<span
 					class="motion-safe:animate-call-pulse absolute -inset-1 rounded-full border-2 {ringing
-						? 'border-emerald-400/50'
+						? 'border-duvet-alive/50'
 						: 'border-duvet-ink2/45'}"
 				></span>
 				<UserAvatar src={face.userId ? getAvatarURL(face.userId, face.avatar) : null} name={face.name} size={40} />
@@ -119,7 +119,7 @@
 			<span class="flex min-w-0 flex-col">
 				<span class="truncate text-sm font-semibold">{face.name}</span>
 				{#if ringing}
-					<span class="flex min-w-0 items-center gap-1 text-xs text-emerald-400">
+					<span class="text-duvet-alive flex min-w-0 items-center gap-1 text-xs">
 						<PhoneIncoming class="size-3 shrink-0" />
 						<span class="truncate"
 							>Incoming call{#if face.place}<!-- An expression keeps the space Svelte trims from a tag's start. --><span

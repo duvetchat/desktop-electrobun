@@ -28,7 +28,7 @@
 <!-- The click is a code block's copy button's, which the keyboard reaches as a button. -->
 <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
 <div
-	class="overflow-x-auto overflow-y-hidden text-sm break-words whitespace-pre-wrap text-zinc-300 select-text [&_.msg-mention]:pointer-events-none {emojiOnly
+	class="text-duvet-ink overflow-x-auto overflow-y-hidden text-sm break-words whitespace-pre-wrap select-text [&_.msg-mention]:pointer-events-none {emojiOnly
 		? 'leading-12'
 		: ''}"
 	onclick={copyCode}

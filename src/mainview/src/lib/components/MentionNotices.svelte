@@ -28,7 +28,7 @@
 	>
 		{#each $mentionNotices as notice (notice.id)}
 			<div
-				class="pointer-events-auto flex items-start rounded-lg border border-zinc-700 bg-zinc-900/95 text-left shadow-lg backdrop-blur-sm"
+				class="rounded-card border-duvet-line bg-duvet-bg/95 shadow-duvet-float pointer-events-auto flex items-start border text-left backdrop-blur-sm"
 			>
 				<button
 					type="button"
@@ -40,22 +40,22 @@
 					</span>
 					<span class="flex min-w-0 flex-1 flex-col gap-0.5">
 						<span class="flex min-w-0 items-baseline gap-1 text-xs">
-							<span class="shrink-0 font-semibold text-zinc-100">{notice.authorName}</span>
-							<span class="truncate text-zinc-400">{notice.where}</span>
+							<span class="text-duvet-ink shrink-0 font-semibold">{notice.authorName}</span>
+							<span class="text-duvet-ink2 truncate">{notice.where}</span>
 						</span>
 						{#if notice.text}
-							<span class="msg-content line-clamp-2 text-sm wrap-break-word text-zinc-300"
+							<span class="msg-content text-duvet-ink line-clamp-2 text-sm wrap-break-word"
 								>{@html renderMarkdownLine(notice.text, notice.mentionMap, notice.customEmojiMap, $roomNames)}</span
 							>
 						{:else}
 							<!-- No text to show: only files, a sticker or components -->
-							<span class="text-sm text-zinc-400 italic">Click to see message</span>
+							<span class="text-duvet-ink2 text-sm italic">Click to see message</span>
 						{/if}
 					</span>
 				</button>
 				<button
 					type="button"
-					class="m-1.5 shrink-0 rounded p-1 text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-100"
+					class="text-duvet-ink2 hover:bg-duvet-card hover:text-duvet-ink m-1.5 shrink-0 rounded p-1 transition-colors"
 					aria-label="Dismiss"
 					onclick={() => dismissMentionNotice(notice.id)}
 				>

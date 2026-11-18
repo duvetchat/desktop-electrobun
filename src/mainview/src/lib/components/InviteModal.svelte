@@ -89,21 +89,21 @@
 		<Dialog.Overlay class="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm" />
 		<Dialog.Content class="fixed inset-0 z-51 flex items-center justify-center p-4">
 			<div
-				class="w-full max-w-md overflow-hidden rounded-xl border border-zinc-700 bg-zinc-900 text-zinc-100 shadow-2xl"
+				class="rounded-card border-duvet-line bg-duvet-bg text-duvet-ink shadow-duvet-float w-full max-w-md overflow-hidden border"
 			>
 				<!-- Header -->
-				<div class="flex items-center justify-between border-b border-zinc-700 px-6 py-4">
+				<div class="border-duvet-line flex items-center justify-between border-b px-6 py-4">
 					<div class="flex items-center gap-2.5">
-						<LinkSimpleIcon class="size-4 text-stone-300" />
+						<LinkSimpleIcon class="text-duvet-ink size-4" />
 						<div>
-							<h2 class="text-base leading-tight font-semibold text-white">Invite People</h2>
+							<h2 class="text-duvet-ink text-base leading-tight font-semibold">Invite People</h2>
 							{#if channel}
-								<p class="text-xs text-zinc-400">#{channel.name}</p>
+								<p class="text-duvet-ink2 text-xs">#{channel.name}</p>
 							{/if}
 						</div>
 					</div>
 					<button
-						class="rounded-lg p-1.5 text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-white"
+						class="text-duvet-ink2 hover:bg-duvet-card hover:text-duvet-ink rounded-lg p-1.5 transition-colors"
 						onclick={() => (open = false)}
 						aria-label="Close"
 					>
@@ -113,18 +113,18 @@
 
 				<!-- Body -->
 				<div class="space-y-4 px-6 py-5">
-					<p class="text-sm text-zinc-300">Share this invite link. Anyone with this link can join the Space.</p>
+					<p class="text-duvet-ink text-sm">Share this invite link. Anyone with this link can join the Space.</p>
 
 					{#if isLoading}
 						<div class="flex items-center justify-center py-8">
-							<div class="h-6 w-6 animate-spin rounded-full border-2 border-stone-400 border-t-transparent"></div>
+							<div class="border-duvet-ink2/40 h-6 w-6 animate-spin rounded-full border-2 border-t-transparent"></div>
 						</div>
 					{:else if genError}
-						<p class="py-4 text-center text-sm text-red-400">
+						<p class="text-duvet-danger py-4 text-center text-sm">
 							{genError}
 						</p>
 						<button
-							class="w-full rounded-lg bg-zinc-800 py-2 text-sm text-zinc-200 transition-colors hover:bg-zinc-700"
+							class="bg-duvet-card text-duvet-ink hover:bg-duvet-ink/10 w-full rounded-lg py-2 text-sm transition-colors"
 							onclick={generate}
 						>
 							Try again
@@ -136,12 +136,11 @@
 								type="text"
 								readonly
 								value={inviteLink}
-								class="min-w-0 flex-1 rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2.5 font-mono text-sm text-white focus:ring-1 focus:ring-stone-500 focus:outline-none"
+								class="text-duvet-ink bg-duvet-sunk shadow-duvet-press focus-visible:outline-duvet-accent min-w-0 flex-1 rounded-xl px-3 py-2.5 font-mono text-sm focus-visible:outline-2"
 								onclick={() => linkInput?.select()}
 							/>
 							<button
-								class="text-fixed-white flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors
-                            {copied ? 'bg-fill-600 hover:bg-fill-500' : 'bg-fill-600 hover:bg-fill-500'}"
+								class="text-duvet-on-accent bg-duvet-accent shadow-duvet-raised flex shrink-0 items-center gap-1.5 rounded-xl px-3 py-2.5 text-sm font-bold transition hover:brightness-110"
 								onclick={copyLink}
 								aria-label="Copy link"
 							>
@@ -154,15 +153,15 @@
 								{/if}
 							</button>
 						</div>
-						<p class="text-xs text-zinc-400">
+						<p class="text-duvet-ink2 text-xs">
 							{linkAge === 0 ? "This link never expires." : `This link expires in ${expiryLabel}.`}
 						</p>
 					{/if}
-					<label class="flex items-center justify-end gap-2 text-xs text-zinc-400">
+					<label class="text-duvet-ink2 flex items-center justify-end gap-2 text-xs">
 						Expire after
 						<select
 							bind:value={maxAge}
-							class="rounded-md border border-zinc-700 bg-zinc-800 px-2 py-1 text-xs text-zinc-200 focus:ring-1 focus:ring-stone-500 focus:outline-none"
+							class="text-duvet-ink bg-duvet-sunk shadow-duvet-press focus-visible:outline-duvet-accent rounded-xl px-2 py-1 text-xs focus-visible:outline-2"
 						>
 							{#each EXPIRY_OPTIONS as option (option.seconds)}
 								<option value={option.seconds}>{option.label}</option>

@@ -142,7 +142,7 @@
 						>
 						<span class="text-duvet-ink2 flex min-w-0 items-center gap-1 text-xs">
 							<!-- Red for a call the user missed, as its notice in the conversation -->
-							<PhoneIcon class="size-3 shrink-0 {row.line.missed ? 'text-red-400' : ''}" aria-hidden="true" />
+							<PhoneIcon class="size-3 shrink-0 {row.line.missed ? 'text-duvet-danger' : ''}" aria-hidden="true" />
 							<span class="truncate">{callNoticeText(row.line)}</span>
 						</span>
 					</span>

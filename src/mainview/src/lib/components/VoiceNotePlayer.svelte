@@ -147,12 +147,12 @@
 <div
 	class="flex items-center gap-2.5 {compact
 		? 'max-w-none min-w-0 rounded-xl px-2.5 py-1.5'
-		: 'max-w-[320px] min-w-60 rounded-[18px] py-2 pr-3.5 pl-2.5'} border-night-30/60 bg-night-22/80 border"
+		: 'max-w-[320px] min-w-60 rounded-[18px] py-2 pr-3.5 pl-2.5'} border-duvet-line bg-duvet-card/80 border"
 >
 	<button
 		class="flex items-center justify-center {compact
 			? 'size-7'
-			: 'size-9'} text-fixed-white shrink-0 cursor-pointer rounded-full border-none bg-[oklch(0.55_0.15_250)] transition-[background] duration-150 hover:bg-[oklch(0.62_0.15_250)]"
+			: 'size-9'} text-duvet-on-accent bg-duvet-accent hover:bg-duvet-accent/85 shrink-0 cursor-pointer rounded-full border-none transition-[background] duration-150"
 		onclick={togglePlay}
 	>
 		{#if playing}
@@ -171,24 +171,24 @@
 				<div
 					class="min-h-0.75 flex-1 rounded-xs transition-[background] duration-100"
 					style="height: {height * 100}%; {barProgress <= progress
-						? 'background: oklch(0.65 0.15 250);'
-						: 'background: var(--color-night-40);'}"
+						? 'background: var(--duvet-accent);'
+						: 'background: color-mix(in oklab, var(--duvet-ink) 20%, transparent);'}"
 				></div>
 			{/each}
 			<div
 				class="absolute top-1/2 {compact
 					? 'size-2'
-					: 'size-2.5'} pointer-events-none -translate-x-1/2 -translate-y-1/2 rounded-full bg-[oklch(0.65_0.15_250)] shadow-[0_0_4px_oklch(0.5_0.15_250/0.5)]"
+					: 'size-2.5'} bg-duvet-accent pointer-events-none -translate-x-1/2 -translate-y-1/2 rounded-full shadow-[0_0_4px_var(--duvet-accent)]"
 				style="left: {progress * 100}%;"
 			></div>
 		</div>
 		<div class="flex items-center gap-1.5">
-			<span class="text-night-52 tabular-nums {compact ? 'text-xxs' : 'text-[11px]'}"
+			<span class="text-duvet-ink2 tabular-nums {compact ? 'text-xxs' : 'text-[11px]'}"
 				>{formatDuration(playing || currentTime > 0 ? currentTime : duration)}</span
 			>
 			{#if !compact}
 				<button
-					class="text-xxs cursor-pointer rounded px-1 font-semibold text-zinc-500 tabular-nums transition-colors hover:bg-zinc-700 hover:text-zinc-300"
+					class="text-xxs text-duvet-ink2 hover:bg-duvet-ink/10 hover:text-duvet-ink cursor-pointer rounded px-1 font-semibold tabular-nums transition-colors"
 					onclick={handleCycleRate}>{rate}x</button
 				>
 			{/if}

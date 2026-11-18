@@ -890,12 +890,12 @@
 			{#each { length: 6 } as _, i}
 				{@const wide = i % 3 === 0}
 				<div class="-mx-4 mt-4 flex items-start gap-3 px-4">
-					<div class="size-10 shrink-0 animate-pulse rounded-full bg-zinc-700"></div>
+					<div class="bg-duvet-ink/10 size-10 shrink-0 animate-pulse rounded-full"></div>
 					<div class="flex flex-1 flex-col gap-2">
-						<div class="h-3 w-24 animate-pulse rounded bg-zinc-700"></div>
-						<div class="h-3 {wide ? 'w-4/5' : 'w-2/5'} animate-pulse rounded bg-zinc-700"></div>
+						<div class="bg-duvet-ink/10 h-3 w-24 animate-pulse rounded"></div>
+						<div class="h-3 {wide ? 'w-4/5' : 'w-2/5'} bg-duvet-ink/10 animate-pulse rounded"></div>
 						{#if wide}
-							<div class="h-3 w-3/5 animate-pulse rounded bg-zinc-700"></div>
+							<div class="bg-duvet-ink/10 h-3 w-3/5 animate-pulse rounded"></div>
 						{/if}
 					</div>
 				</div>
@@ -917,7 +917,7 @@
 		{:else if intro}
 			{@render intro()}
 		{:else}
-			<div class="mb-5 py-4 text-center text-zinc-400 italic">No messages yet. Send the first message.</div>
+			<div class="text-duvet-ink2 mb-5 py-4 text-center italic">No messages yet. Send the first message.</div>
 		{/if}
 	{:else}
 		<!-- Bottom sentinel: first in DOM → appears at visual bottom in flex-col-reverse.
@@ -932,7 +932,7 @@
 			>
 				{#if isLoadingMoreBelow}
 					<svg
-						class="h-5 w-5 animate-spin text-zinc-400"
+						class="text-duvet-ink2 h-5 w-5 animate-spin"
 						xmlns="http://www.w3.org/2000/svg"
 						fill="none"
 						viewBox="0 0 24 24"
@@ -945,7 +945,7 @@
 						></path>
 					</svg>
 				{:else}
-					<span class="text-xs text-zinc-500">Newer messages below</span>
+					<span class="text-duvet-ink2 text-xs">Newer messages below</span>
 				{/if}
 			</div>
 		{/if}
@@ -979,41 +979,41 @@
 					data-message-id={message.id}
 					class="group relative -mx-3 mb-1 flex items-center rounded-md px-3 py-1 {showHeader
 						? 'mt-4'
-						: 'mt-1'} {isHighlighted ? 'bg-yellow-500/15' : 'hover:bg-zinc-800/55'} {keyboard.cursor === message.id
+						: 'mt-1'} {isHighlighted ? 'bg-duvet-warn/15' : 'hover:bg-duvet-card/55'} {keyboard.cursor === message.id
 						? 'outline-duvet-accent outline-2 -outline-offset-2'
 						: ''}"
 				>
 					<div class="mr-3 flex w-10 shrink-0 justify-end">
 						{#if callLine}
 							<!-- Red for a call the user missed -->
-							<PhoneIcon class="size-4 {callLine.missed ? 'text-red-400' : 'text-zinc-500'}" />
+							<PhoneIcon class="size-4 {callLine.missed ? 'text-duvet-danger' : 'text-duvet-ink2'}" />
 						{:else}
-							<PinIcon class="size-4 text-zinc-500" />
+							<PinIcon class="text-duvet-ink2 size-4" />
 						{/if}
 					</div>
-					<p class="min-w-0 text-sm text-zinc-400">
+					<p class="text-duvet-ink2 min-w-0 text-sm">
 						{#if callLine}
-							{callLine.before}<span class="font-medium text-zinc-200">{callLine.name}</span>{callLine.after}
+							{callLine.before}<span class="text-duvet-ink font-medium">{callLine.name}</span>{callLine.after}
 						{:else}
-							<span class="font-medium text-zinc-200">{message.author_name}</span>
+							<span class="text-duvet-ink font-medium">{message.author_name}</span>
 							pinned
 							<button
 								type="button"
-								class="font-medium text-zinc-200 hover:underline"
+								class="text-duvet-ink font-medium hover:underline"
 								onclick={() => jumpToPinned(message)}>a message</button
 							>
 							to this {isConversation ? "conversation" : "room"}. See all
 							<button
 								type="button"
-								class="font-medium text-zinc-200 hover:underline"
+								class="text-duvet-ink font-medium hover:underline"
 								onclick={() => pinsPanelRequest.set({ id: crypto.randomUUID(), channelId })}>pinned messages</button
 							>.
 						{/if}
-						<span class="ml-1 text-xs text-zinc-500">{formatTimestamp(message.created_at, now)}</span>
+						<span class="text-duvet-ink2 ml-1 text-xs">{formatTimestamp(message.created_at, now)}</span>
 					</p>
 					{#if canDeleteNotices && hoveredMessageId === message.id}
 						<div
-							class="absolute -top-3 right-2 z-10 flex overflow-hidden rounded border border-zinc-800 bg-zinc-700 shadow-sm"
+							class="rounded-row border-duvet-line bg-duvet-card shadow-duvet-raised absolute -top-3 right-2 z-10 flex overflow-hidden border"
 						>
 							{@render deleteButton(message)}
 						</div>
@@ -1028,12 +1028,12 @@
 						: showHeader
 							? 'mt-3'
 							: 'mt-0'} {isFailed
-						? 'bg-red-500/10 hover:bg-red-500/15'
+						? 'bg-duvet-danger/10 hover:bg-duvet-danger/15'
 						: isHighlighted
-							? 'bg-yellow-500/15 hover:bg-yellow-500/20'
+							? 'bg-duvet-warn/15 hover:bg-duvet-warn/20'
 							: isMention
-								? 'border-l-2 border-yellow-500/60 bg-yellow-500/10 hover:bg-yellow-500/15'
-								: 'hover:bg-zinc-800/55'} -mx-3 {keyboard.cursor === message.id
+								? 'border-duvet-warn/60 bg-duvet-warn/10 hover:bg-duvet-warn/15 border-l-2'
+								: 'hover:bg-duvet-card/55'} -mx-3 {keyboard.cursor === message.id
 						? 'outline-duvet-accent outline-2 -outline-offset-2'
 						: ''}"
 					style={isFailed ? "" : isPending ? "opacity: 0.5; pointer-events: none;" : ""}
@@ -1084,7 +1084,7 @@
 						{:else}
 							<div class="mr-3 w-10 shrink-0 text-right">
 								<span
-									class="text-xxs leading-5 whitespace-nowrap text-zinc-500 opacity-0 select-none group-hover:opacity-100"
+									class="text-xxs text-duvet-ink2 leading-5 whitespace-nowrap opacity-0 select-none group-hover:opacity-100"
 								>
 									{new Date(message.created_at).toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" })}
 								</span>
@@ -1105,7 +1105,7 @@
 												activePopoverMsgId = o ? message.id : null;
 											}}
 											triggerClass="font-semibold mr-2 hover:underline cursor-pointer"
-											triggerStyle={authorColors[message.author_id] || "color: var(--color-zinc-100)"}
+											triggerStyle={authorColors[message.author_id] || "color: var(--duvet-ink)"}
 										>
 											{#snippet children()}
 												{message.author_name}
@@ -1114,13 +1114,13 @@
 									{:else}
 										<span
 											class="mr-2 cursor-default font-semibold"
-											style={authorColors[message.author_id] || "color: var(--color-zinc-100)"}
+											style={authorColors[message.author_id] || "color: var(--duvet-ink)"}
 										>
 											{message.author_name}
 										</span>
 									{/if}
 									<AuthorTag {message} class="mr-1.5" />
-									<span class="text-xs font-medium text-zinc-400">{formatTimestamp(message.created_at, now)}</span>
+									<span class="text-duvet-ink2 text-xs font-medium">{formatTimestamp(message.created_at, now)}</span>
 								</div>
 							{/if}
 
@@ -1139,16 +1139,16 @@
 										{customEmojis}
 										rooms={mentionRooms}
 									/>
-									<div class="text-xxs text-zinc-400">
+									<div class="text-xxs text-duvet-ink2">
 										escape to <button
 											type="button"
-											class="cursor-pointer text-stone-300 hover:underline"
+											class="text-duvet-ink cursor-pointer hover:underline"
 											onclick={cancelEdit}>cancel</button
 										>
 										• enter to
 										<button
 											type="button"
-											class="cursor-pointer text-stone-300 hover:underline"
+											class="text-duvet-ink cursor-pointer hover:underline"
 											onclick={() => saveEdit(message.id, editContent)}>save</button
 										>
 									</div>
@@ -1175,7 +1175,7 @@
 										role="textbox"
 										aria-readonly="true"
 										tabindex="-1"
-										class="{isFailed ? 'text-red-400' : 'text-zinc-200'} {emojiOnly
+										class="{isFailed ? 'text-duvet-danger' : 'text-duvet-ink'} {emojiOnly
 											? ''
 											: showHeader
 												? ''
@@ -1232,13 +1232,13 @@
 							{#if ephemeral}
 								<!-- A bot's to this user alone, and not the room's: it lasts until dismissed or the app reloads.
 								     Nothing of the room's (reactions, replies, pins, links) applies to it, so it has no toolbar. -->
-								<p class="mt-1 flex items-center gap-1 text-xs text-zinc-400">
+								<p class="text-duvet-ink2 mt-1 flex items-center gap-1 text-xs">
 									<EyeIcon class="size-4 shrink-0" />
 									<span>Only you can see this</span>
 									<span aria-hidden="true">·</span>
 									<button
 										type="button"
-										class="cursor-pointer text-stone-300 hover:underline"
+										class="text-duvet-ink cursor-pointer hover:underline"
 										onclick={() => dropEphemeral(channelId, message.id)}>Dismiss message</button
 									>
 								</p>
@@ -1250,27 +1250,27 @@
 					<!-- Action toolbar -->
 					{#if isFailed}
 						<div
-							class="absolute -top-3 right-4 z-10 flex overflow-hidden rounded border border-zinc-800 bg-zinc-700 shadow-sm"
+							class="rounded-row border-duvet-line bg-duvet-card shadow-duvet-raised absolute -top-3 right-4 z-10 flex overflow-hidden border"
 						>
 							<button
-								class="px-2 py-1.5 text-xs text-stone-300 transition-colors hover:bg-zinc-600"
+								class="text-duvet-ink hover:bg-duvet-ink/15 px-2 py-1.5 text-xs transition-colors"
 								onclick={() => onRetry(message)}>Retry</button
 							>
-							<div class="w-px bg-zinc-800"></div>
+							<div class="bg-duvet-card w-px"></div>
 							<button
-								class="px-2 py-1.5 text-xs text-zinc-400 transition-colors hover:bg-zinc-600 hover:text-white"
+								class="text-duvet-ink2 hover:bg-duvet-ink/15 hover:text-duvet-ink px-2 py-1.5 text-xs transition-colors"
 								onclick={() => onDismiss(message.nonce!)}>Dismiss</button
 							>
 						</div>
 					{:else if (hoveredMessageId === message.id || reactingMessageId === message.id) && !isPending && !ephemeral && $currentUser && message.author_id === $currentUser.id && editingMessageId !== message.id}
 						<div
-							class="absolute -top-3 right-2 z-10 flex overflow-hidden rounded border border-zinc-800 bg-zinc-700 shadow-sm"
+							class="rounded-row border-duvet-line bg-duvet-card shadow-duvet-raised absolute -top-3 right-2 z-10 flex overflow-hidden border"
 						>
 							<Popover.Root
 								bind:open={() => reactingMessageId === message.id, (v) => (reactingMessageId = v ? message.id : null)}
 							>
 								<Popover.Trigger
-									class="p-1.5 text-zinc-400 transition-colors hover:bg-zinc-600 hover:text-zinc-200"
+									class="text-duvet-ink2 hover:bg-duvet-ink/15 hover:text-duvet-ink p-1.5 transition-colors"
 									title="Add reaction"
 									aria-label="Add reaction"
 								>
@@ -1302,9 +1302,9 @@
 								{/if}
 							</Popover.Root>
 							{@render reactionsButton(message)}
-							<div class="w-px bg-zinc-800"></div>
+							<div class="bg-duvet-card w-px"></div>
 							<button
-								class="p-1.5 text-zinc-400 transition-colors hover:bg-zinc-600 hover:text-zinc-200"
+								class="text-duvet-ink2 hover:bg-duvet-ink/15 hover:text-duvet-ink p-1.5 transition-colors"
 								onclick={() => onReply?.(message)}
 								title="Reply"
 								aria-label="Reply"
@@ -1321,9 +1321,9 @@
 									stroke-linejoin="round"><polyline points="9 17 4 12 9 7" /><path d="M20 18v-2a4 4 0 0 0-4-4H4" /></svg
 								>
 							</button>
-							<div class="w-px bg-zinc-800"></div>
+							<div class="bg-duvet-card w-px"></div>
 							<button
-								class="p-1.5 text-zinc-400 transition-colors hover:bg-zinc-600 hover:text-zinc-200"
+								class="text-duvet-ink2 hover:bg-duvet-ink/15 hover:text-duvet-ink p-1.5 transition-colors"
 								onclick={() => {
 									navigator.clipboard
 										.writeText(
@@ -1349,9 +1349,9 @@
 									/></svg
 								>
 							</button>
-							<div class="w-px bg-zinc-800"></div>
+							<div class="bg-duvet-card w-px"></div>
 							<button
-								class="p-1.5 text-zinc-400 transition-colors hover:bg-zinc-600 hover:text-zinc-200"
+								class="text-duvet-ink2 hover:bg-duvet-ink/15 hover:text-duvet-ink p-1.5 transition-colors"
 								onclick={() => openThreadModal(message)}
 								title="View thread"
 								aria-label="View thread"
@@ -1370,9 +1370,9 @@
 								>
 							</button>
 							{#if canPin}
-								<div class="w-px bg-zinc-800"></div>
+								<div class="bg-duvet-card w-px"></div>
 								<button
-									class="p-1.5 text-zinc-400 transition-colors hover:bg-zinc-600 hover:text-zinc-200 disabled:cursor-not-allowed disabled:opacity-50"
+									class="text-duvet-ink2 hover:bg-duvet-ink/15 hover:text-duvet-ink p-1.5 transition-colors disabled:cursor-not-allowed disabled:opacity-50"
 									onclick={() => togglePin(message)}
 									disabled={pinningMessageId === message.id}
 									title={message.pinned_at ? "Unpin message" : "Pin message"}
@@ -1385,9 +1385,9 @@
 									{/if}
 								</button>
 							{/if}
-							<div class="w-px bg-zinc-800"></div>
+							<div class="bg-duvet-card w-px"></div>
 							<button
-								class="p-1.5 text-zinc-400 transition-colors hover:bg-zinc-600 hover:text-white"
+								class="text-duvet-ink2 hover:bg-duvet-ink/15 hover:text-duvet-ink p-1.5 transition-colors"
 								onclick={() => {
 									startEdit(message);
 								}}
@@ -1409,18 +1409,18 @@
 									/><path d="m15 5 4 4" /></svg
 								>
 							</button>
-							<div class="w-px bg-zinc-800"></div>
+							<div class="bg-duvet-card w-px"></div>
 							{@render deleteButton(message)}
 						</div>
 					{:else if (hoveredMessageId === message.id || reactingMessageId === message.id) && !isPending && !ephemeral && $currentUser && message.author_id !== $currentUser.id && editingMessageId !== message.id}
 						<div
-							class="absolute -top-3 right-2 z-10 flex overflow-hidden rounded border border-zinc-800 bg-zinc-700 shadow-sm"
+							class="rounded-row border-duvet-line bg-duvet-card shadow-duvet-raised absolute -top-3 right-2 z-10 flex overflow-hidden border"
 						>
 							<Popover.Root
 								bind:open={() => reactingMessageId === message.id, (v) => (reactingMessageId = v ? message.id : null)}
 							>
 								<Popover.Trigger
-									class="p-1.5 text-zinc-400 transition-colors hover:bg-zinc-600 hover:text-zinc-200"
+									class="text-duvet-ink2 hover:bg-duvet-ink/15 hover:text-duvet-ink p-1.5 transition-colors"
 									title="Add reaction"
 									aria-label="Add reaction"
 								>
@@ -1452,9 +1452,9 @@
 								{/if}
 							</Popover.Root>
 							{@render reactionsButton(message)}
-							<div class="w-px bg-zinc-800"></div>
+							<div class="bg-duvet-card w-px"></div>
 							<button
-								class="p-1.5 text-zinc-400 transition-colors hover:bg-zinc-600 hover:text-zinc-200"
+								class="text-duvet-ink2 hover:bg-duvet-ink/15 hover:text-duvet-ink p-1.5 transition-colors"
 								onclick={() => onReply?.(message)}
 								title="Reply"
 								aria-label="Reply"
@@ -1471,9 +1471,9 @@
 									stroke-linejoin="round"><polyline points="9 17 4 12 9 7" /><path d="M20 18v-2a4 4 0 0 0-4-4H4" /></svg
 								>
 							</button>
-							<div class="w-px bg-zinc-800"></div>
+							<div class="bg-duvet-card w-px"></div>
 							<button
-								class="p-1.5 text-zinc-400 transition-colors hover:bg-zinc-600 hover:text-zinc-200"
+								class="text-duvet-ink2 hover:bg-duvet-ink/15 hover:text-duvet-ink p-1.5 transition-colors"
 								onclick={() => {
 									navigator.clipboard
 										.writeText(
@@ -1499,9 +1499,9 @@
 									/></svg
 								>
 							</button>
-							<div class="w-px bg-zinc-800"></div>
+							<div class="bg-duvet-card w-px"></div>
 							<button
-								class="p-1.5 text-zinc-400 transition-colors hover:bg-zinc-600 hover:text-zinc-200"
+								class="text-duvet-ink2 hover:bg-duvet-ink/15 hover:text-duvet-ink p-1.5 transition-colors"
 								onclick={() => openThreadModal(message)}
 								title="View thread"
 								aria-label="View thread"
@@ -1520,9 +1520,9 @@
 								>
 							</button>
 							{#if canPin}
-								<div class="w-px bg-zinc-800"></div>
+								<div class="bg-duvet-card w-px"></div>
 								<button
-									class="p-1.5 text-zinc-400 transition-colors hover:bg-zinc-600 hover:text-zinc-200 disabled:cursor-not-allowed disabled:opacity-50"
+									class="text-duvet-ink2 hover:bg-duvet-ink/15 hover:text-duvet-ink p-1.5 transition-colors disabled:cursor-not-allowed disabled:opacity-50"
 									onclick={() => togglePin(message)}
 									disabled={pinningMessageId === message.id}
 									title={message.pinned_at ? "Unpin message" : "Pin message"}
@@ -1536,7 +1536,7 @@
 								</button>
 							{/if}
 							{#if currentUserCan(Permission.ManageMessages)}
-								<div class="w-px bg-zinc-800"></div>
+								<div class="bg-duvet-card w-px"></div>
 								{@render deleteButton(message)}
 							{/if}
 						</div>
@@ -1546,21 +1546,21 @@
 
 			{#if isDifferentDay}
 				<div class="my-3 flex items-center gap-3 px-2 select-none">
-					<div class="h-px flex-1 bg-zinc-700"></div>
-					<span class="text-xs font-medium whitespace-nowrap text-zinc-500">
+					<div class="bg-duvet-line h-px flex-1"></div>
+					<span class="text-duvet-ink2 text-xs font-medium whitespace-nowrap">
 						{formatDateSeparator(message.created_at)}
 					</span>
-					<div class="h-px flex-1 bg-zinc-700"></div>
+					<div class="bg-duvet-line h-px flex-1"></div>
 				</div>
 			{/if}
 
 			{#if unreadDividerIdx !== null && unreadCount > 0 && i === unreadDividerIdx - 1}
 				<div data-unread-divider class="my-2 flex items-center gap-3 px-2 select-none">
-					<div class="h-px flex-1 bg-red-500/50"></div>
-					<span class="shrink-0 text-xs font-semibold whitespace-nowrap text-red-400">
+					<div class="bg-duvet-danger/50 h-px flex-1"></div>
+					<span class="text-duvet-danger shrink-0 text-xs font-semibold whitespace-nowrap">
 						{unreadCount === 1 ? "1 new message" : `${unreadCount} new messages`}
 					</span>
-					<div class="h-px flex-1 bg-red-500/50"></div>
+					<div class="bg-duvet-danger/50 h-px flex-1"></div>
 				</div>
 			{/if}
 		{/each}
@@ -1569,7 +1569,7 @@
 			<div data-sentinel-top use:topObserverAction class="flex w-full justify-center py-4">
 				{#if isLoadingMore}
 					<svg
-						class="h-5 w-5 animate-spin text-zinc-400"
+						class="text-duvet-ink2 h-5 w-5 animate-spin"
 						xmlns="http://www.w3.org/2000/svg"
 						fill="none"
 						viewBox="0 0 24 24"
@@ -1594,17 +1594,17 @@
 		<Dialog.Overlay class="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm" />
 		<Dialog.Content class="fixed inset-0 z-51 flex items-center justify-center p-4">
 			<div
-				class="flex max-h-[75vh] w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-zinc-700 bg-zinc-900 text-zinc-100 shadow-2xl"
+				class="rounded-card border-duvet-line bg-duvet-bg text-duvet-ink shadow-duvet-float flex max-h-[75vh] w-full max-w-2xl flex-col overflow-hidden border"
 			>
-				<div class="flex shrink-0 items-center justify-between border-b border-zinc-700 px-5 py-4">
+				<div class="border-duvet-line flex shrink-0 items-center justify-between border-b px-5 py-4">
 					<div>
-						<h2 class="text-base font-semibold text-white">Message thread</h2>
+						<h2 class="text-duvet-ink text-base font-semibold">Message thread</h2>
 						{#if threadRootMessage}
-							<p class="text-xs text-zinc-400">From {threadRootMessage.author_name}</p>
+							<p class="text-duvet-ink2 text-xs">From {threadRootMessage.author_name}</p>
 						{/if}
 					</div>
 					<button
-						class="rounded-lg p-1.5 text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-white"
+						class="text-duvet-ink2 hover:bg-duvet-card hover:text-duvet-ink rounded-lg p-1.5 transition-colors"
 						onclick={() => (threadModalOpen = false)}
 						aria-label="Close"
 					>
@@ -1624,12 +1624,12 @@
 				<div bind:this={threadScrollEl} class="min-h-0 flex-1 overflow-y-auto px-5 py-4">
 					{#if threadLoading}
 						<div class="flex items-center justify-center py-8">
-							<div class="h-6 w-6 animate-spin rounded-full border-2 border-stone-400 border-t-transparent"></div>
+							<div class="border-duvet-ink2/40 h-6 w-6 animate-spin rounded-full border-2 border-t-transparent"></div>
 						</div>
 					{:else if threadError}
-						<p class="text-sm text-red-400">{threadError}</p>
+						<p class="text-duvet-danger text-sm">{threadError}</p>
 					{:else if threadShown.length === 0}
-						<p class="text-sm text-zinc-400">No thread messages found.</p>
+						<p class="text-duvet-ink2 text-sm">No thread messages found.</p>
 					{:else}
 						{@const threadMsgMap = new Map(threadShown.map((m) => [m.id, m]))}
 						<div class="flex flex-col gap-2" onclickcapture={openMention}>
@@ -1637,7 +1637,7 @@
 								{@const parentMsg = threadMsg.ref_message_id ? threadMsgMap.get(threadMsg.ref_message_id) : null}
 								{@const parentCall = parentMsg ? callNoticeLine(parentMsg, $currentUser?.id, joined) : null}
 								{@const root = threadRootMessage}
-								<div class="group relative rounded-md border border-zinc-800 bg-zinc-800/30 px-3 py-2">
+								<div class="group border-duvet-line bg-duvet-card/30 relative rounded-md border px-3 py-2">
 									<!-- As the pins and the search show a message, a reply's quote above it: its quote of a call notice
 									     says what the call's row does -->
 									<MessagePreview
@@ -1655,7 +1655,7 @@
 									{#if onThreadReply && root && !isNotice(threadMsg) && !isEphemeral(threadMsg) && threadMsg.id !== threadMsg.nonce}
 										<button
 											type="button"
-											class="absolute top-1.5 right-1.5 flex size-6 items-center justify-center rounded text-zinc-400 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 hover:bg-zinc-700 hover:text-zinc-100 focus-visible:opacity-100"
+											class="text-duvet-ink2 hover:bg-duvet-ink/10 hover:text-duvet-ink absolute top-1.5 right-1.5 flex size-6 items-center justify-center rounded opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 focus-visible:opacity-100"
 											title="Reply"
 											aria-label="Reply to {threadMsg.author_name}"
 											onclick={() => onThreadReply(threadMsg, root)}
@@ -1680,9 +1680,9 @@
 <!-- Who reacted, in the menu of a message that has reactions -->
 {#snippet reactionsButton(message: Message)}
 	{#if message.reactions?.length}
-		<div class="w-px bg-zinc-800"></div>
+		<div class="bg-duvet-card w-px"></div>
 		<button
-			class="p-1.5 text-zinc-400 transition-colors hover:bg-zinc-600 hover:text-zinc-200"
+			class="text-duvet-ink2 hover:bg-duvet-ink/15 hover:text-duvet-ink p-1.5 transition-colors"
 			onclick={() => showReactors(message)}
 			title="Reactions"
 			aria-label="Reactions"
@@ -1694,7 +1694,7 @@
 
 {#snippet deleteButton(message: Message)}
 	<button
-		class="p-1.5 text-zinc-400 transition-colors hover:bg-zinc-600 hover:text-red-400 disabled:cursor-not-allowed disabled:opacity-50"
+		class="text-duvet-ink2 hover:bg-duvet-ink/15 hover:text-duvet-danger p-1.5 transition-colors disabled:cursor-not-allowed disabled:opacity-50"
 		onclick={() => handleDelete(message.id)}
 		disabled={deletingMessageId === message.id}
 		title="Delete message"
@@ -1763,14 +1763,14 @@
 		members.find((m) => m.id === userMenuTargetId),
 	)}
 	<div
-		class="fixed z-201 min-w-44 rounded-lg border border-zinc-700 bg-zinc-800 py-1 shadow-2xl"
+		class="rounded-card border-duvet-line bg-duvet-card shadow-duvet-float fixed z-201 min-w-44 border py-1"
 		style="left: {userMenuPos.x}px; top: {userMenuPos.y}px;"
 	>
 		{#if !isSelf}
 			<button
 				class="w-full px-3 py-2 text-left text-sm transition-colors {canSendRequest
-					? 'text-zinc-100 hover:bg-zinc-700'
-					: 'cursor-not-allowed text-zinc-500'}"
+					? 'text-duvet-ink hover:bg-duvet-ink/10'
+					: 'text-duvet-ink2 cursor-not-allowed'}"
 				disabled={!canSendRequest}
 				onclick={() => handleSendFriendRequest(userMenuTargetId!)}
 			>
@@ -1778,7 +1778,7 @@
 			</button>
 		{/if}
 		<button
-			class="w-full px-3 py-2 text-left text-sm text-zinc-100 transition-colors hover:bg-zinc-700"
+			class="text-duvet-ink hover:bg-duvet-ink/10 w-full px-3 py-2 text-left text-sm transition-colors"
 			onclick={() => {
 				navigator.clipboard.writeText(userMenuTargetId!);
 				closeUserMenu();
@@ -1787,10 +1787,10 @@
 			Copy User ID
 		</button>
 		{#if moderation}
-			<div class="my-1 border-t border-zinc-700"></div>
+			<div class="border-duvet-line my-1 border-t"></div>
 			{#if moderation.kick}
 				<button
-					class="w-full px-3 py-2 text-left text-sm text-red-400 transition-colors hover:bg-zinc-700"
+					class="text-duvet-danger hover:bg-duvet-ink/10 w-full px-3 py-2 text-left text-sm transition-colors"
 					onclick={() => {
 						const { target } = moderation;
 						closeUserMenu();
@@ -1802,7 +1802,7 @@
 			{/if}
 			{#if moderation.ban}
 				<button
-					class="w-full px-3 py-2 text-left text-sm text-red-400 transition-colors hover:bg-zinc-700"
+					class="text-duvet-danger hover:bg-duvet-ink/10 w-full px-3 py-2 text-left text-sm transition-colors"
 					onclick={() => {
 						banRequest.set(moderation.target);
 						closeUserMenu();
@@ -1813,9 +1813,9 @@
 			{/if}
 		{/if}
 		{#if isStaff}
-			<div class="my-1 border-t border-zinc-700"></div>
+			<div class="border-duvet-line my-1 border-t"></div>
 			<button
-				class="w-full px-3 py-2 text-left text-sm text-amber-400 transition-colors hover:bg-zinc-700"
+				class="text-duvet-warn hover:bg-duvet-ink/10 w-full px-3 py-2 text-left text-sm transition-colors"
 				onclick={() => openFlagsBadgesEditor(userMenuTargetId!)}
 			>
 				Edit Flags & Badges
@@ -1830,19 +1830,21 @@
 		<Dialog.Portal>
 			<Dialog.Overlay class="fixed inset-0 z-500 bg-black/70 backdrop-blur-sm" />
 			<Dialog.Content class="fixed inset-0 z-501 flex items-center justify-center p-4">
-				<div class="w-full max-w-sm rounded-xl border border-zinc-700 bg-zinc-900 p-6 text-zinc-100 shadow-2xl">
+				<div
+					class="rounded-card border-duvet-line bg-duvet-bg text-duvet-ink shadow-duvet-float w-full max-w-sm border p-6"
+				>
 					<h2 class="mb-4 text-lg font-semibold">Edit Flags & Badges</h2>
-					<p class="mb-4 text-xs text-zinc-400">User: {flagsBadgesTarget.id}</p>
+					<p class="text-duvet-ink2 mb-4 text-xs">User: {flagsBadgesTarget.id}</p>
 
 					<div class="mb-4 space-y-2">
-						<h3 class="text-xs font-semibold tracking-wide text-zinc-400 uppercase">Flags</h3>
+						<h3 class="text-duvet-ink2 text-[13px] font-bold">Flags</h3>
 						{#each FLAGS as f}
 							<label class="flex items-center gap-2 text-sm">
 								<input
 									type="checkbox"
 									checked={!!(editFlags & f.flag)}
 									onchange={() => toggleFlag(f.flag)}
-									class="accent-amber-500"
+									class="accent-duvet-warn"
 								/>
 								{f.name}
 							</label>
@@ -1850,14 +1852,14 @@
 					</div>
 
 					<div class="mb-6 space-y-2">
-						<h3 class="text-xs font-semibold tracking-wide text-zinc-400 uppercase">Badges</h3>
+						<h3 class="text-duvet-ink2 text-[13px] font-bold">Badges</h3>
 						{#each BADGES as b}
 							<label class="flex items-center gap-2 text-sm">
 								<input
 									type="checkbox"
 									checked={!!(editBadges & b.flag)}
 									onchange={() => toggleBadge(b.flag)}
-									class="accent-amber-500"
+									class="accent-duvet-warn"
 								/>
 								{b.name}
 							</label>
@@ -1866,14 +1868,14 @@
 
 					<div class="flex gap-3">
 						<button
-							class="text-fixed-white rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium transition-colors hover:bg-amber-500 disabled:opacity-50"
+							class="text-duvet-on-accent rounded-row bg-duvet-warn hover:bg-duvet-warn/85 px-4 py-2 text-sm font-medium transition-colors disabled:opacity-50"
 							disabled={flagsBadgesSaving}
 							onclick={saveFlagsBadges}
 						>
 							{flagsBadgesSaving ? "Saving…" : "Save"}
 						</button>
 						<button
-							class="rounded-lg bg-zinc-700 px-4 py-2 text-sm font-medium text-zinc-100 transition-colors hover:bg-zinc-600"
+							class="rounded-row bg-duvet-ink/10 text-duvet-ink hover:bg-duvet-ink/15 px-4 py-2 text-sm font-medium transition-colors"
 							onclick={() => (flagsBadgesOpen = false)}
 						>
 							Cancel

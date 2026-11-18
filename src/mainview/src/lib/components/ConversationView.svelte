@@ -1088,7 +1088,7 @@
 	{/if}
 {/snippet}
 
-<div class="from-night-22 to-night-19 relative flex flex-1 flex-col overflow-hidden bg-linear-to-b">
+<div class="from-duvet-card to-duvet-bg relative flex flex-1 flex-col overflow-hidden bg-linear-to-b">
 	{#if !onBarActions}
 		<div class="border-duvet-line flex h-12 shrink-0 items-center gap-2 border-b px-3 font-semibold">
 			<MessageSquare class="text-duvet-ink2 size-4" />
@@ -1104,17 +1104,17 @@
 		{#if inCallNow.length > 0}
 			<span class="flex items-center -space-x-1.5" title={inCallNow.map((m) => m.username).join(", ")}>
 				{#each inCallNow.slice(0, 4) as member (member.id)}
-					<UserAvatar src={member.avatar_url} name={member.username} size={20} class="ring-2 ring-stone-900" />
+					<UserAvatar src={member.avatar_url} name={member.username} size={20} class="ring-duvet-line ring-2" />
 				{/each}
 			</span>
 			{#if inCallNow.length > 4}
-				<span class="text-xs text-emerald-400">+{inCallNow.length - 4}</span>
+				<span class="text-duvet-alive text-xs">+{inCallNow.length - 4}</span>
 			{/if}
 		{/if}
 	{/snippet}
 	{#if canJoinCall && joinWaits}
 		<div
-			class="flex shrink-0 items-center justify-center gap-2 border-b border-emerald-800/50 bg-emerald-900/30 px-4 py-2 text-sm text-emerald-300"
+			class="border-duvet-alive/50 bg-duvet-alive/10 text-duvet-alive flex shrink-0 items-center justify-center gap-2 border-b px-4 py-2 text-sm"
 		>
 			<Phone class="size-4" />
 			<span class="font-medium">Calling from another device</span>
@@ -1122,7 +1122,7 @@
 		</div>
 	{:else if canJoinCall}
 		<button
-			class="flex shrink-0 items-center justify-center gap-2 border-b border-emerald-800/50 bg-emerald-900/30 px-4 py-2 text-sm text-emerald-300 transition-colors hover:bg-emerald-900/50"
+			class="border-duvet-alive/50 bg-duvet-alive/10 text-duvet-alive hover:bg-duvet-alive/10 flex shrink-0 items-center justify-center gap-2 border-b px-4 py-2 text-sm transition-colors"
 			onclick={joinCall}
 		>
 			<Phone class="size-4" />
@@ -1133,7 +1133,7 @@
 
 	<!-- Active call view: a flex column, so the tiles scroll within its half and the controls stay in sight -->
 	{#if isInCall}
-		<div class="flex max-h-[50%] shrink-0 flex-col overflow-hidden border-b border-zinc-800">
+		<div class="border-duvet-line flex max-h-[50%] shrink-0 flex-col overflow-hidden border-b">
 			<VoiceChannelView
 				channelId={conversation.id}
 				channelName={conversationTitle()}
@@ -1203,38 +1203,38 @@
 	>
 		<!-- svelte-ignore a11y_interactive_supports_focus -->
 		<div
-			class="flex w-80 flex-col gap-3 rounded-lg border border-stone-700 bg-stone-900 p-6"
+			class="border-duvet-line bg-duvet-bg flex w-80 flex-col gap-3 rounded-lg border p-6"
 			role="dialog"
 			onclick={(e) => e.stopPropagation()}
 			onkeydown={() => {}}
 		>
-			<h3 class="text-sm font-semibold text-stone-100">Add member</h3>
+			<h3 class="text-duvet-ink text-sm font-semibold">Add member</h3>
 			{#if eligibleFriends.length === 0}
-				<p class="py-4 text-center text-xs text-zinc-500">No friends available to add</p>
+				<p class="text-duvet-ink2 py-4 text-center text-xs">No friends available to add</p>
 			{:else}
 				<div class="flex max-h-48 flex-col gap-0.5 overflow-y-auto">
 					{#each eligibleFriends as friend (friend.id)}
 						{@const uid = getFriendOtherId(friend)}
 						{@const other = friendUser(friend, $currentUser?.id)}
 						<button
-							class="flex items-center gap-2 rounded px-3 py-2 text-left hover:bg-stone-800 disabled:opacity-50"
+							class="hover:bg-duvet-card flex items-center gap-2 rounded px-3 py-2 text-left disabled:opacity-50"
 							onclick={() => handleAddMember(uid)}
 							disabled={addMemberLoading}
 						>
 							<UserAvatar src={getAvatarURL(other.id, other.avatar)} name={other.alias ?? other.username} size={32} />
 							<div class="flex min-w-0 flex-col">
-								<span class="text-sm text-stone-200">{other.alias ?? other.username}</span>
-								<span class="text-xs text-zinc-500">@{other.username}</span>
+								<span class="text-duvet-ink text-sm">{other.alias ?? other.username}</span>
+								<span class="text-duvet-ink2 text-xs">@{other.username}</span>
 							</div>
 						</button>
 					{/each}
 				</div>
 			{/if}
 			{#if addMemberError}
-				<p class="rounded bg-red-900/20 px-3 py-2 text-xs text-red-400">{addMemberError}</p>
+				<p class="bg-duvet-danger/10 text-duvet-danger rounded px-3 py-2 text-xs">{addMemberError}</p>
 			{/if}
 			<button
-				class="self-end text-xs text-zinc-500 hover:text-zinc-300"
+				class="text-duvet-ink2 hover:text-duvet-ink self-end text-xs"
 				onclick={() => {
 					showAddMemberModal = false;
 				}}

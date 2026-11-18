@@ -171,17 +171,17 @@
 		aria-label="/{entry.name}"
 		tabindex="-1"
 		onkeydown={handleKeyDown}
-		class="bg-night-22/80 flex flex-wrap items-center gap-2 rounded-xl px-3 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)] outline-none"
+		class="bg-duvet-card shadow-duvet-raised flex flex-wrap items-center gap-2 rounded-xl px-3 py-2 outline-none"
 	>
 		<span
-			class="flex h-8 shrink-0 items-center gap-1.5 rounded-md bg-indigo-500/15 pr-1 pl-2 text-sm font-semibold text-indigo-200"
+			class="bg-duvet-accent/15 text-duvet-accent-text flex h-8 shrink-0 items-center gap-1.5 rounded-md pr-1 pl-2 text-sm font-semibold"
 			title={entry.description}
 		>
 			<UserAvatar src={getAvatarURL(app.bot.id, app.bot.avatar)} name={botName} size={16} />
 			/{entry.name}
 			<button
 				type="button"
-				class="rounded p-0.5 text-indigo-300 transition-colors hover:bg-indigo-500/20 hover:text-white"
+				class="text-duvet-accent-text hover:bg-duvet-accent/20 hover:text-duvet-ink rounded p-0.5 transition-colors"
 				aria-label="Cancel command"
 				onclick={onExit}
 			>
@@ -191,8 +191,8 @@
 		{#each entry.options as o (o.name)}
 			<!-- A label, so that a click on the option's name goes to its field -->
 			<label data-option class="flex items-center gap-1.5" title={o.description}>
-				<span class="text-xs font-medium text-zinc-400"
-					>{o.name}{#if o.required}<span class="text-red-400" aria-hidden="true">*</span>{/if}</span
+				<span class="text-duvet-ink2 text-xs font-medium"
+					>{o.name}{#if o.required}<span class="text-duvet-danger" aria-hidden="true">*</span>{/if}</span
 				>
 				{#if o.type === CommandOptionType.Boolean && o.required}
 					<!-- A required one always has a value: off until it's turned on -->
@@ -205,11 +205,11 @@
 						disabled={sending}
 						onclick={() => fields.set(o.name, !on)}
 						class="relative h-5 w-9 shrink-0 rounded-full transition-colors disabled:opacity-50 {on
-							? 'bg-indigo-500'
-							: 'bg-zinc-600'}"
+							? 'bg-duvet-accent'
+							: 'bg-duvet-ink/15'}"
 					>
 						<span
-							class="bg-fixed-white absolute top-0.5 left-0.5 size-4 rounded-full transition-transform {on
+							class="bg-fixed-white shadow-duvet-raised absolute top-0.5 left-0.5 size-4 rounded-full transition-transform {on
 								? 'translate-x-4'
 								: ''}"
 						></span>
@@ -226,7 +226,7 @@
 							: o.type === CommandOptionType.Number
 								? "decimal"
 								: undefined}
-						class="h-8 w-44 rounded-md border border-zinc-700 bg-zinc-900/60 px-2 text-sm text-zinc-100 outline-none placeholder:text-zinc-500 read-only:opacity-50 focus:border-zinc-500"
+						class="text-duvet-ink placeholder:text-duvet-ink2 bg-duvet-sunk shadow-duvet-press focus-visible:outline-duvet-accent h-8 w-44 rounded-xl px-2 text-sm read-only:opacity-50 focus-visible:outline-2"
 					/>
 				{:else}
 					<div class="w-52">
@@ -243,7 +243,7 @@
 		{/each}
 		{#if sending}
 			<!-- Waiting on the bot, as the typing indicator's dots -->
-			<span class="flex items-center gap-1 text-zinc-400" aria-label="Waiting for the application">
+			<span class="text-duvet-ink2 flex items-center gap-1" aria-label="Waiting for the application">
 				<span class="animate-typing-bounce block size-1.5 rounded-full bg-current"></span>
 				<span class="animate-typing-bounce block size-1.5 rounded-full bg-current [animation-delay:0.2s]"></span>
 				<span class="animate-typing-bounce block size-1.5 rounded-full bg-current [animation-delay:0.4s]"></span>
@@ -251,7 +251,7 @@
 		{/if}
 	</div>
 	{#if notice}
-		<p role="alert" class="flex items-center gap-1.5 px-1 text-sm text-red-400" title={notice.detail}>
+		<p role="alert" class="text-duvet-danger flex items-center gap-1.5 px-1 text-sm" title={notice.detail}>
 			<AlertIcon class="size-4 shrink-0" />
 			{notice.text}
 		</p>

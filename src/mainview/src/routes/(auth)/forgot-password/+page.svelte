@@ -68,13 +68,13 @@
 		</div>
 
 		{#if errorMessage}
-			<p class="rounded-md border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-sm text-rose-300">
+			<p class="border-duvet-danger/40 bg-duvet-danger/10 text-duvet-danger rounded-md border px-3 py-2 text-sm">
 				{errorMessage}
 			</p>
 		{/if}
 
 		{#if successMessage}
-			<p class="rounded-md border border-stone-500/40 bg-stone-500/10 px-3 py-2 text-sm text-stone-200">
+			<p class="border-duvet-ink2/40 bg-duvet-ink2/10 text-duvet-ink rounded-md border px-3 py-2 text-sm">
 				{successMessage}
 			</p>
 		{/if}

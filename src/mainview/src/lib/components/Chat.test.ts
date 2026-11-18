@@ -98,8 +98,8 @@ describe("who's typing", () => {
 
 	test("hides the messages that pass under it as the list scrolls, with what shows there when it doesn't", () => {
 		// Opaque, the chat's colour at its bottom, under the list's own fade.
-		expect(chat).toContain("from-night-22 to-night-19 relative flex flex-1 flex-col overflow-hidden bg-linear-to-b");
-		expect(chat).toContain("bg-linear-to-t from-stone-950/45 to-transparent");
-		expect(indicator).toMatch(/class="[^"]*\bbg-night-19\b[^"]*\bbg-linear-to-t from-stone-950\/45 to-transparent\b/);
+		expect(chat).toContain("from-duvet-card to-duvet-bg relative flex flex-1 flex-col overflow-hidden bg-linear-to-b");
+		expect(chat).toMatch(/class="[^"]*\bfrom-duvet-sunk\/45\b[^"]*\bbg-linear-to-t to-transparent\b/);
+		expect(indicator).toMatch(/class="[^"]*\bbg-duvet-bg from-duvet-sunk\/45\b[^"]*\bbg-linear-to-t to-transparent\b/);
 	});
 });

@@ -62,5 +62,5 @@
 	>{@html renderMarkdown(content, large, mentionMap, customEmojiMap, $roomNames, links)}</span
 >
 {#if edited}
-	<span class="text-xxs ml-1 text-zinc-500">({edited})</span>
+	<span class="text-xxs text-duvet-ink2 ml-1">({edited})</span>
 {/if}

@@ -48,7 +48,7 @@
 
 	const frame = $derived(playerFrame(url, ownHosts));
 	const label = $derived(title ? `Play ${title}` : "Play");
-	const coverClass = "group absolute inset-0 flex items-center justify-center bg-zinc-900";
+	const coverClass = "group absolute inset-0 flex items-center justify-center bg-duvet-bg";
 </script>
 
 {#if frame}

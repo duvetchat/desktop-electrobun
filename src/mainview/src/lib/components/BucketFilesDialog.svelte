@@ -61,38 +61,38 @@
 	<AlertDialog.Portal>
 		<AlertDialog.Overlay class="fixed inset-0 z-600 bg-black/60 backdrop-blur-sm" />
 		<AlertDialog.Content class="fixed inset-0 z-601 flex items-center justify-center p-4">
-			<div class="w-full max-w-md rounded-xl border border-zinc-700 bg-zinc-900 p-5 shadow-2xl">
+			<div class="rounded-card border-duvet-line bg-duvet-bg shadow-duvet-float w-full max-w-md border p-5">
 				{#if request}
 					{@const bucket = request.bucket}
 					{@const them = request.files === 1 ? "it" : "them"}
-					<AlertDialog.Title class="mb-1 text-sm font-semibold text-white">
+					<AlertDialog.Title class="text-duvet-ink mb-1 text-sm font-semibold">
 						This bucket has {countFiles(request.files)}
 					</AlertDialog.Title>
-					<AlertDialog.Description class="mb-4 text-sm text-zinc-300">
+					<AlertDialog.Description class="text-duvet-ink mb-4 text-sm">
 						Move {them} to another storage before deleting "{bucket.name}", or delete {them} with the bucket. Deleted files
 						disappear wherever they're shown{inSpace ? ", and the emojis and stickers made from them are deleted" : ""}.
 					</AlertDialog.Description>
 
 					{#if error}
-						<p class="mb-4 rounded-md bg-red-400/10 px-3 py-2 text-sm text-red-400">{error}</p>
+						<p class="bg-duvet-danger/10 text-duvet-danger mb-4 rounded-md px-3 py-2 text-sm">{error}</p>
 					{/if}
 
 					<div class="flex justify-end gap-2">
 						<AlertDialog.Cancel
-							class="rounded-md px-3 py-1.5 text-sm font-medium text-zinc-300 transition-colors hover:bg-zinc-800 disabled:opacity-50"
+							class="text-duvet-ink hover:bg-duvet-card rounded-md px-3 py-1.5 text-sm font-medium transition-colors disabled:opacity-50"
 							disabled={deleting}
 						>
 							Cancel
 						</AlertDialog.Cancel>
 						<button
-							class="bg-fill-600 text-fixed-white hover:bg-fill-500 rounded-md px-3 py-1.5 text-sm font-semibold transition-colors disabled:opacity-50"
+							class="bg-duvet-accent text-duvet-on-accent shadow-duvet-raised rounded-xl px-3 py-1.5 text-sm font-bold transition-colors hover:brightness-110 disabled:opacity-50"
 							disabled={deleting}
 							onclick={() => move(bucket)}
 						>
 							Move them to…
 						</button>
 						<button
-							class="text-fixed-white flex min-w-24 items-center justify-center gap-1.5 rounded-md bg-red-600 px-3 py-1.5 text-sm font-semibold transition-colors hover:bg-red-500 disabled:opacity-50"
+							class="text-duvet-on-accent rounded-row bg-duvet-danger hover:bg-duvet-danger/85 flex min-w-24 items-center justify-center gap-1.5 px-3 py-1.5 text-sm font-semibold transition-colors disabled:opacity-50"
 							disabled={deleting}
 							onclick={() => deleteThem(bucket)}
 						>

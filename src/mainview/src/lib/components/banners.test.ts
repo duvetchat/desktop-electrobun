@@ -48,9 +48,9 @@ test("the profile popover shows the banner at 5:2", () => {
 // system asks for less motion. So nothing around it clips it, its top corners are its own, one pixel tighter than the
 // card's inside its border, and the box of text below clips what's too long for it, as the card's root did.
 describe("a profile's banner on hover", () => {
-	const GROWS = ["rounded-t-[11px]", "transition-transform", "duration-150", "motion-safe:hover:scale-105"];
+	const GROWS = ["rounded-t-[15px]", "transition-transform", "duration-150", "motion-safe:hover:scale-105"];
 	const textBox = (component: string) =>
-		classLists(component).find((list) => list.includes("bg-zinc-950") && list.includes("p-3"));
+		classLists(component).find((list) => list.includes("bg-duvet-sunk") && list.includes("p-3"));
 
 	test("grows on the card, and nothing clips it", () => {
 		const card = source("MemberProfileCard.svelte");
@@ -59,7 +59,7 @@ describe("a profile's banner on hover", () => {
 		expect(frames).toHaveLength(1);
 		expect(frames[0]).toEqual(expect.arrayContaining(GROWS));
 		const root = classLists(card).find((list) => list.includes("w-80"));
-		expect(root).toContain("rounded-xl");
+		expect(root).toContain("rounded-card");
 		expect(root).not.toContain("overflow-hidden");
 		expect(textBox(card)).toContain("overflow-hidden");
 	});
@@ -69,7 +69,7 @@ describe("a profile's banner on hover", () => {
 		const frame = /<div\s+class="([^"]*)"\s+style=\{member\.banner_url/.exec(popover)?.[1]?.split(/\s+/);
 		expect(frame).toEqual(expect.arrayContaining(GROWS));
 		const root = classLists(popover).find((list) => list.includes("w-80"));
-		expect(root).toContain("rounded-xl");
+		expect(root).toContain("rounded-card");
 		expect(root).not.toContain("overflow-hidden");
 		expect(textBox(popover)).toContain("overflow-hidden");
 	});

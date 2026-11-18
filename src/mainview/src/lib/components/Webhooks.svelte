@@ -215,25 +215,25 @@
 </script>
 
 {#if webhooksLoading}
-	<p class="text-sm text-zinc-400">Loading webhooks...</p>
+	<p class="text-duvet-ink2 text-sm">Loading webhooks...</p>
 {:else}
 	<div class="max-w-xl space-y-5">
 		<!-- Create new webhook -->
 		{#if rooms.length > 0}
-			<div class="space-y-4 rounded-xl border border-zinc-700 bg-zinc-900 p-5">
+			<div class="border-duvet-line bg-duvet-bg space-y-4 rounded-xl border p-5">
 				<div class="space-y-1">
-					<h3 class="text-sm font-semibold tracking-wide text-white">Create Webhook</h3>
-					<p class="text-xs text-zinc-400">
+					<h3 class="text-duvet-ink text-sm font-bold">Create Webhook</h3>
+					<p class="text-duvet-ink2 text-xs">
 						Webhooks allow external services to send messages to {several ? "a room" : `#${rooms[0]!.name}`}.
 					</p>
 				</div>
 
 				<div class="space-y-3">
 					<label class="block space-y-1.5">
-						<span class="text-[11px] font-semibold tracking-wide text-zinc-400 uppercase">Username</span>
+						<span class="text-duvet-ink2 text-[13px] font-bold">Username</span>
 						<input
 							type="text"
-							class="w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 placeholder-zinc-500 outline-none focus:border-zinc-500"
+							class="bg-duvet-sunk text-duvet-ink placeholder:text-duvet-ink2 shadow-duvet-press focus-visible:outline-duvet-accent w-full rounded-xl px-3 py-2 text-sm focus-visible:outline-2"
 							placeholder="Webhook Bot"
 							bind:value={newWebhookName}
 						/>
@@ -241,9 +241,9 @@
 
 					{#if several}
 						<label class="block space-y-1.5">
-							<span class="text-[11px] font-semibold tracking-wide text-zinc-400 uppercase">Room</span>
+							<span class="text-duvet-ink2 text-[13px] font-bold">Room</span>
 							<select
-								class="h-9 w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 text-sm text-zinc-100 outline-none focus:border-zinc-500"
+								class="bg-duvet-sunk text-duvet-ink shadow-duvet-press focus-visible:outline-duvet-accent h-9 w-full rounded-xl px-3 text-sm focus-visible:outline-2"
 								bind:value={newWebhookRoomId}
 							>
 								{#each rooms as r (r.id)}
@@ -254,14 +254,14 @@
 					{/if}
 
 					<div class="space-y-1.5">
-						<span class="text-[11px] font-semibold tracking-wide text-zinc-400 uppercase">Avatar (optional)</span>
+						<span class="text-duvet-ink2 text-[13px] font-bold">Avatar (optional)</span>
 						<div class="flex items-center gap-3">
-							<div class="group relative size-14 shrink-0 overflow-hidden rounded-full bg-zinc-700">
+							<div class="group bg-duvet-ink/10 relative size-14 shrink-0 overflow-hidden rounded-full">
 								{#if newWebhookAvatarPreview}
 									<img src={newWebhookAvatarPreview} alt="Preview" class="size-full object-cover" />
 								{:else}
 									<div class="flex size-full items-center justify-center">
-										<WebhookIcon class="size-6 text-zinc-500" />
+										<WebhookIcon class="text-duvet-ink2 size-6" />
 									</div>
 								{/if}
 								<div
@@ -278,7 +278,7 @@
 									{#if newWebhookAvatarPreview}
 										<button
 											type="button"
-											class="flex size-6 cursor-pointer items-center justify-center rounded-full bg-black/60 text-red-400 opacity-0 transition-opacity group-hover:opacity-100 hover:bg-black/80"
+											class="text-duvet-danger flex size-6 cursor-pointer items-center justify-center rounded-full bg-black/60 opacity-0 transition-opacity group-hover:opacity-100 hover:bg-black/80"
 											title="Remove avatar"
 											onclick={clearNewWebhookAvatar}
 										>
@@ -287,12 +287,12 @@
 									{/if}
 								</div>
 							</div>
-							<p class="text-xs text-zinc-500">Click to upload an avatar</p>
+							<p class="text-duvet-ink2 text-xs">Click to upload an avatar</p>
 						</div>
 					</div>
 
 					<button
-						class="text-fixed-white flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium transition-colors hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
+						class="text-duvet-on-accent rounded-row bg-duvet-accent hover:bg-duvet-accent/85 flex items-center gap-2 px-4 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50"
 						onclick={handleCreateWebhook}
 						disabled={isCreatingWebhook || !newWebhookName.trim()}
 					>
@@ -306,14 +306,14 @@
 		<!-- Token reveal box -->
 		{#if createdWebhookToken && createdWebhookId}
 			{@const urls = webhookUrls(attachmentHost, createdWebhookId, createdWebhookToken)}
-			<div class="overflow-hidden rounded-xl border border-amber-600/30 bg-amber-950/20 p-4">
-				<p class="mb-2 text-xs font-semibold text-amber-300">Webhook Token (shown only once)</p>
+			<div class="border-duvet-warn/30 bg-duvet-warn/10 overflow-hidden rounded-xl border p-4">
+				<p class="text-duvet-warn mb-2 text-xs font-semibold">Webhook Token (shown only once)</p>
 				<div class="flex items-center gap-2">
-					<code class="min-w-0 flex-1 truncate rounded-md bg-zinc-800 px-3 py-2 text-xs text-zinc-200 select-text">
+					<code class="bg-duvet-card text-duvet-ink min-w-0 flex-1 truncate rounded-md px-3 py-2 text-xs select-text">
 						{createdWebhookToken}
 					</code>
 					<button
-						class="flex shrink-0 items-center gap-1.5 rounded-md bg-zinc-700 px-3 py-2 text-xs font-medium text-zinc-200 transition-colors hover:bg-zinc-600"
+						class="rounded-row bg-duvet-ink/10 text-duvet-ink hover:bg-duvet-ink/15 flex shrink-0 items-center gap-1.5 px-3 py-2 text-xs font-medium transition-colors"
 						onclick={() => copyWebhookUrl(urls.url, "Webhook URL")}
 						title="Copy Webhook URL"
 					>
@@ -321,7 +321,7 @@
 						Copy URL
 					</button>
 					<button
-						class="flex shrink-0 items-center gap-1.5 rounded-md bg-zinc-700 px-3 py-2 text-xs font-medium text-zinc-200 transition-colors hover:bg-zinc-600"
+						class="rounded-row bg-duvet-ink/10 text-duvet-ink hover:bg-duvet-ink/15 flex shrink-0 items-center gap-1.5 px-3 py-2 text-xs font-medium transition-colors"
 						onclick={() => copyWebhookUrl(urls.github, "GitHub URL")}
 						title="Copy the URL with /github"
 					>
@@ -329,14 +329,14 @@
 						Copy GitHub URL
 					</button>
 				</div>
-				<p class="mt-2 truncate text-[11px] text-amber-400/70" title={urls.url}>
+				<p class="text-duvet-warn/70 mt-2 truncate text-[11px]" title={urls.url}>
 					Webhook URL: {urls.url}
 				</p>
-				<p class="mt-1 text-[11px] text-zinc-400">
+				<p class="text-duvet-ink2 mt-1 text-[11px]">
 					Paste the GitHub URL as a GitHub repository's webhook: its pushes, issues and pull requests post here.
 				</p>
 				<button
-					class="mt-2 text-xs text-zinc-400 transition-colors hover:text-zinc-200"
+					class="text-duvet-ink2 hover:text-duvet-ink mt-2 text-xs transition-colors"
 					onclick={() => {
 						createdWebhookToken = null;
 						createdWebhookId = null;
@@ -350,14 +350,14 @@
 		<!-- Webhook list -->
 		{#if loadFailed}
 			<div class="flex flex-col items-center justify-center py-12 text-center">
-				<WebhookIcon class="mb-3 size-10 text-zinc-600" />
-				<p class="text-sm text-zinc-400">Couldn't load the webhooks.</p>
+				<WebhookIcon class="text-duvet-ink2/60 mb-3 size-10" />
+				<p class="text-duvet-ink2 text-sm">Couldn't load the webhooks.</p>
 			</div>
 		{:else if roomWebhooks.length === 0}
 			<div class="flex flex-col items-center justify-center py-12 text-center">
-				<WebhookIcon class="mb-3 size-10 text-zinc-600" />
-				<p class="text-sm text-zinc-400">No webhooks yet.</p>
-				<p class="mt-1 text-xs text-zinc-500">
+				<WebhookIcon class="text-duvet-ink2/60 mb-3 size-10" />
+				<p class="text-duvet-ink2 text-sm">No webhooks yet.</p>
+				<p class="text-duvet-ink2 mt-1 text-xs">
 					{rooms.length > 0
 						? "Create one above to get started."
 						: "Webhooks post in text rooms, and there are none here you can see."}
@@ -366,7 +366,7 @@
 		{:else}
 			<div class="space-y-1">
 				{#each roomWebhooks as wh (wh.id)}
-					<div class="group flex items-center gap-3 rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2.5">
+					<div class="group rounded-card border-duvet-line bg-duvet-card flex items-center gap-3 border px-3 py-2.5">
 						<!-- Avatar -->
 						{#if wh.avatar}
 							<img
@@ -375,18 +375,18 @@
 								class="size-8 shrink-0 rounded-full object-cover"
 							/>
 						{:else}
-							<div class="flex size-8 shrink-0 items-center justify-center rounded-full bg-zinc-700">
-								<WebhookIcon class="size-4 text-zinc-400" />
+							<div class="bg-duvet-ink/10 flex size-8 shrink-0 items-center justify-center rounded-full">
+								<WebhookIcon class="text-duvet-ink2 size-4" />
 							</div>
 						{/if}
 
 						{#if editingWebhookId === wh.id}
-							<div class="group/edit relative size-10 shrink-0 overflow-hidden rounded-full bg-zinc-700">
+							<div class="group/edit bg-duvet-ink/10 relative size-10 shrink-0 overflow-hidden rounded-full">
 								{#if editingWebhookAvatarPreview}
 									<img src={editingWebhookAvatarPreview} alt="Preview" class="size-full object-cover" />
 								{:else}
 									<div class="flex size-full items-center justify-center">
-										<WebhookIcon class="size-4 text-zinc-500" />
+										<WebhookIcon class="text-duvet-ink2 size-4" />
 									</div>
 								{/if}
 								<div
@@ -403,7 +403,7 @@
 									{#if editingWebhookAvatarPreview}
 										<button
 											type="button"
-											class="flex size-5 cursor-pointer items-center justify-center rounded-full bg-black/60 text-red-400 opacity-0 transition-opacity group-hover/edit:opacity-100 hover:bg-black/80"
+											class="text-duvet-danger flex size-5 cursor-pointer items-center justify-center rounded-full bg-black/60 opacity-0 transition-opacity group-hover/edit:opacity-100 hover:bg-black/80"
 											title="Remove avatar"
 											onclick={removeEditWebhookAvatar}
 										>
@@ -415,7 +415,7 @@
 							<div class="flex min-w-0 flex-1 flex-col gap-2">
 								<input
 									type="text"
-									class="w-full rounded-md border border-zinc-600 bg-zinc-700 px-2 py-1 text-sm text-zinc-100 outline-none focus:border-zinc-500"
+									class="text-duvet-ink bg-duvet-sunk shadow-duvet-press focus-visible:outline-duvet-accent w-full rounded-xl px-2 py-1 text-sm focus-visible:outline-2"
 									bind:value={editingWebhookName}
 									onkeydown={(e) => {
 										if (e.key === "Enter") handleUpdateWebhook(wh);
@@ -424,14 +424,14 @@
 								/>
 							</div>
 							<button
-								class="rounded p-1.5 text-green-400 transition-colors hover:bg-zinc-700"
+								class="text-duvet-alive hover:bg-duvet-ink/10 rounded p-1.5 transition-colors"
 								onclick={() => handleUpdateWebhook(wh)}
 								title="Save"
 							>
 								<CheckIcon class="size-4" />
 							</button>
 							<button
-								class="rounded p-1.5 text-zinc-400 transition-colors hover:bg-zinc-700"
+								class="text-duvet-ink2 hover:bg-duvet-ink/10 rounded p-1.5 transition-colors"
 								onclick={cancelWebhookEdit}
 								title="Cancel"
 							>
@@ -439,29 +439,29 @@
 							</button>
 						{:else}
 							<div class="min-w-0 flex-1">
-								<p class="truncate text-sm font-medium text-zinc-200">{wh.username}</p>
-								<p class="truncate text-xs text-zinc-500">
-									{#if several}Posts in #{roomName(wh.room_id)}<span class="mx-1 text-zinc-600">&middot;</span
+								<p class="text-duvet-ink truncate text-sm font-medium">{wh.username}</p>
+								<p class="text-duvet-ink2 truncate text-xs">
+									{#if several}Posts in #{roomName(wh.room_id)}<span class="text-duvet-ink2/60 mx-1">&middot;</span
 										>{/if}Created {new Date(wh.created_at).toLocaleDateString()}
 								</p>
 							</div>
 
 							<button
-								class="rounded p-1.5 text-zinc-400 opacity-0 transition-all group-hover:opacity-100 hover:bg-zinc-700 hover:text-zinc-200"
+								class="text-duvet-ink2 hover:bg-duvet-ink/10 hover:text-duvet-ink rounded p-1.5 opacity-0 transition-all group-hover:opacity-100"
 								onclick={() => startWebhookEdit(wh)}
 								title="Rename"
 							>
 								<PencilIcon class="size-4" />
 							</button>
 							<button
-								class="rounded p-1.5 text-zinc-400 opacity-0 transition-all group-hover:opacity-100 hover:bg-zinc-700 hover:text-amber-400"
+								class="text-duvet-ink2 hover:bg-duvet-ink/10 hover:text-duvet-warn rounded p-1.5 opacity-0 transition-all group-hover:opacity-100"
 								onclick={() => handleResetWebhookToken(wh)}
 								title="Reset Token"
 							>
 								<WebhookIcon class="size-4" />
 							</button>
 							<button
-								class="rounded p-1.5 text-zinc-400 opacity-0 transition-all group-hover:opacity-100 hover:bg-zinc-700 hover:text-red-400"
+								class="text-duvet-ink2 hover:bg-duvet-ink/10 hover:text-duvet-danger rounded p-1.5 opacity-0 transition-all group-hover:opacity-100"
 								onclick={() => handleDeleteWebhook(wh)}
 								disabled={isDeletingWebhook[wh.id]}
 								title="Delete"

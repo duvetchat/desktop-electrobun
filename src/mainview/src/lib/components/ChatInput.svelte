@@ -376,7 +376,7 @@
 
 	// A member's or a room's chip, as buildHtml writes it into the box: its classes are in this file, so the build has them.
 	const MENTION_CHIP =
-		"inline cursor-default rounded px-1 py-px font-medium select-all bg-[oklch(0.55_0.15_250/0.2)] text-[color:var(--mention-chip-ink,oklch(0.75_0.12_250))]";
+		"inline cursor-default rounded px-1 py-px font-medium select-all bg-duvet-accent-tint text-duvet-accent-text";
 
 	// Names are whatever their owners chose, "<" and quotes included, so they go in escaped.
 	function buildHtml(text: string): string {
@@ -1150,12 +1150,12 @@
 	<!-- Command menu -->
 	{#if commandSuggestions.length > 0}
 		<div
-			class="border-night-30 bg-night-19 absolute right-0 bottom-[calc(100%+6px)] left-0 z-90 max-h-75 overflow-hidden overflow-y-auto rounded-lg border py-1 shadow-[0_8px_24px_rgba(0,0,0,0.5)]"
+			class="border-duvet-line bg-duvet-card shadow-duvet-float rounded-card absolute right-0 bottom-[calc(100%+6px)] left-0 z-90 max-h-75 overflow-hidden overflow-y-auto border p-1.5"
 			role="listbox"
 			aria-label="Commands"
 			bind:this={commandMenuEl}
 		>
-			<div class="text-xxs text-night-52 px-3 pt-1.5 pb-1 font-bold tracking-wider uppercase">
+			<div class="text-duvet-ink2 px-3 pt-1.5 pb-1 text-xs font-bold">
 				{#if commandQuery}
 					Commands matching <strong>/{commandQuery}</strong>
 				{:else}
@@ -1168,10 +1168,10 @@
 				<button
 					role="option"
 					aria-selected={i === commandSelectedIdx}
-					class="relative flex w-full cursor-pointer items-center gap-2.5 border-none bg-none px-3 py-1.5 text-left transition-[background] duration-100 {i ===
+					class="rounded-row relative flex w-full cursor-pointer items-center gap-2.5 border-none bg-none px-3 py-1.5 text-left transition-[background] duration-100 {i ===
 					commandSelectedIdx
-						? 'bg-night-28'
-						: 'hover:bg-night-28'}"
+						? 'bg-duvet-bg/60'
+						: 'hover:bg-duvet-bg/60'}"
 					onmousedown={(e) => {
 						e.preventDefault();
 						pickCommand(entry);
@@ -1180,16 +1180,16 @@
 				>
 					<MemberBanner src={botMember?.banner_url ?? null} offline={botMember?.status === "offline"} />
 					<span class="relative flex min-w-0 flex-1 items-center gap-2.5">
-						<span class="text-night-85 shrink-0 text-[13px] font-semibold">/{entry.name}</span>
+						<span class="text-duvet-ink shrink-0 text-[13px] font-semibold">/{entry.name}</span>
 						<span
-							class="{botMember?.banner_url ? 'text-night-85' : 'text-night-62'} min-w-0 flex-1 truncate text-[12px]"
+							class="{botMember?.banner_url ? 'text-duvet-ink' : 'text-duvet-ink2'} min-w-0 flex-1 truncate text-[12px]"
 							>{entry.description}</span
 						>
 						{#if bot}
 							<span
 								class="{botMember?.banner_url
-									? 'text-night-85'
-									: 'text-night-52'} flex shrink-0 items-center gap-1.5 text-[11px]"
+									? 'text-duvet-ink'
+									: 'text-duvet-ink2'} flex shrink-0 items-center gap-1.5 text-[11px]"
 							>
 								<UserAvatar src={getAvatarURL(bot.id, bot.avatar)} name={bot.alias ?? bot.username} size={16} />
 								{bot.alias ?? bot.username}
@@ -1204,11 +1204,11 @@
 	<!-- Mention autocomplete dropdown -->
 	{#if mentionSuggestions.length > 0}
 		<div
-			class="border-night-30 bg-night-19 absolute right-0 bottom-[calc(100%+6px)] left-0 z-90 max-h-75 overflow-hidden overflow-y-auto rounded-lg border py-1 shadow-[0_8px_24px_rgba(0,0,0,0.5)]"
+			class="border-duvet-line bg-duvet-card shadow-duvet-float rounded-card absolute right-0 bottom-[calc(100%+6px)] left-0 z-90 max-h-75 overflow-hidden overflow-y-auto border p-1.5"
 			role="listbox"
 			aria-label="Mention suggestions"
 		>
-			<div class="text-xxs text-night-52 px-3 pt-1.5 pb-1 font-bold tracking-wider uppercase">
+			<div class="text-duvet-ink2 px-3 pt-1.5 pb-1 text-xs font-bold">
 				Members matching <strong
 					>@{getRaw(inputEl)
 						.slice(0, getOffset())
@@ -1219,10 +1219,10 @@
 				<button
 					role="option"
 					aria-selected={i === mentionSelectedIdx}
-					class="relative flex w-full cursor-pointer items-center gap-2.5 border-none bg-none px-3 py-1.5 text-left transition-[background] duration-100 {i ===
+					class="rounded-row relative flex w-full cursor-pointer items-center gap-2.5 border-none bg-none px-3 py-1.5 text-left transition-[background] duration-100 {i ===
 					mentionSelectedIdx
-						? 'bg-night-28'
-						: 'hover:bg-night-28'}"
+						? 'bg-duvet-bg/60'
+						: 'hover:bg-duvet-bg/60'}"
 					onmousedown={(e) => {
 						e.preventDefault();
 						insertMentionSuggestion(member);
@@ -1232,9 +1232,9 @@
 					<MemberBanner src={member.banner_url} offline={member.status === "offline"} />
 					<span class="relative flex min-w-0 items-center gap-2.5">
 						<UserAvatar src={member.avatar_url} name={member.username} size={22} />
-						<span class="text-night-85 text-[13px]">{member.username}</span>
+						<span class="text-duvet-ink text-[13px]">{member.username}</span>
 						{#if member.raw_username !== member.username}
-							<span class="{member.banner_url ? 'text-night-85' : 'text-night-52'} text-[11px]"
+							<span class="{member.banner_url ? 'text-duvet-ink' : 'text-duvet-ink2'} text-[11px]"
 								>@{member.raw_username}</span
 							>
 						{/if}
@@ -1247,11 +1247,11 @@
 	<!-- Room mention autocomplete dropdown -->
 	{#if roomSuggestions.length > 0}
 		<div
-			class="border-night-30 bg-night-19 absolute right-0 bottom-[calc(100%+6px)] left-0 z-90 max-h-75 overflow-hidden overflow-y-auto rounded-lg border py-1 shadow-[0_8px_24px_rgba(0,0,0,0.5)]"
+			class="border-duvet-line bg-duvet-card shadow-duvet-float rounded-card absolute right-0 bottom-[calc(100%+6px)] left-0 z-90 max-h-75 overflow-hidden overflow-y-auto border p-1.5"
 			role="listbox"
 			aria-label="Room suggestions"
 		>
-			<div class="text-xxs text-night-52 px-3 pt-1.5 pb-1 font-bold tracking-wider uppercase">
+			<div class="text-duvet-ink2 px-3 pt-1.5 pb-1 text-xs font-bold">
 				Rooms matching <strong
 					>#{getRaw(inputEl)
 						.slice(0, getOffset())
@@ -1262,10 +1262,10 @@
 				<button
 					role="option"
 					aria-selected={i === roomSelectedIdx}
-					class="flex w-full cursor-pointer items-center gap-2.5 border-none bg-none px-3 py-1.5 text-left transition-[background] duration-100 {i ===
+					class="rounded-row flex w-full cursor-pointer items-center gap-2.5 border-none bg-none px-3 py-1.5 text-left transition-[background] duration-100 {i ===
 					roomSelectedIdx
-						? 'bg-night-28'
-						: 'hover:bg-night-28'}"
+						? 'bg-duvet-bg/60'
+						: 'hover:bg-duvet-bg/60'}"
 					onmousedown={(e) => {
 						e.preventDefault();
 						insertRoomSuggestion(room);
@@ -1273,11 +1273,11 @@
 					onmouseenter={() => (roomSelectedIdx = i)}
 				>
 					{#if room.type === 2}
-						<VoiceIcon class="text-night-62 size-4 shrink-0" aria-label="Voice room" />
+						<VoiceIcon class="text-duvet-ink2 size-4 shrink-0" aria-label="Voice room" />
 					{:else}
-						<HashIcon class="text-night-62 size-4 shrink-0" />
+						<HashIcon class="text-duvet-ink2 size-4 shrink-0" />
 					{/if}
-					<span class="text-night-85 truncate text-[13px]">{room.name}</span>
+					<span class="text-duvet-ink truncate text-[13px]">{room.name}</span>
 				</button>
 			{/each}
 		</div>
@@ -1286,11 +1286,11 @@
 	<!-- Emoji autocomplete dropdown -->
 	{#if suggestions.length > 0}
 		<div
-			class="border-night-30 bg-night-19 absolute right-0 bottom-[calc(100%+6px)] left-0 z-90 max-h-75 overflow-hidden overflow-y-auto rounded-lg border py-1 shadow-[0_8px_24px_rgba(0,0,0,0.5)]"
+			class="border-duvet-line bg-duvet-card shadow-duvet-float rounded-card absolute right-0 bottom-[calc(100%+6px)] left-0 z-90 max-h-75 overflow-hidden overflow-y-auto border p-1.5"
 			role="listbox"
 			aria-label="Emoji suggestions"
 		>
-			<div class="text-xxs text-night-52 px-3 pt-1.5 pb-1 font-bold tracking-wider uppercase">
+			<div class="text-duvet-ink2 px-3 pt-1.5 pb-1 text-xs font-bold">
 				Emoji matching <strong
 					>:{getRaw(inputEl)
 						.slice(0, getOffset())
@@ -1301,10 +1301,10 @@
 				<button
 					role="option"
 					aria-selected={i === selectedIdx}
-					class="flex w-full cursor-pointer items-center gap-2.5 border-none bg-none px-3 py-1.5 text-left transition-[background] duration-100 {i ===
+					class="rounded-row flex w-full cursor-pointer items-center gap-2.5 border-none bg-none px-3 py-1.5 text-left transition-[background] duration-100 {i ===
 					selectedIdx
-						? 'bg-night-28'
-						: 'hover:bg-night-28'}"
+						? 'bg-duvet-bg/60'
+						: 'hover:bg-duvet-bg/60'}"
 					onmousedown={(e) => {
 						e.preventDefault();
 						insertSuggestion(entry);
@@ -1321,7 +1321,7 @@
 					{:else}
 						<img src={toTwemojiUrl(entry.emoji)} alt={entry.emoji} class="size-5.5 shrink-0" loading="lazy" />
 					{/if}
-					<span class="text-night-85 text-[13px]">:{entry.name.replace(/ /g, "_")}:</span>
+					<span class="text-duvet-ink text-[13px]">:{entry.name.replace(/ /g, "_")}:</span>
 				</button>
 			{/each}
 		</div>
@@ -1334,17 +1334,17 @@
 	<div class="contents">
 		{#if recording}
 			<div
-				class="pointer-events-auto flex-1 rounded-xl border border-[var(--recording-line,oklch(0.4_0.15_25/0.4))] bg-[var(--recording-tint,oklch(0.20_0.02_25/0.5))] px-3 py-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]"
+				class="border-duvet-danger/35 bg-duvet-danger/10 shadow-duvet-raised pointer-events-auto flex-1 rounded-xl border px-3 py-2.5"
 			>
 				<div class="flex h-5 items-center gap-3">
-					<div class="size-2.5 rounded-full {paused ? 'bg-zinc-500' : 'animate-pulse bg-red-500'}"></div>
-					<span class="text-sm font-medium text-zinc-300 tabular-nums">{formatDuration(recordingDuration)}</span>
-					<span class="text-xs text-zinc-500">{paused ? "Paused" : "Recording..."}</span>
+					<div class="size-2.5 rounded-full {paused ? 'bg-duvet-ink2' : 'bg-duvet-danger animate-pulse'}"></div>
+					<span class="text-duvet-ink text-sm font-medium tabular-nums">{formatDuration(recordingDuration)}</span>
+					<span class="text-duvet-ink2 text-xs">{paused ? "Paused" : "Recording..."}</span>
 				</div>
 			</div>
 			<button
 				type="button"
-				class="ce-action-btn border-night-40/70 bg-night-22/70 text-night-70 hover:bg-night-28 hover:text-night-96 flex size-10 shrink-0 cursor-pointer items-center justify-center rounded-xl border transition-colors duration-150 outline-none"
+				class="ce-action-btn border-duvet-line bg-duvet-card/70 text-duvet-ink2 hover:bg-duvet-card hover:text-duvet-ink flex size-10 shrink-0 cursor-pointer items-center justify-center rounded-xl border transition-colors duration-150 outline-none"
 				title={paused ? "Resume recording" : "Pause recording"}
 				aria-label={paused ? "Resume recording" : "Pause recording"}
 				onclick={togglePause}
@@ -1357,7 +1357,7 @@
 			</button>
 			<button
 				type="button"
-				class="ce-action-btn border-night-40/70 bg-night-22/70 text-night-70 hover:bg-night-28 hover:text-night-96 flex size-10 shrink-0 cursor-pointer items-center justify-center rounded-xl border transition-colors duration-150 outline-none"
+				class="ce-action-btn border-duvet-line bg-duvet-card/70 text-duvet-ink2 hover:bg-duvet-card hover:text-duvet-ink flex size-10 shrink-0 cursor-pointer items-center justify-center rounded-xl border transition-colors duration-150 outline-none"
 				title="Cancel recording"
 				onclick={cancelRecording}
 			>
@@ -1375,7 +1375,7 @@
 			</button>
 			<button
 				type="button"
-				class="ce-action-btn border-night-40/70 bg-night-22/70 flex size-10 shrink-0 cursor-pointer items-center justify-center rounded-xl border text-[var(--recording-ink,oklch(0.7_0.15_25))] transition-colors duration-150 outline-none hover:bg-[var(--recording-hover,oklch(0.28_0.02_25))] hover:text-[var(--recording-ink-hover,oklch(0.85_0.15_25))]"
+				class="ce-action-btn border-duvet-line bg-duvet-card/70 text-duvet-danger hover:bg-duvet-danger/15 flex size-10 shrink-0 cursor-pointer items-center justify-center rounded-xl border transition-colors duration-150 outline-none"
 				title="Send voice note"
 				onclick={stopRecording}
 			>
@@ -1383,13 +1383,13 @@
 			</button>
 		{:else}
 			<div
-				class="bg-night-22/80 pointer-events-auto flex flex-1 items-start gap-3 rounded-xl border-none px-3 py-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]"
+				class="bg-duvet-card shadow-duvet-raised pointer-events-auto flex flex-1 items-start gap-3 rounded-xl border-none px-3 py-2.5"
 			>
 				{#if showActions}
 					<!-- File picker button, inside the box before the text as in Discord -->
 					<button
 						type="button"
-						class="text-night-70 hover:text-night-96 flex size-5 shrink-0 cursor-pointer items-center justify-center transition-colors duration-150 outline-none"
+						class="text-duvet-ink2 hover:text-duvet-ink flex size-5 shrink-0 cursor-pointer items-center justify-center transition-colors duration-150 outline-none"
 						title="Attach files"
 						aria-label="Attach files"
 						onclick={() => fileInputEl?.click()}
@@ -1404,8 +1404,8 @@
 					tabindex="0"
 					aria-multiline="false"
 					aria-label={placeholder}
-					class="focus-override text-night-96 caret-night-96 block max-h-36 min-h-5 min-w-0 flex-1 overflow-y-auto text-sm leading-5 wrap-break-word whitespace-pre-wrap outline-none select-text {isEmpty
-						? 'before:text-night-52 before:pointer-events-none before:absolute before:content-[attr(data-placeholder)]'
+					class="focus-override text-duvet-ink caret-duvet-ink block max-h-36 min-h-5 min-w-0 flex-1 overflow-y-auto text-sm leading-5 wrap-break-word whitespace-pre-wrap outline-none select-text {isEmpty
+						? 'before:text-duvet-ink2 before:pointer-events-none before:absolute before:content-[attr(data-placeholder)]'
 						: ''}"
 					data-placeholder={placeholder}
 					onkeydown={handleKeyDown}
@@ -1423,7 +1423,7 @@
 				{#if onVoiceNote}
 					<button
 						type="button"
-						class="ce-action-btn border-night-40/70 bg-night-22/70 text-night-70 hover:bg-night-28 hover:text-night-96 flex size-10 shrink-0 cursor-pointer items-center justify-center rounded-xl border transition-colors duration-150 outline-none"
+						class="ce-action-btn border-duvet-line bg-duvet-card/70 text-duvet-ink2 hover:bg-duvet-card hover:text-duvet-ink flex size-10 shrink-0 cursor-pointer items-center justify-center rounded-xl border transition-colors duration-150 outline-none"
 						title="Record voice note"
 						aria-label="Record voice note"
 						onclick={startRecording}
@@ -1435,7 +1435,7 @@
 				<!-- Emoji picker button -->
 				<Popover.Root bind:open={showEmojiPicker}>
 					<Popover.Trigger
-						class="ce-action-btn border-night-40/70 bg-night-22/70 text-night-70 hover:bg-night-28 hover:text-night-96 flex size-10 shrink-0 cursor-pointer items-center justify-center rounded-xl border transition-colors duration-150 outline-none"
+						class="ce-action-btn border-duvet-line bg-duvet-card/70 text-duvet-ink2 hover:bg-duvet-card hover:text-duvet-ink flex size-10 shrink-0 cursor-pointer items-center justify-center rounded-xl border transition-colors duration-150 outline-none"
 						title="Open emoji picker"
 						aria-label="Open emoji picker"
 					>
@@ -1452,7 +1452,7 @@
 				{#if spaceStickers.length > 0}
 					<Popover.Root bind:open={showStickerPicker}>
 						<Popover.Trigger
-							class="ce-action-btn border-night-40/70 bg-night-22/70 text-night-70 hover:bg-night-28 hover:text-night-96 flex size-10 shrink-0 cursor-pointer items-center justify-center rounded-xl border transition-colors duration-150 outline-none"
+							class="ce-action-btn border-duvet-line bg-duvet-card/70 text-duvet-ink2 hover:bg-duvet-card hover:text-duvet-ink flex size-10 shrink-0 cursor-pointer items-center justify-center rounded-xl border transition-colors duration-150 outline-none"
 							title="Open sticker picker"
 							aria-label="Open sticker picker"
 						>
@@ -1469,7 +1469,7 @@
 				<!-- GIF picker button -->
 				<Popover.Root bind:open={showGifPicker}>
 					<Popover.Trigger
-						class="ce-action-btn border-night-40/70 bg-night-22/70 text-night-70 hover:bg-night-28 hover:text-night-96 flex size-10 shrink-0 cursor-pointer items-center justify-center rounded-xl border transition-colors duration-150 outline-none"
+						class="ce-action-btn border-duvet-line bg-duvet-card/70 text-duvet-ink2 hover:bg-duvet-card hover:text-duvet-ink flex size-10 shrink-0 cursor-pointer items-center justify-center rounded-xl border transition-colors duration-150 outline-none"
 						title="Open GIF picker"
 						aria-label="Open GIF picker"
 					>

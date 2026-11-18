@@ -16,12 +16,12 @@
 </script>
 
 {#if now - new Date(message.created_at).getTime() > RESPONSE_TIME}
-	<p class="flex items-center gap-1.5 text-sm text-red-400">
+	<p class="text-duvet-danger flex items-center gap-1.5 text-sm">
 		<AlertIcon class="size-4 shrink-0" />
 		The application did not respond
 	</p>
 {:else}
-	<p class="flex items-center gap-1.5 text-sm text-zinc-400 italic">
+	<p class="text-duvet-ink2 flex items-center gap-1.5 text-sm italic">
 		{message.author_name} is thinking
 		<span class="flex items-center gap-0.75" aria-hidden="true">
 			<span class="animate-typing-bounce block size-1 rounded-full bg-current"></span>

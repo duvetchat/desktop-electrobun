@@ -142,27 +142,27 @@
 >
 	<Popover.Trigger
 		disabled={c.disabled || waiting}
-		class="flex min-h-10 w-full max-w-100 items-center gap-2 rounded-lg border border-zinc-700 bg-zinc-900/60 px-3 py-2 text-left text-sm transition-colors outline-none hover:border-zinc-600 disabled:pointer-events-none disabled:opacity-50"
+		class="border-duvet-line bg-duvet-bg/60 hover:border-duvet-line flex min-h-10 w-full max-w-100 items-center gap-2 rounded-lg border px-3 py-2 text-left text-sm transition-colors outline-none disabled:pointer-events-none disabled:opacity-50"
 	>
 		<span class="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden">
 			{#if chosenChoices.length === 0}
-				<span class="truncate text-zinc-400">{c.placeholder || "Make a selection"}</span>
+				<span class="text-duvet-ink2 truncate">{c.placeholder || "Make a selection"}</span>
 			{:else}
 				{#each chosenChoices as ch, i}
 					{@render choiceIcon(ch, 16)}
-					<span class="truncate text-zinc-100">{ch.label}{i < chosenChoices.length - 1 ? "," : ""}</span>
+					<span class="text-duvet-ink truncate">{ch.label}{i < chosenChoices.length - 1 ? "," : ""}</span>
 				{/each}
 			{/if}
 		</span>
 		{#if waiting}
 			<!-- Waiting on the bot, as the typing indicator's dots -->
-			<span class="flex shrink-0 items-center gap-1 text-zinc-400" aria-hidden="true">
+			<span class="text-duvet-ink2 flex shrink-0 items-center gap-1" aria-hidden="true">
 				<span class="animate-typing-bounce block size-1.5 rounded-full bg-current"></span>
 				<span class="animate-typing-bounce block size-1.5 rounded-full bg-current [animation-delay:0.2s]"></span>
 				<span class="animate-typing-bounce block size-1.5 rounded-full bg-current [animation-delay:0.4s]"></span>
 			</span>
 		{:else}
-			<ChevronDownIcon class="size-4 shrink-0 text-zinc-400 transition-transform {open ? 'rotate-180' : ''}" />
+			<ChevronDownIcon class="text-duvet-ink2 size-4 shrink-0 transition-transform {open ? 'rotate-180' : ''}" />
 		{/if}
 	</Popover.Trigger>
 	<Popover.Portal>
@@ -170,13 +170,13 @@
 			side="bottom"
 			align="start"
 			sideOffset={4}
-			class="z-80 flex max-h-80 w-(--bits-popover-anchor-width) flex-col overflow-hidden rounded-lg border border-zinc-700 bg-zinc-900 shadow-xl"
+			class="rounded-card border-duvet-line bg-duvet-bg shadow-duvet-float z-80 flex max-h-80 w-(--bits-popover-anchor-width) flex-col overflow-hidden border"
 		>
 			{#if searchable}
 				<input
 					bind:value={query}
 					placeholder="Search"
-					class="m-2 rounded-md bg-zinc-800 px-2 py-1.5 text-sm text-zinc-100 outline-none placeholder:text-zinc-500"
+					class="bg-duvet-card text-duvet-ink placeholder:text-duvet-ink2 m-2 rounded-md px-2 py-1.5 text-sm outline-none"
 				/>
 			{/if}
 			<div class="overflow-y-auto py-1">
@@ -184,33 +184,33 @@
 					{@const isChosen = chosen.includes(ch.key)}
 					<button
 						type="button"
-						class="flex w-full items-center gap-2.5 px-3 py-2 text-left transition-colors hover:bg-zinc-800 disabled:pointer-events-none disabled:opacity-50"
+						class="hover:bg-duvet-card flex w-full items-center gap-2.5 px-3 py-2 text-left transition-colors disabled:pointer-events-none disabled:opacity-50"
 						disabled={max > 1 && !isChosen && chosen.length >= max}
 						onclick={() => pick(ch.key)}
 					>
 						{@render choiceIcon(ch, 20)}
 						<span class="flex min-w-0 flex-1 flex-col">
-							<span class="truncate text-sm {isChosen ? 'text-white' : 'text-zinc-200'}">{ch.label}</span>
+							<span class="truncate text-sm {isChosen ? 'text-duvet-ink' : 'text-duvet-ink'}">{ch.label}</span>
 							{#if ch.description}
-								<span class="truncate text-xs text-zinc-400">{ch.description}</span>
+								<span class="text-duvet-ink2 truncate text-xs">{ch.description}</span>
 							{/if}
 						</span>
 						{#if max > 1}
 							<span
 								class="flex size-4 shrink-0 items-center justify-center rounded border {isChosen
-									? 'border-indigo-500 bg-indigo-500'
-									: 'border-zinc-500'}"
+									? 'border-duvet-accent bg-duvet-accent'
+									: 'border-duvet-ink2/40'}"
 							>
 								{#if isChosen}
-									<CheckIcon class="text-fixed-white size-3" />
+									<CheckIcon class="text-duvet-on-accent size-3" />
 								{/if}
 							</span>
 						{:else if isChosen}
-							<CheckIcon class="size-4 shrink-0 text-indigo-400" />
+							<CheckIcon class="text-duvet-accent-text size-4 shrink-0" />
 						{/if}
 					</button>
 				{:else}
-					<p class="px-3 py-2 text-sm text-zinc-500">No results</p>
+					<p class="px-3 py-2 text-sm text-duvet-ink2">No results</p>
 				{/each}
 			</div>
 		</Popover.Content>
@@ -224,14 +224,14 @@
 		<UserAvatar src={ch.avatar} name={ch.label} {size} />
 	{:else if ch.key.startsWith("role:")}
 		<span
-			class="shrink-0 rounded-full bg-zinc-400"
+			class="bg-duvet-ink2 shrink-0 rounded-full"
 			style="width: {size / 2}px; height: {size / 2}px; {ch.color ? `background: ${ch.color}` : ''}"
 		></span>
 	{:else if ch.roomType === 2}
-		<VoiceIcon class="shrink-0 text-zinc-400" size={size * 0.8} />
+		<VoiceIcon class="text-duvet-ink2 shrink-0" size={size * 0.8} />
 	{:else if ch.roomType === 3}
-		<CategoryIcon class="shrink-0 text-zinc-400" size={size * 0.8} />
+		<CategoryIcon class="text-duvet-ink2 shrink-0" size={size * 0.8} />
 	{:else if ch.roomType !== undefined}
-		<HashIcon class="shrink-0 text-zinc-400" size={size * 0.8} />
+		<HashIcon class="text-duvet-ink2 shrink-0" size={size * 0.8} />
 	{/if}
 {/snippet}

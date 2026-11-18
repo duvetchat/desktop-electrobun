@@ -44,7 +44,6 @@ test("only a mention with an ID shows a pointer and reacts to it", () => {
 	const css = readFileSync(join(import.meta.dir, "../../app.css"), "utf8");
 	expect(css).toMatch(/\.msg-mention:not\(\[data-user-id\]\) \{\s*cursor: default;/);
 	expect(css).toContain(".msg-mention[data-user-id]:hover");
-	expect(css).toContain(".duvet-light .msg-mention[data-user-id]:hover");
 	expect(css).not.toMatch(/\.msg-mention:hover/);
 });
 

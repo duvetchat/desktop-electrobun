@@ -132,38 +132,38 @@
 	>
 		<!-- Toolbar -->
 		<div
-			class="absolute top-4 right-4 z-10 flex items-center gap-1 rounded-lg border border-zinc-700 bg-zinc-900/80 p-1"
+			class="border-duvet-line bg-duvet-bg/80 absolute top-4 right-4 z-10 flex items-center gap-1 rounded-lg border p-1"
 		>
 			<button
-				class="rounded p-1.5 text-zinc-400 transition-colors hover:bg-zinc-700 hover:text-white"
+				class="text-duvet-ink2 hover:bg-duvet-ink/10 hover:text-duvet-ink rounded p-1.5 transition-colors"
 				onclick={zoomIn}
 				title="Zoom in (+)"
 			>
 				<ZoomIn class="size-4" />
 			</button>
 			<button
-				class="rounded p-1.5 text-zinc-400 transition-colors hover:bg-zinc-700 hover:text-white"
+				class="text-duvet-ink2 hover:bg-duvet-ink/10 hover:text-duvet-ink rounded p-1.5 transition-colors"
 				onclick={zoomOut}
 				title="Zoom out (-)"
 			>
 				<ZoomOut class="size-4" />
 			</button>
 			<button
-				class="rounded p-1.5 text-zinc-400 transition-colors hover:bg-zinc-700 hover:text-white"
+				class="text-duvet-ink2 hover:bg-duvet-ink/10 hover:text-duvet-ink rounded p-1.5 transition-colors"
 				onclick={() => rotateLeft(90)}
 				title="Rotate left 90° ([)"
 			>
 				<RotateCcw class="size-4" />
 			</button>
 			<button
-				class="rounded p-1.5 text-zinc-400 transition-colors hover:bg-zinc-700 hover:text-white"
+				class="text-duvet-ink2 hover:bg-duvet-ink/10 hover:text-duvet-ink rounded p-1.5 transition-colors"
 				onclick={() => rotateRight(90)}
 				title="Rotate right 90° (])"
 			>
 				<RotateCw class="size-4" />
 			</button>
 			<button
-				class="rounded p-1.5 text-zinc-400 transition-colors hover:bg-zinc-700 hover:text-white"
+				class="text-duvet-ink2 hover:bg-duvet-ink/10 hover:text-duvet-ink rounded p-1.5 transition-colors"
 				onclick={reset}
 				title="Reset (0)"
 			>
@@ -179,9 +179,9 @@
 					stroke-linejoin="round"><path d="M3 7v6h6" /><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13" /></svg
 				>
 			</button>
-			<div class="h-5 w-px bg-zinc-700"></div>
+			<div class="bg-duvet-line h-5 w-px"></div>
 			<button
-				class="rounded p-1.5 text-zinc-400 transition-colors hover:bg-zinc-700 hover:text-white"
+				class="text-duvet-ink2 hover:bg-duvet-ink/10 hover:text-duvet-ink rounded p-1.5 transition-colors"
 				onclick={() => (open = false)}
 				title="Close (Esc)"
 			>
@@ -192,7 +192,7 @@
 		<!-- Zoom label -->
 		{#if scale !== 1}
 			<div
-				class="absolute bottom-4 left-1/2 z-10 -translate-x-1/2 rounded-full border border-zinc-700 bg-zinc-900/80 px-3 py-1 text-xs text-zinc-300 select-none"
+				class="border-duvet-line bg-duvet-bg/80 text-duvet-ink absolute bottom-4 left-1/2 z-10 -translate-x-1/2 rounded-full border px-3 py-1 text-xs select-none"
 			>
 				{Math.round(scale * 100)}%
 			</div>

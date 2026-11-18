@@ -28,13 +28,13 @@ export function statusDotClass(status: MemberOnSidebar["status"]): string {
 	switch (status) {
 		case "online":
 			// Ice, alive (app.css).
-			return "bg-[var(--status-online,var(--color-stone-300))]";
+			return "bg-duvet-alive";
 		case "idle":
-			return "bg-amber-500";
+			return "bg-duvet-warn";
 		case "dnd":
-			return "bg-red-500";
+			return "bg-duvet-danger";
 		default:
-			return "bg-zinc-500";
+			return "bg-duvet-ink2";
 	}
 }
 
