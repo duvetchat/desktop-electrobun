@@ -108,6 +108,7 @@ describe("a kick", () => {
 		expect(confirmStore.pending).toBeNull();
 	});
 
+	// The reason is the API's, as the app words what it knows (lib/api/error-wording.ts): a sentence, with its capital.
 	test("refused, shows the API's reason in a toast", async () => {
 		answer = () =>
 			Response.json(
@@ -118,7 +119,7 @@ describe("a kick", () => {
 		await confirmStore.execute();
 		await done;
 		expect(toastStore.items.map((t) => [t.message, t.type])).toEqual([
-			["you can only kick or ban members whose highest role is below your highest role", "error"],
+			["You can only kick or ban members whose highest role is below your highest role", "error"],
 		]);
 		expect(confirmStore.pending).toBeNull();
 	});

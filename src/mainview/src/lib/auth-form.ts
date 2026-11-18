@@ -15,6 +15,15 @@ export function emailValid(email: string): boolean {
 	return /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email.trim());
 }
 
+/**
+ * What sign-in still lacks, as the form says it, or null when it can be sent: the page asks the API nothing without
+ * both, whose own answer to an empty form is its validator's.
+ */
+export function signInMissing(email: string, password: string): string | null {
+	const lacks = [email.trim() ? null : "email", password ? null : "password"].filter((field) => field !== null);
+	return lacks.length > 0 ? `Enter your ${lacks.join(" and ")}` : null;
+}
+
 export interface SignUpForm {
 	username: string;
 	email: string;

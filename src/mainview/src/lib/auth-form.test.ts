@@ -6,6 +6,7 @@ import {
 	mascotLook,
 	mascotMood,
 	redirectQuery,
+	signInMissing,
 	signUpSteps,
 	usernameValid,
 } from "./auth-form";
@@ -30,6 +31,28 @@ describe("what reads right", () => {
 		expect(emailValid("a b@c.d")).toBe(false);
 		expect(emailValid("a@@b.c")).toBe(false);
 		expect(emailValid("")).toBe(false);
+	});
+});
+
+describe("sign-in", () => {
+	// The API answers an empty form with its validator's words ("Key: 'AuthLogInPayload.Email' Error:Field validation
+	// for 'Email' failed on the 'required' tag"): the page sends none, and says what it lacks instead (#357).
+	test("says what it lacks, and nothing once both are there", () => {
+		expect(signInMissing("", "")).toBe("Enter your email and password");
+		expect(signInMissing("   ", "hunter22")).toBe("Enter your email");
+		expect(signInMissing("you@example.com", "")).toBe("Enter your password");
+		expect(signInMissing("you@example.com", "hunter22")).toBeNull();
+	});
+
+	test("a password of spaces is a password: the API says whether it is right", () => {
+		expect(signInMissing("you@example.com", "   ")).toBeNull();
+	});
+
+	test("the page asks the API nothing while something is missing", async () => {
+		const page = await Bun.file(new URL("../routes/(auth)/sign-in/+page.svelte", import.meta.url)).text();
+		expect(page).toMatch(
+			/const missing = signInMissing\(email, password\);\s*if \(missing\) \{[^}]*errorMessage = missing;[^}]*return;\s*\}[\s\S]*await logIn\(/,
+		);
 	});
 });
 

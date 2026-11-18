@@ -6,7 +6,14 @@
 	import PasswordEye from "$lib/components/auth/PasswordEye.svelte";
 	import { onMount } from "svelte";
 	import { logIn } from "$lib/api/auth";
-	import { emailValid, mascotLook, mascotMood, redirectQuery as redirectOf, type FocusedField } from "$lib/auth-form";
+	import {
+		emailValid,
+		mascotLook,
+		mascotMood,
+		redirectQuery as redirectOf,
+		signInMissing,
+		type FocusedField,
+	} from "$lib/auth-form";
 	import { userSession } from "$lib/stores.svelte";
 	import { route } from "$lib/common/common";
 	import { localUrl } from "$lib/urls";
@@ -23,7 +30,19 @@
 		redirectQuery = redirectOf(window.location.search);
 	});
 
-	async function handleSubmit() {
+	async function handleSubmit(form: HTMLFormElement) {
+		if (doingRequest) return;
+		// What the fields hold now: a password manager may have filled them without a keystroke.
+		const filled = new FormData(form);
+		email = String(filled.get("email") ?? email);
+		password = String(filled.get("password") ?? password);
+		// An empty form isn't sent: the form says what it lacks, and the field waits for it.
+		const missing = signInMissing(email, password);
+		if (missing) {
+			errorMessage = missing;
+			form.querySelector<HTMLInputElement>(email.trim() ? "#password" : "#email")?.focus();
+			return;
+		}
 		sendCue++;
 		doingRequest = true;
 		errorMessage = "";
@@ -62,7 +81,7 @@
 		class="flex flex-col gap-4"
 		onsubmit={(e) => {
 			e.preventDefault();
-			handleSubmit();
+			void handleSubmit(e.currentTarget);
 		}}
 		novalidate
 		aria-busy={doingRequest}
