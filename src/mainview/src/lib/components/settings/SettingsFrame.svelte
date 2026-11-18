@@ -124,8 +124,9 @@
 	<div class="bg-duvet-bg flex min-w-0 flex-1 flex-col">
 		<div class="border-duvet-line relative flex h-[52px] shrink-0 items-center gap-2 border-b pr-4 pl-6">
 			{#if mode === "sheet"}
-				<Dialog.Title level={2} class="min-w-0 flex-1 truncate font-serif text-[17px] font-medium">{title}</Dialog.Title
-				>
+				<!-- A plain heading, not the dialog's title: the sheet's name is `name` ("Duvet settings"), and a title would
+				     name it after its section instead. -->
+				<h2 class="min-w-0 flex-1 truncate font-serif text-[17px] font-medium">{title}</h2>
 				<Dialog.Close aria-label="Close" class={iconButtonClass()}>
 					<XIcon size={16} />
 				</Dialog.Close>
