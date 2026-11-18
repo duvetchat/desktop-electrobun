@@ -35,6 +35,8 @@
 	--duvet-alive: #4cc38a;
 	/* The prototype's --destructive. */
 	--duvet-danger: #e07a70;
+	/* What's written on a danger fill (theme.dart's destructiveForeground). */
+	--duvet-on-danger: #111113;
 	--duvet-crown: #fbbf24;
 	/* A warning: an email not verified, storage nearly full, an idle status. The app's own: the design has none. */
 	--duvet-warn: #f0c47a;
@@ -136,6 +138,7 @@
 	--duvet-secondary-fill: #e3e9ff;
 	--duvet-alive: #2f9e62;
 	--duvet-danger: #b0443b;
+	--duvet-on-danger: #ffffff;
 	--duvet-crown: #b7791f;
 	--duvet-warn: #9a5f0a;
 
@@ -215,6 +218,7 @@
 	--color-duvet-secondary-fill: var(--duvet-secondary-fill);
 	--color-duvet-alive: var(--duvet-alive);
 	--color-duvet-danger: var(--duvet-danger);
+	--color-duvet-on-danger: var(--duvet-on-danger);
 	--color-duvet-crown: var(--duvet-crown);
 	--color-duvet-warn: var(--duvet-warn);
 	--color-duvet-glass: var(--duvet-glass);
