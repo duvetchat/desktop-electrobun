@@ -1546,12 +1546,9 @@
 		</SettingsGroup>
 
 		<SettingsGroup title="Layout">
-			<SettingsRow
-				label="Spaces column"
-				line="Auto-hide folds it to an edge that opens over the chat when you point at it."
-			>
+			<SettingsRow label="Sidebar" line="Auto-hide folds it to an edge that opens over the chat when you point at it.">
 				<Segmented
-					label="Spaces column"
+					label="Sidebar"
 					options={spacesColumnChoices}
 					value={layoutPrefs.spacesColumn}
 					onValueChange={(picked) => (layoutPrefs.spacesColumn = picked)}
@@ -1559,7 +1556,7 @@
 			</SettingsRow>
 			<SettingsRow
 				label="Open chats"
-				line="A vertical list puts them at the top of the Spaces column instead of tabs over each chat."
+				line="A vertical list puts them at the top of the sidebar instead of tabs in the title bar."
 			>
 				<Segmented
 					label="Open chats"

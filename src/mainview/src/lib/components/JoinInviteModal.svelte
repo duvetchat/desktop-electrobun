@@ -58,7 +58,7 @@
 			await joinInvite(code);
 			open = false;
 		} catch (err) {
-			joinError = getApiError(err, "Failed to join the Space.");
+			joinError = getApiError(err, "Couldn't join the Space.");
 		} finally {
 			joining = false;
 		}

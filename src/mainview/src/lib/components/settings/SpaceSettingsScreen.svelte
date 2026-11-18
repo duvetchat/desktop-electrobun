@@ -1690,8 +1690,8 @@
 
 				<!-- Hoisted -->
 				<div class="flex items-center justify-between gap-3">
-					<span class="text-[13px] font-medium">Display role members separately in sidebar</span>
-					<Toggle label="Display role members separately in sidebar" bind:checked={newRoleHoisted} />
+					<span class="text-[13px] font-medium">List this role's members separately</span>
+					<Toggle label="List this role's members separately" bind:checked={newRoleHoisted} />
 				</div>
 
 				<!-- Permissions -->
@@ -1781,8 +1781,8 @@
 
 										<!-- Hoisted -->
 										<div class="flex items-center justify-between gap-3">
-											<span class="text-[13px] font-medium">Display role members separately in sidebar</span>
-											<Toggle label="Display role members separately in sidebar" bind:checked={editingRoleHoisted} />
+											<span class="text-[13px] font-medium">List this role's members separately</span>
+											<Toggle label="List this role's members separately" bind:checked={editingRoleHoisted} />
 										</div>
 
 										<!-- Permissions -->
@@ -1809,7 +1809,7 @@
 											<div class="mb-0.5 flex items-center gap-2">
 												<span class="truncate text-[13.5px] font-medium">{role.name}</span>
 												{#if role.hoisted}
-													<span class="{TAG} bg-duvet-secondary-fill text-duvet-ink2">hoisted</span>
+													<span class="{TAG} bg-duvet-secondary-fill text-duvet-ink2">Listed separately</span>
 												{/if}
 											</div>
 											<p class="text-duvet-ink2 truncate text-xs">{getPermissionNames(role.permissions)}</p>

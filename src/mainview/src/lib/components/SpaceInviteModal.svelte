@@ -50,7 +50,7 @@
 			joined = true;
 			toast("Joined", "success");
 		} catch (err) {
-			error = getApiError(err, "Failed to join.");
+			error = getApiError(err, "Couldn't join the Space.");
 		} finally {
 			joining = false;
 		}

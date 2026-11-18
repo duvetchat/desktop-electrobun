@@ -88,7 +88,7 @@
 		bind:value={query}
 		oninput={handleInput}
 		placeholder="Search KLIPY"
-		label="Search GIFs"
+		label="Search KLIPY"
 		maxlength={120}
 	/>
 
