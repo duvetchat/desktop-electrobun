@@ -11,18 +11,28 @@ const status = source("VoiceStatus");
 const script = (component: string) => /<script lang="ts">([\s\S]*?)<\/script>/.exec(component)?.[1] ?? "";
 
 describe("the split of the user's panel", () => {
-	test("UserStatusBar is gone, and every place that mounted it mounts the profile row with the same props", () => {
+	// The redesigned sidebar (#357, S-07) stacks its bottom itself: the playback bar, the media controls with the voice
+	// status, then the profile row. The folded edge keeps the row's narrow column, which stacks them around the avatar.
+	// The stand-alone rooms and chats columns that also mounted the row are gone: nothing mounted them.
+	test("UserStatusBar is gone, and the sidebar mounts its three parts, in order", () => {
 		expect(existsSync(join(import.meta.dir, "UserStatusBar.svelte"))).toBe(false);
 		const mounts = (name: string) => [...source(name).matchAll(/<ProfileRow\b[^>]*\/>/g)].map((m) => m[0]);
-		expect(mounts("DMSidebar")).toEqual(["<ProfileRow />"]);
-		expect(mounts("ChannelsSidebar")).toEqual(["<ProfileRow collapsed />", "<ProfileRow />"]);
-		// The folded edge of the Spaces column.
+		expect(mounts("DMSidebar")).toEqual([]);
+		expect(mounts("ChannelsSidebar")).toEqual([]);
+		// The folded edge of the sidebar.
 		expect(mounts("SpaceEdge")).toEqual(["<ProfileRow collapsed />"]);
-		// The docked Spaces column, whose Now section has the voice the user is in.
-		expect(mounts("SpaceNav")).toEqual(["<ProfileRow showVoice={false} />"]);
+		const nav = source("SpaceNav");
+		expect(mounts("SpaceNav")).toEqual(["<ProfileRow />"]);
+		// What plays, then the voice status (quiet while the Now section has the voice the user is in) over the media
+		// controls, then the row.
+		const order = ["<VoiceNoteBar />", "<VoiceStatus showVoice={false} />", "<MediaControls />", "<ProfileRow />"].map(
+			(part) => nav.indexOf(part),
+		);
+		expect(order.every((at) => at !== -1)).toBe(true);
+		expect(order).toEqual([...order].sort((x, y) => x - y));
 	});
 
-	test("the profile row is who the user is and the way into Settings, around the other two", () => {
+	test("the profile row is who the user is and the way into Settings; folded, it stacks the other two", () => {
 		for (const part of [
 			"<StatusMenu",
 			"<UserAvatar",
@@ -32,13 +42,12 @@ describe("the split of the user's panel", () => {
 			"<UserSettings",
 		])
 			expect(row).toContain(part);
-		expect(row).toContain('aria-label="User Settings"');
-		expect(row).toContain("<MediaControls />");
+		expect(row.split('aria-label="User Settings"')).toHaveLength(3);
+		// Docked, the media controls and the voice status are the sidebar's to mount; only the folded column has them.
+		expect(row).not.toContain("<MediaControls />");
+		expect(row).not.toContain("VoiceNoteBar");
 		expect(row).toContain("<MediaControls collapsed />");
-		expect(row).toContain("<VoiceStatus {showVoice} />");
 		expect(row).toContain("<VoiceStatus collapsed />");
-		// What plays sits over the voice status, in the full panel only.
-		expect(row).toMatch(/\{#if !collapsed\}\s*<VoiceNoteBar \/>\s*<VoiceStatus \{showVoice\} \/>\s*\{\/if\}/);
 	});
 
 	test("the profile row has none of the microphone's, the voice's or the ping's logic", () => {

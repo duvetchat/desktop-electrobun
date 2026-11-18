@@ -1,31 +1,27 @@
 <script lang="ts">
-	import { Settings as GearSixIcon } from "@lucide/svelte";
+	import { ChevronsUpDown as ChevronsUpDownIcon, Settings as GearSixIcon } from "@lucide/svelte";
 	import { speakingUsers, currentUser } from "$lib/stores.svelte";
 	import { getAvatarURL } from "$lib/common/common";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
 	import UserSettings from "$lib/components/UserSettings.svelte";
-	import VoiceNoteBar from "$lib/components/VoiceNoteBar.svelte";
 	import StatusMenu from "$lib/components/StatusMenu.svelte";
 	import StatusDot from "$lib/components/StatusDot.svelte";
 	import MediaControls from "$lib/components/MediaControls.svelte";
 	import VoiceStatus from "$lib/components/VoiceStatus.svelte";
+	import Avatar from "$lib/components/ui/Avatar.svelte";
+	import { iconButtonClass } from "$lib/components/ui/recipes";
 	import { ownMobileOnly } from "$lib/api/ws/connection";
+	import { currentShell } from "$lib/platform";
+	import { isSettingsShortcut } from "$lib/shell-layout";
 	import { STATUS_CHOICES, chosenStatus } from "$lib/status";
 	import { userStatusToString } from "$lib/types";
 
-	// The user's panel at the foot of the sidebar: who they are (their avatar with its status, which opens the status
-	// menu, and their name with the status they chose) and the way into Settings, around the media controls
-	// (MediaControls) and, over them, what plays (VoiceNoteBar) and the voice they're in (VoiceStatus). Folded
-	// (`collapsed`), it is a narrow column. It was UserStatusBar until the redesign (#357), which splits the profile
-	// row from the media controls: the row is the shell's, the controls and the voice status are calls and media's.
-	let {
-		collapsed = false,
-		showVoice = true,
-	}: {
-		collapsed?: boolean;
-		/** Off where the voice the user is in shows on its own, as the spaces column's Now section does. */
-		showVoice?: boolean;
-	} = $props();
+	// The profile row at the sidebar's foot (#357, S-07): who the user is (their avatar with its status, their name
+	// and the status they chose), which opens the status menu, and the way into Settings. The sidebar mounts the
+	// playback bar and the media controls above it, as blocks of their own (SpaceNav.svelte). Folded (`collapsed`), it
+	// is the edge's narrow column instead, which still stacks the voice status and the media controls around the
+	// avatar: the edge has no room for them elsewhere. It was UserStatusBar until the redesign split it.
+	let { collapsed = false }: { collapsed?: boolean } = $props();
 
 	// The status the user chose, which everyone sees while they're connected.
 	const myChoice = $derived(chosenStatus($currentUser?.status));
@@ -33,15 +29,21 @@
 	const myStatusLabel = $derived(STATUS_CHOICES.find((c) => c.status === myChoice)?.label ?? "");
 
 	let showUserSettings = $state(false);
+
+	// Settings' own shortcut: ⌘, on macOS, Ctrl , elsewhere. Not over another dialog.
+	const mac = currentShell().os === "mac";
+	function onKeydown(event: KeyboardEvent) {
+		if (!isSettingsShortcut(event, mac) || showUserSettings) return;
+		if (document.querySelector('[role="dialog"], [role="alertdialog"]')) return;
+		event.preventDefault();
+		showUserSettings = true;
+	}
 </script>
 
-{#if !collapsed}
-	<VoiceNoteBar />
-	<VoiceStatus {showVoice} />
-{/if}
+<svelte:window onkeydown={onKeydown} />
 
 {#if collapsed && $currentUser}
-	<div class="border-duvet-line bg-duvet-sunk flex shrink-0 flex-col items-center gap-1 border-t px-1 py-2">
+	<div class="border-duvet-sb-edge flex shrink-0 flex-col items-center gap-1 border-t px-1 py-2">
 		<VoiceStatus collapsed />
 		<StatusMenu class="relative cursor-pointer rounded-full">
 			<UserAvatar
@@ -49,63 +51,59 @@
 				name={$currentUser.alias || $currentUser.username}
 				size={28}
 				class="box-border transition-all duration-200 {$speakingUsers.has($currentUser.id)
-					? 'ring-duvet-ink2/40 ring-[3px]'
+					? 'ring-duvet-alive ring-2'
 					: ''}"
 			/>
 			<StatusDot
 				status={myStatus}
 				mobileOnly={$ownMobileOnly}
-				class="text-duvet-sunk absolute -right-0.5 -bottom-0.5 w-3 border-2"
+				class="text-duvet-sb-ring absolute -right-0.5 -bottom-0.5 w-3 border-2"
 			/>
 		</StatusMenu>
 		<MediaControls collapsed />
-		<button
-			class="text-duvet-ink2 hover:bg-duvet-card flex size-8 items-center justify-center rounded-lg transition-colors"
-			aria-label="User Settings"
-			onclick={() => (showUserSettings = true)}
-		>
+		<button class={iconButtonClass()} aria-label="User Settings" onclick={() => (showUserSettings = true)}>
 			<GearSixIcon class="size-4" />
 		</button>
 	</div>
 {/if}
 
-<!-- Current user profile bar -->
+<!-- The profile row: the avatar, the name and the chosen status open the status menu. -->
 {#if !collapsed && $currentUser}
-	<div class="bg-duvet-card z-100 flex h-14 shrink-0 items-center gap-1 px-1.5">
+	<div class="flex min-w-0 shrink-0 items-center gap-0.5">
 		<StatusMenu
-			class="group hover:bg-duvet-card flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-full p-1 text-left transition-colors"
+			class="group hover:bg-duvet-sb-hover focus-visible:outline-duvet-accent flex min-w-0 flex-1 cursor-pointer items-center gap-2.5 rounded-xl px-1.5 py-1 text-left transition-colors duration-[120ms] focus-visible:outline-2 motion-reduce:transition-none"
 		>
-			<div class="relative shrink-0">
-				<UserAvatar
-					src={getAvatarURL($currentUser.id, $currentUser.avatar)}
-					name={$currentUser.alias || $currentUser.username}
-					size={28}
-					class="box-border transition-all duration-200 {$speakingUsers.has($currentUser.id)
-						? 'ring-duvet-ink2/40 ring-4'
-						: ''}"
-				/>
-				<StatusDot
-					status={myStatus}
-					mobileOnly={$ownMobileOnly}
-					class="text-duvet-card absolute -right-0.5 -bottom-0.5 w-3 border-2"
-				/>
-			</div>
-			<div class="flex flex-col truncate">
-				<span class="text-duvet-ink truncate text-sm font-semibold">{$currentUser.alias || $currentUser.username}</span>
-				<span class="text-xxs text-duvet-ink2 truncate">{myStatusLabel}</span>
-			</div>
-		</StatusMenu>
-
-		<div class="text-duvet-ink2 relative flex shrink-0 items-center">
-			<MediaControls />
-			<button
-				class="hover:bg-duvet-card flex h-10 w-10 items-center justify-center rounded-lg transition-colors"
-				aria-label="User Settings"
-				onclick={() => (showUserSettings = true)}
+			<span
+				class="shrink-0 rounded-full transition-shadow duration-200 motion-reduce:transition-none {$speakingUsers.has(
+					$currentUser.id,
+				)
+					? 'ring-duvet-alive ring-2'
+					: ''}"
 			>
-				<GearSixIcon class="size-5" />
-			</button>
-		</div>
+				<Avatar size={30} status={myStatus} mobileOnly={$ownMobileOnly} ring="var(--duvet-sb-ring)">
+					<UserAvatar
+						src={getAvatarURL($currentUser.id, $currentUser.avatar)}
+						name={$currentUser.alias || $currentUser.username}
+						size={30}
+					/>
+				</Avatar>
+			</span>
+			<span class="flex min-w-0 flex-1 flex-col">
+				<span class="text-duvet-ink truncate text-[13.5px] leading-tight font-semibold"
+					>{$currentUser.alias || $currentUser.username}</span
+				>
+				<span class="text-duvet-ink2 truncate text-[11.5px] leading-[1.3]">{myStatusLabel}</span>
+			</span>
+			<ChevronsUpDownIcon class="text-duvet-ink2 size-3.5 shrink-0" aria-hidden="true" />
+		</StatusMenu>
+		<button
+			class={iconButtonClass()}
+			aria-label="User Settings"
+			title="Settings"
+			onclick={() => (showUserSettings = true)}
+		>
+			<GearSixIcon class="size-4" />
+		</button>
 	</div>
 {/if}
 

@@ -235,6 +235,12 @@ export function shellShortcut(event: Key, { mac, desktop }: { mac: boolean; desk
 	return null;
 }
 
+/** Settings' shortcut (BRIEF, "Windows"): ⌘, on macOS, Ctrl , elsewhere. */
+export function isSettingsShortcut(event: Key, mac: boolean): boolean {
+	if (event.key !== "," || event.altKey || event.shiftKey) return false;
+	return mac ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey;
+}
+
 /** The tab a step from the active one lands on, going round; null with no tabs. */
 export function steppedTab(tabIds: readonly string[], activeId: string | null, step: 1 | -1): string | null {
 	if (tabIds.length === 0) return null;

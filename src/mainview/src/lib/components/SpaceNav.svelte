@@ -1,12 +1,13 @@
 <script lang="ts">
 	import {
-		AtSign as AtSignIcon,
 		CheckCheck as CheckCheckIcon,
 		ChevronDown as ChevronDownIcon,
 		ChevronRight as ChevronRightIcon,
 		Ellipsis as EllipsisIcon,
-		Hash as HashIcon,
+		Layers as LayersIcon,
+		LayoutGrid as LayoutGridIcon,
 		LogOut as LogOutIcon,
+		MessageCircle as MessageCircleIcon,
 		PanelLeft as PanelLeftIcon,
 		Phone as PhoneIcon,
 		Pin as PinIcon,
@@ -15,15 +16,14 @@
 		Search as SearchIcon,
 		Settings as GearSixIcon,
 		SquarePen as SquarePenIcon,
-		Volume2 as SpeakerSimpleHighIcon,
+		Users as UsersIcon,
 		X as XIcon,
 	} from "@lucide/svelte";
-	import { ContextMenu, DropdownMenu } from "bits-ui";
 	import { tick, untrack } from "svelte";
 	import { ackRoom } from "$lib/api/messages";
 	import { leaveSpace } from "$lib/api/spaces";
 	import { confirmAction } from "$lib/stores/confirm.svelte";
-	import { hasPermission, hasSpacePermission, Permission } from "$lib/permissions";
+	import { hasSpacePermission, Permission } from "$lib/permissions";
 	import {
 		conversations,
 		currentUser,
@@ -36,31 +36,56 @@
 	} from "$lib/stores.svelte";
 	import { shownMentionCounts, shownUnreadConversations, shownUnreadRooms } from "$lib/notification-marks";
 	import { typingSentence } from "$lib/typing";
-	import TypingMark from "$lib/components/TypingMark.svelte";
 	import { newestKnownIn } from "$lib/jumps";
 	import { clickFoldsSpace, groupSpaces, spaceNews, spaceReadAll, type OpenChats, type SpaceNews } from "$lib/nav";
 	import { navPrefs, togglePinned } from "$lib/nav-prefs.svelte";
 	import { isConversationTab, tabDragData, tabNews, tabTitle } from "$lib/pane";
+	import { currentShell } from "$lib/platform";
+	import {
+		chipCount,
+		friendRequestsLabel,
+		mentionsLabel,
+		openHow,
+		quietSpacesLabel,
+		spaceUnfolded,
+		type OpenHow,
+		type SidebarFilter,
+	} from "$lib/shell-layout";
+	import { sidebar } from "$lib/stores/sidebar.svelte";
 	import type { Guild } from "$lib/types";
-	import AddSpaceModal from "$lib/components/AddSpaceModal.svelte";
-	import ChannelsSidebar from "$lib/components/ChannelsSidebar.svelte";
-	import DMSidebar from "$lib/components/DMSidebar.svelte";
-	import NotificationSubmenu from "$lib/components/NotificationSubmenu.svelte";
-	import NowSection from "$lib/components/NowSection.svelte";
-	import SpaceIcon from "$lib/components/SpaceIcon.svelte";
-	import TabIcon from "$lib/components/TabIcon.svelte";
-	import ProfileRow from "$lib/components/ProfileRow.svelte";
-	import CallHistory from "$lib/components/CallHistory.svelte";
-	import DragRegion from "$lib/components/DragRegion.svelte";
-	import WindowControls from "$lib/components/WindowControls.svelte";
-	import IconButton from "$lib/components/ui/IconButton.svelte";
-	import Popover from "$lib/components/ui/Popover.svelte";
-	import Tooltip from "$lib/components/ui/Tooltip.svelte";
+	import type { MessageLink } from "$lib/urls";
 	import logoOnLight from "$lib/assets/logo/app-icon-rounded.svg";
 	import logoOnDark from "$lib/assets/logo/app-icon-colored.svg";
-	import { currentShell } from "$lib/platform";
-	import type { MessageLink } from "$lib/urls";
+	import AddSpaceModal from "$lib/components/AddSpaceModal.svelte";
+	import CallHistory from "$lib/components/CallHistory.svelte";
+	import ChannelsSidebar from "$lib/components/ChannelsSidebar.svelte";
+	import DMSidebar from "$lib/components/DMSidebar.svelte";
+	import DragRegion from "$lib/components/DragRegion.svelte";
+	import MediaControls from "$lib/components/MediaControls.svelte";
+	import NotificationSubmenu from "$lib/components/NotificationSubmenu.svelte";
+	import NowSection from "$lib/components/NowSection.svelte";
+	import ProfileRow from "$lib/components/ProfileRow.svelte";
+	import TabIcon from "$lib/components/TabIcon.svelte";
+	import VoiceNoteBar from "$lib/components/VoiceNoteBar.svelte";
+	import VoiceStatus from "$lib/components/VoiceStatus.svelte";
+	import WindowControls from "$lib/components/WindowControls.svelte";
+	import ContextMenu from "$lib/components/ui/ContextMenu.svelte";
+	import IconButton from "$lib/components/ui/IconButton.svelte";
+	import Kbd from "$lib/components/ui/Kbd.svelte";
+	import Menu from "$lib/components/ui/Menu.svelte";
+	import MenuItem from "$lib/components/ui/MenuItem.svelte";
+	import MenuSeparator from "$lib/components/ui/MenuSeparator.svelte";
+	import Popover from "$lib/components/ui/Popover.svelte";
+	import Segmented from "$lib/components/ui/Segmented.svelte";
+	import SpaceIcon from "$lib/components/ui/SpaceIcon.svelte";
+	import Tooltip from "$lib/components/ui/Tooltip.svelte";
+	import { iconButtonClass, MENU_PANEL, menuItemClass } from "$lib/components/ui/recipes";
 
+	// The sidebar (#357, S-03 to S-07, S-09): one column. Its header is half of the window's title line; under it the
+	// field that opens the quick switcher; then Chats and Spaces as two sections of one list, or one of them alone
+	// (the switch at its foot); then what is going on now; and at the bottom the playback bar, the media controls, the
+	// profile row and the All · Chats · Spaces switch. A Space is a tree under its row: its categories and rooms, each
+	// voice room with who's in it. Busy Spaces are open and quiet ones folded.
 	let {
 		guilds,
 		selectedSpaceId = null,
@@ -82,7 +107,7 @@
 		onFriend,
 	}: {
 		guilds: Guild[];
-		/** The space whose rooms show as a tree under its row. */
+		/** The space the focused pane is in. */
 		selectedSpaceId?: string | null;
 		/** The focused pane's active room, which its row marks. */
 		activeChannelId?: string | null;
@@ -90,17 +115,19 @@
 		activeConversationId?: string | null;
 		openChats?: OpenChats | null;
 		shortcutLabel?: string;
-		/** Off when the column shows beside the folded edge, which already has the user's controls. */
+		/** Off when the column shows beside the folded edge, which already has the user's controls and whose title line
+		 * is the tab strip's. */
 		showUser?: boolean;
 		/** Hides the sidebar (its header's button); null where it shows over the chat, beside the folded edge. */
 		onHideSidebar?: (() => void) | null;
 		sidebarKeys?: string;
 		/** Opens a call's notice in its conversation, from the call history. */
 		onOpenMessage?: (link: MessageLink) => void;
-		onSpaceSelect: (spaceId: string) => void;
-		onRoomSelect: (spaceId: string, roomId: string) => void;
+		/** A Space, a room or a chat picked, and how its press opens it (lib/shell-layout.ts: openHow). */
+		onSpaceSelect: (spaceId: string, how: OpenHow) => void;
+		onRoomSelect: (spaceId: string, roomId: string, how: OpenHow) => void;
 		onFriendsSelect: () => void;
-		onConversationSelect: (conversationId: string) => void;
+		onConversationSelect: (conversationId: string, how: OpenHow) => void;
 		onNewGroup: () => void;
 		onOpenSwitcher: () => void;
 		/** Opens the direct message with a friend, as the quick switcher's friends do. */
@@ -108,6 +135,7 @@
 	} = $props();
 
 	const shell = currentShell();
+	const mac = shell.os === "mac";
 	let callsOpen = $state(false);
 
 	const newsBySpace = $derived(
@@ -116,8 +144,8 @@
 		) as Record<string, SpaceNews>,
 	);
 
-	// The selected space stays in the group it was in when it was selected: moving its row would mount its rooms'
-	// tree again, and close what was open in it (a room's settings, the create room dialog).
+	// The selected space stays in the group it was in when it was selected: moving its row behind the quiet Spaces'
+	// row would take its rooms' tree away, and close what was open in it (a room's settings, the create room dialog).
 	let frozenNews = $state<{ spaceId: string; news: boolean } | null>(null);
 	$effect(() => {
 		const id = selectedSpaceId;
@@ -127,6 +155,7 @@
 		});
 	});
 
+	// Pinned Spaces first, in the order pinned; then those with news; then the quiet ones.
 	const groups = $derived(
 		groupSpaces(
 			guilds.map((g) => g.id),
@@ -137,47 +166,70 @@
 	const guildById = $derived(new Map(guilds.map((g) => [g.id, g])));
 
 	let quietOpen = $state(false);
-	// The selected space's tree can be folded by clicking its row again.
-	let treeFolded = $state(false);
+	const expandedSpaceId = $derived(isFriendsActive ? null : selectedSpaceId);
+	// The quiet Spaces wait behind one row, the one the focused pane is in excepted.
+	const shownQuiet = $derived(quietOpen ? groups.quiet : groups.quiet.filter((id) => id === expandedSpaceId));
+	const waitingQuiet = $derived(groups.quiet.filter((id) => !shownQuiet.includes(id)));
+	// One list, keyed by Space: a Space that gets news, or is pinned, moves in it without its tree being taken away.
+	const listedSpaces = $derived(
+		[...groups.pinned, ...groups.news, ...shownQuiet]
+			.map((id) => guildById.get(id))
+			.filter((g): g is Guild => g !== undefined),
+	);
+
+	// Each Space's tree, shut or opened by the user (its caret), until the app closes. Without their say a busy Space
+	// is open and a quiet one shut (spaceUnfolded).
+	let treeChoice = $state<Record<string, boolean>>({});
+	function unfolded(guild: Guild): boolean {
+		const news = newsBySpace[guild.id];
+		return spaceUnfolded(treeChoice[guild.id], {
+			selected: guild.id === expandedSpaceId,
+			unread: news?.unread ?? false,
+			inVoice: news?.inVoice ?? 0,
+		});
+	}
+	// Going to a Space opens its tree again, if the user had shut it.
 	$effect(() => {
-		void selectedSpaceId;
-		treeFolded = false;
+		const id = expandedSpaceId;
+		untrack(() => {
+			if (id && treeChoice[id] === false) delete treeChoice[id];
+		});
 	});
 
-	const expandedSpaceId = $derived(isFriendsActive ? null : selectedSpaceId);
-	const shownQuiet = $derived(quietOpen ? groups.quiet : groups.quiet.filter((id) => id === expandedSpaceId));
-	const foldedQuietCount = $derived(groups.quiet.length - shownQuiet.length);
-
-	const dmBadge = $derived($pendingFriendRequests.length + $shownUnreadConversations.size);
+	const friendRequests = $derived($pendingFriendRequests.length);
+	const unreadChats = $derived($shownUnreadConversations.size > 0 || friendRequests > 0);
+	const unreadRooms = $derived(Object.values(newsBySpace).some((news) => news.unread));
 
 	// The spaces the user owns, which the API won't let them leave: they can only delete one.
 	const ownedSpaceIds = $derived(
 		new Set($gatewaySpaces.filter((s) => s.owner_id === $currentUser?.id).map((s) => s.id)),
 	);
 
-	// A click on the selected Space folds or unfolds its tree while the focused pane shows one of its rooms. With anything
-	// else there (a conversation, nothing), it takes the user to the Space instead, as a click on another Space does.
-	function selectSpace(id: string) {
-		if (id === expandedSpaceId && clickFoldsSpace(guildById.get(id)?.channels ?? [], activeChannelId)) {
-			treeFolded = !treeFolded;
+	// A click on a Space takes the user to it, its tree open. On the Space the focused pane is in, while that pane
+	// shows one of its rooms, there is nowhere to go: the click shuts or opens its tree, as its caret does.
+	function selectSpace(id: string, how: OpenHow) {
+		const guild = guildById.get(id);
+		if (how === "here" && guild && id === expandedSpaceId && clickFoldsSpace(guild.channels, activeChannelId)) {
+			treeChoice[id] = !unfolded(guild);
 			return;
 		}
-		treeFolded = false;
-		onSpaceSelect(id);
+		treeChoice[id] = true;
+		onSpaceSelect(id, how);
 	}
 
-	// ── The space's actions: the server rail's and the space header's menus ──────
-	let channelsRef = $state<ReturnType<typeof ChannelsSidebar> | null>(null);
+	// ── The space's actions: its row's menu, from its … button or a right click ──────
+	let trees = $state<Record<string, ReturnType<typeof ChannelsSidebar> | null>>({});
 	let showAddSpace = $state(false);
 	// How tall the rows are, all of them: the Now section below takes the rest of the column.
 	let rowsHeight = $state(0);
 
-	// The settings and the create room dialog belong to the space's tree, which shows for the selected space only.
+	// The settings and the create room dialog belong to the space's tree: it opens for them, wherever the Space is.
 	async function withTreeOf(spaceId: string, action: (tree: ReturnType<typeof ChannelsSidebar>) => void) {
-		if (spaceId !== expandedSpaceId) onSpaceSelect(spaceId);
-		treeFolded = false;
+		if (groups.quiet.includes(spaceId)) quietOpen = true;
+		treeChoice[spaceId] = true;
 		await tick();
-		if (channelsRef) action(channelsRef);
+		const tree = trees[spaceId];
+		if (tree) action(tree);
 	}
 
 	function handleLeave(guild: Guild) {
@@ -201,7 +253,7 @@
 		}
 	}
 
-	// A space's menus list these, then its Notifications submenu, then Leave space for whoever doesn't own it.
+	// A space's menus list these, then its Notifications submenu, then Leave Space for whoever doesn't own it.
 	type SpaceAction = {
 		label: string;
 		icon: typeof PinIcon;
@@ -235,18 +287,6 @@
 		return actions;
 	}
 
-	// The rooms a space with news shows while it isn't selected: those with unread messages, and the voice rooms
-	// with people in them the user can join.
-	function roomsWithNews(guild: Guild) {
-		const space = $gatewaySpaces.find((s) => s.id === guild.id);
-		return guild.channels.filter((ch) => {
-			if (ch.type === "text") return $shownUnreadRooms.has(ch.id) || !!$shownMentionCounts[ch.id];
-			if (ch.type !== "voice" || !ch.voiceUsers?.length || !space) return false;
-			const room = space.rooms.find((r) => r.id === ch.id);
-			return !!room && hasPermission(space, room, Permission.JoinVoice);
-		});
-	}
-
 	function conversationKind(conversationId: string) {
 		return $conversations.find((c) => c.id === conversationId)?.type === 2 ? "Group" : "Direct message";
 	}
@@ -269,178 +309,146 @@
 		openChats.onReorder(tabs);
 	}
 
+	const FILTERS: { value: SidebarFilter; label: string; icon: typeof LayersIcon }[] = [
+		{ value: "all", label: "All", icon: LayersIcon },
+		{ value: "chats", label: "Chats", icon: MessageCircleIcon },
+		{ value: "spaces", label: "Spaces", icon: LayoutGridIcon },
+	];
+
 	const rowFocus = "focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-duvet-accent";
-	const menuContentClass =
-		"rounded-card border-duvet-line bg-duvet-card text-duvet-ink shadow-duvet-float z-200 min-w-52 focus-override border p-1.5 outline-none";
-	const menuItemClass =
-		"rounded-row flex w-full cursor-pointer items-center gap-2.5 px-2.5 py-2 text-left text-sm font-medium transition-colors data-highlighted:bg-duvet-bg/60 motion-reduce:transition-none";
+	const chip =
+		"flex h-[18px] min-w-[18px] shrink-0 items-center justify-center rounded-full px-1.5 text-[10.5px] font-bold";
 </script>
 
-{#snippet countPill(count: number, label: string)}
-	<span
-		class="bg-duvet-accent text-duvet-on-accent flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full px-1 text-[11px] font-bold"
-		aria-label={label}>{count > 99 ? "99+" : count}</span
-	>
+{#snippet mentionChip(count: number)}
+	<span class="{chip} bg-duvet-accent text-duvet-on-accent" aria-label={mentionsLabel(count)}>{chipCount(count)}</span>
 {/snippet}
 
-{#snippet sectionHeader(title: string)}
-	<h3 class="text-duvet-ink2 mx-1.5 mt-3 mb-1 text-[13px] font-bold select-none">{title}</h3>
+{#snippet sectionHead(title: string)}
+	<h3 class="text-duvet-ink2 flex h-[30px] items-end px-2.5 pb-0.5 text-[11.5px] font-semibold select-none">{title}</h3>
+{/snippet}
+
+<!-- A Space's menu, the same from its … button and from a right click on its row. -->
+{#snippet spaceMenuItems(guild: Guild)}
+	{#each spaceActions(guild) as action (action.label)}
+		<MenuItem icon={action.icon} onSelect={action.onSelect}>{action.label}</MenuItem>
+	{/each}
+{/snippet}
+
+{#snippet leaveItem(guild: Guild)}
+	{#if !ownedSpaceIds.has(guild.id)}
+		<MenuSeparator />
+		<MenuItem icon={LogOutIcon} danger onSelect={() => handleLeave(guild)}>Leave Space</MenuItem>
+	{/if}
 {/snippet}
 
 {#snippet spaceRow(guild: Guild)}
 	{@const news = newsBySpace[guild.id]}
-	{@const expanded = guild.id === expandedSpaceId && !treeFolded}
+	{@const open = unfolded(guild)}
 	{@const isSelected = guild.id === expandedSpaceId}
-	{@const actions = spaceActions(guild)}
+	{@const pinned = navPrefs.pinned.includes(guild.id)}
 	<!-- What the space's Default notifies: its owner's choice, only mentions until they make one. -->
 	{@const spaceDefault = $gatewaySpaces.find((s) => s.id === guild.id)?.default_notifications ?? 1}
 	<li>
-		<ContextMenu.Root>
-			<ContextMenu.Trigger>
-				{#snippet child({ props })}
-					<div {...props} class="group/space rounded-row hover:bg-duvet-card/70 relative flex items-center">
-						<button
-							type="button"
-							class="rounded-row flex min-w-0 flex-1 items-center gap-2.5 p-1.5 text-left text-[15px] {rowFocus}
-								{news?.unread || isSelected ? 'text-duvet-ink font-bold' : 'text-duvet-ink2 hover:text-duvet-ink font-medium'}"
-							aria-expanded={isSelected ? expanded : undefined}
-							aria-current={isSelected ? "true" : undefined}
-							data-jump
-							onclick={() => selectSpace(guild.id)}
+		<ContextMenu>
+			{#snippet target(props)}
+				<div
+					{...props}
+					class="group/space hover:bg-duvet-sb-hover relative flex h-[34px] items-center gap-[3px] rounded-[10px] pr-1.5 transition-colors duration-[120ms] motion-reduce:transition-none"
+				>
+					<button
+						type="button"
+						class="text-duvet-ink2 hover:text-duvet-ink grid h-6 w-[18px] shrink-0 place-items-center rounded-md {rowFocus}"
+						aria-label="{open ? 'Fold' : 'Unfold'} {guild.name}"
+						aria-expanded={open}
+						onclick={() => (treeChoice[guild.id] = !open)}
+					>
+						<ChevronDownIcon
+							class="size-3 transition-transform duration-150 motion-reduce:transition-none {open ? '' : '-rotate-90'}"
+							aria-hidden="true"
+						/>
+					</button>
+					<button
+						type="button"
+						class="flex h-full min-w-0 flex-1 items-center gap-[7px] rounded-[10px] text-left {rowFocus}"
+						aria-expanded={open}
+						aria-current={isSelected ? "true" : undefined}
+						data-jump
+						onclick={(e) => selectSpace(guild.id, openHow(e, mac))}
+						onauxclick={(e) => e.button === 1 && selectSpace(guild.id, "tab")}
+					>
+						<!-- The row reads as the space's name, not its monogram as well. -->
+						<span class="contents" aria-hidden="true"
+							><SpaceIcon src={guild.icon_url || null} name={guild.name} size={22} /></span
 						>
-							<!-- The row reads as the space's name, not its monogram as well. -->
-							<span class="contents" aria-hidden="true"
-								><SpaceIcon src={guild.icon_url || null} name={guild.name} size={28} class="rounded-[9px]" /></span
+						<span
+							class="font-serif-sm text-duvet-ink min-w-0 flex-1 truncate text-[14.5px] leading-[1.2] tracking-[-0.005em] {news?.unread
+								? 'font-semibold'
+								: 'font-medium'}">{guild.name}</span
+						>
+						{#if pinned}
+							<PinIcon class="text-duvet-ink2 size-[11px] shrink-0" aria-label="Pinned" />
+						{/if}
+						{#if news?.inVoice}
+							<span
+								class="text-duvet-ink2 flex shrink-0 items-center gap-1 text-[11.5px]"
+								aria-label="{news.inVoice} in voice"
 							>
-							<span class="min-w-0 flex-1 truncate">{guild.name}</span>
-							{#if news?.inVoice}
-								<span
-									class="text-duvet-ink2 flex shrink-0 items-center gap-1 text-xs font-normal"
-									aria-label="{news.inVoice} in voice"
-								>
-									<span class="bg-duvet-alive size-2 rounded-full"></span>{news.inVoice}
-								</span>
-							{/if}
-							{#if news?.mentions}
-								{@render countPill(news.mentions, `${news.mentions} mentions`)}
-							{/if}
-							{#if isSelected}
-								<ChevronDownIcon
-									class="text-duvet-ink2 size-3.5 shrink-0 transition-transform motion-reduce:transition-none {expanded
-										? ''
-										: '-rotate-90'}"
-									aria-hidden="true"
-								/>
-							{/if}
-						</button>
-						<DropdownMenu.Root>
-							<DropdownMenu.Trigger
-								class="text-duvet-ink2 hover:bg-duvet-chosen hover:text-duvet-chosen-ink mr-1 flex size-6 shrink-0 items-center justify-center rounded-md opacity-0 group-focus-within/space:opacity-100 group-hover/space:opacity-100 data-[state=open]:opacity-100 {rowFocus}"
-								aria-label="{guild.name} options"
-							>
-								<EllipsisIcon class="size-4" />
-							</DropdownMenu.Trigger>
-							<DropdownMenu.Portal>
-								<DropdownMenu.Content class={menuContentClass} sideOffset={4} align="start">
-									{#each actions as action (action.label)}
-										<DropdownMenu.Item class={menuItemClass} onSelect={action.onSelect}>
-											<action.icon class="text-duvet-ink2 size-4" />
-											{action.label}
-										</DropdownMenu.Item>
-									{/each}
-									<NotificationSubmenu
-										targetId={guild.id}
-										target={0}
-										inherited={spaceDefault}
-										itemClass={menuItemClass}
-										contentClass={menuContentClass}
-									/>
-									{#if !ownedSpaceIds.has(guild.id)}
-										<DropdownMenu.Separator class="border-duvet-line mx-1 my-1 border-t" />
-										<DropdownMenu.Item class="{menuItemClass} text-duvet-danger" onSelect={() => handleLeave(guild)}>
-											<LogOutIcon class="size-4" />
-											Leave space
-										</DropdownMenu.Item>
-									{/if}
-								</DropdownMenu.Content>
-							</DropdownMenu.Portal>
-						</DropdownMenu.Root>
-					</div>
-				{/snippet}
-			</ContextMenu.Trigger>
-			<ContextMenu.Portal>
-				<ContextMenu.Content class={menuContentClass}>
-					{#each actions as action (action.label)}
-						<ContextMenu.Item class={menuItemClass} onSelect={action.onSelect}>
-							<action.icon class="text-duvet-ink2 size-4" />
-							{action.label}
-						</ContextMenu.Item>
-					{/each}
-					<NotificationSubmenu
-						targetId={guild.id}
-						target={0}
-						inherited={spaceDefault}
-						itemClass={menuItemClass}
-						contentClass={menuContentClass}
-					/>
-					{#if !ownedSpaceIds.has(guild.id)}
-						<ContextMenu.Separator class="border-duvet-line mx-1 my-1 border-t" />
-						<ContextMenu.Item class="{menuItemClass} text-duvet-danger" onSelect={() => handleLeave(guild)}>
-							<LogOutIcon class="size-4" />
-							Leave space
-						</ContextMenu.Item>
-					{/if}
-				</ContextMenu.Content>
-			</ContextMenu.Portal>
-		</ContextMenu.Root>
-
-		{#if isSelected}
-			{#if expanded}
-				<ChannelsSidebar
-					bind:this={channelsRef}
-					embedded
-					{guild}
-					channels={guild.channels}
-					{activeChannelId}
-					onSelect={(roomId) => onRoomSelect(guild.id, roomId)}
-				/>
-			{/if}
-		{:else if news?.unread || news?.inVoice}
-			{@const rooms = roomsWithNews(guild)}
-			{#if rooms.length > 0}
-				<ul class="border-duvet-line mb-1 ml-[19px] flex flex-col gap-px border-l-2 py-0.5 pl-2.5">
-					{#each rooms as room (room.id)}
-						{@const mentions = $shownMentionCounts[room.id] ?? 0}
-						{@const typers = room.type === "text" ? $typingNow[room.id] : undefined}
-						{@const typing = typingSentence(typers)}
-						<li>
+								<span class="bg-duvet-alive size-[7px] rounded-full"></span>{news.inVoice}
+							</span>
+						{/if}
+						{#if news?.mentions}
+							{@render mentionChip(news.mentions)}
+						{:else if news?.unread && !open}
+							<span class="bg-duvet-ink size-[7px] shrink-0 rounded-full" aria-label="Unread"></span>
+						{/if}
+					</button>
+					<Menu align="start" label="Space menu">
+						{#snippet trigger(menuProps)}
 							<button
+								{...menuProps}
 								type="button"
-								class="hover:bg-duvet-card flex h-8 w-full items-center gap-1.5 rounded-[10px] px-2 text-left text-sm {rowFocus}
-									{room.type === 'text' ? 'text-duvet-ink font-bold' : 'text-duvet-ink2 hover:text-duvet-ink'}"
-								title={typing ?? undefined}
-								data-jump
-								onclick={() => onRoomSelect(guild.id, room.id)}
+								class="{iconButtonClass(
+									'sm',
+								)} opacity-0 group-focus-within/space:opacity-100 group-hover/space:opacity-100 data-[state=open]:opacity-100"
+								aria-label="{guild.name} options"
+								title="Space menu"
 							>
-								{#if typers}
-									<TypingMark users={typers} class="text-duvet-ink2" />
-								{:else if room.type === "voice"}
-									<SpeakerSimpleHighIcon class="text-duvet-alive size-4 shrink-0" />
-								{:else}
-									<HashIcon class="text-duvet-ink2 size-4 shrink-0" />
-								{/if}
-								<span class="min-w-0 flex-1 truncate">{room.name}</span>
-								{#if typing}<span class="sr-only">{typing}</span>{/if}
-								{#if mentions}
-									{@render countPill(mentions, `${mentions} mentions`)}
-								{:else if room.type === "voice"}
-									<span class="text-duvet-ink2 shrink-0 text-xs">{room.voiceUsers?.length}</span>
-								{/if}
+								<EllipsisIcon size={15} />
 							</button>
-						</li>
-					{/each}
-				</ul>
-			{/if}
+						{/snippet}
+						{@render spaceMenuItems(guild)}
+						<NotificationSubmenu
+							targetId={guild.id}
+							target={0}
+							inherited={spaceDefault}
+							itemClass={menuItemClass()}
+							contentClass={MENU_PANEL}
+						/>
+						{@render leaveItem(guild)}
+					</Menu>
+				</div>
+			{/snippet}
+			{@render spaceMenuItems(guild)}
+			<NotificationSubmenu
+				targetId={guild.id}
+				target={0}
+				inherited={spaceDefault}
+				itemClass={menuItemClass()}
+				contentClass={MENU_PANEL}
+			/>
+			{@render leaveItem(guild)}
+		</ContextMenu>
+
+		{#if open}
+			<ChannelsSidebar
+				bind:this={trees[guild.id]}
+				{guild}
+				channels={guild.channels}
+				activeChannelId={isSelected ? activeChannelId : null}
+				{mac}
+				onSelect={(roomId, how) => onRoomSelect(guild.id, roomId, how)}
+			/>
 		{/if}
 	</li>
 {/snippet}
@@ -507,207 +515,213 @@
 		</div>
 	</div>
 
+	<!-- The search field (S-04): it opens the quick switcher. -->
 	<div class="shrink-0 px-2.5 pb-2">
 		<button
 			type="button"
-			class="rounded-row bg-duvet-bg text-duvet-ink2 shadow-duvet-press hover:text-duvet-ink flex h-9 w-full items-center gap-2.5 px-3 text-left text-[13.5px] transition-colors {rowFocus}"
+			class="bg-duvet-sb-field text-duvet-ink2 ring-duvet-sb-edge hover:text-duvet-ink flex h-8 w-full items-center gap-2 rounded-[10px] pr-1.5 pl-2.5 text-left text-[13px] ring-[0.5px] transition-colors duration-[120ms] motion-reduce:transition-none {rowFocus}"
 			onclick={onOpenSwitcher}
 			aria-haspopup="dialog"
 			aria-keyshortcuts={shortcutLabel.startsWith("⌘") ? "Meta+K" : "Control+K"}
 		>
-			<SearchIcon class="size-4 shrink-0" />
+			<SearchIcon class="size-[15px] shrink-0" />
 			<span class="min-w-0 flex-1 truncate">Search or jump to…</span>
-			<kbd
-				class="bg-duvet-card text-duvet-ink2 shadow-duvet-raised shrink-0 rounded-md px-1.5 py-0.5 font-mono text-[11px] font-semibold"
-				>{shortcutLabel}</kbd
-			>
+			<Kbd>{shortcutLabel}</Kbd>
 		</button>
 	</div>
 
-	<!-- The Now section sits at the column's foot, right above the user's panel, and what's left of the column stays
+	<!-- The Now section sits at the column's foot, right above the bottom block, and what's left of the column stays
 	     between it and the rows, whose scroller grows into it. When both don't fit, the Now section takes the room the
 	     rows don't need, and half of it at least; what doesn't fit scrolls in each. -->
 	<div class="flex min-h-0 flex-1 flex-col" style="--rows-height: {rowsHeight}px">
 		<div class="min-h-0 flex-1 overflow-y-auto">
-			<div class="flex flex-col px-2.5 pb-2" bind:offsetHeight={rowsHeight}>
+			<div class="flex flex-col gap-2 px-2 pb-3" bind:offsetHeight={rowsHeight}>
+				<!-- With the open chats set to a vertical list: the focused pane's, in place of the title bar's tabs. -->
 				{#if openChats}
-					{@render sectionHeader("Open")}
-					{#if openChats.tabs.length === 0}
-						<p class="text-duvet-ink2 mx-1.5 mb-1 text-[13px]">Pick a room to open it here</p>
-					{/if}
-					<ul class="flex flex-col gap-px" aria-label="Open chats">
-						{#each openChats.tabs as tab (tab.channelId)}
-							{@const isActive = tab.channelId === openChats.activeChannelId}
-							{@const news = tabNews(tab, $shownUnreadRooms, $shownUnreadConversations, $shownMentionCounts)}
-							{@const mentions = news.mentions}
-							{@const unread = !isActive && news.unread}
-							{@const title = tabTitle(tab, $conversations, $currentUser?.id)}
-							<li
-								class="group/open rounded-row relative {isActive
-									? 'bg-duvet-card shadow-duvet-raised'
-									: 'hover:bg-duvet-card/70'} {draggedTabId === tab.channelId ? 'opacity-40' : ''}"
-								draggable="true"
-								ondragstart={(e) => {
-									draggedTabId = tab.channelId;
-									e.dataTransfer!.effectAllowed = "move";
-									// The data a room's drag carries, so a pane takes it as a room or conversation to open.
-									e.dataTransfer!.setData("text/plain", tabDragData(tab));
-								}}
-								ondragover={(e) => {
-									if (!draggedTabId) return;
-									e.preventDefault();
-								}}
-								ondrop={(e) => {
-									if (!draggedTabId) return;
-									e.preventDefault();
-									dropTabOn(tab.channelId);
-									draggedTabId = null;
-								}}
-								ondragend={() => (draggedTabId = null)}
-							>
-								<button
-									type="button"
-									class="rounded-row flex w-full items-center gap-2.5 px-2 py-1.5 pr-8 text-left {rowFocus}"
-									aria-current={isActive ? "true" : undefined}
-									data-jump
-									onclick={() => openChats.onActivate(tab.channelId)}
+					<section class="flex flex-col" aria-label="Open chats">
+						{@render sectionHead("Open")}
+						{#if openChats.tabs.length === 0}
+							<p class="text-duvet-ink2 px-2.5 py-1 text-[13px]">Pick a room to open it here</p>
+						{/if}
+						<ul class="flex flex-col gap-px" aria-label="Open chats">
+							{#each openChats.tabs as tab (tab.channelId)}
+								{@const isActive = tab.channelId === openChats.activeChannelId && !isFriendsActive}
+								{@const news = tabNews(tab, $shownUnreadRooms, $shownUnreadConversations, $shownMentionCounts)}
+								{@const mentions = news.mentions}
+								{@const unread = !isActive && news.unread}
+								{@const title = tabTitle(tab, $conversations, $currentUser?.id)}
+								<li
+									class="group/open relative rounded-xl transition-colors duration-[120ms] motion-reduce:transition-none {isActive
+										? 'bg-duvet-accent-tint'
+										: 'hover:bg-duvet-sb-hover'} {draggedTabId === tab.channelId ? 'opacity-40' : ''}"
+									draggable="true"
+									ondragstart={(e) => {
+										draggedTabId = tab.channelId;
+										e.dataTransfer!.effectAllowed = "move";
+										// The data a room's drag carries, so a pane takes it as a room or conversation to open.
+										e.dataTransfer!.setData("text/plain", tabDragData(tab));
+									}}
+									ondragover={(e) => {
+										if (!draggedTabId) return;
+										e.preventDefault();
+									}}
+									ondrop={(e) => {
+										if (!draggedTabId) return;
+										e.preventDefault();
+										dropTabOn(tab.channelId);
+										draggedTabId = null;
+									}}
+									ondragend={() => (draggedTabId = null)}
 								>
-									<span
-										class="bg-duvet-bg shadow-duvet-press flex size-7 shrink-0 items-center justify-center rounded-lg"
+									<button
+										type="button"
+										class="flex h-11 w-full items-center gap-2.5 rounded-xl pr-8 pl-2 text-left {rowFocus}"
+										aria-current={isActive ? "true" : undefined}
+										data-jump
+										onclick={() => openChats.onActivate(tab.channelId)}
 									>
-										<TabIcon {tab} size={isConversationTab(tab) ? 20 : 14} />
-									</span>
-									<span class="flex min-w-0 flex-1 flex-col leading-tight">
-										<span
-											class="truncate text-sm {isActive || unread
-												? 'text-duvet-ink font-bold'
-												: 'text-duvet-ink2 font-medium'}">{title}</span
-										>
-										<span class="text-duvet-ink2 truncate text-xs"
-											>{typingSentence($typingNow[tab.channelId]) ??
-												(isConversationTab(tab) ? conversationKind(tab.channelId) : spaceNameOf(tab.spaceId))}</span
-										>
-									</span>
-									{#if mentions && !isActive}
-										<span class="group-focus-within/open:hidden group-hover/open:hidden">
-											{@render countPill(mentions, `${mentions} mentions`)}
+										<span class="grid size-7 shrink-0 place-items-center">
+											<TabIcon {tab} size={isConversationTab(tab) ? 22 : 15} />
 										</span>
-									{/if}
-								</button>
-								<button
-									type="button"
-									class="text-duvet-ink2 hover:bg-duvet-chosen hover:text-duvet-chosen-ink absolute top-1/2 right-1.5 flex size-6 -translate-y-1/2 items-center justify-center rounded-md opacity-0 group-focus-within/open:opacity-100 group-hover/open:opacity-100 {rowFocus}"
-									aria-label="Close {title}"
-									onclick={() => openChats.onClose(tab.channelId)}
-								>
-									<XIcon class="size-3.5" />
-								</button>
-							</li>
-						{/each}
-					</ul>
-					{@render sectionHeader("Spaces")}
+										<span class="flex min-w-0 flex-1 flex-col leading-tight">
+											<span
+												class="truncate text-[13.5px] {isActive || unread
+													? 'text-duvet-ink font-semibold'
+													: 'text-duvet-ink2 font-medium'}">{title}</span
+											>
+											<span class="text-duvet-ink2 truncate text-[11.5px]"
+												>{typingSentence($typingNow[tab.channelId]) ??
+													(isConversationTab(tab) ? conversationKind(tab.channelId) : spaceNameOf(tab.spaceId))}</span
+											>
+										</span>
+										{#if mentions && !isActive}
+											<span class="group-focus-within/open:hidden group-hover/open:hidden">
+												{@render mentionChip(mentions)}
+											</span>
+										{/if}
+									</button>
+									<button
+										type="button"
+										class="{iconButtonClass(
+											'sm',
+										)} absolute top-1/2 right-1.5 -translate-y-1/2 opacity-0 group-focus-within/open:opacity-100 group-hover/open:opacity-100"
+										aria-label="Close {title}"
+										onclick={() => openChats.onClose(tab.channelId)}
+									>
+										<XIcon class="size-3.5" />
+									</button>
+								</li>
+							{/each}
+						</ul>
+					</section>
 				{/if}
 
-				<div class={openChats ? "" : "mt-1"}>
-					<div
-						class="group/dm rounded-row flex items-center {isFriendsActive
-							? 'bg-duvet-card/70'
-							: 'hover:bg-duvet-card/70'}"
-					>
+				<!-- Chats (S-05): Friends first, then the chats, the latest first. -->
+				{#if sidebar.filter !== "spaces"}
+					<section class="flex flex-col" aria-label="Chats">
+						{#if sidebar.filter === "all"}{@render sectionHead("Chats")}{/if}
 						<button
 							type="button"
-							class="rounded-row flex min-w-0 flex-1 items-center gap-2.5 p-1.5 text-left text-[15px] {rowFocus}
-						{isFriendsActive || dmBadge ? 'text-duvet-ink font-bold' : 'text-duvet-ink2 hover:text-duvet-ink font-medium'}"
-							aria-expanded={isFriendsActive || !!activeConversationId}
+							class="flex h-11 w-full shrink-0 items-center gap-2.5 rounded-[10px] pr-2.5 pl-2 text-left text-[13.5px] transition-colors duration-[120ms] motion-reduce:transition-none {rowFocus}
+							{isFriendsActive ? 'bg-duvet-accent-tint' : 'hover:bg-duvet-sb-hover'}
+							{friendRequests ? 'font-semibold' : 'font-medium'}"
+							aria-current={isFriendsActive ? "page" : undefined}
 							data-jump
 							onclick={onFriendsSelect}
 						>
 							<span
-								class="bg-duvet-card text-duvet-ink shadow-duvet-raised flex size-7 shrink-0 items-center justify-center rounded-[9px]"
+								class="bg-duvet-secondary-fill text-duvet-accent-text grid size-8 shrink-0 place-items-center rounded-full"
 							>
-								<AtSignIcon class="size-4" />
+								<UsersIcon class="size-4" />
 							</span>
-							<span class="min-w-0 flex-1 truncate">Direct messages</span>
-							{#if dmBadge}
-								{@render countPill(dmBadge, `${dmBadge} new`)}
+							<span class="min-w-0 flex-1 truncate">Friends</span>
+							{#if friendRequests}
+								<span
+									class="{chip} bg-duvet-secondary-fill text-duvet-ink"
+									aria-label={friendRequestsLabel(friendRequests)}
+									title={friendRequestsLabel(friendRequests)}>{chipCount(friendRequests)}</span
+								>
 							{/if}
 						</button>
-					</div>
-					<!-- The conversations show under the row in the friends view, and while the focused pane shows one of them. -->
-					{#if isFriendsActive || activeConversationId}
-						<DMSidebar embedded {activeConversationId} onSelect={onConversationSelect} {onNewGroup} />
-					{/if}
-				</div>
-
-				{#if groups.pinned.length}
-					{@render sectionHeader("Pinned")}
-					<ul class="flex flex-col gap-px">
-						{#each groups.pinned as id (id)}
-							{@const guild = guildById.get(id)}
-							{#if guild}{@render spaceRow(guild)}{/if}
-						{/each}
-					</ul>
+						<DMSidebar {activeConversationId} onSelect={onConversationSelect} folded={sidebar.filter === "all"} {mac} />
+					</section>
 				{/if}
 
-				{#if groups.news.length}
-					{@render sectionHeader("With news")}
-					<ul class="flex flex-col gap-px">
-						{#each groups.news as id (id)}
-							{@const guild = guildById.get(id)}
-							{#if guild}{@render spaceRow(guild)}{/if}
-						{/each}
-					</ul>
-				{/if}
+				<!-- Spaces (S-06): each a tree under its row. Pinned ones first, then those with news; the quiet ones wait
+				     behind one row. -->
+				{#if sidebar.filter !== "chats"}
+					<section class="group/spaces flex flex-col" aria-label="Spaces">
+						<div class="flex h-[30px] items-end justify-between pr-1 pb-0.5 pl-2.5">
+							<h3 class="text-duvet-ink2 text-[11.5px] font-semibold select-none">Spaces</h3>
+							<Tooltip text="Join or create a Space">
+								{#snippet trigger(props)}
+									<IconButton
+										{...props}
+										size="sm"
+										label="Join or create a Space"
+										class="-mb-1 opacity-0 group-focus-within/spaces:opacity-100 group-hover/spaces:opacity-100"
+										onclick={() => (showAddSpace = true)}
+									>
+										<PlusIcon size={14} />
+									</IconButton>
+								{/snippet}
+							</Tooltip>
+						</div>
 
-				{#if groups.quiet.length}
-					<!-- The Open list already put a "Spaces" header above the direct messages. -->
-					{#if !openChats && !groups.pinned.length && !groups.news.length}
-						{@render sectionHeader("Spaces")}
-					{/if}
-					<ul class="mt-1 flex flex-col gap-px">
-						{#each shownQuiet as id (id)}
-							{@const guild = guildById.get(id)}
-							{#if guild}{@render spaceRow(guild)}{/if}
-						{/each}
-					</ul>
-					{#if foldedQuietCount > 0 || quietOpen}
-						<button
-							type="button"
-							class="rounded-row text-duvet-ink2 hover:bg-duvet-card/70 hover:text-duvet-ink mt-px flex w-full items-center gap-2.5 p-1.5 text-left text-[15px] font-medium {rowFocus}"
-							aria-expanded={quietOpen}
-							data-jump
-							onclick={() => (quietOpen = !quietOpen)}
-						>
-							<span
-								class="bg-duvet-card shadow-duvet-raised flex size-7 shrink-0 items-center justify-center rounded-[9px] text-xs font-bold"
-								>{quietOpen ? groups.quiet.length : foldedQuietCount}</span
+						<ul class="flex flex-col">
+							{#each listedSpaces as guild (guild.id)}
+								{@render spaceRow(guild)}
+							{/each}
+						</ul>
+
+						{#if waitingQuiet.length > 0 || (quietOpen && groups.quiet.length > 0)}
+							<button
+								type="button"
+								class="text-duvet-ink2 hover:bg-duvet-sb-hover hover:text-duvet-ink flex h-[34px] w-full items-center gap-[7px] rounded-[10px] pr-2.5 pl-[3px] text-left text-[13px] font-medium transition-colors duration-[120ms] motion-reduce:transition-none {rowFocus}"
+								aria-expanded={quietOpen}
+								aria-label={quietOpen ? "Fold quiet Spaces" : undefined}
+								data-jump
+								onclick={() => (quietOpen = !quietOpen)}
 							>
-							<span class="min-w-0 flex-1 truncate">
-								{#if quietOpen}Fold quiet Spaces{:else}{foldedQuietCount} quiet {foldedQuietCount === 1
-										? "Space"
-										: "Spaces"}{/if}
-							</span>
-							{#if quietOpen}
-								<ChevronDownIcon class="size-3.5 shrink-0" aria-hidden="true" />
-							{:else}
-								<ChevronRightIcon class="size-3.5 shrink-0" aria-hidden="true" />
-							{/if}
-						</button>
-					{/if}
-				{/if}
+								<ChevronRightIcon
+									class="mx-[3px] size-3 shrink-0 transition-transform duration-150 motion-reduce:transition-none {quietOpen
+										? 'rotate-90'
+										: ''}"
+									aria-hidden="true"
+								/>
+								<!-- Up to three of them, their icons stacked. -->
+								<span class="flex shrink-0 items-center" aria-hidden="true">
+									{#each (quietOpen ? groups.quiet : waitingQuiet).slice(0, 3) as id, at (id)}
+										{@const quiet = guildById.get(id)}
+										{#if quiet}
+											<span class="ring-duvet-sb-ring rounded-[5px] ring-[1.5px] {at > 0 ? '-ml-1.5' : ''}">
+												<SpaceIcon src={quiet.icon_url || null} name={quiet.name} size={16} />
+											</span>
+										{/if}
+									{/each}
+								</span>
+								<span class="min-w-0 flex-1 truncate">
+									{quietSpacesLabel(quietOpen ? groups.quiet.length : waitingQuiet.length)}
+								</span>
+							</button>
+						{/if}
 
-				<button
-					type="button"
-					class="rounded-row text-duvet-ink2 hover:bg-duvet-card/70 hover:text-duvet-ink mt-3 flex w-full items-center gap-2.5 p-1.5 text-left text-sm font-medium {rowFocus}"
-					onclick={() => (showAddSpace = true)}
-				>
-					<span
-						class="border-duvet-line text-duvet-ink2 flex size-7 shrink-0 items-center justify-center rounded-[9px] border border-dashed"
-					>
-						<PlusIcon class="size-4" />
-					</span>
-					Join or create a Space
-				</button>
+						{#if guilds.length === 0}
+							<button
+								type="button"
+								class="text-duvet-ink2 hover:bg-duvet-sb-hover hover:text-duvet-ink flex h-11 w-full items-center gap-2.5 rounded-[10px] px-2 text-left text-[13.5px] font-medium {rowFocus}"
+								onclick={() => (showAddSpace = true)}
+							>
+								<span
+									class="border-duvet-line text-duvet-ink2 grid size-8 shrink-0 place-items-center rounded-[9px] border border-dashed"
+								>
+									<PlusIcon class="size-4" />
+								</span>
+								Join or create a Space
+							</button>
+						{/if}
+					</section>
+				{/if}
 			</div>
 		</div>
 
@@ -717,22 +731,49 @@
 				controls={showUser}
 				{isFriendsActive}
 				{activeConversationId}
-				{onRoomSelect}
-				{onConversationSelect}
+				onRoomSelect={(spaceId, roomId) => onRoomSelect(spaceId, roomId, "here")}
+				onConversationSelect={(conversationId) => onConversationSelect(conversationId, "here")}
 				{onFriend}
 				{onFriendsSelect}
 			/>
 		</div>
 	</div>
 
-	{#if showUser}
-		<div class="shrink-0 px-2.5 pb-2.5">
-			<div class="rounded-card bg-duvet-card shadow-duvet-raised overflow-hidden">
-				<!-- The Now section above has the voice the user is in. -->
-				<ProfileRow showVoice={false} />
+	<!-- The sidebar's bottom (S-07), top to bottom: the playback bar, the media controls, the profile row, and the
+	     All · Chats · Spaces switch. Beside the folded edge, which has the user's controls, only the switch shows. -->
+	<div class="flex shrink-0 flex-col gap-2 px-2.5 pt-2 pb-2.5 shadow-[0_-1px_0_var(--duvet-sb-edge)]">
+		{#if showUser}
+			<!-- MOUNT POINT (Calls & media): the playback bar of a voice note or an audio file. It draws nothing while
+			     nothing plays. -->
+			<VoiceNoteBar />
+			<!-- MOUNT POINT (Calls & media): the media controls. Outside a call, the row of the microphone (with its
+			     picker), deafen and noise suppression; in a call they grow into the call panel, whose top (where the user
+			     is, the ping, Disconnect) is VoiceStatus. Until that workstream draws the panel, the voice the user is in
+			     shows in the Now section above, as it did, so VoiceStatus stays quiet here (showVoice off). -->
+			<div class="flex shrink-0 flex-col" data-mount="media-controls">
+				<VoiceStatus showVoice={false} />
+				<div class="text-duvet-ink2 flex items-center gap-1">
+					<MediaControls />
+				</div>
 			</div>
+			<ProfileRow />
+		{/if}
+		<div class="relative">
+			<Segmented options={FILTERS} bind:value={sidebar.filter} label="What the sidebar lists" class="w-full" />
+			<!-- A dot marks the side that isn't listed while something there is unread. -->
+			{#if sidebar.filter === "spaces" && unreadChats}
+				<span
+					class="bg-duvet-accent pointer-events-none absolute top-1.5 left-[calc(66.666%-12px)] size-[5px] rounded-full"
+					aria-label="Unread chats"
+				></span>
+			{:else if sidebar.filter === "chats" && unreadRooms}
+				<span
+					class="bg-duvet-accent pointer-events-none absolute top-1.5 right-[9px] size-[5px] rounded-full"
+					aria-label="Unread rooms"
+				></span>
+			{/if}
 		</div>
-	{/if}
+	</div>
 </nav>
 
 <AddSpaceModal bind:open={showAddSpace} />

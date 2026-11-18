@@ -916,7 +916,7 @@
 					sidebarKeys={keysFor(isMac, SHELL_KEYS.sidebar)}
 					onOpenMessage={openMentioned}
 					onSpaceSelect={handleGuildSelect}
-					onRoomSelect={(spaceId, roomId) => onSidebarSelect(roomId, spaceId)}
+					onRoomSelect={(spaceId, roomId, how) => onSidebarSelect(roomId, spaceId, how)}
 					onFriendsSelect={handleFriendsSelect}
 					onConversationSelect={openConversationTab}
 					onNewGroup={() => {

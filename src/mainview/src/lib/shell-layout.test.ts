@@ -6,6 +6,7 @@ import {
 	clampSidebarWidth,
 	defaultSidebarPrefs,
 	friendRequestsLabel,
+	isSettingsShortcut,
 	keysFor,
 	leavesOf,
 	mentionsLabel,
@@ -296,6 +297,15 @@ describe("the shell's shortcuts", () => {
 		expect(shellShortcut(key("t"), macApp)).toBeNull();
 		expect(shellShortcut(key("t", { metaKey: true, shiftKey: true }), macApp)).toBeNull();
 		expect(shellShortcut(key("t", { ctrlKey: true, altKey: true }), winApp)).toBeNull();
+	});
+
+	test("⌘, on macOS and Ctrl , elsewhere open Settings", () => {
+		expect(isSettingsShortcut(key(",", { metaKey: true }), true)).toBe(true);
+		expect(isSettingsShortcut(key(",", { ctrlKey: true }), false)).toBe(true);
+		expect(isSettingsShortcut(key(",", { ctrlKey: true }), true)).toBe(false);
+		expect(isSettingsShortcut(key(",", { metaKey: true }), false)).toBe(false);
+		expect(isSettingsShortcut(key(",", { metaKey: true, shiftKey: true }), true)).toBe(false);
+		expect(isSettingsShortcut(key(","), true)).toBe(false);
 	});
 
 	test("the next and the previous tab go round", () => {
