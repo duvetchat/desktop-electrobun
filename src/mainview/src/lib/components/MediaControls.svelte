@@ -1,8 +1,14 @@
 <script lang="ts">
-	import { AudioLines, HeadphoneOff, Headphones, Mic, MicOff, PhoneOff } from "@lucide/svelte";
+	import { AudioLines, HeadphoneOff, Headphones, Mic, MicOff, PhoneOff, PictureInPicture2 } from "@lucide/svelte";
 	import { get } from "svelte/store";
 	import MediaButton from "$lib/components/MediaButton.svelte";
 	import MediaPanel from "$lib/components/MediaPanel.svelte";
+	import Button from "$lib/components/ui/Button.svelte";
+	import IconButton from "$lib/components/ui/IconButton.svelte";
+	import Tooltip from "$lib/components/ui/Tooltip.svelte";
+	import { mediaPopOut, popOutMedia, putBackMedia, showMediaWindow } from "$lib/media-popout.svelte";
+	import { currentShell } from "$lib/platform";
+	import { voiceKeyLabels } from "$lib/voice-keys";
 	import { leaveLabel, pingLabel } from "$lib/media-state";
 	import { canSpeakInVoice, liveMedia, liveMediaActions } from "$lib/media-source";
 	import { isMuted } from "$lib/stores.svelte";
@@ -13,10 +19,15 @@
 	// panel (where the user is, the ping on hover, the camera, the screen share and Disconnect). MediaPanel draws them
 	// from the stores' state (lib/media-source.ts). In a folded column (`collapsed`) they stack, and the microphone has
 	// no picker. It was part of UserStatusBar until the redesign.
+	//
+	// In the desktop app the block can pop out into a window of its own (lib/media-popout.svelte.ts); while it is out,
+	// a slim row stands here in its place. The web has neither: `mediaPopOut.available` is the desktop app's alone.
 	let { collapsed = false }: { collapsed?: boolean } = $props();
 
 	const media = $derived($liveMedia);
 	const actions = liveMediaActions;
+	// The mute and deafen shortcuts show where they work: the desktop app.
+	const keys = $derived(mediaPopOut.available ? voiceKeyLabels(currentShell().os === "mac") : {});
 
 	// Losing Speak in the voice room mutes at once. The gateway is told too: when SpeakInVoice comes back it keeps
 	// showing this client muted, which it stays until the user unmutes.
@@ -73,6 +84,37 @@
 			<AudioLines size={16} />
 		</MediaButton>
 	</div>
+{:else if mediaPopOut.available && mediaPopOut.out}
+	<!-- The controls are in their own window: a press here brings it forward, and Put back docks them again. -->
+	<div class="bg-duvet-sb-card flex h-[38px] items-center gap-1 rounded-xl pr-1 pl-1">
+		<button
+			type="button"
+			class="text-duvet-ink2 hover:text-duvet-ink flex h-full min-w-0 flex-1 items-center gap-2 rounded-lg pl-1.5 text-left text-xs transition-colors motion-reduce:transition-none"
+			aria-label="Show the voice controls"
+			onclick={showMediaWindow}
+		>
+			<PictureInPicture2 class="shrink-0" size={15} />
+			<span class="truncate">Voice controls are in their own window</span>
+		</button>
+		<Button
+			variant="secondary"
+			size="sm"
+			aria-label="Put the voice controls back in the sidebar"
+			onclick={putBackMedia}
+		>
+			Put back
+		</Button>
+	</div>
 {:else}
-	<MediaPanel state={media} {actions} />
+	<MediaPanel state={media} {actions} {keys} popOut={mediaPopOut.available ? popOut : undefined} />
 {/if}
+
+{#snippet popOut()}
+	<Tooltip text="Pop out" side="top">
+		{#snippet trigger(props)}
+			<IconButton {...props} label="Pop out the voice controls" onclick={popOutMedia}>
+				<PictureInPicture2 size={16} />
+			</IconButton>
+		{/snippet}
+	</Tooltip>
+{/snippet}

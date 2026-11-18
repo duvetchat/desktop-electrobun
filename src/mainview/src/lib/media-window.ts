@@ -14,9 +14,10 @@ export interface MediaWindowWish {
 	shown: number;
 }
 
-/** The commands about the window. From the pop-out, answered by Bun: pin keeps it above other windows or stops,
- * putBack closes it, info says whether it is pinned. From Bun, answered by the main window: opened and closed. */
-export type MediaWindowCommand = "pin" | "putBack" | "info" | "opened" | "closed";
+/** The commands about the window. From the pop-out, answered by Bun: hello says its page listens now (Bun sends the
+ * latest states again, and answers how it is pinned), pin keeps it above other windows or stops, putBack closes it,
+ * info says whether it is pinned. From Bun, answered by the main window: opened and closed. */
+export type MediaWindowCommand = "hello" | "pin" | "putBack" | "info" | "opened" | "closed";
 
 /** A wish as it crossed the RPC, or null for anything else. */
 export function parseWish(value: unknown): MediaWindowWish | null {

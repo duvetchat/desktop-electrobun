@@ -8,13 +8,13 @@ import type { WindowKind } from "$lib/platform";
 //   - the module-graph guard (module-graph.test.ts): its page must never reach lib/api/ws/connection.ts. Only the main
 //     window opens the gateway's socket, renews the session (lib/session.ts) and listens to the gateway; the others
 //     mirror its state and send it commands (lib/window-link.ts).
-// No page is built yet: each phase adds its own here, with its route.
+// The media controls' pop-out is routes/voice-controls; each other window's phase adds its own here, with its route.
 
 /** A window that isn't the main one. */
 export type SecondWindow = Exclude<WindowKind, "main">;
 
 /** Each window's page, by its route's name: the folder under src/routes, and <name>.html in the build. */
-export const SECOND_WINDOW_PAGES: Partial<Record<SecondWindow, string>> = {};
+export const SECOND_WINDOW_PAGES: Partial<Record<SecondWindow, string>> = { media: "voice-controls" };
 
 /** Electrobun's `copy` rules for pages: each prerendered page, from the UI's build into the app's views. */
 export function pageCopyRules(pages: readonly string[]): Record<string, string> {

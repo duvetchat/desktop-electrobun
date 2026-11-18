@@ -19,6 +19,7 @@
 		watchedStreams,
 		watchingNow,
 	} from "$lib/stores.svelte";
+	import { startMediaBridge } from "$lib/media-popout.svelte";
 	import { openVoicePlaceWith } from "$lib/media-source";
 	import { stopScreenShare } from "$lib/voice";
 	import { currentVoicePlace, type VoicePlace } from "$lib/voice-place";
@@ -30,9 +31,15 @@
 
 	// The app page's way of opening a voice room's view or a call's chat is given to this window, which is there as long
 	// as the app is: it hands it on to the call panel's first line, and to the pop-out's (lib/media-source.ts).
+	// The media controls' pop-out needs the same life: the main window's side of it starts and stops here, so the
+	// controls can pop out whether or not the sidebar shows (lib/media-popout.svelte.ts).
 	onMount(() => {
 		openVoicePlaceWith(onOpen);
-		return () => openVoicePlaceWith(null);
+		const stopBridge = startMediaBridge();
+		return () => {
+			stopBridge();
+			openVoicePlaceWith(null);
+		};
 	});
 
 	const WIDTH = 320;
