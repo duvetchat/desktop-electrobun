@@ -10,6 +10,7 @@
 	import StorageTransferFailures from "$lib/components/StorageTransferFailures.svelte";
 
 	import { setupExternalLinks } from "$lib/external-links";
+	import { setupNativeContextMenu } from "$lib/native-context-menu";
 	import { driftSpecksOnScreen } from "$lib/spoiler-specks";
 	import { followSystemTheme } from "$lib/theme.svelte";
 	import { currentShell } from "$lib/platform";
@@ -26,6 +27,7 @@
 
 	onMount(() => {
 		setupExternalLinks();
+		if (shell.os === "linux") setupNativeContextMenu();
 		const stopSpecks = driftSpecksOnScreen(document);
 		// app.html set the theme before the first paint; this keeps it with the system's while it's System.
 		const stopTheme = followSystemTheme();
