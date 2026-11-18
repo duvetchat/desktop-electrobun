@@ -46,6 +46,9 @@ export default {
 		linux: {
 			icon: "icon.iconset/icon_256x256.png",
 			bundleCEF: true,
+			// Chromium's own DNS client can't resolve the voice servers' name (turn.duvet.chat, a CNAME) through some
+			// resolvers, Tailscale's among them: the call's relay candidates never appear (#392). The system's resolver can.
+			chromiumFlags: { "disable-features": "AsyncDns" },
 		},
 		copy: {
 			"src/mainview/build/_app": "views/mainview/_app",
