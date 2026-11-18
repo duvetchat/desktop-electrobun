@@ -5,7 +5,7 @@ import { DOCKED, MEDIA_WINDOW_CHANNEL, popOutStep, type PopOutState, type PopOut
 import { currentShell } from "$lib/platform";
 import { voiceKey } from "$lib/voice-keys";
 import { addWindowCommands, answerWindowCommand } from "$lib/window-commands";
-import { StatePublisher } from "$lib/window-link";
+import { publishToWindows } from "$lib/window-hub";
 
 // The main window's side of the media controls' pop-out (#357, BRIEF.md "Media controls"). The call stays here: the
 // gateway, WebRTC and the microphone are this page's, and popping the controls out or back touches none of them. This
@@ -19,14 +19,15 @@ export const mediaPopOut: { available: boolean; out: boolean } = $state({ availa
 
 // Kept across the app page's remounts (every READY builds its UI again): the window stays out through them.
 let state: PopOutState = DOCKED;
-let publisher: StatePublisher | null = null;
+// Whether the bridge to Bun is up: nothing is published before, nor after it stops. What is published goes through
+// the page's one publisher (lib/window-hub.ts), whose numbers carry on through a remount.
+let bridged = false;
 let stopMirroring: (() => void) | null = null;
 
 // The controls' state goes out only while the window is: each change, numbered, and the current one at once.
 function mirror(on: boolean) {
-	if (on && !stopMirroring && publisher) {
-		const to = publisher;
-		stopMirroring = liveMedia.subscribe((media) => to.publish(MEDIA_CHANNEL, media));
+	if (on && !stopMirroring && bridged) {
+		stopMirroring = liveMedia.subscribe((media) => publishToWindows(MEDIA_CHANNEL, media));
 	} else if (!on && stopMirroring) {
 		stopMirroring();
 		stopMirroring = null;
@@ -40,7 +41,7 @@ function step(next: PopOutStep) {
 	mediaPopOut.out = after.out;
 	// The state first, so the window has it as it opens; then the wish Bun acts on.
 	mirror(after.out);
-	publisher?.publish(MEDIA_WINDOW_CHANNEL, after.wish);
+	if (bridged) publishToWindows(MEDIA_WINDOW_CHANNEL, after.wish);
 }
 
 /** Pops the media controls out into their own window. */
@@ -64,7 +65,7 @@ export function startMediaBridge(): () => void {
 	void getElectrobunRpc()
 		.then((rpc) => {
 			if (!rpc || stopped) return;
-			publisher = new StatePublisher((message) => rpc.send.windowState(message));
+			bridged = true;
 			stops.push(
 				addWindowCommands(MEDIA_CHANNEL, mediaCommandHandlers(liveMediaActions)),
 				// Bun says when the window opened, and when it is gone: its own close button, or Put back inside it.
@@ -85,7 +86,7 @@ export function startMediaBridge(): () => void {
 			mediaPopOut.available = true;
 			// What this page wants of the window, as it starts: nothing after a reload, the window still after a remount.
 			mirror(state.out);
-			publisher.publish(MEDIA_WINDOW_CHANNEL, state.wish);
+			publishToWindows(MEDIA_WINDOW_CHANNEL, state.wish);
 		})
 		.catch((err: unknown) => console.error("[media] The pop-out's bridge didn't start:", err));
 
@@ -93,7 +94,7 @@ export function startMediaBridge(): () => void {
 		stopped = true;
 		for (const stop of stops) stop();
 		mirror(false);
-		publisher = null;
+		bridged = false;
 		mediaPopOut.available = false;
 	};
 }

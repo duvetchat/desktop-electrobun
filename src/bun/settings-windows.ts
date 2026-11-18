@@ -7,7 +7,7 @@
 // windows there are, where each opens and what it is told, so it can be tested.
 import { shellPreload, type TitleBarStyle, type WindowKind } from "./shell";
 import { displayOf, type DisplayArea, type Rect } from "./window-frame";
-import type { WindowCommand, WindowStateMessage } from "./window-relay";
+import type { MirroredChannels, WindowCommand, WindowStateMessage } from "./window-relay";
 
 /** What the main window's page asks for (bun.messages.openAppWindow; lib/settings-windows.ts has its page-side twin). */
 export type OpenAppWindow =
@@ -33,6 +33,19 @@ export const windowKey = (request: OpenAppWindow) =>
 /** The window's title, which the system shows in Mission Control, the taskbar and Alt-Tab (COPY.md §4.10). */
 export const windowTitle = (request: OpenAppWindow) =>
 	request.window === "settings" ? "Duvet settings" : `${request.name || "Space"} · Space settings`;
+
+/** What a Settings window's page mirrors of what the main window publishes: the values the windows share
+ * (lib/settings-windows.ts: syncChannel), a Space's own only in that Space's window. The media controls' state is the
+ * pop-out's, and another Space's settings are another window's. */
+export function settingsMirrors(request: OpenAppWindow): MirroredChannels {
+	const ofSpace = /^sync:(?:space|bans):(.*)$/;
+	const spaceId = request.window === "space-settings" ? request.spaceId : null;
+	return (channel) => {
+		if (!channel.startsWith("sync:")) return false;
+		const space = ofSpace.exec(channel);
+		return space === null || space[1] === spaceId;
+	};
+}
 
 /** The design's sizes. */
 const SIZES: Record<OpenAppWindow["window"], { width: number; height: number }> = {
@@ -119,7 +132,10 @@ export interface SettingsWindowsDeps {
 	mainFrame(): Rect;
 	displays(): DisplayArea[];
 	/** The relay's own: a window joins once its page can take messages, and leaves as it closes. */
-	relay: { add(windowId: number, send: (message: WindowStateMessage) => void): void; remove(windowId: number): void };
+	relay: {
+		add(windowId: number, send: (message: WindowStateMessage) => void, mirrors: MirroredChannels): void;
+		remove(windowId: number): void;
+	};
 	/** Tells the main window's page something, without waiting for its answer. */
 	tellMain(command: WindowCommand): void;
 	focusMain(): void;
@@ -172,7 +188,8 @@ export class SettingsWindows {
 			preload: settingsPreload(request, this.#deps.platform),
 		});
 		this.#open.set(key, window);
-		window.onReady(() => this.#deps.relay.add(window.id, (message) => window.send(message)));
+		const mirrors = settingsMirrors(request);
+		window.onReady(() => this.#deps.relay.add(window.id, (message) => window.send(message), mirrors));
 		window.onClose(() => {
 			if (this.#open.get(key) !== window) return;
 			this.#open.delete(key);

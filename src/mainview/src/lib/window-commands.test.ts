@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { readdirSync, readFileSync } from "node:fs";
+import { join, relative } from "node:path";
 import { addWindowCommands, answerWindowCommand, joinWindowCommands } from "$lib/window-commands";
 
 // #357: the main window answers its other windows' commands, each part of the app adding its own channel.
@@ -69,4 +69,23 @@ test("the Settings windows' hub and the media pop-out hand the RPC the same answ
 	expect(hub).toContain("on.windowCommand(answerWindowCommand)");
 	expect(popOut).toContain("on.windowCommand(answerWindowCommand)");
 	expect(hub).not.toContain("answerCommand(handlers");
+});
+
+// The Bun process tells one page's states from the next page's by their epoch, and lets go of the earlier page's
+// (src/bun/window-relay.ts): a second publisher on the page would have an epoch of its own, and each one's states
+// would wipe the other's there.
+test("the page has one publisher of states, the hub's, and the media pop-out publishes through it", () => {
+	const src = join(import.meta.dir, "..");
+	const under = (dir: string): string[] =>
+		readdirSync(dir, { withFileTypes: true }).flatMap((entry) =>
+			entry.isDirectory() ? under(join(dir, entry.name)) : [join(dir, entry.name)],
+		);
+	const makers = under(src)
+		.filter((path) => /\.(ts|svelte)$/.test(path) && !path.endsWith(".test.ts"))
+		.filter((path) => readFileSync(path, "utf8").includes("new StatePublisher("))
+		.map((path) => relative(src, path));
+	expect(makers).toEqual([join("lib", "window-hub.ts")]);
+	const popOut = readFileSync(join(import.meta.dir, "media-popout.svelte.ts"), "utf8");
+	expect(popOut).toContain("publishToWindows(MEDIA_CHANNEL, media)");
+	expect(popOut).toContain("publishToWindows(MEDIA_WINDOW_CHANNEL, state.wish)");
 });

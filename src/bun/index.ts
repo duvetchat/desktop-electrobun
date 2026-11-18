@@ -22,7 +22,7 @@ import { startupSummary, writeStartupLine } from "./startup";
 import { shellPreload } from "./shell";
 import { keepKeysReachingThePage, mainWindowTitleBar, type AppKit } from "./window-keys";
 import { WindowRelay, type WindowAnswer, type WindowCommand, type WindowStateMessage } from "./window-relay";
-import { MediaWindows } from "./media-window";
+import { isAppPage, MediaWindows } from "./media-window";
 import { mediaWindowOpener } from "./media-window-open";
 // #357, the Windows workstream: Settings and a Space's settings in windows of their own.
 import { SettingsWindows, type OpenAppWindow } from "./settings-windows";
@@ -144,8 +144,8 @@ type NotificationRequest = {
 const maximizer = new Maximizer();
 
 // What crosses between the main window and the app's other windows (the media controls' pop-out, Settings): the main
-// page's states out to them, their commands in to it. No other window exists yet: each one, as its phase builds it,
-// gets an RPC instance of its own whose windowCommand is relay.commandFromWindow, and joins with relay.add.
+// page's states out to them, their commands in to it. Each of those windows has an RPC instance of its own whose
+// windowCommand reaches relay.commandFromWindow, and joins with relay.add, naming the channels it mirrors.
 const relay = new WindowRelay();
 
 // The webview makes the IPC apps' images by URL inline once its page has loaded, which its first setSpotifyActivity
@@ -339,11 +339,24 @@ const mediaWindows: MediaWindows = new MediaWindows({
 	},
 	log: (line) => console.log(`[media-window] ${line}`),
 });
-win.on("close", () => mediaWindows.mainClosed());
-win.webview.on("did-navigate", (event) => {
-	const to = navigatedTo(event);
-	if (to !== null) mediaWindows.mainNavigated(to);
+win.on("close", () => {
+	mediaWindows.mainClosed();
+	// Nobody answers a command now, and nothing of the page that was is kept for a window to come.
+	relay.setMain(null);
+	relay.reset();
 });
+// Where the main window's page is: Electrobun says so as a navigation commits (did-navigate, each system's own) and
+// again once the page has loaded (dom-ready, which the page itself sends on every system). Off the app's page, which
+// is signing out, the pop-out goes, and the relay lets go of what the app's page published: the next account's windows
+// are handed none of it.
+const mainPageAt = (event: unknown) => {
+	const to = navigatedTo(event);
+	if (to === null) return;
+	mediaWindows.mainNavigated(to);
+	if (!isAppPage(to)) relay.reset();
+};
+win.webview.on("did-navigate", mainPageAt);
+win.webview.on("dom-ready", mainPageAt);
 // ── end of the media controls' pop-out ──────────────────────────────────────────────────────────────────────────────
 // ── #357, the Windows workstream's hook: the Settings windows (settings-windows.ts) ──────────────────────────────────
 const settingsWindows = new SettingsWindows({

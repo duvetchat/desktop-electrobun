@@ -9,12 +9,14 @@
 // or when that window leaves the app's page (signing out). Electrobun is handed in (media-window-open.ts makes the real
 // window), so this runs in tests.
 import { displayOf, type DisplayArea, type Rect } from "./window-frame";
-import type { WindowAnswer, WindowCommand, WindowStateMessage } from "./window-relay";
+import type { MirroredChannels, WindowAnswer, WindowCommand, WindowStateMessage } from "./window-relay";
 
 /** The channel of the window itself: the main page's wish for it, and the commands about it. */
 export const MEDIA_WINDOW_CHANNEL = "media-window";
 /** The channel of the media controls: their state, and the commands the pop-out sends the main page. */
 export const MEDIA_CHANNEL = "media";
+/** What the pop-out's page mirrors: the media controls' state, and nothing else the main window publishes. */
+export const mediaWindowMirrors: MirroredChannels = (channel) => channel === MEDIA_CHANNEL;
 /** The media commands that need the main window in front: the system's screen picker opens over it, and the voice room
  * or call opens in it. */
 export const COMMANDS_THAT_SHOW_MAIN: readonly string[] = ["shareScreen", "openPlace"];
@@ -126,7 +128,7 @@ export interface MediaWindowDeps {
 	/** Brings the main window forward, out of the Dock or the taskbar if it was there. */
 	focusMain(): void;
 	relay: {
-		add(windowId: number, send: (message: WindowStateMessage) => void): void;
+		add(windowId: number, send: (message: WindowStateMessage) => void, mirrors: MirroredChannels): void;
 		remove(windowId: number): void;
 		commandFromWindow(command: WindowCommand): Promise<WindowAnswer>;
 	};
@@ -216,7 +218,7 @@ export class MediaWindows {
 				const window = this.#window;
 				if (window) {
 					this.#deps.relay.remove(window.id);
-					this.#deps.relay.add(window.id, (message) => window.send(message));
+					this.#deps.relay.add(window.id, (message) => window.send(message), mediaWindowMirrors);
 				}
 				return { ok: true, result: { pinned: this.#prefs.pinned } };
 			}
@@ -252,7 +254,7 @@ export class MediaWindows {
 		// Its page mirrors the main window's states from here on: the latest of each at once, then every new one.
 		window.on("ready", () => {
 			if (this.#window !== window) return;
-			this.#deps.relay.add(window.id, (message) => window.send(message));
+			this.#deps.relay.add(window.id, (message) => window.send(message), mediaWindowMirrors);
 			this.#log(`its page mirrors the main window (window ${window.id})`);
 		});
 		window.on("move", () => this.#keepSoon());

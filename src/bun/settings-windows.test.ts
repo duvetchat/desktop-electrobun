@@ -3,6 +3,7 @@ import {
 	parseOpenAppWindow,
 	settingsChrome,
 	settingsFrame,
+	settingsMirrors,
 	settingsPreload,
 	SettingsWindows,
 	windowKey,
@@ -12,7 +13,7 @@ import {
 	type SettingsWindowsDeps,
 } from "./settings-windows";
 import type { DisplayArea } from "./window-frame";
-import type { WindowCommand, WindowStateMessage } from "./window-relay";
+import type { MirroredChannels, WindowCommand, WindowStateMessage } from "./window-relay";
 
 const display = (x: number, y: number, width: number, height: number, isPrimary = false): DisplayArea => ({
 	bounds: { x, y, width, height },
@@ -169,6 +170,44 @@ describe("the window's chrome and what its page is told", () => {
 	});
 });
 
+// C-09 of the redesign's review: a window is sent what its page mirrors, not everything the main window publishes.
+describe("what a Settings window mirrors", () => {
+	const shared = ["sync:user", "sync:mobileOnly", "sync:transfers", "sync:buckets", "sync:theme", "sync:audio"];
+
+	test("Settings: the values the windows share, and no Space's own", () => {
+		const mirrors = settingsMirrors({ window: "settings" });
+		expect(shared.filter(mirrors)).toEqual(shared);
+		expect(["sync:space:s1", "sync:bans:s1"].filter(mirrors)).toEqual([]);
+	});
+
+	test("a Space's settings: the shared values and that Space's, never another's", () => {
+		const mirrors = settingsMirrors({ window: "space-settings", spaceId: "s1", name: "Tea" });
+		expect(shared.filter(mirrors)).toEqual(shared);
+		expect(["sync:space:s1", "sync:bans:s1"].filter(mirrors)).toEqual(["sync:space:s1", "sync:bans:s1"]);
+		expect(["sync:space:s2", "sync:bans:s2", "sync:space:s10", "sync:bans:"].filter(mirrors)).toEqual([]);
+	});
+
+	test("neither takes the media controls' state, nor the pop-out's own channel", () => {
+		for (const request of [
+			{ window: "settings" as const },
+			{ window: "space-settings" as const, spaceId: "s1", name: "Tea" },
+		]) {
+			expect(["media", "media-window", "settings", "settings:goto"].filter(settingsMirrors(request))).toEqual([]);
+		}
+	});
+
+	test("a window joins the relay with its own channels", () => {
+		const { windows, made, mirrored } = manager();
+		windows.open({ window: "settings" });
+		windows.open({ window: "space-settings", spaceId: "s1", name: "Tea" });
+		made[0]?.ready();
+		made[1]?.ready();
+		const channels = ["sync:user", "sync:space:s1", "sync:space:s2", "media"];
+		expect(channels.filter(mirrored.get(made[0]?.id ?? 0) ?? (() => true))).toEqual(["sync:user"]);
+		expect(channels.filter(mirrored.get(made[1]?.id ?? 0) ?? (() => true))).toEqual(["sync:user", "sync:space:s1"]);
+	});
+});
+
 /** The manager with windows that only record what's done to them. */
 function manager(pages: SettingsWindowsDeps["pages"] = { settings: "settings", "space-settings": "space-settings" }) {
 	const log: string[] = [];
@@ -180,6 +219,7 @@ function manager(pages: SettingsWindowsDeps["pages"] = { settings: "settings", "
 	})[] = [];
 	const told: WindowCommand[] = [];
 	const mirrors = new Set<number>();
+	const mirrored = new Map<number, MirroredChannels>();
 	const windows = new SettingsWindows({
 		platform: "darwin",
 		pages,
@@ -208,8 +248,9 @@ function manager(pages: SettingsWindowsDeps["pages"] = { settings: "settings", "
 			return window;
 		},
 		relay: {
-			add: (id, send) => {
+			add: (id, send, channels) => {
 				mirrors.add(id);
+				mirrored.set(id, channels);
 				send({ channel: "sync:user", epoch: 1, seq: 1, sentAt: 0, value: { id: "u1" } });
 			},
 			remove: (id) => mirrors.delete(id),
@@ -218,7 +259,7 @@ function manager(pages: SettingsWindowsDeps["pages"] = { settings: "settings", "
 		focusMain: () => log.push("focus main"),
 		now: () => 1000,
 	});
-	return { windows, made, log, told, mirrors };
+	return { windows, made, log, told, mirrors, mirrored };
 }
 
 describe("the Settings windows", () => {

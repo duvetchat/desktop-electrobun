@@ -20,6 +20,9 @@ export function answerWindows(channel: string, commands: Record<string, (args: u
 	void getElectrobunRpc().then((rpc) => rpc?.on.windowCommand(answerWindowCommand));
 }
 
+// The page's one publisher: every state this page publishes carries its epoch, which is how Bun's relay tells this
+// page's states from those of the page before it, and lets go of that one's (src/bun/window-relay.ts). A second
+// publisher would have an epoch of its own, and each would wipe what the other published.
 let publisher: StatePublisher | null = null;
 let send: ((message: WindowStateMessage) => void) | null = null;
 // States published before the RPC is there: each channel's last one goes out once it is.

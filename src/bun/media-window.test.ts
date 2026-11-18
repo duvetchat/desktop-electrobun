@@ -239,6 +239,21 @@ describe("popping out", () => {
 	});
 
 	// The window's "ready" can come before its page listens: the page says hello once it does.
+	// C-09 of the redesign's review: the pop-out was sent everything the main window publishes, the storage buckets'
+	// keys and a Space's bans among it.
+	test("its page is sent the controls' state and nothing else the main window publishes", () => {
+		const { windows, publish, wish } = fixture();
+		publish("sync:user", { id: "u1" });
+		publish("sync:buckets", [{ access_key_id: "key" }]);
+		publish("media", { muted: false });
+		wish(true);
+		const popOut = windows[0];
+		popOut.fire("ready");
+		publish("sync:bans:s1", { bans: [] });
+		publish("media", { muted: true });
+		expect(popOut.got.map((m) => m.channel)).toEqual(["media", "media"]);
+	});
+
 	test("a page that says hello gets the latest state again, and how the window is pinned", async () => {
 		const { media, relay, windows, publish, wish } = fixture(JSON.stringify({ frame: null, pinned: true }));
 		publish("media", { muted: true });
