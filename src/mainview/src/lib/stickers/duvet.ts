@@ -1,8 +1,8 @@
 import type { Palette } from "./fun";
 
 /**
- * The kit's colour slots in Duvet's own colours, taken from its mascot: periwinkle bodies, the mascot's slate for dark
- * parts, the ice inside its ears for pale fills and success, its soft red for hearts and alerts, a warm gold for bells.
+ * The kit's colour slots in Duvet's own colours: periwinkle bodies, a slate for dark parts, an ice blue for pale
+ * fills and success, a soft red for hearts and alerts, a warm gold for bells.
  */
 export const duvetPalette: Partial<Palette> = {
 	main: "#7b83f5",
