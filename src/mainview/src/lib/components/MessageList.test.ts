@@ -268,13 +268,27 @@ describe("a row's action toolbar", () => {
 		const list = source("MessageList.svelte");
 		expect(list).toContain("onmouseover={hoverRow}");
 		expect(list).toContain("hoveredMessageId = row?.dataset.messageId ?? null;");
-		// Also while its More menu is open. One condition (barShown), which each layout's row asks: bubbles and flat rows.
+		// Also while its More menu is open, and on the row the keyboard's focus is in. One condition (barShown), which each
+		// layout's row asks: bubbles and flat rows.
 		expect(list).toMatch(
-			/\{@const barShown =\s*\(hoveredMessageId === message\.id \|\| reactingMessageId === message\.id \|\| moreMenuFor === message\.id\) &&\s*!isPending &&/,
+			/\{@const barShown =\s*\(hoveredMessageId === message\.id \|\|\s*focusedMessageId === message\.id \|\|\s*reactingMessageId === message\.id \|\|\s*moreMenuFor === message\.id\) &&\s*!isPending &&/,
 		);
 		expect(list.match(/\{:else if barShown\}\s*\{@render hoverBar\(/g)).toHaveLength(2);
 		expect(list).not.toContain("hidden group-hover:flex");
 		expect(list).not.toContain("group-hover/row:flex");
+	});
+
+	// #357: the keyboard reaches the bar too (lib/message-focus.ts), by one tab stop for the whole list.
+	test("shows on the message the keyboard's focus is in, and the list has one tab stop", () => {
+		const list = source("MessageList.svelte");
+		for (const handler of ["onfocusin={focusRow}", "onfocusout={blurRow}", "onkeydown={rowKeys}"])
+			expect(list).toContain(handler);
+		// Every layout's row is the stop or is reached from it: a notice, a flat row, a bubble's row.
+		expect(
+			list.match(/data-message-id=\{message\.id\}\s*tabindex=\{tabStopId === message\.id \? 0 : -1\}/g),
+		).toHaveLength(3);
+		// A click's focus mounts nothing: only the keyboard's.
+		expect(list).toContain('e.target.matches(":focus-visible")');
 	});
 });
 

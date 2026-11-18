@@ -34,6 +34,7 @@
 	} from "$lib/api/conversations";
 	import { confirmAction } from "$lib/stores/confirm.svelte";
 	import { keyboard } from "$lib/keyboard.svelte";
+	import { rowKey, rowToward, staysWithRow, tabStop } from "$lib/message-focus";
 	import { Dialog, DropdownMenu, Popover } from "bits-ui";
 	import {
 		currentUser,
@@ -522,6 +523,49 @@
 		hoveredMessageId = row?.dataset.messageId ?? null;
 	}
 
+	// The keyboard's way to the same bar (lib/message-focus.ts): one message of the list is a tab stop, the arrows move
+	// the focus between messages, and the one the keyboard put the focus in mounts its bar, which Tab then enters.
+	// Enter, the menu key or Shift+F10 opens its menu. A click's focus mounts nothing: the pointer has its own way.
+	let focusedMessageId = $state<string | null>(null);
+	let lastFocusedId = $state<string | null>(null);
+	const rowIds = $derived(sortedMessages.map((m) => m.id));
+	const tabStopId = $derived(tabStop(rowIds, lastFocusedId));
+	const rowOf = (target: EventTarget | null) =>
+		target instanceof Element ? target.closest<HTMLElement>("[data-message-id]") : null;
+	function focusRow(e: FocusEvent) {
+		const id = rowOf(e.target)?.dataset.messageId ?? null;
+		if (id) lastFocusedId = id;
+		focusedMessageId = id && e.target instanceof Element && e.target.matches(":focus-visible") ? id : null;
+	}
+	function blurRow(e: FocusEvent) {
+		const to = e.relatedTarget instanceof Element ? e.relatedTarget : null;
+		const inList = !!to && scrollEl.contains(to);
+		// Within the same message (its text, its bar), the next focusin says so.
+		if (inList && rowOf(to)?.dataset.messageId === focusedMessageId) return;
+		const layerOpen = moreMenuFor === focusedMessageId || reactingMessageId === focusedMessageId;
+		if (!staysWithRow(to, inList, layerOpen)) focusedMessageId = null;
+	}
+	function rowKeys(e: KeyboardEvent) {
+		// A key in a message's text, a link or a button of its bar is that element's.
+		const row = e.target instanceof HTMLElement && e.target.matches("[data-message-id]") ? e.target : null;
+		const id = row?.dataset.messageId;
+		const key = id && !e.defaultPrevented ? rowKey(e) : null;
+		if (!id || !key) return;
+		if (key === "menu") {
+			const message = messages.find((m) => m.id === id);
+			// What has no bar has no menu to open: a notice, a message still sending, one only the user sees.
+			if (!message || isNotice(message) || message.id === message.nonce || isEphemeral(message) || !$currentUser)
+				return;
+			e.preventDefault();
+			focusedMessageId = id;
+			moreMenuFor = id;
+			return;
+		}
+		e.preventDefault();
+		const to = rowToward(rowIds, id, key);
+		if (to) scrollEl.querySelector<HTMLElement>(`[data-message-id="${CSS.escape(to)}"]`)?.focus();
+	}
+
 	const isConversation = $derived(!spaceId);
 
 	// ── Layout ─────────────────────────────────────────────────────────────────
@@ -1002,7 +1046,8 @@
      (--pane-header-h). The space under the newest message is the list's padding, not that message's margin: a margin
      that changes when another message comes below it stops the browser from keeping the reader's place (scroll
      anchoring). -->
-<!-- Its mouse handlers only follow the pointer's row, for that row's hover bar (hoverRow), as :hover did; its
+<!-- Its mouse handlers only follow the pointer's row, for that row's hover bar (hoverRow), as :hover did, and its
+     focus and key handlers the keyboard's (focusRow, rowKeys); its
      right-click opens the one menu of the list, for the message or the avatar under the pointer (pickMenu). -->
 <ContextMenu bind:open={menuOpen} label={menuTarget?.kind === "author" ? "Member" : "Message"}>
 	{#snippet target(props)}
@@ -1018,7 +1063,16 @@
 			oncopy={handleCopy}
 			onmouseover={hoverRow}
 			onmouseleave={() => (hoveredMessageId = null)}
+			onfocusin={focusRow}
+			onfocusout={blurRow}
+			onkeydown={rowKeys}
 			oncontextmenu={(e) => {
+				// Shift+F10 opened the message's own menu already (rowKeys); where the system sends its menu event too,
+				// that one isn't a second menu.
+				if (moreMenuFor) {
+					e.preventDefault();
+					return;
+				}
 				if (pickMenu(e)) (props.oncontextmenu as ((e: MouseEvent) => void) | undefined)?.(e);
 			}}
 		>
@@ -1088,7 +1142,10 @@
 						(messageText(message).includes(`<@${$currentUser.id}>`) || mentionsByReply(message, $currentUser.id))}
 					{@const callLine = callNoticeLines.get(message.id)}
 					{@const barShown =
-						(hoveredMessageId === message.id || reactingMessageId === message.id || moreMenuFor === message.id) &&
+						(hoveredMessageId === message.id ||
+							focusedMessageId === message.id ||
+							reactingMessageId === message.id ||
+							moreMenuFor === message.id) &&
 						!isPending &&
 						!ephemeral &&
 						!!$currentUser &&
@@ -1096,8 +1153,11 @@
 					{@const cursorOn = keyboard.cursor === message.id}
 					{#if message.type === MessageType.PinNotice || callLine}
 						<!-- A notice: who pinned which message, or a call of the conversation that ended -->
+						<!-- The list's tab stop, or reached from it by the arrows (lib/message-focus.ts). -->
+						<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 						<div
 							data-message-id={message.id}
+							tabindex={tabStopId === message.id ? 0 : -1}
 							class="group/row text-duvet-ink2 relative my-3 flex flex-wrap items-center justify-center gap-1.5 rounded-xl px-10 py-1 text-[12.5px] leading-[1.3] {isHighlighted
 								? 'bg-duvet-accent-tint'
 								: ''} {cursorOn ? 'outline-duvet-accent outline-2 -outline-offset-2' : ''}"
@@ -1130,7 +1190,7 @@
 								{/if}
 								<span class="ml-1 text-[11px] tabular-nums opacity-75">{clockTime(message.created_at, locale)}</span>
 							</p>
-							{#if canDeleteNotices && hoveredMessageId === message.id}
+							{#if canDeleteNotices && (hoveredMessageId === message.id || focusedMessageId === message.id)}
 								<div class="{GLASS} absolute top-1/2 right-1 z-10 flex -translate-y-1/2 rounded-xl p-[3px]">
 									{@render deleteButton(message)}
 								</div>
@@ -1138,8 +1198,11 @@
 						</div>
 					{:else if flat}
 						<!-- A flat row: the avatar's gutter, then the author's line on a group's first row, and the message -->
+						<!-- The list's tab stop, or reached from it by the arrows (lib/message-focus.ts). -->
+						<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 						<div
 							data-message-id={message.id}
+							tabindex={tabStopId === message.id ? 0 : -1}
 							class="group/row relative grid grid-cols-[52px_minmax(0,1fr)] rounded-xl px-2 py-[3px] {shape.first
 								? 'mt-3 pt-1.5'
 								: ''} {isFailed
@@ -1203,8 +1266,11 @@
 					{:else}
 						<!-- A bubble's row: yours to the right. In a group or a room, the others' avatar sits beside their
 						     group's last bubble and their name over its first; the time is under the last. -->
+						<!-- The list's tab stop, or reached from it by the arrows (lib/message-focus.ts). -->
+						<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 						<div
 							data-message-id={message.id}
+							tabindex={tabStopId === message.id ? 0 : -1}
 							class="group/row relative flex flex-col rounded-2xl py-px {mine
 								? 'items-end'
 								: 'items-start'} {shape.first ? 'mt-2.5' : ''} {isPending && !isFailed
