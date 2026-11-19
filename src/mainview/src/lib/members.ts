@@ -1,4 +1,4 @@
-import type { MemberOnSidebar, Role } from "$lib/types";
+import type { GatewayRole, GatewaySpace, MemberOnSidebar, Role } from "$lib/types";
 
 /** The faces the pane's bar shows for a room's members; the rest are a "+N". */
 export const MEMBER_FACES = 4;
@@ -82,4 +82,112 @@ export function memberFaces<M extends Pick<MemberOnSidebar, "status">>(
 /** The members button's name for a screen reader, which can't count the faces. */
 export function membersLabel(online: number): string {
 	return `Members, ${online} online`;
+}
+
+/** How many of a Space's users the Members section of its settings loads at most, a page after another, as the mobile
+ *  app's Members page does: the API finds no one by name, so the section searches what it has (#380). */
+export const LISTED_MEMBERS_MAX = 5000;
+
+/** A member as the Members section of a Space's settings lists them (#380). */
+export interface ManagedMember {
+	/** Their user's ID. */
+	id: string;
+	/** Their member ID, which a role given or taken and a kick go by. Null for the row the gateway makes for the user
+	 *  themselves, whose ID is the user's, until a page of the Space's members brings theirs. */
+	memberId: string | null;
+	/** Their name as the Space shows it. */
+	name: string;
+	username: string;
+	/** Their avatar, as their user has it. */
+	avatar: string | null;
+	isBot: boolean;
+	isOwner: boolean;
+	/** The roles they hold, @everyone aside, the highest first. */
+	roles: GatewayRole[];
+	/** When they joined the Space, or null where that isn't known (the gateway's own row for the user). */
+	joinedAt: string | null;
+}
+
+/** A Space's members as its settings list them: those whose user the app holds, as the members list has them. */
+export function managedMembers(space: GatewaySpace): ManagedMember[] {
+	const users = new Map(space.users.map((u) => [u.id, u]));
+	const roles = new Map(space.roles.map((r) => [r.id, r]));
+	const managed: ManagedMember[] = [];
+	for (const member of space.members) {
+		const user = users.get(member.user_id);
+		if (!user) continue;
+		// The gateway's row for the user: a page of the Space's members replaces it with theirs (withMemberPage).
+		const loaded = member.id !== member.user_id;
+		managed.push({
+			id: user.id,
+			memberId: loaded ? member.id : null,
+			name: member.alias ?? user.alias ?? user.username,
+			username: user.username,
+			avatar: user.avatar,
+			isBot: user.is_bot ?? false,
+			isOwner: user.id === space.owner_id,
+			roles: (space.member_roles[user.id] ?? [])
+				.map((id) => roles.get(id))
+				.filter((role): role is GatewayRole => !!role && role.id !== space.id)
+				.sort((a, b) => b.position - a.position),
+			joinedAt: loaded && member.created_at ? member.created_at : null,
+		});
+	}
+	return managed;
+}
+
+/** The role filter's choice of the members who hold no role but @everyone. */
+export const NO_ROLE = "none";
+
+/** How the Members section sorts: by name, or by when they joined, the newest or the oldest first. */
+export type MemberSort = "name" | "newest" | "oldest";
+
+// One collator for every comparison: a localeCompare with options makes one of its own each time, and Chromium took
+// 300 to 400 ms to sort 5,000 members that way, again with each page, presence, role event and key.
+const nameOrder = new Intl.Collator(undefined, { sensitivity: "base" });
+
+const byName = (a: ManagedMember, b: ManagedMember) =>
+	nameOrder.compare(a.name, b.name) ||
+	nameOrder.compare(a.username, b.username) ||
+	(a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+
+// When they joined, in ms; NaN where it isn't known.
+const joinedMs = (m: ManagedMember) => (m.joinedAt ? Date.parse(m.joinedAt) : NaN);
+
+// How much of a user ID a search must hold to find them by it: a short word of the letters a to f, as a name can be,
+// is in a good share of any Space's IDs.
+const ID_SEARCH_MIN = 8;
+
+/**
+ * The members the Members section shows: those whose name, alias or username has what's searched (any case, an @ before
+ * it aside), or whose user ID is it or, from ID_SEARCH_MIN characters, has it; holding the role picked (NO_ROLE:
+ * holding none but @everyone); by name or by when they joined, those whose date isn't known last.
+ */
+export function findMembers(
+	members: readonly ManagedMember[],
+	{ query = "", role = "", sort = "name" }: { query?: string; role?: string; sort?: MemberSort },
+): ManagedMember[] {
+	const wanted = query.trim().replace(/^@/, "").toLocaleLowerCase();
+	const byId = (id: string) => id === wanted || (wanted.length >= ID_SEARCH_MIN && id.includes(wanted));
+	const found = members.filter(
+		(m) =>
+			(!wanted ||
+				m.name.toLocaleLowerCase().includes(wanted) ||
+				m.username.toLocaleLowerCase().includes(wanted) ||
+				byId(m.id.toLocaleLowerCase())) &&
+			(!role || (role === NO_ROLE ? m.roles.length === 0 : m.roles.some((r) => r.id === role))),
+	);
+	if (sort === "name") return found.sort(byName);
+	const newest = sort === "newest";
+	return found.sort((a, b) => {
+		const [x, y] = [joinedMs(a), joinedMs(b)];
+		if (Number.isNaN(x) || Number.isNaN(y)) return Number(Number.isNaN(x)) - Number(Number.isNaN(y)) || byName(a, b);
+		return (newest ? y - x : x - y) || byName(a, b);
+	});
+}
+
+/** The day a member joined, as the locale writes a date; null where it isn't known. */
+export function joinedOn(joinedAt: string | null): string | null {
+	const at = joinedAt ? new Date(joinedAt) : null;
+	return at && !Number.isNaN(at.getTime()) ? at.toLocaleDateString(undefined, { dateStyle: "medium" }) : null;
 }

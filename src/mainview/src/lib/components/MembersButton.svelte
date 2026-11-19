@@ -1,12 +1,14 @@
 <script lang="ts">
+	import { untrack } from "svelte";
 	import { claimLayer, layerStyle, releaseLayer } from "$lib/overlay-layers";
 	import { Users } from "@lucide/svelte";
 	import { Popover } from "bits-ui";
 	import type { GatewaySpace, MemberOnSidebar } from "$lib/types";
 	import { memberFaces, membersLabel, onlineCount } from "$lib/members";
-	import { ensureMembers, loadMoreMembers, membersLoading } from "$lib/stores/member-pages.svelte";
+	import { ensureMembers, loadMoreMembers, membersFailed } from "$lib/stores/member-pages.svelte";
 	import FaceStack from "$lib/components/FaceStack.svelte";
 	import MemberList, { spaceMembers } from "$lib/components/MemberList.svelte";
+	import MemberPagesStatus from "$lib/components/MemberPagesStatus.svelte";
 	import { GLASS } from "$lib/components/ui/recipes";
 
 	// The members of a room, or of a group, in a pane's bar: a few faces, the online ones first, that open the member
@@ -40,12 +42,23 @@
 	const pagedSpaceId = $derived(given === undefined ? (space?.id ?? null) : null);
 
 	$effect(() => {
-		if (pagedSpaceId) void ensureMembers(pagedSpaceId, space?.users.length ?? 0);
+		if (pagedSpaceId) void ensureMembers(pagedSpaceId);
+	});
+
+	// A page that failed (#388) is asked for again as the popover opens, once, and otherwise by its Try again: not by each
+	// scroll at the list's end, which would ask again and again while the API refuses.
+	$effect(() => {
+		const id = open ? pagedSpaceId : null;
+		if (!id) return;
+		untrack(() => {
+			if (membersFailed(id)) void loadMoreMembers(id);
+		});
 	});
 
 	function onscroll(e: Event) {
 		const el = e.currentTarget as HTMLElement;
-		if (pagedSpaceId && el.scrollHeight - el.scrollTop - el.clientHeight < 150) void loadMoreMembers(pagedSpaceId);
+		if (pagedSpaceId && !membersFailed(pagedSpaceId) && el.scrollHeight - el.scrollTop - el.clientHeight < 150)
+			void loadMoreMembers(pagedSpaceId);
 	}
 
 	// What opens last is in front, whatever opened it (lib/overlay-layers.ts).
@@ -99,11 +112,7 @@
 					</div>
 					<div class="min-h-0 flex-1 overflow-y-auto pb-2" {onscroll}>
 						<MemberList {members} spaceId={pagedSpaceId} {space} {channelId} {onRemoveMember} />
-						{#if membersLoading(pagedSpaceId)}
-							<div class="flex justify-center py-3" role="status" aria-label="Loading more members">
-								<div class="border-duvet-line border-t-duvet-ink2 size-4 animate-spin rounded-full border-2"></div>
-							</div>
-						{/if}
+						<MemberPagesStatus spaceId={pagedSpaceId} />
 					</div>
 				</Popover.Content>
 			</div>
