@@ -1,3 +1,4 @@
+import type { MembersKind } from "$lib/layout-prefs";
 import type { GatewayRole, GatewaySpace, MemberOnSidebar, Role } from "$lib/types";
 
 /** The faces the pane's bar shows for a room's members; the rest are a "+N". */
@@ -84,21 +85,17 @@ export function membersLabel(online: number): string {
 	return `Members, ${online} online`;
 }
 
-/** A members popover, and whether the pin of its kind of chat opened it (#366). */
-export interface PopoverPin {
-	open: boolean;
-	byPin: boolean;
-}
+/** The narrowest a pane can be, in px, and still have the members column beside its chat (#409). It's measured on the
+ * pane itself, the container its bar's search folds in. */
+export const MEMBERS_COLUMN_MIN_PANE = 700;
 
 /**
- * What a members popover does as the pin of its kind of chat (`kept`) and its chat's place on screen (`shown`)
- * change: the pin opens it while the chat shows, and closes what it opened once the chat hides (the Friends view hides
- * the panes) or the pin goes. One the user opened or closed stays as they left it.
+ * The members column a pane `paneWidth` px wide has beside its chat, by the chat's kind (#409): a Space's text room's,
+ * or a group's, from MEMBERS_COLUMN_MIN_PANE px on. Any other chat (a voice room, a DM) has none, and neither has a
+ * narrower pane, or one that isn't shown (0 px): there the bar's members button opens the list in its popover.
  */
-export function followPin(now: PopoverPin, kept: boolean, shown: boolean): PopoverPin {
-	if (kept && shown) return { open: true, byPin: true };
-	if (now.byPin) return { open: false, byPin: false };
-	return now;
+export function membersColumnOf(kind: MembersKind | undefined, paneWidth: number): MembersKind | undefined {
+	return paneWidth >= MEMBERS_COLUMN_MIN_PANE ? kind : undefined;
 }
 
 /** How many of a Space's users the Members section of its settings loads at most, a page after another, as the mobile

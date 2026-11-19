@@ -999,8 +999,9 @@
 					/>
 				</div>
 			</div>
-			<!-- Nothing is docked beside the chat (#357): a room's members open from the faces in its pane's bar
-			     (MembersButton), which load the Space's first page of members themselves; a conversation's from its own. -->
+			<!-- Nothing is docked beside the panes: each pane has its chat's members (#409), in a column at its right
+			     (MembersColumn) or from the faces in its bar (MembersButton), which load the Space's first page of members
+			     themselves; a conversation's from its own view. -->
 		</main>
 	</div>
 {/if}

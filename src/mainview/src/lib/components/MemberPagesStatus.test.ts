@@ -22,7 +22,8 @@ const drawn = (spaceId: string | null) =>
 beforeEach(() => forgetMemberPages());
 
 // #388: the members popover's spinner went when a page failed, and the list stayed short with nothing to say why, nor
-// anything to ask again. The popover and the Members section of a Space's settings show this under their lists.
+// anything to ask again. The popover, the members column and the Members section of a Space's settings show this under
+// their lists.
 test("a page on its way shows the spinner, and one that failed says so with Try again", async () => {
 	let fail!: (reason: unknown) => void;
 	answer = () => new Promise((_, reject) => (fail = reject));
@@ -53,12 +54,13 @@ test("says nothing once the page came, nor under a list that isn't paged (a grou
 	expect(drawn(null)).not.toMatch(/Loading more members|Couldn't load/);
 });
 
-// Its effects run in a webview only: what the popover does with a failed page, as its source has it.
-test("the members popover shows it under its list, and asks for a failed page again as it opens, not as it scrolls", () => {
-	const button = readFileSync(join(import.meta.dir, "MembersButton.svelte"), "utf8");
-	expect(button).toMatch(/<MemberList [^]*\/>\s*<MemberPagesStatus spaceId=\{pagedSpaceId\} \/>/);
-	expect(button).toMatch(
-		/const id = open \? pagedSpaceId : null;[^]*if \(membersFailed\(id\)\) void loadMoreMembers\(id\);/,
+// Its effects run in a webview only: what the members popover and the members column do with a failed page, as the list
+// they share (MembersPanel, mounted as the popover opens and as the column does) has it.
+test("the members' list shows it under its rows, and asks for a failed page again as it opens, not as it scrolls", () => {
+	const panel = readFileSync(join(import.meta.dir, "MembersPanel.svelte"), "utf8");
+	expect(panel).toMatch(/<MemberList [^]*\/>\s*<MemberPagesStatus \{spaceId\} \/>/);
+	expect(panel).toMatch(
+		/const id = spaceId;\s*if \(!id\) return;\s*untrack\(\(\) => \{\s*if \(membersFailed\(id\)\) void loadMoreMembers\(id\);/,
 	);
-	expect(button).toContain("pagedSpaceId && !membersFailed(pagedSpaceId) && el.scrollHeight");
+	expect(panel).toContain("spaceId && !membersFailed(spaceId) && el.scrollHeight");
 });

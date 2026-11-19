@@ -103,6 +103,9 @@
 	import MessageSearch from "$lib/components/MessageSearch.svelte";
 	import PinnedMessages from "$lib/components/PinnedMessages.svelte";
 	import MembersButton from "$lib/components/MembersButton.svelte";
+	import MembersColumn from "$lib/components/MembersColumn.svelte";
+	import { layoutPrefs } from "$lib/layout-prefs.svelte";
+	import { membersColumnOf } from "$lib/members";
 	import VoiceChannelView from "$lib/components/VoiceChannelView.svelte";
 	import type { MemberOnSidebar } from "$lib/types";
 	import { getAvatarURL } from "$lib/common/common";
@@ -121,6 +124,7 @@
 		onMemberAdded = undefined,
 		onBarActions = undefined,
 		paneFocused = true,
+		paneWidth = 0,
 	}: {
 		conversation: Conversation;
 		onMemberAdded?: (member: ConversationMember) => void;
@@ -130,6 +134,9 @@
 		onBarActions?: (conversationId: string, actions: Snippet | null, menu?: Snippet | null) => void;
 		/** Whether its pane is the focused one, as its Chat takes it; true outside the panes (the friends view's). */
 		paneFocused?: boolean;
+		/** Its pane's width, which decides whether a group's members have their column beside the chat (#409); 0 outside
+		 * the panes, where they open in the popover. */
+		paneWidth?: number;
 	} = $props();
 
 	let isLoading = $state(true);
@@ -213,6 +220,9 @@
 			bio: m.user?.custom ?? "",
 		})),
 	);
+	// A group's members column (#409), while its pane has room for it, which the bar's members button opens and closes.
+	// A DM's two open in the popover, as a group's do in a narrow pane.
+	const column = $derived(membersColumnOf(conversation.type === 2 ? "groups" : undefined, paneWidth));
 
 	function getFriendOtherId(friend: Friend): string {
 		const user = get(currentUser);
@@ -1060,12 +1070,12 @@
 			Add
 		</button>
 	{/if}
-	<!-- The chat's members open from their faces, in a popover, as a room's do: nothing is docked beside the chat, and
-	     nothing floats over it until asked (#357). A group's can be kept open in every group (#366); a DM's two can't. -->
+	<!-- The chat's members, from their faces, as a room's: a group's open and close its column beside the chat (#409), in
+	     a pane with room for it; a DM's, and a group's in a narrow pane, open in a popover. -->
 	<MembersButton
 		members={convMembers}
 		channelId={conversation.id}
-		kind={conversation.type === 2 ? "groups" : undefined}
+		{column}
 		onRemoveMember={conversation.type === 2 && isOwner ? handleRemoveMember : undefined}
 	/>
 	{#key conversation.id}
@@ -1148,7 +1158,7 @@
 		</div>
 	{/if}
 
-	<!-- Body: messages + optional member sidebar -->
+	<!-- Body: the messages, and a group's members column at their right -->
 	<div class="flex flex-1 overflow-hidden">
 		<Chat
 			{intro}
@@ -1183,6 +1193,13 @@
 			}}
 			{paneFocused}
 		/>
+		{#if column && layoutPrefs.membersColumn[column]}
+			<MembersColumn
+				members={convMembers}
+				channelId={conversation.id}
+				onRemoveMember={conversation.type === 2 && isOwner ? handleRemoveMember : undefined}
+			/>
+		{/if}
 	</div>
 </div>
 

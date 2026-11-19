@@ -31,6 +31,12 @@ The design map's writer listed questions the brief doesn't answer. Rulings:
    its width preference are removed, and the ledger marks those items as superseded by the signed-off
    design, not silently. The bubbles/flat-rows preference stays, as a setting. Every other layout
    preference keeps its behaviour.
+
+   **Reversed by #409:** the members column is back, docked at the right of each pane beside a
+   Space's text room or a group, so a chat's members are there at a glance beside it rather than one
+   click away. The pane bar's members button opens and closes it, it's remembered per kind of chat
+   and open by default, a pane too narrow for it opens the members in the popover, and voice rooms and
+   DMs keep the popover. It replaces #366's pin, which kept the popover open.
 3. **The Now section.** It has no surface in the new design. Its call state moves into the call panel
    (the media controls grow into it, the brief says so): where you are, the ping, Disconnect. Its
    remaining states (a stream's viewers) go to the call panel or the stream window, decided by the
