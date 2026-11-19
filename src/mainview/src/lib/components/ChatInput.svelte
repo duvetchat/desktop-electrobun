@@ -26,6 +26,7 @@
 	import GifPicker from "$lib/components/GifPicker.svelte";
 	import { emojiDataNow, loadEmojiData, toTwemojiUrl, EMOJI_REGEX, type EmojiEntry } from "$lib/emoji";
 	import { emojiSuggestions, type PickerGroup } from "$lib/space-emojis";
+	import { emojiUsed } from "$lib/recent-emoji";
 	import {
 		commandOnceListed,
 		commandQuery as commandQueryOf,
@@ -718,6 +719,8 @@
 	}
 
 	function insertSuggestion(entry: EmojiEntry) {
+		// A pick counts as a use of its emoji, as one in the picker does (lib/recent-emoji.ts).
+		emojiUsed(entry.emoji);
 		const raw = getRaw(inputEl);
 		const cursor = getOffset();
 		const before = raw.slice(0, emojiQueryStart);

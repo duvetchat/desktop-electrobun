@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { Clock as ClockIcon } from "@lucide/svelte";
 	import { gridKeys } from "$lib/grid-keys";
 	import { emojiDataNow, loadEmojiData, toTwemojiUrl, type EmojiEntry } from "$lib/emoji";
 	import type { SpaceEmoji } from "$lib/types";
@@ -6,6 +7,7 @@
 	import PickerSearch from "$lib/components/PickerSearch.svelte";
 	import SpaceIcon from "$lib/components/ui/SpaceIcon.svelte";
 	import { GLASS } from "$lib/components/ui/recipes";
+	import { customEmojiId, emojiUsed, recentEmoji, recentToShow } from "$lib/recent-emoji";
 	import type { PickerGroup } from "$lib/space-emojis";
 	import { scrollSideways } from "$lib/sideways-scroll";
 
@@ -20,13 +22,23 @@
 	void loadEmojiData().then((data) => (emojiData = data));
 	const emojiCategories = $derived(emojiData?.emojiCategories ?? []);
 
-	// The Spaces' tabs come first, the dataset's categories after them.
-	const categoryOffset = $derived(groups.length);
+	// The emoji used lately (lib/recent-emoji.ts), ranked as the picker opens: the order holds while it's open. Those it
+	// can draw make its first tab, Recently used: a custom emoji only while a group holds it, so one whose Space the user
+	// left, or that was deleted, takes no place there. A Unicode one goes by its name in the dataset, once that's in.
+	const ranked = recentEmoji();
+	const customById = $derived(new Map(groups.flatMap((g) => g.items).map((ce) => [ce.id, ce])));
+	const recent = $derived(recentToShow(ranked, (id) => customById.has(id)));
+	const unicodeNames = $derived(new Map((emojiData?.allEmojis ?? []).map((e) => [e.emoji, e.name])));
+
+	// Recently used comes first while it has something to show, then the Spaces' tabs, then the dataset's categories.
+	const recentTabs = $derived(recent.length > 0 ? 1 : 0);
+	const categoryOffset = $derived(recentTabs + groups.length);
 
 	let searchQuery = $state("");
 	let activeCategory = $state(0);
+	const showingRecent = $derived(recentTabs > 0 && activeCategory === 0);
 	// The Space whose tab is chosen, if one is.
-	const shownGroup = $derived(groups[activeCategory]);
+	const shownGroup = $derived(groups[activeCategory - recentTabs]);
 	// The dataset's category the grid shows: none before the dataset is in.
 	const shownCategory = $derived(emojiCategories[activeCategory - categoryOffset]);
 	let searchResults = $derived.by(() => {
@@ -45,7 +57,9 @@
 	});
 	let isSearching = $derived(searchQuery.trim().length > 0);
 
+	// A pick counts as a use of its emoji, wherever the picker is (the message box, a reaction), as on the mobile app.
 	function pick(emoji: string) {
+		emojiUsed(emoji);
 		onSelect(emoji);
 	}
 </script>
@@ -59,23 +73,37 @@
 	<PickerSearch bind:value={searchQuery} placeholder="Search emoji" label="Search emoji" />
 
 	{#if !isSearching}
-		<!-- Category tabs: each Space's, then the dataset's -->
+		<!-- Category tabs: Recently used, each Space's, then the dataset's -->
 		<div
 			class="border-duvet-line flex shrink-0 items-center gap-0.5 overflow-x-auto border-b px-2.5 pb-1.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
 			role="tablist"
 			aria-label="Emoji categories"
 			onwheel={(e) => scrollSideways(e, e.currentTarget)}
 		>
+			{#if recentTabs > 0}
+				<button
+					role="tab"
+					aria-selected={showingRecent}
+					aria-label="Recently used"
+					class="grid h-7 w-[30px] shrink-0 cursor-pointer place-items-center rounded-lg transition-[opacity,background-color,filter] duration-[120ms] motion-reduce:transition-none {showingRecent
+						? 'bg-duvet-accent-tint opacity-100'
+						: 'hover:bg-duvet-hover opacity-70 grayscale hover:opacity-100 hover:grayscale-0'}"
+					onclick={() => (activeCategory = 0)}
+					title="Recently used"
+				>
+					<ClockIcon size={17} />
+				</button>
+			{/if}
 			{#each groups as group, i (group.space.id)}
 				<button
 					role="tab"
-					aria-selected={activeCategory === i}
+					aria-selected={activeCategory === i + recentTabs}
 					aria-label={group.space.name}
 					class="grid h-7 w-[30px] shrink-0 cursor-pointer place-items-center rounded-lg transition-[opacity,background-color,filter] duration-[120ms] motion-reduce:transition-none {activeCategory ===
-					i
+					i + recentTabs
 						? 'bg-duvet-accent-tint opacity-100'
 						: 'hover:bg-duvet-hover opacity-70 grayscale hover:opacity-100 hover:grayscale-0'}"
-					onclick={() => (activeCategory = i)}
+					onclick={() => (activeCategory = i + recentTabs)}
 					title={group.space.name}
 				>
 					<span class="contents" aria-hidden="true">
@@ -142,6 +170,39 @@
 					{/each}
 				</div>
 			{/if}
+		{:else if showingRecent}
+			<div class="text-duvet-ink2 px-1 pt-3 pb-1.5 text-[10.5px] font-semibold tracking-[0.06em] uppercase">
+				Recently used
+			</div>
+			<div class="grid grid-cols-8 gap-0.5">
+				{#each recent as code (code)}
+					{@const id = customEmojiId(code)}
+					{@const ce = id === null ? undefined : customById.get(id)}
+					{@const label = ce ? `:${ce.name}:` : (unicodeNames.get(code) ?? code)}
+					<button
+						class="hover:bg-duvet-hover focus-visible:bg-duvet-hover grid h-9 cursor-pointer place-items-center rounded-[9px] transition-[background-color,transform] duration-100 hover:scale-[1.12] active:scale-100 motion-reduce:transition-none motion-reduce:hover:scale-100"
+						onclick={() => pick(code)}
+						title={label}
+						aria-label={label}
+					>
+						{#if ce}
+							<img
+								src="{ceHost}/attachments/{ce.attachment_id}"
+								alt=":{ce.name}:"
+								class="pointer-events-none block size-[22px] object-contain select-none"
+								loading="lazy"
+							/>
+						{:else}
+							<img
+								src={toTwemojiUrl(code)}
+								alt={code}
+								class="pointer-events-none block size-[22px] select-none"
+								loading="lazy"
+							/>
+						{/if}
+					</button>
+				{/each}
+			</div>
 		{:else if shownGroup}
 			<div class="text-duvet-ink2 truncate px-1 pt-3 pb-1.5 text-[10.5px] font-semibold tracking-[0.06em] uppercase">
 				{shownGroup.space.name}
