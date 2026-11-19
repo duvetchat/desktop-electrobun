@@ -1,9 +1,10 @@
-import Electrobun, { BrowserView, BrowserWindow, Screen, Updater, Utils } from "electrobun/bun";
+import Electrobun, { ApplicationMenu, BrowserView, BrowserWindow, Screen, Updater, Utils } from "electrobun/bun";
 import { internalRpcHandlers } from "../../node_modules/electrobun/dist/api/bun/proc/native";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fitActivity, MAX_ACTIVITIES, type ActivityPayload } from "./activities";
 import { ActivityImages, IpcActivities, PAGE_WAIT_MS, within } from "./activity-images";
+import { appMenu, DOCS_URL, runMenuAction } from "./app-menu";
 import { avatarForToast } from "./notification-avatars";
 import { forwarderScript } from "./notification-forwarder";
 import { openUrl, parseOpenUrl, type NotificationLink } from "./notification-links";
@@ -29,6 +30,7 @@ import { mediaWindowOpener } from "./media-window-open";
 import { SettingsWindows, type OpenAppWindow } from "./settings-windows";
 import { createSettingsWindow } from "./settings-window-native";
 import { SECOND_WINDOW_PAGES, secondWindowUrl } from "../mainview/src/lib/app-windows";
+import { SETTINGS_MENU_COMMAND } from "../mainview/src/lib/app-menu";
 
 // When Bun started, and its own steps of the app's start, which the page's join in startup.log (startupTimings, #280):
 // its code running (what loads before it, Electrobun's API, comes first) and the window made.
@@ -257,6 +259,19 @@ const rendererType = rendererFor(currentOS);
 // Windows and Linux have no system buttons: the page draws theirs (WindowControls.svelte, #357).
 const { titleBarStyle, nativeButtons } = windowChrome(currentOS);
 
+// On macOS the editing keys (⌘C, ⌘V, ⌘Z…), ⌘Q, ⌘H and ⌘M are the menu bar's (app-menu.ts). Set right before the
+// window: Electrobun 1.15.1 reads the menu later, on the main thread, from memory nothing keeps (2.0 copies it first),
+// and making the window waits on that thread behind the read, so a GC has next to no time to free that memory first.
+if (currentOS === "darwin") {
+	ApplicationMenu.setApplicationMenu(appMenu("Duvet"));
+	Electrobun.events.on("application-menu-clicked", (event: unknown) =>
+		runMenuAction(event, {
+			settings: openSettingsFromMenu,
+			docs: () => openExternalUrl(DOCS_URL),
+		}),
+	);
+}
+
 const win = new BrowserWindow({
 	titleBarStyle,
 	renderer: rendererType,
@@ -338,6 +353,14 @@ const mediaWindowPrefs = join(Utils.paths.userData, "media-window.json");
 function focusMain() {
 	if (win.isMinimized()) win.unminimize();
 	win.focus();
+}
+// The menu bar's Settings… on macOS: the main window comes forward, and its page opens Settings as ⌘, does, through the
+// relay's command (ProfileRow.svelte). A page with no Settings to open, signing in, answers that it has none.
+function openSettingsFromMenu() {
+	focusMain();
+	void rpc.request
+		.windowCommand(SETTINGS_MENU_COMMAND)
+		.catch((err: unknown) => console.error("[menu] Settings… reached no page:", err));
 }
 const mediaWindows: MediaWindows = new MediaWindows({
 	create: mediaWindowOpener({
