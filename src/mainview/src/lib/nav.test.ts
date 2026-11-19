@@ -116,7 +116,7 @@ describe("saved values", () => {
 			spacesColumn: "fixed",
 			openChats: "tabs",
 			keyboardNavigation: false,
-			membersKeptOpen: { rooms: false, groups: false },
+			membersColumn: { rooms: true, groups: true },
 		});
 		expect(parseLayoutPrefs('{"keyboardNavigation":true}').keyboardNavigation).toBe(true);
 		expect(parseLayoutPrefs('{"keyboardNavigation":"yes"}').keyboardNavigation).toBe(false);
@@ -131,9 +131,10 @@ describe("saved values", () => {
 		expect(parseLayoutPrefs("[]")).toEqual(defaultLayoutPrefs);
 	});
 
-	// Nothing is docked beside a chat since the redesign (#357, DECISIONS.md): the members column's mode, and the
-	// switch before it, are in values saved by earlier builds, and are read past.
-	test("a saved members column, as a mode or as the old switch, is read without error and left out", () => {
+	// The members column is back beside the chat (#409), open per kind of chat. Builds before the redesign (#357) saved
+	// it as one mode for every room (Auto, Shown or Hidden), and the switch before it: both are read past, and the column
+	// is open, as it is by default.
+	test("a members column saved before the redesign, as a mode or as the old switch, is read past", () => {
 		for (const saved of [
 			'{"membersColumn":"shown","showMembersSidebar":true}',
 			'{"membersColumn":"hidden","showMembersSidebar":false}',
@@ -144,12 +145,13 @@ describe("saved values", () => {
 		]) {
 			const prefs = parseLayoutPrefs(saved);
 			expect(prefs, saved).toEqual(defaultLayoutPrefs);
-			expect(Object.keys(prefs), saved).not.toContain("membersColumn");
+			expect(prefs.membersColumn, saved).toEqual({ rooms: true, groups: true });
+			expect(Object.keys(prefs), saved).not.toContain("showMembersSidebar");
 		}
 		// What was saved beside it keeps its value.
 		expect(
 			parseLayoutPrefs(
-				'{"membersColumn":"shown","showMembersSidebar":true,"spacesColumn":"auto-hide","openChats":"vertical"}',
+				'{"membersColumn":"hidden","showMembersSidebar":false,"spacesColumn":"auto-hide","openChats":"vertical"}',
 			),
 		).toEqual({ ...defaultLayoutPrefs, spacesColumn: "auto-hide", openChats: "vertical" });
 	});

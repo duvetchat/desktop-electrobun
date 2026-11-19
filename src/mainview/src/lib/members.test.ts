@@ -1,13 +1,14 @@
 import { describe, expect, spyOn, test } from "bun:test";
 import {
 	findMembers,
-	followPin,
 	GROUP_HEADING,
 	joinedOn,
 	managedMembers,
 	MEMBER_ROW,
+	MEMBERS_COLUMN_MIN_PANE,
 	memberFaces,
 	memberGroups,
+	membersColumnOf,
 	membersLabel,
 	NO_ROLE,
 	onlineCount,
@@ -287,26 +288,26 @@ describe("the Members section's members", () => {
 	});
 });
 
-// #366: a members popover kept open follows the pin of its kind of chat, as its chat shows and hides.
-describe("a members popover kept open", () => {
-	const closed = { open: false, byPin: false };
-
-	test("the pin opens it while its chat shows, and closes it again once the chat hides or the pin goes", () => {
-		const pinned = followPin(closed, true, true);
-		expect(pinned).toEqual({ open: true, byPin: true });
-		// The Friends view hides the panes: it closes, and opens again as they come back.
-		const hidden = followPin(pinned, true, false);
-		expect(hidden).toEqual(closed);
-		expect(followPin(hidden, true, true)).toEqual(pinned);
-		// Unpinned in another pane, or its chat is no longer of that kind (a voice room, a DM): it closes.
-		expect(followPin(pinned, false, true)).toEqual(closed);
+// #409: a Space's text room and a group have their members in a column beside the chat, in a pane with room for it.
+describe("the members column", () => {
+	test("a text room's and a group's, in a pane of 700 px or more", () => {
+		expect(MEMBERS_COLUMN_MIN_PANE).toBe(700);
+		for (const width of [700, 701, 976, 2560]) {
+			expect(membersColumnOf("rooms", width), String(width)).toBe("rooms");
+			expect(membersColumnOf("groups", width), String(width)).toBe("groups");
+		}
 	});
 
-	test("one the user opened stays as they left it, and is the pin's once pinned", () => {
-		const opened = { open: true, byPin: false };
-		expect(followPin(opened, false, true)).toEqual(opened);
-		expect(followPin(opened, false, false)).toEqual(opened);
-		expect(followPin(closed, false, true)).toEqual(closed);
-		expect(followPin(opened, true, true)).toEqual({ open: true, byPin: true });
+	test("a narrower pane has none: its chat's members open in the bar's popover", () => {
+		for (const width of [699.5, 699, 488, 320]) {
+			expect(membersColumnOf("rooms", width), String(width)).toBeUndefined();
+			expect(membersColumnOf("groups", width), String(width)).toBeUndefined();
+		}
+		// A pane that isn't shown (the Friends view hides the panes) measures 0, as one not measured yet.
+		expect(membersColumnOf("rooms", 0)).toBeUndefined();
+	});
+
+	test("any other chat has none, however wide its pane: a voice room, a DM", () => {
+		for (const width of [0, 699, 700, 2560]) expect(membersColumnOf(undefined, width)).toBeUndefined();
 	});
 });
