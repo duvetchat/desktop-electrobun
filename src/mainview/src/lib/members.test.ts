@@ -1,6 +1,7 @@
 import { describe, expect, spyOn, test } from "bun:test";
 import {
 	findMembers,
+	followPin,
 	GROUP_HEADING,
 	joinedOn,
 	managedMembers,
@@ -283,5 +284,29 @@ describe("the Members section's members", () => {
 		expect(joinedOn(at)).toBe(new Date(at).toLocaleDateString(undefined, { dateStyle: "medium" }));
 		expect(joinedOn(null)).toBeNull();
 		expect(joinedOn("not a date")).toBeNull();
+	});
+});
+
+// #366: a members popover kept open follows the pin of its kind of chat, as its chat shows and hides.
+describe("a members popover kept open", () => {
+	const closed = { open: false, byPin: false };
+
+	test("the pin opens it while its chat shows, and closes it again once the chat hides or the pin goes", () => {
+		const pinned = followPin(closed, true, true);
+		expect(pinned).toEqual({ open: true, byPin: true });
+		// The Friends view hides the panes: it closes, and opens again as they come back.
+		const hidden = followPin(pinned, true, false);
+		expect(hidden).toEqual(closed);
+		expect(followPin(hidden, true, true)).toEqual(pinned);
+		// Unpinned in another pane, or its chat is no longer of that kind (a voice room, a DM): it closes.
+		expect(followPin(pinned, false, true)).toEqual(closed);
+	});
+
+	test("one the user opened stays as they left it, and is the pin's once pinned", () => {
+		const opened = { open: true, byPin: false };
+		expect(followPin(opened, false, true)).toEqual(opened);
+		expect(followPin(opened, false, false)).toEqual(opened);
+		expect(followPin(closed, false, true)).toEqual(closed);
+		expect(followPin(opened, true, true)).toEqual({ open: true, byPin: true });
 	});
 });

@@ -139,6 +139,6 @@ test("a Space's members mount no list beside the panes", () => {
 	expect(button).toContain("void ensureMembers(pagedSpaceId)");
 	expect(button).not.toMatch(/columnOpen|onColumn/);
 	// Both of its users: a room's pane and a chat's view.
-	expect(source("components/PaneView.svelte")).toContain("<MembersButton space={activeTabSpace}");
+	expect(source("components/PaneView.svelte")).toMatch(/<MembersButton\s+space=\{activeTabSpace\}/);
 	expect(source("components/ConversationView.svelte")).toMatch(/<MembersButton\b/);
 });

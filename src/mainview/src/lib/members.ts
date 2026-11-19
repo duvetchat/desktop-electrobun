@@ -84,6 +84,23 @@ export function membersLabel(online: number): string {
 	return `Members, ${online} online`;
 }
 
+/** A members popover, and whether the pin of its kind of chat opened it (#366). */
+export interface PopoverPin {
+	open: boolean;
+	byPin: boolean;
+}
+
+/**
+ * What a members popover does as the pin of its kind of chat (`kept`) and its chat's place on screen (`shown`)
+ * change: the pin opens it while the chat shows, and closes what it opened once the chat hides (the Friends view hides
+ * the panes) or the pin goes. One the user opened or closed stays as they left it.
+ */
+export function followPin(now: PopoverPin, kept: boolean, shown: boolean): PopoverPin {
+	if (kept && shown) return { open: true, byPin: true };
+	if (now.byPin) return { open: false, byPin: false };
+	return now;
+}
+
 /** How many of a Space's users the Members section of its settings loads at most, a page after another, as the mobile
  *  app's Members page does: the API finds no one by name, so the section searches what it has (#380). */
 export const LISTED_MEMBERS_MAX = 5000;

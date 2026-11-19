@@ -116,6 +116,7 @@ describe("saved values", () => {
 			spacesColumn: "fixed",
 			openChats: "tabs",
 			keyboardNavigation: false,
+			membersKeptOpen: { rooms: false, groups: false },
 		});
 		expect(parseLayoutPrefs('{"keyboardNavigation":true}').keyboardNavigation).toBe(true);
 		expect(parseLayoutPrefs('{"keyboardNavigation":"yes"}').keyboardNavigation).toBe(false);
