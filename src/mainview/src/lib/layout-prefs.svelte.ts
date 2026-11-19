@@ -20,7 +20,7 @@ $effect.root(() => {
 			spacesColumn: layoutPrefs.spacesColumn,
 			openChats: layoutPrefs.openChats,
 			keyboardNavigation: layoutPrefs.keyboardNavigation,
-			membersKeptOpen: { ...layoutPrefs.membersKeptOpen },
+			membersColumn: { ...layoutPrefs.membersColumn },
 		});
 		try {
 			localStorage.setItem(LAYOUT_PREFS_KEY, value);

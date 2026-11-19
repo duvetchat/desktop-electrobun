@@ -75,7 +75,7 @@
 	import { MEMBER_ROW, memberGroups, shownRows } from "$lib/members";
 
 	// The members, in the groups memberGroups (lib/members.ts) makes, each opening their profile. The members popover of a
-	// pane's bar and a group's members panel both show it; the one around it scrolls it.
+	// pane's bar and the members column beside a chat both show it (MembersPanel); the one around it scrolls it.
 	let {
 		members,
 		spaceId = null,
@@ -83,6 +83,7 @@
 		channelId = null,
 		onRemoveMember = undefined,
 		profileSide = "left",
+		surface = "popover",
 	}: {
 		members: MemberOnSidebar[];
 		spaceId?: string | null;
@@ -92,7 +93,22 @@
 		onRemoveMember?: (userId: string) => void;
 		/** Where a member's profile opens, beside the list. */
 		profileSide?: "left" | "right" | "top" | "bottom";
+		/** What the list is drawn on, whose colour its sticky headings, its status rings and its offline names take: the
+		 * popover's, or the pane's, as the members column. */
+		surface?: "popover" | "pane";
 	} = $props();
+
+	// The colour behind the list, as each class and style needs it.
+	const ground = $derived(
+		surface === "pane"
+			? { bg: "bg-duvet-bg", border: "border-duvet-bg", ring: "text-duvet-bg", color: "var(--duvet-bg)" }
+			: {
+					bg: "bg-duvet-pop-ring",
+					border: "border-duvet-pop-ring",
+					ring: "text-duvet-pop-ring",
+					color: "var(--duvet-pop-ring)",
+				},
+	);
 
 	// Who shows as typing or recording in the chat right now: everyone else as its rows and tabs show them (typingNow),
 	// until their notice gets old, and the user on their own row, the one place their own typing shows (ownTyping).
@@ -117,11 +133,11 @@
 		return "#" + (n >>> 0).toString(16).padStart(6, "0");
 	}
 
-	// An offline member's name is dimmed by mixing its color into the sidebar's background, not with an
+	// An offline member's name is dimmed by mixing its color into the list's background, not with an
 	// opacity: text under an opacity loses ClearType and looks thinner than the online names.
 	function getMemberColorStyle(member: MemberOnSidebar): string {
 		const dim = (color: string) =>
-			member.status === "offline" ? `color-mix(in oklab, ${color} 60%, var(--duvet-pop-ring))` : color;
+			member.status === "offline" ? `color-mix(in oklab, ${color} 60%, ${ground.color})` : color;
 		const highest = [...member.roles]
 			.filter((r) => r.color_from !== null && r.color_from !== undefined)
 			.sort((a, b) => b.position - a.position)
@@ -205,9 +221,9 @@
 	{#each groupedMembers as group, g}
 		{@const [start, end] = windows[g] ?? [0, 0]}
 		<div>
-			<!-- The heading stays at the top while its rows scroll under it, on the colour a popover has behind it. -->
+			<!-- The heading stays at the top while its rows scroll under it, on the list's own colour. -->
 			<div
-				class="text-duvet-ink2 bg-duvet-pop-ring sticky top-0 z-10 flex h-9 items-end px-4 pb-1.5 text-[10.5px] font-semibold tracking-[0.06em] uppercase select-none"
+				class="text-duvet-ink2 {ground.bg} sticky top-0 z-10 flex h-9 items-end px-4 pb-1.5 text-[10.5px] font-semibold tracking-[0.06em] uppercase select-none"
 			>
 				{group.title} — {group.members.length}
 			</div>
@@ -235,7 +251,7 @@
 								<UserAvatar src={member.avatar_url} name={member.username} size={30} />
 								{#if isTyping(member.id)}
 									<span
-										class="border-duvet-pop-ring bg-duvet-secondary-fill absolute -right-0.5 -bottom-0.5 flex h-3 w-4 items-center justify-center gap-0.5 rounded-full border-2"
+										class="{ground.border} bg-duvet-secondary-fill absolute -right-0.5 -bottom-0.5 flex h-3 w-4 items-center justify-center gap-0.5 rounded-full border-2"
 									>
 										{#if isRecording(member.id)}
 											<MicIcon class="text-duvet-danger size-2 animate-pulse" />
@@ -255,7 +271,7 @@
 									<StatusDot
 										status={member.status}
 										mobileOnly={member.mobile_only}
-										class="text-duvet-pop-ring absolute -right-0.5 -bottom-0.5 w-2.5 border-2"
+										class="{ground.ring} absolute -right-0.5 -bottom-0.5 w-2.5 border-2"
 									/>
 								{/if}
 							</div>

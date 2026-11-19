@@ -3,9 +3,9 @@ import { getSpaceMembers, MEMBERS_PAGE_SIZE, type SpaceMemberWithUser } from "$l
 import { gatewaySpaces } from "$lib/stores.svelte";
 import type { GatewaySpace } from "$lib/types";
 
-// A Space's members, a page at a time (#357). The members popover of every pane and the list of a Space share one
-// pager per Space, so two of them open at once ask for a page once, and the faces in a pane's bar have the first page
-// before the popover opens.
+// A Space's members, a page at a time (#357). The members popover and column of every pane and the list of a Space
+// share one pager per Space, so two of them open at once ask for a page once, and the faces in a pane's bar have the
+// first page before the popover opens.
 
 /** How long a list of every member leaves between its pages, in ms (#380): the API takes 50 requests a second from a
  *  user across its routes, and 64 a minute of a Space's members, and back to back a large Space's pages would take a

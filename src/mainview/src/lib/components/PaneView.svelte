@@ -60,6 +60,9 @@
 	import Chat from "$lib/components/Chat.svelte";
 	import VoiceChannelView from "$lib/components/VoiceChannelView.svelte";
 	import MembersButton from "$lib/components/MembersButton.svelte";
+	import MembersColumn from "$lib/components/MembersColumn.svelte";
+	import { layoutPrefs } from "$lib/layout-prefs.svelte";
+	import { membersColumnOf } from "$lib/members";
 	import MessageSearch from "$lib/components/MessageSearch.svelte";
 	import PinnedMessages from "$lib/components/PinnedMessages.svelte";
 	import {
@@ -216,6 +219,15 @@
 				}
 			: null,
 	);
+	// The pane's width, measured on the pane itself (the container its bar's search folds in): whether its chat's members
+	// have a column beside it goes by it (#409). 0 until it's measured, and while the Friends view hides the panes.
+	let paneWidth = $state(0);
+	// The members column of the room shown: a text room's, while the panes show and the pane has room for it. The bar's
+	// members button opens and closes it; without it, the button opens the popover (a voice room, a narrow pane).
+	const roomColumn = $derived(
+		isActive && activeChannel?.type === "text" ? membersColumnOf("rooms", paneWidth) : undefined,
+	);
+
 	// Whether the active room is one its space lists: the gateway takes away a room the user can no longer view
 	// (ROOM_DELETE, its loaded messages with it) and gives it back (ROOM_CREATE). A space not loaded yet doesn't count.
 	const activeRoomListed = $derived(
@@ -1194,9 +1206,11 @@
 	<!-- Clicking a pane focuses it; following DOM focus instead would also move it on programmatic
 	     focus, like a split remounting its chat inputs. The keyboard has no pane focus to move. Only a pane of a
 	     split (which has onClose) rings when focused: a lone pane is always the focused one. -->
-	<!-- The pane is the container its bar's search field collapses in when the pane is narrow. -->
+	<!-- The pane is the container its bar's search field collapses in when the pane is narrow, and it measures its own
+	     width, which decides whether its chat's members have a column beside it (#409). -->
 	<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
 	<div
+		bind:clientWidth={paneWidth}
 		class="bg-duvet-bg @container/pane relative flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden {isFocused &&
 		onClose
 			? 'ring-duvet-accent/40 ring-1 ring-inset'
@@ -1257,15 +1271,10 @@
 				{:else if conversationActions && conversationActions.conversationId === activeConversation?.id}
 					{@render conversationActions.actions()}
 				{/if}
-				<!-- A room's members open from their faces, in a popover: nothing is docked beside the chat (#357). A text
-				     room's can be kept open in every text room, while the panes show (#366). -->
+				<!-- A room's members, from their faces: a text room's open and close its column, at the pane's right (#409),
+				     in a pane with room for it; a voice room's, and any in a narrow pane, open in a popover. -->
 				{#if activeTabSpace && activeTab && !isConversationTab(activeTab)}
-					<MembersButton
-						space={activeTabSpace}
-						channelId={activeTab.channelId}
-						kind={activeChannel?.type === "text" ? "rooms" : undefined}
-						shown={isActive}
-					/>
+					<MembersButton space={activeTabSpace} channelId={activeTab.channelId} column={roomColumn} />
 				{/if}
 
 				<!-- The pane's own actions: the app's splits, to the right or below, at any depth. After them, in a section
@@ -1410,6 +1419,10 @@
 					}}
 					paneFocused={isFocused}
 				/>
+				<!-- The room's members, at the right of its chat, while text rooms have their column open (#409). -->
+				{#if roomColumn && activeTabSpace && layoutPrefs.membersColumn[roomColumn]}
+					<MembersColumn space={activeTabSpace} channelId={node.activeChannelId ?? ""} />
+				{/if}
 			{:else if activeTab && isConversationTab(activeTab)}
 				<!-- Only while the panes show: the friends view hides them, and a conversation on screen counts as read
 				     (activeDMConvId) and is acked. -->
@@ -1418,6 +1431,7 @@
 						<ConversationView
 							conversation={activeConversation}
 							paneFocused={isFocused}
+							{paneWidth}
 							onBarActions={showConversationActions}
 							onMemberAdded={(m) => {
 								const convId = activeConversation?.id;
