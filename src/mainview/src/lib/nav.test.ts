@@ -11,8 +11,10 @@ import {
 	parsePinned,
 	rankByQuery,
 	roomColumn,
+	spaceListRows,
 	spaceNews,
 	spaceReadAll,
+	type SpaceListRow,
 } from "$lib/nav";
 import { defaultLayoutPrefs, parseLayoutPrefs } from "$lib/layout-prefs";
 import { closeTabsIn, makeLeaf } from "$lib/pane";
@@ -52,6 +54,43 @@ describe("groupSpaces", () => {
 	});
 });
 
+// #382: the quiet Spaces' row sat under the quiet Space shown while they were folded, under its whole tree, so it moved
+// each time another Space was picked, and it counted the quiet Spaces but that one.
+describe("the spaces column's list", () => {
+	const groups = { pinned: ["p"], news: ["n1", "n2"], quiet: ["q1", "q2", "q3"] };
+	const listed = (rows: SpaceListRow[]) => rows.map((r) => (r.kind === "space" ? r.id : `quiet row: ${r.count}`));
+	const rowAt = (rows: SpaceListRow[]) => rows.findIndex((r) => r.kind === "quiet");
+
+	test("folded, the quiet Spaces wait behind their row, after the pinned ones and those with news", () => {
+		expect(listed(spaceListRows(groups, false, null))).toEqual(["p", "n1", "n2", "quiet row: 3"]);
+		expect(listed(spaceListRows(groups, false, "n1"))).toEqual(["p", "n1", "n2", "quiet row: 3"]);
+	});
+
+	test("unfolded, they're all listed under their row, in their order", () => {
+		expect(listed(spaceListRows(groups, true, null))).toEqual(["p", "n1", "n2", "quiet row: 3", "q1", "q2", "q3"]);
+	});
+
+	test("a quiet Space picked while they're folded shows under the row, which stays where it was and counts them all", () => {
+		const before = spaceListRows(groups, false, "n1");
+		const after = spaceListRows(groups, false, "q2");
+		expect(listed(after)).toEqual(["p", "n1", "n2", "quiet row: 3", "q2"]);
+		expect(rowAt(after)).toBe(rowAt(before));
+	});
+
+	test("folding hides every quiet Space but the open one, which stays under the row", () => {
+		const unfolded = spaceListRows(groups, true, "q3");
+		const folded = spaceListRows(groups, false, "q3");
+		expect(listed(folded)).toEqual(["p", "n1", "n2", "quiet row: 3", "q3"]);
+		// The row keeps its place and its count, folded or not, whichever Space is open.
+		expect(rowAt(folded)).toBe(rowAt(unfolded));
+		expect(folded[rowAt(folded)]).toEqual(unfolded[rowAt(unfolded)]!);
+	});
+
+	test("has no quiet row without quiet Spaces", () => {
+		expect(listed(spaceListRows({ pinned: [], news: ["n1"], quiet: [] }, false, "n1"))).toEqual(["n1"]);
+	});
+});
+
 describe("saved values", () => {
 	test("pinned IDs drop duplicates and anything that isn't one", () => {
 		expect(parsePinned('["a", 1, "b", "a"]')).toEqual(["a", "b"]);
@@ -77,6 +116,7 @@ describe("saved values", () => {
 			spacesColumn: "fixed",
 			openChats: "tabs",
 			keyboardNavigation: false,
+			membersKeptOpen: { rooms: false, groups: false },
 		});
 		expect(parseLayoutPrefs('{"keyboardNavigation":true}').keyboardNavigation).toBe(true);
 		expect(parseLayoutPrefs('{"keyboardNavigation":"yes"}').keyboardNavigation).toBe(false);

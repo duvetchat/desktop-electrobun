@@ -19,8 +19,10 @@
 	import { firstTextRoom, type OpenChats } from "$lib/nav";
 	import { currentShell } from "$lib/platform";
 	import {
+		afterLeavingVoice,
 		clampSidebarWidth,
 		keysFor,
+		leavesOf,
 		SIDEBAR_MAX,
 		SIDEBAR_MIN,
 		mergedLeaf,
@@ -74,7 +76,7 @@
 	import MentionNotices from "$lib/components/MentionNotices.svelte";
 	import { startSystemNotifications } from "$lib/system-notifications";
 	import NotificationPermissionBar from "$lib/components/NotificationPermissionBar.svelte";
-	import type { PaneNode, Tab } from "$lib/types";
+	import type { Channel, PaneNode, Tab } from "$lib/types";
 	import { gatewaySpaceToGuild, gatewaySpaceToMembers } from "$lib/types";
 	import { userStatusCache } from "$lib/api/ws/connection";
 	import { DUVET_DOMAIN } from "$lib/common/common";
@@ -669,8 +671,6 @@
 		activeDMId = null;
 	}
 
-	// When leaving voice, switch active tab away from the voice channel
-	// (keep the tab so the user can rejoin; just navigate to the last text tab)
 	function mapAllLeaves(node: PaneNode, fn: (l: import("$lib/types").PaneLeaf) => PaneNode): PaneNode {
 		if (node.kind === "leaf") return fn(node);
 		return {
@@ -802,20 +802,46 @@
 		$activeCall?.state === "connected" && $activeVoiceRoomId === $activeCall?.conversationId,
 	);
 
+	// The chat each pane showed last that isn't a voice room: where the pane goes back to once the user leaves the voice
+	// room it shows (#367). A click on a voice room takes the current tab's place, so that chat may no longer be a tab.
+	const chatBeforeVoice = new Map<string, Tab>();
+	$effect(() => {
+		for (const leaf of leavesOf(rootPane)) {
+			const tab = leaf.tabs.find((t) => t.channelId === leaf.activeChannelId);
+			if (tab && tab.channelType !== "voice") chatBeforeVoice.set(leaf.id, tab);
+		}
+	});
+
+	// Leaving a voice room takes each pane that shows it back to the chat it showed before, while that can still be
+	// shown, or else to the room's Space: its room used last, or its first text room (afterLeavingVoice). The voice
+	// room's tab stays, for joining again. A call's voice is its conversation's, which the pane keeps showing: the call
+	// goes from it, and its chat stays.
+	function leftVoiceRoom(roomId: string) {
+		const guild = guilds.find((g) => g.channels.some((c) => c.id === roomId && c.type === "voice"));
+		if (!guild || !leavesOf(rootPane).some((leaf) => leaf.activeChannelId === roomId)) return;
+		const roomTab = (ch: Channel | null | undefined): Tab | null =>
+			ch ? { channelId: ch.id, channelName: ch.name, channelType: ch.type, spaceId: guild.id } : null;
+		const lastRoomId = lastRoomBySpace.get(guild.id);
+		const ofSpace = [
+			roomTab(guild.channels.find((c) => c.id === lastRoomId && c.type === "text")),
+			roomTab(firstTextRoom(guild.channels)),
+		];
+		const keep = openableTab($gatewaySpaces);
+		handlePaneUpdate(
+			mapAllLeaves(rootPane, (leaf) => {
+				const before = chatBeforeVoice.get(leaf.id);
+				return afterLeavingVoice(leaf, roomId, [before && keep(before) ? before : null, ...ofSpace]);
+			}),
+		);
+	}
+
 	let prevVoiceRoomId: string | null = null;
 
 	$effect(() => {
 		const cur = $activeVoiceRoomId;
-		if (prevVoiceRoomId && !cur) {
-			const leftRoom = prevVoiceRoomId;
-			rootPane = mapAllLeaves(rootPane, (leaf) => {
-				if (leaf.activeChannelId !== leftRoom) return leaf;
-				// Switch to the last non-voice tab; keep the voice tab in the list
-				const prev = [...leaf.tabs].reverse().find((t) => t.channelId !== leftRoom);
-				return prev ? { ...leaf, activeChannelId: prev.channelId } : leaf;
-			});
-		}
+		const left = prevVoiceRoomId;
 		prevVoiceRoomId = cur;
+		if (left && !cur) untrack(() => leftVoiceRoom(left));
 	});
 </script>
 

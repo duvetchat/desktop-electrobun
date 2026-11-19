@@ -49,6 +49,21 @@ describe("the split of the user's panel", () => {
 		expect(row).not.toContain("<VoiceStatus");
 	});
 
+	// The macOS menu bar's Settings… (src/bun/app-menu.ts, #372): Bun sends it to the main window's page as a command,
+	// which the row answers while it's mounted (one is at a time), by the rule ⌘, follows: not over another dialog.
+	test("the profile row opens Settings for the menu bar's Settings… as for ⌘,", () => {
+		const code = script(row);
+		expect(code).toMatch(
+			/onMount\(\(\) => \{\s*const stop = addWindowCommands\(SETTINGS_MENU_COMMAND\.channel, \{ \[SETTINGS_MENU_COMMAND\.name\]: openSettings \}\);[\s\S]*?return stop;\s*\}\);/,
+		);
+		// The page answers the relay's commands from here too, whoever else wired it first.
+		expect(code).toContain(".then((rpc) => rpc?.on.windowCommand(answerWindowCommand))");
+		expect(code).toMatch(
+			/function openSettings\(\): boolean \{\s*if \(!showUserSettings && document\.querySelector\('\[role="dialog"\], \[role="alertdialog"\]'\)\) return false;\s*showUserSettings = true;\s*return true;\s*\}/,
+		);
+		expect(code).toContain("if (!isSettingsShortcut(event, mac) || showUserSettings || !openSettings()) return;");
+	});
+
 	test("the profile row has none of the microphone's, the voice's or the ping's logic", () => {
 		for (const name of [
 			"isMuted",

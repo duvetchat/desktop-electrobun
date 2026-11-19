@@ -3,6 +3,7 @@ import {
 	countRoll,
 	mergedByKey,
 	onReactionChange,
+	reactedWith,
 	reactionChanged,
 	reactionKey,
 	withReaction,
@@ -124,6 +125,23 @@ describe("mergedByKey", () => {
 		expect(mergedByKey(null)).toBeNull();
 		expect(mergedByKey(undefined)).toBeNull();
 	});
+});
+
+// #381: whether the user's reaction is among a message's, by its emoji (reactionKey): adding a quick reaction counts as a
+// use of its emoji, taking one back doesn't, and the toggle asks the same.
+test("reactedWith: the user's own reaction of an emoji, by its key", () => {
+	const message = {
+		reactions: [
+			{ emoji_name: "🔥", count: 1, users: ["me"] },
+			{ emoji_name: "blob", emoji_id: "x", count: 1, users: ["ana"] },
+		],
+	};
+	expect(reactedWith(message, "me", "🔥")).toBe(true);
+	expect(reactedWith(message, "me", "x")).toBe(false);
+	expect(reactedWith(message, "ana", "x")).toBe(true);
+	expect(reactedWith(message, "ana", "blob")).toBe(false);
+	expect(reactedWith({ reactions: null }, "me", "🔥")).toBe(false);
+	expect(reactedWith({}, "me", "🔥")).toBe(false);
 });
 
 test("each change reaches whatever hears them, until it stops", () => {

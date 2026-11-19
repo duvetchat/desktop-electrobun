@@ -1,9 +1,10 @@
 <script lang="ts">
-	import { Hash as HashIcon, UsersRound as UsersRoundIcon, Volume2 as SpeakerSimpleHighIcon } from "@lucide/svelte";
+	import { Hash as HashIcon, Volume2 as SpeakerSimpleHighIcon } from "@lucide/svelte";
 	import { getAvatarURL } from "$lib/common/common";
 	import { isConversationTab, otherMember, tabTitle } from "$lib/pane";
 	import { conversations, currentUser, typingNow } from "$lib/stores.svelte";
 	import type { Tab } from "$lib/types";
+	import GroupMark from "$lib/components/GroupMark.svelte";
 	import TypingMark from "$lib/components/TypingMark.svelte";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
 	import SpaceIcon from "$lib/components/ui/SpaceIcon.svelte";
@@ -33,13 +34,7 @@
 	<TypingMark users={typers} size={isConversationTab(tab) ? size + 4 : size} class="text-duvet-ink2 {className}" />
 {:else if isConversationTab(tab)}
 	{#if conv?.type === 2 || !other}
-		<span
-			class="bg-duvet-chosen text-duvet-chosen-ink flex shrink-0 items-center justify-center rounded-full {className}"
-			style="width: {size + 4}px; height: {size + 4}px;"
-			aria-hidden="true"
-		>
-			<UsersRoundIcon style="width: {size * 0.75}px; height: {size * 0.75}px;" />
-		</span>
+		<GroupMark size={size + 4} class={className} />
 	{:else}
 		<span class="shrink-0 {className}" aria-hidden="true">
 			<UserAvatar

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, spyOn, test } from "bun:test";
-import { updateSpace } from "$lib/api/spaces";
+import { getSpaceMembers, updateSpace } from "$lib/api/spaces";
 
 // What the client sends: JSON through fetch, a form through XMLHttpRequest (Bun has none, this one stands in for the
 // webview's). Only while a test of this file runs (#166).
@@ -58,4 +58,15 @@ test("and in the form that carries a new icon", async () => {
 	await updateSpace(SPACE, { icon: new File([new Uint8Array(4)], "icon.png"), default_notifications: 0 });
 	expect(forms).toHaveLength(1);
 	expect(forms[0]!.get("default_notifications")).toBe("0");
+});
+
+// #380: a Space's settings load its every page of members. The API gives 100 a page at most (GetSpaceMembersForUser),
+// half the requests of the 50 it gives by default.
+test("a page of a Space's members asks for as many as the API gives", async () => {
+	await getSpaceMembers(SPACE, { id: "01920000-0000-7000-8000-0000000000e1", pos: 3 });
+	const url = new URL(String(fetched.mock.calls[0]![0]));
+	expect(url.pathname).toBe(`/api/spaces/${SPACE}/members`);
+	expect(url.searchParams.get("count")).toBe("100");
+	expect(url.searchParams.get("after_id")).toBe("01920000-0000-7000-8000-0000000000e1");
+	expect(url.searchParams.get("after_pos")).toBe("3");
 });

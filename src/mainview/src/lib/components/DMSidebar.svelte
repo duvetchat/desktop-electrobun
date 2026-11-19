@@ -10,13 +10,14 @@
 		Columns2 as ColumnsIcon,
 		PhoneCall as PhoneCallIcon,
 	} from "@lucide/svelte";
+	import GroupMark from "$lib/components/GroupMark.svelte";
 	import NotificationSubmenu from "$lib/components/NotificationSubmenu.svelte";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
 	import type { Conversation } from "$lib/api/conversations";
 	import { getAvatarURL } from "$lib/common/common";
 	import { getUserMobileOnly, getUserOnlineStatus } from "$lib/api/ws/connection";
 	import { userStatusToString, type MemberOnSidebar } from "$lib/types";
-	import { conversationTab, tabDragData, tabNews } from "$lib/pane";
+	import { conversationTab, otherMember, tabDragData, tabNews } from "$lib/pane";
 	import {
 		chatsUnderAll,
 		chipCount,
@@ -64,13 +65,6 @@
 		return "Direct message";
 	}
 
-	function convAvatarSrc(conv: Conversation): string | null | undefined {
-		if (conv.type === 2) return null;
-		const me = get(currentUser);
-		const other = conv.members.find((m) => m.user_id !== me?.id);
-		return getAvatarURL(other?.user_id ?? "", other?.user?.avatar);
-	}
-
 	// The other member's status, in a DM (a group has none), offline included, as the member list shows it, and whether
 	// they're connected only from the mobile app. Statuses come through spaces, friendships and conversations, so someone
 	// who is neither our friend nor in a space with us shows theirs too.
@@ -102,6 +96,8 @@
 <div class="flex flex-col" role="group" aria-label="Chats">
 	{#each listed.shown as conv (conv.id)}
 		{@const shown = convStatus(conv)}
+		<!-- A DM shows the other person; a group, which has no picture, its mark, as its tab does (#376) -->
+		{@const other = otherMember(conv, $currentUser?.id)}
 		<!-- Its unread state and the mentions waiting in it, as its tab shows them: a mention leaves it unread. -->
 		{@const news = tabNews(
 			conversationTab(conv, $currentUser?.id),
@@ -133,7 +129,11 @@
 					}}
 				>
 					<Avatar size={32} status={shown?.status} mobileOnly={shown?.mobileOnly} ring="var(--duvet-sb-ring)">
-						<UserAvatar src={convAvatarSrc(conv)} name={convTitle(conv)} size={32} />
+						{#if other}
+							<UserAvatar src={getAvatarURL(other.user_id, other.user?.avatar)} name={convTitle(conv)} size={32} />
+						{:else}
+							<GroupMark size={32} />
+						{/if}
 					</Avatar>
 					<span class="flex min-w-0 flex-1 flex-col gap-px">
 						<span class="flex min-w-0 items-center gap-1.5">

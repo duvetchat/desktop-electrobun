@@ -97,7 +97,7 @@
 		takeList,
 		withPresent,
 	} from "$lib/jumps";
-	import { Ellipsis, LogOut, MessageSquare, Pencil, Phone, UserPlus } from "@lucide/svelte";
+	import { ChevronDown, Ellipsis, LogOut, MessageSquare, Pencil, Phone, UserPlus, Video } from "@lucide/svelte";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
 	import Chat from "$lib/components/Chat.svelte";
 	import MessageSearch from "$lib/components/MessageSearch.svelte";
@@ -125,8 +125,9 @@
 		conversation: Conversation;
 		onMemberAdded?: (member: ConversationMember) => void;
 		/** A pane's bar, which names the conversation in its tab, shows its actions while it shows (null once it's
-		 * gone). Without one, the view has its own header with them. */
-		onBarActions?: (conversationId: string, actions: Snippet | null) => void;
+		 * gone), and a group's Rename and Leave (`menu`) in the pane's own More. Without one, the view has its own
+		 * header with them. */
+		onBarActions?: (conversationId: string, actions: Snippet | null, menu?: Snippet | null) => void;
 		/** Whether its pane is the focused one, as its Chat takes it; true outside the panes (the friends view's). */
 		paneFocused?: boolean;
 	} = $props();
@@ -728,6 +729,11 @@
 		startConversationCall(conversation);
 	}
 
+	// The others see a call as any other: the camera turns on once this client is in it (#370).
+	function startVideoCall() {
+		startConversationCall(conversation, { video: true });
+	}
+
 	// The newest message the server has: not one still being sent.
 	function newestConfirmedId(msgs: { id: string; nonce?: string }[]): string {
 		let newestId = "";
@@ -849,7 +855,7 @@
 		if (!onBarActions) return;
 		const show = onBarActions;
 		const convId = conversation.id;
-		show(convId, actions);
+		show(convId, actions, actionsOnGroup.leave ? groupMenu : null);
 		return () => show(convId, null);
 	});
 
@@ -1006,20 +1012,48 @@
 	</ChatIntro>
 {/snippet}
 
+<!-- What the user can do to a group: in the pane's own More, after the pane's splits, or else in a menu of its own -->
+{#snippet groupMenu()}
+	{#if actionsOnGroup.rename}
+		<MenuItem icon={Pencil} onSelect={renameGroup}>Rename group</MenuItem>
+	{/if}
+	<MenuItem icon={LogOut} danger onSelect={leaveGroup}>Leave group</MenuItem>
+{/snippet}
+
 <!-- The call, the group's members and its pins and search: in the pane's bar, or else in a header of its own -->
 {#snippet actions()}
 	{@const buttonClass =
 		"text-duvet-ink2 hover:bg-duvet-card hover:text-duvet-ink focus-visible:outline-duvet-accent flex items-center gap-1 rounded-lg p-1.5 text-xs font-semibold transition-colors focus-visible:outline-2 disabled:cursor-not-allowed disabled:opacity-40 motion-reduce:transition-none"}
-	<button
-		type="button"
-		class={buttonClass}
-		onclick={startCall}
-		disabled={!!$activeCall || joinWaits}
-		title="Start call"
-		aria-label="Start call"
-	>
-		<Phone class="size-4" />
-	</button>
+	<!-- One press on the phone places a voice call, as before; the chevron beside it opens Voice call and Video call
+	     (#370): one control, not a second button beside it. -->
+	<div class="flex gap-px">
+		<button
+			type="button"
+			class="{buttonClass} rounded-r-[3px]"
+			onclick={startCall}
+			disabled={!!$activeCall || joinWaits}
+			title="Start call"
+			aria-label="Start call"
+		>
+			<Phone class="size-4" />
+		</button>
+		<Menu align="end" label="Start a call">
+			{#snippet trigger(props)}
+				<button
+					{...props}
+					type="button"
+					class="{buttonClass} w-[18px] justify-center rounded-l-[3px] px-0"
+					disabled={!!$activeCall || joinWaits}
+					title="Voice or video call"
+					aria-label="Voice or video call"
+				>
+					<ChevronDown size={12} strokeWidth={2.5} />
+				</button>
+			{/snippet}
+			<MenuItem icon={Phone} onSelect={startCall}>Voice call</MenuItem>
+			<MenuItem icon={Video} onSelect={startVideoCall}>Video call</MenuItem>
+		</Menu>
+	</div>
 	{#if conversation.type === 2 && isOwner}
 		<button type="button" class={buttonClass} onclick={openAddMemberModal} title="Add people" aria-label="Add people">
 			<UserPlus class="size-4" />
@@ -1027,18 +1061,20 @@
 		</button>
 	{/if}
 	<!-- The chat's members open from their faces, in a popover, as a room's do: nothing is docked beside the chat, and
-	     nothing floats over it until asked (#357). -->
+	     nothing floats over it until asked (#357). A group's can be kept open in every group (#366); a DM's two can't. -->
 	<MembersButton
 		members={convMembers}
 		channelId={conversation.id}
+		kind={conversation.type === 2 ? "groups" : undefined}
 		onRemoveMember={conversation.type === 2 && isOwner ? handleRemoveMember : undefined}
 	/>
 	{#key conversation.id}
 		<PinnedMessages channelId={conversation.id} conversation members={convMembers} toDirectMessage={toMessage} />
 		<MessageSearch conversationId={conversation.id} members={convMembers} toDirectMessage={toMessage} />
 	{/key}
-	{#if actionsOnGroup.leave}
-		<!-- The group's own menu. The pane has a More of its own beside it, so this one says whose it is. -->
+	<!-- The group's own menu, only in the view's own header: a pane's bar has one More, the pane's, which holds these
+	     too (#368). -->
+	{#if actionsOnGroup.leave && !onBarActions}
 		<Menu align="end" label="More for this group">
 			{#snippet trigger(props)}
 				<button
@@ -1051,10 +1087,7 @@
 					<Ellipsis class="size-4" />
 				</button>
 			{/snippet}
-			{#if actionsOnGroup.rename}
-				<MenuItem icon={Pencil} onSelect={renameGroup}>Rename group</MenuItem>
-			{/if}
-			<MenuItem icon={LogOut} danger onSelect={leaveGroup}>Leave group</MenuItem>
+			{@render groupMenu()}
 		</Menu>
 	{/if}
 {/snippet}

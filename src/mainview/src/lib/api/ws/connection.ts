@@ -144,6 +144,7 @@ import {
 	type MentionNotice,
 } from "$lib/mention-notices";
 import { storageTransfers } from "$lib/stores/storage-transfers.svelte";
+import { forgetMemberPages, memberJoined, withMemberPage, withMemberRole } from "$lib/stores/member-pages.svelte";
 import { toast } from "$lib/stores/toast.svelte";
 import { getElectrobunRpc, type ActivityPayload } from "$lib/electrobun-rpc";
 import { identifyData } from "$lib/api/ws/identify";
@@ -541,23 +542,9 @@ function onResumed() {
 	});
 }
 
+// As a page of the pager does, the role changes that waited for its members included (#380).
 function addMembersToSpace(spaceId: string, rows: SpaceMemberWithUser[]) {
-	gatewaySpaces.update((spaces) =>
-		spaces.map((s) => {
-			if (s.id !== spaceId) return s;
-			const existingUserIds = new Set(s.users.map((u) => u.id));
-			const incomingUserIds = new Set(rows.map((r) => r.user.id));
-			// Replace any placeholder members for the same users with real data
-			const filteredMembers = s.members.filter((m) => !incomingUserIds.has(m.user_id));
-			const newUsers = rows.map((r) => r.user).filter((u) => !existingUserIds.has(u.id));
-			const newMembers = rows.map(({ user: _u, max_pos: _p, ...m }) => m);
-			return {
-				...s,
-				users: [...s.users, ...newUsers],
-				members: [...filteredMembers, ...newMembers],
-			};
-		}),
-	);
+	gatewaySpaces.update((spaces) => spaces.map((s) => (s.id === spaceId ? withMemberPage(s, rows) : s)));
 }
 
 /** Loads a Space's first page of members, with their users: after someone joins it, and for the people of the voice
@@ -920,10 +907,12 @@ function handleEvent(event: GatewayEvent) {
 			// included): one the user is no longer in doesn't come back.
 			gatewaySpaces.set([]);
 			// And the bans loaded, whose events of the time away never came: a space's list loads anew as it's shown. So
-			// does the call history, and each conversation's newest page as its view comes.
+			// does the call history, and each conversation's newest page as its view comes, and each Space's members
+			// from their first page, a Space's whose page failed too (#388).
 			forgetBans();
 			forgetCalls();
 			forgetLists();
+			forgetMemberPages();
 			friendsReady.set(false);
 			allSpacesReady.set(false);
 			const guildIds = payload.data.guild_ids ?? [];
@@ -1027,9 +1016,11 @@ function handleEvent(event: GatewayEvent) {
 			}
 			gatewaySpaces.update((spaces) => spaces.filter((s) => s.id !== id));
 			// Its members' statuses there go with it: a bot's would outlive it otherwise. So do its bans, and its emojis and
-			// stickers, which the pickers offer only of Spaces the user is in.
+			// stickers, which the pickers offer only of Spaces the user is in, and its pages of members, a page on its way
+			// included: joined again, it comes back with the user alone (#380).
 			forgetSpaceStatuses(userStatusCache, id);
 			forgetBans(id);
+			forgetMemberPages(id);
 			spaceEmojis.update((m) => Object.fromEntries(Object.entries(m).filter(([spaceId]) => spaceId !== id)));
 			spaceStickers.update((m) => Object.fromEntries(Object.entries(m).filter(([spaceId]) => spaceId !== id)));
 			break;
@@ -1501,49 +1492,12 @@ function handleEvent(event: GatewayEvent) {
 			);
 			break;
 		}
-		case "MEMBER_ROLE_ADD": {
-			const raw = payload.data;
-			gatewaySpaces.update((spaces) =>
-				spaces.map((s) => {
-					const member = s.members.find((m) => m.id === raw.member_id);
-					if (!member) {
-						return s;
-					}
-					const userId = member.user_id;
-					const current = s.member_roles[userId] ?? [];
-					if (current.includes(raw.role_id)) {
-						return s;
-					}
-					return {
-						...s,
-						member_roles: {
-							...s.member_roles,
-							[userId]: [...current, raw.role_id],
-						},
-					};
-				}),
-			);
-			break;
-		}
+		case "MEMBER_ROLE_ADD":
 		case "MEMBER_ROLE_REMOVE": {
 			const raw = payload.data;
-			gatewaySpaces.update((spaces) =>
-				spaces.map((s) => {
-					const member = s.members.find((m) => m.id === raw.member_id);
-					if (!member) {
-						return s;
-					}
-					const userId = member.user_id;
-					const current = s.member_roles[userId] ?? [];
-					return {
-						...s,
-						member_roles: {
-							...s.member_roles,
-							[userId]: current.filter((id) => id !== raw.role_id),
-						},
-					};
-				}),
-			);
+			// By member ID: one whose page of members hasn't come gets it with that page (#380).
+			const has = payload.type === "MEMBER_ROLE_ADD";
+			gatewaySpaces.update((spaces) => withMemberRole(spaces, raw.member_id, raw.role_id, has));
 			break;
 		}
 		case "SPACE_MEMBER_ADD": {
@@ -1554,6 +1508,8 @@ function handleEvent(event: GatewayEvent) {
 			// The member may be a bot, whose commands the space's list doesn't have yet.
 			forgetSpaceCommands(raw.space_id);
 			loadSpaceMembers(raw.space_id);
+			// They come after everyone its pages loaded: a list of every member asks for them (#380).
+			memberJoined(raw.space_id);
 			break;
 		}
 		case "SPACE_MEMBER_REMOVE": {

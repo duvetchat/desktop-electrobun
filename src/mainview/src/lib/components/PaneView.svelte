@@ -1092,13 +1092,19 @@
 
 	// ── Leaf: the bar's actions ──────────────────────────────────────────────
 	// The pane's one bar has the active chat's actions after its tabs (or its name). A room's are the pane's own; a
-	// conversation's are its view's, which hands them here while it shows.
-	let conversationActions = $state<{ conversationId: string; actions: Snippet } | null>(null);
+	// conversation's are its view's, which hands them here while it shows, with a group's Rename and Leave (`menu`) for
+	// the pane's More: one ⋯ for the pane and its chat (#368).
+	let conversationActions = $state<{ conversationId: string; actions: Snippet; menu: Snippet | null } | null>(null);
 
-	function showConversationActions(conversationId: string, actions: Snippet | null) {
-		if (actions) conversationActions = { conversationId, actions };
+	function showConversationActions(conversationId: string, actions: Snippet | null, menu: Snippet | null = null) {
+		if (actions) conversationActions = { conversationId, actions, menu };
 		else if (conversationActions?.conversationId === conversationId) conversationActions = null;
 	}
+	const conversationMenu = $derived(
+		conversationActions && conversationActions.conversationId === activeConversation?.id
+			? conversationActions.menu
+			: null,
+	);
 
 	// ── Leaf: the header's title ─────────────────────────────────────────────
 	// A room's mark is its Space's icon, with the # or the speaker written before its name.
@@ -1251,13 +1257,20 @@
 				{:else if conversationActions && conversationActions.conversationId === activeConversation?.id}
 					{@render conversationActions.actions()}
 				{/if}
-				<!-- A room's members open from their faces, in a popover: nothing is docked beside the chat (#357). -->
+				<!-- A room's members open from their faces, in a popover: nothing is docked beside the chat (#357). A text
+				     room's can be kept open in every text room, while the panes show (#366). -->
 				{#if activeTabSpace && activeTab && !isConversationTab(activeTab)}
-					<MembersButton space={activeTabSpace} channelId={activeTab.channelId} />
+					<MembersButton
+						space={activeTabSpace}
+						channelId={activeTab.channelId}
+						kind={activeChannel?.type === "text" ? "rooms" : undefined}
+						shown={isActive}
+					/>
 				{/if}
 
-				<!-- The pane's own actions: the app's splits, to the right or below, at any depth. -->
-				<Menu align="end" label="Pane">
+				<!-- The pane's own actions: the app's splits, to the right or below, at any depth. After them, in a section
+				     of their own, its chat's: a group's Rename and Leave, the last as the most drastic (#368). -->
+				<Menu align="end" label="More">
 					{#snippet trigger(props)}
 						<IconButton {...props} label="More"><EllipsisIcon size={16} /></IconButton>
 					{/snippet}
@@ -1266,6 +1279,10 @@
 					{#if onClose}
 						<MenuSeparator />
 						<MenuItem icon={XIcon} onSelect={() => onClose?.()}>Close pane</MenuItem>
+					{/if}
+					{#if conversationMenu}
+						<MenuSeparator />
+						{@render conversationMenu()}
 					{/if}
 				</Menu>
 				<!-- Close pane. The click stops here: the pane is gone once onClose has run, and its own click (which focuses

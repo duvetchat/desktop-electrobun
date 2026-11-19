@@ -2,14 +2,13 @@
 	import {
 		CheckCheck as CheckCheckIcon,
 		ChevronDown as ChevronDownIcon,
-		ChevronRight as ChevronRightIcon,
 		Ellipsis as EllipsisIcon,
+		History as HistoryIcon,
 		Layers as LayersIcon,
 		LayoutGrid as LayoutGridIcon,
 		LogOut as LogOutIcon,
 		MessageCircle as MessageCircleIcon,
 		PanelLeft as PanelLeftIcon,
-		Phone as PhoneIcon,
 		Pin as PinIcon,
 		PinOff as PinOffIcon,
 		Plus as PlusIcon,
@@ -37,7 +36,15 @@
 	import { shownMentionCounts, shownUnreadConversations, shownUnreadRooms } from "$lib/notification-marks";
 	import { typingSentence } from "$lib/typing";
 	import { newestKnownIn } from "$lib/jumps";
-	import { clickFoldsSpace, groupSpaces, spaceNews, spaceReadAll, type OpenChats, type SpaceNews } from "$lib/nav";
+	import {
+		clickFoldsSpace,
+		groupSpaces,
+		spaceListRows,
+		spaceNews,
+		spaceReadAll,
+		type OpenChats,
+		type SpaceNews,
+	} from "$lib/nav";
 	import { navPrefs, togglePinned } from "$lib/nav-prefs.svelte";
 	import { isConversationTab, tabDragData, tabNews, tabTitle } from "$lib/pane";
 	import { currentShell } from "$lib/platform";
@@ -166,15 +173,10 @@
 
 	let quietOpen = $state(false);
 	const expandedSpaceId = $derived(isFriendsActive ? null : selectedSpaceId);
-	// The quiet Spaces wait behind one row, the one the focused pane is in excepted.
-	const shownQuiet = $derived(quietOpen ? groups.quiet : groups.quiet.filter((id) => id === expandedSpaceId));
-	const waitingQuiet = $derived(groups.quiet.filter((id) => !shownQuiet.includes(id)));
-	// One list, keyed by Space: a Space that gets news, or is pinned, moves in it without its tree being taken away.
-	const listedSpaces = $derived(
-		[...groups.pinned, ...groups.news, ...shownQuiet]
-			.map((id) => guildById.get(id))
-			.filter((g): g is Guild => g !== undefined),
-	);
+	// The quiet Spaces wait behind their own row, the one the focused pane is in excepted, which shows under it
+	// (spaceListRows). One list, keyed by Space, the quiet row among them: a Space that gets news, or is pinned, moves in
+	// it without its tree being taken away.
+	const rows = $derived(spaceListRows(groups, quietOpen, expandedSpaceId));
 
 	// Each Space's tree, shut or opened by the user (its caret), until the app closes. Without their say a busy Space
 	// is open and a quiet one shut (spaceUnfolded).
@@ -479,7 +481,7 @@
 			<Popover bind:open={callsOpen} label="Call history" class="w-[360px] rounded-[20px]">
 				{#snippet trigger(props)}
 					<IconButton {...props} label="Call history" title="Call history" active={callsOpen}>
-						<PhoneIcon size={16} />
+						<HistoryIcon size={16} />
 					</IconButton>
 				{/snippet}
 				<div class="flex max-h-[min(70vh,560px)] flex-col">
@@ -651,8 +653,8 @@
 					</section>
 				{/if}
 
-				<!-- Spaces (S-06): each a tree under its row. Pinned ones first, then those with news; the quiet ones wait
-				     behind one row. -->
+				<!-- Spaces (S-06): each a tree under its row. Pinned ones first, then those with news; the quiet ones under
+				     their own row, which folds them. -->
 				{#if sidebar.filter !== "chats"}
 					<section class="group/spaces flex flex-col" aria-label="Spaces">
 						<div class="flex h-[30px] items-end justify-between pr-1 pb-0.5 pl-2.5">
@@ -673,42 +675,33 @@
 						</div>
 
 						<ul class="flex flex-col">
-							{#each listedSpaces as guild (guild.id)}
-								{@render spaceRow(guild)}
+							{#each rows as row (row.kind === "space" ? row.id : "quiet")}
+								{#if row.kind === "space"}
+									{@const guild = guildById.get(row.id)}
+									{#if guild}{@render spaceRow(guild)}{/if}
+								{:else}
+									<!-- The quiet Spaces' own head, which folds them: in one place, and reading the same, whichever
+									     Space is open. -->
+									<li>
+										<button
+											type="button"
+											class="text-duvet-ink2 hover:text-duvet-ink flex h-[30px] w-full items-end gap-1 rounded-[10px] px-2.5 pb-0.5 text-left text-[11.5px] font-semibold transition-colors duration-[120ms] select-none motion-reduce:transition-none {rowFocus}"
+											aria-expanded={quietOpen}
+											data-jump
+											onclick={() => (quietOpen = !quietOpen)}
+										>
+											<span class="truncate">{quietSpacesLabel(row.count)}</span>
+											<ChevronDownIcon
+												class="mb-[3px] size-3 shrink-0 transition-transform duration-150 motion-reduce:transition-none {quietOpen
+													? ''
+													: '-rotate-90'}"
+												aria-hidden="true"
+											/>
+										</button>
+									</li>
+								{/if}
 							{/each}
 						</ul>
-
-						{#if waitingQuiet.length > 0 || (quietOpen && groups.quiet.length > 0)}
-							<button
-								type="button"
-								class="text-duvet-ink2 hover:bg-duvet-sb-hover hover:text-duvet-ink flex h-[34px] w-full items-center gap-[7px] rounded-[10px] pr-2.5 pl-[3px] text-left text-[13px] font-medium transition-colors duration-[120ms] motion-reduce:transition-none {rowFocus}"
-								aria-expanded={quietOpen}
-								aria-label={quietOpen ? "Fold quiet Spaces" : undefined}
-								data-jump
-								onclick={() => (quietOpen = !quietOpen)}
-							>
-								<ChevronRightIcon
-									class="mx-[3px] size-3 shrink-0 transition-transform duration-150 motion-reduce:transition-none {quietOpen
-										? 'rotate-90'
-										: ''}"
-									aria-hidden="true"
-								/>
-								<!-- Up to three of them, their icons stacked. -->
-								<span class="flex shrink-0 items-center" aria-hidden="true">
-									{#each (quietOpen ? groups.quiet : waitingQuiet).slice(0, 3) as id, at (id)}
-										{@const quiet = guildById.get(id)}
-										{#if quiet}
-											<span class="ring-duvet-sb-ring rounded-[5px] ring-[1.5px] {at > 0 ? '-ml-1.5' : ''}">
-												<SpaceIcon src={quiet.icon_url || null} name={quiet.name} size={16} />
-											</span>
-										{/if}
-									{/each}
-								</span>
-								<span class="min-w-0 flex-1 truncate">
-									{quietSpacesLabel(quietOpen ? groups.quiet.length : waitingQuiet.length)}
-								</span>
-							</button>
-						{/if}
 
 						{#if guilds.length === 0}
 							<button

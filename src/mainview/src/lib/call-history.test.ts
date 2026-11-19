@@ -241,6 +241,7 @@ describe("a call's row", () => {
 			id: id(9),
 			conversationId: DM,
 			title: "alice",
+			group: false,
 			avatar: `https://api.test/attachments/${ALICE_AVATAR}`,
 			line: { missed: false, before: "", name: "alice", after: " started a call that lasted 5 minutes." },
 			at: "2026-11-01T12:00:00Z",
@@ -254,9 +255,10 @@ describe("a call's row", () => {
 		});
 	});
 
-	test("a group's is its name, with no avatar, and a call the user wasn't in is missed", () => {
+	// #376: with no avatar, a row drew a face made from its title, as for a person without a picture.
+	test("a group's is its name, with the group's mark, and a call the user wasn't in is missed", () => {
 		const row = callRow(notice(9, { conversation: GROUP, caller: BOB, participants: [BOB, ALICE] }), group, ME);
-		expect(row).toMatchObject({ title: "Band", avatar: null });
+		expect(row).toMatchObject({ title: "Band", group: true, avatar: null });
 		expect(row?.line).toEqual({
 			missed: true,
 			before: "You missed a call from ",
@@ -266,7 +268,8 @@ describe("a call's row", () => {
 	});
 
 	test("a conversation this client doesn't know is named as one, and anything but a call notice has none", () => {
-		expect(callRow(notice(9), undefined, ME)).toMatchObject({ title: "Chat", avatar: null });
+		// Nobody's face either: its tab draws the group's mark for it too.
+		expect(callRow(notice(9), undefined, ME)).toMatchObject({ title: "Chat", group: true, avatar: null });
 		expect(callRow(text(9), dm, ME)).toBeNull();
 	});
 

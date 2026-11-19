@@ -1,32 +1,55 @@
-import { beforeEach, expect, mock, test } from "bun:test";
+import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { get } from "svelte/store";
 import type { SpaceMemberWithUser } from "$lib/api/spaces";
 import type { GatewayMember, GatewaySpace, GatewayUser } from "$lib/types";
 
-// The pages the API hands out, in order, and what it was asked for each.
-let pages: (SpaceMemberWithUser[] | "fails")[] = [];
+// The pages the API hands out, in order, and what it was asked for each, and when. A promise is a page still on its way;
+// an error is the API's refusal.
+let pages: (SpaceMemberWithUser[] | "fails" | Error | Promise<SpaceMemberWithUser[]>)[] = [];
 let asked: { spaceId: string; after: string | undefined }[] = [];
+let askedAt: number[] = [];
 mock.module("$lib/api/spaces", () => ({
 	MEMBERS_PAGE_SIZE: 2,
 	getSpaceMembers: async (spaceId: string, cursor?: { id: string }) => {
 		asked.push({ spaceId, after: cursor?.id });
+		askedAt.push(performance.now());
 		const page = pages.shift();
 		if (!page || page === "fails") throw new Error("no page");
+		if (page instanceof Error) throw page;
 		return page;
 	},
 }));
 // The store's .svelte.ts module uses $state, which only Svelte's compiler knows: here it's the value itself.
 Object.assign(globalThis, { $state: <T>(value: T) => value });
+const { FetchError } = await import("$lib/api/api");
 const { gatewaySpaces } = await import("$lib/stores.svelte");
 const {
 	cursorAfter,
 	ensureMembers,
+	EVERY_PAGE_GAP,
 	forgetMemberPages,
+	loadEveryMember,
 	loadMoreMembers,
+	memberJoined,
+	membersFailed,
 	membersLoading,
-	restartMembers,
+	moreMembers,
+	RATE_LIMIT_TRIES,
 	withMemberPage,
 } = await import("$lib/stores/member-pages.svelte");
+
+// The API turning a page away for its rate (429), the wait it asks for in its headers.
+const tooMany = (resetAfter: string) =>
+	new FetchError(
+		"Request failed with status 429",
+		{},
+		{
+			data: { error: "too many requests, try again later" },
+			status: 429,
+			statusText: "",
+			headers: new Headers({ "Retry-After": "1", "X-RateLimit-Reset-After": resetAfter }),
+		},
+	);
 
 const user = (n: number): GatewayUser => ({
 	id: `user-${n}`,
@@ -77,6 +100,7 @@ const held = () => get(gatewaySpaces).find((s) => s.id === "harbour")!;
 beforeEach(() => {
 	pages = [];
 	asked = [];
+	askedAt = [];
 	forgetMemberPages();
 	gatewaySpaces.set([space([1])]);
 });
@@ -140,35 +164,240 @@ test("a page that fails leaves the list as it was, and the next try asks for the
 
 test("the first page is asked for once, however many panes show the Space", async () => {
 	pages = [[row(1), row(2)]];
-	await ensureMembers("harbour", 1);
-	await ensureMembers("harbour", held().users.length);
-	await ensureMembers("harbour", held().users.length);
+	await ensureMembers("harbour");
+	await ensureMembers("harbour");
+	await ensureMembers("harbour");
 	expect(asked).toHaveLength(1);
 });
 
-test("a Space loaded anew, without its pages, starts over from the first", async () => {
+test("a Space left and joined again starts its members over from the first page", async () => {
 	pages = [
 		[row(1), row(2)],
 		[row(3), row(4)],
 		[row(1), row(2)],
 	];
-	await ensureMembers("harbour", 1);
+	await ensureMembers("harbour");
 	await loadMoreMembers("harbour");
 	expect(held().users).toHaveLength(4);
-	// A new gateway session: the Space comes back with the one user it sends.
+	// SPACE_DELETE forgets the Space's pages; SPACE_CREATE brings it back with the one user the gateway sends.
+	forgetMemberPages("harbour");
 	gatewaySpaces.set([space([1])]);
-	await ensureMembers("harbour", 1);
+	await ensureMembers("harbour");
 	expect(asked.map((a) => a.after)).toEqual([undefined, "member-2", undefined]);
 	expect(held().members.map((m) => m.id)).toEqual(["member-1", "member-2"]);
 });
 
-test("starting over drops the page on its way", async () => {
-	pages = [
-		[row(5), row(6)],
-		[row(1), row(2)],
-	];
-	const stale = loadMoreMembers("harbour");
-	const fresh = restartMembers("harbour");
-	await Promise.all([stale, fresh]);
-	expect(held().members.map((m) => m.id)).toEqual(["member-1", "member-2"]);
+// #380: a page that landed after the user left the Space moved its cursor on: joined again in the same session, the
+// members before it never came.
+test("forgetting a Space's pages drops its page on its way, and only its own", async () => {
+	gatewaySpaces.set([space([1]), { ...space([1]), id: "cove", name: "Cove" }]);
+	let harbourPage!: (page: SpaceMemberWithUser[]) => void;
+	let covePage!: (page: SpaceMemberWithUser[]) => void;
+	pages = [new Promise((resolve) => (harbourPage = resolve)), new Promise((resolve) => (covePage = resolve))];
+	const harbour = loadMoreMembers("harbour");
+	const cove = loadMoreMembers("cove");
+	forgetMemberPages("harbour");
+	harbourPage([row(5), row(6)]);
+	covePage([row(7)]);
+	await Promise.all([harbour, cove]);
+	const of = (id: string) =>
+		get(gatewaySpaces)
+			.find((s) => s.id === id)!
+			.members.map((m) => m.id);
+	expect(of("harbour")).toEqual(["placeholder-1"]);
+	expect(of("cove")).toEqual(["placeholder-1", "member-7"]);
+	expect(membersLoading("harbour")).toBe(false);
+	expect(membersLoading("cove")).toBe(false);
+});
+
+// Runs a test whose pages fail without their errors' lines in its output.
+async function quietly(run: () => Promise<void>) {
+	const logged = console.error;
+	console.error = () => {};
+	try {
+		await run();
+	} finally {
+		console.error = logged;
+	}
+}
+
+// #388: a page that failed was only logged. The spinner went and the list stayed as it was, with nothing to say so, and
+// nothing asked for it again but a scroll to the list's end, which a list of a few members can't have: a Space whose
+// first page failed showed its user alone until the app closed.
+test("a page that fails says so, and is asked for again when it's tried again, not before", async () => {
+	await quietly(async () => {
+		pages = ["fails", [row(1), row(2)]];
+		await ensureMembers("harbour");
+		expect(membersFailed("harbour")).toBe(true);
+		expect(membersLoading("harbour")).toBe(false);
+		// The faces in a pane's bar ask as the Space changes, and the list as it shows: neither asks again by itself, which
+		// would ask in a loop while the API refuses.
+		await ensureMembers("harbour");
+		expect(asked).toHaveLength(1);
+		// Try again: the same page, which clears the failure as it comes.
+		await loadMoreMembers("harbour");
+		expect(membersFailed("harbour")).toBe(false);
+		expect(asked.map((a) => a.after)).toEqual([undefined, undefined]);
+		expect(held().members.map((m) => m.id)).toEqual(["member-1", "member-2"]);
+		expect(membersFailed(null)).toBe(false);
+	});
+});
+
+test("a new session starts the members over, those of a Space whose page failed too", async () => {
+	await quietly(async () => {
+		pages = ["fails", [row(1), row(2)]];
+		await ensureMembers("harbour");
+		expect(membersFailed("harbour")).toBe(true);
+		// READY: the Spaces come back without their pages.
+		forgetMemberPages();
+		expect(membersFailed("harbour")).toBe(false);
+		await ensureMembers("harbour");
+		expect(asked).toHaveLength(2);
+		expect(held().members.map((m) => m.id)).toEqual(["member-1", "member-2"]);
+	});
+});
+
+// #388 also had a Space switch race the page on its way: since #357 each Space has its own pages, which this keeps.
+test("two Spaces' pages on their way at once land each in its own Space, each ending only its own spinner", async () => {
+	gatewaySpaces.set([space([1]), { ...space([1]), id: "cove", name: "Cove" }]);
+	let harbourPage!: (page: SpaceMemberWithUser[]) => void;
+	let covePage!: (page: SpaceMemberWithUser[]) => void;
+	pages = [new Promise((resolve) => (harbourPage = resolve)), new Promise((resolve) => (covePage = resolve))];
+	const harbour = loadMoreMembers("harbour");
+	const cove = loadMoreMembers("cove");
+	covePage([row(7)]);
+	await cove;
+	expect(membersLoading("cove")).toBe(false);
+	expect(membersLoading("harbour")).toBe(true);
+	harbourPage([row(1), row(2)]);
+	await harbour;
+	expect(membersLoading("harbour")).toBe(false);
+	const of = (id: string) =>
+		get(gatewaySpaces)
+			.find((s) => s.id === id)!
+			.members.map((m) => m.id);
+	expect(of("harbour")).toEqual(["member-1", "member-2"]);
+	expect(of("cove")).toEqual(["placeholder-1", "member-7"]);
+});
+
+// #380: the Members section of a Space's settings lists every member, which the API finds no one among, so it loads
+// the Space's pages one after another, as its effect asks again each time one lands.
+describe("a list of every member", () => {
+	const step = (upTo = 100) => loadEveryMember("harbour", held().users.length, upTo);
+
+	test("loads page after page, until one comes short", async () => {
+		pages = [[row(1), row(2)], [row(3), row(4)], [row(5)]];
+		for (let i = 0; i < 5; i++) await step();
+		expect(asked.map((a) => a.after)).toEqual([undefined, "member-2", "member-4"]);
+		expect(held().members.map((m) => m.id)).toEqual(["member-1", "member-2", "member-3", "member-4", "member-5"]);
+		expect(moreMembers("harbour")).toBe(false);
+	});
+
+	test("stops at its limit, with more left", async () => {
+		pages = [
+			[row(1), row(2)],
+			[row(3), row(4)],
+			[row(5), row(6)],
+		];
+		for (let i = 0; i < 5; i++) await step(3);
+		expect(asked).toHaveLength(2);
+		expect(moreMembers("harbour")).toBe(true);
+	});
+
+	test("stops at a page that fails, until it's tried again", async () => {
+		await quietly(async () => {
+			pages = [[row(1), row(2)], "fails", [row(3)]];
+			for (let i = 0; i < 5; i++) await step();
+			expect(asked).toHaveLength(2);
+			expect(membersFailed("harbour")).toBe(true);
+			await loadMoreMembers("harbour");
+			await step();
+			expect(asked.map((a) => a.after)).toEqual([undefined, "member-2", "member-2"]);
+			expect(held().members.map((m) => m.id)).toEqual(["member-1", "member-2", "member-3"]);
+		});
+	});
+
+	// The pages started over when the app held fewer of the Space's users than after the last, which is also what a
+	// member leaving makes: in a Space of 5,000, each kick or ban from the section asked for every page again.
+	test("asks for nothing again when a member leaves, or is kicked or banned", async () => {
+		pages = [[row(1), row(2)], [row(3), row(4)], [row(5)]];
+		for (let i = 0; i < 5; i++) await step();
+		expect(asked).toHaveLength(3);
+		// SPACE_MEMBER_REMOVE, as connection.ts applies it: the member goes, with their user.
+		gatewaySpaces.update((spaces) =>
+			spaces.map((s) => ({
+				...s,
+				members: s.members.filter((m) => m.id !== "member-3"),
+				users: s.users.filter((u) => u.id !== "user-3"),
+			})),
+		);
+		for (let i = 0; i < 3; i++) await step();
+		await ensureMembers("harbour");
+		expect(asked).toHaveLength(3);
+		expect(moreMembers("harbour")).toBe(false);
+	});
+
+	// Someone who joins holds no role, so the API lists them after everyone loaded: the last page, which came short, is
+	// asked for again from where the full one before it ended.
+	test("asks again for the last page once someone joined", async () => {
+		pages = [[row(1), row(2)], [row(3)], [row(3), row(9)]];
+		for (let i = 0; i < 3; i++) await step();
+		expect(moreMembers("harbour")).toBe(false);
+		memberJoined("harbour");
+		expect(moreMembers("harbour")).toBe(true);
+		await step();
+		expect(asked.map((a) => a.after)).toEqual([undefined, "member-2", "member-2"]);
+		expect(held().members.map((m) => m.id)).toContain("member-9");
+	});
+
+	test("asks again for the last page when someone joined while it was on its way", async () => {
+		let last!: (page: SpaceMemberWithUser[]) => void;
+		pages = [[row(1), row(2)], new Promise((resolve) => (last = resolve)), [row(3), row(9)]];
+		await step();
+		const lastPage = step();
+		memberJoined("harbour");
+		last([row(3)]);
+		await lastPage;
+		expect(moreMembers("harbour")).toBe(true);
+		await step();
+		expect(held().members.map((m) => m.id)).toContain("member-9");
+	});
+
+	test("a Space whose members no list loaded has nothing to ask again for", () => {
+		memberJoined("cove");
+		expect(membersLoading("cove")).toBe(false);
+		expect(asked).toEqual([]);
+	});
+
+	// The API takes 50 requests a second from a user, and 64 a minute of a Space's members: a large Space's pages back to
+	// back would take a fast link past both, and a page it turned away failed the list.
+	test("asks for its pages EVERY_PAGE_GAP ms apart", async () => {
+		pages = [[row(1), row(2)], [row(3), row(4)], [row(5), row(6)], [row(7)]];
+		for (let i = 0; i < 5; i++) await step();
+		expect(asked).toHaveLength(4);
+		const gaps = askedAt.slice(1).map((at, i) => at - askedAt[i]!);
+		for (const gap of gaps) expect(gap).toBeGreaterThanOrEqual(EVERY_PAGE_GAP - 10);
+		expect(held().users).toHaveLength(7);
+	});
+
+	test("waits as long as the API asks for a page it turned away for its rate, then asks again", async () => {
+		pages = [tooMany("0.080"), [row(1), row(2)]];
+		await step();
+		expect(membersFailed("harbour")).toBe(false);
+		expect(asked.map((a) => a.after)).toEqual([undefined, undefined]);
+		expect(askedAt[1]! - askedAt[0]!).toBeGreaterThanOrEqual(70);
+		expect(held().members.map((m) => m.id)).toEqual(["member-1", "member-2"]);
+	});
+
+	test("fails a page the API keeps turning away, which Try again asks for again", async () => {
+		await quietly(async () => {
+			pages = Array.from({ length: RATE_LIMIT_TRIES }, () => tooMany("0.010"));
+			await step();
+			expect(asked).toHaveLength(RATE_LIMIT_TRIES);
+			expect(membersFailed("harbour")).toBe(true);
+			pages = [[row(1)]];
+			await loadMoreMembers("harbour");
+			expect(membersFailed("harbour")).toBe(false);
+		});
+	});
 });

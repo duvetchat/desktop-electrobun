@@ -7,6 +7,7 @@
 	import { currentShell } from "$lib/platform";
 	import { keysFor, SHELL_KEYS } from "$lib/shell-layout";
 	import { conversations, currentUser } from "$lib/stores.svelte";
+	import GroupMark from "$lib/components/GroupMark.svelte";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
 	import Kbd from "$lib/components/ui/Kbd.svelte";
 
@@ -37,7 +38,11 @@
 						class="bg-duvet-card text-duvet-ink shadow-duvet-raised hover:shadow-duvet-lifted focus-visible:outline-duvet-accent flex h-[34px] max-w-56 items-center gap-2 rounded-xl pr-3 pl-2 text-[13px] font-medium transition-shadow duration-[120ms] focus-visible:outline-2 motion-reduce:transition-none"
 						onclick={() => onOpen(conversation)}
 					>
-						<UserAvatar src={other ? getAvatarURL(other.user_id, other.user?.avatar) : null} name={title} size={18} />
+						{#if other}
+							<UserAvatar src={getAvatarURL(other.user_id, other.user?.avatar)} name={title} size={18} />
+						{:else}
+							<GroupMark size={18} />
+						{/if}
 						<span class="truncate">{title}</span>
 					</button>
 				</li>

@@ -11,6 +11,7 @@
 	import { conversations, currentUser, friends, gatewaySpaces } from "$lib/stores.svelte";
 	import { shownMentionCounts, shownUnreadConversations, shownUnreadRooms } from "$lib/notification-marks";
 	import SpaceIcon from "$lib/components/ui/SpaceIcon.svelte";
+	import GroupMark from "$lib/components/GroupMark.svelte";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
 	import Kbd from "$lib/components/ui/Kbd.svelte";
 	import { countBadgeClass, GLASS_STRONG } from "$lib/components/ui/recipes";
@@ -49,6 +50,8 @@
 				id: string;
 				name: string;
 				sub: string;
+				/** Drawn with the group's mark rather than a face, as its tab is: a group, which has no picture (#376). */
+				group: boolean;
 				avatar: string | null;
 				mentions: number;
 				unread: boolean;
@@ -105,6 +108,7 @@
 							? "1 member"
 							: `${conv.members.length} members`
 						: "Direct message",
+				group: conv.type === 2 || !other,
 				avatar: conv.type === 2 ? null : (getAvatarURL(other?.user_id ?? "", other?.user?.avatar) ?? null),
 				mentions: $shownMentionCounts[conv.id] ?? 0,
 				unread: $shownUnreadConversations.has(conv.id) || !!$shownMentionCounts[conv.id],
@@ -259,6 +263,8 @@
 							>
 								{#if item.voice}<SpeakerSimpleHighIcon size={15} />{:else}<HashIcon size={15} />{/if}
 							</span>
+						{:else if item.kind === "conversation" && item.group}
+							<GroupMark size={24} />
 						{:else}
 							<UserAvatar src={item.avatar} name={item.name} size={24} />
 						{/if}
