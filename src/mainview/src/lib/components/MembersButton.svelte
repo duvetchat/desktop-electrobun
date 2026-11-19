@@ -42,7 +42,7 @@
 	const pagedSpaceId = $derived(given === undefined ? (space?.id ?? null) : null);
 
 	$effect(() => {
-		if (pagedSpaceId) void ensureMembers(pagedSpaceId, space?.users.length ?? 0);
+		if (pagedSpaceId) void ensureMembers(pagedSpaceId);
 	});
 
 	// A page that failed (#388) is asked for again as the popover opens, once, and otherwise by its Try again: not by each

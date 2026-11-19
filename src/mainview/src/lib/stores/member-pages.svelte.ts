@@ -22,8 +22,6 @@ type Pager = {
 	loading: boolean;
 	/** The last page failed (#388): the lists say so, with Try again, and nothing asks for it again by itself. */
 	failed: boolean;
-	/** How many of the Space's users the app held after the last page: fewer since means the Space was loaded anew. */
-	held: number;
 	/** How many have joined the Space while its pages were followed (memberJoined), which a page on its way may lack. */
 	joins: number;
 	/** When its last page was asked for (performance.now), which the next of a list of every member waits on. */
@@ -86,7 +84,6 @@ function pagerOf(spaceId: string): Pager {
 		hasMore: true,
 		loading: false,
 		failed: false,
-		held: 0,
 		joins: 0,
 		askedAt: -Infinity,
 		abort: null,
@@ -129,23 +126,14 @@ export async function loadMoreMembers(spaceId: string, wait = 0): Promise<void> 
 			}
 		}
 		if (abort.signal.aborted) return;
-		let held = 0;
-		gatewaySpaces.update((spaces) =>
-			spaces.map((s) => {
-				if (s.id !== spaceId) return s;
-				const next = withMemberPage(s, page);
-				held = next.users.length;
-				return next;
-			}),
-		);
-		pager.held = held;
+		gatewaySpaces.update((spaces) => spaces.map((s) => (s.id === spaceId ? withMemberPage(s, page) : s)));
 		const cursor = cursorAfter(page);
 		if (cursor) pager.cursor = cursor;
 		// A page that came short is the last, but for whoever joined while it was on its way (memberJoined).
 		else if (pager.joins === joins) pager.hasMore = false;
 	} catch (e: unknown) {
-		// A page dropped for a newer one (restartMembers) or for a new session (forgetMemberPages) failed nothing. One
-		// the API refused, or that got no answer in its time (lib/api/api.ts), did.
+		// A page dropped as the user left the Space, or for a new session (forgetMemberPages), failed nothing. One the
+		// API refused, or that got no answer in its time (lib/api/api.ts), did.
 		if (abort.signal.aborted) return;
 		console.error("[members] pagination error:", e);
 		pager.failed = true;
@@ -154,30 +142,14 @@ export async function loadMoreMembers(spaceId: string, wait = 0): Promise<void> 
 	}
 }
 
-/** Starts the Space's members over from their first page, dropping a page still on its way. */
-export function restartMembers(spaceId: string): Promise<void> {
-	const pager = pagerOf(spaceId);
-	pager.abort?.abort();
-	pager.abort = null;
-	pager.cursor = null;
-	pager.hasMore = true;
-	pager.loading = false;
-	pager.failed = false;
-	pager.held = 0;
-	return loadMoreMembers(spaceId);
-}
-
 /**
  * Makes sure the Space's first page of members is loaded or on its way: the first time it's asked for, and again once
- * the app holds fewer of the Space's users than after its last page (`heldNow`), which is the Space loaded anew, as
- * after the user left it and joined again. A page that failed isn't asked for again here, where whatever shows the
- * Space asks as it changes, and would ask in a loop while the API refuses: the lists' Try again does (loadMoreMembers).
+ * its pages were forgotten, as a Space left (SPACE_DELETE) and a new session (READY) forget them: either brings it back
+ * with its user alone. A page that failed isn't asked for again here, where whatever shows the Space asks as it
+ * changes, and would ask in a loop while the API refuses: the lists' Try again does (loadMoreMembers).
  */
-export function ensureMembers(spaceId: string, heldNow: number): Promise<void> {
-	const pager = pagers[spaceId];
-	if (!pager) return loadMoreMembers(spaceId);
-	if (!pager.loading && heldNow < pager.held) return restartMembers(spaceId);
-	return Promise.resolve();
+export function ensureMembers(spaceId: string): Promise<void> {
+	return pagers[spaceId] ? Promise.resolve() : loadMoreMembers(spaceId);
 }
 
 /** Whether the Space may have members left to load, as far as its pages tell. */
@@ -189,15 +161,13 @@ export function moreMembers(spaceId: string): boolean {
  * Loads the Space's next page for a list of all its members, the Members section of its settings (#380): one when none
  * is on its way, the last didn't fail and more are left, while the app holds fewer than `upTo` of the Space's users
  * (`heldNow`), EVERY_PAGE_GAP ms after the last was asked for. The list asks again as each page lands, so they come one
- * after another; a Space loaded anew starts over. A page that failed waits for the list's Try again (loadMoreMembers),
- * as in ensureMembers.
+ * after another. A member leaving changes none of it: their page stays loaded. A page that failed waits for the list's
+ * Try again (loadMoreMembers), as in ensureMembers.
  */
 export function loadEveryMember(spaceId: string, heldNow: number, upTo: number): Promise<void> {
 	const pager = pagers[spaceId];
 	if (!pager) return loadMoreMembers(spaceId);
-	if (pager.loading || pager.failed) return Promise.resolve();
-	if (heldNow < pager.held) return restartMembers(spaceId);
-	if (heldNow >= upTo) return Promise.resolve();
+	if (pager.loading || pager.failed || heldNow >= upTo) return Promise.resolve();
 	return loadMoreMembers(spaceId, pager.askedAt + EVERY_PAGE_GAP - performance.now());
 }
 
@@ -213,10 +183,14 @@ export function memberJoined(spaceId: string): void {
 	pager.hasMore = true;
 }
 
-/** Forgets every pager, dropping the pages on their way: a new gateway session's, whose Spaces come back without their
- * pages (a Space whose page failed is asked again then), or a test's. */
-export function forgetMemberPages(): void {
-	for (const id of Object.keys(pagers)) {
+/**
+ * Forgets a Space's pager, or every one, dropping the pages on their way: a Space the user left (SPACE_DELETE), or every
+ * Space for a new gateway session (READY), both of which bring a Space back with its user alone, whose pages start over
+ * from the first (a page that failed included); or a test's. A page that landed after the user left moved the pager
+ * on, and the Space joined again never got the members before it (#380).
+ */
+export function forgetMemberPages(spaceId?: string): void {
+	for (const id of spaceId === undefined ? Object.keys(pagers) : [spaceId]) {
 		pagers[id]?.abort?.abort();
 		delete pagers[id];
 	}

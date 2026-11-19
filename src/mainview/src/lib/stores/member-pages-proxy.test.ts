@@ -83,7 +83,7 @@ beforeEach(() => {
 test("a Space's first page ends its spinner as it lands, and the page after it can be asked for", async () => {
 	let land!: (page: SpaceMemberWithUser[]) => void;
 	answer = () => new Promise((resolve) => (land = resolve));
-	const first = ensureMembers("harbour", 1);
+	const first = ensureMembers("harbour");
 	expect(membersLoading("harbour")).toBe(true);
 	land([row(1), row(2)]);
 	await first;

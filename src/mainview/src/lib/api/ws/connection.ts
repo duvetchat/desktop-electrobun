@@ -1030,9 +1030,11 @@ function handleEvent(event: GatewayEvent) {
 			}
 			gatewaySpaces.update((spaces) => spaces.filter((s) => s.id !== id));
 			// Its members' statuses there go with it: a bot's would outlive it otherwise. So do its bans, and its emojis and
-			// stickers, which the pickers offer only of Spaces the user is in.
+			// stickers, which the pickers offer only of Spaces the user is in, and its pages of members, a page on its way
+			// included: joined again, it comes back with the user alone (#380).
 			forgetSpaceStatuses(userStatusCache, id);
 			forgetBans(id);
+			forgetMemberPages(id);
 			spaceEmojis.update((m) => Object.fromEntries(Object.entries(m).filter(([spaceId]) => spaceId !== id)));
 			spaceStickers.update((m) => Object.fromEntries(Object.entries(m).filter(([spaceId]) => spaceId !== id)));
 			break;
