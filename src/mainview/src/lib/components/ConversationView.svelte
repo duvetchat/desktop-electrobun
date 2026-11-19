@@ -1061,10 +1061,11 @@
 		</button>
 	{/if}
 	<!-- The chat's members open from their faces, in a popover, as a room's do: nothing is docked beside the chat, and
-	     nothing floats over it until asked (#357). -->
+	     nothing floats over it until asked (#357). A group's can be kept open in every group (#366); a DM's two can't. -->
 	<MembersButton
 		members={convMembers}
 		channelId={conversation.id}
+		kind={conversation.type === 2 ? "groups" : undefined}
 		onRemoveMember={conversation.type === 2 && isOwner ? handleRemoveMember : undefined}
 	/>
 	{#key conversation.id}
