@@ -56,6 +56,9 @@ Rulings, from `PLATFORM.md`:
 1. **Vibrancy** ships **off** everywhere for now: the opaque tint (the prototype's Linux/web look) on
    every platform. The native bridge is proven and cheap, but it was never seen by a human, so it waits
    for one look before it ships. Listed as a follow-up.
+   **Changed 2026-11-19 (#374):** on in the main window on macOS, as the issue asks: the system's
+   sidebar material behind the page, under the design's tint. Every other window and platform keeps
+   the opaque tint. What was seen and what wasn't is in `PLATFORM.md` §9.
 2. **Typing on macOS 27** is broken in today's build (the window isn't key, the webview isn't first
    responder). The foundation fixes it; until then desktop QA drives through the QA socket, which
    never ships.

@@ -19,8 +19,17 @@ test("the preload tells the page its system, its title bar's style and which win
 		os: "darwin",
 		titleBarStyle: "hiddenInset",
 		nativeButtons: true,
+		vibrancy: false,
 		window: "main",
 	});
+});
+
+// #374: the page paints nothing behind its sidebar only where Bun says the system's material is behind it.
+test("the preload says the sidebar's material is behind the page only when told so", () => {
+	const chrome = { titleBarStyle: "hiddenInset", nativeButtons: true } as const;
+	expect(run(shellPreload("main", { ...chrome, vibrancy: true }, "darwin"), true).__duvetShell?.vibrancy).toBe(true);
+	expect(run(shellPreload("main", { ...chrome, vibrancy: false }, "darwin"), true).__duvetShell?.vibrancy).toBe(false);
+	expect(run(shellPreload("main", chrome, "darwin"), true).__duvetShell?.vibrancy).toBe(false);
 });
 
 test("it takes the system from the process unless told", () => {
@@ -28,6 +37,7 @@ test("it takes the system from the process unless told", () => {
 		os: process.platform,
 		titleBarStyle: "hidden",
 		nativeButtons: false,
+		vibrancy: false,
 		window: "media",
 	});
 });
@@ -50,7 +60,7 @@ test("a subframe is told nothing", () => {
 test("the script is one statement of plain JavaScript, with nothing of the page's in it", () => {
 	const script = shellPreload("space-settings", { titleBarStyle: "hiddenInset", nativeButtons: false }, "darwin");
 	expect(script).toBe(
-		'if (window.top === window) window.__duvetShell = Object.freeze({"os":"darwin","titleBarStyle":"hiddenInset","nativeButtons":false,"window":"space-settings"});',
+		'if (window.top === window) window.__duvetShell = Object.freeze({"os":"darwin","titleBarStyle":"hiddenInset","nativeButtons":false,"vibrancy":false,"window":"space-settings"});',
 	);
 });
 
@@ -82,7 +92,8 @@ test("a window without the system's buttons says so to its page, on every system
 		for (const window of ["main", "media", "settings", "space-settings"] as const) {
 			const chrome = windowChrome(system);
 			const told = run(shellPreload(window, chrome, system), true).__duvetShell;
-			expect(told).toEqual({ os: system, window, ...chrome });
+			// No window's chrome asks for the material: the main window's page is told apart (index.ts).
+			expect(told).toEqual({ os: system, window, vibrancy: false, ...chrome });
 			expect(told?.nativeButtons).toBe(system === "darwin");
 		}
 	}

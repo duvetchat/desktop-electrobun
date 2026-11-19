@@ -15,6 +15,8 @@
 	import { driftSpecksOnScreen } from "$lib/spoiler-specks";
 	import { followSystemTheme } from "$lib/theme.svelte";
 	import { currentShell } from "$lib/platform";
+	import { appChrome } from "$lib/stores/chrome.svelte";
+	import { VIBRANT_CLASS, followWornTheme, showsMaterial, watchClasses } from "$lib/vibrancy";
 	import { onMount } from "svelte";
 
 	let { children } = $props();
@@ -25,6 +27,14 @@
 	// own chrome: the title bar here is the main window's.
 	const shell = currentShell();
 	const titleBar = shell.window === "main" && shell.chrome !== "web";
+
+	// The sidebar's glass on macOS (#374, lib/vibrancy.ts): while the app's shell is up, the page lets go of its own
+	// backgrounds, here and on <html> and <body> (app.css), and the system's material shows behind the sidebar. Set in
+	// the turn the shell draws in, so no frame has one without the other.
+	const glass = $derived(showsMaterial(shell, appChrome.shellUp));
+	$effect(() => {
+		document.documentElement.classList.toggle(VIBRANT_CLASS, glass);
+	});
 
 	onMount(() => {
 		setupExternalLinks();
@@ -38,9 +48,19 @@
 		const stopSpecks = driftSpecksOnScreen(document);
 		// app.html set the theme before the first paint; this keeps it with the system's while it's System.
 		const stopTheme = followSystemTheme();
+		// The material behind the sidebar wears the theme the page does (lib/vibrancy.ts).
+		const root = document.documentElement;
+		const stopMaterial = shell.vibrancy
+			? followWornTheme(
+					root,
+					(theme) => void getElectrobunRpc().then((rpc) => rpc?.send.windowTheme({ theme })),
+					watchClasses(root),
+				)
+			: () => {};
 		return () => {
 			stopSpecks();
 			stopTheme();
+			stopMaterial();
 		};
 	});
 </script>
@@ -49,7 +69,9 @@
 	<link rel="icon" href={favicon} />
 </svelte:head>
 
-<div class="bg-duvet-sunk text-duvet-ink flex h-(--app-height) w-(--app-width) flex-col overflow-hidden">
+<div
+	class="text-duvet-ink flex h-(--app-height) w-(--app-width) flex-col overflow-hidden {glass ? '' : 'bg-duvet-sunk'}"
+>
 	{#if titleBar}
 		<Header />
 	{/if}

@@ -75,12 +75,23 @@ describe("the palette", () => {
 		expect(block(/\.duvet-light \{([\s\S]*?)\n\}/)).toMatch(/^\s*color-scheme: light;/m);
 	});
 
-	// Vibrancy is off until someone has seen it (DECISIONS.md): the sidebar is the solid tint on every platform.
+	// The solid tint, everywhere but where the sidebar is glass: there its column takes the vibrant values (#374,
+	// lib/vibrancy.test.ts).
 	test("the sidebar's material is the solid tint, without a blur", () => {
 		expect(dark.get("--duvet-sb-bg")).toBe("#0d0d12");
 		expect(light.get("--duvet-sb-bg")).toBe("#edf1ff");
 		expect(dark.get("--duvet-sb-filter")).toBe("none");
 		expect(light.has("--duvet-sb-filter")).toBe(false);
+	});
+
+	// DESIGN-MAP.md §1.1: macOS's --sb-bg, --sb-filter and --sb-ring.
+	test("the glass sidebar's tint, blur and ring are the design's, in dark and in light", () => {
+		expect(dark.get("--duvet-sb-bg-vibrant")).toBe("rgba(26, 26, 34, 0.76)");
+		expect(light.get("--duvet-sb-bg-vibrant")).toBe("rgba(236, 240, 253, 0.8)");
+		expect(dark.get("--duvet-sb-filter-vibrant")).toBe("blur(48px) saturate(1.4)");
+		expect(light.get("--duvet-sb-filter-vibrant")).toBe("blur(48px) saturate(1.5)");
+		expect(dark.get("--duvet-sb-ring-vibrant")).toBe("#16161e");
+		expect(light.get("--duvet-sb-ring-vibrant")).toBe("#e8ecfb");
 	});
 });
 

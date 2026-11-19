@@ -62,6 +62,9 @@ export type AppRPCSchema = {
 			// From the main window: open Settings, or a Space's settings, in a window of its own, or bring the open one
 			// forward (src/bun/settings-windows.ts, #357).
 			openAppWindow: OpenAppWindow;
+			// From the main window on macOS: the theme the page wears, which the material behind its sidebar takes
+			// (lib/vibrancy.ts, src/bun/sidebar-material.ts; #374).
+			windowTheme: { theme: "light" | "dark" };
 		};
 	};
 	webview: {
@@ -93,6 +96,7 @@ export type AppRPCClient = {
 		startupTimings: (params: { marks: Record<string, number> }) => void;
 		windowState: (message: WindowStateMessage) => void;
 		openAppWindow: (request: OpenAppWindow) => void;
+		windowTheme: (params: { theme: "light" | "dark" }) => void;
 	};
 	request: {
 		showNotification: (params: NotificationRequest) => Promise<boolean>;

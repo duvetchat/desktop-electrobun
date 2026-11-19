@@ -1,7 +1,9 @@
 /* oxlint-disable typescript/no-unsafe-type-assertion -- bun:ffi hands values over untyped where they cross. */
-// The two things the app asks of AppKit itself on macOS, for keys to reach its page (window-keys.ts): make a window's
-// web view its first responder, and hide the window's three buttons. Electrobun has no call for either, so they go
-// through the Objective-C runtime with bun:ffi, public API only. Imported on macOS only (src/bun/index.ts).
+// What the app asks of AppKit itself on macOS. For keys to reach its page (window-keys.ts): make a window's web view
+// its first responder, and hide the window's three buttons. For the sidebar's glass (vibrancy.ts, #374): put the
+// system's sidebar material behind the web view, and keep it in the page's theme. Electrobun has no call for any of
+// them, so they go through the Objective-C runtime with bun:ffi, public API only. Imported on macOS only
+// (src/bun/index.ts).
 //
 // Electrobun runs this code in a Worker, off the process's main thread, and AppKit wants its windows and views touched
 // on the main thread: every AppKit message here is run there (performSelectorOnMainThread). A message with an integer
@@ -91,20 +93,28 @@ export function responds(object: Id, selector: string): boolean {
 	return object !== nil && (send("o", "b", object, "respondsToSelector:", sel(selector)) as boolean);
 }
 
-export type Arg = { t: "id"; v: Id } | { t: "int"; v: number } | { t: "bool"; v: boolean };
+/** An NSRect: a view's frame or bounds, in points. */
+export interface Rect {
+	x: number;
+	y: number;
+	width: number;
+	height: number;
+}
+
+export type Arg = { t: "id"; v: Id } | { t: "int"; v: number } | { t: "bool"; v: boolean } | { t: "rect"; v: Rect };
 
 const bytesOf = (arg: Arg): Uint8Array =>
 	arg.t === "id"
 		? new Uint8Array(new BigUint64Array([arg.v]).buffer)
 		: arg.t === "int"
 			? new Uint8Array(new BigInt64Array([BigInt(Math.trunc(arg.v))]).buffer)
-			: new Uint8Array([arg.v ? 1 : 0]);
+			: arg.t === "rect"
+				? new Uint8Array(new Float64Array([arg.v.x, arg.v.y, arg.v.width, arg.v.height]).buffer)
+				: new Uint8Array([arg.v ? 1 : 0]);
 
-/**
- * [target selector:args…] on the main thread, waited for, through an NSInvocation. Returns the object it returned
- * when `returns` is "id" (only safe to keep while something else owns it, as a window owns its buttons).
- */
-export function onMain(target: Id, selector: string, args: Arg[] = [], returns: "void" | "id" = "void"): Id {
+/** [target selector:args…] on the main thread, waited for, through an NSInvocation; what it returned is copied into
+ * `out`, which is as large as the method's return value. */
+function invokeOnMain(target: Id, selector: string, args: Arg[], out: BigUint64Array | Float64Array | null): void {
 	const pool = runtime.objc_autoreleasePoolPush();
 	try {
 		const signature = msg(target, "methodSignatureForSelector:", sel(selector));
@@ -117,13 +127,31 @@ export function onMain(target: Id, selector: string, args: Arg[] = [], returns: 
 		kept.forEach((bytes, index) => send("pi", "v", invocation, "setArgument:atIndex:", bytes, index + 2));
 		msg(invocation, "retainArguments");
 		send("oob", "v", invocation, "performSelectorOnMainThread:withObject:waitUntilDone:", sel("invoke"), nil, true);
-		if (returns === "void") return nil;
-		const out = new BigUint64Array(1);
-		send("p", "v", invocation, "getReturnValue:", out);
-		return out[0] ?? nil;
+		if (out) send("p", "v", invocation, "getReturnValue:", out);
 	} finally {
 		runtime.objc_autoreleasePoolPop(pool);
 	}
+}
+
+/**
+ * [target selector:args…] on the main thread, waited for, through an NSInvocation. Returns the object it returned
+ * when `returns` is "id" (only safe to keep while something else owns it, as a window owns its buttons).
+ */
+export function onMain(target: Id, selector: string, args: Arg[] = [], returns: "void" | "id" = "void"): Id {
+	if (returns === "void") {
+		invokeOnMain(target, selector, args, null);
+		return nil;
+	}
+	const out = new BigUint64Array(1);
+	invokeOnMain(target, selector, args, out);
+	return out[0] ?? nil;
+}
+
+/** The NSRect [target selector] returns, asked on the main thread: a view's bounds or frame. */
+export function rectOnMain(target: Id, selector: string): Rect {
+	const out = new Float64Array(4);
+	invokeOnMain(target, selector, [], out);
+	return { x: out[0] ?? 0, y: out[1] ?? 0, width: out[2] ?? 0, height: out[3] ?? 0 };
 }
 
 /**
@@ -166,4 +194,70 @@ export function hideWindowButtons(window: Pointer): number {
 		hidden++;
 	}
 	return hidden;
+}
+
+// NSVisualEffectMaterialSidebar; NSVisualEffectBlendingModeBehindWindow: what is behind the window shows through;
+// NSVisualEffectStateFollowsWindowActiveState: a window that isn't the active one loses the blur, as Finder's does.
+const MATERIAL_SIDEBAR = 7;
+const BLENDING_BEHIND_WINDOW = 0;
+const STATE_FOLLOWS_WINDOW = 0;
+// NSViewWidthSizable | NSViewHeightSizable: the view keeps to its superview's size.
+const FILLS_ITS_SUPERVIEW = 2 | 16;
+// NSWindowBelow: under every view the superview already has.
+const BELOW = -1;
+
+/**
+ * Puts the system's sidebar material (an NSVisualEffectView) under everything in a window's content view, as large as
+ * it and staying so. Electrobun's web view draws no background of its own, so wherever the page paints nothing the
+ * material shows, and through it the desktop, blurred: the sidebar's glass (#374). The window stays opaque, with its
+ * shadow and its corners. Returns the view, which the window keeps, or nil for a window that isn't one.
+ */
+export function addSidebarMaterial(window: Pointer): Id {
+	const target = idOf(window);
+	if (!responds(target, "contentView")) return nil;
+	const content = onMain(target, "contentView", [], "id");
+	if (!responds(content, "addSubview:positioned:relativeTo:")) return nil;
+	// Made here and set up on the main thread; never released, so the view lasts as long as the app, whatever becomes
+	// of its window.
+	const material = onMain(
+		msg(cls("NSVisualEffectView"), "alloc"),
+		"initWithFrame:",
+		[{ t: "rect", v: rectOnMain(content, "bounds") }],
+		"id",
+	);
+	if (!material) return nil;
+	onMain(material, "setMaterial:", [{ t: "int", v: MATERIAL_SIDEBAR }]);
+	onMain(material, "setBlendingMode:", [{ t: "int", v: BLENDING_BEHIND_WINDOW }]);
+	onMain(material, "setState:", [{ t: "int", v: STATE_FOLLOWS_WINDOW }]);
+	onMain(material, "setAutoresizingMask:", [{ t: "int", v: FILLS_ITS_SUPERVIEW }]);
+	onMain(content, "addSubview:positioned:relativeTo:", [
+		{ t: "id", v: material },
+		{ t: "int", v: BELOW },
+		{ t: "id", v: nil },
+	]);
+	return material;
+}
+
+/** An NSString of a text, autoreleased: the caller's pool, or the thread's, keeps it. */
+export function nsString(text: string): Id {
+	return send("p", "o", cls("NSString"), "stringWithUTF8String:", cstr(text)) as Id;
+}
+
+/** NSAppearanceNameAqua and NSAppearanceNameDarkAqua, by the names AppKit gives them. */
+const APPEARANCES = { light: "NSAppearanceNameAqua", dark: "NSAppearanceNameDarkAqua" } as const;
+
+/**
+ * Gives a view the light or the dark appearance, whatever the system's is: the sidebar's material is then the page's
+ * theme, which the user can pick apart from the system's (lib/theme.ts). Nothing happens for what isn't a view.
+ */
+export function setViewTheme(view: Id, theme: "light" | "dark"): void {
+	if (!responds(view, "setAppearance:")) return;
+	const pool = runtime.objc_autoreleasePoolPush();
+	try {
+		// Both live in this pool until the view has the appearance, and keeps it.
+		const appearance = msg(cls("NSAppearance"), "appearanceNamed:", nsString(APPEARANCES[theme]));
+		if (appearance) onMain(view, "setAppearance:", [{ t: "id", v: appearance }]);
+	} finally {
+		runtime.objc_autoreleasePoolPop(pool);
+	}
 }

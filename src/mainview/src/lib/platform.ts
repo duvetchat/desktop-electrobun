@@ -5,8 +5,8 @@ import { isElectrobunWindow } from "$lib/electrobun-rpc";
 // app runs reads from `shellFor`, a pure function of what the page can know before it paints:
 //   - whether it runs in the desktop app: isElectrobunWindow() (lib/electrobun-rpc.ts), the one place that says so;
 //   - the shell Bun hands this window in its preload (src/bun/shell.ts: window.__duvetShell), at document start: the
-//     system from process.platform, the title bar's style Bun chose, whether the system's window buttons show, and
-//     which window this is. Only Bun knows these;
+//     system from process.platform, the title bar's style Bun chose, whether the system's window buttons show,
+//     whether the system's sidebar material is behind the page, and which window this is. Only Bun knows these;
 //   - the page's own address, which says which window it is when it is not the main one (lib/app-windows.ts), whatever
 //     the preload did;
 //   - the user agent, as a fallback, and in a browser;
@@ -23,6 +23,8 @@ export interface InjectedShell {
 	titleBarStyle: TitleBarStyle;
 	/** Whether the system's own window buttons show (macOS's traffic lights). */
 	nativeButtons: boolean;
+	/** Whether the system's sidebar material is behind this window's page (src/bun/sidebar-material.ts). */
+	vibrancy: boolean;
 	window: WindowKind;
 }
 
@@ -52,7 +54,8 @@ export interface Shell {
 	settingsInWindows: boolean;
 	/** The media controls can pop out into their own window: the desktop app only. */
 	popOut: boolean;
-	/** Vibrancy behind the sidebar: off everywhere until it has been seen and approved (DECISIONS.md). */
+	/** The sidebar is glass: the system's material is behind the page, which paints only the sidebar's tint over it
+	 * (#374, lib/vibrancy.ts). macOS's main window, when Bun says the material is there; the solid tint elsewhere. */
 	vibrancy: boolean;
 	/** Whether this is a preview override: the dev server drawing another system. */
 	preview: boolean;
@@ -79,10 +82,11 @@ export function parseInjectedShell(value: unknown): InjectedShell | null {
 	if (typeof value !== "object" || value === null) return null;
 	if (!("os" in value) || !("titleBarStyle" in value) || !("nativeButtons" in value) || !("window" in value))
 		return null;
-	const { os, titleBarStyle, nativeButtons, window } = value;
+	if (!("vibrancy" in value)) return null;
+	const { os, titleBarStyle, nativeButtons, vibrancy, window } = value;
 	if (typeof os !== "string" || !isTitleBarStyle(titleBarStyle) || !isWindowKind(window)) return null;
-	if (typeof nativeButtons !== "boolean") return null;
-	return { os, titleBarStyle, nativeButtons, window };
+	if (typeof nativeButtons !== "boolean" || typeof vibrancy !== "boolean") return null;
+	return { os, titleBarStyle, nativeButtons, vibrancy, window };
 }
 
 export function shellFor({ inElectrobun, injected, userAgent, preview, path = "" }: ShellInputs): Shell {
@@ -95,20 +99,23 @@ export function shellFor({ inElectrobun, injected, userAgent, preview, path = ""
 	const chrome: Shell["chrome"] = !desktop ? "web" : os === "mac" ? "mac" : os === "windows" ? "windows" : "linux";
 	// A preview draws the design, where macOS has its lights; the app has them when Bun says the window shows them.
 	const nativeTrafficLights = chrome === "mac" && (previewed !== null || injected?.nativeButtons === true);
+	// The page's address first: a Settings or pop-out page whose preload didn't run would otherwise take itself for the
+	// main window, renew the session and draw the main title bar. Then Bun's word, which also says "not main" for any
+	// page it loaded in another window.
+	const window = secondWindowOfPath(path) ?? injected?.window ?? "main";
 	return {
 		chrome,
 		os,
-		// The page's address first: a Settings or pop-out page whose preload didn't run would otherwise take itself
-		// for the main window, renew the session and draw the main title bar. Then Bun's word, which also says "not
-		// main" for any page it loaded in another window.
-		window: secondWindowOfPath(path) ?? injected?.window ?? "main",
+		window,
 		nativeTrafficLights,
 		ownWindowControls: desktop && !nativeTrafficLights,
 		draggableTitleBar: desktop,
 		// Sheets of the main window in the app as on the web: a window of their own opened beside it, outside its place.
 		settingsInWindows: false,
 		popOut: desktop,
-		vibrancy: false,
+		// Only on Bun's word: a page that painted nothing behind its sidebar with no material there would show the
+		// window's bare background. Never a preview, which has a browser's page behind it and nothing else.
+		vibrancy: chrome === "mac" && window === "main" && previewed === null && injected?.vibrancy === true,
 		preview: previewed !== null,
 	};
 }

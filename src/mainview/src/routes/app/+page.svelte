@@ -18,6 +18,7 @@
 	import { layoutPrefs } from "$lib/layout-prefs.svelte";
 	import { firstTextRoom, type OpenChats } from "$lib/nav";
 	import { currentShell } from "$lib/platform";
+	import { VIBRANT_SIDEBAR } from "$lib/vibrancy";
 	import {
 		afterLeavingVoice,
 		clampSidebarWidth,
@@ -500,6 +501,9 @@
 	const shell = currentShell();
 	const isMac = shell.os === "mac";
 	const desktopApp = shell.chrome !== "web";
+	// The sidebar is glass (#374, lib/vibrancy.ts): the system's material is behind the page, so the shell paints no
+	// background of its own behind the sidebar's column, and each of its other parts paints the window's.
+	const glass = shell.vibrancy;
 	const switcherShortcut = keysFor(isMac, SHELL_KEYS.switcher);
 
 	// The shell's own shortcuts (lib/shell-layout.ts: shellShortcut), not over a dialog or a menu, as the others.
@@ -872,15 +876,17 @@
 	     strip is the whole title line and the folded edge sits under it; the column then shows over the chat, so the
 	     chat doesn't move. The same column is kept either way, with what's open in it. -->
 	<div
-		class="bg-duvet-bg text-duvet-ink grid h-full grid-rows-[52px_minmax(0,1fr)] overflow-hidden {dragWidth !== null
-			? 'cursor-col-resize select-none'
-			: ''}"
+		class="text-duvet-ink grid h-full grid-rows-[52px_minmax(0,1fr)] overflow-hidden {glass
+			? ''
+			: 'bg-duvet-bg'} {dragWidth !== null ? 'cursor-col-resize select-none' : ''}"
 		style="grid-template-columns: {navDocked ? sidebarWidth : SIDEBAR_EDGE}px minmax(0, 1fr)"
 	>
 		<!-- svelte-ignore a11y_no_static_element_interactions -->
 		<div
 			bind:this={navWrapEl}
-			class="relative z-40 col-start-1 flex min-h-0 min-w-0 {navDocked ? 'row-span-2 row-start-1' : 'row-start-2'}"
+			class="relative z-40 col-start-1 flex min-h-0 min-w-0 {navDocked
+				? 'row-span-2 row-start-1'
+				: 'row-start-2'} {glass ? VIBRANT_SIDEBAR : ''}"
 			onpointerenter={() => {
 				if (navDocked) return;
 				navHovered = true;
@@ -905,11 +911,12 @@
 				/>
 			{/if}
 			<!-- Folded, the column slides out from under the edge (which stays on top) and back under it, fading as it
-				 goes; its visibility flips at the start of the reveal and the end of the hide. -->
+				 goes; its visibility flips at the start of the reveal and the end of the hide. Over the chat it blurs what
+				 it covers where the sidebar is glass (--duvet-sb-filter: none elsewhere). -->
 			<div
 				class={navDocked
 					? "h-full w-full min-w-0"
-					: `shadow-duvet-float absolute top-0 left-full h-full overflow-hidden rounded-r-[18px] transition-[opacity,translate,visibility] duration-200 motion-reduce:transition-none ${navRevealed ? "visible translate-x-0 opacity-100 ease-out" : "invisible -translate-x-full opacity-0 ease-in"}`}
+					: `shadow-duvet-float absolute top-0 left-full h-full overflow-hidden rounded-r-[18px] backdrop-filter-(--duvet-sb-filter) transition-[opacity,translate,visibility] duration-200 motion-reduce:transition-none ${navRevealed ? "visible translate-x-0 opacity-100 ease-out" : "invisible -translate-x-full opacity-0 ease-in"}`}
 				style={navDocked ? undefined : `width: ${sidebar.width}px`}
 				inert={!navDocked && !navRevealed}
 			>
@@ -970,8 +977,9 @@
 			newTabKeys={desktopApp ? keysFor(isMac, SHELL_KEYS.newTab) : undefined}
 		/>
 
-		<!-- The page's main landmark: the chats, or the Friends view. -->
-		<main class="border-duvet-line col-start-2 row-start-2 flex min-h-0 min-w-0 border-l">
+		<!-- The page's main landmark: the chats, or the Friends view. Its own background, under its edge too: beside a
+		     glass sidebar nothing else is behind that line. -->
+		<main class="border-duvet-line bg-duvet-bg col-start-2 row-start-2 flex min-h-0 min-w-0 border-l">
 			<div class="bg-duvet-bg relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
 				{#if friendsViewEverShown}
 					<div class="flex min-h-0 flex-1 flex-col {showFriendsView ? '' : 'hidden'}">

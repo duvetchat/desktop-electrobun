@@ -135,6 +135,32 @@ type, snapshot pages to PNG and call native probes through `bun:ffi` (`src/bun/s
   and list vibrancy as a follow-up to be seen and approved by a human before it ships. The bridge
   exists and is cheap; do not ship it blind.
 
+### 9.1 Shipped for the main window (#374, 2026-11-19)
+
+- **What it is:** `src/bun/sidebar-material.ts` puts an `NSVisualEffectView` (material `sidebar`,
+  blending behind the window, state following the window's) under the main window's web view, through
+  `appkit.ts`. The window stays opaque. Bun says so in the page's shell (`vibrancy`), and while the
+  app's shell is up the page paints nothing behind its sidebar but the tint (`lib/vibrancy.ts`,
+  `--duvet-sb-bg-vibrant`). The column shown over the chat, with the sidebar folded, blurs the page
+  itself (`--duvet-sb-filter-vibrant`).
+- **The theme:** the material follows the system's appearance by itself, and the page's theme can be
+  picked apart from it. The page tells Bun which theme it wears (`windowTheme`), and the material's
+  own appearance is set to match.
+- **Seen, on macOS 27.2.1:** pictures of the app's own window as the window server draws it
+  (`CGWindowListCreateImage` for that one window, made inside the app, which needs no Screen
+  Recording permission), and WebKit's pictures of the page with its transparency:
+  - the page is see-through behind the sidebar only (alpha 0.76 dark, 0.80 light), and opaque
+    everywhere else, the 1 px edge beside the sidebar included;
+  - what shows through is the material, in the page's theme even against the system's (a light page
+    on a dark system, and the reverse);
+  - the traffic lights are drawn straight on it, with nothing behind them;
+  - the material keeps to the window's content after a resize; the folded edge is glass, and the
+    column over the chat blurs the chat; Settings' side panel, over the app, stays solid; the sign-in
+    page stays opaque.
+- **Not seen:** the window over a real desktop. A picture of one window has nothing behind it, so
+  the material shows its own base there, not a blurred wallpaper. Full screen and a window that
+  isn't the active one were not looked at either (the spike found the view survives full screen).
+
 ## 10. Windows and Linux (read from source, not run)
 
 - Windows: WebView2; `hiddenInset` maps to a borderless window with a custom title-bar area
@@ -160,8 +186,8 @@ type, snapshot pages to PNG and call native probes through `bun:ffi` (`src/bun/s
   title-bar style, which window this is — measured to run before the page's scripts,
   `readyState: "loading", scripts: 0`), the user agent as fallback, and, in development builds
   only, a preview override (`?shell=mac|windows|linux|web` or `localStorage duvet.dev.shell`)
-  compiled out of production by `import.meta.env.DEV`. `vibrancy` returns false until a human
-  approves it.
+  compiled out of production by `import.meta.env.DEV`. `vibrancy` is true in macOS's main window
+  when Bun says the material is behind the page (§9.1), and false everywhere else.
 
 ## 12. The typing defect on this Mac (macOS 27.2.1)
 
@@ -207,13 +233,14 @@ type, snapshot pages to PNG and call native probes through `bun:ffi` (`src/bun/s
 | Remembered frame, clamped | works | source says yes | scale-1 only (source) | n/a |
 | Focus main window from pop-out | works | not run | not run | n/a |
 | Page-level shortcuts in the pop-out | works | not run | not run | browser-reserved only |
-| Vibrancy | proven, unverified look; ship opaque tint | n/a | n/a | opaque tint |
+| Vibrancy | the main window's sidebar (§9.1); opaque tint in the others | n/a | n/a | opaque tint |
 | Typing on macOS 27 | broken today; fix = key window + first responder | n/a | n/a | n/a |
 | QA without screenshots/typing (QA socket) | works | untested | untested | Playwright instead |
 
 ## Follow-ups
 
-1. Vibrancy: show it to a human (the bridge is written) and decide; ship opaque tint until then.
+1. Vibrancy: on in the main window since #374 (§9.1). Left: a look at it over a real desktop, in
+   full screen and in a window that isn't active.
 2. Windows and Linux: run the spike on real machines; verify §3–§8 there.
 3. Typing fix: make the window key and the webview first responder on focus; land it with the
    foundation so desktop QA can type for real.

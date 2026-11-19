@@ -15,10 +15,11 @@ import {
 const MAC_UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko)";
 const WIN_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Edg/131.0";
 const LINUX_UA = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0";
-const injected = (os: string, window: InjectedShell["window"] = "main"): InjectedShell => ({
+const injected = (os: string, window: InjectedShell["window"] = "main", vibrancy = false): InjectedShell => ({
 	os,
 	titleBarStyle: os === "darwin" ? "hiddenInset" : "hidden",
 	nativeButtons: os === "darwin",
+	vibrancy,
 	window,
 });
 const inApp = (os: string, userAgent = MAC_UA) =>
@@ -46,7 +47,7 @@ describe("shellFor", () => {
 	test("on macOS with the system's buttons hidden there are no native lights, and the page draws the controls", () => {
 		const shell = shellFor({
 			inElectrobun: true,
-			injected: { os: "darwin", titleBarStyle: "hiddenInset", nativeButtons: false, window: "main" },
+			injected: { os: "darwin", titleBarStyle: "hiddenInset", nativeButtons: false, vibrancy: false, window: "main" },
 			userAgent: MAC_UA,
 			preview: null,
 		});
@@ -126,12 +127,54 @@ describe("shellFor", () => {
 		});
 	});
 
-	// DECISIONS.md: the opaque tint everywhere until someone has seen the vibrant sidebar.
-	test("vibrancy stays off everywhere, previews included", () => {
-		for (const os of ["darwin", "win32", "linux"]) expect(inApp(os).vibrancy).toBe(false);
-		for (const preview of ["mac", "windows", "linux", "web"]) {
-			expect(shellFor({ inElectrobun: false, injected: null, userAgent: MAC_UA, preview }).vibrancy).toBe(false);
-		}
+	// #374: the sidebar is glass where the system's material is behind the page, which only Bun can say.
+	describe("vibrancy", () => {
+		const told = (os: string, window: InjectedShell["window"] = "main") =>
+			shellFor({ inElectrobun: true, injected: injected(os, window, true), userAgent: MAC_UA, preview: null });
+
+		test("is on in macOS's main window when Bun says the material is behind the page", () => {
+			expect(told("darwin").vibrancy).toBe(true);
+		});
+
+		test("is off without Bun's word: the page would show the window's bare background", () => {
+			for (const os of ["darwin", "win32", "linux"]) expect(inApp(os).vibrancy).toBe(false);
+			expect(shellFor({ inElectrobun: true, injected: null, userAgent: MAC_UA, preview: null }).vibrancy).toBe(false);
+		});
+
+		test("is off on Windows and Linux whatever Bun says", () => {
+			expect(told("win32").vibrancy).toBe(false);
+			expect(told("linux").vibrancy).toBe(false);
+		});
+
+		test("is the main window's alone: the pop-out and the Settings windows keep the solid tint", () => {
+			for (const window of ["media", "settings", "space-settings"] as const) {
+				expect(told("darwin", window).vibrancy, window).toBe(false);
+			}
+			// A page of another window, by its address, whatever its preload claims.
+			expect(
+				shellFor({
+					inElectrobun: true,
+					injected: injected("darwin", "main", true),
+					userAgent: MAC_UA,
+					preview: null,
+					path: "/voice-controls.html",
+				}).vibrancy,
+			).toBe(false);
+		});
+
+		test("is off in a browser and in every preview, which have nothing behind the page", () => {
+			expect(
+				shellFor({ inElectrobun: false, injected: injected("darwin", "main", true), userAgent: MAC_UA, preview: null })
+					.vibrancy,
+			).toBe(false);
+			for (const preview of ["mac", "windows", "linux", "web"]) {
+				expect(shellFor({ inElectrobun: false, injected: null, userAgent: MAC_UA, preview }).vibrancy).toBe(false);
+				expect(
+					shellFor({ inElectrobun: true, injected: injected("darwin", "main", true), userAgent: MAC_UA, preview })
+						.vibrancy,
+				).toBe(false);
+			}
+		});
 	});
 
 	test("a window knows which window it is from Bun", () => {
@@ -156,7 +199,7 @@ describe("what Bun's preload hands the page", () => {
 			parseInjectedShell(
 				handed(shellPreload("media", { titleBarStyle: "hiddenInset", nativeButtons: true }, "darwin")),
 			),
-		).toEqual({ os: "darwin", titleBarStyle: "hiddenInset", nativeButtons: true, window: "media" });
+		).toEqual({ os: "darwin", titleBarStyle: "hiddenInset", nativeButtons: true, vibrancy: false, window: "media" });
 		expect(
 			shellFor({
 				inElectrobun: true,
@@ -175,12 +218,14 @@ describe("what Bun's preload hands the page", () => {
 			null,
 			"main",
 			{},
-			{ os: "darwin", titleBarStyle: "hiddenInset", nativeButtons: true },
-			{ os: "darwin", titleBarStyle: "hiddenInset", window: "main" },
-			{ os: "darwin", titleBarStyle: "frameless", nativeButtons: true, window: "main" },
-			{ os: "darwin", titleBarStyle: "hidden", nativeButtons: false, window: "about" },
-			{ os: "darwin", titleBarStyle: "hidden", nativeButtons: "no", window: "main" },
-			{ os: 1, titleBarStyle: "hidden", nativeButtons: false, window: "main" },
+			{ os: "darwin", titleBarStyle: "hiddenInset", nativeButtons: true, vibrancy: false },
+			{ os: "darwin", titleBarStyle: "hiddenInset", vibrancy: false, window: "main" },
+			{ os: "darwin", titleBarStyle: "hiddenInset", nativeButtons: true, window: "main" },
+			{ os: "darwin", titleBarStyle: "frameless", nativeButtons: true, vibrancy: false, window: "main" },
+			{ os: "darwin", titleBarStyle: "hidden", nativeButtons: false, vibrancy: false, window: "about" },
+			{ os: "darwin", titleBarStyle: "hidden", nativeButtons: "no", vibrancy: false, window: "main" },
+			{ os: "darwin", titleBarStyle: "hidden", nativeButtons: false, vibrancy: "yes", window: "main" },
+			{ os: 1, titleBarStyle: "hidden", nativeButtons: false, vibrancy: false, window: "main" },
 		]) {
 			expect(parseInjectedShell(value)).toBeNull();
 		}
@@ -274,19 +319,32 @@ describe("reading the page", () => {
 
 	// isElectrobunWindow() is the one place that says whether the page runs in the app.
 	test("a page outside Electrobun is the web, whatever it claims about its shell", () => {
-		globals.__duvetShell = { os: "darwin", titleBarStyle: "hiddenInset", nativeButtons: true, window: "main" };
+		globals.__duvetShell = {
+			os: "darwin",
+			titleBarStyle: "hiddenInset",
+			nativeButtons: true,
+			vibrancy: true,
+			window: "main",
+		};
 		const inputs = readShellInputs();
 		expect(inputs.inElectrobun).toBe(false);
 		expect(shellFor(inputs).chrome).toBe("web");
+		expect(shellFor(inputs).vibrancy).toBe(false);
 	});
 
 	test("a page in Electrobun reads the shell Bun handed it", () => {
 		globals.window = { __electrobunWindowId: 1 };
-		globals.__duvetShell = { os: "win32", titleBarStyle: "hidden", nativeButtons: false, window: "settings" };
+		globals.__duvetShell = {
+			os: "win32",
+			titleBarStyle: "hidden",
+			nativeButtons: false,
+			vibrancy: false,
+			window: "settings",
+		};
 		const inputs = readShellInputs();
 		expect(inputs).toMatchObject({
 			inElectrobun: true,
-			injected: { os: "win32", titleBarStyle: "hidden", nativeButtons: false, window: "settings" },
+			injected: { os: "win32", titleBarStyle: "hidden", nativeButtons: false, vibrancy: false, window: "settings" },
 		});
 		expect(shellFor(inputs)).toMatchObject({ chrome: "windows", window: "settings" });
 	});

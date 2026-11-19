@@ -15,6 +15,9 @@ export interface InjectedShell {
 	titleBarStyle: TitleBarStyle;
 	/** Whether the system's own window buttons show (macOS's traffic lights): else the page draws its own. */
 	nativeButtons: boolean;
+	/** Whether the system's sidebar material is behind this window's page (sidebar-material.ts): the page then paints
+	 * nothing behind its sidebar but the tint. The main window on macOS; false in every other. */
+	vibrancy: boolean;
 	window: WindowKind;
 }
 
@@ -25,10 +28,14 @@ export interface InjectedShell {
  */
 export function shellPreload(
 	window: WindowKind,
-	{ titleBarStyle, nativeButtons }: { titleBarStyle: TitleBarStyle; nativeButtons: boolean },
+	{
+		titleBarStyle,
+		nativeButtons,
+		vibrancy = false,
+	}: { titleBarStyle: TitleBarStyle; nativeButtons: boolean; vibrancy?: boolean },
 	os: string = process.platform,
 ): string {
-	const shell: InjectedShell = { os, titleBarStyle, nativeButtons, window };
+	const shell: InjectedShell = { os, titleBarStyle, nativeButtons, vibrancy, window };
 	return `if (window.top === window) window.__duvetShell = Object.freeze(${JSON.stringify(shell)});`;
 }
 

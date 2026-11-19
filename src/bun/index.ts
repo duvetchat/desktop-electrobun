@@ -23,6 +23,7 @@ import { dragWithWindows, letWindowsArrange, pageLoaded } from "./window-snap";
 import { startupSummary, writeStartupLine } from "./startup";
 import { rendererFor, shellPreload, windowChrome } from "./shell";
 import { keepKeysReachingThePage, type AppKit } from "./window-keys";
+import { hasSidebarMaterial, SidebarMaterial, type MaterialKit, type WindowTheme } from "./sidebar-material";
 import { WindowRelay, type WindowAnswer, type WindowCommand, type WindowStateMessage } from "./window-relay";
 import { MediaWindows } from "./media-window";
 import { mediaWindowOpener } from "./media-window-open";
@@ -112,6 +113,9 @@ type AppRPCSchema = {
 			windowState: WindowStateMessage;
 			// #357, the Windows workstream: open Settings or a Space's settings in its own window, or bring it forward.
 			openAppWindow: OpenAppWindow;
+			// The theme the main window's page wears, at its start and on each change: on macOS the material behind its
+			// sidebar takes the same (sidebar-material.ts, #374).
+			windowTheme: { theme: WindowTheme };
 		};
 	};
 	webview: {
@@ -237,6 +241,7 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 				settingsWindows.stateFromMain(message);
 			},
 			openAppWindow: (request) => void settingsWindows.open(request),
+			windowTheme: (message) => sidebarMaterial.themed(message),
 			startupTimings: ({ marks }) => {
 				const line = `${new Date().toISOString()} ${startupSummary(processStart, { ...bunMarks, ...marks })}`;
 				console.log(line);
@@ -259,6 +264,21 @@ const rendererType = rendererFor(currentOS);
 // Windows and Linux have no system buttons: the page draws theirs (WindowControls.svelte, #357).
 const { titleBarStyle, nativeButtons } = windowChrome(currentOS);
 
+// AppKit's bridge, on macOS only, for two things. Keys reach the page once its web view is the window's first
+// responder (window-keys.ts). And the sidebar's glass is the system's material behind the page (sidebar-material.ts,
+// #374). Loaded before the window is made: its page is told in its preload whether the material is behind it. If the
+// bridge can't be loaded the app runs as it did: a click in the page gives it the keyboard, and the sidebar is the
+// solid tint.
+const appkit: (AppKit & MaterialKit) | null =
+	currentOS === "darwin"
+		? await import("./appkit").catch((err: unknown) => {
+				console.error("[window] AppKit's bridge didn't load:", err);
+				return null;
+			})
+		: null;
+const vibrancy = hasSidebarMaterial(currentOS, appkit);
+const sidebarMaterial = new SidebarMaterial(appkit);
+
 // On macOS the editing keys (⌘C, ⌘V, ⌘Z…), ⌘Q, ⌘H and ⌘M are the menu bar's (app-menu.ts). Set right before the
 // window: Electrobun 1.15.1 reads the menu later, on the main thread, from memory nothing keeps (2.0 copies it first),
 // and making the window waits on that thread behind the read, so a GC has next to no time to free that memory first.
@@ -277,7 +297,7 @@ const win = new BrowserWindow({
 	renderer: rendererType,
 	// What only Bun knows about this window, for the page's platform switch (shell.ts, lib/platform.ts), set before
 	// any of the page's scripts run.
-	preload: shellPreload("main", { titleBarStyle, nativeButtons }),
+	preload: shellPreload("main", { titleBarStyle, nativeButtons, vibrancy }),
 	sandbox: false,
 	frame: {
 		height: 900,
@@ -291,6 +311,8 @@ const win = new BrowserWindow({
 });
 bunMarks.window = Date.now();
 relay.setMain((command) => rpc.request.windowCommand(command));
+// Behind the web view before its first page paints: the page was told so above.
+if (vibrancy) sidebarMaterial.add(win.ptr);
 
 // Win+Left and Win+Right snap the window, and Win+Up and Win+Down maximize, restore and minimize it, once it takes what
 // Windows asks of a window for that (window-snap.ts, #345).
@@ -306,15 +328,7 @@ function arrangeByWindows(): boolean {
 	return false;
 }
 
-// On macOS, keys reach the page once its web view is the window's first responder (window-keys.ts). AppKit's bridge is
-// loaded there only; if it can't be, the app runs as it did, and a click in the page gives it the keyboard.
-const appkit: AppKit | null =
-	currentOS === "darwin"
-		? await import("./appkit").catch((err: unknown) => {
-				console.error("[window] AppKit's bridge didn't load:", err);
-				return null;
-			})
-		: null;
+// On macOS, keys reach the page once its web view is the window's first responder (window-keys.ts).
 keepKeysReachingThePage(win, appkit, { nativeButtons });
 
 // Through the webview: BrowserWindow stores a navigationRules option of its own, and never hands it to the native side.

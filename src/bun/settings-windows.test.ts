@@ -142,6 +142,8 @@ describe("the window's chrome and what its page is told", () => {
 			os: "darwin",
 			titleBarStyle: "hiddenInset",
 			nativeButtons: true,
+			// The sidebar's material is the main window's alone (#374): a Settings window's side panel is solid.
+			vibrancy: false,
 			window: "space-settings",
 		});
 		expect(page.__duvetSettings).toEqual({ spaceId: "s1", section: null });
