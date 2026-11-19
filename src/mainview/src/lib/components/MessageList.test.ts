@@ -388,3 +388,20 @@ describe("the two layouts", () => {
 		expect(component).toContain("const shapes = $derived(groupShapes(sortedMessages, unreadDividerIdx));");
 	});
 });
+
+// #381: a message's hover bar and its menu's first row react at one click with the Unicode emoji used most lately, then
+// their own three and five (quickReactions in lib/recent-emoji.ts), as the mobile app's quick reactions do. Each row is
+// ranked as it mounts, so it doesn't reorder under the pointer. Adding a reaction there counts as a use of its emoji,
+// as a pick in the picker does; taking one back doesn't.
+test("the quick reactions lead with the emoji used lately, and adding one counts as a use", () => {
+	const list = source("MessageList.svelte");
+	expect(list).toContain("{#each quickReactions(QUICK_REACTIONS, recentEmoji()) as emoji (emoji)}");
+	expect(list).toContain("{#each quickReactions(MENU_REACTIONS, recentEmoji()) as emoji (emoji)}");
+	expect(list.match(/\(\) => quickReact\(message, emoji\)/g)).toHaveLength(2);
+	expect(list).toMatch(
+		/function quickReact\(message: Message, emoji: string\) \{\s*if \(\$currentUser && !reactedWith\(message, \$currentUser\.id, emoji\)\) emojiUsed\(emoji\);\s*handleReactionToggle\(message, emoji\);\s*\}/,
+	);
+	// A chip under the message adds the user's reaction to someone else's: no use, as on the mobile app.
+	const chips = /onToggle=\{\(r\) => handleReactionToggle\(message, r\.emoji_name, r\.emoji_id\)\}/g;
+	expect(list.match(chips)).toHaveLength(2);
+});

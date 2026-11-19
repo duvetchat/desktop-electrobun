@@ -63,7 +63,8 @@
 	import { keepPlace, takePlace } from "$lib/kept-places";
 	import { largeEmojis, renderEmoji } from "$lib/emoji";
 	import { mentionMapOf, sameNames } from "$lib/markdown";
-	import { reactionKey } from "$lib/reactions";
+	import { reactedWith, reactionKey } from "$lib/reactions";
+	import { emojiUsed, quickReactions, recentEmoji } from "$lib/recent-emoji";
 	import { nameColors } from "$lib/name-colors";
 	import { clockTime, dayLabel, groupShapes, headTime, shortClockTime } from "$lib/message-groups";
 	import { messageLayout } from "$lib/stores/message-layout.svelte";
@@ -596,9 +597,18 @@
 	});
 	const showAuthors = $derived(flat || !isDirect);
 
-	// What the hover bar and the menu's first row react with at one click.
+	// What the hover bar and the menu's first row react with at one click: the Unicode emoji used most lately, then these,
+	// as many as these (quickReactions, as the mobile app's quick reactions). Each row is ranked as it mounts (the bar on
+	// its row's hover, the menu as it opens), so it doesn't reorder under the pointer.
 	const QUICK_REACTIONS = ["😂", "❤️", "👍"];
 	const MENU_REACTIONS = ["😀", "🙂", "🤭", "👍", "❤️"];
+
+	// A quick reaction that adds the user's counts as a use of its emoji, as a pick in the picker does; taking one back
+	// doesn't, as on the mobile app.
+	function quickReact(message: Message, emoji: string) {
+		if ($currentUser && !reactedWith(message, $currentUser.id, emoji)) emojiUsed(emoji);
+		handleReactionToggle(message, emoji);
+	}
 
 	function copyLink(message: Message) {
 		const link = isConversation
@@ -1615,13 +1625,13 @@
 			<span class="text-duvet-ink2 px-1.5 text-[11px] leading-none font-medium tabular-nums select-none">{time}</span>
 			<span class="bg-duvet-line mx-[3px] h-[18px] w-px" aria-hidden="true"></span>
 		{/if}
-		{#each QUICK_REACTIONS as emoji (emoji)}
+		{#each quickReactions(QUICK_REACTIONS, recentEmoji()) as emoji (emoji)}
 			<button
 				type="button"
 				class="hover:bg-duvet-hover grid size-7 place-items-center rounded-lg text-[13px] transition-transform duration-[120ms] hover:scale-[1.12] motion-reduce:transition-none"
 				title="React {emoji}"
 				aria-label="React {emoji}"
-				onclick={() => handleReactionToggle(message, emoji)}
+				onclick={() => quickReact(message, emoji)}
 			>
 				{@html renderEmoji(emoji)}
 			</button>
@@ -1702,11 +1712,11 @@
 		<MenuItem icon={TrashIcon} danger onSelect={() => void handleDelete(message.id)}>Delete message</MenuItem>
 	{:else}
 		<div class="border-duvet-line mb-1.5 flex items-center gap-0.5 border-b px-0.5 pt-0.5 pb-1.5">
-			{#each MENU_REACTIONS as emoji (emoji)}
+			{#each quickReactions(MENU_REACTIONS, recentEmoji()) as emoji (emoji)}
 				<DropdownMenu.Item
 					class="data-highlighted:bg-duvet-hover grid size-9 cursor-pointer place-items-center rounded-[10px] text-base transition-transform duration-[120ms] outline-none hover:scale-[1.15] motion-reduce:transition-none"
 					aria-label="React {emoji}"
-					onSelect={() => handleReactionToggle(message, emoji)}
+					onSelect={() => quickReact(message, emoji)}
 				>
 					{@html renderEmoji(emoji)}
 				</DropdownMenu.Item>

@@ -81,6 +81,14 @@ test("a message too large for the API stays in the box, with why, and nothing is
 	);
 });
 
+// #381: an emoji picked from the : suggestions counts as a use of it, as one picked in the picker does (as on the mobile
+// app), so it leads the picker's Recently used.
+test("a pick from the : suggestions counts as a use of its emoji", () => {
+	expect(source("ChatInput.svelte")).toMatch(
+		/function insertSuggestion\(entry: EmojiEntry\) \{\s*(?:\/\/[^\n]*\n\s*)*emojiUsed\(entry\.emoji\);/,
+	);
+});
+
 // #239: Arrow Up in the empty box started the edit of the user's last message, whose box put the caret at the message's
 // end, and then the key's own move carried it to the start of the line (Chromium). What a browser checked against a
 // running app, kept here.
