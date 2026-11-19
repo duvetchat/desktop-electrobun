@@ -28,6 +28,17 @@ test("a microphone that can't open says so, and voice joins to listen, muted: un
 	);
 });
 
+// #370: a call placed as a video call turns the camera on as its voice joins, as the camera button does: a camera that
+// can't open (refused, missing, busy) says why, and the call goes on without it.
+test("a video call's voice turns the camera on as it joins, through the camera's own start", () => {
+	expect(voiceChat).toMatch(
+		/joining = true;\s*joinVoice\(\);\s*(?:\/\/[^\n]*\n\s*)*if \(takeVideoCall\(channelId\)\) queueCamera\(startCamera\);/,
+	);
+	expect(voiceChat).toMatch(
+		/stream = await openCamera\(\$selectedCameraId\);\s*\} catch \(err\) \{\s*console\.error\("\[Voice\] Couldn't open the camera:", err\);\s*toast\(cameraErrorMessage\(err\), "error"\);\s*return;\s*\}/,
+	);
+});
+
 test("a connection that fails with the gateway up says so, and leaves", () => {
 	expect(voiceChat).toMatch(
 		/if \(gatewayConnection\(\) !== null\) \{\s*toast\("Lost the connection to voice", "error"\);\s*leaveVoice\(\);\s*\} else wantFreshSession\(\);/,

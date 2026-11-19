@@ -233,8 +233,9 @@ export function placeAgain(
 /** A conversation as the call card reads it. */
 export type CallCardConversation = Pick<Conversation, "id" | "type" | "name" | "members">;
 
-/** Who the call card shows: whose photo it is (null for a group's initials), the photo, the name, and the group a call
- * comes in from, after "Incoming call" (null in a DM). */
+/** Who the call card shows: whose photo it is (null for a group, or a conversation this client doesn't know, which it
+ * draws with the group's mark), the photo, the name, and the group a call comes in from, after "Incoming call" (null in
+ * a DM). */
 export interface CallCardFace {
 	userId: string | null;
 	avatar: string | null;
@@ -244,8 +245,8 @@ export interface CallCardFace {
 
 /**
  * What the call card (CallCard.svelte) shows of a call. One ringing here shows who calls, with the group it comes from.
- * One the user places shows whom they call: a DM's other member, or a group by its name, with its initials as the DM
- * list draws it. One of a conversation this client doesn't know is "Chat", as in the Calls tab.
+ * One the user places shows whom they call: a DM's other member, or a group by its name, with its mark as the DM list
+ * draws it. One of a conversation this client doesn't know is "Chat", as in the call history.
  */
 export function callCardFace(
 	call: Pick<ActiveCallInfo, "state" | "initiatorId" | "initiatorName" | "initiatorAvatar">,

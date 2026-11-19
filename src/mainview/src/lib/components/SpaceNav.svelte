@@ -3,12 +3,12 @@
 		CheckCheck as CheckCheckIcon,
 		ChevronDown as ChevronDownIcon,
 		Ellipsis as EllipsisIcon,
+		History as HistoryIcon,
 		Layers as LayersIcon,
 		LayoutGrid as LayoutGridIcon,
 		LogOut as LogOutIcon,
 		MessageCircle as MessageCircleIcon,
 		PanelLeft as PanelLeftIcon,
-		Phone as PhoneIcon,
 		Pin as PinIcon,
 		PinOff as PinOffIcon,
 		Plus as PlusIcon,
@@ -481,7 +481,7 @@
 			<Popover bind:open={callsOpen} label="Call history" class="w-[360px] rounded-[20px]">
 				{#snippet trigger(props)}
 					<IconButton {...props} label="Call history" title="Call history" active={callsOpen}>
-						<PhoneIcon size={16} />
+						<HistoryIcon size={16} />
 					</IconButton>
 				{/snippet}
 				<div class="flex max-h-[min(70vh,560px)] flex-col">

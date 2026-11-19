@@ -445,6 +445,8 @@ export interface ActiveCallInfo {
 	initiatorAvatar: string | null;
 	state: CallState;
 	memberIds: string[];
+	/** Placed from here as a video call (#370): its voice turns the camera on as it joins, once (takeVideoCall). */
+	video?: boolean;
 }
 
 export const activeCall = writable<ActiveCallInfo | null>(null);
