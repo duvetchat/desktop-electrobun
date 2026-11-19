@@ -1489,7 +1489,7 @@
 				aria-autocomplete="list"
 				aria-controls={suggesting?.list}
 				aria-activedescendant={suggesting ? `${suggesting.list}-${suggesting.at}` : undefined}
-				class="focus-override font-content text-duvet-ink caret-duvet-ink block max-h-[132px] min-h-5 min-w-0 flex-1 overflow-y-auto px-1.5 py-2.5 text-[15px] leading-[1.4] wrap-break-word whitespace-pre-wrap outline-none select-text {isEmpty
+				class="focus-override font-content text-duvet-ink caret-duvet-ink block max-h-[132px] min-h-5 min-w-0 flex-1 overflow-y-auto px-1.5 py-2.5 text-[16px] leading-[1.45] wrap-break-word whitespace-pre-wrap outline-none select-text {isEmpty
 					? 'before:text-duvet-ink2 before:pointer-events-none before:absolute before:content-[attr(data-placeholder)]'
 					: ''}"
 				data-placeholder={placeholder}

@@ -116,7 +116,7 @@ describe("shownRows", () => {
 	test("the rows in view and the overscan on each side, for one group", () => {
 		expect(shownRows([1000], 0, 600, 10)).toEqual([[0, Math.ceil((600 - GROUP_HEADING) / MEMBER_ROW) + 10]]);
 		const top = GROUP_HEADING + 500 * MEMBER_ROW;
-		expect(shownRows([1000], top, top + 400, 10)).toEqual([[490, 520]]);
+		expect(shownRows([1000], top, top + 400, 10)).toEqual([[490, 500 + Math.ceil(400 / MEMBER_ROW) + 10]]);
 		// The end of the list.
 		expect(shownRows([1000], GROUP_HEADING + 995 * MEMBER_ROW, GROUP_HEADING + 1000 * MEMBER_ROW, 10)).toEqual([
 			[985, 1000],

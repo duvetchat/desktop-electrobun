@@ -3,6 +3,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join, relative, sep } from "node:path";
 import { render } from "svelte/server";
 import { tags } from "./server-render";
+import { MEMBER_ROW } from "$lib/members";
 import type { GatewayRole, GatewaySpace, GatewayUser, MemberOnSidebar } from "$lib/types";
 
 // UserAvatar draws with facehash-sv, whose package names its entry for the "svelte" condition alone, which Bun doesn't read.
@@ -78,7 +79,7 @@ describe("a long members list", () => {
 		expect(html).toContain("Online — 500");
 		// The rows below the view are a spacer of their height.
 		const spacers = (await tags(MemberList, props)).filter((t) => /^height: \d+px/.test(t.attributes.style ?? ""));
-		expect(spacers.map((t) => t.attributes.style)).toEqual([`height: ${(500 - rows.size) * 40}px`]);
+		expect(spacers.map((t) => t.attributes.style)).toEqual([`height: ${(500 - rows.size) * MEMBER_ROW}px`]);
 	});
 
 	test("follows its scroller, the element around it that scrolls, and lets go of it", () => {
