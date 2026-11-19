@@ -119,21 +119,31 @@ type, snapshot pages to PNG and call native probes through `bun:ffi` (`src/bun/s
 
 ## 9. Vibrancy on macOS
 
-- **Verdict:** works with limits — the native side is proven, the look is **unverified**.
-- **Evidence:** an `NSVisualEffectView` was placed behind the webview through `bun:ffi` and public
-  AppKit only (`src/bun/spike/vibrancy.ts`), because Electrobun already draws its webviews with
+- **Verdict:** works in a test project, seen by a human on 2026-11-19; in Duvet as Liquid Glass (#374,
+  `DECISIONS.md`), not yet run on a Mac there.
+- **Evidence (the spike, 2026-11-18):** an `NSVisualEffectView` was placed behind the webview through `bun:ffi`
+  and public AppKit only (`src/bun/spike/vibrancy.ts`), because Electrobun already draws its webviews with
   `drawsBackground = NO` and a clear layer. It survives resize and full screen (subviews
   `[NSVisualEffectView, NSKVONotifying_WKWebView]`, the effect's frame tracks the content view).
   Scroll cost with the effect on vs off: median 17 ms/frame, p95 18 ms, 60 fps both ways — no
   measurable slowdown. The first attempt segfaulted Bun; after the fix (messaging only the webview,
-  on the main thread) the runs were stable.
-- **Why the look is unverified:** this Mac has no Screen Recording permission, so no screenshot of
-  the window can be taken. What could not be checked: whether the blur actually shows the desktop
-  through the page, seams, and theme correctness. The spike's `snapshot` command can save a
-  DOM-rendered picture of the page only, not of the desktop behind it.
-- **Recommendation:** ship the opaque tint (the prototype's Linux/web look) on every platform now,
-  and list vibrancy as a follow-up to be seen and approved by a human before it ships. The bridge
-  exists and is cheap; do not ship it blind.
+  on the main thread) the runs were stable. The look could not be checked: this Mac has no Screen
+  Recording permission.
+- **Evidence (Liquid Glass, 2026-11-19):** a test project on Electrobun 1.15.1 and 2.0.6 (macOS 27.2.1, SDK
+  27.2) put an `NSGlassEffectView` under the web view of a `transparent` window, from a small Objective-C
+  library loaded with `bun:ffi`, and a human looked at it. What Electrobun does, read in its `nativeWrapper.mm`:
+  `transparent: true` clears the window's background, makes it non-opaque and turns its shadow off (the library
+  turns it back on); every webview is added above everything the content view holds, so a view put at the
+  bottom stays behind them all; embedded `<electrobun-webview>`s keep an opaque background.
+- **What ships (#374):** `native/macos/liquid_glass.mm`, built for the build's target by
+  `scripts/build-liquid-glass.ts` (`scripts.preBuild`; an empty placeholder on Windows and Linux) and copied to
+  `Resources/app/native/`; `src/bun/liquid-glass.ts` loads it. The main window on macOS is `transparent` when the
+  library loads, the glass goes under its web view (`NSVisualEffectView` on macOS 14 and 15), and the page is told
+  in its preload (`glass`; `lib/platform.ts`: `vibrancy`). The page leaves the glass uncovered under the sidebar
+  only (`lib/vibrancy.ts`), and tells Bun its theme for the glass's appearance.
+- **Not checked yet:** scroll cost with Liquid Glass (the spike measured vibrancy only); a notarized build (the
+  build script signs the library itself, as Electrobun 1.15.1's signer only walks `Contents/MacOS`); the glass
+  inside Duvet itself, with the typing fix (`window-keys.ts`) and full screen.
 
 ## 10. Windows and Linux (read from source, not run)
 
@@ -207,13 +217,14 @@ type, snapshot pages to PNG and call native probes through `bun:ffi` (`src/bun/s
 | Remembered frame, clamped | works | source says yes | scale-1 only (source) | n/a |
 | Focus main window from pop-out | works | not run | not run | n/a |
 | Page-level shortcuts in the pop-out | works | not run | not run | browser-reserved only |
-| Vibrancy | proven, unverified look; ship opaque tint | n/a | n/a | opaque tint |
+| Vibrancy | Liquid Glass behind the main window's sidebar (vibrancy before macOS 26) | n/a | n/a | opaque tint |
 | Typing on macOS 27 | broken today; fix = key window + first responder | n/a | n/a | n/a |
 | QA without screenshots/typing (QA socket) | works | untested | untested | Playwright instead |
 
 ## Follow-ups
 
-1. Vibrancy: show it to a human (the bridge is written) and decide; ship opaque tint until then.
+1. Vibrancy: ~~show it to a human (the bridge is written) and decide; ship opaque tint until then.~~ Seen on
+   2026-11-19; ships as Liquid Glass on macOS (§9, #374).
 2. Windows and Linux: run the spike on real machines; verify §3–§8 there.
 3. Typing fix: make the window key and the webview first responder on focus; land it with the
    foundation so desktop QA can type for real.

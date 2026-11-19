@@ -68,8 +68,18 @@ export default {
 			// list (src/mainview/src/lib/app-windows.ts). Without its rule a page loads in the dev build and answers 404 in
 			// the packaged app (#357, docs/redesign/PLATFORM.md §3); src/bun/pages.test.ts checks every page has one.
 			...secondWindowCopyRules(),
+
+			// The Liquid Glass behind the main window on macOS (#374, src/bun/liquid-glass.ts), which loads it from
+			// Resources/app/native/. scripts.preBuild compiles it before every build; on Windows and Linux it writes an
+			// empty placeholder there, which the app never loads.
+			"native/macos/build/libLiquidGlass.dylib": "native/libLiquidGlass.dylib",
 		},
-		watchIgnore: ["dist/**"],
+		// The glass's library is the preBuild hook's output, not a source to rebuild on.
+		watchIgnore: ["dist/**", "native/macos/build/**"],
+	},
+	scripts: {
+		// Builds native/macos/liquid_glass.mm for the build's target (scripts/build-liquid-glass.ts), before the copy step.
+		preBuild: "scripts/build-liquid-glass.ts",
 	},
 	runtime: {
 		dragRegions: true,

@@ -23,6 +23,7 @@ import { dragWithWindows, letWindowsArrange, pageLoaded } from "./window-snap";
 import { startupSummary, writeStartupLine } from "./startup";
 import { rendererFor, shellPreload, windowChrome } from "./shell";
 import { keepKeysReachingThePage, type AppKit } from "./window-keys";
+import { addWindowGlass, glassAvailable, setGlassAppearance } from "./liquid-glass";
 import { WindowRelay, type WindowAnswer, type WindowCommand, type WindowStateMessage } from "./window-relay";
 import { MediaWindows } from "./media-window";
 import { mediaWindowOpener } from "./media-window-open";
@@ -112,6 +113,9 @@ type AppRPCSchema = {
 			windowState: WindowStateMessage;
 			// #357, the Windows workstream: open Settings or a Space's settings in its own window, or bring it forward.
 			openAppWindow: OpenAppWindow;
+			// The theme the main window's page wears, at its start and on each change: on macOS the glass behind its
+			// sidebar takes the same (liquid-glass.ts, #374).
+			windowTheme: { theme: "light" | "dark" };
 		};
 	};
 	webview: {
@@ -237,6 +241,11 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 				settingsWindows.stateFromMain(message);
 			},
 			openAppWindow: (request) => void settingsWindows.open(request),
+			windowTheme: ({ theme }) => {
+				if (!glass || (theme !== "light" && theme !== "dark")) return;
+				if (!setGlassAppearance(win.ptr, theme))
+					console.error("[liquid-glass] the glass didn't take the theme:", theme);
+			},
 			startupTimings: ({ marks }) => {
 				const line = `${new Date().toISOString()} ${startupSummary(processStart, { ...bunMarks, ...marks })}`;
 				console.log(line);
@@ -259,6 +268,12 @@ const rendererType = rendererFor(currentOS);
 // Windows and Linux have no system buttons: the page draws theirs (WindowControls.svelte, #357).
 const { titleBarStyle, nativeButtons } = windowChrome(currentOS);
 
+// The sidebar's glass on macOS (#374, liquid-glass.ts): Liquid Glass (vibrancy before macOS 26) behind the main
+// window's web view, which shows where the page paints nothing. Decided before the window is made: the window must be
+// transparent for it, and its page is told in its preload whether the glass is behind it. Without the library (not
+// bundled, or it didn't load) the window is opaque and the sidebar the solid tint, as before.
+const glass = currentOS === "darwin" && glassAvailable();
+
 // On macOS the editing keys (⌘C, ⌘V, ⌘Z…), ⌘Q, ⌘H and ⌘M are the menu bar's (app-menu.ts). Set right before the
 // window: Electrobun 1.15.1 reads the menu later, on the main thread, from memory nothing keeps (2.0 copies it first),
 // and making the window waits on that thread behind the read, so a GC has next to no time to free that memory first.
@@ -274,10 +289,13 @@ if (currentOS === "darwin") {
 
 const win = new BrowserWindow({
 	titleBarStyle,
+	// A clear, non-opaque window, for the glass behind the page: Electrobun turns its shadow off, the glass's library
+	// turns it back on.
+	transparent: glass,
 	renderer: rendererType,
 	// What only Bun knows about this window, for the page's platform switch (shell.ts, lib/platform.ts), set before
 	// any of the page's scripts run.
-	preload: shellPreload("main", { titleBarStyle, nativeButtons }),
+	preload: shellPreload("main", { titleBarStyle, nativeButtons, glass }),
 	sandbox: false,
 	frame: {
 		height: 900,
@@ -291,6 +309,13 @@ const win = new BrowserWindow({
 });
 bunMarks.window = Date.now();
 relay.setMain((command) => rpc.request.windowCommand(command));
+
+// Under the web view, whenever it is made: Electrobun adds web views above everything the window holds.
+if (glass) {
+	const result = addWindowGlass(win.ptr);
+	if (result === "glass" || result === "vibrancy") console.log(`[liquid-glass] ${result} behind the main window`);
+	else console.error(`[liquid-glass] no glass behind the main window (${result}): the sidebar shows the desktop bare`);
+}
 
 // Win+Left and Win+Right snap the window, and Win+Up and Win+Down maximize, restore and minimize it, once it takes what
 // Windows asks of a window for that (window-snap.ts, #345).

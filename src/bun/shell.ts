@@ -15,6 +15,9 @@ export interface InjectedShell {
 	titleBarStyle: TitleBarStyle;
 	/** Whether the system's own window buttons show (macOS's traffic lights): else the page draws its own. */
 	nativeButtons: boolean;
+	/** Whether Liquid Glass (or, before macOS 26, vibrancy) is behind this window's page (liquid-glass.ts, #374): the
+	 * page then leaves its sidebar see-through. The main window on macOS; false in every other. */
+	glass: boolean;
 	window: WindowKind;
 }
 
@@ -25,10 +28,14 @@ export interface InjectedShell {
  */
 export function shellPreload(
 	window: WindowKind,
-	{ titleBarStyle, nativeButtons }: { titleBarStyle: TitleBarStyle; nativeButtons: boolean },
+	{
+		titleBarStyle,
+		nativeButtons,
+		glass = false,
+	}: { titleBarStyle: TitleBarStyle; nativeButtons: boolean; glass?: boolean },
 	os: string = process.platform,
 ): string {
-	const shell: InjectedShell = { os, titleBarStyle, nativeButtons, window };
+	const shell: InjectedShell = { os, titleBarStyle, nativeButtons, glass, window };
 	return `if (window.top === window) window.__duvetShell = Object.freeze(${JSON.stringify(shell)});`;
 }
 

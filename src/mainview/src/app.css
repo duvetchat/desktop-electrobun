@@ -84,8 +84,9 @@
 	--duvet-toggle-off: #2a2c3c;
 	--duvet-kbd: rgba(255, 255, 255, 0.08);
 
-	/* The sidebar, and the Settings windows' side panel. Its material is the solid tint everywhere until vibrancy is
-	   approved (DECISIONS.md): the -vibrant and -mica values wait in their own tokens for the shell to pick. */
+	/* The sidebar, and the Settings windows' side panel: the solid tint. On macOS the main window's sidebar is glass
+	   (#374, lib/vibrancy.ts): over the Liquid Glass behind the page its column takes the -vibrant values, a tint the
+	   glass shows through and the ring that matches it. The -mica values wait for Windows. */
 	--duvet-sb-bg: #0d0d12;
 	--duvet-sb-filter: none;
 	--duvet-sb-ring: #0d0d12;
@@ -808,6 +809,13 @@
 		height: var(--app-height);
 		width: var(--app-width);
 		background: var(--duvet-bg);
+	}
+
+	/* The sidebar's glass on macOS (#374, lib/vibrancy.ts): while the app's shell is up, the page paints nothing of
+	   its own behind it, and the Liquid Glass behind the transparent window shows through the sidebar's tint. */
+	html.duvet-vibrant,
+	html.duvet-vibrant body {
+		background: transparent;
 	}
 
 	::selection,
