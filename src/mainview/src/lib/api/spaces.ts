@@ -1,7 +1,8 @@
 import api, { requestLimits, type UploadOptions } from "$lib/api/api";
 import type { GatewayUser, GatewayMember } from "$lib/types";
 
-export const MEMBERS_PAGE_SIZE = 50;
+/** How many of a Space's members a page asks for: the most the API gives (100), as a Space's settings load every page. */
+export const MEMBERS_PAGE_SIZE = 100;
 
 export interface SpaceMemberWithUser extends GatewayMember {
 	user: GatewayUser;

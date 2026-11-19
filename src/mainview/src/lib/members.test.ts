@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
 import {
 	findMembers,
 	GROUP_HEADING,
@@ -263,6 +263,19 @@ describe("the Members section's members", () => {
 		expect(names(findMembers(members, {}))).toEqual(["Bea", "otterbot", "rowan", "Tam"]);
 		expect(names(findMembers(members, { sort: "newest" }))).toEqual(["otterbot", "Bea", "Tam", "rowan"]);
 		expect(names(findMembers(members, { sort: "oldest" }))).toEqual(["Tam", "Bea", "otterbot", "rowan"]);
+	});
+
+	// The section sorts again on every page that comes, every presence, role event and key. A localeCompare with options
+	// makes a collator of its own each time: 5,000 members took 300 to 400 ms in Chromium (V8) for each sort. One
+	// collator does it in about 5.
+	test("compares names with one collator, not a localeCompare for each pair", () => {
+		const compared = spyOn(String.prototype, "localeCompare");
+		try {
+			for (const sort of ["name", "newest", "oldest"] as const) findMembers(members, { sort });
+			expect(compared).not.toHaveBeenCalled();
+		} finally {
+			compared.mockRestore();
+		}
 	});
 
 	test("the date they joined, as the locale writes it", () => {

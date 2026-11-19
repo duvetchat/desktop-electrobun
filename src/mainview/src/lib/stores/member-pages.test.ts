@@ -3,24 +3,30 @@ import { get } from "svelte/store";
 import type { SpaceMemberWithUser } from "$lib/api/spaces";
 import type { GatewayMember, GatewaySpace, GatewayUser } from "$lib/types";
 
-// The pages the API hands out, in order, and what it was asked for each. A promise is a page still on its way.
-let pages: (SpaceMemberWithUser[] | "fails" | Promise<SpaceMemberWithUser[]>)[] = [];
+// The pages the API hands out, in order, and what it was asked for each, and when. A promise is a page still on its way;
+// an error is the API's refusal.
+let pages: (SpaceMemberWithUser[] | "fails" | Error | Promise<SpaceMemberWithUser[]>)[] = [];
 let asked: { spaceId: string; after: string | undefined }[] = [];
+let askedAt: number[] = [];
 mock.module("$lib/api/spaces", () => ({
 	MEMBERS_PAGE_SIZE: 2,
 	getSpaceMembers: async (spaceId: string, cursor?: { id: string }) => {
 		asked.push({ spaceId, after: cursor?.id });
+		askedAt.push(performance.now());
 		const page = pages.shift();
 		if (!page || page === "fails") throw new Error("no page");
+		if (page instanceof Error) throw page;
 		return page;
 	},
 }));
 // The store's .svelte.ts module uses $state, which only Svelte's compiler knows: here it's the value itself.
 Object.assign(globalThis, { $state: <T>(value: T) => value });
+const { FetchError } = await import("$lib/api/api");
 const { gatewaySpaces } = await import("$lib/stores.svelte");
 const {
 	cursorAfter,
 	ensureMembers,
+	EVERY_PAGE_GAP,
 	forgetMemberPages,
 	loadEveryMember,
 	loadMoreMembers,
@@ -28,9 +34,23 @@ const {
 	membersFailed,
 	membersLoading,
 	moreMembers,
+	RATE_LIMIT_TRIES,
 	restartMembers,
 	withMemberPage,
 } = await import("$lib/stores/member-pages.svelte");
+
+// The API turning a page away for its rate (429), the wait it asks for in its headers.
+const tooMany = (resetAfter: string) =>
+	new FetchError(
+		"Request failed with status 429",
+		{},
+		{
+			data: { error: "too many requests, try again later" },
+			status: 429,
+			statusText: "",
+			headers: new Headers({ "Retry-After": "1", "X-RateLimit-Reset-After": resetAfter }),
+		},
+	);
 
 const user = (n: number): GatewayUser => ({
 	id: `user-${n}`,
@@ -81,6 +101,7 @@ const held = () => get(gatewaySpaces).find((s) => s.id === "harbour")!;
 beforeEach(() => {
 	pages = [];
 	asked = [];
+	askedAt = [];
 	forgetMemberPages();
 	gatewaySpaces.set([space([1])]);
 });
@@ -323,5 +344,37 @@ describe("a list of every member", () => {
 		memberJoined("cove");
 		expect(membersLoading("cove")).toBe(false);
 		expect(asked).toEqual([]);
+	});
+
+	// The API takes 50 requests a second from a user, and 64 a minute of a Space's members: a large Space's pages back to
+	// back would take a fast link past both, and a page it turned away failed the list.
+	test("asks for its pages EVERY_PAGE_GAP ms apart", async () => {
+		pages = [[row(1), row(2)], [row(3), row(4)], [row(5), row(6)], [row(7)]];
+		for (let i = 0; i < 5; i++) await step();
+		expect(asked).toHaveLength(4);
+		const gaps = askedAt.slice(1).map((at, i) => at - askedAt[i]!);
+		for (const gap of gaps) expect(gap).toBeGreaterThanOrEqual(EVERY_PAGE_GAP - 10);
+		expect(held().users).toHaveLength(7);
+	});
+
+	test("waits as long as the API asks for a page it turned away for its rate, then asks again", async () => {
+		pages = [tooMany("0.080"), [row(1), row(2)]];
+		await step();
+		expect(membersFailed("harbour")).toBe(false);
+		expect(asked.map((a) => a.after)).toEqual([undefined, undefined]);
+		expect(askedAt[1]! - askedAt[0]!).toBeGreaterThanOrEqual(70);
+		expect(held().members.map((m) => m.id)).toEqual(["member-1", "member-2"]);
+	});
+
+	test("fails a page the API keeps turning away, which Try again asks for again", async () => {
+		await quietly(async () => {
+			pages = Array.from({ length: RATE_LIMIT_TRIES }, () => tooMany("0.010"));
+			await step();
+			expect(asked).toHaveLength(RATE_LIMIT_TRIES);
+			expect(membersFailed("harbour")).toBe(true);
+			pages = [[row(1)]];
+			await loadMoreMembers("harbour");
+			expect(membersFailed("harbour")).toBe(false);
+		});
 	});
 });

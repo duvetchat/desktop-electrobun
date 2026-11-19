@@ -142,9 +142,13 @@ export const NO_ROLE = "none";
 /** How the Members section sorts: by name, or by when they joined, the newest or the oldest first. */
 export type MemberSort = "name" | "newest" | "oldest";
 
+// One collator for every comparison: a localeCompare with options makes one of its own each time, and Chromium took
+// 300 to 400 ms to sort 5,000 members that way, again with each page, presence, role event and key.
+const nameOrder = new Intl.Collator(undefined, { sensitivity: "base" });
+
 const byName = (a: ManagedMember, b: ManagedMember) =>
-	a.name.localeCompare(b.name, undefined, { sensitivity: "base" }) ||
-	a.username.localeCompare(b.username, undefined, { sensitivity: "base" }) ||
+	nameOrder.compare(a.name, b.name) ||
+	nameOrder.compare(a.username, b.username) ||
 	(a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
 
 // When they joined, in ms; NaN where it isn't known.
