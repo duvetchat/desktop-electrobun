@@ -62,6 +62,21 @@ export function groupSpaces(spaceIds: string[], pinned: string[], hasNews: (spac
 	};
 }
 
+/** A row of the spaces column's list: a Space, or the quiet Spaces' own row, which folds them and counts them. */
+export type SpaceListRow = { kind: "space"; id: string } | { kind: "quiet"; count: number };
+
+/**
+ * The spaces column's list (#382): the pinned Spaces and those with news, then, while any Space is quiet, the quiet
+ * Spaces' row, then the quiet Spaces it shows: all of them unfolded, or else only the open one (the Space the focused
+ * pane is in), under the row, where it sits among them. The row has one place and one count whichever Space is open.
+ */
+export function spaceListRows(groups: SpaceGroups, quietOpen: boolean, openSpaceId: string | null): SpaceListRow[] {
+	const space = (id: string): SpaceListRow => ({ kind: "space", id });
+	const shownQuiet = quietOpen ? groups.quiet : groups.quiet.filter((id) => id === openSpaceId);
+	const quietRow: SpaceListRow[] = groups.quiet.length > 0 ? [{ kind: "quiet", count: groups.quiet.length }] : [];
+	return [...groups.pinned.map(space), ...groups.news.map(space), ...quietRow, ...shownQuiet.map(space)];
+}
+
 /**
  * How well a query matches a name, higher being better, or null when it doesn't: the name starting with it beats a
  * word of it starting with it, which beats the query anywhere in it, which beats its letters in order with gaps.

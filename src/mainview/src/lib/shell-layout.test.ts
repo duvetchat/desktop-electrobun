@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { makeLeaf, makeSplit } from "$lib/pane";
 import {
+	afterLeavingVoice,
 	chatsUnderAll,
 	chipCount,
 	clampSidebarWidth,
@@ -99,8 +100,9 @@ test("counts agree with their nouns, and chips stop at 99+", () => {
 	expect(mentionsLabel(3)).toBe("3 mentions");
 	expect(friendRequestsLabel(1)).toBe("1 friend request");
 	expect(friendRequestsLabel(2)).toBe("2 friend requests");
-	expect(quietSpacesLabel(1)).toBe("1 quiet Space");
-	expect(quietSpacesLabel(5)).toBe("5 quiet Spaces");
+	// The quiet Spaces' row reads the same folded and unfolded (#382).
+	expect(quietSpacesLabel(1)).toBe("Quiet · 1");
+	expect(quietSpacesLabel(5)).toBe("Quiet · 5");
 	expect(chipCount(99)).toBe("99");
 	expect(chipCount(100)).toBe("99+");
 });
@@ -213,6 +215,48 @@ describe("a chat opening beside", () => {
 	test("leaves the same chat in one pane, not twice side by side", () => {
 		const lone = makeLeaf([room("a")], "a");
 		expect(openBeside(lone, lone.id, room("a"))).toEqual({ root: lone, focusedId: lone.id });
+	});
+});
+
+// #367: leaving a voice room took the pane that showed it to its last other tab by position, often another Space's
+// room. A click on a voice room takes the current tab's place, so the room the user came from wasn't a tab any more.
+describe("a pane that shows a voice room, once the user leaves the room", () => {
+	const voice: Tab = { channelId: "v", channelName: "Lounge", channelType: "voice", spaceId: "s1" };
+
+	test("goes back to the chat it showed before, which the voice room took the place of", () => {
+		const pane = makeLeaf([room("elsewhere", "s2"), voice], "v");
+		const next = afterLeavingVoice(pane, "v", [room("general"), room("first")]);
+		// Not the other Space's room the old pick took, the last tab by position.
+		expect(next.activeChannelId).toBe("general");
+		// The voice room's tab stays, for joining again.
+		expect(ids(next)).toEqual(["elsewhere", "v", "general"]);
+	});
+
+	test("shows that chat's tab when the pane still has it", () => {
+		const pane = makeLeaf([room("general"), voice, room("elsewhere", "s2")], "v");
+		const next = afterLeavingVoice(pane, "v", [room("general")]);
+		expect(ids(next)).toEqual(["general", "v", "elsewhere"]);
+		expect(next.activeChannelId).toBe("general");
+	});
+
+	test("goes back to a conversation as well", () => {
+		const pane = makeLeaf([voice], "v");
+		expect(afterLeavingVoice(pane, "v", [chat("dm"), room("first")]).activeChannelId).toBe("dm");
+	});
+
+	test("takes the next choice when there's no chat before it, and never the voice room itself", () => {
+		const pane = makeLeaf([room("elsewhere", "s2"), voice], "v");
+		expect(afterLeavingVoice(pane, "v", [null, voice, undefined, room("first")]).activeChannelId).toBe("first");
+	});
+
+	test("stays where it is with nowhere to go", () => {
+		const pane = makeLeaf([room("elsewhere", "s2"), voice], "v");
+		expect(afterLeavingVoice(pane, "v", [null, null])).toBe(pane);
+	});
+
+	test("is left alone when it shows another chat", () => {
+		const pane = makeLeaf([room("general"), voice], "general");
+		expect(afterLeavingVoice(pane, "v", [room("first")])).toBe(pane);
 	});
 });
 

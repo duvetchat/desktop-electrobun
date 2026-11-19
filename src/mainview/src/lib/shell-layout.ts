@@ -76,7 +76,8 @@ const counted = (count: number, one: string, many: string) => (count === 1 ? `1 
 export const moreChatsLabel = (count: number) => counted(count, "more chat", "more chats");
 export const mentionsLabel = (count: number) => counted(count, "mention", "mentions");
 export const friendRequestsLabel = (count: number) => counted(count, "friend request", "friend requests");
-export const quietSpacesLabel = (count: number) => counted(count, "quiet Space", "quiet Spaces");
+/** The quiet Spaces' row (#382): the same folded and unfolded, whichever Space is open. */
+export const quietSpacesLabel = (count: number) => `Quiet · ${count}`;
 
 /** A count as a chip writes it: 99+ past 99. */
 export const chipCount = (count: number) => (count > 99 ? "99+" : String(count));
@@ -126,6 +127,21 @@ export function openInLeaf(leaf: PaneLeaf, tab: Tab, how: "here" | "tab"): PaneL
 			? leaf.tabs.map((t, index) => (index === at ? tab : t))
 			: [...leaf.tabs.slice(0, at + 1), tab, ...leaf.tabs.slice(at + 1)];
 	return { ...leaf, tabs, activeChannelId: tab.channelId };
+}
+
+/**
+ * A pane that shows a voice room once the user leaves the room (#367): the first of `choices` it can go to (the chat
+ * it showed before, then rooms of the voice room's Space), its tab shown, or opened after the voice room's, which stays
+ * for joining again. Never the voice room itself. A pane that shows another chat, or has nowhere to go, stays as it is.
+ */
+export function afterLeavingVoice(
+	leaf: PaneLeaf,
+	roomId: string,
+	choices: readonly (Tab | null | undefined)[],
+): PaneLeaf {
+	if (leaf.activeChannelId !== roomId) return leaf;
+	const next = choices.find((tab): tab is Tab => !!tab && tab.channelId !== roomId);
+	return next ? openInLeaf(leaf, next, "tab") : leaf;
 }
 
 /** The tree's panes, in its order: left to right, top to bottom. */
