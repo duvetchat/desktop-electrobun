@@ -20,7 +20,8 @@ Glass behind an Electrobun page on 2026-11-19 ("doesn't look bad at all"), so th
 3. **The page leaves the glass uncovered under the sidebar alone,** and only while the app's shell is up: the
    sidebar takes the design's macOS values (`--sb-bg`, `--sb-ring`, `--sb-filter`, DESIGN-MAP.md §1.1), and the
    chats and the title strip keep the window's background. The sign-in pages and the app while it connects stay
-   opaque.
+   opaque. One departure: the light theme's tint is `rgba(236, 240, 253, .5)`, not the design's `.8`, which was
+   drawn for vibrancy and, seen over Liquid Glass (itself light in that theme), left the sidebar nearly solid.
 4. **The glass wears the page's theme.** It follows the system's appearance by itself, and the page's theme can
    be picked apart from it: the page tells Bun the theme it wears, and the glass's own appearance is set to match
    (the window's would change the page's `prefers-color-scheme`, which the System theme reads).

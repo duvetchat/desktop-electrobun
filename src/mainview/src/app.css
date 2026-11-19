@@ -187,7 +187,9 @@
 
 	--duvet-sb-bg: #edf1ff;
 	--duvet-sb-ring: #edf1ff;
-	--duvet-sb-bg-vibrant: rgba(236, 240, 253, 0.8);
+	/* Lighter than the design's .8 (DESIGN-MAP.md §1.1), which was drawn for vibrancy: over Liquid Glass, which is
+	   light itself in this theme, .8 left the sidebar nearly solid (#374, DECISIONS.md). */
+	--duvet-sb-bg-vibrant: rgba(236, 240, 253, 0.5);
 	--duvet-sb-bg-mica: rgba(238, 241, 254, 0.82);
 	--duvet-sb-filter-vibrant: blur(48px) saturate(1.5);
 	--duvet-sb-ring-vibrant: #e8ecfb;

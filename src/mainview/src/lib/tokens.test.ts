@@ -84,10 +84,11 @@ describe("the palette", () => {
 		expect(light.has("--duvet-sb-filter")).toBe(false);
 	});
 
-	// DESIGN-MAP.md §1.1: macOS's --sb-bg, --sb-filter and --sb-ring.
+	// DESIGN-MAP.md §1.1: macOS's --sb-bg, --sb-filter and --sb-ring. The light tint is lighter than the design's .8,
+	// which left the sidebar nearly solid over Liquid Glass (DECISIONS.md, #374).
 	test("the glass sidebar's tint, blur and ring are the design's, in dark and in light", () => {
 		expect(dark.get("--duvet-sb-bg-vibrant")).toBe("rgba(26, 26, 34, 0.76)");
-		expect(light.get("--duvet-sb-bg-vibrant")).toBe("rgba(236, 240, 253, 0.8)");
+		expect(light.get("--duvet-sb-bg-vibrant")).toBe("rgba(236, 240, 253, 0.5)");
 		expect(dark.get("--duvet-sb-filter-vibrant")).toBe("blur(48px) saturate(1.4)");
 		expect(light.get("--duvet-sb-filter-vibrant")).toBe("blur(48px) saturate(1.5)");
 		expect(dark.get("--duvet-sb-ring-vibrant")).toBe("#16161e");
