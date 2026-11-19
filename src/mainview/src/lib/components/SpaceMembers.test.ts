@@ -12,7 +12,7 @@ void mock.module("facehash-sv", () => facehash);
 Object.assign(globalThis, { $state: <T>(value: T) => value });
 const { default: SpaceMembers } = await import("./SpaceMembers.svelte");
 const { default: SpaceMemberDetails } = await import("./SpaceMemberDetails.svelte");
-const { managedMembers } = await import("$lib/members");
+const { managedMembers, MEMBER_ROW } = await import("$lib/members");
 
 const SPACE = "01920000-0000-7000-8000-00000000a0a0";
 // The user, a moderator: they manage roles and kick, from a role below the top one.
@@ -94,7 +94,7 @@ describe("the Members section", () => {
 		expect(rows.size).toBeGreaterThan(10);
 		expect(rows.size).toBeLessThan(80);
 		const spacers = (await tags(SpaceMembers, props)).filter((t) => /^height: \d+px/.test(t.attributes.style ?? ""));
-		expect(spacers.map((t) => t.attributes.style)).toEqual([`height: ${(1000 - rows.size) * 40}px`]);
+		expect(spacers.map((t) => t.attributes.style)).toEqual([`height: ${(1000 - rows.size) * MEMBER_ROW}px`]);
 		expect(html).toContain("@person0002 · Helpers");
 		expect(html).toContain(new Date("2026-03-05T10:00:00Z").toLocaleDateString(undefined, { dateStyle: "medium" }));
 		// Search, a role filter and a sort, over the members loaded.

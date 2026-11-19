@@ -1502,11 +1502,11 @@
 				aria-readonly="true"
 				tabindex="-1"
 				use:prism={lit ? ($currentUser?.id ?? null) : null}
-				class="font-content relative max-w-full cursor-text text-left text-[15px] wrap-anywhere select-text {emojiOnly
+				class="font-content relative max-w-full cursor-text text-left text-[16px] wrap-anywhere select-text {emojiOnly
 					? 'px-0.5 leading-[1.15]'
 					: flat
-						? `max-w-[760px] leading-[1.45] ${isFailed ? 'text-duvet-danger' : 'text-duvet-ink'}`
-						: `rounded-2xl px-3 py-2 leading-[1.4] transition-shadow duration-200 motion-reduce:transition-none ${
+						? `max-w-[760px] leading-[1.25] ${isFailed ? 'text-duvet-danger' : 'text-duvet-ink'}`
+						: `rounded-2xl px-3 py-2 leading-[1.45] transition-shadow duration-200 motion-reduce:transition-none ${
 								isFailed
 									? 'bg-duvet-danger/15 text-duvet-danger'
 									: lit

@@ -481,21 +481,24 @@
 								<ul class="mb-3 flex flex-col gap-px">
 									{#each group.friends as { friend, member, activity } (friend.id)}
 										<li
-											class="group rounded-row hover:bg-duvet-card/70 relative flex items-center gap-3 overflow-hidden px-2 py-2 transition-colors motion-reduce:transition-none"
+											class="group rounded-row hover:bg-duvet-card/70 relative flex items-center gap-3 overflow-hidden px-2 py-3 transition-colors motion-reduce:transition-none"
 										>
 											{#if member.banner_url && !bannerErrors.has(member.id)}
-												<img
-													src="{member.banner_url}{bannerRetryCounts.get(member.id)
-														? `?r=${bannerRetryCounts.get(member.id)}`
-														: ''}"
-													alt=""
-													class="pointer-events-none absolute inset-0 h-full w-full [mask-image:linear-gradient(to_right,transparent_40%,black_90%)] object-cover object-right {member.status ===
-													'offline'
-														? 'opacity-15'
-														: 'opacity-25'}"
-													onerror={() => handleBannerError(member.id)}
-													draggable="false"
-												/>
+												<div
+													class="pointer-events-none absolute inset-y-1.5 right-1.5 left-6 overflow-hidden rounded-lg"
+												>
+													<img
+														src="{member.banner_url}{bannerRetryCounts.get(member.id)
+															? `?r=${bannerRetryCounts.get(member.id)}`
+															: ''}"
+														alt=""
+														class="h-full w-full object-cover object-right {member.status === 'offline'
+															? 'opacity-25'
+															: 'opacity-40'}"
+														onerror={() => handleBannerError(member.id)}
+														draggable="false"
+													/>
+												</div>
 											{/if}
 											<MemberProfilePopover
 												{member}

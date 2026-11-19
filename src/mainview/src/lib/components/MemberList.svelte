@@ -241,11 +241,13 @@
 					onOpenChange={(o) => {
 						activePopoverMemberId = o ? member.id : null;
 					}}
-					triggerClass="group relative mx-2 flex h-10 w-[calc(100%-1rem)] items-center overflow-hidden rounded-xl px-2 text-duvet-ink hover:bg-duvet-hover data-[state=open]:bg-duvet-hover"
+					triggerClass="group relative mx-2 flex h-12 w-[calc(100%-1rem)] items-center overflow-hidden rounded-xl px-2 text-duvet-ink hover:bg-duvet-hover data-[state=open]:bg-duvet-hover"
 					{onRemoveMember}
 				>
 					{#snippet children()}
-						<MemberBanner src={member.banner_url} offline={member.status === "offline"} />
+						<div class="absolute inset-y-1.5 right-2 left-7 overflow-hidden rounded-lg">
+							<MemberBanner src={member.banner_url} offline={member.status === "offline"} />
+						</div>
 						<div class="relative flex min-w-0 items-center gap-2.5">
 							<div class="relative shrink-0 {member.status === 'offline' ? 'opacity-60' : ''}">
 								<UserAvatar src={member.avatar_url} name={member.username} size={30} />
