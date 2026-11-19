@@ -144,7 +144,7 @@ import {
 	type MentionNotice,
 } from "$lib/mention-notices";
 import { storageTransfers } from "$lib/stores/storage-transfers.svelte";
-import { forgetMemberPages, memberJoined } from "$lib/stores/member-pages.svelte";
+import { forgetMemberPages, memberJoined, withMemberPage, withMemberRole } from "$lib/stores/member-pages.svelte";
 import { toast } from "$lib/stores/toast.svelte";
 import { getElectrobunRpc, type ActivityPayload } from "$lib/electrobun-rpc";
 import { identifyData } from "$lib/api/ws/identify";
@@ -542,23 +542,9 @@ function onResumed() {
 	});
 }
 
+// As a page of the pager does, the role changes that waited for its members included (#380).
 function addMembersToSpace(spaceId: string, rows: SpaceMemberWithUser[]) {
-	gatewaySpaces.update((spaces) =>
-		spaces.map((s) => {
-			if (s.id !== spaceId) return s;
-			const existingUserIds = new Set(s.users.map((u) => u.id));
-			const incomingUserIds = new Set(rows.map((r) => r.user.id));
-			// Replace any placeholder members for the same users with real data
-			const filteredMembers = s.members.filter((m) => !incomingUserIds.has(m.user_id));
-			const newUsers = rows.map((r) => r.user).filter((u) => !existingUserIds.has(u.id));
-			const newMembers = rows.map(({ user: _u, max_pos: _p, ...m }) => m);
-			return {
-				...s,
-				users: [...s.users, ...newUsers],
-				members: [...filteredMembers, ...newMembers],
-			};
-		}),
-	);
+	gatewaySpaces.update((spaces) => spaces.map((s) => (s.id === spaceId ? withMemberPage(s, rows) : s)));
 }
 
 /** Loads a Space's first page of members, with their users: after someone joins it, and for the people of the voice
@@ -1506,49 +1492,12 @@ function handleEvent(event: GatewayEvent) {
 			);
 			break;
 		}
-		case "MEMBER_ROLE_ADD": {
-			const raw = payload.data;
-			gatewaySpaces.update((spaces) =>
-				spaces.map((s) => {
-					const member = s.members.find((m) => m.id === raw.member_id);
-					if (!member) {
-						return s;
-					}
-					const userId = member.user_id;
-					const current = s.member_roles[userId] ?? [];
-					if (current.includes(raw.role_id)) {
-						return s;
-					}
-					return {
-						...s,
-						member_roles: {
-							...s.member_roles,
-							[userId]: [...current, raw.role_id],
-						},
-					};
-				}),
-			);
-			break;
-		}
+		case "MEMBER_ROLE_ADD":
 		case "MEMBER_ROLE_REMOVE": {
 			const raw = payload.data;
-			gatewaySpaces.update((spaces) =>
-				spaces.map((s) => {
-					const member = s.members.find((m) => m.id === raw.member_id);
-					if (!member) {
-						return s;
-					}
-					const userId = member.user_id;
-					const current = s.member_roles[userId] ?? [];
-					return {
-						...s,
-						member_roles: {
-							...s.member_roles,
-							[userId]: current.filter((id) => id !== raw.role_id),
-						},
-					};
-				}),
-			);
+			// By member ID: one whose page of members hasn't come gets it with that page (#380).
+			const has = payload.type === "MEMBER_ROLE_ADD";
+			gatewaySpaces.update((spaces) => withMemberRole(spaces, raw.member_id, raw.role_id, has));
 			break;
 		}
 		case "SPACE_MEMBER_ADD": {

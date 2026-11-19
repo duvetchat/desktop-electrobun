@@ -51,8 +51,8 @@ function rateLimitWait(err: unknown): number | null {
 	return Math.min(Math.max(Number.isFinite(seconds) ? seconds * 1000 : 1000, 50), 60_000);
 }
 
-/** A Space with a page of its members merged in: users it didn't have, and each member's row in place of the placeholder
- *  the gateway sent for them. */
+/** A Space with a page of its members merged in: users it didn't have, each member's row in place of the placeholder
+ *  the gateway sent for them, and the role changes that waited for those rows (withMemberRole). */
 export function withMemberPage(space: GatewaySpace, rows: SpaceMemberWithUser[]): GatewaySpace {
 	const known = new Set(space.users.map((u) => u.id));
 	const incoming = new Set(rows.map((r) => r.user.id));
@@ -63,7 +63,60 @@ export function withMemberPage(space: GatewaySpace, rows: SpaceMemberWithUser[])
 			...space.members.filter((m) => !incoming.has(m.user_id)),
 			...rows.map(({ user: _user, max_pos: _pos, ...member }) => member),
 		],
+		member_roles: withWaitingRoles(space, rows),
 	};
+}
+
+// A user's roles with one given or taken.
+function rolesWith(held: string[], roleId: string, has: boolean): string[] {
+	if (!has) return held.filter((id) => id !== roleId);
+	return held.includes(roleId) ? held : [...held, roleId];
+}
+
+// The role changes of members whose page hasn't come, by Space and member ID, in the order they came (#380): the role
+// events name a member by their member ID, and the Space keeps roles by user ID, which only their page of members
+// tells the app.
+const waitingRoles = new Map<string, Map<string, { roleId: string; has: boolean }[]>>();
+
+/**
+ * The Spaces with a role given to a member or taken from them (MEMBER_ROLE_ADD, MEMBER_ROLE_REMOVE): in the Space whose
+ * members have them, or else the one the role is of. A member whose page hasn't come, the user included (the
+ * gateway's row for them carries their user ID), gets the change as their page comes (withMemberPage), and the Spaces
+ * stay as they are until then. The change was dropped for them before, and they showed the roles of the session's
+ * start.
+ */
+export function withMemberRole(spaces: GatewaySpace[], memberId: string, roleId: string, has: boolean): GatewaySpace[] {
+	const space =
+		spaces.find((s) => s.members.some((m) => m.id === memberId)) ??
+		spaces.find((s) => s.roles.some((r) => r.id === roleId));
+	if (!space) return spaces;
+	const member = space.members.find((m) => m.id === memberId);
+	if (!member) {
+		const bySpace = waitingRoles.get(space.id) ?? new Map<string, { roleId: string; has: boolean }[]>();
+		waitingRoles.set(space.id, bySpace);
+		bySpace.set(memberId, [...(bySpace.get(memberId) ?? []), { roleId, has }]);
+		return spaces;
+	}
+	const held = space.member_roles[member.user_id] ?? [];
+	const next = rolesWith(held, roleId, has);
+	if (next.length === held.length) return spaces;
+	return spaces.map((s) => (s === space ? { ...s, member_roles: { ...s.member_roles, [member.user_id]: next } } : s));
+}
+
+// The Space's roles by user ID with the changes that waited for these rows applied, in the order they came; each is
+// applied once.
+function withWaitingRoles(space: GatewaySpace, rows: SpaceMemberWithUser[]): GatewaySpace["member_roles"] {
+	const waiting = waitingRoles.get(space.id);
+	if (!waiting) return space.member_roles;
+	let memberRoles = space.member_roles;
+	for (const row of rows) {
+		const changes = waiting.get(row.id);
+		if (!changes) continue;
+		waiting.delete(row.id);
+		const held = changes.reduce((roles, c) => rolesWith(roles, c.roleId, c.has), memberRoles[row.user_id] ?? []);
+		memberRoles = { ...memberRoles, [row.user_id]: held };
+	}
+	return memberRoles;
 }
 
 /** Where the page after this one starts, or null when this page was the last (it came short). */
@@ -184,14 +237,17 @@ export function memberJoined(spaceId: string): void {
 }
 
 /**
- * Forgets a Space's pager, or every one, dropping the pages on their way: a Space the user left (SPACE_DELETE), or every
- * Space for a new gateway session (READY), both of which bring a Space back with its user alone, whose pages start over
- * from the first (a page that failed included); or a test's. A page that landed after the user left moved the pager
- * on, and the Space joined again never got the members before it (#380).
+ * Forgets a Space's pager, or every one, dropping the pages on their way, and the role changes that waited for them: a
+ * Space the user left (SPACE_DELETE), or every Space for a new gateway session (READY), both of which bring a Space back
+ * with its user alone and its roles as they are then, whose pages start over from the first (a page that failed
+ * included); or a test's. A page that landed after the user left moved the pager on, and the Space joined again never
+ * got the members before it (#380).
  */
 export function forgetMemberPages(spaceId?: string): void {
 	for (const id of spaceId === undefined ? Object.keys(pagers) : [spaceId]) {
 		pagers[id]?.abort?.abort();
 		delete pagers[id];
 	}
+	if (spaceId === undefined) waitingRoles.clear();
+	else waitingRoles.delete(spaceId);
 }

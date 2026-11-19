@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, beforeEach, expect, spyOn, test } from "bun:test";
+import { afterAll, beforeAll, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import { openGateway, type TestGateway } from "$lib/api/ws/test-gateway";
 
 // What the gateway's events do to the pages of a Space's members (lib/stores/member-pages.svelte.ts), which the members
@@ -43,6 +43,32 @@ const row = (userId: string, memberId: string) => ({
 	max_pos: -1,
 });
 const usersOf = (spaceId: string) => (get(gatewaySpaces).find((s) => s.id === spaceId)?.users ?? []).map((u) => u.id);
+
+// Two roles of the Space, the member IDs of the user and of Ana, and the roles the app has for a user there.
+const HELPERS = "01920000-0000-7000-8000-0000000000f1";
+const MODS = "01920000-0000-7000-8000-0000000000f2";
+const ME_MEMBER = "01920000-0000-7000-8000-0000000000e0";
+const ANA_MEMBER = "01920000-0000-7000-8000-0000000000e1";
+const role = (id: string, name: string, position: number) => ({
+	id,
+	space_id: SPACE,
+	name,
+	color_from: null,
+	color_via: null,
+	color_to: null,
+	flags: 0,
+	permissions: 0,
+	created_at: "",
+	updated_at: "",
+	hoisted: false,
+	position,
+});
+const withRoles = (memberRoles: Record<string, string[]>) => ({
+	...spaceCreate,
+	roles_permissions: { [HELPERS]: role(HELPERS, "Helpers", 1), [MODS]: role(MODS, "Mods", 2) },
+	member_roles: memberRoles,
+});
+const rolesOf = (userId: string) => get(gatewaySpaces).find((s) => s.id === SPACE)?.member_roles[userId] ?? [];
 
 // How the API answers a page of the Space's members, and how many were asked for.
 let answer: () => Promise<Response> = async () => Response.json([]);
@@ -122,4 +148,76 @@ test("a Space left while a page of its members is on its way loads them anew whe
 	await ensureMembers(SPACE);
 	expect(asked).toBe(2);
 	expect(usersOf(SPACE)).toContain(ANA);
+});
+
+// #380: MEMBER_ROLE_ADD and MEMBER_ROLE_REMOVE name a member by their member ID, which only their page of members tells
+// the app. For one whose page hadn't come they changed nothing, and once it came the Members section showed the roles
+// they had as the session began: in their switches, the role filter and their row.
+describe("a role given or taken before the member's page came", () => {
+	beforeEach(() => {
+		gateway.receive("READY", { user: { id: ME, username: "me" }, sessionToken: "session", guild_ids: [SPACE] });
+	});
+
+	test("shows once their page comes", async () => {
+		gateway.receive("SPACE_CREATE", withRoles({ [ME]: [SPACE], [ANA]: [SPACE, MODS] }));
+		gateway.receive("MEMBER_ROLE_ADD", { member_id: ANA_MEMBER, role_id: HELPERS, space_id: SPACE });
+		// MEMBER_ROLE_REMOVE names no Space: the role does.
+		gateway.receive("MEMBER_ROLE_REMOVE", { member_id: ANA_MEMBER, role_id: MODS });
+		expect(rolesOf(ANA)).toEqual([SPACE, MODS]);
+		answer = async () => Response.json([row(ANA, ANA_MEMBER)]);
+		await ensureMembers(SPACE);
+		expect(rolesOf(ANA)).toEqual([SPACE, HELPERS]);
+	});
+
+	test("in the order they came", async () => {
+		gateway.receive("SPACE_CREATE", withRoles({ [ME]: [SPACE], [ANA]: [SPACE] }));
+		gateway.receive("MEMBER_ROLE_ADD", { member_id: ANA_MEMBER, role_id: HELPERS, space_id: SPACE });
+		gateway.receive("MEMBER_ROLE_REMOVE", { member_id: ANA_MEMBER, role_id: HELPERS });
+		gateway.receive("MEMBER_ROLE_ADD", { member_id: ANA_MEMBER, role_id: MODS, space_id: SPACE });
+		answer = async () => Response.json([row(ANA, ANA_MEMBER)]);
+		await ensureMembers(SPACE);
+		expect(rolesOf(ANA)).toEqual([SPACE, MODS]);
+	});
+
+	// The gateway's row for the user carries their user ID, not their member ID: what decides which roles they may give
+	// (canManageRoleAt) read their roles as the session began until their page came.
+	test("the user's own, whose row from the gateway has no member ID", async () => {
+		gateway.receive("SPACE_CREATE", withRoles({ [ME]: [SPACE] }));
+		gateway.receive("MEMBER_ROLE_ADD", { member_id: ME_MEMBER, role_id: MODS, space_id: SPACE });
+		answer = async () => Response.json([row(ME, ME_MEMBER)]);
+		await ensureMembers(SPACE);
+		expect(rolesOf(ME)).toEqual([SPACE, MODS]);
+	});
+
+	test("and one whose page came takes the change at once, as before", async () => {
+		gateway.receive("SPACE_CREATE", withRoles({ [ME]: [SPACE], [ANA]: [SPACE] }));
+		answer = async () => Response.json([row(ANA, ANA_MEMBER)]);
+		await ensureMembers(SPACE);
+		gateway.receive("MEMBER_ROLE_ADD", { member_id: ANA_MEMBER, role_id: HELPERS, space_id: SPACE });
+		expect(rolesOf(ANA)).toEqual([SPACE, HELPERS]);
+		gateway.receive("MEMBER_ROLE_REMOVE", { member_id: ANA_MEMBER, role_id: HELPERS });
+		expect(rolesOf(ANA)).toEqual([SPACE]);
+	});
+
+	// A new session's SPACE_CREATE has the roles as they are: what waited from the session before is no news.
+	test("is forgotten by a new session", async () => {
+		gateway.receive("SPACE_CREATE", withRoles({ [ME]: [SPACE], [ANA]: [SPACE] }));
+		gateway.receive("MEMBER_ROLE_ADD", { member_id: ANA_MEMBER, role_id: HELPERS, space_id: SPACE });
+		gateway.receive("READY", { user: { id: ME, username: "me" }, sessionToken: "session", guild_ids: [SPACE] });
+		gateway.receive("SPACE_CREATE", withRoles({ [ME]: [SPACE], [ANA]: [SPACE, MODS] }));
+		answer = async () => Response.json([row(ANA, ANA_MEMBER)]);
+		await ensureMembers(SPACE);
+		expect(rolesOf(ANA)).toEqual([SPACE, MODS]);
+	});
+
+	// Joined again, the Space's roles are the new SPACE_CREATE's: what waited from before is no news.
+	test("is forgotten with the Space, as the user leaves it", async () => {
+		gateway.receive("SPACE_CREATE", withRoles({ [ME]: [SPACE], [ANA]: [SPACE] }));
+		gateway.receive("MEMBER_ROLE_ADD", { member_id: ANA_MEMBER, role_id: HELPERS, space_id: SPACE });
+		gateway.receive("SPACE_DELETE", { id: SPACE });
+		gateway.receive("SPACE_CREATE", withRoles({ [ME]: [SPACE], [ANA]: [SPACE] }));
+		answer = async () => Response.json([row(ANA, ANA_MEMBER)]);
+		await ensureMembers(SPACE);
+		expect(rolesOf(ANA)).toEqual([SPACE]);
+	});
 });
