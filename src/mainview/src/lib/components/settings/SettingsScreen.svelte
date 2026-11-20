@@ -146,6 +146,7 @@
 		type SettingsNavGroup,
 	} from "./recipes";
 	import { pageSettingsHost, type MessageLayout, type SettingsHost } from "$lib/settings-host";
+	import { defaultMessageLayout } from "$lib/message-layout";
 	import { USER_SCOPE, type StagedImage } from "$lib/staged-images";
 	import { parseSettingsSection, SETTINGS_SECTION_KEY, type SettingsSection as Section } from "$lib/settings-sections";
 
@@ -1205,9 +1206,10 @@
 		{ value: "light", label: "Light" },
 		{ value: "dark", label: "Dark" },
 	] as const satisfies readonly { value: ThemePref; label: string }[];
+	const platformLayout = defaultMessageLayout();
 	const messageLayoutChoices = [
-		{ value: "bubbles", label: "Bubbles", tag: "Default" },
-		{ value: "flat", label: "Flat rows" },
+		{ value: "bubbles", label: "Bubbles", tag: platformLayout === "bubbles" ? "Default" : undefined },
+		{ value: "flat", label: "Flat rows", tag: platformLayout === "flat" ? "Default" : undefined },
 	] as const satisfies readonly { value: MessageLayout; label: string; tag?: string }[];
 	const spacesColumnChoices = [
 		{ value: "fixed", label: "Fixed" },

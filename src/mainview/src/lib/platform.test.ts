@@ -30,6 +30,12 @@ describe("shellFor", () => {
 		expect([MAC_UA, WIN_UA, LINUX_UA, "curl/8"].map(osFromUserAgent)).toEqual(["mac", "windows", "linux", "other"]);
 	});
 
+	test("an iPhone or an iPad is iOS, its own system", () => {
+		const iphone = "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15";
+		const ipad = "Mozilla/5.0 (iPad; CPU OS 18_0 like Mac OS X) AppleWebKit/605.1.15";
+		expect([iphone, ipad].map(osFromUserAgent)).toEqual(["ios", "ios"]);
+	});
+
 	test("in the app on macOS the traffic lights are native and the page draws no window controls", () => {
 		expect(inApp("darwin")).toMatchObject({
 			chrome: "mac",

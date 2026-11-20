@@ -1,11 +1,11 @@
 import { defaultMessageLayout, MESSAGE_LAYOUT_KEY, parseMessageLayout, type MessageLayout } from "$lib/message-layout";
 
 function readSaved(): MessageLayout {
-	if (typeof localStorage === "undefined") return defaultMessageLayout;
+	if (typeof localStorage === "undefined") return defaultMessageLayout();
 	try {
 		return parseMessageLayout(localStorage.getItem(MESSAGE_LAYOUT_KEY));
 	} catch {
-		return defaultMessageLayout;
+		return defaultMessageLayout();
 	}
 }
 
