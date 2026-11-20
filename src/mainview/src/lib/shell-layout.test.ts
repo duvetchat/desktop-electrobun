@@ -36,6 +36,8 @@ import {
 	tabKind,
 } from "$lib/shell-layout";
 import type { PaneLeaf, PaneNode, Tab } from "$lib/types";
+import { MEMBERS_COLUMN_MIN_PANE } from "$lib/members";
+import { MIN_SIZE } from "../../../bun/main-window";
 
 const room = (id: string, spaceId = "s1"): Tab => ({ channelId: id, channelName: id, channelType: "text", spaceId });
 const chat = (id: string): Tab => ({
@@ -54,6 +56,11 @@ describe("the sidebar's width", () => {
 		expect(clampSidebarWidth(1000)).toBe(SIDEBAR_MAX);
 		expect(clampSidebarWidth(300.4)).toBe(300);
 		expect(clampSidebarWidth(Number.NaN)).toBe(SIDEBAR_DEFAULT);
+	});
+
+	// #419: the desktop app's window can't be made narrower than the layout needs (src/bun/main-window.ts).
+	test("at its narrowest leaves the smallest window a pane wide enough for the members column", () => {
+		expect(MIN_SIZE.width - SIDEBAR_MIN).toBeGreaterThanOrEqual(MEMBERS_COLUMN_MIN_PANE);
 	});
 
 	test("and its filter come back from what was saved, each at its default when it's missing or wrong", () => {

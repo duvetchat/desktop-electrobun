@@ -1,11 +1,12 @@
 /* oxlint-disable typescript/no-unsafe-type-assertion -- bun:ffi hands values over untyped where they cross. */
-// The two things the app asks of AppKit itself on macOS, for keys to reach its page (window-keys.ts): make a window's
-// web view its first responder, and hide the window's three buttons. Electrobun has no call for either, so they go
-// through the Objective-C runtime with bun:ffi, public API only. Imported on macOS only (src/bun/index.ts).
+// What the app asks of AppKit itself on macOS: for keys to reach its page (window-keys.ts), make a window's web view its
+// first responder and hide the window's three buttons; and the smallest a window may be made (main-window.ts).
+// Electrobun has no call for any of them, so they go through the Objective-C runtime with bun:ffi, public API only.
+// Imported on macOS only (src/bun/index.ts).
 //
 // Electrobun runs this code in a Worker, off the process's main thread, and AppKit wants its windows and views touched
-// on the main thread: every AppKit message here is run there (performSelectorOnMainThread). A message with an integer
-// or a BOOL argument goes in an NSInvocation, which carries them; one with a single object needs none.
+// on the main thread: every AppKit message here is run there (performSelectorOnMainThread). A message with an integer,
+// a BOOL or a size argument goes in an NSInvocation, which carries them; one with a single object needs none.
 //
 // bun:ffi hands pointers to JavaScript as doubles, which keep 53 bits, and Objective-C's tagged pointers have their top
 // bit set (on macOS 27 even a method signature can be one): every object here is a u64, a BigInt.
@@ -91,14 +92,25 @@ export function responds(object: Id, selector: string): boolean {
 	return object !== nil && (send("o", "b", object, "respondsToSelector:", sel(selector)) as boolean);
 }
 
-export type Arg = { t: "id"; v: Id } | { t: "int"; v: number } | { t: "bool"; v: boolean };
+/** An argument an NSInvocation carries: an object, an NSInteger, a BOOL, or an NSSize (two doubles). */
+export type Arg =
+	| { t: "id"; v: Id }
+	| { t: "int"; v: number }
+	| { t: "bool"; v: boolean }
+	| { t: "size"; width: number; height: number };
 
-const bytesOf = (arg: Arg): Uint8Array =>
-	arg.t === "id"
-		? new Uint8Array(new BigUint64Array([arg.v]).buffer)
-		: arg.t === "int"
-			? new Uint8Array(new BigInt64Array([BigInt(Math.trunc(arg.v))]).buffer)
-			: new Uint8Array([arg.v ? 1 : 0]);
+function bytesOf(arg: Arg): Uint8Array {
+	switch (arg.t) {
+		case "id":
+			return new Uint8Array(new BigUint64Array([arg.v]).buffer);
+		case "int":
+			return new Uint8Array(new BigInt64Array([BigInt(Math.trunc(arg.v))]).buffer);
+		case "bool":
+			return new Uint8Array([arg.v ? 1 : 0]);
+		case "size":
+			return new Uint8Array(new Float64Array([arg.width, arg.height]).buffer);
+	}
+}
 
 /**
  * [target selector:args…] on the main thread, waited for, through an NSInvocation. Returns the object it returned
@@ -166,4 +178,13 @@ export function hideWindowButtons(window: Pointer): number {
 		hidden++;
 	}
 	return hidden;
+}
+
+/** Sets the smallest a person can make a window, in points: AppKit holds a resize by the window's edges to it (a frame
+ * set from code is not held). False, and nothing sent, for something that isn't a window. */
+export function setMinSize(window: Pointer, width: number, height: number): boolean {
+	const target = idOf(window);
+	if (!responds(target, "setMinSize:")) return false;
+	onMain(target, "setMinSize:", [{ t: "size", width, height }]);
+	return true;
 }

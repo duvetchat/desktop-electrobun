@@ -18,7 +18,8 @@ import { Toasts } from "./toasts";
 import { startSpotifyReader, type SpotifyActivity } from "./spotify";
 import { ipcHeld, ipcPath, LineReader } from "./ipc";
 import { isAppPage, isOwnPage, navigatedTo, navigationRules } from "./navigation";
-import { Maximizer } from "./window-frame";
+import { Maximizer, rectOf } from "./window-frame";
+import { frameFromEvent, MainWindowKeeper, openingOf, parsePrefs } from "./main-window";
 import { dragWithWindows, letWindowsArrange, pageLoaded } from "./window-snap";
 import { startupSummary, writeStartupLine } from "./startup";
 import { rendererFor, shellPreload, windowChrome } from "./shell";
@@ -211,7 +212,11 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 			windowCommand: () => ({ ok: false, error: "The main window sends no commands" }),
 		},
 		messages: {
-			closeWindow: () => win.close(),
+			closeWindow: () => {
+				// Its place is kept first, while the window is there to ask (main-window.ts).
+				mainWindowKeeper.keepNow();
+				win.close();
+			},
 			minimizeWindow: () => win.minimize(),
 			maximizeWindow: () => {
 				// Windows' own once it keeps the taskbar (window-snap.ts): the title bar's maximize is then Win+Up's, which
@@ -287,6 +292,32 @@ if (currentOS === "darwin") {
 	);
 }
 
+// ── The main window's frame (#419, main-window.ts) ──────────────────────────────────────────────────────────────────
+// The first time, sized to the display under the cursor and centred in its work area; after that where it was left, as
+// it was left, which is kept in the app's data. Decided before the window is made: Electrobun makes the window at the
+// frame it is given and then shows it, so it never opens at one frame and jumps to another.
+const mainWindowPrefs = join(Utils.paths.userData, "main-window.json");
+function cursorPoint() {
+	try {
+		return Screen.getCursorScreenPoint();
+	} catch {
+		return null;
+	}
+}
+function keptMainWindow() {
+	try {
+		return readFileSync(mainWindowPrefs, "utf8");
+	} catch {
+		return null;
+	}
+}
+const opening = openingOf(parsePrefs(keptMainWindow()), Screen.getAllDisplays(), cursorPoint(), currentOS);
+console.log(
+	`[window] opens at ${JSON.stringify(opening.frame)}` +
+		(opening.maximized ? ", maximized" : "") +
+		(opening.fullScreen ? ", full screen" : ""),
+);
+
 const win = new BrowserWindow({
 	titleBarStyle,
 	// A clear, non-opaque window, for the glass behind the page: Electrobun turns its shadow off, the glass's library
@@ -297,18 +328,16 @@ const win = new BrowserWindow({
 	// any of the page's scripts run.
 	preload: shellPreload("main", { titleBarStyle, nativeButtons, glass }),
 	sandbox: false,
-	frame: {
-		height: 900,
-		width: 1400,
-		x: 0,
-		y: 0,
-	},
+	frame: opening.frame,
 	title: "Duvet",
 	url,
 	rpc,
 });
 bunMarks.window = Date.now();
 relay.setMain((command) => rpc.request.windowCommand(command));
+// A window left maximized opened filling its display's work area (on Windows it is maximized below): the title bar's
+// next maximize puts back the frame it had before.
+if (opening.maximized && currentOS !== "win32") maximizer.resume(opening.normal, opening.area);
 
 // Under the web view, whenever it is made: Electrobun adds web views above everything the window holds.
 if (glass) {
@@ -323,7 +352,8 @@ const arrangedByWindows = currentOS === "win32" && arrangeByWindows();
 
 function arrangeByWindows(): boolean {
 	try {
-		if (letWindowsArrange(win.ptr)) return true;
+		// With the smallest size the window may be made (#419), which the same procedure answers Windows.
+		if (letWindowsArrange(win.ptr, undefined, opening.minimum)) return true;
 		console.error("[window] Windows' keys won't snap or maximize the window: it didn't take window-snap's procedure");
 	} catch (err) {
 		console.error("[window] Windows' keys won't snap or maximize the window:", err);
@@ -331,9 +361,19 @@ function arrangeByWindows(): boolean {
 	return false;
 }
 
+// A window left maximized opens maximized on Windows too: by Windows' own maximize once the window takes it, which
+// restores to the frame the window was made at; else as the title bar's maximize fills the work area.
+if (opening.maximized && currentOS === "win32") {
+	if (arrangedByWindows) win.maximize();
+	else {
+		maximizer.resume(opening.normal, opening.area);
+		win.setFrame(opening.area.x, opening.area.y, opening.area.width, opening.area.height);
+	}
+}
+
 // On macOS, keys reach the page once its web view is the window's first responder (window-keys.ts). AppKit's bridge is
 // loaded there only; if it can't be, the app runs as it did, and a click in the page gives it the keyboard.
-const appkit: AppKit | null =
+const appkit: (AppKit & typeof import("./appkit")) | null =
 	currentOS === "darwin"
 		? await import("./appkit").catch((err: unknown) => {
 				console.error("[window] AppKit's bridge didn't load:", err);
@@ -341,6 +381,58 @@ const appkit: AppKit | null =
 			})
 		: null;
 keepKeysReachingThePage(win, appkit, { nativeButtons });
+
+// The smallest the window may be made (#419): on macOS AppKit holds a resize to it, on Windows the window's procedure
+// does (arrangeByWindows above). Electrobun has no call for it, and on Linux nothing holds the window to one.
+if (appkit) {
+	try {
+		if (!appkit.setMinSize(win.ptr, opening.minimum.width, opening.minimum.height))
+			console.error("[window] the window took no minimum size");
+	} catch (err) {
+		console.error("[window] the window took no minimum size:", err);
+	}
+}
+
+// Where the window is and how, kept as it moves, is resized and closes (main-window.ts), for the next time it opens.
+const mainWindowKeeper = new MainWindowKeeper(
+	{
+		platform: currentOS,
+		// On macOS Electrobun 1.15.1 works out a window's own frame (getFrame) from the height of the display the window
+		// is on, and the displays' areas and its move and resize events from the primary display's: on a second display
+		// of another height, getFrame is off by the difference. There the frame is the one the events carry.
+		frame: () => (currentOS === "darwin" ? null : rectOf(win.getFrame())),
+		state: () => ({
+			minimized: win.isMinimized(),
+			maximized: win.isMaximized(),
+			// Not on Windows, where nothing in the app makes the window full screen, and Electrobun takes a window with
+			// no caption, as this one is without window-snap's styles, for a full-screen one.
+			fullScreen: currentOS !== "win32" && win.isFullScreen(),
+		}),
+		filled: (frame) => maximizer.fills(frame),
+		displays: () => Screen.getAllDisplays(),
+		writePrefs: (text) => {
+			mkdirSync(dirname(mainWindowPrefs), { recursive: true });
+			writeFileSync(mainWindowPrefs, text);
+		},
+		log: (line) => console.error(`[window] ${line}`),
+	},
+	opening,
+);
+const mainWindowMoved = (event: unknown) =>
+	mainWindowKeeper.moved(currentOS === "darwin" ? frameFromEvent(event, mainWindowKeeper.frame) : null);
+win.on("move", mainWindowMoved);
+win.on("resize", mainWindowMoved);
+win.on("close", () => mainWindowKeeper.closed());
+// The app quitting with its window open (⌘Q): the window is still there to ask.
+Electrobun.events.on("before-quit", () => mainWindowKeeper.keepNow());
+// A window left full screen opens full screen, from the frame it had before, which leaving full screen gives back.
+if (opening.fullScreen && currentOS !== "win32") {
+	try {
+		win.setFullScreen(true);
+	} catch (err) {
+		console.error("[window] the window didn't go full screen:", err);
+	}
+}
 
 // Through the webview: BrowserWindow stores a navigationRules option of its own, and never hands it to the native side.
 // As each page loads, not right after new BrowserWindow: macOS reads them later on its main queue, from an address
@@ -354,7 +446,7 @@ win.webview.on("dom-ready", () => win.webview.setNavigationRules(rules));
 if (arrangedByWindows) win.webview.on("dom-ready", () => pageLoaded(win.ptr));
 
 // On Linux a window manager that resizes the window as it opens does so before the browser exists, and the webview
-// keeps the size it was made at: the page fills 1400x900 and the rest of the window is white. A tiling one refuses a
+// keeps the size it was made at: the page fills that and the rest of the window is white. A tiling one refuses a
 // resize of the window to make it notice, so once the page has loaded the webview gets the window's size straight from
 // the native side, by the call Electrobun's own webview tags make. Its package exports no way to do that, hence the path.
 if (currentOS === "linux") {
