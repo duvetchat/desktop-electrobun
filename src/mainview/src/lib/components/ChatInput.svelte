@@ -1204,7 +1204,7 @@
 	<!-- Command menu -->
 	{#if commandSuggestions.length > 0}
 		<div
-			class="{GLASS} absolute bottom-[calc(100%+6px)] left-0 z-90 max-h-75 w-[min(100%,560px)] overflow-hidden overflow-y-auto rounded-[14px] p-1.5"
+			class="bg-duvet-bg border-duvet-line absolute bottom-[calc(100%+6px)] left-0 z-90 max-h-75 w-[min(100%,560px)] overflow-hidden overflow-y-auto rounded-[14px] border p-1.5"
 			id="{uid}-commands"
 			role="listbox"
 			aria-label="Commands"
@@ -1236,7 +1236,6 @@
 					}}
 					onmouseenter={() => (commandSelectedIdx = i)}
 				>
-					<MemberBanner src={botMember?.banner_url ?? null} offline={botMember?.status === "offline"} />
 					<span class="relative flex min-w-0 flex-1 items-center gap-2.5">
 						<span class="text-duvet-ink shrink-0 text-[13px] font-semibold">/{entry.name}</span>
 						<span
