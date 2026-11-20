@@ -50,14 +50,15 @@ export function matchingCommands(list: SpaceCommands, query: string): CommandEnt
 
 /**
  * What follows the slash while the whole message names something to run, for the "/" menu, or null when it doesn't:
- * "/" and a word, a phantom line break aside, or, for a command of list with subcommands (the space's commands,
- * once they came), its name and then up to two more words for its group and its subcommand ("/perms user g"). Text
- * after any other command's name is a message, as it was before subcommands.
+ * "/" and a word, or, for a command of list with subcommands (the space's commands, once they came), its name and
+ * then up to two more words for its group and its subcommand ("/perms user g"). Text after any other command's name
+ * is a message, as it was before subcommands, and so is a line break after any: the message box reads none the user
+ * didn't type (lib/message-box.ts).
  */
 export function commandQuery(raw: string, list: SpaceCommands | null): string | null {
-	const name = /^\/(\S*)\n?$/u.exec(raw);
+	const name = /^\/(\S*)$/u.exec(raw);
 	if (name) return name[1]!;
-	const path = /^\/(\S+)((?: \S*){1,2})\n?$/u.exec(raw);
+	const path = /^\/(\S+)((?: \S*){1,2})$/u.exec(raw);
 	const command = path && list?.commands.find((c) => c.name === path[1]!.toLowerCase());
 	return command && command.options.some((o) => isSubcommand(o) || isGroup(o)) ? path[1]! + path[2]! : null;
 }
