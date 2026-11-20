@@ -12,7 +12,7 @@ Glass behind an Electrobun page on 2026-11-19 ("doesn't look bad at all"), so th
    `NSGlassEffectView` (public AppKit, macOS 26+) under the main window's web view, or an `NSVisualEffectView`
    on macOS 14 and 15. One hop to the main thread per call, instead of messaging Objective-C one call at a time
    from TypeScript, as the spike did (`src/bun/spike/vibrancy.ts`) and crashed Bun twice. `appkit.ts` stays for
-   the typing fix. `scripts/build-liquid-glass.ts` builds the library before every Electrobun build
+   the typing fix. `scripts/build-native.ts` builds the library before every Electrobun build
    (`scripts.preBuild`); `src/bun/liquid-glass.ts` loads it.
 2. **The main window only, on macOS only.** It is made `transparent`; Settings, Space settings and the media
    pop-out stay opaque, as do Windows, Linux and the web. Without the library the window stays opaque and the

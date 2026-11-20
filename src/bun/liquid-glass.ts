@@ -1,10 +1,9 @@
 // Liquid Glass behind a window's webview on macOS (native/macos/liquid_glass.mm). A no-op everywhere else.
-// The library is built by scripts/build-liquid-glass.ts (electrobun.config.ts: scripts.preBuild) and bundled at
+// The library is built by scripts/build-native.ts (electrobun.config.ts: scripts.preBuild) and bundled at
 // Resources/app/native/libLiquidGlass.dylib (the config's copy rule). #374.
 import { dlopen, FFIType, type Pointer } from "bun:ffi";
 import { existsSync } from "node:fs";
-import { join } from "node:path";
-import { PATHS } from "electrobun/bun"; // 2.x: "electrobun/main" (the /bun paths remain aliases)
+import { nativeLibraryPath, type AppPaths } from "./native-library";
 
 export type GlassResult = "glass" | "vibrancy" | "failed" | "unavailable";
 export interface GlassOptions {
@@ -33,14 +32,9 @@ const symbolsSpec = {
 type Lib = ReturnType<typeof dlopen<typeof symbolsSpec>>["symbols"];
 let lib: Lib | null | undefined;
 
-/** Electrobun's folders: 2.x exports RESOURCES_FOLDER; 1.15.1 only VIEWS_FOLDER (Resources/app/views). */
-export type AppPaths = { RESOURCES_FOLDER?: string; VIEWS_FOLDER: string };
-
 /** Where the library is in the app: the copy rule puts it at Resources/app/native/. */
-export function dylibPath(paths: AppPaths = PATHS as AppPaths): string {
-	return paths.RESOURCES_FOLDER
-		? join(paths.RESOURCES_FOLDER, "app", "native", "libLiquidGlass.dylib")
-		: join(paths.VIEWS_FOLDER, "..", "native", "libLiquidGlass.dylib");
+export function dylibPath(paths?: AppPaths): string {
+	return nativeLibraryPath("libLiquidGlass.dylib", paths);
 }
 
 function load(): Lib | null {

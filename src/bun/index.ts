@@ -24,6 +24,7 @@ import { dragWithWindows, letWindowsArrange, pageLoaded } from "./window-snap";
 import { startupSummary, writeStartupLine } from "./startup";
 import { rendererFor, shellPreload, windowChrome } from "./shell";
 import { keepKeysReachingThePage, type AppKit } from "./window-keys";
+import { placeWindowButtons } from "./window-buttons";
 import { addWindowGlass, glassAvailable, setGlassAppearance } from "./liquid-glass";
 import { WindowRelay, type WindowAnswer, type WindowCommand, type WindowStateMessage } from "./window-relay";
 import { MediaWindows } from "./media-window";
@@ -334,6 +335,11 @@ const win = new BrowserWindow({
 	rpc,
 });
 bunMarks.window = Date.now();
+// On macOS the system has the traffic lights in the corner of its own title bar, which is shorter than the page's
+// title line: they go in that line, centred in it (window-buttons.ts, #406). Before anything else is done to the
+// window: Electrobun shows a window as it makes it, with its lights still at that corner. Without the library they
+// stay there.
+if (nativeButtons) placeWindowButtons(win.ptr);
 relay.setMain((command) => rpc.request.windowCommand(command));
 // A window left maximized opened filling its display's work area (on Windows it is maximized below): the title bar's
 // next maximize puts back the frame it had before.

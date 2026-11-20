@@ -69,17 +69,19 @@ export default {
 			// the packaged app (#357, docs/redesign/PLATFORM.md §3); src/bun/pages.test.ts checks every page has one.
 			...secondWindowCopyRules(),
 
-			// The Liquid Glass behind the main window on macOS (#374, src/bun/liquid-glass.ts), which loads it from
-			// Resources/app/native/. scripts.preBuild compiles it before every build; on Windows and Linux it writes an
-			// empty placeholder there, which the app never loads.
+			// The app's own macOS libraries, which it loads from Resources/app/native/: the Liquid Glass behind the main
+			// window (#374, src/bun/liquid-glass.ts) and the traffic lights' place in the title line (#406,
+			// src/bun/window-buttons.ts). scripts.preBuild compiles them before every build; on Windows and Linux it
+			// writes empty placeholders there, which the app never loads.
 			"native/macos/build/libLiquidGlass.dylib": "native/libLiquidGlass.dylib",
+			"native/macos/build/libWindowButtons.dylib": "native/libWindowButtons.dylib",
 		},
-		// The glass's library is the preBuild hook's output, not a source to rebuild on.
+		// Those libraries are the preBuild hook's output, not sources to rebuild on.
 		watchIgnore: ["dist/**", "native/macos/build/**"],
 	},
 	scripts: {
-		// Builds native/macos/liquid_glass.mm for the build's target (scripts/build-liquid-glass.ts), before the copy step.
-		preBuild: "scripts/build-liquid-glass.ts",
+		// Builds the sources in native/macos for the build's target (scripts/build-native.ts), before the copy step.
+		preBuild: "scripts/build-native.ts",
 	},
 	runtime: {
 		dragRegions: true,
