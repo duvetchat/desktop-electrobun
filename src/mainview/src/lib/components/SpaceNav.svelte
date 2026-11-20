@@ -621,7 +621,7 @@
 					</section>
 				{/if}
 
-				<!-- Chats (S-05): Friends first, then the chats, the latest first. -->
+				<!-- Chats (S-05): Friends first, then the chats: the pinned ones, then the others, the latest first. -->
 				{#if sidebar.filter !== "spaces"}
 					<section class="flex flex-col" aria-label="Chats">
 						{#if sidebar.filter === "all"}{@render sectionHead("Chats")}{/if}
