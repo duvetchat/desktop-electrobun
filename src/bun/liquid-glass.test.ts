@@ -23,7 +23,7 @@ const copy: Record<string, string> = config.build.copy;
 
 describe("where the glass's library is", () => {
 	test("the copy rule takes it from the build script's output, into the app's native folder", () => {
-		expect(config.scripts.preBuild).toBe("scripts/build-liquid-glass.ts");
+		expect(config.scripts.preBuild).toBe("scripts/build-native.ts");
 		expect(copy[LIBRARY]).toBe("native/libLiquidGlass.dylib");
 	});
 

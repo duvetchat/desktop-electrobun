@@ -77,9 +77,10 @@ desktop/
 
 - [Bun](https://bun.sh/) >= 1.3
 - [Electrobun CLI](https://electrobun.dev/) (installed via `electrobun` dependency)
-- On macOS, Xcode 26 or later (its command line tools and the macOS 26 SDK): every build compiles the sidebar's
-  Liquid Glass library (`native/macos/liquid_glass.mm`, built by `scripts/build-liquid-glass.ts`). The app it builds
-  still runs on macOS 14 and 15, with the older blur there.
+- On macOS, Xcode 26 or later (its command line tools and the macOS 26 SDK): every build compiles the app's own
+  libraries in `native/macos` with `scripts/build-native.ts`, the sidebar's Liquid Glass (`liquid_glass.mm`) and the
+  traffic lights' place in the title line (`window_buttons.mm`). The app it builds still runs on macOS 14 and 15,
+  with the older blur there.
 
 ### Install
 

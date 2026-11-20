@@ -24,6 +24,16 @@ type, snapshot pages to PNG and call native probes through `bun:ffi` (`src/bun/s
 - **Traps:** full screen changes where the lights are; don't trust `titlebarHeight` alone there.
 - **Recommendation:** ship `hiddenInset` on macOS. Keep the measured 75 px left inset; make it a
   design token, since it may drift between macOS versions.
+- **What ships (#406):** the lights are moved into the page's 52 px title line, centred in it, their circles
+  from 18 to 70 px (`native/macos/window_buttons.mm`, loaded by `src/bun/window-buttons.ts`), in the main window
+  and in a Settings window. Electrobun 1.15.1 has no call for it; 2.0.6 has `setWindowButtonPosition`, which works
+  the same way. AppKit puts the buttons back whenever it lays the title bar out again (a resize, leaving full
+  screen, a new title, a switch between light and dark), so the library places them again each time. It never
+  does so inside AppKit's own layout pass, and it leaves them alone in full screen: placing them there ended the
+  app as it went full screen. Measured in the app on macOS 27.2.1, as the window server draws the window: at the
+  start, after resizes, with the sidebar hidden, after full screen and after the Dock; presses reach the page
+  across the whole title line, and the lights take presses where they now are. One thing stays behind: AppKit
+  keeps a second hover area for the lights at their old corner.
 
 ## 2. Drag regions
 
@@ -136,7 +146,7 @@ type, snapshot pages to PNG and call native probes through `bun:ffi` (`src/bun/s
   turns it back on); every webview is added above everything the content view holds, so a view put at the
   bottom stays behind them all; embedded `<electrobun-webview>`s keep an opaque background.
 - **What ships (#374):** `native/macos/liquid_glass.mm`, built for the build's target by
-  `scripts/build-liquid-glass.ts` (`scripts.preBuild`; an empty placeholder on Windows and Linux) and copied to
+  `scripts/build-native.ts` (`scripts.preBuild`; an empty placeholder on Windows and Linux) and copied to
   `Resources/app/native/`; `src/bun/liquid-glass.ts` loads it. The main window on macOS is `transparent` when the
   library loads, the glass goes under its web view (`NSVisualEffectView` on macOS 14 and 15), and the page is told
   in its preload (`glass`; `lib/platform.ts`: `vibrancy`). The page leaves the glass uncovered under the sidebar

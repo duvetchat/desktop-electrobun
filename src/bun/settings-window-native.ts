@@ -4,6 +4,7 @@
 // the main window's page, and the main window's states come to it.
 import { BrowserView, BrowserWindow, Screen } from "electrobun/bun";
 import { SETTINGS_CHANNEL, type AppWindow, type AppWindowSpec } from "./settings-windows";
+import { placeWindowButtons } from "./window-buttons";
 import { Maximizer } from "./window-frame";
 import { keepKeysReachingThePage, type AppKit } from "./window-keys";
 import type { WindowAnswer, WindowCommand, WindowStateMessage } from "./window-relay";
@@ -84,6 +85,9 @@ export function createSettingsWindow(spec: AppWindowSpec, deps: NativeWindowDeps
 		url: deps.pageUrl(spec.page),
 		rpc,
 	});
+	// On macOS the traffic lights go in the side panel's 52 px line (SettingsFrame.svelte), where the main window has
+	// them (#406). First: the window is on the screen already.
+	if (spec.nativeButtons) placeWindowButtons(window.ptr);
 	window.webview.on("dom-ready", () => window.webview.setNavigationRules(deps.rules));
 	keepKeysReachingThePage(window, deps.appkit, { nativeButtons: spec.nativeButtons });
 	return {
