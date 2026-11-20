@@ -1221,7 +1221,6 @@
 			</div>
 			{#each commandSuggestions as entry, i (`${entry.command.id} ${entry.name}`)}
 				{@const bot = commandApp(entry)?.bot}
-				{@const botMember = bot && members.find((m) => m.id === bot.id)}
 				<button
 					id="{uid}-commands-{i}"
 					role="option"
@@ -1238,16 +1237,9 @@
 				>
 					<span class="relative flex min-w-0 flex-1 items-center gap-2.5">
 						<span class="text-duvet-ink shrink-0 text-[13px] font-semibold">/{entry.name}</span>
-						<span
-							class="{botMember?.banner_url ? 'text-duvet-ink' : 'text-duvet-ink2'} min-w-0 flex-1 truncate text-[12px]"
-							>{entry.description}</span
-						>
+						<span class="text-duvet-ink2 min-w-0 flex-1 truncate text-[12px]">{entry.description}</span>
 						{#if bot}
-							<span
-								class="{botMember?.banner_url
-									? 'text-duvet-ink'
-									: 'text-duvet-ink2'} flex shrink-0 items-center gap-1.5 text-[11px]"
-							>
+							<span class="text-duvet-ink2 flex shrink-0 items-center gap-1.5 text-[11px]">
 								<UserAvatar src={getAvatarURL(bot.id, bot.avatar)} name={bot.alias ?? bot.username} size={16} />
 								{bot.alias ?? bot.username}
 							</span>
