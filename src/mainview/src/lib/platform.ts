@@ -13,7 +13,7 @@ import { isElectrobunWindow } from "$lib/electrobun-rpc";
 //   - under the dev server only, a preview override (?shell=mac|windows|linux|web, or localStorage duvet.dev.shell),
 //     so a browser can draw another system's chrome for review. A build has none of it (import.meta.env.DEV).
 
-export type Os = "mac" | "windows" | "linux" | "other";
+export type Os = "mac" | "ios" | "windows" | "linux" | "other";
 export type { WindowKind };
 export type TitleBarStyle = "hidden" | "hiddenInset" | "default";
 
@@ -63,6 +63,8 @@ export interface Shell {
 }
 
 export function osFromUserAgent(userAgent: string): Os {
+	// Before macOS: an iPad's desktop user agent (iPadOS 13 on) says Macintosh, which is mac anyway.
+	if (/iPhone|iPad|iPod/.test(userAgent)) return "ios";
 	if (/Macintosh|Mac OS X/.test(userAgent)) return "mac";
 	if (/Windows NT/.test(userAgent)) return "windows";
 	if (/Linux|X11|CrOS/.test(userAgent)) return "linux";
