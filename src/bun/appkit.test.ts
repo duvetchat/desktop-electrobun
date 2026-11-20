@@ -1,6 +1,6 @@
 /* oxlint-disable typescript/no-unsafe-type-assertion -- a test's pointers are numbers it makes up or reads off the bridge. */
 import { describe, expect, test } from "bun:test";
-import type { Pointer } from "bun:ffi";
+import { CString, type Pointer } from "bun:ffi";
 
 // The Objective-C bridge (appkit.ts) against Foundation's own objects: the same message sends, invocations and
 // main-thread hops the app makes on its window, on objects a test can make. macOS only: elsewhere there's no runtime
@@ -51,6 +51,20 @@ describe.skipIf(!onMac)("the Objective-C bridge", () => {
 		expect(no).not.toBe(yes);
 	});
 
+	// setMinSize: takes an NSSize, two doubles by value: an NSImage is made with one the same way, and says it back.
+	// (Its init hands back an object the test owns: one only autoreleased is gone once onMain's pool is.)
+	test("carries a size argument as one", async () => {
+		const { cls, msg, onMain } = await load();
+		const image = onMain(
+			msg(cls("NSImage"), "alloc"),
+			"initWithSize:",
+			[{ t: "size", width: 940, height: 600.5 }],
+			"id",
+		);
+		const text = new CString(Number(msg(msg(image, "description"), "UTF8String")) as Pointer);
+		expect(text.toString()).toContain("Size={940, 600.5}");
+	});
+
 	test("refuses a selector the object doesn't have, rather than send it", async () => {
 		const { onMain } = await load();
 		const object = await make("NSObject");
@@ -62,10 +76,12 @@ describe.skipIf(!onMac)("the Objective-C bridge", () => {
 	// What the app is handed may not be what this expects (another renderer's view, a later Electrobun): nothing is
 	// sent to an object that wouldn't take it.
 	test("leaves alone a window or a view that isn't one", async () => {
-		const { focusWebview, hideWindowButtons } = await load();
+		const { focusWebview, hideWindowButtons, setMinSize } = await load();
 		const notAWindow = Number(await make("NSObject")) as Pointer;
 		const notAView = Number(await make("NSObject")) as Pointer;
 		expect(() => hideWindowButtons(notAWindow)).not.toThrow();
+		expect(setMinSize(notAWindow, 940, 600)).toBe(false);
+		expect(setMinSize(0 as Pointer, 940, 600)).toBe(false);
 		expect(() => focusWebview(notAWindow, notAView)).not.toThrow();
 		expect(() => focusWebview(0 as Pointer, 0 as Pointer)).not.toThrow();
 	});
