@@ -94,6 +94,17 @@ export function tabAt<T>(tabs: readonly T[], index: number): T | null {
 	return (index < 0 ? tabs[tabs.length - 1] : tabs[index]) ?? null;
 }
 
+/**
+ * The digit that, with ⌘ or Ctrl, picks the tab at `index` of `count` open ones, as tabOf reads the keys: 1 to 8 for
+ * the first eight, and 9 for the last one after them. None for a tab between the eighth and the last, which no digit
+ * picks.
+ */
+export function tabDigit(index: number, count: number): number | null {
+	if (index < 0 || index >= count) return null;
+	if (index < 8) return index + 1;
+	return index === count - 1 ? 9 : null;
+}
+
 /** The first chat with unread messages after the one shown, in the column's order and going round; none when the
  * only ones are the one shown. */
 export function nextUnread(
