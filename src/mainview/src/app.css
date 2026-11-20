@@ -570,6 +570,9 @@
 	--animate-flash: flash 1.6s cubic-bezier(0.2, 0.9, 0.3, 1);
 	/* typing and ringing dots (delay each 0.15s after the last) */
 	--animate-dot: dot 1.2s infinite;
+	/* the ghost's typing dots, as mobile's TypingDots (the second starts 0.8s in, the third 0.4s: a third of the loop
+	   apart) */
+	--animate-ghost-dot: ghost-dot 1.2s linear infinite;
 	/* the recording dot */
 	--animate-rec-pulse: rec-pulse 1.2s infinite;
 	/* a recording's bars */
@@ -664,6 +667,19 @@
 		}
 	}
 
+	/* Up to full and back over the first half of the loop, at rest for the second. */
+	@keyframes ghost-dot {
+		0%,
+		50%,
+		100% {
+			opacity: 0.35;
+		}
+
+		25% {
+			opacity: 1;
+		}
+	}
+
 	@keyframes rec-pulse {
 		50% {
 			opacity: 0.35;
@@ -737,6 +753,7 @@
 		--animate-notice-in: none;
 		--animate-flash: none;
 		--animate-dot: none;
+		--animate-ghost-dot: none;
 		--animate-rec-pulse: none;
 		--animate-rec-bar: none;
 		--animate-specks: none;
