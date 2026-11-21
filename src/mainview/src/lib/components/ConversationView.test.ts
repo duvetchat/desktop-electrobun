@@ -4,14 +4,44 @@ import { join } from "node:path";
 
 const source = (file: string) => readFileSync(join(import.meta.dir, file), "utf8");
 
-test("a group's bar offers what the user can do to it, a DM's nothing", () => {
+// #368: a group's pane bar had two ⋯ side by side, the pane's More and the group's own. The group's Rename and Leave
+// go to the pane's More (PaneView.test.ts), and only a view with no pane's bar keeps a menu of its own for them.
+test("a group's bar offers what the user can do to it in the pane's one More, a DM's nothing", () => {
 	const view = source("ConversationView.svelte");
 	expect(view).toContain("const actionsOnGroup = $derived(groupActions(conversation, me?.id));");
-	expect(view).toMatch(
-		/\{#if actionsOnGroup\.leave\}\s*(?:<!--[^]*?-->\s*)?<Menu align="end" label="More for this group">/,
+	const groupMenu = view.slice(view.indexOf("{#snippet groupMenu()}"), view.indexOf("{#snippet actions()}"));
+	expect(groupMenu).toMatch(/\{#if actionsOnGroup\.rename\}\s*<MenuItem icon=\{Pencil\} onSelect=\{renameGroup\}>/);
+	expect(groupMenu).toContain("<MenuItem icon={LogOut} danger onSelect={leaveGroup}>Leave group</MenuItem>");
+	// The bar gets them with the actions, a group's alone.
+	expect(view).toContain("show(convId, actions, actionsOnGroup.leave ? groupMenu : null);");
+	// The actions draw a ⋯ of their own only without a bar.
+	const start = view.indexOf("{#snippet actions()}");
+	const actions = view.slice(start, view.indexOf("\n{/snippet}", start));
+	expect(actions.match(/<Ellipsis\b/g)).toHaveLength(1);
+	expect(actions).toMatch(
+		/\{#if actionsOnGroup\.leave && !onBarActions\}\s*<Menu align="end" label="More for this group">[\s\S]*?\{@render groupMenu\(\)\}\s*<\/Menu>/,
 	);
-	expect(view).toMatch(/\{#if actionsOnGroup\.rename\}\s*<MenuItem icon=\{Pencil\} onSelect=\{renameGroup\}>/);
-	expect(view).toContain("<MenuItem icon={LogOut} danger onSelect={leaveGroup}>Leave group</MenuItem>");
+});
+
+// #370: a DM's or a group's call button started a voice call only, and the camera could only be turned on in the call.
+// Its chevron offers a voice call or a video call: one control, not a second button beside it.
+test("the call button calls with one press, and its chevron offers a voice call or a video call", () => {
+	const view = source("ConversationView.svelte");
+	const start = view.indexOf("{#snippet actions()}");
+	const actions = view.slice(start, view.indexOf("\n{/snippet}", start));
+	// The phone itself places a voice call, as before; the chevron beside it opens the menu. Both wait while a call
+	// shows, or the user's own rings from another device.
+	expect(actions).toMatch(/onclick=\{startCall\}\s*disabled=\{!!\$activeCall \|\| joinWaits\}\s*title="Start call"/);
+	expect(actions).toMatch(
+		/<Menu align="end" label="Start a call">\s*\{#snippet trigger\(props\)\}\s*<button\s*\{\.\.\.props\}[^>]*disabled=\{!!\$activeCall \|\| joinWaits\}\s*title="Voice or video call"\s*aria-label="Voice or video call"\s*>\s*<ChevronDown/,
+	);
+	expect(actions).toContain("<MenuItem icon={Phone} onSelect={startCall}>Voice call</MenuItem>");
+	expect(actions).toContain("<MenuItem icon={Video} onSelect={startVideoCall}>Video call</MenuItem>");
+	expect(view).toMatch(
+		/function startVideoCall\(\) \{\s*startConversationCall\(conversation, \{ video: true \}\);\s*\}/,
+	);
+	// No second button: the bar's one phone is the call's.
+	expect(actions.match(/<Phone class=/g)).toHaveLength(1);
 });
 
 test("renaming starts from the name, asks nothing for the same one or none, and shows a refusal", () => {

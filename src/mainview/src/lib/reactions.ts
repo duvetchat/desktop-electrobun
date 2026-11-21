@@ -18,6 +18,15 @@ export function reactionKey(r: { emoji_name: string; emoji_id?: string | null })
 	return r.emoji_id ?? r.emoji_name;
 }
 
+/** Whether a user's reaction is among a message's reactions of an emoji (its reactionKey). */
+export function reactedWith(
+	message: { reactions?: readonly MessageReaction[] | null },
+	userId: string,
+	key: string,
+): boolean {
+	return message.reactions?.find((r) => reactionKey(r) === key)?.users.includes(userId) ?? false;
+}
+
 /**
  * A message's reactions with one per reactionKey. An API from before reactions by ID groups them by name, so one custom
  * emoji under two names (renamed between two people's reactions) comes as two, whose one key a keyed {#each} can't take:

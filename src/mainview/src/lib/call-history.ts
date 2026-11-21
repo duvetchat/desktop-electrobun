@@ -147,7 +147,10 @@ export interface CallRow {
 	conversationId: string;
 	/** A DM's other person, or a group's name, as the DM list names them; "Chat" for one this client doesn't know. */
 	title: string;
-	/** A DM's other person's avatar; a group, or a conversation this client doesn't know, has its face from its name. */
+	/** Whether it's drawn with the group's mark rather than a face: a group, which has no picture, or a conversation this
+	 * client doesn't know, as their tabs draw them (#376). */
+	group: boolean;
+	/** A DM's other person's avatar (null without one: their face is made from their name). */
 	avatar: string | null;
 	/** The notice's own sentence for the user, and whether they missed the call (its phone is red). */
 	line: CallNoticeLine;
@@ -170,6 +173,7 @@ export function callRow(
 		id: notice.id,
 		conversationId: notice.conversation_id,
 		title: conversation ? conversationTitle(conversation, me) : "Chat",
+		group: !other,
 		avatar: other ? getAvatarURL(other.user_id, other.user?.avatar) : null,
 		line,
 		at: notice.call.started_at,

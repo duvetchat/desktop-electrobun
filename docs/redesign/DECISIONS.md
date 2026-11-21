@@ -3,6 +3,31 @@
 Every call the redesign made without asking the founder, with the reason. The parity ledger
 (`PARITY.md`) points here for anything marked "see DECISIONS.md". Newest first.
 
+## The sidebar's glass on macOS (2026-11-19, #374)
+
+Supersedes ruling 1 of the platform spike's follow-ups below. A person looked at a test window with Liquid
+Glass behind an Electrobun page on 2026-11-19 ("doesn't look bad at all"), so the glass ships on macOS:
+
+1. **Liquid Glass, through a small library of our own.** `native/macos/liquid_glass.mm` puts an
+   `NSGlassEffectView` (public AppKit, macOS 26+) under the main window's web view, or an `NSVisualEffectView`
+   on macOS 14 and 15. One hop to the main thread per call, instead of messaging Objective-C one call at a time
+   from TypeScript, as the spike did (`src/bun/spike/vibrancy.ts`) and crashed Bun twice. `appkit.ts` stays for
+   the typing fix. `scripts/build-native.ts` builds the library before every Electrobun build
+   (`scripts.preBuild`); `src/bun/liquid-glass.ts` loads it.
+2. **The main window only, on macOS only.** It is made `transparent`; Settings, Space settings and the media
+   pop-out stay opaque, as do Windows, Linux and the web. Without the library the window stays opaque and the
+   sidebar the solid tint.
+3. **The page leaves the glass uncovered under the sidebar alone,** and only while the app's shell is up: the
+   sidebar takes the design's macOS values (`--sb-bg`, `--sb-ring`, `--sb-filter`, DESIGN-MAP.md §1.1), and the
+   chats and the title strip keep the window's background. The sign-in pages and the app while it connects stay
+   opaque. One departure: the light theme's tint is `rgba(236, 240, 253, .5)`, not the design's `.8`, which was
+   drawn for vibrancy and, seen over Liquid Glass (itself light in that theme), left the sidebar nearly solid.
+4. **The glass wears the page's theme.** It follows the system's appearance by itself, and the page's theme can
+   be picked apart from it: the page tells Bun the theme it wears, and the glass's own appearance is set to match
+   (the window's would change the page's `prefers-color-scheme`, which the System theme reads).
+5. **No private API.** The library can also turn on WebKit's private CSS glass (`-apple-visual-effect`); the app
+   doesn't call it.
+
 ## Gate 0: where every capability goes (2026-11-18)
 
 Every P-item's "New home" was filled by a script that maps each item's component to its surface in the
@@ -31,6 +56,12 @@ The design map's writer listed questions the brief doesn't answer. Rulings:
    its width preference are removed, and the ledger marks those items as superseded by the signed-off
    design, not silently. The bubbles/flat-rows preference stays, as a setting. Every other layout
    preference keeps its behaviour.
+
+   **Reversed by #409:** the members column is back, docked at the right of each pane beside a
+   Space's text room or a group, so a chat's members are there at a glance beside it rather than one
+   click away. The pane bar's members button opens and closes it, it's remembered per kind of chat
+   and open by default, a pane too narrow for it opens the members in the popover, and voice rooms and
+   DMs keep the popover. It replaces #366's pin, which kept the popover open.
 3. **The Now section.** It has no surface in the new design. Its call state moves into the call panel
    (the media controls grow into it, the brief says so): where you are, the ping, Disconnect. Its
    remaining states (a stream's viewers) go to the call panel or the stream window, decided by the
@@ -49,7 +80,8 @@ Rulings, from `PLATFORM.md`:
 
 1. **Vibrancy** ships **off** everywhere for now: the opaque tint (the prototype's Linux/web look) on
    every platform. The native bridge is proven and cheap, but it was never seen by a human, so it waits
-   for one look before it ships. Listed as a follow-up.
+   for one look before it ships. Listed as a follow-up. *Superseded on 2026-11-19: see "The sidebar's
+   glass on macOS" above.*
 2. **Typing on macOS 27** is broken in today's build (the window isn't key, the webview isn't first
    responder). The foundation fixes it; until then desktop QA drives through the QA socket, which
    never ships.

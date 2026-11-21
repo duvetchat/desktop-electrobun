@@ -52,32 +52,33 @@ function openWin32() {
 // and Electrobun's quit stops the window's loop before the Bun worker ends.
 let procedure: ReturnType<typeof compile> | null = null;
 
+/** window-snap.c's functions, as TinyCC is asked for them. */
+export const PROCEDURE_SYMBOLS = {
+	windowSnapSetUp: {
+		args: [
+			FFIType.ptr,
+			FFIType.ptr,
+			FFIType.ptr,
+			FFIType.ptr,
+			FFIType.ptr,
+			FFIType.ptr,
+			FFIType.ptr,
+			FFIType.ptr,
+			FFIType.ptr,
+			FFIType.ptr,
+		],
+		returns: FFIType.void,
+	},
+	windowSnapSetMinimum: { args: [FFIType.ptr, FFIType.i32, FFIType.i32], returns: FFIType.void },
+	windowSnapProcedure: { args: [], returns: FFIType.ptr },
+} as const;
+
 function compile(dir: string, kernel32: ReturnType<typeof openWin32>["kernel32"]) {
 	// TinyCC compiles a file: the source is bundled as text, and written for it.
 	const source = join(dir, `duvet-window-snap-${process.pid}.c`);
 	writeFileSync(source, procedureSource);
 	try {
-		return cc({
-			source: compilablePath(source, kernel32),
-			symbols: {
-				windowSnapSetUp: {
-					args: [
-						FFIType.ptr,
-						FFIType.ptr,
-						FFIType.ptr,
-						FFIType.ptr,
-						FFIType.ptr,
-						FFIType.ptr,
-						FFIType.ptr,
-						FFIType.ptr,
-						FFIType.ptr,
-						FFIType.ptr,
-					],
-					returns: FFIType.void,
-				},
-				windowSnapProcedure: { args: [], returns: FFIType.ptr },
-			},
-		});
+		return cc({ source: compilablePath(source, kernel32), symbols: PROCEDURE_SYMBOLS });
 	} finally {
 		rmSync(source, { force: true });
 	}
@@ -100,9 +101,14 @@ function compilablePath(path: string, kernel32: ReturnType<typeof openWin32>["ke
 /** Lets Windows snap window (an HWND) with Win+Left and Win+Right, and maximize, restore and minimize it with Win+Up and
  * Win+Down, as it does any window: the styles those take, behind a procedure that keeps the window frameless and
  * maximized to its display's work area (window-snap.c). dir is where TinyCC's source is written for it, and deleted.
- * Windows only, for one window. False when the window couldn't take the procedure, which leaves it as it was; throws
- * when the procedure doesn't compile. */
-export function letWindowsArrange(window: Pointer, dir = tmpdir()): boolean {
+ * minimum is the smallest Windows then lets the window be made, in logical pixels (#419): the procedure answers it in
+ * the pixels of the display the window is on. Windows only, for one window. False when the window couldn't take the
+ * procedure, which leaves it as it was; throws when the procedure doesn't compile. */
+export function letWindowsArrange(
+	window: Pointer,
+	dir = tmpdir(),
+	minimum: { width: number; height: number } | null = null,
+): boolean {
 	if (procedure) throw new Error("window-snap arranges one window per process");
 	const { user32, kernel32 } = openWin32();
 	procedure = compile(dir, kernel32);
@@ -126,6 +132,13 @@ export function letWindowsArrange(window: Pointer, dir = tmpdir()): boolean {
 		user32Function("IsWindowVisible"),
 		previous,
 	);
+	if (minimum) {
+		procedure.symbols.windowSnapSetMinimum(
+			user32Function("GetDpiForWindow"),
+			Math.round(minimum.width),
+			Math.round(minimum.height),
+		);
+	}
 	// The procedure first, so the frame and caption the styles would add never show.
 	if (!user32[`SetWindowLongPtr${charset}`](window, GWLP_WNDPROC, procedure.symbols.windowSnapProcedure()))
 		return false;

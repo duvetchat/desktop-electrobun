@@ -296,13 +296,19 @@ describe("commandQuery", () => {
 	test("is the command's name typed after the slash, the list there or not, as before subcommands", () => {
 		expect(commandQuery("/", null)).toBe("");
 		expect(commandQuery("/pi", null)).toBe("pi");
-		expect(commandQuery("/ping\n", withSubcommands)).toBe("ping");
+		expect(commandQuery("/ping", withSubcommands)).toBe("ping");
 	});
 
 	test("is no command for what a message says after a command's name, or for a message", () => {
 		for (const raw of ["/ping hello", "/poll a b", "/shrug :smile", "hello", " /ping", "/ping  x", "/ping\nx"]) {
 			expect(commandQuery(raw, withSubcommands)).toBeNull();
 		}
+	});
+
+	// #415: Shift+Enter after a command's name starts a line of the message. The box read the line break a web view
+	// leaves behind as text once, and this let it by.
+	test("is no command once a line break follows the name: the message goes on", () => {
+		for (const raw of ["/ping\n", "/\n", "/perms user\n"]) expect(commandQuery(raw, withSubcommands)).toBeNull();
 	});
 
 	test("takes the words of a command with subcommands, once the space's commands came", () => {

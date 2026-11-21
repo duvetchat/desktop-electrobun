@@ -4,8 +4,15 @@ import { join } from "node:path";
 import { get } from "svelte/store";
 import { openGateway, type TestGateway } from "$lib/api/ws/test-gateway";
 
-const { askForMicWith, sendVoiceSync, startConversationCall, stopScreenShare, toggleDeafen, toggleMute } =
-	await import("$lib/voice");
+const {
+	askForMicWith,
+	sendVoiceSync,
+	startConversationCall,
+	stopScreenShare,
+	takeVideoCall,
+	toggleDeafen,
+	toggleMute,
+} = await import("$lib/voice");
 const {
 	activeCall,
 	activeVoiceRoomId,
@@ -248,6 +255,25 @@ describe("calling a conversation", () => {
 		startConversationCall(dm);
 		expect(gateway.sent("CALL_INITIATE")).toEqual([]);
 		expect(get(activeCall)).toBeNull();
+	});
+
+	// #370: the gateway has no video calls. A video call rings as a call does, and the camera turns on as the call's
+	// voice joins, once: what the user does with it after is theirs.
+	test("a video call is placed as any call, and the camera is the call's voice's to turn on, once", () => {
+		startConversationCall(dm, { video: true });
+		expect(gateway.sent("CALL_INITIATE")).toEqual([{ conversation_id: DM, member_ids: [ME, ALICE] }]);
+		expect(get(activeCall)).toMatchObject({ conversationId: DM, state: "calling", video: true });
+		// Not another room's or call's voice.
+		expect(takeVideoCall(ROOM)).toBe(false);
+		expect(takeVideoCall(DM)).toBe(true);
+		expect(takeVideoCall(DM)).toBe(false);
+		expect(get(activeCall)).toMatchObject({ conversationId: DM, state: "calling" });
+	});
+
+	test("a voice call leaves the camera off", () => {
+		startConversationCall(dm);
+		expect(get(activeCall)?.video).toBeFalsy();
+		expect(takeVideoCall(DM)).toBe(false);
 	});
 });
 

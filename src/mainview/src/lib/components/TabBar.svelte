@@ -9,6 +9,8 @@
 	} from "@lucide/svelte";
 	import type { Tab } from "$lib/types";
 	import { listStep } from "$lib/focus-wrap";
+	import { tabDigit } from "$lib/keyboard";
+	import { currentShell } from "$lib/platform";
 	import { getAvatarURL } from "$lib/common/common";
 	import { isConversationTab, tabDragData, tabFromDragData, tabNews, tabTitle, tabTooltip } from "$lib/pane";
 	import { chipCount, mentionsLabel, stripDrop, tabDropTarget, type StripHalf } from "$lib/shell-layout";
@@ -202,9 +204,21 @@
 	const tabActive = "bg-duvet-card text-duvet-ink shadow-duvet-raised ring-duvet-line ring-[0.5px]";
 	const tabIdle = "text-duvet-ink2 hover:bg-duvet-hover hover:text-duvet-ink";
 	const closeButton =
-		"text-duvet-ink2 hover:bg-duvet-hover-strong hover:text-duvet-ink focus-visible:outline-duvet-accent grid size-5 shrink-0 place-items-center rounded-md focus-visible:opacity-100 focus-visible:outline-2";
+		"text-duvet-ink2 hover:bg-duvet-hover-strong hover:text-duvet-ink focus-visible:outline-duvet-accent col-start-1 row-start-1 grid size-5 shrink-0 place-items-center rounded-md focus-visible:opacity-100 focus-visible:outline-2";
+	// A Close button that shows only once its tab is pointed at or has the focus.
+	const closeOnHover = "opacity-0 group-focus-within/tab:opacity-100 group-hover/tab:opacity-100";
 	const halfButton =
 		"focus-visible:outline-duvet-accent flex h-[26px] min-w-0 flex-1 items-center gap-[7px] rounded-[7px] px-1.5 text-left focus-visible:outline-2";
+
+	// A digit with ⌘ on macOS, or Ctrl elsewhere, picks a tab by its place (lib/keyboard.ts: tabDigit). In the app each
+	// tab names its shortcut to assistive tech, and on macOS shows it (#420): always, where its Close button is, which
+	// takes the place back while the tab is pointed at or has the focus. Not in a browser, which keeps those keys for its
+	// own tabs.
+	const shell = currentShell();
+	const digitModifier = shell.chrome === "web" ? null : shell.os === "mac" ? "Meta" : "Control";
+	const showsDigits = shell.chrome === "mac";
+	const shortcutOf = (digit: number | null) => (digit && digitModifier ? `${digitModifier}+${digit}` : undefined);
+	const keysOf = (digit: number | null) => (digit && showsDigits ? `⌘${digit}` : null);
 
 	// The strip is one tab stop, as a tab list is: the open tab (or the first, when the open one is a split, whose
 	// halves are buttons). Arrow Left and Right, Home and End move the focus between tabs; Enter or Space opens one.
@@ -235,6 +249,30 @@
 			<span class="text-duvet-ink2" aria-hidden="true">#</span>
 		{/if}
 	{/if}
+{/snippet}
+
+<!-- A tab's trailing slot: its Close button, and over it the tab's shortcut where it shows one. `shown` keeps the
+     button in view, as the open tab's is; under a shortcut it waits for the pointer or the focus, as the others do. -->
+{#snippet closeSlot(channelId: string, shown: boolean, keys: string | null, slotClass = "")}
+	<span class="grid shrink-0 place-items-center {slotClass}">
+		{#if keys}
+			<kbd
+				class="text-duvet-ink2 col-start-1 row-start-1 font-sans text-[11px] leading-none font-normal tabular-nums group-focus-within/tab:opacity-0 group-hover/tab:opacity-0"
+				aria-hidden="true">{keys}</kbd
+			>
+		{/if}
+		<button
+			type="button"
+			class="{closeButton} {shown && !keys ? '' : closeOnHover}"
+			onclick={(e) => {
+				e.stopPropagation();
+				onClose([channelId]);
+			}}
+			aria-label="Close tab"
+		>
+			<XIcon class="size-3" />
+		</button>
+	</span>
 {/snippet}
 
 <!-- A split's panes, side by side in one tab: a press on one focuses its pane. -->
@@ -297,6 +335,7 @@
 		{@const title = tabTitle(tab, $conversations, $currentUser?.id)}
 		{@const typing = typingSentence($typingNow[tab.channelId])}
 		{@const others = tabs.filter((t) => t.channelId !== tab.channelId)}
+		{@const digit = tabDigit(i, previewTabs.length)}
 		<!-- A right click opens the tab's own menu, not the webview's. -->
 		<ContextMenu>
 			{#snippet target(props)}
@@ -311,6 +350,7 @@
 						tabindex="-1"
 						aria-selected="true"
 						aria-label="{pairTitles.join(' and ')}, side by side"
+						aria-keyshortcuts={shortcutOf(digit)}
 						title={pairTitles.join(" · ")}
 						data-tab-id={tab.channelId}
 						draggable="true"
@@ -320,17 +360,7 @@
 						bind:this={tabEls[i]}
 					>
 						{@render pairHalves()}
-						<button
-							type="button"
-							class="{closeButton} ml-0.5"
-							onclick={(e) => {
-								e.stopPropagation();
-								onClose([tab.channelId]);
-							}}
-							aria-label="Close tab"
-						>
-							<XIcon class="size-3" />
-						</button>
+						{@render closeSlot(tab.channelId, true, keysOf(digit), "ml-0.5")}
 					</div>
 				{:else}
 					<div
@@ -344,6 +374,7 @@
 						role="tab"
 						tabindex={isActive || (noTabStop && i === 0) ? 0 : -1}
 						aria-selected={isActive}
+						aria-keyshortcuts={shortcutOf(digit)}
 						data-tab-id={tab.channelId}
 						draggable="true"
 						ondragstart={(e) => handleTabDragStart(e, tab.origIndex)}
@@ -372,19 +403,7 @@
 						{:else if unread}
 							<span class="bg-duvet-accent size-1.5 shrink-0 rounded-full" role="img" aria-label="Unread"></span>
 						{/if}
-						<button
-							type="button"
-							class="{closeButton} {isActive
-								? ''
-								: 'opacity-0 group-focus-within/tab:opacity-100 group-hover/tab:opacity-100'}"
-							onclick={(e) => {
-								e.stopPropagation();
-								onClose([tab.channelId]);
-							}}
-							aria-label="Close tab"
-						>
-							<XIcon class="size-3" />
-						</button>
+						{@render closeSlot(tab.channelId, isActive, keysOf(digit))}
 					</div>
 				{/if}
 			{/snippet}

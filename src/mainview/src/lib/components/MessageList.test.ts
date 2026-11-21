@@ -292,7 +292,8 @@ describe("a row's action toolbar", () => {
 	});
 });
 
-// #357: bubbles by default, flat rows as a setting; groups show their author once and their time once.
+// #357: bubbles on Apple's systems, flat rows elsewhere, each a setting; groups show their author once and their time
+// once.
 describe("the two layouts", () => {
 	const ME = "0190a3b2-0000-7000-8000-000000000001";
 	const ANA = message.author_id;
@@ -318,7 +319,9 @@ describe("the two layouts", () => {
 		render(MessageList, { props: { messages: talk, channelId: ROOM, spaceId: "space", intro, ...p } }).body;
 	const count = (html: string, text: string) => html.split(text).length - 1;
 
-	beforeEach(() =>
+	// What these say is how each layout draws, not which one a system picks: bubbles are the default on Apple's systems
+	// alone (lib/message-layout.ts), so they are chosen here and the platform's default put back after.
+	beforeEach(async () => {
 		currentUser.set({
 			id: ME,
 			username: "me",
@@ -332,14 +335,17 @@ describe("the two layouts", () => {
 			is_bot: false,
 			created_at: "",
 			updated_at: "",
-		}),
-	);
-	afterEach(async () => {
-		currentUser.set(null);
+		});
 		(await import("$lib/stores/message-layout.svelte")).messageLayout.value = "bubbles";
 	});
+	afterEach(async () => {
+		currentUser.set(null);
+		const { messageLayout } = await import("$lib/stores/message-layout.svelte");
+		const { defaultMessageLayout } = await import("$lib/message-layout");
+		messageLayout.value = defaultMessageLayout();
+	});
 
-	test("bubbles are the default: the user's own in azure, the others' on the card", () => {
+	test("in bubbles, the user's own is in azure and the others' on the card", () => {
 		const html = list({});
 		expect(html).toMatch(/class="[^"]*\bmsg-own bg-duvet-azure\b[^"]*"[^>]*>(?:(?!<\/div>)[\s\S])*my own words/);
 		expect(html).toMatch(/class="[^"]*\bbg-duvet-card\b[^"]*"[^>]*>(?:(?!<\/div>)[\s\S])*first of two/);
@@ -387,4 +393,21 @@ describe("the two layouts", () => {
 		expect(component).toContain('const flat = $derived(messageLayout.value === "flat");');
 		expect(component).toContain("const shapes = $derived(groupShapes(sortedMessages, unreadDividerIdx));");
 	});
+});
+
+// #381: a message's hover bar and its menu's first row react at one click with the Unicode emoji used most lately, then
+// their own three and five (quickReactions in lib/recent-emoji.ts), as the mobile app's quick reactions do. Each row is
+// ranked as it mounts, so it doesn't reorder under the pointer. Adding a reaction there counts as a use of its emoji,
+// as a pick in the picker does; taking one back doesn't.
+test("the quick reactions lead with the emoji used lately, and adding one counts as a use", () => {
+	const list = source("MessageList.svelte");
+	expect(list).toContain("{#each quickReactions(QUICK_REACTIONS, recentEmoji()) as emoji (emoji)}");
+	expect(list).toContain("{#each quickReactions(MENU_REACTIONS, recentEmoji()) as emoji (emoji)}");
+	expect(list.match(/\(\) => quickReact\(message, emoji\)/g)).toHaveLength(2);
+	expect(list).toMatch(
+		/function quickReact\(message: Message, emoji: string\) \{\s*if \(\$currentUser && !reactedWith\(message, \$currentUser\.id, emoji\)\) emojiUsed\(emoji\);\s*handleReactionToggle\(message, emoji\);\s*\}/,
+	);
+	// A chip under the message adds the user's reaction to someone else's: no use, as on the mobile app.
+	const chips = /onToggle=\{\(r\) => handleReactionToggle\(message, r\.emoji_name, r\.emoji_id\)\}/g;
+	expect(list.match(chips)).toHaveLength(2);
 });

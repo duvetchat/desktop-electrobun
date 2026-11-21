@@ -26,6 +26,7 @@
 	import GifPicker from "$lib/components/GifPicker.svelte";
 	import { emojiDataNow, loadEmojiData, toTwemojiUrl, EMOJI_REGEX, type EmojiEntry } from "$lib/emoji";
 	import { emojiSuggestions, type PickerGroup } from "$lib/space-emojis";
+	import { emojiUsed } from "$lib/recent-emoji";
 	import {
 		commandOnceListed,
 		commandQuery as commandQueryOf,
@@ -33,6 +34,7 @@
 		type CommandEntry,
 	} from "$lib/commands";
 	import { changeDraft, chatDrafts, draftOf } from "$lib/drafts";
+	import { breakLine, caretAt, enterKey, lineBreaksHtml, rawOf, rawOffsetOf } from "$lib/message-box";
 	import { escapeHtml } from "$lib/markdown";
 	import { formatDuration } from "$lib/utils/time";
 	import MemberBanner from "$lib/components/MemberBanner.svelte";
@@ -141,9 +143,9 @@
 		});
 	}
 	let isEmpty = $state(true);
-	// Empty means no characters at all, so a space hides the placeholder too (sending trims on its own). An
-	// emptied contenteditable can still hold a phantom newline.
-	const hasNoText = (raw: string) => raw === "" || raw === "\n";
+	// Empty means no characters at all, so a space or a line break hides the placeholder too (sending trims on its
+	// own). The break a web view leaves in a box it emptied isn't read as text (rawOf, lib/message-box.ts).
+	const hasNoText = (raw: string) => raw === "";
 
 	$effect(() => {
 		isEmpty = hasNoText(initialValue);
@@ -429,7 +431,7 @@
 	// Names are whatever their owners chose, "<" and quotes included, so they go in escaped.
 	function buildHtml(text: string): string {
 		if (!text) return "";
-		return text
+		const html = text
 			.replace(/&/g, "&amp;")
 			.replace(/</g, "&lt;")
 			.replace(/>/g, "&gt;")
@@ -451,13 +453,13 @@
 			.replace(
 				EMOJI_REGEX,
 				(e) => `<span class="emoji-img" style="--tw:url('${toTwemojiUrl(e)}')" aria-label="${e}">${e}</span>`,
-			)
-			.replace(/\n/g, "<br>");
+			);
+		return lineBreaksHtml(html);
 	}
 
 	// ── DOM helpers ─────────────────────────────────────────────────────────────
 	function getRaw(el: HTMLElement): string {
-		return getRawFromChildren(el);
+		return rawOf(el);
 	}
 
 	// Cursor position as UTF-16 offset in raw text. The caret can be in a text node or between an element's
@@ -473,57 +475,16 @@
 	function setOffset(target: number): void {
 		const sel = window.getSelection();
 		if (!sel) return;
-		let rem = target;
 		const range = document.createRange();
-		let placed = false;
-
-		function atomicLen(n: Node): number {
-			const tag = (n as Element).tagName;
-			if (tag === "BR") return 1;
-			const mention = (n as Element).getAttribute?.("data-mention");
-			if (mention) return `<@${mention}>`.length;
-			const room = (n as Element).getAttribute?.("data-room");
-			if (room) return `<#${room}>`.length;
-			const cemoji = (n as Element).getAttribute?.("data-cemoji");
-			if (cemoji) return `<:${cemoji}:>`.length;
-			if (tag === "IMG") return ((n as HTMLImageElement).alt ?? "").length;
-			return -1;
-		}
-
-		function walk(n: Node): boolean {
-			if (n.nodeType === Node.TEXT_NODE) {
-				const len = (n.textContent ?? "").length;
-				if (rem <= len) {
-					range.setStart(n, rem);
-					range.collapse(true);
-					return true;
-				}
-				rem -= len;
-			} else {
-				const len = atomicLen(n);
-				if (len >= 0) {
-					if (rem <= len) {
-						range.setStartAfter(n);
-						range.collapse(true);
-						return true;
-					}
-					rem -= len;
-				} else {
-					for (const c of Array.from(n.childNodes)) if (walk(c)) return true;
-				}
-			}
-			return false;
-		}
-
-		for (const c of Array.from(inputEl.childNodes)) {
-			if (walk(c)) {
-				placed = true;
-				break;
-			}
-		}
-		if (!placed) {
+		const place = caretAt<Node>(inputEl, target);
+		if (!place) {
 			range.selectNodeContents(inputEl);
 			range.collapse(false);
+		} else {
+			if (place.at === "before") range.setStartBefore(place.node);
+			else if (place.at === "after") range.setStartAfter(place.node);
+			else range.setStart(place.node, place.at);
+			range.collapse(true);
 		}
 		sel.removeAllRanges();
 		sel.addRange(range);
@@ -718,6 +679,8 @@
 	}
 
 	function insertSuggestion(entry: EmojiEntry) {
+		// A pick counts as a use of its emoji, as one in the picker does (lib/recent-emoji.ts).
+		emojiUsed(entry.emoji);
 		const raw = getRaw(inputEl);
 		const cursor = getOffset();
 		const before = raw.slice(0, emojiQueryStart);
@@ -775,6 +738,13 @@
 		if ((e.ctrlKey || e.metaKey) && (e.key === "y" || (e.key === "z" && e.shiftKey))) {
 			e.preventDefault();
 			redo();
+			return;
+		}
+
+		// Shift+Enter starts a new line, whatever is open over the box: the suggestions close as their query ends.
+		if (enterKey(e) === "break") {
+			e.preventDefault();
+			insertLineBreak();
 			return;
 		}
 
@@ -883,7 +853,7 @@
 		}
 
 		// Send on Enter
-		if (e.key === "Enter" && !e.shiftKey) {
+		if (enterKey(e) === "send") {
 			e.preventDefault();
 			const raw = getRaw(inputEl);
 			const request = commandRequest;
@@ -908,6 +878,54 @@
 		// Arrow Up in the empty box edits the user's last message. Its edit box has the caret at the message's end by then,
 		// and the key's own move would carry it up a line there, or to the start of a single one (Chromium).
 		if (e.key === "ArrowUp" && isEmpty && !e.ctrlKey && onArrowUpWhenEmpty?.()) e.preventDefault();
+	}
+
+	// A line break at the caret, or over the selection (#415). Made here, in the text, rather than left to the web view:
+	// each makes its own. WebKit starts a paragraph, whose line the caret's offset didn't count, so the break showed and
+	// the caret stayed where it was; Chromium's left a second break behind, in the text, once the first was deleted.
+	function insertLineBreak() {
+		const sel = window.getSelection();
+		if (!sel || sel.rangeCount === 0) return;
+		const range = sel.getRangeAt(0);
+		const next = breakLine(
+			getRaw(inputEl),
+			measureRawOffset(range.startContainer, range.startOffset),
+			measureRawOffset(range.endContainer, range.endOffset),
+		);
+		rerender(next.raw, next.caret);
+		revealCaret();
+		pushUndo(next.raw, next.caret);
+		isEmpty = hasNoText(next.raw);
+		checkAutocomplete(next.raw, next.caret);
+		changed(next.raw);
+	}
+
+	// Brings the caret's line into view in a box with more lines than it shows. A web view does it after an edit of its
+	// own; after one made here, nothing does.
+	function revealCaret() {
+		const sel = window.getSelection();
+		if (!sel || sel.rangeCount === 0) return;
+		const range = sel.getRangeAt(0);
+		let line: DOMRect | undefined = range.getClientRects()[0];
+		// A caret between two of the box's nodes has no rectangle of its own (Chromium): the node after it is on its
+		// line. With none after it, or only the break that shows the last line, it is on the last line.
+		if (!line && range.startContainer === inputEl) {
+			const after = inputEl.childNodes[range.startOffset];
+			if (!after || (after.nodeName === "BR" && !after.nextSibling)) {
+				inputEl.scrollTop = inputEl.scrollHeight;
+				return;
+			}
+			if (after instanceof Element) line = after.getBoundingClientRect();
+			else {
+				const around = document.createRange();
+				around.selectNode(after);
+				line = around.getClientRects()[0];
+			}
+		}
+		if (!line || line.height === 0) return;
+		const shown = inputEl.getBoundingClientRect();
+		if (line.bottom > shown.bottom) inputEl.scrollTop += line.bottom - shown.bottom;
+		else if (line.top < shown.top) inputEl.scrollTop -= shown.top - line.top;
 	}
 
 	// Sends what the box holds, with the files picked, and empties it. A message too large for the API stays in the box,
@@ -955,86 +973,8 @@
 		return { start: Math.min(startOff, endOff), end: Math.max(startOff, endOff) };
 	}
 
-	function getRawFromNode(n: Node): string {
-		if (n.nodeType === Node.TEXT_NODE) return n.textContent ?? "";
-		const elem = n as HTMLElement;
-		const tag = elem.tagName;
-		const mention = elem.getAttribute("data-mention");
-		if (mention) return `<@${mention}>`;
-		const room = elem.getAttribute("data-room");
-		if (room) return `<#${room}>`;
-		const cemoji = elem.getAttribute("data-cemoji");
-		if (cemoji) return `<:${cemoji}:>`;
-		if (tag === "IMG") return (n as HTMLImageElement).alt ?? "";
-		if (tag === "BR") return "\n";
-		if (tag === "DIV" || tag === "P") return "\n" + getRawFromChildren(n);
-		return getRawFromChildren(n);
-	}
-
-	function getRawFromChildren(parent: Node): string {
-		let s = "";
-		for (const c of Array.from(parent.childNodes)) s += getRawFromNode(c);
-		return s;
-	}
-
 	function measureRawOffset(container: Node, offset: number): number {
-		let count = 0;
-
-		function nodeLen(n: Node): number {
-			if (n.nodeType === Node.TEXT_NODE) return (n.textContent ?? "").length;
-			const el = n as Element;
-			const tag = el.tagName;
-			if (tag === "BR") return 1;
-			const mention = el.getAttribute?.("data-mention");
-			if (mention) return `<@${mention}>`.length;
-			const room = el.getAttribute?.("data-room");
-			if (room) return `<#${room}>`.length;
-			const cemoji = el.getAttribute?.("data-cemoji");
-			if (cemoji) return `<:${cemoji}:>`.length;
-			if (tag === "IMG") return ((n as HTMLImageElement).alt ?? "").length;
-			return -1; // has children
-		}
-
-		function walk(n: Node): boolean {
-			if (n === container) {
-				if (n.nodeType === Node.TEXT_NODE) {
-					count += offset;
-				} else {
-					// offset is child index
-					const children = Array.from(n.childNodes);
-					for (let i = 0; i < offset && i < children.length; i++) {
-						const len = nodeLen(children[i]!);
-						if (len >= 0) {
-							count += len;
-						} else {
-							walkAll(children[i]!);
-						}
-					}
-				}
-				return true;
-			}
-			const len = nodeLen(n);
-			if (len >= 0) {
-				count += len;
-				return false;
-			}
-			for (const c of Array.from(n.childNodes)) {
-				if (walk(c)) return true;
-			}
-			return false;
-		}
-
-		function walkAll(n: Node) {
-			const len = nodeLen(n);
-			if (len >= 0) {
-				count += len;
-				return;
-			}
-			for (const c of Array.from(n.childNodes)) walkAll(c);
-		}
-
-		walk(inputEl);
-		return count;
+		return rawOffsetOf(inputEl, container, offset);
 	}
 
 	function getSelectedRaw(): string | null {
@@ -1101,13 +1041,8 @@
 		if (sel && !sel.isCollapsed) {
 			sel.deleteFromDocument();
 		}
-		let raw = getRaw(inputEl);
-		let pos = getOffset();
-		// Empty contenteditable may have a phantom newline
-		if (isEmpty || raw === "\n") {
-			raw = "";
-			pos = 0;
-		}
+		const raw = getRaw(inputEl);
+		const pos = getOffset();
 		const newRaw = raw.slice(0, pos) + text + raw.slice(pos);
 		const newPos = pos + text.length;
 		rerender(newRaw, newPos);
@@ -1201,7 +1136,7 @@
 	<!-- Command menu -->
 	{#if commandSuggestions.length > 0}
 		<div
-			class="{GLASS} absolute bottom-[calc(100%+6px)] left-0 z-90 max-h-75 w-[min(100%,560px)] overflow-hidden overflow-y-auto rounded-[14px] p-1.5"
+			class="bg-duvet-bg border-duvet-line absolute bottom-[calc(100%+6px)] left-0 z-90 max-h-75 w-[min(100%,560px)] overflow-hidden overflow-y-auto rounded-[14px] border p-1.5"
 			id="{uid}-commands"
 			role="listbox"
 			aria-label="Commands"
@@ -1218,7 +1153,6 @@
 			</div>
 			{#each commandSuggestions as entry, i (`${entry.command.id} ${entry.name}`)}
 				{@const bot = commandApp(entry)?.bot}
-				{@const botMember = bot && members.find((m) => m.id === bot.id)}
 				<button
 					id="{uid}-commands-{i}"
 					role="option"
@@ -1233,19 +1167,11 @@
 					}}
 					onmouseenter={() => (commandSelectedIdx = i)}
 				>
-					<MemberBanner src={botMember?.banner_url ?? null} offline={botMember?.status === "offline"} />
 					<span class="relative flex min-w-0 flex-1 items-center gap-2.5">
 						<span class="text-duvet-ink shrink-0 text-[13px] font-semibold">/{entry.name}</span>
-						<span
-							class="{botMember?.banner_url ? 'text-duvet-ink' : 'text-duvet-ink2'} min-w-0 flex-1 truncate text-[12px]"
-							>{entry.description}</span
-						>
+						<span class="text-duvet-ink2 min-w-0 flex-1 truncate text-[12px]">{entry.description}</span>
 						{#if bot}
-							<span
-								class="{botMember?.banner_url
-									? 'text-duvet-ink'
-									: 'text-duvet-ink2'} flex shrink-0 items-center gap-1.5 text-[11px]"
-							>
+							<span class="text-duvet-ink2 flex shrink-0 items-center gap-1.5 text-[11px]">
 								<UserAvatar src={getAvatarURL(bot.id, bot.avatar)} name={bot.alias ?? bot.username} size={16} />
 								{bot.alias ?? bot.username}
 							</span>
@@ -1486,7 +1412,7 @@
 				aria-autocomplete="list"
 				aria-controls={suggesting?.list}
 				aria-activedescendant={suggesting ? `${suggesting.list}-${suggesting.at}` : undefined}
-				class="focus-override font-content text-duvet-ink caret-duvet-ink block max-h-[132px] min-h-5 min-w-0 flex-1 overflow-y-auto px-1.5 py-2.5 text-[15px] leading-[1.4] wrap-break-word whitespace-pre-wrap outline-none select-text {isEmpty
+				class="focus-override font-content text-duvet-ink caret-duvet-ink block max-h-[132px] min-h-5 min-w-0 flex-1 overflow-y-auto px-1.5 py-2.5 text-[16px] leading-[1.45] wrap-break-word whitespace-pre-wrap outline-none select-text {isEmpty
 					? 'before:text-duvet-ink2 before:pointer-events-none before:absolute before:content-[attr(data-placeholder)]'
 					: ''}"
 				data-placeholder={placeholder}

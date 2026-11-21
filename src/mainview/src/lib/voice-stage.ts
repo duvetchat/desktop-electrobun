@@ -42,3 +42,54 @@ export function gridColumns(count: number): 1 | 2 | 3 {
 	if (count <= 1) return 1;
 	return count <= 4 ? 2 : 3;
 }
+
+/** Where a tile sits, for the faces' eyes: x along its row, y its row (-1 for the stage, over the strip's 0). */
+export interface TilePlace {
+	x: number;
+	y: number;
+}
+
+/** Where each tile sits, by key: the staged one above the strip's middle and the others along the strip, or, with no
+ * tile staged, the grid's cells. */
+export function tilePlaces(
+	tiles: readonly StageTile[],
+	staged: string | null,
+	columns: number,
+): Record<string, TilePlace> {
+	const at: Record<string, TilePlace> = {};
+	if (staged) {
+		const strip = tiles.filter((tile) => tile.key !== staged);
+		at[staged] = { x: (strip.length - 1) / 2, y: -1 };
+		strip.forEach((tile, i) => (at[tile.key] = { x: i, y: 0 }));
+	} else {
+		tiles.forEach((tile, i) => (at[tile.key] = { x: i % columns, y: Math.floor(i / columns) }));
+	}
+	return at;
+}
+
+/** Where each person's face looks, by their tile's key (their user ID): toward the speaker's tile, within 1 each way;
+ * straight ahead for the speaker, in silence, or without a place. */
+export function eyesToward(
+	tiles: readonly StageTile[],
+	places: Readonly<Record<string, TilePlace>>,
+	speakerId: string | null,
+): Record<string, TilePlace> {
+	const offsets: Record<string, TilePlace> = {};
+	const speaker = speakerId ? places[speakerId] : undefined;
+	for (const tile of tiles) {
+		if (tile.kind !== "person") continue;
+		const mine = places[tile.key];
+		if (!speaker || !mine || speakerId === tile.key) {
+			offsets[tile.key] = { x: 0, y: 0 };
+			continue;
+		}
+		const dx = speaker.x - mine.x;
+		const dy = speaker.y - mine.y;
+		const dist = Math.sqrt(dx * dx + dy * dy);
+		offsets[tile.key] =
+			dist === 0
+				? { x: 0, y: 0 }
+				: { x: Math.max(-1, Math.min(1, dx / dist)), y: Math.max(-1, Math.min(1, dy / dist)) };
+	}
+	return offsets;
+}

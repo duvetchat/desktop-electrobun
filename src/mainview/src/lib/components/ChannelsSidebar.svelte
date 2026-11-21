@@ -506,7 +506,7 @@
 									<SpeakerSimpleHighIcon class="size-[15px]" />
 									{#if !canJoin}
 										<LockSimpleIcon
-											class="bg-duvet-sb-bg text-duvet-danger absolute -right-2 -bottom-1 size-3.5 rounded-full"
+											class="bg-duvet-sb-ring text-duvet-danger absolute -right-2 -bottom-1 size-3.5 rounded-full"
 										/>
 									{/if}
 								{/if}

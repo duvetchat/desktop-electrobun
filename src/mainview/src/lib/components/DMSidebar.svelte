@@ -9,14 +9,19 @@
 		ChevronUp as ChevronUpIcon,
 		Columns2 as ColumnsIcon,
 		PhoneCall as PhoneCallIcon,
+		Pin as PinIcon,
+		PinOff as PinOffIcon,
 	} from "@lucide/svelte";
+	import GroupMark from "$lib/components/GroupMark.svelte";
 	import NotificationSubmenu from "$lib/components/NotificationSubmenu.svelte";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
 	import type { Conversation } from "$lib/api/conversations";
 	import { getAvatarURL } from "$lib/common/common";
 	import { getUserMobileOnly, getUserOnlineStatus } from "$lib/api/ws/connection";
 	import { userStatusToString, type MemberOnSidebar } from "$lib/types";
-	import { conversationTab, tabDragData, tabNews } from "$lib/pane";
+	import { groupChats } from "$lib/nav";
+	import { navPrefs, togglePinnedChat } from "$lib/nav-prefs.svelte";
+	import { conversationTab, otherMember, tabDragData, tabNews } from "$lib/pane";
 	import {
 		chatsUnderAll,
 		chipCount,
@@ -34,10 +39,11 @@
 	import MenuSeparator from "$lib/components/ui/MenuSeparator.svelte";
 	import { countBadgeClass, MENU_PANEL, menuItemClass } from "$lib/components/ui/recipes";
 
-	// The sidebar's chats (#357, S-05): the user's direct messages and groups, the one with the latest message first.
-	// Under All (`folded`) the six latest show, with any unread one and the open one, then a row for the rest; under
-	// Chats they all do. A click opens a chat in the current tab, ⌘-click or a middle click in a new one, ⌥-click beside;
-	// its right click has the same, and its notifications.
+	// The sidebar's chats (#357, S-05): the user's direct messages and groups, the ones they pinned on top, in the order
+	// pinned (#416), then the others, the one with the latest message first. Under All (`folded`) the pinned ones show
+	// and, of the others, the six latest, with any unread one and the open one, then a row for the rest; under Chats they
+	// all do. A click opens a chat in the current tab, ⌘-click or a middle click in a new one, ⌥-click beside; its right
+	// click has the same, pins it or takes the pin off, and has its notifications.
 	let {
 		activeConversationId = null,
 		onSelect,
@@ -64,13 +70,6 @@
 		return "Direct message";
 	}
 
-	function convAvatarSrc(conv: Conversation): string | null | undefined {
-		if (conv.type === 2) return null;
-		const me = get(currentUser);
-		const other = conv.members.find((m) => m.user_id !== me?.id);
-		return getAvatarURL(other?.user_id ?? "", other?.user?.avatar);
-	}
-
 	// The other member's status, in a DM (a group has none), offline included, as the member list shows it, and whether
 	// they're connected only from the mobile app. Statuses come through spaces, friendships and conversations, so someone
 	// who is neither our friend nor in a space with us shows theirs too.
@@ -84,7 +83,8 @@
 		};
 	}
 
-	// Under All: the six latest, and whatever else must stay in sight; "N more chats" shows them all.
+	// The pinned chats head the list. Under All, of the others: the six latest, and whatever else must stay in sight;
+	// "N more chats" shows them all.
 	let expanded = $state(false);
 	const unreadIds = $derived(
 		new Set([
@@ -92,16 +92,20 @@
 			...Object.keys($shownMentionCounts).filter((id) => $shownMentionCounts[id]),
 		]),
 	);
-	const listed = $derived(
-		folded
-			? chatsUnderAll($conversations, (id) => unreadIds.has(id) || id === activeConversationId, expanded)
-			: { shown: $conversations, more: 0 },
-	);
+	const chats = $derived(groupChats($conversations, navPrefs.pinnedChats));
+	const listed = $derived.by(() => {
+		const rest = folded
+			? chatsUnderAll(chats.rest, (id) => unreadIds.has(id) || id === activeConversationId, expanded)
+			: { shown: chats.rest, more: 0 };
+		return { shown: [...chats.pinned, ...rest.shown], more: rest.more };
+	});
 </script>
 
 <div class="flex flex-col" role="group" aria-label="Chats">
 	{#each listed.shown as conv (conv.id)}
 		{@const shown = convStatus(conv)}
+		<!-- A DM shows the other person; a group, which has no picture, its mark, as its tab does (#376) -->
+		{@const other = otherMember(conv, $currentUser?.id)}
 		<!-- Its unread state and the mentions waiting in it, as its tab shows them: a mention leaves it unread. -->
 		{@const news = tabNews(
 			conversationTab(conv, $currentUser?.id),
@@ -112,9 +116,10 @@
 		{@const unread = news.unread}
 		{@const isActive = activeConversationId === conv.id}
 		{@const muted = $quietPlaces.has(conv.id)}
+		{@const pinned = navPrefs.pinnedChats.includes(conv.id)}
 		{@const typing = typingSentence($typingNow[conv.id])}
 		{@const inCall = $activeCall?.state === "connected" && $activeCall.conversationId === conv.id}
-		<!-- Its right click opens it elsewhere, and chooses its notifications. -->
+		<!-- Its right click opens it elsewhere, pins it to the top or takes the pin off, and chooses its notifications. -->
 		<ContextMenu>
 			{#snippet target(props)}
 				<button
@@ -133,7 +138,11 @@
 					}}
 				>
 					<Avatar size={32} status={shown?.status} mobileOnly={shown?.mobileOnly} ring="var(--duvet-sb-ring)">
-						<UserAvatar src={convAvatarSrc(conv)} name={convTitle(conv)} size={32} />
+						{#if other}
+							<UserAvatar src={getAvatarURL(other.user_id, other.user?.avatar)} name={convTitle(conv)} size={32} />
+						{:else}
+							<GroupMark size={32} />
+						{/if}
 					</Avatar>
 					<span class="flex min-w-0 flex-1 flex-col gap-px">
 						<span class="flex min-w-0 items-center gap-1.5">
@@ -144,6 +153,10 @@
 										? 'text-duvet-ink2 font-medium'
 										: 'text-duvet-ink font-medium'}">{convTitle(conv)}</span
 							>
+							<!-- The pin's mark, as a pinned Space's row has it -->
+							{#if pinned}
+								<PinIcon class="text-duvet-ink2 size-[11px] shrink-0" role="img" aria-label="Pinned" />
+							{/if}
 							{#if muted}
 								<BellOffIcon class="text-duvet-ink2 size-[11px] shrink-0" role="img" aria-label="Notifications off" />
 							{/if}
@@ -184,6 +197,9 @@
 				onSelect={() => onSelect(conv.id, "beside")}>Open beside</MenuItem
 			>
 			<MenuSeparator />
+			<MenuItem icon={pinned ? PinOffIcon : PinIcon} onSelect={() => togglePinnedChat(conv.id)}
+				>{pinned ? "Unpin" : "Pin to top"}</MenuItem
+			>
 			<NotificationSubmenu targetId={conv.id} target={2} itemClass={menuItemClass()} contentClass={MENU_PANEL} />
 		</ContextMenu>
 	{/each}

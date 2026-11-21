@@ -18,11 +18,11 @@ export type SettingsSection =
  * The sections of a space's settings that a member opens with these permissions (computeSpacePermissions), each with
  * the permission the API checks for its controls: the overview takes Administrator, the roles ManageRoles, the invites
  * ManageInvites, the bans BanMembers (which lists them), the webhooks ManageSpaceWebhooks, the storage
- * ManageSpaceBuckets, and the attachments that or ManageSpaceAttachments. The members list lists every member's roles
- * for those who manage roles, as the settings show a member only what they work with; its only controls are a member's
- * kick and ban, for those who may (canModerate). The emoji and sticker lists are every member's; their controls take
- * ManageSpaceEmojis and ManageSpaceStickers. With none of these permissions, a member sees only the emoji and sticker
- * lists, read-only.
+ * ManageSpaceBuckets, and the attachments that or ManageSpaceAttachments. The members list is for those who manage
+ * roles, as the settings show a member only what they work with: it gives and takes a member's roles below the user's
+ * highest (canManageRoleAt), and kicks and bans for those who may (canModerate). The emoji and sticker lists are every
+ * member's; their controls take ManageSpaceEmojis and ManageSpaceStickers. With none of these permissions, a member
+ * sees only the emoji and sticker lists, read-only.
  */
 export function settingsSections(permissions: number): SettingsSection[] {
 	const has = (flag: number) => (permissions & flag) === flag;

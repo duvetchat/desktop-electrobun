@@ -9,7 +9,7 @@ import {
 	secondWindowOfPath,
 	secondWindowUrl,
 } from "$lib/app-windows";
-import { importsOf, layoutsOf, reaches } from "$lib/module-graph";
+import { importsOf, layoutsOf, reaches, shortName } from "$lib/module-graph";
 
 const src = join(import.meta.dir, "..");
 const CONNECTION = join(src, "lib/api/ws/connection.ts");
@@ -85,7 +85,8 @@ describe("the guard itself", () => {
 	});
 
 	test("counts the layouts a page renders inside", () => {
-		expect(layoutsOf(pageOf("(auth)/sign-in"), src).map((file) => file.slice(src.length + 1))).toEqual(
+		// shortName writes the paths with forward slashes, Windows' included (#404).
+		expect(layoutsOf(pageOf("(auth)/sign-in"), src).map((file) => shortName(file, src))).toEqual(
 			expect.arrayContaining(["routes/+layout.svelte", "routes/+layout.ts"]),
 		);
 	});
@@ -143,6 +144,6 @@ describe("the guard itself", () => {
 			'<script lang="ts">\n\timport { quiet } from "$lib/quiet";\n\timport { Dialog } from "bits-ui";\n</script>\n<!-- import "$lib/api/ws/connection" -->\n',
 		);
 		expect(reaches(page, connection, fake)).toBeNull();
-		expect(importsOf(page, fake).map((file) => file.slice(fake.length + 1))).toEqual(["lib/quiet.ts"]);
+		expect(importsOf(page, fake).map((file) => shortName(file, fake))).toEqual(["lib/quiet.ts"]);
 	});
 });

@@ -1,11 +1,11 @@
-import { LAYOUT_PREFS_KEY, defaultLayoutPrefs, parseLayoutPrefs, type LayoutPrefs } from "$lib/layout-prefs";
+import { LAYOUT_PREFS_KEY, parseLayoutPrefs, type LayoutPrefs } from "$lib/layout-prefs";
 
 function readSaved(): LayoutPrefs {
-	if (typeof localStorage === "undefined") return { ...defaultLayoutPrefs };
+	if (typeof localStorage === "undefined") return parseLayoutPrefs(null);
 	try {
 		return parseLayoutPrefs(localStorage.getItem(LAYOUT_PREFS_KEY));
 	} catch {
-		return { ...defaultLayoutPrefs };
+		return parseLayoutPrefs(null);
 	}
 }
 
@@ -20,6 +20,7 @@ $effect.root(() => {
 			spacesColumn: layoutPrefs.spacesColumn,
 			openChats: layoutPrefs.openChats,
 			keyboardNavigation: layoutPrefs.keyboardNavigation,
+			membersColumn: { ...layoutPrefs.membersColumn },
 		});
 		try {
 			localStorage.setItem(LAYOUT_PREFS_KEY, value);

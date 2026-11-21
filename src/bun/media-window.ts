@@ -10,7 +10,7 @@
 // window), so this runs in tests.
 import { isAppPage } from "./navigation";
 import { windowChrome, type WindowChrome } from "./shell";
-import { displayOf, type DisplayArea, type Rect } from "./window-frame";
+import { displayOf, rectOf, type DisplayArea, type Rect } from "./window-frame";
 import type { MirroredChannels, WindowAnswer, WindowCommand, WindowStateMessage } from "./window-relay";
 
 /** The channel of the window itself: the main page's wish for it, and the commands about it. */
@@ -43,16 +43,6 @@ export const KEEP_AFTER_MS = 300;
 export interface MediaWindowPrefs {
 	frame: Rect | null;
 	pinned: boolean;
-}
-
-/** A frame out of a value that crossed a file or Electrobun, or null. */
-function rectOf(value: unknown): Rect | null {
-	if (typeof value !== "object" || value === null) return null;
-	if (!("x" in value) || !("y" in value) || !("width" in value) || !("height" in value)) return null;
-	const { x, y, width, height } = value;
-	if (typeof x !== "number" || typeof y !== "number" || typeof width !== "number" || typeof height !== "number")
-		return null;
-	return [x, y, width, height].every(Number.isFinite) && width > 0 && height > 0 ? { x, y, width, height } : null;
 }
 
 /** The kept prefs as their file has them; anything unreadable is no prefs, never an error. */

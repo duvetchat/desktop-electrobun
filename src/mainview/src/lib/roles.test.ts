@@ -124,21 +124,30 @@ describe("gatewaySpaceToMembers", () => {
 	});
 });
 
-// Nothing is docked beside the panes (#357, DECISIONS.md): the members column is gone, component and all, with the
-// rows, avatars, banners and popovers it once mounted for a Space (#327). A Space's members, and a group's, open from
-// the faces in a pane's bar, whose button mounts the one list, in its popover, and loads the Space's first page of
+// The redesign (#357) took the members column away, the one beside every pane that showed the focused pane's Space,
+// with the rows, avatars, banners and popovers it mounted for a Space (#327). #409 brings a column back inside each
+// pane, beside its chat: the app's page mounts no list of its own, and the one list, under its head and with its pages,
+// is the members popover's and the column's both (MembersPanel). The bar's button loads the Space's first page of
 // members for its faces itself.
-test("a Space's members mount no list beside the panes", () => {
+test("a chat's members show inside its pane, and the app's page mounts no list beside the panes", () => {
 	const source = (path: string) => readFileSync(join(import.meta.dir, path), "utf8");
 	expect(existsSync(join(import.meta.dir, "components/GuildMemberSidebar.svelte"))).toBe(false);
 	const page = source("../routes/app/+page.svelte");
-	expect(page).not.toMatch(/GuildMemberSidebar|<MemberList\b|<MembersButton\b/);
+	expect(page).not.toMatch(/GuildMemberSidebar|<MemberList\b|<MembersButton\b|<MembersColumn\b|<MembersPanel\b/);
+	const panel = source("components/MembersPanel.svelte");
+	expect(panel.match(/<MemberList /g)).toHaveLength(1);
 	const button = source("components/MembersButton.svelte");
-	expect(button.match(/<MemberList /g)).toHaveLength(1);
-	expect(button).toMatch(/<Popover\.Content[^]*<MemberList [^]*<\/Popover\.Content>/);
-	expect(button).toContain("void ensureMembers(pagedSpaceId, space?.users.length ?? 0)");
-	expect(button).not.toMatch(/columnOpen|onColumn/);
-	// Both of its users: a room's pane and a chat's view.
-	expect(source("components/PaneView.svelte")).toContain("<MembersButton space={activeTabSpace}");
-	expect(source("components/ConversationView.svelte")).toMatch(/<MembersButton\b/);
+	expect(button).not.toMatch(/<MemberList\b/);
+	expect(button).toMatch(/<Popover\.Content[^]*<MembersPanel [^]*<\/Popover\.Content>/);
+	expect(button).toContain("void ensureMembers(pagedSpaceId)");
+	const column = source("components/MembersColumn.svelte");
+	expect(column).not.toMatch(/<MemberList\b/);
+	expect(column).toMatch(/<aside\b[^>]*>[^]*<MembersPanel [^]*<\/aside>/);
+	// Their users: a room's pane, and a chat's view in it.
+	const pane = source("components/PaneView.svelte");
+	expect(pane).toMatch(/<MembersButton\s+space=\{activeTabSpace\}/);
+	expect(pane).toMatch(/<MembersColumn\s+space=\{activeTabSpace\}/);
+	const conversation = source("components/ConversationView.svelte");
+	expect(conversation).toMatch(/<MembersButton\b/);
+	expect(conversation).toMatch(/<MembersColumn\b/);
 });

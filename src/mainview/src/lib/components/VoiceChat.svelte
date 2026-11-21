@@ -7,7 +7,7 @@
 	import { audioStore } from "$lib/stores/audio.svelte";
 	import { toast } from "$lib/stores/toast.svelte";
 	import { hasPermission, Permission } from "$lib/permissions";
-	import { askForMicWith, sendVoiceSync } from "$lib/voice";
+	import { askForMicWith, sendVoiceSync, takeVideoCall } from "$lib/voice";
 	import {
 		CAMERA_MAX_BITRATE,
 		CAMERA_MAX_FRAMERATE,
@@ -296,6 +296,9 @@
 		activeVoiceRoomId.set(channelId);
 		joining = true;
 		joinVoice();
+		// A call placed as a video call turns the camera on as it joins, as the camera button would (#370): one that can't
+		// open says why, and the call goes on without it.
+		if (takeVideoCall(channelId)) queueCamera(startCamera);
 	});
 
 	onDestroy(() => {

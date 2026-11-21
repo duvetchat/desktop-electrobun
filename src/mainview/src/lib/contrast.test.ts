@@ -192,6 +192,8 @@ describe("text contrast", () => {
 					// Presence dots, the voice mark, a progress bar.
 					["alive", ["bg", "card", "sb-bg"]],
 					["crown", ["bg", "card", "sb-bg", "glass>bg"]],
+					// The typing ghost's dots, on its glass pill.
+					["chosen-ink", ["glass>bg"]],
 				],
 				3,
 			),

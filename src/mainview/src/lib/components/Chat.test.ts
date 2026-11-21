@@ -90,11 +90,12 @@ describe("who's typing", () => {
 		expect(readFileSync(join(import.meta.dir, "..", "..", "app.css"), "utf8")).toMatch(
 			/@property --composer-h \{\s*syntax: "<length>";\s*inherits: false;\s*initial-value: 64px;\s*\}/,
 		);
-		// 20 px tall and 2 px off the box, with nothing that makes it taller: 16 px avatars in their 1.5 px rings.
+		// 20 px tall and 2 px off the box, with nothing that makes it taller: the ghost that leads it (#418) is the
+		// pill's own 20 px.
 		const pill = /\{#if active\.length > 0\}\s*<div\s+class="([^"]*)"/.exec(indicator)?.[1]?.split(/\s+/) ?? [];
 		expect(pill).toEqual(expect.arrayContaining(["h-5", "mb-0.5"]));
 		expect(indicator).not.toMatch(/\b(min-h|py|pt|pb)-/);
-		expect(indicator).toContain("size={16}");
+		expect(indicator).toContain("<GhostMark size={20}");
 		// One line whatever the names, as a narrow pane would wrap a long one out of the 20 px: an ellipsis instead.
 		const phrases = [...indicator.matchAll(/<span\s+class="([^"]*)"[^>]*>\s*\{(?:typingPhrase|recordingPhrase)\(/g)];
 		expect(phrases).toHaveLength(2);

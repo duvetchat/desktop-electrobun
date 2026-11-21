@@ -1,9 +1,9 @@
-import { afterAll, expect, test } from "bun:test";
-import { dlopen, FFIType, JSCallback, ptr, type Pointer } from "bun:ffi";
+import { afterAll, describe, expect, test } from "bun:test";
+import { cc, CFunction, dlopen, FFIType, JSCallback, ptr, type Pointer } from "bun:ffi";
 import { mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { ARRANGEABLE, followPress, letWindowsArrange } from "./window-snap";
+import { ARRANGEABLE, followPress, letWindowsArrange, PROCEDURE_SYMBOLS } from "./window-snap";
 
 // Opened in the test: CI runs these files on Linux.
 function win32() {
@@ -343,4 +343,92 @@ test("a press that moves within the drag distance, then ends, drags nothing", as
 	);
 	expect(await followPress(nudged, (from) => drags.push(from), 0)).toBe(false);
 	expect(drags).toEqual([]);
+});
+
+// #419: the smallest the window may be made, which the procedure answers Windows (WM_GETMINMAXINFO). The procedure has
+// no header and calls only what it is handed, so it compiles and runs on any system: here against a stand-in for
+// Electrobun's procedure and for GetDpiForWindow, with a MINMAXINFO the test owns.
+describe("the smallest size the procedure lets Windows give the window", () => {
+	const WM_GETMINMAXINFO = 0x24;
+	const WM_SIZE = 0x5;
+	// MINMAXINFO's five points, two ints each: ptMinTrackSize is the fourth.
+	const MIN_TRACK = 6;
+	const callbacks: JSCallback[] = [];
+	afterAll(() => callbacks.forEach((callback) => callback.close()));
+
+	/** The compiled procedure over a stand-in for Electrobun's, which answers a size as Windows' default does: the
+	 * smallest window its frame allows. `dpi` is what GetDpiForWindow says; null for a user32 without it. */
+	function procedureOver(dpi: number | null) {
+		const sizes = new Int32Array(10);
+		const seen: number[] = [];
+		// CallWindowProc, which hands the message to the procedure before this one: here it answers as that one would.
+		const callWindowProc = new JSCallback(
+			(_previous: Pointer, _window: Pointer, message: number) => {
+				seen.push(message);
+				if (message === WM_GETMINMAXINFO) sizes.set([136, 39], MIN_TRACK);
+				return 7n;
+			},
+			{ args: [FFIType.ptr, FFIType.ptr, FFIType.u32, FFIType.u64, FFIType.i64], returns: FFIType.i64 },
+		);
+		const getDpiForWindow =
+			dpi === null ? null : new JSCallback(() => dpi, { args: [FFIType.ptr], returns: FFIType.u32 });
+		callbacks.push(callWindowProc, ...(getDpiForWindow ? [getDpiForWindow] : []));
+		const compiled = cc({ source: join(import.meta.dir, "window-snap.c"), symbols: PROCEDURE_SYMBOLS });
+		compiled.symbols.windowSnapSetUp(callWindowProc.ptr, null, null, null, null, null, null, null, null, null);
+		const address = compiled.symbols.windowSnapProcedure();
+		if (!address) throw new Error("window-snap.c gave no procedure");
+		const procedure = CFunction({
+			ptr: address,
+			args: [FFIType.ptr, FFIType.u32, FFIType.u64, FFIType.i64],
+			returns: FFIType.i64,
+		});
+		return {
+			sizes,
+			seen,
+			setMinimum: (width: number, height: number) =>
+				compiled.symbols.windowSnapSetMinimum(getDpiForWindow?.ptr ?? null, width, height),
+			/** Windows asking the window's sizes; the smallest it answers. */
+			ask: () => {
+				sizes.fill(0);
+				const result = procedure(null, WM_GETMINMAXINFO, 0n, BigInt(ptr(sizes)));
+				return { result, width: sizes[MIN_TRACK], height: sizes[MIN_TRACK + 1] };
+			},
+			send: (message: number) => procedure(null, message, 0n, 0n),
+		};
+	}
+
+	test("with no minimum, the answer is Electrobun's procedure's own", () => {
+		const { ask } = procedureOver(96);
+		expect(ask()).toEqual({ result: 7n, width: 136, height: 39 });
+	});
+
+	test("at 100%, the minimum in pixels", () => {
+		const { ask, setMinimum, seen } = procedureOver(96);
+		setMinimum(940, 600);
+		expect(ask()).toEqual({ result: 7n, width: 940, height: 600 });
+		// Electrobun's procedure still had the message first.
+		expect(seen).toEqual([WM_GETMINMAXINFO]);
+	});
+
+	test("at 150%, the minimum in that display's pixels", () => {
+		const { ask, setMinimum } = procedureOver(144);
+		setMinimum(940, 600);
+		expect(ask()).toEqual({ result: 7n, width: 1410, height: 900 });
+	});
+
+	test("without GetDpiForWindow, or with a DPI of 0, the minimum as at 100%", () => {
+		const old = procedureOver(null);
+		old.setMinimum(940, 600);
+		expect(old.ask()).toEqual({ result: 7n, width: 940, height: 600 });
+		const none = procedureOver(0);
+		none.setMinimum(940, 600);
+		expect(none.ask()).toEqual({ result: 7n, width: 940, height: 600 });
+	});
+
+	test("every other message goes on to Electrobun's procedure as before", () => {
+		const { send, setMinimum, seen } = procedureOver(96);
+		setMinimum(940, 600);
+		expect(send(WM_SIZE)).toBe(7n);
+		expect(seen).toEqual([WM_SIZE]);
+	});
 });

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { onMount } from "svelte";
 	import { ChevronsUpDown as ChevronsUpDownIcon, Settings as GearSixIcon } from "@lucide/svelte";
 	import { speakingUsers, currentUser } from "$lib/stores.svelte";
 	import { getAvatarURL } from "$lib/common/common";
@@ -10,10 +11,13 @@
 	import Avatar from "$lib/components/ui/Avatar.svelte";
 	import { iconButtonClass } from "$lib/components/ui/recipes";
 	import { ownMobileOnly } from "$lib/api/ws/connection";
+	import { SETTINGS_MENU_COMMAND } from "$lib/app-menu";
+	import { getElectrobunRpc } from "$lib/electrobun-rpc";
 	import { currentShell } from "$lib/platform";
 	import { isSettingsShortcut } from "$lib/shell-layout";
 	import { STATUS_CHOICES, chosenStatus } from "$lib/status";
 	import { userStatusToString } from "$lib/types";
+	import { addWindowCommands, answerWindowCommand } from "$lib/window-commands";
 
 	// The profile row at the sidebar's foot (#357, S-07): who the user is (their avatar with its status, their name
 	// and the status they chose), which opens the status menu, and the way into Settings. The sidebar mounts the
@@ -31,12 +35,25 @@
 
 	// Settings' own shortcut: ⌘, on macOS, Ctrl , elsewhere. Not over another dialog.
 	const mac = currentShell().os === "mac";
-	function onKeydown(event: KeyboardEvent) {
-		if (!isSettingsShortcut(event, mac) || showUserSettings) return;
-		if (document.querySelector('[role="dialog"], [role="alertdialog"]')) return;
-		event.preventDefault();
+	/** Opens Settings, unless another dialog is up; whether they're open. */
+	function openSettings(): boolean {
+		if (!showUserSettings && document.querySelector('[role="dialog"], [role="alertdialog"]')) return false;
 		showUserSettings = true;
+		return true;
 	}
+	function onKeydown(event: KeyboardEvent) {
+		if (!isSettingsShortcut(event, mac) || showUserSettings || !openSettings()) return;
+		event.preventDefault();
+	}
+	// And the menu bar's Settings… on macOS (src/bun/app-menu.ts), whose ⌘, the page sees first: Bun sends it to the main
+	// window's page as a command (lib/window-commands.ts), which this row answers while it is mounted, as one is at a time.
+	onMount(() => {
+		const stop = addWindowCommands(SETTINGS_MENU_COMMAND.channel, { [SETTINGS_MENU_COMMAND.name]: openSettings });
+		getElectrobunRpc()
+			.then((rpc) => rpc?.on.windowCommand(answerWindowCommand))
+			.catch((err: unknown) => console.error("[settings] The menu bar's Settings… won't reach this page:", err));
+		return stop;
+	});
 </script>
 
 <svelte:window onkeydown={onKeydown} />

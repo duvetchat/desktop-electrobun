@@ -3,7 +3,7 @@
 // stores: there the host sends these on to the main window (lib/stores/settings-guest-link.svelte.ts).
 import { logout } from "$lib/api/auth";
 import { applyOwnProfile, type SavedProfile } from "$lib/own-profile";
-import { MESSAGE_LAYOUT_KEY, type MessageLayout } from "$lib/message-layout";
+import { MESSAGE_LAYOUT_KEY, parseMessageLayout as parseLayout, type MessageLayout } from "$lib/message-layout";
 import type { StagedImage, StagedSlot } from "$lib/staged-images";
 import { gatewaySpaces } from "$lib/stores.svelte";
 import { messageLayout } from "$lib/stores/message-layout.svelte";
@@ -13,7 +13,7 @@ import { toast } from "$lib/stores/toast.svelte";
 export { MESSAGE_LAYOUT_KEY, type MessageLayout };
 
 export function parseMessageLayout(raw: unknown): MessageLayout {
-	return raw === "flat" ? "flat" : "bubbles";
+	return parseLayout(typeof raw === "string" ? raw : null);
 }
 
 /** A Space's fields its Overview saves. */

@@ -6,13 +6,18 @@ import {
 	defaultNowPrefs,
 	firstTextRoom,
 	fuzzyScore,
+	groupChats,
 	groupSpaces,
 	parseNowPrefs,
 	parsePinned,
+	parsePins,
+	pinKeys,
 	rankByQuery,
 	roomColumn,
+	spaceListRows,
 	spaceNews,
 	spaceReadAll,
+	type SpaceListRow,
 } from "$lib/nav";
 import { defaultLayoutPrefs, parseLayoutPrefs } from "$lib/layout-prefs";
 import { closeTabsIn, makeLeaf } from "$lib/pane";
@@ -52,11 +57,97 @@ describe("groupSpaces", () => {
 	});
 });
 
+// #382: the quiet Spaces' row sat under the quiet Space shown while they were folded, under its whole tree, so it moved
+// each time another Space was picked, and it counted the quiet Spaces but that one.
+describe("the spaces column's list", () => {
+	const groups = { pinned: ["p"], news: ["n1", "n2"], quiet: ["q1", "q2", "q3"] };
+	const listed = (rows: SpaceListRow[]) => rows.map((r) => (r.kind === "space" ? r.id : `quiet row: ${r.count}`));
+	const rowAt = (rows: SpaceListRow[]) => rows.findIndex((r) => r.kind === "quiet");
+
+	test("folded, the quiet Spaces wait behind their row, after the pinned ones and those with news", () => {
+		expect(listed(spaceListRows(groups, false, null))).toEqual(["p", "n1", "n2", "quiet row: 3"]);
+		expect(listed(spaceListRows(groups, false, "n1"))).toEqual(["p", "n1", "n2", "quiet row: 3"]);
+	});
+
+	test("unfolded, they're all listed under their row, in their order", () => {
+		expect(listed(spaceListRows(groups, true, null))).toEqual(["p", "n1", "n2", "quiet row: 3", "q1", "q2", "q3"]);
+	});
+
+	test("a quiet Space picked while they're folded shows under the row, which stays where it was and counts them all", () => {
+		const before = spaceListRows(groups, false, "n1");
+		const after = spaceListRows(groups, false, "q2");
+		expect(listed(after)).toEqual(["p", "n1", "n2", "quiet row: 3", "q2"]);
+		expect(rowAt(after)).toBe(rowAt(before));
+	});
+
+	test("folding hides every quiet Space but the open one, which stays under the row", () => {
+		const unfolded = spaceListRows(groups, true, "q3");
+		const folded = spaceListRows(groups, false, "q3");
+		expect(listed(folded)).toEqual(["p", "n1", "n2", "quiet row: 3", "q3"]);
+		// The row keeps its place and its count, folded or not, whichever Space is open.
+		expect(rowAt(folded)).toBe(rowAt(unfolded));
+		expect(folded[rowAt(folded)]).toEqual(unfolded[rowAt(unfolded)]!);
+	});
+
+	test("has no quiet row without quiet Spaces", () => {
+		expect(listed(spaceListRows({ pinned: [], news: ["n1"], quiet: [] }, false, "n1"))).toEqual(["n1"]);
+	});
+});
+
+// #416: a direct message or a group is pinned to the top of the chats, as a Space is to the top of the Spaces.
+describe("the chats, with pins", () => {
+	const chats = ["c1", "c2", "c3", "c4", "c5"].map((id) => ({ id }));
+	const ids = (list: { id: string }[]) => list.map((chat) => chat.id);
+
+	test("the pinned ones head the list in pin order, and the others keep the list's order", () => {
+		const groups = groupChats(chats, ["c4", "c2"]);
+		expect(ids(groups.pinned)).toEqual(["c4", "c2"]);
+		expect(ids(groups.rest)).toEqual(["c1", "c3", "c5"]);
+	});
+
+	test("without pins the list is as it came", () => {
+		expect(groupChats(chats, [])).toEqual({ pinned: [], rest: chats });
+	});
+
+	test("a pinned chat the user is no longer in is left out", () => {
+		const groups = groupChats(chats, ["gone", "c5"]);
+		expect(ids(groups.pinned)).toEqual(["c5"]);
+		expect(ids(groups.rest)).toEqual(["c1", "c2", "c3", "c4"]);
+	});
+});
+
 describe("saved values", () => {
 	test("pinned IDs drop duplicates and anything that isn't one", () => {
 		expect(parsePinned('["a", 1, "b", "a"]')).toEqual(["a", "b"]);
 		expect(parsePinned("{")).toEqual([]);
 		expect(parsePinned(null)).toEqual([]);
+	});
+
+	// The keys the mobile app pins a chat under (its pinKey: conv:<id>, room:<id>), with space:<id> for a Space. A room
+	// isn't pinned on the desktop.
+	test("the pins are the Spaces and the chats among the saved keys, each in pin order", () => {
+		const saved = '["conv:c2", "space:s1", "conv:c1", "space:s2", "conv:c2"]';
+		expect(parsePins(saved)).toEqual({ spaces: ["s1", "s2"], chats: ["c2", "c1"] });
+	});
+
+	test("a key of another kind, or without an ID, isn't a pin", () => {
+		expect(parsePins('["room:r1", "s1", "space:", "conv:", 7, "conv:c1"]')).toEqual({ spaces: [], chats: ["c1"] });
+		expect(parsePins("{")).toEqual({ spaces: [], chats: [] });
+	});
+
+	test("the pins are saved as their keys, and read back the same", () => {
+		const pins = { spaces: ["s2", "s1"], chats: ["c1", "c3"] };
+		expect(pinKeys(pins)).toEqual(["space:s2", "space:s1", "conv:c1", "conv:c3"]);
+		expect(parsePins(JSON.stringify(pinKeys(pins)))).toEqual(pins);
+	});
+
+	test("the Spaces pinned before chats could be carry over, until pins are saved", () => {
+		const old = '["s1", "s2"]';
+		expect(parsePins(null, old)).toEqual({ spaces: ["s1", "s2"], chats: [] });
+		// Once pins are saved, they are the pins: unpinning every Space doesn't bring the old ones back.
+		expect(parsePins("[]", old)).toEqual({ spaces: [], chats: [] });
+		expect(parsePins('["conv:c1"]', old)).toEqual({ spaces: [], chats: ["c1"] });
+		expect(parsePins(null)).toEqual({ spaces: [], chats: [] });
 	});
 
 	test("the Now section's prefs keep their booleans, and anything else is at its default", () => {
@@ -77,6 +168,7 @@ describe("saved values", () => {
 			spacesColumn: "fixed",
 			openChats: "tabs",
 			keyboardNavigation: false,
+			membersColumn: { rooms: true, groups: true },
 		});
 		expect(parseLayoutPrefs('{"keyboardNavigation":true}').keyboardNavigation).toBe(true);
 		expect(parseLayoutPrefs('{"keyboardNavigation":"yes"}').keyboardNavigation).toBe(false);
@@ -91,9 +183,10 @@ describe("saved values", () => {
 		expect(parseLayoutPrefs("[]")).toEqual(defaultLayoutPrefs);
 	});
 
-	// Nothing is docked beside a chat since the redesign (#357, DECISIONS.md): the members column's mode, and the
-	// switch before it, are in values saved by earlier builds, and are read past.
-	test("a saved members column, as a mode or as the old switch, is read without error and left out", () => {
+	// The members column is back beside the chat (#409), open per kind of chat. Builds before the redesign (#357) saved
+	// it as one mode for every room (Auto, Shown or Hidden), and the switch before it: both are read past, and the column
+	// is open, as it is by default.
+	test("a members column saved before the redesign, as a mode or as the old switch, is read past", () => {
 		for (const saved of [
 			'{"membersColumn":"shown","showMembersSidebar":true}',
 			'{"membersColumn":"hidden","showMembersSidebar":false}',
@@ -104,12 +197,13 @@ describe("saved values", () => {
 		]) {
 			const prefs = parseLayoutPrefs(saved);
 			expect(prefs, saved).toEqual(defaultLayoutPrefs);
-			expect(Object.keys(prefs), saved).not.toContain("membersColumn");
+			expect(prefs.membersColumn, saved).toEqual({ rooms: true, groups: true });
+			expect(Object.keys(prefs), saved).not.toContain("showMembersSidebar");
 		}
 		// What was saved beside it keeps its value.
 		expect(
 			parseLayoutPrefs(
-				'{"membersColumn":"shown","showMembersSidebar":true,"spacesColumn":"auto-hide","openChats":"vertical"}',
+				'{"membersColumn":"hidden","showMembersSidebar":false,"spacesColumn":"auto-hide","openChats":"vertical"}',
 			),
 		).toEqual({ ...defaultLayoutPrefs, spacesColumn: "auto-hide", openChats: "vertical" });
 	});

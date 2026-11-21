@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type { MascotMood } from "$lib/auth-form";
+	import { GHOST_BODY } from "$lib/ghost";
 
 	// The Duvet ghost saying hello: mobile's art (mobile/assets/mascot/{light,dark}/hello.svg, the same drawing with
 	// each theme's fills), drawn here so that its eyes can move. They look along the field being typed in, shut on a
@@ -20,8 +21,7 @@
 	// In the drawing's own units (120 across): an eye is 8.8 wide, and moves a little under a third of that.
 	const shift = $derived(Math.max(-1, Math.min(1, look)) * 2.6);
 
-	const body =
-		"M24 50 C24 35.6 35.6 24 50 24 C64.4 24 76 35.6 76 50 V74 Q69.5 84 63 74 Q56.5 84 50 74 Q43.5 84 37 74 Q33 80 25 86 Q24 78 24 68 Z";
+	const body = GHOST_BODY;
 	const sparkle = "M0 -5 L1.4 -1.4 L5 0 L1.4 1.4 L0 5 L-1.4 1.4 L-5 0 L-1.4 -1.4 Z";
 	const shade = "fill-[#262633] in-[.duvet-light]:fill-[#c9d4ff]";
 	const light = "fill-[#f7f6f3] in-[.duvet-light]:fill-[#ffffff]";

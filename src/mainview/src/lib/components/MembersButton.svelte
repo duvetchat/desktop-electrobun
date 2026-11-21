@@ -3,22 +3,26 @@
 	import { Users } from "@lucide/svelte";
 	import { Popover } from "bits-ui";
 	import type { GatewaySpace, MemberOnSidebar } from "$lib/types";
+	import type { MembersKind } from "$lib/layout-prefs";
+	import { layoutPrefs } from "$lib/layout-prefs.svelte";
 	import { memberFaces, membersLabel, onlineCount } from "$lib/members";
-	import { ensureMembers, loadMoreMembers, membersLoading } from "$lib/stores/member-pages.svelte";
+	import { ensureMembers } from "$lib/stores/member-pages.svelte";
 	import FaceStack from "$lib/components/FaceStack.svelte";
-	import MemberList, { spaceMembers } from "$lib/components/MemberList.svelte";
+	import { spaceMembers } from "$lib/components/MemberList.svelte";
+	import MembersPanel from "$lib/components/MembersPanel.svelte";
 	import { GLASS } from "$lib/components/ui/recipes";
 
-	// The members of a room, or of a group, in a pane's bar: a few faces, the online ones first, that open the member
-	// list in a popover. Nothing is docked beside the chat (#357): the popover is the members' one home, so it loads the
-	// Space's members itself, a page at a time as it scrolls, and the first page as soon as the button shows, for its
-	// faces.
+	// The members of a room, or of a group, in a pane's bar: a few faces, the online ones first. Beside a Space's text
+	// room or a group, in a pane with room for it, they open and close the members column at the pane's right (#409);
+	// anywhere else (a voice room, a DM, a narrow pane) they open the member list in a popover. Either way the button
+	// loads the Space's first page of members as soon as it shows, for its faces.
 	let {
 		space = null,
 		channelId,
 		members: given = undefined,
 		title = "Members",
 		onRemoveMember = undefined,
+		column = undefined,
 		open = $bindable(false),
 	}: {
 		/** The room's Space. A group passes its members instead. */
@@ -31,6 +35,9 @@
 		title?: string;
 		/** Removes a member from a group, for its owner. */
 		onRemoveMember?: (userId: string) => void;
+		/** The kind of chat whose members column it opens and closes, while its pane has room for one (membersColumnOf).
+		 * Without one, it opens the popover. */
+		column?: MembersKind;
 		open?: boolean;
 	} = $props();
 
@@ -38,15 +45,22 @@
 	const online = $derived(onlineCount(members));
 	const stack = $derived(memberFaces(members));
 	const pagedSpaceId = $derived(given === undefined ? (space?.id ?? null) : null);
+	// Whether the column of its kind of chat is open, as the layout prefs keep it across chats and reloads.
+	const columnOpen = $derived(column !== undefined && layoutPrefs.membersColumn[column]);
 
 	$effect(() => {
-		if (pagedSpaceId) void ensureMembers(pagedSpaceId, space?.users.length ?? 0);
+		if (pagedSpaceId) void ensureMembers(pagedSpaceId);
 	});
 
-	function onscroll(e: Event) {
-		const el = e.currentTarget as HTMLElement;
-		if (pagedSpaceId && el.scrollHeight - el.scrollTop - el.clientHeight < 150) void loadMoreMembers(pagedSpaceId);
+	function toggleColumn() {
+		if (column) layoutPrefs.membersColumn[column] = !layoutPrefs.membersColumn[column];
 	}
+
+	// A pane that grows wide enough for the column takes the list there: an open popover closes, rather than open again
+	// by itself once the pane narrows.
+	$effect(() => {
+		if (column) open = false;
+	});
 
 	// What opens last is in front, whatever opened it (lib/overlay-layers.ts).
 	const layer = $derived(open ? claimLayer() : 0);
@@ -54,59 +68,67 @@
 		const mine = layer;
 		if (mine) return () => releaseLayer(mine);
 	});
+
+	const buttonClass =
+		"hover:bg-duvet-hover text-duvet-ink2 flex h-[30px] shrink-0 items-center gap-1.5 rounded-[9px] pr-[9px] pl-[7px] text-[12.5px] font-medium transition-colors duration-[120ms] motion-reduce:transition-none";
 </script>
 
-<Popover.Root bind:open>
-	<Popover.Trigger
-		class="hover:bg-duvet-hover text-duvet-ink2 flex h-[30px] shrink-0 items-center gap-1.5 rounded-[9px] pr-[9px] pl-[7px] text-[12.5px] font-medium transition-colors duration-[120ms] motion-reduce:transition-none {open
-			? 'bg-duvet-accent-tint'
-			: ''}"
+{#snippet faces()}
+	{#if stack.faces.length > 0}
+		<FaceStack
+			faces={stack.faces.map((m) => ({
+				id: m.id,
+				src: m.avatar_url,
+				name: m.username,
+				dim: m.status === "offline",
+			}))}
+			more={stack.more}
+			size={18}
+		/>
+	{:else}
+		<Users size={16} />
+	{/if}
+{/snippet}
+
+{#if column}
+	<!-- Pressed while the column is open, with the look its popover gives it while open. -->
+	<button
+		type="button"
+		class="{buttonClass} {columnOpen ? 'bg-duvet-accent-tint' : ''}"
 		aria-label={membersLabel(online)}
-		title="Members"
+		aria-pressed={columnOpen}
+		title={columnOpen ? "Hide members" : "Show members"}
+		onclick={toggleColumn}
 	>
-		{#if stack.faces.length > 0}
-			<FaceStack
-				faces={stack.faces.map((m) => ({
-					id: m.id,
-					src: m.avatar_url,
-					name: m.username,
-					dim: m.status === "offline",
-				}))}
-				more={stack.more}
-				size={18}
-			/>
-		{:else}
-			<Users size={16} />
-		{/if}
-	</Popover.Trigger>
-	<Popover.Portal>
-		{#if layer}
-			<!-- The panel's positioner takes no layer of its own: this holds it, at the overlay's (lib/overlay-layers.ts). -->
-			<div class="fixed top-0 left-0" style={layerStyle(layer)}>
-				<Popover.Content
-					side="bottom"
-					align="end"
-					sideOffset={8}
-					collisionPadding={10}
-					updatePositionStrategy="always"
-					role="dialog"
-					aria-label={title}
-					class="{GLASS} animate-float-in text-duvet-ink z-[1000] flex max-h-[min(560px,72vh)] w-[min(340px,calc(100vw-20px))] origin-(--bits-floating-transform-origin) flex-col overflow-hidden rounded-[20px] outline-none"
-				>
-					<div class="flex shrink-0 items-baseline gap-2 px-4 pt-3.5 pb-1">
-						<p class="min-w-0 truncate text-[13.5px] font-semibold">{title}</p>
-						<span class="text-duvet-ink2 shrink-0 text-xs">{online} online</span>
-					</div>
-					<div class="min-h-0 flex-1 overflow-y-auto pb-2" {onscroll}>
-						<MemberList {members} spaceId={pagedSpaceId} {space} {channelId} {onRemoveMember} />
-						{#if membersLoading(pagedSpaceId)}
-							<div class="flex justify-center py-3" role="status" aria-label="Loading more members">
-								<div class="border-duvet-line border-t-duvet-ink2 size-4 animate-spin rounded-full border-2"></div>
-							</div>
-						{/if}
-					</div>
-				</Popover.Content>
-			</div>
-		{/if}
-	</Popover.Portal>
-</Popover.Root>
+		{@render faces()}
+	</button>
+{:else}
+	<Popover.Root bind:open>
+		<Popover.Trigger
+			class="{buttonClass} {open ? 'bg-duvet-accent-tint' : ''}"
+			aria-label={membersLabel(online)}
+			title="Members"
+		>
+			{@render faces()}
+		</Popover.Trigger>
+		<Popover.Portal>
+			{#if layer}
+				<!-- The panel's positioner takes no layer of its own: this holds it, at the overlay's (lib/overlay-layers.ts). -->
+				<div class="fixed top-0 left-0" style={layerStyle(layer)}>
+					<Popover.Content
+						side="bottom"
+						align="end"
+						sideOffset={8}
+						collisionPadding={10}
+						updatePositionStrategy="always"
+						role="dialog"
+						aria-label={title}
+						class="{GLASS} animate-float-in text-duvet-ink z-[1000] flex max-h-[min(560px,72vh)] w-[min(340px,calc(100vw-20px))] origin-(--bits-floating-transform-origin) flex-col overflow-hidden rounded-[20px] outline-none"
+					>
+						<MembersPanel {members} spaceId={pagedSpaceId} {space} {channelId} {title} {onRemoveMember} />
+					</Popover.Content>
+				</div>
+			{/if}
+		</Popover.Portal>
+	</Popover.Root>
+{/if}

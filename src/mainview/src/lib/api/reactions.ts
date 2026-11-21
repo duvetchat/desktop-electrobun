@@ -1,5 +1,5 @@
 import api from "$lib/api/api";
-import { reactionKey } from "$lib/reactions";
+import { reactedWith, reactionKey } from "$lib/reactions";
 import type { Message } from "$lib/types";
 import { pathSegment } from "$lib/urls";
 
@@ -54,7 +54,7 @@ export async function toggleReaction(
 ): Promise<void> {
 	// A custom emoji's reaction is its ID's, as two Spaces can each have one of that name: it's found and taken back by it.
 	const emoji = reactionKey({ emoji_name: emojiName, emoji_id: emojiId });
-	const reacted = message.reactions?.find((r) => reactionKey(r) === emoji)?.users.includes(me) ?? false;
+	const reacted = reactedWith(message, me, emoji);
 	const { spaceId, channelId } = where;
 	try {
 		if (!spaceId) {

@@ -1,7 +1,21 @@
 import type { Channel, Tab } from "$lib/types";
 
-/** The spaces the user pinned to the top of the spaces column, by ID, in the order they pinned them. */
-export const PINNED_SPACES_KEY = "duvet.nav.pinned.v1";
+/**
+ * What the user pinned to the top of the sidebar's lists, saved on this device: a list of keys in the order they pinned
+ * them, `space:<id>` for a Space and `conv:<id>` for a direct message or a group, as the mobile app names its own pins
+ * (its `pinKey`). A room isn't pinned here.
+ */
+export const PINS_KEY = "duvet.nav.pinned.v2";
+
+/** Where the pinned Spaces were saved while only a Space could be pinned (#416): a list of their bare IDs. It is read
+ * while PINS_KEY holds nothing yet, so those pins carry over. */
+export const OLD_PINNED_SPACES_KEY = "duvet.nav.pinned.v1";
+
+const SPACE_PIN = "space:";
+const CHAT_PIN = "conv:";
+
+/** The IDs of the pinned Spaces and of the pinned chats (direct messages and groups), each in the order pinned. */
+export type Pins = { spaces: string[]; chats: string[] };
 
 /** What the Now section at the column's foot has folded or opened, which stays so until the user changes it. */
 export const NOW_PREFS_KEY = "duvet.nav.now.v1";
@@ -28,7 +42,7 @@ export function parseNowPrefs(raw: string | null): NowPrefs {
 	}
 }
 
-/** The pinned space IDs a saved value holds; anything else in it (or a value that isn't JSON) is dropped. */
+/** The pinned IDs, or the pins' keys, a saved list holds; anything else in it (or a value that isn't JSON) is dropped. */
 export function parsePinned(raw: string | null): string[] {
 	if (!raw) return [];
 	try {
@@ -38,6 +52,23 @@ export function parsePinned(raw: string | null): string[] {
 	} catch {
 		return [];
 	}
+}
+
+/**
+ * The pins a saved value holds (PINS_KEY); a key that names neither a Space nor a chat is dropped. With nothing saved
+ * there yet (null), the pins are the Spaces saved under the old key.
+ */
+export function parsePins(raw: string | null, oldSpaces: string | null = null): Pins {
+	if (raw === null) return { spaces: parsePinned(oldSpaces), chats: [] };
+	const keys = parsePinned(raw);
+	const idsOf = (prefix: string) =>
+		keys.filter((key) => key.startsWith(prefix) && key.length > prefix.length).map((key) => key.slice(prefix.length));
+	return { spaces: idsOf(SPACE_PIN), chats: idsOf(CHAT_PIN) };
+}
+
+/** The pins as they are saved: the Spaces' keys, then the chats'. */
+export function pinKeys(pins: Pins): string[] {
+	return [...pins.spaces.map((id) => SPACE_PIN + id), ...pins.chats.map((id) => CHAT_PIN + id)];
 }
 
 export type SpaceGroups = {
@@ -59,6 +90,36 @@ export function groupSpaces(spaceIds: string[], pinned: string[], hasNews: (spac
 		pinned: pinnedIds,
 		news: rest.filter((id) => hasNews(id)),
 		quiet: rest.filter((id) => !hasNews(id)),
+	};
+}
+
+/** A row of the spaces column's list: a Space, or the quiet Spaces' own row, which folds them and counts them. */
+export type SpaceListRow = { kind: "space"; id: string } | { kind: "quiet"; count: number };
+
+/**
+ * The spaces column's list (#382): the pinned Spaces and those with news, then, while any Space is quiet, the quiet
+ * Spaces' row, then the quiet Spaces it shows: all of them unfolded, or else only the open one (the Space the focused
+ * pane is in), under the row, where it sits among them. The row has one place and one count whichever Space is open.
+ */
+export function spaceListRows(groups: SpaceGroups, quietOpen: boolean, openSpaceId: string | null): SpaceListRow[] {
+	const space = (id: string): SpaceListRow => ({ kind: "space", id });
+	const shownQuiet = quietOpen ? groups.quiet : groups.quiet.filter((id) => id === openSpaceId);
+	const quietRow: SpaceListRow[] = groups.quiet.length > 0 ? [{ kind: "quiet", count: groups.quiet.length }] : [];
+	return [...groups.pinned.map(space), ...groups.news.map(space), ...quietRow, ...shownQuiet.map(space)];
+}
+
+/**
+ * The sidebar's chats in two groups (#416): the pinned ones, in the order they were pinned, which head the list, and
+ * the rest in the list's own order (the latest message first). A pinned chat the user is no longer in is left out.
+ */
+export function groupChats<Chat extends { id: string }>(
+	chats: readonly Chat[],
+	pinned: readonly string[],
+): { pinned: Chat[]; rest: Chat[] } {
+	const byId = new Map(chats.map((chat) => [chat.id, chat]));
+	return {
+		pinned: pinned.map((id) => byId.get(id)).filter((chat): chat is Chat => chat !== undefined),
+		rest: chats.filter((chat) => !pinned.includes(chat.id)),
 	};
 }
 
