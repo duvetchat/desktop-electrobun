@@ -8,9 +8,11 @@
 	import InteractionModal from "$lib/components/InteractionModal.svelte";
 	import PromptDialog from "$lib/components/PromptDialog.svelte";
 	import StorageTransferFailures from "$lib/components/StorageTransferFailures.svelte";
+	import DefaultContextMenu from "$lib/components/DefaultContextMenu.svelte";
 
 	import { setupExternalLinks } from "$lib/external-links";
-	import { setupDevToolsKeys, setupNativeContextMenu } from "$lib/native-context-menu";
+	import { trackRightPresses } from "$lib/default-menu";
+	import { setupDevToolsKeys } from "$lib/native-context-menu";
 	import { getElectrobunRpc } from "$lib/electrobun-rpc";
 	import { driftSpecksOnScreen } from "$lib/spoiler-specks";
 	import { followSystemTheme } from "$lib/theme.svelte";
@@ -36,10 +38,17 @@
 		document.documentElement.classList.toggle(VIBRANT_CLASS, glass);
 	});
 
+	// Duvet's own right-click menu where no menu of the app's takes it, in the desktop app (#423): the browser keeps its
+	// own on the web, with what a page can't give (open in a new tab, save, spelling).
+	const ownMenu = shell.chrome !== "web";
+	// A development build (dev:hmr, start), whose menu opens DevTools; a packaged one's never does.
+	const devBuild = VITE_APP_ENV === "development";
+
 	onMount(() => {
 		setupExternalLinks();
+		// Which selection a right-click is on, as its press found it (lib/default-menu.ts): every menu reads it.
+		const stopPresses = trackRightPresses(window);
 		if (shell.os === "linux") {
-			setupNativeContextMenu();
 			// Only the main window's Bun side opens DevTools; in the others the keys just do nothing.
 			setupDevToolsKeys(
 				shell.window === "main" ? () => void getElectrobunRpc().then((rpc) => rpc?.send.openDevTools()) : () => {},
@@ -58,6 +67,7 @@
 				)
 			: () => {};
 		return () => {
+			stopPresses();
 			stopSpecks();
 			stopTheme();
 			stopGlassTheme();
@@ -84,3 +94,6 @@
 <PromptDialog />
 <InteractionModal />
 <StorageTransferFailures />
+{#if ownMenu}
+	<DefaultContextMenu main={shell.window === "main"} dev={devBuild} />
+{/if}

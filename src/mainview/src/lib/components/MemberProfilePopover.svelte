@@ -171,8 +171,9 @@
 		onOpenChange(o);
 	}}
 >
+	<!-- A trigger says whose row it is, which a list's one right-click menu reads (MemberList, #423). -->
 	{#if children}
-		<Popover.Trigger class={triggerClass}>
+		<Popover.Trigger class={triggerClass} data-member-id={member.id}>
 			{@render children()}
 		</Popover.Trigger>
 	{/if}

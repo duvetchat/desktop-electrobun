@@ -9,6 +9,7 @@
 	let {
 		open = $bindable(false),
 		onOpenChange = undefined,
+		onCloseAutoFocus = undefined,
 		disabled = false,
 		label = undefined,
 		class: className = "",
@@ -17,6 +18,8 @@
 	}: {
 		open?: boolean;
 		onOpenChange?: (open: boolean) => void;
+		/** Where the focus goes as it closes, when not back to what was right-clicked: preventDefault() keeps it. */
+		onCloseAutoFocus?: (event: Event) => void;
 		/** Leaves the right-click to the system's own menu. */
 		disabled?: boolean;
 		label?: string;
@@ -45,6 +48,7 @@
 			<div class="fixed top-0 left-0" style={layerStyle(layer)}>
 				<ContextMenu.Content
 					collisionPadding={10}
+					{onCloseAutoFocus}
 					aria-label={label}
 					class="{MENU_PANEL} origin-(--bits-floating-transform-origin) {className}"
 				>

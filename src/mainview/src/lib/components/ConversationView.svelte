@@ -734,6 +734,11 @@
 	async function handleRemoveMember(userId: string) {
 		await removeConversationMember(conversation.id, userId);
 	}
+	// A group's owner takes members out of it, from their profile and their menu (#423).
+	const removeMember = $derived(conversation.type === 2 && isOwner ? handleRemoveMember : undefined);
+	// The conversation's chat, whose message box a member's Mention writes in, from its members or its authors.
+	let chatView = $state<{ mention: (userId: string) => void } | null>(null);
+	const mentionHere = (userId: string) => chatView?.mention(userId);
 
 	function startCall() {
 		startConversationCall(conversation);
@@ -1076,7 +1081,8 @@
 		members={convMembers}
 		channelId={conversation.id}
 		{column}
-		onRemoveMember={conversation.type === 2 && isOwner ? handleRemoveMember : undefined}
+		onRemoveMember={removeMember}
+		onMention={mentionHere}
 	/>
 	{#key conversation.id}
 		<PinnedMessages channelId={conversation.id} conversation members={convMembers} toDirectMessage={toMessage} />
@@ -1161,6 +1167,7 @@
 	<!-- Body: the messages, and a group's members column at their right -->
 	<div class="flex flex-1 overflow-hidden">
 		<Chat
+			bind:this={chatView}
 			{intro}
 			{messages}
 			channelId={conversation.id}
@@ -1191,13 +1198,15 @@
 			onUnreadMark={(msgId) => {
 				if (convUnreadAfter == null) convUnreadAfter = msgId;
 			}}
+			onRemoveMember={removeMember}
 			{paneFocused}
 		/>
 		{#if column && layoutPrefs.membersColumn[column]}
 			<MembersColumn
 				members={convMembers}
 				channelId={conversation.id}
-				onRemoveMember={conversation.type === 2 && isOwner ? handleRemoveMember : undefined}
+				onRemoveMember={removeMember}
+				onMention={mentionHere}
 			/>
 		{/if}
 	</div>

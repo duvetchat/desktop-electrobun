@@ -41,6 +41,12 @@
 	import { shownMentionCounts, shownUnreadRooms } from "$lib/notification-marks";
 	import { notificationLevels, spaceLevel } from "$lib/notification-levels";
 	import NotificationSubmenu from "$lib/components/NotificationSubmenu.svelte";
+	import MemberMenu from "$lib/components/MemberMenu.svelte";
+	import MemberProfilePopover from "$lib/components/MemberProfilePopover.svelte";
+	import { spaceMember } from "$lib/components/MemberList.svelte";
+	import { withoutLongPress } from "$lib/default-menu";
+	import { personOf } from "$lib/member-menu";
+	import type { MemberOnSidebar, VoiceUser } from "$lib/types";
 	import { typingSentence } from "$lib/typing";
 	import TypingMark from "$lib/components/TypingMark.svelte";
 
@@ -69,6 +75,25 @@
 	let expanded = $state<{ [key: string]: boolean }>({});
 
 	const space = $derived($gatewaySpaces.find((s) => s.id === guild.id));
+
+	// ── A voice room's people (#423) ──────────────────────────────────────────
+	// Each has the member menu on a right-click (one for the room's list, for the row picked), whose Profile opens their
+	// card beside the row.
+	let voiceMenuFor = $state.raw<{ user: VoiceUser; row: HTMLElement } | null>(null);
+	let voiceProfile = $state.raw<{ member: MemberOnSidebar; anchor: HTMLElement } | null>(null);
+	function pickVoiceUser(e: MouseEvent, people: VoiceUser[]): boolean {
+		const row = e.target instanceof Element ? e.target.closest<HTMLElement>("[data-member-id]") : null;
+		const user = row ? people.find((u) => u.id === row.dataset.memberId) : undefined;
+		if (!row || !user) return false;
+		voiceMenuFor = { user, row };
+		return true;
+	}
+	// Who the menu is about: the Space's member, with their member ID once a page of members has brought it, or else
+	// their name as the room shows it.
+	function voicePerson(user: VoiceUser) {
+		const member = space ? spaceMember(space, user.id) : null;
+		return personOf(member ?? { id: user.id, member_id: "", username: user.username, is_bot: false }, space ?? null);
+	}
 	let showCreateModal = $state(false);
 	let newChannelName = $state("");
 	let newChannelType = $state<RoomType>(1);
@@ -563,47 +588,31 @@
 						</MenuItem>
 					{/if}
 				</ContextMenu>
-				<!-- Who's in the voice room, under its row -->
+				<!-- Who's in the voice room, under its row, each with their member menu on a right-click -->
 				{#if channel.type === "voice" && channel.voiceUsers && channel.voiceUsers.length > 0}
-					<div class="flex flex-col pb-0.5 pl-[30px]">
-						{#each channel.voiceUsers as user (user.id)}
-							{@const isSharing = user.screen_sharing ?? false}
-							{@const isSpeaking = $speakingUsers.has(user.id) && !user.muted}
+					{@const people = channel.voiceUsers}
+					<ContextMenu label="Member">
+						{#snippet target(props)}
 							<div
-								class="flex h-[26px] items-center gap-[7px] rounded-lg px-1.5 text-[12.5px] font-medium {isSpeaking
-									? 'text-duvet-ink'
-									: 'text-duvet-ink2'}"
+								{...withoutLongPress(props)}
+								class="flex flex-col pb-0.5 pl-[30px]"
+								oncontextmenu={(e) => {
+									if (pickVoiceUser(e, people)) (props.oncontextmenu as ((e: MouseEvent) => void) | undefined)?.(e);
+								}}
 							>
-								<UserAvatar
-									src={user.avatar_url}
-									name={user.username}
-									size={20}
-									class="box-border shrink-0 rounded-full transition-shadow duration-200 motion-reduce:transition-none {isSpeaking
-										? 'ring-duvet-alive ring-2'
-										: ''}"
-								/>
-								<span class="min-w-0 flex-1 truncate">{user.username}</span>
-								<div class="flex shrink-0 items-center gap-1">
-									{#if isSharing}
-										<span
-											class="bg-duvet-call-red text-duvet-on-call-red rounded-[5px] px-[5px] py-[3px] text-[9px] leading-none font-bold tracking-wide uppercase"
-											role="img"
-											aria-label="Sharing their screen">Live</span
-										>
-									{/if}
-									{#if user.camera}
-										<VideoIcon class="size-3" role="img" aria-label="Camera on" />
-									{/if}
-									{#if user.muted}
-										<MicrophoneSlashIcon class="text-duvet-danger size-3" role="img" aria-label="Muted" />
-									{/if}
-									{#if user.deafened}
-										<HeadphonesIcon class="text-duvet-danger size-3" role="img" aria-label="Deafened" />
-									{/if}
-								</div>
+								{@render voicePeople(people)}
 							</div>
-						{/each}
-					</div>
+						{/snippet}
+						{#if voiceMenuFor}
+							{@const { user, row } = voiceMenuFor}
+							{@const member = space ? spaceMember(space, user.id) : null}
+							<MemberMenu
+								person={voicePerson(user)}
+								space={space ?? null}
+								onProfile={member ? () => (voiceProfile = { member, anchor: row }) : undefined}
+							/>
+						{/if}
+					</ContextMenu>
 				{/if}
 			</div>
 		{/if}
@@ -619,6 +628,63 @@
 		></div>
 	{/if}
 </div>
+
+<!-- A voice room's people, each a row the member menu reads (data-member-id) -->
+{#snippet voicePeople(people: VoiceUser[])}
+	{#each people as user (user.id)}
+		{@const isSharing = user.screen_sharing ?? false}
+		{@const isSpeaking = $speakingUsers.has(user.id) && !user.muted}
+		<div
+			data-member-id={user.id}
+			class="flex h-[26px] items-center gap-[7px] rounded-lg px-1.5 text-[12.5px] font-medium {isSpeaking
+				? 'text-duvet-ink'
+				: 'text-duvet-ink2'}"
+		>
+			<UserAvatar
+				src={user.avatar_url}
+				name={user.username}
+				size={20}
+				class="box-border shrink-0 rounded-full transition-shadow duration-200 motion-reduce:transition-none {isSpeaking
+					? 'ring-duvet-alive ring-2'
+					: ''}"
+			/>
+			<span class="min-w-0 flex-1 truncate">{user.username}</span>
+			<div class="flex shrink-0 items-center gap-1">
+				{#if isSharing}
+					<span
+						class="bg-duvet-call-red text-duvet-on-call-red rounded-[5px] px-[5px] py-[3px] text-[9px] leading-none font-bold tracking-wide uppercase"
+						role="img"
+						aria-label="Sharing their screen">Live</span
+					>
+				{/if}
+				{#if user.camera}
+					<VideoIcon class="size-3" role="img" aria-label="Camera on" />
+				{/if}
+				{#if user.muted}
+					<MicrophoneSlashIcon class="text-duvet-danger size-3" role="img" aria-label="Muted" />
+				{/if}
+				{#if user.deafened}
+					<HeadphonesIcon class="text-duvet-danger size-3" role="img" aria-label="Deafened" />
+				{/if}
+			</div>
+		</div>
+	{/each}
+{/snippet}
+
+<!-- A voice room person's card, from their menu's Profile, beside their row -->
+{#if voiceProfile && space}
+	<MemberProfilePopover
+		member={voiceProfile.member}
+		spaceId={space.id}
+		{space}
+		side="right"
+		open
+		anchor={voiceProfile.anchor}
+		onOpenChange={(isOpen) => {
+			if (!isOpen) voiceProfile = null;
+		}}
+	/>
+{/if}
 
 <ServerSettings bind:open={showServerSettings} space={space ?? null} spaceId={guild.id} />
 
