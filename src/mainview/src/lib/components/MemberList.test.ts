@@ -2,8 +2,8 @@ import { describe, expect, mock, test } from "bun:test";
 import { readdirSync, readFileSync } from "node:fs";
 import { join, relative, sep } from "node:path";
 import { render } from "svelte/server";
-import { tags } from "./server-render";
-import { MEMBER_ROW } from "$lib/members";
+import { drawnHeight, tags } from "./server-render";
+import { GROUP_HEADING, MEMBER_ROW } from "$lib/members";
 import type { GatewayRole, GatewaySpace, GatewayUser, MemberOnSidebar } from "$lib/types";
 
 // UserAvatar draws with facehash-sv, whose package names its entry for the "svelte" condition alone, which Bun doesn't read.
@@ -78,8 +78,14 @@ describe("a long members list", () => {
 		expect(rows.size).toBeLessThan(80);
 		expect(html).toContain("Online — 500");
 		// The rows below the view are a spacer of their height.
-		const spacers = (await tags(MemberList, props)).filter((t) => /^height: \d+px/.test(t.attributes.style ?? ""));
+		const elements = await tags(MemberList, props);
+		const spacers = elements.filter((t) => /^height: \d+px/.test(t.attributes.style ?? ""));
 		expect(spacers.map((t) => t.attributes.style)).toEqual([`height: ${(500 - rows.size) * MEMBER_ROW}px`]);
+		// Which rows are in view and the spacers' heights go by MEMBER_ROW and GROUP_HEADING, so a row and a heading are
+		// drawn at those heights. With rows of 48 px counted at 56, the rows below the top spacer moved 8 px down each
+		// time one left the view (#429).
+		expect(drawnHeight(elements.find((t) => "data-popover-trigger" in t.attributes))).toBe(MEMBER_ROW);
+		expect(drawnHeight(elements.find((t) => t.attributes.class?.includes("sticky")))).toBe(GROUP_HEADING);
 	});
 
 	test("follows its scroller, the element around it that scrolls, and lets go of it", () => {
