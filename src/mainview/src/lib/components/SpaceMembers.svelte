@@ -10,8 +10,8 @@
 		findMembers,
 		joinedOn,
 		LISTED_MEMBERS_MAX,
+		MANAGED_MEMBER_ROW,
 		managedMembers,
-		MEMBER_ROW,
 		NO_ROLE,
 		shownRows,
 		type MemberSort,
@@ -64,11 +64,13 @@
 	const capped = $derived(paging && moreMembers(space.id) && space.users.length >= LISTED_MEMBERS_MAX);
 
 	// ── The rows in view ─────────────────────────────────────────────────────
-	// As the members list mounts them (shownRows, lib/members.ts): MEMBER_ROW px each under a GROUP_HEADING px heading,
-	// the view being the part of the list the settings' page shows as it scrolls.
+	// As the members list mounts them (shownRows, lib/members.ts): MANAGED_MEMBER_ROW px each under a GROUP_HEADING px
+	// heading, the view being the part of the list the settings' page shows as it scrolls.
 	let root = $state<HTMLElement>();
 	let view = $state({ top: 0, bottom: 1200 });
-	const [start, end] = $derived(shownRows([shown.length], view.top, view.bottom)[0] ?? [0, 0]);
+	const [start, end] = $derived(
+		shownRows([shown.length], view.top, view.bottom, undefined, MANAGED_MEMBER_ROW)[0] ?? [0, 0],
+	);
 
 	// The nearest element around the list that scrolls: the settings' page.
 	function scrollerOf(el: HTMLElement): HTMLElement | null {
@@ -180,7 +182,7 @@
 				<span class="shrink-0">Joined</span>
 			</div>
 			{#if start > 0}
-				<div style="height: {start * MEMBER_ROW}px"></div>
+				<div style="height: {start * MANAGED_MEMBER_ROW}px"></div>
 			{/if}
 			{#each shown.slice(start, end) as member (member.id)}
 				<button
@@ -211,7 +213,7 @@
 				</button>
 			{/each}
 			{#if end < shown.length}
-				<div style="height: {(shown.length - end) * MEMBER_ROW}px"></div>
+				<div style="height: {(shown.length - end) * MANAGED_MEMBER_ROW}px"></div>
 			{/if}
 			{#if shown.length === 0}
 				<p class="text-duvet-ink2 px-3.5 py-6 text-center text-[13px]">No one matches</p>

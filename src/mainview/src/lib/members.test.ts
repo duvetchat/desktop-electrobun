@@ -137,6 +137,12 @@ describe("shownRows", () => {
 		expect(shownRows([100, 100], 0, 400, 5)[1]).toEqual([0, 0]);
 	});
 
+	test("rows of another height, as the Members section of a Space's settings has", () => {
+		expect(shownRows([1000], 0, 600, 10, 40)).toEqual([[0, Math.ceil((600 - GROUP_HEADING) / 40) + 10]]);
+		const top = GROUP_HEADING + 500 * 40;
+		expect(shownRows([1000], top, top + 400, 10, 40)).toEqual([[490, 500 + 400 / 40 + 10]]);
+	});
+
 	test("an empty group, and a view of nothing", () => {
 		expect(shownRows([0, 3], 0, 1000)).toEqual([
 			[0, 0],
