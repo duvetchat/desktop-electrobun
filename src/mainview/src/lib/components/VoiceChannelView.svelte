@@ -62,7 +62,16 @@
 	import { phaseOf, mediaTitle } from "$lib/media-state";
 	import { capFaces, peopleCount } from "$lib/now";
 	import { hasPermission, Permission } from "$lib/permissions";
-	import { afterTiles, AUTO, gridColumns, pressTile, stagedKey, type StageChoice } from "$lib/voice-stage";
+	import {
+		afterTiles,
+		AUTO,
+		eyesToward,
+		gridColumns,
+		pressTile,
+		stagedKey,
+		tilePlaces,
+		type StageChoice,
+	} from "$lib/voice-stage";
 
 	let {
 		channelId,
@@ -230,40 +239,10 @@
 		lastSpeakerId = speaking.at(-1)?.id ?? null;
 	});
 
-	// Where each tile sits: the staged one above the strip's middle, the others in the strip's row or the grid's cells.
-	const places = $derived.by(() => {
-		const at: Record<string, { x: number; y: number }> = {};
-		if (staged) {
-			at[staged] = { x: (stripTiles.length - 1) / 2, y: -1 };
-			stripTiles.forEach((tile, i) => (at[tile.key] = { x: i, y: 0 }));
-		} else {
-			tiles.forEach((tile, i) => (at[tile.key] = { x: i % columns, y: Math.floor(i / columns) }));
-		}
-		return at;
-	});
-
-	// Reactive eye offsets: each face looks toward the speaker's tile, by where the tiles sit.
-	const eyeOffsets = $derived.by(() => {
-		const offsets: Record<string, { x: number; y: number }> = {};
-		const speaker = lastSpeakerId ? places[lastSpeakerId] : undefined;
-		for (const tile of tiles) {
-			if (tile.kind !== "person") continue;
-			const id = tile.user.id;
-			const mine = places[id];
-			if (!speaker || !mine || lastSpeakerId === id) {
-				offsets[id] = { x: 0, y: 0 };
-				continue;
-			}
-			const dx = speaker.x - mine.x;
-			const dy = speaker.y - mine.y;
-			const dist = Math.sqrt(dx * dx + dy * dy);
-			offsets[id] =
-				dist === 0
-					? { x: 0, y: 0 }
-					: { x: Math.max(-1, Math.min(1, dx / dist)), y: Math.max(-1, Math.min(1, dy / dist)) };
-		}
-		return offsets;
-	});
+	// Where each tile sits (the staged one above the strip's middle, the others along the strip, or the grid's cells),
+	// and where each face looks: toward the speaker's tile.
+	const places = $derived(tilePlaces(tiles, staged, columns));
+	const eyeOffsets = $derived(eyesToward(tiles, places, lastSpeakerId));
 
 	// A camera fills its tile; on the stage, or alone in the room, it shows whole.
 	function cameraFit(key: string): string {
