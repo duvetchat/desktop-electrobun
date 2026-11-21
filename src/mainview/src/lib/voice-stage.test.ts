@@ -2,9 +2,11 @@ import { describe, expect, test } from "bun:test";
 import {
 	afterTiles,
 	AUTO,
+	eyesToward,
 	gridColumns,
 	pressTile,
 	stagedKey,
+	tilePlaces,
 	type StageChoice,
 	type StageTile,
 } from "$lib/voice-stage";
@@ -89,5 +91,56 @@ describe("when the tiles change", () => {
 describe("the grid", () => {
 	test("has one column for a tile alone, two for up to four, three for more", () => {
 		expect([0, 1, 2, 3, 4, 5, 6, 9, 25].map(gridColumns)).toEqual([1, 1, 2, 2, 2, 3, 3, 3, 3]);
+	});
+});
+
+// The faces look toward whoever speaks, by where the tiles sit: the grid's cells, or the stage's, where the staged tile
+// is above the strip's middle and the others along the strip. So with a screen on the stage, or anyone, the faces keep
+// looking at the speaker (#440).
+describe("the faces' eyes", () => {
+	const mia: StageTile = { key: "mia", kind: "person" };
+
+	test("in the grid, look toward the speaker's cell", () => {
+		const places = tilePlaces([ana, leo, mia], null, 2);
+		expect(places).toEqual({ ana: { x: 0, y: 0 }, leo: { x: 1, y: 0 }, mia: { x: 0, y: 1 } });
+		const eyes = eyesToward([ana, leo, mia], places, "mia");
+		expect(eyes.ana).toEqual({ x: 0, y: 1 });
+		expect(eyes.leo?.x).toBeCloseTo(-Math.SQRT1_2);
+		expect(eyes.leo?.y).toBeCloseTo(Math.SQRT1_2);
+		expect(eyes.mia).toEqual({ x: 0, y: 0 });
+	});
+
+	test("with a screen on the stage, the strip's faces look along it at the speaker", () => {
+		const tiles = [ana, leo, leoScreen, mia];
+		const places = tilePlaces(tiles, "leo:screen", 2);
+		expect(places).toEqual({
+			"leo:screen": { x: 1, y: -1 },
+			ana: { x: 0, y: 0 },
+			leo: { x: 1, y: 0 },
+			mia: { x: 2, y: 0 },
+		});
+		expect(eyesToward(tiles, places, "mia")).toEqual({ ana: { x: 1, y: 0 }, leo: { x: 1, y: 0 }, mia: { x: 0, y: 0 } });
+		expect(eyesToward(tiles, places, "ana")).toEqual({
+			ana: { x: 0, y: 0 },
+			leo: { x: -1, y: 0 },
+			mia: { x: -1, y: 0 },
+		});
+	});
+
+	test("with someone on the stage, the strip looks up at them, and they down at a speaker in it", () => {
+		const tiles = [ana, leo, mia];
+		const places = tilePlaces(tiles, "mia", 2);
+		const up = eyesToward(tiles, places, "mia");
+		expect(up.ana?.x).toBeCloseTo(0.447, 3);
+		expect(up.ana?.y).toBeCloseTo(-0.894, 3);
+		expect(up.leo?.x).toBeCloseTo(-0.447, 3);
+		const down = eyesToward(tiles, places, "leo");
+		expect(down.mia?.x).toBeCloseTo(0.447, 3);
+		expect(down.mia?.y).toBeCloseTo(0.894, 3);
+	});
+
+	test("look straight ahead in silence", () => {
+		const places = tilePlaces([ana, leo], null, 2);
+		expect(eyesToward([ana, leo], places, null)).toEqual({ ana: { x: 0, y: 0 }, leo: { x: 0, y: 0 } });
 	});
 });
