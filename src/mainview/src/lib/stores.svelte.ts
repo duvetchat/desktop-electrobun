@@ -414,12 +414,29 @@ export interface ReactorsRequest {
 export const reactorsRequest = writable<ReactorsRequest | null>(null);
 
 /**
+ * Asks the app's page to open the user's direct conversation with someone, and with `call` to call them there: a
+ * member's Message and Call (#423). The page opens the one there is, or starts one, which the API allows friends.
+ */
+export const directChatRequest = writable<{ id: string; userId: string; call: boolean } | null>(null);
+
+/** Asks the friends view's search everywhere to search for a text: Search Duvet, in the default right-click menu (#423). */
+export const searchEverywhereRequest = writable<{ id: string; text: string } | null>(null);
+
+/**
  * Hears each request to open something elsewhere: a jump to a message or a room, a space's invite, a bot's, who
- * reacted. What shows messages over the chat (the pins list, a thread) closes on one, which a message in it can make (a
- * reply's quote, a link's chip or card, a reaction), as it would cover what opens. Returns what stops hearing them.
+ * reacted, a direct conversation, a search everywhere. What shows messages over the chat (the pins list, a thread)
+ * closes on one, which a message in it can make (a reply's quote, a link's chip or card, a reaction, a selection's
+ * search), as it would cover what opens. Returns what stops hearing them.
  */
 export function onOpenElsewhere(listener: () => void): () => void {
-	const requests: Readable<unknown>[] = [jumpToMessageRequest, spaceInviteRequest, botInviteRequest, reactorsRequest];
+	const requests: Readable<unknown>[] = [
+		jumpToMessageRequest,
+		spaceInviteRequest,
+		botInviteRequest,
+		reactorsRequest,
+		directChatRequest,
+		searchEverywhereRequest,
+	];
 	const stops = requests.map((request) =>
 		request.subscribe((value) => {
 			if (value) listener();
