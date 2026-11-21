@@ -23,10 +23,21 @@ test("reads the file's text, cut to the preview's size", async () => {
 	expect(await readTextPreview("https://api.test/file", 11)).toEqual({ text: "hello world", truncated: false });
 });
 
-test("asks for the latest copy of the file", async () => {
+test("asks for the latest copy of the file, streamed by the API rather than redirected to storage", async () => {
 	answer("text");
-	await readTextPreview("https://api.test/file");
-	expect(fetched!.mock.calls[0]?.[1]).toMatchObject({ cache: "no-store" });
+	await readTextPreview("https://api.test/attachments/x?sig=a&exp=1");
+	expect(fetched.mock.calls[0]?.[0]).toBe("https://api.test/attachments/x?sig=a&exp=1&stream=1");
+	expect(fetched.mock.calls[0]?.[1]).toMatchObject({ cache: "no-store", credentials: "include" });
+});
+
+test("reads the file's own URL when the stream doesn't take it", async () => {
+	const url = "https://api.test/attachments/x";
+	// oxlint-disable-next-line typescript/no-unsafe-type-assertion -- a fetch that answers this test's file
+	fetched.mockImplementationOnce((async () => new Response("no", { status: 400 })) as unknown as typeof fetch);
+	// oxlint-disable-next-line typescript/no-unsafe-type-assertion -- a fetch that answers this test's file
+	fetched.mockImplementationOnce((async () => new Response("the file")) as unknown as typeof fetch);
+	expect(await readTextPreview(url)).toEqual({ text: "the file", truncated: false });
+	expect(fetched.mock.calls.map((call) => call[0])).toEqual([`${url}?stream=1`, url]);
 });
 
 test("fails when the file can't be read", async () => {

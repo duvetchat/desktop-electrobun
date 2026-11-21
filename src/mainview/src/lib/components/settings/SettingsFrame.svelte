@@ -157,7 +157,7 @@
 			<Dialog.Overlay class="bg-duvet-scrim animate-scrim-in fixed inset-0 z-500" />
 			<Dialog.Content
 				aria-label={name}
-				class="text-duvet-ink shadow-duvet-glass animate-sheet-in fixed top-1/2 left-1/2 z-501 flex h-[min(660px,calc(100%-48px))] w-[min(920px,calc(100%-48px))] -translate-x-1/2 -translate-y-1/2 overflow-hidden rounded-3xl outline-none"
+				class="text-duvet-ink shadow-duvet-glass animate-sheet-in fixed inset-0 z-501 m-auto flex h-[min(660px,calc(100%-48px))] w-[min(920px,calc(100%-48px))] overflow-hidden rounded-3xl outline-none"
 			>
 				{@render side()}
 				{@render page()}

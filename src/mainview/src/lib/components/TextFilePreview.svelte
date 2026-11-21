@@ -35,8 +35,10 @@
 			if (mine !== read) return;
 			text = preview.text;
 			truncated = preview.truncated;
-		} catch {
-			if (mine === read) error = "Couldn't read this file.";
+		} catch (err) {
+			if (mine !== read) return;
+			if (import.meta.env.DEV) console.error("[TextFilePreview] The file wasn't read:", err);
+			error = "Couldn't read this file.";
 		} finally {
 			if (mine === read) loading = false;
 		}

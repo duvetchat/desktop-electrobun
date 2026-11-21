@@ -10,8 +10,22 @@ export interface TextPreview {
 
 /** Reads a file's text for its preview, cut to its first `limit` characters. Throws when it can't be read. */
 export async function readTextPreview(url: string, limit = TEXT_PREVIEW_LIMIT): Promise<TextPreview> {
-	const res = await fetch(url, { cache: "no-store" });
-	if (!res.ok) throw new Error(`HTTP ${res.status}`);
-	const body = await res.text();
+	const body = await readFile(url);
 	return { text: body.slice(0, limit), truncated: body.length > limit };
+}
+
+async function readFile(url: string): Promise<string> {
+	// Ask the API to stream the file itself (?stream=1, as the audio players do) instead of following its redirect to
+	// the storage host, whose answer a fetch may not read without CORS.
+	const streamed = url.includes("?") ? `${url}&stream=1` : `${url}?stream=1`;
+	try {
+		const res = await fetch(streamed, { cache: "no-store", credentials: "include" });
+		if (!res.ok) throw new Error(`HTTP ${res.status}`);
+		return await res.text();
+	} catch (err) {
+		// A file the stream doesn't take is read as its own route gives it.
+		const res = await fetch(url, { cache: "no-store", credentials: "include" });
+		if (!res.ok) throw err;
+		return await res.text();
+	}
 }
