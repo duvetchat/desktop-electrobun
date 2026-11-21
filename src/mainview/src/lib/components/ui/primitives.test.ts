@@ -200,6 +200,23 @@ describe("Segmented", () => {
 			]),
 		);
 	});
+
+	test("keeps each option's icon whole in a tight column, the option's padding giving way (#426)", async () => {
+		const icon = (await import("@lucide/svelte/icons/layout-grid")).default;
+		const found = await tags(Segmented, {
+			options: options.map((option) => ({ ...option, icon })),
+			value: "all",
+			label: "Show in the sidebar",
+		});
+		// The option's row would take the width it lacks from the one item that can shrink, the icon: at the sidebar's
+		// narrowest a column is 68.7 px, and Spaces' icon was drawn 0 px wide.
+		const icons = found.filter((tag) => tag.name === "svg");
+		expect(icons).toHaveLength(3);
+		for (const svg of icons) expect(classes(svg)).toContain("shrink-0");
+		// Centred, a row wider than its column spills evenly into both side paddings (12 px each), not past one edge.
+		const radios = found.filter((tag) => tag.attributes.role === "radio");
+		for (const radio of radios) expect(classes(radio)).toContain("justify-center");
+	});
 });
 
 describe("Avatar", () => {
