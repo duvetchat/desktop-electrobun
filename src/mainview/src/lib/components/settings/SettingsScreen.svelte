@@ -97,9 +97,11 @@
 		shareSpotify,
 		noiseSuppression,
 		selectedMicId,
+		selectedCameraId,
 	} from "$lib/stores.svelte";
 	import { listMicrophones } from "$lib/mic-devices";
-	import type { MicChoice } from "$lib/media-state";
+	import { listCameras } from "$lib/camera-devices";
+	import type { CameraChoice, MicChoice } from "$lib/media-state";
 	import { layoutPrefs } from "$lib/layout-prefs.svelte";
 	import { setThemePref, theme } from "$lib/theme.svelte";
 	import { parseThemePref, type ThemePref } from "$lib/theme";
@@ -611,13 +613,20 @@
 		}
 	}
 
-	// Voice and video state: the microphones to pick from, looked for when the section opens.
+	// Voice and video state: the microphones and cameras to pick from, looked for when the section opens.
 	let mics = $state<MicChoice[]>([]);
 	let micsLoaded = $state(false);
+	let cameras = $state<CameraChoice[]>([]);
+	let camerasLoaded = $state(false);
 
 	async function loadMics() {
 		mics = await listMicrophones();
 		micsLoaded = true;
+	}
+
+	async function loadCameras() {
+		cameras = await listCameras();
+		camerasLoaded = true;
 	}
 
 	// Appearance state
@@ -1563,12 +1572,17 @@
 	{:else if activeSection === "voice-video"}
 		<VoiceVideoSettings
 			micId={$selectedMicId}
+			cameraId={$selectedCameraId}
 			noiseSuppression={$noiseSuppression}
 			{mics}
 			{micsLoaded}
+			{cameras}
+			{camerasLoaded}
 			onSelectMic={(id) => selectedMicId.set(id)}
+			onSelectCamera={(id) => selectedCameraId.set(id)}
 			onToggleNoiseSuppression={(on) => noiseSuppression.set(on)}
 			onRefreshMics={loadMics}
+			onRefreshCameras={loadCameras}
 		/>
 	{:else if activeSection === "appearance"}
 		<SettingsGroup

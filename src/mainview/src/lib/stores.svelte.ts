@@ -562,9 +562,7 @@ if (safeStorage) {
 export const selectedCameraId = writable<string>(safeStorage?.getItem("duvet_camera_id") || "");
 if (safeStorage) {
 	selectedCameraId.subscribe((value) => {
-		if (value) {
-			safeStorage.setItem("duvet_camera_id", value);
-		}
+		safeStorage.setItem("duvet_camera_id", value);
 	});
 }
 

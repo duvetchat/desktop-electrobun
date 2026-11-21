@@ -84,6 +84,7 @@ test("it starts once, shares the user's values at once, and answers on the setti
 		"voiceFaces",
 		"shareSpotify",
 		"micId",
+		"cameraId",
 		"noiseSuppression",
 		"theme",
 		"layout",
@@ -141,13 +142,17 @@ test("a window's write of a shared value is set here; one of a key nothing share
 	expect(last("sync:voiceFaces")).toBe(false);
 	expect(commands().set!({ key: "voiceFaces", value: true })).toBe(true);
 	expect(last("sync:voiceFaces")).toBe(true);
-	// Voice and video: the microphone and its noise suppression are the main window's voice's.
+	// Voice and video: the microphone, the camera and its noise suppression are the main window's voice's.
 	expect(commands().set!({ key: "micId", value: "studio" })).toBe(true);
 	expect(last("sync:micId")).toBe("studio");
+	expect(commands().set!({ key: "cameraId", value: "face" })).toBe(true);
+	expect(last("sync:cameraId")).toBe("face");
 	expect(commands().set!({ key: "noiseSuppression", value: false })).toBe(true);
 	expect(last("sync:noiseSuppression")).toBe(false);
 	expect(commands().set!({ key: "micId", value: 3 })).toBe(true);
 	expect(last("sync:micId")).toBe("studio");
+	expect(commands().set!({ key: "cameraId", value: 3 })).toBe(true);
+	expect(last("sync:cameraId")).toBe("face");
 	expect(commands().set!({ key: "nothing-shares-this", value: 1 })).toBe(false);
 	expect(commands().set!("not a write")).toBe(false);
 	// The user is the main window's alone: a window's write doesn't change it.

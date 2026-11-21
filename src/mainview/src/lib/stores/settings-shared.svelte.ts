@@ -13,6 +13,7 @@ import {
 	myBuckets,
 	pendingTeamInvites,
 	selectedMicId,
+	selectedCameraId,
 	noiseSuppression,
 } from "$lib/stores.svelte";
 import { setThemePref, theme } from "$lib/theme.svelte";
@@ -92,8 +93,10 @@ export function sharedSettings(): Record<string, Shared> {
 		buckets: writing(myBuckets, list),
 		voiceFaces: writing(voiceFaces, flag),
 		shareSpotify: writing(shareSpotify, flag),
-		// The microphone voice uses and its noise suppression: Settings changes them for the main window's voice.
+		// The microphone and camera voice uses, and its noise suppression: Settings changes them for the main window's
+		// voice.
 		micId: writing(selectedMicId, (value) => (typeof value === "string" ? value : undefined)),
+		cameraId: writing(selectedCameraId, (value) => (typeof value === "string" ? value : undefined)),
 		noiseSuppression: writing(noiseSuppression, flag),
 		theme: runes(
 			() => theme.pref,
