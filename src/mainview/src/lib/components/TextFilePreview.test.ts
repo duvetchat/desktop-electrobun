@@ -19,3 +19,12 @@ test("reads the file when it opens, and lets go of what a closed one had on its 
 	expect(source).toContain('error = "Couldn\'t read this file.";');
 	expect(source).toContain("{#if truncated}");
 });
+
+test("copies the text with a button, saying Copied! beside it for 1500 ms", () => {
+	expect(source).toContain("navigator.clipboard.writeText(text)");
+	expect(source).toContain('label="Copy the text"');
+	expect(source).toContain("const COPIED_MS = 1500;");
+	expect(source).toContain("Copied!");
+	expect(source).toContain('role="status" aria-live="polite"');
+	expect(source).toContain("}, COPIED_MS);");
+});

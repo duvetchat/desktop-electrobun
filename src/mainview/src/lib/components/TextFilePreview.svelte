@@ -1,5 +1,7 @@
 <script lang="ts">
+	import { Copy } from "@lucide/svelte";
 	import Sheet from "$lib/components/ui/Sheet.svelte";
+	import IconButton from "$lib/components/ui/IconButton.svelte";
 	import { fieldClass } from "$lib/components/ui/recipes";
 	import { TEXT_PREVIEW_LIMIT, readTextPreview } from "$lib/text-preview";
 
@@ -23,12 +25,28 @@
 	let truncated = $state(false);
 	// A read asked for twice: the one that finishes last is the one that counts.
 	let read = 0;
+	// How long "Copied!" stays beside its button.
+	const COPIED_MS = 1500;
+	// The copy's "Copied!" beside its button, for COPIED_MS.
+	let copied = $state(false);
+	let copyTimer: ReturnType<typeof setTimeout> | null = null;
+
+	function copy() {
+		void navigator.clipboard.writeText(text);
+		copied = true;
+		if (copyTimer) clearTimeout(copyTimer);
+		copyTimer = setTimeout(() => {
+			copied = false;
+			copyTimer = null;
+		}, COPIED_MS);
+	}
 
 	async function load() {
 		const mine = ++read;
 		text = "";
 		error = null;
 		truncated = false;
+		copied = false;
 		loading = true;
 		try {
 			const preview = await readTextPreview(src);
@@ -48,9 +66,16 @@
 		if (!open) {
 			// Closed: whatever was on its way isn't shown when it arrives.
 			read++;
+			copied = false;
+			if (copyTimer) clearTimeout(copyTimer);
+			copyTimer = null;
 			return;
 		}
 		void load();
+	});
+
+	$effect(() => () => {
+		if (copyTimer) clearTimeout(copyTimer);
 	});
 
 	const limit =
@@ -63,6 +88,14 @@
 	{:else if error}
 		<p class="text-duvet-danger py-6 text-center text-[13px]" role="alert">{error}</p>
 	{:else}
+		<div class="flex items-center justify-end gap-2">
+			{#if copied}
+				<span class="text-duvet-alive-text text-xs font-medium" role="status" aria-live="polite">Copied!</span>
+			{/if}
+			<IconButton label="Copy the text" title="Copy" onclick={copy}>
+				<Copy size={16} />
+			</IconButton>
+		</div>
 		<textarea
 			readonly
 			spellcheck="false"
