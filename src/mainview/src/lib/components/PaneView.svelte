@@ -929,6 +929,9 @@
 	});
 
 	const isFocused = $derived(node.kind === "leaf" && focusedPaneId === node.id);
+	// The room's chat, whose message box a member's Mention writes in (#423), from its members column or popover.
+	let roomChat = $state<{ mention: (userId: string) => void } | null>(null);
+	const mentionInRoom = (userId: string) => roomChat?.mention(userId);
 
 	function handleCtrlW(e: KeyboardEvent) {
 		if (!e.ctrlKey || e.key !== "w") return;
@@ -1274,7 +1277,12 @@
 				<!-- A room's members, from their faces: a text room's open and close its column, at the pane's right (#409),
 				     in a pane with room for it; a voice room's, and any in a narrow pane, open in a popover. -->
 				{#if activeTabSpace && activeTab && !isConversationTab(activeTab)}
-					<MembersButton space={activeTabSpace} channelId={activeTab.channelId} column={roomColumn} />
+					<MembersButton
+						space={activeTabSpace}
+						channelId={activeTab.channelId}
+						column={roomColumn}
+						onMention={activeChannel?.type === "text" ? mentionInRoom : undefined}
+					/>
 				{/if}
 
 				<!-- The pane's own actions: the app's splits, to the right or below, at any depth. After them, in a section
@@ -1391,6 +1399,7 @@
 					</ChatIntro>
 				{/snippet}
 				<Chat
+					bind:this={roomChat}
 					intro={roomIntro}
 					messages={activeMessages}
 					channelId={node.activeChannelId ?? ""}
@@ -1421,7 +1430,7 @@
 				/>
 				<!-- The room's members, at the right of its chat, while text rooms have their column open (#409). -->
 				{#if roomColumn && activeTabSpace && layoutPrefs.membersColumn[roomColumn]}
-					<MembersColumn space={activeTabSpace} channelId={node.activeChannelId ?? ""} />
+					<MembersColumn space={activeTabSpace} channelId={node.activeChannelId ?? ""} onMention={mentionInRoom} />
 				{/if}
 			{:else if activeTab && isConversationTab(activeTab)}
 				<!-- Only while the panes show: the friends view hides them, and a conversation on screen counts as read

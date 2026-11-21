@@ -62,6 +62,25 @@
 			.map((m) => convertMember(m, space, users, roles))
 			.filter((m): m is MemberOnSidebar => m !== null);
 	}
+
+	/**
+	 * One user of a Space as its member list shows them, whether their member row is there or not yet: a voice room's
+	 * people come with their user before a page of members brings theirs, and have no member ID until then. Null when
+	 * the Space has no such user.
+	 */
+	export function spaceMember(space: GatewaySpace, userId: string): MemberOnSidebar | null {
+		const user = space.users.find((u) => u.id === userId);
+		if (!user) return null;
+		const member = space.members.find((m) => m.user_id === userId) ?? {
+			id: "",
+			space_id: space.id,
+			user_id: userId,
+			alias: null,
+			created_at: "",
+			updated_at: "",
+		};
+		return convertMember(member, space, new Map([[user.id, user]]), new Map(space.roles.map((r) => [r.id, r])));
+	}
 </script>
 
 <script lang="ts">
@@ -72,16 +91,22 @@
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
 	import StatusDot from "$lib/components/StatusDot.svelte";
 	import MemberProfilePopover from "$lib/components/MemberProfilePopover.svelte";
+	import MemberMenu from "$lib/components/MemberMenu.svelte";
+	import ContextMenu from "$lib/components/ui/ContextMenu.svelte";
+	import { withoutLongPress } from "$lib/default-menu";
+	import { personOf } from "$lib/member-menu";
 	import { MEMBER_ROW, memberGroups, shownRows } from "$lib/members";
 
-	// The members, in the groups memberGroups (lib/members.ts) makes, each opening their profile. The members popover of a
-	// pane's bar and the members column beside a chat both show it (MembersPanel); the one around it scrolls it.
+	// The members, in the groups memberGroups (lib/members.ts) makes, each opening their profile, and their menu on a
+	// right-click (MemberMenu, #423). The members popover of a pane's bar and the members column beside a chat both show
+	// it (MembersPanel); the one around it scrolls it.
 	let {
 		members,
 		spaceId = null,
 		space = null,
 		channelId = null,
 		onRemoveMember = undefined,
+		onMention = undefined,
 		profileSide = "left",
 		surface = "popover",
 	}: {
@@ -90,7 +115,10 @@
 		space?: GatewaySpace | null;
 		/** The room or the conversation whose typing the faces show. */
 		channelId?: string | null;
-		onRemoveMember?: (userId: string) => void;
+		/** Takes a member out of the group, for its owner. */
+		onRemoveMember?: (userId: string) => Promise<void>;
+		/** Mentions a member in the chat's message box. */
+		onMention?: (userId: string) => void;
 		/** Where a member's profile opens, beside the list. */
 		profileSide?: "left" | "right" | "top" | "bottom";
 		/** What the list is drawn on, whose colour its sticky headings, its status rings and its offline names take: the
@@ -153,6 +181,18 @@
 
 	// ── Profile popup ──────────────────────────────────────────────────────────
 	let activePopoverMemberId = $state<string | null>(null);
+
+	// ── The member menu ────────────────────────────────────────────────────────
+	// One for the list, as the message list has one: a right-click on a row opens it for that row's member.
+	let menuOpen = $state(false);
+	let menuFor = $state.raw<MemberOnSidebar | null>(null);
+	function pickMember(e: MouseEvent): boolean {
+		const row = e.target instanceof Element ? e.target.closest<HTMLElement>("[data-member-id]") : null;
+		const member = row ? members.find((m) => m.id === row.dataset.memberId) : undefined;
+		if (!member) return false;
+		menuFor = member;
+		return true;
+	}
 
 	// A space's list has its roles; a conversation's (no space) has none.
 	const groupedMembers = $derived(memberGroups(members, spaceId !== null));
@@ -217,7 +257,31 @@
 	});
 </script>
 
-<div bind:this={root}>
+<ContextMenu bind:open={menuOpen} label="Member">
+	{#snippet target(props)}
+		<div
+			{...withoutLongPress(props)}
+			bind:this={root}
+			oncontextmenu={(e) => {
+				if (pickMember(e)) (props.oncontextmenu as ((e: MouseEvent) => void) | undefined)?.(e);
+			}}
+		>
+			{@render rows()}
+		</div>
+	{/snippet}
+	{#if menuFor}
+		{@const member = menuFor}
+		<MemberMenu
+			person={personOf(member, space)}
+			{space}
+			onProfile={() => (activePopoverMemberId = member.id)}
+			{onMention}
+			onRemoveFromGroup={onRemoveMember}
+		/>
+	{/if}
+</ContextMenu>
+
+{#snippet rows()}
 	{#each groupedMembers as group, g}
 		{@const [start, end] = windows[g] ?? [0, 0]}
 		<div>
@@ -316,4 +380,4 @@
 			{/if}
 		</div>
 	{/each}
-</div>
+{/snippet}

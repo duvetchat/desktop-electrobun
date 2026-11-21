@@ -1,11 +1,13 @@
 <script lang="ts">
 	import { claimLayer, layerStyle, releaseLayer } from "$lib/overlay-layers";
+	import { onMount } from "svelte";
 	import { Users } from "@lucide/svelte";
 	import { Popover } from "bits-ui";
 	import type { GatewaySpace, MemberOnSidebar } from "$lib/types";
 	import type { MembersKind } from "$lib/layout-prefs";
 	import { layoutPrefs } from "$lib/layout-prefs.svelte";
 	import { memberFaces, membersLabel, onlineCount } from "$lib/members";
+	import { onOpenElsewhere } from "$lib/stores.svelte";
 	import { ensureMembers } from "$lib/stores/member-pages.svelte";
 	import FaceStack from "$lib/components/FaceStack.svelte";
 	import { spaceMembers } from "$lib/components/MemberList.svelte";
@@ -22,6 +24,7 @@
 		members: given = undefined,
 		title = "Members",
 		onRemoveMember = undefined,
+		onMention = undefined,
 		column = undefined,
 		open = $bindable(false),
 	}: {
@@ -34,7 +37,9 @@
 		/** The popover's heading: "Members", or a group's name. */
 		title?: string;
 		/** Removes a member from a group, for its owner. */
-		onRemoveMember?: (userId: string) => void;
+		onRemoveMember?: (userId: string) => Promise<void>;
+		/** Mentions a member in the chat's message box. */
+		onMention?: (userId: string) => void;
 		/** The kind of chat whose members column it opens and closes, while its pane has room for one (membersColumnOf).
 		 * Without one, it opens the popover. */
 		column?: MembersKind;
@@ -61,6 +66,18 @@
 	$effect(() => {
 		if (column) open = false;
 	});
+
+	// A member's menu in the popover opens their chat (Message, Call) elsewhere: the popover closes first, as the pins
+	// list does. Their Mention puts the focus in the message box, which the popover would keep: it closes first too.
+	onMount(() => onOpenElsewhere(() => (open = false)));
+	const mention = $derived(
+		onMention
+			? (userId: string) => {
+					open = false;
+					onMention(userId);
+				}
+			: undefined,
+	);
 
 	// What opens last is in front, whatever opened it (lib/overlay-layers.ts).
 	const layer = $derived(open ? claimLayer() : 0);
@@ -125,7 +142,15 @@
 						aria-label={title}
 						class="{GLASS} animate-float-in text-duvet-ink z-[1000] flex max-h-[min(560px,72vh)] w-[min(340px,calc(100vw-20px))] origin-(--bits-floating-transform-origin) flex-col overflow-hidden rounded-[20px] outline-none"
 					>
-						<MembersPanel {members} spaceId={pagedSpaceId} {space} {channelId} {title} {onRemoveMember} />
+						<MembersPanel
+							{members}
+							spaceId={pagedSpaceId}
+							{space}
+							{channelId}
+							{title}
+							{onRemoveMember}
+							onMention={mention}
+						/>
 					</Popover.Content>
 				</div>
 			{/if}

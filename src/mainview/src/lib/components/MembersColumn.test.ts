@@ -87,7 +87,7 @@ test("on the pane, the list takes the pane's colour; in the popover, the popover
 test("it scrolls and pages as the popover does, and starts over for another Space", () => {
 	const column = source("MembersColumn.svelte");
 	expect(column).toMatch(
-		/<aside\b[^>]*aria-label="Members"[^>]*class="[^"]*\bflex-col\b[^"]*"[^>]*>\s*\{#key pagedSpaceId\}\s*<MembersPanel \{members\} spaceId=\{pagedSpaceId\} \{space\} \{channelId\} \{onRemoveMember\} surface="pane" \/>\s*\{\/key\}\s*<\/aside>/,
+		/<aside\b[^>]*aria-label="Members"[^>]*class="[^"]*\bflex-col\b[^"]*"[^>]*>\s*\{#key pagedSpaceId\}\s*<MembersPanel \{members\} spaceId=\{pagedSpaceId\} \{space\} \{channelId\} \{onRemoveMember\} \{onMention\} surface="pane" \/>\s*\{\/key\}\s*<\/aside>/,
 	);
 	const panel = source("MembersPanel.svelte");
 	expect(panel).toMatch(/<div class="min-h-0 flex-1 overflow-y-auto pb-2" \{onscroll\}>/);
@@ -109,16 +109,17 @@ test("a pane measures itself, and a text room has its column beside its chat whi
 	expect(pane).toMatch(
 		/const roomColumn = \$derived\(\s*isActive && activeChannel\?\.type === "text" \? membersColumnOf\("rooms", paneWidth\) : undefined,?\s*\);/,
 	);
-	// The bar's button opens and closes it, or opens the popover without one (a voice room, a narrow pane).
+	// The bar's button opens and closes it, or opens the popover without one (a voice room, a narrow pane). A text
+	// room's members are mentioned in its box (#423).
 	expect(pane).toMatch(
-		/<MembersButton\s+space=\{activeTabSpace\}\s+channelId=\{activeTab\.channelId\}\s+column=\{roomColumn\}\s*\/>/,
+		/<MembersButton\s+space=\{activeTabSpace\}\s+channelId=\{activeTab\.channelId\}\s+column=\{roomColumn\}\s+onMention=\{activeChannel\?\.type === "text" \? mentionInRoom : undefined\}\s*\/>/,
 	);
 	// The column, at the right of the room's chat, while its kind's is open.
 	const text = pane.slice(pane.indexOf("{@const introRoom"));
 	const room = text.slice(0, text.indexOf("{:else if activeTab && isConversationTab(activeTab)}"));
 	expect(room).toContain("<Chat");
 	expect(room).toMatch(
-		/<Chat\b[^]*?\/>\s*(?:<!--[^]*?-->\s*)?\{#if roomColumn && activeTabSpace && layoutPrefs\.membersColumn\[roomColumn\]\}\s*<MembersColumn\s+space=\{activeTabSpace\}\s+channelId=\{node\.activeChannelId \?\? ""\}\s*\/>\s*\{\/if\}\s*$/,
+		/<Chat\b[^]*?\/>\s*(?:<!--[^]*?-->\s*)?\{#if roomColumn && activeTabSpace && layoutPrefs\.membersColumn\[roomColumn\]\}\s*<MembersColumn\s+space=\{activeTabSpace\}\s+channelId=\{node\.activeChannelId \?\? ""\}\s+onMention=\{mentionInRoom\}\s*\/>\s*\{\/if\}\s*$/,
 	);
 	// A conversation's view decides its own, by the same width.
 	expect(pane).toMatch(
@@ -134,10 +135,15 @@ test("a group has its column beside its chat; a DM's members open in the popover
 	expect(view).toMatch(/paneWidth = 0,/);
 	const start = view.indexOf("{#snippet actions()}");
 	const actions = view.slice(start, view.indexOf("\n{/snippet}", start));
+	// Its owner takes members out of a group, from the button's popover and the column alike; any member mentions them
+	// in its box (#423).
+	expect(view).toContain(
+		"const removeMember = $derived(conversation.type === 2 && isOwner ? handleRemoveMember : undefined);",
+	);
 	expect(actions).toMatch(
-		/<MembersButton\s+members=\{convMembers\}\s+channelId=\{conversation\.id\}\s+\{column\}\s+onRemoveMember=\{conversation\.type === 2 && isOwner \? handleRemoveMember : undefined\}\s*\/>/,
+		/<MembersButton\s+members=\{convMembers\}\s+channelId=\{conversation\.id\}\s+\{column\}\s+onRemoveMember=\{removeMember\}\s+onMention=\{mentionHere\}\s*\/>/,
 	);
 	expect(view).toMatch(
-		/<Chat\b[^]*?\{paneFocused\}\s*\/>\s*(?:<!--[^]*?-->\s*)?\{#if column && layoutPrefs\.membersColumn\[column\]\}\s*<MembersColumn\s+members=\{convMembers\}\s+channelId=\{conversation\.id\}\s+onRemoveMember=\{conversation\.type === 2 && isOwner \? handleRemoveMember : undefined\}\s*\/>\s*\{\/if\}/,
+		/<Chat\b[^]*?\{paneFocused\}\s*\/>\s*(?:<!--[^]*?-->\s*)?\{#if column && layoutPrefs\.membersColumn\[column\]\}\s*<MembersColumn\s+members=\{convMembers\}\s+channelId=\{conversation\.id\}\s+onRemoveMember=\{removeMember\}\s+onMention=\{mentionHere\}\s*\/>\s*\{\/if\}/,
 	);
 });

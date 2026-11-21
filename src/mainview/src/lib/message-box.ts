@@ -176,3 +176,25 @@ export function enterKey(e: { key: string; shiftKey: boolean; isComposing: boole
 	if (e.key !== "Enter" || e.isComposing) return null;
 	return e.shiftKey ? "break" : "send";
 }
+
+/** What a mention of `userId` adds at the end of the box's raw text: after a space, unless the text is empty or ends
+ * in one, and a space after it, as a pick from the @ suggestions leaves. */
+export function mentionAfter(raw: string, userId: string): string {
+	return `${raw === "" || /\s$/.test(raw) ? "" : " "}<@${userId}> `;
+}
+
+/**
+ * What a quote of `text` adds at the end of the box's raw text: on a line of its own, each of its lines under "> "
+ * (markdown's quote, which takes one line at a time), trimmed, its blank lines at either end left out, then a line
+ * break, where the reply goes on.
+ */
+export function quoteAfter(raw: string, text: string): string {
+	const lines = text
+		.replace(/\r\n?/g, "\n")
+		.split("\n")
+		.map((line) => line.trim());
+	while (lines.length > 0 && !lines[0]) lines.shift();
+	while (lines.length > 0 && !lines.at(-1)) lines.pop();
+	const quote = lines.map((line) => `> ${line}`).join("\n");
+	return `${raw === "" || raw.endsWith("\n") ? "" : "\n"}${quote}\n`;
+}

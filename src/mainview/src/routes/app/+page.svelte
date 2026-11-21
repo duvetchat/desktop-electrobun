@@ -63,7 +63,11 @@
 		botInviteRequest,
 		spaceInviteRequest,
 		allSpacesReady,
+		directChatRequest,
+		searchEverywhereRequest,
 	} from "$lib/stores.svelte";
+	import { startConversationCall } from "$lib/voice";
+	import UserFlagsSheet from "$lib/components/UserFlagsSheet.svelte";
 	import { shownUnreadConversations, shownUnreadRooms } from "$lib/notification-marks";
 	import { toast } from "$lib/stores/toast.svelte";
 	import CallCard from "$lib/components/CallCard.svelte";
@@ -570,6 +574,40 @@
 		}
 	}
 
+	// A member's Message and Call (#423): their direct conversation, the one there is or a new one (the API starts one
+	// between friends), opened as any chat is, and with Call called there.
+	async function chatWith(userId: string, call: boolean) {
+		let conv = $conversations.find((c) => c.type === 1 && c.members.some((m) => m.user_id === userId));
+		if (!conv) {
+			try {
+				conv = await createDM(userId);
+			} catch (err) {
+				toast(getApiError(err, "Couldn't open the chat"), "error");
+				return;
+			}
+			const made = conv;
+			conversations.update((list) => (list.some((c) => c.id === made.id) ? list : [made, ...list]));
+		}
+		openConversationTab(conv.id);
+		if (call) startConversationCall(conv);
+	}
+	let lastChatRequest: string | null = null;
+	$effect(() => {
+		const request = $directChatRequest;
+		if (!request || request.id === lastChatRequest) return;
+		lastChatRequest = request.id;
+		untrack(() => void chatWith(request.userId, request.call));
+	});
+
+	// Search Duvet (#423): the friends view's search everywhere takes the text (MessageSearch), once it shows.
+	let lastSearchRequest: string | null = null;
+	$effect(() => {
+		const request = $searchEverywhereRequest;
+		if (!request || request.id === lastSearchRequest) return;
+		lastSearchRequest = request.id;
+		untrack(() => handleFriendsSelect());
+	});
+
 	// ── Sidebar space tracking (imperative to avoid reactive cycles) ─────────
 	let sidebarSpaceId = $state<string | null>(null);
 	// Initialise once guilds arrive
@@ -1060,6 +1098,7 @@
 <SpaceInviteModal bind:open={spaceInviteOpen} bind:inviteCode={spaceInviteCode} />
 <ReactionsDialog />
 <BanDialog />
+<UserFlagsSheet />
 {#if $currentUser && $friendsReady}
 	<MentionNotices onOpen={openMentioned} />
 	<NotificationPermissionBar />

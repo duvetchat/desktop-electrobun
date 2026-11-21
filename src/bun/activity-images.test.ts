@@ -128,6 +128,13 @@ describe("fetchImageBytes", () => {
 		expect(await fetchImageBytes(at("/too-big"))).toBeNull();
 		expect((await fetchImageBytes(at("/just-fits")))?.length).toBe(MAX_SOURCE_BYTES);
 	});
+
+	test("reads up to the cap its caller gives: Copy image takes bigger pictures", async () => {
+		// The 5 MiB /too-big sends, under a cap of 8.
+		expect((await fetchImageBytes(at("/too-big"), undefined, 10_000, 8 << 20))?.length).toBe(
+			MAX_SOURCE_BYTES + (1 << 20),
+		);
+	});
 });
 
 // An inline image as the webview makes one, and a fetch and a webview that count their calls. A held fetch waits until
