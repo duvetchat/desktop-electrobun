@@ -2,7 +2,9 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-const source = (file: string) => readFileSync(join(import.meta.dir, file), "utf8");
+// As committed, with LF line endings: a Windows checkout has CRLF (core.autocrlf), which the patterns below don't take
+// (#430).
+const source = (file: string) => readFileSync(join(import.meta.dir, file), "utf8").replace(/\r\n/g, "\n");
 
 // #58: a draft per chat. A room's box stayed as the rooms changed, with its text, undo steps and recording, and a
 // conversation's went with its view; the drafts themselves are lib/drafts.ts's. What follows is what a browser checked
