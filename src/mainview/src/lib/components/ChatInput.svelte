@@ -19,7 +19,6 @@
 	import Menu from "$lib/components/ui/Menu.svelte";
 	import MenuItem from "$lib/components/ui/MenuItem.svelte";
 	import Segmented from "$lib/components/ui/Segmented.svelte";
-	import { GLASS } from "$lib/components/ui/recipes";
 	import { claimLayer, layerStyle, releaseLayer } from "$lib/overlay-layers";
 	import EmojiPicker from "$lib/components/EmojiPicker.svelte";
 	import StickerPicker from "$lib/components/StickerPicker.svelte";
@@ -1185,7 +1184,7 @@
 	<!-- Mention autocomplete dropdown -->
 	{#if mentionSuggestions.length > 0}
 		<div
-			class="{GLASS} absolute bottom-[calc(100%+6px)] left-0 z-90 max-h-75 w-80 max-w-full overflow-hidden overflow-y-auto rounded-[14px] p-1.5"
+			class="bg-duvet-bg border-duvet-line absolute bottom-[calc(100%+6px)] left-0 z-90 max-h-75 w-80 max-w-full overflow-hidden overflow-y-auto rounded-[14px] border p-1.5"
 			id="{uid}-mentions"
 			role="listbox"
 			aria-label="Mention suggestions"
@@ -1232,7 +1231,7 @@
 	<!-- Room mention autocomplete dropdown -->
 	{#if roomSuggestions.length > 0}
 		<div
-			class="{GLASS} absolute bottom-[calc(100%+6px)] left-0 z-90 max-h-75 w-80 max-w-full overflow-hidden overflow-y-auto rounded-[14px] p-1.5"
+			class="bg-duvet-bg border-duvet-line absolute bottom-[calc(100%+6px)] left-0 z-90 max-h-75 w-80 max-w-full overflow-hidden overflow-y-auto rounded-[14px] border p-1.5"
 			id="{uid}-rooms"
 			role="listbox"
 			aria-label="Room suggestions"
@@ -1275,7 +1274,7 @@
 	<!-- Emoji autocomplete dropdown -->
 	{#if suggestions.length > 0}
 		<div
-			class="{GLASS} absolute bottom-[calc(100%+6px)] left-0 z-90 max-h-75 w-80 max-w-full overflow-hidden overflow-y-auto rounded-[14px] p-1.5"
+			class="bg-duvet-bg border-duvet-line absolute bottom-[calc(100%+6px)] left-0 z-90 max-h-75 w-80 max-w-full overflow-hidden overflow-y-auto rounded-[14px] border p-1.5"
 			id="{uid}-emoji"
 			role="listbox"
 			aria-label="Emoji suggestions"
