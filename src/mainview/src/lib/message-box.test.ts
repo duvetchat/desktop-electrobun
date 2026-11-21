@@ -1,5 +1,15 @@
 import { describe, expect, test } from "bun:test";
-import { breakLine, caretAt, enterKey, lineBreaksHtml, rawOf, rawOffsetOf, type CaretPlace } from "./message-box";
+import {
+	breakLine,
+	caretAt,
+	enterKey,
+	lineBreaksHtml,
+	mentionAfter,
+	quoteAfter,
+	rawOf,
+	rawOffsetOf,
+	type CaretPlace,
+} from "./message-box";
 
 // The box's nodes as a web view holds them, with only what lib/message-box.ts reads of a node.
 type Fake = {
@@ -221,5 +231,20 @@ describe("the caret", () => {
 		expect(caretAt(nodes, 3)).toEqual({ node: said, at: 3 });
 		expect(caretAt(nodes, 3 + mention)).toEqual({ node: nodes.childNodes[1]!, at: "after" });
 		expect(rawOffsetOf(nodes, nodes, 2)).toBe(3 + mention);
+	});
+});
+
+describe("what a menu adds at the end of the box", () => {
+	test("a mention, after a space where the text doesn't end in one, and a space after it", () => {
+		expect(mentionAfter("", "u1")).toBe("<@u1> ");
+		expect(mentionAfter("hi", "u1")).toBe(" <@u1> ");
+		expect(mentionAfter("hi ", "u1")).toBe("<@u1> ");
+		expect(mentionAfter("hi\n", "u1")).toBe("<@u1> ");
+	});
+
+	test("a quote, each of its lines under >, on a line of its own, with the caret on the line after it", () => {
+		expect(quoteAfter("", "hello")).toBe("> hello\n");
+		expect(quoteAfter("so", "one\ntwo")).toBe("\n> one\n> two\n");
+		expect(quoteAfter("so\n", " \n one \r\n\n two \n")).toBe("> one\n> \n> two\n");
 	});
 });

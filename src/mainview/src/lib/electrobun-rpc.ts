@@ -1,4 +1,4 @@
-import { activityThumbnail, base64Bytes } from "$lib/activity-thumbnail";
+import { activityThumbnail, base64Bytes, pngImage } from "$lib/activity-thumbnail";
 import { secondWindowOfPath } from "$lib/app-windows";
 import type { MessageLink } from "$lib/urls";
 import type { OpenAppWindow } from "$lib/settings-windows";
@@ -44,6 +44,9 @@ export type AppRPCSchema = {
 			// From a window that isn't the main one: a command for the main window's page, which Bun forwards to it
 			// (webview.requests.windowCommand) and whose answer it hands back (lib/window-link.ts, src/bun/window-relay.ts).
 			windowCommand: { params: WindowCommand; response: WindowAnswer };
+			// Copy image, from the default right-click menu (#423): Bun puts the picture at the URL on the clipboard
+			// (src/bun/copy-image.ts), and says whether it's there. The main window's only.
+			copyImage: { params: { url: string }; response: boolean };
 		};
 		messages: {
 			closeWindow: void;
@@ -73,6 +76,8 @@ export type AppRPCSchema = {
 			activityImage: { params: { bytes: string }; response: string | null };
 			// To the main window: a command another window sent, to answer.
 			windowCommand: { params: WindowCommand; response: WindowAnswer };
+			// A picture Copy image fetched (in base64), made a PNG (in base64), or null.
+			pngImage: { params: { bytes: string }; response: string | null };
 		};
 		messages: {
 			activityUpdate: ActivityPayload[] | null;
@@ -103,6 +108,7 @@ export type AppRPCClient = {
 		takeClickedMessage: () => Promise<MessageLink | null>;
 		nativeWindowDrag: () => Promise<boolean>;
 		windowCommand: (command: WindowCommand) => Promise<WindowAnswer>;
+		copyImage: (params: { url: string }) => Promise<boolean>;
 	};
 	on: {
 		activityUpdate: (handler: (data: ActivityPayload[] | null) => void) => void;
@@ -134,12 +140,14 @@ async function createRpcClient(): Promise<AppRPCClient | null> {
 
 	const { Electroview } = await import("electrobun/view");
 	const rpc = Electroview.defineRPC<AppRPCSchema>({
-		// A toast's answer waits for its photo (2 s at most) and its helper's (10 s at most); Electrobun's default is 1 s.
+		// A toast's answer waits for its photo (2 s at most) and its helper's (10 s at most), and Copy image's for its
+		// picture (13 s at most, src/bun/copy-image.ts); Electrobun's default is 1 s.
 		maxRequestTime: 15_000,
 		handlers: {
 			requests: {
 				// Bun has no image decoder; this page has a canvas (lib/activity-thumbnail.ts).
 				activityImage: ({ bytes }) => activityThumbnail(base64Bytes(bytes)),
+				pngImage: ({ bytes }) => pngImage(base64Bytes(bytes)),
 				// Only the main window's page sets an answerer: any other says so, rather than leave Bun waiting.
 				windowCommand: (command) =>
 					commandAnswerer ? commandAnswerer(command) : { ok: false, error: "This window answers no commands" },
@@ -170,6 +178,7 @@ async function createRpcClient(): Promise<AppRPCClient | null> {
 			takeClickedMessage: () => rpc.request.takeClickedMessage(),
 			nativeWindowDrag: () => rpc.request.nativeWindowDrag(),
 			windowCommand: (command) => rpc.request.windowCommand(command),
+			copyImage: (params) => rpc.request.copyImage(params),
 		},
 		on: {
 			activityUpdate: (handler) => {

@@ -38,13 +38,14 @@ export function within<T>(promise: Promise<T>, ms: number): Promise<T> {
 
 /**
  * The bytes at url, an http(s) URL, or null when it isn't one, or its answer isn't a 2xx within FETCH_TIMEOUT_MS
- * and MAX_REDIRECTS redirects (each to an http(s) URL too), or it has more than MAX_SOURCE_BYTES, or it's compressed,
- * or stop aborts first (no activity needs it any more).
+ * and MAX_REDIRECTS redirects (each to an http(s) URL too), or it has more than maxBytes (MAX_SOURCE_BYTES: an
+ * activity's image; Copy image takes more), or it's compressed, or stop aborts first (no activity needs it any more).
  */
 export async function fetchImageBytes(
 	url: string,
 	stop?: AbortSignal,
 	timeoutMs = FETCH_TIMEOUT_MS,
+	maxBytes = MAX_SOURCE_BYTES,
 ): Promise<Uint8Array | null> {
 	const timeout = AbortSignal.timeout(timeoutMs);
 	const signal = stop ? AbortSignal.any([stop, timeout]) : timeout;
@@ -73,12 +74,12 @@ export async function fetchImageBytes(
 				!res.ok ||
 				!res.body ||
 				(encoding && encoding !== "identity") ||
-				Number(res.headers.get("content-length")) > MAX_SOURCE_BYTES
+				Number(res.headers.get("content-length")) > maxBytes
 			) {
 				await res.body?.cancel();
 				return null;
 			}
-			return await readAtMost(res.body, MAX_SOURCE_BYTES);
+			return await readAtMost(res.body, maxBytes);
 		}
 	} catch {
 		return null; // not a URL, no answer in time, or the connection failed

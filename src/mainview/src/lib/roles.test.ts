@@ -138,7 +138,7 @@ test("a chat's members show inside its pane, and the app's page mounts no list b
 	expect(panel.match(/<MemberList /g)).toHaveLength(1);
 	const button = source("components/MembersButton.svelte");
 	expect(button).not.toMatch(/<MemberList\b/);
-	expect(button).toMatch(/<Popover\.Content[^]*<MembersPanel [^]*<\/Popover\.Content>/);
+	expect(button).toMatch(/<Popover\.Content[^]*<MembersPanel\s[^]*<\/Popover\.Content>/);
 	expect(button).toContain("void ensureMembers(pagedSpaceId)");
 	const column = source("components/MembersColumn.svelte");
 	expect(column).not.toMatch(/<MemberList\b/);
