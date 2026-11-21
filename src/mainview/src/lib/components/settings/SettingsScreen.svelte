@@ -89,7 +89,16 @@
 		type TeamMember,
 		type Application,
 	} from "$lib/api/developer";
-	import { pendingTeamInvites, myBuckets, voiceFaces, shareSpotify } from "$lib/stores.svelte";
+	import {
+		pendingTeamInvites,
+		myBuckets,
+		voiceFaces,
+		shareSpotify,
+		noiseSuppression,
+		selectedMicId,
+	} from "$lib/stores.svelte";
+	import { listMicrophones } from "$lib/mic-devices";
+	import type { MicChoice } from "$lib/media-state";
 	import { layoutPrefs } from "$lib/layout-prefs.svelte";
 	import { setThemePref, theme } from "$lib/theme.svelte";
 	import { parseThemePref, type ThemePref } from "$lib/theme";
@@ -119,6 +128,7 @@
 	import SettingsGroup from "./SettingsGroup.svelte";
 	import SettingsRow from "./SettingsRow.svelte";
 	import Slider from "./Slider.svelte";
+	import VoiceVideoSettings from "./VoiceVideoSettings.svelte";
 	import ChoiceCards from "./ChoiceCards.svelte";
 	import Avatar from "$lib/components/ui/Avatar.svelte";
 	import Button from "$lib/components/ui/Button.svelte";
@@ -205,6 +215,7 @@
 				{ id: "attachments", label: "Attachments", icon: PaperclipIcon, tile: "#0b6fe8" },
 				{ id: "security", label: "Security", icon: ShieldIcon, tile: "#2f9e62" },
 				{ id: "audio", label: "Audio", icon: VolumeIcon, tile: "#f97316" },
+				{ id: "voice-video", label: "Voice and video", icon: MicIcon, tile: "#0e8fd6" },
 				{ id: "appearance", label: "Appearance", icon: PaletteIcon, tile: "#2f4cff" },
 				...(desktopApp
 					? [{ id: "activity" as const, label: "Activity privacy", icon: ActivityIcon, tile: "#e44fcb" }]
@@ -574,6 +585,15 @@
 		} else {
 			previewingSound = null;
 		}
+	}
+
+	// Voice and video state: the microphones to pick from, looked for when the section opens.
+	let mics = $state<MicChoice[]>([]);
+	let micsLoaded = $state(false);
+
+	async function loadMics() {
+		mics = await listMicrophones();
+		micsLoaded = true;
 	}
 
 	// Appearance state
@@ -1516,6 +1536,16 @@
 				{@render soundRow(sound.key, sound.label)}
 			{/each}
 		</SettingsGroup>
+	{:else if activeSection === "voice-video"}
+		<VoiceVideoSettings
+			micId={$selectedMicId}
+			noiseSuppression={$noiseSuppression}
+			{mics}
+			{micsLoaded}
+			onSelectMic={(id) => selectedMicId.set(id)}
+			onToggleNoiseSuppression={(on) => noiseSuppression.set(on)}
+			onRefreshMics={loadMics}
+		/>
 	{:else if activeSection === "appearance"}
 		<SettingsGroup
 			title="Theme"

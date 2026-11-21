@@ -537,9 +537,7 @@ export const selectedMicId = writable<string>(initialMicId);
 
 if (safeStorage) {
 	selectedMicId.subscribe((value) => {
-		if (value) {
-			safeStorage.setItem("duvet_mic_id", value);
-		}
+		safeStorage.setItem("duvet_mic_id", value);
 	});
 }
 
