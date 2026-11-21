@@ -10,6 +10,8 @@
 		SquareTerminal,
 		TextQuote,
 	} from "@lucide/svelte";
+	import { base64Bytes, pngBlob } from "$lib/activity-thumbnail";
+	import { copyPicture } from "$lib/copy-picture";
 	import {
 		defaultMenuOf,
 		isMenuKey,
@@ -157,10 +159,21 @@
 	const copyText = (text: string) =>
 		navigator.clipboard.writeText(text).catch((err: unknown) => console.error("[menu] couldn't copy:", err));
 
-	async function copyImage(src: string) {
-		const rpc = await getElectrobunRpc();
-		const copied = rpc ? await rpc.request.copyImage({ url: src }).catch(() => false) : false;
-		if (!copied) toast("Couldn't copy the image", "error");
+	// Bun fetches the picture and the webview writes it, in the formats every app pastes (lib/copy-picture.ts, #450).
+	// Called in the menu's pick, so the clipboard's write starts in the user's gesture.
+	function copyImage(src: string) {
+		void copyPicture(src, {
+			fetch: async (url) => {
+				const rpc = await getElectrobunRpc();
+				const picture = rpc ? await rpc.request.pictureForCopy({ url }) : null;
+				return picture ? base64Bytes(picture) : null;
+			},
+			toPng: pngBlob,
+			item: (parts) => new ClipboardItem(parts),
+			write: (items) => navigator.clipboard.write(items),
+		}).then((copied) => {
+			if (!copied) toast("Couldn't copy the image", "error");
+		});
 	}
 
 	function act(item: DefaultItem) {
@@ -187,7 +200,7 @@
 				openInBrowser(item.src);
 				return;
 			case "copy-image":
-				void copyImage(item.src);
+				copyImage(item.src);
 				return;
 			case "copy-media-link":
 				void copyText(item.src);

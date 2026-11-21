@@ -4,7 +4,7 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fitActivity, MAX_ACTIVITIES, type ActivityPayload } from "./activities";
 import { ActivityImages, fetchImageBytes, IpcActivities, PAGE_WAIT_MS, within } from "./activity-images";
-import { COPY_FETCH_MS, copyImage, MAX_COPIED_BYTES } from "./copy-image";
+import { COPY_FETCH_MS, MAX_COPIED_BYTES, pictureToCopy } from "./copy-image";
 import { appMenu, DOCS_URL, runMenuAction } from "./app-menu";
 import { avatarForToast } from "./notification-avatars";
 import { forwarderScript } from "./notification-forwarder";
@@ -91,9 +91,9 @@ type AppRPCSchema = {
 			// From a window that isn't the main one: a command for the main window's page, forwarded to it
 			// (webview.requests.windowCommand), whose answer comes back (window-relay.ts).
 			windowCommand: { params: WindowCommand; response: WindowAnswer };
-			// Copy image, from the page's own right-click menu (#423): the picture at the URL, on the clipboard as a PNG
-			// (copy-image.ts). The answer says whether it's there.
-			copyImage: { params: { url: string }; response: boolean };
+			// Copy image, from the page's own right-click menu (#423, #450): the picture at the URL, fetched here
+			// (copy-image.ts), in base64, for the page to put on the clipboard itself; null when it can't be had.
+			pictureForCopy: { params: { url: string }; response: string | null };
 		};
 		messages: {
 			closeWindow: void;
@@ -131,9 +131,6 @@ type AppRPCSchema = {
 			activityImage: { params: { bytes: string }; response: string | null };
 			// To the main window: a command another window sent, to answer.
 			windowCommand: { params: WindowCommand; response: WindowAnswer };
-			// A picture Copy image fetched, made a PNG by the webview's canvas (Bun has no image decoder), or null. Its
-			// bytes go in base64 both ways.
-			pngImage: { params: { bytes: string }; response: string | null };
 		};
 		messages: {
 			activityUpdate: ActivityPayload[] | null;
@@ -180,21 +177,15 @@ const activityImages = new ActivityImages(thumbnail);
 // the activities' images out.
 const avatarImages = new ActivityImages(thumbnail);
 
-// Copy image, from the page's own right-click menu (#423, copy-image.ts): the picture fetched here, made a PNG by the
-// webview's canvas when it isn't one (its answer is taken as anything: only a PNG is written), then put on the
-// clipboard. Whether it's there is all the page gets back.
-const copyPicture = (imageUrl: string): Promise<boolean> =>
-	copyImage(imageUrl, {
-		fetchBytes: (from) => fetchImageBytes(from, undefined, COPY_FETCH_MS, MAX_COPIED_BYTES),
-		toPng: async (bytes): Promise<Uint8Array | null> => {
-			const png: unknown = await rpc.request.pngImage({ bytes: Buffer.from(bytes).toString("base64") });
-			return typeof png === "string" ? Buffer.from(png, "base64") : null;
-		},
-		write: (png) => Utils.clipboardWriteImage(png),
-	}).catch((err: unknown) => {
-		console.error("[copy-image] couldn't copy the picture:", err);
-		return false;
-	});
+// Copy image, from the page's own right-click menu (#423, #450, copy-image.ts): the picture fetched here, as an
+// activity's image is, in base64, for the page to put on the clipboard itself; null when it can't be had.
+const pictureForCopy = (imageUrl: string): Promise<string | null> =>
+	pictureToCopy(imageUrl, (from) => fetchImageBytes(from, undefined, COPY_FETCH_MS, MAX_COPIED_BYTES))
+		.then((bytes) => (bytes ? Buffer.from(bytes).toString("base64") : null))
+		.catch((err: unknown) => {
+			console.error("[copy-image] couldn't fetch the picture:", err);
+			return null;
+		});
 
 // Track activities per IPC client, each with its images inline: a URL would reach nobody (gateway#134). Declared
 // before the RPC, whose setSpotifyActivity sends them too: on macOS and Linux an await comes before the IPC server,
@@ -234,7 +225,7 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 			nativeWindowDrag: () => arrangedByWindows,
 			// The main window's page answers commands, and sends none.
 			windowCommand: () => ({ ok: false, error: "The main window sends no commands" }),
-			copyImage: ({ url: imageUrl }) => copyPicture(String(imageUrl)),
+			pictureForCopy: ({ url: imageUrl }) => pictureForCopy(String(imageUrl)),
 		},
 		messages: {
 			closeWindow: () => {
