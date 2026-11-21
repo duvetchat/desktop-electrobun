@@ -19,7 +19,7 @@
 			label: string;
 			/** The option's tooltip, where its label alone doesn't say what it picks. */
 			title?: string;
-			icon?: Component<{ size?: number | string }>;
+			icon?: Component<{ size?: number | string; class?: string }>;
 		}[];
 		value: Value;
 		onValueChange?: (value: Value) => void;
@@ -60,7 +60,10 @@
 				? 'h-6 px-2.5 text-xs'
 				: 'h-7 px-3 text-[12.5px]'}"
 		>
-			{#if option.icon}<option.icon size={14} />{/if}
+			<!-- A tight column takes the width it lacks from what can shrink: the label can't (whitespace-nowrap), so
+			     without this it comes from the icon, down to nothing (the sidebar's switch at its narrowest). The row's
+			     padding gives way instead. -->
+			{#if option.icon}<option.icon size={14} class="shrink-0" />{/if}
 			{option.label}
 		</RadioGroup.Item>
 	{/each}

@@ -6,6 +6,10 @@ import { statusDotClass } from "$lib/status";
 import { tags, type Tag } from "../server-render";
 import { buttonClass, iconButtonClass, pillClass } from "./recipes";
 
+// After server-render has taught Bun to compile .svelte files: an icon is one, and a static import here would load it
+// as a path.
+const { Layers } = await import("@lucide/svelte");
+
 // What each primitive of the design system (#357) draws, as the server renders it. What they do once open (keys,
 // placement, focus, what closes them) is bits-ui's own, checked in a browser on the foundation's gallery page.
 const load = async (name: string) => (await import(`./${name}.svelte`)).default;
@@ -199,6 +203,18 @@ describe("Segmented", () => {
 				"bg-duvet-seg-thumb",
 			]),
 		);
+	});
+
+	test("keeps an option's icon whole when its column is tight", async () => {
+		// The sidebar's switch at its narrowest: a third of 232 px can't hold the padding, the icon and "Spaces". The
+		// icon must not be what gives way; the row's padding does.
+		const found = await tags(Segmented, {
+			options: [{ value: "spaces", label: "Spaces", icon: Layers }],
+			value: "spaces",
+			label: "Show in the sidebar",
+		});
+		const icon = found.find((tag) => tag.name === "svg");
+		expect(classes(icon!)).toEqual(expect.arrayContaining(["shrink-0"]));
 	});
 });
 
