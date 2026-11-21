@@ -65,17 +65,11 @@ describe("a command's row", () => {
 		input.indexOf("<!-- Mention autocomplete dropdown -->"),
 	);
 
-	test("draws its bot's banner, which the bot has as a member of the space", () => {
-		expect(rows).toContain("{@const botMember = bot && members.find((m) => m.id === bot.id)}");
-		expect(rows).toContain(
-			'<MemberBanner src={botMember?.banner_url ?? null} offline={botMember?.status === "offline"} />',
-		);
-		expect(rows).toMatch(/role="option"[^>]*class="[^"]*\brelative\b/);
-		expect(rows).toMatch(/<MemberBanner [^>]*\/>\s*<span class="relative /);
-	});
-
-	test("with all of its text in the name's color then", () => {
-		expect(rows.match(/botMember\?\.banner_url\s*\?\s*'text-duvet-ink'/g)).toHaveLength(2);
+	// Naming its bot on every row is enough: the bot's banner behind each one read as the same picture repeated down the
+	// menu, not as the row of a member.
+	test("draws no banner, and its text doesn't wait for one", () => {
+		expect(rows).not.toContain("MemberBanner");
+		expect(rows).not.toContain("banner_url");
 	});
 });
 

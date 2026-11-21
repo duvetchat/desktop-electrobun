@@ -2,7 +2,9 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-const source = (file: string) => readFileSync(join(import.meta.dir, file), "utf8");
+// As committed, with LF line endings: a Windows checkout has CRLF (core.autocrlf), which the patterns below don't take
+// (#430).
+const source = (file: string) => readFileSync(join(import.meta.dir, file), "utf8").replace(/\r\n/g, "\n");
 
 // #58: a draft per chat. A room's box stayed as the rooms changed, with its text, undo steps and recording, and a
 // conversation's went with its view; the drafts themselves are lib/drafts.ts's. What follows is what a browser checked
@@ -87,6 +89,46 @@ test("a pick from the : suggestions counts as a use of its emoji", () => {
 	expect(source("ChatInput.svelte")).toMatch(
 		/function insertSuggestion\(entry: EmojiEntry\) \{\s*(?:\/\/[^\n]*\n\s*)*emojiUsed\(entry\.emoji\);/,
 	);
+});
+
+// #415: Shift+Enter showed a line break and left the caret on the old line (WebKit, on macOS). The box makes the break
+// itself, in its text; what the break, the text read back and the caret's place are is lib/message-box.ts's, tested
+// there. What real keys showed in the macOS app and in Chromium, kept here.
+describe("Shift+Enter starts a new line", () => {
+	const input = source("ChatInput.svelte");
+	const keys = /function handleKeyDown\(e: KeyboardEvent\) \{[\s\S]*?\n\t\}\n/.exec(input)?.[0] ?? "";
+
+	test("the box makes the line break itself: the web view's own is prevented", () => {
+		expect(keys).toMatch(
+			/if \(enterKey\(e\) === "break"\) \{\s*e\.preventDefault\(\);\s*insertLineBreak\(\);\s*return;\s*\}/,
+		);
+		expect(input).toMatch(
+			/function insertLineBreak\(\) \{[\s\S]*?const next = breakLine\(\s*getRaw\(inputEl\),[\s\S]*?rerender\(next\.raw, next\.caret\);\s*revealCaret\(\);[\s\S]*?changed\(next\.raw\);\s*\}/,
+		);
+	});
+
+	test("an IME's Enter is left to it, and the break comes before any menu takes the key", () => {
+		const composing = keys.indexOf("if (e.isComposing) return;");
+		const line = keys.indexOf('enterKey(e) === "break"');
+		expect(composing).toBeGreaterThan(-1);
+		expect(line).toBeGreaterThan(composing);
+		for (const menu of ["commandSuggestions", "mentionSuggestions", "roomSuggestions", "suggestions"]) {
+			expect(keys.indexOf(`if (${menu}.length > 0) {`)).toBeGreaterThan(line);
+		}
+	});
+
+	test("Enter still sends", () => {
+		expect(keys).toMatch(/if \(enterKey\(e\) === "send"\) \{\s*e\.preventDefault\(\);[\s\S]*?sendMessage\(\);/);
+	});
+
+	test("the box's text, its last line and its caret go through lib/message-box.ts", () => {
+		expect(input).toMatch(/function getRaw\(el: HTMLElement\): string \{\s*return rawOf\(el\);/);
+		expect(input).toContain("return lineBreaksHtml(html);");
+		expect(input).toContain("const place = caretAt<Node>(inputEl, target);");
+		expect(input).toContain("return rawOffsetOf(inputEl, container, offset);");
+		// A line break alone is text: the placeholder goes, as for a space.
+		expect(input).toContain('const hasNoText = (raw: string) => raw === "";');
+	});
 });
 
 // #239: Arrow Up in the empty box started the edit of the user's last message, whose box put the caret at the message's

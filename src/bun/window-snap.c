@@ -2,8 +2,8 @@
 // styles Windows asks of a window it snaps, maximizes and minimizes from the keyboard, a caption among them, so that
 // Windows maximizes it to its display's work area as it does any app window. This keeps it as it was without them: no
 // frame or caption while restored, and while maximized only the frame Windows puts beyond the display's edges. It also
-// starts Windows' move loop for the title bar's drag (WINDOW_SNAP_DRAG), and gives the page the keyboard as the window
-// gets it (#361).
+// starts Windows' move loop for the title bar's drag (WINDOW_SNAP_DRAG), gives the page the keyboard as the window
+// gets it (#361), and tells Windows the smallest the window may be made (#419).
 //
 // TinyCC compiles it as the window opens (bun:ffi's cc), with no headers: the few Windows types it needs are declared
 // here, and the user32 functions it calls come from window-snap.ts. One window per process.
@@ -23,14 +23,25 @@ typedef int (*ENUMCHILDPROC_)(HWND_, LPARAM_);
 typedef int (*ENUMCHILDWINDOWS_)(HWND_, ENUMCHILDPROC_, LPARAM_);
 typedef int (*GETCLASSNAMEA_)(HWND_, char *, int);
 typedef int (*ISWINDOWVISIBLE_)(HWND_);
+typedef unsigned int (*GETDPIFORWINDOW_)(HWND_);
 
 typedef struct {
 	int left, top, right, bottom;
 } RECT_;
 
+typedef struct {
+	int x, y;
+} POINT_;
+
+// MINMAXINFO: what WM_GETMINMAXINFO asks a window of the sizes it takes.
+typedef struct {
+	POINT_ reserved, maxSize, maxPosition, minTrackSize, maxTrackSize;
+} MINMAXINFO_;
+
 #define WM_ACTIVATE 0x0006
 #define WA_INACTIVE 0
 #define WM_SETFOCUS 0x0007
+#define WM_GETMINMAXINFO 0x0024
 #define WM_NCCALCSIZE 0x0083
 #define WM_NCLBUTTONDOWN 0x00A1
 #define HTCAPTION 2
@@ -52,6 +63,10 @@ static ISCHILD_ isChild;
 static ENUMCHILDWINDOWS_ enumChildWindows;
 static GETCLASSNAMEA_ getClassName;
 static ISWINDOWVISIBLE_ isWindowVisible;
+// GetDpiForWindow, or 0 where user32 has none (before Windows 10 1607).
+static GETDPIFORWINDOW_ getDpiForWindow;
+// The smallest the window may be made, in logical pixels (at 96 DPI); 0 for no limit.
+static int minimumWidth, minimumHeight;
 // The window in the page (the webview's) that had the keyboard as the window was last deactivated.
 static HWND_ pageFocus;
 
@@ -115,6 +130,17 @@ static LRESULT_ procedure(HWND_ window, unsigned int message, WPARAM_ wParam, LP
 		client->top = proposed.top + (client->left - proposed.left);
 		return result;
 	}
+	if (message == WM_GETMINMAXINFO && minimumWidth > 0 && minimumHeight > 0) {
+		// The smallest size a drag of the frame, a snap or SetWindowPos gives the window: the minimum in the pixels of
+		// the display the window is on, which its DPI says (96 at 100%).
+		LRESULT_ result = callWindowProc(electrobunProcedure, window, message, wParam, lParam);
+		MINMAXINFO_ *sizes = (MINMAXINFO_ *)lParam;
+		unsigned int dpi = getDpiForWindow ? getDpiForWindow(window) : 96;
+		if (dpi == 0) dpi = 96;
+		sizes->minTrackSize.x = (int)((long long)minimumWidth * dpi / 96);
+		sizes->minTrackSize.y = (int)((long long)minimumHeight * dpi / 96);
+		return result;
+	}
 	if (message == WINDOW_SNAP_DRAG) {
 		// The webview, whose input Windows shares with this thread, holds the mouse since the press: released here, the
 		// move loop takes it, as it does a caption's.
@@ -137,6 +163,13 @@ void windowSnapSetUp(void *callWindowProcFunction, void *isZoomedFunction, void 
 	getClassName = (GETCLASSNAMEA_)getClassNameFunction;
 	isWindowVisible = (ISWINDOWVISIBLE_)isWindowVisibleFunction;
 	electrobunProcedure = (WNDPROC_)previous;
+}
+
+// The smallest the window may be made from here on, in logical pixels, and user32's GetDpiForWindow (0 without it).
+void windowSnapSetMinimum(void *getDpiForWindowFunction, int width, int height) {
+	getDpiForWindow = (GETDPIFORWINDOW_)getDpiForWindowFunction;
+	minimumWidth = width;
+	minimumHeight = height;
 }
 
 void *windowSnapProcedure(void) {

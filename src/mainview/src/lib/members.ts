@@ -4,21 +4,28 @@ import type { GatewayRole, GatewaySpace, MemberOnSidebar, Role } from "$lib/type
 /** The faces the pane's bar shows for a room's members; the rest are a "+N". */
 export const MEMBER_FACES = 4;
 
-/** A members list's row and its groups' headings, in px (MemberList's h-10 and h-9). */
-export const MEMBER_ROW = 40;
+/** A members list's row and its groups' headings, in px (MemberList's h-12 and h-9). */
+export const MEMBER_ROW = 48;
 export const GROUP_HEADING = 36;
 
 /**
  * The rows of each group a view of the members list shows, from `top` to `bottom` px of the list, with `overscan` rows
- * more on each side: [start, end) for each group, in the list's order, whose sizes are `sizes` (#327).
+ * more on each side: [start, end) for each group, in the list's order, whose sizes are `sizes` (#327). Its rows are
+ * `row` px tall, each group's under a GROUP_HEADING heading.
  */
-export function shownRows(sizes: readonly number[], top: number, bottom: number, overscan = 10): [number, number][] {
+export function shownRows(
+	sizes: readonly number[],
+	top: number,
+	bottom: number,
+	overscan = 10,
+	row = MEMBER_ROW,
+): [number, number][] {
 	let at = 0;
 	return sizes.map((n) => {
 		const rows = at + GROUP_HEADING;
-		at = rows + n * MEMBER_ROW;
-		const start = Math.min(n, Math.max(0, Math.floor((top - rows) / MEMBER_ROW) - overscan));
-		const end = Math.min(n, Math.max(0, Math.ceil((bottom - rows) / MEMBER_ROW) + overscan));
+		at = rows + n * row;
+		const start = Math.min(n, Math.max(0, Math.floor((top - rows) / row) - overscan));
+		const end = Math.min(n, Math.max(0, Math.ceil((bottom - rows) / row) + overscan));
 		return [start, Math.max(start, end)];
 	});
 }
@@ -101,6 +108,10 @@ export function membersColumnOf(kind: MembersKind | undefined, paneWidth: number
 /** How many of a Space's users the Members section of its settings loads at most, a page after another, as the mobile
  *  app's Members page does: the API finds no one by name, so the section searches what it has (#380). */
 export const LISTED_MEMBERS_MAX = 5000;
+
+/** A row of the Members section of a Space's settings, in px (SpaceMembers' h-10): it mounts the rows in view as the
+ *  members list does (shownRows), with rows of its own height (#429). */
+export const MANAGED_MEMBER_ROW = 40;
 
 /** A member as the Members section of a Space's settings lists them (#380). */
 export interface ManagedMember {

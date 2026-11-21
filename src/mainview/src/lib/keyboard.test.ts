@@ -7,6 +7,7 @@ import {
 	shortcutCommand,
 	stepIndex,
 	tabAt,
+	tabDigit,
 	takesChatShortcut,
 	type KeyLike,
 } from "$lib/keyboard";
@@ -80,6 +81,35 @@ describe("stepIndex and tabAt", () => {
 		expect(tabAt(["a", "b", "c"], -1)).toBe("c");
 		expect(tabAt(["a", "b"], 4)).toBeNull();
 		expect(tabAt([], -1)).toBeNull();
+	});
+});
+
+describe("tabDigit", () => {
+	const digits = (count: number) => Array.from({ length: count }, (_, index) => tabDigit(index, count));
+
+	test("the first eight tabs have 1 to 8, the last one after them 9, and those between none", () => {
+		expect(digits(1)).toEqual([1]);
+		expect(digits(8)).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
+		expect(digits(9)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9]);
+		expect(digits(12)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, null, null, null, 9]);
+	});
+
+	test("a place with no tab has none", () => {
+		expect(tabDigit(0, 0)).toBeNull();
+		expect(tabDigit(-1, 3)).toBeNull();
+		expect(tabDigit(3, 3)).toBeNull();
+	});
+
+	test("a tab's digit is one that picks it", () => {
+		for (const count of [1, 3, 8, 9, 12]) {
+			const tabs = Array.from({ length: count }, (_, index) => index);
+			for (const index of tabs) {
+				const digit = tabDigit(index, count);
+				if (digit === null) continue;
+				const command = shortcutCommand(key(String(digit), { metaKey: true }), true);
+				expect(command?.kind === "tab" ? tabAt(tabs, command.index) : null).toBe(index);
+			}
+		}
 	});
 });
 

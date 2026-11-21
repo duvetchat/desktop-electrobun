@@ -24,6 +24,14 @@ export interface Tag {
 	attributes: Record<string, string>;
 }
 
+/** The height in px a tag's own Tailwind classes draw it at: `h-N` is N × 4 px (Tailwind's 0.25rem step at the 16 px
+ *  root), `h-[Npx]` is N px. NaN with no tag, or when none of its classes sets it. */
+export function drawnHeight(tag: Tag | undefined): number {
+	const height = /(?:^|\s)h-(?:(\d+(?:\.\d+)?)|\[(\d+(?:\.\d+)?)px\])(?=\s|$)/.exec(tag?.attributes.class ?? "");
+	if (!height) return NaN;
+	return height[1] !== undefined ? Number(height[1]) * 4 : Number(height[2]);
+}
+
 // An attribute's value as Svelte escapes it (escape_html), read back.
 const ESCAPED: Record<string, string> = { "&amp;": "&", "&quot;": '"', "&lt;": "<" };
 const unescaped = (value: string) => value.replace(/&(?:amp|quot|lt);/g, (entity) => ESCAPED[entity] ?? entity);

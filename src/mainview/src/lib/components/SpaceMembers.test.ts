@@ -1,7 +1,7 @@
 import { describe, expect, mock, test } from "bun:test";
 import { join } from "node:path";
 import { render } from "svelte/server";
-import { tags, type Tag } from "./server-render";
+import { drawnHeight, tags, type Tag } from "./server-render";
 import { Permission } from "$lib/permissions";
 import type { GatewayMember, GatewayRole, GatewaySpace, GatewayUser } from "$lib/types";
 
@@ -12,7 +12,7 @@ void mock.module("facehash-sv", () => facehash);
 Object.assign(globalThis, { $state: <T>(value: T) => value });
 const { default: SpaceMembers } = await import("./SpaceMembers.svelte");
 const { default: SpaceMemberDetails } = await import("./SpaceMemberDetails.svelte");
-const { managedMembers } = await import("$lib/members");
+const { GROUP_HEADING, MANAGED_MEMBER_ROW, managedMembers } = await import("$lib/members");
 
 const SPACE = "01920000-0000-7000-8000-00000000a0a0";
 // The user, a moderator: they manage roles and kick, from a role below the top one.
@@ -93,8 +93,13 @@ describe("the Members section", () => {
 		const rows = new Set(html.match(/person\d{4}/g) ?? []);
 		expect(rows.size).toBeGreaterThan(10);
 		expect(rows.size).toBeLessThan(80);
-		const spacers = (await tags(SpaceMembers, props)).filter((t) => /^height: \d+px/.test(t.attributes.style ?? ""));
-		expect(spacers.map((t) => t.attributes.style)).toEqual([`height: ${(1000 - rows.size) * 40}px`]);
+		const elements = await tags(SpaceMembers, props);
+		const spacers = elements.filter((t) => /^height: \d+px/.test(t.attributes.style ?? ""));
+		expect(spacers.map((t) => t.attributes.style)).toEqual([`height: ${(1000 - rows.size) * MANAGED_MEMBER_ROW}px`]);
+		// Its rows and its heading are drawn at the heights its spacers and shownRows count them at: counting its 40 px
+		// rows at 56 moved them down 16 px each time one left the view, and left the view's bottom with no rows (#429).
+		expect(drawnHeight(elements.find((t) => "data-member" in t.attributes))).toBe(MANAGED_MEMBER_ROW);
+		expect(drawnHeight(elements.find((t) => t.attributes.class?.includes("uppercase")))).toBe(GROUP_HEADING);
 		expect(html).toContain("@person0002 · Helpers");
 		expect(html).toContain(new Date("2026-03-05T10:00:00Z").toLocaleDateString(undefined, { dateStyle: "medium" }));
 		// Search, a role filter and a sort, over the members loaded.

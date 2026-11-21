@@ -4,6 +4,7 @@ import { describe, expect, test } from "bun:test";
 // itself (as test-gateway.ts).
 Object.assign(globalThis, { $state: <T>(value: T) => value });
 const { parseMessageLayout, parseSavedSpace, withSavedSpace } = await import("$lib/settings-host");
+import { defaultMessageLayout } from "$lib/message-layout";
 import { parseSettingsSection, SETTINGS_SECTIONS } from "$lib/settings-sections";
 
 describe("a Space's saved overview", () => {
@@ -69,11 +70,12 @@ describe("a Space's saved overview", () => {
 	});
 });
 
-test("messages are bubbles unless flat rows are saved", () => {
+test("messages follow the platform's default unless a layout is saved", () => {
+	const fallback = defaultMessageLayout();
 	expect(parseMessageLayout("flat")).toBe("flat");
 	expect(parseMessageLayout("bubbles")).toBe("bubbles");
-	expect(parseMessageLayout(null)).toBe("bubbles");
-	expect(parseMessageLayout("rows")).toBe("bubbles");
+	expect(parseMessageLayout(null)).toBe(fallback);
+	expect(parseMessageLayout("rows")).toBe(fallback);
 });
 
 describe("the section Settings opens on", () => {

@@ -6,9 +6,12 @@ import {
 	defaultNowPrefs,
 	firstTextRoom,
 	fuzzyScore,
+	groupChats,
 	groupSpaces,
 	parseNowPrefs,
 	parsePinned,
+	parsePins,
+	pinKeys,
 	rankByQuery,
 	roomColumn,
 	spaceListRows,
@@ -91,11 +94,60 @@ describe("the spaces column's list", () => {
 	});
 });
 
+// #416: a direct message or a group is pinned to the top of the chats, as a Space is to the top of the Spaces.
+describe("the chats, with pins", () => {
+	const chats = ["c1", "c2", "c3", "c4", "c5"].map((id) => ({ id }));
+	const ids = (list: { id: string }[]) => list.map((chat) => chat.id);
+
+	test("the pinned ones head the list in pin order, and the others keep the list's order", () => {
+		const groups = groupChats(chats, ["c4", "c2"]);
+		expect(ids(groups.pinned)).toEqual(["c4", "c2"]);
+		expect(ids(groups.rest)).toEqual(["c1", "c3", "c5"]);
+	});
+
+	test("without pins the list is as it came", () => {
+		expect(groupChats(chats, [])).toEqual({ pinned: [], rest: chats });
+	});
+
+	test("a pinned chat the user is no longer in is left out", () => {
+		const groups = groupChats(chats, ["gone", "c5"]);
+		expect(ids(groups.pinned)).toEqual(["c5"]);
+		expect(ids(groups.rest)).toEqual(["c1", "c2", "c3", "c4"]);
+	});
+});
+
 describe("saved values", () => {
 	test("pinned IDs drop duplicates and anything that isn't one", () => {
 		expect(parsePinned('["a", 1, "b", "a"]')).toEqual(["a", "b"]);
 		expect(parsePinned("{")).toEqual([]);
 		expect(parsePinned(null)).toEqual([]);
+	});
+
+	// The keys the mobile app pins a chat under (its pinKey: conv:<id>, room:<id>), with space:<id> for a Space. A room
+	// isn't pinned on the desktop.
+	test("the pins are the Spaces and the chats among the saved keys, each in pin order", () => {
+		const saved = '["conv:c2", "space:s1", "conv:c1", "space:s2", "conv:c2"]';
+		expect(parsePins(saved)).toEqual({ spaces: ["s1", "s2"], chats: ["c2", "c1"] });
+	});
+
+	test("a key of another kind, or without an ID, isn't a pin", () => {
+		expect(parsePins('["room:r1", "s1", "space:", "conv:", 7, "conv:c1"]')).toEqual({ spaces: [], chats: ["c1"] });
+		expect(parsePins("{")).toEqual({ spaces: [], chats: [] });
+	});
+
+	test("the pins are saved as their keys, and read back the same", () => {
+		const pins = { spaces: ["s2", "s1"], chats: ["c1", "c3"] };
+		expect(pinKeys(pins)).toEqual(["space:s2", "space:s1", "conv:c1", "conv:c3"]);
+		expect(parsePins(JSON.stringify(pinKeys(pins)))).toEqual(pins);
+	});
+
+	test("the Spaces pinned before chats could be carry over, until pins are saved", () => {
+		const old = '["s1", "s2"]';
+		expect(parsePins(null, old)).toEqual({ spaces: ["s1", "s2"], chats: [] });
+		// Once pins are saved, they are the pins: unpinning every Space doesn't bring the old ones back.
+		expect(parsePins("[]", old)).toEqual({ spaces: [], chats: [] });
+		expect(parsePins('["conv:c1"]', old)).toEqual({ spaces: [], chats: ["c1"] });
+		expect(parsePins(null)).toEqual({ spaces: [], chats: [] });
 	});
 
 	test("the Now section's prefs keep their booleans, and anything else is at its default", () => {

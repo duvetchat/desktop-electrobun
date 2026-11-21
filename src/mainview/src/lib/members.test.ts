@@ -116,7 +116,7 @@ describe("shownRows", () => {
 	test("the rows in view and the overscan on each side, for one group", () => {
 		expect(shownRows([1000], 0, 600, 10)).toEqual([[0, Math.ceil((600 - GROUP_HEADING) / MEMBER_ROW) + 10]]);
 		const top = GROUP_HEADING + 500 * MEMBER_ROW;
-		expect(shownRows([1000], top, top + 400, 10)).toEqual([[490, 520]]);
+		expect(shownRows([1000], top, top + 400, 10)).toEqual([[490, 500 + Math.ceil(400 / MEMBER_ROW) + 10]]);
 		// The end of the list.
 		expect(shownRows([1000], GROUP_HEADING + 995 * MEMBER_ROW, GROUP_HEADING + 1000 * MEMBER_ROW, 10)).toEqual([
 			[985, 1000],
@@ -135,6 +135,12 @@ describe("shownRows", () => {
 		expect(rest).toEqual([45, 65]);
 		// A view above the second group shows none of it.
 		expect(shownRows([100, 100], 0, 400, 5)[1]).toEqual([0, 0]);
+	});
+
+	test("rows of another height, as the Members section of a Space's settings has", () => {
+		expect(shownRows([1000], 0, 600, 10, 40)).toEqual([[0, Math.ceil((600 - GROUP_HEADING) / 40) + 10]]);
+		const top = GROUP_HEADING + 500 * 40;
+		expect(shownRows([1000], top, top + 400, 10, 40)).toEqual([[490, 500 + 400 / 40 + 10]]);
 	});
 
 	test("an empty group, and a view of nothing", () => {

@@ -84,8 +84,9 @@
 	--duvet-toggle-off: #2a2c3c;
 	--duvet-kbd: rgba(255, 255, 255, 0.08);
 
-	/* The sidebar, and the Settings windows' side panel. Its material is the solid tint everywhere until vibrancy is
-	   approved (DECISIONS.md): the -vibrant and -mica values wait in their own tokens for the shell to pick. */
+	/* The sidebar, and the Settings windows' side panel: the solid tint. On macOS the main window's sidebar is glass
+	   (#374, lib/vibrancy.ts): over the Liquid Glass behind the page its column takes the -vibrant values, a tint the
+	   glass shows through and the ring that matches it. The -mica values wait for Windows. */
 	--duvet-sb-bg: #0d0d12;
 	--duvet-sb-filter: none;
 	--duvet-sb-ring: #0d0d12;
@@ -186,7 +187,9 @@
 
 	--duvet-sb-bg: #edf1ff;
 	--duvet-sb-ring: #edf1ff;
-	--duvet-sb-bg-vibrant: rgba(236, 240, 253, 0.8);
+	/* Lighter than the design's .8 (DESIGN-MAP.md §1.1), which was drawn for vibrancy: over Liquid Glass, which is
+	   light itself in this theme, .8 left the sidebar nearly solid (#374, DECISIONS.md). */
+	--duvet-sb-bg-vibrant: rgba(236, 240, 253, 0.5);
 	--duvet-sb-bg-mica: rgba(238, 241, 254, 0.82);
 	--duvet-sb-filter-vibrant: blur(48px) saturate(1.5);
 	--duvet-sb-ring-vibrant: #e8ecfb;
@@ -567,6 +570,9 @@
 	--animate-flash: flash 1.6s cubic-bezier(0.2, 0.9, 0.3, 1);
 	/* typing and ringing dots (delay each 0.15s after the last) */
 	--animate-dot: dot 1.2s infinite;
+	/* the ghost's typing dots, as mobile's TypingDots (the second starts 0.8s in, the third 0.4s: a third of the loop
+	   apart) */
+	--animate-ghost-dot: ghost-dot 1.2s linear infinite;
 	/* the recording dot */
 	--animate-rec-pulse: rec-pulse 1.2s infinite;
 	/* a recording's bars */
@@ -661,6 +667,19 @@
 		}
 	}
 
+	/* Up to full and back over the first half of the loop, at rest for the second. */
+	@keyframes ghost-dot {
+		0%,
+		50%,
+		100% {
+			opacity: 0.35;
+		}
+
+		25% {
+			opacity: 1;
+		}
+	}
+
 	@keyframes rec-pulse {
 		50% {
 			opacity: 0.35;
@@ -734,6 +753,7 @@
 		--animate-notice-in: none;
 		--animate-flash: none;
 		--animate-dot: none;
+		--animate-ghost-dot: none;
 		--animate-rec-pulse: none;
 		--animate-rec-bar: none;
 		--animate-specks: none;
@@ -808,6 +828,13 @@
 		height: var(--app-height);
 		width: var(--app-width);
 		background: var(--duvet-bg);
+	}
+
+	/* The sidebar's glass on macOS (#374, lib/vibrancy.ts): while the app's shell is up, the page paints nothing of
+	   its own behind it, and the Liquid Glass behind the transparent window shows through the sidebar's tint. */
+	html.duvet-vibrant,
+	html.duvet-vibrant body {
+		background: transparent;
 	}
 
 	::selection,
