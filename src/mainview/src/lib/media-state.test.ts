@@ -11,6 +11,7 @@ import {
 	mediaTitle,
 	openPlaceLabel,
 	placeTip,
+	cameraName,
 	micChoices,
 	micName,
 	parseMediaState,
@@ -188,6 +189,13 @@ describe("the microphone picker", () => {
 		expect(isMicInUse({ id: "default", label: "" }, "")).toBe(true);
 		expect(isMicInUse({ id: "default", label: "" }, "usb")).toBe(false);
 		expect(isMicInUse({ id: "usb", label: "" }, "")).toBe(false);
+	});
+});
+
+describe("the camera picker", () => {
+	test("names a camera without a name by its place in the list", () => {
+		expect(cameraName({ id: "a", label: "FaceTime HD Camera" }, 0)).toBe("FaceTime HD Camera");
+		expect(cameraName({ id: "b", label: "" }, 1)).toBe("Camera 2");
 	});
 });
 

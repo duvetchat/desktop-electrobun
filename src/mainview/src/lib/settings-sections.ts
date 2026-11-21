@@ -6,6 +6,7 @@ export const SETTINGS_SECTIONS = [
 	"attachments",
 	"security",
 	"audio",
+	"voice-video",
 	"appearance",
 	"activity",
 	"buckets",

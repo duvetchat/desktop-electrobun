@@ -554,9 +554,7 @@ export const selectedMicId = writable<string>(initialMicId);
 
 if (safeStorage) {
 	selectedMicId.subscribe((value) => {
-		if (value) {
-			safeStorage.setItem("duvet_mic_id", value);
-		}
+		safeStorage.setItem("duvet_mic_id", value);
 	});
 }
 
@@ -564,9 +562,7 @@ if (safeStorage) {
 export const selectedCameraId = writable<string>(safeStorage?.getItem("duvet_camera_id") || "");
 if (safeStorage) {
 	selectedCameraId.subscribe((value) => {
-		if (value) {
-			safeStorage.setItem("duvet_camera_id", value);
-		}
+		safeStorage.setItem("duvet_camera_id", value);
 	});
 }
 

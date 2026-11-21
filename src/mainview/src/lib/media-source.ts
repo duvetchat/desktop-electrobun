@@ -1,7 +1,8 @@
 import { derived, get, readable, type Readable } from "svelte/store";
 import { cancelCall } from "$lib/api/ws/connection";
 import { getAvatarURL, getHostURL } from "$lib/common/common";
-import { mediaStateOf, type MediaActions, type MediaState, type MicChoice } from "$lib/media-state";
+import { mediaStateOf, type MediaActions, type MediaState } from "$lib/media-state";
+import { listMicrophones } from "$lib/mic-devices";
 import { callName, liveIn } from "$lib/now";
 import { hasPermission, Permission } from "$lib/permissions";
 import {
@@ -180,21 +181,7 @@ export function openCallChatWith(open: ((conversationId: string) => void) | null
 }
 
 /** The microphones, with their names: before the microphone was ever allowed they have none, so it's asked for first. */
-async function listMics(): Promise<MicChoice[]> {
-	try {
-		const mics = async () => (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === "audioinput");
-		let found = await mics();
-		if (found.length > 0 && !found[0]?.label) {
-			const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-			stream.getTracks().forEach((t) => t.stop());
-			found = await mics();
-		}
-		return found.map((mic) => ({ id: mic.deviceId, label: mic.label }));
-	} catch (err) {
-		console.error("Failed to fetch media devices:", err);
-		return [];
-	}
-}
+const listMics = () => listMicrophones(true);
 
 /** What the media controls do in the main window, on the stores and the gateway. */
 export const liveMediaActions: MediaActions = {

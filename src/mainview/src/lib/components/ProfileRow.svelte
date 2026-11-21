@@ -1,6 +1,13 @@
 <script lang="ts">
 	import { onMount } from "svelte";
-	import { ChevronsUpDown as ChevronsUpDownIcon, Settings as GearSixIcon } from "@lucide/svelte";
+	import {
+		ChevronsUpDown as ChevronsUpDownIcon,
+		HeadphoneOff,
+		Headphones,
+		Mic,
+		MicOff,
+		Settings as GearSixIcon,
+	} from "@lucide/svelte";
 	import { speakingUsers, currentUser } from "$lib/stores.svelte";
 	import { getAvatarURL } from "$lib/common/common";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
@@ -8,6 +15,8 @@
 	import StatusMenu from "$lib/components/StatusMenu.svelte";
 	import StatusDot from "$lib/components/StatusDot.svelte";
 	import MediaControls from "$lib/components/MediaControls.svelte";
+	import MediaButton from "$lib/components/MediaButton.svelte";
+	import { liveMedia, liveMediaActions } from "$lib/media-source";
 	import Avatar from "$lib/components/ui/Avatar.svelte";
 	import { iconButtonClass } from "$lib/components/ui/recipes";
 	import { ownMobileOnly } from "$lib/api/ws/connection";
@@ -30,6 +39,12 @@
 	const myChoice = $derived(chosenStatus($currentUser?.status));
 	const myStatus = $derived(userStatusToString(myChoice));
 	const myStatusLabel = $derived(STATUS_CHOICES.find((c) => c.status === myChoice)?.label ?? "");
+
+	// Quick mute and deafen beside Settings, as the media controls above the row have them: the stores' state, so both
+	// say the same thing (a deafen mutes too, lib/voice.ts).
+	const media = $derived($liveMedia);
+	const actions = liveMediaActions;
+	const inVoice = $derived(media.place !== null);
 
 	let showUserSettings = $state(false);
 
@@ -111,6 +126,30 @@
 			</span>
 			<ChevronsUpDownIcon class="text-duvet-ink2 size-3.5 shrink-0" aria-hidden="true" />
 		</StatusMenu>
+		{#if !inVoice}
+			<MediaButton
+				label={media.muted ? "Unmute" : "Mute"}
+				tip={media.canSpeak ? (media.muted ? "Unmute" : "Mute") : "You can't speak in this room"}
+				pressed={media.muted}
+				stateInName
+				disabled={!media.canSpeak}
+				shape="square"
+				side="top"
+				onclick={actions.toggleMute}
+			>
+				{#if media.muted}<MicOff size={16} />{:else}<Mic size={16} />{/if}
+			</MediaButton>
+			<MediaButton
+				label={media.deafened ? "Undeafen" : "Deafen"}
+				pressed={media.deafened}
+				stateInName
+				shape="square"
+				side="top"
+				onclick={actions.toggleDeafen}
+			>
+				{#if media.deafened}<HeadphoneOff size={16} />{:else}<Headphones size={16} />{/if}
+			</MediaButton>
+		{/if}
 		<button class={iconButtonClass()} aria-label="Settings" title="Settings" onclick={() => (showUserSettings = true)}>
 			<GearSixIcon class="size-4" />
 		</button>

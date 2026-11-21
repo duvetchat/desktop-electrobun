@@ -7,7 +7,15 @@ import { spaceBans, type LoadedBans } from "$lib/bans";
 import { layoutPrefs } from "$lib/layout-prefs.svelte";
 import { parseLayoutPrefs } from "$lib/layout-prefs";
 import { audioStore, type AudioSettings } from "$lib/stores/audio.svelte";
-import { shareSpotify, voiceFaces, myBuckets, pendingTeamInvites } from "$lib/stores.svelte";
+import {
+	shareSpotify,
+	voiceFaces,
+	myBuckets,
+	pendingTeamInvites,
+	selectedMicId,
+	selectedCameraId,
+	noiseSuppression,
+} from "$lib/stores.svelte";
 import { setThemePref, theme } from "$lib/theme.svelte";
 import { parseThemePref } from "$lib/theme";
 import type { Shared } from "$lib/window-sync";
@@ -85,6 +93,11 @@ export function sharedSettings(): Record<string, Shared> {
 		buckets: writing(myBuckets, list),
 		voiceFaces: writing(voiceFaces, flag),
 		shareSpotify: writing(shareSpotify, flag),
+		// The microphone and camera voice uses, and its noise suppression: Settings changes them for the main window's
+		// voice.
+		micId: writing(selectedMicId, (value) => (typeof value === "string" ? value : undefined)),
+		cameraId: writing(selectedCameraId, (value) => (typeof value === "string" ? value : undefined)),
+		noiseSuppression: writing(noiseSuppression, flag),
 		theme: runes(
 			() => theme.pref,
 			(value) => setThemePref(parseThemePref(typeof value === "string" ? value : null)),

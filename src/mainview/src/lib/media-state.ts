@@ -79,6 +79,12 @@ export interface MicChoice {
 	label: string;
 }
 
+/** A camera of the picker's list. */
+export interface CameraChoice {
+	id: string;
+	label: string;
+}
+
 /** What the controls do. In the main window they act on the stores; in the pop-out they ask the main window. */
 export interface MediaActions {
 	toggleMute(): void;
@@ -187,6 +193,11 @@ export function videoBlockLabel(block: VideoBlock, kind: "room" | "call" | undef
 /** The picker's name for a microphone: its own, or its place in the list. */
 export function micName(mic: MicChoice, index: number): string {
 	return mic.label || `Microphone ${index + 1}`;
+}
+
+/** The picker's name for a camera: its own, or its place in the list. */
+export function cameraName(camera: CameraChoice, index: number): string {
+	return camera.label || `Camera ${index + 1}`;
 }
 
 /** Whether a microphone is the one in use: the one picked, or the system's default when none was. */

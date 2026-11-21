@@ -191,13 +191,4 @@
 			{/if}
 		</div>
 	</section>
-{:else}
-	<div role="group" aria-label="Voice controls" class="flex items-center gap-1.5">
-		<div class="grid min-w-0 flex-1 grid-cols-[1.5fr_1fr_1fr] gap-1.5">
-			{@render mic()}
-			{@render deafen()}
-			{@render noise()}
-		</div>
-		{@render popOut?.()}
-	</div>
 {/if}

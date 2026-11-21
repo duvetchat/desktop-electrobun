@@ -101,6 +101,7 @@ describe("the section Settings opens on", () => {
 			"attachments",
 			"security",
 			"audio",
+			"voice-video",
 			"appearance",
 			"activity",
 			"buckets",

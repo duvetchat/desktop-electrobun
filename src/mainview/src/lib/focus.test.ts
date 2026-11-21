@@ -51,6 +51,9 @@ describe("the focus outline", () => {
 			"lib/components/ui/Dialog.svelte": 1,
 			"lib/components/ui/Popover.svelte": 1,
 			"lib/components/ui/Sheet.svelte": 1,
+			// The viewer's panel, which takes the focus as it opens, to hand it to its toolbar: a ring around the whole
+			// viewer marks nothing.
+			"lib/components/ImagePreview.svelte": 1,
 			"lib/components/ui/recipes.ts": 1,
 			// A panel, and a field whose wrapper draws the ring.
 			"lib/components/FriendsView.svelte": 1,
