@@ -64,7 +64,25 @@ describe("the split of the user's panel", () => {
 		expect(code).toContain("if (!isSettingsShortcut(event, mac) || showUserSettings || !openSettings()) return;");
 	});
 
-	test("the profile row has none of the microphone's, the voice's or the ping's logic", () => {
+	// The quick mute and deafen beside Settings, on the same stores as the media controls above the row: two presses, not
+	// the microphone's picker, the noise setting or the voice's own logic.
+	test("has the quick mute and deafen beside Settings, from the media stores", () => {
+		const expanded = row.slice(row.indexOf("<!-- The profile row:"), row.indexOf("<UserSettings"));
+		expect(expanded).toContain('label={media.muted ? "Unmute" : "Mute"}');
+		expect(expanded).toContain("onclick={actions.toggleMute}");
+		expect(expanded).toContain('label={media.deafened ? "Undeafen" : "Deafen"}');
+		expect(expanded).toContain("onclick={actions.toggleDeafen}");
+		expect(expanded).toContain("disabled={!media.canSpeak}");
+		const mic = expanded.indexOf("actions.toggleMute");
+		const deafen = expanded.indexOf("actions.toggleDeafen");
+		const settings = expanded.indexOf('aria-label="Settings"');
+		expect(mic).toBeGreaterThan(-1);
+		expect(mic).toBeLessThan(deafen);
+		expect(deafen).toBeLessThan(settings);
+		expect(script(row)).toContain("const media = $derived($liveMedia);");
+	});
+
+	test("the profile row has none of the microphone's picker, the voice's or the ping's logic", () => {
 		for (const name of [
 			"isMuted",
 			"isDeafened",

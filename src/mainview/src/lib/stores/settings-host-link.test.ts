@@ -78,7 +78,19 @@ test("it starts once, shares the user's values at once, and answers on the setti
 	expect(hub.answering.map(([channel]) => channel)).toEqual(["settings"]);
 	expect(last("sync:user")).toMatchObject(user);
 	expect(last("sync:mobileOnly")).toBe(false);
-	for (const key of ["teamInvites", "buckets", "voiceFaces", "shareSpotify", "theme", "layout", "audio", "transfers"])
+	for (const key of [
+		"teamInvites",
+		"buckets",
+		"voiceFaces",
+		"shareSpotify",
+		"micId",
+		"cameraId",
+		"noiseSuppression",
+		"theme",
+		"layout",
+		"audio",
+		"transfers",
+	])
 		expect(count(`sync:${key}`), key).toBe(1);
 	// No Space is shared until a window for it is there.
 	expect(hub.published.some(([channel]) => channel.startsWith("sync:space:"))).toBe(false);
@@ -130,6 +142,17 @@ test("a window's write of a shared value is set here; one of a key nothing share
 	expect(last("sync:voiceFaces")).toBe(false);
 	expect(commands().set!({ key: "voiceFaces", value: true })).toBe(true);
 	expect(last("sync:voiceFaces")).toBe(true);
+	// Voice and video: the microphone, the camera and its noise suppression are the main window's voice's.
+	expect(commands().set!({ key: "micId", value: "studio" })).toBe(true);
+	expect(last("sync:micId")).toBe("studio");
+	expect(commands().set!({ key: "cameraId", value: "face" })).toBe(true);
+	expect(last("sync:cameraId")).toBe("face");
+	expect(commands().set!({ key: "noiseSuppression", value: false })).toBe(true);
+	expect(last("sync:noiseSuppression")).toBe(false);
+	expect(commands().set!({ key: "micId", value: 3 })).toBe(true);
+	expect(last("sync:micId")).toBe("studio");
+	expect(commands().set!({ key: "cameraId", value: 3 })).toBe(true);
+	expect(last("sync:cameraId")).toBe("face");
 	expect(commands().set!({ key: "nothing-shares-this", value: 1 })).toBe(false);
 	expect(commands().set!("not a write")).toBe(false);
 	// The user is the main window's alone: a window's write doesn't change it.

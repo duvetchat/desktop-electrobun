@@ -28,6 +28,6 @@
 	class="bg-duvet-toggle-off data-[state=checked]:bg-duvet-accent relative h-6 w-10 shrink-0 rounded-xl transition-colors duration-200 data-disabled:opacity-50 motion-reduce:transition-none {className}"
 >
 	<Switch.Thumb
-		class="bg-fixed-white ease-overshoot absolute top-[3px] left-[3px] block size-[18px] rounded-[7px] shadow-[0_1px_3px_rgba(0,0,0,0.22)] transition-transform duration-[250ms] data-[state=checked]:translate-x-4 motion-reduce:transition-none"
+		class="bg-fixed-white ease-overshoot absolute top-[3px] left-[3px] block size-[18px] rounded-[10px] shadow-[0_1px_3px_rgba(0,0,0,0.22)] transition-transform duration-[250ms] data-[state=checked]:translate-x-4 motion-reduce:transition-none"
 	/>
 </Switch.Root>

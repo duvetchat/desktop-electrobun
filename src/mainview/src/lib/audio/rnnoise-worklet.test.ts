@@ -135,7 +135,13 @@ describe("the worklet's processor, running RNNoise", () => {
 	});
 
 	it("gives RNNoise's WebAssembly exactly the imports it asks for", () => {
-		expect(WebAssembly.Module.imports(module)).toEqual([
+		// The three things a module asks for: newer engines also say each one's type, which is theirs to add.
+		const asked = WebAssembly.Module.imports(module).map(({ module: from, name, kind }) => ({
+			module: from,
+			name,
+			kind,
+		}));
+		expect(asked).toEqual([
 			{ module: "env", name: "__assert_fail", kind: "function" },
 			{ module: "env", name: "emscripten_resize_heap", kind: "function" },
 			{ module: "wasi_snapshot_preview1", name: "fd_write", kind: "function" },
