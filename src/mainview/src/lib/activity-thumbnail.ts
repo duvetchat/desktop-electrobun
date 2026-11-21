@@ -89,6 +89,35 @@ export async function activityThumbnail(bytes: Uint8Array<ArrayBuffer>): Promise
 	}
 }
 
+/** What a PNG's data URI starts with, before its bytes in base64. */
+const PNG_URI = "data:image/png;base64,";
+
+/**
+ * A picture, whole, as a PNG in base64: what Copy image puts on the clipboard (#423, src/bun/copy-image.ts), which takes
+ * no other kind of picture. Bun fetches it and has no decoder; this canvas has one, and a canvas drawn from a Blob's
+ * bitmap isn't tainted. Null when the webview can't decode it.
+ */
+export async function pngImage(bytes: Uint8Array<ArrayBuffer>): Promise<string | null> {
+	let bitmap: ImageBitmap;
+	try {
+		bitmap = await createImageBitmap(new Blob([bytes]));
+	} catch {
+		return null;
+	}
+	try {
+		const canvas = document.createElement("canvas");
+		canvas.width = bitmap.width;
+		canvas.height = bitmap.height;
+		const context = canvas.getContext("2d");
+		if (!context || bitmap.width === 0 || bitmap.height === 0) return null;
+		context.drawImage(bitmap, 0, 0);
+		const uri = canvas.toDataURL("image/png");
+		return uri.startsWith(PNG_URI) ? uri.slice(PNG_URI.length) : null;
+	} finally {
+		bitmap.close();
+	}
+}
+
 /** The bytes a base64 text holds, as the Bun process sends an image's. */
 export function base64Bytes(base64: string): Uint8Array<ArrayBuffer> {
 	const text = atob(base64);
