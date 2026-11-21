@@ -85,3 +85,13 @@ test("the theme names the four faces, with Fraunces' axes set", () => {
 	expect(appCss).toContain('--font-serif-lg--font-variation-settings: "opsz" 72, "SOFT" 50, "WONK" 0;');
 	expect(appCss).not.toContain("Fira Sans");
 });
+
+// Fraunces titles things; a list of names is the interface, read beside rows in Inter (#453).
+test("the members column and the sidebar's Space names are in the interface face, not the titles' serif", () => {
+	const source = (file: string) =>
+		readFileSync(join(import.meta.dir, "components", file), "utf8").replace(/\r\n/g, "\n");
+	expect(source("MembersColumn.svelte")).not.toMatch(/font-serif/);
+	const spaceName = source("SpaceNav.svelte").match(/<span\s+class="([^"]*)"\s*>\{guild\.name\}<\/span/)?.[1];
+	expect(spaceName).toBeDefined();
+	expect(spaceName).not.toMatch(/font-serif/);
+});
