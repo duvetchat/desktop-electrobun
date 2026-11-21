@@ -101,7 +101,7 @@
 				{@const isSelected = guild.id === selectedSpaceId && !isFriendsActive}
 				<button
 					type="button"
-					class="relative shrink-0 rounded-[8px] {isSelected
+					class="relative flex shrink-0 rounded-[8px] {isSelected
 						? 'outline-duvet-accent outline-2 outline-offset-2'
 						: ''} {iconFocus}"
 					aria-label={guild.name}
