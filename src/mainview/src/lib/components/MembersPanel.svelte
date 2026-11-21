@@ -16,6 +16,7 @@
 		channelId,
 		title = "Members",
 		onRemoveMember = undefined,
+		onMention = undefined,
 		surface = "popover",
 	}: {
 		members: MemberOnSidebar[];
@@ -27,7 +28,9 @@
 		/** The head: "Members", or a group's name. */
 		title?: string;
 		/** Removes a member from a group, for its owner. */
-		onRemoveMember?: (userId: string) => void;
+		onRemoveMember?: (userId: string) => Promise<void>;
+		/** Mentions a member in the chat's message box. */
+		onMention?: (userId: string) => void;
 		/** What it's drawn on: the popover, or the pane beside the chat. */
 		surface?: "popover" | "pane";
 	} = $props();
@@ -57,6 +60,6 @@
 	<span class="text-duvet-ink2 shrink-0 text-xs">{online} online</span>
 </div>
 <div class="min-h-0 flex-1 overflow-y-auto pb-2" {onscroll}>
-	<MemberList {members} {spaceId} {space} {channelId} {onRemoveMember} {surface} />
+	<MemberList {members} {spaceId} {space} {channelId} {onRemoveMember} {onMention} {surface} />
 	<MemberPagesStatus {spaceId} />
 </div>

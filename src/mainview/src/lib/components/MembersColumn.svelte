@@ -11,6 +11,7 @@
 		channelId,
 		members: given = undefined,
 		onRemoveMember = undefined,
+		onMention = undefined,
 	}: {
 		/** The room's Space. A group passes its members instead. */
 		space?: GatewaySpace | null;
@@ -19,7 +20,9 @@
 		/** A group's members: they are all there, so nothing is paged. */
 		members?: MemberOnSidebar[];
 		/** Removes a member from a group, for its owner. */
-		onRemoveMember?: (userId: string) => void;
+		onRemoveMember?: (userId: string) => Promise<void>;
+		/** Mentions a member in the chat's message box. */
+		onMention?: (userId: string) => void;
 	} = $props();
 
 	const members = $derived(given ?? spaceMembers(space));
@@ -32,6 +35,6 @@
 	class="border-duvet-line text-duvet-ink flex w-60 shrink-0 flex-col overflow-hidden border-l"
 >
 	{#key pagedSpaceId}
-		<MembersPanel {members} spaceId={pagedSpaceId} {space} {channelId} {onRemoveMember} surface="pane" />
+		<MembersPanel {members} spaceId={pagedSpaceId} {space} {channelId} {onRemoveMember} {onMention} surface="pane" />
 	{/key}
 </aside>

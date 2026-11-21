@@ -4,6 +4,10 @@
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
 	import MemberPagesStatus from "$lib/components/MemberPagesStatus.svelte";
 	import SpaceMemberDetails from "$lib/components/SpaceMemberDetails.svelte";
+	import MemberMenu from "$lib/components/MemberMenu.svelte";
+	import ContextMenu from "$lib/components/ui/ContextMenu.svelte";
+	import { withoutLongPress } from "$lib/default-menu";
+	import { personOf } from "$lib/member-menu";
 	import { CARD, FIELD_SM, NOTE, SELECT } from "$lib/components/settings/recipes";
 	import { getAvatarURL } from "$lib/common/common";
 	import {
@@ -14,6 +18,7 @@
 		managedMembers,
 		NO_ROLE,
 		shownRows,
+		type ManagedMember,
 		type MemberSort,
 	} from "$lib/members";
 	import { loadEveryMember, moreMembers } from "$lib/stores/member-pages.svelte";
@@ -142,6 +147,19 @@
 	});
 
 	const rolesOf = (roleNames: { name: string }[]) => roleNames.map((r) => r.name).join(", ");
+
+	// ── A member's menu (#423) ───────────────────────────────────────────────
+	// One for the list, as the members list has one: a right-click on a row opens it for that member. Its Profile is
+	// their details here, as the row's click. (No profile card: this section is also a window's of its own, whose page
+	// never reaches the gateway's connection, which the card's module does: lib/module-graph.ts.)
+	let menuFor = $state.raw<ManagedMember | null>(null);
+	function pickMember(e: MouseEvent): boolean {
+		const row = e.target instanceof Element ? e.target.closest<HTMLElement>("[data-member]") : null;
+		const member = row ? shown.find((m) => m.id === row.dataset.member) : undefined;
+		if (!member) return false;
+		menuFor = member;
+		return true;
+	}
 </script>
 
 {#if picked}
@@ -174,7 +192,33 @@
 			</select>
 		</div>
 
-		<div class={CARD} bind:this={root}>
+		<ContextMenu label="Member">
+			{#snippet target(props)}
+				<div
+					{...withoutLongPress(props)}
+					class={CARD}
+					bind:this={root}
+					oncontextmenu={(e) => {
+						if (pickMember(e)) (props.oncontextmenu as ((e: MouseEvent) => void) | undefined)?.(e);
+					}}
+				>
+					{@render rows()}
+				</div>
+			{/snippet}
+			{#if menuFor}
+				{@const member = menuFor}
+				<MemberMenu
+					person={personOf(
+						{ id: member.id, member_id: member.memberId ?? "", username: member.name, is_bot: member.isBot },
+						space,
+					)}
+					{space}
+					onProfile={() => void pick(member.id)}
+				/>
+			{/if}
+		</ContextMenu>
+
+		{#snippet rows()}
 			<div
 				class="text-duvet-ink2 flex h-9 items-end gap-3 px-3.5 pb-1.5 text-[10.5px] font-semibold tracking-[0.06em] uppercase select-none"
 			>
@@ -218,7 +262,7 @@
 			{#if shown.length === 0}
 				<p class="text-duvet-ink2 px-3.5 py-6 text-center text-[13px]">No one matches</p>
 			{/if}
-		</div>
+		{/snippet}
 
 		{#if paging}
 			<MemberPagesStatus spaceId={space.id} />

@@ -34,7 +34,16 @@
 		type CommandEntry,
 	} from "$lib/commands";
 	import { changeDraft, chatDrafts, draftOf } from "$lib/drafts";
-	import { breakLine, caretAt, enterKey, lineBreaksHtml, rawOf, rawOffsetOf } from "$lib/message-box";
+	import {
+		breakLine,
+		caretAt,
+		enterKey,
+		lineBreaksHtml,
+		mentionAfter,
+		quoteAfter,
+		rawOf,
+		rawOffsetOf,
+	} from "$lib/message-box";
 	import { escapeHtml } from "$lib/markdown";
 	import { formatDuration } from "$lib/utils/time";
 	import MemberBanner from "$lib/components/MemberBanner.svelte";
@@ -1114,6 +1123,23 @@
 		pushUndo(newRaw, pos + char.length);
 		isEmpty = false;
 		changed(newRaw);
+	}
+
+	// What a right-click menu adds at the text's end (#423), with the focus and the caret after it: a member's Mention,
+	// Quote in reply on a message's selected text. A frame later, once the menu has closed and handed the focus back.
+	function addAtEnd(text: (raw: string) => string) {
+		requestAnimationFrame(() => {
+			if (destroyed || !inputEl) return;
+			focusAndInsert(text(getRaw(inputEl)));
+		});
+	}
+
+	export function addMention(userId: string) {
+		addAtEnd((raw) => mentionAfter(raw, userId));
+	}
+
+	export function addQuote(text: string) {
+		addAtEnd((raw) => quoteAfter(raw, text));
 	}
 
 	// The suggestions' list that is open over the box (commands, mentions, rooms or emoji) and its chosen row, which the

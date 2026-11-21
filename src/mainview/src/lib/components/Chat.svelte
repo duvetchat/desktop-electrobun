@@ -38,7 +38,7 @@
 		X as CloseIcon,
 	} from "@lucide/svelte";
 
-	import { onMount, onDestroy, untrack, type Snippet } from "svelte";
+	import { onMount, onDestroy, tick, untrack, type Snippet } from "svelte";
 	import ChatInput from "$lib/components/ChatInput.svelte";
 	import CommandOptions from "$lib/components/CommandOptions.svelte";
 	import MessageList from "$lib/components/MessageList.svelte";
@@ -121,6 +121,7 @@
 		intro = undefined,
 		retryFirstPage = null,
 		paneFocused = true,
+		onRemoveMember = undefined,
 	}: {
 		messages: Message[];
 		members?: MemberOnSidebar[];
@@ -171,6 +172,8 @@
 		 * outside the panes (the friends view's) is the one on screen.
 		 */
 		paneFocused?: boolean;
+		/** Takes a member out of the chat's group, for its owner: its authors' menus have Remove from group. */
+		onRemoveMember?: (userId: string) => Promise<void>;
 	} = $props();
 	// What's unsent in this chat, which stays when the user leaves it, whichever panes show it (lib/drafts.ts). The
 	// message box keeps its text there, and this chat its reply and files.
@@ -189,7 +192,12 @@
 	// the conversation's, not its pinner's or caller's.
 	const canMention = (message: Message) =>
 		message.author_id !== $currentUser?.id && !message.webhook_id && !isNotice(message);
-	let chatInputRef = $state<{ focus: () => void; focusAndInsert: (char: string) => void } | null>(null);
+	let chatInputRef = $state<{
+		focus: () => void;
+		focusAndInsert: (char: string) => void;
+		addMention: (userId: string) => void;
+		addQuote: (text: string) => void;
+	} | null>(null);
 	// The message box of the thread open in this chat's list, which replies in it.
 	let threadInputRef = $state<{ focus: () => void } | null>(null);
 	// What was picked from the "/" menu (a command, or one of its subcommands), which the message box gives its place to.
@@ -517,6 +525,26 @@
 		chatInputRef?.focus();
 	}
 
+	// A right-click menu's Mention of a member (#423), from this chat's list of members or of authors: at the end of the
+	// box, which an edit gives back first, as a reply's does.
+	export async function mention(userId: string) {
+		if (editingMessageId !== null) {
+			cancelEdit();
+			await tick();
+		}
+		chatInputRef?.addMention(userId);
+	}
+
+	// Quote in reply, on a message's selected text (#423): a reply to the message, the text quoted at the box's end.
+	async function handleQuote(message: Message, text: string) {
+		if (editingMessageId !== null) {
+			cancelEdit();
+			await tick();
+		}
+		setReply(message);
+		chatInputRef?.addQuote(text);
+	}
+
 	// An edit is made in the message box (DECISIONS.md): it holds the message's text, under a strip that says so, in
 	// place of the chat's draft, which shows again as the edit ends. Enter saves, Esc cancels; an unchanged or empty
 	// edit saves nothing.
@@ -796,6 +824,9 @@
 		onRetry={retryMessage}
 		onDismiss={dismissFailedMessage}
 		onReply={handleReply}
+		onQuote={handleQuote}
+		onMention={mention}
+		{onRemoveMember}
 		{onUnreadMark}
 		{emojiGroups}
 		{intro}

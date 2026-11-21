@@ -3,9 +3,6 @@
 	import { onDestroy, onMount, tick, type Snippet } from "svelte";
 	import {
 		ArrowDown as ArrowDownIcon,
-		BadgeCheck as BadgeCheckIcon,
-		Ban as BanIcon,
-		Copy as CopyIcon,
 		Ellipsis as EllipsisIcon,
 		Eye as EyeIcon,
 		Link as LinkIcon,
@@ -19,8 +16,6 @@
 		Reply as ReplyIcon,
 		Trash2 as TrashIcon,
 		User as UserIcon,
-		UserMinus as KickIcon,
-		UserPlus as UserPlusIcon,
 		Users as UsersIcon,
 	} from "@lucide/svelte";
 	import SmilePlusIcon from "$lib/components/ui/icons/SmilePlus.svelte";
@@ -42,9 +37,6 @@
 		pinsPanelRequest,
 		gatewaySpaces,
 		pageVisible,
-		friends,
-		sentFriendRequests,
-		pendingFriendRequests,
 		conversations,
 		dropEphemeral,
 		friendsReady,
@@ -105,14 +97,14 @@
 	import EmojiPicker from "$lib/components/EmojiPicker.svelte";
 	import ImagePreview from "$lib/components/ImagePreview.svelte";
 	import MemberProfilePopover from "$lib/components/MemberProfilePopover.svelte";
+	import MemberMenu from "$lib/components/MemberMenu.svelte";
 	import MentionProfile from "$lib/components/MentionProfile.svelte";
-	import { sendFriendRequest, getSentRequests } from "$lib/api/friends";
-	import { updateUserFlagsBadges } from "$lib/api/user";
 	import { getApiError } from "$lib/api/api";
 	import { toast } from "$lib/stores/toast.svelte";
 	import { get } from "svelte/store";
-	import { FLAGS, BADGES, isStaff as checkStaff } from "$lib/badges";
-	import { banRequest, kickFromSpace, moderationOf } from "$lib/moderation";
+	import { menuSelection } from "$lib/default-menu";
+	import { personOf, type MenuPerson } from "$lib/member-menu";
+	import { takeQuotes } from "$lib/quotes";
 
 	let {
 		messages,
@@ -145,6 +137,9 @@
 		retryFirstPage = null,
 		threadComposer = undefined,
 		onThreadReply = undefined,
+		onQuote = undefined,
+		onMention = undefined,
+		onRemoveMember = undefined,
 	}: {
 		messages: Message[];
 		members?: MemberOnSidebar[];
@@ -188,6 +183,12 @@
 		threadComposer?: Snippet<[Message]>;
 		/** A message of the thread of root picked to reply to, from the thread. */
 		onThreadReply?: (message: Message, root: Message) => void;
+		/** Quote in reply, on a message's selected text (the default right-click menu): a reply to it, the text quoted. */
+		onQuote?: (message: Message, text: string) => void;
+		/** An author's Mention, in the chat's message box. */
+		onMention?: (userId: string) => void;
+		/** Takes an author out of the chat's group, for its owner. */
+		onRemoveMember?: (userId: string) => Promise<void>;
 	} = $props();
 
 	// ── State ──────────────────────────────────────────────────────────────────
@@ -224,12 +225,20 @@
 		if (profileFor) profileClosed = { anchor: profileFor.anchor, at: performance.now() };
 		profileFor = null;
 	}
+	// An author's Profile, from their menu: beside the avatar right-clicked, or from a message's menu beside that
+	// message's avatar, or the message itself where it has none (a direct conversation's bubbles).
+	function openAuthorProfile(member: MemberOnSidebar, anchor: HTMLElement | null, messageId?: string) {
+		const row = messageId ? scrollEl.querySelector<HTMLElement>(`[data-message-id="${CSS.escape(messageId)}"]`) : null;
+		const at = anchor ?? row?.querySelector<HTMLElement>("[data-author-menu]") ?? row;
+		if (at && profileFor?.anchor !== at) openProfile(member, at);
+	}
 	let mentionProfile: MentionProfile;
 	const openMention = (e: MouseEvent) => mentionProfile.open(e);
 
-	// The menu a right-click opens, one for the whole list: a message's, or its author's from their avatar. A message's
-	// More button opens the same items from the hover bar (moreMenuFor: its bar stays while its menu is open).
-	type MenuTarget = { kind: "message"; id: string } | { kind: "author"; userId: string };
+	// The menu a right-click opens, one for the whole list: a message's, or its author's from their avatar (beside which
+	// its Profile opens). A message's More button opens the same items from the hover bar (moreMenuFor: its bar stays
+	// while its menu is open).
+	type MenuTarget = { kind: "message"; id: string } | { kind: "author"; userId: string; anchor: HTMLElement };
 	let menuTarget = $state<MenuTarget | null>(null);
 	let menuOpen = $state(false);
 	let moreMenuFor = $state<string | null>(null);
@@ -245,22 +254,22 @@
 		return target?.kind === "message" ? messages.find((m) => m.id === target.id) : undefined;
 	});
 
-	// What a right-click is on, and whether the list's menu is for it. A link, a picture, a video and selected text
-	// keep the system's own menu (open the link, save the picture, copy the selection); a message being sent and a bot's
-	// ephemeral one have no menu, and a notice only for those who can delete it. A webhook's avatar has none.
+	// What a right-click is on, and whether the list's menu is for it. A link, a picture, a video and the selected text
+	// under the pointer have the default menu (DefaultContextMenu: open or copy the link, copy the picture, copy or quote
+	// the selection); a message being sent and a bot's ephemeral one have no menu, and a notice only for those who can
+	// delete it. A webhook's avatar has none.
 	function pickMenu(e: MouseEvent): boolean {
 		const el = e.target instanceof Element ? e.target : null;
 		if (!el) return false;
-		const author = el.closest<HTMLElement>("[data-author-menu]")?.dataset.authorMenu;
-		if (author !== undefined) {
+		const anchor = el.closest<HTMLElement>("[data-author-menu]");
+		const author = anchor?.dataset.authorMenu;
+		if (anchor && author !== undefined) {
 			if (author === "") return false;
-			menuTarget = { kind: "author", userId: author };
+			menuTarget = { kind: "author", userId: author, anchor };
 			return true;
 		}
 		if (el.closest("a[href], img:not(.emoji-img), video, audio, input, textarea")) return false;
-		const selection = window.getSelection();
-		if (selection && !selection.isCollapsed && selection.anchorNode && scrollEl.contains(selection.anchorNode))
-			return false;
+		if (menuSelection(e)) return false;
 		const id = el.closest<HTMLElement>("[data-message-id]")?.dataset.messageId;
 		const message = id ? messages.find((m) => m.id === id) : undefined;
 		if (!message || message.id === message.nonce || isEphemeral(message)) return false;
@@ -269,66 +278,38 @@
 		return true;
 	}
 
-	function isFriend(userId: string): boolean {
-		return get(friends).some((f) => f.sender_id === userId || f.recipient_id === userId);
-	}
-
-	function hasPendingRequest(userId: string): boolean {
-		return (
-			get(sentFriendRequests).some((r) => r.recipient_id === userId) ||
-			get(pendingFriendRequests).some((r) => r.sender_id === userId)
-		);
-	}
-
-	async function handleSendFriendRequest(userId: string) {
-		try {
-			await sendFriendRequest(userId);
-			const sent = await getSentRequests();
-			sentFriendRequests.set(sent);
-			toast("Friend request sent", "success");
-		} catch (err) {
-			toast(getApiError(err, "Failed to send friend request"), "error");
-		}
-	}
-
-	// Staff flags/badges editor
-	let flagsBadgesTarget = $state<{ id: string; flags: number; badges: number } | null>(null);
-	let flagsBadgesOpen = $state(false);
-	let flagsBadgesSaving = $state(false);
-	let editFlags = $state(0);
-	let editBadges = $state(0);
-
-	const isStaff = $derived(checkStaff($currentUser?.flags ?? 0));
-
-	function openFlagsBadgesEditor(userId: string) {
+	// The author a menu is about, as the member menu takes them: the member the list has, else (one who left, or whose
+	// page isn't here) the name their message has.
+	function authorOf(userId: string): MenuPerson {
+		const member = members.find((m) => m.id === userId);
+		if (member) return personOf(member, space);
 		const user = space?.users.find((u) => u.id === userId);
-		if (!user) return;
-		flagsBadgesTarget = { id: user.id, flags: user.flags ?? 0, badges: user.badges ?? 0 };
-		editFlags = flagsBadgesTarget.flags;
-		editBadges = flagsBadgesTarget.badges;
-		flagsBadgesOpen = true;
+		return {
+			id: userId,
+			memberId: "",
+			name: messages.find((m) => m.author_id === userId)?.author_name ?? "",
+			isBot: user?.is_bot ?? false,
+			flags: user ? { flags: user.flags ?? 0, badges: user.badges ?? 0 } : null,
+		};
 	}
 
-	async function saveFlagsBadges() {
-		if (!flagsBadgesTarget) return;
-		flagsBadgesSaving = true;
-		try {
-			await updateUserFlagsBadges(flagsBadgesTarget.id, { flags: editFlags, badges: editBadges });
-			flagsBadgesOpen = false;
-		} catch (err) {
-			toast(getApiError(err, "Failed to update flags/badges"), "error");
-		} finally {
-			flagsBadgesSaving = false;
-		}
-	}
-
-	function toggleFlag(flag: number) {
-		editFlags = editFlags ^ flag;
-	}
-
-	function toggleBadge(badge: number) {
-		editBadges = editBadges ^ badge;
-	}
+	// A selection of a message's text is quoted from the default right-click menu into this chat's box, as a reply to
+	// it: a message a reply can be to (not one being sent, a bot's ephemeral one or a notice).
+	const quotable = (id: string) => {
+		const message = messages.find((m) => m.id === id);
+		return !!message && message.id !== message.nonce && !isEphemeral(message) && !isNotice(message) ? message : null;
+	};
+	onMount(() => {
+		if (!onQuote) return;
+		return takeQuotes({
+			el: scrollEl,
+			takes: (id) => !!quotable(id),
+			quote: (id, text) => {
+				const message = quotable(id);
+				if (message) onQuote?.(message, text);
+			},
+		});
+	});
 
 	let threadModalOpen = $state(false);
 	let threadLoading = $state(false);
@@ -1415,7 +1396,7 @@
 		</div>
 	{/snippet}
 	{#if menuTarget?.kind === "author"}
-		{@render authorItems(menuTarget.userId)}
+		{@render authorItems(menuTarget.userId, menuTarget.anchor)}
 	{:else if menuMessage}
 		{@render messageItems(menuMessage)}
 	{/if}
@@ -1748,7 +1729,7 @@
 		{/if}
 		{#if !message.webhook_id}
 			<MenuSub label={message.author_name} icon={UserIcon}>
-				{@render authorItems(message.author_id)}
+				{@render authorItems(message.author_id, null, message.id)}
 			</MenuSub>
 		{/if}
 		{#if mine || currentUserCan(Permission.ManageMessages)}
@@ -1765,44 +1746,18 @@
 	{/if}
 {/snippet}
 
-<!-- A member's menu: from a right-click on their avatar, and under their name in their message's menu (in a direct
-     conversation's bubbles there's no avatar to click). Kick and Ban are for a member of the room's Space whom the API
-     would let the user act on; the last one is Duvet staff's. -->
-{#snippet authorItems(userId: string)}
-	{@const isSelf = userId === $currentUser?.id}
-	{@const alreadyFriend = !isSelf && isFriend(userId)}
-	{@const pending = !isSelf && !alreadyFriend && hasPendingRequest(userId)}
-	{@const moderation = moderationOf(
-		space,
-		members.find((m) => m.id === userId),
-	)}
-	{#if !isSelf}
-		<MenuItem
-			icon={UserPlusIcon}
-			disabled={alreadyFriend || pending}
-			onSelect={() => void handleSendFriendRequest(userId)}
-		>
-			{alreadyFriend ? "Already friends" : pending ? "Request pending" : "Send friend request"}
-		</MenuItem>
-	{/if}
-	<MenuItem icon={CopyIcon} onSelect={() => void navigator.clipboard.writeText(userId)}>Copy user ID</MenuItem>
-	{#if moderation}
-		<MenuSeparator />
-		{#if moderation.kick}
-			<MenuItem icon={KickIcon} danger onSelect={() => void kickFromSpace(moderation.target)}>
-				Kick {moderation.target.name}
-			</MenuItem>
-		{/if}
-		{#if moderation.ban}
-			<MenuItem icon={BanIcon} danger onSelect={() => banRequest.set(moderation.target)}>
-				Ban {moderation.target.name}
-			</MenuItem>
-		{/if}
-	{/if}
-	{#if isStaff}
-		<MenuSeparator />
-		<MenuItem icon={BadgeCheckIcon} onSelect={() => openFlagsBadgesEditor(userId)}>Edit flags and badges</MenuItem>
-	{/if}
+<!-- A member's menu (MemberMenu, every list's): from a right-click on their avatar, beside which its Profile opens, and
+     under their name in their message's menu (in a direct conversation's bubbles there's no avatar to click), where
+     their profile opens beside their name's message. -->
+{#snippet authorItems(userId: string, anchor: HTMLElement | null, messageId?: string)}
+	{@const member = members.find((m) => m.id === userId)}
+	<MemberMenu
+		person={authorOf(userId)}
+		{space}
+		onProfile={member ? () => openAuthorProfile(member, anchor, messageId) : undefined}
+		{onMention}
+		onRemoveFromGroup={onRemoveMember}
+	/>
 {/snippet}
 
 {#snippet deleteButton(message: Message)}
@@ -1901,52 +1856,4 @@
 			if (!isOpen) closeProfile();
 		}}
 	/>
-{/if}
-
-<!-- Staff: Flags & Badges Editor -->
-{#if flagsBadgesTarget}
-	<Sheet
-		bind:open={flagsBadgesOpen}
-		title="Edit flags and badges"
-		description="User: {flagsBadgesTarget.id}"
-		class="max-w-[384px]"
-	>
-		<fieldset class="flex flex-col gap-2">
-			<legend class="text-duvet-ink2 mb-2 text-[13px] font-semibold">Flags</legend>
-			{#each FLAGS as f}
-				<label class="flex items-center gap-2 text-sm">
-					<input
-						type="checkbox"
-						checked={!!(editFlags & f.flag)}
-						onchange={() => toggleFlag(f.flag)}
-						class="accent-duvet-accent"
-					/>
-					{f.name}
-				</label>
-			{/each}
-		</fieldset>
-
-		<fieldset class="flex flex-col gap-2">
-			<legend class="text-duvet-ink2 mb-2 text-[13px] font-semibold">Badges</legend>
-			{#each BADGES as b}
-				<label class="flex items-center gap-2 text-sm">
-					<input
-						type="checkbox"
-						checked={!!(editBadges & b.flag)}
-						onchange={() => toggleBadge(b.flag)}
-						class="accent-duvet-accent"
-					/>
-					{b.name}
-				</label>
-			{/each}
-		</fieldset>
-
-		{#snippet foot()}
-			<span></span>
-			<button type="button" class={buttonClass("quiet")} onclick={() => (flagsBadgesOpen = false)}>Cancel</button>
-			<button type="button" class={buttonClass("primary")} disabled={flagsBadgesSaving} onclick={saveFlagsBadges}>
-				{flagsBadgesSaving ? "Saving…" : "Save"}
-			</button>
-		{/snippet}
-	</Sheet>
 {/if}
