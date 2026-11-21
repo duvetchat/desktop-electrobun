@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { X as XIcon, ZoomIn, ZoomOut, RotateCcw, RotateCw } from "@lucide/svelte";
 	import { TABBABLE, wrapTab } from "$lib/focus-wrap";
+	import { claimLayer, layerStyle, releaseLayer } from "$lib/overlay-layers";
 
 	let {
 		src,
@@ -11,6 +12,14 @@
 		alt?: string;
 		open?: boolean;
 	} = $props();
+
+	// The viewer is an overlay too: opened from a sheet (Settings, on the web) or from the page, it is in front of
+	// what opened it (lib/overlay-layers.ts).
+	const layer = $derived(open ? claimLayer() : 0);
+	$effect(() => {
+		const mine = layer;
+		if (mine) return () => releaseLayer(mine);
+	});
 
 	let scale = $state(1);
 	let rotation = $state(0);
@@ -131,6 +140,7 @@
 	<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 	<div
 		class="bg-duvet-viewer animate-scrim-in fixed inset-0 z-200 flex items-center justify-center backdrop-blur-sm"
+		style={layerStyle(layer)}
 		role="dialog"
 		aria-modal="true"
 		aria-label={alt ? `Image: ${alt}` : "Image"}

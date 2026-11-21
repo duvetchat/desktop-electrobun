@@ -29,6 +29,7 @@
 		Mail as MailIcon,
 		KeyRound as KeyIcon,
 		Mic as MicIcon,
+		Search as SearchIcon,
 		Download as DownloadIcon,
 		TriangleAlert as WarningIcon,
 		Users as UsersIcon,
@@ -130,6 +131,8 @@
 	import Slider from "./Slider.svelte";
 	import VoiceVideoSettings from "./VoiceVideoSettings.svelte";
 	import ChoiceCards from "./ChoiceCards.svelte";
+	import ImagePreview from "$lib/components/ImagePreview.svelte";
+	import TextFilePreview from "$lib/components/TextFilePreview.svelte";
 	import Avatar from "$lib/components/ui/Avatar.svelte";
 	import Button from "$lib/components/ui/Button.svelte";
 	import IconButton from "$lib/components/ui/IconButton.svelte";
@@ -158,6 +161,7 @@
 	import { pageSettingsHost, type MessageLayout, type SettingsHost } from "$lib/settings-host";
 	import { defaultMessageLayout } from "$lib/message-layout";
 	import { USER_SCOPE, type StagedImage } from "$lib/staged-images";
+	import { isImageAttachment, isTextAttachment } from "$lib/attachment-preview";
 	import { parseSettingsSection, SETTINGS_SECTION_KEY, type SettingsSection as Section } from "$lib/settings-sections";
 
 	// Settings (#357, DESIGN-MAP.md S-47 to S-57): the user's own account, files, sounds, looks and developer teams. On
@@ -245,6 +249,26 @@
 	const picking = $derived(listedHere && attachmentsLocation !== "all");
 	const picker = new FilePicker(() => attachments);
 	let attachmentsLoadId = 0;
+
+	// The previews of a file in the list: a picture in the chat's viewer, a text file in its read-only dialog.
+	let previewOpen = $state(false);
+	let previewSrc = $state("");
+	let previewAlt = $state("");
+	let textPreviewOpen = $state(false);
+	let textPreviewSrc = $state("");
+	let textPreviewName = $state("");
+
+	function openPreview(src: string, alt: string) {
+		previewSrc = src;
+		previewAlt = alt;
+		previewOpen = true;
+	}
+
+	function openTextPreview(src: string, name: string) {
+		textPreviewSrc = src;
+		textPreviewName = name;
+		textPreviewOpen = true;
+	}
 
 	const formatFileSize = listFileSize;
 
@@ -1771,8 +1795,10 @@
 				{/if}
 				<div class="{CARD} divide-duvet-line divide-y">
 					{#each picker.shown as att (att.id)}
-						{@const isImage = att.content_type.startsWith("image/")}
+						{@const isImage = isImageAttachment(att.content_type)}
+						{@const isText = isTextAttachment(att.content_type, att.filename)}
 						{@const isAudio = att.content_type.startsWith("audio/")}
+						{@const src = `${attachmentHost}${att.url ?? `/attachments/${att.id}`}`}
 						<div class="group hover:bg-duvet-hover-soft transition-colors motion-reduce:transition-none">
 							<div class="flex items-center gap-3 px-3.5 py-2.5">
 								{#if picking}
@@ -1786,11 +1812,7 @@
 								{/if}
 								<!-- Thumbnail -->
 								{#if isImage}
-									<img
-										src="{attachmentHost}{att.url ?? `/attachments/${att.id}`}"
-										alt=""
-										class="bg-duvet-secondary-fill size-10 shrink-0 rounded-[9px] object-cover"
-									/>
+									<img {src} alt="" class="bg-duvet-secondary-fill size-10 shrink-0 rounded-[9px] object-cover" />
 								{:else}
 									<div
 										class="bg-duvet-secondary-fill text-duvet-ink2 grid size-10 shrink-0 place-items-center rounded-[9px]"
@@ -1810,8 +1832,17 @@
 								<div
 									class="flex shrink-0 items-center gap-1 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 motion-reduce:transition-none"
 								>
+									{#if isImage || isText}
+										<IconButton
+											label="Preview {att.filename}"
+											title="Preview"
+											onclick={() => (isImage ? openPreview(src, att.filename) : openTextPreview(src, att.filename))}
+										>
+											<SearchIcon size={16} />
+										</IconButton>
+									{/if}
 									<a
-										href="{attachmentHost}{att.url ?? `/attachments/${att.id}`}"
+										href={src}
 										download={att.filename}
 										class={iconButtonClass()}
 										title="Download"
@@ -1831,11 +1862,7 @@
 							</div>
 							{#if isAudio}
 								<div class="px-3.5 pb-2.5">
-									<VoiceNotePlayer
-										src="{attachmentHost}{att.url ?? `/attachments/${att.id}`}"
-										attachmentId={att.id}
-										compact
-									/>
+									<VoiceNotePlayer {src} attachmentId={att.id} compact />
 								</div>
 							{/if}
 						</div>
@@ -2583,6 +2610,9 @@
 		{/if}
 	{/if}
 </SettingsFrame>
+
+<ImagePreview src={previewSrc} alt={previewAlt} bind:open={previewOpen} />
+<TextFilePreview bind:open={textPreviewOpen} filename={textPreviewName} src={textPreviewSrc} />
 
 <ImageCropModal
 	bind:open={showAvatarCrop}

@@ -1,0 +1,21 @@
+import { expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
+// The dialog is bits-ui's, whose content a server render leaves out: what it must hold is read from its source.
+const source = readFileSync(join(import.meta.dir, "TextFilePreview.svelte"), "utf8");
+
+test("is a dialog titled by the file, with its text read-only", () => {
+	expect(source).toContain('<Sheet bind:open title={filename} description="Read-only preview.">');
+	expect(source).toContain("\t\t\treadonly");
+	expect(source).toContain('aria-label="Contents of {filename}"');
+	expect(source).toContain("value={text}");
+});
+
+test("reads the file when it opens, and lets go of what a closed one had on its way", () => {
+	expect(source).toContain("const preview = await readTextPreview(src);");
+	expect(source).toMatch(/\$effect\(\(\) => \{[\s\S]*?if \(!open\) \{[\s\S]*?read\+\+;/);
+	// A failed read says so, without the dialog going away.
+	expect(source).toContain('error = "Couldn\'t read this file.";');
+	expect(source).toContain("{#if truncated}");
+});
