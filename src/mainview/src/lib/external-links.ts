@@ -64,6 +64,7 @@ export function setupExternalLinks(open: (url: string) => void = openInBrowser):
 	);
 }
 
-function openInBrowser(url: string): void {
+/** Opens an http(s) or mailto address in the system browser or mail client, through Bun (it refuses any other). */
+export function openInBrowser(url: string): void {
 	void getElectrobunRpc().then((rpc) => rpc?.send.openExternal({ url }));
 }

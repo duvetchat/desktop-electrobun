@@ -1,3 +1,8 @@
+<script lang="ts" module>
+	// The last Search Duvet the search everywhere took: once each, though the friends view mounts its box anew.
+	let takenSearch: string | null = null;
+</script>
+
 <script lang="ts">
 	import { claimLayer, layerStyle, releaseLayer } from "$lib/overlay-layers";
 	import {
@@ -7,7 +12,7 @@
 		X as XIcon,
 	} from "@lucide/svelte";
 	import { Popover } from "bits-ui";
-	import { tick } from "svelte";
+	import { tick, untrack } from "svelte";
 	import { GLASS, iconButtonClass } from "$lib/components/ui/recipes";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
 	import MentionProfile from "$lib/components/MentionProfile.svelte";
@@ -25,6 +30,7 @@
 		gatewaySpaces,
 		jumpToMessageRequest,
 		everyEmoji,
+		searchEverywhereRequest,
 	} from "$lib/stores.svelte";
 	import { gatewayMessageToMessage } from "$lib/types";
 	import type { GatewaySpace, MemberOnSidebar, Message } from "$lib/types";
@@ -329,6 +335,25 @@
 		caret = 0;
 		close();
 		input?.focus();
+	}
+
+	// Search Duvet, on selected text (the default right-click menu, #423): the text, searched everywhere, as if typed
+	// and sent. The app's page shows the friends view, where this box is, as it asks.
+	$effect(() => {
+		const request = $searchEverywhereRequest;
+		if (!everywhere || !request || request.id === takenSearch) return;
+		takenSearch = request.id;
+		untrack(() => void searchFor(request.text));
+	});
+	async function searchFor(words: string) {
+		text = words;
+		caret = words.length;
+		selected = -1;
+		dismissed = true;
+		await tick();
+		input?.focus();
+		input?.setSelectionRange(caret, caret);
+		void run();
 	}
 
 	// A result's image opens over the app.
