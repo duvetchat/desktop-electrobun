@@ -89,18 +89,15 @@ export async function activityThumbnail(bytes: Uint8Array<ArrayBuffer>): Promise
 	}
 }
 
-/** What a PNG's data URI starts with, before its bytes in base64. */
-const PNG_URI = "data:image/png;base64,";
-
 /**
- * A picture, whole, as a PNG in base64: what Copy image puts on the clipboard (#423, src/bun/copy-image.ts), which takes
- * no other kind of picture. Bun fetches it and has no decoder; this canvas has one, and a canvas drawn from a Blob's
- * bitmap isn't tainted. Null when the webview can't decode it.
+ * A picture, whole, as a PNG: what Copy image puts on the clipboard for a picture that isn't one (#423, #450,
+ * lib/copy-picture.ts). Bun fetches it, and refuses one too big to decode (src/bun/copy-image.ts); this canvas decodes
+ * it, and a canvas drawn from a Blob's bitmap isn't tainted. Null when the webview can't decode it.
  */
-export async function pngImage(bytes: Uint8Array<ArrayBuffer>): Promise<string | null> {
+export async function pngBlob(bytes: Uint8Array): Promise<Blob | null> {
 	let bitmap: ImageBitmap;
 	try {
-		bitmap = await createImageBitmap(new Blob([bytes]));
+		bitmap = await createImageBitmap(new Blob([new Uint8Array(bytes)]));
 	} catch {
 		return null;
 	}
@@ -111,8 +108,7 @@ export async function pngImage(bytes: Uint8Array<ArrayBuffer>): Promise<string |
 		const context = canvas.getContext("2d");
 		if (!context || bitmap.width === 0 || bitmap.height === 0) return null;
 		context.drawImage(bitmap, 0, 0);
-		const uri = canvas.toDataURL("image/png");
-		return uri.startsWith(PNG_URI) ? uri.slice(PNG_URI.length) : null;
+		return await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/png"));
 	} finally {
 		bitmap.close();
 	}
