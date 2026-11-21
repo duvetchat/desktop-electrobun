@@ -1870,10 +1870,6 @@
 				</div>
 			</div>
 		{/if}
-
-		<!-- In the section, and so in the settings sheet's dialog: the viewer's fixed box stays over the page. -->
-		<ImagePreview src={previewSrc} alt={previewAlt} bind:open={previewOpen} />
-		<TextFilePreview bind:open={textPreviewOpen} filename={textPreviewName} src={textPreviewSrc} />
 	{:else if activeSection === "buckets"}
 		{@render transferCard()}
 		<p class={NOTE}>
@@ -2614,6 +2610,9 @@
 		{/if}
 	{/if}
 </SettingsFrame>
+
+<ImagePreview src={previewSrc} alt={previewAlt} bind:open={previewOpen} />
+<TextFilePreview bind:open={textPreviewOpen} filename={textPreviewName} src={textPreviewSrc} />
 
 <ImageCropModal
 	bind:open={showAvatarCrop}
