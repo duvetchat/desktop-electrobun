@@ -60,9 +60,8 @@
 				? 'h-6 px-2.5 text-xs'
 				: 'h-7 px-3 text-[12.5px]'}"
 		>
-			<!-- A tight column takes the width it lacks from what can shrink: the label can't (whitespace-nowrap), so
-			     without this it comes from the icon, down to nothing (the sidebar's switch at its narrowest). The row's
-			     padding gives way instead. -->
+			<!-- The icon never shrinks: in a column narrower than the row, centred, the row spills into the side padding
+			     instead (#426). -->
 			{#if option.icon}<option.icon size={14} class="shrink-0" />{/if}
 			{option.label}
 		</RadioGroup.Item>
