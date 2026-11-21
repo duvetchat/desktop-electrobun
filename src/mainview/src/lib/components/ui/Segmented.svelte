@@ -19,7 +19,7 @@
 			label: string;
 			/** The option's tooltip, where its label alone doesn't say what it picks. */
 			title?: string;
-			icon?: Component<{ size?: number | string }>;
+			icon?: Component<{ size?: number | string; class?: string }>;
 		}[];
 		value: Value;
 		onValueChange?: (value: Value) => void;
@@ -60,7 +60,9 @@
 				? 'h-6 px-2.5 text-xs'
 				: 'h-7 px-3 text-[12.5px]'}"
 		>
-			{#if option.icon}<option.icon size={14} />{/if}
+			<!-- The icon never shrinks: in a column narrower than the row, centred, the row spills into the side padding
+			     instead (#426). -->
+			{#if option.icon}<option.icon size={14} class="shrink-0" />{/if}
 			{option.label}
 		</RadioGroup.Item>
 	{/each}
