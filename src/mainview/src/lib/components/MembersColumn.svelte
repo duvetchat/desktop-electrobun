@@ -32,7 +32,7 @@
 <!-- Another Space's members are another list: it starts at its top. -->
 <aside
 	aria-label="Members"
-	class="border-duvet-line text-duvet-ink flex w-60 shrink-0 flex-col overflow-hidden border-l font-serif"
+	class="border-duvet-line text-duvet-ink flex w-60 shrink-0 flex-col overflow-hidden border-l"
 >
 	{#key pagedSpaceId}
 		<MembersPanel {members} spaceId={pagedSpaceId} {space} {channelId} {onRemoveMember} {onMention} surface="pane" />

@@ -384,7 +384,7 @@
 							><SpaceIcon src={guild.icon_url || null} name={guild.name} size={22} /></span
 						>
 						<span
-							class="font-serif-sm text-duvet-ink min-w-0 flex-1 truncate text-[14.5px] leading-[1.2] tracking-[-0.005em] {news?.unread
+							class="text-duvet-ink min-w-0 flex-1 truncate text-[13.5px] leading-[1.2] {news?.unread
 								? 'font-semibold'
 								: 'font-medium'}">{guild.name}</span
 						>
