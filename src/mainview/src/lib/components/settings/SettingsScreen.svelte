@@ -215,7 +215,7 @@
 				{ id: "attachments", label: "Attachments", icon: PaperclipIcon, tile: "#0b6fe8" },
 				{ id: "security", label: "Security", icon: ShieldIcon, tile: "#2f9e62" },
 				{ id: "audio", label: "Audio", icon: VolumeIcon, tile: "#f97316" },
-				{ id: "voice-video", label: "Voice and video", icon: MicIcon, tile: "#0e8fd6" },
+				{ id: "voice-video", label: "Voice and video", icon: MicIcon, tile: "#e01890" },
 				{ id: "appearance", label: "Appearance", icon: PaletteIcon, tile: "#2f4cff" },
 				...(desktopApp
 					? [{ id: "activity" as const, label: "Activity privacy", icon: ActivityIcon, tile: "#e44fcb" }]
