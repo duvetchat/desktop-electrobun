@@ -1,7 +1,7 @@
 // Publishes the stable build to the rolling desktop-stable release of duvetchat/releases (#456), where the app's updater
-// and duvet.chat/download look. It uses gh with GH_TOKEN, a token that can write to that repository alone. The patch, the
-// tarball, the signed manifest and the installer go up first and update.json last, so no client sees a version whose
-// files aren't there yet. Older patches stay: a client a few versions behind patches through each of them.
+// and duvet.chat/download look. It uses gh with GH_TOKEN, a token that can write to that repository alone. The tarball,
+// the signed manifest and the installer go up first and update.json last, so no client sees a version whose files
+// aren't there yet.
 import { readdirSync } from "node:fs";
 import { join } from "node:path";
 import { platformPrefix } from "../src/bun/updates";

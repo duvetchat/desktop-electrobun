@@ -23,7 +23,7 @@ import { Maximizer, rectOf } from "./window-frame";
 import { frameFromEvent, MainWindowKeeper, openingOf, parsePrefs } from "./main-window";
 import { dragWithWindows, letWindowsArrange, pageLoaded } from "./window-snap";
 import { startupSummary, writeStartupLine } from "./startup";
-import { UpdateChecker } from "./updates";
+import { UpdateChecker, type UpdateOffer } from "./updates";
 import { UPDATE_PUBLIC_KEY } from "./update-key";
 import { rendererFor, shellPreload, windowChrome } from "./shell";
 import { keepKeysReachingThePage, type AppKit } from "./window-keys";
@@ -96,9 +96,9 @@ type AppRPCSchema = {
 			// Copy image, from the page's own right-click menu (#423, #450): the picture at the URL, fetched here
 			// (copy-image.ts), in base64, for the page to put on the clipboard itself; null when it can't be had.
 			pictureForCopy: { params: { url: string }; response: string | null };
-			// The version downloaded and verified, waiting for "Restart to update" (updates.ts, #456); null for none. A page
-			// asks as it starts, as updateReady may have gone out before it loaded.
-			pendingUpdate: { params: void; response: string | null };
+			// What the title bar offers of the app's own updates (updates.ts, #456); null for nothing. A page asks as it
+			// starts, as updateReady may have gone out before it loaded.
+			pendingUpdate: { params: void; response: UpdateOffer | null };
 		};
 		messages: {
 			closeWindow: void;
@@ -145,8 +145,9 @@ type AppRPCSchema = {
 			messageClicked: void;
 			// To a window that isn't the main one: a state of the main window's, to mirror.
 			windowState: WindowStateMessage;
-			// A newer version is downloaded and verified: the title bar offers "Restart to update" (#456).
-			updateReady: { version: string };
+			// What the title bar offers of the app's own updates, at each change: "Restart to update" for a version
+			// downloaded and verified, "Download update" where it can't be applied here, null for nothing (#456).
+			updateReady: UpdateOffer | null;
 		};
 	};
 };
@@ -222,8 +223,8 @@ function setSpotifyActivity(enabled: boolean) {
 
 // The app's own updates, on the stable channel (#456, updates.ts): found, downloaded and verified against the manifest the
 // release workflow signs, then offered on the title bar; applied only when the user asks.
-const updates = new UpdateChecker(Updater, new Uint8Array(Buffer.from(UPDATE_PUBLIC_KEY, "base64")), (version) =>
-	rpc.send.updateReady({ version }),
+const updates = new UpdateChecker(Updater, new Uint8Array(Buffer.from(UPDATE_PUBLIC_KEY, "base64")), (offer) =>
+	rpc.send.updateReady(offer),
 );
 
 const rpc = BrowserView.defineRPC<AppRPCSchema>({
@@ -241,7 +242,7 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 			// The main window's page answers commands, and sends none.
 			windowCommand: () => ({ ok: false, error: "The main window sends no commands" }),
 			pictureForCopy: ({ url: imageUrl }) => pictureForCopy(String(imageUrl)),
-			pendingUpdate: () => updates.readyVersion,
+			pendingUpdate: () => updates.offer,
 		},
 		messages: {
 			closeWindow: () => {

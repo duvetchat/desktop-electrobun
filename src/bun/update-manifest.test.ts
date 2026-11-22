@@ -16,7 +16,12 @@ async function keyPair() {
 	};
 }
 
-const FACTS: UpdateFacts = { version: "1.2.0", hash: "360ga31val07", tarSha256: "a".repeat(64) };
+const FACTS: UpdateFacts = {
+	platform: "stable-win-x64",
+	version: "1.2.0",
+	hash: "360ga31val07",
+	tarSha256: "a".repeat(64),
+};
 
 describe("the signed update manifest (#456)", () => {
 	test("a manifest signed with the private key verifies under its public key", async () => {
@@ -28,6 +33,7 @@ describe("the signed update manifest (#456)", () => {
 	test("changing any field, or verifying under another key, fails", async () => {
 		const { privateKey, publicKey } = await keyPair();
 		const manifest = await signManifest(privateKey, FACTS);
+		expect(await manifestVerifies(publicKey, { ...manifest, platform: "stable-macos-arm64" })).toBe(false);
 		expect(await manifestVerifies(publicKey, { ...manifest, version: "9.9.9" })).toBe(false);
 		expect(await manifestVerifies(publicKey, { ...manifest, hash: "otherbuild" })).toBe(false);
 		expect(await manifestVerifies(publicKey, { ...manifest, tarSha256: "b".repeat(64) })).toBe(false);
@@ -38,10 +44,12 @@ describe("the signed update manifest (#456)", () => {
 	test("each field is one line of its own shape, so none can pass for another", async () => {
 		const { privateKey } = await keyPair();
 		expect(new TextDecoder().decode(manifestBytes(FACTS))).toBe(
-			`duvet desktop update v1\n1.2.0\n360ga31val07\n${"a".repeat(64)}`,
+			`duvet desktop update v1\nstable-win-x64\n1.2.0\n360ga31val07\n${"a".repeat(64)}`,
 		);
+		expect(signManifest(privateKey, { ...FACTS, platform: "stable-win-x64\n1.2.0" })).rejects.toThrow();
 		expect(signManifest(privateKey, { ...FACTS, version: "1.2.0\nx" })).rejects.toThrow();
 		expect(signManifest(privateKey, { ...FACTS, hash: "UPPER" })).rejects.toThrow();
+		expect(signManifest(privateKey, { ...FACTS, hash: "../evil" })).rejects.toThrow();
 		expect(signManifest(privateKey, { ...FACTS, tarSha256: "a".repeat(63) })).rejects.toThrow();
 	});
 
@@ -52,6 +60,7 @@ describe("the signed update manifest (#456)", () => {
 		expect(parseManifest(null)).toBeNull();
 		expect(parseManifest("manifest")).toBeNull();
 		expect(parseManifest({ ...manifest, signature: "short" })).toBeNull();
+		expect(parseManifest({ ...manifest, platform: undefined })).toBeNull();
 		expect(parseManifest({ ...manifest, version: "v1.2.0" })).toBeNull();
 		expect(parseManifest({ ...manifest, tarSha256: 12 })).toBeNull();
 	});

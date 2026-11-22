@@ -1,9 +1,11 @@
-// The manifest the release workflow signs for each desktop update (desktop#456): the version, the build's hash and
-// the SHA-256 of the tar Electrobun applies, signed with Ed25519. Electrobun's Updater checks only the hash, which it
-// reads from the update itself; the app applies an update only once this manifest verifies under the public key it
-// ships (updates.ts, update-key.ts). The workflow signs it with the private one (scripts/sign-update.ts).
+// The manifest the release workflow signs for each desktop update (desktop#456): the platform it's for, the version, the
+// build's hash and the SHA-256 of the tar Electrobun applies, signed with Ed25519. Electrobun's Updater checks only the
+// hash, which it reads from the update itself; the app applies an update only once this manifest verifies under the
+// public key it ships (updates.ts, update-key.ts). The workflow signs it with the private one (scripts/sign-update.ts).
 
 export interface UpdateFacts {
+	/** Electrobun's prefix of the release's files: the channel, the system and the architecture (stable-win-x64). */
+	platform: string;
 	/** The version, x.y.z. */
 	version: string;
 	/** Electrobun's hash of the build, as its update.json names it. */
@@ -18,31 +20,40 @@ export interface UpdateManifest extends UpdateFacts {
 }
 
 const HEADER = "duvet desktop update v1";
+const PLATFORM = /^[a-z]{1,16}-(win|macos|linux)-(x64|arm64)$/;
 const VERSION = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
+// Electrobun names files after the hash (self-extraction/<hash>.tar), so a signed one is also a safe file name.
 const HASH = /^[0-9a-z]{1,64}$/;
 const SHA256 = /^[0-9a-f]{64}$/;
 const SIGNATURE = /^[A-Za-z0-9+/]{86}==$/;
 
 /** Whether facts are shaped as a signature may cover them: one line each, so no field can pass for another. */
 export function wellFormed(facts: UpdateFacts): boolean {
-	return VERSION.test(facts.version) && HASH.test(facts.hash) && SHA256.test(facts.tarSha256);
+	return (
+		PLATFORM.test(facts.platform) &&
+		VERSION.test(facts.version) &&
+		HASH.test(facts.hash) &&
+		SHA256.test(facts.tarSha256)
+	);
 }
 
 /** The bytes a signature covers. */
 export function manifestBytes(facts: UpdateFacts): Uint8Array<ArrayBuffer> {
-	return new TextEncoder().encode([HEADER, facts.version, facts.hash, facts.tarSha256].join("\n"));
+	return new TextEncoder().encode([HEADER, facts.platform, facts.version, facts.hash, facts.tarSha256].join("\n"));
 }
 
 /** A manifest as fetched, or null when it isn't one: any JSON goes in. */
 export function parseManifest(json: unknown): UpdateManifest | null {
 	if (typeof json !== "object" || json === null) return null;
+	const platform: unknown = Reflect.get(json, "platform");
 	const version: unknown = Reflect.get(json, "version");
 	const hash: unknown = Reflect.get(json, "hash");
 	const tarSha256: unknown = Reflect.get(json, "tarSha256");
 	const signature: unknown = Reflect.get(json, "signature");
-	if (typeof version !== "string" || typeof hash !== "string" || typeof tarSha256 !== "string") return null;
+	if (typeof platform !== "string" || typeof version !== "string") return null;
+	if (typeof hash !== "string" || typeof tarSha256 !== "string") return null;
 	if (typeof signature !== "string" || !SIGNATURE.test(signature)) return null;
-	const manifest = { version, hash, tarSha256, signature };
+	const manifest = { platform, version, hash, tarSha256, signature };
 	return wellFormed(manifest) ? manifest : null;
 }
 

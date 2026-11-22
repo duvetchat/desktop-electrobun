@@ -1,7 +1,12 @@
 <script lang="ts">
 	import { onMount, type ComponentProps } from "svelte";
-	import { PanelLeft as PanelLeftIcon, Plus as PlusIcon, RotateCw as RotateCwIcon } from "@lucide/svelte";
-	import { restartToUpdate, updateReady, watchUpdates } from "$lib/app-update";
+	import {
+		Download as DownloadIcon,
+		PanelLeft as PanelLeftIcon,
+		Plus as PlusIcon,
+		RotateCw as RotateCwIcon,
+	} from "@lucide/svelte";
+	import { restarting, takeUpdate, updateOffer, watchUpdates } from "$lib/app-update";
 	import { currentShell } from "$lib/platform";
 	import DragRegion from "$lib/components/DragRegion.svelte";
 	import TabBar from "$lib/components/TabBar.svelte";
@@ -38,7 +43,8 @@
 	// Windows' buttons touch the window's edge.
 	const flushEnd = shell.chrome === "windows";
 
-	// A newer version Bun downloaded and verified (#456, lib/app-update.ts): the strip offers to restart into it.
+	// A newer version Bun downloaded and verified (#456, lib/app-update.ts): the strip offers to restart into it, or to
+	// download it where Bun can't apply it.
 	onMount(() => void watchUpdates());
 </script>
 
@@ -72,15 +78,23 @@
 		{/snippet}
 	</Tooltip>
 	<DragRegion class="h-full flex-1" />
-	{#if $updateReady}
+	{#if $updateOffer}
 		<button
 			type="button"
-			class="titlebar-actions bg-duvet-accent text-duvet-on-accent shadow-duvet-raised flex h-7 shrink-0 items-center gap-1.5 rounded-full px-3 text-[12.5px] font-medium"
-			title="Duvet {$updateReady} is ready"
-			onclick={() => void restartToUpdate()}
+			class="titlebar-actions bg-duvet-accent text-duvet-on-accent shadow-duvet-raised flex h-7 shrink-0 items-center gap-1.5 rounded-full px-3 text-[12.5px] font-medium disabled:opacity-60"
+			title={$updateOffer.how === "download"
+				? `Duvet ${$updateOffer.version} is out: get it from duvet.chat`
+				: `Duvet ${$updateOffer.version} is ready`}
+			disabled={$restarting}
+			onclick={() => void takeUpdate()}
 		>
-			<RotateCwIcon size={13} aria-hidden="true" />
-			Restart to update
+			{#if $updateOffer.how === "download"}
+				<DownloadIcon size={13} aria-hidden="true" />
+				Download update
+			{:else}
+				<RotateCwIcon size={13} aria-hidden="true" />
+				{$restarting ? "Restarting…" : "Restart to update"}
+			{/if}
 		</button>
 	{/if}
 	<WindowControls side="end" />
