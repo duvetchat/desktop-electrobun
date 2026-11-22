@@ -9,6 +9,8 @@ import { pageCopyRules, SECOND_WINDOW_PAGES } from "../mainview/src/lib/app-wind
 // docs/redesign/PLATFORM.md §3). Every page the UI prerenders has a rule, the other windows' pages included.
 const routes = join(import.meta.dir, "../mainview/src/routes");
 const copy: Record<string, string> = config.build.copy;
+// Pages only the web serves, which the app never opens: duvet.chat/download (#456). They have no rule.
+const WEB_ONLY = ["download"];
 
 /** The pages SvelteKit prerenders, as their file's name in the build: a route's folders, without its (groups). */
 function pages(dir = routes, route: string[] = []): string[] {
@@ -26,6 +28,7 @@ describe("the pages the packaged app has", () => {
 			[
 				"app",
 				"change-email",
+				"download",
 				"forgot-password",
 				"index",
 				"invite",
@@ -38,9 +41,12 @@ describe("the pages the packaged app has", () => {
 		);
 	});
 
-	test("every prerendered page has its copy rule", () => {
-		const missing = pages().filter((page) => copy[`src/mainview/build/${page}.html`] !== `views/mainview/${page}.html`);
+	test("every prerendered page has its copy rule, but the web's own", () => {
+		const missing = pages().filter(
+			(page) => !WEB_ONLY.includes(page) && copy[`src/mainview/build/${page}.html`] !== `views/mainview/${page}.html`,
+		);
 		expect(missing).toEqual([]);
+		expect(WEB_ONLY.filter((page) => `src/mainview/build/${page}.html` in copy)).toEqual([]);
 	});
 
 	test("each of the other windows' pages has its copy rule", () => {

@@ -1,0 +1,43 @@
+name: Release
+
+# The desktop's stable build for Windows, signed and published to the rolling desktop-stable release of the public
+# duvetchat/releases, where the app's updater and duvet.chat/download look (#456). Electrobun builds only for the system
+# it runs on, so this runs on GitHub's Windows runner: the organisation's own runners are Linux.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# One release at a time: a second waits, never cancels one halfway through its uploads.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.3
+      # svelte-kit starts with node (its shebang).
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 26
+      - run: bun install --frozen-lockfile
+      - run: bun install --frozen-lockfile
+        working-directory: src/mainview
+      - run: bun run build:stable
+      - name: Sign the update
+        run: bun scripts/sign-update.ts
+        env:
+          DESKTOP_UPDATE_SIGNING_KEY: ${{ secrets.DESKTOP_UPDATE_SIGNING_KEY }}
+      - name: Publish to duvetchat/releases
+        run: bun scripts/publish-release.ts
+        env:
+          GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}

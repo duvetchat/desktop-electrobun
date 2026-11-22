@@ -1,12 +1,13 @@
 {
   "name": "@duvet/desktop",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "scripts": {
     "start": "bun run --cwd ./src/mainview build --mode development && electrobun dev",
     "dev": "electrobun dev --watch",
     "dev:hmr": "concurrently \"bun run hmr\" \"bun run dev\"",
     "hmr": "bun run --cwd ./src/mainview dev",
     "build:canary": "bun run --cwd ./src/mainview build && electrobun build --env=canary",
+    "build:stable": "bun run --cwd ./src/mainview build && electrobun build --env=stable",
     "check": "tsc --noEmit -p src/bun",
     "lint": "oxlint --deny-warnings .",
     "lint:fix": "oxlint --fix .",

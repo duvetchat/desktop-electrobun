@@ -23,6 +23,8 @@ import { Maximizer, rectOf } from "./window-frame";
 import { frameFromEvent, MainWindowKeeper, openingOf, parsePrefs } from "./main-window";
 import { dragWithWindows, letWindowsArrange, pageLoaded } from "./window-snap";
 import { startupSummary, writeStartupLine } from "./startup";
+import { UpdateChecker } from "./updates";
+import { UPDATE_PUBLIC_KEY } from "./update-key";
 import { rendererFor, shellPreload, windowChrome } from "./shell";
 import { keepKeysReachingThePage, type AppKit } from "./window-keys";
 import { placeWindowButtons } from "./window-buttons";
@@ -94,6 +96,9 @@ type AppRPCSchema = {
 			// Copy image, from the page's own right-click menu (#423, #450): the picture at the URL, fetched here
 			// (copy-image.ts), in base64, for the page to put on the clipboard itself; null when it can't be had.
 			pictureForCopy: { params: { url: string }; response: string | null };
+			// The version downloaded and verified, waiting for "Restart to update" (updates.ts, #456); null for none. A page
+			// asks as it starts, as updateReady may have gone out before it loaded.
+			pendingUpdate: { params: void; response: string | null };
 		};
 		messages: {
 			closeWindow: void;
@@ -122,6 +127,8 @@ type AppRPCSchema = {
 			// The theme the main window's page wears, at its start and on each change: on macOS the glass behind its
 			// sidebar takes the same (liquid-glass.ts, #374).
 			windowTheme: { theme: "light" | "dark" };
+			// "Restart to update": the app quits, is replaced by the version verified and opens again (#456).
+			applyUpdate: void;
 		};
 	};
 	webview: {
@@ -138,6 +145,8 @@ type AppRPCSchema = {
 			messageClicked: void;
 			// To a window that isn't the main one: a state of the main window's, to mirror.
 			windowState: WindowStateMessage;
+			// A newer version is downloaded and verified: the title bar offers "Restart to update" (#456).
+			updateReady: { version: string };
 		};
 	};
 };
@@ -211,6 +220,12 @@ function setSpotifyActivity(enabled: boolean) {
 	broadcastAggregatedActivities();
 }
 
+// The app's own updates, on the stable channel (#456, updates.ts): found, downloaded and verified against the manifest the
+// release workflow signs, then offered on the title bar; applied only when the user asks.
+const updates = new UpdateChecker(Updater, new Uint8Array(Buffer.from(UPDATE_PUBLIC_KEY, "base64")), (version) =>
+	rpc.send.updateReady({ version }),
+);
+
 const rpc = BrowserView.defineRPC<AppRPCSchema>({
 	// The webview's answer to activityImage, which decodes an image of up to 4 MiB; Electrobun's default is 1 s.
 	maxRequestTime: 10_000,
@@ -226,6 +241,7 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 			// The main window's page answers commands, and sends none.
 			windowCommand: () => ({ ok: false, error: "The main window sends no commands" }),
 			pictureForCopy: ({ url: imageUrl }) => pictureForCopy(String(imageUrl)),
+			pendingUpdate: () => updates.readyVersion,
 		},
 		messages: {
 			closeWindow: () => {
@@ -262,6 +278,7 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 				settingsWindows.stateFromMain(message);
 			},
 			openAppWindow: (request) => void settingsWindows.open(request),
+			applyUpdate: () => void updates.apply(),
 			windowTheme: ({ theme }) => {
 				if (!glass || (theme !== "light" && theme !== "dark")) return;
 				if (!setGlassAppearance(win.ptr, theme))
@@ -350,6 +367,8 @@ const win = new BrowserWindow({
 	rpc,
 });
 bunMarks.window = Date.now();
+// Looks for a newer version a while after the start and every few hours, on the stable channel alone (#456).
+void updates.start();
 // On macOS the system has the traffic lights in the corner of its own title bar, which is shorter than the page's
 // title line: they go in that line, centred in it (window-buttons.ts, #406). Before anything else is done to the
 // window: Electrobun shows a window as it makes it, with its lights still at that corner. Without the library they

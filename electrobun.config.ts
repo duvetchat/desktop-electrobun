@@ -86,4 +86,9 @@ export default {
 	runtime: {
 		dragRegions: true,
 	},
+	// Where the app's updates come from (#456, src/bun/updates.ts): the rolling desktop-stable release of the public
+	// duvetchat/releases, which the release workflow fills. A build also diffs against the version there for its patch.
+	release: {
+		baseUrl: "https://github.com/duvetchat/releases/releases/download/desktop-stable",
+	},
 } satisfies ElectrobunConfig;
