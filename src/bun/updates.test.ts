@@ -181,9 +181,12 @@ describe("the app's own updates (#456)", () => {
 		expect(did).toEqual(["check newbuild01"]);
 
 		expect(updateBatCanName("C:/Users/Admin/AppData/Local/com.duvet.desktop/stable")).toBe(true);
-		expect(updateBatCanName("C:/Users/a&b (x) ^!/AppData/Local/com.duvet.desktop/stable")).toBe(true);
+		expect(updateBatCanName("C:/Users/John Smith (x) !/AppData/Local/com.duvet.desktop/stable")).toBe(true);
 		expect(updateBatCanName("C:/Users/José/AppData/Local/com.duvet.desktop/stable")).toBe(false);
 		expect(updateBatCanName("C:/Users/100%/AppData/Local/com.duvet.desktop/stable")).toBe(false);
+		// Electrobun hands the folder to schtasks through cmd, outside cmd's quotes.
+		expect(updateBatCanName("C:/Users/a&b/AppData/Local/com.duvet.desktop/stable")).toBe(false);
+		expect(updateBatCanName("C:/Users/a^b/AppData/Local/com.duvet.desktop/stable")).toBe(false);
 	});
 
 	test("applying runs once at a time, and one that fails hands the offer back for another try", async () => {

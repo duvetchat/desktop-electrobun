@@ -11,7 +11,10 @@
 // - downloadUpdate patches from the running build's tar when it's there, and files what the patch makes of it before
 //   anything is verified. That tar is deleted first, so it downloads the whole build.
 // - On Windows it applies through an update.bat written in UTF-8, which cmd reads in the console's code page, and where
-//   `%` starts a variable. An app folder with either gets "Download update" (duvet.chat/download) instead.
+//   `%` starts a variable. It schedules that script with a schtasks command run through cmd, which reads the folder
+//   outside its quotes, where `&` ends the command and `^` escapes the next character: with `^`, the app would quit
+//   and not open again by itself. An app folder with any of those gets "Download update" (duvet.chat/download)
+//   instead.
 import { rm } from "node:fs/promises";
 import { join } from "node:path";
 import { isNewerVersion, manifestVerifies, parseManifest, type UpdateManifest } from "./update-manifest";
@@ -50,9 +53,9 @@ export function platformPrefix(
 	return `${channel}-${os}-${arch}`;
 }
 
-/** Whether Electrobun's update.bat can name a folder: printable ASCII but `%` (space to `$`, then `&` to `~`). */
+/** Whether Electrobun can apply an update in a folder on Windows: printable ASCII (space to `~`) but `%`, `&` and `^`. */
 export function updateBatCanName(folder: string): boolean {
-	return /^[ -$&-~]*$/.test(folder);
+	return /^[ -~]*$/.test(folder) && !/[%&^]/.test(folder);
 }
 
 /** The SHA-256 of a file, in hex, read as a stream. */
