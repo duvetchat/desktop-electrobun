@@ -1,0 +1,61 @@
+name: Release
+
+# The desktop's stable build for Windows, signed and published to the rolling desktop-stable release of the public
+# duvetchat/releases, where the app's updater and duvet.chat/download look (#456). Electrobun builds only for the system
+# it runs on, so this runs on GitHub's Windows runner: the organisation's own runners are Linux. A tag v<package.json's
+# version> on main publishes that version; any other tag stops before the build.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+# One release at a time: a second waits, never cancels one halfway through its uploads.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    # The actions are pinned by commit, as this job signs: a tag moved upstream can't change what runs here.
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # All of main, to tell whether the tag is on it.
+          fetch-depth: 0
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.4.3
+      - name: Only the tag of package.json's version, on main
+        shell: bash
+        run: |
+          version=$(bun -p "require('./package.json').version")
+          if [ "$GITHUB_REF" != "refs/tags/v$version" ]; then
+            echo "::error::$GITHUB_REF isn't v$version, package.json's version"
+            exit 1
+          fi
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "::error::v$version isn't on main"
+            exit 1
+          fi
+      # svelte-kit starts with node (its shebang).
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 26
+      - run: bun install --frozen-lockfile
+      - run: bun install --frozen-lockfile
+        working-directory: src/mainview
+      - run: bun run build:stable
+      # ponytail: the key's step runs in the job whose installs ran the dependencies' scripts; a job of its own, handed
+      # the build as an artifact, once the organisation's artifact storage takes one again (#458).
+      - name: Sign the update
+        run: bun scripts/sign-update.ts
+        env:
+          DESKTOP_UPDATE_SIGNING_KEY: ${{ secrets.DESKTOP_UPDATE_SIGNING_KEY }}
+      - name: Publish to duvetchat/releases
+        run: bun scripts/publish-release.ts
+        env:
+          GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
