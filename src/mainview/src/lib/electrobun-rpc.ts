@@ -17,6 +17,10 @@ export interface NotificationRequest {
 	silent: boolean;
 }
 
+/** What the title bar offers of the app's own updates (src/bun/updates.ts, #456): restart into a version Bun downloaded
+ * and verified, or download it from duvet.chat, when Bun can't apply it there. */
+export type UpdateOffer = { version: string; how: "restart" | "download" };
+
 export interface ActivityPayload {
 	// 0 (or none) playing, 2 listening.
 	type?: number;
@@ -48,6 +52,8 @@ export type AppRPCSchema = {
 			// (src/bun/copy-image.ts), in base64, for the page to put on the clipboard (lib/copy-picture.ts); null when it
 			// can't be had. The main window's only.
 			pictureForCopy: { params: { url: string }; response: string | null };
+			// What the title bar offers of the app's own updates (lib/app-update.ts, #456); null for nothing.
+			pendingUpdate: { params: void; response: UpdateOffer | null };
 		};
 		messages: {
 			closeWindow: void;
@@ -69,6 +75,8 @@ export type AppRPCSchema = {
 			// From the main window on macOS: the theme the page wears, which the glass behind its sidebar takes
 			// (lib/vibrancy.ts, src/bun/liquid-glass.ts; #374).
 			windowTheme: { theme: "light" | "dark" };
+			// "Restart to update": Bun applies the version it verified, and the app opens again on it (#456).
+			applyUpdate: void;
 		};
 	};
 	webview: {
@@ -84,6 +92,8 @@ export type AppRPCSchema = {
 			messageClicked: void;
 			// To a window that isn't the main one: a state of the main window's, to mirror.
 			windowState: WindowStateMessage;
+			// What the title bar offers of the app's own updates, at each change: null for nothing (#456).
+			updateReady: UpdateOffer | null;
 		};
 	};
 };
@@ -101,6 +111,7 @@ export type AppRPCClient = {
 		windowState: (message: WindowStateMessage) => void;
 		openAppWindow: (request: OpenAppWindow) => void;
 		windowTheme: (params: { theme: "light" | "dark" }) => void;
+		applyUpdate: () => void;
 	};
 	request: {
 		showNotification: (params: NotificationRequest) => Promise<boolean>;
@@ -108,6 +119,7 @@ export type AppRPCClient = {
 		nativeWindowDrag: () => Promise<boolean>;
 		windowCommand: (command: WindowCommand) => Promise<WindowAnswer>;
 		pictureForCopy: (params: { url: string }) => Promise<string | null>;
+		pendingUpdate: () => Promise<UpdateOffer | null>;
 	};
 	on: {
 		activityUpdate: (handler: (data: ActivityPayload[] | null) => void) => void;
@@ -116,6 +128,8 @@ export type AppRPCClient = {
 		windowState: (handler: (message: WindowStateMessage) => void) => void;
 		/** In the main window: what answers the other windows' commands. One answerer: a later one replaces it. */
 		windowCommand: (handler: (command: WindowCommand) => WindowAnswer | Promise<WindowAnswer>) => void;
+		/** What the title bar offers of the app's own updates, at each change (#456). */
+		updateReady: (handler: (offer: UpdateOffer | null) => void) => void;
 	};
 };
 
@@ -128,6 +142,7 @@ export function isElectrobunWindow() {
 const activityListeners: ((data: ActivityPayload[] | null) => void)[] = [];
 const clickListeners: (() => void)[] = [];
 const stateListeners: ((message: WindowStateMessage) => void)[] = [];
+const updateListeners: ((offer: UpdateOffer | null) => void)[] = [];
 let commandAnswerer: ((command: WindowCommand) => WindowAnswer | Promise<WindowAnswer>) | null = null;
 
 async function createRpcClient(): Promise<AppRPCClient | null> {
@@ -162,6 +177,9 @@ async function createRpcClient(): Promise<AppRPCClient | null> {
 				windowState: (message: WindowStateMessage) => {
 					for (const listener of stateListeners) listener(message);
 				},
+				updateReady: (offer: UpdateOffer | null) => {
+					for (const listener of updateListeners) listener(offer);
+				},
 			},
 		},
 	});
@@ -177,6 +195,7 @@ async function createRpcClient(): Promise<AppRPCClient | null> {
 			nativeWindowDrag: () => rpc.request.nativeWindowDrag(),
 			windowCommand: (command) => rpc.request.windowCommand(command),
 			pictureForCopy: (params) => rpc.request.pictureForCopy(params),
+			pendingUpdate: () => rpc.request.pendingUpdate(),
 		},
 		on: {
 			activityUpdate: (handler) => {
@@ -192,6 +211,9 @@ async function createRpcClient(): Promise<AppRPCClient | null> {
 				// Never in a page of another window, whatever asks: only the main window's page answers (Bun asks
 				// no other, either: src/bun/window-relay.ts).
 				if (secondWindowOfPath(location.pathname) === null) commandAnswerer = handler;
+			},
+			updateReady: (handler) => {
+				updateListeners.push(handler);
 			},
 		},
 	};
