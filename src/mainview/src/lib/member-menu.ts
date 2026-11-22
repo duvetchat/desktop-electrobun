@@ -66,6 +66,19 @@ export interface MemberMenuItems {
 }
 
 /**
+ * Whether the user (`me`) can open a direct conversation with someone: someone else, a person and not a bot, with whom
+ * they have one already or can start one, which takes a friendship (the API's rule). A member's menu offers Message
+ * and Call by it, and their profile Send direct message.
+ */
+export function canChatWith(
+	me: string | null | undefined,
+	person: Pick<MenuPerson, "id" | "isBot">,
+	ties: Pick<Ties, "friend" | "dm">,
+): boolean {
+	return !!me && me !== person.id && !person.isBot && (ties.dm || ties.friend);
+}
+
+/**
  * What a member's menu offers, besides Copy user ID, which it always has:
  * - Profile and Mention where its list does them;
  * - for someone else: Message and Call in a direct conversation the user has with them, or can start, which takes a
@@ -82,7 +95,7 @@ export function memberMenuItems({ me, person, space, ties, busy, can }: MemberMe
 	const other = !!me && !self;
 	// Someone else who is a person, not a bot.
 	const human = other && !person.isBot;
-	const chats = human && (ties.dm || ties.friend);
+	const chats = canChatWith(me?.id, person, ties);
 	const managesRoles = !!space && !!person.memberId && hasSpacePermission(space, Permission.ManageRoles);
 	const held = new Set(space?.member_roles[person.id] ?? []);
 	return {

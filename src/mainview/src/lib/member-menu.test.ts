@@ -5,7 +5,7 @@ import type { GatewayRole, GatewaySpace, GatewayUser } from "$lib/types";
 // moderationOf's module has the confirmation and the toasts, .svelte.ts modules whose $state only Svelte's compiler
 // knows: here it's the value itself.
 Object.assign(globalThis, { $state: <T>(value: T) => value });
-const { memberMenuItems, personOf, tiesOf } = await import("$lib/member-menu");
+const { canChatWith, memberMenuItems, personOf, tiesOf } = await import("$lib/member-menu");
 type Input = Parameters<typeof memberMenuItems>[0];
 
 const SPACE = "01920000-0000-7000-8000-0000000005a0";
@@ -127,6 +127,23 @@ describe("a member's menu", () => {
 		expect(
 			memberMenuItems(input({ space: null, can: { ...input().can, removeFromGroup: true } })).removeFromGroup,
 		).toBe(true);
+	});
+});
+
+// The menu's Message and Call, and a profile's Send direct message.
+describe("a direct conversation with someone", () => {
+	const person = { id: CAROL, isBot: false };
+
+	test("opens with a friend, and with someone the user has one with already", () => {
+		expect(canChatWith(ME, person, { friend: true, dm: false })).toBe(true);
+		expect(canChatWith(ME, person, { friend: false, dm: true })).toBe(true);
+	});
+
+	test("doesn't with a stranger, whom the API refuses, a bot, oneself, or nobody signed in", () => {
+		expect(canChatWith(ME, person, { friend: false, dm: false })).toBe(false);
+		expect(canChatWith(ME, { ...person, isBot: true }, { friend: true, dm: true })).toBe(false);
+		expect(canChatWith(CAROL, person, { friend: true, dm: true })).toBe(false);
+		expect(canChatWith(null, person, { friend: true, dm: true })).toBe(false);
 	});
 });
 

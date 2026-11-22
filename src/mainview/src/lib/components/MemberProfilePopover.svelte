@@ -1,15 +1,24 @@
 <script lang="ts">
 	import type { Snippet } from "svelte";
-	import { UserPlus, UserCheck, Loader2, RotateCcw, UserMinus, Ban } from "@lucide/svelte";
+	import { UserPlus, UserCheck, Loader2, RotateCcw, UserMinus, Ban, MessageCircle } from "@lucide/svelte";
 	import { Popover } from "bits-ui";
 	import type { MemberOnSidebar, GatewaySpace, Role } from "$lib/types";
-	import { currentUser, friends, pendingFriendRequests, sentFriendRequests, userActivities } from "$lib/stores.svelte";
+	import {
+		conversations,
+		currentUser,
+		friends,
+		pendingFriendRequests,
+		sentFriendRequests,
+		userActivities,
+	} from "$lib/stores.svelte";
 	import { BADGES } from "$lib/badges";
 	import { assignRoleToMember, removeRoleFromMember } from "$lib/api/roles";
 	import { sendFriendRequest, getSentRequests, acceptFriendRequest } from "$lib/api/friends";
 	import { rememberFriendStatuses } from "$lib/api/ws/connection";
 	import { Permission, ALL_PERMISSIONS, canManageRoleAt, hasSpacePermission } from "$lib/permissions";
 	import { banRequest, kickFromSpace, moderationOf } from "$lib/moderation";
+	import { chatWith } from "$lib/member-actions";
+	import { canChatWith, tiesOf } from "$lib/member-menu";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
 	import ActivityList from "$lib/components/ActivityList.svelte";
 	import ProfileBio from "$lib/components/ProfileBio.svelte";
@@ -51,6 +60,22 @@
 
 	// Kick and Ban, when the API would let the user act on this member (moderationOf): in a space only.
 	const moderation = $derived(spaceId ? moderationOf(space, member) : null);
+
+	// Send direct message, where a member's menu offers Message (canChatWith): to someone the user has a direct
+	// conversation with or is friends with, as the API starts one between friends only.
+	const canMessage = $derived(
+		!!$currentUser &&
+			canChatWith(
+				$currentUser.id,
+				{ id: member.id, isBot: member.is_bot },
+				tiesOf(member.id, $currentUser.id, {
+					friends: $friends,
+					received: $pendingFriendRequests,
+					sent: $sentFriendRequests,
+					conversations: $conversations,
+				}),
+			),
+	);
 
 	const assignableRoles = $derived(
 		space ? [...space.roles].filter((r) => r.id !== spaceId).sort((a, b) => b.position - a.position) : [],
@@ -277,8 +302,11 @@
 								{/if}
 							</div>
 
+							<!-- What's under it stays in the window: Kick and Ban, and Send direct message's 46 px when it's there. -->
 							<div
-								class="bg-duvet-sunk mt-4 max-h-[max(160px,calc(100vh-330px))] overflow-hidden overflow-y-auto rounded-[14px] p-3"
+								class="bg-duvet-sunk mt-4 {canMessage
+									? 'max-h-[max(160px,calc(100vh-376px))]'
+									: 'max-h-[max(160px,calc(100vh-330px))]'} overflow-hidden overflow-y-auto rounded-[14px] p-3"
 							>
 								<h2
 									class="font-serif-lg text-duvet-ink text-[21px] leading-[1.15] font-medium tracking-[-0.012em] break-words select-text"
@@ -372,6 +400,21 @@
 									</div>
 								{/if}
 							</div>
+
+							<!-- Their direct conversation, opened as their menu's Message opens it (the app's page): the one there is, or
+							     a new one. -->
+							{#if canMessage}
+								<button
+									class="{buttonClass('primary')} mt-3 w-full"
+									onclick={() => {
+										onOpenChange(false);
+										chatWith(member.id);
+									}}
+								>
+									<MessageCircle class="size-4" />
+									Send direct message
+								</button>
+							{/if}
 
 							{#if moderation}
 								<div class="border-duvet-line mt-3 flex flex-col gap-0.5 border-t pt-2">
