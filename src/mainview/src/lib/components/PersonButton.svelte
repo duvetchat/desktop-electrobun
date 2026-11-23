@@ -66,7 +66,7 @@
 <MemberProfilePopover {member} {spaceId} {space} {side} {open} {onOpenChange} {onRemoveMember} {triggerClass}>
 	{#if banner}<MemberBanner src={member.banner_url} {offline} />{/if}
 
-	<div class="relative flex min-w-0 flex-1 items-center gap-3 pl-1">
+	<div class="relative flex min-w-0 flex-1 items-center gap-4">
 		<div class="relative shrink-0 {dimOffline && offline ? 'opacity-60' : ''}">
 			<UserAvatar src={member.avatar_url} name={member.username} size={avatarSize} />
 			{#if typing}

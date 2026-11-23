@@ -476,7 +476,6 @@
 						</label>
 						{#each friendGroups as group (group.title)}
 							{#if group.friends.length > 0}
-
 								<h3 class="text-duvet-ink2 mx-2 mt-2 mb-1 text-[13px] font-bold">
 									{group.title} <span class="tabular-nums">{group.friends.length}</span>
 								</h3>

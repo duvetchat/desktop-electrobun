@@ -1382,10 +1382,10 @@
 	{#snippet foot()}
 		<button
 			type="button"
-			class="text-duvet-danger hover:bg-duvet-danger/10 flex h-8 w-full items-center gap-[9px] rounded-[9px] px-2 text-left text-[13px] font-medium transition-colors duration-[120ms] motion-reduce:transition-none"
+			class="text-duvet-danger hover:bg-duvet-danger/10 flex h-8 w-full items-center gap-2 rounded-[9px] px-2 text-left text-[13px] font-medium transition-colors duration-[120ms] motion-reduce:transition-none"
 			onclick={() => host.logout()}
 		>
-			<span class="grid size-[22px] shrink-0 place-items-center"><LogOutIcon size={15} /></span>
+			<span class="grid size-[22px] shrink-0 place-items-center"><LogOutIcon size={14} /></span>
 			Sign out
 		</button>
 	{/snippet}

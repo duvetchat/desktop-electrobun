@@ -86,7 +86,7 @@
 					{#each group.items as item (item.id)}
 						<button
 							type="button"
-							class="flex h-8 shrink-0 items-center gap-[9px] rounded-[9px] px-2 text-left text-[13px] font-medium transition-colors duration-[120ms] motion-reduce:transition-none {active ===
+							class="flex h-8 shrink-0 items-center gap-2 rounded-[9px] px-2 text-left text-[13px] font-medium transition-colors duration-[120ms] motion-reduce:transition-none {active ===
 							item.id
 								? 'bg-duvet-accent-tint text-duvet-ink'
 								: 'text-duvet-ink hover:bg-duvet-sb-hover'}"
