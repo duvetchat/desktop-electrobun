@@ -33,8 +33,9 @@
 		/** The label already says the state, as it changes with it ("Mute" then "Unmute"): the button is then drawn
 		 * pressed but not announced as pressed, which would say the state twice ("Unmute, pressed"). */
 		stateInName?: boolean;
-		/** leave is the destructive fill; the stage tones are for the dark call stage, whatever the theme. */
-		tone?: "plain" | "leave" | "stage" | "stage-leave";
+		/** leave is the destructive fill; the stage tones are for the dark call stage, whatever the theme; quiet is the
+		 * sidebar's own bar: no fill until hovered or pressed. */
+		tone?: "plain" | "quiet" | "leave" | "stage" | "stage-leave";
 		/** panel: 30 tall, as wide as its place (the sidebar's block). square: 30 × 30. bar: 44 × 38 (a voice room's
 		 * bar). stage: 42 × 36 (a call's). */
 		shape?: "panel" | "square" | "bar" | "stage";
@@ -65,6 +66,11 @@
 			return pressed
 				? "bg-duvet-media-ink text-duvet-stage"
 				: "bg-fixed-white/14 text-duvet-media-ink hover:bg-fixed-white/22";
+		}
+		if (tone === "quiet") {
+			return pressed
+				? "bg-duvet-ink text-duvet-bg shadow-duvet-press"
+				: "text-duvet-ink2 hover:bg-duvet-sb-hover hover:text-duvet-ink";
 		}
 		return pressed
 			? "bg-duvet-ink text-duvet-bg shadow-duvet-press"

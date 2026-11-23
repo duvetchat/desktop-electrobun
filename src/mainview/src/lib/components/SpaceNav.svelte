@@ -69,9 +69,12 @@
 	import DMSidebar from "$lib/components/DMSidebar.svelte";
 	import DragRegion from "$lib/components/DragRegion.svelte";
 	import MediaControls from "$lib/components/MediaControls.svelte";
+	import { liveMedia } from "$lib/media-source";
+	import { mediaPopOut } from "$lib/media-popout.svelte";
 	import NotificationSubmenu from "$lib/components/NotificationSubmenu.svelte";
 	import NowSection from "$lib/components/NowSection.svelte";
 	import ProfileRow from "$lib/components/ProfileRow.svelte";
+	import ProfileControls from "$lib/components/ProfileControls.svelte";
 	import TabIcon from "$lib/components/TabIcon.svelte";
 	import VoiceNoteBar from "$lib/components/VoiceNoteBar.svelte";
 	import WindowControls from "$lib/components/WindowControls.svelte";
@@ -735,19 +738,23 @@
 		</div>
 	</div>
 
-	<!-- The sidebar's bottom (S-07), top to bottom: the playback bar, the media controls, the profile row, and the
-	     All · Chats · Spaces switch. Beside the folded edge, which has the user's controls, only the switch shows. -->
-	<div class="flex shrink-0 flex-col gap-2 px-2.5 pt-2 pb-2.5 shadow-[0_-1px_0_var(--duvet-sb-edge)]">
+	<!-- The sidebar's bottom (S-07), top to bottom: the playback bar, the media controls, the user's own bar, the
+	     profile row, and the All · Chats · Spaces switch. Beside the folded edge, which has the user's controls, only the
+	     switch shows. -->
+	<div class="flex shrink-0 flex-col gap-1 px-2.5 pt-1 pb-2.5 shadow-[0_-1px_0_var(--duvet-sb-edge)]">
 		{#if showUser}
 			<!-- MOUNT POINT (Calls & media): the playback bar of a voice note or an audio file. It draws nothing while
 			     nothing plays. -->
 			<VoiceNoteBar />
 			<!-- The media controls, Calls & media's (#357): outside a call, the row of the microphone (with its picker),
 			     deafen and noise suppression; in a call they grow into the call panel, whose first row says where the user
-			     is, with the ping and Disconnect. One block, above the profile row. -->
-			<div class="shrink-0" data-mount="media-controls">
-				<MediaControls />
-			</div>
+			     is, with the ping and Disconnect. One block, above the user's bar. -->
+			{#if $liveMedia.place || (mediaPopOut.available && mediaPopOut.out)}
+				<div class="shrink-0" data-mount="media-controls">
+					<MediaControls />
+				</div>
+			{/if}
+			<ProfileControls />
 			<ProfileRow />
 		{/if}
 		<div class="relative">

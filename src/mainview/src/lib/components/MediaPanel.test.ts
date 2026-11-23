@@ -51,8 +51,8 @@ const button = (all: Tag[], name: string) => buttons(all).find((tag) => tag.attr
 const classes = (tag: Tag | undefined) => (tag?.attributes.class ?? "").split(/\s+/);
 
 describe("out of voice", () => {
-	// The sidebar's row of controls is the profile row's now (ProfileRow, beside Settings): the panel has nothing to say
-	// until there is a voice to show.
+	// The sidebar's row of controls is the user's own bar's now (ProfileControls, under the profile row): the panel has
+	// nothing to say until there is a voice to show.
 	test("draws nothing", async () => {
 		expect(await drawn(IDLE_MEDIA)).toEqual([]);
 	});

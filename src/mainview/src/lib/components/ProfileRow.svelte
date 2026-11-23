@@ -1,77 +1,30 @@
 <script lang="ts">
-	import { onMount } from "svelte";
-	import {
-		ChevronsUpDown as ChevronsUpDownIcon,
-		HeadphoneOff,
-		Headphones,
-		Mic,
-		MicOff,
-		Settings as GearSixIcon,
-	} from "@lucide/svelte";
+	import { ChevronsUpDown as ChevronsUpDownIcon } from "@lucide/svelte";
 	import { speakingUsers, currentUser } from "$lib/stores.svelte";
 	import { getAvatarURL } from "$lib/common/common";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
-	import UserSettings from "$lib/components/UserSettings.svelte";
+	import ProfileControls from "$lib/components/ProfileControls.svelte";
 	import StatusMenu from "$lib/components/StatusMenu.svelte";
 	import StatusDot from "$lib/components/StatusDot.svelte";
 	import MediaControls from "$lib/components/MediaControls.svelte";
-	import MediaButton from "$lib/components/MediaButton.svelte";
-	import { liveMedia, liveMediaActions } from "$lib/media-source";
 	import Avatar from "$lib/components/ui/Avatar.svelte";
-	import { iconButtonClass } from "$lib/components/ui/recipes";
 	import { ownMobileOnly } from "$lib/api/ws/connection";
-	import { SETTINGS_MENU_COMMAND } from "$lib/app-menu";
-	import { getElectrobunRpc } from "$lib/electrobun-rpc";
-	import { currentShell } from "$lib/platform";
-	import { isSettingsShortcut } from "$lib/shell-layout";
 	import { STATUS_CHOICES, chosenStatus } from "$lib/status";
 	import { userStatusToString } from "$lib/types";
-	import { addWindowCommands, answerWindowCommand } from "$lib/window-commands";
 
 	// The profile row at the sidebar's foot (#357, S-07): who the user is (their avatar with its status, their name
-	// and the status they chose), which opens the status menu, and the way into Settings. The sidebar mounts the
-	// playback bar and the media controls above it, as blocks of their own (SpaceNav.svelte). Folded (`collapsed`), it
-	// is the edge's narrow column instead, which still stacks the media controls (with the voice the user is in and
-	// its Leave) under the avatar: the edge has no room for them elsewhere. It was UserStatusBar until the redesign split it.
+	// and the status they chose), which opens the status menu. The microphone, deafen and Settings live on the bar
+	// over it (ProfileControls.svelte), so the row takes the sidebar's whole width. Folded (`collapsed`), it is the
+	// edge's narrow column instead, which still stacks the media controls (with the voice the user is in and its Leave)
+	// and Settings under the avatar: the edge has no room for them elsewhere. It was UserStatusBar until the redesign
+	// split it.
 	let { collapsed = false }: { collapsed?: boolean } = $props();
 
 	// The status the user chose, which everyone sees while they're connected.
 	const myChoice = $derived(chosenStatus($currentUser?.status));
 	const myStatus = $derived(userStatusToString(myChoice));
 	const myStatusLabel = $derived(STATUS_CHOICES.find((c) => c.status === myChoice)?.label ?? "");
-
-	// Quick mute and deafen beside Settings, as the media controls above the row have them: the stores' state, so both
-	// say the same thing (a deafen mutes too, lib/voice.ts).
-	const media = $derived($liveMedia);
-	const actions = liveMediaActions;
-	const inVoice = $derived(media.place !== null);
-
-	let showUserSettings = $state(false);
-
-	// Settings' own shortcut: ⌘, on macOS, Ctrl , elsewhere. Not over another dialog.
-	const mac = currentShell().os === "mac";
-	/** Opens Settings, unless another dialog is up; whether they're open. */
-	function openSettings(): boolean {
-		if (!showUserSettings && document.querySelector('[role="dialog"], [role="alertdialog"]')) return false;
-		showUserSettings = true;
-		return true;
-	}
-	function onKeydown(event: KeyboardEvent) {
-		if (!isSettingsShortcut(event, mac) || showUserSettings || !openSettings()) return;
-		event.preventDefault();
-	}
-	// And the menu bar's Settings… on macOS (src/bun/app-menu.ts), whose ⌘, the page sees first: Bun sends it to the main
-	// window's page as a command (lib/window-commands.ts), which this row answers while it is mounted, as one is at a time.
-	onMount(() => {
-		const stop = addWindowCommands(SETTINGS_MENU_COMMAND.channel, { [SETTINGS_MENU_COMMAND.name]: openSettings });
-		getElectrobunRpc()
-			.then((rpc) => rpc?.on.windowCommand(answerWindowCommand))
-			.catch((err: unknown) => console.error("[settings] The menu bar's Settings… won't reach this page:", err));
-		return stop;
-	});
 </script>
-
-<svelte:window onkeydown={onKeydown} />
 
 {#if collapsed && $currentUser}
 	<div class="border-duvet-sb-edge flex shrink-0 flex-col items-center gap-1 border-t px-1 py-2">
@@ -91,17 +44,15 @@
 			/>
 		</StatusMenu>
 		<MediaControls collapsed />
-		<button class={iconButtonClass()} aria-label="Settings" title="Settings" onclick={() => (showUserSettings = true)}>
-			<GearSixIcon class="size-4" />
-		</button>
+		<ProfileControls collapsed />
 	</div>
 {/if}
 
 <!-- The profile row: the avatar, the name and the chosen status open the status menu. -->
 {#if !collapsed && $currentUser}
-	<div class="flex min-w-0 shrink-0 items-center gap-0.5">
+	<div class="w-full min-w-0 shrink-0">
 		<StatusMenu
-			class="group hover:bg-duvet-sb-hover focus-visible:outline-duvet-accent flex min-w-0 flex-1 cursor-pointer items-center gap-2.5 rounded-xl px-1.5 py-1 text-left transition-colors duration-[120ms] focus-visible:outline-2 motion-reduce:transition-none"
+			class="group hover:bg-duvet-sb-hover focus-visible:outline-duvet-accent flex w-full min-w-0 cursor-pointer items-center gap-2.5 rounded-xl px-1.5 py-1 text-left transition-colors duration-[120ms] focus-visible:outline-2 motion-reduce:transition-none"
 		>
 			<span
 				class="shrink-0 rounded-full transition-shadow duration-200 motion-reduce:transition-none {$speakingUsers.has(
@@ -126,34 +77,5 @@
 			</span>
 			<ChevronsUpDownIcon class="text-duvet-ink2 size-3.5 shrink-0" aria-hidden="true" />
 		</StatusMenu>
-		{#if !inVoice}
-			<MediaButton
-				label={media.muted ? "Unmute" : "Mute"}
-				tip={media.canSpeak ? (media.muted ? "Unmute" : "Mute") : "You can't speak in this room"}
-				pressed={media.muted}
-				stateInName
-				disabled={!media.canSpeak}
-				shape="square"
-				side="top"
-				onclick={actions.toggleMute}
-			>
-				{#if media.muted}<MicOff size={16} />{:else}<Mic size={16} />{/if}
-			</MediaButton>
-			<MediaButton
-				label={media.deafened ? "Undeafen" : "Deafen"}
-				pressed={media.deafened}
-				stateInName
-				shape="square"
-				side="top"
-				onclick={actions.toggleDeafen}
-			>
-				{#if media.deafened}<HeadphoneOff size={16} />{:else}<Headphones size={16} />{/if}
-			</MediaButton>
-		{/if}
-		<button class={iconButtonClass()} aria-label="Settings" title="Settings" onclick={() => (showUserSettings = true)}>
-			<GearSixIcon class="size-4" />
-		</button>
 	</div>
 {/if}
-
-<UserSettings bind:open={showUserSettings} />
