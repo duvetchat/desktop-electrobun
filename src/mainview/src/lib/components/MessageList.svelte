@@ -1223,7 +1223,7 @@
 						<div
 							data-message-id={message.id}
 							tabindex={tabStopId === message.id ? 0 : -1}
-							class="group/row relative grid grid-cols-[52px_minmax(0,1fr)] rounded-xl px-2 py-[3px] {shape.first
+							class="group/row relative grid grid-cols-[52px_minmax(0,1fr)] rounded-xl px-1 py-[3px] {shape.first
 								? 'mt-3 pt-1.5'
 								: ''} {isFailed
 								? 'bg-duvet-danger/10'
