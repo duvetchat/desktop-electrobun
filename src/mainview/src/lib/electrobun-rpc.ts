@@ -54,6 +54,8 @@ export type AppRPCSchema = {
 			pictureForCopy: { params: { url: string }; response: string | null };
 			// What the title bar offers of the app's own updates (lib/app-update.ts, #456); null for nothing.
 			pendingUpdate: { params: void; response: UpdateOffer | null };
+			// Where the YouTube relay listens (src/bun/player-relay.ts), or null.
+			playerRelay: { params: void; response: string | null };
 		};
 		messages: {
 			closeWindow: void;
@@ -120,6 +122,7 @@ export type AppRPCClient = {
 		windowCommand: (command: WindowCommand) => Promise<WindowAnswer>;
 		pictureForCopy: (params: { url: string }) => Promise<string | null>;
 		pendingUpdate: () => Promise<UpdateOffer | null>;
+		playerRelay: () => Promise<string | null>;
 	};
 	on: {
 		activityUpdate: (handler: (data: ActivityPayload[] | null) => void) => void;
@@ -196,6 +199,7 @@ async function createRpcClient(): Promise<AppRPCClient | null> {
 			windowCommand: (command) => rpc.request.windowCommand(command),
 			pictureForCopy: (params) => rpc.request.pictureForCopy(params),
 			pendingUpdate: () => rpc.request.pendingUpdate(),
+			playerRelay: () => rpc.request.playerRelay(),
 		},
 		on: {
 			activityUpdate: (handler) => {

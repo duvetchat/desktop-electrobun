@@ -8,14 +8,17 @@
 
 <script lang="ts">
 	import { Play as PlayIcon } from "@lucide/svelte";
+	import { onMount } from "svelte";
 	import { isElectrobunWindow } from "$lib/electrobun-rpc";
+	import { loadRelayOrigin, relayOrigin } from "$lib/player-relay";
 	import { playerFrame } from "$lib/urls";
 
 	// The player page at url, framed with playerFrame's sandbox once its poster is clicked, so that the page loads, and
 	// its host sees a view, only when someone plays it (desktop#147); played is the page played so far, framed at once.
 	// A player the API frames itself starts at its click. In the packaged app any other page opens in the browser
 	// instead, as Electrobun's preload (with its RPC key) runs in frames too: its poster is then a link, which
-	// lib/external-links.ts hands to the browser.
+	// lib/external-links.ts hands to the browser. In the app a YouTube player is framed through the relay on loopback
+	// (relay, from lib/player-relay.ts), which gives it the Referer that views:// lacks.
 	let {
 		url,
 		title,
@@ -24,6 +27,7 @@
 		poster,
 		ownHosts,
 		packaged = isElectrobunWindow(),
+		relay,
 		played,
 	}: {
 		url: string;
@@ -33,6 +37,7 @@
 		poster: string | undefined;
 		ownHosts: string[];
 		packaged?: boolean;
+		relay?: string | null;
 		played?: string;
 	} = $props();
 
@@ -46,7 +51,10 @@
 		if ($nowPlaying !== null && $nowPlaying !== me) played = undefined;
 	});
 
-	const frame = $derived(playerFrame(url, ownHosts));
+	onMount(() => {
+		if (packaged) loadRelayOrigin();
+	});
+	const frame = $derived(playerFrame(url, ownHosts, packaged ? (relay ?? $relayOrigin) : null));
 	const label = $derived(title ? `Play ${title}` : "Play");
 	const coverClass = "group absolute inset-0 flex items-center justify-center overflow-hidden bg-duvet-stage";
 </script>
