@@ -48,6 +48,7 @@
 	import MessageSearch from "$lib/components/MessageSearch.svelte";
 	import type { MessageLink } from "$lib/urls";
 	import MemberProfilePopover from "$lib/components/MemberProfilePopover.svelte";
+	import PersonButton from "$lib/components/PersonButton.svelte";
 	import { getAvatarURL } from "$lib/common/common";
 	import { acceptRequest, declineRequest } from "$lib/friend-requests";
 	import {
@@ -475,6 +476,7 @@
 						</label>
 						{#each friendGroups as group (group.title)}
 							{#if group.friends.length > 0}
+
 								<h3 class="text-duvet-ink2 mx-2 mt-2 mb-1 text-[13px] font-bold">
 									{group.title} <span class="tabular-nums">{group.friends.length}</span>
 								</h3>
@@ -500,38 +502,29 @@
 													/>
 												</div>
 											{/if}
-											<MemberProfilePopover
+											<PersonButton
 												{member}
 												side="bottom"
 												open={profileOpenFor === friend.id}
 												onOpenChange={(o) => (profileOpenFor = o ? friend.id : null)}
 												triggerClass="rounded-row relative flex min-w-0 flex-1 cursor-pointer items-center gap-3 text-left {focusRing}"
+												size="lg"
+												statusClass="text-duvet-bg"
 											>
-												{#snippet children()}
-													<div class="relative shrink-0">
-														<UserAvatar src={member.avatar_url} name={member.username} size={40} />
-														<StatusDot
-															status={member.status}
-															mobileOnly={member.mobile_only}
-															class="text-duvet-bg absolute -right-0.5 -bottom-0.5 w-3.5 border-[3px]"
-														/>
-													</div>
-													<div class="flex min-w-0 flex-1 flex-col leading-tight">
-														<span class="text-duvet-ink truncate text-sm font-bold">{member.username}</span>
-														<span class="text-duvet-ink2 flex min-w-0 items-center gap-1 text-xs">
-															{#if activity}
-																{#if activity.kind === "playing"}<GameIcon
-																		class="size-3 shrink-0"
-																		aria-hidden="true"
-																	/>{:else}<MusicIcon class="size-3 shrink-0" aria-hidden="true" />{/if}
-																<span class="truncate">{activity.text}</span>
-															{:else}
-																<span class="truncate">@{member.raw_username}</span>
-															{/if}
-														</span>
-													</div>
+												{#snippet subtitle()}
+													<span class="text-duvet-ink2 flex min-w-0 items-center gap-1 text-xs">
+														{#if activity}
+															{#if activity.kind === "playing"}<GameIcon
+																	class="size-3 shrink-0"
+																	aria-hidden="true"
+																/>{:else}<MusicIcon class="size-3 shrink-0" aria-hidden="true" />{/if}
+															<span class="truncate">{activity.text}</span>
+														{:else}
+															<span class="truncate">@{member.raw_username}</span>
+														{/if}
+													</span>
 												{/snippet}
-											</MemberProfilePopover>
+											</PersonButton>
 											<button
 												type="button"
 												class="bg-duvet-card text-duvet-ink2 shadow-duvet-raised hover:text-duvet-ink relative flex size-9 items-center justify-center rounded-xl transition-colors motion-reduce:transition-none {focusRing}"

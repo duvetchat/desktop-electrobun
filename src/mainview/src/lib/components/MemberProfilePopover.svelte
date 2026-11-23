@@ -309,7 +309,7 @@
 									: 'max-h-[max(160px,calc(100vh-330px))]'} overflow-hidden overflow-y-auto rounded-[14px] p-3"
 							>
 								<h2
-									class="font-serif-lg text-duvet-ink text-[21px] leading-[1.15] font-medium tracking-[-0.012em] break-words select-text"
+									class="text-duvet-ink text-[16px] leading-[1.15] font-medium tracking-[-0.012em] break-words select-text"
 								>
 									{member.username}
 								</h2>

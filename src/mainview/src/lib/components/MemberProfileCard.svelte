@@ -170,7 +170,7 @@
 
 		<div class="bg-duvet-sunk mt-4 overflow-hidden rounded-[14px] p-3">
 			<h2
-				class="font-serif-lg text-duvet-ink flex items-center gap-1.5 text-[21px] leading-[1.15] font-medium tracking-[-0.012em] break-all"
+				class="text-duvet-ink flex items-center gap-1.5 text-[16px] leading-[1.15] font-medium tracking-[-0.012em] break-all"
 			>
 				{member.username}
 				{#if member.is_bot}
