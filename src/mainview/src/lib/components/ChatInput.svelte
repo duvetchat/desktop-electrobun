@@ -1398,7 +1398,7 @@
 			</button>
 			<button
 				type="button"
-				class="bg-duvet-accent text-duvet-on-accent shadow-duvet-control active:shadow-duvet-press my-1 grid size-[34px] shrink-0 place-items-center rounded-xl transition-transform active:scale-[0.94] motion-reduce:transition-none"
+				class="bg-duvet-accent text-duvet-on-accent shadow-duvet-control active:shadow-duvet-press my-1 grid size-[34px] shrink-0 place-items-center rounded-full transition-transform active:scale-[0.94] motion-reduce:transition-none"
 				title="Send voice note"
 				aria-label="Send voice note"
 				onclick={stopRecording}
@@ -1512,7 +1512,7 @@
 				{@const ready = !isEmpty || pendingFiles.length > 0}
 				<button
 					type="button"
-					class="my-1 grid size-[34px] shrink-0 place-items-center rounded-xl transition-[background-color,color,transform] motion-reduce:transition-none {ready
+					class="my-1 grid size-[34px] shrink-0 place-items-center rounded-full transition-[background-color,color,transform] motion-reduce:transition-none {ready
 						? 'bg-duvet-accent text-duvet-on-accent shadow-duvet-control active:shadow-duvet-press active:scale-[0.94]'
 						: 'text-duvet-ink2'}"
 					title="Send"
