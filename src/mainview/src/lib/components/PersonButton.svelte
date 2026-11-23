@@ -66,54 +66,58 @@
 <MemberProfilePopover {member} {spaceId} {space} {side} {open} {onOpenChange} {onRemoveMember} {triggerClass}>
 	{#if banner}<MemberBanner src={member.banner_url} {offline} />{/if}
 
-	<div class="relative shrink-0 {dimOffline && offline ? 'opacity-60' : ''}">
-		<UserAvatar src={member.avatar_url} name={member.username} size={avatarSize} />
-		{#if typing}
+	<div class="relative flex min-w-0 flex-1 items-center gap-3 pl-1">
+		<div class="relative shrink-0 {dimOffline && offline ? 'opacity-60' : ''}">
+			<UserAvatar src={member.avatar_url} name={member.username} size={avatarSize} />
+			{#if typing}
+				<span
+					class="{typingBorderClass} bg-duvet-secondary-fill absolute -right-0.5 -bottom-0.5 flex h-3 w-4 items-center justify-center gap-0.5 rounded-full border-2"
+				>
+					{#if recording}
+						<MicIcon class="text-duvet-danger size-2 animate-pulse" />
+					{:else}
+						<span class="bg-duvet-ink2 animate-member-typing-bounce block size-0.5 rounded-full"></span>
+						<span
+							class="bg-duvet-ink2 animate-member-typing-bounce block size-0.5 rounded-full"
+							style="animation-delay:0.2s"
+						></span>
+						<span
+							class="bg-duvet-ink2 animate-member-typing-bounce block size-0.5 rounded-full"
+							style="animation-delay:0.4s"
+						></span>
+					{/if}
+				</span>
+			{:else}
+				<StatusDot
+					status={member.status}
+					mobileOnly={member.mobile_only}
+					class="{statusClass} absolute -right-0.5 -bottom-0.5 {size === 'lg'
+						? 'w-3.5 border-[3px]'
+						: 'w-2.5 border-2'}"
+				/>
+			{/if}
+		</div>
+
+		<div class="flex min-w-0 flex-1 flex-col {size === 'lg' ? 'leading-tight' : 'text-left'}">
 			<span
-				class="{typingBorderClass} bg-duvet-secondary-fill absolute -right-0.5 -bottom-0.5 flex h-3 w-4 items-center justify-center gap-0.5 rounded-full border-2"
+				class="flex items-center gap-1 truncate {size === 'lg'
+					? 'text-duvet-ink text-sm font-bold'
+					: 'text-[13.5px] leading-5 font-semibold'}"
+				style={nameStyle}
 			>
-				{#if recording}
-					<MicIcon class="text-duvet-danger size-2 animate-pulse" />
-				{:else}
-					<span class="bg-duvet-ink2 animate-member-typing-bounce block size-0.5 rounded-full"></span>
+				<span class="truncate">{member.username}</span>
+				{#if badges && member.is_bot}
 					<span
-						class="bg-duvet-ink2 animate-member-typing-bounce block size-0.5 rounded-full"
-						style="animation-delay:0.2s"
-					></span>
-					<span
-						class="bg-duvet-ink2 animate-member-typing-bounce block size-0.5 rounded-full"
-						style="animation-delay:0.4s"
-					></span>
+						class="bg-duvet-secondary-fill text-duvet-ink2 rounded-[5px] px-1 text-[9.5px] leading-[14px] font-bold tracking-[0.04em] [-webkit-text-fill-color:currentColor] {offline
+							? 'opacity-60'
+							: ''}">BOT</span
+					>
+				{/if}
+				{#if badges && member.is_owner}
+					<CrownSimpleIcon class="text-duvet-crown size-[13px] shrink-0 {offline ? 'opacity-60' : ''}" />
 				{/if}
 			</span>
-		{:else}
-			<StatusDot
-				status={member.status}
-				mobileOnly={member.mobile_only}
-				class="{statusClass} absolute -right-0.5 -bottom-0.5 {size === 'lg' ? 'w-3.5 border-[3px]' : 'w-2.5 border-2'}"
-			/>
-		{/if}
-	</div>
-
-	<div class="flex min-w-0 flex-1 flex-col {size === 'lg' ? 'leading-tight' : 'text-left'}">
-		<span
-			class="flex items-center gap-1 truncate {size === 'lg'
-				? 'text-duvet-ink text-sm font-bold'
-				: 'text-[13.5px] leading-5 font-semibold'}"
-			style={nameStyle}
-		>
-			<span class="truncate">{member.username}</span>
-			{#if badges && member.is_bot}
-				<span
-					class="bg-duvet-secondary-fill text-duvet-ink2 rounded-[5px] px-1 text-[9.5px] leading-[14px] font-bold tracking-[0.04em] [-webkit-text-fill-color:currentColor] {offline
-						? 'opacity-60'
-						: ''}">BOT</span
-				>
-			{/if}
-			{#if badges && member.is_owner}
-				<CrownSimpleIcon class="text-duvet-crown size-[13px] shrink-0 {offline ? 'opacity-60' : ''}" />
-			{/if}
-		</span>
-		{#if subtitle}{@render subtitle()}{/if}
+			{#if subtitle}{@render subtitle()}{/if}
+		</div>
 	</div>
 </MemberProfilePopover>
