@@ -88,6 +88,24 @@ describe("navigationRules", () => {
 		});
 	}
 
+	for (const platform of ["darwin", "linux"] as const) {
+		test(`${platform} lets the YouTube relay's page load, and nothing else of its host`, () => {
+			const rules = navigationRules(platform, null, "http://127.0.0.1:49152");
+			expect(allowed(rules, "http://127.0.0.1:49152/youtube?v=aqz-KE-bpKQ")).toBe(true);
+			for (const url of [
+				"http://127.0.0.1:49152/",
+				"http://127.0.0.1:49152/youtube",
+				"http://127.0.0.1:49153/youtube?v=x",
+				"http://127.0.0.1:49152@example.com/youtube?v=x",
+				"http://127.0.0.1.example.com:49152/youtube?v=x",
+			]) {
+				expect([url, allowed(rules, url)]).toEqual([url, false]);
+			}
+			// Without a relay there is no rule for one.
+			expect(allowed(navigationRules(platform, null), "http://127.0.0.1:49152/youtube?v=x")).toBe(false);
+		});
+	}
+
 	test("win32, whose check only sees the top frame, has no page of the players' sites to load", () => {
 		const rules = navigationRules("win32", null);
 		for (const url of [...players, "about:blank"]) expect([url, allowed(rules, url)]).toEqual([url, false]);

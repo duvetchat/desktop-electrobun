@@ -60,6 +60,17 @@ const PLAYERS = [
 
 const isPlayer = (url: string) => PLAYERS.some((player) => player.test(url));
 
+// The desktop app's pages are views://, which sends no Referer, and YouTube's embed refuses a request with none (error
+// 153). In the app a YouTube player is framed through the relay Bun serves on loopback (src/bun/player-relay.ts), whose
+// page frames it with the Referer http://127.0.0.1:<port>. relay is that origin, as Bun says it; the one page of it
+// framed is /youtube with a video id, and a player of the same video only.
+const RELAY_ORIGIN = /^http:\/\/127\.0\.0\.1:\d{1,5}$/;
+const YOUTUBE_PLAYER = /^https:\/\/www\.youtube\.com\/embed\/([\w-]{1,32})$/;
+const isRelay = (url: string, relay: string | null | undefined) =>
+	!!relay &&
+	RELAY_ORIGIN.test(relay) &&
+	new RegExp(`^${relay.replace(/\./g, "\\.")}/youtube\\?v=[\\w-]{1,32}$`).test(url);
+
 const onDomain = (hostname: string, domain: string) => hostname === domain || hostname.endsWith(`.${domain}`);
 
 /**
@@ -69,13 +80,14 @@ const onDomain = (hostname: string, domain: string) => hostname === domain || ho
  * app a framed page's window.open would otherwise reach the native new-window handler and open arbitrary URLs
  * in the system browser (src/bun/index.ts), so framed content may not open windows at all.
  */
-export function frameSandbox(url: string, ownHosts: string[]): string | undefined {
+export function frameSandbox(url: string, ownHosts: string[], relay?: string | null): string | undefined {
 	let parsed: URL;
 	try {
 		parsed = new URL(url);
 	} catch {
 		return undefined;
 	}
+	if (isRelay(url, relay)) return "allow-scripts allow-same-origin";
 	// A trailing dot ("duvet.chat.") names the same host.
 	const hostname = parsed.hostname.replace(/\.$/, "");
 	if (!/^https?:$/.test(parsed.protocol) || onDomain(hostname, "duvet.chat") || ownHosts.includes(hostname)) {
@@ -211,7 +223,16 @@ function webHost(origin: string): string | undefined {
 export function playerFrame(
 	url: string,
 	ownHosts: string[],
+	relay?: string | null,
 ): { sandbox: string; player: boolean; src: string } | undefined {
+	// A relay that isn't loopback is not one: the player is framed as it was.
+	const video = relay && RELAY_ORIGIN.test(relay) ? YOUTUBE_PLAYER.exec(url)?.[1] : undefined;
+	// In the app a YouTube player is framed through the relay, which starts it at once.
+	if (video && relay) {
+		const src = `${relay}/youtube?v=${video}`;
+		const sandbox = frameSandbox(src, ownHosts, relay);
+		return sandbox ? { sandbox, player: true, src } : undefined;
+	}
 	const sandbox = frameSandbox(url, ownHosts);
 	if (!sandbox) return undefined;
 	if (!isPlayer(url)) return { sandbox, player: false, src: url };
