@@ -296,6 +296,7 @@
 				<div style="height: {start * MEMBER_ROW}px"></div>
 			{/if}
 			{#each group.members.slice(start, end) as member (member.id)}
+				<div class="flex flex-col gap-2">
 				<MemberProfilePopover
 					{member}
 					{spaceId}
@@ -305,11 +306,11 @@
 					onOpenChange={(o) => {
 						activePopoverMemberId = o ? member.id : null;
 					}}
-					triggerClass="group relative mx-2 flex h-12 w-[calc(100%-1rem)] items-center overflow-hidden rounded-xl px-2 text-duvet-ink hover:bg-duvet-hover data-[state=open]:bg-duvet-hover"
+					triggerClass="group relative mx-2 flex h-10 w-[calc(100%-1rem)] items-center overflow-hidden rounded-xl px-2 text-duvet-ink hover:bg-duvet-hover data-[state=open]:bg-duvet-hover"
 					{onRemoveMember}
 				>
 					{#snippet children()}
-						<div class="absolute inset-y-1.5 right-2 left-7 overflow-hidden rounded-lg">
+						<div class="overflow-hidden rounded-lg">
 							<MemberBanner src={member.banner_url} offline={member.status === "offline"} />
 						</div>
 						<div class="relative flex min-w-0 items-center gap-2.5">
@@ -374,6 +375,7 @@
 						</div>
 					{/snippet}
 				</MemberProfilePopover>
+				</div>
 			{/each}
 			{#if end < group.members.length}
 				<div style="height: {(group.members.length - end) * MEMBER_ROW}px"></div>
