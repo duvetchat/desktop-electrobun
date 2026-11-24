@@ -11,8 +11,8 @@ const BUTTON_BASE =
 	"aria-disabled:pointer-events-none aria-disabled:opacity-45 aria-disabled:shadow-none";
 
 const BUTTON_SIZE: Record<ControlSize, string> = {
-	md: "h-[34px] rounded-[11px] px-3.5 text-[13px]",
-	sm: "h-7 rounded-[9px] px-2.5 text-[12.5px]",
+	md: "h-[34px] rounded-control px-3.5 text-[13px]",
+	sm: "h-7 rounded-tile px-2.5 text-[12.5px]",
 };
 
 // A filled control darkens evenly on hover, whatever its fill: an inset shadow of the hover ink.
@@ -34,15 +34,45 @@ export function buttonClass(variant: ButtonVariant = "primary", size: ControlSiz
 	return `${BUTTON_BASE} ${BUTTON_SIZE[size]} ${BUTTON_VARIANT[variant]}`;
 }
 
-/** An icon button's classes: 30 px (26 small), idle in the second ink; `active` is the picked look. */
-export function iconButtonClass(size: ControlSize = "md", active = false): string {
-	const box = size === "sm" ? "size-[26px] rounded-lg" : "size-[30px] rounded-[9px]";
-	const ink = active
-		? "bg-duvet-accent-tint text-duvet-accent-text"
-		: "text-duvet-ink2 hover:bg-duvet-hover hover:text-duvet-ink active:bg-duvet-hover-strong";
+/** An icon button's classes: 30 px (26 small), idle in the second ink; `active` is the picked look; `danger` turns
+ *  its hover to the destructive colour for a removal. */
+export function iconButtonClass(size: ControlSize = "md", active = false, danger = false): string {
+	const box = size === "sm" ? "size-[26px] rounded-lg" : "size-[30px] rounded-tile";
+	const ink = danger
+		? "hover:bg-duvet-danger/15! hover:text-duvet-danger!"
+		: active
+			? "bg-duvet-accent-tint text-duvet-accent-text"
+			: "text-duvet-ink2 hover:bg-duvet-hover hover:text-duvet-ink active:bg-duvet-hover-strong";
 	return (
 		`relative inline-grid shrink-0 place-items-center transition-colors motion-reduce:transition-none duration-[120ms] ` +
 		`disabled:pointer-events-none disabled:opacity-45 ${box} ${ink}`
+	);
+}
+
+/** The focus mark a card, row or custom control draws when the keys reach it: the accent's line, 2 px off, with no
+ *  browser outline of its own. */
+export const FOCUS_RING =
+	"focus-override focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-duvet-accent";
+
+/** The same mark drawn inside the element, for a sidebar or tab row whose neighbours would clip it. */
+export const FOCUS_RING_INSET =
+	"focus-override focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-duvet-accent";
+
+/** An icon's tile: the secondary fill under the accent's glyph, 30 px, or 26 small. */
+export function iconTileClass(size: "md" | "sm" = "md", tone: "accent" | "ink" = "accent"): string {
+	const box = size === "md" ? "size-[30px] rounded-tile" : "size-[26px] rounded-tile";
+	return `bg-duvet-secondary-fill grid shrink-0 place-items-center ${box} ${
+		tone === "accent" ? "text-duvet-accent-text" : "text-duvet-ink2"
+	}`;
+}
+
+/** A card's icon button, as a friend's row has beside their name: 36 px square on a raised card, its glyph turning to
+ *  the destructive colour when it is a removal. */
+export function cardIconButtonClass(danger = false): string {
+	return (
+		"bg-duvet-card text-duvet-ink2 shadow-duvet-raised relative flex size-9 shrink-0 items-center justify-center " +
+		`rounded-row transition-colors motion-reduce:transition-none ${FOCUS_RING} ` +
+		(danger ? "hover:text-duvet-danger" : "hover:text-duvet-ink")
 	);
 }
 
@@ -51,11 +81,14 @@ export const GLASS = "bg-duvet-glass shadow-duvet-glass backdrop-blur-[32px] bac
 /** The stronger glass of sheets and ⌘K. */
 export const GLASS_STRONG = "bg-duvet-glass-strong shadow-duvet-glass backdrop-blur-[32px] backdrop-saturate-[1.8]";
 
+/** What dims the page under a dialog, a sheet or the quick switcher. */
+export const SCRIM = "bg-duvet-scrim animate-scrim-in fixed inset-0 z-[900]";
+
 // One text field for the whole app (#357, the prototype's `.field > input`): on the card's fill, recessed (the well)
 // inside a hairline, 11 px corners, 13.5 px text. Focused, the hairline turns to the accent inside a 4 px tint; a
 // field marked wrong (aria-invalid) has the danger's line. Its ring is its focus mark, so it takes no global outline.
 const FIELD_BASE =
-	"bg-duvet-card text-duvet-ink placeholder:text-duvet-ink2 focus-override w-full rounded-[11px] text-[13.5px] " +
+	"bg-duvet-card text-duvet-ink placeholder:text-duvet-ink2 focus-override w-full rounded-control text-[13.5px] " +
 	"shadow-[var(--duvet-shadow-well),0_0_0_1px_var(--duvet-line)] " +
 	"transition-shadow duration-[120ms] motion-reduce:transition-none " +
 	"outline-none focus:shadow-[var(--duvet-shadow-well),0_0_0_1px_var(--duvet-accent),0_0_0_4px_var(--duvet-accent-tint)] " +
@@ -79,24 +112,27 @@ export function countBadgeClass(size: "md" | "sm" = "md", filled = true): string
 	return `flex shrink-0 items-center justify-center rounded-full text-[10.5px] font-bold tabular-nums ${shape}${fill}`;
 }
 
+/** An overline: the small uppercase label over a group of rows (a profile's About, a picker's category, a section). */
+export const OVERLINE = "text-duvet-ink2 text-[10.5px] font-semibold tracking-[0.06em] uppercase";
+
 /** A pill's classes: a small raised chip; picked, it takes the chosen fill and ink. */
 export function pillClass(picked = false): string {
 	const state = picked
 		? "bg-duvet-chosen text-duvet-chosen-ink"
 		: "bg-duvet-pill text-duvet-ink shadow-duvet-raised hover:shadow-duvet-lifted";
 	return (
-		`inline-flex h-7 shrink-0 items-center gap-[5px] rounded-[9px] px-[11px] text-[12.5px] leading-none ` +
+		`inline-flex h-7 shrink-0 items-center gap-[5px] rounded-tile px-[11px] text-[12.5px] leading-none ` +
 		`font-medium whitespace-nowrap transition-shadow duration-[120ms] motion-reduce:transition-none ${state}`
 	);
 }
 
 /** A menu's panel: glass, 224 to 320 wide. */
-export const MENU_PANEL = `${GLASS} z-[1000] min-w-56 max-w-80 rounded-[14px] p-1.5 outline-none animate-float-in`;
+export const MENU_PANEL = `${GLASS} z-[1000] min-w-56 max-w-80 rounded-panel p-1.5 outline-none animate-float-in`;
 
 /** A menu item's classes; the one under the pointer or the keys, and an open submenu's, take the accent tint. */
 export function menuItemClass(danger = false): string {
 	return (
-		"flex min-h-8 w-full items-center gap-2.5 rounded-[9px] py-1.5 pr-2.5 pl-2 text-left text-[13px] leading-[1.2] " +
+		"flex min-h-8 w-full items-center gap-2.5 rounded-tile py-1.5 pr-2.5 pl-2 text-left text-[13px] leading-[1.2] " +
 		"font-medium outline-none select-none data-highlighted:bg-duvet-accent-tint data-[state=open]:bg-duvet-accent-tint " +
 		"data-disabled:pointer-events-none data-disabled:opacity-45 " +
 		(danger ? "text-duvet-danger" : "text-duvet-ink")

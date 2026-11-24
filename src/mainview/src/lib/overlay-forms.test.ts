@@ -5,7 +5,7 @@ const classes = (list: string) => list.split(/\s+/);
 
 test("a field is 38 px tall on the card's fill, and draws its own focus ring", () => {
 	const line = classes(fieldClass());
-	expect(line).toEqual(expect.arrayContaining(["h-[38px]", "rounded-[11px]", "bg-duvet-card"]));
+	expect(line).toEqual(expect.arrayContaining(["h-[38px]", "rounded-control", "bg-duvet-card"]));
 	// Recessed inside a hairline. The app's outline for a focused element stays off it (app.css): its own mark is
 	// the accent's line inside a tint, and danger's line while it reads wrong.
 	expect(line).toContain("shadow-[var(--duvet-shadow-well),0_0_0_1px_var(--duvet-line)]");

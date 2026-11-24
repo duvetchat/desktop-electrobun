@@ -16,6 +16,7 @@
 		Hash as HashIcon,
 		Volume2 as VoiceIcon,
 	} from "@lucide/svelte";
+	import { OVERLINE } from "$lib/components/ui/recipes";
 	import Menu from "$lib/components/ui/Menu.svelte";
 	import MenuItem from "$lib/components/ui/MenuItem.svelte";
 	import Segmented from "$lib/components/ui/Segmented.svelte";
@@ -1161,15 +1162,13 @@
 	<!-- Command menu -->
 	{#if commandSuggestions.length > 0}
 		<div
-			class="bg-duvet-bg border-duvet-line absolute bottom-[calc(100%+6px)] left-0 z-90 max-h-75 w-[min(100%,560px)] overflow-hidden overflow-y-auto rounded-[14px] border p-1.5"
+			class="bg-duvet-bg border-duvet-line rounded-panel absolute bottom-[calc(100%+6px)] left-0 z-90 max-h-75 w-[min(100%,560px)] overflow-hidden overflow-y-auto border p-1.5"
 			id="{uid}-commands"
 			role="listbox"
 			aria-label="Commands"
 			bind:this={commandMenuEl}
 		>
-			<div
-				class="text-duvet-ink2 px-2 pt-1.5 pb-1.5 text-[10.5px] leading-none font-semibold tracking-[0.06em] uppercase"
-			>
+			<div class="{OVERLINE} px-2 pt-1.5 pb-1.5 leading-none">
 				{#if commandQuery}
 					Commands matching <strong>/{commandQuery}</strong>
 				{:else}
@@ -1182,7 +1181,7 @@
 					id="{uid}-commands-{i}"
 					role="option"
 					aria-selected={i === commandSelectedIdx}
-					class="relative flex min-h-[34px] w-full cursor-pointer items-center gap-2 overflow-hidden rounded-[9px] px-2 py-1.5 text-left {i ===
+					class="rounded-tile relative flex min-h-[34px] w-full cursor-pointer items-center gap-2 overflow-hidden px-2 py-1.5 text-left {i ===
 					commandSelectedIdx
 						? 'bg-duvet-accent-tint'
 						: ''}"
@@ -1210,14 +1209,12 @@
 	<!-- Mention autocomplete dropdown -->
 	{#if mentionSuggestions.length > 0}
 		<div
-			class="bg-duvet-bg border-duvet-line absolute bottom-[calc(100%+6px)] left-0 z-90 max-h-75 w-80 max-w-full overflow-hidden overflow-y-auto rounded-[14px] border p-1.5"
+			class="bg-duvet-bg border-duvet-line rounded-panel absolute bottom-[calc(100%+6px)] left-0 z-90 max-h-75 w-80 max-w-full overflow-hidden overflow-y-auto border p-1.5"
 			id="{uid}-mentions"
 			role="listbox"
 			aria-label="Mention suggestions"
 		>
-			<div
-				class="text-duvet-ink2 px-2 pt-1.5 pb-1.5 text-[10.5px] leading-none font-semibold tracking-[0.06em] uppercase"
-			>
+			<div class="{OVERLINE} px-2 pt-1.5 pb-1.5 leading-none">
 				Members matching <strong
 					>@{getRaw(inputEl)
 						.slice(0, getOffset())
@@ -1229,7 +1226,7 @@
 					id="{uid}-mentions-{i}"
 					role="option"
 					aria-selected={i === mentionSelectedIdx}
-					class="relative flex h-[34px] w-full cursor-pointer items-center gap-2 overflow-hidden rounded-[9px] px-2 text-left {i ===
+					class="rounded-tile relative flex h-[34px] w-full cursor-pointer items-center gap-2 overflow-hidden px-2 text-left {i ===
 					mentionSelectedIdx
 						? 'bg-duvet-accent-tint'
 						: ''}"
@@ -1257,14 +1254,12 @@
 	<!-- Room mention autocomplete dropdown -->
 	{#if roomSuggestions.length > 0}
 		<div
-			class="bg-duvet-bg border-duvet-line absolute bottom-[calc(100%+6px)] left-0 z-90 max-h-75 w-80 max-w-full overflow-hidden overflow-y-auto rounded-[14px] border p-1.5"
+			class="bg-duvet-bg border-duvet-line rounded-panel absolute bottom-[calc(100%+6px)] left-0 z-90 max-h-75 w-80 max-w-full overflow-hidden overflow-y-auto border p-1.5"
 			id="{uid}-rooms"
 			role="listbox"
 			aria-label="Room suggestions"
 		>
-			<div
-				class="text-duvet-ink2 px-2 pt-1.5 pb-1.5 text-[10.5px] leading-none font-semibold tracking-[0.06em] uppercase"
-			>
+			<div class="{OVERLINE} px-2 pt-1.5 pb-1.5 leading-none">
 				Rooms matching <strong
 					>#{getRaw(inputEl)
 						.slice(0, getOffset())
@@ -1276,7 +1271,7 @@
 					id="{uid}-rooms-{i}"
 					role="option"
 					aria-selected={i === roomSelectedIdx}
-					class="flex h-[34px] w-full cursor-pointer items-center gap-2 rounded-[9px] px-2 text-left {i ===
+					class="rounded-tile flex h-[34px] w-full cursor-pointer items-center gap-2 px-2 text-left {i ===
 					roomSelectedIdx
 						? 'bg-duvet-accent-tint'
 						: ''}"
@@ -1300,14 +1295,12 @@
 	<!-- Emoji autocomplete dropdown -->
 	{#if suggestions.length > 0}
 		<div
-			class="bg-duvet-bg border-duvet-line absolute bottom-[calc(100%+6px)] left-0 z-90 max-h-75 w-80 max-w-full overflow-hidden overflow-y-auto rounded-[14px] border p-1.5"
+			class="bg-duvet-bg border-duvet-line rounded-panel absolute bottom-[calc(100%+6px)] left-0 z-90 max-h-75 w-80 max-w-full overflow-hidden overflow-y-auto border p-1.5"
 			id="{uid}-emoji"
 			role="listbox"
 			aria-label="Emoji suggestions"
 		>
-			<div
-				class="text-duvet-ink2 px-2 pt-1.5 pb-1.5 text-[10.5px] leading-none font-semibold tracking-[0.06em] uppercase"
-			>
+			<div class="{OVERLINE} px-2 pt-1.5 pb-1.5 leading-none">
 				Emoji matching <strong
 					>:{getRaw(inputEl)
 						.slice(0, getOffset())
@@ -1319,7 +1312,7 @@
 					id="{uid}-emoji-{i}"
 					role="option"
 					aria-selected={i === selectedIdx}
-					class="flex h-[34px] w-full cursor-pointer items-center gap-2 rounded-[9px] px-2 text-left {i === selectedIdx
+					class="rounded-tile flex h-[34px] w-full cursor-pointer items-center gap-2 px-2 text-left {i === selectedIdx
 						? 'bg-duvet-accent-tint'
 						: ''}"
 					onmousedown={(e) => {

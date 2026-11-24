@@ -12,15 +12,16 @@ guide is about how those decisions are represented in code.
 
 ## Sources of truth
 
-| Concern | Source |
-| --- | --- |
-| Approved visual values, geometry, and surface behavior | `docs/redesign/DESIGN-MAP.md` |
-| Resolution of design-map contradictions and implementation choices | `docs/redesign/DECISIONS.md` |
-| Semantic colors, shadows, typography, radii, motion, and global CSS | `src/mainview/src/app.css` |
-| Shared controls, fields, overlays, and menu recipes | `src/mainview/src/lib/components/ui/recipes.ts` and `components/ui/` |
-| Settings-specific cards, rows, fields, and labels | `src/mainview/src/lib/components/settings/recipes.ts` and `components/settings/` |
-| Message-body rendering, including its different backgrounds | `src/mainview/src/lib/message-styles.ts` |
-| Persisted user choices | Their focused modules under `src/mainview/src/lib/` and `lib/stores/` |
+| Concern                                                             | Source                                                                           |
+| ------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| Approved visual values, geometry, and surface behavior              | `docs/redesign/DESIGN-MAP.md`                                                    |
+| Resolution of design-map contradictions and implementation choices  | `docs/redesign/DECISIONS.md`                                                     |
+| Semantic colors, shadows, typography, radii, motion, and global CSS | `src/mainview/src/app.css`                                                       |
+| Shared controls, fields, overlays, and menu recipes                 | `src/mainview/src/lib/components/ui/recipes.ts` and `components/ui/`             |
+| People rows and the actions beside them                             | `src/mainview/src/lib/components/people/recipes.ts`                              |
+| Settings-specific cards, rows, fields, and labels                   | `src/mainview/src/lib/components/settings/recipes.ts` and `components/settings/` |
+| Message-body rendering, including its different backgrounds         | `src/mainview/src/lib/message-styles.ts`                                         |
+| Persisted user choices                                              | Their focused modules under `src/mainview/src/lib/` and `lib/stores/`            |
 
 Do not make a token or recipe the source of truth for a value that belongs to a
 different concern. In particular, a reusable CSS class must not silently
@@ -85,6 +86,34 @@ build on these for the Settings and Space Settings information architecture.
   differences between a settings group, chat row, message bubble, and floating
   panel.
 
+#### Radius roles in use
+
+`app.css` maps the DESIGN-MAP's contextual radii to role names, so a recipe
+states what a corner is for rather than repeating a number:
+
+| Token              | Value | Typical role                                                     |
+| ------------------ | ----- | ---------------------------------------------------------------- |
+| `--radius-chip`    | 7 px  | Settings nav tiles, small chips, tab halves                      |
+| `--radius-tile`    | 9 px  | Small controls, menus, pills, 30 px icon tiles, rows in a picker |
+| `--radius-control` | 11 px | The app's 34 px button and a segmented track                     |
+| `--radius-row`     | 12 px | Chat rows, people rows, popover rows, flat cards                 |
+| `--radius-panel`   | 14 px | Menus and compact floating panels                                |
+| `--radius-card`    | 16 px | Cards, bubbles, attachments, Settings groups                     |
+| `--radius-card-lg` | 20 px | Popovers and the larger floating surfaces                        |
+
+These names describe geometry, not a single component: a sidebar row and a
+popover row can share `row` while keeping different fills, hover states, and
+padding. Values outside the table stay local to their component until they
+prove to be a repeated role.
+
+The focus mark is shared too: `FOCUS_RING` is the accent line 2 px outside an
+element, and `FOCUS_RING_INSET` is the same line inside a sidebar or tab row
+that would clip it. Components should compose these rather than restating the
+outline classes. Overlay primitives take `SCRIM` for the page dimming under
+them, and group labels use `OVERLINE` for the small uppercase role the map
+defines. An icon button marks a removal with its `danger` flag instead of
+repeating the danger hover classes at each call site.
+
 ### 3. Feature recipes
 
 Feature-level decisions belong beside their feature. For example,
@@ -117,15 +146,15 @@ controls, or themes.
 
 Choose a surface by its role, then choose its content and interaction:
 
-| Role | Guidance |
-| --- | --- |
-| App/canvas background | `duvet-bg`; the page and major panes |
-| Recessed/well | `duvet-sunk` or `duvet-field`, according to the approved surface |
-| Resting card | `duvet-card`, with the approved radius and resting elevation |
-| Secondary control/fill | `duvet-secondary-fill`; not a substitute for a card |
-| Floating overlay | The shared glass recipe, including its edge, blur, and float shadow |
-| Sidebar material | Sidebar tokens and platform variants; not the generic glass recipe |
-| Message content | The message layout and ownership-specific message recipes |
+| Role                   | Guidance                                                            |
+| ---------------------- | ------------------------------------------------------------------- |
+| App/canvas background  | `duvet-bg`; the page and major panes                                |
+| Recessed/well          | `duvet-sunk` or `duvet-field`, according to the approved surface    |
+| Resting card           | `duvet-card`, with the approved radius and resting elevation        |
+| Secondary control/fill | `duvet-secondary-fill`; not a substitute for a card                 |
+| Floating overlay       | The shared glass recipe, including its edge, blur, and float shadow |
+| Sidebar material       | Sidebar tokens and platform variants; not the generic glass recipe  |
+| Message content        | The message layout and ownership-specific message recipes           |
 
 Containers should communicate hierarchy. Avoid accidental card-in-card
 nesting, invisible containers that still own padding, and transparent hover

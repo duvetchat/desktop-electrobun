@@ -142,6 +142,7 @@
 	import Toggle from "$lib/components/ui/Toggle.svelte";
 	import { iconButtonClass } from "$lib/components/ui/recipes";
 	import {
+		ACTION_BAR,
 		calloutClass,
 		CARD,
 		CHECKBOX,
@@ -152,7 +153,10 @@
 		GROUP_TITLE,
 		LABEL,
 		listFileSize,
+		NAV_ICON_SLOT,
+		navItemClass,
 		NOTE,
+		ROW_TILE,
 		SELECT,
 		SKELETON,
 		TAG,
@@ -1359,7 +1363,7 @@
 	{#snippet head()}
 		<button
 			type="button"
-			class="flex shrink-0 items-center gap-2.5 rounded-xl p-2 text-left transition-colors duration-[120ms] motion-reduce:transition-none {activeSection ===
+			class="rounded-row flex shrink-0 items-center gap-2.5 p-2 text-left transition-colors duration-[120ms] motion-reduce:transition-none {activeSection ===
 			'account'
 				? 'bg-duvet-accent-tint'
 				: 'hover:bg-duvet-sb-hover'}"
@@ -1380,12 +1384,8 @@
 	{/snippet}
 
 	{#snippet foot()}
-		<button
-			type="button"
-			class="text-duvet-danger hover:bg-duvet-danger/10 flex h-8 w-full items-center gap-2 rounded-[9px] px-2 text-left text-[13px] font-medium transition-colors duration-[120ms] motion-reduce:transition-none"
-			onclick={() => host.logout()}
-		>
-			<span class="grid size-[22px] shrink-0 place-items-center"><LogOutIcon size={14} /></span>
+		<button type="button" class={navItemClass(false, true)} onclick={() => host.logout()}>
+			<span class={NAV_ICON_SLOT}><LogOutIcon size={14} /></span>
 			Sign out
 		</button>
 	{/snippet}
@@ -1395,10 +1395,7 @@
 		{#if activeSection === "attachments" && picking && picker.pickedFiles.length > 0}
 			{@const pickedCount = picker.pickedFiles.length}
 			{@const tooMany = (picker.filter.attachment_ids?.length ?? 0) > MAX_PICKED_FILES}
-			<div
-				transition:slide={{ duration: motionMs(200) }}
-				class="bg-duvet-card shadow-duvet-lifted mx-[26px] mb-3 flex items-center justify-between gap-4 rounded-2xl py-2.5 pr-2.5 pl-4 text-[13px] font-medium"
-			>
+			<div transition:slide={{ duration: motionMs(200) }} class={ACTION_BAR}>
 				<p class="text-duvet-ink2 min-w-0 truncate">
 					{#if myTransfer}
 						Wait for the transfer under way to end.
@@ -1420,10 +1417,7 @@
 
 		<!-- Save bar (appears when there are unsaved changes) -->
 		{#if hasChanges || saveError}
-			<div
-				transition:slide={{ duration: motionMs(200) }}
-				class="bg-duvet-card shadow-duvet-lifted mx-[26px] mb-3 flex items-center justify-between gap-4 rounded-2xl py-2.5 pr-2.5 pl-4 text-[13px] font-medium"
-			>
+			<div transition:slide={{ duration: motionMs(200) }} class={ACTION_BAR}>
 				<div class="flex min-w-0 items-center gap-2">
 					{#if saveError}
 						<p class="text-duvet-danger truncate" role="alert">{saveError}</p>
@@ -1826,10 +1820,10 @@
 								{/if}
 								<!-- Thumbnail -->
 								{#if isImage}
-									<img {src} alt="" class="bg-duvet-secondary-fill size-10 shrink-0 rounded-[9px] object-cover" />
+									<img {src} alt="" class="bg-duvet-secondary-fill rounded-tile size-10 shrink-0 object-cover" />
 								{:else}
 									<div
-										class="bg-duvet-secondary-fill text-duvet-ink2 grid size-10 shrink-0 place-items-center rounded-[9px]"
+										class="bg-duvet-secondary-fill text-duvet-ink2 rounded-tile grid size-10 shrink-0 place-items-center"
 									>
 										{#if isAudio}<MicIcon size={16} />{:else}<PaperclipIcon size={16} />{/if}
 									</div>
@@ -1867,7 +1861,7 @@
 									<IconButton
 										label="Delete attachment"
 										title="Delete attachment"
-										class="hover:bg-duvet-danger/15! hover:text-duvet-danger!"
+										danger
 										onclick={() => handleDeleteAttachment(att.id)}
 									>
 										<TrashIcon size={16} />
@@ -2100,12 +2094,7 @@
 							<IconButton label="Edit" title="Edit" onclick={() => startEditBucket(bucket)}>
 								<PencilIcon size={16} />
 							</IconButton>
-							<IconButton
-								label="Delete"
-								title="Delete"
-								class="hover:bg-duvet-danger/15! hover:text-duvet-danger!"
-								onclick={() => handleDeleteBucket(bucket.id)}
-							>
+							<IconButton label="Delete" title="Delete" danger onclick={() => handleDeleteBucket(bucket.id)}>
 								<TrashIcon size={16} />
 							</IconButton>
 						</div>
@@ -2155,9 +2144,7 @@
 							class="hover:bg-duvet-hover-soft flex min-h-[50px] w-full items-center gap-3 px-3.5 py-2 text-left transition-colors motion-reduce:transition-none"
 							onclick={() => selectTeam(team)}
 						>
-							<span
-								class="bg-duvet-secondary-fill text-duvet-accent-text grid size-[30px] shrink-0 place-items-center rounded-[9px]"
-							>
+							<span class={ROW_TILE}>
 								<UsersIcon size={16} />
 							</span>
 							<span class="min-w-0 flex-1">
@@ -2216,7 +2203,7 @@
 							<IconButton
 								label="Delete"
 								title="Delete"
-								class="hover:bg-duvet-danger/15! hover:text-duvet-danger!"
+								danger
 								onclick={() => devSelectedTeam && handleDeleteTeam(devSelectedTeam)}
 							>
 								<TrashIcon size={16} />
@@ -2241,7 +2228,7 @@
 								label="Remove"
 								title="Remove"
 								size="sm"
-								class="hover:bg-duvet-danger/15! hover:text-duvet-danger!"
+								danger
 								onclick={() => handleRemoveMember(member.user_id, member.username)}
 							>
 								<XIcon size={15} />
@@ -2352,12 +2339,7 @@
 												>
 													<PencilIcon size={16} />
 												</IconButton>
-												<IconButton
-													label="Delete"
-													title="Delete"
-													class="hover:bg-duvet-danger/15! hover:text-duvet-danger!"
-													onclick={() => handleDeleteApp(app)}
-												>
+												<IconButton label="Delete" title="Delete" danger onclick={() => handleDeleteApp(app)}>
 													<TrashIcon size={16} />
 												</IconButton>
 											</div>
@@ -2508,10 +2490,10 @@
 																	<img
 																		src={botBannerPreview}
 																		alt=""
-																		class="aspect-[5/2] h-12 rounded-[9px] object-cover"
+																		class="rounded-tile aspect-[5/2] h-12 object-cover"
 																	/>
 																	<button
-																		class="bg-duvet-media-scrim absolute inset-0 flex items-center justify-center rounded-[9px] opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 motion-reduce:transition-none"
+																		class="bg-duvet-media-scrim rounded-tile absolute inset-0 flex items-center justify-center opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 motion-reduce:transition-none"
 																		onclick={clearBotBanner}
 																		title="Undo"
 																	>
@@ -2519,12 +2501,12 @@
 																	</button>
 																{:else if pendingBotBanner === "remove"}
 																	<div
-																		class="bg-duvet-secondary-fill text-duvet-ink2 flex aspect-[5/2] h-12 items-center justify-center rounded-[9px]"
+																		class="bg-duvet-secondary-fill text-duvet-ink2 rounded-tile flex aspect-[5/2] h-12 items-center justify-center"
 																	>
 																		<XIcon class="size-4" />
 																	</div>
 																	<button
-																		class="bg-duvet-media-scrim absolute inset-0 flex items-center justify-center rounded-[9px] opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 motion-reduce:transition-none"
+																		class="bg-duvet-media-scrim rounded-tile absolute inset-0 flex items-center justify-center opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 motion-reduce:transition-none"
 																		onclick={() => {
 																			pendingBotBanner = null;
 																		}}
@@ -2536,10 +2518,10 @@
 																	<img
 																		src={getAvatarURL(botU.id, botU.banner)}
 																		alt=""
-																		class="aspect-[5/2] h-12 rounded-[9px] object-cover"
+																		class="rounded-tile aspect-[5/2] h-12 object-cover"
 																	/>
 																	<div
-																		class="bg-duvet-media-scrim absolute inset-0 flex items-center justify-center gap-1 rounded-[9px] opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 motion-reduce:transition-none"
+																		class="bg-duvet-media-scrim rounded-tile absolute inset-0 flex items-center justify-center gap-1 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 motion-reduce:transition-none"
 																	>
 																		<button
 																			class="text-fixed-white hover:bg-fixed-white/20 rounded p-0.5"
@@ -2557,7 +2539,7 @@
 																	</div>
 																{:else}
 																	<button
-																		class="bg-duvet-secondary-fill text-duvet-accent-text hover:bg-duvet-hover-strong flex aspect-[5/2] h-12 items-center justify-center rounded-[9px] transition-colors motion-reduce:transition-none"
+																		class="bg-duvet-secondary-fill text-duvet-accent-text hover:bg-duvet-hover-strong rounded-tile flex aspect-[5/2] h-12 items-center justify-center transition-colors motion-reduce:transition-none"
 																		onclick={() => {
 																			botCropTargetApp = app;
 																			showBotBannerCrop = true;

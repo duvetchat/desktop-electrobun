@@ -89,6 +89,8 @@
 	import PersonButton from "$lib/components/PersonButton.svelte";
 	import MemberMenu from "$lib/components/MemberMenu.svelte";
 	import ContextMenu from "$lib/components/ui/ContextMenu.svelte";
+	import { OVERLINE } from "$lib/components/ui/recipes";
+	import { MEMBER_ROW_TRIGGER } from "$lib/components/people/recipes";
 	import { withoutLongPress } from "$lib/default-menu";
 	import { personOf } from "$lib/member-menu";
 	import { MEMBER_ROW, memberGroups, shownRows } from "$lib/members";
@@ -282,9 +284,7 @@
 		{@const [start, end] = windows[g] ?? [0, 0]}
 		<div>
 			<!-- The heading stays at the top while its rows scroll under it, on the list's own colour. -->
-			<div
-				class="text-duvet-ink2 {ground.bg} sticky top-0 z-10 flex h-9 items-end px-4 pb-1.5 text-[10.5px] font-semibold tracking-[0.06em] uppercase select-none"
-			>
+			<div class="{OVERLINE} {ground.bg} sticky top-0 z-10 flex h-9 items-end px-4 pb-1.5 select-none">
 				{group.title} — {group.members.length}
 			</div>
 
@@ -302,7 +302,7 @@
 						onOpenChange={(o) => {
 							activePopoverMemberId = o ? member.id : null;
 						}}
-						triggerClass="group relative mx-2 flex h-10 w-[calc(100%-1rem)] items-center overflow-hidden rounded-xl px-2 text-duvet-ink hover:bg-duvet-hover data-[state=open]:bg-duvet-hover"
+						triggerClass={MEMBER_ROW_TRIGGER}
 						{onRemoveMember}
 						banner
 						badges

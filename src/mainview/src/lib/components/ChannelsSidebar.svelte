@@ -35,7 +35,7 @@
 	import { FIELD_LABEL, fieldClass } from "$lib/overlay-forms";
 	import MenuItem from "$lib/components/ui/MenuItem.svelte";
 	import MenuSeparator from "$lib/components/ui/MenuSeparator.svelte";
-	import { countBadgeClass, MENU_PANEL, menuItemClass } from "$lib/components/ui/recipes";
+	import { countBadgeClass, MENU_PANEL, menuItemClass, OVERLINE } from "$lib/components/ui/recipes";
 	import { chipCount, keysFor, mentionsLabel, openHow, SHELL_KEYS, type OpenHow } from "$lib/shell-layout";
 	import { speakingUsers, activeVoiceRoomId, gatewaySpaces, typingNow } from "$lib/stores.svelte";
 	import { shownMentionCounts, shownUnreadRooms } from "$lib/notification-marks";
@@ -425,7 +425,7 @@
 					<button
 						{...props}
 						type="button"
-						class="text-duvet-ink2 hover:text-duvet-ink focus-visible:outline-duvet-accent flex h-[26px] w-full shrink-0 items-end gap-1 rounded-md border-0 bg-transparent pr-2 pl-3 text-left text-[10.5px] leading-[18px] font-semibold tracking-[0.06em] uppercase focus-visible:outline-2 focus-visible:-outline-offset-2 {dropIndicatorClass(
+						class="{OVERLINE} hover:text-duvet-ink focus-visible:outline-duvet-accent flex h-[26px] w-full shrink-0 items-end gap-1 rounded-md border-0 bg-transparent pr-2 pl-3 text-left leading-[18px] focus-visible:outline-2 focus-visible:-outline-offset-2 {dropIndicatorClass(
 							itemIdx,
 						)}"
 						onclick={() => toggleCategory(item.channel.id)}
@@ -477,7 +477,7 @@
 					{#snippet target(props)}
 						<button
 							{...props}
-							class="focus-visible:outline-duvet-accent flex h-[30px] w-full items-center gap-[7px] rounded-[9px] pr-2 pl-3 text-left text-[13.5px] transition-colors duration-[120ms] focus-visible:outline-2 focus-visible:-outline-offset-2 motion-reduce:transition-none
+							class="focus-visible:outline-duvet-accent rounded-tile flex h-[30px] w-full items-center gap-[7px] pr-2 pl-3 text-left text-[13.5px] transition-colors duration-[120ms] focus-visible:outline-2 focus-visible:-outline-offset-2 motion-reduce:transition-none
 							{isActive ? 'bg-duvet-accent-tint text-duvet-ink' : 'hover:bg-duvet-sb-hover'}
 							{connected
 								? 'text-duvet-alive-text font-semibold'

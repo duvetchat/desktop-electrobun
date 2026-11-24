@@ -308,6 +308,11 @@
 	--radius-10px: 10px;
 	--radius-15px: 15px;
 	--radius-row: 12px;
+	/* The roles the recipes name: a control's corners, an icon tile's, a chip's, a small floating panel's. */
+	--radius-control: 11px;
+	--radius-tile: 9px;
+	--radius-chip: 7px;
+	--radius-panel: 14px;
 
 	--spacing-input: 3rem;
 	--spacing-input-sm: 2.5rem;

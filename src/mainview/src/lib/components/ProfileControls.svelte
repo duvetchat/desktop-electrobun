@@ -91,7 +91,7 @@
 {:else}
 	<div class="flex shrink-0 items-center gap-0.5">
 		<!-- The microphone: a press mutes; a right-click, or the chevron beside it, picks the device. -->
-		<div class="flex h-7 w-10 min-w-0 gap-px overflow-hidden rounded-[9px]">
+		<div class="rounded-tile flex h-7 w-10 min-w-0 gap-px overflow-hidden">
 			<ContextMenu label="Microphone" onOpenChange={loadMics}>
 				{#snippet target(props)}
 					<MediaButton
@@ -132,7 +132,7 @@
 		</div>
 
 		<!-- Deafen: a press silences everyone; the chevron sets how loud they play. -->
-		<div class="flex h-7 w-10 min-w-0 gap-px overflow-hidden rounded-[9px]">
+		<div class="rounded-tile flex h-7 w-10 min-w-0 gap-px overflow-hidden">
 			<MediaButton
 				label={media.deafened ? "Undeafen" : "Deafen"}
 				tip={media.deafened ? "Undeafen" : "Deafen"}
@@ -146,7 +146,7 @@
 			>
 				{#if media.deafened}<HeadphoneOff size={15} />{:else}<Headphones size={15} />{/if}
 			</MediaButton>
-			<Popover side="top" align="end" label="Audio output" class="rounded-[14px]">
+			<Popover side="top" align="end" label="Audio output" class="rounded-panel">
 				{#snippet trigger(popoverProps)}
 					<Tooltip text="Audio output" side="top">
 						{#snippet trigger(props)}
@@ -181,7 +181,7 @@
 			tip="Settings"
 			tone="quiet"
 			shape="panel"
-			class="size-7! rounded-[9px]!"
+			class="rounded-tile! size-7!"
 			onclick={openSettings}
 		>
 			<GearSixIcon size={15} />

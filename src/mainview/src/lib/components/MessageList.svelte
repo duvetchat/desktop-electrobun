@@ -63,6 +63,16 @@
 	import { clockTime, dayLabel, groupShapes, headTime, shortClockTime } from "$lib/message-groups";
 	import { messageLayout } from "$lib/stores/message-layout.svelte";
 	import { PRISM_BUBBLE, PRISM_LIGHT, PRISM_RIM, PRISM_WASH, placePrismsIn, slidePrismsIn } from "$lib/prism";
+	import {
+		MESSAGE_BODY,
+		MESSAGE_BUBBLE,
+		MESSAGE_BUBBLE_FAILED,
+		MESSAGE_BUBBLE_HIGHLIGHT,
+		MESSAGE_BUBBLE_OTHER,
+		MESSAGE_BUBBLE_OWN,
+		MESSAGE_EMOJI_ONLY,
+		MESSAGE_FLAT,
+	} from "$lib/message-styles";
 
 	import {
 		gatewayMessageToMessage,
@@ -1511,25 +1521,13 @@
 				aria-readonly="true"
 				tabindex="-1"
 				use:prism={lit ? ($currentUser?.id ?? null) : null}
-				class="font-content relative max-w-full cursor-text text-left text-[16px] wrap-anywhere select-text {emojiOnly
-					? 'px-0.5 leading-[1.15]'
+				class="{MESSAGE_BODY} {emojiOnly
+					? MESSAGE_EMOJI_ONLY
 					: flat
-						? `max-w-[760px] leading-[1.25] ${isFailed ? 'text-duvet-danger' : 'text-duvet-ink'}`
-						: `rounded-2xl px-3 py-2 leading-[1.45] transition-shadow duration-200 motion-reduce:transition-none ${
-								isFailed
-									? 'bg-duvet-danger/15 text-duvet-danger'
-									: lit
-										? PRISM_BUBBLE
-										: own
-											? 'msg-own bg-duvet-azure text-fixed-white'
-											: 'bg-duvet-card text-duvet-ink'
-							} ${
-								isHighlighted
-									? 'shadow-[0_0_0_3px_var(--duvet-accent),var(--duvet-shadow-raised)]'
-									: lit
-										? ''
-										: 'shadow-duvet-raised'
-							}`}"
+						? `${MESSAGE_FLAT} ${isFailed ? 'text-duvet-danger' : 'text-duvet-ink'}`
+						: `${MESSAGE_BUBBLE} ${
+								isFailed ? MESSAGE_BUBBLE_FAILED : lit ? PRISM_BUBBLE : own ? MESSAGE_BUBBLE_OWN : MESSAGE_BUBBLE_OTHER
+							} ${isHighlighted ? MESSAGE_BUBBLE_HIGHLIGHT : lit ? '' : 'shadow-duvet-raised'}`}"
 				onclick={(e) => {
 					if (e.detail === 2 && editable(message, mine)) startEdit(message);
 				}}

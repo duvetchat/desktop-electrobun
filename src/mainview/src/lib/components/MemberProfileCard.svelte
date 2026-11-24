@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { GLASS } from "$lib/components/ui/recipes";
+	import { GLASS, OVERLINE } from "$lib/components/ui/recipes";
 	import type { MemberOnSidebar, Role } from "$lib/types";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
 	import ProfileBio from "$lib/components/ProfileBio.svelte";
@@ -194,7 +194,7 @@
 
 			{#if member.bio}
 				<div class="bg-duvet-line my-3 h-px w-full"></div>
-				<h3 class="text-duvet-ink2 mb-1.5 text-left text-[10.5px] font-semibold tracking-[0.06em] uppercase">About</h3>
+				<h3 class="{OVERLINE} mb-1.5 text-left">About</h3>
 				<ProfileBio bio={member.bio} />
 			{/if}
 
@@ -202,10 +202,10 @@
 
 			{#if visibleRoles.length > 0}
 				<div class="bg-duvet-line my-3 h-px w-full"></div>
-				<h3 class="text-duvet-ink2 mb-1.5 text-left text-[10.5px] font-semibold tracking-[0.06em] uppercase">Roles</h3>
+				<h3 class="{OVERLINE} mb-1.5 text-left">Roles</h3>
 				<div class="flex flex-wrap gap-1">
 					{#each visibleRoles as role}
-						<div class="bg-duvet-secondary-fill flex h-[22px] w-max items-center gap-1.5 rounded-[7px] px-2">
+						<div class="bg-duvet-secondary-fill rounded-chip flex h-[22px] w-max items-center gap-1.5 px-2">
 							<div class="size-[9px] rounded-full" style={roleBadgeStyle(role)}></div>
 							<span class="text-duvet-ink text-[11.5px] font-medium">{role.name}</span>
 						</div>

@@ -1,7 +1,7 @@
 // The Settings screens' recipes (#357, docs/redesign/DESIGN-MAP.md S-47): the classes and the small sums Settings, a
 // Space's settings and a room's share. The primitives' own are in components/ui/recipes.ts.
 import type { Component } from "svelte";
-import { fieldClass } from "$lib/components/ui/recipes";
+import { fieldClass, iconTileClass } from "$lib/components/ui/recipes";
 
 /** A section of a settings screen, as its side panel lists it. */
 export interface SettingsNavItem<Section extends string = string> {
@@ -44,6 +44,25 @@ export function navLabel<Section extends string>(
 	return undefined;
 }
 
+/** A side panel's item, at rest, picked or dangerous (the way out). */
+const NAV_ITEM =
+	"flex h-8 w-full shrink-0 items-center gap-2 rounded-tile px-2 text-left text-[13px] font-medium " +
+	"transition-colors duration-[120ms] motion-reduce:transition-none";
+
+export function navItemClass(picked = false, danger = false): string {
+	const state = danger
+		? "text-duvet-danger hover:bg-duvet-danger/10"
+		: picked
+			? "bg-duvet-accent-tint text-duvet-ink"
+			: "text-duvet-ink hover:bg-duvet-sb-hover";
+	return `${NAV_ITEM} ${state}`;
+}
+
+/** A section's 22 px tile, in its own colour behind a white glyph. */
+export const NAV_TILE = "text-fixed-white grid size-[22px] shrink-0 place-items-center rounded-chip";
+/** The slot of an icon in the side panel's foot, which has no tile. */
+export const NAV_ICON_SLOT = "grid size-[22px] shrink-0 place-items-center";
+
 /** A text field: the app's one (lib/components/ui/recipes.ts), 38 tall. */
 export const FIELD = fieldClass("line");
 /** A smaller field, for a row's own input (a name edited in place). */
@@ -55,11 +74,24 @@ export const FIELD_WRONG = "ring-duvet-danger ring-2 focus-visible:ring-duvet-da
 
 /** A select: 30 tall, on the secondary fill. */
 export const SELECT =
-	"bg-duvet-secondary-fill text-duvet-ink h-[30px] max-w-48 rounded-[9px] pr-7 pl-2.5 text-[12.5px] font-medium " +
+	"bg-duvet-secondary-fill text-duvet-ink h-[30px] max-w-48 rounded-tile pr-7 pl-2.5 text-[12.5px] font-medium " +
 	"outline-none focus-visible:ring-duvet-accent focus-visible:ring-2 focus-override";
 
 /** A card: what a group's rows sit in. */
-export const CARD = "bg-duvet-card shadow-duvet-raised overflow-hidden rounded-2xl";
+export const CARD = "bg-duvet-card shadow-duvet-raised overflow-hidden rounded-card";
+/** A bar that appears over a settings page while something waits: a move, or unsaved changes. */
+export const ACTION_BAR =
+	"bg-duvet-card shadow-duvet-lifted mx-[26px] mb-3 flex items-center justify-between gap-4 rounded-card " +
+	"py-2.5 pr-2.5 pl-4 text-[13px] font-medium";
+/** A row's own classes: its words and control in one line, or a control stacked under them. */
+const ROW = "flex min-h-[50px] gap-x-3 gap-y-2 px-3.5 py-2";
+
+export function rowClass(stacked = false): string {
+	return `${ROW} ${stacked ? "flex-col justify-center" : "items-center"}`;
+}
+
+/** A row's icon tile: 30 px, the secondary fill under the accent's glyph. */
+export const ROW_TILE = iconTileClass("md");
 /** A group's title, over its card. */
 export const GROUP_TITLE = "text-duvet-ink2 px-1.5 text-[11px] font-semibold tracking-[0.06em] uppercase";
 /** A note under a card, or a section's opening line. */
@@ -69,7 +101,7 @@ export const LABEL = "text-duvet-ink2 mb-1.5 block text-[13px] font-medium";
 /** A tag on a row: ACTIVE, Admin, hoisted. */
 export const TAG = "rounded-md px-1.5 py-0.5 text-[10px] leading-none font-semibold";
 /** A loading row's placeholder. */
-export const SKELETON = "bg-duvet-secondary-fill animate-pulse rounded-xl";
+export const SKELETON = "bg-duvet-secondary-fill animate-pulse rounded-row";
 /** A checkbox, as the browser draws it in the accent. */
 export const CHECKBOX = "accent-duvet-accent size-4 shrink-0 rounded";
 
@@ -84,7 +116,7 @@ const CALLOUT_TONE: Record<CalloutTone, string> = {
 
 /** A callout: a line that needs seeing, tinted by what it says. */
 export function calloutClass(tone: CalloutTone = "info"): string {
-	return `flex gap-3 rounded-xl px-3 py-2.5 text-[12.5px] leading-[1.45] ${CALLOUT_TONE[tone]}`;
+	return `flex gap-3 rounded-row px-3 py-2.5 text-[12.5px] leading-[1.45] ${CALLOUT_TONE[tone]}`;
 }
 
 /** How full a storage is, in percent of its limit: 0 to 100, whole. */

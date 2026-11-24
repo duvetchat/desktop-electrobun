@@ -2,7 +2,7 @@
 	import { claimLayer, layerStyle, releaseLayer } from "$lib/overlay-layers";
 	import type { Snippet } from "svelte";
 	import { AlertDialog } from "bits-ui";
-	import { GLASS_STRONG } from "./recipes";
+	import { GLASS_STRONG, SCRIM } from "./recipes";
 
 	// A dialog: a question that needs an answer before anything else (delete this, leave that). The sheet's glass, in
 	// a narrower panel, without a close button: a press outside doesn't answer it, Esc is its Cancel. `actions` holds
@@ -39,7 +39,7 @@
 
 <AlertDialog.Root bind:open {onOpenChange}>
 	<AlertDialog.Portal>
-		<AlertDialog.Overlay style={layerStyle(layer)} class="bg-duvet-scrim animate-scrim-in fixed inset-0 z-[900]" />
+		<AlertDialog.Overlay style={layerStyle(layer)} class={SCRIM} />
 		<AlertDialog.Content
 			style={layerStyle(layer)}
 			{escapeKeydownBehavior}

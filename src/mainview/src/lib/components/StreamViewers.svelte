@@ -30,7 +30,7 @@
 			align="start"
 			sideOffset={6}
 			collisionPadding={10}
-			class="{GLASS} text-duvet-ink animate-float-in z-[1000] w-56 overflow-hidden rounded-[14px] p-1.5"
+			class="{GLASS} text-duvet-ink animate-float-in rounded-panel z-[1000] w-56 overflow-hidden p-1.5"
 		>
 			{#if viewers.length}
 				<p class="text-duvet-ink2 px-2 pt-1 pb-1.5 text-[11.5px] leading-none font-semibold">
@@ -38,7 +38,7 @@
 				</p>
 				<ul class="flex max-h-60 flex-col overflow-y-auto">
 					{#each viewers as viewer (viewer.id)}
-						<li class="flex min-h-8 items-center gap-2.5 rounded-[9px] px-2 text-[13px] font-medium">
+						<li class="rounded-tile flex min-h-8 items-center gap-2.5 px-2 text-[13px] font-medium">
 							<UserAvatar src={viewer.src} name={viewer.name} size={20} />
 							<span class="truncate">{viewer.id === meId ? "You" : viewer.name}</span>
 						</li>

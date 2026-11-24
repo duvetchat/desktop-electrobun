@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type { Component, Snippet } from "svelte";
+	import { rowClass, ROW_TILE } from "./recipes";
 
 	// A row of a settings group (#357, DESIGN-MAP.md S-47): an optional icon tile, a label with a line under it, and
 	// its control at the right. `stacked` puts the control under the words, for one too wide to sit beside them.
@@ -23,18 +24,11 @@
 	} = $props();
 </script>
 
-<div
-	class="flex min-h-[50px] gap-x-3 gap-y-2 px-3.5 py-2 {stacked
-		? 'flex-col justify-center'
-		: 'items-center'} {className}"
->
+<div class="{rowClass(stacked)} {className}">
 	<div class="flex min-w-0 flex-1 items-center gap-3">
 		{#if icon}
 			{@const Icon = icon}
-			<span
-				class="bg-duvet-secondary-fill text-duvet-accent-text grid size-[30px] shrink-0 place-items-center rounded-[9px]"
-				aria-hidden="true"
-			>
+			<span class={ROW_TILE} aria-hidden="true">
 				<Icon size={16} />
 			</span>
 		{/if}

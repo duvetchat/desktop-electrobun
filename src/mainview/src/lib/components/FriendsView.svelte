@@ -42,7 +42,8 @@
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
 	import StatusDot from "$lib/components/StatusDot.svelte";
 	import ConversationView from "$lib/components/ConversationView.svelte";
-	import { buttonClass, countBadgeClass } from "$lib/components/ui/recipes";
+	import { buttonClass, cardIconButtonClass, countBadgeClass, FOCUS_RING } from "$lib/components/ui/recipes";
+	import { FRIEND_ROW_TRIGGER } from "$lib/components/people/recipes";
 	import Sheet from "$lib/components/ui/Sheet.svelte";
 	import { ERROR_NOTE, FIELD_LABEL, fieldClass } from "$lib/overlay-forms";
 	import MessageSearch from "$lib/components/MessageSearch.svelte";
@@ -90,8 +91,7 @@
 		{ id: "pending", label: "Pending", count: $pendingFriendRequests.length, alert: true },
 		{ id: "sent", label: "Sent", count: $sentFriendRequests.length },
 	]);
-	const focusRing =
-		"focus-override focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-duvet-accent";
+	const focusRing = FOCUS_RING;
 
 	// The friends, those matching the search, online first (idle and do not disturb are there too), with what each is
 	// playing or listening to.
@@ -409,7 +409,7 @@
 				</div>
 			</div>
 			<div
-				class="bg-duvet-seg-track flex shrink-0 items-center rounded-[11px] p-[3px]"
+				class="bg-duvet-seg-track rounded-control flex shrink-0 items-center p-[3px]"
 				role="tablist"
 				aria-label="Friends"
 			>
@@ -506,7 +506,7 @@
 												side="bottom"
 												open={profileOpenFor === friend.id}
 												onOpenChange={(o) => (profileOpenFor = o ? friend.id : null)}
-												triggerClass="rounded-row relative flex min-w-0 flex-1 cursor-pointer items-center gap-3 text-left {focusRing}"
+												triggerClass={FRIEND_ROW_TRIGGER}
 												size="lg"
 												statusClass="text-duvet-bg"
 											>
@@ -526,7 +526,7 @@
 											</PersonButton>
 											<button
 												type="button"
-												class="bg-duvet-card text-duvet-ink2 shadow-duvet-raised hover:text-duvet-ink relative flex size-9 items-center justify-center rounded-xl transition-colors motion-reduce:transition-none {focusRing}"
+												class={cardIconButtonClass()}
 												aria-label="Message {member.username}"
 												title="Message"
 												onclick={() => handleOpenDM(friend)}
@@ -535,7 +535,7 @@
 											</button>
 											<button
 												type="button"
-												class="bg-duvet-card text-duvet-ink2 shadow-duvet-raised hover:text-duvet-danger relative flex size-9 items-center justify-center rounded-xl transition-colors motion-reduce:transition-none {focusRing}"
+												class={cardIconButtonClass(true)}
 												aria-label="Remove {member.username} from your friends"
 												title="Remove friend"
 												onclick={() => confirmUnfriend(friend)}
@@ -569,7 +569,7 @@
 										side="bottom"
 										open={profileOpenFor === req.id}
 										onOpenChange={(o) => (profileOpenFor = o ? req.id : null)}
-										triggerClass="rounded-row flex min-w-0 flex-1 cursor-pointer items-center gap-3 text-left {focusRing}"
+										triggerClass={FRIEND_ROW_TRIGGER}
 									>
 										{#snippet children()}
 											{@render person(other.id, other.avatar, other.alias ?? other.username, other.username)}

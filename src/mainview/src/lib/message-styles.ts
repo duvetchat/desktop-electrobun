@@ -60,3 +60,24 @@ export const JUMBO_EMOJI = "[&_.emoji-img]:size-10";
 export function messageTextClass(own = false): string {
 	return `${MESSAGE_TEXT} ${own ? MESSAGE_TEXT_OWN : MESSAGE_TEXT_PLAIN}`;
 }
+
+/** The box a message's text sits in, whatever its layout: the page, a flat row or a bubble. */
+export const MESSAGE_BODY =
+	"font-content relative max-w-full cursor-text text-left text-[16px] wrap-anywhere select-text";
+
+/** A message of only emoji: the glyphs at their large size, with no bubble's padding. */
+export const MESSAGE_EMOJI_ONLY = "px-0.5 leading-[1.15]";
+
+/** A flat row's text: at most 760 wide, tight leading. Its ink is the message's: plain or failed. */
+export const MESSAGE_FLAT = "max-w-[760px] leading-[1.25]";
+
+/** The bubble a message's text sits in when it isn't flat: the card radius, its own padding and the height transition. */
+export const MESSAGE_BUBBLE =
+	"rounded-card px-3 py-2 leading-[1.45] transition-shadow duration-200 motion-reduce:transition-none";
+
+export const MESSAGE_BUBBLE_FAILED = "bg-duvet-danger/15 text-duvet-danger";
+export const MESSAGE_BUBBLE_OWN = "msg-own bg-duvet-azure text-fixed-white";
+export const MESSAGE_BUBBLE_OTHER = "bg-duvet-card text-duvet-ink";
+
+/** A bubble the user jumped to, or whose reply or mention it is. */
+export const MESSAGE_BUBBLE_HIGHLIGHT = "shadow-[0_0_0_3px_var(--duvet-accent),var(--duvet-shadow-raised)]";

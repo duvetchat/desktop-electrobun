@@ -45,6 +45,16 @@ test("no component or recipe writes an arbitrary animate-[…]", () => {
 	);
 });
 
+// A recipe states a corner's role, not its pixel value: app.css's --radius-chip, --radius-tile and the rest. A
+// literal here would work, but then the role and the value could drift apart without a test noticing.
+test("the recipe modules use the named radius roles, not their pixel values", () => {
+	const recipeFiles = modules.filter((m) => m.file.endsWith("recipes.ts"));
+	expect(recipeFiles.length).toBeGreaterThan(0);
+	for (const recipe of recipeFiles) {
+		expect(recipe.source, recipe.file).not.toMatch(/rounded-\[(?:5|7|9|11|12|14|16|20)px\]/);
+	}
+});
+
 test("every animate-* class a component or a recipe names is an animation of app.css's theme, with its keyframes", () => {
 	const css = readFileSync(join(src, "app.css"), "utf8");
 	// Tailwind's own, which need no theme entry.

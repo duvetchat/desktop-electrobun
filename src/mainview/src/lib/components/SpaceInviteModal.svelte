@@ -92,7 +92,7 @@
 
 		{#if joined}
 			<div
-				class="bg-duvet-chosen text-duvet-chosen-ink flex h-[34px] w-full items-center justify-center rounded-[11px] text-[13px] font-medium"
+				class="bg-duvet-chosen text-duvet-chosen-ink rounded-control flex h-[34px] w-full items-center justify-center text-[13px] font-medium"
 			>
 				You're in.
 			</div>

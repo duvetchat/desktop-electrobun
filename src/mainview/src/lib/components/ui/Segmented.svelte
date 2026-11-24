@@ -45,7 +45,7 @@
 	orientation="horizontal"
 	aria-label={label}
 	style="--n: {options.length}; --i: {index};"
-	class="bg-duvet-seg-track relative grid shrink-0 grid-cols-[repeat(var(--n),minmax(0,1fr))] rounded-[11px] p-[3px] data-disabled:opacity-50 {className}"
+	class="bg-duvet-seg-track rounded-control relative grid shrink-0 grid-cols-[repeat(var(--n),minmax(0,1fr))] p-[3px] data-disabled:opacity-50 {className}"
 >
 	<span
 		class="bg-duvet-seg-thumb shadow-duvet-control ease-spring absolute top-[3px] bottom-[3px] left-[3px] w-[calc((100%-6px)/var(--n))] translate-x-[calc(var(--i)*100%)] rounded-lg transition-transform duration-[250ms] motion-reduce:transition-none"

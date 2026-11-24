@@ -224,7 +224,7 @@
 {/snippet}
 
 {#snippet button(c: Component)}
-	{@const cls = `inline-flex h-[34px] max-w-full min-w-15 items-center justify-center gap-1.5 rounded-[11px] px-3.5 text-[13px] font-medium no-underline transition-[filter,background-color] disabled:pointer-events-none disabled:opacity-45 motion-reduce:transition-none ${buttonColors[c.style ?? ButtonStyle.Secondary] ?? buttonColors[ButtonStyle.Secondary]}`}
+	{@const cls = `inline-flex h-[34px] max-w-full min-w-15 items-center justify-center gap-1.5 rounded-control px-3.5 text-[13px] font-medium no-underline transition-[filter,background-color] disabled:pointer-events-none disabled:opacity-45 motion-reduce:transition-none ${buttonColors[c.style ?? ButtonStyle.Secondary] ?? buttonColors[ButtonStyle.Secondary]}`}
 	{@const href = webUrl(c.url)}
 	{#if c.style === ButtonStyle.Link && href && !c.disabled}
 		<a {href} target="_blank" rel="noopener noreferrer" class={cls}>

@@ -105,7 +105,7 @@
 					role="tab"
 					aria-selected={selected}
 					title={reaction.emoji_name}
-					class="flex h-8 shrink-0 items-center gap-2 rounded-[9px] px-2 text-[13px] transition-colors motion-reduce:transition-none {selected
+					class="rounded-tile flex h-8 shrink-0 items-center gap-2 px-2 text-[13px] transition-colors motion-reduce:transition-none {selected
 						? 'bg-duvet-accent-tint text-duvet-ink'
 						: 'text-duvet-ink2 hover:bg-duvet-hover hover:text-duvet-ink'}"
 					onclick={() => (picked = reactionKey(reaction))}

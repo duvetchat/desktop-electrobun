@@ -7,6 +7,7 @@
 	import { navPrefs } from "$lib/nav-prefs.svelte";
 	import type { Guild } from "$lib/types";
 	import SpaceIcon from "$lib/components/ui/SpaceIcon.svelte";
+	import { FOCUS_RING } from "$lib/components/ui/recipes";
 	import TabIcon from "$lib/components/TabIcon.svelte";
 	import ProfileRow from "$lib/components/ProfileRow.svelte";
 
@@ -45,7 +46,7 @@
 	});
 	const dmNews = $derived($pendingFriendRequests.length + $shownUnreadConversations.size > 0);
 
-	const iconFocus = "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-duvet-accent";
+	const iconFocus = FOCUS_RING;
 </script>
 
 {#snippet pip()}

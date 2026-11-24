@@ -101,6 +101,7 @@
 	import Toggle from "$lib/components/ui/Toggle.svelte";
 	import { iconButtonClass } from "$lib/components/ui/recipes";
 	import {
+		ACTION_BAR,
 		calloutClass,
 		CARD,
 		CHECKBOX,
@@ -1458,10 +1459,7 @@
 		{#if activeSection === "attachments" && spacePicking && spacePicker.pickedFiles.length > 0}
 			{@const pickedCount = spacePicker.pickedFiles.length}
 			{@const tooMany = (spacePicker.filter.attachment_ids?.length ?? 0) > MAX_PICKED_FILES}
-			<div
-				transition:slide={{ duration: motionMs(200) }}
-				class="bg-duvet-card shadow-duvet-lifted mx-[26px] mb-3 flex items-center justify-between gap-4 rounded-2xl py-2.5 pr-2.5 pl-4 text-[13px] font-medium"
-			>
+			<div transition:slide={{ duration: motionMs(200) }} class={ACTION_BAR}>
 				<p class="text-duvet-ink2 min-w-0 truncate">
 					{#if spaceTransfer}
 						Wait for the transfer under way to end.
@@ -1924,7 +1922,7 @@
 										<IconButton
 											label="Delete"
 											title="Delete"
-											class="hover:bg-duvet-danger/15! hover:text-duvet-danger!"
+											danger
 											onclick={() => handleDeleteEmoji(emoji.id)}
 											disabled={isDeletingEmoji[emoji.id]}
 										>
@@ -1977,7 +1975,7 @@
 										<IconButton
 											label="Delete"
 											title="Delete"
-											class="hover:bg-duvet-danger/15! hover:text-duvet-danger!"
+											danger
 											onclick={() => handleDeleteSticker(sticker.id)}
 											disabled={isDeletingSticker[sticker.id]}
 										>
@@ -2130,12 +2128,7 @@
 								<IconButton label="Edit" title="Edit" onclick={() => startEditSpaceBucket(bucket)}>
 									<PencilIcon size={16} />
 								</IconButton>
-								<IconButton
-									label="Delete"
-									title="Delete"
-									class="hover:bg-duvet-danger/15! hover:text-duvet-danger!"
-									onclick={() => handleDeleteSpaceBucket(bucket.id)}
-								>
+								<IconButton label="Delete" title="Delete" danger onclick={() => handleDeleteSpaceBucket(bucket.id)}>
 									<TrashIcon size={16} />
 								</IconButton>
 							</div>
@@ -2277,11 +2270,11 @@
 								<img
 									src="{attachmentHost}{att.url ?? `/attachments/${att.id}`}"
 									alt=""
-									class="bg-duvet-secondary-fill size-10 shrink-0 rounded-[9px] object-cover"
+									class="bg-duvet-secondary-fill rounded-tile size-10 shrink-0 object-cover"
 								/>
 							{:else}
 								<div
-									class="bg-duvet-secondary-fill text-duvet-ink2 grid size-10 shrink-0 place-items-center rounded-[9px]"
+									class="bg-duvet-secondary-fill text-duvet-ink2 rounded-tile grid size-10 shrink-0 place-items-center"
 								>
 									{#if isAudio}<MicIcon size={16} />{:else}<PaperclipIcon size={16} />{/if}
 								</div>
@@ -2307,12 +2300,7 @@
 									<DownloadIcon size={16} />
 								</a>
 								{#if canManageAttachments}
-									<IconButton
-										label="Delete"
-										title="Delete"
-										class="hover:bg-duvet-danger/15! hover:text-duvet-danger!"
-										onclick={() => handleDeleteSpaceAttachment(att)}
-									>
+									<IconButton label="Delete" title="Delete" danger onclick={() => handleDeleteSpaceAttachment(att)}>
 										<TrashIcon size={16} />
 									</IconButton>
 								{/if}

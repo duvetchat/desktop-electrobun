@@ -1,16 +1,72 @@
 import { describe, expect, test } from "bun:test";
 import { Code, User } from "@lucide/svelte";
 import {
+	ACTION_BAR,
 	calloutClass,
+	CARD,
 	filterNav,
 	listFileSize,
+	NAV_TILE,
+	navItemClass,
 	navLabel,
 	roleBackground,
 	roleHex,
+	rowClass,
+	ROW_TILE,
 	usagePercent,
 	usageTone,
 	type SettingsNavGroup,
 } from "./recipes";
+
+const classes = (list: string) => list.split(/\s+/);
+
+describe("the side panel's items", () => {
+	test("a picked item takes the accent tint, an idle one the sidebar's hover", () => {
+		expect(classes(navItemClass(true))).toEqual(
+			expect.arrayContaining(["bg-duvet-accent-tint", "text-duvet-ink", "rounded-tile", "gap-2"]),
+		);
+		expect(classes(navItemClass())).toEqual(expect.arrayContaining(["hover:bg-duvet-sb-hover", "rounded-tile"]));
+	});
+
+	test("the way out is dangerous, with no picked fill", () => {
+		const danger = classes(navItemClass(false, true));
+		expect(danger).toEqual(expect.arrayContaining(["text-duvet-danger", "hover:bg-duvet-danger/10"]));
+		expect(danger).not.toContain("bg-duvet-accent-tint");
+	});
+
+	test("its tile is 22 px with 7 px corners, and its foot's icon takes the same slot", () => {
+		expect(classes(NAV_TILE)).toEqual(
+			expect.arrayContaining(["size-[22px]", "rounded-chip", "text-fixed-white", "place-items-center"]),
+		);
+	});
+});
+
+describe("a settings row", () => {
+	test("keeps its 50 px line, with the control beside the words or under them", () => {
+		expect(classes(rowClass())).toEqual(expect.arrayContaining(["min-h-[50px]", "px-3.5", "py-2", "items-center"]));
+		expect(classes(rowClass(true))).toEqual(expect.arrayContaining(["flex-col", "justify-center"]));
+	});
+
+	test("its icon sits in the shared 30 px tile", () => {
+		expect(classes(ROW_TILE)).toEqual(
+			expect.arrayContaining(["size-[30px]", "rounded-tile", "bg-duvet-secondary-fill"]),
+		);
+	});
+});
+
+describe("a settings card", () => {
+	test("takes the 16 px card radius, the raised shadow and no overflow", () => {
+		expect(classes(CARD)).toEqual(
+			expect.arrayContaining(["bg-duvet-card", "shadow-duvet-raised", "rounded-card", "overflow-hidden"]),
+		);
+	});
+
+	test("an action bar floats over the page on the same radius, with its inset margins", () => {
+		expect(classes(ACTION_BAR)).toEqual(
+			expect.arrayContaining(["bg-duvet-card", "shadow-duvet-lifted", "rounded-card", "mx-[26px]", "justify-between"]),
+		);
+	});
+});
 
 const groups: SettingsNavGroup<"account" | "audio" | "developer">[] = [
 	{

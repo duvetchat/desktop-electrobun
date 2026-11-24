@@ -5,7 +5,7 @@
 	import DragRegion from "$lib/components/DragRegion.svelte";
 	import WindowControls from "$lib/components/WindowControls.svelte";
 	import { countBadgeClass, iconButtonClass } from "$lib/components/ui/recipes";
-	import { filterNav, navLabel, type SettingsNavGroup } from "./recipes";
+	import { filterNav, navItemClass, navLabel, NAV_TILE, type SettingsNavGroup } from "./recipes";
 
 	// The chassis of Settings and of a Space's settings (#357, DESIGN-MAP.md S-47, S-58): a side panel that lists the
 	// sections, and the page of the one picked under a toolbar that names it. On the web it is a sheet over the app; in
@@ -66,7 +66,7 @@
 		{/if}
 		{@render head()}
 		<label
-			class="bg-duvet-sb-field ring-duvet-sb-edge text-duvet-ink2 focus-within:ring-duvet-accent mt-2 flex h-[30px] shrink-0 items-center gap-1.5 rounded-[9px] px-2 ring-[0.5px] focus-within:ring-2"
+			class="bg-duvet-sb-field ring-duvet-sb-edge text-duvet-ink2 focus-within:ring-duvet-accent rounded-tile mt-2 flex h-[30px] shrink-0 items-center gap-1.5 px-2 ring-[0.5px] focus-within:ring-2"
 		>
 			<SearchIcon size={13} class="shrink-0" />
 			<input
@@ -86,18 +86,11 @@
 					{#each group.items as item (item.id)}
 						<button
 							type="button"
-							class="flex h-8 shrink-0 items-center gap-2 rounded-[9px] px-2 text-left text-[13px] font-medium transition-colors duration-[120ms] motion-reduce:transition-none {active ===
-							item.id
-								? 'bg-duvet-accent-tint text-duvet-ink'
-								: 'text-duvet-ink hover:bg-duvet-sb-hover'}"
+							class={navItemClass(active === item.id)}
 							aria-current={active === item.id ? "page" : undefined}
 							onclick={() => (active = item.id)}
 						>
-							<span
-								class="text-fixed-white grid size-[22px] shrink-0 place-items-center rounded-[7px]"
-								style="background: {item.tile};"
-								aria-hidden="true"
-							>
+							<span class={NAV_TILE} style="background: {item.tile};" aria-hidden="true">
 								<item.icon size={14} />
 							</span>
 							<span class="min-w-0 flex-1 truncate">{item.label}</span>
