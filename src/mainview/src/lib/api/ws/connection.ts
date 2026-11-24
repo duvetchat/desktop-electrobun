@@ -118,8 +118,8 @@ import {
 	missedCallNotice,
 	ownCallsRingingOnReady,
 	placeAgain,
-	VOICE_ROOM_LOST,
 	voiceEndedNotice,
+	voiceRoomLostNotice,
 	withCallVoiceState,
 	type PlacedCall,
 } from "$lib/calls";
@@ -527,7 +527,7 @@ const spaceOfRoom = (roomId: string) => get(gatewaySpaces).find((s) => s.rooms.s
  * gateway sends after says nothing more, and the user is told as that event tells lost access, unless they left that space
  * themselves, from here. */
 function voiceRoomTaken(leftHere: boolean) {
-	if (!leftHere) toast(VOICE_ROOM_LOST, "error");
+	if (!leftHere) toast(voiceRoomLostNotice(), "error");
 	activeVoiceRoomId.set(null);
 }
 

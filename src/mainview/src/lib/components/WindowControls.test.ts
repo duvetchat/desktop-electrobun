@@ -152,7 +152,7 @@ describe("a Settings window's chrome", () => {
 test("the pop-out draws its close where the system draws none, and it puts the controls back", () => {
 	const page = read("routes/voice-controls/+page.svelte").replace(/\s+/g, " ");
 	expect(page).toMatch(
-		/\{#if shell\.ownWindowControls\} <IconButton size="sm" label="Close window" onclick=\{putBack\}> .*? <\/IconButton> \{\/if\}/,
+		/\{#if shell\.ownWindowControls\} <IconButton size="sm" label=\{t\("call_close_window"\)\} onclick=\{putBack\}> .*? <\/IconButton> \{\/if\}/,
 	);
 	// Put back asks Bun, which closes the window; if Bun doesn't take it, the window is closed all the same.
 	expect(page).toContain('aboutWindow("putBack").catch(() => rpc?.send.closeWindow())');

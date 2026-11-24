@@ -9,6 +9,7 @@
 	import { onDestroy, onMount } from "svelte";
 	import StreamViewers from "$lib/components/StreamViewers.svelte";
 	import { streamWindowBox } from "$lib/corner";
+	import { t } from "$lib/i18n";
 	import { chatsOnScreen } from "$lib/on-screen";
 	import {
 		currentUser,
@@ -62,7 +63,19 @@
 	);
 	const sharerId = $derived(!shown ? null : shown.own ? ($currentUser?.id ?? null) : shown.userId);
 	const title = $derived(
-		!shown || !place ? "" : shown.own ? "Your screen" : `${place.person(shown.userId).name}'s screen`,
+		!shown || !place
+			? ""
+			: shown.own
+				? t("call_stream_own")
+				: t("call_stream_of", { name: place.person(shown.userId).name }),
+	);
+	// What a screen reader hears of the window: whose screen, and where.
+	const label = $derived(
+		!shown || !place
+			? ""
+			: shown.own
+				? t("call_stream_own_in", { place: place.name })
+				: t("call_stream_of_in", { name: place.person(shown.userId).name, place: place.name }),
 	);
 	const viewers = $derived.by(() => {
 		if (!place || !sharerId) return [];
@@ -143,7 +156,7 @@
 	<div
 		role="button"
 		tabindex="0"
-		aria-label={`${title} in ${place.name}`}
+		aria-label={label}
 		class="group bg-duvet-stage shadow-duvet-float inset-ring-fixed-white/8 fixed z-40 h-45 w-80 cursor-pointer touch-none overflow-hidden rounded-2xl inset-ring-1 select-none"
 		style="right: {right}px; bottom: {bottom}px;"
 		{onpointerdown}
@@ -164,8 +177,8 @@
 			<span class="flex-1"></span>
 			<button
 				type="button"
-				aria-label={shown.own ? "Stop sharing" : "Stop watching"}
-				title={shown.own ? "Stop sharing" : "Stop watching"}
+				aria-label={shown.own ? t("call_stop_sharing") : t("call_stop_watching")}
+				title={shown.own ? t("call_stop_sharing") : t("call_stop_watching")}
 				class="bg-duvet-media-scrim text-duvet-media-ink hover:bg-duvet-call-red hover:text-fixed-white grid size-[26px] shrink-0 place-items-center rounded-[9px] backdrop-blur-[14px] transition-colors motion-reduce:transition-none"
 				onclick={stop}
 			>

@@ -324,19 +324,25 @@ describe("when a call rang", () => {
 	const now = new Date(2026, 10, 9, 18, 0);
 	const at = (...args: [number, number, number, number?, number?]) =>
 		new Date(args[0], args[1], args[2], args[3] ?? 12, args[4] ?? 0).toISOString();
+	// The system's languages, which lib/i18n/format.ts writes dates in when the first of the app's language is there.
+	const systemIn = (...languages: string[]) =>
+		Object.defineProperty(navigator, "languages", { value: languages, configurable: true });
+	afterEach(() => Reflect.deleteProperty(navigator, "languages"));
 
 	test("says the time today, Yesterday, the day within a week, and the date before", () => {
-		expect(callTime(at(2026, 10, 9, 15, 42), now, "en-GB")).toBe("15:42");
-		expect(callTime(at(2026, 10, 9, 0, 5), now, "en-GB")).toBe("00:05");
-		expect(callTime(at(2026, 10, 8, 23, 59), now, "en-GB")).toBe("Yesterday");
-		expect(callTime(at(2026, 10, 4), now, "en-GB")).toBe("Wed");
-		expect(callTime(at(2026, 10, 3), now, "en-GB")).toBe("Tue");
-		expect(callTime(at(2026, 10, 2), now, "en-GB")).toBe("02/11");
-		expect(callTime(at(2025, 10, 9), now, "en-GB")).toBe("09/11/25");
+		systemIn("en-GB");
+		expect(callTime(at(2026, 10, 9, 15, 42), now)).toBe("15:42");
+		expect(callTime(at(2026, 10, 9, 0, 5), now)).toBe("00:05");
+		expect(callTime(at(2026, 10, 8, 23, 59), now)).toBe("Yesterday");
+		expect(callTime(at(2026, 10, 4), now)).toBe("Wed");
+		expect(callTime(at(2026, 10, 3), now)).toBe("Tue");
+		expect(callTime(at(2026, 10, 2), now)).toBe("02/11");
+		expect(callTime(at(2025, 10, 9), now)).toBe("09/11/25");
 	});
 
-	test("says the day's name in English whatever the locale, and nothing for a date it can't read", () => {
-		expect(callTime(at(2026, 10, 4), now, "es-ES")).toBe("Wed");
+	test("says the day's name in the app's language whatever the system's, and nothing for a date it can't read", () => {
+		systemIn("es-ES");
+		expect(callTime(at(2026, 10, 4), now)).toBe("Wed");
 		expect(callTime("not a date", now)).toBe("");
 	});
 });

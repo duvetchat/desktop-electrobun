@@ -16,6 +16,7 @@
 	import Button from "$lib/components/ui/Button.svelte";
 	import IconButton from "$lib/components/ui/IconButton.svelte";
 	import Tooltip from "$lib/components/ui/Tooltip.svelte";
+	import { t } from "$lib/i18n";
 	import { mediaPopOut, popOutMedia, putBackMedia, showMediaWindow } from "$lib/media-popout.svelte";
 	import { currentShell } from "$lib/platform";
 	import { voiceKeyLabels } from "$lib/voice-keys";
@@ -52,7 +53,7 @@
 </script>
 
 {#if collapsed}
-	<div class="flex flex-col items-center gap-1" role="group" aria-label="Voice controls">
+	<div class="flex flex-col items-center gap-1" role="group" aria-label={t("call_voice_controls")}>
 		{#if media.place}
 			<MediaButton
 				label={openPlaceLabel(media)}
@@ -77,8 +78,8 @@
 			</MediaButton>
 		{/if}
 		<MediaButton
-			label={media.muted ? "Unmute" : "Mute"}
-			tip={media.canSpeak ? (media.muted ? "Unmute" : "Mute") : "You can't speak in this room"}
+			label={media.muted ? t("call_unmute") : t("call_mute")}
+			tip={media.canSpeak ? (media.muted ? t("call_unmute") : t("call_mute")) : t("call_cannot_speak")}
 			pressed={media.muted}
 			stateInName
 			disabled={!media.canSpeak}
@@ -89,7 +90,7 @@
 			{#if media.muted}<MicOff size={16} />{:else}<Mic size={16} />{/if}
 		</MediaButton>
 		<MediaButton
-			label={media.deafened ? "Undeafen" : "Deafen"}
+			label={media.deafened ? t("call_undeafen") : t("call_deafen")}
 			pressed={media.deafened}
 			stateInName
 			shape="square"
@@ -99,8 +100,8 @@
 			{#if media.deafened}<HeadphoneOff size={16} />{:else}<Headphones size={16} />{/if}
 		</MediaButton>
 		<MediaButton
-			label="Noise suppression"
-			tip={media.noiseSuppression ? "Noise suppression on" : "Noise suppression off"}
+			label={t("call_noise_suppression")}
+			tip={media.noiseSuppression ? t("call_noise_suppression_on") : t("call_noise_suppression_off")}
 			pressed={media.noiseSuppression}
 			shape="square"
 			side="right"
@@ -115,19 +116,14 @@
 		<button
 			type="button"
 			class="text-duvet-ink2 hover:text-duvet-ink flex h-full min-w-0 flex-1 items-center gap-2 rounded-lg pl-1.5 text-left text-xs transition-colors motion-reduce:transition-none"
-			aria-label="Show the voice controls"
+			aria-label={t("call_show_voice_controls")}
 			onclick={showMediaWindow}
 		>
 			<PictureInPicture2 class="shrink-0" size={15} />
-			<span class="leading-[1.25]">Voice controls are in their own window</span>
+			<span class="leading-[1.25]">{t("call_voice_controls_popped_out")}</span>
 		</button>
-		<Button
-			variant="secondary"
-			size="sm"
-			aria-label="Put the voice controls back in the sidebar"
-			onclick={putBackMedia}
-		>
-			Put back
+		<Button variant="secondary" size="sm" aria-label={t("call_put_back_label")} onclick={putBackMedia}>
+			{t("call_put_back")}
 		</Button>
 	</div>
 {:else}
@@ -135,9 +131,9 @@
 {/if}
 
 {#snippet popOut()}
-	<Tooltip text="Pop out" side="top">
+	<Tooltip text={t("call_pop_out")} side="top">
 		{#snippet trigger(props)}
-			<IconButton {...props} label="Pop out the voice controls" onclick={popOutMedia}>
+			<IconButton {...props} label={t("call_pop_out_label")} onclick={popOutMedia}>
 				<PictureInPicture2 size={16} />
 			</IconButton>
 		{/snippet}

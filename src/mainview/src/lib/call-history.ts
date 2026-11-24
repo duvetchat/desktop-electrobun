@@ -3,6 +3,8 @@ import { CALLS_PAGE_SIZE, getCallHistory, type Conversation, type DirectMessage 
 import { callNoticeLine, type CallNoticeLine } from "$lib/call-notices";
 import { callingFromAnotherDevice } from "$lib/calls";
 import { getAvatarURL } from "$lib/common/common";
+import { t } from "$lib/i18n";
+import { formatDate } from "$lib/i18n/format";
 import { conversationTitle, otherMember } from "$lib/pane";
 import type { ActiveCallInfo } from "$lib/stores.svelte";
 import { directMessageToMessage, MessageType } from "$lib/types";
@@ -145,7 +147,8 @@ export interface CallRow {
 	/** The call's notice. */
 	id: string;
 	conversationId: string;
-	/** A DM's other person, or a group's name, as the DM list names them; "Chat" for one this client doesn't know. */
+	/** A DM's other person, or a group's name, as the DM list names them; "Chat" (call_unknown_chat) for one this client
+	 * doesn't know. */
 	title: string;
 	/** Whether it's drawn with the group's mark rather than a face: a group, which has no picture, or a conversation this
 	 * client doesn't know, as their tabs draw them (#376). */
@@ -172,7 +175,7 @@ export function callRow(
 	return {
 		id: notice.id,
 		conversationId: notice.conversation_id,
-		title: conversation ? conversationTitle(conversation, me) : "Chat",
+		title: conversation ? conversationTitle(conversation, me) : t("call_unknown_chat"),
 		group: !other,
 		avatar: other ? getAvatarURL(other.user_id, other.user?.avatar) : null,
 		line,
@@ -196,23 +199,21 @@ export function callBackAction(
 	return withCalls.has(conversationId) ? "join" : "call";
 }
 
-const userLocale = typeof navigator !== "undefined" ? navigator.language : "en-US";
-
 /**
  * When a call rang, as the history's rows say it, the mobile app's way: its time today, "Yesterday", the day of the week
- * within a week, and its date before that, with the year when it isn't this one. Times and dates in the user's locale,
- * as the messages' are, and words in English, as the app's are.
+ * within a week, and its date before that, with the year when it isn't this one. In the app's language, and its dates
+ * and times as lib/i18n/format.ts writes them: in the system's region when the system is in that language.
  */
-export function callTime(iso: string, now = new Date(), locale = userLocale): string {
+export function callTime(iso: string, now = new Date()): string {
 	const at = new Date(iso);
 	if (Number.isNaN(at.getTime())) return "";
 	const midnight = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
 	// Rounded: a day across a change of the clocks lasts 23 or 25 hours.
 	const days = Math.round((midnight(now) - midnight(at)) / 86_400_000);
-	if (days === 0) return at.toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" });
-	if (days === 1) return "Yesterday";
-	if (days > 1 && days < 7) return at.toLocaleDateString("en-US", { weekday: "short" });
-	return at.toLocaleDateString(locale, {
+	if (days === 0) return formatDate(at, { hour: "2-digit", minute: "2-digit" });
+	if (days === 1) return t("call_history_yesterday");
+	if (days > 1 && days < 7) return formatDate(at, { weekday: "short" });
+	return formatDate(at, {
 		day: "numeric",
 		month: "numeric",
 		...(at.getFullYear() === now.getFullYear() ? {} : { year: "2-digit" }),

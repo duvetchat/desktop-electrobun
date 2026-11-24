@@ -21,7 +21,10 @@ test("the call history opens from a history mark, never a phone", () => {
 
 test("a row's call back keeps its phone", () => {
 	const rows = source("CallHistory.svelte");
-	const start = rows.indexOf('label={action === "join" ? `Join the call in ${row.title}` : `Call ${row.title}`}');
+	const start =
+		/label=\{action === "join"\s*\? t\("call_history_join_label", \{ name: row\.title \}\)\s*: t\("call_history_call_label", \{ name: row\.title \}\)\}/.exec(
+			rows,
+		)?.index ?? -1;
 	expect(start).toBeGreaterThan(-1);
 	expect(rows.slice(start, rows.indexOf("</IconButton>", start))).toContain("<PhoneIcon size={16} />");
 });

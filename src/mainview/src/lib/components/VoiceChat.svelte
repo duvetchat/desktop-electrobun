@@ -5,6 +5,7 @@
 	import { gatewayConnection, onWebRTCEvent, sendEventMessage, wantFreshSession } from "$lib/api/ws/connection";
 	import { REJOIN_WINDOW_MS, sendAgain } from "$lib/resend";
 	import { audioStore } from "$lib/stores/audio.svelte";
+	import { t } from "$lib/i18n";
 	import { toast } from "$lib/stores/toast.svelte";
 	import { hasPermission, Permission } from "$lib/permissions";
 	import { askForMicWith, sendVoiceSync, takeVideoCall } from "$lib/voice";
@@ -148,7 +149,7 @@
 			denoiseCleanup = null;
 		}
 		if (rawMicStream) {
-			rawMicStream.getTracks().forEach((t) => t.stop());
+			rawMicStream.getTracks().forEach((track) => track.stop());
 			rawMicStream = null;
 		}
 		stopTracks(localAudioStream);
@@ -181,7 +182,7 @@
 			// A join sent on this connection went out after its identify, so it's already in the new session.
 			if (!joining || isDestroyed || $activeVoiceRoomId !== ownRoomId || joinedOn === gatewayConnection()) return;
 			if (joinedOn !== null && data.silent_ms > REJOIN_WINDOW_MS) {
-				toast("You left voice: the connection was lost for a while", "error");
+				toast(t("call_left_voice_silent"), "error");
 				leaveVoice();
 			} else joinVoice();
 			return;
@@ -286,7 +287,7 @@
 				if (!isDestroyed) {
 					isMuted.set(true);
 					askForMicWith(askForMicAgain);
-					toast("Duvet can't use the microphone: you're listening only", "error");
+					toast(t("call_mic_listening_only"), "error");
 				}
 			}
 		}
@@ -315,7 +316,7 @@
 	}
 
 	function stopTracks(stream: MediaStream | null) {
-		stream?.getTracks().forEach((t) => t.stop());
+		stream?.getTracks().forEach((track) => track.stop());
 	}
 
 	const isLive = (track: MediaStreamTrack) => track.readyState === "live";
@@ -332,7 +333,7 @@
 		const constraints = $selectedMicId ? { audio: { deviceId: { exact: $selectedMicId } } } : { audio: true };
 		const stream = await navigator.mediaDevices.getUserMedia(constraints);
 		if (isDestroyed) {
-			stream.getTracks().forEach((t) => t.stop());
+			stream.getTracks().forEach((track) => track.stop());
 			return;
 		}
 		rawMicStream = stream;
@@ -345,7 +346,7 @@
 			const denoised = await createDenoisedStream(stream, ctx);
 			if (isDestroyed) {
 				denoised.cleanup();
-				stream.getTracks().forEach((t) => t.stop());
+				stream.getTracks().forEach((track) => track.stop());
 				return;
 			}
 			localAudioStream = denoised.stream;
@@ -494,7 +495,7 @@
 			})
 			.catch((err) => {
 				console.error("[Voice] Failed to open the mic after getting SpeakInVoice:", err);
-				toast("Couldn't open your microphone", "error");
+				toast(t("call_mic_failed"), "error");
 				if (!isDestroyed) askForMicWith(askForMicAgain);
 			});
 	});
@@ -584,7 +585,7 @@
 		attempt.catch((err) => {
 			console.error("[Voice] Couldn't connect:", err);
 			if (generation !== webrtcGeneration || isDestroyed) return;
-			toast("Couldn't connect to voice", "error");
+			toast(t("call_connect_failed"), "error");
 			leaveVoice();
 		});
 	}
@@ -643,7 +644,7 @@
 			// With the gateway down too (a restart that lasts), the next session's READY joins again. With it up,
 			// it's this connection that can't get through: leave.
 			if (gatewayConnection() !== null) {
-				toast("Lost the connection to voice", "error");
+				toast(t("call_connection_lost"), "error");
 				leaveVoice();
 			} else wantFreshSession();
 		};
@@ -669,7 +670,7 @@
 			}
 			localAudioStream
 				.getTracks()
-				.filter((t) => t.kind !== "audio")
+				.filter((track) => track.kind !== "audio")
 				.forEach((track) => {
 					pc.addTrack(track, localAudioStream!);
 				});
@@ -737,7 +738,7 @@
 				wantFreshSession();
 				return;
 			}
-			toast("Couldn't connect to voice", "error");
+			toast(t("call_connect_failed"), "error");
 			leaveVoice();
 		}, JOIN_TIMEOUT_MS);
 	}
@@ -817,7 +818,7 @@
 			denoiseCleanup = null;
 		}
 		if (rawMicStream) {
-			rawMicStream.getTracks().forEach((t) => t.stop());
+			rawMicStream.getTracks().forEach((track) => track.stop());
 		}
 		rawMicStream = newRawStream;
 
@@ -857,7 +858,7 @@
 			sendVoiceSync(channelId);
 		} else {
 			if (!canVideo) {
-				videoOffNotice("You can't use video in this room");
+				videoOffNotice(t("call_video_not_allowed", { place: "room" }));
 				return;
 			}
 			try {
@@ -871,7 +872,7 @@
 					if (withAudio && displayErr?.name === "NotReadableError") {
 						// Audio capture failed (window selected instead of tab) — retry without audio
 						screen = await navigator.mediaDevices.getDisplayMedia({ video: true });
-						toast("Audio only works when sharing a browser tab, not a window.", "info");
+						toast(t("call_screen_audio_tab_only"), "info");
 					} else {
 						throw displayErr;
 					}
@@ -879,7 +880,7 @@
 				// Left (or lost Video) while the screen picker was open: this capture belongs to no call.
 				if (isDestroyed || !canVideo || localScreenStream) {
 					stopTracks(screen);
-					if (!isDestroyed && !canVideo) videoOffNotice("You can't use video in this room");
+					if (!isDestroyed && !canVideo) videoOffNotice(t("call_video_not_allowed", { place: "room" }));
 					return;
 				}
 				localScreenStream = screen;
@@ -901,7 +902,7 @@
 				if (screenAudioTrack) {
 					peerConnection?.addTrack(screenAudioTrack, screen);
 				} else if (withAudio) {
-					toast("Audio not captured. Share a browser tab (not a window or screen) to include audio.", "info");
+					toast(t("call_screen_audio_not_captured"), "info");
 				}
 			} catch (err) {
 				console.error("Screen share failed", err);
@@ -940,7 +941,7 @@
 			if (!localCameraStream && !$isScreenSharing) return;
 			queueCamera(stopCamera);
 			if ($isScreenSharing) void toggleScreenShare();
-			videoOffNotice("You can't use video in this room");
+			videoOffNotice(t("call_video_not_allowed", { place: "room" }));
 		});
 	});
 
@@ -985,7 +986,7 @@
 		track.onended = () => {
 			if (localCameraStream !== stream) return;
 			queueCamera(stopCamera);
-			toast("Your camera was disconnected", "error");
+			toast(t("call_camera_disconnected"), "error");
 		};
 	}
 
@@ -1001,7 +1002,7 @@
 			return;
 		}
 		if (!canVideo) {
-			videoOffNotice("You can't use video in this room");
+			videoOffNotice(t("call_video_not_allowed", { place: "room" }));
 			return;
 		}
 		let stream: MediaStream;
@@ -1018,7 +1019,7 @@
 		// Left, or lost Video, while the camera was opening.
 		if (isDestroyed || !transceiver || !track || !canVideo) {
 			stopTracks(stream);
-			if (!isDestroyed && !canVideo) videoOffNotice("You can't use video in this room");
+			if (!isDestroyed && !canVideo) videoOffNotice(t("call_video_not_allowed", { place: "room" }));
 			return;
 		}
 		prepareCameraTrack(track, stream);
@@ -1032,7 +1033,7 @@
 		if (isDestroyed || track.readyState === "ended") {
 			if (!isDestroyed) {
 				await transceiver.sender.replaceTrack(null).catch(console.warn);
-				toast("Your camera was disconnected", "error");
+				toast(t("call_camera_disconnected"), "error");
 			}
 			stopTracks(stream);
 			return;
@@ -1118,5 +1119,6 @@
      <video> in VoiceChannelView is muted so the voice doesn't play twice. Only deafening silences it: someone
      muted sends no voice, but a tab they share keeps its sound. -->
 {#each Object.entries(remoteAudioStreams) as [id, stream] (id)}
-	<audio use:srcObject={stream} use:applyMuted={$isDeafened} autoplay aria-label={`Audio stream ${id}`}></audio>
+	<audio use:srcObject={stream} use:applyMuted={$isDeafened} autoplay aria-label={t("call_audio_stream_label", { id })}
+	></audio>
 {/each}

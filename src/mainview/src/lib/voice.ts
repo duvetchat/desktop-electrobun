@@ -2,6 +2,7 @@ import { get } from "svelte/store";
 import type { Conversation } from "$lib/api/conversations";
 import { acceptCall, placeCall, sendEventMessage } from "$lib/api/ws/connection";
 import { callingFromAnotherDevice, withoutCallVoiceOf } from "$lib/calls";
+import { t } from "$lib/i18n";
 import { toast } from "$lib/stores/toast.svelte";
 import {
 	activeCall,
@@ -71,7 +72,7 @@ async function unmuteWithMic(ask: () => Promise<boolean>) {
 	// Voice left meanwhile: nothing to unmute, and nothing to say.
 	if (get(activeVoiceRoomId) !== room || !get(isMuted)) return;
 	if (!open) {
-		toast("Allow Duvet to use the microphone to talk", "error");
+		toast(t("call_mic_needed"), "error");
 		return;
 	}
 	isMuted.set(false);
@@ -97,7 +98,7 @@ export function joinConversationCall(conversation: Pick<Conversation, "id" | "me
 	activeCall.set({
 		conversationId: conversation.id,
 		initiatorId: user.id,
-		initiatorName: user.alias ?? user.username ?? "You",
+		initiatorName: user.alias ?? user.username ?? t("call_you"),
 		initiatorAvatar: user.avatar ?? null,
 		state: "connected",
 		memberIds,
@@ -118,7 +119,7 @@ export function startConversationCall(conversation: Pick<Conversation, "id" | "m
 	activeCall.set({
 		conversationId: conversation.id,
 		initiatorId: user.id,
-		initiatorName: user.alias ?? user.username ?? "You",
+		initiatorName: user.alias ?? user.username ?? t("call_you"),
 		initiatorAvatar: user.avatar ?? null,
 		state: "calling",
 		memberIds,
