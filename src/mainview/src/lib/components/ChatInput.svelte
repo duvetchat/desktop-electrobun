@@ -1349,7 +1349,7 @@
 
 	<!-- The field. Its ring shows the focus, as the text inside it has no outline of its own. -->
 	<div
-		class="bg-duvet-card pointer-events-auto flex min-h-[42px] rounded-[20px] px-1 shadow-[var(--duvet-shadow-well),0_0_0_1px_var(--duvet-line)] transition-shadow duration-150 focus-within:shadow-[var(--duvet-shadow-well),0_0_0_1px_var(--duvet-accent),0_0_0_4px_var(--duvet-accent-tint)] motion-reduce:transition-none {recording
+		class="bg-duvet-card pointer-events-auto flex min-h-[42px] rounded-2xl px-1 shadow-[var(--duvet-shadow-well),0_0_0_1px_var(--duvet-line)] transition-shadow duration-150 focus-within:shadow-[var(--duvet-shadow-well),0_0_0_1px_var(--duvet-accent),0_0_0_4px_var(--duvet-accent-tint)] motion-reduce:transition-none {recording
 			? 'items-center gap-2'
 			: 'items-end'}"
 	>

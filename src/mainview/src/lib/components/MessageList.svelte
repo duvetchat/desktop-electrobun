@@ -19,6 +19,7 @@
 		Users as UsersIcon,
 	} from "@lucide/svelte";
 	import SmilePlusIcon from "$lib/components/ui/icons/SmilePlus.svelte";
+	import InlineMessageEditor from "$lib/components/InlineMessageEditor.svelte";
 	import { deleteMessage, getMessageThread, pinRoomMessage, unpinRoomMessage } from "$lib/api/messages";
 	import { sendComponentInteraction, type ComponentUse } from "$lib/api/interactions";
 	import {
@@ -129,7 +130,7 @@
 		onDeleteMsg = undefined,
 		failedNonces = new Set<string>(),
 		editingMessageId = $bindable<string | null>(null),
-		editContent = $bindable(""),
+		onSaveEdit = undefined,
 		isAtBottom = $bindable(true),
 		onUnreadMark = undefined,
 		emojiGroups = [],
@@ -164,10 +165,10 @@
 		onReply?: (message: Message) => void;
 		onDeleteMsg?: (messageId: string) => Promise<void> | void;
 		failedNonces?: Set<string>;
-		/** The message being edited, which the chat's message box holds (Chat.svelte): its bubble is ringed, and it has no
-		 * hover bar. An edit starts here (the hover bar, the menu, three clicks on one's own text) by setting both. */
+		/** The message being edited in its own row: its text becomes a box, and its hover bar goes. */
 		editingMessageId?: string | null;
-		editContent?: string;
+		/** Saves the edit of a message, in its own row. */
+		onSaveEdit?: (messageId: string, content: string) => void | Promise<void>;
 		isAtBottom?: boolean;
 		onUnreadMark?: (messageId: string) => void;
 		/** The custom emojis of every Space the user is in, by Space, as the reaction pickers show them. */
@@ -950,10 +951,24 @@
 	}
 
 	// ── Message actions ────────────────────────────────────────────────────────
-	// The chat's message box takes the edit (Chat.svelte): it saves, or cancels, and clears both.
+	// The chat's message editor takes the edit (Chat.svelte): its own row turns its text into a box, which saves, or
+	// cancels, and clears the id.
 	function startEdit(message: Message) {
+		if (!editable(message, message.author_id === $currentUser?.id)) return;
 		editingMessageId = message.id;
-		editContent = message.content ?? "";
+	}
+
+	// Whether a message's text can be edited in its row: its own, a text one, not a voice note, a sticker, a bot's
+	// pending answer or one made of components.
+	function editable(message: Message, mine: boolean): boolean {
+		return (
+			mine &&
+			(message.content ?? "").trim() !== "" &&
+			message.type !== MessageType.Voice &&
+			!message.sticker_attachment_id &&
+			!isLoading(message) &&
+			!isComponentsV2(message)
+		);
 	}
 
 	function handleCopy(e: ClipboardEvent) {
@@ -1475,7 +1490,13 @@
 			onInteract={isConversation ? undefined : (use) => interact(message, use)}
 		/>
 	{:else}
-		{#if bubbled(message) || largeEmojis(message.content ?? "")}
+		{#if editingMessageId === message.id}
+			<InlineMessageEditor
+				content={message.content ?? ""}
+				onSave={(text) => onSaveEdit?.(message.id, text)}
+				onCancel={() => (editingMessageId = null)}
+			/>
+		{:else if bubbled(message) || largeEmojis(message.content ?? "")}
 			{@const emojiOnly = largeEmojis(message.content ?? "")}
 			{@const lit = isMention && !flat && !emojiOnly}
 			<div
@@ -1496,19 +1517,17 @@
 											? 'msg-own bg-duvet-azure text-fixed-white'
 											: 'bg-duvet-card text-duvet-ink'
 							} ${
-								editingMessageId === message.id
-									? 'shadow-[0_0_0_2px_var(--duvet-accent)]'
-									: isHighlighted
-										? 'shadow-[0_0_0_3px_var(--duvet-accent),var(--duvet-shadow-raised)]'
-										: lit
-											? ''
-											: 'shadow-duvet-raised'
+								isHighlighted
+									? 'shadow-[0_0_0_3px_var(--duvet-accent),var(--duvet-shadow-raised)]'
+									: lit
+										? ''
+										: 'shadow-duvet-raised'
 							}`}"
 				onclick={(e) => {
-					if (e.detail === 3 && mine) startEdit(message);
+					if (e.detail === 2 && editable(message, mine)) startEdit(message);
 				}}
 				onkeydown={(e) => {
-					if (e.key === "Enter" && mine) startEdit(message);
+					if (e.key === "Enter" && editable(message, mine)) startEdit(message);
 				}}
 			>
 				{#if lit}
@@ -1648,7 +1667,7 @@
 		<IconButton label="Reply" title="Reply" size="sm" onclick={() => onReply?.(message)}>
 			<ReplyIcon size={15} />
 		</IconButton>
-		{#if mine}
+		{#if editable(message, mine)}
 			<IconButton label="Edit message" title="Edit message" size="sm" onclick={() => startEdit(message)}>
 				<PencilIcon size={15} />
 			</IconButton>
@@ -1715,7 +1734,7 @@
 		<MenuItem icon={ThreadIcon} onSelect={() => void openThreadModal(message)}>View thread</MenuItem>
 		<MenuItem icon={LinkIcon} onSelect={() => copyLink(message)}>Copy message link</MenuItem>
 		{@render reactionsItem(message)}
-		{#if mine}
+		{#if editable(message, mine)}
 			<MenuItem icon={PencilIcon} onSelect={() => startEdit(message)}>Edit message</MenuItem>
 		{/if}
 		{#if canPin}
