@@ -14,8 +14,9 @@ const script = (component: string) => /<script lang="ts">([\s\S]*?)<\/script>/.e
 
 describe("the split of the user's panel", () => {
 	// The redesigned sidebar (#357, S-07) stacks its bottom itself: the playback bar, the media controls with the voice
-	// status, the user's own bar, and the profile row under it. The folded edge keeps the row's narrow column, which
-	// stacks them around the avatar. The stand-alone rooms and chats columns that also mounted the row are gone.
+	// status, and the profile row with the user's own controls at its end. The folded edge keeps the row's narrow
+	// column, which stacks them around the avatar. The stand-alone rooms and chats columns that also mounted the row are
+	// gone.
 	test("UserStatusBar is gone, and the sidebar mounts its parts, in order", () => {
 		expect(existsSync(join(import.meta.dir, "UserStatusBar.svelte"))).toBe(false);
 		const mounts = (name: string) => [...source(name).matchAll(/<ProfileRow\b[^>]*\/>/g)].map((m) => m[0]);
@@ -25,23 +26,21 @@ describe("the split of the user's panel", () => {
 		expect(mounts("SpaceEdge")).toEqual(["<ProfileRow collapsed />"]);
 		const nav = source("SpaceNav");
 		expect(mounts("SpaceNav")).toEqual(["<ProfileRow />"]);
-		expect(nav).toContain("<ProfileControls />");
 		// What plays, then the media controls (the call panel is theirs in voice, so no voice status is mounted beside
-		// them), then the user's bar, then the profile row.
-		const order = ["<VoiceNoteBar />", "<MediaControls />", "<ProfileControls />", "<ProfileRow />"].map((part) =>
-			nav.indexOf(part),
-		);
+		// them), then the profile row with the user's controls inside it.
+		const order = ["<VoiceNoteBar />", "<MediaControls />", "<ProfileRow />"].map((part) => nav.indexOf(part));
 		expect(order.every((at) => at !== -1)).toBe(true);
 		expect(order).toEqual([...order].sort((x, y) => x - y));
 	});
 
-	test("the profile row is who the user is; folded, it stacks the media controls and Settings", () => {
+	test("the profile row is who the user is, with the controls at its end; folded, it stacks the media controls", () => {
 		for (const part of [
 			"<StatusMenu",
 			"<UserAvatar",
 			"<StatusDot",
 			"myStatusLabel",
 			"$speakingUsers.has(",
+			"<ProfileControls />",
 			"<ProfileControls collapsed />",
 		])
 			expect(row).toContain(part);
@@ -69,11 +68,14 @@ describe("the split of the user's panel", () => {
 		expect(script(row)).not.toContain("openSettings");
 	});
 
-	// The quick mute, deafen and Settings in one row, on the same stores as the media controls above them: two presses,
-	// the microphone's picker, and Settings. All three take the same share of the bar.
-	test("has mute, deafen and Settings in one row, from the media stores", () => {
-		const expanded = bar.slice(bar.indexOf('<div class="grid grid-cols-3'), bar.indexOf("<UserSettings"));
-		expect(expanded).toContain("grid grid-cols-3");
+	// The quick mute, deafen and Settings at the profile row's end, on the same stores as the media controls above
+	// them: two presses, the microphone's picker, the output volume, and Settings.
+	test("has mute, deafen and Settings at the row's end, from the media stores", () => {
+		const expanded = bar.slice(
+			bar.indexOf('<div class="flex shrink-0 items-center gap-0.5">'),
+			bar.indexOf("<UserSettings"),
+		);
+		expect(expanded).toContain('class="flex shrink-0 items-center gap-0.5"');
 		expect(expanded).toContain("label={micLabel}");
 		expect(expanded).toContain("onclick={actions.toggleMute}");
 		expect(expanded).toContain('label={media.deafened ? "Undeafen" : "Deafen"}');
@@ -86,10 +88,21 @@ describe("the split of the user's panel", () => {
 		expect(mic).toBeGreaterThan(-1);
 		expect(mic).toBeLessThan(deafen);
 		expect(deafen).toBeLessThan(settings);
+		// The deafen's chevron opens the output volume: a bar over the voice and shared sound.
+		expect(expanded).toContain('aria-label="Audio output"');
+		expect(expanded).toContain("Output volume");
+		expect(expanded).toContain("<Slider");
+		expect(expanded).toContain("voiceOutputVolume");
 		const code = script(bar);
 		expect(code).toContain('const micLabel = $derived(media.muted ? "Unmute" : "Mute");');
 		expect(code).toContain("const media = $derived($liveMedia);");
 		expect(code).toContain("const actions = liveMediaActions;");
+	});
+
+	test("the output volume the deafen's chevron sets reaches everyone's sound", () => {
+		const voice = readFileSync(join(import.meta.dir, "VoiceChat.svelte"), "utf8");
+		expect(voice).toContain("use:applyVolume={$voiceOutputVolume}");
+		expect(voice).toMatch(/function applyVolume\(node: HTMLAudioElement, volume: number\)/);
 	});
 
 	test("the profile row has none of the microphone's picker, the voice's or the ping's logic", () => {

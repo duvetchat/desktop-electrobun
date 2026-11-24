@@ -533,6 +533,15 @@ noiseSuppression.subscribe((v) => {
 	safeStorageNs?.setItem("duvet_noise_suppression", String(v));
 });
 
+/** How loud others' voice and shared sound play, from 0 to 1, kept across restarts. */
+const storedOutputVolume = Number.parseFloat(safeStorageNs?.getItem("duvet_voice_output_volume") ?? "");
+export const voiceOutputVolume = writable<number>(
+	Number.isFinite(storedOutputVolume) ? Math.min(Math.max(storedOutputVolume, 0), 1) : 1,
+);
+voiceOutputVolume.subscribe((v) => {
+	safeStorageNs?.setItem("duvet_voice_output_volume", String(v));
+});
+
 /** Voice tiles show everyone's animated face, even those who have an avatar. */
 export const voiceFaces = writable<boolean>(safeStorageNs?.getItem("duvet_voice_faces") === "true");
 voiceFaces.subscribe((v) => {

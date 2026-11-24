@@ -13,11 +13,10 @@
 	import { userStatusToString } from "$lib/types";
 
 	// The profile row at the sidebar's foot (#357, S-07): who the user is (their avatar with its status, their name
-	// and the status they chose), which opens the status menu. The microphone, deafen and Settings live on the bar
-	// over it (ProfileControls.svelte), so the row takes the sidebar's whole width. Folded (`collapsed`), it is the
-	// edge's narrow column instead, which still stacks the media controls (with the voice the user is in and its Leave)
-	// and Settings under the avatar: the edge has no room for them elsewhere. It was UserStatusBar until the redesign
-	// split it.
+	// and the status they chose), which opens the status menu, with the microphone, deafen and Settings at its end
+	// (ProfileControls.svelte). Folded (`collapsed`), it is the edge's narrow column instead, which still stacks the
+	// media controls (with the voice the user is in and its Leave) and Settings under the avatar: the edge has no room
+	// for them elsewhere. It was UserStatusBar until the redesign split it.
 	let { collapsed = false }: { collapsed?: boolean } = $props();
 
 	// The status the user chose, which everyone sees while they're connected.
@@ -48,11 +47,12 @@
 	</div>
 {/if}
 
-<!-- The profile row: the avatar, the name and the chosen status open the status menu. -->
+<!-- The profile row: the avatar, the name and the chosen status open the status menu; the user's controls sit at its
+     end, in the same row. -->
 {#if !collapsed && $currentUser}
-	<div class="w-full min-w-0 shrink-0">
+	<div class="flex w-full min-w-0 shrink-0 items-center gap-0.5">
 		<StatusMenu
-			class="group hover:bg-duvet-sb-hover focus-visible:outline-duvet-accent flex w-full min-w-0 cursor-pointer items-center gap-2.5 rounded-xl px-1.5 py-1 text-left transition-colors duration-[120ms] focus-visible:outline-2 motion-reduce:transition-none"
+			class="group hover:bg-duvet-sb-hover focus-visible:outline-duvet-accent flex min-w-0 flex-1 cursor-pointer items-center gap-2.5 rounded-xl px-1.5 py-1 text-left transition-colors duration-[120ms] focus-visible:outline-2 motion-reduce:transition-none"
 		>
 			<span
 				class="shrink-0 rounded-full transition-shadow duration-200 motion-reduce:transition-none {$speakingUsers.has(
@@ -77,5 +77,6 @@
 			</span>
 			<ChevronsUpDownIcon class="text-duvet-ink2 size-3.5 shrink-0" aria-hidden="true" />
 		</StatusMenu>
+		<ProfileControls />
 	</div>
 {/if}

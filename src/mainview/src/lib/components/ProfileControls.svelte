@@ -5,11 +5,14 @@
 	import ContextMenu from "$lib/components/ui/ContextMenu.svelte";
 	import Menu from "$lib/components/ui/Menu.svelte";
 	import MenuItem from "$lib/components/ui/MenuItem.svelte";
+	import Popover from "$lib/components/ui/Popover.svelte";
+	import Slider from "$lib/components/settings/Slider.svelte";
 	import Tooltip from "$lib/components/ui/Tooltip.svelte";
 	import MediaButton from "$lib/components/MediaButton.svelte";
 	import UserSettings from "$lib/components/UserSettings.svelte";
 	import { isMicInUse, micName, type MicChoice } from "$lib/media-state";
 	import { liveMedia, liveMediaActions } from "$lib/media-source";
+	import { voiceOutputVolume } from "$lib/stores.svelte";
 	import { iconButtonClass } from "$lib/components/ui/recipes";
 	import { SETTINGS_MENU_COMMAND } from "$lib/app-menu";
 	import { getElectrobunRpc } from "$lib/electrobun-rpc";
@@ -17,9 +20,10 @@
 	import { isSettingsShortcut } from "$lib/shell-layout";
 	import { addWindowCommands, answerWindowCommand } from "$lib/window-commands";
 
-	// The user's own controls, on a bar of their own over the profile row (#357, S-07): the microphone, split so a
-	// press mutes and the chevron picks the device; deafen; and Settings. Folded (`collapsed`), the narrow edge has room
-	// for Settings alone, its media controls (with the microphone) standing above it.
+	// The user's own controls, at the end of the profile row (#357, S-07): the microphone, split so a press mutes and
+	// the chevron picks the device; deafen, split so its chevron sets the output volume; and Settings. Folded
+	// (`collapsed`), the narrow edge has room for Settings alone, its media controls (with the microphone) standing
+	// above it.
 	let { collapsed = false }: { collapsed?: boolean } = $props();
 
 	const media = $derived($liveMedia);
@@ -85,9 +89,9 @@
 		<GearSixIcon class="size-4" />
 	</button>
 {:else}
-	<div class="grid grid-cols-3 gap-0.5">
+	<div class="flex shrink-0 items-center gap-0.5">
 		<!-- The microphone: a press mutes; a right-click, or the chevron beside it, picks the device. -->
-		<div class="flex h-7 min-w-0 gap-px overflow-hidden rounded-[9px]">
+		<div class="flex h-7 w-10 min-w-0 gap-px overflow-hidden rounded-[9px]">
 			<ContextMenu label="Microphone" onOpenChange={loadMics}>
 				{#snippet target(props)}
 					<MediaButton
@@ -116,7 +120,7 @@
 								{...mergeProps(menuProps, props)}
 								type="button"
 								aria-label="Choose a microphone"
-								class="text-duvet-ink2 hover:text-duvet-ink hover:bg-duvet-sb-hover flex h-7 w-5 shrink-0 items-center justify-center transition-colors duration-[120ms] motion-reduce:transition-none"
+								class="text-duvet-ink2 hover:text-duvet-ink hover:bg-duvet-sb-hover flex h-7 w-4 shrink-0 items-center justify-center transition-colors duration-[120ms] motion-reduce:transition-none"
 							>
 								<ChevronDown size={11} strokeWidth={2.5} />
 							</button>
@@ -127,26 +131,57 @@
 			</Menu>
 		</div>
 
-		<MediaButton
-			label={media.deafened ? "Undeafen" : "Deafen"}
-			tip={media.deafened ? "Undeafen" : "Deafen"}
-			pressed={media.deafened}
-			pressedTone="danger"
-			stateInName
-			tone="quiet"
-			shape="panel"
-			class="h-7! rounded-[9px]!"
-			onclick={actions.toggleDeafen}
-		>
-			{#if media.deafened}<HeadphoneOff size={15} />{:else}<Headphones size={15} />{/if}
-		</MediaButton>
+		<!-- Deafen: a press silences everyone; the chevron sets how loud they play. -->
+		<div class="flex h-7 w-10 min-w-0 gap-px overflow-hidden rounded-[9px]">
+			<MediaButton
+				label={media.deafened ? "Undeafen" : "Deafen"}
+				tip={media.deafened ? "Undeafen" : "Deafen"}
+				pressed={media.deafened}
+				pressedTone="danger"
+				stateInName
+				tone="quiet"
+				shape="panel"
+				class="h-7! flex-1 rounded-none!"
+				onclick={actions.toggleDeafen}
+			>
+				{#if media.deafened}<HeadphoneOff size={15} />{:else}<Headphones size={15} />{/if}
+			</MediaButton>
+			<Popover side="top" align="end" label="Audio output" class="rounded-[14px]">
+				{#snippet trigger(popoverProps)}
+					<Tooltip text="Audio output" side="top">
+						{#snippet trigger(props)}
+							<button
+								{...mergeProps(popoverProps, props)}
+								type="button"
+								aria-label="Audio output"
+								class="text-duvet-ink2 hover:text-duvet-ink hover:bg-duvet-sb-hover flex h-7 w-4 shrink-0 items-center justify-center transition-colors duration-[120ms] motion-reduce:transition-none"
+							>
+								<ChevronDown size={11} strokeWidth={2.5} />
+							</button>
+						{/snippet}
+					</Tooltip>
+				{/snippet}
+				<div class="flex w-56 flex-col gap-2 p-3">
+					<div class="flex items-center justify-between gap-2">
+						<span class="text-duvet-ink2 text-[11px] font-semibold tracking-[0.06em] uppercase">Output volume</span>
+						<span class="text-duvet-ink2 text-[11px] tabular-nums">{Math.round($voiceOutputVolume * 100)}%</span>
+					</div>
+					<Slider
+						value={Math.round($voiceOutputVolume * 100)}
+						label="Output volume"
+						oninput={(v) => voiceOutputVolume.set(v / 100)}
+						class="w-full!"
+					/>
+				</div>
+			</Popover>
+		</div>
 
 		<MediaButton
 			label="Settings"
 			tip="Settings"
 			tone="quiet"
 			shape="panel"
-			class="h-7! rounded-[9px]!"
+			class="size-7! rounded-[9px]!"
 			onclick={openSettings}
 		>
 			<GearSixIcon size={15} />
