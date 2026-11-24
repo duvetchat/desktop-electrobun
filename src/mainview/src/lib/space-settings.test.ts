@@ -1,7 +1,40 @@
 import { describe, expect, test } from "bun:test";
 import { Permission } from "$lib/permissions";
-import { settingsSections, webhookRooms, type SettingsSection } from "$lib/space-settings";
+import { groupSettingsSections, settingsSections, webhookRooms, type SettingsSection } from "$lib/space-settings";
 import type { GatewayRoom, GatewaySpace, RoomType } from "$lib/types";
+
+describe("the Space settings' groups", () => {
+	const all: SettingsSection[] = [
+		"overview",
+		"roles",
+		"members",
+		"invites",
+		"bans",
+		"emojis",
+		"stickers",
+		"webhooks",
+		"storage",
+		"attachments",
+	];
+
+	test("the Space, the people and the apps and data, in that order", () => {
+		expect(groupSettingsSections(all)).toEqual([
+			{ title: "Space", sections: ["overview", "roles", "emojis", "stickers"] },
+			{ title: "People", sections: ["members", "invites", "bans"] },
+			{ title: "Apps and data", sections: ["webhooks", "storage", "attachments"] },
+		]);
+	});
+
+	test("only the sections the user may open, and no empty group", () => {
+		expect(groupSettingsSections(["emojis", "stickers"])).toEqual([
+			{ title: "Space", sections: ["emojis", "stickers"] },
+		]);
+		expect(groupSettingsSections(["members", "invites", "webhooks"])).toEqual([
+			{ title: "People", sections: ["members", "invites"] },
+			{ title: "Apps and data", sections: ["webhooks"] },
+		]);
+	});
+});
 
 describe("settingsSections", () => {
 	test("a member without the settings' permissions sees only the emoji and sticker lists", () => {

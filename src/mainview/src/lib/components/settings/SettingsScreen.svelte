@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onDestroy, onMount, untrack } from "svelte";
+	import { SvelteSet } from "svelte/reactivity";
 	import {
 		User as UserIcon,
 		Paperclip as PaperclipIcon,
@@ -140,8 +141,9 @@
 	import IconButton from "$lib/components/ui/IconButton.svelte";
 	import Segmented from "$lib/components/ui/Segmented.svelte";
 	import Toggle from "$lib/components/ui/Toggle.svelte";
-	import { iconButtonClass } from "$lib/components/ui/recipes";
+	import { FOCUS_RING, iconButtonClass } from "$lib/components/ui/recipes";
 	import {
+		ACTION_BAR,
 		calloutClass,
 		CARD,
 		CHECKBOX,
@@ -152,7 +154,10 @@
 		GROUP_TITLE,
 		LABEL,
 		listFileSize,
+		NAV_ICON_SLOT,
+		navItemClass,
 		NOTE,
+		ROW_TILE,
 		SELECT,
 		SKELETON,
 		TAG,
@@ -213,25 +218,38 @@
 			// no storage: the next window opens on My account
 		}
 	});
-	// The side panel's sections, in order; Developer sits apart.
+	// The side panel's sections, in larger groups: who the settings are for, how the app looks and sounds, the files
+	// behind the account, and the tools for builders.
 	const sectionGroups = $derived<SettingsNavGroup<Section>[]>([
 		{
+			title: "Account",
 			items: [
 				{ id: "account", label: "My account", icon: UserIcon, tile: "#5e6380" },
-				{ id: "attachments", label: "Attachments", icon: PaperclipIcon, tile: "#0b6fe8" },
 				{ id: "security", label: "Security", icon: ShieldIcon, tile: "#2f9e62" },
-				{ id: "audio", label: "Audio", icon: VolumeIcon, tile: "#f97316" },
-				{ id: "voice-video", label: "Voice and video", icon: MicIcon, tile: "#e01890" },
-				{ id: "appearance", label: "Appearance", icon: PaletteIcon, tile: "#2f4cff" },
 				...(desktopApp
 					? [{ id: "activity" as const, label: "Activity privacy", icon: ActivityIcon, tile: "#e44fcb" }]
 					: []),
+			],
+		},
+		{
+			title: "App and media",
+			items: [
+				{ id: "appearance", label: "Appearance", icon: PaletteIcon, tile: "#2f4cff" },
+				{ id: "audio", label: "Audio", icon: VolumeIcon, tile: "#f97316" },
+				{ id: "voice-video", label: "Voice and video", icon: MicIcon, tile: "#e01890" },
+			],
+		},
+		{
+			title: "Files",
+			items: [
+				{ id: "attachments", label: "Attachments", icon: PaperclipIcon, tile: "#0b6fe8" },
 				{ id: "buckets", label: "S3 buckets", icon: DatabaseIcon, tile: "#0e8fd6" },
 			],
 		},
 		{
+			title: "Developer",
 			items: [
-				{ id: "developer", label: "Developer", icon: CodeIcon, tile: "#5f45b5", count: $pendingTeamInvites.length },
+				{ id: "developer", label: "Applications", icon: CodeIcon, tile: "#5f45b5", count: $pendingTeamInvites.length },
 			],
 		},
 	]);
@@ -250,6 +268,9 @@
 	const listedHere = $derived(attachmentsListed === attachmentsLocation);
 	const picking = $derived(listedHere && attachmentsLocation !== "all");
 	const picker = new FilePicker(() => attachments);
+	// The files picked to delete: a checkbox of their own, beside the one the move picker draws while it is open.
+	const selectedForDelete = new SvelteSet<string>();
+	const selectedDeleteCount = $derived(attachments.filter((a) => selectedForDelete.has(a.id)).length);
 	let attachmentsLoadId = 0;
 
 	// The previews of a file in the list: a picture in the chat's viewer, a text file in its read-only dialog.
@@ -299,6 +320,7 @@
 	/** Shows another storage's files. Its picks and kind filters start over. */
 	function setAttachmentsLocation(location: string) {
 		picker.clear();
+		selectedForDelete.clear();
 		attachmentsLocation = location;
 	}
 
@@ -316,6 +338,7 @@
 		await confirmAction(`Delete "${name}"?`, "Delete", async () => {
 			await deleteMyAttachment(id);
 			attachments = attachments.filter((a) => a.id !== id);
+			selectedForDelete.delete(id);
 			await refreshStorageStatus();
 		});
 	}
@@ -324,8 +347,33 @@
 		await confirmAction("Delete all your attachments? This cannot be undone.", "Delete", async () => {
 			await deleteAllMyAttachments();
 			attachments = [];
+			selectedForDelete.clear();
 			await refreshStorageStatus();
 		});
+	}
+
+	function toggleDeleteSelection(id: string) {
+		if (selectedForDelete.has(id)) selectedForDelete.delete(id);
+		else selectedForDelete.add(id);
+	}
+
+	async function handleDeleteSelected() {
+		const ids = attachments.filter((a) => selectedForDelete.has(a.id)).map((a) => a.id);
+		if (ids.length === 0) return;
+		const count = ids.length;
+		await confirmAction(
+			`Delete ${count} selected attachment${count === 1 ? "" : "s"}? This cannot be undone.`,
+			"Delete",
+			async () => {
+				const results = await Promise.allSettled(ids.map((id) => deleteMyAttachment(id)));
+				const deleted = new Set(ids.filter((_, i) => results[i]?.status === "fulfilled"));
+				attachments = attachments.filter((a) => !deleted.has(a.id));
+				for (const id of deleted) selectedForDelete.delete(id);
+				await refreshStorageStatus();
+				const failure = results.find((result) => result.status === "rejected");
+				if (failure) throw failure.reason;
+			},
+		);
 	}
 
 	// Buckets state
@@ -1359,7 +1407,7 @@
 	{#snippet head()}
 		<button
 			type="button"
-			class="flex shrink-0 items-center gap-2.5 rounded-xl p-2 text-left transition-colors duration-[120ms] motion-reduce:transition-none {activeSection ===
+			class="rounded-row flex shrink-0 items-center gap-3 p-2.5 text-left transition-colors duration-[120ms] motion-reduce:transition-none {activeSection ===
 			'account'
 				? 'bg-duvet-accent-tint'
 				: 'hover:bg-duvet-sb-hover'}"
@@ -1367,25 +1415,21 @@
 		>
 			<Avatar
 				src={$currentUser ? getAvatarURL($currentUser.id, $currentUser.avatar) : null}
-				size={34}
+				size={40}
 				ring="var(--duvet-sb-ring)"
 			/>
 			<span class="min-w-0 flex-1">
-				<span class="block truncate text-[13.5px] font-semibold">
+				<span class="block truncate text-[14.5px] font-semibold">
 					{$currentUser?.alias ?? $currentUser?.username ?? ""}
 				</span>
-				<span class="text-duvet-ink2 block truncate text-[11.5px]">Duvet account</span>
+				<span class="text-duvet-ink2 block truncate text-[13.5px]">Duvet account</span>
 			</span>
 		</button>
 	{/snippet}
 
 	{#snippet foot()}
-		<button
-			type="button"
-			class="text-duvet-danger hover:bg-duvet-danger/10 flex h-8 w-full items-center gap-[9px] rounded-[9px] px-2 text-left text-[13px] font-medium transition-colors duration-[120ms] motion-reduce:transition-none"
-			onclick={() => host.logout()}
-		>
-			<span class="grid size-[22px] shrink-0 place-items-center"><LogOutIcon size={15} /></span>
+		<button type="button" class={navItemClass(false, true)} onclick={() => host.logout()}>
+			<span class={NAV_ICON_SLOT}><LogOutIcon size={16} /></span>
 			Sign out
 		</button>
 	{/snippet}
@@ -1395,10 +1439,7 @@
 		{#if activeSection === "attachments" && picking && picker.pickedFiles.length > 0}
 			{@const pickedCount = picker.pickedFiles.length}
 			{@const tooMany = (picker.filter.attachment_ids?.length ?? 0) > MAX_PICKED_FILES}
-			<div
-				transition:slide={{ duration: motionMs(200) }}
-				class="bg-duvet-card shadow-duvet-lifted mx-[26px] mb-3 flex items-center justify-between gap-4 rounded-2xl py-2.5 pr-2.5 pl-4 text-[13px] font-medium"
-			>
+			<div transition:slide={{ duration: motionMs(200) }} class={ACTION_BAR}>
 				<p class="text-duvet-ink2 min-w-0 truncate">
 					{#if myTransfer}
 						Wait for the transfer under way to end.
@@ -1420,10 +1461,7 @@
 
 		<!-- Save bar (appears when there are unsaved changes) -->
 		{#if hasChanges || saveError}
-			<div
-				transition:slide={{ duration: motionMs(200) }}
-				class="bg-duvet-card shadow-duvet-lifted mx-[26px] mb-3 flex items-center justify-between gap-4 rounded-2xl py-2.5 pr-2.5 pl-4 text-[13px] font-medium"
-			>
+			<div transition:slide={{ duration: motionMs(200) }} class={ACTION_BAR}>
 				<div class="flex min-w-0 items-center gap-2">
 					{#if saveError}
 						<p class="text-duvet-danger truncate" role="alert">{saveError}</p>
@@ -1469,7 +1507,7 @@
 					placeholder={$currentUser?.username ?? ""}
 					class={FIELD}
 				/>
-				<p class="text-duvet-ink2 mt-1.5 text-xs">This is how others see you. Leave empty to use your username.</p>
+				<p class="text-duvet-ink2 mt-1.5 text-[13px]">This is how others see you. Leave empty to use your username.</p>
 			</div>
 
 			<div>
@@ -1482,7 +1520,7 @@
 					aria-invalid={bioTooLong}
 					class="{FIELD_AREA} {bioTooLong ? FIELD_WRONG : ''}"
 				></textarea>
-				<p class="text-duvet-ink2 mt-1 flex justify-between gap-2 text-xs">
+				<p class="text-duvet-ink2 mt-1 flex justify-between gap-2 text-[13px]">
 					<span>Shown on your profile. Leave empty for none.</span>
 					<span class="tabular-nums {bioTooLong ? 'text-duvet-danger' : ''}">{bioLength}/{BIO_MAX_LENGTH}</span>
 				</p>
@@ -1558,7 +1596,7 @@
 					{value}
 					oninput={(volume) => (key === "master" ? audioStore.setMaster(volume) : audioStore.set(key, volume))}
 				/>
-				<span class="text-duvet-ink2 w-10 text-right text-xs tabular-nums">{value}%</span>
+				<span class="text-duvet-ink2 w-10 text-right text-[13px] tabular-nums">{value}%</span>
 			</SettingsRow>
 		{/snippet}
 		<SettingsGroup title="All sounds">
@@ -1685,7 +1723,7 @@
 			<div>
 				<p class={LABEL}>Preview</p>
 				{#key themeVersion}
-					<p class="msg-content text-duvet-ink text-sm">
+					<p class="msg-content text-duvet-ink text-[14.5px]">
 						{@html renderMarkdown(
 							'```go\npackage main\n\nimport "fmt"\n\nfunc main() {\n\tnames := []string{"Alice", "Bob"}\n\tfor _, name := range names {\n\t\tfmt.Printf("Hello, %s!\\n", name)\n\t}\n}\n```',
 						)}
@@ -1733,14 +1771,14 @@
 		{#if storageStatus}
 			<div class="{CARD} flex flex-col gap-3 p-4">
 				<div class="flex items-baseline justify-between gap-3">
-					<p class="text-duvet-ink2 text-[13px] font-medium">Default storage</p>
-					<p class="text-[22px] leading-none font-semibold tabular-nums">
+					<p class="text-duvet-ink2 text-[14px] font-medium">Default storage</p>
+					<p class="text-[24px] leading-none font-semibold tabular-nums">
 						{formatFileSize(storageStatus.used_bytes)}
-						<span class="text-duvet-ink2 text-sm font-medium">/ {formatFileSize(storageStatus.max_bytes)}</span>
+						<span class="text-duvet-ink2 text-[14.5px] font-medium">/ {formatFileSize(storageStatus.max_bytes)}</span>
 					</p>
 				</div>
 				{@render usageBar(Math.min(storageStatus.percentage_used, 100))}
-				<div class="text-duvet-ink2 flex gap-4 text-xs">
+				<div class="text-duvet-ink2 flex gap-4 text-[13px]">
 					<span>{storageStatus.percentage_used}% used</span>
 					<span>Upload limit: {formatFileSize(storageStatus.upload_limit_bytes)} per file</span>
 				</div>
@@ -1748,8 +1786,8 @@
 		{/if}
 
 		<!-- Summary bar -->
-		<div class="flex min-h-[30px] items-center justify-between gap-3 px-1.5">
-			<div class="text-duvet-ink2 text-[13px]">
+		<div class="flex min-h-[36px] items-center justify-between gap-3 px-2">
+			<div class="text-duvet-ink2 text-[14px]">
 				{#if listedHere}
 					<span class="text-duvet-ink font-semibold tabular-nums">{attachments.length}</span>
 					file{attachments.length !== 1 ? "s" : ""}
@@ -1759,9 +1797,9 @@
 					{/if}
 				{/if}
 			</div>
-			<div class="flex items-center gap-2">
+			<div class="flex flex-wrap items-center justify-end gap-2">
 				{#if buckets.length > 0 || attachmentsLocation !== "all"}
-					<label class="text-duvet-ink2 flex items-center gap-2 text-xs">
+					<label class="text-duvet-ink2 flex items-center gap-2 text-[13px]">
 						Location
 						<select
 							value={attachmentsLocation}
@@ -1776,6 +1814,10 @@
 						</select>
 					</label>
 				{/if}
+				<Button variant="warn" size="sm" disabled={selectedDeleteCount === 0} onclick={handleDeleteSelected}>
+					<TrashIcon size={13} />
+					Delete selected
+				</Button>
 				{#if attachments.length > 0 && attachmentsLocation === "all"}
 					<Button variant="danger" size="sm" onclick={handleDeleteAll}>
 						<TrashIcon size={13} />
@@ -1800,7 +1842,7 @@
 		{:else if attachments.length === 0}
 			<div class="text-duvet-ink2 flex flex-col items-center justify-center py-14">
 				<PaperclipIcon class="mb-3 size-9" />
-				<p class="text-sm">{attachmentsLocation === "all" ? "No attachments yet" : "No files here"}</p>
+				<p class="text-[14.5px]">{attachmentsLocation === "all" ? "No attachments yet" : "No files here"}</p>
 			</div>
 		{:else}
 			<div class="flex flex-col gap-2">
@@ -1813,31 +1855,62 @@
 						{@const isText = isTextAttachment(att.content_type, att.filename)}
 						{@const isAudio = att.content_type.startsWith("audio/")}
 						{@const src = `${attachmentHost}${att.url ?? `/attachments/${att.id}`}`}
-						<div class="group hover:bg-duvet-hover-soft transition-colors motion-reduce:transition-none">
+						<div
+							class="group hover:bg-duvet-hover-soft transition-colors motion-reduce:transition-none"
+							class:bg-duvet-accent-tint={selectedForDelete.has(att.id)}
+						>
 							<div class="flex items-center gap-3 px-3.5 py-2.5">
+								<input
+									type="checkbox"
+									checked={selectedForDelete.has(att.id)}
+									onchange={() => toggleDeleteSelection(att.id)}
+									aria-label="Select {att.filename} for deletion"
+									title="Select for deletion"
+									class={CHECKBOX}
+								/>
 								{#if picking}
+									<!-- A second box, only while files are picked to move, with the move picker's own meaning. -->
 									<input
 										type="checkbox"
 										checked={picker.picked.has(att.id)}
 										onchange={() => picker.toggle(att.id)}
-										aria-label="Select {att.filename}"
+										aria-label="Select {att.filename} to move"
+										title="Select to move"
 										class={CHECKBOX}
 									/>
 								{/if}
-								<!-- Thumbnail -->
+								<!-- Thumbnail: a picture or a text file opens its preview here too, as the magnifier does. -->
 								{#if isImage}
-									<img {src} alt="" class="bg-duvet-secondary-fill size-10 shrink-0 rounded-[9px] object-cover" />
+									<button
+										type="button"
+										class="rounded-tile size-10 shrink-0 cursor-zoom-in overflow-hidden transition-[filter] hover:brightness-105 motion-reduce:transition-none {FOCUS_RING}"
+										title="Preview"
+										aria-label="Preview {att.filename}"
+										onclick={() => openPreview(src, att.filename)}
+									>
+										<img {src} alt="" class="bg-duvet-secondary-fill size-full object-cover" />
+									</button>
+								{:else if isText}
+									<button
+										type="button"
+										class="bg-duvet-secondary-fill text-duvet-ink2 rounded-tile hover:bg-duvet-hover-strong grid size-10 shrink-0 place-items-center transition-colors motion-reduce:transition-none {FOCUS_RING}"
+										title="Preview"
+										aria-label="Preview {att.filename}"
+										onclick={() => openTextPreview(src, att.filename)}
+									>
+										<PaperclipIcon size={16} />
+									</button>
 								{:else}
 									<div
-										class="bg-duvet-secondary-fill text-duvet-ink2 grid size-10 shrink-0 place-items-center rounded-[9px]"
+										class="bg-duvet-secondary-fill text-duvet-ink2 rounded-tile grid size-10 shrink-0 place-items-center"
 									>
 										{#if isAudio}<MicIcon size={16} />{:else}<PaperclipIcon size={16} />{/if}
 									</div>
 								{/if}
 								<!-- Info -->
 								<div class="min-w-0 flex-1">
-									<p class="truncate text-[13.5px] font-medium">{att.filename}</p>
-									<p class="text-duvet-ink2 text-xs">
+									<p class="truncate text-[14.5px] font-medium">{att.filename}</p>
+									<p class="text-duvet-ink2 text-[13px]">
 										{formatFileSize(att.size_bytes)}
 										<span class="mx-1 opacity-60">·</span>
 										{new Date(att.created_at).toLocaleDateString()}
@@ -1867,7 +1940,7 @@
 									<IconButton
 										label="Delete attachment"
 										title="Delete attachment"
-										class="hover:bg-duvet-danger/15! hover:text-duvet-danger!"
+										danger
 										onclick={() => handleDeleteAttachment(att.id)}
 									>
 										<TrashIcon size={16} />
@@ -1964,7 +2037,7 @@
 				</div>
 				<label class="flex cursor-pointer items-center gap-2">
 					<input type="checkbox" bind:checked={bUsePathStyle} class={CHECKBOX} />
-					<span class="text-duvet-ink text-xs"
+					<span class="text-duvet-ink text-[13px]"
 						>Use path-style addressing <span class="text-duvet-ink2">(required for MinIO, RustFS, etc.)</span></span
 					>
 				</label>
@@ -1994,7 +2067,7 @@
 						/>
 					</div>
 				</div>
-				<p class="text-duvet-ink2 text-xs">
+				<p class="text-duvet-ink2 text-[13px]">
 					Leave empty to remove limits. When a total limit is set, oldest files are recycled automatically when full.
 				</p>
 				<div class="flex justify-end gap-2 pt-1">
@@ -2028,7 +2101,7 @@
 		{:else if buckets.length === 0}
 			<div class="text-duvet-ink2 flex flex-col items-center justify-center py-12">
 				<DatabaseIcon class="mb-3 size-9" />
-				<p class="text-sm">No buckets configured</p>
+				<p class="text-[14.5px]">No buckets configured</p>
 			</div>
 		{:else}
 			<div class="{CARD} divide-duvet-line divide-y">
@@ -2038,18 +2111,18 @@
 					>
 						<div class="min-w-0 flex-1">
 							<div class="flex items-center gap-2">
-								<span class="truncate text-[13.5px] font-medium">{bucket.name}</span>
+								<span class="truncate text-[14.5px] font-medium">{bucket.name}</span>
 								{#if bucket.is_active}
 									<span class="{TAG} bg-duvet-alive/20 text-duvet-alive-text uppercase">Active</span>
 								{:else}
 									<span class="{TAG} bg-duvet-secondary-fill text-duvet-ink2 uppercase">Inactive</span>
 								{/if}
 							</div>
-							<p class="text-duvet-ink2 mt-0.5 truncate text-xs">{bucket.bucket_name} · {bucket.endpoint}</p>
+							<p class="text-duvet-ink2 mt-0.5 truncate text-[13px]">{bucket.bucket_name} · {bucket.endpoint}</p>
 							{#if bucket.max_bytes}
 								{@const pct = usagePercent(bucket.used_bytes, bucket.max_bytes)}
 								<div class="mt-1.5 space-y-1">
-									<div class="text-duvet-ink2 flex items-center justify-between text-[11px] tabular-nums">
+									<div class="text-duvet-ink2 flex items-center justify-between text-[12px] tabular-nums">
 										<span
 											>{(bucket.used_bytes / 1024 / 1024).toFixed(1)} MB / {(bucket.max_bytes / 1024 / 1024).toFixed(0)} MB</span
 										>
@@ -2057,13 +2130,13 @@
 									</div>
 									{@render usageBar(pct)}
 									{#if bucket.upload_limit_bytes}
-										<p class="text-duvet-ink2 text-[11px]">
+										<p class="text-duvet-ink2 text-[12px]">
 											Per-file: {(bucket.upload_limit_bytes / 1024 / 1024).toFixed(0)} MB
 										</p>
 									{/if}
 								</div>
 							{:else if bucket.upload_limit_bytes}
-								<p class="text-duvet-ink2 mt-0.5 text-[11px]">
+								<p class="text-duvet-ink2 mt-0.5 text-[12px]">
 									Per-file: {(bucket.upload_limit_bytes / 1024 / 1024).toFixed(0)} MB
 								</p>
 							{/if}
@@ -2100,12 +2173,7 @@
 							<IconButton label="Edit" title="Edit" onclick={() => startEditBucket(bucket)}>
 								<PencilIcon size={16} />
 							</IconButton>
-							<IconButton
-								label="Delete"
-								title="Delete"
-								class="hover:bg-duvet-danger/15! hover:text-duvet-danger!"
-								onclick={() => handleDeleteBucket(bucket.id)}
-							>
+							<IconButton label="Delete" title="Delete" danger onclick={() => handleDeleteBucket(bucket.id)}>
 								<TrashIcon size={16} />
 							</IconButton>
 						</div>
@@ -2144,25 +2212,23 @@
 			</div>
 
 			{#if devLoading}
-				<p class="text-duvet-ink2 px-1.5 text-sm">Loading…</p>
+				<p class="text-duvet-ink2 px-1.5 text-[14.5px]">Loading…</p>
 			{:else if devTeams.length === 0}
-				<p class="text-duvet-ink2 px-1.5 text-sm">No teams yet. Create one to get started.</p>
+				<p class="text-duvet-ink2 px-1.5 text-[14.5px]">No teams yet. Create one to get started.</p>
 			{:else}
 				<SettingsGroup title="Teams">
 					{#each devTeams as team (team.id)}
 						<button
 							type="button"
-							class="hover:bg-duvet-hover-soft flex min-h-[50px] w-full items-center gap-3 px-3.5 py-2 text-left transition-colors motion-reduce:transition-none"
+							class="hover:bg-duvet-hover-soft flex min-h-[60px] w-full items-center gap-4 px-4 py-3 text-left transition-colors motion-reduce:transition-none"
 							onclick={() => selectTeam(team)}
 						>
-							<span
-								class="bg-duvet-secondary-fill text-duvet-accent-text grid size-[30px] shrink-0 place-items-center rounded-[9px]"
-							>
+							<span class={ROW_TILE}>
 								<UsersIcon size={16} />
 							</span>
 							<span class="min-w-0 flex-1">
-								<span class="block truncate text-[13.5px] font-medium">{team.name}</span>
-								<span class="text-duvet-ink2 block truncate text-xs">ID: {team.id}</span>
+								<span class="block truncate text-[14.5px] font-medium">{team.name}</span>
+								<span class="text-duvet-ink2 block truncate text-[13px]">ID: {team.id}</span>
 							</span>
 							<ChevronRightIcon size={16} class="text-duvet-ink2 shrink-0" />
 						</button>
@@ -2173,7 +2239,7 @@
 			<div>
 				<button
 					type="button"
-					class="text-duvet-accent-text flex items-center gap-1 text-[13px] font-medium hover:underline"
+					class="text-duvet-accent-text flex items-center gap-1 text-[14px] font-medium hover:underline"
 					onclick={() => {
 						devSelectedTeam = null;
 						devApps = [];
@@ -2200,7 +2266,7 @@
 						<Button variant="quiet" size="sm" onclick={() => (devEditingTeam = null)}>Cancel</Button>
 					</div>
 				{:else}
-					<h3 class="min-w-0 flex-1 truncate font-serif text-lg font-medium">{devSelectedTeam.name}</h3>
+					<h3 class="min-w-0 flex-1 truncate text-[16px] font-semibold">{devSelectedTeam.name}</h3>
 					<div class="flex items-center gap-1">
 						{#if devSelectedTeam.owner_id === $currentUser?.id}
 							<IconButton
@@ -2216,7 +2282,7 @@
 							<IconButton
 								label="Delete"
 								title="Delete"
-								class="hover:bg-duvet-danger/15! hover:text-duvet-danger!"
+								danger
 								onclick={() => devSelectedTeam && handleDeleteTeam(devSelectedTeam)}
 							>
 								<TrashIcon size={16} />
@@ -2231,7 +2297,7 @@
 				{#each devMembers as member (member.user_id)}
 					<div class="flex min-h-11 items-center justify-between gap-3 px-3.5 py-2">
 						<div class="flex min-w-0 items-center gap-2">
-							<span class="truncate text-[13.5px] font-medium">{member.username}</span>
+							<span class="truncate text-[14.5px] font-medium">{member.username}</span>
 							{#if member.role === TeamRole.Admin}
 								<span class="{TAG} bg-duvet-secondary-fill text-duvet-ink2">Admin</span>
 							{/if}
@@ -2241,7 +2307,7 @@
 								label="Remove"
 								title="Remove"
 								size="sm"
-								class="hover:bg-duvet-danger/15! hover:text-duvet-danger!"
+								danger
 								onclick={() => handleRemoveMember(member.user_id, member.username)}
 							>
 								<XIcon size={15} />
@@ -2271,7 +2337,7 @@
 			<section class="flex flex-col gap-2">
 				<h3 class={GROUP_TITLE}>Applications</h3>
 				{#if devAppsLoading}
-					<p class="text-duvet-ink2 px-1.5 text-sm">Loading…</p>
+					<p class="text-duvet-ink2 px-1.5 text-[14.5px]">Loading…</p>
 				{:else}
 					<div class="flex gap-2">
 						<input
@@ -2289,7 +2355,7 @@
 					</div>
 
 					{#if devApps.length === 0}
-						<p class="text-duvet-ink2 px-1.5 text-sm">No applications yet.</p>
+						<p class="text-duvet-ink2 px-1.5 text-[14.5px]">No applications yet.</p>
 					{:else}
 						<div class="flex flex-col gap-3">
 							{#each devApps as app (app.id)}
@@ -2318,11 +2384,11 @@
 									{:else}
 										<div class="flex items-start justify-between gap-3">
 											<div class="min-w-0">
-												<p class="truncate text-[13.5px] font-medium">{app.name}</p>
+												<p class="truncate text-[14.5px] font-medium">{app.name}</p>
 												{#if app.description}
-													<p class="text-duvet-ink2 text-xs">{app.description}</p>
+													<p class="text-duvet-ink2 text-[13px]">{app.description}</p>
 												{/if}
-												<p class="text-duvet-ink2 mt-1 text-[11px] select-text">ID: {app.id}</p>
+												<p class="text-duvet-ink2 mt-1 text-[12px] select-text">ID: {app.id}</p>
 											</div>
 											<div class="flex shrink-0 items-center gap-1">
 												<IconButton
@@ -2352,12 +2418,7 @@
 												>
 													<PencilIcon size={16} />
 												</IconButton>
-												<IconButton
-													label="Delete"
-													title="Delete"
-													class="hover:bg-duvet-danger/15! hover:text-duvet-danger!"
-													onclick={() => handleDeleteApp(app)}
-												>
+												<IconButton label="Delete" title="Delete" danger onclick={() => handleDeleteApp(app)}>
 													<TrashIcon size={16} />
 												</IconButton>
 											</div>
@@ -2367,7 +2428,7 @@
 												<div class="flex items-center justify-between gap-2">
 													<div class="flex items-center gap-2">
 														<BotIcon size={16} class="text-duvet-ink2" />
-														<span class="text-[13px] font-medium">Bot active</span>
+														<span class="text-[14px] font-medium">Bot active</span>
 													</div>
 													<div class="flex items-center gap-1">
 														<Button variant="quiet" size="sm" onclick={() => handleResetBotToken(app)}>
@@ -2421,9 +2482,9 @@
 													/>
 												</div>
 												<div class="mt-2 flex items-center gap-2">
-													<span class="text-duvet-ink2 shrink-0 text-[11px]">Invite link:</span>
+													<span class="text-duvet-ink2 shrink-0 text-[12px]">Invite link:</span>
 													<code
-														class="bg-duvet-code-bg text-duvet-ink2 min-w-0 flex-1 truncate rounded-md px-2 py-1 font-mono text-[11px] select-text"
+														class="bg-duvet-code-bg text-duvet-ink2 min-w-0 flex-1 truncate rounded-md px-2 py-1 font-mono text-[12px] select-text"
 														>{getBotInviteLink(app.bot_user_id ?? "")}</code
 													>
 													<IconButton
@@ -2438,7 +2499,7 @@
 												{#if hasActiveBucket}
 													{@const botU = app.bot_user_id ? botUsers[app.bot_user_id] : null}
 													<div class="border-duvet-line mt-3 border-t pt-3">
-														<p class="text-duvet-ink2 mb-2 text-[11px]">Bot appearance</p>
+														<p class="text-duvet-ink2 mb-2 text-[12px]">Bot appearance</p>
 														<div class="flex items-center gap-3">
 															<!-- Avatar -->
 															<div class="group relative">
@@ -2508,10 +2569,10 @@
 																	<img
 																		src={botBannerPreview}
 																		alt=""
-																		class="aspect-[5/2] h-12 rounded-[9px] object-cover"
+																		class="rounded-tile aspect-[5/2] h-12 object-cover"
 																	/>
 																	<button
-																		class="bg-duvet-media-scrim absolute inset-0 flex items-center justify-center rounded-[9px] opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 motion-reduce:transition-none"
+																		class="bg-duvet-media-scrim rounded-tile absolute inset-0 flex items-center justify-center opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 motion-reduce:transition-none"
 																		onclick={clearBotBanner}
 																		title="Undo"
 																	>
@@ -2519,12 +2580,12 @@
 																	</button>
 																{:else if pendingBotBanner === "remove"}
 																	<div
-																		class="bg-duvet-secondary-fill text-duvet-ink2 flex aspect-[5/2] h-12 items-center justify-center rounded-[9px]"
+																		class="bg-duvet-secondary-fill text-duvet-ink2 rounded-tile flex aspect-[5/2] h-12 items-center justify-center"
 																	>
 																		<XIcon class="size-4" />
 																	</div>
 																	<button
-																		class="bg-duvet-media-scrim absolute inset-0 flex items-center justify-center rounded-[9px] opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 motion-reduce:transition-none"
+																		class="bg-duvet-media-scrim rounded-tile absolute inset-0 flex items-center justify-center opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 motion-reduce:transition-none"
 																		onclick={() => {
 																			pendingBotBanner = null;
 																		}}
@@ -2536,10 +2597,10 @@
 																	<img
 																		src={getAvatarURL(botU.id, botU.banner)}
 																		alt=""
-																		class="aspect-[5/2] h-12 rounded-[9px] object-cover"
+																		class="rounded-tile aspect-[5/2] h-12 object-cover"
 																	/>
 																	<div
-																		class="bg-duvet-media-scrim absolute inset-0 flex items-center justify-center gap-1 rounded-[9px] opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 motion-reduce:transition-none"
+																		class="bg-duvet-media-scrim rounded-tile absolute inset-0 flex items-center justify-center gap-1 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 motion-reduce:transition-none"
 																	>
 																		<button
 																			class="text-fixed-white hover:bg-fixed-white/20 rounded p-0.5"
@@ -2557,7 +2618,7 @@
 																	</div>
 																{:else}
 																	<button
-																		class="bg-duvet-secondary-fill text-duvet-accent-text hover:bg-duvet-hover-strong flex aspect-[5/2] h-12 items-center justify-center rounded-[9px] transition-colors motion-reduce:transition-none"
+																		class="bg-duvet-secondary-fill text-duvet-accent-text hover:bg-duvet-hover-strong rounded-tile flex aspect-[5/2] h-12 items-center justify-center transition-colors motion-reduce:transition-none"
 																		onclick={() => {
 																			botCropTargetApp = app;
 																			showBotBannerCrop = true;
@@ -2603,7 +2664,7 @@
 							<p class="font-semibold">Bot token — copy it now, it won't be shown again!</p>
 							<div class="flex items-center gap-2">
 								<code
-									class="bg-duvet-code-bg text-duvet-ink min-w-0 flex-1 rounded-md px-3 py-2 font-mono text-xs break-all select-text"
+									class="bg-duvet-code-bg text-duvet-ink min-w-0 flex-1 rounded-md px-3 py-2 font-mono text-[13px] break-all select-text"
 									>{devShowToken ? devBotToken : "•".repeat(40)}</code
 								>
 								<IconButton

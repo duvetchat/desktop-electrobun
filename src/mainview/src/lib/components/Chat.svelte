@@ -32,7 +32,6 @@
 		AtSign as AtIcon,
 		Eye as EyeIcon,
 		EyeOff as EyeOffIcon,
-		Pencil as PencilIcon,
 		Reply as ReplyIcon,
 		Upload as UploadIcon,
 		X as CloseIcon,
@@ -51,7 +50,14 @@
 		Embed,
 		SpaceCommandApplication,
 	} from "$lib/types";
-	import { gatewayMessageToMessage, isEphemeral, isNotice, MessageReferenceType } from "$lib/types";
+	import {
+		gatewayMessageToMessage,
+		isComponentsV2,
+		isEphemeral,
+		isLoading,
+		isNotice,
+		MessageReferenceType,
+	} from "$lib/types";
 	import {
 		sendMessage,
 		sendVoiceNote,
@@ -223,7 +229,6 @@
 		channelId;
 		command = null;
 		editingMessageId = null;
-		editContent = "";
 		editMessageIndex = null;
 		replyMessageIndex = null;
 		requestAnimationFrame(() => {
@@ -249,7 +254,6 @@
 		});
 	}
 	let editingMessageId = $state<string | null>(null);
-	let editContent = $state("");
 	let editMessageIndex = $state<number | null>(null);
 	let replyMessageIndex = $state<number | null>(null);
 
@@ -271,7 +275,17 @@
 		const user = $currentUser;
 		if (!user) return [];
 		return [...messages]
-			.filter((m) => m.author_id === user.id && !isNotice(m) && !failedNonces.has(m.nonce ?? ""))
+			.filter(
+				(m) =>
+					m.author_id === user.id &&
+					(m.content ?? "").trim() !== "" &&
+					m.type !== MessageType.Voice &&
+					!m.sticker_attachment_id &&
+					!isComponentsV2(m) &&
+					!isLoading(m) &&
+					!isNotice(m) &&
+					!failedNonces.has(m.nonce ?? ""),
+			)
 			.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 	}
 
@@ -280,7 +294,6 @@
 		if (!msg) return false;
 		editMessageIndex = index;
 		editingMessageId = msg.id;
-		editContent = msg.content ?? "";
 		return true;
 	}
 
@@ -337,7 +350,6 @@
 			if (editMessageIndex === null) return;
 			if (editMessageIndex === 0) {
 				editingMessageId = null;
-				editContent = "";
 				editMessageIndex = null;
 			} else {
 				tryEditAtIndex(editMessageIndex - 1);
@@ -545,17 +557,13 @@
 		chatInputRef?.addQuote(text);
 	}
 
-	// An edit is made in the message box (DECISIONS.md): it holds the message's text, under a strip that says so, in
-	// place of the chat's draft, which shows again as the edit ends. Enter saves, Esc cancels; an unchanged or empty
+	// An edit is made in the message's own row: its text becomes a box, with Save and Discard. An unchanged or empty
 	// edit saves nothing.
 	function cancelEdit() {
 		editingMessageId = null;
-		editContent = "";
 	}
 
-	function saveEdit(content: string) {
-		const messageId = editingMessageId;
-		if (messageId === null) return;
+	function saveEdit(messageId: string, content: string) {
 		const original = messages.find((m) => m.id === messageId)?.content;
 		const trimmed = content.trim();
 		if (trimmed && trimmed !== original) {
@@ -598,11 +606,20 @@
 				return;
 			}
 			const message = messages.find((m) => m.id === request.messageId);
-			if (!message || isEphemeral(message) || isNotice(message)) return;
+			if (
+				!message ||
+				isEphemeral(message) ||
+				isNotice(message) ||
+				!message.content?.trim() ||
+				message.type === MessageType.Voice ||
+				message.sticker_attachment_id ||
+				isComponentsV2(message) ||
+				isLoading(message)
+			)
+				return;
 			if (request.kind === "reply") handleReply(message);
 			else if (message.author_id === $currentUser?.id) {
 				editingMessageId = message.id;
-				editContent = message.content ?? "";
 			}
 		});
 	});
@@ -820,7 +837,7 @@
 		bind:isAtBottom
 		{onDeleteMsg}
 		bind:editingMessageId
-		bind:editContent
+		onSaveEdit={saveEdit}
 		onRetry={retryMessage}
 		onDismiss={dismissFailedMessage}
 		onReply={handleReply}
@@ -860,33 +877,6 @@
 					})}
 				onExit={() => (command = null)}
 			/>
-		{:else if editingMessageId !== null}
-			<!-- The edit of one message, in the box: its own text and undo steps, apart from the chat's draft -->
-			<div class="text-duvet-accent-text flex items-center gap-2 px-1.5 pb-2 text-[12.5px] leading-[1.2]">
-				<PencilIcon size={14} class="shrink-0" />
-				<span class="font-semibold">Editing your message</span>
-				<span class="text-duvet-ink2 min-w-0 flex-1 truncate">Esc to cancel · Enter to save</span>
-				<IconButton label="Cancel edit" title="Cancel edit" size="sm" onclick={cancelEdit}>
-					<CloseIcon size={14} />
-				</IconButton>
-			</div>
-			{#key editingMessageId}
-				<ChatInput
-					initialValue={editContent}
-					placeholder="Edit your message"
-					onValueChange={(text) => {
-						editContent = text;
-					}}
-					onSubmit={saveEdit}
-					onCancel={cancelEdit}
-					editing
-					autofocus
-					{members}
-					rooms={mentionRooms}
-					{emojiGroups}
-					spaceId={spaceId || null}
-				/>
-			{/key}
 		{:else}
 			<!-- A box of its own for each chat: its text, undo steps, suggestions, pickers and recording are that chat's. -->
 			{#key channelId}

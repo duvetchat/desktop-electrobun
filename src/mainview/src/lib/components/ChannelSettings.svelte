@@ -401,7 +401,7 @@
 		{#if !confirmDelete}
 			<button
 				type="button"
-				class="text-duvet-danger hover:bg-duvet-danger/10 flex h-8 w-full items-center gap-[9px] rounded-[9px] px-2 text-left text-[13px] font-medium transition-colors duration-[120ms] motion-reduce:transition-none"
+				class="text-duvet-danger hover:bg-duvet-danger/10 rounded-tile flex h-8 w-full items-center gap-[9px] px-2 text-left text-[13px] font-medium transition-colors duration-[120ms] motion-reduce:transition-none"
 				onclick={() => (confirmDelete = true)}
 			>
 				<span class="grid size-[22px] shrink-0 place-items-center"><TrashIcon class="size-[15px]" /></span>
@@ -512,14 +512,14 @@
 						</IconButton>
 						{#if showAddMenu}
 							<div
-								class="bg-duvet-glass shadow-duvet-glass animate-float-in absolute top-full right-0 z-10 mt-1 max-h-48 w-48 overflow-y-auto rounded-[14px] p-1.5 backdrop-blur-[32px]"
+								class="bg-duvet-glass shadow-duvet-glass animate-float-in rounded-panel absolute top-full right-0 z-10 mt-1 max-h-48 w-48 overflow-y-auto p-1.5 backdrop-blur-[32px]"
 							>
 								{#if availableRoles.length === 0}
 									<p class="text-duvet-ink2 px-2 py-1.5 text-xs">All roles added</p>
 								{:else}
 									{#each availableRoles as role (role.id)}
 										<button
-											class="hover:bg-duvet-accent-tint w-full rounded-[9px] px-2 py-1.5 text-left text-[13px] font-medium transition-colors motion-reduce:transition-none"
+											class="hover:bg-duvet-accent-tint rounded-tile w-full px-2 py-1.5 text-left text-[13px] font-medium transition-colors motion-reduce:transition-none"
 											onclick={() => addRoleOverwrite(role.id)}
 										>
 											{role.name}
@@ -583,7 +583,7 @@
 											<p class="text-[13.5px] leading-[1.3] font-medium">{perm.name}</p>
 											<p class="text-duvet-ink2 mt-0.5 text-xs">{perm.description}</p>
 										</div>
-										<div class="bg-duvet-seg-track flex shrink-0 items-center rounded-[11px] p-[3px]" role="group">
+										<div class="bg-duvet-seg-track rounded-control flex shrink-0 items-center p-[3px]" role="group">
 											{@render stateButton(
 												state === -1,
 												"text-duvet-danger",

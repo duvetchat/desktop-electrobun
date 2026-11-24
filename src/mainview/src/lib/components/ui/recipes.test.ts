@@ -1,15 +1,21 @@
 import { describe, expect, test } from "bun:test";
 import {
 	buttonClass,
+	cardIconButtonClass,
+	FOCUS_RING,
+	FOCUS_RING_INSET,
 	GLASS,
 	GLASS_STRONG,
 	iconButtonClass,
+	iconTileClass,
 	MENU_PANEL,
 	menuItemClass,
 	monogram,
 	monogramSize,
+	OVERLINE,
 	pillClass,
 	presenceSize,
+	SCRIM,
 	segmentIndex,
 	spaceIconRadius,
 } from "./recipes";
@@ -18,8 +24,8 @@ const classes = (list: string) => list.split(/\s+/);
 
 describe("a button", () => {
 	test("is 34 px with 11 px corners, or 28 with 9 when small", () => {
-		expect(classes(buttonClass("primary", "md"))).toEqual(expect.arrayContaining(["h-[34px]", "rounded-[11px]"]));
-		expect(classes(buttonClass("primary", "sm"))).toEqual(expect.arrayContaining(["h-7", "rounded-[9px]"]));
+		expect(classes(buttonClass("primary", "md"))).toEqual(expect.arrayContaining(["h-[34px]", "rounded-control"]));
+		expect(classes(buttonClass("primary", "sm"))).toEqual(expect.arrayContaining(["h-7", "rounded-tile"]));
 	});
 
 	test("primary is cobalt with white on it, resting on its shadow and pressed in", () => {
@@ -50,6 +56,11 @@ describe("a button", () => {
 		expect(danger).not.toContain("text-fixed-white");
 	});
 
+	test("warn is the amber fill with the page's ink, so both themes keep their contrast", () => {
+		const warn = classes(buttonClass("warn"));
+		expect(warn).toEqual(expect.arrayContaining(["bg-duvet-warn", "text-duvet-bg", "shadow-duvet-control"]));
+	});
+
 	test("quiet has no fill until hovered", () => {
 		const quiet = classes(buttonClass("quiet"));
 		expect(quiet.filter((c) => c.startsWith("bg-"))).toEqual([]);
@@ -57,7 +68,7 @@ describe("a button", () => {
 	});
 
 	test("every variant fades when disabled and drops its transition under reduced motion", () => {
-		for (const variant of ["primary", "secondary", "danger", "quiet"] as const) {
+		for (const variant of ["primary", "secondary", "danger", "warn", "quiet"] as const) {
 			expect(classes(buttonClass(variant))).toEqual(
 				expect.arrayContaining([
 					"disabled:opacity-45",
@@ -71,7 +82,7 @@ describe("a button", () => {
 
 describe("an icon button", () => {
 	test("is 30 px with 9 px corners, or 26 with 8 when small", () => {
-		expect(classes(iconButtonClass("md"))).toEqual(expect.arrayContaining(["size-[30px]", "rounded-[9px]"]));
+		expect(classes(iconButtonClass("md"))).toEqual(expect.arrayContaining(["size-[30px]", "rounded-tile"]));
 		expect(classes(iconButtonClass("sm"))).toEqual(expect.arrayContaining(["size-[26px]", "rounded-lg"]));
 	});
 
@@ -82,6 +93,12 @@ describe("an icon button", () => {
 		const active = classes(iconButtonClass("md", true));
 		expect(active).toEqual(expect.arrayContaining(["bg-duvet-accent-tint", "text-duvet-accent-text"]));
 		expect(active).not.toContain("text-duvet-ink2");
+	});
+
+	test("a removal turns its hover destructive instead", () => {
+		const danger = classes(iconButtonClass("md", false, true));
+		expect(danger).toEqual(expect.arrayContaining(["hover:bg-duvet-danger/15!", "hover:text-duvet-danger!"]));
+		expect(danger).not.toContain("hover:bg-duvet-hover");
 	});
 });
 
@@ -98,7 +115,79 @@ describe("glass", () => {
 
 	test("a menu's panel is glass, 224 to 320 wide, above popovers' layer", () => {
 		expect(classes(MENU_PANEL)).toEqual(
-			expect.arrayContaining([...classes(GLASS), "min-w-56", "max-w-80", "rounded-[14px]", "z-[1000]"]),
+			expect.arrayContaining([...classes(GLASS), "min-w-56", "max-w-80", "rounded-panel", "z-[1000]"]),
+		);
+	});
+});
+
+describe("a scrim", () => {
+	test("covers the page under an overlay: the scrim fill, fixed, at the dialogs' layer", () => {
+		expect(classes(SCRIM)).toEqual(
+			expect.arrayContaining(["bg-duvet-scrim", "fixed", "inset-0", "z-[900]", "animate-scrim-in"]),
+		);
+	});
+});
+
+describe("an overline", () => {
+	test("is the small uppercase label: 10.5 px, semibold, spaced, in the second ink", () => {
+		expect(classes(OVERLINE)).toEqual(
+			expect.arrayContaining(["text-duvet-ink2", "text-[10.5px]", "font-semibold", "tracking-[0.06em]", "uppercase"]),
+		);
+	});
+});
+
+describe("an icon tile", () => {
+	test("is 30 px with 9 px corners, or 26 small, or 34 large, on the secondary fill", () => {
+		expect(classes(iconTileClass("md"))).toEqual(
+			expect.arrayContaining(["size-[30px]", "rounded-tile", "bg-duvet-secondary-fill", "text-duvet-accent-text"]),
+		);
+		expect(classes(iconTileClass("sm"))).toEqual(expect.arrayContaining(["size-[26px]", "rounded-tile"]));
+		expect(classes(iconTileClass("lg"))).toEqual(expect.arrayContaining(["size-[34px]", "rounded-tile"]));
+		expect(classes(iconTileClass("md", "ink"))).toContain("text-duvet-ink2");
+	});
+});
+
+describe("a card icon button", () => {
+	test("is the raised card's 36 px square, over the rows' radius", () => {
+		expect(classes(cardIconButtonClass())).toEqual(
+			expect.arrayContaining([
+				"bg-duvet-card",
+				"shadow-duvet-raised",
+				"size-9",
+				"rounded-row",
+				"hover:text-duvet-ink",
+				...classes(FOCUS_RING),
+			]),
+		);
+	});
+
+	test("a removal takes the danger ink", () => {
+		const danger = classes(cardIconButtonClass(true));
+		expect(danger).toContain("hover:text-duvet-danger");
+		expect(danger).not.toContain("hover:text-duvet-ink");
+	});
+});
+
+describe("the focus mark", () => {
+	test("is the accent's 2 px line, offset, with no browser outline", () => {
+		expect(classes(FOCUS_RING)).toEqual(
+			expect.arrayContaining([
+				"focus-override",
+				"focus-visible:outline-2",
+				"focus-visible:outline-offset-2",
+				"focus-visible:outline-duvet-accent",
+			]),
+		);
+	});
+
+	test("turns inside the element where a sidebar or tab row would clip it", () => {
+		expect(classes(FOCUS_RING_INSET)).toEqual(
+			expect.arrayContaining([
+				"focus-override",
+				"focus-visible:outline-2",
+				"focus-visible:-outline-offset-2",
+				"focus-visible:outline-duvet-accent",
+			]),
 		);
 	});
 });

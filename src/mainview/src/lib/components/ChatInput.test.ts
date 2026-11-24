@@ -64,7 +64,7 @@ describe("a draft per chat", () => {
 
 	test("a command and an edit end on leaving: neither is a draft", () => {
 		expect(chat).toMatch(
-			/channelId;\s*command = null;\s*editingMessageId = null;\s*editContent = "";\s*editMessageIndex = null;\s*replyMessageIndex = null;/,
+			/channelId;\s*command = null;\s*editingMessageId = null;\s*editMessageIndex = null;\s*replyMessageIndex = null;/,
 		);
 		expect(source("CommandOptions.svelte")).toContain("if (!gone) onExit();");
 	});

@@ -80,6 +80,7 @@
 			label={media.muted ? "Unmute" : "Mute"}
 			tip={media.canSpeak ? (media.muted ? "Unmute" : "Mute") : "You can't speak in this room"}
 			pressed={media.muted}
+			pressedTone="danger"
 			stateInName
 			disabled={!media.canSpeak}
 			shape="square"
@@ -91,6 +92,7 @@
 		<MediaButton
 			label={media.deafened ? "Undeafen" : "Deafen"}
 			pressed={media.deafened}
+			pressedTone="danger"
 			stateInName
 			shape="square"
 			side="right"
@@ -98,16 +100,18 @@
 		>
 			{#if media.deafened}<HeadphoneOff size={16} />{:else}<Headphones size={16} />{/if}
 		</MediaButton>
-		<MediaButton
-			label="Noise suppression"
-			tip={media.noiseSuppression ? "Noise suppression on" : "Noise suppression off"}
-			pressed={media.noiseSuppression}
-			shape="square"
-			side="right"
-			onclick={actions.toggleNoiseSuppression}
-		>
-			<AudioLines size={16} />
-		</MediaButton>
+		{#if media.place}
+			<MediaButton
+				label="Noise suppression"
+				tip={media.noiseSuppression ? "Noise suppression on" : "Noise suppression off"}
+				pressed={media.noiseSuppression}
+				shape="square"
+				side="right"
+				onclick={actions.toggleNoiseSuppression}
+			>
+				<AudioLines size={16} />
+			</MediaButton>
+		{/if}
 	</div>
 {:else if mediaPopOut.available && mediaPopOut.out}
 	<!-- The controls are in their own window: a press here brings it forward, and Put back docks them again. -->

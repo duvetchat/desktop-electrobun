@@ -38,7 +38,7 @@
 			>
 				{@render preview(option.value)}
 			</span>
-			<span class="text-duvet-ink flex items-center gap-1.5 px-0.5 text-[13px] font-medium">
+			<span class="text-duvet-ink flex items-center gap-1.5 px-0.5 text-[14px] font-medium">
 				{option.label}
 				{#if option.tag}<span class="{TAG} bg-duvet-secondary-fill text-duvet-ink2">{option.tag}</span>{/if}
 			</span>

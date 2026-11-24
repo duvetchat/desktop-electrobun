@@ -244,7 +244,7 @@
 		<button
 			type="button"
 			aria-label="Playback speed: {rate}x"
-			class="text-duvet-ink2 hover:bg-duvet-hover hover:text-duvet-ink h-[22px] shrink-0 cursor-pointer rounded-[7px] px-1.5 text-[11px] font-semibold tabular-nums transition-colors motion-reduce:transition-none"
+			class="text-duvet-ink2 hover:bg-duvet-hover hover:text-duvet-ink rounded-chip h-[22px] shrink-0 cursor-pointer px-1.5 text-[11px] font-semibold tabular-nums transition-colors motion-reduce:transition-none"
 			onclick={handleCycleRate}>{rate}x</button
 		>
 

@@ -74,9 +74,10 @@ describe("a command's row", () => {
 });
 
 test("the member list draws the same banner", () => {
-	expect(source("MemberList.svelte")).toContain(
-		'<MemberBanner src={member.banner_url} offline={member.status === "offline"} />',
-	);
+	const list = source("MemberList.svelte");
+	expect(list).toContain("<PersonButton");
+	expect(list).toContain("banner");
+	expect(source("PersonButton.svelte")).toContain("<MemberBanner src={member.banner_url} {offline} />");
 });
 
 // #328: avatars, banners and Space icons loaded at once, every row of a list with its images, banners behind member

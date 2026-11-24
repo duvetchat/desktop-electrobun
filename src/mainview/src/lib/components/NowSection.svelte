@@ -65,6 +65,7 @@
 	import Button from "$lib/components/ui/Button.svelte";
 	import IconButton from "$lib/components/ui/IconButton.svelte";
 	import SpaceIcon from "$lib/components/ui/SpaceIcon.svelte";
+	import { FOCUS_RING, FOCUS_RING_INSET } from "$lib/components/ui/recipes";
 
 	// What's going on now, in the sidebar between its rows and its bottom block (#357): what asks the user something
 	// (a call they can join, a friend request, a team invite), the files they're moving, the voice rooms with people in
@@ -208,8 +209,8 @@
 	const asks = $derived(calls.length + requests.length + $pendingTeamInvites.length + transfers.length);
 	const anything = $derived(asks > 0 || liveRooms.length > 0 || onlineFriends.length > 0);
 
-	const rowFocus = "focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-duvet-accent";
-	const roundFocus = "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-duvet-accent";
+	const rowFocus = FOCUS_RING_INSET;
+	const roundFocus = FOCUS_RING;
 	// The sidebar's recipes (SpaceNav.svelte, DMSidebar.svelte; DESIGN-MAP.md S-05 to S-07): a row lights on hover, a
 	// card is the call panel's, and an icon that isn't a person sits on a rounded square.
 	const row = `hover:bg-duvet-sb-hover flex w-full items-center rounded-[10px] text-left transition-colors duration-[120ms] motion-reduce:transition-none ${rowFocus}`;

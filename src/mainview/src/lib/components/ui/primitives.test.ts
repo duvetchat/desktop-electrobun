@@ -371,7 +371,7 @@ describe("the floating panels' recipes", () => {
 		for (const name of ["Sheet", "Dialog"]) {
 			const panel = source(name);
 			for (const expected of [
-				"bg-duvet-scrim animate-scrim-in fixed inset-0 z-[900]",
+				"class={SCRIM}",
 				"{GLASS_STRONG} animate-sheet-in",
 				"rounded-3xl",
 				"font-serif-lg",

@@ -166,7 +166,7 @@
 				type="button"
 				aria-label={shown.own ? "Stop sharing" : "Stop watching"}
 				title={shown.own ? "Stop sharing" : "Stop watching"}
-				class="bg-duvet-media-scrim text-duvet-media-ink hover:bg-duvet-call-red hover:text-fixed-white grid size-[26px] shrink-0 place-items-center rounded-[9px] backdrop-blur-[14px] transition-colors motion-reduce:transition-none"
+				class="bg-duvet-media-scrim text-duvet-media-ink hover:bg-duvet-call-red hover:text-fixed-white rounded-tile grid size-[26px] shrink-0 place-items-center backdrop-blur-[14px] transition-colors motion-reduce:transition-none"
 				onclick={stop}
 			>
 				<X size={14} />

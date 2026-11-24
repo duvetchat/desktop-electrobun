@@ -7,6 +7,14 @@
 	import { getHostURL } from "$lib/common/common";
 	import { displayName, isSpoiler } from "$lib/spoilers";
 	import { MessageType, type Message } from "$lib/types";
+	import {
+		MESSAGE_CARD,
+		MESSAGE_CARD_ACTION,
+		MESSAGE_MEDIA,
+		MESSAGE_MEDIA_PENDING,
+		MESSAGE_MEDIA_SUNK,
+		MESSAGE_PLACEHOLDER,
+	} from "$lib/message-styles";
 	import { allUp, cancelUpload, fileShare, messageUploadNote, messageUploads } from "$lib/uploads";
 
 	// A message's voice note, sticker or files as the chat shows them, for the message list and the message
@@ -126,7 +134,7 @@
 					img.remove();
 					parent.onclick = null;
 					parent.style.cursor = "default";
-					parent.innerHTML = `<div class="flex flex-col items-center justify-center w-full h-full rounded-2xl border border-dashed border-duvet-line gap-1"><span class="text-2xl">💩</span><span class="text-xs text-duvet-ink2">Sticker deleted</span></div>`;
+					parent.innerHTML = `<div class="flex flex-col items-center justify-center w-full h-full rounded-card border border-dashed border-duvet-line gap-1"><span class="text-2xl">💩</span><span class="text-xs text-duvet-ink2">Sticker deleted</span></div>`;
 				}}
 			/>
 		</button>
@@ -135,7 +143,7 @@
 			{#if tiled.length > 0}
 				<!-- Two side by side; three as one large and two small; more in two columns of squares -->
 				<div
-					class="shadow-duvet-raised grid max-w-full gap-[3px] overflow-hidden rounded-2xl {tiled.length === 2
+					class="{MESSAGE_MEDIA} grid max-w-full gap-[3px] {tiled.length === 2
 						? 'aspect-[2/1.15] grid-cols-2'
 						: tiled.length === 3
 							? 'aspect-[3/2.1] grid-cols-[2fr_1fr] grid-rows-2'
@@ -168,23 +176,17 @@
 					{@const pulse = share === null ? "animate-pulse" : ""}
 					<!-- While its upload is followed, its share of it shows as a bar along its bottom, which takes the pulse's place -->
 					{#if att.content_type.startsWith("image/")}
-						<div
-							class="bg-duvet-secondary-fill relative flex h-40 w-64 max-w-full items-center justify-center rounded-2xl {pulse}"
-						>
+						<div class="{MESSAGE_MEDIA_PENDING} flex h-40 w-64 max-w-full items-center justify-center {pulse}">
 							<span class="text-duvet-ink2 px-3 text-center text-xs">Uploading {name}…</span>
 							{@render fileBar(share)}
 						</div>
 					{:else if att.content_type.startsWith("video/")}
-						<div
-							class="bg-duvet-secondary-fill relative flex h-44 w-80 max-w-full items-center justify-center rounded-2xl {pulse}"
-						>
+						<div class="{MESSAGE_MEDIA_PENDING} flex h-44 w-80 max-w-full items-center justify-center {pulse}">
 							<span class="text-duvet-ink2 px-3 text-center text-xs">Uploading {name}…</span>
 							{@render fileBar(share)}
 						</div>
 					{:else}
-						<div
-							class="bg-duvet-card shadow-duvet-raised relative inline-flex w-[300px] max-w-full items-center gap-2 rounded-2xl px-3 py-3 {pulse}"
-						>
+						<div class="{MESSAGE_CARD} relative inline-flex w-[300px] max-w-full items-center gap-2 px-3 py-3 {pulse}">
 							<span class="text-duvet-ink2 min-w-0 truncate text-xs">Uploading {name}…</span>
 							<span class="text-duvet-ink2 shrink-0 text-xs opacity-60">{formatFileSize(att.size_bytes)}</span>
 							{@render fileBar(share)}
@@ -194,7 +196,7 @@
 					{@const dw = Math.min(att.width ?? 200, maxWidth)}
 					{@const dh = Math.min(att.height ?? 48, maxHeight)}
 					<div
-						class="border-duvet-line text-duvet-ink2 flex flex-col items-center justify-center gap-1 rounded-2xl border border-dashed"
+						class="{MESSAGE_PLACEHOLDER} flex flex-col items-center justify-center gap-1"
 						style="width: {dw}px; height: {dh}px; max-width: 100%;"
 					>
 						<TrashIcon size={18} class="opacity-60" />
@@ -206,10 +208,7 @@
 					{@const imgScale = Math.min(maxWidth / rawW, maxHeight / rawH, 1)}
 					{@const iw = Math.round(rawW * imgScale)}
 					{@const ih = Math.round(rawH * imgScale)}
-					<div
-						class="bg-duvet-sunk shadow-duvet-raised relative overflow-hidden rounded-2xl"
-						style="width: {iw}px; height: {ih}px; max-width: 100%;"
-					>
+					<div class={MESSAGE_MEDIA_SUNK} style="width: {iw}px; height: {ih}px; max-width: 100%;">
 						{@render picture(att, name, hidden, "object-contain")}
 						{#if hidden}
 							<SpoilerCover onReveal={() => revealed.add(att.id)} />
@@ -221,10 +220,7 @@
 					{@const vidScale = Math.min(maxWidth / rawVW, maxHeight / rawVH, 1)}
 					{@const vw = Math.round(rawVW * vidScale)}
 					{@const vh = Math.round(rawVH * vidScale)}
-					<div
-						class="bg-duvet-sunk shadow-duvet-raised relative overflow-hidden rounded-2xl"
-						style="width: {vw}px; height: {vh}px; max-width: 100%;"
-					>
+					<div class={MESSAGE_MEDIA_SUNK} style="width: {vw}px; height: {vh}px; max-width: 100%;">
 						<div
 							class="media-skeleton bg-duvet-secondary-fill absolute inset-0 flex animate-pulse items-center justify-center"
 						>
@@ -245,7 +241,7 @@
 					</div>
 				{:else if att.content_type.startsWith("audio/")}
 					<!-- As wide as the player. It clips only while hidden: the volume slider pops out above it. -->
-					<div class="relative max-w-87.5 rounded-2xl {hidden ? 'overflow-hidden' : ''}">
+					<div class="rounded-card relative max-w-87.5 {hidden ? 'overflow-hidden' : ''}">
 						<div class={hidden ? "blur-md" : ""} inert={hidden}>
 							<AudioFilePlayer
 								src="{attachmentHost}{att.url ?? `/attachments/${att.id}`}"
@@ -262,18 +258,18 @@
 					</div>
 				{:else}
 					{@const kind = fileKind(name)}
-					<div class="relative w-[300px] max-w-full overflow-hidden rounded-2xl">
+					<div class="rounded-card relative w-[300px] max-w-full overflow-hidden">
 						<a
 							href="{attachmentHost}{att.url ?? `/attachments/${att.id}`}"
 							target="_blank"
 							rel="noopener noreferrer"
-							class="bg-duvet-card text-duvet-ink shadow-duvet-raised hover:shadow-duvet-lifted flex items-center gap-2.5 rounded-2xl p-2.5 no-underline transition-shadow motion-reduce:transition-none {hidden
+							class="{MESSAGE_CARD_ACTION} text-duvet-ink flex items-center gap-2.5 p-2.5 no-underline {hidden
 								? 'blur-md'
 								: ''}"
 							inert={hidden}
 						>
 							<span
-								class="bg-duvet-secondary-fill text-duvet-accent-text grid size-10 shrink-0 place-items-center rounded-xl"
+								class="bg-duvet-secondary-fill text-duvet-accent-text rounded-row grid size-10 shrink-0 place-items-center"
 							>
 								<FileIcon size={20} />
 							</span>
