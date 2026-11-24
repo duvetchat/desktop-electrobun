@@ -4,6 +4,7 @@
 	import AuthNote from "$lib/components/auth/AuthNote.svelte";
 	import AuthSubmit from "$lib/components/auth/AuthSubmit.svelte";
 	import PasswordEye from "$lib/components/auth/PasswordEye.svelte";
+	import Rich from "$lib/components/Rich.svelte";
 	import Sheet from "$lib/components/ui/Sheet.svelte";
 	import { Check } from "@lucide/svelte";
 	import { Checkbox } from "bits-ui";
@@ -13,6 +14,7 @@
 		canSignUp,
 		mascotLook,
 		mascotMood,
+		PASSWORD_MIN,
 		redirectQuery as redirectOf,
 		signUpSteps,
 		usernameValid,
@@ -21,6 +23,7 @@
 	import { userSession } from "$lib/stores.svelte";
 	import { route } from "$lib/common/common";
 	import { localUrl } from "$lib/urls";
+	import { t } from "$lib/i18n";
 
 	let showPassword = $state(false);
 	let username = $state("");
@@ -62,8 +65,8 @@
 			const redirect = new URLSearchParams(window.location.search).get("redirect");
 			window.location.href = localUrl(redirect, window.location.href) ?? route("/app.html");
 		} catch (err) {
-			errorMessage =
-				err instanceof Error ? err.message : "We couldn't create your account. Check your details and try again.";
+			// signIn and logIn always throw an Error, in words of lib/api/auth.ts.
+			errorMessage = (err as Error).message;
 		} finally {
 			doingRequest = false;
 		}
@@ -91,14 +94,19 @@
 	const hiddenPart = "pointer-events-none translate-y-2 opacity-0";
 </script>
 
-<AuthScene {mood} {look} wide title="Create your account" lead="a cozy place to talk, and you're about to join it.">
+<!-- The terms' words in "I agree to the Terms of use", which open them. -->
+{#snippet termsLink(text: string)}
+	<button type="button" class="auth-link" onclick={() => (showTermsModal = true)}>{text}</button>
+{/snippet}
+
+<AuthScene {mood} {look} wide title={t("auth_sign_up_title")} lead={t("auth_sign_up_lead")}>
 	<form
 		onsubmit={(e) => {
 			e.preventDefault();
 			handleSubmit();
 		}}
 		novalidate
-		aria-label="Create your account"
+		aria-label={t("auth_sign_up_title")}
 		aria-busy={doingRequest}
 	>
 		<fieldset disabled={doingRequest} class="m-0 flex min-w-0 flex-col gap-4 border-0 p-0">
@@ -106,17 +114,17 @@
 				<div class="grid grid-cols-2 gap-3">
 					<AuthField
 						id="alias"
-						label="Display name (optional)"
+						label={t("auth_display_name_label")}
 						name="alias"
 						type="text"
 						maxlength={32}
 						bind:value={alias}
-						placeholder="your name"
+						placeholder={t("auth_display_name_placeholder")}
 						{...onText}
 					/>
 					<AuthField
 						id="username"
-						label="Username"
+						label={t("auth_username_label")}
 						name="username"
 						type="text"
 						aria-describedby="username-hint"
@@ -128,7 +136,7 @@
 						maxlength={32}
 						required
 						bind:value={username}
-						placeholder="username"
+						placeholder={t("auth_username_placeholder")}
 						{...onText}
 					/>
 				</div>
@@ -136,7 +144,7 @@
 					id="username-hint"
 					class="mt-1.5 text-[12.5px] leading-[1.3] {usernameWrong ? 'text-duvet-danger' : 'text-duvet-ink2'}"
 				>
-					Letters, numbers, dots and _, 2 to 32. It's how people mention you.
+					{t("auth_username_hint")}
 				</p>
 			</div>
 
@@ -144,7 +152,7 @@
 				class="{step} {shown < 2 ? hiddenPart : ''}"
 				inert={shown < 2}
 				id="email"
-				label="Email"
+				label={t("auth_email_label")}
 				name="email"
 				type="email"
 				autocomplete="email"
@@ -155,7 +163,7 @@
 				maxlength={254}
 				required
 				bind:value={email}
-				placeholder="you@example.com"
+				placeholder={t("auth_email_placeholder")}
 				{...onText}
 			/>
 
@@ -164,7 +172,7 @@
 					class="{step} {shown < 3 ? hiddenPart : ''}"
 					inert={shown < 3}
 					id="password"
-					label="Password, at least 8 characters"
+					label={t("auth_sign_up_password_label", { count: PASSWORD_MIN })}
 					name="password"
 					type={showPassword ? "text" : "password"}
 					autocomplete="new-password"
@@ -172,7 +180,7 @@
 					maxlength={128}
 					required
 					bind:value={password}
-					placeholder="8 or more"
+					placeholder={t("auth_sign_up_password_placeholder", { count: PASSWORD_MIN })}
 					{...onSecret}
 				>
 					{#snippet trailing()}
@@ -183,7 +191,7 @@
 					class="{step} {shown < 4 ? hiddenPart : ''}"
 					inert={shown < 4}
 					id="confirmPassword"
-					label="Confirm password"
+					label={t("auth_confirm_password_label")}
 					name="confirmPassword"
 					type={showPassword ? "text" : "password"}
 					autocomplete="new-password"
@@ -191,8 +199,8 @@
 					maxlength={128}
 					required
 					bind:value={confirmPassword}
-					placeholder="the same"
-					error={confirmPassword && !passwordsMatch ? "Passwords don't match." : undefined}
+					placeholder={t("auth_sign_up_confirm_placeholder")}
+					error={confirmPassword && !passwordsMatch ? t("auth_passwords_differ") : undefined}
 					{...onSecret}
 				/>
 			</div>
@@ -213,27 +221,23 @@
 							<Check size={14} strokeWidth={3} aria-hidden="true" />
 						{/if}
 					</Checkbox.Root>
-					<span
-						>I agree to the <button type="button" class="auth-link" onclick={() => (showTermsModal = true)}
-							>Terms of use</button
-						></span
-					>
+					<span><Rich key="auth_terms_agree" tags={{ terms: termsLink }} /></span>
 				</label>
 				<AuthSubmit busy={doingRequest} disabled={!canSubmit}>
-					{doingRequest ? "Creating account…" : "Create my account"}
+					{doingRequest ? t("auth_sign_up_busy") : t("auth_sign_up_submit")}
 				</AuthSubmit>
 			</div>
 		</fieldset>
 	</form>
 
 	<footer class="text-duvet-ink2 mt-6 text-center text-[14px]">
-		Already have an account?
-		<a href="/sign-in{redirectQuery}" class="auth-link ml-1">Sign in</a>
+		{t("auth_sign_up_have_account")}
+		<a href="/sign-in{redirectQuery}" class="auth-link ml-1">{t("auth_sign_in")}</a>
 	</footer>
 </AuthScene>
 
-<Sheet bind:open={showTermsModal} title="Terms of use">
+<Sheet bind:open={showTermsModal} title={t("auth_terms_title")}>
 	<p class="text-duvet-ink2 font-content pb-1 text-[14px] leading-[1.5]">
-		By creating an account, you agree to follow community guidelines and use Duvet respectfully.
+		{t("auth_terms_text")}
 	</p>
 </Sheet>

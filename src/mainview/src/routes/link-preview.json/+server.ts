@@ -9,6 +9,8 @@ const site = "https://duvet.chat";
 // Graph tags of app.html, for other apps and for Discord when the card can't render. Only the web build serves it:
 // electrobun.config.ts doesn't copy it into the app.
 // Component types: 17 container, 12 media gallery, 9 section, 10 text, 14 separator, 1 row, 2 button (style 5: a link).
+// Stays in English (#464): Discord fetches this one prerendered card for every viewer, with no language to pick, so
+// its words aren't messages.
 const embed = {
 	component: {
 		type: 17,

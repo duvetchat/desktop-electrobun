@@ -6,10 +6,13 @@
 	import PasswordEye from "$lib/components/auth/PasswordEye.svelte";
 	import { onMount } from "svelte";
 	import { resetPassword } from "$lib/api/auth";
-	import { canResetPassword, mascotMood, type FocusedField } from "$lib/auth-form";
+	import { canResetPassword, mascotMood, PASSWORD_MIN, type FocusedField } from "$lib/auth-form";
 	import { route } from "$lib/common/common";
+	import { t, type MessageKey } from "$lib/i18n";
 
 	let status = $state<"form" | "loading" | "success" | "error">("form");
+	// What went wrong: the app's own sentence by its key, drawn in the language of the moment, or the API's words.
+	let errorKey = $state<MessageKey | null>(null);
 	let errorMessage = $state("");
 	let token = $state("");
 	let password = $state("");
@@ -20,13 +23,13 @@
 	const canSubmit = $derived(canResetPassword(password, confirmPassword));
 
 	onMount(() => {
-		const t = new URLSearchParams(window.location.search).get("token");
-		if (!t) {
+		const found = new URLSearchParams(window.location.search).get("token");
+		if (!found) {
 			status = "error";
-			errorMessage = "No reset token found.";
+			errorKey = "auth_reset_no_token";
 			return;
 		}
-		token = t;
+		token = found;
 	});
 
 	async function handleSubmit() {
@@ -37,7 +40,8 @@
 			status = "success";
 		} catch (err) {
 			status = "error";
-			errorMessage = err instanceof Error ? err.message : "Password reset failed. The link may have expired.";
+			// resetPassword always throws an Error, in words of lib/api/auth.ts.
+			errorMessage = (err as Error).message;
 		}
 	}
 
@@ -50,8 +54,8 @@
 <!-- One scene for the form and for how it turned out: the stickers don't start over between them. -->
 <AuthScene
 	{mood}
-	title={status === "form" ? "Reset your password" : undefined}
-	lead={status === "form" ? "Enter your new password below." : undefined}
+	title={status === "form" ? t("auth_reset_title") : undefined}
+	lead={status === "form" ? t("auth_reset_lead") : undefined}
 >
 	{#if status === "form"}
 		<form
@@ -64,14 +68,14 @@
 		>
 			<AuthField
 				id="password"
-				label="New password"
+				label={t("auth_new_password_label")}
 				type={showPassword ? "text" : "password"}
 				autocomplete="new-password"
 				minlength={8}
 				maxlength={128}
 				required
 				bind:value={password}
-				placeholder="Minimum 8 characters"
+				placeholder={t("auth_reset_password_placeholder", { count: PASSWORD_MIN })}
 				{...onSecret}
 			>
 				{#snippet trailing()}
@@ -81,29 +85,29 @@
 
 			<AuthField
 				id="confirmPassword"
-				label="Confirm password"
+				label={t("auth_confirm_password_label")}
 				type={showPassword ? "text" : "password"}
 				autocomplete="new-password"
 				minlength={8}
 				maxlength={128}
 				required
 				bind:value={confirmPassword}
-				placeholder="Re-enter your password"
-				error={confirmPassword && !passwordsMatch ? "Passwords don't match." : undefined}
+				placeholder={t("auth_reset_confirm_placeholder")}
+				error={confirmPassword && !passwordsMatch ? t("auth_passwords_differ") : undefined}
 				{...onSecret}
 			/>
 
-			<AuthSubmit disabled={!canSubmit} class="mt-2">Reset password</AuthSubmit>
+			<AuthSubmit disabled={!canSubmit} class="mt-2">{t("auth_reset_submit")}</AuthSubmit>
 		</form>
 	{:else if status === "loading"}
-		<AuthResult state="loading" text="Resetting your password…" />
+		<AuthResult state="loading" text={t("auth_reset_busy")} />
 	{:else if status === "success"}
-		<AuthResult state="success" title="Password reset" text="Your password has been changed successfully.">
-			<AuthSubmit href={route("/sign-in.html")}>Sign in</AuthSubmit>
+		<AuthResult state="success" title={t("auth_reset_done_title")} text={t("auth_reset_done_text")}>
+			<AuthSubmit href={route("/sign-in.html")}>{t("auth_sign_in")}</AuthSubmit>
 		</AuthResult>
 	{:else}
-		<AuthResult state="error" title="Reset failed" text={errorMessage}>
-			<AuthSubmit href={route("/sign-in.html")}>Go to sign in</AuthSubmit>
+		<AuthResult state="error" title={t("auth_reset_failed_title")} text={errorKey ? t(errorKey) : errorMessage}>
+			<AuthSubmit href={route("/sign-in.html")}>{t("auth_go_to_sign_in")}</AuthSubmit>
 		</AuthResult>
 	{/if}
 </AuthScene>

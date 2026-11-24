@@ -17,11 +17,14 @@
 	import { userSession } from "$lib/stores.svelte";
 	import { route } from "$lib/common/common";
 	import { localUrl } from "$lib/urls";
+	import { t, type MessageKey } from "$lib/i18n";
 
 	let showPassword = $state(false);
 	let email = $state("");
 	let password = $state("");
 	let doingRequest = $state(false);
+	// What went wrong: the app's own sentence by its key, drawn in the language of the moment, or the API's words.
+	let errorKey = $state<MessageKey | null>(null);
 	let errorMessage = $state("");
 	// The page to go on to (an invite's), which creating an account instead goes on to as well.
 	let redirectQuery = $state("");
@@ -39,12 +42,14 @@
 		// An empty form isn't sent: the form says what it lacks, and the field waits for it.
 		const missing = signInMissing(email, password);
 		if (missing) {
-			errorMessage = missing;
+			errorKey = missing;
+			errorMessage = "";
 			form.querySelector<HTMLInputElement>(email.trim() ? "#password" : "#email")?.focus();
 			return;
 		}
 		sendCue++;
 		doingRequest = true;
+		errorKey = null;
 		errorMessage = "";
 		try {
 			const result = await logIn({ email, password });
@@ -53,7 +58,8 @@
 			const redirect = new URLSearchParams(window.location.search).get("redirect");
 			window.location.href = localUrl(redirect, window.location.href) ?? route("/app.html");
 		} catch (err) {
-			errorMessage = err instanceof Error ? err.message : "We couldn't sign you in. Check your details and try again.";
+			// logIn always throws an Error, in words of lib/api/auth.ts.
+			errorMessage = (err as Error).message;
 		} finally {
 			doingRequest = false;
 		}
@@ -76,7 +82,7 @@
 	});
 </script>
 
-<AuthScene {mood} {look} {mailCue} {sendCue} title="Welcome back" lead="Sign in to continue to Duvet.">
+<AuthScene {mood} {look} {mailCue} {sendCue} title={t("auth_sign_in_title")} lead={t("auth_sign_in_lead")}>
 	<form
 		class="flex flex-col gap-4"
 		onsubmit={(e) => {
@@ -88,7 +94,7 @@
 	>
 		<AuthField
 			id="email"
-			label="Email"
+			label={t("auth_email_label")}
 			name="email"
 			type="email"
 			autocomplete="email"
@@ -100,7 +106,7 @@
 			required
 			bind:value={email}
 			disabled={doingRequest}
-			placeholder="you@example.com"
+			placeholder={t("auth_email_placeholder")}
 			onfocus={(e) => ((focusedField = "text"), (typed = e.currentTarget.value.length))}
 			oninput={(e) => (typed = e.currentTarget.value.length)}
 			onblur={() => (focusedField = null)}
@@ -108,7 +114,7 @@
 
 		<AuthField
 			id="password"
-			label="Password"
+			label={t("auth_password_label")}
 			name="password"
 			type={showPassword ? "text" : "password"}
 			autocomplete="current-password"
@@ -116,29 +122,29 @@
 			required
 			bind:value={password}
 			disabled={doingRequest}
-			placeholder="Enter your password"
+			placeholder={t("auth_sign_in_password_placeholder")}
 			onfocus={() => (focusedField = "secret")}
 			onblur={() => (focusedField = null)}
 		>
 			{#snippet aside()}
-				<a href="/forgot-password" class="auth-link text-[13px]">Forgot password?</a>
+				<a href="/forgot-password" class="auth-link text-[13px]">{t("auth_forgot_link")}</a>
 			{/snippet}
 			{#snippet trailing()}
 				<PasswordEye bind:shown={showPassword} disabled={doingRequest} />
 			{/snippet}
 		</AuthField>
 
-		{#if errorMessage}
-			<AuthNote>{errorMessage}</AuthNote>
+		{#if errorKey || errorMessage}
+			<AuthNote>{errorKey ? t(errorKey) : errorMessage}</AuthNote>
 		{/if}
 
 		<AuthSubmit busy={doingRequest} class="mt-2">
-			{doingRequest ? "Signing in…" : "Sign in"}
+			{doingRequest ? t("auth_sign_in_busy") : t("auth_sign_in")}
 		</AuthSubmit>
 	</form>
 
 	<footer class="text-duvet-ink2 mt-6 text-center text-[14px]">
-		New to Duvet?
-		<a href="/sign-up{redirectQuery}" class="auth-link ml-1">Create an account</a>
+		{t("auth_sign_in_new")}
+		<a href="/sign-up{redirectQuery}" class="auth-link ml-1">{t("auth_sign_in_create_account")}</a>
 	</footer>
 </AuthScene>
