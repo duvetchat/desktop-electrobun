@@ -8,6 +8,8 @@
 	import type { Message } from "$lib/types";
 	import { renderMarkdown } from "$lib/markdown";
 	import { getAvatarURL } from "$lib/common/common";
+	import { t } from "$lib/i18n";
+	import { formatDate } from "$lib/i18n/format";
 
 	let {
 		spaceId = "",
@@ -27,18 +29,13 @@
 	let loading = $state(true);
 	let error = $state(false);
 
-	const locale = typeof navigator !== "undefined" ? navigator.language : "en-US";
-
 	const space = $derived(!isConv ? ($gatewaySpaces.find((s) => s.id === spaceId) ?? null) : null);
 	const room = $derived(space?.rooms.find((r) => r.id === roomId) ?? null);
 	const conv = $derived(isConv ? ($conversations.find((c) => c.id === conversationId) ?? null) : null);
-	const convName = $derived(conv?.name ?? "Direct message");
+	const convName = $derived(conv?.name ?? t("media_link_direct_message"));
 
 	function formatTime(dateStr: string): string {
-		return new Date(dateStr).toLocaleTimeString(locale, {
-			hour: "2-digit",
-			minute: "2-digit",
-		});
+		return formatDate(new Date(dateStr), { hour: "2-digit", minute: "2-digit" });
 	}
 
 	onMount(async () => {
@@ -93,7 +90,7 @@
 {#if loading}
 	<div class="bg-duvet-card shadow-duvet-raised flex w-[380px] max-w-full items-center gap-2 rounded-2xl px-3.5 py-3">
 		<div class="border-duvet-ink2/40 h-3 w-3 shrink-0 animate-spin rounded-full border-2 border-t-transparent"></div>
-		<span class="text-duvet-ink2 text-xs">Loading message…</span>
+		<span class="text-duvet-ink2 text-xs">{t("media_link_loading")}</span>
 	</div>
 {:else if !error && message}
 	<button
@@ -132,7 +129,7 @@
 					<span class="text-duvet-ink2 shrink-0 text-xs">#</span>
 					<span class="text-duvet-ink2 max-w-22.5 truncate text-xs font-medium">{room.name}</span>
 				{:else}
-					<span class="text-duvet-ink2 text-xs italic">unknown-room</span>
+					<span class="text-duvet-ink2 text-xs italic">{t("media_link_unknown_room")}</span>
 				{/if}
 			{/if}
 		</div>

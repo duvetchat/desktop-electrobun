@@ -3,6 +3,7 @@
 	import type { SpaceSticker } from "$lib/types";
 	import { Sticker as StickerIcon } from "@lucide/svelte";
 	import { getAvatarURL, getHostURL } from "$lib/common/common";
+	import { t } from "$lib/i18n";
 	import PickerSearch from "$lib/components/PickerSearch.svelte";
 	import SpaceIcon from "$lib/components/ui/SpaceIcon.svelte";
 	import { GLASS } from "$lib/components/ui/recipes";
@@ -30,19 +31,21 @@
 <div
 	class="{GLASS} text-duvet-ink flex h-[440px] max-h-[calc(100vh-20px)] w-[372px] max-w-[calc(100vw-20px)] flex-col overflow-hidden rounded-[20px]"
 	role="group"
-	aria-label="Sticker picker"
+	aria-label={t("media_sticker_picker")}
 >
-	<PickerSearch bind:value={searchQuery} placeholder="Search stickers" label="Search stickers" />
+	<PickerSearch bind:value={searchQuery} placeholder={t("media_sticker_search")} label={t("media_sticker_search")} />
 
 	<!-- Sticker grid -->
 	<div class="min-h-0 flex-1 overflow-y-auto px-2 pt-0.5 pb-2">
 		{#if groups.length === 0}
 			<div class="text-duvet-ink2 flex h-full flex-col items-center justify-center gap-2 text-center">
 				<StickerIcon size={32} strokeWidth={1.5} aria-hidden="true" />
-				<p class="text-xs">No stickers available</p>
+				<p class="text-xs">{t("media_sticker_empty")}</p>
 			</div>
 		{:else if filtered.length === 0}
-			<div class="text-duvet-ink2 py-8 text-center text-[13px]">No results for "{searchQuery}"</div>
+			<div class="text-duvet-ink2 py-8 text-center text-[13px]">
+				{t("media_picker_no_results", { query: searchQuery })}
+			</div>
 		{:else}
 			{#each filtered as group (group.space.id)}
 				<div

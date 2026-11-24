@@ -1,4 +1,5 @@
 // The emoji dataset, which lib/emoji.ts loads when it is first asked for (loadEmojiData, #292).
+import type { MessageKey } from "$lib/i18n";
 import type { EmojiCategory, EmojiEntry } from "./emoji";
 
 // ── Emoji data ────────────────────────────────────────────────────────────
@@ -28,17 +29,18 @@ interface RawEmoji {
 	added_in: string;
 }
 
-// Category mapping: emoji-datasource labels → our picker labels (with icons)
-const CATEGORY_MAP: Record<string, { label: string; icon: string }> = {
-	"Smileys & Emotion": { label: "Smileys & Emotion", icon: "😀" },
-	"People & Body": { label: "People & Body", icon: "👋" },
-	"Animals & Nature": { label: "Animals & Nature", icon: "🐶" },
-	"Food & Drink": { label: "Food & Drink", icon: "🍕" },
-	"Travel & Places": { label: "Travel & Places", icon: "✈️" },
-	Activities: { label: "Activities", icon: "⚽" },
-	Objects: { label: "Objects", icon: "💡" },
-	Symbols: { label: "Symbols", icon: "❤️" },
-	Flags: { label: "Flags", icon: "🏳️" },
+// Category mapping: emoji-datasource's categories (its data, in English) → the picker's, each with its name's message
+// (the picker draws it with t()) and its icon.
+const CATEGORY_MAP: Record<string, { label: MessageKey; icon: string }> = {
+	"Smileys & Emotion": { label: "emoji_smileys", icon: "😀" },
+	"People & Body": { label: "emoji_people", icon: "👋" },
+	"Animals & Nature": { label: "emoji_animals", icon: "🐶" },
+	"Food & Drink": { label: "emoji_food", icon: "🍕" },
+	"Travel & Places": { label: "emoji_travel", icon: "✈️" },
+	Activities: { label: "emoji_activities", icon: "⚽" },
+	Objects: { label: "emoji_objects", icon: "💡" },
+	Symbols: { label: "emoji_symbols", icon: "❤️" },
+	Flags: { label: "emoji_flags", icon: "🏳️" },
 };
 
 // Build the categorized emoji dataset, sorted by sort_order

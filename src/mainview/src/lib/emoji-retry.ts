@@ -4,6 +4,7 @@
 // So it's asked again only after a wait, longer each time and as long as Retry-After asks, and never once its file
 // is gone. An <img>'s error tells nothing of its answer, so the tries again are fetches, which do: the API lets this
 // app read their status and Retry-After (CORS). A working emoji loads as any image, at once and from the cache.
+import { t } from "$lib/i18n";
 
 /** How many times an emoji's file is asked for again, at most, after its image failed. */
 export const EMOJI_RETRIES = 5;
@@ -219,7 +220,7 @@ export function retryEmojis(doc: Pick<EventTarget, "addEventListener" | "removeE
 			showName: () =>
 				img.replaceWith(
 					Object.assign(img.ownerDocument.createElement("span"), {
-						title: "Emoji failed to load",
+						title: t("media_emoji_load_failed"),
 						textContent: img.title,
 					}),
 				),

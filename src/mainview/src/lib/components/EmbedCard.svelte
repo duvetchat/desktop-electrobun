@@ -3,6 +3,7 @@
 	import MessageComponents from "$lib/components/MessageComponents.svelte";
 	import { EmbedType, type Embed, type EmbedMedia } from "$lib/types";
 	import { getHostURL } from "$lib/common/common";
+	import { t } from "$lib/i18n";
 	import { renderMarkdown } from "$lib/markdown";
 	import { messageTextClass } from "$lib/message-styles";
 	import { roomNames } from "$lib/stores.svelte";
@@ -89,7 +90,7 @@
 	<button type="button" class="block cursor-zoom-in" onclick={() => onImageClick?.(card.image!.url)}>
 		<img
 			src={card.image.url}
-			alt={card.title ?? "Sticker"}
+			alt={card.title ?? t("media_sticker")}
 			class="size-[136px] object-contain"
 			loading="lazy"
 			title={card.title ?? ""}
@@ -111,7 +112,7 @@
 		<button
 			type="button"
 			class="shadow-duvet-raised block cursor-zoom-in self-start overflow-hidden rounded-2xl {mediaWidth}"
-			aria-label="Open image"
+			aria-label={t("media_open_image")}
 			onclick={() => onImageClick?.(card.image!.url)}
 		>
 			<img src={card.image.url} alt="" class={mediaFit} loading="lazy" />
@@ -261,7 +262,7 @@
 			<button
 				type="button"
 				class="block w-full cursor-zoom-in"
-				aria-label="Open image"
+				aria-label={t("media_open_image")}
 				onclick={() => onImageClick?.(card.image!.url)}
 			>
 				<img src={card.image.url} alt="" class="max-h-64 w-full max-w-full object-cover" loading="lazy" />

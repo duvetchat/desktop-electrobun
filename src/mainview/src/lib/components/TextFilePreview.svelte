@@ -4,6 +4,8 @@
 	import IconButton from "$lib/components/ui/IconButton.svelte";
 	import { fieldClass } from "$lib/components/ui/recipes";
 	import { TEXT_PREVIEW_LIMIT, readTextPreview } from "$lib/text-preview";
+	import { t, type MessageKey } from "$lib/i18n";
+	import { formatNumber } from "$lib/i18n/format";
 
 	// A text file of the Attachments list, read in a dialog: the reader can select and copy it, and change nothing.
 	// It is read when the dialog opens, and only its first TEXT_PREVIEW_LIMIT characters are shown.
@@ -21,7 +23,8 @@
 	let text = $state("");
 	// Until the file is read, the dialog says so: an empty box first would look like an empty file.
 	let loading = $state(true);
-	let error = $state<string | null>(null);
+	// What went wrong, as its message: drawn in the language of the moment.
+	let error = $state<MessageKey | null>(null);
 	let truncated = $state(false);
 	// A read asked for twice: the one that finishes last is the one that counts.
 	let read = 0;
@@ -56,7 +59,7 @@
 		} catch (err) {
 			if (mine !== read) return;
 			if (import.meta.env.DEV) console.error("[TextFilePreview] The file wasn't read:", err);
-			error = "Couldn't read this file.";
+			error = "media_text_preview_failed";
 		} finally {
 			if (mine === read) loading = false;
 		}
@@ -78,31 +81,37 @@
 		if (copyTimer) clearTimeout(copyTimer);
 	});
 
-	const limit =
-		TEXT_PREVIEW_LIMIT % 1_000_000 === 0 ? `${TEXT_PREVIEW_LIMIT / 1_000_000} MB` : `${TEXT_PREVIEW_LIMIT / 1000} KB`;
+	// How much of the file shows, in the size's words of the language of the moment: 1 MB.
+	const limit = $derived(
+		TEXT_PREVIEW_LIMIT % 1_000_000 === 0
+			? t("format_size_mb", { size: formatNumber(TEXT_PREVIEW_LIMIT / 1_000_000, { useGrouping: false }) })
+			: t("format_size_kb", { size: formatNumber(TEXT_PREVIEW_LIMIT / 1000, { useGrouping: false }) }),
+	);
 </script>
 
-<Sheet bind:open title={filename} description="Read-only preview.">
+<Sheet bind:open title={filename} description={t("media_text_preview_description")}>
 	{#if loading}
-		<p class="text-duvet-ink2 py-6 text-center text-[13px]">Loading…</p>
+		<p class="text-duvet-ink2 py-6 text-center text-[13px]">{t("media_text_preview_loading")}</p>
 	{:else if error}
-		<p class="text-duvet-danger py-6 text-center text-[13px]" role="alert">{error}</p>
+		<p class="text-duvet-danger py-6 text-center text-[13px]" role="alert">{t(error)}</p>
 	{:else}
 		<div class="flex items-center justify-end gap-2">
 			{#if copied}
-				<span class="text-duvet-alive-text text-xs font-medium" role="status" aria-live="polite">Copied!</span>
+				<span class="text-duvet-alive-text text-xs font-medium" role="status" aria-live="polite"
+					>{t("media_text_preview_copied")}</span
+				>
 			{/if}
-			<IconButton label="Copy the text" title="Copy" onclick={copy}>
+			<IconButton label={t("media_text_preview_copy_label")} title={t("media_text_preview_copy")} onclick={copy}>
 				<Copy size={16} />
 			</IconButton>
 		</div>
 		<textarea
 			readonly
 			spellcheck="false"
-			aria-label="Contents of {filename}"
+			aria-label={t("media_text_preview_contents", { filename })}
 			value={text}
 			class="{fieldClass('area')} h-[min(60vh,520px)] font-mono"
 		></textarea>
 	{/if}
-	{#if truncated}<p class="text-duvet-ink2 text-xs">Only the first {limit} of the file is shown.</p>{/if}
+	{#if truncated}<p class="text-duvet-ink2 text-xs">{t("media_text_preview_truncated", { size: limit })}</p>{/if}
 </Sheet>

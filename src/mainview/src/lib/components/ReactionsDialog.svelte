@@ -9,6 +9,8 @@
 	import { reactorOf, reactorsToAsk, type ReactorProfile } from "$lib/reactors";
 	import { reactorsRequest, type ReactorsRequest } from "$lib/stores.svelte";
 	import type { MessageReaction } from "$lib/types";
+	import { t } from "$lib/i18n";
+	import { formatNumber } from "$lib/i18n/format";
 
 	// Who reacted to a message, as a message's menu or a reaction's right click asks (reactorsRequest): its reactions with
 	// their counts down the left, and for the one picked, who reacted with it, oldest first, each with their avatar, name
@@ -90,13 +92,13 @@
 	const people = $derived((current?.users ?? []).map((userId) => reactorOf(userId, request?.members ?? [], profiles)));
 </script>
 
-<Sheet bind:open title="Reactions" class="h-[min(28rem,80vh)] max-w-[460px]">
+<Sheet bind:open title={t("media_reactions_title")} class="h-[min(28rem,80vh)] max-w-[460px]">
 	<div class="-mx-1 -mb-1 flex min-h-0 flex-1">
 		<div
 			class="border-duvet-line flex w-24 shrink-0 flex-col gap-0.5 overflow-y-auto border-r pr-2 pl-1"
 			role="tablist"
 			aria-orientation="vertical"
-			aria-label="Reactions"
+			aria-label={t("media_reactions_title")}
 		>
 			{#each reactions as reaction (reactionKey(reaction))}
 				{@const selected = reaction === current}
@@ -111,11 +113,11 @@
 					onclick={() => (picked = reactionKey(reaction))}
 				>
 					<ReactionEmoji {reaction} customEmojiMap={request?.customEmojiMap} />
-					<span class="font-medium tabular-nums">{reaction.count}</span>
+					<span class="font-medium tabular-nums">{formatNumber(reaction.count)}</span>
 				</button>
 			{/each}
 		</div>
-		<div class="min-w-0 flex-1 overflow-y-auto pl-2" role="tabpanel" aria-label="Who reacted">
+		<div class="min-w-0 flex-1 overflow-y-auto pl-2" role="tabpanel" aria-label={t("media_reactions_who")}>
 			<ul class="flex flex-col gap-0.5">
 				{#each people as person (person.id)}
 					<li class="flex items-center gap-2.5 rounded-xl px-2 py-1.5">

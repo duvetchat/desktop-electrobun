@@ -3,6 +3,8 @@
 // cross-platform rendering. We mirror that by swapping every Unicode emoji
 // for an <img> tag pointing to the Twemoji CDN.
 
+import type { MessageKey } from "$lib/i18n";
+
 const TWEMOJI_ASSETS = "https://cdn.jsdelivr.net/gh/jdecked/twemoji@16.0.1/assets";
 
 // Some non-standard ZWJ sequences (not in the Unicode RGI list) are stored
@@ -86,7 +88,8 @@ export interface EmojiEntry {
 }
 
 export interface EmojiCategory {
-	label: string;
+	/** The category's name, for the picker to draw with t(). */
+	label: MessageKey;
 	icon: string;
 	emojis: EmojiEntry[];
 }

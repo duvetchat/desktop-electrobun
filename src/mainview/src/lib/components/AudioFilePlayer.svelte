@@ -13,7 +13,8 @@
 	} from "$lib/stores/voiceNotePlayer.svelte";
 	import { formatDuration } from "$lib/utils/time";
 	import VolumeControl from "$lib/components/VolumeControl.svelte";
-	import { formatFileSize } from "$lib/utils/format";
+	import { formatFileSize, formatNumber } from "$lib/i18n/format";
+	import { t } from "$lib/i18n";
 	import {
 		waveformCache,
 		analyzeWaveform,
@@ -200,7 +201,7 @@
 	<div class="flex items-center gap-2">
 		<button
 			type="button"
-			aria-label={playing ? "Pause" : "Play"}
+			aria-label={playing ? t("media_pause") : t("media_play")}
 			class="bg-duvet-accent text-duvet-on-accent shadow-duvet-control grid size-[30px] shrink-0 cursor-pointer place-items-center rounded-full transition-[filter] hover:brightness-[1.06] motion-reduce:transition-none"
 			onclick={togglePlay}
 		>
@@ -216,11 +217,14 @@
 			class="text-duvet-accent-text relative flex h-6 min-w-0 flex-1 cursor-pointer items-center gap-px rounded-md"
 			role="slider"
 			tabindex="0"
-			aria-label="Seek"
+			aria-label={t("media_seek")}
 			aria-valuemin={0}
 			aria-valuemax={Math.round(duration)}
 			aria-valuenow={Math.round(currentTime)}
-			aria-valuetext="{formatDuration(currentTime)} of {formatDuration(duration)}"
+			aria-valuetext={t("media_seek_position", {
+				position: formatDuration(currentTime),
+				duration: formatDuration(duration),
+			})}
 			onclick={handleSeek}
 			onkeydown={handleSeekKey}
 		>
@@ -243,9 +247,9 @@
 
 		<button
 			type="button"
-			aria-label="Playback speed: {rate}x"
+			aria-label={t("media_playback_speed", { rate: formatNumber(rate) })}
 			class="text-duvet-ink2 hover:bg-duvet-hover hover:text-duvet-ink h-[22px] shrink-0 cursor-pointer rounded-[7px] px-1.5 text-[11px] font-semibold tabular-nums transition-colors motion-reduce:transition-none"
-			onclick={handleCycleRate}>{rate}x</button
+			onclick={handleCycleRate}>{t("media_playback_rate", { rate: formatNumber(rate) })}</button
 		>
 
 		<VolumeControl height="h-24" />

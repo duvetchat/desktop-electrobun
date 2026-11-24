@@ -4,6 +4,7 @@
 	import { emojiDataNow, loadEmojiData, toTwemojiUrl, type EmojiEntry } from "$lib/emoji";
 	import type { SpaceEmoji } from "$lib/types";
 	import { getAvatarURL, getHostURL } from "$lib/common/common";
+	import { t } from "$lib/i18n";
 	import PickerSearch from "$lib/components/PickerSearch.svelte";
 	import SpaceIcon from "$lib/components/ui/SpaceIcon.svelte";
 	import { GLASS } from "$lib/components/ui/recipes";
@@ -68,28 +69,28 @@
 <div
 	class="{GLASS} text-duvet-ink flex h-[440px] max-h-[calc(100vh-20px)] w-[372px] max-w-[calc(100vw-20px)] flex-col overflow-hidden rounded-[20px]"
 	role="group"
-	aria-label="Emoji picker"
+	aria-label={t("media_emoji_picker")}
 >
-	<PickerSearch bind:value={searchQuery} placeholder="Search emoji" label="Search emoji" />
+	<PickerSearch bind:value={searchQuery} placeholder={t("media_emoji_search")} label={t("media_emoji_search")} />
 
 	{#if !isSearching}
 		<!-- Category tabs: Recently used, each Space's, then the dataset's -->
 		<div
 			class="border-duvet-line flex shrink-0 items-center gap-0.5 overflow-x-auto border-b px-2.5 pb-1.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
 			role="tablist"
-			aria-label="Emoji categories"
+			aria-label={t("media_emoji_categories")}
 			onwheel={(e) => scrollSideways(e, e.currentTarget)}
 		>
 			{#if recentTabs > 0}
 				<button
 					role="tab"
 					aria-selected={showingRecent}
-					aria-label="Recently used"
+					aria-label={t("media_emoji_recent")}
 					class="grid h-7 w-[30px] shrink-0 cursor-pointer place-items-center rounded-lg transition-[opacity,background-color,filter] duration-[120ms] motion-reduce:transition-none {showingRecent
 						? 'bg-duvet-accent-tint opacity-100'
 						: 'hover:bg-duvet-hover opacity-70 grayscale hover:opacity-100 hover:grayscale-0'}"
 					onclick={() => (activeCategory = 0)}
-					title="Recently used"
+					title={t("media_emoji_recent")}
 				>
 					<ClockIcon size={17} />
 				</button>
@@ -119,15 +120,15 @@
 				<button
 					role="tab"
 					aria-selected={activeCategory === i + categoryOffset}
-					aria-label={cat.label}
+					aria-label={t(cat.label)}
 					class="grid h-7 w-[30px] shrink-0 cursor-pointer place-items-center rounded-lg transition-[opacity,background-color,filter] duration-[120ms] motion-reduce:transition-none {activeCategory ===
 					i + categoryOffset
 						? 'bg-duvet-accent-tint opacity-100'
 						: 'hover:bg-duvet-hover opacity-70 grayscale hover:opacity-100 hover:grayscale-0'}"
 					onclick={() => (activeCategory = i + categoryOffset)}
-					title={cat.label}
+					title={t(cat.label)}
 				>
-					<img src={toTwemojiUrl(cat.icon)} alt={cat.label} class="block size-[18px]" loading="lazy" />
+					<img src={toTwemojiUrl(cat.icon)} alt={t(cat.label)} class="block size-[18px]" loading="lazy" />
 				</button>
 			{/each}
 		</div>
@@ -138,10 +139,12 @@
 	<div class="min-h-0 flex-1 overflow-y-auto px-2 pt-0.5 pb-2" role="tabpanel" tabindex="-1" onkeydown={gridKeys}>
 		{#if isSearching}
 			{#if searchResults.length === 0}
-				<div class="text-duvet-ink2 py-8 text-center text-[13px]">No results for "{searchQuery}"</div>
+				<div class="text-duvet-ink2 py-8 text-center text-[13px]">
+					{t("media_picker_no_results", { query: searchQuery })}
+				</div>
 			{:else}
 				<div class="text-duvet-ink2 px-1 pt-3 pb-1.5 text-[10.5px] font-semibold tracking-[0.06em] uppercase">
-					Search results
+					{t("media_search_results")}
 				</div>
 				<div class="grid grid-cols-8 gap-0.5">
 					{#each searchResults as entry (entry.emoji + entry.name)}
@@ -172,7 +175,7 @@
 			{/if}
 		{:else if showingRecent}
 			<div class="text-duvet-ink2 px-1 pt-3 pb-1.5 text-[10.5px] font-semibold tracking-[0.06em] uppercase">
-				Recently used
+				{t("media_emoji_recent")}
 			</div>
 			<div class="grid grid-cols-8 gap-0.5">
 				{#each recent as code (code)}
@@ -226,7 +229,7 @@
 			</div>
 		{:else if shownCategory}
 			<div class="text-duvet-ink2 px-1 pt-3 pb-1.5 text-[10.5px] font-semibold tracking-[0.06em] uppercase">
-				{shownCategory.label}
+				{t(shownCategory.label)}
 			</div>
 			<div class="grid grid-cols-8 gap-0.5">
 				{#each shownCategory.emojis as entry (entry.emoji)}

@@ -4,6 +4,7 @@
 	import { botInviteRequest } from "$lib/stores.svelte";
 	import { getAvatarURL } from "$lib/common/common";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
+	import { t } from "$lib/i18n";
 
 	let { botUserId }: { botUserId: string } = $props();
 
@@ -37,7 +38,7 @@
 	</div>
 {:else if !error && bot}
 	<div class="border-duvet-line bg-duvet-card shadow-duvet-raised rounded-card mt-2 max-w-xs border p-4">
-		<p class="text-duvet-ink2 mb-3 text-[13px] font-bold">Add a bot to your Space</p>
+		<p class="text-duvet-ink2 mb-3 text-[13px] font-bold">{t("media_bot_invite_title")}</p>
 		<div class="mb-4 flex items-center gap-3">
 			<div class="shrink-0">
 				<UserAvatar src={getAvatarURL(bot.id, bot.avatar)} name={bot.username} size={48} />
@@ -45,7 +46,9 @@
 			<div class="min-w-0">
 				<div class="flex items-center gap-1.5">
 					<p class="text-duvet-ink truncate text-sm font-semibold">{bot.username}</p>
-					<span class="text-xxs bg-duvet-accent text-duvet-on-accent rounded px-1 py-0.5 font-bold">BOT</span>
+					<span class="text-xxs bg-duvet-accent text-duvet-on-accent rounded px-1 py-0.5 font-bold"
+						>{t("media_bot_badge")}</span
+					>
 				</div>
 			</div>
 		</div>
@@ -54,7 +57,7 @@
 			class="bg-duvet-accent text-duvet-on-accent shadow-duvet-raised w-full rounded-xl py-2 text-sm font-bold transition-colors hover:brightness-110 motion-reduce:transition-none"
 			onclick={() => botInviteRequest.set(botUserId)}
 		>
-			Add to Space
+			{t("media_bot_invite_add")}
 		</button>
 	</div>
 {/if}
