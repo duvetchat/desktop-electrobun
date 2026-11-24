@@ -535,7 +535,7 @@
 											</button>
 											<button
 												type="button"
-												class="text-duvet-ink2 hover:text-duvet-danger hover:bg-duvet-card relative flex size-9 items-center justify-center rounded-xl opacity-0 transition group-focus-within:opacity-100 group-hover:opacity-100 focus-visible:opacity-100 motion-reduce:transition-none {focusRing}"
+												class="bg-duvet-card text-duvet-ink2 shadow-duvet-raised hover:text-duvet-danger relative flex size-9 items-center justify-center rounded-xl transition-colors motion-reduce:transition-none {focusRing}"
 												aria-label="Remove {member.username} from your friends"
 												title="Remove friend"
 												onclick={() => confirmUnfriend(friend)}

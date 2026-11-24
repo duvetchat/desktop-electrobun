@@ -21,3 +21,18 @@ test("it takes the focus as it opens, so a key typed then doesn't go into a chat
 	expect(sheet).not.toContain("trapFocus={false}");
 	expect(friendsView).not.toMatch(/role="dialog"/);
 });
+
+// A friend's Remove friend was a bare icon, shown only on hover; it takes a card of its own beside Message's.
+test("a friend's Remove friend has the same card as Message", () => {
+	const classes = (label: string) =>
+		new RegExp(`class="([^"]*)"\\s+aria-label="${label}"`).exec(friendsView)?.[1] ?? "";
+	const message = classes("Message \\{member\\.username\\}");
+	const remove = classes("Remove \\{member\\.username\\} from your friends");
+	for (const name of ["bg-duvet-card", "shadow-duvet-raised", "rounded-xl", "size-9"]) {
+		expect(message, name).toContain(name);
+		expect(remove, name).toContain(name);
+	}
+	expect(remove).toContain("hover:text-duvet-danger");
+	expect(remove).not.toContain("hover:bg-");
+	expect(remove).not.toContain("opacity-0");
+});
