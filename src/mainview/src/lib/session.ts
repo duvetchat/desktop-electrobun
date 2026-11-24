@@ -1,3 +1,4 @@
+import { t } from "$lib/i18n";
 import type { WindowKind } from "$lib/platform";
 
 /** When the app checks its session's age (keepSessionFresh): as it starts, when its window comes back into view, and
@@ -35,10 +36,13 @@ export function windowRenewsSession(window: WindowKind): boolean {
 	return window === "main";
 }
 
-/** No renewal by the main window showed up in time: the request that needed one fails, and nobody is signed out. */
+/**
+ * No renewal by the main window showed up in time: the request that needed one fails, and nobody is signed out. Its
+ * message is what a toast of that request shows (getApiError), in the language of the moment it's made.
+ */
 export class NoRenewalError extends Error {
 	constructor() {
-		super("The main window didn't renew the session in time");
+		super(t("auth_session_not_renewed"));
 		this.name = "NoRenewalError";
 	}
 }

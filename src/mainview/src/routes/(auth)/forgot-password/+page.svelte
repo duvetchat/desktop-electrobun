@@ -5,21 +5,23 @@
 	import AuthSubmit from "$lib/components/auth/AuthSubmit.svelte";
 	import { forgotPassword } from "$lib/api/auth";
 	import { mascotLook, type FocusedField } from "$lib/auth-form";
+	import { t } from "$lib/i18n";
 
 	let email = $state("");
 	let doingRequest = $state(false);
-	let errorMessage = $state("");
-	let successMessage = $state("");
+	// What the API answered, drawn in the language of the moment.
+	let failed = $state(false);
+	let sent = $state(false);
 
 	async function handleSubmit() {
 		doingRequest = true;
-		errorMessage = "";
-		successMessage = "";
+		failed = false;
+		sent = false;
 		try {
 			await forgotPassword(email);
-			successMessage = "If an account exists for this email, you will receive reset instructions shortly.";
+			sent = true;
 		} catch {
-			errorMessage = "We couldn't process your request right now. Please try again.";
+			failed = true;
 		} finally {
 			doingRequest = false;
 		}
@@ -31,7 +33,7 @@
 	const look = $derived(mascotLook(focusedField, typed));
 </script>
 
-<AuthScene mood="awake" {look} title="Forgot password?" lead="Enter your email and we will send reset instructions.">
+<AuthScene mood="awake" {look} title={t("auth_forgot_title")} lead={t("auth_forgot_lead")}>
 	<form
 		class="flex flex-col gap-4"
 		onsubmit={(e) => {
@@ -43,7 +45,7 @@
 	>
 		<AuthField
 			id="email"
-			label="Email"
+			label={t("auth_email_label")}
 			name="email"
 			type="email"
 			autocomplete="email"
@@ -55,27 +57,27 @@
 			required
 			bind:value={email}
 			disabled={doingRequest}
-			placeholder="you@example.com"
+			placeholder={t("auth_email_placeholder")}
 			onfocus={(e) => ((focusedField = "text"), (typed = e.currentTarget.value.length))}
 			oninput={(e) => (typed = e.currentTarget.value.length)}
 			onblur={() => (focusedField = null)}
 		/>
 
-		{#if errorMessage}
-			<AuthNote>{errorMessage}</AuthNote>
+		{#if failed}
+			<AuthNote>{t("auth_forgot_failed")}</AuthNote>
 		{/if}
 
-		{#if successMessage}
-			<AuthNote tone="sent">{successMessage}</AuthNote>
+		{#if sent}
+			<AuthNote tone="sent">{t("auth_forgot_sent")}</AuthNote>
 		{/if}
 
 		<AuthSubmit busy={doingRequest} disabled={!email.trim()} class="mt-2">
-			{doingRequest ? "Sending reset email…" : "Send reset email"}
+			{doingRequest ? t("auth_forgot_busy") : t("auth_forgot_submit")}
 		</AuthSubmit>
 	</form>
 
 	<footer class="text-duvet-ink2 mt-6 text-center text-[14px]">
-		Remembered your password?
-		<a href="/sign-in" class="auth-link ml-1">Back to sign in</a>
+		{t("auth_forgot_remembered")}
+		<a href="/sign-in" class="auth-link ml-1">{t("auth_back_to_sign_in")}</a>
 	</footer>
 </AuthScene>

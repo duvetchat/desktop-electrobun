@@ -8,6 +8,7 @@
 	import AuthMascot from "$lib/components/auth/AuthMascot.svelte";
 	import Sticker from "$lib/components/Sticker.svelte";
 	import { chat, headphones, heart as heartIcon, mailbox as mailboxIcon } from "$lib/stickers/icons";
+	import { t } from "$lib/i18n";
 
 	// The frame of the sign-in pages and the invite page (#357), after mobile's sign-in: a centred column, at most 400
 	// wide, with the ghost over its title. On a window 900 wide or more, Duvet's name and what it is for stand beside
@@ -99,7 +100,7 @@
 			>
 				.chat
 			</p>
-			<p class="text-duvet-ink2 mt-6 text-[1.25rem]">a cozy place to talk</p>
+			<p class="text-duvet-ink2 mt-6 text-[1.25rem]">{t("auth_tagline")}</p>
 		</div>
 
 		<div class="mx-auto flex w-full flex-col {wide ? 'max-w-[480px]' : 'max-w-[400px]'}" data-auth-column>
