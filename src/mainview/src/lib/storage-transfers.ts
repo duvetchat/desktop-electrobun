@@ -1,3 +1,4 @@
+import { transferReason } from "$lib/api/error-wording";
 import type { StorageBucket, StorageStatus } from "$lib/api/user";
 import { t, type MessageKey } from "$lib/i18n";
 import { StorageTransferStatus, type StorageTransfer } from "$lib/types";
@@ -125,7 +126,19 @@ export function bucketChoice(bucket: StorageBucket): StorageChoice {
 	};
 }
 
-/** A user's default storage, which gets the uploads while none of their buckets is active. */
+/**
+ * How a sentence about moving files names one of the storages, the case of its `to` or `from` select: "default" for the
+ * default storage (bucketId null), which each sentence says in words of its own, as each language needs its own article
+ * or preposition with it ("in den Standardspeicher"); "named" for a bucket, by its name; "unknown" for a bucket whose
+ * name isn't known.
+ */
+export function storageCase(bucketId: string | null, name: string | null | undefined): "default" | "named" | "unknown" {
+	if (bucketId === null) return "default";
+	return name ? "named" : "unknown";
+}
+
+/** A user's default storage, which gets the uploads while none of their buckets is active. Its name is for where it's
+ * named on its own (the move dialog's target picker); a sentence says it by storageCase's "default". */
 export function defaultStorageChoice(status: StorageStatus, buckets: StorageBucket[]): StorageChoice {
 	return {
 		id: DEFAULT_STORAGE,
@@ -218,11 +231,6 @@ export function isLaterTransfer(next: StorageTransfer, prev: StorageTransfer): b
 	return filesDone(next) >= filesDone(prev);
 }
 
-/** "1 file", "3 files": a count of files, in the language of the moment. */
-export function countFiles(n: number): string {
-	return t("storage_file_count", { count: n });
-}
-
 export interface TransferNotice {
 	text: string;
 	type: "success" | "error" | "info";
@@ -234,38 +242,43 @@ function leftBehind(transfer: StorageTransfer): "failed" | "skipped" | "both" | 
 	return transfer.skipped_files > 0 ? "skipped" : null;
 }
 
-/** What to tell about a transfer that ended. `target` is its target's name, when it's known. */
+/** What to tell about a transfer that ended. `target` is its target bucket's name, when it's known; the default
+ * storage is said in each sentence's own words (storageCase). */
 export function transferEndNotice(transfer: StorageTransfer, target: string | null): TransferNotice {
+	const to = storageCase(transfer.target_bucket_id, target);
+	// Where they went, when the sentence can say it: the default storage, or a bucket by its name.
+	const named = to !== "unknown";
 	const counts = {
 		moved: transfer.moved_files,
 		total: transfer.total_files,
 		failed: transfer.failed_files,
 		skipped: transfer.skipped_files,
+		to,
 		target: target ?? "",
 	};
 	switch (transfer.status) {
 		case StorageTransferStatus.Done: {
 			const left = leftBehind(transfer);
 			if (left === null) {
-				const key = target ? "storage_transfer_done_to" : "storage_transfer_done";
+				const key = named ? "storage_transfer_done_to" : "storage_transfer_done";
 				return { text: t(key, { ...counts, count: transfer.moved_files }), type: "success" };
 			}
 			return {
-				text: t(target ? "storage_transfer_done_partly_to" : "storage_transfer_done_partly", { ...counts, left }),
+				text: t(named ? "storage_transfer_done_partly_to" : "storage_transfer_done_partly", { ...counts, left }),
 				type: transfer.failed_files > 0 ? "error" : "success",
 			};
 		}
 		case StorageTransferStatus.Failed: {
 			const error = transfer.error;
 			if (error) {
-				const key = target ? "storage_transfer_failed_to_reason" : "storage_transfer_failed_reason";
-				return { text: t(key, { ...counts, reason: error }), type: "error" };
+				const key = named ? "storage_transfer_failed_to_reason" : "storage_transfer_failed_reason";
+				return { text: t(key, { ...counts, reason: transferReason(error) }), type: "error" };
 			}
-			return { text: t(target ? "storage_transfer_failed_to" : "storage_transfer_failed", counts), type: "error" };
+			return { text: t(named ? "storage_transfer_failed_to" : "storage_transfer_failed", counts), type: "error" };
 		}
 		default:
 			return {
-				text: t(target ? "storage_transfer_cancelled_to" : "storage_transfer_cancelled", counts),
+				text: t(named ? "storage_transfer_cancelled_to" : "storage_transfer_cancelled", counts),
 				type: "info",
 			};
 	}

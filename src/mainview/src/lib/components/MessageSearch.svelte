@@ -264,7 +264,17 @@
 	let hidden = $state(false);
 	let panel = $state<HTMLElement | null>(null);
 	let loading = $state(false);
+	// The API's answer to a search that failed, in its words (getApiError).
 	let failure = $state<string | null>(null);
+	// A search that couldn't be read keeps what it was read with, not its sentence, which is said as the panel draws, in
+	// the language of the moment: Settings, its own window, can switch it while the panel is open.
+	let unparsed = $state.raw<{ text: string; members: MemberOnSidebar[]; rooms: typeof rooms } | null>(null);
+	const parseError = $derived.by(() => {
+		if (!unparsed) return null;
+		const parsed = readSearch(unparsed.text, unparsed.members, unparsed.rooms);
+		return "error" in parsed ? parsed.error : null;
+	});
+	const shownFailure = $derived(parseError ?? failure);
 	let results = $state.raw<Result[]>([]);
 	let total = $state(0);
 	// What the results' head says: how many were found, 1,000 and more as 1,000+, and how many of them show (some: the
@@ -287,13 +297,22 @@
 	let hitWords = $state<string[]>([]);
 	let controller: AbortController | null = null;
 
+	/** A search's text read with these members and rooms, or why it can't be. */
+	function readSearch(
+		query: string,
+		people: MemberOnSidebar[],
+		places: { id: string; name: string }[],
+	): ReturnType<typeof parseSearch> {
+		return everywhere && /(?:^|\s)(?:from|mentions|in):\S/i.test(query)
+			? { error: t("chat_search_everywhere_filters") }
+			: parseSearch(query, people, places);
+	}
+
 	async function run(more = false) {
+		unparsed = null;
 		if (!more) {
 			if (!text.trim()) return close();
-			const parsed =
-				everywhere && /(?:^|\s)(?:from|mentions|in):\S/i.test(text)
-					? { error: t("chat_search_everywhere_filters") }
-					: parseSearch(text, members, rooms);
+			const parsed = readSearch(text, members, rooms);
 			open = true;
 			hidden = false;
 			results = [];
@@ -301,7 +320,8 @@
 			if ("error" in parsed) {
 				controller?.abort();
 				loading = false;
-				failure = parsed.error;
+				failure = null;
+				unparsed = { text, members, rooms };
 				return;
 			}
 			shown = parsed.search;
@@ -345,6 +365,7 @@
 		hidden = false;
 		loading = false;
 		failure = null;
+		unparsed = null;
 		results = [];
 		total = 0;
 		shown = null;
@@ -402,7 +423,9 @@
 		);
 	}
 
-	const roomName = (id: string) => space?.rooms.find((r) => r.id === id)?.name ?? t("chat_search_room_unknown");
+	// A result's room's name; "" for a room the app doesn't know, which MessagePreview names, and the voice note bar too,
+	// in the language of the moment.
+	const roomName = (id: string) => space?.rooms.find((r) => r.id === id)?.name ?? "";
 
 	// Where a result found everywhere is: its room and Space, or its conversation.
 	function whereOf(r: Result): string {
@@ -618,7 +641,7 @@
 						{#if open && !hidden}
 							<div class="flex shrink-0 items-center justify-between pt-2.5 pr-2 pb-1 pl-3.5">
 								<span class="text-duvet-ink2 text-xs font-medium">
-									{#if failure}
+									{#if shownFailure}
 										{t("chat_search_title")}
 									{:else if loading && results.length === 0}
 										{t("chat_search_searching")}
@@ -636,8 +659,8 @@
 								class="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-1.5 pb-2"
 								onclickcapture={(e) => mentionProfile.open(e)}
 							>
-								{#if failure}
-									<p class="text-duvet-danger px-2 py-8 text-center text-xs">{failure}</p>
+								{#if shownFailure}
+									<p class="text-duvet-danger px-2 py-8 text-center text-xs">{shownFailure}</p>
 								{:else if !loading && results.length === 0}
 									<p class="text-duvet-ink2 px-2 py-8 text-center text-xs">{t("chat_search_no_results")}</p>
 								{/if}
@@ -674,7 +697,7 @@
 										/>
 									</div>
 								{/each}
-								{#if !everywhere && !failure && results.length > 0 && results.length < total}
+								{#if !everywhere && !shownFailure && results.length > 0 && results.length < total}
 									<button
 										class="text-duvet-accent-text hover:bg-duvet-hover shrink-0 rounded-xl py-2 text-xs font-medium disabled:opacity-45"
 										disabled={loading}

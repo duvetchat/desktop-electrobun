@@ -612,12 +612,17 @@
 		const sid = spaceId;
 		const message =
 			roleName === null ? t("space_role_delete_confirm_unknown") : t("space_role_delete_confirm", { name: roleName });
-		await confirmAction(message, t("space_item_delete"), async () => {
-			await deleteRole(sid, roleId);
-			if (editingRoleId === roleId) {
-				editingRoleId = null;
-			}
-		});
+		await confirmAction(
+			message,
+			t("space_item_delete"),
+			async () => {
+				await deleteRole(sid, roleId);
+				if (editingRoleId === roleId) {
+					editingRoleId = null;
+				}
+			},
+			t("space_item_delete_busy"),
+		);
 	}
 
 	function startEdit(role: any) {
@@ -730,15 +735,20 @@
 			emojiName === null
 				? t("space_emoji_delete_confirm_unknown")
 				: t("space_emoji_delete_confirm", { name: emojiName });
-		await confirmAction(message, t("space_item_delete"), async () => {
-			isDeletingEmoji = { ...isDeletingEmoji, [emojiId]: true };
-			try {
-				await deleteEmoji(sid, emojiId);
-				await loadEmojis();
-			} finally {
-				isDeletingEmoji = { ...isDeletingEmoji, [emojiId]: false };
-			}
-		});
+		await confirmAction(
+			message,
+			t("space_item_delete"),
+			async () => {
+				isDeletingEmoji = { ...isDeletingEmoji, [emojiId]: true };
+				try {
+					await deleteEmoji(sid, emojiId);
+					await loadEmojis();
+				} finally {
+					isDeletingEmoji = { ...isDeletingEmoji, [emojiId]: false };
+				}
+			},
+			t("space_item_delete_busy"),
+		);
 	}
 
 	const canManageEmojis = $derived(hasSpacePermission(Permission.ManageSpaceEmojis));
@@ -824,15 +834,20 @@
 			stickerName === null
 				? t("space_sticker_delete_confirm_unknown")
 				: t("space_sticker_delete_confirm", { name: stickerName });
-		await confirmAction(message, t("space_item_delete"), async () => {
-			isDeletingSticker = { ...isDeletingSticker, [stickerId]: true };
-			try {
-				await deleteSticker(sid, stickerId);
-				await loadStickers();
-			} finally {
-				isDeletingSticker = { ...isDeletingSticker, [stickerId]: false };
-			}
-		});
+		await confirmAction(
+			message,
+			t("space_item_delete"),
+			async () => {
+				isDeletingSticker = { ...isDeletingSticker, [stickerId]: true };
+				try {
+					await deleteSticker(sid, stickerId);
+					await loadStickers();
+				} finally {
+					isDeletingSticker = { ...isDeletingSticker, [stickerId]: false };
+				}
+			},
+			t("space_item_delete_busy"),
+		);
 	}
 
 	// ── space bucket handlers ───────────────────────────────────
@@ -952,12 +967,10 @@
 	let movingSpaceBucketId = $state<string | null>(null);
 	let spaceBucketFilesRequest = $state<{ bucket: StorageBucket; files: number } | null>(null);
 
-	function spaceStorageLabel(bucketId: string | null): string {
-		return (
-			spaceBuckets.find((b) => b.id === bucketId)?.name ??
-			storageTransfers.storageName(bucketId) ??
-			t("space_storage_other_bucket")
-		);
+	/** A bucket's name for a transfer's card; null for one whose name isn't known, and for the default storage (null),
+	 * which the card's sentences say in words of their own. */
+	function spaceStorageLabel(bucketId: string | null): string | null {
+		return spaceBuckets.find((b) => b.id === bucketId)?.name ?? storageTransfers.storageName(bucketId);
 	}
 
 	function openMoveSpacePicked() {
@@ -1031,17 +1044,23 @@
 				spaceAttachments = spaceAttachments.filter((a) => a.id !== att.id);
 				spaceStorageUsed -= att.size_bytes;
 			},
+			t("space_item_delete_busy"),
 		);
 	}
 
 	async function handleDeleteAllSpaceAttachments() {
 		if (!spaceId) return;
 		const sid = spaceId;
-		await confirmAction(t("space_attachments_delete_all_confirm"), t("space_item_delete"), async () => {
-			await deleteAllSpaceAttachments(sid);
-			spaceAttachments = [];
-			spaceStorageUsed = 0;
-		});
+		await confirmAction(
+			t("space_attachments_delete_all_confirm"),
+			t("space_item_delete"),
+			async () => {
+				await deleteAllSpaceAttachments(sid);
+				spaceAttachments = [];
+				spaceStorageUsed = 0;
+			},
+			t("space_item_delete_busy"),
+		);
 	}
 
 	// Load the attachments on opening the section, and again for each location picked
@@ -1070,10 +1089,15 @@
 	async function handleRevokeInvite(invite: InviteLink) {
 		if (!spaceId) return;
 		const sid = spaceId;
-		await confirmAction(t("space_invite_revoke_confirm"), t("space_invite_revoke"), async () => {
-			await revokeInvite(sid, invite.id);
-			spaceInvites = spaceInvites.filter((i) => i.id !== invite.id);
-		});
+		await confirmAction(
+			t("space_invite_revoke_confirm"),
+			t("space_invite_revoke"),
+			async () => {
+				await revokeInvite(sid, invite.id);
+				spaceInvites = spaceInvites.filter((i) => i.id !== invite.id);
+			},
+			t("space_invite_revoke_busy"),
+		);
 	}
 
 	function inviteCreator(userId: string): string {
@@ -1154,7 +1178,12 @@
 		if (editingSpaceBucket) {
 			await doSave();
 		} else {
-			await confirmAction(t("space_bucket_add_confirm"), t("space_bucket_add_confirm_button"), doSave);
+			await confirmAction(
+				t("space_bucket_add_confirm"),
+				t("space_bucket_add_confirm_button"),
+				doSave,
+				t("space_bucket_add_busy"),
+			);
 		}
 	}
 
@@ -1164,22 +1193,27 @@
 		const b = spaceBuckets.find((x) => x.id === id);
 		// Gone already (deleted elsewhere): there is nothing to name, or to delete.
 		if (!b) return;
-		await confirmAction(t("space_bucket_delete_confirm", { name: b.name }), t("space_item_delete"), async () => {
-			try {
-				await deleteSpaceBucket(sid, id);
-			} catch (err) {
-				// Deleting it would break its files: offer to move them or delete them with it, which both take
-				// ManageSpaceAttachments too.
-				const files = bucketFilesCount(err);
-				if (files === null || !b) throw err;
-				if (!canManageAttachments) {
-					throw new Error(t("space_bucket_delete_needs_permission", { count: files }), { cause: err });
+		await confirmAction(
+			t("space_bucket_delete_confirm", { name: b.name }),
+			t("space_item_delete"),
+			async () => {
+				try {
+					await deleteSpaceBucket(sid, id);
+				} catch (err) {
+					// Deleting it would break its files: offer to move them or delete them with it, which both take
+					// ManageSpaceAttachments too.
+					const files = bucketFilesCount(err);
+					if (files === null || !b) throw err;
+					if (!canManageAttachments) {
+						throw new Error(t("space_bucket_delete_needs_permission", { count: files }), { cause: err });
+					}
+					spaceBucketFilesRequest = { bucket: b, files };
+					return;
 				}
-				spaceBucketFilesRequest = { bucket: b, files };
-				return;
-			}
-			await afterSpaceBucketDeleted(id);
-		});
+				await afterSpaceBucketDeleted(id);
+			},
+			t("space_item_delete_busy"),
+		);
 	}
 
 	async function deleteSpaceBucketWithFiles(bucket: StorageBucket) {

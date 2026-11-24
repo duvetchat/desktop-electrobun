@@ -1,5 +1,6 @@
 import { t } from "$lib/i18n";
-import { isConversationTab, makeLeaf, makeSplit, updateLeaf } from "$lib/pane";
+import { formatNumber } from "$lib/i18n/format";
+import { makeLeaf, makeSplit, updateLeaf } from "$lib/pane";
 import type { PaneLeaf, PaneNode, Tab } from "$lib/types";
 
 // The redesigned shell's own rules (#357, docs/redesign/DESIGN-MAP.md S-01 to S-12 and §8.5 to §8.7): the title line
@@ -78,8 +79,8 @@ export const friendRequestsLabel = (count: number) => t("shell_friend_requests",
 /** The quiet Spaces' row (#382): the same folded and unfolded, whichever Space is open. */
 export const quietSpacesLabel = (count: number) => t("shell_quiet_spaces", { count });
 
-/** A count as a chip writes it: 99+ past 99. */
-export const chipCount = (count: number) => (count > 99 ? "99+" : String(count));
+/** A count as a chip writes it, in the locale's digits: 99+ past 99. */
+export const chipCount = (count: number) => (count > 99 ? `${formatNumber(99)}+` : formatNumber(count));
 
 // ── The Spaces tree ─────────────────────────────────────────────────────────
 
@@ -319,12 +320,6 @@ export function stripDrop(
 		return moved ? { kind: "reorder", tabs: moved } : null;
 	}
 	return joinId ? { kind: "join", tab: dropped } : { kind: "open", tab: dropped, at };
-}
-
-/** A chat's kind, for a line under its name: a conversation is a group or a direct message; a room has none. */
-export function tabKind(tab: Tab, groupIds: ReadonlySet<string>): string | null {
-	if (!isConversationTab(tab)) return null;
-	return groupIds.has(tab.channelId) ? t("shell_chat_kind_group") : t("shell_chat_kind_dm");
 }
 
 // ── Shortcuts ───────────────────────────────────────────────────────────────

@@ -20,7 +20,7 @@
 	import MenuItem from "$lib/components/ui/MenuItem.svelte";
 	import Segmented from "$lib/components/ui/Segmented.svelte";
 	import Rich from "$lib/components/Rich.svelte";
-	import { t } from "$lib/i18n";
+	import { currentLocale, t } from "$lib/i18n";
 	import { claimLayer, layerStyle, releaseLayer } from "$lib/overlay-layers";
 	import EmojiPicker from "$lib/components/EmojiPicker.svelte";
 	import StickerPicker from "$lib/components/StickerPicker.svelte";
@@ -321,9 +321,9 @@
 	});
 
 	// A draft can come back before its space's members and rooms do (a READY brings them again): its chips follow them,
-	// in place, as rebuilding the text would end a composition.
+	// in place, as rebuilding the text would end a composition. An unknown room's chip follows the app's language too.
 	$effect(() => {
-		void [members, $roomNames];
+		void [members, $roomNames, currentLocale()];
 		untrack(() => {
 			for (const chip of inputEl?.querySelectorAll<HTMLElement>("[data-mention], [data-room]") ?? []) {
 				const { mention, room } = chip.dataset;

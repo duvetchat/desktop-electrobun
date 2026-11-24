@@ -17,6 +17,7 @@
 	import { driftSpecksOnScreen } from "$lib/spoiler-specks";
 	import { followSystemTheme } from "$lib/theme.svelte";
 	import { currentLocale, followLocale } from "$lib/i18n";
+	import { failedEmojis, retitleFailedEmojis } from "$lib/emoji-retry";
 	import { followSystemLanguages, tellBunLanguage } from "$lib/i18n/bun-link";
 	import { currentShell } from "$lib/platform";
 	import { appChrome } from "$lib/stores/chrome.svelte";
@@ -44,6 +45,13 @@
 	// lib/i18n/bun-link.ts): Bun is told it as the page starts and each time it changes.
 	$effect(() => {
 		if (shell.window === "main" && shell.chrome !== "web") tellBunLanguage(currentLocale());
+	});
+
+	// A custom emoji that gave up shows its name, with a tooltip written as it gave up (lib/emoji-retry.ts): put in the
+	// language the app changes to.
+	$effect(() => {
+		currentLocale();
+		retitleFailedEmojis(failedEmojis(document));
 	});
 
 	// Duvet's own right-click menu where no menu of the app's takes it, in the desktop app (#423): the browser keeps its

@@ -22,6 +22,7 @@
 	import { acceptRequest, declineRequest } from "$lib/friend-requests";
 	import { friendUser } from "$lib/friends";
 	import { t } from "$lib/i18n";
+	import { formatNumber } from "$lib/i18n/format";
 	import { liveLabel } from "$lib/media-state";
 	import {
 		capFaces,
@@ -39,7 +40,7 @@
 	} from "$lib/now";
 	import { navPrefs, toggleNow } from "$lib/nav-prefs.svelte";
 	import { hasPermission, Permission } from "$lib/permissions";
-	import { isTransferActive, transferProgress } from "$lib/storage-transfers";
+	import { isTransferActive, storageCase, transferProgress } from "$lib/storage-transfers";
 	import {
 		activeCall,
 		activeVoiceRoomId,
@@ -164,9 +165,12 @@
 				const space =
 					transfer.owner_id === transfer.started_by ? null : $gatewaySpaces.find((s) => s.id === transfer.owner_id);
 				const whose = transfer.owner_id === transfer.started_by ? "own" : space ? "space" : "unknown";
+				const target = storageTransfers.storageName(transfer.target_bucket_id);
 				return {
 					t: transfer,
-					target: storageTransfers.storageName(transfer.target_bucket_id),
+					// Where to: the default storage in the sentence's own words, a bucket by its name.
+					to: storageCase(transfer.target_bucket_id, target),
+					target,
 					moving: t("shell_now_moving", { whose, owner: space?.name ?? "" }),
 					progress: transferProgress(transfer),
 				};
@@ -253,7 +257,7 @@
 			onclick={onToggle}
 		>
 			<span class="min-w-0 truncate">{title}</span>
-			{#if folded}<span class="tabular-nums">{count}</span>{/if}
+			{#if folded}<span class="tabular-nums">{formatNumber(count)}</span>{/if}
 			<span class="flex-1"></span>
 			<ChevronDownIcon
 				class="mb-px size-3 shrink-0 transition-transform duration-150 motion-reduce:transition-none {folded
@@ -366,7 +370,7 @@
 						</li>
 					{/each}
 
-					{#each transfers as { t: transfer, target, moving, progress } (transfer.id)}
+					{#each transfers as { t: transfer, to, target, moving, progress } (transfer.id)}
 						<li class="bg-duvet-sb-card shadow-duvet-raised flex flex-col gap-2 rounded-[14px] p-2">
 							<div class="flex min-w-0 items-center gap-2.5">
 								<span class={tile}>
@@ -375,8 +379,13 @@
 								<span class="flex min-w-0 flex-1 flex-col">
 									<span class={cardName}>{moving}</span>
 									<span class={cardNote}
-										>{target
-											? t("shell_now_moving_to", { target, done: progress.done, total: progress.total })
+										>{to !== "unknown"
+											? t("shell_now_moving_to", {
+													to,
+													target: target ?? "",
+													done: progress.done,
+													total: progress.total,
+												})
 											: t("shell_now_moving_count", { done: progress.done, total: progress.total })}</span
 									>
 								</span>
@@ -518,7 +527,7 @@
 									title={t("shell_now_more_online", { count: friendFaces.more })}
 									onclick={onFriendsSelect}
 								>
-									+{friendFaces.more}
+									+{formatNumber(friendFaces.more)}
 								</button>
 							</li>
 						{/if}

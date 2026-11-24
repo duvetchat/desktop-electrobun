@@ -38,7 +38,12 @@ const REG_KEY = "HKCU\\Control Panel\\International\\User Profile";
 const REG_WAIT_MS = 3000;
 
 async function readWindowsLanguages(): Promise<string[]> {
-	const reg = Bun.spawn(["reg", "query", REG_KEY, "/v", "Languages"], { stdout: "pipe", stderr: "ignore" });
+	// No console window flashes up for it, as for the other consoles the app runs (notification-setup.ts, toasts.ts).
+	const reg = Bun.spawn(["reg", "query", REG_KEY, "/v", "Languages"], {
+		stdout: "pipe",
+		stderr: "ignore",
+		windowsHide: true,
+	});
 	const timer = setTimeout(() => reg.kill(), REG_WAIT_MS);
 	try {
 		const output = await new Response(reg.stdout).text();

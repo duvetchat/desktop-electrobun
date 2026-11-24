@@ -20,7 +20,7 @@
 //
 // The API's texts are what it sends, and stay as they are here: they're what a text is matched by. The app's words for
 // them are messages (#464), in the app's language; a text the app doesn't know is shown in the API's words.
-import { t, type MessageKey } from "$lib/i18n";
+import { currentLocale, t, type MessageKey } from "$lib/i18n";
 import { formatList } from "$lib/i18n/format";
 
 const INTERNAL = /^internal server error$/i;
@@ -88,6 +88,7 @@ const KNOWN: Record<string, MessageKey> = {
 	"session expired": "error_session_expired",
 	"user associated with this session no longer exists": "error_session_account_gone",
 	"access token does not match session": "error_session_token_mismatch",
+	"session invalid or expired": "error_session_invalid",
 	"database error during authentication": "error_session_check_failed",
 	"failed to retrieve user data": "error_session_account_not_loaded",
 
@@ -334,6 +335,13 @@ const aboutField = (key: MessageKey, struct: string) =>
 		}),
 	);
 
+/** Fields' names joined as a list, as the locale lists them; in English as the app always has, whatever the region:
+ * "name, endpoint and bucket name", where US English's list has a comma before "and". */
+function listed(names: string[]): string {
+	if (currentLocale() !== "en") return formatList(names);
+	return names.length < 3 ? names.join(" and ") : `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`;
+}
+
 /** The fields that are the user's own, in the order the sign-up form and the API's payloads have them: a form that
  * lacks one asks for "your" email. */
 const OWN = ["username", "email", "password"];
@@ -349,7 +357,7 @@ function validationWords(refused: { field: string; rule: string }[]): string {
 			return t("error_validation_enter_own", { fields: OWN.filter((field) => words.includes(field)).join("_") });
 		if (missing.length === 1) return aboutField("error_validation_required_one", missing[0]!);
 		// Two or more: a list of their names, which the sentence is phrased not to agree with.
-		return capital(t("error_validation_required", { fields: formatList(missing.map(fieldName)) }));
+		return capital(t("error_validation_required", { fields: listed(missing.map(fieldName)) }));
 	}
 	const { field: struct, rule } = refused[0]!;
 	if (rule === "max") return aboutField("error_validation_too_long", struct);
@@ -417,4 +425,60 @@ export function inAppWords(text: string, fallback: string): string {
 	if (badId) return badId[1]!.toLowerCase() === "user" ? t("error_invalid_user_id") : fallback || t("error_invalid_id");
 	// A text the app doesn't know keeps the API's words, but starts as every sentence on screen does (COPY.md, Errors).
 	return capital(trimmed);
+}
+
+// A move of files between storages keeps why it stopped (StorageTransfer.error), and why each file it couldn't move
+// failed (StorageTransferFile.error), in the API's words: lower case, after "Moving files failed:" or under the file's
+// name (api/internal/services/storage_transfers.go: finish, bucketFailed, copyFile, checkTarget, storageReason). Their
+// English messages are those words.
+
+/** Why a transfer stopped, when it's a text of its own. */
+const TRANSFER_REASONS: Record<string, MessageKey> = {
+	"target full": "storage_transfer_reason_target_full",
+	"a bucket of the transfer is gone": "storage_transfer_reason_bucket_gone",
+	"internal error": "storage_transfer_reason_internal",
+};
+
+/** Why a file of a transfer failed, when it's a text of its own. */
+const FILE_REASONS: Record<string, MessageKey> = {
+	"not in the source": "storage_file_reason_not_in_source",
+	"the source has other content than was uploaded": "storage_file_reason_other_content",
+	"size mismatch in the source": "storage_file_reason_source_size",
+	"size mismatch in the target": "storage_file_reason_target_size",
+	"the target has another file under its key": "storage_file_reason_target_has_other",
+};
+
+/** A transfer's bucket that a call couldn't reach, and why (storageReason), or a target that took a file and kept
+ * nothing. */
+const TRANSFER_UNREACHABLE =
+	/^(source|target) unreachable: (?:(refused) the credentials|(has no) such bucket|answered (\d+)|(kept nothing)|didn't answer)$/;
+/** A file a transfer's bucket refused to give or take, and why (storageReason). */
+const FILE_REFUSED =
+	/^the (source|target) refused it: (?:(refused) the credentials|(has no) such bucket|answered (\d+)|didn't answer)$/;
+
+/** The values of a reason that names the source or the target and why: its side, why, and an HTTP status, a code. */
+function storageWhy(match: RegExpExecArray): { side: string; why: string; status: string } {
+	const [, side, refused, missing, status, keptNothing] = match;
+	return {
+		side: side!,
+		why: refused ? "refused" : missing ? "missing" : status ? "status" : keptNothing ? "kept_nothing" : "other",
+		status: status ?? "",
+	};
+}
+
+/** Why a transfer stopped (StorageTransfer.error), in the app's words; one the app doesn't know, as the API sent it. */
+export function transferReason(error: string): string {
+	if (Object.hasOwn(TRANSFER_REASONS, error)) return t(TRANSFER_REASONS[error]!);
+	const unreachable = TRANSFER_UNREACHABLE.exec(error);
+	if (unreachable) return t("storage_transfer_reason_unreachable", storageWhy(unreachable));
+	return error;
+}
+
+/** Why a file of a transfer failed (StorageTransferFile.error), in the app's words; one the app doesn't know, as the
+ * API sent it. */
+export function transferFileReason(error: string): string {
+	if (Object.hasOwn(FILE_REASONS, error)) return t(FILE_REASONS[error]!);
+	const refused = FILE_REFUSED.exec(error);
+	if (refused) return t("storage_file_reason_refused", storageWhy(refused));
+	return transferReason(error);
 }

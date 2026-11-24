@@ -6,6 +6,7 @@
 	import WindowControls from "$lib/components/WindowControls.svelte";
 	import { countBadgeClass, iconButtonClass } from "$lib/components/ui/recipes";
 	import { t } from "$lib/i18n";
+	import { formatNumber } from "$lib/i18n/format";
 	import { filterNav, navLabel, type SettingsNavGroup } from "./recipes";
 
 	// The chassis of Settings and of a Space's settings (#357, DESIGN-MAP.md S-47, S-58): a side panel that lists the
@@ -103,7 +104,7 @@
 							</span>
 							<span class="min-w-0 flex-1 truncate">{item.label}</span>
 							{#if item.count}
-								<span class={countBadgeClass("sm")}>{item.count}</span>
+								<span class={countBadgeClass("sm")}>{formatNumber(item.count)}</span>
 							{/if}
 						</button>
 					{/each}

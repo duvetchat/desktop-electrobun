@@ -70,10 +70,6 @@ export function fitFaces<T>(items: readonly T[], slots: number): { faces: T[]; m
 	return capFaces(items, items.length <= slots ? slots : slots - 1);
 }
 
-export function peopleCount(n: number): string {
-	return t("shell_people_count", { count: n });
-}
-
 /**
  * A voice room's row's name for a screen reader, which can't count its faces, and what it shows live: someone's
  * screen or camera (liveIn), in one sentence.

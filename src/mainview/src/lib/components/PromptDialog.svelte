@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { promptStore } from "$lib/stores/prompt.svelte";
+	import { promptStore, say } from "$lib/stores/prompt.svelte";
 	import Sheet from "$lib/components/ui/Sheet.svelte";
 	import Button from "$lib/components/ui/Button.svelte";
 	import { fieldClass } from "$lib/overlay-forms";
@@ -21,7 +21,7 @@
 			if (!next) promptStore.resolve(null);
 		}
 	}
-	title={promptStore.pending?.message ?? ""}
+	title={say(promptStore.pending?.message) ?? ""}
 	closeLabel={t("dialog_cancel")}
 	class="max-w-[400px]"
 	onOpenAutoFocus={(e) => {
@@ -35,8 +35,8 @@
 			bind:this={inputEl}
 			type="text"
 			class={fieldClass()}
-			placeholder={promptStore.pending.placeholder}
-			aria-label={promptStore.pending.message}
+			placeholder={say(promptStore.pending.placeholder)}
+			aria-label={say(promptStore.pending.message)}
 			bind:value={promptStore.value}
 			onkeydown={(e) => {
 				if (e.key !== "Enter") return;

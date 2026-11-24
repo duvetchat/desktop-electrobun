@@ -6,6 +6,7 @@ import { renderMarkdownLine } from "$lib/markdown";
 import type { MentionNotice } from "$lib/mention-notices";
 import { roomNames } from "$lib/stores.svelte";
 import { startTabCoordination } from "$lib/tab-notifications";
+import { authorLabel } from "$lib/types";
 import type { MessageLink } from "$lib/urls";
 
 const ENTITIES: Record<string, string> = { amp: "&", lt: "<", gt: ">", quot: '"' };
@@ -53,7 +54,7 @@ export function desktopNotifier(rpc: {
 				.showNotification({
 					id: notice.id,
 					chatId: notice.link.conversationId || notice.link.roomId,
-					title: notice.authorName,
+					title: authorLabel({ author_name: notice.authorName }),
 					text: noticeText(notice, get(roomNames)),
 					place,
 					avatarUrl: notice.authorAvatar,
@@ -82,12 +83,10 @@ export function webNotifier(open: (link: MessageLink) => void): SystemNotifier {
 				renotify: true,
 				silent,
 			};
+			const author = authorLabel({ author_name: notice.authorName });
 			let shown: Notification;
 			try {
-				shown = new Notification(
-					place ? t("error_notification_title", { name: notice.authorName, place }) : notice.authorName,
-					options,
-				);
+				shown = new Notification(place ? t("error_notification_title", { name: author, place }) : author, options);
 			} catch {
 				// Chrome on Android grants the permission, but shows only a service worker's: Duvet's notice instead.
 				return false;

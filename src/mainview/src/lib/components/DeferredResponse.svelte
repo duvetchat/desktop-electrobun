@@ -2,7 +2,7 @@
 	import { CircleAlert as AlertIcon } from "@lucide/svelte";
 	import { onMount } from "svelte";
 	import { t } from "$lib/i18n";
-	import type { Message } from "$lib/types";
+	import { authorLabel, type Message } from "$lib/types";
 
 	// A bot's deferred response, which it hasn't completed by editing it: the bot is thinking for the 15 minutes it has,
 	// then it didn't respond. Looked at again every 30 seconds.
@@ -23,7 +23,7 @@
 	</p>
 {:else}
 	<p class="text-duvet-ink2 flex items-center gap-1.5 text-sm">
-		{t("chat_bot_thinking", { name: message.author_name })}
+		{t("chat_bot_thinking", { name: authorLabel(message) })}
 		<span class="flex items-center gap-0.75" aria-hidden="true">
 			<span class="animate-typing-bounce block size-1 rounded-full bg-current"></span>
 			<span class="animate-typing-bounce block size-1 rounded-full bg-current [animation-delay:0.2s]"></span>

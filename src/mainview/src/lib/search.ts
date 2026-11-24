@@ -1,6 +1,7 @@
 import { searchConversationMessages, type Conversation } from "$lib/api/conversations";
 import { searchSpaceMessages, type MessageSearch } from "$lib/api/messages";
 import { t } from "$lib/i18n";
+import { formatList } from "$lib/i18n/format";
 import { directMessageToMessage, gatewayMessageToMessage, type GatewaySpace, type Message } from "$lib/types";
 
 /** A message a search found, and where it is: a room (of spaceId, when the search was everywhere), or a conversation. */
@@ -113,7 +114,10 @@ export function parseSearch(
 			if (!room) return { error: t("chat_search_no_room", { name: m[2]! }) };
 			add("roomIds", room.id);
 		} else if (key === "has") {
-			if (!SEARCH_HAS.includes(value)) return { error: t("chat_search_has_takes", { values: SEARCH_HAS.join(", ") }) };
+			if (!SEARCH_HAS.includes(value))
+				return {
+					error: t("chat_search_has_takes", { values: formatList(SEARCH_HAS, { type: "unit", style: "short" }) }),
+				};
 			add("has", value);
 		} else if (key === "pinned") {
 			if (value !== "true" && value !== "false") return { error: t("chat_search_pinned_takes") };

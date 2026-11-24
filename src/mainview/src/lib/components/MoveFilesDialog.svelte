@@ -94,6 +94,7 @@
 				} catch (err) {
 					toast(
 						t("storage_move_activate_failed", {
+							to: to.isBucket ? "named" : "default",
 							name: to.name,
 							reason: getApiError(err, t("storage_move_activate_failed_unknown")),
 						}),
@@ -136,7 +137,11 @@
 						>
 						<Dialog.Description class="text-duvet-ink2 mt-1 truncate text-[13px]">
 							{source
-								? t("storage_move_from", { name: source.name, size: formatFileSize(totalBytes) })
+								? t("storage_move_from", {
+										from: source.isBucket ? "named" : "default",
+										name: source.name,
+										size: formatFileSize(totalBytes),
+									})
 								: t("storage_move_from_unknown", { size: formatFileSize(totalBytes) })}
 						</Dialog.Description>
 					</div>
@@ -169,7 +174,11 @@
 								<div class="mt-1.5 space-y-1 text-xs">
 									{#if room.files === 0}
 										<p class="text-duvet-danger">
-											{t("storage_move_none_fit", { name: target.name, limit: formatFileSize(target.fileLimit ?? 0) })}
+											{t("storage_move_none_fit", {
+												to: target.isBucket ? "named" : "default",
+												name: target.name,
+												limit: formatFileSize(target.fileLimit ?? 0),
+											})}
 										</p>
 									{:else if room.free === null}
 										<p class="text-duvet-ink2">
@@ -194,7 +203,12 @@
 										{@const limit = formatFileSize(target.fileLimit ?? 0)}
 										<p class="text-duvet-warn/90">
 											{source
-												? t("storage_move_skipped", { count: room.skipped, limit, name: source.name })
+												? t("storage_move_skipped", {
+														from: source.isBucket ? "named" : "default",
+														count: room.skipped,
+														limit,
+														name: source.name,
+													})
 												: t("storage_move_skipped_unknown_source", { count: room.skipped, limit })}
 										</p>
 									{/if}
@@ -216,7 +230,7 @@
 							<label class="flex cursor-pointer items-start gap-2">
 								<input type="checkbox" bind:checked={makeActive} disabled={starting} class="{CHECKBOX} mt-0.5" />
 								<span class="text-duvet-ink text-xs">
-									{t("storage_move_make_active", { name: target.name })}
+									{t("storage_move_make_active", { to: target.isBucket ? "named" : "default", name: target.name })}
 									<span class="text-duvet-ink2 block">{t("storage_move_make_active_note")}</span>
 								</span>
 							</label>

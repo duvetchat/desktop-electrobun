@@ -8,6 +8,7 @@
 // as it is, as every component that has words will import it.
 import { createInstance } from "i18next";
 import { createSubscriber } from "svelte/reactivity";
+import { writable, type Readable } from "svelte/store";
 import ICU from "i18next-icu";
 import type { IntlMessageFormat } from "intl-messageformat";
 import en from "../../messages/en.json";
@@ -35,11 +36,21 @@ type Messages = Record<string, string>;
 
 const devBuild = typeof VITE_APP_ENV !== "undefined" && VITE_APP_ENV === "development";
 
-/** The languages the picker lists: the shipped ones, and in a development build every one and the pseudo-language. */
-export const OFFERED: readonly UiLocale[] = devBuild ? [...LOCALES, PSEUDO] : SHIPPED;
+// The languages as i18next names them: each one a file can load for, and the pseudo-language.
+const UI_LOCALES: readonly UiLocale[] = [...LOCALES, PSEUDO];
 
+/** The languages the picker lists: the shipped ones, and in a development build every one and the pseudo-language. */
+export const OFFERED: readonly UiLocale[] = devBuild ? UI_LOCALES : SHIPPED;
+
+// A message's numbers ({n, number}, a plural's #) are written in the locale lib/i18n/format.ts writes them in
+// (regionalLocale), so a count and a size in one sentence agree: "Move 1.234 files (12,50 MB)" in English on a German
+// system. ICU keeps what it read of each message by language alone: a change of the system's languages forgets it
+// (forgetFormats).
+const icu = new ICU({
+	parseLngForICU: (lng) => formatLocale(UI_LOCALES.find((locale) => locale === lng) ?? "en", systemLanguages()),
+});
 const i18n = createInstance();
-void i18n.use(ICU).init({
+void i18n.use(icu).init({
 	// English is in hand: init is done before anything can ask for a message.
 	initAsync: false,
 	lng: "en",
@@ -81,6 +92,13 @@ function readSaved(): LocalePref {
 // the root layout's load waits for before the page draws.
 let pref: LocalePref = typeof window === "undefined" ? "system" : readSaved();
 let current: UiLocale = "en";
+const localeStore = writable<UiLocale>("en");
+
+/**
+ * The app's language as a store. A svelte/store derived() whose value holds words lists it among its inputs: its
+ * callback runs untracked, so t() there never runs again on a switch by itself.
+ */
+export const appLocale: Readable<UiLocale> = { subscribe: localeStore.subscribe };
 
 // What reads the language from an effect or a template runs again when it changes: changed() tells them.
 let changed = () => {};
@@ -114,6 +132,13 @@ export function t(key: MessageKey, values?: MessageValues): string {
 export function regionalLocale(): string {
 	track();
 	return formatLocale(current, systemLanguages());
+}
+
+/** The system's first language, as Bun or the web view says it, whose clock a time of day keeps (formatClock, in
+ * lib/i18n/format.ts); "" where neither says. */
+export function systemLocale(): string {
+	track();
+	return systemLanguages()[0] ?? "";
 }
 
 /** The name, in itself, of the language "Match system" comes to now. */
@@ -163,6 +188,7 @@ async function apply(): Promise<void> {
 	if (turn !== applying) return;
 	await i18n.changeLanguage(next);
 	current = next;
+	localeStore.set(next);
 	changed();
 	if (typeof document !== "undefined") document.documentElement.lang = next;
 }
@@ -177,9 +203,17 @@ export function setSystemLanguages(languages: readonly unknown[]): Promise<void>
 	const next = tags.length ? tags : null;
 	if (next?.join() !== bunLanguages?.join()) {
 		bunLanguages = next;
+		forgetFormats();
 		changed();
 	}
 	return apply();
+}
+
+/** The system's languages changed, and with them the region a message's numbers are written in: what ICU and Rich read
+ * of the messages in the old one goes. */
+function forgetFormats() {
+	icu.clearCache();
+	formats.clear();
 }
 
 /** The root layout's load waits for this: the page draws in the user's language from its first frame. */
@@ -212,7 +246,14 @@ export function followLocale(): () => void {
 		changed();
 		void apply();
 	};
-	const onLanguages = () => void apply();
+	const onLanguages = () => {
+		// The web view's languages are the system's while Bun hasn't said (the web app): their region may have changed.
+		if (!bunLanguages) {
+			forgetFormats();
+			changed();
+		}
+		void apply();
+	};
 	window.addEventListener("storage", onStorage);
 	window.addEventListener("languagechange", onLanguages);
 	return () => {
@@ -221,20 +262,21 @@ export function followLocale(): () => void {
 	};
 }
 
-// Each language's messages with tags, read once.
+// Each language's messages with tags, read once in the locale their numbers are written in.
 const formats = new Map<string, IntlMessageFormat>();
 
 /**
  * A message with tags in it (<b>…</b>, <link>…</link>) in the app's language, in its pieces (lib/i18n/rich.ts), for
- * Rich.svelte to draw each tag's words as it should.
+ * Rich.svelte to draw each tag's words as it should. Its numbers are written as t()'s are, in regionalLocale().
  */
 export function richParts(key: MessageKey, values: MessageValues = {}): RichPart[] {
 	track();
-	const id = `${current}\u0000${key}`;
+	const locale = formatLocale(current, systemLanguages());
+	const id = `${current}\u0000${locale}\u0000${key}`;
 	let format = formats.get(id);
 	if (!format) {
 		const own: unknown = i18n.getResource(current, "translation", key);
-		format = richFormat(typeof own === "string" ? own : en[key], current);
+		format = richFormat(typeof own === "string" ? own : en[key], locale);
 		formats.set(id, format);
 	}
 	return richPieces(format, values);

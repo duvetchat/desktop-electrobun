@@ -54,8 +54,9 @@ test("the call button calls with one press, and its chevron offers a voice call 
 
 test("renaming starts from the name, asks nothing for the same one or none, and shows a refusal", () => {
 	const view = source("ConversationView.svelte");
-	expect(view).toContain(
-		'await promptDialog(t("people_group_rename_prompt"), t("people_group_name_placeholder"), current);',
+	// Its words said as the dialog draws, so a language switched while it's open reaches them.
+	expect(view).toMatch(
+		/await promptDialog\(\s*\(\) => t\("people_group_rename_prompt"\),\s*\(\) => t\("people_group_name_placeholder"\),\s*current,?\s*\);/,
 	);
 	expect(view).toContain("if (!name || name === current) return;");
 	expect(view).toContain('toast(getApiError(err, t("people_group_rename_failed")), "error");');
@@ -64,7 +65,7 @@ test("renaming starts from the name, asks nothing for the same one or none, and 
 test("leaving asks first, and what the API took goes here at once, a call there included", () => {
 	const view = source("ConversationView.svelte");
 	expect(view).toMatch(
-		/confirmAction\(t\("people_group_leave_confirm"\), t\("people_group_leave_action"\), async \(\) => \{\s*await leaveConversation\(convId\);\s*conversationLeft\(convId\);\s*\}\)/,
+		/confirmAction\(\s*t\("people_group_leave_confirm"\),\s*t\("people_group_leave_action"\),\s*async \(\) => \{\s*await leaveConversation\(convId\);\s*conversationLeft\(convId\);\s*\},\s*t\("people_group_leave_busy"\),\s*\)/,
 	);
 });
 

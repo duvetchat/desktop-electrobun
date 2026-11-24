@@ -3,7 +3,7 @@ import { renderEmoji } from "./emoji";
 import type { Highlighter } from "shiki";
 import { getHostURL, isUuid } from "$lib/common/common";
 import { CUSTOM_EMOJI_CLASS, retryEmojis } from "$lib/emoji-retry";
-import { t } from "$lib/i18n";
+import { currentLocale, t } from "$lib/i18n";
 import { cardLink, parseDuvetLink, type DuvetLink } from "$lib/urls";
 
 export interface CustomEmojiMap {
@@ -191,7 +191,9 @@ async function applyCustomTheme(h: Highlighter, url: string): Promise<void> {
 		currentThemeName = name;
 	} catch (e) {
 		console.error("[Shiki] Failed to load custom theme:", e);
-		throw e;
+		// English keeps what it said ("HTTP 404", the engine's JSON error), as NetworkError keeps the webview's words;
+		// another language says the app's own sentence.
+		throw currentLocale() === "en" ? e : new Error(t("settings_code_theme_failed"), { cause: e });
 	}
 }
 
@@ -511,7 +513,7 @@ function duvetLinkHtml(
 		const data = conversationId
 			? `data-conversation="${conversationId}" data-message="${messageId}"`
 			: `data-space="${spaceId}" data-room="${roomId}" data-message="${messageId}"`;
-		return `<button type="button" class="msg-duvet-link mx-0.5 inline-flex cursor-pointer items-center gap-1 rounded border border-duvet-line bg-duvet-ink/10 px-1.5 py-0.5 align-middle text-duvet-ink transition-colors motion-reduce:transition-none hover:bg-duvet-ink/15 hover:text-duvet-ink" ${data} title="${escapeHtml(`${space} › #${room}`)}"><span class="text-xs text-duvet-ink2">#</span><span class="text-xs font-medium">${escapeHtml(room)}</span><svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="shrink-0 text-duvet-ink2"><path d="m9 18 6-6-6-6"/></svg></button>`;
+		return `<button type="button" class="msg-duvet-link mx-0.5 inline-flex cursor-pointer items-center gap-1 rounded border border-duvet-line bg-duvet-ink/10 px-1.5 py-0.5 align-middle text-duvet-ink transition-colors motion-reduce:transition-none hover:bg-duvet-ink/15 hover:text-duvet-ink" ${data} title="${escapeHtml(t("chat_link_title", { space, room }))}"><span class="text-xs text-duvet-ink2">#</span><span class="text-xs font-medium">${escapeHtml(room)}</span><svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="shrink-0 text-duvet-ink2"><path d="m9 18 6-6-6-6"/></svg></button>`;
 	}
 	const data = "bot" in link ? `data-bot="${link.bot}"` : `data-invite="${escapeHtml(link.code)}"`;
 	return `<button type="button" class="msg-duvet-link cursor-pointer text-duvet-ink hover:underline" ${data}>${escapeHtml(text)}</button>`;

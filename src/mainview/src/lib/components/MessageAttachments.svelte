@@ -6,7 +6,6 @@
 	import VoiceNotePlayer from "$lib/components/VoiceNotePlayer.svelte";
 	import { getHostURL } from "$lib/common/common";
 	import { t } from "$lib/i18n";
-	import { escapeHtml } from "$lib/markdown";
 	import { displayName, isSpoiler } from "$lib/spoilers";
 	import { MessageType, type Message } from "$lib/types";
 	import { allUp, cancelUpload, chatFileSize, fileShare, messageUploadNote, messageUploads } from "$lib/uploads";
@@ -26,7 +25,9 @@
 		maxHeight = 380,
 	}: {
 		message: Message;
-		channelName: string;
+		/** The room's name for the players' "now playing": "" where there's none (a conversation), null for a room the
+		 * app doesn't know, which the bar names in the language of the moment. */
+		channelName: string | null;
 		onPreview: (src: string, alt?: string) => void;
 		maxWidth?: number;
 		maxHeight?: number;
@@ -35,6 +36,10 @@
 	const attachmentHost = getHostURL();
 	// The spoiler files a click revealed, by attachment ID.
 	const revealed = new SvelteSet<string>();
+	// The pictures and videos that didn't load after their tries (loadAgain), by attachment ID, and the sticker that
+	// didn't load, by its attachment ID: their places say so, in the language of the moment.
+	const failedMedia = new SvelteSet<string>();
+	let failedSticker = $state<string | null>(null);
 	// How far the message's files are while this window sends it (lib/uploads), which every list showing it reads.
 	const upload = $derived(message.nonce ? $messageUploads[message.nonce] : undefined);
 	const sizes = $derived(message.attachments?.map((a) => a.size_bytes) ?? []);
@@ -54,7 +59,7 @@
 	}
 
 	// A picture or a video that fails to load is asked for again every second, ten times, then says so.
-	function loadAgain(e: Event) {
+	function loadAgain(e: Event, id: string) {
 		const media = e.currentTarget as HTMLImageElement | HTMLVideoElement;
 		const retries = parseInt(media.dataset.retries ?? "0");
 		if (retries < 10) {
@@ -64,10 +69,7 @@
 				media.src = base + (base.includes("?") ? "&" : "?") + "r=" + Date.now();
 			}, 1000);
 		} else {
-			const parent = media.parentElement!;
-			parent.querySelector(".media-skeleton")?.remove();
-			media.remove();
-			parent.innerHTML = `<div class="flex flex-col items-center justify-center w-full h-full bg-duvet-secondary-fill gap-1"><span class="text-2xl">💩</span><span class="text-xs text-duvet-ink2">${escapeHtml(t("chat_media_load_failed"))}</span></div>`;
+			failedMedia.add(id);
 		}
 	}
 
@@ -94,7 +96,7 @@
 			<VoiceNotePlayer
 				src="{attachmentHost}{voiceAtt.url ?? `/attachments/${voiceAtt.id}`}"
 				attachmentId={voiceAtt.id}
-				authorName={message.author_name ?? t("chat_author_unknown")}
+				authorName={message.author_name}
 				{channelName}
 			/>
 		{:else}
@@ -106,26 +108,29 @@
 			</div>
 		{/if}
 	{:else if message.sticker_attachment_id}
-		<button
-			type="button"
-			class="size-[136px] cursor-zoom-in"
-			onclick={() => onPreview(`${attachmentHost}/attachments/${message.sticker_attachment_id}`)}
-		>
-			<img
-				src="{attachmentHost}/attachments/{message.sticker_attachment_id}"
-				alt={t("chat_sticker_alt")}
-				class="size-[136px] object-contain"
-				loading="lazy"
-				onerror={(e) => {
-					const img = e.currentTarget as HTMLImageElement;
-					const parent = img.parentElement!;
-					img.remove();
-					parent.onclick = null;
-					parent.style.cursor = "default";
-					parent.innerHTML = `<div class="flex flex-col items-center justify-center w-full h-full rounded-2xl border border-dashed border-duvet-line gap-1"><span class="text-2xl">💩</span><span class="text-xs text-duvet-ink2">${escapeHtml(t("chat_sticker_deleted"))}</span></div>`;
-				}}
-			/>
-		</button>
+		{@const stickerId = message.sticker_attachment_id}
+		{#if failedSticker === stickerId}
+			<div
+				class="border-duvet-line flex size-[136px] flex-col items-center justify-center gap-1 rounded-2xl border border-dashed"
+			>
+				<span class="text-2xl">💩</span>
+				<span class="text-duvet-ink2 text-xs">{t("chat_sticker_deleted")}</span>
+			</div>
+		{:else}
+			<button
+				type="button"
+				class="size-[136px] cursor-zoom-in"
+				onclick={() => onPreview(`${attachmentHost}/attachments/${stickerId}`)}
+			>
+				<img
+					src="{attachmentHost}/attachments/{stickerId}"
+					alt={t("chat_sticker_alt")}
+					class="size-[136px] object-contain"
+					loading="lazy"
+					onerror={() => (failedSticker = stickerId)}
+				/>
+			</button>
+		{/if}
 	{:else if message.attachments && message.attachments.length > 0}
 		<div class="flex max-w-full flex-col gap-1">
 			{#if tiled.length > 0}
@@ -221,20 +226,24 @@
 						class="bg-duvet-sunk shadow-duvet-raised relative overflow-hidden rounded-2xl"
 						style="width: {vw}px; height: {vh}px; max-width: 100%;"
 					>
-						<div
-							class="media-skeleton bg-duvet-secondary-fill absolute inset-0 flex animate-pulse items-center justify-center"
-						>
-							<span class="text-duvet-ink2 text-xs">{t("chat_video_loading")}</span>
-						</div>
-						<!-- svelte-ignore a11y_media_has_caption -->
-						<video
-							src="{attachmentHost}{att.url ?? `/attachments/${att.id}`}"
-							controls
-							class="relative h-full w-full {hidden ? 'blur-xl' : ''}"
-							inert={hidden}
-							onloadeddata={loaded}
-							onerror={loadAgain}
-						></video>
+						{#if failedMedia.has(att.id)}
+							{@render mediaFailed()}
+						{:else}
+							<div
+								class="media-skeleton bg-duvet-secondary-fill absolute inset-0 flex animate-pulse items-center justify-center"
+							>
+								<span class="text-duvet-ink2 text-xs">{t("chat_video_loading")}</span>
+							</div>
+							<!-- svelte-ignore a11y_media_has_caption -->
+							<video
+								src="{attachmentHost}{att.url ?? `/attachments/${att.id}`}"
+								controls
+								class="relative h-full w-full {hidden ? 'blur-xl' : ''}"
+								inert={hidden}
+								onloadeddata={loaded}
+								onerror={(e) => loadAgain(e, att.id)}
+							></video>
+						{/if}
 						{#if hidden}
 							<SpoilerCover onReveal={() => revealed.add(att.id)} />
 						{/if}
@@ -248,7 +257,7 @@
 								attachmentId={att.id}
 								filename={name}
 								sizeBytes={att.size_bytes}
-								authorName={message.author_name ?? t("chat_author_unknown")}
+								authorName={message.author_name}
 								{channelName}
 							/>
 						</div>
@@ -276,7 +285,9 @@
 							<span class="flex min-w-0 flex-1 flex-col gap-0.5">
 								<span class="truncate text-[13.5px] leading-tight font-semibold">{name}</span>
 								<span class="text-duvet-ink2 text-[11.5px] leading-tight"
-									>{chatFileSize(att.size_bytes)}{kind ? ` · ${kind}` : ""}</span
+									>{kind
+										? t("chat_file_size_kind", { size: chatFileSize(att.size_bytes), kind })
+										: chatFileSize(att.size_bytes)}</span
 								>
 							</span>
 							<DownloadIcon size={16} class="text-duvet-ink2 mr-1 shrink-0" />
@@ -308,24 +319,36 @@
 
 <!-- A picture in its box, which a click shows whole: pulsing until it loads, blurred while it's a spoiler -->
 {#snippet picture(att: NonNullable<Message["attachments"]>[number], name: string, hidden: boolean, fit: string)}
-	<button
-		type="button"
-		class="group/tile relative block size-full cursor-zoom-in overflow-hidden"
-		inert={hidden}
-		onclick={() => onPreview(`${attachmentHost}${att.url ?? `/attachments/${att.id}`}`, name)}
-	>
-		<div class="media-skeleton bg-duvet-secondary-fill absolute inset-0 animate-pulse"></div>
-		<img
-			src="{attachmentHost}{att.url ?? `/attachments/${att.id}`}"
-			alt={name}
-			class="relative size-full text-transparent transition-transform duration-[350ms] group-hover/tile:scale-[1.03] motion-reduce:transition-none {fit} {hidden
-				? 'blur-xl'
-				: ''}"
-			loading="lazy"
-			onload={loaded}
-			onerror={loadAgain}
-		/>
-	</button>
+	{#if failedMedia.has(att.id)}
+		{@render mediaFailed()}
+	{:else}
+		<button
+			type="button"
+			class="group/tile relative block size-full cursor-zoom-in overflow-hidden"
+			inert={hidden}
+			onclick={() => onPreview(`${attachmentHost}${att.url ?? `/attachments/${att.id}`}`, name)}
+		>
+			<div class="media-skeleton bg-duvet-secondary-fill absolute inset-0 animate-pulse"></div>
+			<img
+				src="{attachmentHost}{att.url ?? `/attachments/${att.id}`}"
+				alt={name}
+				class="relative size-full text-transparent transition-transform duration-[350ms] group-hover/tile:scale-[1.03] motion-reduce:transition-none {fit} {hidden
+					? 'blur-xl'
+					: ''}"
+				loading="lazy"
+				onload={loaded}
+				onerror={(e) => loadAgain(e, att.id)}
+			/>
+		</button>
+	{/if}
+{/snippet}
+
+<!-- A picture or a video that didn't load after its tries, in its place -->
+{#snippet mediaFailed()}
+	<div class="bg-duvet-secondary-fill flex h-full w-full flex-col items-center justify-center gap-1">
+		<span class="text-2xl">💩</span>
+		<span class="text-duvet-ink2 text-xs">{t("chat_media_load_failed")}</span>
+	</div>
 {/snippet}
 
 {#snippet fileBar(share: number | null)}

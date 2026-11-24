@@ -3,7 +3,6 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
 	bucketChoice,
-	countFiles,
 	defaultStorageChoice,
 	FILE_KIND_LABELS,
 	FILE_KINDS,
@@ -11,6 +10,7 @@ import {
 	isLaterTransfer,
 	isTransferActive,
 	shownFiles,
+	storageCase,
 	takesAll,
 	targetRoom,
 	tellsTransferEnd,
@@ -258,12 +258,36 @@ describe("transferEndNotice", () => {
 
 	test("a failed transfer gives its error, and a cancelled one what it moved", () => {
 		expect(
-			transferEndNotice(transfer({ status: S.Failed, error: "target full", moved_files: 37 }), "Default storage"),
+			transferEndNotice(
+				transfer({ status: S.Failed, error: "target full", moved_files: 37, target_bucket_id: null }),
+				null,
+			),
 		).toEqual({ text: "Moving files to Default storage failed: target full. 37 of 120 files moved.", type: "error" });
 		expect(transferEndNotice(transfer({ status: S.Cancelled, moved_files: 37 }), "My R2")).toEqual({
 			text: "Moving files to My R2 was cancelled. 37 of 120 files moved.",
 			type: "info",
 		});
+	});
+
+	// #464: the default storage isn't a name filled in, as a bucket's is: each sentence says it in words of its own (its
+	// select's default case), as each language needs its own article or preposition with it.
+	test("says the default storage in each sentence's own words, by its ID, whatever name it's given", () => {
+		const toDefault = (fields: Partial<StorageTransfer>) =>
+			transferEndNotice(transfer({ target_bucket_id: null, ...fields }), null).text;
+		expect(toDefault({ status: S.Done, moved_files: 120 })).toBe("Moved 120 files to Default storage.");
+		expect(toDefault({ status: S.Done, moved_files: 118, skipped_files: 2 })).toBe(
+			"Moved 118 of 120 files to Default storage: 2 skipped.",
+		);
+		expect(toDefault({ status: S.Failed, moved_files: 3 })).toBe(
+			"Moving files to Default storage failed. 3 of 120 files moved.",
+		);
+		expect(toDefault({ status: S.Cancelled })).toBe(
+			"Moving files to Default storage was cancelled. 0 of 120 files moved.",
+		);
+		expect(storageCase(null, null)).toBe("default");
+		expect(storageCase(null, "My R2")).toBe("default");
+		expect(storageCase("b1", "My R2")).toBe("named");
+		expect(storageCase("b1", null)).toBe("unknown");
 	});
 
 	// #464: each of these is a whole sentence of its own in en.json, not one built from pieces.
@@ -285,11 +309,34 @@ describe("transferEndNotice", () => {
 			"Moving files was cancelled. 0 of 120 files moved.",
 		);
 	});
+
+	// #464: the API's reason is a message of the app's, whose English is the API's words (transferReason).
+	test("each reason the API gives is the app's, in the API's words in English, and one it doesn't know stays as sent", () => {
+		const reasons = [
+			"target full",
+			"a bucket of the transfer is gone",
+			"internal error",
+			"source unreachable: refused the credentials",
+			"source unreachable: has no such bucket",
+			"source unreachable: answered 503",
+			"source unreachable: didn't answer",
+			"target unreachable: refused the credentials",
+			"target unreachable: has no such bucket",
+			"target unreachable: answered 500",
+			"target unreachable: kept nothing",
+			"target unreachable: didn't answer",
+			"something new",
+		];
+		for (const reason of reasons) {
+			expect(transferEndNotice(transfer({ status: S.Failed, error: reason, moved_files: 2 }), null).text).toBe(
+				`Moving files failed: ${reason}. 2 of 120 files moved.`,
+			);
+		}
+	});
 });
 
 describe("the words other screens take from here", () => {
-	test("a count of files agrees with its number, and each kind has its name", () => {
-		expect([countFiles(1), countFiles(3)]).toEqual(["1 file", "3 files"]);
+	test("each kind has its name", () => {
 		expect(FILE_KINDS.map((kind) => FILE_KIND_LABELS[kind])).toEqual(["Images", "Videos", "Audio", "Other"]);
 	});
 });

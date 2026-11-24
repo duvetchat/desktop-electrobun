@@ -1,5 +1,5 @@
 import { richParts, t, type MessageKey, type RichPart } from "$lib/i18n";
-import { MessageType, type CallNotice, type GatewayReadyActiveCall, type Message } from "$lib/types";
+import { authorLabel, MessageType, type CallNotice, type GatewayReadyActiveCall, type Message } from "$lib/types";
 
 /**
  * Which of its sentences a call notice says to whoever reads it (decision 172):
@@ -72,7 +72,7 @@ export type CallNoticeKey = Extract<
 /**
  * A call notice's sentence for its reader, whole: its message, whose <b> tag is the caller's name, which stands out as
  * the pin notice's names do (no tag when the sentence says "You" for them), and the values it's filled with. The list
- * draws it with Rich; callNoticeSentence gives its words.
+ * draws it with Rich; callNoticeSentence gives its words (the previews, the quotes and the call history).
  */
 export interface CallNoticeWords {
 	/** The reader missed the call: its phone is red. */
@@ -96,7 +96,7 @@ export function callNotice(
 ): CallNoticeWords | null {
 	const call = message.type === MessageType.Call ? message.call : undefined;
 	if (!call) return null;
-	const values = { name: message.author_name, duration: callDuration(call) };
+	const values = { name: authorLabel(message), duration: callDuration(call) };
 	const says = (key: CallNoticeKey, missed = false): CallNoticeWords => ({ missed, key, values });
 	switch (callNoticeCase(call, message.author_id, me, joined !== undefined && message.id < joined)) {
 		case "in":
@@ -118,46 +118,6 @@ const wordsOf = (part: RichPart) => (typeof part === "string" ? part : part.text
 /** A call notice's whole sentence, as words: the caller's name as the rest. */
 export function callNoticeSentence(notice: CallNoticeWords): string {
 	return richParts(notice.key, notice.values).map(wordsOf).join("");
-}
-
-/**
- * A call notice's sentence cut around the caller's name: what comes before it, the name, and what follows (all of it
- * before, and no name, when the sentence says "You" for them). The call history's rows draw it so (lib/call-history.ts);
- * the pieces are the one whole sentence of the reader's language, cut where its <b> tag is, never words put together.
- */
-export interface CallNoticeLine {
-	/** The reader missed the call: its phone is red. */
-	missed: boolean;
-	before: string;
-	name: string;
-	after: string;
-}
-
-/** callNotice's sentence cut around the caller's name (CallNoticeLine); null for any other message. */
-export function callNoticeLine(
-	message: Pick<Message, "id" | "type" | "author_id" | "author_name" | "call">,
-	me: string | undefined,
-	joined?: string,
-): CallNoticeLine | null {
-	const notice = callNotice(message, me, joined);
-	if (!notice) return null;
-	const parts = richParts(notice.key, notice.values);
-	const at = parts.findIndex((part) => typeof part !== "string");
-	if (at === -1) return { missed: notice.missed, before: parts.map(wordsOf).join(""), name: "", after: "" };
-	return {
-		missed: notice.missed,
-		before: parts.slice(0, at).map(wordsOf).join(""),
-		name: wordsOf(parts[at]!),
-		after: parts
-			.slice(at + 1)
-			.map(wordsOf)
-			.join(""),
-	};
-}
-
-/** A call notice's whole sentence, from its pieces (CallNoticeLine). */
-export function callNoticeText(line: CallNoticeLine): string {
-	return line.before + line.name + line.after;
 }
 
 /**

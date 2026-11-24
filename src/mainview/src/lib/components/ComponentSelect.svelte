@@ -171,7 +171,9 @@
 			{:else}
 				{#each chosenChoices as ch, i}
 					{@render choiceIcon(ch, 16)}
-					<span class="text-duvet-ink truncate">{ch.label}{i < chosenChoices.length - 1 ? "," : ""}</span>
+					<span class="text-duvet-ink truncate"
+						>{ch.label}{i < chosenChoices.length - 1 ? t("chat_select_separator") : ""}</span
+					>
 				{/each}
 			{/if}
 		</span>

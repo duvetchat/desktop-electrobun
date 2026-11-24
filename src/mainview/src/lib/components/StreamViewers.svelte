@@ -4,6 +4,7 @@
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
 	import { GLASS } from "$lib/components/ui/recipes";
 	import { t } from "$lib/i18n";
+	import { formatNumber } from "$lib/i18n/format";
 	import type { VoicePerson } from "$lib/voice-place";
 
 	// The eye on a screen share: how many watch it, and who, on hover or focus (desktop#299). A click on it does nothing
@@ -21,7 +22,7 @@
 				class="bg-duvet-media-scrim text-duvet-media-ink flex shrink-0 items-center gap-1 rounded-[10px] px-2.5 py-[5px] text-xs leading-[1.2] font-semibold tabular-nums backdrop-blur-[14px]"
 			>
 				<Eye size={13} />
-				{viewers.length}
+				{formatNumber(viewers.length)}
 			</button>
 		{/snippet}
 	</LinkPreview.Trigger>

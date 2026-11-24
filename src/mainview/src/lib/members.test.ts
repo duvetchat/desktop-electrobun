@@ -291,6 +291,13 @@ describe("the Members section's members", () => {
 		expect(joinedOn(at)).toBe("Mar 5, 2026");
 		expect(joinedOn(null)).toBeNull();
 		expect(joinedOn("not a date")).toBeNull();
+		// On a system in another language, in the app's too (#464's dates), not the system's 05.03.2026.
+		Object.defineProperty(navigator, "languages", { value: ["de-DE"], configurable: true });
+		try {
+			expect(joinedOn(at)).toBe("Mar 5, 2026");
+		} finally {
+			Reflect.deleteProperty(navigator, "languages");
+		}
 	});
 });
 

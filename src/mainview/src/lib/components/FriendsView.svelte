@@ -250,6 +250,7 @@
 			t("people_friend_remove_confirm", { name: other.alias ?? other.username }),
 			t("people_remove_action"),
 			() => handleUnfriend(friend),
+			t("people_remove_busy"),
 		);
 	}
 

@@ -6,7 +6,9 @@
 	import { untrack } from "svelte";
 	import { X as XIcon } from "@lucide/svelte";
 	import { getApiError } from "$lib/api/api";
+	import { transferFileReason } from "$lib/api/error-wording";
 	import { t } from "$lib/i18n";
+	import { storageCase } from "$lib/storage-transfers";
 	import { storageTransfers } from "$lib/stores/storage-transfers.svelte";
 	import { formatFileSize } from "$lib/utils/format";
 	import { StorageTransferFileStatus, type StorageTransfer, type StorageTransferFile } from "$lib/types";
@@ -14,7 +16,9 @@
 	// The failed files of the transfer whose end notice's Show was clicked, a page at a time.
 	const PAGE_SIZE = 100;
 	const transfer = $derived(storageTransfers.failures);
+	// Where the files stay: the default storage in the sentence's own words, a bucket by its name.
 	const sourceName = $derived(transfer ? storageTransfers.storageName(transfer.source_bucket_id) : null);
+	const from = $derived(transfer ? storageCase(transfer.source_bucket_id, sourceName) : "unknown");
 	let files = $state<StorageTransferFile[]>([]);
 	let loading = $state(false);
 	let error = $state<string | null>(null);
@@ -78,8 +82,12 @@
 						>
 						{#if transfer}
 							<Dialog.Description class="text-duvet-ink2 mt-1 text-[13px]">
-								{sourceName
-									? t("storage_transfer_failures_description", { count: transfer.failed_files, name: sourceName })
+								{from !== "unknown"
+									? t("storage_transfer_failures_description", {
+											from,
+											count: transfer.failed_files,
+											name: sourceName ?? "",
+										})
 									: t("storage_transfer_failures_description_unknown", { count: transfer.failed_files })}
 							</Dialog.Description>
 						{/if}
@@ -97,7 +105,7 @@
 								<span class="text-duvet-ink2 shrink-0 text-xs">{formatFileSize(file.size_bytes)}</span>
 							</div>
 							{#if file.error}
-								<p class="text-duvet-danger mt-0.5 text-xs">{file.error}</p>
+								<p class="text-duvet-danger mt-0.5 text-xs">{transferFileReason(file.error)}</p>
 							{/if}
 						</div>
 					{/each}

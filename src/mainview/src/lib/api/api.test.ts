@@ -25,6 +25,8 @@ import {
 	type CreateBucketPayload,
 } from "$lib/api/user";
 import { accessToken } from "$lib/stores/auth";
+import { setLocalePref, t } from "$lib/i18n";
+import { PSEUDO } from "$lib/i18n/locale";
 
 // The requests the client sends, by URL, through fetch or XMLHttpRequest; each answers as the API does for a message it
 // took, unless a test says otherwise. Only while a test of this file runs: the next test, and the preload's check once
@@ -411,7 +413,9 @@ describe("an upload", () => {
 		FakeXHR.thrown = [];
 		FakeXHR.onSend = (xhr) => queueMicrotask(() => xhr.respond(999, { error: "weird" }));
 		const outcome = await within(api.patch("/api/users/@me", messageForm(file(1024))), 500);
-		// A NetworkError, a TypeError as fetch's is.
+		// A NetworkError, a TypeError as fetch's is, with the words a failed upload always had. (Read before toMatchObject,
+		// which puts its matcher in the object's place.)
+		expect(outcome).toHaveProperty("error.message", "Failed to fetch");
 		expect(outcome).toMatchObject({ settled: "rejected", error: expect.any(NetworkError) });
 		expect(NetworkError.prototype).toBeInstanceOf(TypeError);
 		expect(FakeXHR.thrown).toEqual([]);
@@ -456,11 +460,13 @@ describe("an upload", () => {
 	});
 });
 
-// #464: a request that failed on the network showed the webview's own English, "Failed to fetch" in Chromium and "Load
-// failed" in WebKit (macOS). getApiError took any TypeError for one, a bug's too; the network's is marked where fetch
-// fails instead.
+// #464: a request that failed on the network shows the webview's own English, "Failed to fetch" in Chromium and "Load
+// failed" in WebKit (macOS), as it always has, and the app's words in another language. getApiError took any TypeError
+// for one, a bug's too; the network's is marked where fetch fails instead.
 describe("a request the network failed", () => {
-	test("fails with a NetworkError, in the app's words, whatever the webview said, its limit or none", async () => {
+	afterEach(() => setLocalePref("en"));
+
+	test("fails with a NetworkError, in the webview's words in English, its limit or none", async () => {
 		requestLimits.answerMs = 10_000;
 		// Chromium's, WebKit's and Firefox's.
 		for (const said of ["Failed to fetch", "Load failed", "NetworkError when attempting to fetch resource."]) {
@@ -470,9 +476,18 @@ describe("a request the network failed", () => {
 				expect(err, said).toBeInstanceOf(NetworkError);
 				// A TypeError still, as a fetch's network error is.
 				expect(err, said).toBeInstanceOf(TypeError);
-				expect(getApiError(err, "Failed"), said).toBe("Failed to fetch");
+				expect(getApiError(err, "Failed"), said).toBe(said);
 			}
 		}
+	});
+
+	test("says so in the app's words in another language, whatever the webview said", async () => {
+		await setLocalePref(PSEUDO);
+		fetched.mockRejectedValue(new TypeError("Load failed"));
+		const err = await api.get("/api/rooms/r/messages").catch((e: unknown) => e);
+		expect(err).toBeInstanceOf(NetworkError);
+		expect(getApiError(err, "Failed")).toBe(t("error_network_failed"));
+		expect(getApiError(err, "Failed")).not.toMatch(/[A-Za-z]/);
 	});
 
 	test("is only what fetch failed with: an abort stays an abort, and an error of the caller's stays its own", async () => {

@@ -66,6 +66,14 @@ describe("where a mention is", () => {
 			name: null,
 		});
 		expect(conversationPlace(undefined, DM, message(1), ME)).toEqual({ link, place: "dm", placeName: "", name: null });
+		// A group with no name: the notice keeps "" and says its word as it draws; the system's notification, shown once,
+		// says it now.
+		expect(conversationPlace({ ...group, name: null }, DM, message(1), ME)).toEqual({
+			link,
+			place: "named",
+			placeName: "",
+			name: "Group",
+		});
 	});
 
 	test("is one sentence with its author, drawn by MentionNotices: the author whole, where after", () => {
@@ -104,6 +112,12 @@ describe("a mention's notice", () => {
 			mentionMap: { [ME]: "Myself" },
 			customEmojiMap: {},
 		});
+	});
+
+	test('keeps an author the app doesn\'t know as "", for MentionNotices to say in the language of the moment', () => {
+		const place = roomPlace(spaces, ROOM, message(1))!;
+		const unknown = { id: message(1), author_name: "", author_avatar_url: null, content: "Hi" };
+		expect(mentionNoticeOf(unknown, place, [], {}).authorName).toBe("");
 	});
 
 	test("takes a components message's text displays, and has none for a message without text", () => {

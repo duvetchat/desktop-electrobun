@@ -1304,10 +1304,16 @@ export function withCreatedRole(roles: GatewayRole[], created: GatewayRole): Gat
 	return [...roles.map((r) => (r.position >= 1 ? { ...r, position: r.position + 1 } : r)), created];
 }
 
+/** A message's author's name as the chat draws it: Unknown, in the language of the moment, for an author the client
+ * doesn't know (an empty author_name). */
+export function authorLabel(message: { author_name?: string }): string {
+	return message.author_name || t("shell_unknown_person");
+}
+
 export function gatewayMessageToMessage(msg: GatewayMessage, spaces: GatewaySpace[]): Message {
-	// Kept in the message, so it stays in the language it was loaded in: a #464 follow-up moves the fallback to where
-	// the author is drawn.
-	let author_name = t("shell_unknown_person");
+	// Empty for an author the client doesn't know: authorLabel() draws Unknown in the language of the moment. The words
+	// kept in the message would stay in the language it was loaded in.
+	let author_name = "";
 	let author_avatar_url: string | null = null;
 	let author_is_bot = false;
 

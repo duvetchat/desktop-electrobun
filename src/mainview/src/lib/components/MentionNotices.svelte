@@ -10,6 +10,7 @@
 	import { placeStyle, underCall } from "$lib/notice-place";
 	import { noticeArea, watchNoticePlace } from "$lib/stores/notice-place.svelte";
 	import { roomNames } from "$lib/stores.svelte";
+	import { authorLabel } from "$lib/types";
 	import type { MessageLink } from "$lib/urls";
 
 	// The notices of mentions in rooms and conversations that aren't on screen (lib/mention-notices.ts), at the top
@@ -61,13 +62,23 @@
 								onclick={() => open(notice)}
 							>
 								<span class="shrink-0">
-									<UserAvatar src={notice.authorAvatar} name={notice.authorName} size={36} />
+									<!-- The author and a group with no name are said as they draw, so a language switched
+									     while the notice shows reaches them. -->
+									<UserAvatar
+										src={notice.authorAvatar}
+										name={authorLabel({ author_name: notice.authorName })}
+										size={36}
+									/>
 								</span>
 								<span class="flex min-w-0 flex-1 flex-col gap-0.5">
 									<span class="flex min-w-0 items-baseline gap-1 text-xs">
 										<Rich
 											key="chat_mention_notice_head"
-											values={{ author: notice.authorName, place: notice.place, name: notice.placeName }}
+											values={{
+												author: authorLabel({ author_name: notice.authorName }),
+												place: notice.place,
+												name: notice.placeName || t("shell_chat_group_untitled"),
+											}}
 											tags={{ who, where }}
 										/>
 									</span>

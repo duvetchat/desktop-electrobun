@@ -86,4 +86,11 @@ describe("the language a start speaks", () => {
 		}
 		expect(startingLanguage(null, [])).toBe("en");
 	});
+
+	// With more languages shipped than a release has today: the system's list is what it's picked by.
+	test("goes by the system's languages, the first one shipped, else English", () => {
+		expect(startingLanguage(null, ["es-CO", "en-CO"], ["en", "es"])).toBe("es");
+		expect(startingLanguage("{", ["fr-CA", "es-MX"], ["en", "es", "fr"])).toBe("fr");
+		expect(startingLanguage(null, ["nl"], ["en", "es"])).toBe("en");
+	});
 });

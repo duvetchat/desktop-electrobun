@@ -332,19 +332,29 @@
 		const question = att
 			? t("settings_attachment_delete_confirm", { name: att.filename })
 			: t("settings_attachment_delete_confirm_unnamed");
-		await confirmAction(question, t("settings_delete"), async () => {
-			await deleteMyAttachment(id);
-			attachments = attachments.filter((a) => a.id !== id);
-			await refreshStorageStatus();
-		});
+		await confirmAction(
+			question,
+			t("settings_delete"),
+			async () => {
+				await deleteMyAttachment(id);
+				attachments = attachments.filter((a) => a.id !== id);
+				await refreshStorageStatus();
+			},
+			t("settings_delete_busy"),
+		);
 	}
 
 	async function handleDeleteAll() {
-		await confirmAction(t("settings_attachments_delete_all_confirm"), t("settings_delete"), async () => {
-			await deleteAllMyAttachments();
-			attachments = [];
-			await refreshStorageStatus();
-		});
+		await confirmAction(
+			t("settings_attachments_delete_all_confirm"),
+			t("settings_delete"),
+			async () => {
+				await deleteAllMyAttachments();
+				attachments = [];
+				await refreshStorageStatus();
+			},
+			t("settings_delete_busy"),
+		);
 	}
 
 	// Buckets state
@@ -443,7 +453,12 @@
 		if (editingBucket) {
 			await doSave();
 		} else {
-			await confirmAction(t("settings_bucket_add_confirm"), t("settings_bucket_add_confirm_button"), doSave);
+			await confirmAction(
+				t("settings_bucket_add_confirm"),
+				t("settings_bucket_add_confirm_button"),
+				doSave,
+				t("settings_bucket_add_busy"),
+			);
 		}
 	}
 
@@ -451,18 +466,23 @@
 		const b = buckets.find((x) => x.id === id);
 		// Gone already (deleted elsewhere): there is nothing to name, or to delete.
 		if (!b) return;
-		await confirmAction(t("settings_bucket_delete_confirm", { name: b.name }), t("settings_delete"), async () => {
-			try {
-				await deleteMyBucket(id);
-			} catch (err) {
-				// Deleting it would break its files: offer to move them or delete them with it.
-				const files = bucketFilesCount(err);
-				if (files === null || !b) throw err;
-				bucketFilesRequest = { bucket: b, files };
-				return;
-			}
-			await afterBucketDeleted(id);
-		});
+		await confirmAction(
+			t("settings_bucket_delete_confirm", { name: b.name }),
+			t("settings_delete"),
+			async () => {
+				try {
+					await deleteMyBucket(id);
+				} catch (err) {
+					// Deleting it would break its files: offer to move them or delete them with it.
+					const files = bucketFilesCount(err);
+					if (files === null || !b) throw err;
+					bucketFilesRequest = { bucket: b, files };
+					return;
+				}
+				await afterBucketDeleted(id);
+			},
+			t("settings_delete_busy"),
+		);
 	}
 
 	async function deleteBucketWithFiles(bucket: StorageBucket) {
@@ -508,13 +528,11 @@
 	let movingBucketId = $state<string | null>(null);
 	let bucketFilesRequest = $state<{ bucket: StorageBucket; files: number } | null>(null);
 
-	function storageLabel(bucketId: string | null): string {
-		if (bucketId === null) return t("settings_storage_default");
-		return (
-			buckets.find((b) => b.id === bucketId)?.name ??
-			storageTransfers.storageName(bucketId) ??
-			t("settings_storage_other_bucket")
-		);
+	/** A bucket's name for a transfer's card; null for one whose name isn't known, and for the default storage (null),
+	 * which the card's sentences say in words of their own. */
+	function storageLabel(bucketId: string | null): string | null {
+		if (bucketId === null) return null;
+		return buckets.find((b) => b.id === bucketId)?.name ?? storageTransfers.storageName(bucketId);
 	}
 
 	function openMovePicked() {
@@ -775,7 +793,10 @@
 	// How far a new avatar or banner has gone up while the profile saves, in percent, which Save says: null until its
 	// first progress, and while nothing new goes up.
 	let profileUploadPercent = $state<number | null>(null);
-	let saveError = $state<string | null>(null);
+	// A save that failed, kept as it failed: the save bar, which shows in every section, Appearance among them, says it in
+	// the language of the moment.
+	let saveFailure = $state<{ err: unknown } | null>(null);
+	const saveError = $derived(saveFailure ? getApiError(saveFailure.err, t("settings_profile_save_failed")) : null);
 	let saveSuccess = $state(false);
 	// Characters as the API counts them (code points), not the UTF-16 units maxlength would: an emoji is one.
 	const bioLength = $derived([...bio.trim()].length);
@@ -787,7 +808,7 @@
 			username = $currentUser.username ?? "";
 			alias = $currentUser.alias ?? "";
 			bio = $currentUser.custom ?? "";
-			saveError = null;
+			saveFailure = null;
 			saveSuccess = false;
 		}
 	});
@@ -989,15 +1010,20 @@
 	}
 
 	async function handleDeleteTeam(team: Team) {
-		await confirmAction(t("settings_team_delete_confirm", { name: team.name }), t("settings_delete"), async () => {
-			await deleteTeam(team.id);
-			devTeams = devTeams.filter((kept) => kept.id !== team.id);
-			if (devSelectedTeam?.id === team.id) {
-				devSelectedTeam = null;
-				devApps = [];
-				devMembers = [];
-			}
-		});
+		await confirmAction(
+			t("settings_team_delete_confirm", { name: team.name }),
+			t("settings_delete"),
+			async () => {
+				await deleteTeam(team.id);
+				devTeams = devTeams.filter((kept) => kept.id !== team.id);
+				if (devSelectedTeam?.id === team.id) {
+					devSelectedTeam = null;
+					devApps = [];
+					devMembers = [];
+				}
+			},
+			t("settings_delete_busy"),
+		);
 	}
 
 	async function handleSaveTeamEdit() {
@@ -1036,6 +1062,7 @@
 				await removeTeamMember(teamId, userId);
 				devMembers = devMembers.filter((m) => m.user_id !== userId);
 			},
+			t("settings_team_member_remove_busy"),
 		);
 	}
 
@@ -1081,44 +1108,73 @@
 	async function handleDeleteApp(app: Application) {
 		if (!devSelectedTeam) return;
 		const teamId = devSelectedTeam.id;
-		await confirmAction(t("settings_app_delete_confirm", { name: app.name }), t("settings_delete"), async () => {
-			await deleteApplication(teamId, app.id);
-			devApps = devApps.filter((a) => a.id !== app.id);
-		});
+		await confirmAction(
+			t("settings_app_delete_confirm", { name: app.name }),
+			t("settings_delete"),
+			async () => {
+				await deleteApplication(teamId, app.id);
+				devApps = devApps.filter((a) => a.id !== app.id);
+			},
+			t("settings_delete_busy"),
+		);
 	}
 
 	async function handleCreateBot(app: Application) {
 		if (!devSelectedTeam) return;
+		const teamId = devSelectedTeam.id;
 		try {
-			const res = await createBot(devSelectedTeam.id, app.id);
+			const res = await createBot(teamId, app.id);
 			devBotToken = res.token;
 			devShowToken = true;
-			devApps = devApps.map((a) => (a.id === app.id ? { ...a, bot_user_id: "created" } : a));
 			toast(t("settings_bot_created"), "success");
 		} catch (e) {
 			toast(getApiError(e, t("settings_bot_create_failed")), "error");
+			return;
 		}
+		await loadNewBot(teamId, app.id);
+	}
+
+	/** The API answers a new bot with its token alone: its ID comes with the team's apps, read again, then the bot. An
+	 * app whose read fails shows its bot once the team is opened again. */
+	async function loadNewBot(teamId: string, appId: string) {
+		const fresh = (await listApplications(teamId).catch(() => null))?.find((a) => a.id === appId);
+		if (!fresh || devSelectedTeam?.id !== teamId) return;
+		devApps = devApps.map((a) => (a.id === appId ? fresh : a));
+		const botId = fresh.bot_user_id;
+		if (!botId) return;
+		const bot = await getBotUser(botId).catch(() => null);
+		if (bot && devSelectedTeam?.id === teamId) botUsers = { ...botUsers, [botId]: bot };
 	}
 
 	async function handleResetBotToken(app: Application) {
 		if (!devSelectedTeam) return;
 		const teamId = devSelectedTeam.id;
-		await confirmAction(t("settings_bot_token_reset_confirm"), t("settings_bot_token_reset_button"), async () => {
-			const res = await resetBotToken(teamId, app.id);
-			devBotToken = res.token;
-			devShowToken = true;
-			toast(t("settings_bot_token_reset_done"), "success");
-		});
+		await confirmAction(
+			t("settings_bot_token_reset_confirm"),
+			t("settings_bot_token_reset_button"),
+			async () => {
+				const res = await resetBotToken(teamId, app.id);
+				devBotToken = res.token;
+				devShowToken = true;
+				toast(t("settings_bot_token_reset_done"), "success");
+			},
+			t("settings_bot_token_reset_busy"),
+		);
 	}
 
 	async function handleDeleteBot(app: Application) {
 		if (!devSelectedTeam) return;
 		const teamId = devSelectedTeam.id;
-		await confirmAction(t("settings_bot_delete_confirm"), t("settings_delete"), async () => {
-			await deleteBot(teamId, app.id);
-			devApps = devApps.map((a) => (a.id === app.id ? { ...a, bot_user_id: null, bot_token_hash: null } : a));
-			devBotToken = null;
-		});
+		await confirmAction(
+			t("settings_bot_delete_confirm"),
+			t("settings_delete"),
+			async () => {
+				await deleteBot(teamId, app.id);
+				devApps = devApps.map((a) => (a.id === app.id ? { ...a, bot_user_id: null, bot_token_hash: null } : a));
+				devBotToken = null;
+			},
+			t("settings_delete_busy"),
+		);
 	}
 
 	function copyToken() {
@@ -1198,13 +1254,10 @@
 	);
 
 	async function handleSave() {
-		if (!$currentUser || saving) return;
-		if (bioTooLong) {
-			saveError = t("settings_bio_too_long", { max: BIO_MAX_LENGTH });
-			return;
-		}
+		// Save is disabled while the bio is too long, and its counter says so.
+		if (!$currentUser || saving || bioTooLong) return;
 		saving = true;
-		saveError = null;
+		saveFailure = null;
 		saveSuccess = false;
 
 		try {
@@ -1260,7 +1313,7 @@
 			saveSuccess = true;
 			setTimeout(() => (saveSuccess = false), 2000);
 		} catch (err) {
-			saveError = getApiError(err, t("settings_profile_save_failed"));
+			saveFailure = { err };
 		} finally {
 			saving = false;
 			profileUploadPercent = null;
@@ -1273,7 +1326,7 @@
 		alias = $currentUser.alias ?? "";
 		bio = $currentUser.custom ?? "";
 		resetImageStages();
-		saveError = null;
+		saveFailure = null;
 	}
 
 	// The shell's layout, saved on this device: the spaces column's mode and where the open chats are listed.
@@ -1992,7 +2045,13 @@
 				</div>
 				<div>
 					<label for="bucket-bucket-name" class={LABEL}>{t("settings_bucket_bucket_name")}</label>
-					<input id="bucket-bucket-name" type="text" bind:value={bBucketName} placeholder="my-bucket" class={FIELD} />
+					<input
+						id="bucket-bucket-name"
+						type="text"
+						bind:value={bBucketName}
+						placeholder={t("settings_bucket_bucket_name_placeholder")}
+						class={FIELD}
+					/>
 				</div>
 				<div class="grid grid-cols-2 gap-3">
 					<div>

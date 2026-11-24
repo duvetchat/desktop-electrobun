@@ -6,7 +6,7 @@
 	import Rich from "$lib/components/Rich.svelte";
 	import { storageTransfers } from "$lib/stores/storage-transfers.svelte";
 	import { toast } from "$lib/stores/toast.svelte";
-	import { transferProgress } from "$lib/storage-transfers";
+	import { storageCase, transferProgress } from "$lib/storage-transfers";
 	import { formatFileSize } from "$lib/utils/format";
 	import { StorageTransferStatus, type StorageTransfer } from "$lib/types";
 
@@ -18,16 +18,18 @@
 	}: {
 		/** A queued or moving transfer. */
 		transfer: StorageTransfer;
-		/** The names of its storages. */
-		source: string;
-		target: string;
+		/** The names of its buckets: null for one whose name isn't known, and for the default storage, which its
+		 * sentences say in words of their own (storageCase). */
+		source: string | null;
+		target: string | null;
 		/** Who started it, when that's someone else. */
 		startedBy?: string | null;
 	} = $props();
 
 	const progress = $derived(transferProgress(transfer));
 	const bytes = $derived({
-		source,
+		from: storageCase(transfer.source_bucket_id, source),
+		source: source ?? "",
 		moved: formatFileSize(transfer.moved_bytes),
 		total: formatFileSize(transfer.total_bytes),
 	});
@@ -62,7 +64,8 @@
 					key="storage_transfer_progress"
 					values={{
 						state: queued ? "queued" : "moving",
-						target,
+						to: storageCase(transfer.target_bucket_id, target),
+						target: target ?? "",
 						done: progress.done,
 						total: progress.total,
 						ratio: progress.percent / 100,

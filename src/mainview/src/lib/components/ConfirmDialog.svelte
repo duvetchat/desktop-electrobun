@@ -33,7 +33,7 @@
 		<Button variant="danger" class="min-w-20" disabled={confirmStore.loading} onclick={() => confirmStore.execute()}>
 			{#if confirmStore.loading}
 				<span class={spinnerClass()} aria-hidden="true"></span>
-				{busyLabel(label)}
+				{confirmStore.pending?.busyLabel ?? busyLabel(label)}
 			{:else}
 				{label}
 			{/if}

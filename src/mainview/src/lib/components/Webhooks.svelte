@@ -186,29 +186,39 @@
 	}
 
 	async function handleDeleteWebhook(wh: Webhook) {
-		await confirmAction(t("room_webhook_delete_confirm", { name: wh.username }), t("room_webhook_delete"), async () => {
-			isDeletingWebhook = { ...isDeletingWebhook, [wh.id]: true };
-			try {
-				await deleteWebhook(space.id, wh.room_id, wh.id);
-				await loadWebhooks();
-			} finally {
-				isDeletingWebhook = { ...isDeletingWebhook, [wh.id]: false };
-			}
-		});
+		await confirmAction(
+			t("room_webhook_delete_confirm", { name: wh.username }),
+			t("room_webhook_delete"),
+			async () => {
+				isDeletingWebhook = { ...isDeletingWebhook, [wh.id]: true };
+				try {
+					await deleteWebhook(space.id, wh.room_id, wh.id);
+					await loadWebhooks();
+				} finally {
+					isDeletingWebhook = { ...isDeletingWebhook, [wh.id]: false };
+				}
+			},
+			t("room_webhook_delete_busy"),
+		);
 	}
 
 	async function handleResetWebhookToken(wh: Webhook) {
-		await confirmAction(t("room_webhook_reset_token_confirm"), t("room_webhook_reset_token"), async () => {
-			try {
-				const newToken = await resetWebhookToken(space.id, wh.room_id, wh.id);
-				createdWebhookToken = newToken;
-				createdWebhookId = wh.id;
-				toast(t("room_webhook_token_reset_done"), "success");
-			} catch (err) {
-				console.error("Failed to reset webhook token:", err);
-				toast(getApiError(err, t("room_webhook_reset_token_failed")), "error");
-			}
-		});
+		await confirmAction(
+			t("room_webhook_reset_token_confirm"),
+			t("room_webhook_reset_token"),
+			async () => {
+				try {
+					const newToken = await resetWebhookToken(space.id, wh.room_id, wh.id);
+					createdWebhookToken = newToken;
+					createdWebhookId = wh.id;
+					toast(t("room_webhook_token_reset_done"), "success");
+				} catch (err) {
+					console.error("Failed to reset webhook token:", err);
+					toast(getApiError(err, t("room_webhook_reset_token_failed")), "error");
+				}
+			},
+			t("room_webhook_reset_token_busy"),
+		);
 	}
 
 	/** When a webhook was made, as a date in the app's language. */

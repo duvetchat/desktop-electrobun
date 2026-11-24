@@ -60,20 +60,25 @@
 
 	function unban(ban: SpaceBan) {
 		const message = t("space_bans_unban_confirm", { name: nameOf(ban), space: space.name });
-		return confirmAction(message, t("space_bans_unban"), async () => {
-			unbanning.add(ban.user_id);
-			try {
-				await unbanUser(ban.space_id, ban.user_id);
-				banLifted(ban);
-				toast(t("space_bans_unbanned", { name: nameOf(ban) }), "success");
-			} catch (err) {
-				// A ban lifted meanwhile from elsewhere is gone from the list too.
-				if (err instanceof FetchError && err.response?.status === 404) banLifted(ban);
-				toast(getApiError(err, t("space_bans_unban_failed")), "error");
-			} finally {
-				unbanning.delete(ban.user_id);
-			}
-		});
+		return confirmAction(
+			message,
+			t("space_bans_unban"),
+			async () => {
+				unbanning.add(ban.user_id);
+				try {
+					await unbanUser(ban.space_id, ban.user_id);
+					banLifted(ban);
+					toast(t("space_bans_unbanned", { name: nameOf(ban) }), "success");
+				} catch (err) {
+					// A ban lifted meanwhile from elsewhere is gone from the list too.
+					if (err instanceof FetchError && err.response?.status === 404) banLifted(ban);
+					toast(getApiError(err, t("space_bans_unban_failed")), "error");
+				} finally {
+					unbanning.delete(ban.user_id);
+				}
+			},
+			t("space_bans_unban_busy"),
+		);
 	}
 
 	// Who banned each of them: a member the space has loaded, or else as the API says (someone who left), asked about
@@ -131,6 +136,8 @@
 {:else}
 	<ul class="{CARD} divide-duvet-line divide-y">
 		{#each list.bans as ban (ban.user_id)}
+			<!-- Who banned them, or that it isn't known (no username): a sentence of its own, not "Someone" put in -->
+			{@const banner = reactorOf(ban.banned_by, members, profiles)}
 			<li class="flex items-start gap-3 px-3.5 py-2.5">
 				<UserAvatar src={getAvatarURL(ban.user_id, ban.user.avatar)} name={ban.user.username} size={32} />
 				<div class="min-w-0 flex-1">
@@ -144,7 +151,7 @@
 						<p class="text-duvet-ink2 mt-0.5 text-xs italic">{t("space_bans_no_reason")}</p>
 					{/if}
 					<p class="text-duvet-ink2 mt-1 text-[11px]">
-						{t("space_bans_banned_by", { name: reactorOf(ban.banned_by, members, profiles).name })}
+						{t("space_bans_banned_by", { who: banner.username === null ? "unknown" : "known", name: banner.name })}
 						<span class="mx-1 opacity-60">&middot;</span>
 						{formatDate(new Date(ban.created_at), DATE_TIME)}
 					</p>

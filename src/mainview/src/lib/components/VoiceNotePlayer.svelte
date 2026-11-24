@@ -33,8 +33,10 @@
 	}: {
 		src: string;
 		attachmentId?: string;
+		/** The author's name, "" for an author the app doesn't know: the bar draws it (VoiceNoteBar). */
 		authorName?: string;
-		channelName?: string;
+		/** The room's name, "" where there's none, null for a room the app doesn't know (MessageAttachments). */
+		channelName?: string | null;
 		compact?: boolean;
 	} = $props();
 

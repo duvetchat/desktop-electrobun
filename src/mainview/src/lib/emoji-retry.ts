@@ -217,15 +217,33 @@ export function retryEmojis(doc: Pick<EventTarget, "addEventListener" | "removeE
 				}
 				img.src = src;
 			},
-			showName: () =>
-				img.replaceWith(
-					Object.assign(img.ownerDocument.createElement("span"), {
-						title: t("media_emoji_load_failed"),
-						textContent: img.title,
-					}),
-				),
+			showName: () => {
+				const span = Object.assign(img.ownerDocument.createElement("span"), {
+					title: t("media_emoji_load_failed"),
+					textContent: img.title,
+				});
+				span.dataset.emojiFailed = "";
+				// One without a name shows the words for an emoji, which a language change writes again.
+				if (img.dataset.emojiUnnamed !== undefined) span.dataset.emojiUnnamed = "";
+				img.replaceWith(span);
+			},
 		});
 	};
 	doc.addEventListener("error", onError, true);
 	return () => doc.removeEventListener("error", onError, true);
+}
+
+/** The custom emojis of doc that gave up: each one's name, in its place (retryEmojis). */
+export const failedEmojis = (doc: ParentNode) => doc.querySelectorAll<HTMLElement>("span[data-emoji-failed]");
+
+/** Puts the tooltips of custom emojis that gave up (failedEmojis) in the app's language of the moment, and the words
+ * shown in place of one without a name (a component's emoji of a Space the user isn't in): each was written once, as its
+ * emoji gave up. The root layout calls it when the language changes. */
+export function retitleFailedEmojis(
+	spans: Iterable<{ title?: string; textContent?: string | null; dataset?: DOMStringMap }>,
+): void {
+	for (const span of spans) {
+		span.title = t("media_emoji_load_failed");
+		if (span.dataset?.emojiUnnamed !== undefined) span.textContent = `:${t("chat_emoji_unknown")}:`;
+	}
 }

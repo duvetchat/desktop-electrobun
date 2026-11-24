@@ -23,6 +23,7 @@
 	import { leaveSpace } from "$lib/api/spaces";
 	import { confirmAction } from "$lib/stores/confirm.svelte";
 	import { t, type MessageKey } from "$lib/i18n";
+	import { formatNumber } from "$lib/i18n/format";
 	import { hasSpacePermission, Permission } from "$lib/permissions";
 	import {
 		conversations,
@@ -237,8 +238,11 @@
 	}
 
 	function handleLeave(guild: Guild) {
-		void confirmAction(t("shell_space_leave_question", { name: guild.name }), t("shell_space_leave"), () =>
-			leaveSpace(guild.id),
+		void confirmAction(
+			t("shell_space_leave_question", { name: guild.name }),
+			t("shell_space_leave"),
+			() => leaveSpace(guild.id),
+			t("shell_space_leave_busy"),
 		);
 	}
 
@@ -409,7 +413,7 @@
 								role="img"
 								aria-label={t("shell_in_voice", { count: news.inVoice })}
 							>
-								<span class="bg-duvet-alive size-[7px] rounded-full"></span>{news.inVoice}
+								<span class="bg-duvet-alive size-[7px] rounded-full"></span>{formatNumber(news.inVoice)}
 							</span>
 						{/if}
 						{#if news?.mentions}

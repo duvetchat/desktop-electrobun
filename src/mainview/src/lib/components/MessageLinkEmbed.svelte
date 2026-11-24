@@ -2,7 +2,7 @@
 	import { onMount } from "svelte";
 	import { getMessageById } from "$lib/api/messages";
 	import { getDirectMessageById } from "$lib/api/conversations";
-	import { gatewayMessageToMessage, messageText } from "$lib/types";
+	import { authorLabel, gatewayMessageToMessage, messageText } from "$lib/types";
 	import { gatewaySpaces, jumpToMessageRequest, conversations, roomNames } from "$lib/stores.svelte";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
 	import type { Message } from "$lib/types";
@@ -137,11 +137,11 @@
 		<!-- Message preview -->
 		<div class="flex items-start gap-2.5 px-3.5 py-2.5">
 			<div class="mt-0.5 shrink-0">
-				<UserAvatar src={message.author_avatar_url} name={message.author_name} size={28} />
+				<UserAvatar src={message.author_avatar_url} name={authorLabel(message)} size={28} />
 			</div>
 			<div class="flex min-w-0 flex-1 flex-col">
 				<div class="mb-0.5 flex items-baseline gap-1.5">
-					<span class="text-duvet-ink truncate text-sm font-semibold">{message.author_name}</span>
+					<span class="text-duvet-ink truncate text-sm font-semibold">{authorLabel(message)}</span>
 					<span class="text-xxs text-duvet-ink2 shrink-0">{formatTime(message.created_at)}</span>
 				</div>
 				<p class="font-content text-duvet-ink line-clamp-3 text-sm wrap-break-word whitespace-pre-wrap">

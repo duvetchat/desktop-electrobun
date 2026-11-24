@@ -1,4 +1,6 @@
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { setLanguage, tIn } from "./i18n";
 import {
 	parseOpenAppWindow,
@@ -617,4 +619,14 @@ describe("the windows' titles in the app's language", () => {
 			setLanguage("en");
 		}
 	});
+});
+
+// #464: each window's page asks Bun for the system's languages as it starts (lib/i18n/bun-link.ts); a window whose RPC
+// didn't answer would wait out primeSystemLanguages' time, then go by the web view's languages.
+test("every window's page can ask Bun for the system's languages", () => {
+	for (const file of ["index.ts", "settings-window-native.ts", "media-window-open.ts"]) {
+		expect(readFileSync(join(import.meta.dir, file), "utf8"), file).toMatch(
+			/systemLanguages: \(\) => systemLanguages\(/,
+		);
+	}
 });

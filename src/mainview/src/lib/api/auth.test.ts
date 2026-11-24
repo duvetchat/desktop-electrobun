@@ -58,7 +58,7 @@ describe("a refusal", () => {
 		expect(await message(logIn({ email: "a@b.c", password: "p" }))).toBe("Couldn't sign you in. Try again.");
 		expect(await message(verifyEmail("t"))).toBe("Verification failed");
 		expect(await message(signIn({ username: "u", alias: null, password: "p", email: "e@x.test" }))).toBe(
-			"Couldn't create your account: Failed to fetch",
+			"Couldn't create your account: Load failed",
 		);
 		posted.mockRejectedValue(refused("internal server error", 500));
 		expect(await message(logIn({ email: "a@b.c", password: "p" }))).toBe("Couldn't sign you in. Try again.");

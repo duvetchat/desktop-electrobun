@@ -19,7 +19,7 @@
 import { createInstance } from "i18next";
 import ICU from "i18next-icu";
 import type en from "../mainview/messages/en.json";
-import { LOCALES, PSEUDO, resolveLocale, type UiLocale } from "../mainview/src/lib/i18n/locale";
+import { LOCALES, matchLocale, PSEUDO, SHIPPED, type Locale, type UiLocale } from "../mainview/src/lib/i18n/locale";
 import { bunMessages } from "./bun-messages" with { type: "macro" };
 
 /** A message of Bun's: one of the language files' menu_, window_ and os_ keys. */
@@ -75,13 +75,17 @@ export function t(key: BunMessageKey, values?: MessageValues): string {
 export const keptLanguage = (locale: UiLocale) => JSON.stringify({ locale });
 
 /** The language a start speaks until the main window's page says: the one it said last time, else the system's among
- * the languages a released build offers, as the page's "Match system" would. */
-export function startingLanguage(kept: string | null, system: readonly string[]): UiLocale {
+ * the languages a released build offers (shipped), as the page's "Match system" would. */
+export function startingLanguage(
+	kept: string | null,
+	system: readonly string[],
+	shipped: readonly Locale[] = SHIPPED,
+): UiLocale {
 	try {
 		const value: unknown = kept === null ? null : JSON.parse(kept);
 		const locale = typeof value === "object" && value !== null && "locale" in value ? value.locale : null;
-		return parseLanguage(locale) ?? resolveLocale("system", system);
+		return parseLanguage(locale) ?? matchLocale(system, shipped);
 	} catch {
-		return resolveLocale("system", system);
+		return matchLocale(system, shipped);
 	}
 }

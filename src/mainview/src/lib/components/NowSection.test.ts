@@ -59,7 +59,9 @@ describe("the Now section", () => {
 	// for some English regions, en-DE among them), and a language writes it its own way.
 	test("writes how far files being moved have got as English always has", () => {
 		expect(now).toContain('t("shell_now_moving_percent", { percent: progress.percent })');
-		expect(now).not.toContain("formatNumber");
+		// formatNumber writes the section's counts, not the percent.
+		expect(now).not.toMatch(/formatNumber\([^)]*percent/);
+		expect(now).not.toContain('style: "percent"');
 		expect(t("shell_now_moving_percent", { percent: 42 })).toBe("42%");
 		expect(t("shell_now_moving_percent", { percent: 100 })).toBe("100%");
 	});

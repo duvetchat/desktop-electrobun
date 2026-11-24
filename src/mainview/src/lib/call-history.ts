@@ -1,10 +1,10 @@
 import { get, writable } from "svelte/store";
 import { CALLS_PAGE_SIZE, getCallHistory, type Conversation, type DirectMessage } from "$lib/api/conversations";
-import { callNoticeLine, type CallNoticeLine } from "$lib/call-notices";
+import { callNotice, type CallNoticeWords } from "$lib/call-notices";
 import { callingFromAnotherDevice } from "$lib/calls";
 import { getAvatarURL } from "$lib/common/common";
 import { t } from "$lib/i18n";
-import { formatDate } from "$lib/i18n/format";
+import { formatClock, formatDate } from "$lib/i18n/format";
 import { conversationTitle, otherMember } from "$lib/pane";
 import type { ActiveCallInfo } from "$lib/stores.svelte";
 import { directMessageToMessage, MessageType } from "$lib/types";
@@ -156,7 +156,7 @@ export interface CallRow {
 	/** A DM's other person's avatar (null without one: their face is made from their name). */
 	avatar: string | null;
 	/** The notice's own sentence for the user, and whether they missed the call (its phone is red). */
-	line: CallNoticeLine;
+	line: CallNoticeWords;
 	/** When it started ringing. */
 	at: string;
 }
@@ -169,7 +169,7 @@ export function callRow(
 	me: string | undefined,
 ): CallRow | null {
 	const joined = conversation?.members.find((m) => m.user_id === me)?.id;
-	const line = callNoticeLine(directMessageToMessage(notice, conversation?.members ?? []), me, joined);
+	const line = callNotice(directMessageToMessage(notice, conversation?.members ?? []), me, joined);
 	if (!line || !notice.call || !notice.conversation_id) return null;
 	const other = conversation && otherMember(conversation, me);
 	return {
@@ -201,8 +201,9 @@ export function callBackAction(
 
 /**
  * When a call rang, as the history's rows say it, the mobile app's way: its time today, "Yesterday", the day of the week
- * within a week, and its date before that, with the year when it isn't this one. In the app's language, and its dates
- * and times as lib/i18n/format.ts writes them: in the system's region when the system is in that language.
+ * within a week, and its date before that, with the year when it isn't this one. The time in the system's clock format
+ * whatever the app's language, as a message's (formatClock); the days and dates in the app's language, as
+ * lib/i18n/format.ts writes them: in the system's region when the system is in that language.
  */
 export function callTime(iso: string, now = new Date()): string {
 	const at = new Date(iso);
@@ -210,7 +211,7 @@ export function callTime(iso: string, now = new Date()): string {
 	const midnight = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
 	// Rounded: a day across a change of the clocks lasts 23 or 25 hours.
 	const days = Math.round((midnight(now) - midnight(at)) / 86_400_000);
-	if (days === 0) return formatDate(at, { hour: "2-digit", minute: "2-digit" });
+	if (days === 0) return formatClock(at, { hour: "2-digit", minute: "2-digit" });
 	if (days === 1) return t("call_history_yesterday");
 	if (days > 1 && days < 7) return formatDate(at, { weekday: "short" });
 	return formatDate(at, {

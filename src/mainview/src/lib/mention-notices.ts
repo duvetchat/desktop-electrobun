@@ -15,12 +15,15 @@ export interface MentionNotice {
 	/** The message's ID. */
 	id: string;
 	link: MessageLink;
+	/** The author's name as the message has it; "" for an author the app doesn't know, which authorLabel() draws in the
+	 * language of the moment, as a notice shows for a few seconds. */
 	authorName: string;
 	authorAvatar: string | null;
 	/** Where, as the notice's head says it with the author (chat_mention_notice_head): a direct message, or a place by
 	 * its name. */
 	place: MentionPlaceKind;
-	/** The place's name: "#room · Space", a group's name; "" for a direct message. */
+	/** The place's name: "#room · Space", a group's name; "" for a direct message, and for a group with no name, which
+	 * is drawn as shell_chat_group_untitled. */
 	placeName: string;
 	/** The message's text, which shows on a line or two as a reply's quote does (renderMarkdownLine); "" for none. */
 	text: string;
@@ -36,7 +39,8 @@ export type MentionPlaceKind = "dm" | "named";
 export interface MentionPlace {
 	link: MessageLink;
 	place: MentionPlaceKind;
-	/** The place's name in the notice: "#room · Space", a group's name; "" for a direct message. */
+	/** The place's name in the notice: "#room · Space", a group's name; "" for a direct message, and for a group with no
+	 * name, whose word the notice says as it draws. */
 	placeName: string;
 	/** The place as a system notification names it: "#room · Space", a group's name, none in a DM. */
 	name: string | null;
@@ -64,8 +68,9 @@ export function conversationPlace(
 ): MentionPlace {
 	const link = { spaceId: "", roomId: "", messageId, conversationId };
 	if (conversation?.type !== 2) return { link, place: "dm", placeName: "", name: null };
-	const name = conversationTitle(conversation, me);
-	return { link, place: "named", placeName: name, name };
+	// The system's notification shows once, in the words of its moment; the notice stays a few seconds, so a group with no
+	// name keeps "" and the notice says its word as it draws.
+	return { link, place: "named", placeName: conversation.name ?? "", name: conversationTitle(conversation, me) };
 }
 
 /** A conversation's message as a notice names its author: as the message has them, else as the conversation does. */

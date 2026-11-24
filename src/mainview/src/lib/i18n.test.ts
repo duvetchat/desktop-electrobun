@@ -17,16 +17,27 @@ const translations = LOCALES.filter((locale) => locale !== "en");
 // The messages whose "server" is the API itself, not a Space (as lib/wording.test.ts's ABOUT_THE_API).
 const ABOUT_THE_API = new Set<string>(["error_no_answer"]);
 
-/** What a message's words are built around: its placeholders, tags, select cases and plural cases. */
+/** What a message's words are built around: its placeholders, tags, select cases and plural cases, and the placeholders
+ * written as numbers ({count, number}), which the locale groups where a plain {count} isn't. */
 interface Shape {
 	args: Set<string>;
 	tags: Set<string>;
 	selects: Map<string, string[]>;
 	plurals: Map<string, { ordinal: boolean; cases: string[] }>;
+	numbers: Set<string>;
+	/** The plain placeholders ({count}), written as they're passed. */
+	plain: Set<string>;
 }
 
 function shapeOf(message: string): Shape {
-	const shape: Shape = { args: new Set(), tags: new Set(), selects: new Map(), plurals: new Map() };
+	const shape: Shape = {
+		args: new Set(),
+		tags: new Set(),
+		selects: new Map(),
+		plurals: new Map(),
+		numbers: new Set(),
+		plain: new Set(),
+	};
 	const walk = (elements: MessageFormatElement[]) => {
 		for (const element of elements) {
 			if (element.type === TYPE.tag) {
@@ -45,6 +56,8 @@ function shapeOf(message: string): Shape {
 				for (const option of Object.values(element.options)) walk(option.value);
 			} else if (element.type !== TYPE.literal && element.type !== TYPE.pound) {
 				shape.args.add(element.value);
+				if (element.type === TYPE.number) shape.numbers.add(element.value);
+				if (element.type === TYPE.argument) shape.plain.add(element.value);
 			}
 		}
 	};
@@ -94,8 +107,30 @@ describe("the language files", () => {
 				expect(sorted(translated.tags), where).toEqual(sorted(source.tags));
 				expect(Object.fromEntries(translated.selects), where).toEqual(Object.fromEntries(source.selects));
 				expect(sorted(translated.plurals.keys()), where).toEqual(sorted(source.plurals.keys()));
+				expect(sorted(translated.numbers), where).toEqual(sorted(source.numbers));
 			}
 		}
+	});
+
+	// A plain {count} is written as it's passed, ungrouped in every language (messages/README.md): a count goes in
+	// {count, number} or a plural. These are the names counts go by; a message whose value of that name is a string
+	// already written by $lib/i18n/format is listed with it.
+	test("write a count as a number or in a plural, never in a plain placeholder", () => {
+		const COUNTS = ["count", "total", "done", "shown", "current", "min", "max", "ping", "seconds", "percent"];
+		const FORMATTED: Record<string, string[]> = {
+			chat_command_option_min: ["min"], // formatNumber (lib/commands.ts)
+			chat_command_option_max: ["max"],
+			settings_bucket_usage: ["max"], // megabytes()
+			settings_storage_used: ["percent"], // formatNumber, as a percent
+			storage_transfer_bytes: ["total"], // formatFileSize
+			storage_transfer_bytes_started_by: ["total"],
+		};
+		const plain = Object.entries(en).flatMap(([key, message]) =>
+			[...shapeOf(message).plain]
+				.filter((arg) => COUNTS.includes(arg) && !FORMATTED[key]?.includes(arg))
+				.map((arg) => `${key} {${arg}}`),
+		);
+		expect(plain).toEqual([]);
 	});
 
 	test("give each plural the cases their language has, and other", () => {
@@ -233,6 +268,35 @@ describe("the app's language", () => {
 		expect(i18n.regionalLocale()).toBe("en");
 		await i18n.setSystemLanguages([]);
 		expect(i18n.regionalLocale()).toBe("en");
+	});
+
+	// messages/README.md: a plain placeholder writes a number as it is; {n, number} and a plural's # group it.
+	test("writes a number in a plain placeholder as it is, and in {n, number} or a plural the locale's way", async () => {
+		await i18n.setLocalePref("en");
+		expect(i18n.t("settings_language_system", { language: 1234567 })).toBe("Match system (1234567)");
+		expect(i18n.t("shell_quiet_spaces", { count: 1234567 })).toBe("Quiet · 1,234,567");
+		expect(i18n.t("shell_in_voice", { count: 1234567 })).toBe("1,234,567 in voice");
+	});
+
+	// A message's numbers are written in the locale formatNumber and formatFileSize write theirs in (regionalLocale): an
+	// English app on a system in English (Germany) writes "Move 1.234 files (12,50 MB)", not "1,234 files (12,50 MB)".
+	test("writes a message's numbers in the system's region when it's in the app's language, with or without tags", async () => {
+		await i18n.setLocalePref("en");
+		const voice = () => i18n.t("shell_in_voice", { count: 1234567 });
+		const heading = () => i18n.richParts("people_friends_group_heading", { group: "Online", count: 1234567 });
+		expect(voice()).toBe("1,234,567 in voice");
+		expect(heading()).toEqual(["Online ", { tag: "num", text: "1,234,567" }]);
+		await i18n.setSystemLanguages(["en-DE"]);
+		expect(voice()).toBe("1.234.567 in voice");
+		expect(heading()).toEqual(["Online ", { tag: "num", text: "1.234.567" }]);
+		await i18n.setSystemLanguages(["en-IN"]);
+		expect(voice()).toBe("12,34,567 in voice");
+		// A system in another language: the app's own.
+		await i18n.setSystemLanguages(["de-DE"]);
+		expect(voice()).toBe("1,234,567 in voice");
+		expect(heading()).toEqual(["Online ", { tag: "num", text: "1,234,567" }]);
+		await i18n.setSystemLanguages([]);
+		expect(voice()).toBe("1,234,567 in voice");
 	});
 
 	test("hears no other key's changes", async () => {

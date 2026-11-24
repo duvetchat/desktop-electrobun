@@ -139,9 +139,10 @@ class StorageTransferStore {
 		for (const b of buckets) this.bucketNames.set(b.id, b.name);
 	}
 
-	/** A transfer's source or target by name (null is the default storage), when it's known. */
+	/** A transfer's source or target bucket by name, when it's known; null for one that isn't, and for the default
+	 * storage (null), which a transfer's sentences say in words of their own (storageCase in lib/storage-transfers.ts). */
 	storageName(bucketId: string | null): string | null {
-		return bucketId === null ? t("storage_default_name") : (this.bucketNames.get(bucketId) ?? null);
+		return bucketId === null ? null : (this.bucketNames.get(bucketId) ?? null);
 	}
 
 	/** Loads the latest transfers of a space, or of the user (null). A failure (an API without transfers

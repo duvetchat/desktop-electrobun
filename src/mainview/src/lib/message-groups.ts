@@ -1,5 +1,5 @@
 import { t } from "$lib/i18n";
-import { formatDate } from "$lib/i18n/format";
+import { clockFormat, formatClock, formatDate } from "$lib/i18n/format";
 import { isEphemeral, isNotice, type Message } from "$lib/types";
 
 /** How long after a message its author's next one still joins its group. */
@@ -85,39 +85,15 @@ export function dayLabel(iso: string, now: number | Date = Date.now()): string {
 	return formatDate(day, day.getFullYear() === today.getFullYear() ? DAY_OF_YEAR : DAY_OF_ANOTHER_YEAR);
 }
 
-const CLOCK: Intl.DateTimeFormatOptions = { hour: "numeric", minute: "2-digit" };
-
-// The system's first language, which says how its clock writes a time (12 or 24 hours, and the separator); "" for the
-// runtime's own.
-function systemLanguage(): string {
-	if (typeof navigator === "undefined") return "";
-	return navigator.languages?.[0] ?? navigator.language ?? "";
-}
-
-// A message's clock keeps the system's own format, whatever the app's language: an English app on a German system
-// writes 21:14, as it always has. That's the one place the app gives Intl a locale itself (messages/README.md: "Dates,
-// numbers, lists and sizes"), until lib/i18n/format.ts has a clock of its own (formatClock, with formatToParts for the
-// gutter) for this to call. One formatter for each language: building one costs about 70 times a format, and every row
-// and every group's head asks.
-const clocks = new Map<string, Intl.DateTimeFormat>();
-function clock(): Intl.DateTimeFormat {
-	const language = systemLanguage();
-	let format = clocks.get(language);
-	if (!format) {
-		format = new Intl.DateTimeFormat(language || undefined, CLOCK);
-		clocks.set(language, format);
-	}
-	return format;
-}
-
-/** A message's time of day in the system's clock format: "9:14 AM", or "21:14". */
+/** A message's time of day in the system's clock format, whatever the app's language: "9:14 AM", or "21:14" (an
+ * English app on a German system writes 21:14, as it always has: lib/i18n/format.ts, formatClock). */
 export function clockTime(iso: string): string {
-	return clock().format(new Date(iso));
+	return formatClock(new Date(iso));
 }
 
 /** The same without AM or PM, for a narrow gutter: "9:14". */
 export function shortClockTime(iso: string): string {
-	const parts = clock().formatToParts(new Date(iso));
+	const parts = clockFormat().formatToParts(new Date(iso));
 	return parts
 		.filter((p) => p.type === "hour" || p.type === "minute" || (p.type === "literal" && p.value.trim() !== ""))
 		.map((p) => p.value.trim())

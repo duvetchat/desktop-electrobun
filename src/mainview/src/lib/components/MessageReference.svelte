@@ -7,7 +7,7 @@
 	import { renderMarkdownLine, type CustomEmojiMap } from "$lib/markdown";
 	import { messageTextClass } from "$lib/message-styles";
 	import { jumpToMessageRequest, roomNames } from "$lib/stores.svelte";
-	import { quotedAuthorName, type Message } from "$lib/types";
+	import { authorLabel, quotedAuthorName, type Message } from "$lib/types";
 
 	// What a message answers, above it, as the chat and the previews (pins, search results, a thread) show it: a reply's
 	// strip, with who wrote the message it replies to and one line of it, which a click jumps to, or "Original message
@@ -21,7 +21,7 @@
 		spaceId,
 		channelId,
 	}: {
-		message: Pick<Message, "referenced_message" | "interaction_metadata" | "author_name">;
+		message: Pick<Message, "id" | "nonce" | "referenced_message" | "interaction_metadata" | "author_name">;
 		quotedCall?: CallNoticeWords | null;
 		mentionMap?: Record<string, string>;
 		customEmojiMap?: CustomEmojiMap;
@@ -59,7 +59,11 @@
 				<span class="truncate">{callNoticeSentence(quotedCall)}</span>
 			{:else}
 				<ReplyIcon size={12} class="shrink-0" />
-				<span class="text-duvet-ink shrink-0 font-semibold">{quotedAuthorName(ref.author_name, ref)}</span>
+				<!-- A message on its way (its ID is its nonce) keeps its quote's author as the app has them, "" for one it
+				     doesn't know, named here in the language of the moment; a quote from the API says what it says. -->
+				<span class="text-duvet-ink shrink-0 font-semibold"
+					>{quotedAuthorName(message.id === message.nonce ? authorLabel(ref) : ref.author_name, ref)}</span
+				>
 				{#if ref.content}
 					<span class="msg-content font-content truncate {messageTextClass()}"
 						>{@html renderMarkdownLine(ref.content, mentionMap, customEmojiMap, $roomNames)}</span
@@ -93,7 +97,7 @@
 		<CommandIcon size={12} class="shrink-0" />
 		<Rich
 			key="chat_interaction_used"
-			values={{ user: usedBy, command: used.name ? `/${used.name}` : message.author_name }}
+			values={{ user: usedBy, command: used.name ? `/${used.name}` : authorLabel(message) }}
 			tags={{ who: user, what: command }}
 		/>
 	</button>

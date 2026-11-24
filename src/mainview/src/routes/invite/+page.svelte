@@ -6,7 +6,7 @@
 	import Rich from "$lib/components/Rich.svelte";
 	import SpaceIcon from "$lib/components/ui/SpaceIcon.svelte";
 	import { onMount } from "svelte";
-	import { getApiError } from "$lib/api/api";
+	import { FetchError, getApiError } from "$lib/api/api";
 	import { page } from "$app/state";
 	import { getInvite, joinInvite } from "$lib/api/invites";
 	import type { InviteInfo } from "$lib/api/invites";
@@ -43,11 +43,16 @@
 
 	/** Shows why a request about the invite failed, or sends a session that has ended to sign in. */
 	function showFailure(err: unknown, key: MessageKey) {
-		const msg = getApiError(err, NO_REASON);
-		if (msg === "Session invalid or expired") {
+		// The API's own text, read from its answer: what getApiError gives is in the app's language.
+		if (
+			err instanceof FetchError &&
+			err.response?.status === 401 &&
+			err.response.data?.error === "Session invalid or expired"
+		) {
 			window.location.href = signInUrl(inviteUrl(code));
 			return;
 		}
+		const msg = getApiError(err, NO_REASON);
 		if (msg === NO_REASON) errorKey = key;
 		else error = msg;
 	}

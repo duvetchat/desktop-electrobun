@@ -52,7 +52,7 @@
 		Embed,
 		SpaceCommandApplication,
 	} from "$lib/types";
-	import { gatewayMessageToMessage, isEphemeral, isNotice, MessageReferenceType } from "$lib/types";
+	import { authorLabel, gatewayMessageToMessage, isEphemeral, isNotice, MessageReferenceType } from "$lib/types";
 	import {
 		sendMessage,
 		sendVoiceNote,
@@ -455,7 +455,8 @@
 							message_id: ref.message_id,
 							content: quoted.content ?? "",
 							author_id: quoted.author_id ?? "",
-							author_name: quoted.author_name ?? "",
+							// "" for an author the app doesn't know: MessageReference names them as it draws the pending copy.
+							author_name: quoted.author_name,
 							author_avatar: quoted.author_avatar_url ?? null,
 							created_at: quoted.created_at ?? isoNow,
 						},
@@ -929,7 +930,7 @@
 			<span class="shrink-0"
 				><Rich
 					key="chat_reply_to"
-					values={{ own: own ? "yes" : "no", name: pending.replyTo.author_name }}
+					values={{ own: own ? "yes" : "no", name: authorLabel(pending.replyTo) }}
 					tags={{ b: replyAuthor }}
 				/></span
 			>
@@ -946,10 +947,10 @@
 						focus();
 					}}
 					aria-pressed={pending.replyMention}
-					aria-label={t("chat_reply_mention_label", { name: pending.replyTo.author_name })}
+					aria-label={t("chat_reply_mention_label", { name: authorLabel(pending.replyTo) })}
 					title={pending.replyMention
-						? t("chat_reply_mention_on_hint", { name: pending.replyTo.author_name })
-						: t("chat_reply_mention_off_hint", { name: pending.replyTo.author_name })}
+						? t("chat_reply_mention_on_hint", { name: authorLabel(pending.replyTo) })
+						: t("chat_reply_mention_off_hint", { name: authorLabel(pending.replyTo) })}
 					><AtIcon size={13} />{pending.replyMention ? t("chat_reply_mention_on") : t("chat_reply_mention_off")}</button
 				>
 			{/if}

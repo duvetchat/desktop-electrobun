@@ -2,7 +2,6 @@ import { get, writable } from "svelte/store";
 import type { UploadOptions } from "$lib/api/api";
 import { t } from "$lib/i18n";
 import { formatFileSize, formatNumber } from "$lib/i18n/format";
-import en from "../../messages/en.json";
 
 /** How far an upload is, in percent of its body's bytes sent (FetchRequestConfig.onUploadProgress), rounded down: 100
  * once every byte is up and the answer is awaited, never before. 0 while the total isn't known. */
@@ -92,10 +91,6 @@ export const CANCELLED = Symbol("cancelled");
 export function sentBeforeCancel(): string {
 	return t("chat_upload_sent_before_cancel");
 }
-
-/** sentBeforeCancel's English, for lib/api/ws/connection.ts's toast until it asks for sentBeforeCancel(): a constant
- * keeps the words of one language. */
-export const SENT_BEFORE_CANCEL = en.chat_upload_sent_before_cancel;
 
 /**
  * A file's size as the chat writes it under a file, in the app's language: as formatFileSize (lib/i18n/format.ts) up

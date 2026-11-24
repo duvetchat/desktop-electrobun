@@ -255,7 +255,11 @@
 	async function renameGroup() {
 		const convId = conversation.id;
 		const current = conversation.name ?? "";
-		const name = await promptDialog(t("people_group_rename_prompt"), t("people_group_name_placeholder"), current);
+		const name = await promptDialog(
+			() => t("people_group_rename_prompt"),
+			() => t("people_group_name_placeholder"),
+			current,
+		);
 		if (!name || name === current) return;
 		try {
 			const updated = await updateConversation(convId, name);
@@ -271,10 +275,15 @@
 	// A failure shows in the dialog, which stays. Done, the group goes here, its call too, whatever the gateway has said.
 	function leaveGroup() {
 		const convId = conversation.id;
-		void confirmAction(t("people_group_leave_confirm"), t("people_group_leave_action"), async () => {
-			await leaveConversation(convId);
-			conversationLeft(convId);
-		});
+		void confirmAction(
+			t("people_group_leave_confirm"),
+			t("people_group_leave_action"),
+			async () => {
+				await leaveConversation(convId);
+				conversationLeft(convId);
+			},
+			t("people_group_leave_busy"),
+		);
 	}
 
 	// Map DirectMessage → Message for MessageList

@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { parse, TYPE } from "@formatjs/icu-messageformat-parser";
 import en from "../../../messages/en.json";
 import { FetchError, getApiError, NetworkError, NoAnswerError } from "$lib/api/api";
-import { inAppWords } from "$lib/api/error-wording";
+import { inAppWords, transferFileReason, transferReason } from "$lib/api/error-wording";
 import { setLocalePref, t, type MessageKey } from "$lib/i18n";
 import { formatList } from "$lib/i18n/format";
 import { PSEUDO } from "$lib/i18n/locale";
@@ -86,6 +86,7 @@ const AS_THE_API_SAYS: string[] = [
 	"Session expired",
 	"User associated with this session no longer exists",
 	"Access token does not match session",
+	"Session invalid or expired",
 	"Database error during authentication",
 	"Failed to retrieve user data",
 	"role not found",
@@ -509,14 +510,25 @@ describe("the API's known error texts, in the app's words", () => {
 		}
 	});
 
-	// formatList joins them as the system's region joins a list: "a, b, and c" in US English, "a, b and c" in British.
-	test("three or more missing fields are joined as a list is where the user is", () => {
+	// In English as before #464, whatever the system's region (US English's list has a comma before "and"); another
+	// language lists them as its locale does (below).
+	test("two or more missing fields are joined as a list, in English as they always were", () => {
 		const bucket = validation(
 			["CreateBucketBody", "Name", "required"],
 			["CreateBucketBody", "Endpoint", "required"],
 			["CreateBucketBody", "BucketName", "required"],
 		);
-		expect(inAppWords(bucket, "")).toBe(`${capital(formatList(["name", "endpoint", "bucket name"]))} are required`);
+		const two = validation(["CreateBucketBody", "Name", "required"], ["CreateBucketBody", "Endpoint", "required"]);
+		expect(inAppWords(bucket, "")).toBe("Name, endpoint and bucket name are required");
+		expect(inAppWords(two, "")).toBe("Name and endpoint are required");
+		for (const system of ["en-US", "en-GB"]) {
+			Object.defineProperty(navigator, "languages", { value: [system], configurable: true });
+			try {
+				expect(inAppWords(bucket, ""), system).toBe("Name, endpoint and bucket name are required");
+			} finally {
+				Reflect.deleteProperty(navigator, "languages");
+			}
+		}
 	});
 
 	test("a body the API couldn't read gives way to what the app was doing", () => {
@@ -542,8 +554,6 @@ describe("the API's known error texts, in the app's words", () => {
 	test("any other text keeps the API's own words, and starts with a capital letter as the app's do", () => {
 		for (const [text, shown] of [
 			["poll not found", "Poll not found"],
-			// The app reads this one to send the user back to sign-in (routes/invite): it stays as it comes.
-			["Session invalid or expired", "Session invalid or expired"],
 			["you are being rate limited", "You are being rate limited"],
 			// Not one of the known texts, though it has the word: only what was checked against the API is rewritten.
 			["this channel is archived", "This channel is archived"],
@@ -565,6 +575,59 @@ describe("the API's known error texts, in the app's words", () => {
 			["", ""],
 		] as const)
 			expect(inAppWords(text, "Failed"), text).toBe(shown);
+	});
+});
+
+// A move of files between storages: why it stopped (StorageTransfer.error) and why a file of it failed
+// (StorageTransferFile.error), as api/internal/services/storage_transfers.go says them. Their English is the API's
+// words, as they were shown before they were messages (#464).
+const TRANSFER_REASONS = [
+	"target full",
+	"a bucket of the transfer is gone",
+	"internal error",
+	"source unreachable: refused the credentials",
+	"source unreachable: has no such bucket",
+	"source unreachable: answered 503",
+	"source unreachable: didn't answer",
+	"target unreachable: refused the credentials",
+	"target unreachable: has no such bucket",
+	"target unreachable: answered 500",
+	"target unreachable: kept nothing",
+	"target unreachable: didn't answer",
+];
+const FILE_REASONS = [
+	"not in the source",
+	"the source has other content than was uploaded",
+	"size mismatch in the source",
+	"size mismatch in the target",
+	"the target has another file under its key",
+	"the source refused it: refused the credentials",
+	"the source refused it: has no such bucket",
+	"the source refused it: answered 400",
+	"the source refused it: didn't answer",
+	"the target refused it: refused the credentials",
+	"the target refused it: has no such bucket",
+	"the target refused it: answered 413",
+	"the target refused it: didn't answer",
+	"target unreachable: kept nothing",
+];
+
+describe("a move of files' reasons", () => {
+	afterEach(() => setLocalePref("en"));
+
+	test("are the app's, in the API's words in English, and one the app doesn't know stays as the API sent it", () => {
+		for (const reason of TRANSFER_REASONS) expect(transferReason(reason), reason).toBe(reason);
+		for (const reason of FILE_REASONS) expect(transferFileReason(reason), reason).toBe(reason);
+		expect(transferReason("the disk caught fire")).toBe("the disk caught fire");
+		expect(transferFileReason("the disk caught fire")).toBe("the disk caught fire");
+		// A reason that only looks like one.
+		expect(transferReason("target unreachable: answered soon")).toBe("target unreachable: answered soon");
+	});
+
+	test("are in the app's language", async () => {
+		await setLocalePref(PSEUDO);
+		for (const reason of TRANSFER_REASONS) expect(transferReason(reason), reason).not.toMatch(/[A-Za-z]/);
+		for (const reason of FILE_REASONS) expect(transferFileReason(reason), reason).not.toMatch(/[A-Za-z]/);
 	});
 });
 
@@ -637,9 +700,10 @@ describe("getApiError", () => {
 		expect(getApiError("not an error", "Failed to open room")).toBe("Failed to open room");
 	});
 
-	// api.test.ts has fetch fail with each webview's words.
-	test("a request that failed on the network says so in the app's words, and a bug's TypeError gives way", () => {
-		expect(getApiError(new NetworkError(new TypeError("Load failed")), "Failed")).toBe("Failed to fetch");
+	// api.test.ts has fetch fail with each webview's words: in English, they're said as they were.
+	test("a request that failed on the network says so, and a bug's TypeError gives way", () => {
+		expect(getApiError(new NetworkError(new TypeError("Load failed")), "Failed")).toBe("Load failed");
+		expect(getApiError(new NetworkError(), "Failed")).toBe("Failed to fetch");
 		expect(getApiError(new NoAnswerError(), "Failed")).toBe("No answer from the server in time");
 		// Not the network's: a caller's try block reading a property of null.
 		expect(

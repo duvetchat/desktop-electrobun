@@ -12,7 +12,7 @@
 	import { tabDigit } from "$lib/keyboard";
 	import { currentShell } from "$lib/platform";
 	import { getAvatarURL } from "$lib/common/common";
-	import { t } from "$lib/i18n";
+	import { currentLocale, t } from "$lib/i18n";
 	import { formatList } from "$lib/i18n/format";
 	import { isConversationTab, tabDragData, tabFromDragData, tabNews, tabTitle, tabTooltip } from "$lib/pane";
 	import { chipCount, mentionsLabel, stripDrop, tabDropTarget, type StripHalf } from "$lib/shell-layout";
@@ -201,8 +201,13 @@
 	const halfTitle = (half: StripHalf) =>
 		half.tab ? tabTitle(half.tab, $conversations, $currentUser?.id) : t("shell_new_tab");
 	const pairTitles = $derived(halves.map(halfTitle));
-	// The joined tab's name for a screen reader: its panes' chats as a list, in one sentence.
-	const pairLabel = $derived(t("shell_split_pair", { chats: formatList(pairTitles) }));
+	// The joined tab's name for a screen reader: its panes' chats as a list, in one sentence. In English, joined by "and"
+	// as it always has been ("A and B and C"), whatever the system's region; in another language, as it lists them.
+	const pairLabel = $derived(
+		t("shell_split_pair", {
+			chats: currentLocale() === "en" ? pairTitles.join(" and ") : formatList(pairTitles),
+		}),
+	);
 
 	const tabBase =
 		"group/tab relative flex h-[34px] min-w-28 shrink items-center gap-1 rounded-[10px] text-[13px] font-medium transition-[background-color,color,box-shadow] duration-150 motion-reduce:transition-none focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-duvet-accent";

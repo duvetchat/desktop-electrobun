@@ -6,6 +6,7 @@
 	import { getAvatarURL } from "$lib/common/common";
 	import { friendUser } from "$lib/friends";
 	import { t } from "$lib/i18n";
+	import { formatNumber } from "$lib/i18n/format";
 	import { canViewRoom, shownRooms } from "$lib/permissions";
 	import { rankByQuery } from "$lib/nav";
 	import { mentionsLabel } from "$lib/shell-layout";
@@ -284,7 +285,7 @@
 						</span>
 						{#if (item.kind === "room" || item.kind === "conversation") && item.mentions}
 							<span class={countBadgeClass("sm")} role="img" aria-label={mentionsLabel(item.mentions)}
-								>{item.mentions}</span
+								>{formatNumber(item.mentions)}</span
 							>
 						{/if}
 						{#if isActive}

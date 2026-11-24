@@ -14,6 +14,7 @@
 	import { formatDuration } from "$lib/utils/time";
 	import { t } from "$lib/i18n";
 	import { formatNumber } from "$lib/i18n/format";
+	import { authorLabel } from "$lib/types";
 	import VolumeControl from "$lib/components/VolumeControl.svelte";
 
 	let rate = $state(1);
@@ -46,6 +47,9 @@
 	}
 
 	const progress = $derived($voiceNote && $voiceNote.duration > 0 ? $voiceNote.currentTime / $voiceNote.duration : 0);
+	// The store keeps the names as the app has them; the words for an author or a room the app doesn't know are put in
+	// here, in the language of the moment.
+	const place = $derived($voiceNote ? ($voiceNote.channelName ?? t("chat_search_room_unknown")) : "");
 </script>
 
 {#if $voiceNote}
@@ -88,10 +92,10 @@
 
 			<div class="flex min-w-0 flex-1 flex-col gap-px">
 				<span class="text-duvet-ink truncate text-[13px] leading-[1.25] font-semibold"
-					>{$voiceNote.filename ?? $voiceNote.authorName}</span
+					>{$voiceNote.filename ?? authorLabel({ author_name: $voiceNote.authorName })}</span
 				>
 				<span class="text-duvet-ink2 truncate text-[11.5px] leading-[1.25] tabular-nums">
-					{#if $voiceNote.channelName}{$voiceNote.channelName} ·
+					{#if place}{place} ·
 					{/if}{formatDuration(
 						$voiceNote.playing || $voiceNote.currentTime > 0 ? $voiceNote.currentTime : $voiceNote.duration,
 					)} / {formatDuration($voiceNote.duration)}

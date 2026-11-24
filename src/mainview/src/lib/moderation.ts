@@ -54,6 +54,7 @@ export function kickFromSpace(target: ModerationTarget): Promise<void> {
 				toast(getApiError(err, t("mod_kick_failed")), "error");
 			}
 		},
+		t("mod_kick_busy"),
 	);
 }
 

@@ -20,6 +20,7 @@
 	import { onReactionChange, reactionKey, withReaction } from "$lib/reactions";
 	import { currentUser, openRoomMention, reactorsRequest } from "$lib/stores.svelte";
 	import {
+		authorLabel,
 		isComponentsV2,
 		isLoading,
 		MessageType,
@@ -53,6 +54,8 @@
 		/** The message's space, "" in a conversation, and its room or conversation: where its reactions and quote go. */
 		spaceId?: string;
 		channelId: string;
+		/** The room's name over the message, none where null; "" for a room the app doesn't know, named in the language of
+		 * the moment. */
 		roomName?: string | null;
 		/** The room's or the conversation's members: who the author is among them, for the colour of their name. */
 		members?: MemberOnSidebar[];
@@ -69,6 +72,9 @@
 	const callLine = $derived(callNotice(message, $currentUser?.id, joined));
 	const author = $derived(members.find((m) => m.id === message.author_id));
 	const text = $derived(message.content ?? "");
+	// Where the players' "now playing" says the note is: null for a room the app doesn't know, which the bar names when
+	// it draws (VoiceNoteBar), "" where there's no room.
+	const playerPlace = $derived(roomName === "" ? null : (roomName ?? ""));
 
 	// The content shows six lines; Show more shows the rest. clamped says whether the six hide some of it,
 	// measured once the content is laid out, and again when it or its width changes.
@@ -105,7 +111,7 @@
 {#if roomName !== null}
 	<div class="text-xxs text-duvet-ink2 flex items-center gap-0.5 font-semibold">
 		<HashIcon class="size-3" />
-		{roomName}
+		{roomName || t("chat_search_room_unknown")}
 	</div>
 {/if}
 <!-- A room's mention opens the room; the search result or pin around it doesn't take the click too. A code block's
@@ -115,12 +121,12 @@
 	<MessageReference {message} {quotedCall} {mentionMap} {customEmojiMap} {spaceId} {channelId} />
 	<div class="flex items-start gap-2.5">
 		<div class="mt-0.5 shrink-0">
-			<UserAvatar src={message.author_avatar_url} name={message.author_name} size={32} />
+			<UserAvatar src={message.author_avatar_url} name={authorLabel(message)} size={32} />
 		</div>
 		<div class="flex min-w-0 flex-1 flex-col">
 			<div class="flex items-baseline gap-1.5">
 				<span class="text-duvet-ink truncate text-sm font-semibold" style={author ? nameColor(author) : ""}
-					>{message.author_name}</span
+					>{authorLabel(message)}</span
 				>
 				<AuthorTag {message} />
 				<span class="text-duvet-ink2 shrink-0 text-[11px] tabular-nums">{formatShortDateTime(message.created_at)}</span>
@@ -132,7 +138,7 @@
 				</p>
 			{/if}
 			{#if message.type === MessageType.Voice || message.sticker_attachment_id}
-				<MessageAttachments {message} channelName={roomName ?? ""} {onPreview} maxWidth={320} maxHeight={240} />
+				<MessageAttachments {message} channelName={playerPlace} {onPreview} maxWidth={320} maxHeight={240} />
 			{:else if isLoading(message)}
 				<DeferredResponse {message} />
 			{:else if isComponentsV2(message)}
@@ -166,7 +172,7 @@
 					{/if}
 				{/if}
 				<MessageCards content={text} embeds={message.embeds} onPreview={(src) => onPreview(src)} compact />
-				<MessageAttachments {message} channelName={roomName ?? ""} {onPreview} maxWidth={320} maxHeight={240} />
+				<MessageAttachments {message} channelName={playerPlace} {onPreview} maxWidth={320} maxHeight={240} />
 				{#if message.components?.length}
 					<MessageComponents components={message.components} {mentionMap} {customEmojiMap} {onPreview} compact />
 				{/if}

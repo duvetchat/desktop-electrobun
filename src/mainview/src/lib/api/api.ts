@@ -12,7 +12,7 @@ import {
 } from "$lib/session";
 import { accessToken } from "$lib/stores/auth";
 import { answerWindows, askMainWindow } from "$lib/window-hub";
-import { t } from "$lib/i18n";
+import { currentLocale, t } from "$lib/i18n";
 import { formatFileSize, formatNumber } from "$lib/i18n/format";
 import { get } from "svelte/store";
 
@@ -59,11 +59,12 @@ export class NoAnswerError extends TypeError {
 
 /** A request that failed on the network: no connection, or Duvet out of reach. fetch and XMLHttpRequest fail so with a
  * TypeError in the webview's own English ("Failed to fetch" in Chromium, "Load failed" in WebKit), which this one, a
- * TypeError still, says in the app's words. It's made where the request failed (fetchWithin, sendForm), so a TypeError
- * of any other making isn't taken for one. */
+ * TypeError still, says in the app's words in another language; in English, in the webview's, as the app always has.
+ * It's made where the request failed (fetchWithin, sendForm), so a TypeError of any other making isn't taken for one. */
 export class NetworkError extends TypeError {
 	constructor(cause?: unknown) {
-		super(t("error_network_failed"), { cause });
+		const webview = cause instanceof TypeError && cause.message ? cause.message : null;
+		super(currentLocale() === "en" && webview ? webview : t("error_network_failed"), { cause });
 		this.name = "NetworkError";
 	}
 }

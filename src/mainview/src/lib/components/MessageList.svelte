@@ -74,7 +74,14 @@
 		messageText,
 		previewReplacesText,
 	} from "$lib/types";
-	import { MessageType, type MemberOnSidebar, type GatewaySpace, type Message, type SpaceEmoji } from "$lib/types";
+	import {
+		authorLabel,
+		MessageType,
+		type MemberOnSidebar,
+		type GatewaySpace,
+		type Message,
+		type SpaceEmoji,
+	} from "$lib/types";
 	import type { PickerGroup } from "$lib/space-emojis";
 	import { DUVET_DOMAIN } from "$lib/common/common";
 
@@ -287,10 +294,11 @@
 		const member = members.find((m) => m.id === userId);
 		if (member) return personOf(member, space);
 		const user = space?.users.find((u) => u.id === userId);
+		const written = messages.find((m) => m.author_id === userId);
 		return {
 			id: userId,
 			memberId: "",
-			name: messages.find((m) => m.author_id === userId)?.author_name ?? "",
+			name: written ? authorLabel(written) : "",
 			isBot: user?.is_bot ?? false,
 			flags: user ? { flags: user.flags ?? 0, badges: user.badges ?? 0 } : null,
 		};
@@ -496,7 +504,7 @@
 		return sendComponentInteraction(channelId, message.id, use, {
 			space,
 			members,
-			from: { name: message.author_name, avatarUrl: message.author_avatar_url },
+			from: { name: authorLabel(message), avatarUrl: message.author_avatar_url },
 		});
 	}
 
@@ -971,18 +979,23 @@
 
 	// Asks first, as deleting a channel does: there's no undo. A failure shows in the dialog.
 	function handleDelete(messageId: string) {
-		return confirmAction(t("chat_delete_confirm"), t("chat_delete_confirm_button"), async () => {
-			deletingMessageId = messageId;
-			try {
-				if (onDeleteMsg) {
-					await onDeleteMsg(messageId);
-				} else {
-					await deleteMessage(messageId, channelId);
+		return confirmAction(
+			t("chat_delete_confirm"),
+			t("chat_delete_confirm_button"),
+			async () => {
+				deletingMessageId = messageId;
+				try {
+					if (onDeleteMsg) {
+						await onDeleteMsg(messageId);
+					} else {
+						await deleteMessage(messageId, channelId);
+					}
+				} finally {
+					deletingMessageId = null;
 				}
-			} finally {
-				deletingMessageId = null;
-			}
-		});
+			},
+			t("chat_delete_busy"),
+		);
 	}
 
 	async function openThreadModal(message: Message) {
@@ -1204,7 +1217,7 @@
 								{:else}
 									<Rich
 										key="chat_pin_notice"
-										values={{ name: message.author_name, place: isConversation ? "chat" : "room" }}
+										values={{ name: authorLabel(message), place: isConversation ? "chat" : "room" }}
 										tags={{ b: noticeName, message: pinnedMessage, pins: pinsLink }}
 									/>
 								{/if}
@@ -1428,10 +1441,10 @@
 			type="button"
 			class="block rounded-full {member ? 'cursor-pointer' : 'cursor-default'}"
 			data-author-menu={message.webhook_id ? "" : message.author_id}
-			aria-label={message.author_name}
+			aria-label={authorLabel(message)}
 			onclick={(e) => openProfile(member, e.currentTarget)}
 		>
-			<UserAvatar src={message.author_avatar_url} name={message.author_name} {size} />
+			<UserAvatar src={message.author_avatar_url} name={authorLabel(message)} {size} />
 		</button>
 	{/key}
 {/snippet}
@@ -1445,10 +1458,10 @@
 			type="button"
 			class="min-w-0 cursor-pointer truncate font-semibold hover:underline"
 			{style}
-			onclick={(e) => openProfile(member, e.currentTarget)}>{message.author_name}</button
+			onclick={(e) => openProfile(member, e.currentTarget)}>{authorLabel(message)}</button
 		>
 	{:else}
-		<span class="min-w-0 cursor-default truncate font-semibold" {style}>{message.author_name}</span>
+		<span class="min-w-0 cursor-default truncate font-semibold" {style}>{authorLabel(message)}</span>
 	{/if}
 {/snippet}
 
@@ -1745,7 +1758,7 @@
 			</MenuItem>
 		{/if}
 		{#if !message.webhook_id}
-			<MenuSub label={message.author_name} icon={UserIcon}>
+			<MenuSub label={authorLabel(message)} icon={UserIcon}>
 				{@render authorItems(message.author_id, null, message.id)}
 			</MenuSub>
 		{/if}
@@ -1800,7 +1813,7 @@
 <Sheet
 	bind:open={threadModalOpen}
 	title={t("chat_thread_title")}
-	description={threadRootMessage ? t("chat_thread_from", { name: threadRootMessage.author_name }) : undefined}
+	description={threadRootMessage ? t("chat_thread_from", { name: authorLabel(threadRootMessage) }) : undefined}
 	class="min-w-[min(672px,calc(100%-48px))]"
 >
 	<div bind:this={threadScrollEl} class="-mx-1 min-h-0 flex-1 overflow-y-auto px-1 py-1">
@@ -1836,7 +1849,7 @@
 						     message, nor one still being sent (its ID is its nonce) -->
 						{#if onThreadReply && root && !isNotice(threadMsg) && !isEphemeral(threadMsg) && threadMsg.id !== threadMsg.nonce}
 							<IconButton
-								label={t("chat_thread_reply_to", { name: threadMsg.author_name })}
+								label={t("chat_thread_reply_to", { name: authorLabel(threadMsg) })}
 								title={t("chat_reply")}
 								size="sm"
 								class="absolute top-1.5 right-1.5 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 focus-visible:opacity-100 motion-reduce:transition-none"

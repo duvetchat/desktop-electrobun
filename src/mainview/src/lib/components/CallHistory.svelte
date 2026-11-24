@@ -10,7 +10,7 @@
 	import Tooltip from "$lib/components/ui/Tooltip.svelte";
 	import type { Conversation } from "$lib/api/conversations";
 	import { callBackAction, callHistory, callRow, callTime, loadCalls } from "$lib/call-history";
-	import { callNoticeText } from "$lib/call-notices";
+	import { callNoticeSentence } from "$lib/call-notices";
 	import { t } from "$lib/i18n";
 	import {
 		activeCall,
@@ -155,7 +155,7 @@
 							{:else}
 								<PhoneIcon class="shrink-0" size={12} aria-hidden="true" />
 							{/if}
-							<span class="truncate">{callNoticeText(row.line)}</span>
+							<span class="truncate">{callNoticeSentence(row.line)}</span>
 						</span>
 					</span>
 					<time

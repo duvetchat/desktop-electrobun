@@ -98,7 +98,7 @@ export function joinConversationCall(conversation: Pick<Conversation, "id" | "me
 	activeCall.set({
 		conversationId: conversation.id,
 		initiatorId: user.id,
-		initiatorName: user.alias ?? user.username ?? t("call_you"),
+		initiatorName: user.alias ?? user.username,
 		initiatorAvatar: user.avatar ?? null,
 		state: "connected",
 		memberIds,
@@ -119,7 +119,7 @@ export function startConversationCall(conversation: Pick<Conversation, "id" | "m
 	activeCall.set({
 		conversationId: conversation.id,
 		initiatorId: user.id,
-		initiatorName: user.alias ?? user.username ?? t("call_you"),
+		initiatorName: user.alias ?? user.username,
 		initiatorAvatar: user.avatar ?? null,
 		state: "calling",
 		memberIds,

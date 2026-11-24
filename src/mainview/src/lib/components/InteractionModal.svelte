@@ -334,6 +334,7 @@
 				src={elsewhere}
 				alt=":{e.name ?? t('chat_emoji_unknown')}:"
 				title=":{e.name ?? t('chat_emoji_unknown')}:"
+				data-emoji-unnamed={e.name === undefined ? "" : undefined}
 				class="size-5 shrink-0 object-contain {CUSTOM_EMOJI_CLASS}"
 				draggable="false"
 			/>
