@@ -1,6 +1,9 @@
 {
-	"settings_language_title": "Language",
+	"format_size_bytes": "{size} B",
+	"format_size_kb": "{size} KB",
+	"format_size_mb": "{size} MB",
 	"settings_language_label": "App language",
 	"settings_language_note": "Duvet's menus, buttons and notices. Messages stay as people wrote them. Saved on this device.",
-	"settings_language_system": "Match system ({language})"
+	"settings_language_system": "Match system ({language})",
+	"settings_language_title": "Language"
 }
