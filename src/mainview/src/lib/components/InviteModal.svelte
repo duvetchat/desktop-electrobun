@@ -9,6 +9,8 @@
 	import { createRoomInvite } from "$lib/api/rooms";
 	import type { Channel } from "$lib/types";
 	import { route, DUVET_DOMAIN } from "$lib/common/common";
+	import { t } from "$lib/i18n";
+	import { formatNumber, formatRelativeTime } from "$lib/i18n/format";
 
 	let {
 		open = $bindable(false),
@@ -26,20 +28,29 @@
 	let genError = $state("");
 	let linkInput = $state<HTMLInputElement | undefined>(undefined);
 
-	// How long a new link works. Like Discord, 7 days unless you pick otherwise.
-	const EXPIRY_OPTIONS = [
-		{ label: "30 minutes", seconds: 30 * 60 },
-		{ label: "1 hour", seconds: 60 * 60 },
-		{ label: "6 hours", seconds: 6 * 60 * 60 },
-		{ label: "12 hours", seconds: 12 * 60 * 60 },
-		{ label: "1 day", seconds: 24 * 60 * 60 },
-		{ label: "7 days", seconds: 7 * 24 * 60 * 60 },
-		{ label: "Never", seconds: 0 },
+	// How long a new link works. Like Discord, 7 days unless you pick otherwise. Each is a span of one unit, which the
+	// app's language names ("30 minutes") and says from now ("in 30 minutes"); none is Never.
+	type Span = { count: number; unit: "minute" | "hour" | "day" };
+	const EXPIRY_OPTIONS: { seconds: number; span: Span | null }[] = [
+		{ seconds: 30 * 60, span: { count: 30, unit: "minute" } },
+		{ seconds: 60 * 60, span: { count: 1, unit: "hour" } },
+		{ seconds: 6 * 60 * 60, span: { count: 6, unit: "hour" } },
+		{ seconds: 12 * 60 * 60, span: { count: 12, unit: "hour" } },
+		{ seconds: 24 * 60 * 60, span: { count: 1, unit: "day" } },
+		{ seconds: 7 * 24 * 60 * 60, span: { count: 7, unit: "day" } },
+		{ seconds: 0, span: null },
 	];
 	let maxAge = $state(7 * 24 * 60 * 60);
 	// The age the shown link was made with: the select can already say another while it is made.
 	let linkAge = $state(0);
-	const expiryLabel = $derived(EXPIRY_OPTIONS.find((o) => o.seconds === linkAge)?.label ?? "");
+	const linkSpan = $derived(EXPIRY_OPTIONS.find((o) => o.seconds === linkAge)?.span ?? null);
+
+	// An option's name: "30 minutes", "1 day", or Never.
+	function spanName(span: Span | null): string {
+		return span
+			? formatNumber(span.count, { style: "unit", unit: span.unit, unitDisplay: "long" })
+			: t("people_invite_never");
+	}
 	// Only the latest request shows: a slower earlier one mustn't replace the link the last pick asked for.
 	let request = 0;
 
@@ -73,7 +84,7 @@
 			linkAge = age;
 		} catch (err) {
 			if (mine !== request) return;
-			genError = getApiError(err, "Failed to generate link.");
+			genError = getApiError(err, t("people_invite_failed"));
 		} finally {
 			if (mine === request) isLoading = false;
 		}
@@ -87,18 +98,23 @@
 	}
 </script>
 
-<Sheet bind:open title="Invite people" description={channel ? `#${channel.name}` : undefined} class="max-w-[460px]">
-	<p class="text-duvet-ink text-[13px]">Share this invite link. Anyone with this link can join the Space.</p>
+<Sheet
+	bind:open
+	title={t("people_invite_title")}
+	description={channel ? `#${channel.name}` : undefined}
+	class="max-w-[460px]"
+>
+	<p class="text-duvet-ink text-[13px]">{t("people_invite_line")}</p>
 
 	{#if isLoading}
 		<div class="text-duvet-ink2 flex items-center justify-center py-6">
-			<div class={spinnerClass("lg")} role="status" aria-label="Making the link"></div>
+			<div class={spinnerClass("lg")} role="status" aria-label={t("people_invite_making")}></div>
 		</div>
 	{:else if genError}
 		<p class="text-duvet-danger py-2 text-center text-[13px]">
 			{genError}
 		</p>
-		<Button variant="secondary" class="w-full" onclick={generate}>Try again</Button>
+		<Button variant="secondary" class="w-full" onclick={generate}>{t("dialog_try_again")}</Button>
 	{:else if inviteLink}
 		<div
 			class="bg-duvet-card shadow-duvet-well flex items-center gap-2 rounded-xl py-[5px] pr-[5px] pl-3 focus-within:shadow-[0_0_0_4px_var(--duvet-accent-tint),0_0_0_1px_var(--duvet-accent)]"
@@ -108,26 +124,28 @@
 				type="text"
 				readonly
 				value={inviteLink}
-				aria-label="Invite link"
+				aria-label={t("people_invite_link")}
 				class="text-duvet-ink focus-override min-w-0 flex-1 bg-transparent font-mono text-[13px] outline-none"
 				onclick={() => linkInput?.select()}
 			/>
-			<Button size="sm" onclick={copyLink} aria-label="Copy link">
+			<Button size="sm" onclick={copyLink} aria-label={t("people_invite_copy_label")}>
 				{#if copied}
 					<CheckIcon size={14} />
-					Copied
+					{t("people_invite_copied")}
 				{:else}
 					<CopySimpleIcon size={14} />
-					Copy
+					{t("people_invite_copy")}
 				{/if}
 			</Button>
 		</div>
 		<p class="text-duvet-ink2 text-xs">
-			{linkAge === 0 ? "This link never expires." : `This link expires in ${expiryLabel}.`}
+			{linkSpan
+				? t("people_invite_expires", { when: formatRelativeTime(linkSpan.count, linkSpan.unit) })
+				: t("people_invite_never_expires")}
 		</p>
 	{/if}
-	<div class="flex flex-col gap-2" role="radiogroup" aria-label="Expire after">
-		<span class="text-duvet-ink2 text-xs font-medium" aria-hidden="true">Expire after</span>
+	<div class="flex flex-col gap-2" role="radiogroup" aria-label={t("people_invite_expire_after")}>
+		<span class="text-duvet-ink2 text-xs font-medium" aria-hidden="true">{t("people_invite_expire_after")}</span>
 		<div class="flex flex-wrap gap-1.5">
 			{#each EXPIRY_OPTIONS as option (option.seconds)}
 				<button
@@ -137,7 +155,7 @@
 					class={pillClass(maxAge === option.seconds)}
 					onclick={() => (maxAge = option.seconds)}
 				>
-					{option.label}
+					{spanName(option.span)}
 				</button>
 			{/each}
 		</div>

@@ -1,3 +1,5 @@
+import { t } from "$lib/i18n";
+import { formatDate } from "$lib/i18n/format";
 import type { MembersKind } from "$lib/layout-prefs";
 import type { GatewayRole, GatewaySpace, MemberOnSidebar, Role } from "$lib/types";
 
@@ -65,14 +67,14 @@ export function memberGroups<M extends Pick<MemberOnSidebar, "username" | "statu
 		}
 		for (const { role, members: held } of [...byRole.values()].sort((a, b) => b.role.position - a.role.position))
 			groups.push({ title: role.name, members: held });
-		groups.push({ title: "Online", members: rest });
+		groups.push({ title: t("people_presence_online"), members: rest });
 	} else {
 		groups.push(
-			{ title: "Online", members: online.filter((m) => m.status !== "dnd") },
-			{ title: "Do not disturb", members: online.filter((m) => m.status === "dnd") },
+			{ title: t("people_presence_online"), members: online.filter((m) => m.status !== "dnd") },
+			{ title: t("people_presence_dnd"), members: online.filter((m) => m.status === "dnd") },
 		);
 	}
-	groups.push({ title: "Offline", members: members.filter((m) => !isOnline(m)) });
+	groups.push({ title: t("people_presence_offline"), members: members.filter((m) => !isOnline(m)) });
 	return groups
 		.filter((g) => g.members.length > 0)
 		.map((g) => ({ ...g, members: [...g.members].sort((a, b) => a.username.localeCompare(b.username)) }));
@@ -89,7 +91,7 @@ export function memberFaces<M extends Pick<MemberOnSidebar, "status">>(
 
 /** The members button's name for a screen reader, which can't count the faces. */
 export function membersLabel(online: number): string {
-	return `Members, ${online} online`;
+	return t("people_members_label", { online });
 }
 
 /** The narrowest a pane can be, in px, and still have the members column beside its chat (#409). It's measured on the
@@ -211,8 +213,8 @@ export function findMembers(
 	});
 }
 
-/** The day a member joined, as the locale writes a date; null where it isn't known. */
+/** The day a member joined, as the app's language writes a date (lib/i18n/format.ts); null where it isn't known. */
 export function joinedOn(joinedAt: string | null): string | null {
 	const at = joinedAt ? new Date(joinedAt) : null;
-	return at && !Number.isNaN(at.getTime()) ? at.toLocaleDateString(undefined, { dateStyle: "medium" }) : null;
+	return at && !Number.isNaN(at.getTime()) ? formatDate(at, { dateStyle: "medium" }) : null;
 }

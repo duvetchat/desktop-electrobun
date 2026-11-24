@@ -8,6 +8,7 @@
 	import { BADGES } from "$lib/badges";
 	import ActivityList from "$lib/components/ActivityList.svelte";
 	import StatusDot from "$lib/components/StatusDot.svelte";
+	import { t } from "$lib/i18n";
 
 	const MAX_RETRIES = 3;
 	const RETRY_DELAY = 2000;
@@ -105,7 +106,7 @@
 				<button
 					type="button"
 					class="text-fixed-white flex h-8 w-8 cursor-pointer items-center justify-center rounded-full bg-black/60 opacity-0 transition-opacity group-hover:opacity-100 hover:bg-black/80 motion-reduce:transition-none"
-					title="Change banner"
+					title={t("people_profile_change_banner")}
 					onclick={onBannerClick}
 				>
 					<CameraIcon class="size-4" />
@@ -115,7 +116,7 @@
 				<button
 					type="button"
 					class="text-duvet-danger flex h-8 w-8 cursor-pointer items-center justify-center rounded-full bg-black/60 opacity-0 transition-opacity group-hover:opacity-100 hover:bg-black/80 motion-reduce:transition-none"
-					title="Remove banner"
+					title={t("people_profile_remove_banner")}
 					onclick={onBannerRemove}
 				>
 					<TrashIcon class="size-4" />
@@ -140,7 +141,7 @@
 						<button
 							type="button"
 							class="text-fixed-white flex h-7 w-7 cursor-pointer items-center justify-center rounded-full bg-black/60 opacity-0 transition-opacity group-hover/avatar:opacity-100 hover:bg-black/80 motion-reduce:transition-none"
-							title="Change avatar"
+							title={t("people_profile_change_avatar")}
 							onclick={onAvatarClick}
 						>
 							<CameraIcon class="size-3.5" />
@@ -150,7 +151,7 @@
 						<button
 							type="button"
 							class="text-duvet-danger flex h-7 w-7 cursor-pointer items-center justify-center rounded-full bg-black/60 opacity-0 transition-opacity group-hover/avatar:opacity-100 hover:bg-black/80 motion-reduce:transition-none"
-							title="Remove avatar"
+							title={t("people_profile_remove_avatar")}
 							onclick={onAvatarRemove}
 						>
 							<TrashIcon class="size-3.5" />
@@ -176,7 +177,7 @@
 				{#if member.is_bot}
 					<span
 						class="bg-duvet-secondary-fill text-duvet-ink2 rounded-[5px] px-1.5 py-0.5 font-sans text-[9.5px] leading-none font-bold tracking-[0.04em]"
-						>BOT</span
+						>{t("people_tag_bot")}</span
 					>
 				{/if}
 			</h2>
@@ -194,7 +195,9 @@
 
 			{#if member.bio}
 				<div class="bg-duvet-line my-3 h-px w-full"></div>
-				<h3 class="text-duvet-ink2 mb-1.5 text-left text-[10.5px] font-semibold tracking-[0.06em] uppercase">About</h3>
+				<h3 class="text-duvet-ink2 mb-1.5 text-left text-[10.5px] font-semibold tracking-[0.06em] uppercase">
+					{t("people_profile_about")}
+				</h3>
 				<ProfileBio bio={member.bio} />
 			{/if}
 
@@ -202,7 +205,9 @@
 
 			{#if visibleRoles.length > 0}
 				<div class="bg-duvet-line my-3 h-px w-full"></div>
-				<h3 class="text-duvet-ink2 mb-1.5 text-left text-[10.5px] font-semibold tracking-[0.06em] uppercase">Roles</h3>
+				<h3 class="text-duvet-ink2 mb-1.5 text-left text-[10.5px] font-semibold tracking-[0.06em] uppercase">
+					{t("people_profile_roles")}
+				</h3>
 				<div class="flex flex-wrap gap-1">
 					{#each visibleRoles as role}
 						<div class="bg-duvet-secondary-fill flex h-[22px] w-max items-center gap-1.5 rounded-[7px] px-2">

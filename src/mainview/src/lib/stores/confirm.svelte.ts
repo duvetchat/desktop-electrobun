@@ -1,4 +1,5 @@
 import { getApiError } from "$lib/api/api";
+import { t } from "$lib/i18n";
 
 interface ConfirmState {
 	message: string;
@@ -37,7 +38,7 @@ class ConfirmStore {
 			this.pending = null;
 			this.loading = false;
 		} catch (err) {
-			this.error = getApiError(err, "Something went wrong");
+			this.error = getApiError(err, t("dialog_error_fallback"));
 			this.loading = false;
 		}
 	}

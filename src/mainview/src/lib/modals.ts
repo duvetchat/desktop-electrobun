@@ -1,3 +1,4 @@
+import { t } from "$lib/i18n";
 import { ComponentType, type Component, type Modal } from "$lib/types";
 
 /** A modal field's value: a text, what a select or a checkbox group chose, a radio group's choice, or a checkbox's state. */
@@ -67,18 +68,21 @@ function problemOf(input: Component, value: ModalValue): string | null {
 			const length = [...(typeof value === "string" ? value : "")].length;
 			const min = input.min_length ?? 0;
 			const max = input.max_length ?? maxText;
-			if (length === 0) return isRequired(input) ? "This field is required" : null;
-			if (length < min) return `Must be at least ${min} characters`;
-			if (length > max) return `Must be at most ${max} characters`;
+			if (length === 0) return isRequired(input) ? t("dialog_field_required") : null;
+			if (length < min) return t("dialog_field_too_short", { min });
+			if (length > max) return t("dialog_field_too_long", { max });
 			return null;
 		}
 		case ComponentType.RadioGroup:
-			return value === null && isRequired(input) ? "This field is required" : null;
+			return value === null && isRequired(input) ? t("dialog_field_required") : null;
 		default: {
 			const count = Array.isArray(value) ? value.length : 0;
-			if (count === 0) return isRequired(input) ? "This field is required" : null;
+			if (count === 0) return isRequired(input) ? t("dialog_field_required") : null;
 			const { min, max } = bounds(input);
-			return count < min || count > max ? `Choose ${min === max ? min : `${min} to ${max}`}` : null;
+			if (count >= min && count <= max) return null;
+			return min === max
+				? t("dialog_field_choose_count", { count: min })
+				: t("dialog_field_choose_range", { min, max });
 		}
 	}
 }

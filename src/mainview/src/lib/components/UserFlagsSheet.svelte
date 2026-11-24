@@ -12,6 +12,7 @@
 	import { toast } from "$lib/stores/toast.svelte";
 	import Sheet from "$lib/components/ui/Sheet.svelte";
 	import { buttonClass } from "$lib/components/ui/recipes";
+	import { t } from "$lib/i18n";
 
 	// Duvet staff's editor of a user's flags and badges, one for the app, as a member's menu asks for it
 	// (userFlagsRequest): their flags and badges as switches, saved together.
@@ -38,7 +39,7 @@
 			await updateUserFlagsBadges(target.id, { flags, badges });
 			open = false;
 		} catch (err) {
-			toast(getApiError(err, "Failed to update flags/badges"), "error");
+			toast(getApiError(err, t("people_flags_failed")), "error");
 		} finally {
 			saving = false;
 		}
@@ -46,9 +47,14 @@
 </script>
 
 {#if target}
-	<Sheet bind:open title="Edit flags and badges" description="User: {target.id}" class="max-w-[384px]">
+	<Sheet
+		bind:open
+		title={t("people_flags_title")}
+		description={t("people_flags_user", { id: target.id })}
+		class="max-w-[384px]"
+	>
 		<fieldset class="flex flex-col gap-2">
-			<legend class="text-duvet-ink2 mb-2 text-[13px] font-semibold">Flags</legend>
+			<legend class="text-duvet-ink2 mb-2 text-[13px] font-semibold">{t("people_flags_flags")}</legend>
 			{#each FLAGS as f}
 				<label class="flex items-center gap-2 text-sm">
 					<input
@@ -63,7 +69,7 @@
 		</fieldset>
 
 		<fieldset class="flex flex-col gap-2">
-			<legend class="text-duvet-ink2 mb-2 text-[13px] font-semibold">Badges</legend>
+			<legend class="text-duvet-ink2 mb-2 text-[13px] font-semibold">{t("people_flags_badges")}</legend>
 			{#each BADGES as b}
 				<label class="flex items-center gap-2 text-sm">
 					<input
@@ -79,9 +85,9 @@
 
 		{#snippet foot()}
 			<span></span>
-			<button type="button" class={buttonClass("quiet")} onclick={() => (open = false)}>Cancel</button>
+			<button type="button" class={buttonClass("quiet")} onclick={() => (open = false)}>{t("dialog_cancel")}</button>
 			<button type="button" class={buttonClass("primary")} disabled={saving} onclick={save}>
-				{saving ? "Saving…" : "Save"}
+				{saving ? t("dialog_saving") : t("dialog_save")}
 			</button>
 		{/snippet}
 	</Sheet>

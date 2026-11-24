@@ -286,9 +286,9 @@ describe("the Members section's members", () => {
 		}
 	});
 
-	test("the date they joined, as the locale writes it", () => {
+	test("the date they joined, as the app's language writes it", () => {
 		const at = "2026-03-05T10:00:00Z";
-		expect(joinedOn(at)).toBe(new Date(at).toLocaleDateString(undefined, { dateStyle: "medium" }));
+		expect(joinedOn(at)).toBe("Mar 5, 2026");
 		expect(joinedOn(null)).toBeNull();
 		expect(joinedOn("not a date")).toBeNull();
 	});

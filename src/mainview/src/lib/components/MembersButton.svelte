@@ -13,6 +13,7 @@
 	import { spaceMembers } from "$lib/components/MemberList.svelte";
 	import MembersPanel from "$lib/components/MembersPanel.svelte";
 	import { GLASS } from "$lib/components/ui/recipes";
+	import { t } from "$lib/i18n";
 
 	// The members of a room, or of a group, in a pane's bar: a few faces, the online ones first. Beside a Space's text
 	// room or a group, in a pane with room for it, they open and close the members column at the pane's right (#409);
@@ -22,7 +23,7 @@
 		space = null,
 		channelId,
 		members: given = undefined,
-		title = "Members",
+		title = undefined,
 		onRemoveMember = undefined,
 		onMention = undefined,
 		column = undefined,
@@ -34,7 +35,7 @@
 		channelId: string;
 		/** A group's members: they are all there, so nothing is paged. */
 		members?: MemberOnSidebar[];
-		/** The popover's heading: "Members", or a group's name. */
+		/** The popover's heading: a group's name; without one, Members. */
 		title?: string;
 		/** Removes a member from a group, for its owner. */
 		onRemoveMember?: (userId: string) => Promise<void>;
@@ -50,6 +51,7 @@
 	const online = $derived(onlineCount(members));
 	const stack = $derived(memberFaces(members));
 	const pagedSpaceId = $derived(given === undefined ? (space?.id ?? null) : null);
+	const heading = $derived(title ?? t("people_members_title"));
 	// Whether the column of its kind of chat is open, as the layout prefs keep it across chats and reloads.
 	const columnOpen = $derived(column !== undefined && layoutPrefs.membersColumn[column]);
 
@@ -114,7 +116,7 @@
 		class="{buttonClass} {columnOpen ? 'bg-duvet-accent-tint' : ''}"
 		aria-label={membersLabel(online)}
 		aria-pressed={columnOpen}
-		title={columnOpen ? "Hide members" : "Show members"}
+		title={columnOpen ? t("people_members_hide") : t("people_members_show")}
 		onclick={toggleColumn}
 	>
 		{@render faces()}
@@ -124,7 +126,7 @@
 		<Popover.Trigger
 			class="{buttonClass} {open ? 'bg-duvet-accent-tint' : ''}"
 			aria-label={membersLabel(online)}
-			title="Members"
+			title={t("people_members_title")}
 		>
 			{@render faces()}
 		</Popover.Trigger>
@@ -139,7 +141,7 @@
 						collisionPadding={10}
 						updatePositionStrategy="always"
 						role="dialog"
-						aria-label={title}
+						aria-label={heading}
 						class="{GLASS} animate-float-in text-duvet-ink z-[1000] flex max-h-[min(560px,72vh)] w-[min(340px,calc(100vw-20px))] origin-(--bits-floating-transform-origin) flex-col overflow-hidden rounded-[20px] outline-none"
 					>
 						<MembersPanel
@@ -147,7 +149,7 @@
 							spaceId={pagedSpaceId}
 							{space}
 							{channelId}
-							{title}
+							title={heading}
 							{onRemoveMember}
 							onMention={mention}
 						/>

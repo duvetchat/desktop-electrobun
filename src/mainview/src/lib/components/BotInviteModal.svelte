@@ -8,6 +8,7 @@
 	import { toast } from "$lib/stores/toast.svelte";
 	import { getApiError } from "$lib/api/api";
 	import { hasSpacePermission, Permission } from "$lib/permissions";
+	import { t, type MessageKey } from "$lib/i18n";
 
 	let {
 		open = $bindable(false),
@@ -23,23 +24,24 @@
 	let bot = $state<BotUser | null>(null);
 	let loading = $state(false);
 	let adding = $state(false);
-	let error = $state("");
+	// Why the bot can't be shown, drawn in the app's language of the moment.
+	let error = $state<MessageKey | null>(null);
 
 	$effect(() => {
 		if (open && botUserId) {
 			loading = true;
-			error = "";
+			error = null;
 			bot = null;
 			getBotUser(botUserId)
 				.then((user) => {
 					if (!user.is_bot) {
-						error = "This user is not a bot.";
+						error = "people_bot_invite_not_bot";
 					} else {
 						bot = user;
 					}
 				})
 				.catch(() => {
-					error = "Bot not found.";
+					error = "people_bot_invite_not_found";
 				})
 				.finally(() => {
 					loading = false;
@@ -51,24 +53,29 @@
 		adding = true;
 		try {
 			await addBotToSpace(spaceId, botUserId);
-			const spaceName = $gatewaySpaces.find((s) => s.id === spaceId)?.name ?? "the Space";
-			toast(`Bot added to ${spaceName}`, "success");
+			const spaceName = $gatewaySpaces.find((s) => s.id === spaceId)?.name;
+			toast(
+				spaceName === undefined
+					? t("people_bot_invite_added_unnamed")
+					: t("people_bot_invite_added", { space: spaceName }),
+				"success",
+			);
 			open = false;
 		} catch (err) {
-			toast(getApiError(err, "Failed to add bot"), "error");
+			toast(getApiError(err, t("people_bot_invite_failed")), "error");
 		} finally {
 			adding = false;
 		}
 	}
 </script>
 
-<Sheet bind:open title="Add a bot to a Space" class="max-w-[420px]">
+<Sheet bind:open title={t("people_bot_invite_title")} class="max-w-[420px]">
 	{#if loading}
 		<div class="text-duvet-ink2 flex items-center justify-center py-8">
-			<div class={spinnerClass("lg")} role="status" aria-label="Loading the bot"></div>
+			<div class={spinnerClass("lg")} role="status" aria-label={t("people_bot_invite_loading")}></div>
 		</div>
 	{:else if error}
-		<p class="text-duvet-danger py-4 text-center text-[13px]">{error}</p>
+		<p class="text-duvet-danger py-4 text-center text-[13px]">{t(error)}</p>
 	{:else if bot}
 		<div class="flex items-center gap-3">
 			<UserAvatar src={getAvatarURL(bot.id, bot.avatar)} name={bot.username} size={40} />
@@ -76,12 +83,12 @@
 				<span class="text-duvet-ink truncate text-[14px] font-semibold">{bot.username}</span>
 				<span
 					class="bg-duvet-secondary-fill text-duvet-ink2 rounded-[5px] px-1.5 py-0.5 text-[9.5px] leading-none font-bold tracking-[0.04em]"
-					>BOT</span
+					>{t("people_tag_bot")}</span
 				>
 			</div>
 		</div>
 
-		<p class="text-duvet-ink2 text-xs">Pick a Space</p>
+		<p class="text-duvet-ink2 text-xs">{t("people_bot_invite_pick")}</p>
 		<div class="-mx-1 flex max-h-48 flex-col gap-0.5 overflow-y-auto px-1">
 			{#each botSpaces as space (space.id)}
 				<button
@@ -100,9 +107,9 @@
 		</div>
 
 		{#if $gatewaySpaces.length === 0}
-			<p class="text-duvet-ink2 py-4 text-center text-[13px]">You're not in any Spaces yet.</p>
+			<p class="text-duvet-ink2 py-4 text-center text-[13px]">{t("people_bot_invite_no_spaces")}</p>
 		{:else if botSpaces.length === 0}
-			<p class="text-duvet-ink2 py-4 text-center text-[13px]">Adding a bot to a Space takes Manage Bots in it.</p>
+			<p class="text-duvet-ink2 py-4 text-center text-[13px]">{t("people_bot_invite_no_permission")}</p>
 		{/if}
 	{/if}
 </Sheet>

@@ -3,9 +3,10 @@
 	import Dialog from "$lib/components/ui/Dialog.svelte";
 	import Button from "$lib/components/ui/Button.svelte";
 	import { busyLabel, ERROR_NOTE, spinnerClass } from "$lib/overlay-forms";
+	import { t } from "$lib/i18n";
 
 	const open = $derived(confirmStore.pending !== null);
-	const label = $derived(confirmStore.pending?.confirmLabel ?? "Confirm");
+	const label = $derived(confirmStore.pending?.confirmLabel ?? t("dialog_confirm_action"));
 </script>
 
 <!-- While the confirmed action runs it can't be dismissed: its answer closes it, or says why it failed. -->
@@ -16,7 +17,7 @@
 			if (!next && !confirmStore.loading) confirmStore.cancel();
 		}
 	}
-	title="Confirm"
+	title={t("dialog_confirm_title")}
 	escapeKeydownBehavior={confirmStore.loading ? "ignore" : "close"}
 >
 	{#if confirmStore.pending}
@@ -26,7 +27,9 @@
 		{/if}
 	{/if}
 	{#snippet actions()}
-		<Button variant="quiet" disabled={confirmStore.loading} onclick={() => confirmStore.cancel()}>Cancel</Button>
+		<Button variant="quiet" disabled={confirmStore.loading} onclick={() => confirmStore.cancel()}
+			>{t("dialog_cancel")}</Button
+		>
 		<Button variant="danger" class="min-w-20" disabled={confirmStore.loading} onclick={() => confirmStore.execute()}>
 			{#if confirmStore.loading}
 				<span class={spinnerClass()} aria-hidden="true"></span>

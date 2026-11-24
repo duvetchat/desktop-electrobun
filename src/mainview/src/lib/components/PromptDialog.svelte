@@ -3,6 +3,7 @@
 	import Sheet from "$lib/components/ui/Sheet.svelte";
 	import Button from "$lib/components/ui/Button.svelte";
 	import { fieldClass } from "$lib/overlay-forms";
+	import { t } from "$lib/i18n";
 
 	const open = $derived(promptStore.pending !== null);
 	let inputEl = $state<HTMLInputElement | null>(null);
@@ -21,7 +22,7 @@
 		}
 	}
 	title={promptStore.pending?.message ?? ""}
-	closeLabel="Cancel"
+	closeLabel={t("dialog_cancel")}
 	class="max-w-[400px]"
 	onOpenAutoFocus={(e) => {
 		e.preventDefault();
@@ -47,7 +48,7 @@
 	{/if}
 	{#snippet foot()}
 		<span></span>
-		<Button variant="quiet" onclick={() => promptStore.resolve(null)}>Cancel</Button>
-		<Button onclick={submit}>OK</Button>
+		<Button variant="quiet" onclick={() => promptStore.resolve(null)}>{t("dialog_cancel")}</Button>
+		<Button onclick={submit}>{t("dialog_ok")}</Button>
 	{/snippet}
 </Sheet>
