@@ -1,7 +1,7 @@
 // The design system's recipes (#357, docs/redesign/DESIGN-MAP.md §1 and S-42 to S-47): the classes and the small sums
 // the primitives in this folder share. Solid fills for controls, glass for what floats, circles for people only.
 
-export type ButtonVariant = "primary" | "secondary" | "danger" | "quiet";
+export type ButtonVariant = "primary" | "secondary" | "danger" | "warn" | "quiet";
 export type ControlSize = "md" | "sm";
 
 const BUTTON_BASE =
@@ -25,6 +25,9 @@ const BUTTON_VARIANT: Record<ButtonVariant, string> = {
 		"active:shadow-duvet-press",
 	danger:
 		"bg-duvet-danger text-duvet-on-danger shadow-duvet-control hover:brightness-[1.06] " +
+		"active:shadow-duvet-press active:translate-y-[0.5px]",
+	warn:
+		"bg-duvet-warn text-duvet-bg shadow-duvet-control hover:brightness-[1.06] " +
 		"active:shadow-duvet-press active:translate-y-[0.5px]",
 	quiet: "text-duvet-ink2 hover:bg-duvet-hover hover:text-duvet-ink active:bg-duvet-hover-strong",
 };

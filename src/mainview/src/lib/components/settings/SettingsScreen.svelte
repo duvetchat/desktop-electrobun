@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onDestroy, onMount, untrack } from "svelte";
+	import { SvelteSet } from "svelte/reactivity";
 	import {
 		User as UserIcon,
 		Paperclip as PaperclipIcon,
@@ -140,7 +141,7 @@
 	import IconButton from "$lib/components/ui/IconButton.svelte";
 	import Segmented from "$lib/components/ui/Segmented.svelte";
 	import Toggle from "$lib/components/ui/Toggle.svelte";
-	import { iconButtonClass } from "$lib/components/ui/recipes";
+	import { FOCUS_RING, iconButtonClass } from "$lib/components/ui/recipes";
 	import {
 		ACTION_BAR,
 		calloutClass,
@@ -267,6 +268,9 @@
 	const listedHere = $derived(attachmentsListed === attachmentsLocation);
 	const picking = $derived(listedHere && attachmentsLocation !== "all");
 	const picker = new FilePicker(() => attachments);
+	// The files picked to delete: a checkbox of their own, beside the one the move picker draws while it is open.
+	const selectedForDelete = new SvelteSet<string>();
+	const selectedDeleteCount = $derived(attachments.filter((a) => selectedForDelete.has(a.id)).length);
 	let attachmentsLoadId = 0;
 
 	// The previews of a file in the list: a picture in the chat's viewer, a text file in its read-only dialog.
@@ -316,6 +320,7 @@
 	/** Shows another storage's files. Its picks and kind filters start over. */
 	function setAttachmentsLocation(location: string) {
 		picker.clear();
+		selectedForDelete.clear();
 		attachmentsLocation = location;
 	}
 
@@ -333,6 +338,7 @@
 		await confirmAction(`Delete "${name}"?`, "Delete", async () => {
 			await deleteMyAttachment(id);
 			attachments = attachments.filter((a) => a.id !== id);
+			selectedForDelete.delete(id);
 			await refreshStorageStatus();
 		});
 	}
@@ -341,8 +347,33 @@
 		await confirmAction("Delete all your attachments? This cannot be undone.", "Delete", async () => {
 			await deleteAllMyAttachments();
 			attachments = [];
+			selectedForDelete.clear();
 			await refreshStorageStatus();
 		});
+	}
+
+	function toggleDeleteSelection(id: string) {
+		if (selectedForDelete.has(id)) selectedForDelete.delete(id);
+		else selectedForDelete.add(id);
+	}
+
+	async function handleDeleteSelected() {
+		const ids = attachments.filter((a) => selectedForDelete.has(a.id)).map((a) => a.id);
+		if (ids.length === 0) return;
+		const count = ids.length;
+		await confirmAction(
+			`Delete ${count} selected attachment${count === 1 ? "" : "s"}? This cannot be undone.`,
+			"Delete",
+			async () => {
+				const results = await Promise.allSettled(ids.map((id) => deleteMyAttachment(id)));
+				const deleted = new Set(ids.filter((_, i) => results[i]?.status === "fulfilled"));
+				attachments = attachments.filter((a) => !deleted.has(a.id));
+				for (const id of deleted) selectedForDelete.delete(id);
+				await refreshStorageStatus();
+				const failure = results.find((result) => result.status === "rejected");
+				if (failure) throw failure.reason;
+			},
+		);
 	}
 
 	// Buckets state
@@ -1766,7 +1797,7 @@
 					{/if}
 				{/if}
 			</div>
-			<div class="flex items-center gap-2">
+			<div class="flex flex-wrap items-center justify-end gap-2">
 				{#if buckets.length > 0 || attachmentsLocation !== "all"}
 					<label class="text-duvet-ink2 flex items-center gap-2 text-[13px]">
 						Location
@@ -1783,6 +1814,10 @@
 						</select>
 					</label>
 				{/if}
+				<Button variant="warn" size="sm" disabled={selectedDeleteCount === 0} onclick={handleDeleteSelected}>
+					<TrashIcon size={13} />
+					Delete selected
+				</Button>
 				{#if attachments.length > 0 && attachmentsLocation === "all"}
 					<Button variant="danger" size="sm" onclick={handleDeleteAll}>
 						<TrashIcon size={13} />
@@ -1820,20 +1855,51 @@
 						{@const isText = isTextAttachment(att.content_type, att.filename)}
 						{@const isAudio = att.content_type.startsWith("audio/")}
 						{@const src = `${attachmentHost}${att.url ?? `/attachments/${att.id}`}`}
-						<div class="group hover:bg-duvet-hover-soft transition-colors motion-reduce:transition-none">
+						<div
+							class="group hover:bg-duvet-hover-soft transition-colors motion-reduce:transition-none"
+							class:bg-duvet-accent-tint={selectedForDelete.has(att.id)}
+						>
 							<div class="flex items-center gap-3 px-3.5 py-2.5">
+								<input
+									type="checkbox"
+									checked={selectedForDelete.has(att.id)}
+									onchange={() => toggleDeleteSelection(att.id)}
+									aria-label="Select {att.filename} for deletion"
+									title="Select for deletion"
+									class={CHECKBOX}
+								/>
 								{#if picking}
+									<!-- A second box, only while files are picked to move, with the move picker's own meaning. -->
 									<input
 										type="checkbox"
 										checked={picker.picked.has(att.id)}
 										onchange={() => picker.toggle(att.id)}
-										aria-label="Select {att.filename}"
+										aria-label="Select {att.filename} to move"
+										title="Select to move"
 										class={CHECKBOX}
 									/>
 								{/if}
-								<!-- Thumbnail -->
+								<!-- Thumbnail: a picture or a text file opens its preview here too, as the magnifier does. -->
 								{#if isImage}
-									<img {src} alt="" class="bg-duvet-secondary-fill rounded-tile size-10 shrink-0 object-cover" />
+									<button
+										type="button"
+										class="rounded-tile size-10 shrink-0 cursor-zoom-in overflow-hidden transition-[filter] hover:brightness-105 motion-reduce:transition-none {FOCUS_RING}"
+										title="Preview"
+										aria-label="Preview {att.filename}"
+										onclick={() => openPreview(src, att.filename)}
+									>
+										<img {src} alt="" class="bg-duvet-secondary-fill size-full object-cover" />
+									</button>
+								{:else if isText}
+									<button
+										type="button"
+										class="bg-duvet-secondary-fill text-duvet-ink2 rounded-tile hover:bg-duvet-hover-strong grid size-10 shrink-0 place-items-center transition-colors motion-reduce:transition-none {FOCUS_RING}"
+										title="Preview"
+										aria-label="Preview {att.filename}"
+										onclick={() => openTextPreview(src, att.filename)}
+									>
+										<PaperclipIcon size={16} />
+									</button>
 								{:else}
 									<div
 										class="bg-duvet-secondary-fill text-duvet-ink2 rounded-tile grid size-10 shrink-0 place-items-center"

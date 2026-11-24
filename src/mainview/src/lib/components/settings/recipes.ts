@@ -125,9 +125,15 @@ export function usagePercent(used: number, limit: number): number {
 	return Math.min(Math.max(Math.round((used / limit) * 100), 0), 100);
 }
 
-/** A usage bar's fill: amber past 70%, red past 90%. */
+/** A usage bar's fill: azure under 20%, green to 60%, amber to 90%, red beyond. */
 export function usageTone(percent: number): string {
-	return percent > 90 ? "bg-duvet-danger" : percent > 70 ? "bg-duvet-warn" : "bg-duvet-ink2";
+	return percent > 90
+		? "bg-duvet-danger"
+		: percent >= 60
+			? "bg-duvet-warn"
+			: percent >= 20
+				? "bg-duvet-alive"
+				: "bg-duvet-azure";
 }
 
 /** A file's size as the settings' lists write it: B, KB or MB, to a decimal. */

@@ -56,6 +56,11 @@ describe("a button", () => {
 		expect(danger).not.toContain("text-fixed-white");
 	});
 
+	test("warn is the amber fill with the page's ink, so both themes keep their contrast", () => {
+		const warn = classes(buttonClass("warn"));
+		expect(warn).toEqual(expect.arrayContaining(["bg-duvet-warn", "text-duvet-bg", "shadow-duvet-control"]));
+	});
+
 	test("quiet has no fill until hovered", () => {
 		const quiet = classes(buttonClass("quiet"));
 		expect(quiet.filter((c) => c.startsWith("bg-"))).toEqual([]);
@@ -63,7 +68,7 @@ describe("a button", () => {
 	});
 
 	test("every variant fades when disabled and drops its transition under reduced motion", () => {
-		for (const variant of ["primary", "secondary", "danger", "quiet"] as const) {
+		for (const variant of ["primary", "secondary", "danger", "warn", "quiet"] as const) {
 			expect(classes(buttonClass(variant))).toEqual(
 				expect.arrayContaining([
 					"disabled:opacity-45",

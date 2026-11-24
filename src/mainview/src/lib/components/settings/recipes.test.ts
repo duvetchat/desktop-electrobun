@@ -134,9 +134,12 @@ describe("storage's sums", () => {
 		expect(usagePercent(10, 0)).toBe(0);
 	});
 
-	test("the bar turns amber past 70% and red past 90%", () => {
-		expect(usageTone(70)).toBe("bg-duvet-ink2");
-		expect(usageTone(71)).toBe("bg-duvet-warn");
+	test("the bar is azure under 20%, green to 60%, amber to 90% and red beyond", () => {
+		expect(usageTone(0)).toBe("bg-duvet-azure");
+		expect(usageTone(19)).toBe("bg-duvet-azure");
+		expect(usageTone(20)).toBe("bg-duvet-alive");
+		expect(usageTone(59)).toBe("bg-duvet-alive");
+		expect(usageTone(60)).toBe("bg-duvet-warn");
 		expect(usageTone(90)).toBe("bg-duvet-warn");
 		expect(usageTone(91)).toBe("bg-duvet-danger");
 	});
