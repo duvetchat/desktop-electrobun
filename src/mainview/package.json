@@ -19,9 +19,13 @@
 		"emoji-datasource": "^16.0.0",
 		"facehash-sv": "^0.0.5",
 		"gifenc": "^1.0.3",
+		"i18next": "^27.2.6",
+		"i18next-icu": "^2.7.1",
+		"intl-messageformat": "^12.2.1",
 		"shiki": "^4.0.2"
 	},
 	"devDependencies": {
+		"@formatjs/icu-messageformat-parser": "^3.5.23",
 		"@sveltejs/adapter-static": "^3.0.10",
 		"@sveltejs/kit": "^2.49.2",
 		"@sveltejs/vite-plugin-svelte": "^6.2.1",
