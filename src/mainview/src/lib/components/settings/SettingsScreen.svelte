@@ -161,6 +161,8 @@
 		type SettingsNavGroup,
 	} from "./recipes";
 	import { pageSettingsHost, type MessageLayout, type SettingsHost } from "$lib/settings-host";
+	import { OFFERED, localePref, setLocalePref, systemLanguageName, t } from "$lib/i18n";
+	import { LOCALE_NAMES, parseLocalePref } from "$lib/i18n/locale";
 	import { defaultMessageLayout } from "$lib/message-layout";
 	import { USER_SCOPE, type StagedImage } from "$lib/staged-images";
 	import { isImageAttachment, isTextAttachment } from "$lib/attachment-preview";
@@ -549,8 +551,8 @@
 
 	// When one of your transfers ends, files have moved: reload what the open section shows.
 	$effect(() =>
-		storageTransfers.onEnd((t) => {
-			if (!open || t.owner_id !== $currentUser?.id) return;
+		storageTransfers.onEnd((transfer) => {
+			if (!open || transfer.owner_id !== $currentUser?.id) return;
 			if (activeSection === "attachments") void loadAttachments();
 			else if (activeSection === "buckets") void loadBuckets();
 		}),
@@ -972,7 +974,7 @@
 	async function handleDeleteTeam(team: Team) {
 		await confirmAction(`Delete team "${team.name}"? All applications will be deleted.`, "Delete", async () => {
 			await deleteTeam(team.id);
-			devTeams = devTeams.filter((t) => t.id !== team.id);
+			devTeams = devTeams.filter((kept) => kept.id !== team.id);
 			if (devSelectedTeam?.id === team.id) {
 				devSelectedTeam = null;
 				devApps = [];
@@ -985,7 +987,7 @@
 		if (!devEditingTeam || !devEditTeamName.trim()) return;
 		try {
 			const updated = await updateTeam(devEditingTeam.id, devEditTeamName.trim());
-			devTeams = devTeams.map((t) => (t.id === updated.id ? updated : t));
+			devTeams = devTeams.map((each) => (each.id === updated.id ? updated : each));
 			if (devSelectedTeam?.id === updated.id) devSelectedTeam = updated;
 			devEditingTeam = null;
 		} catch (e) {
@@ -1585,6 +1587,23 @@
 			onRefreshCameras={loadCameras}
 		/>
 	{:else if activeSection === "appearance"}
+		<SettingsGroup title={t("settings_language_title")}>
+			<SettingsRow label={t("settings_language_label")} line={t("settings_language_note")} labelFor="app-language">
+				<select
+					id="app-language"
+					class={SELECT}
+					value={localePref()}
+					onchange={(event) => void setLocalePref(parseLocalePref(event.currentTarget.value, OFFERED))}
+				>
+					<option value="system">{t("settings_language_system", { language: systemLanguageName() })}</option>
+					{#each OFFERED as locale (locale)}
+						<!-- Each language's name in itself, marked as that language for the system to read it right. -->
+						<option value={locale} lang={locale}>{LOCALE_NAMES[locale]}</option>
+					{/each}
+				</select>
+			</SettingsRow>
+		</SettingsGroup>
+
 		<SettingsGroup
 			title="Theme"
 			plain

@@ -1,0 +1,6 @@
+{
+	"settings_language_title": "Language",
+	"settings_language_label": "App language",
+	"settings_language_note": "Duvet's menus, buttons and notices. Messages stay as people wrote them. Saved on this device.",
+	"settings_language_system": "Match system ({language})"
+}

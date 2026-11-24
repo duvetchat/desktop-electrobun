@@ -1,0 +1,6 @@
+{
+	"settings_language_title": "Sprache",
+	"settings_language_label": "App-Sprache",
+	"settings_language_note": "Menüs, Schaltflächen und Hinweise von Duvet. Nachrichten bleiben so, wie sie geschrieben wurden. Wird auf diesem Gerät gespeichert.",
+	"settings_language_system": "Wie das System ({language})"
+}
