@@ -3,6 +3,9 @@
 	import { toast } from "$lib/stores/toast.svelte";
 	import { confirmAction } from "$lib/stores/confirm.svelte";
 	import { getApiError } from "$lib/api/api";
+	import { t, type MessageKey } from "$lib/i18n";
+	import { formatDate, formatList, formatNumber } from "$lib/i18n/format";
+	import Rich from "$lib/components/Rich.svelte";
 	import SmileIcon from "$lib/components/ui/icons/Smile.svelte";
 	import {
 		GripVertical as DotsSixVerticalIcon,
@@ -36,13 +39,7 @@
 	import FilePickerBar from "$lib/components/FilePickerBar.svelte";
 	import { FilePicker } from "$lib/file-picker.svelte";
 	import { storageTransfers, bucketFilesCount } from "$lib/stores/storage-transfers.svelte";
-	import {
-		bucketChoice,
-		countFiles,
-		MAX_PICKED_FILES,
-		type PickableFile,
-		type TransferFilter,
-	} from "$lib/storage-transfers";
+	import { bucketChoice, MAX_PICKED_FILES, type PickableFile, type TransferFilter } from "$lib/storage-transfers";
 	import SpaceBans from "$lib/components/SpaceBans.svelte";
 	import SpaceMembers from "$lib/components/SpaceMembers.svelte";
 	import Webhooks from "$lib/components/Webhooks.svelte";
@@ -288,9 +285,9 @@
 				icon: updated.icon,
 				default_notifications: updated.default_notifications,
 			});
-			toast("Space updated", "success");
+			toast(t("space_overview_saved"), "success");
 		} catch (e) {
-			toast(getApiError(e, "Couldn't update"), "error");
+			toast(getApiError(e, t("space_overview_save_failed")), "error");
 		} finally {
 			ovSaving = false;
 			ovUploadPercent = null;
@@ -326,7 +323,7 @@
 			// It goes from the app at once, which says so (lib/settings-host.ts).
 			host.spaceDeleted(id, name);
 		} catch (e) {
-			deleteError = getApiError(e, "Couldn't delete the Space");
+			deleteError = getApiError(e, t("space_delete_failed"));
 		} finally {
 			deletingSpace = false;
 		}
@@ -495,21 +492,25 @@
 	// The sections whose controls the API lets the user use; without any of those permissions, only the emoji and
 	// sticker lists, read-only.
 	const sections = $derived(settingsSections(spacePermissions));
-	// Each section's place in the side panel: the app's own sections, in their fixed order.
-	const SECTION_ITEMS: Record<SettingsSection, Omit<SettingsNavItem<SettingsSection>, "id">> = {
-		overview: { label: "Overview", icon: GearSixIcon, tile: "#5e6380" },
-		roles: { label: "Roles", icon: ShieldStarIcon, tile: "#7c5cff" },
-		members: { label: "Members", icon: UsersThreeIcon, tile: "#0e8fd6" },
-		invites: { label: "Invites", icon: LinkIcon, tile: "#2f9e62" },
-		bans: { label: "Bans", icon: BanIcon, tile: "#b0443b" },
-		emojis: { label: "Emojis", icon: SmileIcon, tile: "#f59e0b" },
-		stickers: { label: "Stickers", icon: StickerIcon, tile: "#f97316" },
-		webhooks: { label: "Webhooks", icon: WebhookIcon, tile: "#e44fcb" },
-		storage: { label: "Storage", icon: DatabaseIcon, tile: "#0b6fe8" },
-		attachments: { label: "Attachments", icon: PaperclipIcon, tile: "#5f45b5" },
+	// Each section's place in the side panel: the app's own sections, in their fixed order. Its label is a key, whose
+	// words are read as the panel draws, in the language of the moment.
+	const SECTION_ITEMS: Record<
+		SettingsSection,
+		Omit<SettingsNavItem<SettingsSection>, "id" | "label"> & { label: MessageKey }
+	> = {
+		overview: { label: "space_section_overview", icon: GearSixIcon, tile: "#5e6380" },
+		roles: { label: "space_section_roles", icon: ShieldStarIcon, tile: "#7c5cff" },
+		members: { label: "space_section_members", icon: UsersThreeIcon, tile: "#0e8fd6" },
+		invites: { label: "space_section_invites", icon: LinkIcon, tile: "#2f9e62" },
+		bans: { label: "space_section_bans", icon: BanIcon, tile: "#b0443b" },
+		emojis: { label: "space_section_emojis", icon: SmileIcon, tile: "#f59e0b" },
+		stickers: { label: "space_section_stickers", icon: StickerIcon, tile: "#f97316" },
+		webhooks: { label: "space_section_webhooks", icon: WebhookIcon, tile: "#e44fcb" },
+		storage: { label: "space_section_storage", icon: DatabaseIcon, tile: "#0b6fe8" },
+		attachments: { label: "space_section_attachments", icon: PaperclipIcon, tile: "#5f45b5" },
 	};
 	const sectionGroups = $derived<SettingsNavGroup<SettingsSection>[]>([
-		{ items: sections.map((id) => ({ id, ...SECTION_ITEMS[id] })) },
+		{ items: sections.map((id) => ({ id, ...SECTION_ITEMS[id], label: t(SECTION_ITEMS[id].label) })) },
 	]);
 	// One they can't open (another space's settings, or a permission gone) gives way to the first they can, before it
 	// shows.
@@ -526,9 +527,11 @@
 		return permissions.reduce((acc, perm) => acc | perm, 0);
 	}
 
+	// The names of the permissions a role grants, one after another as the locale lists them ("Kick Members, Ban
+	// Members" in English).
 	function getPermissionNames(flags: number): string {
 		const perms = PERMISSIONS.filter((p) => (flags & p.flag) === p.flag).map((p) => p.name);
-		return perms.length > 0 ? perms.join(", ") : "No permissions assigned";
+		return perms.length > 0 ? formatList(perms, { type: "unit", style: "short" }) : t("space_role_no_permissions");
 	}
 
 	function togglePermission(flag: number, isEdit = false) {
@@ -565,7 +568,7 @@
 			newRoleUseGradient = false;
 		} catch (err) {
 			console.error("Couldn't create role:", err);
-			toast(getApiError(err, "Couldn't create role"), "error");
+			toast(getApiError(err, t("space_role_create_failed")), "error");
 		} finally {
 			isCreating = false;
 		}
@@ -597,17 +600,19 @@
 			editingRoleId = null;
 		} catch (err) {
 			console.error("Couldn't update role:", err);
-			toast(getApiError(err, "Couldn't update role"), "error");
+			toast(getApiError(err, t("space_role_update_failed")), "error");
 		} finally {
 			isCreating = false;
 		}
 	}
 
 	async function handleDeleteRole(roleId: string) {
-		const roleName = sortedRoles.find((r) => r.id === roleId)?.name ?? "this role";
+		const roleName: string | null = sortedRoles.find((r) => r.id === roleId)?.name ?? null;
 		if (!spaceId) return;
 		const sid = spaceId;
-		await confirmAction(`Delete "${roleName}"? This can't be undone.`, "Delete", async () => {
+		const message =
+			roleName === null ? t("space_role_delete_confirm_unknown") : t("space_role_delete_confirm", { name: roleName });
+		await confirmAction(message, t("space_item_delete"), async () => {
 			await deleteRole(sid, roleId);
 			if (editingRoleId === roleId) {
 				editingRoleId = null;
@@ -652,7 +657,7 @@
 			spaceEmojis = await listEmojis(spaceId);
 		} catch (err) {
 			console.error("Couldn't load emojis:", err);
-			toast(getApiError(err, "Couldn't load emojis"), "error");
+			toast(getApiError(err, t("space_emojis_load_failed")), "error");
 		} finally {
 			emojisLoading = false;
 		}
@@ -687,7 +692,7 @@
 			await loadEmojis();
 		} catch (err) {
 			console.error("Couldn't upload emoji:", err);
-			toast(getApiError(err, "Couldn't upload emoji"), "error");
+			toast(getApiError(err, t("space_emoji_upload_failed")), "error");
 		} finally {
 			isUploadingEmoji = false;
 			emojiUploadPercent = null;
@@ -713,15 +718,19 @@
 			await loadEmojis();
 		} catch (err) {
 			console.error("Couldn't update emoji:", err);
-			toast(getApiError(err, "Couldn't update emoji"), "error");
+			toast(getApiError(err, t("space_emoji_rename_failed")), "error");
 		}
 	}
 
 	async function handleDeleteEmoji(emojiId: string) {
 		if (!spaceId) return;
 		const sid = spaceId;
-		const emojiName = spaceEmojis.find((e) => e.id === emojiId)?.name ?? "this emoji";
-		await confirmAction(`Delete ":${emojiName}:"? This can't be undone.`, "Delete", async () => {
+		const emojiName = spaceEmojis.find((e) => e.id === emojiId)?.name ?? null;
+		const message =
+			emojiName === null
+				? t("space_emoji_delete_confirm_unknown")
+				: t("space_emoji_delete_confirm", { name: emojiName });
+		await confirmAction(message, t("space_item_delete"), async () => {
 			isDeletingEmoji = { ...isDeletingEmoji, [emojiId]: true };
 			try {
 				await deleteEmoji(sid, emojiId);
@@ -744,7 +753,7 @@
 			spaceStickers = await listStickers(spaceId);
 		} catch (err) {
 			console.error("Couldn't load stickers:", err);
-			toast(getApiError(err, "Couldn't load stickers"), "error");
+			toast(getApiError(err, t("space_stickers_load_failed")), "error");
 		} finally {
 			stickersLoading = false;
 		}
@@ -777,7 +786,7 @@
 			await loadStickers();
 		} catch (err) {
 			console.error("Couldn't upload sticker:", err);
-			toast(getApiError(err, "Couldn't upload sticker"), "error");
+			toast(getApiError(err, t("space_sticker_upload_failed")), "error");
 		} finally {
 			isUploadingSticker = false;
 			stickerUploadPercent = null;
@@ -803,15 +812,19 @@
 			await loadStickers();
 		} catch (err) {
 			console.error("Couldn't update sticker:", err);
-			toast(getApiError(err, "Couldn't update sticker"), "error");
+			toast(getApiError(err, t("space_sticker_rename_failed")), "error");
 		}
 	}
 
 	async function handleDeleteSticker(stickerId: string) {
 		if (!spaceId) return;
 		const sid = spaceId;
-		const stickerName = spaceStickers.find((s) => s.id === stickerId)?.name ?? "this sticker";
-		await confirmAction(`Delete "${stickerName}"? This can't be undone.`, "Delete", async () => {
+		const stickerName = spaceStickers.find((s) => s.id === stickerId)?.name ?? null;
+		const message =
+			stickerName === null
+				? t("space_sticker_delete_confirm_unknown")
+				: t("space_sticker_delete_confirm", { name: stickerName });
+		await confirmAction(message, t("space_item_delete"), async () => {
 			isDeletingSticker = { ...isDeletingSticker, [stickerId]: true };
 			try {
 				await deleteSticker(sid, stickerId);
@@ -831,7 +844,7 @@
 			spaceBuckets = await getSpaceBuckets(spaceId);
 			storageTransfers.nameBuckets(spaceBuckets);
 		} catch (e) {
-			spaceBucketsError = getApiError(e, "Couldn't load");
+			spaceBucketsError = getApiError(e, t("space_buckets_load_failed"));
 		} finally {
 			spaceBucketsLoading = false;
 		}
@@ -867,6 +880,29 @@
 
 	const formatFileSize = listFileSize;
 
+	// When an invite expires: the date and the time to the second, as toLocaleString() wrote them.
+	const DATE_TIME: Intl.DateTimeFormatOptions = {
+		year: "numeric",
+		month: "numeric",
+		day: "numeric",
+		hour: "numeric",
+		minute: "numeric",
+		second: "numeric",
+	};
+
+	/** A bucket's bytes in megabytes, to so many decimals, in the locale's digits, ungrouped as toFixed wrote them. */
+	function megabytes(bytes: number, digits: number): string {
+		return formatNumber(bytes / 1024 / 1024, {
+			minimumFractionDigits: digits,
+			maximumFractionDigits: digits,
+			useGrouping: false,
+		});
+	}
+
+	/** What an overview image is, for a screen reader. */
+	const imageAlt = (kind: "banner" | "icon") =>
+		kind === "banner" ? t("space_overview_banner_alt") : t("space_overview_icon_alt");
+
 	async function loadSpaceAttachments(location = spaceAttachmentsLocation) {
 		if (!spaceId) return;
 		const sid = spaceId;
@@ -884,7 +920,7 @@
 			spaceStorageUsed = used.total_size;
 			spacePicker.prune();
 		} catch (e) {
-			if (loadId === spaceAttachmentsLoadId) toast(getApiError(e, "Couldn't load attachments"), "error");
+			if (loadId === spaceAttachmentsLoadId) toast(getApiError(e, t("space_attachments_load_failed")), "error");
 		} finally {
 			if (loadId === spaceAttachmentsLoadId) spaceAttachmentsLoading = false;
 		}
@@ -917,9 +953,10 @@
 	let spaceBucketFilesRequest = $state<{ bucket: StorageBucket; files: number } | null>(null);
 
 	function spaceStorageLabel(bucketId: string | null): string {
-		if (bucketId === null) return "Default storage";
 		return (
-			spaceBuckets.find((b) => b.id === bucketId)?.name ?? storageTransfers.storageName(bucketId) ?? "another bucket"
+			spaceBuckets.find((b) => b.id === bucketId)?.name ??
+			storageTransfers.storageName(bucketId) ??
+			t("space_storage_other_bucket")
 		);
 	}
 
@@ -943,7 +980,7 @@
 			spaceBuckets = bucketList;
 			storageTransfers.nameBuckets(bucketList);
 			if (files.length === 0) {
-				toast(`"${bucket.name}" has no files.`, "info");
+				toast(t("space_bucket_no_files", { name: bucket.name }), "info");
 				return;
 			}
 			spaceMoveSourceId = bucket.id;
@@ -951,7 +988,7 @@
 			spaceMoveFilter = {};
 			spaceMoveOpen = true;
 		} catch (err) {
-			toast(getApiError(err, "Couldn't load the bucket's files"), "error");
+			toast(getApiError(err, t("space_bucket_files_load_failed")), "error");
 		} finally {
 			movingSpaceBucketId = null;
 		}
@@ -973,8 +1010,8 @@
 
 	// When one of the space's transfers ends, files have moved: reload what the open section shows.
 	$effect(() =>
-		storageTransfers.onEnd((t) => {
-			if (!open || t.owner_id !== spaceId) return;
+		storageTransfers.onEnd((ended) => {
+			if (!open || ended.owner_id !== spaceId) return;
 			if (activeSection === "storage") void loadSpaceBuckets();
 			else if (activeSection === "attachments") {
 				void loadSpaceAttachments();
@@ -987,8 +1024,8 @@
 		if (!spaceId) return;
 		const sid = spaceId;
 		await confirmAction(
-			`Delete "${att.filename}"? Emojis and stickers made from it are deleted too.`,
-			"Delete",
+			t("space_attachment_delete_confirm", { name: att.filename }),
+			t("space_item_delete"),
 			async () => {
 				await deleteSpaceAttachment(sid, att.id);
 				spaceAttachments = spaceAttachments.filter((a) => a.id !== att.id);
@@ -1000,15 +1037,11 @@
 	async function handleDeleteAllSpaceAttachments() {
 		if (!spaceId) return;
 		const sid = spaceId;
-		await confirmAction(
-			"Delete all attachments in this Space? Its emojis and stickers go with them. This cannot be undone.",
-			"Delete",
-			async () => {
-				await deleteAllSpaceAttachments(sid);
-				spaceAttachments = [];
-				spaceStorageUsed = 0;
-			},
-		);
+		await confirmAction(t("space_attachments_delete_all_confirm"), t("space_item_delete"), async () => {
+			await deleteAllSpaceAttachments(sid);
+			spaceAttachments = [];
+			spaceStorageUsed = 0;
+		});
 	}
 
 	// Load the attachments on opening the section, and again for each location picked
@@ -1028,7 +1061,7 @@
 		try {
 			spaceInvites = await listSpaceInvites(spaceId);
 		} catch (e) {
-			toast(getApiError(e, "Couldn't load invites"), "error");
+			toast(getApiError(e, t("space_invites_load_failed")), "error");
 		} finally {
 			spaceInvitesLoading = false;
 		}
@@ -1037,7 +1070,7 @@
 	async function handleRevokeInvite(invite: InviteLink) {
 		if (!spaceId) return;
 		const sid = spaceId;
-		await confirmAction("Revoke this invite? Its link stops working.", "Revoke", async () => {
+		await confirmAction(t("space_invite_revoke_confirm"), t("space_invite_revoke"), async () => {
 			await revokeInvite(sid, invite.id);
 			spaceInvites = spaceInvites.filter((i) => i.id !== invite.id);
 		});
@@ -1045,7 +1078,7 @@
 
 	function inviteCreator(userId: string): string {
 		const user = space?.users.find((u) => u.id === userId);
-		return user ? (user.alias ?? user.username) : "Unknown user";
+		return user ? (user.alias ?? user.username) : t("space_unknown_user");
 	}
 
 	$effect(() => {
@@ -1112,7 +1145,7 @@
 				resetSpaceBucketForm();
 				await loadSpaceBuckets();
 			} catch (e) {
-				spaceBucketsError = getApiError(e, "Couldn't save");
+				spaceBucketsError = getApiError(e, t("space_bucket_save_failed"));
 			} finally {
 				spaceBucketSaving = false;
 			}
@@ -1121,11 +1154,7 @@
 		if (editingSpaceBucket) {
 			await doSave();
 		} else {
-			await confirmAction(
-				"You are about to connect external storage credentials to this Space. Make sure you own and trust these credentials. The bucket owner can read, modify, or delete all emojis, and stickers, and revoke access at any time.",
-				"Yes, add bucket",
-				doSave,
-			);
+			await confirmAction(t("space_bucket_add_confirm"), t("space_bucket_add_confirm_button"), doSave);
 		}
 	}
 
@@ -1135,7 +1164,7 @@
 		const b = spaceBuckets.find((x) => x.id === id);
 		// Gone already (deleted elsewhere): there is nothing to name, or to delete.
 		if (!b) return;
-		await confirmAction(`Delete bucket "${b.name}"?`, "Delete", async () => {
+		await confirmAction(t("space_bucket_delete_confirm", { name: b.name }), t("space_item_delete"), async () => {
 			try {
 				await deleteSpaceBucket(sid, id);
 			} catch (err) {
@@ -1144,11 +1173,7 @@
 				const files = bucketFilesCount(err);
 				if (files === null || !b) throw err;
 				if (!canManageAttachments) {
-					const them = files === 1 ? "it" : "them";
-					throw new Error(
-						`This bucket has ${countFiles(files)}. Moving or deleting ${them} takes the Manage Attachments permission.`,
-						{ cause: err },
-					);
+					throw new Error(t("space_bucket_delete_needs_permission", { count: files }), { cause: err });
 				}
 				spaceBucketFilesRequest = { bucket: b, files };
 				return;
@@ -1179,12 +1204,18 @@
 			}
 			await loadSpaceBuckets();
 		} catch (e) {
-			toast(getApiError(e, "Couldn't toggle bucket"), "error");
+			toast(getApiError(e, t("space_bucket_toggle_failed")), "error");
 		} finally {
 			togglingSpaceBucketId = null;
 		}
 	}
 </script>
+
+<!-- How the words in a sentence's tags are drawn (Rich.svelte). -->
+{#snippet bold(text: string)}<strong>{text}</strong>{/snippet}
+{#snippet strong(text: string)}<strong class="font-semibold">{text}</strong>{/snippet}
+{#snippet pathStyleNote(text: string)}<span class="text-duvet-ink2">{text}</span>{/snippet}
+{#snippet fileCount(text: string)}<span class="text-duvet-ink font-semibold tabular-nums">{text}</span>{/snippet}
 
 {#snippet spinner()}
 	<span class="border-duvet-ink2/40 block size-4 animate-spin rounded-full border-2 border-t-transparent"></span>
@@ -1225,9 +1256,9 @@
 				value={from}
 				oninput={(e) => set("from", e.currentTarget.value)}
 				class={colorSwatch}
-				title="Color from"
+				title={t("space_role_color_from_title")}
 			/>
-			From
+			{t("space_role_color_from")}
 		</label>
 		{#if gradient}
 			<label class="text-duvet-ink2 flex items-center gap-1.5 text-[11px]">
@@ -1236,9 +1267,9 @@
 					value={via}
 					oninput={(e) => set("via", e.currentTarget.value)}
 					class={colorSwatch}
-					title="Color via (middle)"
+					title={t("space_role_color_via_title")}
 				/>
-				Via
+				{t("space_role_color_via")}
 			</label>
 			<label class="text-duvet-ink2 flex items-center gap-1.5 text-[11px]">
 				<input
@@ -1246,9 +1277,9 @@
 					value={to}
 					oninput={(e) => set("to", e.currentTarget.value)}
 					class={colorSwatch}
-					title="Color to"
+					title={t("space_role_color_to_title")}
 				/>
-				To
+				{t("space_role_color_to")}
 			</label>
 		{/if}
 		<!-- Preview swatch -->
@@ -1270,7 +1301,7 @@
 			{@const settable = canSetPermission(spacePermissions, saved, perm.flag)}
 			<div
 				class="flex items-center gap-3 px-3 py-2 {settable ? '' : 'opacity-50'}"
-				title={settable ? undefined : "You can only grant permissions you have"}
+				title={settable ? undefined : t("space_role_permission_not_yours")}
 			>
 				<div class="min-w-0 flex-1">
 					<p class="text-[13px] leading-[1.3] font-medium">{perm.name}</p>
@@ -1288,19 +1319,29 @@
 {/snippet}
 
 {#snippet bucketForm()}
-	<SettingsGroup title={editingSpaceBucket ? "Edit bucket" : "New bucket"} plain class="flex flex-col gap-3">
+	<SettingsGroup
+		title={editingSpaceBucket ? t("space_bucket_form_edit") : t("space_bucket_form_new")}
+		plain
+		class="flex flex-col gap-3"
+	>
 		<div class="grid grid-cols-2 gap-3">
 			<div>
-				<label for="sb-name" class={LABEL}>Name</label>
-				<input id="sb-name" type="text" bind:value={sbName} placeholder="My R2" class={FIELD} />
+				<label for="sb-name" class={LABEL}>{t("space_bucket_field_name")}</label>
+				<input
+					id="sb-name"
+					type="text"
+					bind:value={sbName}
+					placeholder={t("space_bucket_field_name_placeholder")}
+					class={FIELD}
+				/>
 			</div>
 			<div>
-				<label for="sb-region" class={LABEL}>Region</label>
+				<label for="sb-region" class={LABEL}>{t("space_bucket_field_region")}</label>
 				<input id="sb-region" type="text" bind:value={sbRegion} placeholder="auto" class={FIELD} />
 			</div>
 		</div>
 		<div>
-			<label for="sb-endpoint" class={LABEL}>Endpoint</label>
+			<label for="sb-endpoint" class={LABEL}>{t("space_bucket_field_endpoint")}</label>
 			<input
 				id="sb-endpoint"
 				type="text"
@@ -1310,64 +1351,80 @@
 			/>
 		</div>
 		<div>
-			<label for="sb-bucket-name" class={LABEL}>Bucket name</label>
-			<input id="sb-bucket-name" type="text" bind:value={sbBucketName} placeholder="my-bucket" class={FIELD} />
+			<label for="sb-bucket-name" class={LABEL}>{t("space_bucket_field_bucket")}</label>
+			<input
+				id="sb-bucket-name"
+				type="text"
+				bind:value={sbBucketName}
+				placeholder={t("space_bucket_field_bucket_placeholder")}
+				class={FIELD}
+			/>
 		</div>
 		<div class="grid grid-cols-2 gap-3">
 			<div>
-				<label for="sb-access-key" class={LABEL}>Access key ID</label>
-				<input id="sb-access-key" type="text" bind:value={sbAccessKey} placeholder="access key" class={FIELD} />
+				<label for="sb-access-key" class={LABEL}>{t("space_bucket_field_access_key")}</label>
+				<input
+					id="sb-access-key"
+					type="text"
+					bind:value={sbAccessKey}
+					placeholder={t("space_bucket_field_access_key_placeholder")}
+					class={FIELD}
+				/>
 			</div>
 			<div>
-				<label for="sb-secret-key" class={LABEL}>Secret access key</label>
+				<label for="sb-secret-key" class={LABEL}>{t("space_bucket_field_secret_key")}</label>
 				<input
 					id="sb-secret-key"
 					type="password"
 					bind:value={sbSecretKey}
-					placeholder={editingSpaceBucket ? "leave empty to keep current" : "secret key"}
+					placeholder={editingSpaceBucket
+						? t("space_bucket_field_secret_key_keep")
+						: t("space_bucket_field_secret_key_placeholder")}
 					class={FIELD}
 				/>
 			</div>
 		</div>
 		<label class="flex cursor-pointer items-center gap-2">
 			<input type="checkbox" bind:checked={sbUsePathStyle} class={CHECKBOX} />
-			<span class="text-duvet-ink text-xs"
-				>Use path-style addressing <span class="text-duvet-ink2">(required for MinIO, RustFS, etc.)</span></span
-			>
+			<span class="text-duvet-ink text-xs"><Rich key="space_bucket_path_style" tags={{ note: pathStyleNote }} /></span>
 		</label>
 		<div class="grid grid-cols-2 gap-3">
 			<div>
-				<label for="sb-max-bytes" class={LABEL}>Total limit (MB)</label>
+				<label for="sb-max-bytes" class={LABEL}>{t("space_bucket_field_total_limit")}</label>
 				<input
 					id="sb-max-bytes"
 					type="number"
 					min="0"
 					step="1"
 					bind:value={sbMaxBytesMB}
-					placeholder="No limit"
+					placeholder={t("space_bucket_field_no_limit")}
 					class={FIELD}
 				/>
 			</div>
 			<div>
-				<label for="sb-upload-limit" class={LABEL}>Per-file limit (MB)</label>
+				<label for="sb-upload-limit" class={LABEL}>{t("space_bucket_field_file_limit")}</label>
 				<input
 					id="sb-upload-limit"
 					type="number"
 					min="0"
 					step="1"
 					bind:value={sbUploadLimitMB}
-					placeholder="No limit"
+					placeholder={t("space_bucket_field_no_limit")}
 					class={FIELD}
 				/>
 			</div>
 		</div>
 		<p class="text-duvet-ink2 text-xs">
-			Leave empty to remove limits. When a total limit is set, oldest files are recycled automatically when full.
+			{t("space_bucket_limits_note")}
 		</p>
 		<div class="flex justify-end gap-2 pt-1">
-			<Button variant="quiet" onclick={resetSpaceBucketForm}>Cancel</Button>
+			<Button variant="quiet" onclick={resetSpaceBucketForm}>{t("space_cancel")}</Button>
 			<Button disabled={spaceBucketSaving} onclick={handleSaveSpaceBucket}>
-				{spaceBucketSaving ? "Saving…" : editingSpaceBucket ? "Update" : "Create"}
+				{spaceBucketSaving
+					? t("space_saving")
+					: editingSpaceBucket
+						? t("space_bucket_update")
+						: t("space_bucket_create")}
 			</Button>
 		</div>
 	</SettingsGroup>
@@ -1387,48 +1444,54 @@
 	{@const shape = kind === "banner" ? "h-24 w-60 rounded-2xl" : "size-20 rounded-[22px]"}
 	<div class="group bg-duvet-secondary-fill relative overflow-hidden {shape}">
 		{#if preview}
-			<img src={preview} alt={kind} class="size-full object-cover" />
+			<img src={preview} alt={imageAlt(kind)} class="size-full object-cover" />
 			<div
 				class="bg-duvet-media-scrim absolute inset-0 flex items-center justify-center gap-2 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 motion-reduce:transition-none"
 			>
-				<button class="text-fixed-white hover:bg-fixed-white/20 rounded-md p-1.5" title="Edit" onclick={edit}
-					><PencilIcon class="size-4" /></button
+				<button
+					class="text-fixed-white hover:bg-fixed-white/20 rounded-md p-1.5"
+					title={t("space_item_edit")}
+					onclick={edit}><PencilIcon class="size-4" /></button
 				>
 				<button
 					class="hover:bg-fixed-white/20 text-duvet-call-red-ink rounded-md p-1.5"
-					title="Discard"
+					title={t("space_overview_image_discard")}
 					onclick={discard}><XIcon class="size-4" /></button
 				>
 			</div>
 		{:else if pending === "remove"}
 			<div class="text-duvet-ink2 flex size-full items-center justify-center text-xs">
-				{#if kind === "banner"}No banner{:else}<XIcon class="size-5" />{/if}
+				{#if kind === "banner"}{t("space_overview_banner_none")}{:else}<XIcon class="size-5" />{/if}
 			</div>
 			<div
 				class="bg-duvet-media-scrim absolute inset-0 flex items-center justify-center opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 motion-reduce:transition-none"
 			>
-				<button class="text-fixed-white text-xs font-medium" onclick={undo}>Undo</button>
+				<button class="text-fixed-white text-xs font-medium" onclick={undo}>{t("space_overview_image_undo")}</button>
 			</div>
 		{:else if saved}
-			<img src={saved} alt={kind} class="size-full object-cover" />
+			<img src={saved} alt={imageAlt(kind)} class="size-full object-cover" />
 			<div
 				class="bg-duvet-media-scrim absolute inset-0 flex items-center justify-center gap-2 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 motion-reduce:transition-none"
 			>
-				<button class="text-fixed-white hover:bg-fixed-white/20 rounded-md p-1.5" title="Edit" onclick={edit}
-					><PencilIcon class="size-4" /></button
+				<button
+					class="text-fixed-white hover:bg-fixed-white/20 rounded-md p-1.5"
+					title={t("space_item_edit")}
+					onclick={edit}><PencilIcon class="size-4" /></button
 				>
-				<button class="hover:bg-fixed-white/20 text-duvet-call-red-ink rounded-md p-1.5" title="Remove" onclick={remove}
-					><TrashIcon class="size-4" /></button
+				<button
+					class="hover:bg-fixed-white/20 text-duvet-call-red-ink rounded-md p-1.5"
+					title={t("space_overview_image_remove")}
+					onclick={remove}><TrashIcon class="size-4" /></button
 				>
 			</div>
 		{:else}
 			<button
 				class="text-duvet-accent-text hover:bg-duvet-hover-strong flex size-full items-center justify-center gap-1.5 text-[13px] font-medium transition-colors motion-reduce:transition-none"
-				title={kind === "banner" ? "Set banner" : "Set icon"}
+				title={kind === "banner" ? t("space_overview_banner_set") : t("space_overview_icon_set")}
 				onclick={edit}
 			>
 				<PlusIcon class={kind === "banner" ? "size-4" : "size-5"} />
-				{#if kind === "banner"}Set banner{/if}
+				{#if kind === "banner"}{t("space_overview_banner_set")}{/if}
 			</button>
 		{/if}
 	</div>
@@ -1438,7 +1501,7 @@
 	{mode}
 	{chrome}
 	bind:open
-	name="{space?.name ?? 'Space'} · Space settings"
+	name={space ? t("space_settings_name", { name: space.name }) : t("space_settings_name_unknown")}
 	groups={sectionGroups}
 	bind:active={activeSection}
 	wide={activeSection === "roles"}
@@ -1447,8 +1510,10 @@
 		<div class="flex shrink-0 items-center gap-2.5 p-2">
 			<SpaceIconMark src={space?.icon ? getAvatarURL(space.id, space.icon) : null} name={space?.name ?? ""} size={34} />
 			<span class="min-w-0 flex-1">
-				<span class="font-serif-sm block truncate text-[15px] font-medium">{space?.name ?? "Space"}</span>
-				<span class="text-duvet-ink2 block truncate text-[11.5px]">Space settings</span>
+				<span class="font-serif-sm block truncate text-[15px] font-medium"
+					>{space?.name ?? t("space_settings_unknown_space")}</span
+				>
+				<span class="text-duvet-ink2 block truncate text-[11.5px]">{t("space_settings_title")}</span>
 			</span>
 		</div>
 	{/snippet}
@@ -1464,18 +1529,23 @@
 			>
 				<p class="text-duvet-ink2 min-w-0 truncate">
 					{#if spaceTransfer}
-						Wait for the transfer under way to end.
+						{t("space_attachments_wait_transfer")}
 					{:else if tooMany}
-						Pick {MAX_PICKED_FILES} files at most, or Select all.
+						{t("space_attachments_pick_max", { count: MAX_PICKED_FILES })}
 					{:else}
-						{countFiles(pickedCount)} selected
+						{t("space_attachments_picked", { count: pickedCount })}
 					{/if}
 				</p>
 				<div class="flex shrink-0 items-center gap-2">
-					<Button variant="quiet" onclick={() => spacePicker.picked.clear()}>Clear</Button>
+					<Button variant="quiet" onclick={() => spacePicker.picked.clear()}
+						>{t("space_attachments_clear_picked")}</Button
+					>
 					<Button onclick={openMoveSpacePicked} disabled={spaceTransfer !== null || tooMany}>
 						<MoveIcon size={15} />
-						Move {countFiles(pickedCount)} ({formatFileSize(spacePicker.pickedBytes)}) to…
+						{t("space_attachments_move_picked", {
+							count: pickedCount,
+							size: formatFileSize(spacePicker.pickedBytes),
+						})}
 					</Button>
 				</div>
 			</div>
@@ -1483,9 +1553,9 @@
 	{/snippet}
 
 	{#if activeSection === "overview"}
-		<SettingsGroup title="Banner and icon" plain class="flex flex-wrap items-end gap-5">
+		<SettingsGroup title={t("space_overview_images")} plain class="flex flex-wrap items-end gap-5">
 			<div>
-				<span class={LABEL}>Banner</span>
+				<span class={LABEL}>{t("space_overview_banner")}</span>
 				{@render imageSlot(
 					"banner",
 					pendingBannerPreview,
@@ -1502,7 +1572,7 @@
 				)}
 			</div>
 			<div>
-				<span class={LABEL}>Icon</span>
+				<span class={LABEL}>{t("space_overview_icon")}</span>
 				{@render imageSlot(
 					"icon",
 					pendingIconPreview,
@@ -1518,40 +1588,40 @@
 					() => (pendingIcon = null),
 				)}
 			</div>
-			<p class="text-duvet-ink2 w-full text-[11px] select-text">Space ID: {spaceId}</p>
+			<p class="text-duvet-ink2 w-full text-[11px] select-text">{t("space_overview_id", { id: spaceId ?? "" })}</p>
 		</SettingsGroup>
 
-		<SettingsGroup title="About" plain class="flex flex-col gap-4">
+		<SettingsGroup title={t("space_overview_about")} plain class="flex flex-col gap-4">
 			<label class="block">
-				<span class={LABEL}>Space name</span>
-				<input type="text" bind:value={ovName} placeholder="Space name" maxlength={64} class={FIELD} />
+				<span class={LABEL}>{t("space_overview_name")}</span>
+				<input type="text" bind:value={ovName} placeholder={t("space_overview_name")} maxlength={64} class={FIELD} />
 			</label>
 			<label class="block">
-				<span class={LABEL}>Description</span>
+				<span class={LABEL}>{t("space_overview_description")}</span>
 				<textarea
 					bind:value={ovDescription}
-					placeholder="What is this Space about?"
+					placeholder={t("space_overview_description_placeholder")}
 					rows="3"
 					maxlength={256}
 					class="{FIELD_AREA} {thinScrollbar}"
 				></textarea>
 			</label>
 			<label class="block">
-				<span class={LABEL}>Locale</span>
+				<span class={LABEL}>{t("space_overview_locale")}</span>
 				<input type="text" bind:value={ovLocale} placeholder="en" maxlength={4} class={FIELD} />
 			</label>
 		</SettingsGroup>
 
 		<!-- What members are notified of until they choose, in the Space's menu -->
-		<SettingsGroup title="New members">
+		<SettingsGroup title={t("space_overview_new_members")}>
 			<SettingsRow
-				label="Default notifications"
-				line="Members are notified of this until they choose for themselves."
+				label={t("space_overview_notifications")}
+				line={t("space_overview_notifications_line")}
 				labelFor="ov-default-notifications"
 			>
 				<select id="ov-default-notifications" bind:value={ovDefaultNotifications} class={SELECT}>
-					<option value={0}>All messages</option>
-					<option value={1}>Only mentions</option>
+					<option value={0}>{t("space_overview_notifications_all")}</option>
+					<option value={1}>{t("space_overview_notifications_mentions")}</option>
 				</select>
 			</SettingsRow>
 		</SettingsGroup>
@@ -1560,7 +1630,11 @@
 		{#if ovHasChanges}
 			<div>
 				<Button onclick={handleSaveOverview} disabled={ovSaving} class="tabular-nums">
-					{ovSaving ? (ovUploadPercent === null ? "Saving…" : uploadNote(ovUploadPercent)) : "Save changes"}
+					{ovSaving
+						? ovUploadPercent === null
+							? t("space_saving")
+							: uploadNote(ovUploadPercent)
+						: t("space_overview_save")}
 				</Button>
 			</div>
 		{/if}
@@ -1568,17 +1642,18 @@
 		<!-- Delete: the owner's alone, confirmed by typing the space's name -->
 		{#if isOwner && space}
 			<SettingsGroup plain class="ring-duvet-danger/40 ring-1">
-				<h3 class="text-duvet-danger text-[13.5px] font-medium">Delete Space</h3>
+				<h3 class="text-duvet-danger text-[13.5px] font-medium">{t("space_delete_heading")}</h3>
 				<p class="text-duvet-ink2 mt-0.5 text-xs">
-					It goes for everyone in it, with its rooms and messages. This can't be undone.
+					{t("space_delete_note")}
 				</p>
 				{#if !confirmingDelete}
-					<Button variant="danger" size="sm" class="mt-3" onclick={() => (confirmingDelete = true)}>Delete Space</Button
+					<Button variant="danger" size="sm" class="mt-3" onclick={() => (confirmingDelete = true)}
+						>{t("space_delete_button")}</Button
 					>
 				{:else}
 					<label class="mt-3 block">
 						<span class="mb-1.5 block text-xs">
-							Type <strong class="font-semibold">{space.name}</strong> to delete it.
+							<Rich key="space_delete_type_name" values={{ name: space.name }} tags={{ b: strong }} />
 						</span>
 						<input
 							type="text"
@@ -1596,7 +1671,7 @@
 					{/if}
 					<div class="mt-3 flex gap-2">
 						<Button variant="danger" onclick={handleDeleteSpace} disabled={!deleteNameMatches || deletingSpace}>
-							{deletingSpace ? "Deleting…" : "Delete Space"}
+							{deletingSpace ? t("space_delete_deleting") : t("space_delete_button")}
 						</Button>
 						<Button
 							variant="quiet"
@@ -1607,7 +1682,7 @@
 							}}
 							disabled={deletingSpace}
 						>
-							Cancel
+							{t("space_cancel")}
 						</Button>
 					</div>
 				{/if}
@@ -1617,23 +1692,23 @@
 		{#if canManageRoles && space}
 			<!-- Create new role -->
 			<SettingsGroup
-				title="Create new role"
+				title={t("space_role_create_title")}
 				plain
 				class="flex flex-col gap-4"
-				note="Set role identity, color, and permissions."
+				note={t("space_role_create_note")}
 			>
 				<label class="block">
-					<span class={LABEL}>Role name</span>
-					<input type="text" placeholder="Role name" bind:value={newRoleName} maxlength={64} class={FIELD} />
+					<span class={LABEL}>{t("space_role_name")}</span>
+					<input type="text" placeholder={t("space_role_name")} bind:value={newRoleName} maxlength={64} class={FIELD} />
 				</label>
 
 				<!-- Color -->
 				<div class="flex flex-col gap-2">
 					<div class="flex items-center justify-between">
-						<span class="{LABEL} mb-0!">Color</span>
+						<span class="{LABEL} mb-0!">{t("space_role_color")}</span>
 						<label class="text-duvet-ink2 flex cursor-pointer items-center gap-1.5 text-xs">
 							<input type="checkbox" bind:checked={newRoleUseGradient} class={CHECKBOX} />
-							Gradient
+							{t("space_role_gradient")}
 						</label>
 					</div>
 					{@render colorWells(newRoleUseGradient, newRoleColorFrom, newRoleColorVia, newRoleColorTo, (stop, value) => {
@@ -1645,25 +1720,25 @@
 
 				<!-- Hoisted -->
 				<div class="flex items-center justify-between gap-3">
-					<span class="text-[13px] font-medium">List this role's members separately</span>
-					<Toggle label="List this role's members separately" bind:checked={newRoleHoisted} />
+					<span class="text-[13px] font-medium">{t("space_role_hoist")}</span>
+					<Toggle label={t("space_role_hoist")} bind:checked={newRoleHoisted} />
 				</div>
 
 				<!-- Permissions -->
 				<div>
-					<p class={LABEL}>Permissions</p>
+					<p class={LABEL}>{t("space_role_permissions")}</p>
 					{@render permissionSwitches((flag) => newRolePermissions.includes(flag), 0, false)}
 				</div>
 
 				<Button onclick={handleCreateRole} disabled={isCreating || !newRoleName.trim()}>
-					{isCreating ? "Creating…" : "Create role"}
+					{isCreating ? t("space_role_creating") : t("space_role_create")}
 				</Button>
 			</SettingsGroup>
 
 			<!-- Existing roles -->
 			<section class="flex flex-col gap-2">
-				<h3 class={GROUP_TITLE}>Existing roles</h3>
-				<p class={NOTE}>Drag to reorder. Edit or delete using actions on the right.</p>
+				<h3 class={GROUP_TITLE}>{t("space_roles_existing")}</h3>
+				<p class={NOTE}>{t("space_roles_note")}</p>
 				<div class="flex flex-col gap-2" role="list">
 					{#each sortedRoles as role, i (role.id)}
 						{@const manageable = canManageRoleAt(space, role.position)}
@@ -1690,8 +1765,8 @@
 										<input
 											type="text"
 											bind:value={editingRoleName}
-											placeholder="Role name"
-											aria-label="Role name"
+											placeholder={t("space_role_name")}
+											aria-label={t("space_role_name")}
 											maxlength={64}
 											class={FIELD}
 										/>
@@ -1699,7 +1774,7 @@
 										<!-- Color -->
 										<div class="flex flex-col gap-2">
 											<div class="flex items-center justify-between">
-												<span class="{LABEL} mb-0!">Color</span>
+												<span class="{LABEL} mb-0!">{t("space_role_color")}</span>
 												<div class="flex items-center gap-2">
 													<button
 														type="button"
@@ -1709,12 +1784,12 @@
 														}}
 														class="{TAG} py-1! transition-colors motion-reduce:transition-none {editingRoleClearColors
 															? 'bg-duvet-danger text-duvet-on-danger'
-															: 'bg-duvet-secondary-fill text-duvet-ink'}">Clear color</button
+															: 'bg-duvet-secondary-fill text-duvet-ink'}">{t("space_role_clear_color")}</button
 													>
 													{#if !editingRoleClearColors}
 														<label class="text-duvet-ink2 flex cursor-pointer items-center gap-1.5 text-xs">
 															<input type="checkbox" bind:checked={editingRoleUseGradient} class={CHECKBOX} />
-															Gradient
+															{t("space_role_gradient")}
 														</label>
 													{/if}
 												</div>
@@ -1736,13 +1811,13 @@
 
 										<!-- Hoisted -->
 										<div class="flex items-center justify-between gap-3">
-											<span class="text-[13px] font-medium">List this role's members separately</span>
-											<Toggle label="List this role's members separately" bind:checked={editingRoleHoisted} />
+											<span class="text-[13px] font-medium">{t("space_role_hoist")}</span>
+											<Toggle label={t("space_role_hoist")} bind:checked={editingRoleHoisted} />
 										</div>
 
 										<!-- Permissions -->
 										<div>
-											<p class={LABEL}>Permissions</p>
+											<p class={LABEL}>{t("space_role_permissions")}</p>
 											{@render permissionSwitches(
 												(flag) => (editingRolePermissions & flag) === flag,
 												editingRoleSaved,
@@ -1751,8 +1826,8 @@
 										</div>
 
 										<div class="flex gap-2">
-											<Button class="flex-1" onclick={handleUpdateRole} disabled={isCreating}>Save</Button>
-											<Button variant="secondary" class="flex-1" onclick={cancelEdit}>Cancel</Button>
+											<Button class="flex-1" onclick={handleUpdateRole} disabled={isCreating}>{t("space_save")}</Button>
+											<Button variant="secondary" class="flex-1" onclick={cancelEdit}>{t("space_cancel")}</Button>
 										</div>
 									</div>
 								{:else}
@@ -1764,7 +1839,7 @@
 											<div class="mb-0.5 flex items-center gap-2">
 												<span class="truncate text-[13.5px] font-medium">{role.name}</span>
 												{#if role.hoisted}
-													<span class="{TAG} bg-duvet-secondary-fill text-duvet-ink2">Listed separately</span>
+													<span class="{TAG} bg-duvet-secondary-fill text-duvet-ink2">{t("space_role_hoisted")}</span>
 												{/if}
 											</div>
 											<p class="text-duvet-ink2 truncate text-xs">{getPermissionNames(role.permissions)}</p>
@@ -1772,7 +1847,7 @@
 										<!-- Only a role below the user's highest one, as the API's checkRoleHierarchy allows -->
 										<div
 											class="ml-1 flex shrink-0 gap-1.5"
-											title={manageable ? undefined : "Only roles below your highest role can be managed"}
+											title={manageable ? undefined : t("space_role_above_yours")}
 										>
 											<Button
 												variant="secondary"
@@ -1780,7 +1855,7 @@
 												disabled={!manageable}
 												onclick={() => {
 													startEdit(role);
-												}}>Edit</Button
+												}}>{t("space_item_edit")}</Button
 											>
 											<!-- everyone (its ID is the space's) can be edited, not deleted -->
 											{#if role.id !== spaceId}
@@ -1789,7 +1864,7 @@
 													size="sm"
 													class="text-duvet-danger! hover:bg-duvet-danger/15!"
 													disabled={!manageable}
-													onclick={() => handleDeleteRole(role.id)}>Delete</Button
+													onclick={() => handleDeleteRole(role.id)}>{t("space_item_delete")}</Button
 												>
 											{/if}
 										</div>
@@ -1801,12 +1876,12 @@
 				</div>
 				{#if space.roles.length === 0}
 					<p class="text-duvet-ink2 py-4 text-center text-sm">
-						No roles yet. Create one to start assigning permissions.
+						{t("space_roles_empty")}
 					</p>
 				{/if}
 			</section>
 		{:else}
-			<p class="text-duvet-ink2 px-1.5 text-sm">You don't have permission to manage roles.</p>
+			<p class="text-duvet-ink2 px-1.5 text-sm">{t("space_roles_no_permission")}</p>
 		{/if}
 	{:else if activeSection === "members"}
 		{#if space}
@@ -1818,35 +1893,45 @@
 		{@const loading = emojis ? emojisLoading : stickersLoading}
 		{@const canManage = emojis ? canManageEmojis : canManageStickers}
 		{#if loading}
-			<p class="text-duvet-ink2 px-1.5 text-sm">{emojis ? "Loading emojis…" : "Loading stickers…"}</p>
+			<p class="text-duvet-ink2 px-1.5 text-sm">
+				{emojis ? t("space_emojis_loading") : t("space_stickers_loading")}
+			</p>
 		{:else}
 			{#if canManage}
 				{@const preview = emojis ? newEmojiPreview : newStickerPreview}
 				{@const uploading = emojis ? isUploadingEmoji : isUploadingSticker}
 				{@const percent = emojis ? emojiUploadPercent : stickerUploadPercent}
 				<SettingsGroup
-					title={emojis ? "Upload emoji" : "Upload sticker"}
+					title={emojis ? t("space_emoji_upload_title") : t("space_sticker_upload_title")}
 					plain
-					note={emojis
-						? "Custom emojis require a storage bucket configured for this Space."
-						: "Custom stickers require a storage bucket configured for this Space."}
+					note={emojis ? t("space_emoji_upload_note") : t("space_sticker_upload_note")}
 				>
 					<div class="flex flex-wrap items-end gap-3">
 						<label class="block min-w-40 flex-1">
-							<span class={LABEL}>Name</span>
+							<span class={LABEL}>{t("space_upload_name")}</span>
 							{#if emojis}
-								<input type="text" class={FIELD} placeholder="emoji_name" bind:value={newEmojiName} />
+								<input
+									type="text"
+									class={FIELD}
+									placeholder={t("space_emoji_name_placeholder")}
+									bind:value={newEmojiName}
+								/>
 							{:else}
-								<input type="text" class={FIELD} placeholder="sticker_name" bind:value={newStickerName} />
+								<input
+									type="text"
+									class={FIELD}
+									placeholder={t("space_sticker_name_placeholder")}
+									bind:value={newStickerName}
+								/>
 							{/if}
 						</label>
 						<div>
-							<span class={LABEL}>Image</span>
+							<span class={LABEL}>{t("space_upload_image")}</span>
 							<button
 								type="button"
 								class="bg-duvet-secondary-fill text-duvet-accent-text hover:bg-duvet-hover-strong flex size-[38px] items-center justify-center overflow-hidden rounded-[11px] transition-colors motion-reduce:transition-none"
-								title={preview ? "Change image" : "Choose image"}
-								aria-label={preview ? "Change image" : "Choose image"}
+								title={preview ? t("space_upload_image_change") : t("space_upload_image_choose")}
+								aria-label={preview ? t("space_upload_image_change") : t("space_upload_image_choose")}
 								onclick={() => (emojis ? (showEmojiCrop = true) : (showStickerCrop = true))}
 							>
 								{#if preview}
@@ -1864,7 +1949,7 @@
 								: isUploadingSticker || !newStickerName.trim() || !newStickerFile}
 						>
 							<UploadIcon size={15} />
-							{uploading ? (percent === null ? "Uploading…" : uploadNote(percent)) : "Upload"}
+							{uploading ? (percent === null ? t("space_uploading") : uploadNote(percent)) : t("space_upload")}
 						</Button>
 					</div>
 				</SettingsGroup>
@@ -1874,13 +1959,13 @@
 				<div class="flex flex-col items-center justify-center py-12 text-center">
 					{#if emojis}
 						<SmileIcon class="text-duvet-ink2 mb-3 size-9" />
-						<p class="text-duvet-ink2 text-sm">No custom emojis yet.</p>
+						<p class="text-duvet-ink2 text-sm">{t("space_emojis_empty")}</p>
 					{:else}
 						<StickerIcon class="text-duvet-ink2 mb-3 size-9" />
-						<p class="text-duvet-ink2 text-sm">No custom stickers yet.</p>
+						<p class="text-duvet-ink2 text-sm">{t("space_stickers_empty")}</p>
 					{/if}
 					{#if canManage}
-						<p class="text-duvet-ink2 mt-1 text-xs">Upload one above to get started.</p>
+						<p class="text-duvet-ink2 mt-1 text-xs">{t("space_upload_first")}</p>
 					{/if}
 				</div>
 			{:else if emojis}
@@ -1895,7 +1980,7 @@
 							{#if editingEmojiId === emoji.id}
 								<input
 									type="text"
-									aria-label="Emoji name"
+									aria-label={t("space_emoji_name")}
 									class="{FIELD_SM} flex-1"
 									bind:value={editingEmojiName}
 									onkeydown={(e) => {
@@ -1906,10 +1991,15 @@
 										}
 									}}
 								/>
-								<IconButton label="Save" title="Save" class="text-duvet-alive-text!" onclick={handleUpdateEmoji}>
+								<IconButton
+									label={t("space_save")}
+									title={t("space_save")}
+									class="text-duvet-alive-text!"
+									onclick={handleUpdateEmoji}
+								>
 									<CheckIcon size={16} />
 								</IconButton>
-								<IconButton label="Cancel" title="Cancel" onclick={cancelEmojiEdit}>
+								<IconButton label={t("space_cancel")} title={t("space_cancel")} onclick={cancelEmojiEdit}>
 									<XIcon size={16} />
 								</IconButton>
 							{:else}
@@ -1918,12 +2008,16 @@
 									<div
 										class="flex gap-1 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 motion-reduce:transition-none"
 									>
-										<IconButton label="Rename" title="Rename" onclick={() => startEmojiEdit(emoji)}>
+										<IconButton
+											label={t("space_item_rename")}
+											title={t("space_item_rename")}
+											onclick={() => startEmojiEdit(emoji)}
+										>
 											<PencilIcon size={16} />
 										</IconButton>
 										<IconButton
-											label="Delete"
-											title="Delete"
+											label={t("space_item_delete")}
+											title={t("space_item_delete")}
 											class="hover:bg-duvet-danger/15! hover:text-duvet-danger!"
 											onclick={() => handleDeleteEmoji(emoji.id)}
 											disabled={isDeletingEmoji[emoji.id]}
@@ -1948,7 +2042,7 @@
 							{#if editingStickerReact === sticker.id}
 								<input
 									type="text"
-									aria-label="Sticker name"
+									aria-label={t("space_sticker_name")}
 									class="{FIELD_SM} flex-1"
 									bind:value={editingStickerName}
 									onkeydown={(e) => {
@@ -1959,10 +2053,15 @@
 										}
 									}}
 								/>
-								<IconButton label="Save" title="Save" class="text-duvet-alive-text!" onclick={handleUpdateSticker}>
+								<IconButton
+									label={t("space_save")}
+									title={t("space_save")}
+									class="text-duvet-alive-text!"
+									onclick={handleUpdateSticker}
+								>
 									<CheckIcon size={16} />
 								</IconButton>
-								<IconButton label="Cancel" title="Cancel" onclick={cancelStickerEdit}>
+								<IconButton label={t("space_cancel")} title={t("space_cancel")} onclick={cancelStickerEdit}>
 									<XIcon size={16} />
 								</IconButton>
 							{:else}
@@ -1971,12 +2070,16 @@
 									<div
 										class="flex gap-1 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 motion-reduce:transition-none"
 									>
-										<IconButton label="Rename" title="Rename" onclick={() => startStickerEdit(sticker)}>
+										<IconButton
+											label={t("space_item_rename")}
+											title={t("space_item_rename")}
+											onclick={() => startStickerEdit(sticker)}
+										>
 											<PencilIcon size={16} />
 										</IconButton>
 										<IconButton
-											label="Delete"
-											title="Delete"
+											label={t("space_item_delete")}
+											title={t("space_item_delete")}
 											class="hover:bg-duvet-danger/15! hover:text-duvet-danger!"
 											onclick={() => handleDeleteSticker(sticker.id)}
 											disabled={isDeletingSticker[sticker.id]}
@@ -1995,27 +2098,26 @@
 		{#if canManageBuckets}
 			{@render transferCard()}
 			<p class={NOTE}>
-				Connect an S3-compatible bucket for this Space's storage. When a bucket is active, uploads go to your bucket.
+				{t("space_storage_note")}
 			</p>
 
 			{#if !spaceBucketsLoading}
 				<div class={calloutClass("warn")}>
 					<WarningIcon size={18} class="mt-0.5 shrink-0" />
 					<div class="space-y-1">
-						<p class="font-semibold">Before adding a bucket</p>
+						<p class="font-semibold">{t("space_storage_warning_title")}</p>
 						<p>
-							Only enter credentials that <strong>you own and control</strong>. If someone shared credentials with you,
-							be aware that:
+							<Rich key="space_storage_warning_own" tags={{ b: bold }} />
 						</p>
 						<ul class="list-disc space-y-0.5 pl-4">
 							<li>
-								The bucket owner can <strong>read, modify, or delete</strong> all emojis, and stickers files.
+								<Rich key="space_storage_warning_read" tags={{ b: bold }} />
 							</li>
 							<li>
-								They can <strong>revoke access</strong> without warning, breaking emojis, and stickers across the Space.
+								<Rich key="space_storage_warning_revoke" tags={{ b: bold }} />
 							</li>
 							<li>
-								All uploaded files may be <strong>logged, monitored, or shared</strong> by the bucket owner.
+								<Rich key="space_storage_warning_logged" tags={{ b: bold }} />
 							</li>
 						</ul>
 					</div>
@@ -2038,7 +2140,8 @@
 							showSpaceBucketForm = true;
 						}}
 					>
-						<PlusIcon size={15} /> Add bucket
+						<PlusIcon size={15} />
+						{t("space_bucket_add")}
 					</Button>
 				</div>
 			{/if}
@@ -2053,8 +2156,8 @@
 			{:else if spaceBuckets.length === 0}
 				<div class="text-duvet-ink2 flex flex-col items-center justify-center py-12">
 					<DatabaseIcon class="mb-3 size-9" />
-					<p class="text-sm">No buckets configured</p>
-					<p class="mt-1 text-xs">Add a bucket to enable custom emoji uploads.</p>
+					<p class="text-sm">{t("space_buckets_empty")}</p>
+					<p class="mt-1 text-xs">{t("space_buckets_empty_note")}</p>
 				</div>
 			{:else}
 				<div class="{CARD} divide-duvet-line divide-y">
@@ -2066,9 +2169,13 @@
 								<div class="flex items-center gap-2">
 									<span class="truncate text-[13.5px] font-medium">{bucket.name}</span>
 									{#if bucket.is_active}
-										<span class="{TAG} bg-duvet-alive/20 text-duvet-alive-text uppercase">Active</span>
+										<span class="{TAG} bg-duvet-alive/20 text-duvet-alive-text uppercase"
+											>{t("space_bucket_active")}</span
+										>
 									{:else}
-										<span class="{TAG} bg-duvet-secondary-fill text-duvet-ink2 uppercase">Inactive</span>
+										<span class="{TAG} bg-duvet-secondary-fill text-duvet-ink2 uppercase"
+											>{t("space_bucket_inactive")}</span
+										>
 									{/if}
 								</div>
 								<p class="text-duvet-ink2 mt-0.5 truncate text-xs">{bucket.bucket_name} · {bucket.endpoint}</p>
@@ -2077,22 +2184,23 @@
 									<div class="mt-1.5 space-y-1">
 										<div class="text-duvet-ink2 flex items-center justify-between text-[11px] tabular-nums">
 											<span
-												>{(bucket.used_bytes / 1024 / 1024).toFixed(1)} MB / {(bucket.max_bytes / 1024 / 1024).toFixed(
-													0,
-												)} MB</span
+												>{t("space_bucket_usage", {
+													used: megabytes(bucket.used_bytes, 1),
+													limit: megabytes(bucket.max_bytes, 0),
+												})}</span
 											>
-											<span>{pct}%</span>
+											<span>{formatNumber(pct / 100, { style: "percent" })}</span>
 										</div>
 										{@render usageBar(pct)}
 										{#if bucket.upload_limit_bytes}
 											<p class="text-duvet-ink2 text-[11px]">
-												Per-file: {(bucket.upload_limit_bytes / 1024 / 1024).toFixed(0)} MB
+												{t("space_bucket_file_limit", { size: megabytes(bucket.upload_limit_bytes, 0) })}
 											</p>
 										{/if}
 									</div>
 								{:else if bucket.upload_limit_bytes}
 									<p class="text-duvet-ink2 mt-0.5 text-[11px]">
-										Per-file: {(bucket.upload_limit_bytes / 1024 / 1024).toFixed(0)} MB
+										{t("space_bucket_file_limit", { size: megabytes(bucket.upload_limit_bytes, 0) })}
 									</p>
 								{/if}
 							</div>
@@ -2100,8 +2208,8 @@
 								class="flex shrink-0 items-center gap-1 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 motion-reduce:transition-none"
 							>
 								<IconButton
-									label={bucket.is_active ? "Deactivate" : "Activate"}
-									title={bucket.is_active ? "Deactivate" : "Activate"}
+									label={bucket.is_active ? t("space_bucket_deactivate") : t("space_bucket_activate")}
+									title={bucket.is_active ? t("space_bucket_deactivate") : t("space_bucket_activate")}
 									onclick={() => handleToggleSpaceBucket(bucket)}
 									disabled={togglingSpaceBucketId === bucket.id}
 								>
@@ -2115,8 +2223,8 @@
 								</IconButton>
 								{#if canMoveSpaceFiles}
 									<IconButton
-										label="Move files…"
-										title={spaceTransfer ? "Wait for the transfer under way to end" : "Move files…"}
+										label={t("space_bucket_move")}
+										title={spaceTransfer ? t("space_storage_wait_transfer") : t("space_bucket_move")}
 										onclick={() => openMoveSpaceBucket(bucket)}
 										disabled={movingSpaceBucketId === bucket.id || spaceTransfer !== null}
 									>
@@ -2127,12 +2235,16 @@
 										{/if}
 									</IconButton>
 								{/if}
-								<IconButton label="Edit" title="Edit" onclick={() => startEditSpaceBucket(bucket)}>
+								<IconButton
+									label={t("space_item_edit")}
+									title={t("space_item_edit")}
+									onclick={() => startEditSpaceBucket(bucket)}
+								>
 									<PencilIcon size={16} />
 								</IconButton>
 								<IconButton
-									label="Delete"
-									title="Delete"
+									label={t("space_item_delete")}
+									title={t("space_item_delete")}
 									class="hover:bg-duvet-danger/15! hover:text-duvet-danger!"
 									onclick={() => handleDeleteSpaceBucket(bucket.id)}
 								>
@@ -2144,10 +2256,10 @@
 				</div>
 			{/if}
 		{:else}
-			<p class="text-duvet-ink2 px-1.5 text-sm">You don't have permission to manage storage for this Space.</p>
+			<p class="text-duvet-ink2 px-1.5 text-sm">{t("space_storage_no_permission")}</p>
 		{/if}
 	{:else if activeSection === "invites"}
-		<p class={NOTE}>The invite links that still work. Revoking one makes it stop working for everyone.</p>
+		<p class={NOTE}>{t("space_invites_note")}</p>
 		{#if spaceInvitesLoading}
 			<div class="flex flex-col gap-2">
 				{#each Array(3) as _, index (index)}
@@ -2157,7 +2269,7 @@
 		{:else if spaceInvites.length === 0}
 			<div class="text-duvet-ink2 flex flex-col items-center justify-center py-14">
 				<LinkIcon class="mb-3 size-9" />
-				<p class="text-sm">No invites</p>
+				<p class="text-sm">{t("space_invites_empty")}</p>
 			</div>
 		{:else}
 			<div class="{CARD} divide-duvet-line divide-y">
@@ -2169,22 +2281,24 @@
 						<div class="min-w-0 flex-1">
 							<p class="truncate font-mono text-[13px] select-text">{invite.code}</p>
 							<p class="text-duvet-ink2 text-xs">
-								#{room?.name ?? "deleted room"}
+								{room ? `#${room.name}` : t("space_invite_room_deleted")}
 								<span class="mx-1 opacity-60">&middot;</span>
 								{inviteCreator(invite.created_by)}
 								<span class="mx-1 opacity-60">&middot;</span>
-								{invite.expires_at ? `Expires ${new Date(invite.expires_at).toLocaleString()}` : "Never expires"}
+								{invite.expires_at
+									? t("space_invite_expires", { date: formatDate(new Date(invite.expires_at), DATE_TIME) })
+									: t("space_invite_never_expires")}
 							</p>
 						</div>
 						<Button
 							variant="quiet"
 							size="sm"
 							class="hover:text-duvet-danger! hover:bg-duvet-danger/15! opacity-0 group-focus-within:opacity-100 group-hover:opacity-100"
-							title="Revoke"
+							title={t("space_invite_revoke")}
 							onclick={() => handleRevokeInvite(invite)}
 						>
 							<TrashIcon size={14} />
-							Revoke
+							{t("space_invite_revoke")}
 						</Button>
 					</div>
 				{/each}
@@ -2203,8 +2317,7 @@
 		<div class="flex min-h-[30px] items-center justify-between gap-3 px-1.5">
 			<div class="text-duvet-ink2 text-[13px]">
 				{#if spaceListedHere}
-					<span class="text-duvet-ink font-semibold tabular-nums">{spaceAttachments.length}</span>
-					file{spaceAttachments.length !== 1 ? "s" : ""}
+					<Rich key="space_attachments_count" values={{ count: spaceAttachments.length }} tags={{ b: fileCount }} />
 					<span class="mx-1 opacity-60">&middot;</span>
 					{formatFileSize(spaceAttachmentsLocation === "all" ? spaceStorageUsed : spaceLocationBytes)}
 				{/if}
@@ -2212,13 +2325,13 @@
 			<div class="flex items-center gap-2">
 				{#if canManageBuckets && (spaceBuckets.length > 0 || spaceAttachmentsLocation !== "all")}
 					<label class="text-duvet-ink2 flex items-center gap-2 text-xs">
-						Location
+						{t("space_attachments_location")}
 						<select
 							value={spaceAttachmentsLocation}
 							onchange={(e) => setSpaceAttachmentsLocation(e.currentTarget.value)}
 							class={SELECT}
 						>
-							<option value="all">All</option>
+							<option value="all">{t("space_attachments_location_all")}</option>
 							{#each spaceBuckets as b (b.id)}
 								<option value={b.id}>{b.name}</option>
 							{/each}
@@ -2228,7 +2341,7 @@
 				{#if spaceAttachments.length > 0 && canManageAttachments && spaceAttachmentsLocation === "all"}
 					<Button variant="danger" size="sm" onclick={handleDeleteAllSpaceAttachments}>
 						<TrashIcon size={13} />
-						Delete all
+						{t("space_attachments_delete_all")}
 					</Button>
 				{/if}
 			</div>
@@ -2243,13 +2356,13 @@
 		{:else if !spaceListedHere}
 			<!-- The location's files didn't load (a toast said why): the list is another's. -->
 			<div class="text-duvet-ink2 flex flex-col items-center justify-center py-14">
-				<p class="text-sm">Couldn't load the files here</p>
+				<p class="text-sm">{t("space_attachments_load_failed_here")}</p>
 			</div>
 		{:else if spaceAttachments.length === 0}
 			<div class="text-duvet-ink2 flex flex-col items-center justify-center py-14">
 				<PaperclipIcon class="mb-3 size-9" />
 				<p class="text-sm">
-					{spaceAttachmentsLocation === "all" ? "No attachments in this Space" : "No files here"}
+					{spaceAttachmentsLocation === "all" ? t("space_attachments_empty") : t("space_attachments_empty_here")}
 				</p>
 			</div>
 		{:else}
@@ -2269,7 +2382,7 @@
 									type="checkbox"
 									checked={spacePicker.picked.has(att.id)}
 									onchange={() => spacePicker.toggle(att.id)}
-									aria-label="Select {att.filename}"
+									aria-label={t("space_attachment_select", { name: att.filename })}
 									class={CHECKBOX}
 								/>
 							{/if}
@@ -2291,7 +2404,7 @@
 								<p class="text-duvet-ink2 text-xs">
 									{formatFileSize(att.size_bytes)}
 									<span class="mx-1 opacity-60">&middot;</span>
-									{new Date(att.created_at).toLocaleDateString()}
+									{formatDate(new Date(att.created_at))}
 								</p>
 							</div>
 							<div
@@ -2301,15 +2414,15 @@
 									href="{attachmentHost}{att.url ?? `/attachments/${att.id}`}"
 									download={att.filename}
 									class={iconButtonClass()}
-									title="Download"
-									aria-label="Download {att.filename}"
+									title={t("space_attachment_download_title")}
+									aria-label={t("space_attachment_download", { name: att.filename })}
 								>
 									<DownloadIcon size={16} />
 								</a>
 								{#if canManageAttachments}
 									<IconButton
-										label="Delete"
-										title="Delete"
+										label={t("space_item_delete")}
+										title={t("space_item_delete")}
 										class="hover:bg-duvet-danger/15! hover:text-duvet-danger!"
 										onclick={() => handleDeleteSpaceAttachment(att)}
 									>
@@ -2346,7 +2459,7 @@
 
 <ImageCropModal
 	bind:open={showSpaceIconCrop}
-	title="Change icon"
+	title={t("space_overview_icon_crop")}
 	aspect={1}
 	round
 	targetWidth={256}
@@ -2355,7 +2468,7 @@
 />
 <ImageCropModal
 	bind:open={showSpaceBannerCrop}
-	title="Change banner"
+	title={t("space_overview_banner_crop")}
 	aspect={5 / 2}
 	targetWidth={600}
 	targetHeight={240}
@@ -2363,7 +2476,7 @@
 />
 <ImageCropModal
 	bind:open={showEmojiCrop}
-	title="Emoji image"
+	title={t("space_emoji_crop")}
 	aspect={1}
 	targetWidth={128}
 	targetHeight={128}
@@ -2371,7 +2484,7 @@
 />
 <ImageCropModal
 	bind:open={showStickerCrop}
-	title="Sticker image"
+	title={t("space_sticker_crop")}
 	aspect={1}
 	targetWidth={320}
 	targetHeight={320}
