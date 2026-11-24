@@ -1,6 +1,7 @@
 import { get } from "svelte/store";
 import { setSystemNotifier, type SystemNotifier } from "$lib/api/ws/connection";
 import { getElectrobunRpc, isElectrobunWindow, type NotificationRequest } from "$lib/electrobun-rpc";
+import { t } from "$lib/i18n";
 import { renderMarkdownLine } from "$lib/markdown";
 import type { MentionNotice } from "$lib/mention-notices";
 import { roomNames } from "$lib/stores.svelte";
@@ -21,7 +22,7 @@ export function noticeText(notice: MentionNotice, rooms: Record<string, string>)
 		.replace(/&(amp|lt|gt|quot);/g, (_, name: string) => ENTITIES[name] ?? "")
 		.replace(/\s+/g, " ")
 		.trim();
-	return text || "Click to see message";
+	return text || t("error_notification_without_text");
 }
 
 // Each spoiler of renderMarkdownLine's HTML as ▮▮▮, with all it holds, spans too (a mention, a room): the spoilers as
@@ -83,7 +84,10 @@ export function webNotifier(open: (link: MessageLink) => void): SystemNotifier {
 			};
 			let shown: Notification;
 			try {
-				shown = new Notification(place ? `${notice.authorName} (${place})` : notice.authorName, options);
+				shown = new Notification(
+					place ? t("error_notification_title", { name: notice.authorName, place }) : notice.authorName,
+					options,
+				);
 			} catch {
 				// Chrome on Android grants the permission, but shows only a service worker's: Duvet's notice instead.
 				return false;

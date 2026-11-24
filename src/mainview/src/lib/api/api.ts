@@ -12,7 +12,8 @@ import {
 } from "$lib/session";
 import { accessToken } from "$lib/stores/auth";
 import { answerWindows, askMainWindow } from "$lib/window-hub";
-import { formatFileSize } from "$lib/utils/format";
+import { t } from "$lib/i18n";
+import { formatFileSize, formatNumber } from "$lib/i18n/format";
 import { get } from "svelte/store";
 
 export interface FetchRequestConfig extends Omit<RequestInit, "body"> {
@@ -51,8 +52,19 @@ export const requestLimits = {
 /** A request whose answer didn't come in time (requestLimits): it fails as a network error does, a TypeError. */
 export class NoAnswerError extends TypeError {
 	constructor() {
-		super("No answer from the server in time");
+		super(t("error_no_answer"));
 		this.name = "NoAnswerError";
+	}
+}
+
+/** A request that failed on the network: no connection, or Duvet out of reach. fetch and XMLHttpRequest fail so with a
+ * TypeError in the webview's own English ("Failed to fetch" in Chromium, "Load failed" in WebKit), which this one, a
+ * TypeError still, says in the app's words. It's made where the request failed (fetchWithin, sendForm), so a TypeError
+ * of any other making isn't taken for one. */
+export class NetworkError extends TypeError {
+	constructor(cause?: unknown) {
+		super(t("error_network_failed"), { cause });
+		this.name = "NetworkError";
 	}
 }
 
@@ -92,7 +104,8 @@ class RefreshFailedError extends Error {
 	status: number;
 
 	constructor(status: number) {
-		super(`Refresh token request failed with status ${status}`);
+		// A person can read it: a request the API refused with a 401 fails with it when the renewal it waited for did.
+		super(t("error_session_refresh_failed", { status: String(status) }));
 		this.name = "RefreshFailedError";
 		this.status = status;
 	}
@@ -127,15 +140,20 @@ export function formBytes(form: FormData): number {
 }
 
 /** A request refused before it's sent, as the API would refuse it: its body is over MAX_REQUEST_BYTES. Its message
- * says what was too large (what), its size and how much of it is over the limit, which a size rounded to the limit's
- * can't show. */
+ * says what was too large (what: files, or a message with its files), its size and how much of it is over the limit,
+ * which a size rounded to the limit's can't show. */
 export class TooLargeError extends Error {
 	bytes: number;
 
-	constructor(bytes: number, what = "Files") {
-		const over = formatFileSize(bytes - MAX_REQUEST_BYTES);
+	constructor(bytes: number, what: "files" | "message" = "files") {
 		super(
-			`${what} too large: ${formatFileSize(bytes)}, ${over} over the ${MAX_REQUEST_BYTES / (1024 * 1024)} MB limit`,
+			t("error_too_large", {
+				what,
+				size: formatFileSize(bytes),
+				over: formatFileSize(bytes - MAX_REQUEST_BYTES),
+				// The limit's whole megabytes: 32 MB.
+				limit: t("format_size_mb", { size: formatNumber(MAX_REQUEST_BYTES / (1024 * 1024)) }),
+			}),
 		);
 		this.name = "TooLargeError";
 		this.bytes = bytes;
@@ -212,14 +230,15 @@ function sendForm(
 			init.signal?.removeEventListener("abort", onAbort);
 			done();
 		};
-		const giveUpIn = (ms: number, why: string) => {
+		// why: the error's words, asked for once the upload is given up.
+		const giveUpIn = (ms: number, why: () => string) => {
 			if (settled) return; // an upload event after the answer
 			clearTimeout(timer);
 			timer = setTimeout(
 				() =>
 					settle(() => {
 						xhr.abort();
-						reject(new UploadTimeoutError(why));
+						reject(new UploadTimeoutError(why()));
 					}),
 				ms,
 			);
@@ -228,8 +247,10 @@ function sendForm(
 		// report none at all: only the answer's limit applies then, from the start. From its first progress on, it may go
 		// uploadLimits.idleMs without another.
 		const waitForProgress = () =>
-			giveUpIn(uploadLimits.idleMs, `Upload stalled: nothing went out for ${Math.round(uploadLimits.idleMs / 1000)} s`);
-		const waitForAnswer = () => giveUpIn(uploadLimits.answerMs(bytes, files), "No answer to the upload in time");
+			giveUpIn(uploadLimits.idleMs, () =>
+				t("error_upload_stalled", { seconds: Math.round(uploadLimits.idleMs / 1000) }),
+			);
+		const waitForAnswer = () => giveUpIn(uploadLimits.answerMs(bytes, files), () => t("error_upload_no_answer"));
 		// The body's size as the webview counts it, or as formBytes does while it says none.
 		let total = bytes;
 		const report = (sent: number) => {
@@ -255,12 +276,12 @@ function sendForm(
 				// A status a Response can't hold (outside 200-599) fails, as fetch fails such an answer.
 				try {
 					resolve(responseOf(xhr));
-				} catch {
-					reject(new TypeError("Failed to fetch"));
+				} catch (err) {
+					reject(new NetworkError(err));
 				}
 			});
-		xhr.onerror = () => settle(() => reject(new TypeError("Failed to fetch")));
-		xhr.onabort = () => settle(() => reject(new DOMException("The upload was aborted", "AbortError")));
+		xhr.onerror = () => settle(() => reject(new NetworkError()));
+		xhr.onabort = () => settle(() => reject(new DOMException(t("error_upload_aborted"), "AbortError")));
 		init.signal?.addEventListener("abort", onAbort);
 		waitForAnswer();
 		xhr.send(form);
@@ -270,10 +291,13 @@ function sendForm(
 /** fetch, given up once ms pass without a sign of its answer (requestLimits): its headers, then each piece of its body,
  * which is read here, so a server that stops halfway through it is given up too. Given up, the request is aborted and
  * fails with a NoAnswerError; the answer comes back with its body in memory. An abort of init.signal fails as fetch's
- * does. Not AbortSignal.any and AbortSignal.timeout: an older Mac's WebKit, which the app runs on there, lacks them
- * (GifPicker). */
+ * does, and a failure on the network with a NetworkError. Not AbortSignal.any and AbortSignal.timeout: an older Mac's
+ * WebKit, which the app runs on there, lacks them (GifPicker). */
 async function fetchWithin(url: string, init: RequestInit, ms: number): Promise<Response> {
-	if (!Number.isFinite(ms)) return fetch(url, init);
+	if (!Number.isFinite(ms))
+		return fetch(url, init).catch((err: unknown) => {
+			throw err instanceof TypeError ? new NetworkError(err) : err;
+		});
 	const request = new AbortController();
 	const own = init.signal;
 	const stop = () => request.abort(own?.reason);
@@ -296,6 +320,8 @@ async function fetchWithin(url: string, init: RequestInit, ms: number): Promise<
 		return new Response(body, { status: res.status, statusText: res.statusText, headers: res.headers });
 	} catch (err) {
 		if (late) throw new NoAnswerError();
+		// fetch's, or its body's read's: the network failed.
+		if (err instanceof TypeError) throw new NetworkError(err);
 		throw err;
 	} finally {
 		clearTimeout(timer);
@@ -545,12 +571,14 @@ const coreFetch = async <T = any>(endpoint: string, options: FetchRequestConfig 
 			const retryResponse = await send(url, { ...fetchOptions, headers });
 			const parsedRetry = await buildFetchResponse(retryResponse);
 			if (!retryResponse.ok) {
-				throw new FetchError(`Request failed with status ${retryResponse.status}`, options, parsedRetry);
+				throw new FetchError(t("error_request_failed", { status: String(retryResponse.status) }), options, parsedRetry);
 			}
 			return parsedRetry;
 		}
 
-		return Promise.reject(new FetchError(`Request failed with status ${response.status}`, options, fetchResp));
+		return Promise.reject(
+			new FetchError(t("error_request_failed", { status: String(response.status) }), options, fetchResp),
+		);
 	}
 
 	return buildFetchResponse(response);
@@ -574,6 +602,9 @@ export function getApiError(err: unknown, fallback: string): string {
 		// The API's own words, but for the few texts that say what the app never does (error-wording.ts).
 		return typeof reason === "string" ? inAppWords(reason, fallback) : err.response.data.error;
 	}
+	// A TypeError that is neither the network's (NetworkError) nor a lost answer's (NoAnswerError) is the engine's, in
+	// its own English ("Cannot read properties of undefined"): what the caller was doing says more.
+	if (err instanceof TypeError && !(err instanceof NetworkError) && !(err instanceof NoAnswerError)) return fallback;
 	if (err instanceof Error) return err.message;
 	return fallback;
 }
