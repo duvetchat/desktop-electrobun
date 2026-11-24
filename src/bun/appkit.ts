@@ -1,6 +1,7 @@
 /* oxlint-disable typescript/no-unsafe-type-assertion -- bun:ffi hands values over untyped where they cross. */
 // What the app asks of AppKit itself on macOS: for keys to reach its page (window-keys.ts), make a window's web view its
-// first responder and hide the window's three buttons; and the smallest a window may be made (main-window.ts).
+// first responder and hide the window's three buttons; the smallest a window may be made (main-window.ts); and, of
+// Foundation, the system's languages (system-languages.ts).
 // Electrobun has no call for any of them, so they go through the Objective-C runtime with bun:ffi, public API only.
 // Imported on macOS only (src/bun/index.ts).
 //
@@ -10,7 +11,7 @@
 //
 // bun:ffi hands pointers to JavaScript as doubles, which keep 53 bits, and Objective-C's tagged pointers have their top
 // bit set (on macOS 27 even a method signature can be one): every object here is a u64, a BigInt.
-import { CFunction, FFIType, dlopen, type Pointer } from "bun:ffi";
+import { CFunction, CString, FFIType, dlopen, type Pointer } from "bun:ffi";
 
 /** An Objective-C object, class or selector; 0n is nil. */
 export type Id = bigint;
@@ -178,6 +179,27 @@ export function hideWindowButtons(window: Pointer): number {
 		hidden++;
 	}
 	return hidden;
+}
+
+/** The system's preferred languages, most preferred first, as BCP 47 tags (NSLocale.preferredLanguages): the whole
+ * list, which WKWebView's navigator.languages cuts to the first (system-languages.ts). Foundation's, on this thread. */
+export function preferredLanguages(): string[] {
+	const pool = runtime.objc_autoreleasePoolPush();
+	try {
+		const list = msg(cls("NSLocale"), "preferredLanguages");
+		if (!list) return [];
+		const count = Number(send("", "o", list, "count"));
+		const languages: string[] = [];
+		for (let index = 0; index < count; index++) {
+			const tag = send("i", "o", list, "objectAtIndex:", index) as Id;
+			// The string's UTF-8 is the pool's: read before it drains.
+			const utf8 = Number(msg(tag, "UTF8String"));
+			if (utf8) languages.push(new CString(utf8 as Pointer).toString());
+		}
+		return languages;
+	} finally {
+		runtime.objc_autoreleasePoolPop(pool);
+	}
 }
 
 /** Sets the smallest a person can make a window, in points: AppKit holds a resize by the window's edges to it (a frame

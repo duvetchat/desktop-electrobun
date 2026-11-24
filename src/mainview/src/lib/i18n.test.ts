@@ -144,8 +144,9 @@ describe("the language files", () => {
 		expect(Object.keys(notes).filter((key) => !(key in en))).toEqual([]);
 	});
 
+	// The page's sources, and the Bun process's and its build scripts', whose menu_, window_ and os_ words are here too.
 	test("hold no English key the app doesn't use", () => {
-		const src = join(import.meta.dir, "..");
+		const root = join(import.meta.dir, "..", "..", "..", "..");
 		const sources = (dir: string): string[] =>
 			readdirSync(dir, { withFileTypes: true }).flatMap((entry) =>
 				entry.isDirectory()
@@ -154,7 +155,8 @@ describe("the language files", () => {
 						? [join(dir, entry.name)]
 						: [],
 			);
-		const code = sources(src)
+		const code = [join(root, "src", "mainview", "src"), join(root, "src", "bun"), join(root, "scripts")]
+			.flatMap(sources)
 			.map((file) => readFileSync(file, "utf8"))
 			.join("\n");
 		expect(Object.keys(en).filter((key) => !code.includes(`"${key}"`))).toEqual([]);
@@ -211,6 +213,26 @@ describe("the app's language", () => {
 		expect(i18n.localePref()).toBe("system");
 		expect(i18n.currentLocale()).toBe("en");
 		expect(i18n.t("settings_language_title")).toBe("Language");
+	});
+
+	// #464: the desktop app's Bun reads the system's whole list (src/bun/system-languages.ts), where WKWebView's
+	// navigator.languages has the first only. The tests' web view has none: the dates' locale is the app's language.
+	test("goes by the system's languages Bun says, over the web view's", async () => {
+		await i18n.setLocalePref("system");
+		expect(i18n.regionalLocale()).toBe("en");
+		await i18n.setSystemLanguages(["es-CO", "en-GB"]);
+		expect(i18n.regionalLocale()).toBe("en-GB");
+		expect(i18n.systemLanguageName()).toBe("English");
+		expect(i18n.currentLocale()).toBe("en");
+	});
+
+	test("takes only the tags Intl takes from Bun's list, and a list with none leaves the web view's", async () => {
+		await i18n.setSystemLanguages(["not a tag!", "", 7, "EN-au"]);
+		expect(i18n.regionalLocale()).toBe("en-AU");
+		await i18n.setSystemLanguages(["???"]);
+		expect(i18n.regionalLocale()).toBe("en");
+		await i18n.setSystemLanguages([]);
+		expect(i18n.regionalLocale()).toBe("en");
 	});
 
 	test("hears no other key's changes", async () => {

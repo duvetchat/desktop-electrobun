@@ -49,8 +49,24 @@ void i18n.use(ICU).init({
 	interpolation: { escapeValue: false },
 });
 
+// The system's languages as the desktop app's Bun process reads them (setSystemLanguages): the whole list, where
+// WKWebView's navigator.languages has only the first, mapped (es-CO is es-419 there). null where Bun hasn't said.
+let bunLanguages: readonly string[] | null = null;
+
+/** The system's preferred languages, most preferred first: Bun's when it has said, else the web view's. */
 function systemLanguages(): readonly string[] {
+	if (bunLanguages) return bunLanguages;
 	return typeof navigator !== "undefined" && navigator.languages?.length ? navigator.languages : [];
+}
+
+/** A language tag Intl takes, in its canonical form; null for anything else. */
+function canonicalTag(tag: unknown): string | null {
+	if (typeof tag !== "string" || !tag) return null;
+	try {
+		return Intl.getCanonicalLocales(tag)[0] ?? null;
+	} catch {
+		return null;
+	}
 }
 
 function readSaved(): LocalePref {
@@ -149,6 +165,21 @@ async function apply(): Promise<void> {
 	current = next;
 	changed();
 	if (typeof document !== "undefined") document.documentElement.lang = next;
+}
+
+/**
+ * The system's preferred languages, most preferred first, as the desktop app's Bun process reads them
+ * (src/bun/system-languages.ts, lib/i18n/bun-link.ts): "Match system" and the locale of dates and numbers go by them
+ * rather than by the web view's, which may have only the first. A list with no tag Intl takes leaves the web view's.
+ */
+export function setSystemLanguages(languages: readonly unknown[]): Promise<void> {
+	const tags = [...new Set(languages.map(canonicalTag).filter((tag): tag is string => tag !== null))];
+	const next = tags.length ? tags : null;
+	if (next?.join() !== bunLanguages?.join()) {
+		bunLanguages = next;
+		changed();
+	}
+	return apply();
 }
 
 /** The root layout's load waits for this: the page draws in the user's language from its first frame. */

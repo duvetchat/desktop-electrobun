@@ -16,7 +16,8 @@
 	import { getElectrobunRpc } from "$lib/electrobun-rpc";
 	import { driftSpecksOnScreen } from "$lib/spoiler-specks";
 	import { followSystemTheme } from "$lib/theme.svelte";
-	import { followLocale } from "$lib/i18n";
+	import { currentLocale, followLocale } from "$lib/i18n";
+	import { followSystemLanguages, tellBunLanguage } from "$lib/i18n/bun-link";
 	import { currentShell } from "$lib/platform";
 	import { appChrome } from "$lib/stores/chrome.svelte";
 	import { VIBRANT_CLASS, followWornTheme, showsGlass, watchClasses } from "$lib/vibrancy";
@@ -37,6 +38,12 @@
 	const glass = $derived(showsGlass(shell, appChrome.shellUp));
 	$effect(() => {
 		document.documentElement.classList.toggle(VIBRANT_CLASS, glass);
+	});
+
+	// The menu bar and the windows' titles are Bun's words, in the language the main window's page is in (#464,
+	// lib/i18n/bun-link.ts): Bun is told it as the page starts and each time it changes.
+	$effect(() => {
+		if (shell.window === "main" && shell.chrome !== "web") tellBunLanguage(currentLocale());
 	});
 
 	// Duvet's own right-click menu where no menu of the app's takes it, in the desktop app (#423): the browser keeps its
@@ -61,6 +68,10 @@
 		// The root layout's load put the page in the user's language; this keeps it with a pick made in another window
 		// and with the system's languages (lib/i18n.ts).
 		const stopLocale = followLocale();
+		// "Match system" goes by the system's languages as Bun reads them, the whole list, where the web view may give
+		// the first only (lib/i18n/bun-link.ts): the load asked Bun before the first frame; this asks again, in case it
+		// answered too late, and each time the system's languages change. Each window's page, in the desktop app.
+		const stopSystemLanguages = shell.chrome !== "web" ? followSystemLanguages() : () => {};
 		// The glass behind the sidebar wears the theme the page does (lib/vibrancy.ts).
 		const root = document.documentElement;
 		const stopGlassTheme = shell.vibrancy
@@ -76,6 +87,7 @@
 			stopTheme();
 			stopGlassTheme();
 			stopLocale();
+			stopSystemLanguages();
 		};
 	});
 </script>
