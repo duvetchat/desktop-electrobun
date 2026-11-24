@@ -5,6 +5,7 @@
 	import DragRegion from "$lib/components/DragRegion.svelte";
 	import WindowControls from "$lib/components/WindowControls.svelte";
 	import { countBadgeClass, iconButtonClass } from "$lib/components/ui/recipes";
+	import { t } from "$lib/i18n";
 	import { filterNav, navLabel, type SettingsNavGroup } from "./recipes";
 
 	// The chassis of Settings and of a Space's settings (#357, DESIGN-MAP.md S-47, S-58): a side panel that lists the
@@ -72,8 +73,8 @@
 			<input
 				type="search"
 				bind:value={query}
-				placeholder="Search"
-				aria-label="Search settings"
+				placeholder={t("settings_search_placeholder")}
+				aria-label={t("settings_search_label")}
 				class="focus-override text-duvet-ink placeholder:text-duvet-ink2 min-w-0 flex-1 bg-transparent text-[12.5px] outline-none"
 			/>
 		</label>
@@ -108,7 +109,7 @@
 					{/each}
 				</div>
 			{:else}
-				<p class="text-duvet-ink2 px-2 py-1 text-xs">Nothing matches</p>
+				<p class="text-duvet-ink2 px-2 py-1 text-xs">{t("settings_search_empty")}</p>
 			{/each}
 		</nav>
 		{#if foot}
@@ -124,7 +125,7 @@
 				<!-- A plain heading, not the dialog's title: the sheet's name is `name` ("Duvet settings"), and a title would
 				     name it after its section instead. -->
 				<h2 class="min-w-0 flex-1 truncate font-serif text-[17px] font-medium">{title}</h2>
-				<Dialog.Close aria-label="Close" class={iconButtonClass()}>
+				<Dialog.Close aria-label={t("settings_close")} class={iconButtonClass()}>
 					<XIcon size={16} />
 				</Dialog.Close>
 			{:else}

@@ -2,6 +2,8 @@
 // Space's settings and a room's share. The primitives' own are in components/ui/recipes.ts.
 import type { Component } from "svelte";
 import { fieldClass } from "$lib/components/ui/recipes";
+import { t } from "$lib/i18n";
+import { formatNumber } from "$lib/i18n/format";
 
 /** A section of a settings screen, as its side panel lists it. */
 export interface SettingsNavItem<Section extends string = string> {
@@ -98,11 +100,14 @@ export function usageTone(percent: number): string {
 	return percent > 90 ? "bg-duvet-danger" : percent > 70 ? "bg-duvet-warn" : "bg-duvet-ink2";
 }
 
-/** A file's size as the settings' lists write it: B, KB or MB, to a decimal. */
+const oneDecimal: Intl.NumberFormatOptions = { minimumFractionDigits: 1, maximumFractionDigits: 1, useGrouping: false };
+
+/** A file's size as the settings' lists write it: B, KB or MB, to a decimal, in the app's language's digits and units
+ * (lib/i18n/format.ts's, whose megabytes have two decimals). */
 export function listFileSize(bytes: number): string {
-	if (bytes < 1024) return `${bytes} B`;
-	if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-	return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+	if (bytes < 1024) return t("format_size_bytes", { size: formatNumber(bytes, { useGrouping: false }) });
+	if (bytes < 1024 * 1024) return t("format_size_kb", { size: formatNumber(bytes / 1024, oneDecimal) });
+	return t("format_size_mb", { size: formatNumber(bytes / (1024 * 1024), oneDecimal) });
 }
 
 /** A role colour as a hex string, from the number the API keeps; the accent's violet for none. */

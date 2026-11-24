@@ -2,6 +2,7 @@
 	import { AudioLines, AudioWaveform, Mic, Video } from "@lucide/svelte";
 	import Button from "$lib/components/ui/Button.svelte";
 	import Toggle from "$lib/components/ui/Toggle.svelte";
+	import { t } from "$lib/i18n";
 	import { cameraName, micName, type CameraChoice, type MicChoice } from "$lib/media-state";
 	import { cameraConstraints, cameraErrorMessage } from "$lib/video";
 	import SettingsGroup from "./SettingsGroup.svelte";
@@ -50,7 +51,8 @@
 
 	let testing = $state(false);
 	let level = $state(0);
-	let testError = $state<string | null>(null);
+	// The test couldn't open the microphone: the row says so under its button.
+	let testFailed = $state(false);
 	let stream: MediaStream | null = null;
 	let context: AudioContext | null = null;
 	let source: MediaStreamAudioSourceNode | null = null;
@@ -96,7 +98,7 @@
 		stopTest();
 		const mine = run;
 		testing = true;
-		testError = null;
+		testFailed = false;
 		try {
 			const opened = await navigator.mediaDevices.getUserMedia({
 				audio: micId ? { deviceId: { exact: micId } } : true,
@@ -118,7 +120,7 @@
 		} catch {
 			if (mine !== run) return;
 			stopTest();
-			testError = "Couldn't open your microphone.";
+			testFailed = true;
 		}
 	}
 
@@ -210,10 +212,10 @@
 	});
 </script>
 
-<SettingsGroup title="Voice" note="The test opens your microphone only while it runs. Others don't hear it.">
+<SettingsGroup title={t("settings_voice_title")} note={t("settings_voice_note")}>
 	<SettingsRow
-		label="Microphone"
-		line={micsLoaded && mics.length === 0 ? "No microphones found." : "The one your voice uses."}
+		label={t("settings_mic_label")}
+		line={micsLoaded && mics.length === 0 ? t("settings_mic_none") : t("settings_mic_line")}
 		icon={Mic}
 		labelFor="voice-microphone"
 	>
@@ -223,20 +225,20 @@
 			value={micId}
 			onchange={(event) => onSelectMic(event.currentTarget.value)}
 		>
-			<option value="">System default</option>
+			<option value="">{t("settings_device_default")}</option>
 			{#each mics as mic, index (mic.id || index)}
 				<option value={mic.id}>{micName(mic, index)}</option>
 			{/each}
 		</select>
 	</SettingsRow>
 
-	<SettingsRow label="Input level" line="Say something to see the meter move." icon={AudioWaveform}>
+	<SettingsRow label={t("settings_input_level")} line={t("settings_input_level_line")} icon={AudioWaveform}>
 		<div class="flex flex-col items-end gap-1">
 			<div class="flex items-center gap-2">
 				<div
 					class="bg-duvet-toggle-off h-1.5 w-32 overflow-hidden rounded-full"
 					role="meter"
-					aria-label="Input level"
+					aria-label={t("settings_input_level")}
 					aria-valuemin={0}
 					aria-valuemax={100}
 					aria-valuenow={Math.round(level * 100)}
@@ -247,19 +249,23 @@
 					></div>
 				</div>
 				<Button variant="secondary" size="sm" onclick={() => (testing ? stopTest() : void startTest())}>
-					{testing ? "Stop test" : "Test microphone"}
+					{testing ? t("settings_mic_test_stop") : t("settings_mic_test")}
 				</Button>
 			</div>
-			{#if testError}<p class="text-duvet-danger text-[11px]" role="alert">{testError}</p>{/if}
+			{#if testFailed}<p class="text-duvet-danger text-[11px]" role="alert">{t("settings_mic_test_failed")}</p>{/if}
 		</div>
 	</SettingsRow>
 
-	<SettingsRow label="Noise suppression" line="Cuts the background noise from what others hear." icon={AudioLines}>
-		<Toggle checked={noiseSuppression} onCheckedChange={onToggleNoiseSuppression} label="Noise suppression" />
+	<SettingsRow label={t("settings_noise_suppression")} line={t("settings_noise_suppression_line")} icon={AudioLines}>
+		<Toggle
+			checked={noiseSuppression}
+			onCheckedChange={onToggleNoiseSuppression}
+			label={t("settings_noise_suppression")}
+		/>
 	</SettingsRow>
 </SettingsGroup>
 
-<SettingsGroup title="Video" note="The preview is mirrored, as you see yourself.">
+<SettingsGroup title={t("settings_video_title")} note={t("settings_video_note")}>
 	<div class="p-3.5">
 		<div class="bg-duvet-sunk ring-duvet-line relative aspect-video overflow-hidden rounded-xl ring-1">
 			{#if preview}
@@ -267,15 +273,17 @@
 				<span
 					class="bg-duvet-media-scrim text-duvet-media-ink absolute bottom-2 left-2 rounded-md px-2 py-1 text-[10px] font-semibold tracking-[0.06em] uppercase backdrop-blur-md"
 				>
-					Preview
+					{t("settings_camera_preview")}
 				</span>
 			{:else}
 				<div class="text-duvet-ink2 flex size-full flex-col items-center justify-center gap-2 p-4 text-center text-xs">
 					{#if opening}
-						<p>Opening your camera…</p>
+						<p>{t("settings_camera_opening")}</p>
 					{:else}
-						<p class="text-duvet-ink">{previewError ?? "No camera found."}</p>
-						<Button variant="secondary" size="sm" onclick={() => void startPreview()}>Try again</Button>
+						<p class="text-duvet-ink">{previewError ?? t("settings_camera_none")}</p>
+						<Button variant="secondary" size="sm" onclick={() => void startPreview()}
+							>{t("settings_camera_retry")}</Button
+						>
 					{/if}
 				</div>
 			{/if}
@@ -283,8 +291,8 @@
 	</div>
 
 	<SettingsRow
-		label="Camera"
-		line={camerasLoaded && cameras.length === 0 ? "No cameras found." : "The one your camera uses."}
+		label={t("settings_camera_label")}
+		line={camerasLoaded && cameras.length === 0 ? t("settings_cameras_none") : t("settings_camera_line")}
 		icon={Video}
 		labelFor="video-camera"
 	>
@@ -294,7 +302,7 @@
 			value={cameraId}
 			onchange={(event) => onSelectCamera(event.currentTarget.value)}
 		>
-			<option value="">System default</option>
+			<option value="">{t("settings_device_default")}</option>
 			{#each cameras as camera, index (camera.id || index)}
 				<option value={camera.id}>{cameraName(camera, index)}</option>
 			{/each}

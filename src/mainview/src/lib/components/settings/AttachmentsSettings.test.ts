@@ -1,13 +1,16 @@
 import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import en from "../../../../messages/en.json";
 
 // The Attachments list in Settings: the magnifier the chat's attachments have, for a picture or a text file.
 const settings = readFileSync(join(import.meta.dir, "SettingsScreen.svelte"), "utf8");
 
 test("an image or a text file has a magnifier, to the left of its download", () => {
-	const preview = settings.indexOf('label="Preview {att.filename}"');
-	const download = settings.indexOf('aria-label="Download {att.filename}"');
+	const preview = settings.indexOf('label={t("settings_attachment_preview_named", { name: att.filename })}');
+	const download = settings.indexOf('aria-label={t("settings_attachment_download_named", { name: att.filename })}');
+	expect(en.settings_attachment_preview_named).toBe("Preview {name}");
+	expect(en.settings_attachment_download_named).toBe("Download {name}");
 	expect(preview).toBeGreaterThan(-1);
 	expect(download).toBeGreaterThan(-1);
 	expect(preview).toBeLessThan(download);
