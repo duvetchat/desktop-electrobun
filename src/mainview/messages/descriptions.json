@@ -1,4 +1,7 @@
 {
+	"format_size_bytes": "[short] A file's size under a kilobyte. {size} is the number, written in the language's digits.",
+	"format_size_kb": "[short] A file's size in kilobytes, e.g. 12.5 KB. Use your language's unit (French: Ko).",
+	"format_size_mb": "[short] A file's size in megabytes, e.g. 3.25 MB. Use your language's unit (French: Mo).",
 	"settings_language_note": "Under the language picker in Settings › Appearance. Messages are what people send each other: the app never translates them.",
 	"settings_language_system": "[short] The picker's first choice: follow the computer's language. {language} is that language's name in itself, e.g. Español."
 }

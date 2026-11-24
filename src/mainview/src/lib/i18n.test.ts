@@ -14,6 +14,8 @@ const en = read("en.json");
 const files = new Map(LOCALES.map((locale) => [locale, read(`${locale}.json`)]));
 const fileOf = (locale: Locale) => files.get(locale) ?? {};
 const translations = LOCALES.filter((locale) => locale !== "en");
+// The messages whose "server" is the API itself, not a Space (as lib/wording.test.ts's ABOUT_THE_API).
+const ABOUT_THE_API = new Set<string>([]);
 
 /** What a message's words are built around: its placeholders, tags, select cases and plural cases. */
 interface Shape {
@@ -113,6 +115,13 @@ describe("the language files", () => {
 		}
 	});
 
+	test("keep their keys in alphabetical order, so branches that add words merge cleanly (bun run messages:sort)", () => {
+		for (const name of readdirSync(MESSAGES).filter((file) => file.endsWith(".json"))) {
+			const keys = Object.keys(read(name));
+			expect({ name, keys }).toEqual({ name, keys: [...keys].sort() });
+		}
+	});
+
 	test("say Space and room, in every language: never server or channel (#57, messages/GLOSSARY.md)", () => {
 		const forbidden: Record<Locale, RegExp> = {
 			en: /\b(servers?|channels?)\b/i,
@@ -123,7 +132,9 @@ describe("the language files", () => {
 			it: /\b(server|canal[ei])\b/i,
 		};
 		for (const locale of LOCALES) {
-			const found = Object.entries(fileOf(locale)).filter(([, message]) => forbidden[locale].test(message));
+			const found = Object.entries(fileOf(locale)).filter(
+				([key, message]) => !ABOUT_THE_API.has(key) && forbidden[locale].test(message),
+			);
 			expect({ locale, found }).toEqual({ locale, found: [] });
 		}
 	});

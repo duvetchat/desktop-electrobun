@@ -17,6 +17,7 @@ import {
 	LOCALES,
 	PSEUDO,
 	SHIPPED,
+	formatLocale,
 	matchLocale,
 	parseLocalePref,
 	resolveLocale,
@@ -88,6 +89,15 @@ export function currentLocale(): UiLocale {
 export function t(key: MessageKey, values?: MessageValues): string {
 	track();
 	return i18n.t(key, values ?? {});
+}
+
+/**
+ * The locale dates, times and numbers are written in (lib/i18n/format.ts): the system's own when it's in the app's
+ * language, else the app's language.
+ */
+export function regionalLocale(): string {
+	track();
+	return formatLocale(current, systemLanguages());
 }
 
 /** The name, in itself, of the language "Match system" comes to now. */
