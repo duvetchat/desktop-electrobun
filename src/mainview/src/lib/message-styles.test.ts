@@ -7,8 +7,15 @@ import {
 	MESSAGE_BUBBLE_HIGHLIGHT,
 	MESSAGE_BUBBLE_OTHER,
 	MESSAGE_BUBBLE_OWN,
+	MESSAGE_CARD,
+	MESSAGE_CARD_ACTION,
 	MESSAGE_EMOJI_ONLY,
 	MESSAGE_FLAT,
+	MESSAGE_INVITE_CARD,
+	MESSAGE_MEDIA,
+	MESSAGE_MEDIA_PENDING,
+	MESSAGE_MEDIA_SUNK,
+	MESSAGE_PLACEHOLDER,
 	MESSAGE_TEXT,
 	MESSAGE_TEXT_OWN,
 	MESSAGE_TEXT_PLAIN,
@@ -51,6 +58,19 @@ test("a message's box separates the page, a flat row and a bubble", () => {
 	expect(MESSAGE_BUBBLE_HIGHLIGHT).toContain("var(--duvet-accent)");
 	expect(MESSAGE_BUBBLE_OWN).toContain("msg-own bg-duvet-azure");
 	expect(MESSAGE_BUBBLE_OTHER).toContain("bg-duvet-card");
+});
+
+test("a message's cards share the resting surface, and each keeps its own layout", () => {
+	expect(MESSAGE_CARD).toBe("bg-duvet-card shadow-duvet-raised rounded-card");
+	expect(MESSAGE_CARD_ACTION).toContain("hover:shadow-duvet-lifted");
+	expect(MESSAGE_MEDIA).toContain("overflow-hidden");
+	expect(MESSAGE_MEDIA).toContain("rounded-card");
+	expect(MESSAGE_MEDIA_SUNK).toContain("bg-duvet-sunk");
+	expect(MESSAGE_MEDIA_PENDING).toContain("bg-duvet-secondary-fill");
+	expect(MESSAGE_PLACEHOLDER).toContain("border-dashed");
+	expect(MESSAGE_PLACEHOLDER).toContain("rounded-card");
+	expect(MESSAGE_INVITE_CARD).toContain("max-w-xs");
+	expect(MESSAGE_INVITE_CARD).toContain("border-duvet-line");
 });
 
 test("a closed spoiler's specks take each tone's own colours", () => {

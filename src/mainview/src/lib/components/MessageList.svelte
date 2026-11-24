@@ -65,6 +65,7 @@
 	import { PRISM_BUBBLE, PRISM_LIGHT, PRISM_RIM, PRISM_WASH, placePrismsIn, slidePrismsIn } from "$lib/prism";
 	import {
 		MESSAGE_BODY,
+		MESSAGE_CARD,
 		MESSAGE_BUBBLE,
 		MESSAGE_BUBBLE_FAILED,
 		MESSAGE_BUBBLE_HIGHLIGHT,
@@ -1492,7 +1493,7 @@
 		<MessageAttachments {message} {channelName} onPreview={openPreview} />
 	{:else if isLoading(message)}
 		<!-- A bot's deferred response: it has 15 minutes to complete it -->
-		<div class={flat ? "" : "bg-duvet-card shadow-duvet-raised rounded-2xl px-3 py-2"}>
+		<div class={flat ? "" : `${MESSAGE_CARD} px-3 py-2`}>
 			<DeferredResponse {message} />
 		</div>
 	{:else if isComponentsV2(message)}
@@ -1827,7 +1828,7 @@
 					{@const parentMsg = threadMsg.ref_message_id ? threadMsgMap.get(threadMsg.ref_message_id) : null}
 					{@const parentCall = parentMsg ? callNoticeLine(parentMsg, $currentUser?.id, joined) : null}
 					{@const root = threadRootMessage}
-					<div class="group bg-duvet-card shadow-duvet-raised relative rounded-2xl px-3 py-2.5">
+					<div class="group {MESSAGE_CARD} relative px-3 py-2.5">
 						<!-- As the pins and the search show a message, a reply's quote above it: its quote of a call notice
 						     says what the call's row does -->
 						<MessagePreview

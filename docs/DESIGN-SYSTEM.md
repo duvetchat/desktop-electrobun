@@ -124,6 +124,13 @@ Use a feature recipe when styling depends on rendered content, ownership,
 feature state, or a domain-specific layout. Keep it composable so the same
 content looks right in chat, previews, search, and profiles.
 
+`message-styles.ts` also holds the message-card language: `MESSAGE_CARD` for
+the resting surface, `MESSAGE_CARD_ACTION` when the whole card opens
+something, `MESSAGE_MEDIA`, `MESSAGE_MEDIA_SUNK` and `MESSAGE_MEDIA_PENDING`
+for a photo or video's frame, `MESSAGE_PLACEHOLDER` for a dashed empty state,
+and `MESSAGE_INVITE_CARD` for invites. Widths, padding and the 18 px voice-note
+radius stay at the call site: those are the card's layout, not its surface.
+
 ### 4. User preferences
 
 Preferences are independent inputs to rendering, not alternate names for the

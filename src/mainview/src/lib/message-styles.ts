@@ -65,6 +65,28 @@ export function messageTextClass(own = false): string {
 export const MESSAGE_BODY =
 	"font-content relative max-w-full cursor-text text-left text-[16px] wrap-anywhere select-text";
 
+/** A message's card: an attachment, embed, link preview or component on the card's fill, at its resting height. */
+export const MESSAGE_CARD = "bg-duvet-card shadow-duvet-raised rounded-card";
+
+/** The same card where the whole surface opens something: it lifts under the pointer. */
+export const MESSAGE_CARD_ACTION = `${MESSAGE_CARD} hover:shadow-duvet-lifted transition-shadow motion-reduce:transition-none`;
+
+/** A photo or video's frame: clipped to the card radius, on its own resting shadow. */
+export const MESSAGE_MEDIA = "shadow-duvet-raised overflow-hidden rounded-card";
+
+/** The recessed frame a photo or video waits in, before its own pixels cover it. */
+export const MESSAGE_MEDIA_SUNK = "bg-duvet-sunk shadow-duvet-raised relative overflow-hidden rounded-card";
+
+/** The secondary fill a photo or video still uploading sits on. */
+export const MESSAGE_MEDIA_PENDING = "bg-duvet-secondary-fill relative rounded-card";
+
+/** A dashed placeholder: a file or voice note that is gone, or a place to drop one. */
+export const MESSAGE_PLACEHOLDER = "border-duvet-line text-duvet-ink2 rounded-card border border-dashed";
+
+/** An invite's card: the message card inside a hairline, with its own inset. */
+export const MESSAGE_INVITE_CARD =
+	"border-duvet-line bg-duvet-card shadow-duvet-raised rounded-card mt-2 max-w-xs border p-4";
+
 /** A message of only emoji: the glyphs at their large size, with no bubble's padding. */
 export const MESSAGE_EMOJI_ONLY = "px-0.5 leading-[1.15]";
 
