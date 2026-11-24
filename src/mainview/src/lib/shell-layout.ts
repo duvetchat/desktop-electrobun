@@ -1,3 +1,4 @@
+import { t } from "$lib/i18n";
 import { isConversationTab, makeLeaf, makeSplit, updateLeaf } from "$lib/pane";
 import type { PaneLeaf, PaneNode, Tab } from "$lib/types";
 
@@ -71,13 +72,11 @@ export function chatsUnderAll<Chat extends { id: string }>(
 	return { shown: expanded ? [...chats] : folded, more };
 }
 
-const counted = (count: number, one: string, many: string) => (count === 1 ? `1 ${one}` : `${count} ${many}`);
-
-export const moreChatsLabel = (count: number) => counted(count, "more chat", "more chats");
-export const mentionsLabel = (count: number) => counted(count, "mention", "mentions");
-export const friendRequestsLabel = (count: number) => counted(count, "friend request", "friend requests");
+export const moreChatsLabel = (count: number) => t("shell_more_chats", { count });
+export const mentionsLabel = (count: number) => t("shell_mentions", { count });
+export const friendRequestsLabel = (count: number) => t("shell_friend_requests", { count });
 /** The quiet Spaces' row (#382): the same folded and unfolded, whichever Space is open. */
-export const quietSpacesLabel = (count: number) => `Quiet · ${count}`;
+export const quietSpacesLabel = (count: number) => t("shell_quiet_spaces", { count });
 
 /** A count as a chip writes it: 99+ past 99. */
 export const chipCount = (count: number) => (count > 99 ? "99+" : String(count));
@@ -119,12 +118,12 @@ export function openHow(press: Press, mac: boolean): OpenHow {
  * active tab gets it at the end either way.
  */
 export function openInLeaf(leaf: PaneLeaf, tab: Tab, how: "here" | "tab"): PaneLeaf {
-	if (leaf.tabs.some((t) => t.channelId === tab.channelId)) return { ...leaf, activeChannelId: tab.channelId };
-	const at = leaf.tabs.findIndex((t) => t.channelId === leaf.activeChannelId);
+	if (leaf.tabs.some((each) => each.channelId === tab.channelId)) return { ...leaf, activeChannelId: tab.channelId };
+	const at = leaf.tabs.findIndex((each) => each.channelId === leaf.activeChannelId);
 	if (at === -1) return { ...leaf, tabs: [...leaf.tabs, tab], activeChannelId: tab.channelId };
 	const tabs =
 		how === "here"
-			? leaf.tabs.map((t, index) => (index === at ? tab : t))
+			? leaf.tabs.map((each, index) => (index === at ? tab : each))
 			: [...leaf.tabs.slice(0, at + 1), tab, ...leaf.tabs.slice(at + 1)];
 	return { ...leaf, tabs, activeChannelId: tab.channelId };
 }
@@ -172,7 +171,7 @@ export function openBeside(root: PaneNode, focusedId: string, tab: Tab): { root:
 
 /** The pane that has a chat among its tabs, shown or not; null when none has. */
 export function leafWithTab(node: PaneNode, channelId: string): PaneLeaf | null {
-	if (node.kind === "leaf") return node.tabs.some((t) => t.channelId === channelId) ? node : null;
+	if (node.kind === "leaf") return node.tabs.some((each) => each.channelId === channelId) ? node : null;
 	return leafWithTab(node.a, channelId) ?? leafWithTab(node.b, channelId);
 }
 
@@ -218,7 +217,7 @@ export function mergedLeaf(root: PaneNode, focusedId: string): PaneLeaf {
 	const focused = leaves.find((leaf) => leaf.id === focusedId) ?? leaves[0]!;
 	const tabs = [...focused.tabs];
 	for (const leaf of leaves) {
-		for (const tab of leaf.tabs) if (!tabs.some((t) => t.channelId === tab.channelId)) tabs.push(tab);
+		for (const tab of leaf.tabs) if (!tabs.some((each) => each.channelId === tab.channelId)) tabs.push(tab);
 	}
 	return { ...focused, tabs };
 }
@@ -238,7 +237,7 @@ export function stripHalves(root: PaneNode, focusedId: string): StripHalf[] {
 	if (leaves.length < 2) return [];
 	return leaves.map((leaf) => ({
 		leafId: leaf.id,
-		tab: leaf.tabs.find((t) => t.channelId === leaf.activeChannelId) ?? null,
+		tab: leaf.tabs.find((each) => each.channelId === leaf.activeChannelId) ?? null,
 		focused: leaf.id === focusedId,
 	}));
 }
@@ -323,9 +322,9 @@ export function stripDrop(
 }
 
 /** A chat's kind, for a line under its name: a conversation is a group or a direct message; a room has none. */
-export function tabKind(tab: Tab, groupIds: ReadonlySet<string>): "Group" | "Direct message" | null {
+export function tabKind(tab: Tab, groupIds: ReadonlySet<string>): string | null {
 	if (!isConversationTab(tab)) return null;
-	return groupIds.has(tab.channelId) ? "Group" : "Direct message";
+	return groupIds.has(tab.channelId) ? t("shell_chat_kind_group") : t("shell_chat_kind_dm");
 }
 
 // ── Shortcuts ───────────────────────────────────────────────────────────────
@@ -381,11 +380,43 @@ export function keysFor(mac: boolean, keys: { mac: string; other: string }): str
 	return mac ? keys.mac : keys.other;
 }
 
+/**
+ * A shortcut's two spellings, each read when it's shown: the keys' names are words (#464: German writes Strg, and
+ * "click" is a word too), so each side is a getter that asks t() for them in the language of the moment, never a
+ * string kept from when the module loaded. macOS's symbols (⌘ ⌥ ⇧ ⌃) aren't words.
+ */
+const shortcut = (mac: () => string, other: () => string): { readonly mac: string; readonly other: string } => ({
+	get mac() {
+		return mac();
+	},
+	get other() {
+		return other();
+	},
+});
+
 export const SHELL_KEYS = {
-	switcher: { mac: "⌘K", other: "Ctrl K" },
-	sidebar: { mac: "⌃⌘S", other: "Ctrl Shift S" },
-	newTab: { mac: "⌘T", other: "Ctrl T" },
-	closeTab: { mac: "⌘W", other: "Ctrl W" },
-	openInTab: { mac: "⌘-click", other: "Ctrl-click" },
-	openBeside: { mac: "⌥-click", other: "Alt-click" },
+	switcher: shortcut(
+		() => "⌘K",
+		() => t("keys_ctrl_with", { key: "K" }),
+	),
+	sidebar: shortcut(
+		() => "⌃⌘S",
+		() => t("keys_ctrl_shift_with", { key: "S" }),
+	),
+	newTab: shortcut(
+		() => "⌘T",
+		() => t("keys_ctrl_with", { key: "T" }),
+	),
+	closeTab: shortcut(
+		() => "⌘W",
+		() => t("keys_ctrl_with", { key: "W" }),
+	),
+	openInTab: shortcut(
+		() => t("keys_mac_click", { key: "⌘" }),
+		() => t("keys_ctrl_click"),
+	),
+	openBeside: shortcut(
+		() => t("keys_mac_click", { key: "⌥" }),
+		() => t("keys_alt_click"),
+	),
 } as const;

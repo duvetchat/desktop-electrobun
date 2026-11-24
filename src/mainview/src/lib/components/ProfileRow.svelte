@@ -22,6 +22,7 @@
 	import { ownMobileOnly } from "$lib/api/ws/connection";
 	import { SETTINGS_MENU_COMMAND } from "$lib/app-menu";
 	import { getElectrobunRpc } from "$lib/electrobun-rpc";
+	import { t } from "$lib/i18n";
 	import { currentShell } from "$lib/platform";
 	import { isSettingsShortcut } from "$lib/shell-layout";
 	import { STATUS_CHOICES, chosenStatus } from "$lib/status";
@@ -38,7 +39,10 @@
 	// The status the user chose, which everyone sees while they're connected.
 	const myChoice = $derived(chosenStatus($currentUser?.status));
 	const myStatus = $derived(userStatusToString(myChoice));
-	const myStatusLabel = $derived(STATUS_CHOICES.find((c) => c.status === myChoice)?.label ?? "");
+	const myStatusLabel = $derived.by(() => {
+		const label = STATUS_CHOICES.find((c) => c.status === myChoice)?.label;
+		return label ? t(label) : "";
+	});
 
 	// Quick mute and deafen beside Settings, as the media controls above the row have them: the stores' state, so both
 	// say the same thing (a deafen mutes too, lib/voice.ts).
@@ -91,7 +95,12 @@
 			/>
 		</StatusMenu>
 		<MediaControls collapsed />
-		<button class={iconButtonClass()} aria-label="Settings" title="Settings" onclick={() => (showUserSettings = true)}>
+		<button
+			class={iconButtonClass()}
+			aria-label={t("shell_settings")}
+			title={t("shell_settings")}
+			onclick={() => (showUserSettings = true)}
+		>
 			<GearSixIcon class="size-4" />
 		</button>
 	</div>
@@ -128,8 +137,8 @@
 		</StatusMenu>
 		{#if !inVoice}
 			<MediaButton
-				label={media.muted ? "Unmute" : "Mute"}
-				tip={media.canSpeak ? (media.muted ? "Unmute" : "Mute") : "You can't speak in this room"}
+				label={media.muted ? t("shell_unmute") : t("shell_mute")}
+				tip={media.canSpeak ? (media.muted ? t("shell_unmute") : t("shell_mute")) : t("shell_cant_speak")}
 				pressed={media.muted}
 				stateInName
 				disabled={!media.canSpeak}
@@ -140,7 +149,7 @@
 				{#if media.muted}<MicOff size={16} />{:else}<Mic size={16} />{/if}
 			</MediaButton>
 			<MediaButton
-				label={media.deafened ? "Undeafen" : "Deafen"}
+				label={media.deafened ? t("shell_undeafen") : t("shell_deafen")}
 				pressed={media.deafened}
 				stateInName
 				shape="square"
@@ -150,7 +159,12 @@
 				{#if media.deafened}<HeadphoneOff size={16} />{:else}<Headphones size={16} />{/if}
 			</MediaButton>
 		{/if}
-		<button class={iconButtonClass()} aria-label="Settings" title="Settings" onclick={() => (showUserSettings = true)}>
+		<button
+			class={iconButtonClass()}
+			aria-label={t("shell_settings")}
+			title={t("shell_settings")}
+			onclick={() => (showUserSettings = true)}
+		>
 			<GearSixIcon class="size-4" />
 		</button>
 	</div>

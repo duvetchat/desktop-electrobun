@@ -118,7 +118,13 @@ export function monogramSize(size: number): number {
 	return Math.round(size * 0.46);
 }
 
-/** The letter on a Space icon without a picture: its name's first character, in upper case. */
+/**
+ * The letter on a Space icon without a picture: its name's first character, in upper case.
+ *
+ * Upper case as the system's locale writes it, not the app's language (#464): a Space's name is its owner's own words,
+ * in no language the app can know, and none of the app's languages has casing rules of its own, while the system's
+ * may (Turkish writes İ for i). Graphemes don't depend on a locale.
+ */
 export function monogram(name: string): string {
 	const [first] = [...new Intl.Segmenter(undefined, { granularity: "grapheme" }).segment(name.trim())];
 	return (first?.segment ?? "").toLocaleUpperCase();

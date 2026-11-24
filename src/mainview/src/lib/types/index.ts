@@ -1,4 +1,5 @@
 import { getAvatarURL } from "$lib/common/common";
+import { t } from "$lib/i18n";
 import { mergedByKey } from "$lib/reactions";
 import { memberMobileOnly, memberStatus } from "$lib/status";
 import type { Conversation, DirectMessage } from "$lib/api/conversations";
@@ -1304,7 +1305,9 @@ export function withCreatedRole(roles: GatewayRole[], created: GatewayRole): Gat
 }
 
 export function gatewayMessageToMessage(msg: GatewayMessage, spaces: GatewaySpace[]): Message {
-	let author_name = "Unknown";
+	// Kept in the message, so it stays in the language it was loaded in: a #464 follow-up moves the fallback to where
+	// the author is drawn.
+	let author_name = t("shell_unknown_person");
 	let author_avatar_url: string | null = null;
 	let author_is_bot = false;
 
@@ -1469,7 +1472,7 @@ export function gatewaySpaceToGuild(space: GatewaySpace): Guild {
 					const user = space.users.find((u) => u.id === vs.user_id);
 					return {
 						id: vs.user_id,
-						username: user?.alias ?? user?.username ?? "Unknown",
+						username: user?.alias ?? user?.username ?? t("shell_unknown_person"),
 						avatar_url: user ? getAvatarURL(user.id, user.avatar) : null,
 						muted: vs.muted,
 						deafened: vs.deafened,

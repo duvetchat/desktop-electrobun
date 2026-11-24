@@ -40,7 +40,7 @@ describe("the split of the user's panel", () => {
 			"<UserSettings",
 		])
 			expect(row).toContain(part);
-		expect(row.split('aria-label="Settings"')).toHaveLength(3);
+		expect(row.split('aria-label={t("shell_settings")}')).toHaveLength(3);
 		// Docked, the media controls are the sidebar's to mount, as one block above the row (BRIEF.md "Media controls");
 		// only the folded column has them here. The call panel is theirs in voice, so the row mounts no voice status.
 		expect(row).not.toContain("<MediaControls />");
@@ -68,14 +68,14 @@ describe("the split of the user's panel", () => {
 	// the microphone's picker, the noise setting or the voice's own logic.
 	test("has the quick mute and deafen beside Settings, from the media stores", () => {
 		const expanded = row.slice(row.indexOf("<!-- The profile row:"), row.indexOf("<UserSettings"));
-		expect(expanded).toContain('label={media.muted ? "Unmute" : "Mute"}');
+		expect(expanded).toContain('label={media.muted ? t("shell_unmute") : t("shell_mute")}');
 		expect(expanded).toContain("onclick={actions.toggleMute}");
-		expect(expanded).toContain('label={media.deafened ? "Undeafen" : "Deafen"}');
+		expect(expanded).toContain('label={media.deafened ? t("shell_undeafen") : t("shell_deafen")}');
 		expect(expanded).toContain("onclick={actions.toggleDeafen}");
 		expect(expanded).toContain("disabled={!media.canSpeak}");
 		const mic = expanded.indexOf("actions.toggleMute");
 		const deafen = expanded.indexOf("actions.toggleDeafen");
-		const settings = expanded.indexOf('aria-label="Settings"');
+		const settings = expanded.indexOf('aria-label={t("shell_settings")}');
 		expect(mic).toBeGreaterThan(-1);
 		expect(mic).toBeLessThan(deafen);
 		expect(deafen).toBeLessThan(settings);

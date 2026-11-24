@@ -7,6 +7,7 @@
 		RotateCw as RotateCwIcon,
 	} from "@lucide/svelte";
 	import { restarting, takeUpdate, updateOffer, watchUpdates } from "$lib/app-update";
+	import { t } from "$lib/i18n";
 	import { currentShell } from "$lib/platform";
 	import DragRegion from "$lib/components/DragRegion.svelte";
 	import TabBar from "$lib/components/TabBar.svelte";
@@ -58,9 +59,9 @@
 		<WindowControls side="start" />
 		{#if shell.chrome !== "mac"}<span class="w-1 shrink-0"></span>{/if}
 		{#if onShowSidebar}
-			<Tooltip text="Show sidebar" keys={sidebarKeys}>
+			<Tooltip text={t("shell_show_sidebar")} keys={sidebarKeys}>
 				{#snippet trigger(props)}
-					<IconButton {...props} label="Show sidebar" class="titlebar-actions" onclick={onShowSidebar}>
+					<IconButton {...props} label={t("shell_show_sidebar")} class="titlebar-actions" onclick={onShowSidebar}>
 						<PanelLeftIcon size={16} />
 					</IconButton>
 				{/snippet}
@@ -70,9 +71,9 @@
 	{#if tabBar}
 		<TabBar {...tabBar} />
 	{/if}
-	<Tooltip text="New tab" keys={newTabKeys}>
+	<Tooltip text={t("shell_new_tab")} keys={newTabKeys}>
 		{#snippet trigger(props)}
-			<IconButton {...props} label="New tab" class="titlebar-actions" onclick={onNewTab}>
+			<IconButton {...props} label={t("shell_new_tab")} class="titlebar-actions" onclick={onNewTab}>
 				<PlusIcon size={15} />
 			</IconButton>
 		{/snippet}
@@ -83,17 +84,17 @@
 			type="button"
 			class="titlebar-actions bg-duvet-accent text-duvet-on-accent shadow-duvet-raised flex h-7 shrink-0 items-center gap-1.5 rounded-full px-3 text-[12.5px] font-medium disabled:opacity-60"
 			title={$updateOffer.how === "download"
-				? `Duvet ${$updateOffer.version} is out: get it from duvet.chat`
-				: `Duvet ${$updateOffer.version} is ready`}
+				? t("shell_update_download_title", { version: String($updateOffer.version) })
+				: t("shell_update_ready_title", { version: String($updateOffer.version) })}
 			disabled={$restarting}
 			onclick={() => void takeUpdate()}
 		>
 			{#if $updateOffer.how === "download"}
 				<DownloadIcon size={13} aria-hidden="true" />
-				Download update
+				{t("shell_update_download")}
 			{:else}
 				<RotateCwIcon size={13} aria-hidden="true" />
-				{$restarting ? "Restarting…" : "Restart to update"}
+				{$restarting ? t("shell_update_restarting") : t("shell_update_restart")}
 			{/if}
 		</button>
 	{/if}

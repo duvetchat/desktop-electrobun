@@ -9,9 +9,11 @@ const components = readdirSync(import.meta.dir).filter((file) => file.endsWith("
 // mark wherever it opens from; the phone stays with what calls.
 test("the call history opens from a history mark, never a phone", () => {
 	const openers = components.flatMap((file) =>
-		[...source(file).matchAll(/<IconButton\b[^>]*\blabel="Call history"[^>]*>\s*<(\w+)/g)].map(
-			(m) => `${file}: ${m[1]}`,
-		),
+		[
+			...source(file).matchAll(
+				/<IconButton\b[^>]*\blabel=(?:"Call history"|\{t\("shell_call_history"\)\})[^>]*>\s*<(\w+)/g,
+			),
+		].map((m) => `${file}: ${m[1]}`),
 	);
 	expect(openers).toEqual(["SpaceNav.svelte: HistoryIcon"]);
 	expect(source("SpaceNav.svelte")).toContain("History as HistoryIcon,");

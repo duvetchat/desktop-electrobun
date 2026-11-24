@@ -5,6 +5,7 @@
 	import { groupSpaces, spaceNews, type OpenChats } from "$lib/nav";
 	import { tabNews, tabTitle } from "$lib/pane";
 	import { navPrefs } from "$lib/nav-prefs.svelte";
+	import { t } from "$lib/i18n";
 	import type { Guild } from "$lib/types";
 	import SpaceIcon from "$lib/components/ui/SpaceIcon.svelte";
 	import TabIcon from "$lib/components/TabIcon.svelte";
@@ -58,8 +59,8 @@
 		class="relative flex size-9 shrink-0 items-center justify-center rounded-full {isFriendsActive
 			? 'bg-duvet-accent-tint text-duvet-accent-text'
 			: 'bg-duvet-secondary-fill text-duvet-accent-text'} {iconFocus}"
-		aria-label="Friends"
-		title="Friends"
+		aria-label={t("shell_friends")}
+		title={t("shell_friends")}
 		aria-pressed={isFriendsActive}
 		data-jump
 		onclick={onFriendsSelect}

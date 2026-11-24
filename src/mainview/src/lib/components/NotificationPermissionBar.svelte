@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { Bell, X as XIcon } from "@lucide/svelte";
 	import { isElectrobunWindow } from "$lib/electrobun-rpc";
+	import { t } from "$lib/i18n";
 	import Button from "$lib/components/ui/Button.svelte";
 	import { GLASS, iconButtonClass } from "$lib/components/ui/recipes";
 
@@ -24,12 +25,17 @@
 	<div
 		class="{GLASS} animate-toast-in text-duvet-ink fixed bottom-16 left-1/2 z-9990 flex w-[min(28rem,calc(100vw-2rem))] -translate-x-1/2 items-center gap-3 rounded-[18px] py-2 pr-2 pl-3.5 text-[13px]"
 		role="region"
-		aria-label="Notifications permission"
+		aria-label={t("shell_notify_permission_label")}
 	>
 		<Bell size={16} class="text-duvet-ink2 shrink-0" />
-		<span class="min-w-0 flex-1">Turn on desktop notifications for new messages</span>
-		<Button size="sm" onclick={turnOn}>Turn on</Button>
-		<button type="button" class={iconButtonClass("sm")} aria-label="Dismiss" onclick={() => (asking = false)}>
+		<span class="min-w-0 flex-1">{t("shell_notify_permission_ask")}</span>
+		<Button size="sm" onclick={turnOn}>{t("shell_notify_permission_turn_on")}</Button>
+		<button
+			type="button"
+			class={iconButtonClass("sm")}
+			aria-label={t("shell_dismiss")}
+			onclick={() => (asking = false)}
+		>
 			<XIcon size={14} />
 		</button>
 	</div>

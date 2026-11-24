@@ -2,6 +2,12 @@
 // work in the desktop app, in the main window and in the media controls' pop-out, whichever has the keyboard. On the
 // web they aren't taken: browsers keep them (Chrome's profile menu, bookmark all tabs).
 
+// The Bun process's type check (src/bun's tsconfig, which has no $lib) reaches this module through its menu's test of
+// voiceKey, which needs no words: it can't follow the app's i18n, and isn't asked to. The app, its tests and
+// svelte-check resolve it.
+// @ts-ignore
+import { t } from "$lib/i18n";
+
 export type VoiceKey = "mute" | "deafen";
 
 type KeyLike = Pick<KeyboardEvent, "key" | "metaKey" | "ctrlKey" | "altKey" | "shiftKey">;
@@ -16,10 +22,10 @@ export function voiceKey(e: KeyLike, isMac: boolean): VoiceKey | null {
 	return null;
 }
 
-/** A shortcut as the app writes it: "⇧⌘M" on macOS, "Ctrl Shift M" elsewhere. */
+/** A shortcut as the app writes it: "⇧⌘M" on macOS, "Ctrl Shift M" elsewhere, whose keys' names are words (#464). */
 export function voiceKeyLabel(key: VoiceKey, isMac: boolean): string {
 	const letter = key === "mute" ? "M" : "D";
-	return isMac ? `⇧⌘${letter}` : `Ctrl Shift ${letter}`;
+	return isMac ? `⇧⌘${letter}` : t("keys_ctrl_shift_with", { key: letter });
 }
 
 /** Both labels, for the controls' tooltips. */

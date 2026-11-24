@@ -3,6 +3,7 @@ import { createRawSnippet } from "svelte";
 import { readdirSync, readFileSync } from "node:fs";
 import { join, relative, sep } from "node:path";
 import type { Shell } from "$lib/platform";
+import en from "../../../messages/en.json";
 import { tags } from "./server-render";
 
 // The window's own buttons (#357, S-01). On Windows and Linux no window of the app has the system's: the main window,
@@ -49,7 +50,13 @@ const LABELS = Object.keys(FUNCTION_OF);
 
 /** Each opening tag of a component's source that draws a control, whole. */
 const controlTags = (source: string) => [...source.matchAll(/<(?:button|IconButton|Button)\b[^>]*>/g)].map((m) => m[0]);
-const labelOf = (tag: string) => /\b(?:aria-label|label)="([^"]*)"/.exec(tag)?.[1] ?? null;
+/** A control's name: as written, or its message's English, from en.json (#464). */
+const english: Record<string, string> = en;
+const labelOf = (tag: string) => {
+	const key = /\b(?:aria-label|label)=\{t\("(\w+)"\)\}/.exec(tag)?.[1];
+	if (key) return english[key] ?? null;
+	return /\b(?:aria-label|label)="([^"]*)"/.exec(tag)?.[1] ?? null;
+};
 
 describe("the window's buttons", () => {
 	test("each one calls its function of lib/window-controls.ts", () => {
