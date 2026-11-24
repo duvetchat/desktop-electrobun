@@ -132,11 +132,12 @@ describe("an overline", () => {
 });
 
 describe("an icon tile", () => {
-	test("is 30 px with 9 px corners, or 26 small, on the secondary fill", () => {
+	test("is 30 px with 9 px corners, or 26 small, or 34 large, on the secondary fill", () => {
 		expect(classes(iconTileClass("md"))).toEqual(
 			expect.arrayContaining(["size-[30px]", "rounded-tile", "bg-duvet-secondary-fill", "text-duvet-accent-text"]),
 		);
 		expect(classes(iconTileClass("sm"))).toEqual(expect.arrayContaining(["size-[26px]", "rounded-tile"]));
+		expect(classes(iconTileClass("lg"))).toEqual(expect.arrayContaining(["size-[34px]", "rounded-tile"]));
 		expect(classes(iconTileClass("md", "ink"))).toContain("text-duvet-ink2");
 	});
 });

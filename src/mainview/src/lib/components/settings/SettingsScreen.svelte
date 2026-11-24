@@ -217,23 +217,36 @@
 			// no storage: the next window opens on My account
 		}
 	});
-	// The side panel's sections, in order; Developer sits apart.
+	// The side panel's sections, in larger groups: who the settings are for, how the app looks and sounds, the files
+	// behind the account, and the tools for builders.
 	const sectionGroups = $derived<SettingsNavGroup<Section>[]>([
 		{
+			title: "Account",
 			items: [
 				{ id: "account", label: "My account", icon: UserIcon, tile: "#5e6380" },
-				{ id: "attachments", label: "Attachments", icon: PaperclipIcon, tile: "#0b6fe8" },
 				{ id: "security", label: "Security", icon: ShieldIcon, tile: "#2f9e62" },
-				{ id: "audio", label: "Audio", icon: VolumeIcon, tile: "#f97316" },
-				{ id: "voice-video", label: "Voice and video", icon: MicIcon, tile: "#e01890" },
-				{ id: "appearance", label: "Appearance", icon: PaletteIcon, tile: "#2f4cff" },
 				...(desktopApp
 					? [{ id: "activity" as const, label: "Activity privacy", icon: ActivityIcon, tile: "#e44fcb" }]
 					: []),
+			],
+		},
+		{
+			title: "App and media",
+			items: [
+				{ id: "appearance", label: "Appearance", icon: PaletteIcon, tile: "#2f4cff" },
+				{ id: "audio", label: "Audio", icon: VolumeIcon, tile: "#f97316" },
+				{ id: "voice-video", label: "Voice and video", icon: MicIcon, tile: "#e01890" },
+			],
+		},
+		{
+			title: "Files",
+			items: [
+				{ id: "attachments", label: "Attachments", icon: PaperclipIcon, tile: "#0b6fe8" },
 				{ id: "buckets", label: "S3 buckets", icon: DatabaseIcon, tile: "#0e8fd6" },
 			],
 		},
 		{
+			title: "Developer",
 			items: [
 				{ id: "developer", label: "Developer", icon: CodeIcon, tile: "#5f45b5", count: $pendingTeamInvites.length },
 			],
@@ -1363,7 +1376,7 @@
 	{#snippet head()}
 		<button
 			type="button"
-			class="rounded-row flex shrink-0 items-center gap-2.5 p-2 text-left transition-colors duration-[120ms] motion-reduce:transition-none {activeSection ===
+			class="rounded-row flex shrink-0 items-center gap-3 p-2.5 text-left transition-colors duration-[120ms] motion-reduce:transition-none {activeSection ===
 			'account'
 				? 'bg-duvet-accent-tint'
 				: 'hover:bg-duvet-sb-hover'}"
@@ -1371,21 +1384,21 @@
 		>
 			<Avatar
 				src={$currentUser ? getAvatarURL($currentUser.id, $currentUser.avatar) : null}
-				size={34}
+				size={40}
 				ring="var(--duvet-sb-ring)"
 			/>
 			<span class="min-w-0 flex-1">
-				<span class="block truncate text-[13.5px] font-semibold">
+				<span class="block truncate text-[14.5px] font-semibold">
 					{$currentUser?.alias ?? $currentUser?.username ?? ""}
 				</span>
-				<span class="text-duvet-ink2 block truncate text-[11.5px]">Duvet account</span>
+				<span class="text-duvet-ink2 block truncate text-[13.5px]">Duvet account</span>
 			</span>
 		</button>
 	{/snippet}
 
 	{#snippet foot()}
 		<button type="button" class={navItemClass(false, true)} onclick={() => host.logout()}>
-			<span class={NAV_ICON_SLOT}><LogOutIcon size={14} /></span>
+			<span class={NAV_ICON_SLOT}><LogOutIcon size={16} /></span>
 			Sign out
 		</button>
 	{/snippet}
@@ -1463,7 +1476,7 @@
 					placeholder={$currentUser?.username ?? ""}
 					class={FIELD}
 				/>
-				<p class="text-duvet-ink2 mt-1.5 text-xs">This is how others see you. Leave empty to use your username.</p>
+				<p class="text-duvet-ink2 mt-1.5 text-[13px]">This is how others see you. Leave empty to use your username.</p>
 			</div>
 
 			<div>
@@ -1476,7 +1489,7 @@
 					aria-invalid={bioTooLong}
 					class="{FIELD_AREA} {bioTooLong ? FIELD_WRONG : ''}"
 				></textarea>
-				<p class="text-duvet-ink2 mt-1 flex justify-between gap-2 text-xs">
+				<p class="text-duvet-ink2 mt-1 flex justify-between gap-2 text-[13px]">
 					<span>Shown on your profile. Leave empty for none.</span>
 					<span class="tabular-nums {bioTooLong ? 'text-duvet-danger' : ''}">{bioLength}/{BIO_MAX_LENGTH}</span>
 				</p>
@@ -1552,7 +1565,7 @@
 					{value}
 					oninput={(volume) => (key === "master" ? audioStore.setMaster(volume) : audioStore.set(key, volume))}
 				/>
-				<span class="text-duvet-ink2 w-10 text-right text-xs tabular-nums">{value}%</span>
+				<span class="text-duvet-ink2 w-10 text-right text-[13px] tabular-nums">{value}%</span>
 			</SettingsRow>
 		{/snippet}
 		<SettingsGroup title="All sounds">
@@ -1679,7 +1692,7 @@
 			<div>
 				<p class={LABEL}>Preview</p>
 				{#key themeVersion}
-					<p class="msg-content text-duvet-ink text-sm">
+					<p class="msg-content text-duvet-ink text-[14.5px]">
 						{@html renderMarkdown(
 							'```go\npackage main\n\nimport "fmt"\n\nfunc main() {\n\tnames := []string{"Alice", "Bob"}\n\tfor _, name := range names {\n\t\tfmt.Printf("Hello, %s!\\n", name)\n\t}\n}\n```',
 						)}
@@ -1727,14 +1740,14 @@
 		{#if storageStatus}
 			<div class="{CARD} flex flex-col gap-3 p-4">
 				<div class="flex items-baseline justify-between gap-3">
-					<p class="text-duvet-ink2 text-[13px] font-medium">Default storage</p>
-					<p class="text-[22px] leading-none font-semibold tabular-nums">
+					<p class="text-duvet-ink2 text-[14px] font-medium">Default storage</p>
+					<p class="text-[24px] leading-none font-semibold tabular-nums">
 						{formatFileSize(storageStatus.used_bytes)}
-						<span class="text-duvet-ink2 text-sm font-medium">/ {formatFileSize(storageStatus.max_bytes)}</span>
+						<span class="text-duvet-ink2 text-[14.5px] font-medium">/ {formatFileSize(storageStatus.max_bytes)}</span>
 					</p>
 				</div>
 				{@render usageBar(Math.min(storageStatus.percentage_used, 100))}
-				<div class="text-duvet-ink2 flex gap-4 text-xs">
+				<div class="text-duvet-ink2 flex gap-4 text-[13px]">
 					<span>{storageStatus.percentage_used}% used</span>
 					<span>Upload limit: {formatFileSize(storageStatus.upload_limit_bytes)} per file</span>
 				</div>
@@ -1742,8 +1755,8 @@
 		{/if}
 
 		<!-- Summary bar -->
-		<div class="flex min-h-[30px] items-center justify-between gap-3 px-1.5">
-			<div class="text-duvet-ink2 text-[13px]">
+		<div class="flex min-h-[36px] items-center justify-between gap-3 px-2">
+			<div class="text-duvet-ink2 text-[14px]">
 				{#if listedHere}
 					<span class="text-duvet-ink font-semibold tabular-nums">{attachments.length}</span>
 					file{attachments.length !== 1 ? "s" : ""}
@@ -1755,7 +1768,7 @@
 			</div>
 			<div class="flex items-center gap-2">
 				{#if buckets.length > 0 || attachmentsLocation !== "all"}
-					<label class="text-duvet-ink2 flex items-center gap-2 text-xs">
+					<label class="text-duvet-ink2 flex items-center gap-2 text-[13px]">
 						Location
 						<select
 							value={attachmentsLocation}
@@ -1794,7 +1807,7 @@
 		{:else if attachments.length === 0}
 			<div class="text-duvet-ink2 flex flex-col items-center justify-center py-14">
 				<PaperclipIcon class="mb-3 size-9" />
-				<p class="text-sm">{attachmentsLocation === "all" ? "No attachments yet" : "No files here"}</p>
+				<p class="text-[14.5px]">{attachmentsLocation === "all" ? "No attachments yet" : "No files here"}</p>
 			</div>
 		{:else}
 			<div class="flex flex-col gap-2">
@@ -1830,8 +1843,8 @@
 								{/if}
 								<!-- Info -->
 								<div class="min-w-0 flex-1">
-									<p class="truncate text-[13.5px] font-medium">{att.filename}</p>
-									<p class="text-duvet-ink2 text-xs">
+									<p class="truncate text-[14.5px] font-medium">{att.filename}</p>
+									<p class="text-duvet-ink2 text-[13px]">
 										{formatFileSize(att.size_bytes)}
 										<span class="mx-1 opacity-60">·</span>
 										{new Date(att.created_at).toLocaleDateString()}
@@ -1958,7 +1971,7 @@
 				</div>
 				<label class="flex cursor-pointer items-center gap-2">
 					<input type="checkbox" bind:checked={bUsePathStyle} class={CHECKBOX} />
-					<span class="text-duvet-ink text-xs"
+					<span class="text-duvet-ink text-[13px]"
 						>Use path-style addressing <span class="text-duvet-ink2">(required for MinIO, RustFS, etc.)</span></span
 					>
 				</label>
@@ -1988,7 +2001,7 @@
 						/>
 					</div>
 				</div>
-				<p class="text-duvet-ink2 text-xs">
+				<p class="text-duvet-ink2 text-[13px]">
 					Leave empty to remove limits. When a total limit is set, oldest files are recycled automatically when full.
 				</p>
 				<div class="flex justify-end gap-2 pt-1">
@@ -2022,7 +2035,7 @@
 		{:else if buckets.length === 0}
 			<div class="text-duvet-ink2 flex flex-col items-center justify-center py-12">
 				<DatabaseIcon class="mb-3 size-9" />
-				<p class="text-sm">No buckets configured</p>
+				<p class="text-[14.5px]">No buckets configured</p>
 			</div>
 		{:else}
 			<div class="{CARD} divide-duvet-line divide-y">
@@ -2032,18 +2045,18 @@
 					>
 						<div class="min-w-0 flex-1">
 							<div class="flex items-center gap-2">
-								<span class="truncate text-[13.5px] font-medium">{bucket.name}</span>
+								<span class="truncate text-[14.5px] font-medium">{bucket.name}</span>
 								{#if bucket.is_active}
 									<span class="{TAG} bg-duvet-alive/20 text-duvet-alive-text uppercase">Active</span>
 								{:else}
 									<span class="{TAG} bg-duvet-secondary-fill text-duvet-ink2 uppercase">Inactive</span>
 								{/if}
 							</div>
-							<p class="text-duvet-ink2 mt-0.5 truncate text-xs">{bucket.bucket_name} · {bucket.endpoint}</p>
+							<p class="text-duvet-ink2 mt-0.5 truncate text-[13px]">{bucket.bucket_name} · {bucket.endpoint}</p>
 							{#if bucket.max_bytes}
 								{@const pct = usagePercent(bucket.used_bytes, bucket.max_bytes)}
 								<div class="mt-1.5 space-y-1">
-									<div class="text-duvet-ink2 flex items-center justify-between text-[11px] tabular-nums">
+									<div class="text-duvet-ink2 flex items-center justify-between text-[12px] tabular-nums">
 										<span
 											>{(bucket.used_bytes / 1024 / 1024).toFixed(1)} MB / {(bucket.max_bytes / 1024 / 1024).toFixed(0)} MB</span
 										>
@@ -2051,13 +2064,13 @@
 									</div>
 									{@render usageBar(pct)}
 									{#if bucket.upload_limit_bytes}
-										<p class="text-duvet-ink2 text-[11px]">
+										<p class="text-duvet-ink2 text-[12px]">
 											Per-file: {(bucket.upload_limit_bytes / 1024 / 1024).toFixed(0)} MB
 										</p>
 									{/if}
 								</div>
 							{:else if bucket.upload_limit_bytes}
-								<p class="text-duvet-ink2 mt-0.5 text-[11px]">
+								<p class="text-duvet-ink2 mt-0.5 text-[12px]">
 									Per-file: {(bucket.upload_limit_bytes / 1024 / 1024).toFixed(0)} MB
 								</p>
 							{/if}
@@ -2133,23 +2146,23 @@
 			</div>
 
 			{#if devLoading}
-				<p class="text-duvet-ink2 px-1.5 text-sm">Loading…</p>
+				<p class="text-duvet-ink2 px-1.5 text-[14.5px]">Loading…</p>
 			{:else if devTeams.length === 0}
-				<p class="text-duvet-ink2 px-1.5 text-sm">No teams yet. Create one to get started.</p>
+				<p class="text-duvet-ink2 px-1.5 text-[14.5px]">No teams yet. Create one to get started.</p>
 			{:else}
 				<SettingsGroup title="Teams">
 					{#each devTeams as team (team.id)}
 						<button
 							type="button"
-							class="hover:bg-duvet-hover-soft flex min-h-[50px] w-full items-center gap-3 px-3.5 py-2 text-left transition-colors motion-reduce:transition-none"
+							class="hover:bg-duvet-hover-soft flex min-h-[60px] w-full items-center gap-4 px-4 py-3 text-left transition-colors motion-reduce:transition-none"
 							onclick={() => selectTeam(team)}
 						>
 							<span class={ROW_TILE}>
 								<UsersIcon size={16} />
 							</span>
 							<span class="min-w-0 flex-1">
-								<span class="block truncate text-[13.5px] font-medium">{team.name}</span>
-								<span class="text-duvet-ink2 block truncate text-xs">ID: {team.id}</span>
+								<span class="block truncate text-[14.5px] font-medium">{team.name}</span>
+								<span class="text-duvet-ink2 block truncate text-[13px]">ID: {team.id}</span>
 							</span>
 							<ChevronRightIcon size={16} class="text-duvet-ink2 shrink-0" />
 						</button>
@@ -2160,7 +2173,7 @@
 			<div>
 				<button
 					type="button"
-					class="text-duvet-accent-text flex items-center gap-1 text-[13px] font-medium hover:underline"
+					class="text-duvet-accent-text flex items-center gap-1 text-[14px] font-medium hover:underline"
 					onclick={() => {
 						devSelectedTeam = null;
 						devApps = [];
@@ -2187,7 +2200,7 @@
 						<Button variant="quiet" size="sm" onclick={() => (devEditingTeam = null)}>Cancel</Button>
 					</div>
 				{:else}
-					<h3 class="min-w-0 flex-1 truncate font-serif text-lg font-medium">{devSelectedTeam.name}</h3>
+					<h3 class="min-w-0 flex-1 truncate text-[16px] font-semibold">{devSelectedTeam.name}</h3>
 					<div class="flex items-center gap-1">
 						{#if devSelectedTeam.owner_id === $currentUser?.id}
 							<IconButton
@@ -2218,7 +2231,7 @@
 				{#each devMembers as member (member.user_id)}
 					<div class="flex min-h-11 items-center justify-between gap-3 px-3.5 py-2">
 						<div class="flex min-w-0 items-center gap-2">
-							<span class="truncate text-[13.5px] font-medium">{member.username}</span>
+							<span class="truncate text-[14.5px] font-medium">{member.username}</span>
 							{#if member.role === TeamRole.Admin}
 								<span class="{TAG} bg-duvet-secondary-fill text-duvet-ink2">Admin</span>
 							{/if}
@@ -2258,7 +2271,7 @@
 			<section class="flex flex-col gap-2">
 				<h3 class={GROUP_TITLE}>Applications</h3>
 				{#if devAppsLoading}
-					<p class="text-duvet-ink2 px-1.5 text-sm">Loading…</p>
+					<p class="text-duvet-ink2 px-1.5 text-[14.5px]">Loading…</p>
 				{:else}
 					<div class="flex gap-2">
 						<input
@@ -2276,7 +2289,7 @@
 					</div>
 
 					{#if devApps.length === 0}
-						<p class="text-duvet-ink2 px-1.5 text-sm">No applications yet.</p>
+						<p class="text-duvet-ink2 px-1.5 text-[14.5px]">No applications yet.</p>
 					{:else}
 						<div class="flex flex-col gap-3">
 							{#each devApps as app (app.id)}
@@ -2305,11 +2318,11 @@
 									{:else}
 										<div class="flex items-start justify-between gap-3">
 											<div class="min-w-0">
-												<p class="truncate text-[13.5px] font-medium">{app.name}</p>
+												<p class="truncate text-[14.5px] font-medium">{app.name}</p>
 												{#if app.description}
-													<p class="text-duvet-ink2 text-xs">{app.description}</p>
+													<p class="text-duvet-ink2 text-[13px]">{app.description}</p>
 												{/if}
-												<p class="text-duvet-ink2 mt-1 text-[11px] select-text">ID: {app.id}</p>
+												<p class="text-duvet-ink2 mt-1 text-[12px] select-text">ID: {app.id}</p>
 											</div>
 											<div class="flex shrink-0 items-center gap-1">
 												<IconButton
@@ -2349,7 +2362,7 @@
 												<div class="flex items-center justify-between gap-2">
 													<div class="flex items-center gap-2">
 														<BotIcon size={16} class="text-duvet-ink2" />
-														<span class="text-[13px] font-medium">Bot active</span>
+														<span class="text-[14px] font-medium">Bot active</span>
 													</div>
 													<div class="flex items-center gap-1">
 														<Button variant="quiet" size="sm" onclick={() => handleResetBotToken(app)}>
@@ -2403,9 +2416,9 @@
 													/>
 												</div>
 												<div class="mt-2 flex items-center gap-2">
-													<span class="text-duvet-ink2 shrink-0 text-[11px]">Invite link:</span>
+													<span class="text-duvet-ink2 shrink-0 text-[12px]">Invite link:</span>
 													<code
-														class="bg-duvet-code-bg text-duvet-ink2 min-w-0 flex-1 truncate rounded-md px-2 py-1 font-mono text-[11px] select-text"
+														class="bg-duvet-code-bg text-duvet-ink2 min-w-0 flex-1 truncate rounded-md px-2 py-1 font-mono text-[12px] select-text"
 														>{getBotInviteLink(app.bot_user_id ?? "")}</code
 													>
 													<IconButton
@@ -2420,7 +2433,7 @@
 												{#if hasActiveBucket}
 													{@const botU = app.bot_user_id ? botUsers[app.bot_user_id] : null}
 													<div class="border-duvet-line mt-3 border-t pt-3">
-														<p class="text-duvet-ink2 mb-2 text-[11px]">Bot appearance</p>
+														<p class="text-duvet-ink2 mb-2 text-[12px]">Bot appearance</p>
 														<div class="flex items-center gap-3">
 															<!-- Avatar -->
 															<div class="group relative">
@@ -2585,7 +2598,7 @@
 							<p class="font-semibold">Bot token — copy it now, it won't be shown again!</p>
 							<div class="flex items-center gap-2">
 								<code
-									class="bg-duvet-code-bg text-duvet-ink min-w-0 flex-1 rounded-md px-3 py-2 font-mono text-xs break-all select-text"
+									class="bg-duvet-code-bg text-duvet-ink min-w-0 flex-1 rounded-md px-3 py-2 font-mono text-[13px] break-all select-text"
 									>{devShowToken ? devBotToken : "•".repeat(40)}</code
 								>
 								<IconButton

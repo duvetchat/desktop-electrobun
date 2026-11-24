@@ -58,9 +58,14 @@ export const FOCUS_RING =
 export const FOCUS_RING_INSET =
 	"focus-override focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-duvet-accent";
 
-/** An icon's tile: the secondary fill under the accent's glyph, 30 px, or 26 small. */
-export function iconTileClass(size: "md" | "sm" = "md", tone: "accent" | "ink" = "accent"): string {
-	const box = size === "md" ? "size-[30px] rounded-tile" : "size-[26px] rounded-tile";
+/** An icon's tile: the secondary fill under the accent's glyph, 30 px, 26 small, or 34 large. */
+export function iconTileClass(size: "md" | "sm" | "lg" = "md", tone: "accent" | "ink" = "accent"): string {
+	const box =
+		size === "lg"
+			? "size-[34px] rounded-tile"
+			: size === "md"
+				? "size-[30px] rounded-tile"
+				: "size-[26px] rounded-tile";
 	return `bg-duvet-secondary-fill grid shrink-0 place-items-center ${box} ${
 		tone === "accent" ? "text-duvet-accent-text" : "text-duvet-ink2"
 	}`;
@@ -88,19 +93,20 @@ export const SCRIM = "bg-duvet-scrim animate-scrim-in fixed inset-0 z-[900]";
 // inside a hairline, 11 px corners, 13.5 px text. Focused, the hairline turns to the accent inside a 4 px tint; a
 // field marked wrong (aria-invalid) has the danger's line. Its ring is its focus mark, so it takes no global outline.
 const FIELD_BASE =
-	"bg-duvet-card text-duvet-ink placeholder:text-duvet-ink2 focus-override w-full rounded-control text-[13.5px] " +
+	"bg-duvet-card text-duvet-ink placeholder:text-duvet-ink2 focus-override w-full rounded-control " +
 	"shadow-[var(--duvet-shadow-well),0_0_0_1px_var(--duvet-line)] " +
 	"transition-shadow duration-[120ms] motion-reduce:transition-none " +
 	"outline-none focus:shadow-[var(--duvet-shadow-well),0_0_0_1px_var(--duvet-accent),0_0_0_4px_var(--duvet-accent-tint)] " +
 	"aria-invalid:shadow-[var(--duvet-shadow-well),0_0_0_1px_var(--duvet-danger)] disabled:opacity-50";
 
-/** A text field's classes: one line (38 px), a smaller line for a row's own input (32 px), or `area` for several
- *  lines, which the user can't resize unless the caller says so. Sheets, dialogs, Settings and the sign-in pages all
- *  draw this one. */
-export function fieldClass(kind: "line" | "sm" | "area" = "line"): string {
-	if (kind === "line") return `${FIELD_BASE} h-[38px] px-3`;
-	if (kind === "sm") return `${FIELD_BASE} h-8 px-2.5`;
-	return `${FIELD_BASE} resize-none px-3 py-2 leading-[1.4]`;
+/** A text field's classes: one line (38 px, or 44 large), a smaller line for a row's own input (32 px), or `area` for
+ *  several lines, which the user can't resize unless the caller says so. Sheets, dialogs, Settings and the sign-in
+ *  pages all draw this one; Settings asks for the larger size. */
+export function fieldClass(kind: "line" | "sm" | "area" = "line", size: "md" | "lg" = "md"): string {
+	if (kind === "sm") return `${FIELD_BASE} h-8 px-2.5 text-[13px]`;
+	const text = size === "lg" ? "text-[14.5px]" : "text-[13.5px]";
+	if (kind === "area") return `${FIELD_BASE} ${text} resize-none px-3 py-2 leading-[1.4]`;
+	return size === "lg" ? `${FIELD_BASE} h-11 px-3.5 ${text}` : `${FIELD_BASE} h-[38px] px-3 ${text}`;
 }
 
 /** A count on a row, a tab or a button (unread mentions, requests waiting): a small round badge, 18 px, or 16 px

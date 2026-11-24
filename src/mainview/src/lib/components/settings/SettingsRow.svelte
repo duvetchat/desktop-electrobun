@@ -29,18 +29,18 @@
 		{#if icon}
 			{@const Icon = icon}
 			<span class={ROW_TILE} aria-hidden="true">
-				<Icon size={16} />
+				<Icon size={18} />
 			</span>
 		{/if}
 		<div class="min-w-0 flex-1">
 			{#if labelFor}
-				<label for={labelFor} class="text-duvet-ink block text-[13.5px] leading-[1.3] font-medium">{label}</label>
+				<label for={labelFor} class="text-duvet-ink block text-[14.5px] leading-[1.35] font-medium">{label}</label>
 			{:else}
-				<p class="text-duvet-ink text-[13.5px] leading-[1.3] font-medium">
+				<p class="text-duvet-ink text-[14.5px] leading-[1.35] font-medium">
 					{label}
 				</p>
 			{/if}
-			{#if line}<p class="text-duvet-ink2 mt-0.5 text-xs leading-[1.4]">{line}</p>{/if}
+			{#if line}<p class="text-duvet-ink2 mt-1 text-[13px] leading-[1.45]">{line}</p>{/if}
 		</div>
 	</div>
 	{#if children}

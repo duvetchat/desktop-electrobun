@@ -46,7 +46,7 @@ export function navLabel<Section extends string>(
 
 /** A side panel's item, at rest, picked or dangerous (the way out). */
 const NAV_ITEM =
-	"flex h-8 w-full shrink-0 items-center gap-2 rounded-tile px-2 text-left text-[13px] font-medium " +
+	"flex h-10 w-full shrink-0 items-center gap-2.5 rounded-tile px-2.5 text-left text-[14px] font-medium " +
 	"transition-colors duration-[120ms] motion-reduce:transition-none";
 
 export function navItemClass(picked = false, danger = false): string {
@@ -58,52 +58,52 @@ export function navItemClass(picked = false, danger = false): string {
 	return `${NAV_ITEM} ${state}`;
 }
 
-/** A section's 22 px tile, in its own colour behind a white glyph. */
-export const NAV_TILE = "text-fixed-white grid size-[22px] shrink-0 place-items-center rounded-chip";
+/** A section's 28 px tile, in its own colour behind a white glyph. */
+export const NAV_TILE = "text-fixed-white grid size-[28px] shrink-0 place-items-center rounded-tile";
 /** The slot of an icon in the side panel's foot, which has no tile. */
-export const NAV_ICON_SLOT = "grid size-[22px] shrink-0 place-items-center";
+export const NAV_ICON_SLOT = "grid size-[28px] shrink-0 place-items-center";
 
-/** A text field: the app's one (lib/components/ui/recipes.ts), 38 tall. */
-export const FIELD = fieldClass("line");
+/** A text field: the app's one (lib/components/ui/recipes.ts), 44 tall for Settings. */
+export const FIELD = fieldClass("line", "lg");
 /** A smaller field, for a row's own input (a name edited in place). */
 export const FIELD_SM = fieldClass("sm");
-/** A text area: at least 84 tall, in the face people write in. */
-export const FIELD_AREA = `${fieldClass("area")} font-content min-h-[84px] leading-[1.45]`;
+/** A text area: at least 110 tall, in the face people write in. */
+export const FIELD_AREA = `${fieldClass("area", "lg")} font-content min-h-[110px] leading-[1.5]`;
 /** A field that is wrong: the danger ring, focused or not. */
 export const FIELD_WRONG = "ring-duvet-danger ring-2 focus-visible:ring-duvet-danger";
 
-/** A select: 30 tall, on the secondary fill. */
+/** A select: 36 tall, on the secondary fill. */
 export const SELECT =
-	"bg-duvet-secondary-fill text-duvet-ink h-[30px] max-w-48 rounded-tile pr-7 pl-2.5 text-[12.5px] font-medium " +
+	"bg-duvet-secondary-fill text-duvet-ink h-9 max-w-56 rounded-tile pr-8 pl-3 text-[13.5px] font-medium " +
 	"outline-none focus-visible:ring-duvet-accent focus-visible:ring-2 focus-override";
 
 /** A card: what a group's rows sit in. */
 export const CARD = "bg-duvet-card shadow-duvet-raised overflow-hidden rounded-card";
 /** A bar that appears over a settings page while something waits: a move, or unsaved changes. */
 export const ACTION_BAR =
-	"bg-duvet-card shadow-duvet-lifted mx-[26px] mb-3 flex items-center justify-between gap-4 rounded-card " +
-	"py-2.5 pr-2.5 pl-4 text-[13px] font-medium";
+	"bg-duvet-card shadow-duvet-lifted mx-8 mb-4 flex items-center justify-between gap-4 rounded-card " +
+	"py-3 pr-3 pl-5 text-[14px] font-medium";
 /** A row's own classes: its words and control in one line, or a control stacked under them. */
-const ROW = "flex min-h-[50px] gap-x-3 gap-y-2 px-3.5 py-2";
+const ROW = "flex min-h-[60px] gap-x-4 gap-y-2.5 px-4 py-3";
 
 export function rowClass(stacked = false): string {
 	return `${ROW} ${stacked ? "flex-col justify-center" : "items-center"}`;
 }
 
-/** A row's icon tile: 30 px, the secondary fill under the accent's glyph. */
-export const ROW_TILE = iconTileClass("md");
+/** A row's icon tile: 34 px, the secondary fill under the accent's glyph. */
+export const ROW_TILE = iconTileClass("lg");
 /** A group's title, over its card. */
-export const GROUP_TITLE = "text-duvet-ink2 px-1.5 text-[11px] font-semibold tracking-[0.06em] uppercase";
+export const GROUP_TITLE = "text-duvet-ink2 px-2 text-[12px] font-semibold tracking-[0.06em] uppercase";
 /** A note under a card, or a section's opening line. */
-export const NOTE = "text-duvet-ink2 px-1.5 text-xs leading-[1.45]";
+export const NOTE = "text-duvet-ink2 px-2 text-[13px] leading-[1.5]";
 /** A field's label in a form. */
-export const LABEL = "text-duvet-ink2 mb-1.5 block text-[13px] font-medium";
+export const LABEL = "text-duvet-ink2 mb-2 block text-[14px] font-medium";
 /** A tag on a row: ACTIVE, Admin, hoisted. */
-export const TAG = "rounded-md px-1.5 py-0.5 text-[10px] leading-none font-semibold";
+export const TAG = "rounded-md px-2 py-1 text-[11px] leading-none font-semibold";
 /** A loading row's placeholder. */
 export const SKELETON = "bg-duvet-secondary-fill animate-pulse rounded-row";
 /** A checkbox, as the browser draws it in the accent. */
-export const CHECKBOX = "accent-duvet-accent size-4 shrink-0 rounded";
+export const CHECKBOX = "accent-duvet-accent size-[18px] shrink-0 rounded";
 
 export type CalloutTone = "info" | "warn" | "good" | "danger";
 
@@ -116,7 +116,7 @@ const CALLOUT_TONE: Record<CalloutTone, string> = {
 
 /** A callout: a line that needs seeing, tinted by what it says. */
 export function calloutClass(tone: CalloutTone = "info"): string {
-	return `flex gap-3 rounded-row px-3 py-2.5 text-[12.5px] leading-[1.45] ${CALLOUT_TONE[tone]}`;
+	return `flex gap-3 rounded-row px-3.5 py-3 text-[13.5px] leading-[1.5] ${CALLOUT_TONE[tone]}`;
 }
 
 /** How full a storage is, in percent of its limit: 0 to 100, whole. */

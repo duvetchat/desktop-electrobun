@@ -45,8 +45,14 @@ test("sheets, Settings and the sign-in pages draw one field", async () => {
 	const { fieldClass: one } = await import("$lib/components/ui/recipes");
 	const settings = await import("$lib/components/settings/recipes");
 	expect(fieldClass()).toBe(one("line"));
-	expect(settings.FIELD).toBe(one("line"));
+	expect(settings.FIELD).toBe(one("line", "lg"));
 	expect(settings.FIELD_SM).toBe(one("sm"));
 	expect(classes(settings.FIELD_SM)).toContain("h-8");
-	expect(classes(settings.FIELD_AREA)).toEqual(expect.arrayContaining(classes(one("area"))));
+	expect(classes(settings.FIELD_AREA)).toEqual(expect.arrayContaining(classes(one("area", "lg"))));
+});
+
+test("a field offers a larger size for a roomier page", () => {
+	const large = classes(fieldClass("line", "lg"));
+	expect(large).toEqual(expect.arrayContaining(["h-11", "text-[14.5px]", "rounded-control"]));
+	expect(classes(fieldClass("area", "lg"))).toContain("text-[14.5px]");
 });
