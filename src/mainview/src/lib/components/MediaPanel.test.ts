@@ -105,6 +105,20 @@ describe("in a voice room", () => {
 		expect(button(all, "Noise suppression")?.attributes["aria-disabled"]).toBeUndefined();
 	});
 
+	test("mute and deafen turn red when on; the camera and noise suppression keep the ink", async () => {
+		const off = await drawn({ ...inRoom, muted: true, deafened: true });
+		for (const name of ["Unmute", "Undeafen"]) {
+			expect(classes(button(off, name)), name).toEqual(
+				expect.arrayContaining(["bg-duvet-call-red", "text-fixed-white"]),
+			);
+		}
+		const on = await drawn({ ...inRoom, camera: true, noiseSuppression: true });
+		for (const name of ["Turn off camera", "Noise suppression"]) {
+			expect(classes(button(on, name)), name).toEqual(expect.arrayContaining(["bg-duvet-ink"]));
+			expect(classes(button(on, name)), name).not.toContain("bg-duvet-call-red");
+		}
+	});
+
 	test("says how the connection is while it isn't up", () => {
 		expect(words({ ...inRoom, phase: "connecting" })).toContain("Connecting…");
 		expect(words({ ...inRoom, phase: "reconnecting" })).toContain("Reconnecting…");

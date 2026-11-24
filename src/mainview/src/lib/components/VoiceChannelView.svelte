@@ -587,6 +587,7 @@
 		label={$isMuted ? "Unmute" : "Mute"}
 		tip={micTip}
 		pressed={$isMuted}
+		pressedTone="danger"
 		stateInName
 		disabled={!canSpeak}
 		{tone}
@@ -598,6 +599,7 @@
 	<MediaButton
 		label={$isDeafened ? "Undeafen" : "Deafen"}
 		pressed={$isDeafened}
+		pressedTone="danger"
 		stateInName
 		{tone}
 		{shape}

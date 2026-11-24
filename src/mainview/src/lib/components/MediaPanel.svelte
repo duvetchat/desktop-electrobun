@@ -92,6 +92,7 @@
 					tip={micTip}
 					keys={media.canSpeak ? keys.mute : undefined}
 					pressed={media.muted}
+					pressedTone="danger"
 					stateInName
 					disabled={!media.canSpeak}
 					triggerProps={props}
@@ -128,6 +129,7 @@
 		label={media.deafened ? "Undeafen" : "Deafen"}
 		keys={keys.deafen}
 		pressed={media.deafened}
+		pressedTone="danger"
 		stateInName
 		onclick={actions.toggleDeafen}
 	>

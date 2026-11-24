@@ -94,6 +94,7 @@
 						label={micLabel}
 						tip={micTip}
 						pressed={media.muted}
+						pressedTone="danger"
 						stateInName
 						disabled={!media.canSpeak}
 						triggerProps={props}
@@ -130,6 +131,7 @@
 			label={media.deafened ? "Undeafen" : "Deafen"}
 			tip={media.deafened ? "Undeafen" : "Deafen"}
 			pressed={media.deafened}
+			pressedTone="danger"
 			stateInName
 			tone="quiet"
 			shape="panel"
