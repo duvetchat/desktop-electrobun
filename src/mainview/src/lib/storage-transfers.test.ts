@@ -3,7 +3,10 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
 	bucketChoice,
+	countFiles,
 	defaultStorageChoice,
+	FILE_KIND_LABELS,
+	FILE_KINDS,
 	fileKind,
 	isLaterTransfer,
 	isTransferActive,
@@ -262,6 +265,33 @@ describe("transferEndNotice", () => {
 			type: "info",
 		});
 	});
+
+	// #464: each of these is a whole sentence of its own in en.json, not one built from pieces.
+	test("without the target's name or an error, each says what it knows", () => {
+		expect(transferEndNotice(transfer({ status: S.Done, moved_files: 117, failed_files: 3 }), null)).toEqual({
+			text: "Moved 117 of 120 files: 3 failed.",
+			type: "error",
+		});
+		expect(transferEndNotice(transfer({ status: S.Failed, moved_files: 1, total_files: 1 }), null).text).toBe(
+			"Moving files failed. 1 of 1 file moved.",
+		);
+		expect(transferEndNotice(transfer({ status: S.Failed, error: "target full" }), null).text).toBe(
+			"Moving files failed: target full. 0 of 120 files moved.",
+		);
+		expect(transferEndNotice(transfer({ status: S.Failed }), "My R2").text).toBe(
+			"Moving files to My R2 failed. 0 of 120 files moved.",
+		);
+		expect(transferEndNotice(transfer({ status: S.Cancelled }), null).text).toBe(
+			"Moving files was cancelled. 0 of 120 files moved.",
+		);
+	});
+});
+
+describe("the words other screens take from here", () => {
+	test("a count of files agrees with its number, and each kind has its name", () => {
+		expect([countFiles(1), countFiles(3)]).toEqual(["1 file", "3 files"]);
+		expect(FILE_KINDS.map((kind) => FILE_KIND_LABELS[kind])).toEqual(["Images", "Videos", "Audio", "Other"]);
+	});
 });
 
 // From the Windows builder's hand-back: with a settings window open, the end of a transfer showed its toast in both
@@ -307,7 +337,7 @@ describe("which window tells a transfer's end", () => {
 	// The store asks before its toast, and each end of the windows' link says where it is.
 	test("the store asks before it tells, and both links answer", () => {
 		const read = (path: string) => readFileSync(join(import.meta.dir, path), "utf8");
-		expect(read("stores/storage-transfers.svelte.ts")).toContain("if (this.tellsEnd(t)) toast(");
+		expect(read("stores/storage-transfers.svelte.ts")).toContain("if (this.tellsEnd(transfer)) toast(");
 		expect(read("stores/settings-guest-link.svelte.ts")).toContain(
 			'storageTransfers.tellsEnd = (transfer) => tellsTransferEnd({ window: "settings", spaceId }, transfer);',
 		);

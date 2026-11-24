@@ -1,11 +1,13 @@
 <script lang="ts">
 	import { getApiError } from "$lib/api/api";
 	import { banUser } from "$lib/api/moderation";
+	import { t } from "$lib/i18n";
 	import { banAdded } from "$lib/bans";
 	import { banRequest, type ModerationTarget } from "$lib/moderation";
 	import { toast } from "$lib/stores/toast.svelte";
 	import Sheet from "$lib/components/ui/Sheet.svelte";
 	import Button from "$lib/components/ui/Button.svelte";
+	import Rich from "$lib/components/Rich.svelte";
 	import { FIELD_ERROR, FIELD_LABEL, fieldClass, spinnerClass } from "$lib/overlay-forms";
 
 	// A member's ban, as a menu's Ban asks it (banRequest), one for the app: a reason or none, 512 characters at most as
@@ -38,15 +40,17 @@
 		try {
 			// 201 with the new ban, or 200 with the one already there: either way they're banned.
 			banAdded(await banUser(spaceId, userId, reason.trim() || undefined));
-			toast(`${name} was banned`, "success");
+			toast(t("mod_ban_done", { name }), "success");
 			open = false;
 		} catch (err) {
-			toast(getApiError(err, "Couldn't ban them"), "error");
+			toast(getApiError(err, t("mod_ban_failed")), "error");
 		} finally {
 			banning = false;
 		}
 	}
 </script>
+
+{#snippet muted(text: string)}<span class="font-normal">{text}</span>{/snippet}
 
 <!-- While the ban is on its way it doesn't close: its answer says how it went. -->
 <Sheet
@@ -56,11 +60,9 @@
 			if (!banning) open = next;
 		}
 	}
-	title={target ? `Ban ${target.name}?` : ""}
-	description={target
-		? `They're removed from ${target.spaceName}, and can't join it again until they're unbanned.`
-		: undefined}
-	closeLabel="Cancel"
+	title={target ? t("mod_ban_title", { name: target.name }) : ""}
+	description={target ? t("mod_ban_description", { space: target.spaceName }) : undefined}
+	closeLabel={t("mod_ban_cancel")}
 	class="max-w-[440px]"
 	interactOutsideBehavior={banning ? "ignore" : "close"}
 	escapeKeydownBehavior={banning ? "ignore" : "close"}
@@ -72,8 +74,10 @@
 	{#if target}
 		<div class="flex flex-col gap-1.5">
 			<label for="ban-reason" class="{FIELD_LABEL} flex items-baseline justify-between gap-2">
-				<span>Reason <span class="font-normal">(optional)</span></span>
-				<span class="tabular-nums {tooLong ? 'text-duvet-danger' : ''}">{length}/{REASON_MAX}</span>
+				<span><Rich key="mod_ban_reason_label" tags={{ muted }} /></span>
+				<span class="tabular-nums {tooLong ? 'text-duvet-danger' : ''}"
+					>{t("mod_ban_reason_count", { count: length, max: REASON_MAX })}</span
+				>
 			</label>
 			<textarea
 				id="ban-reason"
@@ -81,7 +85,7 @@
 				bind:value={reason}
 				rows="3"
 				disabled={banning}
-				placeholder="Why they're banned, for whoever manages the bans"
+				placeholder={t("mod_ban_reason_placeholder")}
 				class={fieldClass("area")}
 				onkeydown={(e) => {
 					if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
@@ -91,19 +95,19 @@
 				}}
 			></textarea>
 			{#if tooLong}
-				<p class={FIELD_ERROR}>A reason takes {REASON_MAX} characters at most.</p>
+				<p class={FIELD_ERROR}>{t("mod_ban_reason_too_long", { max: REASON_MAX })}</p>
 			{/if}
 		</div>
 	{/if}
 	{#snippet foot()}
 		<span></span>
-		<Button variant="quiet" disabled={banning} onclick={() => (open = false)}>Cancel</Button>
+		<Button variant="quiet" disabled={banning} onclick={() => (open = false)}>{t("mod_ban_cancel")}</Button>
 		<Button variant="danger" class="min-w-20" disabled={banning || tooLong} onclick={ban}>
 			{#if banning}
 				<span class={spinnerClass()} aria-hidden="true"></span>
-				Banning…
+				{t("mod_ban_banning")}
 			{:else}
-				Ban
+				{t("mod_ban_confirm")}
 			{/if}
 		</Button>
 	{/snippet}

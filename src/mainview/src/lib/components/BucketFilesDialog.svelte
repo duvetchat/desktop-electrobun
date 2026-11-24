@@ -4,7 +4,7 @@
 	import { calloutClass } from "$lib/components/settings/recipes";
 	import { AlertDialog } from "bits-ui";
 	import { getApiError } from "$lib/api/api";
-	import { countFiles } from "$lib/storage-transfers";
+	import { t } from "$lib/i18n";
 	import type { StorageBucket } from "$lib/api/user";
 
 	let {
@@ -43,7 +43,7 @@
 		try {
 			await onDelete(bucket);
 		} catch (err) {
-			error = getApiError(err, "Failed to delete the bucket");
+			error = getApiError(err, t("storage_bucket_delete_failed"));
 			deleting = false;
 			return;
 		}
@@ -74,13 +74,13 @@
 			<div class="{GLASS_STRONG} animate-sheet-in text-duvet-ink flex w-full max-w-md flex-col gap-3 rounded-3xl p-4">
 				{#if request}
 					{@const bucket = request.bucket}
-					{@const them = request.files === 1 ? "it" : "them"}
 					<AlertDialog.Title class="font-serif-lg text-[21px] leading-[1.2] font-normal tracking-[-0.01em]">
-						This bucket has {countFiles(request.files)}
+						{t("storage_bucket_files_title", { count: request.files })}
 					</AlertDialog.Title>
 					<AlertDialog.Description class="text-duvet-ink2 font-content text-[13.5px] leading-[1.4]">
-						Move {them} to another storage before deleting "{bucket.name}", or delete {them} with the bucket. Deleted files
-						disappear wherever they're shown{inSpace ? ", and the emojis and stickers made from them are deleted" : ""}.
+						{inSpace
+							? t("storage_bucket_files_description_space", { count: request.files, name: bucket.name })
+							: t("storage_bucket_files_description", { count: request.files, name: bucket.name })}
 					</AlertDialog.Description>
 
 					{#if error}
@@ -88,16 +88,18 @@
 					{/if}
 
 					<div class="mt-2 flex justify-end gap-2">
-						<AlertDialog.Cancel class={buttonClass("quiet")} disabled={deleting}>Cancel</AlertDialog.Cancel>
+						<AlertDialog.Cancel class={buttonClass("quiet")} disabled={deleting}
+							>{t("storage_cancel")}</AlertDialog.Cancel
+						>
 						<button class={buttonClass("secondary")} disabled={deleting} onclick={() => move(bucket)}>
-							Move them to…
+							{t("storage_bucket_files_move")}
 						</button>
 						<button class="{buttonClass('danger')} min-w-24" disabled={deleting} onclick={() => deleteThem(bucket)}>
 							{#if deleting}
 								<span class="size-3.5 animate-spin rounded-full border-2 border-current/30 border-t-current"></span>
-								Deleting…
+								{t("storage_bucket_files_deleting")}
 							{:else}
-								Delete them
+								{t("storage_bucket_files_delete")}
 							{/if}
 						</button>
 					</div>

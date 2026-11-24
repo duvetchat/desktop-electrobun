@@ -6,8 +6,8 @@
 	import { untrack } from "svelte";
 	import { X as XIcon } from "@lucide/svelte";
 	import { getApiError } from "$lib/api/api";
+	import { t } from "$lib/i18n";
 	import { storageTransfers } from "$lib/stores/storage-transfers.svelte";
-	import { countFiles } from "$lib/storage-transfers";
 	import { formatFileSize } from "$lib/utils/format";
 	import { StorageTransferFileStatus, type StorageTransfer, type StorageTransferFile } from "$lib/types";
 
@@ -20,32 +20,32 @@
 	let error = $state<string | null>(null);
 	let hasMore = $state(false);
 
-	async function loadPage(t: StorageTransfer, after?: string) {
+	async function loadPage(failed: StorageTransfer, after?: string) {
 		loading = true;
 		error = null;
 		try {
-			const page = await storageTransfers.files(t, {
+			const page = await storageTransfers.files(failed, {
 				status: StorageTransferFileStatus.Failed,
 				after,
 				limit: PAGE_SIZE,
 			});
-			if (storageTransfers.failures?.id !== t.id) return;
+			if (storageTransfers.failures?.id !== failed.id) return;
 			files = after ? [...files, ...page] : page;
 			hasMore = page.length === PAGE_SIZE;
 		} catch (err) {
-			error = getApiError(err, "Failed to load the files");
+			error = getApiError(err, t("storage_transfer_failures_load_failed"));
 		} finally {
 			loading = false;
 		}
 	}
 
 	$effect(() => {
-		const t = transfer;
-		if (!t) return;
+		const failed = transfer;
+		if (!failed) return;
 		untrack(() => {
 			files = [];
 			hasMore = false;
-			void loadPage(t);
+			void loadPage(failed);
 		});
 	});
 
@@ -74,17 +74,17 @@
 				<div class="flex shrink-0 items-start justify-between gap-4">
 					<div class="min-w-0">
 						<Dialog.Title class="font-serif-lg text-[21px] leading-[1.2] font-normal tracking-[-0.01em]"
-							>Files that didn't move</Dialog.Title
+							>{t("storage_transfer_failures_title")}</Dialog.Title
 						>
 						{#if transfer}
 							<Dialog.Description class="text-duvet-ink2 mt-1 text-[13px]">
-								{countFiles(transfer.failed_files)}
-								{transfer.failed_files === 1 ? "stays" : "stay"}
-								{sourceName ? `in ${sourceName}` : "where they were"}.
+								{sourceName
+									? t("storage_transfer_failures_description", { count: transfer.failed_files, name: sourceName })
+									: t("storage_transfer_failures_description_unknown", { count: transfer.failed_files })}
 							</Dialog.Description>
 						{/if}
 					</div>
-					<Dialog.Close class={iconButtonClass()} aria-label="Close">
+					<Dialog.Close class={iconButtonClass()} aria-label={t("storage_close")}>
 						<XIcon class="size-4" />
 					</Dialog.Close>
 				</div>
@@ -111,14 +111,14 @@
 					{:else if error}
 						<p class={calloutClass("danger")} role="alert">{error}</p>
 					{:else if files.length === 0}
-						<p class="text-duvet-ink2 py-6 text-center text-sm">No failed files.</p>
+						<p class="text-duvet-ink2 py-6 text-center text-sm">{t("storage_transfer_failures_empty")}</p>
 					{:else if hasMore && transfer}
-						{@const t = transfer}
+						{@const failed = transfer}
 						<button
 							class="{buttonClass('secondary')} mt-1 w-full"
-							onclick={() => loadPage(t, files.at(-1)?.attachment_id)}
+							onclick={() => loadPage(failed, files.at(-1)?.attachment_id)}
 						>
-							Load more
+							{t("storage_transfer_failures_load_more")}
 						</button>
 					{/if}
 				</div>
