@@ -9,6 +9,7 @@
 	import type { CommandUse } from "$lib/api/interactions";
 	import { commandUse, usedOptions, type CommandEntry, type FieldValue } from "$lib/commands";
 	import { getAvatarURL } from "$lib/common/common";
+	import { t } from "$lib/i18n";
 	import {
 		CommandOptionType,
 		ComponentType,
@@ -75,8 +76,8 @@
 		} catch (err) {
 			const text =
 				err instanceof FetchError && err.response?.status === 504
-					? "The application did not respond"
-					: "This interaction failed";
+					? t("chat_interaction_no_response")
+					: t("chat_interaction_failed");
 			notice = { text, detail: getApiError(err, text) };
 		} finally {
 			sending = false;
@@ -123,8 +124,8 @@
 				...base,
 				type: ComponentType.StringSelect,
 				options: [
-					{ label: "True", value: "true", default: v === true },
-					{ label: "False", value: "false", default: v === false },
+					{ label: t("chat_command_option_true"), value: "true", default: v === true },
+					{ label: t("chat_command_option_false"), value: "false", default: v === false },
 				],
 			};
 		}
@@ -183,7 +184,7 @@
 			<button
 				type="button"
 				class="hover:bg-duvet-hover-strong grid size-[18px] place-items-center rounded-md transition-colors motion-reduce:transition-none"
-				aria-label="Cancel command"
+				aria-label={t("chat_command_cancel")}
 				onclick={onExit}
 			>
 				<XIcon class="size-3.5" />
@@ -228,7 +229,7 @@
 		{/each}
 		{#if sending}
 			<!-- Waiting on the bot, as the typing indicator's dots -->
-			<span class="text-duvet-ink2 flex items-center gap-1" role="img" aria-label="Waiting for the application">
+			<span class="text-duvet-ink2 flex items-center gap-1" role="img" aria-label={t("chat_interaction_waiting")}>
 				<span class="animate-typing-bounce block size-1.5 rounded-full bg-current"></span>
 				<span class="animate-typing-bounce block size-1.5 rounded-full bg-current [animation-delay:0.2s]"></span>
 				<span class="animate-typing-bounce block size-1.5 rounded-full bg-current [animation-delay:0.4s]"></span>

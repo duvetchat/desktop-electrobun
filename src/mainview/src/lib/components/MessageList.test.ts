@@ -194,7 +194,7 @@ describe("a group's call notices", () => {
 	// notices as the list does.
 	test("a thread reads them as the list does", () => {
 		for (const file of ["MessageList.svelte", "MessagePreview.svelte"]) {
-			const calls = source(file).match(/callNoticeLine\([^)]*\)/g) ?? [];
+			const calls = source(file).match(/callNotice\([^)]*\)/g) ?? [];
 			expect(calls.length).toBeGreaterThan(0);
 			for (const call of calls) expect(call).toEndWith(", joined)");
 		}

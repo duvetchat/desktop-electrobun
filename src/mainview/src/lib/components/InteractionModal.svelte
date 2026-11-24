@@ -8,6 +8,7 @@
 	import { FetchError, getApiError } from "$lib/api/api";
 	import { sendModalSubmit } from "$lib/api/interactions";
 	import { getHostURL } from "$lib/common/common";
+	import { t } from "$lib/i18n";
 	import { renderEmoji } from "$lib/emoji";
 	import { CUSTOM_EMOJI_CLASS } from "$lib/emoji-retry";
 	import { emojiImageUrl, mentionMapOf, renderMarkdown } from "$lib/markdown";
@@ -84,8 +85,8 @@
 			if (interactionModal.current !== current) return;
 			const text =
 				err instanceof FetchError && err.response?.status === 504
-					? "The application did not respond"
-					: "This interaction failed";
+					? t("chat_interaction_no_response")
+					: t("chat_interaction_failed");
 			failure = { text, detail: getApiError(err, text) };
 		} finally {
 			if (interactionModal.current === current) sending = false;
@@ -176,9 +177,9 @@
 				</div>
 			{/if}
 			<div class="flex justify-end gap-2">
-				<Button variant="quiet" onclick={() => interactionModal.close()}>Cancel</Button>
+				<Button variant="quiet" onclick={() => interactionModal.close()}>{t("chat_modal_cancel")}</Button>
 				<Button type="submit" disabled={sending} aria-busy={sending} class="relative min-w-20">
-					<span class={sending ? "invisible" : ""}>Submit</span>
+					<span class={sending ? "invisible" : ""}>{t("chat_modal_submit")}</span>
 					{#if sending}
 						<!-- Waiting on the bot, as the typing indicator's dots -->
 						<span class="absolute inset-0 flex items-center justify-center gap-1" aria-hidden="true">
@@ -331,8 +332,8 @@
 		{:else if elsewhere}
 			<img
 				src={elsewhere}
-				alt=":{e.name ?? 'emoji'}:"
-				title=":{e.name ?? 'emoji'}:"
+				alt=":{e.name ?? t('chat_emoji_unknown')}:"
+				title=":{e.name ?? t('chat_emoji_unknown')}:"
 				class="size-5 shrink-0 object-contain {CUSTOM_EMOJI_CLASS}"
 				draggable="false"
 			/>

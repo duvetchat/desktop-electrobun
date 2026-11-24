@@ -2,9 +2,11 @@ import { describe, expect, test } from "bun:test";
 import {
 	CallAnswers,
 	callDuration,
+	callNotice,
 	callNoticeCase,
 	callNoticeLine,
 	callNoticeSeen,
+	callNoticeSentence,
 	callNoticeText,
 	newestBesidesNotice,
 	readAfterCallNotice,
@@ -124,6 +126,56 @@ describe("callNoticeLine", () => {
 		expect(callNoticeLine({ ...notice(ALICE, call([ALICE])), type: MessageType.PinNotice }, ME)).toBeNull();
 		expect(callNoticeLine({ ...notice(ALICE, call([ALICE])), type: MessageType.Text }, ME)).toBeNull();
 		expect(callNoticeLine({ ...notice(ALICE, call([ALICE])), call: undefined }, ME)).toBeNull();
+	});
+});
+
+// Each case is one whole sentence of en.json (#464), whose <b> is the caller's name: the list draws it with Rich, the
+// previews and the quotes take its words, and the call history cuts it around the name (callNoticeLine, above).
+describe("callNotice", () => {
+	test("says each case as one message, filled with the caller's name and how long the call lasted", () => {
+		expect(callNotice(notice(ALICE, call([ALICE, ME])), ME)).toEqual({
+			missed: false,
+			key: "chat_call_notice_started",
+			values: { name: "Alice", duration: "5 minutes" },
+		});
+		expect(callNotice(notice(ME, call([ME, ALICE])), ME)).toMatchObject({
+			missed: false,
+			key: "chat_call_notice_you_started",
+		});
+		expect(callNotice(notice(ALICE, call([ALICE, CAROL])), ME)).toMatchObject({
+			missed: true,
+			key: "chat_call_notice_missed",
+		});
+		expect(callNotice(notice(ME, call([ME])), ME)).toMatchObject({
+			missed: false,
+			key: "chat_call_notice_you_unanswered",
+		});
+		expect(callNotice(notice(ALICE, call([ALICE])), ME)).toMatchObject({
+			missed: true,
+			key: "chat_call_notice_missed_unanswered",
+		});
+		expect(callNotice(notice(ALICE, call([ALICE]), BEFORE_JOINING), ME, JOINED)).toMatchObject({
+			missed: false,
+			key: "chat_call_notice_unanswered",
+		});
+		expect(callNotice({ ...notice(ALICE, call([ALICE])), type: MessageType.Text }, ME)).toBeNull();
+	});
+
+	test("its words are the whole sentence, the name in its place", () => {
+		const missed = callNotice(notice(ALICE, call([ALICE, CAROL], 12 * 60_000)), ME)!;
+		expect(callNoticeSentence(missed)).toBe("You missed a call from Alice that lasted 12 minutes.");
+		expect(callNoticeSentence(callNotice(notice(ME, call([ME])), ME)!)).toBe("You started a call. No one answered.");
+	});
+
+	test("a name that looks like markup stays a name", () => {
+		const named = { ...notice(ALICE, call([ALICE])), author_name: "<b>Eve</b>" };
+		expect(callNoticeSentence(callNotice(named, ME)!)).toBe("You missed a call from <b>Eve</b>.");
+		expect(callNoticeLine(named, ME)).toEqual({
+			missed: true,
+			before: "You missed a call from ",
+			name: "<b>Eve</b>",
+			after: ".",
+		});
 	});
 });
 

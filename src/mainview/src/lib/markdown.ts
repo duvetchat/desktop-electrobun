@@ -3,6 +3,7 @@ import { renderEmoji } from "./emoji";
 import type { Highlighter } from "shiki";
 import { getHostURL, isUuid } from "$lib/common/common";
 import { CUSTOM_EMOJI_CLASS, retryEmojis } from "$lib/emoji-retry";
+import { t } from "$lib/i18n";
 import { cardLink, parseDuvetLink, type DuvetLink } from "$lib/urls";
 
 export interface CustomEmojiMap {
@@ -356,15 +357,17 @@ function applyInline(
 				const ce = customEmojiMap?.[emojiId];
 				if (!ce) {
 					const src = emojiImageUrl(emojiId);
-					if (!src) return ":emoji:";
-					return `<img class="${ceCls}" src="${src}" alt=":emoji:" title=":emoji:" draggable="false" loading="lazy">`;
+					const unknown = `:${escapeHtml(t("chat_emoji_unknown"))}:`;
+					if (!src) return unknown;
+					return `<img class="${ceCls}" src="${src}" alt="${unknown}" title="${unknown}" draggable="false" loading="lazy">`;
 				}
 				return `<img class="${ceCls}" src="${emojiHost}/attachments/${ce.attachment_id}" alt="${escapeHtml(ce.name)}" title=":${escapeHtml(ce.name)}:" draggable="false" loading="lazy">`;
 			}
 			// <#id> reads #name, for the rooms the reader can view (roomNames). Any other one, or one that's gone, reads
 			// #unknown, with no room to open.
 			const name = roomNames?.[roomId ?? ""];
-			if (name === undefined) return `<span class="msg-room-mention msg-room-unknown">#unknown</span>`;
+			if (name === undefined)
+				return `<span class="msg-room-mention msg-room-unknown">#${escapeHtml(t("chat_room_unknown"))}</span>`;
 			return `<span class="msg-room-mention" data-room-id="${roomId}">#${escapeHtml(name)}</span>`;
 		},
 	);
@@ -503,8 +506,8 @@ function duvetLinkHtml(
 ): string {
 	if ("message" in link) {
 		const { spaceId, roomId, messageId, conversationId } = link.message;
-		const room = conversationId ? "Direct message" : (roomNames?.[roomId] ?? "unknown");
-		const space = conversationId ? "" : (spaceName(spaceId) ?? "Unknown Space");
+		const room = conversationId ? t("chat_link_direct_message") : (roomNames?.[roomId] ?? t("chat_room_unknown"));
+		const space = conversationId ? "" : (spaceName(spaceId) ?? t("chat_link_space_unknown"));
 		const data = conversationId
 			? `data-conversation="${conversationId}" data-message="${messageId}"`
 			: `data-space="${spaceId}" data-room="${roomId}" data-message="${messageId}"`;
@@ -552,7 +555,8 @@ function render(
 		const langLabel = lang ? lang.toLowerCase() : "";
 		const langBadge = langLabel ? `<span class="msg-code-lang">${escapeHtml(langLabel)}</span>` : "";
 		const escaped = escapeHtml(trimmed).replace(/"/g, "&quot;");
-		const copyBtn = `<button class="msg-code-copy" data-code="${escaped}" title="Copy code" aria-label="Copy code"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg></button>`;
+		const copy = escapeHtml(t("chat_code_copy"));
+		const copyBtn = `<button class="msg-code-copy" data-code="${escaped}" title="${copy}" aria-label="${copy}"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg></button>`;
 		codeBlocks.push(`<pre class="msg-code-block">${langBadge}${copyBtn}<code>${linesHtml}</code></pre>`);
 		return `\x00B${codeBlocks.length - 1}\x01`;
 	});
@@ -573,8 +577,8 @@ function render(
 		return `\x00E${escapes.length - 1}\x01`;
 	});
 
-	const inline = (t: string) =>
-		applyInline(renderEmoji(t), false, mentionMap, customEmojiMap, roomNames, mentionStyles);
+	const inline = (text: string) =>
+		applyInline(renderEmoji(text), false, mentionMap, customEmojiMap, roomNames, mentionStyles);
 
 	// ── 3. Extract links ───────────────────────────────────────────────────────
 	// Markdown links [text](url), taken out before the inline rules as code is, so that the URL stays as it was

@@ -48,8 +48,10 @@
 	} from "$lib/stores.svelte";
 	import { toggleReaction } from "$lib/api/reactions";
 	import { arrival, arrivalAction, listEnd } from "$lib/arrivals";
-	import { callNoticeLine } from "$lib/call-notices";
+	import { callNotice } from "$lib/call-notices";
 	import { copyCode } from "$lib/code-copy";
+	import { t } from "$lib/i18n";
+	import { formatNumber, formatRelativeTime } from "$lib/i18n/format";
 	import { belowIndicator } from "$lib/jumps";
 	import { threadNow } from "$lib/threads";
 	import { keepPlace, takePlace } from "$lib/kept-places";
@@ -86,6 +88,7 @@
 	import MessageComponents from "$lib/components/MessageComponents.svelte";
 	import MessagePreview from "$lib/components/MessagePreview.svelte";
 	import MascotPeek from "$lib/components/MascotPeek.svelte";
+	import Rich from "$lib/components/Rich.svelte";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
 	import ContextMenu from "$lib/components/ui/ContextMenu.svelte";
 	import IconButton from "$lib/components/ui/IconButton.svelte";
@@ -336,12 +339,8 @@
 	// The room's name, for the players' "now playing" (none in a conversation).
 	const channelName = $derived(space?.rooms.find((r) => r.id === channelId)?.name ?? "");
 
-	const locale = typeof navigator !== "undefined" ? navigator.language : "en-US";
-	// Words are English, as next to them ("Today", "just now") and in the rest of the UI; clock times keep
-	// the system's format.
-	const relativeFormatter = new Intl.RelativeTimeFormat("en", {
-		numeric: "auto",
-	});
+	// How long ago a message was edited, in words ("yesterday" rather than "1 day ago"), in the app's language.
+	const RELATIVE: Intl.RelativeTimeFormatOptions = { numeric: "auto" };
 
 	// ── Load-more on scroll ───────────────────────────────────────────────────
 	// Blocked until the visit is placed (placeVisit): before that, a scroll event (the skeleton→messages
@@ -466,7 +465,7 @@
 	const callNoticeLines = $derived(
 		new Map(
 			messages.flatMap((m) => {
-				const line = callNoticeLine(m, $currentUser?.id, joined);
+				const line = callNotice(m, $currentUser?.id, joined);
 				return line ? [[m.id, line] as const] : [];
 			}),
 		),
@@ -928,25 +927,25 @@
 	function formatTimestamp(dateStr: string, _now: number) {
 		const then = new Date(dateStr).getTime();
 		if (Number.isNaN(then)) {
-			return "just now";
+			return t("chat_time_just_now");
 		}
 		const seconds = Math.round((then - _now) / 1000);
 		if (Math.abs(seconds) < 45) {
-			return "just now";
+			return t("chat_time_just_now");
 		}
 		const minutes = Math.round(seconds / 60);
 		if (Math.abs(minutes) < 60) {
-			return relativeFormatter.format(minutes, "minute");
+			return formatRelativeTime(minutes, "minute", RELATIVE);
 		}
 		const hours = Math.round(minutes / 60);
 		if (Math.abs(hours) < 24) {
-			return relativeFormatter.format(hours, "hour");
+			return formatRelativeTime(hours, "hour", RELATIVE);
 		}
 		const days = Math.round(hours / 24);
 		if (Math.abs(days) < 7) {
-			return relativeFormatter.format(days, "day");
+			return formatRelativeTime(days, "day", RELATIVE);
 		}
-		return relativeFormatter.format(Math.round(days / 7), "week");
+		return formatRelativeTime(Math.round(days / 7), "week", RELATIVE);
 	}
 
 	// ── Message actions ────────────────────────────────────────────────────────
@@ -972,7 +971,7 @@
 
 	// Asks first, as deleting a channel does: there's no undo. A failure shows in the dialog.
 	function handleDelete(messageId: string) {
-		return confirmAction("Delete this message? This can't be undone.", "Delete", async () => {
+		return confirmAction(t("chat_delete_confirm"), t("chat_delete_confirm_button"), async () => {
 			deletingMessageId = messageId;
 			try {
 				if (onDeleteMsg) {
@@ -1000,7 +999,7 @@
 				: await getMessageThread(channelId, message.id);
 			threadMessages = thread.map((m) => gatewayMessageToMessage(m, $gatewaySpaces));
 		} catch (e) {
-			threadError = getApiError(e, "Failed to load message thread.");
+			threadError = getApiError(e, t("chat_thread_load_failed"));
 		} finally {
 			threadLoading = false;
 		}
@@ -1041,7 +1040,7 @@
 			if (isConversation) await (pin ? pinConversationMessage : unpinConversationMessage)(channelId, message.id);
 			else await (pin ? pinRoomMessage : unpinRoomMessage)(channelId, message.id);
 		} catch (err) {
-			toast(getApiError(err, pin ? "Couldn't pin the message" : "Couldn't unpin the message"), "error");
+			toast(getApiError(err, pin ? t("chat_pin_failed") : t("chat_unpin_failed")), "error");
 		} finally {
 			pinningMessageId = null;
 		}
@@ -1068,7 +1067,10 @@
 <!-- Its mouse handlers only follow the pointer's row, for that row's hover bar (hoverRow), as :hover did, and its
      focus and key handlers the keyboard's (focusRow, rowKeys); its
      right-click opens the one menu of the list, for the message or the avatar under the pointer (pickMenu). -->
-<ContextMenu bind:open={menuOpen} label={menuTarget?.kind === "author" ? "Member" : "Message"}>
+<ContextMenu
+	bind:open={menuOpen}
+	label={menuTarget?.kind === "author" ? t("chat_member_menu") : t("chat_message_menu")}
+>
 	{#snippet target(props)}
 		<!-- svelte-ignore a11y_no_static_element_interactions -->
 		<!-- svelte-ignore a11y_mouse_events_have_key_events -->
@@ -1118,16 +1120,16 @@
 				{#if retryFirstPage}
 					<div class="my-auto flex flex-col items-center px-6 py-16 text-center" role="status">
 						<MascotPeek class="w-24" mood="shy" />
-						<p class="text-duvet-ink mt-4 font-serif text-[22px] leading-tight">Couldn't load messages</p>
+						<p class="text-duvet-ink mt-4 font-serif text-[22px] leading-tight">{t("chat_list_load_failed")}</p>
 						<button type="button" class="{buttonClass('secondary')} mt-5" onclick={() => retryFirstPage?.()}>
-							Try again
+							{t("chat_list_retry")}
 						</button>
 					</div>
 				{:else if intro}
 					{@render intro()}
 				{:else}
 					<div class="text-duvet-ink2 mb-5 py-4 text-center text-[12.5px]">
-						No messages yet. Send the first message.
+						{t("chat_list_empty")}
 					</div>
 				{/if}
 			{:else}
@@ -1144,7 +1146,7 @@
 						{#if isLoadingMoreBelow}
 							<SpinnerIcon class="text-duvet-ink2 size-5 animate-spin" />
 						{:else}
-							<span class="text-duvet-ink2 text-xs">Newer messages below</span>
+							<span class="text-duvet-ink2 text-xs">{t("chat_list_newer_below")}</span>
 						{/if}
 					</div>
 				{/if}
@@ -1190,25 +1192,23 @@
 							{:else}
 								<PinIcon class="text-duvet-ink2 size-3.5 shrink-0" />
 							{/if}
+							<!-- The message a pin notice pinned, which its words link to. -->
+							{#snippet pinnedMessage(text: string)}<button
+									type="button"
+									class="text-duvet-ink font-medium hover:underline"
+									onclick={() => jumpToPinned(message)}>{text}</button
+								>{/snippet}
 							<p class="min-w-0 text-center">
 								{#if callLine}
-									{callLine.before}<span class="text-duvet-ink font-medium">{callLine.name}</span>{callLine.after}
+									<Rich key={callLine.key} values={callLine.values} tags={{ b: noticeName }} />
 								{:else}
-									<span class="text-duvet-ink font-medium">{message.author_name}</span>
-									pinned
-									<button
-										type="button"
-										class="text-duvet-ink font-medium hover:underline"
-										onclick={() => jumpToPinned(message)}>a message</button
-									>
-									to this {isConversation ? "chat" : "room"}. See all
-									<button
-										type="button"
-										class="text-duvet-accent-text font-medium hover:underline"
-										onclick={() => pinsPanelRequest.set({ id: crypto.randomUUID(), channelId })}>pinned messages</button
-									>.
+									<Rich
+										key="chat_pin_notice"
+										values={{ name: message.author_name, place: isConversation ? "chat" : "room" }}
+										tags={{ b: noticeName, message: pinnedMessage, pins: pinsLink }}
+									/>
 								{/if}
-								<span class="ml-1 text-[11px] tabular-nums opacity-75">{clockTime(message.created_at, locale)}</span>
+								<span class="ml-1 text-[11px] tabular-nums opacity-75">{clockTime(message.created_at)}</span>
 							</p>
 							{#if canDeleteNotices && (hoveredMessageId === message.id || focusedMessageId === message.id)}
 								<div class="{GLASS} absolute top-1/2 right-1 z-10 flex -translate-y-1/2 rounded-xl p-[3px]">
@@ -1243,7 +1243,7 @@
 									<span
 										class="text-duvet-ink2 block pt-[5px] text-[10.5px] leading-none tabular-nums opacity-0 select-none group-hover/row:opacity-100"
 									>
-										{shortClockTime(message.created_at, locale)}
+										{shortClockTime(message.created_at)}
 									</span>
 								{/if}
 							</div>
@@ -1261,7 +1261,7 @@
 										{@render authorName(message, "var(--duvet-ink)")}
 										<AuthorTag {message} class="self-center" />
 										<span class="text-duvet-ink2 shrink-0 text-[11.5px] font-normal tabular-nums"
-											>{headTime(message.created_at, now, locale)}</span
+											>{headTime(message.created_at, now)}</span
 										>
 									</div>
 								{/if}
@@ -1329,7 +1329,7 @@
 									{#if isFailed}
 										{@render failedBar(message, mine)}
 									{:else if barShown}
-										{@render hoverBar(message, mine, shape.last ? null : clockTime(message.created_at, locale))}
+										{@render hoverBar(message, mine, shape.last ? null : clockTime(message.created_at))}
 									{/if}
 								</div>
 							</div>
@@ -1352,7 +1352,7 @@
 									{/if}
 									{#if shape.last}
 										<span class="text-duvet-ink2 px-1 text-[11px] leading-[1.3] tabular-nums select-none"
-											>{clockTime(message.created_at, locale)}</span
+											>{clockTime(message.created_at)}</span
 										>
 									{/if}
 								</div>
@@ -1376,7 +1376,7 @@
 						>
 							<div class="bg-duvet-line h-px flex-1"></div>
 							<span class="shrink-0 whitespace-nowrap">
-								{unreadCount === 1 ? "1 new message" : `${unreadCount} new messages`}
+								{t("chat_unread_divider", { count: unreadCount })}
 							</span>
 							<div class="bg-duvet-line h-px flex-1"></div>
 						</div>
@@ -1408,13 +1408,13 @@
 		type="button"
 		style:--composer-h={composerH}
 		class="{GLASS} animate-pop text-duvet-ink absolute right-[calc(var(--duvet-pad-x)+2px)] bottom-[calc(var(--composer-h,64px)+12px)] z-5 grid size-10 place-items-center rounded-full"
-		title="Jump to the newest"
-		aria-label={unreadCount > 0 ? `Jump to the newest, ${unreadCount} new` : "Jump to the newest"}
+		title={t("chat_jump_newest")}
+		aria-label={unreadCount > 0 ? t("chat_jump_newest_count", { count: unreadCount }) : t("chat_jump_newest")}
 		onclick={jumpToNewest}
 	>
 		<ArrowDownIcon size={16} />
 		{#if unreadCount > 0}
-			<span class="{countBadgeClass()} absolute -top-1 -right-1" aria-hidden="true">{unreadCount}</span>
+			<span class="{countBadgeClass()} absolute -top-1 -right-1" aria-hidden="true">{formatNumber(unreadCount)}</span>
 		{/if}
 	</button>
 {/if}
@@ -1523,7 +1523,7 @@
 					{customEmojiMap}
 					{own}
 					edited={message.updated_at !== message.created_at
-						? `edited ${formatTimestamp(message.updated_at, now)}`
+						? t("chat_message_edited_ago", { time: formatTimestamp(message.updated_at, now) })
 						: null}
 				/>
 			</div>
@@ -1550,12 +1550,12 @@
 {#snippet ephemeralNote(message: Message)}
 	<p class="text-duvet-ink2 flex items-center gap-1 px-1 text-xs">
 		<EyeIcon class="size-3.5 shrink-0" />
-		<span>Only you can see this</span>
+		<span>{t("chat_ephemeral_note")}</span>
 		<span aria-hidden="true">·</span>
 		<button
 			type="button"
 			class="text-duvet-ink cursor-pointer hover:underline"
-			onclick={() => dropEphemeral(channelId, message.id)}>Dismiss message</button
+			onclick={() => dropEphemeral(channelId, message.id)}>{t("chat_ephemeral_dismiss")}</button
 		>
 	</p>
 {/snippet}
@@ -1567,9 +1567,9 @@
 			class="{GLASS} text-duvet-ink2 pointer-events-none absolute right-3 -bottom-3 z-10 flex items-center gap-2 rounded-lg px-2 py-0.5 text-[11px] font-medium"
 			aria-hidden="true"
 		>
-			<span><kbd class="text-duvet-ink font-bold">r</kbd> reply</span>
+			<span><Rich key="chat_cursor_reply" values={{ key: "r" }} tags={{ kbd: hintKey }} /></span>
 			{#if mine}
-				<span><kbd class="text-duvet-ink font-bold">e</kbd> edit</span>
+				<span><Rich key="chat_cursor_edit" values={{ key: "e" }} tags={{ kbd: hintKey }} /></span>
 			{/if}
 		</span>
 	{/if}
@@ -1585,8 +1585,12 @@
 				? 'top-1/2 right-full mr-2 -translate-y-1/2 data-above:top-auto data-above:right-0 data-above:bottom-full data-above:mr-0 data-above:-mb-1 data-above:translate-y-0'
 				: 'top-1/2 left-full ml-2 -translate-y-1/2 data-above:top-auto data-above:bottom-full data-above:left-0 data-above:-mb-1 data-above:ml-0 data-above:translate-y-0'}"
 	>
-		<button type="button" class={buttonClass("quiet", "sm")} onclick={() => onRetry(message)}>Retry</button>
-		<button type="button" class={buttonClass("quiet", "sm")} onclick={() => onDismiss(message.nonce!)}>Dismiss</button>
+		<button type="button" class={buttonClass("quiet", "sm")} onclick={() => onRetry(message)}
+			>{t("chat_message_retry")}</button
+		>
+		<button type="button" class={buttonClass("quiet", "sm")} onclick={() => onDismiss(message.nonce!)}
+			>{t("chat_message_dismiss")}</button
+		>
 	</div>
 {/snippet}
 
@@ -1610,8 +1614,8 @@
 			<button
 				type="button"
 				class="hover:bg-duvet-hover grid size-7 place-items-center rounded-lg text-[13px] transition-transform duration-[120ms] hover:scale-[1.12] motion-reduce:transition-none"
-				title="React {emoji}"
-				aria-label="React {emoji}"
+				title={t("chat_react_with", { emoji })}
+				aria-label={t("chat_react_with", { emoji })}
 				onclick={() => quickReact(message, emoji)}
 			>
 				{@html renderEmoji(emoji)}
@@ -1623,7 +1627,7 @@
 		>
 			<Popover.Trigger>
 				{#snippet child({ props })}
-					<IconButton {...props} label="Add reaction" title="Add reaction" size="sm">
+					<IconButton {...props} label={t("chat_reaction_add")} title={t("chat_reaction_add")} size="sm">
 						<SmilePlusIcon size={15} />
 					</IconButton>
 				{/snippet}
@@ -1638,18 +1642,23 @@
 						collisionPadding={10}
 						class="z-100"
 						role="dialog"
-						aria-label="Add reaction"
+						aria-label={t("chat_reaction_add")}
 					>
 						<EmojiPicker onSelect={(emoji) => handleReactionPick(message.id, emoji)} groups={emojiGroups} />
 					</Popover.Content>
 				</Popover.Portal>
 			{/if}
 		</Popover.Root>
-		<IconButton label="Reply" title="Reply" size="sm" onclick={() => onReply?.(message)}>
+		<IconButton label={t("chat_reply")} title={t("chat_reply")} size="sm" onclick={() => onReply?.(message)}>
 			<ReplyIcon size={15} />
 		</IconButton>
 		{#if mine}
-			<IconButton label="Edit message" title="Edit message" size="sm" onclick={() => startEdit(message)}>
+			<IconButton
+				label={t("chat_edit_message")}
+				title={t("chat_edit_message")}
+				size="sm"
+				onclick={() => startEdit(message)}
+			>
 				<PencilIcon size={15} />
 			</IconButton>
 		{/if}
@@ -1658,7 +1667,13 @@
 		<DropdownMenu.Root bind:open={() => moreMenuFor === message.id, (v) => (moreMenuFor = v ? message.id : null)}>
 			<DropdownMenu.Trigger>
 				{#snippet child({ props })}
-					<IconButton {...props} label="More" title="More" size="sm" active={moreMenuFor === message.id}>
+					<IconButton
+						{...props}
+						label={t("chat_message_more")}
+						title={t("chat_message_more")}
+						size="sm"
+						active={moreMenuFor === message.id}
+					>
 						<EllipsisIcon size={15} />
 					</IconButton>
 				{/snippet}
@@ -1672,7 +1687,7 @@
 							align={mine ? "start" : "end"}
 							sideOffset={6}
 							collisionPadding={10}
-							aria-label="Message"
+							aria-label={t("chat_message_menu")}
 							class="{MENU_PANEL} origin-(--bits-floating-transform-origin)"
 						>
 							{@render messageItems(message)}
@@ -1690,13 +1705,15 @@
 {#snippet messageItems(message: Message)}
 	{@const mine = !!$currentUser && message.author_id === $currentUser.id}
 	{#if isNotice(message)}
-		<MenuItem icon={TrashIcon} danger onSelect={() => void handleDelete(message.id)}>Delete message</MenuItem>
+		<MenuItem icon={TrashIcon} danger onSelect={() => void handleDelete(message.id)}
+			>{t("chat_delete_message")}</MenuItem
+		>
 	{:else}
 		<div class="border-duvet-line mb-1.5 flex items-center gap-0.5 border-b px-0.5 pt-0.5 pb-1.5">
 			{#each quickReactions(MENU_REACTIONS, recentEmoji()) as emoji (emoji)}
 				<DropdownMenu.Item
 					class="data-highlighted:bg-duvet-hover grid size-9 cursor-pointer place-items-center rounded-[10px] text-base transition-transform duration-[120ms] outline-none hover:scale-[1.15] motion-reduce:transition-none"
-					aria-label="React {emoji}"
+					aria-label={t("chat_react_with", { emoji })}
 					onSelect={() => quickReact(message, emoji)}
 				>
 					{@html renderEmoji(emoji)}
@@ -1704,19 +1721,19 @@
 			{/each}
 			<DropdownMenu.Item
 				class="text-duvet-ink2 data-highlighted:bg-duvet-hover data-highlighted:text-duvet-ink ml-auto grid size-9 cursor-pointer place-items-center rounded-[10px] outline-none"
-				aria-label="More reactions"
-				title="More reactions"
+				aria-label={t("chat_reactions_more")}
+				title={t("chat_reactions_more")}
 				onSelect={() => (reactingMessageId = message.id)}
 			>
 				<SmilePlusIcon size={18} />
 			</DropdownMenu.Item>
 		</div>
-		<MenuItem icon={ReplyIcon} onSelect={() => onReply?.(message)}>Reply</MenuItem>
-		<MenuItem icon={ThreadIcon} onSelect={() => void openThreadModal(message)}>View thread</MenuItem>
-		<MenuItem icon={LinkIcon} onSelect={() => copyLink(message)}>Copy message link</MenuItem>
+		<MenuItem icon={ReplyIcon} onSelect={() => onReply?.(message)}>{t("chat_reply")}</MenuItem>
+		<MenuItem icon={ThreadIcon} onSelect={() => void openThreadModal(message)}>{t("chat_thread_view")}</MenuItem>
+		<MenuItem icon={LinkIcon} onSelect={() => copyLink(message)}>{t("chat_copy_link")}</MenuItem>
 		{@render reactionsItem(message)}
 		{#if mine}
-			<MenuItem icon={PencilIcon} onSelect={() => startEdit(message)}>Edit message</MenuItem>
+			<MenuItem icon={PencilIcon} onSelect={() => startEdit(message)}>{t("chat_edit_message")}</MenuItem>
 		{/if}
 		{#if canPin}
 			<MenuItem
@@ -1724,7 +1741,7 @@
 				disabled={pinningMessageId === message.id}
 				onSelect={() => void togglePin(message)}
 			>
-				{message.pinned_at ? "Unpin message" : "Pin message"}
+				{message.pinned_at ? t("chat_unpin") : t("chat_pin")}
 			</MenuItem>
 		{/if}
 		{#if !message.webhook_id}
@@ -1734,7 +1751,9 @@
 		{/if}
 		{#if mine || currentUserCan(Permission.ManageMessages)}
 			<MenuSeparator />
-			<MenuItem icon={TrashIcon} danger onSelect={() => void handleDelete(message.id)}>Delete message</MenuItem>
+			<MenuItem icon={TrashIcon} danger onSelect={() => void handleDelete(message.id)}
+				>{t("chat_delete_message")}</MenuItem
+			>
 		{/if}
 	{/if}
 {/snippet}
@@ -1742,7 +1761,7 @@
 <!-- Who reacted, in the menu of a message that has reactions -->
 {#snippet reactionsItem(message: Message)}
 	{#if message.reactions?.length}
-		<MenuItem icon={UsersIcon} onSelect={() => showReactors(message)}>Reactions</MenuItem>
+		<MenuItem icon={UsersIcon} onSelect={() => showReactors(message)}>{t("chat_reactions")}</MenuItem>
 	{/if}
 {/snippet}
 
@@ -1762,8 +1781,8 @@
 
 {#snippet deleteButton(message: Message)}
 	<IconButton
-		label="Delete message"
-		title="Delete message"
+		label={t("chat_delete_message")}
+		title={t("chat_delete_message")}
 		size="sm"
 		class="hover:text-duvet-danger"
 		disabled={deletingMessageId === message.id}
@@ -1780,8 +1799,8 @@
 <!-- A message's thread: its messages, each replied to from here, over the thread's own message box. -->
 <Sheet
 	bind:open={threadModalOpen}
-	title="Message thread"
-	description={threadRootMessage ? `From ${threadRootMessage.author_name}` : undefined}
+	title={t("chat_thread_title")}
+	description={threadRootMessage ? t("chat_thread_from", { name: threadRootMessage.author_name }) : undefined}
 	class="min-w-[min(672px,calc(100%-48px))]"
 >
 	<div bind:this={threadScrollEl} class="-mx-1 min-h-0 flex-1 overflow-y-auto px-1 py-1">
@@ -1792,13 +1811,13 @@
 		{:else if threadError}
 			<p class="text-duvet-danger text-sm">{threadError}</p>
 		{:else if threadShown.length === 0}
-			<p class="text-duvet-ink2 text-sm">No thread messages found.</p>
+			<p class="text-duvet-ink2 text-sm">{t("chat_thread_empty")}</p>
 		{:else}
 			{@const threadMsgMap = new Map(threadShown.map((m) => [m.id, m]))}
 			<div class="flex flex-col gap-2" onclickcapture={openMention}>
 				{#each threadShown as threadMsg (threadMsg.id)}
 					{@const parentMsg = threadMsg.ref_message_id ? threadMsgMap.get(threadMsg.ref_message_id) : null}
-					{@const parentCall = parentMsg ? callNoticeLine(parentMsg, $currentUser?.id, joined) : null}
+					{@const parentCall = parentMsg ? callNotice(parentMsg, $currentUser?.id, joined) : null}
 					{@const root = threadRootMessage}
 					<div class="group bg-duvet-card shadow-duvet-raised relative rounded-2xl px-3 py-2.5">
 						<!-- As the pins and the search show a message, a reply's quote above it: its quote of a call notice
@@ -1817,8 +1836,8 @@
 						     message, nor one still being sent (its ID is its nonce) -->
 						{#if onThreadReply && root && !isNotice(threadMsg) && !isEphemeral(threadMsg) && threadMsg.id !== threadMsg.nonce}
 							<IconButton
-								label="Reply to {threadMsg.author_name}"
-								title="Reply"
+								label={t("chat_thread_reply_to", { name: threadMsg.author_name })}
+								title={t("chat_reply")}
 								size="sm"
 								class="absolute top-1.5 right-1.5 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 focus-visible:opacity-100 motion-reduce:transition-none"
 								onclick={() => onThreadReply(threadMsg, root)}
@@ -1857,3 +1876,14 @@
 		}}
 	/>
 {/if}
+
+<!-- A notice's name (who pinned, who called), and its link to the chat's pinned messages. -->
+{#snippet noticeName(text: string)}<span class="text-duvet-ink font-medium">{text}</span>{/snippet}
+{#snippet pinsLink(text: string)}<button
+		type="button"
+		class="text-duvet-accent-text font-medium hover:underline"
+		onclick={() => pinsPanelRequest.set({ id: crypto.randomUUID(), channelId })}>{text}</button
+	>{/snippet}
+
+<!-- A key of the keyboard's cursor hint. -->
+{#snippet hintKey(text: string)}<kbd class="text-duvet-ink font-bold">{text}</kbd>{/snippet}

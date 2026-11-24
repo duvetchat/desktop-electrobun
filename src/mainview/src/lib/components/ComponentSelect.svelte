@@ -12,6 +12,7 @@
 		Volume2 as VoiceIcon,
 	} from "@lucide/svelte";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
+	import { t } from "$lib/i18n";
 	import { canViewRoom } from "$lib/permissions";
 	import {
 		ComponentType,
@@ -166,7 +167,7 @@
 	>
 		<span class="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden">
 			{#if chosenChoices.length === 0}
-				<span class="text-duvet-ink2 truncate">{c.placeholder || "Make a selection"}</span>
+				<span class="text-duvet-ink2 truncate">{c.placeholder || t("chat_select_placeholder")}</span>
 			{:else}
 				{#each chosenChoices as ch, i}
 					{@render choiceIcon(ch, 16)}
@@ -203,8 +204,8 @@
 					{#if searchable}
 						<input
 							bind:value={query}
-							placeholder="Search"
-							aria-label="Search"
+							placeholder={t("chat_select_search")}
+							aria-label={t("chat_select_search")}
 							onkeydown={(e) => {
 								if (e.key !== "ArrowDown") return;
 								e.preventDefault();
@@ -217,7 +218,7 @@
 						bind:this={optionsEl}
 						class="overflow-y-auto p-1.5"
 						role="listbox"
-						aria-label={c.placeholder || "Options"}
+						aria-label={c.placeholder || t("chat_select_options")}
 						aria-multiselectable={max > 1}
 						tabindex="-1"
 						onkeydown={optionKeys}
@@ -254,7 +255,7 @@
 								{/if}
 							</button>
 						{:else}
-							<p class="px-2 py-2 text-[13px] text-duvet-ink2">No results</p>
+							<p class="px-2 py-2 text-[13px] text-duvet-ink2">{t("chat_select_no_results")}</p>
 						{/each}
 					</div>
 				</Popover.Content>

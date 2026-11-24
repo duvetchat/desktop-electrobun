@@ -40,6 +40,7 @@
 
 	import { onMount, onDestroy, tick, untrack, type Snippet } from "svelte";
 	import ChatInput from "$lib/components/ChatInput.svelte";
+	import Rich from "$lib/components/Rich.svelte";
 	import CommandOptions from "$lib/components/CommandOptions.svelte";
 	import MessageList from "$lib/components/MessageList.svelte";
 	import type { CommandEntry } from "$lib/commands";
@@ -68,6 +69,7 @@
 	import { noticeDue } from "$lib/typing";
 	import { getAvatarURL } from "$lib/common/common";
 	import { getApiError } from "$lib/api/api";
+	import { t } from "$lib/i18n";
 	import { getSpaceCommands, sendCommandInteraction } from "$lib/api/interactions";
 	import { hasPermission, mentionableRooms, Permission } from "$lib/permissions";
 	import { displayName, isSpoiler, withSpoiler } from "$lib/spoilers";
@@ -81,7 +83,7 @@
 		withoutDeletedReply,
 		type SentDraft,
 	} from "$lib/drafts";
-	import { CANCELLED, sendFollowed, withoutSending } from "$lib/uploads";
+	import { CANCELLED, chatFileSize, sendFollowed, withoutSending } from "$lib/uploads";
 	import { knowMessage, newestKnownIn } from "$lib/jumps";
 	import { threadReplyTarget } from "$lib/threads";
 	import { chatRequest, keyboard, leaveMessageBox } from "$lib/keyboard.svelte";
@@ -230,12 +232,6 @@
 			if (!keyboard.keepNavigating) chatInputRef?.focus();
 		});
 	});
-
-	function formatFileSize(bytes: number): string {
-		if (bytes < 1024) return `${bytes} B`;
-		if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-		return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-	}
 
 	function removePendingFile(key: string, index: number) {
 		changeDraft(key, { files: draftOf($chatDrafts, key).files.filter((_, i) => i !== index) });
@@ -422,7 +418,7 @@
 				await onSend(content, nonce, ref, files, stickerAttachmentId, allowedMentions, sending.key);
 			} catch (err) {
 				failedNonces = new Set(failedNonces).add(nonce);
-				toast(getApiError(err, "Failed to send message"), "error");
+				toast(getApiError(err, t("chat_send_failed")), "error");
 			}
 			return;
 		}
@@ -480,7 +476,7 @@
 			.then((raw) => (raw === CANCELLED ? cancelled(roomId, nonce, fromDraft, sending.key) : sent(roomId, nonce)(raw)))
 			.catch((err) => {
 				failedNonces = new Set(failedNonces).add(nonce);
-				toast(getApiError(err, "Failed to send message"), "error");
+				toast(getApiError(err, t("chat_send_failed")), "error");
 			});
 	}
 
@@ -623,7 +619,7 @@
 				.then(sent(channelId, nonce))
 				.catch((err) => {
 					failedNonces = new Set(failedNonces).add(nonce);
-					toast(getApiError(err, "Failed to send voice note"), "error");
+					toast(getApiError(err, t("chat_voice_note_send_failed")), "error");
 				});
 			return;
 		}
@@ -651,7 +647,7 @@
 			.then((raw) => (raw === CANCELLED ? cancelled(roomId, nonce, fromDraft, saved?.draft) : sent(roomId, nonce)(raw)))
 			.catch((err) => {
 				failedNonces = new Set(failedNonces).add(nonce);
-				toast(getApiError(err, "Failed to send message"), "error");
+				toast(getApiError(err, t("chat_send_failed")), "error");
 			});
 	}
 
@@ -748,7 +744,7 @@
 			.then(sent(channelId, nonce))
 			.catch((err) => {
 				failedNonces = new Set(failedNonces).add(nonce);
-				toast(getApiError(err, "Failed to send voice note"), "error");
+				toast(getApiError(err, t("chat_voice_note_send_failed")), "error");
 			});
 	}
 
@@ -785,7 +781,7 @@
 	ondragleave={handleFileDragLeave}
 	ondrop={handleFileDrop}
 	role="region"
-	aria-label="Chat"
+	aria-label={t("chat_region_label")}
 >
 	{#if fileDragOver}
 		<div
@@ -795,7 +791,7 @@
 				class="border-duvet-accent bg-duvet-glass-strong text-duvet-accent-text flex flex-col items-center gap-2 rounded-[20px] border-2 border-dashed px-10 py-8"
 			>
 				<UploadIcon size={36} strokeWidth={1.5} />
-				<span class="text-sm font-medium">Drop files to upload</span>
+				<span class="text-sm font-medium">{t("chat_drop_files")}</span>
 			</div>
 		</div>
 	{/if}
@@ -864,16 +860,16 @@
 			<!-- The edit of one message, in the box: its own text and undo steps, apart from the chat's draft -->
 			<div class="text-duvet-accent-text flex items-center gap-2 px-1.5 pb-2 text-[12.5px] leading-[1.2]">
 				<PencilIcon size={14} class="shrink-0" />
-				<span class="font-semibold">Editing your message</span>
-				<span class="text-duvet-ink2 min-w-0 flex-1 truncate">Esc to cancel · Enter to save</span>
-				<IconButton label="Cancel edit" title="Cancel edit" size="sm" onclick={cancelEdit}>
+				<span class="font-semibold">{t("chat_edit_title")}</span>
+				<span class="text-duvet-ink2 min-w-0 flex-1 truncate">{t("chat_edit_keys")}</span>
+				<IconButton label={t("chat_edit_cancel")} title={t("chat_edit_cancel")} size="sm" onclick={cancelEdit}>
 					<CloseIcon size={14} />
 				</IconButton>
 			</div>
 			{#key editingMessageId}
 				<ChatInput
 					initialValue={editContent}
-					placeholder="Edit your message"
+					placeholder={t("chat_edit_placeholder")}
 					onValueChange={(text) => {
 						editContent = text;
 					}}
@@ -894,7 +890,7 @@
 					bind:this={chatInputRef}
 					draftChat={channelId}
 					bind:pendingFiles={() => pendingFiles, (files) => changeDraft(channelId, { files })}
-					placeholder={placeholder ?? `Message #${channelName}`}
+					placeholder={placeholder ?? t("chat_input_placeholder_room", { room: channelName })}
 					onSubmit={handleSendMessage}
 					onVoiceNote={handleVoiceNote}
 					onRecording={() => notifyTyping(true)}
@@ -931,8 +927,11 @@
 		<div class="text-duvet-ink2 flex items-center gap-2 px-1.5 pb-2 text-[12.5px] leading-[1.2]">
 			<ReplyIcon size={14} class="shrink-0" />
 			<span class="shrink-0"
-				>Replying to <span class="text-duvet-ink font-semibold">{own ? "yourself" : pending.replyTo.author_name}</span
-				></span
+				><Rich
+					key="chat_reply_to"
+					values={{ own: own ? "yes" : "no", name: pending.replyTo.author_name }}
+					tags={{ b: replyAuthor }}
+				/></span
 			>
 			<span class="font-content min-w-0 flex-1 truncate">{pending.replyTo.content ?? ""}</span>
 			{#if canMention(pending.replyTo)}
@@ -947,14 +946,19 @@
 						focus();
 					}}
 					aria-pressed={pending.replyMention}
-					aria-label="Mention {pending.replyTo.author_name}"
+					aria-label={t("chat_reply_mention_label", { name: pending.replyTo.author_name })}
 					title={pending.replyMention
-						? `Click to not mention ${pending.replyTo.author_name}`
-						: `Click to mention ${pending.replyTo.author_name}`}
-					><AtIcon size={13} />{pending.replyMention ? "ON" : "OFF"}</button
+						? t("chat_reply_mention_on_hint", { name: pending.replyTo.author_name })
+						: t("chat_reply_mention_off_hint", { name: pending.replyTo.author_name })}
+					><AtIcon size={13} />{pending.replyMention ? t("chat_reply_mention_on") : t("chat_reply_mention_off")}</button
 				>
 			{/if}
-			<IconButton label="Cancel reply" title="Cancel reply" size="sm" onclick={() => setReplyIn(key, null)}>
+			<IconButton
+				label={t("chat_reply_cancel")}
+				title={t("chat_reply_cancel")}
+				size="sm"
+				onclick={() => setReplyIn(key, null)}
+			>
 				<CloseIcon size={14} />
 			</IconButton>
 		</div>
@@ -966,15 +970,15 @@
 				{@const spoiler = isSpoiler(file.name)}
 				<div class="bg-duvet-card shadow-duvet-raised flex h-8 max-w-60 items-center gap-1.5 rounded-xl pr-1 pl-2.5">
 					<span class="text-duvet-ink truncate text-xs font-medium">{name}</span>
-					<span class="text-duvet-ink2 shrink-0 text-[11px] tabular-nums">{formatFileSize(file.size)}</span>
+					<span class="text-duvet-ink2 shrink-0 text-[11px] tabular-nums">{chatFileSize(file.size)}</span>
 					<button
 						class="grid size-6 shrink-0 place-items-center rounded-md transition-colors motion-reduce:transition-none {spoiler
 							? 'bg-duvet-accent-tint text-duvet-accent-text'
 							: 'text-duvet-ink2 hover:bg-duvet-hover hover:text-duvet-ink'}"
 						onclick={() => toggleSpoiler(key, i)}
 						aria-pressed={spoiler}
-						aria-label="Mark {name} as spoiler"
-						title={spoiler ? "Remove spoiler" : "Mark as spoiler"}
+						aria-label={t("chat_file_spoiler_label", { name })}
+						title={spoiler ? t("chat_file_spoiler_remove") : t("chat_file_spoiler_mark")}
 					>
 						{#if spoiler}
 							<EyeOffIcon class="size-3.5" />
@@ -985,7 +989,7 @@
 					<button
 						class="text-duvet-ink2 hover:bg-duvet-hover hover:text-duvet-ink grid size-6 shrink-0 place-items-center rounded-md transition-colors motion-reduce:transition-none"
 						onclick={() => removePendingFile(key, i)}
-						aria-label="Remove {name}"
+						aria-label={t("chat_file_remove", { name })}
 					>
 						<CloseIcon class="size-3.5" />
 					</button>
@@ -1007,7 +1011,7 @@
 				bind:this={threadInputRef}
 				draftChat={key}
 				bind:pendingFiles={() => draftOf($chatDrafts, key).files, (files) => changeDraft(key, { files })}
-				placeholder="Reply in thread"
+				placeholder={t("chat_thread_placeholder")}
 				onSubmit={(content, files, sticker) => sendThreadReply(root, content, files, sticker)}
 				onValueChange={handleTyping}
 				{members}
@@ -1020,3 +1024,6 @@
 		{/key}
 	</div>
 {/snippet}
+
+<!-- The author of the message a draft replies to, or yourself, in the reply's strip. -->
+{#snippet replyAuthor(text: string)}<span class="text-duvet-ink font-semibold">{text}</span>{/snippet}

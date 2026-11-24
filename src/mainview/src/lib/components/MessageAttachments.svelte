@@ -5,9 +5,11 @@
 	import SpoilerCover from "$lib/components/SpoilerCover.svelte";
 	import VoiceNotePlayer from "$lib/components/VoiceNotePlayer.svelte";
 	import { getHostURL } from "$lib/common/common";
+	import { t } from "$lib/i18n";
+	import { escapeHtml } from "$lib/markdown";
 	import { displayName, isSpoiler } from "$lib/spoilers";
 	import { MessageType, type Message } from "$lib/types";
-	import { allUp, cancelUpload, fileShare, messageUploadNote, messageUploads } from "$lib/uploads";
+	import { allUp, cancelUpload, chatFileSize, fileShare, messageUploadNote, messageUploads } from "$lib/uploads";
 
 	// A message's voice note, sticker or files as the chat shows them, for the message list and the message
 	// previews (pins, search results). Images and videos fit in maxWidth × maxHeight; a click on an image or
@@ -65,18 +67,12 @@
 			const parent = media.parentElement!;
 			parent.querySelector(".media-skeleton")?.remove();
 			media.remove();
-			parent.innerHTML = `<div class="flex flex-col items-center justify-center w-full h-full bg-duvet-secondary-fill gap-1"><span class="text-2xl">💩</span><span class="text-xs text-duvet-ink2">Failed to load</span></div>`;
+			parent.innerHTML = `<div class="flex flex-col items-center justify-center w-full h-full bg-duvet-secondary-fill gap-1"><span class="text-2xl">💩</span><span class="text-xs text-duvet-ink2">${escapeHtml(t("chat_media_load_failed"))}</span></div>`;
 		}
 	}
 
 	function loaded(e: Event) {
 		(e.currentTarget as HTMLElement).parentElement?.querySelector(".media-skeleton")?.remove();
-	}
-
-	function formatFileSize(bytes: number): string {
-		if (bytes < 1024) return `${bytes} B`;
-		if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-		return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 	}
 </script>
 
@@ -91,14 +87,14 @@
 				<div class="bg-duvet-secondary-fill size-[34px] shrink-0 animate-pulse rounded-full"></div>
 				<div class="flex flex-1 flex-col gap-1.5">
 					<div class="bg-duvet-secondary-fill h-5 animate-pulse rounded"></div>
-					<span class="text-duvet-ink2 text-[11px]">Sending…</span>
+					<span class="text-duvet-ink2 text-[11px]">{t("chat_voice_note_sending")}</span>
 				</div>
 			</div>
 		{:else if voiceAtt && !voiceAtt.deleted_at}
 			<VoiceNotePlayer
 				src="{attachmentHost}{voiceAtt.url ?? `/attachments/${voiceAtt.id}`}"
 				attachmentId={voiceAtt.id}
-				authorName={message.author_name ?? "Unknown"}
+				authorName={message.author_name ?? t("chat_author_unknown")}
 				{channelName}
 			/>
 		{:else}
@@ -106,7 +102,7 @@
 				class="border-duvet-line text-duvet-ink2 flex h-12 items-center gap-2 rounded-[18px] border border-dashed px-4"
 			>
 				<TrashIcon size={16} class="shrink-0 opacity-60" />
-				<span class="text-xs italic">Voice note deleted</span>
+				<span class="text-xs italic">{t("chat_voice_note_deleted")}</span>
 			</div>
 		{/if}
 	{:else if message.sticker_attachment_id}
@@ -117,7 +113,7 @@
 		>
 			<img
 				src="{attachmentHost}/attachments/{message.sticker_attachment_id}"
-				alt="Sticker"
+				alt={t("chat_sticker_alt")}
 				class="size-[136px] object-contain"
 				loading="lazy"
 				onerror={(e) => {
@@ -126,7 +122,7 @@
 					img.remove();
 					parent.onclick = null;
 					parent.style.cursor = "default";
-					parent.innerHTML = `<div class="flex flex-col items-center justify-center w-full h-full rounded-2xl border border-dashed border-duvet-line gap-1"><span class="text-2xl">💩</span><span class="text-xs text-duvet-ink2">Sticker deleted</span></div>`;
+					parent.innerHTML = `<div class="flex flex-col items-center justify-center w-full h-full rounded-2xl border border-dashed border-duvet-line gap-1"><span class="text-2xl">💩</span><span class="text-xs text-duvet-ink2">${escapeHtml(t("chat_sticker_deleted"))}</span></div>`;
 				}}
 			/>
 		</button>
@@ -171,22 +167,22 @@
 						<div
 							class="bg-duvet-secondary-fill relative flex h-40 w-64 max-w-full items-center justify-center rounded-2xl {pulse}"
 						>
-							<span class="text-duvet-ink2 px-3 text-center text-xs">Uploading {name}…</span>
+							<span class="text-duvet-ink2 px-3 text-center text-xs">{t("chat_upload_file", { name })}</span>
 							{@render fileBar(share)}
 						</div>
 					{:else if att.content_type.startsWith("video/")}
 						<div
 							class="bg-duvet-secondary-fill relative flex h-44 w-80 max-w-full items-center justify-center rounded-2xl {pulse}"
 						>
-							<span class="text-duvet-ink2 px-3 text-center text-xs">Uploading {name}…</span>
+							<span class="text-duvet-ink2 px-3 text-center text-xs">{t("chat_upload_file", { name })}</span>
 							{@render fileBar(share)}
 						</div>
 					{:else}
 						<div
 							class="bg-duvet-card shadow-duvet-raised relative inline-flex w-[300px] max-w-full items-center gap-2 rounded-2xl px-3 py-3 {pulse}"
 						>
-							<span class="text-duvet-ink2 min-w-0 truncate text-xs">Uploading {name}…</span>
-							<span class="text-duvet-ink2 shrink-0 text-xs opacity-60">{formatFileSize(att.size_bytes)}</span>
+							<span class="text-duvet-ink2 min-w-0 truncate text-xs">{t("chat_upload_file", { name })}</span>
+							<span class="text-duvet-ink2 shrink-0 text-xs opacity-60">{chatFileSize(att.size_bytes)}</span>
 							{@render fileBar(share)}
 						</div>
 					{/if}
@@ -198,7 +194,7 @@
 						style="width: {dw}px; height: {dh}px; max-width: 100%;"
 					>
 						<TrashIcon size={18} class="opacity-60" />
-						<span class="text-xs">Attachment deleted</span>
+						<span class="text-xs">{t("chat_attachment_deleted")}</span>
 					</div>
 				{:else if att.content_type.startsWith("image/")}
 					{@const rawW = att.width ?? maxWidth}
@@ -228,7 +224,7 @@
 						<div
 							class="media-skeleton bg-duvet-secondary-fill absolute inset-0 flex animate-pulse items-center justify-center"
 						>
-							<span class="text-duvet-ink2 text-xs">Loading video…</span>
+							<span class="text-duvet-ink2 text-xs">{t("chat_video_loading")}</span>
 						</div>
 						<!-- svelte-ignore a11y_media_has_caption -->
 						<video
@@ -252,7 +248,7 @@
 								attachmentId={att.id}
 								filename={name}
 								sizeBytes={att.size_bytes}
-								authorName={message.author_name ?? "Unknown"}
+								authorName={message.author_name ?? t("chat_author_unknown")}
 								{channelName}
 							/>
 						</div>
@@ -280,7 +276,7 @@
 							<span class="flex min-w-0 flex-1 flex-col gap-0.5">
 								<span class="truncate text-[13.5px] leading-tight font-semibold">{name}</span>
 								<span class="text-duvet-ink2 text-[11.5px] leading-tight"
-									>{formatFileSize(att.size_bytes)}{kind ? ` · ${kind}` : ""}</span
+									>{chatFileSize(att.size_bytes)}{kind ? ` · ${kind}` : ""}</span
 								>
 							</span>
 							<DownloadIcon size={16} class="text-duvet-ink2 mr-1 shrink-0" />
@@ -300,8 +296,8 @@
 						<button
 							type="button"
 							class="text-duvet-ink pointer-events-auto cursor-pointer hover:underline"
-							aria-label="Cancel upload"
-							onclick={() => cancelUpload(message.nonce!)}>Cancel</button
+							aria-label={t("chat_upload_cancel_label")}
+							onclick={() => cancelUpload(message.nonce!)}>{t("chat_upload_cancel")}</button
 						>
 					{/if}
 				</p>

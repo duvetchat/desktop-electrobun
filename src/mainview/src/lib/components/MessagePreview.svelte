@@ -11,9 +11,10 @@
 	import MessageText from "$lib/components/MessageText.svelte";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
 	import { toggleReaction } from "$lib/api/reactions";
-	import { callNoticeLine, callNoticeText, type CallNoticeLine } from "$lib/call-notices";
+	import { callNotice, callNoticeSentence, type CallNoticeWords } from "$lib/call-notices";
 	import { copyCode } from "$lib/code-copy";
 	import { largeEmojis } from "$lib/emoji";
+	import { t } from "$lib/i18n";
 	import type { CustomEmojiMap } from "$lib/markdown";
 	import { nameColor } from "$lib/name-colors";
 	import { onReactionChange, reactionKey, withReaction } from "$lib/reactions";
@@ -58,14 +59,14 @@
 		mentionMap?: Record<string, string>;
 		customEmojiMap?: CustomEmojiMap;
 		/** What a reply's quoted call notice says, when the list around it has the notice (a thread does). */
-		quotedCall?: CallNoticeLine | null;
+		quotedCall?: CallNoticeWords | null;
 		onPreview: (src: string, alt?: string) => void;
 	} = $props();
 
 	// The user's membership of the conversation (their member_id), minted as they joined it: a call notice from before
 	// doesn't say they missed the call.
 	const joined = $derived(members.find((m) => m.id === $currentUser?.id)?.member_id);
-	const callLine = $derived(callNoticeLine(message, $currentUser?.id, joined));
+	const callLine = $derived(callNotice(message, $currentUser?.id, joined));
 	const author = $derived(members.find((m) => m.id === message.author_id));
 	const text = $derived(message.content ?? "");
 
@@ -127,7 +128,7 @@
 			{#if callLine}
 				<p class="text-duvet-ink2 flex items-center gap-1.5 text-sm">
 					<PhoneIcon class="size-4 shrink-0 {callLine.missed ? 'text-duvet-danger' : 'text-duvet-ink2'}" />
-					{callNoticeText(callLine)}
+					{callNoticeSentence(callLine)}
 				</p>
 			{/if}
 			{#if message.type === MessageType.Voice || message.sticker_attachment_id}
@@ -151,7 +152,7 @@
 							large={largeEmojis(text)}
 							{mentionMap}
 							{customEmojiMap}
-							edited={message.updated_at !== message.created_at ? "edited" : null}
+							edited={message.updated_at !== message.created_at ? t("chat_message_edited") : null}
 						/>
 					</div>
 					{#if clamped}
@@ -160,7 +161,7 @@
 							class="text-duvet-ink2 hover:text-duvet-ink mt-0.5 self-start text-xs font-medium hover:underline"
 							onclick={() => (expanded = !expanded)}
 						>
-							{expanded ? "Show less" : "Show more"}
+							{expanded ? t("chat_message_show_less") : t("chat_message_show_more")}
 						</button>
 					{/if}
 				{/if}

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { CircleAlert as AlertIcon } from "@lucide/svelte";
 	import { onMount } from "svelte";
+	import { t } from "$lib/i18n";
 	import type { Message } from "$lib/types";
 
 	// A bot's deferred response, which it hasn't completed by editing it: the bot is thinking for the 15 minutes it has,
@@ -18,11 +19,11 @@
 {#if now - new Date(message.created_at).getTime() > RESPONSE_TIME}
 	<p class="text-duvet-danger flex items-center gap-1.5 text-sm">
 		<AlertIcon class="size-4 shrink-0" />
-		The application did not respond
+		{t("chat_interaction_no_response")}
 	</p>
 {:else}
 	<p class="text-duvet-ink2 flex items-center gap-1.5 text-sm">
-		{message.author_name} is thinking
+		{t("chat_bot_thinking", { name: message.author_name })}
 		<span class="flex items-center gap-0.75" aria-hidden="true">
 			<span class="animate-typing-bounce block size-1 rounded-full bg-current"></span>
 			<span class="animate-typing-bounce block size-1 rounded-full bg-current [animation-delay:0.2s]"></span>

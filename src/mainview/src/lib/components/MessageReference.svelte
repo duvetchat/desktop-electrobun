@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { CornerUpLeft as ReplyIcon, Phone as PhoneIcon, SquareSlash as CommandIcon } from "@lucide/svelte";
-	import { callNoticeText, type CallNoticeLine } from "$lib/call-notices";
+	import Rich from "$lib/components/Rich.svelte";
+	import { callNoticeSentence, type CallNoticeWords } from "$lib/call-notices";
+	import { t } from "$lib/i18n";
 	import { quoteJump } from "$lib/jumps";
 	import { renderMarkdownLine, type CustomEmojiMap } from "$lib/markdown";
 	import { messageTextClass } from "$lib/message-styles";
@@ -20,7 +22,7 @@
 		channelId,
 	}: {
 		message: Pick<Message, "referenced_message" | "interaction_metadata" | "author_name">;
-		quotedCall?: CallNoticeLine | null;
+		quotedCall?: CallNoticeWords | null;
 		mentionMap?: Record<string, string>;
 		customEmojiMap?: CustomEmojiMap;
 		/** The message's space, "" in a conversation, and its room or conversation. */
@@ -43,7 +45,7 @@
 		<!-- The referenced message is gone: the API sends only the reference then -->
 		<span class="{STRIP} italic">
 			<ReplyIcon size={12} class="shrink-0" />
-			Original message was deleted
+			{t("chat_quote_deleted")}
 		</span>
 	{:else}
 		<button
@@ -54,7 +56,7 @@
 			{#if quotedCall}
 				<!-- A call notice has no text: what its row says, which names its caller -->
 				<PhoneIcon class="size-3.5 shrink-0 {quotedCall.missed ? 'text-duvet-danger' : 'text-duvet-ink2'}" />
-				<span class="truncate">{callNoticeText(quotedCall)}</span>
+				<span class="truncate">{callNoticeSentence(quotedCall)}</span>
 			{:else}
 				<ReplyIcon size={12} class="shrink-0" />
 				<span class="text-duvet-ink shrink-0 font-semibold">{quotedAuthorName(ref.author_name, ref)}</span>
@@ -64,7 +66,7 @@
 					>
 				{:else}
 					<!-- No text to show: only files, a sticker or components -->
-					<span class="truncate italic">Click to see message</span>
+					<span class="truncate italic">{t("chat_quote_without_text")}</span>
 				{/if}
 			{/if}
 		</button>
@@ -89,9 +91,15 @@
 		}}
 	>
 		<CommandIcon size={12} class="shrink-0" />
-		<span class="text-duvet-ink shrink-0 font-semibold">{usedBy}</span>
-		<span class="truncate"
-			>used <span class="text-duvet-ink font-medium">{used.name ? `/${used.name}` : message.author_name}</span></span
-		>
+		<Rich
+			key="chat_interaction_used"
+			values={{ user: usedBy, command: used.name ? `/${used.name}` : message.author_name }}
+			tags={{ who: user, what: command }}
+		/>
 	</button>
 {/if}
+
+<!-- Who used a bot's interaction, and what they used: its command, or the bot's name for a button or a menu. Each
+     piece is a flex item of the strip, so the name is never cut and only the command truncates. -->
+{#snippet user(text: string)}<span class="text-duvet-ink shrink-0 font-semibold">{text}</span>{/snippet}
+{#snippet command(text: string)}<span class="text-duvet-ink min-w-0 truncate font-medium">{text}</span>{/snippet}
