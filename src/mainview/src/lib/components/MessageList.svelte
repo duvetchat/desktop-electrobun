@@ -3,6 +3,7 @@
 	import { onDestroy, onMount, tick, type Snippet } from "svelte";
 	import {
 		ArrowDown as ArrowDownIcon,
+		Copy as CopyIcon,
 		Ellipsis as EllipsisIcon,
 		Eye as EyeIcon,
 		Link as LinkIcon,
@@ -597,6 +598,12 @@
 			? `${DUVET_DOMAIN}/conversations/${channelId}/${message.id}`
 			: `${DUVET_DOMAIN}/channels/${spaceId}/${channelId}/${message.id}`;
 		navigator.clipboard.writeText(link).catch(console.error);
+	}
+
+	// The message's whole text, as it is written: its content, or its text displays' when components are all of it.
+	function copyText(message: Message) {
+		const text = messageText(message);
+		if (text) navigator.clipboard.writeText(text).catch(console.error);
 	}
 
 	// A hover bar sits beside its bubble; where there's no room for it there (a wide bubble in a narrow pane), it sits
@@ -1732,6 +1739,9 @@
 		</div>
 		<MenuItem icon={ReplyIcon} onSelect={() => onReply?.(message)}>Reply</MenuItem>
 		<MenuItem icon={ThreadIcon} onSelect={() => void openThreadModal(message)}>View thread</MenuItem>
+		{#if messageText(message)}
+			<MenuItem icon={CopyIcon} onSelect={() => copyText(message)}>Copy text</MenuItem>
+		{/if}
 		<MenuItem icon={LinkIcon} onSelect={() => copyLink(message)}>Copy message link</MenuItem>
 		{@render reactionsItem(message)}
 		{#if editable(message, mine)}

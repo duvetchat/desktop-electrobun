@@ -441,3 +441,14 @@ describe("editing a message", () => {
 		expect(chat).not.toContain("Editing your message");
 	});
 });
+
+test("a message's More menu copies its text above its link", () => {
+	const list = source("MessageList.svelte");
+	const text = list.indexOf(">Copy text<");
+	const link = list.indexOf(">Copy message link<");
+	expect(text).toBeGreaterThan(-1);
+	expect(text).toBeLessThan(link);
+	expect(list).toMatch(
+		/function copyText\(message: Message\) \{\s*const text = messageText\(message\);\s*if \(text\) navigator\.clipboard\.writeText\(text\)\.catch\(console\.error\);\s*\}/,
+	);
+});
