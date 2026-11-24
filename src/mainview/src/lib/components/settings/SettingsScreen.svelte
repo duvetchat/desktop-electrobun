@@ -248,7 +248,7 @@
 		{
 			title: "Developer",
 			items: [
-				{ id: "developer", label: "Developer", icon: CodeIcon, tile: "#5f45b5", count: $pendingTeamInvites.length },
+				{ id: "developer", label: "Applications", icon: CodeIcon, tile: "#5f45b5", count: $pendingTeamInvites.length },
 			],
 		},
 	]);
