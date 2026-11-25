@@ -14,7 +14,7 @@
 		align = "start",
 		sideOffset = 8,
 		label = undefined,
-		class: className = "rounded-[20px]",
+		class: className = "rounded-card-lg",
 		trigger,
 		children,
 	}: {

@@ -38,6 +38,23 @@ export function settingsSections(permissions: number): SettingsSection[] {
 	return sections;
 }
 
+/** How a Space's settings sit in its side panel: its own face, the people in it, and the apps and data behind it, as
+ *  the design map arranges S-58. A group with no section the user may open goes. */
+const SPACE_SETTING_GROUPS: { title: string; sections: readonly SettingsSection[] }[] = [
+	{ title: "Space", sections: ["overview", "roles", "emojis", "stickers"] },
+	{ title: "People", sections: ["members", "invites", "bans"] },
+	{ title: "Apps and data", sections: ["webhooks", "storage", "attachments"] },
+];
+
+export function groupSettingsSections(
+	sections: readonly SettingsSection[],
+): { title: string; sections: SettingsSection[] }[] {
+	return SPACE_SETTING_GROUPS.map((group) => ({
+		title: group.title,
+		sections: group.sections.filter((section) => sections.includes(section)),
+	})).filter((group) => group.sections.length > 0);
+}
+
 /**
  * The rooms whose webhooks the settings' Webhooks section lists, and makes new ones in: the space's text rooms the
  * member can view, as the API takes a webhook only in a text room, and Manage Webhooks reaches only the rooms one can

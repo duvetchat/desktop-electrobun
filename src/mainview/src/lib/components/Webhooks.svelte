@@ -437,7 +437,7 @@
 								<IconButton
 									label="Delete"
 									title="Delete"
-									class="hover:bg-duvet-danger/15! hover:text-duvet-danger!"
+									danger
 									onclick={() => handleDeleteWebhook(wh)}
 									disabled={isDeletingWebhook[wh.id]}
 								>

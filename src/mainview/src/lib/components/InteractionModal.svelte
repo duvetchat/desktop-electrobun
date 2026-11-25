@@ -286,7 +286,7 @@
 						? values[id] === o.value
 						: ((values[id] as string[] | undefined) ?? []).includes(o.value)}
 					<label
-						class="hover:bg-duvet-hover flex cursor-pointer items-start gap-2.5 rounded-[9px] px-2.5 py-2 transition-colors motion-reduce:transition-none {checked
+						class="hover:bg-duvet-hover rounded-tile flex cursor-pointer items-start gap-2.5 px-2.5 py-2 transition-colors motion-reduce:transition-none {checked
 							? 'bg-duvet-accent-tint'
 							: ''}"
 					>

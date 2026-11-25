@@ -21,3 +21,11 @@ test("it takes the focus as it opens, so a key typed then doesn't go into a chat
 	expect(sheet).not.toContain("trapFocus={false}");
 	expect(friendsView).not.toMatch(/role="dialog"/);
 });
+
+// A friend's Remove friend was a bare icon, shown only on hover; it takes a card of its own beside Message's.
+test("a friend's Remove friend has the same card as Message", () => {
+	expect(friendsView).toMatch(/class=\{cardIconButtonClass\(\)\}[\s\S]*?aria-label="Message \{member\.username\}"/);
+	expect(friendsView).toMatch(
+		/class=\{cardIconButtonClass\(true\)\}[\s\S]*?aria-label="Remove \{member\.username\} from your friends"/,
+	);
+});
