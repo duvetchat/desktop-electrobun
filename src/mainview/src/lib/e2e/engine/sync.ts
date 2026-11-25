@@ -1,10 +1,12 @@
 // A conversation's queue and group (PLAN-E2E-CLIENTES.md, «La cola de una conversación», «Entrar a un grupo», «Un commit
 // sin respuesta», «Lo periódico»). What the API numbers in each conversation goes to the core by its number, from the
 // gateway's events and from the queue: a repeat is skipped, and a gap or an entry without its data reads the queue from
-// where the core is, 50 entries an apply. A device out of the group comes in by its welcome (from its leaf's number,
-// `joined_seq`) or an external commit, and makes the group where it may; its commits go through commits.ts, their bytes
-// kept until an answer comes. The engine runs this work in its turn, one conversation at a time: this class keeps what's
-// between turns, the entries heard, the commits whose requests go on, and what each conversation says to the person.
+// where the core is, 50 entries an apply. A device out of the group comes in by its welcome (from where the core is, or
+// from its leaf's number, `joined_seq`) or an external commit, and makes the group where it may (again, where its own
+// creation never reached the API); its commits go through commits.ts, their bytes kept until an answer comes. A
+// conversation gone, or its user out of it, is let go. The engine runs this work in its turn, one conversation at a
+// time: this class keeps what's between turns, the entries heard, the commits whose requests go on, and what each
+// conversation says to the person.
 import { FetchError } from "$lib/api/api";
 import type { Conversation, DirectMessage } from "$lib/api/conversations";
 import type { Commit, QueuePage } from "$lib/api/e2e";
@@ -139,8 +141,13 @@ export class Conversations {
 	readonly #due = new Map<string, () => void>();
 	/** Failed turns' retries, by conversation. */
 	readonly #retries = new Map<string, { tries: number; cancel: () => void }>();
-	/** External commits that lost their epoch in a row, by conversation. */
+	/**
+	 * External commits that lost their epoch in a row, by conversation, counted until this device is in its group: the
+	 * welcome its leaf began with is stale by then, so the queue isn't read from there.
+	 */
 	readonly #joinsLost = new Map<string, number>();
+	/** Groups a commit took this device out of (`removed`): whether its user is still in the conversation, a list says. */
+	readonly #removed = new Set<string>();
 	/** Groups under an external sender other than the pinned one: this device never goes in (Ruling 32). */
 	readonly #otherSender = new Set<string>();
 	/** Groups whose members aren't their record's, until the person says yes (`accept`). */
@@ -186,7 +193,7 @@ export class Conversations {
 		this.#settled = false;
 		for (const id of [...this.#states.keys()]) this.#set(id, null);
 		for (const kept of [this.#known, this.#heard, this.#joinsLost]) kept.clear();
-		for (const kept of [this.#settling, this.#otherSender, this.#recordRefused]) kept.clear();
+		for (const kept of [this.#settling, this.#removed, this.#otherSender, this.#recordRefused]) kept.clear();
 	}
 
 	state(conversationId: string): ConversationState | null {
@@ -211,18 +218,15 @@ export class Conversations {
 
 	/**
 	 * At the start and at each READY: the API's conversations, each one's record made the first time it's seen, the queue
-	 * of each with a group, and the commits whose requests had no answer sent again.
+	 * of each with a group, those without one as #groupless says, and the commits whose requests had no answer sent again.
 	 */
 	async all(): Promise<void> {
 		await this.#list();
 		for (const conv of [...this.#known.values()]) {
 			legacyRecord(this.#parts.store, conv);
-			if (!conv.mls) {
-				this.#set(conv.id, this.#waiting(conv));
-				continue;
-			}
 			try {
-				await this.sync(conv.id);
+				if (conv.mls) await this.sync(conv.id);
+				else await this.#groupless(conv);
 			} catch (error) {
 				console.error("[e2e] A conversation's group waits for its next turn:", error);
 			}
@@ -245,17 +249,7 @@ export class Conversations {
 		if (!conv) return;
 		if (conv.mls) return this.sync(conv.id);
 		if (!mayMake(conv, this.#parts.user)) return this.#set(conv.id, this.#waiting(conv));
-		if (this.#inFlight.has(conv.id)) return;
-		let commit: Commit;
-		try {
-			commit = await makeGroup(this.#parts, conv, this.#sender, legacyRecord(this.#parts.store, conv));
-		} catch (error) {
-			// A group made before, whose answer settles it; or members other than the record's.
-			if (error instanceof CoreError && error.code === "exists") return this.sync(conv.id, true);
-			if (error instanceof CoreError && error.rule === "member_list_mismatch") return this.#refusedRecord(conv);
-			throw error;
-		}
-		await this.#commit(conv, "make", commit);
+		if (!this.#inFlight.has(conv.id)) await this.#make(conv);
 	}
 
 	/** The person's restart of the conversation's blocked group, which only its owner (in a DM, either member) makes. */
@@ -273,28 +267,39 @@ export class Conversations {
 		dropRecord(this.#parts.store, conversationId);
 		this.#recordRefused.delete(conversationId);
 		this.#set(conversationId, null);
+		// No group yet (this device's was refused for its members): it's made now, with the members of today.
+		if (!conv.mls) return this.open(conversationId);
 		await this.#join(conv);
 	}
 
-	/** The leaf renewals due (refresh_due, «Lo periódico»): a commit in each conversation it names. */
+	/**
+	 * The leaf renewals due (refresh_due, «Lo periódico»): a commit in each conversation it names. One that fails waits
+	 * for the next day's; the others go now.
+	 */
 	async renew(): Promise<void> {
 		const { conversations } = await this.#parts.host.handle<{ conversations: string[] }>({ cmd: "refresh_due" });
 		for (const id of conversations) {
-			const conv = this.#known.get(id) ?? (await this.#fresh(id));
-			if (conv && !this.#inFlight.has(id)) await this.#own(conv, "refresh", "renew");
+			try {
+				const conv = this.#known.get(id) ?? (await this.#fresh(id));
+				if (conv && !this.#inFlight.has(id)) await this.#own(conv, "refresh", "renew");
+			} catch (error) {
+				console.error("[e2e] A leaf renewal waits for the next day's:", error);
+			}
 		}
 	}
 
 	/**
 	 * The conversation's turn (`read`: its queue read even when the core seems to have it all, as after another commit
-	 * took an epoch). A turn that fails goes again later, as the conversation's next event would also ask.
+	 * took an epoch). A turn that fails goes again later, as the conversation's next event would also ask; but one the
+	 * API refused as the conversation is gone, or its user out of it, ends there (#gone).
 	 */
 	async sync(conversationId: string, read = false): Promise<void> {
 		const conv = this.#known.get(conversationId) ?? (await this.#fresh(conversationId));
-		if (!conv) return;
+		if (!conv) return this.#drop(conversationId);
 		try {
 			await this.#sync(conv, read);
 		} catch (error) {
+			if (await this.#gone(conv.id, error)) return;
 			this.#retryLater(conv.id);
 			throw error;
 		}
@@ -316,13 +321,44 @@ export class Conversations {
 	}
 
 	/**
+	 * A conversation the API lists without a group: it waits for whoever makes it, unless this device's core holds a
+	 * creation of its own that never reached the API, whose request went with the app, which is made again (#make).
+	 */
+	async #groupless(conv: Conversation) {
+		this.#set(conv.id, this.#waiting(conv));
+		if (!mayMake(conv, this.#parts.user) || this.#inFlight.has(conv.id)) return;
+		if (await this.#group(conv.id)) await this.#make(conv);
+	}
+
+	/**
+	 * Makes the group of a conversation the API lists without one, with every member's key packages. A creation of this
+	 * device's that the core still holds never reached the API (its request cut, then the app closed): the core is told
+	 * no answer came, which drops a creation whole, before anything is claimed, and the group is made again. Were the old
+	 * request to land after all, this creation loses its 409, and the device joins by external commit.
+	 */
+	async #make(conv: Conversation) {
+		if (await this.#group(conv.id)) {
+			await this.#parts.host.handle({ cmd: "commit_result", conversation_id: conv.id, accepted: false });
+		}
+		let commit: Commit;
+		try {
+			commit = await makeGroup(this.#parts, conv, this.#sender, legacyRecord(this.#parts.store, conv));
+		} catch (error) {
+			// Members other than the record's: the person says whether to go on.
+			if (error instanceof CoreError && error.rule === "member_list_mismatch") return this.#refusedRecord(conv);
+			throw error;
+		}
+		await this.#commit(conv, "make", commit);
+	}
+
+	/**
 	 * The entries heard, in order; the queue when they don't follow on what the core has (a gap, an entry without its
 	 * data, a number the API gave past them), when a commit of its own waits for the queue's word, or when asked; then
 	 * what the group is now. A conversation known without a group is listed again: an event says it has one now.
 	 */
 	async #sync(given: Conversation, read: boolean) {
 		const conv = given.mls ? given : await this.#fresh(given.id);
-		if (!conv) return;
+		if (!conv) return this.#drop(given.id);
 		const { id, mls } = conv;
 		if (!mls) return this.#set(id, this.#waiting(conv));
 		// A commit of this device's waits for its answer: what's heard waits for it too.
@@ -338,14 +374,15 @@ export class Conversations {
 			this.#settling.has(id) ||
 			mls.last_seq > (at.through ?? 0);
 		// Out of the group (no number to read from), #after reads its welcome or joins.
-		if (behind && from !== null) {
+		const whole = behind && from !== null;
+		if (whole) {
 			const done = await this.#readQueue(conv, from);
 			// The queue doesn't go back that far (410): this device joins again, its database as it is (13).
 			if (done === "expired") return this.#join(conv);
 			at = done;
 			await this.#settle(id);
 		}
-		await this.#after(conv, at);
+		await this.#after(conv, at, whole);
 	}
 
 	/** Applies entries in order, 50 an apply (once with none, which says where the core is). */
@@ -401,6 +438,7 @@ export class Conversations {
 			}
 			// A commit of its epoch, its own or another's: a commit of this device's whose bytes went is settled.
 			if (kind === "commit" && result !== "ignored") this.#settling.delete(conv.id);
+			if (result === "removed") this.#removed.add(conv.id);
 		}
 		return applied;
 	}
@@ -439,13 +477,14 @@ export class Conversations {
 	 */
 	async #settle(id: string) {
 		if (!this.#settling.has(id) || !this.#settled) return;
-		this.#settling.delete(id);
 		await this.#parts.host
 			.handle({ cmd: "commit_result", conversation_id: id, accepted: false, invalid: true })
 			.catch((error: unknown) => {
 				// Nothing left to drop: the queue settled it after all.
 				if (!(error instanceof CoreError && error.code === "not_found")) throw error;
 			});
+		// Only once the core took it: a call that failed says it again at the conversation's next turn.
+		this.#settling.delete(id);
 	}
 
 	/** The group as the core holds it, or null without one. */
@@ -459,25 +498,38 @@ export class Conversations {
 	}
 
 	/**
-	 * What the group is once the entries are in. In the API's group (its generation): blocked, or going on, with a due
-	 * commit made after a random wait. Out of it, with the user a member: its welcome read from where its leaf began, when
-	 * the core never counted the queue, else an external commit.
+	 * What the group is once the entries are in (`read`: the queue was read to its end in this turn). In the API's group
+	 * (its generation): blocked, or going on, with a due commit made after a random wait. Out of it, after a removal, a
+	 * new list says whether its user is still in the conversation, and one that isn't is let go. With the user a member:
+	 * its welcome read from the queue, where it follows the commit that made it (a restart's, an addition's), from where
+	 * the core is, or, for a core that never counted the queue, from where its leaf began; but not after an external
+	 * commit of its lost, by when that welcome is stale. Else an external commit.
 	 */
-	async #after(conv: Conversation, at: Where): Promise<void> {
-		const { id, mls } = conv;
-		const held = await this.#group(id);
-		if (held && held.generation >= (mls?.generation ?? 0)) {
-			for (const kept of [this.#otherSender, this.#recordRefused]) kept.delete(id);
-			this.#set(id, held.blocked ? this.#blocked(conv) : null);
-			if (at.due && !held.blocked) this.#dueLater(id);
+	async #after(given: Conversation, at: Where, read: boolean): Promise<void> {
+		let conv = given;
+		const held = await this.#group(conv.id);
+		if (held && held.generation >= (conv.mls?.generation ?? 0)) {
+			for (const kept of [this.#otherSender, this.#recordRefused, this.#removed]) kept.delete(conv.id);
+			this.#joinsLost.delete(conv.id);
+			this.#set(conv.id, held.blocked ? this.#blocked(conv) : null);
+			if (at.due && !held.blocked) this.#dueLater(conv.id);
 			return;
 		}
+		if (this.#removed.has(conv.id)) {
+			const listed = await this.#fresh(conv.id);
+			this.#removed.delete(conv.id);
+			if (!listed) return this.#drop(conv.id);
+			conv = listed;
+		}
+		const { id, mls } = conv;
 		if (!mls || !conv.members.some((member) => member.user_id === this.#parts.user)) return;
 		const refused = this.#otherSender.has(id) || this.#recordRefused.has(id);
-		if (at.through === null && mls.joined_seq !== null && !refused) {
-			const done = await this.#readQueue(conv, mls.joined_seq - 1);
+		const leaf = this.#joinsLost.has(id) || mls.joined_seq === null ? null : mls.joined_seq - 1;
+		const from = read || refused ? null : (at.through ?? leaf);
+		if (from !== null) {
+			const done = await this.#readQueue(conv, from);
 			const now = done === "expired" ? null : await this.#group(id);
-			if (done !== "expired" && now && now.generation >= mls.generation) return this.#after(conv, done);
+			if (done !== "expired" && now && now.generation >= mls.generation) return this.#after(conv, done, true);
 		}
 		await this.#join(conv);
 	}
@@ -503,7 +555,8 @@ export class Conversations {
 		if (this.#otherSender.has(id)) return this.#set(id, this.#blocked(conv));
 		if (this.#recordRefused.has(id)) return this.#set(id, { name: "members_changed" });
 		if (this.#inFlight.has(id)) return;
-		if ((this.#joinsLost.get(id) ?? 0) >= JOINS_LOST_MOST) return void this.#joinsLost.delete(id);
+		// Its count starts over for the next event, still marked as lost.
+		if ((this.#joinsLost.get(id) ?? 0) >= JOINS_LOST_MOST) return void this.#joinsLost.set(id, 0);
 		this.#settling.delete(id);
 		const join = () => joinGroup(this.#parts, conv, this.#sender, legacyRecord(this.#parts.store, conv));
 		let commit: Commit;
@@ -519,8 +572,14 @@ export class Conversations {
 				return join();
 			});
 		} catch (error) {
-			// No group to join yet (the group info's 404), or a commit of its own still waits for its word.
-			if (statusOf(error) === 404 || (error instanceof CoreError && error.code === "pending_commit")) return;
+			// A commit of its own still waits for its word.
+			if (error instanceof CoreError && error.code === "pending_commit") return;
+			// No group to join yet (the group info's 404), or the conversation or its user gone (#gone).
+			const status = statusOf(error);
+			if (status === 403 || status === 404) {
+				await this.#gone(id, error);
+				return;
+			}
 			if (!(error instanceof CoreError && error.code === "rule_violation")) throw error;
 			if (error.rule === "stale_group_info") return;
 			if (error.rule === "member_list_mismatch") return this.#refusedRecord(conv);
@@ -566,8 +625,9 @@ export class Conversations {
 
 	/**
 	 * A commit of this device's to the API, its bytes kept until an answer comes: without one, the same bytes go again
-	 * later and at each READY. Answered, the conversation's turn follows, reading the queue when another commit took the
-	 * epoch, and a renewal that lost so is made again on top of it, once.
+	 * later and at each READY. Answered, the conversation's turn follows, reading the queue when the API didn't take it
+	 * (another commit took the epoch, or it refused the request), and a renewal another commit beat is made again on top
+	 * of it, once.
 	 */
 	async #commit(conv: Conversation, purpose: Purpose, commit: Commit): Promise<void> {
 		const { id } = conv;
@@ -582,18 +642,20 @@ export class Conversations {
 		}
 		if (sent === "unanswered") return this.#resendLater(id, flight);
 		this.#inFlight.delete(id);
-		if (sent === "refused") {
-			// It never entered, and nothing changed: an external commit the API refused waits for the conversation's next
-			// commit, as one the core refused would.
+		if (sent === "invalid") {
+			// The validator refused it: it never entered, and nothing changed. An external commit so refused waits for the
+			// conversation's next commit, as one the core refused would.
 			console.warn(`[e2e] The API refused a commit of this device's (${flight.purpose}).`);
 			if (flight.purpose === "join") this.#set(id, { name: "wait_rejoin" });
 			return;
 		}
 		if (flight.purpose === "join") {
-			if (sent === "lost") this.#joinsLost.set(id, (this.#joinsLost.get(id) ?? 0) + 1);
-			else this.#joinsLost.delete(id);
+			if (sent === "accepted") this.#joinsLost.delete(id);
+			else this.#joinsLost.set(id, (this.#joinsLost.get(id) ?? 0) + 1);
 		}
-		await this.sync(id, sent === "lost");
+		await this.sync(id, sent !== "accepted");
+		// A refused one may have entered by an earlier send of its bytes, which the queue says: only one another commit
+		// beat is surely to make again.
 		if (sent === "lost" && flight.purpose === "renew") {
 			const now = this.#known.get(id);
 			if (now && !this.#inFlight.has(id)) await this.#own(now, "refresh", "renew_again");
@@ -609,11 +671,12 @@ export class Conversations {
 		});
 	}
 
-	/** A commit whose answer didn't come, sent again with its bytes. */
+	/** A commit whose answer didn't come, sent again with its bytes; let go with a conversation the API no longer lists. */
 	async #resend(id: string) {
 		const flight = this.#inFlight.get(id);
 		const conv = this.#known.get(id);
-		if (!flight || !conv) return;
+		if (!flight) return;
+		if (!conv) return this.#drop(id);
 		flight.cancel?.();
 		flight.cancel = null;
 		await this.#commit(conv, flight.purpose, flight.commit);
@@ -631,6 +694,30 @@ export class Conversations {
 	async #fresh(id: string): Promise<Conversation | null> {
 		await this.#list();
 		return this.#known.get(id) ?? null;
+	}
+
+	/**
+	 * Whether the API refused a request as the conversation is gone or its user out of it (a 403 or a 404 of its routes,
+	 * as when a removal came, or the conversation was deleted): listed again, one gone is let go (#drop). A list that
+	 * fails proves nothing.
+	 */
+	async #gone(id: string, error: unknown): Promise<boolean> {
+		const status = statusOf(error);
+		if (status !== 403 && status !== 404) return false;
+		const listed = await this.#fresh(id).catch(() => undefined);
+		if (listed !== null) return false;
+		this.#drop(id);
+		return true;
+	}
+
+	/** A conversation this device is no longer in: nothing waits for it, its retries and its commits' with it. */
+	#drop(id: string) {
+		this.#retries.get(id)?.cancel();
+		this.#inFlight.get(id)?.cancel?.();
+		this.#due.get(id)?.();
+		for (const kept of [this.#retries, this.#inFlight, this.#due, this.#heard, this.#joinsLost]) kept.delete(id);
+		for (const kept of [this.#settling, this.#removed, this.#otherSender, this.#recordRefused]) kept.delete(id);
+		this.#set(id, null);
 	}
 
 	#set(id: string, state: ConversationState | null) {

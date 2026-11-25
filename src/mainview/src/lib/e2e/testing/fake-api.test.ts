@@ -146,8 +146,11 @@ const apply = (fake: FakeApi, d: Device, conversation: string, entries: unknown[
 		external_sender: fake.externalSender,
 	});
 
-/** A DM between Ana and Bo, a device each, and its group: made by Ana's device, joined by Bo's through its welcome. */
-async function dmWithGroup() {
+/**
+ * A DM between Ana and Bo (or a group of theirs, Ana's), a device each, and its group: made by Ana's device, joined by
+ * Bo's through its welcome.
+ */
+async function dmWithGroup(type: "dm" | "group" = "dm") {
 	const fake = new FakeApi();
 	const [ana, bo] = [fake.addUser(), fake.addUser()];
 	const a = await device(fake, ana);
@@ -155,7 +158,7 @@ async function dmWithGroup() {
 	await publishIdentity(fake, a);
 	await publishIdentity(fake, b);
 	expect((await uploadKeyPackages(fake, b)).handed_out).toEqual([]);
-	const conversation = fake.addConversation({ type: "dm", members: [ana, bo] });
+	const conversation = fake.addConversation({ type, members: [ana, bo] });
 
 	// Ana's device makes the group: the members observed, and a key package claimed for each of their devices.
 	await observe(fake, a, ana);
@@ -167,11 +170,12 @@ async function dmWithGroup() {
 		key_packages: [],
 	});
 	const shown = await conversationOf(fake, a, conversation);
-	expect(shown).toMatchObject({ id: conversation, type: 1, legacy: false, mls: null });
+	expect(shown).toMatchObject({ id: conversation, type: type === "dm" ? 1 : 2, legacy: false, mls: null });
 	const made = await a.host.handle<Record<string, any>>({
 		cmd: "create_group",
 		conversation_id: conversation,
-		kind: "dm",
+		kind: type,
+		...(type === "group" ? { owner: ana } : {}),
 		members: shown.members.map((member: { user_id: string }) => member.user_id),
 		key_packages: { [bo]: claimed.body.key_packages.map((kp: { data: string }) => kp.data) },
 		external_sender: fake.externalSender,
@@ -799,6 +803,78 @@ describe.skipIf(!coreLibrary)("the fake answers as the API does", () => {
 			data: { entry: { kind: "edit", data: edit.ciphertext } },
 		});
 		expect(updated?.data.entry).not.toHaveProperty("deleted");
+	});
+
+	test("held events go a kind at a time, the others held until a release of every kind", async () => {
+		const { fake, a, b, conversation } = await dmWithGroup();
+		fake.holdEvents();
+		const { message } = await send(fake, a, conversation, "first words");
+		const edit = await a.host.handle<{ ciphertext: string }>({
+			...{ cmd: "edit", conversation_id: conversation, message_id: message.id, text: "second words" },
+		});
+		const path = `${CONVERSATIONS}/${conversation}/messages/${message.id}`;
+		await call(fake, a.token, "PATCH", path, { ciphertext: edit.ciphertext });
+		const before = b.heard.length;
+		fake.releaseEvents({ only: (event) => event.type === "DM_MESSAGE_UPDATE" });
+		expect(b.heard.slice(before).map((event) => event.type)).toEqual(["DM_MESSAGE_UPDATE"]);
+		// What comes meanwhile waits too.
+		const other = await send(fake, a, conversation, "third words");
+		expect(b.heard).toHaveLength(before + 1);
+		fake.releaseEvents();
+		expect(b.heard.slice(before + 1).map((event) => event.data.id)).toEqual([message.id, other.message.id]);
+	});
+
+	test("a deleted conversation is in no list, and its routes are a 404", async () => {
+		const { fake, b, conversation } = await dmWithGroup();
+		fake.deleteConversation(conversation);
+		expect((await call(fake, b.token, "GET", CONVERSATIONS)).body).toEqual([]);
+		expect(await call(fake, b.token, "GET", `${CONVERSATIONS}/${conversation}/mls/queue?after=1`)).toMatchObject({
+			status: 404,
+			body: { error: "conversation not found" },
+		});
+	});
+
+	test("the member routes answer with their commits, and an addition's commit reaches the user it adds", async () => {
+		const { fake, bo, a, b, conversation } = await dmWithGroup("group");
+		const members = `${CONVERSATIONS}/${conversation}/members`;
+		// A key package of Bo's, claimed while they share the group: she can't claim one once it's hers alone.
+		const claimed = await call(fake, a.token, "POST", `/api/users/${bo}/key-packages/claim`);
+		// Ana removes Bo: he hears its commit, and the removal answers with it.
+		const removal = await a.host.handle<{ commit: string; group_info: string }>({
+			...{ cmd: "remove_members", conversation_id: conversation, users: [bo] },
+		});
+		const removed = await call(fake, a.token, "DELETE", `${members}/${bo}`, { generation: 0, epoch: 1, ...removal });
+		expect(removed).toMatchObject({ status: 200, body: { seq: 3, generation: 0, epoch: 2 } });
+		expect(b.heard.findLast((event) => event.type === "MLS_COMMIT")?.data.entry.seq).toBe(3);
+		await a.host.handle({ cmd: "commit_result", conversation_id: conversation, accepted: true, seq: 3 });
+
+		// She adds him back: he hears its commit, then his welcome, and the addition answers with both numbers.
+		const addition = await a.host.handle<{ commit: string; group_info: string; welcome: string }>({
+			...{ cmd: "add_members", conversation_id: conversation },
+			users: [{ user_id: bo, key_packages: claimed.body.key_packages.map((kp: { data: string }) => kp.data) }],
+		});
+		const before = b.heard.length;
+		const { commit, group_info, welcome } = addition;
+		const added = await call(fake, a.token, "POST", members, {
+			...{ user_id: bo, generation: 0, epoch: 2, commit, group_info, welcome },
+		});
+		expect(added).toMatchObject({
+			status: 201,
+			body: { user_id: bo, commit: { seq: 4, generation: 0, epoch: 3, welcome_seq: 5 } },
+		});
+		expect(b.heard.slice(before).map((event) => [event.type, event.data.entry.seq])).toEqual([
+			["MLS_COMMIT", 4],
+			["MLS_WELCOME", 5],
+		]);
+		// The same removal and addition again get the answers they got.
+		const removedAgain = await call(fake, a.token, "DELETE", `${members}/${bo}`, {
+			...{ generation: 0, epoch: 1, ...removal },
+		});
+		expect(removedAgain).toMatchObject({ status: 200, body: removed.body });
+		const addedAgain = await call(fake, a.token, "POST", members, {
+			...{ user_id: bo, generation: 0, epoch: 2, commit, group_info, welcome },
+		});
+		expect(addedAgain).toMatchObject({ status: 201, body: added.body });
 	});
 
 	test("a client without encryption is told to update, but for the configuration and the list", async () => {

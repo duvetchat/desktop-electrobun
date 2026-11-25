@@ -73,21 +73,22 @@ const RETRY_MOST_MS = 60_000;
 const statusOf = (error: unknown) => (error instanceof FetchError ? error.response?.status : undefined);
 
 /**
- * The API's external sender as this device pinned it (Ruling 32): the first one it saw. Another one served later is
- * refused, said in the log, and the pinned one stays: groups under it are the only ones this device goes into.
+ * The API's external sender as this device pinned it (Ruling 32): the first one it saw, which the record keeps, and
+ * this session (`held`) where the record can't (its storage full or refused), so a later start in it keeps it too;
+ * the record is asked again each time. Another one served later is refused, said in the log, and the pinned one stays:
+ * groups under it are the only ones this device goes into.
  */
-function pinnedSender(store: EngineStore, served: string): string {
+function pinnedSender(store: EngineStore, served: string, held: string | null): string {
 	const kept = store.read<unknown>(EXTERNAL_SENDER);
-	if (typeof kept !== "string" || !kept) {
-		store.write(EXTERNAL_SENDER, served);
-		return served;
-	}
-	if (kept !== served) {
+	const recorded = typeof kept === "string" && kept ? kept : null;
+	const pinned = recorded ?? held ?? served;
+	if (!recorded) store.write(EXTERNAL_SENDER, pinned);
+	if (pinned !== served) {
 		console.warn(
 			"[e2e] The API serves another external sender than the one this device pinned: it stays the pinned one.",
 		);
 	}
-	return kept;
+	return pinned;
 }
 
 /**
@@ -123,6 +124,10 @@ export class E2EEngine {
 	readonly #failures: Failures;
 	/** The conversations' queues and groups. */
 	readonly #groups: Conversations;
+	/** The external sender this session pinned (pinnedSender). */
+	#pinned: string | null = null;
+	/** Conversations the person opened before this device was ready: they open once it is (#settle). */
+	readonly #toOpen = new Set<string>();
 	readonly #conversationListeners = new Set<(conversationId: string, state: ConversationState | null) => void>();
 
 	constructor(parts: EngineParts) {
@@ -155,9 +160,15 @@ export class E2EEngine {
 		return this.#groups.state(conversationId);
 	}
 
-	/** The person opened the conversation: its group goes on, or is made here when it has none and this user may. */
+	/**
+	 * The person opened the conversation: its group goes on, or is made here when it has none and this user may. Before
+	 * this device is ready, it opens once it is.
+	 */
 	openConversation(conversationId: string): Promise<void> {
-		return this.#queue(() => this.#whenReady(() => this.#groups.open(conversationId)));
+		return this.#queue(async () => {
+			if (this.state.name !== "ready") return void this.#toOpen.add(conversationId);
+			await this.#whenReady(() => this.#groups.open(conversationId));
+		});
 	}
 
 	/** The person's tap on Restart encryption, over a blocked group they may restart. */
@@ -301,7 +312,8 @@ export class E2EEngine {
 
 	#heard(event: EngineEvent) {
 		const own = (device: string) => device === this.#device;
-		this.#groups.heard(event);
+		// A conversation's entries only while ready: before, the queue has them all, which the start reads.
+		if (this.state.name === "ready") this.#groups.heard(event);
 		switch (event.type) {
 			case "READY":
 				// A new gateway session: a start that failed goes again now, and the inbox and the conversations' queues may
@@ -356,7 +368,8 @@ export class E2EEngine {
 		const parts = this.#parts;
 		try {
 			const { external_sender } = await parts.api.config();
-			this.#groups.start(pinnedSender(parts.store, external_sender));
+			this.#pinned = pinnedSender(parts.store, external_sender, this.#pinned);
+			this.#groups.start(this.#pinned);
 			const opened = await parts.host.open(parts.user);
 			if (opened.state !== "ready") return this.#closed(opened);
 			const { status, keys } = await ownDevice(parts);
@@ -387,8 +400,8 @@ export class E2EEngine {
 
 	/**
 	 * Steps 5 to 7: what the user's identity makes of this device, the inbox, then a listed device's conversations' queues,
-	 * before its key packages, so a welcome waiting there takes its keys before key_packages lets them go; then the leaf
-	 * renewals due («Lo periódico»), as every day after.
+	 * before its key packages, so a welcome waiting there takes its keys before key_packages lets them go, and those the
+	 * person opened before it was ready; then the leaf renewals due («Lo periódico»), as every day after.
 	 */
 	async #settle(): Promise<void> {
 		const state = await this.#identity();
@@ -396,6 +409,12 @@ export class E2EEngine {
 		await this.#inbox();
 		if (this.state.name !== "ready") return;
 		await this.#whenReady(() => this.#groups.all());
+		for (const id of [...this.#toOpen]) {
+			this.#toOpen.delete(id);
+			await this.#whenReady(() => this.#groups.open(id)).catch((error: unknown) => {
+				console.error("[e2e] A conversation's group didn't open:", error);
+			});
+		}
 		await this.#keyPackages();
 		await this.#whenReady(() => this.#groups.renew()).catch((error: unknown) => {
 			console.error("[e2e] The leaf renewals wait for tomorrow's:", error);

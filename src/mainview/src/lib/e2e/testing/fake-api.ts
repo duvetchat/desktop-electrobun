@@ -1,11 +1,12 @@
 // The API as the encryption engine sees it, in memory, for the engine's tests (PLAN-E2E-CLIENTES.md, Task 6): step 3's
 // routes (PLAN-E2E-API.md, its routes A to K) answering through `fetch` as the API does, with its events to each
-// connection, and switches that lose an answer, answer 426, 503, 409 or any refusal, hold events to let them go backwards
-// or twice, and take an entry's data out of its event. A request's events go out after its answer: once fetch has handed
-// the answer back (or failed, when it's lost), on the microtask queue, so the code that awaited it runs first, and each is
-// its data as it was when the request sent it; holdEvents gives any other order. It reads what the core signs (CBOR, Ed25519) and an MLS message's framing as the
-// API does, but runs no validator: a commit is taken by its generation and epoch alone, and of what it changes the fake
-// knows only the devices its welcome brings and the one an external commit adds.
+// connection, and switches that lose an answer, answer 426, 503, 409 or any refusal, hold events to let them go
+// backwards, twice or a kind at a time, and take an entry's data out of its event. A request's events go out after its
+// answer: once fetch has handed the answer back (or failed, when it's lost), on the microtask queue, so the code that
+// awaited it runs first, and each is its data as it was when the request sent it; holdEvents gives any other order. It
+// reads what the core signs (CBOR, Ed25519) and an MLS message's framing as the API does, but runs no validator: a
+// commit is taken by its generation and epoch alone, and of what it changes the fake knows only the devices its welcome
+// brings and the one an external commit adds.
 import { createPublicKey, generateKeyPairSync, verify } from "node:crypto";
 import { base64Bytes } from "$lib/activity-thumbnail";
 import { bytesBase64 } from "$lib/staged-images";
@@ -583,6 +584,11 @@ export class FakeApi {
 		conv.floor = floor;
 	}
 
+	/** The conversation is deleted, as the API deletes one: no list has it, and its routes answer 404. */
+	deleteConversation(conversationId: string) {
+		if (!this.#conversations.delete(conversationId)) throw new Error(`no conversation ${conversationId}`);
+	}
+
 	/** The next request the match takes never reaches the API: fetch fails, and nothing is done. */
 	cutRequest(match: RouteMatch) {
 		this.#switches.push({ match, effect: "cut" });
@@ -619,11 +625,20 @@ export class FakeApi {
 		this.#held ??= [];
 	}
 
-	/** The events held, sent: in their order, backwards, and each once or twice. Then events go at once again. */
-	releaseEvents({ order = "as_sent", repeat = false }: { order?: "as_sent" | "reverse"; repeat?: boolean } = {}) {
-		const held = this.#held ?? [];
-		this.#held = null;
-		for (const { connection, event } of order === "reverse" ? held.reverse() : held) {
+	/**
+	 * The events held, sent: in their order, backwards, and each once or twice. Then events go at once again, unless
+	 * `only` picks those that go now: the others stay held, as does what comes after, until a release without it.
+	 */
+	releaseEvents({
+		order = "as_sent",
+		repeat = false,
+		only,
+	}: { order?: "as_sent" | "reverse"; repeat?: boolean; only?: (event: GatewayEvent) => boolean } = {}) {
+		const held = this.#held;
+		if (!held) return;
+		const going = only ? held.filter(({ event }) => only(event)) : held;
+		this.#held = only ? held.filter(({ event }) => !only(event)) : null;
+		for (const { connection, event } of order === "reverse" ? going.reverse() : going) {
 			for (let times = repeat ? 2 : 1; times > 0; times--) connection.listener(structuredClone(event));
 		}
 	}
@@ -1444,32 +1459,44 @@ export class FakeApi {
 		return answer;
 	}
 
+	/**
+	 * An addition: the owner's commit of exactly that user, which goes to the members after it, the one it adds among
+	 * them, as the API sends it. It answers with the member and the commit's answer, as the API's MemberAdded.
+	 */
 	#addMember(ctx: Context): Answer {
 		const conv = this.#memberOf(ctx);
 		const user = uuidIn(ctx.body?.user_id, "user_id");
 		// The same addition again gets the answer it got.
 		const added = conv.members.find((m) => m.user_id === user);
-		if (added && conv.commits.has(ctx.body?.commit)) return ok(added, 201);
+		const sent = conv.commits.get(ctx.body?.commit);
+		if (added && sent) return ok({ ...added, commit: sent }, 201);
 		if (conv.type !== 2) throw fail(400, "a DM's members don't change");
 		if (conv.owner_id !== ctx.session.user) throw fail(403, "only the group's owner adds members");
 		if (!this.#users.has(user)) throw fail(404, "user not found");
 		if (conv.members.some((m) => m.user_id === user)) throw fail(409, "already a member");
 		if (conv.members.length >= LIMITS.group_members) throw fail(400, "a group can have 20 members at most");
-		this.#commit(conv, ctx, "add");
 		const at = now();
 		const member = { id: this.#id(), conversation_id: conv.id, user_id: user, created_at: at, updated_at: at };
 		conv.members.push(member);
-		return ok(member, 201);
+		try {
+			return ok({ ...member, commit: this.#commit(conv, ctx, "add") }, 201);
+		} catch (error) {
+			// Refused: nothing changed, the members neither.
+			conv.members.pop();
+			throw error;
+		}
 	}
 
+	/** A removal: the owner's commit of exactly that user, which they hear too. It answers with the commit's answer (200). */
 	#removeMember(ctx: Context): Answer {
 		const conv = this.#memberOf(ctx);
 		if (conv.owner_id !== ctx.session.user) throw fail(403, "only the group's owner removes members");
-		if (conv.commits.has(ctx.body?.commit)) return NO_CONTENT; // the same removal again
+		const sent = conv.commits.get(ctx.body?.commit);
+		if (sent) return ok(sent); // the same removal again
 		if (!conv.members.some((m) => m.user_id === ctx.params.user)) throw fail(404, "not a member");
-		this.#commit(conv, ctx, "remove");
+		const commit = this.#commit(conv, ctx, "remove");
 		conv.members = conv.members.filter((m) => m.user_id !== ctx.params.user);
-		return NO_CONTENT;
+		return ok(commit);
 	}
 
 	/**

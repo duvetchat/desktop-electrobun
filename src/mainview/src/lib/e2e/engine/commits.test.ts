@@ -1,4 +1,5 @@
 import { describe, expect, spyOn, test } from "bun:test";
+import { CoreError } from "../errors";
 import type { CoreHost } from "../host";
 import { FakeApi } from "../testing/fake-api";
 import { coreLibrary } from "../testing/host-bun";
@@ -22,17 +23,25 @@ const SLOW = 180_000;
 const DAY = 24 * 3600 * 1000;
 const commits = (conversation: string) => `/api/users/@me/conversations/${conversation}/mls/commits`;
 
-/** A device's core, whose refresh_due names the conversations in `due`, and which notes each commit_result's fields. */
-function hostOf(due: string[], results: Record<string, unknown>[]): CoreHost {
+type Fails = (cmd: string, command: Record<string, unknown>) => Error | null;
+
+/**
+ * A device's core, whose refresh_due names the conversations in `due`, which notes each commit_result's fields, and
+ * fails a command when `fails` gives an error.
+ */
+function hostOf(due: string[], results: Record<string, unknown>[], fails: Fails = () => null): CoreHost {
 	const watched = watchedHost(testHost(), [], (cmd, command) => {
 		if (cmd === "commit_result") results.push(command);
-		return null;
+		return fails(cmd, command);
 	});
 	return answeringHost(watched, (command) => (command.cmd === "refresh_due" ? { conversations: [...due] } : undefined));
 }
 
-/** Ana's and Bo's first devices, on cores whose renewals are due where `due` says, in a DM whose group Ana made. */
-async function dm() {
+/**
+ * Ana's and Bo's first devices, on cores whose renewals are due where `due` says (Ana's failing what `aFails` says), in
+ * a DM whose group Ana made.
+ */
+async function dm(given: { aFails?: Fails } = {}) {
 	const fake = new FakeApi();
 	const [ana, bo] = [fake.addUser(), fake.addUser()];
 	const posted: Promise<string>[] = [];
@@ -46,7 +55,7 @@ async function dm() {
 	const due: string[] = [];
 	const aResults: Record<string, unknown>[] = [];
 	const bResults: Record<string, unknown>[] = [];
-	const a = await firstDevice(fake, ana, { host: hostOf(due, aResults) });
+	const a = await firstDevice(fake, ana, { host: hostOf(due, aResults, given.aFails) });
 	const b = await firstDevice(fake, bo, { host: hostOf(due, bResults) });
 	await a.engine.openConversation(conversation);
 	await sameGroup([a, b], conversation);
@@ -235,6 +244,93 @@ describe.skipIf(!coreLibrary)("a device's commits", () => {
 			const held = await sameGroup([a, b], conversation);
 			expect(held.epoch).toBe(2);
 			expect((await groupOf(b, other))!.epoch).toBe(1);
+		},
+		SLOW,
+	);
+
+	// M1: only the validator's refusal (422) says a commit never entered. A resend whose first send the API took is
+	// refused otherwise when, in between, the device went off its list (403): the queue says what became of it.
+	test(
+		"a refusal other than the validator's leaves the commit to the queue",
+		async () => {
+			const { fake, a, b, conversation, due, posted, aResults } = await dm();
+			due.push(conversation);
+			const path = { method: "POST", path: commits(conversation) };
+			// The group's creation went first.
+			const sent = (n: number) => posted.length === n + 1;
+			// The API takes the renewal, its answer lost; the same bytes, sent again, are refused.
+			fake.loseAnswer(path);
+			a.clock.advance(DAY);
+			await until(() => sent(1));
+			fake.refuse(path, 403, { error: "this device isn't on your device list" });
+			await until(() => (a.clock.advance(2_000), posted.length >= 3));
+			await until(() => aResults.some((result) => result.accepted === false));
+			expect(invalids(aResults)).toEqual([]);
+			// The queue brings it back as the device's own: its group goes on, renewed once.
+			const held = await sameGroup([a, b], conversation);
+			expect(held).toMatchObject({ epoch: 2, blocked: false });
+			expect(posted).toHaveLength(3);
+		},
+		SLOW,
+	);
+
+	// M5: the refusal said of a commit whose bytes went with the app is said again until the core takes it: a call cut
+	// before the core's answer leaves the commit waiting otherwise, and the device can't commit there.
+	test(
+		"a refusal said of a lost commit is said again when the core's call fails",
+		async () => {
+			let failed = false;
+			const { fake, a, b, conversation, due, posted, aResults } = await dm({
+				aFails: (cmd, command) => {
+					if (cmd !== "commit_result" || command.invalid !== true || failed) return null;
+					failed = true;
+					return new CoreError("internal", "the call was cut");
+				},
+			});
+			due.push(conversation);
+			const path = { method: "POST", path: commits(conversation) };
+			// The group's creation went first.
+			const sent = (n: number) => posted.length === n + 1;
+			// A renewal that never reached the API, the app started again: a minute on, the refusal is said, and the
+			// core's call fails.
+			fake.cutRequest(path);
+			a.clock.advance(DAY);
+			await until(() => sent(1));
+			due.length = 0;
+			const again = await restarted(fake, a);
+			again.clock.advance(60_000);
+			await until(() => invalids(aResults).length >= 1);
+			// The next turn says it again; then the device commits once more.
+			await until(() => (again.clock.advance(2_000), invalids(aResults).length >= 2), 15_000);
+			due.push(conversation);
+			again.clock.advance(DAY);
+			await until(() => sent(2));
+			const held = await sameGroup([again, b], conversation);
+			expect(held.epoch).toBe(2);
+		},
+		SLOW,
+	);
+
+	// M7: the renewals due go one conversation after another, and one that fails is logged: the others still go.
+	test(
+		"a renewal that fails doesn't stop the others",
+		async () => {
+			let failing: string | null = null;
+			const { fake, ana, bo, a, b, conversation, due } = await dm({
+				aFails: (cmd, command) =>
+					cmd === "refresh" && command.conversation_id === failing
+						? new CoreError("internal", "the call was cut")
+						: null,
+			});
+			const other = fake.addConversation({ type: "group", members: [ana, bo], owner: ana });
+			await a.engine.openConversation(other);
+			await sameGroup([a, b], other);
+			// Both are due, and the first one's renewal fails.
+			failing = conversation;
+			due.push(conversation, other);
+			a.clock.advance(DAY);
+			await until(async () => (await groupOf(b, other))?.epoch === 2, 15_000);
+			expect((await groupOf(a, conversation))!.epoch).toBe(1);
 		},
 		SLOW,
 	);

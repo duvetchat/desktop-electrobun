@@ -1,12 +1,16 @@
 // The record of a conversation from before the cutover (PLAN-E2E-CLIENTES.md, «Entrar a un grupo»; Ruling 14): its
 // owner and members as this device first listed them, which every welcome and external commit into its group is held to
 // (the core's `expected`), until the person says yes to the members of today. Then the record goes, and none is made
-// again for that conversation.
+// again for that conversation. The session holds what it made or let go, so a store that can't keep it (its storage full
+// or refused) still holds the conversation to it until the app closes.
 import type { Conversation } from "$lib/api/conversations";
 import type { EngineStore } from "./store";
 
 /** The records, by conversation: false for one whose record the person let go. */
 export const LEGACY_RECORDS = "legacy_records";
+
+/** What this session made or let go, by store: it comes before what the store has, which may not have it. */
+const session = new WeakMap<EngineStore, Map<string, LegacyRecord | false>>();
 
 /** A record as the core's `expected` takes it: a group's with its owner, a DM's without one. */
 export interface LegacyRecord {
@@ -28,16 +32,23 @@ function recordIn(kept: unknown): LegacyRecord | false | null {
 function records(store: EngineStore): Map<string, LegacyRecord | false> {
 	const kept = store.read<unknown>(LEGACY_RECORDS);
 	const read = new Map<string, LegacyRecord | false>();
-	if (typeof kept !== "object" || kept === null) return read;
-	for (const [id, value] of Object.entries(kept)) {
-		const record = recordIn(value);
-		if (record !== null) read.set(id, record);
+	if (typeof kept === "object" && kept !== null) {
+		for (const [id, value] of Object.entries(kept)) {
+			const record = recordIn(value);
+			if (record !== null) read.set(id, record);
+		}
 	}
+	for (const [id, record] of session.get(store) ?? []) read.set(id, record);
 	return read;
 }
 
-const write = (store: EngineStore, kept: Map<string, LegacyRecord | false>) =>
-	store.write(LEGACY_RECORDS, Object.fromEntries(kept));
+/** A conversation's record, kept for the session and in the store, with every other this session holds. */
+function keep(store: EngineStore, conversationId: string, record: LegacyRecord | false) {
+	let held = session.get(store);
+	if (!held) session.set(store, (held = new Map()));
+	held.set(conversationId, record);
+	store.write(LEGACY_RECORDS, Object.fromEntries(records(store)));
+}
 
 /**
  * The conversation's record: none for one from after the cutover, or one whose record the person let go; else the one
@@ -50,14 +61,9 @@ export function legacyRecord(store: EngineStore, conv: Conversation): LegacyReco
 	if (record !== undefined) return record || null;
 	const members = conv.members.map((member) => member.user_id);
 	const made = conv.type === 2 ? { owner: conv.owner_id, members } : { members };
-	kept.set(conv.id, made);
-	write(store, kept);
+	keep(store, conv.id, made);
 	return made;
 }
 
 /** The person said yes to the members of today: the record goes, and none is made again. */
-export function dropRecord(store: EngineStore, conversationId: string) {
-	const kept = records(store);
-	kept.set(conversationId, false);
-	write(store, kept);
-}
+export const dropRecord = (store: EngineStore, conversationId: string) => keep(store, conversationId, false);

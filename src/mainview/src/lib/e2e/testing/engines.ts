@@ -64,6 +64,16 @@ export function memoryStore(): EngineStore {
 	};
 }
 
+/** A record whose storage refuses `key`, as the page's does when it's full: the write goes nowhere, and nothing throws. */
+export function refusingStore(store: EngineStore, key: string): EngineStore {
+	return {
+		read: (name) => store.read(name),
+		write: (name, value) => {
+			if (name !== key) store.write(name, value);
+		},
+	};
+}
+
 /** A core of its own for a device, in a folder of its own, which the same folder and key open again after a restart. */
 export function testHost(given?: { folder: string; key: Uint8Array }): BunCoreHost {
 	const host = new BunCoreHost(given);
@@ -171,6 +181,12 @@ export async function rejection(promise: Promise<unknown>): Promise<unknown> {
 	throw new Error("it didn't reject");
 }
 
+/**
+ * Waits for the work the device's engine took on until now, as what an event asks for runs in the engine's turn: a tap
+ * that does nothing on a device whose key's sheet is closed, which waits its turn after them.
+ */
+export const turnEnded = (device: TestDevice) => device.engine.uploadLater();
+
 /** Waits until `holds` is true, as an engine's work after an event ends in its own time: past `ms`, it fails. */
 export async function until(holds: () => boolean | Promise<boolean>, ms = 60_000): Promise<void> {
 	const end = Date.now() + ms;
@@ -261,6 +277,20 @@ export async function approvedDevice(fake: FakeApi, first: TestDevice): Promise<
 	await again.engine.start();
 	if (again.engine.state.name !== "ready") throw new Error(`the approved device is ${again.engine.state.name}`);
 	return again;
+}
+
+/** A host whose first open finds the database locked, as another instance holds it: the core opens after. */
+export function lockedOnce(host: CoreHost): CoreHost {
+	let locked = true;
+	return new Proxy(host, {
+		get(target, name) {
+			if (name === "open") {
+				return async (user: string) => (locked ? ((locked = false), { state: "locked" }) : target.open(user));
+			}
+			const value = Reflect.get(target, name);
+			return typeof value === "function" ? value.bind(target) : value;
+		},
+	});
 }
 
 /** A host whose answer to a command is `answer`'s, when it gives one: the core's otherwise. */

@@ -5,9 +5,12 @@ import {
 	commitByHand,
 	firstDevice,
 	groupOf,
+	lockedOnce,
 	restarted,
 	sameGroup,
 	testHost,
+	turnEnded,
+	until,
 	useFake,
 	watchedHost,
 	type TestDevice,
@@ -47,8 +50,9 @@ describe.skipIf(!coreLibrary)("a conversation's queue", () => {
 	test(
 		"entries apply by their number, whatever order they came in",
 		async () => {
-			const { fake, a, b, conversation } = await dmWithGroup();
+			const { fake, a, b, conversation, requests } = await dmWithGroup();
 			await byHand(a);
+			const before = queueReads(requests, conversation).length;
 			// Three commits whose events come backwards and twice, then three that come in order and twice.
 			for (const order of ["reverse", "as_sent"] as const) {
 				fake.holdEvents();
@@ -58,6 +62,8 @@ describe.skipIf(!coreLibrary)("a conversation's queue", () => {
 				expect(held.blocked).toBe(false);
 			}
 			expect((await groupOf(b, conversation))!.epoch).toBe(7);
+			// Applied in their order from the events alone: no gap, so the queue was never read.
+			expect(queueReads(requests, conversation).slice(before)).toEqual([]);
 		},
 		SLOW,
 	);
@@ -155,6 +161,91 @@ describe.skipIf(!coreLibrary)("a conversation's queue", () => {
 			const observed = log.lastIndexOf("observe_user");
 			expect(observed).toBeGreaterThan(applies[0]!);
 			expect(applies.at(-1)!).toBeGreaterThan(observed);
+		},
+		SLOW,
+	);
+
+	// M3: what the device hears while it isn't ready (here its database locked by another instance) isn't kept: the
+	// queue has it all, which the device reads once it's ready.
+	test(
+		"what's heard while the device isn't ready isn't kept: the queue has it",
+		async () => {
+			const { fake, a, b, conversation } = await dmWithGroup();
+			const applies: Record<string, unknown>[] = [];
+			const host = watchedHost(lockedOnce(b.host), [], (cmd, command) => {
+				if (cmd === "apply" && command.conversation_id === conversation) applies.push(command);
+				return null;
+			});
+			const back = await restarted(fake, b, { host });
+			expect(back.engine.state).toEqual({ name: "locked" });
+			// Ana's device commits three times meanwhile, and Bo's hears each one.
+			await byHand(a);
+			for (let n = 0; n < 3; n++) await commitByHand(a, conversation);
+			await until(() => back.heard.filter((event) => event.type === "MLS_COMMIT").length === 3);
+			// Its database free, it starts: it applies nothing it heard, and the queue brings the three commits.
+			back.clock.advance(2_000);
+			await sameGroup([a, back], conversation);
+			expect(applies[0]).toMatchObject({ entries: [] });
+		},
+		SLOW,
+	);
+
+	// I2: a conversation deleted while the device reads it: the queue is a 404, and the device lists its conversations
+	// again. This one gone, it lets it go, its retries with it.
+	test(
+		"a conversation deleted meanwhile is let go, its retries with it",
+		async () => {
+			const { fake, a, b, conversation, requests } = await dmWithGroup();
+			await byHand(a);
+			// Ana's device commits, and the commit's event comes without its data: Bo's device reads the queue for it,
+			// which by then is gone.
+			fake.stripData = true;
+			fake.holdEvents();
+			await commitByHand(a, conversation);
+			fake.deleteConversation(conversation);
+			const before = queueReads(requests, conversation).length;
+			fake.releaseEvents();
+			await until(() => queueReads(requests, conversation).length > before);
+			await turnEnded(b);
+			for (let minute = 0; minute < 3; minute++) {
+				b.clock.advance(60_000);
+				await turnEnded(b);
+			}
+			expect(queueReads(requests, conversation)).toHaveLength(before + 1);
+		},
+		SLOW,
+	);
+
+	// I1: an external commit that lost its epoch: the welcome where the device's leaf began is stale by then, so it
+	// joins again without reading the queue from there (which can be 45 days of it).
+	test(
+		"after a lost external commit, the device joins again without reading the queue from its first leaf",
+		async () => {
+			const { fake, a, b, conversation, requests } = await dmWithGroup();
+			const listed = (await b.api.conversations()).find((conv) => conv.id === conversation);
+			const joined = listed!.mls!.joined_seq!;
+			// Bo's device is away while Ana's commits three times, and the queue keeps only the last.
+			await b.engine.stop();
+			await byHand(a);
+			let last = 0;
+			for (let n = 0; n < 3; n++) last = (await commitByHand(a, conversation)).seq;
+			fake.expireQueue(conversation, last);
+			// Back, it joins by an external commit, which loses its epoch to Ana's next commit: they reach the API
+			// together, Ana's first.
+			const path = `/api/users/@me/conversations/${conversation}/mls/commits`;
+			const posts = () => requests.filter((request) => request.startsWith(`POST ${path}`)).length;
+			const [posted, read] = [posts(), queueReads(requests, conversation).length];
+			fake.gather({ method: "POST", path }, 2);
+			const committing = commitByHand(a, conversation);
+			await until(() => posts() === posted + 1);
+			const back = await restarted(fake, b);
+			await committing;
+			// Ana's commit, Bo's external commit that lost, and the one that took the next epoch.
+			expect(posts()).toBe(posted + 3);
+			// What Bo's device read since it came back: never the queue from where its first leaf began.
+			const since = queueReads(requests, conversation).slice(read);
+			expect(since).not.toContain(`GET ${path.replace("commits", "queue")}?after=${joined - 1}`);
+			await sameGroup([await restarted(fake, a), back], conversation);
 		},
 		SLOW,
 	);

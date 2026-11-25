@@ -50,6 +50,15 @@ let started = false;
 let engine: E2EEngine | null = null;
 let tabs: BrowserTabs | null = null;
 let persisted = false;
+/** Conversations opened before the page had its engine (its host still loading): it opens them once it's ready. */
+const toOpen = new Set<string>();
+
+/** The conversation opened, by the page's engine, or by the one it's about to have. */
+function openOnEngine(conversationId: string): Promise<void> {
+	if (engine) return engine.openConversation(conversationId);
+	toOpen.add(conversationId);
+	return Promise.resolve();
+}
 
 function engineFor(userId: string, host: CoreHost, platform: EnginePlatform): E2EEngine {
 	const made = new E2EEngine({
@@ -74,6 +83,12 @@ function engineFor(userId: string, host: CoreHost, platform: EnginePlatform): E2
 		showConversation(conversationId, state);
 		tabs?.changed(conversationId);
 	});
+	for (const conversationId of toOpen) {
+		made.openConversation(conversationId).catch((error: unknown) => {
+			console.error("[e2e] The conversation's group didn't open:", error);
+		});
+	}
+	toOpen.clear();
 	return made;
 }
 
@@ -102,7 +117,7 @@ export async function startEngine(userId: string, platform: EnginePlatform = pag
 			uploadLater: () => engine?.uploadLater(),
 			startOver: () => engine?.startOver(),
 			conversation: (id: string) => engine?.conversationState(id) ?? null,
-			openConversation: (id: string) => engine?.openConversation(id),
+			openConversation: (id: string) => openOnEngine(id),
 			restartGroup: (id: string) => engine?.restartGroup(id),
 			acceptMembers: (id: string) => engine?.acceptMembers(id),
 		},
@@ -139,6 +154,7 @@ type ConversationTap = "openConversation" | "restartGroup" | "acceptMembers";
 /** The person's act on a conversation, run by the engine of this tab or of the one that leads. */
 function onConversation(method: ConversationTap, conversationId: string): Promise<void> {
 	if (tabs) return tabs.call<void>(method, conversationId).finally(() => followConversation(conversationId));
+	if (method === "openConversation") return openOnEngine(conversationId);
 	return engine?.[method](conversationId) ?? Promise.resolve();
 }
 
@@ -167,6 +183,7 @@ export async function stopEngine(): Promise<void> {
 	const stopping = engine;
 	engine = null;
 	started = false;
+	toOpen.clear();
 	await stopping?.stop();
 	tabs?.close();
 	tabs = null;
