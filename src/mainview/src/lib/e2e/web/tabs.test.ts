@@ -49,23 +49,35 @@ class FakeLocks implements LockManagerLike {
 	}
 }
 
-/** BroadcastChannel among the tabs of one test: each message, cloned, reaches every other channel of its name. */
+/**
+ * BroadcastChannel among the tabs of one test: each message, cloned as it's posted, reaches every other channel of its
+ * name. What can't be cloned throws as it's posted, listeners or not; what a listener throws is kept, as an EventTarget
+ * reports it and goes on.
+ */
 class FakeHub {
 	#channels = new Set<{ name: string; listeners: Set<(event: { data: unknown }) => void> }>();
 	/** Every message posted, in order. */
 	readonly posted: unknown[] = [];
+	/** What the listeners threw. */
+	readonly thrown: unknown[] = [];
 
 	channel(name: string): ChannelLike {
 		const self = { name, listeners: new Set<(event: { data: unknown }) => void>() };
 		this.#channels.add(self);
 		return {
 			postMessage: (message) => {
+				const data = structuredClone(message);
 				this.posted.push(message);
 				for (const other of this.#channels) {
 					if (other === self || other.name !== name) continue;
-					const data = structuredClone(message);
 					setTimeout(() => {
-						for (const listener of other.listeners) listener({ data });
+						for (const listener of other.listeners) {
+							try {
+								listener({ data: structuredClone(data) });
+							} catch (error) {
+								this.thrown.push(error);
+							}
+						}
 					}, 0);
 				}
 			},
@@ -273,6 +285,97 @@ describe("the tabs of one user", () => {
 		a.tabs.close();
 		await b.tabs.leading;
 		expect(c.led()).toBe(0);
+	});
+
+	test("a request that can't be cloned is refused, and leaves nothing to stop the resends", async () => {
+		const hub = new FakeHub();
+		const locks = new FakeLocks();
+		const stuck = held<string>();
+		const a = tabOf(hub, locks, "a", { echo: () => stuck.promise });
+		await a.tabs.leading;
+		tabOf(hub, locks, "b", { echo: () => "b answered" });
+		const c = tabOf(hub, locks, "c");
+		const refused = await c.tabs.call("echo", { callback: () => 1 }).catch((error: unknown) => error);
+		expect(refused).toBeInstanceOf(CoreError);
+		expect(refused).toMatchObject({ code: "bad_command", field: "params" });
+		// a gets c's next request and never answers it; b, leading next, gets it again.
+		const next = c.tabs.call<string>("echo", { n: 1 });
+		await settle();
+		a.tabs.close();
+		expect(await next).toBe("b answered");
+	});
+
+	test("a request that can't be cloned when it's sent again is refused, and the others still go", async () => {
+		const hub = new FakeHub();
+		const locks = new FakeLocks();
+		const stuck = held<string>();
+		const a = tabOf(hub, locks, "a", { echo: () => stuck.promise });
+		await a.tabs.leading;
+		tabOf(hub, locks, "b", { echo: (params) => params });
+		const c = tabOf(hub, locks, "c");
+		const params: Record<string, unknown> = { n: 1 };
+		const changed = c.tabs.call("echo", params).catch((error: unknown) => error);
+		const kept = c.tabs.call("echo", { n: 2 });
+		await settle();
+		// Changed after it went, by the code that made it: it can't be cloned any more.
+		params.callback = () => 1;
+		a.tabs.close();
+		expect(await changed).toMatchObject({ code: "bad_command", field: "params" });
+		expect(await kept).toEqual({ n: 2 });
+	});
+
+	test("an answer that can't be cloned comes back internal", async () => {
+		const hub = new FakeHub();
+		const locks = new FakeLocks();
+		const a = tabOf(hub, locks, "a", { give: () => ({ callback: () => 1 }) });
+		await a.tabs.leading;
+		const b = tabOf(hub, locks, "b");
+		const answer = await b.tabs.call("give").catch((error: unknown) => error);
+		expect(answer).toBeInstanceOf(CoreError);
+		expect(answer).toMatchObject({ code: "internal" });
+	});
+
+	test("a new leader's word sends the requests again before onLeader, which can't stop them", async () => {
+		const hub = new FakeHub();
+		const locks = new FakeLocks();
+		const stuck = held<string>();
+		const a = tabOf(hub, locks, "a", { echo: () => stuck.promise });
+		await a.tabs.leading;
+		tabOf(hub, locks, "b", { echo: () => "b answered" });
+		const c = new BrowserTabs({
+			userId: user,
+			tab: "c",
+			channel: hub.channel(lockName(user)),
+			locks,
+			methods: {},
+			lead: async () => {},
+			onLeader: () => {
+				throw new Error("a callback that throws");
+			},
+		});
+		const asked = c.call<string>("echo");
+		await settle();
+		a.tabs.close();
+		expect(await asked).toBe("b answered");
+		expect(hub.thrown).toHaveLength(1);
+	});
+
+	test("a tab that closes before it leads, or as it opens its core, says so in leading", async () => {
+		const hub = new FakeHub();
+		const locks = new FakeLocks();
+		const a = tabOf(hub, locks, "a");
+		await a.tabs.leading;
+		const b = tabOf(hub, locks, "b");
+		b.tabs.close();
+		expect(await b.tabs.leading.catch((error: unknown) => error)).toMatchObject({ code: "internal" });
+		const opening = held();
+		const c = tabOf(hub, locks, "c", {}, () => opening.promise);
+		a.tabs.close();
+		await settle();
+		expect(c.led()).toBe(1);
+		c.tabs.close();
+		opening.resolve();
+		expect(await c.tabs.leading.catch((error: unknown) => error)).toMatchObject({ code: "internal" });
 	});
 
 	test("what another page posts on the channel is read past", async () => {

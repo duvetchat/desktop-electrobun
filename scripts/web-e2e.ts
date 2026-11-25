@@ -169,6 +169,15 @@ async function end(child: Bun.Subprocess, closeGently: () => Promise<unknown>, p
 	rmSync(profile, { recursive: true, force: true });
 }
 
+/** What a run has open (a browser, the build, the preview, the built page), each with its ending, for a signal. */
+const open = new Set<() => Promise<unknown>>();
+
+/** Keeps `ending` for a signal to run, until what it ends is ended the usual way: the function returned forgets it. */
+function track(ending: () => Promise<unknown>) {
+	open.add(ending);
+	return () => open.delete(ending);
+}
+
 export async function launchChrome(binary: string, page: string): Promise<Launched> {
 	const profile = mkdtempSync(join(tmpdir(), "duvet-web-e2e-chrome-"));
 	const child = Bun.spawn(
@@ -196,13 +205,15 @@ export async function launchChrome(binary: string, page: string): Promise<Launch
 		],
 		{ stdin: "ignore", stdout: "ignore", stderr: "pipe" },
 	);
+	const untrack = track(() => end(child, async () => child.kill(), profile));
 	const stderr = readStderr(child, /DevTools listening on (ws:\/\/\S+)/);
 	let wire: Wire;
 	try {
 		const listening = await within(stderr.match, START_MS, "Chrome's start");
 		wire = await Wire.open(listening[1] ?? "");
 	} catch (error) {
-		await end(child, async () => {}, profile);
+		untrack();
+		await end(child, async () => child.kill(), profile);
 		throw new Error(`Chrome didn't start: ${String(error)}\n${stderr.tail()}`, { cause: error });
 	}
 	const browser: Browser = {
@@ -230,7 +241,13 @@ export async function launchChrome(binary: string, page: string): Promise<Launch
 			return tab;
 		},
 	};
-	return { browser, close: () => end(child, () => wire.send("Browser.close"), profile) };
+	return {
+		browser,
+		close: async () => {
+			untrack();
+			await end(child, () => wire.send("Browser.close"), profile);
+		},
+	};
 }
 
 export async function launchFirefox(binary: string, page: string): Promise<Launched> {
@@ -250,6 +267,7 @@ export async function launchFirefox(binary: string, page: string): Promise<Launc
 		[binary, "--headless", "--no-remote", "--profile", profile, "--remote-debugging-port", "0", "about:blank"],
 		{ stdin: "ignore", stdout: "ignore", stderr: "pipe" },
 	);
+	const untrack = track(() => end(child, async () => child.kill(), profile));
 	const stderr = readStderr(child, /WebDriver BiDi listening on (ws:\/\/\S+)/);
 	let wire: Wire;
 	try {
@@ -257,7 +275,8 @@ export async function launchFirefox(binary: string, page: string): Promise<Launc
 		wire = await Wire.open(`${listening[1] ?? ""}/session`);
 		await wire.send("session.new", { capabilities: {} });
 	} catch (error) {
-		await end(child, async () => {}, profile);
+		untrack();
+		await end(child, async () => child.kill(), profile);
 		throw new Error(`Firefox didn't start: ${String(error)}\n${stderr.tail()}`, { cause: error });
 	}
 	const browser: Browser = {
@@ -284,7 +303,13 @@ export async function launchFirefox(binary: string, page: string): Promise<Launc
 			return tab;
 		},
 	};
-	return { browser, close: () => end(child, () => wire.send("browser.close"), profile) };
+	return {
+		browser,
+		close: async () => {
+			untrack();
+			await end(child, () => wire.send("browser.close"), profile);
+		},
+	};
 }
 
 /** A port nobody listens on now, on 127.0.0.1. */
@@ -307,16 +332,20 @@ function runVite(args: string[], quiet = false) {
 
 /** Builds the harness page into `out` and serves it there; resolves with its URL and how to stop it. */
 export async function serveHarness(out: string): Promise<{ url: string; stop(): Promise<void> }> {
-	if ((await runVite(["build", "--outDir", out, "--emptyOutDir", "--logLevel", "warn"]).exited) !== 0) {
-		throw new Error("the harness page didn't build");
-	}
+	const build = runVite(["build", "--outDir", out, "--emptyOutDir", "--logLevel", "warn"]);
+	const built = track(async () => build.kill());
+	const exitCode = await build.exited;
+	built();
+	if (exitCode !== 0) throw new Error("the harness page didn't build");
 	const port = freePort();
 	const server = runVite(
 		["preview", "--outDir", out, "--host", "127.0.0.1", "--port", String(port), "--strictPort"],
 		true,
 	);
 	const url = `http://127.0.0.1:${port}/`;
+	const untrack = track(async () => server.kill());
 	const stop = async () => {
+		untrack();
 		server.kill();
 		await server.exited;
 	};
@@ -381,6 +410,15 @@ async function runCases(name: BrowserName, binary: string, page: string, suite: 
 }
 
 async function main(argv: string[]) {
+	// A run stopped by a signal (a timeout, a cancelled job) ends its browsers, its preview and its folders first.
+	for (const [signal, code] of [
+		["SIGINT", 130],
+		["SIGTERM", 143],
+	] as const) {
+		process.on(signal, () => {
+			void Promise.allSettled([...open].map((ending) => ending())).then(() => process.exit(code));
+		});
+	}
 	const at = argv.indexOf("--browser");
 	const asked = at === -1 ? null : argv[at + 1];
 	if (asked !== null && asked !== "chrome" && asked !== "firefox") throw new Error("--browser takes chrome or firefox");
@@ -398,6 +436,7 @@ async function main(argv: string[]) {
 	);
 
 	const out = mkdtempSync(join(tmpdir(), "duvet-web-e2e-page-"));
+	const built = track(async () => rmSync(out, { recursive: true, force: true }));
 	let failed = 0;
 	try {
 		const harness = await serveHarness(out);
@@ -409,6 +448,7 @@ async function main(argv: string[]) {
 			await harness.stop();
 		}
 	} finally {
+		built();
 		rmSync(out, { recursive: true, force: true });
 	}
 	if (failed) {

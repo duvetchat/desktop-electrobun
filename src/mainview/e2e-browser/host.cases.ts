@@ -30,7 +30,7 @@ const cases: Case[] = [
 			const tab = await browser.open();
 			const userId = crypto.randomUUID();
 			const loads = await tab.run(async (user: string) => {
-				const worker = (name: string) => /worker/.test(name);
+				const worker = (name: string) => /worker|duvet_e2e|\.wasm/.test(name);
 				const before = duvetE2E.loaded().filter(worker);
 				const host = duvetE2E.newHost();
 				const made = duvetE2E.loaded().filter(worker);
@@ -151,6 +151,40 @@ const cases: Case[] = [
 		},
 	},
 	{
+		name: "a call with no core open is internal, and a command JSON can't write is refused",
+		async run(browser) {
+			const tab = await browser.open();
+			const said = await tab.run(async (user: string) => {
+				const host = duvetE2E.newHost();
+				const before = await duvetE2E.failure(host.handle({ cmd: "status" }));
+				// The worker itself, asked before it opened a core.
+				const worker = duvetE2E.startCoreWorker();
+				const raw = await new Promise((resolve) => {
+					worker.addEventListener("message", (event: MessageEvent) => resolve(event.data), { once: true });
+					worker.postMessage({ id: 1, op: "handle", command: { cmd: "status" } });
+				});
+				worker.terminate();
+				const opened = (await host.open(user)).state;
+				// A BigInt crosses to the worker, and JSON can't write it: refused there, and the worker goes on.
+				const big = await duvetE2E.failure(host.handle({ cmd: "status", n: 1n }));
+				const goesOn = await duvetE2E.failure(host.handle({ cmd: "status" }));
+				const workers = duvetE2E.workers();
+				await host.close();
+				const after = await duvetE2E.failure(host.handle({ cmd: "status" }));
+				return { before, raw, opened, big, goesOn, workers, after };
+			}, crypto.randomUUID());
+			assert.deepEqual(said, {
+				before: "CoreError internal",
+				raw: { id: 1, reply: { error: { code: "internal", message: "no core is open" } } },
+				opened: "ready",
+				big: "CoreError bad_command",
+				goesOn: null,
+				workers: 1,
+				after: "CoreError internal",
+			});
+		},
+	},
+	{
 		name: "a browser without OPFS says so",
 		async run(browser) {
 			const tab = await browser.open();
@@ -202,29 +236,89 @@ const cases: Case[] = [
 				opens[0] ?? "",
 				/^\{"id":\d+,"reply":\{"ok":\{"state":"ready","keyStorage":"provided","times":\{[^{}]*\}\}\}\}$/,
 			);
+			// Nor is it in any other message the worker sent: the key, unwrapped here as a script of the page could,
+			// isn't in one as bytes, in hex or in base64.
+			const leaks = await tab.run((user: string) => duvetE2E.keyLeaks(user), userId);
+			assert.ok(leaks.checked >= 3, `${leaks.checked} messages checked`);
+			assert.deepEqual(leaks.found, []);
 		},
 	},
 	{
-		name: "destroy leaves nothing to open",
+		name: "destroy leaves nothing to open, and another account's database as it was",
 		async run(browser) {
 			const userId = crypto.randomUUID();
-			const { tab } = await join(browser, userId);
+			const other = crypto.randomUUID();
+			const tab = await browser.open();
+			// Another account's database first: its device, read back later.
+			const deviceOf = (user: string) =>
+				tab.run(async (id: string) => {
+					const host = duvetE2E.newHost();
+					await host.open(id);
+					let { device_id } = await host.handle<{ device_id?: string }>({ cmd: "status" });
+					if (!device_id) {
+						await host.handle({ cmd: "create_device", user_id: id, device_id: crypto.randomUUID() });
+						({ device_id } = await host.handle<{ device_id?: string }>({ cmd: "status" }));
+					}
+					await host.close();
+					return device_id ?? null;
+				}, user);
+			const otherDevice = await deviceOf(other);
+			assert.ok(otherDevice);
+			await tab.run((user: string) => duvetE2E.join(user), userId);
 			assert.equal((await lead(tab))?.state, "ready");
 			const device = (await status(tab))?.device_id;
 			assert.ok(device);
 			const left = await tab.run(async (user: string) => {
 				await duvetE2E.joined?.host.destroy(user);
-				return { keys: (await duvetE2E.keysKept()).records.length, names: await duvetE2E.poolNames() };
+				const { records } = await duvetE2E.keysKept();
+				return { keys: records.map((record) => record.user), names: await duvetE2E.poolNames() };
 			}, userId);
-			assert.deepEqual(left, { keys: 0, names: [] });
+			assert.deepEqual(left, { keys: [other], names: [`${other}.db`] });
 			// Opened again, it's a new database: no device in it, and a new key.
 			const fresh = await tab.run(async (user: string) => {
 				const host = duvetE2E.newHost();
 				const opened = await host.open(user);
 				const { device_id } = await host.handle<{ device_id?: string }>({ cmd: "status" });
+				await host.close();
 				return { opened, device: device_id ?? null };
 			}, userId);
 			assert.deepEqual(fresh, { opened: { state: "ready", keyStorage: "provided" }, device: null });
+			assert.equal(await deviceOf(other), otherDevice, "the other account's database, as it was");
+		},
+	},
+	{
+		name: "seven accounts' databases fit in one browser, and each writes",
+		async run(browser) {
+			const tab = await browser.open();
+			const users = Array.from({ length: 7 }, () => crypto.randomUUID());
+			// Each account's first open makes its database, which keeps a slot of the pool for good, and its first write
+			// needs another, for its journal.
+			const made = await tab.run(async (all: string[]) => {
+				const results: { state: string; wrote: string | null }[] = [];
+				for (const user of all) {
+					const host = duvetE2E.newHost();
+					const { state } = await host.open(user);
+					const command = { cmd: "create_device", user_id: user, device_id: crypto.randomUUID() };
+					const wrote = state === "ready" ? await duvetE2E.failure(host.handle(command)) : "not open";
+					await host.close();
+					results.push({ state, wrote });
+				}
+				return results;
+			}, users);
+			assert.deepEqual(
+				made,
+				users.map(() => ({ state: "ready", wrote: null })),
+			);
+			// The first account, opened again with all seven there, still writes: its identity.
+			const again = await tab.run(async (user: string) => {
+				const host = duvetE2E.newHost();
+				const { state } = await host.open(user);
+				const wrote = await duvetE2E.failure(host.handle({ cmd: "create_identity" }));
+				await host.close();
+				return { state, wrote, names: await duvetE2E.poolNames() };
+			}, users[0] ?? "");
+			assert.deepEqual({ state: again.state, wrote: again.wrote }, { state: "ready", wrote: null });
+			assert.deepEqual(again.names, users.map((user) => `${user}.db`).sort());
 		},
 	},
 ];

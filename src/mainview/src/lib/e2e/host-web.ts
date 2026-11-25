@@ -61,10 +61,15 @@ export class WebCoreHost implements CoreHost {
 		}
 		await this.close();
 		if (this.#missing().length) return { state: "unsupported" };
-		const running = (this.#running = this.#begin());
-		const opened = await this.#openIn(running, userId).catch(() => ({ state: "failed" as const }));
+		const running = this.#begin();
+		if (!running) return { state: "failed" };
+		this.#running = running;
+		const opened = await this.#openIn(running, userId).catch(() => ({ state: "failed" as const, made: false }));
 		if (opened.state !== "ready") {
 			this.#end(running, cut("the core didn't open"));
+			// A database this open made and then failed in: deleted, with its key, so its slot of the pool is free again.
+			// One that can't be is left as it was.
+			if (opened.made) await this.#delete(userId).catch(() => {});
 			return { state: opened.state };
 		}
 		this.#userId = userId;
@@ -119,7 +124,13 @@ export class WebCoreHost implements CoreHost {
 			throw new CoreError("bad_command", "a user's ID is a UUID", { field: "user_id" });
 		}
 		await this.close();
+		await this.#delete(userId);
+	}
+
+	/** A worker that never opened a core deletes the user's database and its key. */
+	async #delete(userId: string) {
 		const running = this.#begin();
+		if (!running) throw cut("the core's worker didn't start");
 		try {
 			await this.#post(running, "destroy", { userId });
 		} finally {
@@ -127,9 +138,15 @@ export class WebCoreHost implements CoreHost {
 		}
 	}
 
-	/** A worker started, its answers and failures heard. */
-	#begin(): Running {
-		const running: Running = { worker: this.#start(), calls: new Map() };
+	/** A worker started, its answers and failures heard: none when the browser refuses to start one (its CSP, say). */
+	#begin(): Running | null {
+		let worker: WorkerLike;
+		try {
+			worker = this.#start();
+		} catch {
+			return null;
+		}
+		const running: Running = { worker, calls: new Map() };
 		running.worker.addEventListener("message", (event: MessageEvent) => this.#heard(running, event.data));
 		const failed = () => this.#end(running, cut("the core's worker failed"));
 		running.worker.addEventListener("error", failed);
@@ -171,8 +188,12 @@ export class WebCoreHost implements CoreHost {
 		});
 	}
 
-	async #openIn(running: Running, userId: string): Promise<{ state: HostState }> {
-		const opened = await this.#post<{ state: HostState; times?: Record<string, number> }>(running, "open", { userId });
+	async #openIn(running: Running, userId: string): Promise<{ state: HostState; made?: boolean }> {
+		const opened = await this.#post<{ state: HostState; made?: boolean; times?: Record<string, number> }>(
+			running,
+			"open",
+			{ userId },
+		);
 		this.openTimes = opened.times ?? null;
 		return opened;
 	}
@@ -183,15 +204,18 @@ export class WebCoreHost implements CoreHost {
 	 */
 	#call<T>(op: string, fields: object, progress?: (n: number) => void): Promise<T> {
 		const userId = this.#userId;
-		if (!this.#running && userId === null) {
-			return Promise.reject(new CoreError("not_found", "no core is open", { what: "handle" }));
-		}
-		return this.#post(this.#running ?? this.#reopen(String(userId)), op, fields, progress);
+		// Never the core's own not_found, which the engine reads as a group or a message that isn't there.
+		if (!this.#running && userId === null) return Promise.reject(new CoreError("internal", "no core is open"));
+		const running = this.#running ?? this.#reopen(String(userId));
+		if (!running) return Promise.reject(cut("the core's worker didn't start"));
+		return this.#post(running, op, fields, progress);
 	}
 
 	/** A new worker for the user's core after a cut: one that doesn't open is ended, and the calls it had with it. */
-	#reopen(userId: string): Running {
-		const running = (this.#running = this.#begin());
+	#reopen(userId: string): Running | null {
+		const running = this.#begin();
+		if (!running) return null;
+		this.#running = running;
 		this.#openIn(running, userId).then(
 			(opened) => opened.state === "ready" || this.#end(running, cut(`the core didn't open again: ${opened.state}`)),
 			() => this.#end(running, cut("the core didn't open again")),

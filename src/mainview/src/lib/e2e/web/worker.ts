@@ -1,7 +1,7 @@
 // The web's core (PLAN-E2E-CLIENTES.md, the web's worker, lock and tabs): a dedicated module worker, which host-web.ts
-// starts in the tab that leads (tabs.ts). To open, it waits for OPFS's pool to be free (pool.ts), loads the core's
-// WebAssembly, installs OPFS, unwraps the database key (keys.ts) and opens `<user_id>.db`. The key lives here alone:
-// the page never gets a byte of it. Messages run one at a time, in the order they came.
+// starts in the tab that leads (tabs.ts). To open, it readies OPFS's pool once it's free (pool.ts: two slots kept
+// free), loads the core's WebAssembly, installs OPFS, unwraps the database key (keys.ts) and opens `<user_id>.db`. The
+// key lives here alone: the page never gets a byte of it. Messages run one at a time, in the order they came.
 //
 // What throws out of the core's WebAssembly (a panic traps, a stack overflow throws) leaves the instance and its OPFS
 // handles unusable, as the core's contract says: the worker answers that call internal, says it ends, and closes; the
@@ -14,7 +14,7 @@ import { throughCore } from "../parts";
 import init, { install_opfs, WasmCore, type InitOutput } from "../wasm/duvet_e2e_wasm.js";
 import wasm from "../wasm/duvet_e2e_wasm_bg.wasm?url";
 import { databaseKey, keyStore } from "./keys";
-import { deleteFiles, poolLease } from "./pool";
+import { deleteFiles, installPool, preparePool } from "./pool";
 import { missingInWorker } from "./support";
 
 /** Thrown out of the core's WebAssembly: the instance can't be trusted from here on. */
@@ -49,8 +49,16 @@ function inCore<T>(call: () => T): T {
 /** One command's reply, as the core gives it. */
 function reply(command: object): unknown {
 	const opened = core;
-	if (!opened) throw new CoreError("not_found", "no core is open", { what: "handle" });
-	return JSON.parse(inCore(() => opened.handle(JSON.stringify(command))));
+	// Never the core's own not_found, which the engine reads as a group or a message that isn't there.
+	if (!opened) throw new CoreError("internal", "no core is open");
+	let text: string;
+	try {
+		text = JSON.stringify(command);
+	} catch {
+		// A BigInt or a cycle, which reach the worker whole: refused here, before the core, which goes on.
+		throw new CoreError("bad_command", "the command can't be written as JSON", { field: "command" });
+	}
+	return JSON.parse(inCore(() => opened.handle(text)));
 }
 
 /** One command's `ok`, typed by its caller; its error thrown as a CoreError. */
@@ -64,7 +72,9 @@ function databaseFiles(userId: unknown): string[] {
 	return ["", "-journal", "-wal", "-shm"].map((suffix) => `${userId}.db${suffix}`);
 }
 
-type OpenState = { state: "ready"; keyStorage: "provided"; times: Record<string, number> } | { state: string };
+type OpenState =
+	| { state: "ready"; keyStorage: "provided"; times: Record<string, number> }
+	| { state: string; made?: boolean };
 
 async function open(userId: unknown): Promise<OpenState> {
 	const [database = ""] = databaseFiles(userId);
@@ -77,9 +87,12 @@ async function open(userId: unknown): Promise<OpenState> {
 		times[step] = Math.round(now - mark);
 		mark = now;
 	};
+	// Whether the database was there before this open: one this open makes and then fails in is deleted again.
+	let existed = true;
 	if (!installed) {
-		const lease = await poolLease();
-		if (lease !== "free") return { state: lease };
+		const pool = await preparePool();
+		if (pool.state !== "free") return { state: pool.state };
+		existed = pool.names.includes(database);
 		try {
 			exports ??= await init({ module_or_path: wasm });
 		} catch {
@@ -87,12 +100,10 @@ async function open(userId: unknown): Promise<OpenState> {
 			return { state: "failed" };
 		}
 		lap("init");
-		try {
-			await install_opfs();
-		} catch (error) {
-			if (typeof error === "string") return { state: "unsupported" };
+		const install = await installPool(install_opfs).catch((error: unknown) => {
 			throw new Cut(String(error));
-		}
+		});
+		if (install !== "installed") return { state: install };
 		installed = true;
 		lap("install");
 	}
@@ -107,7 +118,7 @@ async function open(userId: unknown): Promise<OpenState> {
 	try {
 		core = inCore(() => WasmCore.open(JSON.stringify({ path: database }), key));
 	} catch (error) {
-		if (error instanceof CoreError) return { state: "failed" };
+		if (error instanceof CoreError) return { state: "failed", made: !existed };
 		throw error;
 	} finally {
 		key.fill(0);
@@ -184,8 +195,8 @@ async function answer(message: Record<string, unknown>, progress: (done: number)
 		case "destroy": {
 			// The pool's files are deleted by a worker that never installed the pool: one that did holds them.
 			if (installed) throw new CoreError("internal", "this worker holds the databases: another one deletes");
-			await deleteFiles(databaseFiles(message.userId));
-			await keyStore.forget(String(message.userId));
+			// The key goes with the pool's lease still held: an open in between would make a database with the old one.
+			await deleteFiles(databaseFiles(message.userId), () => keyStore.forget(String(message.userId)));
 			return { ok: {} };
 		}
 	}

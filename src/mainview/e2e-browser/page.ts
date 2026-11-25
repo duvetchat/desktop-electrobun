@@ -4,7 +4,7 @@
 // its own in the engine's place.
 import { CoreError } from "$lib/e2e/errors";
 import { startCoreWorker, WebCoreHost } from "$lib/e2e/host-web";
-import { KEYS_DATABASE, KEYS_STORE } from "$lib/e2e/web/keys";
+import { KEYS_DATABASE, KEYS_STORE, unwrapKey } from "$lib/e2e/web/keys";
 import { filesOf, NAME_BYTES, POOL, SLOTS, slotName } from "$lib/e2e/web/pool";
 import { missingInPage } from "$lib/e2e/web/support";
 import { BrowserTabs } from "$lib/e2e/web/tabs";
@@ -82,8 +82,32 @@ async function folder(parent: FileSystemDirectoryHandle, name: string) {
 	}
 }
 
+/** IndexedDB's keys database as a script of this page reads it: its stores, and its records by user. */
+async function keyRecords(): Promise<{ stores: string[]; users: IDBValidKey[]; values: unknown[] }> {
+	const known = await indexedDB.databases();
+	if (!known.some((database) => database.name === KEYS_DATABASE)) return { stores: [], users: [], values: [] };
+	const database = await new Promise<IDBDatabase>((resolve, reject) => {
+		const request = indexedDB.open(KEYS_DATABASE);
+		request.onsuccess = () => resolve(request.result);
+		request.onerror = () => reject(request.error);
+	});
+	try {
+		const read = <T>(request: IDBRequest<T>) =>
+			new Promise<T>((resolve, reject) => {
+				request.onsuccess = () => resolve(request.result);
+				request.onerror = () => reject(request.error);
+			});
+		const store = database.transaction(KEYS_STORE, "readonly").objectStore(KEYS_STORE);
+		const [users, values] = await Promise.all([read(store.getAllKeys()), read(store.getAll())]);
+		return { stores: [...database.objectStoreNames], users, values };
+	} finally {
+		database.close();
+	}
+}
+
 const harness = {
 	WebCoreHost,
+	startCoreWorker,
 	CoreError,
 	missingInPage,
 	newHost,
@@ -107,47 +131,49 @@ const harness = {
 	 * key, whether it's a CryptoKey and what it allows, and whether it can be exported. Nothing, before a worker made it.
 	 */
 	async keysKept() {
-		const known = await indexedDB.databases();
-		if (!known.some((database) => database.name === KEYS_DATABASE)) return { stores: [], records: [] };
-		const database = await new Promise<IDBDatabase>((resolve, reject) => {
-			const request = indexedDB.open(KEYS_DATABASE);
-			request.onsuccess = () => resolve(request.result);
-			request.onerror = () => reject(request.error);
-		});
-		try {
-			const stores = [...database.objectStoreNames];
-			const transaction = database.transaction(KEYS_STORE, "readonly");
-			const read = <T>(request: IDBRequest<T>) =>
-				new Promise<T>((resolve, reject) => {
-					request.onsuccess = () => resolve(request.result);
-					request.onerror = () => reject(request.error);
-				});
-			const store = transaction.objectStore(KEYS_STORE);
-			const [users, values] = await Promise.all([read(store.getAllKeys()), read(store.getAll())]);
-			const records = await Promise.all(
-				values.map(async (value: unknown, index) => {
-					const record = typeof value === "object" && value !== null ? value : {};
-					const wrapping: unknown = Reflect.get(record, "wrapping");
-					const wrapped: unknown = Reflect.get(record, "wrapped");
-					const key = wrapping instanceof CryptoKey ? wrapping : null;
-					const user = users[index];
-					return {
-						user: typeof user === "string" ? user : null,
-						fields: Object.keys(record).sort(),
-						wrapping: key && {
-							extractable: key.extractable,
-							algorithm: key.algorithm.name,
-							usages: [...key.usages].sort(),
-						},
-						exportRefused: key ? (await failure(crypto.subtle.exportKey("raw", key))) !== null : null,
-						sealedBytes: wrapped instanceof ArrayBuffer ? wrapped.byteLength : null,
-					};
-				}),
+		const { stores, users, values } = await keyRecords();
+		const records = await Promise.all(
+			values.map(async (value: unknown, index) => {
+				const record = typeof value === "object" && value !== null ? value : {};
+				const wrapping: unknown = Reflect.get(record, "wrapping");
+				const wrapped: unknown = Reflect.get(record, "wrapped");
+				const key = wrapping instanceof CryptoKey ? wrapping : null;
+				const user = users[index];
+				return {
+					user: typeof user === "string" ? user : null,
+					fields: Object.keys(record).sort(),
+					wrapping: key && {
+						extractable: key.extractable,
+						algorithm: key.algorithm.name,
+						usages: [...key.usages].sort(),
+					},
+					exportRefused: key ? (await failure(crypto.subtle.exportKey("raw", key))) !== null : null,
+					sealedBytes: wrapped instanceof ArrayBuffer ? wrapped.byteLength : null,
+				};
+			}),
+		);
+		return { stores, records };
+	},
+	/**
+	 * Which of the messages this page's workers posted hold the user's database key: its bytes, in hex or in base64.
+	 * The key is unwrapped here with the CryptoKey IndexedDB keeps beside it, as any script of the page could.
+	 */
+	async keyLeaks(userId: string) {
+		const { users, values } = await keyRecords();
+		const key = await unwrapKey(userId, values[users.indexOf(userId)]);
+		const hex = (bytes: Uint8Array) => [...bytes].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+		const base64 = btoa(String.fromCharCode(...key));
+		const found = received.flatMap((message, index) => {
+			const text = JSON.stringify(message, (_name, value: unknown) =>
+				ArrayBuffer.isView(value)
+					? hex(new Uint8Array(value.buffer, value.byteOffset, value.byteLength))
+					: value instanceof ArrayBuffer
+						? hex(new Uint8Array(value))
+						: value,
 			);
-			return { stores, records };
-		} finally {
-			database.close();
-		}
+			return text.includes(hex(key)) || text.includes(base64) ? [index] : [];
+		});
+		return { checked: received.length, found };
 	},
 	/**
 	 * The names of the files in OPFS's pool, as their slots' headers say, read with a file's own reader (the page has

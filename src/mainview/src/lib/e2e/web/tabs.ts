@@ -72,13 +72,13 @@ export class BrowserTabs {
 				.request(lockName(options.userId), { signal: this.#stop.signal }, async () => {
 					// Held until this tab closes: then the browser, or close(), lets the next one in.
 					const held = new Promise<void>((release) => (this.#release = release));
-					if (this.#closed) return;
+					if (this.#closed) return reject(closed());
 					try {
 						await options.lead();
 					} catch (error) {
 						reject(error);
 					}
-					if (this.#closed) return;
+					if (this.#closed) return reject(closed());
 					this.#leader = true;
 					this.#post({ event: "leader", tab: this.tab });
 					options.onLeader?.(this.tab);
@@ -87,11 +87,11 @@ export class BrowserTabs {
 					resolve();
 					await held;
 				})
-				// A request aborted by close() never held the lock: nothing to say. Any other refusal, `leading` says.
-				.catch((error: unknown) => {
-					if (!this.#closed) reject(error);
-				});
+				// A request close() aborted never held the lock: the tab closed. Any other refusal, as it is.
+				.catch((error: unknown) => reject(this.#closed ? closed() : error));
 		});
+		// Nobody has to wait for it: a tab that closes before it leads says so to whoever does.
+		this.leading.catch(() => {});
 	}
 
 	/** Whether this tab leads now. */
@@ -105,8 +105,10 @@ export class BrowserTabs {
 		if (this.#leader) return this.#serve(method, params);
 		const id = `${this.tab}:${this.#next++}`;
 		return new Promise<T>((resolve, reject) => {
-			this.#waiting.set(id, { method, params, resolve, reject });
-			this.#post({ id, from: this.tab, method, params });
+			// Posted before it's kept: one the channel can't clone is refused, and nothing waits for it.
+			const refused = this.#ask(id, method, params);
+			if (refused) reject(refused);
+			else this.#waiting.set(id, { method, params, resolve, reject });
 		});
 	}
 
@@ -115,7 +117,10 @@ export class BrowserTabs {
 		if (this.#leader) this.#post({ event: "changed", conversation_id: conversationId });
 	}
 
-	/** Leaves the user's tabs: lets go of the lock, or of its place in line, and fails what it was still asking. */
+	/**
+	 * Leaves the user's tabs: lets go of the lock, or of its place in line, and fails what it was still asking. The engine
+	 * closes its host first: the next tab takes the lock at once, and a core still open here would hold the pool.
+	 */
 	close() {
 		if (this.#closed) return;
 		this.#closed = true;
@@ -152,14 +157,28 @@ export class BrowserTabs {
 		if (!this.#closed) this.#channel.postMessage(message);
 	}
 
+	/** Posts one of this tab's requests: the refusal, when the channel can't clone it, else null. */
+	#ask(id: string, method: string, params: unknown): CoreError | null {
+		try {
+			this.#post({ id, from: this.tab, method, params });
+			return null;
+		} catch (error) {
+			const why = error instanceof Error ? error.message : String(error);
+			return new CoreError("bad_command", `the request can't cross to the other tabs: ${why}`, { field: "params" });
+		}
+	}
+
 	#heard(data: unknown) {
 		if (this.#closed || !isObject(data)) return;
 		if (data.event === "leader" && typeof data.tab === "string") {
-			this.#options.onLeader?.(data.tab);
-			// A new leader: what this tab still asks goes to it.
+			// A new leader: what this tab still asks goes to it. One that can't be cloned any more is refused, alone.
 			if (!this.#leader) {
-				for (const [id, { method, params }] of this.#waiting) this.#post({ id, from: this.tab, method, params });
+				for (const [id, { method, params }] of this.#waiting) {
+					const refused = this.#ask(id, method, params);
+					if (refused) this.#take(id)?.reject(refused);
+				}
 			}
+			this.#options.onLeader?.(data.tab);
 		} else if (data.event === "changed" && typeof data.conversation_id === "string") {
 			if (!this.#leader) this.#options.onChanged?.(data.conversation_id);
 		} else if (typeof data.id === "string" && typeof data.from === "string" && typeof data.method === "string") {
@@ -174,9 +193,22 @@ export class BrowserTabs {
 	}
 
 	#answer(id: string, from: string, method: string, params: unknown) {
+		const reply = (answer: { ok: unknown } | { error: unknown }) => {
+			try {
+				this.#post({ id, to: from, ...answer });
+			} catch (error) {
+				// An answer the channel can't clone: the asking tab hears that it failed, rather than nothing.
+				const why = error instanceof Error ? error.message : String(error);
+				this.#post({
+					id,
+					to: from,
+					error: { code: "internal", message: `the answer can't cross to the other tabs: ${why}` },
+				});
+			}
+		};
 		this.#serve(method, params).then(
-			(ok: unknown) => this.#post({ id, to: from, ok }),
-			(error: unknown) => this.#post({ id, to: from, error: errorFields(error) }),
+			(ok: unknown) => reply({ ok }),
+			(error: unknown) => reply({ error: errorFields(error) }),
 		);
 	}
 }

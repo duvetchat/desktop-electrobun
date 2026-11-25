@@ -55,7 +55,8 @@ jobs:
         id: chrome
         run: |
           for name in google-chrome google-chrome-stable chromium chromium-browser; do
-            if found=$(command -v "$name"); then
+            # A name that doesn't answer for its version within seconds is skipped: a snap's launcher, without snapd, hangs.
+            if found=$(command -v "$name") && timeout 10 "$found" --version > /dev/null 2>&1; then
               echo "path=$found" >> "$GITHUB_OUTPUT"
               exit 0
             fi
