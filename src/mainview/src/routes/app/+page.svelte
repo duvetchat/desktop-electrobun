@@ -70,6 +70,7 @@
 	import UserFlagsSheet from "$lib/components/UserFlagsSheet.svelte";
 	import { shownUnreadConversations, shownUnreadRooms } from "$lib/notification-marks";
 	import { toast } from "$lib/stores/toast.svelte";
+	import { t } from "$lib/i18n";
 	import CallCard from "$lib/components/CallCard.svelte";
 	import StreamWindow from "$lib/components/StreamWindow.svelte";
 	import { keepVoicePeopleKnown, type VoicePlace } from "$lib/voice-place";
@@ -339,7 +340,7 @@
 	const sidebarActiveChannelId = $derived(focusedLeaf?.activeChannelId ?? null);
 	// The conversation the focused pane shows, when its active tab is one.
 	const focusedConversationId = $derived.by(() => {
-		const tab = focusedLeaf?.tabs.find((t) => t.channelId === focusedLeaf.activeChannelId);
+		const tab = focusedLeaf?.tabs.find((item) => item.channelId === focusedLeaf.activeChannelId);
 		return tab && isConversationTab(tab) ? tab.channelId : null;
 	});
 
@@ -379,7 +380,8 @@
 		}
 		handlePaneUpdate(
 			updateLeaf(rootPane, focusedPaneId, (leaf) => {
-				if (leaf.tabs.some((t) => t.channelId === tab.channelId)) return { ...leaf, activeChannelId: tab.channelId };
+				if (leaf.tabs.some((item) => item.channelId === tab.channelId))
+					return { ...leaf, activeChannelId: tab.channelId };
 				const tabs = [...leaf.tabs];
 				tabs.splice(at ?? tabs.length, 0, tab);
 				return { ...leaf, tabs, activeChannelId: tab.channelId };
@@ -390,7 +392,7 @@
 	// Two of the focused pane's tabs side by side (a tab's Split with, or one dropped on another's middle): the first
 	// stays where it is, shown, and the second moves to a new pane on its right.
 	function splitTabs(keepId: string, moveId: string) {
-		const moved = focusedLeaf?.tabs.find((t) => t.channelId === moveId);
+		const moved = focusedLeaf?.tabs.find((item) => item.channelId === moveId);
 		if (!moved || keepId === moveId) return;
 		rootPane = updateLeaf(rootPane, focusedPaneId, (leaf) => ({ ...leaf, activeChannelId: keepId }));
 		moveTabBetweenLeaves(moved, focusedPaneId, focusedPaneId, "right");
@@ -508,7 +510,8 @@
 	// The sidebar is glass (#374, lib/vibrancy.ts): the glass is behind the page, so the shell paints no background of
 	// its own behind the sidebar's column, and each of its other parts paints the window's.
 	const glass = shell.vibrancy;
-	const switcherShortcut = keysFor(isMac, SHELL_KEYS.switcher);
+	// Derived: a key's name is a word (Ctrl is Strg in German), so it follows a change of language.
+	const switcherShortcut = $derived(keysFor(isMac, SHELL_KEYS.switcher));
 
 	// The shell's own shortcuts (lib/shell-layout.ts: shellShortcut), not over a dialog or a menu, as the others.
 	function runShellShortcut(e: KeyboardEvent): boolean {
@@ -545,7 +548,7 @@
 	}
 
 	// ── The keyboard: the chats it moves between, and where the next unread one is ──
-	const focusedTabIds = $derived(focusedChats.tabs.map((t) => t.channelId));
+	const focusedTabIds = $derived(focusedChats.tabs.map((item) => item.channelId));
 	// The conversations first, then each Space's rooms, as the spaces column has them.
 	const unreadOrder = $derived([
 		...$conversations.map((c) => c.id),
@@ -570,7 +573,7 @@
 			conversations.update((list) => (list.some((c) => c.id === conv.id) ? list : [conv, ...list]));
 			openConversationTab(conv.id, how);
 		} catch (err) {
-			toast(getApiError(err, "Couldn't open the chat"), "error");
+			toast(getApiError(err, t("public_app_open_chat_failed")), "error");
 		}
 	}
 
@@ -582,7 +585,7 @@
 			try {
 				conv = await createDM(userId);
 			} catch (err) {
-				toast(getApiError(err, "Couldn't open the chat"), "error");
+				toast(getApiError(err, t("public_app_open_chat_failed")), "error");
 				return;
 			}
 			const made = conv;
@@ -626,7 +629,7 @@
 
 	function syncSidebarToLeaf(node: PaneNode, leafId: string) {
 		const leaf = findLeaf(node, leafId);
-		const tab = leaf?.tabs.find((t) => t.channelId === leaf?.activeChannelId);
+		const tab = leaf?.tabs.find((item) => item.channelId === leaf?.activeChannelId);
 		// Fall back to activeSpaceId when no tab is active (e.g. all tabs closed). A conversation's tab has no space:
 		// the sidebar stays where it is.
 		if (tab && isConversationTab(tab)) return;
@@ -748,11 +751,11 @@
 		}
 
 		let next = updateLeaf(rootPane, sourceLeafId, (leaf) => {
-			const idx = leaf.tabs.findIndex((t) => t.channelId === tab.channelId);
+			const idx = leaf.tabs.findIndex((item) => item.channelId === tab.channelId);
 			if (idx === -1) {
 				return leaf;
 			}
-			const tabs = leaf.tabs.filter((t) => t.channelId !== tab.channelId);
+			const tabs = leaf.tabs.filter((item) => item.channelId !== tab.channelId);
 			const activeChannelId =
 				leaf.activeChannelId === tab.channelId
 					? ((tabs[idx] ?? tabs[idx - 1])?.channelId ?? null)
@@ -767,7 +770,7 @@
 
 		if (zone === null) {
 			next = updateLeaf(next, targetLeafId, (leaf) => {
-				if (leaf.tabs.some((t) => t.channelId === tab.channelId)) {
+				if (leaf.tabs.some((item) => item.channelId === tab.channelId)) {
 					return { ...leaf, activeChannelId: tab.channelId };
 				}
 				return {
@@ -849,7 +852,7 @@
 	const chatBeforeVoice = new Map<string, Tab>();
 	$effect(() => {
 		for (const leaf of leavesOf(rootPane)) {
-			const tab = leaf.tabs.find((t) => t.channelId === leaf.activeChannelId);
+			const tab = leaf.tabs.find((item) => item.channelId === leaf.activeChannelId);
 			if (tab && tab.channelType !== "voice") chatBeforeVoice.set(leaf.id, tab);
 		}
 	});
@@ -905,7 +908,7 @@
 					d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
 				></path>
 			</svg>
-			<span class="text-duvet-ink2 text-sm font-medium">Connecting…</span>
+			<span class="text-duvet-ink2 text-sm font-medium">{t("public_app_connecting")}</span>
 		</div>
 	</div>
 {:else}
@@ -991,7 +994,7 @@
 						: ''}"
 					role="separator"
 					aria-orientation="vertical"
-					aria-label="Resize the sidebar"
+					aria-label={t("public_app_resize_sidebar")}
 					aria-valuemin={SIDEBAR_MIN}
 					aria-valuemax={SIDEBAR_MAX}
 					aria-valuenow={sidebarWidth}

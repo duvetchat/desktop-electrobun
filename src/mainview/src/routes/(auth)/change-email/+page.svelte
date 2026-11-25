@@ -5,8 +5,11 @@
 	import { onMount } from "svelte";
 	import { changeEmail } from "$lib/api/auth";
 	import { route } from "$lib/common/common";
+	import { t, type MessageKey } from "$lib/i18n";
 
 	let status = $state<"loading" | "success" | "error">("loading");
+	// What went wrong: the app's own sentence by its key, drawn in the language of the moment, or the API's words.
+	let errorKey = $state<MessageKey | null>(null);
 	let errorMessage = $state("");
 
 	onMount(async () => {
@@ -16,7 +19,7 @@
 
 		if (!token || !email) {
 			status = "error";
-			errorMessage = "Invalid link. Missing token or email.";
+			errorKey = "auth_change_email_bad_link";
 			return;
 		}
 
@@ -25,21 +28,22 @@
 			status = "success";
 		} catch (err) {
 			status = "error";
-			errorMessage = err instanceof Error ? err.message : "Email change failed. The link may have expired.";
+			// changeEmail always throws an Error, in words of lib/api/auth.ts.
+			errorMessage = (err as Error).message;
 		}
 	});
 </script>
 
 <AuthScene>
 	{#if status === "loading"}
-		<AuthResult state="loading" text="Changing your email…" />
+		<AuthResult state="loading" text={t("auth_change_email_busy")} />
 	{:else if status === "success"}
-		<AuthResult state="success" title="Email changed" text="Your email has been updated successfully.">
-			<AuthSubmit href={route("/app.html")}>Go to Duvet</AuthSubmit>
+		<AuthResult state="success" title={t("auth_change_email_done_title")} text={t("auth_change_email_done_text")}>
+			<AuthSubmit href={route("/app.html")}>{t("auth_go_to_duvet")}</AuthSubmit>
 		</AuthResult>
 	{:else}
-		<AuthResult state="error" title="Email change failed" text={errorMessage}>
-			<AuthSubmit href={route("/app.html")}>Go to Duvet</AuthSubmit>
+		<AuthResult state="error" title={t("auth_change_email_failed_title")} text={errorKey ? t(errorKey) : errorMessage}>
+			<AuthSubmit href={route("/app.html")}>{t("auth_go_to_duvet")}</AuthSubmit>
 		</AuthResult>
 	{/if}
 </AuthScene>

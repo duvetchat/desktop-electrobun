@@ -46,6 +46,7 @@ describe("the three glyphs mobile draws differently", () => {
 		expect(installedNode("circle-check")).not.toEqual(circleCheck);
 	});
 
+	// The file's first .svelte imports: compiling them is most of its time, past bun's 5 s on a loaded runner (#487).
 	test("draw as any Lucide icon does: an svg in the current color, sized and classed by its props", async () => {
 		for (const [file, name, node] of [
 			["Smile", "smile", smile],
@@ -72,7 +73,7 @@ describe("the three glyphs mobile draws differently", () => {
 			const written: unknown[] = node.map(([tag, attrs]) => [tag, attrs]);
 			expect(drawn).toEqual(written);
 		}
-	});
+	}, 30_000);
 });
 
 describe("where views take their icons", () => {

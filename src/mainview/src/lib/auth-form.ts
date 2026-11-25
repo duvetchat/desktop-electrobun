@@ -1,6 +1,7 @@
 // What the sign-in pages decide before they ask the API (#357): whether a username, an email or a password reads
 // right, which of sign-up's fields show, what the mascot does while a field is typed in, and where a page goes on to.
 // The pages (routes/(auth)) draw it; nothing here touches the wire.
+import type { MessageKey } from "$lib/i18n";
 
 /** A password's shortest length, as the API's. */
 export const PASSWORD_MIN = 8;
@@ -16,12 +17,16 @@ export function emailValid(email: string): boolean {
 }
 
 /**
- * What sign-in still lacks, as the form says it, or null when it can be sent: the page asks the API nothing without
- * both, whose own answer to an empty form is its validator's.
+ * What sign-in still lacks, as the key of the sentence the form says it with, or null when it can be sent: the page
+ * asks the API nothing without both, whose own answer to an empty form is its validator's. Each case is a sentence of
+ * its own, and the page draws it in the language of the moment (#464).
  */
-export function signInMissing(email: string, password: string): string | null {
-	const lacks = [email.trim() ? null : "email", password ? null : "password"].filter((field) => field !== null);
-	return lacks.length > 0 ? `Enter your ${lacks.join(" and ")}` : null;
+export function signInMissing(email: string, password: string): MessageKey | null {
+	const noEmail = !email.trim();
+	if (noEmail && !password) return "auth_sign_in_missing_both";
+	if (noEmail) return "auth_sign_in_missing_email";
+	if (!password) return "auth_sign_in_missing_password";
+	return null;
 }
 
 export interface SignUpForm {

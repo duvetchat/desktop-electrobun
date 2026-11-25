@@ -1,0 +1,9 @@
+{
+	"format_size_bytes": "{size} B",
+	"format_size_kb": "{size} KB",
+	"format_size_mb": "{size} MB",
+	"settings_language_label": "App-Sprache",
+	"settings_language_note": "Menüs, Schaltflächen und Hinweise von Duvet. Nachrichten bleiben so, wie sie geschrieben wurden. Wird auf diesem Gerät gespeichert.",
+	"settings_language_system": "Wie das System ({language})",
+	"settings_language_title": "Sprache"
+}
