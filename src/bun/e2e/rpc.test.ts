@@ -6,6 +6,7 @@ import { ATTACHMENT_PART, OWN_WAY, PART_TAG, SHARE_PART, type E2eReply } from ".
 import { CONFIRMED, CORE_COMMANDS, e2eBoundary, type BoundaryDeps } from "./rpc";
 import { CoreStopped, startCore, type CoreWorker, type WorkerReply } from "./core";
 import { IDOK, MB_DEFBUTTON2, MB_OKCANCEL, nativeConfirm, type Question } from "./confirm";
+import { approvalFingerprint } from "../../mainview/src/lib/e2e/conventions";
 
 // Bun's half of the desktop's boundary (PLAN-E2E-CLIENTES.md, its section on it, and Task 7): what the page may ask the
 // core, what asks the person first, outside the page, and how the bytes cross.
@@ -182,7 +183,8 @@ function pageOf(deps: Partial<BoundaryDeps>) {
 
 describe("what the page may ask", () => {
 	test("a command off the list is refused", async () => {
-		expect([...CORE_COMMANDS].sort()).toEqual([...CONTRACT].sort());
+		// The contract's 55 but approval_from_qr: the desktop never scans a QR (Ruling 21), so only a script would ask it.
+		expect([...CORE_COMMANDS].sort()).toEqual(CONTRACT.filter((cmd) => cmd !== "approval_from_qr").sort());
 		const core = fakeCore((op) =>
 			op === "open" ? { ok: { state: "ready", keyStorage: "file", handle: 1 } } : { ok: { reached: op } },
 		);
@@ -200,6 +202,7 @@ describe("what the page may ask", () => {
 			"STATUS",
 			" status",
 			`status${nul}`,
+			"approval_from_qr",
 		]) {
 			expect((await page.run({ cmd })).error).toMatchObject({ code: "bad_command", field: "cmd" });
 		}
@@ -248,14 +251,23 @@ describe("what the page may ask", () => {
 });
 
 describe("what asks the person first, outside the page", () => {
-	test("the four commands, and create_identity, which is reset_identity in the core", () => {
-		expect([...CONFIRMED].sort()).toEqual([
-			"approval_confirm",
-			"approval_from_qr",
-			"create_identity",
-			"reset_identity",
-			"rotate_keys",
-		]);
+	test("four commands: create_identity, which the core runs as reset_identity, and no QR on the desktop", () => {
+		expect([...CONFIRMED].sort()).toEqual(["approval_confirm", "create_identity", "reset_identity", "rotate_keys"]);
+	});
+
+	test("a commitment no core makes, longer or not a text, is refused before anything reads it", async () => {
+		const core = fakeCore((op) =>
+			op === "open" ? { ok: { state: "ready", keyStorage: "file", handle: 1 } } : { ok: { offer: "AAAA" } },
+		);
+		const page = pageOf({ start: core.start });
+		await page.ask("open", { userId: ANA });
+		for (const commitment of ["A".repeat(516), 7, undefined, ["A"]]) {
+			expect((await page.run({ cmd: "approval_offer", commitment })).error).toMatchObject({
+				code: "bad_command",
+				field: "commitment",
+			});
+		}
+		expect(core.calls.filter(({ op }) => op === "handle")).toEqual([]);
 	});
 
 	test("the box is the system's own, with Cancel the default, and only its yes is a yes", async () => {
@@ -317,66 +329,41 @@ async function approverOf(confirm: (question: Question) => Promise<boolean>) {
 	return page;
 }
 
-/** Another device of Ana's, asking to be approved: its own core, with its QR and its commitment. */
+/** Another device of Ana's, asking to be approved: its own core, with its commitment. */
 async function newDevice(id: string) {
 	const core = realCore()();
 	await core.run("open", { userId: ANA });
 	await core.run("handle", { command: { cmd: "create_device", user_id: ANA, device_id: id } });
 	const begun: any = await core.run("handle", { command: { cmd: "approval_begin" } });
-	return { core, qr: begun.ok.qr, commitment: begun.ok.commitment };
+	const commitment: string = begun.ok.commitment;
+	return { core, commitment };
+}
+
+/** The approver offers `commitment`, the device that holds its keys reveals, and the approver checks: the code. */
+async function reveal(approver: ReturnType<typeof pageOf>, device: { core: CoreWorker }, commitment: string) {
+	const offered = await approver.run({ cmd: "approval_offer", commitment });
+	expect(offered.ok).toHaveProperty("offer");
+	const revealed: any = await device.core.run("handle", {
+		command: { cmd: "approval_reveal", offer: offered.ok.offer },
+	});
+	const checked = await approver.run({ cmd: "approval_check", reveal: revealed.ok.reveal });
+	const code: string = checked.ok.code;
+	return { code };
+}
+
+/** The fingerprint the new device's screen shows of a commitment (conventions.ts). */
+const fingerprintOf = (commitment: string) => approvalFingerprint(Buffer.from(commitment, "base64"));
+
+/** A commitment with another device's ID in it, as a script would write one: its keys and hash as they were. */
+function withDevice(commitment: string, device: string): string {
+	const bytes = Buffer.from(commitment, "base64");
+	const at = bytes.indexOf(Buffer.from([0x66, ...Buffer.from("device"), 0x50])) + 8;
+	Buffer.from(device.replaceAll("-", ""), "hex").copy(bytes, at);
+	return bytes.toString("base64");
 }
 
 describe.skipIf(!withCore)("approving a device asks outside the page", () => {
-	test("approval_from_qr names the device its QR shows, and runs on a yes alone", async () => {
-		const { asked, confirm } = person(true, false, true);
-		const approver = await approverOf(confirm);
-		const before = (await approver.run({ cmd: "status" })).ok;
-		const { qr } = await newDevice(NEW_A);
-
-		// A name the page sends goes nowhere near the question.
-		const no = await approver.run({ cmd: "approval_from_qr", qr, name: "Ana's phone" });
-		expect(no.error).toMatchObject({ code: "refused" });
-		expect(asked).toHaveLength(2);
-		expect(asked[1].message).toContain(NEW_A);
-		expect(JSON.stringify(asked[1])).not.toContain("phone");
-		// Nothing was certified: the list is the one from before.
-		expect((await approver.run({ cmd: "status" })).ok.device_list).toBe(before.device_list);
-
-		const yes = await approver.run({ cmd: "approval_from_qr", qr });
-		expect(yes.ok).toHaveProperty("transfer");
-		expect((await approver.run({ cmd: "status" })).ok.device_list).not.toBe(before.device_list);
-	});
-
-	test("a QR Bun can't read is refused without asking", async () => {
-		const { asked, confirm } = person(true);
-		const approver = await approverOf(confirm);
-		const { qr, commitment } = await newDevice(NEW_A);
-		const bytes = Buffer.from(qr, "base64");
-		const changed = (edit: (copy: Buffer) => Buffer) => edit(Buffer.from(bytes)).toString("base64");
-		for (const odd of [
-			"",
-			"not base64!",
-			commitment, // a commitment, not a QR
-			changed((copy) => Buffer.concat([copy, Buffer.from([0])])), // something after it
-			changed((copy) => copy.subarray(0, copy.length - 1)), // cut short
-			changed((copy) => Buffer.from([0xa7, ...copy.subarray(1), 0x61, 0x78, 0x01])), // a seventh key
-			changed((copy) => copy.fill(0x02, 3, 4)), // v: 2
-		]) {
-			expect((await approver.run({ cmd: "approval_from_qr", qr: odd })).error).toMatchObject({
-				code: "bad_command",
-				field: "qr",
-			});
-		}
-		for (const value of [undefined, 7, ["x"]]) {
-			expect((await approver.run({ cmd: "approval_from_qr", qr: value })).error).toMatchObject({
-				code: "bad_command",
-				field: "qr",
-			});
-		}
-		expect(asked).toHaveLength(1);
-	});
-
-	test("approval_confirm names the device of the commitment under way, and runs on a yes alone", async () => {
+	test("approval_confirm names the fingerprint of the commitment under way, and runs on a yes alone", async () => {
 		const { asked, confirm } = person(true, false, true);
 		const approver = await approverOf(confirm);
 		const one = await newDevice(NEW_A);
@@ -390,17 +377,15 @@ describe.skipIf(!withCore)("approving a device asks outside the page", () => {
 
 		// Two offers: the attempt under way is the last one's, to which a script in the page could have switched it.
 		await approver.run({ cmd: "approval_offer", commitment: one.commitment });
-		const offered = await approver.run({ cmd: "approval_offer", commitment: two.commitment });
-		const { offer } = offered.ok;
-		const revealed: any = await two.core.run("handle", { command: { cmd: "approval_reveal", offer } });
-		const checked = await approver.run({ cmd: "approval_check", reveal: revealed.ok.reveal });
-		const { code } = checked.ok;
+		const { code } = await reveal(approver, two, two.commitment);
 		const before = (await approver.run({ cmd: "status" })).ok.device_list;
 
 		expect((await approver.run({ cmd: "approval_confirm", code })).error).toMatchObject({ code: "refused" });
 		expect(asked).toHaveLength(2);
-		expect(asked[1].message).toContain(NEW_B);
-		expect(asked[1].message).not.toContain(NEW_A);
+		// What the person compares with the new device's screen: the fingerprint of what the core certifies.
+		expect(asked[1].message).toContain(await fingerprintOf(two.commitment));
+		expect(asked[1].message).not.toContain(await fingerprintOf(one.commitment));
+		expect(asked[1].message).toContain("its screen shows the same 16 characters");
 		expect((await approver.run({ cmd: "status" })).ok.device_list).toBe(before);
 
 		expect((await approver.run({ cmd: "approval_confirm", code })).ok).toHaveProperty("transfer");
@@ -408,6 +393,38 @@ describe.skipIf(!withCore)("approving a device asks outside the page", () => {
 		// The attempt is over: a confirm now asks nothing.
 		expect((await approver.run({ cmd: "approval_confirm", code })).error).toMatchObject({ code: "refused" });
 		expect(asked).toHaveLength(3);
+	});
+
+	test("a commitment with the new device's ID and a script's keys names a fingerprint the device doesn't show", async () => {
+		const { asked, confirm } = person(true, false);
+		const approver = await approverOf(confirm);
+		const device = await newDevice(NEW_A);
+		// A script in the approver's page: an attempt of its own (another core's keys and hash), under the ID of the
+		// device the person is setting up, which the API's list shows.
+		const script = await newDevice(NEW_B);
+		const forged = withDevice(script.commitment, NEW_A);
+		const { code } = await reveal(approver, script, forged);
+
+		expect((await approver.run({ cmd: "approval_confirm", code })).error).toMatchObject({ code: "refused" });
+		expect(asked[1].message).toContain(NEW_A);
+		expect(asked[1].message).toContain(await fingerprintOf(forged));
+		expect(asked[1].message).not.toContain(await fingerprintOf(device.commitment));
+	});
+
+	test("an offer the core takes and Bun can't read leaves nothing to approve", async () => {
+		const { asked, confirm } = person(true);
+		const approver = await approverOf(confirm);
+		const one = await newDevice(NEW_A);
+		const two = await newDevice(NEW_B);
+		await approver.run({ cmd: "approval_offer", commitment: one.commitment });
+		// The key "device" with a length byte of its own: CBOR the core reads, and Bun's strict reader doesn't.
+		const bytes = Buffer.from(two.commitment, "base64");
+		const at = bytes.indexOf(Buffer.from([0x66, ...Buffer.from("device")]));
+		const loose = Buffer.concat([bytes.subarray(0, at), Buffer.from([0x78, 0x06]), bytes.subarray(at + 1)]);
+		const { code } = await reveal(approver, two, loose.toString("base64"));
+
+		expect((await approver.run({ cmd: "approval_confirm", code })).error).toMatchObject({ code: "refused" });
+		expect(asked).toHaveLength(1);
 	});
 
 	test("rotate_keys names the devices it removes, and runs on a yes alone", async () => {
@@ -639,7 +656,7 @@ async function dm() {
 }
 
 describe("a core that stops", () => {
-	test("starts again, says so, and refuses what was meant for the one before", async () => {
+	test("starts again, says so, refuses what was meant for the one before, and opens its database again", async () => {
 		let stopped = false;
 		const core = fakeCore((op) => {
 			if (op === "open") return { ok: { state: "ready", keyStorage: "file", handle: 7 } };
@@ -656,17 +673,75 @@ describe("a core that stops", () => {
 		// The command in flight is lost: its reply says so, and a notice tells the page the core started again.
 		expect(await page.run({ cmd: "status" })).toMatchObject({ error: { code: "internal" }, instance: first + 1 });
 		expect(page.replies).toContainEqual({ id: 0, instance: first + 1 });
-		// What the page sent for the core before is refused; the new one runs, once it's told what the old one left open.
+		// What the page sent for the core before is refused, and never reaches a new one.
 		expect((await page.ask("handle", { command: { cmd: "status" } }, first)).error).toMatchObject({
 			code: "internal",
 		});
-		expect((await page.ask("open", { userId: ANA })).ok).toEqual({ state: "ready", keyStorage: "file" });
-		expect(core.started).toHaveLength(2);
-		expect(core.calls.filter(({ op }) => op === "forget")).toEqual([{ op: "forget", params: { handle: 7 } }]);
+		expect(core.started).toHaveLength(1);
+		// The next op: the new worker closes what the old one left open, opens the same database, then runs it.
 		expect((await page.run({ cmd: "status" })).ok).toEqual({ reached: "handle" });
+		expect(core.started).toHaveLength(2);
+		expect(core.calls.slice(-3)).toEqual([
+			{ op: "forget", params: { handle: 7 } },
+			{ op: "open", params: { userId: ANA } },
+			{ op: "handle", params: { command: { cmd: "status" } } },
+		]);
 	});
 
-	test.skipIf(!withCore)("a worker that's gone is started again, and its database opens", async () => {
+	test("a database that doesn't open again is internal, and is tried again with the next op", async () => {
+		let stop = true;
+		const opened = [
+			{ state: "ready", keyStorage: "file", handle: 7 },
+			{ state: "locked" },
+			{ state: "ready", keyStorage: "file", handle: 8 },
+		];
+		const core = fakeCore((op) => {
+			if (op === "open") return { ok: opened.shift() };
+			if (op === "handle" && stop) {
+				stop = false;
+				throw new CoreStopped();
+			}
+			return { ok: { reached: op } };
+		});
+		const page = pageOf({ start: core.start });
+		await page.ask("open", { userId: ANA });
+		expect((await page.run({ cmd: "status" })).error).toMatchObject({ code: "internal" });
+		expect((await page.run({ cmd: "status" })).error).toMatchObject({ code: "internal" });
+		expect((await page.run({ cmd: "status" })).ok).toEqual({ reached: "handle" });
+		expect(core.calls.filter(({ op }) => op === "open")).toHaveLength(3);
+	});
+
+	test("a closed core isn't opened again, whether the worker stops as it closes or after", async () => {
+		/** A page whose core's worker stops at its first `op`, and how many times it opened a database. */
+		const stopping = (op: string) => {
+			let stop = true;
+			const core = fakeCore((ran) => {
+				if (ran === "open") return { ok: { state: "ready", keyStorage: "file", handle: 7 } };
+				if (ran === op && stop) {
+					stop = false;
+					throw new CoreStopped();
+				}
+				return { ok: { reached: ran } };
+			});
+			const opens = () => core.calls.filter((call) => call.op === "open").length;
+			return { page: pageOf({ start: core.start }), opens };
+		};
+
+		const asItCloses = stopping("close");
+		await asItCloses.page.ask("open", { userId: ANA });
+		expect((await asItCloses.page.ask("close")).error).toMatchObject({ code: "internal" });
+		await asItCloses.page.run({ cmd: "status" });
+		expect(asItCloses.opens()).toBe(1);
+
+		const after = stopping("handle");
+		await after.page.ask("open", { userId: ANA });
+		expect((await after.page.ask("close")).ok).toEqual({});
+		expect((await after.page.run({ cmd: "status" })).error).toMatchObject({ code: "internal" });
+		await after.page.run({ cmd: "status" });
+		expect(after.opens()).toBe(1);
+	});
+
+	test.skipIf(!withCore)("a worker that's gone is started again, and its database opens for the next op", async () => {
 		const start = realCore();
 		let current: CoreWorker | null = null;
 		const page = pageOf({
@@ -679,9 +754,38 @@ describe("a core that stops", () => {
 		await page.run({ cmd: "create_device", user_id: ANA, device_id: NEW_A });
 		current!.stop();
 		expect((await page.run({ cmd: "status" })).error).toMatchObject({ code: "internal" });
-		// The stopped worker's handle is closed for it: the database isn't left locked.
-		expect((await page.ask("open", { userId: ANA })).ok).toMatchObject({ state: "ready" });
+		// The stopped worker's handle is closed for it, so the database opens again, unlocked, with its device.
 		expect((await page.run({ cmd: "status" })).ok.device_id).toBe(NEW_A);
+	});
+
+	test.skipIf(!withCore)("an op with no core open is internal, never the core's not_found", async () => {
+		const page = pageOf({ start: realCore() });
+		await page.ask("close");
+		expect((await page.run({ cmd: "status" })).error).toEqual({ code: "internal", message: "no core is open" });
+		await page.ask("open", { userId: ANA });
+		await page.ask("close");
+		expect((await page.run({ cmd: "status" })).error).toEqual({ code: "internal", message: "no core is open" });
+	});
+});
+
+describe("a reply Bun can't send", () => {
+	test("goes again as a small internal error", async () => {
+		let first = true;
+		const sent = new Promise<E2eReply>((resolve) => {
+			const send = e2eBoundary({
+				start: null,
+				confirm: async () => false,
+				reply: (reply) => {
+					if (first) {
+						first = false;
+						throw new Error("the socket refused it");
+					}
+					resolve(reply);
+				},
+			});
+			send({ id: 9, op: "open", params: { userId: ANA }, instance: 0 });
+		});
+		expect(await sent).toEqual({ id: 9, instance: 1, error: { code: "internal" } });
 	});
 });
 

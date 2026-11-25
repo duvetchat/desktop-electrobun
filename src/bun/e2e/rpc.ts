@@ -4,7 +4,7 @@
 // alone, and approving a device, making an identity or changing the keys takes a yes in the system's own box, whose
 // text Bun writes (confirm.ts). The page asks in the main window's `e2e` message alone (index.ts): the pop-out's and
 // the Settings windows' RPC have no handler for it. Ops wait their turn, one at a time, so nothing runs between a
-// question and the command it answers.
+// question and the command it answers. A worker that stops is started again, with the database it had open.
 import {
 	ATTACHMENT_PART,
 	E2E_OPS,
@@ -13,19 +13,24 @@ import {
 	PART_TAG,
 	PARTS_PER_MESSAGE,
 	SHARE_PART,
+	STANDALONE_OPS,
 	type E2eReply,
 } from "../../mainview/src/lib/e2e/host";
+import { approvalFingerprint } from "../../mainview/src/lib/e2e/conventions";
 import {
-	approvalDevice,
 	approvalQuestion,
 	newKeysQuestion,
+	readCommitment,
 	rotationQuestion,
 	type Confirm,
 	type Question,
 } from "./confirm";
 import { CoreStopped, type CoreFailure, type CoreWorker, type WorkerReply } from "./core";
 
-/** The core's commands, as its contract lists them (rpc.test.ts keeps a copy): `handle` takes these alone. */
+/**
+ * The core's commands, as its contract lists them (rpc.test.ts keeps a copy), but approval_from_qr: the desktop never
+ * scans a QR (Ruling 21), so only a script would ask it. `handle` takes these alone.
+ */
 export const CORE_COMMANDS: ReadonlySet<string> = new Set([
 	"status",
 	"create_device",
@@ -37,7 +42,6 @@ export const CORE_COMMANDS: ReadonlySet<string> = new Set([
 	"approval_check",
 	"approval_confirm",
 	"approval_accept",
-	"approval_from_qr",
 	"approval_receive",
 	"sign_device_list",
 	"observe_user",
@@ -85,20 +89,20 @@ export const CORE_COMMANDS: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * What asks the person first: the plan's four, and create_identity, which the core runs as it runs reset_identity (a
- * new identity on a device without one), so asking for the one alone would leave the other as a way around it.
+ * What asks the person first: create_identity too, which the core runs as it runs reset_identity (a new identity on a
+ * device without one), so asking for the one alone would leave the other as a way around it.
  */
 export const CONFIRMED: ReadonlySet<string> = new Set([
 	"approval_confirm",
-	"approval_from_qr",
 	"rotate_keys",
 	"reset_identity",
 	"create_identity",
 ]);
 
 const OPS: ReadonlySet<string> = new Set(E2E_OPS);
-/** The ops a page sends whatever core it last heard of: each names its user, or needs none. */
-const STANDALONE: ReadonlySet<string> = new Set(["open", "close", "destroy"]);
+const STANDALONE: ReadonlySet<string> = new Set(STANDALONE_OPS);
+/** A commitment's base64 at most: the core makes them of about 240 characters, and Bun reads none longer. */
+const MAX_COMMITMENT = 512;
 /** The devices a list has at most (the API's), so a rotation's question can name every one it removes. */
 const LIST = 20;
 /** A text field's length at most: an ID, a file's key. */
@@ -184,8 +188,11 @@ export function e2eBoundary({ start, confirm, reply }: BoundaryDeps): (message: 
 	/** The handle of the database the worker has open, and one a stopped worker left open in the library. */
 	let opened: number | null = null;
 	let leaked: number | null = null;
-	/** The device the approval under way would approve: the commitment of the last offer the core took. */
-	let underWay: string | null = null;
+	/** The user whose database is open, which the worker started after a stop opens again before the next op. */
+	let user: string | null = null;
+	let reopen = false;
+	/** What the approval under way would approve: the commitment of the last offer the core took, read by Bun. */
+	let underWay: { device: string; fingerprint: string } | null = null;
 	let turn: Promise<void> = Promise.resolve();
 
 	const tell = (message: E2eReply) => {
@@ -193,10 +200,19 @@ export function e2eBoundary({ start, confirm, reply }: BoundaryDeps): (message: 
 			reply(message);
 		} catch (error) {
 			console.error("[e2e] couldn't answer the page:", error);
+			// Once more, small: a request whose reply never comes would wait for good.
+			try {
+				reply({ id: message.id, instance: message.instance, error: { code: "internal" } });
+			} catch (again) {
+				console.error("[e2e] couldn't answer the page again:", again);
+			}
 		}
 	};
 
-	/** One op in the core's worker, started for it if there's none, after closing what a stopped one left open. */
+	/**
+	 * One op in the core's worker, started for it if there's none, after closing what a stopped one left open. An op
+	 * that needs the core gets the database a stopped worker had open, opened again first.
+	 */
 	async function core(op: string, params?: unknown): Promise<WorkerReply> {
 		if (!start) throw refused("internal", "there's no core for this platform");
 		try {
@@ -207,6 +223,15 @@ export function e2eBoundary({ start, confirm, reply }: BoundaryDeps): (message: 
 					leaked = null;
 				}
 			}
+			if (reopen && !STANDALONE.has(op)) {
+				const again = await worker.run("open", { userId: user });
+				const reopened = "ok" in again && isRecord(again.ok) ? again.ok : null;
+				if (reopened?.state !== "ready" || typeof reopened.handle !== "number") {
+					throw refused("internal", "the core started again, and its database didn't open");
+				}
+				opened = reopened.handle;
+				reopen = false;
+			}
 			return await worker.run(op, params);
 		} catch (error) {
 			if (!(error instanceof CoreStopped)) throw error;
@@ -214,23 +239,21 @@ export function e2eBoundary({ start, confirm, reply }: BoundaryDeps): (message: 
 			leaked = opened ?? leaked;
 			opened = null;
 			underWay = null;
+			reopen = user !== null;
 			instance++;
 			tell({ id: 0, instance });
-			throw refused("internal", "the core started again: open it again");
+			throw refused("internal", "the core started again");
 		}
 	}
 
 	/** Asks the person before one of CONFIRMED runs, naming what Bun itself read: a no throws `refused`. */
 	async function askFirst(cmd: string, command: Record<string, unknown>): Promise<void> {
 		let question: Question;
-		if (cmd === "approval_from_qr") {
-			const asked = approvalDevice(command.qr, "key");
-			if (!asked) throw bad("qr", "the QR isn't an approval's");
-			question = approvalQuestion(asked.device);
-		} else if (cmd === "approval_confirm") {
-			// Bun learns the device of an approval from its offer: one made before the app started, or before another
-			// open, is unknown here, and is offered again (the same commitment gets the same offer).
-			if (underWay === null) throw refused("refused", "this device can't tell which device it would approve");
+		if (cmd === "approval_confirm") {
+			// Bun learns what an approval would approve from its offer: one made before the app started, or before another
+			// open, or of a commitment Bun can't read, is unknown here, and is offered again (the same commitment gets the
+			// same offer).
+			if (underWay === null) throw refused("refused", "this device can't tell what it would approve");
 			question = approvalQuestion(underWay);
 		} else {
 			const remove = cmd === "rotate_keys" ? devices(command.remove) : [];
@@ -255,10 +278,18 @@ export function e2eBoundary({ start, confirm, reply }: BoundaryDeps): (message: 
 		const { cmd } = command;
 		if (typeof cmd !== "string" || !CORE_COMMANDS.has(cmd)) throw bad("cmd", "no such command");
 		if (OWN_WAY.includes(cmd)) throw bad("cmd", `${cmd} has a way of its own`);
-		const offered = cmd === "approval_offer" ? approvalDevice(command.commitment, "hash") : null;
+		let offered: { device: string; fingerprint: string } | null = null;
+		if (cmd === "approval_offer") {
+			const { commitment } = command;
+			if (typeof commitment !== "string" || commitment.length > MAX_COMMITMENT) {
+				throw bad("commitment", "a commitment is an approval's, in base64");
+			}
+			const read = readCommitment(commitment);
+			if (read) offered = { device: read.device, fingerprint: await approvalFingerprint(read.bytes) };
+		}
 		if (CONFIRMED.has(cmd)) await askFirst(cmd, command);
 		const result = await core("handle", { command });
-		if (cmd === "approval_offer" && "ok" in result) underWay = offered?.device ?? null;
+		if (cmd === "approval_offer" && "ok" in result) underWay = offered;
 		if (cmd === "approval_confirm" && "ok" in result) underWay = null;
 		return unwrap(result);
 	}
@@ -271,20 +302,27 @@ export function e2eBoundary({ start, confirm, reply }: BoundaryDeps): (message: 
 			case "open": {
 				const userId = uuid(p.userId, "userId");
 				underWay = null;
+				user = null;
+				reopen = false;
 				if (!start) return { state: "unsupported" };
 				// The core's handle stays in Bun.
 				const { handle, ...opening } = unwrap(await core("open", { userId }));
 				opened = typeof handle === "number" ? handle : null;
+				if (opening.state === "ready") user = userId;
 				return opening;
 			}
 			case "close":
 				underWay = null;
+				user = null;
+				reopen = false;
 				if (worker) unwrap(await core("close"));
 				opened = null;
 				return {};
 			case "destroy": {
 				const userId = uuid(p.userId, "userId");
 				underWay = null;
+				user = null;
+				reopen = false;
 				const destroyed = await core("destroy", { userId });
 				opened = null;
 				return unwrap(destroyed);

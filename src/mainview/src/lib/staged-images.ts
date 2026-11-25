@@ -4,7 +4,8 @@
 // the window ends its page: what was picked went with it. So a window's page hands each pick to the main window's
 // page, which keeps it for as long as the sheet would have, its own life, and hands it back to the window opened next.
 // Nothing here is saved anywhere: a pick lives in the main page's memory, and goes with a reload or a sign-out.
-import { base64Bytes } from "$lib/activity-thumbnail";
+// A relative import: e2e/conventions.ts, which Bun's half of the desktop's boundary reads, reaches this module.
+import { base64Bytes } from "./activity-thumbnail";
 
 /** What is picked for an image: a new one, or its removal. */
 export type StagedImage = File | "remove";

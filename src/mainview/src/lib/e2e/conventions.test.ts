@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { base64Bytes } from "$lib/activity-thumbnail";
 import {
+	approvalFingerprint,
 	approvalFrameMessage,
 	cleanName,
 	drawnAs,
@@ -55,6 +56,14 @@ describe("the conventions between clients", () => {
 				expect<unknown>(frame).toEqual(c.frame);
 				// A frame written again is the same message byte for byte, or the one its cleaned name makes.
 				if (frame) expect(approvalFrameMessage(frame)).toBe(c.rewritten ?? c.message);
+			});
+		}
+	});
+
+	describe("an approval's fingerprint, which the approving computer's box and the new device's screen show", () => {
+		for (const c of conventions.approval_fingerprints) {
+			test(c.case, async () => {
+				expect(await approvalFingerprint(base64Bytes(c.commitment))).toBe(c.fingerprint);
 			});
 		}
 	});

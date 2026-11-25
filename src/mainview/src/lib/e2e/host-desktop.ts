@@ -13,6 +13,7 @@ import {
 	ownWay,
 	PART_TAG,
 	PARTS_PER_MESSAGE,
+	STANDALONE_OPS,
 	type CoreHost,
 	type E2eMessage,
 	type E2eOp,
@@ -28,8 +29,8 @@ export interface DesktopLink {
 }
 
 interface Waiting {
-	/** The core's instance it was sent for. */
-	instance: number;
+	/** The core's instance it was sent for, or null for an op Bun runs whatever the instance, which its reply settles. */
+	instance: number | null;
 	resolve(ok: unknown): void;
 	reject(error: CoreError): void;
 }
@@ -43,9 +44,11 @@ function readReply(value: unknown): { id: number; instance: number; ok: unknown;
 	return { id, instance, ok: "ok" in value ? value.ok : undefined, error: "error" in value ? value.error : undefined };
 }
 
+/** The page's requests' ids, one count for every host: Bun echoes them, and each host hears every reply. */
+let nextId = 1;
+
 export class DesktopCoreHost implements CoreHost {
 	readonly #link: DesktopLink;
-	#next = 1;
 	/** The core's instance Bun named last, 0 before it named one. */
 	#instance = 0;
 	readonly #waiting = new Map<number, Waiting>();
@@ -57,10 +60,10 @@ export class DesktopCoreHost implements CoreHost {
 
 	/** One request, settled by its own reply: its `ok`, typed by its caller as the op answers, or its CoreError. */
 	#ask(op: E2eOp, params?: unknown): Promise<any> {
-		const id = this.#next++;
+		const id = nextId++;
 		const instance = this.#instance;
 		return new Promise((resolve, reject) => {
-			this.#waiting.set(id, { instance, resolve, reject });
+			this.#waiting.set(id, { instance: STANDALONE_OPS.includes(op) ? null : instance, resolve, reject });
 			try {
 				this.#link.send({ id, op, params, instance });
 			} catch {
@@ -86,7 +89,7 @@ export class DesktopCoreHost implements CoreHost {
 		if (reply.instance > this.#instance) {
 			this.#instance = reply.instance;
 			for (const [id, waiting] of this.#waiting) {
-				if (waiting.instance >= reply.instance) continue;
+				if (waiting.instance === null || waiting.instance >= reply.instance) continue;
 				this.#waiting.delete(id);
 				waiting.reject(new CoreError("internal", "the core started again"));
 			}

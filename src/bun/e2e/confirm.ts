@@ -1,6 +1,6 @@
 // What the person is asked, outside the page, before the core runs a command the boundary confirms (PLAN-E2E-CLIENTES.md,
-// the desktop's boundary and Ruling 6): the system's own box, whose text Bun writes, Cancel its default, and a device
-// named by the ID Bun reads from its QR or its commitment, never by a name the page sends.
+// the desktop's boundary, Rulings 6 and 35): the system's own box, whose text Bun writes, Cancel its default, and a device
+// named by the fingerprint of the commitment Bun was given, never by a name or an ID the page sends.
 //
 // On Windows Bun shows the box itself, through user32: Electrobun 1.15.1's showMessageBox calls MessageBoxW with OK and
 // Cancel (only for those labels, or Yes and No) and never MB_DEFBUTTON2, so OK would be the default, whatever its
@@ -85,14 +85,18 @@ export function nativeConfirm(deps: {
 	};
 }
 
-/** Approving a device: the one the core will certify, by its ID. */
-export function approvalQuestion(device: string): Question {
+/**
+ * Approving a device: what the core will certify, by the fingerprint of the commitment it takes (approvalFingerprint),
+ * which the new device's screen shows of its own. The ID is the commitment's writer's to choose: it's shown, not compared.
+ */
+export function approvalQuestion({ device, fingerprint }: { device: string; fingerprint: string }): Question {
 	return {
 		title: "Approve a new device?",
 		message:
 			"A new device will be added to your account, and it will read your encrypted conversations." +
-			`\n\nIts ID: ${device}` +
-			"\n\nApprove it only if it's the device you're setting up now, and its screen shows this ID.",
+			`\n\nFingerprint: ${fingerprint}` +
+			"\n\nApprove it only if it's the device you're setting up now, and its screen shows the same 16 characters." +
+			`\n\nIts ID: ${device}`,
 		yes: "Approve",
 	};
 }
@@ -134,17 +138,17 @@ export function newKeysQuestion(finishing: boolean): Question {
 }
 
 const BASE64 = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
-/** The CBOR heads of what the QR and the commitment hold, as the core writes them: a 16-byte ID, a 32-byte key. */
+/** The CBOR heads of what a commitment holds, as the core writes them: a 16-byte ID, a 32-byte key. */
 const BYTES_16 = [0x50];
 const BYTES_32 = [0x58, 0x20];
 
 /**
- * The device a QR (`last` "key") or a commitment (`last` "hash") asks to have approved: the core's own CBOR map of
- * v, user, device, signature_key, hpke_key and that last key. Read strictly, so it can't be read otherwise than the
- * core reads it: standard base64, a map of those six keys once each, v 1, byte strings of their lengths, nothing after.
+ * The device a commitment asks to have approved, and the commitment's bytes: the core's own CBOR map of v, user,
+ * device, signature_key, hpke_key and hash. Read strictly, so it can't be read otherwise than the core reads it:
+ * standard base64, a map of those six keys once each, v 1, byte strings of their lengths, nothing after.
  */
-export function approvalDevice(base64: unknown, last: "key" | "hash"): { user: string; device: string } | null {
-	if (typeof base64 !== "string" || !BASE64.test(base64)) return null;
+export function readCommitment(base64: string): { user: string; device: string; bytes: Uint8Array } | null {
+	if (!BASE64.test(base64)) return null;
 	const bytes = Buffer.from(base64, "base64");
 	// A Map, not an object: a key the page writes, "__proto__" say, finds nothing in it.
 	const heads = new Map([
@@ -152,7 +156,7 @@ export function approvalDevice(base64: unknown, last: "key" | "hash"): { user: s
 		["device", BYTES_16],
 		["signature_key", BYTES_32],
 		["hpke_key", BYTES_32],
-		[last, BYTES_32],
+		["hash", BYTES_32],
 	]);
 	const read = new Map<string, Buffer>();
 	let at = 0;
@@ -179,5 +183,5 @@ export function approvalDevice(base64: unknown, last: "key" | "hash"): { user: s
 	}
 	if (at !== bytes.length || read.size !== 6) return null;
 	const uuid = (id: Buffer) => id.toString("hex").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, "$1-$2-$3-$4-$5");
-	return { user: uuid(read.get("user")!), device: uuid(read.get("device")!) };
+	return { user: uuid(read.get("user")!), device: uuid(read.get("device")!), bytes: new Uint8Array(bytes) };
 }

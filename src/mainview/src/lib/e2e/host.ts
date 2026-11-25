@@ -73,6 +73,8 @@ export const E2E_OPS = [
 	"destroy",
 ] as const;
 export type E2eOp = (typeof E2E_OPS)[number];
+/** The ops Bun runs whatever core instance they were sent for: each names its user or needs none, and gets its reply. */
+export const STANDALONE_OPS: readonly E2eOp[] = ["open", "close", "destroy"];
 
 /** The page's request. */
 export interface E2eMessage {

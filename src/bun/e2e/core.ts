@@ -123,10 +123,9 @@ export function coreWorker(setup: CoreSetup): void {
 			lib.duvet_e2e_free(pointer);
 		}
 	};
+	// With none open, internal: the core's own not_found would read to the engine as a group or a message missing.
 	const command = (core: Core, cmd: object): Reply =>
-		handle === null
-			? failure("not_found", "no core is open", { what: "handle" })
-			: take(core, core.lib.duvet_e2e_handle(handle, json(cmd)));
+		handle === null ? failure("internal", "no core is open") : take(core, core.lib.duvet_e2e_handle(handle, json(cmd)));
 	/** The config a user's database opens and is deleted with: its key in the keyring, or the test's. */
 	const config = ({ path }: Core, userId: string) => {
 		const file = path.join(setup.folder, userId, "core.db");

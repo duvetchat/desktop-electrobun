@@ -12,6 +12,9 @@ const ROOT = join(import.meta.dir, "../../..");
 /** The Linux library native/core carries for the tests, or the build DUVET_E2E_FFI names. */
 const LIBRARY = process.env.DUVET_E2E_FFI || join(ROOT, "native/core/linux-x64/libduvet_e2e_ffi.so");
 
+const user = "0193a4b2-0000-7000-8000-00000000000a";
+const device = "0193a4b2-0000-7000-8000-00000000000b";
+
 const folders: string[] = [];
 afterAll(() => folders.forEach((folder) => rmSync(folder, { recursive: true, force: true })));
 const folder = () => {
@@ -55,6 +58,45 @@ describe("the core's library in the app", () => {
 	});
 });
 
+// The app runs the worker from coreWorker's source as Electrobun's build prints it. A bundler can put names of the
+// module's into a function's body (require becomes __require), which would leave the worker dead in the packaged app
+// alone: so the worker runs here from core.ts built as Electrobun builds the Bun side.
+test.skipIf(!existsSync(LIBRARY))(
+	"the worker runs from the core built as Electrobun builds the Bun side",
+	async () => {
+		const { entrypoint, ...options } = config.build.bun;
+		expect(entrypoint).toBe("src/bun/index.ts");
+		const out = folder();
+		const built = await Bun.build({
+			...options,
+			entrypoints: [join(import.meta.dir, "core.ts")],
+			outdir: out,
+			target: "bun",
+		});
+		expect(built.success).toBe(true);
+		const { startCore } = await import(join(out, "core.js"));
+		const core = startCore({ library: LIBRARY, folder: folder(), key: Buffer.alloc(32, 5).toString("base64") });
+		try {
+			expect(await core.run("open", { userId: user })).toMatchObject({
+				ok: { state: "ready", keyStorage: "provided" },
+			});
+			await core.run("handle", { command: { cmd: "create_device", user_id: user, device_id: device } });
+			expect((await core.run("handle", { command: { cmd: "status" } })).ok).toMatchObject({ device_id: device });
+			const { key } = (await core.run("handle", { command: { cmd: "attachment_key" } })).ok;
+			const file = { key, attachmentId: device, index: 0, last: true };
+			const data = Buffer.from("a file's bytes").toString("base64");
+			const sealed = (await core.run("sealParts", { ...file, parts: [data] })).ok.parts;
+			expect((await core.run("openParts", { ...file, parts: sealed })).ok.parts).toEqual([data]);
+			expect((await core.run("stash", { shareId: device, n: 1, part: data })).error).toMatchObject({ field: "n" });
+			expect(await core.run("close")).toEqual({ ok: {} });
+			expect(await core.run("destroy", { userId: user })).toEqual({ ok: {} });
+		} finally {
+			core.stop();
+		}
+	},
+	60_000,
+);
+
 /**
  * A run of the core as the app opens it, in a Bun of its own: its config names a keyring, and in a process without a
  * session bus Linux has no Secret Service, so the key goes to a file beside the database. The run can't be this one:
@@ -80,9 +122,6 @@ function asTheApp(steps: string, home: string): any[] {
 	if (run.exitCode !== 0) throw new Error(`the app's run failed: ${run.stderr.toString()}`);
 	return JSON.parse(run.stdout.toString().trim().split("\n").at(-1)!);
 }
-
-const user = "0193a4b2-0000-7000-8000-00000000000a";
-const device = "0193a4b2-0000-7000-8000-00000000000b";
 
 describe.skipIf(process.platform !== "linux" || !existsSync(LIBRARY))("the core as the app opens it", () => {
 	test("opens with the key its keyring config names", () => {
