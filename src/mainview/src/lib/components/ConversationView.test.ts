@@ -113,8 +113,9 @@ test("a conversation's list goes back to its newest page as its view leaves it a
 	expect(view).toMatch(
 		/if \(!hasMoreBelow && get\(friendsReady\)\) dmMessages\.trim\(convId, MESSAGE_PAGE\);\s*keepList\(/,
 	);
+	// A list cut back has older messages to load again, and the device's rows it no longer lists go from memory (M1).
 	expect(view).toMatch(
-		/const unhear = dmMessages\.onTrim\(\(chat\) => \{\s*if \(chat === convId\) hasMore = true;\s*\}\);/,
+		/const unhear = dmMessages\.onTrim\(\(chat\) => \{\s*if \(chat !== convId\) return;\s*hasMore = true;\s*letGo\(convId, /,
 	);
 	expect(view).toMatch(/release\(\);\s*unhear\(\);/);
 	expect(view).toContain("if (!convId || !isAtBottom || hasMoreBelow) return;");

@@ -54,7 +54,7 @@
 	import { copyCode } from "$lib/code-copy";
 	import { belowIndicator } from "$lib/jumps";
 	import { threadNow, withHeld } from "$lib/threads";
-	import { heldRow, want } from "$lib/e2e/conversation-content.svelte";
+	import { contentOf, want } from "$lib/e2e/conversation-content.svelte";
 	import WaitingMessage from "$lib/components/e2e/WaitingMessage.svelte";
 	import { t } from "$lib/i18n";
 	import { keepPlace, takePlace } from "$lib/kept-places";
@@ -333,10 +333,18 @@
 	let threadMessages = $state.raw<Message[]>([]);
 	let threadRootMessage = $state.raw<Message | null>(null);
 	// The thread as it is now, with the replies the list has since it loaded, the user's own being sent among them. A
-	// conversation's messages come without their text, which this device's database holds.
-	const threadShown = $derived(
-		threadNow(spaceId ? threadMessages : threadMessages.map((m) => withHeld(m, heldRow(m.id))), messages),
-	);
+	// conversation's messages and their quotes come without their text, which this device's database holds: asked for
+	// as the thread draws, so a row its list let go is read again.
+	const threadShown = $derived.by(() => {
+		if (spaceId) return threadNow(threadMessages, messages);
+		const quoted = threadMessages.flatMap((m) => m.referenced_message?.message_id ?? []);
+		want(channelId, [...threadMessages.map((m) => m.id), ...quoted]);
+		const held = contentOf(channelId);
+		return threadNow(
+			threadMessages.map((m) => withHeld(m, held)),
+			messages,
+		);
+	});
 	// A reply that comes while the thread shows goes at its end, which scrolls into view.
 	let threadScrollEl = $state<HTMLElement | null>(null);
 	let threadCount = 0;
@@ -1038,11 +1046,6 @@
 				? await getConversationMessageThread(channelId, message.id)
 				: await getMessageThread(channelId, message.id);
 			threadMessages = thread.map((m) => gatewayMessageToMessage(m, $gatewaySpaces));
-			if (isConversation)
-				want(
-					channelId,
-					threadMessages.map((m) => m.id),
-				);
 		} catch (e) {
 			threadError = getApiError(e, "Failed to load message thread.");
 		} finally {
@@ -1518,6 +1521,11 @@
 			onPreview={openPreview}
 			onInteract={isConversation ? undefined : (use) => interact(message, use)}
 		/>
+	{:else if message.loading}
+		<!-- A conversation's message the engine hasn't applied or read yet: neither empty nor waiting -->
+		<div class={flat ? "" : `${MESSAGE_CARD} px-3 py-2`} aria-hidden="true">
+			<div class="bg-duvet-secondary-fill h-4 w-40 animate-pulse rounded-full"></div>
+		</div>
 	{:else if message.waiting}
 		<!-- A conversation's message this device doesn't hold yet -->
 		<div class={flat ? "" : `${MESSAGE_CARD} px-3 py-2`}>

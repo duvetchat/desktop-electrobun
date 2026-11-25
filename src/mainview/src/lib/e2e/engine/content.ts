@@ -28,6 +28,23 @@ export interface ShownMessage {
 /** What the core holds of a row: undefined while it hasn't been asked, null when it doesn't hold it. */
 export type Held = ShownMessage | null | undefined;
 
+/**
+ * What a view reads of one conversation's messages on this device: the row the core holds of each, the text the person
+ * typed of their own just sent (until its row is there), and how far the engine applied the conversation's queue (null
+ * while it hasn't this session). Never what the API writes in a message.
+ */
+export interface MessageContent {
+	held(id: string): Held;
+	typed(id: string): string | undefined;
+	through(): number | null;
+}
+
+/** The row the core holds of a message, to draw as it: one sent by the author the API names, opened. */
+export function shownOf(content: MessageContent, id: string, author: string): ShownMessage | null {
+	const row = content.held(id);
+	return row?.status === "ok" && row.user_id === author ? row : null;
+}
+
 /** The most IDs one `messages` takes. */
 const IDS_MOST = 200;
 
@@ -50,6 +67,14 @@ export async function pendingRows(host: CoreHost, conversationId: string): Promi
 		...{ cmd: "messages", conversation_id: conversationId, limit: 100 },
 	});
 	return messages.filter((message) => message.status === "pending").reverse();
+}
+
+/** Whether the device holds a row of the conversation older than this number: the list pages on to it (Ruling 15). */
+export async function heldBefore(host: CoreHost, conversationId: string, seq: number): Promise<boolean> {
+	const { messages } = await host.handle<{ messages: ShownMessage[] }>({
+		...{ cmd: "messages", conversation_id: conversationId, before: seq, limit: 1 },
+	});
+	return messages.length > 0;
 }
 
 /**

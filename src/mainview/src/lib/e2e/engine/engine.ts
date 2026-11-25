@@ -12,7 +12,7 @@ import { CoreError } from "../errors";
 import type { EngineEvent, EngineEvents } from "../events";
 import type { CoreHost, HostOpened } from "../host";
 import { bindSession, coreStatus, ownDevice } from "./bootstrap";
-import { shownMessages, type ShownMessage } from "./content";
+import { heldBefore, shownMessages, type ShownMessage } from "./content";
 import { Failures } from "./failures";
 import { identityState, publishIdentity, servedIdentity, type IdentityMade } from "./identity";
 import { takeInbox } from "./inbox";
@@ -24,6 +24,12 @@ import { Conversations, type ConversationState } from "./sync";
 export type { ConversationState } from "./sync";
 export type { Outgoing, Pending } from "./send";
 export type { ShownMessage } from "./content";
+
+/**
+ * A conversation's messages changed on this device: `ids`, those whose rows changed (none: any of them), and
+ * `through`, how far its queue is applied now, when that moved.
+ */
+export type MessagesListener = (conversationId: string, ids?: string[], through?: number | null) => void;
 
 /** What the engine waits with: the system's timers in the app, a test's clock in its tests. */
 export interface Clock {
@@ -138,15 +144,16 @@ export class E2EEngine {
 	readonly #conversationListeners = new Set<(conversationId: string, state: ConversationState | null) => void>();
 	/** The messages this device sends, edits and deletes. */
 	readonly #sends: Sends;
-	readonly #messageListeners = new Set<(conversationId: string) => void>();
+	readonly #messageListeners = new Set<MessagesListener>();
+	readonly #refusedListeners = new Set<(conversationId: string, messageId: string, kind: "edit" | "delete") => void>();
 	readonly #sentListeners = new Set<(conversationId: string, nonce: string, message: DirectMessage) => void>();
 
 	constructor(parts: EngineParts) {
 		this.#parts = parts;
 		this.#failures = new Failures(parts.api, parts.clock);
 		const soon = (work: () => Promise<void>) => this.#soon(() => this.#whenReady(work));
-		const messagesChanged = (id: string) => {
-			for (const listener of this.#messageListeners) listener(id);
+		const messagesChanged = (id: string, ids?: string[], through?: number | null) => {
+			for (const listener of this.#messageListeners) listener(id, ids, through);
 		};
 		this.#groups = new Conversations(
 			parts,
@@ -157,8 +164,14 @@ export class E2EEngine {
 			},
 			messagesChanged,
 		);
-		this.#sends = new Sends(parts, this.#groups, soon, messagesChanged, (id, nonce, message) => {
-			for (const listener of this.#sentListeners) listener(id, nonce, message);
+		this.#sends = new Sends(parts, this.#groups, soon, {
+			changed: messagesChanged,
+			sent: (id, nonce, message) => {
+				for (const listener of this.#sentListeners) listener(id, nonce, message);
+			},
+			refused: (id, message, kind) => {
+				for (const listener of this.#refusedListeners) listener(id, message, kind);
+			},
 		});
 	}
 
@@ -174,10 +187,16 @@ export class E2EEngine {
 		return () => void this.#conversationListeners.delete(listener);
 	}
 
-	/** Each conversation whose messages changed on this device: what the views show of it is read again. */
-	onMessages(listener: (conversationId: string) => void): () => void {
+	/** Each conversation whose messages changed on this device: what the views show of them is read again. */
+	onMessages(listener: MessagesListener): () => void {
 		this.#messageListeners.add(listener);
 		return () => void this.#messageListeners.delete(listener);
+	}
+
+	/** Each edit or deletion of the person's that the API refused for good: it shows on this device alone. */
+	onChangeRefused(listener: (conversationId: string, messageId: string, kind: "edit" | "delete") => void): () => void {
+		this.#refusedListeners.add(listener);
+		return () => void this.#refusedListeners.delete(listener);
 	}
 
 	/** Each message of the person's that the API took, by the nonce they sent it with: their copy of it is the API's. */
@@ -210,7 +229,10 @@ export class E2EEngine {
 		return this.#act(() => this.#sends.send(message));
 	}
 
-	/** An edit of the user's message: shown here at once, sent, and its answer's entry applied. */
+	/**
+	 * An edit of the user's message: shown here at once, then sent after the message's changes before it, and its answer's
+	 * entry applied. Without an answer it's kept, and goes again later and at the next start; refused for good, it's told.
+	 */
 	editMessage(conversationId: string, messageId: string, text: string): Promise<void> {
 		return this.#act(() => this.#sends.change(conversationId, messageId, text));
 	}
@@ -220,16 +242,31 @@ export class E2EEngine {
 		return this.#act(() => this.#sends.change(conversationId, messageId, null));
 	}
 
-	/** The person's Dismiss of a message the API never took: whatever the device's state, as it only drops it here. */
-	discardMessage(conversationId: string, nonce: string): Promise<void> {
-		return this.#queue(() => this.#sends.discard(nonce)).then(() => {
-			for (const listener of this.#messageListeners) listener(conversationId);
-		});
+	/**
+	 * The person's Dismiss of a message the API never took, by the nonce they sent it with, whatever the device's state:
+	 * ready, its conversation's queue is read first, as a message it settles went.
+	 */
+	async discardMessage(conversationId: string, nonce: string): Promise<void> {
+		await this.#queue(() => this.#sends.discard(conversationId, nonce, this.state.name === "ready"));
 	}
 
 	/** What the device's database shows of these messages of the conversation: a row for each it holds. */
 	messages(conversationId: string, ids: string[]): Promise<ShownMessage[]> {
 		return shownMessages(this.#parts.host, conversationId, ids);
+	}
+
+	/**
+	 * What the views read of these messages of the conversation: the device's rows, and how far its queue is applied this
+	 * session, taken first, so a row the read doesn't find past it is one not applied yet (drawn as loading).
+	 */
+	async read(conversationId: string, ids: string[]): Promise<{ rows: ShownMessage[]; through: number | null }> {
+		const through = this.#groups.through(conversationId);
+		return { rows: await shownMessages(this.#parts.host, conversationId, ids), through };
+	}
+
+	/** Whether the device holds a message of the conversation older than this number, which its list pages on to. */
+	heldBefore(conversationId: string, seq: number): Promise<boolean> {
+		return heldBefore(this.#parts.host, conversationId, seq);
 	}
 
 	/** The person's messages of the conversation still being sent, in their order, with what goes with them. */

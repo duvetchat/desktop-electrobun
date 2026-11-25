@@ -2,7 +2,7 @@ import { getAvatarURL } from "$lib/common/common";
 import { mergedByKey } from "$lib/reactions";
 import { memberMobileOnly, memberStatus } from "$lib/status";
 import type { Conversation, DirectMessage } from "$lib/api/conversations";
-import type { Held } from "$lib/e2e/engine/content";
+import { shownOf, type MessageContent } from "$lib/e2e/engine/content";
 import type { UserActivity } from "$lib/stores.svelte";
 
 export interface EmbedMedia {
@@ -353,6 +353,8 @@ export interface MessageReaction {
 
 export interface GatewayMessage {
 	id: string;
+	/** A conversation's encrypted message's number in its conversation, which a conversation's thread gives. */
+	seq?: number;
 	room_id: string | null;
 	/** Null for webhook messages, which carry webhook_id instead. */
 	author_id: string | null;
@@ -381,6 +383,8 @@ export interface GatewayMessage {
 
 export interface Message {
 	id: string;
+	/** A conversation's encrypted message's number in its conversation, where its thread has it. */
+	seq?: number;
 	content: string | null;
 	type: MessageType;
 	author_id: string;
@@ -408,8 +412,11 @@ export interface Message {
 	interaction_metadata?: InteractionMetadata;
 	/** A call notice's call; no other message has one. */
 	call?: CallNotice;
-	/** A conversation's encrypted message this device doesn't hold yet: it shows as waiting for it (WaitingMessage). */
+	/** A conversation's encrypted message this device doesn't hold, past what its engine applied: it shows as waiting for
+	 * it (WaitingMessage). */
 	waiting?: boolean;
+	/** A conversation's encrypted message the engine hasn't applied yet, or not read from the device yet: a placeholder. */
+	loading?: boolean;
 	/** Who shared a conversation's message with this device, when a shared history brought it. */
 	shared_by?: string | null;
 }
@@ -1451,6 +1458,7 @@ export function gatewayMessageToMessage(msg: GatewayMessage, spaces: GatewaySpac
 		author_is_bot,
 		created_at: sentAt(msg),
 		updated_at: msg.updated_at,
+		seq: msg.seq,
 		nonce: msg.nonce,
 		referenced_message: msg.referenced_message ?? null,
 		ref_message_id:
@@ -1495,31 +1503,73 @@ export function sentAt(message: { created_at: string; call?: CallNotice }): stri
 	return message.call?.ended_at ?? message.created_at;
 }
 
+/** What a caller that reads nothing of this device has of a conversation: no row, and nothing left to apply. */
+const NOTHING_HELD: MessageContent = {
+	held: () => null,
+	typed: () => undefined,
+	through: () => Number.POSITIVE_INFINITY,
+};
+
+/**
+ * What a conversation's encrypted text or voice message draws (PLAN-E2E-CLIENTES.md, «La vista de una conversación»):
+ * only what this device's own database holds of it, from a row the author the API names sent, or the text the person
+ * typed of their own just sent; never what the API writes. Until the engine applied its number (`seq`; unknown, any)
+ * and its row was read, it's loading; applied and not held, it waits.
+ */
+export function heldText(
+	content: MessageContent,
+	message: { id: string; author_id: string; created_at: string },
+	seq?: number,
+): Pick<Message, "content" | "waiting" | "loading" | "shared_by" | "updated_at"> {
+	const shown = shownOf(content, message.id, message.author_id);
+	const typed = shown ? undefined : content.typed(message.id);
+	let loading = false;
+	if (!shown && typed === undefined) {
+		const held = content.held(message.id);
+		const through = content.through();
+		loading = held === undefined || (held === null && (through === null || (seq ?? 0) > through));
+	}
+	return {
+		content: shown?.text ?? typed ?? null,
+		waiting: !shown && typed === undefined && !loading,
+		loading,
+		shared_by: shown?.shared_by ?? null,
+		// Its edit shows as the device's database says it was edited.
+		updated_at: shown?.edited_at ? new Date(shown.edited_at).toISOString() : message.created_at,
+	};
+}
+
+/** A conversation's quote's text: only what this device holds of the quoted message, sent by the author it names. */
+export function quotedText(content: MessageContent, ref: ReferencedMessage): string | null {
+	if (!ref.message_id || !ref.author_id || !ref.created_at) return null;
+	return shownOf(content, ref.message_id, ref.author_id)?.text ?? null;
+}
+
 /**
  * A conversation's message as the chat shows it: its author as the message names them, or else as the conversation's
- * members do, or by the start of their ID. An encrypted one (with its `seq`) takes its text and when it was edited from
- * what this device's own database holds of it (`held`, by ID: PLAN-E2E-CLIENTES.md, «La vista de una conversación»),
- * and so does the quote of the message it replies to; one it was asked for and doesn't hold waits.
+ * members do, or by the start of their ID. A text or voice message, and every quote, draw what this device holds
+ * (heldText, quotedText); one without its number (the person's own being sent) only the text they typed. The API's
+ * previews aren't drawn: its own text never reaches it.
  */
 export function directMessageToMessage(
 	msg: DirectMessage,
 	members: Conversation["members"],
-	held: (id: string) => Held = () => undefined,
+	content: MessageContent = NOTHING_HELD,
 ): Message {
 	const member = members.find((m) => m.user_id === msg.author_id);
-	const encrypted = msg.seq !== undefined;
-	const row = encrypted ? held(msg.id) : undefined;
-	const shown = row?.status === "ok" ? row : null;
+	const type = msg.type ?? 0;
+	const written = type === MessageType.Text || type === MessageType.Voice;
+	let text: Partial<Message> = {};
+	if (written && msg.seq !== undefined) text = heldText(content, msg, msg.seq);
+	else if (written) text = { content: content.typed(msg.id) ?? null, updated_at: msg.created_at };
 	const ref = msg.referenced_message ?? null;
-	const quoted = ref?.message_id && ref.created_at ? held(ref.message_id) : undefined;
-	const referenced = ref && quoted?.status === "ok" ? { ...ref, content: quoted.text } : ref;
 	return {
 		id: msg.id,
-		// The person's own, just sent, shows the text they typed until the database's row is there.
-		content: encrypted ? (shown ? shown.text : (msg.content ?? null)) : msg.content,
-		waiting: encrypted && row !== undefined && !shown && !msg.content,
-		shared_by: shown?.shared_by ?? null,
-		type: msg.type ?? 0,
+		content: msg.content,
+		waiting: false,
+		loading: false,
+		shared_by: null,
+		type,
 		author_id: msg.author_id,
 		author_name:
 			msg.user?.alias ??
@@ -1530,17 +1580,17 @@ export function directMessageToMessage(
 		author_avatar_url: getAvatarURL(msg.author_id, msg.user?.avatar ?? member?.user?.avatar),
 		author_is_bot: msg.user?.is_bot ?? false,
 		created_at: sentAt(msg),
-		// An encrypted message's edit shows as the device's database says it was edited.
-		updated_at: shown?.edited_at ? new Date(shown.edited_at).toISOString() : msg.updated_at,
+		updated_at: msg.updated_at,
 		nonce: msg.nonce,
-		ref_message_id: msg.referenced_message?.message_id ?? null,
-		referenced_message: referenced,
+		ref_message_id: ref?.message_id ?? null,
+		referenced_message: ref && { ...ref, content: quotedText(content, ref) },
 		attachments: msg.attachments ?? null,
 		reactions: mergedByKey(msg.reactions),
-		embeds: msg.embeds ?? null,
+		embeds: null,
 		sticker_attachment_id: msg.sticker_attachment_id ?? null,
 		pinned_at: msg.pinned_at ?? null,
 		call: msg.call,
+		...text,
 	};
 }
 

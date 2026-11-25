@@ -1,20 +1,20 @@
 import type { ChatDraft } from "$lib/drafts";
-import type { Held } from "$lib/e2e/engine/content";
-import { MessageType, type Message } from "$lib/types";
+import type { MessageContent } from "$lib/e2e/engine/content";
+import { heldText, MessageType, quotedText, type Message } from "$lib/types";
 
 /**
  * A conversation's message of a thread, as the API gives it without its text, with what this device's own database
- * holds of it (PLAN-E2E-CLIENTES.md, «La vista de una conversación»): its text and its edit, or waiting for it once asked
- * and not held. A notice (a pin's, a call's, a share's) keeps its own.
+ * holds of it and of its quote (PLAN-E2E-CLIENTES.md, «La vista de una conversación»: lib/types' heldText and
+ * quotedText). A notice (a pin's, a call's, a share's) keeps its own text; no preview of the API's is drawn.
  */
-export function withHeld(message: Message, held: Held): Message {
-	if (message.type !== MessageType.Text && message.type !== MessageType.Voice) return message;
-	const shown = held?.status === "ok" ? held : null;
+export function withHeld(message: Message, content: MessageContent): Message {
+	const written = message.type === MessageType.Text || message.type === MessageType.Voice;
+	const ref = message.referenced_message;
 	return {
 		...message,
-		content: shown?.text ?? null,
-		waiting: held !== undefined && !shown,
-		updated_at: shown?.edited_at ? new Date(shown.edited_at).toISOString() : message.updated_at,
+		...(written ? heldText(content, message, message.seq) : {}),
+		embeds: null,
+		referenced_message: ref && { ...ref, content: quotedText(content, ref) },
 	};
 }
 

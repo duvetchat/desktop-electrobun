@@ -6,7 +6,8 @@ import type { DirectMessage } from "$lib/api/conversations";
 import { formatDate } from "$lib/i18n/format";
 import { bytesBase64 } from "$lib/staged-images";
 import { directMessageToMessage } from "$lib/types";
-import { drawnRows, type ShownMessage } from "./content";
+import * as content from "../conversation-content.svelte";
+import { drawnRows, type Held, type MessageContent, type ShownMessage } from "./content";
 import { notice, NOTICES } from "../notices";
 import { FakeApi } from "../testing/fake-api";
 import { coreLibrary } from "../testing/host-bun";
@@ -28,6 +29,13 @@ const drawn = (props: { legacy: boolean; cutoverAt: string | null; beforeJoining
 const shownRow = (id: string): ShownMessage => ({
 	...{ conversation_id: "c", message_id: id, seq: 1, user_id: "a", device_id: "d", sent_at: 0, edited_at: null },
 	...{ status: "ok", text: null, attachments: [], shared_by: null, reply_to: null },
+});
+
+/** What a view reads of a conversation on this device: these rows held, this text typed, its queue applied this far. */
+const holding = (held: (id: string) => Held, typed: Record<string, string> = {}, through = 1_000): MessageContent => ({
+	held,
+	typed: (id) => typed[id],
+	through: () => through,
 });
 
 /** An encrypted row of the API's, as a page of the conversation lists it. */
@@ -80,12 +88,30 @@ describe.skipIf(!coreLibrary)("what the device holds of a conversation", () => {
 			const members = (await b.api.conversations()).find((c) => c.id === conversation)!.members;
 			const [waiting] = await b.engine.messages(conversation, [sent.id]);
 			expect(waiting).toMatchObject({ message_id: sent.id, status: "waiting", text: null });
-			expect(directMessageToMessage(sent, members, () => waiting)).toMatchObject({ waiting: true, content: null });
+			expect(
+				directMessageToMessage(
+					sent,
+					members,
+					holding(() => waiting),
+				),
+			).toMatchObject({ waiting: true, content: null });
 			const unknown = crypto.randomUUID();
 			expect(await b.engine.messages(conversation, [unknown])).toEqual([]);
-			expect(directMessageToMessage(row(unknown), members, () => null)).toMatchObject({ waiting: true });
+			expect(
+				directMessageToMessage(
+					row(unknown),
+					members,
+					holding(() => null),
+				),
+			).toMatchObject({ waiting: true });
 			// Not yet asked: neither waiting nor any text.
-			expect(directMessageToMessage(sent, members, () => undefined)).toMatchObject({ waiting: false, content: null });
+			expect(
+				directMessageToMessage(
+					sent,
+					members,
+					holding(() => undefined),
+				),
+			).toMatchObject({ waiting: false, content: null });
 
 			// Ana shares the conversation's history with Bo: the import fills the row, which then shows its text.
 			const certificates = (await a.api.identity(bo)).certificates;
@@ -101,7 +127,13 @@ describe.skipIf(!coreLibrary)("what the device holds of a conversation", () => {
 			expect(await b.host.importShare(made.share_id, parts)).toMatchObject({ imported: expect.any(Number) });
 			const [filled] = await b.engine.messages(conversation, [sent.id]);
 			expect(filled).toMatchObject({ status: "ok", text: "kept for Bo", shared_by: ana });
-			expect(directMessageToMessage(sent, members, () => filled)).toMatchObject({
+			expect(
+				directMessageToMessage(
+					sent,
+					members,
+					holding(() => filled),
+				),
+			).toMatchObject({
 				waiting: false,
 				content: "kept for Bo",
 			});
@@ -156,5 +188,91 @@ describe("a conversation's rows", () => {
 		const shown = drawn({ legacy: false, cutoverAt: null, beforeJoining: true });
 		expect(shown.split(NOTICES.before_joining)).toHaveLength(2);
 		expect(drawn({ legacy: false, cutoverAt: null, beforeJoining: false }).trim()).toBe("");
+	});
+});
+
+// The review of task 16: what a conversation draws comes from the device alone (I1, M4), a row not applied yet is
+// loading (M2), one conversation's rows never show in another, and the cache lets go of what its lists let go (M1).
+describe("what a conversation draws", () => {
+	const members = [] as Parameters<typeof directMessageToMessage>[1];
+	const ID = "0193a4b2-0000-7000-8000-000000000070";
+	const QUOTED = "0193a4b2-0000-7000-8000-000000000060";
+	const held = (rows: Record<string, ShownMessage>) => (id: string) => rows[id] ?? null;
+
+	test("an encrypted row draws only what the device holds of it, or the text the person typed", () => {
+		const served = row(ID, {
+			content: "words put in a mouth",
+			embeds: [{ title: "a preview" }],
+			referenced_message: {
+				...{ type: 0, message_id: QUOTED, room_id: null, space_id: null, content: "a quote's lie" },
+				...{ author_id: "a", created_at: "2026-11-25T00:00:00Z" },
+			},
+		});
+		// Nothing held: waiting, with none of the API's words, its preview or its quote's text.
+		expect(directMessageToMessage(served, members, holding(held({})))).toMatchObject({
+			...{ content: null, waiting: true, embeds: null },
+			referenced_message: { message_id: QUOTED, content: null },
+		});
+		// The person's own, just sent: the text they typed, until the row is there.
+		expect(directMessageToMessage(served, members, holding(held({}), { [ID]: "typed" }))).toMatchObject({
+			content: "typed",
+			waiting: false,
+		});
+		// Held: its text, and its quote's from the quoted row.
+		const rows = { [ID]: { ...shownRow(ID), text: "held" }, [QUOTED]: { ...shownRow(QUOTED), text: "quoted" } };
+		expect(directMessageToMessage(served, members, holding(held(rows)))).toMatchObject({
+			content: "held",
+			referenced_message: { content: "quoted" },
+		});
+		// A held row whose sender isn't the author the API names: waiting, never its text under another's name.
+		const other = { [ID]: { ...shownRow(ID), text: "held", user_id: "someone else" } };
+		expect(directMessageToMessage(served, members, holding(held(other)))).toMatchObject({
+			content: null,
+			waiting: true,
+		});
+		// A text row without its number draws nothing.
+		expect(
+			directMessageToMessage(row(ID, { seq: undefined, content: "plain" }), members, holding(held({}))),
+		).toMatchObject({
+			content: null,
+		});
+	});
+
+	test("a row the engine hasn't applied yet is loading, neither empty nor waiting", () => {
+		const late = row(ID, { seq: 7 });
+		expect(directMessageToMessage(late, members, holding(held({}), {}, 5))).toMatchObject({
+			loading: true,
+			waiting: false,
+		});
+		expect(directMessageToMessage(late, members, holding(held({}), {}, 7))).toMatchObject({
+			loading: false,
+			waiting: true,
+		});
+	});
+
+	test("one conversation's rows never show in another's, and a change reads again only what it touched", async () => {
+		const reads: string[][] = [];
+		content.useReader(async (conversationId, ids) => {
+			reads.push([conversationId, ...ids]);
+			const rows = conversationId === "A" ? ids.map((id) => ({ ...shownRow(id), text: `${id} of A` })) : [];
+			return { rows, through: 99 };
+		});
+		const settled = () => new Promise((resolve) => setTimeout(resolve, 0));
+		content.want("A", ["x", "y"]);
+		content.want("B", ["x"]);
+		await settled();
+		expect(content.heldRow("A", "x")?.text).toBe("x of A");
+		expect(content.heldRow("B", "x")).toBeNull();
+		// An apply touched y: only y is read again.
+		content.refresh("A", ["y"]);
+		await settled();
+		expect(reads.at(-1)).toEqual(["A", "y"]);
+		// The list let x go: so does the cache; and all of B as its view goes.
+		content.letGo("A", new Set(["y"]));
+		expect(content.heldRow("A", "x")).toBeUndefined();
+		expect(content.heldRow("A", "y")?.text).toBe("y of A");
+		content.letGo("B");
+		expect(content.heldRow("B", "x")).toBeUndefined();
+		content.useReader(null);
 	});
 });

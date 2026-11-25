@@ -135,6 +135,9 @@
 				<MessageAttachments {message} channelName={roomName ?? ""} {onPreview} maxWidth={320} maxHeight={240} />
 			{:else if isLoading(message)}
 				<DeferredResponse {message} />
+			{:else if message.loading}
+				<!-- A conversation's message the engine hasn't applied or read yet: neither empty nor waiting -->
+				<div class="bg-duvet-secondary-fill h-4 w-40 animate-pulse rounded-full" aria-hidden="true"></div>
 			{:else if message.waiting}
 				<!-- A conversation's message this device doesn't hold yet -->
 				<WaitingMessage />

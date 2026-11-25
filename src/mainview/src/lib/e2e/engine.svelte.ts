@@ -5,15 +5,17 @@
 // person's taps and their messages. `encryption.state` is what the views read, `encryption.conversations` what each
 // conversation says of its group, and conversation-content.svelte.ts what the device holds of their messages. The hosts
 // load with the engine's start, never with a page.
-import { withSentMessage, withTyped } from "$lib/arrivals";
+import { withSentMessage } from "$lib/arrivals";
 import { onSignOut } from "$lib/api/auth";
 import type { DirectMessage } from "$lib/api/conversations";
 import { e2eApi } from "$lib/api/e2e";
 import { deviceRegistered } from "$lib/api/ws/connection";
 import { isElectrobunWindow } from "$lib/electrobun-rpc";
 import { dmMessages } from "$lib/stores.svelte";
+import { toast } from "$lib/stores/toast.svelte";
+import { t } from "$lib/i18n";
 import { deviceName } from "./client";
-import { refresh, refreshAll, useReader } from "./conversation-content.svelte";
+import { moveTyped, refresh, refreshAll, useReader } from "./conversation-content.svelte";
 import {
 	E2EEngine,
 	systemClock,
@@ -105,12 +107,17 @@ function engineFor(userId: string, host: CoreHost, platform: EnginePlatform): E2
 		showConversation(conversationId, state);
 		tabs?.changed(conversationId);
 	});
-	// What the device holds of a conversation's messages changed: the views read it again, here and in the other tabs.
-	made.onMessages((conversationId) => {
-		refresh(conversationId);
+	// What the device holds of a conversation's messages changed: the views read those again, here and in the other tabs,
+	// and draw a row past how far its queue is applied as loading.
+	made.onMessages((conversationId, ids, through) => {
+		refresh(conversationId, ids, through);
 		tabs?.changed(conversationId);
 	});
 	made.onSent(showSent);
+	// An edit or a deletion the API refused for good shows on this device alone: the person is told.
+	made.onChangeRefused((_conversationId, _messageId, kind) => {
+		toast(t(kind === "edit" ? "e2e_edit_refused" : "e2e_delete_refused"), "error");
+	});
 	for (const conversationId of toOpen) {
 		made.openConversation(conversationId).catch((error: unknown) => {
 			console.error("[e2e] The conversation's group didn't open:", error);
@@ -126,10 +133,11 @@ function engineFor(userId: string, host: CoreHost, platform: EnginePlatform): E2
  * own (what waited, at a start), where no view is waiting for the answer.
  */
 function showSent(conversationId: string, nonce: string, message: DirectMessage) {
+	moveTyped(conversationId, nonce, message.id);
 	dmMessages.update((all) => {
 		const existing = all[conversationId];
 		if (!existing) return all;
-		const shown = withSentMessage(existing, nonce, withTyped(existing, nonce, message));
+		const shown = withSentMessage(existing, nonce, message);
 		return shown === existing ? all : { ...all, [conversationId]: shown };
 	});
 }
@@ -140,7 +148,9 @@ export async function startEngine(userId: string, platform: EnginePlatform = pag
 	started = true;
 	onSignOut(stopEngine);
 	useReader((conversationId, ids) =>
-		onMessages<ShownMessage[]>("messages", { conversationId, ids }, (made) => made.messages(conversationId, ids)),
+		onMessages<{ rows: ShownMessage[]; through: number | null }>("read", { conversationId, ids }, (made) =>
+			made.read(conversationId, ids),
+		),
 	);
 	if (platform.desktop) {
 		const host = await platform.desktopHost();
@@ -172,7 +182,8 @@ export async function startEngine(userId: string, platform: EnginePlatform = pag
 			deleteMessage: ({ conversationId, messageId }: MessageParams) =>
 				live().deleteMessage(conversationId, messageId ?? ""),
 			discardMessage: ({ conversationId, nonce }: MessageParams) => live().discardMessage(conversationId, nonce ?? ""),
-			messages: ({ conversationId, ids }: MessageParams) => live().messages(conversationId, ids ?? []),
+			read: ({ conversationId, ids }: MessageParams) => live().read(conversationId, ids ?? []),
+			heldBefore: ({ conversationId, seq }: MessageParams) => live().heldBefore(conversationId, seq ?? 0),
 			pendingMessages: (conversationId: string) => live().pendingMessages(conversationId),
 		},
 		lead: async () => {
@@ -231,6 +242,7 @@ interface MessageParams {
 	messageId?: string;
 	text?: string;
 	nonce?: string;
+	seq?: number;
 }
 
 /** The leader's engine, for what another tab asks of it: none yet is a refusal, as the tab would show. */
@@ -261,6 +273,9 @@ export const deleteEncrypted = (conversationId: string, messageId: string) =>
 /** The person's Dismiss of a message that never went. */
 export const discardEncrypted = (conversationId: string, nonce: string) =>
 	onMessages<void>("discardMessage", { conversationId, nonce }, (made) => made.discardMessage(conversationId, nonce));
+/** Whether the device holds a message of the conversation older than this number, which its list pages on to. */
+export const heldBeforeEncrypted = (conversationId: string, seq: number) =>
+	onMessages<boolean>("heldBefore", { conversationId, seq }, (made) => made.heldBefore(conversationId, seq));
 /** The person's messages of the conversation still being sent, in their order. */
 export const pendingEncrypted = (conversationId: string) =>
 	onMessages<Pending[]>("pendingMessages", conversationId, (made) => made.pendingMessages(conversationId));

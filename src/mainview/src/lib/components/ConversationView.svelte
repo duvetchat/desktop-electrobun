@@ -77,10 +77,10 @@
 	import { FetchError, getApiError, PausedError } from "$lib/api/api";
 	import { CoreError } from "$lib/e2e/errors";
 	import { drawnRows } from "$lib/e2e/engine/content";
-	import { heldRow, want } from "$lib/e2e/conversation-content.svelte";
+	import { contentOf, dropTyped, keepTyped, letGo, moveTyped, want } from "$lib/e2e/conversation-content.svelte";
 	import { t } from "$lib/i18n";
 	import { groupActions } from "$lib/groups";
-	import { withSentMessage, withTyped } from "$lib/arrivals";
+	import { withSentMessage } from "$lib/arrivals";
 	import {
 		dividerPastWindow,
 		inWindow,
@@ -117,6 +117,7 @@
 		discardEncrypted,
 		editEncrypted,
 		encryption,
+		heldBeforeEncrypted,
 		openConversation,
 		pendingEncrypted,
 		restartGroup,
@@ -302,12 +303,16 @@
 		});
 	}
 
+	// What this device holds of the conversation's messages, the person's typed text of their own, and how far its queue
+	// is applied (PLAN-E2E-CLIENTES.md, «La vista de una conversación»).
+	const onDevice = $derived(contentOf(conversation.id));
+
 	// Map DirectMessage → Message for MessageList: an encrypted message's text, and its quote's, are what this device's
-	// own database holds of them (PLAN-E2E-CLIENTES.md, «La vista de una conversación»), asked for as they show.
+	// own database holds of them, asked for as they show.
 	function toMessage(msg: DirectMessage): Message {
 		const quoted = msg.referenced_message?.message_id;
-		if (msg.seq !== undefined) want(conversation.id, quoted ? [msg.id, quoted] : [msg.id]);
-		return directMessageToMessage(msg, conversation.members, heldRow);
+		want(conversation.id, [...(msg.seq === undefined ? [] : [msg.id]), ...(quoted ? [quoted] : [])]);
+		return directMessageToMessage(msg, conversation.members, onDevice);
 	}
 
 	// The rows the chat draws: an encrypted row from before the user joined that this device doesn't hold gives way to
@@ -321,14 +326,45 @@
 			raw.filter((m) => m.seq !== undefined).map((m) => m.id),
 		);
 		const joined = conversation.members.find((m) => m.user_id === me?.id)?.id;
-		return drawnRows(raw, joined, heldRow);
+		return drawnRows(raw, joined, onDevice.held);
+	});
+	const beforeJoining = $derived(drawn.beforeJoining);
+
+	// The oldest numbered row loaded, which the pages go on from while the device holds something older (I4: a member
+	// who left and came back holds their messages from before, past the rows of their absence the notice stands for).
+	const oldestSeq = $derived.by(() => {
+		let oldest: number | null = null;
+		for (const m of $dmMessages[conversation.id] ?? [])
+			if (m.seq !== undefined && (oldest === null || m.seq < oldest)) oldest = m.seq;
+		return oldest;
+	});
+	let olderHeld = $state(false);
+	$effect(() => {
+		const convId = conversation.id;
+		const oldest = oldestSeq;
+		if (!beforeJoining || oldest === null) {
+			olderHeld = false;
+			return;
+		}
+		let current = true;
+		heldBeforeEncrypted(convId, oldest)
+			.then((held) => {
+				if (current) olderHeld = held;
+			})
+			.catch(() => {
+				if (current) olderHeld = false;
+			});
+		return () => {
+			current = false;
+		};
 	});
 
-	// Cache mapped messages to avoid re-creating objects on every store update: an encrypted one's again when what the
-	// device holds of it, or of its quote, comes.
+	// Cache mapped messages to avoid re-creating objects on every store update: again when the API's row changed (the
+	// list's rows are never changed in place), or what the device holds of it or of its quote, its typed text, or, for a
+	// row it doesn't hold, how far the queue is applied.
 	const messageCache = new Map<
 		string,
-		{ message: Message; held: unknown; quoted: unknown; ref: DirectMessage["referenced_message"] }
+		{ message: Message; raw: DirectMessage; held: unknown; typed: unknown; quoted: unknown; through: unknown }
 	>();
 	const messages = $derived.by(() => {
 		const raw = drawn.rows;
@@ -336,28 +372,23 @@
 		const result: Message[] = [];
 		for (const msg of raw) {
 			seen.add(msg.id);
-			const held = heldRow(msg.id);
+			const held = onDevice.held(msg.id);
+			const typed = onDevice.typed(msg.id);
 			const quotedId = msg.referenced_message?.message_id;
-			const quoted = quotedId ? heldRow(quotedId) : undefined;
+			const quoted = quotedId ? onDevice.held(quotedId) : undefined;
+			const through = held === null ? onDevice.through() : null;
 			const entry = messageCache.get(msg.id);
-			const cached = entry?.message;
 			if (
-				entry &&
-				cached &&
+				entry?.raw === msg &&
 				entry.held === held &&
+				entry.typed === typed &&
 				entry.quoted === quoted &&
-				(msg.seq !== undefined || cached.content === msg.content) &&
-				(msg.seq !== undefined || cached.updated_at === msg.updated_at) &&
-				cached.attachments === msg.attachments &&
-				cached.reactions === msg.reactions &&
-				cached.embeds === msg.embeds &&
-				cached.pinned_at === (msg.pinned_at ?? null) &&
-				entry.ref === (msg.referenced_message ?? null)
+				entry.through === through
 			) {
-				result.push(cached);
+				result.push(entry.message);
 			} else {
 				const mapped = toMessage(msg);
-				messageCache.set(msg.id, { message: mapped, held, quoted, ref: msg.referenced_message ?? null });
+				messageCache.set(msg.id, { message: mapped, raw: msg, held, typed, quoted, through });
 				result.push(mapped);
 			}
 		}
@@ -572,8 +603,8 @@
 		}
 	}
 
-	// The row a send of the person's shows until the API's message takes its place: its text, in memory alone, and its
-	// reply's quote as the list has that message now.
+	// The row a send of the person's shows until the API's message takes its place: its text kept apart from the row, in
+	// memory alone, and its reply to the message the list has (whose quote's text is the device's).
 	function pendingRow(
 		convId: string,
 		nonce: string,
@@ -583,12 +614,13 @@
 		at = new Date().toISOString(),
 	): DirectMessage {
 		const refMsg = ref?.message_id ? (get(dmMessages)[convId] ?? []).find((m) => m.id === ref.message_id) : null;
-		const quoted = refMsg ? messages.find((m) => m.id === refMsg.id) : undefined;
+		// What the person typed shows from memory, never from the row (lib/e2e/conversation-content.svelte.ts).
+		keepTyped(convId, nonce, content);
 		return {
 			id: nonce,
 			conversation_id: convId,
 			author_id: get(currentUser)?.id ?? "",
-			content,
+			content: null,
 			type: 0,
 			created_at: at,
 			updated_at: at,
@@ -600,7 +632,7 @@
 						message_id: refMsg.id,
 						room_id: null,
 						space_id: null,
-						content: quoted?.content ?? refMsg.content,
+						content: null,
 						author_id: refMsg.author_id,
 						author_name: refMsg.user?.alias ?? refMsg.user?.username ?? refMsg.author_id.slice(0, 8),
 						author_avatar: refMsg.user?.avatar ?? null,
@@ -666,10 +698,11 @@
 	// pending.
 	function showSent(convId: string, nonce: string, real: DirectMessage) {
 		dmRetryData.delete(nonce);
+		moveTyped(convId, nonce, real.id);
 		knowMessage(convId, real.id);
 		dmMessages.update((all) => {
 			const existing = all[convId] ?? [];
-			const shown = withSentMessage(existing, nonce, withTyped(existing, nonce, real));
+			const shown = withSentMessage(existing, nonce, real);
 			return shown === existing ? all : { ...all, [convId]: shown };
 		});
 	}
@@ -677,6 +710,7 @@
 	// A pending row leaves the list: dismissed, or its message went already.
 	function dropPending(convId: string, nonce: string) {
 		dmRetryData.delete(nonce);
+		dropTyped(convId, nonce);
 		dmMessages.update((all) => ({ ...all, [convId]: (all[convId] ?? []).filter((m) => m.id !== nonce) }));
 	}
 
@@ -903,8 +937,11 @@
 		// Its list stays in the store while this view shows it (#320).
 		const release = dmMessages.keep(convId);
 		// A list cut back has older messages to load again (#326).
+		// The device's rows it no longer lists go from memory too, read again if they show again (M1).
 		const unhear = dmMessages.onTrim((chat) => {
-			if (chat === convId) hasMore = true;
+			if (chat !== convId) return;
+			hasMore = true;
+			letGo(convId, new Set((get(dmMessages)[convId] ?? []).map((m) => m.id)));
 		});
 		hadUnread = get(unreadConversations).has(convId);
 		unreadConversations.update((s) => {
@@ -955,6 +992,7 @@
 			hide();
 			release();
 			unhear();
+			letGo(convId);
 		};
 	});
 
@@ -985,11 +1023,7 @@
 {#snippet intro()}
 	<div class="flex flex-col">
 		{@render people()}
-		<ConversationStart
-			legacy={conversation.legacy ?? false}
-			cutoverAt={encryption.cutoverAt}
-			beforeJoining={drawn.beforeJoining}
-		/>
+		<ConversationStart legacy={conversation.legacy ?? false} cutoverAt={encryption.cutoverAt} {beforeJoining} />
 	</div>
 {/snippet}
 
@@ -1220,7 +1254,7 @@
 			isInitialLoading={isLoading}
 			retryFirstPage={loadFailed ? loadFirstPage : null}
 			{isLoadingMore}
-			hasMoreMessages={hasMore && !drawn.beforeJoining}
+			hasMoreMessages={hasMore && (!beforeJoining || olderHeld)}
 			hasMoreMessagesBelow={hasMoreBelow}
 			{isLoadingMoreBelow}
 			{highlightedMessageId}

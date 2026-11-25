@@ -133,8 +133,13 @@ export class Conversations {
 	readonly #soon: (work: () => Promise<void>) => void;
 	readonly #failures: Failures;
 	readonly #changed: (conversationId: string, state: ConversationState | null) => void;
-	/** A conversation's messages changed on this device: an apply opened, kept or took some. */
-	readonly #messagesChanged: (conversationId: string) => void;
+	/**
+	 * A conversation's messages changed on this device (an apply opened, kept or took these), or how far its queue is
+	 * applied moved: the views read them again, and draw a row past that number as loading.
+	 */
+	readonly #messagesChanged: (conversationId: string, ids: string[], through: number | null) => void;
+	/** How far each conversation's queue is applied on this device, as its last apply said (null: out of its group). */
+	readonly #through = new Map<string, number | null>();
 	/** The API's external sender, as this device pinned it (Ruling 32). */
 	#sender = "";
 	/** The API's conversations as last listed, their groups as the events and the queue have told of them since. */
@@ -169,7 +174,7 @@ export class Conversations {
 		soon: (work: () => Promise<void>) => void,
 		failures: Failures,
 		changed: (conversationId: string, state: ConversationState | null) => void,
-		messagesChanged: (conversationId: string) => void,
+		messagesChanged: (conversationId: string, ids: string[], through: number | null) => void,
 	) {
 		this.#parts = parts;
 		this.#soon = soon;
@@ -202,7 +207,7 @@ export class Conversations {
 		this.#settleTimer = null;
 		this.#settled = false;
 		for (const id of [...this.#states.keys()]) this.#set(id, null);
-		for (const kept of [this.#known, this.#heard, this.#joinsLost]) kept.clear();
+		for (const kept of [this.#known, this.#heard, this.#joinsLost, this.#through]) kept.clear();
 		for (const kept of [this.#settling, this.#removed, this.#otherSender, this.#recordRefused]) kept.clear();
 	}
 
@@ -343,6 +348,20 @@ export class Conversations {
 		this.#retries.delete(conv.id);
 	}
 
+	/** How far the conversation's queue is applied on this device this session: null before its first apply, or out. */
+	through(conversationId: string): number | null {
+		return this.#through.get(conversationId) ?? null;
+	}
+
+	/**
+	 * A commit of this device's waits for its word in the conversation (encrypt's `pending_commit`), settled now as «Un
+	 * commit sin respuesta» says: its bytes go again, or, gone with the app, the queue is read, which settles it.
+	 */
+	async settle(conversationId: string): Promise<void> {
+		if (this.#inFlight.has(conversationId)) await this.#resend(conversationId);
+		else await this.sync(conversationId, true);
+	}
+
 	#retryLater(id: string) {
 		const retry = this.#retries.get(id) ?? { tries: 0, cancel: () => {} };
 		retry.cancel();
@@ -467,7 +486,11 @@ export class Conversations {
 		const deleted = new Set(entries.filter((entry) => entry.deleted).map((entry) => entry.seq));
 		for (const kind of failedKinds(applied.results, deleted)) this.#failures.note(kind);
 		const message = ({ kind, result }: EntryResult) => MESSAGE_KINDS.has(kind) && CHANGES.has(result);
-		if (applied.results.some(message)) this.#messagesChanged(conv.id);
+		const ids = new Map(entries.map((entry) => [entry.seq, entry.message_id]));
+		const touched = applied.results.filter(message).flatMap(({ seq }) => ids.get(seq) ?? []);
+		const moved = this.#through.get(conv.id) !== applied.applied_through;
+		this.#through.set(conv.id, applied.applied_through);
+		if (touched.length || moved) this.#messagesChanged(conv.id, touched, applied.applied_through);
 		for (const { kind, result, rule } of applied.results) {
 			const refused = kind === "welcome" && result === "rejected";
 			if (refused && rule === "external_sender_mismatch") this.#otherSender.add(conv.id);
@@ -757,7 +780,9 @@ export class Conversations {
 		this.#retries.get(id)?.cancel();
 		this.#inFlight.get(id)?.cancel?.();
 		this.#due.get(id)?.();
-		for (const kept of [this.#retries, this.#inFlight, this.#due, this.#heard, this.#joinsLost]) kept.delete(id);
+		for (const kept of [this.#retries, this.#inFlight, this.#due, this.#heard, this.#joinsLost, this.#through]) {
+			kept.delete(id);
+		}
 		for (const kept of [this.#settling, this.#removed, this.#otherSender, this.#recordRefused]) kept.delete(id);
 		this.#set(id, null);
 	}

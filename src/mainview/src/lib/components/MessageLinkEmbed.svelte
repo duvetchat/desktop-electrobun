@@ -2,7 +2,7 @@
 	import { onMount } from "svelte";
 	import { getMessageById } from "$lib/api/messages";
 	import { getDirectMessageById, type DirectMessage } from "$lib/api/conversations";
-	import { heldRow, want } from "$lib/e2e/conversation-content.svelte";
+	import { contentOf, want } from "$lib/e2e/conversation-content.svelte";
 	import { directMessageToMessage, gatewayMessageToMessage, messageText } from "$lib/types";
 	import { gatewaySpaces, jumpToMessageRequest, conversations, roomNames } from "$lib/stores.svelte";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
@@ -36,9 +36,13 @@
 	const room = $derived(space?.rooms.find((r) => r.id === roomId) ?? null);
 	const conv = $derived(isConv ? ($conversations.find((c) => c.id === conversationId) ?? null) : null);
 	const convName = $derived(conv?.name ?? "Direct message");
-	const message = $derived(
-		conversationMessage ? directMessageToMessage(conversationMessage, conv?.members ?? [], heldRow) : roomMessage,
-	);
+	// Asked for as it draws, so a row its conversation's list let go is read again.
+	const message = $derived.by(() => {
+		if (!conversationMessage || !conversationId) return roomMessage;
+		const quoted = conversationMessage.referenced_message?.message_id;
+		want(conversationId, [conversationMessage.id, ...(quoted ? [quoted] : [])]);
+		return directMessageToMessage(conversationMessage, conv?.members ?? [], contentOf(conversationId));
+	});
 
 	function formatTime(dateStr: string): string {
 		return new Date(dateStr).toLocaleTimeString(locale, {
@@ -50,9 +54,7 @@
 	onMount(async () => {
 		try {
 			if (isConv && conversationId) {
-				const raw = await getDirectMessageById(conversationId, messageId);
-				want(conversationId, [raw.id]);
-				conversationMessage = raw;
+				conversationMessage = await getDirectMessageById(conversationId, messageId);
 			} else {
 				const raw = await getMessageById(roomId, messageId);
 				roomMessage = gatewayMessageToMessage(raw, $gatewaySpaces);

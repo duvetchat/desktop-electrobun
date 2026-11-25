@@ -151,6 +151,7 @@ import { getElectrobunRpc, type ActivityPayload } from "$lib/electrobun-rpc";
 import { identifyData } from "$lib/api/ws/identify";
 import { identifyDevice, keepDevice, keepUser } from "$lib/e2e/client";
 import { isEngineEvent, toEngine } from "$lib/e2e/events";
+import { moveTyped } from "$lib/e2e/conversation-content.svelte";
 
 // The user's activities as this app's Bun process reports them: the IPC apps' (VS Code, etc.) and Spotify's. The
 // gateway keeps them 2 minutes and shares only a change, so they go again every 45 s, and on each new session.
@@ -1870,10 +1871,9 @@ function takeEvent(payload: GatewayEventPayload, event: GatewayEvent) {
 					const pendingIdx = existing.findIndex((m) => m.nonce === msg.nonce);
 					if (pendingIdx !== -1) {
 						// And a page's copy of it listed meanwhile goes (see MESSAGE_CREATE).
-						// An encrypted copy has no text: the one typed shows until the device's database has it.
-						const updated = existing.flatMap((m, i) =>
-							i === pendingIdx ? [{ ...msg, content: msg.content ?? m.content }] : m.id === msg.id ? [] : [m],
-						);
+						const updated = existing.flatMap((m, i) => (i === pendingIdx ? [msg] : m.id === msg.id ? [] : [m]));
+						// The text typed shows until the device's database has it: by the message's ID now.
+						moveTyped(conversationId, existing[pendingIdx]!.id, msg.id);
 						return { ...all, [conversationId]: updated };
 					}
 				}

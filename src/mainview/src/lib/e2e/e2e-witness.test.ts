@@ -2,11 +2,18 @@ import { describe, expect, spyOn, test } from "bun:test";
 import { pageStore } from "./engine/store";
 import { FakeApi } from "./testing/fake-api";
 import { coreLibrary } from "./testing/host-bun";
-import { firstDevice, rejection, sameGroup, until, useFake } from "./testing/engines";
+import { firstDevice, rejection, testHost, until, useFake } from "./testing/engines";
 import * as content from "./conversation-content.svelte";
+import { toEngine, type EngineEvent } from "./events";
+
+// The page's engine and the stores it reaches are .svelte.ts modules whose $state only Svelte's compiler knows: here
+// it's the value itself, set before they load.
+Object.assign(globalThis, { $state: <T>(value: T) => value });
+const page = await import("./engine.svelte");
 
 // Plain text stays in the core's database (PLAN-E2E-CLIENTES.md, Review Focus 1): two devices converse with a witness
-// string, sent, quoted, edited, deleted and left waiting after a cut request, and the page draws it; then no
+// string, one through the page's own engine and its content cache, sent, quoted, edited, deleted and left waiting after
+// a cut request; then no
 // localStorage item, no record the engine keeps, no body the API saw and no line written to the console holds it.
 const SLOW = 180_000;
 const CONSOLE = ["log", "info", "warn", "error", "debug", "trace"] as const;
@@ -37,38 +44,55 @@ describe.skipIf(!coreLibrary)("the witness", () => {
 			useFake(fake, (request) => bodies.push(request.text()));
 			const [ana, bo] = [fake.addUser(), fake.addUser()];
 			const conversation = fake.addConversation({ type: "dm", members: [ana, bo] });
-			// Each device keeps its record in the page's localStorage, as the app does.
-			const a = await firstDevice(fake, ana, { store: pageStore(ana) });
+			// Ana's device is the page's own engine (lib/e2e/engine.svelte.ts), on a host of the test's, its record in
+			// localStorage; its gateway events reach it as the app's do. Bo's keeps its record there too.
+			const token = fake.signIn(ana).token;
+			localStorage.setItem("duvet_session_token", token);
+			const host = testHost();
+			await page.startEngine(ana, {
+				...{ desktop: true, desktopHost: async () => host, webHost: () => Promise.reject(new Error("no web")) },
+				...{ missing: () => [], persist: () => undefined },
+			});
+			await page.makeIdentity();
+			await page.keySaved();
+			const { device_id } = await host.handle<{ device_id: string }>({ cmd: "status" });
+			// oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the fake's events are the API's, as the gateway hands them on
+			const hear = fake.connect(token, device_id, (event) => toEngine(event as EngineEvent));
 			const b = await firstDevice(fake, bo, { store: pageStore(bo) });
-			await a.engine.openConversation(conversation);
-			await sameGroup([a, b], conversation);
+			await page.openConversation(conversation);
+			await until(
+				async () => !!(await b.host.handle({ cmd: "group", conversation_id: conversation }).catch(() => null)),
+			);
 
-			// Sent, read on the other device and drawn there, quoted in a reply, edited, deleted.
-			const sent = (await a.engine.sendMessage({
+			// Sent through the page, read on the other device, quoted in a reply the page reads, edited, deleted.
+			const sent = await page.sendEncrypted({
 				conversation_id: conversation,
 				nonce: crypto.randomUUID(),
 				text: witness,
-			}))!;
-			content.useReader((conversationId, ids) => b.engine.messages(conversationId, ids));
-			content.want(conversation, [sent.id]);
-			await until(() => content.heldRow(sent.id)?.text === witness);
-			const reply = (await b.engine.sendMessage({
+			});
+			if (!sent) throw new Error("the message wasn't sent");
+			await until(async () => (await b.engine.messages(conversation, [sent.id]))[0]?.text === witness);
+			const reply = await b.engine.sendMessage({
 				...{ conversation_id: conversation, nonce: crypto.randomUUID(), text: `re: ${witness}` },
 				message_reference: { type: 0, message_id: sent.id },
-			}))!;
-			await a.engine.editMessage(conversation, sent.id, `${witness}, edited`);
+			});
+			if (!reply) throw new Error("the reply wasn't sent");
+			content.want(conversation, [reply.id]);
+			await until(() => content.heldRow(conversation, reply.id)?.text === `re: ${witness}`);
+			await page.editEncrypted(conversation, sent.id, `${witness}, edited`);
 			await until(async () => (await b.engine.messages(conversation, [sent.id]))[0]?.text === `${witness}, edited`);
 			await b.engine.deleteMessage(conversation, reply.id);
 			// One whose request never reached the API waits on the device, with what goes with it in the clear.
 			fake.cutRequest({ method: "POST", path: `/api/users/@me/conversations/${conversation}/messages` });
 			await rejection(
-				a.engine.sendMessage({
+				page.sendEncrypted({
 					...{ conversation_id: conversation, nonce: crypto.randomUUID(), text: `${witness}, waiting` },
 					message_reference: { type: 0, message_id: sent.id },
 				}),
 			);
-			expect((await a.engine.pendingMessages(conversation)).map((p) => p.text)).toEqual([`${witness}, waiting`]);
-			await a.engine.stop();
+			expect((await page.pendingEncrypted(conversation)).map((p) => p.text)).toEqual([`${witness}, waiting`]);
+			await page.stopEngine();
+			hear();
 			await b.engine.stop();
 			for (const spy of spies) spy.mockRestore();
 

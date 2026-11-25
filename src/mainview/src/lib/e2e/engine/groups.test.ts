@@ -304,4 +304,42 @@ describe.skipIf(!coreLibrary)("a conversation's group", () => {
 		},
 		SLOW,
 	);
+	// The review of task 16, I4: a member removed and added back has a new membership, after the rows of their absence,
+	// which this device doesn't hold. Those give way to the notice, and the pages go on to what the device holds from
+	// before (Ruling 15 hides rows; it doesn't end the list): they end only where it holds nothing older.
+	test(
+		"a member removed and added back pages on to the history the device holds",
+		async () => {
+			const { cy, a, b, c, conversation } = await groupOfThree();
+			const mine = await c.engine.sendMessage({
+				conversation_id: conversation,
+				nonce: crypto.randomUUID(),
+				text: "mine",
+			});
+			if (!mine?.seq) throw new Error("Cy's message wasn't sent");
+			const { key_packages } = await a.api.claimKeyPackages(cy);
+			await a.engine.stop();
+			await a.host.open(a.user);
+			await removeByHand(a, conversation, cy);
+			await until(async () => (await groupOf(c, conversation)) === null);
+			const away = await b.engine.sendMessage({
+				conversation_id: conversation,
+				nonce: crypto.randomUUID(),
+				text: "away",
+			});
+			if (!away?.seq) throw new Error("Bo's message wasn't sent");
+			await addByHand(a, conversation, cy, key_packages);
+			await until(async () => (await groupOf(c, conversation)) !== null);
+			const joined = (await c.api.conversations())
+				.find((conv) => conv.id === conversation)!
+				.members.find((member) => member.user_id === cy)!.id;
+			expect(away.id < joined).toBe(true);
+			// The row of Cy's absence isn't on Cy's device, and Cy's own message from before is: the pages go on to it.
+			expect(await c.engine.messages(conversation, [away.id])).toEqual([]);
+			expect(await c.engine.heldBefore(conversation, away.seq)).toBe(true);
+			// Nothing older than it: there they end.
+			expect(await c.engine.heldBefore(conversation, mine.seq)).toBe(false);
+		},
+		SLOW,
+	);
 });

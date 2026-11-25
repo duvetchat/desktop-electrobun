@@ -11,8 +11,10 @@ export const KEPT_TRANSFERS = "transfers";
 export const KEPT_LATER = "later";
 /** What goes in the clear with each message still being sent, by its nonce (send.ts): never its text, which the core keeps. */
 export const PENDING_SENDS = "pending_sends";
+/** The person's edits and deletions not answered yet, by conversation and message (send.ts): never their text. */
+export const PENDING_CHANGES = "pending_changes";
 /** What a new device of this installation starts without. */
-export const DEVICE_RECORD = [DEVICE_KEYS, KEPT_APPROVALS, KEPT_TRANSFERS, KEPT_LATER, PENDING_SENDS];
+export const DEVICE_RECORD = [DEVICE_KEYS, KEPT_APPROVALS, KEPT_TRANSFERS, KEPT_LATER, PENDING_SENDS, PENDING_CHANGES];
 /** The API's external sender as this installation first saw it (Ruling 32), which a new device of it keeps. */
 export const EXTERNAL_SENDER = "external_sender";
 

@@ -74,15 +74,6 @@ export function arrivalAction(
 }
 
 /**
- * The API's copy of the person's message being sent (by its nonce), with the text its pending row shows while the copy
- * has none: an encrypted message's, whose text the device's database gives a moment later.
- */
-export function withTyped<T extends { id: string; content: string | null }>(messages: T[], nonce: string, sent: T): T {
-	const pending = messages.find((m) => m.id === nonce);
-	return pending && sent.content == null ? { ...sent, content: pending.content } : sent;
-}
-
-/**
  * A room's or a conversation's messages once the API answered a send of this window's: its copy of the message takes
  * the place of the one being sent, whose ID is the send's nonce, and drops any other copy. The list is as it was when
  * the one being sent is gone, which the gateway's event replaced already.
