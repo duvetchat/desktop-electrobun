@@ -148,7 +148,8 @@ describe.skipIf(process.platform !== "linux" || !existsSync(LIBRARY))("the core 
 		expect(made.ok).toHaveProperty("signature_key");
 		expect(again).toMatchObject({ ok: { state: "ready", keyStorage: "file" } });
 		expect(status.ok).toMatchObject({ device_id: device, user_id: user, key_storage: "file" });
-		expect(otherKey).toMatchObject({ ok: { state: "failed" } });
+		// It says why: the key, which no later open fixes, not a failure that passes.
+		expect(otherKey).toMatchObject({ ok: { state: "failed", reason: "bad_key" } });
 		// Where the plan's table puts it: <userData>/e2e/<user_id>/core.db, the key beside it for its user alone.
 		const database = join(home, user, "core.db");
 		expect(existsSync(database)).toBe(true);

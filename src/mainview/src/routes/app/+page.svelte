@@ -2,7 +2,7 @@
 	import { onDestroy, onMount, untrack } from "svelte";
 	import { createWebSocketConnection, loadSpaceMembers } from "$lib/api/ws/connection";
 	import { markStartup, reportStartup } from "$lib/startup-timing";
-	import { getElectrobunRpc } from "$lib/electrobun-rpc";
+	import { getElectrobunRpc, isElectrobunWindow } from "$lib/electrobun-rpc";
 	import { get } from "svelte/store";
 	import { keepSessionFresh } from "$lib/api/api";
 	import FriendsView from "$lib/components/FriendsView.svelte";
@@ -82,6 +82,8 @@
 	import MentionNotices from "$lib/components/MentionNotices.svelte";
 	import { startSystemNotifications } from "$lib/system-notifications";
 	import NotificationPermissionBar from "$lib/components/NotificationPermissionBar.svelte";
+	import EncryptionGate from "$lib/components/e2e/EncryptionGate.svelte";
+	import { encryption, keySaved, makeIdentity, startEngine, startOver, uploadLater } from "$lib/e2e/engine.svelte";
 	import type { Channel, PaneNode, Tab } from "$lib/types";
 	import { gatewaySpaceToGuild, gatewaySpaceToMembers } from "$lib/types";
 	import { userStatusCache } from "$lib/api/ws/connection";
@@ -880,6 +882,13 @@
 		);
 	}
 
+	// The encryption engine starts with the session, once READY said whose it is (PLAN-E2E-CLIENTES.md, Task 12): nothing
+	// of the core loads before.
+	$effect(() => {
+		const userId = $currentUser?.id;
+		if (userId) untrack(() => void startEngine(userId));
+	});
+
 	let prevVoiceRoomId: string | null = null;
 
 	$effect(() => {
@@ -1104,5 +1113,16 @@
 <UserFlagsSheet />
 {#if $currentUser && $friendsReady}
 	<MentionNotices onOpen={openMentioned} />
-	<NotificationPermissionBar />
+	<!-- The app's bottom bars, one above the other at the bottom centre: above where a toast shows, so none hides another. -->
+	<div class="fixed bottom-16 left-1/2 z-9990 flex -translate-x-1/2 flex-col items-center gap-2">
+		<NotificationPermissionBar />
+		<EncryptionGate
+			encryption={encryption.state}
+			web={!isElectrobunWindow()}
+			onMakeIdentity={makeIdentity}
+			onKeySaved={keySaved}
+			onLater={uploadLater}
+			onStartOver={startOver}
+		/>
+	</div>
 {/if}

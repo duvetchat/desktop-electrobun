@@ -7,7 +7,15 @@
 // user's database, before it runs.
 import { isUuid } from "../common/common";
 import { CoreError, replyOk } from "./errors";
-import { MAX_SHARE_PARTS, ownWay, OWN_WAY, type CoreHost, type HostState, type ShareMade } from "./host";
+import {
+	MAX_SHARE_PARTS,
+	ownWay,
+	OWN_WAY,
+	type CoreHost,
+	type HostOpened,
+	type HostState,
+	type ShareMade,
+} from "./host";
 import { missingInPage } from "./web/support";
 
 /** What the host uses of a Worker; the tests hand one of their own. */
@@ -24,7 +32,7 @@ export const startCoreWorker = (): Worker =>
 /** How long the core may take to close before its worker is ended all the same. */
 const CLOSE_WAIT_MS = 2_000;
 
-type Opened = { state: HostState; keyStorage?: "provided" };
+type Opened = HostOpened & { keyStorage?: "provided" };
 
 /** A worker and the calls it has, by their IDs. */
 interface Running {
@@ -62,15 +70,19 @@ export class WebCoreHost implements CoreHost {
 		await this.close();
 		if (this.#missing().length) return { state: "unsupported" };
 		const running = this.#begin();
-		if (!running) return { state: "failed" };
+		if (!running) return { state: "failed", reason: "internal" };
 		this.#running = running;
-		const opened = await this.#openIn(running, userId).catch(() => ({ state: "failed" as const, made: false }));
+		const opened = await this.#openIn(running, userId).catch(() => ({
+			state: "failed" as const,
+			reason: "internal",
+			made: false,
+		}));
 		if (opened.state !== "ready") {
 			this.#end(running, cut("the core didn't open"));
 			// A database this open made and then failed in: deleted, with its key, so its slot of the pool is free again.
 			// One that can't be is left as it was.
 			if (opened.made) await this.#delete(userId).catch(() => {});
-			return { state: opened.state };
+			return opened.reason ? { state: opened.state, reason: opened.reason } : { state: opened.state };
 		}
 		this.#userId = userId;
 		return { state: "ready", keyStorage: "provided" };
@@ -188,12 +200,13 @@ export class WebCoreHost implements CoreHost {
 		});
 	}
 
-	async #openIn(running: Running, userId: string): Promise<{ state: HostState; made?: boolean }> {
-		const opened = await this.#post<{ state: HostState; made?: boolean; times?: Record<string, number> }>(
-			running,
-			"open",
-			{ userId },
-		);
+	async #openIn(running: Running, userId: string): Promise<{ state: HostState; reason?: string; made?: boolean }> {
+		const opened = await this.#post<{
+			state: HostState;
+			reason?: string;
+			made?: boolean;
+			times?: Record<string, number>;
+		}>(running, "open", { userId });
 		this.openTimes = opened.times ?? null;
 		return opened;
 	}

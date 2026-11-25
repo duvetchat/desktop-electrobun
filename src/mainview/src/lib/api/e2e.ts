@@ -15,6 +15,7 @@ import api, {
 	type UploadOptions,
 } from "$lib/api/api";
 import type { ConversationMember, DirectMessage } from "$lib/api/conversations";
+import { getHostURL } from "$lib/common/common";
 import type { AllowedMentions, HistoryShare, MessageReference, MlsEntry, UserDevice } from "$lib/types";
 
 /** GET /api/e2e: the API's external sender (its key, base64), the cutover's instant, whether conversations' writes are
@@ -217,12 +218,13 @@ export interface InboxMessage {
 	created_at: string;
 }
 
-/** A shared history going up: its recipient, its kind, its range and start (Unix ms), its size and its parts. */
+/** A shared history going up: its recipient, its kind, its range and start (an RFC 3339 time: the API binds a time.Time
+ * and refuses a number), its size and its parts. */
 export interface HistoryShareUpload {
 	to_user_id: string;
 	kind: "share" | "catch_up";
 	range: string;
-	starts_at: number;
+	starts_at: string;
 	size: number;
 	parts: number;
 }
@@ -264,11 +266,13 @@ export interface DecryptFailureCount {
 	count: number;
 }
 
-/** A file's bytes at the signed URL its route answered: fetched with none of the app's headers, which a redirect would
+/** A file's bytes at the signed URL its route answered: the API's own path (storage.SignedAttachmentURL) on the API's
+ * host, as the app's requests take it, not the page's; fetched with none of the app's headers, which a redirect would
  * have carried to the storage's host, the session token among them (PLAN-E2E-API.md, I and J). */
 async function signedFile(route: Promise<{ url: string }>): Promise<Uint8Array> {
 	const { url } = await route;
-	const res = await fetchWithin(url, { credentials: "omit" }, requestLimits.answerMs);
+	const at = url.startsWith("http") ? url : `${getHostURL()}${url}`;
+	const res = await fetchWithin(at, { credentials: "omit" }, requestLimits.answerMs);
 	if (!res.ok) {
 		const failed = { data: null, status: res.status, statusText: res.statusText, headers: res.headers };
 		throw new FetchError(`Request failed with status ${res.status}`, {}, failed);

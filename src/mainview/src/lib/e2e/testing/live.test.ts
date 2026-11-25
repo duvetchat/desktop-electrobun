@@ -3,11 +3,17 @@
 // each one's id and email) and their password (E2E_LIVE_PASSWORD). Outside that suite, as in the app's own run, they're
 // skipped. Each engine task adds its cases here, on the core the desktop carries (native/core).
 import { describe, expect, test } from "bun:test";
-import api from "$lib/api/api";
+import { rmSync } from "node:fs";
+import api, { sessionApi } from "$lib/api/api";
 import { logIn } from "$lib/api/auth";
 import { e2eApi } from "$lib/api/e2e";
 import { identifyData } from "$lib/api/ws/identify";
 import { getWSHostURL } from "$lib/common/common";
+import { deviceName } from "../client";
+import { E2EEngine, systemClock } from "../engine/engine";
+import type { EngineEvent, EngineEvents } from "../events";
+import { memoryStore } from "./engines";
+import { BunCoreHost } from "./host-bun";
 
 interface Account {
 	id: string;
@@ -54,6 +60,68 @@ function ready(token: string): Promise<{ user: { id: string } }> {
 	});
 }
 
+/**
+ * A connection to the gateway for an engine, as the app's: identified with no device, then again with the one the
+ * engine registers (Ruling 30's reopen). Its events go to the engine; `readies` says which device each READY came for.
+ */
+function gateway(token: string) {
+	const listeners = new Set<(event: EngineEvent) => void>();
+	const readies: (string | null)[] = [];
+	let socket: WebSocket | null = null;
+	const connect = (device: string | null) => {
+		socket?.close();
+		const opened = new WebSocket(`${getWSHostURL()}/gateway?token=${encodeURIComponent(token)}`);
+		socket = opened;
+		opened.onopen = () => {
+			const data = { ...identifyData(token, null), ...(device ? { device_id: device } : {}) };
+			opened.send(JSON.stringify({ type: "identify", data }));
+		};
+		opened.onmessage = (event) => {
+			const message = JSON.parse(String(event.data));
+			if (message.event !== "payload" || typeof message.d?.type !== "string") return;
+			if (message.d.type === "READY") readies.push(device);
+			for (const listener of listeners) listener(message.d);
+		};
+	};
+	const events: EngineEvents = {
+		listen(listener) {
+			listeners.add(listener);
+			return () => void listeners.delete(listener);
+		},
+	};
+	return { events, connect, readies, close: () => socket?.close() };
+}
+
+/**
+ * An account's device as the app makes one, not started: a session of its own, its routes, its connection to the
+ * gateway, its core and its engine; `end` stops them and deletes the core's folder.
+ */
+async function deviceOf(who: Account) {
+	if (!live) throw new Error("no stack");
+	const session = await logIn({ email: who.email, password: live.password });
+	const client = sessionApi({ token: session.token, sessionToken: session.session_token ?? null });
+	const routes = e2eApi(client);
+	const socket = gateway(session.token);
+	const host = new BunCoreHost();
+	const registered: string[] = [];
+	const engine = new E2EEngine({
+		...{ host, api: routes, events: socket.events, clock: systemClock, user: who.id },
+		store: memoryStore(),
+		deviceName: deviceName(),
+		registered: (id) => {
+			registered.push(id);
+			socket.connect(id);
+		},
+	});
+	socket.connect(null);
+	const end = async () => {
+		await engine.stop();
+		socket.close();
+		rmSync(host.folder, { recursive: true, force: true });
+	};
+	return { client, routes, socket, host, registered, engine, end };
+}
+
 describe.skipIf(!live)("live, against the API's stack", () => {
 	test("the client reaches the stack", async () => {
 		if (!live) throw new Error("no stack");
@@ -64,4 +132,47 @@ describe.skipIf(!live)("live, against the API's stack", () => {
 		expect(await e2eApi().devices()).toEqual([]);
 		expect((await ready(session.token)).user.id).toBe(alice.id);
 	}, 30_000);
+
+	// The engine's start (PLAN-E2E-CLIENTES.md, Task 12): a first device, from its registration to its key packages,
+	// which a friend's device claims.
+	test("a device registers, binds its session, publishes its identity and its key packages", async () => {
+		const [alice, bob] = [account(0), account(1)];
+		const b = await deviceOf(bob);
+		const a = await deviceOf(alice);
+		try {
+			await b.engine.start();
+			expect(b.engine.state).toEqual({ name: "first_device", recoveryKey: null, finishing: false });
+			const [made] = b.registered;
+			expect(await b.routes.devices()).toMatchObject([{ id: made, listed: false, current: true }]);
+
+			await b.engine.makeIdentity();
+			const shown = b.engine.state;
+			expect(shown.name === "first_device" && shown.recoveryKey).toMatch(/^[1-9A-HJ-NP-Za-km-z]{48}$/);
+			await b.engine.keySaved();
+			expect(b.engine.state).toEqual({ name: "ready" });
+
+			// The API has the identity the core made, with this device listed as its one device.
+			const status = await b.host.handle<{ identity_key: string; certificate: string }>({ cmd: "status" });
+			const identity = await b.routes.identity(bob.id);
+			expect(identity).toMatchObject({ identity_key: status.identity_key, device_list_version: 1 });
+			expect(identity.certificates).toEqual([status.certificate]);
+			expect(await b.routes.devices()).toMatchObject([{ id: made, listed: true, current: true }]);
+			// The gateway took an identify naming the device: its session hands the device its own events.
+			const deadline = Date.now() + 15_000;
+			while (!b.socket.readies.includes(made!) && Date.now() < deadline) await Bun.sleep(50);
+			expect(b.socket.readies).toContain(made!);
+
+			// Alice's first device, set up the same way, has its key packages up: Bob, her friend, claims one for it.
+			await a.engine.start();
+			await a.engine.makeIdentity();
+			await a.engine.keySaved();
+			expect(a.engine.state).toEqual({ name: "ready" });
+			const request = await b.client.post<{ id: string }>("/api/users/@me/friends/requests", { user_id: alice.id });
+			await a.client.post(`/api/users/@me/friends/requests/${request.data.id}/accept`);
+			const { key_packages } = await b.routes.claimKeyPackages(alice.id);
+			expect(key_packages.map(({ device_id }) => device_id)).toEqual([a.registered[0]!]);
+		} finally {
+			await Promise.all([a.end(), b.end()]);
+		}
+	}, 120_000);
 });

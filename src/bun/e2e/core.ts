@@ -147,9 +147,12 @@ export function coreWorker(setup: CoreSetup): void {
 				core.fs.mkdirSync(core.path.join(setup.folder, params.userId), { recursive: true });
 				const opened = take(core, core.lib.duvet_e2e_open(json(config(core, params.userId))));
 				if ("error" in opened) {
-					// The code alone: it's what tells a locked database from one that failed.
-					if (opened.error.code !== "locked") console.error("[e2e] the core didn't open:", opened.error.code);
-					return { ok: { state: opened.error.code === "locked" ? "locked" : "failed" } };
+					// The code alone: it tells a locked database from one that failed, and a lost key (bad_key) from a
+					// failure another open may get past.
+					const { code } = opened.error;
+					if (code === "locked") return { ok: { state: "locked" } };
+					console.error("[e2e] the core didn't open:", code);
+					return { ok: { state: "failed", reason: code } };
 				}
 				handle = BigInt(opened.ok.handle);
 				const status = command(core, { cmd: "status" });

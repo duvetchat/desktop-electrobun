@@ -2,7 +2,7 @@ import { describe, expect, spyOn, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { ShellInputs } from "$lib/platform";
-import { deviceOf, duvetClient, keepDevice, keepUser, lastUser } from "./client";
+import { deviceName, deviceOf, duvetClient, keepDevice, keepUser, lastUser } from "./client";
 
 // What the app tells the API (X-Duvet-Client) and the gateway (an identify's client) it is: <platform>/<version>, which
 // the API reads as its ParseClient does (duvet-api's internal/domain/e2e) and holds to E2E_MIN_CLIENTS (PLAN-E2E-API.md,
@@ -64,6 +64,40 @@ describe("the client the app says it is", () => {
 		const config = readFileSync(join(import.meta.dir, "..", "..", "..", "vite.config.ts"), "utf8");
 		expect(config).toContain('import { version } from "../../package.json";');
 		expect(config).toContain("VITE_APP_VERSION: JSON.stringify(version)");
+	});
+});
+
+// A device's name among the user's (PLAN-E2E-CLIENTES.md, «Convenciones entre clientes»; Ruling 27): the app's, by its
+// system, or the browser and its system, from the user agent. 64 characters at most, which these never reach.
+describe("the name this installation registers its device with", () => {
+	const agents = {
+		chromeWindows:
+			"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+		edgeWindows:
+			"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36 Edg/131.0.0.0",
+		firefoxLinux: "Mozilla/5.0 (X11; Linux x86_64; rv:145.0) Gecko/20100101 Firefox/145.0",
+		safariMac:
+			"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.1 Safari/605.1.15",
+		chromeAndroid:
+			"Mozilla/5.0 (Linux; Android 14; Pixel 8 Pro) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36",
+		operaWindows:
+			"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36 OPR/115.0.0.0",
+	};
+
+	test("is the app's for its system", () => {
+		expect(deviceName(inputs({ inElectrobun: true, injected: shell("win32") }))).toBe("Duvet for Windows");
+		expect(deviceName(inputs({ inElectrobun: true, injected: shell("darwin") }))).toBe("Duvet for macOS");
+		expect(deviceName(inputs({ inElectrobun: true, injected: shell("linux") }))).toBe("Duvet for Linux");
+	});
+
+	test("on the web, is the browser on its system", () => {
+		expect(deviceName(inputs({ userAgent: agents.chromeWindows }))).toBe("Chrome on Windows");
+		expect(deviceName(inputs({ userAgent: agents.edgeWindows }))).toBe("Edge on Windows");
+		expect(deviceName(inputs({ userAgent: agents.operaWindows }))).toBe("Opera on Windows");
+		expect(deviceName(inputs({ userAgent: agents.firefoxLinux }))).toBe("Firefox on Linux");
+		expect(deviceName(inputs({ userAgent: agents.safariMac }))).toBe("Safari on macOS");
+		expect(deviceName(inputs({ userAgent: agents.chromeAndroid }))).toBe("Chrome on Android");
+		expect(deviceName(inputs({ userAgent: "Something/1.0" }))).toBe("Browser");
 	});
 });
 

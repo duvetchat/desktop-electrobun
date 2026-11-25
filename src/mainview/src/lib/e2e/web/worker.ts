@@ -74,7 +74,7 @@ function databaseFiles(userId: unknown): string[] {
 
 type OpenState =
 	| { state: "ready"; keyStorage: "provided"; times: Record<string, number> }
-	| { state: string; made?: boolean };
+	| { state: string; reason?: string; made?: boolean };
 
 async function open(userId: unknown): Promise<OpenState> {
 	const [database = ""] = databaseFiles(userId);
@@ -97,7 +97,7 @@ async function open(userId: unknown): Promise<OpenState> {
 			exports ??= await init({ module_or_path: wasm });
 		} catch {
 			// The module didn't load (the network, or a page that changed under it): another open tries again.
-			return { state: "failed" };
+			return { state: "failed", reason: "internal" };
 		}
 		lap("init");
 		const install = await installPool(install_opfs).catch((error: unknown) => {
@@ -110,15 +110,15 @@ async function open(userId: unknown): Promise<OpenState> {
 	let key: Uint8Array;
 	try {
 		key = await databaseKey(String(userId), keyStore);
-	} catch {
-		// The key kept doesn't open (bad_key), or IndexedDB refused: nothing opens without it.
-		return { state: "failed" };
+	} catch (error) {
+		// The key kept doesn't open (bad_key: lost for good), or IndexedDB refused (storage): nothing opens without it.
+		return { state: "failed", reason: error instanceof CoreError ? error.code : "storage" };
 	}
 	lap("key");
 	try {
 		core = inCore(() => WasmCore.open(JSON.stringify({ path: database }), key));
 	} catch (error) {
-		if (error instanceof CoreError) return { state: "failed", made: !existed };
+		if (error instanceof CoreError) return { state: "failed", reason: error.code, made: !existed };
 		throw error;
 	} finally {
 		key.fill(0);

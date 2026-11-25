@@ -7,6 +7,14 @@ export { CoreError };
 
 export type HostState = "ready" | "locked" | "unsupported" | "failed";
 
+/** What `open` answers: its state, where the key is kept once ready, and why it failed: the core's code, `bad_key` for a
+ * database its key no longer opens (lost for good), anything else a failure another open may get past. */
+export interface HostOpened {
+	state: HostState;
+	keyStorage?: "keyring" | "file" | "provided";
+	reason?: string;
+}
+
 /** What `share` answers: `history_share`'s or `catch_up`'s reply, its parts kept in the host and counted here. */
 export interface ShareMade {
 	share_id: string;
@@ -24,7 +32,7 @@ export interface ShareMade {
 
 export interface CoreHost {
 	/** Opens this user's database on this device, or makes it. */
-	open(userId: string): Promise<{ state: HostState; keyStorage?: "keyring" | "file" | "provided" }>;
+	open(userId: string): Promise<HostOpened>;
 	/** Runs one command. Resolves with the reply's `ok`; rejects with a CoreError (its code and extra fields). */
 	handle<T = unknown>(command: { cmd: string } & Record<string, unknown>): Promise<T>;
 	/** Seals or opens a whole file, part by part, with the bytes never in one JSON. */

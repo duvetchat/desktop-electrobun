@@ -745,7 +745,7 @@ describe("end-to-end encryption's events", () => {
 				from_user_id: ALICE,
 				kind: "share",
 				range: "week",
-				starts_at: 1,
+				starts_at: "2025-11-13T02:13:20Z",
 				size: 4096,
 				parts: 1,
 			},

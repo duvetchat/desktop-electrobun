@@ -112,11 +112,17 @@ describe("the web's core host", () => {
 	});
 
 	test("a worker that can't open says why, and ends", async () => {
-		for (const state of ["unsupported", "locked", "failed"] as const) {
+		for (const opened of [
+			{ state: "unsupported" },
+			{ state: "locked" },
+			// A failure says its reason: a lost key isn't one that passes.
+			{ state: "failed", reason: "bad_key" },
+			{ state: "failed", reason: "internal" },
+		] as const) {
 			const { host, workers } = hostOver((message) =>
-				message.op === "open" ? { id: message.id, reply: { ok: { state } } } : core(message),
+				message.op === "open" ? { id: message.id, reply: { ok: opened } } : core(message),
 			);
-			expect(await host.open(ana)).toEqual({ state });
+			expect(await host.open(ana)).toEqual(opened);
 			expect(workers[0]?.terminated).toBe(true);
 			expect(await refusal(host.handle({ cmd: "status" }))).toMatchObject({ code: "internal" });
 			expect(workers).toHaveLength(1);
@@ -295,7 +301,7 @@ describe("the web's core host", () => {
 			throw new DOMException("the page may not start this worker", "SecurityError");
 		};
 		const never = new WebCoreHost({ start: refused, missing: () => [] });
-		expect(await never.open(ana)).toEqual({ state: "failed" });
+		expect(await never.open(ana)).toEqual({ state: "failed", reason: "internal" });
 		expect(await refusal(never.destroy(ana))).toMatchObject({ code: "internal" });
 
 		// A core that opened, then trapped: the worker for its reopen can't start.
@@ -316,17 +322,19 @@ describe("the web's core host", () => {
 
 	test("an open that made a database and failed has a new worker delete it and its key", async () => {
 		const { host, workers } = hostOver((message) =>
-			message.op === "open" ? { id: message.id, reply: { ok: { state: "failed", made: true } } } : core(message),
+			message.op === "open"
+				? { id: message.id, reply: { ok: { state: "failed", reason: "bad_key", made: true } } }
+				: core(message),
 		);
-		expect(await host.open(ana)).toEqual({ state: "failed" });
+		expect(await host.open(ana)).toEqual({ state: "failed", reason: "bad_key" });
 		expect(workers[0]?.terminated).toBe(true);
 		expect(workers[1]?.posted).toMatchObject([{ op: "destroy", userId: ana }]);
 		expect(workers[1]?.terminated).toBe(true);
 		// One that found its database there and failed deletes nothing.
 		const kept = hostOver((message) =>
-			message.op === "open" ? { id: message.id, reply: { ok: { state: "failed" } } } : core(message),
+			message.op === "open" ? { id: message.id, reply: { ok: { state: "failed", reason: "storage" } } } : core(message),
 		);
-		expect(await kept.host.open(ana)).toEqual({ state: "failed" });
+		expect(await kept.host.open(ana)).toEqual({ state: "failed", reason: "storage" });
 		expect(kept.workers).toHaveLength(1);
 	});
 

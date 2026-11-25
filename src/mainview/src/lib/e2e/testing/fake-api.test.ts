@@ -50,8 +50,9 @@ async function call(fake: FakeApi, token: string, method: string, path: string, 
 /** A file's bytes: its route answers its signed URL (PLAN-E2E-API.md, I and J), which takes no session. */
 async function download(fake: FakeApi, token: string, path: string): Promise<Uint8Array> {
 	const { status, body } = await call(fake, token, "GET", path);
-	expect({ status, url: typeof body.url }).toEqual({ status: 200, url: "string" });
-	return new Uint8Array(await (await fake.fetch(body.url)).arrayBuffer());
+	// The API's signed URL is a path of its own (storage.SignedAttachmentURL), which the client takes on the API's host.
+	expect({ status, url: /^\/attachments\/[0-9a-f-]{36}\?sig=/.test(body.url) }).toEqual({ status: 200, url: true });
+	return new Uint8Array(await (await fake.fetch(`${FAKE_API_URL}${body.url}`)).arrayBuffer());
 }
 
 interface Device {
@@ -483,9 +484,34 @@ describe.skipIf(!coreLibrary)("the fake API, with real cores", () => {
 		expect((await call(fake, b.token, "GET", `${inbox}?after=${one.body.id}`)).body.map((m: any) => m.id)).toEqual([
 			two.body.id,
 		]);
+		// The API binds `after` as a message's ID and `limit` from 1 to 100 (its InboxQuery).
+		for (const query of ["after=one", "limit=0", "limit=101", "limit=many"]) {
+			expect((await call(fake, b.token, "GET", `${inbox}?${query}`)).status).toBe(400);
+		}
+		expect((await call(fake, b.token, "GET", `${inbox}?limit=1`)).body.map((m: any) => m.id)).toEqual([one.body.id]);
 		expect((await call(fake, b.token, "DELETE", `${inbox}?through=${one.body.id}`)).status).toBe(204);
 		expect(elsewhere.map((event) => event.type)).toEqual(["READY"]);
 		expect((await call(fake, b.token, "GET", inbox)).body.map((m: any) => m.id)).toEqual([two.body.id]);
+	});
+
+	// The API's validator counts a string's characters as code points (max=64): an emoji outside the BMP is one.
+	test("a device's name is 64 characters at most, counted by code point", async () => {
+		const fake = new FakeApi();
+		const ana = fake.addUser();
+		const host = new BunCoreHost();
+		hosts.push(host);
+		await host.open(ana);
+		const { token, device_challenge } = fake.signIn(ana);
+		const id = uuidv7();
+		const keys = await host.handle<object>({ cmd: "create_device", user_id: ana, device_id: id });
+		const { proof } = await host.handle<{ proof: string }>({ cmd: "bind_proof", challenge: device_challenge });
+		const register = (name: string) =>
+			call(fake, token, "POST", "/api/users/@me/devices", { device_id: id, name, ...keys, proof });
+		// One code point, two UTF-16 units; with its variation selector, two code points.
+		const couch = String.fromCodePoint(0x1f6cb);
+		expect((await register(`${couch}${String.fromCodePoint(0xfe0f)}`.repeat(33))).status).toBe(400);
+		expect((await register(couch.repeat(65))).status).toBe(400);
+		expect((await register(couch.repeat(64))).status).toBe(201);
 	});
 
 	test("a day's backup replaces only the copy it names", async () => {
@@ -562,10 +588,12 @@ describe.skipIf(!coreLibrary)("the fake API, with real cores", () => {
 			to_user_id: bo,
 			kind: "share",
 			range: "all",
-			starts_at: made.start,
+			starts_at: new Date(made.start).toISOString(),
 			size: made.size,
 			parts: made.parts,
 		};
+		// Its start is a time, as the API binds a time.Time: the core's milliseconds are refused.
+		expect((await call(fake, a.token, "PUT", share, { ...about, starts_at: made.start })).status).toBe(400);
 		expect((await call(fake, a.token, "PUT", share, about)).status).toBe(201);
 		expect((await call(fake, a.token, "POST", `${share}/complete`)).status).toBe(409); // its parts aren't up yet
 		for (let n = 0; n < made.parts; n++) {
@@ -589,6 +617,7 @@ describe.skipIf(!coreLibrary)("the fake API, with real cores", () => {
 				from_user_id: ana,
 				kind: "share",
 				range: "all",
+				starts_at: about.starts_at,
 				parts: made.parts,
 			},
 		});

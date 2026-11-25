@@ -12,7 +12,7 @@ import { join } from "node:path";
 import { base64Bytes } from "$lib/activity-thumbnail";
 import { bytesBase64 } from "$lib/staged-images";
 import { CoreError, replyOk } from "../errors";
-import { MAX_SHARE_PARTS, OWN_WAY, ownWay, type CoreHost, type HostState, type ShareMade } from "../host";
+import { MAX_SHARE_PARTS, OWN_WAY, ownWay, type CoreHost, type HostOpened, type ShareMade } from "../host";
 import { throughCore } from "../parts";
 
 const native = join(import.meta.dir, "../../../../../../native/core");
@@ -79,7 +79,7 @@ export class BunCoreHost implements CoreHost {
 		return join(this.folder, userId, "core.db");
 	}
 
-	async open(userId: string): Promise<{ state: HostState; keyStorage?: "provided" }> {
+	async open(userId: string): Promise<HostOpened & { keyStorage?: "provided" }> {
 		if (!coreLibrary) return { state: "unsupported" };
 		await this.close();
 		const path = this.#path(userId);
@@ -90,7 +90,8 @@ export class BunCoreHost implements CoreHost {
 			);
 			this.#handle = BigInt(handle);
 		} catch (error) {
-			return { state: error instanceof CoreError && error.code === "locked" ? "locked" : "failed" };
+			const code = error instanceof CoreError ? error.code : "internal";
+			return code === "locked" ? { state: "locked" } : { state: "failed", reason: code };
 		}
 		return { state: "ready", keyStorage: "provided" };
 	}

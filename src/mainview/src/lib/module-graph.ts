@@ -20,11 +20,12 @@ const withoutComments = (text: string) =>
 
 /** The files a source file imports, resolved against src (for $lib) or its own folder. Type-only imports count too:
  * they reach nothing when the app runs, and a guard that errs is one that errs towards saying so. */
-export function importsOf(file: string, src: string): string[] {
+export function importsOf(file: string, src: string, dynamic = true): string[] {
 	const text = withoutComments(readFileSync(file, "utf8"));
 	const found: string[] = [];
 	for (const match of text.matchAll(SPECIFIER)) {
-		const specifier = match[1] ?? match[2] ?? match[3];
+		// match[2] is an `import("…")`, which loads only when it runs: left out of a graph of what loads with the page.
+		const specifier = match[1] ?? (dynamic ? match[2] : undefined) ?? match[3];
 		if (!specifier) continue;
 		let base: string | null = null;
 		if (specifier.startsWith("$lib/") || specifier === "$lib") base = join(src, "lib", specifier.slice(5));
@@ -53,14 +54,16 @@ export function layoutsOf(page: string, src: string): string[] {
 }
 
 /** Every file a page reaches, each with the chain of imports that reaches it first: a failure can say how. */
-export function moduleGraph(page: string, src: string): Map<string, string[]> {
+export function moduleGraph(page: string, src: string, dynamic = true): Map<string, string[]> {
 	const seen = new Map<string, string[]>();
 	const queue: [string, string[]][] = [page, ...layoutsOf(page, src)].map((file) => [file, [file]]);
 	for (let next = queue.shift(); next; next = queue.shift()) {
 		const [file, chain] = next;
 		if (seen.has(file)) continue;
 		seen.set(file, chain);
-		for (const imported of importsOf(file, src)) if (!seen.has(imported)) queue.push([imported, [...chain, imported]]);
+		for (const imported of importsOf(file, src, dynamic)) {
+			if (!seen.has(imported)) queue.push([imported, [...chain, imported]]);
+		}
 	}
 	return seen;
 }
@@ -68,10 +71,11 @@ export function moduleGraph(page: string, src: string): Map<string, string[]> {
 /** A file's path from src, with forward slashes. */
 export const shortName = (file: string, src: string) => relative(src, file).split(sep).join("/");
 
-/** How a page reaches a file, as the chain of imports from the page or a layout to it; null when it doesn't. */
-export function reaches(page: string, target: string, src: string): string[] | null {
+/** How a page reaches a file, as the chain of imports from the page or a layout to it; null when it doesn't. Without
+ * `dynamic`, only what loads with the page counts. */
+export function reaches(page: string, target: string, src: string, dynamic = true): string[] | null {
 	return (
-		moduleGraph(page, src)
+		moduleGraph(page, src, dynamic)
 			.get(target)
 			?.map((file) => shortName(file, src)) ?? null
 	);

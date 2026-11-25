@@ -19,10 +19,9 @@
 </script>
 
 {#if asking}
-	<!-- A glass bar at the bottom centre, as a notice is at the top: above where a toast shows, so neither hides the
-	     other. -->
+	<!-- A glass bar in the app's stack of bottom bars (routes/app/+page.svelte), as a notice is at the top. -->
 	<div
-		class="{GLASS} animate-toast-in text-duvet-ink fixed bottom-16 left-1/2 z-9990 flex w-[min(28rem,calc(100vw-2rem))] -translate-x-1/2 items-center gap-3 rounded-[18px] py-2 pr-2 pl-3.5 text-[13px]"
+		class="{GLASS} animate-toast-in text-duvet-ink flex w-[min(28rem,calc(100vw-2rem))] items-center gap-3 rounded-[18px] py-2 pr-2 pl-3.5 text-[13px]"
 		role="region"
 		aria-label="Notifications permission"
 	>

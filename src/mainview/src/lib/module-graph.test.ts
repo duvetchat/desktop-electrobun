@@ -75,6 +75,35 @@ describe("the pages of the app's other windows", () => {
 	});
 });
 
+// The core loads with the encryption engine's start, once the app has a session (PLAN-E2E-CLIENTES.md, Task 12): its
+// hosts through the engine's dynamic import, the web's worker as its leader opens (host-web.ts names its file, which
+// isn't an import), and its WASM with it. A page that reached any of them as it loads would load the core with it.
+describe("the core's modules", () => {
+	const core = [
+		"lib/e2e/host-desktop.ts",
+		"lib/e2e/host-web.ts",
+		"lib/e2e/web/worker.ts",
+		"lib/e2e/wasm/duvet_e2e_wasm.js",
+	];
+	const pages = ["app", "(auth)/sign-in", "(auth)/sign-up", ...Object.values(SECOND_WINDOW_PAGES)];
+
+	test("load with no page of the app, its own included", () => {
+		const reaching = pages.flatMap((route) =>
+			core.flatMap((file) => {
+				const chain = route ? reaches(pageOf(route), join(src, file), src, false) : null;
+				return chain ? [chain.join(" → ")] : [];
+			}),
+		);
+		expect(reaching).toEqual([]);
+	});
+
+	test("the app's page reaches the hosts only through the engine's dynamic import", () => {
+		for (const host of ["lib/e2e/host-desktop.ts", "lib/e2e/host-web.ts"]) {
+			expect(reaches(pageOf("app"), join(src, host), src)?.slice(-2)).toEqual(["lib/e2e/engine.svelte.ts", host]);
+		}
+	});
+});
+
 describe("the guard itself", () => {
 	// The app's own page is the one that should reach the connection: if the guard can't see that, it sees nothing.
 	test("sees the connection where it is: the main window's page reaches it", () => {

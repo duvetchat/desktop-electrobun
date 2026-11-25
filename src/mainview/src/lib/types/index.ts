@@ -1069,7 +1069,8 @@ export interface IdentityUpdateEvent {
 }
 
 /** A shared history as its recipient gets it (HISTORY_SHARE_CREATE, GET …/history-shares; PLAN-E2E-API.md, I): a
- * share or a catch-up, from whom, how far back (`range`) and from when (`starts_at`, Unix ms), its size and its parts.
+ * share or a catch-up, from whom, how far back (`range`) and from when (`starts_at`, an RFC 3339 time), its size and its
+ * parts.
  * Its key comes by the inbox. */
 export interface HistoryShare {
 	id: string;
@@ -1077,7 +1078,7 @@ export interface HistoryShare {
 	from_user_id: string;
 	kind: "share" | "catch_up";
 	range: string;
-	starts_at: number;
+	starts_at: string;
 	size: number;
 	parts: number;
 }
