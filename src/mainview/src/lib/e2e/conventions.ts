@@ -44,10 +44,15 @@ export const WAVEFORM_SAMPLES = 64;
 /**
  * What a message the core shows is drawn as: a voice note (no text, and one audio file with its waveform and duration,
  * by what its sender says of it: its player still reads the file's type from its bytes), the sticker of an empty
- * envelope, nothing for an empty envelope without a sticker, or else a message, with its text and files.
+ * envelope, nothing for an empty envelope without a sticker, or else a message, with its text and files. Its sender
+ * wrote the fields, so they're read as the convention has them, never throwing: a duration is a number, and a
+ * waveform its 64 bytes in padded standard base64; anything else is a file's.
  */
 export function drawnAs(
-	message: { text: string | null; attachments: EnvelopeFile[] },
+	message: {
+		text: string | null;
+		attachments: readonly { type?: unknown; duration_ms?: unknown; waveform?: unknown }[];
+	},
 	sticker: boolean,
 ): "voice_note" | "sticker" | "nothing" | "message" {
 	const [file, ...more] = message.attachments;
@@ -55,9 +60,11 @@ export function drawnAs(
 	const voice =
 		!message.text &&
 		!more.length &&
-		file?.type.startsWith("audio/") &&
-		file.duration_ms !== undefined &&
-		file.waveform !== undefined &&
+		typeof file?.type === "string" &&
+		file.type.startsWith("audio/") &&
+		typeof file.duration_ms === "number" &&
+		typeof file.waveform === "string" &&
+		BASE64.test(file.waveform) &&
 		base64Bytes(file.waveform).length === WAVEFORM_SAMPLES;
 	return voice ? "voice_note" : "message";
 }
