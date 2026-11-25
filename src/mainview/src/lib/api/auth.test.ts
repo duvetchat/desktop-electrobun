@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import api, { FetchError } from "$lib/api/api";
-import { logIn, logout, onSignOut, resetPassword, signIn, verifyEmail } from "$lib/api/auth";
+import { logIn, logout, onSignOut, resetPassword, signIn, signOutLimits, verifyEmail } from "$lib/api/auth";
 import { identifyData } from "$lib/api/ws/identify";
 import { keepDevice, keepUser, lastUser } from "$lib/e2e/client";
 
@@ -120,5 +120,21 @@ describe("logout", () => {
 		// Once taken off, nothing closes at the next sign-out.
 		await logout();
 		expect(steps).toHaveLength(1);
+	});
+
+	// A core call that never answers mustn't keep anyone signed in.
+	test("waits a few seconds at most for the engine's core to close", async () => {
+		expect(signOutLimits.closeMs).toBe(3_000);
+		const { closeMs } = signOutLimits;
+		signOutLimits.closeMs = 20;
+		const stop = onSignOut(() => new Promise<void>(() => {}));
+		try {
+			await logout();
+		} finally {
+			stop();
+			signOutLimits.closeMs = closeMs;
+		}
+		expect(location.href).toBe("/sign-in.html");
+		expect(localStorage.getItem("duvet_session_token")).toBeNull();
 	});
 });

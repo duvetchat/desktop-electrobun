@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { CoreError } from "../errors";
 import { FakeApi } from "../testing/fake-api";
 import { coreLibrary } from "../testing/host-bun";
-import { rejection, shownKey, testDevice, testHost, useFake, watchedHost } from "../testing/engines";
+import { rejection, shownKey, testDevice, testHost, until, useFake, watchedHost } from "../testing/engines";
 
 // The first device of a user (PLAN-E2E-CLIENTES.md, Task 12): its identity made from the person's tap, its recovery key
 // shown and saved (decision 23), and only then published and confirmed, on real cores through the fake API.
@@ -175,6 +175,145 @@ describe.skipIf(!coreLibrary)("the first device", () => {
 			// Its database is a new one: the identity it made is gone with the old one.
 			expect(await b.host.handle({ cmd: "status" })).toMatchObject({ device_id: now, has_identity: false });
 			await Promise.all([a.engine.stop(), b.engine.stop()]);
+		},
+		SLOW,
+	);
+
+	// I1: every device of a person starts as the first at the cutover; once one publishes, the others' bars are stale.
+	test(
+		"a stale Set up, after another device of the user published, makes no key: it's a new device",
+		async () => {
+			const fake = new FakeApi();
+			const ana = fake.addUser();
+			useFake(fake);
+			const log: string[] = [];
+			const a = testDevice(fake, ana);
+			// It hears no IDENTITY_UPDATE, which would tell it first: its bar is still Set up when the person taps it.
+			const b = testDevice(fake, ana, {
+				host: watchedHost(testHost(), log),
+				hears: (event) => event.type !== "IDENTITY_UPDATE",
+			});
+			await Promise.all([a.engine.start(), b.engine.start()]);
+			await a.engine.makeIdentity();
+			await a.engine.keySaved();
+			await b.engine.makeIdentity();
+			expect(b.engine.state).toEqual({ name: "new_device" });
+			expect(log).not.toContain("create_identity");
+			expect(b.states.some((state) => shownKey(state) !== null)).toBe(false);
+			// Its core made no identity, so nothing is destroyed: it's the same device, waiting to be given the identity.
+			expect(b.registered).toHaveLength(1);
+			await Promise.all([a.engine.stop(), b.engine.stop()]);
+		},
+		SLOW,
+	);
+
+	test(
+		"the user's identity published elsewhere turns a first device that showed no key into a new one",
+		async () => {
+			const fake = new FakeApi();
+			const ana = fake.addUser();
+			useFake(fake);
+			const [a, b] = [testDevice(fake, ana), testDevice(fake, ana)];
+			await Promise.all([a.engine.start(), b.engine.start()]);
+			await a.engine.makeIdentity();
+			await a.engine.keySaved();
+			await until(() => b.engine.state.name === "new_device");
+			await Promise.all([a.engine.stop(), b.engine.stop()]);
+		},
+		SLOW,
+	);
+
+	test(
+		"an identity made before the app closed, when another was published since, starts over with no key shown",
+		async () => {
+			const fake = new FakeApi();
+			const ana = fake.addUser();
+			useFake(fake);
+			const [a, b] = [testDevice(fake, ana), testDevice(fake, ana)];
+			await Promise.all([a.engine.start(), b.engine.start()]);
+			await b.engine.makeIdentity();
+			await b.engine.stop();
+			await a.engine.makeIdentity();
+			await a.engine.keySaved();
+			const again = testDevice(fake, ana, { host: b.host, store: b.store, token: b.token });
+			await again.engine.start();
+			expect(again.engine.state).toEqual({ name: "first_device", recoveryKey: null, finishing: true });
+			await again.engine.makeIdentity();
+			expect(again.engine.state).toEqual({ name: "new_device" });
+			expect(again.states.some((state) => shownKey(state) !== null)).toBe(false);
+			// The identity its core made can't be undone (Ruling 26): a new database, and a new device.
+			const [old, now] = again.registered;
+			expect(again.registered).toHaveLength(2);
+			expect(now).not.toBe(old);
+			const status = await again.host.handle<{ device_id: string; has_identity: boolean; waiting_upload?: string }>({
+				cmd: "status",
+			});
+			expect(status).toMatchObject({ device_id: now, has_identity: false });
+			expect(status.waiting_upload).toBeUndefined();
+			await Promise.all([a.engine.stop(), again.engine.stop()]);
+		},
+		SLOW,
+	);
+
+	// I2: "I saved it" met decision 23; what's left is the upload, which waiting_upload resumes.
+	test(
+		"after a failed upload, Later closes the sheet, and Finish brings the same key back",
+		async () => {
+			const fake = new FakeApi();
+			const ana = fake.addUser();
+			useFake(fake);
+			const a = testDevice(fake, ana);
+			await a.engine.start();
+			await a.engine.makeIdentity();
+			const key = shownKey(a.engine.state);
+			fake.refuse(IDENTITY, 503, { error: "service unavailable" });
+			await rejection(a.engine.keySaved());
+			await a.engine.uploadLater();
+			expect(a.engine.state).toEqual({ name: "first_device", recoveryKey: null, finishing: true });
+			await a.engine.makeIdentity();
+			expect(shownKey(a.engine.state)).toBe(key);
+			await a.engine.keySaved();
+			expect(a.engine.state).toEqual({ name: "ready" });
+			await a.engine.stop();
+		},
+		SLOW,
+	);
+
+	test(
+		"an upload a client too old makes goes to update",
+		async () => {
+			const fake = new FakeApi();
+			const ana = fake.addUser();
+			useFake(fake);
+			const a = testDevice(fake, ana);
+			await a.engine.start();
+			await a.engine.makeIdentity();
+			fake.refuse(IDENTITY, 426);
+			await a.engine.keySaved();
+			expect(a.engine.state).toEqual({ name: "update", minimum: null });
+			await a.engine.stop();
+		},
+		SLOW,
+	);
+
+	// M5: identity_uploaded took, device_list_uploaded was cut: the next Continue finds nothing kept for an upload.
+	test(
+		"a confirmation cut halfway goes on at the next Continue",
+		async () => {
+			const fake = new FakeApi();
+			const ana = fake.addUser();
+			useFake(fake);
+			let cut = 1;
+			const host = watchedHost(testHost(), [], (cmd) =>
+				cmd === "device_list_uploaded" && cut-- > 0 ? new CoreError("internal", "the call was cut") : null,
+			);
+			const a = testDevice(fake, ana, { host });
+			await a.engine.start();
+			await a.engine.makeIdentity();
+			await rejection(a.engine.keySaved());
+			await a.engine.keySaved();
+			expect(a.engine.state).toEqual({ name: "ready" });
+			await a.engine.stop();
 		},
 		SLOW,
 	);

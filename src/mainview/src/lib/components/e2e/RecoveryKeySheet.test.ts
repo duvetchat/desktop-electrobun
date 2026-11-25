@@ -9,15 +9,16 @@ import { tags } from "../server-render";
 const { default: RecoveryKeySheet } = await import("./RecoveryKeySheet.svelte");
 
 const KEY = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnop";
-const drawn = (saved: boolean) =>
-	render(RecoveryKeySheet, { props: { recoveryKey: KEY, saved, onContinue: async () => {} } }).body.replace(
-		/<!--[^]*?-->/g,
-		"",
-	);
-const named = async (saved: boolean, name: string) =>
-	(await tags(RecoveryKeySheet, { recoveryKey: KEY, saved, onContinue: async () => {} })).filter(
-		(tag) => tag.name === name,
-	);
+const props = (saved: boolean, failed = false) => ({
+	...{ recoveryKey: KEY, saved, failed },
+	...{ onContinue: async () => {}, onLater: async () => {} },
+});
+const drawn = (saved: boolean, failed = false) =>
+	render(RecoveryKeySheet, { props: props(saved, failed) }).body.replace(/<!--[^]*?-->/g, "");
+const named = async (saved: boolean, name: string, failed = false) =>
+	(await tags(RecoveryKeySheet, props(saved, failed))).filter((tag) => tag.name === name);
+const words = (html: string) =>
+	[...html.matchAll(/<button [^>]*>\s*(?:<svg[^]*?<\/svg>\s*)?([^<]*?)\s*<\/button>/g)].map((match) => match[1]);
 
 describe("the recovery key's sheet", () => {
 	test("the key shows in 12 groups of 4", () => {
@@ -50,5 +51,13 @@ describe("the recovery key's sheet", () => {
 	test("says it in the notices' words", () => {
 		expect(en.e2e_recovery_title).toBe(NOTICES.recovery_title);
 		expect(en.e2e_recovery_saved).toBe(NOTICES.recovery_saved);
+	});
+
+	// I2: the key saved, what's left is its upload, which Finish brings back with the same bytes.
+	test("after a failed upload, Later closes the sheet beside Continue, which tries again", () => {
+		expect(words(drawn(true))).toEqual(["Copy", "Download", "Continue"]);
+		const failed = drawn(true, true);
+		expect(failed).toContain(en.e2e_recovery_failed);
+		expect(words(failed)).toEqual(["Copy", "Download", "Later", "Continue"]);
 	});
 });

@@ -83,7 +83,7 @@
 	import { startSystemNotifications } from "$lib/system-notifications";
 	import NotificationPermissionBar from "$lib/components/NotificationPermissionBar.svelte";
 	import EncryptionGate from "$lib/components/e2e/EncryptionGate.svelte";
-	import { encryption, keySaved, makeIdentity, startEngine, startOver } from "$lib/e2e/engine.svelte";
+	import { encryption, keySaved, makeIdentity, startEngine, startOver, uploadLater } from "$lib/e2e/engine.svelte";
 	import type { Channel, PaneNode, Tab } from "$lib/types";
 	import { gatewaySpaceToGuild, gatewaySpaceToMembers } from "$lib/types";
 	import { userStatusCache } from "$lib/api/ws/connection";
@@ -1113,12 +1113,16 @@
 <UserFlagsSheet />
 {#if $currentUser && $friendsReady}
 	<MentionNotices onOpen={openMentioned} />
-	<NotificationPermissionBar />
-	<EncryptionGate
-		encryption={encryption.state}
-		web={!isElectrobunWindow()}
-		onMakeIdentity={makeIdentity}
-		onKeySaved={keySaved}
-		onStartOver={startOver}
-	/>
+	<!-- The app's bottom bars, one above the other at the bottom centre: above where a toast shows, so none hides another. -->
+	<div class="fixed bottom-16 left-1/2 z-9990 flex -translate-x-1/2 flex-col items-center gap-2">
+		<NotificationPermissionBar />
+		<EncryptionGate
+			encryption={encryption.state}
+			web={!isElectrobunWindow()}
+			onMakeIdentity={makeIdentity}
+			onKeySaved={keySaved}
+			onLater={uploadLater}
+			onStartOver={startOver}
+		/>
+	</div>
 {/if}

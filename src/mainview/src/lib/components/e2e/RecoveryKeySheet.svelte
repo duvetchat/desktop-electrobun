@@ -5,17 +5,25 @@
 
 	// The first device's recovery key (decision 23): its 48 characters in 12 groups of 4 (decision 22), which the person
 	// copies or downloads, then says they saved; nothing goes on before. `onContinue` uploads the identity: a failure
-	// keeps the key here, and the button tries again with the same bytes.
+	// keeps the key here, and the button tries again with the same bytes; Later then closes the sheet, the key saved,
+	// and its upload waits for Finish (`onLater`).
 	let {
 		recoveryKey,
 		saved = $bindable(false),
+		failed = $bindable(false),
 		onContinue,
-	}: { recoveryKey: string; saved?: boolean; onContinue: () => Promise<void> } = $props();
+		onLater,
+	}: {
+		recoveryKey: string;
+		saved?: boolean;
+		failed?: boolean;
+		onContinue: () => Promise<void>;
+		onLater: () => Promise<void>;
+	} = $props();
 
 	const groups = $derived(recoveryKey.match(/.{1,4}/g) ?? []);
 	let copied = $state(false);
 	let busy = $state(false);
-	let failed = $state(false);
 
 	async function copy() {
 		try {
@@ -79,7 +87,10 @@
 	{#if failed}
 		<p class="text-duvet-danger text-[13px]" role="alert">{t("e2e_recovery_failed")}</p>
 	{/if}
-	<div class="flex justify-end">
+	<div class="flex justify-end gap-2">
+		{#if failed}
+			<Button variant="secondary" disabled={busy} onclick={() => void onLater()}>{t("e2e_recovery_later")}</Button>
+		{/if}
 		<Button disabled={!saved || busy} onclick={() => void go()}>{t("e2e_recovery_continue")}</Button>
 	</div>
 </div>

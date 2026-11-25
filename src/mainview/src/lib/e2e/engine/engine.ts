@@ -10,8 +10,8 @@ import type { E2eApi } from "$lib/api/e2e";
 import { CoreError } from "../errors";
 import type { EngineEvent, EngineEvents } from "../events";
 import type { CoreHost, HostOpened } from "../host";
-import { bindSession, ownDevice } from "./bootstrap";
-import { identityState, publishIdentity, type IdentityMade } from "./identity";
+import { bindSession, coreStatus, ownDevice } from "./bootstrap";
+import { identityState, publishIdentity, servedIdentity, type IdentityMade } from "./identity";
 import { takeInbox } from "./inbox";
 import { uploadKeyPackages } from "./key-packages";
 import { DEVICE_RECORD, type EngineStore } from "./store";
@@ -68,6 +68,17 @@ const RETRY_MOST_MS = 60_000;
 
 const statusOf = (error: unknown) => (error instanceof FetchError ? error.response?.status : undefined);
 
+/**
+ * The binding's refusals that no try changes (a proof that doesn't verify, a body the API refuses): null, which ends
+ * the tries with the failed bar. A rate limit, a renewal's 401 and an update's 426 go on as failures that pass.
+ */
+const refusedForGood = (error: unknown): null => {
+	const status = statusOf(error);
+	if (status === undefined || status < 400 || status >= 500 || [401, 426, 429].includes(status)) throw error;
+	console.error("[e2e] The API refused this device:", error);
+	return null;
+};
+
 export class E2EEngine {
 	state: EngineState = { name: "starting" };
 	readonly #parts: EngineParts;
@@ -84,6 +95,8 @@ export class E2EEngine {
 	#device: string | null = null;
 	/** What create_identity answered, until it's uploaded: never kept elsewhere, as the core gives it again. */
 	#made: IdentityMade | null = null;
+	/** How many rounds each inbox message's call was cut (inbox.ts). */
+	readonly #tries = new Map<string, number>();
 
 	constructor(parts: EngineParts) {
 		this.#parts = parts;
@@ -119,7 +132,7 @@ export class E2EEngine {
 	makeIdentity(): Promise<void> {
 		return this.#queue(async () => {
 			const { state } = this;
-			if (state.name !== "first_device") return;
+			if (state.name !== "first_device" || !(await this.#stillFirst())) return;
 			try {
 				this.#made = await this.#parts.host.handle<IdentityMade>({ cmd: "create_identity" });
 			} catch (error) {
@@ -139,7 +152,16 @@ export class E2EEngine {
 		return this.#queue(async () => {
 			const made = this.#made;
 			if (!made || this.state.name !== "first_device") return;
-			if (!(await publishIdentity(this.#parts, made))) return this.#startOver();
+			let published: boolean;
+			try {
+				published = await publishIdentity(this.#parts, made);
+			} catch (error) {
+				// Too old a client to upload it: the update says so, and the core keeps the identity for the upload.
+				if (!(error instanceof UpdateRequiredError)) throw error;
+				this.#made = null;
+				return this.#set({ name: "update", minimum: error.minimum });
+			}
+			if (!published) return this.#startOver();
 			// Published and confirmed: the key's sheet is done with, and the start's last steps follow.
 			this.#made = null;
 			this.#set({ name: "starting" });
@@ -147,10 +169,42 @@ export class E2EEngine {
 		});
 	}
 
-	/** This installation starts again as a new device: what a removed device, or one whose key is lost, does on the
-	 * person's word. */
+	/**
+	 * The person closes the key's sheet after its upload failed, its key saved: the upload waits for Finish, which
+	 * brings the same key and bytes back, as the core keeps them until identity_uploaded.
+	 */
+	uploadLater(): Promise<void> {
+		return this.#queue(async () => {
+			if (this.state.name !== "first_device" || !this.state.recoveryKey) return;
+			this.#made = null;
+			this.#set({ name: "first_device", recoveryKey: null, finishing: true });
+		});
+	}
+
+	/**
+	 * This installation starts again as a new device: what a removed device, or one whose key is lost, does on the
+	 * person's word. Only from those states, whatever a stale tap asks: elsewhere its database is in use.
+	 */
 	startOver(): Promise<void> {
-		return this.#queue(() => this.#startOver());
+		return this.#queue(async () => {
+			const { state } = this;
+			if (state.name === "removed" || (state.name === "failed" && state.lostKey)) await this.#startOver();
+		});
+	}
+
+	/**
+	 * Whether this device is still its user's first: the API serves no identity, or its own (an upload cut before its
+	 * answer). Another's served, the user was set up elsewhere, and a key made here would open nothing: the device
+	 * becomes a new one, by starting over when it made an identity the core can't undo (Ruling 26).
+	 */
+	async #stillFirst(): Promise<boolean> {
+		const served = await servedIdentity(this.#parts);
+		if (!served) return true;
+		const status = await coreStatus(this.#parts.host);
+		if (served.identity_key === status.identity_key) return true;
+		if (status.has_identity) await this.#startOver();
+		else this.#set({ name: "new_device" });
+		return false;
 	}
 
 	#set(state: EngineState) {
@@ -191,22 +245,26 @@ export class E2EEngine {
 				if (own(event.data.device_id)) this.#set({ name: "removed" });
 				break;
 			case "IDENTITY_UPDATE":
-				// The user's own: another device changed the list or the keys, which may leave this one off it.
-				if (event.data.user_id === this.#parts.user && this.state.name === "ready") {
-					this.#soon(async () => this.#set(await this.#identity()));
-				}
+				// The user's own: another device changed the list or the keys, which may leave this one off it, or
+				// published the identity this first device was to make, if it hasn't shown a key yet.
+				if (event.data.user_id !== this.#parts.user) break;
+				this.#soon(async () => {
+					const { state } = this;
+					if (state.name === "ready") this.#set(await this.#identity());
+					else if (state.name === "first_device" && !state.recoveryKey) await this.#stillFirst();
+				});
 				break;
 		}
 	}
 
 	/** Step 5, with the inbox for a rotation's transfer this device may need first. */
 	#identity(): Promise<EngineState> {
-		return identityState(this.#parts, () => takeInbox(this.#parts));
+		return identityState(this.#parts, () => takeInbox(this.#parts, this.#tries));
 	}
 
 	/** The inbox; once it brought a rotation's transfer, the own user observed, which may change what this device is. */
 	async #inbox(): Promise<void> {
-		if (await takeInbox(this.#parts)) this.#set(await this.#identity());
+		if (await takeInbox(this.#parts, this.#tries)) this.#set(await this.#identity());
 	}
 
 	/** «Arranque»: the API's configuration, the user's database, this installation's device and the session bound to it. */
@@ -218,7 +276,9 @@ export class E2EEngine {
 			if (opened.state !== "ready") return this.#closed(opened);
 			const { status, keys } = await ownDevice(parts);
 			const device = status.device_id;
-			if (!device || !(await bindSession(parts, device, keys))) return this.#set({ name: "removed" });
+			const bound = device && (await bindSession(parts, device, keys).catch(refusedForGood));
+			if (bound === null) return this.#set({ name: "failed", lostKey: false });
+			if (!device || !bound) return this.#set({ name: "removed" });
 			this.#device = device;
 			parts.registered(device);
 			this.#retries = 0;
@@ -291,6 +351,7 @@ export class E2EEngine {
 		for (const key of DEVICE_RECORD) store.write(key, null);
 		this.#made = null;
 		this.#device = null;
+		this.#tries.clear();
 		this.#daily?.();
 		this.#daily = null;
 		this.#set({ name: "starting" });

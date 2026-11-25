@@ -3,6 +3,7 @@
 // after the API took it; every device holds itself to the one the API serves.
 import { FetchError } from "$lib/api/api";
 import type { Identity } from "$lib/api/e2e";
+import { CoreError } from "../errors";
 import { coreStatus } from "./bootstrap";
 import type { EngineParts, EngineState } from "./engine";
 
@@ -19,7 +20,7 @@ export interface IdentityMade {
 const statusOf = (error: unknown) => (error instanceof FetchError ? error.response?.status : undefined);
 
 /** The user's identity as the API serves it today, or null without one (404). */
-async function servedIdentity({ api, user }: EngineParts): Promise<Identity | null> {
+export async function servedIdentity({ api, user }: EngineParts): Promise<Identity | null> {
 	try {
 		return await api.identity(user);
 	} catch (error) {
@@ -78,7 +79,10 @@ export async function publishIdentity(parts: EngineParts, made: IdentityMade): P
 		if (statusOf(error) === 409) return false;
 		throw error;
 	}
-	await host.handle({ cmd: "identity_uploaded" });
+	// Nothing kept for an upload: a confirmation cut after it took this one, before the list's.
+	await host.handle({ cmd: "identity_uploaded" }).catch((error: unknown) => {
+		if (!(error instanceof CoreError && error.code === "not_found" && error.what === "upload")) throw error;
+	});
 	await host.handle({ cmd: "device_list_uploaded", version });
 	const served = await servedIdentity(parts);
 	if (served) await observeOwn(parts, served);

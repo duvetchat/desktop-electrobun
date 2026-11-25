@@ -2,13 +2,27 @@ import { describe, expect, test } from "bun:test";
 import { base64Bytes } from "$lib/activity-thumbnail";
 import { FakeApi } from "../testing/fake-api";
 import { coreLibrary } from "../testing/host-bun";
-import { firstDevice, testDevice, testHost, until, useFake, watchedHost } from "../testing/engines";
+import { firstDevice, testDevice, testHost, until, useFake, watchedHost, type TestDevice } from "../testing/engines";
 import type { IdentityMade } from "./identity";
+import { DEVICE_KEYS } from "./store";
 
 // The engine's start (PLAN-E2E-CLIENTES.md, «El motor», «Arranque»): the API's configuration, the user's database,
 // this installation's device and the session bound to it, and what the user's identity makes of the device.
 const SLOW = 180_000;
 const MINUTE = 60_000;
+
+/** Another device of the user starts over (Task 26 does it from the app): a new identity, listing that device alone. */
+async function resetFrom({ host, api, user }: TestDevice) {
+	const made = await host.handle<IdentityMade>({ cmd: "reset_identity" });
+	const { identity_key, device_list, certificate, encrypted_identity, wrapped_backup_key } = made;
+	const replaces = (await api.identity(user)).identity_key;
+	const published = await api.putIdentity({
+		...{ identity_key, device_list, certificate, encrypted_identity, wrapped_backup_key },
+		...{ replaces, reset: true },
+	});
+	await host.handle({ cmd: "identity_uploaded" });
+	await host.handle({ cmd: "device_list_uploaded", version: published.device_list_version });
+}
 
 describe.skipIf(!coreLibrary)("the engine's start", () => {
 	test(
@@ -60,16 +74,7 @@ describe.skipIf(!coreLibrary)("the engine's start", () => {
 			await b.engine.start();
 			expect(b.engine.state).toEqual({ name: "new_device" });
 
-			// Another of Ana's devices starts over (Task 26 does it from the app): a new identity, listing that device alone.
-			const made = await b.host.handle<IdentityMade>({ cmd: "reset_identity" });
-			const { identity_key, device_list, certificate, encrypted_identity, wrapped_backup_key } = made;
-			const replaces = (await b.api.identity(ana)).identity_key;
-			const published = await b.api.putIdentity({
-				...{ identity_key, device_list, certificate, encrypted_identity, wrapped_backup_key },
-				...{ replaces, reset: true },
-			});
-			await b.host.handle({ cmd: "identity_uploaded" });
-			await b.host.handle({ cmd: "device_list_uploaded", version: published.device_list_version });
+			await resetFrom(b);
 
 			// The first device hears its user's identity changed, and finds no transfer for itself: it's off the list.
 			await until(() => a.engine.state.name === "removed");
@@ -192,6 +197,111 @@ describe.skipIf(!coreLibrary)("the engine's start", () => {
 			await elsewhere.engine.start();
 			expect(elsewhere.engine.state).toEqual({ name: "update", minimum: null });
 			await elsewhere.engine.stop();
+		},
+		SLOW,
+	);
+
+	// I3: a stale tap (a bar of another tab's, or from before) never destroys a database in use.
+	test(
+		"starting over is only for a removed device or a lost key",
+		async () => {
+			const fake = new FakeApi();
+			const ana = fake.addUser();
+			useFake(fake);
+			const a = await firstDevice(fake, ana);
+			const b = testDevice(fake, ana);
+			await b.engine.start();
+			for (const device of [a, b]) {
+				const before = await device.host.handle<object>({ cmd: "status" });
+				const state = device.engine.state;
+				await device.engine.startOver();
+				expect(device.engine.state).toEqual(state);
+				expect(device.registered).toHaveLength(1);
+				expect(await device.host.handle<object>({ cmd: "status" })).toEqual(before);
+			}
+			await Promise.all([a.engine.stop(), b.engine.stop()]);
+		},
+		SLOW,
+	);
+
+	// M7: the record's keys are a device's, by its ID; a registration's 409 is no answer about the device yet.
+	test(
+		"keys the record kept for another device aren't sent, and a refused registration binds by the bind route",
+		async () => {
+			const fake = new FakeApi();
+			const ana = fake.addUser();
+			const registrations: string[] = [];
+			useFake(fake, (request) => {
+				const { pathname } = new URL(request.url);
+				if (request.method === "POST" && pathname === "/api/users/@me/devices") registrations.push(pathname);
+			});
+			const a = await firstDevice(fake, ana);
+			await a.engine.stop();
+			const b = testDevice(fake, ana);
+			await b.engine.start();
+			const others = b.store.read<Record<string, string>>(DEVICE_KEYS)!;
+
+			// The record holds another device's keys, as when the database was made again and the record wasn't.
+			a.store.write(DEVICE_KEYS, others);
+			registrations.length = 0;
+			const again = testDevice(fake, ana, { host: a.host, store: a.store });
+			await again.engine.start();
+			expect(again.engine.state).toEqual({ name: "ready" });
+			expect(again.registered).toEqual(a.registered);
+			expect(registrations).toEqual([]);
+			await again.engine.stop();
+
+			// Under this device's ID, keys that aren't its own: the API refuses them (409), and the bind route binds it.
+			a.store.write(DEVICE_KEYS, { ...others, device_id: a.registered[0]! });
+			const later = testDevice(fake, ana, { host: a.host, store: a.store });
+			await later.engine.start();
+			expect(later.engine.state).toEqual({ name: "ready" });
+			expect(later.registered).toEqual(a.registered);
+			expect(registrations).toHaveLength(1);
+			await Promise.all([b.engine.stop(), later.engine.stop()]);
+		},
+		SLOW,
+	);
+
+	test(
+		"a binding the API refuses for good ends the tries with the failed bar",
+		async () => {
+			const fake = new FakeApi();
+			const ana = fake.addUser();
+			useFake(fake);
+			fake.refuse({ method: "POST", path: "/api/users/@me/devices" }, 400, { error: "invalid device" });
+			const log: string[] = [];
+			const a = testDevice(fake, ana, { host: watchedHost(testHost(), log) });
+			await a.engine.start();
+			expect(a.engine.state).toEqual({ name: "failed", lostKey: false });
+			const asked = log.length;
+			// Neither the time nor a new gateway session brings it back: the API would refuse it again.
+			a.clock.advance(10 * MINUTE);
+			a.connect(null);
+			await a.engine.makeIdentity();
+			expect(a.engine.state).toEqual({ name: "failed", lostKey: false });
+			expect(log).toHaveLength(asked);
+			await a.engine.stop();
+		},
+		SLOW,
+	);
+
+	// M10: what tells a running device it was taken away, when nothing else did first.
+	test(
+		"a device taken away while it runs hears so",
+		async () => {
+			const fake = new FakeApi();
+			const ana = fake.addUser();
+			useFake(fake);
+			// It hears no IDENTITY_UPDATE, which would find it off the list first.
+			const a = await firstDevice(fake, ana, { hears: (event) => event.type !== "IDENTITY_UPDATE" });
+			const b = testDevice(fake, ana);
+			await b.engine.start();
+			await resetFrom(b);
+			expect(a.engine.state).toEqual({ name: "ready" });
+			await b.api.deleteDevice(a.registered[0]!);
+			await until(() => a.engine.state.name === "removed");
+			await Promise.all([a.engine.stop(), b.engine.stop()]);
 		},
 		SLOW,
 	);

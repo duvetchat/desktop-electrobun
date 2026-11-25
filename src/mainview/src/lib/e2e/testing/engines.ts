@@ -180,14 +180,21 @@ export async function until(holds: () => boolean | Promise<boolean>, ms = 60_000
 	}
 }
 
-/** A host that tells what it's asked (each command's name, in order) and fails a command when `fail` gives an error. */
-export function watchedHost(host: CoreHost, log: string[], fail: (cmd: string) => Error | null = () => null): CoreHost {
+/**
+ * A host that tells what it's asked (each command's name, in order) and fails a command when `fail`, which sees the
+ * whole command, gives an error.
+ */
+export function watchedHost(
+	host: CoreHost,
+	log: string[],
+	fail: (cmd: string, command: Record<string, unknown>) => Error | null = () => null,
+): CoreHost {
 	return new Proxy(host, {
 		get(target, name) {
 			if (name === "handle") {
 				return async (command: { cmd: string } & Record<string, unknown>) => {
 					log.push(command.cmd);
-					const error = fail(command.cmd);
+					const error = fail(command.cmd, command);
 					if (error) throw error;
 					return target.handle(command);
 				};

@@ -4,11 +4,13 @@
 
 /** This installation's device's public keys, which each sign-in registers again (bootstrap.ts). */
 export const DEVICE_KEYS = "device_keys";
-/** The inbox's approval frames waiting for their flow (Task 26), and the transfers kept for later (inbox.ts). */
+/** The inbox's approval frames waiting for their flow (Task 26), the transfers kept for later, and the messages whose
+ * type a later task takes (a history or catch-up key: Tasks 22 and 30), as inbox.ts keeps them. */
 export const KEPT_APPROVALS = "approvals";
 export const KEPT_TRANSFERS = "transfers";
+export const KEPT_LATER = "later";
 /** What a new device of this installation starts without. */
-export const DEVICE_RECORD = [DEVICE_KEYS, KEPT_APPROVALS, KEPT_TRANSFERS];
+export const DEVICE_RECORD = [DEVICE_KEYS, KEPT_APPROVALS, KEPT_TRANSFERS, KEPT_LATER];
 
 export interface EngineStore {
 	read<T>(key: string): T | null;

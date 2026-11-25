@@ -88,6 +88,9 @@ export async function sendChangeEmail(email: string) {
 // database stays, as signing out only ends the session (decision 13). In the desktop app it stays open in Bun otherwise.
 let beforeSignOut: (() => Promise<void>) | null = null;
 
+/** How long a sign-out waits for that close: a core call that never answers mustn't keep anyone signed in. */
+export const signOutLimits = { closeMs: 3_000 };
+
 /** Runs `close` before each sign-out leaves the page, until what it gives takes it off. */
 export function onSignOut(close: () => Promise<void>): () => void {
 	beforeSignOut = close;
@@ -102,7 +105,10 @@ export async function logout() {
 	} catch {
 		// Best effort — clear local state regardless
 	} finally {
-		await beforeSignOut?.().catch((error: unknown) => console.error("[e2e] The core didn't close on sign-out:", error));
+		const closing = beforeSignOut?.().catch((error: unknown) =>
+			console.error("[e2e] The core didn't close on sign-out:", error),
+		);
+		await Promise.race([closing, new Promise((resolve) => setTimeout(resolve, signOutLimits.closeMs))]);
 		accessToken.set(null);
 		localStorage.removeItem("duvet_session_token");
 		localStorage.removeItem("duvet_refresh_token");
