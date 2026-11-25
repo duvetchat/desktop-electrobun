@@ -95,9 +95,10 @@ const MENTIONS_MOST = 20;
 /** A change without an answer goes again after 2 s, then twice as long each time, up to a minute apart. */
 const RETRY_MS = 2_000;
 const RETRY_MOST_MS = 60_000;
-/** The messages a conversation can have waiting: the core's page reads this many (pendingRows), so a new one past them
- * is refused, as the oldest would go unseen. */
-const WAITING_MOST = 100;
+/** The rows a conversation can have waiting, the core's own: its page reads 100 (pendingRows), and a remake makes a
+ * message's new row before it drops its old one, so a new message is refused at 99, which keeps that extra row in the
+ * page (#510). */
+const WAITING_MOST = 99;
 
 // As the API reads a room's mentions (parseMentionIDs): code blocks, then inline code, taken out first.
 const CODE_BLOCK = /```[\s\S]*?```/g;
@@ -138,6 +139,11 @@ export class Sends {
 	 * API's ID. A Retry or a Dismiss of one, while this page lasts, is of the message sent.
 	 */
 	readonly #went = new Map<string, { nonce: string; message: string }>();
+	/**
+	 * This run's newest remake of each message, by the nonce the person sent it with: one that no longer waits went, even
+	 * once its link above is let go of, as its copy was bound past the rows the flush reads (#bound; #510).
+	 */
+	readonly #remakes = new Map<string, string>();
 	/** Each waiting message's files, sealed, by the nonce the person sent it with: in memory alone. */
 	readonly #files = new Map<string, SealedFiles>();
 	/**
@@ -172,13 +178,20 @@ export class Sends {
 	 */
 	async send(out: Outgoing, upload?: UploadOptions): Promise<DirectMessage | null> {
 		const { conversation_id: id, nonce, text, files, ...clear } = out;
-		const waits = await this.#turn(async () => {
+		const waits = await this.#turn(async (): Promise<{ went: string | null } | null> => {
 			await this.#groups.current(id);
-			const { rows } = await this.#waiting(id);
-			if (this.#nonceNow(rows, nonce)) return true;
-			// Made again, it went under its new nonce, as its answer or its copy said: it was sent.
-			if (this.#went.delete(nonce)) return false;
-			if (rows.length >= WAITING_MOST) {
+			const { rows, older } = await this.#waiting(id);
+			// What no longer waits is let go of first: one made again that went is then known by the person's nonce.
+			await this.#prune(id, [...rows, ...older]);
+			if (this.#nonceNow(rows, nonce)) return null;
+			// Made again, it went under its new nonce, as its answer or its copy said: it was sent, and its copy shows.
+			const went = this.#went.get(nonce);
+			if (went) {
+				this.#went.delete(nonce);
+				return { went: went.message };
+			}
+			if (this.#remakes.has(nonce)) return { went: null };
+			if (rows.length + older.length >= WAITING_MOST) {
 				throw new CoreError("too_many_waiting", `${WAITING_MOST} messages wait to be sent in this conversation`);
 			}
 			const sealed = files?.length ? await SealedFiles.of(this.#parts.host, files) : null;
@@ -189,12 +202,13 @@ export class Sends {
 				// Its copy came back from the queue: it went.
 				if (!(error instanceof CoreError && error.code === "exists")) throw error;
 				this.#forget(nonce);
-				return false;
+				return { went: null };
 			}
 			if (sealed) this.#files.set(nonce, sealed);
-			return true;
+			return null;
 		});
-		if (!waits) return null;
+		// It went: the API's copy, fetched as a Dismiss's is, which the views show in its row's place (#510).
+		if (waits) return waits.went ? this.#parts.api.message(id, waits.went).catch(() => null) : null;
 		// The person's own send or Retry: a refusal of its files kept it from going with the others, not from this.
 		this.#refused.delete(nonce);
 		return untilCancelled(
@@ -249,6 +263,7 @@ export class Sends {
 		await this.#prune(id, [...rows, ...older]);
 		this.#files.delete(first);
 		this.#refused.delete(first);
+		this.#remakes.delete(first);
 		const went = this.#went.get(first);
 		this.#went.delete(first);
 		return its.length ? null : (went?.message ?? null);
@@ -261,8 +276,9 @@ export class Sends {
 	async resendAll(): Promise<void> {
 		const log = (error: unknown) => console.error("[e2e] What waits to be sent waits again:", error);
 		const conversations = new Set(Object.values(this.#record()).map((kept) => kept.conversation_id));
-		// Each in its conversation's lane: this runs in the engine's turn, which their requests don't wait in.
-		for (const id of conversations) void this.#inLane(id, () => this.#flush(id)).catch(log);
+		// Each in its conversation's lane: this runs in the engine's turn, which their requests don't wait in. A paused one
+		// waits for its pause's end, as its changes do (#510).
+		for (const id of conversations) if (!this.#paused.has(id)) void this.#inLane(id, () => this.#flush(id)).catch(log);
 		for (const [key, kept] of Object.entries(this.#keptChanges())) {
 			if (!this.#changes.has(key)) await this.#remake(key, kept).catch(log);
 		}
@@ -299,6 +315,7 @@ export class Sends {
 		this.#files.clear();
 		this.#refused.clear();
 		this.#lanes.clear();
+		this.#remakes.clear();
 	}
 
 	/**
@@ -342,7 +359,13 @@ export class Sends {
 				);
 				if (first === wanted) message = sent;
 			} catch (error) {
-				if (!remade && (staleBytes(error) || staleAnswer(error))) {
+				if (staleBytes(error) || staleAnswer(error)) {
+					// Stale again once made again, on the core's word or the API's: the flush stops there, so none after it
+					// goes first (#510). The person's own send fails, unless it went already.
+					if (remade) {
+						if (message) return message;
+						throw error;
+					}
 					const tail = rows.slice(at);
 					const made = await this.#turn(async () => {
 						// The core learns the epochs the API is at first, so the new bytes are of them.
@@ -433,6 +456,11 @@ export class Sends {
 		return message;
 	}
 
+	/** What the conversations' lanes do now, settled, whatever they end as. */
+	settled(): Promise<void> {
+		return Promise.all([...this.#lanes.values()]).then(() => {});
+	}
+
 	/** Work in the conversation's lane, after what's already there: a failure there never stops what comes after. */
 	#inLane<T>(id: string, work: () => Promise<T>): Promise<T> {
 		const run = (this.#lanes.get(id) ?? Promise.resolve()).then(work);
@@ -465,6 +493,7 @@ export class Sends {
 				this.#forget(nonce);
 				throw error;
 			}
+			this.#remakes.set(kept?.first ?? row.nonce, nonce);
 			await this.#drop(row.nonce);
 			made.push({ ...row, nonce });
 		}

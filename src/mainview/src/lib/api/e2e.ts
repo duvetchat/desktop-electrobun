@@ -397,6 +397,9 @@ export function e2eApi(client: ApiClient = api) {
 		/** A message's sealed file at the signed URL its message gives it (Task 18): `most` bytes at most, as they come. */
 		sealedFile: (url: string, most: number, progress?: (received: number) => void) => download(url, most, progress),
 		/** The conversation's deleted encrypted messages, by ID, after `after`: 1000 at most. */
+		/** One message of the conversation, as the API has it: a message of the person's that went, which a Retry shows. */
+		message: (conversationId: string, messageId: string) =>
+			answer(client.get<DirectMessage>(`${conv(conversationId)}/messages/${messageId}`)),
 		deletedMessages: (conversationId: string, after?: string, limit?: number) =>
 			answer(client.get<{ ids: string[] }>(`${conv(conversationId)}/messages/deleted`, { params: { after, limit } })),
 

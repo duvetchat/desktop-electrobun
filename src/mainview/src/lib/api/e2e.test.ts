@@ -292,6 +292,12 @@ const ROUTES: [
 		{ id: MESSAGE, entry: { ...entry, kind: "delete" } },
 	],
 	[
+		"message",
+		(api) => api.message(CONV, MESSAGE),
+		{ method: "GET", url: `${conv}/messages/${MESSAGE}` },
+		{ id: MESSAGE, conversation_id: CONV },
+	],
+	[
 		"deletedMessages",
 		(api) => api.deletedMessages(CONV, MESSAGE, 1000),
 		{ method: "GET", url: `${conv}/messages/deleted`, config: { params: { after: MESSAGE, limit: 1000 } } },

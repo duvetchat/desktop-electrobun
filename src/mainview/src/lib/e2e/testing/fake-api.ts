@@ -930,6 +930,12 @@ export class FakeApi {
 						.slice(0, limit),
 				});
 			}),
+			route("GET", `${conv}/messages/(?<message>${UUID_PATH})`, "session", (ctx) => {
+				const held = this.#memberOf(ctx);
+				const message = held.messages.find((m) => m.id === ctx.params.message && !held.deleted.has(m.id));
+				if (!message) throw fail(404, "direct message not found");
+				return ok(message);
+			}),
 			route("PATCH", `${conv}/messages/(?<message>${UUID_PATH})`, "session", (ctx) => this.#changeMessage(ctx, "edit")),
 			route("DELETE", `${conv}/messages/(?<message>${UUID_PATH})`, "session", (ctx) =>
 				this.#changeMessage(ctx, "delete"),

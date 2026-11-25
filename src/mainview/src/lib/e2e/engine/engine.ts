@@ -277,6 +277,14 @@ export class E2EEngine {
 		return this.#parts.host.openFile(key, attachmentId, sealed, progress);
 	}
 
+	/**
+	 * What the conversations' sends do now, settled: their requests run outside the engine's turn, so what the turn took
+	 * on can still be sending after it. A test's wait (testing/engines.ts' turnEnded).
+	 */
+	sendsSettled(): Promise<void> {
+		return this.#sends.settled();
+	}
+
 	/** A file of a message that didn't open, or opened to other bytes than its message says: counted (decision 40). */
 	fileFailed(): void {
 		this.#failures.note("attachment");
