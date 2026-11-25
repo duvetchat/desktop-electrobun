@@ -868,6 +868,19 @@ describe("end-to-end encryption's events", () => {
 		expect(get(stores.dmMessages)[conv]).toEqual([{ ...row, edited_at: "2026-11-25T00:02:00Z" }]);
 	});
 
+	// The app's own handling of an event may end early (a DM's message without its conversation): the engine still hears it.
+	test("an event whose case leaves the switch early still reaches the engine", async () => {
+		const { engineEvents } = await import("$lib/e2e/events");
+		const heard: string[] = [];
+		const stopListening = engineEvents.listen((event) => heard.push(event.type));
+		try {
+			deliver("DM_MESSAGE_CREATE", { id: message(95), conversation_id: null, author_id: ALICE, content: null });
+			expect(heard).toEqual(["DM_MESSAGE_CREATE"]);
+		} finally {
+			stopListening();
+		}
+	});
+
 	test("an engine that fails on an event doesn't keep it from the others, nor from the app", async () => {
 		const { engineEvents } = await import("$lib/e2e/events");
 		const heard: string[] = [];

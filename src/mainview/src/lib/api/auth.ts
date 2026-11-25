@@ -2,6 +2,7 @@ import api, { markSessionRefreshed, requestLimits } from "$lib/api/api";
 import { route } from "$lib/common/common";
 import { accessToken } from "$lib/stores/auth";
 import { inAppWords } from "$lib/api/error-wording";
+import { forgetUser } from "$lib/e2e/client";
 
 /** Why the API refused, in the app's words (error-wording.ts), or the page's own message when it didn't say: the
  * sign-in pages show it as it comes. */
@@ -109,6 +110,8 @@ export async function logIn(options: { password: string; email: string }) {
 				localStorage.setItem("duvet_refresh_token", res.data.session_token);
 			}
 			markSessionRefreshed();
+			// Maybe another account's session: its first identify names none of the device of whoever was here before.
+			forgetUser();
 
 			return res.data;
 		} else {

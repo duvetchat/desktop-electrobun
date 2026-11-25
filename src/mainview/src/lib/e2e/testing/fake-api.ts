@@ -653,7 +653,7 @@ export class FakeApi {
 	// -------------------------------------------------------------------------------------------------------------
 	// Requests.
 
-	/** The API, as fetch: a request to any of its routes gets the API's answer. Its 307s are followed, as fetch does. */
+	/** The API, as fetch: a request to any of its routes gets the API's answer. */
 	fetch = async (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
 		const request = new Request(input, init);
 		const url = new URL(request.url);
@@ -664,8 +664,6 @@ export class FakeApi {
 		// Its events go once its answer is made, lost or not: after the code that awaited it takes its first step.
 		queueMicrotask(() => queueMicrotask(() => this.#send(events)));
 		if (effect === "lose") throw new TypeError("fetch failed: the answer was lost");
-		const location = answer.headers?.Location;
-		if (answer.status === 307 && location && request.redirect !== "manual") return this.fetch(location);
 		return respond(answer);
 	};
 
@@ -897,7 +895,7 @@ export class FakeApi {
 				if (!share || !file || ![share.to_user_id, share.from_user_id].includes(session.user)) {
 					throw fail(404, "no such part");
 				}
-				return { status: 307, headers: { Location: `${FAKE_API_URL}/files/${file}` } };
+				return ok({ url: `${FAKE_API_URL}/files/${file}` });
 			}),
 			route("POST", `/api/history-shares/(?<share>${UUID_PATH})/ack`, "device", ({ session, device, params }) => {
 				const share = this.#shares.get(params.share!);
@@ -927,9 +925,9 @@ export class FakeApi {
 			route("GET", `${me}/backup/segments/(?<segment>${UUID_PATH})`, "device", ({ session, params }) => {
 				const segment = this.#segments.get(params.segment!);
 				if (!segment || segment.identity !== this.#identities.get(session.user)?.id) throw fail(404, "no such segment");
-				return { status: 307, headers: { Location: `${FAKE_API_URL}/files/${segment.file}` } };
+				return ok({ url: `${FAKE_API_URL}/files/${segment.file}` });
 			}),
-			// Where a 307 sends a client: a file's signed URL, which takes no session.
+			// A file at its signed URL, which the part's and the segment's routes answer: it takes no session.
 			route("GET", `/files/(?<file>${UUID_PATH})`, "nothing", ({ params }) => {
 				const file = this.#files.get(params.file!);
 				if (!file) throw fail(404, "no such file");

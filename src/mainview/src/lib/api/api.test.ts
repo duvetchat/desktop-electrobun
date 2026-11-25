@@ -817,27 +817,34 @@ describe("the client the app says it is", () => {
 	});
 });
 
-// A part of a shared history and a day of the backup go up as their bytes, and come back as bytes (PLAN-E2E-API.md, I
-// and J): sealed, they aren't text.
+// A part of a shared history and a day of the backup go up as their bytes (PLAN-E2E-API.md, I and J), as a form goes:
+// through XMLHttpRequest, with its time limits, and refused before anything is sent when over the API's 32 MiB.
 describe("a request's bytes", () => {
-	test("go up as they are, and an answer can be read as bytes", async () => {
-		const bytes = new Uint8Array([0xa1, 0x00, 0xff, 0xfe]);
-		let body: Uint8Array | null = null;
-		let type: string | null = null;
-		fetched.mockImplementation((async (_input: string | URL | Request, init?: RequestInit) => {
-			body = new Uint8Array(await new Response(init?.body).arrayBuffer());
-			type = new Headers(init?.headers).get("Content-Type");
-			return new Response(bytes, { headers: { "Content-Type": "application/octet-stream" } });
-		}) as typeof fetch);
-		await api.put("/api/users/@me/backup/segments/c/2026-11-24", new Blob([bytes]));
-		expect(body!).toEqual(bytes);
-		expect(type!).toBe("application/octet-stream");
-		const res = await api.get<Uint8Array>("/api/users/@me/backup/segments/s", { bytes: true });
-		expect(res.data).toEqual(bytes);
-		// A refusal of a route read as bytes is still the API's JSON.
-		fetched.mockImplementation((async (_input: string | URL | Request) =>
-			Response.json({ error: "no such segment" }, { status: 404 })) as typeof fetch);
-		const failure = await api.get("/api/users/@me/backup/segments/s", { bytes: true }).catch((e: unknown) => e);
-		expect(getApiError(failure, "")).toBe("No such segment");
+	test("go up as they are, through XMLHttpRequest, as a form does", async () => {
+		const blob = new Blob([new Uint8Array([0xa1, 0x00, 0xff, 0xfe])]);
+		FakeXHR.onSend = (xhr) => queueMicrotask(() => xhr.respond(201, { id: "s" }));
+		const res = await api.put("/api/users/@me/backup/segments/c/2026-11-24", blob);
+		expect(res).toMatchObject({ status: 201, data: { id: "s" } });
+		const xhr = FakeXHR.last!;
+		expect(xhr.body).toBe(blob);
+		expect(xhr.headers).toMatchObject({
+			"content-type": "application/octet-stream",
+			"x-duvet-client": `web/${VITE_APP_VERSION}`,
+		});
+		expect(fetched).not.toHaveBeenCalled();
+	});
+
+	test("over the API's 32 MiB are refused before anything is sent", async () => {
+		const blob = new Blob([new Uint8Array(MAX_REQUEST_BYTES + 1)]);
+		await expect(api.put("/api/users/@me/backup/segments/c/2026-11-24", blob)).rejects.toBeInstanceOf(TooLargeError);
+		expect(sent).toEqual([]);
+	});
+
+	test("that stop going up are given up after a form's idle time", async () => {
+		uploadLimits.idleMs = 40;
+		FakeXHR.onSend = (xhr) => queueMicrotask(() => xhr.sends(512));
+		const failure = await api.put("/api/history-shares/s/parts/0", new Blob([new Uint8Array(1024)])).catch((e) => e);
+		expect(failure).toBeInstanceOf(UploadTimeoutError);
+		expect(FakeXHR.last!.aborted).toBe(true);
 	});
 });

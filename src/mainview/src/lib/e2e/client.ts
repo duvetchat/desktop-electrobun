@@ -22,9 +22,14 @@ export function deviceOf(userId: string): string | null {
 	return localStorage.getItem(deviceKey(userId));
 }
 
-/** Keeps the device this installation registered for the user, which every identify names from then on. */
+/** Keeps the device this installation registered for the user, which every identify names from then on. Storage that
+ * refuses it is logged: the identify then names none, and the engine goes on. */
 export function keepDevice(userId: string, deviceId: string): void {
-	localStorage.setItem(deviceKey(userId), deviceId);
+	try {
+		localStorage.setItem(deviceKey(userId), deviceId);
+	} catch (error) {
+		console.error("[e2e] Couldn't keep this installation's device:", error);
+	}
 }
 
 /** The user the page last connected as (its READY's), whose device a new page's identify names before READY says. */
@@ -39,6 +44,12 @@ export function keepUser(userId: string): void {
 	} catch (error) {
 		console.error("[e2e] Couldn't keep whose session this is:", error);
 	}
+}
+
+/** Forgets whose session the page had: a sign-in may be another account's, whose identify mustn't name the device of
+ * the one before. READY tells whose it is. */
+export function forgetUser(): void {
+	localStorage.removeItem(USER_KEY);
 }
 
 /** The device the next identify names: the one kept for the user the page last connected as, or none. */

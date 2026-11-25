@@ -63,6 +63,7 @@ import type {
 	CallNotice,
 	DMTypingEvent,
 	GatewayEvent,
+	GatewayEventPayload,
 	GatewaySpace,
 	Message,
 	MessageReaction,
@@ -363,12 +364,14 @@ export function wantFreshSession() {
 // latest identify named: the gateway hands a device's events only to the connections identified with it.
 let sessionDevice: string | null = null;
 let sentDevice: string | null = null;
+// Whether that identify asked to resume: the gateway keeps a resumed session's device, whatever its identify names.
+let sentResume = false;
 
 /** A session identified without the device its next identify names (lib/e2e/client.ts) starts again as a new one,
  * which names it: a resume would keep the device it had (PLAN-E2E-CLIENTES.md, Ruling 30). Once: then it has it. */
 function nameDevice() {
 	const device = identifyDevice();
-	if (!device || device === sessionDevice || device === sentDevice) return;
+	if (!device || device === sessionDevice || (device === sentDevice && !sentResume)) return;
 	wantFreshSession();
 	activeSocket?.close();
 }
@@ -808,6 +811,14 @@ function handleEvent(event: GatewayEvent) {
 	}
 	if (import.meta.env.DEV) console.log("[WS] Received event:", event);
 	const payload = event.d;
+	takeEvent(payload, event);
+	// The encryption engine hears its events once the app took what's its own of them, however its case ended
+	// (lib/e2e/events.ts).
+	if (isEngineEvent(payload)) toEngine(payload);
+}
+
+/** The app's own handling of a dispatched event: its case may end with `return`. */
+function takeEvent(payload: GatewayEventPayload, event: GatewayEvent) {
 	switch (payload.type) {
 		case "READY": {
 			markStartup("ready");
@@ -2055,8 +2066,6 @@ function handleEvent(event: GatewayEvent) {
 		default:
 			if (import.meta.env.DEV) console.log("[WS] Unhandled event:", event);
 	}
-	// The encryption engine hears its events once the app took what's its own of them (lib/e2e/events.ts).
-	if (isEngineEvent(payload)) toEngine(payload);
 }
 
 export interface GatewayConnection {
@@ -2163,6 +2172,7 @@ export function createWebSocketConnection(): GatewayConnection {
 				lastSeq > 0 && !freshSessionWanted ? { lastSeq, sessionToken: get(wsSessionToken) } : null,
 			);
 			sentDevice = identify.device_id ?? null;
+			sentResume = Boolean(identify.session_token);
 			connectionCount++;
 			socket.send(JSON.stringify({ type: "identify", data: identify }));
 			listsAhead = identify.session_token ? null : askForLists();

@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import api, { FetchError } from "$lib/api/api";
 import { logIn, logout, resetPassword, signIn, verifyEmail } from "$lib/api/auth";
+import { identifyData } from "$lib/api/ws/identify";
+import { keepDevice, keepUser, lastUser } from "$lib/e2e/client";
 
 // Where the page goes: there's no window outside a browser.
 const location = { href: "views://mainview/app.html" };
@@ -62,6 +64,23 @@ describe("a refusal", () => {
 		posted.mockRejectedValue(refused("internal server error", 500));
 		expect(await message(logIn({ email: "a@b.c", password: "p" }))).toBe("Couldn't sign you in. Try again.");
 	});
+});
+
+// An identify names the device of the user the page last connected as, until READY says whose session it is
+// (lib/e2e/client.ts): a sign-in may be another account's, so the identify after it names no device of the one before.
+test("a sign-in forgets whose session the page had, so the identify after it names none of their devices", async () => {
+	const other = "0193a4b2-0000-7000-8000-00000000b0b0";
+	keepUser(other);
+	keepDevice(other, "0193a4b2-0000-7000-8000-0000000d0001");
+	posted.mockResolvedValue({
+		data: { token: "access-2", session_token: "session-2", device_challenge: "Y2hhbGxlbmdl" },
+		status: 200,
+		statusText: "",
+		headers: new Headers(),
+	});
+	await logIn({ email: "a@b.c", password: "p" });
+	expect(lastUser()).toBeNull();
+	expect(identifyData("access-2", null)).not.toHaveProperty("device_id");
 });
 
 describe("logout", () => {

@@ -1,11 +1,19 @@
 // The routes of end-to-end encryption (PLAN-E2E-API.md, «Rutas», A to K), typed for the encryption engine. Where the
 // API's e2e branch has a route, its code decided its shapes over the plan's table; the shared history's and the backup's
 // (step 3's tasks 14 and 15, not built yet) follow the plan. Binary fields go as the core makes and takes them, in
-// standard base64; a part's and a day's bytes as bytes. Refusals are api.ts's: a FetchError with the API's body (a 409's
+// standard base64; a part's and a day's bytes go up as bytes, and come down from the signed URL their route answers.
+// Refusals are api.ts's: a FetchError with the API's body (a 409's
 // current state, a 422's code, a 410's floor), an UpdateRequiredError (426) or a PausedError (503).
 //
 // e2eApi(client) gives them for a session: the app's own (api.ts's) by default, or a test's for another one.
-import api, { type ApiClient, type FetchResponse, type UploadOptions } from "$lib/api/api";
+import api, {
+	FetchError,
+	fetchWithin,
+	requestLimits,
+	type ApiClient,
+	type FetchResponse,
+	type UploadOptions,
+} from "$lib/api/api";
 import type { ConversationMember, DirectMessage } from "$lib/api/conversations";
 import type { AllowedMentions, HistoryShare, MessageReference, MlsEntry, UserDevice } from "$lib/types";
 
@@ -256,6 +264,18 @@ export interface DecryptFailureCount {
 	count: number;
 }
 
+/** A file's bytes at the signed URL its route answered: fetched with none of the app's headers, which a redirect would
+ * have carried to the storage's host, the session token among them (PLAN-E2E-API.md, I and J). */
+async function signedFile(route: Promise<{ url: string }>): Promise<Uint8Array> {
+	const { url } = await route;
+	const res = await fetchWithin(url, { credentials: "omit" }, requestLimits.answerMs);
+	if (!res.ok) {
+		const failed = { data: null, status: res.status, statusText: res.statusText, headers: res.headers };
+		throw new FetchError(`Request failed with status ${res.status}`, {}, failed);
+	}
+	return new Uint8Array(await res.arrayBuffer());
+}
+
 /** The routes, for the session `client` sends its requests with. */
 export function e2eApi(client: ApiClient = api) {
 	const answer = <T>(request: Promise<FetchResponse<T>>) => request.then((res) => res.data);
@@ -365,7 +385,7 @@ export function e2eApi(client: ApiClient = api) {
 		/** The packages for the user that this device hasn't acknowledged. */
 		shares: () => answer(client.get<HistoryShare[]>("/api/users/@me/history-shares")),
 		sharePart: (shareId: string, n: number) =>
-			answer(client.get<Uint8Array>(`/api/history-shares/${shareId}/parts/${n}`, { bytes: true })),
+			signedFile(answer(client.get<{ url: string }>(`/api/history-shares/${shareId}/parts/${n}`))),
 		ackShare: (shareId: string) => done(client.post(`/api/history-shares/${shareId}/ack`)),
 
 		// J. The encrypted backup.
@@ -380,7 +400,7 @@ export function e2eApi(client: ApiClient = api) {
 				}),
 			),
 		segment: (segmentId: string) =>
-			answer(client.get<Uint8Array>(`/api/users/@me/backup/segments/${segmentId}`, { bytes: true })),
+			signedFile(answer(client.get<{ url: string }>(`/api/users/@me/backup/segments/${segmentId}`))),
 
 		// K. Decryption failures: counted by kind, with no ID and no content.
 		reportDecryptFailure: (kind: DecryptFailureKind, count?: number) =>

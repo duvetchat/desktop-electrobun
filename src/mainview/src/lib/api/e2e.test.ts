@@ -1,5 +1,5 @@
 import { describe, expect, spyOn, test } from "bun:test";
-import type { ApiClient, FetchRequestConfig, FetchResponse } from "$lib/api/api";
+import { FetchError, type ApiClient, type FetchRequestConfig, type FetchResponse } from "$lib/api/api";
 import { FakeApi } from "$lib/e2e/testing/fake-api";
 import { e2eApi, type E2eApi } from "./e2e";
 
@@ -14,6 +14,9 @@ const MESSAGE = "0193a4b2-0000-7000-8000-0000000e0001";
 const SHARE = "0193a4b2-0000-7000-8000-0000000f0001";
 const SEGMENT = "0193a4b2-0000-7000-8000-000000050001";
 const conv = `/api/users/@me/conversations/${CONV}`;
+
+/** A fetch's URL, whatever form it was given in. */
+const urlOf = (input: string | URL | Request) => (input instanceof Request ? input.url : input.toString());
 
 /** A request as the engine's client got it. */
 interface Call {
@@ -66,14 +69,17 @@ const identity = {
 };
 const segmentBytes = new Blob([new Uint8Array([0xa1, 0x00, 0xff])]);
 
-/** Each route: what it's called with, what it sends, what the API answers, and what it gives back (the answer, or
- *  nothing for one that answers nothing). */
+/** A file's bytes at the signed URL its route answers. */
+const FILE = new Uint8Array([0xa1, 0x00, 0xff]);
+
+/** Each route: what it's called with, what it sends, what the API answers, and what it gives back (the answer, nothing
+ *  for one that answers nothing, or the file at the URL it answers). */
 const ROUTES: [
 	name: string,
 	call: (api: E2eApi) => Promise<unknown>,
 	sent: Call,
 	answer: unknown,
-	gives?: "nothing",
+	gives?: "nothing" | "file",
 ][] = [
 	// A. The configuration.
 	[
@@ -365,8 +371,9 @@ const ROUTES: [
 	[
 		"sharePart",
 		(api) => api.sharePart(SHARE, 0),
-		{ method: "GET", url: `/api/history-shares/${SHARE}/parts/0`, config: { bytes: true } },
-		new Uint8Array([1, 2, 3]),
+		{ method: "GET", url: `/api/history-shares/${SHARE}/parts/0` },
+		{ url: "https://storage.test/part?signature=s" },
+		"file",
 	],
 	[
 		"ackShare",
@@ -411,8 +418,9 @@ const ROUTES: [
 	[
 		"segment",
 		(api) => api.segment(SEGMENT),
-		{ method: "GET", url: `/api/users/@me/backup/segments/${SEGMENT}`, config: { bytes: true } },
-		new Uint8Array([0xa1, 0x00, 0xff]),
+		{ method: "GET", url: `/api/users/@me/backup/segments/${SEGMENT}` },
+		{ url: "https://storage.test/segment?signature=s" },
+		"file",
 	],
 	// K. Decryption failures.
 	[
@@ -438,10 +446,23 @@ describe("each route", () => {
 	for (const [name, call, sent, answer, gives] of ROUTES) {
 		test(`${name} sends what its table says and gives back its answer`, async () => {
 			const { calls, client } = recording(answer);
-			const got = await call(e2eApi(client));
-			expect(calls).toEqual([sent]);
-			if (gives === "nothing") expect(got).toBeUndefined();
-			else expect(got).toBe(answer);
+			// The storage's host, which only a file's route reaches, and then at the URL the API answered.
+			const fetched = spyOn(globalThis, "fetch").mockImplementation(
+				(async (_input: string | URL | Request) => new Response(FILE)) as typeof fetch,
+			);
+			try {
+				const got = await call(e2eApi(client));
+				expect(calls).toEqual([sent]);
+				if (gives === "nothing") expect(got).toBeUndefined();
+				else if (gives === "file") expect(got).toEqual(FILE);
+				else expect(got).toBe(answer);
+				const fetchedUrls: unknown[] = fetched.mock.calls.map(([input]) => urlOf(input));
+				expect(fetchedUrls).toEqual(
+					gives === "file" ? [typeof answer === "object" && answer && "url" in answer ? answer.url : null] : [],
+				);
+			} finally {
+				fetched.mockRestore();
+			}
 		});
 	}
 
@@ -487,6 +508,55 @@ describe("each route", () => {
 			["files", 1],
 			["files", 2],
 		]);
+	});
+});
+
+// A part of a shared history and a day of the backup come from the signed URL their route answers (PLAN-E2E-API.md, I
+// and J): fetched with none of the app's headers, which a redirect would have carried to the storage's host, the session
+// token among them.
+describe("a file at its signed URL", () => {
+	const SIGNED = "https://storage.test/segment?signature=s";
+	const appHeaders = ["Authorization", "X-Session-Token", "X-Duvet-Client"];
+
+	test("is fetched with none of the app's headers, after the API's route with them all", async () => {
+		localStorage.setItem("duvet_session_token", "access");
+		localStorage.setItem("duvet_refresh_token", "session");
+		const sent: { url: string; init?: RequestInit }[] = [];
+		const fetched = spyOn(globalThis, "fetch").mockImplementation((async (
+			input: string | URL | Request,
+			init?: RequestInit,
+		) => {
+			const url = urlOf(input);
+			sent.push({ url, init });
+			return url === SIGNED ? new Response(FILE) : Response.json({ url: SIGNED });
+		}) as typeof fetch);
+		try {
+			expect(await e2eApi().segment(SEGMENT)).toEqual(FILE);
+			expect(sent.map(({ url }) => url)).toEqual([`https://api.test/api/users/@me/backup/segments/${SEGMENT}`, SIGNED]);
+			const [route, file] = sent.map(({ init }) => new Headers(init?.headers));
+			for (const name of appHeaders) expect([name, route!.has(name)]).toEqual([name, true]);
+			for (const name of appHeaders) expect([name, file!.has(name)]).toEqual([name, false]);
+			expect(sent[1]?.init?.credentials).toBe("omit");
+		} finally {
+			fetched.mockRestore();
+			localStorage.clear();
+		}
+	});
+
+	test("that the storage refuses fails with its status", async () => {
+		const fetched = spyOn(globalThis, "fetch").mockImplementation((async (input: string | URL | Request) =>
+			urlOf(input) === SIGNED
+				? new Response("expired", { status: 403 })
+				: Response.json({ url: SIGNED })) as typeof fetch);
+		try {
+			const failure = await e2eApi()
+				.sharePart(SHARE, 0)
+				.catch((e: unknown) => e);
+			expect(failure).toBeInstanceOf(FetchError);
+			expect(failure).toMatchObject({ response: { status: 403 } });
+		} finally {
+			fetched.mockRestore();
+		}
 	});
 });
 

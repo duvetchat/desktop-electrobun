@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { ShellInputs } from "$lib/platform";
@@ -80,6 +80,24 @@ describe("the device an identify names", () => {
 		expect(deviceOf(ANA)).toBe(DEVICE);
 		expect(deviceOf(BO)).toBeNull();
 		expect(localStorage.getItem(`duvet.e2e.${ANA}.device`)).toBe(DEVICE);
+	});
+
+	// The API registered the device already: the engine goes on without it kept, as the identify then names none.
+	test("that storage refuses is logged, and the registration goes on", () => {
+		const write = localStorage.setItem.bind(localStorage);
+		const setItem = spyOn(localStorage, "setItem").mockImplementation((key: string, value: string) => {
+			if (key.endsWith(".device")) throw new Error("QuotaExceededError");
+			write(key, value);
+		});
+		const logged = spyOn(console, "error").mockImplementation(() => {});
+		try {
+			expect(() => keepDevice(BO, DEVICE)).not.toThrow();
+			expect(deviceOf(BO)).toBeNull();
+			expect(logged).toHaveBeenCalled();
+		} finally {
+			setItem.mockRestore();
+			logged.mockRestore();
+		}
 	});
 
 	test("goes by the user the page last connected as, which a new page reads before its READY says", () => {
