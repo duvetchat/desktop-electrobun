@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type { Component, Snippet } from "svelte";
+	import { rowClass, ROW_TILE } from "./recipes";
 
 	// A row of a settings group (#357, DESIGN-MAP.md S-47): an optional icon tile, a label with a line under it, and
 	// its control at the right. `stacked` puts the control under the words, for one too wide to sit beside them.
@@ -23,30 +24,23 @@
 	} = $props();
 </script>
 
-<div
-	class="flex min-h-[50px] gap-x-3 gap-y-2 px-3.5 py-2 {stacked
-		? 'flex-col justify-center'
-		: 'items-center'} {className}"
->
+<div class="{rowClass(stacked)} {className}">
 	<div class="flex min-w-0 flex-1 items-center gap-3">
 		{#if icon}
 			{@const Icon = icon}
-			<span
-				class="bg-duvet-secondary-fill text-duvet-accent-text grid size-[30px] shrink-0 place-items-center rounded-[9px]"
-				aria-hidden="true"
-			>
-				<Icon size={16} />
+			<span class={ROW_TILE} aria-hidden="true">
+				<Icon size={18} />
 			</span>
 		{/if}
 		<div class="min-w-0 flex-1">
 			{#if labelFor}
-				<label for={labelFor} class="text-duvet-ink block text-[13.5px] leading-[1.3] font-medium">{label}</label>
+				<label for={labelFor} class="text-duvet-ink block text-[14.5px] leading-[1.35] font-medium">{label}</label>
 			{:else}
-				<p class="text-duvet-ink text-[13.5px] leading-[1.3] font-medium">
+				<p class="text-duvet-ink text-[14.5px] leading-[1.35] font-medium">
 					{label}
 				</p>
 			{/if}
-			{#if line}<p class="text-duvet-ink2 mt-0.5 text-xs leading-[1.4]">{line}</p>{/if}
+			{#if line}<p class="text-duvet-ink2 mt-1 text-[13px] leading-[1.45]">{line}</p>{/if}
 		</div>
 	</div>
 	{#if children}

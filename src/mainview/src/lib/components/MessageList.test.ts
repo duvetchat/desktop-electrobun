@@ -411,3 +411,44 @@ test("the quick reactions lead with the emoji used lately, and adding one counts
 	const chips = /onToggle=\{\(r\) => handleReactionToggle\(message, r\.emoji_name, r\.emoji_id\)\}/g;
 	expect(list.match(chips)).toHaveLength(2);
 });
+
+// A message is edited where it is (#357): its own text becomes a box, with Save and Discard, instead of the chat's
+// message box taking the text away from it.
+describe("editing a message", () => {
+	const list = source("MessageList.svelte");
+	const editor = source("InlineMessageEditor.svelte");
+
+	test("a double click or the Edit button turns its text into a box in its row", () => {
+		expect(list).toContain("e.detail === 2");
+		expect(list).toContain("<InlineMessageEditor");
+		expect(list).toContain("onSave={(text) => onSaveEdit?.(message.id, text)}");
+		expect(list).toContain("onCancel={() => (editingMessageId = null)}");
+		expect(list).toMatch(/editable\(message, mine\)[\s\S]*?<IconButton label="Edit message"/);
+	});
+
+	test("the box saves or discards, and Esc or Ctrl/⌘ Enter leave it", () => {
+		expect(editor).toContain("<textarea");
+		expect(editor).toContain("Save");
+		expect(editor).toContain("Discard edit");
+		expect(editor).toContain('event.key === "Escape"');
+		expect(editor).toContain("event.metaKey || event.ctrlKey");
+	});
+
+	test("the chat saves it there, not in the message box", () => {
+		const chat = source("Chat.svelte");
+		expect(chat).toContain("onSaveEdit={saveEdit}");
+		expect(chat).not.toContain("bind:editContent");
+		expect(chat).not.toContain("Editing your message");
+	});
+});
+
+test("a message's More menu copies its text above its link", () => {
+	const list = source("MessageList.svelte");
+	const text = list.indexOf(">Copy text<");
+	const link = list.indexOf(">Copy message link<");
+	expect(text).toBeGreaterThan(-1);
+	expect(text).toBeLessThan(link);
+	expect(list).toMatch(
+		/function copyText\(message: Message\) \{\s*const text = messageText\(message\);\s*if \(text\) navigator\.clipboard\.writeText\(text\)\.catch\(console\.error\);\s*\}/,
+	);
+});

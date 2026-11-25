@@ -40,6 +40,7 @@
 		voiceConnectionState,
 		voiceLocalCameraStream,
 		voiceLocalVideoStream,
+		voiceOutputVolume,
 		voiceRemoteCameraStreams,
 		voiceRemoteVideoStreams,
 	} from "$lib/stores.svelte";
@@ -1112,11 +1113,27 @@
 			},
 		};
 	}
+
+	// The same for the volume others play at: an element that is already playing takes it as it changes.
+	function applyVolume(node: HTMLAudioElement, volume: number) {
+		node.volume = volume;
+		return {
+			update(newVolume: number) {
+				node.volume = newVolume;
+			},
+		};
+	}
 </script>
 
 <!-- Everyone's voice, and the sound of the screens they share: that stream also carries the screen, whose
      <video> in VoiceChannelView is muted so the voice doesn't play twice. Only deafening silences it: someone
      muted sends no voice, but a tab they share keeps its sound. -->
 {#each Object.entries(remoteAudioStreams) as [id, stream] (id)}
-	<audio use:srcObject={stream} use:applyMuted={$isDeafened} autoplay aria-label={`Audio stream ${id}`}></audio>
+	<audio
+		use:srcObject={stream}
+		use:applyMuted={$isDeafened}
+		use:applyVolume={$voiceOutputVolume}
+		autoplay
+		aria-label={`Audio stream ${id}`}
+	></audio>
 {/each}

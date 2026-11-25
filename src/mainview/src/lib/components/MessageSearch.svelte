@@ -487,7 +487,7 @@
 
 <div
 	bind:this={box}
-	class="bg-duvet-field focus-within:bg-duvet-card relative mx-1 flex h-[30px] shrink-0 items-center rounded-[9px] transition-[width,background-color,box-shadow] duration-[220ms] focus-within:shadow-[0_0_0_3px_var(--duvet-accent-tint),0_0_0_1px_var(--duvet-accent)] motion-reduce:transition-none {open
+	class="bg-duvet-field focus-within:bg-duvet-card rounded-tile relative mx-1 flex h-[30px] shrink-0 items-center transition-[width,background-color,box-shadow] duration-[220ms] focus-within:shadow-[0_0_0_3px_var(--duvet-accent-tint),0_0_0_1px_var(--duvet-accent)] motion-reduce:transition-none {open
 		? 'w-64'
 		: text
 			? 'w-48'
@@ -598,7 +598,7 @@
 										id="{uid}-suggestion-{i}"
 										role="option"
 										aria-selected={i === selected}
-										class="flex min-h-8 w-full items-center gap-2 rounded-[9px] px-2 py-1.5 text-left text-[12.5px] {i ===
+										class="rounded-tile flex min-h-8 w-full items-center gap-2 px-2 py-1.5 text-left text-[12.5px] {i ===
 										selected
 											? 'bg-duvet-accent-tint'
 											: 'hover:bg-duvet-hover'}"

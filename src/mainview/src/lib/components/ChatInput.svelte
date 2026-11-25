@@ -16,6 +16,7 @@
 		Hash as HashIcon,
 		Volume2 as VoiceIcon,
 	} from "@lucide/svelte";
+	import { OVERLINE } from "$lib/components/ui/recipes";
 	import Menu from "$lib/components/ui/Menu.svelte";
 	import MenuItem from "$lib/components/ui/MenuItem.svelte";
 	import Segmented from "$lib/components/ui/Segmented.svelte";
@@ -1163,15 +1164,13 @@
 	<!-- Command menu -->
 	{#if commandSuggestions.length > 0}
 		<div
-			class="bg-duvet-bg border-duvet-line absolute bottom-[calc(100%+6px)] left-0 z-90 max-h-75 w-[min(100%,560px)] overflow-hidden overflow-y-auto rounded-[14px] border p-1.5"
+			class="bg-duvet-bg border-duvet-line rounded-panel absolute bottom-[calc(100%+6px)] left-0 z-90 max-h-75 w-[min(100%,560px)] overflow-hidden overflow-y-auto border p-1.5"
 			id="{uid}-commands"
 			role="listbox"
 			aria-label={t("chat_commands_label")}
 			bind:this={commandMenuEl}
 		>
-			<div
-				class="text-duvet-ink2 px-2 pt-1.5 pb-1.5 text-[10.5px] leading-none font-semibold tracking-[0.06em] uppercase"
-			>
+			<div class="{OVERLINE} px-2 pt-1.5 pb-1.5 leading-none">
 				{#if commandQuery}
 					<Rich key="chat_commands_matching" values={{ query: commandQuery }} tags={{ b: typed }} />
 				{:else}
@@ -1184,7 +1183,7 @@
 					id="{uid}-commands-{i}"
 					role="option"
 					aria-selected={i === commandSelectedIdx}
-					class="relative flex min-h-[34px] w-full cursor-pointer items-center gap-2 overflow-hidden rounded-[9px] px-2 py-1.5 text-left {i ===
+					class="rounded-tile relative flex min-h-[34px] w-full cursor-pointer items-center gap-2 overflow-hidden px-2 py-1.5 text-left {i ===
 					commandSelectedIdx
 						? 'bg-duvet-accent-tint'
 						: ''}"
@@ -1212,13 +1211,13 @@
 	<!-- Mention autocomplete dropdown -->
 	{#if mentionSuggestions.length > 0}
 		<div
-			class="bg-duvet-bg border-duvet-line absolute bottom-[calc(100%+6px)] left-0 z-90 max-h-75 w-80 max-w-full overflow-hidden overflow-y-auto rounded-[14px] border p-1.5"
+			class="bg-duvet-bg border-duvet-line rounded-panel absolute bottom-[calc(100%+6px)] left-0 z-90 max-h-75 w-80 max-w-full overflow-hidden overflow-y-auto border p-1.5"
 			id="{uid}-mentions"
 			role="listbox"
 			aria-label={t("chat_mention_suggestions")}
 		>
 			<div
-				class="text-duvet-ink2 px-2 pt-1.5 pb-1.5 text-[10.5px] leading-none font-semibold tracking-[0.06em] uppercase"
+				class={OVERLINE} px-2 pt-1.5 pb-1.5 text-[10.5px] leading-none font-semibold tracking-[0.06em] uppercase"
 			>
 				<Rich
 					key="chat_members_matching"
@@ -1236,7 +1235,7 @@
 					id="{uid}-mentions-{i}"
 					role="option"
 					aria-selected={i === mentionSelectedIdx}
-					class="relative flex h-[34px] w-full cursor-pointer items-center gap-2 overflow-hidden rounded-[9px] px-2 text-left {i ===
+					class="rounded-tile relative flex h-[34px] w-full cursor-pointer items-center gap-2 overflow-hidden px-2 text-left {i ===
 					mentionSelectedIdx
 						? 'bg-duvet-accent-tint'
 						: ''}"
@@ -1264,13 +1263,13 @@
 	<!-- Room mention autocomplete dropdown -->
 	{#if roomSuggestions.length > 0}
 		<div
-			class="bg-duvet-bg border-duvet-line absolute bottom-[calc(100%+6px)] left-0 z-90 max-h-75 w-80 max-w-full overflow-hidden overflow-y-auto rounded-[14px] border p-1.5"
+			class="bg-duvet-bg border-duvet-line rounded-panel absolute bottom-[calc(100%+6px)] left-0 z-90 max-h-75 w-80 max-w-full overflow-hidden overflow-y-auto border p-1.5"
 			id="{uid}-rooms"
 			role="listbox"
 			aria-label={t("chat_room_suggestions")}
 		>
 			<div
-				class="text-duvet-ink2 px-2 pt-1.5 pb-1.5 text-[10.5px] leading-none font-semibold tracking-[0.06em] uppercase"
+				class="{OVERLINE} px-2 pt-1.5 pb-1.5 text-[10.5px] leading-none font-semibold tracking-[0.06em] uppercase"
 			>
 				<Rich
 					key="chat_rooms_matching"
@@ -1288,7 +1287,7 @@
 					id="{uid}-rooms-{i}"
 					role="option"
 					aria-selected={i === roomSelectedIdx}
-					class="flex h-[34px] w-full cursor-pointer items-center gap-2 rounded-[9px] px-2 text-left {i ===
+					class="rounded-tile flex h-[34px] w-full cursor-pointer items-center gap-2 px-2 text-left {i ===
 					roomSelectedIdx
 						? 'bg-duvet-accent-tint'
 						: ''}"
@@ -1312,13 +1311,13 @@
 	<!-- Emoji autocomplete dropdown -->
 	{#if suggestions.length > 0}
 		<div
-			class="bg-duvet-bg border-duvet-line absolute bottom-[calc(100%+6px)] left-0 z-90 max-h-75 w-80 max-w-full overflow-hidden overflow-y-auto rounded-[14px] border p-1.5"
+			class="bg-duvet-bg border-duvet-line rounded-panel absolute bottom-[calc(100%+6px)] left-0 z-90 max-h-75 w-80 max-w-full overflow-hidden overflow-y-auto border p-1.5"
 			id="{uid}-emoji"
 			role="listbox"
 			aria-label={t("chat_emoji_suggestions")}
 		>
 			<div
-				class="text-duvet-ink2 px-2 pt-1.5 pb-1.5 text-[10.5px] leading-none font-semibold tracking-[0.06em] uppercase"
+				class="{OVERLINE} px-2 pt-1.5 pb-1.5 text-[10.5px] leading-none font-semibold tracking-[0.06em] uppercase"
 			>
 				<Rich
 					key="chat_emoji_matching"
@@ -1336,7 +1335,7 @@
 					id="{uid}-emoji-{i}"
 					role="option"
 					aria-selected={i === selectedIdx}
-					class="flex h-[34px] w-full cursor-pointer items-center gap-2 rounded-[9px] px-2 text-left {i === selectedIdx
+					class="rounded-tile flex h-[34px] w-full cursor-pointer items-center gap-2 px-2 text-left {i === selectedIdx
 						? 'bg-duvet-accent-tint'
 						: ''}"
 					onmousedown={(e) => {
@@ -1366,7 +1365,7 @@
 
 	<!-- The field. Its ring shows the focus, as the text inside it has no outline of its own. -->
 	<div
-		class="bg-duvet-card pointer-events-auto flex min-h-[42px] rounded-[20px] px-1 shadow-[var(--duvet-shadow-well),0_0_0_1px_var(--duvet-line)] transition-shadow duration-150 focus-within:shadow-[var(--duvet-shadow-well),0_0_0_1px_var(--duvet-accent),0_0_0_4px_var(--duvet-accent-tint)] motion-reduce:transition-none {recording
+		class="bg-duvet-card pointer-events-auto flex min-h-[42px] rounded-2xl px-1 shadow-[var(--duvet-shadow-well),0_0_0_1px_var(--duvet-line)] transition-shadow duration-150 focus-within:shadow-[var(--duvet-shadow-well),0_0_0_1px_var(--duvet-accent),0_0_0_4px_var(--duvet-accent-tint)] motion-reduce:transition-none {recording
 			? 'items-center gap-2'
 			: 'items-end'}"
 	>
@@ -1417,7 +1416,7 @@
 			</button>
 			<button
 				type="button"
-				class="bg-duvet-accent text-duvet-on-accent shadow-duvet-control active:shadow-duvet-press my-1 grid size-[34px] shrink-0 place-items-center rounded-xl transition-transform active:scale-[0.94] motion-reduce:transition-none"
+				class="bg-duvet-accent text-duvet-on-accent shadow-duvet-control active:shadow-duvet-press my-1 grid size-[34px] shrink-0 place-items-center rounded-full transition-transform active:scale-[0.94] motion-reduce:transition-none"
 				title={t("chat_recording_send")}
 				aria-label={t("chat_recording_send")}
 				onclick={stopRecording}
@@ -1531,7 +1530,7 @@
 				{@const ready = !isEmpty || pendingFiles.length > 0}
 				<button
 					type="button"
-					class="my-1 grid size-[34px] shrink-0 place-items-center rounded-xl transition-[background-color,color,transform] motion-reduce:transition-none {ready
+					class="my-1 grid size-[34px] shrink-0 place-items-center rounded-full transition-[background-color,color,transform] motion-reduce:transition-none {ready
 						? 'bg-duvet-accent text-duvet-on-accent shadow-duvet-control active:shadow-duvet-press active:scale-[0.94]'
 						: 'text-duvet-ink2'}"
 					title={t("chat_send")}

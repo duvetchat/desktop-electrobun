@@ -42,12 +42,14 @@
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
 	import StatusDot from "$lib/components/StatusDot.svelte";
 	import ConversationView from "$lib/components/ConversationView.svelte";
-	import { buttonClass, countBadgeClass } from "$lib/components/ui/recipes";
+	import { buttonClass, cardIconButtonClass, countBadgeClass, FOCUS_RING } from "$lib/components/ui/recipes";
+	import { FRIEND_ROW_TRIGGER } from "$lib/components/people/recipes";
 	import Sheet from "$lib/components/ui/Sheet.svelte";
 	import { ERROR_NOTE, FIELD_LABEL, fieldClass } from "$lib/overlay-forms";
 	import MessageSearch from "$lib/components/MessageSearch.svelte";
 	import type { MessageLink } from "$lib/urls";
 	import MemberProfilePopover from "$lib/components/MemberProfilePopover.svelte";
+	import PersonButton from "$lib/components/PersonButton.svelte";
 	import { getAvatarURL } from "$lib/common/common";
 	import { acceptRequest, declineRequest } from "$lib/friend-requests";
 	import {
@@ -89,8 +91,7 @@
 		{ id: "pending", label: "Pending", count: $pendingFriendRequests.length, alert: true },
 		{ id: "sent", label: "Sent", count: $sentFriendRequests.length },
 	]);
-	const focusRing =
-		"focus-override focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-duvet-accent";
+	const focusRing = FOCUS_RING;
 
 	// The friends, those matching the search, online first (idle and do not disturb are there too), with what each is
 	// playing or listening to.
@@ -408,7 +409,7 @@
 				</div>
 			</div>
 			<div
-				class="bg-duvet-seg-track flex shrink-0 items-center rounded-[11px] p-[3px]"
+				class="bg-duvet-seg-track rounded-control flex shrink-0 items-center p-[3px]"
 				role="tablist"
 				aria-label="Friends"
 			>
@@ -500,41 +501,32 @@
 													/>
 												</div>
 											{/if}
-											<MemberProfilePopover
+											<PersonButton
 												{member}
 												side="bottom"
 												open={profileOpenFor === friend.id}
 												onOpenChange={(o) => (profileOpenFor = o ? friend.id : null)}
-												triggerClass="rounded-row relative flex min-w-0 flex-1 cursor-pointer items-center gap-3 text-left {focusRing}"
+												triggerClass={FRIEND_ROW_TRIGGER}
+												size="lg"
+												statusClass="text-duvet-bg"
 											>
-												{#snippet children()}
-													<div class="relative shrink-0">
-														<UserAvatar src={member.avatar_url} name={member.username} size={40} />
-														<StatusDot
-															status={member.status}
-															mobileOnly={member.mobile_only}
-															class="text-duvet-bg absolute -right-0.5 -bottom-0.5 w-3.5 border-[3px]"
-														/>
-													</div>
-													<div class="flex min-w-0 flex-1 flex-col leading-tight">
-														<span class="text-duvet-ink truncate text-sm font-bold">{member.username}</span>
-														<span class="text-duvet-ink2 flex min-w-0 items-center gap-1 text-xs">
-															{#if activity}
-																{#if activity.kind === "playing"}<GameIcon
-																		class="size-3 shrink-0"
-																		aria-hidden="true"
-																	/>{:else}<MusicIcon class="size-3 shrink-0" aria-hidden="true" />{/if}
-																<span class="truncate">{activity.text}</span>
-															{:else}
-																<span class="truncate">@{member.raw_username}</span>
-															{/if}
-														</span>
-													</div>
+												{#snippet subtitle()}
+													<span class="text-duvet-ink2 flex min-w-0 items-center gap-1 text-xs">
+														{#if activity}
+															{#if activity.kind === "playing"}<GameIcon
+																	class="size-3 shrink-0"
+																	aria-hidden="true"
+																/>{:else}<MusicIcon class="size-3 shrink-0" aria-hidden="true" />{/if}
+															<span class="truncate">{activity.text}</span>
+														{:else}
+															<span class="truncate">@{member.raw_username}</span>
+														{/if}
+													</span>
 												{/snippet}
-											</MemberProfilePopover>
+											</PersonButton>
 											<button
 												type="button"
-												class="bg-duvet-card text-duvet-ink2 shadow-duvet-raised hover:text-duvet-ink relative flex size-9 items-center justify-center rounded-xl transition-colors motion-reduce:transition-none {focusRing}"
+												class={cardIconButtonClass()}
 												aria-label="Message {member.username}"
 												title="Message"
 												onclick={() => handleOpenDM(friend)}
@@ -543,7 +535,7 @@
 											</button>
 											<button
 												type="button"
-												class="text-duvet-ink2 hover:text-duvet-danger hover:bg-duvet-card relative flex size-9 items-center justify-center rounded-xl opacity-0 transition group-focus-within:opacity-100 group-hover:opacity-100 focus-visible:opacity-100 motion-reduce:transition-none {focusRing}"
+												class={cardIconButtonClass(true)}
 												aria-label="Remove {member.username} from your friends"
 												title="Remove friend"
 												onclick={() => confirmUnfriend(friend)}
@@ -577,7 +569,7 @@
 										side="bottom"
 										open={profileOpenFor === req.id}
 										onOpenChange={(o) => (profileOpenFor = o ? req.id : null)}
-										triggerClass="rounded-row flex min-w-0 flex-1 cursor-pointer items-center gap-3 text-left {focusRing}"
+										triggerClass={FRIEND_ROW_TRIGGER}
 									>
 										{#snippet children()}
 											{@render person(other.id, other.avatar, other.alias ?? other.username, other.username)}

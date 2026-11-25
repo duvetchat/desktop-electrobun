@@ -25,27 +25,27 @@ const laptop = display(0, 0, 1512, 982, true);
 describe("where a Settings window opens", () => {
 	test("at the design's size, centred over the main window", () => {
 		const main = { x: 100, y: 60, width: 1300, height: 860 };
-		expect(settingsFrame("settings", main, [laptop])).toEqual({ x: 320, y: 180, width: 860, height: 620 });
-		expect(settingsFrame("space-settings", main, [laptop])).toEqual({ x: 280, y: 160, width: 940, height: 660 });
+		expect(settingsFrame("settings", main, [laptop])).toEqual({ x: 260, y: 130, width: 980, height: 720 });
+		expect(settingsFrame("space-settings", main, [laptop])).toEqual({ x: 220, y: 110, width: 1060, height: 760 });
 	});
 
 	test("each further window a step down and right", () => {
 		const main = { x: 100, y: 60, width: 1300, height: 860 };
-		expect(settingsFrame("settings", main, [laptop], 1)).toEqual({ x: 348, y: 208, width: 860, height: 620 });
-		expect(settingsFrame("settings", main, [laptop], 2)).toEqual({ x: 376, y: 236, width: 860, height: 620 });
+		expect(settingsFrame("settings", main, [laptop], 1)).toEqual({ x: 288, y: 158, width: 980, height: 720 });
+		expect(settingsFrame("settings", main, [laptop], 2)).toEqual({ x: 316, y: 186, width: 980, height: 720 });
 	});
 
 	test("never past the edges of the display the main window is on", () => {
 		// The main window hangs off the right and the bottom.
 		const main = { x: 1100, y: 600, width: 1300, height: 860 };
 		const frame = settingsFrame("settings", main, [laptop]);
-		expect(frame).toEqual({ x: 1512 - 860, y: 982 - 620, width: 860, height: 620 });
+		expect(frame).toEqual({ x: 1512 - 980, y: 982 - 720, width: 980, height: 720 });
 		// And off the top left.
 		expect(settingsFrame("settings", { x: -900, y: -700, width: 1300, height: 860 }, [laptop])).toEqual({
 			x: 0,
 			y: 25,
-			width: 860,
-			height: 620,
+			width: 980,
+			height: 720,
 		});
 	});
 
@@ -63,14 +63,14 @@ describe("where a Settings window opens", () => {
 		const second = display(1512, 0, 1920, 1080);
 		const frame = settingsFrame("settings", { x: 1700, y: 100, width: 1400, height: 900 }, [laptop, second]);
 		expect(frame.x).toBeGreaterThanOrEqual(1512);
-		expect(frame).toEqual({ x: 1970, y: 240, width: 860, height: 620 });
+		expect(frame).toEqual({ x: 1910, y: 190, width: 980, height: 720 });
 	});
 
 	test("over the main window itself when no display is known", () => {
 		expect(settingsFrame("settings", { x: 10, y: 10, width: 1000, height: 700 }, [])).toEqual({
-			x: 80,
+			x: 50,
 			y: 50,
-			width: 860,
+			width: 920,
 			height: 620,
 		});
 	});
@@ -286,7 +286,7 @@ describe("the Settings windows", () => {
 			kind: "settings",
 			page: "settings",
 			title: "Duvet settings",
-			frame: { x: 320, y: 180, width: 860, height: 620 },
+			frame: { x: 260, y: 130, width: 980, height: 720 },
 			titleBarStyle: "hiddenInset",
 			nativeButtons: true,
 		});
@@ -327,8 +327,8 @@ describe("the Settings windows", () => {
 			"Harbour Lights · Space settings",
 			"Kiln & Clay · Space settings",
 		]);
-		expect(made[1].frame).toEqual({ x: 308, y: 188, width: 940, height: 660 });
-		expect(made[2].frame).toEqual({ x: 336, y: 216, width: 940, height: 660 });
+		expect(made[1].frame).toEqual({ x: 248, y: 138, width: 1060, height: 760 });
+		expect(made[2].frame).toEqual({ x: 276, y: 166, width: 1060, height: 760 });
 	});
 
 	test("a window mirrors the main one once its page can take messages, and again after a reload", () => {

@@ -121,4 +121,17 @@ describe("the Tailwind theme", () => {
 		expect(theme.get("--ease-overshoot")).toBe("cubic-bezier(0.34, 1.12, 0.64, 1)");
 		expect(theme.get("--ease-decelerate")).toBe("cubic-bezier(0.2, 0.9, 0.3, 1)");
 	});
+
+	test("names the radii the recipes draw, at the design map's values", () => {
+		const roles = {
+			"--radius-chip": "7px",
+			"--radius-tile": "9px",
+			"--radius-control": "11px",
+			"--radius-row": "12px",
+			"--radius-panel": "14px",
+			"--radius-card": "16px",
+			"--radius-card-lg": "20px",
+		};
+		for (const [name, value] of Object.entries(roles)) expect(theme.get(name), name).toBe(value);
+	});
 });

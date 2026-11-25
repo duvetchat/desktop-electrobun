@@ -163,7 +163,7 @@
 >
 	<Popover.Trigger
 		disabled={c.disabled || waiting}
-		class="bg-duvet-card shadow-duvet-well flex min-h-[38px] w-full max-w-100 items-center gap-2 rounded-[11px] px-3 py-1.5 text-left text-[13px] transition-shadow duration-[120ms] outline-none focus-visible:shadow-[0_0_0_4px_var(--duvet-accent-tint),0_0_0_1px_var(--duvet-accent)] disabled:pointer-events-none disabled:opacity-45 data-[state=open]:shadow-[0_0_0_4px_var(--duvet-accent-tint),0_0_0_1px_var(--duvet-accent)] motion-reduce:transition-none"
+		class="bg-duvet-card shadow-duvet-well rounded-control flex min-h-[38px] w-full max-w-100 items-center gap-2 px-3 py-1.5 text-left text-[13px] transition-shadow duration-[120ms] outline-none focus-visible:shadow-[0_0_0_4px_var(--duvet-accent-tint),0_0_0_1px_var(--duvet-accent)] disabled:pointer-events-none disabled:opacity-45 data-[state=open]:shadow-[0_0_0_4px_var(--duvet-accent-tint),0_0_0_1px_var(--duvet-accent)] motion-reduce:transition-none"
 	>
 		<span class="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden">
 			{#if chosenChoices.length === 0}
@@ -199,7 +199,7 @@
 					align="start"
 					sideOffset={6}
 					collisionPadding={10}
-					class="{GLASS} animate-float-in text-duvet-ink z-[1000] flex max-h-80 w-(--bits-popover-anchor-width) min-w-56 origin-(--bits-floating-transform-origin) flex-col overflow-hidden rounded-[14px] outline-none"
+					class="{GLASS} animate-float-in text-duvet-ink rounded-panel z-[1000] flex max-h-80 w-(--bits-popover-anchor-width) min-w-56 origin-(--bits-floating-transform-origin) flex-col overflow-hidden outline-none"
 				>
 					{#if searchable}
 						<input
@@ -211,7 +211,7 @@
 								e.preventDefault();
 								optionsEl?.querySelector<HTMLElement>('[role="option"]:not(:disabled)')?.focus();
 							}}
-							class="bg-duvet-field text-duvet-ink placeholder:text-duvet-ink2 focus-override m-1.5 mb-0 h-8 shrink-0 rounded-[9px] px-2.5 text-[13px] outline-none focus:shadow-[0_0_0_3px_var(--duvet-accent-tint),0_0_0_1px_var(--duvet-accent)]"
+							class="bg-duvet-field text-duvet-ink placeholder:text-duvet-ink2 focus-override rounded-tile m-1.5 mb-0 h-8 shrink-0 px-2.5 text-[13px] outline-none focus:shadow-[0_0_0_3px_var(--duvet-accent-tint),0_0_0_1px_var(--duvet-accent)]"
 						/>
 					{/if}
 					<div
@@ -229,7 +229,7 @@
 								type="button"
 								role="option"
 								aria-selected={isChosen}
-								class="hover:bg-duvet-accent-tint focus-visible:bg-duvet-accent-tint flex min-h-8 w-full items-center gap-2.5 rounded-[9px] py-1.5 pr-2.5 pl-2 text-left -outline-offset-2 disabled:pointer-events-none disabled:opacity-45"
+								class="hover:bg-duvet-accent-tint focus-visible:bg-duvet-accent-tint rounded-tile flex min-h-8 w-full items-center gap-2.5 py-1.5 pr-2.5 pl-2 text-left -outline-offset-2 disabled:pointer-events-none disabled:opacity-45"
 								disabled={max > 1 && !isChosen && chosen.length >= max}
 								onclick={() => pick(ch.key)}
 							>

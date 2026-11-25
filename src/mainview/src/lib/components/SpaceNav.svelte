@@ -70,6 +70,8 @@
 	import DMSidebar from "$lib/components/DMSidebar.svelte";
 	import DragRegion from "$lib/components/DragRegion.svelte";
 	import MediaControls from "$lib/components/MediaControls.svelte";
+	import { liveMedia } from "$lib/media-source";
+	import { mediaPopOut } from "$lib/media-popout.svelte";
 	import NotificationSubmenu from "$lib/components/NotificationSubmenu.svelte";
 	import NowSection from "$lib/components/NowSection.svelte";
 	import ProfileRow from "$lib/components/ProfileRow.svelte";
@@ -86,7 +88,13 @@
 	import Segmented from "$lib/components/ui/Segmented.svelte";
 	import SpaceIcon from "$lib/components/ui/SpaceIcon.svelte";
 	import Tooltip from "$lib/components/ui/Tooltip.svelte";
-	import { countBadgeClass, iconButtonClass, MENU_PANEL, menuItemClass } from "$lib/components/ui/recipes";
+	import {
+		countBadgeClass,
+		FOCUS_RING_INSET,
+		iconButtonClass,
+		MENU_PANEL,
+		menuItemClass,
+	} from "$lib/components/ui/recipes";
 
 	// The sidebar (#357, S-03 to S-07, S-09): one column. Its header is half of the window's title line; under it the
 	// field that opens the quick switcher; then Chats and Spaces as two sections of one list, or one of them alone
@@ -325,7 +333,7 @@
 		FILTERS.map((filter) => ({ ...filter, label: t(filter.label), title: t(filter.title) })),
 	);
 
-	const rowFocus = "focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-duvet-accent";
+	const rowFocus = FOCUS_RING_INSET;
 	const chip = countBadgeClass("md", false);
 </script>
 
@@ -491,7 +499,7 @@
 		{/if}
 		<DragRegion class="h-full flex-1" />
 		<div class="titlebar-actions flex shrink-0 items-center gap-px">
-			<Popover bind:open={callsOpen} label={t("shell_call_history")} class="w-[360px] rounded-[20px]">
+			<Popover bind:open={callsOpen} label={t("shell_call_history")} class="w-[360px]">
 				{#snippet trigger(props)}
 					<IconButton {...props} label={t("shell_call_history")} title={t("shell_call_history")} active={callsOpen}>
 						<HistoryIcon size={16} />
@@ -723,7 +731,7 @@
 								onclick={() => (showAddSpace = true)}
 							>
 								<span
-									class="border-duvet-line text-duvet-ink2 grid size-8 shrink-0 place-items-center rounded-[9px] border border-dashed"
+									class="border-duvet-line text-duvet-ink2 rounded-tile grid size-8 shrink-0 place-items-center border border-dashed"
 								>
 									<PlusIcon class="size-4" />
 								</span>
@@ -748,19 +756,22 @@
 		</div>
 	</div>
 
-	<!-- The sidebar's bottom (S-07), top to bottom: the playback bar, the media controls, the profile row, and the
-	     All · Chats · Spaces switch. Beside the folded edge, which has the user's controls, only the switch shows. -->
-	<div class="flex shrink-0 flex-col gap-2 px-2.5 pt-2 pb-2.5 shadow-[0_-1px_0_var(--duvet-sb-edge)]">
+	<!-- The sidebar's bottom (S-07), top to bottom: the playback bar, the media controls when there is a voice, the
+	     profile row with the user's own controls, and the All · Chats · Spaces switch. Beside the folded edge, which has
+	     the user's controls, only the switch shows. -->
+	<div class="flex shrink-0 flex-col gap-1 px-2.5 pt-1 pb-2.5 shadow-[0_-1px_0_var(--duvet-sb-edge)]">
 		{#if showUser}
 			<!-- MOUNT POINT (Calls & media): the playback bar of a voice note or an audio file. It draws nothing while
 			     nothing plays. -->
 			<VoiceNoteBar />
 			<!-- The media controls, Calls & media's (#357): outside a call, the row of the microphone (with its picker),
 			     deafen and noise suppression; in a call they grow into the call panel, whose first row says where the user
-			     is, with the ping and Disconnect. One block, above the profile row. -->
-			<div class="shrink-0" data-mount="media-controls">
-				<MediaControls />
-			</div>
+			     is, with the ping and Disconnect. One block, above the user's bar. -->
+			{#if $liveMedia.place || (mediaPopOut.available && mediaPopOut.out)}
+				<div class="shrink-0" data-mount="media-controls">
+					<MediaControls />
+				</div>
+			{/if}
 			<ProfileRow />
 		{/if}
 		<div class="relative">

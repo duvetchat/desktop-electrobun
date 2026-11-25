@@ -4,6 +4,7 @@
 	import { botInviteRequest } from "$lib/stores.svelte";
 	import { getAvatarURL } from "$lib/common/common";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
+	import { MESSAGE_INVITE_CARD } from "$lib/message-styles";
 
 	let { botUserId }: { botUserId: string } = $props();
 
@@ -25,7 +26,7 @@
 </script>
 
 {#if loading}
-	<div class="border-duvet-line bg-duvet-card shadow-duvet-raised rounded-card mt-2 max-w-xs border p-4">
+	<div class={MESSAGE_INVITE_CARD}>
 		<div class="bg-duvet-ink/10 mb-3 h-3 w-36 animate-pulse rounded"></div>
 		<div class="mb-4 flex items-center gap-3">
 			<div class="bg-duvet-ink/10 h-12 w-12 shrink-0 animate-pulse rounded-full"></div>
@@ -36,7 +37,7 @@
 		<div class="bg-duvet-ink/10 h-9 w-full animate-pulse rounded-md"></div>
 	</div>
 {:else if !error && bot}
-	<div class="border-duvet-line bg-duvet-card shadow-duvet-raised rounded-card mt-2 max-w-xs border p-4">
+	<div class={MESSAGE_INVITE_CARD}>
 		<p class="text-duvet-ink2 mb-3 text-[13px] font-bold">Add a bot to your Space</p>
 		<div class="mb-4 flex items-center gap-3">
 			<div class="shrink-0">

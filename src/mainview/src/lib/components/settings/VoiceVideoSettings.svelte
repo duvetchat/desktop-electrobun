@@ -250,7 +250,7 @@
 					{testing ? "Stop test" : "Test microphone"}
 				</Button>
 			</div>
-			{#if testError}<p class="text-duvet-danger text-[11px]" role="alert">{testError}</p>{/if}
+			{#if testError}<p class="text-duvet-danger text-[12px]" role="alert">{testError}</p>{/if}
 		</div>
 	</SettingsRow>
 
@@ -265,12 +265,14 @@
 			{#if preview}
 				<video use:srcObject={preview} autoplay muted playsinline class="size-full -scale-x-100 object-cover"></video>
 				<span
-					class="bg-duvet-media-scrim text-duvet-media-ink absolute bottom-2 left-2 rounded-md px-2 py-1 text-[10px] font-semibold tracking-[0.06em] uppercase backdrop-blur-md"
+					class="bg-duvet-media-scrim text-duvet-media-ink absolute bottom-2 left-2 rounded-md px-2 py-1 text-[11px] font-semibold tracking-[0.06em] uppercase backdrop-blur-md"
 				>
 					Preview
 				</span>
 			{:else}
-				<div class="text-duvet-ink2 flex size-full flex-col items-center justify-center gap-2 p-4 text-center text-xs">
+				<div
+					class="text-duvet-ink2 flex size-full flex-col items-center justify-center gap-2 p-4 text-center text-[13px]"
+				>
 					{#if opening}
 						<p>Opening your camera…</p>
 					{:else}

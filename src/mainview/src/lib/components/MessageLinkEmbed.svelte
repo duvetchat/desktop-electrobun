@@ -8,6 +8,7 @@
 	import type { Message } from "$lib/types";
 	import { renderMarkdown } from "$lib/markdown";
 	import { getAvatarURL } from "$lib/common/common";
+	import { MESSAGE_CARD, MESSAGE_CARD_ACTION } from "$lib/message-styles";
 
 	let {
 		spaceId = "",
@@ -91,7 +92,7 @@
 </script>
 
 {#if loading}
-	<div class="bg-duvet-card shadow-duvet-raised flex w-[380px] max-w-full items-center gap-2 rounded-2xl px-3.5 py-3">
+	<div class="{MESSAGE_CARD} flex w-[380px] max-w-full items-center gap-2 px-3.5 py-3">
 		<div class="border-duvet-ink2/40 h-3 w-3 shrink-0 animate-spin rounded-full border-2 border-t-transparent"></div>
 		<span class="text-duvet-ink2 text-xs">Loading message…</span>
 	</div>
@@ -99,7 +100,7 @@
 	<button
 		type="button"
 		onclick={jump}
-		class="bg-duvet-card shadow-duvet-raised hover:shadow-duvet-lifted flex w-[380px] max-w-full cursor-pointer flex-col overflow-hidden rounded-2xl text-left transition-shadow motion-reduce:transition-none"
+		class="{MESSAGE_CARD_ACTION} flex w-[380px] max-w-full cursor-pointer flex-col overflow-hidden text-left"
 	>
 		<!-- Breadcrumb header -->
 		<div class="border-duvet-line flex min-w-0 items-center gap-1.5 border-b px-3.5 pt-2.5 pb-2">
