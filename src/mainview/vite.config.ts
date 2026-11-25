@@ -19,6 +19,10 @@ export default defineConfig(({ mode }) => {
 		// The desktop app (src/bun/index.ts) and app.html look for the dev server on 5173: if it's taken,
 		// fail instead of moving to another port, where neither would find it.
 		server: { port: 5173, strictPort: true },
+		// The E2E core's worker (lib/e2e/web/worker.ts) is a module worker, which imports its WebAssembly's glue and
+		// hands the glue the .wasm's URL (a ?url import, an asset in a build): Vite's default, a classic script, takes
+		// neither.
+		worker: { format: "es" },
 		define: {
 			VITE_APP_ENV: JSON.stringify(mode),
 			VITE_DOMAIN_TARGET_ENV: JSON.stringify(env.VITE_DOMAIN_TARGET_ENV || "duvet"),

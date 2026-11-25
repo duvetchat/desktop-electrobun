@@ -61,6 +61,15 @@ export class CoreError extends Error implements CoreErrorFields {
 Object.defineProperty(CoreError.prototype, "name", { value: "CoreError" });
 
 /**
+ * An error as it crosses to another context, a worker's or a tab's, which CoreError.of reads back: a CoreError's code,
+ * message and fields; anything else, internal.
+ */
+export function errorFields(error: unknown): { code: string; message: string } & CoreErrorFields {
+	if (error instanceof CoreError) return { ...error, message: error.message };
+	return { code: "internal", message: error instanceof Error ? error.message : String(error) };
+}
+
+/**
  * A core's reply, as every host reads one: its `ok`, typed by the command it answers, else its error thrown as a
  * CoreError; anything else is internal.
  */
