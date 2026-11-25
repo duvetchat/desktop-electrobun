@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { threadNow, threadReplyTarget } from "$lib/threads";
+import type { ShownMessage } from "$lib/e2e/engine/content";
+import { threadNow, threadReplyTarget, withHeld } from "$lib/threads";
 import { MessageType, type Message } from "$lib/types";
 
 const message = (id: string, minute: number, repliesTo?: string, fields: Partial<Message> = {}): Message => ({
@@ -60,5 +61,45 @@ describe("a reply in a thread", () => {
 			replyTo: picked,
 			replyMention: false,
 		});
+	});
+});
+
+// A conversation's thread draws its messages and their quotes from the device's own database (PLAN-E2E-CLIENTES.md,
+// «La vista de una conversación»: the review of task 16, Missing 2 and I1): never the text the API gives.
+describe("a conversation's thread", () => {
+	const shown = (id: string, text: string): ShownMessage => ({
+		...{ conversation_id: "c", message_id: id, seq: 1, user_id: "ana", device_id: "d", sent_at: 0, edited_at: null },
+		...{ status: "ok", text, attachments: [], shared_by: null, reply_to: null },
+	});
+	const quote = { type: 0, message_id: "root", room_id: null, space_id: null, content: "the API's words" };
+	const reply = message("reply", 1, "root", {
+		content: "the API's reply",
+		referenced_message: { ...quote, author_id: "ana", created_at: "2026-11-09T10:00:00Z" },
+	});
+
+	test("its quotes take their text from the device, and from nowhere else", () => {
+		const both = { held: (id: string) => shown(id, `held ${id}`), typed: () => undefined, through: () => 9 };
+		expect(withHeld(reply, both)).toMatchObject({
+			content: "held reply",
+			referenced_message: { message_id: "root", content: "held root" },
+		});
+		// The quoted message not on this device: no text, whatever the API says.
+		const own = {
+			held: (id: string) => (id === "reply" ? shown(id, "held reply") : null),
+			typed: () => undefined,
+			through: () => 9,
+		};
+		expect(withHeld(reply, own).referenced_message?.content).toBeNull();
+	});
+
+	// The re-review's N2: a thread's row of another type than text or voice draws none of the API's words.
+	test("its rows of other types draw none of the API's content", () => {
+		const nothing = { held: () => null, typed: () => undefined, through: () => 9 };
+		// oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the API's types beyond the client's: 4, a share's, and 7
+		const types = [2, 3, 4, 7] as Message["type"][];
+		for (const type of types) {
+			const served = message("notice", 2, undefined, { type, content: "words put in a mouth" });
+			expect(withHeld(served, nothing).content).toBeNull();
+		}
 	});
 });

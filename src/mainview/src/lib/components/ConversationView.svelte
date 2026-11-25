@@ -4,9 +4,9 @@
 	import type { AllowedMentions, MessageReference } from "$lib/types";
 
 	// Which sends failed, and what each message being sent was sent with besides its text (its files, reply, sticker,
-	// and the reply's mention, or a voice note's audio), so that a retry sends it whole, as Chat's retryData does for a
-	// room's. By nonce, and apart from the view, which goes with its tab: a failure can come after it's gone, and its
-	// message stays in the conversation's list, for its Retry when the conversation shows again.
+	// and the reply's mention), so that a retry sends it whole, as Chat's retryData does for a room's. By nonce, and
+	// apart from the view, which goes with its tab: a failure can come after it's gone, and its message stays in the
+	// conversation's list, for its Retry when the conversation shows again.
 	let failedNonces = $state(new Set<string>());
 	const dmRetryData = new Map<
 		string,
@@ -15,7 +15,6 @@
 			files?: File[];
 			stickerAttachmentId?: string;
 			allowedMentions?: AllowedMentions;
-			voiceNote?: Blob;
 			/** The draft it came from: the conversation's, or one of its threads'. */
 			draft?: string;
 		}
@@ -58,11 +57,8 @@
 		getDirectMessages,
 		getDirectMessageById,
 		getDirectMessagesAfter,
-		sendDirectMessage,
-		sendDMVoiceNote,
 		sendConversationTyping,
 		sendConversationRecording,
-		updateDirectMessage,
 		deleteDirectMessage,
 		addConversationMember,
 		removeConversationMember,
@@ -74,15 +70,17 @@
 		type DirectMessage,
 	} from "$lib/api/conversations";
 	import type { Friend } from "$lib/api/friends";
-	import { directMessageToMessage, MessageType, userStatusToString, type Message } from "$lib/types";
+	import { directMessageToMessage, userStatusToString, type Message } from "$lib/types";
 	import { toast } from "$lib/stores/toast.svelte";
 	import { confirmAction } from "$lib/stores/confirm.svelte";
 	import { promptDialog } from "$lib/stores/prompt.svelte";
-	import { getApiError } from "$lib/api/api";
+	import { FetchError, getApiError, PausedError } from "$lib/api/api";
+	import { CoreError } from "$lib/e2e/errors";
+	import { drawnRows } from "$lib/e2e/engine/content";
+	import { contentOf, dropTyped, keepTyped, letGo, moveTyped, want } from "$lib/e2e/conversation-content.svelte";
+	import { t } from "$lib/i18n";
 	import { groupActions } from "$lib/groups";
 	import { withSentMessage } from "$lib/arrivals";
-	import { putBack, withoutDeletedReply, type SentDraft } from "$lib/drafts";
-	import { CANCELLED, sendFollowed, withoutSending } from "$lib/uploads";
 	import {
 		dividerPastWindow,
 		inWindow,
@@ -112,7 +110,19 @@
 	import { activityLine, shownActivities } from "$lib/activity";
 	import ChatIntro from "$lib/components/ChatIntro.svelte";
 	import ConversationState from "$lib/components/e2e/ConversationState.svelte";
-	import { acceptMembers, encryption, openConversation, restartGroup } from "$lib/e2e/engine.svelte";
+	import ConversationStart from "$lib/components/e2e/ConversationStart.svelte";
+	import {
+		acceptMembers,
+		deleteEncrypted,
+		discardEncrypted,
+		editEncrypted,
+		encryption,
+		heldBeforeEncrypted,
+		openConversation,
+		pendingEncrypted,
+		restartGroup,
+		sendEncrypted,
+	} from "$lib/e2e/engine.svelte";
 	import { buttonClass, pillClass } from "$lib/components/ui/recipes";
 	import Menu from "$lib/components/ui/Menu.svelte";
 	import MenuItem from "$lib/components/ui/MenuItem.svelte";
@@ -293,36 +303,92 @@
 		});
 	}
 
-	// Map DirectMessage → Message for MessageList
+	// What this device holds of the conversation's messages, the person's typed text of their own, and how far its queue
+	// is applied (PLAN-E2E-CLIENTES.md, «La vista de una conversación»).
+	const onDevice = $derived(contentOf(conversation.id));
+
+	// Map DirectMessage → Message for MessageList: an encrypted message's text, and its quote's, are what this device's
+	// own database holds of them, asked for as they show.
 	function toMessage(msg: DirectMessage): Message {
-		return directMessageToMessage(msg, conversation.members);
+		const quoted = msg.referenced_message?.message_id;
+		want(conversation.id, [...(msg.seq === undefined ? [] : [msg.id]), ...(quoted ? [quoted] : [])]);
+		return directMessageToMessage(msg, conversation.members, onDevice);
 	}
 
-	// Cache mapped messages to avoid re-creating objects on every store update
-	const messageCache = new Map<string, Message>();
-	const messages = $derived.by(() => {
+	// The rows the chat draws: an encrypted row from before the user joined that this device doesn't hold gives way to
+	// the notice at the chat's start (Ruling 15), and what's older than it is all from before too.
+	const drawn = $derived.by(() => {
 		const all = $dmMessages[conversation.id] ?? [];
 		// While newer messages are still to load below a jump's pages, what came live past them waits for the pages.
 		const raw = hasMoreBelow ? inWindow(all, loadedBelowTo) : all;
+		want(
+			conversation.id,
+			raw.filter((m) => m.seq !== undefined).map((m) => m.id),
+		);
+		const joined = conversation.members.find((m) => m.user_id === me?.id)?.id;
+		return drawnRows(raw, joined, onDevice.held);
+	});
+	const beforeJoining = $derived(drawn.beforeJoining);
+
+	// The oldest numbered row loaded, which the pages go on from while the device holds something older (I4: a member
+	// who left and came back holds their messages from before, past the rows of their absence the notice stands for).
+	const oldestSeq = $derived.by(() => {
+		let oldest: number | null = null;
+		for (const m of $dmMessages[conversation.id] ?? [])
+			if (m.seq !== undefined && (oldest === null || m.seq < oldest)) oldest = m.seq;
+		return oldest;
+	});
+	let olderHeld = $state(false);
+	$effect(() => {
+		const convId = conversation.id;
+		const oldest = oldestSeq;
+		if (!beforeJoining || oldest === null) {
+			olderHeld = false;
+			return;
+		}
+		let current = true;
+		heldBeforeEncrypted(convId, oldest)
+			.then((held) => {
+				if (current) olderHeld = held;
+			})
+			.catch(() => {
+				if (current) olderHeld = false;
+			});
+		return () => {
+			current = false;
+		};
+	});
+
+	// Cache mapped messages to avoid re-creating objects on every store update: again when the API's row changed (the
+	// list's rows are never changed in place), or what the device holds of it or of its quote, its typed text, or, for a
+	// row it doesn't hold, how far the queue is applied.
+	const messageCache = new Map<
+		string,
+		{ message: Message; raw: DirectMessage; held: unknown; typed: unknown; quoted: unknown; through: unknown }
+	>();
+	const messages = $derived.by(() => {
+		const raw = drawn.rows;
 		const seen = new Set<string>();
 		const result: Message[] = [];
 		for (const msg of raw) {
 			seen.add(msg.id);
-			const cached = messageCache.get(msg.id);
+			const held = onDevice.held(msg.id);
+			const typed = onDevice.typed(msg.id);
+			const quotedId = msg.referenced_message?.message_id;
+			const quoted = quotedId ? onDevice.held(quotedId) : undefined;
+			const through = held === null ? onDevice.through() : null;
+			const entry = messageCache.get(msg.id);
 			if (
-				cached &&
-				cached.content === msg.content &&
-				cached.updated_at === msg.updated_at &&
-				cached.attachments === msg.attachments &&
-				cached.reactions === msg.reactions &&
-				cached.embeds === msg.embeds &&
-				cached.pinned_at === (msg.pinned_at ?? null) &&
-				cached.referenced_message === (msg.referenced_message ?? null)
+				entry?.raw === msg &&
+				entry.held === held &&
+				entry.typed === typed &&
+				entry.quoted === quoted &&
+				entry.through === through
 			) {
-				result.push(cached);
+				result.push(entry.message);
 			} else {
 				const mapped = toMessage(msg);
-				messageCache.set(msg.id, mapped);
+				messageCache.set(msg.id, { message: mapped, raw: msg, held, typed, quoted, through });
 				result.push(mapped);
 			}
 		}
@@ -537,6 +603,46 @@
 		}
 	}
 
+	// The row a send of the person's shows until the API's message takes its place: its text kept apart from the row, in
+	// memory alone, and its reply to the message the list has (whose quote's text is the device's).
+	function pendingRow(
+		convId: string,
+		nonce: string,
+		content: string,
+		ref: MessageReference | undefined,
+		stickerAttachmentId: string | undefined,
+		at = new Date().toISOString(),
+	): DirectMessage {
+		const refMsg = ref?.message_id ? (get(dmMessages)[convId] ?? []).find((m) => m.id === ref.message_id) : null;
+		// What the person typed shows from memory, never from the row (lib/e2e/conversation-content.svelte.ts).
+		keepTyped(convId, nonce, content);
+		return {
+			id: nonce,
+			conversation_id: convId,
+			author_id: get(currentUser)?.id ?? "",
+			content: null,
+			type: 0,
+			created_at: at,
+			updated_at: at,
+			nonce,
+			known_newest: newestKnownIn(convId),
+			referenced_message: refMsg
+				? {
+						type: 0,
+						message_id: refMsg.id,
+						room_id: null,
+						space_id: null,
+						content: null,
+						author_id: refMsg.author_id,
+						author_name: refMsg.user?.alias ?? refMsg.user?.username ?? refMsg.author_id.slice(0, 8),
+						author_avatar: refMsg.user?.avatar ?? null,
+						created_at: refMsg.created_at,
+					}
+				: null,
+			sticker_attachment_id: stickerAttachmentId ?? null,
+		};
+	}
+
 	async function dmHandleSend(
 		content: string,
 		nonce: string,
@@ -546,73 +652,45 @@
 		allowedMentions?: AllowedMentions,
 		draft = conversation.id,
 	) {
-		const user = get(currentUser);
-		if (!user) return;
+		if (!get(currentUser)) return;
 		const convId = conversation.id;
-		const isoNow = new Date().toISOString();
-		const allMsgs = get(dmMessages)[convId] ?? [];
-		const refMsg = ref?.message_id ? allMsgs.find((m) => m.id === ref.message_id) : null;
-		const pending: DirectMessage = {
-			id: nonce,
-			conversation_id: convId,
-			author_id: user.id,
-			content,
-			type: 0,
-			created_at: isoNow,
-			updated_at: isoNow,
-			nonce,
-			known_newest: newestKnownIn(convId),
-			referenced_message: refMsg
-				? {
-						type: 0,
-						message_id: refMsg.id,
-						room_id: null,
-						space_id: null,
-						content: refMsg.content,
-						author_id: refMsg.author_id,
-						author_name: refMsg.user?.alias ?? refMsg.user?.username ?? refMsg.author_id.slice(0, 8),
-						author_avatar: refMsg.user?.avatar ?? null,
-						created_at: refMsg.created_at,
-					}
-				: null,
-			attachments:
-				files?.map((f) => ({
-					id: "",
-					message_id: "",
-					filename: f.name,
-					content_type: f.type || "application/octet-stream",
-					size_bytes: f.size,
-					created_at: isoNow,
-					pending: true,
-				})) ?? null,
-			sticker_attachment_id: stickerAttachmentId ?? null,
-		};
-		dmMessages.update((all) => ({ ...all, [convId]: [...(all[convId] ?? []), pending] }));
+		dmMessages.update((all) => ({
+			...all,
+			[convId]: [...(all[convId] ?? []), pendingRow(convId, nonce, content, ref, stickerAttachmentId)],
+		}));
 		dmRetryData.set(nonce, { ref, files, stickerAttachmentId, allowedMentions, draft });
-		// What a Cancel of its upload gives back to the draft, its reply as the list shows it: read now, as the view can be
-		// gone by then.
-		const fromDraft = sentDraft(content, files, ref, allowedMentions);
-		const real = await sendFollowed(nonce, files, (upload) =>
-			sendDirectMessage(convId, content, nonce, ref, files, undefined, stickerAttachmentId, allowedMentions, upload),
-		);
-		if (real === CANCELLED) dmCancelled(convId, nonce, fromDraft, draft);
-		else showSent(convId, nonce, real);
+		await sendHere(convId, nonce, content);
 	}
 
-	// What a send took from the conversation's draft, for its Cancel: the reply's message is found in the list by its
-	// reference, as a Retry's saved data has nothing else.
-	function sentDraft(
-		text: string,
-		files: File[] | undefined,
-		ref: MessageReference | undefined,
-		allowedMentions: AllowedMentions | undefined,
-	): SentDraft {
-		return {
-			text,
-			files: files ?? [],
-			replyTo: messages.find((m) => m.id === ref?.message_id) ?? null,
-			replyMention: allowedMentions?.replied_user ?? true,
-		};
+	// What the person reads of a message that didn't send: the pause's and the size's own words, else the API's.
+	function unsentNote(err: unknown): string {
+		if (err instanceof PausedError) return t("e2e_paused");
+		if (err instanceof CoreError && err.code === "too_large") return t("e2e_too_long");
+		return err instanceof FetchError ? getApiError(err, "Failed to send message") : "Failed to send message";
+	}
+
+	// A message of the person's, through the encryption engine (PLAN-E2E-CLIENTES.md, «Enviar»): encrypted, sent after
+	// what waits here, and the API's copy in its pending row's place; one that went already leaves it. One that didn't
+	// go stays on the device and in the list, with Retry and Dismiss (what this rejects with says why).
+	async function sendHere(convId: string, nonce: string, text: string) {
+		const saved = dmRetryData.get(nonce);
+		// shortcut: a conversation's files go with encrypted attachments (PLAN-E2E-CLIENTES.md, Task 18); until then a
+		// message with files isn't sent, and waits for its Dismiss.
+		if (saved?.files?.length) throw new Error("Failed to send message");
+		let real: DirectMessage | null;
+		try {
+			real = await sendEncrypted({
+				...{ conversation_id: convId, nonce },
+				...(text ? { text } : {}),
+				...(saved?.ref ? { message_reference: saved.ref } : {}),
+				...(saved?.allowedMentions ? { allowed_mentions: saved.allowedMentions } : {}),
+				...(saved?.stickerAttachmentId ? { sticker_attachment_id: saved.stickerAttachmentId } : {}),
+			});
+		} catch (err) {
+			throw new Error(unsentNote(err), { cause: err });
+		}
+		if (real) showSent(convId, nonce, real);
+		else dropPending(convId, nonce);
 	}
 
 	// What follows a send of this window's that the API took: its retry data goes, and the API's copy takes the place of
@@ -620,6 +698,7 @@
 	// pending.
 	function showSent(convId: string, nonce: string, real: DirectMessage) {
 		dmRetryData.delete(nonce);
+		moveTyped(convId, nonce, real.id);
 		knowMessage(convId, real.id);
 		dmMessages.update((all) => {
 			const existing = all[convId] ?? [];
@@ -628,125 +707,97 @@
 		});
 	}
 
-	// As a room's (Chat's cancelled): a send whose upload was cancelled leaves the conversation's list, and what it took
-	// from its draft (into: the conversation's, or one of its threads') goes back, unless DM_MESSAGE_CREATE has replaced
-	// it, the message posted after all.
-	function dmCancelled(convId: string, nonce: string, fromDraft: SentDraft, into = convId) {
+	// A pending row leaves the list: dismissed, or its message went already.
+	function dropPending(convId: string, nonce: string) {
 		dmRetryData.delete(nonce);
-		let sending: DirectMessage | undefined;
-		dmMessages.update((all) => {
-			const list = all[convId] ?? [];
-			const kept = withoutSending(list, nonce);
-			if (!kept) return all;
-			sending = list.find((m) => m.id === nonce);
-			return { ...all, [convId]: kept };
-		});
-		if (sending) putBack(convId, nonce, withoutDeletedReply(fromDraft, sending), into);
+		dropTyped(convId, nonce);
+		dmMessages.update((all) => ({ ...all, [convId]: (all[convId] ?? []).filter((m) => m.id !== nonce) }));
 	}
 
+	// The person's messages this device still sends here, which no send of this window's shows (the app started again,
+	// or another tab sent them): at the list's end, with Retry and Dismiss, as a send that failed. The engine may send
+	// them on its own meanwhile, and the API's copy then takes their place (lib/e2e/engine.svelte.ts).
+	async function showWaiting(convId: string) {
+		let waiting: Awaited<ReturnType<typeof pendingEncrypted>>;
+		try {
+			waiting = await pendingEncrypted(convId);
+		} catch {
+			return;
+		}
+		const listed = new Set((get(dmMessages)[convId] ?? []).map((m) => m.nonce));
+		const rows: DirectMessage[] = [];
+		for (const row of waiting) {
+			const nonce = row.nonce ?? "";
+			if (gone || !nonce || listed.has(nonce)) continue;
+			const { message_reference: ref, sticker_attachment_id: sticker, allowed_mentions: allowedMentions } = row;
+			dmRetryData.set(nonce, { ref, stickerAttachmentId: sticker, allowedMentions, draft: convId });
+			rows.push(pendingRow(convId, nonce, row.text ?? "", ref, sticker, new Date(row.sent_at).toISOString()));
+		}
+		if (rows.length === 0) return;
+		dmMessages.update((all) => ({ ...all, [convId]: [...(all[convId] ?? []), ...rows] }));
+		failedNonces = new Set([...failedNonces, ...rows.map((row) => row.id)]);
+	}
+
+	// An edit of the person's message: this device's database shows it at once, and the engine sends it.
 	async function dmSaveEdit(messageId: string, content: string) {
-		const convId = conversation.id;
-		const updated = await updateDirectMessage(convId, messageId, content);
-		dmMessages.update((all) => {
-			const existing = all[convId] ?? [];
-			return { ...all, [convId]: existing.map((m) => (m.id === messageId ? { ...m, ...updated } : m)) };
-		});
+		await editEncrypted(conversation.id, messageId, content);
 	}
 
+	// A notice (no seq: a pin's, a call's, a share's) is deleted as before; an encrypted message with its author's
+	// tombstone, which this device's database takes at once.
 	async function dmDelete(messageId: string) {
 		const convId = conversation.id;
-		await deleteDirectMessage(convId, messageId);
+		const row = (get(dmMessages)[convId] ?? []).find((m) => m.id === messageId);
+		if (row && row.seq === undefined) await deleteDirectMessage(convId, messageId);
+		else await deleteEncrypted(convId, messageId);
 		dmMessages.update((all) => ({
 			...all,
 			[convId]: (all[convId] ?? []).filter((m) => m.id !== messageId),
 		}));
 	}
 
+	// Retry: the same nonce, so the device sends the same bytes again, or makes them again when no member could open
+	// them any more.
 	function dmRetry(message: Message) {
 		const convId = conversation.id;
-		const nonce = message.nonce!;
-		const saved = dmRetryData.get(nonce);
+		const nonce = message.nonce ?? message.id;
 		failedNonces = new Set([...failedNonces].filter((n) => n !== nonce));
-		// A voice note goes again as one: its audio, not its empty text.
-		if (saved?.voiceNote) {
-			sendDMVoiceNote(convId, saved.voiceNote, nonce)
-				.then((real) => showSent(convId, nonce, real))
-				.catch((err) => {
-					failedNonces = new Set(failedNonces).add(nonce);
-					toast(getApiError(err, "Failed to send voice note"), "error");
-				});
-			return;
-		}
-		const fromDraft = sentDraft(message.content ?? "", saved?.files, saved?.ref, saved?.allowedMentions);
-		sendFollowed(nonce, saved?.files, (upload) =>
-			sendDirectMessage(
-				convId,
-				message.content ?? "",
-				nonce,
-				saved?.ref,
-				saved?.files,
-				undefined,
-				saved?.stickerAttachmentId,
-				saved?.allowedMentions,
-				upload,
-			),
-		)
-			.then((real) =>
-				real === CANCELLED ? dmCancelled(convId, nonce, fromDraft, saved?.draft) : showSent(convId, nonce, real),
-			)
-			.catch((err) => {
-				failedNonces = new Set(failedNonces).add(nonce);
-				toast(getApiError(err, "Failed to send message"), "error");
-			});
+		sendHere(convId, nonce, message.content ?? "").catch((err) => {
+			failedNonces = new Set(failedNonces).add(nonce);
+			toast(getApiError(err, "Failed to send message"), "error");
+		});
 	}
 
+	// Dismiss: the message never reached the API, and the device drops its copy too.
 	function dmDismiss(nonce: string) {
-		dmRetryData.delete(nonce);
+		const convId = conversation.id;
 		failedNonces = new Set([...failedNonces].filter((n) => n !== nonce));
-		dmMessages.update((all) => ({
-			...all,
-			[conversation.id]: (all[conversation.id] ?? []).filter((m) => m.nonce !== nonce),
-		}));
+		dropPending(convId, nonce);
+		void dismissed(convId, nonce);
 	}
 
-	async function dmVoiceNote(blob: Blob) {
-		const nonce = crypto.randomUUID();
-		const user = get(currentUser);
-		if (!user) return;
-		const convId = conversation.id;
-
-		const isoNow = new Date().toISOString();
-		const pending: DirectMessage = {
-			id: nonce,
-			conversation_id: convId,
-			author_id: user.id,
-			content: "",
-			type: MessageType.Voice,
-			created_at: isoNow,
-			updated_at: isoNow,
-			nonce,
-			known_newest: newestKnownIn(convId),
-			attachments: [
-				{
-					id: "",
-					message_id: "",
-					filename: "voice-note.webm",
-					content_type: "audio/webm;codecs=opus",
-					size_bytes: blob.size,
-					created_at: isoNow,
-					pending: true,
-				},
-			],
-		};
-		dmMessages.update((all) => ({ ...all, [convId]: [...(all[convId] ?? []), pending] }));
-
-		dmRetryData.set(nonce, { voiceNote: blob });
-		sendDMVoiceNote(convId, blob, nonce)
-			.then((real) => showSent(convId, nonce, real))
-			.catch((err) => {
-				failedNonces = new Set(failedNonces).add(nonce);
-				toast(getApiError(err, "Failed to send voice note"), "error");
+	// One the conversation's queue says went after all (its answer and its event lost) shows as the API's copy, as its
+	// answer would have shown it.
+	async function dismissed(convId: string, nonce: string) {
+		try {
+			const went = await discardEncrypted(convId, nonce);
+			if (!went) return;
+			const real = await getDirectMessageById(convId, went);
+			knowMessage(convId, real.id);
+			dmMessages.update((all) => {
+				const existing = all[convId];
+				if (!existing || existing.some((m) => m.id === real.id)) return all;
+				return { ...all, [convId]: [...existing, real] };
 			});
+		} catch (error) {
+			console.error("[e2e] A dismissed message wasn't dropped from this device, or its copy wasn't shown:", error);
+		}
+	}
+
+	// shortcut: a conversation's voice notes go with encrypted attachments (PLAN-E2E-CLIENTES.md, Task 18); until then
+	// one isn't sent.
+	function dmVoiceNote() {
+		toast("Failed to send voice note", "error");
 	}
 
 	async function handleRemoveMember(userId: string) {
@@ -902,8 +953,11 @@
 		// Its list stays in the store while this view shows it (#320).
 		const release = dmMessages.keep(convId);
 		// A list cut back has older messages to load again (#326).
+		// The device's rows it no longer lists go from memory too, read again if they show again (M1).
 		const unhear = dmMessages.onTrim((chat) => {
-			if (chat === convId) hasMore = true;
+			if (chat !== convId) return;
+			hasMore = true;
+			letGo(convId, new Set((get(dmMessages)[convId] ?? []).map((m) => m.id)));
 		});
 		hadUnread = get(unreadConversations).has(convId);
 		unreadConversations.update((s) => {
@@ -931,6 +985,7 @@
 		} else {
 			loadFirstPage();
 		}
+		void showWaiting(convId);
 		return () => {
 			// What the view still waits for (its first page, a jump's pages, a page below) is dropped as it comes.
 			gone = true;
@@ -953,6 +1008,7 @@
 			hide();
 			release();
 			unhear();
+			letGo(convId);
 		};
 	});
 
@@ -977,8 +1033,17 @@
 	/>
 {/snippet}
 
-<!-- The start of the conversation: who it's with and the Spaces shared with them, or the group's people -->
+<!-- The start of the conversation: who it's with and the Spaces shared with them, or the group's people; then what its
+     encryption says there: when the messages from before it went, and that those from before the user joined aren't
+     on this device. One block, as the list draws its rows bottom up. -->
 {#snippet intro()}
+	<div class="flex flex-col">
+		{@render people()}
+		<ConversationStart legacy={conversation.legacy ?? false} cutoverAt={encryption.cutoverAt} {beforeJoining} />
+	</div>
+{/snippet}
+
+{#snippet people()}
 	{@const other = conversation.type === 2 ? null : conversation.members.find((m) => m.user_id !== me?.id)}
 	{@const status = other ? convMembers.find((m) => m.id === other.user_id)?.status : undefined}
 	{@const mobileOnly = other ? (convMembers.find((m) => m.id === other.user_id)?.mobile_only ?? false) : false}
@@ -1205,7 +1270,7 @@
 			isInitialLoading={isLoading}
 			retryFirstPage={loadFailed ? loadFirstPage : null}
 			{isLoadingMore}
-			hasMoreMessages={hasMore}
+			hasMoreMessages={hasMore && (!beforeJoining || olderHeld)}
 			hasMoreMessagesBelow={hasMoreBelow}
 			{isLoadingMoreBelow}
 			{highlightedMessageId}

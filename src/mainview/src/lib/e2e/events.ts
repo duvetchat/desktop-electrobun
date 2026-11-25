@@ -1,7 +1,8 @@
 // What the encryption engine hears of the gateway (PLAN-E2E-CLIENTES.md, «El motor»: its `events`): connection.ts hands
 // it end-to-end encryption's events (PLAN-E2E-API.md, its events) and READY, in the order they come. The first nine are
-// the engine's alone: nothing else in the app reads them. A DM's messages and READY are the app's too, which takes them
-// first. Listeners read what they're handed, and change none of it.
+// the engine's alone: nothing else in the app reads them. A DM's messages and READY are the app's too: the engine hears a
+// DM's message first, so its entry reaches the core before the views ask it for its text, and READY once the app took
+// it. Listeners read what they're handed, and change none of it.
 import type { GatewayEventPayload } from "$lib/types";
 
 const ENGINE_EVENTS = [

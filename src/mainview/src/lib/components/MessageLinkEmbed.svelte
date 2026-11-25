@@ -1,13 +1,13 @@
 <script lang="ts">
 	import { onMount } from "svelte";
 	import { getMessageById } from "$lib/api/messages";
-	import { getDirectMessageById } from "$lib/api/conversations";
-	import { gatewayMessageToMessage, messageText } from "$lib/types";
+	import { getDirectMessageById, type DirectMessage } from "$lib/api/conversations";
+	import { contentOf, want } from "$lib/e2e/conversation-content.svelte";
+	import { directMessageToMessage, gatewayMessageToMessage, messageText } from "$lib/types";
 	import { gatewaySpaces, jumpToMessageRequest, conversations, roomNames } from "$lib/stores.svelte";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
 	import type { Message } from "$lib/types";
 	import { renderMarkdown } from "$lib/markdown";
-	import { getAvatarURL } from "$lib/common/common";
 	import { MESSAGE_CARD, MESSAGE_CARD_ACTION } from "$lib/message-styles";
 
 	let {
@@ -24,7 +24,9 @@
 
 	const isConv = $derived(!!conversationId);
 
-	let message = $state<Message | null>(null);
+	let roomMessage = $state<Message | null>(null);
+	// A conversation's message as the API gives it: its text is this device's database's, read as the card draws.
+	let conversationMessage = $state.raw<DirectMessage | null>(null);
 	let loading = $state(true);
 	let error = $state(false);
 
@@ -34,6 +36,13 @@
 	const room = $derived(space?.rooms.find((r) => r.id === roomId) ?? null);
 	const conv = $derived(isConv ? ($conversations.find((c) => c.id === conversationId) ?? null) : null);
 	const convName = $derived(conv?.name ?? "Direct message");
+	// Asked for as it draws, so a row its conversation's list let go is read again.
+	const message = $derived.by(() => {
+		if (!conversationMessage || !conversationId) return roomMessage;
+		const quoted = conversationMessage.referenced_message?.message_id;
+		want(conversationId, [conversationMessage.id, ...(quoted ? [quoted] : [])]);
+		return directMessageToMessage(conversationMessage, conv?.members ?? [], contentOf(conversationId));
+	});
 
 	function formatTime(dateStr: string): string {
 		return new Date(dateStr).toLocaleTimeString(locale, {
@@ -45,24 +54,10 @@
 	onMount(async () => {
 		try {
 			if (isConv && conversationId) {
-				const raw = await getDirectMessageById(conversationId, messageId);
-				message = {
-					id: raw.id,
-					content: raw.content,
-					type: raw.type ?? 0,
-					author_id: raw.author_id,
-					author_name: raw.user?.alias ?? raw.user?.username ?? raw.author_id.slice(0, 8),
-					author_avatar_url: getAvatarURL(raw.author_id, raw.user?.avatar),
-					author_is_bot: raw.user?.is_bot ?? false,
-					created_at: raw.created_at,
-					updated_at: raw.updated_at,
-					embeds: raw.embeds ?? null,
-					attachments: raw.attachments ?? null,
-					reactions: raw.reactions ?? null,
-				};
+				conversationMessage = await getDirectMessageById(conversationId, messageId);
 			} else {
 				const raw = await getMessageById(roomId, messageId);
-				message = gatewayMessageToMessage(raw, $gatewaySpaces);
+				roomMessage = gatewayMessageToMessage(raw, $gatewaySpaces);
 			}
 		} catch {
 			error = true;

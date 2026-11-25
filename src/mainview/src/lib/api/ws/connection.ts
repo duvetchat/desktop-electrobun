@@ -151,6 +151,7 @@ import { getElectrobunRpc, type ActivityPayload } from "$lib/electrobun-rpc";
 import { identifyData } from "$lib/api/ws/identify";
 import { identifyDevice, keepDevice, keepUser } from "$lib/e2e/client";
 import { isEngineEvent, toEngine } from "$lib/e2e/events";
+import { moveTyped } from "$lib/e2e/conversation-content.svelte";
 
 // The user's activities as this app's Bun process reports them: the IPC apps' (VS Code, etc.) and Spotify's. The
 // gateway keeps them 2 minutes and shares only a change, so they go again every 45 s, and on each new session.
@@ -811,10 +812,12 @@ function handleEvent(event: GatewayEvent) {
 	}
 	if (import.meta.env.DEV) console.log("[WS] Received event:", event);
 	const payload = event.d;
+	// The encryption engine hears its events (lib/e2e/events.ts): a DM's messages first, so their entries reach the core
+	// before the views ask it for their text; the others once the app took what's its own of them, however its case ended.
+	const engineFirst = isEngineEvent(payload) && payload.type.startsWith("DM_MESSAGE_");
+	if (engineFirst) toEngine(payload);
 	takeEvent(payload, event);
-	// The encryption engine hears its events once the app took what's its own of them, however its case ended
-	// (lib/e2e/events.ts).
-	if (isEngineEvent(payload)) toEngine(payload);
+	if (!engineFirst && isEngineEvent(payload)) toEngine(payload);
 }
 
 /** The app's own handling of a dispatched event: its case may end with `return`. */
@@ -1869,6 +1872,8 @@ function takeEvent(payload: GatewayEventPayload, event: GatewayEvent) {
 					if (pendingIdx !== -1) {
 						// And a page's copy of it listed meanwhile goes (see MESSAGE_CREATE).
 						const updated = existing.flatMap((m, i) => (i === pendingIdx ? [msg] : m.id === msg.id ? [] : [m]));
+						// The text typed shows until the device's database has it: by the message's ID now.
+						moveTyped(conversationId, existing[pendingIdx]!.id, msg.id);
 						return { ...all, [conversationId]: updated };
 					}
 				}

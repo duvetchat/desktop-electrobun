@@ -708,9 +708,10 @@ describe("the user's custom emojis and stickers", () => {
 	});
 });
 
-// End-to-end encryption's events (PLAN-E2E-API.md, its events; PLAN-E2E-CLIENTES.md, Task 10): the nine new ones are the
-// encryption engine's alone, which hears them through its hook (lib/e2e/events.ts), and nothing else of the app reads
-// them; a DM's messages and READY reach it too, once the app took them. No later task touches the switch for them again.
+// End-to-end encryption's events (PLAN-E2E-API.md, its events; PLAN-E2E-CLIENTES.md, Tasks 10 and 16): the nine new ones
+// are the encryption engine's alone, which hears them through its hook (lib/e2e/events.ts), and nothing else of the app
+// reads them; a DM's messages reach it before the app takes them, so their entries go to the core before the views ask
+// it for their text, and READY once the app took it.
 describe("end-to-end encryption's events", () => {
 	const DEVICE = "0193a4b2-0000-7000-8000-0000000d0001";
 	const conv = conversation(90);
@@ -794,7 +795,7 @@ describe("end-to-end encryption's events", () => {
 		}
 	});
 
-	test("a DM's messages and READY reach it too, once the app took them", async () => {
+	test("a DM's messages reach it before the app takes them, and READY once the app took it", async () => {
 		const { engineEvents } = await import("$lib/e2e/events");
 		const created = {
 			id: message(93),
@@ -815,12 +816,15 @@ describe("end-to-end encryption's events", () => {
 		const heard: { type: string; took: boolean }[] = [];
 		const stopListening = engineEvents.listen((event) => {
 			// What the app made of it by then.
+			const row = get(stores.dmMessages)[conv]?.find((m) => m.id === created.id);
 			const took =
 				event.type === "READY"
 					? get(stores.currentUser)?.id === ME
-					: event.type === "DM_MESSAGE_DELETE"
-						? !get(stores.dmMessages)[conv]?.some((m) => m.id === created.id)
-						: get(stores.dmMessages)[conv]?.some((m) => m.id === created.id) === true;
+					: event.type === "DM_MESSAGE_CREATE"
+						? !!row
+						: event.type === "DM_MESSAGE_UPDATE"
+							? row?.edited_at === "2026-11-25T00:01:00Z"
+							: !row;
 			heard.push({ type: event.type, took });
 		});
 		const release = stores.dmMessages.keep(conv);
@@ -836,9 +840,9 @@ describe("end-to-end encryption's events", () => {
 			deliver("DM_MESSAGE_DELETE", { id: created.id, conversation_id: conv, entry: entry(9, "delete") });
 			expect(heard).toEqual([
 				{ type: "READY", took: true },
-				{ type: "DM_MESSAGE_CREATE", took: true },
-				{ type: "DM_MESSAGE_UPDATE", took: true },
-				{ type: "DM_MESSAGE_DELETE", took: true },
+				{ type: "DM_MESSAGE_CREATE", took: false },
+				{ type: "DM_MESSAGE_UPDATE", took: false },
+				{ type: "DM_MESSAGE_DELETE", took: false },
 			]);
 		} finally {
 			release();

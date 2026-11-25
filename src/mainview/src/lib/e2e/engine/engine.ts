@@ -6,19 +6,30 @@
 // what the gateway's events ask for. bootstrap.ts, identity.ts, key-packages.ts and inbox.ts hold the steps, sync.ts
 // each conversation's queue and group; this class keeps the state the views read, and what's due later.
 import { FetchError, UpdateRequiredError } from "$lib/api/api";
+import type { DirectMessage } from "$lib/api/conversations";
 import type { E2eApi } from "$lib/api/e2e";
 import { CoreError } from "../errors";
 import type { EngineEvent, EngineEvents } from "../events";
 import type { CoreHost, HostOpened } from "../host";
 import { bindSession, coreStatus, ownDevice } from "./bootstrap";
+import { heldBefore, shownMessages, type ShownMessage } from "./content";
 import { Failures } from "./failures";
 import { identityState, publishIdentity, servedIdentity, type IdentityMade } from "./identity";
 import { takeInbox } from "./inbox";
 import { uploadKeyPackages } from "./key-packages";
+import { Sends, type Outgoing, type Pending } from "./send";
 import { DEVICE_RECORD, EXTERNAL_SENDER, type EngineStore } from "./store";
 import { Conversations, type ConversationState } from "./sync";
 
 export type { ConversationState } from "./sync";
+export type { Outgoing, Pending } from "./send";
+export type { ShownMessage } from "./content";
+
+/**
+ * A conversation's messages changed on this device: `ids`, those whose rows changed (none: any of them), and
+ * `through`, how far its queue is applied now, when that moved.
+ */
+export type MessagesListener = (conversationId: string, ids?: string[], through?: number | null) => void;
 
 /** What the engine waits with: the system's timers in the app, a test's clock in its tests. */
 export interface Clock {
@@ -104,6 +115,8 @@ const refusedForGood = (error: unknown): null => {
 
 export class E2EEngine {
 	state: EngineState = { name: "starting" };
+	/** The cutover's instant, as GET /api/e2e gave it: a conversation from before it says when its messages went. */
+	cutoverAt: string | null = null;
 	readonly #parts: EngineParts;
 	readonly #listeners = new Set<(state: EngineState) => void>();
 	/** The flow under way: each one waits for the one before. */
@@ -129,18 +142,37 @@ export class E2EEngine {
 	/** Conversations the person opened before this device was ready: they open once it is (#settle). */
 	readonly #toOpen = new Set<string>();
 	readonly #conversationListeners = new Set<(conversationId: string, state: ConversationState | null) => void>();
+	/** The messages this device sends, edits and deletes. */
+	readonly #sends: Sends;
+	readonly #messageListeners = new Set<MessagesListener>();
+	readonly #refusedListeners = new Set<(conversationId: string, messageId: string, kind: "edit" | "delete") => void>();
+	readonly #sentListeners = new Set<(conversationId: string, nonce: string, message: DirectMessage) => void>();
 
 	constructor(parts: EngineParts) {
 		this.#parts = parts;
 		this.#failures = new Failures(parts.api, parts.clock);
+		const soon = (work: () => Promise<void>) => this.#soon(() => this.#whenReady(work));
+		const messagesChanged = (id: string, ids?: string[], through?: number | null) => {
+			for (const listener of this.#messageListeners) listener(id, ids, through);
+		};
 		this.#groups = new Conversations(
 			parts,
-			(work) => this.#soon(() => this.#whenReady(work)),
+			soon,
 			this.#failures,
 			(id, state) => {
 				for (const listener of this.#conversationListeners) listener(id, state);
 			},
+			messagesChanged,
 		);
+		this.#sends = new Sends(parts, this.#groups, soon, {
+			changed: messagesChanged,
+			sent: (id, nonce, message) => {
+				for (const listener of this.#sentListeners) listener(id, nonce, message);
+			},
+			refused: (id, message, kind) => {
+				for (const listener of this.#refusedListeners) listener(id, message, kind);
+			},
+		});
 	}
 
 	/** Each state the engine goes to, as it goes. */
@@ -153,6 +185,24 @@ export class E2EEngine {
 	onConversation(listener: (conversationId: string, state: ConversationState | null) => void): () => void {
 		this.#conversationListeners.add(listener);
 		return () => void this.#conversationListeners.delete(listener);
+	}
+
+	/** Each conversation whose messages changed on this device: what the views show of them is read again. */
+	onMessages(listener: MessagesListener): () => void {
+		this.#messageListeners.add(listener);
+		return () => void this.#messageListeners.delete(listener);
+	}
+
+	/** Each edit or deletion of the person's that the API refused for good: it shows on this device alone. */
+	onChangeRefused(listener: (conversationId: string, messageId: string, kind: "edit" | "delete") => void): () => void {
+		this.#refusedListeners.add(listener);
+		return () => void this.#refusedListeners.delete(listener);
+	}
+
+	/** Each message of the person's that the API took, by the nonce they sent it with: their copy of it is the API's. */
+	onSent(listener: (conversationId: string, nonce: string, message: DirectMessage) => void): () => void {
+		this.#sentListeners.add(listener);
+		return () => void this.#sentListeners.delete(listener);
 	}
 
 	/** What the conversation says of its group over its message box: null while it goes on. */
@@ -169,6 +219,60 @@ export class E2EEngine {
 			if (this.state.name !== "ready") return void this.#toOpen.add(conversationId);
 			await this.#whenReady(() => this.#groups.open(conversationId));
 		});
+	}
+
+	/**
+	 * The person's message, sent after what waits in its conversation (PLAN-E2E-CLIENTES.md, «Enviar»): the API's message,
+	 * or null when it was sent already. A refusal or a lost answer rejects, the message kept for Retry and Dismiss.
+	 */
+	sendMessage(message: Outgoing): Promise<DirectMessage | null> {
+		return this.#act(() => this.#sends.send(message));
+	}
+
+	/**
+	 * An edit of the user's message: shown here at once, then sent after the message's changes before it, and its answer's
+	 * entry applied. Without an answer it's kept, and goes again later and at the next start; refused for good, it's told.
+	 */
+	editMessage(conversationId: string, messageId: string, text: string): Promise<void> {
+		return this.#act(() => this.#sends.change(conversationId, messageId, text));
+	}
+
+	/** A deletion of the user's message, for everyone: done here at once, sent, and its answer's entry applied. */
+	deleteMessage(conversationId: string, messageId: string): Promise<void> {
+		return this.#act(() => this.#sends.change(conversationId, messageId, null));
+	}
+
+	/**
+	 * The person's Dismiss of a message the API never took, by the nonce they sent it with, whatever the device's state:
+	 * ready, its conversation's queue is read first, as a message it settles went. The API's ID of a message that went
+	 * after all, whose copy the views show in its place; else null.
+	 */
+	async discardMessage(conversationId: string, nonce: string): Promise<string | null> {
+		return (await this.#queue(() => this.#sends.discard(conversationId, nonce, this.state.name === "ready"))) ?? null;
+	}
+
+	/** What the device's database shows of these messages of the conversation: a row for each it holds. */
+	messages(conversationId: string, ids: string[]): Promise<ShownMessage[]> {
+		return shownMessages(this.#parts.host, conversationId, ids);
+	}
+
+	/**
+	 * What the views read of these messages of the conversation: the device's rows, and how far its queue is applied this
+	 * session, taken first, so a row the read doesn't find past it is one not applied yet (drawn as loading).
+	 */
+	async read(conversationId: string, ids: string[]): Promise<{ rows: ShownMessage[]; through?: number | null }> {
+		const through = this.#groups.through(conversationId);
+		return { rows: await shownMessages(this.#parts.host, conversationId, ids), through };
+	}
+
+	/** Whether the device holds a message of the conversation older than this number, which its list pages on to. */
+	heldBefore(conversationId: string, seq: number): Promise<boolean> {
+		return heldBefore(this.#parts.host, conversationId, seq);
+	}
+
+	/** The person's messages of the conversation still being sent, in their order, with what goes with them. */
+	pendingMessages(conversationId: string): Promise<Pending[]> {
+		return this.#sends.pending(conversationId);
 	}
 
 	/** The person's tap on Restart encryption, over a blocked group they may restart. */
@@ -195,6 +299,7 @@ export class E2EEngine {
 		this.#retry?.();
 		this.#daily?.();
 		this.#groups.stop();
+		this.#sends.stop();
 		this.#failures.stop();
 		await this.#turn;
 		await this.#parts.host.close();
@@ -288,10 +393,31 @@ export class E2EEngine {
 	}
 
 	/** Runs `work` once the flow before it ended (nothing once stopped). What it throws rejects this call alone. */
-	#queue(work: () => Promise<void>): Promise<void> {
+	#queue<T>(work: () => Promise<T>): Promise<T | undefined> {
 		const run = this.#turn.then(() => (this.#stopped ? undefined : work()));
-		this.#turn = run.catch((error: unknown) => console.error("[e2e] The engine's work failed:", error));
+		this.#turn = run.then(
+			() => {},
+			(error: unknown) => console.error("[e2e] The engine's work failed:", error),
+		);
 		return run;
+	}
+
+	/**
+	 * The person's act on a conversation's messages, in the engine's turn: refused while this device isn't ready, or once
+	 * the engine stopped; a client too old for it waits for its update.
+	 */
+	async #act<T>(work: () => Promise<T>): Promise<T> {
+		const done = await this.#queue(async () => {
+			if (this.state.name !== "ready") throw new Error("encrypted conversations aren't ready on this device");
+			try {
+				return { value: await work() };
+			} catch (error) {
+				if (error instanceof UpdateRequiredError) this.#set({ name: "update", minimum: error.minimum });
+				throw error;
+			}
+		});
+		if (!done) throw new Error("the encryption engine stopped");
+		return done.value;
 	}
 
 	/** Work an event asks for: what fails is logged, and goes again with the next event that asks for it. */
@@ -325,7 +451,13 @@ export class E2EEngine {
 				} else if (this.#device) {
 					this.#soon(() => this.#inbox());
 					this.#soon(() => this.#whenReady(() => this.#groups.all()));
+					// What waits to be sent goes once the queues are applied («Enviar»).
+					this.#soon(() => this.#whenReady(() => this.#sends.resendAll()));
 				}
+				break;
+			case "DM_MESSAGE_CREATE":
+				// The person's message made again goes under a new nonce, which only the engine knows it by.
+				this.#sends.heard(event.data);
 				break;
 			case "DEVICE_MESSAGE":
 				if (own(event.data.device_id)) this.#soon(() => this.#inbox());
@@ -367,7 +499,8 @@ export class E2EEngine {
 	async #boot(): Promise<void> {
 		const parts = this.#parts;
 		try {
-			const { external_sender } = await parts.api.config();
+			const { external_sender, cutover_at } = await parts.api.config();
+			this.cutoverAt = cutover_at;
 			this.#pinned = pinnedSender(parts.store, external_sender, this.#pinned);
 			this.#groups.start(this.#pinned);
 			const opened = await parts.host.open(parts.user);
@@ -415,6 +548,8 @@ export class E2EEngine {
 				console.error("[e2e] A conversation's group didn't open:", error);
 			});
 		}
+		// What waits to be sent goes once the queues are applied, before anything new («Enviar»).
+		await this.#whenReady(() => this.#sends.resendAll());
 		await this.#keyPackages();
 		await this.#whenReady(() => this.#groups.renew()).catch((error: unknown) => {
 			console.error("[e2e] The leaf renewals wait for tomorrow's:", error);
@@ -466,6 +601,7 @@ export class E2EEngine {
 		this.#device = null;
 		this.#tries.clear();
 		this.#groups.forget();
+		this.#sends.stop();
 		this.#daily?.();
 		this.#daily = null;
 		this.#set({ name: "starting" });

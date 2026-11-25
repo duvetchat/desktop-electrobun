@@ -80,6 +80,12 @@ const JOINS_LOST_MOST = 3;
  * info behind what this device saw. Any other is observed for, then tried once more. */
 const FINAL_RULES = new Set(["member_list_mismatch", "external_sender_mismatch", "group_blocked", "stale_group_info"]);
 
+/** The entries that are a conversation's messages, and what an apply did to one that changes what it shows. */
+const MESSAGE_KINDS = new Set(["message", "edit", "delete"]);
+const CHANGES = new Set(["applied", "own", "undecryptable"]);
+/** A member's commits, which the core keeps staged when the API doesn't take them: the queue settles them. */
+const MEMBER_COMMITS = new Set<string>(["renew", "renew_again", "due"]);
+
 const statusOf = (error: unknown) => (error instanceof FetchError ? error.response?.status : undefined);
 const hasData = (entry: MlsEventEntry): entry is MlsEntry => typeof entry.data === "string";
 const same = (a: ConversationState | null, b: ConversationState | null) => JSON.stringify(a) === JSON.stringify(b);
@@ -127,6 +133,13 @@ export class Conversations {
 	readonly #soon: (work: () => Promise<void>) => void;
 	readonly #failures: Failures;
 	readonly #changed: (conversationId: string, state: ConversationState | null) => void;
+	/**
+	 * A conversation's messages changed on this device (an apply opened, kept or took these), or how far its queue is
+	 * applied moved: the views read them again, and draw a row past that number as loading.
+	 */
+	readonly #messagesChanged: (conversationId: string, ids: string[], through: number | null) => void;
+	/** How far each conversation's queue is applied on this device, as its last apply said (null: out of its group). */
+	readonly #through = new Map<string, number | null>();
 	/** The API's external sender, as this device pinned it (Ruling 32). */
 	#sender = "";
 	/** The API's conversations as last listed, their groups as the events and the queue have told of them since. */
@@ -161,11 +174,13 @@ export class Conversations {
 		soon: (work: () => Promise<void>) => void,
 		failures: Failures,
 		changed: (conversationId: string, state: ConversationState | null) => void,
+		messagesChanged: (conversationId: string, ids: string[], through: number | null) => void,
 	) {
 		this.#parts = parts;
 		this.#soon = soon;
 		this.#failures = failures;
 		this.#changed = changed;
+		this.#messagesChanged = messagesChanged;
 	}
 
 	/** Begins with the pinned external sender: the minute a commit whose bytes were lost waits for starts now. */
@@ -192,7 +207,7 @@ export class Conversations {
 		this.#settleTimer = null;
 		this.#settled = false;
 		for (const id of [...this.#states.keys()]) this.#set(id, null);
-		for (const kept of [this.#known, this.#heard, this.#joinsLost]) kept.clear();
+		for (const kept of [this.#known, this.#heard, this.#joinsLost, this.#through]) kept.clear();
 		for (const kept of [this.#settling, this.#removed, this.#otherSender, this.#recordRefused]) kept.clear();
 	}
 
@@ -204,7 +219,18 @@ export class Conversations {
 	heard(event: EngineEvent) {
 		const carried = entryOf(event);
 		if (!carried) return;
-		const { id, entry, generation } = carried;
+		this.#hear(carried.id, carried.entry, carried.generation);
+		this.#soon(() => this.sync(carried.id));
+	}
+
+	/** Entries an answer gave (an edit's, a deletion's): applied now, in this turn, as heard ones are. */
+	async take(conversationId: string, entries: MlsEntry[]): Promise<void> {
+		for (const entry of entries) this.#hear(conversationId, entry);
+		await this.sync(conversationId);
+	}
+
+	/** An entry kept by its number until the conversation's turn, and the queue's end it says. */
+	#hear(id: string, entry: MlsEventEntry, generation?: number) {
 		let kept = this.#heard.get(id);
 		if (!kept) this.#heard.set(id, (kept = new Map()));
 		kept.set(entry.seq, entry);
@@ -213,7 +239,22 @@ export class Conversations {
 			known.last_seq = Math.max(known.last_seq, entry.seq);
 			known.generation = Math.max(known.generation, generation ?? 0);
 		}
-		this.#soon(() => this.sync(id));
+	}
+
+	/**
+	 * Before this device sends there (PLAN-E2E-CLIENTES.md, «Enviar»): the conversation's group as it is now, its queue
+	 * applied, joined or made where it has none. Without it, or blocked, nothing can be sent: the conversation says why.
+	 */
+	async current(conversationId: string): Promise<void> {
+		await this.open(conversationId);
+		const held = await this.#group(conversationId);
+		if (!held || held.blocked) throw new Error("this device can't send in this conversation now");
+	}
+
+	/** The proposals and leaves off their lists that keep this device from sending (encrypt's pending_proposals), committed. */
+	async commitDue(conversationId: string): Promise<void> {
+		const conv = this.#known.get(conversationId) ?? (await this.#fresh(conversationId));
+		if (conv && !this.#inFlight.has(conversationId)) await this.#own(conv, "commit_pending", "due");
 	}
 
 	/**
@@ -305,6 +346,23 @@ export class Conversations {
 		}
 		this.#retries.get(conv.id)?.cancel();
 		this.#retries.delete(conv.id);
+	}
+
+	/**
+	 * How far the conversation's queue is applied on this device: none (undefined) before this session's first apply,
+	 * null while this device is out of its group.
+	 */
+	through(conversationId: string): number | null | undefined {
+		return this.#through.get(conversationId);
+	}
+
+	/**
+	 * A commit of this device's waits for its word in the conversation (encrypt's `pending_commit`), settled now as «Un
+	 * commit sin respuesta» says: its bytes go again, or, gone with the app, the queue is read, which settles it.
+	 */
+	async settle(conversationId: string): Promise<void> {
+		if (this.#inFlight.has(conversationId)) await this.#resend(conversationId);
+		else await this.sync(conversationId, true);
 	}
 
 	#retryLater(id: string) {
@@ -430,6 +488,12 @@ export class Conversations {
 		);
 		const deleted = new Set(entries.filter((entry) => entry.deleted).map((entry) => entry.seq));
 		for (const kind of failedKinds(applied.results, deleted)) this.#failures.note(kind);
+		const message = ({ kind, result }: EntryResult) => MESSAGE_KINDS.has(kind) && CHANGES.has(result);
+		const ids = new Map(entries.map((entry) => [entry.seq, entry.message_id]));
+		const touched = applied.results.filter(message).flatMap(({ seq }) => ids.get(seq) ?? []);
+		const moved = this.#through.get(conv.id) !== applied.applied_through;
+		this.#through.set(conv.id, applied.applied_through);
+		if (touched.length || moved) this.#messagesChanged(conv.id, touched, applied.applied_through);
 		for (const { kind, result, rule } of applied.results) {
 			const refused = kind === "welcome" && result === "rejected";
 			if (refused && rule === "external_sender_mismatch") this.#otherSender.add(conv.id);
@@ -653,6 +717,10 @@ export class Conversations {
 			if (sent === "accepted") this.#joinsLost.delete(id);
 			else this.#joinsLost.set(id, (this.#joinsLost.get(id) ?? 0) + 1);
 		}
+		// A member's commit the API refused, but not for its epoch: the core keeps it staged, and it blocks this device's
+		// commits there until settled. The queue brings it back if an earlier send of it entered; if not, with the queue
+		// read whole a minute past the start, the API doesn't have it (Ruling 25, «Un commit sin respuesta»).
+		if (sent === "refused" && MEMBER_COMMITS.has(flight.purpose)) this.#settling.add(id);
 		await this.sync(id, sent !== "accepted");
 		// A refused one may have entered by an earlier send of its bytes, which the queue says: only one another commit
 		// beat is surely to make again.
@@ -715,7 +783,9 @@ export class Conversations {
 		this.#retries.get(id)?.cancel();
 		this.#inFlight.get(id)?.cancel?.();
 		this.#due.get(id)?.();
-		for (const kept of [this.#retries, this.#inFlight, this.#due, this.#heard, this.#joinsLost]) kept.delete(id);
+		for (const kept of [this.#retries, this.#inFlight, this.#due, this.#heard, this.#joinsLost, this.#through]) {
+			kept.delete(id);
+		}
 		for (const kept of [this.#settling, this.#removed, this.#otherSender, this.#recordRefused]) kept.delete(id);
 		this.#set(id, null);
 	}

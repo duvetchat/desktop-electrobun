@@ -217,11 +217,24 @@ test("a row's reaction picker mounts its portal only while it's open", () => {
 // #322: these lists kept their messages in $state, which Svelte 5 makes deep proxies (a signal for each property read,
 // a proxy for each nested object), for lists only ever replaced whole.
 test("pins, a thread's messages and search results are kept as they are, not as deep proxies", () => {
-	expect(source("PinnedMessages.svelte")).toContain("let pins = $state.raw<Message[]>([]);");
+	// A room's pins as messages, a conversation's as the API lists them (their text read from the device as they draw).
+	const pins = source("PinnedMessages.svelte");
+	expect(pins).toContain("let roomPins = $state.raw<Message[]>([]);");
+	expect(pins).toContain("let conversationPins = $state.raw<DirectMessage[]>([]);");
 	const list = source("MessageList.svelte");
 	expect(list).toContain("let threadMessages = $state.raw<Message[]>([]);");
 	expect(list).toContain("let threadRootMessage = $state.raw<Message | null>(null);");
 	expect(source("MessageSearch.svelte")).toContain("let results = $state.raw<Result[]>([]);");
+});
+
+// The re-review of task 16: a conversation's thread asks the device for its messages' rows and their quotes', as it
+// draws (a quote whose message isn't in the chat's list would draw no text), and draws each through what it holds.
+test("a conversation's thread asks for its quotes with its messages, as it draws", () => {
+	const list = source("MessageList.svelte");
+	expect(list).toMatch(
+		/const quoted = threadMessages\.flatMap\(\(m\) => m\.referenced_message\?\.message_id \?\? \[\]\);\s*want\(channelId, \[\.\.\.threadMessages\.map\(\(m\) => m\.id\), \.\.\.quoted\]\);/,
+	);
+	expect(list).toContain("threadMessages.map((m) => withHeld(m, held))");
 });
 
 // #324: the list's sort made two Dates per comparison, every time the list changed.

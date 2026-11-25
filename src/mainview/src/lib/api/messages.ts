@@ -95,7 +95,7 @@ export async function getMessageThread(
 }
 
 // What a message's form holds besides its text and files, at its largest: its nonce, its reply (message_reference) and
-// allowed_mentions, as sendMessage and sendDirectMessage write them, each a field of its own.
+// allowed_mentions, as sendMessage writes them, each a field of its own.
 const MESSAGE_FIELDS_BYTES = 2048;
 
 /** Why the API would refuse a message with files for its size, as the message box says it, or null: its text and files

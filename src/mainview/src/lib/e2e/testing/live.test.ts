@@ -2,9 +2,10 @@
 // suite clients-desktop starts and names: E2E_LIVE_API and E2E_LIVE_WS, its seeded accounts (E2E_LIVE_ACCOUNTS, JSON:
 // each one's id and email) and their password (E2E_LIVE_PASSWORD). Outside that suite, as in the app's own run, they're
 // skipped. Each engine task adds its cases here, on the core the desktop carries (native/core).
-import { describe, expect, test } from "bun:test";
+import { afterAll, describe, expect, test } from "bun:test";
 import { rmSync } from "node:fs";
 import api, { sessionApi } from "$lib/api/api";
+import type { DirectMessage } from "$lib/api/conversations";
 import { logIn } from "$lib/api/auth";
 import { e2eApi } from "$lib/api/e2e";
 import { identifyData } from "$lib/api/ws/identify";
@@ -122,6 +123,22 @@ async function deviceOf(who: Account) {
 	return { client, routes, socket, host, registered, engine, end };
 }
 
+/** Waits until `holds` is true, as another device's work after an event ends in its own time: past `ms`, it fails. */
+async function eventually(holds: () => Promise<boolean>, ms = 30_000): Promise<void> {
+	const deadline = Date.now() + ms;
+	while (!(await holds())) {
+		if (Date.now() > deadline) throw new Error("what the test waited for never came");
+		await Bun.sleep(100);
+	}
+}
+
+type Device = Awaited<ReturnType<typeof deviceOf>>;
+/** Carol's and Dave's devices and their DM, which the groups' case leaves to the messages' case after it. */
+let carolAndDave: { c: Device; d: Device; dm: string } | null = null;
+afterAll(async () => {
+	if (carolAndDave) await Promise.all([carolAndDave.c.end(), carolAndDave.d.end()]);
+});
+
 describe.skipIf(!live)("live, against the API's stack", () => {
 	test("the client reaches the stack", async () => {
 		if (!live) throw new Error("no stack");
@@ -211,8 +228,43 @@ describe.skipIf(!live)("live, against the API's stack", () => {
 			}
 			expect(held.dave).toMatchObject({ generation: 0, epoch: 1 });
 			expect(held.carol).toEqual(held.dave);
+			carolAndDave = { c, d, dm: dm.data.id };
 		} finally {
-			await Promise.all([c.end(), d.end()]);
+			if (!carolAndDave) await Promise.all([c.end(), d.end()]);
 		}
+	}, 120_000);
+
+	// Encrypted messages (PLAN-E2E-CLIENTES.md, Task 16): Carol's and Dave's devices, in the DM the case above left them,
+	// send, answer, edit and delete through the API, which never holds their text.
+	test("two users converse, edit and delete", async () => {
+		const pair = carolAndDave;
+		if (!pair) throw new Error("the case before left no conversation");
+		const { c, d, dm } = pair;
+		const carol = account(2);
+		const textOn = async (device: Device, id: string) => (await device.engine.messages(dm, [id]))[0]?.text ?? null;
+
+		// Carol's message: Dave's device opens it.
+		const sent = (await c.engine.sendMessage({ conversation_id: dm, nonce: crypto.randomUUID(), text: "hello Dave" }))!;
+		await eventually(async () => (await textOn(d, sent.id)) === "hello Dave");
+		// Dave answers it, mentioning her: hers opens it.
+		const reply = (await d.engine.sendMessage({
+			...{ conversation_id: dm, nonce: crypto.randomUUID(), text: `hi <@${carol.id}>` },
+			message_reference: { type: 0, message_id: sent.id },
+		}))!;
+		await eventually(async () => (await textOn(c, reply.id)) === `hi <@${carol.id}>`);
+		// The API holds their ciphertexts, whom the reply mentions and what it answers, and none of their text.
+		const listed = (await c.client.get<DirectMessage[]>(`/api/users/@me/conversations/${dm}/messages`)).data;
+		const [first, answer] = [listed.find((m) => m.id === sent.id), listed.find((m) => m.id === reply.id)];
+		expect(first).toMatchObject({ ciphertext: expect.any(String) });
+		expect(answer).toMatchObject({ mentions: [carol.id], referenced_message: { message_id: sent.id } });
+		expect(JSON.stringify(listed)).not.toContain("hello Dave");
+
+		// Carol edits hers: Dave's device shows the edit. Dave deletes his answer: it's gone from both, and from the API.
+		await c.engine.editMessage(dm, sent.id, "hello again");
+		await eventually(async () => (await textOn(d, sent.id)) === "hello again");
+		await d.engine.deleteMessage(dm, reply.id);
+		await eventually(async () => (await c.engine.messages(dm, [reply.id])).length === 0);
+		const after = (await c.client.get<DirectMessage[]>(`/api/users/@me/conversations/${dm}/messages`)).data;
+		expect(after.map((m) => m.id)).not.toContain(reply.id);
 	}, 120_000);
 });

@@ -53,7 +53,10 @@
 	import { callNoticeLine } from "$lib/call-notices";
 	import { copyCode } from "$lib/code-copy";
 	import { belowIndicator } from "$lib/jumps";
-	import { threadNow } from "$lib/threads";
+	import { threadNow, withHeld } from "$lib/threads";
+	import { contentOf, want } from "$lib/e2e/conversation-content.svelte";
+	import WaitingMessage from "$lib/components/e2e/WaitingMessage.svelte";
+	import { t } from "$lib/i18n";
 	import { keepPlace, takePlace } from "$lib/kept-places";
 	import { largeEmojis, renderEmoji } from "$lib/emoji";
 	import { mentionMapOf, sameNames } from "$lib/markdown";
@@ -329,8 +332,19 @@
 	let threadError = $state("");
 	let threadMessages = $state.raw<Message[]>([]);
 	let threadRootMessage = $state.raw<Message | null>(null);
-	// The thread as it is now, with the replies the list has since it loaded, the user's own being sent among them.
-	const threadShown = $derived(threadNow(threadMessages, messages));
+	// The thread as it is now, with the replies the list has since it loaded, the user's own being sent among them. A
+	// conversation's messages and their quotes come without their text, which this device's database holds: asked for
+	// as the thread draws, so a row its list let go is read again.
+	const threadShown = $derived.by(() => {
+		if (spaceId) return threadNow(threadMessages, messages);
+		const quoted = threadMessages.flatMap((m) => m.referenced_message?.message_id ?? []);
+		want(channelId, [...threadMessages.map((m) => m.id), ...quoted]);
+		const held = contentOf(channelId);
+		return threadNow(
+			threadMessages.map((m) => withHeld(m, held)),
+			messages,
+		);
+	});
 	// A reply that comes while the thread shows goes at its end, which scrolls into view.
 	let threadScrollEl = $state<HTMLElement | null>(null);
 	let threadCount = 0;
@@ -1507,6 +1521,16 @@
 			onPreview={openPreview}
 			onInteract={isConversation ? undefined : (use) => interact(message, use)}
 		/>
+	{:else if message.loading}
+		<!-- A conversation's message the engine hasn't applied or read yet: neither empty nor waiting -->
+		<div class={flat ? "" : `${MESSAGE_CARD} px-3 py-2`} aria-hidden="true">
+			<div class="bg-duvet-secondary-fill h-4 w-40 animate-pulse rounded-full"></div>
+		</div>
+	{:else if message.waiting}
+		<!-- A conversation's message this device doesn't hold yet -->
+		<div class={flat ? "" : `${MESSAGE_CARD} px-3 py-2`}>
+			<WaitingMessage />
+		</div>
 	{:else}
 		{#if editingMessageId === message.id}
 			<InlineMessageEditor
@@ -1552,6 +1576,14 @@
 						: null}
 				/>
 			</div>
+		{/if}
+		{#if message.shared_by}
+			<!-- A conversation's message a shared history brought to this device -->
+			<span class="text-duvet-ink2 px-1 text-[11px]"
+				>{t("e2e_shared_by", {
+					name: members.find((m) => m.id === message.shared_by)?.username ?? message.shared_by.slice(0, 8),
+				})}</span
+			>
 		{/if}
 		<MessageCards content={message.content ?? ""} embeds={message.embeds} onPreview={(src) => openPreview(src)} />
 		<MessageAttachments {message} {channelName} onPreview={openPreview} />
