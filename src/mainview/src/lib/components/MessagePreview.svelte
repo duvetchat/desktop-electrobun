@@ -10,6 +10,7 @@
 	import MessageReference from "$lib/components/MessageReference.svelte";
 	import MessageText from "$lib/components/MessageText.svelte";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
+	import WaitingMessage from "$lib/components/e2e/WaitingMessage.svelte";
 	import { toggleReaction } from "$lib/api/reactions";
 	import { callNoticeLine, callNoticeText, type CallNoticeLine } from "$lib/call-notices";
 	import { copyCode } from "$lib/code-copy";
@@ -134,6 +135,9 @@
 				<MessageAttachments {message} channelName={roomName ?? ""} {onPreview} maxWidth={320} maxHeight={240} />
 			{:else if isLoading(message)}
 				<DeferredResponse {message} />
+			{:else if message.waiting}
+				<!-- A conversation's message this device doesn't hold yet -->
+				<WaitingMessage />
 			{:else if isComponentsV2(message)}
 				<!-- The components are all of it: its files show where they place them -->
 				<MessageComponents components={message.components ?? []} {mentionMap} {customEmojiMap} {onPreview} compact />

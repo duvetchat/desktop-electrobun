@@ -46,7 +46,11 @@
 	let open = $state(false);
 	let loading = $state(false);
 	let failure = $state<string | null>(null);
-	let pins = $state.raw<Message[]>([]);
+	let roomPins = $state.raw<Message[]>([]);
+	// A conversation's pins as the API lists them: they become messages as they draw, so the text this device's
+	// database holds of each shows once it's read (toDirectMessage).
+	let conversationPins = $state.raw<DirectMessage[]>([]);
+	const pins = $derived(conversation && toDirectMessage ? conversationPins.map(toDirectMessage) : roomPins);
 	let controller: AbortController | null = null;
 
 	// In a space, those with PinMessages in the room (its owner and Administrators have it); in a
@@ -87,12 +91,10 @@
 		failure = null;
 		try {
 			if (conversation) {
-				const convert = toDirectMessage;
-				const rows = await getConversationPins(channelId, ctl.signal);
-				pins = convert ? rows.map(convert) : [];
+				conversationPins = await getConversationPins(channelId, ctl.signal);
 			} else {
 				const rows = await getRoomPins(channelId, ctl.signal);
-				pins = rows.map((m) => gatewayMessageToMessage(m, $gatewaySpaces));
+				roomPins = rows.map((m) => gatewayMessageToMessage(m, $gatewaySpaces));
 			}
 		} catch (err) {
 			if (ctl.signal.aborted) return;
@@ -134,7 +136,8 @@
 	async function unpin(m: Message) {
 		try {
 			await (conversation ? unpinConversationMessage : unpinRoomMessage)(channelId, m.id);
-			pins = pins.filter((p) => p.id !== m.id);
+			if (conversation) conversationPins = conversationPins.filter((p) => p.id !== m.id);
+			else roomPins = roomPins.filter((p) => p.id !== m.id);
 		} catch (err) {
 			toast(getApiError(err, "Couldn't unpin the message"), "error");
 		}

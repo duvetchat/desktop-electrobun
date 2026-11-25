@@ -2,7 +2,7 @@ import { describe, expect, spyOn, test } from "bun:test";
 import { generateKeyPairSync } from "node:crypto";
 import { base64Bytes } from "$lib/activity-thumbnail";
 import { sessionApi } from "$lib/api/api";
-import { e2eApi } from "$lib/api/e2e";
+import { e2eApi, type E2eApi } from "$lib/api/e2e";
 import { bytesBase64 } from "$lib/staged-images";
 import { CoreError } from "../errors";
 import { FakeApi } from "../testing/fake-api";
@@ -108,6 +108,33 @@ describe("the reports of what can't be opened", () => {
 		},
 		SLOW,
 	);
+
+	// M5 of task 15's review: a report whose request is still out when the engine stops leaves no timer behind, whatever
+	// it answers.
+	test("a report in flight when the engine stops leaves no timer", async () => {
+		let asked = 0;
+		let answer: (failed: Error) => void = () => {};
+		const api: E2eApi = {
+			...e2eApi(),
+			reportDecryptFailure: () => {
+				asked++;
+				return new Promise<undefined>((_, reject) => (answer = reject));
+			},
+		};
+		const logged = spyOn(console, "error").mockImplementation(() => {});
+		const clock = new TestClock();
+		const failures = new Failures(api, clock);
+		failures.note("message");
+		clock.advance(60_000);
+		expect(asked).toBe(1);
+		failures.stop();
+		answer(new Error("internal server error"));
+		await Bun.sleep(50);
+		clock.advance(60_000);
+		await Bun.sleep(50);
+		expect(asked).toBe(1);
+		logged.mockRestore();
+	});
 });
 
 describe.skipIf(!coreLibrary)("what can't be opened", () => {

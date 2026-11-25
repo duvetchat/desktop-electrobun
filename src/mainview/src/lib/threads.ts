@@ -1,5 +1,22 @@
 import type { ChatDraft } from "$lib/drafts";
-import type { Message } from "$lib/types";
+import type { Held } from "$lib/e2e/engine/content";
+import { MessageType, type Message } from "$lib/types";
+
+/**
+ * A conversation's message of a thread, as the API gives it without its text, with what this device's own database
+ * holds of it (PLAN-E2E-CLIENTES.md, «La vista de una conversación»): its text and its edit, or waiting for it once asked
+ * and not held. A notice (a pin's, a call's, a share's) keeps its own.
+ */
+export function withHeld(message: Message, held: Held): Message {
+	if (message.type !== MessageType.Text && message.type !== MessageType.Voice) return message;
+	const shown = held?.status === "ok" ? held : null;
+	return {
+		...message,
+		content: shown?.text ?? null,
+		waiting: held !== undefined && !shown,
+		updated_at: shown?.edited_at ? new Date(shown.edited_at).toISOString() : message.updated_at,
+	};
+}
 
 /**
  * A thread as it is now: its messages as loaded, each as the chat's list has it now when it has it, and the replies to

@@ -53,7 +53,10 @@
 	import { callNoticeLine } from "$lib/call-notices";
 	import { copyCode } from "$lib/code-copy";
 	import { belowIndicator } from "$lib/jumps";
-	import { threadNow } from "$lib/threads";
+	import { threadNow, withHeld } from "$lib/threads";
+	import { heldRow, want } from "$lib/e2e/conversation-content.svelte";
+	import WaitingMessage from "$lib/components/e2e/WaitingMessage.svelte";
+	import { t } from "$lib/i18n";
 	import { keepPlace, takePlace } from "$lib/kept-places";
 	import { largeEmojis, renderEmoji } from "$lib/emoji";
 	import { mentionMapOf, sameNames } from "$lib/markdown";
@@ -329,8 +332,11 @@
 	let threadError = $state("");
 	let threadMessages = $state.raw<Message[]>([]);
 	let threadRootMessage = $state.raw<Message | null>(null);
-	// The thread as it is now, with the replies the list has since it loaded, the user's own being sent among them.
-	const threadShown = $derived(threadNow(threadMessages, messages));
+	// The thread as it is now, with the replies the list has since it loaded, the user's own being sent among them. A
+	// conversation's messages come without their text, which this device's database holds.
+	const threadShown = $derived(
+		threadNow(spaceId ? threadMessages : threadMessages.map((m) => withHeld(m, heldRow(m.id))), messages),
+	);
 	// A reply that comes while the thread shows goes at its end, which scrolls into view.
 	let threadScrollEl = $state<HTMLElement | null>(null);
 	let threadCount = 0;
@@ -1032,6 +1038,11 @@
 				? await getConversationMessageThread(channelId, message.id)
 				: await getMessageThread(channelId, message.id);
 			threadMessages = thread.map((m) => gatewayMessageToMessage(m, $gatewaySpaces));
+			if (isConversation)
+				want(
+					channelId,
+					threadMessages.map((m) => m.id),
+				);
 		} catch (e) {
 			threadError = getApiError(e, "Failed to load message thread.");
 		} finally {
@@ -1507,6 +1518,11 @@
 			onPreview={openPreview}
 			onInteract={isConversation ? undefined : (use) => interact(message, use)}
 		/>
+	{:else if message.waiting}
+		<!-- A conversation's message this device doesn't hold yet -->
+		<div class={flat ? "" : `${MESSAGE_CARD} px-3 py-2`}>
+			<WaitingMessage />
+		</div>
 	{:else}
 		{#if editingMessageId === message.id}
 			<InlineMessageEditor
@@ -1552,6 +1568,14 @@
 						: null}
 				/>
 			</div>
+		{/if}
+		{#if message.shared_by}
+			<!-- A conversation's message a shared history brought to this device -->
+			<span class="text-duvet-ink2 px-1 text-[11px]"
+				>{t("e2e_shared_by", {
+					name: members.find((m) => m.id === message.shared_by)?.username ?? message.shared_by.slice(0, 8),
+				})}</span
+			>
 		{/if}
 		<MessageCards content={message.content ?? ""} embeds={message.embeds} onPreview={(src) => openPreview(src)} />
 		<MessageAttachments {message} {channelName} onPreview={openPreview} />

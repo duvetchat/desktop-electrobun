@@ -153,26 +153,35 @@ describe.skipIf(!coreLibrary)("a device's commits", () => {
 				{ cmd: "commit_result", conversation_id: conversation, accepted: false, invalid: true },
 			]);
 
+			// Any other refusal says only that it wasn't taken, which the queue settles: with the queue read whole, a
+			// minute past the start, the API doesn't have it (Ruling 25), and the device commits there again after.
+			const told = aResults.length;
+			fake.refuse(path, 403, { error: "you aren't a member of this conversation" });
+			a.clock.advance(DAY);
+			await until(() => aResults.length > told);
+			expect(aResults[told]).toEqual({ cmd: "commit_result", conversation_id: conversation, accepted: false });
+			await until(() => invalids(aResults).length === 2);
+
 			// A commit never sent, the app started again: not before a minute from the start, nor with the queue behind.
 			fake.cutRequest(path);
 			a.clock.advance(DAY);
-			await until(() => sent(2));
+			await until(() => sent(3));
 			due.length = 0;
 			const again = await restarted(fake, a);
 			again.clock.advance(59_000);
 			await Bun.sleep(200);
-			expect(invalids(aResults)).toHaveLength(1);
+			expect(invalids(aResults)).toHaveLength(2);
 			fake.refuse({ method: "GET", path: `/api/users/@me/conversations/${conversation}/mls/queue` }, 500, {
 				error: "internal server error",
 			});
 			again.clock.advance(1_000);
 			await Bun.sleep(500);
-			expect(invalids(aResults)).toHaveLength(1);
+			expect(invalids(aResults)).toHaveLength(2);
 			// The queue read again, whole, a minute past the start: now it's said.
-			await until(() => (again.clock.advance(2_000), invalids(aResults).length === 2));
+			await until(() => (again.clock.advance(2_000), invalids(aResults).length === 3));
 			due.push(conversation);
 			again.clock.advance(DAY);
-			await until(() => sent(3));
+			await until(() => sent(4));
 			await sameGroup([again, b], conversation);
 		},
 		SLOW,

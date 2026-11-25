@@ -2,6 +2,7 @@ import { getAvatarURL } from "$lib/common/common";
 import { mergedByKey } from "$lib/reactions";
 import { memberMobileOnly, memberStatus } from "$lib/status";
 import type { Conversation, DirectMessage } from "$lib/api/conversations";
+import type { Held } from "$lib/e2e/engine/content";
 import type { UserActivity } from "$lib/stores.svelte";
 
 export interface EmbedMedia {
@@ -407,6 +408,10 @@ export interface Message {
 	interaction_metadata?: InteractionMetadata;
 	/** A call notice's call; no other message has one. */
 	call?: CallNotice;
+	/** A conversation's encrypted message this device doesn't hold yet: it shows as waiting for it (WaitingMessage). */
+	waiting?: boolean;
+	/** Who shared a conversation's message with this device, when a shared history brought it. */
+	shared_by?: string | null;
 }
 
 export interface GatewayMessageDelete {
@@ -1490,13 +1495,30 @@ export function sentAt(message: { created_at: string; call?: CallNotice }): stri
 	return message.call?.ended_at ?? message.created_at;
 }
 
-/** A conversation's message as the chat shows it: its author as the message names them, or else as the conversation's
- * members do, or by the start of their ID. */
-export function directMessageToMessage(msg: DirectMessage, members: Conversation["members"]): Message {
+/**
+ * A conversation's message as the chat shows it: its author as the message names them, or else as the conversation's
+ * members do, or by the start of their ID. An encrypted one (with its `seq`) takes its text and when it was edited from
+ * what this device's own database holds of it (`held`, by ID: PLAN-E2E-CLIENTES.md, «La vista de una conversación»),
+ * and so does the quote of the message it replies to; one it was asked for and doesn't hold waits.
+ */
+export function directMessageToMessage(
+	msg: DirectMessage,
+	members: Conversation["members"],
+	held: (id: string) => Held = () => undefined,
+): Message {
 	const member = members.find((m) => m.user_id === msg.author_id);
+	const encrypted = msg.seq !== undefined;
+	const row = encrypted ? held(msg.id) : undefined;
+	const shown = row?.status === "ok" ? row : null;
+	const ref = msg.referenced_message ?? null;
+	const quoted = ref?.message_id && ref.created_at ? held(ref.message_id) : undefined;
+	const referenced = ref && quoted?.status === "ok" ? { ...ref, content: quoted.text } : ref;
 	return {
 		id: msg.id,
-		content: msg.content,
+		// The person's own, just sent, shows the text they typed until the database's row is there.
+		content: encrypted ? (shown ? shown.text : (msg.content ?? null)) : msg.content,
+		waiting: encrypted && row !== undefined && !shown && !msg.content,
+		shared_by: shown?.shared_by ?? null,
 		type: msg.type ?? 0,
 		author_id: msg.author_id,
 		author_name:
@@ -1508,10 +1530,11 @@ export function directMessageToMessage(msg: DirectMessage, members: Conversation
 		author_avatar_url: getAvatarURL(msg.author_id, msg.user?.avatar ?? member?.user?.avatar),
 		author_is_bot: msg.user?.is_bot ?? false,
 		created_at: sentAt(msg),
-		updated_at: msg.updated_at,
+		// An encrypted message's edit shows as the device's database says it was edited.
+		updated_at: shown?.edited_at ? new Date(shown.edited_at).toISOString() : msg.updated_at,
 		nonce: msg.nonce,
 		ref_message_id: msg.referenced_message?.message_id ?? null,
-		referenced_message: msg.referenced_message ?? null,
+		referenced_message: referenced,
 		attachments: msg.attachments ?? null,
 		reactions: mergedByKey(msg.reactions),
 		embeds: msg.embeds ?? null,

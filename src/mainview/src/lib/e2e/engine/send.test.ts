@@ -1,0 +1,339 @@
+import { describe, expect, test } from "bun:test";
+import type { CoreHost } from "../host";
+import { FakeApi, type GatewayEvent } from "../testing/fake-api";
+import { coreLibrary } from "../testing/host-bun";
+import {
+	commitByHand,
+	firstDevice,
+	rejection,
+	restarted,
+	sameGroup,
+	testHost,
+	until,
+	useFake,
+	watchedHost,
+	type TestDevice,
+} from "../testing/engines";
+import { mentionsIn } from "./send";
+
+// What a device sends to a conversation (PLAN-E2E-CLIENTES.md, «Enviar», and «Qué se manda», its message rows): a
+// message encrypted by the core, sent with its nonce and bound to the ID the API gives it; one without an answer sent
+// again with the same bytes; what waits, sent first and in order; a refusal that keeps the message; an edit and a
+// deletion taken from the entries their answers give.
+const SLOW = 180_000;
+const messagesPath = (conversation: string) => `/api/users/@me/conversations/${conversation}/messages`;
+
+/** A request the fake took: its method, its path and its body as JSON (null until read, or without one). */
+interface Seen {
+	method: string;
+	path: string;
+	body: any;
+}
+
+/**
+ * Ana's and Bo's first devices, in a DM whose group Ana made (Ana's on `aHost`, hearing what `aHears` lets through), and
+ * every request the fake saw.
+ */
+async function dm(given: { aHost?: CoreHost; aHears?: (event: GatewayEvent) => boolean } = {}) {
+	const fake = new FakeApi();
+	const [ana, bo] = [fake.addUser(), fake.addUser()];
+	const seen: Seen[] = [];
+	const reading: Promise<void>[] = [];
+	useFake(fake, (request) => {
+		const entry: Seen = { method: request.method, path: new URL(request.url).pathname, body: null };
+		seen.push(entry);
+		reading.push(
+			request.text().then((text) => {
+				entry.body = text ? JSON.parse(text) : null;
+			}),
+		);
+	});
+	const conversation = fake.addConversation({ type: "dm", members: [ana, bo] });
+	const a = await firstDevice(fake, ana, { host: given.aHost, hears: given.aHears });
+	const b = await firstDevice(fake, bo);
+	await a.engine.openConversation(conversation);
+	await sameGroup([a, b], conversation);
+	/** The message posts the fake saw, their bodies read. */
+	const posts = async () => {
+		await Promise.all(reading);
+		return seen.filter((s) => s.method === "POST" && s.path === messagesPath(conversation));
+	};
+	return { fake, ana, bo, a, b, conversation, seen, posts };
+}
+
+/** The text a device's core shows of a message, once it has it: null while it has none. */
+async function textOn(device: TestDevice, conversation: string, id: string): Promise<string | null> {
+	const [shown] = await device.engine.messages(conversation, [id]);
+	return shown?.status === "ok" ? (shown.text ?? null) : null;
+}
+
+/** The nonces of the messages that wait on the device, in the order they were made. */
+const nonces = (device: TestDevice, conversation: string) =>
+	device.engine.pendingMessages(conversation).then((pending) => pending.map((p) => p.nonce));
+
+/** The IDs of the conversation's messages, in their queue's order, as a device reads it. */
+const queued = async (device: TestDevice, conversation: string) =>
+	(await device.api.queue(conversation, 0)).entries.filter((e) => e.kind === "message").map((e) => e.message_id!);
+
+describe("mentions", () => {
+	test("mentions are the users the text names outside code", () => {
+		const [x, y, z] = [crypto.randomUUID(), crypto.randomUUID(), crypto.randomUUID()];
+		const text = `hi <@${x}> and <@${y}>, \`<@${z}>\` in code,\n\`\`\`\n<@${z}>\n\`\`\`\nand <@${x}> again, <@nobody>`;
+		expect(mentionsIn(text)).toEqual([x, y]);
+		expect(mentionsIn("no one")).toEqual([]);
+		// The API takes 20 at most: the first 20 the text names go.
+		const many = Array.from({ length: 25 }, () => crypto.randomUUID());
+		expect(mentionsIn(many.map((id) => `<@${id}>`).join(" "))).toEqual(many.slice(0, 20));
+	});
+});
+
+describe.skipIf(!coreLibrary)("a device's messages", () => {
+	test(
+		"a message is encrypted, sent and bound to its id",
+		async () => {
+			// Ana's device doesn't hear its own message's event: the queue's copy would bind it too.
+			const { a, b, bo, conversation, posts } = await dm({ aHears: (event) => event.type !== "DM_MESSAGE_CREATE" });
+			const nonce = crypto.randomUUID();
+			const text = `hello <@${bo}>, and \`<@${crypto.randomUUID()}>\``;
+			const sent = await a.engine.sendMessage({ conversation_id: conversation, nonce, text });
+			if (!sent) throw new Error("the message wasn't sent");
+			expect(sent).toMatchObject({ conversation_id: conversation, nonce });
+			// The request carries the core's ciphertext and the nonce, whom the text names outside code, and no text.
+			const [post] = await posts();
+			expect(post!.body).toMatchObject({ nonce, mentions: [bo], ciphertext: expect.any(String) });
+			expect(post!.body).not.toHaveProperty("content");
+			expect(JSON.stringify(post!.body)).not.toContain("hello");
+			// Ana's core binds it to its ID and number: it waits no more.
+			expect(await a.engine.messages(conversation, [sent.id])).toMatchObject([
+				{ message_id: sent.id, seq: sent.seq, status: "ok", text },
+			]);
+			expect(await nonces(a, conversation)).toEqual([]);
+			// Bo's device opens it.
+			await until(async () => (await textOn(b, conversation, sent.id)) === text);
+		},
+		SLOW,
+	);
+
+	test(
+		"a message cut before its answer is sent again with the same bytes",
+		async () => {
+			// Ana's device doesn't hear its own messages' events, which its queue would settle them with first.
+			const { fake, a, b, conversation, posts } = await dm({ aHears: (event) => event.type !== "DM_MESSAGE_CREATE" });
+			const path = { method: "POST", path: messagesPath(conversation) };
+			// The API takes it, and its answer is lost: the message waits on Ana's device.
+			const nonce = crypto.randomUUID();
+			fake.loseAnswer(path);
+			await rejection(a.engine.sendMessage({ conversation_id: conversation, nonce, text: "once" }));
+			expect(await nonces(a, conversation)).toEqual([nonce]);
+			// Sent again (the person's Retry): the same bytes, which the API answers with the message it posted.
+			const sent = (await a.engine.sendMessage({ conversation_id: conversation, nonce, text: "once" }))!;
+			const [first, retried] = await posts();
+			expect(retried!.body).toMatchObject({ nonce, ciphertext: first!.body.ciphertext });
+			expect(await nonces(a, conversation)).toEqual([]);
+			expect(await queued(b, conversation)).toEqual([sent.id]);
+			await until(async () => (await textOn(b, conversation, sent.id)) === "once");
+
+			// Its request cut on its way, and the app closed: started again, the device sends it with the same bytes.
+			fake.cutRequest(path);
+			await rejection(
+				a.engine.sendMessage({ conversation_id: conversation, nonce: crypto.randomUUID(), text: "twice" }),
+			);
+			const before = (await posts()).length;
+			const again = await restarted(fake, a);
+			await until(async () => (await nonces(again, conversation)).length === 0);
+			const [lost, resent] = (await posts()).slice(before - 1);
+			expect(resent!.body).toMatchObject({ nonce: lost!.body.nonce, ciphertext: lost!.body.ciphertext });
+			// One message of it, which Bo opens.
+			const ids = await queued(b, conversation);
+			expect(ids).toHaveLength(2);
+			await until(async () => (await textOn(b, conversation, ids[1]!)) === "twice");
+		},
+		SLOW,
+	);
+
+	test(
+		"pending messages go first and in order, after the queue",
+		async () => {
+			const { fake, a, b, conversation, seen, posts } = await dm();
+			const path = { method: "POST", path: messagesPath(conversation) };
+			// Two messages whose requests never reach the API: they wait, in the order they were made.
+			const [first, second, third] = [crypto.randomUUID(), crypto.randomUUID(), crypto.randomUUID()];
+			fake.cutRequest(path);
+			await rejection(a.engine.sendMessage({ conversation_id: conversation, nonce: first, text: "first" }));
+			fake.cutRequest(path);
+			await rejection(a.engine.sendMessage({ conversation_id: conversation, nonce: second, text: "second" }));
+			expect(await nonces(a, conversation)).toEqual([first, second]);
+
+			// Ana's app closes; meanwhile Bo renews his leaf. Started again, her device reads the queue first, then sends
+			// what waits, in its order.
+			await a.engine.stop();
+			await b.engine.stop();
+			await b.host.open(b.user);
+			await commitByHand(b, conversation);
+			const mark = seen.length;
+			const again = await restarted(fake, a);
+			await until(async () => (await nonces(again, conversation)).length === 0);
+			const after = seen
+				.slice(mark)
+				.map((s) => (s.path.endsWith("/mls/queue") ? `${s.method} queue` : `${s.method} ${s.path}`));
+			const read = after.indexOf("GET queue");
+			const sends = after.flatMap((line, i) => (line === `POST ${path.path}` ? [i] : []));
+			expect(read).toBeGreaterThanOrEqual(0);
+			expect(sends).toHaveLength(2);
+			expect(sends[0]!).toBeGreaterThan(read);
+
+			// A new message goes after them. (The second's first try went to the first: what waits goes first.)
+			await again.engine.sendMessage({ conversation_id: conversation, nonce: third, text: "third" });
+			expect((await posts()).map((post) => post.body.nonce)).toEqual([first, first, first, second, third]);
+			const bo = await restarted(fake, b);
+			const ids = await queued(bo, conversation);
+			expect(ids).toHaveLength(3);
+			await until(async () => (await textOn(bo, conversation, ids[2]!)) === "third");
+			expect(await Promise.all(ids.map((id) => textOn(bo, conversation, id)))).toEqual(["first", "second", "third"]);
+		},
+		SLOW,
+	);
+
+	test(
+		"a stale message is discarded and encrypted again",
+		async () => {
+			const { fake, a, b, conversation, posts } = await dm();
+			const path = { method: "POST", path: messagesPath(conversation) };
+			const epochOf = async (device: TestDevice) =>
+				(
+					await device.host.handle<{ generation: number; epoch: number }>({
+						cmd: "group",
+						conversation_id: conversation,
+					})
+				).epoch;
+			// A message that never reached the API, while the group moves on six epochs: no member could open it now.
+			const nonce = crypto.randomUUID();
+			fake.cutRequest(path);
+			await rejection(a.engine.sendMessage({ conversation_id: conversation, nonce, text: "late" }));
+			await b.engine.stop();
+			await b.host.open(b.user);
+			for (let i = 0; i < 6; i++) await commitByHand(b, conversation);
+			await until(async () => (await epochOf(a)) === 7);
+			// Sent again: the core says it's stale, so it's dropped and its text encrypted again, under another nonce.
+			const sent = (await a.engine.sendMessage({ conversation_id: conversation, nonce, text: "late" }))!;
+			expect(sent.nonce).not.toBe(nonce);
+			expect(await nonces(a, conversation)).toEqual([]);
+			const bo = await restarted(fake, b);
+			await until(async () => (await textOn(bo, conversation, sent.id)) === "late");
+
+			// The API says it's stale (409): the device encrypts it again, under another nonce.
+			const refused = crypto.randomUUID();
+			const { generation, epoch } = await a.host.handle<{ generation: number; epoch: number }>({
+				...{ cmd: "group", conversation_id: conversation },
+			});
+			fake.refuse(path, 409, { error: "stale message", generation, epoch });
+			const posted = (await a.engine.sendMessage({ conversation_id: conversation, nonce: refused, text: "again" }))!;
+			expect(posted.nonce).not.toBe(refused);
+			expect((await posts()).filter((post) => post.body.nonce === refused)).toHaveLength(1);
+			expect(await nonces(a, conversation)).toEqual([]);
+			await until(async () => (await textOn(bo, conversation, posted.id)) === "again");
+		},
+		SLOW,
+	);
+
+	test(
+		"a refused send keeps its message",
+		async () => {
+			const { fake, a, b, conversation, posts } = await dm();
+			const path = { method: "POST", path: messagesPath(conversation) };
+			// The pause (503) and a refusal (409) keep it, to be sent again; the update (426) too, and the device then
+			// waits for its update. What waits goes first, so each refusal is said to what's ahead of the new one too: the
+			// refused one stays, and the next goes on; the update stops them all.
+			const kept: string[] = [];
+			for (const [status, body, times] of [
+				[503, undefined, 1],
+				[409, { error: "this nonce was sent with another message" }, 2],
+				[426, undefined, 1],
+			] as const) {
+				const nonce = crypto.randomUUID();
+				for (let i = 0; i < times; i++) fake.refuse(path, status, body);
+				await rejection(a.engine.sendMessage({ conversation_id: conversation, nonce, text: `refused (${status})` }));
+				kept.push(nonce);
+				expect(await nonces(a, conversation)).toEqual(kept);
+			}
+			expect(a.engine.state).toMatchObject({ name: "update" });
+			expect(await posts()).toHaveLength(4);
+			// Dismiss drops one; started again, the device sends the others, once each.
+			await a.engine.discardMessage(conversation, kept[1]!);
+			expect(await nonces(a, conversation)).toEqual([kept[0], kept[2]]);
+			const again = await restarted(fake, a);
+			await until(async () => (await nonces(again, conversation)).length === 0);
+			const ids = await queued(b, conversation);
+			expect(ids).toHaveLength(2);
+			await until(async () => (await textOn(b, conversation, ids[1]!)) !== null);
+			expect(await Promise.all(ids.map((id) => textOn(b, conversation, id)))).toEqual([
+				"refused (503)",
+				"refused (426)",
+			]);
+		},
+		SLOW,
+	);
+
+	test(
+		"an edit and a deletion apply from the entry their answer gives",
+		async () => {
+			// Ana's device hears none of its own changes' events: what its core takes of them comes from the answers.
+			const { fake, a, b, conversation } = await dm({
+				aHears: (event) => event.type !== "DM_MESSAGE_UPDATE" && event.type !== "DM_MESSAGE_DELETE",
+			});
+			const through = async () =>
+				(await a.host.handle<{ applied_through: number }>({ cmd: "apply", conversation_id: conversation, entries: [] }))
+					.applied_through;
+			const text = "first words";
+			const sent = (await a.engine.sendMessage({ conversation_id: conversation, nonce: crypto.randomUUID(), text }))!;
+			await until(async () => (await textOn(b, conversation, sent.id)) === text);
+
+			// Its answer lost, the edit goes again with the same bytes, which the API answers with the same entry.
+			fake.loseAnswer({ method: "PATCH", path: `${messagesPath(conversation)}/${sent.id}` });
+			await a.engine.editMessage(conversation, sent.id, "second words");
+			expect(await textOn(a, conversation, sent.id)).toBe("second words");
+			a.clock.advance(2_000);
+			await until(async () => (await textOn(b, conversation, sent.id)) === "second words");
+			const edits = (await b.api.queue(conversation, 0)).entries.filter((entry) => entry.kind === "edit");
+			expect(edits).toHaveLength(1);
+			await until(async () => (await through()) === edits[0]!.seq);
+			expect(await a.engine.messages(conversation, [sent.id])).toMatchObject([
+				{ text: "second words", edited_at: expect.any(Number) },
+			]);
+
+			await a.engine.deleteMessage(conversation, sent.id);
+			const deletion = (await b.api.queue(conversation, 0)).entries.find((entry) => entry.kind === "delete")!;
+			expect(await through()).toBe(deletion.seq);
+			expect(await a.engine.messages(conversation, [sent.id])).toEqual([]);
+			await until(async () => (await b.engine.messages(conversation, [sent.id])).length === 0);
+		},
+		SLOW,
+	);
+
+	test(
+		"a sticker goes in the clear with an empty envelope",
+		async () => {
+			const envelopes: unknown[] = [];
+			const host = watchedHost(testHost(), [], (cmd, command) => {
+				if (cmd === "encrypt") envelopes.push(command.envelope);
+				return null;
+			});
+			const { a, b, conversation, posts } = await dm({ aHost: host });
+			const sticker = crypto.randomUUID();
+			const nonce = crypto.randomUUID();
+			const sent = (await a.engine.sendMessage({
+				...{ conversation_id: conversation, nonce },
+				sticker_attachment_id: sticker,
+			}))!;
+			// Each time the core gives its bytes, the same empty envelope.
+			expect(envelopes.length).toBeGreaterThan(0);
+			expect(envelopes.every((envelope) => JSON.stringify(envelope) === "{}")).toBe(true);
+			expect((await posts())[0]!.body).toMatchObject({ nonce, sticker_attachment_id: sticker });
+			expect(sent.sticker_attachment_id).toBe(sticker);
+			// Bo's core opens it: a message without text.
+			await until(async () => (await b.engine.messages(conversation, [sent.id]))[0]?.status === "ok");
+			expect((await b.engine.messages(conversation, [sent.id]))[0]!.text).toBeNull();
+		},
+		SLOW,
+	);
+});

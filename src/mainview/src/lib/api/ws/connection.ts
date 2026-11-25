@@ -811,10 +811,12 @@ function handleEvent(event: GatewayEvent) {
 	}
 	if (import.meta.env.DEV) console.log("[WS] Received event:", event);
 	const payload = event.d;
+	// The encryption engine hears its events (lib/e2e/events.ts): a DM's messages first, so their entries reach the core
+	// before the views ask it for their text; the others once the app took what's its own of them, however its case ended.
+	const engineFirst = isEngineEvent(payload) && payload.type.startsWith("DM_MESSAGE_");
+	if (engineFirst) toEngine(payload);
 	takeEvent(payload, event);
-	// The encryption engine hears its events once the app took what's its own of them, however its case ended
-	// (lib/e2e/events.ts).
-	if (isEngineEvent(payload)) toEngine(payload);
+	if (!engineFirst && isEngineEvent(payload)) toEngine(payload);
 }
 
 /** The app's own handling of a dispatched event: its case may end with `return`. */
@@ -1868,7 +1870,10 @@ function takeEvent(payload: GatewayEventPayload, event: GatewayEvent) {
 					const pendingIdx = existing.findIndex((m) => m.nonce === msg.nonce);
 					if (pendingIdx !== -1) {
 						// And a page's copy of it listed meanwhile goes (see MESSAGE_CREATE).
-						const updated = existing.flatMap((m, i) => (i === pendingIdx ? [msg] : m.id === msg.id ? [] : [m]));
+						// An encrypted copy has no text: the one typed shows until the device's database has it.
+						const updated = existing.flatMap((m, i) =>
+							i === pendingIdx ? [{ ...msg, content: msg.content ?? m.content }] : m.id === msg.id ? [] : [m],
+						);
 						return { ...all, [conversationId]: updated };
 					}
 				}

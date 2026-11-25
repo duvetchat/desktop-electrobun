@@ -52,6 +52,8 @@ export class Failures {
 	readonly #clock: Clock;
 	readonly #counts = new Map<DecryptFailureKind, number>();
 	#timer: (() => void) | null = null;
+	/** Stopped with the engine: a report whose request is still out doesn't wait again after it (task 15's review, M5). */
+	#stopped = false;
 
 	constructor(api: E2eApi, clock: Clock) {
 		this.#api = api;
@@ -64,13 +66,15 @@ export class Failures {
 		this.#wait();
 	}
 
-	/** Stops waiting: what wasn't reported goes uncounted. */
+	/** Stops waiting, for good: what wasn't reported goes uncounted. */
 	stop() {
+		this.#stopped = true;
 		this.#timer?.();
 		this.#timer = null;
 	}
 
 	#wait(ms = WINDOW_MS) {
+		if (this.#stopped) return;
 		this.#timer ??= this.#clock.later(ms, () => {
 			this.#timer = null;
 			void this.#report();
@@ -83,12 +87,14 @@ export class Failures {
 	 */
 	async #report() {
 		for (const [kind, count] of [...this.#counts]) {
+			if (this.#stopped) return;
 			const sent = Math.min(count, MOST);
 			if (count === sent) this.#counts.delete(kind);
 			else this.#counts.set(kind, count - sent);
 			try {
 				await this.#api.reportDecryptFailure(kind, sent);
 			} catch (error) {
+				if (this.#stopped) return;
 				console.error(`[e2e] Failures to decrypt weren't reported (${kind}):`, error);
 				this.#counts.set(kind, (this.#counts.get(kind) ?? 0) + sent);
 				if (error instanceof FetchError && error.response?.status === 429) {
