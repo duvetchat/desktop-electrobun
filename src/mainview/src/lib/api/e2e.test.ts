@@ -325,14 +325,17 @@ const ROUTES: [
 				to_user_id: OTHER,
 				kind: "share",
 				range: "week",
-				starts_at: 1_763_000_000_000,
+				starts_at: "2025-11-13T02:13:20.000Z",
 				size: 4096,
 				parts: 1,
 			}),
 		{
 			method: "PUT",
 			url: `${conv}/history-shares/${SHARE}`,
-			data: { to_user_id: OTHER, kind: "share", range: "week", starts_at: 1_763_000_000_000, size: 4096, parts: 1 },
+			data: {
+				...{ to_user_id: OTHER, kind: "share", range: "week", starts_at: "2025-11-13T02:13:20.000Z" },
+				...{ size: 4096, parts: 1 },
+			},
 		},
 		null,
 		"nothing",
@@ -362,7 +365,7 @@ const ROUTES: [
 				from_user_id: OTHER,
 				kind: "share",
 				range: "week",
-				starts_at: 1,
+				starts_at: "2025-11-13T02:13:20Z",
 				size: 4096,
 				parts: 1,
 			},
@@ -513,9 +516,10 @@ describe("each route", () => {
 
 // A part of a shared history and a day of the backup come from the signed URL their route answers (PLAN-E2E-API.md, I
 // and J): fetched with none of the app's headers, which a redirect would have carried to the storage's host, the session
-// token among them.
+// token among them. The API's is a path of its own (storage.SignedAttachmentURL), on the API's host, not the page's.
 describe("a file at its signed URL", () => {
-	const SIGNED = "https://storage.test/segment?signature=s";
+	const SIGNED = `/attachments/${SEGMENT}?sig=s&exp=1763000000`;
+	const FETCHED = `https://api.test${SIGNED}`;
 	const appHeaders = ["Authorization", "X-Session-Token", "X-Duvet-Client"];
 
 	test("is fetched with none of the app's headers, after the API's route with them all", async () => {
@@ -528,11 +532,14 @@ describe("a file at its signed URL", () => {
 		) => {
 			const url = urlOf(input);
 			sent.push({ url, init });
-			return url === SIGNED ? new Response(FILE) : Response.json({ url: SIGNED });
+			return url === FETCHED ? new Response(FILE) : Response.json({ url: SIGNED });
 		}) as typeof fetch);
 		try {
 			expect(await e2eApi().segment(SEGMENT)).toEqual(FILE);
-			expect(sent.map(({ url }) => url)).toEqual([`https://api.test/api/users/@me/backup/segments/${SEGMENT}`, SIGNED]);
+			expect(sent.map(({ url }) => url)).toEqual([
+				`https://api.test/api/users/@me/backup/segments/${SEGMENT}`,
+				FETCHED,
+			]);
 			const [route, file] = sent.map(({ init }) => new Headers(init?.headers));
 			for (const name of appHeaders) expect([name, route!.has(name)]).toEqual([name, true]);
 			for (const name of appHeaders) expect([name, file!.has(name)]).toEqual([name, false]);
@@ -545,7 +552,7 @@ describe("a file at its signed URL", () => {
 
 	test("that the storage refuses fails with its status", async () => {
 		const fetched = spyOn(globalThis, "fetch").mockImplementation((async (input: string | URL | Request) =>
-			urlOf(input) === SIGNED
+			urlOf(input) === FETCHED
 				? new Response("expired", { status: 403 })
 				: Response.json({ url: SIGNED })) as typeof fetch);
 		try {

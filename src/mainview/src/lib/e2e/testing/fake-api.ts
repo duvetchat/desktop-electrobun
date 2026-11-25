@@ -14,6 +14,8 @@ import { uuidv7 } from "../uuid";
 
 /** Where the fake answers: any origin does, only the path counts. */
 export const FAKE_API_URL = "https://fake-api.test";
+/** A file's signed URL, as the API answers it: a path of its own (storage.SignedAttachmentURL), on the API's host. */
+const signedPath = (file: string) => `/attachments/${file}?sig=fake`;
 
 /** What a connection to the gateway hears: a dispatch's type and data. */
 export interface GatewayEvent {
@@ -224,6 +226,13 @@ function uuidIn(value: unknown, field: string): string {
 	if (typeof value !== "string" || !UUID.test(value)) throw fail(400, `${field} isn't a UUID`);
 	return value;
 }
+/** An RFC 3339 time, as Go binds a time.Time (a number among what it refuses): the instant in UTC, as the API gives it. */
+function timeIn(value: unknown, field: string): string {
+	const rfc3339 = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/i;
+	const at = typeof value === "string" && rfc3339.test(value) ? Date.parse(value) : NaN;
+	if (Number.isNaN(at)) throw fail(400, `${field} isn't an RFC 3339 time`);
+	return new Date(at).toISOString();
+}
 function numberIn(value: unknown, field: string): number {
 	if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0)
 		throw fail(400, `${field} isn't a number`);
@@ -396,7 +405,7 @@ interface Share {
 	to_user_id: string;
 	kind: "share" | "catch_up";
 	range: string;
-	starts_at: number;
+	starts_at: string;
 	size: number;
 	parts: number;
 	uploaded: Map<number, string>;
@@ -836,7 +845,7 @@ export class FakeApi {
 				if (!share || !file || ![share.to_user_id, share.from_user_id].includes(session.user)) {
 					throw fail(404, "no such part");
 				}
-				return ok({ url: `${FAKE_API_URL}/files/${file}` });
+				return ok({ url: signedPath(file) });
 			}),
 			route("POST", `/api/history-shares/(?<share>${UUID_PATH})/ack`, "device", ({ session, device, params }) => {
 				const share = this.#shares.get(params.share!);
@@ -866,10 +875,10 @@ export class FakeApi {
 			route("GET", `${me}/backup/segments/(?<segment>${UUID_PATH})`, "device", ({ session, params }) => {
 				const segment = this.#segments.get(params.segment!);
 				if (!segment || segment.identity !== this.#identities.get(session.user)?.id) throw fail(404, "no such segment");
-				return ok({ url: `${FAKE_API_URL}/files/${segment.file}` });
+				return ok({ url: signedPath(segment.file) });
 			}),
 			// A file at its signed URL, which the part's and the segment's routes answer: it takes no session.
-			route("GET", `/files/(?<file>${UUID_PATH})`, "nothing", ({ params }) => {
+			route("GET", `/attachments/(?<file>${UUID_PATH})`, "nothing", ({ params }) => {
 				const file = this.#files.get(params.file!);
 				if (!file) throw fail(404, "no such file");
 				return { status: 200, body: file };
@@ -1601,7 +1610,7 @@ export class FakeApi {
 				from_device_id: device!.id,
 				to_user_id: to,
 			},
-			...{ kind: body.kind, range: String(body.range), starts_at: numberIn(body.starts_at, "starts_at"), parts },
+			...{ kind: body.kind, range: String(body.range), starts_at: timeIn(body.starts_at, "starts_at"), parts },
 			...{ size: numberIn(body.size, "size"), uploaded: new Map(), completed: false, acked: new Set() },
 		};
 		this.#shares.set(share.id, share);

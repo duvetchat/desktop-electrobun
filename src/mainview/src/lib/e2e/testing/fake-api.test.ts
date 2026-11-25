@@ -50,8 +50,9 @@ async function call(fake: FakeApi, token: string, method: string, path: string, 
 /** A file's bytes: its route answers its signed URL (PLAN-E2E-API.md, I and J), which takes no session. */
 async function download(fake: FakeApi, token: string, path: string): Promise<Uint8Array> {
 	const { status, body } = await call(fake, token, "GET", path);
-	expect({ status, url: typeof body.url }).toEqual({ status: 200, url: "string" });
-	return new Uint8Array(await (await fake.fetch(body.url)).arrayBuffer());
+	// The API's signed URL is a path of its own (storage.SignedAttachmentURL), which the client takes on the API's host.
+	expect({ status, url: /^\/attachments\/[0-9a-f-]{36}\?sig=/.test(body.url) }).toEqual({ status: 200, url: true });
+	return new Uint8Array(await (await fake.fetch(`${FAKE_API_URL}${body.url}`)).arrayBuffer());
 }
 
 interface Device {
@@ -587,10 +588,12 @@ describe.skipIf(!coreLibrary)("the fake API, with real cores", () => {
 			to_user_id: bo,
 			kind: "share",
 			range: "all",
-			starts_at: made.start,
+			starts_at: new Date(made.start).toISOString(),
 			size: made.size,
 			parts: made.parts,
 		};
+		// Its start is a time, as the API binds a time.Time: the core's milliseconds are refused.
+		expect((await call(fake, a.token, "PUT", share, { ...about, starts_at: made.start })).status).toBe(400);
 		expect((await call(fake, a.token, "PUT", share, about)).status).toBe(201);
 		expect((await call(fake, a.token, "POST", `${share}/complete`)).status).toBe(409); // its parts aren't up yet
 		for (let n = 0; n < made.parts; n++) {
@@ -614,6 +617,7 @@ describe.skipIf(!coreLibrary)("the fake API, with real cores", () => {
 				from_user_id: ana,
 				kind: "share",
 				range: "all",
+				starts_at: about.starts_at,
 				parts: made.parts,
 			},
 		});
