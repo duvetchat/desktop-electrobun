@@ -38,6 +38,12 @@ import { SettingsWindows, type OpenAppWindow } from "./settings-windows";
 import { createSettingsWindow } from "./settings-window-native";
 import { SECOND_WINDOW_PAGES, secondWindowUrl } from "../mainview/src/lib/app-windows";
 import { SETTINGS_MENU_COMMAND } from "../mainview/src/lib/app-menu";
+import type { E2eMessage, E2eReply } from "../mainview/src/lib/e2e/host";
+import { nativeLibraryPath } from "./native-library";
+import { coreLibraryPath } from "./e2e/library";
+import { startCore } from "./e2e/core";
+import { e2eBoundary } from "./e2e/rpc";
+import { nativeConfirm } from "./e2e/confirm";
 
 // When Bun started, and its own steps of the app's start, which the page's join in startup.log (startupTimings, #280):
 // its code running (what loads before it, Electrobun's API, comes first) and the window made.
@@ -132,6 +138,9 @@ type AppRPCSchema = {
 			windowTheme: { theme: "light" | "dark" };
 			// "Restart to update": the app quits, is replaced by the version verified and opens again (#456).
 			applyUpdate: void;
+			// A request of the main window's page for the end-to-end encryption core (e2e/rpc.ts), answered with
+			// e2eReply. A message: Electrobun's requests share one time limit, and a command can take long.
+			e2e: E2eMessage;
 		};
 	};
 	webview: {
@@ -151,6 +160,8 @@ type AppRPCSchema = {
 			// What the title bar offers of the app's own updates, at each change: "Restart to update" for a version
 			// downloaded and verified, "Download update" where it can't be applied here, null for nothing (#456).
 			updateReady: UpdateOffer | null;
+			// The core's answer to an e2e request, by its id.
+			e2eReply: E2eReply;
 		};
 	};
 };
@@ -230,6 +241,26 @@ const updates = new UpdateChecker(Updater, new Uint8Array(Buffer.from(UPDATE_PUB
 	rpc.send.updateReady(offer),
 );
 
+// ── End-to-end encryption (PLAN-E2E-CLIENTES.md, Task 7) ───────────────────────────────────────────────────────────
+// The core in a worker of its own (e2e/core.ts), each user's database at <userData>/e2e/<user_id>/core.db, its key in
+// the system's keyring under the channel's own name (as its notifications have it) and the user's ID. The main window's
+// page reaches it through e2e/rpc.ts alone: the commands of the core's contract, and a yes in the system's box, over
+// this window, before what approves a device or makes new keys. A build without the library (macOS, Linux) answers
+// unsupported.
+const coreLibrary = coreLibraryPath(nativeLibraryPath);
+const e2e = e2eBoundary({
+	start: coreLibrary
+		? () =>
+				startCore({
+					library: coreLibrary,
+					folder: join(Utils.paths.userData, "e2e"),
+					keyring: { service: notificationIdentity(channel).aumid },
+				})
+		: null,
+	confirm: nativeConfirm({ platform: process.platform, owner: () => win.ptr, showMessageBox: Utils.showMessageBox }),
+	reply: (reply) => rpc.send.e2eReply(reply),
+});
+
 const rpc = BrowserView.defineRPC<AppRPCSchema>({
 	// The webview's answer to activityImage, which decodes an image of up to 4 MiB; Electrobun's default is 1 s.
 	maxRequestTime: 10_000,
@@ -284,6 +315,8 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 			},
 			openAppWindow: (request) => void settingsWindows.open(request),
 			applyUpdate: () => void updates.apply(),
+			// The main window's alone: the pop-out's RPC (media-window-open.ts) and the Settings windows' have no e2e.
+			e2e: (message) => e2e(message),
 			windowTheme: ({ theme }) => {
 				if (!glass || (theme !== "light" && theme !== "dark")) return;
 				if (!setGlassAppearance(win.ptr, theme))

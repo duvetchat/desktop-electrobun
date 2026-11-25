@@ -654,5 +654,22 @@
 			"message": "omRib2R5QwECA2NzaWdYQAcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc=",
 			"frame": null
 		}
+	],
+	"approval_fingerprints": [
+		{
+			"case": "a commitment's fingerprint, as both screens show it",
+			"commitment": "pmF2AWR1c2VyUKLgH8+1CUkdpF80a3LaYMxmZGV2aWNlUFHSeAS+y0MRs5yOiTKrdiZtc2lnbmF0dXJlX2tleVggzQQsc4UHPdXvqvWRiAtaJX12QfPk8yncBPXtxl4b3v1oaHBrZV9rZXlYIM+D0XJ/CWr8l8GHOGXCprBMYf27PV9qSU7EpJI2TVlpZGhhc2hYIH2jIbEpIfHwR32hUJ8JcLwov99Z/jsnL4CLkYtNvrMw",
+			"fingerprint": "f659 7e38 db18 1f49"
+		},
+		{
+			"case": "the same device's ID with another key is another fingerprint",
+			"commitment": "pmF2AWR1c2VyUKLgH8+1CUkdpF80a3LaYMxmZGV2aWNlUFHSeAS+y0MRs5yOiTKrdiZtc2lnbmF0dXJlX2tleVggzQQsc4UHPdXvqvWRiAtaJX12QfPk8yncBPXtxl4b3v1oaHBrZV9rZXlYIM6D0XJ/CWr8l8GHOGXCprBMYf27PV9qSU7EpJI2TVlpZGhhc2hYIH2jIbEpIfHwR32hUJ8JcLwov99Z/jsnL4CLkYtNvrMw",
+			"fingerprint": "c7b3 cd4e ca7f 6c0e"
+		},
+		{
+			"case": "any bytes a frame carries",
+			"commitment": "Y29tbWl0bWVudA==",
+			"fingerprint": "a200 9367 b562 c028"
+		}
 	]
 }

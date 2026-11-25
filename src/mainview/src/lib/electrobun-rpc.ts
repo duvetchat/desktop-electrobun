@@ -1,5 +1,6 @@
 import { activityThumbnail, base64Bytes } from "$lib/activity-thumbnail";
 import { secondWindowOfPath } from "$lib/app-windows";
+import type { E2eMessage, E2eReply } from "$lib/e2e/host";
 import type { MessageLink } from "$lib/urls";
 import type { OpenAppWindow } from "$lib/settings-windows";
 import type { WindowAnswer, WindowCommand, WindowStateMessage } from "$lib/window-link";
@@ -79,6 +80,9 @@ export type AppRPCSchema = {
 			windowTheme: { theme: "light" | "dark" };
 			// "Restart to update": Bun applies the version it verified, and the app opens again on it (#456).
 			applyUpdate: void;
+			// From the main window: a request for the end-to-end encryption core, which Bun answers with e2eReply
+			// (lib/e2e/host-desktop.ts, src/bun/e2e/rpc.ts). A message, not a request: those share one time limit.
+			e2e: E2eMessage;
 		};
 	};
 	webview: {
@@ -96,6 +100,8 @@ export type AppRPCSchema = {
 			windowState: WindowStateMessage;
 			// What the title bar offers of the app's own updates, at each change: null for nothing (#456).
 			updateReady: UpdateOffer | null;
+			// To the main window: the core's answer to an e2e request, by its id.
+			e2eReply: E2eReply;
 		};
 	};
 };
@@ -114,6 +120,7 @@ export type AppRPCClient = {
 		openAppWindow: (request: OpenAppWindow) => void;
 		windowTheme: (params: { theme: "light" | "dark" }) => void;
 		applyUpdate: () => void;
+		e2e: (message: E2eMessage) => void;
 	};
 	request: {
 		showNotification: (params: NotificationRequest) => Promise<boolean>;
@@ -133,6 +140,8 @@ export type AppRPCClient = {
 		windowCommand: (handler: (command: WindowCommand) => WindowAnswer | Promise<WindowAnswer>) => void;
 		/** What the title bar offers of the app's own updates, at each change (#456). */
 		updateReady: (handler: (offer: UpdateOffer | null) => void) => void;
+		/** In the main window: each of the core's answers (lib/e2e/host-desktop.ts). */
+		e2eReply: (handler: (reply: E2eReply) => void) => void;
 	};
 };
 
@@ -146,6 +155,7 @@ const activityListeners: ((data: ActivityPayload[] | null) => void)[] = [];
 const clickListeners: (() => void)[] = [];
 const stateListeners: ((message: WindowStateMessage) => void)[] = [];
 const updateListeners: ((offer: UpdateOffer | null) => void)[] = [];
+const e2eListeners: ((reply: E2eReply) => void)[] = [];
 let commandAnswerer: ((command: WindowCommand) => WindowAnswer | Promise<WindowAnswer>) | null = null;
 
 async function createRpcClient(): Promise<AppRPCClient | null> {
@@ -183,6 +193,9 @@ async function createRpcClient(): Promise<AppRPCClient | null> {
 				updateReady: (offer: UpdateOffer | null) => {
 					for (const listener of updateListeners) listener(offer);
 				},
+				e2eReply: (reply: E2eReply) => {
+					for (const listener of e2eListeners) listener(reply);
+				},
 			},
 		},
 	});
@@ -218,6 +231,9 @@ async function createRpcClient(): Promise<AppRPCClient | null> {
 			},
 			updateReady: (handler) => {
 				updateListeners.push(handler);
+			},
+			e2eReply: (handler) => {
+				e2eListeners.push(handler);
 			},
 		},
 	};

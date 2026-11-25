@@ -1,9 +1,11 @@
 // What the desktop and the mobile app do alike where the core leaves it to them (PLAN-E2E-CLIENTES.md, its conventions
 // between clients): a message's envelope as the core's encrypt takes it, what a message the core shows is drawn as, a
-// file's name and type as a client may use them, and the frames of a device's approval in the inbox. Each has its cases
-// in testing/e2e-conventions.json, which the mobile app's conventions_test.dart reads too.
-import { base64Bytes } from "$lib/activity-thumbnail";
-import { bytesBase64 } from "$lib/staged-images";
+// file's name and type as a client may use them, and the frames of a device's approval in the inbox, with its
+// fingerprint. Each has its cases in testing/e2e-conventions.json, which the mobile app's conventions_test.dart reads
+// too. Bun's half of the desktop's boundary reads this module as well (src/bun/e2e/rpc.ts), hence relative imports:
+// its type check knows no $lib.
+import { base64Bytes } from "../activity-thumbnail";
+import { bytesBase64 } from "../staged-images";
 
 /** A file a message carries, as the core's encrypt takes it and its messages show it: its binaries in base64. */
 export interface EnvelopeFile {
@@ -245,4 +247,21 @@ export function readApprovalFrame(message: string): ApprovalFrame | null {
 		return null;
 	}
 	return { duvet, step, data, ...(shown === undefined ? {} : { name: shown }) };
+}
+
+const FINGERPRINT_LABEL = new TextEncoder().encode("duvet approval fingerprint v1");
+
+/**
+ * The fingerprint of a device's approval (Ruling 35), which the approving computer's box names and the new device's
+ * screen shows, for the person to compare: SHA-256 over `duvet approval fingerprint v1` and the commitment's bytes, as
+ * its frame carries them, which bind all that the core certifies. Its first 8 bytes, in 16 lowercase hex digits, in
+ * four groups of four.
+ */
+export async function approvalFingerprint(commitment: Uint8Array): Promise<string> {
+	const input = new Uint8Array(FINGERPRINT_LABEL.length + commitment.length);
+	input.set(FINGERPRINT_LABEL);
+	input.set(commitment, FINGERPRINT_LABEL.length);
+	const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", input));
+	const hex = Array.from(digest.subarray(0, 8), (byte) => byte.toString(16).padStart(2, "0")).join("");
+	return `${hex.slice(0, 4)} ${hex.slice(4, 8)} ${hex.slice(8, 12)} ${hex.slice(12, 16)}`;
 }
