@@ -3,6 +3,7 @@
 	import SettingsScreen from "$lib/components/settings/SettingsScreen.svelte";
 	import { route } from "$lib/common/common";
 	import { isElectrobunWindow } from "$lib/electrobun-rpc";
+	import { t } from "$lib/i18n";
 	import { currentShell } from "$lib/platform";
 	import { closesSettingsWindow, pressIn } from "$lib/settings-keys";
 	import { askedSection } from "$lib/settings-windows";
@@ -31,7 +32,7 @@
 </script>
 
 <svelte:head>
-	<title>Duvet settings</title>
+	<title>{t("public_settings_window_title")}</title>
 </svelte:head>
 
 <svelte:window

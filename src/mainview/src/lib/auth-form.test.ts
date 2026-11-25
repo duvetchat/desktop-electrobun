@@ -10,6 +10,7 @@ import {
 	signUpSteps,
 	usernameValid,
 } from "./auth-form";
+import { t } from "./i18n";
 
 describe("what reads right", () => {
 	test("a username is letters, numbers, dots and _, 2 to 32", () => {
@@ -37,11 +38,20 @@ describe("what reads right", () => {
 describe("sign-in", () => {
 	// The API answers an empty form with its validator's words ("Key: 'AuthLogInPayload.Email' Error:Field validation
 	// for 'Email' failed on the 'required' tag"): the page sends none, and says what it lacks instead (#357).
+	// The key of what the form says, which the page draws with t(): in the language of the moment (#464).
+	const said = (email: string, password: string) => {
+		const key = signInMissing(email, password);
+		return key && t(key);
+	};
+
 	test("says what it lacks, and nothing once both are there", () => {
-		expect(signInMissing("", "")).toBe("Enter your email and password");
-		expect(signInMissing("   ", "hunter22")).toBe("Enter your email");
-		expect(signInMissing("you@example.com", "")).toBe("Enter your password");
+		expect(signInMissing("", "")).toBe("auth_sign_in_missing_both");
+		expect(signInMissing("   ", "hunter22")).toBe("auth_sign_in_missing_email");
+		expect(signInMissing("you@example.com", "")).toBe("auth_sign_in_missing_password");
 		expect(signInMissing("you@example.com", "hunter22")).toBeNull();
+		expect(said("", "")).toBe("Enter your email and password");
+		expect(said("   ", "hunter22")).toBe("Enter your email");
+		expect(said("you@example.com", "")).toBe("Enter your password");
 	});
 
 	test("a password of spaces is a password: the API says whether it is right", () => {
@@ -51,8 +61,9 @@ describe("sign-in", () => {
 	test("the page asks the API nothing while something is missing", async () => {
 		const page = await Bun.file(new URL("../routes/(auth)/sign-in/+page.svelte", import.meta.url)).text();
 		expect(page).toMatch(
-			/const missing = signInMissing\(email, password\);\s*if \(missing\) \{[^}]*errorMessage = missing;[^}]*return;\s*\}[\s\S]*await logIn\(/,
+			/const missing = signInMissing\(email, password\);\s*if \(missing\) \{[^}]*errorKey = missing;[^}]*return;\s*\}[\s\S]*await logIn\(/,
 		);
+		expect(page).toContain("{errorKey ? t(errorKey) : errorMessage}");
 	});
 });
 

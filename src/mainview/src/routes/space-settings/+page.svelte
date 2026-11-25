@@ -4,6 +4,7 @@
 	import SpaceSettingsScreen from "$lib/components/settings/SpaceSettingsScreen.svelte";
 	import { route } from "$lib/common/common";
 	import { isElectrobunWindow } from "$lib/electrobun-rpc";
+	import { t } from "$lib/i18n";
 	import { currentShell } from "$lib/platform";
 	import { closesSettingsWindow, pressIn } from "$lib/settings-keys";
 	import { spaceSection } from "$lib/space-settings";
@@ -31,7 +32,11 @@
 </script>
 
 <svelte:head>
-	<title>{space ? `${space.name} · Space settings` : "Space settings"}</title>
+	<title
+		>{space
+			? t("public_space_settings_window_title_named", { space: space.name })
+			: t("public_space_settings_window_title")}</title
+	>
 </svelte:head>
 
 <svelte:window
