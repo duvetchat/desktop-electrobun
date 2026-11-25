@@ -42,10 +42,11 @@ describe("the split of the user's panel", () => {
 			"$speakingUsers.has(",
 			"<ProfileControls />",
 			"<ProfileControls collapsed />",
-		]) expect(row).toContain(part);
+		])
+			expect(row).toContain(part);
 		// Docked, the media controls are the sidebar's to mount, as one block above the row (BRIEF.md "Media controls");
 		// only the folded column has them here. The call panel is theirs in voice, so the row mounts no voice status.
-    expect(row).not.toContain('aria-label={t("shell_settings")}');
+		expect(row).not.toContain('aria-label={t("shell_settings")}');
 		expect(row).not.toContain("<UserSettings");
 		expect(row).not.toContain('aria-label="Settings"');
 		expect(row).not.toContain("<MediaControls />");
@@ -96,8 +97,8 @@ describe("the split of the user's panel", () => {
 		const code = script(bar);
 		expect(code).toContain("const media = $derived($liveMedia);");
 		expect(code).toContain("const actions = liveMediaActions;");
-    expect(expanded).toContain('aria-label={t("shell_audio_output")}');   // or whatever key you use
-		expect(expanded).toContain(t("shell_output_volume"));                 // or whatever the key is
+		expect(expanded).toContain('aria-label={t("shell_audio_output")}'); // or whatever key you use
+		expect(expanded).toContain(t("shell_output_volume")); // or whatever the key is
 		expect(code).toContain('const micLabel = $derived(media.muted ? t("shell_unmute") : t("shell_mute"));');
 	});
 

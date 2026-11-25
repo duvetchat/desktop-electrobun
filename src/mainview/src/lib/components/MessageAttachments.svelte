@@ -172,22 +172,17 @@
 					{@const pulse = share === null ? "animate-pulse" : ""}
 					<!-- While its upload is followed, its share of it shows as a bar along its bottom, which takes the pulse's place -->
 					{#if att.content_type.startsWith("image/")}
-						<div
-							class="{MESSAGE_MEDIA_PENDING} flex h-40 w-64 max-w-full items-center justify-center {pulse}"
-						>
+						<div class="{MESSAGE_MEDIA_PENDING} flex h-40 w-64 max-w-full items-center justify-center {pulse}">
 							<span class="text-duvet-ink2 px-3 text-center text-xs">{t("chat_upload_file", { name })}</span>
 							{@render fileBar(share)}
 						</div>
 					{:else if att.content_type.startsWith("video/")}
-						<div
-							class="{MESSAGE_MEDIA_PENDING} flex h-44 w-80 max-w-full items-center justify-center {pulse}"
-						>
+						<div class="{MESSAGE_MEDIA_PENDING} flex h-44 w-80 max-w-full items-center justify-center {pulse}">
 							<span class="text-duvet-ink2 px-3 text-center text-xs">{t("chat_upload_file", { name })}</span>
 							{@render fileBar(share)}
 						</div>
 					{:else}
-						<div
-							class="{MESSAGE_CARD} relative inline-flex w-[300px] max-w-full items-center gap-2 px-3 py-3 {pulse}">
+						<div class="{MESSAGE_CARD} relative inline-flex w-[300px] max-w-full items-center gap-2 px-3 py-3 {pulse}">
 							<span class="text-duvet-ink2 min-w-0 truncate text-xs">{t("chat_upload_file", { name })}</span>
 							<span class="text-duvet-ink2 shrink-0 text-xs opacity-60">{chatFileSize(att.size_bytes)}</span>
 							{@render fileBar(share)}
