@@ -32,6 +32,7 @@
     "src/mainview/src/lib/stickers/fun.ts",
     "src/mainview/src/lib/stickers/motions.ts",
     "src/mainview/src/lib/stickers/icons.ts",
+		"src/mainview/src/lib/e2e/wasm/**",
 		"node_modules",
 		".svelte-kit",
 		"build",
