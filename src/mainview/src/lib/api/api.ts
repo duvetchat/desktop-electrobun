@@ -1,5 +1,6 @@
 import { getHostURL, route } from "$lib/common/common";
 import { inAppWords } from "$lib/api/error-wording";
+import { duvetClient } from "$lib/e2e/client";
 import { currentShell } from "$lib/platform";
 import {
 	renewalDue,
@@ -19,7 +20,7 @@ export interface FetchRequestConfig extends Omit<RequestInit, "body"> {
 	params?: Record<string, string | number | boolean | null | undefined>;
 	data?: any;
 	_retry?: boolean;
-	/** A form's upload, as it goes: the bytes of its body sent so far, and their total. sent reaches total once the whole
+	/** A form's upload, or a Blob's, as it goes: the bytes of its body sent so far, and their total. sent reaches total once the whole
 	 * body is up, and the request then waits for its answer. A form sent again (after a refresh) starts over from 0.
 	 * Other requests report nothing. */
 	onUploadProgress?: (sent: number, total: number) => void;
@@ -86,6 +87,52 @@ export class FetchError extends Error {
 		this.config = config;
 		this.response = response;
 	}
+}
+
+/**
+ * The API's 426 (PLAN-E2E-API.md, its e2eClient): a route of end-to-end encryption, or of a conversation, takes only a
+ * client that has it, and this one isn't (its X-Duvet-Client is below E2E_MIN_CLIENTS). `client` is what the API read
+ * it as, null when it couldn't; `minimum` is its platform's lowest version with encryption, null when the platform has
+ * none yet (macOS and Linux, decisions 38 and 39).
+ */
+export class UpdateRequiredError extends FetchError {
+	readonly client: string | null;
+	readonly minimum: string | null;
+
+	constructor(message: string, config: FetchRequestConfig, response: FetchResponse) {
+		super(message, config, response);
+		this.name = "UpdateRequiredError";
+		const { client, minimum } = response.data ?? {};
+		this.client = typeof client === "string" ? client : null;
+		this.minimum = typeof minimum === "string" ? minimum : null;
+	}
+}
+
+/** What the API's 503 says while encrypted conversations are paused (E2E_PAUSED, its e2eWrites). */
+const PAUSED = "encrypted conversations are paused";
+
+/**
+ * The API's 503 while encrypted conversations are paused: a conversation's write waits `retryAfter` seconds, its
+ * Retry-After (60, the API's own, when it doesn't read), and goes again as it was.
+ */
+export class PausedError extends FetchError {
+	readonly retryAfter: number;
+
+	constructor(message: string, config: FetchRequestConfig, response: FetchResponse) {
+		super(message, config, response);
+		this.name = "PausedError";
+		const seconds = Number(response.headers.get("Retry-After") ?? Number.NaN);
+		this.retryAfter = Number.isFinite(seconds) && seconds >= 0 ? seconds : 60;
+	}
+}
+
+/** An answer of the API's that isn't a success, as the error it is: a 426 or a pause's 503 by its type, any other a
+ * FetchError, read as it always was. */
+function refusal(response: FetchResponse, config: FetchRequestConfig): FetchError {
+	const message = `Request failed with status ${response.status}`;
+	if (response.status === 426) return new UpdateRequiredError(message, config, response);
+	if (response.status === 503 && response.data?.error === PAUSED) return new PausedError(message, config, response);
+	return new FetchError(message, config, response);
 }
 
 class RefreshFailedError extends Error {
@@ -176,22 +223,25 @@ function responseOf(xhr: XMLHttpRequest): Response {
 	return new Response(body, { status: xhr.status, statusText: xhr.statusText, headers });
 }
 
-/** Sends a form as fetch sends it with init, through XMLHttpRequest, whose upload progress tells an upload that stalled
- * from a slow one (fetch has none): one that stops sending for uploadLimits.idleMs, or whose answer hasn't come
- * uploadLimits.answerMs after its last byte, is aborted and fails with an UploadTimeoutError. A network error, or an
- * abort of init.signal (with its reason), fails as fetch's does. bytes is the form's size (formBytes). onProgress gets
- * the progress (FetchRequestConfig.onUploadProgress) until the request ends. */
+/** Sends a form, or a Blob's bytes, as fetch sends it with init, through XMLHttpRequest, whose upload progress tells an
+ * upload that stalled from a slow one (fetch has none): one that stops sending for uploadLimits.idleMs, or whose answer
+ * hasn't come uploadLimits.answerMs after its last byte, is aborted and fails with an UploadTimeoutError. A network error,
+ * or an abort of init.signal (with its reason), fails as fetch's does. bytes is the body's size (formBytes for a form).
+ * onProgress gets the progress (FetchRequestConfig.onUploadProgress) until the request ends. */
 function sendForm(
 	url: string,
 	init: RequestInit,
-	form: FormData,
+	form: FormData | Blob,
 	bytes: number,
 	onProgress?: (sent: number, total: number) => void,
 ): Promise<Response> {
-	let files = 0;
-	form.forEach((value) => {
-		if (typeof value !== "string") files++;
-	});
+	// A Blob is one file.
+	let files = form instanceof Blob ? 1 : 0;
+	if (form instanceof FormData) {
+		form.forEach((value) => {
+			if (typeof value !== "string") files++;
+		});
+	}
 	return new Promise((resolve, reject) => {
 		if (init.signal?.aborted) {
 			reject(init.signal.reason);
@@ -272,7 +322,7 @@ function sendForm(
  * fails with a NoAnswerError; the answer comes back with its body in memory. An abort of init.signal fails as fetch's
  * does. Not AbortSignal.any and AbortSignal.timeout: an older Mac's WebKit, which the app runs on there, lacks them
  * (GifPicker). */
-async function fetchWithin(url: string, init: RequestInit, ms: number): Promise<Response> {
+export async function fetchWithin(url: string, init: RequestInit, ms: number): Promise<Response> {
 	if (!Number.isFinite(ms)) return fetch(url, init);
 	const request = new AbortController();
 	const own = init.signal;
@@ -378,7 +428,7 @@ async function takeMainWindowsRenewal(refused: string | null): Promise<string> {
 }
 
 async function requestRefresh(): Promise<string> {
-	const refreshHeaders = new Headers();
+	const refreshHeaders = new Headers({ "X-Duvet-Client": duvetClient() });
 	const currentSessionToken = localStorage.getItem("duvet_refresh_token");
 	if (currentSessionToken) {
 		refreshHeaders.set("X-Session-Token", currentSessionToken);
@@ -485,20 +535,23 @@ const buildFetchResponse = async (res: Response): Promise<FetchResponse> => {
 };
 
 const coreFetch = async <T = any>(endpoint: string, options: FetchRequestConfig = {}): Promise<FetchResponse<T>> => {
-	const form = options.data instanceof FormData ? options.data : null;
-	const bytes = form ? formBytes(form) : 0;
+	// A form, or a Blob's bytes (a sealed part, a day of the backup), goes up through XMLHttpRequest, which gives up an
+	// upload that stalls (sendForm) and reports how far it is; the rest through fetch, given up when its answer doesn't
+	// come in time (fetchWithin).
+	const upload = options.data instanceof FormData || options.data instanceof Blob ? options.data : null;
+	const bytes = upload instanceof FormData ? formBytes(upload) : (upload?.size ?? 0);
 	if (bytes > MAX_REQUEST_BYTES) throw new TooLargeError(bytes);
-	// A form goes up through XMLHttpRequest, which gives up an upload that stalls (sendForm) and reports how far it is;
-	// the rest through fetch, given up when its answer doesn't come in time (fetchWithin).
 	const send = (url: string, init: RequestInit): Promise<Response> =>
-		form
-			? sendForm(url, init, form, bytes, options.onUploadProgress)
+		upload
+			? sendForm(url, init, upload, bytes, options.onUploadProgress)
 			: fetchWithin(url, init, options.answerMs ?? requestLimits.answerMs);
 
 	const token = get(accessToken) || localStorage.getItem("duvet_session_token");
 	const sessionToken = localStorage.getItem("duvet_refresh_token");
 
 	const headers = new Headers(options.headers);
+	// What the app is: the API takes encryption's routes and a conversation's only from a client that has it (426).
+	headers.set("X-Duvet-Client", duvetClient());
 	if (token) headers.set("Authorization", `Bearer ${token}`);
 	if (sessionToken) headers.set("X-Session-Token", sessionToken);
 
@@ -509,10 +562,10 @@ const coreFetch = async <T = any>(endpoint: string, options: FetchRequestConfig 
 	};
 
 	if (options.data !== undefined) {
-		if (!headers.has("Content-Type") && !(options.data instanceof FormData)) {
-			headers.set("Content-Type", "application/json");
+		if (!headers.has("Content-Type") && !(upload instanceof FormData)) {
+			headers.set("Content-Type", upload ? "application/octet-stream" : "application/json");
 		}
-		fetchOptions.body = options.data instanceof FormData ? options.data : JSON.stringify(options.data);
+		fetchOptions.body = upload ?? JSON.stringify(options.data);
 	}
 
 	let url = endpoint.startsWith("http") ? endpoint : `${getHostURL()}${endpoint}`;
@@ -544,13 +597,11 @@ const coreFetch = async <T = any>(endpoint: string, options: FetchRequestConfig 
 			if (newSessionToken) headers.set("X-Session-Token", newSessionToken);
 			const retryResponse = await send(url, { ...fetchOptions, headers });
 			const parsedRetry = await buildFetchResponse(retryResponse);
-			if (!retryResponse.ok) {
-				throw new FetchError(`Request failed with status ${retryResponse.status}`, options, parsedRetry);
-			}
+			if (!retryResponse.ok) throw refusal(parsedRetry, options);
 			return parsedRetry;
 		}
 
-		return Promise.reject(new FetchError(`Request failed with status ${response.status}`, options, fetchResp));
+		return Promise.reject(refusal(fetchResp, options));
 	}
 
 	return buildFetchResponse(response);

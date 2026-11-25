@@ -47,6 +47,13 @@ async function call(fake: FakeApi, token: string, method: string, path: string, 
 	};
 }
 
+/** A file's bytes: its route answers its signed URL (PLAN-E2E-API.md, I and J), which takes no session. */
+async function download(fake: FakeApi, token: string, path: string): Promise<Uint8Array> {
+	const { status, body } = await call(fake, token, "GET", path);
+	expect({ status, url: typeof body.url }).toEqual({ status: 200, url: "string" });
+	return new Uint8Array(await (await fake.fetch(body.url)).arrayBuffer());
+}
+
 interface Device {
 	host: BunCoreHost;
 	user: string;
@@ -521,9 +528,9 @@ describe.skipIf(!coreLibrary)("the fake API, with real cores", () => {
 				...{ size: bytes.length, created_at: expect.any(String) },
 			},
 		]);
-		expect(
-			bytesBase64((await call(fake, a.token, "GET", `/api/users/@me/backup/segments/${second.body.id}`)).body),
-		).toBe(segment.data);
+		expect(bytesBase64(await download(fake, a.token, `/api/users/@me/backup/segments/${second.body.id}`))).toBe(
+			segment.data,
+		);
 		// The header names its conversation and its day: another route's isn't taken.
 		expect(
 			(
@@ -605,7 +612,7 @@ describe.skipIf(!coreLibrary)("the fake API, with real cores", () => {
 		}
 		const parts: Uint8Array[] = [];
 		for (let n = 0; n < made.parts; n++) {
-			parts.push((await call(fake, b.token, "GET", `/api/history-shares/${made.share_id}/parts/${n}`)).body);
+			parts.push(await download(fake, b.token, `/api/history-shares/${made.share_id}/parts/${n}`));
 		}
 		expect(await b.host.importShare(made.share_id, parts)).toEqual({ imported: expect.any(Number) });
 		expect((await call(fake, b.token, "POST", `/api/history-shares/${made.share_id}/ack`)).status).toBe(204);

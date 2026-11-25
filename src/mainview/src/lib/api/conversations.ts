@@ -27,6 +27,17 @@ export interface ConversationMember extends Partial<Presence> {
 	};
 }
 
+/** A conversation's MLS group (PLAN-E2E-API.md, E): its generation and epoch, its queue's last number and the number
+ * it's whole from, and the number from which this session's device has had a leaf in it, null without one. Only a REST
+ * answer has it: an event's conversation is a new one, with no group yet. */
+export interface ConversationGroup {
+	generation: number;
+	epoch: number;
+	last_seq: number;
+	floor_seq: number;
+	joined_seq: number | null;
+}
+
 export interface Conversation {
 	id: string;
 	type: ConversationType;
@@ -36,6 +47,10 @@ export interface Conversation {
 	updated_at: string;
 	deleted_at: string | null;
 	members: ConversationMember[];
+	/** Made before end-to-end encryption came: any member may make its group (PLAN-E2E-API.md, E). The API always says. */
+	legacy?: boolean;
+	/** Its group, null without one. The API always says. */
+	mls?: ConversationGroup | null;
 }
 
 export interface DirectMessage {
@@ -67,6 +82,22 @@ export interface DirectMessage {
 	pinned_at?: string | null;
 	/** A call notice's call: who was in it, and when. No other message has one. */
 	call?: CallNotice;
+	// An encrypted message's own (PLAN-E2E-API.md, G); a notice has none of them.
+	/** Its MLS message, standard base64, which the core opens. */
+	ciphertext?: string;
+	/** Its number in its conversation's queue, and when the API took it (Unix ms): its entry's. */
+	seq?: number;
+	sent_at?: number;
+	/** The group's generation and epoch it was made in. */
+	generation?: number;
+	epoch?: number;
+	sender_device_id?: string;
+	/** When its author last edited it. */
+	edited_at?: string;
+	/** Whom it mentions, as its sender listed them. */
+	mentions?: string[];
+	/** A shared history's notice (type 4): whom it was shared with, and how far back. */
+	history_share?: { to_user_id: string; range: string };
 }
 
 export async function getConversations(): Promise<Conversation[]> {

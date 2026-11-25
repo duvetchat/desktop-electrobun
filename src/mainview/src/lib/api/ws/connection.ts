@@ -63,6 +63,7 @@ import type {
 	CallNotice,
 	DMTypingEvent,
 	GatewayEvent,
+	GatewayEventPayload,
 	GatewaySpace,
 	Message,
 	MessageReaction,
@@ -148,6 +149,8 @@ import { forgetMemberPages, memberJoined, withMemberPage, withMemberRole } from 
 import { toast } from "$lib/stores/toast.svelte";
 import { getElectrobunRpc, type ActivityPayload } from "$lib/electrobun-rpc";
 import { identifyData } from "$lib/api/ws/identify";
+import { identifyDevice, keepDevice, keepUser } from "$lib/e2e/client";
+import { isEngineEvent, toEngine } from "$lib/e2e/events";
 
 // The user's activities as this app's Bun process reports them: the IPC apps' (VS Code, etc.) and Spotify's. The
 // gateway keeps them 2 minutes and shares only a change, so they go again every 45 s, and on each new session.
@@ -355,6 +358,29 @@ export function gatewayConnection(): number | null {
  * resume would replay what its earlier connection was sent. */
 export function wantFreshSession() {
 	freshSessionWanted = true;
+}
+
+// The device the gateway session was identified with (its first identify's, which a resume keeps), and the one the
+// latest identify named: the gateway hands a device's events only to the connections identified with it.
+let sessionDevice: string | null = null;
+let sentDevice: string | null = null;
+// Whether that identify asked to resume: the gateway keeps a resumed session's device, whatever its identify names.
+let sentResume = false;
+
+/** A session identified without the device its next identify names (lib/e2e/client.ts) starts again as a new one,
+ * which names it: a resume would keep the device it had (PLAN-E2E-CLIENTES.md, Ruling 30). Once: then it has it. */
+function nameDevice() {
+	const device = identifyDevice();
+	if (!device || device === sessionDevice || (device === sentDevice && !sentResume)) return;
+	wantFreshSession();
+	activeSocket?.close();
+}
+
+/** The engine registered this installation's device for the user, or bound this session to it: every identify names it
+ * from now on, and a gateway session identified without it starts again, once, to name it. */
+export function deviceRegistered(userId: string, deviceId: string) {
+	keepDevice(userId, deviceId);
+	nameDevice();
 }
 
 // The CALL_ACCEPT still waiting for the gateway's CALL_ACCEPTED, and the connection it went out on.
@@ -785,12 +811,23 @@ function handleEvent(event: GatewayEvent) {
 	}
 	if (import.meta.env.DEV) console.log("[WS] Received event:", event);
 	const payload = event.d;
+	takeEvent(payload, event);
+	// The encryption engine hears its events once the app took what's its own of them, however its case ended
+	// (lib/e2e/events.ts).
+	if (isEngineEvent(payload)) toEngine(payload);
+}
+
+/** The app's own handling of a dispatched event: its case may end with `return`. */
+function takeEvent(payload: GatewayEventPayload, event: GatewayEvent) {
 	switch (payload.type) {
 		case "READY": {
 			markStartup("ready");
 			const { user, sessionToken, unread_rooms } = payload.data;
 			lastSeq = 0;
 			freshSessionWanted = false;
+			// A new session, with the device its identify named; and whose it is, which the next page's identify reads.
+			sessionDevice = sentDevice;
+			keepUser(user.id);
 			// Per-space statuses are set via SPACE_CREATE member_statuses.
 			currentUser.set(user);
 			wsSessionToken.set(sessionToken);
@@ -928,6 +965,8 @@ function handleEvent(event: GatewayEvent) {
 			});
 			// Nor this app's activities, which the gateway may have let expire meanwhile.
 			if (localActivities?.length || activitiesUnsent) sendActivities();
+			// A session of a user this installation has a device of, identified without it (another account's page).
+			nameDevice();
 			break;
 		}
 		case "SPACE_CREATE": {
@@ -1857,32 +1896,13 @@ function handleEvent(event: GatewayEvent) {
 			break;
 		}
 		case "DM_MESSAGE_UPDATE": {
-			const msg = payload.data;
-			if (!msg.conversation_id) {
-				return;
-			}
-			const conversationId = msg.conversation_id;
+			// An encrypted message's edit carries its entry, which the engine opens, and no text: its row keeps what it
+			// showed, and says when it was edited.
+			const { id, conversation_id: conversationId, edited_at } = payload.data;
 			dmMessages.update((all) => {
 				const existing = all[conversationId];
 				if (!existing) return all;
-				return {
-					...all,
-					// The update payload carries what an edit changes, not attachments, reactions or reply data.
-					[conversationId]: existing.map((m) => {
-						if (m.id === msg.id)
-							return {
-								...m,
-								content: msg.content,
-								updated_at: msg.updated_at,
-								embeds: msg.embeds,
-								sticker_attachment_id: msg.sticker_attachment_id,
-							};
-						if (m.referenced_message?.message_id === msg.id) {
-							return { ...m, referenced_message: { ...m.referenced_message, content: msg.content } };
-						}
-						return m;
-					}),
-				};
+				return { ...all, [conversationId]: existing.map((m) => (m.id === id ? { ...m, edited_at } : m)) };
 			});
 			break;
 		}
@@ -2032,6 +2052,17 @@ function handleEvent(event: GatewayEvent) {
 			storageTransfers.set(payload.data, true);
 			break;
 		}
+		case "MLS_COMMIT":
+		case "MLS_WELCOME":
+		case "MLS_PROPOSAL":
+		case "DEVICE_MESSAGE":
+		case "KEY_PACKAGES_LOW":
+		case "DEVICE_ADD":
+		case "DEVICE_REMOVE":
+		case "IDENTITY_UPDATE":
+		case "HISTORY_SHARE_CREATE":
+			// End-to-end encryption's own: the engine's alone, handed to it below.
+			break;
 		default:
 			if (import.meta.env.DEV) console.log("[WS] Unhandled event:", event);
 	}
@@ -2140,6 +2171,8 @@ export function createWebSocketConnection(): GatewayConnection {
 				localStorage.getItem("duvet_session_token"),
 				lastSeq > 0 && !freshSessionWanted ? { lastSeq, sessionToken: get(wsSessionToken) } : null,
 			);
+			sentDevice = identify.device_id ?? null;
+			sentResume = Boolean(identify.session_token);
 			connectionCount++;
 			socket.send(JSON.stringify({ type: "identify", data: identify }));
 			listsAhead = identify.session_token ? null : askForLists();

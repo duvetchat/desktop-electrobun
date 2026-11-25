@@ -707,3 +707,199 @@ describe("the user's custom emojis and stickers", () => {
 		}
 	});
 });
+
+// End-to-end encryption's events (PLAN-E2E-API.md, its events; PLAN-E2E-CLIENTES.md, Task 10): the nine new ones are the
+// encryption engine's alone, which hears them through its hook (lib/e2e/events.ts), and nothing else of the app reads
+// them; a DM's messages and READY reach it too, once the app took them. No later task touches the switch for them again.
+describe("end-to-end encryption's events", () => {
+	const DEVICE = "0193a4b2-0000-7000-8000-0000000d0001";
+	const conv = conversation(90);
+	const entry = (seq: number, kind: string) => ({ seq, kind, data: "Ynl0ZXM=", sent_at: 1, generation: 0, epoch: 2 });
+	const NEW_EVENTS: [string, unknown][] = [
+		["MLS_COMMIT", { conversation_id: conv, generation: 0, epoch: 3, entry: entry(4, "commit") }],
+		["MLS_WELCOME", { conversation_id: conv, generation: 0, epoch: 3, devices: [DEVICE], entry: entry(5, "welcome") }],
+		[
+			"MLS_PROPOSAL",
+			{ conversation_id: conv, generation: 0, epoch: 3, entry: { ...entry(6, "proposal"), data: undefined } },
+		],
+		["DEVICE_MESSAGE", { device_id: DEVICE, id: message(91) }],
+		["KEY_PACKAGES_LOW", { device_id: DEVICE, remaining: 12 }],
+		[
+			"DEVICE_ADD",
+			{
+				id: DEVICE,
+				name: "Duvet for Windows",
+				client: "desktop-windows/1.2.0",
+				listed: false,
+				created_at: "2026-11-25T00:00:00Z",
+				last_seen_at: "2026-11-25T00:00:00Z",
+			},
+		],
+		["DEVICE_REMOVE", { device_id: DEVICE }],
+		["IDENTITY_UPDATE", { user_id: ALICE, identity_key: "a2V5", device_list_version: 2 }],
+		[
+			"HISTORY_SHARE_CREATE",
+			{
+				id: message(92),
+				conversation_id: conv,
+				from_user_id: ALICE,
+				kind: "share",
+				range: "week",
+				starts_at: 1,
+				size: 4096,
+				parts: 1,
+			},
+		],
+	];
+
+	/** Counts what each store the app keeps chats and their marks in tells its subscribers, from now on. */
+	function watchLists() {
+		const lists = {
+			dmMessages: stores.dmMessages,
+			channelMessages: stores.channelMessages,
+			ephemeralMessages: stores.ephemeralMessages,
+			conversations: stores.conversations,
+			unreadConversations: stores.unreadConversations,
+			unreadChannels: stores.unreadChannels,
+			mentionCounts: stores.mentionCounts,
+			typingUsers: stores.typingUsers,
+		};
+		const told: Record<string, number> = {};
+		const stops = Object.entries(lists).map(([name, store]) => {
+			let first = true;
+			return store.subscribe(() => {
+				if (first) first = false;
+				else told[name] = (told[name] ?? 0) + 1;
+			});
+		});
+		return {
+			told,
+			stop: () => stops.forEach((stop) => stop()),
+		};
+	}
+
+	test("each new event reaches the engine, and none touches the message lists", async () => {
+		const { engineEvents } = await import("$lib/e2e/events");
+		const heard: unknown[] = [];
+		const stopListening = engineEvents.listen((event) => heard.push(event));
+		const lists = watchLists();
+		try {
+			for (const [type, data] of NEW_EVENTS) deliver(type, data);
+			// Each as the gateway sent it, in its order: an entry without its data too, which the engine reads from the queue.
+			expect(heard).toEqual(NEW_EVENTS.map(([type, data]) => JSON.parse(JSON.stringify({ type, data }))));
+			expect(lists.told).toEqual({});
+		} finally {
+			lists.stop();
+			stopListening();
+		}
+	});
+
+	test("a DM's messages and READY reach it too, once the app took them", async () => {
+		const { engineEvents } = await import("$lib/e2e/events");
+		const created = {
+			id: message(93),
+			conversation_id: conv,
+			author_id: ALICE,
+			content: null,
+			type: 0,
+			created_at: "2026-11-25T00:00:00Z",
+			updated_at: "2026-11-25T00:00:00Z",
+			nonce: "f3c1d7a2-5b6e-4c8d-9e0f-1a2b3c4d5e6f",
+			ciphertext: "Y2lwaGVy",
+			seq: 7,
+			sent_at: 1_764_028_800_000,
+			generation: 0,
+			epoch: 3,
+			sender_device_id: DEVICE,
+		};
+		const heard: { type: string; took: boolean }[] = [];
+		const stopListening = engineEvents.listen((event) => {
+			// What the app made of it by then.
+			const took =
+				event.type === "READY"
+					? get(stores.currentUser)?.id === ME
+					: event.type === "DM_MESSAGE_DELETE"
+						? !get(stores.dmMessages)[conv]?.some((m) => m.id === created.id)
+						: get(stores.dmMessages)[conv]?.some((m) => m.id === created.id) === true;
+			heard.push({ type: event.type, took });
+		});
+		const release = stores.dmMessages.keep(conv);
+		try {
+			ready({});
+			deliver("DM_MESSAGE_CREATE", created);
+			deliver("DM_MESSAGE_UPDATE", {
+				id: created.id,
+				conversation_id: conv,
+				edited_at: "2026-11-25T00:01:00Z",
+				entry: entry(8, "edit"),
+			});
+			deliver("DM_MESSAGE_DELETE", { id: created.id, conversation_id: conv, entry: entry(9, "delete") });
+			expect(heard).toEqual([
+				{ type: "READY", took: true },
+				{ type: "DM_MESSAGE_CREATE", took: true },
+				{ type: "DM_MESSAGE_UPDATE", took: true },
+				{ type: "DM_MESSAGE_DELETE", took: true },
+			]);
+		} finally {
+			release();
+			stopListening();
+		}
+	});
+
+	// An encrypted message's edit carries its entry, not its text (PLAN-E2E-API.md, G): its row keeps what it showed, and
+	// says when it was edited, until the engine has the new text from its entry.
+	test("an edit's event keeps its message's row, and says when it was edited", () => {
+		const row = {
+			id: message(94),
+			conversation_id: conv,
+			author_id: ALICE,
+			content: "kept",
+			type: MessageType.Text,
+			created_at: "2026-11-25T00:00:00Z",
+			updated_at: "2026-11-25T00:00:00Z",
+		};
+		stores.dmMessages.update((all) => ({ ...all, [conv]: [row] }));
+		deliver("DM_MESSAGE_UPDATE", {
+			id: row.id,
+			conversation_id: conv,
+			edited_at: "2026-11-25T00:02:00Z",
+			entry: entry(10, "edit"),
+		});
+		expect(get(stores.dmMessages)[conv]).toEqual([{ ...row, edited_at: "2026-11-25T00:02:00Z" }]);
+	});
+
+	// The app's own handling of an event may end early (a DM's message without its conversation): the engine still hears it.
+	test("an event whose case leaves the switch early still reaches the engine", async () => {
+		const { engineEvents } = await import("$lib/e2e/events");
+		const heard: string[] = [];
+		const stopListening = engineEvents.listen((event) => heard.push(event.type));
+		try {
+			deliver("DM_MESSAGE_CREATE", { id: message(95), conversation_id: null, author_id: ALICE, content: null });
+			expect(heard).toEqual(["DM_MESSAGE_CREATE"]);
+		} finally {
+			stopListening();
+		}
+	});
+
+	test("an engine that fails on an event doesn't keep it from the others, nor from the app", async () => {
+		const { engineEvents } = await import("$lib/e2e/events");
+		const heard: string[] = [];
+		const logged = spyOn(console, "error").mockImplementation(() => {});
+		const stops = [
+			engineEvents.listen(() => {
+				throw new Error("the engine broke");
+			}),
+			engineEvents.listen((event) => heard.push(event.type)),
+		];
+		try {
+			ready({});
+			deliver("KEY_PACKAGES_LOW", { device_id: DEVICE, remaining: 3 });
+			expect(heard).toEqual(["READY", "KEY_PACKAGES_LOW"]);
+			expect(get(stores.currentUser)?.id).toBe(ME);
+			expect(logged).toHaveBeenCalled();
+		} finally {
+			for (const stop of stops) stop();
+			logged.mockRestore();
+		}
+	});
+});

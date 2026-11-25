@@ -98,5 +98,6 @@ Key names are words, though: Ctrl, Alt, Shift and Esc are translated (German wri
 | `mod_` | kicking and banning |
 | `storage_` | buckets, moving files, transfers |
 | `error_` | errors and notices that come from the API or the network |
+| `e2e_` | end-to-end encryption: what encrypted direct messages and groups say, devices and keys |
 | `format_` | sizes and other formats (`lib/i18n/format.ts`) |
 | `menu_`, `window_`, `os_` | the Bun process: the menu bar, window titles, permission prompts |

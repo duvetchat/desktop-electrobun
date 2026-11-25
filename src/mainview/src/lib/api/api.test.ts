@@ -5,9 +5,11 @@ import api, {
 	getApiError,
 	MAX_REQUEST_BYTES,
 	NoAnswerError,
+	PausedError,
 	refreshSession,
 	requestLimits,
 	TooLargeError,
+	UpdateRequiredError,
 	UploadTimeoutError,
 	uploadLimits,
 } from "$lib/api/api";
@@ -705,5 +707,144 @@ describe("a request the API doesn't answer", () => {
 		expect(answerLimits.answerMs + 3000).toBeLessThan(30_000);
 		// An email: 10 s to connect, then 30 s.
 		expect(answerLimits.slowAnswerMs).toBeGreaterThan(40_000);
+	});
+});
+
+// The API takes a conversation's routes, and every route of end-to-end encryption, only from a client that has it: its
+// X-Duvet-Client, <platform>/<version>, at E2E_MIN_CLIENTS or above (PLAN-E2E-API.md, its e2eClient). Below it, or with
+// none, a 426 says to update Duvet; while encryption is paused, a conversation's write is a 503 (PLAN-E2E-CLIENTES.md,
+// Task 10).
+describe("the client the app says it is", () => {
+	const CLIENT = `web/${VITE_APP_VERSION}`;
+	const clientOf = (init?: RequestInit) => new Headers(init?.headers).get("X-Duvet-Client");
+
+	test("every request carries X-Duvet-Client", async () => {
+		await api.get("/api/e2e");
+		await api.post("/api/users/@me/conversations", { type: 1, user_id: "u" });
+		expect(fetched.mock.calls.map(([, init]) => clientOf(init))).toEqual([CLIENT, CLIENT]);
+		// A form's too, through XMLHttpRequest.
+		await api.post("/api/users/@me/conversations/c/messages", messageForm(file(1024)));
+		expect(FakeXHR.last!.headers["x-duvet-client"]).toBe(CLIENT);
+	});
+
+	test("and so does a request sent again with the session's refreshed tokens, and the refresh itself", async () => {
+		localStorage.setItem("duvet_session_token", "access-1");
+		localStorage.setItem("duvet_refresh_token", "session-1");
+		fetched.mockImplementation((async (input: string | URL | Request, init?: RequestInit) => {
+			const url = input instanceof Request ? input.url : input.toString();
+			sent.push(url);
+			if (url.endsWith("/api/auth/refresh")) return Response.json({ token: "access-2", session_token: "session-2" });
+			return new Headers(init?.headers).get("Authorization") === "Bearer access-2"
+				? Response.json({ id: "m" })
+				: Response.json({ error: "expired" }, { status: 401 });
+		}) as typeof fetch);
+		expect((await api.get("/api/users/@me/devices")).status).toBe(200);
+		expect(sent).toEqual([
+			"https://api.test/api/users/@me/devices",
+			"https://api.test/api/auth/refresh",
+			"https://api.test/api/users/@me/devices",
+		]);
+		expect(fetched.mock.calls.map(([, init]) => clientOf(init))).toEqual([CLIENT, CLIENT, CLIENT]);
+	});
+
+	test("a 426 is an UpdateRequiredError with its minimum", async () => {
+		const answering = (body: unknown) =>
+			fetched.mockImplementation((async (_input: string | URL | Request) =>
+				Response.json(body, { status: 426 })) as typeof fetch);
+		answering({ error: "update Duvet", client: "web/1.1.0", minimum: "1.2.0" });
+		const failure = await api.get("/api/users/@me/conversations/c/messages").catch((e: unknown) => e);
+		if (!(failure instanceof UpdateRequiredError)) throw new Error(`not an UpdateRequiredError: ${String(failure)}`);
+		expect(failure).toMatchObject({ client: "web/1.1.0", minimum: "1.2.0" });
+		// It reads as every refusal of the API does.
+		expect(failure).toBeInstanceOf(FetchError);
+		expect(failure.response?.status).toBe(426);
+		expect(getApiError(failure, "fallback")).toBe("Update Duvet");
+
+		// A platform with no end-to-end encryption yet (macOS and Linux, decisions 38 and 39) has no minimum, and a client
+		// the API couldn't read isn't named.
+		answering({ error: "update Duvet", client: "desktop-linux/1.2.0", minimum: null });
+		expect(await api.get("/api/e2e/x").catch((e: unknown) => e)).toMatchObject({
+			client: "desktop-linux/1.2.0",
+			minimum: null,
+		});
+		answering({ error: "update Duvet", client: null, minimum: null });
+		expect(await api.get("/api/e2e/x").catch((e: unknown) => e)).toMatchObject({ client: null, minimum: null });
+
+		// A form's too.
+		FakeXHR.onSend = (xhr) =>
+			queueMicrotask(() => xhr.respond(426, { error: "update Duvet", client: "web/1.1.0", minimum: "1.2.0" }));
+		const upload = await api.post("/api/users/@me/conversations/c/messages", messageForm(file(1024))).catch((e) => e);
+		expect(upload).toBeInstanceOf(UpdateRequiredError);
+		expect(upload).toMatchObject({ minimum: "1.2.0" });
+	});
+
+	test("a paused 503 is a PausedError", async () => {
+		const paused = (headers: Record<string, string>) =>
+			fetched.mockImplementation((async (_input: string | URL | Request) =>
+				Response.json({ error: "encrypted conversations are paused" }, { status: 503, headers })) as typeof fetch);
+		paused({ "Retry-After": "60" });
+		const failure = await api.post("/api/users/@me/conversations/c/mls/commits", {}).catch((e: unknown) => e);
+		if (!(failure instanceof PausedError)) throw new Error(`not a PausedError: ${String(failure)}`);
+		expect(failure).toMatchObject({ retryAfter: 60 });
+		expect(failure).toBeInstanceOf(FetchError);
+		expect(failure.response?.status).toBe(503);
+		expect(getApiError(failure, "fallback")).toBe("Encrypted conversations are paused");
+
+		// Its wait is the one the API says, and the API's own 60 s when the header doesn't read.
+		paused({ "Retry-After": "120" });
+		expect(await api.post("/api/x", {}).catch((e: unknown) => e)).toMatchObject({ retryAfter: 120 });
+		paused({});
+		expect(await api.post("/api/x", {}).catch((e: unknown) => e)).toMatchObject({ retryAfter: 60 });
+	});
+
+	// A busy validator's 503 (try again in 5 s), a 409 or a 422 read as before: the engine reads their bodies.
+	test("any other refusal is the FetchError it was, with the API's body", async () => {
+		const refusals = [
+			[503, { error: "the validator is busy" }],
+			[409, { error: "another commit took this epoch", generation: 0, epoch: 4 }],
+			[422, { error: "commit refused", code: "stale_proposal" }],
+			[410, { error: "queue expired", floor_seq: 12 }],
+		] as const;
+		for (const [status, body] of refusals) {
+			fetched.mockImplementation((async (_input: string | URL | Request) =>
+				Response.json(body, { status, headers: { "Retry-After": "5" } })) as typeof fetch);
+			const failure = await api.post("/api/users/@me/conversations/c/mls/commits", {}).catch((e: unknown) => e);
+			if (!(failure instanceof FetchError)) throw new Error(`not a FetchError: ${String(failure)}`);
+			expect(failure).not.toBeInstanceOf(PausedError);
+			expect(failure).not.toBeInstanceOf(UpdateRequiredError);
+			expect(failure.response).toMatchObject({ status, data: body });
+		}
+	});
+});
+
+// A part of a shared history and a day of the backup go up as their bytes (PLAN-E2E-API.md, I and J), as a form goes:
+// through XMLHttpRequest, with its time limits, and refused before anything is sent when over the API's 32 MiB.
+describe("a request's bytes", () => {
+	test("go up as they are, through XMLHttpRequest, as a form does", async () => {
+		const blob = new Blob([new Uint8Array([0xa1, 0x00, 0xff, 0xfe])]);
+		FakeXHR.onSend = (xhr) => queueMicrotask(() => xhr.respond(201, { id: "s" }));
+		const res = await api.put("/api/users/@me/backup/segments/c/2026-11-24", blob);
+		expect(res).toMatchObject({ status: 201, data: { id: "s" } });
+		const xhr = FakeXHR.last!;
+		expect(xhr.body).toBe(blob);
+		expect(xhr.headers).toMatchObject({
+			"content-type": "application/octet-stream",
+			"x-duvet-client": `web/${VITE_APP_VERSION}`,
+		});
+		expect(fetched).not.toHaveBeenCalled();
+	});
+
+	test("over the API's 32 MiB are refused before anything is sent", async () => {
+		const blob = new Blob([new Uint8Array(MAX_REQUEST_BYTES + 1)]);
+		await expect(api.put("/api/users/@me/backup/segments/c/2026-11-24", blob)).rejects.toBeInstanceOf(TooLargeError);
+		expect(sent).toEqual([]);
+	});
+
+	test("that stop going up are given up after a form's idle time", async () => {
+		uploadLimits.idleMs = 40;
+		FakeXHR.onSend = (xhr) => queueMicrotask(() => xhr.sends(512));
+		const failure = await api.put("/api/history-shares/s/parts/0", new Blob([new Uint8Array(1024)])).catch((e) => e);
+		expect(failure).toBeInstanceOf(UploadTimeoutError);
+		expect(FakeXHR.last!.aborted).toBe(true);
 	});
 });

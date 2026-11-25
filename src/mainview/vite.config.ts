@@ -1,6 +1,7 @@
 import { sveltekit } from "@sveltejs/kit/vite";
 import tailwindcss from "@tailwindcss/vite";
 import { defineConfig, loadEnv } from "vite";
+import { version } from "../../package.json";
 import { slimEmojiData } from "./emoji-data-slim";
 import { rnnoiseWasm } from "./rnnoise-wasm";
 import { DEV_CONNECT_ENV } from "./svelte.config.js";
@@ -28,6 +29,8 @@ export default defineConfig(({ mode }) => {
 			VITE_DOMAIN_TARGET_ENV: JSON.stringify(env.VITE_DOMAIN_TARGET_ENV || "duvet"),
 			VITE_API_URL: JSON.stringify(apiURL),
 			VITE_WS_URL: JSON.stringify(wsURL),
+			// What the app tells the API and the gateway it is (lib/e2e/client.ts): the desktop's version, in every mode.
+			VITE_APP_VERSION: JSON.stringify(version),
 		},
 		build: {
 			rollupOptions: {

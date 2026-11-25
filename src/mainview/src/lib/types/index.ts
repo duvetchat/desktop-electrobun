@@ -451,18 +451,13 @@ export interface MessageUpdateEvent {
 	user?: GatewayUser;
 }
 
-/** DM_MESSAGE_UPDATE: like MESSAGE_UPDATE, for a conversation. */
+/** DM_MESSAGE_UPDATE: an encrypted message was edited (PLAN-E2E-API.md, its events): when, and the edit's entry in the
+ * conversation's queue, which the core opens. No text: the device's own database has it. */
 export interface DMMessageUpdateEvent {
 	id: string;
-	conversation_id: string | null;
-	author_id: string | null;
-	content: string | null;
-	type: MessageType;
-	created_at: string;
-	updated_at: string;
-	sticker_attachment_id: string | null;
-	embeds: Embed[] | null;
-	user?: GatewayUser;
+	conversation_id: string;
+	edited_at: string;
+	entry: MlsEventEntry;
 }
 
 /** SPACE_UPDATE: the space itself, without its rooms, roles or members. */
@@ -981,6 +976,110 @@ export interface ConversationMemberRemoveEvent {
 export interface DMMessageDeleteEvent {
 	id: string;
 	conversation_id: string;
+	/** An encrypted message's tombstone, its entry in the queue; a notice's deletion has none. */
+	entry?: MlsEventEntry;
+}
+
+// End-to-end encryption's events (PLAN-E2E-API.md, its events; duvet-api's internal/domain/events/e2e.go), which only the
+// encryption engine reads (lib/e2e/events.ts). Binary fields are standard base64, as the core takes them.
+
+/** An entry of a conversation's queue, what the core's apply takes: its number, its kind and its MLS message, when the
+ * API took it (Unix ms), the group's generation and epoch it's of, and who sent it but for the API's own proposals,
+ * which carry the leave statement of whoever left. A message's, an edit's and a deletion's message_id is the message's;
+ * a message's also says whom it mentions and what it answers. `deleted` marks a deleted message, or an edit of one, whose
+ * bytes are gone. */
+export interface MlsEntry {
+	seq: number;
+	kind: "commit" | "welcome" | "proposal" | "message" | "edit" | "delete";
+	data: string | null;
+	sent_at: number;
+	generation: number;
+	epoch: number;
+	message_id?: string;
+	sender_user?: string;
+	sender_device?: string;
+	statement?: string;
+	deleted?: boolean;
+	mentions?: string[];
+	reply_to?: string;
+}
+
+/** An entry as an event carries it: without its data past 16 KiB, which the engine then reads from the queue. */
+export interface MlsEventEntry extends Omit<MlsEntry, "data"> {
+	data?: string | null;
+}
+
+/** MLS_COMMIT: a commit entered a conversation's group, to its members: the group's generation and epoch after it. */
+export interface MlsCommitEvent {
+	conversation_id: string;
+	generation: number;
+	epoch: number;
+	entry: MlsEventEntry;
+}
+
+/** MLS_PROPOSAL: the API proposed a leaf's removal, to the group's members: the generation and epoch it's of. */
+export type MlsProposalEvent = MlsCommitEvent;
+
+/** MLS_WELCOME: a welcome brings devices into a conversation's group, to each user it brings devices of. */
+export interface MlsWelcomeEvent {
+	conversation_id: string;
+	generation: number;
+	/** The epoch they join at. */
+	epoch: number;
+	devices: string[];
+	entry: MlsEventEntry;
+}
+
+/** DEVICE_MESSAGE: a message waits in a device's inbox, to that device's connections alone. Nothing of it: the engine
+ * reads it from the inbox. */
+export interface DeviceMessageEvent {
+	device_id: string;
+	id: string;
+}
+
+/** KEY_PACKAGES_LOW: a device has fewer than 20 single-use key packages left to hand out, to its own connections. */
+export interface KeyPackagesLowEvent {
+	device_id: string;
+	remaining: number;
+}
+
+/** A device of the user's, as DEVICE_ADD gives it to every session of theirs; GET …/devices adds `current`. */
+export interface UserDevice {
+	id: string;
+	name: string;
+	/** What registered it, as its X-Duvet-Client said. */
+	client: string;
+	/** On the user's signed device list. */
+	listed: boolean;
+	created_at: string;
+	last_seen_at: string;
+}
+
+/** DEVICE_REMOVE: a device of the user's was removed. */
+export interface DeviceRemoveEvent {
+	device_id: string;
+}
+
+/** IDENTITY_UPDATE: a user's identity or device list changed, to them, their friends and whoever shares a conversation
+ * with them, who read it again to observe it. */
+export interface IdentityUpdateEvent {
+	user_id: string;
+	identity_key: string;
+	device_list_version: number;
+}
+
+/** A shared history as its recipient gets it (HISTORY_SHARE_CREATE, GET …/history-shares; PLAN-E2E-API.md, I): a
+ * share or a catch-up, from whom, how far back (`range`) and from when (`starts_at`, Unix ms), its size and its parts.
+ * Its key comes by the inbox. */
+export interface HistoryShare {
+	id: string;
+	conversation_id: string;
+	from_user_id: string;
+	kind: "share" | "catch_up";
+	range: string;
+	starts_at: number;
+	size: number;
+	parts: number;
 }
 
 /** A room's message was pinned (pinned_at set) or unpinned (pinned_at null). */
@@ -1132,7 +1231,16 @@ export type GatewayEventPayload =
 	| { type: "CALL_DECLINED"; data: CallDeclinedEvent }
 	| { type: "CALL_ENDED"; data: CallEndedEvent }
 	| { type: "TEAM_INVITE_CREATE"; data: TeamInviteCreateEvent }
-	| { type: "STORAGE_TRANSFER_UPDATE"; data: StorageTransfer };
+	| { type: "STORAGE_TRANSFER_UPDATE"; data: StorageTransfer }
+	| { type: "MLS_COMMIT"; data: MlsCommitEvent }
+	| { type: "MLS_WELCOME"; data: MlsWelcomeEvent }
+	| { type: "MLS_PROPOSAL"; data: MlsProposalEvent }
+	| { type: "DEVICE_MESSAGE"; data: DeviceMessageEvent }
+	| { type: "KEY_PACKAGES_LOW"; data: KeyPackagesLowEvent }
+	| { type: "DEVICE_ADD"; data: UserDevice }
+	| { type: "DEVICE_REMOVE"; data: DeviceRemoveEvent }
+	| { type: "IDENTITY_UPDATE"; data: IdentityUpdateEvent }
+	| { type: "HISTORY_SHARE_CREATE"; data: HistoryShare };
 
 export interface GatewayEvent {
 	op: number;
