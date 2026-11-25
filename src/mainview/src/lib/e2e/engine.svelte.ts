@@ -148,7 +148,7 @@ export async function startEngine(userId: string, platform: EnginePlatform = pag
 	started = true;
 	onSignOut(stopEngine);
 	useReader((conversationId, ids) =>
-		onMessages<{ rows: ShownMessage[]; through: number | null }>("read", { conversationId, ids }, (made) =>
+		onMessages<{ rows: ShownMessage[]; through?: number | null }>("read", { conversationId, ids }, (made) =>
 			made.read(conversationId, ids),
 		),
 	);
@@ -270,9 +270,11 @@ export const deleteEncrypted = (conversationId: string, messageId: string) =>
 	onMessages<void>("deleteMessage", { conversationId, messageId }, (made) =>
 		made.deleteMessage(conversationId, messageId),
 	);
-/** The person's Dismiss of a message that never went. */
+/** The person's Dismiss of a message that never went: the API's ID of one the queue says went after all, else null. */
 export const discardEncrypted = (conversationId: string, nonce: string) =>
-	onMessages<void>("discardMessage", { conversationId, nonce }, (made) => made.discardMessage(conversationId, nonce));
+	onMessages<string | null>("discardMessage", { conversationId, nonce }, (made) =>
+		made.discardMessage(conversationId, nonce),
+	);
 /** Whether the device holds a message of the conversation older than this number, which its list pages on to. */
 export const heldBeforeEncrypted = (conversationId: string, seq: number) =>
 	onMessages<boolean>("heldBefore", { conversationId, seq }, (made) => made.heldBefore(conversationId, seq));

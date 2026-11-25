@@ -97,6 +97,9 @@ describe.skipIf(!coreLibrary)("what the device holds of a conversation", () => {
 			).toMatchObject({ waiting: true, content: null });
 			const unknown = crypto.randomUUID();
 			expect(await b.engine.messages(conversation, [unknown])).toEqual([]);
+			// The re-review's N4: a conversation the engine hasn't applied this session has no number yet, which isn't
+			// null, «out of its group».
+			expect((await b.engine.read(crypto.randomUUID(), [])).through).toBeUndefined();
 			expect(
 				directMessageToMessage(
 					row(unknown),
@@ -273,6 +276,75 @@ describe("what a conversation draws", () => {
 		expect(content.heldRow("A", "y")?.text).toBe("y of A");
 		content.letGo("B");
 		expect(content.heldRow("B", "x")).toBeUndefined();
+		content.useReader(null);
+	});
+
+	// The re-review's N2: only a text or voice row has text, the device's; a conversation's other rows draw none of the
+	// API's (a notice's words come from its own fields).
+	test("a row of another type draws none of the API's content", () => {
+		// oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the API's types beyond the client's: 4, a share's, and 7
+		const types = [2, 3, 4, 7] as DirectMessage["type"][];
+		for (const type of types) {
+			const served = row(ID, { type, content: "words put in a mouth" });
+			expect(directMessageToMessage(served, members, holding(held({}))).content).toBeNull();
+			const noNumber = row(ID, { type, seq: undefined, content: "words" });
+			expect(directMessageToMessage(noNumber, members, holding(held({}))).content).toBeNull();
+		}
+	});
+
+	// N4: out of its group (null) the device holds nothing more of a row, which waits; before the engine applied the
+	// conversation this session (undefined), it's loading.
+	test("out of its group a row the device doesn't hold waits, and before any apply it's loading", () => {
+		const late = row(ID, { seq: 7 });
+		const at = (through: number | null | undefined): MessageContent => ({
+			held: held({}),
+			typed: () => undefined,
+			through: () => through,
+		});
+		expect(directMessageToMessage(late, members, at(null))).toMatchObject({ loading: false, waiting: true });
+		expect(directMessageToMessage(late, members, at(undefined))).toMatchObject({ loading: true, waiting: false });
+	});
+
+	// N4: a read that began before an apply doesn't set the applied number back: the higher stays.
+	test("a read that began before an apply leaves the applied number the apply gave", async () => {
+		let answer: (value: { rows: ShownMessage[]; through: number | null }) => void = () => {};
+		content.useReader(() => new Promise((resolve) => (answer = resolve)));
+		const settled = () => new Promise((resolve) => setTimeout(resolve, 0));
+		content.want("C", ["x"]);
+		await settled();
+		content.refresh("C", [], 9);
+		answer({ rows: [], through: 5 });
+		await settled();
+		expect(content.contentOf("C").through()).toBe(9);
+		content.useReader(null);
+	});
+
+	// The person's own text, typed, shows until its row is there: by the nonce it's sent with, then by its ID, never in
+	// another conversation, and it goes with its pending row or once the row is read.
+	test("the person's typed text goes from its nonce to its ID, until its row is read", async () => {
+		content.useReader(async (conversationId, ids) => ({
+			rows: conversationId === "D" ? ids.map((id) => ({ ...shownRow(id), text: `held ${id}` })) : [],
+			through: 9,
+		}));
+		const settled = () => new Promise((resolve) => setTimeout(resolve, 0));
+		const d = content.contentOf("D");
+		content.keepTyped("D", "nonce", "typed");
+		expect(d.typed("nonce")).toBe("typed");
+		expect(content.contentOf("E").typed("nonce")).toBeUndefined();
+		content.moveTyped("D", "nonce", "id");
+		expect(d.typed("nonce")).toBeUndefined();
+		expect(d.typed("id")).toBe("typed");
+		content.want("D", ["id"]);
+		await settled();
+		expect(d.held("id")?.text).toBe("held id");
+		expect(d.typed("id")).toBeUndefined();
+		// Its row there already, the text doesn't move on; dropped, it goes.
+		content.keepTyped("D", "again", "typed again");
+		content.moveTyped("D", "again", "id");
+		expect(d.typed("id")).toBeUndefined();
+		content.keepTyped("D", "dismissed", "gone");
+		content.dropTyped("D", "dismissed");
+		expect(d.typed("dismissed")).toBeUndefined();
 		content.useReader(null);
 	});
 });

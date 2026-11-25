@@ -9,6 +9,7 @@ import {
 	rejection,
 	restarted,
 	sameGroup,
+	testDevice,
 	testHost,
 	turnEnded,
 	until,
@@ -78,6 +79,34 @@ const nonces = (device: TestDevice, conversation: string) =>
 /** The IDs of the conversation's messages, in their queue's order, as a device reads it. */
 const queued = async (device: TestDevice, conversation: string) =>
 	(await device.api.queue(conversation, 0)).entries.filter((e) => e.kind === "message").map((e) => e.message_id!);
+
+/** Bo's device moves the group on six epochs by hand (its engine stopped), and Ana's follows: her bytes are stale. */
+async function sixEpochs(a: TestDevice, b: TestDevice, conversation: string) {
+	await b.engine.stop();
+	await b.host.open(b.user);
+	for (let i = 0; i < 6; i++) await commitByHand(b, conversation);
+	const epochOf = async () =>
+		(await a.host.handle<{ epoch: number }>({ cmd: "group", conversation_id: conversation })).epoch;
+	await until(async () => (await epochOf()) === 7);
+}
+
+/**
+ * Three messages of Ana's that wait (each request cut), whose bytes six epochs made stale; Ana's core on `host`.
+ * The nonces she sent them with, in order.
+ */
+async function threeStale(host: CoreHost) {
+	const made = await dm({ aHost: host });
+	const { fake, a, b, conversation } = made;
+	const sent: string[] = [];
+	for (const text of ["one", "two", "three"]) {
+		const nonce = crypto.randomUUID();
+		sent.push(nonce);
+		fake.cutRequest({ method: "POST", path: messagesPath(conversation) });
+		await rejection(a.engine.sendMessage({ conversation_id: conversation, nonce, text }));
+	}
+	await sixEpochs(a, b, conversation);
+	return { ...made, sent };
+}
 
 describe("mentions", () => {
 	test("mentions are the users the text names outside code", () => {
@@ -418,8 +447,10 @@ describe.skipIf(!coreLibrary)("a device's messages", () => {
 			fake.loseAnswer({ method: "POST", path: messagesPath(conversation) });
 			await rejection(a.engine.sendMessage({ conversation_id: conversation, nonce, text: "it went" }));
 			expect(await nonces(a, conversation)).toEqual([nonce]);
-			await a.engine.discardMessage(conversation, nonce);
+			// The re-review's M3: Dismiss says it went, by the API's ID, which the view shows the API's copy of.
+			const went = await a.engine.discardMessage(conversation, nonce);
 			const [id] = await queued(a, conversation);
+			expect(went).toBe(id!);
 			expect(await textOn(a, conversation, id!)).toBe("it went");
 			expect(await nonces(a, conversation)).toEqual([]);
 		},
@@ -496,6 +527,140 @@ describe.skipIf(!coreLibrary)("a device's messages", () => {
 			await restart();
 			await until(async () => (await b.engine.messages(conversation, [sent.id])).length === 0);
 			expect(refused).toHaveLength(1);
+		},
+		SLOW,
+	);
+
+	// The re-review's N1: a message made again goes under a new nonce, which the gateway's copy carries. With its answer
+	// lost, that copy is what the device hears: it tells the views the message the person sent went, by the nonce they
+	// sent it with, as an answer does; and a Retry of it, by that nonce, posts nothing.
+	test(
+		"a message made again whose answer is lost is told sent by its copy, and its Retry posts nothing",
+		async () => {
+			const { fake, a, b, conversation, posts } = await dm();
+			const path = { method: "POST", path: messagesPath(conversation) };
+			const first = crypto.randomUUID();
+			const told: string[][] = [];
+			a.engine.onSent((id, nonce, message) => told.push([id, nonce, message.id]));
+			fake.cutRequest(path);
+			await rejection(a.engine.sendMessage({ conversation_id: conversation, nonce: first, text: "once" }));
+			await sixEpochs(a, b, conversation);
+			// Retried, it's made again under a new nonce, which the API takes; its answer is lost.
+			fake.loseAnswer(path);
+			await rejection(a.engine.sendMessage({ conversation_id: conversation, nonce: first, text: "once" }));
+			await until(() => told.length > 0);
+			const [id] = await queued(a, conversation);
+			expect(told).toEqual([[conversation, first, id!]]);
+			// The copy bound it here. Retried again, it's the message sent already: nothing more goes.
+			await until(async () => (await nonces(a, conversation)).length === 0);
+			const before = (await posts()).length;
+			expect(await a.engine.sendMessage({ conversation_id: conversation, nonce: first, text: "once" })).toBeNull();
+			expect((await posts()).length).toBe(before);
+			expect(await queued(a, conversation)).toEqual([id!]);
+		},
+		SLOW,
+	);
+
+	// N3: a message made again keeps its old bytes until its new ones exist, and each keeps its place. A remake cut
+	// midway, its second message's encrypt failing, loses nothing, and the next flush sends them all, once, in order.
+	test(
+		"a remake cut midway loses nothing, and the next flush sends every message once, in order",
+		async () => {
+			const known = new Set<string>();
+			const fresh: string[] = [];
+			let failing = false;
+			// The second message made again: its new bytes can't be made.
+			const host = watchedHost(testHost(), [], (cmd, command) => {
+				const nonce = String(command.nonce);
+				if (cmd !== "encrypt" || !failing || known.has(nonce)) return null;
+				if (!fresh.includes(nonce)) fresh.push(nonce);
+				return fresh.indexOf(nonce) === 1 ? new Error("the core couldn't encrypt it") : null;
+			});
+			const { a, conversation, sent } = await threeStale(host);
+			for (const nonce of sent) known.add(nonce);
+			failing = true;
+			await rejection(a.engine.sendMessage({ conversation_id: conversation, nonce: sent[0]!, text: "one" }));
+			failing = false;
+			expect(await nonces(a, conversation)).toEqual(sent);
+			await a.engine.sendMessage({ conversation_id: conversation, nonce: sent[0]!, text: "one" });
+			await until(async () => (await nonces(a, conversation)).length === 0);
+			const ids = await queued(a, conversation);
+			expect(await Promise.all(ids.map((id) => textOn(a, conversation, id)))).toEqual(["one", "two", "three"]);
+		},
+		SLOW,
+	);
+
+	// N3: the old bytes of a message made again that couldn't be dropped stay beside its new ones: the newer row goes,
+	// the older is dropped unsent, and the message goes once, in its place.
+	test(
+		"a message whose new bytes wait beside its old ones goes once, in its place",
+		async () => {
+			let failing = false;
+			let drops = 0;
+			const host = watchedHost(testHost(), [], (cmd) =>
+				cmd === "discard" && failing && ++drops === 2 ? new Error("the core couldn't drop it") : null,
+			);
+			const { a, conversation, sent } = await threeStale(host);
+			failing = true;
+			await rejection(a.engine.sendMessage({ conversation_id: conversation, nonce: sent[0]!, text: "one" }));
+			failing = false;
+			expect(await nonces(a, conversation)).toEqual(sent);
+			await a.engine.sendMessage({ conversation_id: conversation, nonce: sent[0]!, text: "one" });
+			await until(async () => (await nonces(a, conversation)).length === 0);
+			const ids = await queued(a, conversation);
+			expect(await Promise.all(ids.map((id) => textOn(a, conversation, id)))).toEqual(["one", "two", "three"]);
+		},
+		SLOW,
+	);
+
+	// N5: a deletion the API took, whose answer a restart cut off, goes again with new bytes, and the API answers 404 as
+	// the message is gone for everyone: it's done, and nothing says it was refused.
+	test(
+		"a deletion the API took before a restart is done, not refused",
+		async () => {
+			const { fake, a, b, conversation, seen } = await dm();
+			const sent = await a.engine.sendMessage({
+				conversation_id: conversation,
+				nonce: crypto.randomUUID(),
+				text: "gone",
+			});
+			if (!sent) throw new Error("the message wasn't sent");
+			const path = `${messagesPath(conversation)}/${sent.id}`;
+			const deletions = () => seen.filter((s) => s.method === "DELETE" && s.path === path).length;
+			fake.loseAnswer({ method: "DELETE", path });
+			await a.engine.deleteMessage(conversation, sent.id);
+			await until(async () => (await b.engine.messages(conversation, [sent.id])).length === 0);
+			await a.engine.stop();
+			const again = testDevice(fake, a.user, { host: a.host, store: a.store, token: a.token });
+			const refused: unknown[] = [];
+			again.engine.onChangeRefused((...told) => refused.push(told));
+			await again.engine.start();
+			await until(() => deletions() === 2);
+			await turnEnded(again);
+			expect(refused).toEqual([]);
+		},
+		SLOW,
+	);
+
+	// N6: a change whose send throws past its request (the queue a 409 asks for, read here with its request cut) waits as
+	// one without an answer does, and goes again: the message's changes don't stop behind it.
+	test(
+		"a change whose send throws waits, and goes again",
+		async () => {
+			const { fake, a, b, conversation } = await dm();
+			const sent = await a.engine.sendMessage({
+				conversation_id: conversation,
+				nonce: crypto.randomUUID(),
+				text: "one",
+			});
+			if (!sent) throw new Error("the message wasn't sent");
+			fake.refuse({ method: "PATCH", path: `${messagesPath(conversation)}/${sent.id}` }, 409, {
+				error: "stale message",
+			});
+			fake.cutRequest({ method: "GET", path: `/api/users/@me/conversations/${conversation}/mls/queue` });
+			await a.engine.editMessage(conversation, sent.id, "two");
+			a.clock.advance(2_000);
+			await until(async () => (await textOn(b, conversation, sent.id)) === "two");
 		},
 		SLOW,
 	);

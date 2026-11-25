@@ -227,6 +227,16 @@ test("pins, a thread's messages and search results are kept as they are, not as 
 	expect(source("MessageSearch.svelte")).toContain("let results = $state.raw<Result[]>([]);");
 });
 
+// The re-review of task 16: a conversation's thread asks the device for its messages' rows and their quotes', as it
+// draws (a quote whose message isn't in the chat's list would draw no text), and draws each through what it holds.
+test("a conversation's thread asks for its quotes with its messages, as it draws", () => {
+	const list = source("MessageList.svelte");
+	expect(list).toMatch(
+		/const quoted = threadMessages\.flatMap\(\(m\) => m\.referenced_message\?\.message_id \?\? \[\]\);\s*want\(channelId, \[\.\.\.threadMessages\.map\(\(m\) => m\.id\), \.\.\.quoted\]\);/,
+	);
+	expect(list).toContain("threadMessages.map((m) => withHeld(m, held))");
+});
+
 // #324: the list's sort made two Dates per comparison, every time the list changed.
 test("the list's sort reads each message's date once", () => {
 	const list = readFileSync(join(import.meta.dir, "MessageList.svelte"), "utf8");

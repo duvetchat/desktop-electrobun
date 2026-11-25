@@ -91,4 +91,15 @@ describe("a conversation's thread", () => {
 		};
 		expect(withHeld(reply, own).referenced_message?.content).toBeNull();
 	});
+
+	// The re-review's N2: a thread's row of another type than text or voice draws none of the API's words.
+	test("its rows of other types draw none of the API's content", () => {
+		const nothing = { held: () => null, typed: () => undefined, through: () => 9 };
+		// oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the API's types beyond the client's: 4, a share's, and 7
+		const types = [2, 3, 4, 7] as Message["type"][];
+		for (const type of types) {
+			const served = message("notice", 2, undefined, { type, content: "words put in a mouth" });
+			expect(withHeld(served, nothing).content).toBeNull();
+		}
+	});
 });

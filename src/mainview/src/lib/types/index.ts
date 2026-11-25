@@ -1527,7 +1527,9 @@ export function heldText(
 	if (!shown && typed === undefined) {
 		const held = content.held(message.id);
 		const through = content.through();
-		loading = held === undefined || (held === null && (through === null || (seq ?? 0) > through));
+		// Not applied this session (undefined), or not this far: it may come. Out of its group (null), it waits.
+		const toApply = through === undefined || (through !== null && (seq ?? 0) > through);
+		loading = held === undefined || (held === null && toApply);
 	}
 	return {
 		content: shown?.text ?? typed ?? null,
@@ -1565,7 +1567,8 @@ export function directMessageToMessage(
 	const ref = msg.referenced_message ?? null;
 	return {
 		id: msg.id,
-		content: msg.content,
+		// Only a text or voice row has text, the device's (heldText): a notice's words come from its own fields.
+		content: null,
 		waiting: false,
 		loading: false,
 		shared_by: null,

@@ -8,17 +8,20 @@
 import { createSubscriber } from "svelte/reactivity";
 import type { Held, MessageContent, ShownMessage } from "./engine/content";
 
-/** Reads the device's rows of these messages of the conversation, and how far its queue is applied (null: not yet). */
+/**
+ * Reads the device's rows of these messages of the conversation, and how far its queue is applied: none (undefined)
+ * before this session's first apply, null while this device is out of its group.
+ */
 export type Reader = (
 	conversationId: string,
 	ids: string[],
-) => Promise<{ rows: ShownMessage[]; through: number | null }>;
+) => Promise<{ rows: ShownMessage[]; through?: number | null }>;
 
 /** By conversation, then message ID: its row, or null for one this device doesn't hold. */
 const held = new Map<string, Map<string, ShownMessage | null>>();
 /** By conversation, then ID (a message's, or a nonce while it's being sent): the text the person typed. */
 const typed = new Map<string, Map<string, string>>();
-/** By conversation: how far the engine applied its queue. */
+/** By conversation: how far the engine applied its queue (null: out of its group), once a read or an apply said. */
 const through = new Map<string, number | null>();
 /** The IDs asked for, by conversation, which a change asks for again. */
 const asked = new Map<string, Set<string>>();
@@ -69,7 +72,7 @@ export function contentOf(conversationId: string): MessageContent {
 		},
 		through: () => {
 			track();
-			return through.get(conversationId) ?? null;
+			return through.get(conversationId);
 		},
 	};
 }
@@ -158,8 +161,12 @@ async function readNext() {
 			const answer = await read(conversationId, [...ids]);
 			const byId = new Map(answer.rows.map((row) => [row.message_id, row]));
 			const rows = mapOf(held, conversationId);
-			let any = through.get(conversationId) !== answer.through;
-			through.set(conversationId, answer.through);
+			// A read's number fills it in or moves it on: one taken before an apply never sets back what that apply said.
+			const was = through.get(conversationId);
+			const now = answer.through;
+			const fills = now !== undefined && (was === undefined || (was !== null && now !== null && now > was));
+			let any = fills;
+			if (fills) through.set(conversationId, now);
 			for (const id of ids) {
 				// Asked meanwhile no more (its list let it go): not kept.
 				if (!asked.get(conversationId)?.has(id)) continue;

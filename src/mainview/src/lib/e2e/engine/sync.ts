@@ -348,9 +348,12 @@ export class Conversations {
 		this.#retries.delete(conv.id);
 	}
 
-	/** How far the conversation's queue is applied on this device this session: null before its first apply, or out. */
-	through(conversationId: string): number | null {
-		return this.#through.get(conversationId) ?? null;
+	/**
+	 * How far the conversation's queue is applied on this device: none (undefined) before this session's first apply,
+	 * null while this device is out of its group.
+	 */
+	through(conversationId: string): number | null | undefined {
+		return this.#through.get(conversationId);
 	}
 
 	/**

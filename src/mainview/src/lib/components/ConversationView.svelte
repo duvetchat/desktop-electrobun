@@ -773,9 +773,25 @@
 		const convId = conversation.id;
 		failedNonces = new Set([...failedNonces].filter((n) => n !== nonce));
 		dropPending(convId, nonce);
-		discardEncrypted(convId, nonce).catch((error: unknown) => {
-			console.error("[e2e] A message that never went wasn't dropped from this device:", error);
-		});
+		void dismissed(convId, nonce);
+	}
+
+	// One the conversation's queue says went after all (its answer and its event lost) shows as the API's copy, as its
+	// answer would have shown it.
+	async function dismissed(convId: string, nonce: string) {
+		try {
+			const went = await discardEncrypted(convId, nonce);
+			if (!went) return;
+			const real = await getDirectMessageById(convId, went);
+			knowMessage(convId, real.id);
+			dmMessages.update((all) => {
+				const existing = all[convId];
+				if (!existing || existing.some((m) => m.id === real.id)) return all;
+				return { ...all, [convId]: [...existing, real] };
+			});
+		} catch (error) {
+			console.error("[e2e] A dismissed message wasn't dropped from this device, or its copy wasn't shown:", error);
+		}
 	}
 
 	// shortcut: a conversation's voice notes go with encrypted attachments (PLAN-E2E-CLIENTES.md, Task 18); until then

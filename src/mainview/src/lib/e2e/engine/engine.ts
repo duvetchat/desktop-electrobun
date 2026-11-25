@@ -244,10 +244,11 @@ export class E2EEngine {
 
 	/**
 	 * The person's Dismiss of a message the API never took, by the nonce they sent it with, whatever the device's state:
-	 * ready, its conversation's queue is read first, as a message it settles went.
+	 * ready, its conversation's queue is read first, as a message it settles went. The API's ID of a message that went
+	 * after all, whose copy the views show in its place; else null.
 	 */
-	async discardMessage(conversationId: string, nonce: string): Promise<void> {
-		await this.#queue(() => this.#sends.discard(conversationId, nonce, this.state.name === "ready"));
+	async discardMessage(conversationId: string, nonce: string): Promise<string | null> {
+		return (await this.#queue(() => this.#sends.discard(conversationId, nonce, this.state.name === "ready"))) ?? null;
 	}
 
 	/** What the device's database shows of these messages of the conversation: a row for each it holds. */
@@ -259,7 +260,7 @@ export class E2EEngine {
 	 * What the views read of these messages of the conversation: the device's rows, and how far its queue is applied this
 	 * session, taken first, so a row the read doesn't find past it is one not applied yet (drawn as loading).
 	 */
-	async read(conversationId: string, ids: string[]): Promise<{ rows: ShownMessage[]; through: number | null }> {
+	async read(conversationId: string, ids: string[]): Promise<{ rows: ShownMessage[]; through?: number | null }> {
 		const through = this.#groups.through(conversationId);
 		return { rows: await shownMessages(this.#parts.host, conversationId, ids), through };
 	}
@@ -453,6 +454,10 @@ export class E2EEngine {
 					// What waits to be sent goes once the queues are applied («Enviar»).
 					this.#soon(() => this.#whenReady(() => this.#sends.resendAll()));
 				}
+				break;
+			case "DM_MESSAGE_CREATE":
+				// The person's message made again goes under a new nonce, which only the engine knows it by.
+				this.#sends.heard(event.data);
 				break;
 			case "DEVICE_MESSAGE":
 				if (own(event.data.device_id)) this.#soon(() => this.#inbox());

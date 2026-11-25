@@ -124,3 +124,19 @@ test("a conversation's list goes back to its newest page as its view leaves it a
 	// An older page that comes once its cursor was cut away is dropped.
 	expect(view).toContain("if (before && !get(dmMessages)[convId]?.some((m) => m.id === before)) return true;");
 });
+
+// The re-review of task 16 (I4): rows from before the user joined, which the device doesn't hold, end the pages only
+// where the device holds nothing older than the oldest row loaded.
+test("the pages go on past rows from before joining while the device holds older ones", () => {
+	const view = source("ConversationView.svelte");
+	expect(view).toContain("hasMoreMessages={hasMore && (!beforeJoining || olderHeld)}");
+	expect(view).toMatch(/if \(!beforeJoining \|\| oldest === null\) \{\s*olderHeld = false;\s*return;\s*\}/);
+	expect(view).toContain("heldBeforeEncrypted(convId, oldest)");
+});
+
+// M3: a message the conversation's queue settles at its Dismiss went after all: the API's copy shows, as an answer's.
+test("a Dismiss whose message went shows the API's copy", () => {
+	const view = source("ConversationView.svelte");
+	expect(view).toContain("const went = await discardEncrypted(convId, nonce);");
+	expect(view).toContain("const real = await getDirectMessageById(convId, went);");
+});

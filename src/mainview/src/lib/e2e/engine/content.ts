@@ -30,13 +30,13 @@ export type Held = ShownMessage | null | undefined;
 
 /**
  * What a view reads of one conversation's messages on this device: the row the core holds of each, the text the person
- * typed of their own just sent (until its row is there), and how far the engine applied the conversation's queue (null
- * while it hasn't this session). Never what the API writes in a message.
+ * typed of their own just sent (until its row is there), and how far the engine applied the conversation's queue: none
+ * (undefined) before it did this session, null while this device is out of its group. Never what the API writes.
  */
 export interface MessageContent {
 	held(id: string): Held;
 	typed(id: string): string | undefined;
-	through(): number | null;
+	through(): number | null | undefined;
 }
 
 /** The row the core holds of a message, to draw as it: one sent by the author the API names, opened. */
