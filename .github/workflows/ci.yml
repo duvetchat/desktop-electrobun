@@ -21,7 +21,8 @@ jobs:
   check:
     # On the organisation's own runner: the 2,000 free Actions minutes a month ran out.
     runs-on: [self-hosted, linux, x64, duvet]
-    timeout-minutes: 15
+    # 20 since the browser tests (Task 8 of the E2E plan): a Chrome to install the first time, then about a minute.
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
       - uses: oven-sh/setup-bun@v2
@@ -47,3 +48,41 @@ jobs:
         working-directory: src/mainview
       # The Bun process's own: the Spotify reader's parsing.
       - run: bun test src/bun
+      # The web's E2E core in a browser (scripts/web-e2e.ts): the Chrome this runner has, else Chrome for Testing in its
+      # tool cache. Without one that runs here (none installs, or it lacks a system library), the step says so in a
+      # warning and the tests are skipped.
+      - name: Chrome for the browser tests
+        id: chrome
+        run: |
+          for name in google-chrome google-chrome-stable chromium chromium-browser; do
+            # A name that doesn't answer for its version within seconds is skipped: a snap's launcher, without snapd, hangs.
+            if found=$(command -v "$name") && timeout 10 "$found" --version > /dev/null 2>&1; then
+              echo "path=$found" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          done
+          if ! output=$(bunx @puppeteer/browsers@3.2.7 install chrome@stable --path "${RUNNER_TOOL_CACHE:-$HOME/.cache}/chrome-for-testing" 2>&1); then
+            echo "$output"
+            echo "::warning::No Chrome on this runner, and none could be installed: the browser tests are skipped"
+            exit 0
+          fi
+          last=$(echo "$output" | tail -n 1)
+          chrome="${last#* }"
+          if [ ! -x "$chrome" ]; then
+            echo "$output"
+            echo "::warning::Chrome for Testing didn't say where it went: the browser tests are skipped"
+            exit 0
+          fi
+          missing=$(ldd "$chrome" | grep "not found" | awk '{print $1}' | paste -sd ' ' || true)
+          if [ -n "$missing" ]; then
+            echo "::warning::Chrome for Testing lacks these libraries on this runner, so the browser tests are skipped: $missing"
+            exit 0
+          fi
+          echo "path=$chrome" >> "$GITHUB_OUTPUT"
+      - name: The web's core in Chrome
+        if: steps.chrome.outputs.path != ''
+        run: bun scripts/web-e2e.ts --browser chrome
+        env:
+          CHROME: ${{ steps.chrome.outputs.path }}
+          # Ubuntu's restriction of user namespaces leaves a Chrome outside its .deb's AppArmor profile no sandbox.
+          CHROME_NO_SANDBOX: "1"

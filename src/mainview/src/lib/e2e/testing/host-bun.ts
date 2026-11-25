@@ -12,16 +12,8 @@ import { join } from "node:path";
 import { base64Bytes } from "$lib/activity-thumbnail";
 import { bytesBase64 } from "$lib/staged-images";
 import { CoreError, replyOk } from "../errors";
-import {
-	ATTACHMENT_PART,
-	MAX_SHARE_PARTS,
-	OWN_WAY,
-	ownWay,
-	PART_TAG,
-	type CoreHost,
-	type HostState,
-	type ShareMade,
-} from "../host";
+import { MAX_SHARE_PARTS, OWN_WAY, ownWay, type CoreHost, type HostState, type ShareMade } from "../host";
+import { throughCore } from "../parts";
 
 const native = join(import.meta.dir, "../../../../../../native/core");
 
@@ -116,25 +108,12 @@ export class BunCoreHost implements CoreHost {
 
 	async sealFile(key: string, attachmentId: string, plain: Blob, progress?: (done: number) => void) {
 		const bytes = new Uint8Array(await plain.arrayBuffer());
-		return this.#parts("attachment_encrypt", key, attachmentId, bytes, ATTACHMENT_PART, progress);
+		return throughCore((command) => this.#run(command), "attachment_encrypt", key, attachmentId, bytes, progress);
 	}
 
 	async openFile(key: string, attachmentId: string, sealed: Blob, progress?: (done: number) => void) {
 		const bytes = new Uint8Array(await sealed.arrayBuffer());
-		return this.#parts("attachment_decrypt", key, attachmentId, bytes, ATTACHMENT_PART + PART_TAG, progress);
-	}
-
-	/** A file through the core a part at a time, `size` bytes of it each, the last one marked: an empty file is one. */
-	#parts(cmd: string, key: string, id: string, bytes: Uint8Array, size: number, progress?: (done: number) => void) {
-		const count = Math.max(1, Math.ceil(bytes.length / size));
-		const parts: Uint8Array<ArrayBuffer>[] = [];
-		for (let index = 0; index < count; index++) {
-			const data = bytesBase64(bytes.subarray(index * size, (index + 1) * size));
-			const done: { data: string } = this.#run({ cmd, key, attachment_id: id, index, last: index === count - 1, data });
-			parts.push(base64Bytes(done.data));
-			progress?.(Math.min(bytes.length, (index + 1) * size));
-		}
-		return new Blob(parts);
+		return throughCore((command) => this.#run(command), "attachment_decrypt", key, attachmentId, bytes, progress);
 	}
 
 	async share(command: { cmd: "history_share" | "catch_up" } & Record<string, unknown>): Promise<ShareMade> {
