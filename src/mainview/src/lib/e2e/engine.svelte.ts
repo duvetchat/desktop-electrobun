@@ -11,6 +11,7 @@ import type { DirectMessage } from "$lib/api/conversations";
 import { e2eApi } from "$lib/api/e2e";
 import { deviceRegistered } from "$lib/api/ws/connection";
 import { isElectrobunWindow } from "$lib/electrobun-rpc";
+import { useDeviceSearch } from "$lib/search";
 import { dmMessages } from "$lib/stores.svelte";
 import { toast } from "$lib/stores/toast.svelte";
 import { t } from "$lib/i18n";
@@ -25,6 +26,7 @@ import {
 	type Pending,
 	type ShownMessage,
 } from "./engine/engine";
+import type { DeviceFound, DeviceSearch } from "./engine/search";
 import { pageStore } from "./engine/store";
 import { engineEvents } from "./events";
 import type { CoreHost } from "./host";
@@ -147,11 +149,17 @@ export async function startEngine(userId: string, platform: EnginePlatform = pag
 	if (started) return;
 	started = true;
 	onSignOut(stopEngine);
-	useReader((conversationId, ids) =>
+	const read = (conversationId: string, ids: string[]) =>
 		onMessages<{ rows: ShownMessage[]; through?: number | null }>("read", { conversationId, ids }, (made) =>
 			made.read(conversationId, ids),
-		),
-	);
+		);
+	useReader(read);
+	// The searches read the device too (lib/search.ts): its own search of the conversations, and the rows of what the
+	// API's search found.
+	useDeviceSearch({
+		read,
+		search: (request: DeviceSearch) => onMessages<DeviceFound>("search", request, (made) => made.search(request)),
+	});
 	if (platform.desktop) {
 		const host = await platform.desktopHost();
 		if (!host) return;
@@ -183,6 +191,7 @@ export async function startEngine(userId: string, platform: EnginePlatform = pag
 				live().deleteMessage(conversationId, messageId ?? ""),
 			discardMessage: ({ conversationId, nonce }: MessageParams) => live().discardMessage(conversationId, nonce ?? ""),
 			read: ({ conversationId, ids }: MessageParams) => live().read(conversationId, ids ?? []),
+			search: (request: DeviceSearch) => live().search(request),
 			heldBefore: ({ conversationId, seq }: MessageParams) => live().heldBefore(conversationId, seq ?? 0),
 			pendingMessages: (conversationId: string) => live().pendingMessages(conversationId),
 		},
@@ -206,9 +215,11 @@ export async function startEngine(userId: string, platform: EnginePlatform = pag
 
 /** A tab that doesn't lead shows the leader's state: asked as a leader starts, and as the tab shows again. */
 async function follow(): Promise<void> {
-	if (!tabs || tabs.leader) return;
-	encryption.state = await tabs.call<EngineState>("state").catch(() => encryption.state);
-	encryption.cutoverAt = await tabs.call<string | null>("cutoverAt").catch(() => encryption.cutoverAt);
+	// The tabs it asks: the engine may stop meanwhile, which closes them, and its calls then fail as they're made.
+	const asked = tabs;
+	if (!asked || asked.leader) return;
+	encryption.state = await asked.call<EngineState>("state").catch(() => encryption.state);
+	encryption.cutoverAt = await asked.call<string | null>("cutoverAt").catch(() => encryption.cutoverAt);
 	if (encryption.state.name === "ready") refreshAll();
 }
 
@@ -301,8 +312,9 @@ export async function stopEngine(): Promise<void> {
 	engine = null;
 	started = false;
 	toOpen.clear();
-	// What the device's database showed goes from memory.
+	// What the device's database showed goes from memory, and nothing searches it.
 	useReader(null);
+	useDeviceSearch(null);
 	await stopping?.stop();
 	tabs?.close();
 	tabs = null;

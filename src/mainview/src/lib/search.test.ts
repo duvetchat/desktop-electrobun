@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { parseSearch } from "$lib/search";
+import { CONVERSATION_HAS, parseSearch } from "$lib/search";
 
 const ANA = { id: "0190a3b2-0000-7000-8000-000000000001", username: "Ana", raw_username: "ana" };
 const GENERAL = { id: "0190a3b2-0000-7000-8000-0000000000c1", name: "General chat" };
@@ -25,6 +25,10 @@ describe("a search's text", () => {
 		expect(parseSearch("from:bob", [ANA], [])).toEqual({ error: "No member is called bob" });
 		expect(parseSearch("has:gif", [], [])).toEqual({
 			error: "has: takes link, embed, file, image, video, sound, sticker",
+		});
+		// A conversation's messages have no previews, and the device can't search their links.
+		expect(parseSearch("has:link", [], [], new Date(), CONVERSATION_HAS)).toEqual({
+			error: "has: takes file, image, video, sound, sticker",
 		});
 		expect(parseSearch("during:2026-02-30", [], [], new Date(2026, 10, 9))).toEqual({
 			error: "during: takes a date like 2026-11-09",

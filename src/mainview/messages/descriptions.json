@@ -92,6 +92,7 @@
 	"e2e_removed_device": "A bar at the bottom of the app: another of the user's devices took this one off their account, so it no longer reads their encrypted conversations. Beside it, e2e_set_up_again.",
 	"e2e_restart_to_update": "[short] A button under \"Update Duvet\" in a direct message, once the desktop app has downloaded its new version: restarts the app into it. The same words as the title bar's button.",
 	"e2e_restarting": "[short] That button once pressed, while the app closes to open again on its new version.",
+	"e2e_search_split": "Shown in place of an encrypted conversation's search results, when the search mixes what only the server can look for (pinned:, has:sticker) with what only this device can (words, has:image, has:video, has:sound). pinned:, has:sticker, has:image, video and sound are the search's filters, typed as they are: keep them in English.",
 	"e2e_set_up": "[short] The button of e2e_first_device: sets up encryption (a verb).",
 	"e2e_set_up_again": "[short] The button of e2e_removed_device: deletes this device's encrypted data and sets it up again as a new device (a verb).",
 	"e2e_shared_by": "[short] Under a message in a direct message or group that another member shared with this device (a shared history). {name} is who shared it.",

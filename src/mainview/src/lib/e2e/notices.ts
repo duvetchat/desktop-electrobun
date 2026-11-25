@@ -36,6 +36,8 @@ export const NOTICES = {
 	device_added: "A new device was added to your account: {name}.",
 	delete_device: "Remove this device and delete its data",
 	too_long: "Message too long",
+	search_split:
+		"In an encrypted conversation, pinned: and has:sticker can't be combined with words or with has:image, video or sound.",
 } as const;
 
 export type NoticeKey = keyof typeof NOTICES;

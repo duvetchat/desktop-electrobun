@@ -151,7 +151,7 @@ import { getElectrobunRpc, type ActivityPayload } from "$lib/electrobun-rpc";
 import { identifyData } from "$lib/api/ws/identify";
 import { identifyDevice, keepDevice, keepUser } from "$lib/e2e/client";
 import { isEngineEvent, toEngine } from "$lib/e2e/events";
-import { moveTyped } from "$lib/e2e/conversation-content.svelte";
+import { deviceText, moveTyped } from "$lib/e2e/conversation-content.svelte";
 
 // The user's activities as this app's Bun process reports them: the IPC apps' (VS Code, etc.) and Spotify's. The
 // gateway keeps them 2 minutes and shares only a change, so they go again every 45 s, and on each new session.
@@ -788,7 +788,11 @@ async function conversationNotice(conversationId: string, messageId: string, kno
 	const conversation = get(conversations).find((c) => c.id === conversationId);
 	const author = directMessageAuthor(message, conversation);
 	const place = conversationPlace(conversation, conversationId, messageId, get(currentUser)?.id);
-	const shown = { ...message, author_name: author.name, author_avatar_url: author.avatar };
+	// An encrypted message's text is what this device's database holds of it, once its engine applied it (2 s at most),
+	// never the API's: without it in time, the notice says who wrote and that a message came.
+	const content =
+		message.seq === undefined ? message.content : await deviceText(conversationId, message.id, message.author_id);
+	const shown = { ...message, content, author_name: author.name, author_avatar_url: author.avatar };
 	return { notice: mentionNoticeOf(shown, place, knownPeople(), get(everyEmoji)), place: place.name };
 }
 
