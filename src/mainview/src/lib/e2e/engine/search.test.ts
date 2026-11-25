@@ -10,7 +10,7 @@ import { FakeApi } from "../testing/fake-api";
 import { coreLibrary } from "../testing/host-bun";
 import { firstDevice, rejection, testHost, until, type TestDevice } from "../testing/engines";
 import { uuidv7 } from "../uuid";
-import { deviceSearchOf } from "./search";
+import { apiTakes, deviceSearchOf } from "./search";
 
 // The page's engine and the stores it reaches are .svelte.ts modules whose $state only Svelte's compiler knows: here
 // it's the value itself, set before they load.
@@ -18,6 +18,7 @@ Object.assign(globalThis, { $state: <T>(value: T) => value });
 const page = await import("../engine.svelte");
 const { CONVERSATION_RESULTS, searchConversation, searchEverywhere } = await import("$lib/search");
 const { pinConversationMessage } = await import("$lib/api/conversations");
+const { dmMessages } = await import("$lib/stores.svelte");
 
 // A conversation's search runs on the device (PLAN-E2E-CLIENTES.md, task 20; decision 42): its words, from:, mentions:,
 // dates and has: through the core's search, its results drawn from the device's database. pinned: and has:sticker, which
@@ -174,6 +175,11 @@ describe.skipIf(!coreLibrary)("a conversation's search", () => {
 			expect(texts(await search({ has: ["file"], query: "photo" }))).toEqual(["a photo of the apples"]);
 			expect(texts(await search({ has: ["sound"] }))).toEqual([]);
 			expect(texts(await search({ has: ["video", "image"], authorIds: [ana] }))).toEqual([]);
+			// Punctuation alone is nothing to search for (the review's M4): the API answers as it does for a Space's, and the
+			// device lists nothing.
+			expect(await rejection(searchConversation(conv, { query: "?!" }))).toMatchObject({
+				response: { data: { error: "a search needs some text or a filter" } },
+			});
 
 			// A page at a time, the next from where the last ended.
 			for (let n = 0; n <= CONVERSATION_RESULTS; n++) {
@@ -185,8 +191,8 @@ describe.skipIf(!coreLibrary)("a conversation's search", () => {
 			expect(first.next).toEqual({ offset: CONVERSATION_RESULTS });
 			const second = await searchConversation(conv, { query: "fig" }, first.next ?? undefined);
 			expect([texts(second.found), second.next]).toEqual([["fig 0"], null]);
-			// None of it went to the API's search.
-			expect(conversationSearches(talk)).toEqual([]);
+			// None of it went to the API's search, but the punctuation alone, without it.
+			expect(conversationSearches(talk)).toEqual([`GET /api/users/@me/conversations/${conversation}/messages/search`]);
 			await talk.end();
 		},
 		SLOW,
@@ -213,10 +219,15 @@ describe.skipIf(!coreLibrary)("a conversation's search", () => {
 				{ query: "kiwi", authorIds: [talk.bo], has: ["image", "file"] },
 				{ query: "kiwi", mentions: [talk.ana], after: dayFrom(-1) },
 			];
+			const searching = talk.requests.length;
 			for (const search of words) await searchConversation(conv, search);
 			expect(texts((await searchConversation(conv, { query: "kiwi" })).found)).toEqual(["kiwi"]);
 			for (const search of words) await searchEverywhere(search, [space()], [conv]);
 			expect(texts((await searchEverywhere({ query: "kiwi" }, [space()], [conv])).found)).toEqual(["kiwi"]);
+			// Nor does anything follow from what they found (the review's M8): no request names the conversation's messages,
+			// or the one found, which would tell the API what the words found.
+			const named = (r: string) => r.includes(`/conversations/${conversation}/messages`) || r.includes(sent!.id);
+			expect(talk.requests.slice(searching).filter(named)).toEqual([]);
 			// Words with what only the API knows can't go anywhere: they're refused, asking nobody.
 			const before = talk.requests.length;
 			for (const search of [
@@ -349,6 +360,48 @@ describe.skipIf(!coreLibrary)("a conversation's search", () => {
 			}
 			expect(talk.requests.length).toBe(before);
 			expect(en.e2e_search_split).toBe(NOTICES.search_split);
+			expect(en.e2e_not_ready).toBe(NOTICES.not_ready);
+			await talk.end();
+		},
+		SLOW,
+	);
+
+	// The review's M5: a sticker's envelope is empty on the device, and only the API's row says which sticker it is.
+	test(
+		"a sticker's message found on the device shows as its sticker, never as an empty card",
+		async () => {
+			const talk = await talking();
+			const { conversation, bo, b } = talk;
+			const sticker = crypto.randomUUID();
+			const stuck = (await b.engine.sendMessage({
+				...{ conversation_id: conversation, nonce: crypto.randomUUID() },
+				sticker_attachment_id: sticker,
+			}))!;
+			await Bun.sleep(5);
+			const said = (await b.engine.sendMessage({
+				conversation_id: conversation,
+				nonce: crypto.randomUUID(),
+				text: "a word",
+			}))!;
+			await heldByAna(talk, conversation, [stuck.id, said.id]);
+			const conv = await listed(conversation);
+			const shown = async (search: MessageSearch) =>
+				(await searchConversation(conv, search)).found.map((f) => [f.message.id, f.message.sticker_attachment_id]);
+			const before = talk.requests.length;
+			// The chat holds the API's row, which has the sticker: from: and a date find it drawn as that sticker.
+			dmMessages.set({ [conversation]: [stuck, said] });
+			expect(await shown({ authorIds: [bo] })).toEqual([
+				[said.id, null],
+				[stuck.id, sticker],
+			]);
+			expect(await shown({ after: dayFrom(0) })).toEqual([
+				[said.id, null],
+				[stuck.id, sticker],
+			]);
+			// Without that row, the device has nothing to draw for it, and the API isn't asked: it's left out.
+			dmMessages.set({});
+			expect(await shown({ authorIds: [bo] })).toEqual([[said.id, null]]);
+			expect(talk.requests.slice(before).filter((r) => r.includes("/messages"))).toEqual([]);
 			await talk.end();
 		},
 		SLOW,
@@ -384,8 +437,17 @@ describe("what a search takes to the device", () => {
 		// A link or an embed: an encrypted message has no preview, and its links aren't searched.
 		expect(deviceSearchOf({ has: ["link"] })).toBeNull();
 		expect(deviceSearchOf({ has: ["link", "image"] })).toEqual({ has: ["image"] });
-		// Nothing to search for ("has:" and Enter): the API refuses it, as it refuses a Space's.
+		// Nothing to search for ("has:" and Enter), or punctuation alone: the API refuses it, as it refuses a Space's.
 		expect(deviceSearchOf({ query: "" })).toBeNull();
+		expect(deviceSearchOf({ query: "?! ..." })).toBeNull();
+		expect(deviceSearchOf({ query: "¿qué?" })).toEqual({ text: "¿qué?" });
+	});
+
+	test("the API's search takes no words, punctuation alone being none, and of has: only file and sticker", () => {
+		expect(apiTakes({ query: "?", pinned: true })).toBe(true);
+		expect(apiTakes({ query: "a?", pinned: true })).toBe(false);
+		expect(apiTakes({ has: ["file", "sticker"] })).toBe(true);
+		expect(apiTakes({ has: ["image"] })).toBe(false);
 	});
 });
 

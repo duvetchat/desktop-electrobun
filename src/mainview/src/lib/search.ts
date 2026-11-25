@@ -2,6 +2,7 @@ import { searchConversationMessages, type Conversation, type DirectMessage } fro
 import { searchSpaceMessages, type MessageSearch } from "$lib/api/messages";
 import type { MessageContent, ShownMessage } from "$lib/e2e/engine/content";
 import { apiTakes, deviceSearchOf, type DeviceFound, type DeviceSearch } from "$lib/e2e/engine/search";
+import { CoreError } from "$lib/e2e/errors";
 import { t } from "$lib/i18n";
 import { directMessageToMessage, gatewayMessageToMessage, type GatewaySpace, type Message } from "$lib/types";
 
@@ -24,16 +25,32 @@ export type SearchPage = { offset: number } | { cursor: string };
 
 /**
  * What a search reads of this device's database (lib/e2e/engine.svelte.ts gives it as its engine starts): its own search
- * of the conversations, and its rows of the messages the API's search found. Without it, the device finds nothing.
+ * of the conversations, its rows of the messages the API's search found, and the API's rows the app already holds (its
+ * chats' loaded pages), which a result asks nothing for. Without it, this device can't search.
  */
 export interface DeviceReads {
 	search(request: DeviceSearch): Promise<DeviceFound>;
 	read(conversationId: string, ids: string[]): Promise<{ rows: ShownMessage[] }>;
+	loaded(conversationId: string, id: string): DirectMessage | undefined;
 }
 
 let device: DeviceReads | null = null;
 export function useDeviceSearch(reads: DeviceReads | null) {
 	device = reads;
+}
+
+/** The most rows a page of the core's search gives. */
+const DEVICE_PAGE = 100;
+
+/** A search replaced while it ran ends in its abort: the device's part can't be called off, and what it found goes. */
+function dropIfReplaced(signal: AbortSignal | undefined) {
+	if (signal?.aborted) throw new DOMException("the search was replaced", "AbortError");
+}
+
+/** A failure of the device's search, as the panel says it: not ready, unless the core refused the search itself. */
+function notReady(error: unknown): never {
+	if (error instanceof CoreError && error.code !== "internal") throw error;
+	throw new Error(t("e2e_not_ready"));
 }
 
 /**
@@ -60,6 +77,7 @@ export async function searchEverywhere(
 		...conversationsEverywhere(search, conversations, signal),
 	];
 	const settled = await Promise.allSettled(searches);
+	dropIfReplaced(signal);
 	const answered = settled.flatMap((r) => (r.status === "fulfilled" ? [r.value] : []));
 	const failed = settled.find((r) => r.status === "rejected");
 	if (answered.length === 0 && failed) throw failed.reason;
@@ -80,7 +98,7 @@ function conversationsEverywhere(search: MessageSearch, conversations: Conversat
 	const onDevice = deviceSearchOf(search);
 	if (onDevice) {
 		return device && conversations.length
-			? [deviceFinds({ ...onDevice, limit: EVERYWHERE_RESULTS }, conversations)]
+			? [deviceFinds({ ...onDevice, limit: DEVICE_PAGE }, conversations, EVERYWHERE_RESULTS)]
 			: [];
 	}
 	if (!apiTakes(search)) return [];
@@ -100,38 +118,49 @@ export async function searchConversation(
 	signal?: AbortSignal,
 ): Promise<{ found: FoundMessage[]; total: number; next: SearchPage | null }> {
 	const onDevice = deviceSearchOf(search);
-	if (onDevice) {
-		const offset = from && "offset" in from ? from.offset : 0;
-		return deviceFinds({ ...onDevice, conversation_id: conversation.id, limit: CONVERSATION_RESULTS, offset }, [
-			conversation,
-		]);
-	}
-	if (!apiTakes(search)) throw new Error(t("e2e_search_split"));
-	return apiFinds(conversation, search, from && "cursor" in from ? from.cursor : undefined, signal);
+	if (!onDevice && !apiTakes(search)) throw new Error(t("e2e_search_split"));
+	const found = onDevice
+		? await deviceFinds(
+				{ ...onDevice, conversation_id: conversation.id, limit: CONVERSATION_RESULTS },
+				[conversation],
+				CONVERSATION_RESULTS,
+				from && "offset" in from ? from.offset : 0,
+			)
+		: await apiFinds(conversation, search, from && "cursor" in from ? from.cursor : undefined, signal);
+	dropIfReplaced(signal);
+	return found;
 }
 
-/** What the device's search finds, as results: each opened message of a conversation the app lists, newest first. */
-async function deviceFinds(request: DeviceSearch, conversations: Conversation[]) {
-	if (!device) return { found: [], total: 0, next: null };
-	const { total, messages } = await device.search(request);
-	const found = messages.flatMap((row): FoundMessage[] => {
-		const conversation = conversations.find((c) => c.id === row.conversation_id);
-		// The person's own still being sent has no ID yet to open it by.
-		if (row.status !== "ok" || !row.message_id || !conversation) return [];
-		return [{ message: shownRow(row, row.message_id, conversation), roomId: null, conversationId: conversation.id }];
-	});
-	const end = (request.offset ?? 0) + messages.length;
-	return { found, total, next: end < total ? { offset: end } : null };
+/**
+ * What the device's search finds, as results: `most` of them, newest first, the core's pages read from `offset` on past
+ * the rows a result leaves out (shownRow). The next page starts past the last row read.
+ */
+async function deviceFinds(request: DeviceSearch, conversations: Conversation[], most: number, offset = 0) {
+	const reads = device;
+	if (!reads) throw new Error(t("e2e_not_ready"));
+	const found: FoundMessage[] = [];
+	for (;;) {
+		const { total, messages } = await reads.search({ ...request, offset }).catch(notReady);
+		for (const row of messages) {
+			offset++;
+			const shown = shownRow(row, conversations, reads);
+			if (shown) found.push(shown);
+			if (found.length === most) return { found, total, next: offset < total ? { offset } : null };
+		}
+		if (!messages.length || offset >= total) return { found, total, next: null };
+	}
 }
 
 /** What the API's search of a conversation finds: its rows, their text and their quotes' the device's own. */
 async function apiFinds(conversation: Conversation, search: MessageSearch, cursor?: string, signal?: AbortSignal) {
-	const res = await searchConversationMessages(conversation.id, { ...search, cursor }, signal);
+	// It takes no words (apiTakes): a query of punctuation alone goes no further than here.
+	const res = await searchConversationMessages(conversation.id, { ...search, query: undefined, cursor }, signal);
 	const ids = res.messages.flatMap((m) => {
 		const quoted = m.referenced_message?.message_id;
 		return quoted ? [m.id, quoted] : [m.id];
 	});
-	const rows = device && ids.length ? (await device.read(conversation.id, ids)).rows : [];
+	if (ids.length && !device) throw new Error(t("e2e_not_ready"));
+	const rows = device && ids.length ? (await device.read(conversation.id, ids).catch(notReady)).rows : [];
 	const found = res.messages.map(
 		(m): FoundMessage => ({
 			message: directMessageToMessage(m, conversation.members, holding(rows)),
@@ -147,14 +176,25 @@ async function apiFinds(conversation: Conversation, search: MessageSearch, curso
 	};
 }
 
-/** A row of the device's as a result draws it: the message as the API lists one, its text the row's. */
-function shownRow(row: ShownMessage, id: string, conversation: Conversation): Message {
+/**
+ * A row of the device's as a result draws it: the message as the API lists one, its text the row's. None for one it
+ * can't open (the person's own still being sent has no ID yet), one of a conversation the app doesn't list (a group the
+ * person left), or a sticker's empty envelope whose sticker only the API's row says: drawn when the app already holds
+ * that row, as asking for it would tell the API what the search found.
+ */
+function shownRow(row: ShownMessage, conversations: Conversation[], reads: DeviceReads): FoundMessage | null {
+	const conversation = conversations.find((c) => c.id === row.conversation_id);
+	if (row.status !== "ok" || !row.message_id || !conversation) return null;
+	const empty = !row.text && !row.attachments.length;
+	const sticker = empty ? reads.loaded(conversation.id, row.message_id)?.sticker_attachment_id : null;
+	if (empty && !sticker) return null;
 	const at = new Date(row.sent_at).toISOString();
 	const listed: DirectMessage = {
-		...{ id, conversation_id: row.conversation_id, author_id: row.user_id, content: null, type: 0 },
-		...{ created_at: at, updated_at: at, seq: row.seq ?? 0, sent_at: row.sent_at },
+		...{ id: row.message_id, conversation_id: conversation.id, author_id: row.user_id, content: null, type: 0 },
+		...{ created_at: at, updated_at: at, seq: row.seq ?? 0, sent_at: row.sent_at, sticker_attachment_id: sticker },
 	};
-	return directMessageToMessage(listed, conversation.members, holding([row]));
+	const message = directMessageToMessage(listed, conversation.members, holding([row]));
+	return { message, roomId: null, conversationId: conversation.id };
 }
 
 /** What a result draws of the device: these rows, and nothing still to come, so one it doesn't hold waits. */

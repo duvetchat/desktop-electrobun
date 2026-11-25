@@ -86,6 +86,7 @@
 	"e2e_members_changed": "This conversation's members changed since you last saw it.",
 	"e2e_new_device": "Set up this device to read your encrypted conversations.",
 	"e2e_no_e2e_here": "Direct messages aren't available in this app yet. Use Duvet on the web.",
+	"e2e_not_ready": "Encrypted conversations aren't ready on this device",
 	"e2e_paused": "Encrypted conversations are paused. Your message will be sent when they're back.",
 	"e2e_recovery_continue": "Continue",
 	"e2e_recovery_copied": "Copied",

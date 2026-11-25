@@ -5,6 +5,7 @@
 // person's taps and their messages. `encryption.state` is what the views read, `encryption.conversations` what each
 // conversation says of its group, and conversation-content.svelte.ts what the device holds of their messages. The hosts
 // load with the engine's start, never with a page.
+import { get } from "svelte/store";
 import { withSentMessage } from "$lib/arrivals";
 import { onSignOut } from "$lib/api/auth";
 import type { DirectMessage } from "$lib/api/conversations";
@@ -154,11 +155,12 @@ export async function startEngine(userId: string, platform: EnginePlatform = pag
 			made.read(conversationId, ids),
 		);
 	useReader(read);
-	// The searches read the device too (lib/search.ts): its own search of the conversations, and the rows of what the
-	// API's search found.
+	// The searches read the device too (lib/search.ts): its own search of the conversations, the rows of what the API's
+	// search found, and the API's rows this page already holds.
 	useDeviceSearch({
 		read,
 		search: (request: DeviceSearch) => onMessages<DeviceFound>("search", request, (made) => made.search(request)),
+		loaded: (conversationId, id) => get(dmMessages)[conversationId]?.find((message) => message.id === id),
 	});
 	if (platform.desktop) {
 		const host = await platform.desktopHost();

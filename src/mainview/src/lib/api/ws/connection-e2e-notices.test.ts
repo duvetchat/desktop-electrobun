@@ -25,6 +25,9 @@ const stores = await import("$lib/stores.svelte");
 const { mentionNotices } = await import("$lib/mention-notices");
 const { setSystemNotifier } = await import("$lib/api/ws/connection");
 const { noticeText } = await import("$lib/system-notifications");
+const { showChat } = await import("$lib/on-screen");
+const { uuidv7 } = await import("$lib/e2e/uuid");
+const { NOTICE_WAIT_MS } = await import("$lib/e2e/conversation-content.svelte");
 
 // A conversation's message notifies with its decrypted text (PLAN-E2E-CLIENTES.md, task 20): Duvet's notice, Windows'
 // toast and the browser's take it from this device's database once its engine applied the message's entry, 2 s at most;
@@ -102,6 +105,42 @@ function keptNotifier() {
 }
 
 describe.skipIf(!coreLibrary)("a conversation's notice", () => {
+	// The review's I1: a server could write what Duvet's notice, the toast and the browser's notification say, under a
+	// member's name, with a message that has no number but a content, or one whose components are all its text.
+	test(
+		"a notice shows nothing of the API's message but who wrote it, whatever its fields",
+		async () => {
+			const fake = new Fake();
+			useApi(fake);
+			const [ana, bo] = [fake.addUser(), fake.addUser()];
+			const conversation = fake.addConversation({ type: "dm", members: [ana, bo] });
+			signedIn(fake, ana);
+			stores.pageVisible.set(true);
+			const at = new Date().toISOString();
+			const forged = (fields: Record<string, unknown>) => {
+				const id = uuidv7();
+				gateway.receive("DM_MESSAGE_CREATE", {
+					...{ id, conversation_id: conversation, author_id: bo, type: 0, created_at: at, updated_at: at },
+					...{ user: { id: bo, username: "bo", alias: "Bo", avatar: null, banner: null }, content: null },
+					...fields,
+				});
+				return id;
+			};
+			const display = [{ type: 10, content: "written by the server, in a component" }];
+			const ids = [
+				forged({ content: "written by the server" }),
+				forged({ flags: 1 << 15, components: display }),
+				forged({ seq: 7, ciphertext: "AAAA", flags: 1 << 15, components: display, content: "and in its content" }),
+			];
+			await until(() => ids.every((id) => noticeOf(id) !== undefined), 10_000);
+			for (const id of ids) {
+				const notice = noticeOf(id)!;
+				expect([notice.authorName, notice.text, noticeText(notice, {})]).toEqual(["Bo", "", "Click to see message"]);
+			}
+		},
+		SLOW,
+	);
+
 	test(
 		"a notice shows the decrypted text, or says a message came when it can't be read in time",
 		async () => {
@@ -148,16 +187,40 @@ describe.skipIf(!coreLibrary)("a conversation's notice", () => {
 			expect(shown).toEqual([{ authorName: bo.slice(0, 8), text: "the second, in the toast" }]);
 			expect(noticeOf(second.id)).toBeUndefined();
 
-			// The engine can't apply the next one within 2 s: the notification says who wrote, and that a message came.
+			// The engine can't apply the next one within 2 s: the notification says who wrote, and that a message came, 2 s
+			// after it came, not later (the review's M8: a wait of 5 s fails this).
 			let release = () => {};
 			held = new Promise<void>((resolve) => (release = resolve));
 			const sentAt = Date.now();
-			await send("too late to be read");
+			const late = (await send("too late to be read"))!;
 			await until(() => shown.length === 2, 10_000);
-			expect(Date.now() - sentAt).toBeGreaterThanOrEqual(1_990);
+			const waited = Date.now() - sentAt;
+			expect(waited).toBeGreaterThanOrEqual(1_990);
+			expect(waited).toBeLessThan(4_000);
 			expect(shown[1]).toEqual({ authorName: bo.slice(0, 8), text: "Click to see message" });
+
+			// One whose chat comes on screen while it waits shows nothing once its wait is over (the review's M6).
+			const seen = (await send("read in its chat"))!;
+			const hide = showChat(conversation);
+			stores.pageVisible.set(true);
+			await Bun.sleep(NOTICE_WAIT_MS + 1_000);
+			hide();
+			stores.pageVisible.set(false);
+
+			// The apply goes on, and the texts come late: they notify nothing more (the review's M8). A message after them
+			// notifies once, on its own.
 			held = null;
 			release();
+			await until(async () => {
+				const { messages } = await host.handle<{ messages: { status: string }[] }>({
+					...{ cmd: "messages", conversation_id: conversation, ids: [late.id, seen.id] },
+				});
+				return messages.length === 2 && messages.every((m) => m.status === "ok");
+			});
+			await send("after them");
+			await until(() => shown.length >= 3, 10_000);
+			expect(shown.slice(2)).toEqual([{ authorName: bo.slice(0, 8), text: "after them" }]);
+			expect([noticeOf(late.id), noticeOf(seen.id)]).toEqual([undefined, undefined]);
 
 			hear();
 			await b.engine.stop();

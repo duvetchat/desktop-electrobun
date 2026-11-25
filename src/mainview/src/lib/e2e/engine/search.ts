@@ -39,6 +39,9 @@ export function searchDevice(host: CoreHost, search: DeviceSearch): Promise<Devi
 	return host.handle<DeviceFound>({ cmd: "search", ...search });
 }
 
+/** Whether a search's text has words: a letter or a digit, as the core's search and the API's read words. */
+const hasWords = (text: string | undefined) => !!text && /[\p{L}\p{N}]/u.test(text);
+
 /** The search box's has: values the device finds, as the core names them. */
 const DEVICE_KINDS: Partial<Record<string, DeviceKind>> = {
 	image: "image",
@@ -50,8 +53,9 @@ const DEVICE_KINDS: Partial<Record<string, DeviceKind>> = {
 /**
  * What a search box's search takes to the device: its words, authors, mentions, dates and kinds of files. Null when it
  * needs what only the API knows (pinned:, has:sticker), names only kinds of files the device can't tell (link, embed:
- * a conversation's message has no preview, and its links aren't searched), or has nothing to search for, which the API
- * answers as it answers a Space's.
+ * a conversation's message has no preview, and its links aren't searched), or has nothing to search for (no filter,
+ * and no words: punctuation alone is none, for which the core adds no filter and would list every message), which the
+ * API answers as it answers a Space's.
  */
 export function deviceSearchOf(search: MessageSearch): Omit<DeviceSearch, "limit" | "offset"> | null {
 	const has = search.has ?? [];
@@ -59,7 +63,7 @@ export function deviceSearchOf(search: MessageSearch): Omit<DeviceSearch, "limit
 	if (search.pinned !== undefined || has.includes("sticker") || (has.length && !kinds.length)) return null;
 	const [after, before] = [search.after, search.before].map((time) => (time ? Date.parse(time) : undefined));
 	const found = {
-		...(search.query ? { text: search.query } : {}),
+		...(hasWords(search.query) ? { text: search.query } : {}),
 		...(search.authorIds?.length ? { from: search.authorIds } : {}),
 		...(search.mentions?.length ? { mentions: search.mentions } : {}),
 		...(after === undefined ? {} : { after }),
@@ -71,7 +75,7 @@ export function deviceSearchOf(search: MessageSearch): Omit<DeviceSearch, "limit
 
 /**
  * Whether the API's search of a conversation takes it, as its e2e answers one: never words, and of has: only file and
- * sticker (ConversationController.SearchMessages).
+ * sticker (ConversationController.SearchMessages). A text without words goes to it as no text.
  */
 export const apiTakes = (search: MessageSearch) =>
-	!search.query && (search.has ?? []).every((value) => value === "file" || value === "sticker");
+	!hasWords(search.query) && (search.has ?? []).every((value) => value === "file" || value === "sticker");

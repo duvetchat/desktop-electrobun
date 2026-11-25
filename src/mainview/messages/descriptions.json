@@ -77,6 +77,7 @@
 	"e2e_members_changed": "A line over the message box of a conversation from before end-to-end encryption, whose members aren't the ones this device first saw there: it doesn't join until the person accepts them (e2e_members_accept).",
 	"e2e_new_device": "A bar at the bottom of the app, on a device of a user who already has encrypted conversations on another device: this one needs their recovery key or another device's approval to read them.",
 	"e2e_no_e2e_here": "In a direct message, on a platform where encrypted direct messages don't work yet (macOS and Linux): they work in the web app, at duvet.chat. Duvet is the app's name.",
+	"e2e_not_ready": "Shown in place of an encrypted conversation's search results when this device can't search its encrypted conversations yet (still opening them, or open in another window).",
 	"e2e_paused": "Shown when the person sends a message while the server has paused encrypted conversations: the message waits on this device and goes once they're back.",
 	"e2e_recovery_continue": "[short] The recovery key dialog's button, usable once e2e_recovery_saved is ticked: saves the user's keys and closes the dialog.",
 	"e2e_recovery_copied": "[short] The Copy button's words for a moment after it copied the recovery key.",
