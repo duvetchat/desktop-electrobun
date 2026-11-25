@@ -18,6 +18,20 @@ describe("the notices", () => {
 		}
 	});
 
+	test("the mobile app's six say their words here too", () => {
+		// An edit or a deletion refused for good, a row not read yet, a send refused as not ready or past the cap; and
+		// files_wait, which only the mobile app says, while it can't send files (#508).
+		const words: [keyof typeof en, NoticeKey][] = [
+			["e2e_edit_refused", "edit_refused"],
+			["e2e_delete_refused", "delete_refused"],
+			["e2e_loading_message", "loading_message"],
+			["e2e_not_ready", "not_ready"],
+			["e2e_too_many_waiting", "too_many_waiting"],
+		];
+		for (const [key, table] of words) expect(en[key]).toBe(NOTICES[table]);
+		expect(NOTICES.files_wait).toBe("Files and voice messages can't be sent in encrypted conversations yet");
+	});
+
 	test("a conversation's files say the table's words", () => {
 		// The app's words for them (en.json, which t() reads) are the notices', key for key: the mobile app takes the same.
 		const words: [keyof typeof en, NoticeKey][] = [

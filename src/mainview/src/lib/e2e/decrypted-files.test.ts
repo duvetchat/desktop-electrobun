@@ -195,7 +195,9 @@ describe("decrypted files in memory", () => {
 		expect(await files.open(refused, "m")).toEqual({ status: "failed", reason: "open" });
 		expect(await files.open(refused, "m")).toEqual({ status: "failed", reason: "open" });
 		const unready = { ...file, id: "g" };
-		files.useOpener({ ...working, open: async () => Promise.reject(new Error("not ready")) });
+		files.useOpener({ ...working, open: async () => Promise.reject(new CoreError("not_ready")) });
+		expect(await files.open(unready, "m")).toEqual({ status: "failed", reason: "download" });
+		files.useOpener({ ...working, open: async () => Promise.reject(new Error("the tab that leads closed")) });
 		expect(await files.open(unready, "m")).toEqual({ status: "failed", reason: "download" });
 		files.useOpener(working);
 		expect(await files.open(unready, "m")).toMatchObject({ status: "ready" });

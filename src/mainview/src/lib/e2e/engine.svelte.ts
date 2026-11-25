@@ -18,6 +18,7 @@ import { t } from "$lib/i18n";
 import { deviceName } from "./client";
 import { moveTyped, refresh, refreshAll, useReader } from "./conversation-content.svelte";
 import { decryptedFiles, useNamer } from "./decrypted-files.svelte";
+import { CoreError } from "./errors";
 import {
 	E2EEngine,
 	systemClock,
@@ -280,14 +281,14 @@ const NOT_READY = "encrypted conversations aren't ready on this device";
 
 /** The leader's engine, for what another tab asks of it: none yet is a refusal, as the tab would show. */
 function live(): E2EEngine {
-	if (!engine) throw new Error(NOT_READY);
+	if (!engine) throw new CoreError("not_ready", NOT_READY);
 	return engine;
 }
 
 /** The person's act on a conversation's messages: by this page's engine, or the tab that leads (Ruling 16). */
 function onMessages<T>(method: string, params: unknown, run: (made: E2EEngine) => Promise<T>): Promise<T> {
 	if (tabs) return tabs.call<T>(method, params);
-	return engine ? run(engine) : Promise.reject(new Error(NOT_READY));
+	return engine ? run(engine) : Promise.reject(new CoreError("not_ready", NOT_READY));
 }
 
 /**
@@ -302,7 +303,7 @@ export function sendEncrypted(message: Outgoing, upload?: UploadOptions): Promis
 		});
 		return tabs.call<DirectMessage | null>("sendMessage", message);
 	}
-	return engine ? engine.sendMessage(message, upload) : Promise.reject(new Error(NOT_READY));
+	return engine ? engine.sendMessage(message, upload) : Promise.reject(new CoreError("not_ready", NOT_READY));
 }
 /** An edit of the person's message, which shows at once. */
 export const editEncrypted = (conversationId: string, messageId: string, text: string) =>

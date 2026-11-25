@@ -178,7 +178,9 @@ export class Sends {
 			if (this.#nonceNow(rows, nonce)) return true;
 			// Made again, it went under its new nonce, as its answer or its copy said: it was sent.
 			if (this.#went.delete(nonce)) return false;
-			if (rows.length >= WAITING_MOST) throw new Error(`${WAITING_MOST} messages wait to be sent in this conversation`);
+			if (rows.length >= WAITING_MOST) {
+				throw new CoreError("too_many_waiting", `${WAITING_MOST} messages wait to be sent in this conversation`);
+			}
 			const sealed = files?.length ? await SealedFiles.of(this.#parts.host, files) : null;
 			this.#keep(nonce, { conversation_id: id, ...clear });
 			try {

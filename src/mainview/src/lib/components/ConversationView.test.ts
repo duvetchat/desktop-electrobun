@@ -180,3 +180,11 @@ test("a send with files offers its Cancel from the start, while its thumbnails a
 	);
 	expect(view.indexOf("outgoingFiles(saved.files)")).toBeGreaterThan(view.indexOf("real = await sendFollowed("));
 });
+
+test("a send refused as not ready, or past the cap, says so in the table's words (#508)", () => {
+	const view = source("ConversationView.svelte");
+	expect(view).toContain('if (err instanceof CoreError && err.code === "not_ready") return t("e2e_not_ready");');
+	expect(view).toContain(
+		'if (err instanceof CoreError && err.code === "too_many_waiting") return t("e2e_too_many_waiting");',
+	);
+});

@@ -458,6 +458,15 @@ describe.skipIf(!coreLibrary)("a device's messages", () => {
 	);
 
 	// M5: the device reads 100 of a conversation's messages that wait; a new one past them is refused.
+	test("a message sent before this device is ready is refused, with a code the view says", async () => {
+		const fake = new FakeApi();
+		const user = fake.addUser();
+		useFake(fake);
+		const early = testDevice(fake, user);
+		const message = { conversation_id: crypto.randomUUID(), nonce: crypto.randomUUID(), text: "early" };
+		expect(await rejection(early.engine.sendMessage(message))).toMatchObject({ code: "not_ready" });
+	});
+
 	test(
 		"a new message is refused once 100 wait in its conversation",
 		async () => {
@@ -469,9 +478,12 @@ describe.skipIf(!coreLibrary)("a device's messages", () => {
 				});
 			}
 			const before = (await posts()).length;
-			await rejection(
-				a.engine.sendMessage({ conversation_id: conversation, nonce: crypto.randomUUID(), text: "too many" }),
-			);
+			// Refused with a code that crosses to another tab, which the view says as the table does (#508).
+			expect(
+				await rejection(
+					a.engine.sendMessage({ conversation_id: conversation, nonce: crypto.randomUUID(), text: "too many" }),
+				),
+			).toMatchObject({ code: "too_many_waiting" });
 			expect((await posts()).length).toBe(before);
 			expect(await a.engine.pendingMessages(conversation)).toHaveLength(100);
 		},

@@ -465,3 +465,9 @@ test("a message's More menu copies its text above its link", () => {
 		/function copyText\(message: Message\) \{\s*const text = messageText\(message\);\s*if \(text\) navigator\.clipboard\.writeText\(text\)\.catch\(console\.error\);\s*\}/,
 	);
 });
+
+// A conversation's row the engine hasn't applied or read yet pulses: a screen reader hears what it is (#508).
+test("a conversation's message not read yet is read out as loading, in the table's words", () => {
+	const html = shown({ messages: [{ ...message, content: null, loading: true }] });
+	expect(html).toMatch(/<span class="sr-only">Loading message<\/span>/);
+});

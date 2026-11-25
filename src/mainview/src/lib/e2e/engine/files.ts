@@ -279,8 +279,9 @@ export async function openSealed(
 			progress?.((most + done) / whole),
 		);
 	} catch (error) {
-		// The core's own word on its bytes is final; one that didn't reach it (no engine now, a tab's handover) isn't.
-		const final = error instanceof CoreError && error.code !== "internal";
+		// The core's own word on its bytes or its key is final; one that didn't reach it (no engine ready now, a tab's
+		// handover) isn't.
+		const final = error instanceof CoreError && (error.code === "decrypt_failed" || error.code === "bad_command");
 		throw new FileError(final ? "open" : "download", { cause: error });
 	}
 	if (plain.size !== size) throw new FileError("size");

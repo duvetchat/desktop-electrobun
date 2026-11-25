@@ -444,7 +444,9 @@ export class E2EEngine {
 	 */
 	async #act<T>(work: () => Promise<T>): Promise<T> {
 		const done = await this.#queue(async () => {
-			if (this.state.name !== "ready") throw new Error("encrypted conversations aren't ready on this device");
+			// A code of its own, which crosses to another tab, for the view to say it (#508).
+			if (this.state.name !== "ready")
+				throw new CoreError("not_ready", "encrypted conversations aren't ready on this device");
 			try {
 				return { value: await work() };
 			} catch (error) {

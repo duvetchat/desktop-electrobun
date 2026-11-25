@@ -1529,8 +1529,9 @@
 		/>
 	{:else if message.loading}
 		<!-- A conversation's message the engine hasn't applied or read yet: neither empty nor waiting -->
-		<div class={flat ? "" : `${MESSAGE_CARD} px-3 py-2`} aria-hidden="true">
-			<div class="bg-duvet-secondary-fill h-4 w-40 animate-pulse rounded-full"></div>
+		<div class={flat ? "" : `${MESSAGE_CARD} px-3 py-2`}>
+			<div class="bg-duvet-secondary-fill h-4 w-40 animate-pulse rounded-full" aria-hidden="true"></div>
+			<span class="sr-only">{t("e2e_loading_message")}</span>
 		</div>
 	{:else if message.waiting}
 		<!-- A conversation's message this device doesn't hold yet -->

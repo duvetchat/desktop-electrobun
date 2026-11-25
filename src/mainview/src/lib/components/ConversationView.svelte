@@ -711,6 +711,8 @@
 	function unsentNote(err: unknown): string {
 		if (err instanceof PausedError) return t("e2e_paused");
 		if (err instanceof FilesGone) return t("e2e_files_gone");
+		if (err instanceof CoreError && err.code === "not_ready") return t("e2e_not_ready");
+		if (err instanceof CoreError && err.code === "too_many_waiting") return t("e2e_too_many_waiting");
 		if (err instanceof CoreError && err.code === "too_large") return t("e2e_too_long");
 		return err instanceof FetchError ? getApiError(err, "Failed to send message") : "Failed to send message";
 	}
