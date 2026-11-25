@@ -6,6 +6,7 @@
 	import SpaceMemberDetails from "$lib/components/SpaceMemberDetails.svelte";
 	import MemberMenu from "$lib/components/MemberMenu.svelte";
 	import ContextMenu from "$lib/components/ui/ContextMenu.svelte";
+	import { OVERLINE } from "$lib/components/ui/recipes";
 	import { withoutLongPress } from "$lib/default-menu";
 	import { personOf } from "$lib/member-menu";
 	import { CARD, FIELD_SM, NOTE, SELECT } from "$lib/components/settings/recipes";
@@ -219,9 +220,7 @@
 		</ContextMenu>
 
 		{#snippet rows()}
-			<div
-				class="text-duvet-ink2 flex h-9 items-end gap-3 px-3.5 pb-1.5 text-[10.5px] font-semibold tracking-[0.06em] uppercase select-none"
-			>
+			<div class="{OVERLINE} flex h-9 items-end gap-3 px-3.5 pb-1.5 select-none">
 				<span class="min-w-0 flex-1 truncate">{countLabel}</span>
 				<span class="shrink-0">Joined</span>
 			</div>

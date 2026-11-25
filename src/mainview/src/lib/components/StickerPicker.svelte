@@ -5,7 +5,7 @@
 	import { getAvatarURL, getHostURL } from "$lib/common/common";
 	import PickerSearch from "$lib/components/PickerSearch.svelte";
 	import SpaceIcon from "$lib/components/ui/SpaceIcon.svelte";
-	import { GLASS } from "$lib/components/ui/recipes";
+	import { GLASS, OVERLINE } from "$lib/components/ui/recipes";
 	import type { PickerGroup } from "$lib/space-emojis";
 
 	const host = getHostURL();
@@ -45,9 +45,7 @@
 			<div class="text-duvet-ink2 py-8 text-center text-[13px]">No results for "{searchQuery}"</div>
 		{:else}
 			{#each filtered as group (group.space.id)}
-				<div
-					class="text-duvet-ink2 flex items-center gap-1.5 px-1 pt-3 pb-1.5 text-[10.5px] font-semibold tracking-[0.06em] uppercase"
-				>
+				<div class="{OVERLINE} flex items-center gap-1.5 px-1 pt-3 pb-1.5">
 					<span class="contents" aria-hidden="true">
 						<SpaceIcon
 							src={group.space.icon ? getAvatarURL(group.space.id, group.space.icon) : null}

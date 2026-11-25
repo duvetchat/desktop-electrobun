@@ -1,21 +1,30 @@
 <script lang="ts">
 	import type { Snippet } from "svelte";
-	import { UserPlus, UserCheck, Loader2, RotateCcw, UserMinus, Ban } from "@lucide/svelte";
+	import { UserPlus, UserCheck, Loader2, RotateCcw, UserMinus, Ban, MessageCircle } from "@lucide/svelte";
 	import { Popover } from "bits-ui";
 	import type { MemberOnSidebar, GatewaySpace, Role } from "$lib/types";
-	import { currentUser, friends, pendingFriendRequests, sentFriendRequests, userActivities } from "$lib/stores.svelte";
+	import {
+		conversations,
+		currentUser,
+		friends,
+		pendingFriendRequests,
+		sentFriendRequests,
+		userActivities,
+	} from "$lib/stores.svelte";
 	import { BADGES } from "$lib/badges";
 	import { assignRoleToMember, removeRoleFromMember } from "$lib/api/roles";
 	import { sendFriendRequest, getSentRequests, acceptFriendRequest } from "$lib/api/friends";
 	import { rememberFriendStatuses } from "$lib/api/ws/connection";
 	import { Permission, ALL_PERMISSIONS, canManageRoleAt, hasSpacePermission } from "$lib/permissions";
 	import { banRequest, kickFromSpace, moderationOf } from "$lib/moderation";
+	import { chatWith } from "$lib/member-actions";
+	import { canChatWith, tiesOf } from "$lib/member-menu";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
 	import ActivityList from "$lib/components/ActivityList.svelte";
 	import ProfileBio from "$lib/components/ProfileBio.svelte";
 	import StatusDot from "$lib/components/StatusDot.svelte";
 	import OverlayLayer from "$lib/components/OverlayLayer.svelte";
-	import { GLASS, buttonClass, menuItemClass } from "$lib/components/ui/recipes";
+	import { GLASS, OVERLINE, buttonClass, menuItemClass } from "$lib/components/ui/recipes";
 
 	let {
 		member,
@@ -51,6 +60,22 @@
 
 	// Kick and Ban, when the API would let the user act on this member (moderationOf): in a space only.
 	const moderation = $derived(spaceId ? moderationOf(space, member) : null);
+
+	// Send direct message, where a member's menu offers Message (canChatWith): to someone the user has a direct
+	// conversation with or is friends with, as the API starts one between friends only.
+	const canMessage = $derived(
+		!!$currentUser &&
+			canChatWith(
+				$currentUser.id,
+				{ id: member.id, isBot: member.is_bot },
+				tiesOf(member.id, $currentUser.id, {
+					friends: $friends,
+					received: $pendingFriendRequests,
+					sent: $sentFriendRequests,
+					conversations: $conversations,
+				}),
+			),
+	);
 
 	const assignableRoles = $derived(
 		space ? [...space.roles].filter((r) => r.id !== spaceId).sort((a, b) => b.position - a.position) : [],
@@ -229,7 +254,7 @@
 									{@const reqState = friendRequestState[member.id] ?? "idle"}
 									{#if isFriend(member.id)}
 										<button
-											class="bg-duvet-alive/15 text-duvet-alive-text grid h-7 w-8 cursor-default place-items-center rounded-[9px]"
+											class="bg-duvet-alive/15 text-duvet-alive-text rounded-tile grid h-7 w-8 cursor-default place-items-center"
 											title="Friends"
 											disabled
 										>
@@ -246,7 +271,7 @@
 										</button>
 									{:else if reqState === "sent"}
 										<button
-											class="bg-duvet-alive/15 text-duvet-alive-text grid h-7 w-8 cursor-default place-items-center rounded-[9px]"
+											class="bg-duvet-alive/15 text-duvet-alive-text rounded-tile grid h-7 w-8 cursor-default place-items-center"
 											title="Request sent"
 											disabled
 										>
@@ -277,11 +302,14 @@
 								{/if}
 							</div>
 
+							<!-- What's under it stays in the window: Kick and Ban, and Send direct message's 46 px when it's there. -->
 							<div
-								class="bg-duvet-sunk mt-4 max-h-[max(160px,calc(100vh-330px))] overflow-hidden overflow-y-auto rounded-[14px] p-3"
+								class="bg-duvet-sunk mt-4 {canMessage
+									? 'max-h-[max(160px,calc(100vh-376px))]'
+									: 'max-h-[max(160px,calc(100vh-330px))]'} overflow-hidden overflow-y-auto rounded-[14px] p-3"
 							>
 								<h2
-									class="font-serif-lg text-duvet-ink text-[21px] leading-[1.15] font-medium tracking-[-0.012em] break-words select-text"
+									class="text-duvet-ink text-[16px] leading-[1.15] font-medium tracking-[-0.012em] break-words select-text"
 								>
 									{member.username}
 								</h2>
@@ -299,9 +327,7 @@
 
 								{#if member.bio}
 									<div class="bg-duvet-line my-3 h-px w-full"></div>
-									<h3 class="text-duvet-ink2 mb-1.5 text-left text-[10.5px] font-semibold tracking-[0.06em] uppercase">
-										About
-									</h3>
+									<h3 class="{OVERLINE} mb-1.5 text-left">About</h3>
 									<ProfileBio bio={member.bio} />
 								{/if}
 
@@ -309,12 +335,10 @@
 
 								{#if visibleRoles.length > 0}
 									<div class="bg-duvet-line my-3 h-px w-full"></div>
-									<h3 class="text-duvet-ink2 mb-1.5 text-left text-[10.5px] font-semibold tracking-[0.06em] uppercase">
-										Roles
-									</h3>
+									<h3 class="{OVERLINE} mb-1.5 text-left">Roles</h3>
 									<div class="flex flex-wrap gap-1">
 										{#each visibleRoles as role}
-											<div class="bg-duvet-secondary-fill flex h-[22px] w-max items-center gap-1.5 rounded-[7px] px-2">
+											<div class="bg-duvet-secondary-fill rounded-chip flex h-[22px] w-max items-center gap-1.5 px-2">
 												<div class="size-[9px] rounded-full" style={roleBadgeStyle(role)}></div>
 												<span class="text-duvet-ink text-[11.5px] font-medium">{role.name}</span>
 											</div>
@@ -324,9 +348,7 @@
 
 								{#if showPermissions}
 									<div class="bg-duvet-line my-3 h-px w-full"></div>
-									<h3 class="text-duvet-ink2 mb-1.5 text-left text-[10.5px] font-semibold tracking-[0.06em] uppercase">
-										Permissions
-									</h3>
+									<h3 class="{OVERLINE} mb-1.5 text-left">Permissions</h3>
 									{@const memberPermissions = getMemberPermissions(member)}
 									{#if memberPermissions.length > 0}
 										<div class="flex flex-col gap-1.5">
@@ -344,16 +366,14 @@
 
 								{#if currentUserCanManageRoles() && space && assignableRoles.length > 0}
 									<div class="bg-duvet-line my-3 h-px w-full"></div>
-									<h3 class="text-duvet-ink2 mb-1.5 text-left text-[10.5px] font-semibold tracking-[0.06em] uppercase">
-										Assign roles
-									</h3>
+									<h3 class="{OVERLINE} mb-1.5 text-left">Assign roles</h3>
 									<div class="max-h-32 space-y-1.5 overflow-y-auto">
 										{#each assignableRoles as role}
 											{@const memberHasRole = member.roles.some((mr) => mr.id === role.id)}
 											{@const toggleKey = `${member.id}-${role.id}`}
 											{@const manageable = canManageRoleAt(space, role.position)}
 											<button
-												class="flex h-[22px] w-fit items-center rounded-[7px] px-2 text-[11.5px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-45 motion-reduce:transition-none {memberHasRole
+												class="rounded-chip flex h-[22px] w-fit items-center px-2 text-[11.5px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-45 motion-reduce:transition-none {memberHasRole
 													? 'bg-duvet-chosen text-duvet-chosen-ink'
 													: 'bg-duvet-secondary-fill text-duvet-ink hover:bg-duvet-hover-strong'}"
 												onclick={() => toggleMemberRole(member, role.id)}
@@ -372,6 +392,21 @@
 									</div>
 								{/if}
 							</div>
+
+							<!-- Their direct conversation, opened as their menu's Message opens it (the app's page): the one there is, or
+							     a new one. -->
+							{#if canMessage}
+								<button
+									class="{buttonClass('primary')} mt-3 w-full"
+									onclick={() => {
+										onOpenChange(false);
+										chatWith(member.id);
+									}}
+								>
+									<MessageCircle class="size-4" />
+									Send direct message
+								</button>
+							{/if}
 
 							{#if moderation}
 								<div class="border-duvet-line mt-3 flex flex-col gap-0.5 border-t pt-2">

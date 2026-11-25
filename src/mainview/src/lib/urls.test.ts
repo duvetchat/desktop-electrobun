@@ -648,3 +648,54 @@ describe("Duvet's own links, as the API's tests read them", () => {
 		}
 	});
 });
+
+// The app's pages are views://, which sends no Referer, and YouTube answers that with error 153: in the app its player is
+// framed through the relay Bun serves on loopback (src/bun/player-relay.ts).
+describe("the YouTube relay", () => {
+	const own = ["localhost", "api.duvet.chat"];
+	const youtube = "https://www.youtube.com/embed/dQw4w9WgXcQ";
+	const relay = "http://127.0.0.1:49152";
+
+	test("in the app a YouTube player is framed through it, and TikTok's is not", () => {
+		expect(playerFrame(youtube, own, relay)).toEqual({
+			sandbox: "allow-scripts allow-same-origin",
+			player: true,
+			src: `${relay}/youtube?v=dQw4w9WgXcQ`,
+		});
+		// Without it (the web build, or it didn't start) the player is framed as it was.
+		for (const none of [undefined, null]) expect(playerFrame(youtube, own, none)?.src).toBe(`${youtube}?autoplay=1`);
+		const tiktok = PLAYER_URLS[1]!;
+		expect(playerFrame(tiktok, own, relay)?.src).toBe(tiktok.replace(/autoplay=0$/, "autoplay=1"));
+	});
+
+	test("only a loopback origin is a relay, and only its one page with a video id may be framed", () => {
+		expect(frameSandbox(`${relay}/youtube?v=dQw4w9WgXcQ`, own, relay)).toBe("allow-scripts allow-same-origin");
+		for (const url of [
+			`${relay}/`,
+			`${relay}/youtube`,
+			`${relay}/youtube?v=`,
+			`${relay}/youtube?v=a&b=c`,
+			`${relay}/youtube?v=a#x`,
+			`${relay}/youtube.js`,
+			`${relay}/youtube/../x?v=a`,
+			`${relay}/youtube?v=${"a".repeat(33)}`,
+			"http://127.0.0.1:49153/youtube?v=a",
+			"http://127.0.0.1.evil.example:49152/youtube?v=a",
+			"http://localhost:49152/youtube?v=a",
+			"https://127.0.0.1:49152/youtube?v=a",
+		]) {
+			expect([url, frameSandbox(url, own, relay)?.includes("allow-same-origin") ?? false]).toEqual([url, false]);
+		}
+		// Whatever Bun said, a relay that isn't loopback is not taken.
+		for (const bad of [
+			"https://duvet.chat",
+			"http://evil.example:80",
+			"http://127.0.0.1",
+			"http://127.0.0.1:80/x",
+			"",
+		]) {
+			expect(frameSandbox(`${bad}/youtube?v=a`, own, bad)?.includes("allow-same-origin") ?? false).toBe(false);
+			expect(playerFrame(youtube, own, bad)?.src).toBe(`${youtube}?autoplay=1`);
+		}
+	});
+});

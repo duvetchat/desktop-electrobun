@@ -19,6 +19,7 @@ import { Toasts } from "./toasts";
 import { startSpotifyReader, type SpotifyActivity } from "./spotify";
 import { ipcHeld, ipcPath, LineReader } from "./ipc";
 import { isAppPage, isOwnPage, navigatedTo, navigationRules } from "./navigation";
+import { startPlayerRelay } from "./player-relay";
 import { Maximizer, rectOf } from "./window-frame";
 import { frameFromEvent, MainWindowKeeper, openingOf, parsePrefs } from "./main-window";
 import { dragWithWindows, letWindowsArrange, pageLoaded } from "./window-snap";
@@ -99,6 +100,8 @@ type AppRPCSchema = {
 			// What the title bar offers of the app's own updates (updates.ts, #456); null for nothing. A page asks as it
 			// starts, as updateReady may have gone out before it loaded.
 			pendingUpdate: { params: void; response: UpdateOffer | null };
+			// Where the YouTube relay listens (player-relay.ts), or null when it didn't start.
+			playerRelay: { params: void; response: string | null };
 		};
 		messages: {
 			closeWindow: void;
@@ -243,6 +246,7 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 			windowCommand: () => ({ ok: false, error: "The main window sends no commands" }),
 			pictureForCopy: ({ url: imageUrl }) => pictureForCopy(String(imageUrl)),
 			pendingUpdate: () => updates.offer,
+			playerRelay: () => playerRelay?.origin ?? null,
 		},
 		messages: {
 			closeWindow: () => {
@@ -480,7 +484,9 @@ if (opening.fullScreen && currentOS !== "win32") {
 // nothing keeps, and right after new BrowserWindow that queue still has the webview's creation ahead of them, so a GC in
 // that gap could leave no rules, with no sign. Only the app's own first page can load before they apply.
 const devServer = url === DEV_SERVER_URL ? url : null;
-const rules = navigationRules(currentOS, devServer);
+// What frames YouTube's player with a Referer, on loopback (player-relay.ts), before the first page can ask where.
+const playerRelay = startPlayerRelay();
+const rules = navigationRules(currentOS, devServer, playerRelay?.origin ?? null);
 win.webview.on("dom-ready", () => win.webview.setNavigationRules(rules));
 
 // On Windows Electrobun gives the webview no keyboard: as Duvet opens, the page takes it once it has loaded (#361).

@@ -22,14 +22,14 @@
 	} = $props();
 </script>
 
-<section class="flex flex-col gap-2">
+<section class="flex flex-col gap-2.5">
 	{#if title || actions}
-		<div class="flex min-h-5 items-center gap-2">
+		<div class="flex min-h-6 items-center gap-2">
 			{#if title}<h3 class="{GROUP_TITLE} min-w-0 flex-1">{title}</h3>{:else}<span class="flex-1"></span>{/if}
 			{@render actions?.()}
 		</div>
 	{/if}
-	<div class="{CARD} {plain ? 'p-3.5' : 'divide-duvet-line divide-y'} {className}">
+	<div class="{CARD} {plain ? 'p-5' : 'divide-duvet-line divide-y'} {className}">
 		{@render children()}
 	</div>
 	{#if note}<p class={NOTE}>{note}</p>{/if}

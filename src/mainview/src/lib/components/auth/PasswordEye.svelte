@@ -1,13 +1,18 @@
 <script lang="ts">
 	import { Eye, EyeOff } from "@lucide/svelte";
 	import IconButton from "$lib/components/ui/IconButton.svelte";
+	import { t } from "$lib/i18n";
 
 	// The eye at the end of a password field: shows what was typed, or hides it again. One eye rules every password
 	// field of its form. Its name says what a press does, so it isn't also announced as pressed.
 	let { shown = $bindable(false), disabled = false }: { shown?: boolean; disabled?: boolean } = $props();
 </script>
 
-<IconButton label={shown ? "Hide password" : "Show password"} {disabled} onclick={() => (shown = !shown)}>
+<IconButton
+	label={shown ? t("auth_password_hide") : t("auth_password_show")}
+	{disabled}
+	onclick={() => (shown = !shown)}
+>
 	{#if shown}
 		<EyeOff size={16} />
 	{:else}

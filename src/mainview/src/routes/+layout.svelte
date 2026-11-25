@@ -16,6 +16,7 @@
 	import { getElectrobunRpc } from "$lib/electrobun-rpc";
 	import { driftSpecksOnScreen } from "$lib/spoiler-specks";
 	import { followSystemTheme } from "$lib/theme.svelte";
+	import { followLocale } from "$lib/i18n";
 	import { currentShell } from "$lib/platform";
 	import { appChrome } from "$lib/stores/chrome.svelte";
 	import { VIBRANT_CLASS, followWornTheme, showsGlass, watchClasses } from "$lib/vibrancy";
@@ -57,6 +58,9 @@
 		const stopSpecks = driftSpecksOnScreen(document);
 		// app.html set the theme before the first paint; this keeps it with the system's while it's System.
 		const stopTheme = followSystemTheme();
+		// The root layout's load put the page in the user's language; this keeps it with a pick made in another window
+		// and with the system's languages (lib/i18n.ts).
+		const stopLocale = followLocale();
 		// The glass behind the sidebar wears the theme the page does (lib/vibrancy.ts).
 		const root = document.documentElement;
 		const stopGlassTheme = shell.vibrancy
@@ -71,6 +75,7 @@
 			stopSpecks();
 			stopTheme();
 			stopGlassTheme();
+			stopLocale();
 		};
 	});
 </script>

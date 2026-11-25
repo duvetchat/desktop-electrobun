@@ -587,6 +587,7 @@
 		label={$isMuted ? "Unmute" : "Mute"}
 		tip={micTip}
 		pressed={$isMuted}
+		pressedTone="danger"
 		stateInName
 		disabled={!canSpeak}
 		{tone}
@@ -598,6 +599,7 @@
 	<MediaButton
 		label={$isDeafened ? "Undeafen" : "Deafen"}
 		pressed={$isDeafened}
+		pressedTone="danger"
 		stateInName
 		{tone}
 		{shape}
@@ -738,7 +740,7 @@
 				<h2 class="text-duvet-ink truncate font-serif text-[16px] font-medium">{channelName}</h2>
 				{#if isConnected}
 					<span
-						class="bg-duvet-alive/14 text-duvet-alive-text ml-auto shrink-0 rounded-[9px] px-2 py-0.5 text-xs font-semibold"
+						class="bg-duvet-alive/14 text-duvet-alive-text rounded-tile ml-auto shrink-0 px-2 py-0.5 text-xs font-semibold"
 					>
 						Connected
 					</span>

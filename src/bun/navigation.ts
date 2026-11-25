@@ -14,7 +14,8 @@
  * - Everywhere but on Windows, what its frames need. WebView2's check only sees the top frame (NavigationStarting), so on
  *   Windows frames answer to their sandbox alone (lib/urls.ts). macOS's and Linux's see every frame
  *   (decidePolicyForNavigationAction, OnBeforeBrowse), so there the rules name:
- *   - the players the app frames, the pages of PLAYERS in lib/urls.ts;
+ *   - the players the app frames, the pages of PLAYERS in lib/urls.ts, and the relay on loopback that frames
+ *     YouTube's with a Referer (player-relay.ts; relay is its origin, written out as the rules above ask);
  *   - about:, for the blank frames YouTube's player makes;
  *   - devtools:, as Linux's Inspect Element goes through the same check.
  *
@@ -23,14 +24,24 @@
  * clear the rules and load any URL in the window. That bridge is older than the rules: it's the risk those frames
  * already carry (PLAYERS in lib/urls.ts). On Windows it only reaches the top frame.
  */
-export function navigationRules(platform: NodeJS.Platform, devServer: string | null): string[] {
+export function navigationRules(
+	platform: NodeJS.Platform,
+	devServer: string | null,
+	relay: string | null = null,
+): string[] {
 	return [
 		"^*",
 		"views://*",
 		...(devServer ? [`${devServer}/*`] : []),
 		...(platform === "win32"
 			? []
-			: ["about:*", "devtools://*", "https://www.youtube.com/embed/*", "https://www.tiktok.com/player/v1/*"]),
+			: [
+					"about:*",
+					"devtools://*",
+					"https://www.youtube.com/embed/*",
+					"https://www.tiktok.com/player/v1/*",
+					...(relay ? [`${relay}/youtube?v=*`] : []),
+				]),
 	];
 }
 

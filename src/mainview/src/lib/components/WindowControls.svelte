@@ -3,6 +3,7 @@
 	import { closeWindow, maximizeWindow, minimizeWindow } from "$lib/window-controls";
 	import { TRAFFIC_LIGHTS_INSET } from "$lib/shell-layout";
 	import DragRegion from "$lib/components/DragRegion.svelte";
+	import { FOCUS_RING_INSET } from "$lib/components/ui/recipes";
 
 	// The window's own controls, as each system has them (#357, S-01), decided by the platform switch alone:
 	//   - macOS: the system draws its traffic lights in the window's top left corner. `side="start"` keeps that corner
@@ -19,7 +20,7 @@
 	// The system's own lights are there in the app; a preview, or a window without them, draws them.
 	const drawnLights = lights && (shell.preview || !shell.nativeTrafficLights);
 
-	const focus = "focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-duvet-accent";
+	const focus = FOCUS_RING_INSET;
 	const windowsButton = `text-duvet-ink hover:bg-duvet-hover-strong grid h-full w-[46px] place-items-center transition-colors duration-[120ms] motion-reduce:transition-none ${focus}`;
 	const linuxButton = `bg-duvet-hover-strong text-duvet-ink grid size-6 place-items-center rounded-full transition-[filter] duration-[120ms] hover:brightness-90 motion-reduce:transition-none ${focus}`;
 	const light =

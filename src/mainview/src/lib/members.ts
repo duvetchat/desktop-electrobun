@@ -4,8 +4,8 @@ import type { GatewayRole, GatewaySpace, MemberOnSidebar, Role } from "$lib/type
 /** The faces the pane's bar shows for a room's members; the rest are a "+N". */
 export const MEMBER_FACES = 4;
 
-/** A members list's row and its groups' headings, in px (MemberList's h-12 and h-9). */
-export const MEMBER_ROW = 48;
+/** A members list's row and its groups' headings, in px (MemberList's h-10 and h-9). */
+export const MEMBER_ROW = 40;
 export const GROUP_HEADING = 36;
 
 /**

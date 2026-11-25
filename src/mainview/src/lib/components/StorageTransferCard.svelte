@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { buttonClass } from "$lib/components/ui/recipes";
+	import { buttonClass, iconTileClass } from "$lib/components/ui/recipes";
 	import { ArrowRightLeft as MoveIcon } from "@lucide/svelte";
 	import { getApiError } from "$lib/api/api";
 	import { storageTransfers } from "$lib/stores/storage-transfers.svelte";
@@ -43,10 +43,7 @@
 
 <div class="bg-duvet-card shadow-duvet-raised flex flex-col gap-2.5 rounded-2xl px-3.5 py-3">
 	<div class="flex items-center gap-3">
-		<span
-			class="bg-duvet-secondary-fill text-duvet-accent-text grid size-[30px] shrink-0 place-items-center rounded-[9px]"
-			><MoveIcon class="size-4" /></span
-		>
+		<span class={iconTileClass("md")}><MoveIcon class="size-4" /></span>
 		<div class="min-w-0 flex-1">
 			<p class="truncate text-[13.5px] font-medium">
 				{queued ? "Waiting to move" : "Moving"} to {target}

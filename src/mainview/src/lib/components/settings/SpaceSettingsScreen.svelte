@@ -66,7 +66,7 @@
 		canSetPermission,
 		computeSpacePermissions,
 	} from "$lib/permissions";
-	import { settingsSections, webhookRooms, type SettingsSection } from "$lib/space-settings";
+	import { groupSettingsSections, settingsSections, webhookRooms, type SettingsSection } from "$lib/space-settings";
 
 	import type { GatewaySpace, SpaceEmoji, SpaceSticker } from "$lib/types";
 	import type { StorageBucket, CreateBucketPayload } from "$lib/api/user";
@@ -101,6 +101,7 @@
 	import Toggle from "$lib/components/ui/Toggle.svelte";
 	import { iconButtonClass } from "$lib/components/ui/recipes";
 	import {
+		ACTION_BAR,
 		calloutClass,
 		CARD,
 		CHECKBOX,
@@ -508,9 +509,14 @@
 		storage: { label: "Storage", icon: DatabaseIcon, tile: "#0b6fe8" },
 		attachments: { label: "Attachments", icon: PaperclipIcon, tile: "#5f45b5" },
 	};
-	const sectionGroups = $derived<SettingsNavGroup<SettingsSection>[]>([
-		{ items: sections.map((id) => ({ id, ...SECTION_ITEMS[id] })) },
-	]);
+	// The side panel's sections, grouped as the design map arranges a Space's: its own face, the people in it, and the
+	// apps and data behind it.
+	const sectionGroups = $derived<SettingsNavGroup<SettingsSection>[]>(
+		groupSettingsSections(sections).map((group) => ({
+			title: group.title,
+			items: group.sections.map((id) => ({ id, ...SECTION_ITEMS[id] })),
+		})),
+	);
 	// One they can't open (another space's settings, or a permission gone) gives way to the first they can, before it
 	// shows.
 	$effect.pre(() => {
@@ -1219,7 +1225,7 @@
 	set: (stop: "from" | "via" | "to", value: string) => void,
 )}
 	<div class="flex flex-wrap items-center gap-3">
-		<label class="text-duvet-ink2 flex items-center gap-1.5 text-[11px]">
+		<label class="text-duvet-ink2 flex items-center gap-1.5 text-[12px]">
 			<input
 				type="color"
 				value={from}
@@ -1230,7 +1236,7 @@
 			From
 		</label>
 		{#if gradient}
-			<label class="text-duvet-ink2 flex items-center gap-1.5 text-[11px]">
+			<label class="text-duvet-ink2 flex items-center gap-1.5 text-[12px]">
 				<input
 					type="color"
 					value={via}
@@ -1240,7 +1246,7 @@
 				/>
 				Via
 			</label>
-			<label class="text-duvet-ink2 flex items-center gap-1.5 text-[11px]">
+			<label class="text-duvet-ink2 flex items-center gap-1.5 text-[12px]">
 				<input
 					type="color"
 					value={to}
@@ -1273,8 +1279,8 @@
 				title={settable ? undefined : "You can only grant permissions you have"}
 			>
 				<div class="min-w-0 flex-1">
-					<p class="text-[13px] leading-[1.3] font-medium">{perm.name}</p>
-					<p class="text-duvet-ink2 mt-0.5 text-[11.5px] leading-snug">{perm.description}</p>
+					<p class="text-[14px] leading-[1.3] font-medium">{perm.name}</p>
+					<p class="text-duvet-ink2 mt-0.5 text-[13px] leading-snug">{perm.description}</p>
 				</div>
 				<Toggle
 					label={perm.name}
@@ -1331,7 +1337,7 @@
 		</div>
 		<label class="flex cursor-pointer items-center gap-2">
 			<input type="checkbox" bind:checked={sbUsePathStyle} class={CHECKBOX} />
-			<span class="text-duvet-ink text-xs"
+			<span class="text-duvet-ink text-[13px]"
 				>Use path-style addressing <span class="text-duvet-ink2">(required for MinIO, RustFS, etc.)</span></span
 			>
 		</label>
@@ -1361,7 +1367,7 @@
 				/>
 			</div>
 		</div>
-		<p class="text-duvet-ink2 text-xs">
+		<p class="text-duvet-ink2 text-[13px]">
 			Leave empty to remove limits. When a total limit is set, oldest files are recycled automatically when full.
 		</p>
 		<div class="flex justify-end gap-2 pt-1">
@@ -1401,13 +1407,13 @@
 				>
 			</div>
 		{:else if pending === "remove"}
-			<div class="text-duvet-ink2 flex size-full items-center justify-center text-xs">
+			<div class="text-duvet-ink2 flex size-full items-center justify-center text-[13px]">
 				{#if kind === "banner"}No banner{:else}<XIcon class="size-5" />{/if}
 			</div>
 			<div
 				class="bg-duvet-media-scrim absolute inset-0 flex items-center justify-center opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 motion-reduce:transition-none"
 			>
-				<button class="text-fixed-white text-xs font-medium" onclick={undo}>Undo</button>
+				<button class="text-fixed-white text-[13px] font-medium" onclick={undo}>Undo</button>
 			</div>
 		{:else if saved}
 			<img src={saved} alt={kind} class="size-full object-cover" />
@@ -1423,7 +1429,7 @@
 			</div>
 		{:else}
 			<button
-				class="text-duvet-accent-text hover:bg-duvet-hover-strong flex size-full items-center justify-center gap-1.5 text-[13px] font-medium transition-colors motion-reduce:transition-none"
+				class="text-duvet-accent-text hover:bg-duvet-hover-strong flex size-full items-center justify-center gap-1.5 text-[14px] font-medium transition-colors motion-reduce:transition-none"
 				title={kind === "banner" ? "Set banner" : "Set icon"}
 				onclick={edit}
 			>
@@ -1444,11 +1450,11 @@
 	wide={activeSection === "roles"}
 >
 	{#snippet head()}
-		<div class="flex shrink-0 items-center gap-2.5 p-2">
-			<SpaceIconMark src={space?.icon ? getAvatarURL(space.id, space.icon) : null} name={space?.name ?? ""} size={34} />
+		<div class="flex shrink-0 items-center gap-3 p-2.5">
+			<SpaceIconMark src={space?.icon ? getAvatarURL(space.id, space.icon) : null} name={space?.name ?? ""} size={40} />
 			<span class="min-w-0 flex-1">
-				<span class="font-serif-sm block truncate text-[15px] font-medium">{space?.name ?? "Space"}</span>
-				<span class="text-duvet-ink2 block truncate text-[11.5px]">Space settings</span>
+				<span class="block truncate text-[17px] font-semibold">{space?.name ?? "Space"}</span>
+				<span class="text-duvet-ink2 block truncate text-[13.5px]">Space settings</span>
 			</span>
 		</div>
 	{/snippet}
@@ -1458,10 +1464,7 @@
 		{#if activeSection === "attachments" && spacePicking && spacePicker.pickedFiles.length > 0}
 			{@const pickedCount = spacePicker.pickedFiles.length}
 			{@const tooMany = (spacePicker.filter.attachment_ids?.length ?? 0) > MAX_PICKED_FILES}
-			<div
-				transition:slide={{ duration: motionMs(200) }}
-				class="bg-duvet-card shadow-duvet-lifted mx-[26px] mb-3 flex items-center justify-between gap-4 rounded-2xl py-2.5 pr-2.5 pl-4 text-[13px] font-medium"
-			>
+			<div transition:slide={{ duration: motionMs(200) }} class={ACTION_BAR}>
 				<p class="text-duvet-ink2 min-w-0 truncate">
 					{#if spaceTransfer}
 						Wait for the transfer under way to end.
@@ -1518,7 +1521,7 @@
 					() => (pendingIcon = null),
 				)}
 			</div>
-			<p class="text-duvet-ink2 w-full text-[11px] select-text">Space ID: {spaceId}</p>
+			<p class="text-duvet-ink2 w-full text-[12px] select-text">Space ID: {spaceId}</p>
 		</SettingsGroup>
 
 		<SettingsGroup title="About" plain class="flex flex-col gap-4">
@@ -1568,8 +1571,8 @@
 		<!-- Delete: the owner's alone, confirmed by typing the space's name -->
 		{#if isOwner && space}
 			<SettingsGroup plain class="ring-duvet-danger/40 ring-1">
-				<h3 class="text-duvet-danger text-[13.5px] font-medium">Delete Space</h3>
-				<p class="text-duvet-ink2 mt-0.5 text-xs">
+				<h3 class="text-duvet-danger text-[14.5px] font-medium">Delete Space</h3>
+				<p class="text-duvet-ink2 mt-0.5 text-[13px]">
 					It goes for everyone in it, with its rooms and messages. This can't be undone.
 				</p>
 				{#if !confirmingDelete}
@@ -1577,7 +1580,7 @@
 					>
 				{:else}
 					<label class="mt-3 block">
-						<span class="mb-1.5 block text-xs">
+						<span class="mb-1.5 block text-[13px]">
 							Type <strong class="font-semibold">{space.name}</strong> to delete it.
 						</span>
 						<input
@@ -1592,7 +1595,7 @@
 						/>
 					</label>
 					{#if deleteError}
-						<p class="text-duvet-danger mt-2 text-[13px]" role="alert">{deleteError}</p>
+						<p class="text-duvet-danger mt-2 text-[14px]" role="alert">{deleteError}</p>
 					{/if}
 					<div class="mt-3 flex gap-2">
 						<Button variant="danger" onclick={handleDeleteSpace} disabled={!deleteNameMatches || deletingSpace}>
@@ -1631,7 +1634,7 @@
 				<div class="flex flex-col gap-2">
 					<div class="flex items-center justify-between">
 						<span class="{LABEL} mb-0!">Color</span>
-						<label class="text-duvet-ink2 flex cursor-pointer items-center gap-1.5 text-xs">
+						<label class="text-duvet-ink2 flex cursor-pointer items-center gap-1.5 text-[13px]">
 							<input type="checkbox" bind:checked={newRoleUseGradient} class={CHECKBOX} />
 							Gradient
 						</label>
@@ -1645,7 +1648,7 @@
 
 				<!-- Hoisted -->
 				<div class="flex items-center justify-between gap-3">
-					<span class="text-[13px] font-medium">List this role's members separately</span>
+					<span class="text-[14px] font-medium">List this role's members separately</span>
 					<Toggle label="List this role's members separately" bind:checked={newRoleHoisted} />
 				</div>
 
@@ -1712,7 +1715,7 @@
 															: 'bg-duvet-secondary-fill text-duvet-ink'}">Clear color</button
 													>
 													{#if !editingRoleClearColors}
-														<label class="text-duvet-ink2 flex cursor-pointer items-center gap-1.5 text-xs">
+														<label class="text-duvet-ink2 flex cursor-pointer items-center gap-1.5 text-[13px]">
 															<input type="checkbox" bind:checked={editingRoleUseGradient} class={CHECKBOX} />
 															Gradient
 														</label>
@@ -1736,7 +1739,7 @@
 
 										<!-- Hoisted -->
 										<div class="flex items-center justify-between gap-3">
-											<span class="text-[13px] font-medium">List this role's members separately</span>
+											<span class="text-[14px] font-medium">List this role's members separately</span>
 											<Toggle label="List this role's members separately" bind:checked={editingRoleHoisted} />
 										</div>
 
@@ -1762,12 +1765,12 @@
 										/>
 										<div class="min-w-0 flex-1">
 											<div class="mb-0.5 flex items-center gap-2">
-												<span class="truncate text-[13.5px] font-medium">{role.name}</span>
+												<span class="truncate text-[14.5px] font-medium">{role.name}</span>
 												{#if role.hoisted}
 													<span class="{TAG} bg-duvet-secondary-fill text-duvet-ink2">Listed separately</span>
 												{/if}
 											</div>
-											<p class="text-duvet-ink2 truncate text-xs">{getPermissionNames(role.permissions)}</p>
+											<p class="text-duvet-ink2 truncate text-[13px]">{getPermissionNames(role.permissions)}</p>
 										</div>
 										<!-- Only a role below the user's highest one, as the API's checkRoleHierarchy allows -->
 										<div
@@ -1800,13 +1803,13 @@
 					{/each}
 				</div>
 				{#if space.roles.length === 0}
-					<p class="text-duvet-ink2 py-4 text-center text-sm">
+					<p class="text-duvet-ink2 py-4 text-center text-[14.5px]">
 						No roles yet. Create one to start assigning permissions.
 					</p>
 				{/if}
 			</section>
 		{:else}
-			<p class="text-duvet-ink2 px-1.5 text-sm">You don't have permission to manage roles.</p>
+			<p class="text-duvet-ink2 px-1.5 text-[14.5px]">You don't have permission to manage roles.</p>
 		{/if}
 	{:else if activeSection === "members"}
 		{#if space}
@@ -1818,7 +1821,7 @@
 		{@const loading = emojis ? emojisLoading : stickersLoading}
 		{@const canManage = emojis ? canManageEmojis : canManageStickers}
 		{#if loading}
-			<p class="text-duvet-ink2 px-1.5 text-sm">{emojis ? "Loading emojis…" : "Loading stickers…"}</p>
+			<p class="text-duvet-ink2 px-1.5 text-[14.5px]">{emojis ? "Loading emojis…" : "Loading stickers…"}</p>
 		{:else}
 			{#if canManage}
 				{@const preview = emojis ? newEmojiPreview : newStickerPreview}
@@ -1844,7 +1847,7 @@
 							<span class={LABEL}>Image</span>
 							<button
 								type="button"
-								class="bg-duvet-secondary-fill text-duvet-accent-text hover:bg-duvet-hover-strong flex size-[38px] items-center justify-center overflow-hidden rounded-[11px] transition-colors motion-reduce:transition-none"
+								class="bg-duvet-secondary-fill text-duvet-accent-text hover:bg-duvet-hover-strong rounded-row flex size-[44px] items-center justify-center overflow-hidden transition-colors motion-reduce:transition-none"
 								title={preview ? "Change image" : "Choose image"}
 								aria-label={preview ? "Change image" : "Choose image"}
 								onclick={() => (emojis ? (showEmojiCrop = true) : (showStickerCrop = true))}
@@ -1857,7 +1860,7 @@
 							</button>
 						</div>
 						<Button
-							class="h-[38px]! tabular-nums"
+							class="h-[44px]! tabular-nums"
 							onclick={emojis ? handleUploadEmoji : handleUploadSticker}
 							disabled={emojis
 								? isUploadingEmoji || !newEmojiName.trim() || !newEmojiFile
@@ -1874,19 +1877,19 @@
 				<div class="flex flex-col items-center justify-center py-12 text-center">
 					{#if emojis}
 						<SmileIcon class="text-duvet-ink2 mb-3 size-9" />
-						<p class="text-duvet-ink2 text-sm">No custom emojis yet.</p>
+						<p class="text-duvet-ink2 text-[14.5px]">No custom emojis yet.</p>
 					{:else}
 						<StickerIcon class="text-duvet-ink2 mb-3 size-9" />
-						<p class="text-duvet-ink2 text-sm">No custom stickers yet.</p>
+						<p class="text-duvet-ink2 text-[14.5px]">No custom stickers yet.</p>
 					{/if}
 					{#if canManage}
-						<p class="text-duvet-ink2 mt-1 text-xs">Upload one above to get started.</p>
+						<p class="text-duvet-ink2 mt-1 text-[13px]">Upload one above to get started.</p>
 					{/if}
 				</div>
 			{:else if emojis}
 				<div class="{CARD} divide-duvet-line divide-y">
 					{#each spaceEmojis as emoji (emoji.id)}
-						<div class="group flex min-h-[52px] items-center gap-3 px-3.5 py-2">
+						<div class="group flex min-h-[62px] items-center gap-3 px-4 py-3">
 							<img
 								src="{attachmentHost}/attachments/{emoji.attachment_id}"
 								alt=":{emoji.name}:"
@@ -1913,7 +1916,7 @@
 									<XIcon size={16} />
 								</IconButton>
 							{:else}
-								<p class="min-w-0 flex-1 truncate text-[13.5px] font-medium">:{emoji.name}:</p>
+								<p class="min-w-0 flex-1 truncate text-[14.5px] font-medium">:{emoji.name}:</p>
 								{#if canManageEmojis}
 									<div
 										class="flex gap-1 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 motion-reduce:transition-none"
@@ -1924,7 +1927,7 @@
 										<IconButton
 											label="Delete"
 											title="Delete"
-											class="hover:bg-duvet-danger/15! hover:text-duvet-danger!"
+											danger
 											onclick={() => handleDeleteEmoji(emoji.id)}
 											disabled={isDeletingEmoji[emoji.id]}
 										>
@@ -1939,7 +1942,7 @@
 			{:else}
 				<div class="{CARD} divide-duvet-line divide-y">
 					{#each spaceStickers as sticker (sticker.id)}
-						<div class="group flex min-h-[68px] items-center gap-3 px-3.5 py-2">
+						<div class="group flex min-h-[76px] items-center gap-3 px-4 py-3">
 							<img
 								src="{attachmentHost}/attachments/{sticker.attachment_id}"
 								alt={sticker.name}
@@ -1966,7 +1969,7 @@
 									<XIcon size={16} />
 								</IconButton>
 							{:else}
-								<p class="min-w-0 flex-1 truncate text-[13.5px] font-medium">{sticker.name}</p>
+								<p class="min-w-0 flex-1 truncate text-[14.5px] font-medium">{sticker.name}</p>
 								{#if canManageStickers}
 									<div
 										class="flex gap-1 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 motion-reduce:transition-none"
@@ -1977,7 +1980,7 @@
 										<IconButton
 											label="Delete"
 											title="Delete"
-											class="hover:bg-duvet-danger/15! hover:text-duvet-danger!"
+											danger
 											onclick={() => handleDeleteSticker(sticker.id)}
 											disabled={isDeletingSticker[sticker.id]}
 										>
@@ -2053,8 +2056,8 @@
 			{:else if spaceBuckets.length === 0}
 				<div class="text-duvet-ink2 flex flex-col items-center justify-center py-12">
 					<DatabaseIcon class="mb-3 size-9" />
-					<p class="text-sm">No buckets configured</p>
-					<p class="mt-1 text-xs">Add a bucket to enable custom emoji uploads.</p>
+					<p class="text-[14.5px]">No buckets configured</p>
+					<p class="mt-1 text-[13px]">Add a bucket to enable custom emoji uploads.</p>
 				</div>
 			{:else}
 				<div class="{CARD} divide-duvet-line divide-y">
@@ -2064,18 +2067,18 @@
 						>
 							<div class="min-w-0 flex-1">
 								<div class="flex items-center gap-2">
-									<span class="truncate text-[13.5px] font-medium">{bucket.name}</span>
+									<span class="truncate text-[14.5px] font-medium">{bucket.name}</span>
 									{#if bucket.is_active}
 										<span class="{TAG} bg-duvet-alive/20 text-duvet-alive-text uppercase">Active</span>
 									{:else}
 										<span class="{TAG} bg-duvet-secondary-fill text-duvet-ink2 uppercase">Inactive</span>
 									{/if}
 								</div>
-								<p class="text-duvet-ink2 mt-0.5 truncate text-xs">{bucket.bucket_name} · {bucket.endpoint}</p>
+								<p class="text-duvet-ink2 mt-0.5 truncate text-[13px]">{bucket.bucket_name} · {bucket.endpoint}</p>
 								{#if bucket.max_bytes}
 									{@const pct = usagePercent(bucket.used_bytes, bucket.max_bytes)}
 									<div class="mt-1.5 space-y-1">
-										<div class="text-duvet-ink2 flex items-center justify-between text-[11px] tabular-nums">
+										<div class="text-duvet-ink2 flex items-center justify-between text-[12px] tabular-nums">
 											<span
 												>{(bucket.used_bytes / 1024 / 1024).toFixed(1)} MB / {(bucket.max_bytes / 1024 / 1024).toFixed(
 													0,
@@ -2085,13 +2088,13 @@
 										</div>
 										{@render usageBar(pct)}
 										{#if bucket.upload_limit_bytes}
-											<p class="text-duvet-ink2 text-[11px]">
+											<p class="text-duvet-ink2 text-[12px]">
 												Per-file: {(bucket.upload_limit_bytes / 1024 / 1024).toFixed(0)} MB
 											</p>
 										{/if}
 									</div>
 								{:else if bucket.upload_limit_bytes}
-									<p class="text-duvet-ink2 mt-0.5 text-[11px]">
+									<p class="text-duvet-ink2 mt-0.5 text-[12px]">
 										Per-file: {(bucket.upload_limit_bytes / 1024 / 1024).toFixed(0)} MB
 									</p>
 								{/if}
@@ -2130,12 +2133,7 @@
 								<IconButton label="Edit" title="Edit" onclick={() => startEditSpaceBucket(bucket)}>
 									<PencilIcon size={16} />
 								</IconButton>
-								<IconButton
-									label="Delete"
-									title="Delete"
-									class="hover:bg-duvet-danger/15! hover:text-duvet-danger!"
-									onclick={() => handleDeleteSpaceBucket(bucket.id)}
-								>
+								<IconButton label="Delete" title="Delete" danger onclick={() => handleDeleteSpaceBucket(bucket.id)}>
 									<TrashIcon size={16} />
 								</IconButton>
 							</div>
@@ -2144,7 +2142,7 @@
 				</div>
 			{/if}
 		{:else}
-			<p class="text-duvet-ink2 px-1.5 text-sm">You don't have permission to manage storage for this Space.</p>
+			<p class="text-duvet-ink2 px-1.5 text-[14.5px]">You don't have permission to manage storage for this Space.</p>
 		{/if}
 	{:else if activeSection === "invites"}
 		<p class={NOTE}>The invite links that still work. Revoking one makes it stop working for everyone.</p>
@@ -2157,7 +2155,7 @@
 		{:else if spaceInvites.length === 0}
 			<div class="text-duvet-ink2 flex flex-col items-center justify-center py-14">
 				<LinkIcon class="mb-3 size-9" />
-				<p class="text-sm">No invites</p>
+				<p class="text-[14.5px]">No invites</p>
 			</div>
 		{:else}
 			<div class="{CARD} divide-duvet-line divide-y">
@@ -2167,8 +2165,8 @@
 						class="group hover:bg-duvet-hover-soft flex items-center gap-3 px-3.5 py-2.5 transition-colors motion-reduce:transition-none"
 					>
 						<div class="min-w-0 flex-1">
-							<p class="truncate font-mono text-[13px] select-text">{invite.code}</p>
-							<p class="text-duvet-ink2 text-xs">
+							<p class="truncate font-mono text-[14px] select-text">{invite.code}</p>
+							<p class="text-duvet-ink2 text-[13px]">
 								#{room?.name ?? "deleted room"}
 								<span class="mx-1 opacity-60">&middot;</span>
 								{inviteCreator(invite.created_by)}
@@ -2200,8 +2198,8 @@
 		{/if}
 	{:else if activeSection === "attachments"}
 		{@render transferCard()}
-		<div class="flex min-h-[30px] items-center justify-between gap-3 px-1.5">
-			<div class="text-duvet-ink2 text-[13px]">
+		<div class="flex min-h-[36px] items-center justify-between gap-3 px-2">
+			<div class="text-duvet-ink2 text-[14px]">
 				{#if spaceListedHere}
 					<span class="text-duvet-ink font-semibold tabular-nums">{spaceAttachments.length}</span>
 					file{spaceAttachments.length !== 1 ? "s" : ""}
@@ -2211,7 +2209,7 @@
 			</div>
 			<div class="flex items-center gap-2">
 				{#if canManageBuckets && (spaceBuckets.length > 0 || spaceAttachmentsLocation !== "all")}
-					<label class="text-duvet-ink2 flex items-center gap-2 text-xs">
+					<label class="text-duvet-ink2 flex items-center gap-2 text-[13px]">
 						Location
 						<select
 							value={spaceAttachmentsLocation}
@@ -2243,12 +2241,12 @@
 		{:else if !spaceListedHere}
 			<!-- The location's files didn't load (a toast said why): the list is another's. -->
 			<div class="text-duvet-ink2 flex flex-col items-center justify-center py-14">
-				<p class="text-sm">Couldn't load the files here</p>
+				<p class="text-[14.5px]">Couldn't load the files here</p>
 			</div>
 		{:else if spaceAttachments.length === 0}
 			<div class="text-duvet-ink2 flex flex-col items-center justify-center py-14">
 				<PaperclipIcon class="mb-3 size-9" />
-				<p class="text-sm">
+				<p class="text-[14.5px]">
 					{spaceAttachmentsLocation === "all" ? "No attachments in this Space" : "No files here"}
 				</p>
 			</div>
@@ -2277,18 +2275,18 @@
 								<img
 									src="{attachmentHost}{att.url ?? `/attachments/${att.id}`}"
 									alt=""
-									class="bg-duvet-secondary-fill size-10 shrink-0 rounded-[9px] object-cover"
+									class="bg-duvet-secondary-fill rounded-tile size-10 shrink-0 object-cover"
 								/>
 							{:else}
 								<div
-									class="bg-duvet-secondary-fill text-duvet-ink2 grid size-10 shrink-0 place-items-center rounded-[9px]"
+									class="bg-duvet-secondary-fill text-duvet-ink2 rounded-tile grid size-10 shrink-0 place-items-center"
 								>
 									{#if isAudio}<MicIcon size={16} />{:else}<PaperclipIcon size={16} />{/if}
 								</div>
 							{/if}
 							<div class="min-w-0 flex-1">
-								<p class="truncate text-[13.5px] font-medium">{att.filename}</p>
-								<p class="text-duvet-ink2 text-xs">
+								<p class="truncate text-[14.5px] font-medium">{att.filename}</p>
+								<p class="text-duvet-ink2 text-[13px]">
 									{formatFileSize(att.size_bytes)}
 									<span class="mx-1 opacity-60">&middot;</span>
 									{new Date(att.created_at).toLocaleDateString()}
@@ -2307,12 +2305,7 @@
 									<DownloadIcon size={16} />
 								</a>
 								{#if canManageAttachments}
-									<IconButton
-										label="Delete"
-										title="Delete"
-										class="hover:bg-duvet-danger/15! hover:text-duvet-danger!"
-										onclick={() => handleDeleteSpaceAttachment(att)}
-									>
+									<IconButton label="Delete" title="Delete" danger onclick={() => handleDeleteSpaceAttachment(att)}>
 										<TrashIcon size={16} />
 									</IconButton>
 								{/if}

@@ -9,16 +9,16 @@ const YOUTUBE = "https://www.youtube.com/embed/dQw4w9WgXcQ";
 const PAGE = "https://player.example/v/1";
 const POSTER = "https://api.test/media/0190a3b2-0000-7000-8000-000000000001.jpg?exp=1&sig=x";
 
-const player = (props: { url: string; packaged?: boolean; played?: string }) =>
-	tags(EmbedPlayer, {
-		title: "A video",
-		aspect: "aspect-video",
-		allow: "autoplay; encrypted-media",
-		poster: POSTER,
-		ownHosts: ["localhost", "api.test"],
-		packaged: false,
-		...props,
-	});
+const baseProps = {
+	title: "A video",
+	aspect: "aspect-video",
+	allow: "autoplay; encrypted-media",
+	poster: POSTER,
+	ownHosts: ["localhost", "api.test"],
+	packaged: false,
+};
+const player = (props: { url: string; packaged?: boolean; played?: string; relay?: string | null }) =>
+	tags(EmbedPlayer, { ...baseProps, ...props });
 const named = (found: Tag[], name: string) => found.filter((tag) => tag.name === name);
 
 // A player page loads, and its host sees a view, only once someone plays it (desktop#147).
@@ -40,6 +40,17 @@ describe("EmbedPlayer", () => {
 		expect(named(found, "button")).toEqual([]);
 		// Another page played before (an edit changed the embed's link) waits for its own click.
 		expect(named(await player({ url: YOUTUBE, played: PAGE }), "iframe")).toEqual([]);
+	});
+
+	test("in the packaged app a YouTube player is framed through the relay, which sends the Referer views:// lacks", async () => {
+		const relay = "http://127.0.0.1:49152";
+		const props = { url: YOUTUBE, packaged: true, played: YOUTUBE };
+		const found = await tags(EmbedPlayer, { ...baseProps, ...props, relay });
+		expect(named(found, "iframe").map((tag) => [tag.attributes.src, tag.attributes.sandbox])).toEqual([
+			[`${relay}/youtube?v=dQw4w9WgXcQ`, "allow-scripts allow-same-origin"],
+		]);
+		// Until Bun says where it is (or if it never does), the player is framed as before.
+		expect(named(await player(props), "iframe").map((tag) => tag.attributes.src)).toEqual([`${YOUTUBE}?autoplay=1`]);
 	});
 
 	test("in the packaged app any other page opens in the browser: its poster is a link, never a frame", async () => {
