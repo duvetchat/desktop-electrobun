@@ -8,6 +8,7 @@ import { certificateDevice } from "../cbor";
 import { readApprovalFrame } from "../conventions";
 import { CoreError } from "../errors";
 import type { EngineParts } from "./engine";
+import type { Failures } from "./failures";
 import { KEPT_APPROVALS, KEPT_LATER, KEPT_TRANSFERS, type EngineStore } from "./store";
 
 /** The most messages a page of the inbox has (the API's most). */
@@ -18,11 +19,20 @@ const KEPT = 20;
 const AGAIN = new Set(["internal", "storage", "locked"]);
 const MOST_TRIES = 5;
 
-/** Keeps a message in the record under `key`, once, with the newest of those before it. */
-function keep(store: EngineStore, key: string, message: InboxMessage) {
+/** The messages the record keeps under `key`. */
+function keptIn(store: EngineStore, key: string): InboxMessage[] {
 	const kept = store.read<InboxMessage[]>(key);
-	const others = (Array.isArray(kept) ? kept : []).filter((one) => one?.id !== message.id);
+	return Array.isArray(kept) ? kept : [];
+}
+
+/**
+ * Keeps a message in the record under `key`, once, with the newest of those before it: whether the record holds it
+ * now. The page's record logs a write its storage refuses (full, or refused) and goes on, so it's read back.
+ */
+function keep(store: EngineStore, key: string, message: InboxMessage): boolean {
+	const others = keptIn(store, key).filter((one) => one?.id !== message.id);
 	store.write(key, [...others, message].slice(-KEPT));
+	return keptIn(store, key).some((one) => one?.id === message.id);
 }
 
 /**
@@ -39,10 +49,11 @@ const forLater = ({ code, field }: CoreError) =>
  * receive_direct, with the identity the API serves for the user today (what a rotation's transfer is checked against)
  * and its sender's certificate, from the sender's served identity. A transfer the core keeps for later (`not_found`
  * `code`: an approval whose code wasn't accepted yet) is kept in the record, as is one a later task takes (`forLater`);
- * one no core here can read goes, as does one whose call is cut five rounds running (`tries`, by its ID). True when the
- * inbox brought a rotation's transfer, after which the own user is observed (the core's rule).
+ * one no core here can read goes, as does one whose call is cut five rounds running (`tries`, by its ID). One that
+ * doesn't open is counted for the API as a failure to decrypt (`direct`). True when the inbox brought a rotation's
+ * transfer, after which the own user is observed (the core's rule).
  */
-export async function takeInbox(parts: EngineParts, tries: Map<string, number>): Promise<boolean> {
+export async function takeInbox(parts: EngineParts, tries: Map<string, number>, failures?: Failures): Promise<boolean> {
 	const { api, host, store, user } = parts;
 	let rotated = false;
 	// Users' identities as served, read once a round when a message needs one: null for one that can't be read.
@@ -59,13 +70,15 @@ export async function takeInbox(parts: EngineParts, tries: Map<string, number>):
 		return read;
 	};
 
-	/** Whether the message is done with: handled, kept, or one that never will be. */
+	/**
+	 * Whether the message is done with: handled, kept, or one that never will be. One the record couldn't keep isn't: it
+	 * stays in the inbox for the next round, as its sender won't send it again (a catch-up's key).
+	 */
 	const handle = async (message: InboxMessage): Promise<boolean> => {
 		try {
 			if (readApprovalFrame(message.message)) {
 				// Approvals are between the user's own devices.
-				if (message.from_user_id === user) keep(store, KEPT_APPROVALS, message);
-				return true;
+				return message.from_user_id !== user || keep(store, KEPT_APPROVALS, message);
 			}
 			const own = await identityOf(user);
 			const sender = await identityOf(message.from_user_id);
@@ -90,9 +103,14 @@ export async function takeInbox(parts: EngineParts, tries: Map<string, number>):
 					return false;
 				}
 				console.warn(`[e2e] A message from another device failed ${tried} times (${error.code}), and goes.`);
-			} else if (error.code === "not_found" && error.what === "code") keep(store, KEPT_TRANSFERS, message);
-			else if (forLater(error)) keep(store, KEPT_LATER, message);
-			else console.warn(`[e2e] A message from another device can't be read here (${error.code}), and goes.`);
+			} else if (error.code === "not_found" && error.what === "code") {
+				if (!keep(store, KEPT_TRANSFERS, message)) return false;
+			} else if (forLater(error)) {
+				if (!keep(store, KEPT_LATER, message)) return false;
+			} else {
+				if (error.code === "decrypt_failed") failures?.note("direct");
+				console.warn(`[e2e] A message from another device can't be read here (${error.code}), and goes.`);
+			}
 		}
 		tries.delete(message.id);
 		return true;

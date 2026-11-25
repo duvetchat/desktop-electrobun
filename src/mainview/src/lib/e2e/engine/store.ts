@@ -11,6 +11,8 @@ export const KEPT_TRANSFERS = "transfers";
 export const KEPT_LATER = "later";
 /** What a new device of this installation starts without. */
 export const DEVICE_RECORD = [DEVICE_KEYS, KEPT_APPROVALS, KEPT_TRANSFERS, KEPT_LATER];
+/** The API's external sender as this installation first saw it (Ruling 32), which a new device of it keeps. */
+export const EXTERNAL_SENDER = "external_sender";
 
 export interface EngineStore {
 	read<T>(key: string): T | null;

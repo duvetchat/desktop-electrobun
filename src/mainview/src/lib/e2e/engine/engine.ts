@@ -2,19 +2,23 @@
 // hands out to the core, never opening or making anything itself. A class with its parts given to it, so the app has
 // one (lib/e2e/engine.svelte.ts) and a test as many as it needs, each with its own core, session and gateway connection.
 //
-// Its work goes one flow at a time, in the order it came: the start («Arranque», steps 1 to 7, here without the
-// conversations), the person's taps, and what the gateway's events ask for. bootstrap.ts, identity.ts, key-packages.ts
-// and inbox.ts hold the steps; this class keeps the state the views read, and what's due later.
+// Its work goes one flow at a time, in the order it came: the start («Arranque», steps 1 to 7), the person's taps, and
+// what the gateway's events ask for. bootstrap.ts, identity.ts, key-packages.ts and inbox.ts hold the steps, sync.ts
+// each conversation's queue and group; this class keeps the state the views read, and what's due later.
 import { FetchError, UpdateRequiredError } from "$lib/api/api";
 import type { E2eApi } from "$lib/api/e2e";
 import { CoreError } from "../errors";
 import type { EngineEvent, EngineEvents } from "../events";
 import type { CoreHost, HostOpened } from "../host";
 import { bindSession, coreStatus, ownDevice } from "./bootstrap";
+import { Failures } from "./failures";
 import { identityState, publishIdentity, servedIdentity, type IdentityMade } from "./identity";
 import { takeInbox } from "./inbox";
 import { uploadKeyPackages } from "./key-packages";
-import { DEVICE_RECORD, type EngineStore } from "./store";
+import { DEVICE_RECORD, EXTERNAL_SENDER, type EngineStore } from "./store";
+import { Conversations, type ConversationState } from "./sync";
+
+export type { ConversationState } from "./sync";
 
 /** What the engine waits with: the system's timers in the app, a test's clock in its tests. */
 export interface Clock {
@@ -69,6 +73,25 @@ const RETRY_MOST_MS = 60_000;
 const statusOf = (error: unknown) => (error instanceof FetchError ? error.response?.status : undefined);
 
 /**
+ * The API's external sender as this device pinned it (Ruling 32): the first one it saw, which the record keeps, and
+ * this session (`held`) where the record can't (its storage full or refused), so a later start in it keeps it too;
+ * the record is asked again each time. Another one served later is refused, said in the log, and the pinned one stays:
+ * groups under it are the only ones this device goes into.
+ */
+function pinnedSender(store: EngineStore, served: string, held: string | null): string {
+	const kept = store.read<unknown>(EXTERNAL_SENDER);
+	const recorded = typeof kept === "string" && kept ? kept : null;
+	const pinned = recorded ?? held ?? served;
+	if (!recorded) store.write(EXTERNAL_SENDER, pinned);
+	if (pinned !== served) {
+		console.warn(
+			"[e2e] The API serves another external sender than the one this device pinned: it stays the pinned one.",
+		);
+	}
+	return pinned;
+}
+
+/**
  * The binding's refusals that no try changes (a proof that doesn't verify, a body the API refuses): null, which ends
  * the tries with the failed bar. A rate limit, a renewal's 401 and an update's 426 go on as failures that pass.
  */
@@ -97,15 +120,65 @@ export class E2EEngine {
 	#made: IdentityMade | null = null;
 	/** How many rounds each inbox message's call was cut (inbox.ts). */
 	readonly #tries = new Map<string, number>();
+	/** What failed to open, waiting for its report. */
+	readonly #failures: Failures;
+	/** The conversations' queues and groups. */
+	readonly #groups: Conversations;
+	/** The external sender this session pinned (pinnedSender). */
+	#pinned: string | null = null;
+	/** Conversations the person opened before this device was ready: they open once it is (#settle). */
+	readonly #toOpen = new Set<string>();
+	readonly #conversationListeners = new Set<(conversationId: string, state: ConversationState | null) => void>();
 
 	constructor(parts: EngineParts) {
 		this.#parts = parts;
+		this.#failures = new Failures(parts.api, parts.clock);
+		this.#groups = new Conversations(
+			parts,
+			(work) => this.#soon(() => this.#whenReady(work)),
+			this.#failures,
+			(id, state) => {
+				for (const listener of this.#conversationListeners) listener(id, state);
+			},
+		);
 	}
 
 	/** Each state the engine goes to, as it goes. */
 	onState(listener: (state: EngineState) => void): () => void {
 		this.#listeners.add(listener);
 		return () => void this.#listeners.delete(listener);
+	}
+
+	/** What each conversation says of its group as it changes (null: nothing to say). */
+	onConversation(listener: (conversationId: string, state: ConversationState | null) => void): () => void {
+		this.#conversationListeners.add(listener);
+		return () => void this.#conversationListeners.delete(listener);
+	}
+
+	/** What the conversation says of its group over its message box: null while it goes on. */
+	conversationState(conversationId: string): ConversationState | null {
+		return this.#groups.state(conversationId);
+	}
+
+	/**
+	 * The person opened the conversation: its group goes on, or is made here when it has none and this user may. Before
+	 * this device is ready, it opens once it is.
+	 */
+	openConversation(conversationId: string): Promise<void> {
+		return this.#queue(async () => {
+			if (this.state.name !== "ready") return void this.#toOpen.add(conversationId);
+			await this.#whenReady(() => this.#groups.open(conversationId));
+		});
+	}
+
+	/** The person's tap on Restart encryption, over a blocked group they may restart. */
+	restartGroup(conversationId: string): Promise<void> {
+		return this.#queue(() => this.#whenReady(() => this.#groups.restart(conversationId)));
+	}
+
+	/** The person's yes to a conversation's members of today, which its record from before the cutover didn't have. */
+	acceptMembers(conversationId: string): Promise<void> {
+		return this.#queue(() => this.#whenReady(() => this.#groups.accept(conversationId)));
 	}
 
 	/** Starts: hears the gateway's events, then runs «Arranque». It settles when the start's flow ended, whatever state. */
@@ -121,6 +194,8 @@ export class E2EEngine {
 		this.#unlisten = null;
 		this.#retry?.();
 		this.#daily?.();
+		this.#groups.stop();
+		this.#failures.stop();
 		await this.#turn;
 		await this.#parts.host.close();
 	}
@@ -224,16 +299,33 @@ export class E2EEngine {
 		this.#queue(work).catch(() => {});
 	}
 
+	/** Conversations' work, only while this device is ready: a client too old for it waits for its update. */
+	async #whenReady(work: () => Promise<void>): Promise<void> {
+		if (this.state.name !== "ready") return;
+		try {
+			await work();
+		} catch (error) {
+			if (!(error instanceof UpdateRequiredError)) throw error;
+			this.#set({ name: "update", minimum: error.minimum });
+		}
+	}
+
 	#heard(event: EngineEvent) {
 		const own = (device: string) => device === this.#device;
+		// A conversation's entries only while ready: before, the queue has them all, which the start reads.
+		if (this.state.name === "ready") this.#groups.heard(event);
 		switch (event.type) {
 			case "READY":
-				// A new gateway session: a start that failed goes again now, and the inbox may have filled meanwhile.
+				// A new gateway session: a start that failed goes again now, and the inbox and the conversations' queues may
+				// have filled meanwhile.
 				if (this.#retry) {
 					this.#retry();
 					this.#retry = null;
 					this.#soon(() => this.#boot());
-				} else if (this.#device) this.#soon(() => this.#inbox());
+				} else if (this.#device) {
+					this.#soon(() => this.#inbox());
+					this.#soon(() => this.#whenReady(() => this.#groups.all()));
+				}
 				break;
 			case "DEVICE_MESSAGE":
 				if (own(event.data.device_id)) this.#soon(() => this.#inbox());
@@ -250,8 +342,12 @@ export class E2EEngine {
 				if (event.data.user_id !== this.#parts.user) break;
 				this.#soon(async () => {
 					const { state } = this;
-					if (state.name === "ready") this.#set(await this.#identity());
-					else if (state.name === "first_device" && !state.recoveryKey) await this.#stillFirst();
+					// Ready, the device's own list may now leave out a device that still has leaves: the groups say whether
+					// a commit is due to take them out.
+					if (state.name === "ready") {
+						this.#set(await this.#identity());
+						await this.#whenReady(() => this.#groups.all());
+					} else if (state.name === "first_device" && !state.recoveryKey) await this.#stillFirst();
 				});
 				break;
 		}
@@ -259,19 +355,21 @@ export class E2EEngine {
 
 	/** Step 5, with the inbox for a rotation's transfer this device may need first. */
 	#identity(): Promise<EngineState> {
-		return identityState(this.#parts, () => takeInbox(this.#parts, this.#tries));
+		return identityState(this.#parts, () => takeInbox(this.#parts, this.#tries, this.#failures));
 	}
 
 	/** The inbox; once it brought a rotation's transfer, the own user observed, which may change what this device is. */
 	async #inbox(): Promise<void> {
-		if (await takeInbox(this.#parts, this.#tries)) this.#set(await this.#identity());
+		if (await takeInbox(this.#parts, this.#tries, this.#failures)) this.#set(await this.#identity());
 	}
 
 	/** «Arranque»: the API's configuration, the user's database, this installation's device and the session bound to it. */
 	async #boot(): Promise<void> {
 		const parts = this.#parts;
 		try {
-			await parts.api.config();
+			const { external_sender } = await parts.api.config();
+			this.#pinned = pinnedSender(parts.store, external_sender, this.#pinned);
+			this.#groups.start(this.#pinned);
 			const opened = await parts.host.open(parts.user);
 			if (opened.state !== "ready") return this.#closed(opened);
 			const { status, keys } = await ownDevice(parts);
@@ -300,13 +398,27 @@ export class E2EEngine {
 		this.#later();
 	}
 
-	/** Steps 5 to 7: what the user's identity makes of this device, the inbox, and a listed device's key packages. */
+	/**
+	 * Steps 5 to 7: what the user's identity makes of this device, the inbox, then a listed device's conversations' queues,
+	 * before its key packages, so a welcome waiting there takes its keys before key_packages lets them go, and those the
+	 * person opened before it was ready; then the leaf renewals due («Lo periódico»), as every day after.
+	 */
 	async #settle(): Promise<void> {
 		const state = await this.#identity();
 		this.#set(state);
 		await this.#inbox();
 		if (this.state.name !== "ready") return;
+		await this.#whenReady(() => this.#groups.all());
+		for (const id of [...this.#toOpen]) {
+			this.#toOpen.delete(id);
+			await this.#whenReady(() => this.#groups.open(id)).catch((error: unknown) => {
+				console.error("[e2e] A conversation's group didn't open:", error);
+			});
+		}
 		await this.#keyPackages();
+		await this.#whenReady(() => this.#groups.renew()).catch((error: unknown) => {
+			console.error("[e2e] The leaf renewals wait for tomorrow's:", error);
+		});
 		this.#daily ??= this.#everyDay();
 	}
 
@@ -319,6 +431,7 @@ export class E2EEngine {
 		return this.#parts.clock.later(DAY, () => {
 			this.#daily = this.#everyDay();
 			this.#soon(() => this.#keyPackages());
+			this.#soon(() => this.#whenReady(() => this.#groups.renew()));
 		});
 	}
 
@@ -352,6 +465,7 @@ export class E2EEngine {
 		this.#made = null;
 		this.#device = null;
 		this.#tries.clear();
+		this.#groups.forget();
 		this.#daily?.();
 		this.#daily = null;
 		this.#set({ name: "starting" });

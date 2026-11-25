@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import type { EnginePlatform } from "./engine.svelte";
 import { toEngine } from "./events";
 import type { CoreHost } from "./host";
-import { shownKey, testDevice, testHost, until, useFake } from "./testing/engines";
+import { firstDevice, groupOf, shownKey, testDevice, testHost, until, useFake } from "./testing/engines";
 import { FakeApi } from "./testing/fake-api";
 import { FakeHub, FakeLocks } from "./testing/fake-tabs";
 import { coreLibrary } from "./testing/host-bun";
@@ -148,6 +148,38 @@ describe.skipIf(!coreLibrary)("the page's engine", () => {
 			await page.stopEngine();
 			await engine.stop();
 			leading.close();
+		},
+		SLOW,
+	);
+
+	// M6: a conversation's view opens it once. One that opened before the page had its engine (the desktop's host
+	// still loading) is opened by the engine once it's ready.
+	test(
+		"a conversation opened before the page has its engine gets its group once the engine is ready",
+		async () => {
+			const fake = new FakeApi();
+			useFake(fake);
+			const ana = signedIn(fake);
+			const bo = fake.addUser();
+			const conversation = fake.addConversation({ type: "dm", members: [ana, bo] });
+			const b = await firstDevice(fake, bo);
+			let loaded = () => {};
+			const loading = new Promise<void>((resolve) => (loaded = resolve));
+			const host = testHost();
+			const starting = page.startEngine(
+				ana,
+				platform({ desktop: true, desktopHost: async () => (await loading, host) }),
+			);
+			await page.openConversation(conversation);
+			loaded();
+			await starting;
+			await page.makeIdentity();
+			await page.keySaved();
+			expect(page.encryption.state).toEqual({ name: "ready" });
+			// Ready, the engine opens it: Ana's device makes the DM's group, and Bo's comes in.
+			const listed = (await b.api.conversations()).find((conv) => conv.id === conversation);
+			expect(listed?.mls).toMatchObject({ generation: 0 });
+			await until(async () => (await groupOf(b, conversation)) !== null);
 		},
 		SLOW,
 	);

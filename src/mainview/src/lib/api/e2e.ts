@@ -14,7 +14,7 @@ import api, {
 	type FetchResponse,
 	type UploadOptions,
 } from "$lib/api/api";
-import type { ConversationMember, DirectMessage } from "$lib/api/conversations";
+import type { Conversation, ConversationMember, DirectMessage } from "$lib/api/conversations";
 import { getHostURL } from "$lib/common/common";
 import type { AllowedMentions, HistoryShare, MessageReference, MlsEntry, UserDevice } from "$lib/types";
 
@@ -324,6 +324,8 @@ export function e2eApi(client: ApiClient = api) {
 			),
 
 		// E. A conversation's group.
+		/** The session's conversations, each with its group, and where this session's device has had a leaf in it. */
+		conversations: () => answer(client.get<Conversation[]>("/api/users/@me/conversations")),
 		groupInfo: (conversationId: string) =>
 			answer(
 				client.get<{ generation: number; epoch: number; group_info: string }>(`${conv(conversationId)}/mls/group-info`),

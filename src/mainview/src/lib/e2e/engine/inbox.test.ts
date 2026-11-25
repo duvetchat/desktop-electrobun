@@ -1,10 +1,11 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
 import { certificateDevice } from "../cbor";
 import { approvalFrameMessage } from "../conventions";
 import { CoreError } from "../errors";
 import { FakeApi } from "../testing/fake-api";
 import { coreLibrary } from "../testing/host-bun";
 import { firstDevice, testDevice, testHost, until, useFake, watchedHost } from "../testing/engines";
+import { pageStore } from "./store";
 
 // The inbox (PLAN-E2E-CLIENTES.md, «El buzón»): what other devices sent this one, read at start, at each READY and on
 // DEVICE_MESSAGE; each message deleted only once it's handled.
@@ -204,6 +205,47 @@ describe.skipIf(!coreLibrary)("the inbox", () => {
 				await until(() => tries() === round);
 			}
 			await until(async () => (await a.api.inbox()).length === 0, 20_000);
+			await Promise.all([a.engine.stop(), other.engine.stop()]);
+		},
+		SLOW,
+	);
+
+	// #502: the page's record logs a write its storage refuses (full, or refused), and goes on; a message the inbox keeps
+	// there for its task (a catch-up's key is sent once) must then stay in the API's inbox, as one the core couldn't take.
+	test(
+		"an inbox message the record couldn't keep stays in the inbox",
+		async () => {
+			const fake = new FakeApi();
+			const ana = fake.addUser();
+			useFake(fake);
+			// The page's record, whose storage refuses the kept transfers while it's full.
+			let full = true;
+			const setItem = localStorage.setItem.bind(localStorage);
+			spyOn(localStorage, "setItem").mockImplementation((key: string, value: string) => {
+				if (full && key === `duvet.e2e.${ana}.transfers`) {
+					throw new DOMException("The quota has been exceeded.", "QuotaExceededError");
+				}
+				setItem(key, value);
+			});
+			const log: string[] = [];
+			// The core keeps every message for later: a transfer whose approval's code wasn't accepted yet.
+			const later = new CoreError("not_found", "no approval accepted its code", { what: "code" });
+			const host = watchedHost(testHost(), log, (cmd) => (cmd === "receive_direct" ? later : null));
+			const a = await firstDevice(fake, ana, { host, store: pageStore(ana) });
+			const other = testDevice(fake, ana);
+			await other.engine.start();
+			const { id } = await other.api.sendToDevice(a.registered[0]!, btoa("a transfer for later"));
+
+			// The round reads it, and the record refuses it: it stays in the inbox, for the next round.
+			await until(() => log.includes("receive_direct"));
+			await a.engine.uploadLater(); // the engine's turn after the inbox's
+			expect((await a.api.inbox()).map((message) => message.id)).toEqual([id]);
+
+			// With room again, the next round keeps it, then deletes it.
+			full = false;
+			a.connect(a.registered[0]!);
+			await until(async () => (await a.api.inbox()).length === 0);
+			expect((pageStore(ana).read<{ id: string }[]>("transfers") ?? []).map((message) => message.id)).toEqual([id]);
 			await Promise.all([a.engine.stop(), other.engine.stop()]);
 		},
 		SLOW,

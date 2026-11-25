@@ -2,20 +2,30 @@
 // and knows whose (its READY), on the page's one host. In the desktop app that's Bun's core, through one host for the
 // page, as each host hears every reply of Bun's for good. On the web it's the worker of the tab that leads, which runs
 // the engine and serves the user's other tabs (web/tabs.ts, Ruling 16): they show its state, and ask it for the
-// person's taps. `encryption.state` is what the views read. The hosts load with the engine's start, never with a page.
+// person's taps. `encryption.state` is what the views read, and `encryption.conversations` what each conversation says
+// of its group. The hosts load with the engine's start, never with a page.
 import { onSignOut } from "$lib/api/auth";
 import { e2eApi } from "$lib/api/e2e";
 import { deviceRegistered } from "$lib/api/ws/connection";
 import { isElectrobunWindow } from "$lib/electrobun-rpc";
 import { deviceName } from "./client";
-import { E2EEngine, systemClock, type EngineState } from "./engine/engine";
+import { E2EEngine, systemClock, type ConversationState, type EngineState } from "./engine/engine";
 import { pageStore } from "./engine/store";
 import { engineEvents } from "./events";
 import type { CoreHost } from "./host";
 import { missingInPage } from "./web/support";
 import { BrowserTabs, type BrowserTabsOptions } from "./web/tabs";
 
-export const encryption = $state<{ state: EngineState }>({ state: { name: "starting" } });
+export const encryption = $state<{ state: EngineState; conversations: Record<string, ConversationState> }>({
+	state: { name: "starting" },
+	conversations: {},
+});
+
+/** What a conversation says of its group, shown: none goes. */
+function showConversation(conversationId: string, state: ConversationState | null) {
+	if (state) encryption.conversations[conversationId] = state;
+	else delete encryption.conversations[conversationId];
+}
 
 /** What the page's engine runs on: the page's own, or a test's (a host of its own, task 8's locks and channel). */
 export interface EnginePlatform {
@@ -40,6 +50,15 @@ let started = false;
 let engine: E2EEngine | null = null;
 let tabs: BrowserTabs | null = null;
 let persisted = false;
+/** Conversations opened before the page had its engine (its host still loading): it opens them once it's ready. */
+const toOpen = new Set<string>();
+
+/** The conversation opened, by the page's engine, or by the one it's about to have. */
+function openOnEngine(conversationId: string): Promise<void> {
+	if (engine) return engine.openConversation(conversationId);
+	toOpen.add(conversationId);
+	return Promise.resolve();
+}
 
 function engineFor(userId: string, host: CoreHost, platform: EnginePlatform): E2EEngine {
 	const made = new E2EEngine({
@@ -59,6 +78,17 @@ function engineFor(userId: string, host: CoreHost, platform: EnginePlatform): E2
 		persisted = true;
 		platform.persist()?.catch((error: unknown) => console.error("[e2e] Storage wasn't made to last:", error));
 	});
+	// The user's other tabs hear that the conversation changed, and ask what it says now.
+	made.onConversation((conversationId, state) => {
+		showConversation(conversationId, state);
+		tabs?.changed(conversationId);
+	});
+	for (const conversationId of toOpen) {
+		made.openConversation(conversationId).catch((error: unknown) => {
+			console.error("[e2e] The conversation's group didn't open:", error);
+		});
+	}
+	toOpen.clear();
 	return made;
 }
 
@@ -86,12 +116,17 @@ export async function startEngine(userId: string, platform: EnginePlatform = pag
 			keySaved: () => engine?.keySaved(),
 			uploadLater: () => engine?.uploadLater(),
 			startOver: () => engine?.startOver(),
+			conversation: (id: string) => engine?.conversationState(id) ?? null,
+			openConversation: (id: string) => openOnEngine(id),
+			restartGroup: (id: string) => engine?.restartGroup(id),
+			acceptMembers: (id: string) => engine?.acceptMembers(id),
 		},
 		lead: async () => {
 			engine = engineFor(userId, await platform.webHost(), platform);
 			await engine.start();
 		},
 		onLeader: () => void follow(),
+		onChanged: (id) => void followConversation(id),
 	});
 	if (typeof document !== "undefined") {
 		document.addEventListener("visibilitychange", () => {
@@ -106,6 +141,29 @@ async function follow(): Promise<void> {
 	if (!tabs || tabs.leader) return;
 	encryption.state = await tabs.call<EngineState>("state").catch(() => encryption.state);
 }
+
+/** A tab that doesn't lead shows what the leader says of a conversation it says changed. */
+async function followConversation(conversationId: string): Promise<void> {
+	if (!tabs || tabs.leader) return;
+	const state = await tabs.call<ConversationState | null>("conversation", conversationId).catch(() => undefined);
+	if (state !== undefined) showConversation(conversationId, state);
+}
+
+type ConversationTap = "openConversation" | "restartGroup" | "acceptMembers";
+
+/** The person's act on a conversation, run by the engine of this tab or of the one that leads. */
+function onConversation(method: ConversationTap, conversationId: string): Promise<void> {
+	if (tabs) return tabs.call<void>(method, conversationId).finally(() => followConversation(conversationId));
+	if (method === "openConversation") return openOnEngine(conversationId);
+	return engine?.[method](conversationId) ?? Promise.resolve();
+}
+
+/** The conversation opened: its group goes on, or is made where this user may (PLAN-E2E-CLIENTES.md, «Entrar a un grupo»). */
+export const openConversation = (conversationId: string) => onConversation("openConversation", conversationId);
+/** Restart encryption, over a blocked group this user may restart. */
+export const restartGroup = (conversationId: string) => onConversation("restartGroup", conversationId);
+/** Open with these members, over a conversation whose members aren't those this device first saw. */
+export const acceptMembers = (conversationId: string) => onConversation("acceptMembers", conversationId);
 
 type Tap = "makeIdentity" | "keySaved" | "uploadLater" | "startOver";
 
@@ -125,6 +183,7 @@ export async function stopEngine(): Promise<void> {
 	const stopping = engine;
 	engine = null;
 	started = false;
+	toOpen.clear();
 	await stopping?.stop();
 	tabs?.close();
 	tabs = null;

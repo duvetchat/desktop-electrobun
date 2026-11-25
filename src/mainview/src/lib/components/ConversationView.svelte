@@ -111,6 +111,8 @@
 	import { getAvatarURL } from "$lib/common/common";
 	import { activityLine, shownActivities } from "$lib/activity";
 	import ChatIntro from "$lib/components/ChatIntro.svelte";
+	import ConversationState from "$lib/components/e2e/ConversationState.svelte";
+	import { acceptMembers, encryption, openConversation, restartGroup } from "$lib/e2e/engine.svelte";
 	import { buttonClass, pillClass } from "$lib/components/ui/recipes";
 	import Menu from "$lib/components/ui/Menu.svelte";
 	import MenuItem from "$lib/components/ui/MenuItem.svelte";
@@ -158,6 +160,22 @@
 	const actionsOnGroup = $derived(groupActions(conversation, me?.id));
 	const isInCall = $derived($activeCall?.state === "connected" && $activeCall?.conversationId === conversation.id);
 	const hasOngoingCall = $derived($conversationsWithCalls.has(conversation.id));
+
+	// Its encrypted group (PLAN-E2E-CLIENTES.md, «Entrar a un grupo»): it goes on as the view opens, made here where this
+	// user may; what the conversation says of it shows over its message box.
+	$effect(() => {
+		const convId = conversation.id;
+		untrack(() => {
+			openConversation(convId).catch((error: unknown) =>
+				console.error("[e2e] The conversation's group didn't open:", error),
+			);
+		});
+	});
+	const groupState = $derived(encryption.conversations[conversation.id] ?? null);
+	const ownerName = $derived.by(() => {
+		const owner = conversation.members.find((member) => member.user_id === conversation.owner_id)?.user;
+		return owner?.alias ?? owner?.username ?? "";
+	});
 	// Not for the call this client shows, in it or on the call card (offersJoin).
 	const canJoinCall = $derived(offersJoin(conversation.id, hasOngoingCall, $activeCall));
 	// The user's own call, placed on another device, still rings the others: it shows as calling from there, and Join
@@ -949,6 +967,16 @@
 	});
 </script>
 
+<!-- What the conversation says of its encrypted group, over its message box -->
+{#snippet groupNotice()}
+	<ConversationState
+		conversationState={groupState}
+		{ownerName}
+		onRestart={() => restartGroup(conversation.id)}
+		onAccept={() => acceptMembers(conversation.id)}
+	/>
+{/snippet}
+
 <!-- The start of the conversation: who it's with and the Spaces shared with them, or the group's people -->
 {#snippet intro()}
 	{@const other = conversation.type === 2 ? null : conversation.members.find((m) => m.user_id !== me?.id)}
@@ -1169,6 +1197,7 @@
 		<Chat
 			bind:this={chatView}
 			{intro}
+			notice={groupNotice}
 			{messages}
 			channelId={conversation.id}
 			channelName={conversationTitle()}

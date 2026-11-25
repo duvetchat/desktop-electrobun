@@ -1,11 +1,12 @@
 // The API as the encryption engine sees it, in memory, for the engine's tests (PLAN-E2E-CLIENTES.md, Task 6): step 3's
 // routes (PLAN-E2E-API.md, its routes A to K) answering through `fetch` as the API does, with its events to each
-// connection, and switches that lose an answer, answer 426, 503, 409 or any refusal, hold events to let them go backwards
-// or twice, and take an entry's data out of its event. A request's events go out after its answer: once fetch has handed
-// the answer back (or failed, when it's lost), on the microtask queue, so the code that awaited it runs first, and each is
-// its data as it was when the request sent it; holdEvents gives any other order. It reads what the core signs (CBOR, Ed25519) and an MLS message's framing as the
-// API does, but runs no validator: a commit is taken by its generation and epoch alone, and of what it changes the fake
-// knows only the devices its welcome brings and the one an external commit adds.
+// connection, and switches that lose an answer, answer 426, 503, 409 or any refusal, hold events to let them go
+// backwards, twice or a kind at a time, and take an entry's data out of its event. A request's events go out after its
+// answer: once fetch has handed the answer back (or failed, when it's lost), on the microtask queue, so the code that
+// awaited it runs first, and each is its data as it was when the request sent it; holdEvents gives any other order. It
+// reads what the core signs (CBOR, Ed25519) and an MLS message's framing as the API does, but runs no validator: a
+// commit is taken by its generation and epoch alone, and of what it changes the fake knows only the devices its welcome
+// brings and the one an external commit adds.
 import { createPublicKey, generateKeyPairSync, verify } from "node:crypto";
 import { base64Bytes } from "$lib/activity-thumbnail";
 import { bytesBase64 } from "$lib/staged-images";
@@ -376,6 +377,8 @@ interface Conversation {
 	group: { generation: number; epoch: number; group_info: string } | null;
 	/** The last number its queue gave: commits, welcomes, proposals, edits, deletions and messages share it. */
 	seq: number;
+	/** The number its queue is whole from: what comes before it is gone (expireQueue). */
+	floor: number;
 	entries: Entry[];
 	messages: Message[];
 	deleted: Set<string>;
@@ -445,8 +448,11 @@ const ok = (body: unknown, status = 200): Answer => ({ status, body });
 const NO_CONTENT: Answer = { status: 204 };
 
 export class FakeApi {
-	/** The API's Ed25519 public key, its groups' one external sender, in base64 (GET /api/e2e's). */
-	readonly externalSender: string;
+	/**
+	 * The API's Ed25519 public key, its groups' one external sender, in base64 (GET /api/e2e's). A test that sets another
+	 * plays a server that changed it: the fake checks no commit against it.
+	 */
+	externalSender: string;
 	/** The cutover's instant, as GET /api/e2e gives it. */
 	cutoverAt: string | null = null;
 	/** Take every entry's data out of its event, as one past 16 KiB travels: the client reads it from the queue. */
@@ -481,7 +487,9 @@ export class FakeApi {
 	#outbox: Outgoing[] = [];
 	/** Events held for releaseEvents, while holding. */
 	#held: { connection: Connection; event: GatewayEvent }[] | null = null;
-	#switches: { match: RouteMatch; effect: "lose" | Answer }[] = [];
+	#switches: { match: RouteMatch; effect: "lose" | "cut" | Answer }[] = [];
+	/** Requests held until as many as each gate counts have come (gather). */
+	#gates: { match: RouteMatch; count: number; waiting: (() => void)[] }[] = [];
 	#routes: Route[];
 	#lastId = "";
 
@@ -532,7 +540,7 @@ export class FakeApi {
 		const id = this.#id();
 		const at = now();
 		this.#conversations.set(id, {
-			...{ id, type: type === "dm" ? 1 : 2, owner_id: owner!, created_at: at, legacy, group: null, seq: 0 },
+			...{ id, type: type === "dm" ? 1 : 2, owner_id: owner!, created_at: at, legacy, group: null, seq: 0, floor: 1 },
 			members: members.map((user) => ({
 				id: this.#id(),
 				conversation_id: id,
@@ -547,20 +555,48 @@ export class FakeApi {
 
 	/**
 	 * A connection to the gateway of the session's, identified with its device (null for none): it hears READY at once,
-	 * with each conversation's group as READY gives it, then the events for its user, and for its device. Its end.
+	 * which says nothing of conversations or their groups, as the gateway's doesn't, then the events for its user, and for
+	 * its device. Its end.
 	 */
 	connect(token: string, device: string | null, listener: (event: GatewayEvent) => void): () => void {
 		const session = this.#sessions.get(token);
 		if (!session) throw new Error("no such session");
 		const connection = { user: session.user, device, listener };
 		this.#connections.add(connection);
-		const conversations = this.#conversationsOf(session.user).map((conv) => {
-			const view = this.#view(conv, null);
-			if (view.mls) delete (view.mls as { joined_seq?: unknown }).joined_seq; // only REST answers have it
-			return view;
-		});
-		listener({ type: "READY", data: structuredClone({ user: { id: session.user }, conversations }) });
+		listener({ type: "READY", data: { user: { id: session.user } } });
 		return () => this.#connections.delete(connection);
+	}
+
+	/** The conversation's members change as the server alone changes them: these users join it, with no commit. */
+	addMembers(conversationId: string, users: string[]) {
+		const conv = this.#conversations.get(conversationId);
+		if (!conv) throw new Error(`no conversation ${conversationId}`);
+		for (const user of users) {
+			const at = now();
+			conv.members.push({ id: this.#id(), conversation_id: conv.id, user_id: user, created_at: at, updated_at: at });
+		}
+	}
+
+	/** The conversation's queue is whole only from `floor` on: a read from before it is a 410, as the API's once it expired. */
+	expireQueue(conversationId: string, floor: number) {
+		const conv = this.#conversations.get(conversationId);
+		if (!conv) throw new Error(`no conversation ${conversationId}`);
+		conv.floor = floor;
+	}
+
+	/** The conversation is deleted, as the API deletes one: no list has it, and its routes answer 404. */
+	deleteConversation(conversationId: string) {
+		if (!this.#conversations.delete(conversationId)) throw new Error(`no conversation ${conversationId}`);
+	}
+
+	/** The next request the match takes never reaches the API: fetch fails, and nothing is done. */
+	cutRequest(match: RouteMatch) {
+		this.#switches.push({ match, effect: "cut" });
+	}
+
+	/** The requests the match takes wait until `count` of them have come, then go on in the order they came: once. */
+	gather(match: RouteMatch, count: number) {
+		this.#gates.push({ match, count, waiting: [] });
 	}
 
 	/** The next request the match takes does its work, and its answer is lost: fetch fails, as with a cut connection. */
@@ -589,11 +625,20 @@ export class FakeApi {
 		this.#held ??= [];
 	}
 
-	/** The events held, sent: in their order, backwards, and each once or twice. Then events go at once again. */
-	releaseEvents({ order = "as_sent", repeat = false }: { order?: "as_sent" | "reverse"; repeat?: boolean } = {}) {
-		const held = this.#held ?? [];
-		this.#held = null;
-		for (const { connection, event } of order === "reverse" ? held.reverse() : held) {
+	/**
+	 * The events held, sent: in their order, backwards, and each once or twice. Then events go at once again, unless
+	 * `only` picks those that go now: the others stay held, as does what comes after, until a release without it.
+	 */
+	releaseEvents({
+		order = "as_sent",
+		repeat = false,
+		only,
+	}: { order?: "as_sent" | "reverse"; repeat?: boolean; only?: (event: GatewayEvent) => boolean } = {}) {
+		const held = this.#held;
+		if (!held) return;
+		const going = only ? held.filter(({ event }) => only(event)) : held;
+		this.#held = only ? held.filter(({ event }) => !only(event)) : null;
+		for (const { connection, event } of order === "reverse" ? going.reverse() : going) {
 			for (let times = repeat ? 2 : 1; times > 0; times--) connection.listener(structuredClone(event));
 		}
 	}
@@ -605,8 +650,18 @@ export class FakeApi {
 	fetch = async (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
 		const request = new Request(input, init);
 		const url = new URL(request.url);
+		const gate = this.#gates.find(({ match }) => matches(match, request.method, url.pathname));
+		if (gate) {
+			const held = new Promise<void>((go) => gate.waiting.push(go));
+			if (gate.waiting.length === gate.count) {
+				this.#gates.splice(this.#gates.indexOf(gate), 1);
+				for (const go of gate.waiting) go();
+			}
+			await held;
+		}
 		const switched = this.#switches.findIndex(({ match }) => matches(match, request.method, url.pathname));
 		const effect = switched < 0 ? null : this.#switches.splice(switched, 1)[0]!.effect;
+		if (effect === "cut") throw new TypeError("fetch failed: the request never reached the API");
 		if (effect && effect !== "lose") return respond(effect);
 		const { answer, events } = await this.#answer(request, url);
 		// Its events go once its answer is made, lost or not: after the code that awaited it takes its first step.
@@ -1238,9 +1293,9 @@ export class FakeApi {
 
 	/** A conversation as its object shows it: legacy, and its group (mls), with where this device joined it. */
 	#view(conv: Conversation, device: Device | null) {
-		const { id, type, owner_id, created_at, legacy, members, group, seq, leaves } = conv;
+		const { id, type, owner_id, created_at, legacy, members, group, seq, floor, leaves } = conv;
 		const mls = group && {
-			...{ generation: group.generation, epoch: group.epoch, last_seq: seq, floor_seq: 1 },
+			...{ generation: group.generation, epoch: group.epoch, last_seq: seq, floor_seq: floor },
 			joined_seq: (device && leaves.get(device.id)) ?? null,
 		};
 		return {
@@ -1288,9 +1343,13 @@ export class FakeApi {
 	}
 
 	#queue(conv: Conversation, query: URLSearchParams): Answer {
+		// As the API binds them (its MlsQueueQuery): a number from 0, and from 1 to 500 of them.
+		const after = query.has("after") ? Number(query.get("after")) : 0;
+		const limit = query.has("limit") ? Number(query.get("limit")) : 200;
+		if (!Number.isSafeInteger(after) || after < 0) throw fail(400, "after is a number from 0");
+		if (!Number.isSafeInteger(limit) || limit < 1 || limit > 500) throw fail(400, "limit is 1 to 500");
 		if (!conv.group) throw fail(404, "no group yet");
-		const after = Number(query.get("after") ?? 0);
-		const limit = Math.min(Number(query.get("limit") ?? 200) || 200, 500);
+		if (after + 1 < conv.floor) throw fail(410, "queue expired", { floor_seq: conv.floor });
 		const all = [
 			...conv.entries,
 			...conv.messages.filter((m) => m.seq !== undefined).map((m) => this.#messageEntry(m)),
@@ -1303,7 +1362,7 @@ export class FakeApi {
 			entries.push(entry);
 		}
 		const { generation, epoch } = conv.group;
-		return ok({ entries, last_seq: conv.seq, floor_seq: 1, generation, epoch });
+		return ok({ entries, last_seq: conv.seq, floor_seq: conv.floor, generation, epoch });
 	}
 
 	/**
@@ -1400,32 +1459,44 @@ export class FakeApi {
 		return answer;
 	}
 
+	/**
+	 * An addition: the owner's commit of exactly that user, which goes to the members after it, the one it adds among
+	 * them, as the API sends it. It answers with the member and the commit's answer, as the API's MemberAdded.
+	 */
 	#addMember(ctx: Context): Answer {
 		const conv = this.#memberOf(ctx);
 		const user = uuidIn(ctx.body?.user_id, "user_id");
 		// The same addition again gets the answer it got.
 		const added = conv.members.find((m) => m.user_id === user);
-		if (added && conv.commits.has(ctx.body?.commit)) return ok(added, 201);
+		const sent = conv.commits.get(ctx.body?.commit);
+		if (added && sent) return ok({ ...added, commit: sent }, 201);
 		if (conv.type !== 2) throw fail(400, "a DM's members don't change");
 		if (conv.owner_id !== ctx.session.user) throw fail(403, "only the group's owner adds members");
 		if (!this.#users.has(user)) throw fail(404, "user not found");
 		if (conv.members.some((m) => m.user_id === user)) throw fail(409, "already a member");
 		if (conv.members.length >= LIMITS.group_members) throw fail(400, "a group can have 20 members at most");
-		this.#commit(conv, ctx, "add");
 		const at = now();
 		const member = { id: this.#id(), conversation_id: conv.id, user_id: user, created_at: at, updated_at: at };
 		conv.members.push(member);
-		return ok(member, 201);
+		try {
+			return ok({ ...member, commit: this.#commit(conv, ctx, "add") }, 201);
+		} catch (error) {
+			// Refused: nothing changed, the members neither.
+			conv.members.pop();
+			throw error;
+		}
 	}
 
+	/** A removal: the owner's commit of exactly that user, which they hear too. It answers with the commit's answer (200). */
 	#removeMember(ctx: Context): Answer {
 		const conv = this.#memberOf(ctx);
 		if (conv.owner_id !== ctx.session.user) throw fail(403, "only the group's owner removes members");
-		if (conv.commits.has(ctx.body?.commit)) return NO_CONTENT; // the same removal again
+		const sent = conv.commits.get(ctx.body?.commit);
+		if (sent) return ok(sent); // the same removal again
 		if (!conv.members.some((m) => m.user_id === ctx.params.user)) throw fail(404, "not a member");
-		this.#commit(conv, ctx, "remove");
+		const commit = this.#commit(conv, ctx, "remove");
 		conv.members = conv.members.filter((m) => m.user_id !== ctx.params.user);
-		return NO_CONTENT;
+		return ok(commit);
 	}
 
 	/**
