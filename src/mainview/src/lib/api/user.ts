@@ -45,6 +45,8 @@ export interface UserAttachment {
 	height?: number | null;
 	created_at: string;
 	url?: string;
+	/** What it holds: 0 a file as uploaded, 1 a conversation's encrypted file, which only its message names. */
+	kind?: number;
 }
 
 export interface StorageStatus {

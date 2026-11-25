@@ -7,12 +7,16 @@
 // edit and a deletion the core makes anew each time: a message's go one after the other, each kept until its answer
 // comes (in memory with its bytes, and in the record without them, made again at the next start), and the entry the
 // answer gives goes to the core. Only the core keeps text: the record keeps what goes with each message in the clear.
-import { FetchError, PausedError, UpdateRequiredError } from "$lib/api/api";
+// A message's files (files.ts) are sealed as it's first made, and their sealed bytes stay in this page's memory alone
+// until it's sent: a retry or a remake sends the same bytes, which the API takes again by their IDs, and one whose
+// bytes went with the app waits for the person's Dismiss.
+import { FetchError, PausedError, UpdateRequiredError, type UploadOptions } from "$lib/api/api";
 import type { DirectMessage } from "$lib/api/conversations";
 import type { AllowedMentions, MessageReference, MlsEntry } from "$lib/types";
 import { CoreError } from "../errors";
 import { pendingRows, shownMessages, type ShownMessage } from "./content";
 import type { EngineParts } from "./engine";
+import { FilesGone, SealedFiles, type OutgoingFile } from "./files";
 import { withIdentities } from "./identity";
 import { PENDING_CHANGES, PENDING_SENDS } from "./store";
 import type { Conversations } from "./sync";
@@ -28,10 +32,12 @@ export interface Outgoing {
 	message_reference?: MessageReference;
 	allowed_mentions?: AllowedMentions;
 	sticker_attachment_id?: string;
+	/** Its files, sealed as it's first made: neither they nor their bytes go in the record. */
+	files?: OutgoingFile[];
 }
 
 /** What goes with a message in the clear, kept by its nonce until it's sent. */
-type Clear = Omit<Outgoing, "nonce" | "text">;
+type Clear = Omit<Outgoing, "nonce" | "text" | "files">;
 
 /**
  * What the record keeps by a message's nonce: what goes with it in the clear; once its bytes were made again under this
@@ -130,6 +136,8 @@ export class Sends {
 	 * API's ID. A Retry or a Dismiss of one, while this page lasts, is of the message sent.
 	 */
 	readonly #went = new Map<string, { nonce: string; message: string }>();
+	/** Each waiting message's files, sealed, by the nonce the person sent it with: in memory alone. */
+	readonly #files = new Map<string, SealedFiles>();
 
 	constructor(parts: EngineParts, groups: Conversations, soon: (work: () => Promise<void>) => void, hooks: SendsHooks) {
 		this.#parts = parts;
@@ -141,27 +149,29 @@ export class Sends {
 	/**
 	 * The person's message, sent after what waits in its conversation: the API's message, or null when it was sent
 	 * already. What fails leaves it waiting, with its bytes, for the person's Retry or Dismiss; a new one is refused once
-	 * 100 wait there.
+	 * 100 wait there. Its files are sealed once, as it's first made; `upload` follows its request's upload, and stops it.
 	 */
-	async send(out: Outgoing): Promise<DirectMessage | null> {
-		const { conversation_id: id, nonce, text, ...clear } = out;
+	async send(out: Outgoing, upload?: UploadOptions): Promise<DirectMessage | null> {
+		const { conversation_id: id, nonce, text, files, ...clear } = out;
 		await this.#groups.current(id);
 		const { rows } = await this.#waiting(id);
 		if (!this.#nonceNow(rows, nonce)) {
 			// Made again, it went under its new nonce, as its answer or its copy said: it was sent.
 			if (this.#went.delete(nonce)) return null;
 			if (rows.length >= WAITING_MOST) throw new Error(`${WAITING_MOST} messages wait to be sent in this conversation`);
+			const sealed = files?.length ? await SealedFiles.of(this.#parts.host, files) : null;
 			this.#keep(nonce, { conversation_id: id, ...clear });
 			try {
-				await this.#encrypt(id, nonce, text ?? null);
+				await this.#encryptNew(id, nonce, text ?? null, sealed);
 			} catch (error) {
 				// Its copy came back from the queue: it went.
 				if (!(error instanceof CoreError && error.code === "exists")) throw error;
 				this.#forget(nonce);
 				return null;
 			}
+			if (sealed) this.#files.set(nonce, sealed);
 		}
-		return this.#flush(id, nonce);
+		return this.#flush(id, nonce, upload);
 	}
 
 	/** What waits in the conversation, in its order, each by the nonce the person sent it with and with its clear parts. */
@@ -206,6 +216,7 @@ export class Sends {
 		);
 		for (const nonce of its) await this.#drop(nonce);
 		await this.#prune(id, [...rows, ...older]);
+		this.#files.delete(first);
 		const went = this.#went.get(first);
 		this.#went.delete(first);
 		return its.length ? null : (went?.message ?? null);
@@ -252,14 +263,16 @@ export class Sends {
 		this.#changes.clear();
 		this.#paused.clear();
 		this.#went.clear();
+		this.#files.clear();
 	}
 
 	/**
 	 * What waits in the conversation, in its order (`wanted`: the nonce the person sent theirs with, whose message this
-	 * gives). An older one the API refused stays, for the person's Retry or Dismiss, and the rest go on; one without an
-	 * answer stops them all. Once one's bytes no member can open any more, it and each one after it are made again.
+	 * gives, its upload followed by `upload`). An older one the API refused stays, for the person's Retry or Dismiss, and
+	 * the rest go on; one without an answer stops them all. Once one's bytes no member can open any more, it and each one
+	 * after it are made again. One with files whose sealed bytes this page no longer has waits for its Dismiss.
 	 */
-	async #flush(id: string, wanted?: string): Promise<DirectMessage | null> {
+	async #flush(id: string, wanted?: string, upload?: UploadOptions): Promise<DirectMessage | null> {
 		const waiting = await this.#waiting(id);
 		// A message's old bytes beside new ones a remake made, which carry it, go unsent.
 		for (const { nonce } of waiting.older) if (nonce) await this.#drop(nonce);
@@ -268,14 +281,26 @@ export class Sends {
 		let message: DirectMessage | null = null;
 		let remade = false;
 		for (let at = 0; at < rows.length; at++) {
-			const { nonce, text } = rows[at]!;
+			const row = rows[at]!;
+			const { nonce, text } = row;
 			if (!nonce) continue;
 			const kept = this.#record()[nonce];
 			const first = kept?.first ?? nonce;
 			// A message with nothing in it, and nothing kept of what went with it, waits for the person's Dismiss.
 			if (first !== wanted && !kept && !text) continue;
+			const files = row.attachments.length ? this.#files.get(first) : undefined;
+			if (row.attachments.length && !files) {
+				if (first === wanted) throw new FilesGone();
+				continue;
+			}
 			try {
-				const sent = await this.#deliver(id, nonce, text, kept ?? { conversation_id: id });
+				const sent = await this.#deliver(
+					id,
+					row,
+					kept ?? { conversation_id: id },
+					files,
+					first === wanted ? upload : undefined,
+				);
 				if (first === wanted) message = sent;
 			} catch (error) {
 				if (!remade && (staleBytes(error) || staleAnswer(error))) {
@@ -293,18 +318,31 @@ export class Sends {
 		return message;
 	}
 
-	/** One message that waits: its bytes (the same as before, or new ones), its request, and `sent` once the API took it. */
-	async #deliver(id: string, nonce: string, text: string | null, kept: Kept): Promise<DirectMessage> {
-		const { ciphertext } = await this.#encrypt(id, nonce, text);
+	/**
+	 * One message that waits: its bytes (the same as before, or new ones), its request with its sealed files, and `sent`
+	 * once the API took it.
+	 */
+	async #deliver(
+		id: string,
+		row: ShownMessage,
+		kept: Kept,
+		files?: SealedFiles,
+		upload?: UploadOptions,
+	): Promise<DirectMessage> {
+		const nonce = row.nonce ?? "";
+		const { text } = row;
+		const { ciphertext } = await this.#encrypt(id, nonce, text, row.attachments);
 		let message: DirectMessage;
 		try {
-			message = await this.#parts.api.sendMessage(id, {
+			const sent = {
 				...{ ciphertext, nonce },
 				...(text && mentionsIn(text).length ? { mentions: mentionsIn(text) } : {}),
 				...(kept.message_reference ? { message_reference: kept.message_reference } : {}),
 				...(kept.allowed_mentions ? { allowed_mentions: kept.allowed_mentions } : {}),
 				...(kept.sticker_attachment_id ? { sticker_attachment_id: kept.sticker_attachment_id } : {}),
-			});
+				...(files ? { attachment_ids: files.ids } : {}),
+			};
+			message = await this.#parts.api.sendMessage(id, sent, files?.blobs, upload);
 		} catch (error) {
 			if (error instanceof PausedError) this.#afterPause(id, error.retryAfter);
 			throw error;
@@ -315,6 +353,7 @@ export class Sends {
 			...(reply ? { reply_to: reply } : {}),
 		});
 		this.#forget(nonce);
+		this.#files.delete(kept.first ?? nonce);
 		if (kept.first) this.#went.set(kept.first, { nonce, message: message.id });
 		this.#hooks.changed(id, [message.id]);
 		this.#hooks.sent(id, kept.first ?? nonce, message);
@@ -339,7 +378,7 @@ export class Sends {
 			const nonce = crypto.randomUUID();
 			this.#keep(nonce, { ...(kept ?? { conversation_id: id }), first: kept?.first ?? row.nonce });
 			try {
-				await this.#encrypt(id, nonce, row.text);
+				await this.#encrypt(id, nonce, row.text, row.attachments);
 			} catch (error) {
 				this.#forget(nonce);
 				throw error;
@@ -382,16 +421,37 @@ export class Sends {
 	}
 
 	/**
-	 * The core's encrypt: the message kept as pending, or, for a nonce it has, its bytes again. What keeps this device from
-	 * sending there is dealt with once: users to observe, leaves and removals to commit, a commit of its own that waits
-	 * for its word (settled as «Un commit sin respuesta» says), a group to join or make.
+	 * A new message's encrypt, its files' thumbnails inside it: while the core finds it too large, the largest thumbnail
+	 * inside goes apart, a file of its own, and it's encrypted again.
 	 */
-	async #encrypt(id: string, nonce: string, text: string | null): Promise<{ ciphertext: string }> {
+	async #encryptNew(id: string, nonce: string, text: string | null, sealed: SealedFiles | null) {
+		for (;;) {
+			try {
+				return await this.#encrypt(id, nonce, text, sealed?.attachments ?? []);
+			} catch (error) {
+				const tooLarge = error instanceof CoreError && error.code === "too_large";
+				if (!tooLarge || !sealed || !(await sealed.apart())) throw error;
+			}
+		}
+	}
+
+	/**
+	 * The core's encrypt: the message kept as pending, or, for a nonce it has, its bytes again, for the same text and
+	 * files it was made of (its row's). What keeps this device from sending there is dealt with once: users to observe,
+	 * leaves and removals to commit, a commit of its own that waits for its word (settled as «Un commit sin respuesta»
+	 * says), a group to join or make.
+	 */
+	async #encrypt(
+		id: string,
+		nonce: string,
+		text: string | null,
+		attachments: readonly unknown[],
+	): Promise<{ ciphertext: string }> {
 		const run = () =>
 			withIdentities(this.#parts, () =>
 				this.#parts.host.handle<{ ciphertext: string }>({
 					...{ cmd: "encrypt", conversation_id: id, nonce },
-					envelope: text ? { text } : {},
+					envelope: { ...(text ? { text } : {}), ...(attachments.length ? { attachments } : {}) },
 				}),
 			);
 		try {
@@ -581,10 +641,14 @@ export class Sends {
 		);
 		if (gone.length === 0) return;
 		const bound = await this.#bound(id);
+		// A message's files go with it, once no row of it waits: a remake waits under a nonce of its own.
+		const record = this.#record();
+		const carried = new Set(rows.map((row) => (row.nonce ? (record[row.nonce]?.first ?? row.nonce) : "")));
 		for (const [nonce, kept] of gone) {
 			const message = bound.get(nonce);
 			if (message) this.#went.set(kept.first ?? nonce, { nonce, message });
 			this.#forget(nonce);
+			if (!carried.has(kept.first ?? nonce)) this.#files.delete(kept.first ?? nonce);
 		}
 	}
 

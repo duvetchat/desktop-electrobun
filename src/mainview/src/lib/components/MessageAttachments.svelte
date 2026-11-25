@@ -2,6 +2,7 @@
 	import { SvelteSet } from "svelte/reactivity";
 	import { Download as DownloadIcon, FileText as FileIcon, Trash2 as TrashIcon } from "@lucide/svelte";
 	import AudioFilePlayer from "$lib/components/AudioFilePlayer.svelte";
+	import SealedFile from "$lib/components/e2e/SealedFile.svelte";
 	import SpoilerCover from "$lib/components/SpoilerCover.svelte";
 	import VoiceNotePlayer from "$lib/components/VoiceNotePlayer.svelte";
 	import { getHostURL } from "$lib/common/common";
@@ -23,7 +24,7 @@
 	// click shows it whole); one alone keeps its own shape. data-attachments marks all of it, so a click on a
 	// file can be told from a click on its message. A spoiler file (lib/spoilers) is blurred under a cover
 	// until a click reveals it, for as long as this view shows the message, and its name shows without the
-	// prefix.
+	// prefix. A conversation's file (its `sealed`) is drawn by SealedFile alone, from what this device decrypted of it.
 	let {
 		message,
 		channelName,
@@ -102,6 +103,8 @@
 					<span class="text-duvet-ink2 text-[11px]">Sending…</span>
 				</div>
 			</div>
+		{:else if voiceAtt?.sealed}
+			<SealedFile att={voiceAtt} kind="voice" authorName={message.author_name ?? "Unknown"} {channelName} />
 		{:else if voiceAtt && !voiceAtt.deleted_at}
 			<VoiceNotePlayer
 				src="{attachmentHost}{voiceAtt.url ?? `/attachments/${voiceAtt.id}`}"
@@ -221,20 +224,26 @@
 					{@const vw = Math.round(rawVW * vidScale)}
 					{@const vh = Math.round(rawVH * vidScale)}
 					<div class={MESSAGE_MEDIA_SUNK} style="width: {vw}px; height: {vh}px; max-width: 100%;">
-						<div
-							class="media-skeleton bg-duvet-secondary-fill absolute inset-0 flex animate-pulse items-center justify-center"
-						>
-							<span class="text-duvet-ink2 text-xs">Loading video…</span>
-						</div>
-						<!-- svelte-ignore a11y_media_has_caption -->
-						<video
-							src="{attachmentHost}{att.url ?? `/attachments/${att.id}`}"
-							controls
-							class="relative h-full w-full {hidden ? 'blur-xl' : ''}"
-							inert={hidden}
-							onloadeddata={loaded}
-							onerror={loadAgain}
-						></video>
+						{#if att.sealed}
+							<div class="size-full {hidden ? 'blur-xl' : ''}" inert={hidden}>
+								<SealedFile {att} kind="video" />
+							</div>
+						{:else}
+							<div
+								class="media-skeleton bg-duvet-secondary-fill absolute inset-0 flex animate-pulse items-center justify-center"
+							>
+								<span class="text-duvet-ink2 text-xs">Loading video…</span>
+							</div>
+							<!-- svelte-ignore a11y_media_has_caption -->
+							<video
+								src="{attachmentHost}{att.url ?? `/attachments/${att.id}`}"
+								controls
+								class="relative h-full w-full {hidden ? 'blur-xl' : ''}"
+								inert={hidden}
+								onloadeddata={loaded}
+								onerror={loadAgain}
+							></video>
+						{/if}
 						{#if hidden}
 							<SpoilerCover onReveal={() => revealed.add(att.id)} />
 						{/if}
@@ -243,14 +252,18 @@
 					<!-- As wide as the player. It clips only while hidden: the volume slider pops out above it. -->
 					<div class="rounded-card relative max-w-87.5 {hidden ? 'overflow-hidden' : ''}">
 						<div class={hidden ? "blur-md" : ""} inert={hidden}>
-							<AudioFilePlayer
-								src="{attachmentHost}{att.url ?? `/attachments/${att.id}`}"
-								attachmentId={att.id}
-								filename={name}
-								sizeBytes={att.size_bytes}
-								authorName={message.author_name ?? "Unknown"}
-								{channelName}
-							/>
+							{#if att.sealed}
+								<SealedFile {att} kind="audio" authorName={message.author_name ?? "Unknown"} {channelName} />
+							{:else}
+								<AudioFilePlayer
+									src="{attachmentHost}{att.url ?? `/attachments/${att.id}`}"
+									attachmentId={att.id}
+									filename={name}
+									sizeBytes={att.size_bytes}
+									authorName={message.author_name ?? "Unknown"}
+									{channelName}
+								/>
+							{/if}
 						</div>
 						{#if hidden}
 							<SpoilerCover onReveal={() => revealed.add(att.id)} />
@@ -259,28 +272,34 @@
 				{:else}
 					{@const kind = fileKind(name)}
 					<div class="rounded-card relative w-[300px] max-w-full overflow-hidden">
-						<a
-							href="{attachmentHost}{att.url ?? `/attachments/${att.id}`}"
-							target="_blank"
-							rel="noopener noreferrer"
-							class="{MESSAGE_CARD_ACTION} text-duvet-ink flex items-center gap-2.5 p-2.5 no-underline {hidden
-								? 'blur-md'
-								: ''}"
-							inert={hidden}
-						>
-							<span
-								class="bg-duvet-secondary-fill text-duvet-accent-text rounded-row grid size-10 shrink-0 place-items-center"
+						{#if att.sealed}
+							<div class={hidden ? "blur-md" : ""} inert={hidden}>
+								<SealedFile {att} kind="file" />
+							</div>
+						{:else}
+							<a
+								href="{attachmentHost}{att.url ?? `/attachments/${att.id}`}"
+								target="_blank"
+								rel="noopener noreferrer"
+								class="{MESSAGE_CARD_ACTION} text-duvet-ink flex items-center gap-2.5 p-2.5 no-underline {hidden
+									? 'blur-md'
+									: ''}"
+								inert={hidden}
 							>
-								<FileIcon size={20} />
-							</span>
-							<span class="flex min-w-0 flex-1 flex-col gap-0.5">
-								<span class="truncate text-[13.5px] leading-tight font-semibold">{name}</span>
-								<span class="text-duvet-ink2 text-[11.5px] leading-tight"
-									>{formatFileSize(att.size_bytes)}{kind ? ` · ${kind}` : ""}</span
+								<span
+									class="bg-duvet-secondary-fill text-duvet-accent-text rounded-row grid size-10 shrink-0 place-items-center"
 								>
-							</span>
-							<DownloadIcon size={16} class="text-duvet-ink2 mr-1 shrink-0" />
-						</a>
+									<FileIcon size={20} />
+								</span>
+								<span class="flex min-w-0 flex-1 flex-col gap-0.5">
+									<span class="truncate text-[13.5px] leading-tight font-semibold">{name}</span>
+									<span class="text-duvet-ink2 text-[11.5px] leading-tight"
+										>{formatFileSize(att.size_bytes)}{kind ? ` · ${kind}` : ""}</span
+									>
+								</span>
+								<DownloadIcon size={16} class="text-duvet-ink2 mr-1 shrink-0" />
+							</a>
+						{/if}
 						{#if hidden}
 							<SpoilerCover onReveal={() => revealed.add(att.id)} />
 						{/if}
@@ -308,6 +327,17 @@
 
 <!-- A picture in its box, which a click shows whole: pulsing until it loads, blurred while it's a spoiler -->
 {#snippet picture(att: NonNullable<Message["attachments"]>[number], name: string, hidden: boolean, fit: string)}
+	{#if att.sealed}
+		<div class="size-full {hidden ? 'blur-xl' : ''}" inert={hidden}>
+			<SealedFile {att} kind="image" {fit} onPreview={(src) => onPreview(src, name)} />
+		</div>
+	{:else}
+		{@render network(att, name, hidden, fit)}
+	{/if}
+{/snippet}
+
+<!-- A picture of a room's message, at the API's URL -->
+{#snippet network(att: NonNullable<Message["attachments"]>[number], name: string, hidden: boolean, fit: string)}
 	<button
 		type="button"
 		class="group/tile relative block size-full cursor-zoom-in overflow-hidden"

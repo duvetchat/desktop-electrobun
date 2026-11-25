@@ -234,6 +234,32 @@ function timeIn(value: unknown, field: string): string {
 	if (Number.isNaN(at)) throw fail(400, `${field} isn't an RFC 3339 time`);
 	return new Date(at).toISOString();
 }
+/**
+ * A form as the API binds an encrypted message's (gin's form binding): each field's first value, the lists' all of them
+ * (mentions, attachment_ids), the reply and its allowed mentions from their JSON, and the files' bytes in their order.
+ */
+async function formBody(bytes: Uint8Array<ArrayBuffer>, type: string): Promise<Record<string, unknown>> {
+	const form = await new Response(bytes, { headers: { "Content-Type": type } }).formData();
+	const text = (value: FormDataEntryValue | undefined) => (typeof value === "string" ? value : "");
+	const body: Record<string, unknown> = {};
+	for (const field of new Set(form.keys())) {
+		const values = form.getAll(field);
+		if (field === "files") {
+			// As Go's multipart reader takes them: a part without a file name is no file.
+			const named = values.filter((value): value is File => typeof value !== "string" && value.name !== "");
+			body.files = await Promise.all(named.map(async (value) => new Uint8Array(await value.arrayBuffer())));
+		} else if (field === "mentions" || field === "attachment_ids") body[field] = values.map(text);
+		else if (field === "message_reference" || field === "allowed_mentions") {
+			try {
+				body[field] = JSON.parse(text(values[0]));
+			} catch {
+				throw fail(400, `${field} isn't JSON`);
+			}
+		} else body[field] = text(values[0]);
+	}
+	return body;
+}
+
 function numberIn(value: unknown, field: string): number {
 	if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0)
 		throw fail(400, `${field} isn't a number`);
@@ -363,8 +389,23 @@ interface Message {
 	mentions?: string[];
 	message_reference?: unknown;
 	sticker_attachment_id?: string | null;
-	attachment_ids?: string[];
+	attachments?: FileRow[];
 	history_share?: { to_user_id: string; range: string };
+}
+
+/** A message's file as the API keeps one it hasn't opened (kind 1), and lists it, signed. */
+interface FileRow {
+	id: string;
+	message_id: string | null;
+	filename: "file";
+	content_type: "application/octet-stream";
+	size_bytes: number;
+	width: null;
+	height: null;
+	created_at: string;
+	deleted_at: null;
+	kind: 1;
+	url: string;
 }
 
 interface Conversation {
@@ -478,6 +519,10 @@ export class FakeApi {
 	#segments = new Map<string, Segment>();
 	#shares = new Map<string, Share>();
 	#files = new Map<string, Uint8Array<ArrayBuffer>>();
+	/** Messages' files, by the ID their client gave them: whose they are, and what they're on (none yet). */
+	#fileRows = new Map<string, { owner: string; row: FileRow }>();
+	/** The most bytes one file takes, as Duvet's storage does: what goes up encrypted counts. */
+	fileLimit = 20 << 20;
 	/** The inbox messages that are a rotation's transfers, by ID. */
 	#transfers = new Set<string>();
 	/** What each message answers: the ID of the message it replies to, by its own. */
@@ -686,13 +731,14 @@ export class FakeApi {
 			}
 			if (needs === "listed" && !device?.listed) throw fail(403, "this device isn't on your device list");
 			let body: unknown = null;
-			if (request.headers.get("Content-Type")?.includes("json") && bytes.length > 0) {
+			const type = request.headers.get("Content-Type") ?? "";
+			if (type.includes("json") && bytes.length > 0) {
 				try {
 					body = JSON.parse(new TextDecoder().decode(bytes));
 				} catch {
 					throw fail(400, "the body isn't JSON");
 				}
-			}
+			} else if (type.includes("multipart/form-data")) body = await formBody(bytes, type);
 			const params = path.exec(url.pathname)?.groups ?? {};
 			const answer = handler({
 				session: session!,
@@ -1557,8 +1603,18 @@ export class FakeApi {
 		if (!Array.isArray(listed) || listed.length > 20 || listed.some((id) => typeof id !== "string" || !UUID.test(id))) {
 			throw fail(400, "invalid mentions");
 		}
+		const ids: unknown = body?.attachment_ids ?? [];
+		const files: unknown = body?.files ?? [];
+		if (
+			!Array.isArray(ids) ||
+			!Array.isArray(files) ||
+			ids.length !== files.length ||
+			ids.some((id) => typeof id !== "string" || !UUID.test(id)) ||
+			new Set(ids).size !== ids.length
+		) {
+			throw fail(400, "attachment_ids names each of files, in their order, each with an ID of its own");
+		}
 		const framed = this.#checkMessage(conv, device!, ciphertext);
-		// shortcut: no files go up with a message here (attachment_ids and files): the attachments' task brings them.
 		const sent = conv.messages.find((m) => m.sender_device_id === device!.id && m.nonce === nonce);
 		if (sent) {
 			if (conv.deleted.has(sent.id)) throw fail(409, "this message was deleted");
@@ -1566,6 +1622,9 @@ export class FakeApi {
 			return ok(sent, 201);
 		}
 		const replied = this.#repliedIn(conv, body?.message_reference);
+		// Its files go up first, each with the ID its client gave it, as the API keeps them: as they came, named file. One
+		// up already from a send that failed (the sender's, on no message, its size and SHA-256) is taken again.
+		const rows = files.map((bytes: Uint8Array<ArrayBuffer>, i) => this.#upFile(session.user, String(ids[i]), bytes));
 		// Whom it mentions, as the API has it: whom it names, then the author of what it answers (unless its
 		// allowed_mentions say not to, or that's a notice), each once, of the members, never its own author.
 		const members = conv.members.map((m) => m.user_id);
@@ -1578,9 +1637,11 @@ export class FakeApi {
 			...{ id: this.#id(), conversation_id: conv.id, author_id: session.user, content: null, type: 0 },
 			...{ created_at: at, updated_at: at, nonce, ciphertext: body.ciphertext, seq: ++conv.seq, sent_at: Date.now() },
 			...{ generation: framed.generation!, epoch: framed.epoch!, sender_device_id: device!.id, edited_at: null },
-			...{ mentions, message_reference: body.message_reference ?? null, attachment_ids: [] },
+			...{ mentions, message_reference: body.message_reference ?? null },
 			sticker_attachment_id: body.sticker_attachment_id ?? null,
 		};
+		for (const row of rows) row.message_id = message.id;
+		message.attachments = rows;
 		conv.messages.push(message);
 		if (replied) this.#repliesTo.set(message.id, replied.id);
 		for (const member of conv.members) this.#emit(member.user_id, "DM_MESSAGE_CREATE", message);
@@ -1658,6 +1719,35 @@ export class FakeApi {
 		const id = this.#id();
 		this.#files.set(id, bytes);
 		return id;
+	}
+
+	/**
+	 * A message's file going up with the ID its client gave it: one of the same size and bytes the user sent before on no
+	 * message is that one again; any other row with its ID is a 409, and one past the storage's limit a 413.
+	 */
+	#upFile(user: string, id: string, bytes: Uint8Array<ArrayBuffer>): FileRow {
+		if (bytes.length > this.fileLimit) throw fail(413, "file too large");
+		const held = this.#fileRows.get(id);
+		if (held) {
+			const same = this.#files.get(id);
+			if (held.owner !== user || held.row.message_id !== null || !same || !equal(same, bytes)) {
+				throw fail(409, "attachment ID in use");
+			}
+			return held.row;
+		}
+		const row: FileRow = {
+			...{ id, message_id: null, filename: "file", content_type: "application/octet-stream" },
+			...{ size_bytes: bytes.length, width: null, height: null, created_at: now(), deleted_at: null, kind: 1 },
+			url: signedPath(id),
+		};
+		this.#fileRows.set(id, { owner: user, row });
+		this.#files.set(id, bytes);
+		return row;
+	}
+
+	/** The bytes the API keeps of a message's file, by its ID: what went up, never opened. */
+	fileBytes(id: string): Uint8Array | undefined {
+		return this.#fileRows.has(id) ? this.#files.get(id) : undefined;
 	}
 
 	#shareView({ id, conversation_id, from_user_id, kind, range, starts_at, size, parts }: Share) {

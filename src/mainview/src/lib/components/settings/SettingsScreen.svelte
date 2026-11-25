@@ -167,6 +167,7 @@
 	} from "./recipes";
 	import { pageSettingsHost, type MessageLayout, type SettingsHost } from "$lib/settings-host";
 	import { OFFERED, localePref, setLocalePref, systemLanguageName, t } from "$lib/i18n";
+	import { encryptedFileNames } from "$lib/e2e/decrypted-files.svelte";
 	import { LOCALE_NAMES, parseLocalePref } from "$lib/i18n/locale";
 	import { defaultMessageLayout } from "$lib/message-layout";
 	import { USER_SCOPE, type StagedImage } from "$lib/staged-images";
@@ -297,6 +298,13 @@
 
 	const formatFileSize = listFileSize;
 
+	// The names this device's own messages give the user's encrypted files (Ruling 31): the API keeps them sealed, as
+	// "file". One search of the device's messages as the list loads; a file whose message it doesn't hold is an
+	// encrypted file. Its sealed bytes are never offered as the file, to preview or to download.
+	let encryptedNames = $state<Map<string, string> | null>(null);
+	const nameOf = (att: UserAttachment) =>
+		att.kind === 1 ? (encryptedNames?.get(att.id) ?? t("e2e_file_encrypted")) : att.filename;
+
 	async function loadAttachments(location = attachmentsLocation) {
 		// Only the last load counts: the location can change while one is on its way.
 		const loadId = ++attachmentsLoadId;
@@ -312,6 +320,14 @@
 			[attachments, attachmentsListed, storageStatus, buckets] = [list, location, status, bucketList];
 			storageTransfers.nameBuckets(bucketList);
 			picker.prune();
+			if (list.some((att) => att.kind === 1)) {
+				try {
+					encryptedNames = await encryptedFileNames();
+				} catch (err) {
+					// Not now (encrypted conversations aren't open on this device): they show as encrypted files.
+					console.error("[e2e] Encrypted files weren't named from this device:", err);
+				}
+			}
 		} catch (err) {
 			if (loadId === attachmentsLoadId) attachmentsError = getApiError(err, "Couldn't load");
 		} finally {
@@ -1870,9 +1886,9 @@
 				{/if}
 				<div class="{CARD} divide-duvet-line divide-y">
 					{#each picker.shown as att (att.id)}
-						{@const isImage = isImageAttachment(att.content_type)}
-						{@const isText = isTextAttachment(att.content_type, att.filename)}
-						{@const isAudio = att.content_type.startsWith("audio/")}
+						{@const isImage = att.kind !== 1 && isImageAttachment(att.content_type)}
+						{@const isText = att.kind !== 1 && isTextAttachment(att.content_type, att.filename)}
+						{@const isAudio = att.kind !== 1 && att.content_type.startsWith("audio/")}
 						{@const src = `${attachmentHost}${att.url ?? `/attachments/${att.id}`}`}
 						<div
 							class="group hover:bg-duvet-hover-soft transition-colors motion-reduce:transition-none"
@@ -1928,7 +1944,7 @@
 								{/if}
 								<!-- Info -->
 								<div class="min-w-0 flex-1">
-									<p class="truncate text-[14.5px] font-medium">{att.filename}</p>
+									<p class="truncate text-[14.5px] font-medium">{nameOf(att)}</p>
 									<p class="text-duvet-ink2 text-[13px]">
 										{formatFileSize(att.size_bytes)}
 										<span class="mx-1 opacity-60">·</span>
@@ -1947,15 +1963,17 @@
 											<SearchIcon size={16} />
 										</IconButton>
 									{/if}
-									<a
-										href={src}
-										download={att.filename}
-										class={iconButtonClass()}
-										title="Download"
-										aria-label="Download {att.filename}"
-									>
-										<DownloadIcon size={16} />
-									</a>
+									{#if att.kind !== 1}
+										<a
+											href={src}
+											download={att.filename}
+											class={iconButtonClass()}
+											title="Download"
+											aria-label="Download {att.filename}"
+										>
+											<DownloadIcon size={16} />
+										</a>
+									{/if}
 									<IconButton
 										label="Delete attachment"
 										title="Delete attachment"

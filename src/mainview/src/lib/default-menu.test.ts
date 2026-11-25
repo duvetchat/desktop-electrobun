@@ -86,6 +86,22 @@ describe("the default menu of what's under the pointer", () => {
 		expect(ids(defaultMenuOf(image, { ...EVERYTHING, app: false }))).toEqual([["copy-media-link"]]);
 	});
 
+	// A conversation's file, decrypted on this device (lib/e2e/decrypted-files): its blob: URL is the app's origin's, so
+	// nothing opens it or hands its link out (PLAN-E2E-CLIENTES.md, Review Focus 6); a picture can still be copied.
+	test("a decrypted picture: Copy image alone; a decrypted video: nothing to open or to link", () => {
+		const image = {
+			...NOTHING,
+			media: { type: "image" as const, src: "blob:views://mainview/1", decrypted: true as const },
+		};
+		expect(defaultMenuOf(image, EVERYTHING)).toEqual([[{ id: "copy-image", src: "blob:views://mainview/1" }]]);
+		const video = {
+			...NOTHING,
+			media: { type: "video" as const, src: "blob:views://mainview/2", decrypted: true as const },
+		};
+		expect(defaultMenuOf(video, EVERYTHING)).toBeNull();
+		expect(defaultMenuOf(image, { ...EVERYTHING, app: false })).toBeNull();
+	});
+
 	test("what's under the pointer at once has each of its groups: the selection, then the link, then the picture", () => {
 		const all = {
 			...NOTHING,
@@ -167,6 +183,22 @@ describe("reading what a right-click is on", () => {
 		expect(on({ "#tag": "img" }, "views://mainview/mascot.svg")).toBeNull();
 		expect(on({ "#tag": "img" }, "data:image/png;base64,AAAA")).toBeNull();
 		expect(on({ "#tag": "img" }, "")).toBeNull();
+		// A decrypted file of a conversation is the app's own blob, marked as one: only it of all blobs has a menu.
+		expect(on({ "#tag": "img", "data-decrypted": "" }, "blob:views://mainview/1")).toEqual({
+			type: "image",
+			src: "blob:views://mainview/1",
+			decrypted: true,
+		});
+		expect(on({ "#tag": "video", "data-decrypted": "" }, "blob:views://mainview/2")).toEqual({
+			type: "video",
+			src: "blob:views://mainview/2",
+			decrypted: true,
+		});
+		expect(on({ "#tag": "img" }, "blob:views://mainview/3")).toBeNull();
+		expect(on({ "#tag": "img", "data-decrypted": "" }, "https://api.example/a.png")).toEqual({
+			type: "image",
+			src: "https://api.example/a.png",
+		});
 	});
 
 	test("on the selected text: its text and the message holding it", () => {

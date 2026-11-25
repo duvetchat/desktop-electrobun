@@ -6,6 +6,7 @@
 // conversation says of its group, and conversation-content.svelte.ts what the device holds of their messages. The hosts
 // load with the engine's start, never with a page.
 import { withSentMessage } from "$lib/arrivals";
+import type { UploadOptions } from "$lib/api/api";
 import { onSignOut } from "$lib/api/auth";
 import type { DirectMessage } from "$lib/api/conversations";
 import { e2eApi } from "$lib/api/e2e";
@@ -16,6 +17,7 @@ import { toast } from "$lib/stores/toast.svelte";
 import { t } from "$lib/i18n";
 import { deviceName } from "./client";
 import { moveTyped, refresh, refreshAll, useReader } from "./conversation-content.svelte";
+import { decryptedFiles, useNamer } from "./decrypted-files.svelte";
 import {
 	E2EEngine,
 	systemClock,
@@ -73,6 +75,8 @@ let tabs: BrowserTabs | null = null;
 let persisted = false;
 /** Conversations opened before the page had its engine (its host still loading): it opens them once it's ready. */
 const toOpen = new Set<string>();
+/** What stops the upload of each message another tab asked this leader to send, by its nonce: that tab's Cancel. */
+const othersUploads = new Map<string, AbortController>();
 
 /** The conversation opened, by the page's engine, or by the one it's about to have. */
 function openOnEngine(conversationId: string): Promise<void> {
@@ -152,6 +156,15 @@ export async function startEngine(userId: string, platform: EnginePlatform = pag
 			made.read(conversationId, ids),
 		),
 	);
+	// A conversation's files come down to this page, and the core of this tab or of the one that leads opens them.
+	decryptedFiles.useOpener({
+		download: (url, most, progress) => e2eApi().sealedFile(url, most, progress),
+		open: (key, attachmentId, sealed, progress) =>
+			onMessages<Blob>("openFile", { key, attachmentId, sealed }, (made) =>
+				made.openFile(key, attachmentId, sealed, progress),
+			),
+	});
+	useNamer(() => onMessages<Map<string, string>>("fileNames", null, (made) => made.fileNames()));
 	if (platform.desktop) {
 		const host = await platform.desktopHost();
 		if (!host) return;
@@ -176,7 +189,17 @@ export async function startEngine(userId: string, platform: EnginePlatform = pag
 			restartGroup: (id: string) => engine?.restartGroup(id),
 			acceptMembers: (id: string) => engine?.acceptMembers(id),
 			cutoverAt: () => engine?.cutoverAt ?? null,
-			sendMessage: (message: Outgoing) => live().sendMessage(message),
+			sendMessage: (message: Outgoing) => {
+				const stop = new AbortController();
+				othersUploads.set(message.nonce, stop);
+				return live()
+					.sendMessage(message, { signal: stop.signal })
+					.finally(() => othersUploads.get(message.nonce) === stop && othersUploads.delete(message.nonce));
+			},
+			cancelUpload: (nonce: string) => othersUploads.get(nonce)?.abort(),
+			openFile: ({ key, attachmentId, sealed }: { key: string; attachmentId: string; sealed: Blob }) =>
+				live().openFile(key, attachmentId, sealed),
+			fileNames: () => live().fileNames(),
 			editMessage: ({ conversationId, messageId, text }: MessageParams) =>
 				live().editMessage(conversationId, messageId ?? "", text ?? ""),
 			deleteMessage: ({ conversationId, messageId }: MessageParams) =>
@@ -245,21 +268,34 @@ interface MessageParams {
 	seq?: number;
 }
 
+const NOT_READY = "encrypted conversations aren't ready on this device";
+
 /** The leader's engine, for what another tab asks of it: none yet is a refusal, as the tab would show. */
 function live(): E2EEngine {
-	if (!engine) throw new Error("encrypted conversations aren't ready on this device");
+	if (!engine) throw new Error(NOT_READY);
 	return engine;
 }
 
 /** The person's act on a conversation's messages: by this page's engine, or the tab that leads (Ruling 16). */
 function onMessages<T>(method: string, params: unknown, run: (made: E2EEngine) => Promise<T>): Promise<T> {
 	if (tabs) return tabs.call<T>(method, params);
-	return engine ? run(engine) : Promise.reject(new Error("encrypted conversations aren't ready on this device"));
+	return engine ? run(engine) : Promise.reject(new Error(NOT_READY));
 }
 
-/** The person's message to a conversation (PLAN-E2E-CLIENTES.md, «Enviar»): the API's message, or null if it went already. */
-export const sendEncrypted = (message: Outgoing) =>
-	onMessages<DirectMessage | null>("sendMessage", message, (made) => made.sendMessage(message));
+/**
+ * The person's message to a conversation (PLAN-E2E-CLIENTES.md, «Enviar»): the API's message, or null if it went
+ * already. Its files go sealed («Adjuntos»), `upload` following them where this page runs the engine; from another tab,
+ * its Cancel stops the leader's upload.
+ */
+export function sendEncrypted(message: Outgoing, upload?: UploadOptions): Promise<DirectMessage | null> {
+	if (tabs && !tabs.leader) {
+		upload?.signal?.addEventListener("abort", () => void tabs?.call("cancelUpload", message.nonce).catch(() => {}), {
+			once: true,
+		});
+		return tabs.call<DirectMessage | null>("sendMessage", message);
+	}
+	return engine ? engine.sendMessage(message, upload) : Promise.reject(new Error(NOT_READY));
+}
 /** An edit of the person's message, which shows at once. */
 export const editEncrypted = (conversationId: string, messageId: string, text: string) =>
 	onMessages<void>("editMessage", { conversationId, messageId, text }, (made) =>
@@ -301,8 +337,10 @@ export async function stopEngine(): Promise<void> {
 	engine = null;
 	started = false;
 	toOpen.clear();
-	// What the device's database showed goes from memory.
+	// What the device's database showed goes from memory, and so does what it decrypted.
 	useReader(null);
+	decryptedFiles.useOpener(null);
+	useNamer(null);
 	await stopping?.stop();
 	tabs?.close();
 	tabs = null;

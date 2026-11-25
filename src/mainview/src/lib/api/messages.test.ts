@@ -62,6 +62,16 @@ describe("a message too large for the API", () => {
 		);
 	});
 
+	// A conversation's files go up sealed, each part of 64 KiB with its tag, beside a ciphertext of 32 KiB at most
+	// (PLAN-E2E-CLIENTES.md, «Adjuntos»): the cap is the sealed size's.
+	test("is a conversation's by its files' sealed size, beside its ciphertext", () => {
+		const near = 32 * MiB - 20 * 1024;
+		expect(messageTooLarge("hi", [file(near)])).toBeNull();
+		expect(messageTooLarge("hi", [file(near)], true)).toStartWith("Message too large:");
+		expect(messageTooLarge("hi", [file(31 * MiB)], true)).toBeNull();
+		expect(messageTooLarge("x".repeat(4000), [], true)).toBeNull();
+	});
+
 	test("isn't one that fits, nor one without files", () => {
 		expect(messageTooLarge("hi", [file(31 * MiB)])).toBeNull();
 		expect(messageTooLarge("x".repeat(4000), [])).toBeNull();

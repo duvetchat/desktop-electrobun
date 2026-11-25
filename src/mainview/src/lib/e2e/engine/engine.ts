@@ -5,7 +5,7 @@
 // Its work goes one flow at a time, in the order it came: the start («Arranque», steps 1 to 7), the person's taps, and
 // what the gateway's events ask for. bootstrap.ts, identity.ts, key-packages.ts and inbox.ts hold the steps, sync.ts
 // each conversation's queue and group; this class keeps the state the views read, and what's due later.
-import { FetchError, UpdateRequiredError } from "$lib/api/api";
+import { FetchError, UpdateRequiredError, type UploadOptions } from "$lib/api/api";
 import type { DirectMessage } from "$lib/api/conversations";
 import type { E2eApi } from "$lib/api/e2e";
 import { CoreError } from "../errors";
@@ -14,6 +14,7 @@ import type { CoreHost, HostOpened } from "../host";
 import { bindSession, coreStatus, ownDevice } from "./bootstrap";
 import { heldBefore, shownMessages, type ShownMessage } from "./content";
 import { Failures } from "./failures";
+import { fileNames } from "./files";
 import { identityState, publishIdentity, servedIdentity, type IdentityMade } from "./identity";
 import { takeInbox } from "./inbox";
 import { uploadKeyPackages } from "./key-packages";
@@ -23,6 +24,7 @@ import { Conversations, type ConversationState } from "./sync";
 
 export type { ConversationState } from "./sync";
 export type { Outgoing, Pending } from "./send";
+export type { OutgoingFile } from "./files";
 export type { ShownMessage } from "./content";
 
 /**
@@ -223,10 +225,11 @@ export class E2EEngine {
 
 	/**
 	 * The person's message, sent after what waits in its conversation (PLAN-E2E-CLIENTES.md, «Enviar»): the API's message,
-	 * or null when it was sent already. A refusal or a lost answer rejects, the message kept for Retry and Dismiss.
+	 * or null when it was sent already. A refusal or a lost answer rejects, the message kept for Retry and Dismiss. Its
+	 * files go sealed («Adjuntos»), `upload` following their upload and stopping it: a Cancel is then its Dismiss.
 	 */
-	sendMessage(message: Outgoing): Promise<DirectMessage | null> {
-		return this.#act(() => this.#sends.send(message));
+	sendMessage(message: Outgoing, upload?: UploadOptions): Promise<DirectMessage | null> {
+		return this.#act(() => this.#sends.send(message, upload));
 	}
 
 	/**
@@ -249,6 +252,19 @@ export class E2EEngine {
 	 */
 	async discardMessage(conversationId: string, nonce: string): Promise<string | null> {
 		return (await this.#queue(() => this.#sends.discard(conversationId, nonce, this.state.name === "ready"))) ?? null;
+	}
+
+	/**
+	 * A file of a message, its sealed bytes opened by this device's core with the key its message gives it, part by part
+	 * («Adjuntos»): files.ts' openSealed checks what it opens to. Outside the engine's turn, as it changes nothing.
+	 */
+	openFile(key: string, attachmentId: string, sealed: Blob, progress?: (done: number) => void): Promise<Blob> {
+		return this.#parts.host.openFile(key, attachmentId, sealed, progress);
+	}
+
+	/** The names of the files whose messages this device holds, by their IDs (Ruling 31): Settings → Attachments'. */
+	fileNames(): Promise<Map<string, string>> {
+		return fileNames(this.#parts.host);
 	}
 
 	/** What the device's database shows of these messages of the conversation: a row for each it holds. */

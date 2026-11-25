@@ -2,7 +2,9 @@ import { getAvatarURL } from "$lib/common/common";
 import { mergedByKey } from "$lib/reactions";
 import { memberMobileOnly, memberStatus } from "$lib/status";
 import type { Conversation, DirectMessage } from "$lib/api/conversations";
-import { shownOf, type MessageContent } from "$lib/e2e/engine/content";
+import { drawnAs } from "$lib/e2e/conventions";
+import { shownOf, type MessageContent, type ShownMessage } from "$lib/e2e/engine/content";
+import { shownFile, type SealedFile } from "$lib/e2e/engine/files";
 import type { UserActivity } from "$lib/stores.svelte";
 
 export interface EmbedMedia {
@@ -76,6 +78,9 @@ export interface Attachment {
 	deleted?: boolean;
 	pending?: boolean;
 	url?: string;
+	/** A conversation's encrypted file, as this device's database holds its message (lib/e2e/engine/files.ts): what opens
+	 * it. Its other fields are what its sender says of it, which only lays it out. */
+	sealed?: SealedFile;
 }
 
 export const MessageReferenceType = {
@@ -1565,6 +1570,12 @@ export function directMessageToMessage(
 	if (written && msg.seq !== undefined) text = heldText(content, msg, msg.seq);
 	else if (written) text = { content: content.typed(msg.id) ?? null, updated_at: msg.created_at };
 	const ref = msg.referenced_message ?? null;
+	// An encrypted message's files, and whether it's a voice note, are what this device holds of it: the API keeps sealed
+	// bytes it can't open. A row being sent keeps its own, for its upload's bars.
+	const held = msg.seq === undefined ? null : shownOf(content, msg.id, msg.author_id);
+	const files = held ? heldFiles(held, msg) : null;
+	const voice =
+		held && files && drawnAs({ text: held.text, attachments: files.map(saidOf) }, !!msg.sticker_attachment_id);
 	return {
 		id: msg.id,
 		// Only a text or voice row has text, the device's (heldText): a notice's words come from its own fields.
@@ -1572,7 +1583,7 @@ export function directMessageToMessage(
 		waiting: false,
 		loading: false,
 		shared_by: null,
-		type,
+		type: voice === "voice_note" ? MessageType.Voice : type,
 		author_id: msg.author_id,
 		author_name:
 			msg.user?.alias ??
@@ -1587,7 +1598,7 @@ export function directMessageToMessage(
 		nonce: msg.nonce,
 		ref_message_id: ref?.message_id ?? null,
 		referenced_message: ref && { ...ref, content: quotedText(content, ref) },
-		attachments: msg.attachments ?? null,
+		attachments: msg.seq === undefined ? (msg.attachments ?? null) : files,
 		reactions: mergedByKey(msg.reactions),
 		embeds: null,
 		sticker_attachment_id: msg.sticker_attachment_id ?? null,
@@ -1596,6 +1607,38 @@ export function directMessageToMessage(
 		...text,
 	};
 }
+
+/**
+ * A conversation's message's files as the chat draws them (lib/e2e/engine/files.ts): what this device's database holds
+ * of each, at the API's signed URL of the file of its ID, and its thumbnail's. Never the API's own list, which has them
+ * as sealed bytes. They're laid out by what their sender calls them, and nothing more: each is drawn by its bytes.
+ */
+function heldFiles(row: ShownMessage, msg: DirectMessage): Attachment[] {
+	const urlOf = (id: string) => msg.attachments?.find((a) => a.id === id)?.url ?? null;
+	return row.attachments.flatMap((raw): Attachment[] => {
+		const file = shownFile(raw);
+		if (!file) return [];
+		return [
+			{
+				...{ id: file.id, message_id: msg.id, filename: file.name, size_bytes: file.size },
+				content_type: /^(image|video|audio)\//.test(file.said) ? file.said : "application/octet-stream",
+				...{ width: file.width ?? null, height: file.height ?? null, created_at: msg.created_at },
+				sealed: {
+					...file,
+					url: urlOf(file.id),
+					thumbnailUrl: file.thumbnail_ref ? urlOf(file.thumbnail_ref.id) : null,
+				},
+			},
+		];
+	});
+}
+
+/** What a voice note's convention reads of a drawn file (drawnAs): its sender's word on it. */
+const saidOf = (file: Attachment) => ({
+	type: file.sealed?.said,
+	duration_ms: file.sealed?.duration_ms,
+	waveform: file.sealed?.waveform,
+});
 
 /** The text a message shows: its content, or its text displays' when its components are all of it. */
 export function messageText(message: Pick<Message, "flags" | "content" | "components">): string {

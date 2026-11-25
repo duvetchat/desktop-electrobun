@@ -320,9 +320,15 @@ function sendForm(
 /** fetch, given up once ms pass without a sign of its answer (requestLimits): its headers, then each piece of its body,
  * which is read here, so a server that stops halfway through it is given up too. Given up, the request is aborted and
  * fails with a NoAnswerError; the answer comes back with its body in memory. An abort of init.signal fails as fetch's
- * does. Not AbortSignal.any and AbortSignal.timeout: an older Mac's WebKit, which the app runs on there, lacks them
+ * does. `piece` hears how much of the body came, at each piece: what it throws stops the reading, and fails the fetch
+ * with it. Not AbortSignal.any and AbortSignal.timeout: an older Mac's WebKit, which the app runs on there, lacks them
  * (GifPicker). */
-export async function fetchWithin(url: string, init: RequestInit, ms: number): Promise<Response> {
+export async function fetchWithin(
+	url: string,
+	init: RequestInit,
+	ms: number,
+	piece?: (received: number) => void,
+): Promise<Response> {
 	if (!Number.isFinite(ms)) return fetch(url, init);
 	const request = new AbortController();
 	const own = init.signal;
@@ -342,7 +348,7 @@ export async function fetchWithin(url: string, init: RequestInit, ms: number): P
 	try {
 		const res = await fetch(url, { ...init, signal: request.signal });
 		alive();
-		const body = NULL_BODY_STATUSES.has(res.status) || !res.body ? null : await readBody(res.body, alive);
+		const body = NULL_BODY_STATUSES.has(res.status) || !res.body ? null : await readBody(res.body, alive, piece);
 		return new Response(body, { status: res.status, statusText: res.statusText, headers: res.headers });
 	} catch (err) {
 		if (late) throw new NoAnswerError();
@@ -353,8 +359,12 @@ export async function fetchWithin(url: string, init: RequestInit, ms: number): P
 	}
 }
 
-// A body's bytes, read whole, with alive() at each piece.
-async function readBody(body: ReadableStream<Uint8Array>, alive: () => void): Promise<ArrayBuffer> {
+// A body's bytes, read whole, with alive() and onPiece() at each piece; what onPiece() throws stops the reading.
+async function readBody(
+	body: ReadableStream<Uint8Array>,
+	alive: () => void,
+	onPiece?: (received: number) => void,
+): Promise<ArrayBuffer> {
 	const reader = body.getReader();
 	const pieces: Uint8Array[] = [];
 	let length = 0;
@@ -364,6 +374,12 @@ async function readBody(body: ReadableStream<Uint8Array>, alive: () => void): Pr
 		alive();
 		pieces.push(value);
 		length += value.length;
+		try {
+			onPiece?.(length);
+		} catch (error) {
+			await reader.cancel().catch(() => {});
+			throw error;
+		}
 	}
 	const bytes = new Uint8Array(length);
 	let at = 0;

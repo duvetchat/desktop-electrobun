@@ -1,4 +1,5 @@
 import api, { formBytes, MAX_REQUEST_BYTES, TooLargeError, type UploadOptions } from "$lib/api/api";
+import { sealedSize } from "$lib/e2e/engine/files";
 import { createAckThrottle } from "$lib/api/ack";
 import type { AllowedMentions, GatewayMessage, MessageReference } from "$lib/types";
 
@@ -98,14 +99,25 @@ export async function getMessageThread(
 // allowed_mentions, as sendMessage writes them, each a field of its own.
 const MESSAGE_FIELDS_BYTES = 2048;
 
+// A conversation's message's ciphertext at its largest, in base64 (32 KiB of it), and the ID each of its files goes up
+// with: what its form holds in place of a room's text.
+const CIPHERTEXT_BYTES = Math.ceil((32 << 10) / 3) * 4;
+const FILE_ID_BYTES = 64;
+
 /** Why the API would refuse a message with files for its size, as the message box says it, or null: its text and files
- * as a send puts them in its form, with room for its other fields. Such a message isn't sent (#182). */
-export function messageTooLarge(content: string, files: File[]): string | null {
+ * as a send puts them in its form, with room for its other fields. Such a message isn't sent (#182). A conversation's
+ * (`sealed`) goes up as its ciphertext and its files sealed, each part of 64 KiB with its tag (PLAN-E2E-CLIENTES.md,
+ * «Adjuntos»): their thumbnails apart, a few KiB, are left to the form's own check as it's sent. */
+export function messageTooLarge(content: string, files: File[], sealed = false): string | null {
 	if (files.length === 0) return null;
 	const form = new FormData();
-	form.append("content", content);
+	if (!sealed) form.append("content", content);
 	for (const f of files) form.append("files", f);
-	const bytes = formBytes(form) + MESSAGE_FIELDS_BYTES;
+	let bytes = formBytes(form) + MESSAGE_FIELDS_BYTES;
+	if (sealed) {
+		bytes += CIPHERTEXT_BYTES;
+		for (const f of files) bytes += sealedSize(f.size) - f.size + FILE_ID_BYTES;
+	}
 	return bytes > MAX_REQUEST_BYTES ? new TooLargeError(bytes, "Message").message : null;
 }
 

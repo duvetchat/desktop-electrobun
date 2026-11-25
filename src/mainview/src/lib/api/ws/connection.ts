@@ -150,6 +150,7 @@ import { toast } from "$lib/stores/toast.svelte";
 import { getElectrobunRpc, type ActivityPayload } from "$lib/electrobun-rpc";
 import { identifyData } from "$lib/api/ws/identify";
 import { identifyDevice, keepDevice, keepUser } from "$lib/e2e/client";
+import { decryptedFiles } from "$lib/e2e/decrypted-files.svelte";
 import { isEngineEvent, toEngine } from "$lib/e2e/events";
 import { moveTyped } from "$lib/e2e/conversation-content.svelte";
 
@@ -1924,6 +1925,8 @@ function takeEvent(payload: GatewayEventPayload, event: GatewayEvent) {
 		case "DM_MESSAGE_DELETE": {
 			const raw = payload.data;
 			arrivedDMs.delete(raw.id);
+			// What this device decrypted of its files goes from memory with it.
+			decryptedFiles.forgetMessage(raw.id);
 			dropReplyTo(raw.conversation_id, raw.id);
 			dropMentionNotice(raw.id);
 			callNoticeDeleted(raw.id);

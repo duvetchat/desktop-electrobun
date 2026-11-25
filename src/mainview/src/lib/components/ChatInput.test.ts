@@ -79,7 +79,7 @@ describe("a draft per chat", () => {
 test("a message too large for the API stays in the box, with why, and nothing is sent", () => {
 	const input = source("ChatInput.svelte");
 	expect(input).toMatch(
-		/const tooLarge = messageTooLarge\(raw, pendingFiles\);\s*if \(tooLarge\) \{\s*toast\(tooLarge, "error"\);\s*return;\s*\}\s*const filesToSend = [^;]+;\s*onSubmit\(raw, filesToSend\);\s*inputEl\.innerHTML = "";/,
+		/const tooLarge = messageTooLarge\(raw, pendingFiles, sealed\);\s*if \(tooLarge\) \{\s*toast\(tooLarge, "error"\);\s*return;\s*\}\s*const filesToSend = [^;]+;\s*onSubmit\(raw, filesToSend\);\s*inputEl\.innerHTML = "";/,
 	);
 });
 
@@ -140,4 +140,19 @@ test("the Arrow Up that starts an edit doesn't move the edit box's caret off the
 	);
 	// Only an edit that starts takes the key: with nothing to edit, it's left as it is.
 	expect(source("Chat.svelte")).toMatch(/function tryEditLastMessage\(\) \{\s*return tryEditAtIndex\(0\);/);
+});
+
+// A conversation takes no link to a GIF (PLAN-E2E-CLIENTES.md, Ruling 12): its pick goes to the chat, which sends the
+// GIF itself, sealed.
+test("a GIF picked in a conversation goes as a sealed file", () => {
+	const input = readFileSync(join(import.meta.dir, "ChatInput.svelte"), "utf8").replace(/\r\n/g, "\n");
+	expect(input).toMatch(
+		/function handleGifPick\(url: string\) \{\s*showPicker = false;\s*if \(onGif\) return onGif\(url\);\s*onSubmit\(url\);/,
+	);
+	const chat = readFileSync(join(import.meta.dir, "Chat.svelte"), "utf8");
+	expect(chat).toContain(
+		'onGif={gifFile ? (url) => void pickGif(url, (file) => handleSendMessage("", [file])) : undefined}',
+	);
+	// What a conversation's message holds is counted as it goes up, sealed.
+	expect(input).toContain("messageTooLarge(raw, pendingFiles, sealed)");
 });

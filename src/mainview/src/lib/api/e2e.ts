@@ -270,9 +270,17 @@ export interface DecryptFailureCount {
  * host, as the app's requests take it, not the page's; fetched with none of the app's headers, which a redirect would
  * have carried to the storage's host, the session token among them (PLAN-E2E-API.md, I and J). */
 async function signedFile(route: Promise<{ url: string }>): Promise<Uint8Array> {
-	const { url } = await route;
+	return download((await route).url);
+}
+
+/** The bytes at a signed URL, as signedFile fetches them: `most` at most (a RangeError past them), `progress` hearing
+ * how many came. */
+async function download(url: string, most = Number.POSITIVE_INFINITY, progress?: (received: number) => void) {
 	const at = url.startsWith("http") ? url : `${getHostURL()}${url}`;
-	const res = await fetchWithin(at, { credentials: "omit" }, requestLimits.answerMs);
+	const res = await fetchWithin(at, { credentials: "omit" }, requestLimits.answerMs, (received) => {
+		if (received > most) throw new RangeError(`the file is larger than ${most} bytes`);
+		progress?.(received);
+	});
 	if (!res.ok) {
 		const failed = { data: null, status: res.status, statusText: res.statusText, headers: res.headers };
 		throw new FetchError(`Request failed with status ${res.status}`, {}, failed);
@@ -361,13 +369,16 @@ export function e2eApi(client: ApiClient = api) {
 					if (one !== undefined) form.append(field, typeof one === "string" ? one : JSON.stringify(one));
 				}
 			}
-			for (const file of files) form.append("files", file);
+			// Each a file named file, as the API names it: a part with no name isn't a file to Go's multipart reader.
+			for (const file of files) form.append("files", file, "file");
 			return answer(client.post<DirectMessage>(path, form, upload));
 		},
 		editMessage: (conversationId: string, messageId: string, ciphertext: string) =>
 			answer(client.patch<MessageEdited>(`${conv(conversationId)}/messages/${messageId}`, { ciphertext })),
 		deleteMessage: (conversationId: string, messageId: string, ciphertext: string) =>
 			answer(client.delete<MessageDeleted>(`${conv(conversationId)}/messages/${messageId}`, { data: { ciphertext } })),
+		/** A message's sealed file at the signed URL its message gives it (Task 18): `most` bytes at most, as they come. */
+		sealedFile: (url: string, most: number, progress?: (received: number) => void) => download(url, most, progress),
 		/** The conversation's deleted encrypted messages, by ID, after `after`: 1000 at most. */
 		deletedMessages: (conversationId: string, after?: string, limit?: number) =>
 			answer(client.get<{ ids: string[] }>(`${conv(conversationId)}/messages/deleted`, { params: { after, limit } })),

@@ -140,3 +140,20 @@ test("a Dismiss whose message went shows the API's copy", () => {
 	expect(view).toContain("const went = await discardEncrypted(convId, nonce);");
 	expect(view).toContain("const real = await getDirectMessageById(convId, went);");
 });
+
+// A conversation's files (PLAN-E2E-CLIENTES.md, «Adjuntos»): a message's files, a voice note and a GIF go through the
+// encryption engine, sealed; a Cancel of their upload lets the message go from the device too.
+test("a conversation's files, voice notes and GIFs are sent sealed, through the engine", () => {
+	const view = source("ConversationView.svelte");
+	expect(view).not.toContain("if (saved?.files?.length) throw");
+	expect(view).toMatch(/saved\.outgoing = await outgoingFiles\(saved\.files\)/);
+	expect(view).toMatch(/const facts = await voiceNoteFacts\(blob\)/);
+	expect(view).toMatch(/const picked = await gifFile\(url, gifBytes\)/);
+	expect(view).toContain("gifFile={dmGif}");
+});
+
+test("a cancelled upload discards its message", () => {
+	const view = source("ConversationView.svelte");
+	expect(view).toMatch(/if \(real === CANCELLED\) return dmCancelled\(convId, nonce, fromDraft, saved\?\.draft\);/);
+	expect(view).toMatch(/async function dmCancelled[\s\S]*?const went = await discardEncrypted\(convId, nonce\)/);
+});

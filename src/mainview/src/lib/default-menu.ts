@@ -20,8 +20,8 @@ export interface MenuTarget {
 	messageId: string | null;
 	/** The link it's in: an http(s) or mailto address, as the browser opens it. */
 	link: string | null;
-	/** The picture or the video it's on, from the network. */
-	media: { type: "image" | "video"; src: string } | null;
+	/** The picture or the video it's on, from the network, or a conversation's this device decrypted (`decrypted`). */
+	media: { type: "image" | "video"; src: string; decrypted?: true } | null;
 }
 
 /** What the menu's items can do where it opens. */
@@ -65,7 +65,11 @@ export function defaultMenuOf(target: MenuTarget, can: MenuAbilities): "native" 
 	const href = target.link;
 	if (href) groups.push([...(can.app ? [{ id: "open-link" as const, href }] : []), { id: "copy-link", href }]);
 	const media = target.media;
-	if (media) {
+	// A decrypted file is a blob: of the app's own origin, which nothing opens or hands out (PLAN-E2E-CLIENTES.md,
+	// Review Focus 6): a picture can be copied, as bytes, and nothing else.
+	if (media?.decrypted) {
+		if (can.app && media.type === "image") groups.push([{ id: "copy-image", src: media.src }]);
+	} else if (media) {
 		const { type, src } = media;
 		const group: DefaultItem[] = [];
 		if (can.app) group.push({ id: "open-media", type, src });
@@ -120,13 +124,15 @@ export function readTarget(el: Pointed | null, picked: PickedSelection | null, o
 	};
 }
 
-// A picture or a video loaded from the network. An emoji is a character drawn as a picture (twemoji): its menu is
-// its message's, or none.
+// A picture or a video loaded from the network, or a conversation's file this device decrypted, which it marks
+// (data-decrypted, on its blob: URL). An emoji is a character drawn as a picture (twemoji): its menu is its message's,
+// or none.
 function mediaOf(el: Pointed | null): MenuTarget["media"] {
 	if (!el) return null;
 	const type = el.tagName === "VIDEO" ? "video" : el.tagName === "IMG" ? "image" : null;
 	if (!type || (type === "image" && el.classList.contains("emoji-img"))) return null;
 	const src = el.currentSrc || el.getAttribute("src") || "";
+	if (el.hasAttribute("data-decrypted") && src.startsWith("blob:")) return { type, src, decrypted: true };
 	return /^https?:\/\//i.test(src) ? { type, src } : null;
 }
 

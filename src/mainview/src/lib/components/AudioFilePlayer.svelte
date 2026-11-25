@@ -26,6 +26,7 @@
 
 	let {
 		src,
+		blob = null,
 		attachmentId = "",
 		filename = "",
 		sizeBytes = 0,
@@ -33,6 +34,8 @@
 		channelName = "",
 	}: {
 		src: string;
+		/** A conversation's file, decrypted in memory: read as it is, its URL `src` only played. */
+		blob?: Blob | null;
 		attachmentId?: string;
 		filename?: string;
 		sizeBytes?: number;
@@ -112,7 +115,7 @@
 	// Its bars, its duration and whether it needed the repair, kept for the next player of it (#316).
 	async function loadAndAnalyze(url: string) {
 		try {
-			const streamUrl = streamOf(url);
+			const streamUrl = blob ?? streamOf(url);
 			const result = await analyzeWaveform(streamUrl, BAR_COUNT);
 			if (destroyed) return;
 			bars = result.bars;
@@ -129,7 +132,7 @@
 	let wavMaking: Promise<string | null> | null = null;
 	function wav(): Promise<string | null> {
 		if (wavSrc) return Promise.resolve(wavSrc);
-		wavMaking ??= makeWav(streamOf(src))
+		wavMaking ??= makeWav(blob ?? streamOf(src))
 			.then((url) => {
 				if (destroyed) {
 					releaseWav(url);
