@@ -19,11 +19,20 @@ const KEPT = 20;
 const AGAIN = new Set(["internal", "storage", "locked"]);
 const MOST_TRIES = 5;
 
-/** Keeps a message in the record under `key`, once, with the newest of those before it. */
-function keep(store: EngineStore, key: string, message: InboxMessage) {
+/** The messages the record keeps under `key`. */
+function keptIn(store: EngineStore, key: string): InboxMessage[] {
 	const kept = store.read<InboxMessage[]>(key);
-	const others = (Array.isArray(kept) ? kept : []).filter((one) => one?.id !== message.id);
+	return Array.isArray(kept) ? kept : [];
+}
+
+/**
+ * Keeps a message in the record under `key`, once, with the newest of those before it: whether the record holds it
+ * now. The page's record logs a write its storage refuses (full, or refused) and goes on, so it's read back.
+ */
+function keep(store: EngineStore, key: string, message: InboxMessage): boolean {
+	const others = keptIn(store, key).filter((one) => one?.id !== message.id);
 	store.write(key, [...others, message].slice(-KEPT));
+	return keptIn(store, key).some((one) => one?.id === message.id);
 }
 
 /**
@@ -61,13 +70,15 @@ export async function takeInbox(parts: EngineParts, tries: Map<string, number>, 
 		return read;
 	};
 
-	/** Whether the message is done with: handled, kept, or one that never will be. */
+	/**
+	 * Whether the message is done with: handled, kept, or one that never will be. One the record couldn't keep isn't: it
+	 * stays in the inbox for the next round, as its sender won't send it again (a catch-up's key).
+	 */
 	const handle = async (message: InboxMessage): Promise<boolean> => {
 		try {
 			if (readApprovalFrame(message.message)) {
 				// Approvals are between the user's own devices.
-				if (message.from_user_id === user) keep(store, KEPT_APPROVALS, message);
-				return true;
+				return message.from_user_id !== user || keep(store, KEPT_APPROVALS, message);
 			}
 			const own = await identityOf(user);
 			const sender = await identityOf(message.from_user_id);
@@ -92,9 +103,11 @@ export async function takeInbox(parts: EngineParts, tries: Map<string, number>, 
 					return false;
 				}
 				console.warn(`[e2e] A message from another device failed ${tried} times (${error.code}), and goes.`);
-			} else if (error.code === "not_found" && error.what === "code") keep(store, KEPT_TRANSFERS, message);
-			else if (forLater(error)) keep(store, KEPT_LATER, message);
-			else {
+			} else if (error.code === "not_found" && error.what === "code") {
+				if (!keep(store, KEPT_TRANSFERS, message)) return false;
+			} else if (forLater(error)) {
+				if (!keep(store, KEPT_LATER, message)) return false;
+			} else {
 				if (error.code === "decrypt_failed") failures?.note("direct");
 				console.warn(`[e2e] A message from another device can't be read here (${error.code}), and goes.`);
 			}
