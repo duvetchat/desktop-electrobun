@@ -19,7 +19,6 @@
 	import MessagePreview from "$lib/components/MessagePreview.svelte";
 	import ImagePreview from "$lib/components/ImagePreview.svelte";
 	import { searchSpaceMessages, type MessageSearch } from "$lib/api/messages";
-	import { searchConversationMessages, type DirectMessage } from "$lib/api/conversations";
 	import { getApiError } from "$lib/api/api";
 	import { friendUser } from "$lib/friends";
 	import { conversationTitle } from "$lib/pane";
@@ -39,12 +38,15 @@
 	import { escapeHtml, mentionMapOf, mentionNamesIn, sameNames } from "$lib/markdown";
 	import { afterPress } from "$lib/press";
 	import {
+		CONVERSATION_HAS,
 		isoDay,
 		parseSearch,
 		roomSlug as slug,
+		searchConversation,
 		searchEverywhere,
-		SEARCH_HAS as HAS,
+		SEARCH_HAS,
 		type FoundMessage,
+		type SearchPage,
 	} from "$lib/search";
 
 	// The search box of a pane's bar (or a conversation's header), and the popover that drops from it: the suggestions
@@ -55,21 +57,21 @@
 		space = null,
 		conversationId = "",
 		members = [],
-		toDirectMessage,
 		everywhere = false,
 		onJump = (link) => jumpToMessageRequest.set({ id: crypto.randomUUID(), ...link }),
 	}: {
-		/** The space whose rooms are searched. A conversation's search passes conversationId instead. */
+		/**
+		 * The space whose rooms are searched. A conversation's search passes conversationId instead: its messages are
+		 * searched on this device (lib/search.ts), and drawn from its database.
+		 */
 		space?: GatewaySpace | null;
 		conversationId?: string;
 		/** Whom from: and mentions: suggest, and the names mentions show in the results. */
 		members?: MemberOnSidebar[];
-		/** How a conversation's results become messages. */
-		toDirectMessage?: (m: DirectMessage) => Message;
 		/**
-		 * Searches every Space the user is in and their 5 newest conversations at once, as the mobile app's search does:
-		 * the 20 newest messages found, newest first, each saying where it is. The filters that name a member or a room,
-		 * which are a Space's or a conversation's, stay out of it.
+		 * Searches every Space the user is in and their conversations at once, as the mobile app's search does: the 20
+		 * newest messages found, newest first, each saying where it is. The filters that name a member or a room, which
+		 * are a Space's or a conversation's, stay out of it.
 		 */
 		everywhere?: boolean;
 		/** Opens a result's message. */
@@ -83,6 +85,8 @@
 
 	const locale = typeof navigator !== "undefined" ? navigator.language : "en-US";
 	const today = isoDay(new Date());
+	// What has: takes: a conversation's messages have no previews, and the device can't search their links.
+	const hasValues = $derived(conversationId ? CONVERSATION_HAS : SEARCH_HAS);
 
 	type Filter = { key: string; description: string };
 	const filters = $derived<Filter[]>([
@@ -93,7 +97,10 @@
 					{ key: "mentions", description: "Messages that mention a member" },
 				]),
 		...(space ? [{ key: "in", description: "Messages in a room" }] : []),
-		{ key: "has", description: "link, embed, file, image, video, sound or sticker" },
+		{
+			key: "has",
+			description: conversationId ? CONVERSATION_HAS.join(", ") : "link, embed, file, image, video, sound or sticker",
+		},
 		{ key: "pinned", description: "true or false: pinned messages, or the others" },
 		{ key: "before", description: `Messages before a date, like ${today}` },
 		{ key: "after", description: "Messages after a date" },
@@ -183,7 +190,7 @@
 				.map((v) => ({ key: v, label: v, insert: `pinned:${v} ` }));
 		}
 		if (key === "has") {
-			return HAS.filter((v) => v.startsWith(value)).map((v) => ({ key: v, label: v, insert: `has:${v} ` }));
+			return hasValues.filter((v) => v.startsWith(value)).map((v) => ({ key: v, label: v, insert: `has:${v} ` }));
 		}
 		if ((key === "before" || key === "after" || key === "during") && today.startsWith(value)) {
 			return [{ key: today, label: today, detail: "Today", insert: `${key}:${today} ` }];
@@ -261,6 +268,8 @@
 	let failure = $state<string | null>(null);
 	let results = $state.raw<Result[]>([]);
 	let total = $state(0);
+	// Where a conversation's next page starts, or null past its last.
+	let next = $state<SearchPage | null>(null);
 	// The search the panel shows, and its words for the highlights.
 	let shown: MessageSearch | null = null;
 	let hitWords = $state<string[]>([]);
@@ -272,11 +281,12 @@
 			const parsed =
 				everywhere && /(?:^|\s)(?:from|mentions|in):\S/i.test(text)
 					? { error: "from:, mentions: and in: search a Space or a chat" }
-					: parseSearch(text, members, rooms);
+					: parseSearch(text, members, rooms, new Date(), hasValues);
 			open = true;
 			hidden = false;
 			results = [];
 			total = 0;
+			next = null;
 			if ("error" in parsed) {
 				controller?.abort();
 				loading = false;
@@ -304,10 +314,14 @@
 				page = res.messages.map((m) => ({ message: gatewayMessageToMessage(m, $gatewaySpaces), roomId: m.room_id }));
 				total = res.total_results;
 			} else {
-				const res = await searchConversationMessages(conversationId, search, ctl.signal);
-				const convert = toDirectMessage;
-				page = convert ? res.messages.map((m) => ({ message: convert(m), roomId: null })) : [];
-				total = res.total_results;
+				// A conversation's messages are searched on this device (lib/search.ts), a page on from the last one's end.
+				const conversation = $conversations.find((c) => c.id === conversationId);
+				const res = conversation
+					? await searchConversation(conversation, search, more ? (next ?? undefined) : undefined, ctl.signal)
+					: { found: [], total: 0, next: null };
+				page = res.found;
+				total = res.total;
+				next = res.next;
 			}
 			results = more ? [...results, ...page] : page;
 		} catch (err) {
@@ -326,6 +340,7 @@
 		failure = null;
 		results = [];
 		total = 0;
+		next = null;
 		shown = null;
 		hitWords = [];
 	}
@@ -654,7 +669,7 @@
 										/>
 									</div>
 								{/each}
-								{#if !everywhere && !failure && results.length > 0 && results.length < total}
+								{#if !everywhere && !failure && results.length > 0 && (space ? results.length < total : !!next)}
 									<button
 										class="text-duvet-accent-text hover:bg-duvet-hover shrink-0 rounded-xl py-2 text-xs font-medium disabled:opacity-45"
 										disabled={loading}

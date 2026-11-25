@@ -42,6 +42,8 @@ export const NOTICES = {
 	files_wait: "Files and voice messages can't be sent in encrypted conversations yet",
 	not_ready: "Encrypted conversations aren't ready on this device",
 	too_many_waiting: "Too many messages wait to be sent here: send or dismiss them first",
+	search_split:
+		"In an encrypted conversation, pinned: and has:sticker can't be combined with words or with has:image, video or sound.",
 	// A conversation's files (task 18).
 	file_encrypted: "Encrypted file",
 	file_progress: "Downloading · {percent}%",

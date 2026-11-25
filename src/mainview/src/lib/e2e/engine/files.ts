@@ -12,7 +12,7 @@ import { cleanName, SNIFF_PREFIX, sniffType, WAVEFORM_SAMPLES, type EnvelopeFile
 import { CoreError } from "../errors";
 import { ATTACHMENT_PART, PART_TAG, type CoreHost } from "../host";
 import { uuidv7 } from "../uuid";
-import type { ShownMessage } from "./content";
+import { searchDevice } from "./search";
 
 /** A file the person sends, as the page has it: its bytes, its name as picked, and what the page could tell of it. */
 export interface OutgoingFile {
@@ -331,14 +331,12 @@ const SEARCH_PAGE = 100;
 
 /**
  * The names of the files whose messages this device holds, by their IDs, a thumbnail of its own named as its file:
- * one pass of the core's search of the messages with files, a page at a time (Ruling 31).
+ * one pass of the core's search (search.ts' searchDevice) of the messages with files, a page at a time (Ruling 31).
  */
 export async function fileNames(host: CoreHost): Promise<Map<string, string>> {
 	const names = new Map<string, string>();
 	for (let offset = 0; ; offset += SEARCH_PAGE) {
-		const { total, messages } = await host.handle<{ total: number; messages: ShownMessage[] }>({
-			...{ cmd: "search", has: ["file"], limit: SEARCH_PAGE, offset },
-		});
+		const { total, messages } = await searchDevice(host, { has: ["file"], limit: SEARCH_PAGE, offset });
 		for (const message of messages) {
 			for (const raw of message.attachments) {
 				const file = shownFile(raw);

@@ -391,6 +391,7 @@ interface Message {
 	sticker_attachment_id?: string | null;
 	attachments?: FileRow[];
 	history_share?: { to_user_id: string; range: string };
+	pinned_at?: string | null;
 }
 
 /** A message's file as the API keeps one it hasn't opened (kind 1), and lists it, signed. */
@@ -929,6 +930,14 @@ export class FakeApi {
 						.sort()
 						.slice(0, limit),
 				});
+			}),
+			route("GET", `${conv}/messages/search`, "session", (ctx) => this.#search(this.#memberOf(ctx), ctx.query)),
+			route("PUT", `${conv}/pins/(?<message>${UUID_PATH})`, "session", (ctx) => {
+				// shortcut: no pin notice (type 2) is posted, as the API's pin posts one: the searches' tests read none.
+				const message = this.#memberOf(ctx).messages.find((m) => m.id === ctx.params.message);
+				if (!message) throw fail(404, "direct message not found");
+				message.pinned_at ??= now();
+				return NO_CONTENT;
 			}),
 			route("GET", `${conv}/messages/(?<message>${UUID_PATH})`, "session", (ctx) => {
 				const held = this.#memberOf(ctx);
@@ -1684,6 +1693,46 @@ export class FakeApi {
 		const replied = conv.messages.find((m) => m.id === id && !conv.deleted.has(m.id));
 		if (!replied) throw fail(404, "referenced message not found");
 		return replied;
+	}
+
+	/**
+	 * A conversation's search, as the API's answers it (ConversationController.SearchMessages): never by words, which it
+	 * can't read; by what it keeps in the clear, its author, whom its sender says it mentions, when, whether it's pinned,
+	 * and whether it has a file or a sticker. Its encrypted messages, newest first, a page after `cursor`.
+	 */
+	#search(conv: Conversation, query: URLSearchParams): Answer {
+		if (query.get("query")?.trim()) throw fail(400, "search conversations on the device");
+		if (query.getAll("room_id").length) throw fail(400, "room_id doesn't apply to a conversation");
+		const has = query.getAll("has");
+		if (has.some((value) => value !== "file" && value !== "sticker")) {
+			throw fail(400, "in a conversation, has takes file and sticker");
+		}
+		const [authors, mentions] = [query.getAll("author_id"), query.getAll("mentions")];
+		const [pinned, after, before] = [query.get("pinned"), query.get("after"), query.get("before")];
+		if (!authors.length && !mentions.length && !has.length && pinned === null && !after && !before) {
+			throw fail(400, "a search needs some text or a filter");
+		}
+		const found = conv.messages
+			.filter(
+				(m) =>
+					m.seq !== undefined &&
+					!conv.deleted.has(m.id) &&
+					(!authors.length || authors.includes(m.author_id)) &&
+					(!mentions.length || (m.mentions ?? []).some((user) => mentions.includes(user))) &&
+					(!has.length ||
+						(has.includes("sticker") && !!m.sticker_attachment_id) ||
+						(has.includes("file") && !!m.attachments?.length)) &&
+					(pinned === null || !!m.pinned_at === (pinned === "true")) &&
+					(!after || m.created_at >= after) &&
+					(!before || m.created_at < before),
+			)
+			.sort((a, b) => (a.id < b.id ? 1 : -1));
+		const cursor = query.get("cursor");
+		const limit = Math.min(Math.max(Number(query.get("limit") ?? 25) || 25, 1), 50);
+		return ok({
+			total_results: Math.min(found.length, 1000),
+			messages: found.filter((m) => !cursor || m.id < cursor).slice(0, limit),
+		});
 	}
 
 	/** An edit (PATCH) or a deletion (DELETE) of the author's message: its MLS message as the queue's entry. */

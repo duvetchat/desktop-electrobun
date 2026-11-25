@@ -115,6 +115,7 @@
 	"e2e_removed_device": "This device was removed from your account.",
 	"e2e_restart_to_update": "Restart to update",
 	"e2e_restarting": "Restarting…",
+	"e2e_search_split": "In an encrypted conversation, pinned: and has:sticker can't be combined with words or with has:image, video or sound.",
 	"e2e_set_up": "Set up",
 	"e2e_set_up_again": "Set up again",
 	"e2e_shared_by": "shared by {name}",

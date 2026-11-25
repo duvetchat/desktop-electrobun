@@ -197,7 +197,8 @@ describe("a mention's notice", () => {
 			authorName: "Ana",
 			where: "in Weekend",
 		});
-		expect(noticeOf(message(30))).toMatchObject({ where: "in a direct message", text: "Fetched in the DM" });
+		// A conversation's text is the device's alone, never what the API serves (task 20's review, I1): here, none.
+		expect(noticeOf(message(30))).toMatchObject({ where: "in a direct message", text: "" });
 	});
 
 	test("shows nothing for the conversation on screen", async () => {

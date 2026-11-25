@@ -1303,7 +1303,7 @@
 	/>
 	{#key conversation.id}
 		<PinnedMessages channelId={conversation.id} conversation members={convMembers} toDirectMessage={toMessage} />
-		<MessageSearch conversationId={conversation.id} members={convMembers} toDirectMessage={toMessage} />
+		<MessageSearch conversationId={conversation.id} members={convMembers} />
 	{/key}
 	<!-- The group's own menu, only in the view's own header: a pane's bar has one More, the pane's, which holds these
 	     too (#368). -->

@@ -18,6 +18,7 @@ import { fileNames } from "./files";
 import { identityState, publishIdentity, servedIdentity, type IdentityMade } from "./identity";
 import { takeInbox } from "./inbox";
 import { uploadKeyPackages } from "./key-packages";
+import { searchDevice, type DeviceFound, type DeviceSearch } from "./search";
 import { Sends, type Outgoing, type Pending } from "./send";
 import { DEVICE_RECORD, EXTERNAL_SENDER, type EngineStore } from "./store";
 import { Conversations, type ConversationState } from "./sync";
@@ -312,6 +313,11 @@ export class E2EEngine {
 	/** Whether the device holds a message of the conversation older than this number, which its list pages on to. */
 	heldBefore(conversationId: string, seq: number): Promise<boolean> {
 		return heldBefore(this.#parts.host, conversationId, seq);
+	}
+
+	/** A page of what this device's own search finds of its conversations' messages (engine/search.ts). */
+	search(request: DeviceSearch): Promise<DeviceFound> {
+		return searchDevice(this.#parts.host, request);
 	}
 
 	/** The person's messages of the conversation still being sent, in their order, with what goes with them. */
