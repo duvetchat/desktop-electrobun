@@ -126,6 +126,16 @@ export async function getMyBuckets(): Promise<StorageBucket[]> {
 	return res.data;
 }
 
+/**
+ * The most a file of the user's takes where it goes, as the API's checkUploadLimit reads it: their active bucket's limit
+ * (none when it has none), else their storage's.
+ */
+export async function myFileLimit(): Promise<number | null> {
+	const active = (await getMyBuckets()).find((bucket) => bucket.is_active);
+	if (active) return active.upload_limit_bytes ?? null;
+	return (await getMyStorageStatus()).upload_limit_bytes;
+}
+
 // The API checks a bucket it registers or edits for 30 s at most before it answers (#217).
 export async function createMyBucket(data: CreateBucketPayload): Promise<StorageBucket> {
 	const res = await api.post("/api/users/@me/buckets", data, { answerMs: requestLimits.slowAnswerMs });

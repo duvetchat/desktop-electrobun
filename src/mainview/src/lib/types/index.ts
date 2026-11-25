@@ -401,6 +401,8 @@ export interface Message {
 	created_at: string;
 	updated_at: string;
 	nonce?: string;
+	/** A message that didn't send whose only way on is its Dismiss: why, which shows under it. Client-only. */
+	unsent_note?: string;
 	/** A message being sent: the newest message of its room the client knew of when it sent it (withPresent). */
 	known_newest?: string;
 	referenced_message?: ReferencedMessage | null;
@@ -1596,6 +1598,7 @@ export function directMessageToMessage(
 		created_at: sentAt(msg),
 		updated_at: msg.updated_at,
 		nonce: msg.nonce,
+		unsent_note: msg.unsent_note,
 		ref_message_id: ref?.message_id ?? null,
 		referenced_message: ref && { ...ref, content: quotedText(content, ref) },
 		attachments: msg.seq === undefined ? (msg.attachments ?? null) : files,

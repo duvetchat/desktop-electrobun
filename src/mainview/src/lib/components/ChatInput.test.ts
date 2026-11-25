@@ -79,7 +79,7 @@ describe("a draft per chat", () => {
 test("a message too large for the API stays in the box, with why, and nothing is sent", () => {
 	const input = source("ChatInput.svelte");
 	expect(input).toMatch(
-		/const tooLarge = messageTooLarge\(raw, pendingFiles, sealed\);\s*if \(tooLarge\) \{\s*toast\(tooLarge, "error"\);\s*return;\s*\}\s*const filesToSend = [^;]+;\s*onSubmit\(raw, filesToSend\);\s*inputEl\.innerHTML = "";/,
+		/const tooLarge = messageTooLarge\(raw, pendingFiles, sealed, fileLimit\);\s*if \(tooLarge\) \{\s*toast\(tooLarge, "error"\);\s*return;\s*\}\s*const filesToSend = [^;]+;\s*onSubmit\(raw, filesToSend\);\s*inputEl\.innerHTML = "";/,
 	);
 });
 
@@ -154,5 +154,5 @@ test("a GIF picked in a conversation goes as a sealed file", () => {
 		'onGif={gifFile ? (url) => void pickGif(url, (file) => handleSendMessage("", [file])) : undefined}',
 	);
 	// What a conversation's message holds is counted as it goes up, sealed.
-	expect(input).toContain("messageTooLarge(raw, pendingFiles, sealed)");
+	expect(input).toContain("messageTooLarge(raw, pendingFiles, sealed, fileLimit)");
 });

@@ -226,7 +226,7 @@
 					<div class={MESSAGE_MEDIA_SUNK} style="width: {vw}px; height: {vh}px; max-width: 100%;">
 						{#if att.sealed}
 							<div class="size-full {hidden ? 'blur-xl' : ''}" inert={hidden}>
-								<SealedFile {att} kind="video" />
+								<SealedFile {att} kind="video" {hidden} />
 							</div>
 						{:else}
 							<div

@@ -52,7 +52,7 @@ async function download(fake: FakeApi, token: string, path: string): Promise<Uin
 	const { status, body } = await call(fake, token, "GET", path);
 	// The API's signed URL is a path of its own (storage.SignedAttachmentURL), which the client takes on the API's host.
 	expect({ status, url: /^\/attachments\/[0-9a-f-]{36}\?sig=/.test(body.url) }).toEqual({ status: 200, url: true });
-	return new Uint8Array(await (await fake.fetch(`${FAKE_API_URL}${body.url}`)).arrayBuffer());
+	return new Uint8Array(await (await fake.fetch(`${FAKE_API_URL}${body.url}&stream=1`)).arrayBuffer());
 }
 
 interface Device {

@@ -1,12 +1,24 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
 import type { DirectMessage } from "$lib/api/conversations";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { bytesBase64 } from "$lib/staged-images";
-import type { EnvelopeFile } from "../conventions";
-import { FakeApi } from "../testing/fake-api";
+import { drawnAs, type EnvelopeFile } from "../conventions";
+import { FakeApi, type GatewayEvent } from "../testing/fake-api";
 import { coreLibrary } from "../testing/host-bun";
-import { firstDevice, rejection, sameGroup, until, useFake, type TestDevice } from "../testing/engines";
+import {
+	commitByHand,
+	firstDevice,
+	rejection,
+	restarted,
+	sameGroup,
+	turnEnded,
+	until,
+	useFake,
+	type TestDevice,
+} from "../testing/engines";
 import { holdUploads, useXHR } from "../testing/xhr";
-import { drawnBy, FileError, gifFile, openSealed, sealedSize, shownFile, type ShownFile } from "./files";
+import { drawnBy, FileError, FilesGone, gifFile, openSealed, sealedSize, shownFile, type ShownFile } from "./files";
 
 // A conversation's files (PLAN-E2E-CLIENTES.md, «Adjuntos», and its conventions between clients): each sealed by the
 // core with a key and an ID of its own, sent with that ID, and opened by the other device from the API's signed URL,
@@ -14,9 +26,18 @@ import { drawnBy, FileError, gifFile, openSealed, sealedSize, shownFile, type Sh
 // path, a type it isn't, a size it doesn't have. Ana's and Bo's devices, in a DM whose group Ana made.
 const SLOW = 180_000;
 useXHR();
+/** Uploads stop halfway until letGo: what a test holds goes as it ends, failed or not, so none times out in the next. */
+const holds: (() => void)[] = [];
+const holdAll = () => holdUploads(() => new Promise<void>((go) => holds.push(go)));
+const letGo = () => {
+	holdUploads(null);
+	for (const go of holds.splice(0)) go();
+};
+afterEach(letGo);
 
-/** Ana's and Bo's first devices in their DM, and the forms and bodies the fake took. */
-async function dm() {
+/** Ana's and Bo's first devices in their DM (Ana's hearing what `aHears` lets through), and the forms and bodies the
+ * fake took. */
+async function dm(aHears?: (event: GatewayEvent) => boolean) {
 	const fake = new FakeApi();
 	const [ana, bo] = [fake.addUser(), fake.addUser()];
 	const forms: Promise<FormData>[] = [];
@@ -26,7 +47,7 @@ async function dm() {
 		if (request.headers.get("Content-Type")?.includes("multipart/form-data")) forms.push(request.formData());
 	});
 	const conversation = fake.addConversation({ type: "dm", members: [ana, bo] });
-	const a = await firstDevice(fake, ana);
+	const a = await firstDevice(fake, ana, { hears: aHears });
 	const b = await firstDevice(fake, bo);
 	await a.engine.openConversation(conversation);
 	await sameGroup([a, b], conversation);
@@ -64,6 +85,9 @@ const openerOf = (device: TestDevice, url: string | undefined) => ({
 		device.engine.openFile(key, id, sealed, progress),
 });
 const urlOf = (message: DirectMessage, id: string) => message.attachments?.find((a) => a.id === id)?.url;
+/** The IDs of the conversation's messages the API holds, as a device reads its queue. */
+const onTheApi = async (device: TestDevice, conversation: string) =>
+	(await device.api.queue(conversation, 0)).entries.filter((e) => e.kind === "message").map((e) => e.message_id!);
 
 /**
  * A file as another client could send it, its envelope written by hand: the core seals it and encrypts what it's told,
@@ -357,6 +381,281 @@ describe.skipIf(!coreLibrary)("a conversation's files", () => {
 			}
 			// A file this device holds no message of has no name here.
 			expect((await b.engine.fileNames()).get(crypto.randomUUID())).toBeUndefined();
+		},
+		SLOW,
+	);
+
+	// Task 18's review, I2: only the core's calls take the engine's turn; a message's request waits outside it.
+	test(
+		"an incoming message is applied while an upload is held",
+		async () => {
+			const { a, b, conversation } = await dm();
+			holdAll();
+			const progress: number[] = [];
+			const sending = a.engine.sendMessage(
+				{
+					conversation_id: conversation,
+					nonce: crypto.randomUUID(),
+					files: [{ file: blob(png(5000)), name: "a.png" }],
+				},
+				{ onUploadProgress: (done) => progress.push(done) },
+			);
+			await until(() => progress.length > 0);
+			// Bo's message comes while Ana's upload is held halfway: her device applies it, and her other work goes on.
+			const his = (await b.engine.sendMessage({
+				...{ conversation_id: conversation, nonce: crypto.randomUUID() },
+				text: "meanwhile",
+			}))!;
+			await until(async () => (await a.engine.messages(conversation, [his.id]))[0]?.text === "meanwhile", 15_000);
+			letGo();
+			expect(await sending).not.toBeNull();
+		},
+		SLOW,
+	);
+
+	test(
+		"a Cancel stops its own upload, and never waits for an older message's",
+		async () => {
+			const { a, conversation, forms } = await dm();
+			holdAll();
+			const progress: number[] = [];
+			const older = a.engine.sendMessage(
+				{
+					conversation_id: conversation,
+					nonce: crypto.randomUUID(),
+					files: [{ file: blob(png(5000)), name: "a.png" }],
+				},
+				{ onUploadProgress: (done) => progress.push(done) },
+			);
+			await until(() => progress.length > 0);
+			// A newer message waits behind it in its conversation's lane; its Cancel ends it at once, and so does its Dismiss.
+			const stop = new AbortController();
+			const nonce = crypto.randomUUID();
+			const newer = a.engine.sendMessage(
+				{ conversation_id: conversation, nonce, files: [{ file: blob(png(3000)), name: "b.png" }] },
+				{ signal: stop.signal },
+			);
+			await until(async () => (await a.engine.pendingMessages(conversation)).length === 2, 10_000);
+			stop.abort();
+			const soon = <T>(work: Promise<T>) => Promise.race([work, Bun.sleep(5_000).then(() => "waiting" as const)]);
+			expect(
+				await soon(
+					newer.then(
+						() => "sent",
+						() => "stopped",
+					),
+				),
+			).toBe("stopped");
+			expect(await soon(a.engine.discardMessage(conversation, nonce))).toBeNull();
+			letGo();
+			await older;
+			expect(await a.engine.pendingMessages(conversation)).toEqual([]);
+			expect(await forms()).toHaveLength(1);
+			expect(await onTheApi(a, conversation)).toHaveLength(1);
+		},
+		SLOW,
+	);
+
+	// Task 18's review, I3: a refusal of a message's files won't change, so they don't go up again at every flush.
+	test(
+		"a waiting message with files that the API refused waits for the person's Retry",
+		async () => {
+			const { fake, a, conversation, forms } = await dm();
+			const path = { method: "POST", path: `/api/users/@me/conversations/${conversation}/messages` };
+			fake.refuse(path, 413, { error: "file too large" });
+			const nonce = crypto.randomUUID();
+			const files = [{ file: blob(png(5000)), name: "big.png" }];
+			await rejection(a.engine.sendMessage({ conversation_id: conversation, nonce, files }));
+			// Its sealed bytes are here: a Retry can send it.
+			expect((await a.engine.pendingMessages(conversation))[0]?.files_gone).toBeUndefined();
+			// The next message, and a READY, send what waits: the refused one stays.
+			await a.engine.sendMessage({ conversation_id: conversation, nonce: crypto.randomUUID(), text: "next" });
+			a.connect(a.registered.at(-1)!);
+			await turnEnded(a);
+			await a.engine.sendMessage({
+				conversation_id: conversation,
+				nonce: crypto.randomUUID(),
+				text: "after the READY",
+			});
+			expect(await forms()).toHaveLength(1);
+			// The person's Retry sends it.
+			expect(await a.engine.sendMessage({ conversation_id: conversation, nonce, files })).not.toBeNull();
+			expect(await forms()).toHaveLength(2);
+		},
+		SLOW,
+	);
+
+	// Task 18's review, I6: what sends a message with files a second time, under task 16's names.
+	test(
+		"a message cut before its answer is sent again with the same bytes, with files",
+		async () => {
+			// Ana's device doesn't hear its own messages' events, which its queue would settle them with first.
+			const { fake, a, b, conversation, forms } = await dm((event) => event.type !== "DM_MESSAGE_CREATE");
+			const path = { method: "POST", path: `/api/users/@me/conversations/${conversation}/messages` };
+			const bytes = async (form: FormData) =>
+				Promise.all(form.getAll("files").map((part) => (part instanceof Blob ? bytesOf(part) : part)));
+			// The API takes it, and its answer is lost: sent again, the same bytes, which the API answers with its message.
+			const once = crypto.randomUUID();
+			const picture = [{ file: blob(png(5000)), name: "a.png" }];
+			fake.loseAnswer(path);
+			await rejection(
+				a.engine.sendMessage({ conversation_id: conversation, nonce: once, text: "once", files: picture }),
+			);
+			const sent = (await a.engine.sendMessage({ conversation_id: conversation, nonce: once, files: picture }))!;
+			const [first, again] = await forms();
+			expect(again!.get("ciphertext")).toBe(first!.get("ciphertext"));
+			expect(again!.getAll("attachment_ids")).toEqual(first!.getAll("attachment_ids"));
+			expect(await bytes(again!)).toEqual(await bytes(first!));
+			expect(await onTheApi(a, conversation)).toEqual([sent.id]);
+			expect(await filesOn(b, conversation, sent.id)).toMatchObject([{ name: "a.png" }]);
+
+			// Its files went up, and its connection was cut before the message: sent again, the API takes them again.
+			const twice = crypto.randomUUID();
+			fake.cutAfterFiles(path);
+			const other = [{ file: blob(png(4000)), name: "b.png" }];
+			await rejection(a.engine.sendMessage({ conversation_id: conversation, nonce: twice, files: other }));
+			const resent = (await a.engine.sendMessage({ conversation_id: conversation, nonce: twice, files: other }))!;
+			const [cut, taken] = (await forms()).slice(2);
+			expect(taken!.getAll("attachment_ids")).toEqual(cut!.getAll("attachment_ids"));
+			expect(resent.attachments?.map((file) => file.id)).toEqual(cut!.getAll("attachment_ids").map(String));
+			expect(await onTheApi(a, conversation)).toEqual([sent.id, resent.id]);
+			const [file] = await filesOn(b, conversation, resent.id);
+			expect((await openSealed(file!, openerOf(b, urlOf(resent, file!.id)))).type).toBe("image/png");
+		},
+		SLOW,
+	);
+
+	test(
+		"a stale message is discarded and encrypted again, with files",
+		async () => {
+			const { fake, a, b, conversation, forms } = await dm();
+			const path = { method: "POST", path: `/api/users/@me/conversations/${conversation}/messages` };
+			const epoch = async () =>
+				(await a.host.handle<{ epoch: number }>({ cmd: "group", conversation_id: conversation })).epoch;
+			// Its request never reached the API, while the group moved on six epochs: the core says it's stale.
+			fake.cutRequest(path);
+			const nonce = crypto.randomUUID();
+			const files = [{ file: blob(png(5000)), name: "late.png" }];
+			await rejection(a.engine.sendMessage({ conversation_id: conversation, nonce, text: "late", files }));
+			await b.engine.stop();
+			await b.host.open(b.user);
+			for (let i = 0; i < 6; i++) await commitByHand(b, conversation);
+			await until(async () => (await epoch()) === 7);
+			const sent = (await a.engine.sendMessage({ conversation_id: conversation, nonce, text: "late", files }))!;
+			expect(sent.nonce).not.toBe(nonce);
+			const [cut, remade] = [(await forms())[0]!, (await forms()).at(-1)!];
+			expect(remade.getAll("attachment_ids")).toEqual(cut.getAll("attachment_ids"));
+			const bo = await restarted(fake, b);
+			expect(await filesOn(bo, conversation, sent.id)).toMatchObject([{ name: "late.png" }]);
+
+			// The API says it's stale (409): made again under another nonce, with the same files.
+			const refused = crypto.randomUUID();
+			const group = await a.host.handle<{ generation: number; epoch: number }>({
+				...{ cmd: "group", conversation_id: conversation },
+			});
+			fake.refuse(path, 409, { error: "stale message", ...group });
+			const more = [{ file: blob(png(3000)), name: "again.png" }];
+			const posted = (await a.engine.sendMessage({ conversation_id: conversation, nonce: refused, files: more }))!;
+			expect(posted.nonce).not.toBe(refused);
+			const [before, after] = (await forms()).slice(-2);
+			expect(after!.getAll("attachment_ids")).toEqual(before!.getAll("attachment_ids"));
+			expect(await filesOn(bo, conversation, posted.id)).toMatchObject([{ name: "again.png" }]);
+		},
+		SLOW,
+	);
+
+	test(
+		"a message cut before its answer, and the app closed, waits for its Dismiss, with files",
+		async () => {
+			const { fake, a, conversation } = await dm();
+			fake.cutRequest({ method: "POST", path: `/api/users/@me/conversations/${conversation}/messages` });
+			const nonce = crypto.randomUUID();
+			const files = [{ file: blob(png(5000)), name: "a.png" }];
+			await rejection(a.engine.sendMessage({ conversation_id: conversation, nonce, text: "with a file", files }));
+			// Started again: its sealed bytes went with the app, so it goes neither at the start nor on a Retry.
+			const again = await restarted(fake, a);
+			await turnEnded(again);
+			expect(await rejection(again.engine.sendMessage({ conversation_id: conversation, nonce, files }))).toBeInstanceOf(
+				FilesGone,
+			);
+			expect(await onTheApi(again, conversation)).toEqual([]);
+			// The view shows it so at once (task 18's review, M5).
+			expect(await again.engine.pendingMessages(conversation)).toMatchObject([{ nonce, files_gone: true }]);
+			expect(await again.engine.discardMessage(conversation, nonce)).toBeNull();
+			expect(await again.engine.pendingMessages(conversation)).toEqual([]);
+		},
+		SLOW,
+	);
+
+	test(
+		"a voice note goes by its convention",
+		async () => {
+			const { fake, a, b, conversation } = await dm();
+			// Cut first: its Retry goes through the core's check of the envelope it kept, byte for byte.
+			fake.cutRequest({ method: "POST", path: `/api/users/@me/conversations/${conversation}/messages` });
+			const waveform = new Uint8Array(64).map((_, i) => i * 4);
+			const ogg = withHead([...new TextEncoder().encode("OggS")], 3000);
+			const note = [{ file: blob(ogg), name: "voice-note.webm", duration_ms: 2300, waveform }];
+			const nonce = crypto.randomUUID();
+			await rejection(a.engine.sendMessage({ conversation_id: conversation, nonce, files: note }));
+			const sent = (await a.engine.sendMessage({ conversation_id: conversation, nonce, files: note }))!;
+			const [file] = await filesOn(b, conversation, sent.id);
+			expect(file).toMatchObject({ said: "audio/ogg", duration_ms: 2300, waveform: bytesBase64(waveform) });
+			const [row] = await b.engine.messages(conversation, [sent.id]);
+			const said = [{ type: file!.said, duration_ms: file!.duration_ms, waveform: file!.waveform }];
+			expect(drawnAs({ text: row!.text, attachments: said }, false)).toBe("voice_note");
+		},
+		SLOW,
+	);
+
+	// The ruled downloads: through the API itself (stream=1), the API's budget's 429 waited out.
+	test(
+		"a download refused by the API's budget waits for its Retry-After",
+		async () => {
+			const { fake, a, b, conversation } = await dm();
+			const sent = (await a.engine.sendMessage({
+				...{ conversation_id: conversation, nonce: crypto.randomUUID() },
+				files: [{ file: blob(png(5000)), name: "a.png" }],
+			}))!;
+			const [file] = await filesOn(b, conversation, sent.id);
+			fake.refuse(
+				{ method: "GET", path: /^\/attachments\// },
+				429,
+				{ error: "too many bytes" },
+				{ "Retry-After": "1" },
+			);
+			expect((await openSealed(file!, openerOf(b, urlOf(sent, file!.id)))).type).toBe("image/png");
+			// Its first answer may wait past the API's 30 s for the storage's first byte.
+			expect(readFileSync(join(import.meta.dir, "../../api/e2e.ts"), "utf8")).toContain("requestLimits.slowAnswerMs");
+		},
+		SLOW,
+	);
+
+	// Task 18's review, Missing 2 and M4.
+	test(
+		"an attachment that doesn't open is counted, as decryption failures are",
+		async () => {
+			const { fake, a } = await dm();
+			a.engine.fileFailed();
+			a.clock.advance(120_000);
+			await until(() => fake.decryptFailures.some((failure) => failure.kind === "attachment"));
+		},
+		SLOW,
+	);
+
+	test(
+		"a message the queue deletes is told deleted, for its files to go",
+		async () => {
+			const { a, b, conversation } = await dm();
+			const deleted: string[] = [];
+			a.engine.onMessages((_id, _ids, _through, gone) => deleted.push(...(gone ?? [])));
+			const sent = (await b.engine.sendMessage({
+				...{ conversation_id: conversation, nonce: crypto.randomUUID() },
+				files: [{ file: blob(png(500)), name: "a.png" }],
+			}))!;
+			await filesOn(a, conversation, sent.id);
+			await b.engine.deleteMessage(conversation, sent.id);
+			await until(() => deleted.includes(sent.id));
 		},
 		SLOW,
 	);

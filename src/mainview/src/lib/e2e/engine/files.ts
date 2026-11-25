@@ -9,6 +9,7 @@ import { MAX_REQUEST_BYTES } from "$lib/api/api";
 import { base64Bytes } from "$lib/activity-thumbnail";
 import { bytesBase64 } from "$lib/staged-images";
 import { cleanName, SNIFF_PREFIX, sniffType, WAVEFORM_SAMPLES, type EnvelopeFile } from "../conventions";
+import { CoreError } from "../errors";
 import { ATTACHMENT_PART, PART_TAG, type CoreHost } from "../host";
 import { uuidv7 } from "../uuid";
 import type { ShownMessage } from "./content";
@@ -53,8 +54,8 @@ export interface FileRef {
 /** A file a view draws: what its message says of it, and the API's signed URLs of its bytes and its thumbnail's. */
 export type SealedFile = ShownFile & { url: string | null; thumbnailUrl?: string | null };
 
-/** Why a file isn't shown: no URL for it, a size that isn't its own, other bytes than its sender's, no download, or
- * bytes the core didn't open. */
+/** Why a file isn't shown: no URL for it, a size that isn't its own, other bytes than its sender's, bytes the core
+ * didn't open, which no ask changes; or no download, which a click asks again (task 18's review, I4). */
 export type FileFailure = "unavailable" | "size" | "hash" | "download" | "open";
 
 export class FileError extends Error {
@@ -278,7 +279,9 @@ export async function openSealed(
 			progress?.((most + done) / whole),
 		);
 	} catch (error) {
-		throw new FileError("open", { cause: error });
+		// The core's own word on its bytes is final; one that didn't reach it (no engine now, a tab's handover) isn't.
+		const final = error instanceof CoreError && error.code !== "internal";
+		throw new FileError(final ? "open" : "download", { cause: error });
 	}
 	if (plain.size !== size) throw new FileError("size");
 	const bytes = new Uint8Array(await plain.arrayBuffer());

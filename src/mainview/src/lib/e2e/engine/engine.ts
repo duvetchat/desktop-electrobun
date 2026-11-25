@@ -31,7 +31,13 @@ export type { ShownMessage } from "./content";
  * A conversation's messages changed on this device: `ids`, those whose rows changed (none: any of them), and
  * `through`, how far its queue is applied now, when that moved.
  */
-export type MessagesListener = (conversationId: string, ids?: string[], through?: number | null) => void;
+export type MessagesListener = (
+	conversationId: string,
+	ids?: string[],
+	through?: number | null,
+	/** The messages the queue deleted, whose files go (task 18's review, M4). */
+	deleted?: string[],
+) => void;
 
 /** What the engine waits with: the system's timers in the app, a test's clock in its tests. */
 export interface Clock {
@@ -154,8 +160,8 @@ export class E2EEngine {
 		this.#parts = parts;
 		this.#failures = new Failures(parts.api, parts.clock);
 		const soon = (work: () => Promise<void>) => this.#soon(() => this.#whenReady(work));
-		const messagesChanged = (id: string, ids?: string[], through?: number | null) => {
-			for (const listener of this.#messageListeners) listener(id, ids, through);
+		const messagesChanged = (id: string, ids?: string[], through?: number | null, deleted?: string[]) => {
+			for (const listener of this.#messageListeners) listener(id, ids, through, deleted);
 		};
 		this.#groups = new Conversations(
 			parts,
@@ -166,7 +172,7 @@ export class E2EEngine {
 			},
 			messagesChanged,
 		);
-		this.#sends = new Sends(parts, this.#groups, soon, {
+		this.#sends = new Sends(parts, this.#groups, soon, (work) => this.#act(work), {
 			changed: messagesChanged,
 			sent: (id, nonce, message) => {
 				for (const listener of this.#sentListeners) listener(id, nonce, message);
@@ -226,10 +232,19 @@ export class E2EEngine {
 	/**
 	 * The person's message, sent after what waits in its conversation (PLAN-E2E-CLIENTES.md, «Enviar»): the API's message,
 	 * or null when it was sent already. A refusal or a lost answer rejects, the message kept for Retry and Dismiss. Its
-	 * files go sealed («Adjuntos»), `upload` following their upload and stopping it: a Cancel is then its Dismiss.
+	 * files go sealed («Adjuntos»), `upload` following their upload and stopping it: a Cancel is then its Dismiss. Only
+	 * the core's calls take the engine's turn: its request waits in its conversation's lane.
 	 */
-	sendMessage(message: Outgoing, upload?: UploadOptions): Promise<DirectMessage | null> {
-		return this.#act(() => this.#sends.send(message, upload));
+	async sendMessage(message: Outgoing, upload?: UploadOptions): Promise<DirectMessage | null> {
+		try {
+			return await this.#sends.send(message, upload);
+		} catch (error) {
+			// Its request's 426, which came outside the turn: the device waits for its update.
+			if (error instanceof UpdateRequiredError && this.state.name !== "update") {
+				this.#set({ name: "update", minimum: error.minimum });
+			}
+			throw error;
+		}
 	}
 
 	/**
@@ -260,6 +275,11 @@ export class E2EEngine {
 	 */
 	openFile(key: string, attachmentId: string, sealed: Blob, progress?: (done: number) => void): Promise<Blob> {
 		return this.#parts.host.openFile(key, attachmentId, sealed, progress);
+	}
+
+	/** A file of a message that didn't open, or opened to other bytes than its message says: counted (decision 40). */
+	fileFailed(): void {
+		this.#failures.note("attachment");
 	}
 
 	/** The names of the files whose messages this device holds, by their IDs (Ruling 31): Settings → Attachments'. */

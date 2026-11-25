@@ -36,6 +36,19 @@ export const NOTICES = {
 	device_added: "A new device was added to your account: {name}.",
 	delete_device: "Remove this device and delete its data",
 	too_long: "Message too long",
+	// A conversation's files (task 18).
+	file_encrypted: "Encrypted file",
+	file_progress: "Downloading · {percent}%",
+	file_altered: "This file isn't the one its sender sent, so it isn't shown.",
+	file_unavailable: "This file can't be shown.",
+	file_download_failed: "Couldn't download this file. Try again.",
+	files_gone: "This message's files aren't on this device any more. Dismiss it, then send them again.",
+	gif_failed: "The GIF couldn't be sent.",
+	file_save: "Save",
+	file_save_named: "Save {name}",
+	file_play: "Play video",
+	file_show: "Show picture",
+	file_named: "{name}: {status}",
 } as const;
 
 export type NoticeKey = keyof typeof NOTICES;

@@ -113,9 +113,11 @@ function engineFor(userId: string, host: CoreHost, platform: EnginePlatform): E2
 	});
 	// What the device holds of a conversation's messages changed: the views read those again, here and in the other tabs,
 	// and draw a row past how far its queue is applied as loading.
-	made.onMessages((conversationId, ids, through) => {
+	made.onMessages((conversationId, ids, through, deleted = []) => {
+		// A message the queue deleted lets its files go, here and in the other tabs (task 18's review, M4).
+		for (const id of deleted) decryptedFiles.forgetMessage(id);
 		refresh(conversationId, ids, through);
-		tabs?.changed(conversationId);
+		tabs?.changed(conversationId, deleted);
 	});
 	made.onSent(showSent);
 	// An edit or a deletion the API refused for good shows on this device alone: the person is told.
@@ -163,6 +165,10 @@ export async function startEngine(userId: string, platform: EnginePlatform = pag
 			onMessages<Blob>("openFile", { key, attachmentId, sealed }, (made) =>
 				made.openFile(key, attachmentId, sealed, progress),
 			),
+		failed: () =>
+			void onMessages<void>("fileFailed", null, async (made) => made.fileFailed()).catch((error: unknown) => {
+				console.warn("[e2e] A file that didn't open went uncounted:", error);
+			}),
 	});
 	useNamer(() => onMessages<Map<string, string>>("fileNames", null, (made) => made.fileNames()));
 	if (platform.desktop) {
@@ -200,6 +206,7 @@ export async function startEngine(userId: string, platform: EnginePlatform = pag
 			openFile: ({ key, attachmentId, sealed }: { key: string; attachmentId: string; sealed: Blob }) =>
 				live().openFile(key, attachmentId, sealed),
 			fileNames: () => live().fileNames(),
+			fileFailed: () => live().fileFailed(),
 			editMessage: ({ conversationId, messageId, text }: MessageParams) =>
 				live().editMessage(conversationId, messageId ?? "", text ?? ""),
 			deleteMessage: ({ conversationId, messageId }: MessageParams) =>
@@ -214,8 +221,9 @@ export async function startEngine(userId: string, platform: EnginePlatform = pag
 			await engine.start();
 		},
 		onLeader: () => void follow(),
-		onChanged: (id) => {
+		onChanged: (id, deleted) => {
 			void followConversation(id);
+			for (const message of deleted) decryptedFiles.forgetMessage(message);
 			if (!tabs?.leader) refresh(id);
 		},
 	});

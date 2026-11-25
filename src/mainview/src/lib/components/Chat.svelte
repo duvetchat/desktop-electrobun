@@ -125,6 +125,7 @@
 		onUnreadMark = undefined,
 		onVoiceNoteOverride = undefined,
 		gifFile = undefined,
+		fileLimit = null,
 		intro = undefined,
 		notice = undefined,
 		retryFirstPage = null,
@@ -174,6 +175,8 @@
 		/** A conversation's GIF pick as a file of its own (PLAN-E2E-CLIENTES.md, Ruling 12), which the chat then sends as
 		 * any file; null when it can't be had. */
 		gifFile?: (url: string) => Promise<File | null>;
+		/** A conversation's: the cap of where its files go, which each is held to sealed before it's sent. */
+		fileLimit?: number | null;
 		/** The start of the chat, above its oldest message (ChatIntro). */
 		intro?: Snippet;
 		/** What the chat says of itself over its message box: a conversation's of its encrypted group (ConversationState). */
@@ -901,6 +904,7 @@
 					placeholder={placeholder ?? `Message #${channelName}`}
 					onSubmit={handleSendMessage}
 					sealed={!!onSend}
+					{fileLimit}
 					onGif={gifFile ? (url) => void pickGif(url, (file) => handleSendMessage("", [file])) : undefined}
 					onVoiceNote={handleVoiceNote}
 					onRecording={() => notifyTyping(true)}
@@ -1016,6 +1020,7 @@
 				placeholder="Reply in thread"
 				onSubmit={(content, files, sticker) => sendThreadReply(root, content, files, sticker)}
 				sealed={!!onSend}
+				{fileLimit}
 				onGif={gifFile ? (url) => void pickGif(url, (file) => sendThreadReply(root, "", [file])) : undefined}
 				onValueChange={handleTyping}
 				{members}

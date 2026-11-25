@@ -273,19 +273,36 @@ async function signedFile(route: Promise<{ url: string }>): Promise<Uint8Array> 
 	return download((await route).url);
 }
 
-/** The bytes at a signed URL, as signedFile fetches them: `most` at most (a RangeError past them), `progress` hearing
- * how many came. */
+/** How many times a download waits out the API's budget of bytes an IP downloads (a 429), and the longest wait. */
+const BUDGET_WAITS = 3;
+const BUDGET_WAIT_MOST_S = 60;
+
+/**
+ * The bytes at a signed URL, as signedFile fetches them: through the API itself (`stream=1`), which reads them from its
+ * storage, never a redirect to it; `most` at most (a RangeError past them), `progress` hearing how many came. Its first
+ * answer may wait past the API's 30 s for its storage's first byte (requestLimits.slowAnswerMs), and the API's budget
+ * of what an IP downloads (a 429) is waited out as its Retry-After says, BUDGET_WAITS times at most.
+ */
 async function download(url: string, most = Number.POSITIVE_INFINITY, progress?: (received: number) => void) {
-	const at = url.startsWith("http") ? url : `${getHostURL()}${url}`;
-	const res = await fetchWithin(at, { credentials: "omit" }, requestLimits.answerMs, (received) => {
-		if (received > most) throw new RangeError(`the file is larger than ${most} bytes`);
-		progress?.(received);
-	});
-	if (!res.ok) {
-		const failed = { data: null, status: res.status, statusText: res.statusText, headers: res.headers };
-		throw new FetchError(`Request failed with status ${res.status}`, {}, failed);
+	const signed = url.startsWith("http") ? url : `${getHostURL()}${url}`;
+	// Appended as text: the signed query stays byte for byte as the API wrote it.
+	const at = `${signed}${signed.includes("?") ? "&" : "?"}stream=1`;
+	for (let waited = 0; ; waited++) {
+		const res = await fetchWithin(at, { credentials: "omit" }, requestLimits.slowAnswerMs, (received) => {
+			if (received > most) throw new RangeError(`the file is larger than ${most} bytes`);
+			progress?.(received);
+		});
+		if (res.status === 429 && waited < BUDGET_WAITS) {
+			const seconds = Number(res.headers.get("Retry-After")) || 1;
+			await new Promise((done) => setTimeout(done, Math.min(Math.ceil(seconds), BUDGET_WAIT_MOST_S) * 1000));
+			continue;
+		}
+		if (!res.ok) {
+			const failed = { data: null, status: res.status, statusText: res.statusText, headers: res.headers };
+			throw new FetchError(`Request failed with status ${res.status}`, {}, failed);
+		}
+		return new Uint8Array(await res.arrayBuffer());
 	}
-	return new Uint8Array(await res.arrayBuffer());
 }
 
 /** The routes, for the session `client` sends its requests with. */

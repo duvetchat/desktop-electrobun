@@ -179,11 +179,11 @@ export function formBytes(form: FormData): number {
 export class TooLargeError extends Error {
 	bytes: number;
 
-	constructor(bytes: number, what = "Files") {
-		const over = formatFileSize(bytes - MAX_REQUEST_BYTES);
-		super(
-			`${what} too large: ${formatFileSize(bytes)}, ${over} over the ${MAX_REQUEST_BYTES / (1024 * 1024)} MB limit`,
-		);
+	/** `limit`: the request's 32 MiB, or a file's own cap where it goes. */
+	constructor(bytes: number, what = "Files", limit = MAX_REQUEST_BYTES) {
+		const over = formatFileSize(bytes - limit);
+		const most = limit % (1024 * 1024) === 0 ? `${limit / (1024 * 1024)} MB` : formatFileSize(limit);
+		super(`${what} too large: ${formatFileSize(bytes)}, ${over} over the ${most} limit`);
 		this.name = "TooLargeError";
 		this.bytes = bytes;
 	}

@@ -1,6 +1,7 @@
 <script lang="ts" module>
 	import { dmMessages } from "$lib/stores.svelte";
 	import { forgetUnlisted } from "$lib/uploads";
+	import { myFileLimit } from "$lib/api/user";
 	import type { OutgoingFile } from "$lib/e2e/engine/files";
 	import type { AllowedMentions, MessageReference } from "$lib/types";
 
@@ -24,6 +25,16 @@
 	>();
 	// A send's retry data goes once its message is in no list any more: nothing could retry or dismiss it (#323).
 	dmMessages.subscribe((all) => forgetUnlisted(dmRetryData, all));
+
+	// The cap of where the person's files go (their active bucket's, else their storage's), which the message box holds
+	// each sealed file to; read again a minute on, for a bucket made active meanwhile. Unknown, the API's 413 says it.
+	let fileLimitRead: { at: number; limit: Promise<number | null> } | null = null;
+	function fileLimitNow(): Promise<number | null> {
+		if (!fileLimitRead || Date.now() - fileLimitRead.at > 60_000) {
+			fileLimitRead = { at: Date.now(), limit: myFileLimit().catch(() => null) };
+		}
+		return fileLimitRead.limit;
+	}
 </script>
 
 <script lang="ts">
@@ -166,6 +177,8 @@
 	let loadFailed = $state(false);
 	let isLoadingMore = $state(false);
 	let hasMore = $state(true);
+	// The cap of where the person's files go, once read (fileLimitNow).
+	let fileLimit = $state<number | null>(null);
 	let isAtBottom = $state(false);
 	let convUnreadAfter = $state<string | null>(null);
 	const ackedConvMsgId = new Map<string, string>();
@@ -710,10 +723,12 @@
 		const saved = dmRetryData.get(nonce);
 		let real: DirectMessage | null | typeof CANCELLED;
 		try {
-			if (saved && !saved.outgoing && saved.files?.length) saved.outgoing = await outgoingFiles(saved.files);
-			const files = saved?.outgoing;
-			real = await sendFollowed(nonce, saved?.files, (upload) =>
-				sendEncrypted(
+			real = await sendFollowed(nonce, saved?.files, async (upload) => {
+				// Followed from the start, so its Cancel is there while its thumbnails are made (a video's frame takes time).
+				if (saved && !saved.outgoing && saved.files?.length) saved.outgoing = await outgoingFiles(saved.files);
+				upload?.signal?.throwIfAborted();
+				const files = saved?.outgoing;
+				return sendEncrypted(
 					{
 						...{ conversation_id: convId, nonce },
 						...(text ? { text } : {}),
@@ -723,8 +738,8 @@
 						...(files?.length ? { files } : {}),
 					},
 					upload,
-				),
-			);
+				);
+			});
 		} catch (err) {
 			throw new Error(unsentNote(err), { cause: err });
 		}
@@ -811,7 +826,9 @@
 				];
 			});
 			const waitingRow = pendingRow(convId, nonce, row.text ?? "", ref, sticker, at);
-			rows.push({ ...waitingRow, attachments: files.length ? files : null });
+			// Its files went with the app: it can only be dismissed, which it says at once (task 18's review, M5).
+			if (row.files_gone) rows.push({ ...waitingRow, attachments: null, unsent_note: t("e2e_files_gone") });
+			else rows.push({ ...waitingRow, attachments: files.length ? files : null });
 		}
 		if (rows.length === 0) return;
 		dmMessages.update((all) => ({ ...all, [convId]: [...(all[convId] ?? []), ...rows] }));
@@ -1049,6 +1066,7 @@
 
 	onMount(() => {
 		const convId = conversation.id;
+		void fileLimitNow().then((limit) => (fileLimit = limit));
 		// The gateway session this view comes in, which the list it leaves is of.
 		const session = listSession();
 		activeDMConvId.set(convId);
@@ -1392,6 +1410,7 @@
 			sendRecording={() => sendConversationRecording(conversation.id).catch(() => {})}
 			onVoiceNoteOverride={dmVoiceNote}
 			gifFile={dmGif}
+			{fileLimit}
 			members={convMembers}
 			unreadAfterMessageId={convUnreadAfter}
 			onUnreadMark={(msgId) => {

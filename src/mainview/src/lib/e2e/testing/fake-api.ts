@@ -471,6 +471,8 @@ interface Context {
 	body: any;
 	bytes: Uint8Array<ArrayBuffer>;
 	headers: Headers;
+	/** Its files go up, and nothing else is done (cutAfterFiles). */
+	filesOnly: boolean;
 }
 
 type Needs = "nothing" | "session" | "device" | "listed";
@@ -532,7 +534,7 @@ export class FakeApi {
 	#outbox: Outgoing[] = [];
 	/** Events held for releaseEvents, while holding. */
 	#held: { connection: Connection; event: GatewayEvent }[] | null = null;
-	#switches: { match: RouteMatch; effect: "lose" | "cut" | Answer }[] = [];
+	#switches: { match: RouteMatch; effect: "lose" | "cut" | "files" | Answer }[] = [];
 	/** Requests held until as many as each gate counts have come (gather). */
 	#gates: { match: RouteMatch; count: number; waiting: (() => void)[] }[] = [];
 	#routes: Route[];
@@ -650,6 +652,14 @@ export class FakeApi {
 	}
 
 	/**
+	 * The next message the match takes has its files go up, and its connection is cut as it waits for its conversation's
+	 * row: nothing else is done, as the API's own send (ruling 5), whose resend takes its files as they went up.
+	 */
+	cutAfterFiles(match: RouteMatch) {
+		this.#switches.push({ match, effect: "files" });
+	}
+
+	/**
 	 * The next request the match takes is refused, and does nothing: 426 and 503 in the API's words (503 with its
 	 * Retry-After), any other with the body given.
 	 */
@@ -707,8 +717,9 @@ export class FakeApi {
 		const switched = this.#switches.findIndex(({ match }) => matches(match, request.method, url.pathname));
 		const effect = switched < 0 ? null : this.#switches.splice(switched, 1)[0]!.effect;
 		if (effect === "cut") throw new TypeError("fetch failed: the request never reached the API");
-		if (effect && effect !== "lose") return respond(effect);
-		const { answer, events } = await this.#answer(request, url);
+		if (effect && effect !== "lose" && effect !== "files") return respond(effect);
+		const { answer, events } = await this.#answer(request, url, effect === "files");
+		if (effect === "files") throw new TypeError("fetch failed: the connection closed once its files were up");
 		// Its events go once its answer is made, lost or not: after the code that awaited it takes its first step.
 		queueMicrotask(() => queueMicrotask(() => this.#send(events)));
 		if (effect === "lose") throw new TypeError("fetch failed: the answer was lost");
@@ -716,7 +727,7 @@ export class FakeApi {
 	};
 
 	/** A request's answer, and the events it sends: none for a refusal, as the API's rolled-back work sends none. */
-	async #answer(request: Request, url: URL): Promise<{ answer: Answer; events: Outgoing[] }> {
+	async #answer(request: Request, url: URL, filesOnly = false): Promise<{ answer: Answer; events: Outgoing[] }> {
 		const route = this.#routes.find(([method, path]) => method === request.method && path.test(url.pathname));
 		if (!route) return { answer: { status: 404, body: { error: "no such route" } }, events: [] };
 		const [, path, needs, handler, anyClient] = route;
@@ -748,6 +759,7 @@ export class FakeApi {
 				body,
 				bytes,
 				headers: request.headers,
+				filesOnly,
 			});
 			return { answer, events: this.#outbox.splice(0) };
 		} catch (error) {
@@ -979,7 +991,10 @@ export class FakeApi {
 				return ok({ url: signedPath(segment.file) });
 			}),
 			// A file at its signed URL, which the part's and the segment's routes answer: it takes no session.
-			route("GET", `/attachments/(?<file>${UUID_PATH})`, "nothing", ({ params }) => {
+			// Through the API alone (stream=1), as the app asks: without it, the API would send the client to its storage.
+			route("GET", `/attachments/(?<file>${UUID_PATH})`, "nothing", ({ params, query }) => {
+				if (query.get("stream") !== "1")
+					throw fail(400, "the fake API serves a file through itself: ask with stream=1");
 				const file = this.#files.get(params.file!);
 				if (!file) throw fail(404, "no such file");
 				return { status: 200, body: file };
@@ -1625,6 +1640,7 @@ export class FakeApi {
 		// Its files go up first, each with the ID its client gave it, as the API keeps them: as they came, named file. One
 		// up already from a send that failed (the sender's, on no message, its size and SHA-256) is taken again.
 		const rows = files.map((bytes: Uint8Array<ArrayBuffer>, i) => this.#upFile(session.user, String(ids[i]), bytes));
+		if (ctx.filesOnly) throw fail(499, "the client went away");
 		// Whom it mentions, as the API has it: whom it names, then the author of what it answers (unless its
 		// allowed_mentions say not to, or that's a notice), each once, of the members, never its own author.
 		const members = conv.members.map((m) => m.user_id);

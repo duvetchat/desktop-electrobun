@@ -1323,6 +1323,9 @@
 								{#if ephemeral}
 									{@render ephemeralNote(message)}
 								{/if}
+								{#if isFailed && message.unsent_note}
+									{@render unsentLine(message)}
+								{/if}
 							</div>
 							{#if isFailed}
 								{@render failedBar(message, mine)}
@@ -1373,6 +1376,9 @@
 										{channelId}
 									/>
 									{@render content(message, mine, isFailed, isMention, isHighlighted)}
+									{#if isFailed && message.unsent_note}
+										{@render unsentLine(message)}
+									{/if}
 									{#if isFailed}
 										{@render failedBar(message, mine)}
 									{:else if barShown}
@@ -1642,9 +1648,16 @@
 				? 'top-1/2 right-full mr-2 -translate-y-1/2 data-above:top-auto data-above:right-0 data-above:bottom-full data-above:mr-0 data-above:-mb-1 data-above:translate-y-0'
 				: 'top-1/2 left-full ml-2 -translate-y-1/2 data-above:top-auto data-above:bottom-full data-above:left-0 data-above:-mb-1 data-above:ml-0 data-above:translate-y-0'}"
 	>
-		<button type="button" class={buttonClass("quiet", "sm")} onclick={() => onRetry(message)}>Retry</button>
+		{#if !message.unsent_note}
+			<button type="button" class={buttonClass("quiet", "sm")} onclick={() => onRetry(message)}>Retry</button>
+		{/if}
 		<button type="button" class={buttonClass("quiet", "sm")} onclick={() => onDismiss(message.nonce!)}>Dismiss</button>
 	</div>
+{/snippet}
+
+<!-- Why a message that didn't send can only be dismissed -->
+{#snippet unsentLine(message: Message)}
+	<p class="text-duvet-danger px-1 text-xs">{message.unsent_note}</p>
 {/snippet}
 
 <!-- The hover bar: the time of a bubble that isn't its group's last (that one has it under it), three reactions at

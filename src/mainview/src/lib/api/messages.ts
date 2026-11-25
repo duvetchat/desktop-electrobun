@@ -107,9 +107,17 @@ const FILE_ID_BYTES = 64;
 /** Why the API would refuse a message with files for its size, as the message box says it, or null: its text and files
  * as a send puts them in its form, with room for its other fields. Such a message isn't sent (#182). A conversation's
  * (`sealed`) goes up as its ciphertext and its files sealed, each part of 64 KiB with its tag (PLAN-E2E-CLIENTES.md,
- * «Adjuntos»): their thumbnails apart, a few KiB, are left to the form's own check as it's sent. */
-export function messageTooLarge(content: string, files: File[], sealed = false): string | null {
+ * «Adjuntos»): their thumbnails apart, a few KiB, are left to the form's own check as it's sent. A sealed file is also
+ * held to `fileLimit`, the cap of where it goes (the API's checkUploadLimit), whose 413 stays the last word. */
+export function messageTooLarge(
+	content: string,
+	files: File[],
+	sealed = false,
+	fileLimit: number | null = null,
+): string | null {
 	if (files.length === 0) return null;
+	const over = sealed && fileLimit !== null ? files.find((f) => sealedSize(f.size) > fileLimit) : undefined;
+	if (over && fileLimit !== null) return new TooLargeError(sealedSize(over.size), "File", fileLimit).message;
 	const form = new FormData();
 	if (!sealed) form.append("content", content);
 	for (const f of files) form.append("files", f);

@@ -157,3 +157,26 @@ test("a cancelled upload discards its message", () => {
 	expect(view).toMatch(/if \(real === CANCELLED\) return dmCancelled\(convId, nonce, fromDraft, saved\?\.draft\);/);
 	expect(view).toMatch(/async function dmCancelled[\s\S]*?const went = await discardEncrypted\(convId, nonce\)/);
 });
+
+// Task 18's review, M5 and M8.
+test("a waiting message whose files went with the app says so at once, with Dismiss alone", () => {
+	const view = source("ConversationView.svelte");
+	const list = source("MessageList.svelte");
+	expect(view).toMatch(
+		/if \(row\.files_gone\) rows\.push\(\{ \.\.\.waitingRow, attachments: null, unsent_note: t\("e2e_files_gone"\) \}\);/,
+	);
+	// Under the message, why; and its bar offers no Retry, which could only say it again.
+	expect(list).toMatch(/\{#if isFailed && message\.unsent_note\}\s*\{@render unsentLine\(message\)\}/);
+	expect(list).toMatch(
+		/\{#if !message\.unsent_note\}\s*<button[^>]*onclick=\{\(\) => onRetry\(message\)\}>Retry<\/button>\s*\{\/if\}/,
+	);
+});
+
+test("a send with files offers its Cancel from the start, while its thumbnails are made", () => {
+	const view = source("ConversationView.svelte");
+	// The upload is followed first, and the thumbnails made inside it: a Cancel meanwhile stops it before it goes.
+	expect(view).toMatch(
+		/sendFollowed\(nonce, saved\?\.files, async \(upload\) => \{[\s\S]*?outgoingFiles\(saved\.files\);\s*upload\?\.signal\?\.throwIfAborted\(\);/,
+	);
+	expect(view.indexOf("outgoingFiles(saved.files)")).toBeGreaterThan(view.indexOf("real = await sendFollowed("));
+});

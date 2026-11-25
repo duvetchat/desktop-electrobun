@@ -15,8 +15,9 @@
 	// downloaded from its signed URL and opened by this device's core (lib/e2e/decrypted-files.svelte.ts), then drawn in
 	// the element its own bytes are for: a picture, a video once it's all here, a voice note or an audio file in today's
 	// players. Anything else, a file whose sender calls it what it isn't among them, is saved as bytes: nothing decrypted
-	// ever opens, in a tab, a frame or a window (Review Focus 6). A picture, an audio file and a voice note come as they
-	// show; a video and a file to save on a click. A picture or a video is drawn inside its message's box.
+	// ever opens, in a tab, a frame or a window (Review Focus 6). A picture, an audio file and a voice note come by
+	// themselves as they near the screen; a video and a file to save on a click. A picture or a video is drawn inside
+	// its message's box.
 	let {
 		att,
 		kind,
@@ -24,6 +25,7 @@
 		onPreview = () => {},
 		authorName = "",
 		channelName = "",
+		hidden = false,
 	}: {
 		att: Attachment;
 		kind: "image" | "video" | "audio" | "voice" | "file";
@@ -31,24 +33,63 @@
 		onPreview?: (src: string, alt?: string) => void;
 		authorName?: string;
 		channelName?: string;
+		/** Under a spoiler's cover, still blurred. */
+		hidden?: boolean;
 	} = $props();
 
 	const file = $derived(att.sealed!);
 	const messageId = $derived(att.message_id ?? "");
-	const opened = $derived(decryptedFiles.state(file.id));
+	const opened = $derived(decryptedFiles.state(file));
 	const ready = $derived(opened?.status === "ready" ? opened : null);
 	// The element its bytes are for: a file to save is saved whatever they are.
 	const drawn = $derived(ready && kind !== "file" ? drawnBy(ready.type) : "download");
 	const auto = $derived(kind === "image" || kind === "audio" || kind === "voice");
 	const percent = $derived(opened?.status === "loading" ? Math.floor(opened.progress * 100) : 0);
 	const failure = $derived(
-		opened?.status === "failed" ? t(opened.reason === "hash" ? "e2e_file_altered" : "e2e_file_unavailable") : null,
+		opened?.status === "failed"
+			? t(
+					opened.reason === "hash"
+						? "e2e_file_altered"
+						: opened.reason === "download"
+							? "e2e_file_download_failed"
+							: "e2e_file_unavailable",
+				)
+			: null,
 	);
-	// A video its browser couldn't play is offered to save.
+	// A download that failed, which a click asks for again: only what its bytes are is final.
+	const again = $derived(opened?.status === "failed" && opened.reason === "download");
+	// What a screen reader hears of its card: what shows on it.
+	const cardLabel = $derived(
+		failure
+			? t("e2e_file_named", { name: file.name, status: failure })
+			: opened?.status === "loading"
+				? t("e2e_file_named", { name: file.name, status: t("e2e_file_progress", { percent }) })
+				: t("e2e_file_save_named", { name: file.name }),
+	);
+	// A video its browser couldn't play, or a picture it couldn't draw, is offered to save.
 	let unplayable = $state(false);
+	let undrawable = $state(false);
+	// A video plays by itself only after the click that asked for it, never as it mounts again or under a spoiler.
+	let asked = $state(false);
 
+	// Opened by itself only as it nears the screen: a loaded page mounts every row, and four files come down at once.
+	let near = $state(false);
+	let waiting = $state<HTMLElement | null>(null);
 	$effect(() => {
-		if (auto) void decryptedFiles.open(file, messageId, { auto: true });
+		const element = waiting;
+		if (!element || near) return;
+		if (typeof IntersectionObserver === "undefined") {
+			near = true;
+			return;
+		}
+		const watch = new IntersectionObserver((seen) => (near ||= seen.some((entry) => entry.isIntersecting)), {
+			rootMargin: "600px 0px",
+		});
+		watch.observe(element);
+		return () => watch.disconnect();
+	});
+	$effect(() => {
+		if (auto && near) void decryptedFiles.open(file, messageId, { auto: true });
 	});
 
 	// Its thumbnail, while the file isn't drawn: the one inside its message, a URL of its own while this shows, or a file
@@ -68,16 +109,18 @@
 		};
 	});
 	const ref = $derived(file.thumbnail_ref ? { ...file.thumbnail_ref, url: file.thumbnailUrl ?? null } : null);
-	const refState = $derived(ref ? decryptedFiles.state(ref.id) : undefined);
+	const refState = $derived(ref ? decryptedFiles.state(ref) : undefined);
 	$effect(() => {
-		if (ref) void decryptedFiles.open(ref, messageId, { auto: true });
+		if (ref && near) void decryptedFiles.open(ref, messageId, { auto: true });
 	});
 	const thumbnail = $derived(
 		inside ?? (refState?.status === "ready" && drawnBy(refState.type) === "image" ? refState.url : null),
 	);
 
-	// A click asks for it whatever it is: a video to play, a file to save, a picture let go of for room.
+	// A click asks for it whatever it is: a video to play, a file to save, a picture let go of for room, a download that
+	// failed.
 	async function fetchFile() {
+		asked = true;
 		const done = await decryptedFiles.open(file, messageId);
 		if (kind === "file" && done.status === "ready") saveFile(done.blob, file.name);
 	}
@@ -87,7 +130,7 @@
 	}
 </script>
 
-{#if drawn === "image" && ready}
+{#if drawn === "image" && ready && !undrawable}
 	<button
 		type="button"
 		class="group/tile relative block size-full cursor-zoom-in overflow-hidden"
@@ -98,11 +141,18 @@
 			alt={file.name}
 			data-decrypted
 			class="relative size-full transition-transform duration-[350ms] group-hover/tile:scale-[1.03] motion-reduce:transition-none {fit}"
+			onerror={() => (undrawable = true)}
 		/>
 	</button>
 {:else if drawn === "video" && ready && !unplayable}
 	<!-- svelte-ignore a11y_media_has_caption -->
-	<video src={ready.url} data-decrypted controls autoplay class="relative size-full" onerror={() => (unplayable = true)}
+	<video
+		src={ready.url}
+		data-decrypted
+		controls
+		autoplay={asked && !hidden}
+		class="relative size-full"
+		onerror={() => (unplayable = true)}
 	></video>
 {:else if drawn === "audio" && ready && kind === "voice"}
 	<VoiceNotePlayer src={ready.url} blob={ready.blob} attachmentId={file.id} {authorName} {channelName} />
@@ -118,7 +168,7 @@
 	/>
 {:else if kind === "image" || kind === "video"}
 	<!-- Inside its box: its thumbnail, and how far it is, what to press, or why it isn't shown -->
-	<div class="relative size-full">
+	<div class="relative size-full" bind:this={waiting}>
 		{#if thumbnail}
 			<img src={thumbnail} alt="" class="absolute inset-0 size-full object-cover blur-[2px]" />
 		{:else}
@@ -129,6 +179,16 @@
 				<span class="bg-duvet-media-scrim text-duvet-media-ink flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs">
 					<ShieldAlert size={14} class="shrink-0" />{failure}
 				</span>
+				{#if again}
+					<button
+						type="button"
+						class="bg-duvet-media-scrim text-duvet-media-ink grid size-11 place-items-center rounded-full"
+						onclick={fetchFile}
+						aria-label={kind === "video" ? t("e2e_file_play") : t("e2e_file_show")}
+					>
+						<PlayIcon size={18} fill={kind === "video" ? "currentColor" : "none"} />
+					</button>
+				{/if}
 			{:else if ready}
 				<button
 					type="button"
@@ -165,8 +225,9 @@
 			? MESSAGE_CARD_ACTION
 			: MESSAGE_CARD} text-duvet-ink relative flex w-[300px] max-w-full items-center gap-2.5 p-2.5 text-left"
 		onclick={ready ? save : fetchFile}
-		disabled={opened?.status === "loading" || !!failure}
-		aria-label={t("e2e_file_save_named", { name: file.name })}
+		disabled={opened?.status === "loading" || (!!failure && !again)}
+		aria-label={cardLabel}
+		bind:this={waiting}
 	>
 		<span class="bg-duvet-secondary-fill text-duvet-accent-text rounded-row grid size-10 shrink-0 place-items-center">
 			{#if failure}<ShieldAlert size={20} />{:else}<FileIcon size={20} />{/if}

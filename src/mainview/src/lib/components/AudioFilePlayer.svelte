@@ -13,6 +13,7 @@
 	} from "$lib/stores/voiceNotePlayer.svelte";
 	import { formatDuration } from "$lib/utils/time";
 	import VolumeControl from "$lib/components/VolumeControl.svelte";
+	import { saveFile } from "$lib/e2e/decrypted-files.svelte";
 	import { formatFileSize } from "$lib/utils/format";
 	import {
 		waveformCache,
@@ -189,13 +190,22 @@
 			<Music size={16} />
 		</span>
 		<div class="flex min-w-0 flex-col gap-px">
-			<a
-				href={src}
-				target="_blank"
-				rel="noopener noreferrer"
-				class="text-duvet-ink truncate text-[13.5px] leading-[1.25] font-semibold hover:underline"
-				download={filename}>{filename}</a
-			>
+			{#if blob}
+				<!-- A decrypted file: nothing to follow to its blob: URL; its name saves it, as bytes (Review Focus 6) -->
+				<button
+					type="button"
+					class="text-duvet-ink truncate text-left text-[13.5px] leading-[1.25] font-semibold hover:underline"
+					onclick={() => blob && saveFile(blob, filename)}>{filename}</button
+				>
+			{:else}
+				<a
+					href={src}
+					target="_blank"
+					rel="noopener noreferrer"
+					class="text-duvet-ink truncate text-[13.5px] leading-[1.25] font-semibold hover:underline"
+					download={filename}>{filename}</a
+				>
+			{/if}
 			<span class="text-duvet-ink2 text-[11.5px] leading-[1.25]">{formatFileSize(sizeBytes)}</span>
 		</div>
 	</div>
