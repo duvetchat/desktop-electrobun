@@ -774,7 +774,8 @@ describe.skipIf(!coreLibrary)("the fake's switches", () => {
 			await call(fake, b.token, "GET", `${CONVERSATIONS}/${conversation}/mls/queue?after=${committed.body.seq - 1}`)
 		).body;
 		expect(queue.entries[0].data).toBeString();
-	});
+		// Two real cores and every event's turn: under load it passes Bun's 5 s default (#504).
+	}, 30_000);
 });
 
 describe.skipIf(!coreLibrary)("the fake answers as the API does", () => {
