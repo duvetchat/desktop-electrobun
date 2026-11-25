@@ -29,6 +29,31 @@ export async function servedIdentity({ api, user }: EngineParts): Promise<Identi
 	}
 }
 
+/** observe_user of each user, as the API serves their identities, 50 at a time: one it doesn't serve stays as it was. */
+export async function observeUsers({ api, host }: EngineParts, users: string[]): Promise<void> {
+	for (let at = 0; at < users.length; at += 50) {
+		for (const { user_id, identity_key, device_list, certificates } of await api.identities(users.slice(at, at + 50))) {
+			await host.handle({ cmd: "observe_user", user_id, identity_key, device_list, certificates });
+		}
+	}
+}
+
+/**
+ * A command that may first ask for users' identities (`needs_identities`): they're observed, and it runs again. Three
+ * rounds at most: the core asks once for what it knows of each user, and goes on with that the next time.
+ */
+export async function withIdentities<T>(parts: EngineParts, run: () => Promise<T>): Promise<T> {
+	for (let round = 1; ; round++) {
+		try {
+			return await run();
+		} catch (error) {
+			const asked = error instanceof CoreError && error.code === "needs_identities" ? error.users : undefined;
+			if (!asked?.length || round >= 3) throw error;
+			await observeUsers(parts, asked);
+		}
+	}
+}
+
 /** observe_user of the user's own identity, as served: what the core made of it (`not_own_identity`, an identity this
  * device doesn't hold). */
 async function observeOwn({ host, user }: EngineParts, served: Identity): Promise<string | undefined> {

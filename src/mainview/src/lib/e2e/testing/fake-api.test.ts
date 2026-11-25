@@ -1040,4 +1040,43 @@ describe.skipIf(!coreLibrary)("the fake answers as the API does", () => {
 		});
 		expect(refused).toMatchObject({ status: 403, body: { error: "this device isn't in the group" } });
 	});
+
+	test("the queue binds its numbers as the API does, and a read from before its floor is a 410", async () => {
+		const { fake, b, conversation } = await dmWithGroup();
+		const queue = (query: string) => call(fake, b.token, "GET", `${CONVERSATIONS}/${conversation}/mls/queue${query}`);
+		for (const query of ["?after=x", "?after=-1", "?after=1.5", "?limit=0", "?limit=501"]) {
+			expect({ query, status: (await queue(query)).status }).toEqual({ query, status: 400 });
+		}
+		expect((await queue("?after=0&limit=1")).body.entries).toHaveLength(1);
+		fake.expireQueue(conversation, 3);
+		expect(await queue("?after=1")).toMatchObject({ status: 410, body: { error: "queue expired", floor_seq: 3 } });
+		expect(await queue("?after=2")).toMatchObject({ status: 200, body: { floor_seq: 3 } });
+		const [listed] = (await call(fake, b.token, "GET", CONVERSATIONS)).body;
+		expect(listed.mls.floor_seq).toBe(3);
+	});
+
+	test("a cut request never reaches the API, and gathered requests wait for each other", async () => {
+		const fake = new FakeApi();
+		const ana = fake.addUser();
+		const a = await device(fake, ana);
+		// READY says nothing of conversations, as the gateway's doesn't.
+		expect(a.heard[0]).toEqual({ type: "READY", data: { user: { id: ana } } });
+		const made = await a.host.handle<Record<string, string>>({ cmd: "create_identity" });
+		const { identity_key, device_list, certificate, encrypted_identity, wrapped_backup_key } = made;
+		const body = { identity_key, device_list, certificate, encrypted_identity, wrapped_backup_key, replaces: null };
+		fake.cutRequest({ method: "PUT", path: "/api/users/@me/identity" });
+		await expect(call(fake, a.token, "PUT", "/api/users/@me/identity", body)).rejects.toThrow(TypeError);
+		expect((await call(fake, a.token, "GET", `/api/users/${ana}/identity`)).status).toBe(404);
+
+		// Two reads gathered: the first answers only once the second has come.
+		fake.gather({ method: "GET", path: "/api/users/@me/devices" }, 2);
+		const order: string[] = [];
+		const devices = (name: string) =>
+			call(fake, a.token, "GET", "/api/users/@me/devices").then(() => void order.push(name));
+		const first = devices("first");
+		await Bun.sleep(20);
+		order.push("second sent");
+		await Promise.all([first, devices("second")]);
+		expect(order).toEqual(["second sent", "first", "second"]);
+	});
 });

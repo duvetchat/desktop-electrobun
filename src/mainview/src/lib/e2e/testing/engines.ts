@@ -180,6 +180,102 @@ export async function until(holds: () => boolean | Promise<boolean>, ms = 60_000
 	}
 }
 
+/** What the core's `group` answers: the group as a device holds it. */
+export interface HeldGroup {
+	generation: number;
+	epoch: number;
+	authenticator: string;
+	blocked: boolean;
+	devices: { user_id: string; device_id: string }[];
+}
+
+/** The conversation's group as the device's core holds it, or null without one. */
+export const groupOf = (device: TestDevice, conversation: string): Promise<HeldGroup | null> =>
+	device.host.handle<HeldGroup>({ cmd: "group", conversation_id: conversation }).catch(() => null);
+
+/** Waits until every device holds the conversation's group at one generation and epoch, with one authenticator. */
+export async function sameGroup(devices: TestDevice[], conversation: string, ms = 60_000): Promise<HeldGroup> {
+	let held: HeldGroup | null = null;
+	await until(async () => {
+		const groups = await Promise.all(devices.map((device) => groupOf(device, conversation)));
+		const [first] = groups;
+		held = first ?? null;
+		return groups.every(
+			(group) =>
+				group &&
+				first &&
+				group.generation === first.generation &&
+				group.epoch === first.epoch &&
+				group.authenticator === first.authenticator,
+		);
+	}, ms);
+	return held!;
+}
+
+/**
+ * A commit of the device's own, made and sent by hand, with its engine stopped (its core open): its leaf's renewal,
+ * posted, and the API's answer told to the core.
+ */
+export async function commitByHand(device: TestDevice, conversation: string) {
+	const { generation, epoch } = (await groupOf(device, conversation))!;
+	const made = await device.host.handle<{ commit: string; group_info: string }>({
+		cmd: "refresh",
+		conversation_id: conversation,
+	});
+	const taken = await device.api.commit(conversation, { generation, epoch, ...made });
+	await device.host.handle({ cmd: "commit_result", conversation_id: conversation, accepted: true, seq: taken.seq });
+	return taken;
+}
+
+/** The device again after its app restarted: a new engine on the same core, record and session, started. */
+export async function restarted(fake: FakeApi, device: TestDevice, given: Parameters<typeof testDevice>[2] = {}) {
+	await device.engine.stop();
+	const again = testDevice(fake, device.user, {
+		...{ host: device.host, store: device.store, token: device.token },
+		...given,
+	});
+	await again.engine.start();
+	return again;
+}
+
+/**
+ * Another device of the first one's user, set up by the first one's approval by QR (Task 26 does it in the app) and on
+ * the user's list: its engine started and ready.
+ */
+export async function approvedDevice(fake: FakeApi, first: TestDevice): Promise<TestDevice> {
+	const fresh = testDevice(fake, first.user);
+	await fresh.engine.start();
+	if (fresh.engine.state.name !== "new_device") throw new Error(`the new device is ${fresh.engine.state.name}`);
+	await fresh.engine.stop();
+	await fresh.host.open(first.user);
+	const { qr } = await fresh.host.handle<{ qr: string }>({ cmd: "approval_begin" });
+	const approved = await first.host.handle<Record<string, string>>({ cmd: "approval_from_qr", qr });
+	await fresh.host.handle({ cmd: "approval_receive", transfer: approved.transfer });
+	const served = await fresh.api.identity(first.user);
+	const { version } = await fresh.api.putDeviceList({
+		...{ device_list: approved.device_list!, certificate: approved.certificate },
+		base_version: served.device_list_version,
+	});
+	await fresh.host.handle({ cmd: "device_list_uploaded", version });
+	const again = testDevice(fake, first.user, { host: fresh.host, store: fresh.store, token: fresh.token });
+	await again.engine.start();
+	if (again.engine.state.name !== "ready") throw new Error(`the approved device is ${again.engine.state.name}`);
+	return again;
+}
+
+/** A host whose answer to a command is `answer`'s, when it gives one: the core's otherwise. */
+export function answeringHost(host: CoreHost, answer: (command: Record<string, unknown>) => unknown): CoreHost {
+	return new Proxy(host, {
+		get(target, name) {
+			if (name === "handle") {
+				return async (command: { cmd: string } & Record<string, unknown>) => answer(command) ?? target.handle(command);
+			}
+			const value = Reflect.get(target, name);
+			return typeof value === "function" ? value.bind(target) : value;
+		},
+	});
+}
+
 /**
  * A host that tells what it's asked (each command's name, in order) and fails a command when `fail`, which sees the
  * whole command, gives an error.

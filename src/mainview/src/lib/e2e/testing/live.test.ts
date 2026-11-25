@@ -175,4 +175,44 @@ describe.skipIf(!live)("live, against the API's stack", () => {
 			await Promise.all([a.end(), b.end()]);
 		}
 	}, 120_000);
+
+	// Conversation groups (PLAN-E2E-CLIENTES.md, Task 14): a DM's group, which one of its members makes as they open it,
+	// through the API's validator, and the other's device joins by its welcome. Carol and Dave, whom the case above left
+	// without identities.
+	test("two users' devices reach the same epoch and authenticator", async () => {
+		const [carol, dave] = [account(2), account(3)];
+		const c = await deviceOf(carol);
+		const d = await deviceOf(dave);
+		const groupOf = (host: BunCoreHost, id: string) =>
+			host
+				.handle<{ generation: number; epoch: number; authenticator: string }>({ cmd: "group", conversation_id: id })
+				.catch(() => null);
+		try {
+			for (const device of [c, d]) {
+				await device.engine.start();
+				await device.engine.makeIdentity();
+				await device.engine.keySaved();
+				expect(device.engine.state).toEqual({ name: "ready" });
+			}
+			// Friends, and a DM Carol starts, which Dave opens first: either member of a DM makes its group.
+			const request = await c.client.post<{ id: string }>("/api/users/@me/friends/requests", { user_id: dave.id });
+			await d.client.post(`/api/users/@me/friends/requests/${request.data.id}/accept`);
+			const dm = await c.client.post<{ id: string }>("/api/users/@me/conversations", { type: 1, user_id: dave.id });
+			await d.engine.openConversation(dm.data.id);
+			expect(d.engine.conversationState(dm.data.id)).toBeNull();
+
+			// Carol's device hears the welcome and comes in: both hold the group at one epoch, with one authenticator.
+			const deadline = Date.now() + 30_000;
+			let held: { carol: unknown; dave: unknown } = { carol: null, dave: null };
+			while (Date.now() < deadline) {
+				held = { carol: await groupOf(c.host, dm.data.id), dave: await groupOf(d.host, dm.data.id) };
+				if (held.carol && Bun.deepEquals(held.carol, held.dave)) break;
+				await Bun.sleep(100);
+			}
+			expect(held.dave).toMatchObject({ generation: 0, epoch: 1 });
+			expect(held.carol).toEqual(held.dave);
+		} finally {
+			await Promise.all([c.end(), d.end()]);
+		}
+	}, 120_000);
 });

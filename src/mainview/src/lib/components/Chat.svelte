@@ -125,6 +125,7 @@
 		onUnreadMark = undefined,
 		onVoiceNoteOverride = undefined,
 		intro = undefined,
+		notice = undefined,
 		retryFirstPage = null,
 		paneFocused = true,
 		onRemoveMember = undefined,
@@ -171,6 +172,8 @@
 		onVoiceNoteOverride?: (blob: Blob) => void;
 		/** The start of the chat, above its oldest message (ChatIntro). */
 		intro?: Snippet;
+		/** What the chat says of itself over its message box: a conversation's of its encrypted group (ConversationState). */
+		notice?: Snippet;
 		/** Set while the chat's first page has failed: an empty list says so, with Try again calling this (MessageList). */
 		retryFirstPage?: (() => void) | null;
 		/**
@@ -858,6 +861,7 @@
 		bind:this={composerEl}
 		class="bg-duvet-glass absolute inset-x-0 bottom-0 z-4 flex flex-col px-(--duvet-pad-x) pt-2 pb-3.5 shadow-[0_-1px_0_var(--duvet-line)] backdrop-blur-[20px] backdrop-saturate-[1.8]"
 	>
+		{@render notice?.()}
 		{@render draftBars(channelId, () => chatInputRef?.focus(), true)}
 		{#if command}
 			{@const active = command}
