@@ -1,5 +1,6 @@
 import { getHostURL, route } from "$lib/common/common";
 import { inAppWords } from "$lib/api/error-wording";
+import { duvetClient } from "$lib/e2e/client";
 import { currentShell } from "$lib/platform";
 import {
 	renewalDue,
@@ -26,6 +27,8 @@ export interface FetchRequestConfig extends Omit<RequestInit, "body"> {
 	/** How long a request other than a form's waits for its answer: requestLimits.answerMs unless its route needs longer
 	 * (slowAnswerMs), and Infinity to wait as long as it takes. A form's upload has its own (uploadLimits). */
 	answerMs?: number;
+	/** Its answer's body as bytes, a Uint8Array, whatever its type: a sealed file's. A refusal's JSON stays JSON. */
+	bytes?: boolean;
 }
 
 /** How long a request other than a form's goes without a sign of its answer (its headers, then each piece of its body)
@@ -86,6 +89,52 @@ export class FetchError extends Error {
 		this.config = config;
 		this.response = response;
 	}
+}
+
+/**
+ * The API's 426 (PLAN-E2E-API.md, its e2eClient): a route of end-to-end encryption, or of a conversation, takes only a
+ * client that has it, and this one isn't (its X-Duvet-Client is below E2E_MIN_CLIENTS). `client` is what the API read
+ * it as, null when it couldn't; `minimum` is its platform's lowest version with encryption, null when the platform has
+ * none yet (macOS and Linux, decisions 38 and 39).
+ */
+export class UpdateRequiredError extends FetchError {
+	readonly client: string | null;
+	readonly minimum: string | null;
+
+	constructor(message: string, config: FetchRequestConfig, response: FetchResponse) {
+		super(message, config, response);
+		this.name = "UpdateRequiredError";
+		const { client, minimum } = response.data ?? {};
+		this.client = typeof client === "string" ? client : null;
+		this.minimum = typeof minimum === "string" ? minimum : null;
+	}
+}
+
+/** What the API's 503 says while encrypted conversations are paused (E2E_PAUSED, its e2eWrites). */
+const PAUSED = "encrypted conversations are paused";
+
+/**
+ * The API's 503 while encrypted conversations are paused: a conversation's write waits `retryAfter` seconds, its
+ * Retry-After (60, the API's own, when it doesn't read), and goes again as it was.
+ */
+export class PausedError extends FetchError {
+	readonly retryAfter: number;
+
+	constructor(message: string, config: FetchRequestConfig, response: FetchResponse) {
+		super(message, config, response);
+		this.name = "PausedError";
+		const seconds = Number(response.headers.get("Retry-After") ?? Number.NaN);
+		this.retryAfter = Number.isFinite(seconds) && seconds >= 0 ? seconds : 60;
+	}
+}
+
+/** An answer of the API's that isn't a success, as the error it is: a 426 or a pause's 503 by its type, any other a
+ * FetchError, read as it always was. */
+function refusal(response: FetchResponse, config: FetchRequestConfig): FetchError {
+	const message = `Request failed with status ${response.status}`;
+	if (response.status === 426) return new UpdateRequiredError(message, config, response);
+	if (response.status === 503 && response.data?.error === PAUSED) return new PausedError(message, config, response);
+	return new FetchError(message, config, response);
 }
 
 class RefreshFailedError extends Error {
@@ -378,7 +427,7 @@ async function takeMainWindowsRenewal(refused: string | null): Promise<string> {
 }
 
 async function requestRefresh(): Promise<string> {
-	const refreshHeaders = new Headers();
+	const refreshHeaders = new Headers({ "X-Duvet-Client": duvetClient() });
 	const currentSessionToken = localStorage.getItem("duvet_refresh_token");
 	if (currentSessionToken) {
 		refreshHeaders.set("X-Session-Token", currentSessionToken);
@@ -468,11 +517,16 @@ export function keepSessionFresh(): { ready: Promise<void>; connected: () => voi
 	};
 }
 
-const buildFetchResponse = async (res: Response): Promise<FetchResponse> => {
+const buildFetchResponse = async (res: Response, bytes = false): Promise<FetchResponse> => {
 	let responseData = null;
 	const contentType = res.headers.get("Content-Type");
 	if (contentType && contentType.includes("application/json")) {
 		responseData = await res.json().catch(() => null);
+	} else if (bytes) {
+		responseData = await res.arrayBuffer().then(
+			(body) => new Uint8Array(body),
+			() => null,
+		);
 	} else {
 		responseData = await res.text().catch(() => null);
 	}
@@ -499,6 +553,8 @@ const coreFetch = async <T = any>(endpoint: string, options: FetchRequestConfig 
 	const sessionToken = localStorage.getItem("duvet_refresh_token");
 
 	const headers = new Headers(options.headers);
+	// What the app is: the API takes encryption's routes and a conversation's only from a client that has it (426).
+	headers.set("X-Duvet-Client", duvetClient());
 	if (token) headers.set("Authorization", `Bearer ${token}`);
 	if (sessionToken) headers.set("X-Session-Token", sessionToken);
 
@@ -509,10 +565,12 @@ const coreFetch = async <T = any>(endpoint: string, options: FetchRequestConfig 
 	};
 
 	if (options.data !== undefined) {
+		// A form, or a Blob's bytes (a sealed part, a day of the backup), go as they are; anything else as JSON.
+		const raw = options.data instanceof FormData || options.data instanceof Blob;
 		if (!headers.has("Content-Type") && !(options.data instanceof FormData)) {
-			headers.set("Content-Type", "application/json");
+			headers.set("Content-Type", raw ? "application/octet-stream" : "application/json");
 		}
-		fetchOptions.body = options.data instanceof FormData ? options.data : JSON.stringify(options.data);
+		fetchOptions.body = raw ? options.data : JSON.stringify(options.data);
 	}
 
 	let url = endpoint.startsWith("http") ? endpoint : `${getHostURL()}${endpoint}`;
@@ -531,7 +589,7 @@ const coreFetch = async <T = any>(endpoint: string, options: FetchRequestConfig 
 	let response = await send(url, fetchOptions);
 
 	if (!response.ok) {
-		const fetchResp = await buildFetchResponse(response);
+		const fetchResp = await buildFetchResponse(response, options.bytes);
 
 		if (response.status === 401 && !options._retry) {
 			options._retry = true;
@@ -543,17 +601,15 @@ const coreFetch = async <T = any>(endpoint: string, options: FetchRequestConfig 
 			const newSessionToken = localStorage.getItem("duvet_refresh_token");
 			if (newSessionToken) headers.set("X-Session-Token", newSessionToken);
 			const retryResponse = await send(url, { ...fetchOptions, headers });
-			const parsedRetry = await buildFetchResponse(retryResponse);
-			if (!retryResponse.ok) {
-				throw new FetchError(`Request failed with status ${retryResponse.status}`, options, parsedRetry);
-			}
+			const parsedRetry = await buildFetchResponse(retryResponse, options.bytes);
+			if (!retryResponse.ok) throw refusal(parsedRetry, options);
 			return parsedRetry;
 		}
 
-		return Promise.reject(new FetchError(`Request failed with status ${response.status}`, options, fetchResp));
+		return Promise.reject(refusal(fetchResp, options));
 	}
 
-	return buildFetchResponse(response);
+	return buildFetchResponse(response, options.bytes);
 };
 
 const api: ApiClient = {

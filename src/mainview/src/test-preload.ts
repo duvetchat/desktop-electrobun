@@ -1,4 +1,5 @@
 import { afterAll, mock } from "bun:test";
+import { version } from "../../../package.json";
 
 // Each test file runs in a global object and a module registry of its own (`bun test --isolate`, #176), and this file
 // runs first in each one (bunfig.toml): every file starts from the same environment, alone or in the full run. Once a
@@ -28,11 +29,13 @@ class MemoryStorage {
 }
 
 // What the app gets from Vite (vite.config.ts's defines), from SvelteKit ($app/environment) and from the webview, as the
-// code reads them: the API at an address that never resolves, SvelteKit outside a browser, and no session kept.
+// code reads them: the API at an address that never resolves, the app's own version, SvelteKit outside a browser, and
+// no session kept.
 Object.assign(globalThis, {
 	VITE_API_URL: "https://api.test",
 	VITE_WS_URL: "",
 	VITE_DOMAIN_TARGET_ENV: "duvet",
+	VITE_APP_VERSION: version,
 	localStorage: new MemoryStorage(),
 });
 mock.module("$app/environment", () => ({ browser: false }));
