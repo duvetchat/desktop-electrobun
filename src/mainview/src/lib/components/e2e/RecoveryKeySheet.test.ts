@@ -1,0 +1,54 @@
+import { describe, expect, test } from "bun:test";
+import { render } from "svelte/server";
+import { NOTICES } from "$lib/e2e/notices";
+import en from "../../../../messages/en.json";
+import { tags } from "../server-render";
+
+// The first device's recovery key (decision 23; PLAN-E2E-CLIENTES.md, Task 12): its 48 characters in 12 groups of 4,
+// with Copy and Download, and "I saved it", without which nothing goes on.
+const { default: RecoveryKeySheet } = await import("./RecoveryKeySheet.svelte");
+
+const KEY = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnop";
+const drawn = (saved: boolean) =>
+	render(RecoveryKeySheet, { props: { recoveryKey: KEY, saved, onContinue: async () => {} } }).body.replace(
+		/<!--[^]*?-->/g,
+		"",
+	);
+const named = async (saved: boolean, name: string) =>
+	(await tags(RecoveryKeySheet, { recoveryKey: KEY, saved, onContinue: async () => {} })).filter(
+		(tag) => tag.name === name,
+	);
+
+describe("the recovery key's sheet", () => {
+	test("the key shows in 12 groups of 4", () => {
+		const groups = [...drawn(false).matchAll(/<li[^>]*>\s*([^<]*?)\s*<\/li>/g)].map((match) => match[1]);
+		expect(groups).toHaveLength(12);
+		expect(groups.every((group) => group?.length === 4)).toBe(true);
+		expect(groups.join("")).toBe(KEY);
+	});
+
+	test("nothing goes on until I saved it is ticked", async () => {
+		const [box] = await named(false, "input");
+		expect(box?.attributes).toMatchObject({ type: "checkbox" });
+		expect(box?.attributes).not.toHaveProperty("checked");
+		const go = (await named(false, "button")).at(-1);
+		expect(go?.attributes).toHaveProperty("disabled");
+		expect(drawn(false)).toContain("I saved it");
+
+		// Ticked, it goes on.
+		expect((await named(true, "input"))[0]?.attributes).toHaveProperty("checked");
+		expect((await named(true, "button")).at(-1)?.attributes).not.toHaveProperty("disabled");
+	});
+
+	test("offers to copy the key and to download it", () => {
+		const html = drawn(false);
+		expect(html).toMatch(/<button [^>]*>\s*(?:<svg[^]*?<\/svg>\s*)?Copy\s*<\/button>/);
+		expect(html).toMatch(/<button [^>]*>\s*(?:<svg[^]*?<\/svg>\s*)?Download\s*<\/button>/);
+	});
+
+	// Both apps say the notices word for word (lib/e2e/notices.ts, which the mobile app's test holds to the same table).
+	test("says it in the notices' words", () => {
+		expect(en.e2e_recovery_title).toBe(NOTICES.recovery_title);
+		expect(en.e2e_recovery_saved).toBe(NOTICES.recovery_saved);
+	});
+});

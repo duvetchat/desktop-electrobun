@@ -824,8 +824,10 @@ export class FakeApi {
 			),
 			route("POST", `/api/devices/(?<device>${UUID_PATH})/inbox`, "device", (ctx) => this.#sendToInbox(ctx)),
 			route("GET", `${me}/devices/@me/inbox`, "device", ({ device, query }) => {
-				const after = query.get("after") ?? "";
-				const limit = Math.min(Number(query.get("limit") ?? 100) || 100, 100);
+				// As the API binds them (its InboxQuery): after a message's ID, and from 1 to 100 of them.
+				const after = query.has("after") ? uuidIn(query.get("after"), "after") : "";
+				const limit = Number(query.get("limit") ?? 100);
+				if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw fail(400, "limit is 1 to 100");
 				return ok((this.#inboxes.get(device!.id) ?? []).filter((m) => m.id > after).slice(0, limit));
 			}),
 			route("DELETE", `${me}/devices/@me/inbox`, "device", ({ device, query }) => {
@@ -954,7 +956,8 @@ export class FakeApi {
 
 	#registerDevice({ session, body, headers }: Context): Answer {
 		const id = uuidIn(body?.device_id, "device_id");
-		const name = typeof body?.name === "string" && body.name && body.name.length <= 64 ? body.name : null;
+		// Counted by code point, as the API's validator counts a string (max=64).
+		const name = typeof body?.name === "string" && body.name && Array.from(body.name).length <= 64 ? body.name : null;
 		if (!name) throw fail(400, "a device has a name of 64 characters at most");
 		const signatureKey = bytesIn(body?.signature_key, "signature_key", 32);
 		const hpkeKey = bytesIn(body?.hpke_key, "hpke_key", 32);

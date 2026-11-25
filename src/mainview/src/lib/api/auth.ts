@@ -84,12 +84,25 @@ export async function sendChangeEmail(email: string) {
 	}
 }
 
+// What closes before a sign-out leaves the page: the encryption engine's core (lib/e2e/engine.svelte.ts), whose
+// database stays, as signing out only ends the session (decision 13). In the desktop app it stays open in Bun otherwise.
+let beforeSignOut: (() => Promise<void>) | null = null;
+
+/** Runs `close` before each sign-out leaves the page, until what it gives takes it off. */
+export function onSignOut(close: () => Promise<void>): () => void {
+	beforeSignOut = close;
+	return () => {
+		if (beforeSignOut === close) beforeSignOut = null;
+	};
+}
+
 export async function logout() {
 	try {
 		await api.post("/api/auth/logout");
 	} catch {
 		// Best effort — clear local state regardless
 	} finally {
+		await beforeSignOut?.().catch((error: unknown) => console.error("[e2e] The core didn't close on sign-out:", error));
 		accessToken.set(null);
 		localStorage.removeItem("duvet_session_token");
 		localStorage.removeItem("duvet_refresh_token");

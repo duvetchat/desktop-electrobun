@@ -7,7 +7,8 @@
 	// A dialog: a question that needs an answer before anything else (delete this, leave that). The sheet's glass, in
 	// a narrower panel, without a close button: a press outside doesn't answer it, Esc is its Cancel. `actions` holds
 	// its buttons, the one that cancels first. While its answer is being carried out it can ignore Esc
-	// (`escapeKeydownBehavior="ignore"`); `onOpenAutoFocus` puts the focus in its field when it has one.
+	// (`escapeKeydownBehavior="ignore"`); `onOpenAutoFocus` puts the focus in its field when it has one. `body` is
+	// what it shows past its sentence, with buttons of its own (the recovery key's), outside what describes it.
 	let {
 		open = $bindable(false),
 		onOpenChange = undefined,
@@ -16,7 +17,8 @@
 		escapeKeydownBehavior = "close",
 		onOpenAutoFocus = undefined,
 		children,
-		actions,
+		body = undefined,
+		actions = undefined,
 	}: {
 		open?: boolean;
 		onOpenChange?: (open: boolean) => void;
@@ -26,7 +28,8 @@
 		onOpenAutoFocus?: (event: Event) => void;
 		/** What will happen, in a sentence or two. */
 		children?: Snippet;
-		actions: Snippet;
+		body?: Snippet;
+		actions?: Snippet;
 	} = $props();
 
 	// What opens last is in front, whatever opened it (lib/overlay-layers.ts).
@@ -54,9 +57,12 @@
 					{@render children()}
 				</AlertDialog.Description>
 			{/if}
-			<div class="mt-2 flex items-center justify-end gap-2">
-				{@render actions()}
-			</div>
+			{@render body?.()}
+			{#if actions}
+				<div class="mt-2 flex items-center justify-end gap-2">
+					{@render actions()}
+				</div>
+			{/if}
 		</AlertDialog.Content>
 	</AlertDialog.Portal>
 </AlertDialog.Root>

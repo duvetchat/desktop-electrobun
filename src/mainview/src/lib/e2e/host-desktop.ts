@@ -17,7 +17,7 @@ import {
 	type CoreHost,
 	type E2eMessage,
 	type E2eOp,
-	type HostState,
+	type HostOpened,
 	type ShareMade,
 } from "./host";
 
@@ -96,7 +96,7 @@ export class DesktopCoreHost implements CoreHost {
 		}
 	}
 
-	open(userId: string): Promise<{ state: HostState; keyStorage?: "keyring" | "file" | "provided" }> {
+	open(userId: string): Promise<HostOpened> {
 		return this.#ask("open", { userId });
 	}
 

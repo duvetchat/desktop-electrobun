@@ -2,7 +2,7 @@
 // the client X-Duvet-Client and an identify's client name, which the API holds to E2E_MIN_CLIENTS, and the device of this
 // installation an identify names, which the page keeps by user so it identifies before its core opens (Ruling 30).
 // Neither is a secret: the API knows both.
-import { readShellInputs, shellFor, type ShellInputs } from "$lib/platform";
+import { readShellInputs, shellFor, type Os, type ShellInputs } from "$lib/platform";
 
 const PLATFORMS = { windows: "desktop-windows", mac: "desktop-macos", linux: "desktop-linux", web: "web" } as const;
 
@@ -12,6 +12,30 @@ const PLATFORMS = { windows: "desktop-windows", mac: "desktop-macos", linux: "de
  */
 export function duvetClient(inputs: ShellInputs = readShellInputs()): string {
 	return `${PLATFORMS[shellFor({ ...inputs, preview: null }).chrome]}/${VITE_APP_VERSION}`;
+}
+
+const SYSTEMS: Record<Os, string> = { windows: "Windows", mac: "macOS", linux: "Linux", ios: "iOS", other: "" };
+// The browser by its user agent's own mark, the ones built on Chrome's before Chrome's.
+const BROWSERS: [RegExp, string][] = [
+	[/Edg\//, "Edge"],
+	[/OPR\//, "Opera"],
+	[/Firefox\/|FxiOS\//, "Firefox"],
+	[/Chrome\/|CriOS\//, "Chrome"],
+	[/Safari\//, "Safari"],
+];
+
+/**
+ * The name this installation registers its device with, which the user's other devices show (PLAN-E2E-CLIENTES.md,
+ * «Convenciones entre clientes»; Ruling 27): the app's for its system, or the browser and its system, never longer than
+ * the API's 64 characters.
+ */
+export function deviceName(inputs: ShellInputs = readShellInputs()): string {
+	const { chrome, os } = shellFor({ ...inputs, preview: null });
+	if (chrome !== "web") return `Duvet for ${SYSTEMS[chrome]}`;
+	const agent = inputs.userAgent;
+	const browser = BROWSERS.find(([mark]) => mark.test(agent))?.[1] ?? "Browser";
+	const system = /Android/.test(agent) ? "Android" : /CrOS/.test(agent) ? "ChromeOS" : SYSTEMS[os];
+	return system ? `${browser} on ${system}` : browser;
 }
 
 const USER_KEY = "duvet.e2e.user";

@@ -534,7 +534,19 @@ const buildFetchResponse = async (res: Response): Promise<FetchResponse> => {
 	};
 };
 
-const coreFetch = async <T = any>(endpoint: string, options: FetchRequestConfig = {}): Promise<FetchResponse<T>> => {
+/** A session's tokens, as a login gives them: its access token and its session token. */
+export interface SessionTokens {
+	token: string;
+	sessionToken: string | null;
+}
+
+/** `given`: another session's tokens, whose requests go as the app's do but for the app's session renewal, which a
+ * 401 of theirs leaves alone. Without them, the session the app keeps. */
+const coreFetch = async <T = any>(
+	endpoint: string,
+	options: FetchRequestConfig = {},
+	given?: SessionTokens,
+): Promise<FetchResponse<T>> => {
 	// A form, or a Blob's bytes (a sealed part, a day of the backup), goes up through XMLHttpRequest, which gives up an
 	// upload that stalls (sendForm) and reports how far it is; the rest through fetch, given up when its answer doesn't
 	// come in time (fetchWithin).
@@ -546,8 +558,8 @@ const coreFetch = async <T = any>(endpoint: string, options: FetchRequestConfig 
 			? sendForm(url, init, upload, bytes, options.onUploadProgress)
 			: fetchWithin(url, init, options.answerMs ?? requestLimits.answerMs);
 
-	const token = get(accessToken) || localStorage.getItem("duvet_session_token");
-	const sessionToken = localStorage.getItem("duvet_refresh_token");
+	const token = given ? given.token : get(accessToken) || localStorage.getItem("duvet_session_token");
+	const sessionToken = given ? given.sessionToken : localStorage.getItem("duvet_refresh_token");
 
 	const headers = new Headers(options.headers);
 	// What the app is: the API takes encryption's routes and a conversation's only from a client that has it (426).
@@ -558,7 +570,8 @@ const coreFetch = async <T = any>(endpoint: string, options: FetchRequestConfig 
 	const fetchOptions: RequestInit = {
 		...options,
 		headers,
-		credentials: "include",
+		// Another session's requests carry none of the app's cookies, which name the app's own session.
+		credentials: given ? "omit" : "include",
 	};
 
 	if (options.data !== undefined) {
@@ -586,7 +599,7 @@ const coreFetch = async <T = any>(endpoint: string, options: FetchRequestConfig 
 	if (!response.ok) {
 		const fetchResp = await buildFetchResponse(response);
 
-		if (response.status === 401 && !options._retry) {
+		if (response.status === 401 && !options._retry && !given) {
 			options._retry = true;
 			// Sent before a refresh that has finished since: retry with its tokens. Refreshing again
 			// would revoke them under the requests already retrying with them.
@@ -607,17 +620,24 @@ const coreFetch = async <T = any>(endpoint: string, options: FetchRequestConfig 
 	return buildFetchResponse(response);
 };
 
-const api: ApiClient = {
-	get: (url, config) => coreFetch(url, { ...config, method: "GET" }),
-	delete: (url, config) => coreFetch(url, { ...config, method: "DELETE" }),
-	head: (url, config) => coreFetch(url, { ...config, method: "HEAD" }),
-	options: (url, config) => coreFetch(url, { ...config, method: "OPTIONS" }),
-	post: (url, data, config) => coreFetch(url, { ...config, method: "POST", data }),
-	put: (url, data, config) => coreFetch(url, { ...config, method: "PUT", data }),
-	patch: (url, data, config) => coreFetch(url, { ...config, method: "PATCH", data }),
-};
+/** The requests of a session: the one the app keeps without `given`. */
+const clientOf = (given?: SessionTokens): ApiClient => ({
+	get: (url, config) => coreFetch(url, { ...config, method: "GET" }, given),
+	delete: (url, config) => coreFetch(url, { ...config, method: "DELETE" }, given),
+	head: (url, config) => coreFetch(url, { ...config, method: "HEAD" }, given),
+	options: (url, config) => coreFetch(url, { ...config, method: "OPTIONS" }, given),
+	post: (url, data, config) => coreFetch(url, { ...config, method: "POST", data }, given),
+	put: (url, data, config) => coreFetch(url, { ...config, method: "PUT", data }, given),
+	patch: (url, data, config) => coreFetch(url, { ...config, method: "PATCH", data }, given),
+});
+
+const api: ApiClient = clientOf();
 
 export default api;
+
+/** The requests of a session the app doesn't keep (an encryption engine's in the live tests, one per account), sent
+ * as the app sends its own: X-Duvet-Client, the API's refusals as their errors, and the same time limits. */
+export const sessionApi = (tokens: SessionTokens): ApiClient => clientOf(tokens);
 
 export function getApiError(err: unknown, fallback: string): string {
 	if (err instanceof FetchError && err.response?.data?.error) {
