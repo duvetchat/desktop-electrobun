@@ -1216,9 +1216,7 @@
 			role="listbox"
 			aria-label={t("chat_mention_suggestions")}
 		>
-			<div
-				class={OVERLINE} px-2 pt-1.5 pb-1.5 text-[10.5px] leading-none font-semibold tracking-[0.06em] uppercase"
-			>
+			<div class="{OVERLINE} px-2 pt-1.5 pb-1.5 leading-none">
 				<Rich
 					key="chat_members_matching"
 					values={{
@@ -1268,9 +1266,7 @@
 			role="listbox"
 			aria-label={t("chat_room_suggestions")}
 		>
-			<div
-				class="{OVERLINE} px-2 pt-1.5 pb-1.5 text-[10.5px] leading-none font-semibold tracking-[0.06em] uppercase"
-			>
+			<div class="{OVERLINE} px-2 pt-1.5 pb-1.5 leading-none">
 				<Rich
 					key="chat_rooms_matching"
 					values={{
@@ -1316,9 +1312,7 @@
 			role="listbox"
 			aria-label={t("chat_emoji_suggestions")}
 		>
-			<div
-				class="{OVERLINE} px-2 pt-1.5 pb-1.5 text-[10.5px] leading-none font-semibold tracking-[0.06em] uppercase"
-			>
+			<div class="{OVERLINE} px-2 pt-1.5 pb-1.5 text-[10.5px] leading-none font-semibold tracking-[0.06em] uppercase">
 				<Rich
 					key="chat_emoji_matching"
 					values={{
