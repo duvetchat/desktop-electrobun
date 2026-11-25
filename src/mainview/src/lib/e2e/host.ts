@@ -52,3 +52,47 @@ export const MAX_SHARE_PARTS = 64;
 
 /** The CoreError `handle` refuses a command of `OWN_WAY` with. */
 export const ownWay = (cmd: string) => new CoreError("bad_command", `${cmd} has a way of its own`, { field: "cmd" });
+
+// The desktop's boundary (PLAN-E2E-CLIENTES.md, its section on it): the page asks Bun with one RPC message, `e2e`, and
+// Bun answers each with another, `e2eReply`, by the request's `id`. Neither has a time limit, which Electrobun's
+// requests share one of, as a command can take long. Both halves read these shapes: host-desktop.ts in the page and
+// src/bun/e2e/rpc.ts in Bun.
+
+/** What the page may ask of Bun's core. */
+export const E2E_OPS = [
+	"open",
+	"handle",
+	"sealParts",
+	"openParts",
+	"share",
+	"sharePart",
+	"dropShare",
+	"stash",
+	"importShare",
+	"close",
+	"destroy",
+] as const;
+export type E2eOp = (typeof E2E_OPS)[number];
+
+/** The page's request. */
+export interface E2eMessage {
+	id: number;
+	op: E2eOp;
+	params: unknown;
+	/** The core's instance the page last heard of, 0 before any: Bun refuses an op meant for one that's gone. */
+	instance: number;
+}
+
+/** Bun's answer to the request of its `id`. `id` 0 answers nothing: it only says the core started again. */
+export interface E2eReply {
+	id: number;
+	/** The core's instance now. A new one means the core started again, and what the page still waits for is lost. */
+	instance: number;
+	ok?: unknown;
+	error?: { code: string } & Record<string, unknown>;
+}
+
+/** The most parts of a file one message carries: 16 of 64 KiB are about 1.4 MB in base64, under 2 MiB. */
+export const PARTS_PER_MESSAGE = 16;
+/** A package's part, as `share` makes them and `stash` takes them one at a time: 1 MiB of it, and its tag. */
+export const SHARE_PART = 1_048_576 + PART_TAG;

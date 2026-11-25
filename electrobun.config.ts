@@ -2,6 +2,7 @@
 import type { ElectrobunConfig } from "electrobun";
 
 import pkg from "./package.json";
+import { coreLibraryCopy } from "./src/bun/e2e/library";
 import { secondWindowCopyRules } from "./src/mainview/src/lib/app-windows";
 
 // Electrobun's Bun API (electrobun/bun) imports three.js and Babylon.js onto its default export, which the app never uses:
@@ -75,6 +76,11 @@ export default {
 			// writes empty placeholders there, which the app never loads.
 			"native/macos/build/libLiquidGlass.dylib": "native/libLiquidGlass.dylib",
 			"native/macos/build/libWindowButtons.dylib": "native/libWindowButtons.dylib",
+
+			// The end-to-end encryption core, which the app also loads from Resources/app/native/ (src/bun/e2e/library.ts):
+			// a Windows x64 build carries its DLL, and a macOS or Linux one none, where the core is unsupported. Electrobun
+			// builds for the system it runs on.
+			...coreLibraryCopy(),
 		},
 		// Those libraries are the preBuild hook's output, not sources to rebuild on.
 		watchIgnore: ["dist/**", "native/macos/build/**"],

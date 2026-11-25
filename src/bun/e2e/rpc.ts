@@ -1,0 +1,352 @@
+// Bun's half of the desktop's boundary (PLAN-E2E-CLIENTES.md, its section on it, Rulings 5 and 6, and Task 7): what the
+// page may ask of the core, and what asks the person first. A script in the page, an XSS in what a message draws, can
+// ask whatever the page can, and so read and write while it lasts. But the core takes the commands of its contract
+// alone, and approving a device, making an identity or changing the keys takes a yes in the system's own box, whose
+// text Bun writes (confirm.ts). The page asks in the main window's `e2e` message alone (index.ts): the pop-out's and
+// the Settings windows' RPC have no handler for it. Ops wait their turn, one at a time, so nothing runs between a
+// question and the command it answers.
+import {
+	ATTACHMENT_PART,
+	E2E_OPS,
+	MAX_SHARE_PARTS,
+	OWN_WAY,
+	PART_TAG,
+	PARTS_PER_MESSAGE,
+	SHARE_PART,
+	type E2eReply,
+} from "../../mainview/src/lib/e2e/host";
+import {
+	approvalDevice,
+	approvalQuestion,
+	newKeysQuestion,
+	rotationQuestion,
+	type Confirm,
+	type Question,
+} from "./confirm";
+import { CoreStopped, type CoreFailure, type CoreWorker, type WorkerReply } from "./core";
+
+/** The core's commands, as its contract lists them (rpc.test.ts keeps a copy): `handle` takes these alone. */
+export const CORE_COMMANDS: ReadonlySet<string> = new Set([
+	"status",
+	"create_device",
+	"create_identity",
+	"recover",
+	"approval_begin",
+	"approval_offer",
+	"approval_reveal",
+	"approval_check",
+	"approval_confirm",
+	"approval_accept",
+	"approval_from_qr",
+	"approval_receive",
+	"sign_device_list",
+	"observe_user",
+	"safety_number",
+	"verify_user",
+	"reset_identity",
+	"rotate_keys",
+	"identity_uploaded",
+	"device_list_uploaded",
+	"key_packages",
+	"bind_proof",
+	"create_group",
+	"commit_result",
+	"add_members",
+	"remove_members",
+	"leave",
+	"commit_pending",
+	"refresh_due",
+	"refresh",
+	"join_external",
+	"reset_group",
+	"group",
+	"apply",
+	"encrypt",
+	"sent",
+	"discard",
+	"edit",
+	"delete",
+	"messages",
+	"search",
+	"without_devices",
+	"attachment_key",
+	"attachment_encrypt",
+	"attachment_decrypt",
+	"receive_direct",
+	"backup_due",
+	"backup_segment",
+	"backup_uploaded",
+	"backup_import",
+	"backup_reencrypt",
+	"history_share",
+	"history_import",
+	"catch_up",
+	"catch_up_delivered",
+]);
+
+/**
+ * What asks the person first: the plan's four, and create_identity, which the core runs as it runs reset_identity (a
+ * new identity on a device without one), so asking for the one alone would leave the other as a way around it.
+ */
+export const CONFIRMED: ReadonlySet<string> = new Set([
+	"approval_confirm",
+	"approval_from_qr",
+	"rotate_keys",
+	"reset_identity",
+	"create_identity",
+]);
+
+const OPS: ReadonlySet<string> = new Set(E2E_OPS);
+/** The ops a page sends whatever core it last heard of: each names its user, or needs none. */
+const STANDALONE: ReadonlySet<string> = new Set(["open", "close", "destroy"]);
+/** The devices a list has at most (the API's), so a rotation's question can name every one it removes. */
+const LIST = 20;
+/** A text field's length at most: an ID, a file's key. */
+const SHORT = 256;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+export interface BoundaryDeps {
+	/** Starts the core's worker (core.ts); null when the build carries no library, and the core is unsupported. */
+	start: (() => CoreWorker) | null;
+	/** The person's answer, outside the page (confirm.ts). */
+	confirm: Confirm;
+	/** Sends the page a reply: the main window's `e2eReply` message. */
+	reply: (reply: E2eReply) => void;
+}
+
+/** What answers a request with an error. */
+class Refusal extends Error {
+	constructor(readonly failure: CoreFailure & { message: string }) {
+		super(failure.message);
+	}
+}
+const refused = (code: string, message: string, extra: Record<string, unknown> = {}) =>
+	new Refusal({ code, message, ...extra });
+const bad = (field: string, message: string) => refused("bad_command", message, { field });
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+	typeof value === "object" && value !== null && !Array.isArray(value);
+const text = (value: unknown, field: string): string => {
+	if (typeof value !== "string" || value.length > SHORT) throw bad(field, `${field} is a short text`);
+	return value;
+};
+const count = (value: unknown, field: string): number => {
+	if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) throw bad(field, `${field} is a count`);
+	return value;
+};
+const uuid = (value: unknown, field: string): string => {
+	if (typeof value !== "string" || !UUID.test(value)) throw bad(field, `${field} is a UUID`);
+	return value;
+};
+/** The longest base64 of `bytes` bytes. */
+const base64Length = (bytes: number) => Math.ceil(bytes / 3) * 4;
+/** A worker's reply as an op's result: its `ok`, JSON as the core's contract gives it, or its error thrown. */
+const unwrap = (answer: WorkerReply): any => {
+	if ("error" in answer) throw new Refusal({ message: answer.error.code, ...answer.error });
+	return answer.ok;
+};
+
+/** A file's parts for sealParts or openParts: 16 at most, each of `limit` bytes at most, in base64. */
+function fileParts(params: Record<string, unknown>, limit: number) {
+	const key = text(params.key, "key");
+	const attachmentId = text(params.attachmentId, "attachmentId");
+	const index = count(params.index, "index");
+	const { last, parts } = params;
+	if (typeof last !== "boolean") throw bad("last", "last says whether the parts end the file");
+	if (!Array.isArray(parts) || parts.length === 0 || !parts.every((part) => typeof part === "string")) {
+		throw bad("parts", "parts are base64, one at least");
+	}
+	if (parts.length > PARTS_PER_MESSAGE) {
+		throw refused("too_large", `a message carries ${PARTS_PER_MESSAGE} parts at most`, { limit: PARTS_PER_MESSAGE });
+	}
+	if (parts.some((part: string) => part.length > base64Length(limit))) {
+		throw refused("too_large", `a part has ${limit} bytes at most`, { limit });
+	}
+	return { key, attachmentId, index, last, parts };
+}
+
+/** The devices a rotation removes, which its question names: their IDs, as many as a list holds. */
+function devices(value: unknown): string[] {
+	if (!Array.isArray(value) || value.length > LIST || !value.every((id) => typeof id === "string" && UUID.test(id))) {
+		throw bad("remove", "remove is a list of devices' IDs");
+	}
+	return value;
+}
+
+/**
+ * Bun's half of the boundary: the handler of the main window's `e2e` message. It answers each request with `reply`, in
+ * the order they came, and never throws: a throw in the app's worker would end it, and the app with it.
+ */
+export function e2eBoundary({ start, confirm, reply }: BoundaryDeps): (message: unknown) => void {
+	let worker: CoreWorker | null = null;
+	/** The core's instance: one more each time its worker stops, which the page is told. */
+	let instance = 1;
+	/** The handle of the database the worker has open, and one a stopped worker left open in the library. */
+	let opened: number | null = null;
+	let leaked: number | null = null;
+	/** The device the approval under way would approve: the commitment of the last offer the core took. */
+	let underWay: string | null = null;
+	let turn: Promise<void> = Promise.resolve();
+
+	const tell = (message: E2eReply) => {
+		try {
+			reply(message);
+		} catch (error) {
+			console.error("[e2e] couldn't answer the page:", error);
+		}
+	};
+
+	/** One op in the core's worker, started for it if there's none, after closing what a stopped one left open. */
+	async function core(op: string, params?: unknown): Promise<WorkerReply> {
+		if (!start) throw refused("internal", "there's no core for this platform");
+		try {
+			if (!worker) {
+				worker = start();
+				if (leaked !== null) {
+					await worker.run("forget", { handle: leaked });
+					leaked = null;
+				}
+			}
+			return await worker.run(op, params);
+		} catch (error) {
+			if (!(error instanceof CoreStopped)) throw error;
+			worker = null;
+			leaked = opened ?? leaked;
+			opened = null;
+			underWay = null;
+			instance++;
+			tell({ id: 0, instance });
+			throw refused("internal", "the core started again: open it again");
+		}
+	}
+
+	/** Asks the person before one of CONFIRMED runs, naming what Bun itself read: a no throws `refused`. */
+	async function askFirst(cmd: string, command: Record<string, unknown>): Promise<void> {
+		let question: Question;
+		if (cmd === "approval_from_qr") {
+			const asked = approvalDevice(command.qr, "key");
+			if (!asked) throw bad("qr", "the QR isn't an approval's");
+			question = approvalQuestion(asked.device);
+		} else if (cmd === "approval_confirm") {
+			// Bun learns the device of an approval from its offer: one made before the app started, or before another
+			// open, is unknown here, and is offered again (the same commitment gets the same offer).
+			if (underWay === null) throw refused("refused", "this device can't tell which device it would approve");
+			question = approvalQuestion(underWay);
+		} else {
+			const remove = cmd === "rotate_keys" ? devices(command.remove) : [];
+			// Run again before its upload, the command makes nothing new: it hands back what it made.
+			const status = unwrap(await core("handle", { command: { cmd: "status" } }));
+			question =
+				cmd === "rotate_keys"
+					? rotationQuestion(remove, status.waiting_upload === "rotate_keys")
+					: newKeysQuestion(status.waiting_upload === "create_identity");
+		}
+		let yes = false;
+		try {
+			yes = await confirm(question);
+		} catch (error) {
+			console.error("[e2e] the confirmation failed:", error);
+		}
+		if (!yes) throw refused("refused", "the person didn't confirm it");
+	}
+
+	async function handleCommand(command: unknown): Promise<unknown> {
+		if (!isRecord(command)) throw bad("command", "a command is an object");
+		const { cmd } = command;
+		if (typeof cmd !== "string" || !CORE_COMMANDS.has(cmd)) throw bad("cmd", "no such command");
+		if (OWN_WAY.includes(cmd)) throw bad("cmd", `${cmd} has a way of its own`);
+		const offered = cmd === "approval_offer" ? approvalDevice(command.commitment, "hash") : null;
+		if (CONFIRMED.has(cmd)) await askFirst(cmd, command);
+		const result = await core("handle", { command });
+		if (cmd === "approval_offer" && "ok" in result) underWay = offered?.device ?? null;
+		if (cmd === "approval_confirm" && "ok" in result) underWay = null;
+		return unwrap(result);
+	}
+
+	async function run(op: unknown, params: unknown, under: unknown): Promise<unknown> {
+		if (typeof op !== "string" || !OPS.has(op)) throw bad("op", "no such op");
+		if (!STANDALONE.has(op) && under !== instance) throw refused("internal", "the core started again: open it again");
+		const p = isRecord(params) ? params : {};
+		switch (op) {
+			case "open": {
+				const userId = uuid(p.userId, "userId");
+				underWay = null;
+				if (!start) return { state: "unsupported" };
+				// The core's handle stays in Bun.
+				const { handle, ...opening } = unwrap(await core("open", { userId }));
+				opened = typeof handle === "number" ? handle : null;
+				return opening;
+			}
+			case "close":
+				underWay = null;
+				if (worker) unwrap(await core("close"));
+				opened = null;
+				return {};
+			case "destroy": {
+				const userId = uuid(p.userId, "userId");
+				underWay = null;
+				const destroyed = await core("destroy", { userId });
+				opened = null;
+				return unwrap(destroyed);
+			}
+			case "handle":
+				return handleCommand(p.command);
+			case "sealParts":
+				return unwrap(await core(op, fileParts(p, ATTACHMENT_PART)));
+			case "openParts":
+				return unwrap(await core(op, fileParts(p, ATTACHMENT_PART + PART_TAG)));
+			case "share": {
+				const { command } = p;
+				if (!isRecord(command) || (command.cmd !== "history_share" && command.cmd !== "catch_up")) {
+					throw bad("cmd", "a package is made by history_share or catch_up");
+				}
+				return unwrap(await core("share", { command }));
+			}
+			case "sharePart":
+				return unwrap(await core("sharePart", { shareId: text(p.shareId, "shareId"), n: count(p.n, "n") }));
+			case "dropShare":
+				return unwrap(await core("dropShare", { shareId: text(p.shareId, "shareId") }));
+			case "stash": {
+				const shareId = text(p.shareId, "shareId");
+				const n = count(p.n, "n");
+				const { part } = p;
+				if (typeof part !== "string") throw bad("part", "a part is base64");
+				if (part.length > base64Length(SHARE_PART)) {
+					throw refused("too_large", `a part has ${SHARE_PART} bytes at most`, { limit: SHARE_PART });
+				}
+				if (n >= MAX_SHARE_PARTS) {
+					throw refused("too_large", `a package has ${MAX_SHARE_PARTS} parts at most`, { limit: MAX_SHARE_PARTS });
+				}
+				return unwrap(await core("stash", { shareId, n, part }));
+			}
+			case "importShare":
+				return unwrap(await core("importShare", { shareId: text(p.shareId, "shareId") }));
+		}
+		throw bad("op", "no such op");
+	}
+
+	async function answer(id: number, message: Record<string, unknown>): Promise<void> {
+		let failure: CoreFailure | null = null;
+		let ok: unknown;
+		try {
+			ok = await run(message.op, message.params, message.instance);
+		} catch (error) {
+			if (!(error instanceof Refusal)) console.error("[e2e] an op failed:", error);
+			failure = error instanceof Refusal ? error.failure : { code: "internal", message: "Bun couldn't run it" };
+		}
+		tell(failure ? { id, instance, error: failure } : { id, instance, ok });
+	}
+
+	return (message) => {
+		try {
+			if (!isRecord(message)) return;
+			const { id } = message;
+			if (typeof id !== "number" || !Number.isSafeInteger(id) || id < 1) return;
+			turn = turn
+				.then(() => answer(id, message))
+				.catch((error: unknown) => console.error("[e2e] an op failed:", error));
+		} catch (error) {
+			console.error("[e2e] a request couldn't be read:", error);
+		}
+	};
+}
