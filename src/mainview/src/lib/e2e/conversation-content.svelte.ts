@@ -27,6 +27,8 @@ const through = new Map<string, number | null>();
 const asked = new Map<string, Set<string>>();
 /** The IDs the next batch asks for, by conversation. */
 const next = new Map<string, Set<string>>();
+/** By conversation: the notices waiting for a message's text, each woken when the engine says it changed. */
+const waiting = new Map<string, Set<() => void>>();
 let reader: Reader | null = null;
 let scheduled = false;
 
@@ -77,6 +79,47 @@ export function contentOf(conversationId: string): MessageContent {
 	};
 }
 
+/** How long a message's notice waits for its text (PLAN-E2E-CLIENTES.md, task 20). */
+export const NOTICE_WAIT_MS = 2_000;
+
+/**
+ * A message's text for its notice (task 20): what this device's database holds of it, from the author the API names,
+ * read now and again each time the engine says the conversation changed (its entry applied), for `ms` at most. Null
+ * without it by then, or for one without text: the notice says a message came. On the web, a tab without the core reads
+ * it from the tab that has it, which tells it what changed. It isn't kept: it's the notice's alone.
+ */
+export async function deviceText(
+	conversationId: string,
+	id: string,
+	author: string,
+	ms = NOTICE_WAIT_MS,
+): Promise<string | null> {
+	const read = reader;
+	if (!read) return null;
+	let wake = () => {};
+	const waiter = () => wake();
+	let wakes = waiting.get(conversationId);
+	if (!wakes) waiting.set(conversationId, (wakes = new Set()));
+	wakes.add(waiter);
+	let timer: ReturnType<typeof setTimeout> | undefined;
+	const late = new Promise<null>((resolve) => (timer = setTimeout(() => resolve(null), ms)));
+	try {
+		for (;;) {
+			// A change that comes while it reads has it read again.
+			const woke = new Promise<void>((resolve) => (wake = resolve));
+			const answer = await Promise.race([read(conversationId, [id]).catch(() => undefined), late]);
+			if (answer === null) return null;
+			const row = answer?.rows.find((shown) => shown.message_id === id);
+			if (row?.status === "ok" && row.user_id === author) return row.text;
+			if ((await Promise.race([woke, late])) === null) return null;
+		}
+	} finally {
+		clearTimeout(timer);
+		wakes.delete(waiter);
+		if (!wakes.size) waiting.delete(conversationId);
+	}
+}
+
 /** The text the person typed of their own message (by its nonce while it's sent, then by its ID), until its row is there. */
 export function keepTyped(conversationId: string, id: string, text: string) {
 	mapOf(typed, conversationId).set(id, text);
@@ -112,9 +155,10 @@ export function want(conversationId: string, ids: Iterable<string>) {
 
 /**
  * The engine touched these messages of the conversation (all of them without `ids`), and says how far its queue is
- * applied: those the views asked for are asked again.
+ * applied: those the views asked for are asked again, and a notice waiting for one reads it again (deviceText).
  */
 export function refresh(conversationId: string, ids?: readonly string[], applied?: number | null) {
+	for (const wake of waiting.get(conversationId) ?? []) wake();
 	if (applied !== undefined && through.get(conversationId) !== applied) {
 		through.set(conversationId, applied);
 		changed();

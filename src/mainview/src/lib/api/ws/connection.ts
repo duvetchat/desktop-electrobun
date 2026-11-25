@@ -151,7 +151,7 @@ import { getElectrobunRpc, type ActivityPayload } from "$lib/electrobun-rpc";
 import { identifyData } from "$lib/api/ws/identify";
 import { identifyDevice, keepDevice, keepUser } from "$lib/e2e/client";
 import { isEngineEvent, toEngine } from "$lib/e2e/events";
-import { moveTyped } from "$lib/e2e/conversation-content.svelte";
+import { deviceText, moveTyped } from "$lib/e2e/conversation-content.svelte";
 
 // The user's activities as this app's Bun process reports them: the IPC apps' (VS Code, etc.) and Spotify's. The
 // gateway keeps them 2 minutes and shares only a change, so they go again every 45 s, and on each new session.
@@ -748,7 +748,8 @@ async function showNotification(target: NotifyTarget, messageId: string, kind: "
 			: await conversationNotice(target.conversationId, messageId, target.message);
 	if (!shown || get(currentUser)?.status === 2) return;
 	if (kind === "system" && systemNotifier) {
-		if (!claimNotice(messageId)) return;
+		// Decided as the message came: its chat may have come on screen while its text was waited for.
+		if (onScreen(chatOf(target)) || !claimNotice(messageId)) return;
 		// One the system couldn't show (Bun's toasts not set up or failing, a browser refusing it) is Duvet's notice.
 		const showedBySystem = await systemNotifier.show(shown.notice, shown.place, silent);
 		if (!showedBySystem && !onScreen(chatOf(target))) showClaimedNotice(shown.notice);
@@ -788,7 +789,11 @@ async function conversationNotice(conversationId: string, messageId: string, kno
 	const conversation = get(conversations).find((c) => c.id === conversationId);
 	const author = directMessageAuthor(message, conversation);
 	const place = conversationPlace(conversation, conversationId, messageId, get(currentUser)?.id);
-	const shown = { ...message, author_name: author.name, author_avatar_url: author.avatar };
+	// Its text is the one this device's database holds of it, once its engine applied it (2 s at most), and nothing of
+	// the API's message (its content, its components) is copied, which a server could write under a member's name.
+	// Without it in time, the notice says who wrote and that a message came.
+	const content = message.seq === undefined ? null : await deviceText(conversationId, message.id, message.author_id);
+	const shown = { id: message.id, content, author_name: author.name, author_avatar_url: author.avatar };
 	return { notice: mentionNoticeOf(shown, place, knownPeople(), get(everyEmoji)), place: place.name };
 }
 

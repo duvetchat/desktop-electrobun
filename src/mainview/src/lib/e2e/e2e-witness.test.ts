@@ -1,20 +1,38 @@
 import { describe, expect, spyOn, test } from "bun:test";
+import { get } from "svelte/store";
+import { openGateway } from "$lib/api/ws/test-gateway";
+import type { MentionNotice } from "$lib/mention-notices";
 import { pageStore } from "./engine/store";
 import { FakeApi } from "./testing/fake-api";
 import { coreLibrary } from "./testing/host-bun";
 import { firstDevice, rejection, testHost, until, useFake } from "./testing/engines";
 import * as content from "./conversation-content.svelte";
-import { toEngine, type EngineEvent } from "./events";
 
 // The page's engine and the stores it reaches are .svelte.ts modules whose $state only Svelte's compiler knows: here
-// it's the value itself, set before they load.
+// it's the value itself, set before they load (test-gateway.ts sets it too, with the app's connection's socket).
 Object.assign(globalThis, { $state: <T>(value: T) => value });
+// A message's notice plays the notification sound through an <audio>, which Bun has none of.
+class FakeAudio {
+	volume = 1;
+	currentTime = 0;
+	play() {
+		return Promise.resolve();
+	}
+}
+Object.assign(globalThis, { Audio: FakeAudio });
 const page = await import("./engine.svelte");
+const stores = await import("$lib/stores.svelte");
+const { mentionNotices } = await import("$lib/mention-notices");
+const { setSystemNotifier } = await import("$lib/api/ws/connection");
+const { noticeText } = await import("$lib/system-notifications");
+const { searchConversation, searchEverywhere } = await import("$lib/search");
+const { e2eApi } = await import("$lib/api/e2e");
 
 // Plain text stays in the core's database (PLAN-E2E-CLIENTES.md, Review Focus 1): two devices converse with a witness
 // string, one through the page's own engine and its content cache, sent, quoted, edited, deleted and left waiting after
-// a cut request; then no
-// localStorage item, no record the engine keeps, no body the API saw and no line written to the console holds it.
+// a cut request, searched for on the device and notified with; then no localStorage item, no record the engine keeps,
+// no request the API saw (its address or its body) and no line written to the console holds it. A notice shows it, and
+// the toast is handed it (task 20): in memory, never stored or logged.
 const SLOW = 180_000;
 const CONSOLE = ["log", "info", "warn", "error", "debug", "trace"] as const;
 
@@ -22,7 +40,8 @@ describe.skipIf(!coreLibrary)("the witness", () => {
 	test(
 		"a witness string sent and received is nowhere but in the cores",
 		async () => {
-			const witness = `witness-${crypto.randomUUID()}`;
+			// One word, so a search finds it whole.
+			const witness = `witness${crypto.randomUUID().replaceAll("-", "")}`;
 			const written: string[] = [];
 			const spies = CONSOLE.map((method) =>
 				spyOn(console, method).mockImplementation((...args: unknown[]) => {
@@ -39,15 +58,22 @@ describe.skipIf(!coreLibrary)("the witness", () => {
 					}
 				}),
 			);
-			const bodies: Promise<string>[] = [];
+			const seen: Promise<string>[] = [];
 			const fake = new FakeApi();
-			useFake(fake, (request) => bodies.push(request.text()));
+			useFake(fake, (request) => seen.push(request.text().then((body) => `${request.url} ${body}`)));
 			const [ana, bo] = [fake.addUser(), fake.addUser()];
 			const conversation = fake.addConversation({ type: "dm", members: [ana, bo] });
 			// Ana's device is the page's own engine (lib/e2e/engine.svelte.ts), on a host of the test's, its record in
-			// localStorage; its gateway events reach it as the app's do. Bo's keeps its record there too.
+			// localStorage; its gateway events reach the app's connection, which hands the engine its own. Bo's keeps its
+			// record there too.
 			const token = fake.signIn(ana).token;
 			localStorage.setItem("duvet_session_token", token);
+			const gateway = await openGateway();
+			gateway.receive("READY", {
+				user: { id: ana, username: "ana", status: 1 },
+				sessionToken: "session",
+				guild_ids: [],
+			});
 			const host = testHost();
 			await page.startEngine(ana, {
 				...{ desktop: true, desktopHost: async () => host, webHost: () => Promise.reject(new Error("no web")) },
@@ -56,8 +82,9 @@ describe.skipIf(!coreLibrary)("the witness", () => {
 			await page.makeIdentity();
 			await page.keySaved();
 			const { device_id } = await host.handle<{ device_id: string }>({ cmd: "status" });
-			// oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the fake's events are the API's, as the gateway hands them on
-			const hear = fake.connect(token, device_id, (event) => toEngine(event as EngineEvent));
+			const hear = fake.connect(token, device_id, (event) => {
+				if (event.type !== "READY") gateway.receive(event.type, event.data);
+			});
 			const b = await firstDevice(fake, bo, { store: pageStore(bo) });
 			await page.openConversation(conversation);
 			await until(
@@ -81,7 +108,39 @@ describe.skipIf(!coreLibrary)("the witness", () => {
 			await until(() => content.heldRow(conversation, reply.id)?.text === `re: ${witness}`);
 			await page.editEncrypted(conversation, sent.id, `${witness}, edited`);
 			await until(async () => (await b.engine.messages(conversation, [sent.id]))[0]?.text === `${witness}, edited`);
+
+			// Searched for on the device, in the conversation and everywhere: found, and asked of nobody.
+			const conversations = await e2eApi().conversations();
+			const conv = conversations.find((c) => c.id === conversation)!;
+			const texts = (found: { message: { content: string | null } }[]) => found.map((f) => f.message.content);
+			expect(texts((await searchConversation(conv, { query: witness })).found)).toEqual([
+				`re: ${witness}`,
+				`${witness}, edited`,
+			]);
+			expect(texts((await searchEverywhere({ query: witness }, [], conversations)).found)).toHaveLength(2);
 			await b.engine.deleteMessage(conversation, reply.id);
+
+			// Notified with: Duvet's notice and the system's notification show it, from Ana's device alone.
+			stores.pageVisible.set(true);
+			const told = await b.engine.sendMessage({
+				...{ conversation_id: conversation, nonce: crypto.randomUUID() },
+				text: `${witness}, told`,
+			});
+			await until(() => get(mentionNotices).some((n) => n.id === told?.id && n.text === `${witness}, told`));
+			stores.pageVisible.set(false);
+			const toasts: string[] = [];
+			setSystemNotifier({
+				available: () => true,
+				show: async (notice: MentionNotice) => (toasts.push(noticeText(notice, {})), true),
+			});
+			await b.engine.sendMessage({
+				conversation_id: conversation,
+				nonce: crypto.randomUUID(),
+				text: `${witness}, toast`,
+			});
+			await until(() => toasts.includes(`${witness}, toast`));
+			setSystemNotifier(null);
+
 			// One whose request never reached the API waits on the device, with what goes with it in the clear.
 			fake.cutRequest({ method: "POST", path: `/api/users/@me/conversations/${conversation}/messages` });
 			await rejection(
@@ -93,6 +152,7 @@ describe.skipIf(!coreLibrary)("the witness", () => {
 			expect((await page.pendingEncrypted(conversation)).map((p) => p.text)).toEqual([`${witness}, waiting`]);
 			await page.stopEngine();
 			hear();
+			gateway.close();
 			await b.engine.stop();
 			for (const spy of spies) spy.mockRestore();
 
@@ -105,7 +165,7 @@ describe.skipIf(!coreLibrary)("the witness", () => {
 			expect(kept.some((item) => item.startsWith(`duvet.e2e.${ana}.`))).toBe(true);
 			const found = (where: string[]) => where.filter((text) => text.includes(witness) || text.includes(btoa(witness)));
 			expect(found(kept)).toEqual([]);
-			expect(found(await Promise.all(bodies))).toEqual([]);
+			expect(found(await Promise.all(seen))).toEqual([]);
 			expect(found(written)).toEqual([]);
 		},
 		SLOW,
