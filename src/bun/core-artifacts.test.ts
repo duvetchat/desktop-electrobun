@@ -2,8 +2,8 @@ import { describe, expect, test } from "bun:test";
 import { join } from "node:path";
 import { CARRIED, checkSums } from "../../scripts/core-artifacts";
 
-// The core's artifacts the desktop carries (PLAN-E2E-CLIENTES.md, «Los artefactos del núcleo»): what its release had,
-// byte for byte, as native/core/SOURCE.json records them. scripts/core-artifacts.ts writes both.
+// The core's artifacts the desktop carries (PLAN-E2E-CLIENTES.md, its section on the core's artifacts): what its
+// release had, byte for byte, as native/core/SOURCE.json records them. scripts/core-artifacts.ts writes both.
 const root = join(import.meta.dir, "..", "..");
 const sha256 = async (path: string) =>
 	new Bun.CryptoHasher("sha256").update(await Bun.file(join(root, path)).bytes()).digest("hex");

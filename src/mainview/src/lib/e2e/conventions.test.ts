@@ -6,12 +6,13 @@ import {
 	drawnAs,
 	messageEnvelope,
 	readApprovalFrame,
+	SNIFF_PREFIX,
 	sniffType,
 	type ApprovalFrame,
 } from "./conventions";
 import conventions from "./testing/e2e-conventions.json";
 
-// What the desktop and the mobile app do alike (PLAN-E2E-CLIENTES.md, «Convenciones entre clientes»): each case of the
+// What the desktop and the mobile app do alike (PLAN-E2E-CLIENTES.md, its conventions between clients): each case of the
 // file both repositories carry, which the mobile app's conventions_test.dart reads too.
 describe("the conventions between clients", () => {
 	describe("a message's envelope", () => {
@@ -34,7 +35,17 @@ describe("the conventions between clients", () => {
 	});
 
 	describe("a file's type, by its bytes", () => {
-		for (const c of conventions.types) test(c.case, () => expect(sniffType(base64Bytes(c.bytes))).toBe(c.type));
+		test("both apps read the same first bytes of a file", () => expect(SNIFF_PREFIX).toBe(conventions.sniff_prefix));
+		for (const c of conventions.types) {
+			test(c.case, () => {
+				// A case's bytes, then as many zero bytes as it says, then its tail.
+				const [head, tail] = [base64Bytes(c.bytes), base64Bytes(c.tail ?? "")];
+				const bytes = new Uint8Array(head.length + (c.zeros ?? 0) + tail.length);
+				bytes.set(head);
+				bytes.set(tail, bytes.length - tail.length);
+				expect(sniffType(bytes)).toBe(c.type);
+			});
+		}
 	});
 
 	describe("an approval frame in the inbox", () => {
@@ -42,8 +53,8 @@ describe("the conventions between clients", () => {
 			test(c.case, () => {
 				const frame: ApprovalFrame | null = readApprovalFrame(c.message);
 				expect<unknown>(frame).toEqual(c.frame);
-				// A frame written again is the same message, byte for byte.
-				if (frame) expect(approvalFrameMessage(frame)).toBe(c.message);
+				// A frame written again is the same message byte for byte, or the one its cleaned name makes.
+				if (frame) expect(approvalFrameMessage(frame)).toBe(c.rewritten ?? c.message);
 			});
 		}
 	});

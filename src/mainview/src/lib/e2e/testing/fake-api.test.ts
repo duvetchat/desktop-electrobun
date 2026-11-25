@@ -11,6 +11,8 @@ import { BunCoreHost, coreLibrary } from "./host-bun";
 // the engine will use: what each device sends is what its core made, and what it applies is what the fake handed out.
 // Without the core for this platform (macOS), there's nothing to run them with.
 const CONVERSATIONS = "/api/users/@me/conversations";
+/** What the app says it is, as each of its requests does (X-Duvet-Client). */
+const CLIENT = "desktop-windows/1.2.0";
 const hosts: BunCoreHost[] = [];
 afterAll(async () => {
 	for (const host of hosts) {
@@ -32,6 +34,7 @@ async function call(fake: FakeApi, token: string, method: string, path: string, 
 		method,
 		headers: {
 			Authorization: `Bearer ${token}`,
+			"X-Duvet-Client": CLIENT,
 			"Content-Type": bytes ? "application/octet-stream" : "application/json",
 		},
 		body: body instanceof Uint8Array ? body.slice() : body === undefined ? undefined : JSON.stringify(body),
@@ -120,6 +123,12 @@ async function uploadKeyPackages(fake: FakeApi, d: Device, spent?: string[]) {
 	return { key_packages, handed_out: handedOut };
 }
 
+/** A conversation as the API's list gives it to the device: its group as that device has it. */
+async function conversationOf(fake: FakeApi, d: Device, id: string) {
+	const { body } = await call(fake, d.token, "GET", CONVERSATIONS);
+	return body.find((conversation: { id: string }) => conversation.id === id);
+}
+
 /** The device's core applies entries of the conversation's queue. */
 const apply = (fake: FakeApi, d: Device, conversation: string, entries: unknown[]) =>
 	d.host.handle<{ applied_through: number }>({
@@ -149,7 +158,7 @@ async function dmWithGroup() {
 	expect((await call(fake, a.token, "POST", `/api/users/${ana}/key-packages/claim`)).body).toEqual({
 		key_packages: [],
 	});
-	const shown = (await call(fake, a.token, "GET", `${CONVERSATIONS}/${conversation}`)).body;
+	const shown = await conversationOf(fake, a, conversation);
 	expect(shown).toMatchObject({ id: conversation, type: 1, legacy: false, mls: null });
 	const made = await a.host.handle<Record<string, any>>({
 		cmd: "create_group",
@@ -170,7 +179,7 @@ async function dmWithGroup() {
 	// Bo's device joins by the welcome, read from the number the API says it's been in the group since.
 	const heard = b.heard.find((event) => event.type === "MLS_WELCOME");
 	expect(heard?.data).toMatchObject({ conversation_id: conversation, generation: 0, epoch: 1, devices: [b.id] });
-	const mine = (await call(fake, b.token, "GET", `${CONVERSATIONS}/${conversation}`)).body;
+	const mine = await conversationOf(fake, b, conversation);
 	expect(mine.mls).toEqual({ generation: 0, epoch: 1, last_seq: 2, floor_seq: 1, joined_seq: 2 });
 	const queue = await call(fake, b.token, "GET", `${CONVERSATIONS}/${conversation}/mls/queue?after=1`);
 	expect(queue.body.entries.map((entry: { seq: number; kind: string }) => [entry.seq, entry.kind])).toEqual([
@@ -198,7 +207,7 @@ async function send(fake: FakeApi, d: Device, conversation: string, text: string
 	return { nonce, ciphertext, message: posted.body };
 }
 
-/** A message as the queue's entry its event's object is (PLAN-E2E-CLIENTES.md, «La cola de una conversación»). */
+/** A message as the queue's entry its event's object is (PLAN-E2E-CLIENTES.md, its engine's section on a conversation's queue). */
 const messageEntry = (m: any) => ({
 	...{ seq: m.seq, kind: "message", data: m.ciphertext, message_id: m.id },
 	...{ sender_user: m.author_id, sender_device: m.sender_device_id, sent_at: m.sent_at },
@@ -442,6 +451,9 @@ describe.skipIf(!coreLibrary)("the fake API, with real cores", () => {
 		const [ana, bo, cy] = [fake.addUser(), fake.addUser(), fake.addUser()];
 		const [a, b, c] = [await device(fake, ana), await device(fake, bo), await device(fake, cy)];
 		fake.addConversation({ type: "dm", members: [ana, bo] });
+		// Another connection of Bo's, of no device: it hears its user's events, never a device's.
+		const elsewhere: GatewayEvent[] = [];
+		fake.connect(b.token, null, (event) => elsewhere.push(event));
 		const to = `/api/devices/${b.id}/inbox`;
 		const one = await call(fake, a.token, "POST", to, { message: btoa("one") });
 		const two = await call(fake, a.token, "POST", to, { message: btoa("two") });
@@ -465,6 +477,7 @@ describe.skipIf(!coreLibrary)("the fake API, with real cores", () => {
 			two.body.id,
 		]);
 		expect((await call(fake, b.token, "DELETE", `${inbox}?through=${one.body.id}`)).status).toBe(204);
+		expect(elsewhere.map((event) => event.type)).toEqual(["READY"]);
 		expect((await call(fake, b.token, "GET", inbox)).body.map((m: any) => m.id)).toEqual([two.body.id]);
 	});
 
@@ -721,5 +734,274 @@ describe.skipIf(!coreLibrary)("the fake's switches", () => {
 			await call(fake, b.token, "GET", `${CONVERSATIONS}/${conversation}/mls/queue?after=${committed.body.seq - 1}`)
 		).body;
 		expect(queue.entries[0].data).toBeString();
+	});
+});
+
+describe.skipIf(!coreLibrary)("the fake answers as the API does", () => {
+	test("held events are what each request saved", async () => {
+		const { fake, a, b, conversation } = await dmWithGroup();
+		fake.holdEvents();
+		const { message } = await send(fake, a, conversation, "first words");
+		const path = `${CONVERSATIONS}/${conversation}/messages/${message.id}`;
+		const edit = await a.host.handle<{ ciphertext: string }>({
+			...{ cmd: "edit", conversation_id: conversation, message_id: message.id, text: "second words" },
+		});
+		await call(fake, a.token, "PATCH", path, { ciphertext: edit.ciphertext });
+		const tombstone = await a.host.handle<{ ciphertext: string }>({
+			...{ cmd: "delete", conversation_id: conversation, message_id: message.id },
+		});
+		await call(fake, a.token, "DELETE", path, { ciphertext: tombstone.ciphertext });
+		const before = b.heard.length;
+		fake.releaseEvents();
+		const [created, updated] = b.heard.slice(before);
+		expect(created).toMatchObject({
+			type: "DM_MESSAGE_CREATE",
+			data: { id: message.id, ciphertext: message.ciphertext },
+		});
+		expect(updated).toMatchObject({
+			type: "DM_MESSAGE_UPDATE",
+			data: { entry: { kind: "edit", data: edit.ciphertext } },
+		});
+		expect(updated?.data.entry).not.toHaveProperty("deleted");
+	});
+
+	test("a client without encryption is told to update, but for the configuration and the list", async () => {
+		const fake = new FakeApi();
+		const { token } = fake.signIn(fake.addUser());
+		const ask = async (client?: string, path = "/api/users/@me/devices") => {
+			const headers = { Authorization: `Bearer ${token}`, ...(client ? { "X-Duvet-Client": client } : {}) };
+			const response = await fake.fetch(`${FAKE_API_URL}${path}`, { headers });
+			return { status: response.status, body: await response.json() };
+		};
+		const update = (client: string | null, minimum: string | null) => ({
+			status: 426,
+			body: { error: "update Duvet", client, minimum },
+		});
+		expect(await ask()).toEqual(update(null, null));
+		expect(await ask("desktop-windows/1.2")).toEqual(update(null, null));
+		expect(await ask("desktop-linux/1.2.0")).toEqual(update("desktop-linux/1.2.0", null));
+		fake.minClients = { ...fake.minClients, "desktop-windows": "1.2.0" };
+		expect(await ask("desktop-windows/1.1.9")).toEqual(update("desktop-windows/1.1.9", "1.2.0"));
+		expect(await ask("desktop-windows/1.10.0")).toEqual({ status: 200, body: [] });
+		expect(await ask(undefined, "/api/e2e")).toMatchObject({ status: 200, body: { min_clients: fake.minClients } });
+		expect(await ask(undefined, CONVERSATIONS)).toEqual({ status: 200, body: [] });
+	});
+
+	test("a request's answer comes before its events", async () => {
+		const { fake, a, b, conversation } = await dmWithGroup();
+		const order: string[] = [];
+		fake.connect(b.token, b.id, (event) => {
+			if (event.type !== "READY") order.push(event.type);
+		});
+		const { ciphertext } = await a.host.handle<{ ciphertext: string }>({
+			...{
+				cmd: "encrypt",
+				conversation_id: conversation,
+				nonce: crypto.randomUUID(),
+				envelope: { text: "the answer first" },
+			},
+		});
+		const response = await fake.fetch(`${FAKE_API_URL}${CONVERSATIONS}/${conversation}/messages`, {
+			method: "POST",
+			headers: { Authorization: `Bearer ${a.token}`, "X-Duvet-Client": CLIENT, "Content-Type": "application/json" },
+			body: JSON.stringify({ ciphertext, nonce: crypto.randomUUID() }),
+		});
+		order.push(`answer ${response.status}`);
+		await Promise.resolve();
+		expect(order).toEqual(["answer 201", "DM_MESSAGE_CREATE"]);
+	});
+
+	test("the bodies the API's binding refuses are a 400", async () => {
+		const fake = new FakeApi();
+		const a = await device(fake, fake.addUser());
+		const made = await a.host.handle<Record<string, string>>({ cmd: "create_identity" });
+		const { identity_key, device_list, certificate, encrypted_identity, wrapped_backup_key } = made;
+		const identity = { identity_key, device_list, certificate, encrypted_identity, wrapped_backup_key, replaces: null };
+		const big = bytesBase64(new Uint8Array(64 * 1024 + 1));
+		for (const transfers of [
+			"all",
+			[null],
+			[{ device_id: a.id, certificate, message: "not base64!" }],
+			[{ device_id: a.id, certificate, message: big }],
+		]) {
+			expect((await call(fake, a.token, "PUT", "/api/users/@me/identity", { ...identity, transfers })).status).toBe(
+				400,
+			);
+		}
+		expect((await call(fake, a.token, "PUT", "/api/users/@me/identity", identity)).status).toBe(200);
+		const { key_packages } = await a.host.handle<{ key_packages: KeyPackage[] }>({ cmd: "key_packages" });
+		const [first] = key_packages;
+		const path = "/api/users/@me/devices/@me/key-packages";
+		for (const body of [{}, { key_packages: [{ ...first, id: "" }] }, { key_packages: [{ ...first, data: "" }] }]) {
+			expect((await call(fake, a.token, "PUT", path, body)).status).toBe(400);
+		}
+	});
+
+	test("a device with nothing to hand out hears it, at 0", async () => {
+		const fake = new FakeApi();
+		const [ana, bo] = [fake.addUser(), fake.addUser()];
+		const [a, b] = [await device(fake, ana), await device(fake, bo)];
+		for (const d of [a, b]) await publishIdentity(fake, d);
+		fake.addConversation({ type: "dm", members: [ana, bo] });
+		expect((await call(fake, a.token, "POST", `/api/users/${bo}/key-packages/claim`)).body).toEqual({
+			key_packages: [],
+		});
+		const low = b.heard.filter((event) => event.type === "KEY_PACKAGES_LOW").map((event) => event.data);
+		expect(low).toEqual([{ device_id: b.id, remaining: 0 }]);
+	});
+
+	test("a rotation's transfer takes the place of the device's earlier one, outside the inbox's cap", async () => {
+		const fake = new FakeApi();
+		const ana = fake.addUser();
+		const a = await device(fake, ana);
+		const { made } = await publishIdentity(fake, a);
+		// A second device of Ana's, which the first approves by its QR and which lists itself.
+		const a2 = await device(fake, ana);
+		const { qr } = await a2.host.handle<{ qr: string }>({ cmd: "approval_begin" });
+		const approved = await a.host.handle<{ certificate: string; device_list: string }>({ cmd: "approval_from_qr", qr });
+		const list = { device_list: approved.device_list, base_version: 1, certificate: approved.certificate };
+		expect((await call(fake, a2.token, "PUT", "/api/users/@me/device-list", list)).body).toEqual({ version: 2 });
+		await a.host.handle({ cmd: "device_list_uploaded", version: 2 });
+		await observe(fake, a, ana);
+		// Its inbox is full of what was sent to it.
+		const inbox = `/api/devices/${a2.id}/inbox`;
+		const sent: string[] = [];
+		for (let i = 0; i < 1000; i++)
+			sent.push((await call(fake, a.token, "POST", inbox, { message: btoa(`${i}`) })).body.id);
+		expect((await call(fake, a.token, "POST", inbox, { message: btoa("one more") })).status).toBe(409);
+		// A rotation's transfer goes in all the same, and the same rotation sent again puts its new one in that one's place.
+		const certificates = (await call(fake, a.token, "GET", `/api/users/${ana}/identity`)).body.certificates;
+		const transferred: string[] = [];
+		for (let round = 0; round < 2; round++) {
+			const r = await a.host.handle<Record<string, any>>({ cmd: "rotate_keys", remove: [], certificates });
+			const transfers = r.transfers.map((t: any) => ({
+				device_id: t.device_id,
+				certificate: t.certificate,
+				message: t.transfer,
+			}));
+			const put = await call(fake, a.token, "PUT", "/api/users/@me/identity", {
+				...{ identity_key: r.identity_key, device_list: r.device_list, certificate: r.certificate, transfers },
+				...{ encrypted_identity: r.encrypted_identity, wrapped_backup_key: r.wrapped_backup_key },
+				...{ wrapped_previous_backup_keys: r.wrapped_previous_backup_keys, replaces: made.identity_key },
+			});
+			expect(put.status).toBe(200);
+			const waiting = (await call(fake, a2.token, "GET", `/api/users/@me/devices/@me/inbox?after=${sent.at(-1)}`)).body;
+			expect(waiting).toHaveLength(1);
+			transferred.push(waiting[0].id);
+		}
+		expect(transferred[0]).not.toBe(transferred[1]);
+		expect((await call(fake, a.token, "POST", inbox, { message: btoa("still full") })).status).toBe(409);
+	});
+
+	test("a reset keeps each device's joined_seq, and a message of the generation before is stale", async () => {
+		const { fake, bo, a, b, conversation } = await dmWithGroup();
+		const old = await a.host.handle<{ ciphertext: string }>({
+			...{
+				cmd: "encrypt",
+				conversation_id: conversation,
+				nonce: crypto.randomUUID(),
+				envelope: { text: "before the reset" },
+			},
+		});
+		const claimed = await call(fake, a.token, "POST", `/api/users/${bo}/key-packages/claim`);
+		const reset = await a.host.handle<Record<string, any>>({
+			...{ cmd: "reset_group", conversation_id: conversation },
+			key_packages: { [bo]: claimed.body.key_packages.map((kp: { data: string }) => kp.data) },
+		});
+		const { generation, commit, group_info, initial_group_info, welcome } = reset;
+		const committed = await call(fake, a.token, "POST", `${CONVERSATIONS}/${conversation}/mls/commits`, {
+			...{ generation, epoch: 0, commit, group_info, initial_group_info, welcome },
+		});
+		expect(committed).toMatchObject({ status: 201, body: { seq: 3, generation: 1, epoch: 1, welcome_seq: 4 } });
+		expect((await conversationOf(fake, a, conversation)).mls).toMatchObject({ generation: 1, joined_seq: 1 });
+		expect((await conversationOf(fake, b, conversation)).mls).toMatchObject({ generation: 1, joined_seq: 2 });
+		const stale = await call(fake, a.token, "POST", `${CONVERSATIONS}/${conversation}/messages`, {
+			...{ ciphertext: old.ciphertext, nonce: crypto.randomUUID() },
+		});
+		expect(stale).toMatchObject({ status: 409, body: { error: "stale message", generation: 1, epoch: 1 } });
+	});
+
+	test("a message's entry says whom it mentions and what it answers", async () => {
+		const { fake, ana, a, b, conversation } = await dmWithGroup();
+		const { message: first } = await send(fake, a, conversation, "first");
+		const stranger = "0193a4b2-0000-7000-8000-00000000dead";
+		const { message: reply } = await send(fake, b, conversation, `<@${ana}> yes`, {
+			...{ mentions: [ana, stranger], message_reference: { message_id: first.id } },
+		});
+		// Ana's device reads the queue from its start, as its core has applied none of it.
+		const { entries } = (await call(fake, a.token, "GET", `${CONVERSATIONS}/${conversation}/mls/queue?after=0`)).body;
+		const [firstEntry, replyEntry] = entries.slice(2);
+		expect(firstEntry).toMatchObject({ message_id: first.id });
+		expect(firstEntry).not.toHaveProperty("mentions");
+		expect(firstEntry).not.toHaveProperty("reply_to");
+		expect(replyEntry).toMatchObject({ message_id: reply.id, mentions: [ana], reply_to: first.id });
+		// The core takes the entry as the queue gives it, and keeps what the message answers.
+		expect((await apply(fake, a, conversation, entries)).applied_through).toBe(4);
+		const read = await a.host.handle<{ messages: any[] }>({
+			cmd: "messages",
+			conversation_id: conversation,
+			ids: [reply.id],
+		});
+		expect(read.messages).toEqual([expect.objectContaining({ text: `<@${ana}> yes`, reply_to: first.id })]);
+	});
+
+	test("an entry past 16 KiB comes without its data, which the queue has", async () => {
+		const { fake, a, b, conversation } = await dmWithGroup();
+		const { message } = await send(fake, a, conversation, "short");
+		const edit = await a.host.handle<{ ciphertext: string }>({
+			...{ cmd: "edit", conversation_id: conversation, message_id: message.id, text: "x".repeat(20_000) },
+		});
+		const path = `${CONVERSATIONS}/${conversation}/messages/${message.id}`;
+		const { entry } = (await call(fake, a.token, "PATCH", path, { ciphertext: edit.ciphertext })).body;
+		const event = b.heard.find((heard) => heard.type === "DM_MESSAGE_UPDATE")!;
+		expect(event.data.entry).toMatchObject({ seq: entry.seq, kind: "edit" });
+		expect(event.data.entry).not.toHaveProperty("data");
+		const queue = (
+			await call(fake, b.token, "GET", `${CONVERSATIONS}/${conversation}/mls/queue?after=${entry.seq - 1}`)
+		).body;
+		expect(queue.entries[0].data).toBe(edit.ciphertext);
+	});
+
+	test("a commit with no group to go on, and a message from a device without a leaf, are refused", async () => {
+		const fake = new FakeApi();
+		const [ana, bo] = [fake.addUser(), fake.addUser()];
+		const [a, b] = [await device(fake, ana), await device(fake, bo)];
+		for (const d of [a, b]) await publishIdentity(fake, d);
+		const conversation = fake.addConversation({ type: "dm", members: [ana, bo] });
+		for (const user of [ana, bo]) await observe(fake, a, user);
+		// A group of Ana's device alone: no key package of Bo's goes in.
+		const made = await a.host.handle<Record<string, any>>({
+			...{ cmd: "create_group", conversation_id: conversation, kind: "dm", members: [ana, bo], key_packages: {} },
+			...{ external_sender: fake.externalSender, legacy: false },
+		});
+		const path = `${CONVERSATIONS}/${conversation}/mls/commits`;
+		const { commit, group_info, initial_group_info, welcome } = made;
+		// Without epoch 0's group info, it isn't a creation: it goes on a group there isn't.
+		expect(await call(fake, a.token, "POST", path, { generation: 0, epoch: 0, commit, group_info })).toMatchObject({
+			status: 409,
+			body: { error: "no group yet" },
+		});
+		const created = await call(fake, a.token, "POST", path, {
+			generation: 0,
+			epoch: 0,
+			commit,
+			group_info,
+			initial_group_info,
+			welcome,
+		});
+		expect(created.status).toBe(201);
+		await a.host.handle({ cmd: "commit_result", conversation_id: conversation, accepted: true, seq: created.body.seq });
+		const { ciphertext } = await a.host.handle<{ ciphertext: string }>({
+			...{
+				cmd: "encrypt",
+				conversation_id: conversation,
+				nonce: crypto.randomUUID(),
+				envelope: { text: "only Ana's device" },
+			},
+		});
+		const refused = await call(fake, b.token, "POST", `${CONVERSATIONS}/${conversation}/messages`, {
+			...{ ciphertext, nonce: crypto.randomUUID() },
+		});
+		expect(refused).toMatchObject({ status: 403, body: { error: "this device isn't in the group" } });
 	});
 });

@@ -1,7 +1,7 @@
 /**
  * A UUIDv7 (RFC 9562): the time it was made in Unix milliseconds, its first 48 bits, then its version and random bits.
  * The IDs the client mints itself are these, a device's and a file's, so they sort by when they were made, as the API's
- * own IDs do (PLAN-E2E-CLIENTES.md, «Convenciones entre clientes»).
+ * own IDs do (PLAN-E2E-CLIENTES.md, its conventions between clients).
  */
 export function uuidv7(now = Date.now()): string {
 	const bytes = crypto.getRandomValues(new Uint8Array(16));

@@ -1,5 +1,5 @@
-// The core's errors as the engine meets them (PLAN-E2E-CLIENTES.md, «El anfitrión del núcleo»): each host rejects a
-// command with a CoreError, whose code (the stable codes of the core's contract) the engine decides by, never its
+// The core's errors as the engine meets them (PLAN-E2E-CLIENTES.md, its section on the core's host): each host rejects
+// a command with a CoreError, whose code (the stable codes of the core's contract) the engine decides by, never its
 // message.
 
 /** What an error of the core names beside its code. */

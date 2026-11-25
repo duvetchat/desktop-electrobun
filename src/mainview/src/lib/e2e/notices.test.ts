@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { notice, NOTICES, type NoticeKey } from "./notices";
 import conventions from "./testing/e2e-conventions.json";
 
-// The notices are the same in both apps: the table of PLAN-E2E-CLIENTES.md's «Avisos», as the conventions' file has it
+// The notices are the same in both apps: the table of PLAN-E2E-CLIENTES.md's notices, as the conventions' file has it
 // for the mobile app's test too.
 const isNotice = (key: string): key is NoticeKey => Object.hasOwn(NOTICES, key);
 

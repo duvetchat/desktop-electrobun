@@ -1,5 +1,5 @@
-// What the desktop and the mobile app do alike where the core leaves it to them (PLAN-E2E-CLIENTES.md, «Convenciones
-// entre clientes»): a message's envelope as the core's encrypt takes it, what a message the core shows is drawn as, a
+// What the desktop and the mobile app do alike where the core leaves it to them (PLAN-E2E-CLIENTES.md, its conventions
+// between clients): a message's envelope as the core's encrypt takes it, what a message the core shows is drawn as, a
 // file's name and type as a client may use them, and the frames of a device's approval in the inbox. Each has its cases
 // in testing/e2e-conventions.json, which the mobile app's conventions_test.dart reads too.
 import { base64Bytes } from "$lib/activity-thumbnail";
@@ -29,7 +29,7 @@ export interface Envelope {
 
 /**
  * A message's envelope: its text as a message's content carries it today, mentions and emojis included (`<@id>`,
- * `<#id>`, `<:name:id>`), and its files. With neither it's the empty envelope of a sticker's message, the sticker in the
+ * `<#id>`, `<:id:>`), and its files. With neither it's the empty envelope of a sticker's message, the sticker in the
  * clear beside it. The core refuses an empty text: a message without one leaves it out.
  */
 export function messageEnvelope(text: string, attachments: EnvelopeFile[]): Envelope {
@@ -62,9 +62,10 @@ export function drawnAs(
 
 /** The most characters a file's name keeps, counted by code point. */
 export const MAX_FILE_NAME = 255;
-// What a name loses: control characters (C0, DEL, C1), and the bidirectional controls, with which "invoice‮cod.exe"
-// shows as "invoiceexe.doc".
-const UNSEEN = /[\u0000-\u001f\u007f-\u009f؜‎‏‪-‮⁦-⁩]/g;
+// What a name loses: control characters, the line and paragraph separators, and every format character but the
+// zero-width joiner, which holds an emoji sequence together. The bidirectional controls are format characters: with one,
+// "invoice\u202Ecod.exe" shows as "invoiceexe.doc".
+const UNSEEN = /[\p{Cc}\p{Zl}\p{Zp}]|(?!\u200D)\p{Cf}/gu;
 
 /**
  * A file's name as a client may show or use it, whoever wrote it: its last part after any / or \, without the
@@ -76,14 +77,14 @@ export function cleanName(name: string): string {
 	return kept === "" || kept === "." || kept === ".." ? "file" : kept;
 }
 
+/** How much of a file both apps read to tell its type: its first 64 KiB. */
+export const SNIFF_PREFIX = 64 << 10;
 const OCTET_STREAM = "application/octet-stream";
 // The brands of an ISO media file (its `ftyp`) the clients draw; any other is a file to download.
 const BRANDS: Record<string, string> = {
 	"M4A ": "audio/mp4",
 	"qt  ": "video/quicktime",
 	avif: "image/avif",
-	heic: "image/heic",
-	heix: "image/heic",
 	...Object.fromEntries(
 		[
 			"isom",
@@ -105,11 +106,12 @@ const BRANDS: Record<string, string> = {
 };
 
 /**
- * A file's type, read from its first bytes: one of the media and documents the clients draw, or else
- * application/octet-stream, a file that is only ever downloaded. What its sender says it is counts for nothing: a page
- * or an SVG that calls itself a picture is no picture.
+ * A file's type, read from its first 64 KiB at most (SNIFF_PREFIX): one of the media both apps draw, or else
+ * application/octet-stream, a file that is only ever downloaded, as a HEIC and a PDF are. What its sender says it is
+ * counts for nothing: a page or an SVG that calls itself a picture is no picture.
  */
-export function sniffType(bytes: Uint8Array): string {
+export function sniffType(file: Uint8Array): string {
+	const bytes = file.subarray(0, SNIFF_PREFIX);
 	const at = (offset: number, ...expected: number[]) => expected.every((byte, i) => bytes[offset + i] === byte);
 	const text = (offset: number, ascii: string) => at(offset, ...Array.from(ascii, (c) => c.charCodeAt(0)));
 	if (at(0, 0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a)) return "image/png";
@@ -125,7 +127,6 @@ export function sniffType(bytes: Uint8Array): string {
 	if (text(0, "ID3") || (bytes[0] === 0xff && bytes[1] !== undefined && [0xfb, 0xfa, 0xf3, 0xf2].includes(bytes[1]))) {
 		return "audio/mpeg";
 	}
-	if (text(0, "%PDF-")) return "application/pdf";
 	return OCTET_STREAM;
 }
 
@@ -137,6 +138,7 @@ const TRACKS = 0x1654ae6b;
 const TRACK_ENTRY = 0xae;
 const TRACK_TYPE = 0x83;
 const CLUSTER = 0x1f43b675;
+const WEBM = [0x77, 0x65, 0x62, 0x6d]; // a DocType of "webm"
 
 /**
  * A WebM's type, by its tracks: audio when none is video (MediaRecorder's voice notes, the desktop's), else video. Null
@@ -163,15 +165,15 @@ function webmType(bytes: Uint8Array): string | null {
 	};
 	const header = element();
 	if (header?.id !== EBML) return null;
-	let docType = "";
+	let webm = false;
 	while (at < header.end) {
 		const child = element();
 		if (!child) return null;
-		if (child.id === DOC_TYPE) docType = String.fromCharCode(...bytes.subarray(at, child.end));
+		if (child.id === DOC_TYPE) webm = child.end - at === WEBM.length && WEBM.every((byte, i) => bytes[at + i] === byte);
 		at = child.end;
 	}
 	const segment = element();
-	if (docType !== "webm" || segment?.id !== SEGMENT) return null;
+	if (!webm || segment?.id !== SEGMENT) return null;
 	let audio = false;
 	while (at < segment.end) {
 		const child = element();
@@ -227,7 +229,8 @@ export function approvalFrameMessage({ step, data, name }: ApprovalFrame): strin
 export function readApprovalFrame(message: string): ApprovalFrame | null {
 	let value: unknown;
 	try {
-		value = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(base64Bytes(message)));
+		// A byte order mark stays for JSON to refuse, as Dart's utf8.decode keeps it in the mobile app.
+		value = JSON.parse(new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(base64Bytes(message)));
 	} catch {
 		return null;
 	}
@@ -236,7 +239,10 @@ export function readApprovalFrame(message: string): ApprovalFrame | null {
 	const [duvet, step, data, name]: unknown[] = FRAME_FIELDS.map((field) => Reflect.get(value, field));
 	if (duvet !== "approval" || !isStep(step)) return null;
 	if (typeof data !== "string" || !data || !BASE64.test(data)) return null;
-	if (name !== undefined && (typeof name !== "string" || !name || Array.from(name).length > MAX_DEVICE_NAME))
+	// The approving device shows the name: it loses what doesn't show, as a file's name does.
+	const shown = typeof name === "string" ? name.replace(UNSEEN, "").trim() : name;
+	if (shown !== undefined && (typeof shown !== "string" || !shown || Array.from(shown).length > MAX_DEVICE_NAME)) {
 		return null;
-	return { duvet, step, data, ...(name === undefined ? {} : { name }) };
+	}
+	return { duvet, step, data, ...(shown === undefined ? {} : { name: shown }) };
 }

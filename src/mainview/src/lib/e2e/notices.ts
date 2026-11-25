@@ -1,5 +1,5 @@
 // What the app says about encrypted conversations, word for word as the mobile app says it (PLAN-E2E-CLIENTES.md,
-// «Avisos»): notices.test.ts holds both to the table in testing/e2e-conventions.json, which the mobile app's test reads.
+// its notices): notices.test.ts holds both to the table in testing/e2e-conventions.json, which the mobile app's test reads.
 
 export const NOTICES = {
 	recovery_title: "Save your recovery key",

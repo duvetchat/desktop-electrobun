@@ -1,7 +1,9 @@
 // The API as the encryption engine sees it, in memory, for the engine's tests (PLAN-E2E-CLIENTES.md, Task 6): step 3's
-// routes (PLAN-E2E-API.md, «Rutas») answering through `fetch` as the API does, with its events to each connection, and
-// switches that lose an answer, answer 426, 503, 409 or any refusal, hold events to let them go backwards or twice, and
-// take an entry's data out of its event. It reads what the core signs (CBOR, Ed25519) and an MLS message's framing as the
+// routes (PLAN-E2E-API.md, its routes A to K) answering through `fetch` as the API does, with its events to each
+// connection, and switches that lose an answer, answer 426, 503, 409 or any refusal, hold events to let them go backwards
+// or twice, and take an entry's data out of its event. A request's events go out after its answer: once fetch has handed
+// the answer back (or failed, when it's lost), on the microtask queue, so the code that awaited it runs first, and each is
+// its data as it was when the request sent it; holdEvents gives any other order. It reads what the core signs (CBOR, Ed25519) and an MLS message's framing as the
 // API does, but runs no validator: a commit is taken by its generation and epoch alone, and of what it changes the fake
 // knows only the devices its welcome brings and the one an external commit adds.
 import { createPublicKey, generateKeyPairSync, verify } from "node:crypto";
@@ -269,13 +271,16 @@ function framing(data: Uint8Array): Framing | null {
 // ---------------------------------------------------------------------------------------------------------------------
 // What a request sends, read as the API reads it: a refusal for anything else.
 
-/** A request's binary field, standard base64, as its text: max bytes at most once decoded. */
-function base64In(value: unknown, field: string, max = Infinity): string {
+/** A request's binary field, standard base64, as its text: from min bytes to max once decoded. */
+function base64In(value: unknown, field: string, max = Infinity, min = 0): string {
 	if (typeof value !== "string" || !BASE64.test(value)) throw fail(400, `${field} isn't base64`);
-	if (base64Bytes(value).length > max) throw fail(400, `${field} is ${max} bytes at most`);
+	const length = base64Bytes(value).length;
+	if (length > max) throw fail(400, `${field} is ${max} bytes at most`);
+	if (length < min) throw fail(400, `${field} is ${min} bytes at least`);
 	return value;
 }
-const bytesIn = (value: unknown, field: string, max = Infinity) => base64Bytes(base64In(value, field, max));
+const bytesIn = (value: unknown, field: string, max = Infinity, min = 0) =>
+	base64Bytes(base64In(value, field, max, min));
 function uuidIn(value: unknown, field: string): string {
 	if (typeof value !== "string" || !UUID.test(value)) throw fail(400, `${field} isn't a UUID`);
 	return value;
@@ -284,6 +289,43 @@ function numberIn(value: unknown, field: string): number {
 	if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0)
 		throw fail(400, `${field} isn't a number`);
 	return value;
+}
+
+/** A rotation's transfers, as the API binds them: an array of objects, each a device, its certificate and its message. */
+function transfersIn(value: unknown): { device_id: string; certificate: string; message: string }[] {
+	if (value == null) return [];
+	if (!Array.isArray(value)) throw fail(400, "transfers is an array");
+	return value.map((transfer: any) => {
+		if (typeof transfer !== "object" || !transfer || Array.isArray(transfer))
+			throw fail(400, "a transfer is an object");
+		return {
+			device_id: uuidIn(transfer.device_id, "transfers.device_id"),
+			certificate: base64In(transfer.certificate, "transfers.certificate", LIMITS.certificate_bytes, 1),
+			message: base64In(transfer.message, "transfers.message", LIMITS.inbox_message_bytes, 1),
+		};
+	});
+}
+
+// The platforms X-Duvet-Client names, as the API has them.
+const PLATFORMS = ["desktop-windows", "desktop-macos", "desktop-linux", "web", "android", "ios"];
+
+/** A version as the API reads one: major.minor.patch, each part 1 to 4 decimal digits; null for anything else. */
+function versionIn(text: string): number[] | null {
+	const parts = text.split(".");
+	return parts.length === 3 && parts.every((part) => /^\d{1,4}$/.test(part)) ? parts.map(Number) : null;
+}
+
+/** What X-Duvet-Client says the client is, <platform>/<version>, as the API reads it; null for anything else. */
+function clientIn(header: string | null): { platform: string; version: number[] } | null {
+	const [, platform = "", text = ""] = /^([^/]*)\/(.*)$/s.exec(header ?? "") ?? [];
+	const version = versionIn(text);
+	return version && PLATFORMS.includes(platform) ? { platform, version } : null;
+}
+
+/** Whether a version is the least one or a later one. */
+function atLeast(version: number[], least: number[]) {
+	const at = version.findIndex((part, i) => part !== least[i]);
+	return at < 0 || version[at]! > least[at]!;
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -349,6 +391,8 @@ interface Entry {
 	sender_device?: string;
 	statement?: string;
 	deleted?: boolean;
+	mentions?: string[];
+	reply_to?: string;
 }
 
 interface Message {
@@ -438,7 +482,15 @@ interface Context {
 }
 
 type Needs = "nothing" | "session" | "device" | "listed";
-type Route = [method: string, path: RegExp, needs: Needs, handler: (ctx: Context) => Answer];
+/** A route: its method, its path, what its session needs, its handler, and whether any client may call it. */
+type Route = [method: string, path: RegExp, needs: Needs, handler: (ctx: Context) => Answer, anyClient: boolean];
+
+/** An event a request sends: to its user's connections, or to one device's. */
+interface Outgoing {
+	user: string;
+	device?: string;
+	event: GatewayEvent;
+}
 
 const now = () => new Date().toISOString();
 const ok = (body: unknown, status = 200): Answer => ({ status, body });
@@ -453,6 +505,11 @@ export class FakeApi {
 	stripData = false;
 	/** What POST /api/e2e/decrypt-failures was told. */
 	readonly decryptFailures: { kind: string; count: number }[] = [];
+	/**
+	 * The lowest version of each platform with end-to-end encryption (E2E_MIN_CLIENTS), which GET /api/e2e gives out: a
+	 * request from a client below it, or of a platform it doesn't name, gets a 426. Day one's platforms, any version.
+	 */
+	minClients: Record<string, string> = { "desktop-windows": "0.0.0", web: "0.0.0", android: "0.0.0" };
 
 	#users = new Set<string>();
 	#sessions = new Map<string, Session>();
@@ -467,9 +524,13 @@ export class FakeApi {
 	#segments = new Map<string, Segment>();
 	#shares = new Map<string, Share>();
 	#files = new Map<string, Uint8Array<ArrayBuffer>>();
+	/** The inbox messages that are a rotation's transfers, by ID. */
+	#transfers = new Set<string>();
+	/** What each message answers: the ID of the message it replies to, by its own. */
+	#repliesTo = new Map<string, string>();
 	#connections = new Set<Connection>();
-	/** What the routes emit, sent once the request's work is done. */
-	#outbox: { user: string; device?: string; event: GatewayEvent }[] = [];
+	/** What the request being answered sends, which fetch sends once its answer is made. */
+	#outbox: Outgoing[] = [];
 	/** Events held for releaseEvents, while holding. */
 	#held: { connection: Connection; event: GatewayEvent }[] | null = null;
 	#switches: { match: RouteMatch; effect: "lose" | Answer }[] = [];
@@ -550,7 +611,7 @@ export class FakeApi {
 			if (view.mls) delete (view.mls as { joined_seq?: unknown }).joined_seq; // only REST answers have it
 			return view;
 		});
-		listener({ type: "READY", data: { user: { id: session.user }, conversations } });
+		listener({ type: "READY", data: structuredClone({ user: { id: session.user }, conversations }) });
 		return () => this.#connections.delete(connection);
 	}
 
@@ -599,34 +660,40 @@ export class FakeApi {
 		const switched = this.#switches.findIndex(({ match }) => matches(match, request.method, url.pathname));
 		const effect = switched < 0 ? null : this.#switches.splice(switched, 1)[0]!.effect;
 		if (effect && effect !== "lose") return respond(effect);
-		const answer = await this.#answer(request, url);
+		const { answer, events } = await this.#answer(request, url);
+		// Its events go once its answer is made, lost or not: after the code that awaited it takes its first step.
+		queueMicrotask(() => queueMicrotask(() => this.#send(events)));
 		if (effect === "lose") throw new TypeError("fetch failed: the answer was lost");
 		const location = answer.headers?.Location;
 		if (answer.status === 307 && location && request.redirect !== "manual") return this.fetch(location);
 		return respond(answer);
 	};
 
-	async #answer(request: Request, url: URL): Promise<Answer> {
+	/** A request's answer, and the events it sends: none for a refusal, as the API's rolled-back work sends none. */
+	async #answer(request: Request, url: URL): Promise<{ answer: Answer; events: Outgoing[] }> {
 		const route = this.#routes.find(([method, path]) => method === request.method && path.test(url.pathname));
-		if (!route) return { status: 404, body: { error: "no such route" } };
-		const [, path, needs, handler] = route;
+		if (!route) return { answer: { status: 404, body: { error: "no such route" } }, events: [] };
+		const [, path, needs, handler, anyClient] = route;
+		const bytes = new Uint8Array(await request.arrayBuffer());
 		try {
-			const bytes = new Uint8Array(await request.arrayBuffer());
-			const json = request.headers.get("Content-Type")?.includes("json") && bytes.length > 0;
-			let body: unknown = null;
-			try {
-				body = json ? JSON.parse(new TextDecoder().decode(bytes)) : null;
-			} catch {
-				throw fail(400, "the body isn't JSON");
-			}
+			// In the API's order: the session (401), the client (426), the device (403), then the body (400).
 			const session = this.#session(request.headers, needs);
+			if (needs !== "nothing" && !anyClient) this.#checkClient(request.headers);
 			const device = session?.device ? (this.#devices.get(session.device) ?? null) : null;
 			if ((needs === "device" || needs === "listed") && (!device || device.removed)) {
 				throw fail(403, "this session has no device");
 			}
 			if (needs === "listed" && !device?.listed) throw fail(403, "this device isn't on your device list");
+			let body: unknown = null;
+			if (request.headers.get("Content-Type")?.includes("json") && bytes.length > 0) {
+				try {
+					body = JSON.parse(new TextDecoder().decode(bytes));
+				} catch {
+					throw fail(400, "the body isn't JSON");
+				}
+			}
 			const params = path.exec(url.pathname)?.groups ?? {};
-			return handler({
+			const answer = handler({
 				session: session!,
 				device,
 				params,
@@ -635,11 +702,11 @@ export class FakeApi {
 				bytes,
 				headers: request.headers,
 			});
+			return { answer, events: this.#outbox.splice(0) };
 		} catch (error) {
-			if (error instanceof Refusal) return error.answer;
+			this.#outbox.length = 0;
+			if (error instanceof Refusal) return { answer: error.answer, events: [] };
 			throw error;
-		} finally {
-			this.#flush();
 		}
 	}
 
@@ -651,12 +718,26 @@ export class FakeApi {
 		return session;
 	}
 
-	#emit(user: string, type: string, data: unknown, device?: string) {
-		this.#outbox.push({ user, device, event: { type, data } });
+	/** The client gate: a client without end-to-end encryption is told to update Duvet (426), in the API's words. */
+	#checkClient(headers: Headers) {
+		const client = clientIn(headers.get("X-Duvet-Client"));
+		const least = client ? this.minClients[client.platform] : undefined;
+		const lowest = least === undefined ? null : versionIn(least);
+		if (client && lowest && atLeast(client.version, lowest)) return;
+		throw fail(426, "update Duvet", {
+			client: client && `${client.platform}/${client.version.join(".")}`,
+			minimum: least ?? null,
+		});
 	}
 
-	#flush() {
-		for (const { user, device, event } of this.#outbox.splice(0)) {
+	/** An event the request sends, as its data is now: what this request or a later one changes after doesn't reach it. */
+	#emit(user: string, type: string, data: unknown, device?: string) {
+		this.#outbox.push({ user, device, event: { type, data: structuredClone(data) } });
+	}
+
+	/** Events to each connection of their user (of their device, when they name one), each its own copy; or held. */
+	#send(events: Outgoing[]) {
+		for (const { user, device, event } of events) {
 			for (const connection of this.#connections) {
 				if (connection.user !== user || (device && connection.device !== device)) continue;
 				if (this.#held) this.#held.push({ connection, event });
@@ -666,26 +747,34 @@ export class FakeApi {
 	}
 
 	// -------------------------------------------------------------------------------------------------------------
-	// The routes (PLAN-E2E-API.md, «Rutas»): under /api, the conversations' at /api/users/@me/conversations.
+	// The routes (PLAN-E2E-API.md, its routes A to K): under /api, the conversations' at /api/users/@me/conversations.
+	// Every route that takes a session takes only a client with end-to-end encryption, but GET /api/e2e and the
+	// conversations' list (anyClient), so a client without it still starts and sees its conversations.
 
 	#table(): Route[] {
 		const me = "/api/users/@me";
 		const conv = `${me}/conversations/(?<conversation>${UUID_PATH})`;
-		const route = (method: string, path: string, needs: Needs, handler: (ctx: Context) => Answer): Route => [
-			method,
-			new RegExp(`^${path}$`),
-			needs,
-			handler,
-		];
+		const route = (
+			method: string,
+			path: string,
+			needs: Needs,
+			handler: (ctx: Context) => Answer,
+			anyClient = false,
+		): Route => [method, new RegExp(`^${path}$`), needs, handler, anyClient];
 		return [
-			route("GET", "/api/e2e", "session", () =>
-				ok({
-					external_sender: this.externalSender,
-					cutover_at: this.cutoverAt,
-					paused: false,
-					min_clients: {},
-					limits: LIMITS,
-				}),
+			route(
+				"GET",
+				"/api/e2e",
+				"session",
+				() =>
+					ok({
+						external_sender: this.externalSender,
+						cutover_at: this.cutoverAt,
+						paused: false,
+						min_clients: this.minClients,
+						limits: LIMITS,
+					}),
+				true,
 			),
 			route("POST", "/api/e2e/decrypt-failures", "session", ({ body }) => {
 				this.decryptFailures.push({ kind: String(body?.kind), count: body?.count ?? 1 });
@@ -749,10 +838,13 @@ export class FakeApi {
 				);
 				return NO_CONTENT;
 			}),
-			route("GET", `${me}/conversations`, "session", ({ session, device }) =>
-				ok(this.#conversationsOf(session.user).map((c) => this.#view(c, device))),
+			route(
+				"GET",
+				`${me}/conversations`,
+				"session",
+				({ session, device }) => ok(this.#conversationsOf(session.user).map((c) => this.#view(c, device))),
+				true,
 			),
-			route("GET", conv, "session", (ctx) => ok(this.#view(this.#memberOf(ctx), ctx.device))),
 			route("GET", `${conv}/mls/group-info`, "listed", (ctx) => {
 				const { group } = this.#memberOf(ctx);
 				if (!group) throw fail(404, "no group yet");
@@ -972,7 +1064,7 @@ export class FakeApi {
 		const certificate = bytesIn(body?.certificate, "certificate", LIMITS.certificate_bytes);
 		for (const field of ["encrypted_identity", "wrapped_backup_key"]) bytesIn(body?.[field], field, 1024);
 		const replaces = body?.replaces == null ? null : bytesIn(body.replaces, "replaces", 32);
-		const transfers: { device_id: string; certificate: string; message: string }[] = body?.transfers ?? [];
+		const transfers = transfersIn(body?.transfers);
 		const list = this.#readList(session, device!, identityKey, deviceList);
 		const current = this.#identities.get(session.user) ?? null;
 		const sameKey = current !== null && equal(identityKey, current.identityKey);
@@ -1001,11 +1093,10 @@ export class FakeApi {
 		// Each device of the list gets its certificate: the session's own, and every other one through its transfer.
 		const certificates = new Map([[device!.id, certificate]]);
 		this.#checkCertificate(session.user, device!.id, identityKey, certificate);
-		for (const transfer of transfers) {
-			const id = uuidIn(transfer.device_id, "transfers.device_id");
+		for (const { device_id: id, certificate: transferred } of transfers) {
 			if (certificates.has(id) || !list.devices.includes(id))
 				throw fail(400, `a transfer for device ${id} the list doesn't take`);
-			const signed = bytesIn(transfer.certificate, "transfers.certificate", LIMITS.certificate_bytes);
+			const signed = base64Bytes(transferred);
 			this.#checkCertificate(session.user, id, identityKey, signed);
 			certificates.set(id, signed);
 		}
@@ -1029,7 +1120,8 @@ export class FakeApi {
 			}
 			this.#removeDevices(session.user, off);
 		}
-		for (const transfer of transfers) this.#deliver(session.user, device!.id, transfer.device_id, transfer.message);
+		for (const transfer of transfers)
+			this.#deliver(session.user, device!.id, transfer.device_id, transfer.message, true);
 		if (change !== "same") this.#announceIdentity(session.user);
 		return ok({ identity_id: identity.id, device_list_version: identity.version });
 	}
@@ -1085,10 +1177,12 @@ export class FakeApi {
 	// Key packages and the inbox.
 
 	#uploadKeyPackages({ device, body }: Context): Answer {
-		const uploaded: unknown[] = Array.isArray(body?.key_packages) ? body.key_packages : [];
+		// The whole set, as the API binds it: an empty one takes them all away, and none at all is refused.
+		if (!Array.isArray(body?.key_packages)) throw fail(400, "key_packages is the device's whole set");
+		const uploaded: unknown[] = body.key_packages;
 		const set = uploaded.map((kp: any) => ({
-			id: base64In(kp?.id, "key_packages.id", 64),
-			data: base64In(kp?.data, "key_packages.data", LIMITS.key_package_bytes),
+			id: base64In(kp?.id, "key_packages.id", 64, 1),
+			data: base64In(kp?.data, "key_packages.data", LIMITS.key_package_bytes, 1),
 			expiresAt: numberIn(kp?.expires_at, "expires_at"),
 			lastResort: kp?.last_resort === true,
 		}));
@@ -1127,12 +1221,13 @@ export class FakeApi {
 				.sort(([a, x], [b, y]) => x.expiresAt - y.expiresAt || (a < b ? -1 : 1));
 			const pick =
 				single[0] ?? live.filter(([, kp]) => kp.lastResort).sort(([, x], [, y]) => y.expiresAt - x.expiresAt)[0];
-			if (!pick) continue;
-			pick[1].handedOut = true;
-			handed.push({ device_id: listed.id, data: pick[1].data });
+			// What it has left to hand out after this claim: 0 when it had none, which it hears too.
 			const remaining = Math.max(0, single.length - 1);
 			if (remaining < KEY_PACKAGES_LOW)
 				this.#emit(user, "KEY_PACKAGES_LOW", { device_id: listed.id, remaining }, listed.id);
+			if (!pick) continue;
+			pick[1].handedOut = true;
+			handed.push({ device_id: listed.id, data: pick[1].data });
 		}
 		return ok({ key_packages: handed });
 	}
@@ -1146,17 +1241,23 @@ export class FakeApi {
 		if (to.user !== session.user && !this.#shareConversation(session.user, to.user)) {
 			throw fail(403, "only your own devices, and those of someone you share a conversation with, take your messages");
 		}
-		if ((this.#inboxes.get(to.id)?.length ?? 0) >= INBOX_MAX) throw fail(409, "inbox full");
+		// A rotation's transfer counts toward no cap.
+		const waiting = (this.#inboxes.get(to.id) ?? []).filter((m) => !this.#transfers.has(m.id));
+		if (waiting.length >= INBOX_MAX) throw fail(409, "inbox full");
 		return ok({ id: this.#deliver(session.user, device!.id, to.id, body.message) }, 201);
 	}
 
-	/** A message into a device's inbox, and DEVICE_MESSAGE to it: the message's ID. */
-	#deliver(from: string, fromDevice: string, to: string, message: string): string {
+	/**
+	 * A message into a device's inbox, and DEVICE_MESSAGE to it: the message's ID. A rotation's transfer takes the place
+	 * of the device's earlier ones: only the newest is of use, as the API keeps it.
+	 */
+	#deliver(from: string, fromDevice: string, to: string, message: string, transfer = false): string {
 		const device = this.#devices.get(to);
 		if (!device) return "";
 		const id = this.#id();
-		const inbox = this.#inboxes.get(to) ?? [];
+		const inbox = (this.#inboxes.get(to) ?? []).filter((m) => !transfer || !this.#transfers.has(m.id));
 		inbox.push({ id, from_user_id: from, from_device_id: fromDevice, message, created_at: now() });
+		if (transfer) this.#transfers.add(id);
 		this.#inboxes.set(to, inbox);
 		this.#emit(device.user, "DEVICE_MESSAGE", { device_id: to, id }, to);
 		return id;
@@ -1220,13 +1321,20 @@ export class FakeApi {
 		return this.stripData || base64Bytes(data).length > MAX_EVENT_DATA ? rest : entry;
 	}
 
-	/** A message as the queue's entry it is: its data its ciphertext, emptied once it's deleted. */
+	/**
+	 * A message as the queue's entry it is: its data its ciphertext, emptied once it's deleted; whom it mentions, by their
+	 * IDs in order, which its deletion takes away; and what it answers.
+	 */
 	#messageEntry(m: Message): Entry {
 		const deleted = this.#conversations.get(m.conversation_id)?.deleted.has(m.id) ?? false;
+		const mentions = deleted ? [] : [...(m.mentions ?? [])].sort();
+		const replyTo = this.#repliesTo.get(m.id);
 		return {
 			...{ seq: m.seq!, kind: "message", data: m.ciphertext ?? "", sent_at: m.sent_at!, generation: m.generation! },
 			...{ epoch: m.epoch!, message_id: m.id, sender_user: m.author_id, sender_device: m.sender_device_id },
 			...(deleted ? { deleted } : {}),
+			...(mentions.length ? { mentions } : {}),
+			...(replyTo ? { reply_to: replyTo } : {}),
 		};
 	}
 
@@ -1299,14 +1407,16 @@ export class FakeApi {
 		const entry = this.#addEntry(conv, { kind: "commit", data: body.commit, generation, epoch, ...by });
 		const welcomeEntry =
 			welcome && this.#addEntry(conv, { kind: "welcome", data: body.welcome, generation, epoch: after, ...by });
-		// The devices it brings in: the committer's with a creation (a new generation's leaves start over) or its own
-		// external commit, and those whose key packages its welcome names.
-		if (create) conv.leaves = new Map();
-		if (create || framed.sender === 4) conv.leaves.set(device!.id, entry.seq);
+		// The devices it brings in: the committer's with a creation, or with its own external commit, which takes it out
+		// and in again; and those whose key packages its welcome names. A new generation's leaves are those its creation
+		// brings, and a device brought in again keeps the number it has had the queue from, as the API's SetMlsLeaf does.
+		const before = conv.leaves;
+		if (create) conv.leaves = new Map([[device!.id, before.get(device!.id) ?? entry.seq]]);
+		else if (framed.sender === 4) conv.leaves.set(device!.id, entry.seq);
 		const brought = (welcomed?.welcomed ?? []).flatMap((ref) =>
 			[...this.#keyPackages].filter(([, kps]) => kps.has(ref)).map(([id]) => id),
 		);
-		for (const id of brought) if (id !== device!.id) conv.leaves.set(id, welcomeEntry!.seq);
+		for (const id of brought) if (id !== device!.id) conv.leaves.set(id, before.get(id) ?? welcomeEntry!.seq);
 
 		const answer = {
 			seq: entry.seq,
@@ -1422,8 +1532,11 @@ export class FakeApi {
 		const nonce = body?.nonce;
 		if (typeof nonce !== "string" || !nonce || nonce.length > 64)
 			throw fail(400, "a message has its nonce, 64 characters at most");
-		const ciphertext = bytesIn(body?.ciphertext, "ciphertext");
-		if (ciphertext.length > LIMITS.ciphertext_bytes) throw fail(413, "a message's ciphertext is 32 KiB at most");
+		const ciphertext = bytesIn(body?.ciphertext, "ciphertext", LIMITS.ciphertext_bytes, 1);
+		const listed: unknown = body?.mentions ?? [];
+		if (!Array.isArray(listed) || listed.length > 20 || listed.some((id) => typeof id !== "string" || !UUID.test(id))) {
+			throw fail(400, "invalid mentions");
+		}
 		const framed = this.#checkMessage(conv, device!, ciphertext);
 		// shortcut: no files go up with a message here (attachment_ids and files): the attachments' task brings them.
 		const sent = conv.messages.find((m) => m.sender_device_id === device!.id && m.nonce === nonce);
@@ -1432,21 +1545,42 @@ export class FakeApi {
 			if (sent.ciphertext !== body.ciphertext) throw fail(409, "this nonce went with another message");
 			return ok(sent, 201);
 		}
-		const members = new Set(conv.members.map((m) => m.user_id));
-		const mentions = (Array.isArray(body?.mentions) ? body.mentions : []).filter(
-			(user: unknown) => typeof user === "string" && members.has(user) && user !== session.user,
-		);
+		const replied = this.#repliedIn(conv, body?.message_reference);
+		// Whom it mentions, as the API has it: whom it names, then the author of what it answers (unless its
+		// allowed_mentions say not to, or that's a notice), each once, of the members, never its own author.
+		const members = conv.members.map((m) => m.user_id);
+		const mentionReplied = body?.allowed_mentions == null || body.allowed_mentions.replied_user === true;
+		const notice = replied?.type === 2 || replied?.type === 3;
+		const named: string[] = [...listed, ...(replied && mentionReplied && !notice ? [replied.author_id] : [])];
+		const mentions = [...new Set(named)].filter((user) => user !== session.user && members.includes(user));
 		const at = now();
 		const message: Message = {
 			...{ id: this.#id(), conversation_id: conv.id, author_id: session.user, content: null, type: 0 },
 			...{ created_at: at, updated_at: at, nonce, ciphertext: body.ciphertext, seq: ++conv.seq, sent_at: Date.now() },
 			...{ generation: framed.generation!, epoch: framed.epoch!, sender_device_id: device!.id, edited_at: null },
-			...{ mentions: mentions.slice(0, 20), message_reference: body.message_reference ?? null, attachment_ids: [] },
+			...{ mentions, message_reference: body.message_reference ?? null, attachment_ids: [] },
 			sticker_attachment_id: body.sticker_attachment_id ?? null,
 		};
 		conv.messages.push(message);
+		if (replied) this.#repliesTo.set(message.id, replied.id);
 		for (const member of conv.members) this.#emit(member.user_id, "DM_MESSAGE_CREATE", message);
 		return ok(message, 201);
+	}
+
+	/**
+	 * The message a message's reference answers, as the API checks it: a reply (type 0) to a message of the conversation
+	 * that isn't deleted; null for no reference.
+	 */
+	#repliedIn(conv: Conversation, reference: any): Message | null {
+		const id: unknown = reference?.message_id;
+		if (id == null || id === "") return null;
+		if (reference.type != null && reference.type !== 0) {
+			throw fail(400, "invalid message reference: type must be 0 (reply)");
+		}
+		if (typeof id !== "string" || !UUID.test(id)) throw fail(400, "invalid message reference: message_id");
+		const replied = conv.messages.find((m) => m.id === id && !conv.deleted.has(m.id));
+		if (!replied) throw fail(404, "referenced message not found");
+		return replied;
 	}
 
 	/** An edit (PATCH) or a deletion (DELETE) of the author's message: its MLS message as the queue's entry. */
@@ -1458,7 +1592,7 @@ export class FakeApi {
 		if (message.author_id !== session.user) throw fail(403, "only its author changes a message");
 		const device = ctx.device && !ctx.device.removed ? ctx.device : null;
 		if (!device) throw fail(403, "this session has no device");
-		const ciphertext = bytesIn(body?.ciphertext, "ciphertext");
+		const ciphertext = bytesIn(body?.ciphertext, "ciphertext", LIMITS.ciphertext_bytes, 1);
 		const again = conv.entries.find(
 			(e) => e.kind === kind && e.message_id === message.id && e.data === body.ciphertext,
 		);

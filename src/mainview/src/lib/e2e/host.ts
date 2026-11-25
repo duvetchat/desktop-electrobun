@@ -1,5 +1,6 @@
-// What the engine sees of the core, the same on every platform (PLAN-E2E-CLIENTES.md, «El anfitrión del núcleo»): the
-// desktop's, through Bun (Task 7); the web's, in a worker (Task 8); and testing/host-bun.ts's, through bun:ffi in tests.
+// What the engine sees of the core, the same on every platform (PLAN-E2E-CLIENTES.md, its section on the core's host):
+// the desktop's, through Bun (Task 7); the web's, in a worker (Task 8); and testing/host-bun.ts's, through bun:ffi in
+// tests.
 import { CoreError } from "./errors";
 
 export { CoreError };

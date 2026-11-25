@@ -1,5 +1,6 @@
 {
-	"about": "What the desktop and the mobile app do alike, as PLAN-E2E-CLIENTES.md's «Convenciones entre clientes» and «Avisos» say: the same file in both repositories (desktop-electrobun's src/mainview/src/lib/e2e/testing, mobile's test/e2e), which a test in each reads. A change here goes to both.",
+	"about": "What the desktop and the mobile app do alike, as PLAN-E2E-CLIENTES.md's conventions between clients and its notices say: the same file in both repositories (desktop-electrobun's src/mainview/src/lib/e2e/testing, mobile's test/e2e), which a test in each reads. A change here goes to both.",
+	"sniff_prefix": 65536,
 	"notices": {
 		"recovery_title": "Save your recovery key",
 		"recovery_saved": "I saved it",
@@ -57,10 +58,10 @@
 	"envelopes": [
 		{
 			"case": "a text message is its text as content carries it today, mentions and emojis included",
-			"text": "hi <@0193a4b2-0000-7000-8000-000000000001>, see <#0193a4b2-0000-7000-8000-000000000002> <:wave:0193a4b2-0000-7000-8000-000000000003>",
+			"text": "hi <@0193a4b2-0000-7000-8000-000000000001>, see <#0193a4b2-0000-7000-8000-000000000002> <:0193a4b2-0000-7000-8000-000000000003:>",
 			"attachments": [],
 			"envelope": {
-				"text": "hi <@0193a4b2-0000-7000-8000-000000000001>, see <#0193a4b2-0000-7000-8000-000000000002> <:wave:0193a4b2-0000-7000-8000-000000000003>"
+				"text": "hi <@0193a4b2-0000-7000-8000-000000000001>, see <#0193a4b2-0000-7000-8000-000000000002> <:0193a4b2-0000-7000-8000-000000000003:>"
 			}
 		},
 		{
@@ -275,14 +276,44 @@
 			"clean": "photo 2026-11-24.jpg"
 		},
 		{
-			"case": "bidirectional controls go: they disguise an extension",
+			"case": "a bidirectional control goes: it disguises an extension",
 			"name": "invoice\u202ecod.exe",
 			"clean": "invoicecod.exe"
 		},
 		{
+			"case": "every bidirectional control goes",
+			"name": "a\u061c\u200e\u200f\u202a\u202b\u202c\u202d\u202e\u2066\u2067\u2068\u2069b.txt",
+			"clean": "ab.txt"
+		},
+		{
 			"case": "control characters go",
-			"name": "bell\u0007\u0000\n\u0085.txt",
+			"name": "bell\u0007\u0000\n\u0085\u007f.txt",
 			"clean": "bell.txt"
+		},
+		{
+			"case": "format characters go: a zero-width space, a word joiner, a byte order mark and a soft hyphen",
+			"name": "in\u200bvi\u2060si\ufeffble\u00ad.txt",
+			"clean": "invisible.txt"
+		},
+		{
+			"case": "tag characters go",
+			"name": "flag\udb40\udc67\udb40\udc62\udb40\udc7f.png",
+			"clean": "flag.png"
+		},
+		{
+			"case": "a line separator goes, so the name stays on one line",
+			"name": "photo.jpg\u2028.exe",
+			"clean": "photo.jpg.exe"
+		},
+		{
+			"case": "a paragraph separator goes",
+			"name": "photo.jpg\u2029.exe",
+			"clean": "photo.jpg.exe"
+		},
+		{
+			"case": "a zero-width joiner stays: it holds an emoji sequence together",
+			"name": "👨\u200d👩\u200d👧.png",
+			"clean": "👨\u200d👩\u200d👧.png"
 		},
 		{
 			"case": "the spaces around it go",
@@ -297,6 +328,11 @@
 		{
 			"case": "two dots are no name",
 			"name": "a/..",
+			"clean": "file"
+		},
+		{
+			"case": "a name of hidden characters alone is file",
+			"name": "\u200b\u202e\ufeff",
 			"clean": "file"
 		},
 		{
@@ -338,27 +374,102 @@
 		},
 		{
 			"case": "an AVIF",
-			"bytes": "AAAAHGZ0eXBhdmlmAAAAAGF2aWZtaWYxbWlhZg==",
+			"bytes": "AAAAGGZ0eXBhdmlmAAAAAGlzb20=",
 			"type": "image/avif"
 		},
 		{
-			"case": "a HEIC",
-			"bytes": "AAAAGGZ0eXBoZWljAAAAAG1pZjFoZWlj",
-			"type": "image/heic"
+			"case": "a HEIC is a file: neither app draws one",
+			"bytes": "AAAAGGZ0eXBoZWljAAAAAGlzb20=",
+			"type": "application/octet-stream"
 		},
 		{
-			"case": "an MP4",
-			"bytes": "AAAAIGZ0eXBpc29tAAACAGlzb21pc28yYXZjMW1wNDE=",
+			"case": "a HEIF of no brand the clients draw is a file",
+			"bytes": "AAAAGGZ0eXBtaWYxAAAAAGlzb20=",
+			"type": "application/octet-stream"
+		},
+		{
+			"case": "an ISO media file of a brand the clients don't know is a file",
+			"bytes": "AAAAGGZ0eXBjcnggAAAAAGlzb20=",
+			"type": "application/octet-stream"
+		},
+		{
+			"case": "an MP4 of the brand isom",
+			"bytes": "AAAAGGZ0eXBpc29tAAAAAGlzb20=",
+			"type": "video/mp4"
+		},
+		{
+			"case": "an MP4 of the brand iso2",
+			"bytes": "AAAAGGZ0eXBpc28yAAAAAGlzb20=",
+			"type": "video/mp4"
+		},
+		{
+			"case": "an MP4 of the brand iso4",
+			"bytes": "AAAAGGZ0eXBpc280AAAAAGlzb20=",
+			"type": "video/mp4"
+		},
+		{
+			"case": "an MP4 of the brand iso5",
+			"bytes": "AAAAGGZ0eXBpc281AAAAAGlzb20=",
+			"type": "video/mp4"
+		},
+		{
+			"case": "an MP4 of the brand iso6",
+			"bytes": "AAAAGGZ0eXBpc282AAAAAGlzb20=",
+			"type": "video/mp4"
+		},
+		{
+			"case": "an MP4 of the brand mp41",
+			"bytes": "AAAAGGZ0eXBtcDQxAAAAAGlzb20=",
+			"type": "video/mp4"
+		},
+		{
+			"case": "an MP4 of the brand mp42",
+			"bytes": "AAAAGGZ0eXBtcDQyAAAAAGlzb20=",
+			"type": "video/mp4"
+		},
+		{
+			"case": "an MP4 of the brand avc1",
+			"bytes": "AAAAGGZ0eXBhdmMxAAAAAGlzb20=",
+			"type": "video/mp4"
+		},
+		{
+			"case": "an MP4 of the brand M4V",
+			"bytes": "AAAAGGZ0eXBNNFYgAAAAAGlzb20=",
+			"type": "video/mp4"
+		},
+		{
+			"case": "an MP4 of the brand dash",
+			"bytes": "AAAAGGZ0eXBkYXNoAAAAAGlzb20=",
+			"type": "video/mp4"
+		},
+		{
+			"case": "an MP4 of the brand mmp4",
+			"bytes": "AAAAGGZ0eXBtbXA0AAAAAGlzb20=",
+			"type": "video/mp4"
+		},
+		{
+			"case": "an MP4 of the brand 3gp4",
+			"bytes": "AAAAGGZ0eXAzZ3A0AAAAAGlzb20=",
+			"type": "video/mp4"
+		},
+		{
+			"case": "an MP4 of the brand 3gp5",
+			"bytes": "AAAAGGZ0eXAzZ3A1AAAAAGlzb20=",
+			"type": "video/mp4"
+		},
+		{
+			"case": "an MP4 of the brand 3gp6",
+			"bytes": "AAAAGGZ0eXAzZ3A2AAAAAGlzb20=",
 			"type": "video/mp4"
 		},
 		{
 			"case": "a QuickTime movie",
-			"bytes": "AAAAFGZ0eXBxdCAgAAACAHF0ICA=",
+			"bytes": "AAAAGGZ0eXBxdCAgAAAAAGlzb20=",
 			"type": "video/quicktime"
 		},
 		{
 			"case": "an M4A",
-			"bytes": "AAAAIGZ0eXBNNEEgAAACAE00QSBpc29tbXA0Mg==",
+			"bytes": "AAAAGGZ0eXBNNEEgAAAAAGlzb20=",
 			"type": "audio/mp4"
 		},
 		{
@@ -372,8 +483,21 @@
 			"type": "video/webm"
 		},
 		{
-			"case": "a Matroska that isn't a WebM is no type of the list",
+			"case": "a Matroska that isn't a WebM is a file",
 			"bytes": "GkXfo4tCgohtYXRyb3NrYRhTgGcB/////////xVJqWaEKtexgBZUrmuQrobXgQGDgQGuhteBAoOBAh9DtnUB/////////w==",
+			"type": "application/octet-stream"
+		},
+		{
+			"case": "a DocType that runs past what's sniffed is no WebM's",
+			"bytes": "GkXfoxAQyOZCghAQyOA=",
+			"zeros": 1100000,
+			"type": "application/octet-stream"
+		},
+		{
+			"case": "a WebM's tracks past the sniffed prefix aren't read",
+			"bytes": "GkXfo4dCgoR3ZWJtGFOAZwH/////////7BABEXA=",
+			"zeros": 70000,
+			"tail": "FlSua4iuhteBAYOBAg==",
 			"type": "application/octet-stream"
 		},
 		{
@@ -397,14 +521,34 @@
 			"type": "audio/mpeg"
 		},
 		{
-			"case": "an MP3 from its first frame",
+			"case": "an MP3 from its first frame, FF FB",
 			"bytes": "//uQZAAAAAA=",
 			"type": "audio/mpeg"
 		},
 		{
-			"case": "a PDF",
+			"case": "an MP3 from its first frame, FF FA",
+			"bytes": "//qQZAAAAAA=",
+			"type": "audio/mpeg"
+		},
+		{
+			"case": "an MP3 from its first frame, FF F3",
+			"bytes": "//OQZAAAAAA=",
+			"type": "audio/mpeg"
+		},
+		{
+			"case": "an MP3 from its first frame, FF F2",
+			"bytes": "//KQZAAAAAA=",
+			"type": "audio/mpeg"
+		},
+		{
+			"case": "an AAC stream isn't an MP3",
+			"bytes": "//FQgAAAAAA=",
+			"type": "application/octet-stream"
+		},
+		{
+			"case": "a PDF is a file: neither app draws one",
 			"bytes": "JVBERi0xLjcK",
-			"type": "application/pdf"
+			"type": "application/octet-stream"
 		},
 		{
 			"case": "a page named as a picture is no picture",
@@ -458,6 +602,27 @@
 				"data": "cmV2ZWFs"
 			},
 			"message": "eyJkdXZldCI6ImFwcHJvdmFsIiwic3RlcCI6InJldmVhbCIsImRhdGEiOiJjbVYyWldGcyJ9"
+		},
+		{
+			"case": "a name's hidden characters go, as a file's do",
+			"message": "eyJkdXZldCI6ImFwcHJvdmFsIiwic3RlcCI6ImNvbW1pdG1lbnQiLCJkYXRhIjoiWTI5dGJXbDBiV1Z1ZEE9PSIsIm5hbWUiOiJEdXZldOKAriBmb3IgV2luZG93c+KAiyJ9",
+			"frame": {
+				"duvet": "approval",
+				"step": "commitment",
+				"data": "Y29tbWl0bWVudA==",
+				"name": "Duvet for Windows"
+			},
+			"rewritten": "eyJkdXZldCI6ImFwcHJvdmFsIiwic3RlcCI6ImNvbW1pdG1lbnQiLCJkYXRhIjoiWTI5dGJXbDBiV1Z1ZEE9PSIsIm5hbWUiOiJEdXZldCBmb3IgV2luZG93cyJ9"
+		},
+		{
+			"case": "a name of hidden characters alone is no frame",
+			"message": "eyJkdXZldCI6ImFwcHJvdmFsIiwic3RlcCI6ImNvbW1pdG1lbnQiLCJkYXRhIjoiWTI5dGJXbDBiV1Z1ZEE9PSIsIm5hbWUiOiLigK7igIsifQ==",
+			"frame": null
+		},
+		{
+			"case": "a byte order mark before the JSON is no frame: JSON doesn't take one",
+			"message": "77u/eyJkdXZldCI6ImFwcHJvdmFsIiwic3RlcCI6InJldmVhbCIsImRhdGEiOiJjbVYyWldGcyJ9",
+			"frame": null
 		},
 		{
 			"case": "a step that isn't one is no frame",
