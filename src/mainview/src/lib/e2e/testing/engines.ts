@@ -5,6 +5,7 @@ import { afterAll, afterEach, mock, spyOn } from "bun:test";
 import { rmSync } from "node:fs";
 import { sessionApi } from "$lib/api/api";
 import { e2eApi, type E2eApi } from "$lib/api/e2e";
+import { CoreError } from "../errors";
 import type { EngineEvent } from "../events";
 import type { CoreHost } from "../host";
 import { E2EEngine, type Clock, type EngineState } from "../engine/engine";
@@ -26,6 +27,10 @@ export function useFake(fake: FakeApi, seen?: (request: Request) => void) {
 	}) as typeof fetch);
 }
 afterEach(() => mock.restore());
+
+/** What each device the running test made holds, which a wait that gives up tells. */
+const shown: (() => Promise<string>)[] = [];
+afterEach(() => void shown.splice(0));
 
 /** A clock a test moves on by hand: what's due runs as it passes, in order. Its time is the wall clock's, ahead by what
  * the test moved it on. */
@@ -160,7 +165,26 @@ export function testDevice(
 	const states: EngineState[] = [];
 	engine.onState((state) => states.push(state));
 	connect(null);
-	return { engine, host, user, token, api, store, clock, heard, registered, states, connect };
+	const device = { engine, host, user, token, api, store, clock, heard, registered, states, connect };
+	shown.push(() => heldBy(fake, device));
+	return device;
+}
+
+/**
+ * What a device holds, as a wait that gave up tells it: its engine's state, then for each conversation of the fake, the
+ * group its core holds and what the conversation says.
+ */
+async function heldBy(fake: FakeApi, device: TestDevice): Promise<string> {
+	const lines = [`${device.user}: ${device.engine.state.name}`];
+	for (const id of fake.conversationIds()) {
+		const held = await device.host.handle<HeldGroup>({ cmd: "group", conversation_id: id }).then(
+			(group) => `generation ${group.generation}, epoch ${group.epoch}${group.blocked ? ", blocked" : ""}`,
+			(error: unknown) =>
+				error instanceof CoreError && error.code === "not_found" ? "no group" : `its group not read (${String(error)})`,
+		);
+		lines.push(`  conversation ${id}: ${held}; ${JSON.stringify(device.engine.conversationState(id) ?? "no notice")}`);
+	}
+	return lines.join("\n");
 }
 
 /** A device through the first device's flow: its identity made, its key saved, both published; the engine ready. */
@@ -198,11 +222,21 @@ export async function turnEnded(device: TestDevice) {
 	await device.engine.uploadLater();
 }
 
-/** Waits until `holds` is true, as an engine's work after an event ends in its own time: past `ms`, it fails. */
-export async function until(holds: () => boolean | Promise<boolean>, ms = 60_000): Promise<void> {
+/**
+ * Waits until `holds` is true, as an engine's work after an event ends in its own time: past `ms` (a minute unless
+ * `wait` says), it fails, telling `what` it waited for and what each of the test's devices holds.
+ */
+export async function until(
+	holds: () => boolean | Promise<boolean>,
+	wait: number | { ms?: number; what?: string } = 60_000,
+): Promise<void> {
+	const { ms = 60_000, what } = typeof wait === "number" ? { ms: wait, what: undefined } : wait;
 	const end = Date.now() + ms;
 	while (!(await holds())) {
-		if (Date.now() > end) throw new Error("what the test waited for never came");
+		if (Date.now() > end) {
+			const held = await Promise.all(shown.map((tell) => tell()));
+			throw new Error([`what the test waited for never came${what ? `: ${what}` : ""}`, ...held].join("\n"));
+		}
 		await new Promise((resolve) => setTimeout(resolve, 10));
 	}
 }
@@ -225,19 +259,22 @@ export const groupOf = (device: TestDevice, conversation: string): Promise<HeldG
 /** Waits until every device holds the conversation's group at one generation and epoch, with one authenticator. */
 export async function sameGroup(devices: TestDevice[], conversation: string, ms = 60_000): Promise<HeldGroup> {
 	let held: HeldGroup | null = null;
-	await until(async () => {
-		const groups = await Promise.all(devices.map((device) => groupOf(device, conversation)));
-		const [first] = groups;
-		held = first ?? null;
-		return groups.every(
-			(group) =>
-				group &&
-				first &&
-				group.generation === first.generation &&
-				group.epoch === first.epoch &&
-				group.authenticator === first.authenticator,
-		);
-	}, ms);
+	await until(
+		async () => {
+			const groups = await Promise.all(devices.map((device) => groupOf(device, conversation)));
+			const [first] = groups;
+			held = first ?? null;
+			return groups.every(
+				(group) =>
+					group &&
+					first &&
+					group.generation === first.generation &&
+					group.epoch === first.epoch &&
+					group.authenticator === first.authenticator,
+			);
+		},
+		{ ms, what: "one group, at one generation and epoch, on every device" },
+	);
 	return held!;
 }
 
