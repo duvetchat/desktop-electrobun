@@ -111,6 +111,28 @@ describe.skipIf(!coreLibrary)("a conversation's queue", () => {
 	);
 
 	test(
+		"a queue page that doesn't go past where its read began isn't asked for again in that turn",
+		async () => {
+			const { fake, a, b, conversation, requests } = await dmWithGroup();
+			await byHand(a);
+			// A server that lies: the last entry there is, and a hundred more said to come after it, whatever is asked.
+			const page = await a.api.queue(conversation, 0);
+			const lie = { ...page, entries: [page.entries.at(-1)!], last_seq: page.last_seq + 100 };
+			fake.refuse({ method: "GET", path: `/api/users/@me/conversations/${conversation}/mls/queue` }, 200, lie);
+			fake.stripData = true;
+			const before = queueReads(requests, conversation).length;
+			await commitByHand(a, conversation);
+			await until(() => queueReads(requests, conversation).length > before);
+			await turnEnded(b);
+			// Read once, the turn ends, as a gap that doesn't move ends it: the page goes again in a while, not at once.
+			expect(queueReads(requests, conversation).length - before).toBe(1);
+			b.clock.advance(60_000);
+			await sameGroup([a, b], conversation);
+		},
+		SLOW,
+	);
+
+	test(
 		"an expired queue joins again and keeps its database",
 		async () => {
 			const { fake, ana, bo, a, b, conversation } = await dmWithGroup();

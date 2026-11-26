@@ -809,6 +809,9 @@ export class Conversations {
 			}
 			const last = page.entries.at(-1)?.seq;
 			if (last === undefined || last >= page.last_seq) return at;
+			// A page that doesn't go past where this read was would come again as it is, for good: the turn ends, as for
+			// a gap that doesn't move, and goes again later.
+			if (!(last > from)) throw new Error(`the queue of ${conv.id} doesn't go past entry ${from}`);
 			from = last;
 		}
 	}
