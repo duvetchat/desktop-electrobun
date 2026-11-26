@@ -78,6 +78,15 @@ export function certificateDevice(certificate: string): string | null {
 	return body ? asUuid(asMap(cbor(body))?.get("device")) : null;
 }
 
+/** The device an approval's commitment asks to have approved (its CBOR map in base64, its `device`), or null. */
+export function commitmentDevice(commitment: string): string | null {
+	try {
+		return asUuid(asMap(cbor(base64Bytes(commitment)))?.get("device"));
+	} catch {
+		return null;
+	}
+}
+
 /** The devices a device list names (its signed object in base64: `{body, sig}`, its body's `devices`), or null. */
 export function listDevices(list: string): string[] | null {
 	let signed: Uint8Array;

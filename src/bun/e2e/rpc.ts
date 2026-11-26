@@ -174,10 +174,10 @@ function fileParts(params: Record<string, unknown>, limit: number) {
 	return { key, attachmentId, index, last, parts };
 }
 
-/** The devices a rotation removes, which its question names: their IDs, as many as a list holds. */
-function devices(value: unknown): string[] {
+/** The devices a command names, which its question names: their IDs, as many as a list holds. */
+function devices(value: unknown, field = "remove"): string[] {
 	if (!Array.isArray(value) || value.length > LIST || !value.every((id) => typeof id === "string" && UUID.test(id))) {
-		throw bad("remove", "remove is a list of devices' IDs");
+		throw bad(field, `${field} is a list of devices' IDs`);
 	}
 	return value;
 }
@@ -286,11 +286,13 @@ export function e2eBoundary({ start, confirm, reply }: BoundaryDeps): (message: 
 			question = removalQuestion(remove);
 		} else {
 			const remove = cmd === "rotate_keys" ? devices(command.remove) : [];
+			// Run again with gone, it goes on without those devices: each is named (duvetchat/e2e#49).
+			const gone = cmd === "rotate_keys" && command.gone !== undefined ? devices(command.gone, "gone") : [];
 			// Run again before its upload, the command makes nothing new: it hands back what it made.
 			const status = unwrap(await core("handle", { command: { cmd: "status" } }));
 			question =
 				cmd === "rotate_keys"
-					? rotationQuestion(remove, status.waiting_upload === "rotate_keys")
+					? rotationQuestion(remove, status.waiting_upload === "rotate_keys", gone)
 					: newKeysQuestion(status.waiting_upload === "create_identity");
 		}
 		let yes = false;

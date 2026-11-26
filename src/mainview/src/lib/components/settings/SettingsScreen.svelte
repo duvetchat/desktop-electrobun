@@ -1657,6 +1657,7 @@
 				await loadDevices();
 			}}
 			onChangeKeys={engine.changeKeys}
+			onFinishWithout={engine.finishKeysWithout}
 			onAlsoRemoved={engine.alsoRemoved}
 			onRemoveThis={engine.removeThisDevice}
 		/>

@@ -1,3 +1,19 @@
+<script module lang="ts">
+	import { t } from "$lib/i18n";
+	import { formatList } from "$lib/i18n/format";
+	/**
+	 * What a change of keys that can't finish says, by why (duvetchat/e2e#49): another device's change kept a device it
+	 * takes off; devices the API no longer has hold it, by their IDs' start (their names went with them), which it goes
+	 * on without on the person's yes; else its ways out.
+	 */
+	export function stuckText(rotation: { gone?: string[]; relisted?: true }): string {
+		if (rotation.relisted) return t("e2e_rotation_relisted");
+		const gone = rotation.gone ?? [];
+		if (gone.length === 0) return t("e2e_rotation_stuck");
+		return t("e2e_rotation_gone", { devices: formatList(gone.map((id) => id.slice(0, 8))) });
+	}
+</script>
+
 <script lang="ts">
 	import { X as XIcon } from "@lucide/svelte";
 	import Button from "$lib/components/ui/Button.svelte";
@@ -5,8 +21,6 @@
 	import { GLASS, iconButtonClass } from "$lib/components/ui/recipes";
 	import Sheet from "$lib/components/ui/Sheet.svelte";
 	import type { EngineState } from "$lib/e2e/engine/engine";
-	import { t } from "$lib/i18n";
-	import { formatList } from "$lib/i18n/format";
 	import { confirmAction } from "$lib/stores/confirm.svelte";
 	import ApprovalPrompt, { approvalTitle } from "./ApprovalPrompt.svelte";
 	import DeviceSetupCard from "./DeviceSetupCard.svelte";
@@ -28,7 +42,8 @@
 		onKeySaved,
 		onLater,
 		onStartOver,
-		onFinishKeys,
+		onChangeKeys,
+		onFinishWithout,
 		setupActions,
 		approvalActions,
 	}: {
@@ -40,8 +55,13 @@
 		/** The key's sheet closed after its upload failed: its upload waits for Finish. */
 		onLater: () => Promise<void>;
 		onStartOver: () => Promise<void>;
-		/** A change of keys made before the app closed, its key shown again to be saved. */
-		onFinishKeys: () => Promise<void>;
+		/**
+		 * Change security keys: a change made before the app closed, its key shown again to be saved, or, offered after
+		 * one that went on without devices, a new one.
+		 */
+		onChangeKeys: () => Promise<void>;
+		/** A change of keys that can't finish, gone on with without the devices another device took off (e2e#49). */
+		onFinishWithout: () => Promise<void>;
 		/** A new device's setup: the recovery key, another device's approval, or starting over (Task 26). */
 		setupActions: {
 			recover(recoveryKey: string): Promise<void>;
@@ -64,8 +84,9 @@
 	let busy = $state(false);
 	let setupOpen = $state(false);
 
-	// Starting over deletes the database: the person says yes to that first.
+	// Starting over deletes the database: the person says yes to that first. So do new keys, which their contacts see.
 	const confirmed = (label: string) => () => confirmAction(t("e2e_start_over_confirm"), label, onStartOver);
+	const newKeys = () => confirmAction(t("e2e_change_keys_confirm"), t("e2e_change_keys"), onChangeKeys);
 
 	// The recovery key the person saves before anything goes up: a first device's, a change of keys', or starting over's.
 	const shownKey = $derived(
@@ -107,12 +128,19 @@
 
 	const bar = $derived.by((): { text: string; label?: string; run?: () => Promise<void> } | null => {
 		switch (encryption.name) {
-			case "ready":
-				// A change that can't finish (I1) says why and what to do, with nothing to press here.
-				if (!encryption.rotation || encryption.rotation.recoveryKey) return null;
-				return encryption.rotation.stuck
-					? { text: t("e2e_rotation_stuck") }
-					: { text: t("e2e_rotation_finish"), label: t("e2e_finish"), run: onFinishKeys };
+			case "ready": {
+				const { rotation } = encryption;
+				// After a change of keys that went on without devices, one of them may hold the keys still (e2e#49).
+				if (!rotation)
+					return encryption.keysAgain ? { text: t("e2e_keys_again"), label: t("e2e_change_keys"), run: newKeys } : null;
+				if (rotation.recoveryKey) return null;
+				if (!rotation.stuck) return { text: t("e2e_rotation_finish"), label: t("e2e_finish"), run: onChangeKeys };
+				// A change that can't finish (I1) says why and what to do: going on without the devices gone, where that's
+				// what holds it, on the person's yes.
+				return rotation.gone?.length && !rotation.relisted
+					? { text: stuckText(rotation), label: t("e2e_finish_without"), run: onFinishWithout }
+					: { text: stuckText(rotation) };
+			}
 			case "first_device":
 				return encryption.finishing
 					? { text: t("e2e_first_device_finish"), label: t("e2e_finish"), run: onMakeIdentity }

@@ -99,11 +99,15 @@ describe.skipIf(!coreLibrary)("the inbox", () => {
 			const device = a.registered[0]!;
 
 			// Another device of Ana's writes to this one: a step of an approval, two messages of the core's, and another step.
-			// Their DEVICE_MESSAGE events wait for good: here the reads are READY's, one at a time.
+			// Their DEVICE_MESSAGE events wait for good: here the reads are READY's, one at a time. Its steps are its core's
+			// commitments, as only one naming the device that sent it is asked about (task 27's review, M6).
+			const commitment = async () =>
+				(await other.host.handle<{ commitment: string }>({ cmd: "approval_begin" })).commitment;
 			const frame = (data: string) => approvalFrameMessage({ duvet: "approval", step: "commitment", data });
+			const [first, second] = [await commitment(), await commitment()];
 			fake.holdEvents();
 			const sent: string[] = [];
-			for (const message of [frame("AAAA"), btoa("not the core's"), btoa("kept for later"), frame("BBBB")]) {
+			for (const message of [frame(first), btoa("not the core's"), btoa("kept for later"), frame(second)]) {
 				sent.push((await other.api.sendToDevice(device, message)).id);
 			}
 			const [firstFrame, , kept, lastFrame] = sent;

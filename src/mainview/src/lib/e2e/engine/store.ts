@@ -15,6 +15,17 @@ export const PENDING_SENDS = "pending_sends";
 export const PENDING_CHANGES = "pending_changes";
 /** The devices a change of keys under way takes off the list (devices.ts), which it runs again with, until it's uploaded. */
 export const KEPT_ROTATION = "rotation";
+/**
+ * A change of keys of this device's went on without devices another device took off (gone, duvetchat/e2e#49): one of
+ * them may still hold its keys, so another change is offered, until one is made. True, or nothing.
+ */
+export const KEYS_AGAIN = "keys_again";
+/**
+ * Another device's change of keys kept a device this device's waiting change takes off, so the core refused its
+ * transfer (removed_device_listed): that change can't finish, which a later start, with the transfer gone, still says.
+ * True, or nothing, until the change ends.
+ */
+export const RELISTED = "relisted";
 /** The identity a start over replaces (start-over.ts), from the person's tap until its upload is confirmed. */
 export const KEPT_RESET = "reset";
 /**
@@ -37,7 +48,7 @@ export const VERIFIED_CONTACTS = "verified_contacts";
 /** What a new device of this installation starts without. */
 export const DEVICE_RECORD = [
 	...[DEVICE_KEYS, KEPT_APPROVALS, KEPT_TRANSFERS, KEPT_LATER],
-	...[PENDING_SENDS, PENDING_CHANGES, KEPT_ROTATION, KEPT_RESET, REFUSED_GENERATIONS],
+	...[PENDING_SENDS, PENDING_CHANGES, KEPT_ROTATION, KEYS_AGAIN, RELISTED, KEPT_RESET, REFUSED_GENERATIONS],
 	...[SHARE_KEYS, KEY_CHANGES, VERIFIED_CONTACTS],
 ];
 /** The user's devices the app told of, each once (devices.ts): those not seen in 45 days, and those added. */

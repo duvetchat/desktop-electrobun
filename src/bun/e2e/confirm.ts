@@ -131,9 +131,23 @@ export function removalQuestion(remove: string[]): Question {
 	};
 }
 
-/** Changing the keys (rotate_keys), with the devices it takes off the list; `finishing`, a rotation already made. */
-export function rotationQuestion(remove: string[], finishing: boolean): Question {
+/**
+ * Changing the keys (rotate_keys), with the devices it takes off the list; `finishing`, a rotation already made; `gone`,
+ * the devices a rotation that waits goes on without, as the server no longer has them (duvetchat/e2e#49), each by its
+ * ID: a server that stopped serving a device's certificate would have this device drop one that's still there.
+ */
+export function rotationQuestion(remove: string[], finishing: boolean, gone: string[] = []): Question {
 	const devices = remove.length > 0 ? `\n\nThese devices will be removed from your account:\n${remove.join("\n")}` : "";
+	if (gone.length > 0) {
+		return {
+			title: "Finish changing your security keys without these devices?",
+			message:
+				"Duvet will finish the change of security keys it started, and show your new recovery key again, without " +
+				`these devices, which aren't on your account any more:\n${gone.join("\n")}${devices}\n\nFinish without ` +
+				"them only if you removed them from your account, here or on another of your devices.",
+			yes: "Finish",
+		};
+	}
 	return finishing
 		? {
 				title: "Finish changing your security keys?",
