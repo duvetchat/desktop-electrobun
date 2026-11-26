@@ -437,7 +437,8 @@ interface Member {
 	updated_at: string;
 }
 
-interface Entry {
+/** An entry of a conversation's queue, as the API serves it. */
+export interface QueueEntry {
 	seq: number;
 	kind: "commit" | "welcome" | "proposal" | "message" | "edit" | "delete";
 	data: string;
@@ -452,6 +453,7 @@ interface Entry {
 	mentions?: string[];
 	reply_to?: string;
 }
+type Entry = QueueEntry;
 
 interface Message {
 	id: string;
@@ -654,9 +656,15 @@ export class FakeApi {
 	listedAs = (view: ShareView): ShareView => view;
 	/**
 	 * How the API serves a user's identity to `viewer`, by its route (GET …/identity, GET …/identities): as it is, unless
-	 * a test has it lie, as a server could.
+	 * a test has it lie, as a server could; null serves none (a 404, or left out of the list).
 	 */
-	servedAs: (view: IdentityView, route: "identity" | "identities", viewer: string) => IdentityView = (view) => view;
+	servedAs: (view: IdentityView, route: "identity" | "identities", viewer: string) => IdentityView | null = (view) =>
+		view;
+	/**
+	 * How the API serves a conversation's queue to `viewer` (GET …/mls/queue), entry by entry: as it is, unless a test has
+	 * it lie, as a server could, of an entry's data, its labels, or its being deleted.
+	 */
+	queueAs: (entry: QueueEntry, conversationId: string, viewer: string) => QueueEntry = (entry) => entry;
 	/** The inbox messages that are a rotation's transfers, by ID. */
 	#transfers = new Set<string>();
 	/** What each message answers: the ID of the message it replies to, by its own. */
@@ -666,7 +674,8 @@ export class FakeApi {
 	#outbox: Outgoing[] = [];
 	/** Events held for releaseEvents, while holding. */
 	#held: { connection: Connection; event: GatewayEvent }[] | null = null;
-	#switches: { match: RouteMatch; effect: "lose" | "cut" | "files" | Answer }[] = [];
+	/** What the next requests a match takes get instead of the API's work, `times` of them. */
+	#switches: { match: RouteMatch; effect: "lose" | "cut" | "files" | "forget" | Answer; times: number }[] = [];
 	/** Requests held until as many as each gate counts have come (gather). */
 	#gates: { match: RouteMatch; count: number; waiting: (() => void)[] }[] = [];
 	#routes: Route[];
@@ -842,7 +851,7 @@ export class FakeApi {
 
 	/** The next request the match takes never reaches the API: fetch fails, and nothing is done. */
 	cutRequest(match: RouteMatch) {
-		this.#switches.push({ match, effect: "cut" });
+		this.#switches.push({ match, effect: "cut", times: 1 });
 	}
 
 	/**
@@ -855,7 +864,15 @@ export class FakeApi {
 
 	/** The next request the match takes does its work, and its answer is lost: fetch fails, as with a cut connection. */
 	loseAnswer(match: RouteMatch) {
-		this.#switches.push({ match, effect: "lose" });
+		this.#switches.push({ match, effect: "lose", times: 1 });
+	}
+
+	/**
+	 * The next request the match takes gets the API's own answer, and nothing it did is kept: what it stored goes back as
+	 * it was, and the events it would send go nowhere. A server that says it took what it never took.
+	 */
+	forget(match: RouteMatch) {
+		this.#switches.push({ match, effect: "forget", times: 1 });
 	}
 
 	/**
@@ -863,14 +880,15 @@ export class FakeApi {
 	 * row: nothing else is done, as the API's own send (ruling 5), whose resend takes its files as they went up.
 	 */
 	cutAfterFiles(match: RouteMatch) {
-		this.#switches.push({ match, effect: "files" });
+		this.#switches.push({ match, effect: "files", times: 1 });
 	}
 
 	/**
 	 * The next request the match takes is refused, and does nothing: 426 and 503 in the API's words (503 with its
-	 * Retry-After), any other with the body given.
+	 * Retry-After), any other with the body given. A 2xx answered so is a server that says it did what it never did.
+	 * `times` requests are answered so (Infinity: all of them from now on).
 	 */
-	refuse(match: RouteMatch, status: number, body?: unknown, headers: Record<string, string> = {}) {
+	refuse(match: RouteMatch, status: number, body?: unknown, headers: Record<string, string> = {}, times = 1) {
 		const own: Record<number, Answer> = {
 			426: { status, body: { error: "update Duvet", client: null, minimum: null } },
 			503: { status, body: { error: "encrypted conversations are paused" }, headers: { "Retry-After": "60" } },
@@ -879,7 +897,48 @@ export class FakeApi {
 		this.#switches.push({
 			match,
 			effect: { ...answer, ...(body === undefined ? {} : { body }), headers: { ...answer.headers, ...headers } },
+			times,
 		});
+	}
+
+	/** The server sends an event of its own making to the user's connections (to its device's, when it names one). */
+	tell(user: string, event: GatewayEvent, device?: string) {
+		this.#send([{ user, device, event }]);
+	}
+
+	/**
+	 * A proposal to take the device's leaf out of the conversation's group, as the groups' external sender makes one but
+	 * signed with `signer` (the API's own key unless a test gives another): queued, and heard by the members as the API's
+	 * proposals are.
+	 */
+	proposeRemoval(conversationId: string, deviceId: string, signer: KeyObject = this.#senderKey) {
+		const conv = this.#conversations.get(conversationId);
+		const group = conv?.group;
+		const held = group && groupInfoLeaves(base64Bytes(group.group_info));
+		const leaf = held ? [...held.leaves].find(([, device]) => device === deviceId)?.[0] : undefined;
+		if (!conv || !group || !held || leaf === undefined) throw new Error(`no leaf of ${deviceId} in ${conversationId}`);
+		const data = this.#removalProposal(held.groupId, held.epoch, leaf, signer);
+		const entry = this.#addEntry(conv, { kind: "proposal", data, generation: group.generation, epoch: group.epoch });
+		for (const member of conv.members) {
+			this.#emit(member.user_id, "MLS_PROPOSAL", {
+				...{ conversation_id: conv.id, generation: group.generation, epoch: group.epoch },
+				entry: this.#forEvent(entry),
+			});
+		}
+		const events = this.#outbox.splice(0);
+		queueMicrotask(() => this.#send(events));
+	}
+
+	/**
+	 * The API serves the message as deleted (its queue's entry `deleted`, without its bytes, and GET …/messages/deleted
+	 * names it), though its author never deleted it: no tombstone is queued.
+	 */
+	markDeleted(conversationId: string, messageId: string) {
+		const conv = this.#conversations.get(conversationId);
+		const message = conv?.messages.find((m) => m.id === messageId);
+		if (!conv || !message) throw new Error(`no message ${messageId} in ${conversationId}`);
+		conv.deleted.add(messageId);
+		message.ciphertext = null;
 	}
 
 	/** Events wait from now on, until releaseEvents. */
@@ -921,9 +980,16 @@ export class FakeApi {
 			}
 			await held;
 		}
-		const switched = this.#switches.findIndex(({ match }) => matches(match, request.method, url.pathname));
-		const effect = switched < 0 ? null : this.#switches.splice(switched, 1)[0]!.effect;
+		const switched = this.#switches.find(({ match }) => matches(match, request.method, url.pathname));
+		if (switched && --switched.times <= 0) this.#switches.splice(this.#switches.indexOf(switched), 1);
+		const effect = switched?.effect ?? null;
 		if (effect === "cut") throw new TypeError("fetch failed: the request never reached the API");
+		if (effect === "forget") {
+			const putBack = this.#kept();
+			const { answer } = await this.#answer(request, url);
+			putBack();
+			return respond(answer);
+		}
 		if (effect && effect !== "lose" && effect !== "files") return respond(effect);
 		const { answer, events } = await this.#answer(request, url, effect === "files", gate !== undefined);
 		if (effect === "files") throw new TypeError("fetch failed: the connection closed once its files were up");
@@ -932,6 +998,35 @@ export class FakeApi {
 		if (effect === "lose") throw new TypeError("fetch failed: the answer was lost");
 		return respond(answer);
 	};
+
+	/** What a request can change, copied as it is now: what it gives puts it back, as `forget` does once its answer is made. */
+	#kept(): () => void {
+		const kept = structuredClone({
+			...{ sessions: this.#sessions, devices: this.#devices, identities: this.#identities },
+			...{ keyPackages: this.#keyPackages, conversations: this.#conversations, inboxes: this.#inboxes },
+			...{ segments: this.#segments, backupKeys: this.#backupKeys, shares: this.#shares, files: this.#files },
+			...{ fileRows: this.#fileRows, transfers: this.#transfers, repliesTo: this.#repliesTo },
+			...{ catchUpsSent: this.#catchUpsSent, sharesSent: this.#sharesSent, resetTokens: this.#resetTokens },
+		});
+		return () => {
+			this.#sessions = kept.sessions;
+			this.#devices = kept.devices;
+			this.#identities = kept.identities;
+			this.#keyPackages = kept.keyPackages;
+			this.#conversations = kept.conversations;
+			this.#inboxes = kept.inboxes;
+			this.#segments = kept.segments;
+			this.#backupKeys = kept.backupKeys;
+			this.#shares = kept.shares;
+			this.#files = kept.files;
+			this.#fileRows = kept.fileRows;
+			this.#transfers = kept.transfers;
+			this.#repliesTo = kept.repliesTo;
+			this.#catchUpsSent = kept.catchUpsSent;
+			this.#sharesSent = kept.sharesSent;
+			this.#resetTokens = kept.resetTokens;
+		};
+	}
 
 	/** A request's answer, and the events it sends: none for a refusal, as the API's rolled-back work sends none. */
 	async #answer(
@@ -1109,14 +1204,17 @@ export class FakeApi {
 				const ids = (query.get("ids") ?? "").split(",").filter(Boolean);
 				if (ids.length > 50 || ids.some((id) => !UUID.test(id))) throw fail(400, "ids are 50 user IDs at most");
 				const readable = ids.filter((id) => this.#identities.has(id) && this.#mayRead(session.user, id));
-				return ok(readable.map((id) => this.servedAs(this.#identityView(id), "identities", session.user)));
+				return ok(readable.flatMap((id) => this.servedAs(this.#identityView(id), "identities", session.user) ?? []));
 			}),
 			route("GET", `/api/users/(?<user>${UUID_PATH})/identity`, "session", ({ session, params }) => {
 				if (!this.#users.has(params.user!) || !this.#mayRead(session.user, params.user!)) {
 					throw fail(403, "you can't read this user's identity");
 				}
-				if (!this.#identities.has(params.user!)) throw fail(404, "no identity");
-				return ok(this.servedAs(this.#identityView(params.user!), "identity", session.user));
+				const served = this.#identities.has(params.user!)
+					? this.servedAs(this.#identityView(params.user!), "identity", session.user)
+					: null;
+				if (!served) throw fail(404, "no identity");
+				return ok(served);
 			}),
 			route("PUT", `${me}/devices/@me/key-packages`, "listed", (ctx) => this.#uploadKeyPackages(ctx)),
 			route("POST", `/api/users/(?<user>${UUID_PATH})/key-packages/claim`, "listed", (ctx) =>
@@ -1750,7 +1848,7 @@ export class FakeApi {
 			entries.push(entry);
 		}
 		const { generation, epoch } = conv.group;
-		const shown = entries.map((entry) => this.#shownTo(viewer, entry));
+		const shown = entries.map((entry) => this.queueAs(structuredClone(this.#shownTo(viewer, entry)), conv.id, viewer));
 		return ok({ entries: shown, last_seq: last, floor_seq: conv.floor, generation, epoch });
 	}
 
@@ -1886,7 +1984,7 @@ export class FakeApi {
 	 * (OpenMLS's ExternalProposal::new_remove): the group's first external sender, signed with its key over the content
 	 * alone, as an external sender's signature covers no group context.
 	 */
-	#removalProposal(groupId: Uint8Array, epoch: number, leaf: number): string {
+	#removalProposal(groupId: Uint8Array, epoch: number, leaf: number, key: KeyObject = this.#senderKey): string {
 		const content = [
 			...[...tlsVector(groupId), ...tlsUint(epoch, 8)],
 			...[2, ...tlsUint(0, 4)], // the sender: external, the group's first
@@ -1895,7 +1993,7 @@ export class FakeApi {
 		];
 		const framed = [...tlsUint(1, 2), ...tlsUint(PUBLIC, 2), ...content];
 		const label = new TextEncoder().encode("MLS 1.0 FramedContentTBS");
-		const signature = sign(null, new Uint8Array([...tlsVector(label), ...tlsVector(framed)]), this.#senderKey);
+		const signature = sign(null, new Uint8Array([...tlsVector(label), ...tlsVector(framed)]), key);
 		return bytesBase64(new Uint8Array([...framed, ...tlsVector([...signature])]));
 	}
 
