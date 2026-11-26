@@ -20,6 +20,7 @@ import { pendingRows, shownMessages, type ShownMessage } from "./content";
 import type { EngineParts } from "./engine";
 import { FilesGone, SealedFiles, type OutgoingFile } from "./files";
 import { withIdentities } from "./identity";
+import { AGAIN } from "./inbox";
 import { PENDING_CHANGES, PENDING_SENDS } from "./store";
 import type { Conversations } from "./sync";
 
@@ -114,8 +115,13 @@ export function mentionsIn(text: string): string[] {
 }
 
 const statusOf = (error: unknown) => (error instanceof FetchError ? error.response?.status : undefined);
-/** No word on the message itself: a lost connection, a session's renewal, a rate limit, the server, the pause. */
+/**
+ * No word on the message itself: a lost connection, a session's renewal, a rate limit, the server, the pause; and of the
+ * core's errors, those a later try may get past, as the inbox reads them (a cut call, the database, another instance).
+ * Any other of the core's is a word on the message, as a `sent` it refused (#550).
+ */
 const unanswered = (error: unknown) => {
+	if (error instanceof CoreError) return AGAIN.has(error.code);
 	const status = statusOf(error);
 	return status === undefined || status === 401 || status === 408 || status === 429 || status >= 500;
 };

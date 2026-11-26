@@ -18,7 +18,7 @@ const PAGE = 100;
 /** The most messages the record keeps of each kind. */
 const KEPT = 20;
 /** What a later round may get past: a cut call, the database, another instance; five rounds a message at most. */
-const AGAIN = new Set(["internal", "storage", "locked"]);
+export const AGAIN = new Set(["internal", "storage", "locked"]);
 const MOST_TRIES = 5;
 
 /** The messages the record keeps under `key`. */
