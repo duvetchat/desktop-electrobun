@@ -15,6 +15,7 @@
 		onUseCode,
 		onAcceptCode,
 		onReset,
+		onBegin,
 	}: {
 		setup: DeviceSetup | undefined;
 		onRecover: (recoveryKey: string) => Promise<void>;
@@ -22,6 +23,8 @@
 		onAcceptCode: (code: string) => Promise<void>;
 		/** Starting over, once the person said yes to its warning. */
 		onReset: () => Promise<void>;
+		/** A new attempt, where there's none (after a lost race, or a begin that failed). */
+		onBegin: () => Promise<void>;
 	} = $props();
 
 	// The approval's attempt, by the QR or the code: each one mounted anew, its field empty.
@@ -44,6 +47,10 @@
 			{#key attemptKey}
 				<ApprovalNew setup={attempt} {onUseCode} {onAcceptCode} />
 			{/key}
+		{:else}
+			<div>
+				<Button variant="secondary" size="sm" onclick={() => void onBegin()}>{t("e2e_setup_approve_begin")}</Button>
+			</div>
 		{/if}
 	</section>
 	<section class="flex flex-col gap-2" aria-labelledby="e2e-setup-start-over">

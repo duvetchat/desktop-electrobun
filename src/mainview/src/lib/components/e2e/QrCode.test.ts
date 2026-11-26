@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import qrcodeGenerator from "qrcode-generator";
+import conventions from "$lib/e2e/testing/e2e-conventions.json";
 import { tags } from "../server-render";
 
 // A new device's QR (PLAN-E2E-CLIENTES.md, Task 26; Ruling 21): the core's `qr` as its text, which Android scans. Dark
@@ -21,6 +22,20 @@ function painted(path: string): string[] {
 }
 
 describe("a QR", () => {
+	// The convention both apps keep (e2e-conventions.json's approval_qr): the core's qr, as approval_begin gives it, is
+	// the QR's text unchanged, in byte mode at level M, which the scanning device hands to approval_from_qr as it reads it.
+	test("of a new device's approval is the core's qr as its text, at level M", async () => {
+		const { qr, text, error_correction } = conventions.approval_qr;
+		expect(text).toBe(qr);
+		expect(error_correction).toBe("M");
+		const code = qrcodeGenerator(0, "M");
+		code.addData(text);
+		code.make();
+		const drawn = await tags(QrCode, { text: qr, label: "A code" });
+		const side = code.getModuleCount() + 2 * QUIET;
+		expect(drawn.find((tag) => tag.name === "svg")?.attributes.viewbox).toBe(`0 0 ${side} ${side}`);
+	});
+
 	test("draws its text's code, dark on light, inside its quiet zone", async () => {
 		const code = qrcodeGenerator(0, "M");
 		code.addData(TEXT);

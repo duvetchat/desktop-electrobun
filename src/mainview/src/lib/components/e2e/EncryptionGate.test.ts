@@ -157,4 +157,11 @@ describe("the encryption gate", () => {
 			/<div class="fixed [^"]*\bflex-col\b[^"]*">\s*<NotificationPermissionBar \/>\s*<EncryptionGate\b/,
 		);
 	});
+
+	// Review M6: a first list that leaves out devices names them before Bun's box asks.
+	test("a first list that leaves devices out names them, by their IDs' start, with Finish", () => {
+		const html = drawn({ name: "new_device", setup: { way: "finishing", leavingOut: ["01a21626", "01a21627"] } });
+		expect(html).toContain(en.e2e_first_list_leaves_out.replace("{devices}", "01a21626 and 01a21627"));
+		expect(html).toMatch(/<button [^>]*>\s*Finish\s*<\/button>/);
+	});
 });

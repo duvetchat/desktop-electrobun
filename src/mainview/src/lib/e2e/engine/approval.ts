@@ -15,6 +15,8 @@ import { base64Bytes } from "$lib/activity-thumbnail";
 import { listDevices } from "../cbor";
 import { approvalFingerprint, approvalFrameMessage, readApprovalFrame, type ApprovalFrame } from "../conventions";
 import { CoreError } from "../errors";
+import { coreStatus } from "./bootstrap";
+import { signWithout } from "./devices";
 import type { EngineParts } from "./engine";
 import { observeOwn, servedIdentity } from "./identity";
 import { withPreviousKeys } from "./recover";
@@ -26,19 +28,23 @@ export type DeviceSetup =
 	| { way: "qr"; qr: string }
 	| { way: "code"; fingerprint: string; offered: boolean; accepted: boolean }
 	| { way: "reset"; recoveryKey: string | null; finishing: boolean }
-	| { way: "finishing" };
+	| { way: "finishing"; leavingOut?: string[] };
 
 /**
  * What a device of the user's shows of a new one that asks to be approved: its name and the fingerprint its screen
  * shows (Ruling 35); `asked` until the person's yes, `offered` until the new device's reveal, then the `code` to type
- * into it; `confirmed` once its transfer went, until its list is up.
+ * into it; `confirmed` once its transfer went, until its list is up; `ended` when it can't go on (`over`: its attempt
+ * ended, or can't be confirmed here any more; `listed`: the device is set up already). `unfinished`: this device
+ * approved it before and it never took its transfer, so it comes off this device's list first (the core's way out).
  */
 export interface DeviceApproval {
 	device: string;
 	name: string;
 	fingerprint: string;
-	step: "asked" | "offered" | "code" | "confirmed";
+	step: "asked" | "offered" | "code" | "confirmed" | "ended";
 	code?: string;
+	ended?: "over" | "listed";
+	unfinished?: true;
 }
 
 /** Which approvals this device takes part in now: a new device's, or an approving one's (ready, no change of keys under
@@ -69,8 +75,10 @@ interface Asked {
 	fingerprint: string;
 	/** The inbox message of the commitment asked about. */
 	message: string;
-	step: "asked" | "offered" | "code";
+	step: "asked" | "offered" | "code" | "ended";
 	code?: string;
+	ended?: "over" | "listed";
+	unfinished: boolean;
 	/** A confirmed approval's transfer while its send failed: the same bytes go on the next Confirm. */
 	transfer?: string;
 	stop: () => void;
@@ -88,8 +96,8 @@ const keptIn = (parts: EngineParts) => {
 	return Array.isArray(kept) ? kept : [];
 };
 
-/** Older than an attempt lasts by the API's word: nothing it asks for can still be done. */
-const stale = (message: InboxMessage) => !(Date.now() - Date.parse(message.created_at) < ATTEMPT_MS);
+/** When a commitment's attempt ends, by the API's word on when it came: nothing it asks for can be done after. */
+const endsAt = (message: InboxMessage) => Date.parse(message.created_at) + ATTEMPT_MS;
 
 export class Approvals {
 	readonly #parts: EngineParts;
@@ -120,8 +128,13 @@ export class Approvals {
 	shown(): DeviceApproval | null {
 		const asked = this.#asked;
 		if (asked) {
-			const { device, name, fingerprint, step, code } = asked;
-			return { device, name, fingerprint, step, ...(code ? { code } : {}) };
+			const { device, name, fingerprint, step, code, ended, unfinished } = asked;
+			return {
+				...{ device, name, fingerprint, step },
+				...(code ? { code } : {}),
+				...(ended ? { ended } : {}),
+				...(unfinished ? { unfinished: true as const } : {}),
+			};
 		}
 		if (!this.#confirmed) return null;
 		const { device, name, fingerprint } = this.#confirmed;
@@ -131,11 +144,6 @@ export class Approvals {
 	/** A device this one approved hasn't put up its list yet: no list or key change of this device's may leave it out. */
 	holds(): boolean {
 		return this.#confirmed !== null;
-	}
-
-	/** The new device's attempt is on screen (the person is setting it up now). */
-	watching(): boolean {
-		return this.#attempt !== null;
 	}
 
 	/** Nothing goes on: timers called off, nothing shown. */
@@ -196,6 +204,8 @@ export class Approvals {
 			);
 		}
 		if (sent === 0) {
+			// Its approval_begin replaced the QR's attempt: a new QR, as the one on screen would open nothing (review M3).
+			await this.begin();
 			throw new CoreError("not_found", "no other device of the user's got this one's request", { what: "approver" });
 		}
 		this.#attempt?.stop();
@@ -220,35 +230,67 @@ export class Approvals {
 		return true;
 	}
 
-	/** The person's yes on the approving device: its own user observed, then the offer to the new device. */
-	async approve(device: string): Promise<void> {
+	/**
+	 * The person's yes on the approving device: its own user observed, then the offer to the new device. Nothing while
+	 * the identity it holds was replaced (`not_own_identity`: another device changed the keys, whose transfer this one
+	 * hasn't taken): the engine takes its inbox first. A device this one approved before that never took its transfer is
+	 * still on this device's list, where the core refuses to approve it again: it comes off first (the core's way out,
+	 * `sign_device_list`, which Bun asks about in its own box on the desktop).
+	 */
+	async approve(device: string): Promise<"replaced" | void> {
 		const asked = this.#asked;
 		if (asked?.device !== device || asked.step !== "asked") return;
 		const { api, host } = this.#parts;
-		const message = keptIn(this.#parts).find(({ id }) => id === asked.message);
-		const frame = message && readApprovalFrame(message.message);
-		if (!frame) return this.#forget(device);
+		const frame = this.#commitmentOf(asked);
+		if (!frame) return this.#end(asked, "over");
 		const served = await servedIdentity(this.#parts);
-		if (served) await observeOwn(this.#parts, served);
+		if (served && (await observeOwn(this.#parts, served)) === "not_own_identity") return "replaced";
+		if (served && (await this.#unfinished(device, served))) {
+			await signWithout(this.#parts, device);
+			if (this.#confirmed?.device === device) this.#release();
+		}
 		let offer: string;
 		try {
 			({ offer } = await host.handle<{ offer: string }>({ cmd: "approval_offer", commitment: frame.data }));
 		} catch (error) {
-			// No device this one may approve: one on the list already, another user's, or this one off its own list.
+			// No device this one may approve: one set up already, another user's, or this one off its own list.
 			if (error instanceof CoreError && ["exists", "rule_violation", "bad_command"].includes(error.code)) {
-				console.warn(`[e2e] A new device's request can't be approved here (${error.code}), and goes.`);
-				return this.#forget(device);
+				console.warn(`[e2e] A new device's request can't be approved here (${error.code}).`);
+				return this.#end(asked, error.code === "exists" ? "listed" : "over");
 			}
 			throw error;
 		}
 		await api.sendToDevice(device, approvalFrameMessage({ duvet: "approval", step: "offer", data: offer }));
 		asked.step = "offered";
+		asked.unfinished = false;
 		asked.stop();
-		asked.stop = this.#after(ATTEMPT_MS, () => (this.#asked === asked ? this.#forget(device) : undefined));
+		asked.stop = this.#after(ATTEMPT_MS, () => (this.#asked === asked ? this.#end(asked, "over") : undefined));
 		this.#changed();
 	}
 
-	/** The person's no: the question goes, and with it what the new device sent. */
+	/** The commitment the question is about, as the record keeps it. */
+	#commitmentOf(asked: Asked): ApprovalFrame | null {
+		const message = keptIn(this.#parts).find(({ id }) => id === asked.message);
+		return (message && readApprovalFrame(message.message)) || null;
+	}
+
+	/** On the list this device holds and not on the API's: approved here before, its transfer never taken. */
+	async #unfinished(device: string, served: { device_list: string }): Promise<boolean> {
+		const held = listDevices((await coreStatus(this.#parts.host)).device_list ?? "") ?? [];
+		return held.includes(device) && !listDevices(served.device_list)?.includes(device);
+	}
+
+	/** The approval can't go on: it says why until the person closes it, and its timer is called off. */
+	#end(asked: Asked, ended: "over" | "listed") {
+		asked.stop();
+		asked.stop = () => {};
+		asked.step = "ended";
+		asked.ended = ended;
+		delete asked.code;
+		this.#changed();
+	}
+
+	/** The person's no, or their Close of an approval that ended: the question goes, and what the new device sent. */
 	decline(device: string) {
 		if (this.#asked?.device === device) this.#forget(device);
 	}
@@ -256,21 +298,27 @@ export class Approvals {
 	/**
 	 * The person's Confirm, after they saw the new device accept the code: approval_confirm (on the desktop, after Bun's
 	 * box, whose no keeps the code shown), then the transfer to the new device, the same bytes again after a send that
-	 * failed. An attempt the core no longer has (`not_found`: another offer since, or its ten minutes) is over.
+	 * failed. The same offer is made again right before (the core answers it alike): Bun, its core worker started
+	 * again, knows only from an offer what its box names. An attempt the core no longer has (`not_found`: another offer
+	 * since, or its ten minutes) is over, and says so.
 	 */
 	async confirm(device: string): Promise<void> {
 		const asked = this.#asked;
 		if (asked?.device !== device || asked.step !== "code" || !asked.code) return;
 		if (!asked.transfer) {
+			const { host } = this.#parts;
+			const frame = this.#commitmentOf(asked);
+			if (!frame) return this.#end(asked, "over");
 			try {
-				({ transfer: asked.transfer } = await this.#parts.host.handle<{ transfer: string }>({
+				await host.handle({ cmd: "approval_offer", commitment: frame.data });
+				({ transfer: asked.transfer } = await host.handle<{ transfer: string }>({
 					cmd: "approval_confirm",
 					code: asked.code,
 				}));
 			} catch (error) {
 				// The person's no in Bun's box: not yet, the code still shown.
 				if (error instanceof CoreError && error.code === "refused") return;
-				if (error instanceof CoreError && error.code === "not_found") this.#forget(device);
+				if (error instanceof CoreError && error.code === "not_found") return this.#end(asked, "over");
 				throw error;
 			}
 		}
@@ -354,25 +402,31 @@ export class Approvals {
 		const device = message.from_device_id;
 		const asked = this.#asked;
 		if (frame.step === "commitment") {
-			if (stale(message)) {
-				if (asked?.message === message.id) {
-					asked.stop();
-					this.#asked = null;
-				}
+			const left = endsAt(message) - this.#parts.clock.now();
+			if (left <= 0) {
+				if (asked?.message === message.id && asked.step === "asked") this.#forget(device);
 				return false;
 			}
 			if (asked && asked.device !== device) return true;
 			if (asked?.message === message.id) return true;
-			// A new attempt of the device's, or the first ask: the question starts over.
+			// A new attempt of the device's, or the first ask: the question starts over, and ends with that attempt.
 			asked?.stop();
 			const fingerprint = await approvalFingerprint(base64Bytes(frame.data));
-			this.#asked = { device, name: frame.name ?? "", fingerprint, message: message.id, step: "asked", stop: () => {} };
+			const served = await servedIdentity(this.#parts);
+			const unfinished = served !== null && (await this.#unfinished(device, served));
+			const question: Asked = {
+				...{ device, name: frame.name ?? "", fingerprint, message: message.id },
+				...{ step: "asked", unfinished, stop: () => {} },
+			};
+			question.stop = this.#after(left, () =>
+				this.#asked === question && question.step === "asked" ? this.#forget(device) : undefined,
+			);
+			this.#asked = question;
 			return true;
 		}
 		if (frame.step !== "reveal" || asked?.device !== device) return false;
-		// Asked again after the app started over, it waits for the offer, made again on the person's yes.
-		if (asked.step === "asked") return true;
-		if (asked.step !== "offered") return false;
+		// Kept until the approval ends: a restart asks again, and the yes's offer (the same) takes it again (review M1).
+		if (asked.step !== "offered") return true;
 		try {
 			({ code: asked.code } = await this.#parts.host.handle<{ code: string }>({
 				cmd: "approval_check",
@@ -384,7 +438,7 @@ export class Approvals {
 			return false;
 		}
 		asked.step = "code";
-		return false;
+		return true;
 	}
 
 	/** On the new device: the first offer by the code's way, and a transfer, kept until its code is accepted. */

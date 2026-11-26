@@ -21,6 +21,7 @@ const props = (setup?: DeviceSetup) => ({
 	onUseCode: async () => {},
 	onAcceptCode: async () => {},
 	onReset: async () => {},
+	onBegin: async () => {},
 });
 const drawn = (setup?: DeviceSetup) =>
 	render(DeviceSetupCard, { props: props(setup) }).body.replace(/<!--[^]*?-->/g, "");
@@ -44,5 +45,11 @@ describe("a new device's setup", () => {
 		expect(en.e2e_start_over_warning).toBe(NOTICES.start_over_warning);
 		expect(source).toContain('confirmAction(t("e2e_start_over_warning"), t("e2e_start_over"), onReset)');
 		expect(source).not.toMatch(/onclick=\{[^}]*onReset/);
+	});
+
+	// Review M4: with no attempt (after a lost race, or a begin that failed), the way by another device begins again.
+	test("without an attempt, the approval's way offers to begin one", () => {
+		expect(drawn(undefined)).toMatch(new RegExp(`<button [^>]*>\\s*${en.e2e_setup_approve_begin}\\s*</button>`));
+		expect(drawn({ way: "qr", qr: "omRib2R5WJ6mYXYB" })).not.toContain(en.e2e_setup_approve_begin);
 	});
 });

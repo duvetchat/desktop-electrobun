@@ -62,4 +62,9 @@ describe("a new device's approval", () => {
 		expect(en.e2e_code_mismatch).toBe(NOTICES.code_mismatch);
 		expect(en.e2e_use_code).toBe(NOTICES.use_code);
 	});
+
+	// Review M4: a lost race on the approval path says so.
+	test("a list another device put up first says to set up again", () => {
+		expect(codeProblem(new CoreError("list_changed", ""))).toBe("e2e_setup_again");
+	});
 });

@@ -16,6 +16,7 @@ import {
 	watchedHost,
 	type TestDevice,
 } from "../testing/engines";
+import type { EngineState } from "./engine";
 import type { EngineStore } from "./store";
 
 // A new device set up with the recovery key (PLAN-E2E-CLIENTES.md, Task 26; decisions 22 and 24): the key as the person
@@ -171,8 +172,13 @@ describe.skipIf(!coreLibrary)("a new device and the recovery key", () => {
 			});
 			const c = await newDevice(fake, ana, { host });
 			await c.engine.recover(key);
+			// The page says first which devices go, by what the person can place: their IDs' start (review M6).
+			const leavingOut = [deviceOf(a), deviceOf(b)].map((id) => id.slice(0, 8)).sort();
+			expect(c.engine.state).toEqual({ name: "new_device", setup: { way: "finishing", leavingOut } });
+			expect(removed).toEqual([]);
+			// Their Finish signs, on top of recover's list, a list without them, which Bun asks for on the desktop.
+			await c.engine.finishSetup();
 			expect(c.engine.state).toEqual({ name: "ready" });
-			// On top of recover's list, a list without them, which Bun asks the person for on the desktop.
 			expect(removed).toHaveLength(1);
 			expect(removed[0]?.toSorted()).toEqual([deviceOf(a), deviceOf(b)].sort());
 			const served = await c.api.identity(ana);
@@ -198,12 +204,20 @@ describe.skipIf(!coreLibrary)("a new device and the recovery key", () => {
 				cmd === "sign_device_list" && refusals-- > 0 ? new CoreError("refused", "the person didn't confirm it") : null,
 			);
 			const b = await newDevice(fake, ana, { host });
-			// The person's no in Bun's box: the identity is on this device, and its list waits for Finish.
+			// The identity is on this device, and its list waits for Finish, saying first which device it leaves out.
 			await b.engine.recover(key);
-			expect(b.engine.state).toEqual({ name: "new_device", setup: { way: "finishing" } });
+			const waiting: EngineState = {
+				name: "new_device",
+				setup: { way: "finishing", leavingOut: [deviceOf(a).slice(0, 8)] },
+			};
+			expect(b.engine.state).toEqual(waiting);
+			expect(log).not.toContain("sign_device_list");
+			// The person's no in Bun's box: it still waits.
+			await b.engine.finishSetup();
+			expect(b.engine.state).toEqual(waiting);
 			// The app starts again: nothing asks the person by itself, and the list still waits.
 			const again = await restarted(fake, b);
-			expect(again.engine.state).toEqual({ name: "new_device", setup: { way: "finishing" } });
+			expect(again.engine.state).toEqual(waiting);
 			expect(log.filter((cmd) => cmd === "sign_device_list")).toHaveLength(1);
 			// Their Finish asks again, and with a yes the device is set up.
 			await again.engine.finishSetup();

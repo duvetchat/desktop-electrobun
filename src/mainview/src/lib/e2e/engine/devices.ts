@@ -107,9 +107,10 @@ export async function signWithout(parts: EngineParts, device: string): Promise<v
 		await observeOwn(parts, served);
 		const listed = listDevices(served.device_list);
 		if (!listed) throw new Error("the device list the API serves doesn't read");
-		if (!listed.includes(device)) return;
 		const status = await coreStatus(host);
 		const held = heldDevices(status);
+		// On neither list: done. On this device's alone, an approval of its own that never finished (task 26's I1).
+		if (!listed.includes(device) && !held.includes(device)) return;
 		const off = [...new Set([device, ...(await takenAway(api, held, status.device_id))])].filter((id) =>
 			held.includes(id),
 		);

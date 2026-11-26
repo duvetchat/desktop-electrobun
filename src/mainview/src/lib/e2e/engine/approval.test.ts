@@ -6,6 +6,7 @@ import { CoreError } from "../errors";
 import { FakeApi } from "../testing/fake-api";
 import { coreLibrary } from "../testing/host-bun";
 import {
+	answeringHost,
 	approvedDevice,
 	firstDevice,
 	rejection,
@@ -249,13 +250,15 @@ describe.skipIf(!coreLibrary)("a new device approved by another", () => {
 			expect(over).toEqual(expect.any(String));
 			expect([first, renewed]).not.toContain(over);
 
-			// The approving device's own attempt ends ten minutes after its offer: its question goes.
+			// The approving device's own attempt ends ten minutes after its offer: its question says so (M1).
 			await n.engine.useCode();
 			await until(() => approvalOf(a.engine.state)?.step === "asked");
 			await a.engine.approveDevice(deviceOf(n));
 			expect(approvalOf(a.engine.state)?.step).not.toBe("asked");
 			a.clock.advance(10 * MINUTE);
 			await turnEnded(a);
+			expect(approvalOf(a.engine.state)).toMatchObject({ step: "ended", ended: "over" });
+			await a.engine.declineDevice(deviceOf(n));
 			expect(approvalOf(a.engine.state)).toBeNull();
 			await Promise.all([a.engine.stop(), n.engine.stop()]);
 		},
@@ -344,6 +347,168 @@ describe.skipIf(!coreLibrary)("a new device approved by another", () => {
 			// The change done, the new device's question shows.
 			await a.engine.keySaved();
 			await until(() => approvalOf(a.engine.state)?.step === "asked");
+			await Promise.all([a.engine.stop(), n.engine.stop()]);
+		},
+		SLOW,
+	);
+
+	// Review I1: approval_confirm put the new device on this device's list, and its transfer was never taken (the sheet
+	// reopened, a Cancel after a failed send, the new device's restart): the core's way out is to take it off this list
+	// and approve it again.
+	test(
+		"a confirmed approval whose transfer isn't taken: the device comes off the list, and a fresh approval completes",
+		async () => {
+			const fake = new FakeApi();
+			const ana = fake.addUser();
+			useFake(fake);
+			const removed: unknown[][] = [];
+			const host = watchedHost(testHost(), [], (cmd, command) => {
+				if (cmd === "sign_device_list" && Array.isArray(command.remove)) removed.push(command.remove);
+				return null;
+			});
+			const a = await firstDevice(fake, ana, { host });
+			let reading = true;
+			const n = await newDevice(fake, ana, { hears: (event) => reading || event.type !== "DEVICE_MESSAGE" });
+			await toTheCode(a, n);
+			// Confirmed before the code was typed, and the sheet reopened: the new attempt can't take that transfer.
+			reading = false;
+			await a.engine.confirmApproval(deviceOf(n));
+			await n.engine.useCode();
+			// The new attempt's question says the device is taken off this device's list first.
+			await until(() => approvalOf(a.engine.state)?.step === "asked");
+			expect(approvalOf(a.engine.state)).toMatchObject({ device: deviceOf(n), unfinished: true });
+			await a.engine.approveDevice(deviceOf(n));
+			expect(removed).toEqual([[deviceOf(n)]]);
+			expect(listDevices((await a.host.handle<{ device_list: string }>({ cmd: "status" })).device_list)).toEqual([
+				deviceOf(a),
+			]);
+			// Its changes no longer wait for it, and the fresh approval completes.
+			reading = true;
+			n.connect(deviceOf(n));
+			await until(() => approvalOf(a.engine.state)?.step === "code");
+			await until(() => offered(n));
+			await n.engine.acceptCode(approvalOf(a.engine.state)!.code!);
+			await a.engine.confirmApproval(deviceOf(n));
+			await until(() => n.engine.state.name === "ready");
+			expect(listDevices((await n.api.identity(ana)).device_list)?.sort()).toEqual([deviceOf(a), deviceOf(n)].sort());
+			await Promise.all([a.engine.stop(), n.engine.stop()]);
+		},
+		SLOW,
+	);
+
+	// Review M1: a restart of the approving app while it shows the code, or of Bun's core worker, which forgets the offer
+	// its box names (and refuses approval_confirm without asking until another offer).
+	test(
+		"the approving device still confirms after its app or its core worker started again at the code",
+		async () => {
+			const fake = new FakeApi();
+			const ana = fake.addUser();
+			useFake(fake);
+			const log: string[] = [];
+			let underWay = false;
+			const host = watchedHost(testHost(), log, (cmd) => {
+				if (cmd === "approval_offer") underWay = true;
+				if (cmd === "approval_confirm" && !underWay) {
+					return new CoreError("refused", "this device can't tell what it would approve");
+				}
+				return null;
+			});
+			const a = await firstDevice(fake, ana, { host });
+			const n = await newDevice(fake, ana);
+			const code = await toTheCode(a, n);
+			// The app starts again: the question comes back, its yes offers again, and the kept reveal gives the same code.
+			const again = await restarted(fake, a);
+			await until(() => approvalOf(again.engine.state)?.step === "asked");
+			await again.engine.approveDevice(deviceOf(n));
+			await until(() => approvalOf(again.engine.state)?.step === "code");
+			expect(approvalOf(again.engine.state)?.code).toBe(code);
+			// Then Bun's core worker starts again: the offer goes once more right before the confirmation.
+			underWay = false;
+			await n.engine.acceptCode(code);
+			await again.engine.confirmApproval(deviceOf(n));
+			await until(() => n.engine.state.name === "ready");
+			expect(log[log.lastIndexOf("approval_confirm") - 1]).toBe("approval_offer");
+			await Promise.all([again.engine.stop(), n.engine.stop()]);
+		},
+		SLOW,
+	);
+
+	// Review M2: the question ends with the new device's attempt, by the engine's clock.
+	test(
+		"«Is this device yours?» goes once the new device's attempt is over",
+		async () => {
+			const fake = new FakeApi();
+			const ana = fake.addUser();
+			useFake(fake);
+			const a = await firstDevice(fake, ana);
+			const n = await newDevice(fake, ana);
+			await n.engine.beginApproval();
+			await n.engine.useCode();
+			await until(() => approvalOf(a.engine.state)?.step === "asked");
+			a.clock.advance(9 * MINUTE);
+			await turnEnded(a);
+			expect(approvalOf(a.engine.state)?.step).toBe("asked");
+			a.clock.advance(MINUTE);
+			await turnEnded(a);
+			expect(approvalOf(a.engine.state)).toBeNull();
+			expect(keptSteps(a)).not.toContain("commitment");
+			await Promise.all([a.engine.stop(), n.engine.stop()]);
+		},
+		SLOW,
+	);
+
+	// Review M3: the code's attempt replaces the QR's in the core, so the QR on screen would open nothing.
+	test(
+		"a code attempt no device got shows a new QR",
+		async () => {
+			const fake = new FakeApi();
+			const ana = fake.addUser();
+			useFake(fake);
+			const a = await firstDevice(fake, ana);
+			const n = await newDevice(fake, ana);
+			await n.engine.beginApproval();
+			const first = qrOf(n);
+			fake.cutRequest({ method: "POST", path: `/api/devices/${deviceOf(a)}/inbox` });
+			expect(await rejection(n.engine.useCode())).toMatchObject({ code: "not_found", what: "approver" });
+			const shown = qrOf(n);
+			expect(shown).toEqual(expect.any(String));
+			expect(shown).not.toBe(first);
+			await Promise.all([a.engine.stop(), n.engine.stop()]);
+		},
+		SLOW,
+	);
+
+	// Review M5: between another device's change of keys and this one taking its transfer, an offer would certify the
+	// new device under the identity it replaced.
+	test(
+		"the approving device offers nothing while the identity it holds was replaced",
+		async () => {
+			const fake = new FakeApi();
+			const ana = fake.addUser();
+			useFake(fake);
+			const log: string[] = [];
+			let replaced = false;
+			const host = watchedHost(
+				answeringHost(testHost(), (command) =>
+					replaced && command.cmd === "observe_user" && command.user_id === ana
+						? { state: "rejected", verified: true, reason: "not_own_identity" }
+						: undefined,
+				),
+				log,
+			);
+			const a = await firstDevice(fake, ana, { host });
+			const n = await newDevice(fake, ana);
+			await n.engine.beginApproval();
+			await n.engine.useCode();
+			await until(() => approvalOf(a.engine.state)?.step === "asked");
+			replaced = true;
+			await a.engine.approveDevice(deviceOf(n));
+			expect(log).not.toContain("approval_offer");
+			expect(approvalOf(a.engine.state)?.step).toBe("asked");
+			// Its identity the API's again: the yes offers.
+			replaced = false;
+			await a.engine.approveDevice(deviceOf(n));
+			expect(log).toContain("approval_offer");
 			await Promise.all([a.engine.stop(), n.engine.stop()]);
 		},
 		SLOW,

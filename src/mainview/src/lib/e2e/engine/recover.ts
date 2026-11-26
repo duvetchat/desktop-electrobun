@@ -56,19 +56,20 @@ export async function recoverIdentity(parts: EngineParts, recoveryKey: string): 
 	);
 }
 
-/** How a device's first list went: up, waiting for the person's Finish, or lost to another list there first. */
-export type FirstList = "listed" | "ask" | "lost";
+/** How a device's first list went: up, lost to another list there first, or waiting for the person's Finish to leave
+ * these devices out. */
+export type FirstList = "listed" | "lost" | { leavingOut: string[] };
 
 /**
  * This device's first list, once it holds the identity (recovered, or approved) and the API doesn't list it yet: the
  * list it holds, with itself on it, signed again without the devices the API took away (a new password's remove_devices:
  * the API refuses a list that names them, step 3's ruling 23), goes up with this device's certificate on top of the
- * version served, and is confirmed only after its 200 (Review Focus 11), the own user observed after. On the desktop
- * that signing asks the person in Bun's box, so with no tap of theirs (`mayAsk` false: a start) it waits for their
- * Finish (`ask`); their no rejects (`refused`). Another list there first (409) leaves this device off for good (`lost`):
- * no command adds a device to a list.
+ * version served, and is confirmed only after its 200 (Review Focus 11), the own user observed after. Leaving devices
+ * out is the person's act, which on the desktop Bun asks about in its own box: the page names them first, so only the
+ * person's Finish signs (`signOff`), and their no rejects (`refused`). Another list there first (409) leaves this
+ * device off for good (`lost`): no command adds a device to a list.
  */
-export async function putFirstList(parts: EngineParts, mayAsk: boolean): Promise<FirstList> {
+export async function putFirstList(parts: EngineParts, signOff: boolean): Promise<FirstList> {
 	const { api, host } = parts;
 	const served = await servedIdentity(parts);
 	if (!served) throw new Error("this user has no identity to list this device under");
@@ -76,7 +77,7 @@ export async function putFirstList(parts: EngineParts, mayAsk: boolean): Promise
 	const held = (status.device_list && listDevices(status.device_list)) || [];
 	const off = await takenAway(api, held, status.device_id);
 	if (off.length) {
-		if (!mayAsk) return "ask";
+		if (!signOff) return { leavingOut: off };
 		await host.handle({ cmd: "sign_device_list", remove: off });
 		status = await coreStatus(host);
 	}

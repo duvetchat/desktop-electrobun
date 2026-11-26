@@ -7,6 +7,7 @@
 		if (error instanceof CoreError) {
 			if (error.code === "rule_violation" && error.rule === "code_mismatch") return "e2e_code_mismatch";
 			if (error.code === "not_found" && error.what === "approver") return "e2e_no_approver";
+			if (error.code === "list_changed") return "e2e_setup_again";
 			if (error.code === "not_found") return "e2e_approval_over";
 		}
 		return "e2e_setup_failed";

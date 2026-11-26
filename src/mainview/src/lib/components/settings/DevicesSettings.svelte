@@ -1,5 +1,7 @@
 <script module lang="ts">
+	import { FetchError, getApiError } from "$lib/api/api";
 	import type { Device } from "$lib/api/e2e";
+	import { CoreError } from "$lib/e2e/errors";
 	import { onlyDevice } from "$lib/e2e/engine/devices";
 	import type { EngineState } from "$lib/e2e/engine/engine";
 	import { t } from "$lib/i18n";
@@ -33,6 +35,19 @@
 	export function removalNotes(device: Device, along: readonly string[], devices: readonly Device[] | null): string[] {
 		const line = alongLine(along, devices);
 		return [t("e2e_device_id_start", { id: device.id.slice(0, 8) }), ...(line ? [line] : [])];
+	}
+
+	/**
+	 * What a removal that failed says: while a device this one approved sets up, why it waits; the API's refusal of a
+	 * list naming a device this one approved that never finished (task 26's I1), in words; anything else, the API's.
+	 */
+	export function removalProblem(error: unknown): string {
+		if (error instanceof CoreError && error.code === "approval_waits") return t("e2e_approval_waits");
+		const refusal: unknown = error instanceof FetchError ? error.response?.data?.error : undefined;
+		if (typeof refusal === "string" && /has no certificate of this identity/.test(refusal)) {
+			return t("e2e_device_unfinished");
+		}
+		return getApiError(error, t("e2e_device_action_failed"));
 	}
 
 	/** Asks before changing the keys, naming the devices an earlier removal takes along (M3). */
@@ -70,11 +85,9 @@
 		Trash2 as TrashIcon,
 		TriangleAlert as WarningIcon,
 	} from "@lucide/svelte";
-	import { getApiError } from "$lib/api/api";
 	import Button from "$lib/components/ui/Button.svelte";
 	import Dialog from "$lib/components/ui/Dialog.svelte";
 	import { hasDeviceData, inactiveDevice } from "$lib/e2e/engine/devices";
-	import { CoreError } from "$lib/e2e/errors";
 	import { formatDate } from "$lib/i18n/format";
 	import { calloutClass, CHECKBOX, NOTE, ROW_TILE, rowClass, TAG } from "./recipes";
 	import SettingsGroup from "./SettingsGroup.svelte";
@@ -164,10 +177,7 @@
 			await onRemove(device.id, lost && device.listed);
 			removing = null;
 		} catch (error) {
-			failure =
-				error instanceof CoreError && error.code === "approval_waits"
-					? t("e2e_approval_waits")
-					: getApiError(error, t("e2e_device_action_failed"));
+			failure = removalProblem(error);
 		} finally {
 			busy = false;
 		}

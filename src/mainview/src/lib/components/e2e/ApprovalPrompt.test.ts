@@ -50,4 +50,21 @@ describe("a new device's approval, on the approving device", () => {
 		expect(en.e2e_approval_confirm_after).toBe(NOTICES.approval_confirm_after);
 		expect(buttons(html)).toEqual([en.e2e_cancel, en.e2e_approval_confirm]);
 	});
+
+	// Review I1: a device this one approved that never took its transfer is taken off the list first.
+	test("says a device it approved before is taken off the list first", () => {
+		const html = drawn({ ...approval("asked"), unfinished: true });
+		expect(html).toContain(en.e2e_approval_unfinished.replace("{name}", "Chrome on Linux"));
+		expect(drawn(approval("asked"))).not.toContain(en.e2e_approval_unfinished.replace("{name}", "Chrome on Linux"));
+	});
+
+	// Reviews I1 and M1: an approval that can't go on says why, and how to start again, never closing without a word.
+	test("an approval that ended says why, with Close alone", () => {
+		const over = drawn({ ...approval("ended"), ended: "over" });
+		expect(over).toContain(en.e2e_approval_over_here);
+		expect(buttons(over)).toEqual([en.e2e_approval_close]);
+		const listed = drawn({ ...approval("ended"), ended: "listed" });
+		expect(listed).toContain(en.e2e_approval_listed);
+		expect(buttons(listed)).toEqual([en.e2e_approval_close]);
+	});
 });

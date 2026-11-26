@@ -455,6 +455,41 @@ describe.skipIf(!live)("live, against the API's stack", () => {
 			await fresh.end();
 		}
 	}, 180_000);
+
+	// Starting over (review M7): Bob's new device, with neither his key nor another device of his, starts over, and his
+	// DM with Carol takes it back once Carol's engine commits the removal of his device from before, which the API's
+	// removals worker proposes as the groups' external sender.
+	test("a device that started over is let back in by another member's engine", async () => {
+		const pair = carolAndDave;
+		if (!pair) throw new Error("the case before left no device");
+		const { c } = pair;
+		const [bob, carol] = [account(1), account(2)];
+		const fresh = await deviceOf(bob);
+		try {
+			const request = await fresh.client.post<{ id: string }>("/api/users/@me/friends/requests", { user_id: carol.id });
+			await c.client.post(`/api/users/@me/friends/requests/${request.data.id}/accept`);
+			const made = await c.client.post<{ id: string }>("/api/users/@me/conversations", { type: 1, user_id: bob.id });
+			const dm = made.data.id;
+			// Carol's device makes the DM's group, with Bob's device from before, whose key packages the API still has.
+			await c.engine.openConversation(dm);
+			await eventually(async () => (await heldGroup(c, dm)) !== null);
+
+			await fresh.engine.start();
+			expect(fresh.engine.state).toEqual({ name: "new_device" });
+			await fresh.engine.resetIdentity();
+			await fresh.engine.keySaved();
+			expect(fresh.engine.state.name).toBe("ready");
+			await inOneGroup([c, fresh], dm);
+			// Two commits past the group's first epoch: the removal, by Carol's device (the only member left that commits),
+			// then this device's join.
+			expect((await heldGroup(fresh, dm))?.epoch).toBeGreaterThanOrEqual(3);
+			const text = "welcome back";
+			const sent = (await c.engine.sendMessage({ conversation_id: dm, nonce: crypto.randomUUID(), text }))!;
+			await eventually(async () => (await fresh.engine.messages(dm, [sent.id]))[0]?.text === text);
+		} finally {
+			await fresh.end();
+		}
+	}, 180_000);
 });
 
 /** The conversation's group as the device's core holds it, or null without one. */

@@ -10,6 +10,7 @@
 
 <script lang="ts">
 	import Button from "$lib/components/ui/Button.svelte";
+	import { CoreError } from "$lib/e2e/errors";
 
 	// What a device of the person's says of a new one that asks to be approved (PLAN-E2E-CLIENTES.md, Task 26), in the
 	// gate's dialog: its name and the fingerprint its screen shows, with a yes and a no before anything is offered; then
@@ -36,6 +37,8 @@
 		try {
 			await work();
 		} catch (error) {
+			// The person's no in Bun's own box is no failure.
+			if (error instanceof CoreError && error.code === "refused") return;
 			console.error("[e2e] The approval's step failed:", error);
 			failed = true;
 		} finally {
@@ -49,11 +52,20 @@
 		<p class="text-duvet-ink font-content text-[13.5px] leading-[1.4]">
 			{t("e2e_approval_asks", { name: approval.name })}
 		</p>
+		{#if approval.unfinished}
+			<p class="text-duvet-ink2 text-[13px] leading-[1.4]">{t("e2e_approval_unfinished", { name: approval.name })}</p>
+		{/if}
 	{/if}
-	<p class="text-duvet-ink font-mono text-[15px] tracking-[0.06em]">
-		{t("e2e_code_fingerprint", { fingerprint: approval.fingerprint })}
-	</p>
-	<p class="text-duvet-ink2 text-[12.5px] leading-[1.4]">{t("e2e_approval_fingerprint_line")}</p>
+	{#if approval.step === "ended"}
+		<p class="text-duvet-ink text-[13.5px] leading-[1.4]" role="status">
+			{approval.ended === "listed" ? t("e2e_approval_listed") : t("e2e_approval_over_here")}
+		</p>
+	{:else}
+		<p class="text-duvet-ink font-mono text-[15px] tracking-[0.06em]">
+			{t("e2e_code_fingerprint", { fingerprint: approval.fingerprint })}
+		</p>
+		<p class="text-duvet-ink2 text-[12.5px] leading-[1.4]">{t("e2e_approval_fingerprint_line")}</p>
+	{/if}
 	{#if approval.step === "offered"}
 		<p class="text-duvet-ink2 text-[13px]" role="status">{t("e2e_approval_waiting", { name: approval.name })}</p>
 	{:else if approval.step === "code"}
@@ -68,6 +80,8 @@
 		{#if approval.step === "asked"}
 			<Button variant="quiet" disabled={busy} onclick={() => void run(onDecline)}>{t("e2e_approval_no")}</Button>
 			<Button disabled={busy} onclick={() => void run(onApprove)}>{t("e2e_approval_yes")}</Button>
+		{:else if approval.step === "ended"}
+			<Button disabled={busy} onclick={() => void run(onDecline)}>{t("e2e_approval_close")}</Button>
 		{:else}
 			<Button variant="quiet" disabled={busy} onclick={() => void run(onDecline)}>{t("e2e_cancel")}</Button>
 			{#if approval.step === "code"}

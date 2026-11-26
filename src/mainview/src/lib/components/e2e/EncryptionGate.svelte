@@ -6,6 +6,7 @@
 	import Sheet from "$lib/components/ui/Sheet.svelte";
 	import type { EngineState } from "$lib/e2e/engine/engine";
 	import { t } from "$lib/i18n";
+	import { formatList } from "$lib/i18n/format";
 	import { confirmAction } from "$lib/stores/confirm.svelte";
 	import ApprovalPrompt, { approvalTitle } from "./ApprovalPrompt.svelte";
 	import DeviceSetupCard from "./DeviceSetupCard.svelte";
@@ -118,7 +119,11 @@
 					: { text: t("e2e_first_device"), label: t("e2e_set_up"), run: onMakeIdentity };
 			case "new_device":
 				if (encryption.setup?.way === "finishing") {
-					return { text: t("e2e_new_device_finish"), label: t("e2e_finish"), run: setupActions.finishSetup };
+					const devices = encryption.setup.leavingOut;
+					const text = devices?.length
+						? t("e2e_first_list_leaves_out", { devices: formatList(devices) })
+						: t("e2e_new_device_finish");
+					return { text, label: t("e2e_finish"), run: setupActions.finishSetup };
 				}
 				if (encryption.setup?.way === "reset") {
 					return { text: t("e2e_reset_finish"), label: t("e2e_finish"), run: setupActions.finishSetup };
@@ -192,6 +197,7 @@
 			onUseCode={setupActions.useCode}
 			onAcceptCode={setupActions.acceptCode}
 			onReset={setupActions.resetIdentity}
+			onBegin={setupActions.beginApproval}
 		/>
 	</Sheet>
 {/if}

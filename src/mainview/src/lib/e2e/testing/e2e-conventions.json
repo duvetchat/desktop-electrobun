@@ -811,6 +811,12 @@
 			"frame": null
 		}
 	],
+	"approval_qr": {
+		"about": "A new device's QR (Task 26): its text is the core's qr exactly as approval_begin gives it (standard base64, padded), in byte mode at error correction M. The device that scans it hands that text, unchanged, to approval_from_qr {qr}, and sends the transfer to the inbox of the new device the QR names.",
+		"qr": "omF2AWR1c2VyUAGiFiYK23MctxoqozmlQFxmZGV2aWNlUAGiFiYNuHANqIoZsowuqo1tc2lnbmF0dXJlX2tleVgg7hih7kQ1q53knNDDjG6rfA72tc+KVApcLr4g+YE7ZylocGtlX2tleVggw3zF5D8dVC8ZNzSHIZH/nPrGi9qD/oTw6e7ALVRezhRja2V5WCDmTkIcj0k5Y5G3hUcCtPRSfpyYxFN3VeQRZ73DKBAZag==",
+		"error_correction": "M",
+		"text": "omF2AWR1c2VyUAGiFiYK23MctxoqozmlQFxmZGV2aWNlUAGiFiYNuHANqIoZsowuqo1tc2lnbmF0dXJlX2tleVgg7hih7kQ1q53knNDDjG6rfA72tc+KVApcLr4g+YE7ZylocGtlX2tleVggw3zF5D8dVC8ZNzSHIZH/nPrGi9qD/oTw6e7ALVRezhRja2V5WCDmTkIcj0k5Y5G3hUcCtPRSfpyYxFN3VeQRZ73DKBAZag=="
+	},
 	"approval_fingerprints": [
 		{
 			"case": "a commitment's fingerprint, as both screens show it",

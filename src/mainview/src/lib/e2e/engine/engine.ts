@@ -59,9 +59,12 @@ export type MessagesListener = (
 export interface Clock {
 	/** Runs `run` once `ms` have passed; what it gives calls it off. */
 	later(ms: number, run: () => void): () => void;
+	/** The time now, in ms since the epoch. */
+	now(): number;
 }
 
 export const systemClock: Clock = {
+	now: () => Date.now(),
 	later(ms, run) {
 		const timer = setTimeout(run, ms);
 		return () => clearTimeout(timer);
@@ -495,7 +498,7 @@ export class E2EEngine {
 			await recoverIdentity(this.#parts, recoveryKey);
 			// One way per attempt: an approval under way is over.
 			this.#approvals.end();
-			await this.#listThisDevice(true);
+			await this.#listThisDevice(false);
 		});
 	}
 
@@ -570,11 +573,17 @@ export class E2EEngine {
 		});
 	}
 
-	/** The person's yes to «Is this device yours?»: this device offers to approve it (never without it). */
+	/**
+	 * The person's yes to «Is this device yours?»: this device offers to approve it (never without it). Its identity
+	 * replaced meanwhile, its inbox goes first, which may bring the change of keys' transfer, and the yes is tried again.
+	 */
 	approveDevice(deviceId: string): Promise<void> {
 		return this.#queue(async () => {
 			if (this.#role() !== "approver") return;
-			await this.#approvals.approve(deviceId);
+			if ((await this.#approvals.approve(deviceId)) === "replaced") {
+				await this.#inbox();
+				if (this.#role() !== "approver" || (await this.#approvals.approve(deviceId)) === "replaced") return;
+			}
 			// A reveal kept from before the app started again: taken now.
 			await this.#approvals.take("approver");
 		});
@@ -983,29 +992,27 @@ export class E2EEngine {
 	/** The kept approval frames, by this device's role; a transfer that set it up lists it next. */
 	async #takeApprovals(): Promise<void> {
 		if (!(await this.#approvals.take(this.#role()))) return;
-		// Its person sets it up now when the attempt's on screen: Bun's box may ask them then, never at a start.
-		const watched = this.#approvals.watching();
 		this.#approvals.end();
-		await this.#listThisDevice(watched);
+		await this.#listThisDevice(false);
 	}
 
 	/**
 	 * This device, holding the user's identity now (recovered, or approved), puts up its first list (recover.ts), and
-	 * once it's listed starts its last steps. One that waits (the person's no in Bun's box, a list to sign at a start, a
-	 * failure) leaves Finish for the person. One that lost to another list (409) can't be listed any more, as the core
-	 * adds no device to a list: the installation starts again as a new device (Ruling 26), and the person sets it up
-	 * again.
+	 * once it's listed starts its last steps. One that must leave devices out names them and waits for the person's
+	 * Finish (`signOff`, when Bun asks in its own box: review M6); one that fails, or their no there, leaves Finish too.
+	 * One that lost to another list (409) can't be listed any more, as the core adds no device to a list: the
+	 * installation starts again as a new device (Ruling 26), and the person sets it up again.
 	 */
-	async #listThisDevice(mayAsk: boolean): Promise<void> {
+	async #listThisDevice(signOff: boolean): Promise<void> {
 		let listed: FirstList;
 		try {
-			listed = await putFirstList(this.#parts, mayAsk);
+			listed = await putFirstList(this.#parts, signOff);
 		} catch (error) {
-			this.#waitToFinish();
+			this.#waitToFinish(this.#setup?.way === "finishing" ? this.#setup.leavingOut : undefined);
 			if (error instanceof CoreError && error.code === "refused") return;
 			throw error;
 		}
-		if (listed === "ask") return this.#waitToFinish();
+		if (typeof listed === "object") return this.#waitToFinish(listed.leavingOut.map((id) => id.slice(0, 8)));
 		if (listed === "lost") {
 			await this.#startOver();
 			throw new CoreError("list_changed", "another device's list went up first: this device starts again as a new one");
@@ -1015,8 +1022,9 @@ export class E2EEngine {
 		await this.#settle();
 	}
 
-	#waitToFinish() {
-		this.#setup = { way: "finishing" };
+	/** Finish is left for the person, naming the devices the list leaves out by their IDs' start (as Settings does). */
+	#waitToFinish(leavingOut?: string[]) {
+		this.#setup = leavingOut?.length ? { way: "finishing", leavingOut: leavingOut.toSorted() } : { way: "finishing" };
 		this.#set({ name: "new_device" });
 	}
 

@@ -18,6 +18,7 @@ const {
 	askToChangeKeys,
 	askToDeleteThisDevice,
 	removalNotes,
+	removalProblem,
 } = await import("./DevicesSettings.svelte");
 const { confirmStore } = await import("$lib/stores/confirm.svelte");
 
@@ -177,5 +178,25 @@ describe("Settings' devices", () => {
 		expect(en.e2e_device_added).toBe(NOTICES.device_added);
 		expect(en.e2e_delete_device).toBe(NOTICES.delete_device);
 		expect(en.e2e_removed_device).toBe(NOTICES.removed_device);
+	});
+
+	// Review I1: the API's refusal of a list naming a device this one approved that never finished, in words.
+	test("say in words why a removal failed", async () => {
+		const { FetchError } = await import("$lib/api/api");
+		const { CoreError } = await import("$lib/e2e/errors");
+		const refused = (error: string) =>
+			new FetchError(
+				"Request failed with status 400",
+				{},
+				{
+					...{ data: { error }, status: 400, statusText: "Bad Request" },
+					headers: new Headers(),
+				},
+			);
+		expect(
+			removalProblem(refused("the list names device 0193a4b2-0000, which has no certificate of this identity")),
+		).toBe(en.e2e_device_unfinished);
+		expect(removalProblem(new CoreError("approval_waits", ""))).toBe(en.e2e_approval_waits);
+		expect(removalProblem(new TypeError("fetch failed"))).toBe("fetch failed");
 	});
 });
