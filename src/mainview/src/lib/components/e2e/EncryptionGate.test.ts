@@ -164,4 +164,13 @@ describe("the encryption gate", () => {
 		expect(html).toContain(en.e2e_first_list_leaves_out.replace("{devices}", "01a21626 and 01a21627"));
 		expect(html).toMatch(/<button [^>]*>\s*Finish\s*<\/button>/);
 	});
+
+	test("a new device's restore shows as it goes, with nothing to press but its ×", async () => {
+		const restoring: EngineState = { name: "ready", backup: { state: "restoring", done: 3, total: 40 } };
+		expect(drawn(restoring)).toContain("Restoring your messages: 3 of 40");
+		expect((await buttons(restoring)).map((button) => button.attributes["aria-label"])).toEqual(["Dismiss"]);
+		// The rest of the backup is Settings' to say: the gate says nothing.
+		expect(drawn({ name: "ready", backup: { state: "uploading" } }).trim()).toBe("");
+		expect(drawn({ name: "ready", backup: { state: "paused", reason: "full" } }).trim()).toBe("");
+	});
 });

@@ -3,7 +3,7 @@ import "../server-render";
 import { describe, expect, test } from "bun:test";
 import { render } from "svelte/server";
 import type { Device } from "$lib/api/e2e";
-import type { EngineState } from "$lib/e2e/engine/engine";
+import type { BackupShown, EngineState } from "$lib/e2e/engine/engine";
 import { NOTICES } from "$lib/e2e/notices";
 import en from "../../../../messages/en.json";
 
@@ -198,5 +198,19 @@ describe("Settings' devices", () => {
 		).toBe(en.e2e_device_unfinished);
 		expect(removalProblem(new CoreError("approval_waits", ""))).toBe(en.e2e_approval_waits);
 		expect(removalProblem(new TypeError("fetch failed"))).toBe("fetch failed");
+	});
+
+	test("say how the encrypted backup is on a ready device: up to date, going up, restoring, or paused and why", () => {
+		const ready = (backup?: BackupShown) =>
+			drawn({ encryption: { name: "ready", ...(backup ? { backup } : {}) } as EngineState });
+		const upToDate = ready();
+		expect(upToDate).toContain(NOTICES.backup);
+		expect(upToDate).toContain(NOTICES.backup_up_to_date);
+		expect(ready({ state: "uploading" })).toContain(NOTICES.backup_uploading);
+		expect(ready({ state: "restoring", done: 12, total: 340 })).toContain("Restoring your messages: 12 of 340");
+		expect(ready({ state: "paused", reason: "full" })).toContain(NOTICES.backup_paused);
+		expect(ready({ state: "paused", reason: "too_large" })).toContain(NOTICES.backup_too_large);
+		// A device not set up has no backup of its own to tell of.
+		expect(drawn({ encryption: { name: "new_device" } })).not.toContain(NOTICES.backup);
 	});
 });

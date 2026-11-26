@@ -6,7 +6,7 @@
 	import Sheet from "$lib/components/ui/Sheet.svelte";
 	import type { EngineState } from "$lib/e2e/engine/engine";
 	import { t } from "$lib/i18n";
-	import { formatList } from "$lib/i18n/format";
+	import { formatList, formatNumber } from "$lib/i18n/format";
 	import { confirmAction } from "$lib/stores/confirm.svelte";
 	import ApprovalPrompt, { approvalTitle } from "./ApprovalPrompt.svelte";
 	import DeviceSetupCard from "./DeviceSetupCard.svelte";
@@ -14,7 +14,8 @@
 	import UpdateNotice from "./UpdateNotice.svelte";
 
 	// What the app says of its encrypted conversations by the engine's state (PLAN-E2E-CLIENTES.md, «El motor», its
-	// states): nothing while it starts or once it's ready. A first device's recovery key, once made, is a dialog only
+	// states): nothing while it starts or once it's ready, but a new device's restore as it goes (Task 32), a bar with
+	// nothing to press. A first device's recovery key, once made, is a dialog only
 	// "I saved it" and its upload close (decision 23, Ruling 13), and so are the new one of a change of keys (Task 24)
 	// and starting over's (Task 26), which, made before the app closed, are a bar whose Finish brings them back. A new
 	// device's bar opens its setup in a sheet (Task 26), and another device's request to be approved is a question of
@@ -61,6 +62,10 @@
 	} = $props();
 
 	let hiddenFor = $state<string | null>(null);
+	// What the × hides: the state's bar, or a restore's, whose dismissal leaves a later bar of the ready state shown.
+	const barKey = $derived(
+		encryption.name === "ready" && encryption.backup?.state === "restoring" ? "restoring" : encryption.name,
+	);
 	let busy = $state(false);
 	let setupOpen = $state(false);
 
@@ -109,10 +114,17 @@
 		switch (encryption.name) {
 			case "ready":
 				// A change that can't finish (I1) says why and what to do, with nothing to press here.
-				if (!encryption.rotation || encryption.rotation.recoveryKey) return null;
-				return encryption.rotation.stuck
-					? { text: t("e2e_rotation_stuck") }
-					: { text: t("e2e_rotation_finish"), label: t("e2e_finish"), run: onFinishKeys };
+				if (encryption.rotation && !encryption.rotation.recoveryKey) {
+					return encryption.rotation.stuck
+						? { text: t("e2e_rotation_stuck") }
+						: { text: t("e2e_rotation_finish"), label: t("e2e_finish"), run: onFinishKeys };
+				}
+				if (encryption.backup?.state !== "restoring") return null;
+				return {
+					text: t("e2e_backup_restoring", {
+						...{ done: formatNumber(encryption.backup.done), total: formatNumber(encryption.backup.total) },
+					}),
+				};
 			case "first_device":
 				return encryption.finishing
 					? { text: t("e2e_first_device_finish"), label: t("e2e_finish"), run: onMakeIdentity }
@@ -163,7 +175,7 @@
 			<RecoveryKeySheet recoveryKey={shownKey ?? ""} onContinue={onKeySaved} {onLater} />
 		{/snippet}
 	</Dialog>
-{:else if hiddenFor !== encryption.name && (bar || encryption.name === "update")}
+{:else if hiddenFor !== barKey && (bar || encryption.name === "update")}
 	<div
 		class="{GLASS} animate-toast-in text-duvet-ink flex w-[min(30rem,calc(100vw-2rem))] items-center gap-3 rounded-[18px] py-2 pr-2 pl-3.5 text-[13px]"
 		role="region"
@@ -182,7 +194,7 @@
 			type="button"
 			class={iconButtonClass("sm")}
 			aria-label={t("e2e_dismiss")}
-			onclick={() => (hiddenFor = encryption.name)}
+			onclick={() => (hiddenFor = barKey)}
 		>
 			<XIcon size={14} />
 		</button>

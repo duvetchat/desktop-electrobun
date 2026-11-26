@@ -29,10 +29,20 @@ export const REFUSED_GENERATIONS = "refused_generations";
 export const KEY_CHANGES = "key_changes";
 /** Whom the person verified on this device (contacts.ts), from their tap: user IDs, so a lost change is found again. */
 export const VERIFIED_CONTACTS = "verified_contacts";
+/**
+ * The encrypted backup's (backup.ts), IDs and words alone: a restore that's due, with the conversations it's done with;
+ * the ID of the key this device last saw itself seal with, and how far the move of older keys' segments went (the last
+ * segment it went past); and a pause, since when and why.
+ */
+export const BACKUP_RESTORE = "backup_restore";
+export const BACKUP_KEY_SEEN = "backup_key_seen";
+export const BACKUP_REENCRYPT = "backup_reencrypt";
+export const BACKUP_PAUSE = "backup_paused";
 /** What a new device of this installation starts without. */
 export const DEVICE_RECORD = [
 	...[DEVICE_KEYS, KEPT_APPROVALS, KEPT_TRANSFERS, KEPT_LATER],
 	...[PENDING_SENDS, PENDING_CHANGES, KEPT_ROTATION, KEPT_RESET, REFUSED_GENERATIONS, KEY_CHANGES, VERIFIED_CONTACTS],
+	...[BACKUP_RESTORE, BACKUP_KEY_SEEN, BACKUP_REENCRYPT, BACKUP_PAUSE],
 ];
 /** The user's devices the app told of, each once (devices.ts): those not seen in 45 days, and those added. */
 export const TOLD_INACTIVE = "told_inactive";

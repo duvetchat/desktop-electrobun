@@ -168,6 +168,18 @@ describe.skipIf(!coreLibrary)("the witness", () => {
 			expect(await opened.blob.text()).toBe(await file.text());
 			const drawn = await decryptedFiles.open({ ...shown!, url }, withFile.id);
 			expect(drawn.status).toBe("ready");
+			// The encrypted backup (Task 32): a day of it that ended goes up from Bo's device once its app is quiet, as bytes
+			// the API can't open, and its record (Bo's, in localStorage) holds IDs alone.
+			fake.timeShift = -24 * 3600 * 1000;
+			const backedUp = await b.engine.sendMessage({
+				...{ conversation_id: conversation, nonce: crypto.randomUUID() },
+				text: `${witness}, backed up`,
+			});
+			fake.timeShift = 0;
+			if (!backedUp) throw new Error("the message wasn't sent");
+			await until(async () => (await b.engine.messages(conversation, [backedUp.id]))[0]?.sent_at === backedUp.sent_at);
+			b.clock.advance(60_000);
+			await until(async () => (await b.api.segments()).length > 0);
 			// One whose request never reached the API waits on the device, with what goes with it in the clear.
 			fake.cutRequest({ method: "POST", path: `/api/users/@me/conversations/${conversation}/messages` });
 			await rejection(

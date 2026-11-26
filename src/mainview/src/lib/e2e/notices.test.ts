@@ -95,4 +95,20 @@ describe("the notices", () => {
 		];
 		for (const [key, table] of words) expect(en[key]).toBe(NOTICES[table]);
 	});
+
+	test("the encrypted backup says the table's words", () => {
+		// Settings' row, a new device's restore as it goes, and a pause and why (task 32): the mobile app takes the same.
+		const words: [keyof typeof en, NoticeKey][] = [
+			["e2e_backup", "backup"],
+			["e2e_backup_up_to_date", "backup_up_to_date"],
+			["e2e_backup_uploading", "backup_uploading"],
+			["e2e_backup_restoring", "backup_restoring"],
+			["e2e_backup_paused", "backup_paused"],
+			["e2e_backup_too_large", "backup_too_large"],
+		];
+		for (const [key, table] of words) {
+			expect(NOTICES[table]).toEqual(expect.any(String));
+			expect(en[key]).toBe(NOTICES[table]);
+		}
+	});
 });
