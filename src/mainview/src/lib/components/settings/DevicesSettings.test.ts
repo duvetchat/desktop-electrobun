@@ -220,4 +220,18 @@ describe("Settings' devices", () => {
 		expect(removalProblem(new CoreError("approval_waits", ""))).toBe(en.e2e_approval_waits);
 		expect(removalProblem(new TypeError("fetch failed"))).toBe("fetch failed");
 	});
+
+	// Review 27's M4: the core's refusal of a change of keys keeping a device this one approved that never finished.
+	test("say a change of keys a device that never finished setting up holds in the removal's words", async () => {
+		const { CoreError } = await import("$lib/e2e/errors");
+		const unfinished = new CoreError("bad_command", "a device that stays has no certificate", {
+			field: "certificates",
+		});
+		expect(removalProblem(unfinished)).toBe(en.e2e_device_unfinished);
+		void askToChangeKeys([THIS, PHONE], [], () => Promise.reject(unfinished));
+		await confirmStore.execute();
+		const said = confirmStore.error;
+		confirmStore.cancel();
+		expect(said).toBe(en.e2e_device_unfinished);
+	});
 });

@@ -21,6 +21,7 @@ import {
 	watchedHost,
 	type TestDevice,
 } from "../testing/engines";
+import { ATTEMPT_MS } from "./approval";
 import { takenAway } from "./devices";
 import type { DeviceApproval, DeviceSetup, EngineState } from "./engine";
 import { KEPT_APPROVALS } from "./store";
@@ -531,6 +532,149 @@ describe.skipIf(!coreLibrary)("a new device approved by another", () => {
 			await a.engine.approveDevice(deviceOf(n));
 			expect(log).toContain("approval_offer");
 			await Promise.all([a.engine.stop(), n.engine.stop()]);
+		},
+		SLOW,
+	);
+
+	// Review 27's M4: once the hold is over, a device approved here that never took its transfer is on this device's list
+	// with no certificate the API serves, which a first change of keys can't leave out. The page says that in the
+	// removal's words (DevicesSettings' removalProblem), not as a connection to check.
+	test(
+		"a change of keys after an approval that never finished is refused for that device",
+		async () => {
+			const fake = new FakeApi();
+			const ana = fake.addUser();
+			useFake(fake);
+			const a = await firstDevice(fake, ana);
+			let reading = true;
+			const n = await newDevice(fake, ana, { hears: (event) => reading || event.type !== "DEVICE_MESSAGE" });
+			await n.engine.acceptCode(await toTheCode(a, n));
+			// The new device never reads its transfer, and the hold's ten minutes end.
+			reading = false;
+			await a.engine.confirmApproval(deviceOf(n));
+			a.clock.advance(ATTEMPT_MS);
+			await turnEnded(a);
+			expect(approvalOf(a.engine.state)).toBeNull();
+			expect(await rejection(a.engine.changeKeys())).toMatchObject({ code: "bad_command", field: "certificates" });
+			await Promise.all([a.engine.stop(), n.engine.stop()]);
+		},
+		SLOW,
+	);
+
+	// Review 27's M5: a second approval while the first one's hold lasts replaced it, its transfer carrying a list that
+	// names the first device without its certificate.
+	test(
+		"while a device this one approved sets up, another new device's question waits, and approving it is refused",
+		async () => {
+			const fake = new FakeApi();
+			const ana = fake.addUser();
+			useFake(fake);
+			const log: string[] = [];
+			const a = await firstDevice(fake, ana, { host: watchedHost(testHost(), log) });
+			let reading = true;
+			const n = await newDevice(fake, ana, { hears: (event) => reading || event.type !== "DEVICE_MESSAGE" });
+			await n.engine.acceptCode(await toTheCode(a, n));
+			reading = false;
+			await a.engine.confirmApproval(deviceOf(n));
+			expect(approvalOf(a.engine.state)).toMatchObject({ device: deviceOf(n), step: "confirmed" });
+
+			// Another new device asks meanwhile: its question waits, and a yes to it (a stale tap, another tab's) is refused.
+			const m = await newDevice(fake, ana);
+			await m.engine.beginApproval();
+			await m.engine.useCode();
+			await until(() => keptSteps(a).includes("commitment"));
+			await turnEnded(a);
+			expect(approvalOf(a.engine.state)).toMatchObject({ device: deviceOf(n), step: "confirmed" });
+			const offers = log.filter((cmd) => cmd === "approval_offer").length;
+			expect(await rejection(a.engine.approveDevice(deviceOf(m)))).toMatchObject({ code: "approval_waits" });
+			expect(log.filter((cmd) => cmd === "approval_offer")).toHaveLength(offers);
+
+			// The first one's list up, the hold ends, and the second one is asked about.
+			reading = true;
+			n.connect(deviceOf(n));
+			await until(() => n.engine.state.name === "ready");
+			await until(() => approvalOf(a.engine.state)?.device === deviceOf(m));
+			expect(approvalOf(a.engine.state)).toMatchObject({ device: deviceOf(m), step: "asked" });
+			await Promise.all([a, n, m].map((device) => device.engine.stop()));
+		},
+		SLOW,
+	);
+
+	// Review 27's M6: the inbox's sender is what the API writes, and the device the core approved is approval_confirm's
+	// (duvetchat/e2e#53). A server naming another sender routed the transfer, and the hold, elsewhere.
+	test(
+		"Confirm sends the transfer to, and holds, the device the core approved; a commitment its sender didn't write goes",
+		async () => {
+			const fake = new FakeApi();
+			const ana = fake.addUser();
+			const posted: string[] = [];
+			useFake(fake, (request) => {
+				const path = new URL(request.url).pathname;
+				if (request.method === "POST" && path.endsWith("/inbox")) posted.push(path);
+			});
+			const core = testHost();
+			let approved: string | null = null;
+			const host = answeringHost(core, (command) =>
+				command.cmd === "approval_confirm" && approved
+					? core
+							.handle<Record<string, unknown>>({ ...command, cmd: "approval_confirm" })
+							.then((reply) => ({ ...reply, device_id: approved }))
+					: undefined,
+			);
+			const a = await firstDevice(fake, ana, { host });
+
+			// A commitment that names another device than the one that sent it asks nothing, and goes.
+			const other = await newDevice(fake, ana);
+			await other.engine.stop();
+			await other.host.open(ana);
+			const { commitment } = await other.host.handle<{ commitment: string }>({ cmd: "approval_begin" });
+			const m = await newDevice(fake, ana);
+			const frame = approvalFrameMessage({ duvet: "approval", step: "commitment", data: commitment, name: "Bun" });
+			await m.api.sendToDevice(deviceOf(a), frame);
+			await until(async () => (await a.api.inbox()).length === 0);
+			await turnEnded(a);
+			expect(approvalOf(a.engine.state)).toBeNull();
+			expect(keptSteps(a)).toEqual([]);
+
+			// The transfer goes to the device approval_confirm names, which the hold then waits for.
+			const n = await newDevice(fake, ana);
+			await n.engine.acceptCode(await toTheCode(a, n));
+			approved = deviceOf(m);
+			posted.length = 0;
+			await a.engine.confirmApproval(deviceOf(n));
+			expect(posted).toEqual([`/api/devices/${deviceOf(m)}/inbox`]);
+			expect(approvalOf(a.engine.state)).toMatchObject({ device: deviceOf(m), step: "confirmed" });
+			await Promise.all([a, m, n].map((device) => device.engine.stop()));
+		},
+		SLOW,
+	);
+
+	// Review 27's choice 3: the hold ended only at the user's IDENTITY_UPDATE, so a gateway down as it came held list and
+	// key changes for the hold's ten minutes.
+	test(
+		"a hold whose list's IDENTITY_UPDATE never came ends at the inbox's next round, a READY's too",
+		async () => {
+			const fake = new FakeApi();
+			const ana = fake.addUser();
+			useFake(fake);
+			let deaf = false;
+			const a = await firstDevice(fake, ana, { hears: (event) => !deaf || event.type !== "IDENTITY_UPDATE" });
+			const b = await approvedDevice(fake, a);
+			const n = await newDevice(fake, ana);
+			await n.engine.acceptCode(await toTheCode(a, n));
+			// The new device's list goes up while this device hears no IDENTITY_UPDATE.
+			deaf = true;
+			await a.engine.confirmApproval(deviceOf(n));
+			await until(() => n.engine.state.name === "ready");
+			await turnEnded(a);
+			expect(approvalOf(a.engine.state)).toMatchObject({ device: deviceOf(n), step: "confirmed" });
+			// A new gateway session: its READY reads the inbox, whose round ends the hold.
+			deaf = false;
+			a.connect(deviceOf(a));
+			await until(() => approvalOf(a.engine.state) === null);
+			await a.engine.removeDevice(deviceOf(b));
+			expect(listDevices((await a.api.identity(ana)).device_list)?.sort()).toEqual([deviceOf(a), deviceOf(n)].sort());
+			await Promise.all([a, b, n].map((device) => device.engine.stop()));
 		},
 		SLOW,
 	);

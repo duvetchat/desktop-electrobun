@@ -264,6 +264,7 @@ export class E2EEngine {
 			parts,
 			(work) => this.#soon(work),
 			() => this.#set(this.state),
+			() => this.#takeApprovals(),
 		);
 		this.#failures = new Failures(parts.api, parts.clock);
 		const soon = (work: () => Promise<void>) => this.#soon(() => this.#whenReady(work));
@@ -1298,11 +1299,7 @@ export class E2EEngine {
 					// a commit is due to take them out.
 					if (state.name === "ready") {
 						this.#set(await this.#identity());
-						// The list of a device this one approved, up: this device's own changes go on.
-						if (this.#approvals.holds()) {
-							const served = await servedIdentity(this.#parts);
-							if (served) this.#approvals.listed(served);
-						}
+						await this.#releaseHold();
 						await this.#whenReady(() => this.#groups.all());
 					} else if (state.name === "first_device" && !state.recoveryKey) await this.#stillFirst();
 				});
@@ -1363,6 +1360,19 @@ export class E2EEngine {
 	async #inbox(): Promise<void> {
 		if (await this.#takeInbox()) this.#set(await this.#identity());
 		await this.#takeApprovals();
+		await this.#releaseHold();
+	}
+
+	/**
+	 * The list of a device this one approved, up (the served list names it): this device's own changes go on, and the
+	 * questions of the new devices that waited for it are asked (task 27's review, M5). At its IDENTITY_UPDATE and at
+	 * each round of the inbox, a READY's too, so a gateway down as it came holds nothing (the review's choice 3).
+	 */
+	async #releaseHold(): Promise<void> {
+		if (!this.#approvals.holds()) return;
+		const served = await servedIdentity(this.#parts);
+		if (served) this.#approvals.listed(served);
+		if (!this.#approvals.holds()) await this.#takeApprovals();
 	}
 
 	/** The inbox read and handled, a package's key kept by what receives them. */

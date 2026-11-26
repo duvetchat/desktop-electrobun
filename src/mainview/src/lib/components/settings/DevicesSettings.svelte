@@ -40,11 +40,16 @@
 	}
 
 	/**
-	 * What a removal that failed says: while a device this one approved sets up, why it waits; the API's refusal of a
-	 * list naming a device this one approved that never finished (task 26's I1), in words; anything else, the API's.
+	 * What a removal or a change of keys that failed says: while a device this one approved sets up, why it waits; the
+	 * API's refusal of a list naming a device this one approved that never finished (task 26's I1), and the core's of a
+	 * change of keys keeping such a device, which no certificate the API serves leaves out (task 27's review, M4), in
+	 * words; anything else, the API's.
 	 */
 	export function removalProblem(error: unknown): string {
 		if (error instanceof CoreError && error.code === "approval_waits") return t("e2e_approval_waits");
+		if (error instanceof CoreError && error.code === "bad_command" && error.field === "certificates") {
+			return t("e2e_device_unfinished");
+		}
 		const refusal: unknown = error instanceof FetchError ? error.response?.data?.error : undefined;
 		if (typeof refusal === "string" && /has no certificate of this identity/.test(refusal)) {
 			return t("e2e_device_unfinished");
@@ -52,7 +57,7 @@
 		return getApiError(error, t("e2e_device_action_failed"));
 	}
 
-	/** Asks before changing the keys, naming the devices an earlier removal takes along (M3). */
+	/** Asks before changing the keys, naming the devices an earlier removal takes along (M3); a failure in words. */
 	export function askToChangeKeys(
 		devices: readonly Device[] | null,
 		along: readonly string[],
@@ -60,7 +65,11 @@
 	): Promise<void> {
 		const line = alongLine(along, devices);
 		const message = line ? `${t("e2e_change_keys_confirm")} ${line}` : t("e2e_change_keys_confirm");
-		return confirmAction(message, t("e2e_change_keys"), run);
+		return confirmAction(message, t("e2e_change_keys"), () =>
+			run().catch((error: unknown) => {
+				throw new Error(removalProblem(error), { cause: error });
+			}),
+		);
 	}
 
 	/**
