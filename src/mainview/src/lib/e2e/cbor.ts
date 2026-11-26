@@ -31,8 +31,12 @@ export function cbor(bytes: Uint8Array): Cbor | null {
 				return take(uint(info)).slice();
 			case 3:
 				return new TextDecoder("utf-8", { fatal: true }).decode(take(uint(info)));
-			case 4:
-				return Array.from({ length: uint(info) }, () => item(depth + 1));
+			case 4: {
+				// Item by item: a length taken at its word (Array.from's) is memory for items that may not be there.
+				const list: Cbor[] = [];
+				for (let n = uint(info); n > 0; n--) list.push(item(depth + 1));
+				return list;
+			}
 			case 5: {
 				const map = new Map<string, Cbor>();
 				for (let n = uint(info); n > 0; n--) {
