@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { FakeApi } from "../testing/fake-api";
 import { coreLibrary } from "../testing/host-bun";
+import type { DirectMessage } from "$lib/api/conversations";
+import type { EngineEvent } from "../events";
 import {
 	commitByHand,
 	firstDevice,
@@ -15,6 +17,7 @@ import {
 	watchedHost,
 	type TestDevice,
 } from "../testing/engines";
+import { entryOf, messageEntry } from "./sync";
 
 // A conversation's queue (PLAN-E2E-CLIENTES.md, «La cola de una conversación»): the entries the API numbers, from its
 // events and its queue, applied by their number, one conversation at a time.
@@ -249,4 +252,65 @@ describe.skipIf(!coreLibrary)("a conversation's queue", () => {
 		},
 		SLOW,
 	);
+});
+
+// What step 5's fuzzing found (PLAN-E2E-CLIENTES.md, «Lo que el paso 5 revisa»), which e2e-fuzz-corpus.json keeps too:
+// what the server hands over, made a conversation's entry. Its fields are the server's word, carried as they came.
+describe("what the fuzzers found", () => {
+	const CONVERSATION = "0193a4b2-0000-7000-8000-0000000000c1";
+	const MESSAGE = "0193a4b2-0000-7000-8000-0000000000a2";
+	const AUTHOR = "0193a4b2-0000-7000-8000-0000000000b3";
+	const DEVICE = "0193a4b2-0000-7000-8000-0000000000d4";
+	const message = {
+		...{ id: MESSAGE, conversation_id: CONVERSATION, author_id: AUTHOR, sender_device_id: DEVICE, ciphertext: "AAAA" },
+		...{ seq: 5, sent_at: 1_763_150_000_123, generation: 0, epoch: 2 },
+	};
+	// What the server may send in an event's or a message's place, whatever their types say.
+	// oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the server's word, as the readers take it
+	const event = (type: string, data: unknown) => ({ type, data }) as EngineEvent;
+	// oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the server's word, as the readers take it
+	const sent = (value: unknown) => value as DirectMessage;
+	const entry = { seq: 5, kind: "commit", data: "AAAA", sent_at: 1, generation: 0, epoch: 2 };
+
+	test("a message's entry is its message's fields, as they came", () => {
+		expect(messageEntry(sent({ ...message, mentions: [AUTHOR], referenced_message: { message_id: MESSAGE } }))).toEqual(
+			[
+				CONVERSATION,
+				{
+					...{ seq: 5, kind: "message", data: "AAAA", sent_at: 1_763_150_000_123, generation: 0, epoch: 2 },
+					...{ message_id: MESSAGE, sender_user: AUTHOR, sender_device: DEVICE, mentions: [AUTHOR], reply_to: MESSAGE },
+				},
+			],
+		);
+	});
+
+	test("an event whose data isn't an object is none, never a throw", () => {
+		for (const data of [null, 5, "x", []]) {
+			for (const type of ["DM_MESSAGE_CREATE", "MLS_COMMIT", "DM_MESSAGE_UPDATE"])
+				expect(entryOf(event(type, data))).toBeNull();
+		}
+		// Nor one without its entry.
+		expect(entryOf(event("MLS_COMMIT", { conversation_id: CONVERSATION, generation: 0, epoch: 2 }))).toBeNull();
+	});
+
+	test("a number that isn't one makes no entry: the conversation's number would be NaN", () => {
+		for (const seq of ["5", -1, 1.5, null, 2 ** 53]) {
+			expect(messageEntry(sent({ ...message, seq }))).toBeNull();
+			expect(
+				entryOf(
+					event("MLS_COMMIT", { conversation_id: CONVERSATION, generation: 0, epoch: 2, entry: { ...entry, seq } }),
+				),
+			).toBeNull();
+		}
+		expect(messageEntry(sent({ ...message, generation: "0" }))).toBeNull();
+		expect(
+			entryOf(event("MLS_WELCOME", { conversation_id: CONVERSATION, generation: "x", epoch: 2, entry })),
+		).toBeNull();
+		expect(entryOf(event("MLS_COMMIT", { conversation_id: 5, generation: 0, epoch: 2, entry }))).toBeNull();
+	});
+
+	test("a message without its time isn't given one", () => {
+		const { sent_at: _, ...untimed } = message;
+		expect(messageEntry(sent(untimed))).toBeNull();
+	});
 });
