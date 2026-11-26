@@ -83,11 +83,13 @@ interface KeptChange {
 }
 
 /** What a conversation's messages tell the engine: which changed on this device, the person's that the API took (by
- * the nonce they sent it with), and a change the API refused for good. */
+ * the nonce they sent it with), and a change the API refused for good; and what it asks of it: the members whose
+ * changed key holds what goes to the conversation until the person's yes (contacts.ts). */
 export interface SendsHooks {
 	changed: (conversationId: string, ids?: string[]) => void;
 	sent: (conversationId: string, nonce: string, message: DirectMessage) => void;
 	refused: (conversationId: string, messageId: string, kind: ChangeKind) => void;
+	held: (conversationId: string) => Promise<string[]>;
 }
 
 /** The most users a message names: the API takes 20. */
@@ -120,6 +122,9 @@ const unanswered = (error: unknown) => {
 /** The core's word that no member could open the message's bytes any more. */
 const staleBytes = (error: unknown) =>
 	error instanceof CoreError && error.code === "rule_violation" && error.rule === "stale_message";
+/** A message held for the person's yes, a verified contact's key changed (#deliver): it waits, as an unanswered one
+ * does. */
+const held = (error: unknown) => error instanceof CoreError && error.code === "key_changed";
 /** The API's (a 409): the bytes are of another generation of the group, or too many epochs behind it. */
 const staleAnswer = (error: unknown) =>
 	error instanceof FetchError && error.response?.status === 409 && error.response.data?.error === "stale message";
@@ -415,7 +420,7 @@ export class Sends {
 					at--;
 					continue;
 				}
-				const passing = error instanceof UpdateRequiredError || unanswered(error);
+				const passing = error instanceof UpdateRequiredError || unanswered(error) || held(error);
 				// A refusal of the API's own, not of the group's epochs: it wouldn't change at the next flush.
 				if (files && !passing && statusOf(error) !== undefined && !staleAnswer(error)) this.#refused.add(first);
 				if (first === wanted) throw error;
@@ -443,16 +448,27 @@ export class Sends {
 			const waiting = await pendingRows(this.#parts.host, id);
 			if (!waiting.some((other) => other.nonce === nonce)) return null;
 			// Stale bytes are the flush's to make again: handed out, not a failure of the turn's.
-			return this.#encrypt(id, nonce, text, row.attachments).catch((error: unknown) => {
+			const encrypted = await this.#encrypt(id, nonce, text, row.attachments).catch((error: unknown) => {
 				if (!staleBytes(error)) throw error;
 				return { stale: error };
 			});
+			if ("stale" in encrypted) return encrypted;
+			// Whom it reaches whose changed key waits for the person's yes, known by now (its encrypt may have just observed
+			// it), read in the same turn.
+			return { ...encrypted, holding: await this.#hooks.held(id) };
 		});
 		if (!made) return null;
 		if ("stale" in made) throw made.stale;
-		const { ciphertext } = made;
+		const { ciphertext, holding } = made;
 		// A Dismiss took it meanwhile: it isn't sent (task 18's re-review, N1).
 		if (this.#dismissing.has(first)) return null;
+		// A verified contact's changed key: it waits for the person's yes, its bytes kept, as decision 25 asks before
+		// anything more goes there.
+		if (holding.length) {
+			throw new CoreError("key_changed", "a verified contact's key changed: the person says whether to send", {
+				users: holding,
+			});
+		}
 		// Its own send's upload, whichever flush this is: its progress and its Cancel, which may have come already.
 		const own = this.#uploads.get(first);
 		own?.signal?.throwIfAborted();
@@ -718,6 +734,9 @@ export class Sends {
 	 */
 	async #sendChange(change: Change, changes: Changes): Promise<number | null> {
 		const { conversation: id, message, kind } = change;
+		// An edit is new text: while a verified contact's changed key waits for the person's yes it waits as an unanswered
+		// one does, its bytes as the core last made them, and the yes sends it (review, I2). A deletion carries no text.
+		if (kind === "edit" && (await this.#hooks.held(id)).length) return this.#backoff(changes);
 		let entry: MlsEntry;
 		try {
 			const { api } = this.#parts;

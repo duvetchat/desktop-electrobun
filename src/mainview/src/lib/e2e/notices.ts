@@ -73,6 +73,12 @@ export const NOTICES = {
 	approval_confirm_after: "Confirm only after your new device accepts it",
 	start_over_warning:
 		"Starting over makes new security keys for your account. The history of your encrypted conversations can't be read any more, and your contacts will see that your keys changed.",
+	// A contact's security number, their mark once verified, and the question before sending after a verified contact's
+	// key changed (task 28), beside key_changed and key_changed_verified.
+	verify_number: "Verify security number",
+	mark_verified: "Mark as verified",
+	verified: "Verified",
+	send_anyway: "Send anyway",
 } as const;
 
 export type NoticeKey = keyof typeof NOTICES;

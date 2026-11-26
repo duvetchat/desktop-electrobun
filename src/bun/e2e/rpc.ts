@@ -23,6 +23,7 @@ import {
 	removalQuestion,
 	readCommitment,
 	rotationQuestion,
+	verifyQuestion,
 	type Confirm,
 	type Question,
 } from "./confirm";
@@ -91,8 +92,8 @@ export const CORE_COMMANDS: ReadonlySet<string> = new Set([
 
 /**
  * What asks the person first: create_identity too, which the core runs as it runs reset_identity (a new identity on a
- * device without one), so asking for the one alone would leave the other as a way around it; and sign_device_list,
- * whose list takes devices off the account (Task 24).
+ * device without one), so asking for the one alone would leave the other as a way around it; sign_device_list, whose
+ * list takes devices off the account (Task 24); and verify_user, whose mark a script could set on a forged key (Task 28).
  */
 export const CONFIRMED: ReadonlySet<string> = new Set([
 	"approval_confirm",
@@ -100,6 +101,7 @@ export const CONFIRMED: ReadonlySet<string> = new Set([
 	"reset_identity",
 	"create_identity",
 	"sign_device_list",
+	"verify_user",
 ]);
 
 const OPS: ReadonlySet<string> = new Set(E2E_OPS);
@@ -249,15 +251,34 @@ export function e2eBoundary({ start, confirm, reply }: BoundaryDeps): (message: 
 		}
 	}
 
-	/** Asks the person before one of CONFIRMED runs, naming what Bun itself read: a no throws `refused`. */
-	async function askFirst(cmd: string, command: Record<string, unknown>): Promise<void> {
+	/**
+	 * Asks the person before one of CONFIRMED runs, naming what Bun itself read: a no throws `refused`. It gives what runs
+	 * on the yes: the page's command, or for verify_user Bun's own.
+	 */
+	async function askFirst(cmd: string, command: Record<string, unknown>): Promise<Record<string, unknown>> {
 		let question: Question;
+		let runs = command;
 		if (cmd === "approval_confirm") {
 			// Bun learns what an approval would approve from its offer: one made before the app started, or before another
 			// open, or of a commitment Bun can't read, is unknown here, and is offered again (the same commitment gets the
 			// same offer).
 			if (underWay === null) throw refused("refused", "this device can't tell what it would approve");
 			question = approvalQuestion(underWay);
+		} else if (cmd === "verify_user") {
+			const userId = uuid(command.user_id, "user_id");
+			// The desktop compares digits and scans no code (Ruling 21): a QR would be a script's.
+			if (command.qr !== undefined) throw bad("qr", "the desktop verifies by the digits the person compared");
+			if (typeof command.digits !== "string") throw bad("digits", "the digits the person compared are a text");
+			// Bun reads the number itself: other digits than the core holds (a script's, or a number that changed since the
+			// page showed it) are refused, as nothing would match them.
+			const { digits, qr } = unwrap(await core("handle", { command: { cmd: "safety_number", user_id: userId } }));
+			if (command.digits !== digits) throw refused("refused", "those aren't the digits of the security number");
+			// Without its QR the core would mark whatever it pins as it runs.
+			if (typeof qr !== "string") throw refused("internal", "the core gave the security number no QR");
+			question = verifyQuestion({ user: userId, digits });
+			// The core marks by the QR of the number the box shows, compared with what it pins then: an identity pinned
+			// since, by any other way into the core, gets no mark.
+			runs = { cmd: "verify_user", user_id: userId, qr };
 		} else if (cmd === "sign_device_list") {
 			const remove = devices(command.remove);
 			// A list that takes off no device would be a box that names none (M8).
@@ -279,6 +300,7 @@ export function e2eBoundary({ start, confirm, reply }: BoundaryDeps): (message: 
 			console.error("[e2e] the confirmation failed:", error);
 		}
 		if (!yes) throw refused("refused", "the person didn't confirm it");
+		return runs;
 	}
 
 	async function handleCommand(command: unknown): Promise<unknown> {
@@ -295,8 +317,8 @@ export function e2eBoundary({ start, confirm, reply }: BoundaryDeps): (message: 
 			const read = readCommitment(commitment);
 			if (read) offered = { device: read.device, fingerprint: await approvalFingerprint(read.bytes) };
 		}
-		if (CONFIRMED.has(cmd)) await askFirst(cmd, command);
-		const result = await core("handle", { command });
+		const runs = CONFIRMED.has(cmd) ? await askFirst(cmd, command) : command;
+		const result = await core("handle", { command: runs });
 		if (cmd === "approval_offer" && "ok" in result) underWay = offered;
 		if (cmd === "approval_confirm" && "ok" in result) underWay = null;
 		return unwrap(result);

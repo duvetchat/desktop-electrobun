@@ -30,6 +30,8 @@ export interface Ties {
 	askedThem: boolean;
 	/** The user has a direct conversation with them. */
 	dm: boolean;
+	/** The user shares a conversation with them, a DM or a group: the API serves the user their identity. */
+	shared: boolean;
 }
 
 export interface MemberMenuInput {
@@ -44,6 +46,8 @@ export interface MemberMenuInput {
 	/** What the list does with a member: opens their profile beside them, mentions them in its chat's box, takes them out
 	 * of its group (for the group's owner). */
 	can: { profile: boolean; mention: boolean; removeFromGroup: boolean };
+	/** This device's encrypted conversations are ready: a contact's security number can be shown (Task 28). */
+	encrypted: boolean;
 }
 
 export interface MemberMenuItems {
@@ -63,6 +67,8 @@ export interface MemberMenuItems {
 	removeFromGroup: boolean;
 	/** Duvet staff's flags and badges editor. */
 	staff: boolean;
+	/** Their security number, to compare and verify (Task 28). */
+	verify: boolean;
 }
 
 /**
@@ -79,6 +85,19 @@ export function canChatWith(
 }
 
 /**
+ * Whether the user (`me`) can verify someone's security number (PLAN-E2E-CLIENTES.md, Task 28): someone else, a person
+ * and not a bot, whose identity the API serves them, a friend's or that of someone they share a conversation with (its
+ * rule for reading one).
+ */
+export function canVerify(
+	me: string | null | undefined,
+	person: Pick<MenuPerson, "id" | "isBot">,
+	ties: Pick<Ties, "friend" | "shared">,
+): boolean {
+	return !!me && me !== person.id && !person.isBot && (ties.friend || ties.shared);
+}
+
+/**
  * What a member's menu offers, besides Copy user ID, which it always has:
  * - Profile and Mention where its list does them;
  * - for someone else: Message and Call in a direct conversation the user has with them, or can start, which takes a
@@ -88,9 +107,10 @@ export function canChatWith(
  *   API's checkRoleHierarchy), for a member whose member ID the list knows, and Kick and Ban, as the API allows them;
  * - Remove from group, for the group's owner, on anyone else;
  * - the user's display name, on their own row;
- * - Duvet staff's editor, for someone whose flags the list has.
+ * - Duvet staff's editor, for someone whose flags the list has;
+ * - Verify security number, for whom canVerify says, while this device's encrypted conversations are ready.
  */
-export function memberMenuItems({ me, person, space, ties, busy, can }: MemberMenuInput): MemberMenuItems {
+export function memberMenuItems({ me, person, space, ties, busy, can, encrypted }: MemberMenuInput): MemberMenuItems {
 	const self = me?.id === person.id;
 	const other = !!me && !self;
 	// Someone else who is a person, not a bot.
@@ -116,6 +136,7 @@ export function memberMenuItems({ me, person, space, ties, busy, can }: MemberMe
 			: null,
 		removeFromGroup: can.removeFromGroup && other,
 		staff: !!me?.staff && person.flags !== null,
+		verify: encrypted && canVerify(me?.id, person, ties),
 	};
 }
 
@@ -158,5 +179,6 @@ export function tiesOf(
 		askedMe: lists.received.some((r) => r.sender_id === userId),
 		askedThem: lists.sent.some((r) => r.recipient_id === userId),
 		dm: lists.conversations.some((c) => c.type === 1 && c.members.some((m) => m.user_id === userId)),
+		shared: lists.conversations.some((c) => c.members.some((m) => m.user_id === userId)),
 	};
 }

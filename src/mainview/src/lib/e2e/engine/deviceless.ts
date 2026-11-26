@@ -62,6 +62,8 @@ interface CatchUp {
 	up: boolean;
 	/** The engine's turn it waits for (its number): one that came while the engine wasn't ready is asked for again. */
 	turn: number | null;
+	/** Its member's changed key waits for the person's yes: it tries nothing until again(). */
+	held: boolean;
 	tries: number;
 	/** The wait before its next try. */
 	cancel: (() => void) | null;
@@ -91,7 +93,7 @@ export class CatchUps {
 			if (this.#due.has(key)) continue;
 			const catchUp: CatchUp = {
 				...{ conversationId, user, made: null, taken: false, partsUp: 0, keysSent: new Set<string>() },
-				...{ up: false, turn: null, tries: 0, cancel: null },
+				...{ up: false, turn: null, held: false, tries: 0, cancel: null },
 			};
 			this.#due.set(key, catchUp);
 			this.#queue(catchUp);
@@ -100,10 +102,14 @@ export class CatchUps {
 
 	/**
 	 * The engine is ready again: a catch-up whose turn came while it wasn't, and was skipped, is asked for again (task 23's
-	 * review, M3), not left until the engine starts anew.
+	 * review, M3), not left until the engine starts anew; and so is one held for the person's yes, which may have come.
 	 */
 	again() {
-		for (const catchUp of this.#due.values()) if (catchUp.turn !== null) this.#queue(catchUp);
+		for (const catchUp of this.#due.values()) {
+			if (catchUp.turn === null && !catchUp.held) continue;
+			catchUp.held = false;
+			this.#queue(catchUp);
+		}
 	}
 
 	/** A conversation this device is no longer in: its catch-ups go, their packages with them. */
@@ -142,6 +148,11 @@ export class CatchUps {
 			if (catchUp.up) return await this.#confirm(catchUp);
 			catchUp.made ??= await makeCatchUp(this.#parts, catchUp.conversationId, catchUp.user);
 		} catch (error) {
+			// Held for the person's yes: it stays due, without a try, until the yes asks for it again.
+			if (error instanceof CoreError && error.code === "key_changed") {
+				catchUp.held = true;
+				return;
+			}
 			return this.#failed(catchUp, error);
 		}
 		if (!catchUp.made) return this.#done(catchUp);
@@ -244,6 +255,12 @@ async function makeCatchUp(parts: EngineParts, conversationId: string, user: str
 	});
 	if (!identity) return null;
 	await observeUsers(parts, [user]);
+	// Their changed key waits for the person's yes (Task 28's review, I3): what was noted for them waits with it.
+	if (parts.contacts?.holding([user]).length) {
+		throw new CoreError("key_changed", "a verified contact's key changed: their catch-up waits for the person's yes", {
+			users: [user],
+		});
+	}
 	try {
 		return await withIdentities(parts, () =>
 			host.share({

@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-const source = (file: string) => readFileSync(join(import.meta.dir, file), "utf8");
+const source = (file: string) => readFileSync(join(import.meta.dir, file), "utf8").replaceAll("\r\n", "\n");
 
 // #368: a group's pane bar had two ⋯ side by side, the pane's More and the group's own. The group's Rename and Leave
 // go to the pane's More (PaneView.test.ts), and only a view with no pane's bar keeps a menu of its own for them.
@@ -198,4 +198,46 @@ test("a send refused as not ready, or past the cap, says so in the table's words
 	expect(view).toContain(
 		'if (err instanceof CoreError && err.code === "too_many_waiting") return t("e2e_too_many_waiting");',
 	);
+});
+
+// Task 28 (decision 25): a contact's changed key shows over the message box of each conversation with them, until it's
+// closed; a verified contact's makes what goes there next wait for the person's yes, asked before it goes: a message
+// typed (Chat's beforeSend), a Retry, a voice note and an edit alike. One the engine held says why, by name.
+test("a changed key's notice shows in each conversation with that person, and a verified one's asks before what goes", () => {
+	const view = source("ConversationView.svelte");
+	// The engine's answer for the conversation (review, I1): its group's users here, with those the API lists.
+	expect(view).toMatch(
+		/keyChangesIn\(convId\)\.then\(\(changes\) => \{\s*if \(conversation\.id === convId\) changesHere = changes;/,
+	);
+	expect(view).toMatch(
+		/\{#each changedIn\(changesHere, Object\.keys\(changesHere\)\) as user \(user\)\}\s*<KeyChangeNotice\b/,
+	);
+	// A close and a yes name the change shown (review, Minor 6).
+	expect(view).toContain('onClose={() => void closeKeyChange(user, changesHere[user]?.change ?? "")}');
+	expect(view).toContain("onVerify={() => safetyNumberRequest.set({ id: user, name: memberName(user) })}");
+	expect(view).toMatch(
+		/const changes = await keyChangesIn\(conversation\.id\);\s*const waiting = waitingForYes\(changes, Object\.keys\(changes\)\);/,
+	);
+	expect(view).toContain(
+		'await confirmKeyChanges(waiting.map((user) => ({ user, change: changes[user]?.change ?? "" })));',
+	);
+	expect(view).toContain("beforeSend={askBeforeSend}");
+	expect(view).toMatch(/function dmRetry\(message: Message\) \{[^]*?if \(!\(await askBeforeSend\(\)\)\)/);
+	expect(view).toMatch(/async function dmVoiceNote\(blob: Blob\) \{[^]*?if \(!\(await askBeforeSend\(\)\)\)/);
+	// A no keeps the edit box and its text (review, Minor 8): Chat's saveEdit closes it only on a yes.
+	expect(view).toMatch(
+		/async function dmSaveEdit\(messageId: string, content: string\): Promise<boolean> \{\s*if \(!\(await askBeforeSend\(\)\)\) return false;/,
+	);
+	expect(view).toContain(
+		'if (err instanceof CoreError && err.code === "key_changed") return heldFor(err.users ?? []);',
+	);
+});
+
+// A verified contact's mark in their DM, among the conversation's actions (in the pane's bar, or the view's own
+// header), as the core holds them now: the engine observes the members as the view opens the conversation
+// (contacts.test.ts).
+test("a DM with a verified contact wears its mark", () => {
+	const view = source("ConversationView.svelte");
+	expect(view).toMatch(/\{#if dmPartner && encryption\.contacts\.verified\[dmPartner\]\}\s*<VerifiedMark\b/);
+	expect(view).toMatch(/openConversation\(convId\)/);
 });

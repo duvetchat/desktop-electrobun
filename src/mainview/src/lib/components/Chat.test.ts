@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-const source = (file: string) => readFileSync(join(import.meta.dir, file), "utf8");
+const source = (file: string) => readFileSync(join(import.meta.dir, file), "utf8").replaceAll("\r\n", "\n");
 
 // What a browser checked against a running app, kept here so it stays.
 describe("the user's typing notices", () => {
@@ -106,5 +106,25 @@ describe("who's typing", () => {
 	test("keeps its words clear of the messages that pass under it as the list scrolls", () => {
 		// A glass pill: a tinted fill over a blur of what's behind it.
 		expect(indicator).toMatch(/class="[^"]*\bbg-duvet-glass\b[^"]*\bbackdrop-blur-\[20px\]/);
+	});
+});
+
+// Task 28: a conversation's send may ask the person first (a verified contact's changed key): a no sends nothing and
+// gives back to its draft what the box handed over, its reply too.
+describe("a conversation's send", () => {
+	const chat = source("Chat.svelte");
+
+	test("asks first where its conversation says so, and a no gives back what was written", () => {
+		expect(chat).toMatch(
+			/setReplyIn\(sending\.key, null\);\s*if \(onSend\) \{\s*(?:\/\/[^\n]*\n\s*)*if \(beforeSend && !\(await beforeSend\(\)\)\) return putBack\(channelId, nonce, fromDraft, sending\.key\);/,
+		);
+		expect(chat).toContain("beforeSend?: () => Promise<boolean>;");
+	});
+
+	// Review, Minor 8: an edit the conversation kept from going (the person's no) keeps its box open, with its text.
+	test("an edit its conversation says no to keeps its box, and what was typed in it", () => {
+		expect(chat).toMatch(
+			/async function saveEdit\(messageId: string, content: string\) \{[^]*?=== false\) return;[^]*?cancelEdit\(\);\s*\}/,
+		);
 	});
 });

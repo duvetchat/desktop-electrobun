@@ -6,6 +6,7 @@ import type { Identity } from "$lib/api/e2e";
 import { listDevices } from "../cbor";
 import { CoreError } from "../errors";
 import { coreStatus, type CoreStatus } from "./bootstrap";
+import type { Observation } from "./contacts";
 import type { EngineParts, EngineState } from "./engine";
 
 /** What create_identity answers: what goes up, and the recovery key the person saves first. */
@@ -30,11 +31,18 @@ export async function servedIdentity({ api, user }: EngineParts): Promise<Identi
 	}
 }
 
-/** observe_user of each user, as the API serves their identities, 50 at a time: one it doesn't serve stays as it was. */
-export async function observeUsers({ api, host }: EngineParts, users: string[]): Promise<void> {
+/**
+ * observe_user of each user, as the API serves their identities, 50 at a time: one it doesn't serve stays as it was.
+ * What the core answers of each goes to the contacts (`observed`, contacts.ts), where a changed key leaves its
+ * notice.
+ */
+export async function observeUsers({ api, host, contacts }: EngineParts, users: string[]): Promise<void> {
 	for (let at = 0; at < users.length; at += 50) {
 		for (const { user_id, identity_key, device_list, certificates } of await api.identities(users.slice(at, at + 50))) {
-			await host.handle({ cmd: "observe_user", user_id, identity_key, device_list, certificates });
+			const seen = await host.handle<Observation>({
+				...{ cmd: "observe_user", user_id, identity_key, device_list, certificates },
+			});
+			contacts?.observed(user_id, seen);
 		}
 	}
 }
