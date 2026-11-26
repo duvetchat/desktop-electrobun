@@ -25,10 +25,19 @@ import {
 	type KeysMade,
 } from "./devices";
 import { Approvals, type ApprovalRole, type DeviceApproval, type DeviceSetup } from "./approval";
+import { Contacts, type ContactsShown, type KeyChange, type SafetyNumber, type ShownChange } from "./contacts";
 import { Failures } from "./failures";
 import { fileNames } from "./files";
 import { Received, Shares, type SharedOffer, type ShareOutcome, type ShareRange } from "./history";
-import { firstListWaits, identityState, publishIdentity, servedIdentity, type IdentityMade } from "./identity";
+import {
+	firstListWaits,
+	identityState,
+	observeUsers,
+	publishIdentity,
+	servedIdentity,
+	withIdentities,
+	type IdentityMade,
+} from "./identity";
 import { takeInbox } from "./inbox";
 import { uploadKeyPackages } from "./key-packages";
 import { checkRoom } from "./members";
@@ -45,6 +54,7 @@ export type { Outgoing, Pending } from "./send";
 export type { OutgoingFile } from "./files";
 export type { ShownMessage } from "./content";
 export type { SharedOffer, ShareOutcome, ShareRange } from "./history";
+export type { ContactsShown, KeyChange, SafetyNumber, ShownChange } from "./contacts";
 
 /**
  * A conversation's messages changed on this device: `ids`, those whose rows changed (none: any of them), and
@@ -95,6 +105,11 @@ export interface EngineParts {
 	deviceName: string;
 	/** The session is bound to this device, which every identify names from now on (Ruling 30). */
 	registered(deviceId: string): void;
+	/**
+	 * The engine's contacts (contacts.ts), set by the engine itself: what the core answers of each other user observed,
+	 * whichever flow observes them (identity.ts' observeUsers), and whose changed key holds what goes to them.
+	 */
+	contacts?: Contacts;
 }
 
 /**
@@ -210,8 +225,15 @@ export class E2EEngine {
 	#setup: Extract<DeviceSetup, { way: "reset" | "finishing" }> | null = null;
 	/** The identity the start over under way replaces (also kept in the record, which a later start reads). */
 	#replaces: string | null = null;
+	/** The person's contacts: whom they verified, and their changed keys (Task 28). */
+	readonly #contacts: Contacts;
+	readonly #contactListeners = new Set<() => void>();
 
-	constructor(parts: EngineParts) {
+	constructor(given: EngineParts) {
+		this.#contacts = new Contacts(given.store, given.user, () => {
+			for (const listener of this.#contactListeners) listener();
+		});
+		const parts: EngineParts = { ...given, contacts: this.#contacts };
 		this.#parts = parts;
 		this.#approvals = new Approvals(
 			parts,
@@ -262,8 +284,104 @@ export class E2EEngine {
 				refused: (id, message, kind) => {
 					for (const listener of this.#refusedListeners) listener(id, message, kind);
 				},
+				// A verified contact's changed key holds what goes to their conversations until the person's yes: whom the
+				// group holds here, with those the API lists (review, I1).
+				held: async (id) => this.#contacts.holding(await this.#groups.people(id)),
 			},
 		);
+	}
+
+	/** What the views show of the person's contacts (contacts.ts): their changed keys, and whom they verified. */
+	contacts(): ContactsShown {
+		return this.#contacts.shown();
+	}
+
+	/** Each change of what the views show of the person's contacts. */
+	onContacts(listener: () => void): () => void {
+		this.#contactListeners.add(listener);
+		return () => void this.#contactListeners.delete(listener);
+	}
+
+	/**
+	 * Whether the person verified the user, as this device's core holds them once it observed them as the API serves them
+	 * now: a changed key leaves its notice, and one the core refuses changes nothing. False for one the API serves no
+	 * identity of, and before this device is ready.
+	 */
+	async contact(userId: string): Promise<boolean> {
+		// One that fails (logged by the turn) leaves what the core held before.
+		await this.#queue(() => this.#whenReady(() => observeUsers(this.#parts, [userId]))).catch(() => {});
+		return this.#contacts.shown().verified[userId] ?? false;
+	}
+
+	/**
+	 * The security number with a contact (decision 25): its 60 digits in 12 groups of 5, and its QR's text, the core's
+	 * `qr` as it gives it, which the other's phone scans (e2e-conventions.json's safety_qr). The contact is observed as
+	 * the API serves them first, so the number is of the identity they have now; one the core refuses leaves the number
+	 * of the identity this device holds of them.
+	 */
+	safetyNumber(userId: string): Promise<SafetyNumber> {
+		return this.#act(async () => {
+			await observeUsers(this.#parts, [userId]).catch((error: unknown) => {
+				console.warn("[e2e] A contact wasn't observed before their security number:", error);
+			});
+			return this.#safetyNumber(userId);
+		});
+	}
+
+	/**
+	 * The person marks the contact verified, having compared these digits with theirs: only while they're still the
+	 * number the core holds, read again in the same turn, so a key that changed meanwhile is never verified unseen.
+	 * Whether they're verified now.
+	 */
+	verifyContact(userId: string, digits: string): Promise<boolean> {
+		return this.#act(async () => {
+			if ((await this.#safetyNumber(userId)).digits !== digits) return false;
+			const { host } = this.#parts;
+			// The digits go along: on the desktop, Bun's own box names them, and marks by the QR of that number (Ruling 6).
+			const { verified } = await host.handle<{ verified: boolean }>({ cmd: "verify_user", user_id: userId, digits });
+			this.#contacts.verifiedNow(userId, verified);
+			// Verifying the new number is a yes too (review, Minor 7).
+			if (verified) this.#released();
+			return verified;
+		});
+	}
+
+	/**
+	 * The changed keys of the conversation's people (Task 28's review, I1): the users its group holds on this device,
+	 * members and leaves, with those the API lists, as a server could list it without someone its group still holds.
+	 */
+	keyChangesIn(conversationId: string): Promise<Record<string, KeyChange>> {
+		return this.#act(async () => {
+			const { changes } = this.#contacts.shown();
+			const people = await this.#groups.people(conversationId);
+			return Object.fromEntries(people.flatMap((user) => (changes[user] ? [[user, changes[user]]] : [])));
+		});
+	}
+
+	/** The person closes the notice of the contact's change they were shown: it shows no more, wherever it showed. */
+	async closeKeyChange(userId: string, change: string): Promise<void> {
+		this.#contacts.close(userId, change);
+	}
+
+	/**
+	 * The person's yes to sending, the changes they were shown known (decision 25): what waited for it goes, as at a
+	 * READY.
+	 */
+	async confirmKeyChanges(changes: ShownChange[]): Promise<void> {
+		this.#contacts.confirm(changes);
+		this.#released();
+	}
+
+	/** What waited for the person's yes goes: messages and edits, as at a READY, and the catch-ups held for it. */
+	#released() {
+		this.#soon(() => this.#whenReady(() => this.#sends.resendAll()));
+		this.#groups.ready();
+	}
+
+	/** The core's security number with the contact, as it holds them now: observed first when it asks. */
+	#safetyNumber(userId: string): Promise<SafetyNumber> {
+		const { host } = this.#parts;
+		return withIdentities(this.#parts, () => host.handle<SafetyNumber>({ cmd: "safety_number", user_id: userId }));
 	}
 
 	/** What the engine tells of the user's devices, as it comes: each device once. */
@@ -346,6 +464,7 @@ export class E2EEngine {
 				));
 			await host.destroy(user);
 			for (const key of [...DEVICE_RECORD, TOLD_INACTIVE, TOLD_ADDED]) store.write(key, null);
+			this.#contacts.forget();
 			this.#halt();
 			this.#made = null;
 			this.#keys = null;
@@ -928,9 +1047,16 @@ export class E2EEngine {
 		return false;
 	}
 
-	/** A conversation the person opened, its members without a device asked for once its group goes on. */
+	/**
+	 * A conversation the person opened: its members observed as the API serves them now (a changed key leaves its notice
+	 * there), and those without a device asked for once its group goes on.
+	 */
 	async #open(conversationId: string): Promise<void> {
 		await this.#groups.open(conversationId);
+		const others = this.#groups.members(conversationId).filter((user) => user !== this.#parts.user);
+		await observeUsers(this.#parts, others).catch((error: unknown) => {
+			console.warn("[e2e] A conversation's members weren't observed:", error);
+		});
 		await this.#groups.checkDevices(conversationId);
 	}
 
@@ -1065,10 +1191,18 @@ export class E2EEngine {
 				}
 				break;
 			case "IDENTITY_UPDATE":
-				// Another user's: whether they have a device may have changed, which their conversations tell the core.
+				// Another user's: they're observed as the API serves them now (a changed key leaves its notice, contacts.ts),
+				// and whether they have a device may have changed, which their conversations tell the core.
 				if (event.data.user_id !== this.#parts.user) {
 					const { user_id } = event.data;
-					this.#soon(() => this.#whenReady(() => this.#groups.identityChanged(user_id)));
+					this.#soon(() =>
+						this.#whenReady(async () => {
+							await observeUsers(this.#parts, [user_id]).catch((error: unknown) => {
+								console.warn("[e2e] A contact whose identity changed wasn't observed:", error);
+							});
+							await this.#groups.identityChanged(user_id);
+						}),
+					);
 					break;
 				}
 				// The user's own: another device changed the list or the keys, which may leave this one off it, or
@@ -1278,6 +1412,11 @@ export class E2EEngine {
 		this.#set(state);
 		await this.#inbox();
 		if (this.state.name !== "ready") return;
+		// Whom the person verified, looked at again: a change of theirs the record never took holds from the start (review,
+		// Minor 5).
+		await observeUsers(this.#parts, this.#contacts.verifiedUsers()).catch((error: unknown) => {
+			console.warn("[e2e] The verified contacts weren't observed:", error);
+		});
 		await this.#whenReady(() => this.#groups.all());
 		for (const id of [...this.#toOpen]) {
 			this.#toOpen.delete(id);
@@ -1346,6 +1485,7 @@ export class E2EEngine {
 		const old = (await api.devices()).find((device) => device.current)?.id ?? null;
 		await host.destroy(user);
 		for (const key of DEVICE_RECORD) store.write(key, null);
+		this.#contacts.forget();
 		this.#made = null;
 		this.#keys = null;
 		this.#setup = null;

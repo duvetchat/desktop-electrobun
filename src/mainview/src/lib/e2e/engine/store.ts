@@ -27,10 +27,18 @@ export const REFUSED_GENERATIONS = "refused_generations";
  * as the inbox brought them, which the inbox deletes once read. Nothing secret: the key stays in the core.
  */
 export const SHARE_KEYS = "share_keys";
+/**
+ * Contacts' changed keys the person isn't done with (contacts.ts), by user: whether the identity replaced was verified,
+ * the notice closed, the person's yes. Words alone, never a key; what this device's core pinned goes with it.
+ */
+export const KEY_CHANGES = "key_changes";
+/** Whom the person verified on this device (contacts.ts), from their tap: user IDs, so a lost change is found again. */
+export const VERIFIED_CONTACTS = "verified_contacts";
 /** What a new device of this installation starts without. */
 export const DEVICE_RECORD = [
 	...[DEVICE_KEYS, KEPT_APPROVALS, KEPT_TRANSFERS, KEPT_LATER],
-	...[PENDING_SENDS, PENDING_CHANGES, KEPT_ROTATION, KEPT_RESET, REFUSED_GENERATIONS, SHARE_KEYS],
+	...[PENDING_SENDS, PENDING_CHANGES, KEPT_ROTATION, KEPT_RESET, REFUSED_GENERATIONS],
+	...[SHARE_KEYS, KEY_CHANGES, VERIFIED_CONTACTS],
 ];
 /** The user's devices the app told of, each once (devices.ts): those not seen in 45 days, and those added. */
 export const TOLD_INACTIVE = "told_inactive";

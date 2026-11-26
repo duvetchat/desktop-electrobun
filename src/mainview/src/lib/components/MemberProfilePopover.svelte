@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { Snippet } from "svelte";
-	import { UserPlus, UserCheck, Loader2, RotateCcw, UserMinus, Ban, MessageCircle } from "@lucide/svelte";
+	import { UserPlus, UserCheck, Loader2, RotateCcw, UserMinus, Ban, MessageCircle, ShieldCheck } from "@lucide/svelte";
 	import { Popover } from "bits-ui";
 	import type { MemberOnSidebar, GatewaySpace, Role } from "$lib/types";
 	import {
@@ -18,7 +18,11 @@
 	import { Permission, ALL_PERMISSIONS, canManageRoleAt, hasSpacePermission } from "$lib/permissions";
 	import { banRequest, kickFromSpace, moderationOf } from "$lib/moderation";
 	import { chatWith } from "$lib/member-actions";
-	import { canChatWith, tiesOf } from "$lib/member-menu";
+	import { canChatWith, canVerify, tiesOf } from "$lib/member-menu";
+	import { contactOf } from "$lib/e2e/engine.svelte";
+	import { encryption, safetyNumberRequest } from "$lib/e2e/encryption.svelte";
+	import { t } from "$lib/i18n";
+	import VerifiedMark from "$lib/components/e2e/VerifiedMark.svelte";
 	import UserAvatar from "$lib/components/UserAvatar.svelte";
 	import ActivityList from "$lib/components/ActivityList.svelte";
 	import ProfileBio from "$lib/components/ProfileBio.svelte";
@@ -76,6 +80,29 @@
 				}),
 			),
 	);
+
+	// Verify security number (Task 28), for whom a member's menu offers it (canVerify: a friend, or someone the user
+	// shares a conversation with, whose identity the API serves them), while this device's encrypted conversations are
+	// ready.
+	const canVerifyThem = $derived(
+		encryption.state.name === "ready" &&
+			!!$currentUser &&
+			canVerify(
+				$currentUser.id,
+				{ id: member.id, isBot: member.is_bot },
+				tiesOf(member.id, $currentUser.id, {
+					friends: $friends,
+					received: $pendingFriendRequests,
+					sent: $sentFriendRequests,
+					conversations: $conversations,
+				}),
+			),
+	);
+	// Whether they're verified is the core's, as they're seen now: looked at as it opens (a changed key leaves its
+	// notice).
+	$effect(() => {
+		if (shown && canVerifyThem) void contactOf(member.id);
+	});
 
 	const assignableRoles = $derived(
 		space ? [...space.roles].filter((r) => r.id !== spaceId).sort((a, b) => b.position - a.position) : [],
@@ -294,6 +321,20 @@
 										</button>
 									{/if}
 								{/if}
+								<!-- Their security number, to compare and verify (Task 28). -->
+								{#if canVerifyThem}
+									<button
+										class="{buttonClass('secondary', 'sm')} w-8 px-0!"
+										title={t("e2e_verify_number")}
+										aria-label={t("e2e_verify_number")}
+										onclick={() => {
+											onOpenChange(false);
+											safetyNumberRequest.set({ id: member.id, name: member.username });
+										}}
+									>
+										<ShieldCheck class="size-4" />
+									</button>
+								{/if}
 								<!-- Permissions are a space's (its roles): a DM or a group has none, so there's nothing to view there. -->
 								{#if spaceId}
 									<button class={buttonClass("secondary", "sm")} onclick={() => (showPermissions = !showPermissions)}>
@@ -312,6 +353,9 @@
 									class="text-duvet-ink text-[16px] leading-[1.15] font-medium tracking-[-0.012em] break-words select-text"
 								>
 									{member.username}
+									{#if encryption.contacts.verified[member.id]}
+										<VerifiedMark class="ml-0.5 align-[-3px]" />
+									{/if}
 								</h2>
 								<p class="text-duvet-ink2 mt-0.5 text-[12.5px] select-text">
 									@{member.raw_username}

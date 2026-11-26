@@ -10,6 +10,7 @@
 		Pencil,
 		Phone,
 		Shield,
+		ShieldCheck,
 		User,
 		UserCheck,
 		UserMinus,
@@ -31,6 +32,8 @@
 		shareHistoryRequest,
 	} from "$lib/member-actions";
 	import { banRequest, kickFromSpace } from "$lib/moderation";
+	import { encryption, safetyNumberRequest } from "$lib/e2e/encryption.svelte";
+	import { t } from "$lib/i18n";
 	import {
 		activeCall,
 		conversations,
@@ -45,7 +48,6 @@
 	import MenuSeparator from "$lib/components/ui/MenuSeparator.svelte";
 	import MenuSub from "$lib/components/ui/MenuSub.svelte";
 	import { userFlagsRequest } from "$lib/components/UserFlagsSheet.svelte";
-	import { t } from "$lib/i18n";
 
 	// A member's menu (#423): the items of a person in any list of them, inside that list's menu (a ContextMenu on a
 	// right-click, or a message menu's author submenu). What it offers is lib/member-menu.ts's call; what the list does
@@ -72,7 +74,7 @@
 		onRemoveFromGroup?: (userId: string) => Promise<void>;
 	} = $props();
 
-	const STRANGER = { friend: false, askedMe: false, askedThem: false, dm: false };
+	const STRANGER = { friend: false, askedMe: false, askedThem: false, dm: false, shared: false };
 
 	const items = $derived(
 		memberMenuItems({
@@ -96,14 +98,15 @@
 					!!conversationId &&
 					!!$conversations.find((c) => c.id === conversationId)?.members.some((m) => m.user_id === person.id),
 			},
+			encrypted: encryption.state.name === "ready",
 		}),
 	);
 
 	// Its groups, in order, and whether each has an item: who they are to the user (a profile, a mention, a chat, a
-	// call), the friendship, what's theirs in the Space or the user's own (roles, the display name), what removes them,
-	// their ID, and staff's editor. A line comes before each group shown after another.
+	// call, their security number), the friendship, what's theirs in the Space or the user's own (roles, the display
+	// name), what removes them, their ID, and staff's editor. A line comes before each group shown after another.
 	const groups = $derived([
-		items.profile || items.mention || items.message || items.call || items.shareHistory,
+		items.profile || items.mention || items.message || items.call || items.shareHistory || items.verify,
 		items.friend !== null,
 		items.roles.length > 0 || items.displayName,
 		!!items.moderation || items.removeFromGroup,
@@ -161,6 +164,14 @@
 	{@const shared = { conversationId, userId: person.id, name: person.name }}
 	<MenuItem icon={History} onSelect={() => afterClose(() => shareHistoryRequest.set(shared))}>
 		{t("e2e_share_history")}
+	</MenuItem>
+{/if}
+{#if items.verify}
+	<MenuItem
+		icon={ShieldCheck}
+		onSelect={() => afterClose(() => safetyNumberRequest.set({ id: person.id, name: person.name }))}
+	>
+		{t("e2e_verify_number")}
 	</MenuItem>
 {/if}
 

@@ -36,6 +36,22 @@ describe("a QR", () => {
 		expect(drawn.find((tag) => tag.name === "svg")?.attributes.viewbox).toBe(`0 0 ${side} ${side}`);
 	});
 
+	// A security number's (Task 28; e2e-conventions.json's safety_qr): the core's qr, as safety_number gives it, is the
+	// QR's text unchanged, at level M, which the other's phone hands to verify_user {user_id, qr} as it reads it.
+	test("of a security number is the core's qr as its text, at level M", async () => {
+		const { qr, text, error_correction } = conventions.safety_qr;
+		expect(text).toBe(qr);
+		expect(error_correction).toBe("M");
+		// The core's code of two users: base64 of its {v, users} map, never anything the desktop writes itself.
+		expect(atob(qr).length).toBeGreaterThan(64);
+		const code = qrcodeGenerator(0, "M");
+		code.addData(text);
+		code.make();
+		const drawn = await tags(QrCode, { text: qr, label: "A code" });
+		const side = code.getModuleCount() + 2 * QUIET;
+		expect(drawn.find((tag) => tag.name === "svg")?.attributes.viewbox).toBe(`0 0 ${side} ${side}`);
+	});
+
 	test("draws its text's code, dark on light, inside its quiet zone", async () => {
 		const code = qrcodeGenerator(0, "M");
 		code.addData(TEXT);

@@ -60,6 +60,23 @@ describe("the notices", () => {
 		for (const [key, table] of words) expect(en[key]).toBe(NOTICES[table]);
 	});
 
+	test("a contact's security number and changed key say the table's words", () => {
+		// The profile's and the menu's way to it, its one button, a verified contact's mark, a changed key's notices and
+		// the question before sending (Task 28): the mobile app takes the same.
+		const words: [keyof typeof en, NoticeKey][] = [
+			["e2e_verify_number", "verify_number"],
+			["e2e_mark_verified", "mark_verified"],
+			["e2e_verified", "verified"],
+			["e2e_key_changed", "key_changed"],
+			["e2e_key_changed_verified", "key_changed_verified"],
+			["e2e_send_anyway", "send_anyway"],
+		];
+		for (const [key, table] of words) {
+			expect(NOTICES[table]).toEqual(expect.any(String));
+			expect(en[key]).toBe(NOTICES[table]);
+		}
+	});
+
 	test("a conversation's files say the table's words", () => {
 		// The app's words for them (en.json, which t() reads) are the notices', key for key: the mobile app takes the same.
 		const words: [keyof typeof en, NoticeKey][] = [

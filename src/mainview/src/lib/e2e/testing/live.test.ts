@@ -605,6 +605,49 @@ describe.skipIf(!live)("live, against the API's stack", () => {
 			await fresh.end();
 		}
 	}, 180_000);
+
+	// Contacts (PLAN-E2E-CLIENTES.md, Task 28): Carol and Dave compare their security number, the same 60 digits on both
+	// sides, and Carol marks Dave verified, which marks nothing on his device. Dave changes his keys: Carol's device,
+	// told by the gateway, shows the strong notice and holds her next message until she says yes, and the new number is
+	// the same again on both sides. Last of all, after the case above: it leaves Dave with new keys.
+	test("two users compare their security number, and a verified one's new keys wait for a yes", async () => {
+		const pair = carolAndDave;
+		if (!pair) throw new Error("the cases before left no conversation");
+		const { c, d, dm } = pair;
+		const [carol, dave] = [account(2), account(3)];
+		const ours = await c.engine.safetyNumber(dave.id);
+		expect(ours.digits).toMatch(/^(\d{5} ){11}\d{5}$/);
+		expect(await d.engine.safetyNumber(carol.id)).toEqual(ours);
+		expect(await c.engine.verifyContact(dave.id, ours.digits)).toBe(true);
+		expect(await c.engine.contact(dave.id)).toBe(true);
+		expect(await d.engine.contact(carol.id)).toBe(false);
+
+		await d.engine.changeKeys();
+		await d.engine.keySaved();
+		expect(d.engine.state).toEqual({ name: "ready" });
+		await eventually(async () => c.engine.contacts().changes[dave.id]?.verified === true);
+		expect(await c.engine.contact(dave.id)).toBe(false);
+		const nonce = crypto.randomUUID();
+		const text = "is this still you?";
+		const held = await c.engine.sendMessage({ conversation_id: dm, nonce, text }).then(
+			() => null,
+			(error: unknown) => error,
+		);
+		expect(held).toMatchObject({ code: "key_changed", users: [dave.id] });
+		let went: DirectMessage | null = null;
+		c.engine.onSent((_conversation, sent, message) => {
+			if (sent === nonce) went = message;
+		});
+		// Her yes names the change she was shown.
+		const change = c.engine.contacts().changes[dave.id]?.change ?? "";
+		await c.engine.confirmKeyChanges([{ user: dave.id, change }]);
+		await eventually(async () => went !== null);
+		const id = (went as DirectMessage | null)?.id ?? "";
+		await eventually(async () => (await d.engine.messages(dm, [id]))[0]?.text === text);
+		const now = await c.engine.safetyNumber(dave.id);
+		expect(now.digits).not.toBe(ours.digits);
+		expect(await d.engine.safetyNumber(carol.id)).toEqual(now);
+	}, 180_000);
 });
 
 /** The conversation's group as the device's core holds it, or null without one. */

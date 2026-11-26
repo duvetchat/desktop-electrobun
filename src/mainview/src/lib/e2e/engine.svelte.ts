@@ -24,14 +24,18 @@ import { CoreError } from "./errors";
 import {
 	E2EEngine,
 	systemClock,
+	type ContactsShown,
 	type ConversationState,
 	type DeviceNotice,
 	type EngineState,
 	type Outgoing,
 	type Pending,
+	type KeyChange,
+	type SafetyNumber,
 	type SharedOffer,
 	type ShareOutcome,
 	type ShareRange,
+	type ShownChange,
 	type ShownMessage,
 } from "./engine/engine";
 import { SHARE_RANGES } from "./engine/history";
@@ -39,22 +43,12 @@ import type { DeviceFound, DeviceSearch } from "./engine/search";
 import { pageStore } from "./engine/store";
 import { engineEvents } from "./events";
 import type { CoreHost } from "./host";
+import { encryption } from "./encryption.svelte";
 import { missingInPage } from "./web/support";
 import { BrowserTabs, type BrowserTabsOptions } from "./web/tabs";
 
-export const encryption = $state<{
-	state: EngineState;
-	conversations: Record<string, ConversationState>;
-	/** The members' shares of each conversation's history this device offers, until the person adds them (Task 30). */
-	offers: Record<string, SharedOffer[]>;
-	/** The cutover's instant, as the API gives it: a conversation from before it says when its messages went. */
-	cutoverAt: string | null;
-}>({
-	state: { name: "starting" },
-	conversations: {},
-	offers: {},
-	cutoverAt: null,
-});
+// What the views read, kept apart so a page without the engine reads it too (encryption.svelte.ts).
+export { encryption };
 
 /** What a conversation says of its group, shown: none goes. */
 function showConversation(conversationId: string, state: ConversationState | null) {
@@ -158,6 +152,12 @@ function engineFor(userId: string, host: CoreHost, platform: EnginePlatform): E2
 		toast(t(words[kind]), "error");
 	});
 	made.onDevice(tellOfDevice);
+	// The person's contacts, as the record kept them and as they change: shown here, and asked for by the other tabs.
+	encryption.contacts = made.contacts();
+	made.onContacts(() => {
+		encryption.contacts = made.contacts();
+		tabs?.stateChanged();
+	});
 	for (const conversationId of toOpen) {
 		made.openConversation(conversationId).catch((error: unknown) => {
 			console.error("[e2e] The conversation's group didn't open:", error);
@@ -276,6 +276,14 @@ export async function startEngine(userId: string, platform: EnginePlatform = pag
 			dismissShared: ({ shareId }: MessageParams) => live().dismissShared(shareId ?? ""),
 			offers: (id: string) => engine?.offers(id) ?? [],
 			cutoverAt: () => engine?.cutoverAt ?? null,
+			// The person's contacts (Task 28).
+			contacts: () => engine?.contacts() ?? { changes: {}, verified: {} },
+			contact: (id: string) => live().contact(id),
+			safetyNumber: (id: string) => live().safetyNumber(id),
+			verifyContact: ({ userId: id, digits }: ContactParams) => live().verifyContact(id, digits),
+			keyChangesIn: (id: string) => live().keyChangesIn(id),
+			closeKeyChange: ({ user, change }: ShownChange) => live().closeKeyChange(user, change),
+			confirmKeyChanges: (changes: ShownChange[]) => live().confirmKeyChanges(changes),
 			sendMessage: (message: Outgoing) => {
 				const stop = new AbortController();
 				othersUploads.set(message.nonce, stop);
@@ -334,6 +342,7 @@ async function follow(): Promise<void> {
 	if (!asked || asked.leader) return;
 	encryption.state = await asked.call<EngineState>("state").catch(() => encryption.state);
 	encryption.cutoverAt = await asked.call<string | null>("cutoverAt").catch(() => encryption.cutoverAt);
+	encryption.contacts = await asked.call<ContactsShown>("contacts").catch(() => encryption.contacts);
 	if (encryption.state.name === "ready") refreshAll();
 }
 
@@ -383,6 +392,39 @@ interface MessageParams {
 }
 
 const NOT_READY = "encrypted conversations aren't ready on this device";
+
+/** What a tab asks of the leader's engine about a contact's verification. */
+interface ContactParams {
+	userId: string;
+	digits: string;
+}
+
+/**
+ * Whether the person verified the user, once the engine observed them as the API serves them now (a changed key leaves
+ * its notice): what a contact's profile and DM show, read again as they open. False where no engine can say.
+ */
+export const contactOf = (userId: string) =>
+	onMessages<boolean>("contact", userId, (made) => made.contact(userId)).catch(() => false);
+/** The security number with a contact (decision 25): its 60 digits and its QR's text. */
+export const safetyNumberOf = (userId: string) =>
+	onMessages<SafetyNumber>("safetyNumber", userId, (made) => made.safetyNumber(userId));
+/** The person marks the contact verified, having compared these digits: whether they're verified now. */
+export const verifyContact = (userId: string, digits: string) =>
+	onMessages<boolean>("verifyContact", { userId, digits }, (made) => made.verifyContact(userId, digits));
+/**
+ * The changed keys of the conversation's people, as the engine says them (its group's users here, with those the API
+ * lists): what its notices show and its sends ask about. None where no engine can say.
+ */
+export const keyChangesIn = (conversationId: string) =>
+	onMessages<Record<string, KeyChange>>("keyChangesIn", conversationId, (made) =>
+		made.keyChangesIn(conversationId),
+	).catch((): Record<string, KeyChange> => ({}));
+/** The person closes the notice of the contact's change they were shown. */
+export const closeKeyChange = (user: string, change: string) =>
+	onMessages<void>("closeKeyChange", { user, change }, (made) => made.closeKeyChange(user, change));
+/** The person's yes to sending, the changes they were shown known: what waited for it goes. */
+export const confirmKeyChanges = (changes: ShownChange[]) =>
+	onMessages<void>("confirmKeyChanges", changes, (made) => made.confirmKeyChanges(changes));
 
 /** The leader's engine, for what another tab asks of it: none yet is a refusal, as the tab would show. */
 function live(): E2EEngine {
@@ -551,6 +593,8 @@ export async function stopEngine(): Promise<void> {
 	started = false;
 	toOpen.clear();
 	encryption.offers = {};
+	// What the next user's engine shows of their contacts is theirs.
+	encryption.contacts = { changes: {}, verified: {} };
 	// What the device's database showed goes from memory, nothing searches it, and what it decrypted goes too.
 	useReader(null);
 	useDeviceSearch(null);

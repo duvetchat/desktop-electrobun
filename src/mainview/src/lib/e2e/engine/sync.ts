@@ -80,6 +80,8 @@ interface InFlight {
 /** The group as the core holds it (its `group`). */
 interface Held extends HeldMembers {
 	blocked: boolean;
+	/** The devices it holds, by user. */
+	devices?: { user_id: string }[];
 }
 
 /** Entries an apply takes at most. */
@@ -520,6 +522,22 @@ export class Conversations {
 		this.#deviceless.set(conv.id, { users, from });
 		const now = this.#states.get(conv.id);
 		if (!now || now.name === "no_device") this.#set(conv.id, this.#goingOn(conv.id));
+	}
+
+	/**
+	 * Whom what goes to the conversation reaches (Task 28's review, I1): the users its group holds on this device, its
+	 * members and its leaves', with those the API lists, as a server could list it without someone its group still holds.
+	 */
+	async people(conversationId: string): Promise<string[]> {
+		const held = await this.#group(conversationId);
+		const users = new Set(this.members(conversationId));
+		for (const { user_id } of [...(held?.members ?? []), ...(held?.devices ?? [])]) users.add(user_id);
+		return [...users];
+	}
+
+	/** The conversation's members as the API listed them last: none for one it doesn't know. */
+	members(conversationId: string): string[] {
+		return this.#known.get(conversationId)?.members.map((member) => member.user_id) ?? [];
 	}
 
 	/** A user's identity changed (IDENTITY_UPDATE): their conversations' members without a device are asked again. */
