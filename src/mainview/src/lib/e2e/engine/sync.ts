@@ -14,7 +14,7 @@ import type { MlsEntry, MlsEventEntry } from "$lib/types";
 import { CoreError } from "../errors";
 import type { EngineEvent } from "../events";
 import { sendCommit, type Sent } from "./commits";
-import { CatchUps, withoutDevices } from "./deviceless";
+import { CatchUps, joinedUsers, withoutDevices } from "./deviceless";
 import type { EngineParts } from "./engine";
 import { failedKinds, type EntryResult, type Failures } from "./failures";
 import { joinGroup, makeGroup, mayMake, mayRestart, restartGroup, type ServedGroupInfo } from "./groups";
@@ -260,9 +260,10 @@ export class Conversations {
 	readonly #accepted = new Map<string, { generation: number; members: string }>();
 	/**
 	 * Each conversation's members without a device, as this device last told its core (deviceless.ts), and the core's
-	 * members they were worked out from: when those change, they're asked again (task 22's review, I2).
+	 * members they were worked out from, with those of them that had a device in the group: when those change, they're
+	 * asked again (task 22's review, I2; #537).
 	 */
-	readonly #deviceless = new Map<string, { users: string[]; from: string[] }>();
+	readonly #deviceless = new Map<string, { users: string[]; from: string[]; joined: string[] }>();
 	readonly #catchUps: CatchUps;
 	/** A conversation this device is no longer in: what else waits for it goes too (the packages it was handed). */
 	readonly #dropped: (conversationId: string) => void;
@@ -557,8 +558,8 @@ export class Conversations {
 		const held = conv?.mls ? await this.#group(conversationId) : null;
 		if (!conv || !held) return;
 		const from = held.members.map((member) => member.user_id);
-		const users = await withoutDevices(this.#parts, conv, from);
-		this.#deviceless.set(conv.id, { users, from });
+		const users = await withoutDevices(this.#parts, conv, held);
+		this.#deviceless.set(conv.id, { users, from, joined: joinedUsers(held) });
 		const now = this.#states.get(conv.id);
 		if (!now || now.name === "no_device") this.#set(conv.id, this.#goingOn(conv.id));
 	}
@@ -928,13 +929,14 @@ export class Conversations {
 
 	/**
 	 * Who has no device, asked again in a conversation where it was asked, once the core's members are others than it
-	 * was worked out from: an addition or a removal, this device's or another's, with the API's members listed again.
-	 * One that fails is logged, and goes again at the conversation's next turn.
+	 * was worked out from, or those of them with a device in the group: an addition or a removal, a member's first device
+	 * in or last one out (#537), this device's or another's, with the API's members listed again. One that fails is
+	 * logged, and goes again at the conversation's next turn.
 	 */
 	async #devicesAgain(id: string, held: Held) {
 		const told = this.#deviceless.get(id);
 		const members = held.members.map((member) => member.user_id);
-		if (!told || sameUsers(told.from, members)) return;
+		if (!told || (sameUsers(told.from, members) && sameUsers(told.joined, joinedUsers(held)))) return;
 		await this.#fresh(id)
 			.then(() => this.checkDevices(id))
 			.catch((error: unknown) => {

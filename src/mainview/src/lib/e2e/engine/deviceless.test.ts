@@ -9,6 +9,7 @@ import {
 	firstDevice,
 	groupOf,
 	rejection,
+	restarted,
 	sameGroup,
 	testDevice,
 	testHost,
@@ -28,6 +29,7 @@ const SLOW = 180_000;
 const DAY = 24 * 3600 * 1000;
 const SHARES = /^\/api\/users\/@me\/conversations\/[0-9a-f-]{36}\/history-shares\/[0-9a-f-]{36}$/;
 const PARTS = /^\/api\/users\/@me\/conversations\/[0-9a-f-]{36}\/history-shares\/[0-9a-f-]{36}\/parts\/\d+$/;
+const KEY_PACKAGES = "/api/users/@me/devices/@me/key-packages";
 // A catch-up's parts go up as bytes, which the app sends through the XMLHttpRequest Bun lacks.
 useXHR();
 
@@ -197,6 +199,65 @@ describe.skipIf(!coreLibrary)("members without a device", () => {
 			await caughtUp(d, conversation, sent!.id);
 			const [row] = await d.engine.messages(conversation, [sent!.id]);
 			expect(row).toMatchObject({ status: "ok", text: "welcome, Dee" });
+		},
+		SLOW,
+	);
+
+	// #537: a member whose listed devices had no key package to give as the group was made, or as they were added, got no
+	// leaf in it, yet has an identity, seen lately: they count as without a device there until a device of theirs has a
+	// leaf, so what's sent meanwhile is noted for them, and their catch-up brings it.
+	test(
+		"a DM made before the other's only device has key packages: its catch-up brings the first messages",
+		async () => {
+			const { fake } = setUp();
+			const [ana, cy] = [fake.addUser(), fake.addUser()];
+			const conversation = fake.addConversation({ type: "dm", members: [ana, cy] });
+			const a = await firstDevice(fake, ana);
+			// Cy's only device is set up, its identity and its list up, and its key packages not yet: their upload fails.
+			fake.refuse({ method: "PUT", path: KEY_PACKAGES }, 500, { error: "internal server error" });
+			const c = await firstDevice(fake, cy);
+			await c.engine.stop();
+			await a.engine.openConversation(conversation);
+			expect((await groupOf(a, conversation))?.devices.map((device) => device.user_id)).toEqual([ana]);
+			expect(a.engine.conversationState(conversation)).toEqual({ name: "no_device", users: [cy] });
+			const sent = await a.engine.sendMessage({
+				conversation_id: conversation,
+				nonce: crypto.randomUUID(),
+				text: "while you were away",
+			});
+			// His device's app starts again: it joins, and Ana's device hands it what came before.
+			const again = await restarted(fake, c);
+			await sameGroup([a, again], conversation);
+			await reached(again, conversation, sent!.id);
+			await until(() => a.engine.conversationState(conversation) === null);
+		},
+		SLOW,
+	);
+
+	test(
+		"a member added before their only device has key packages: their catch-up brings what came since",
+		async () => {
+			const { fake } = setUp();
+			const [ana, bo, dee] = [fake.addUser(), fake.addUser(), fake.addUser()];
+			fake.befriend(ana, dee);
+			const conversation = fake.addConversation({ type: "group", members: [ana, bo], owner: ana });
+			const [a, b] = [await firstDevice(fake, ana), await firstDevice(fake, bo)];
+			await a.engine.openConversation(conversation);
+			await sameGroup([a, b], conversation);
+			fake.refuse({ method: "PUT", path: KEY_PACKAGES }, 500, { error: "internal server error" });
+			const d = await firstDevice(fake, dee);
+			await d.engine.stop();
+			// Added by add_members with none of her devices in: she's named over the message box, and noted for.
+			await a.engine.addMember(conversation, dee);
+			expect(a.engine.conversationState(conversation)).toEqual({ name: "no_device", users: [dee] });
+			const sent = await a.engine.sendMessage({
+				conversation_id: conversation,
+				nonce: crypto.randomUUID(),
+				text: "while you were away",
+			});
+			const again = await restarted(fake, d);
+			await sameGroup([a, b, again], conversation);
+			await reached(again, conversation, sent!.id);
 		},
 		SLOW,
 	);

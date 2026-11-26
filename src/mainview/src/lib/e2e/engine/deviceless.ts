@@ -1,5 +1,6 @@
 // Members without a device (PLAN-E2E-CLIENTES.md, «Quien no tenía dispositivo»; decision 14): a member with no identity,
-// or none of whose listed devices connected in 45 days, can't read what's sent meanwhile. The core is told who they are
+// none of whose listed devices connected in 45 days, or none of whose devices is in the group (none had a key package as
+// it was made, or as they were added: #537), can't read what's sent meanwhile. The core is told who they are
 // as the person opens the conversation, at each IDENTITY_UPDATE and once its group's members change (without_devices,
 // all of them each time), notes for them what this device sends, and names them in apply's catch_up_due once they have
 // a device again: this device then hands them what it noted as a catch-up (PLAN-E2E-API.md, «Rutas», I), its parts up,
@@ -25,21 +26,34 @@ const passing = (status: number) => [401, 408, 409, 429].includes(status) || sta
 
 const statusOf = (error: unknown) => (error instanceof FetchError ? error.response?.status : undefined);
 
+/** The conversation's group as the core holds it (its `group`): its members, and its devices by user. */
+export interface HeldDevices {
+	members: { user_id: string }[];
+	devices?: { user_id: string }[];
+}
+
+/** The users with a device in the group, each once. */
+export const joinedUsers = (held: HeldDevices) => [...new Set((held.devices ?? []).map((device) => device.user_id))];
+
 /**
- * The conversation's members without a device, as the API serves their identities, told to the core: of those its
- * group holds (`held`), all but this user. The core refuses a user its group doesn't list, which a change the queue
- * hasn't brought yet can be.
+ * The conversation's members without a device, as the API serves their identities and as the group holds their
+ * devices, told to the core: of those its group holds (`held`), all but this user. The core refuses a user its group
+ * doesn't list, which a change the queue hasn't brought yet can be.
  */
-export async function withoutDevices(parts: EngineParts, conv: Conversation, held: string[]): Promise<string[]> {
+export async function withoutDevices(parts: EngineParts, conv: Conversation, held: HeldDevices): Promise<string[]> {
 	const { api, host, user } = parts;
-	const members = conv.members.map((member) => member.user_id).filter((id) => id !== user && held.includes(id));
+	const listed = held.members.map((member) => member.user_id);
+	const members = conv.members.map((member) => member.user_id).filter((id) => id !== user && listed.includes(id));
 	const active = new Map<string, boolean>();
 	for (let at = 0; at < members.length; at += 50) {
 		for (const identity of await api.identities(members.slice(at, at + 50)))
 			active.set(identity.user_id, identity.active);
 	}
-	// Without an identity (left out of the answer), or with none of their devices seen lately.
-	const users = members.filter((id) => active.get(id) !== true);
+	const joined = joinedUsers(held);
+	// Without an identity (left out of the answer), with none of their devices seen lately, or with none in the group:
+	// none of their listed devices had a key package as it was made or they were added, until one of theirs has a leaf
+	// (#537).
+	const users = members.filter((id) => active.get(id) !== true || !joined.includes(id));
 	await host.handle({ cmd: "without_devices", conversation_id: conv.id, users });
 	return users;
 }
