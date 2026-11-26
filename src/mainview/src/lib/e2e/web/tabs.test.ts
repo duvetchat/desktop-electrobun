@@ -16,8 +16,15 @@ function held<T = void>() {
 	return { promise, resolve };
 }
 
-/** A tab of `user` on the test's hub and locks, serving `methods` while it leads. */
-function tabOf(hub: FakeHub, locks: FakeLocks, name: string, methods: Methods = {}, lead = async () => {}) {
+/** A tab of `user` on the test's hub and locks, serving `methods` while it leads; `once`, those that make something. */
+function tabOf(
+	hub: FakeHub,
+	locks: FakeLocks,
+	name: string,
+	methods: Methods = {},
+	lead = async () => {},
+	once: string[] = [],
+) {
 	const changed: string[] = [];
 	const deleted: string[][] = [];
 	const leaders: string[] = [];
@@ -29,6 +36,7 @@ function tabOf(hub: FakeHub, locks: FakeLocks, name: string, methods: Methods = 
 		channel: hub.channel(lockName(user)),
 		locks,
 		methods: { whoami: () => name, ...methods },
+		once,
 		lead: async () => {
 			led++;
 			await lead();
@@ -114,6 +122,38 @@ describe("the tabs of one user", () => {
 		// What the leader answers after it closed reaches nobody.
 		stuck.resolve("a answered");
 		await settle();
+		expect(await c.tabs.call<string>("whoami")).toBe("b");
+	});
+
+	// desktop-electrobun#559: a group or a history share the leader made, and didn't answer before its tab closed, would
+	// be made again by the next tab to lead.
+	test("a request that makes something isn't made again when the tab that leads closes before it answers", async () => {
+		const hub = new FakeHub();
+		const locks = new FakeLocks();
+		const stuck = held<string>();
+		let made = 0;
+		const make = () => {
+			made++;
+			return stuck.promise;
+		};
+		const again = () => {
+			made++;
+			return "made again";
+		};
+		const a = tabOf(hub, locks, "a", { make }, undefined, ["make"]);
+		await a.tabs.leading;
+		const b = tabOf(hub, locks, "b", { make: again }, undefined, ["make"]);
+		const c = tabOf(hub, locks, "c", { make: again }, undefined, ["make"]);
+		const fromB = b.tabs.call("make").catch((error: unknown) => error);
+		const fromC = c.tabs.call("make").catch((error: unknown) => error);
+		await settle();
+		expect(made).toBe(2);
+		a.tabs.close();
+		// Whether a made them before it went, no tab can tell: b, which leads next, and c, which hears it, fail them.
+		expect(await fromB).toMatchObject({ code: "internal" });
+		expect(await fromC).toMatchObject({ code: "internal" });
+		expect(made).toBe(2);
+		// What makes nothing still goes to the tab that leads now.
 		expect(await c.tabs.call<string>("whoami")).toBe("b");
 	});
 

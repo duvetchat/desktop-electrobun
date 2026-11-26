@@ -400,6 +400,36 @@ describe.skipIf(!coreLibrary)("the page's engine", () => {
 
 	// Task 30's review, M5: another tab's request that doesn't name its member or its range shares nothing: none the
 	// page makes lacks either, and a range the person didn't pick isn't made up for it.
+	// desktop-electrobun#559: a group the leading tab had the API make, unanswered as its tab went, would be made again by
+	// the tab that leads next.
+	test(
+		"on the web, a new group asked of a tab that went before it answered fails, and isn't made again",
+		async () => {
+			const fake = new FakeApi();
+			useFake(fake);
+			const ana = signedIn(fake);
+			const bo = fake.addUser();
+			fake.befriend(ana, bo);
+			const [locks, hub] = [new FakeLocks(), new FakeHub()];
+			let asked = 0;
+			const leader = new BrowserTabs({
+				...{ userId: ana, locks, channel: hub.channel(lockName(ana)) },
+				methods: { createConversation: () => (asked++, new Promise(() => {})) },
+				lead: async () => {},
+			});
+			await leader.leading;
+			const web = platform({ tabs: { locks, channel: hub.channel(lockName(ana)) }, webHost: async () => testHost() });
+			await page.startEngine(ana, web);
+			const making = rejection(page.createGroup("friends", [bo]));
+			await until(() => asked === 1);
+			leader.close();
+			// This tab leads now, and doesn't make it again: the tab that went may have.
+			expect(await making).toMatchObject({ code: "internal" });
+			expect(fake.conversationIds()).toEqual([]);
+		},
+		SLOW,
+	);
+
 	test(
 		"on the web, the tab that leads refuses another tab's share without its member or its range",
 		async () => {

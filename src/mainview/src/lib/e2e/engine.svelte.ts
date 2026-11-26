@@ -243,6 +243,8 @@ export async function startEngine(userId: string, platform: EnginePlatform = pag
 	tabs = new BrowserTabs({
 		userId,
 		...platform.tabs,
+		// A group the API made, or a history share sent, before the leader's tab went: made again, they'd be twice (#559).
+		once: ["createConversation", "shareHistory"],
 		methods: {
 			state: () => engine?.state ?? encryption.state,
 			makeIdentity: () => engine?.makeIdentity(),

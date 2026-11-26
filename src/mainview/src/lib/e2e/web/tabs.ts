@@ -6,7 +6,8 @@
 //   - `{event: "leader", tab}` from a tab that starts to lead, and `{event: "changed", conversation_id, deleted?}` from
 //     the leader, `deleted` the messages its queue deleted, and `{event: "state"}` when its engine's state changed.
 // A request left unanswered goes again when a new leader says so, and the new leader runs its own: so every method
-// must bear being run twice (a send carries its nonce). The methods are the caller's: the engine's (Task 12).
+// must bear being run twice (a send carries its nonce), but those that make something anew (`once`), which fail
+// instead, as the leader that went may have made it (#559). The methods are the caller's: the engine's (Task 12).
 import { CoreError, errorFields } from "../errors";
 
 /** What tabs.ts uses of navigator.locks. */
@@ -30,6 +31,12 @@ export const lockName = (userId: string) => `duvet-e2e:${userId}`;
 export interface BrowserTabsOptions {
 	userId: string;
 	methods: Methods;
+	/**
+	 * The methods that make something anew, which a second run would make twice (a group, a history share): one asked
+	 * of a tab that led and went before it answered fails with `internal`, as it may have been made, and goes to no
+	 * other tab (#559).
+	 */
+	once?: readonly string[];
 	/** Runs once this tab holds the lock, before it serves anyone: opens the core and starts the engine. */
 	lead: () => Promise<void>;
 	/** A conversation the leader says changed, with the messages its queue deleted. */
@@ -46,6 +53,7 @@ export interface BrowserTabsOptions {
 
 const isObject = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null;
 const closed = () => new CoreError("internal", "this tab left the core's tabs");
+const unknown = () => new CoreError("internal", "the tab that led went before it answered: it may have been made");
 
 export class BrowserTabs {
 	readonly tab: string;
@@ -85,8 +93,10 @@ export class BrowserTabs {
 					this.#leader = true;
 					this.#post({ event: "leader", tab: this.tab });
 					options.onLeader?.(this.tab);
-					for (const [id, waiting] of this.#waiting)
-						this.#settle(id, () => this.#serve(waiting.method, waiting.params));
+					for (const [id, waiting] of this.#waiting) {
+						if (this.#once(waiting.method)) this.#take(id)?.reject(unknown());
+						else this.#settle(id, () => this.#serve(waiting.method, waiting.params));
+					}
 					resolve();
 					await held;
 				})
@@ -140,6 +150,11 @@ export class BrowserTabs {
 		this.#waiting.clear();
 	}
 
+	/** Whether `method` makes something anew, and so isn't run twice. */
+	#once(method: string): boolean {
+		return this.#options.once?.includes(method) ?? false;
+	}
+
 	async #serve(method: string, params: unknown): Promise<any> {
 		const run = Object.hasOwn(this.#options.methods, method) ? this.#options.methods[method] : undefined;
 		if (!run) throw new CoreError("bad_command", `the tabs serve no method ${method}`, { field: "method" });
@@ -179,10 +194,11 @@ export class BrowserTabs {
 	#heard(data: unknown) {
 		if (this.#closed || !isObject(data)) return;
 		if (data.event === "leader" && typeof data.tab === "string") {
-			// A new leader: what this tab still asks goes to it. One that can't be cloned any more is refused, alone.
+			// A new leader: what this tab still asks goes to it, but what makes something anew, which the tab before may
+			// have made. One that can't be cloned any more is refused, alone.
 			if (!this.#leader) {
 				for (const [id, { method, params }] of this.#waiting) {
-					const refused = this.#ask(id, method, params);
+					const refused = this.#once(method) ? unknown() : this.#ask(id, method, params);
 					if (refused) this.#take(id)?.reject(refused);
 				}
 			}
