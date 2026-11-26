@@ -11,6 +11,7 @@
 // group's latest group info.
 import { createPublicKey, generateKeyPairSync, sign, verify, type KeyObject } from "node:crypto";
 import { base64Bytes } from "$lib/activity-thumbnail";
+import type { Identity as IdentityView } from "$lib/api/e2e";
 import { bytesBase64 } from "$lib/staged-images";
 import { asBytes, asMap, asUuid, cbor, type Cbor } from "../cbor";
 import { uuidv7 } from "../uuid";
@@ -630,6 +631,11 @@ export class FakeApi {
 	 * it lie, as a server could, of its conversation, sharer, kind or parts.
 	 */
 	listedAs = (view: ShareView): ShareView => view;
+	/**
+	 * How the API serves a user's identity to `viewer`, by its route (GET …/identity, GET …/identities): as it is, unless
+	 * a test has it lie, as a server could.
+	 */
+	servedAs: (view: IdentityView, route: "identity" | "identities", viewer: string) => IdentityView = (view) => view;
 	/** The inbox messages that are a rotation's transfers, by ID. */
 	#transfers = new Set<string>();
 	/** What each message answers: the ID of the message it replies to, by its own. */
@@ -1082,14 +1088,14 @@ export class FakeApi {
 				const ids = (query.get("ids") ?? "").split(",").filter(Boolean);
 				if (ids.length > 50 || ids.some((id) => !UUID.test(id))) throw fail(400, "ids are 50 user IDs at most");
 				const readable = ids.filter((id) => this.#identities.has(id) && this.#mayRead(session.user, id));
-				return ok(readable.map((id) => this.#identityView(id)));
+				return ok(readable.map((id) => this.servedAs(this.#identityView(id), "identities", session.user)));
 			}),
 			route("GET", `/api/users/(?<user>${UUID_PATH})/identity`, "session", ({ session, params }) => {
 				if (!this.#users.has(params.user!) || !this.#mayRead(session.user, params.user!)) {
 					throw fail(403, "you can't read this user's identity");
 				}
 				if (!this.#identities.has(params.user!)) throw fail(404, "no identity");
-				return ok(this.#identityView(params.user!));
+				return ok(this.servedAs(this.#identityView(params.user!), "identity", session.user));
 			}),
 			route("PUT", `${me}/devices/@me/key-packages`, "listed", (ctx) => this.#uploadKeyPackages(ctx)),
 			route("POST", `/api/users/(?<user>${UUID_PATH})/key-packages/claim`, "listed", (ctx) =>

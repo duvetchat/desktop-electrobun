@@ -62,7 +62,7 @@ interface CatchUp {
 	up: boolean;
 	/** The engine's turn it waits for (its number): one that came while the engine wasn't ready is asked for again. */
 	turn: number | null;
-	/** Its member's changed key waits for the person's yes: it tries nothing until again(). */
+	/** Its member's changed key waits for the person's yes: it tries nothing until again(), which keeps its package. */
 	held: boolean;
 	tries: number;
 	/** The wait before its next try. */
@@ -160,11 +160,17 @@ export class CatchUps {
 		this.#uploads.add(upload);
 	}
 
-	/** Outside the turn: the package, the parts not up yet, its completion and its keys, then its confirmation's turn. */
+	/**
+	 * Outside the turn: the package, the parts not up yet, its completion and its keys, then its confirmation's turn. A
+	 * member whose changed key waits for the person's yes holds it, before its PUT and again before its completion and
+	 * keys, as the make's own identity round can bring the change (#530): it keeps its package, which again() goes on
+	 * with.
+	 */
 	async #upload(catchUp: CatchUp, made: ShareMade) {
 		const { api, host } = this.#parts;
 		const { conversationId, user } = catchUp;
 		try {
+			if (this.#waitsForYes(catchUp)) return;
 			await api.putShare(conversationId, made.share_id, {
 				...{ to_user_id: user, kind: "catch_up", range: "", starts_at: new Date(made.start).toISOString() },
 				...{ size: made.size, parts: made.parts },
@@ -174,6 +180,7 @@ export class CatchUps {
 				const part = await host.sharePart(made.share_id, catchUp.partsUp);
 				await api.putSharePart(conversationId, made.share_id, catchUp.partsUp, new Blob([part.slice()]));
 			}
+			if (this.#waitsForYes(catchUp)) return;
 			await api.completeShare(conversationId, made.share_id);
 			for (const { device_id, message } of made.keys) {
 				if (catchUp.keysSent.has(device_id)) continue;
@@ -186,6 +193,12 @@ export class CatchUps {
 		if (!this.#holds(catchUp)) return;
 		catchUp.up = true;
 		this.#queue(catchUp);
+	}
+
+	/** Whether its member's changed key waits for the person's yes (Task 28), which holds it, untried, until again(). */
+	#waitsForYes(catchUp: CatchUp): boolean {
+		catchUp.held = !!this.#parts.contacts?.holding([catchUp.user]).length;
+		return catchUp.held;
 	}
 
 	/** In a turn after its upload: the member observed again, so the core holds the list it was sealed to, then done. */
