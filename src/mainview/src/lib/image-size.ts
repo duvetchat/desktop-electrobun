@@ -34,10 +34,10 @@ function gifSize(bytes: Uint8Array, view: DataView): ImageSize | null {
 	const colorTable = (packed: number) => (packed & 0x80 ? 3 << ((packed & 7) + 1) : 0);
 	// Past a block's data sub-blocks, which start at i.
 	const subBlocksEnd = (i: number) => {
-		while (i < bytes.length && bytes[i] !== 0) i += bytes[i] + 1;
+		while (i < bytes.length && bytes[i] !== 0) i += bytes[i]! + 1;
 		return i < bytes.length ? i + 1 : -1;
 	};
-	for (let i = 13 + colorTable(bytes[10]); i >= 0 && i < bytes.length; ) {
+	for (let i = 13 + colorTable(bytes[10] ?? 0); i >= 0 && i < bytes.length; ) {
 		if (bytes[i] === 0x3b) return { width, height }; // the trailer
 		if (bytes[i] === 0x21) {
 			i = subBlocksEnd(i + 2); // an extension: its label, then its data
@@ -45,7 +45,7 @@ function gifSize(bytes: Uint8Array, view: DataView): ImageSize | null {
 			// A frame: where it is and its size, its color table, its LZW code size, then its data.
 			width = Math.max(width, view.getUint16(i + 1, true) + view.getUint16(i + 5, true));
 			height = Math.max(height, view.getUint16(i + 3, true) + view.getUint16(i + 7, true));
-			i = subBlocksEnd(i + 10 + colorTable(bytes[i + 9]) + 1);
+			i = subBlocksEnd(i + 10 + colorTable(bytes[i + 9]!) + 1);
 		} else {
 			return null;
 		}
@@ -57,7 +57,7 @@ function gifSize(bytes: Uint8Array, view: DataView): ImageSize | null {
 function jpegSize(bytes: Uint8Array, view: DataView): ImageSize | null {
 	for (let i = 2; i + 4 <= bytes.length; ) {
 		if (bytes[i] !== 0xff) return null;
-		const marker = bytes[i + 1];
+		const marker = bytes[i + 1]!;
 		if (marker === 0xff) {
 			i++; // fill
 			continue;
@@ -91,7 +91,8 @@ function webpSize(bytes: Uint8Array, view: DataView, text: (at: number, length: 
 		return { width: (bits & 0x3fff) + 1, height: ((bits >>> 14) & 0x3fff) + 1 };
 	}
 	if (chunk === "VP8X") {
-		const le24 = (i: number) => bytes[i] | (bytes[i + 1] << 8) | (bytes[i + 2] << 16);
+		// Inside the 30 bytes the caller checked for.
+		const le24 = (i: number) => bytes[i]! | (bytes[i + 1]! << 8) | (bytes[i + 2]! << 16);
 		return { width: le24(at + 4) + 1, height: le24(at + 7) + 1 };
 	}
 	return null;

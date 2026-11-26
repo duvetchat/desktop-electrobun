@@ -132,7 +132,7 @@
 				</p>
 			{/if}
 			{#if message.type === MessageType.Voice || message.sticker_attachment_id}
-				<MessageAttachments {message} channelName={roomName ?? ""} {onPreview} maxWidth={320} maxHeight={240} />
+				<MessageAttachments {message} channelName={roomName ?? ""} {onPreview} maxWidth={320} maxHeight={240} preview />
 			{:else if isLoading(message)}
 				<DeferredResponse {message} />
 			{:else if message.loading}
@@ -172,7 +172,7 @@
 					{/if}
 				{/if}
 				<MessageCards content={text} embeds={message.embeds} onPreview={(src) => onPreview(src)} compact />
-				<MessageAttachments {message} channelName={roomName ?? ""} {onPreview} maxWidth={320} maxHeight={240} />
+				<MessageAttachments {message} channelName={roomName ?? ""} {onPreview} maxWidth={320} maxHeight={240} preview />
 				{#if message.components?.length}
 					<MessageComponents components={message.components} {mentionMap} {customEmojiMap} {onPreview} compact />
 				{/if}

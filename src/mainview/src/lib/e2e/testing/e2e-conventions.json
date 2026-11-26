@@ -396,43 +396,43 @@
 		},
 		{
 			"case": "a bidirectional control goes: it disguises an extension",
-			"name": "invoice\u202ecod.exe",
+			"name": "invoice‮cod.exe",
 			"clean": "invoicecod.exe"
 		},
 		{
 			"case": "every bidirectional control goes",
-			"name": "a\u061c\u200e\u200f\u202a\u202b\u202c\u202d\u202e\u2066\u2067\u2068\u2069b.txt",
+			"name": "a؜‎‏‪‫‬‭‮⁦⁧⁨⁩b.txt",
 			"clean": "ab.txt"
 		},
 		{
 			"case": "control characters go",
-			"name": "bell\u0007\u0000\n\u0085\u007f.txt",
+			"name": "bell\u0007\u0000\n.txt",
 			"clean": "bell.txt"
 		},
 		{
 			"case": "format characters go: a zero-width space, a word joiner, a byte order mark and a soft hyphen",
-			"name": "in\u200bvi\u2060si\ufeffble\u00ad.txt",
+			"name": "in​vi⁠si﻿ble­.txt",
 			"clean": "invisible.txt"
 		},
 		{
 			"case": "tag characters go",
-			"name": "flag\udb40\udc67\udb40\udc62\udb40\udc7f.png",
+			"name": "flag󠁧󠁢󠁿.png",
 			"clean": "flag.png"
 		},
 		{
 			"case": "a line separator goes, so the name stays on one line",
-			"name": "photo.jpg\u2028.exe",
+			"name": "photo.jpg .exe",
 			"clean": "photo.jpg.exe"
 		},
 		{
 			"case": "a paragraph separator goes",
-			"name": "photo.jpg\u2029.exe",
+			"name": "photo.jpg .exe",
 			"clean": "photo.jpg.exe"
 		},
 		{
 			"case": "a zero-width joiner stays: it holds an emoji sequence together",
-			"name": "👨\u200d👩\u200d👧.png",
-			"clean": "👨\u200d👩\u200d👧.png"
+			"name": "👨‍👩‍👧.png",
+			"clean": "👨‍👩‍👧.png"
 		},
 		{
 			"case": "the spaces around it go",
@@ -451,7 +451,7 @@
 		},
 		{
 			"case": "a name of hidden characters alone is file",
-			"name": "\u200b\u202e\ufeff",
+			"name": "​‮﻿",
 			"clean": "file"
 		},
 		{
@@ -702,6 +702,36 @@
 			"type": "application/octet-stream"
 		}
 	],
+	"thumbnails": {
+		"most_side": 320,
+		"cases": [
+			{
+				"case": "a JPEG of 320 × 240 is drawn",
+				"bytes": "/9j/wAARCADwAUADASIAAhEBAxEB",
+				"drawn": true
+			},
+			{
+				"case": "a PNG of 180 × 320 is drawn",
+				"bytes": "iVBORw0KGgoAAAANSUhEUgAAALQAAAFACAYAAAAAAAAA",
+				"drawn": true
+			},
+			{
+				"case": "a JPEG whose header says 12000 × 12000 isn't drawn",
+				"bytes": "/9j/wAARCC7gLuADASIAAhEBAxEB",
+				"drawn": false
+			},
+			{
+				"case": "a PNG a pixel past the side isn't drawn",
+				"bytes": "iVBORw0KGgoAAAANSUhEUgAAAUEAAAAKCAYAAAAAAAAA",
+				"drawn": false
+			},
+			{
+				"case": "a GIF isn't drawn, whatever its size",
+				"bytes": "R0lGODlhAQABAA==",
+				"drawn": false
+			}
+		]
+	},
 	"approval_frames": [
 		{
 			"case": "a commitment with the new device's name",

@@ -153,20 +153,33 @@ export class Sends {
 	readonly #refused = new Set<string>();
 	/** Runs work in the engine's turn, as the person's act: refused while the device isn't ready. */
 	readonly #turn: <T>(work: () => Promise<T>) => Promise<T>;
+	/** Runs work in the engine's turn whatever the device's state: a message the API took is bound (re-review, N2). */
+	readonly #queue: <T>(work: () => Promise<T>) => Promise<T | undefined>;
 	/** Each conversation's flushes, one after the other («Los pendientes van primero y en orden»), outside the turn. */
 	readonly #lanes = new Map<string, Promise<unknown>>();
+	/**
+	 * Each live send's upload, by the nonce the person sent the message with: whichever flush delivers the message, its
+	 * request goes with its progress and its Cancel (task 18's re-review, N1).
+	 */
+	readonly #uploads = new Map<string, UploadOptions>();
+	/** Each message's request out now, by the person's nonce: a Dismiss stops it, and waits for it to settle (N1). */
+	readonly #out = new Map<string, { stop: AbortController; done: Promise<DirectMessage | null> }>();
+	/** The messages a Dismiss takes now, by the person's nonce: none of their rows is sent once its turn comes. */
+	readonly #dismissing = new Set<string>();
 
 	constructor(
 		parts: EngineParts,
 		groups: Conversations,
 		soon: (work: () => Promise<void>) => void,
 		turn: <T>(work: () => Promise<T>) => Promise<T>,
+		queue: <T>(work: () => Promise<T>) => Promise<T | undefined>,
 		hooks: SendsHooks,
 	) {
 		this.#parts = parts;
 		this.#groups = groups;
 		this.#soon = soon;
 		this.#turn = turn;
+		this.#queue = queue;
 		this.#hooks = hooks;
 	}
 
@@ -211,10 +224,16 @@ export class Sends {
 		if (waits) return waits.went ? this.#parts.api.message(id, waits.went).catch(() => null) : null;
 		// The person's own send or Retry: a refusal of its files kept it from going with the others, not from this.
 		this.#refused.delete(nonce);
-		return untilCancelled(
-			this.#inLane(id, () => this.#flush(id, nonce, upload)),
-			upload?.signal ?? undefined,
-		);
+		if (upload) this.#uploads.set(nonce, upload);
+		try {
+			return await untilCancelled(
+				this.#inLane(id, () => this.#flush(id, nonce)),
+				upload?.signal ?? undefined,
+			);
+		} finally {
+			// A Cancelled one's stays until its Dismiss: whichever flush comes to it then doesn't send it.
+			if (this.#uploads.get(nonce) === upload && !upload?.signal?.aborted) this.#uploads.delete(nonce);
+		}
 	}
 
 	/** What waits in the conversation, in its order, each by the nonce the person sent it with and with its clear parts. */
@@ -249,24 +268,42 @@ export class Sends {
 	 * nothing from going: the person's Dismiss holds.
 	 */
 	async discard(id: string, first: string, read: boolean): Promise<string | null> {
-		if (read) {
-			await this.#groups.sync(id, true).catch((error: unknown) => {
-				console.warn("[e2e] A conversation's queue wasn't read before a Dismiss:", error);
-			});
+		try {
+			if (read) {
+				await this.#groups.sync(id, true).catch((error: unknown) => {
+					console.warn("[e2e] A conversation's queue wasn't read before a Dismiss:", error);
+				});
+			}
+			const { rows, older } = await this.#waiting(id);
+			const record = this.#record();
+			const its = [...rows, ...older].flatMap(({ nonce }) =>
+				nonce && (nonce === first || record[nonce]?.first === first) ? [nonce] : [],
+			);
+			for (const nonce of its) await this.#drop(nonce);
+			await this.#prune(id, [...rows, ...older]);
+			this.#files.delete(first);
+			this.#refused.delete(first);
+			this.#remakes.delete(first);
+			const went = this.#went.get(first);
+			this.#went.delete(first);
+			return its.length ? null : (went?.message ?? null);
+		} finally {
+			this.#dismissing.delete(first);
+			this.#uploads.delete(first);
 		}
-		const { rows, older } = await this.#waiting(id);
-		const record = this.#record();
-		const its = [...rows, ...older].flatMap(({ nonce }) =>
-			nonce && (nonce === first || record[nonce]?.first === first) ? [nonce] : [],
-		);
-		for (const nonce of its) await this.#drop(nonce);
-		await this.#prune(id, [...rows, ...older]);
-		this.#files.delete(first);
-		this.#refused.delete(first);
-		this.#remakes.delete(first);
-		const went = this.#went.get(first);
-		this.#went.delete(first);
-		return its.length ? null : (went?.message ?? null);
+	}
+
+	/**
+	 * A Dismiss's first step, outside the engine's turn, which the message's `sent` takes: none of its rows is sent from
+	 * now on, and its request, if one is out, stops and settles, so a message the API took first is bound here. The API's
+	 * ID of that message; else null (task 18's re-review, N1).
+	 */
+	async stopDelivery(first: string): Promise<string | null> {
+		this.#dismissing.add(first);
+		const out = this.#out.get(first);
+		if (!out) return null;
+		out.stop.abort();
+		return (await out.done)?.id ?? null;
 	}
 
 	/**
@@ -316,16 +353,18 @@ export class Sends {
 		this.#refused.clear();
 		this.#lanes.clear();
 		this.#remakes.clear();
+		this.#uploads.clear();
+		this.#dismissing.clear();
 	}
 
 	/**
 	 * What waits in the conversation, in its order (`wanted`: the nonce the person sent theirs with, whose message this
-	 * gives, its upload followed by `upload`). An older one the API refused stays, for the person's Retry or Dismiss, and
+	 * gives). An older one the API refused stays, for the person's Retry or Dismiss, and
 	 * the rest go on; one without an answer stops them all. Once one's bytes no member can open any more, it and each one
 	 * after it are made again. One with files whose sealed bytes this page no longer has waits for its Dismiss, and one
 	 * with files the API refused for the person's Retry. It runs in its conversation's lane, each core call in the turn.
 	 */
-	async #flush(id: string, wanted?: string, upload?: UploadOptions): Promise<DirectMessage | null> {
+	async #flush(id: string, wanted?: string): Promise<DirectMessage | null> {
 		let rows = await this.#turn(async () => {
 			const waiting = await this.#waiting(id);
 			// A message's old bytes beside new ones a remake made, which carry it, go unsent.
@@ -350,13 +389,7 @@ export class Sends {
 				continue;
 			}
 			try {
-				const sent = await this.#deliver(
-					id,
-					row,
-					kept ?? { conversation_id: id },
-					files,
-					first === wanted ? upload : undefined,
-				);
+				const sent = await this.#deliver(id, row, kept ?? { conversation_id: id }, files);
 				if (first === wanted) message = sent;
 			} catch (error) {
 				if (staleBytes(error) || staleAnswer(error)) {
@@ -385,7 +418,12 @@ export class Sends {
 				const passing = error instanceof UpdateRequiredError || unanswered(error);
 				// A refusal of the API's own, not of the group's epochs: it wouldn't change at the next flush.
 				if (files && !passing && statusOf(error) !== undefined && !staleAnswer(error)) this.#refused.add(first);
-				if (first === wanted || passing) throw error;
+				if (first === wanted) throw error;
+				// One after the person's own stopped the flush: their message went all the same.
+				if (passing) {
+					if (message) return message;
+					throw error;
+				}
 				console.warn("[e2e] A message that waits was refused: it stays, to send again or dismiss.", error);
 			}
 		}
@@ -397,14 +435,9 @@ export class Sends {
 	 * and its request with its sealed files between them, outside it. Null when it no longer waits as its turn comes: a
 	 * Dismiss let it go, or the queue brought its copy back.
 	 */
-	async #deliver(
-		id: string,
-		row: ShownMessage,
-		kept: Kept,
-		files?: SealedFiles,
-		upload?: UploadOptions,
-	): Promise<DirectMessage | null> {
+	async #deliver(id: string, row: ShownMessage, kept: Kept, files?: SealedFiles): Promise<DirectMessage | null> {
 		const nonce = row.nonce ?? "";
+		const first = kept.first ?? nonce;
 		const { text } = row;
 		const made = await this.#turn(async () => {
 			const waiting = await pendingRows(this.#parts.host, id);
@@ -418,42 +451,63 @@ export class Sends {
 		if (!made) return null;
 		if ("stale" in made) throw made.stale;
 		const { ciphertext } = made;
-		// Its Cancel came while older messages went: it isn't sent.
-		upload?.signal?.throwIfAborted();
-		let message: DirectMessage;
+		// A Dismiss took it meanwhile: it isn't sent (task 18's re-review, N1).
+		if (this.#dismissing.has(first)) return null;
+		// Its own send's upload, whichever flush this is: its progress and its Cancel, which may have come already.
+		const own = this.#uploads.get(first);
+		own?.signal?.throwIfAborted();
+		const sent = {
+			...{ ciphertext, nonce },
+			...(text && mentionsIn(text).length ? { mentions: mentionsIn(text) } : {}),
+			...(kept.message_reference ? { message_reference: kept.message_reference } : {}),
+			...(kept.allowed_mentions ? { allowed_mentions: kept.allowed_mentions } : {}),
+			...(kept.sticker_attachment_id ? { sticker_attachment_id: kept.sticker_attachment_id } : {}),
+			...(files ? { attachment_ids: files.ids } : {}),
+		};
+		// Its request stops with its Cancel, or with a Dismiss, which waits for it to settle.
+		const stop = new AbortController();
+		const cancelled = () => stop.abort();
+		own?.signal?.addEventListener("abort", cancelled, { once: true });
+		const delivery = (async () => {
+			let message: DirectMessage;
+			try {
+				message = await this.#parts.api.sendMessage(id, sent, files?.blobs, { ...own, signal: stop.signal });
+			} catch (error) {
+				if (error instanceof PausedError) this.#afterPause(id, error.retryAfter);
+				throw error;
+			}
+			// The API took it: bound here whatever the device's state is now (task 18's re-review, N2).
+			await this.#queue(async () => {
+				const reply = kept.message_reference?.message_id;
+				await this.#parts.host
+					.handle({
+						...{ cmd: "sent", conversation_id: id, nonce, message_id: message.id, seq: message.seq },
+						...(reply ? { reply_to: reply } : {}),
+					})
+					.catch((error: unknown) => {
+						// Dismissed while its request was out, and the API took it all the same: it went.
+						if (!(error instanceof CoreError && error.code === "not_found")) throw error;
+					});
+				this.#forget(nonce);
+				this.#files.delete(first);
+				this.#refused.delete(first);
+				if (kept.first) this.#went.set(kept.first, { nonce, message: message.id });
+				this.#hooks.changed(id, [message.id]);
+				this.#hooks.sent(id, first, message);
+			});
+			return message;
+		})();
+		this.#out.set(first, { stop, done: delivery.catch(() => null) });
 		try {
-			const sent = {
-				...{ ciphertext, nonce },
-				...(text && mentionsIn(text).length ? { mentions: mentionsIn(text) } : {}),
-				...(kept.message_reference ? { message_reference: kept.message_reference } : {}),
-				...(kept.allowed_mentions ? { allowed_mentions: kept.allowed_mentions } : {}),
-				...(kept.sticker_attachment_id ? { sticker_attachment_id: kept.sticker_attachment_id } : {}),
-				...(files ? { attachment_ids: files.ids } : {}),
-			};
-			message = await this.#parts.api.sendMessage(id, sent, files?.blobs, upload);
+			return await delivery;
 		} catch (error) {
-			if (error instanceof PausedError) this.#afterPause(id, error.retryAfter);
+			// Its Dismiss stopped it: gone, as the Dismiss says.
+			if (this.#dismissing.has(first)) return null;
 			throw error;
+		} finally {
+			own?.signal?.removeEventListener("abort", cancelled);
+			if (this.#out.get(first)?.stop === stop) this.#out.delete(first);
 		}
-		await this.#turn(async () => {
-			const reply = kept.message_reference?.message_id;
-			await this.#parts.host
-				.handle({
-					...{ cmd: "sent", conversation_id: id, nonce, message_id: message.id, seq: message.seq },
-					...(reply ? { reply_to: reply } : {}),
-				})
-				.catch((error: unknown) => {
-					// Dismissed while its request was out, and the API took it all the same: it went.
-					if (!(error instanceof CoreError && error.code === "not_found")) throw error;
-				});
-			this.#forget(nonce);
-			this.#files.delete(kept.first ?? nonce);
-			this.#refused.delete(kept.first ?? nonce);
-			if (kept.first) this.#went.set(kept.first, { nonce, message: message.id });
-			this.#hooks.changed(id, [message.id]);
-			this.#hooks.sent(id, kept.first ?? nonce, message);
-		});
-		return message;
 	}
 
 	/** What the conversations' lanes do now, settled, whatever they end as. */

@@ -5,11 +5,10 @@
 import { fetchWithin, requestLimits } from "$lib/api/api";
 import { base64Bytes } from "$lib/activity-thumbnail";
 import { getElectrobunRpc } from "$lib/electrobun-rpc";
-import { SNIFF_PREFIX, sniffType } from "./conventions";
+import { SNIFF_PREFIX, sniffType, THUMBNAIL_SIDE } from "./conventions";
 import type { OutgoingFile } from "./engine/files";
 
-/** A thumbnail's longer side, at most. */
-export const THUMBNAIL_SIDE = 320;
+export { THUMBNAIL_SIDE };
 /** How long a video may take to show its first frame before it goes without a thumbnail. */
 const VIDEO_WAIT_MS = 10_000;
 /** The most bytes a GIF the picker gives may have: what Duvet's storage takes of one file. */

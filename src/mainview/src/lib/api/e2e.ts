@@ -394,8 +394,21 @@ export function e2eApi(client: ApiClient = api) {
 			answer(client.patch<MessageEdited>(`${conv(conversationId)}/messages/${messageId}`, { ciphertext })),
 		deleteMessage: (conversationId: string, messageId: string, ciphertext: string) =>
 			answer(client.delete<MessageDeleted>(`${conv(conversationId)}/messages/${messageId}`, { data: { ciphertext } })),
-		/** A message's sealed file at the signed URL its message gives it (Task 18): `most` bytes at most, as they come. */
-		sealedFile: (url: string, most: number, progress?: (received: number) => void) => download(url, most, progress),
+		/**
+		 * A message's sealed file at the signed URL its message gives it (Task 18): `most` bytes at most, as they come. Its
+		 * signature lasts 24 hours, which a view can outlast: one the API refuses (403) is signed again, once, and asked
+		 * for at its new URL (task 18's re-review, N5).
+		 */
+		sealedFile: async (url: string, most: number, progress?: (received: number) => void) => {
+			try {
+				return await download(url, most, progress);
+			} catch (error) {
+				const id = /\/attachments\/([0-9a-f-]{36})/.exec(url)?.[1];
+				if (!(error instanceof FetchError && error.response?.status === 403) || !id) throw error;
+				const { url: signed } = await answer(client.post<{ url: string }>(`/attachments/${id}/resign`));
+				return download(signed, most, progress);
+			}
+		},
 		/** The conversation's deleted encrypted messages, by ID, after `after`: 1000 at most. */
 		/** One message of the conversation, as the API has it: a message of the person's that went, which a Retry shows. */
 		message: (conversationId: string, messageId: string) =>

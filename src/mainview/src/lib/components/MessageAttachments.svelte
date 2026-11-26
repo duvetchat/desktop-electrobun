@@ -31,12 +31,15 @@
 		onPreview,
 		maxWidth = 360,
 		maxHeight = 380,
+		preview = false,
 	}: {
 		message: Message;
 		channelName: string;
 		onPreview: (src: string, alt?: string) => void;
 		maxWidth?: number;
 		maxHeight?: number;
+		/** A message preview's (pins, search results, a thread's messages), which SealedFile draws its files for. */
+		preview?: boolean;
 	} = $props();
 
 	const attachmentHost = getHostURL();
@@ -104,7 +107,7 @@
 				</div>
 			</div>
 		{:else if voiceAtt?.sealed}
-			<SealedFile att={voiceAtt} kind="voice" authorName={message.author_name ?? "Unknown"} {channelName} />
+			<SealedFile {preview} att={voiceAtt} kind="voice" authorName={message.author_name ?? "Unknown"} {channelName} />
 		{:else if voiceAtt && !voiceAtt.deleted_at}
 			<VoiceNotePlayer
 				src="{attachmentHost}{voiceAtt.url ?? `/attachments/${voiceAtt.id}`}"
@@ -226,7 +229,7 @@
 					<div class={MESSAGE_MEDIA_SUNK} style="width: {vw}px; height: {vh}px; max-width: 100%;">
 						{#if att.sealed}
 							<div class="size-full {hidden ? 'blur-xl' : ''}" inert={hidden}>
-								<SealedFile {att} kind="video" {hidden} />
+								<SealedFile {preview} {att} kind="video" {hidden} />
 							</div>
 						{:else}
 							<div
@@ -253,7 +256,7 @@
 					<div class="rounded-card relative max-w-87.5 {hidden ? 'overflow-hidden' : ''}">
 						<div class={hidden ? "blur-md" : ""} inert={hidden}>
 							{#if att.sealed}
-								<SealedFile {att} kind="audio" authorName={message.author_name ?? "Unknown"} {channelName} />
+								<SealedFile {preview} {att} kind="audio" authorName={message.author_name ?? "Unknown"} {channelName} />
 							{:else}
 								<AudioFilePlayer
 									src="{attachmentHost}{att.url ?? `/attachments/${att.id}`}"
@@ -274,7 +277,7 @@
 					<div class="rounded-card relative w-[300px] max-w-full overflow-hidden">
 						{#if att.sealed}
 							<div class={hidden ? "blur-md" : ""} inert={hidden}>
-								<SealedFile {att} kind="file" />
+								<SealedFile {preview} {att} kind="file" />
 							</div>
 						{:else}
 							<a
@@ -329,7 +332,7 @@
 {#snippet picture(att: NonNullable<Message["attachments"]>[number], name: string, hidden: boolean, fit: string)}
 	{#if att.sealed}
 		<div class="size-full {hidden ? 'blur-xl' : ''}" inert={hidden}>
-			<SealedFile {att} kind="image" {fit} onPreview={(src) => onPreview(src, name)} />
+			<SealedFile {preview} {att} kind="image" {fit} onPreview={(src) => onPreview(src, name)} />
 		</div>
 	{:else}
 		{@render network(att, name, hidden, fit)}

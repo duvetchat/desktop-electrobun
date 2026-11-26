@@ -173,15 +173,22 @@ export class E2EEngine {
 			},
 			messagesChanged,
 		);
-		this.#sends = new Sends(parts, this.#groups, soon, (work) => this.#act(work), {
-			changed: messagesChanged,
-			sent: (id, nonce, message) => {
-				for (const listener of this.#sentListeners) listener(id, nonce, message);
+		this.#sends = new Sends(
+			parts,
+			this.#groups,
+			soon,
+			(work) => this.#act(work),
+			(work) => this.#queue(work),
+			{
+				changed: messagesChanged,
+				sent: (id, nonce, message) => {
+					for (const listener of this.#sentListeners) listener(id, nonce, message);
+				},
+				refused: (id, message, kind) => {
+					for (const listener of this.#refusedListeners) listener(id, message, kind);
+				},
 			},
-			refused: (id, message, kind) => {
-				for (const listener of this.#refusedListeners) listener(id, message, kind);
-			},
-		});
+		);
 	}
 
 	/** Each state the engine goes to, as it goes. */
@@ -267,7 +274,10 @@ export class E2EEngine {
 	 * after all, whose copy the views show in its place; else null.
 	 */
 	async discardMessage(conversationId: string, nonce: string): Promise<string | null> {
-		return (await this.#queue(() => this.#sends.discard(conversationId, nonce, this.state.name === "ready"))) ?? null;
+		// Its request out stops first, outside the turn, which its `sent` takes: a message the API took is bound (N1).
+		const took = await this.#sends.stopDelivery(nonce);
+		const went = await this.#queue(() => this.#sends.discard(conversationId, nonce, this.state.name === "ready"));
+		return took ?? went ?? null;
 	}
 
 	/**

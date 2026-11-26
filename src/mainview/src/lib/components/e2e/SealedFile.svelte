@@ -1,9 +1,10 @@
 <script lang="ts">
 	import { FileText as FileIcon, Download as DownloadIcon, Play as PlayIcon, ShieldAlert } from "@lucide/svelte";
+	import { untrack } from "svelte";
 	import AudioFilePlayer from "$lib/components/AudioFilePlayer.svelte";
 	import VoiceNotePlayer from "$lib/components/VoiceNotePlayer.svelte";
 	import { base64Bytes } from "$lib/activity-thumbnail";
-	import { sniffType } from "$lib/e2e/conventions";
+	import { SNIFF_PREFIX, sniffType, thumbnailDrawn } from "$lib/e2e/conventions";
 	import { decryptedFiles, saveFile } from "$lib/e2e/decrypted-files.svelte";
 	import { drawnBy } from "$lib/e2e/engine/files";
 	import { t } from "$lib/i18n";
@@ -26,6 +27,7 @@
 		authorName = "",
 		channelName = "",
 		hidden = false,
+		preview = false,
 	}: {
 		att: Attachment;
 		kind: "image" | "video" | "audio" | "voice" | "file";
@@ -35,9 +37,14 @@
 		channelName?: string;
 		/** Under a spoiler's cover, still blurred. */
 		hidden?: boolean;
+		/** In a preview (a search's result, a pin, a thread's message), where a search on the device finds messages whose
+		 * files the API's rows name no URL for: those are their name, size and thumbnail, with no warning (N6). */
+		preview?: boolean;
 	} = $props();
 
 	const file = $derived(att.sealed!);
+	// A file the API names a URL for, or, outside a preview, one it doesn't, which is a warning.
+	const listed = $derived(!!file.url || !preview);
 	const messageId = $derived(att.message_id ?? "");
 	const opened = $derived(decryptedFiles.state(file));
 	const ready = $derived(opened?.status === "ready" ? opened : null);
@@ -46,7 +53,7 @@
 	const auto = $derived(kind === "image" || kind === "audio" || kind === "voice");
 	const percent = $derived(opened?.status === "loading" ? Math.floor(opened.progress * 100) : 0);
 	const failure = $derived(
-		opened?.status === "failed"
+		opened?.status === "failed" && listed
 			? t(
 					opened.reason === "hash"
 						? "e2e_file_altered"
@@ -60,11 +67,13 @@
 	const again = $derived(opened?.status === "failed" && opened.reason === "download");
 	// What a screen reader hears of its card: what shows on it.
 	const cardLabel = $derived(
-		failure
-			? t("e2e_file_named", { name: file.name, status: failure })
-			: opened?.status === "loading"
-				? t("e2e_file_named", { name: file.name, status: t("e2e_file_progress", { percent }) })
-				: t("e2e_file_save_named", { name: file.name }),
+		!listed
+			? file.name
+			: failure
+				? t("e2e_file_named", { name: file.name, status: failure })
+				: opened?.status === "loading"
+					? t("e2e_file_named", { name: file.name, status: t("e2e_file_progress", { percent }) })
+					: t("e2e_file_save_named", { name: file.name }),
 	);
 	// A video its browser couldn't play, or a picture it couldn't draw, is offered to save.
 	let unplayable = $state(false);
@@ -88,20 +97,26 @@
 		watch.observe(element);
 		return () => watch.disconnect();
 	});
+	// What a view asks for by itself is the file's place, which the effects follow, not the object, which the list makes
+	// again with each change; a view that goes lets go of it, so a file still waiting for its place isn't fetched (N3).
+	const placeOfFile = $derived(`${file.id}:${file.key}:${file.sha256}:${file.size}:${file.url}`);
 	$effect(() => {
-		if (auto && near) void decryptedFiles.open(file, messageId, { auto: true });
+		if (!auto || !near || !placeOfFile) return;
+		const shown = untrack(() => file);
+		void decryptedFiles.open(shown, messageId, { auto: true });
+		return () => decryptedFiles.letGo(shown);
 	});
 
 	// Its thumbnail, while the file isn't drawn: the one inside its message, a URL of its own while this shows, or a file
-	// of its own, opened as any file is; only a JPEG or a PNG by its bytes.
+	// of its own, opened as any file is; only a JPEG or a PNG by its bytes whose header says it's 320 px a side at most,
+	// read before it's drawn, and drawn at its box's size (the conventions' thumbnailDrawn).
 	let inside = $state<string | null>(null);
 	// Its text, not the file, which the list makes again with each change: one URL while the same thumbnail shows.
 	const insideText = $derived(file.thumbnail);
 	$effect(() => {
 		const bytes = insideText ? base64Bytes(insideText) : null;
-		const type = bytes ? sniffType(bytes) : null;
-		if (!bytes || (type !== "image/jpeg" && type !== "image/png")) return;
-		const url = URL.createObjectURL(new Blob([bytes], { type }));
+		if (!bytes || !thumbnailDrawn(bytes)) return;
+		const url = URL.createObjectURL(new Blob([bytes], { type: sniffType(bytes) }));
 		inside = url;
 		return () => {
 			URL.revokeObjectURL(url);
@@ -110,12 +125,27 @@
 	});
 	const ref = $derived(file.thumbnail_ref ? { ...file.thumbnail_ref, url: file.thumbnailUrl ?? null } : null);
 	const refState = $derived(ref ? decryptedFiles.state(ref) : undefined);
+	const placeOfRef = $derived(ref ? `${ref.id}:${ref.key}:${ref.sha256}:${ref.size}:${ref.url}` : "");
 	$effect(() => {
-		if (ref && near) void decryptedFiles.open(ref, messageId, { auto: true });
+		if (!near || !placeOfRef) return;
+		const thumb = untrack(() => ref)!;
+		void decryptedFiles.open(thumb, messageId, { auto: true });
+		return () => decryptedFiles.letGo(thumb);
 	});
-	const thumbnail = $derived(
-		inside ?? (refState?.status === "ready" && drawnBy(refState.type) === "image" ? refState.url : null),
-	);
+	// A thumbnail of its own, its header read the same way before its URL is drawn.
+	let refDrawn = $state(false);
+	$effect(() => {
+		const blob = refState?.status === "ready" ? refState.blob : null;
+		refDrawn = false;
+		if (!blob) return;
+		let current = true;
+		void blob
+			.slice(0, SNIFF_PREFIX)
+			.arrayBuffer()
+			.then((head) => current && (refDrawn = thumbnailDrawn(new Uint8Array(head))));
+		return () => (current = false);
+	});
+	const thumbnail = $derived(inside ?? (refState?.status === "ready" && refDrawn ? refState.url : null));
 
 	// A click asks for it whatever it is: a video to play, a file to save, a picture let go of for room, a download that
 	// failed.
@@ -205,7 +235,7 @@
 				<span class="bg-duvet-ink/10 absolute inset-x-3 bottom-1.5 h-1 overflow-hidden rounded-full" aria-hidden="true">
 					<span class="bg-duvet-accent block h-full rounded-full" style="width: {percent}%"></span>
 				</span>
-			{:else}
+			{:else if listed}
 				<button
 					type="button"
 					class="bg-duvet-media-scrim text-duvet-media-ink grid size-11 place-items-center rounded-full"
@@ -225,7 +255,7 @@
 			? MESSAGE_CARD_ACTION
 			: MESSAGE_CARD} text-duvet-ink relative flex w-[300px] max-w-full items-center gap-2.5 p-2.5 text-left"
 		onclick={ready ? save : fetchFile}
-		disabled={opened?.status === "loading" || (!!failure && !again)}
+		disabled={opened?.status === "loading" || (!!failure && !again) || !listed}
 		aria-label={cardLabel}
 		bind:this={waiting}
 	>
@@ -238,7 +268,7 @@
 				{failure ?? (opened?.status === "loading" ? t("e2e_file_progress", { percent }) : formatFileSize(file.size))}
 			</span>
 		</span>
-		{#if !failure}<DownloadIcon size={16} class="text-duvet-ink2 mr-1 shrink-0" />{/if}
+		{#if !failure && listed}<DownloadIcon size={16} class="text-duvet-ink2 mr-1 shrink-0" />{/if}
 		{#if opened?.status === "loading"}
 			<span class="bg-duvet-ink/10 absolute inset-x-3 bottom-1.5 h-1 overflow-hidden rounded-full" aria-hidden="true">
 				<span class="bg-duvet-accent block h-full rounded-full" style="width: {percent}%"></span>

@@ -255,4 +255,75 @@ describe("decrypted files in memory", () => {
 		await files.open({ ...file, id: "u", url: null }, "m");
 		expect(counted).toBe(2);
 	});
+
+	// Task 18's re-review, N3: a fast scroll queues every file it passes.
+	test("a file waiting for its place goes from the queue with its message's deletion", async () => {
+		const { files, fileOf, opener } = cache();
+		const started: string[] = [];
+		const gates: (() => void)[] = [];
+		files.useOpener({
+			...opener,
+			download: (url, most) => {
+				started.push(url);
+				return new Promise((done) => gates.push(() => done(new Uint8Array(most))));
+			},
+		});
+		const all = await Promise.all(["1", "2", "3", "4", "5"].map((id) => fileOf(id, 100)));
+		const opening = all.map((file, at) => files.open(file, `m${at}`, { auto: true }));
+		files.forgetMessage("m4");
+		for (const go of gates.splice(0)) go();
+		await Promise.all(opening.slice(0, 4));
+		// A place freed: what waited would start at once.
+		await Bun.sleep(20);
+		expect(started).toEqual(all.slice(0, 4).map((file) => file.url ?? ""));
+		expect(files.state(all[4]!)).toBeUndefined();
+	});
+
+	test("a file waiting for its place goes from the queue once no view asks for it", async () => {
+		const { files, fileOf, opener } = cache();
+		const started: string[] = [];
+		const gates: (() => void)[] = [];
+		files.useOpener({
+			...opener,
+			download: (url, most) => {
+				started.push(url);
+				return new Promise((done) => gates.push(() => done(new Uint8Array(most))));
+			},
+		});
+		const all = await Promise.all(["1", "2", "3", "4", "5", "6"].map((id) => fileOf(id, 100)));
+		const opening = all.map((file) => files.open(file, "m", { auto: true }));
+		// Two views asked for the sixth; one goes. The fifth's only view scrolled away.
+		void files.open(all[5]!, "m", { auto: true });
+		files.letGo(all[5]!);
+		files.letGo(all[4]!);
+		for (const go of gates.splice(0)) go();
+		await Promise.all(opening.slice(0, 4));
+		await until(() => started.length === 5);
+		expect(started).toEqual([...all.slice(0, 4), all[5]!].map((file) => file.url ?? ""));
+		expect(files.state(all[4]!)).toBeUndefined();
+	});
+
+	// Task 18's re-review, N4: two messages naming one file with its key share its place.
+	test("a file asked for again keeps every message that asked for it", async () => {
+		const { files, fileOf, opener, revoked } = cache();
+		const file = await fileOf("s", 100);
+		let lost = true;
+		files.useOpener({
+			...opener,
+			download: async (url, most, progress) => {
+				if (lost) throw new TypeError("fetch failed");
+				return opener.download(url, most, progress);
+			},
+		});
+		expect(await files.open(file, "m1", { auto: true })).toEqual({ status: "failed", reason: "download" });
+		await files.open(file, "m2", { auto: true });
+		lost = false;
+		expect(await files.open(file, "m1")).toMatchObject({ status: "ready" });
+		// The first message's deletion leaves the file the second still draws.
+		files.forgetMessage("m1");
+		expect(revoked).toEqual([]);
+		expect(files.state(file)).toMatchObject({ status: "ready" });
+		files.forgetMessage("m2");
+		expect(revoked).toHaveLength(1);
+	});
 });

@@ -1006,6 +1006,11 @@ export class FakeApi {
 				return ok({ url: signedPath(segment.file) });
 			}),
 			// A file at its signed URL, which the part's and the segment's routes answer: it takes no session.
+			// A message's file signed again, as the API signs one for whoever sees its message: here, for any session.
+			route("POST", `/attachments/(?<file>${UUID_PATH})/resign`, "session", ({ params }) => {
+				if (!this.#fileRows.has(params.file!)) throw fail(404, "attachment not found");
+				return ok({ url: signedPath(params.file!) });
+			}),
 			// Through the API alone (stream=1), as the app asks: without it, the API would send the client to its storage.
 			route("GET", `/attachments/(?<file>${UUID_PATH})`, "nothing", ({ params, query }) => {
 				if (query.get("stream") !== "1")
@@ -1605,12 +1610,22 @@ export class FakeApi {
 
 	/** A message's MLS message, checked as the API checks it: an application message of the group, not stale. */
 	#checkMessage(conv: Conversation, device: Device, ciphertext: Uint8Array) {
-		const { group } = conv;
-		if (!group) throw fail(409, "no group yet");
+		return this.#checkGroup(conv, device, this.#framed(conv, ciphertext));
+	}
+
+	/** A message's framing, as the API reads it first (messageFraming): an application message of this conversation. */
+	#framed(conv: Conversation, ciphertext: Uint8Array) {
 		const framed = framing(ciphertext);
 		if (framed?.wire !== PRIVATE || framed.conversation !== conv.id || framed.content !== 1) {
 			throw fail(400, "the message isn't an application message of this conversation's group");
 		}
+		return framed;
+	}
+
+	/** Its group's checks, as the API's checkGroupMessage: a group, its generation and epoch, and the device's leaf. */
+	#checkGroup(conv: Conversation, device: Device, framed: NonNullable<ReturnType<typeof framing>>) {
+		const { group } = conv;
+		if (!group) throw fail(409, "no group yet");
 		if (framed.generation !== group.generation || framed.epoch! < group.epoch - LIMITS.epochs_behind) {
 			throw fail(409, "stale message", { generation: group.generation, epoch: group.epoch });
 		}
@@ -1644,13 +1659,15 @@ export class FakeApi {
 		) {
 			throw fail(400, "attachment_ids names each of files, in their order, each with an ID of its own");
 		}
-		const framed = this.#checkMessage(conv, device!, ciphertext);
+		// In the API's order (checkSend): its framing, then a message sent already by its nonce, then its group's checks.
+		const framed = this.#framed(conv, ciphertext);
 		const sent = conv.messages.find((m) => m.sender_device_id === device!.id && m.nonce === nonce);
 		if (sent) {
 			if (conv.deleted.has(sent.id)) throw fail(409, "this message was deleted");
 			if (sent.ciphertext !== body.ciphertext) throw fail(409, "this nonce went with another message");
 			return ok(sent, 201);
 		}
+		this.#checkGroup(conv, device!, framed);
 		const replied = this.#repliedIn(conv, body?.message_reference);
 		// Its files go up first, each with the ID its client gave it, as the API keeps them: as they came, named file. One
 		// up already from a send that failed (the sender's, on no message, its size and SHA-256) is taken again.

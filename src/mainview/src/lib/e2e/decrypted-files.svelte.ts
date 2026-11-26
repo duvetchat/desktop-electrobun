@@ -50,8 +50,12 @@ interface Entry {
 	/** When it was last drawn or asked for: the one drawn longest ago goes first. */
 	used: number;
 	work: Promise<FileState> | null;
-	/** Its start, while it waits for one of the places that open files. */
+	/** Its start, while it waits for one of the places that open files, and what takes it out of the queue. */
 	begin: (() => void) | null;
+	cancel: (() => void) | null;
+	/** The views that show it and asked for it by themselves; a click's ask holds its place whatever they do. */
+	asking: number;
+	clicked: boolean;
 }
 
 export class DecryptedFiles {
@@ -121,8 +125,12 @@ export class DecryptedFiles {
 		const place = placeOf(file);
 		const had = this.#files.get(place);
 		had?.messages.add(message);
+		if (had && auto) had.asking++;
 		if (had?.work) {
-			if (!auto) this.#first(had);
+			if (!auto) {
+				had.clicked = true;
+				this.#first(had);
+			}
 			return had.work;
 		}
 		const state = had?.state;
@@ -135,8 +143,10 @@ export class DecryptedFiles {
 			return Promise.resolve(state);
 		}
 		const entry: Entry = {
-			...{ state: { status: "loading", progress: 0 }, messages: new Set([message]), used: ++this.#clock },
-			...{ work: null, begin: null },
+			// Every message that asked for it before keeps it as well (task 18's re-review, N4).
+			...{ state: { status: "loading", progress: 0 }, messages: new Set([...(had?.messages ?? []), message]) },
+			...{ used: ++this.#clock, work: null, begin: null, cancel: null },
+			...{ asking: (had?.asking ?? 0) + (had || !auto ? 0 : 1), clicked: !auto },
 		};
 		this.#files.set(place, entry);
 		this.#changed();
@@ -163,16 +173,35 @@ export class DecryptedFiles {
 		return entry.work;
 	}
 
-	/** Every file of a message goes, its URL revoked, once no other message that asked for it is left: it was deleted. */
+	/**
+	 * Every file of a message goes, its URL revoked, once no other message that asked for it is left: it was deleted. One
+	 * that still waits for its place goes from the queue (task 18's re-review, N3).
+	 */
 	forgetMessage(message: string) {
 		let any = false;
 		for (const [place, entry] of this.#files) {
 			if (!entry.messages.delete(message) || entry.messages.size > 0) continue;
 			this.#release(entry);
 			this.#files.delete(place);
+			entry.cancel?.();
 			any = true;
 		}
 		if (any) this.#changed();
+	}
+
+	/**
+	 * A view that asked for the file by itself no longer shows it: one that waits for its place, which no other view asks
+	 * for and no click asked for, goes from the queue, so a fast scroll leaves nothing behind it (task 18's re-review, N3).
+	 */
+	letGo(file: Openable) {
+		const place = placeOf(file);
+		const entry = this.#files.get(place);
+		if (!entry) return;
+		entry.asking = Math.max(0, entry.asking - 1);
+		if (entry.asking > 0 || entry.clicked || !entry.cancel) return;
+		this.#files.delete(place);
+		entry.cancel();
+		this.#changed();
 	}
 
 	/** The bytes of a decrypted file this memory holds, by the URL it made of them: Copy image's. */
@@ -184,8 +213,15 @@ export class DecryptedFiles {
 	/** Its work once a place is free: at once, or after those before it, a click's before the views' asks. */
 	#inPlace<T>(entry: Entry, work: () => Promise<T>, first: boolean): Promise<T> {
 		return new Promise<T>((resolve, reject) => {
+			entry.cancel = () => {
+				const at = this.#waiting.indexOf(entry);
+				if (at >= 0) this.#waiting.splice(at, 1);
+				entry.begin = entry.cancel = null;
+				// A download it never made: not a failure of its bytes, and nothing to count.
+				reject(new FileError("download"));
+			};
 			entry.begin = () => {
-				entry.begin = null;
+				entry.begin = entry.cancel = null;
 				this.#opening++;
 				work()
 					.then(resolve, reject)

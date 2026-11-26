@@ -9,6 +9,8 @@ import {
 	readApprovalFrame,
 	SNIFF_PREFIX,
 	sniffType,
+	THUMBNAIL_SIDE,
+	thumbnailDrawn,
 	type ApprovalFrame,
 } from "./conventions";
 import conventions from "./testing/e2e-conventions.json";
@@ -46,6 +48,15 @@ describe("the conventions between clients", () => {
 				bytes.set(tail, bytes.length - tail.length);
 				expect(sniffType(bytes)).toBe(c.type);
 			});
+		}
+	});
+
+	describe("a thumbnail drawn, by its header", () => {
+		test("both apps draw one the same longest side at most", () => {
+			expect(THUMBNAIL_SIDE).toBe(conventions.thumbnails.most_side);
+		});
+		for (const c of conventions.thumbnails.cases) {
+			test(c.case, () => expect(thumbnailDrawn(base64Bytes(c.bytes))).toBe(c.drawn));
 		}
 	});
 

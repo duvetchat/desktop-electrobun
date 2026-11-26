@@ -4,6 +4,7 @@ import type { MessageSearch } from "$lib/api/messages";
 import { bytesBase64 } from "$lib/staged-images";
 import type { GatewaySpace } from "$lib/types";
 import en from "../../../../messages/en.json";
+import { decryptedFiles } from "../decrypted-files.svelte";
 import { toEngine, type EngineEvent } from "../events";
 import { notice, NOTICES } from "../notices";
 import { FakeApi } from "../testing/fake-api";
@@ -207,12 +208,9 @@ describe.skipIf(!coreLibrary)("a conversation's search", () => {
 					: null,
 			);
 			const { conversation, b } = talk;
-			const sent = await b.engine.sendMessage({
-				conversation_id: conversation,
-				nonce: crypto.randomUUID(),
-				text: "kiwi",
-			});
-			await heldByAna(talk, conversation, [sent!.id]);
+			// With a picture: what draws a result names its file to no one either (task 18's re-review, N6).
+			const sent = await withPicture(b, conversation, "kiwi");
+			await heldByAna(talk, conversation, [sent.id]);
 			const conv = await listed(conversation);
 			const words: MessageSearch[] = [
 				{ query: "kiwi" },
@@ -226,7 +224,14 @@ describe.skipIf(!coreLibrary)("a conversation's search", () => {
 			expect(texts((await searchEverywhere({ query: "kiwi" }, [space()], [conv])).found)).toEqual(["kiwi"]);
 			// Nor does anything follow from what they found (the review's M8): no request names the conversation's messages,
 			// or the one found, which would tell the API what the words found.
-			const named = (r: string) => r.includes(`/conversations/${conversation}/messages`) || r.includes(sent!.id);
+			const found = (await searchConversation(conv, { query: "kiwi" })).found;
+			const shown = found.flatMap(({ message }) => (message.attachments ?? []).flatMap((att) => att.sealed ?? []));
+			expect(shown.map((file) => file.name)).toEqual(["apples.png"]);
+			for (const file of shown) await decryptedFiles.open(file, sent.id, { auto: true });
+			const named = (r: string) =>
+				r.includes(`/conversations/${conversation}/messages`) ||
+				r.includes(sent.id) ||
+				shown.some((file) => r.includes(file.id));
 			expect(talk.requests.slice(searching).filter(named)).toEqual([]);
 			// Words with what only the API knows can't go anywhere: they're refused, asking nobody.
 			const before = talk.requests.length;

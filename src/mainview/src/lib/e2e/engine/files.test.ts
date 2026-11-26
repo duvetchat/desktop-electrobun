@@ -659,4 +659,135 @@ describe.skipIf(!coreLibrary)("a conversation's files", () => {
 		},
 		SLOW,
 	);
+
+	// Task 18's re-review, N1: a send made while another's flush reads what waits goes up in that flush.
+	test(
+		"a message another flush delivers goes with its own upload, whose Cancel leaves nothing posted",
+		async () => {
+			const { a, conversation, forms } = await dm();
+			holdAll();
+			const stop = new AbortController();
+			const progress: number[] = [];
+			const nonce = crypto.randomUUID();
+			// Two sends in one tick: the first's flush finds both waiting, and delivers both.
+			const first = a.engine.sendMessage({ conversation_id: conversation, nonce: crypto.randomUUID(), text: "first" });
+			const second = a.engine.sendMessage(
+				{ conversation_id: conversation, nonce, files: [{ file: blob(png(5000)), name: "b.png" }] },
+				{ signal: stop.signal, onUploadProgress: (done) => progress.push(done) },
+			);
+			await until(() => holds.length === 1);
+			// Its bar moves, and its Cancel stops its request, then its Dismiss: nothing of it reaches the API.
+			expect(progress.length).toBeGreaterThan(0);
+			stop.abort();
+			await rejection(second);
+			expect(await a.engine.discardMessage(conversation, nonce)).toBeNull();
+			letGo();
+			expect(await first).not.toBeNull();
+			await turnEnded(a);
+			expect(await forms()).toEqual([]);
+			expect(await onTheApi(a, conversation)).toHaveLength(1);
+			expect(await a.engine.pendingMessages(conversation)).toEqual([]);
+		},
+		SLOW,
+	);
+
+	// The Dismiss that follows a Cancel can come late, as another tab's does: its message's own flush comes first.
+	test(
+		"a cancelled message whose Dismiss comes late is never sent",
+		async () => {
+			const { a, conversation, forms } = await dm();
+			holdAll();
+			const progress: number[] = [];
+			const older = a.engine.sendMessage(
+				{
+					conversation_id: conversation,
+					nonce: crypto.randomUUID(),
+					files: [{ file: blob(png(5000)), name: "a.png" }],
+				},
+				{ onUploadProgress: (done) => progress.push(done) },
+			);
+			await until(() => progress.length > 0);
+			const stop = new AbortController();
+			const nonce = crypto.randomUUID();
+			const newer = a.engine.sendMessage(
+				{ conversation_id: conversation, nonce, files: [{ file: blob(png(3000)), name: "b.png" }] },
+				{ signal: stop.signal },
+			);
+			await until(async () => (await a.engine.pendingMessages(conversation)).length === 2);
+			stop.abort();
+			await rejection(newer);
+			letGo();
+			await older;
+			await turnEnded(a);
+			expect(await forms()).toHaveLength(1);
+			expect(await onTheApi(a, conversation)).toHaveLength(1);
+			expect(await a.engine.discardMessage(conversation, nonce)).toBeNull();
+			expect(await a.engine.pendingMessages(conversation)).toEqual([]);
+		},
+		SLOW,
+	);
+
+	test(
+		"a failed message with files, sent again by the next flush and dismissed while it goes up, isn't posted",
+		async () => {
+			const { fake, a, conversation, forms } = await dm();
+			fake.cutRequest({ method: "POST", path: `/api/users/@me/conversations/${conversation}/messages` });
+			const failed = crypto.randomUUID();
+			const files = [{ file: blob(png(5000)), name: "a.png" }];
+			await rejection(a.engine.sendMessage({ conversation_id: conversation, nonce: failed, files }));
+			// The next send's flush sends it again first; the person dismisses it while it goes up.
+			holdAll();
+			const next = a.engine.sendMessage({ conversation_id: conversation, nonce: crypto.randomUUID(), text: "next" });
+			await until(() => holds.length === 1);
+			expect(await a.engine.discardMessage(conversation, failed)).toBeNull();
+			letGo();
+			const went = (await next)!;
+			// Its request stopped before the API took it: the next message alone is posted, and nothing waits.
+			expect(await onTheApi(a, conversation)).toEqual([went.id]);
+			expect(await forms()).toHaveLength(1);
+			expect(await a.engine.pendingMessages(conversation)).toEqual([]);
+		},
+		SLOW,
+	);
+
+	// Task 18's re-review, N2: the API took the message while another request's 426 made the device wait for its update.
+	test(
+		"a message the API took while its device stopped being ready is bound here all the same",
+		async () => {
+			const { fake, a, conversation } = await dm();
+			const before = (await a.engine.sendMessage({
+				...{ conversation_id: conversation, nonce: crypto.randomUUID() },
+				text: "before",
+			}))!;
+			holdAll();
+			const going = a.engine.sendMessage({
+				...{ conversation_id: conversation, nonce: crypto.randomUUID() },
+				files: [{ file: blob(png(5000)), name: "a.png" }],
+			});
+			await until(() => holds.length === 1);
+			fake.refuse({ method: "PATCH", path: `/api/users/@me/conversations/${conversation}/messages/${before.id}` }, 426);
+			await rejection(a.engine.editMessage(conversation, before.id, "edited"));
+			expect(a.engine.state).toMatchObject({ name: "update" });
+			letGo();
+			expect(await going).not.toBeNull();
+			expect(await a.engine.pendingMessages(conversation)).toEqual([]);
+		},
+		SLOW,
+	);
+
+	// Task 18's re-review, N5: a file's URL is signed for 24 hours, and a view can outlast it.
+	test(
+		"a file whose signature expired is signed again before it's asked again",
+		async () => {
+			const { fake, a, b, conversation } = await dm();
+			const sent = (await a.engine.sendMessage({
+				...{ conversation_id: conversation, nonce: crypto.randomUUID() },
+				files: [{ file: blob(png(5000)), name: "a.png" }],
+			}))!;
+			const [file] = await filesOn(b, conversation, sent.id);
+			fake.refuse({ method: "GET", path: /^\/attachments\// }, 403, { error: "invalid or expired signature" });
+			expect((await openSealed(file!, openerOf(b, urlOf(sent, file!.id)))).type).toBe("image/png");
+		},
+		SLOW,
+	);
 });
