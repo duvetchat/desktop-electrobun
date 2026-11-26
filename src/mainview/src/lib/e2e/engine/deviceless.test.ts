@@ -1,9 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import { CoreError } from "../errors";
+import type { CoreHost } from "../host";
 import { FakeApi } from "../testing/fake-api";
 import { coreLibrary } from "../testing/host-bun";
 import {
 	firstDevice,
+	groupOf,
 	rejection,
 	sameGroup,
 	testHost,
@@ -13,7 +15,7 @@ import {
 	watchedHost,
 	type TestDevice,
 } from "../testing/engines";
-import { useXHR } from "../testing/xhr";
+import { holdUploads, useXHR } from "../testing/xhr";
 
 // Members without a device (PLAN-E2E-CLIENTES.md, «Quien no tenía dispositivo»; Task 22): who they are, as the person
 // opens the conversation, told to the core and over the message box; and the catch-up of what was sent them meanwhile,
@@ -21,6 +23,7 @@ import { useXHR } from "../testing/xhr";
 const SLOW = 180_000;
 const DAY = 24 * 3600 * 1000;
 const SHARES = /^\/api\/users\/@me\/conversations\/[0-9a-f-]{36}\/history-shares\/[0-9a-f-]{36}$/;
+const PARTS = /^\/api\/users\/@me\/conversations\/[0-9a-f-]{36}\/history-shares\/[0-9a-f-]{36}\/parts\/\d+$/;
 // A catch-up's parts go up as bytes, which the app sends through the XMLHttpRequest Bun lacks.
 useXHR();
 
@@ -28,7 +31,59 @@ function setUp() {
 	const fake = new FakeApi();
 	const requests: string[] = [];
 	useFake(fake, (request) => requests.push(`${request.method} ${new URL(request.url).pathname}`));
-	return { fake, requests };
+	/** The packages' uploads (PUT …/history-shares/:id), by path. */
+	const puts = () => requests.filter((request) => request.startsWith("PUT ") && SHARES.test(request.slice(4)));
+	return { fake, requests, puts };
+}
+
+/** A host that notes each catch-up its core is asked to make (`share`'s catch_up), made or not. */
+function countingCatchUps(host: CoreHost, made: string[]): CoreHost {
+	return new Proxy(host, {
+		get(target, name) {
+			if (name === "share") {
+				return (command: { cmd: "history_share" | "catch_up" } & Record<string, unknown>) => {
+					if (command.cmd === "catch_up") made.push(String(command.user_id));
+					return target.share(command);
+				};
+			}
+			const value = Reflect.get(target, name);
+			return typeof value === "function" ? value.bind(target) : value;
+		},
+	});
+}
+
+/** A host whose next open finds the database locked, as another window holds it, while `locked` says so. */
+function lockable(host: CoreHost, locked: () => boolean): CoreHost {
+	return new Proxy(host, {
+		get(target, name) {
+			if (name === "open") return async (user: string) => (locked() ? { state: "locked" } : target.open(user));
+			const value = Reflect.get(target, name);
+			return typeof value === "function" ? value.bind(target) : value;
+		},
+	});
+}
+
+/** Ana's DM with Cy, who has no device yet, and what Ana sent him meanwhile, noted for him. */
+async function waitingForCy(given: Parameters<typeof firstDevice>[2] = {}) {
+	const setup = setUp();
+	const { fake } = setup;
+	const [ana, cy] = [fake.addUser(), fake.addUser()];
+	const conversation = fake.addConversation({ type: "dm", members: [ana, cy] });
+	const a = await firstDevice(fake, ana, given);
+	await a.engine.openConversation(conversation);
+	const sent = await a.engine.sendMessage({
+		conversation_id: conversation,
+		nonce: crypto.randomUUID(),
+		text: "while you were away",
+	});
+	return { ...setup, ana, cy, conversation, a, sent: sent! };
+}
+
+/** The message reached Cy's device by its catch-up from Ana. */
+async function reached(c: TestDevice, conversation: string, ana: string, message: string) {
+	expect(await importCatchUp(c, conversation, ana)).toBeGreaterThan(0);
+	const [row] = await c.engine.messages(conversation, [message]);
+	expect(row).toMatchObject({ status: "ok", text: "while you were away" });
 }
 
 /**
@@ -116,6 +171,172 @@ describe.skipIf(!coreLibrary)("members without a device", () => {
 			await turnEnded(a);
 			const again = a.host.share({ cmd: "catch_up", conversation_id: conversation, user_id: cy, devices: [] });
 			expect(await rejection(again)).toMatchObject({ code: "not_found", what: "catch_up" });
+		},
+		SLOW,
+	);
+
+	// Task 22's review, I2: the core's members changed, here or by another device's commit, and who has no device is
+	// asked again: a member added without one is named at once, and what's sent from then on is noted for them.
+	test(
+		"a member added without a device gets what's sent from then on, once their first device joins",
+		async () => {
+			const { fake } = setUp();
+			const [ana, bo, dee] = [fake.addUser(), fake.addUser(), fake.addUser()];
+			fake.befriend(ana, dee);
+			const conversation = fake.addConversation({ type: "group", members: [ana, bo], owner: ana });
+			const [a, b] = [await firstDevice(fake, ana), await firstDevice(fake, bo)];
+			await a.engine.openConversation(conversation);
+			await sameGroup([a, b], conversation);
+			expect(a.engine.conversationState(conversation)).toBeNull();
+			// Dee has no device yet: her addition names her over the message box, with no open of the conversation.
+			await a.engine.addMember(conversation, dee);
+			expect(a.engine.conversationState(conversation)).toEqual({ name: "no_device", users: [dee] });
+			const sent = await a.engine.sendMessage({
+				conversation_id: conversation,
+				nonce: crypto.randomUUID(),
+				text: "welcome, Dee",
+			});
+			const d = await firstDevice(fake, dee);
+			await sameGroup([a, b, d], conversation);
+			expect(await importCatchUp(d, conversation, ana)).toBeGreaterThan(0);
+			const [row] = await d.engine.messages(conversation, [sent!.id]);
+			expect(row).toMatchObject({ status: "ok", text: "welcome, Dee" });
+		},
+		SLOW,
+	);
+
+	// Task 23's review, item 12 (against the desktop): one catch-up at a time for each member of each conversation,
+	// however many applies name them while it goes.
+	test(
+		"a member that several applies name meanwhile is caught up once",
+		async () => {
+			const made: string[] = [];
+			const { fake, ana, cy, conversation, a, sent } = await waitingForCy({ host: countingCatchUps(testHost(), made) });
+			// Ana's device hears what comes next at once: Cy's first device joining, and two messages of his.
+			fake.holdEvents();
+			const c = await firstDevice(fake, cy);
+			await until(async () => (await groupOf(c, conversation)) !== null);
+			for (const text of ["hi", "Ana?"]) {
+				await c.engine.sendMessage({ conversation_id: conversation, nonce: crypto.randomUUID(), text });
+			}
+			fake.releaseEvents();
+			await reached(c, conversation, ana, sent.id);
+			await turnEnded(a);
+			expect(made).toEqual([cy]);
+		},
+		SLOW,
+	);
+
+	// Task 22's review, M6 (a): only the core's calls take the engine's turn. A catch-up's parts go up outside it, so the
+	// engine's other work goes on meanwhile.
+	test(
+		"a catch-up's parts go up outside the engine's turn, which other work takes meanwhile",
+		async () => {
+			const { fake, ana, cy, conversation, a, sent } = await waitingForCy();
+			const other = fake.addConversation({ type: "dm", members: [ana, fake.addUser()] });
+			let held = false;
+			let release = () => {};
+			holdUploads(() => new Promise<void>((go) => ((held = true), (release = go))));
+			let c: TestDevice;
+			try {
+				c = await firstDevice(fake, cy);
+				await until(() => held);
+				let opened = false;
+				void a.engine.openConversation(other).then(() => (opened = true));
+				await until(() => opened, 10_000);
+			} finally {
+				holdUploads(null);
+				release();
+			}
+			await reached(c, conversation, ana, sent.id);
+		},
+		SLOW,
+	);
+
+	// M6 (b): the package stays with the host until it's delivered. Cut after the API took it, and its day's one with
+	// it, it goes again as it was, which the API takes again, not a new one it would refuse for the day.
+	test(
+		"a catch-up cut after its package went up resumes it, which the API takes again",
+		async () => {
+			const { fake, puts, ana, cy, conversation, a, sent } = await waitingForCy();
+			fake.cutRequest({ method: "PUT", path: PARTS });
+			const c = await firstDevice(fake, cy);
+			await until(() => puts().length === 1);
+			// An apply that names Cy meanwhile makes nothing new.
+			await c.engine.sendMessage({ conversation_id: conversation, nonce: crypto.randomUUID(), text: "hi Ana" });
+			await turnEnded(a);
+			a.clock.advance(60_000);
+			await reached(c, conversation, ana, sent.id);
+			expect(new Set(puts()).size).toBe(1);
+		},
+		SLOW,
+	);
+
+	// M6 (c): one that fails otherwise isn't tried at each apply that names the member, but after a wait, a minute, then
+	// twice as long each time.
+	test(
+		"a catch-up that fails otherwise goes again after a wait, longer each time",
+		async () => {
+			const { fake, puts, ana, cy, conversation, a, sent } = await waitingForCy();
+			fake.refuse({ method: "PUT", path: SHARES }, 500, { error: "internal server error" });
+			fake.refuse({ method: "PUT", path: SHARES }, 500, { error: "internal server error" });
+			const c = await firstDevice(fake, cy);
+			await until(() => puts().length === 1);
+			await c.engine.sendMessage({ conversation_id: conversation, nonce: crypto.randomUUID(), text: "hi Ana" });
+			await turnEnded(a);
+			expect(puts()).toHaveLength(1);
+			a.clock.advance(60_000);
+			await until(() => puts().length === 2);
+			await turnEnded(a);
+			a.clock.advance(60_000);
+			await turnEnded(a);
+			expect(puts()).toHaveLength(2);
+			a.clock.advance(60_000);
+			await reached(c, conversation, ana, sent.id);
+			expect(puts()).toHaveLength(3);
+		},
+		SLOW,
+	);
+
+	// M6 (d): a 429 waits as long as its Retry-After says, the per-user hour's included, not always a day.
+	test(
+		"a catch-up the API refuses for a while waits as long as it says",
+		async () => {
+			const { fake, puts, ana, cy, conversation, a, sent } = await waitingForCy();
+			fake.refuse({ method: "PUT", path: SHARES }, 429, { error: "too many requests" }, { "Retry-After": "120" });
+			const c = await firstDevice(fake, cy);
+			await until(() => puts().length === 1);
+			await turnEnded(a);
+			a.clock.advance(119_000);
+			await turnEnded(a);
+			expect(puts()).toHaveLength(1);
+			a.clock.advance(1_000);
+			await reached(c, conversation, ana, sent.id);
+		},
+		SLOW,
+	);
+
+	// Task 23's review, M3: a catch-up whose turn came while the engine wasn't ready (its database locked a moment by
+	// another window, as it started again) is asked for again once it's ready, not left for the app's next start.
+	test(
+		"a catch-up whose turn came while the engine wasn't ready goes once it is",
+		async () => {
+			let locked = false;
+			const { fake, ana, cy, conversation, a, sent } = await waitingForCy({
+				host: lockable(testHost(), () => locked),
+			});
+			fake.holdEvents();
+			const c = await firstDevice(fake, cy);
+			await until(async () => (await groupOf(c, conversation)) !== null);
+			// Cy's joining reaches Ana's device as its engine starts again and finds its database locked: the catch-up's
+			// turn comes while it isn't ready.
+			fake.releaseEvents();
+			locked = true;
+			await a.engine.start();
+			expect(a.engine.state.name).toBe("locked");
+			locked = false;
+			a.clock.advance(2_000);
+			await reached(c, conversation, ana, sent.id);
 		},
 		SLOW,
 	);

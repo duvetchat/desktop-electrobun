@@ -547,6 +547,8 @@ interface Context {
 	headers: Headers;
 	/** Its files go up, and nothing else is done (cutAfterFiles). */
 	filesOnly: boolean;
+	/** It came at once with others (gather): each passed the API's first checks before any of them was answered. */
+	together: boolean;
 }
 
 type Needs = "nothing" | "session" | "device" | "listed";
@@ -596,6 +598,8 @@ export class FakeApi {
 	>();
 	#segments = new Map<string, Segment>();
 	#shares = new Map<string, Share>();
+	/** Who sent a catch-up to whom in which conversation (sender:conversation:recipient): the API takes one a day. */
+	#catchUpsSent = new Set<string>();
 	#files = new Map<string, Uint8Array<ArrayBuffer>>();
 	/** Messages' files, by the ID their client gave them: whose they are, and what they're on (none yet). */
 	#fileRows = new Map<string, { owner: string; row: FileRow }>();
@@ -784,7 +788,10 @@ export class FakeApi {
 		this.#switches.push({ match, effect: "cut" });
 	}
 
-	/** The requests the match takes wait until `count` of them have come, then go on in the order they came: once. */
+	/**
+	 * The requests the match takes wait until `count` of them have come, then go on in the order they came: once. They
+	 * came at once, as the API's do when each passes its first checks before the first is answered.
+	 */
 	gather(match: RouteMatch, count: number) {
 		this.#gates.push({ match, count, waiting: [] });
 	}
@@ -861,7 +868,7 @@ export class FakeApi {
 		const effect = switched < 0 ? null : this.#switches.splice(switched, 1)[0]!.effect;
 		if (effect === "cut") throw new TypeError("fetch failed: the request never reached the API");
 		if (effect && effect !== "lose" && effect !== "files") return respond(effect);
-		const { answer, events } = await this.#answer(request, url, effect === "files");
+		const { answer, events } = await this.#answer(request, url, effect === "files", gate !== undefined);
 		if (effect === "files") throw new TypeError("fetch failed: the connection closed once its files were up");
 		// Its events go once its answer is made, lost or not: after the code that awaited it takes its first step.
 		queueMicrotask(() => queueMicrotask(() => this.#send(events)));
@@ -870,7 +877,12 @@ export class FakeApi {
 	};
 
 	/** A request's answer, and the events it sends: none for a refusal, as the API's rolled-back work sends none. */
-	async #answer(request: Request, url: URL, filesOnly = false): Promise<{ answer: Answer; events: Outgoing[] }> {
+	async #answer(
+		request: Request,
+		url: URL,
+		filesOnly = false,
+		together = false,
+	): Promise<{ answer: Answer; events: Outgoing[] }> {
 		const route = this.#routes.find(([method, path]) => method === request.method && path.test(url.pathname));
 		if (!route) return { answer: { status: 404, body: { error: "no such route" } }, events: [] };
 		const [, path, needs, handler, anyClient] = route;
@@ -903,6 +915,7 @@ export class FakeApi {
 				bytes,
 				headers: request.headers,
 				filesOnly,
+				together,
 			});
 			return { answer, events: this.#outbox.splice(0) };
 		} catch (error) {
@@ -1868,6 +1881,12 @@ export class FakeApi {
 	 * to the member who came first, and each leaf of the user's has its removal proposed, with the statement.
 	 */
 	#leave(ctx: Context): Answer {
+		// Two leaves of one user at once both pass the API's membership check; the second, once the first's lock on the
+		// conversation's row is let go, finds no membership left (services/mls_removals.go's Leave).
+		const gone = this.#conversations.get(ctx.params.conversation!);
+		if (ctx.together && gone && !gone.members.some((m) => m.user_id === ctx.session.user)) {
+			throw fail(404, "conversation member not found");
+		}
 		const conv = this.#memberOf(ctx);
 		const { session, device, body } = ctx;
 		if (conv.type === 1) throw fail(400, "cannot remove members from a DM");
@@ -2165,6 +2184,13 @@ export class FakeApi {
 			if (same(there) !== same(share)) throw fail(409, "history share id in use");
 			return ok(this.#shareView(there), 201);
 		}
+		// A new catch-up counts toward its sender's limits, one a day to each member of each conversation (the API's
+		// HistoryShareLimit): the same one sent again doesn't.
+		const sent = `${session.user}:${conv.id}:${to}`;
+		if (share.kind === "catch_up" && this.#catchUpsSent.has(sent)) {
+			throw new Refusal({ status: 429, body: { error: "too many requests" }, headers: { "Retry-After": "86400" } });
+		}
+		if (share.kind === "catch_up") this.#catchUpsSent.add(sent);
 		this.#shares.set(share.id, share);
 		return ok(this.#shareView(share), 201);
 	}

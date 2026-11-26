@@ -54,8 +54,19 @@ test("renaming starts from the name, asks nothing for the same one or none, and 
 test("leaving asks first, and what the API took goes here at once, a call there included", () => {
 	const view = source("ConversationView.svelte");
 	expect(view).toMatch(
-		/confirmAction\("Leave the group\?", "Leave group", async \(\) => \{\s*await leaveConversation\(convId\);\s*conversationLeft\(convId\);\s*\}\)/,
+		/confirmAction\("Leave the group\?", "Leave group", async \(\) => \{\s*await leaveConversation\(convId\)\.catch\(\(err: unknown\) => \{\s*throw new Error\(refusalWords\(err, t\("e2e_leave_failed"\)\), \{ cause: err \}\);\s*\}\);\s*conversationLeft\(convId\);\s*\}\)/,
 	);
+});
+
+// Task 22's review, M3: what an addition, a removal, a leave or a restart refuses says it in the app's words.
+test("a change of the members, a leave and a restart that didn't go say why in the app's words", () => {
+	const view = source("ConversationView.svelte");
+	expect(view).toContain('addMemberError = refusalWords(err, "Failed to add member");');
+	expect(view).toContain('throw new Error(refusalWords(err, t("e2e_remove_failed")), { cause: err });');
+	expect(view).toMatch(
+		/return confirmRestart\(\{\s*restart: \(confirmed\) => restartGroup\(convId, confirmed\),\s*nameOf,\s*confirm: confirmAction,\s*refused: \(text\) => toast\(text, "error"\),\s*\}\);/,
+	);
+	expect(view).not.toContain("membersRefusal");
 });
 
 test("a conversation the user is no longer in acks nothing as its view goes, and leaves no unread dot to clear", () => {

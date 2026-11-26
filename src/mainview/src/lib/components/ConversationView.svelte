@@ -87,6 +87,7 @@
 	import { promptDialog } from "$lib/stores/prompt.svelte";
 	import { FetchError, getApiError, PausedError } from "$lib/api/api";
 	import { CoreError } from "$lib/e2e/errors";
+	import { confirmRestart, refusalWords } from "$lib/e2e/member-changes";
 	import { drawnRows } from "$lib/e2e/engine/content";
 	import { FilesGone, gifFile, sealedSize, shownFile } from "$lib/e2e/engine/files";
 	import { gifBytes, outgoingFiles } from "$lib/e2e/thumbnails";
@@ -145,7 +146,6 @@
 	} from "$lib/e2e/engine.svelte";
 	import { MAX_MEMBERS } from "$lib/e2e/engine/members";
 	import { getBotUser } from "$lib/api/developer";
-	import { formatList } from "$lib/i18n/format";
 	import { buttonClass, pillClass } from "$lib/components/ui/recipes";
 	import Menu from "$lib/components/ui/Menu.svelte";
 	import MenuItem from "$lib/components/ui/MenuItem.svelte";
@@ -303,18 +303,10 @@
 			onMemberAdded?.(newMember);
 			showAddMemberModal = false;
 		} catch (err) {
-			addMemberError = membersRefusal(err, "Failed to add member");
+			addMemberError = refusalWords(err, "Failed to add member");
 		} finally {
 			addMemberLoading = false;
 		}
-	}
-
-	// What the person reads of a change of the members that didn't go: the engine's own words, else the API's.
-	function membersRefusal(err: unknown, fallback: string): string {
-		if (err instanceof CoreError && err.code === "too_many_members") return t("e2e_group_full");
-		if (err instanceof CoreError && err.code === "unanswered") return t("e2e_change_unanswered");
-		if (err instanceof CoreError && err.code === "not_ready") return t("e2e_not_ready");
-		return getApiError(err, fallback);
 	}
 
 	// A user's name as the app shows it: a member's; one who left, as the API has them, or their ID without that.
@@ -325,30 +317,15 @@
 		return user?.alias ?? user?.username ?? userId;
 	}
 
-	// Restart encryption (#46's client rule): whom it leaves out, those the group holds that the conversation no longer
-	// has, are named first, and it goes only on the person's yes; with nobody left out it goes at once. A restart this
-	// device can't make yet (a successor's, without a leave statement it needs) leaves the group blocked, and says so.
-	async function restartEncryption() {
+	// Restart encryption (#46's client rule): whom it leaves out named first, and it goes only on the person's yes
+	// (lib/e2e/member-changes.ts), in the app's dialog; a refusal is a toast.
+	function restartEncryption() {
 		const convId = conversation.id;
-		const restart = (confirmed: string[] = []) =>
-			restartGroup(convId, confirmed).catch((err: unknown) => {
-				if (err instanceof CoreError && err.code === "rule_violation") {
-					throw new Error(t("e2e_restart_refused"), { cause: err });
-				}
-				throw err;
-			});
-		let out: string[];
-		try {
-			out = await restart();
-		} catch (err) {
-			toast(getApiError(err, t("e2e_restart_refused")), "error");
-			return;
-		}
-		if (!out.length) return;
-		const names = formatList(await Promise.all(out.map(nameOf)));
-		await confirmAction(t("e2e_restart_leaves_out", { names }), t("e2e_blocked_restart"), async () => {
-			// Someone else left meanwhile: the person is asked again, from their next tap.
-			if ((await restart(out)).length) throw new Error(t("e2e_members_changed"));
+		return confirmRestart({
+			restart: (confirmed) => restartGroup(convId, confirmed),
+			nameOf,
+			confirm: confirmAction,
+			refused: (text) => toast(text, "error"),
 		});
 	}
 
@@ -368,11 +345,14 @@
 		}
 	}
 
-	// A failure shows in the dialog, which stays. Done, the group goes here, its call too, whatever the gateway has said.
+	// A failure shows in the dialog, which stays, in the app's words. Done, the group goes here, its call too, whatever
+	// the gateway has said.
 	function leaveGroup() {
 		const convId = conversation.id;
 		void confirmAction("Leave the group?", "Leave group", async () => {
-			await leaveConversation(convId);
+			await leaveConversation(convId).catch((err: unknown) => {
+				throw new Error(refusalWords(err, t("e2e_leave_failed")), { cause: err });
+			});
 			conversationLeft(convId);
 		});
 	}
@@ -980,7 +960,7 @@
 		try {
 			await removeGroupMember(conversation.id, userId);
 		} catch (err) {
-			throw new Error(membersRefusal(err, "Couldn't remove them from the group"), { cause: err });
+			throw new Error(refusalWords(err, t("e2e_remove_failed")), { cause: err });
 		}
 	}
 	// A group's owner takes members out of it, from their profile and their menu (#423).

@@ -15,10 +15,15 @@ export const PENDING_SENDS = "pending_sends";
 export const PENDING_CHANGES = "pending_changes";
 /** The devices a change of keys under way takes off the list (devices.ts), which it runs again with, until it's uploaded. */
 export const KEPT_ROTATION = "rotation";
+/**
+ * The generations this device joins only on its person's yes, by conversation (sync.ts): a restart's welcome its core
+ * refused, a newer generation with members other than it holds. A conversation's ID and a number, nothing secret.
+ */
+export const REFUSED_GENERATIONS = "refused_generations";
 /** What a new device of this installation starts without. */
 export const DEVICE_RECORD = [
 	...[DEVICE_KEYS, KEPT_APPROVALS, KEPT_TRANSFERS, KEPT_LATER],
-	...[PENDING_SENDS, PENDING_CHANGES, KEPT_ROTATION],
+	...[PENDING_SENDS, PENDING_CHANGES, KEPT_ROTATION, REFUSED_GENERATIONS],
 ];
 /** The user's devices the app told of, each once (devices.ts): those not seen in 45 days, and those added. */
 export const TOLD_INACTIVE = "told_inactive";

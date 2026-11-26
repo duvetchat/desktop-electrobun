@@ -185,6 +185,29 @@ describe.skipIf(!coreLibrary)("the page's engine", () => {
 		SLOW,
 	);
 
+	// Task 22's review, M7: on the web, the tab that leads has no engine (its host didn't load). A new conversation is
+	// made by the API alone, as on a page without an engine, not refused as not ready; its group waits for a device that
+	// can make it.
+	test(
+		"on the web, a conversation made while the leading tab has no engine is made by the API alone",
+		async () => {
+			const fake = new FakeApi();
+			useFake(fake);
+			const ana = signedIn(fake);
+			const bo = fake.addUser();
+			fake.befriend(ana, bo);
+			const [locks, hub] = [new FakeLocks(), new FakeHub()];
+			const broken = () => Promise.reject(new Error("the worker didn't load"));
+			await page.startEngine(ana, platform({ tabs: { locks, channel: hub.channel(lockName(ana)) }, webHost: broken }));
+			const made = await page.createDM(bo);
+			expect(made.members.map((member) => member.user_id).sort()).toEqual([ana, bo].sort());
+			const api = e2eApi(sessionApi({ token: localStorage.getItem("duvet_session_token")!, sessionToken: null }));
+			const listed = (await api.conversations()).find((conv) => conv.id === made.id);
+			expect(listed?.mls ?? null).toBeNull();
+		},
+		SLOW,
+	);
+
 	// M6: a conversation's view opens it once. One that opened before the page had its engine (the desktop's host
 	// still loading) is opened by the engine once it's ready.
 	test(

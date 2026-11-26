@@ -434,11 +434,11 @@ export class E2EEngine {
 	}
 
 	/**
-	 * What the conversations' sends do now, settled: their requests run outside the engine's turn, so what the turn took
-	 * on can still be sending after it. A test's wait (testing/engines.ts' turnEnded).
+	 * What the conversations' sends and catch-ups do now, settled: their requests run outside the engine's turn, so what
+	 * the turn took on can still be sending after it. A test's wait (testing/engines.ts' turnEnded).
 	 */
 	sendsSettled(): Promise<void> {
-		return this.#sends.settled();
+		return Promise.all([this.#sends.settled(), this.#groups.settled()]).then(() => {});
 	}
 
 	/** A file of a message that didn't open, or opened to other bytes than its message says: counted (decision 40). */
@@ -688,7 +688,10 @@ export class E2EEngine {
 	}
 
 	#set(state: EngineState) {
+		const was = this.state.name;
 		this.state = state;
+		// Ready again: what the conversations' turns skipped while it wasn't is asked for again (the catch-ups).
+		if (state.name === "ready" && was !== "ready") this.#groups.ready();
 		for (const listener of this.#listeners) listener(state);
 	}
 

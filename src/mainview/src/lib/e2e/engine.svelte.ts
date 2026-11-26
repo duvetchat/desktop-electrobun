@@ -380,17 +380,27 @@ export const pendingEncrypted = (conversationId: string) =>
 /**
  * The person's new conversation (PLAN-E2E-CLIENTES.md, Task 22), by the engine of this tab or of the one that leads,
  * which makes its group at once: the API's conversation. A page without an engine (a browser that can't run one, or
- * its host still loading) has the API make it alone, and its group waits for a device that can.
+ * its host still loading), or whose leading tab has none (task 22's review, M7), has the API make it alone, and its
+ * group waits for a device that can.
  */
 function createConversation(made: NewConversationRequest): Promise<Conversation> {
-	if (tabs) return tabs.call<Conversation>("createConversation", made);
-	if (engine) return engine.createConversation(made);
-	return e2eApi()
-		.createConversation(made)
-		.then((conv) => {
-			void openOnEngine(conv.id);
-			return conv;
+	if (tabs) {
+		return tabs.call<Conversation>("createConversation", made).catch((error: unknown) => {
+			if (!(error instanceof CoreError && error.code === "not_ready")) throw error;
+			return madeAlone(made, (id) => openConversation(id));
 		});
+	}
+	if (engine) return engine.createConversation(made);
+	return madeAlone(made, openOnEngine);
+}
+
+/** The conversation as the API makes it alone, opened (`open`) for the engine that's to make its group. */
+async function madeAlone(made: NewConversationRequest, open: (id: string) => Promise<void>): Promise<Conversation> {
+	const conv = await e2eApi().createConversation(made);
+	open(conv.id).catch((error: unknown) => {
+		console.error("[e2e] The new conversation's group waits for its next open:", error);
+	});
+	return conv;
 }
 /** A DM with a friend: the one they have, or a new one, its group made at once. */
 export const createDM = (userId: string) => createConversation({ type: 1, user_id: userId });
